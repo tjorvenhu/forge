@@ -42,7 +42,7 @@ export function GitHubView() {
             </div>
           )}
         </section>
-        <p className="text-xs text-subtle">Push mit Schutzregeln und Pull Requests folgen in Phase 2.</p>
+        <p className="text-xs text-subtle">Push, Pull und Pull Requests findest du im Projekt unter Git.</p>
       </div>
     </Page>
   );

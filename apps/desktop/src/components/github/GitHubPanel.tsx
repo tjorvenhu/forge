@@ -107,7 +107,7 @@ export function GitHubAccountCard() {
   return (
     <div className="flex flex-col items-start gap-3">
       <p className="text-[13px] text-muted">
-        Melde dich an, um private Repositories zu klonen und später Pull Requests aus FORGE zu erstellen. Die Anmeldung läuft über GitHub im Browser; das Token liegt im
+        Melde dich an, um private Repositories zu klonen, zu pushen und Pull Requests zu erstellen. Die Anmeldung läuft über GitHub im Browser; das Token liegt im
         Windows-Anmeldeinformationsspeicher, nicht in FORGE.
       </p>
       {state?.phase === "error" && <ErrorBanner title="Anmeldung fehlgeschlagen">{state.message}</ErrorBanner>}

@@ -1,35 +1,160 @@
-import { useQueryClient } from "@tanstack/react-query";
+import { useEffect, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Copy, ExternalLink, KeyRound } from "lucide-react";
 import type { Project } from "@forge/protocol";
-import { call, keys } from "@/lib/queries";
+import { call, keys, useGitHubLogin } from "@/lib/queries";
 import { errorMessage } from "@/lib/rpc";
+import { openExternal } from "@/lib/native";
 import { useUi } from "@/stores/ui";
 import { toast } from "@/stores/toast";
+import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { Checkbox, ErrorBanner, Spinner } from "@/components/ui/misc";
+import { useAutoOpenGitHub } from "@/components/github/GitHubPanel";
 
 export function RemoveProjectDialog({ project, onClose }: { project: Pick<Project, "id" | "name" | "path"> | null; onClose: () => void }) {
   const qc = useQueryClient();
+  const [deleteFolder, setDeleteFolder] = useState(false);
+  const [deleteRepo, setDeleteRepo] = useState(false);
+  const info = useQuery({
+    queryKey: ["removalInfo", project?.id],
+    queryFn: () => call("projects.removalInfo", { projectId: project!.id }),
+    enabled: !!project,
+    staleTime: 0,
+  });
+  const i = info.data;
+  const destructive = deleteFolder || deleteRepo;
+  const needsScope = deleteRepo && !!i && !i.githubCanDelete;
+
+  useEffect(() => {
+    if (!project) {
+      setDeleteFolder(false);
+      setDeleteRepo(false);
+    }
+  }, [project]);
+
   return (
     <ConfirmDialog
       open={!!project}
       onOpenChange={(o) => !o && onClose()}
-      title="Projekt aus FORGE entfernen?"
-      description="Der Ordner und alle Dateien bleiben unverändert. Nur der Eintrag und die FORGE-Session-Historie werden entfernt."
-      confirmLabel="Entfernen"
+      title={destructive ? "Projekt endgültig löschen?" : "Projekt aus FORGE entfernen?"}
+      description={
+        destructive
+          ? "Das lässt sich nicht rückgängig machen."
+          : "Entfernt den Eintrag und die Session-Historie in FORGE. Ordner und GitHub-Repository bleiben, wenn du unten nichts auswählst."
+      }
+      confirmLabel={destructive ? "Endgültig löschen" : "Entfernen"}
       danger
+      requireText={destructive ? project?.name : undefined}
+      confirmDisabled={info.isLoading || needsScope}
       onConfirm={async () => {
         if (!project) return;
         try {
-          await call("projects.remove", { projectId: project.id });
+          const r = await call("projects.remove", { projectId: project.id, deleteFolder, deleteGitHubRepo: deleteRepo });
           const ui = useUi.getState();
           if (ui.activeProjectId === project.id) ui.closeProject();
           await qc.invalidateQueries({ queryKey: keys.projects });
-          toast.success("Projekt entfernt", project.path);
+          const parts = [r.folderDeleted && "Ordner gelöscht", r.githubDeleted && `${i?.githubRepo} auf GitHub gelöscht`].filter(Boolean);
+          toast.success(destructive ? "Projekt gelöscht" : "Projekt entfernt", parts.length ? parts.join(", ") : project.path);
         } catch (e) {
-          toast.error("Entfernen fehlgeschlagen", errorMessage(e));
+          await info.refetch();
+          toast.error("Löschen fehlgeschlagen", errorMessage(e));
+          throw e;
         }
       }}
     >
-      {project && <div className="rounded-md bg-surface-2 px-3 py-2 font-mono text-xs text-muted">{project.path}</div>}
+      {project && (
+        <div className="flex flex-col gap-3">
+          {info.isLoading && <Spinner />}
+          {info.isError && <ErrorBanner>{errorMessage(info.error)}</ErrorBanner>}
+          {i && (
+            <>
+              <div className="rounded-lg border border-border p-3">
+                <label className="flex items-center gap-2 text-[13px]">
+                  <Checkbox checked={deleteFolder} onChange={setDeleteFolder} disabled={!i.folderExists || !!i.folderBlocker} label="Lokalen Ordner löschen" />
+                  Lokalen Ordner löschen
+                </label>
+                <div className="mt-1.5 break-all pl-6 font-mono text-xs text-muted">{i.path}</div>
+                {!i.folderExists && <p className="mt-1.5 pl-6 text-xs text-subtle">Der Ordner existiert nicht mehr.</p>}
+                {i.folderBlocker && <p className="mt-1.5 pl-6 text-xs text-warning">{i.folderBlocker}</p>}
+                {deleteFolder && i.isWorktree && <p className="mt-1.5 pl-6 text-xs text-subtle">Löscht den Worktree. Der Branch und seine Commits bleiben im Repository.</p>}
+                {deleteFolder && i.worktrees > 0 && (
+                  <p className="mt-1.5 pl-6 text-xs text-subtle">
+                    {i.worktrees === 1 ? "Der Worktree" : `Die ${i.worktrees} Worktrees`} dieses Projekts werden mit gelöscht.
+                  </p>
+                )}
+              </div>
+
+              {i.githubRepo && (
+                <div className="rounded-lg border border-border p-3">
+                  <label className="flex items-center gap-2 text-[13px]">
+                    <Checkbox checked={deleteRepo} onChange={setDeleteRepo} disabled={!i.githubSignedIn} label="Repository auf GitHub löschen" />
+                    Repository auf GitHub löschen
+                  </label>
+                  <div className="mt-1.5 pl-6 font-mono text-xs text-muted">github.com/{i.githubRepo}</div>
+                  {!i.githubSignedIn && <p className="mt-1.5 pl-6 text-xs text-subtle">Dafür musst du in FORGE bei GitHub angemeldet sein.</p>}
+                  {needsScope && <GrantDeleteScope onGranted={() => void info.refetch()} />}
+                  {deleteRepo && !needsScope && <p className="mt-1.5 pl-6 text-xs text-subtle">Löscht Code, Issues und Pull Requests auf GitHub.</p>}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
     </ConfirmDialog>
+  );
+}
+
+/** GitHub asks separately for the delete_repo permission; same device flow as the login. */
+function GrantDeleteScope({ onGranted }: { onGranted: () => void }) {
+  const qc = useQueryClient();
+  const login = useGitHubLogin().data;
+  const [started, setStarted] = useState(false);
+  useAutoOpenGitHub();
+
+  useEffect(() => {
+    if (started && login?.phase === "done") {
+      setStarted(false);
+      onGranted();
+    }
+  }, [started, login?.phase, onGranted]);
+
+  const start = async () => {
+    try {
+      qc.setQueryData(keys.githubLogin, await call("github.startLogin", { scopes: ["delete_repo"] }));
+      setStarted(true);
+    } catch (e) {
+      toast.error("Berechtigung nicht angefragt", errorMessage(e));
+    }
+  };
+
+  if (started && login?.phase === "waiting" && login.code && login.url) {
+    return (
+      <div className="mt-2.5 flex flex-col items-start gap-2 pl-6">
+        <p className="text-xs text-muted">Gib diesen Code auf der GitHub-Seite ein:</p>
+        <div className="flex items-center gap-2">
+          <span className="rounded-md border border-accent/40 bg-accent-soft px-3 py-1 font-mono text-base tracking-widest">{login.code}</span>
+          <Button size="icon-sm" variant="ghost" aria-label="Code kopieren" onClick={() => void navigator.clipboard.writeText(login.code!).then(() => toast.success("Code kopiert"))}>
+            <Copy className="h-3.5 w-3.5" />
+          </Button>
+          <Button size="sm" onClick={() => void openExternal(login.url!)}>
+            <ExternalLink className="h-3.5 w-3.5" /> GitHub öffnen
+          </Button>
+        </div>
+        <span className="flex items-center gap-2 text-xs text-muted">
+          <Spinner className="h-3.5 w-3.5" /> Warte auf Bestätigung
+        </span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-2.5 flex flex-col items-start gap-2 pl-6">
+      <p className="text-xs text-muted">GitHub verlangt dafür einmalig die Berechtigung delete_repo. Die Freigabe läuft im Browser.</p>
+      {login?.phase === "error" && started && <p className="text-xs text-danger">{login.message}</p>}
+      <Button size="sm" onClick={() => void start()} loading={started && (login?.phase === "starting" || login?.phase === "waiting")}>
+        <KeyRound className="h-3.5 w-3.5" /> Berechtigung erteilen
+      </Button>
+    </div>
   );
 }

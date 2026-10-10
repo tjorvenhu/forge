@@ -7,11 +7,9 @@ import type { SessionService } from "../sessions/session-service.js";
 import type { GitHubService } from "../github/github.js";
 import type { ClaudeSetupService } from "../claude/setup.js";
 import type { McpService } from "../config/mcp.js";
-import type { RemoteService } from "../remote/remote.js";
-import type { WorkflowService } from "../automation/workflows.js";
-import type { ScheduleService } from "../automation/schedules.js";
 import type { WorktreeService } from "../automation/worktrees.js";
 import * as cfg from "../config/claude-config.js";
+import { removalInfo, removeProject } from "../projects/removal.js";
 import os from "node:os";
 
 export interface Services {
@@ -23,9 +21,6 @@ export interface Services {
   github: GitHubService;
   claudeSetup: ClaudeSetupService;
   mcp: McpService;
-  remote: RemoteService;
-  workflows: WorkflowService;
-  schedules: ScheduleService;
   worktrees: WorktreeService;
   notifyProject: (projectId: string) => void;
 }
@@ -65,19 +60,13 @@ export function createHandlers(s: Services): Handlers {
     "claude.submitLoginCode": ({ code }) => s.claudeSetup.submitCode(code),
     "claude.cancelSetup": () => s.claudeSetup.cancel(),
 
-    "remote.state": ({ projectId }) => s.remote.state(projectId),
-    "remote.start": ({ projectId }) => {
-      const p = s.projects.requireExisting(projectId);
-      const settings = s.db.getSettings();
-      // Bypass only when FORGE's own Autonomous gate is open for this project.
-      const mode = p.profile === "autonomous" && p.autonomousConfirmed && settings.autonomousUnlocked ? "bypassPermissions" : p.profile === "safe" ? "default" : "acceptEdits";
-      return s.remote.start(projectId, p.path, `FORGE · ${p.name}`, mode);
-    },
-    "remote.stop": ({ projectId }) => s.remote.stop(projectId),
+    "remote.state": ({ projectId }) => s.sessions.remoteState(projectId),
+    "remote.start": ({ projectId }) => s.sessions.remoteStart(projectId),
+    "remote.stop": ({ projectId }) => s.sessions.remoteStop(projectId),
 
     "github.account": () => s.github.account(),
     "github.loginState": () => s.github.loginState(),
-    "github.startLogin": () => s.github.startLogin(),
+    "github.startLogin": ({ scopes }) => s.github.startLogin(scopes),
     "github.cancelLogin": () => s.github.cancelLogin(),
     "github.logout": async () => {
       await s.github.logout();
@@ -117,19 +106,6 @@ export function createHandlers(s: Services): Handlers {
     "mcp.add": ({ projectId, ...input }) => s.mcp.add(dirOf(projectId) ?? os.homedir(), input),
     "mcp.remove": ({ projectId, name, scope }) => s.mcp.remove(dirOf(projectId) ?? os.homedir(), name, scope),
 
-    "workflows.list": ({ projectId }) => s.workflows.list(projectId),
-    "workflows.start": (p) => s.workflows.start(p),
-    "workflows.approvePlan": ({ id, approve, feedback }) => s.workflows.approvePlan(id, approve, feedback),
-    "workflows.continue": ({ id }) => s.workflows.continueReview(id),
-    "workflows.fixTests": ({ id }) => s.workflows.fixTests(id),
-    "workflows.cancel": ({ id }) => s.workflows.cancel(id),
-    "schedules.list": ({ projectId }) => s.schedules.list(projectId),
-    "schedules.save": (p) => s.schedules.save(p),
-    "schedules.remove": ({ id }) => {
-      s.schedules.remove(id);
-      return { ok: true };
-    },
-    "schedules.runNow": ({ id }) => s.schedules.runNow(id),
     "worktrees.create": ({ projectId, branch }) => s.worktrees.create(s.projects.requireExisting(projectId), branch),
     "worktrees.remove": async ({ projectId, force }) => {
       await s.worktrees.remove(s.projects.get(projectId), force);
@@ -161,7 +137,8 @@ export function createHandlers(s: Services): Handlers {
     "projects.update": ({ projectId, ...patch }) => s.projects.update(projectId, patch),
     "projects.confirmAutonomous": ({ projectId, confirmName }) =>
       s.projects.confirmAutonomous(projectId, confirmName, s.db.getSettings().autonomousUnlocked),
-    "projects.remove": ({ projectId }) => ({ removed: s.projects.remove(projectId) }),
+    "projects.removalInfo": ({ projectId }) => removalInfo(projectId, s),
+    "projects.remove": ({ projectId, deleteFolder, deleteGitHubRepo }) => removeProject(projectId, { deleteFolder, deleteGitHubRepo }, s),
     "projects.touch": ({ projectId }) => s.projects.touch(projectId),
     "projects.readClaudeMd": ({ projectId }) => s.projects.readClaudeMd(projectId),
     "projects.listFiles": ({ projectId, dir }) => s.projects.listFiles(projectId, dir),

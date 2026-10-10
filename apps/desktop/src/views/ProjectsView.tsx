@@ -44,7 +44,7 @@ export function ProjectsView() {
             <FolderPlus className="h-3.5 w-3.5" /> Neu
           </Button>
           <Button variant="primary" onClick={() => setNewProject("import")}>
-            <FolderOpen className="h-3.5 w-3.5" /> Importieren
+            <FolderOpen className="h-3.5 w-3.5" /> Ordner öffnen
           </Button>
         </>
       }

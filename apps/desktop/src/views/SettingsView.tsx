@@ -16,7 +16,7 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { PROFILE_INFO } from "@/components/projects/ProfileBadge";
 import { ClaudeSetupCard } from "@/components/settings/ClaudeSetupCard";
 import { MemoryEditor } from "@/components/settings/MemoryEditor";
-import { cn } from "@/lib/utils";
+import { capitalize, cn } from "@/lib/utils";
 
 export function SettingsView() {
   const settings = useSettings();
@@ -70,13 +70,11 @@ export function SettingsView() {
               <Toggle checked={s.enterToSend} onChange={(v) => void save({ enterToSend: v })} label="Enter sendet, Umschalt+Enter macht eine neue Zeile">
                 Ausgeschaltet: Strg+Enter sendet, Enter macht eine neue Zeile.
               </Toggle>
-              <div className="flex items-start gap-3">
-                <div className="flex-1">
-                  <Toggle checked={s.sounds} onChange={(v) => void save({ sounds: v })} label="Töne abspielen">
-                    Signal, wenn Claude fertig ist, eine Freigabe braucht oder ein Fehler auftritt.
-                  </Toggle>
-                </div>
-                <div className="flex gap-1">
+              <div className="flex flex-col gap-1.5">
+                <Toggle checked={s.sounds} onChange={(v) => void save({ sounds: v })} label="Töne abspielen">
+                  Signal, wenn Claude fertig ist, eine Freigabe braucht oder ein Fehler auftritt.
+                </Toggle>
+                <div className="-ml-2 flex gap-1 pl-6">
                   {(["done", "approval", "error"] as const).map((k) => (
                     <Button key={k} size="sm" variant="ghost" onClick={() => playSound(k)} title="Ton anhören">
                       <Volume2 className="h-3.5 w-3.5" /> {k === "done" ? "Fertig" : k === "approval" ? "Freigabe" : "Fehler"}
@@ -243,7 +241,7 @@ function DiagnosticsPanel() {
           <div className="flex flex-col gap-1.5 text-[13px]">
             <Row label="System" value={d.platform} />
             <Row label="Node.js (Sidecar)" value={d.nodeVersion} />
-            <Row label="Datenordner" value={<span className="font-mono text-xs">{d.dataDir}</span>} />
+            <Row label="Datenordner" value={<span className="block truncate font-mono text-xs" title={d.dataDir}>{d.dataDir}</span>} />
             <ToolRow label="Claude Code" t={d.claude} />
             <AuthRow d={d} />
             <Row
@@ -265,16 +263,16 @@ function DiagnosticsPanel() {
             <div className="mb-2 text-xs font-medium text-muted">Capability-Matrix (aktiver Adapter: Agent SDK)</div>
             <div className="divide-y divide-border rounded-lg border border-border">
               {d.capabilities.map((c) => (
-                <div key={c.key} className="flex items-center gap-2 px-3 py-1.5 text-[13px]">
+                <div key={c.key} className="flex items-start gap-2 px-3 py-1.5 text-[13px]">
                   {c.state === "supported" ? (
-                    <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-success" />
+                    <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-success" />
                   ) : c.state === "partial" ? (
-                    <CircleDashed className="h-3.5 w-3.5 shrink-0 text-warning" />
+                    <CircleDashed className="mt-0.5 h-3.5 w-3.5 shrink-0 text-warning" />
                   ) : (
-                    <CircleSlash className="h-3.5 w-3.5 shrink-0 text-subtle" />
+                    <CircleSlash className="mt-0.5 h-3.5 w-3.5 shrink-0 text-subtle" />
                   )}
                   <span className="w-44 shrink-0">{c.label}</span>
-                  <span className={cn("min-w-0 flex-1 truncate text-xs", c.state === "unavailable" ? "text-subtle" : "text-muted")} title={c.note}>
+                  <span className={cn("min-w-0 flex-1 pt-px text-xs", c.state === "unavailable" ? "text-subtle" : "text-muted")}>
                     {c.note}
                   </span>
                 </div>
@@ -289,9 +287,9 @@ function DiagnosticsPanel() {
 
 function Row({ label, value }: { label: string; value: ReactNode }) {
   return (
-    <div className="flex items-center gap-3">
-      <span className="w-40 shrink-0 text-muted">{label}</span>
-      <span className="min-w-0 flex-1 break-all">{value}</span>
+    <div className="flex items-start gap-3">
+      <span className="w-40 shrink-0 py-px text-muted">{label}</span>
+      <span className="min-w-0 flex-1 break-words">{value}</span>
     </div>
   );
 }
@@ -330,7 +328,7 @@ function AuthRow({ d }: { d: Diagnostics }) {
             <Badge tone="success">angemeldet</Badge>
             <span className="text-muted">
               {d.auth.authMethod === "claude.ai" ? "Claude-Konto" : d.auth.authMethod}
-              {d.auth.subscriptionType ? `, Abo: ${d.auth.subscriptionType}` : ""}
+              {d.auth.subscriptionType ? `, ${capitalize(d.auth.subscriptionType)} Abo` : ""}
             </span>
           </span>
         ) : (

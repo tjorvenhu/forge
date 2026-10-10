@@ -8,6 +8,8 @@ import {
   type ExternalSession,
   type PermissionMode,
   type PlanUsage,
+  type RemoteSession,
+  type RemoteState,
   type RuntimeInfo,
   type ServerEvent,
   type Session,
@@ -40,7 +42,14 @@ interface LiveSession {
   projectDir: string;
   /** set by stop(); a result after an interrupt is not an error */
   interrupting: boolean;
+  /** user message ids already in the timeline (own sends, imports, echoes) */
+  seenUuids: Set<string>;
+  /** a turn started by a message from the Claude app (Remote Control) */
+  remoteTurn: { sawMessage: boolean } | null;
 }
+
+/** Title of a session that was opened empty for the Claude app; replaced by the first message. */
+const REMOTE_PLACEHOLDER_TITLE = "Remote-Session";
 
 /** Small, fast model: commit messages need speed more than depth. */
 const COMMIT_MESSAGE_MODEL = "haiku";
@@ -245,8 +254,7 @@ export class SessionService {
     this.emit({ event: "session.event", payload: ev });
   }
 
-  /** Builds the outgoing turn (text + attachment blocks + id) and records it in the timeline. */
-  // ---------- turn automation (project tags) and workflow hooks
+  // ---------- turn automation (project tags)
 
   /** Files already changed before a turn; auto-commit never takes those (foreign dirty state). */
   private turnBaseline = new Map<string, Set<string>>();
@@ -346,12 +354,15 @@ export class SessionService {
     }
   }
 
+  /** Builds the outgoing turn (text + attachment blocks + id) and records it in the timeline. */
   private async prepareTurn(sessionId: string, text: string, attachments: Attachment[]): Promise<OutgoingMessage> {
     const cwd = this.db.getSession(sessionId)?.cwd;
     if (cwd) await this.captureBaseline(sessionId, cwd);
     const { blocks, meta } = attachments.length ? await buildAttachmentBlocks(attachments) : { blocks: [], meta: [] };
     const uuid = randomUUID();
+    this.live.get(sessionId)?.seenUuids.add(uuid);
     this.record(sessionId, { type: "user.message", text, uuid, ...(meta.length ? { attachments: meta } : {}) });
+    this.titleFromFirstMessage(sessionId, text);
     return { text, blocks, uuid };
   }
 
@@ -383,7 +394,7 @@ export class SessionService {
       projectId: project.id,
       claudeSessionId: params.resumeClaudeSessionId ?? null,
       cwd: params.cwd ?? project.path,
-      title: titleFrom(params.prompt),
+      title: titleFrom(params.prompt) || REMOTE_PLACEHOLDER_TITLE,
       model,
       profile: profile.id,
       permissionMode,
@@ -402,9 +413,9 @@ export class SessionService {
     const others = [...this.live.entries()].filter(
       ([id, l]) => l.projectDir === project.path && busy.includes(this.db.getSession(id)?.status ?? "stopped"),
     ).length;
-    let first: OutgoingMessage;
+    let first: OutgoingMessage | null;
     try {
-      first = await this.prepareTurn(rec.id, params.prompt, params.attachments ?? []);
+      first = params.prompt ? await this.prepareTurn(rec.id, params.prompt, params.attachments ?? []) : null;
     } catch (e) {
       this.db.updateSession(rec.id, { status: "error", lastError: e instanceof Error ? e.message : String(e) });
       throw e;
@@ -498,6 +509,8 @@ export class SessionService {
       profile,
       projectDir: rec.cwd,
       interrupting: false,
+      seenUuids: new Set(this.db.listEvents(rec.id).flatMap((e) => (e.body.type === "user.message" && e.body.uuid ? [e.body.uuid] : []))),
+      remoteTurn: null,
     };
     this.live.set(rec.id, live);
     const sink = this.sinkFor(rec.id, live);
@@ -524,6 +537,7 @@ export class SessionService {
       throw new ForgeError("CLAUDE_RUNTIME", msg);
     }
     this.setStatus(rec.id, first ? "running" : "idle");
+    if (this.remote.has(rec.projectId)) void this.bridge(rec.id);
     live.rt
       .initialization()
       .then((init) => {
@@ -545,6 +559,7 @@ export class SessionService {
             }));
           }
         }
+        if (this.handleRemoteInput(id, live, m)) return;
         for (const body of live.normalizer.normalize(msg)) {
           this.record(id, body);
           if (body.type === "session.init") {
@@ -557,6 +572,8 @@ export class SessionService {
           } else if (body.type === "turn.result") {
             const wasInterrupt = live.interrupting;
             live.interrupting = false;
+            if (live.remoteTurn && !live.remoteTurn.sawMessage) void this.syncRemoteMessages(id, live);
+            live.remoteTurn = null;
             const failed = body.isError && !wasInterrupt;
             this.setStatus(id, "idle", wasInterrupt ? "Gestoppt" : null, { lastError: failed ? body.text ?? body.subtype : null });
             const ok = !wasInterrupt && !body.isError;
@@ -588,6 +605,7 @@ export class SessionService {
         return v;
       },
       onEnd: (error) => {
+        this.dropRemoteSession(id);
         this.settleTurn(id, error ? describeRuntimeError(error) : "Session beendet");
         for (const p of live.pending.values()) p.resolve({ behavior: "deny", message: "Session beendet" });
         live.pending.clear();
@@ -655,7 +673,9 @@ export class SessionService {
         req,
         resolve: (d) => finish(d, "user", d.behavior === "allow" ? d.scope : "once"),
       });
-      signal.addEventListener("abort", () => finish({ behavior: "deny", message: "Abgebrochen" }, "abort", "once"), { once: true });
+      // With Remote Control the prompt may also have been answered in the Claude app.
+      const aborted = this.remote.has(this.db.getSession(id)?.projectId ?? "") ? "In der Claude-App beantwortet oder abgebrochen" : "Abgebrochen";
+      signal.addEventListener("abort", () => finish({ behavior: "deny", message: aborted }, "abort", "once"), { once: true });
     });
   }
 
@@ -695,6 +715,15 @@ export class SessionService {
     return this.get(sessionId);
   }
 
+  /** Ends all open sessions of the given projects and waits until their CLI processes are gone. */
+  async closeProject(projectIds: string[]) {
+    const ids = new Set(projectIds);
+    const open = () => [...this.live.keys()].filter((id) => ids.has(this.db.getSession(id)?.projectId ?? ""));
+    for (const id of ids) if (this.remote.has(id)) await this.remoteStop(id);
+    for (const id of open()) this.live.get(id)?.rt.close();
+    for (let i = 0; i < 50 && open().length; i++) await new Promise((r) => setTimeout(r, 100));
+  }
+
   close(sessionId: string): Session {
     const live = this.live.get(sessionId);
     if (live) live.rt.close();
@@ -723,6 +752,147 @@ export class SessionService {
     return this.get(sessionId);
   }
 
+  // ---------- Remote Control (Claude app / claude.ai)
+
+  /** projectId → bridged sessions; a project is in the map while Remote is switched on */
+  private remote = new Map<string, Map<string, RemoteSession>>();
+
+  remoteState(projectId: string): RemoteState {
+    const sessions = this.remote.get(projectId);
+    return { enabled: !!sessions, sessions: sessions ? [...sessions.values()] : [] };
+  }
+
+  private emitRemote(projectId: string) {
+    this.emit({ event: "remote.updated", payload: { projectId, state: this.remoteState(projectId) } });
+  }
+
+  private setRemoteSession(sessionId: string, patch: Partial<RemoteSession>) {
+    const rec = this.db.getSession(sessionId);
+    const map = rec && this.remote.get(rec.projectId);
+    if (!rec || !map) return;
+    const cur: RemoteSession = map.get(sessionId) ?? { sessionId, title: rec.title ?? "", url: null, state: "connecting", message: null };
+    map.set(sessionId, { ...cur, title: rec.title ?? "", ...patch });
+    this.emitRemote(rec.projectId);
+  }
+
+  private dropRemoteSession(sessionId: string) {
+    const rec = this.db.getSession(sessionId);
+    const map = rec && this.remote.get(rec.projectId);
+    if (rec && map?.delete(sessionId)) this.emitRemote(rec.projectId);
+  }
+
+  /**
+   * Switches Remote Control on for a project: every open FORGE session of the project is connected to
+   * the Claude app, so messages show up on both sides and FORGE's approvals and policy keep applying.
+   * Without an open session FORGE opens an empty one that can be started from the phone.
+   */
+  async remoteStart(projectId: string): Promise<RemoteState> {
+    this.projects.requireExisting(projectId);
+    if (!this.remote.has(projectId)) this.remote.set(projectId, new Map());
+    const open = [...this.live.keys()].filter((id) => this.db.getSession(id)?.projectId === projectId);
+    if (open.length) await Promise.all(open.map((id) => this.bridge(id)));
+    else await this.start({ projectId, prompt: "" });
+    return this.remoteState(projectId);
+  }
+
+  async remoteStop(projectId: string): Promise<RemoteState> {
+    const map = this.remote.get(projectId);
+    this.remote.delete(projectId);
+    for (const id of map?.keys() ?? []) {
+      await this.live
+        .get(id)
+        ?.rt.setRemoteControl(false, "")
+        .catch(() => {});
+    }
+    this.emitRemote(projectId);
+    return this.remoteState(projectId);
+  }
+
+  private async bridge(sessionId: string) {
+    const live = this.live.get(sessionId);
+    const rec = this.db.getSession(sessionId);
+    if (!live || !rec) return;
+    const project = this.projects.get(rec.projectId);
+    this.setRemoteSession(sessionId, { state: "connecting", message: null });
+    const name = rec.title === REMOTE_PLACEHOLDER_TITLE ? `FORGE · ${project.name}` : `FORGE · ${project.name} · ${rec.title}`;
+    try {
+      const url = await live.rt.setRemoteControl(true, name.slice(0, 120));
+      if (!this.remote.has(rec.projectId)) {
+        // switched off while connecting
+        await live.rt.setRemoteControl(false, name).catch(() => {});
+        return;
+      }
+      this.setRemoteSession(sessionId, { url });
+    } catch (e) {
+      this.setRemoteSession(sessionId, { state: "error", message: describeRuntimeError(e) });
+    }
+  }
+
+  /**
+   * Remote Control input: the bridge status, a turn started by a message from the Claude app and the
+   * echo of that message. Returns true when the message is fully handled here.
+   */
+  private handleRemoteInput(id: string, live: LiveSession, m: Record<string, unknown>): boolean {
+    if (m.type === "system" && m.subtype === "bridge_state") {
+      const state = typeof m.state === "string" ? m.state : "";
+      if (state === "connected") this.setRemoteSession(id, { state: "connected", message: null });
+      else if (state === "failed" || state === "error") this.setRemoteSession(id, { state: "error", message: typeof m.error === "string" ? m.error : null });
+      else if (state === "disconnected" || state === "reconnecting") this.setRemoteSession(id, { state: "connecting" });
+      return true;
+    }
+    if (m.type === "command_lifecycle") {
+      if (m.state === "started" && typeof m.command_uuid === "string" && !live.seenUuids.has(m.command_uuid)) {
+        live.remoteTurn = { sawMessage: false };
+        const rec = this.db.getSession(id);
+        if (rec) void this.captureBaseline(id, rec.cwd);
+        if (rec?.status === "idle") this.setStatus(id, "running");
+      }
+      return true;
+    }
+    if (m.type === "user" && m.isReplay === true) {
+      const uuid = typeof m.uuid === "string" ? m.uuid : null;
+      if (!uuid || live.seenUuids.has(uuid) || m.isSynthetic === true) return true;
+      const parsed = remoteUserContent((m.message as Record<string, unknown> | undefined)?.content);
+      if (parsed) this.recordRemoteMessage(id, live, uuid, parsed);
+      return true;
+    }
+    return false;
+  }
+
+  private recordRemoteMessage(id: string, live: LiveSession, uuid: string, msg: RemoteUserContent) {
+    live.seenUuids.add(uuid);
+    if (live.remoteTurn) live.remoteTurn.sawMessage = true;
+    const attachments = msg.images.map((img, i) => ({ name: `Bild ${i + 1}`, mediaType: img.mediaType, size: img.size }));
+    this.record(id, { type: "user.message", text: msg.text, uuid, source: "remote", ...(attachments.length ? { attachments } : {}) });
+    this.titleFromFirstMessage(id, msg.text);
+  }
+
+  /** An empty session opened for the Claude app takes its title from the first message, from either side. */
+  private titleFromFirstMessage(id: string, text: string) {
+    const rec = this.db.getSession(id);
+    if (rec?.title !== REMOTE_PLACEHOLDER_TITLE || !text.trim()) return;
+    const updated = this.db.updateSession(id, { title: titleFrom(text) });
+    if (updated) this.emit({ event: "session.updated", payload: this.toSession(updated) });
+    this.setRemoteSession(id, {});
+  }
+
+  /** Fallback when the CLI did not echo a message from the Claude app: read it from the transcript. */
+  private async syncRemoteMessages(id: string, live: LiveSession) {
+    const rec = this.db.getSession(id);
+    if (!rec?.claudeSessionId) return;
+    try {
+      const msgs = (await this.runtime.sessionHistory(rec.claudeSessionId, rec.cwd)) as Array<Record<string, unknown>>;
+      const users = msgs.filter((m) => m.type === "user" && typeof m.uuid === "string");
+      const lastSeen = users.map((m) => live.seenUuids.has(m.uuid as string)).lastIndexOf(true);
+      for (const m of users.slice(lastSeen + 1)) {
+        const parsed = remoteUserContent((m.message as Record<string, unknown> | undefined)?.content);
+        if (parsed) this.recordRemoteMessage(id, live, m.uuid as string, parsed);
+      }
+    } catch {
+      /* transcript not readable: the answer is still in the timeline */
+    }
+  }
+
   /** Imports the transcript of a session started outside FORGE so the timeline is complete. */
   private async importHistory(sessionId: string, claudeSessionId: string, dir: string) {
     try {
@@ -732,7 +902,7 @@ export class SessionService {
         const mm = m as Record<string, unknown>;
         if (mm.type === "user") {
           const content = (mm.message as Record<string, unknown> | undefined)?.content;
-          if (typeof content === "string") this.record(sessionId, { type: "user.message", text: content });
+          if (typeof content === "string") this.record(sessionId, { type: "user.message", text: content, ...(typeof mm.uuid === "string" ? { uuid: mm.uuid } : {}) });
         }
         for (const body of n.normalize(m)) if (body.type !== "assistant.delta") this.record(sessionId, body);
       }
@@ -752,6 +922,29 @@ export class SessionService {
     }
     this.live.clear();
   }
+}
+
+interface RemoteUserContent {
+  text: string;
+  images: Array<{ mediaType: string; size: number }>;
+}
+
+/** Text and images of a message typed in the Claude app; null for tool results and empty content. */
+function remoteUserContent(content: unknown): RemoteUserContent | null {
+  if (typeof content === "string") return content.trim() ? { text: content, images: [] } : null;
+  if (!Array.isArray(content)) return null;
+  const texts: string[] = [];
+  const images: RemoteUserContent["images"] = [];
+  for (const b of content as Array<Record<string, unknown> | null>) {
+    if (b?.type === "text" && typeof b.text === "string") texts.push(b.text);
+    else if (b?.type === "image") {
+      const src = (b.source ?? {}) as Record<string, unknown>;
+      const data = typeof src.data === "string" ? src.data : "";
+      images.push({ mediaType: typeof src.media_type === "string" ? src.media_type : "image", size: Math.floor((data.length * 3) / 4) });
+    } else if (b?.type === "tool_result") return null;
+  }
+  const text = texts.join("\n");
+  return text.trim() || images.length ? { text, images } : null;
 }
 
 function titleFrom(prompt: string): string {

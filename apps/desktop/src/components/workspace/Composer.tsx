@@ -230,7 +230,7 @@ export function Composer({
 
   const models = runtime.data?.models.filter((m) => m.value !== "default") ?? [];
   const modelOptions = [
-    ...(session ? [] : [{ value: "__default", label: "Standardmodell" }]),
+    ...(session && effectiveModel ? [] : [{ value: "__default", label: "Standardmodell" }]),
     ...models.map((m) => ({ value: m.value, label: m.displayName || m.value, description: m.description })),
   ];
   if (effectiveModel && !modelOptions.some((o) => o.value === effectiveModel)) modelOptions.push({ value: effectiveModel, label: prettyModel(effectiveModel), description: "" });

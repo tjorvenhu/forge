@@ -26,16 +26,14 @@ import {
   ProjectWithStatus,
   PullRequest,
   RemoteState,
+  ProjectRemovalInfo,
   RewindResult,
   RuntimeInfo,
   Session,
   SessionEvent,
-  Schedule,
   Settings,
   SlashCommand,
   TextDoc,
-  WorkflowOptions,
-  WorkflowRun,
 } from "./models.js";
 
 const id = z.string().min(1).max(100);
@@ -65,7 +63,7 @@ export const methods = {
 
   "github.account": { params: empty, result: GitHubAccount.nullable() },
   "github.loginState": { params: empty, result: GitHubLoginState },
-  "github.startLogin": { params: empty, result: GitHubLoginState },
+  "github.startLogin": { params: z.object({ scopes: z.array(z.enum(["delete_repo"])).optional() }), result: GitHubLoginState },
   "github.cancelLogin": { params: empty, result: GitHubLoginState },
   "github.logout": { params: empty, result: z.object({ ok: z.boolean() }) },
   "github.repos": { params: empty, result: z.array(GitHubRepo) },
@@ -129,19 +127,6 @@ export const methods = {
     result: z.object({ ok: z.boolean(), output: z.string() }),
   },
 
-  "workflows.list": { params: z.object({ projectId: id.optional() }), result: z.array(WorkflowRun) },
-  "workflows.start": {
-    params: z.object({ projectId: id, title: z.string().min(1).max(200), requirement: z.string().min(1).max(20_000), branch: z.string().max(200).optional(), options: WorkflowOptions }),
-    result: WorkflowRun,
-  },
-  "workflows.approvePlan": { params: z.object({ id, approve: z.boolean(), feedback: z.string().max(5000).optional() }), result: WorkflowRun },
-  "workflows.continue": { params: z.object({ id }), result: WorkflowRun },
-  "workflows.fixTests": { params: z.object({ id }), result: WorkflowRun },
-  "workflows.cancel": { params: z.object({ id }), result: WorkflowRun },
-  "schedules.list": { params: z.object({ projectId: id.optional() }), result: z.array(Schedule) },
-  "schedules.save": { params: Schedule.omit({ id: true, lastRunAt: true, lastSessionId: true, createdAt: true }).extend({ id: id.optional() }), result: Schedule },
-  "schedules.remove": { params: z.object({ id }), result: z.object({ ok: z.boolean() }) },
-  "schedules.runNow": { params: z.object({ id }), result: Schedule },
   "worktrees.create": { params: projectRef.extend({ branch: z.string().min(1).max(200) }), result: Project },
   "worktrees.remove": { params: projectRef.extend({ force: z.boolean().default(false) }), result: z.object({ ok: z.boolean() }) },
   "sessions.summarize": { params: sessionRef, result: z.object({ summary: z.string(), model: z.string() }) },
@@ -185,7 +170,11 @@ export const methods = {
     params: projectRef.extend({ confirmName: z.string() }),
     result: Project,
   },
-  "projects.remove": { params: projectRef, result: z.object({ removed: z.boolean() }) },
+  "projects.removalInfo": { params: projectRef, result: ProjectRemovalInfo },
+  "projects.remove": {
+    params: projectRef.extend({ deleteFolder: z.boolean().default(false), deleteGitHubRepo: z.boolean().default(false) }),
+    result: z.object({ removed: z.boolean(), folderDeleted: z.boolean(), githubDeleted: z.boolean() }),
+  },
   "projects.touch": { params: projectRef, result: Project },
   "projects.readClaudeMd": {
     params: projectRef,
@@ -309,8 +298,6 @@ export type ServerEvent =
   | { event: "github.login"; payload: GitHubLoginState }
   | { event: "claude.setup"; payload: ClaudeSetupState }
   | { event: "remote.updated"; payload: { projectId: string; state: RemoteState } }
-  | { event: "workflow.updated"; payload: WorkflowRun }
-  | { event: "schedules.updated"; payload: Record<string, never> }
   | { event: "sidecar.ready"; payload: { version: string } }
   | { event: "log"; payload: { level: "info" | "warn" | "error"; message: string } };
 

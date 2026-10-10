@@ -1,6 +1,6 @@
 import { create } from "zustand";
 
-export type View = "home" | "projects" | "sessions" | "github" | "agents" | "mcp" | "automations" | "settings" | "workspace";
+export type View = "home" | "projects" | "sessions" | "github" | "agents" | "mcp" | "settings" | "workspace";
 export type WorkspaceTab = "chat" | "git" | "files" | "settings";
 export type NewProjectMode = "import" | "create" | "clone";
 

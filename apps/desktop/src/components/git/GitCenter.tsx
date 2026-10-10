@@ -2,9 +2,9 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { GitBranch, GitCommitHorizontal, Plus } from "lucide-react";
 import type { Project } from "@forge/protocol";
-import { call, keys } from "@/lib/queries";
-import { errorMessage } from "@/lib/rpc";
-import { relativeTime } from "@/lib/utils";
+import { call, keys, useGitStatus } from "@/lib/queries";
+import { errorMessage, RpcCallError } from "@/lib/rpc";
+import { cn, relativeTime } from "@/lib/utils";
 import { toast } from "@/stores/toast";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
@@ -18,13 +18,18 @@ export function GitCenter({ project }: { project: Project }) {
   const log = useQuery({ queryKey: keys.log(project.id), queryFn: () => call("git.log", { projectId: project.id, limit: 100 }), enabled: project.exists, retry: false });
   const branches = useQuery({ queryKey: keys.branches(project.id), queryFn: () => call("git.branches", { projectId: project.id }), enabled: project.exists, retry: false });
   const [newBranch, setNewBranch] = useState(false);
+  const status = useGitStatus(project.id, project.exists);
+
+  // Without a repository only the "initialise" prompt of GitPanel makes sense. GitPanel keeps its place
+  // in the tree: remounting it would refetch the failed status and flip this condition in a loop.
+  const notRepo = status.error instanceof RpcCallError && status.error.code === "GIT_NOT_REPO";
 
   return (
-    <div className="grid h-full min-h-0 grid-cols-[minmax(0,1.3fr)_minmax(280px,1fr)]">
-      <div className="min-h-0 border-r border-border">
+    <div className={cn("grid h-full min-h-0", notRepo ? "grid-cols-1" : "grid-cols-[minmax(0,1.3fr)_minmax(280px,1fr)]")}>
+      <div className={cn("min-h-0", !notRepo && "border-r border-border")}>
         <GitPanel project={project} />
       </div>
-      <div className="flex min-h-0 flex-col gap-4 overflow-y-auto p-4">
+      <div className={cn("flex min-h-0 flex-col gap-4 overflow-y-auto p-4", notRepo && "hidden")}>
         <SyncCard project={project} />
         <section>
           <SectionTitle

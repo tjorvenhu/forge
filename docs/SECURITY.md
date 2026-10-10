@@ -83,9 +83,13 @@ E-Mail-Adresse oder Org-Daten der Claude-Anmeldung.
   Speichern, mit `.bak` und Konfliktprüfung; Pfade berechnet der Sidecar, die UI übergibt keine Pfade.
 - **Hooks** führen Befehle aus. FORGE prüft nur die Struktur, nicht den Inhalt; ein Hook aus einem
   fremden Repository in `.claude/settings.json` wird von Claude Code selbst ausgeführt (natives Verhalten).
-- **Remote Control** öffnet das Projekt für Steuerung über claude.ai mit deinem Konto. Für dort gestartete
-  Sessions gilt die FORGE-Sperrliste nicht; der Permission-Modus des Profils schon. Ausschalten beendet den Prozess.
+- **Remote Control** verbindet die laufenden FORGE-Sessions eines Projekts mit claude.ai und der Claude-App
+  (dein Konto). Nachrichten von dort laufen durch dieselbe Session: Profil, Freigaben und Sperrliste gelten.
+  Ausschalten trennt die Verbindung, die Session läuft lokal weiter.
 - **Terminal**: nur Shell oder Claude-CLI startbar, kein Netzwerkzugang zum PTY.
-- **Testbefehle und geplante Aufgaben** laufen mit deinen Rechten im Projektordner.
+- **Testbefehle** laufen mit deinen Rechten im Projektordner.
+- **Projekt löschen** mit Ordner oder GitHub-Repository verlangt das Eintippen des Projektnamens. Laufwerke,
+  das Benutzerverzeichnis und seine Standardordner, FORGE-Daten und Ordner mit weiteren Projekten sind gesperrt.
+  Die GitHub-Berechtigung `delete_repo` fragt FORGE erst an, wenn sie gebraucht wird.
 - **Auto-Commit/Auto-Push** commiten nur Dateien aus dem aktuellen Durchlauf, nie sensible Dateien, pushen nie
   auf main/master und nie mit Force.

@@ -1,6 +1,6 @@
 # FORGE – Taskliste
 
-Status: `[x]` erledigt und verifiziert · `[~]` teilweise · `[ ]` offen
+Status: `[x]` erledigt und verifiziert · `[~]` teilweise · `[ ]` offen · `[-]` verworfen
 
 ## Phase 0 – Discovery
 
@@ -48,13 +48,14 @@ Status: `[x]` erledigt und verifiziert · `[~]` teilweise · `[ ]` offen
 - [x] Git-Timeline je Session (Checkpoints, Auto-Commits, Datei-Rewind)
 - [x] Eingebettetes Terminal (xterm.js + PTY in Rust)
 - [x] Anhänge, Slash-Commands
-- [x] Remote Control für die Claude-App
+- [x] Remote Control für die Claude-App (FORGE-Sessions selbst, Nachrichten in beide Richtungen, ADR 0008)
+- [x] Projekt löschen mit Ordner und GitHub-Repository
+- [x] Eigene Tooltips statt der nativen
 
 ## Phase 3 – Pro
 
 - [x] Git-Worktrees für parallele Agenten
-- [x] Feature-Workflow (Plan, Freigabe, Umsetzung, Tests, Review, Commit, Push, PR)
-- [x] Geplante Aufgaben
+- [-] Feature-Workflow und geplante Aufgaben: gebaut, auf Wunsch wieder entfernt (ADR 0008)
 - [x] MCP-/Skills-/Subagenten-/Hooks-Verwaltung
 - [x] Resume-Zusammenfassungen
 - [x] Usage-Anzeige, Diagnose, Einrichtung in der App

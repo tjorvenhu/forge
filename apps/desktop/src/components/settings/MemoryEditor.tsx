@@ -96,7 +96,7 @@ export function MemoryEditor({ projectId, scopes, height = "h-[420px]" }: { proj
           <Save className="h-3.5 w-3.5" /> Speichern
         </Button>
       </div>
-      <div className="font-mono text-[11px] text-subtle">{current.path}</div>
+      <div className="truncate font-mono text-[11px] text-subtle" title={current.path}>{current.path}</div>
       {doc.isLoading ? (
         <Spinner />
       ) : !current.exists && draft === null ? (

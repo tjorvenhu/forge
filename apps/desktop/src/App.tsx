@@ -5,6 +5,7 @@ import { useServerEvents } from "@/lib/queries";
 import { useUi } from "@/stores/ui";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { Toaster } from "@/components/layout/Toaster";
+import { TitleTooltips } from "@/components/ui/title-tooltips";
 import { ErrorBoundary } from "@/components/layout/ErrorBoundary";
 import { NewProjectDialog } from "@/components/projects/NewProjectDialog";
 import { Button } from "@/components/ui/button";
@@ -16,7 +17,6 @@ import { SettingsView } from "@/views/SettingsView";
 import { WorkspaceView } from "@/views/WorkspaceView";
 import { GitHubView } from "@/views/GitHubView";
 import { AgentsView } from "@/views/AgentsView";
-import { AutomationsView } from "@/views/AutomationsView";
 import { ExtensionsView } from "@/views/ExtensionsView";
 import { useGlobalShortcuts } from "@/lib/shortcuts";
 
@@ -87,11 +87,11 @@ function Shell() {
           {view === "github" && <GitHubView />}
           {view === "agents" && <AgentsView />}
           {view === "mcp" && <ExtensionsView />}
-          {view === "automations" && <AutomationsView />}
         </ErrorBoundary>
       </main>
       <NewProjectDialog />
       <Toaster />
+      <TitleTooltips />
     </div>
   );
 }

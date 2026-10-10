@@ -51,14 +51,14 @@ in bereits offenen Shells ggf. `$env:Path += ";$env:USERPROFILE\.cargo\bin"`.
 - Untätige Sessions behalten ihren Claude-Prozess, bis „Beenden“ geklickt oder die App geschlossen wird.
 - Radix-Dialoge schließen sich, wenn das Fenster beim Öffnen keinen Fokus hat (nur bei Fernsteuerung
   per UI Automation beobachtet, bei normaler Bedienung nicht).
-- Für Remote Control muss Claude dem Ordner einmal vertrauen (im eingebetteten Terminal bestätigen).
-- Geplante Aufgaben laufen nur bei geöffnetem FORGE.
+- Remote Control nutzt `enableRemoteControl` aus dem Agent SDK. Die Methode steht nicht in den SDK-Typen; nach SDK-Updates prüfen (`packages/sidecar/src/claude/runtime.ts`).
+- Nachrichten vom Handy werden über `--replay-user-messages` erkannt, Rückfall ist das Transkript. Der Weg Handy → FORGE ist mit simulierten Events getestet, nicht mit der echten App.
 - Claude-Code-Installation aus der App ist nicht getestet (hätte die vorhandene Installation verändert). Claude- und GitHub-Anmeldung sind bis zur Anzeige von URL bzw. Code geprüft; abschließen kann nur der Nutzer im Browser.
 - Die Usage-Anzeige nutzt eine experimentelle SDK-Methode; nach SDK-Updates prüfen.
 
 ## Genau drei nächste Aufgaben
 
 1. **Auf GitHub mit echtem Konto prüfen:** `gh`-Login in FORGE abschließen, dann Projekt veröffentlichen,
-   Feature-Workflow mit Push und PR laufen lassen, PR-Status kontrollieren.
+   Push, PR und Projekt löschen mit GitHub-Repository prüfen.
 2. **Linux-Build:** Tauri-Abhängigkeiten installieren, `pnpm build` unter Ubuntu, E2E-Lauf, .deb testen.
 3. **Ressourcen:** untätige Claude-Prozesse nach einstellbarer Zeit schließen; Installer signieren.
