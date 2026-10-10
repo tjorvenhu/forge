@@ -4,6 +4,7 @@ import type { SDKControlInitializeResponse } from "@anthropic-ai/claude-agent-sd
 import {
   ForgeError,
   type Attachment,
+  type EffortLevel,
   type SlashCommand,
   type ExternalSession,
   type PermissionMode,
@@ -370,6 +371,7 @@ export class SessionService {
     projectId: string;
     prompt: string;
     model?: string | null;
+    effort?: EffortLevel | null;
     planOnly?: boolean;
     resumeClaudeSessionId?: string;
     attachments?: Attachment[];
@@ -396,6 +398,7 @@ export class SessionService {
       cwd: params.cwd ?? project.path,
       title: titleFrom(params.prompt) || REMOTE_PLACEHOLDER_TITLE,
       model,
+      effort: params.effort ?? project.defaultEffort ?? settings.defaultEffort ?? null,
       profile: profile.id,
       permissionMode,
       status: "starting",
@@ -519,6 +522,7 @@ export class SessionService {
         {
           cwd: rec.cwd,
           model: rec.model,
+          effort: rec.effort,
           permissionMode: rec.permissionMode,
           resume,
           // no-network tag: web tools off regardless of profile
@@ -734,6 +738,14 @@ export class SessionService {
     const live = this.live.get(sessionId);
     if (live) await live.rt.setModel(model);
     const rec = this.db.updateSession(sessionId, { model });
+    if (rec) this.emit({ event: "session.updated", payload: this.toSession(rec) });
+    return this.get(sessionId);
+  }
+
+  async setEffort(sessionId: string, effort: EffortLevel | null): Promise<Session> {
+    const live = this.live.get(sessionId);
+    if (live) await live.rt.setEffort(effort);
+    const rec = this.db.updateSession(sessionId, { effort });
     if (rec) this.emit({ event: "session.updated", payload: this.toSession(rec) });
     return this.get(sessionId);
   }
@@ -963,7 +975,13 @@ function describeRuntimeError(e: unknown): string {
 
 function toRuntimeInfo(init: SDKControlInitializeResponse): RuntimeInfo {
   return {
-    models: (init.models ?? []).map((m) => ({ value: m.value, displayName: m.displayName, description: m.description })),
+    models: (init.models ?? []).map((m) => ({
+      value: m.value,
+      displayName: m.displayName,
+      description: m.description,
+      supportsEffort: m.supportsEffort,
+      supportedEffortLevels: m.supportedEffortLevels,
+    })),
     commands: (init.commands ?? []).map((c) => ({ name: c.name, description: c.description })),
     agents: (init.agents ?? []).map((a) => ({ name: a.name, description: a.description })),
     mcpServers: [],

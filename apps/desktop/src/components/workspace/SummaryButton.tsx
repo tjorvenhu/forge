@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { NotebookText } from "lucide-react";
 import { call } from "@/lib/queries";
+import { modelLabel } from "@/lib/models";
 import { errorMessage } from "@/lib/rpc";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
@@ -37,7 +38,7 @@ export function SummaryButton({ sessionId, title, size = "sm" }: { sessionId: st
         {m.data && (
           <>
             <Markdown text={m.data.summary} />
-            <p className="mt-3 text-[11px] text-subtle">Von Claude ({m.data.model}) aus dem gespeicherten Verlauf dieser Session erstellt.</p>
+            <p className="mt-3 text-[11px] text-subtle">Von Claude ({modelLabel(m.data.model)}) aus dem gespeicherten Verlauf dieser Session erstellt.</p>
           </>
         )}
       </Dialog>

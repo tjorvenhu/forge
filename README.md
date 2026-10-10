@@ -83,7 +83,7 @@ Umgebungsvariablen für Sonderfälle: `FORGE_NODE` (Pfad zu node), `FORGE_SIDECA
   Technologie-Erkennung, „Ordner fehlt"-Zustand. Entfernen nur aus FORGE oder auf Wunsch mit lokalem Ordner und GitHub-Repository.
 - **Claude-Sessions:** starten, Prompt senden, echtes Token-Streaming, Tool-Aufrufe als aufklappbare
   Karten, Aufgabenlisten (TodoWrite), Freigabeanfragen mit Erlauben / Für Session erlauben / Ablehnen,
-  Stop (Esc), Modellwechsel, Plan-Modus, Resume auch nach App-Absturz, Übernahme von im Terminal
+  Stop (Esc), Modell- und Effort-Wechsel (global, pro Projekt, pro Session), Plan-Modus, Resume auch nach App-Absturz, Übernahme von im Terminal
   gestarteten Sessions inkl. Verlauf.
 - **Permission-Profile:** Safe / Balanced / Autonomous mit echter Wirkung auf den Claude-Permission-Modus,
   harte Sperrliste in allen Profilen, Audit-Log.
@@ -110,8 +110,8 @@ Tastatur: `Strg+1..4` Workspace-Tabs, `Strg+N` neue Session, `Strg+O` Projekt hi
 
 ## Tests
 
-Letzter Lauf (Details in [docs/TESTING.md](docs/TESTING.md)): Lint und Typecheck ohne Befund, 106 Sidecar-Tests,
-10 Desktop-Tests, 12 E2E-Tests mit echter Claude-Session, alle bestanden.
+Letzter Lauf (Details in [docs/TESTING.md](docs/TESTING.md)): Lint und Typecheck ohne Befund, 107 Sidecar-Tests,
+12 Desktop-Tests, 12 E2E-Tests mit echter Claude-Session, alle bestanden.
 
 ## Dokumentation
 

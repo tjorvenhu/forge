@@ -3,11 +3,12 @@ import { useQuery } from "@tanstack/react-query";
 import { FolderOpen, FolderPlus, GitBranch, Play, RotateCcw } from "lucide-react";
 import type { ProjectWithStatus } from "@forge/protocol";
 import { call, useDiagnostics, useProjects } from "@/lib/queries";
+import { useModelLabel } from "@/lib/models";
 import { relativeTime } from "@/lib/utils";
 import { useUi } from "@/stores/ui";
 import { Page } from "@/components/layout/Page";
 import { Button } from "@/components/ui/button";
-import { Badge, EmptyState, ErrorBanner, SectionTitle, Spinner } from "@/components/ui/misc";
+import { Badge, EmptyState, ErrorBanner, SectionTitle, Loading } from "@/components/ui/misc";
 import { ProjectCard } from "@/components/projects/ProjectCard";
 import { RemoveProjectDialog } from "@/components/projects/RemoveProjectDialog";
 import { SessionStatusBadge } from "@/components/workspace/SessionStatusBadge";
@@ -43,7 +44,7 @@ export function HomeView() {
       }
     >
       <ApiKeyWarning />
-      {projects.isLoading && <Spinner />}
+      {projects.isLoading && <Loading />}
       {projects.isError && <ErrorBanner>Projekte konnten nicht geladen werden.</ErrorBanner>}
       {projects.isSuccess && list.length === 0 && (
         <EmptyState
@@ -96,6 +97,7 @@ function Grid({ items, onRemove }: { items: ProjectWithStatus[]; onRemove: (p: P
 }
 
 function ResumeSection() {
+  const label = useModelLabel();
   const openProject = useUi((s) => s.openProject);
   const sessions = useQuery({ queryKey: ["allSessions", "", ""], queryFn: () => call("sessions.listAll", {}) });
   const items = (sessions.data ?? []).slice(0, 5);
@@ -111,7 +113,7 @@ function ResumeSection() {
               <div className="truncate text-[13px]">{s.title ?? "Ohne Titel"}</div>
               <div className="text-[11px] text-subtle">
                 {s.projectName} · {relativeTime(s.updatedAt)}
-                {s.model ? ` · ${s.model}` : ""}
+                {s.model ? ` · ${label(s.model)}` : ""}
               </div>
             </div>
             <SummaryButton sessionId={s.id} title={s.title} size="icon-sm" />

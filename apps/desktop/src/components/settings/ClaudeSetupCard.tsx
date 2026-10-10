@@ -9,7 +9,7 @@ import { capitalize } from "@/lib/utils";
 import { toast } from "@/stores/toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Badge, ErrorBanner, Spinner } from "@/components/ui/misc";
+import { Badge, ErrorBanner, Loading } from "@/components/ui/misc";
 
 /** Install Claude Code and sign in without a terminal. The CLI does the actual work. */
 export function ClaudeSetupCard() {
@@ -35,7 +35,7 @@ export function ClaudeSetupCard() {
     }
   };
 
-  if (!d) return <Spinner />;
+  if (!d) return <Loading />;
 
   const log = s?.log.length ? (
     <pre className="max-h-40 w-full overflow-auto rounded-md bg-bg p-2 font-mono text-[11px] text-muted">{s.log.slice(-12).join("\n")}</pre>

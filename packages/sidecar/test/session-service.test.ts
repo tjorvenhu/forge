@@ -26,6 +26,7 @@ class FakeRuntime implements ClaudeRuntime {
   sent: string[] = [];
   sentUuids: string[] = [];
   remoteCalls: Array<{ enabled: boolean; name: string }> = [];
+  efforts: Array<string | null> = [];
   capabilities = new AgentSdkRuntime().capabilities;
   async listSessions() {
     return [];
@@ -68,6 +69,9 @@ class FakeRuntime implements ClaudeRuntime {
       },
       setModel: async () => {},
       setPermissionMode: async () => {},
+      setEffort: async (e) => {
+        this.efforts.push(e);
+      },
       setRemoteControl: async (enabled, name) => {
         this.remoteCalls.push({ enabled, name });
         return enabled ? "https://claude.ai/code/session_test" : null;
@@ -311,5 +315,20 @@ describe("turn automation via project tags", () => {
     expect(rt.remoteCalls[0]!.name).toBe("FORGE · proj");
     rt.sinks[0]!.onMessage({ type: "user", isReplay: true, uuid: "aaaaaaaa-bbbb-4ccc-8ddd-000000000001", message: { role: "user", content: "Baue einen Login" } });
     expect(svc.get(s!.id).title).toBe("Baue einen Login");
+  });
+
+  it("starts with the project's effort and changes it live", async () => {
+    db.updateSettings({ defaultEffort: "medium" });
+    expect((await svc.start({ projectId, prompt: "a" })).effort).toBe("medium");
+    expect(rt.started[0]!.effort).toBe("medium");
+    projects.update(projectId, { defaultEffort: "xhigh" });
+    const s = await svc.start({ projectId, prompt: "b" });
+    expect(rt.started[1]!.effort).toBe("xhigh");
+    expect((await svc.start({ projectId, prompt: "c", effort: "low" })).effort).toBe("low");
+    const changed = await svc.setEffort(s.id, "max");
+    expect(changed.effort).toBe("max");
+    expect(rt.efforts).toEqual(["max"]);
+    const reset = await svc.setEffort(s.id, null);
+    expect(reset.effort).toBeNull();
   });
 });

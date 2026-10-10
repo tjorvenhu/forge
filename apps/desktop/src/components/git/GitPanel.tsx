@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils";
 import { toast } from "@/stores/toast";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/input";
-import { Badge, Checkbox, EmptyState, ErrorBanner, Spinner, Tooltip } from "@/components/ui/misc";
+import { Badge, Checkbox, EmptyState, ErrorBanner, Tooltip, Loading } from "@/components/ui/misc";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { DiffView } from "./DiffView";
 
@@ -41,7 +41,7 @@ export function GitPanel({ project, compact = false }: { project: Project; compa
   }, [files]);
 
   if (!project.exists) return <EmptyState title="Projektordner fehlt">Der Ordner {project.path} existiert nicht mehr.</EmptyState>;
-  if (status.isLoading) return <div className="p-4"><Spinner /></div>;
+  if (status.isLoading) return <Loading />;
   if (status.isError) {
     const notRepo = status.error instanceof RpcCallError && status.error.code === "GIT_NOT_REPO";
     return notRepo ? (

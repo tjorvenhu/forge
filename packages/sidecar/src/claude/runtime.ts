@@ -11,7 +11,7 @@ import {
   type SDKControlInitializeResponse,
   type SDKUserMessage,
 } from "@anthropic-ai/claude-agent-sdk";
-import type { Capability, ExternalSession, PermissionMode, PlanUsage, RewindResult, SlashCommand } from "@forge/protocol";
+import type { Capability, EffortLevel, ExternalSession, PermissionMode, PlanUsage, RewindResult, SlashCommand } from "@forge/protocol";
 import type { ContentBlock } from "./attachments.js";
 import { toPlanUsage } from "./usage.js";
 import { AsyncQueue } from "./async-queue.js";
@@ -19,6 +19,7 @@ import { AsyncQueue } from "./async-queue.js";
 export interface StartOptions {
   cwd: string;
   model: string | null;
+  effort: EffortLevel | null;
   permissionMode: PermissionMode;
   /** Claude session id to resume; null starts a fresh conversation */
   resume: string | null;
@@ -70,6 +71,8 @@ export interface RuntimeSession {
   close(): void;
   setModel(model: string): Promise<void>;
   setPermissionMode(mode: PermissionMode): Promise<void>;
+  /** null returns to the model's default effort */
+  setEffort(effort: EffortLevel | null): Promise<void>;
   /** connects this session to claude.ai / the Claude app (Remote Control); returns the session link */
   setRemoteControl(enabled: boolean, name: string): Promise<string | null>;
   initialization(): Promise<SDKControlInitializeResponse>;
@@ -185,6 +188,7 @@ export class AgentSdkRuntime implements ClaudeRuntime {
         cwd: opts.cwd,
         env: opts.env,
         model: opts.model ?? undefined,
+        ...(opts.effort ? { effort: opts.effort } : {}),
         permissionMode: opts.permissionMode,
         allowDangerouslySkipPermissions: opts.permissionMode === "bypassPermissions",
         resume: opts.resume ?? undefined,
@@ -234,6 +238,7 @@ export class AgentSdkRuntime implements ClaudeRuntime {
       },
       setModel: (model) => q.setModel(model),
       setPermissionMode: (mode) => q.setPermissionMode(mode),
+      setEffort: (effort) => q.applyFlagSettings({ effortLevel: effort }),
       setRemoteControl: async (enabled, name) => {
         // Not in the SDK typings (0.3.x) but used by the official IDE hosts; isolated here so a rename only touches this line.
         const r = await (q as unknown as RemoteControlQuery).enableRemoteControl(enabled, name);

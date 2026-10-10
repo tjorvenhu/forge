@@ -9,7 +9,7 @@ import { clockTime, cn, formatDuration, formatTokens, relativeTime } from "@/lib
 import { useUi } from "@/stores/ui";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu } from "@/components/ui/dropdown";
-import { Badge, EmptyState, Spinner, Tooltip } from "@/components/ui/misc";
+import { Badge, EmptyState, Tooltip, Loading } from "@/components/ui/misc";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { buildChatItems, lastUserPrompt, type ChatItem } from "./chat-items";
 import { Composer } from "./Composer";
@@ -191,7 +191,7 @@ function SessionThread({ sessionId, session, project }: { sessionId: string; ses
   if (!buffer?.loaded) {
     return (
       <div className="flex flex-1 items-center justify-center">
-        <Spinner />
+        <Loading />
       </div>
     );
   }

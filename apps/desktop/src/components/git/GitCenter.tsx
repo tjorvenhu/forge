@@ -9,7 +9,7 @@ import { toast } from "@/stores/toast";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { Field, Input } from "@/components/ui/input";
-import { Badge, SectionTitle, Spinner } from "@/components/ui/misc";
+import { Badge, SectionTitle, Loading } from "@/components/ui/misc";
 import { GitPanel } from "./GitPanel";
 import { SyncCard } from "./SyncCard";
 
@@ -41,8 +41,8 @@ export function GitCenter({ project }: { project: Project }) {
           >
             Branches
           </SectionTitle>
-          {branches.isLoading && <Spinner />}
-          <div className="divide-y divide-border rounded-lg border border-border bg-surface">
+          {branches.isLoading && <Loading />}
+          <div className={cn("divide-y divide-border rounded-lg border border-border bg-surface", !branches.data?.length && "hidden")}>
             {branches.data?.map((b) => (
               <div key={b.name} className="flex items-center gap-2 px-3 py-1.5 text-[13px]">
                 <GitBranch className="h-3.5 w-3.5 text-muted" />
@@ -61,9 +61,9 @@ export function GitCenter({ project }: { project: Project }) {
         </section>
         <section className="min-h-0">
           <SectionTitle>Verlauf</SectionTitle>
-          {log.isLoading && <Spinner />}
+          {log.isLoading && <Loading />}
           {log.data?.length === 0 && <div className="text-xs text-muted">Noch keine Commits.</div>}
-          <div className="divide-y divide-border rounded-lg border border-border bg-surface">
+          <div className={cn("divide-y divide-border rounded-lg border border-border bg-surface", !log.data?.length && "hidden")}>
             {log.data?.map((c) => (
               <div key={c.hash} className="flex items-start gap-2 px-3 py-2 text-[13px]">
                 <GitCommitHorizontal className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted" />

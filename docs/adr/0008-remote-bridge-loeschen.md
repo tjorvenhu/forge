@@ -41,3 +41,11 @@ die Tabellen `workflows` und `schedules`. Projekt-Tags und Worktrees bleiben.
 
 Native `title`-Tooltips werden app-weit durch eine eigene Ebene ersetzt (`TitleTooltips`): das Attribut wandert
 beim Hover nach `data-forge-title` und danach zurück. So greift das eigene Aussehen auch in CodeMirror und xterm.
+
+## Effort
+
+Effort (low bis max) wie das Modell auf drei Ebenen: global (Einstellungen), pro Projekt und pro Session im
+Composer. Start über die SDK-Option `effort`, Wechsel in laufender Session über `applyFlagSettings({ effortLevel })`.
+Welche Stufen ein Modell kann, meldet Claude Code in der Modellliste (`supportsEffort`, `supportedEffortLevels`);
+ohne Unterstützung blendet FORGE die Auswahl aus. Migration 4: `projects.default_effort`, `sessions.effort`.
+Modellnamen kommen aus derselben Liste („opus“ → „Opus 5.5“).

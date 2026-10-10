@@ -25,6 +25,9 @@ export const GitSummary = z.object({
 });
 export type GitSummary = z.infer<typeof GitSummary>;
 
+export const EffortLevel = z.enum(["low", "medium", "high", "xhigh", "max"]);
+export type EffortLevel = z.infer<typeof EffortLevel>;
+
 export const Project = z.object({
   id: z.string(),
   name: z.string(),
@@ -35,6 +38,7 @@ export const Project = z.object({
   profile: ProfileId,
   autonomousConfirmed: z.boolean(),
   defaultModel: z.string().nullable(),
+  defaultEffort: EffortLevel.nullable(),
   createdAt: z.string(),
   lastOpenedAt: z.string().nullable(),
   /** command run by the auto-test tag, e.g. "pnpm test" */
@@ -73,6 +77,8 @@ export const Session = z.object({
   cwd: z.string(),
   title: z.string().nullable(),
   model: z.string().nullable(),
+  /** reasoning effort; null = Claude Code's default for the model */
+  effort: EffortLevel.nullable(),
   profile: ProfileId,
   permissionMode: PermissionMode,
   status: SessionStatus,
@@ -282,6 +288,7 @@ export type BranchInfo = z.infer<typeof BranchInfo>;
 export const Settings = z.object({
   claudePath: z.string().nullable(),
   defaultModel: z.string().nullable(),
+  defaultEffort: EffortLevel.nullable(),
   defaultProfile: ProfileId,
   autonomousUnlocked: z.boolean(),
   stripApiKey: z.boolean(),
@@ -332,7 +339,13 @@ export const Diagnostics = z.object({
 });
 export type Diagnostics = z.infer<typeof Diagnostics>;
 
-export const ModelInfo = z.object({ value: z.string(), displayName: z.string(), description: z.string() });
+export const ModelInfo = z.object({
+  value: z.string(),
+  displayName: z.string(),
+  description: z.string(),
+  supportsEffort: z.boolean().optional(),
+  supportedEffortLevels: z.array(EffortLevel).optional(),
+});
 export type ModelInfo = z.infer<typeof ModelInfo>;
 
 export const UsageWindow = z.object({

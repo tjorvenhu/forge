@@ -6,7 +6,7 @@ import { useUi } from "@/stores/ui";
 import { Page } from "@/components/layout/Page";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { EmptyState, ErrorBanner, Spinner } from "@/components/ui/misc";
+import { EmptyState, ErrorBanner, Loading } from "@/components/ui/misc";
 import { Select } from "@/components/ui/select";
 import { ProjectCard } from "@/components/projects/ProjectCard";
 import { RemoveProjectDialog } from "@/components/projects/RemoveProjectDialog";
@@ -67,7 +67,7 @@ export function ProjectsView() {
           ]}
         />
       </div>
-      {projects.isLoading && <Spinner />}
+      {projects.isLoading && <Loading />}
       {projects.isError && <ErrorBanner>Projekte konnten nicht geladen werden.</ErrorBanner>}
       {projects.isSuccess && items.length === 0 && (
         <EmptyState title={projects.data.length ? "Keine Treffer" : "Noch keine Projekte"}>
