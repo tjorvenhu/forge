@@ -101,6 +101,9 @@ export function useServerEvents() {
             void qc.invalidateQueries({ queryKey: keys.runtimeInfo });
           }
           break;
+        case "remote.updated":
+          qc.setQueryData(["remote", e.payload.projectId], e.payload.state);
+          break;
         case "project.updated":
           void qc.invalidateQueries({ queryKey: keys.git(e.payload.projectId) });
           void qc.invalidateQueries({ queryKey: ["diff", e.payload.projectId] });

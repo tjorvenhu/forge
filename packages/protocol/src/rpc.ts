@@ -24,6 +24,8 @@ import {
   Project,
   ProjectTag,
   ProjectWithStatus,
+  PullRequest,
+  RemoteState,
   RewindResult,
   RuntimeInfo,
   Session,
@@ -53,6 +55,10 @@ export const methods = {
   "claude.login": { params: empty, result: ClaudeSetupState },
   "claude.submitLoginCode": { params: z.object({ code: z.string().min(1).max(2000) }), result: ClaudeSetupState },
   "claude.cancelSetup": { params: empty, result: ClaudeSetupState },
+
+  "remote.state": { params: projectRef, result: RemoteState },
+  "remote.start": { params: projectRef, result: RemoteState },
+  "remote.stop": { params: projectRef, result: RemoteState },
 
   "github.account": { params: empty, result: GitHubAccount.nullable() },
   "github.loginState": { params: empty, result: GitHubLoginState },
@@ -239,6 +245,15 @@ export const methods = {
     params: projectRef.extend({ branch: z.string().min(1).max(250), create: z.boolean().default(false) }),
     result: GitStatus,
   },
+  "git.push": { params: projectRef.extend({ allowProtected: z.boolean().default(false) }), result: z.object({ branch: z.string() }) },
+  "git.pull": { params: projectRef, result: z.object({ output: z.string() }) },
+  "git.fetch": { params: projectRef, result: GitStatus },
+  "github.pr": { params: projectRef, result: PullRequest.nullable() },
+  "github.suggestPr": { params: projectRef, result: z.object({ title: z.string(), body: z.string(), base: z.string(), head: z.string() }) },
+  "github.createPr": {
+    params: projectRef.extend({ title: z.string().min(1).max(256), body: z.string().max(60_000), base: z.string().min(1).max(250), draft: z.boolean().default(false) }),
+    result: z.object({ url: z.string() }),
+  },
   "git.init": { params: projectRef, result: GitStatus },
   "git.suggestCommitMessage": {
     params: projectRef.extend({ paths: z.array(z.string().min(1).max(4096)).max(2000).optional() }),
@@ -272,6 +287,7 @@ export type ServerEvent =
   | { event: "project.updated"; payload: { projectId: string } }
   | { event: "github.login"; payload: GitHubLoginState }
   | { event: "claude.setup"; payload: ClaudeSetupState }
+  | { event: "remote.updated"; payload: { projectId: string; state: RemoteState } }
   | { event: "sidecar.ready"; payload: { version: string } }
   | { event: "log"; payload: { level: "info" | "warn" | "error"; message: string } };
 

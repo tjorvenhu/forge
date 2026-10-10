@@ -7,6 +7,7 @@ import type { SessionService } from "../sessions/session-service.js";
 import type { GitHubService } from "../github/github.js";
 import type { ClaudeSetupService } from "../claude/setup.js";
 import type { McpService } from "../config/mcp.js";
+import type { RemoteService } from "../remote/remote.js";
 import * as cfg from "../config/claude-config.js";
 import os from "node:os";
 
@@ -19,6 +20,7 @@ export interface Services {
   github: GitHubService;
   claudeSetup: ClaudeSetupService;
   mcp: McpService;
+  remote: RemoteService;
   notifyProject: (projectId: string) => void;
 }
 
@@ -56,6 +58,16 @@ export function createHandlers(s: Services): Handlers {
     "claude.login": () => s.claudeSetup.login(),
     "claude.submitLoginCode": ({ code }) => s.claudeSetup.submitCode(code),
     "claude.cancelSetup": () => s.claudeSetup.cancel(),
+
+    "remote.state": ({ projectId }) => s.remote.state(projectId),
+    "remote.start": ({ projectId }) => {
+      const p = s.projects.requireExisting(projectId);
+      const settings = s.db.getSettings();
+      // Bypass only when FORGE's own Autonomous gate is open for this project.
+      const mode = p.profile === "autonomous" && p.autonomousConfirmed && settings.autonomousUnlocked ? "bypassPermissions" : p.profile === "safe" ? "default" : "acceptEdits";
+      return s.remote.start(projectId, p.path, `FORGE · ${p.name}`, mode);
+    },
+    "remote.stop": ({ projectId }) => s.remote.stop(projectId),
 
     "github.account": () => s.github.account(),
     "github.loginState": () => s.github.loginState(),
@@ -171,6 +183,33 @@ export function createHandlers(s: Services): Handlers {
       return gitChanged(projectId);
     },
     "git.suggestCommitMessage": ({ projectId, paths }) => s.sessions.suggestCommitMessage(projectId, paths),
+    "git.push": async ({ projectId, allowProtected }) => {
+      const r = await s.git.push(projectDir(projectId), allowProtected);
+      s.notifyProject(projectId);
+      return { branch: r.branch };
+    },
+    "git.pull": async ({ projectId }) => {
+      const r = await s.git.pull(projectDir(projectId));
+      s.notifyProject(projectId);
+      return r;
+    },
+    "git.fetch": async ({ projectId }) => {
+      await s.git.fetch(projectDir(projectId));
+      return gitChanged(projectId);
+    },
+    "github.pr": ({ projectId }) => s.github.prForBranch(projectDir(projectId)),
+    "github.suggestPr": ({ projectId }) => s.sessions.suggestPullRequest(projectId),
+    "github.createPr": async ({ projectId, title, body, base, draft }) => {
+      const dir = projectDir(projectId);
+      const head = await s.git.currentBranch(dir);
+      if (!head) throw new ForgeError("GIT_FAILED", "Kein Branch ausgecheckt.");
+      if (head === base) throw new ForgeError("VALIDATION", "Ziel- und Quell-Branch sind gleich. Lege zuerst einen Feature-Branch an.");
+      // The PR needs the branch on GitHub; pushing a feature branch is always allowed.
+      await s.git.push(dir, false);
+      const url = await s.github.createPr(dir, { title, body, base, head, draft });
+      s.notifyProject(projectId);
+      return { url };
+    },
     "git.init": async ({ projectId }) => {
       await s.git.init(projectDir(projectId));
       return gitChanged(projectId);

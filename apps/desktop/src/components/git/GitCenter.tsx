@@ -11,6 +11,7 @@ import { Dialog } from "@/components/ui/dialog";
 import { Field, Input } from "@/components/ui/input";
 import { Badge, SectionTitle, Spinner } from "@/components/ui/misc";
 import { GitPanel } from "./GitPanel";
+import { SyncCard } from "./SyncCard";
 
 /** Workspace tab: changes + history + branches. */
 export function GitCenter({ project }: { project: Project }) {
@@ -24,6 +25,7 @@ export function GitCenter({ project }: { project: Project }) {
         <GitPanel project={project} />
       </div>
       <div className="flex min-h-0 flex-col gap-4 overflow-y-auto p-4">
+        <SyncCard project={project} />
         <section>
           <SectionTitle
             action={

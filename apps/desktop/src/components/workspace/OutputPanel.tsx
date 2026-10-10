@@ -9,7 +9,7 @@ import type { SessionEvent } from "@forge/protocol";
 const NO_EVENTS: SessionEvent[] = [];
 
 /** Raw, persisted event log of the active session (the "Claude Output" panel). */
-export function OutputPanel({ projectId }: { projectId: string }) {
+export function OutputPanel({ projectId, embedded = false }: { projectId: string; embedded?: boolean }) {
   const sessionId = useUi((s) => s.activeSession[projectId] ?? null);
   const toggle = useUi((s) => s.toggleBottomPanel);
   const events = useSessionEvents((s) => (sessionId ? s.buffers[sessionId]?.events : undefined)) ?? NO_EVENTS;
@@ -17,8 +17,8 @@ export function OutputPanel({ projectId }: { projectId: string }) {
   const v = useVirtualizer({ count: events.length, getScrollElement: () => scrollRef.current, estimateSize: () => 18, overscan: 20 });
 
   return (
-    <div className="flex h-56 shrink-0 flex-col border-t border-border bg-bg">
-      <div className="flex h-8 shrink-0 items-center gap-2 border-b border-border px-3 text-xs">
+    <div className={embedded ? "flex h-full flex-col" : "flex h-56 shrink-0 flex-col border-t border-border bg-bg"}>
+      <div className={embedded ? "hidden" : "flex h-8 shrink-0 items-center gap-2 border-b border-border px-3 text-xs"}>
         <span className="font-medium">Claude Output</span>
         <span className="text-subtle">{events.length} Events</span>
         <div className="flex-1" />

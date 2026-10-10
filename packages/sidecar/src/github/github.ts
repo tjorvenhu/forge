@@ -1,5 +1,5 @@
 import { spawn, type ChildProcess } from "node:child_process";
-import { ForgeError, type GitHubAccount, type GitHubLoginState, type GitHubRepo } from "@forge/protocol";
+import { ForgeError, type GitHubAccount, type GitHubLoginState, type GitHubRepo, type PullRequest } from "@forge/protocol";
 import { run } from "../util/proc.js";
 import { resolveTool } from "../util/tools.js";
 
@@ -132,6 +132,50 @@ export class GitHubService {
     if (r.code !== 0) throw new ForgeError("GIT_FAILED", (r.stderr || r.stdout).trim().split("\n").slice(-2).join(" ") || "Repository konnte nicht erstellt werden");
     const url = /(https:\/\/github\.com\/[^\s]+)/.exec(r.stdout + r.stderr)?.[1] ?? null;
     return url ?? `https://github.com/${repoName}`;
+  }
+
+  /** Pull request of the current branch, or null if there is none. */
+  async prForBranch(cwd: string): Promise<PullRequest | null> {
+    const r = await run(this.gh(), ["pr", "view", "--json", "number,title,state,url,isDraft,reviewDecision,baseRefName,headRefName,statusCheckRollup"], {
+      cwd,
+      env: this.env(),
+      timeoutMs: 30_000,
+    });
+    if (r.code !== 0) return null;
+    const j = JSON.parse(r.stdout) as {
+      number: number;
+      title: string;
+      state: string;
+      url: string;
+      isDraft: boolean;
+      reviewDecision: string | null;
+      baseRefName: string;
+      headRefName: string;
+      statusCheckRollup?: Array<{ conclusion?: string | null; state?: string | null; status?: string | null }>;
+    };
+    const checks = j.statusCheckRollup ?? [];
+    const failed = checks.filter((c) => /FAILURE|ERROR|CANCELLED|TIMED_OUT/i.test(c.conclusion ?? c.state ?? "")).length;
+    const pending = checks.filter((c) => /PENDING|QUEUED|IN_PROGRESS|EXPECTED/i.test(c.status ?? c.state ?? "") && !c.conclusion).length;
+    return {
+      number: j.number,
+      title: j.title,
+      state: j.state,
+      url: j.url,
+      draft: j.isDraft,
+      reviewDecision: j.reviewDecision || null,
+      base: j.baseRefName,
+      head: j.headRefName,
+      checks: { total: checks.length, failed, pending },
+    };
+  }
+
+  async createPr(cwd: string, p: { title: string; body: string; base: string; head: string; draft: boolean }): Promise<string> {
+    const args = ["pr", "create", "--title", p.title, "--body", p.body, "--base", p.base, "--head", p.head];
+    if (p.draft) args.push("--draft");
+    const r = await run(this.gh(), args, { cwd, env: this.env(), timeoutMs: 60_000 });
+    const out = (r.stdout + r.stderr).trim();
+    if (r.code !== 0) throw new ForgeError("GIT_FAILED", out.split("\n").slice(-2).join(" ") || "Pull Request konnte nicht erstellt werden");
+    return /(https:\/\/github\.com\/\S+\/pull\/\d+)/.exec(out)?.[1] ?? out;
   }
 
   shutdown() {

@@ -10,6 +10,8 @@ import { LOG_FORMAT, parseBranches, parseLog, parseStatusV2, parseUnifiedDiff, s
 const SENSITIVE_FILE =
   /(^|\/)(\.env(\..*)?|.*\.pem|.*\.key|id_(rsa|dsa|ecdsa|ed25519)(\.pub)?|.*\.p12|.*\.pfx|.*\.keystore|credentials(\..*)?\.json|secrets?\.(json|ya?ml|toml)|\.npmrc|\.pypirc|\.netrc)$/i;
 
+const PROTECTED = new Set(["main", "master"]);
+
 const ARTIFACT_PATH = /(^|\/)(node_modules|dist|build|target|\.next|out|coverage|__pycache__)\//;
 
 export function isSensitiveFile(p: string): boolean {
@@ -189,6 +191,76 @@ export class GitEngine {
     const check = await this.exec(cwd, ["check-ref-format", "--branch", branch]);
     if (check.code !== 0) throw new ForgeError("VALIDATION", `Ungültiger Branch-Name: ${branch}`);
     await this.ok(cwd, create ? ["switch", "-c", branch] : ["switch", branch]);
+  }
+
+  async currentBranch(cwd: string): Promise<string | null> {
+    const r = await this.exec(cwd, ["symbolic-ref", "--short", "-q", "HEAD"]);
+    return r.code === 0 ? r.stdout.trim() || null : null;
+  }
+
+  /**
+   * Pushes the current branch to origin. Never forces; protected branches need an explicit flag
+   * from a user confirmation.
+   */
+  async push(cwd: string, allowProtected: boolean): Promise<{ branch: string; output: string }> {
+    const branch = await this.currentBranch(cwd);
+    if (!branch) throw new ForgeError("GIT_FAILED", "Kein Branch ausgecheckt (detached HEAD).");
+    if (PROTECTED.has(branch) && !allowProtected) {
+      throw new ForgeError("POLICY_DENIED", `Push auf ${branch} braucht eine ausdrückliche Bestätigung.`, { protectedBranch: branch });
+    }
+    if (!(await this.remoteUrl(cwd))) throw new ForgeError("GIT_FAILED", "Kein Remote origin. Veröffentliche das Projekt zuerst auf GitHub.");
+    const r = await this.exec(cwd, ["push", "-u", "origin", `HEAD:refs/heads/${branch}`], undefined, 180_000);
+    const output = (r.stdout + r.stderr).trim();
+    if (r.code !== 0) {
+      if (/rejected|non-fast-forward|fetch first/i.test(output)) {
+        throw new ForgeError("GIT_CONFLICT", "Push abgelehnt: Auf dem Remote gibt es neuere Commits. Erst Pull ausführen, dann erneut pushen.");
+      }
+      throw new ForgeError("GIT_FAILED", output || "Push fehlgeschlagen");
+    }
+    return { branch, output };
+  }
+
+  /** Fast-forward only: never creates merge commits or rewrites local work. */
+  async pull(cwd: string): Promise<{ output: string }> {
+    const st = await this.status(cwd);
+    if (st.summary.conflicted) throw new ForgeError("GIT_CONFLICT", "Es gibt ungelöste Konflikte.");
+    const r = await this.exec(cwd, ["pull", "--ff-only"], undefined, 180_000);
+    const output = (r.stdout + r.stderr).trim();
+    if (r.code !== 0) {
+      if (/not possible to fast-forward|diverg/i.test(output)) {
+        throw new ForgeError(
+          "GIT_CONFLICT",
+          "Lokaler und entfernter Stand sind auseinandergelaufen. Optionen: Claude bitten, die Änderungen per Rebase zusammenzuführen, oder einen neuen Branch anlegen und einen Pull Request öffnen.",
+        );
+      }
+      if (/would be overwritten/i.test(output)) {
+        throw new ForgeError("GIT_CONFLICT", "Lokale, nicht committete Änderungen würden überschrieben. Erst committen oder verwerfen.");
+      }
+      throw new ForgeError("GIT_FAILED", output || "Pull fehlgeschlagen");
+    }
+    return { output };
+  }
+
+  async fetch(cwd: string) {
+    await this.ok(cwd, ["fetch", "--prune"], undefined, 120_000);
+  }
+
+  /** Default branch of origin (origin/HEAD), falling back to main/master. */
+  async defaultBranch(cwd: string): Promise<string> {
+    const r = await this.exec(cwd, ["symbolic-ref", "--short", "-q", "refs/remotes/origin/HEAD"]);
+    if (r.code === 0 && r.stdout.trim()) return r.stdout.trim().replace(/^origin\//, "");
+    for (const b of ["main", "master"]) {
+      if ((await this.exec(cwd, ["rev-parse", "--verify", "-q", `refs/remotes/origin/${b}`])).code === 0) return b;
+    }
+    return "main";
+  }
+
+  /** Commit subjects and diff of HEAD against a base branch (for PR descriptions). */
+  async rangeSummary(cwd: string, base: string): Promise<{ commits: string[]; diff: string }> {
+    const ref = (await this.exec(cwd, ["rev-parse", "--verify", "-q", `origin/${base}`])).code === 0 ? `origin/${base}` : base;
+    const log = await this.exec(cwd, ["log", "--format=%s", `${ref}..HEAD`]);
+    const diff = await this.exec(cwd, ["diff", "--no-color", "--stat", "--patch", `${ref}...HEAD`], undefined, 60_000);
+    return { commits: log.stdout.split("\n").filter(Boolean), diff: diff.stdout.slice(0, 40_000) };
   }
 
   async hasCommits(cwd: string): Promise<boolean> {

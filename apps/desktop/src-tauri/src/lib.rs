@@ -1,6 +1,8 @@
 mod sidecar;
+mod terminal;
 
 use sidecar::Sidecar;
+use terminal::Terminals;
 use tauri::{Manager, RunEvent};
 
 /// Upper bound for one protocol line from the UI (prompts are capped at 200k chars in the protocol).
@@ -27,12 +29,41 @@ fn sidecar_restart(app: tauri::AppHandle, state: tauri::State<'_, Sidecar>) -> R
     state.restart(&app)
 }
 
+#[tauri::command]
+fn term_open(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, Terminals>,
+    cwd: String,
+    cols: u16,
+    rows: u16,
+    program: String,
+    claude_path: Option<String>,
+) -> Result<u32, String> {
+    state.open(&app, sidecar::runtime_dir(&app), &cwd, cols, rows, &program, claude_path)
+}
+
+#[tauri::command]
+fn term_write(state: tauri::State<'_, Terminals>, id: u32, data: String) -> Result<(), String> {
+    state.write(id, &data)
+}
+
+#[tauri::command]
+fn term_resize(state: tauri::State<'_, Terminals>, id: u32, cols: u16, rows: u16) -> Result<(), String> {
+    state.resize(id, cols, rows)
+}
+
+#[tauri::command]
+fn term_close(state: tauri::State<'_, Terminals>, id: u32) {
+    state.close(id)
+}
+
 pub fn run() {
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .manage(Sidecar::default())
-        .invoke_handler(tauri::generate_handler![sidecar_send, sidecar_status, sidecar_restart])
+        .manage(Terminals::default())
+        .invoke_handler(tauri::generate_handler![sidecar_send, sidecar_status, sidecar_restart, term_open, term_write, term_resize, term_close])
         .setup(|app| {
             let handle = app.handle().clone();
             if let Err(e) = app.state::<Sidecar>().start(&handle) {
@@ -45,6 +76,7 @@ pub fn run() {
 
     app.run(|handle, event| {
         if let RunEvent::Exit = event {
+            handle.state::<Terminals>().shutdown();
             handle.state::<Sidecar>().shutdown();
         }
     });

@@ -19,7 +19,8 @@ import { GitCenter, NewBranchDialog, checkoutBranch } from "@/components/git/Git
 import { FilesTab } from "@/components/workspace/FilesTab";
 import { ProjectSettingsTab } from "@/components/workspace/ProjectSettingsTab";
 import { ActivityFeed } from "@/components/workspace/ActivityFeed";
-import { OutputPanel } from "@/components/workspace/OutputPanel";
+import { BottomPanel } from "@/components/workspace/BottomPanel";
+import { RemoteControlButton } from "@/components/workspace/RemoteControl";
 import { useQuery } from "@tanstack/react-query";
 
 export function WorkspaceView() {
@@ -79,7 +80,7 @@ function Workspace({ projectId }: { projectId: string }) {
           ]}
         />
         <div className="flex-1" />
-        <Button size="icon-sm" variant="ghost" onClick={() => toggleBottomPanel()} aria-pressed={bottomPanelOpen} title="Claude Output (Strg+J)" className={cn(bottomPanelOpen && "text-accent")}>
+        <Button size="icon-sm" variant="ghost" onClick={() => toggleBottomPanel()} aria-pressed={bottomPanelOpen} title="Terminal und Claude Output (Strg+J)" className={cn(bottomPanelOpen && "text-accent")}>
           <PanelBottom className="h-4 w-4" />
         </Button>
         <Button
@@ -112,7 +113,7 @@ function Workspace({ projectId }: { projectId: string }) {
             {workspaceTab === "files" && <FilesTab project={project} />}
             {workspaceTab === "settings" && <ProjectSettingsTab project={project} />}
           </div>
-          {bottomPanelOpen && <OutputPanel projectId={project.id} />}
+          <BottomPanel project={project} />
         </div>
         {showRight && <RightPanel projectId={projectId} />}
       </div>
@@ -216,6 +217,8 @@ function WorkspaceHeader({ projectId }: { projectId: string }) {
       )}
 
       <div className="flex-1" />
+
+      <RemoteControlButton project={project} />
 
       <div className="hidden items-center gap-1.5 lg:flex">
         {project.tags.slice(0, 4).map((t) => (
