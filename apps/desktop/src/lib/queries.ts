@@ -6,6 +6,7 @@ import { useSessionEvents } from "@/stores/session-events";
 import { toast } from "@/stores/toast";
 import { errorMessage } from "./rpc";
 import { playSound } from "./sounds";
+import { notifyKind, notifySession, shouldNotify } from "./notifications";
 
 export const queryClient = new QueryClient({
   defaultOptions: {
@@ -23,6 +24,7 @@ export const keys = {
   branches: (id: string) => ["branches", id] as const,
   sessions: (projectId: string) => ["sessions", projectId] as const,
   allSessions: (q: string, status: string) => ["allSessions", q, status] as const,
+  liveSessions: ["liveSessions"] as const,
   session: (id: string) => ["session", id] as const,
   settings: ["settings"] as const,
   diagnostics: ["diagnostics"] as const,
@@ -59,14 +61,10 @@ export function useServerEvents() {
         case "session.event": {
           useSessionEvents.getState().apply(e.payload);
           const t = e.payload.body.type;
-          if (qc.getQueryData<ResultOf<"settings.get">>(keys.settings)?.sounds !== false) {
-            const b = e.payload.body;
-            if (b.type === "approval.request") playSound("approval");
-            else if (b.type === "error") playSound("error");
-            else if (b.type === "turn.result") {
-              const interrupted = b.isError && /interrupt|abort/i.test(`${b.subtype} ${b.text ?? ""}`);
-              if (!interrupted) playSound(b.isError ? "error" : "done");
-            }
+          const kind = notifyKind(e.payload.body);
+          if (kind && shouldNotify(e.payload.sessionId, kind)) {
+            if (qc.getQueryData<ResultOf<"settings.get">>(keys.settings)?.sounds !== false) playSound(kind);
+            void notifySession(qc, e.payload, kind);
           }
           if (t === "tool.result" || t === "turn.result") {
             const s = qc.getQueryData<ResultOf<"sessions.get">>(keys.session(e.payload.sessionId));
@@ -78,6 +76,7 @@ export function useServerEvents() {
           qc.setQueryData(keys.session(e.payload.id), e.payload);
           void qc.invalidateQueries({ queryKey: keys.sessions(e.payload.projectId) });
           void qc.invalidateQueries({ queryKey: ["allSessions"] });
+          void qc.invalidateQueries({ queryKey: keys.liveSessions });
           if (e.payload.status === "idle" || e.payload.status === "stopped") {
             refreshGitSoon(e.payload.projectId);
             void qc.invalidateQueries({ queryKey: keys.projects });
@@ -157,6 +156,9 @@ export const useGitStatus = (projectId: string | null, enabled = true) =>
 
 export const useSessions = (projectId: string | null) =>
   useQuery({ queryKey: keys.sessions(projectId ?? ""), queryFn: () => call("sessions.list", { projectId: projectId! }), enabled: !!projectId });
+
+/** Sessions with a running Claude process, across projects; refreshed on every session.updated. */
+export const useLiveSessions = () => useQuery({ queryKey: keys.liveSessions, queryFn: () => call("sessions.listLive", {}), staleTime: Infinity });
 
 export const useSession = (sessionId: string | null) =>
   useQuery({ queryKey: keys.session(sessionId ?? ""), queryFn: () => call("sessions.get", { sessionId: sessionId! }), enabled: !!sessionId });
