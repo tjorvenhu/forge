@@ -4,6 +4,9 @@ import {
   BranchInfo,
   ClaudeSetupState,
   CommitInfo,
+  ConfigDoc,
+  ConfigDocKind,
+  ConfigScope,
   Diagnostics,
   ExternalSession,
   FileDiff,
@@ -11,17 +14,20 @@ import {
   GitHubLoginState,
   GitHubRepo,
   GitStatus,
+  McpServer,
+  MemoryFile,
+  MemoryScope,
   PermissionMode,
   ProfileId,
   PlanUsage,
   Project,
   ProjectTag,
-  ProjectTemplate,
   ProjectWithStatus,
   RuntimeInfo,
   Session,
   SessionEvent,
   Settings,
+  TextDoc,
 } from "./models.js";
 
 const id = z.string().min(1).max(100);
@@ -51,6 +57,65 @@ export const methods = {
   "github.cancelLogin": { params: empty, result: GitHubLoginState },
   "github.logout": { params: empty, result: z.object({ ok: z.boolean() }) },
   "github.repos": { params: empty, result: z.array(GitHubRepo) },
+  "github.publish": {
+    params: projectRef.extend({ private: z.boolean(), name: z.string().min(1).max(100).optional() }),
+    result: z.object({ url: z.string() }),
+  },
+  "git.identity": { params: empty, result: z.object({ name: z.string().nullable(), email: z.string().nullable() }) },
+  "git.setIdentity": {
+    params: z.object({ name: z.string().min(1).max(200), email: z.string().email().max(200) }),
+    result: z.object({ name: z.string().nullable(), email: z.string().nullable() }),
+  },
+
+  "config.memoryList": { params: z.object({ projectId: id.optional() }), result: z.array(MemoryFile) },
+  "config.memoryRead": { params: z.object({ projectId: id.optional(), scope: MemoryScope }), result: TextDoc },
+  "config.memoryWrite": {
+    params: z.object({ projectId: id.optional(), scope: MemoryScope, content: z.string().max(1_000_000), expectedMtimeMs: z.number().nullable() }),
+    result: z.object({ path: z.string(), mtimeMs: z.number() }),
+  },
+  "config.docs": { params: z.object({ kind: ConfigDocKind, projectId: id.optional() }), result: z.array(ConfigDoc) },
+  "config.docRead": { params: z.object({ kind: ConfigDocKind, scope: ConfigScope, name: z.string().max(64), projectId: id.optional() }), result: TextDoc },
+  "config.docWrite": {
+    params: z.object({
+      kind: ConfigDocKind,
+      scope: ConfigScope,
+      name: z.string().max(64),
+      projectId: id.optional(),
+      content: z.string().max(1_000_000),
+      expectedMtimeMs: z.number().nullable(),
+    }),
+    result: z.object({ path: z.string(), mtimeMs: z.number() }),
+  },
+  "config.docCreate": {
+    params: z.object({ kind: ConfigDocKind, scope: ConfigScope, name: z.string().max(64), description: z.string().max(500), projectId: id.optional() }),
+    result: z.object({ path: z.string(), mtimeMs: z.number() }),
+  },
+  "config.docDelete": { params: z.object({ kind: ConfigDocKind, scope: ConfigScope, name: z.string().max(64), projectId: id.optional() }), result: z.object({ ok: z.boolean() }) },
+  "config.hooksRead": {
+    params: z.object({ scope: z.enum(["user", "project", "local"]), projectId: id.optional() }),
+    result: z.object({ path: z.string(), hooks: z.string(), mtimeMs: z.number().nullable() }),
+  },
+  "config.hooksWrite": {
+    params: z.object({ scope: z.enum(["user", "project", "local"]), projectId: id.optional(), hooks: z.string().max(200_000), expectedMtimeMs: z.number().nullable() }),
+    result: z.object({ path: z.string(), mtimeMs: z.number() }),
+  },
+  "mcp.list": { params: z.object({ projectId: id.optional() }), result: z.array(McpServer) },
+  "mcp.add": {
+    params: z.object({
+      projectId: id.optional(),
+      name: z.string().regex(/^[A-Za-z0-9_-]{1,64}$/),
+      scope: z.enum(["user", "project", "local"]),
+      transport: z.enum(["stdio", "http", "sse"]),
+      target: z.string().min(1).max(2000),
+      args: z.array(z.string().max(2000)).max(50).default([]),
+      env: z.record(z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/), z.string().max(4000)).default({}),
+    }),
+    result: z.object({ ok: z.boolean(), output: z.string() }),
+  },
+  "mcp.remove": {
+    params: z.object({ projectId: id.optional(), name: z.string().regex(/^[A-Za-z0-9_-]{1,64}$/), scope: z.enum(["user", "project", "local"]) }),
+    result: z.object({ ok: z.boolean(), output: z.string() }),
+  },
 
   "settings.get": { params: empty, result: Settings },
   "settings.update": { params: Settings.partial(), result: Settings },
@@ -63,12 +128,10 @@ export const methods = {
       name: z.string().min(1).max(100),
       parentDir: z.string().min(1).max(4096),
       gitInit: z.boolean(),
-      readme: z.boolean(),
-      gitignore: z.boolean(),
-      claudeMd: z.boolean(),
-      template: ProjectTemplate,
+      /** create a GitHub repository for the new project (requires GitHub login) */
+      github: z.object({ private: z.boolean() }).nullable().default(null),
     }),
-    result: Project,
+    result: z.object({ project: Project, github: z.object({ url: z.string().nullable(), error: z.string().nullable() }).nullable() }),
   },
   "projects.clone": {
     params: z.object({

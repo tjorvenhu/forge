@@ -141,7 +141,7 @@ export function Composer({
           placeholder={placeholder}
           aria-label="Nachricht an Claude"
           rows={2}
-          className="block max-h-[260px] w-full resize-none bg-transparent px-4 pt-3 text-[13.5px] text-fg placeholder:text-subtle focus:outline-none"
+          className="block max-h-[260px] w-full resize-none bg-transparent px-4 pt-3 text-[13.5px] text-fg placeholder:text-subtle focus:outline-none focus-visible:outline-none"
           onKeyDown={(e) => {
             if (e.key === "Escape" && working) {
               e.preventDefault();

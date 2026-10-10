@@ -14,7 +14,8 @@ import { ProjectsView } from "@/views/ProjectsView";
 import { SessionsView } from "@/views/SessionsView";
 import { SettingsView } from "@/views/SettingsView";
 import { WorkspaceView } from "@/views/WorkspaceView";
-import { AgentsView, AutomationsView, GitHubView, McpView } from "@/views/IntegrationViews";
+import { AgentsView, AutomationsView, GitHubView } from "@/views/IntegrationViews";
+import { ExtensionsView } from "@/views/ExtensionsView";
 import { useGlobalShortcuts } from "@/lib/shortcuts";
 
 type Boot = { state: "starting" } | { state: "up" } | { state: "down"; detail?: string } | { state: "no-tauri" };
@@ -83,7 +84,7 @@ function Shell() {
           {view === "workspace" && <WorkspaceView />}
           {view === "github" && <GitHubView />}
           {view === "agents" && <AgentsView />}
-          {view === "mcp" && <McpView />}
+          {view === "mcp" && <ExtensionsView />}
           {view === "automations" && <AutomationsView />}
         </ErrorBoundary>
       </main>

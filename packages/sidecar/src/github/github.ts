@@ -48,8 +48,8 @@ export class GitHubService {
       const entry = (j.hosts?.[HOST] ?? []).find((h) => h.active) ?? j.hosts?.[HOST]?.[0];
       if (!entry || entry.state !== "success" || !entry.login) return null;
       const user = await this.gh_(["api", "user"]);
-      const u = user.code === 0 ? (JSON.parse(user.stdout) as { name?: string | null; avatar_url?: string; html_url?: string }) : {};
-      return { login: entry.login, name: u.name ?? null, avatarUrl: u.avatar_url ?? null, profileUrl: u.html_url ?? `https://github.com/${entry.login}` };
+      const u = user.code === 0 ? (JSON.parse(user.stdout) as { id?: number; name?: string | null; avatar_url?: string; html_url?: string }) : {};
+      return { login: entry.login, id: u.id ?? null, name: u.name ?? null, avatarUrl: u.avatar_url ?? null, profileUrl: u.html_url ?? `https://github.com/${entry.login}` };
     } catch {
       return null;
     }
@@ -118,7 +118,28 @@ export class GitHubService {
     return list.map((x) => ({ fullName: x.nameWithOwner, description: x.description || null, private: x.isPrivate, updatedAt: x.updatedAt, cloneUrl: `${x.url}.git` }));
   }
 
+  /**
+   * Creates a GitHub repository for a local repo, adds it as origin and pushes the current branch.
+   * Uses the signed-in account; never force-pushes.
+   */
+  async createRepo(dir: string, name: string, isPrivate: boolean): Promise<string> {
+    const repoName = toRepoName(name);
+    const r = await run(this.gh(), ["repo", "create", repoName, isPrivate ? "--private" : "--public", "--source", dir, "--remote", "origin", "--push"], {
+      cwd: dir,
+      env: this.env(),
+      timeoutMs: 120_000,
+    });
+    if (r.code !== 0) throw new ForgeError("GIT_FAILED", (r.stderr || r.stdout).trim().split("\n").slice(-2).join(" ") || "Repository konnte nicht erstellt werden");
+    const url = /(https:\/\/github\.com\/[^\s]+)/.exec(r.stdout + r.stderr)?.[1] ?? null;
+    return url ?? `https://github.com/${repoName}`;
+  }
+
   shutdown() {
     this.login?.kill();
   }
+}
+
+/** GitHub repository names: letters, digits, dot, dash, underscore. */
+export function toRepoName(name: string): string {
+  return name.trim().replace(/\s+/g, "-").replace(/[^A-Za-z0-9._-]/g, "").replace(/^[.-]+/, "").slice(0, 100) || "projekt";
 }

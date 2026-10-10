@@ -1,11 +1,11 @@
-import { Bot, ExternalLink, Server, Workflow } from "lucide-react";
+import { Bot, ExternalLink, Workflow } from "lucide-react";
 import { GitHubAccountCard, GitHubRepoList, useAutoOpenGitHub } from "@/components/github/GitHubPanel";
 import { useDiagnostics, useProject, useRuntimeInfo } from "@/lib/queries";
 import { openExternal, remoteToWebUrl } from "@/lib/native";
 import { useUi } from "@/stores/ui";
 import { Page } from "@/components/layout/Page";
 import { Button } from "@/components/ui/button";
-import { Badge, EmptyState, SectionTitle, Spinner } from "@/components/ui/misc";
+import { EmptyState, SectionTitle, Spinner } from "@/components/ui/misc";
 
 export function GitHubView() {
   const diag = useDiagnostics();
@@ -70,46 +70,6 @@ export function AgentsView() {
         ))}
       </div>
       <p className="mt-6 text-xs text-subtle">Agentenorchestrierung mit getrennten Worktrees ist für Phase 3 geplant.</p>
-    </Page>
-  );
-}
-
-export function McpView() {
-  const info = useRuntimeInfo();
-  const servers = info.data?.mcpServers ?? [];
-  const commands = info.data?.commands ?? [];
-  return (
-    <Page title="MCP Server" subtitle="Status aus der zuletzt gestarteten Claude-Session">
-      {info.isLoading && <Spinner />}
-      {info.isSuccess && servers.length === 0 && (
-        <EmptyState icon={<Server className="h-10 w-10" />} title="Noch keine Daten">
-          Der MCP-Status wird beim Start einer Session von Claude Code gemeldet. Starte eine Session und öffne diese Seite erneut.
-        </EmptyState>
-      )}
-      {servers.length > 0 && (
-        <div className="max-w-3xl divide-y divide-border rounded-xl border border-border bg-surface">
-          {servers.map((s) => (
-            <div key={s.name} className="flex items-center gap-3 px-4 py-2.5 text-[13px]">
-              <Server className="h-4 w-4 text-muted" />
-              <span className="flex-1">{s.name}</span>
-              <Badge tone={s.status === "connected" ? "success" : s.status === "failed" ? "danger" : "neutral"}>{s.status}</Badge>
-            </div>
-          ))}
-        </div>
-      )}
-      {commands.length > 0 && (
-        <section className="mt-6 max-w-3xl">
-          <SectionTitle>Slash-Commands und Skills ({commands.length})</SectionTitle>
-          <div className="divide-y divide-border rounded-xl border border-border bg-surface">
-            {commands.slice(0, 50).map((c) => (
-              <div key={c.name} className="flex gap-3 px-4 py-2 text-[13px]">
-                <span className="w-56 shrink-0 truncate font-mono text-xs">/{c.name}</span>
-                <span className="min-w-0 flex-1 truncate text-xs text-muted">{c.description}</span>
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
     </Page>
   );
 }

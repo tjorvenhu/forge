@@ -57,15 +57,13 @@ describe("ProjectManager", () => {
     await expectCode(pm.import(f), "PATH_INVALID");
   });
 
-  it("creates a project with template files and git", async () => {
-    const p = await pm.create({ name: "Neues Projekt", parentDir: t.dir, gitInit: true, readme: true, gitignore: true, claudeMd: true, template: "node-ts" });
-    for (const f of ["README.md", ".gitignore", "CLAUDE.md", "package.json", "src/index.ts", ".git"]) {
-      expect(existsSync(path.join(p.path, f)), f).toBe(true);
-    }
-    expect(p.technologies).toContain("TypeScript");
-    await expectCode(pm.create({ name: "Neues Projekt", parentDir: t.dir, gitInit: false, readme: false, gitignore: false, claudeMd: false, template: "empty" }), "CONFLICT");
-    await expectCode(pm.create({ name: "../evil", parentDir: t.dir, gitInit: false, readme: false, gitignore: false, claudeMd: false, template: "empty" }), "VALIDATION");
-    await expectCode(pm.create({ name: "CON", parentDir: t.dir, gitInit: false, readme: false, gitignore: false, claudeMd: false, template: "empty" }), "VALIDATION");
+  it("creates an empty project folder with git, no template files", async () => {
+    const p = await pm.create({ name: "Neues Projekt", parentDir: t.dir, gitInit: true });
+    expect(existsSync(path.join(p.path, ".git"))).toBe(true);
+    expect(existsSync(path.join(p.path, "README.md"))).toBe(false);
+    await expectCode(pm.create({ name: "Neues Projekt", parentDir: t.dir, gitInit: false }), "CONFLICT");
+    await expectCode(pm.create({ name: "../evil", parentDir: t.dir, gitInit: false }), "VALIDATION");
+    await expectCode(pm.create({ name: "CON", parentDir: t.dir, gitInit: false }), "VALIDATION");
   });
 
   it("marks deleted project folders and blocks file access", async () => {

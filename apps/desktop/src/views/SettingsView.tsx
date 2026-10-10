@@ -15,6 +15,7 @@ import { Select } from "@/components/ui/select";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { PROFILE_INFO } from "@/components/projects/ProfileBadge";
 import { ClaudeSetupCard } from "@/components/settings/ClaudeSetupCard";
+import { MemoryEditor } from "@/components/settings/MemoryEditor";
 import { cn } from "@/lib/utils";
 
 export function SettingsView() {
@@ -120,6 +121,13 @@ export function SettingsView() {
               )}
             </div>
           </Card>
+
+          <div className="xl:col-span-2">
+            <Card title="Globale Regeln für Claude (~/.claude/CLAUDE.md)">
+              <p className="mb-3 text-xs text-muted">Gilt in jedem Projekt, zusätzlich zur CLAUDE.md des Projekts.</p>
+              <MemoryEditor scopes={["global"]} />
+            </Card>
+          </div>
 
           <Card title="Datenschutz">
             <ul className="list-disc space-y-1 pl-5 text-[13px] text-muted">
