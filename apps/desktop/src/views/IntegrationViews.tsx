@@ -1,4 +1,5 @@
-import { Bot, ExternalLink, GitPullRequest, Server, Workflow } from "lucide-react";
+import { Bot, ExternalLink, Server, Workflow } from "lucide-react";
+import { GitHubAccountCard, GitHubRepoList, useAutoOpenGitHub } from "@/components/github/GitHubPanel";
 import { useDiagnostics, useProject, useRuntimeInfo } from "@/lib/queries";
 import { openExternal, remoteToWebUrl } from "@/lib/native";
 import { useUi } from "@/stores/ui";
@@ -10,33 +11,21 @@ export function GitHubView() {
   const diag = useDiagnostics();
   const activeProjectId = useUi((s) => s.activeProjectId);
   const project = useProject(activeProjectId);
+  useAutoOpenGitHub();
   const gh = diag.data?.gh;
   const web = remoteToWebUrl(project.data?.git?.remoteUrl ?? null);
   return (
-    <Page title="GitHub" subtitle="Anbindung über die offizielle GitHub CLI (gh). FORGE speichert keine Tokens.">
+    <Page title="GitHub" subtitle="Konto, Repositories und Projekt-Remote">
       <div className="flex max-w-3xl flex-col gap-4">
         <section className="rounded-xl border border-border bg-surface p-4">
-          <SectionTitle>GitHub CLI</SectionTitle>
-          {!gh ? (
-            <Spinner />
-          ) : !gh.found ? (
-            <p className="text-[13px] text-muted">
-              gh ist nicht installiert. Unter Windows: <code className="font-mono">winget install GitHub.cli</code>, danach <code className="font-mono">gh auth login</code>.
-            </p>
+          <SectionTitle>GitHub-Konto</SectionTitle>
+          {gh && !gh.found ? (
+            <p className="text-[13px] text-danger">Die GitHub-Anbindung fehlt in dieser Installation. Bitte FORGE neu installieren.</p>
           ) : (
-            <div className="flex flex-col gap-2 text-[13px]">
-              <div className="flex items-center gap-2">
-                <GitPullRequest className="h-4 w-4" /> {gh.version}
-                {gh.authenticated ? <Badge tone="success">angemeldet</Badge> : <Badge tone="warning">nicht angemeldet</Badge>}
-              </div>
-              {!gh.authenticated && (
-                <p className="text-muted">
-                  Im Terminal <code className="font-mono">gh auth login</code> ausführen. Danach unter Einstellungen „Neu prüfen“.
-                </p>
-              )}
-            </div>
+            <GitHubAccountCard />
           )}
         </section>
+        <GitHubRepoList />
         <section className="rounded-xl border border-border bg-surface p-4">
           <SectionTitle>Aktuelles Projekt</SectionTitle>
           {!project.data ? (
@@ -53,7 +42,7 @@ export function GitHubView() {
             </div>
           )}
         </section>
-        <p className="text-xs text-subtle">Pull Requests, Push mit Guardrails und PR-Status folgen in Phase 2.</p>
+        <p className="text-xs text-subtle">Push mit Schutzregeln und Pull Requests folgen in Phase 2.</p>
       </div>
     </Page>
   );

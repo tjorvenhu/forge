@@ -1,14 +1,15 @@
 import os from "node:os";
 import type { Capability, Diagnostics, ToolCheck } from "@forge/protocol";
-import { run, which } from "../util/proc.js";
+import { run } from "../util/proc.js";
+import { resolveTool } from "../util/tools.js";
 import { apiKeyEnvPresent, locateClaude, sessionEnv } from "./environment.js";
 
-async function versionOf(bin: string | null, args: string[], env?: NodeJS.ProcessEnv): Promise<ToolCheck> {
-  if (!bin) return { found: false, version: null, path: null, error: "nicht gefunden" };
+async function versionOf(bin: string | null, args: string[], env?: NodeJS.ProcessEnv, bundled = false): Promise<ToolCheck> {
+  if (!bin) return { found: false, bundled, version: null, path: null, error: "nicht gefunden" };
   const r = await run(bin, args, { timeoutMs: 15_000, env });
-  if (r.spawnError) return { found: false, version: null, path: bin, error: r.spawnError.message };
-  if (r.code !== 0) return { found: true, version: null, path: bin, error: (r.stderr || r.stdout).trim().slice(0, 300) };
-  return { found: true, version: r.stdout.trim().split("\n")[0] ?? null, path: bin, error: null };
+  if (r.spawnError) return { found: false, bundled, version: null, path: bin, error: r.spawnError.message };
+  if (r.code !== 0) return { found: true, bundled, version: null, path: bin, error: (r.stderr || r.stdout).trim().slice(0, 300) };
+  return { found: true, bundled, version: r.stdout.trim().split("\n")[0] ?? null, path: bin, error: null };
 }
 
 export async function collectDiagnostics(opts: {
@@ -19,13 +20,14 @@ export async function collectDiagnostics(opts: {
 }): Promise<Diagnostics> {
   const env = sessionEnv(opts.stripApiKey);
   const claudeBin = locateClaude(opts.claudePathSetting);
-  // winget installs gh without updating the PATH of already running processes.
-  const ghBin = which("gh") ?? (process.platform === "win32" ? which("gh", "C:\\Program Files\\GitHub CLI") : null);
+  const gitTool = resolveTool("git");
+  const ghTool = resolveTool("gh");
+  const ghBin = ghTool?.path ?? null;
 
   const [claude, git, gh] = await Promise.all([
     versionOf(claudeBin, ["--version"], env),
-    versionOf(which("git"), ["--version"]),
-    versionOf(ghBin, ["--version"]),
+    versionOf(gitTool?.path ?? null, ["--version"], undefined, gitTool?.bundled),
+    versionOf(ghBin, ["--version"], undefined, ghTool?.bundled),
   ]);
 
   const auth: Diagnostics["auth"] = {

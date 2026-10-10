@@ -124,6 +124,15 @@ function ResumeSection() {
   );
 }
 
+function SetupButton() {
+  const setView = useUi((s) => s.setView);
+  return (
+    <Button size="sm" variant="primary" onClick={() => setView("settings")}>
+      Einrichten
+    </Button>
+  );
+}
+
 function ApiKeyWarning() {
   const d = useDiagnostics().data;
   if (!d) return null;
@@ -132,16 +141,16 @@ function ApiKeyWarning() {
   if (!d.claude.found)
     return (
       <div className="mb-5">
-        <ErrorBanner title="Claude Code nicht gefunden">
-          Die CLI wurde nicht im PATH gefunden. Installiere Claude Code oder setze den Pfad unter Einstellungen.
+        <ErrorBanner title="Claude Code ist noch nicht installiert" action={<SetupButton />}>
+          FORGE richtet Claude Code mit einem Klick ein. Danach meldest du dich mit deinem Claude-Konto an.
         </ErrorBanner>
       </div>
     );
   if (notLoggedIn)
     return (
       <div className="mb-5">
-        <ErrorBanner title="Claude Code ist nicht angemeldet">
-          Führe im Terminal <code className="font-mono">claude auth login</code> aus. FORGE nutzt danach dieselbe Anmeldung.
+        <ErrorBanner title="Claude Code ist nicht angemeldet" action={<SetupButton />}>
+          Melde dich mit deinem Claude-Konto an, um Sessions zu starten.
         </ErrorBanner>
       </div>
     );

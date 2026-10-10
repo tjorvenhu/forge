@@ -27,6 +27,11 @@ export const keys = {
   settings: ["settings"] as const,
   diagnostics: ["diagnostics"] as const,
   runtimeInfo: ["runtimeInfo"] as const,
+  usage: ["usage"] as const,
+  githubAccount: ["githubAccount"] as const,
+  githubLogin: ["githubLogin"] as const,
+  githubRepos: ["githubRepos"] as const,
+  claudeSetup: ["claudeSetup"] as const,
   files: (id: string, dir: string) => ["files", id, dir] as const,
   file: (id: string, path: string) => ["file", id, path] as const,
   claudeMd: (id: string) => ["claudeMd", id] as const,
@@ -77,6 +82,23 @@ export function useServerEvents() {
             refreshGitSoon(e.payload.projectId);
             void qc.invalidateQueries({ queryKey: keys.projects });
             void qc.invalidateQueries({ queryKey: keys.project(e.payload.projectId) });
+            void qc.invalidateQueries({ queryKey: keys.usage });
+          }
+          break;
+        case "github.login":
+          qc.setQueryData(keys.githubLogin, e.payload);
+          if (e.payload.phase === "done") {
+            void qc.invalidateQueries({ queryKey: keys.githubAccount });
+            void qc.invalidateQueries({ queryKey: keys.githubRepos });
+            void qc.invalidateQueries({ queryKey: keys.diagnostics });
+          }
+          break;
+        case "claude.setup":
+          qc.setQueryData(keys.claudeSetup, e.payload);
+          if (e.payload.phase === "done") {
+            void call("system.diagnostics", { refresh: true }).then((d) => qc.setQueryData(keys.diagnostics, d));
+            void qc.invalidateQueries({ queryKey: keys.usage });
+            void qc.invalidateQueries({ queryKey: keys.runtimeInfo });
           }
           break;
         case "project.updated":
@@ -101,6 +123,23 @@ export const useSettings = () => useQuery({ queryKey: keys.settings, queryFn: ()
 
 export const useDiagnostics = () =>
   useQuery({ queryKey: keys.diagnostics, queryFn: () => call("system.diagnostics", {}), staleTime: 5 * 60_000, refetchOnWindowFocus: false });
+
+export const useGitHubAccount = () =>
+  useQuery({ queryKey: keys.githubAccount, queryFn: () => call("github.account", {}), staleTime: 5 * 60_000, retry: false });
+
+export const useGitHubLogin = () => useQuery({ queryKey: keys.githubLogin, queryFn: () => call("github.loginState", {}), staleTime: Infinity });
+
+export const useClaudeSetup = () => useQuery({ queryKey: keys.claudeSetup, queryFn: () => call("claude.setupState", {}), staleTime: Infinity });
+
+/** Plan usage; refreshed every 5 minutes and after each finished turn. */
+export const useUsage = () =>
+  useQuery({
+    queryKey: keys.usage,
+    queryFn: () => call("system.usage", {}),
+    staleTime: 60_000,
+    refetchInterval: 5 * 60_000,
+    refetchOnWindowFocus: false,
+  });
 
 export const useRuntimeInfo = () =>
   useQuery({ queryKey: keys.runtimeInfo, queryFn: () => call("system.runtimeInfo", {}), staleTime: 10 * 60_000, refetchOnWindowFocus: false });

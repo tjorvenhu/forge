@@ -10,6 +10,8 @@ export default tseslint.config(
       "**/node_modules/**",
       "**/target/**",
       "**/gen/**",
+      "**/src-tauri/runtime/**",
+      ".runtime-cache/**",
       "**/.e2e-tmp/**",
       "*.png",
       "*.docx",

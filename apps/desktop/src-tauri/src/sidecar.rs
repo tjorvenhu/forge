@@ -34,11 +34,31 @@ struct ExitPayload {
     stderr: String,
 }
 
-fn node_binary() -> String {
-    std::env::var("FORGE_NODE").unwrap_or_else(|_| "node".into())
+/// Directory with the bundled tools (node, git, gh, sidecar). In dev builds the
+/// prepared folder next to Cargo.toml is used when it exists.
+fn runtime_dir(app: &AppHandle) -> Option<PathBuf> {
+    if cfg!(debug_assertions) {
+        let dev = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("runtime");
+        if dev.exists() {
+            return Some(dev);
+        }
+    }
+    let res = app.path().resource_dir().ok()?.join("runtime");
+    res.exists().then(|| strip_verbatim(res))
 }
 
-fn sidecar_script(app: &AppHandle) -> Result<PathBuf, String> {
+fn node_binary(runtime: Option<&PathBuf>) -> PathBuf {
+    if let Ok(p) = std::env::var("FORGE_NODE") {
+        return PathBuf::from(p);
+    }
+    let exe = if cfg!(windows) { "node.exe" } else { "node" };
+    match runtime.map(|r| r.join("node").join(exe)) {
+        Some(p) if p.exists() => p,
+        _ => PathBuf::from("node"),
+    }
+}
+
+fn sidecar_script(runtime: Option<&PathBuf>) -> Result<PathBuf, String> {
     if let Ok(p) = std::env::var("FORGE_SIDECAR") {
         return Ok(PathBuf::from(p));
     }
@@ -48,16 +68,9 @@ fn sidecar_script(app: &AppHandle) -> Result<PathBuf, String> {
             return Ok(dev);
         }
     }
-    let res = app
-        .path()
-        .resource_dir()
-        .map_err(|e| e.to_string())?
-        .join("sidecar")
-        .join("sidecar.mjs");
-    if res.exists() {
-        Ok(strip_verbatim(res))
-    } else {
-        Err(format!("Sidecar nicht gefunden: {}", res.display()))
+    match runtime.map(|r| r.join("sidecar").join("sidecar.mjs")) {
+        Some(p) if p.exists() => Ok(p),
+        _ => Err("Sidecar nicht gefunden. Die Installation ist unvollständig.".into()),
     }
 }
 
@@ -72,8 +85,12 @@ fn strip_verbatim(p: PathBuf) -> PathBuf {
 
 impl Sidecar {
     pub fn start(&self, app: &AppHandle) -> Result<(), String> {
-        let script = sidecar_script(app)?;
-        let mut cmd = Command::new(node_binary());
+        let runtime = runtime_dir(app);
+        let script = sidecar_script(runtime.as_ref())?;
+        let mut cmd = Command::new(node_binary(runtime.as_ref()));
+        if let Some(r) = &runtime {
+            cmd.env("FORGE_RUNTIME_DIR", r);
+        }
         cmd.arg("--no-warnings")
             .arg(&script)
             .stdin(Stdio::piped())
@@ -86,7 +103,7 @@ impl Sidecar {
         cmd.creation_flags(CREATE_NO_WINDOW);
 
         let mut child = cmd.spawn().map_err(|e| {
-            let msg = format!("Node.js konnte nicht gestartet werden ({e}). Ist Node.js ab 22.13 installiert?");
+            let msg = format!("Node.js konnte nicht gestartet werden ({e}).");
             let _ = app.emit("sidecar://exit", ExitPayload { code: None, stderr: msg.clone() });
             msg
         })?;

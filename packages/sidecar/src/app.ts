@@ -2,6 +2,8 @@ import path from "node:path";
 import type { ServerEvent } from "@forge/protocol";
 import { AgentSdkRuntime, type ClaudeRuntime } from "./claude/runtime.js";
 import { GitEngine } from "./git/git.js";
+import { GitHubService } from "./github/github.js";
+import { ClaudeSetupService } from "./claude/setup.js";
 import { Db } from "./persistence/db.js";
 import { ProjectManager } from "./projects/project-manager.js";
 import { createHandlers } from "./rpc/handlers.js";
@@ -24,7 +26,14 @@ export function createApp(opts: { dataDir: string; write: Writer; log?: (m: stri
   let server: RpcServer | null = null;
   const emit = (e: ServerEvent) => server?.emit(e);
   const sessions = new SessionService(db, projects, git, opts.runtime ?? new AgentSdkRuntime(), emit);
+  const github = new GitHubService((payload) => emit({ event: "github.login", payload }));
+  const claudeSetup = new ClaudeSetupService(
+    (payload) => emit({ event: "claude.setup", payload }),
+    () => db.getSettings(),
+  );
   const handlers = createHandlers({
+    github,
+    claudeSetup,
     db,
     git,
     projects,
@@ -39,6 +48,8 @@ export function createApp(opts: { dataDir: string; write: Writer; log?: (m: stri
     db,
     shutdown() {
       sessions.shutdown();
+      github.shutdown();
+      claudeSetup.shutdown();
       db.close();
     },
   };

@@ -13,6 +13,8 @@ interface UiState {
   rightPanelOpen: boolean;
   bottomPanelOpen: boolean;
   newProject: NewProjectMode | null;
+  /** prefilled URL for the clone dialog (e.g. from the GitHub repo list) */
+  cloneUrl: string | null;
   setView: (v: View) => void;
   openProject: (projectId: string, sessionId?: string | null) => void;
   closeProject: () => void;
@@ -20,7 +22,7 @@ interface UiState {
   setWorkspaceTab: (t: WorkspaceTab) => void;
   toggleRightPanel: (open?: boolean) => void;
   toggleBottomPanel: (open?: boolean) => void;
-  setNewProject: (m: NewProjectMode | null) => void;
+  setNewProject: (m: NewProjectMode | null, cloneUrl?: string) => void;
 }
 
 const PREFS_KEY = "forge.ui";
@@ -57,6 +59,7 @@ export const useUi = create<UiState>((set, get) => ({
   rightPanelOpen: true,
   bottomPanelOpen: false,
   newProject: null,
+  cloneUrl: null,
   ...loadPrefs(),
   setView: (view) => set({ view }),
   openProject: (projectId, sessionId) => {
@@ -82,5 +85,5 @@ export const useUi = create<UiState>((set, get) => ({
     set((s) => ({ bottomPanelOpen: open ?? !s.bottomPanelOpen }));
     savePrefs(get());
   },
-  setNewProject: (newProject) => set({ newProject }),
+  setNewProject: (newProject, cloneUrl) => set({ newProject, cloneUrl: cloneUrl ?? null }),
 }));

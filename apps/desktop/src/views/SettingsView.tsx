@@ -14,6 +14,7 @@ import { Badge, Checkbox, ErrorBanner, SectionTitle, Spinner } from "@/component
 import { Select } from "@/components/ui/select";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { PROFILE_INFO } from "@/components/projects/ProfileBadge";
+import { ClaudeSetupCard } from "@/components/settings/ClaudeSetupCard";
 import { cn } from "@/lib/utils";
 
 export function SettingsView() {
@@ -87,6 +88,7 @@ export function SettingsView() {
 
           <Card title="Claude Code">
             <div className="flex flex-col gap-4">
+              <ClaudeSetupCard />
               <Field label="Pfad zur Claude-CLI" hint="Leer lassen für automatische Suche im PATH.">
                 <ClaudePathInput value={s.claudePath} onSave={(v) => void save({ claudePath: v })} />
               </Field>
@@ -295,6 +297,7 @@ function ToolRow({ label, t, extra }: { label: string; t: ToolCheck; extra?: Rea
           <span className="flex flex-wrap items-center gap-2">
             <CheckCircle2 className="h-3.5 w-3.5 text-success" />
             {t.version ?? "gefunden"}
+            {t.bundled ? <Badge tone="accent">mitgeliefert</Badge> : <Badge>System</Badge>}
             {extra}
           </span>
         ) : (

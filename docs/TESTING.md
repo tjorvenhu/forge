@@ -6,9 +6,10 @@ Letzter vollständiger Lauf: 2026-10-10, Windows 11 Pro 26200, Node 24.14, Claud
 |---|---|---|
 | Lint | `pnpm lint` | ohne Befund |
 | Typecheck (protocol, sidecar, desktop) | `pnpm typecheck` | ohne Fehler |
-| Sidecar Unit/Integration | `pnpm --filter @forge/sidecar test` | 76 / 76 bestanden |
-| Desktop Unit/Komponenten | `pnpm --filter @forge/desktop test` | 7 / 7 bestanden |
-| E2E mit echter Claude-Session | `pnpm test:e2e` | 8 / 8 bestanden |
+| Sidecar Unit/Integration | `pnpm --filter @forge/sidecar test` | 85 / 85 bestanden |
+| Desktop Unit/Komponenten | `pnpm --filter @forge/desktop test` | 8 / 8 bestanden |
+| E2E mit echter Claude-Session | `pnpm test:e2e` | 8 / 8 bestanden (mit System-Werkzeugen und mit `FORGE_RUNTIME_DIR` auf die mitgelieferte Laufzeit) |
+| Release-App ohne Node/Git/gh im PATH | manuell | Sidecar läuft aus `runtime/node`, Diagnose zeigt „mitgeliefert“ |
 | Rust-Hülle | `cargo build` | ohne Warnungen |
 
 ## Was die Suites abdecken
@@ -19,16 +20,18 @@ Letzter vollständiger Lauf: 2026-10-10, Windows 11 Pro 26200, Node 24.14, Claud
 - `project-git.test.ts`: Import/Kanonisierung/Dubletten (auch Groß-/Kleinschreibung unter Windows), Persistenz über DB-Neustart, Projekt anlegen mit Vorlagen, fehlender Ordner, echte Git-Repos: Diff, Commit nur der ausgewählten Dateien, Secret-Stopp, Konflikt-Stopp, erster Commit.
 - `normalize.test.ts`: Normalizer gegen eine aufgezeichnete echte `stream-json`-Ausgabe (Fixture), Robustheit gegen kaputte/unbekannte Events.
 - `session-service.test.ts`: Session-Lebenszyklus mit simulierter Runtime: Profil-Modi, Freigaben + Audit, Sperrliste, Stop, Absturz und Resume, Fehlerdarstellung, Redaction.
+- `usage-commit.test.ts`: Umwandlung der Usage-Daten, Prompt und Bereinigung der KI-Commit-Nachricht.
+- `setup-tools.test.ts`: Auslesen der Login-URL aus der echten CLI-Ausgabe, Vorrang der mitgelieferten Werkzeuge, PATH für Sessions.
 
 **Desktop**
 - `chat-items.test.ts`: Zusammenbau der Chat-Elemente aus Events, Streaming-Puffer, Store-Merge.
-- `GitPanel.test.tsx`: Commit-Flow in der Komponente (Auswahl, Review-Dialog, exakter RPC-Aufruf).
+- `GitPanel.test.tsx`: Commit-Flow in der Komponente (Auswahl, Review-Dialog, exakter RPC-Aufruf) und KI-Vorschlag.
 
 **E2E (`real-claude.e2e.test.ts`)**, echter Sidecar-Prozess + installierte CLI + echtes Git:
-1. Diagnose: CLI gefunden, angemeldet (claude.ai, max), kein API-Key
+1. Diagnose: CLI gefunden, angemeldet (claude.ai, max), kein API-Key; echte Abo-Nutzung abrufbar
 2. Projektimport mit Leerzeichen/Umlauten im Pfad
 3. Session starten, echte Token-Deltas, Tool-Events, Datei geschrieben (Balanced)
-4. Git-Status und Diff, Commit
+4. Git-Status und Diff, KI-Commit-Vorschlag, Commit
 5. Safe: Freigabeanfrage, Ablehnung, Befehl nicht ausgeführt
 6. Autonomous (bypassPermissions): Sperrliste blockiert `git branch -D` per PreToolUse-Hook
 7. Stop mitten im Streaming, Session bleibt nutzbar
@@ -46,8 +49,14 @@ Dabei gefundene und behobene Fehler: Kopfzeile aktualisierte sich nach Commit ni
 Tool-Karten; Radix-Select hat beim Laden der Modellliste das Session-Modell ohne Nutzeraktion geändert;
 fehlende Error-Boundary; Warnung über parallele Sessions zählte auch untätige Sessions.
 
+## Zweiter UI-Durchlauf (Windows)
+
+Usage-Balken in der Statuskarte, GitHub-Anmeldung bis zur Code-Anzeige (abgebrochen; abschließen kann nur der Nutzer), KI-Commit-Nachricht über den Funken-Knopf, kompakte Nachrichtenblase, schlichter Profil-Knopf, gebaute App mit bereinigtem PATH.
+
 ## Nicht getestet
 
 - Linux (keine Umgebung verfügbar)
 - Töne: Wiedergabe kann ich nicht hören; Code-Pfad ist typgeprüft, Test-Knöpfe unter Einstellungen
-- Installer-Installation auf einem frischen System
+- Installer-Installation auf einem frischen System ohne Claude Code
+- Claude-Code-Installation aus der App (würde die vorhandene Installation verändern)
+- Claude-Anmeldung bis zum Ende (URL-Ausgabe in isoliertem Konfigurationsordner geprüft) und GitHub-Anmeldung bis zum Ende

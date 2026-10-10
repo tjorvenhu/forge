@@ -1,8 +1,8 @@
 import type { ReactNode } from "react";
 import { Bot, FolderKanban, GitPullRequest, History, Home, Plus, Server, Settings, Workflow } from "lucide-react";
-import { useDiagnostics, useProjects } from "@/lib/queries";
+import { useDiagnostics, useProjects, useUsage } from "@/lib/queries";
 import { useUi, type View } from "@/stores/ui";
-import { cn } from "@/lib/utils";
+import { cn, relativeTime } from "@/lib/utils";
 import { Logo } from "./Logo";
 import { ProjectIcon } from "@/components/projects/ProjectIcon";
 
@@ -88,6 +88,7 @@ export function Sidebar() {
 
 function ClaudeStatusCard() {
   const diag = useDiagnostics();
+  const usage = useUsage();
   const setView = useUi((s) => s.setView);
   const d = diag.data;
   let tone = "bg-subtle";
@@ -107,21 +108,47 @@ function ClaudeStatusCard() {
     tone = "bg-danger";
     line = "Status unbekannt";
   }
+  const windows = usage.data?.available ? usage.data.windows.slice(0, 3) : [];
   return (
     <button
       onClick={() => setView("settings")}
-      className="m-2 flex items-center gap-2.5 rounded-lg border border-border bg-surface px-3 py-2.5 text-left hover:border-border-strong"
-      title="Claude-Code-Status und Diagnose"
+      className="m-2 flex flex-col gap-2 rounded-lg border border-border bg-surface px-3 py-2.5 text-left hover:border-border-strong"
+      title="Claude-Code-Status, Nutzung und Diagnose"
     >
-      <div className="min-w-0 flex-1">
-        <div className="text-[13px]">Claude Code</div>
-        <div className="flex items-center gap-1.5 text-[11px] text-muted">
-          <span className={cn("h-1.5 w-1.5 rounded-full", tone)} />
-          {line}
+      <div className="flex w-full items-center gap-2.5">
+        <div className="min-w-0 flex-1">
+          <div className="text-[13px]">Claude Code</div>
+          <div className="flex items-center gap-1.5 text-[11px] text-muted">
+            <span className={cn("h-1.5 w-1.5 rounded-full", tone)} />
+            {line}
+          </div>
         </div>
+        <span className="text-[11px] text-subtle">{d?.claude.version?.split(" ")[0] ?? ""}</span>
       </div>
-      <span className="text-[11px] text-subtle">{d?.claude.version?.split(" ")[0] ?? ""}</span>
+      {windows.length > 0 && (
+        <div className="flex w-full flex-col gap-1.5" aria-label="Nutzung des Abos">
+          {windows.map((w) => (
+            <UsageBar key={w.key} label={w.label} value={w.utilization} resetsAt={w.resetsAt} />
+          ))}
+        </div>
+      )}
     </button>
+  );
+}
+
+function UsageBar({ label, value, resetsAt }: { label: string; value: number; resetsAt: string | null }) {
+  const tone = value >= 95 ? "bg-danger" : value >= 80 ? "bg-warning" : "bg-accent";
+  const reset = resetsAt ? `Zurückgesetzt ${relativeTime(resetsAt)} (${new Date(resetsAt).toLocaleString("de-DE", { weekday: "short", hour: "2-digit", minute: "2-digit" })})` : undefined;
+  return (
+    <div title={reset}>
+      <div className="mb-0.5 flex justify-between text-[11px]">
+        <span className="text-muted">{label}</span>
+        <span className="tabular-nums text-subtle">{value} %</span>
+      </div>
+      <div className="h-1 overflow-hidden rounded-full bg-surface-3" role="progressbar" aria-valuenow={value} aria-valuemin={0} aria-valuemax={100} aria-label={label}>
+        <div className={cn("h-full rounded-full", tone)} style={{ width: `${value}%` }} />
+      </div>
+    </div>
   );
 }
 

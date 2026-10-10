@@ -226,11 +226,12 @@ function WorkspaceHeader({ projectId }: { projectId: string }) {
       <DropdownMenu
         header="Permission-Profil"
         trigger={
-          <button className="flex h-10 items-center gap-2 rounded-lg border border-border bg-surface px-3 text-left hover:border-border-strong" aria-label="Permission-Profil wählen">
-            <div className="leading-tight">
-              <div className="text-[10px] uppercase tracking-wide text-subtle">Permission-Profil</div>
-              <ProfileBadge profile={project.profile} />
-            </div>
+          <button
+            className="flex items-center gap-1 rounded-md px-1.5 py-1 hover:bg-surface-3"
+            aria-label={`Permission-Profil: ${PROFILE_INFO[project.profile].label}. Klicken zum Ändern`}
+            title="Permission-Profil ändern"
+          >
+            <ProfileBadge profile={project.profile} />
             <ChevronDown className="h-3.5 w-3.5 text-muted" />
           </button>
         }

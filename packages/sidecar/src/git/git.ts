@@ -4,6 +4,7 @@ import { ForgeError, type BranchInfo, type CommitInfo, type FileDiff, type GitSt
 import { containsSecret } from "../policy/redact.js";
 import { isInside } from "../util/paths.js";
 import { run, type RunResult } from "../util/proc.js";
+import { resolveTool } from "../util/tools.js";
 import { LOG_FORMAT, parseBranches, parseLog, parseStatusV2, parseUnifiedDiff, summarize, untrackedDiff } from "./parsers.js";
 
 const SENSITIVE_FILE =
@@ -20,7 +21,10 @@ export function isArtifactPath(p: string): boolean {
 }
 
 export class GitEngine {
-  private gitBin = "git";
+  /** shipped git when available, else the one on PATH */
+  private get gitBin() {
+    return resolveTool("git")?.path ?? "git";
+  }
 
   private env(): NodeJS.ProcessEnv {
     return { ...process.env, GIT_TERMINAL_PROMPT: "0", GIT_OPTIONAL_LOCKS: "0", LC_ALL: "C" };

@@ -15,3 +15,7 @@ apps/desktop/src-tauri/gen/schemas/
 
 # Test-Artefakte
 packages/sidecar/.e2e-tmp/
+
+# mitgelieferte Laufzeit (scripts/prepare-runtime.mjs)
+apps/desktop/src-tauri/runtime/
+.runtime-cache/

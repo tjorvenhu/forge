@@ -4,6 +4,8 @@ import type { Db } from "../persistence/db.js";
 import type { GitEngine } from "../git/git.js";
 import type { ProjectManager } from "../projects/project-manager.js";
 import type { SessionService } from "../sessions/session-service.js";
+import type { GitHubService } from "../github/github.js";
+import type { ClaudeSetupService } from "../claude/setup.js";
 
 export interface Services {
   db: Db;
@@ -11,6 +13,8 @@ export interface Services {
   projects: ProjectManager;
   sessions: SessionService;
   dataDir: string;
+  github: GitHubService;
+  claudeSetup: ClaudeSetupService;
   notifyProject: (projectId: string) => void;
 }
 
@@ -40,6 +44,23 @@ export function createHandlers(s: Services): Handlers {
       return { ...diagCache, capabilities: s.sessions.capabilities() };
     },
     "system.runtimeInfo": () => s.sessions.runtimeInfo(),
+    "system.usage": ({ refresh }) => s.sessions.planUsage(refresh === true),
+
+    "claude.setupState": () => s.claudeSetup.current(),
+    "claude.install": () => s.claudeSetup.install(),
+    "claude.login": () => s.claudeSetup.login(),
+    "claude.submitLoginCode": ({ code }) => s.claudeSetup.submitCode(code),
+    "claude.cancelSetup": () => s.claudeSetup.cancel(),
+
+    "github.account": () => s.github.account(),
+    "github.loginState": () => s.github.loginState(),
+    "github.startLogin": () => s.github.startLogin(),
+    "github.cancelLogin": () => s.github.cancelLogin(),
+    "github.logout": async () => {
+      await s.github.logout();
+      return { ok: true };
+    },
+    "github.repos": () => s.github.repos(),
 
     "settings.get": () => s.db.getSettings(),
     "settings.update": (patch) => {
@@ -100,6 +121,7 @@ export function createHandlers(s: Services): Handlers {
       await s.git.checkout(projectDir(projectId), branch, create);
       return gitChanged(projectId);
     },
+    "git.suggestCommitMessage": ({ projectId, paths }) => s.sessions.suggestCommitMessage(projectId, paths),
     "git.init": async ({ projectId }) => {
       await s.git.init(projectDir(projectId));
       return gitChanged(projectId);

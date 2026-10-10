@@ -39,6 +39,13 @@ describe.skipIf(!enabled)("E2E: sidecar with real Claude Code", () => {
     expect(d.claude.found).toBe(true);
     expect(d.auth.loggedIn).toBe(true);
     expect(d.git.found).toBe(true);
+    const u = await c.request("system.usage", { refresh: true });
+    expect(u.error).toBeNull();
+    if (d.auth.subscriptionType) {
+      expect(u.available).toBe(true);
+      expect(u.windows.some((w) => w.key === "five_hour")).toBe(true);
+    }
+    console.log("[e2e] usage", u.windows.map((w) => `${w.label} ${w.utilization}%`).join(", "));
     console.log("[e2e] claude", d.claude.version, "auth", d.auth.authMethod, d.auth.subscriptionType, "apiKeyEnv", d.apiKeyEnvPresent);
   }, 60_000);
 
@@ -86,6 +93,10 @@ describe.skipIf(!enabled)("E2E: sidecar with real Claude Code", () => {
     expect(st.files.map((f) => [f.path, f.kind])).toEqual([["hello.txt", "untracked"]]);
     const d = await c.request("git.diff", { projectId, path: "hello.txt", staged: false });
     expect(d.lines.some((l) => l.kind === "add" && l.text.includes("Hallo FORGE"))).toBe(true);
+    const suggestion = await c.request("git.suggestCommitMessage", { projectId, paths: ["hello.txt"] });
+    expect(suggestion.message.length).toBeGreaterThan(5);
+    expect(suggestion.message.split("\n")[0]!.length).toBeLessThanOrEqual(100);
+    console.log("[e2e] commit suggestion:", JSON.stringify(suggestion.message));
     await git(projectPath, "config", "user.email", "e2e@forge.local");
     const r = await c.request("git.commit", { projectId, message: "feat: hello.txt von Claude", paths: ["hello.txt"] });
     expect(r.summary).toBe("feat: hello.txt von Claude");

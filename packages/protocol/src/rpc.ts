@@ -2,13 +2,18 @@ import { z } from "zod";
 import { RpcErrorSchema } from "./errors.js";
 import {
   BranchInfo,
+  ClaudeSetupState,
   CommitInfo,
   Diagnostics,
   ExternalSession,
   FileDiff,
+  GitHubAccount,
+  GitHubLoginState,
+  GitHubRepo,
   GitStatus,
   PermissionMode,
   ProfileId,
+  PlanUsage,
   Project,
   ProjectTag,
   ProjectTemplate,
@@ -32,6 +37,20 @@ const empty = z.object({}).strict();
 export const methods = {
   "system.diagnostics": { params: z.object({ refresh: z.boolean().optional() }), result: Diagnostics },
   "system.runtimeInfo": { params: empty, result: RuntimeInfo.nullable() },
+  "system.usage": { params: z.object({ refresh: z.boolean().optional() }), result: PlanUsage },
+
+  "claude.setupState": { params: empty, result: ClaudeSetupState },
+  "claude.install": { params: empty, result: ClaudeSetupState },
+  "claude.login": { params: empty, result: ClaudeSetupState },
+  "claude.submitLoginCode": { params: z.object({ code: z.string().min(1).max(2000) }), result: ClaudeSetupState },
+  "claude.cancelSetup": { params: empty, result: ClaudeSetupState },
+
+  "github.account": { params: empty, result: GitHubAccount.nullable() },
+  "github.loginState": { params: empty, result: GitHubLoginState },
+  "github.startLogin": { params: empty, result: GitHubLoginState },
+  "github.cancelLogin": { params: empty, result: GitHubLoginState },
+  "github.logout": { params: empty, result: z.object({ ok: z.boolean() }) },
+  "github.repos": { params: empty, result: z.array(GitHubRepo) },
 
   "settings.get": { params: empty, result: Settings },
   "settings.update": { params: Settings.partial(), result: Settings },
@@ -152,6 +171,10 @@ export const methods = {
     result: GitStatus,
   },
   "git.init": { params: projectRef, result: GitStatus },
+  "git.suggestCommitMessage": {
+    params: projectRef.extend({ paths: z.array(z.string().min(1).max(4096)).max(2000).optional() }),
+    result: z.object({ message: z.string(), model: z.string(), skipped: z.array(z.string()) }),
+  },
 } as const;
 
 export type Methods = typeof methods;
@@ -178,6 +201,8 @@ export type ServerEvent =
   | { event: "session.event"; payload: SessionEvent }
   | { event: "session.updated"; payload: Session }
   | { event: "project.updated"; payload: { projectId: string } }
+  | { event: "github.login"; payload: GitHubLoginState }
+  | { event: "claude.setup"; payload: ClaudeSetupState }
   | { event: "sidecar.ready"; payload: { version: string } }
   | { event: "log"; payload: { level: "info" | "warn" | "error"; message: string } };
 

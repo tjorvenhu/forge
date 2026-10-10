@@ -59,3 +59,20 @@ E-Mail-Adresse oder Org-Daten der Claude-Anmeldung.
   natives Claude-Code-Verhalten. FORGE setzt den Permission-Modus immer explizit, ein `defaultMode` aus dem
   Repo kann also keinen Bypass auslösen. Erlaubnisregeln aus dem Repo prüft FORGE in Phase 1 nicht.
 - Der Sidecar läuft mit den Rechten des Nutzers, ebenso die Claude-CLI.
+
+## Ergänzungen (Einrichtung, GitHub, KI-Commit, Usage)
+
+- **Mitgelieferte Werkzeuge** (Node, Git, gh) stammen aus den offiziellen Releases und werden beim Build
+  per SHA-256 geprüft (`scripts/prepare-runtime.mjs`). Siehe [ADR 0006](adr/0006-mitgelieferte-laufzeit.md).
+- **Claude-Code-Installation** aus der App führt den offiziellen Installer von claude.ai aus. Das passiert
+  nur auf ausdrücklichen Klick und nur, wenn keine CLI gefunden wird.
+- **Claude-Anmeldung:** FORGE startet `claude auth login`, öffnet die Anmeldeseite und reicht den vom
+  Nutzer eingefügten Code an die CLI weiter. FORGE speichert den Code nicht.
+- **GitHub-Anmeldung:** Device Flow über `gh auth login --web`. gh speichert das Token im
+  Windows-Anmeldeinformationsspeicher; FORGE liest es nie (`gh auth status` ohne `--show-token`).
+  gh kopiert den Einmal-Code zusätzlich in die Zwischenablage.
+- **KI-Commit-Nachricht:** Der Diff der ausgewählten Dateien geht an Claude (gleiche Anmeldung wie
+  Sessions, keine Tools, keine Session-Speicherung). Sensible Dateien (`.env`, Schlüssel, Credentials)
+  werden ausgelassen, der restliche Diff durchläuft den Secret-Redactor.
+- **Usage-Anzeige** nutzt eine als experimentell markierte SDK-Methode. Fällt sie weg, verschwindet nur
+  die Anzeige; Sessions sind nicht betroffen.

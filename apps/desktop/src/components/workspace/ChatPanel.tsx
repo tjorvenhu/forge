@@ -228,9 +228,9 @@ function ItemView({ item, sessionId, live, projectDir, onRetry }: { item: ChatIt
       return (
         <div className="flex gap-3">
           <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-surface-3 text-xs font-semibold text-muted">Du</div>
-          <div className="min-w-0 flex-1 rounded-lg border border-border bg-surface-2 px-3.5 py-2.5">
-            <div className="whitespace-pre-wrap break-words text-[13.5px]">{item.text}</div>
-            <div className="mt-1 text-right text-[11px] text-subtle">{clockTime(item.ts)}</div>
+          <div className="flex w-fit min-w-0 max-w-full items-end gap-3 rounded-lg border border-border bg-surface-2 px-3 py-1.5">
+            <div className="min-w-0 whitespace-pre-wrap break-words text-[13.5px]">{item.text}</div>
+            <div className="shrink-0 pb-px text-[11px] text-subtle">{clockTime(item.ts)}</div>
           </div>
         </div>
       );
