@@ -108,7 +108,8 @@ describe("worktrees and feature workflow", () => {
     worktrees = new WorktreeService(engine, projects);
     workflows = new WorkflowService(db, projects, engine, new GitHubService(() => {}), sessions, worktrees, () => {});
   });
-  afterEach(() => {
+  afterEach(async () => {
+    await sessions.drain();
     sessions.shutdown();
     db.close();
     t.cleanup();
