@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, ShieldAlert, Trash2, X } from "lucide-react";
 import type { ProfileId, Project } from "@forge/protocol";
 import { call, keys, useRuntimeInfo, useSettings } from "@/lib/queries";
@@ -8,12 +8,12 @@ import { cn } from "@/lib/utils";
 import { toast } from "@/stores/toast";
 import { Button } from "@/components/ui/button";
 import { Field, Input } from "@/components/ui/input";
-import { Badge, SectionTitle, Spinner } from "@/components/ui/misc";
+import { Badge, SectionTitle } from "@/components/ui/misc";
 import { Select } from "@/components/ui/select";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { PROFILE_INFO } from "@/components/projects/ProfileBadge";
 import { RemoveProjectDialog } from "@/components/projects/RemoveProjectDialog";
-import { Markdown } from "./Markdown";
+import { MemoryEditor } from "@/components/settings/MemoryEditor";
 
 /** Phase 1 knows these tags; their automated behaviour arrives in phase 2. */
 const SUGGESTED_TAGS = ["plan-first", "auto-test", "review-required", "auto-commit", "auto-push", "sandbox-only", "no-network"];
@@ -25,7 +25,6 @@ export function ProjectSettingsTab({ project }: { project: Project }) {
   const [confirmAuto, setConfirmAuto] = useState(false);
   const [removing, setRemoving] = useState(false);
   const [tagDraft, setTagDraft] = useState("");
-  const claudeMd = useQuery({ queryKey: keys.claudeMd(project.id), queryFn: () => call("projects.readClaudeMd", { projectId: project.id }), enabled: project.exists });
 
   const update = async (patch: { profile?: ProfileId; tags?: string[]; defaultModel?: string | null; name?: string }) => {
     try {
@@ -131,20 +130,8 @@ export function ProjectSettingsTab({ project }: { project: Project }) {
         </section>
 
         <section className="rounded-xl border border-border bg-surface p-4 xl:col-span-2">
-          <SectionTitle>CLAUDE.md</SectionTitle>
-          {claudeMd.isLoading && <Spinner />}
-          {claudeMd.data && !claudeMd.data.exists && (
-            <p className="text-[13px] text-muted">Dieses Projekt hat keine CLAUDE.md. Claude Code nutzt dann nur deine globalen Regeln. Ein Editor folgt in Phase 2.</p>
-          )}
-          {claudeMd.data?.exists && (
-            <>
-              <div className="mb-2 font-mono text-[11px] text-subtle">{claudeMd.data.path}</div>
-              <div className="max-h-96 overflow-y-auto rounded-lg border border-border bg-bg p-4">
-                <Markdown text={claudeMd.data.content} />
-              </div>
-              <p className="mt-2 text-xs text-subtle">Nur Ansicht. FORGE-Einstellungen werden getrennt in der FORGE-Datenbank gespeichert, nicht in .claude/settings.json.</p>
-            </>
-          )}
+          <SectionTitle>Regeln für Claude (CLAUDE.md)</SectionTitle>
+          <MemoryEditor projectId={project.id} scopes={["project", "project-dir", "local", "global"]} />
         </section>
 
         <section className="rounded-xl border border-danger/30 bg-surface p-4 xl:col-span-2">

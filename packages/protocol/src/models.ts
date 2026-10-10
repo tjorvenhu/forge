@@ -324,11 +324,10 @@ export const RuntimeInfo = z.object({
 });
 export type RuntimeInfo = z.infer<typeof RuntimeInfo>;
 
-export const ProjectTemplate = z.enum(["empty", "node-ts", "python", "rust"]);
-export type ProjectTemplate = z.infer<typeof ProjectTemplate>;
 
 export const GitHubAccount = z.object({
   login: z.string(),
+  id: z.number().nullable(),
   name: z.string().nullable(),
   avatarUrl: z.string().nullable(),
   profileUrl: z.string(),
@@ -360,3 +359,41 @@ export const ClaudeSetupState = z.object({
   message: z.string().nullable(),
 });
 export type ClaudeSetupState = z.infer<typeof ClaudeSetupState>;
+
+export const MemoryScope = z.enum(["global", "project", "project-dir", "local"]);
+export type MemoryScope = z.infer<typeof MemoryScope>;
+
+export const MemoryFile = z.object({
+  scope: MemoryScope,
+  label: z.string(),
+  path: z.string(),
+  exists: z.boolean(),
+  size: z.number(),
+  mtimeMs: z.number().nullable(),
+});
+export type MemoryFile = z.infer<typeof MemoryFile>;
+
+export const ConfigDocKind = z.enum(["skill", "agent"]);
+export type ConfigDocKind = z.infer<typeof ConfigDocKind>;
+export const ConfigScope = z.enum(["user", "project"]);
+export type ConfigScope = z.infer<typeof ConfigScope>;
+
+export const ConfigDoc = z.object({
+  kind: ConfigDocKind,
+  scope: ConfigScope,
+  name: z.string(),
+  description: z.string().nullable(),
+  path: z.string(),
+});
+export type ConfigDoc = z.infer<typeof ConfigDoc>;
+
+export const TextDoc = z.object({ path: z.string(), content: z.string(), mtimeMs: z.number().nullable() });
+export type TextDoc = z.infer<typeof TextDoc>;
+
+export const McpServer = z.object({
+  name: z.string(),
+  target: z.string(),
+  status: z.enum(["connected", "failed", "needs_auth", "unknown"]),
+  statusText: z.string(),
+});
+export type McpServer = z.infer<typeof McpServer>;

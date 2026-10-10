@@ -175,9 +175,14 @@ function SessionThread({ sessionId, session, project }: { sessionId: string; ses
     getItemKey: (i) => items[i]!.key,
   });
 
+  // Follow new content only while pinned, and only when the content actually grew. Scrolling
+  // on every render fought the user: the virtualizer re-renders during a scroll before onScroll runs.
+  const lastHeight = useRef(0);
   useLayoutEffect(() => {
     const el = scrollRef.current;
-    if (el && pinned.current) el.scrollTop = el.scrollHeight;
+    if (!el) return;
+    if (pinned.current && el.scrollHeight > lastHeight.current) el.scrollTop = el.scrollHeight;
+    lastHeight.current = el.scrollHeight;
   });
 
   if (!buffer?.loaded) {
@@ -193,9 +198,12 @@ function SessionThread({ sessionId, session, project }: { sessionId: string; ses
       <div
         ref={scrollRef}
         className="min-h-0 flex-1 overflow-y-auto"
+        onWheel={(e) => {
+          if (e.deltaY < 0) pinned.current = false;
+        }}
         onScroll={(e) => {
           const el = e.currentTarget;
-          pinned.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+          pinned.current = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
         }}
       >
         <div className="relative mx-auto w-full max-w-4xl" style={{ height: virtualizer.getTotalSize() + 24 }}>

@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Bot, FolderKanban, GitPullRequest, History, Home, Plus, Server, Settings, Workflow } from "lucide-react";
+import { Blocks, Bot, FolderKanban, GitPullRequest, History, Home, Plus, Settings, Workflow } from "lucide-react";
 import { useDiagnostics, useProjects, useUsage } from "@/lib/queries";
 import { useUi, type View } from "@/stores/ui";
 import { cn, relativeTime } from "@/lib/utils";
@@ -12,7 +12,7 @@ const NAV: Array<{ view: View; label: string; icon: ReactNode }> = [
   { view: "sessions", label: "Sessions", icon: <History className="h-4 w-4" /> },
   { view: "github", label: "GitHub", icon: <GitPullRequest className="h-4 w-4" /> },
   { view: "agents", label: "Agenten", icon: <Bot className="h-4 w-4" /> },
-  { view: "mcp", label: "MCP Server", icon: <Server className="h-4 w-4" /> },
+  { view: "mcp", label: "Erweiterungen", icon: <Blocks className="h-4 w-4" /> },
   { view: "automations", label: "Automatisierungen", icon: <Workflow className="h-4 w-4" /> },
   { view: "settings", label: "Einstellungen", icon: <Settings className="h-4 w-4" /> },
 ];

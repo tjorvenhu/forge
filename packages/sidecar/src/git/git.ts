@@ -191,6 +191,28 @@ export class GitEngine {
     await this.ok(cwd, create ? ["switch", "-c", branch] : ["switch", branch]);
   }
 
+  async hasCommits(cwd: string): Promise<boolean> {
+    return (await this.exec(cwd, ["rev-parse", "--verify", "-q", "HEAD"])).code === 0;
+  }
+
+  /** First commit of a fresh repository so it can be pushed. */
+  async initialCommit(cwd: string, message: string) {
+    await this.ok(cwd, ["commit", "-q", "--allow-empty", "-F", "-"], message);
+  }
+
+  async identity(): Promise<{ name: string | null; email: string | null }> {
+    const get = async (key: string) => {
+      const r = await this.exec(process.cwd(), ["config", "--global", "--get", key]);
+      return r.code === 0 ? r.stdout.trim() || null : null;
+    };
+    return { name: await get("user.name"), email: await get("user.email") };
+  }
+
+  async setIdentity(name: string, email: string) {
+    await this.ok(process.cwd(), ["config", "--global", "user.name", name]);
+    await this.ok(process.cwd(), ["config", "--global", "user.email", email]);
+  }
+
   async init(cwd: string) {
     await this.ok(cwd, ["init", "-b", "main"]);
   }

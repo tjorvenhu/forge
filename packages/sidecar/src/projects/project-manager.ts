@@ -1,22 +1,17 @@
 import { randomUUID } from "node:crypto";
 import { constants, existsSync } from "node:fs";
-import { access, mkdir, open, readdir, readFile, stat, writeFile } from "node:fs/promises";
+import { access, mkdir, open, readdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";
-import { ForgeError, type Project, type ProjectTemplate, type ProjectWithStatus } from "@forge/protocol";
+import { ForgeError, type Project, type ProjectWithStatus } from "@forge/protocol";
 import type { Db, ProjectRecord } from "../persistence/db.js";
 import { repoNameFromUrl, validateCloneUrl, type GitEngine } from "../git/git.js";
 import { canonicalize, isInside, pathKey, validateDirName } from "../util/paths.js";
 import { detectTechnologies } from "./tech.js";
-import { claudeMdFor, gitignoreFor, readmeFor, starterFiles } from "./templates.js";
 
 export interface CreateProjectInput {
   name: string;
   parentDir: string;
   gitInit: boolean;
-  readme: boolean;
-  gitignore: boolean;
-  claudeMd: boolean;
-  template: ProjectTemplate;
 }
 
 const MAX_FILE_BYTES = 512 * 1024;
@@ -107,16 +102,8 @@ export class ProjectManager {
     if (existsSync(target)) throw new ForgeError("CONFLICT", `Ordner existiert bereits: ${target}`);
     if (this.db.findProjectByKey(pathKey(target))) throw new ForgeError("DUPLICATE_PROJECT", "Projekt ist bereits vorhanden.");
 
+    // Only an empty folder (plus git): the project structure is Claude's job, not a template's.
     await mkdir(target);
-    const files: Record<string, string> = { ...starterFiles(input.name, input.template) };
-    if (input.readme) files["README.md"] = readmeFor(input.name);
-    if (input.gitignore) files[".gitignore"] = gitignoreFor(input.template);
-    if (input.claudeMd) files["CLAUDE.md"] = claudeMdFor(input.name, input.template);
-    for (const [rel, content] of Object.entries(files)) {
-      const abs = path.join(target, rel);
-      await mkdir(path.dirname(abs), { recursive: true });
-      await writeFile(abs, content, { flag: "wx" });
-    }
     if (input.gitInit) await this.git.init(target);
     return this.import(target);
   }

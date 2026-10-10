@@ -1,8 +1,7 @@
 import { useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { FolderOpen, FolderPlus, GitBranch } from "lucide-react";
-import type { ProjectTemplate } from "@forge/protocol";
-import { call, keys, useSettings } from "@/lib/queries";
+import { call, keys, useGitHubAccount, useSettings } from "@/lib/queries";
 import { errorMessage, RpcCallError } from "@/lib/rpc";
 import { pickFolder } from "@/lib/native";
 import { useUi, type NewProjectMode } from "@/stores/ui";
@@ -10,16 +9,8 @@ import { toast } from "@/stores/toast";
 import { Dialog } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Field, Input } from "@/components/ui/input";
-import { Select } from "@/components/ui/select";
 import { Checkbox, ErrorBanner } from "@/components/ui/misc";
 import { TabBar } from "@/components/ui/tabs";
-
-const TEMPLATES: Array<{ value: ProjectTemplate; label: string; description: string }> = [
-  { value: "empty", label: "Leer", description: "Nur die ausgewählten Dateien" },
-  { value: "node-ts", label: "Node.js + TypeScript", description: "package.json, tsconfig.json, src/" },
-  { value: "python", label: "Python", description: "pyproject.toml, src/" },
-  { value: "rust", label: "Rust", description: "Cargo.toml, src/main.rs" },
-];
 
 export function NewProjectDialog() {
   const mode = useUi((s) => s.newProject);
@@ -31,8 +22,10 @@ export function NewProjectDialog() {
   const [path, setPath] = useState("");
   const [name, setName] = useState("");
   const [parent, setParent] = useState("");
-  const [template, setTemplate] = useState<ProjectTemplate>("empty");
-  const [opts, setOpts] = useState({ gitInit: true, readme: true, gitignore: true, claudeMd: true });
+  const [gitInit, setGitInit] = useState(true);
+  const [onGitHub, setOnGitHub] = useState(false);
+  const [ghPrivate, setGhPrivate] = useState(true);
+  const github = useGitHubAccount();
   const [url, setUrl] = useState("");
   const [dirName, setDirName] = useState("");
   const [busy, setBusy] = useState(false);
@@ -66,14 +59,18 @@ export function NewProjectDialog() {
     setError(null);
     setDuplicateId(null);
     try {
-      const project =
-        mode === "import"
-          ? await call("projects.import", { path })
-          : mode === "create"
-            ? await call("projects.create", { name, parentDir: parent, template, ...opts })
-            : await call("projects.clone", { url, parentDir: parent, dirName: dirName || undefined });
+      let project;
+      if (mode === "create") {
+        const r = await call("projects.create", { name, parentDir: parent, gitInit, github: onGitHub ? { private: ghPrivate } : null });
+        project = r.project;
+        if (r.github?.url) toast.success("Projekt angelegt und auf GitHub veröffentlicht", r.github.url);
+        else if (r.github?.error) toast.error("Projekt angelegt, GitHub-Repository fehlgeschlagen", r.github.error);
+        else toast.success("Projekt angelegt", project.path);
+      } else {
+        project = mode === "import" ? await call("projects.import", { path }) : await call("projects.clone", { url, parentDir: parent, dirName: dirName || undefined });
+        toast.success(mode === "import" ? "Projekt importiert" : "Repository geklont", project.path);
+      }
       await qc.invalidateQueries({ queryKey: keys.projects });
-      toast.success(mode === "import" ? "Projekt importiert" : mode === "create" ? "Projekt angelegt" : "Repository geklont", project.path);
       setBusy(false);
       close();
       openProject(project.id, null);
@@ -136,23 +133,33 @@ export function NewProjectDialog() {
             <Field label="Übergeordneter Ordner">
               <FolderInput value={parent} onChange={setParent} title="Übergeordneten Ordner wählen" />
             </Field>
-            <Field label="Vorlage">
-              <Select value={template} onChange={setTemplate} options={TEMPLATES} className="w-full" aria-label="Vorlage" />
-            </Field>
-            <div className="grid grid-cols-2 gap-2.5">
-              {(
-                [
-                  ["gitInit", "Git initialisieren"],
-                  ["readme", "README.md"],
-                  ["gitignore", ".gitignore"],
-                  ["claudeMd", "CLAUDE.md"],
-                ] as const
-              ).map(([k, label]) => (
-                <label key={k} className="flex items-center gap-2 text-[13px]">
-                  <Checkbox checked={opts[k]} onChange={(v) => setOpts({ ...opts, [k]: v })} label={label} />
-                  {label}
-                </label>
-              ))}
+            <p className="-mt-1 text-xs text-subtle">FORGE legt nur den Ordner an. Struktur, README und Konfiguration erstellt Claude in der ersten Session.</p>
+            <label className="flex items-center gap-2 text-[13px]">
+              <Checkbox checked={gitInit || onGitHub} onChange={setGitInit} disabled={onGitHub} label="Git initialisieren" />
+              Git initialisieren
+            </label>
+            <div className="rounded-lg border border-border p-3">
+              <label className="flex items-center gap-2 text-[13px]">
+                <Checkbox checked={onGitHub} onChange={setOnGitHub} disabled={!github.data} label="Repository auf GitHub anlegen" />
+                Repository auf GitHub anlegen
+              </label>
+              {github.data ? (
+                onGitHub && (
+                  <div className="mt-2.5 flex items-center gap-4 pl-6 text-[13px]">
+                    <label className="flex items-center gap-2">
+                      <input type="radio" name="gh-visibility" checked={ghPrivate} onChange={() => setGhPrivate(true)} className="accent-accent" /> Privat
+                    </label>
+                    <label className="flex items-center gap-2">
+                      <input type="radio" name="gh-visibility" checked={!ghPrivate} onChange={() => setGhPrivate(false)} className="accent-accent" /> Öffentlich
+                    </label>
+                    <span className="text-xs text-subtle">als {github.data.login}/{name.trim().replace(/\s+/g, "-") || "…"}</span>
+                  </div>
+                )
+              ) : (
+                <p className="mt-1.5 pl-6 text-xs text-subtle">
+                  Dafür zuerst unter <button className="text-accent underline" onClick={() => { close(); useUi.getState().setView("github"); }}>GitHub</button> anmelden.
+                </p>
+              )}
             </div>
           </>
         )}

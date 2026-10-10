@@ -4,6 +4,8 @@ import { AgentSdkRuntime, type ClaudeRuntime } from "./claude/runtime.js";
 import { GitEngine } from "./git/git.js";
 import { GitHubService } from "./github/github.js";
 import { ClaudeSetupService } from "./claude/setup.js";
+import { McpService } from "./config/mcp.js";
+import { locateClaude, sessionEnv } from "./claude/environment.js";
 import { Db } from "./persistence/db.js";
 import { ProjectManager } from "./projects/project-manager.js";
 import { createHandlers } from "./rpc/handlers.js";
@@ -31,7 +33,12 @@ export function createApp(opts: { dataDir: string; write: Writer; log?: (m: stri
     (payload) => emit({ event: "claude.setup", payload }),
     () => db.getSettings(),
   );
+  const mcp = new McpService(
+    () => locateClaude(db.getSettings().claudePath),
+    () => sessionEnv(db.getSettings().stripApiKey),
+  );
   const handlers = createHandlers({
+    mcp,
     github,
     claudeSetup,
     db,
