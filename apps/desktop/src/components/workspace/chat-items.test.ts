@@ -1,0 +1,97 @@
+import { describe, expect, it } from "vitest";
+import type { SessionEvent, SessionEventBody } from "@forge/protocol";
+import { buildChatItems, lastUserPrompt, toolSummary } from "./chat-items";
+import { useSessionEvents } from "@/stores/session-events";
+
+let seq = 0;
+const ev = (body: SessionEventBody, s = ++seq): SessionEvent => ({ seq: s, sessionId: "s1", ts: "2026-10-10T12:00:00.000Z", body });
+
+describe("buildChatItems", () => {
+  it("groups tool use, approval and result into one card and keeps message order", () => {
+    seq = 0;
+    const events = [
+      ev({ type: "user.message", text: "Bitte testen" }),
+      ev({ type: "assistant.text", messageId: "m1", index: 0, text: "Ich starte die Tests." }),
+      ev({ type: "tool.use", toolUseId: "t1", name: "Bash", input: { command: "pnpm test" }, parentToolUseId: null }),
+      ev({
+        type: "approval.request",
+        requestId: "r1",
+        toolUseId: "t1",
+        toolName: "Bash",
+        input: { command: "pnpm test" },
+        title: "Run pnpm test",
+        description: null,
+        reason: null,
+        allowSessionScope: true,
+        outsideProject: false,
+      }),
+      ev({ type: "approval.resolved", requestId: "r1", decision: "allow", scope: "once", source: "user", message: null }),
+      ev({ type: "tool.result", toolUseId: "t1", isError: false, content: { text: "12 passed", truncated: false } }),
+      ev({ type: "turn.result", subtype: "success", isError: false, durationMs: 1200, numTurns: 2, inputTokens: 10, outputTokens: 20, cacheReadTokens: 0, text: "ok" }),
+    ];
+    const items = buildChatItems(events, {});
+    expect(items.map((i) => i.kind)).toEqual(["user", "assistant", "tool", "result"]);
+    const tool = items[2];
+    expect(tool?.kind).toBe("tool");
+    if (tool?.kind === "tool") {
+      expect(tool.result?.content.text).toBe("12 passed");
+      expect(tool.approval?.resolved?.decision).toBe("allow");
+    }
+  });
+
+  it("shows streaming text until the final text for the same block arrives", () => {
+    seq = 0;
+    const base = [ev({ type: "user.message", text: "hi" })];
+    const streaming = { "m1:0": "Hal" };
+    expect(buildChatItems(base, streaming).at(-1)).toMatchObject({ kind: "assistant", text: "Hal", streaming: true });
+    const final = [...base, ev({ type: "assistant.text", messageId: "m1", index: 0, text: "Hallo" })];
+    const items = buildChatItems(final, streaming);
+    expect(items.filter((i) => i.kind === "assistant")).toHaveLength(1);
+    expect(items.at(-1)).toMatchObject({ text: "Hallo", streaming: false });
+  });
+
+  it("attaches policy blocks to the tool and marks superseded todo lists", () => {
+    seq = 0;
+    const todo = (status: string) => ({ todos: [{ content: "A", status, activeForm: "Mache A" }] });
+    const items = buildChatItems(
+      [
+        ev({ type: "tool.use", toolUseId: "t1", name: "TodoWrite", input: todo("in_progress"), parentToolUseId: null }),
+        ev({ type: "tool.use", toolUseId: "t2", name: "Bash", input: { command: "git push --force" }, parentToolUseId: null }),
+        ev({ type: "policy.blocked", toolUseId: "t2", toolName: "Bash", rule: "git-force-push", message: "Force-Push ist in FORGE gesperrt." }),
+        ev({ type: "tool.use", toolUseId: "t3", name: "TodoWrite", input: todo("completed"), parentToolUseId: null }),
+      ],
+      {},
+    );
+    const [first, bash, last] = items;
+    expect(first).toMatchObject({ kind: "tool", superseded: true });
+    expect(bash).toMatchObject({ kind: "tool", blocked: { rule: "git-force-push" } });
+    expect(last).toMatchObject({ kind: "tool", superseded: false, todos: [{ status: "completed" }] });
+  });
+
+  it("finds the last prompt for retry and summarizes tools", () => {
+    seq = 0;
+    expect(lastUserPrompt([ev({ type: "user.message", text: "eins" }), ev({ type: "user.message", text: "zwei" })])).toBe("zwei");
+    expect(toolSummary("Read", { file_path: "src/a.ts" })).toBe("src/a.ts");
+    expect(toolSummary("Grep", { pattern: "foo", path: "src" })).toBe("foo in src");
+  });
+});
+
+describe("session event store", () => {
+  it("merges history with live events, ignores duplicates and clears streaming on final text", () => {
+    const st = useSessionEvents.getState();
+    st.apply({ seq: 3, sessionId: "x", ts: "t", body: { type: "user.message", text: "live" } });
+    st.apply({ seq: 0, sessionId: "x", ts: "t", body: { type: "assistant.delta", messageId: "m", index: 0, text: "Hal" } });
+    st.apply({ seq: 0, sessionId: "x", ts: "t", body: { type: "assistant.delta", messageId: "m", index: 0, text: "lo" } });
+    expect(useSessionEvents.getState().buffers.x?.streaming["m:0"]).toBe("Hallo");
+    st.setHistory("x", [
+      { seq: 1, sessionId: "x", ts: "t", body: { type: "user.message", text: "a" } },
+      { seq: 2, sessionId: "x", ts: "t", body: { type: "user.message", text: "b" } },
+      { seq: 3, sessionId: "x", ts: "t", body: { type: "user.message", text: "live" } },
+    ]);
+    st.apply({ seq: 2, sessionId: "x", ts: "t", body: { type: "user.message", text: "dup" } });
+    st.apply({ seq: 4, sessionId: "x", ts: "t", body: { type: "assistant.text", messageId: "m", index: 0, text: "Hallo" } });
+    const b = useSessionEvents.getState().buffers.x!;
+    expect(b.events.map((e) => e.seq)).toEqual([1, 2, 3, 4]);
+    expect(b.streaming).toEqual({});
+  });
+});

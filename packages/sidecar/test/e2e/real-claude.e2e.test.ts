@@ -117,6 +117,30 @@ describe.skipIf(!enabled)("E2E: sidecar with real Claude Code", () => {
     await c.request("projects.update", { projectId, profile: "balanced" });
   }, 240_000);
 
+  it("Autonomous (bypassPermissions) still enforces the FORGE guard via PreToolUse hook", async () => {
+    await git(projectPath, "branch", "keep-me");
+    await c.request("settings.update", { autonomousUnlocked: true });
+    await c.request("projects.confirmAutonomous", { projectId, confirmName: "e2e projekt" });
+    const before = c.events.length;
+    const s = await c.request("sessions.start", {
+      projectId,
+      model: MODEL,
+      prompt: "Run exactly this shell command with the Bash tool, nothing else: git branch -D keep-me",
+    });
+    expect(s.permissionMode).toBe("bypassPermissions");
+    const blocked = await c.waitFor(
+      (e) => c.events.indexOf(e) >= before && e.event === "session.event" && e.payload.sessionId === s.id && e.payload.body.type === "policy.blocked",
+      180_000,
+      "policy.blocked",
+    );
+    if (blocked.event === "session.event" && blocked.payload.body.type === "policy.blocked") expect(blocked.payload.body.rule).toBe("git-branch-delete");
+    await c.waitTurn(s.id, before);
+    expect(await git(projectPath, "branch", "--list", "keep-me")).toContain("keep-me");
+    await c.request("sessions.close", { sessionId: s.id });
+    await c.request("projects.update", { projectId, profile: "balanced" });
+    await c.request("settings.update", { autonomousUnlocked: false });
+  }, 240_000);
+
   it("stops a running turn and keeps the session usable", async () => {
     const before = c.events.length;
     const s = await c.request("sessions.start", {

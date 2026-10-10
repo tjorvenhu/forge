@@ -1,0 +1,150 @@
+@import "tailwindcss";
+@import "@fontsource-variable/geist";
+@import "@fontsource-variable/geist-mono";
+
+/* Design tokens. Components use these via Tailwind classes (bg-surface, text-muted …), never raw colors. */
+@theme {
+  --color-bg: #0e0f12;
+  --color-sidebar: #121317;
+  --color-surface: #16171c;
+  --color-surface-2: #1c1d23;
+  --color-surface-3: #24252c;
+  --color-border: #2a2b33;
+  --color-border-strong: #383943;
+  --color-fg: #e8e8ec;
+  --color-muted: #9b9ca6;
+  --color-subtle: #6e6f7a;
+  --color-accent: #6e6bf7;
+  --color-accent-strong: #5b57ee;
+  --color-accent-soft: #6e6bf724;
+  --color-accent-fg: #ffffff;
+  --color-success: #3fb97a;
+  --color-success-soft: #3fb97a1f;
+  --color-warning: #d9a23b;
+  --color-warning-soft: #d9a23b1f;
+  --color-danger: #f0605a;
+  --color-danger-soft: #f0605a1f;
+  --color-diff-add: #3fb97a1a;
+  --color-diff-del: #f0605a1a;
+  --color-claude: #d97757;
+  --color-claude-soft: #d977571f;
+
+  --font-sans: "Geist Variable", "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "Geist Mono Variable", "Cascadia Code", "Consolas", ui-monospace, monospace;
+
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 12px;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--color-bg);
+  color: var(--color-fg);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+}
+
+::selection {
+  background: var(--color-accent-soft);
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border-strong) transparent;
+}
+
+.markdown p {
+  margin: 0 0 0.6em;
+}
+.markdown p:last-child {
+  margin-bottom: 0;
+}
+.markdown ul,
+.markdown ol {
+  margin: 0.4em 0 0.6em;
+  padding-left: 1.4em;
+}
+.markdown ul {
+  list-style: disc;
+}
+.markdown ol {
+  list-style: decimal;
+}
+.markdown code {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  background: var(--color-surface-3);
+  border-radius: var(--radius-sm);
+  padding: 1px 4px;
+}
+.markdown pre {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: 8px 12px;
+  overflow-x: auto;
+  margin: 0.5em 0;
+}
+.markdown pre code {
+  background: none;
+  padding: 0;
+}
+.markdown a {
+  color: var(--color-accent);
+  text-decoration: underline;
+}
+.markdown h1,
+.markdown h2,
+.markdown h3 {
+  font-weight: 600;
+  margin: 0.8em 0 0.4em;
+}
+.markdown h1 {
+  font-size: 1.25em;
+}
+.markdown h2 {
+  font-size: 1.15em;
+}
+.markdown table {
+  border-collapse: collapse;
+  margin: 0.5em 0;
+}
+.markdown th,
+.markdown td {
+  border: 1px solid var(--color-border);
+  padding: 4px 8px;
+}
+.markdown blockquote {
+  border-left: 3px solid var(--color-border-strong);
+  padding-left: 10px;
+  color: var(--color-muted);
+}
+
+@keyframes forge-pulse {
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+.animate-soft-pulse {
+  animation: forge-pulse 1.4s ease-in-out infinite;
+}

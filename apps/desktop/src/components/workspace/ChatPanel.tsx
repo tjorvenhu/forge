@@ -1,0 +1,321 @@
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useVirtualizer } from "@tanstack/react-virtual";
+import { AlertTriangle, ChevronDown, Clock, History, Info, MessageSquarePlus, Power, RotateCcw, ShieldAlert, Terminal } from "lucide-react";
+import type { ExternalSession, Project, Session } from "@forge/protocol";
+import { call, useSession, useSessionHistory, useSessions } from "@/lib/queries";
+import { errorMessage } from "@/lib/rpc";
+import { toast } from "@/stores/toast";
+import { clockTime, cn, formatDuration, formatTokens, relativeTime } from "@/lib/utils";
+import { useUi } from "@/stores/ui";
+import { Button } from "@/components/ui/button";
+import { DropdownMenu } from "@/components/ui/dropdown";
+import { Badge, EmptyState, Spinner } from "@/components/ui/misc";
+import { buildChatItems, lastUserPrompt, type ChatItem } from "./chat-items";
+import { Composer } from "./Composer";
+import { Markdown } from "./Markdown";
+import { ApprovalBlock, ToolCard } from "./ToolCard";
+import { SessionStatusBadge } from "./SessionStatusBadge";
+import { ClaudeMark } from "./ClaudeMark";
+
+/** activeSession values starting with this prefix point at a terminal session not yet adopted by FORGE */
+export const EXTERNAL_PREFIX = "ext:";
+
+export function ChatPanel({ project }: { project: Project }) {
+  const active = useUi((s) => s.activeSession[project.id] ?? null);
+  const setActive = useUi((s) => s.setActiveSession);
+  const sessions = useSessions(project.id);
+  const external = active?.startsWith(EXTERNAL_PREFIX) ? sessions.data?.external.find((e) => EXTERNAL_PREFIX + e.claudeSessionId === active) ?? null : null;
+  const sessionId = active && !active.startsWith(EXTERNAL_PREFIX) ? active : null;
+  const session = useSession(sessionId);
+
+  // First open of a project: pick the most recent session instead of an empty chat.
+  const didAutoSelect = useRef<string | null>(null);
+  useEffect(() => {
+    if (didAutoSelect.current === project.id || !sessions.data) return;
+    didAutoSelect.current = project.id;
+    const state = useUi.getState().activeSession;
+    if (!(project.id in state) && sessions.data.sessions[0]) setActive(project.id, sessions.data.sessions[0].id);
+  }, [project.id, sessions.data, setActive]);
+
+  return (
+    <div className="flex h-full min-h-0 flex-col">
+      <SessionBar
+        project={project}
+        session={session.data ?? null}
+        external={external}
+        sessions={sessions.data?.sessions ?? []}
+        externals={sessions.data?.external ?? []}
+        onSelect={(id) => setActive(project.id, id)}
+      />
+      {sessionId ? (
+        <SessionThread key={sessionId} sessionId={sessionId} session={session.data ?? null} project={project} />
+      ) : (
+        <NewSessionPane project={project} external={external} />
+      )}
+    </div>
+  );
+}
+
+function SessionBar({
+  project,
+  session,
+  external,
+  sessions,
+  externals,
+  onSelect,
+}: {
+  project: Project;
+  session: Session | null;
+  external: ExternalSession | null;
+  sessions: Session[];
+  externals: ExternalSession[];
+  onSelect: (id: string | null) => void;
+}) {
+  const title = session?.title ?? (external ? external.summary : "Neue Session");
+  return (
+    <div className="flex h-11 shrink-0 items-center gap-2 border-b border-border px-4">
+      <DropdownMenu
+        align="start"
+        header={sessions.length || externals.length ? "Sessions in diesem Projekt" : "Noch keine Sessions"}
+        trigger={
+          <button className="flex min-w-0 max-w-[420px] items-center gap-1.5 rounded-md px-2 py-1 text-[13px] hover:bg-surface-3" aria-label="Session wählen">
+            <History className="h-3.5 w-3.5 shrink-0 text-muted" />
+            <span className="truncate">{title}</span>
+            <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted" />
+          </button>
+        }
+        items={[
+          { label: "Neue Session", icon: <MessageSquarePlus className="h-3.5 w-3.5" />, onSelect: () => onSelect(null), hint: "Strg+N" },
+          ...sessions.slice(0, 30).map((s) => ({
+            label: s.title ?? "Ohne Titel",
+            hint: relativeTime(s.updatedAt),
+            icon: <span className={cn("h-1.5 w-1.5 rounded-full", s.live ? "bg-accent" : "bg-subtle")} />,
+            onSelect: () => onSelect(s.id),
+          })),
+          ...externals.slice(0, 15).map((e) => ({
+            label: e.summary,
+            hint: "Terminal",
+            icon: <Terminal className="h-3.5 w-3.5 text-muted" />,
+            onSelect: () => onSelect(EXTERNAL_PREFIX + e.claudeSessionId),
+          })),
+        ]}
+      />
+      {session && <SessionStatusBadge status={session.status} live={session.live} />}
+      {session?.permissionMode === "plan" && <Badge tone="accent">Nur planen</Badge>}
+      {session?.permissionMode === "bypassPermissions" && (
+        <Badge tone="danger">
+          <ShieldAlert className="h-3 w-3" /> Bypass
+        </Badge>
+      )}
+      <div className="flex-1" />
+      {session?.apiKeySource && session.apiKeySource !== "none" && (
+        <Badge tone="warning" className="max-w-56 truncate">
+          Auth: {session.apiKeySource}
+        </Badge>
+      )}
+      {session && session.cwd !== project.path && (
+        <Badge tone="warning" className="max-w-64 truncate">
+          cwd: {session.cwd}
+        </Badge>
+      )}
+      {session?.live && (session.status === "idle" || session.status === "error") && (
+        <Button
+          size="sm"
+          variant="ghost"
+          title="Claude-Prozess dieser Session beenden. Sie bleibt fortsetzbar."
+          onClick={() => call("sessions.close", { sessionId: session.id }).catch((e: unknown) => toast.error("Beenden fehlgeschlagen", errorMessage(e)))}
+        >
+          <Power className="h-3.5 w-3.5" /> Beenden
+        </Button>
+      )}
+      <Button size="sm" variant="ghost" onClick={() => onSelect(null)} title="Neue Session (Strg+N)">
+        <MessageSquarePlus className="h-3.5 w-3.5" /> Neu
+      </Button>
+    </div>
+  );
+}
+
+function NewSessionPane({ project, external }: { project: Project; external: ExternalSession | null }) {
+  return (
+    <>
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        {external ? (
+          <EmptyState icon={<Terminal className="h-9 w-9" />} title="Session aus dem Terminal fortsetzen">
+            „{external.summary}“, zuletzt {relativeTime(external.lastModified)}
+            {external.gitBranch ? ` auf ${external.gitBranch}` : ""}. Schreibe eine Nachricht, um sie in FORGE weiterzuführen. Der bisherige Verlauf wird übernommen.
+          </EmptyState>
+        ) : (
+          <EmptyState icon={<MessageSquarePlus className="h-9 w-9" />} title={`Neue Session in ${project.name}`}>
+            Claude Code arbeitet im Projektordner mit Profil {project.profile === "safe" ? "Safe" : project.profile === "balanced" ? "Balanced" : "Autonomous"}. CLAUDE.md und
+            die Projekt-Einstellungen aus .claude/ werden berücksichtigt.
+          </EmptyState>
+        )}
+      </div>
+      <Composer project={project} session={null} resumeClaudeSessionId={external?.claudeSessionId} />
+    </>
+  );
+}
+
+function SessionThread({ sessionId, session, project }: { sessionId: string; session: Session | null; project: Project }) {
+  const buffer = useSessionHistory(sessionId);
+  const items = useMemo(() => buildChatItems(buffer?.events ?? [], buffer?.streaming ?? {}), [buffer?.events, buffer?.streaming]);
+  const retryPrompt = useMemo(() => lastUserPrompt(buffer?.events ?? []), [buffer?.events]);
+  const lastEvent = buffer?.events.at(-1)?.body;
+  const working = session?.status === "running" || session?.status === "starting";
+  const thinking = working && (lastEvent?.type === "assistant.thinking" || lastEvent?.type === "user.message" || lastEvent?.type === "session.init" || lastEvent?.type === "status");
+  const [retryText, setRetryText] = useState<string | null>(null);
+
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const pinned = useRef(true);
+  const virtualizer = useVirtualizer({
+    count: items.length,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: () => 72,
+    overscan: 8,
+    getItemKey: (i) => items[i]!.key,
+  });
+
+  useLayoutEffect(() => {
+    const el = scrollRef.current;
+    if (el && pinned.current) el.scrollTop = el.scrollHeight;
+  });
+
+  if (!buffer?.loaded) {
+    return (
+      <div className="flex flex-1 items-center justify-center">
+        <Spinner />
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <div
+        ref={scrollRef}
+        className="min-h-0 flex-1 overflow-y-auto"
+        onScroll={(e) => {
+          const el = e.currentTarget;
+          pinned.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+        }}
+      >
+        <div className="relative mx-auto w-full max-w-4xl" style={{ height: virtualizer.getTotalSize() + 24 }}>
+          {virtualizer.getVirtualItems().map((v) => (
+            <div key={v.key} data-index={v.index} ref={virtualizer.measureElement} className="absolute left-0 right-0 px-6 pt-3" style={{ transform: `translateY(${v.start}px)` }}>
+              <ItemView
+                item={items[v.index]!}
+                sessionId={sessionId}
+                live={!!session?.live}
+                projectDir={session?.cwd ?? project.path}
+                onRetry={retryPrompt && !working ? () => setRetryText(retryPrompt) : undefined}
+              />
+            </div>
+          ))}
+        </div>
+        {thinking && (
+          <div className="mx-auto flex max-w-4xl items-center gap-2 px-6 pb-4 text-xs text-muted">
+            <span className="animate-soft-pulse h-2 w-2 rounded-full bg-accent" /> Claude denkt nach …
+          </div>
+        )}
+      </div>
+      <Composer project={project} session={session} prefill={retryText} onPrefillConsumed={() => setRetryText(null)} />
+    </>
+  );
+}
+
+function ItemView({ item, sessionId, live, projectDir, onRetry }: { item: ChatItem; sessionId: string; live: boolean; projectDir: string; onRetry?: () => void }) {
+  switch (item.kind) {
+    case "user":
+      return (
+        <div className="flex gap-3">
+          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-surface-3 text-xs font-semibold text-muted">Du</div>
+          <div className="min-w-0 flex-1 rounded-lg border border-border bg-surface-2 px-3.5 py-2.5">
+            <div className="whitespace-pre-wrap break-words text-[13.5px]">{item.text}</div>
+            <div className="mt-1 text-right text-[11px] text-subtle">{clockTime(item.ts)}</div>
+          </div>
+        </div>
+      );
+    case "assistant":
+      return (
+        <div className="flex gap-3">
+          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-claude-soft">
+            <ClaudeMark size={18} />
+          </div>
+          <div className="min-w-0 flex-1 pt-0.5">
+            <Markdown text={item.text} />
+            {item.streaming && <span className="animate-soft-pulse ml-0.5 inline-block h-3.5 w-1.5 translate-y-0.5 bg-accent" aria-label="schreibt" />}
+          </div>
+        </div>
+      );
+    case "tool":
+      return (
+        <div className="pl-10">
+          <ToolCard item={item} sessionId={sessionId} sessionLive={live} projectDir={projectDir} />
+        </div>
+      );
+    case "approval":
+      return (
+        <div className="overflow-hidden rounded-lg border border-warning/50 pl-0">
+          <ApprovalBlock req={item.req} resolved={item.resolved} sessionId={sessionId} projectDir={projectDir} />
+        </div>
+      );
+    case "blocked":
+      return (
+        <div className="ml-10 flex items-start gap-2 rounded-lg border border-danger/40 bg-danger-soft px-3 py-2 text-xs">
+          <ShieldAlert className="mt-0.5 h-3.5 w-3.5 text-danger" /> Von der FORGE-Policy blockiert ({item.body.toolName}): {item.body.message}
+        </div>
+      );
+    case "result":
+      return <ResultLine body={item.body} onRetry={onRetry} />;
+    case "error":
+      return (
+        <div className="ml-10 flex items-start gap-2 rounded-lg border border-danger/40 bg-danger-soft px-3 py-2 text-[13px]">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-danger" />
+          <div className="min-w-0 flex-1 break-words">{item.message}</div>
+          {item.retryable && onRetry && (
+            <Button size="sm" variant="outline" onClick={onRetry}>
+              <RotateCcw className="h-3.5 w-3.5" /> Erneut senden
+            </Button>
+          )}
+        </div>
+      );
+    case "notice":
+      return (
+        <div className={cn("ml-10 flex items-center gap-2 text-xs", item.tone === "warning" ? "text-warning" : "text-muted")}>
+          <Info className="h-3.5 w-3.5" /> {item.text}
+        </div>
+      );
+  }
+}
+
+function ResultLine({ body, onRetry }: { body: Extract<ChatItem, { kind: "result" }>["body"]; onRetry?: () => void }) {
+  const interrupted = body.isError && /interrupt|abgebrochen|aborted/i.test(`${body.subtype} ${body.text ?? ""}`);
+  return (
+    <div className="ml-10 flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-border/60 pt-2 text-[11px] text-subtle">
+      {body.isError ? (
+        interrupted ? (
+          <span className="text-warning">Gestoppt</span>
+        ) : (
+          <span className="text-danger">Fehlgeschlagen: {body.text ?? body.subtype}</span>
+        )
+      ) : (
+        <span className="text-success">Fertig</span>
+      )}
+      {body.durationMs !== null && (
+        <span className="flex items-center gap-1">
+          <Clock className="h-3 w-3" /> {formatDuration(body.durationMs)}
+        </span>
+      )}
+      {body.numTurns !== null && <span>{body.numTurns} Schritte</span>}
+      {(body.inputTokens !== null || body.outputTokens !== null) && (
+        <span title="Laut Claude Code gemeldete Tokens dieses Durchlaufs (ohne Cache-Lesezugriffe)">
+          Tokens: {formatTokens(body.inputTokens)} rein, {formatTokens(body.outputTokens)} raus
+        </span>
+      )}
+      {body.isError && !interrupted && onRetry && (
+        <Button size="sm" variant="ghost" onClick={onRetry}>
+          <RotateCcw className="h-3 w-3" /> Erneut senden
+        </Button>
+      )}
+    </div>
+  );
+}
