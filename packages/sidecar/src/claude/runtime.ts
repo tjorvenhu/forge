@@ -11,7 +11,8 @@ import {
   type SDKControlInitializeResponse,
   type SDKUserMessage,
 } from "@anthropic-ai/claude-agent-sdk";
-import type { Capability, ExternalSession, PermissionMode, PlanUsage } from "@forge/protocol";
+import type { Capability, ExternalSession, PermissionMode, PlanUsage, RewindResult, SlashCommand } from "@forge/protocol";
+import type { ContentBlock } from "./attachments.js";
 import { toPlanUsage } from "./usage.js";
 import { AsyncQueue } from "./async-queue.js";
 
@@ -24,7 +25,7 @@ export interface StartOptions {
   disallowedTools: string[];
   env: Record<string, string>;
   claudePath: string;
-  firstPrompt: string | null;
+  firstMessage: OutgoingMessage | null;
 }
 
 export interface ApprovalRequest {
@@ -51,8 +52,18 @@ export interface SessionSink {
   onEnd(error: Error | null): void;
 }
 
+/** A user turn: text plus optional content blocks (images, PDFs, files) and a client id for rewinding. */
+export interface OutgoingMessage {
+  text: string;
+  blocks: ContentBlock[];
+  uuid: string;
+}
+
 export interface RuntimeSession {
-  sendMessage(text: string): void;
+  sendMessage(msg: OutgoingMessage): void;
+  /** restores files to their state before the given user message (file checkpointing) */
+  rewindFiles(uuid: string, dryRun: boolean): Promise<RewindResult>;
+  supportedCommands(): Promise<SlashCommand[]>;
   /** stops the current turn; the session stays usable */
   interrupt(): Promise<void>;
   /** ends the session and its CLI process */
@@ -71,14 +82,17 @@ export interface ClaudeRuntime {
   sessionHistory(claudeSessionId: string, dir: string): Promise<unknown[]>;
   /** short-lived probe to read models/commands/account without sending a prompt */
   probe(opts: Pick<StartOptions, "cwd" | "env" | "claudePath">): Promise<SDKControlInitializeResponse>;
+  /** slash commands and skills available in a project (custom + those the headless CLI supports) */
+  commands(opts: Pick<StartOptions, "cwd" | "env" | "claudePath">): Promise<SlashCommand[]>;
   /** one-shot text completion without tools, e.g. commit messages */
   complete(prompt: string, opts: Pick<StartOptions, "cwd" | "env" | "claudePath"> & { model: string }): Promise<string>;
   /** plan rate-limit windows; uses an experimental SDK call, so callers must tolerate failure */
   planUsage(opts: Pick<StartOptions, "cwd" | "env" | "claudePath">): Promise<PlanUsage>;
 }
 
-function userMessage(text: string): SDKUserMessage {
-  return { type: "user", message: { role: "user", content: text }, parent_tool_use_id: null, session_id: "" } as SDKUserMessage;
+function userMessage(m: OutgoingMessage): SDKUserMessage {
+  const content = m.blocks.length ? [...m.blocks, { type: "text", text: m.text }] : m.text;
+  return { type: "user", message: { role: "user", content }, parent_tool_use_id: null, session_id: "", uuid: m.uuid } as SDKUserMessage;
 }
 
 export class AgentSdkRuntime implements ClaudeRuntime {
@@ -118,7 +132,7 @@ export class AgentSdkRuntime implements ClaudeRuntime {
 
   startSession(opts: StartOptions, sink: SessionSink): RuntimeSession {
     const input = new AsyncQueue<SDKUserMessage>();
-    if (opts.firstPrompt) input.push(userMessage(opts.firstPrompt));
+    if (opts.firstMessage) input.push(userMessage(opts.firstMessage));
 
     const canUseTool: CanUseTool = async (toolName, toolInput, o) => {
       const decision = await sink.onApproval(
@@ -168,6 +182,7 @@ export class AgentSdkRuntime implements ClaudeRuntime {
         resume: opts.resume ?? undefined,
         disallowedTools: opts.disallowedTools,
         includePartialMessages: true,
+        enableFileCheckpointing: true,
         settingSources: ["user", "project", "local"],
         pathToClaudeCodeExecutable: opts.claudePath,
         canUseTool,
@@ -186,7 +201,18 @@ export class AgentSdkRuntime implements ClaudeRuntime {
     })();
 
     return {
-      sendMessage: (text) => input.push(userMessage(text)),
+      sendMessage: (m) => input.push(userMessage(m)),
+      rewindFiles: async (uuid, dryRun) => {
+        const r = await q.rewindFiles(uuid, { dryRun });
+        return {
+          canRewind: r.canRewind,
+          error: r.error ?? null,
+          filesChanged: r.filesChanged ?? [],
+          insertions: r.insertions ?? 0,
+          deletions: r.deletions ?? 0,
+        };
+      },
+      supportedCommands: async () => (await q.supportedCommands()).map(toCommand),
       interrupt: async () => {
         await q.interrupt();
       },
@@ -219,6 +245,20 @@ export class AgentSdkRuntime implements ClaudeRuntime {
 
   async sessionHistory(claudeSessionId: string, dir: string): Promise<unknown[]> {
     return getSessionMessages(claudeSessionId, { dir });
+  }
+
+  async commands(opts: Pick<StartOptions, "cwd" | "env" | "claudePath">): Promise<SlashCommand[]> {
+    const input = new AsyncQueue<SDKUserMessage>();
+    const q = query({
+      prompt: input,
+      options: { cwd: opts.cwd, env: opts.env, pathToClaudeCodeExecutable: opts.claudePath, settingSources: ["user", "project", "local"], persistSession: false },
+    });
+    try {
+      return (await q.supportedCommands()).map(toCommand);
+    } finally {
+      input.end();
+      q.close();
+    }
   }
 
   async complete(prompt: string, opts: Pick<StartOptions, "cwd" | "env" | "claudePath"> & { model: string }): Promise<string> {
@@ -279,4 +319,8 @@ export class AgentSdkRuntime implements ClaudeRuntime {
       q.close();
     }
   }
+}
+
+function toCommand(c: { name: string; description: string; argumentHint?: string }): SlashCommand {
+  return { name: c.name, description: c.description ?? "", argumentHint: c.argumentHint ?? "" };
 }

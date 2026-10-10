@@ -27,6 +27,9 @@ class FakeRuntime implements ClaudeRuntime {
   async listSessions() {
     return [];
   }
+  async commands() {
+    return [];
+  }
   async complete(): Promise<never> {
     throw new Error("no completion in tests");
   }
@@ -46,7 +49,9 @@ class FakeRuntime implements ClaudeRuntime {
     this.started.push(opts);
     this.sinks.push(sink);
     return {
-      sendMessage: (t) => this.sent.push(t),
+      sendMessage: (m) => this.sent.push(m.text),
+      rewindFiles: async () => ({ canRewind: true, error: null, filesChanged: ["a.txt"], insertions: 1, deletions: 0 }),
+      supportedCommands: async () => [],
       interrupt: async () => {
         this.interrupted++;
         sink.onMessage({ type: "result", subtype: "error_during_execution", is_error: true, errors: ["interrupted"] });
@@ -97,7 +102,7 @@ const persistedTypes = (id: string) => db.listEvents(id).map((e) => e.body.type)
 describe("SessionService", () => {
   it("starts in the project cwd with the profile's permission mode and persists the stream", async () => {
     const s = await svc.start({ projectId, prompt: "Lies a.txt" });
-    expect(rt.started[0]).toMatchObject({ cwd: projects.get(projectId).path, permissionMode: "acceptEdits", firstPrompt: "Lies a.txt", resume: null });
+    expect(rt.started[0]).toMatchObject({ cwd: projects.get(projectId).path, permissionMode: "acceptEdits", firstMessage: expect.objectContaining({ text: "Lies a.txt" }), resume: null });
     expect(s.status).toBe("running");
     rt.replay();
     const after = svc.get(s.id);
@@ -185,7 +190,7 @@ describe("SessionService", () => {
     const svc2 = new SessionService(db, projects, new GitEngine(), rt, () => {});
     expect(svc2.get(s.id)).toMatchObject({ status: "interrupted", live: false });
     await svc2.resume(s.id, "weiter bitte");
-    expect(rt.started.at(-1)).toMatchObject({ resume: "d69118dc-ef0c-4925-9945-3091ab75cb15", cwd: s.cwd, firstPrompt: "weiter bitte" });
+    expect(rt.started.at(-1)).toMatchObject({ resume: "d69118dc-ef0c-4925-9945-3091ab75cb15", cwd: s.cwd, firstMessage: expect.objectContaining({ text: "weiter bitte" }) });
     svc2.shutdown();
   });
 

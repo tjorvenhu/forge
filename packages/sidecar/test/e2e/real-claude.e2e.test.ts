@@ -1,4 +1,5 @@
 import { existsSync, mkdirSync, readFileSync } from "node:fs";
+import { deflateSync } from "node:zlib";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { SessionEventBody } from "@forge/protocol";
@@ -152,6 +153,49 @@ describe.skipIf(!enabled)("E2E: sidecar with real Claude Code", () => {
     await c.request("settings.update", { autonomousUnlocked: false });
   }, 240_000);
 
+  it("sends an image attachment that Claude can see", async () => {
+    const before = c.events.length;
+    const s = await c.request("sessions.start", {
+      projectId,
+      model: MODEL,
+      prompt: "Welche Farbe hat das angehängte Bild? Antworte nur mit einem Wort.",
+      attachments: [{ kind: "data", name: "farbe.png", mediaType: "image/png", base64: solidPng(16, 16, [220, 20, 20]).toString("base64") }],
+    });
+    const result = await c.waitTurn(s.id, before);
+    expect(result).toMatchObject({ isError: false });
+    if (result?.type === "turn.result") expect(result.text ?? "").toMatch(/rot|red/i);
+    const stored = await c.request("sessions.events", { sessionId: s.id });
+    const um = stored.find((e) => e.body.type === "user.message")?.body;
+    expect(um).toMatchObject({ attachments: [{ name: "farbe.png", mediaType: "image/png" }] });
+    await c.request("sessions.close", { sessionId: s.id });
+  }, 240_000);
+
+  it("rewinds files Claude changed after a message (checkpointing)", async () => {
+    const before = c.events.length;
+    const s = await c.request("sessions.start", {
+      projectId,
+      model: MODEL,
+      prompt: "Create the file rewind-me.txt with the content 'temp' using the Write tool. Reply with one word.",
+    });
+    await c.waitTurn(s.id, before);
+    expect(existsSync(path.join(projectPath, "rewind-me.txt"))).toBe(true);
+    const stored = await c.request("sessions.events", { sessionId: s.id });
+    const uuid = stored.find((e) => e.body.type === "user.message" && e.body.uuid)?.body;
+    if (uuid?.type !== "user.message" || !uuid.uuid) throw new Error("no uuid");
+    const dry = await c.request("sessions.rewind", { sessionId: s.id, messageUuid: uuid.uuid, dryRun: true });
+    expect(dry.canRewind).toBe(true);
+    const r = await c.request("sessions.rewind", { sessionId: s.id, messageUuid: uuid.uuid, dryRun: false });
+    expect(r.canRewind).toBe(true);
+    expect(existsSync(path.join(projectPath, "rewind-me.txt"))).toBe(false);
+    await c.request("sessions.close", { sessionId: s.id });
+  }, 240_000);
+
+  it("lists slash commands for the project", async () => {
+    const cmds = await c.request("system.commands", { projectId });
+    expect(Array.isArray(cmds)).toBe(true);
+    console.log("[e2e] commands", cmds.length, cmds.slice(0, 8).map((x) => x.name).join(", "));
+  }, 60_000);
+
   it("stops a running turn and keeps the session usable", async () => {
     const before = c.events.length;
     const s = await c.request("sessions.start", {
@@ -194,3 +238,33 @@ describe.skipIf(!enabled)("E2E: sidecar with real Claude Code", () => {
     expect((await c.request("sessions.get", { sessionId })).cwd.toLowerCase()).toBe(projectPath.toLowerCase());
   }, 240_000);
 });
+
+/** Minimal uncompressed-filter PNG with one solid color, for the attachment test. */
+function solidPng(w: number, h: number, [r, g, b]: [number, number, number]): Buffer {
+  const crcTable = Array.from({ length: 256 }, (_, n) => {
+    let c = n;
+    for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+    return c >>> 0;
+  });
+  const crc = (buf: Buffer) => {
+    let c = 0xffffffff;
+    for (const byte of buf) c = crcTable[(c ^ byte) & 0xff]! ^ (c >>> 8);
+    return (c ^ 0xffffffff) >>> 0;
+  };
+  const chunk = (type: string, data: Buffer) => {
+    const len = Buffer.alloc(4);
+    len.writeUInt32BE(data.length);
+    const td = Buffer.concat([Buffer.from(type, "ascii"), data]);
+    const c = Buffer.alloc(4);
+    c.writeUInt32BE(crc(td));
+    return Buffer.concat([len, td, c]);
+  };
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(w, 0);
+  ihdr.writeUInt32BE(h, 4);
+  ihdr[8] = 8;
+  ihdr[9] = 2;
+  const row = Buffer.concat([Buffer.from([0]), Buffer.from(Array.from({ length: w }, () => [r, g, b]).flat())]);
+  const raw = Buffer.concat(Array.from({ length: h }, () => row));
+  return Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk("IHDR", ihdr), chunk("IDAT", deflateSync(raw)), chunk("IEND", Buffer.alloc(0))]);
+}

@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { AlertTriangle, ChevronDown, Clock, History, Info, MessageSquarePlus, Power, RotateCcw, ShieldAlert, Terminal } from "lucide-react";
-import type { ExternalSession, Project, Session } from "@forge/protocol";
+import { AlertTriangle, ChevronDown, Clock, FileText, History, ImageIcon, Info, MessageSquarePlus, Power, RotateCcw, ShieldAlert, Terminal, Undo2 } from "lucide-react";
+import type { ExternalSession, Project, RewindResult, Session } from "@forge/protocol";
 import { call, useSession, useSessionHistory, useSessions } from "@/lib/queries";
 import { errorMessage } from "@/lib/rpc";
 import { toast } from "@/stores/toast";
@@ -9,7 +9,8 @@ import { clockTime, cn, formatDuration, formatTokens, relativeTime } from "@/lib
 import { useUi } from "@/stores/ui";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu } from "@/components/ui/dropdown";
-import { Badge, EmptyState, Spinner } from "@/components/ui/misc";
+import { Badge, EmptyState, Spinner, Tooltip } from "@/components/ui/misc";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { buildChatItems, lastUserPrompt, type ChatItem } from "./chat-items";
 import { Composer } from "./Composer";
 import { Markdown } from "./Markdown";
@@ -233,15 +234,7 @@ function SessionThread({ sessionId, session, project }: { sessionId: string; ses
 function ItemView({ item, sessionId, live, projectDir, onRetry }: { item: ChatItem; sessionId: string; live: boolean; projectDir: string; onRetry?: () => void }) {
   switch (item.kind) {
     case "user":
-      return (
-        <div className="flex gap-3">
-          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-surface-3 text-xs font-semibold text-muted">Du</div>
-          <div className="flex w-fit min-w-0 max-w-full items-end gap-3 rounded-lg border border-border bg-surface-2 px-3 py-1.5">
-            <div className="min-w-0 whitespace-pre-wrap break-words text-[13.5px]">{item.text}</div>
-            <div className="shrink-0 pb-px text-[11px] text-subtle">{clockTime(item.ts)}</div>
-          </div>
-        </div>
-      );
+      return <UserMessage item={item} sessionId={sessionId} />;
     case "assistant":
       return (
         <div className="flex gap-3">
@@ -324,6 +317,81 @@ function ResultLine({ body, onRetry }: { body: Extract<ChatItem, { kind: "result
           <RotateCcw className="h-3 w-3" /> Erneut senden
         </Button>
       )}
+    </div>
+  );
+}
+
+function UserMessage({ item, sessionId }: { item: Extract<ChatItem, { kind: "user" }>; sessionId: string }) {
+  const [preview, setPreview] = useState<RewindResult | null>(null);
+  const [loading, setLoading] = useState(false);
+  const check = async () => {
+    if (!item.uuid) return;
+    setLoading(true);
+    try {
+      const r = await call("sessions.rewind", { sessionId, messageUuid: item.uuid, dryRun: true });
+      if (!r.canRewind) toast.info("Nichts zurückzusetzen", r.error ?? "Seit dieser Nachricht hat Claude keine Dateien geändert.");
+      else setPreview(r);
+    } catch (e) {
+      toast.error("Prüfung fehlgeschlagen", errorMessage(e));
+    } finally {
+      setLoading(false);
+    }
+  };
+  return (
+    <div className="group flex gap-3">
+      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-surface-3 text-xs font-semibold text-muted">Du</div>
+      <div className="flex min-w-0 max-w-full flex-col items-start gap-1.5">
+        {item.attachments.length > 0 && (
+          <div className="flex flex-wrap gap-1.5">
+            {item.attachments.map((a, i) => (
+              <span key={i} className="flex items-center gap-1.5 rounded-md border border-border bg-surface-2 px-2 py-1 text-[11px] text-muted">
+                {a.mediaType.startsWith("image/") ? <ImageIcon className="h-3.5 w-3.5" /> : <FileText className="h-3.5 w-3.5" />}
+                {a.name}
+              </span>
+            ))}
+          </div>
+        )}
+        <div className="flex w-fit min-w-0 max-w-full items-end gap-3 rounded-lg border border-border bg-surface-2 px-3 py-1.5">
+          <div className="min-w-0 whitespace-pre-wrap break-words text-[13.5px]">{item.text}</div>
+          <div className="shrink-0 pb-px text-[11px] text-subtle">{clockTime(item.ts)}</div>
+        </div>
+      </div>
+      {item.uuid && (
+        <Tooltip content="Dateien auf den Stand vor dieser Nachricht zurücksetzen">
+          <Button size="icon-sm" variant="ghost" className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100" onClick={() => void check()} loading={loading} aria-label="Dateien auf diesen Stand zurücksetzen">
+            {!loading && <Undo2 className="h-3.5 w-3.5" />}
+          </Button>
+        </Tooltip>
+      )}
+      <ConfirmDialog
+        open={!!preview}
+        onOpenChange={(o) => !o && setPreview(null)}
+        title="Dateien zurücksetzen?"
+        description="Alle Dateiänderungen, die Claude seit dieser Nachricht gemacht hat, werden rückgängig gemacht. Der Chatverlauf bleibt erhalten."
+        confirmLabel="Zurücksetzen"
+        danger
+        onConfirm={async () => {
+          if (!item.uuid) return;
+          try {
+            const r = await call("sessions.rewind", { sessionId, messageUuid: item.uuid, dryRun: false });
+            if (r.canRewind) toast.success("Zurückgesetzt", `${r.filesChanged.length} Datei(en)`);
+            else toast.error("Nicht zurückgesetzt", r.error ?? "");
+          } catch (e) {
+            toast.error("Nicht zurückgesetzt", errorMessage(e));
+          }
+        }}
+      >
+        <div className="text-xs text-muted">
+          +{preview?.insertions ?? 0} / -{preview?.deletions ?? 0} Zeilen
+        </div>
+        <ul className="mt-2 max-h-48 overflow-y-auto font-mono text-xs">
+          {preview?.filesChanged.map((f) => (
+            <li key={f} className="truncate py-0.5">
+              {f}
+            </li>
+          ))}
+        </ul>
+      </ConfirmDialog>
     </div>
   );
 }

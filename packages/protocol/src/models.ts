@@ -108,7 +108,18 @@ export const SessionEventBody = z.discriminatedUnion("type", [
     claudeCodeVersion: z.string().nullable(),
     apiKeySource: z.string().nullable(),
   }),
-  z.object({ type: z.literal("user.message"), text: z.string() }),
+  z.object({
+    type: z.literal("user.message"),
+    text: z.string(),
+    /** id passed to Claude Code; needed to rewind files to this point */
+    uuid: z.string().optional(),
+    attachments: z.array(z.object({ name: z.string(), mediaType: z.string(), size: z.number() })).optional(),
+  }),
+  z.object({
+    type: z.literal("files.rewound"),
+    toMessageUuid: z.string(),
+    filesChanged: z.array(z.string()),
+  }),
   z.object({
     type: z.literal("assistant.delta"),
     messageId: z.string(),
@@ -397,3 +408,29 @@ export const McpServer = z.object({
   statusText: z.string(),
 });
 export type McpServer = z.infer<typeof McpServer>;
+
+export const Attachment = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("path"), path: z.string().min(1).max(4096) }),
+  z.object({
+    kind: z.literal("data"),
+    name: z.string().min(1).max(260),
+    mediaType: z.string().max(100),
+    base64: z.string().max(15_000_000),
+  }),
+]);
+export type Attachment = z.infer<typeof Attachment>;
+
+export const AttachmentMeta = z.object({ name: z.string(), mediaType: z.string(), size: z.number() });
+export type AttachmentMeta = z.infer<typeof AttachmentMeta>;
+
+export const SlashCommand = z.object({ name: z.string(), description: z.string(), argumentHint: z.string() });
+export type SlashCommand = z.infer<typeof SlashCommand>;
+
+export const RewindResult = z.object({
+  canRewind: z.boolean(),
+  error: z.string().nullable(),
+  filesChanged: z.array(z.string()),
+  insertions: z.number(),
+  deletions: z.number(),
+});
+export type RewindResult = z.infer<typeof RewindResult>;

@@ -9,7 +9,7 @@ export interface TodoEntry {
 }
 
 export type ChatItem =
-  | { kind: "user"; key: string; text: string; ts: string }
+  | { kind: "user"; key: string; text: string; ts: string; uuid: string | null; attachments: Array<{ name: string; mediaType: string; size: number }> }
   | { kind: "assistant"; key: string; text: string; streaming: boolean; ts: string | null }
   | {
       kind: "tool";
@@ -56,7 +56,7 @@ export function buildChatItems(events: SessionEvent[], streaming: Record<string,
     const b = ev.body;
     switch (b.type) {
       case "user.message":
-        items.push({ kind: "user", key: `u${ev.seq}`, text: b.text, ts: ev.ts });
+        items.push({ kind: "user", key: `u${ev.seq}`, text: b.text, ts: ev.ts, uuid: b.uuid ?? null, attachments: b.attachments ?? [] });
         break;
       case "assistant.text": {
         const key = `${b.messageId}:${b.index}`;
@@ -113,6 +113,15 @@ export function buildChatItems(events: SessionEvent[], streaming: Record<string,
         else items.push({ kind: "blocked", key: `b${ev.seq}`, ts: ev.ts, body: b });
         break;
       }
+      case "files.rewound":
+        items.push({
+          kind: "notice",
+          key: `w${ev.seq}`,
+          ts: ev.ts,
+          text: b.filesChanged.length ? `Dateien zurückgesetzt: ${b.filesChanged.length} Datei(en)` : "Zurückgesetzt, keine Dateien geändert",
+          tone: "info",
+        });
+        break;
       case "turn.result":
         items.push({ kind: "result", key: `r${ev.seq}`, ts: ev.ts, body: b });
         break;
