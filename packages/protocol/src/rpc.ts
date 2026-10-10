@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { RpcErrorSchema } from "./errors.js";
 import {
+  Attachment,
   BranchInfo,
   ClaudeSetupState,
   CommitInfo,
@@ -23,10 +24,12 @@ import {
   Project,
   ProjectTag,
   ProjectWithStatus,
+  RewindResult,
   RuntimeInfo,
   Session,
   SessionEvent,
   Settings,
+  SlashCommand,
   TextDoc,
 } from "./models.js";
 
@@ -189,12 +192,15 @@ export const methods = {
       model: z.string().max(100).nullable().optional(),
       planOnly: z.boolean().optional(),
       resumeClaudeSessionId: z.string().max(100).optional(),
+      attachments: z.array(Attachment).max(10).default([]),
     }),
     result: Session,
   },
-  "sessions.send": { params: sessionRef.extend({ text: z.string().min(1).max(200_000) }), result: Session },
+  "sessions.send": { params: sessionRef.extend({ text: z.string().min(1).max(200_000), attachments: z.array(Attachment).max(10).default([]) }), result: Session },
+  "sessions.rewind": { params: sessionRef.extend({ messageUuid: z.string().max(100), dryRun: z.boolean().default(false) }), result: RewindResult },
+  "system.commands": { params: z.object({ projectId: id.optional() }), result: z.array(SlashCommand) },
   "sessions.resume": {
-    params: sessionRef.extend({ prompt: z.string().min(1).max(200_000) }),
+    params: sessionRef.extend({ prompt: z.string().min(1).max(200_000), attachments: z.array(Attachment).max(10).default([]) }),
     result: Session,
   },
   "sessions.stop": { params: sessionRef, result: Session },

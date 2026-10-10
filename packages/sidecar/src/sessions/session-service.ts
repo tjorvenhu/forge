@@ -3,6 +3,8 @@ import { existsSync } from "node:fs";
 import type { SDKControlInitializeResponse } from "@anthropic-ai/claude-agent-sdk";
 import {
   ForgeError,
+  type Attachment,
+  type SlashCommand,
   type ExternalSession,
   type PermissionMode,
   type PlanUsage,
@@ -12,7 +14,8 @@ import {
   type SessionEventBody,
   type SessionStatus,
 } from "@forge/protocol";
-import type { ApprovalDecision, ApprovalRequest, ClaudeRuntime, RuntimeSession, SessionSink } from "../claude/runtime.js";
+import type { ApprovalDecision, ApprovalRequest, ClaudeRuntime, OutgoingMessage, RuntimeSession, SessionSink } from "../claude/runtime.js";
+import { buildAttachmentBlocks } from "../claude/attachments.js";
 import { Normalizer } from "../claude/normalize.js";
 import { locateClaude, sessionEnv } from "../claude/environment.js";
 import type { Db, SessionRecord } from "../persistence/db.js";
@@ -176,12 +179,23 @@ export class SessionService {
     this.emit({ event: "session.event", payload: ev });
   }
 
+  /** Builds the outgoing turn (text + attachment blocks + id) and records it in the timeline. */
+  private async prepareTurn(sessionId: string, text: string, attachments: Attachment[]): Promise<OutgoingMessage> {
+    const { blocks, meta } = attachments.length ? await buildAttachmentBlocks(attachments) : { blocks: [], meta: [] };
+    const uuid = randomUUID();
+    this.record(sessionId, { type: "user.message", text, uuid, ...(meta.length ? { attachments: meta } : {}) });
+    return { text, blocks, uuid };
+  }
+
   async start(params: {
     projectId: string;
     prompt: string;
     model?: string | null;
     planOnly?: boolean;
     resumeClaudeSessionId?: string;
+    attachments?: Attachment[];
+    /** run in another directory of the project (git worktree) */
+    cwd?: string;
   }): Promise<Session> {
     const project = this.projects.requireExisting(params.projectId);
     const settings = this.db.getSettings();
@@ -199,7 +213,7 @@ export class SessionService {
       id: randomUUID(),
       projectId: project.id,
       claudeSessionId: params.resumeClaudeSessionId ?? null,
-      cwd: project.path,
+      cwd: params.cwd ?? project.path,
       title: titleFrom(params.prompt),
       model,
       profile: profile.id,
@@ -219,7 +233,13 @@ export class SessionService {
     const others = [...this.live.entries()].filter(
       ([id, l]) => l.projectDir === project.path && busy.includes(this.db.getSession(id)?.status ?? "stopped"),
     ).length;
-    this.record(rec.id, { type: "user.message", text: params.prompt });
+    let first: OutgoingMessage;
+    try {
+      first = await this.prepareTurn(rec.id, params.prompt, params.attachments ?? []);
+    } catch (e) {
+      this.db.updateSession(rec.id, { status: "error", lastError: e instanceof Error ? e.message : String(e) });
+      throw e;
+    }
     if (others > 0) {
       this.record(rec.id, {
         type: "status",
@@ -227,15 +247,15 @@ export class SessionService {
         detail: `Achtung: ${others} weitere Session(s) arbeiten gerade im selben Projektordner.`,
       });
     }
-    this.attach(rec, profile, claudePath, settings.stripApiKey, params.resumeClaudeSessionId ?? null, params.prompt);
+    this.attach(rec, profile, claudePath, settings.stripApiKey, params.resumeClaudeSessionId ?? null, first);
     return this.get(rec.id);
   }
 
   /** Continues a stored session (also after an app restart) with a new prompt. */
-  async resume(sessionId: string, prompt: string): Promise<Session> {
+  async resume(sessionId: string, prompt: string | null, attachments: Attachment[] = []): Promise<Session> {
     const rec = this.db.getSession(sessionId);
     if (!rec) throw new ForgeError("SESSION_NOT_FOUND", "Session nicht gefunden.");
-    if (this.live.has(sessionId)) return this.send(sessionId, prompt);
+    if (this.live.has(sessionId)) return prompt === null ? this.get(sessionId) : this.send(sessionId, prompt, attachments);
     if (!rec.claudeSessionId) {
       throw new ForgeError("CLAUDE_RUNTIME", "Diese Session hat keine Claude-Session-ID und kann nicht fortgesetzt werden.");
     }
@@ -249,11 +269,49 @@ export class SessionService {
     const claudePath = locateClaude(settings.claudePath);
     if (!claudePath) throw new ForgeError("CLAUDE_NOT_INSTALLED", "Claude Code CLI wurde nicht gefunden.");
     const permissionMode = rec.permissionMode === "plan" ? "plan" : profile.permissionMode;
+    const first = prompt === null ? null : await this.prepareTurn(sessionId, prompt, attachments);
     this.db.updateSession(sessionId, { status: "starting", lastError: null, permissionMode });
-    this.record(sessionId, { type: "user.message", text: prompt });
     // The session keeps its original cwd even if the project moved; path assignment stays stable.
-    this.attach({ ...rec, permissionMode, profile: profile.id }, profile, claudePath, settings.stripApiKey, rec.claudeSessionId, prompt);
+    this.attach({ ...rec, permissionMode, profile: profile.id }, profile, claudePath, settings.stripApiKey, rec.claudeSessionId, first);
     return this.get(sessionId);
+  }
+
+  /** Restores the files Claude changed after the given message (SDK file checkpointing). */
+  async rewind(sessionId: string, messageUuid: string, dryRun: boolean) {
+    if (!this.live.has(sessionId)) await this.resume(sessionId, null);
+    const live = this.live.get(sessionId);
+    if (!live) throw new ForgeError("SESSION_NOT_FOUND", "Session ist nicht aktiv.");
+    if (this.db.getSession(sessionId)?.status === "running") throw new ForgeError("SESSION_BUSY", "Erst stoppen, dann zurücksetzen.");
+    const r = await live.rt.rewindFiles(messageUuid, dryRun);
+    if (!dryRun && r.canRewind) this.record(sessionId, { type: "files.rewound", toMessageUuid: messageUuid, filesChanged: r.filesChanged });
+    if (!dryRun) {
+      const rec = this.db.getSession(sessionId);
+      if (rec) this.emit({ event: "project.updated", payload: { projectId: rec.projectId } });
+    }
+    return r;
+  }
+
+  private commandCache = new Map<string, { at: number; value: SlashCommand[] }>();
+
+  /** Slash commands for a project; from the live session when there is one, else a short probe. */
+  async commands(projectId: string | undefined): Promise<SlashCommand[]> {
+    const dir = projectId ? this.projects.requireExisting(projectId).path : process.cwd();
+    const liveOne = [...this.live.values()].find((l) => l.projectDir === dir);
+    if (liveOne) {
+      try {
+        return await liveOne.rt.supportedCommands();
+      } catch {
+        /* fall back to probe */
+      }
+    }
+    const cached = this.commandCache.get(dir);
+    if (cached && Date.now() - cached.at < 5 * 60_000) return cached.value;
+    const settings = this.db.getSettings();
+    const claudePath = locateClaude(settings.claudePath);
+    if (!claudePath) return [];
+    const value = await this.runtime.commands({ cwd: dir, env: sessionEnv(settings.stripApiKey), claudePath });
+    this.commandCache.set(dir, { at: Date.now(), value });
+    return value;
   }
 
   private attach(
@@ -262,7 +320,7 @@ export class SessionService {
     claudePath: string,
     stripApiKey: boolean,
     resume: string | null,
-    prompt: string,
+    first: OutgoingMessage | null,
   ) {
     const live: LiveSession = {
       rt: null as unknown as RuntimeSession,
@@ -284,7 +342,7 @@ export class SessionService {
           disallowedTools: profile.disallowedTools,
           env: sessionEnv(stripApiKey),
           claudePath,
-          firstPrompt: prompt,
+          firstMessage: first,
         },
         sink,
       );
@@ -295,7 +353,7 @@ export class SessionService {
       this.setStatus(rec.id, "error", msg, { lastError: msg });
       throw new ForgeError("CLAUDE_RUNTIME", msg);
     }
-    this.setStatus(rec.id, "running");
+    this.setStatus(rec.id, first ? "running" : "idle");
     live.rt
       .initialization()
       .then((init) => {
@@ -439,12 +497,11 @@ export class SessionService {
     return { ok: true };
   }
 
-  async send(sessionId: string, text: string): Promise<Session> {
+  async send(sessionId: string, text: string, attachments: Attachment[] = []): Promise<Session> {
     const live = this.live.get(sessionId);
-    if (!live) return this.resume(sessionId, text);
+    if (!live) return this.resume(sessionId, text, attachments);
     if (live.pending.size > 0) throw new ForgeError("SESSION_BUSY", "Erst die offene Freigabeanfrage beantworten.");
-    this.record(sessionId, { type: "user.message", text });
-    live.rt.sendMessage(text);
+    live.rt.sendMessage(await this.prepareTurn(sessionId, text, attachments));
     this.setStatus(sessionId, "running");
     return this.get(sessionId);
   }
