@@ -101,6 +101,12 @@ export function useServerEvents() {
             void qc.invalidateQueries({ queryKey: keys.runtimeInfo });
           }
           break;
+        case "workflow.updated":
+          void qc.invalidateQueries({ queryKey: ["workflows"] });
+          break;
+        case "schedules.updated":
+          void qc.invalidateQueries({ queryKey: ["schedules"] });
+          break;
         case "remote.updated":
           qc.setQueryData(["remote", e.payload.projectId], e.payload.state);
           break;

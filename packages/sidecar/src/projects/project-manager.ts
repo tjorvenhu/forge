@@ -6,7 +6,7 @@ import { ForgeError, type Project, type ProjectWithStatus } from "@forge/protoco
 import type { Db, ProjectRecord } from "../persistence/db.js";
 import { repoNameFromUrl, validateCloneUrl, type GitEngine } from "../git/git.js";
 import { canonicalize, isInside, pathKey, validateDirName } from "../util/paths.js";
-import { detectTechnologies } from "./tech.js";
+import { detectTechnologies, detectTestCommand } from "./tech.js";
 
 export interface CreateProjectInput {
   name: string;
@@ -72,7 +72,7 @@ export class ProjectManager {
     return canonical;
   }
 
-  async import(rawPath: string): Promise<Project> {
+  async import(rawPath: string, parentId: string | null = null): Promise<Project> {
     const canonical = await this.assertAccessibleDir(rawPath);
     const key = pathKey(canonical);
     const dup = this.db.findProjectByKey(key);
@@ -89,6 +89,8 @@ export class ProjectManager {
       defaultModel: null,
       createdAt: new Date().toISOString(),
       lastOpenedAt: new Date().toISOString(),
+      testCommand: await detectTestCommand(canonical),
+      parentId,
     };
     this.db.insertProject(rec, key);
     return this.withExists(rec);
@@ -121,9 +123,12 @@ export class ProjectManager {
     return this.import(target);
   }
 
-  update(id: string, patch: Partial<Pick<ProjectRecord, "name" | "favorite" | "tags" | "profile" | "defaultModel">>): Project {
+  update(id: string, patch: Partial<Pick<ProjectRecord, "name" | "favorite" | "tags" | "profile" | "defaultModel" | "testCommand">>): Project {
     const cur = this.get(id);
     // Switching to autonomous needs the separate confirmation flow.
+    if (patch.profile === "autonomous" && (cur.tags.includes("sandbox-only") || patch.tags?.includes("sandbox-only"))) {
+      throw new ForgeError("POLICY_DENIED", "Das Tag sandbox-only verbietet Autonomous in diesem Projekt.");
+    }
     if (patch.profile === "autonomous" && !cur.autonomousConfirmed) {
       throw new ForgeError("PROFILE_LOCKED", "Autonomous muss für dieses Projekt erst bestätigt werden.");
     }

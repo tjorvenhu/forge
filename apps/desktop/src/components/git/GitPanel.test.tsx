@@ -32,6 +32,8 @@ const project: Project = {
   defaultModel: null,
   createdAt: "2026-10-10T00:00:00Z",
   lastOpenedAt: null,
+  testCommand: null,
+  parentId: null,
   exists: true,
 };
 

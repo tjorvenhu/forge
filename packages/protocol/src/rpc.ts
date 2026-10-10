@@ -30,9 +30,12 @@ import {
   RuntimeInfo,
   Session,
   SessionEvent,
+  Schedule,
   Settings,
   SlashCommand,
   TextDoc,
+  WorkflowOptions,
+  WorkflowRun,
 } from "./models.js";
 
 const id = z.string().min(1).max(100);
@@ -126,6 +129,23 @@ export const methods = {
     result: z.object({ ok: z.boolean(), output: z.string() }),
   },
 
+  "workflows.list": { params: z.object({ projectId: id.optional() }), result: z.array(WorkflowRun) },
+  "workflows.start": {
+    params: z.object({ projectId: id, title: z.string().min(1).max(200), requirement: z.string().min(1).max(20_000), branch: z.string().max(200).optional(), options: WorkflowOptions }),
+    result: WorkflowRun,
+  },
+  "workflows.approvePlan": { params: z.object({ id, approve: z.boolean(), feedback: z.string().max(5000).optional() }), result: WorkflowRun },
+  "workflows.continue": { params: z.object({ id }), result: WorkflowRun },
+  "workflows.fixTests": { params: z.object({ id }), result: WorkflowRun },
+  "workflows.cancel": { params: z.object({ id }), result: WorkflowRun },
+  "schedules.list": { params: z.object({ projectId: id.optional() }), result: z.array(Schedule) },
+  "schedules.save": { params: Schedule.omit({ id: true, lastRunAt: true, lastSessionId: true, createdAt: true }).extend({ id: id.optional() }), result: Schedule },
+  "schedules.remove": { params: z.object({ id }), result: z.object({ ok: z.boolean() }) },
+  "schedules.runNow": { params: z.object({ id }), result: Schedule },
+  "worktrees.create": { params: projectRef.extend({ branch: z.string().min(1).max(200) }), result: Project },
+  "worktrees.remove": { params: projectRef.extend({ force: z.boolean().default(false) }), result: z.object({ ok: z.boolean() }) },
+  "sessions.summarize": { params: sessionRef, result: z.object({ summary: z.string(), model: z.string() }) },
+
   "settings.get": { params: empty, result: Settings },
   "settings.update": { params: Settings.partial(), result: Settings },
 
@@ -157,6 +177,7 @@ export const methods = {
       tags: z.array(ProjectTag).max(30).optional(),
       profile: ProfileId.optional(),
       defaultModel: z.string().max(100).nullable().optional(),
+      testCommand: z.string().max(500).nullable().optional(),
     }),
     result: Project,
   },
@@ -288,6 +309,8 @@ export type ServerEvent =
   | { event: "github.login"; payload: GitHubLoginState }
   | { event: "claude.setup"; payload: ClaudeSetupState }
   | { event: "remote.updated"; payload: { projectId: string; state: RemoteState } }
+  | { event: "workflow.updated"; payload: WorkflowRun }
+  | { event: "schedules.updated"; payload: Record<string, never> }
   | { event: "sidecar.ready"; payload: { version: string } }
   | { event: "log"; payload: { level: "info" | "warn" | "error"; message: string } };
 

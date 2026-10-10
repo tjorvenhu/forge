@@ -52,3 +52,28 @@ export async function detectTechnologies(dir: string): Promise<string[]> {
   if (has("CLAUDE.md") || has(".claude")) tech.add("Claude");
   return [...tech];
 }
+
+/** Suggests a test command from marker files; null when nothing obvious exists. */
+export async function detectTestCommand(dir: string): Promise<string | null> {
+  let entries: string[];
+  try {
+    entries = await readdir(dir);
+  } catch {
+    return null;
+  }
+  if (entries.includes("package.json")) {
+    try {
+      const pkg = JSON.parse(await readFile(path.join(dir, "package.json"), "utf8")) as { scripts?: Record<string, string> };
+      if (pkg.scripts?.test && !/no test specified/.test(pkg.scripts.test)) {
+        const pm = entries.includes("pnpm-lock.yaml") ? "pnpm" : entries.includes("yarn.lock") ? "yarn" : entries.includes("bun.lockb") ? "bun" : "npm";
+        return `${pm} test`;
+      }
+    } catch {
+      /* invalid package.json */
+    }
+  }
+  if (entries.includes("Cargo.toml")) return "cargo test";
+  if (entries.includes("go.mod")) return "go test ./...";
+  if (entries.includes("pyproject.toml") || entries.includes("pytest.ini")) return "pytest";
+  return null;
+}

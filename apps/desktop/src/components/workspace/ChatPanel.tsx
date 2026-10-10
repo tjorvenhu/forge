@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { AlertTriangle, ChevronDown, Clock, FileText, History, ImageIcon, Info, MessageSquarePlus, Power, RotateCcw, ShieldAlert, Terminal, Undo2 } from "lucide-react";
+import { AlertTriangle, CheckCircle2, ChevronDown, Clock, FileText, History, ImageIcon, Info, MessageSquarePlus, Power, RotateCcw, ShieldAlert, Terminal, Undo2, XCircle } from "lucide-react";
 import type { ExternalSession, Project, RewindResult, Session } from "@forge/protocol";
 import { call, useSession, useSessionHistory, useSessions } from "@/lib/queries";
 import { errorMessage } from "@/lib/rpc";
@@ -17,6 +17,7 @@ import { Markdown } from "./Markdown";
 import { ApprovalBlock, ToolCard } from "./ToolCard";
 import { SessionStatusBadge } from "./SessionStatusBadge";
 import { ClaudeMark } from "./ClaudeMark";
+import { SummaryButton } from "./SummaryButton";
 
 /** activeSession values starting with this prefix point at a terminal session not yet adopted by FORGE */
 export const EXTERNAL_PREFIX = "ext:";
@@ -119,6 +120,7 @@ function SessionBar({
           cwd: {session.cwd}
         </Badge>
       )}
+      {session && <SummaryButton sessionId={session.id} title={session.title} size="icon-sm" />}
       {session?.live && (session.status === "idle" || session.status === "error") && (
         <Button
           size="sm"
@@ -281,11 +283,35 @@ function ItemView({ item, sessionId, live, projectDir, onRetry }: { item: ChatIt
       );
     case "notice":
       return (
-        <div className={cn("ml-10 flex items-center gap-2 text-xs", item.tone === "warning" ? "text-warning" : "text-muted")}>
-          <Info className="h-3.5 w-3.5" /> {item.text}
+        <div
+          className={cn(
+            "ml-10 flex items-center gap-2 text-xs",
+            item.tone === "warning" ? "text-warning" : item.tone === "danger" ? "text-danger" : item.tone === "success" ? "text-success" : "text-muted",
+          )}
+        >
+          <Info className="h-3.5 w-3.5 shrink-0" /> <span className="min-w-0 break-words">{item.text}</span>
         </div>
       );
+    case "check":
+      return <CheckCard body={item.body} />;
   }
+}
+
+function CheckCard({ body }: { body: Extract<ChatItem, { kind: "check" }>["body"] }) {
+  const [open, setOpen] = useState(!body.ok);
+  return (
+    <div className={cn("ml-10 rounded-lg border bg-surface", body.ok ? "border-success/30" : "border-danger/40")}>
+      <button className="flex w-full items-center gap-2 px-3 py-2 text-left text-[13px]" onClick={() => setOpen(!open)} aria-expanded={open}>
+        {body.ok ? <CheckCircle2 className="h-4 w-4 text-success" /> : <XCircle className="h-4 w-4 text-danger" />}
+        <span className="font-medium">{body.ok ? "Tests grün" : "Tests fehlgeschlagen"}</span>
+        <span className="min-w-0 flex-1 truncate font-mono text-xs text-muted">{body.command}</span>
+        <span className="text-[11px] text-subtle">{formatDuration(body.durationMs)}</span>
+      </button>
+      {open && body.output && (
+        <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-all border-t border-border bg-bg p-2 font-mono text-[11px] text-muted">{body.output}</pre>
+      )}
+    </div>
+  );
 }
 
 function ResultLine({ body, onRetry }: { body: Extract<ChatItem, { kind: "result" }>["body"]; onRetry?: () => void }) {

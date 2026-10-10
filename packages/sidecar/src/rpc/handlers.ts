@@ -8,6 +8,9 @@ import type { GitHubService } from "../github/github.js";
 import type { ClaudeSetupService } from "../claude/setup.js";
 import type { McpService } from "../config/mcp.js";
 import type { RemoteService } from "../remote/remote.js";
+import type { WorkflowService } from "../automation/workflows.js";
+import type { ScheduleService } from "../automation/schedules.js";
+import type { WorktreeService } from "../automation/worktrees.js";
 import * as cfg from "../config/claude-config.js";
 import os from "node:os";
 
@@ -21,6 +24,9 @@ export interface Services {
   claudeSetup: ClaudeSetupService;
   mcp: McpService;
   remote: RemoteService;
+  workflows: WorkflowService;
+  schedules: ScheduleService;
+  worktrees: WorktreeService;
   notifyProject: (projectId: string) => void;
 }
 
@@ -110,6 +116,26 @@ export function createHandlers(s: Services): Handlers {
     "mcp.list": ({ projectId }) => s.mcp.list(dirOf(projectId) ?? os.homedir()),
     "mcp.add": ({ projectId, ...input }) => s.mcp.add(dirOf(projectId) ?? os.homedir(), input),
     "mcp.remove": ({ projectId, name, scope }) => s.mcp.remove(dirOf(projectId) ?? os.homedir(), name, scope),
+
+    "workflows.list": ({ projectId }) => s.workflows.list(projectId),
+    "workflows.start": (p) => s.workflows.start(p),
+    "workflows.approvePlan": ({ id, approve, feedback }) => s.workflows.approvePlan(id, approve, feedback),
+    "workflows.continue": ({ id }) => s.workflows.continueReview(id),
+    "workflows.fixTests": ({ id }) => s.workflows.fixTests(id),
+    "workflows.cancel": ({ id }) => s.workflows.cancel(id),
+    "schedules.list": ({ projectId }) => s.schedules.list(projectId),
+    "schedules.save": (p) => s.schedules.save(p),
+    "schedules.remove": ({ id }) => {
+      s.schedules.remove(id);
+      return { ok: true };
+    },
+    "schedules.runNow": ({ id }) => s.schedules.runNow(id),
+    "worktrees.create": ({ projectId, branch }) => s.worktrees.create(s.projects.requireExisting(projectId), branch),
+    "worktrees.remove": async ({ projectId, force }) => {
+      await s.worktrees.remove(s.projects.get(projectId), force);
+      return { ok: true };
+    },
+    "sessions.summarize": ({ sessionId }) => s.sessions.summarize(sessionId),
 
     "settings.get": () => s.db.getSettings(),
     "settings.update": (patch) => {

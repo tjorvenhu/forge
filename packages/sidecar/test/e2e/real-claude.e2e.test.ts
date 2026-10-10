@@ -190,6 +190,12 @@ describe.skipIf(!enabled)("E2E: sidecar with real Claude Code", () => {
     await c.request("sessions.close", { sessionId: s.id });
   }, 240_000);
 
+  it("summarizes a session from its recorded transcript", async () => {
+    const r = await c.request("sessions.summarize", { sessionId });
+    expect(r.summary.length).toBeGreaterThan(20);
+    expect(r.summary).toMatch(/hello\.txt/i);
+  }, 120_000);
+
   it("lists slash commands for the project", async () => {
     const cmds = await c.request("system.commands", { projectId });
     expect(Array.isArray(cmds)).toBe(true);

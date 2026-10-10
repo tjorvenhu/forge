@@ -37,6 +37,10 @@ export const Project = z.object({
   defaultModel: z.string().nullable(),
   createdAt: z.string(),
   lastOpenedAt: z.string().nullable(),
+  /** command run by the auto-test tag and the feature workflow, e.g. "pnpm test" */
+  testCommand: z.string().nullable(),
+  /** set for git worktrees: the project they belong to */
+  parentId: z.string().nullable(),
   /** false when the folder no longer exists on disk */
   exists: z.boolean(),
 });
@@ -114,6 +118,28 @@ export const SessionEventBody = z.discriminatedUnion("type", [
     /** id passed to Claude Code; needed to rewind files to this point */
     uuid: z.string().optional(),
     attachments: z.array(z.object({ name: z.string(), mediaType: z.string(), size: z.number() })).optional(),
+  }),
+  z.object({
+    type: z.literal("check.result"),
+    command: z.string(),
+    ok: z.boolean(),
+    exitCode: z.number().nullable(),
+    durationMs: z.number(),
+    output: z.string(),
+  }),
+  z.object({
+    type: z.literal("git.checkpoint"),
+    head: z.string().nullable(),
+    branch: z.string().nullable(),
+    changedFiles: z.number(),
+  }),
+  z.object({
+    type: z.literal("automation"),
+    action: z.enum(["commit", "push", "skip"]),
+    ok: z.boolean(),
+    message: z.string(),
+    hash: z.string().nullable(),
+    files: z.array(z.string()),
   }),
   z.object({
     type: z.literal("files.rewound"),
@@ -456,3 +482,61 @@ export const PullRequest = z.object({
   checks: z.object({ total: z.number(), failed: z.number(), pending: z.number() }),
 });
 export type PullRequest = z.infer<typeof PullRequest>;
+
+export const WorkflowStepId = z.enum(["branch", "plan", "approve", "implement", "test", "review", "commit", "push", "pr"]);
+export type WorkflowStepId = z.infer<typeof WorkflowStepId>;
+
+export const WorkflowStepState = z.object({
+  step: WorkflowStepId,
+  status: z.enum(["pending", "running", "waiting", "done", "skipped", "failed"]),
+  message: z.string().nullable(),
+  at: z.string().nullable(),
+});
+export type WorkflowStepState = z.infer<typeof WorkflowStepState>;
+
+export const WorkflowOptions = z.object({
+  useWorktree: z.boolean(),
+  approvePlan: z.boolean(),
+  runTests: z.boolean(),
+  review: z.boolean(),
+  push: z.boolean(),
+  createPr: z.boolean(),
+  draftPr: z.boolean(),
+});
+export type WorkflowOptions = z.infer<typeof WorkflowOptions>;
+
+export const WorkflowRun = z.object({
+  id: z.string(),
+  projectId: z.string(),
+  workProjectId: z.string().nullable(),
+  title: z.string(),
+  requirement: z.string(),
+  options: WorkflowOptions,
+  status: z.enum(["running", "waiting", "failed", "done", "cancelled"]),
+  step: WorkflowStepId,
+  steps: z.array(WorkflowStepState),
+  branch: z.string().nullable(),
+  sessionId: z.string().nullable(),
+  prUrl: z.string().nullable(),
+  error: z.string().nullable(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+export type WorkflowRun = z.infer<typeof WorkflowRun>;
+
+export const Schedule = z.object({
+  id: z.string(),
+  projectId: z.string(),
+  name: z.string(),
+  prompt: z.string(),
+  /** local time HH:MM */
+  time: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/),
+  /** 1 = Monday … 7 = Sunday */
+  weekdays: z.array(z.number().int().min(1).max(7)).min(1),
+  planOnly: z.boolean(),
+  enabled: z.boolean(),
+  lastRunAt: z.string().nullable(),
+  lastSessionId: z.string().nullable(),
+  createdAt: z.string(),
+});
+export type Schedule = z.infer<typeof Schedule>;

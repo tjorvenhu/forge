@@ -14,7 +14,9 @@ import { ProjectsView } from "@/views/ProjectsView";
 import { SessionsView } from "@/views/SessionsView";
 import { SettingsView } from "@/views/SettingsView";
 import { WorkspaceView } from "@/views/WorkspaceView";
-import { AgentsView, AutomationsView, GitHubView } from "@/views/IntegrationViews";
+import { GitHubView } from "@/views/GitHubView";
+import { AgentsView } from "@/views/AgentsView";
+import { AutomationsView } from "@/views/AutomationsView";
 import { ExtensionsView } from "@/views/ExtensionsView";
 import { useGlobalShortcuts } from "@/lib/shortcuts";
 

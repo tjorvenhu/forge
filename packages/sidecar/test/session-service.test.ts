@@ -8,7 +8,8 @@ import { GitEngine } from "../src/git/git.js";
 import { Db } from "../src/persistence/db.js";
 import { ProjectManager } from "../src/projects/project-manager.js";
 import { SessionService } from "../src/sessions/session-service.js";
-import { tempDir } from "./helpers.js";
+import { git, initRepo, tempDir } from "./helpers.js";
+import { writeFileSync } from "node:fs";
 
 const fixture = readFileSync(path.join(import.meta.dirname, "fixtures", "stream-read-tool.jsonl"), "utf8")
   .trim()
@@ -30,8 +31,8 @@ class FakeRuntime implements ClaudeRuntime {
   async commands() {
     return [];
   }
-  async complete(): Promise<never> {
-    throw new Error("no completion in tests");
+  async complete() {
+    return "feat: neue Datei";
   }
   async planUsage(): Promise<never> {
     throw new Error("no usage in tests");
@@ -210,5 +211,47 @@ describe("SessionService", () => {
     });
     const ev = db.listEvents(s.id).find((e) => e.body.type === "tool.result");
     expect(JSON.stringify(ev)).not.toContain("ghp_abc");
+  });
+});
+
+describe("turn automation via project tags", () => {
+  it("runs tests, commits only files changed during the turn and records a checkpoint", async () => {
+    const repo = projects.get(projectId).path;
+    await initRepo(repo);
+    writeFileSync(path.join(repo, "alt.txt"), "fremd\n");
+    await git(repo, "add", ".");
+    await git(repo, "commit", "-m", "init", "--allow-empty");
+    writeFileSync(path.join(repo, "fremd.txt"), "war schon vorher geändert\n");
+    projects.update(projectId, { tags: ["auto-test", "auto-commit"], testCommand: "node -e \"process.exit(0)\"" });
+
+    const s = await svc.start({ projectId, prompt: "mach was" });
+    writeFileSync(path.join(repo, "neu.txt"), "von Claude\n");
+    const done = svc.waitForTurn(s.id);
+    rt.sinks[0]!.onMessage({ type: "result", subtype: "success", is_error: false, result: "ok", usage: {} });
+    expect(await done).toBeNull();
+
+    const types = db.listEvents(s.id).map((e) => e.body);
+    expect(types.find((b) => b.type === "git.checkpoint")).toBeTruthy();
+    expect(types.find((b) => b.type === "check.result")).toMatchObject({ ok: true });
+    expect(types.find((b) => b.type === "automation")).toMatchObject({ action: "commit", ok: true, files: ["neu.txt"] });
+    const log = await git(repo, "log", "--format=%s", "-1");
+    expect(log.trim()).toBe("feat: neue Datei");
+    const st = await git(repo, "status", "--porcelain");
+    expect(st).toContain("fremd.txt");
+  });
+
+  it("does not auto-commit when tests fail or review is required", async () => {
+    const repo = projects.get(projectId).path;
+    await initRepo(repo);
+    await git(repo, "commit", "-m", "init", "--allow-empty");
+    projects.update(projectId, { tags: ["auto-test", "auto-commit"], testCommand: "node -e \"process.exit(3)\"" });
+    const s = await svc.start({ projectId, prompt: "x" });
+    writeFileSync(path.join(repo, "a.txt"), "a\n");
+    const done = svc.waitForTurn(s.id);
+    rt.sinks[0]!.onMessage({ type: "result", subtype: "success", is_error: false, result: "ok", usage: {} });
+    await done;
+    const bodies = db.listEvents(s.id).map((e) => e.body);
+    expect(bodies.find((b) => b.type === "check.result")).toMatchObject({ ok: false, exitCode: 3 });
+    expect(bodies.find((b) => b.type === "automation")).toMatchObject({ action: "skip", ok: false });
   });
 });

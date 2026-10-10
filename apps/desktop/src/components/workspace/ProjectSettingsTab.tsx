@@ -16,7 +16,16 @@ import { RemoveProjectDialog } from "@/components/projects/RemoveProjectDialog";
 import { MemoryEditor } from "@/components/settings/MemoryEditor";
 
 /** Phase 1 knows these tags; their automated behaviour arrives in phase 2. */
-const SUGGESTED_TAGS = ["plan-first", "auto-test", "review-required", "auto-commit", "auto-push", "sandbox-only", "no-network"];
+/** Tags with behaviour in FORGE (sessions, automation, policy). */
+const TAG_INFO: Record<string, string> = {
+  "plan-first": "Neue Sessions starten im Plan-Modus.",
+  "auto-test": "Nach jedem Durchlauf läuft der Testbefehl, das Ergebnis steht im Chat.",
+  "auto-commit": "Nach einem Durchlauf mit grünen Tests werden nur die dabei geänderten Dateien committet (KI-Nachricht).",
+  "auto-push": "Nach Auto-Commit wird gepusht, nie auf main/master und nie mit Force.",
+  "review-required": "Kein Auto-Commit: Commits nur nach Prüfung im Git-Bereich.",
+  "no-network": "Claude bekommt keine Web-Tools (WebFetch, WebSearch).",
+  "sandbox-only": "Autonomous ist in diesem Projekt gesperrt.",
+};
 
 export function ProjectSettingsTab({ project }: { project: Project }) {
   const qc = useQueryClient();
@@ -26,7 +35,7 @@ export function ProjectSettingsTab({ project }: { project: Project }) {
   const [removing, setRemoving] = useState(false);
   const [tagDraft, setTagDraft] = useState("");
 
-  const update = async (patch: { profile?: ProfileId; tags?: string[]; defaultModel?: string | null; name?: string }) => {
+  const update = async (patch: { profile?: ProfileId; tags?: string[]; defaultModel?: string | null; name?: string; testCommand?: string | null }) => {
     try {
       await call("projects.update", { projectId: project.id, ...patch });
       await qc.invalidateQueries({ queryKey: keys.project(project.id) });
@@ -101,10 +110,22 @@ export function ProjectSettingsTab({ project }: { project: Project }) {
                 ]}
               />
             </Field>
-            <Field label="Tags" hint="Tags dokumentieren Regeln. Automatisches Verhalten (z. B. auto-test) folgt in Phase 2.">
+            <Field label="Testbefehl" hint="Für den Tag auto-test und die Feature-Workflows. Wird in einer Shell im Projektordner ausgeführt.">
+              <Input
+                defaultValue={project.testCommand ?? ""}
+                key={project.testCommand ?? ""}
+                placeholder="z. B. pnpm test"
+                className="font-mono text-xs"
+                onBlur={(e) => {
+                  const v = e.target.value.trim() || null;
+                  if (v !== project.testCommand) void update({ testCommand: v });
+                }}
+              />
+            </Field>
+            <Field label="Tags" hint="Bekannte Tags steuern das Verhalten von FORGE, eigene Tags dienen der Ordnung.">
               <div className="flex flex-wrap gap-1.5">
                 {project.tags.map((t) => (
-                  <span key={t} className="inline-flex items-center gap-1 rounded border border-border bg-surface-3 px-1.5 py-0.5 text-xs">
+                  <span key={t} title={TAG_INFO[t]} className="inline-flex items-center gap-1 rounded border border-border bg-surface-3 px-1.5 py-0.5 text-xs">
                     {t}
                     <button onClick={() => void update({ tags: project.tags.filter((x) => x !== t) })} aria-label={`Tag ${t} entfernen`} className="text-subtle hover:text-fg">
                       <X className="h-3 w-3" />
@@ -118,13 +139,23 @@ export function ProjectSettingsTab({ project }: { project: Project }) {
                   Hinzufügen
                 </Button>
               </div>
-              <div className="mt-2 flex flex-wrap gap-1">
-                {SUGGESTED_TAGS.filter((t) => !project.tags.includes(t)).map((t) => (
-                  <button key={t} onClick={() => addTag(t)} className="rounded border border-dashed border-border px-1.5 py-0.5 text-[11px] text-muted hover:text-fg">
-                    + {t}
-                  </button>
-                ))}
-              </div>
+              <ul className="mt-3 flex flex-col gap-1">
+                {Object.entries(TAG_INFO).map(([t, info]) => {
+                  const active = project.tags.includes(t);
+                  return (
+                    <li key={t} className="flex items-start gap-2 text-xs">
+                      <button
+                        onClick={() => (active ? void update({ tags: project.tags.filter((x) => x !== t) }) : addTag(t))}
+                        className={cn("shrink-0 rounded border px-1.5 py-0.5 font-mono text-[11px]", active ? "border-accent bg-accent-soft text-fg" : "border-dashed border-border text-muted hover:text-fg")}
+                        aria-pressed={active}
+                      >
+                        {t}
+                      </button>
+                      <span className="pt-0.5 text-subtle">{info}</span>
+                    </li>
+                  );
+                })}
+              </ul>
             </Field>
           </div>
         </section>
