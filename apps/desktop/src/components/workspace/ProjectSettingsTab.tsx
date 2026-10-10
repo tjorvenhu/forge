@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { ShieldAlert, Trash2, X } from "lucide-react";
 import type { ProfileId, Project, EffortLevel } from "@forge/protocol";
-import { call, keys, useRuntimeInfo, useSettings } from "@/lib/queries";
+import { call, keys, useDevServer, useRuntimeInfo, useSettings } from "@/lib/queries";
 import { EFFORT_LEVELS, modelLabel } from "@/lib/models";
 
 import { errorMessage } from "@/lib/rpc";
@@ -34,11 +34,21 @@ export function ProjectSettingsTab({ project }: { project: Project }) {
   const [removing, setRemoving] = useState(false);
   const [tagDraft, setTagDraft] = useState("");
 
-  const update = async (patch: { profile?: ProfileId; tags?: string[]; defaultModel?: string | null; defaultEffort?: EffortLevel | null; name?: string; testCommand?: string | null }) => {
+  const devServer = useDevServer(project.id);
+  const update = async (patch: {
+    profile?: ProfileId;
+    tags?: string[];
+    defaultModel?: string | null;
+    defaultEffort?: EffortLevel | null;
+    name?: string;
+    testCommand?: string | null;
+    devCommand?: string | null;
+  }) => {
     try {
       await call("projects.update", { projectId: project.id, ...patch });
       await qc.invalidateQueries({ queryKey: keys.project(project.id) });
       void qc.invalidateQueries({ queryKey: keys.projects });
+      if (patch.devCommand !== undefined) void qc.invalidateQueries({ queryKey: keys.devServer(project.id) });
     } catch (e) {
       toast.error("Nicht gespeichert", errorMessage(e));
     }
@@ -131,6 +141,21 @@ export function ProjectSettingsTab({ project }: { project: Project }) {
                 onBlur={(e) => {
                   const v = e.target.value.trim() || null;
                   if (v !== project.testCommand) void update({ testCommand: v });
+                }}
+              />
+            </Field>
+            <Field
+              label="Dev-Server-Befehl"
+              hint="Startet den Entwicklungsserver über den Knopf im Projektkopf. Leer lassen, um den erkannten Befehl aus package.json zu nutzen."
+            >
+              <Input
+                defaultValue={project.devCommand ?? ""}
+                key={project.devCommand ?? ""}
+                placeholder={devServer.data?.effectiveCommand && !project.devCommand ? `Erkannt: ${devServer.data.effectiveCommand}` : "z. B. pnpm dev"}
+                className="font-mono text-xs"
+                onBlur={(e) => {
+                  const v = e.target.value.trim() || null;
+                  if (v !== project.devCommand) void update({ devCommand: v });
                 }}
               />
             </Field>

@@ -1,8 +1,10 @@
-# HANDOFF – Stand 2026-10-10
+# HANDOFF – Stand 2026-10-11
 
 ## Aktueller Stand
 
-Phasen 0 bis 3 sind umgesetzt und auf Windows 11 getestet (Details in docs/TASKS.md und ADR 0007). FORGE startet als Tauri-Fenster, nutzt die
+Phasen 0 bis 4 sind umgesetzt und auf Windows 11 getestet (Details in docs/TASKS.md, ADR 0007 und 0009).
+Phase 4: Rückfragen- und Plan-Karten, Kontextanzeige mit Komprimieren, Befehlspalette (Strg+K),
+Volltextsuche über alle Verläufe, Dev-Server pro Projekt. FORGE startet als Tauri-Fenster, nutzt die
 installierte Claude-Code-CLI mit dem bestehenden Max-Login über den Agent SDK und bildet den
 Terminal-Workflow ab: Projekte, Sessions mit Streaming, Freigaben, Stop/Resume, Git-Status/Diff und
 geprüfte Commits. Details: [README.md](README.md), [docs/TASKS.md](docs/TASKS.md).
@@ -26,8 +28,8 @@ Definition of Done (Master-Prompt, Abschnitt 12):
 
 ## Testresultate
 
-Siehe [docs/TESTING.md](docs/TESTING.md): Lint/Typecheck sauber, 76 + 7 Unit-/Integrationstests,
-8 E2E-Tests mit echter Claude-Session, alle grün. Linux nicht getestet.
+Siehe [docs/TESTING.md](docs/TESTING.md): Lint/Typecheck sauber, 129 + 21 Unit-/Integrationstests,
+16 E2E-Tests mit echter Claude-Session, alle grün. Linux nicht getestet.
 
 ## Befehle
 
@@ -55,10 +57,14 @@ in bereits offenen Shells ggf. `$env:Path += ";$env:USERPROFILE\.cargo\bin"`.
 - Nachrichten vom Handy werden über `--replay-user-messages` erkannt, Rückfall ist das Transkript. Der Weg Handy → FORGE ist mit simulierten Events getestet, nicht mit der echten App.
 - Claude-Code-Installation aus der App ist nicht getestet (hätte die vorhandene Installation verändert). Claude- und GitHub-Anmeldung sind bis zur Anzeige von URL bzw. Code geprüft; abschließen kann nur der Nutzer im Browser.
 - Die Usage-Anzeige nutzt eine experimentelle SDK-Methode; nach SDK-Updates prüfen.
+- Die Volltextsuche umfasst Prompts und Antworten, keine Tool-Ein- und Ausgaben.
+- Die Kontextanzeige gibt es nur bei laufendem Claude-Prozess (nach dem ersten Durchlauf), nicht für beendete Sessions.
+- Ein Dev-Server ohne Adresse in der Ausgabe zeigt „startet …“, bis er eine meldet.
+- Installer-Signierung und Auto-Update sind zurückgestellt: kein Code-Signing-Zertifikat.
 
 ## Genau drei nächste Aufgaben
 
 1. **Auf GitHub mit echtem Konto prüfen:** `gh`-Login in FORGE abschließen, dann Projekt veröffentlichen,
    Push, PR und Projekt löschen mit GitHub-Repository prüfen.
 2. **Linux-Build:** Tauri-Abhängigkeiten installieren, `pnpm build` unter Ubuntu, E2E-Lauf, .deb testen.
-3. **Ressourcen:** untätige Claude-Prozesse nach einstellbarer Zeit schließen; Installer signieren.
+3. **Ressourcen:** untätige Claude-Prozesse nach einstellbarer Zeit schließen.

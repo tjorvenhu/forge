@@ -7,8 +7,9 @@ import {
   type EffortLevel,
   type SlashCommand,
   type BackgroundTask,
+  type ContextUsage,
   type ExternalSession,
-  type PermissionMode,
+  PermissionMode,
   type PlanUsage,
   type RemoteSession,
   type RemoteState,
@@ -26,7 +27,7 @@ import type { Db, SessionRecord } from "../persistence/db.js";
 import { isArtifactPath, isSensitiveFile, type GitEngine } from "../git/git.js";
 import { runUserCommand } from "../util/shell.js";
 import { buildCommitPrompt, cleanCommitMessage } from "../git/commit-message.js";
-import { checkToolUse, writesOutsideProject } from "../policy/guard.js";
+import { checkToolUse, claudePlansDir, writesOutsideProject } from "../policy/guard.js";
 import { effectivePermissionMode, PROFILES, resolveProfile, type ProfileConfig } from "../policy/profiles.js";
 import { redact, redactText } from "../policy/redact.js";
 import type { ProjectManager } from "../projects/project-manager.js";
@@ -50,7 +51,14 @@ interface LiveSession {
   remoteTurn: { sawMessage: boolean } | null;
   /** still running background tasks, keyed by task id; ends with the process */
   background: Map<string, BackgroundTask>;
+  /** context window usage after the last turn */
+  context: ContextUsage | null;
 }
+
+/** Tools that ask the user something instead of doing something; answered in their own cards. */
+const QUESTION_TOOL = "AskUserQuestion";
+const PLAN_TOOL = "ExitPlanMode";
+const INTERACTIVE_TOOLS = new Set([QUESTION_TOOL, PLAN_TOOL]);
 
 /** Title of a session that was opened empty for the Claude app; replaced by the first message. */
 const REMOTE_PLACEHOLDER_TITLE = "Remote-Session";
@@ -83,7 +91,7 @@ export class SessionService {
 
   private toSession(r: SessionRecord): Session {
     const live = this.live.get(r.id);
-    return { ...r, live: !!live, background: live ? [...live.background.values()] : [] };
+    return { ...r, live: !!live, background: live ? [...live.background.values()] : [], context: live?.context ?? null };
   }
 
   get(id: string): Session {
@@ -516,6 +524,7 @@ export class SessionService {
       seenUuids: new Set(this.db.listEvents(rec.id).flatMap((e) => (e.body.type === "user.message" && e.body.uuid ? [e.body.uuid] : []))),
       remoteTurn: null,
       background: new Map(),
+      context: null,
     };
     this.live.set(rec.id, live);
     const sink = this.sinkFor(rec.id, live);
@@ -565,6 +574,7 @@ export class SessionService {
             }));
           }
         }
+        if (m.type === "system" && m.subtype === "status" && typeof m.permissionMode === "string") this.syncPermissionMode(id, m.permissionMode);
         if (this.handleRemoteInput(id, live, m)) return;
         if (m.type === "system" && m.subtype === "background_tasks_changed") {
           this.syncBackgroundTasks(id, live, m.tasks);
@@ -582,7 +592,10 @@ export class SessionService {
               apiKeySource: body.apiKeySource,
             });
             if (rec) this.emit({ event: "session.updated", payload: this.toSession(rec) });
+          } else if (body.type === "context.compacted") {
+            this.refreshContext(id, live);
           } else if (body.type === "turn.result") {
+            this.refreshContext(id, live);
             const wasInterrupt = live.interrupting;
             live.interrupting = false;
             if (live.remoteTurn && !live.remoteTurn.sawMessage) void this.syncRemoteMessages(id, live);
@@ -604,6 +617,7 @@ export class SessionService {
               projectDir: live.projectDir,
               confineWritesToProject: live.profile.confineWritesToProject,
               currentBranch: branch,
+              extraWriteDirs: [claudePlansDir()],
             });
         if (v) {
           this.record(id, { type: "policy.blocked", toolUseId, toolName, rule: v.rule, message: v.message });
@@ -637,6 +651,38 @@ export class SessionService {
     };
   }
 
+  /** Keeps the stored mode in line with Claude Code, e.g. after an accepted plan left plan mode. */
+  private syncPermissionMode(id: string, raw: string) {
+    const mode = PermissionMode.safeParse(raw);
+    const rec = this.db.getSession(id);
+    if (!mode.success || !rec || rec.permissionMode === mode.data) return;
+    const updated = this.db.updateSession(id, { permissionMode: mode.data });
+    if (updated) this.emit({ event: "session.updated", payload: this.toSession(updated) });
+  }
+
+  private refreshContext(id: string, live: LiveSession) {
+    this.track(
+      live.rt.contextUsage().then((context) => {
+        if (this.live.get(id) !== live) return;
+        live.context = context;
+        const rec = this.db.getSession(id);
+        if (rec) this.emit({ event: "session.updated", payload: this.toSession(rec) });
+      }),
+    );
+  }
+
+  /** Current context usage of a running session; null when no process runs. */
+  async contextUsage(sessionId: string): Promise<ContextUsage | null> {
+    const live = this.live.get(sessionId);
+    if (!live) return null;
+    try {
+      live.context = await live.rt.contextUsage();
+    } catch {
+      /* keep the last known value */
+    }
+    return live.context;
+  }
+
   /** The CLI sends the full list on every change; start times are kept for tasks already known. */
   private syncBackgroundTasks(id: string, live: LiveSession, raw: unknown) {
     const next = new Map<string, BackgroundTask>();
@@ -665,7 +711,7 @@ export class SessionService {
   }
 
   private requestApproval(id: string, live: LiveSession, req: ApprovalRequest, signal: AbortSignal): Promise<ApprovalDecision> {
-    const allowSessionScope = live.profile.allowSessionScope && !req.suppressAlwaysAllow;
+    const allowSessionScope = live.profile.allowSessionScope && !req.suppressAlwaysAllow && !INTERACTIVE_TOOLS.has(req.toolName);
     this.record(id, {
       type: "approval.request",
       requestId: req.requestId,
@@ -676,7 +722,7 @@ export class SessionService {
       description: req.description,
       reason: req.reason,
       allowSessionScope,
-      outsideProject: writesOutsideProject(req.toolName, req.input, live.projectDir),
+      outsideProject: writesOutsideProject(req.toolName, req.input, live.projectDir, undefined, [claudePlansDir()]),
     });
     this.setStatus(id, "waiting_approval", req.title ?? req.toolName);
     return new Promise<ApprovalDecision>((resolve) => {
@@ -689,6 +735,7 @@ export class SessionService {
           scope,
           source,
           message: d.behavior === "deny" ? d.message : null,
+          ...(d.behavior === "allow" && isAnswers(d.updatedInput?.answers) ? { answers: d.updatedInput.answers } : {}),
         });
         this.db.recordApproval({
           sessionId: id,
@@ -713,14 +760,40 @@ export class SessionService {
     });
   }
 
-  respondApproval(sessionId: string, requestId: string, decision: "allow" | "deny", scope: "once" | "session", message?: string) {
+  respondApproval(
+    sessionId: string,
+    requestId: string,
+    decision: "allow" | "deny",
+    scope: "once" | "session",
+    message?: string,
+    answers?: Record<string, string>,
+  ) {
     const live = this.live.get(sessionId);
     const p = live?.pending.get(requestId);
     if (!live || !p) throw new ForgeError("NOT_FOUND", "Diese Freigabeanfrage ist nicht mehr offen.");
+    const tool = p.req.toolName;
+    if (decision === "deny") {
+      const fallback = tool === QUESTION_TOOL ? "Der Nutzer möchte die Rückfrage nicht beantworten." : tool === PLAN_TOOL ? "Der Nutzer möchte den Plan überarbeiten." : "Vom Nutzer abgelehnt";
+      p.resolve({ behavior: "deny", message: message?.trim() || fallback });
+      return { ok: true };
+    }
+    if (tool === QUESTION_TOOL) {
+      const given = Object.fromEntries(Object.entries(answers ?? {}).filter(([, v]) => v.trim()));
+      if (!Object.keys(given).length) throw new ForgeError("VALIDATION", "Bitte mindestens eine Frage beantworten.");
+      p.resolve({ behavior: "allow", scope: "once", updatedInput: { ...p.req.input, answers: given } });
+      return { ok: true };
+    }
+    if (tool === PLAN_TOOL) {
+      // Accepting the plan leaves plan mode for the mode of the project's profile, like the CLI dialog.
+      const mode = live.profile.permissionMode;
+      p.resolve({ behavior: "allow", scope: "once", mode });
+      this.syncPermissionMode(sessionId, mode);
+      return { ok: true };
+    }
     if (scope === "session" && !(live.profile.allowSessionScope && !p.req.suppressAlwaysAllow)) {
       throw new ForgeError("POLICY_DENIED", "Für dieses Profil oder dieses Tool ist keine Freigabe für die ganze Session erlaubt.");
     }
-    p.resolve(decision === "allow" ? { behavior: "allow", scope } : { behavior: "deny", message: message || "Vom Nutzer abgelehnt" });
+    p.resolve({ behavior: "allow", scope });
     return { ok: true };
   }
 
@@ -1052,6 +1125,10 @@ function remoteUserContent(content: unknown): RemoteUserContent | null {
   }
   const text = texts.join("\n");
   return text.trim() || images.length ? { text, images } : null;
+}
+
+function isAnswers(v: unknown): v is Record<string, string> {
+  return !!v && typeof v === "object" && Object.values(v).every((x) => typeof x === "string");
 }
 
 function titleFrom(prompt: string): string {

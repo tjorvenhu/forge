@@ -1,5 +1,5 @@
 import { DatabaseSync } from "node:sqlite";
-import type { EffortLevel, PermissionMode, ProfileId, Project, Session, SessionEvent, SessionEventBody, SessionStatus, Settings } from "@forge/protocol";
+import { SEARCH_MARK_END, SEARCH_MARK_START, type EffortLevel, type PermissionMode, type ProfileId, type Project, type SearchHit, type Session, type SessionEvent, type SessionEventBody, type SessionStatus, type Settings } from "@forge/protocol";
 
 const MIGRATIONS: string[] = [
   `
@@ -107,6 +107,22 @@ const MIGRATIONS: string[] = [
   ALTER TABLE projects DROP COLUMN autonomous_confirmed;
   DELETE FROM settings WHERE key = 'autonomousUnlocked';
   `,
+  // Dev server command per project; full-text index over prompts and answers (rowid = events.rowid).
+  `
+  ALTER TABLE projects ADD COLUMN dev_command TEXT;
+  CREATE VIRTUAL TABLE events_fts USING fts5(text, tokenize = 'unicode61 remove_diacritics 2');
+  INSERT INTO events_fts(rowid, text)
+    SELECT rowid, json_extract(body, '$.text') FROM events
+    WHERE type IN ('user.message', 'assistant.text') AND json_extract(body, '$.text') IS NOT NULL;
+  CREATE TRIGGER events_fts_insert AFTER INSERT ON events
+    WHEN new.type IN ('user.message', 'assistant.text') BEGIN
+      INSERT INTO events_fts(rowid, text) VALUES (new.rowid, json_extract(new.body, '$.text'));
+    END;
+  CREATE TRIGGER events_fts_delete AFTER DELETE ON events
+    WHEN old.type IN ('user.message', 'assistant.text') BEGIN
+      DELETE FROM events_fts WHERE rowid = old.rowid;
+    END;
+  `,
 ];
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -135,6 +151,7 @@ interface ProjectRow {
   created_at: string;
   last_opened_at: string | null;
   test_command: string | null;
+  dev_command: string | null;
   parent_id: string | null;
 }
 
@@ -156,7 +173,7 @@ interface SessionRow {
 }
 
 export type ProjectRecord = Omit<Project, "exists">;
-export type SessionRecord = Omit<Session, "live" | "background">;
+export type SessionRecord = Omit<Session, "live" | "background" | "context">;
 
 const now = () => new Date().toISOString();
 
@@ -174,6 +191,7 @@ function toProject(r: ProjectRow): ProjectRecord {
     createdAt: r.created_at,
     lastOpenedAt: r.last_opened_at,
     testCommand: r.test_command,
+    devCommand: r.dev_command,
     parentId: r.parent_id,
   };
 }
@@ -268,8 +286,8 @@ export class Db {
   insertProject(p: ProjectRecord, pathKey: string) {
     this.sql
       .prepare(
-        `INSERT INTO projects(id, name, path, path_key, favorite, tags, technologies, profile, default_model, default_effort, created_at, last_opened_at, test_command, parent_id)
-         VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO projects(id, name, path, path_key, favorite, tags, technologies, profile, default_model, default_effort, created_at, last_opened_at, test_command, dev_command, parent_id)
+         VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         p.id,
@@ -285,6 +303,7 @@ export class Db {
         p.createdAt,
         p.lastOpenedAt,
         p.testCommand,
+        p.devCommand,
         p.parentId,
       );
   }
@@ -300,6 +319,7 @@ export class Db {
     if (patch.defaultEffort !== undefined) cols.default_effort = patch.defaultEffort;
     if (patch.lastOpenedAt !== undefined) cols.last_opened_at = patch.lastOpenedAt;
     if (patch.testCommand !== undefined) cols.test_command = patch.testCommand;
+    if (patch.devCommand !== undefined) cols.dev_command = patch.devCommand;
     const keys = Object.keys(cols);
     if (!keys.length) return;
     this.sql
@@ -444,6 +464,41 @@ export class Db {
       .prepare("SELECT seq, ts, body FROM events WHERE session_id = ? AND seq > ? ORDER BY seq ASC LIMIT 20000")
       .all(sessionId, afterSeq) as Array<{ seq: number; ts: string; body: string }>;
     return rows.map((r) => ({ seq: r.seq, sessionId, ts: r.ts, body: JSON.parse(r.body) as SessionEventBody }));
+  }
+
+  // ---- full-text search
+
+  /**
+   * Prompts and answers matching all words of the query (prefix match, case and accents ignored),
+   * best matches first. The query is reduced to plain words, so FTS syntax in it has no effect.
+   */
+  searchEvents(query: string, limit: number): SearchHit[] {
+    const words = query.match(/[\p{L}\p{N}_]+/gu)?.slice(0, 8) ?? [];
+    if (!words.length) return [];
+    const match = words.map((w) => `"${w}"*`).join(" ");
+    const rows = this.sql
+      .prepare(
+        `SELECT e.session_id, e.seq, e.ts, e.type, s.project_id, s.title, p.name AS project_name,
+                snippet(events_fts, 0, '${SEARCH_MARK_START}', '${SEARCH_MARK_END}', '…', 16) AS snippet
+         FROM events_fts f
+         JOIN events e ON e.rowid = f.rowid
+         JOIN sessions s ON s.id = e.session_id
+         JOIN projects p ON p.id = s.project_id
+         WHERE events_fts MATCH ?
+         ORDER BY f.rank, e.ts DESC
+         LIMIT ?`,
+      )
+      .all(match, limit) as Array<{ session_id: string; seq: number; ts: string; type: string; project_id: string; title: string | null; project_name: string; snippet: string }>;
+    return rows.map((r) => ({
+      sessionId: r.session_id,
+      projectId: r.project_id,
+      projectName: r.project_name,
+      sessionTitle: r.title,
+      seq: r.seq,
+      ts: r.ts,
+      role: r.type === "user.message" ? "user" : "assistant",
+      snippet: r.snippet,
+    }));
   }
 
   // ---- approvals audit

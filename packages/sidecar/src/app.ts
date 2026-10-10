@@ -6,6 +6,7 @@ import { GitHubService } from "./github/github.js";
 import { ClaudeSetupService } from "./claude/setup.js";
 import { McpService } from "./config/mcp.js";
 import { WorktreeService } from "./automation/worktrees.js";
+import { DevServerService } from "./devserver/dev-server.js";
 import { locateClaude, sessionEnv } from "./claude/environment.js";
 import { Db } from "./persistence/db.js";
 import { ProjectManager } from "./projects/project-manager.js";
@@ -39,9 +40,11 @@ export function createApp(opts: { dataDir: string; write: Writer; log?: (m: stri
     () => sessionEnv(db.getSettings().stripApiKey),
   );
   const worktrees = new WorktreeService(git, projects);
+  const devServers = new DevServerService(projects, () => sessionEnv(db.getSettings().stripApiKey), emit);
   const handlers = createHandlers({
     mcp,
     worktrees,
+    devServers,
     github,
     claudeSetup,
     db,
@@ -58,6 +61,7 @@ export function createApp(opts: { dataDir: string; write: Writer; log?: (m: stri
     db,
     shutdown() {
       sessions.shutdown();
+      devServers.shutdown();
       github.shutdown();
       claudeSetup.shutdown();
       db.close();

@@ -96,6 +96,7 @@ export class ProjectManager {
       createdAt: new Date().toISOString(),
       lastOpenedAt: new Date().toISOString(),
       testCommand: await detectTestCommand(canonical),
+      devCommand: null,
       parentId,
     };
     this.db.insertProject(rec, key);
@@ -129,7 +130,7 @@ export class ProjectManager {
     return this.import(target);
   }
 
-  update(id: string, patch: Partial<Pick<ProjectRecord, "name" | "favorite" | "tags" | "profile" | "defaultModel" | "defaultEffort" | "testCommand">>): Project {
+  update(id: string, patch: Partial<Pick<ProjectRecord, "name" | "favorite" | "tags" | "profile" | "defaultModel" | "defaultEffort" | "testCommand" | "devCommand">>): Project {
     const cur = this.get(id);
     const sandboxOnly = (patch.tags ?? cur.tags).includes(SANDBOX_ONLY_TAG);
     if (patch.profile === "autonomous" && sandboxOnly) {

@@ -21,6 +21,7 @@ import { ProjectSettingsTab } from "@/components/workspace/ProjectSettingsTab";
 import { ActivityFeed } from "@/components/workspace/ActivityFeed";
 import { BottomPanel } from "@/components/workspace/BottomPanel";
 import { RemoteControlButton } from "@/components/workspace/RemoteControl";
+import { DevServerButton } from "@/components/workspace/DevServer";
 import { useQuery } from "@tanstack/react-query";
 
 export function WorkspaceView() {
@@ -214,6 +215,7 @@ function WorkspaceHeader({ projectId }: { projectId: string }) {
 
       <div className="flex-1" />
 
+      {project.exists && <DevServerButton project={project} />}
       <RemoteControlButton project={project} />
 
       <div className="hidden items-center gap-1.5 lg:flex">

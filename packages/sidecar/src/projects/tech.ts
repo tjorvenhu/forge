@@ -53,6 +53,31 @@ export async function detectTechnologies(dir: string): Promise<string[]> {
   return [...tech];
 }
 
+function packageManager(entries: string[]): string {
+  return entries.includes("pnpm-lock.yaml") ? "pnpm" : entries.includes("yarn.lock") ? "yarn" : entries.includes("bun.lockb") || entries.includes("bun.lock") ? "bun" : "npm";
+}
+
+/** Suggests the command that starts a dev server: the package.json script "dev", else "start". */
+export async function detectDevCommand(dir: string): Promise<string | null> {
+  let entries: string[];
+  try {
+    entries = await readdir(dir);
+  } catch {
+    return null;
+  }
+  if (!entries.includes("package.json")) return null;
+  try {
+    const pkg = JSON.parse(await readFile(path.join(dir, "package.json"), "utf8")) as { scripts?: Record<string, string> };
+    const pm = packageManager(entries);
+    // npm only knows built-in commands like start and test directly; other scripts need "run".
+    if (pkg.scripts?.dev) return pm === "npm" ? "npm run dev" : `${pm} dev`;
+    if (pkg.scripts?.start) return `${pm} start`;
+  } catch {
+    /* invalid package.json */
+  }
+  return null;
+}
+
 /** Suggests a test command from marker files; null when nothing obvious exists. */
 export async function detectTestCommand(dir: string): Promise<string | null> {
   let entries: string[];
@@ -65,8 +90,7 @@ export async function detectTestCommand(dir: string): Promise<string | null> {
     try {
       const pkg = JSON.parse(await readFile(path.join(dir, "package.json"), "utf8")) as { scripts?: Record<string, string> };
       if (pkg.scripts?.test && !/no test specified/.test(pkg.scripts.test)) {
-        const pm = entries.includes("pnpm-lock.yaml") ? "pnpm" : entries.includes("yarn.lock") ? "yarn" : entries.includes("bun.lockb") ? "bun" : "npm";
-        return `${pm} test`;
+        return `${packageManager(entries)} test`;
       }
     } catch {
       /* invalid package.json */

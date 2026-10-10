@@ -12,7 +12,7 @@ import {
   type SDKControlInitializeResponse,
   type SDKUserMessage,
 } from "@anthropic-ai/claude-agent-sdk";
-import type { Capability, EffortLevel, ExternalSession, PermissionMode, PlanUsage, RewindResult, SlashCommand } from "@forge/protocol";
+import type { Capability, ContextUsage, EffortLevel, ExternalSession, PermissionMode, PlanUsage, RewindResult, SlashCommand } from "@forge/protocol";
 import type { ContentBlock } from "./attachments.js";
 import { toPlanUsage } from "./usage.js";
 import { AsyncQueue } from "./async-queue.js";
@@ -42,7 +42,14 @@ export interface ApprovalRequest {
 }
 
 export type ApprovalDecision =
-  | { behavior: "allow"; scope: "once" | "session" }
+  | {
+      behavior: "allow";
+      scope: "once" | "session";
+      /** replaces the tool input, e.g. AskUserQuestion with the user's answers */
+      updatedInput?: Record<string, unknown>;
+      /** switches the permission mode with the approval (accepting a plan leaves plan mode) */
+      mode?: PermissionMode;
+    }
   | { behavior: "deny"; message: string };
 
 /** Callbacks from the runtime into FORGE (the "streamEvents" side of the adapter). */
@@ -74,6 +81,8 @@ export interface RuntimeSession {
   setPermissionMode(mode: PermissionMode): Promise<void>;
   /** null returns to the model's default effort */
   setEffort(effort: EffortLevel | null): Promise<void>;
+  /** context window usage estimated from the last response (cheap, no token-count calls) */
+  contextUsage(): Promise<ContextUsage>;
   /** connects this session to claude.ai / the Claude app (Remote Control); returns the session link */
   setRemoteControl(enabled: boolean, name: string): Promise<string | null>;
   initialization(): Promise<SDKControlInitializeResponse>;
@@ -137,6 +146,8 @@ export class AgentSdkRuntime implements ClaudeRuntime {
       },
       { key: "attachments", label: "Bilder/Dateien im Prompt", state: "supported", note: "Bilder, PDFs und Textdateien als Content-Blöcke" },
       { key: "rewind", label: "Dateien zurücksetzen", state: "supported", note: "enableFileCheckpointing + rewindFiles()" },
+      { key: "questions", label: "Rückfragen und Plan-Freigabe", state: "supported", note: "AskUserQuestion-Antworten und ExitPlanMode über canUseTool" },
+      { key: "context", label: "Kontextauslastung", state: "supported", note: "getContextUsage() nach jedem Durchlauf, /compact" },
       { key: "remote", label: "Remote Control (Claude-App)", state: "supported", note: "Bridge der laufenden Session; im SDK nicht dokumentiert" },
       { key: "usage", label: "Token-Usage", state: "supported", note: "aus result.usage" },
       { key: "cost", label: "Kosten", state: "partial", note: "Bei Abo nur API-Äquivalent, wird nicht angezeigt" },
@@ -163,12 +174,13 @@ export class AgentSdkRuntime implements ClaudeRuntime {
         o.signal,
       );
       if (decision.behavior === "deny") return { behavior: "deny", message: decision.message } satisfies PermissionResult;
-      const result: PermissionResult = { behavior: "allow", updatedInput: toolInput };
+      const updates: PermissionUpdate[] = [];
       if (decision.scope === "session" && o.suggestions?.length) {
         // Never let a click persist rules into settings files: session scope only.
-        result.updatedPermissions = o.suggestions.map((s) => ({ ...s, destination: "session" }) as PermissionUpdate);
+        updates.push(...o.suggestions.map((s) => ({ ...s, destination: "session" }) as PermissionUpdate));
       }
-      return result;
+      if (decision.mode) updates.push({ type: "setMode", mode: decision.mode, destination: "session" });
+      return { behavior: "allow", updatedInput: decision.updatedInput ?? toolInput, ...(updates.length ? { updatedPermissions: updates } : {}) } satisfies PermissionResult;
     };
 
     const guard: HookCallback = async (hookInput, toolUseId) => {
@@ -244,6 +256,16 @@ export class AgentSdkRuntime implements ClaudeRuntime {
       setModel: (model) => q.setModel(model),
       setPermissionMode: (mode) => q.setPermissionMode(mode),
       setEffort: (effort) => q.applyFlagSettings({ effortLevel: effort }),
+      contextUsage: async () => {
+        const u = await q.getContextUsage({ detail: "summary" });
+        return {
+          totalTokens: u.totalTokens,
+          maxTokens: u.rawMaxTokens || u.maxTokens,
+          percentage: u.percentage,
+          categories: u.categories.filter((c) => c.tokens > 0).map((c) => ({ name: c.name, tokens: c.tokens, kind: c.kind })),
+          updatedAt: new Date().toISOString(),
+        };
+      },
       setRemoteControl: async (enabled, name) => {
         // Not in the SDK typings (0.3.x) but used by the official IDE hosts; isolated here so a rename only touches this line.
         const r = await (q as unknown as RemoteControlQuery).enableRemoteControl(enabled, name);

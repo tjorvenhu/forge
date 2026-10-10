@@ -1,7 +1,7 @@
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { checkToolUse, writesOutsideProject } from "../src/policy/guard.js";
+import { checkToolUse, claudePlansDir, writesOutsideProject } from "../src/policy/guard.js";
 import { effectivePermissionMode, PROFILES, resolveProfile } from "../src/policy/profiles.js";
 import { containsSecret, redact, redactText } from "../src/policy/redact.js";
 
@@ -70,6 +70,15 @@ describe("guard: file tools", () => {
     expect(checkToolUse("Write", outside, { ...ctx, confineWritesToProject: true })?.rule).toBe("write-outside-project");
     expect(checkToolUse("Write", { file_path: "src/ok.ts" }, { ...ctx, confineWritesToProject: true })).toBeNull();
     expect(checkToolUse("Read", outside, { ...ctx, confineWritesToProject: true })).toBeNull();
+  });
+
+  it("lets Claude write its plan file outside the project, nothing else", () => {
+    const plans = claudePlansDir(home);
+    const strict = { ...ctx, confineWritesToProject: true, extraWriteDirs: [plans] };
+    expect(checkToolUse("Write", { file_path: path.join(plans, "plan-x.md") }, strict)).toBeNull();
+    expect(checkToolUse("Write", { file_path: path.join(home, ".claude", "settings.json") }, strict)?.rule).toBe("write-outside-project");
+    expect(checkToolUse("Write", { file_path: path.join(plans, "..", "evil.md") }, strict)?.rule).toBe("write-outside-project");
+    expect(writesOutsideProject("Write", { file_path: path.join(plans, "plan-x.md") }, projectDir, home, [plans])).toBe(false);
   });
 
   it("detects writes outside the project, including traversal", () => {

@@ -1,3 +1,4 @@
+import os from "node:os";
 import path from "node:path";
 import { isInside, sensitivePaths } from "../util/paths.js";
 
@@ -7,6 +8,8 @@ export interface GuardContext {
   /** current branch of the project, if known; used for push-to-protected checks */
   currentBranch: string | null;
   home?: string;
+  /** folders outside the project that may still be written to (Claude Code's plan files) */
+  extraWriteDirs?: string[];
 }
 
 export interface GuardViolation {
@@ -86,10 +89,18 @@ export function resolveToolPath(p: string, projectDir: string, home?: string): s
   return path.resolve(projectDir, expanded);
 }
 
-/** True if a file tool would write outside the project. */
-export function writesOutsideProject(toolName: string, input: Record<string, unknown>, projectDir: string, home?: string): boolean {
+/** Where Claude Code keeps plan files in plan mode; written outside the project by design. */
+export function claudePlansDir(home = os.homedir()): string {
+  return path.join(process.env.CLAUDE_CONFIG_DIR || path.join(home, ".claude"), "plans");
+}
+
+/** True if a file tool would write outside the project (and outside the extra write folders). */
+export function writesOutsideProject(toolName: string, input: Record<string, unknown>, projectDir: string, home?: string, extraWriteDirs: string[] = []): boolean {
   if (!WRITE_TOOLS.has(toolName)) return false;
-  return pathFields(input).some((p) => !isInside(resolveToolPath(p, projectDir, home), projectDir));
+  return pathFields(input).some((p) => {
+    const abs = resolveToolPath(p, projectDir, home);
+    return !isInside(abs, projectDir) && !extraWriteDirs.some((d) => isInside(abs, d));
+  });
 }
 
 /**
@@ -122,7 +133,7 @@ export function checkToolUse(toolName: string, input: Record<string, unknown>, c
         return { rule: "sensitive-path", message: `Zugriff auf ${raw} ist gesperrt (Zugangsdaten/Browserprofil).` };
       }
     }
-    if (ctx.confineWritesToProject && writesOutsideProject(toolName, input, ctx.projectDir, ctx.home)) {
+    if (ctx.confineWritesToProject && writesOutsideProject(toolName, input, ctx.projectDir, ctx.home, ctx.extraWriteDirs)) {
       return { rule: "write-outside-project", message: "Im Autonomous-Profil sind Schreibzugriffe außerhalb des Projekts gesperrt." };
     }
   }

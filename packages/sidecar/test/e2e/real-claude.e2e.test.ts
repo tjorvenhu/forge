@@ -270,6 +270,74 @@ describe.skipIf(!enabled)("E2E: sidecar with real Claude Code", () => {
     await c.request("sessions.close", { sessionId: s.id });
   }, 240_000);
 
+  it("answers a question from Claude, also in Autonomous, and reports the context usage", async () => {
+    await c.request("projects.update", { projectId, profile: "autonomous" });
+    const before = c.events.length;
+    const s = await c.request("sessions.start", {
+      projectId,
+      model: MODEL,
+      prompt: "Use the AskUserQuestion tool exactly once to ask me which colour I prefer, with the options Rot and Blau. Then reply with only the colour I chose.",
+    });
+    const ask = await c.waitFor(
+      (e) => c.events.indexOf(e) >= before && e.event === "session.event" && e.payload.sessionId === s.id && e.payload.body.type === "approval.request",
+      120_000,
+      "question",
+    );
+    const req = ask.event === "session.event" && ask.payload.body.type === "approval.request" ? ask.payload.body : null;
+    expect(req?.toolName).toBe("AskUserQuestion");
+    const question = (req!.input.questions as Array<{ question: string }>)[0]!.question;
+    await c.request("sessions.respondApproval", { sessionId: s.id, requestId: req!.requestId, decision: "allow", answers: { [question]: "Blau" } });
+    const result = await c.waitTurn(s.id, before);
+    expect(result).toMatchObject({ isError: false });
+    if (result?.type === "turn.result") expect(result.text ?? "").toMatch(/Blau/i);
+    const resolved = c.events.find((e) => e.event === "session.event" && e.payload.sessionId === s.id && e.payload.body.type === "approval.resolved");
+    expect(resolved?.event === "session.event" && resolved.payload.body).toMatchObject({ answers: { [question]: "Blau" } });
+
+    await c.waitFor((e) => e.event === "session.updated" && e.payload.id === s.id && e.payload.context !== null, 30_000, "context");
+    const ctx = await c.request("sessions.contextUsage", { sessionId: s.id });
+    expect(ctx?.maxTokens).toBeGreaterThan(0);
+    expect(ctx?.totalTokens).toBeGreaterThan(0);
+    console.log("[e2e] context", ctx?.totalTokens, "/", ctx?.maxTokens, `${ctx?.percentage}%`);
+
+    // The compact button sends /compact as a message.
+    const beforeCompact = c.events.length;
+    await c.request("sessions.send", { sessionId: s.id, text: "/compact", attachments: [] });
+    await c.waitFor(
+      (e) => c.events.indexOf(e) >= beforeCompact && e.event === "session.event" && e.payload.sessionId === s.id && e.payload.body.type === "context.compacted",
+      180_000,
+      "context.compacted",
+    );
+    await c.waitTurn(s.id, beforeCompact);
+    await c.request("sessions.close", { sessionId: s.id });
+  }, 420_000);
+
+  it("plan mode in Autonomous: the plan file is allowed, accepting the plan switches to the profile's mode", async () => {
+    const before = c.events.length;
+    const s = await c.request("sessions.start", {
+      projectId,
+      model: MODEL,
+      planOnly: true,
+      prompt: "Plan creating a file plan-ok.txt containing the word ok. Keep the plan to two short lines and present it with ExitPlanMode. After approval, create the file.",
+    });
+    expect(s.permissionMode).toBe("plan");
+    const ask = await c.waitFor(
+      (e) => c.events.indexOf(e) >= before && e.event === "session.event" && e.payload.sessionId === s.id && e.payload.body.type === "approval.request",
+      180_000,
+      "plan approval",
+    );
+    const req = ask.event === "session.event" && ask.payload.body.type === "approval.request" ? ask.payload.body : null;
+    expect(req?.toolName).toBe("ExitPlanMode");
+    expect(typeof req?.input.plan).toBe("string");
+    await c.request("sessions.respondApproval", { sessionId: s.id, requestId: req!.requestId, decision: "allow" });
+    const result = await c.waitTurn(s.id, before);
+    expect(result).toMatchObject({ isError: false });
+    expect((await c.request("sessions.get", { sessionId: s.id })).permissionMode).toBe("bypassPermissions");
+    expect(existsSync(path.join(projectPath, "plan-ok.txt"))).toBe(true);
+    const blocked = c.events.filter((e) => c.events.indexOf(e) >= before && e.event === "session.event" && e.payload.sessionId === s.id && e.payload.body.type === "policy.blocked");
+    expect(blocked).toEqual([]);
+    await c.request("sessions.close", { sessionId: s.id });
+  }, 300_000);
+
   it("survives a sidecar crash: session is marked interrupted and resumes with its context", async () => {
     await c.kill();
     c = new SidecarClient(dataDir);

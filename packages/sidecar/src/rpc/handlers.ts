@@ -8,6 +8,7 @@ import type { GitHubService } from "../github/github.js";
 import type { ClaudeSetupService } from "../claude/setup.js";
 import type { McpService } from "../config/mcp.js";
 import type { WorktreeService } from "../automation/worktrees.js";
+import type { DevServerService } from "../devserver/dev-server.js";
 import * as cfg from "../config/claude-config.js";
 import { removalInfo, removeProject } from "../projects/removal.js";
 import os from "node:os";
@@ -22,6 +23,7 @@ export interface Services {
   claudeSetup: ClaudeSetupService;
   mcp: McpService;
   worktrees: WorktreeService;
+  devServers: DevServerService;
   notifyProject: (projectId: string) => void;
 }
 
@@ -110,6 +112,7 @@ export function createHandlers(s: Services): Handlers {
 
     "worktrees.create": ({ projectId, branch }) => s.worktrees.create(s.projects.requireExisting(projectId), branch),
     "worktrees.remove": async ({ projectId, force }) => {
+      await s.devServers.forget(projectId);
       await s.worktrees.remove(s.projects.get(projectId), force);
       return { ok: true };
     },
@@ -143,7 +146,10 @@ export function createHandlers(s: Services): Handlers {
       return project;
     },
     "projects.removalInfo": ({ projectId }) => removalInfo(projectId, s),
-    "projects.remove": ({ projectId, deleteFolder, deleteGitHubRepo }) => removeProject(projectId, { deleteFolder, deleteGitHubRepo }, s),
+    "projects.remove": async ({ projectId, deleteFolder, deleteGitHubRepo }) => {
+      await s.devServers.forget(projectId);
+      return removeProject(projectId, { deleteFolder, deleteGitHubRepo }, s);
+    },
     "projects.touch": ({ projectId }) => s.projects.touch(projectId),
     "projects.readClaudeMd": ({ projectId }) => s.projects.readClaudeMd(projectId),
     "projects.listFiles": ({ projectId, dir }) => s.projects.listFiles(projectId, dir),
@@ -165,8 +171,15 @@ export function createHandlers(s: Services): Handlers {
     "sessions.setModel": ({ sessionId, model }) => s.sessions.setModel(sessionId, model),
     "sessions.setEffort": ({ sessionId, effort }) => s.sessions.setEffort(sessionId, effort),
     "sessions.setPermissionMode": ({ sessionId, mode }) => s.sessions.setPermissionMode(sessionId, mode),
-    "sessions.respondApproval": ({ sessionId, requestId, decision, scope, message }) =>
-      s.sessions.respondApproval(sessionId, requestId, decision, scope, message),
+    "sessions.respondApproval": ({ sessionId, requestId, decision, scope, message, answers }) =>
+      s.sessions.respondApproval(sessionId, requestId, decision, scope, message, answers),
+    "sessions.contextUsage": ({ sessionId }) => s.sessions.contextUsage(sessionId),
+    "search.sessions": ({ query, limit }) => s.db.searchEvents(query, limit),
+
+    "devserver.state": ({ projectId }) => s.devServers.state(projectId),
+    "devserver.start": ({ projectId }) => s.devServers.start(projectId),
+    "devserver.stop": ({ projectId }) => s.devServers.stop(projectId),
+    "devserver.output": ({ projectId }) => ({ text: s.devServers.output(projectId) }),
 
     "git.status": ({ projectId }) => s.git.status(projectDir(projectId)),
     "git.diff": ({ projectId, path, staged }) => s.git.diff(projectDir(projectId), path, staged),

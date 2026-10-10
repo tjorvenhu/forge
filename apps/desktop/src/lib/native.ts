@@ -6,9 +6,9 @@ export async function pickFolder(title: string, defaultPath?: string | null): Pr
   return typeof r === "string" ? r : null;
 }
 
-/** Opens only http(s) links in the system browser. */
+/** Opens https links and local dev server addresses (http://localhost, 127.0.0.1) in the system browser. */
 export async function openExternal(url: string) {
-  if (!/^https:\/\//.test(url)) return;
+  if (!/^https:\/\//.test(url) && !/^http:\/\/(localhost|127\.0\.0\.1):\d+(\/|$)/.test(url)) return;
   await openUrl(url);
 }
 

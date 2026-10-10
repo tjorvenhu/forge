@@ -3,6 +3,7 @@ import { QueryClient, useMutation, useQuery, useQueryClient } from "@tanstack/re
 import type { MethodName, ParamsOf, ResultOf } from "@forge/protocol";
 import { rpc } from "./rpc";
 import { useSessionEvents } from "@/stores/session-events";
+import { useDevOutput } from "@/stores/dev-output";
 import { toast } from "@/stores/toast";
 import { errorMessage } from "./rpc";
 import { playSound } from "./sounds";
@@ -38,6 +39,8 @@ export const keys = {
   files: (id: string, dir: string) => ["files", id, dir] as const,
   file: (id: string, path: string) => ["file", id, path] as const,
   claudeMd: (id: string) => ["claudeMd", id] as const,
+  devServer: (id: string) => ["devServer", id] as const,
+  search: (q: string) => ["search", q] as const,
 };
 
 export function call<M extends MethodName>(method: M, params: ParamsOf<M>): Promise<ResultOf<M>> {
@@ -110,6 +113,12 @@ export function useServerEvents() {
         case "remote.updated":
           qc.setQueryData(["remote", e.payload.projectId], e.payload.state);
           break;
+        case "devserver.updated":
+          qc.setQueryData(keys.devServer(e.payload.projectId), e.payload);
+          break;
+        case "devserver.output":
+          useDevOutput.getState().append(e.payload.projectId, e.payload.text);
+          break;
         case "project.updated":
           void qc.invalidateQueries({ queryKey: keys.git(e.payload.projectId) });
           void qc.invalidateQueries({ queryKey: ["diff", e.payload.projectId] });
@@ -171,6 +180,21 @@ export const useGitStatus = (projectId: string | null, enabled = true) =>
     enabled: !!projectId && enabled,
     retry: false,
   });
+
+export const useDevServer = (projectId: string) =>
+  useQuery({ queryKey: keys.devServer(projectId), queryFn: () => call("devserver.state", { projectId }), staleTime: 30_000 });
+
+/** Full-text search over prompts and answers; runs from three characters on. */
+export const useSearch = (query: string, limit = 50) => {
+  const q = query.trim();
+  return useQuery({
+    queryKey: [...keys.search(q), limit],
+    queryFn: () => call("search.sessions", { query: q, limit }),
+    enabled: q.length >= 3,
+    placeholderData: (prev) => prev,
+    staleTime: 10_000,
+  });
+};
 
 export const useSessions = (projectId: string | null) =>
   useQuery({ queryKey: keys.sessions(projectId ?? ""), queryFn: () => call("sessions.list", { projectId: projectId! }), enabled: !!projectId });

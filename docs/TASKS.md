@@ -62,4 +62,15 @@ Status: `[x]` erledigt und verifiziert · `[~]` teilweise · `[ ]` offen · `[-]
 - [x] Usage-Anzeige, Diagnose, Einrichtung in der App
 - [x] Installer mit mitgelieferter Laufzeit
 - [ ] Untätige Claude-Prozesse nach Zeit automatisch schließen
-- [ ] Installer signieren
+- [ ] Installer signieren (zurückgestellt: kein Code-Signing-Zertifikat)
+
+## Phase 4 – Komfort (ADR 0009)
+
+- [x] Rückfragen (AskUserQuestion) mit Auswahl, Mehrfachauswahl und eigener Antwort; Antworten erreichen Claude
+- [x] Plan-Freigabe (ExitPlanMode): Plan als Markdown, annehmen (Modus des Profils) oder mit Feedback zurück
+- [x] Fix: Plan-Datei unter ~/.claude/plans wurde im Autonomous-Profil von der Sperrliste blockiert
+- [x] Kontextanzeige nach jedem Durchlauf, Komprimieren per Knopf, Hinweis bei Komprimierung
+- [x] Befehlspalette (Strg+K)
+- [x] Volltextsuche über Prompts und Antworten (FTS5), Sprung zur Nachricht
+- [x] Dev-Server pro Projekt mit Adress-Erkennung, Ausgabe-Panel, „An Claude“
+- [-] Auto-Update: braucht signierte Updates, zurückgestellt

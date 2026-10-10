@@ -3,6 +3,7 @@ import { create } from "zustand";
 export type View = "home" | "projects" | "sessions" | "github" | "agents" | "mcp" | "settings" | "workspace";
 export type WorkspaceTab = "chat" | "git" | "files" | "settings";
 export type NewProjectMode = "import" | "create" | "clone";
+export type BottomTab = "output" | "dev";
 
 interface UiState {
   view: View;
@@ -19,6 +20,15 @@ interface UiState {
   terminalRequest: { projectId: string; program: "shell" | "claude"; label?: string } | null;
   openTerminal: (projectId: string, program: "shell" | "claude", label?: string) => void;
   clearTerminalRequest: () => void;
+  /** asks the bottom panel of a project to show one of its fixed tabs */
+  panelRequest: { projectId: string; tab: BottomTab } | null;
+  openPanelTab: (projectId: string, tab: BottomTab) => void;
+  clearPanelRequest: () => void;
+  paletteOpen: boolean;
+  setPaletteOpen: (open: boolean) => void;
+  /** message to scroll to once its session is shown (from search) */
+  focusEvent: { sessionId: string; seq: number } | null;
+  setFocusEvent: (f: { sessionId: string; seq: number } | null) => void;
   setView: (v: View) => void;
   openProject: (projectId: string, sessionId?: string | null) => void;
   closeProject: () => void;
@@ -65,9 +75,19 @@ export const useUi = create<UiState>((set, get) => ({
   newProject: null,
   cloneUrl: null,
   terminalRequest: null,
+  panelRequest: null,
+  paletteOpen: false,
+  focusEvent: null,
   ...loadPrefs(),
   openTerminal: (projectId, program, label) => set({ terminalRequest: { projectId, program, label }, bottomPanelOpen: true }),
   clearTerminalRequest: () => set({ terminalRequest: null }),
+  openPanelTab: (projectId, tab) => {
+    set({ panelRequest: { projectId, tab }, bottomPanelOpen: true });
+    savePrefs(get());
+  },
+  clearPanelRequest: () => set({ panelRequest: null }),
+  setPaletteOpen: (paletteOpen) => set({ paletteOpen }),
+  setFocusEvent: (focusEvent) => set({ focusEvent }),
   setView: (view) => set({ view }),
   openProject: (projectId, sessionId) => {
     set((s) => ({

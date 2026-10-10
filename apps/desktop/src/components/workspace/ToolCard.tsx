@@ -5,12 +5,14 @@ import {
   CheckCircle2,
   ChevronRight,
   Circle,
+  ClipboardList,
   FileText,
   FilePen,
   FilePlus,
   Globe,
   ListChecks,
   Loader2,
+  MessageCircleQuestion,
   Search,
   ShieldAlert,
   ShieldQuestion,
@@ -28,6 +30,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/misc";
 import { Input } from "@/components/ui/input";
 import { TOOL_LABELS, toolSummary, type ChatItem } from "./chat-items";
+import { PlanCard, QuestionCard } from "./InteractiveCards";
 
 type ToolItem = Extract<ChatItem, { kind: "tool" }>;
 type ApprovalItem = Extract<ChatItem, { kind: "approval" }>;
@@ -46,6 +49,8 @@ const ICONS: Record<string, ReactNode> = {
   Task: <Bot className="h-3.5 w-3.5" />,
   Agent: <Bot className="h-3.5 w-3.5" />,
   TodoWrite: <ListChecks className="h-3.5 w-3.5" />,
+  AskUserQuestion: <MessageCircleQuestion className="h-3.5 w-3.5" />,
+  ExitPlanMode: <ClipboardList className="h-3.5 w-3.5" />,
 };
 
 export function toolIcon(name: string) {
@@ -72,6 +77,8 @@ export function ToolCard({ item, sessionId, sessionLive, projectDir }: { item: T
             : "unknown";
 
   if (item.todos && !item.superseded) return <TodoCard todos={item.todos} />;
+  if (use.name === "AskUserQuestion" && !blocked) return <QuestionCard item={item} sessionId={sessionId} />;
+  if (use.name === "ExitPlanMode" && !blocked) return <PlanCard item={item} sessionId={sessionId} />;
 
   return (
     <div className={cn("rounded-lg border bg-surface", pendingApproval ? "border-warning/50" : blocked ? "border-danger/40" : "border-border")}>

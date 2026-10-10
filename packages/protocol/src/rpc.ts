@@ -6,6 +6,9 @@ import {
   ClaudeSetupState,
   ClaudeUpdateInfo,
   CommitInfo,
+  ContextUsage,
+  DevServerState,
+  SearchHit,
   ConfigDoc,
   ConfigDocKind,
   ConfigScope,
@@ -168,6 +171,7 @@ export const methods = {
       defaultModel: z.string().max(100).nullable().optional(),
       defaultEffort: EffortLevel.nullable().optional(),
       testCommand: z.string().max(500).nullable().optional(),
+      devCommand: z.string().max(500).nullable().optional(),
     }),
     result: Project,
   },
@@ -237,9 +241,21 @@ export const methods = {
       decision: z.enum(["allow", "deny"]),
       scope: z.enum(["once", "session"]).default("once"),
       message: z.string().max(2000).optional(),
+      /** answers to an AskUserQuestion request: question text -> answer (multi-select comma-separated) */
+      answers: z.record(z.string().max(2000), z.string().max(5000)).optional(),
     }),
     result: z.object({ ok: z.boolean() }),
   },
+  "sessions.contextUsage": { params: sessionRef, result: ContextUsage.nullable() },
+  "search.sessions": {
+    params: z.object({ query: z.string().min(1).max(200), limit: z.number().int().min(1).max(200).default(50) }),
+    result: z.array(SearchHit),
+  },
+
+  "devserver.state": { params: projectRef, result: DevServerState },
+  "devserver.start": { params: projectRef, result: DevServerState },
+  "devserver.stop": { params: projectRef, result: DevServerState },
+  "devserver.output": { params: projectRef, result: z.object({ text: z.string() }) },
 
   "git.status": { params: projectRef, result: GitStatus },
   "git.diff": {
@@ -306,6 +322,8 @@ export type ServerEvent =
   | { event: "github.login"; payload: GitHubLoginState }
   | { event: "claude.setup"; payload: ClaudeSetupState }
   | { event: "remote.updated"; payload: { projectId: string; state: RemoteState } }
+  | { event: "devserver.updated"; payload: DevServerState }
+  | { event: "devserver.output"; payload: { projectId: string; text: string } }
   | { event: "sidecar.ready"; payload: { version: string } }
   | { event: "log"; payload: { level: "info" | "warn" | "error"; message: string } };
 

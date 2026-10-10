@@ -95,3 +95,12 @@ describe("Normalizer robustness", () => {
     expect(ev).toMatchObject({ type: "turn.result", isError: true, text: "boom" });
   });
 });
+
+describe("Normalizer compaction", () => {
+  it("turns a compact boundary into a context.compacted event", () => {
+    const n = new Normalizer();
+    expect(n.normalize({ type: "system", subtype: "compact_boundary", compact_metadata: { trigger: "auto", pre_tokens: 170000 } })).toEqual([
+      { type: "context.compacted", trigger: "auto", preTokens: 170000, postTokens: null },
+    ]);
+  });
+});

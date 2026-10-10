@@ -23,6 +23,11 @@ interface DraftState {
 }
 
 const EMPTY: Draft = { text: "", files: [] };
+
+/** Draft key of the composer: the session id, or the project plus the terminal session to adopt. */
+export function draftKey(projectId: string, sessionId: string | null, resumeClaudeSessionId?: string): string {
+  return sessionId ?? `new:${projectId}:${resumeClaudeSessionId ?? ""}`;
+}
 export const NO_FILES: PendingFile[] = [];
 
 /** Unsent composer input per session, so switching sessions does not lose it. Kept in memory only. */
