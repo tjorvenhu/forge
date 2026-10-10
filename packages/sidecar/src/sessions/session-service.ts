@@ -163,13 +163,17 @@ export class SessionService {
 
     if (params.resumeClaudeSessionId) await this.importHistory(rec.id, params.resumeClaudeSessionId, project.path);
 
-    const others = [...this.live.values()].filter((l) => l.projectDir === project.path).length;
+    // Idle sessions keep their CLI process but do not touch files; only busy ones can collide.
+    const busy: SessionStatus[] = ["starting", "running", "waiting_approval"];
+    const others = [...this.live.entries()].filter(
+      ([id, l]) => l.projectDir === project.path && busy.includes(this.db.getSession(id)?.status ?? "stopped"),
+    ).length;
     this.record(rec.id, { type: "user.message", text: params.prompt });
     if (others > 0) {
       this.record(rec.id, {
         type: "status",
         status: "starting",
-        detail: `Achtung: ${others} weitere aktive Session(s) arbeiten im selben Projektordner.`,
+        detail: `Achtung: ${others} weitere Session(s) arbeiten gerade im selben Projektordner.`,
       });
     }
     this.attach(rec, profile, claudePath, settings.stripApiKey, params.resumeClaudeSessionId ?? null, params.prompt);

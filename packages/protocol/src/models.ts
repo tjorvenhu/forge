@@ -247,6 +247,7 @@ export const Settings = z.object({
   autonomousUnlocked: z.boolean(),
   stripApiKey: z.boolean(),
   enterToSend: z.boolean(),
+  sounds: z.boolean(),
   debugLogs: z.boolean(),
   defaultProjectDir: z.string().nullable(),
 });

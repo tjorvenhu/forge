@@ -10,30 +10,34 @@ Status: `[x]` erledigt und verifiziert · `[~]` teilweise · `[ ]` offen
 - [x] Spike CLI: `claude -p --output-format stream-json --include-partial-messages` streamt echte Events
 - [x] Spike Agent SDK 0.3.296: `query()` + `canUseTool` + `listSessions` mit Max-Login (`apiKeySource: none`)
 - [x] Capability-Matrix (docs/adr/0002, zur Laufzeit in Einstellungen → Diagnose)
-- [x] ADRs: docs/adr/0001–0004
+- [x] ADRs: docs/adr/0001–0005
 
 ## Phase 1 – MVP
 
-- [ ] Monorepo (pnpm workspace): protocol, sidecar, desktop
-- [ ] Protokoll: typisierte RPC-Methoden, Events, Fehlerklassen (Zod)
-- [ ] Sidecar: JSON-Lines-RPC über stdio
-- [ ] Persistenz: SQLite (node:sqlite) mit Migrationen
-- [ ] Projektverwaltung: importieren, anlegen, klonen, Favoriten, Tags, Technologie-Erkennung, Dubletten
-- [ ] Claude-Runtime (Agent SDK): start, send, Streaming, Tool-Events, Freigaben, Stop, Resume, Liste
-- [ ] Policy: Profile Safe/Balanced/Autonomous, harte Sperrliste via PreToolUse-Hook, Audit
-- [ ] Git: Status, Diff, Stage/Unstage, Commit mit Prüfungen, Log, Branches
-- [ ] Diagnose: CLI-Version, Auth, API-Key-Override, git, gh
-- [ ] UI-Shell nach Referenz (Sidebar, Kopfzeile, Tabs, rechte Spalte, unteres Panel)
-- [ ] Workspace-Chat Ende-zu-Ende
-- [ ] Screens: Dashboard, Neues Projekt, Projekt-Einstellungen, Git, Sessions, Einstellungen
-- [ ] Tauri-Shell: Sidecar-Prozess, Ordnerdialog, CSP, minimale Rechte
-- [ ] Tests: Unit (Parser, Policy, ProjectManager), Integration (Event-Adapter mit Fixtures), E2E (Sidecar mit echter Claude-Session)
-- [ ] README, Architektur, Security-Konzept, HANDOFF
+- [x] Monorepo (pnpm workspace): protocol, sidecar, desktop
+- [x] Protokoll: typisierte RPC-Methoden, Events, Fehlerklassen (Zod)
+- [x] Sidecar: JSON-Lines-RPC über stdio
+- [x] Persistenz: SQLite (node:sqlite) mit Migrationen
+- [x] Projektverwaltung: importieren, anlegen, klonen, Favoriten, Tags, Technologie-Erkennung, Dubletten
+- [x] Claude-Runtime (Agent SDK): start, send, Streaming, Tool-Events, Freigaben, Stop, Resume, Liste
+- [x] Policy: Profile Safe/Balanced/Autonomous, harte Sperrliste via PreToolUse-Hook, Audit
+- [x] Git: Status, Diff, Stage/Unstage, Commit mit Prüfungen, Log, Branches
+- [x] Diagnose: CLI-Version, Auth, API-Key-Override, git, gh
+- [x] UI-Shell nach Referenz (Sidebar, Kopfzeile, Tabs, rechte Spalte, unteres Panel)
+- [x] Workspace-Chat Ende-zu-Ende
+- [x] Screens: Dashboard, Neues Projekt, Projekt-Einstellungen, Git, Sessions, Einstellungen
+- [x] Tauri-Shell: Sidecar-Prozess, Ordnerdialog, CSP, minimale Rechte
+- [x] Tests: Unit, Integration (Fixtures), E2E mit echter Claude-Session
+- [x] README, Architektur, Security-Konzept, HANDOFF
+- [x] Nutzerwünsche: Schrift Geist, Töne, Amboss-Logo, Claude-Marke im Chat
+- [~] Release-Build/Installer (siehe HANDOFF)
+- [ ] Linux-Smoke-Test
 
-## Phase 2 (noch nicht begonnen)
+## Phase 2
 
 - [ ] Projekt-Tags mit Verhalten (plan-first, auto-test, review-required …)
 - [ ] gh-PR-Flow, Push/Pull mit Guardrails
 - [ ] CLAUDE.md-Editor (Monaco)
 - [ ] Git Timeline je Session
 - [ ] Eingebettetes Terminal (xterm.js + PTY)
+- [ ] Untätige Claude-Prozesse nach Zeit automatisch schließen

@@ -68,6 +68,7 @@ export const DEFAULT_SETTINGS: Settings = {
   autonomousUnlocked: false,
   stripApiKey: true,
   enterToSend: true,
+  sounds: true,
   debugLogs: false,
   defaultProjectDir: null,
 };
