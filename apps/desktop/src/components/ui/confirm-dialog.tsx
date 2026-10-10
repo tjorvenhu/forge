@@ -13,13 +13,14 @@ interface ConfirmDialogProps {
   danger?: boolean;
   /** if set, the user must type this exact text before confirming */
   requireText?: string;
+  confirmDisabled?: boolean;
   onConfirm: () => Promise<void> | void;
 }
 
-export function ConfirmDialog({ open, onOpenChange, title, description, children, confirmLabel, danger, requireText, onConfirm }: ConfirmDialogProps) {
+export function ConfirmDialog({ open, onOpenChange, title, description, children, confirmLabel, danger, requireText, confirmDisabled, onConfirm }: ConfirmDialogProps) {
   const [typed, setTyped] = useState("");
   const [busy, setBusy] = useState(false);
-  const blocked = requireText !== undefined && typed.trim() !== requireText;
+  const blocked = confirmDisabled === true || (requireText !== undefined && typed.trim() !== requireText);
 
   const close = (o: boolean) => {
     if (!o) setTyped("");
@@ -46,6 +47,8 @@ export function ConfirmDialog({ open, onOpenChange, title, description, children
               try {
                 await onConfirm();
                 close(false);
+              } catch {
+                // onConfirm reports its own errors; the dialog stays open for another try
               } finally {
                 setBusy(false);
               }

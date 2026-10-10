@@ -57,9 +57,11 @@ export function ProjectCard({ p, onRemove }: { p: ProjectWithStatus; onRemove: (
               <Badge tone="success">sauber</Badge>
             )}
             {p.git.remoteUrl && (
-              <Badge tone="neutral">
-                <Globe className="h-3 w-3" /> Remote
-              </Badge>
+              <span title={p.git.remoteUrl}>
+                <Badge tone="neutral">
+                  <Globe className="h-3 w-3" /> {p.git.remoteUrl.includes("github.com") ? "GitHub" : "origin"}
+                </Badge>
+              </span>
             )}
           </>
         ) : (
@@ -83,7 +85,7 @@ export function ProjectCard({ p, onRemove }: { p: ProjectWithStatus; onRemove: (
           }
           items={[
             { label: p.favorite ? "Aus Favoriten entfernen" : "Zu Favoriten", icon: <Star className="h-3.5 w-3.5" />, onSelect: () => void toggleFavorite() },
-            { label: "Aus FORGE entfernen", icon: <Trash2 className="h-3.5 w-3.5" />, danger: true, onSelect: () => onRemove(p) },
+            { label: "Entfernen oder löschen", icon: <Trash2 className="h-3.5 w-3.5" />, danger: true, onSelect: () => onRemove(p) },
           ]}
         />
       </div>

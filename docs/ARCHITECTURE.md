@@ -39,7 +39,6 @@
 | git-engine | `packages/sidecar/src/git` | Status, Diff, Stage, Commit, Branches |
 | security/policy | `packages/sidecar/src/policy` | Profile, Sperrliste, Redaction |
 | persistence | `packages/sidecar/src/persistence` | SQLite-Schema, Repositories |
-| workflow-engine | – | Phase 2 |
 
 ## ClaudeRuntime-Schnittstelle
 

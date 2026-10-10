@@ -80,7 +80,7 @@ Umgebungsvariablen für Sonderfälle: `FORGE_NODE` (Pfad zu node), `FORGE_SIDECA
 ## Was funktioniert
 
 - **Projekte:** Ordner importieren (kanonisiert, Dubletten-Erkennung), neu anlegen (Ordner + git, optional GitHub-Repo), Repository klonen (nur https/ssh, sichere Argumente), Favoriten, Tags,
-  Technologie-Erkennung, „Ordner fehlt"-Zustand, Entfernen ohne Dateien zu löschen.
+  Technologie-Erkennung, „Ordner fehlt"-Zustand. Entfernen nur aus FORGE oder auf Wunsch mit lokalem Ordner und GitHub-Repository.
 - **Claude-Sessions:** starten, Prompt senden, echtes Token-Streaming, Tool-Aufrufe als aufklappbare
   Karten, Aufgabenlisten (TodoWrite), Freigabeanfragen mit Erlauben / Für Session erlauben / Ablehnen,
   Stop (Esc), Modellwechsel, Plan-Modus, Resume auch nach App-Absturz, Übernahme von im Terminal
@@ -94,10 +94,10 @@ Umgebungsvariablen für Sonderfälle: `FORGE_NODE` (Pfad zu node), `FORGE_SIDECA
 - **Commit-Nachricht per KI:** Funken-Knopf im Commit-Feld; Claude (Haiku) schreibt die Nachricht aus dem Diff im Stil der bisherigen Commits. Sensible Dateien werden nicht gesendet.
 - **Regeln für Claude:** CLAUDE.md global, pro Projekt und lokal (nicht im Git) direkt in FORGE bearbeiten.
 - **Composer:** Bilder, PDFs und Textdateien anhängen (Knopf, Einfügen, Hineinziehen), Slash-Commands mit Auswahlliste, Dateien auf den Stand vor einer Nachricht zurücksetzen.
-- **Vom Handy steuern:** Remote Control pro Projekt (Link und QR-Code für die Claude-App).
+- **In der Claude-App weiterarbeiten:** Remote Control pro Projekt verbindet die FORGE-Sessions mit der Claude-App und claude.ai. Nachrichten erscheinen auf beiden Seiten, Freigaben und Sperrliste gelten weiter.
 - **Terminal:** eingebettete Terminals im Projektordner.
 - **Git & GitHub:** Push/Pull mit Schutzregeln, Pull Requests mit KI-Beschreibung und Status, neues Projekt direkt als GitHub-Repo.
-- **Automationen:** Projekt-Tags (plan-first, auto-test, auto-commit, auto-push, review-required, no-network, sandbox-only), Feature-Workflow von der Anforderung bis zum PR, geplante Aufgaben.
+- **Projekt-Tags mit Verhalten:** plan-first, auto-test, auto-commit, auto-push, review-required, no-network, sandbox-only.
 - **Parallele Agenten:** Sessions in eigenen Git-Worktrees.
 - **Erweiterungen:** MCP-Server, Skills, Subagenten und Hooks verwalten.
 - **Wiedereinstieg:** KI-Zusammenfassung einer Session.
@@ -110,8 +110,8 @@ Tastatur: `Strg+1..4` Workspace-Tabs, `Strg+N` neue Session, `Strg+O` Projekt hi
 
 ## Tests
 
-Letzter Lauf (Details in [docs/TESTING.md](docs/TESTING.md)): Lint und Typecheck ohne Befund, 104 Sidecar-Tests,
-8 Desktop-Tests, 12 E2E-Tests mit echter Claude-Session, alle bestanden.
+Letzter Lauf (Details in [docs/TESTING.md](docs/TESTING.md)): Lint und Typecheck ohne Befund, 106 Sidecar-Tests,
+10 Desktop-Tests, 12 E2E-Tests mit echter Claude-Session, alle bestanden.
 
 ## Dokumentation
 
@@ -125,8 +125,7 @@ Letzter Lauf (Details in [docs/TESTING.md](docs/TESTING.md)): Lint und Typecheck
 ## Bekannte Lücken
 
 - Linux nicht getestet (keine Linux-Umgebung verfügbar). Code ist plattformneutral geschrieben.
-- Geplante Aufgaben laufen nur, solange FORGE geöffnet ist.
-- Für Remote Control muss Claude dem Ordner einmal vertrauen (Bestätigung im eingebetteten Terminal).
+- Remote Control funktioniert nur, solange FORGE geöffnet ist. Die genutzte SDK-Funktion ist nicht offiziell dokumentiert.
 - Claude Code selbst wird nicht mitgeliefert, sondern bei Bedarf aus der App installiert (offizieller Installer).
 
 ## Roadmap

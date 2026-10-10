@@ -24,6 +24,8 @@ class FakeRuntime implements ClaudeRuntime {
   interrupted = 0;
   closed = 0;
   sent: string[] = [];
+  sentUuids: string[] = [];
+  remoteCalls: Array<{ enabled: boolean; name: string }> = [];
   capabilities = new AgentSdkRuntime().capabilities;
   async listSessions() {
     return [];
@@ -50,7 +52,10 @@ class FakeRuntime implements ClaudeRuntime {
     this.started.push(opts);
     this.sinks.push(sink);
     return {
-      sendMessage: (m) => this.sent.push(m.text),
+      sendMessage: (m) => {
+        this.sent.push(m.text);
+        this.sentUuids.push(m.uuid);
+      },
       rewindFiles: async () => ({ canRewind: true, error: null, filesChanged: ["a.txt"], insertions: 1, deletions: 0 }),
       supportedCommands: async () => [],
       interrupt: async () => {
@@ -63,6 +68,10 @@ class FakeRuntime implements ClaudeRuntime {
       },
       setModel: async () => {},
       setPermissionMode: async () => {},
+      setRemoteControl: async (enabled, name) => {
+        this.remoteCalls.push({ enabled, name });
+        return enabled ? "https://claude.ai/code/session_test" : null;
+      },
       initialization: () => new Promise(() => {}),
     };
   }
@@ -254,5 +263,53 @@ describe("turn automation via project tags", () => {
     const bodies = db.listEvents(s.id).map((e) => e.body);
     expect(bodies.find((b) => b.type === "check.result")).toMatchObject({ ok: false, exitCode: 3 });
     expect(bodies.find((b) => b.type === "automation")).toMatchObject({ action: "skip", ok: false });
+  });
+
+  it("connects open sessions to the Claude app and shows messages typed there", async () => {
+    const s = await svc.start({ projectId, prompt: "Lies a.txt" });
+    rt.replay();
+    const state = await svc.remoteStart(projectId);
+    expect(rt.remoteCalls).toEqual([{ enabled: true, name: `FORGE · proj · Lies a.txt` }]);
+    expect(state.sessions[0]).toMatchObject({ sessionId: s.id, url: "https://claude.ai/code/session_test", state: "connecting" });
+    const sink = rt.sinks[0]!;
+    sink.onMessage({ type: "system", subtype: "bridge_state", state: "connected" });
+    expect(svc.remoteState(projectId).sessions[0]!.state).toBe("connected");
+
+    // own message: the echo must not show up twice
+    await svc.send(s.id, "weiter");
+    const own = rt.sentUuids[0]!;
+    sink.onMessage({ type: "command_lifecycle", command_uuid: own, state: "started" });
+    sink.onMessage({ type: "user", isReplay: true, uuid: own, message: { role: "user", content: "weiter" } });
+    sink.onMessage({ type: "result", subtype: "success", is_error: false, result: "ok", usage: {} });
+
+    // message from the phone while idle: starts a turn and lands in the timeline
+    expect(svc.get(s.id).status).toBe("idle");
+    const phone = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee";
+    sink.onMessage({ type: "command_lifecycle", command_uuid: phone, state: "started" });
+    expect(svc.get(s.id).status).toBe("running");
+    sink.onMessage({ type: "user", isReplay: true, uuid: phone, message: { role: "user", content: [{ type: "text", text: "Vom Handy" }] } });
+    sink.onMessage({ type: "result", subtype: "success", is_error: false, result: "ok", usage: {} });
+
+    const users = db.listEvents(s.id).flatMap((e) => (e.body.type === "user.message" ? [e.body] : []));
+    expect(users.map((u) => [u.text, u.source ?? "forge"])).toEqual([
+      ["Lies a.txt", "forge"],
+      ["weiter", "forge"],
+      ["Vom Handy", "remote"],
+    ]);
+
+    await svc.remoteStop(projectId);
+    expect(rt.remoteCalls.at(-1)?.enabled).toBe(false);
+    expect(svc.remoteState(projectId)).toEqual({ enabled: false, sessions: [] });
+  });
+
+  it("opens an empty session for the Claude app when none is open and titles it from the first message", async () => {
+    await svc.remoteStart(projectId);
+    expect(rt.started).toHaveLength(1);
+    expect(rt.started[0]!.firstMessage).toBeNull();
+    const [s] = svc.listAll();
+    expect(s).toMatchObject({ title: "Remote-Session", status: "idle" });
+    expect(rt.remoteCalls[0]!.name).toBe("FORGE · proj");
+    rt.sinks[0]!.onMessage({ type: "user", isReplay: true, uuid: "aaaaaaaa-bbbb-4ccc-8ddd-000000000001", message: { role: "user", content: "Baue einen Login" } });
+    expect(svc.get(s!.id).title).toBe("Baue einen Login");
   });
 });

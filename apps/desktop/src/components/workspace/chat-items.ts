@@ -9,7 +9,7 @@ export interface TodoEntry {
 }
 
 export type ChatItem =
-  | { kind: "user"; key: string; text: string; ts: string; uuid: string | null; attachments: Array<{ name: string; mediaType: string; size: number }> }
+  | { kind: "user"; key: string; text: string; ts: string; uuid: string | null; attachments: Array<{ name: string; mediaType: string; size: number }>; remote: boolean }
   | { kind: "assistant"; key: string; text: string; streaming: boolean; ts: string | null }
   | {
       kind: "tool";
@@ -57,7 +57,7 @@ export function buildChatItems(events: SessionEvent[], streaming: Record<string,
     const b = ev.body;
     switch (b.type) {
       case "user.message":
-        items.push({ kind: "user", key: `u${ev.seq}`, text: b.text, ts: ev.ts, uuid: b.uuid ?? null, attachments: b.attachments ?? [] });
+        items.push({ kind: "user", key: `u${ev.seq}`, text: b.text, ts: ev.ts, uuid: b.uuid ?? null, attachments: b.attachments ?? [], remote: b.source === "remote" });
         break;
       case "assistant.text": {
         const key = `${b.messageId}:${b.index}`;

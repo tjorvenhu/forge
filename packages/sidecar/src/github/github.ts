@@ -55,11 +55,30 @@ export class GitHubService {
     }
   }
 
-  /** Starts the device flow; the code and URL arrive as `github.login` events. */
-  startLogin(): GitHubLoginState {
+  /** OAuth scopes of the signed-in account; null when nobody is signed in. */
+  async scopes(): Promise<string[] | null> {
+    const st = await this.gh_(["auth", "status", "--hostname", HOST, "--json", "hosts"]);
+    try {
+      const j = JSON.parse(st.stdout) as { hosts?: Record<string, Array<{ state?: string; active?: boolean; scopes?: string }>> };
+      const entry = (j.hosts?.[HOST] ?? []).find((h) => h.active) ?? j.hosts?.[HOST]?.[0];
+      if (!entry || entry.state !== "success") return null;
+      return (entry.scopes ?? "").match(/[a-z_:]+/g) ?? [];
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Starts the device flow; the code and URL arrive as `github.login` events. With scopes, the
+   * signed-in account is asked for additional permissions (e.g. delete_repo) instead.
+   */
+  startLogin(scopes: string[] = []): GitHubLoginState {
     if (this.login) return this.state;
     this.set({ phase: "starting", code: null, url: null, message: null });
-    const child = spawn(this.gh(), ["auth", "login", "--hostname", HOST, "--git-protocol", "https", "--web", "--skip-ssh-key"], {
+    const args = scopes.length
+      ? ["auth", "refresh", "--hostname", HOST, "--scopes", scopes.join(",")]
+      : ["auth", "login", "--hostname", HOST, "--git-protocol", "https", "--web", "--skip-ssh-key"];
+    const child = spawn(this.gh(), args, {
       env: this.env(),
       shell: false,
       windowsHide: true,
@@ -134,6 +153,16 @@ export class GitHubService {
     return url ?? `https://github.com/${repoName}`;
   }
 
+  /** Deletes a repository on GitHub. Needs the delete_repo scope, which FORGE asks for separately. */
+  async deleteRepo(fullName: string): Promise<void> {
+    if (!/^[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/.test(fullName)) throw new ForgeError("VALIDATION", `Ungültiger Repository-Name: ${fullName}`);
+    const r = await this.gh_(["repo", "delete", fullName, "--yes"], 60_000);
+    if (r.code === 0) return;
+    const out = (r.stderr || r.stdout).trim();
+    if (/delete_repo/.test(out)) throw new ForgeError("POLICY_DENIED", "Für das Löschen fehlt die GitHub-Berechtigung delete_repo.");
+    throw new ForgeError("GIT_FAILED", out.split("\n").slice(-2).join(" ") || "Repository konnte nicht gelöscht werden");
+  }
+
   /** Pull request of the current branch, or null if there is none. */
   async prForBranch(cwd: string): Promise<PullRequest | null> {
     const r = await run(this.gh(), ["pr", "view", "--json", "number,title,state,url,isDraft,reviewDecision,baseRefName,headRefName,statusCheckRollup"], {
@@ -181,6 +210,13 @@ export class GitHubService {
   shutdown() {
     this.login?.kill();
   }
+}
+
+/** "owner/repo" for github.com remotes (https or scp-like), else null. */
+export function githubRepoFromRemote(remote: string | null): string | null {
+  if (!remote) return null;
+  const m = /^(?:https:\/\/(?:[^@/]+@)?github\.com\/|git@github\.com:|ssh:\/\/git@github\.com\/)([A-Za-z0-9._-]+)\/([A-Za-z0-9._-]+?)(?:\.git)?\/?$/.exec(remote.trim());
+  return m ? `${m[1]}/${m[2]}` : null;
 }
 
 /** GitHub repository names: letters, digits, dot, dash, underscore. */

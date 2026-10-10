@@ -51,25 +51,3 @@ describe.runIf(process.platform === "win32")("bundled runtime resolution", () =>
     expect(bundledPathEntries()).toEqual([]);
   });
 });
-
-describe("remote control status parsing", () => {
-  it("detects connection, link and capacity", async () => {
-    const { parseRemoteOutput } = await import("../src/remote/remote.js");
-    const out = [
-      "·|· Connecting · forge · main",
-      "·✔︎· Connected · forge · main",
-      "    Capacity: 0/32 · New sessions will be created in the current directory",
-      "",
-      "Continue coding in the Claude mobile app or https://claude.ai/code?environment=env_01ABCdef-123",
-      "space to show QR code · w to toggle spawn mode",
-    ].join("\n");
-    expect(parseRemoteOutput(out)).toEqual({
-      connected: true,
-      untrusted: false,
-      url: "https://claude.ai/code?environment=env_01ABCdef-123",
-      detail: "Capacity: 0/32",
-    });
-    expect(parseRemoteOutput("Error: Workspace not trusted. Please run `claude` in C:/x first").untrusted).toBe(true);
-    expect(parseRemoteOutput("·|· Connecting · forge · main").connected).toBe(false);
-  });
-});

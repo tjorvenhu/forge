@@ -1,8 +1,8 @@
 import type { ReactNode } from "react";
-import { Blocks, Bot, FolderKanban, GitPullRequest, History, Home, Plus, Settings, Workflow } from "lucide-react";
+import { Blocks, Bot, FolderKanban, GitPullRequest, History, Home, Plus, Settings } from "lucide-react";
 import { useDiagnostics, useProjects, useUsage } from "@/lib/queries";
 import { useUi, type View } from "@/stores/ui";
-import { cn, relativeTime } from "@/lib/utils";
+import { capitalize, cn, relativeTime } from "@/lib/utils";
 import { Logo } from "./Logo";
 import { ProjectIcon } from "@/components/projects/ProjectIcon";
 
@@ -13,7 +13,6 @@ const NAV: Array<{ view: View; label: string; icon: ReactNode }> = [
   { view: "github", label: "GitHub", icon: <GitPullRequest className="h-4 w-4" /> },
   { view: "agents", label: "Agenten", icon: <Bot className="h-4 w-4" /> },
   { view: "mcp", label: "Erweiterungen", icon: <Blocks className="h-4 w-4" /> },
-  { view: "automations", label: "Automatisierungen", icon: <Workflow className="h-4 w-4" /> },
   { view: "settings", label: "Einstellungen", icon: <Settings className="h-4 w-4" /> },
 ];
 
@@ -152,6 +151,3 @@ function UsageBar({ label, value, resetsAt }: { label: string; value: number; re
   );
 }
 
-function capitalize(s: string) {
-  return s.charAt(0).toUpperCase() + s.slice(1);
-}

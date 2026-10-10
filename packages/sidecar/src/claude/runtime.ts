@@ -70,6 +70,8 @@ export interface RuntimeSession {
   close(): void;
   setModel(model: string): Promise<void>;
   setPermissionMode(mode: PermissionMode): Promise<void>;
+  /** connects this session to claude.ai / the Claude app (Remote Control); returns the session link */
+  setRemoteControl(enabled: boolean, name: string): Promise<string | null>;
   initialization(): Promise<SDKControlInitializeResponse>;
 }
 
@@ -88,6 +90,10 @@ export interface ClaudeRuntime {
   complete(prompt: string, opts: Pick<StartOptions, "cwd" | "env" | "claudePath"> & { model: string }): Promise<string>;
   /** plan rate-limit windows; uses an experimental SDK call, so callers must tolerate failure */
   planUsage(opts: Pick<StartOptions, "cwd" | "env" | "claudePath">): Promise<PlanUsage>;
+}
+
+interface RemoteControlQuery {
+  enableRemoteControl(enabled: boolean, name?: string): Promise<{ session_url?: unknown } | undefined>;
 }
 
 function userMessage(m: OutgoingMessage): SDKUserMessage {
@@ -123,10 +129,12 @@ export class AgentSdkRuntime implements ClaudeRuntime {
         state: "partial",
         note: init ? `${commands} Commands/Skills gemeldet; interaktive Built-ins nicht verfügbar` : "Liste erst nach Sessionstart bekannt",
       },
-      { key: "attachments", label: "Bilder/Dateien im Prompt", state: "unavailable", note: "In FORGE Phase 1 nicht umgesetzt" },
+      { key: "attachments", label: "Bilder/Dateien im Prompt", state: "supported", note: "Bilder, PDFs und Textdateien als Content-Blöcke" },
+      { key: "rewind", label: "Dateien zurücksetzen", state: "supported", note: "enableFileCheckpointing + rewindFiles()" },
+      { key: "remote", label: "Remote Control (Claude-App)", state: "supported", note: "Bridge der laufenden Session; im SDK nicht dokumentiert" },
       { key: "usage", label: "Token-Usage", state: "supported", note: "aus result.usage" },
       { key: "cost", label: "Kosten", state: "partial", note: "Bei Abo nur API-Äquivalent, wird nicht angezeigt" },
-      { key: "terminal", label: "Eingebettetes Terminal", state: "unavailable", note: "Phase 2 (xterm.js + PTY)" },
+      { key: "terminal", label: "Eingebettetes Terminal", state: "supported", note: "xterm.js + PTY in der Tauri-Hülle" },
     ];
   }
 
@@ -187,6 +195,8 @@ export class AgentSdkRuntime implements ClaudeRuntime {
         pathToClaudeCodeExecutable: opts.claudePath,
         canUseTool,
         hooks: { PreToolUse: [{ hooks: [guard] }] },
+        // Echoes user messages, so messages typed in the Claude app (Remote Control) reach the timeline.
+        extraArgs: { "replay-user-messages": null },
       },
     });
 
@@ -224,6 +234,11 @@ export class AgentSdkRuntime implements ClaudeRuntime {
       },
       setModel: (model) => q.setModel(model),
       setPermissionMode: (mode) => q.setPermissionMode(mode),
+      setRemoteControl: async (enabled, name) => {
+        // Not in the SDK typings (0.3.x) but used by the official IDE hosts; isolated here so a rename only touches this line.
+        const r = await (q as unknown as RemoteControlQuery).enableRemoteControl(enabled, name);
+        return typeof r?.session_url === "string" ? r.session_url : null;
+      },
       initialization: () => q.initializationResult(),
     };
   }

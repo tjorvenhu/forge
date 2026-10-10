@@ -37,7 +37,7 @@ export const Project = z.object({
   defaultModel: z.string().nullable(),
   createdAt: z.string(),
   lastOpenedAt: z.string().nullable(),
-  /** command run by the auto-test tag and the feature workflow, e.g. "pnpm test" */
+  /** command run by the auto-test tag, e.g. "pnpm test" */
   testCommand: z.string().nullable(),
   /** set for git worktrees: the project they belong to */
   parentId: z.string().nullable(),
@@ -118,6 +118,8 @@ export const SessionEventBody = z.discriminatedUnion("type", [
     /** id passed to Claude Code; needed to rewind files to this point */
     uuid: z.string().optional(),
     attachments: z.array(z.object({ name: z.string(), mediaType: z.string(), size: z.number() })).optional(),
+    /** "remote": typed in the Claude app (Remote Control) */
+    source: z.enum(["forge", "remote"]).optional(),
   }),
   z.object({
     type: z.literal("check.result"),
@@ -461,12 +463,34 @@ export const RewindResult = z.object({
 });
 export type RewindResult = z.infer<typeof RewindResult>;
 
-export const RemoteState = z.object({
-  phase: z.enum(["off", "starting", "connected", "untrusted", "error"]),
+export const ProjectRemovalInfo = z.object({
+  path: z.string(),
+  folderExists: z.boolean(),
+  /** reason why the folder must not be deleted (drive, home, contains other projects), else null */
+  folderBlocker: z.string().nullable(),
+  isWorktree: z.boolean(),
+  /** git worktrees registered as child projects */
+  worktrees: z.number(),
+  /** "owner/repo" when origin points to github.com */
+  githubRepo: z.string().nullable(),
+  githubSignedIn: z.boolean(),
+  githubCanDelete: z.boolean(),
+});
+export type ProjectRemovalInfo = z.infer<typeof ProjectRemovalInfo>;
+
+export const RemoteSession = z.object({
+  sessionId: z.string(),
+  title: z.string(),
+  /** claude.ai/code link of this session; opens in the Claude app on phones */
   url: z.string().nullable(),
+  state: z.enum(["connecting", "connected", "error"]),
   message: z.string().nullable(),
-  /** e.g. "Capacity: 1/32" as reported by the CLI */
-  detail: z.string().nullable(),
+});
+export type RemoteSession = z.infer<typeof RemoteSession>;
+
+export const RemoteState = z.object({
+  enabled: z.boolean(),
+  sessions: z.array(RemoteSession),
 });
 export type RemoteState = z.infer<typeof RemoteState>;
 
@@ -483,60 +507,3 @@ export const PullRequest = z.object({
 });
 export type PullRequest = z.infer<typeof PullRequest>;
 
-export const WorkflowStepId = z.enum(["branch", "plan", "approve", "implement", "test", "review", "commit", "push", "pr"]);
-export type WorkflowStepId = z.infer<typeof WorkflowStepId>;
-
-export const WorkflowStepState = z.object({
-  step: WorkflowStepId,
-  status: z.enum(["pending", "running", "waiting", "done", "skipped", "failed"]),
-  message: z.string().nullable(),
-  at: z.string().nullable(),
-});
-export type WorkflowStepState = z.infer<typeof WorkflowStepState>;
-
-export const WorkflowOptions = z.object({
-  useWorktree: z.boolean(),
-  approvePlan: z.boolean(),
-  runTests: z.boolean(),
-  review: z.boolean(),
-  push: z.boolean(),
-  createPr: z.boolean(),
-  draftPr: z.boolean(),
-});
-export type WorkflowOptions = z.infer<typeof WorkflowOptions>;
-
-export const WorkflowRun = z.object({
-  id: z.string(),
-  projectId: z.string(),
-  workProjectId: z.string().nullable(),
-  title: z.string(),
-  requirement: z.string(),
-  options: WorkflowOptions,
-  status: z.enum(["running", "waiting", "failed", "done", "cancelled"]),
-  step: WorkflowStepId,
-  steps: z.array(WorkflowStepState),
-  branch: z.string().nullable(),
-  sessionId: z.string().nullable(),
-  prUrl: z.string().nullable(),
-  error: z.string().nullable(),
-  createdAt: z.string(),
-  updatedAt: z.string(),
-});
-export type WorkflowRun = z.infer<typeof WorkflowRun>;
-
-export const Schedule = z.object({
-  id: z.string(),
-  projectId: z.string(),
-  name: z.string(),
-  prompt: z.string(),
-  /** local time HH:MM */
-  time: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/),
-  /** 1 = Monday … 7 = Sunday */
-  weekdays: z.array(z.number().int().min(1).max(7)).min(1),
-  planOnly: z.boolean(),
-  enabled: z.boolean(),
-  lastRunAt: z.string().nullable(),
-  lastSessionId: z.string().nullable(),
-  createdAt: z.string(),
-});
-export type Schedule = z.infer<typeof Schedule>;

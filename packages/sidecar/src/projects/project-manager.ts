@@ -50,8 +50,13 @@ export class ProjectManager {
     };
   }
 
+  /** All projects without git status (cheap). */
+  all(): Project[] {
+    return this.db.listProjects().map((p) => this.withExists(p));
+  }
+
   async list(): Promise<ProjectWithStatus[]> {
-    const all = this.db.listProjects().map((p) => this.withExists(p));
+    const all = this.all();
     return Promise.all(all.map((p) => this.withStatus(p)));
   }
 

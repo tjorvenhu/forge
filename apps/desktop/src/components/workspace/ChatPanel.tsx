@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { AlertTriangle, CheckCircle2, ChevronDown, Clock, FileText, History, ImageIcon, Info, MessageSquarePlus, Power, RotateCcw, ShieldAlert, Terminal, Undo2, XCircle } from "lucide-react";
+import { AlertTriangle, CheckCircle2, ChevronDown, Clock, FileText, History, ImageIcon, Info, MessageSquarePlus, Power, RotateCcw, ShieldAlert, Smartphone, Terminal, Undo2, XCircle } from "lucide-react";
 import type { ExternalSession, Project, RewindResult, Session } from "@forge/protocol";
 import { call, useSession, useSessionHistory, useSessions } from "@/lib/queries";
 import { errorMessage } from "@/lib/rpc";
@@ -332,7 +332,7 @@ function ResultLine({ body, onRetry }: { body: Extract<ChatItem, { kind: "result
           <Clock className="h-3 w-3" /> {formatDuration(body.durationMs)}
         </span>
       )}
-      {body.numTurns !== null && <span>{body.numTurns} Schritte</span>}
+      {body.numTurns !== null && <span>{body.numTurns} {body.numTurns === 1 ? "Schritt" : "Schritte"}</span>}
       {(body.inputTokens !== null || body.outputTokens !== null) && (
         <span title="Laut Claude Code gemeldete Tokens dieses Durchlaufs (ohne Cache-Lesezugriffe)">
           Tokens: {formatTokens(body.inputTokens)} rein, {formatTokens(body.outputTokens)} raus
@@ -379,7 +379,14 @@ function UserMessage({ item, sessionId }: { item: Extract<ChatItem, { kind: "use
         )}
         <div className="flex w-fit min-w-0 max-w-full items-end gap-3 rounded-lg border border-border bg-surface-2 px-3 py-1.5">
           <div className="min-w-0 whitespace-pre-wrap break-words text-[13.5px]">{item.text}</div>
-          <div className="shrink-0 pb-px text-[11px] text-subtle">{clockTime(item.ts)}</div>
+          <div className="flex shrink-0 items-center gap-1 pb-px text-[11px] text-subtle">
+            {item.remote && (
+              <span className="flex items-center gap-0.5" title="In der Claude-App geschrieben">
+                <Smartphone className="h-3 w-3" /> App
+              </span>
+            )}
+            {clockTime(item.ts)}
+          </div>
         </div>
       </div>
       {item.uuid && (

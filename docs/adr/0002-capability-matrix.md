@@ -20,9 +20,11 @@ Die Matrix wird zur Laufzeit aus `system/init` und `initializationResult()` neu 
 | Permission-Modus | supported | `default`, `acceptEdits`, `plan`, `bypassPermissions` (letzterer nur mit `allowDangerouslySkipPermissions`) |
 | Harte Sperrliste | supported | `PreToolUse`-Hook, greift auch im Bypass |
 | Slash-Commands | partial | Liste aus `initializationResult().commands`; Skills/eigene Commands als Text sendbar, interaktive Built-ins (`/config`, `/login` …) nicht |
-| Bilder/Dateien im Prompt | unavailable (FORGE) | SDK unterstützt Bild-Blöcke, in FORGE Phase 1 nicht umgesetzt |
+| Bilder/Dateien im Prompt | supported | Bilder, PDFs und Textdateien als Content-Blöcke (seit Phase 2) |
+| Dateien zurücksetzen | supported | `enableFileCheckpointing` + `rewindFiles()` |
+| Remote Control | supported | `enableRemoteControl()` der laufenden Query; nicht in den SDK-Typen (ADR 0008) |
 | Token-Usage | supported | aus `result.usage` (verlässlich) |
 | Kosten | partial | `total_cost_usd` ist bei Abo ein API-Äquivalent, wird nicht als Kosten angezeigt |
 | Rate-Limit-Status | supported | `rate_limit_event` (5-Stunden-Fenster) |
-| Eingebettetes Terminal (PTY) | unavailable | Phase 2 |
-| GitHub PR | partial | `gh` installiert, Login erforderlich; Flow Phase 2 |
+| Eingebettetes Terminal (PTY) | supported | xterm.js + portable-pty in der Tauri-Hülle |
+| GitHub PR | supported | mitgeliefertes `gh`, Anmeldung in der App |

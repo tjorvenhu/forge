@@ -24,12 +24,15 @@ Letzter vollständiger Lauf: 2026-10-10, Windows 11 Pro 26200, Node 24.14, Claud
 - `setup-tools.test.ts`: Auslesen der Login-URL aus der echten CLI-Ausgabe, Vorrang der mitgelieferten Werkzeuge, PATH für Sessions.
 
 - `claude-config.test.ts`: CLAUDE.md global/Projekt/lokal mit Konflikterkennung, .bak, git exclude; Skills/Subagenten anlegen, auflisten, löschen; Hooks prüfen und nur den Schlüssel ersetzen; MCP-Ausgabe parsen und Argumente bauen.
-- `automation.test.ts`: Zeitplan-Fälligkeit, Worktree anlegen/entfernen (echtes Git), kompletter Feature-Workflow mit simulierter Runtime, Stopp bei roten Tests, Ablehnung bei unsauberer Arbeitskopie.
+- `worktrees.test.ts`: Worktree anlegen/entfernen (echtes Git), Branch-Slugs.
+- `removal.test.ts`: GitHub-Repo aus dem Remote lesen, gesperrte Ordner (Laufwerk, Home, Standardordner, FORGE-Daten, verschachtelte Projekte), Löschen von Ordner (inkl. schreibgeschützter Git-Objekte) und Repo mit simuliertem gh.
+- `session-service.test.ts` (Remote): Bridge für offene Sessions, Echo eigener Nachrichten ohne Dublette, Nachricht vom Handy startet einen Durchlauf und landet mit Markierung im Verlauf, leere Session mit Titel aus der ersten Nachricht.
 - `session-service.test.ts` (ergänzt): Auto-Test + Auto-Commit nur mit Dateien des Durchlaufs, kein Commit bei roten Tests.
 - `project-git.test.ts` (ergänzt): Push/Pull gegen lokales Bare-Remote (main-Schutz, Fast-Forward, Divergenz).
 
 **Desktop**
 - `chat-items.test.ts`: Zusammenbau der Chat-Elemente aus Events, Streaming-Puffer, Store-Merge.
+- `title-tooltips.test.tsx`: eigener Tooltip statt nativem `title`, Wiederherstellen des Attributs, Schließen bei Klick.
 - `GitPanel.test.tsx`: Commit-Flow in der Komponente (Auswahl, Review-Dialog, exakter RPC-Aufruf) und KI-Vorschlag.
 
 **E2E (`real-claude.e2e.test.ts`)**, echter Sidecar-Prozess + installierte CLI + echtes Git:
@@ -66,12 +69,17 @@ Usage-Balken in der Statuskarte, GitHub-Anmeldung bis zur Code-Anzeige (abgebroc
 
 Erweiterungen mit echtem MCP-Server, Terminal-Tab (PowerShell im Projekt), Remote-Steuerung (Erkennung „Ordner nicht freigegeben“, Claude-Vertrauensfrage im eingebetteten Terminal), echter Feature-Workflow über die Oberfläche (Worktree, Umsetzung mit zwei Freigaben im Safe-Profil, Commit auf dem Feature-Branch). Gefundene und behobene Fehler: weiße Seite durch freezePrototype; Workflow zeigte nicht an, dass Claude auf eine Freigabe wartet; MCP-Status englisch; Test-Flake durch Hintergrundarbeit beim Aufräumen.
 
+## Vierter UI-Durchlauf (Windows, Dev-Build mit eigenem Datenordner)
+
+Remote Control echt: Einschalten ohne offene Session öffnet eine leere Session, Bridge verbunden, QR-Code und Link; Nachricht aus FORGE ohne Dublette im Verlauf; Ausschalten. Projekt löschen: Dialog mit Ordner und GitHub-Repo, Anfrage der Berechtigung delete_repo sichtbar (nicht ausgeführt), echtes Löschen des Ordners inkl. offener Session. Alle Ansichten auf Umbrüche und Platzierung geprüft. Gefundene und behobene Fehler: leere Modellauswahl bei neuer Remote-Session, „1 Schritte“, Titel blieb „Remote-Session“, Tag-Beschreibungen nicht bündig, Pfad brach mitten im Wort, Badge „Remote“ (Git-Remote) verwechselbar, doppelter Spinner in ladenden Knöpfen, Töne-Beschreibung gequetscht, „max Abo“, veraltete Texte („folgen in Phase 2“), Git-Tab ohne Repository zeigte Branches/Verlauf und hing nach der ersten Korrektur in einer Ladeschleife.
+
 ## Nicht getestet
 
 - Linux (keine Umgebung verfügbar)
 - Töne: Wiedergabe kann ich nicht hören; Code-Pfad ist typgeprüft, Test-Knöpfe unter Einstellungen
 - Installer-Installation auf einem frischen System ohne Claude Code
 - Claude-Code-Installation aus der App (würde die vorhandene Installation verändern)
-- Remote Control bis zur Steuerung vom Handy (Verbindung und Link wurden vorher per CLI geprüft)
+- Remote Control mit der echten Claude-App: Bridge-Verbindung und Session-Link mit dem echten SDK und in der App geprüft, Nachrichten vom Handy nur simuliert
+- Eigene Tooltips im Fenster: Mausbewegung per Automation erreichte das Fenster nicht; Logik per Komponententest geprüft
 - Push/PR gegen GitHub mit echtem Konto (gh nicht angemeldet); Logik gegen lokales Bare-Remote getestet
 - Claude-Anmeldung bis zum Ende (URL-Ausgabe in isoliertem Konfigurationsordner geprüft) und GitHub-Anmeldung bis zum Ende

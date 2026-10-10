@@ -36,7 +36,8 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
     <button
       ref={ref}
       type={type}
-      className={cn(buttonVariants({ variant, size }), className)}
+      // While loading, the spinner replaces the button's own icon.
+      className={cn(buttonVariants({ variant, size }), "aria-busy:[&>svg:not(.animate-spin)]:hidden", className)}
       disabled={disabled || loading}
       aria-busy={loading || undefined}
       {...props}

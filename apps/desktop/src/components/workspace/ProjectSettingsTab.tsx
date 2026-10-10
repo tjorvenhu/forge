@@ -15,8 +15,7 @@ import { PROFILE_INFO } from "@/components/projects/ProfileBadge";
 import { RemoveProjectDialog } from "@/components/projects/RemoveProjectDialog";
 import { MemoryEditor } from "@/components/settings/MemoryEditor";
 
-/** Phase 1 knows these tags; their automated behaviour arrives in phase 2. */
-/** Tags with behaviour in FORGE (sessions, automation, policy). */
+/** Tags with behaviour in FORGE (sessions, turn automation, policy). */
 const TAG_INFO: Record<string, string> = {
   "plan-first": "Neue Sessions starten im Plan-Modus.",
   "auto-test": "Nach jedem Durchlauf läuft der Testbefehl, das Ergebnis steht im Chat.",
@@ -110,7 +109,7 @@ export function ProjectSettingsTab({ project }: { project: Project }) {
                 ]}
               />
             </Field>
-            <Field label="Testbefehl" hint="Für den Tag auto-test und die Feature-Workflows. Wird in einer Shell im Projektordner ausgeführt.">
+            <Field label="Testbefehl" hint="Für den Tag auto-test. Wird in einer Shell im Projektordner ausgeführt.">
               <Input
                 defaultValue={project.testCommand ?? ""}
                 key={project.testCommand ?? ""}
@@ -139,14 +138,14 @@ export function ProjectSettingsTab({ project }: { project: Project }) {
                   Hinzufügen
                 </Button>
               </div>
-              <ul className="mt-3 flex flex-col gap-1">
+              <ul className="mt-3 grid grid-cols-[auto_1fr] items-start gap-x-2.5 gap-y-1.5 text-xs">
                 {Object.entries(TAG_INFO).map(([t, info]) => {
                   const active = project.tags.includes(t);
                   return (
-                    <li key={t} className="flex items-start gap-2 text-xs">
+                    <li key={t} className="contents">
                       <button
                         onClick={() => (active ? void update({ tags: project.tags.filter((x) => x !== t) }) : addTag(t))}
-                        className={cn("shrink-0 rounded border px-1.5 py-0.5 font-mono text-[11px]", active ? "border-accent bg-accent-soft text-fg" : "border-dashed border-border text-muted hover:text-fg")}
+                        className={cn("justify-self-start rounded border px-1.5 py-0.5 font-mono text-[11px]", active ? "border-accent bg-accent-soft text-fg" : "border-dashed border-border text-muted hover:text-fg")}
                         aria-pressed={active}
                       >
                         {t}
@@ -166,11 +165,11 @@ export function ProjectSettingsTab({ project }: { project: Project }) {
         </section>
 
         <section className="rounded-xl border border-danger/30 bg-surface p-4 xl:col-span-2">
-          <SectionTitle>Entfernen</SectionTitle>
+          <SectionTitle>Entfernen oder löschen</SectionTitle>
           <div className="flex items-center gap-3">
-            <p className="flex-1 text-[13px] text-muted">Entfernt das Projekt aus FORGE. Dateien und Git-Historie bleiben erhalten.</p>
+            <p className="flex-1 text-[13px] text-muted">Entfernt das Projekt aus FORGE. Auf Wunsch löscht FORGE auch den lokalen Ordner und das GitHub-Repository.</p>
             <Button variant="danger-ghost" onClick={() => setRemoving(true)}>
-              <Trash2 className="h-3.5 w-3.5" /> Aus FORGE entfernen
+              <Trash2 className="h-3.5 w-3.5" /> Entfernen …
             </Button>
           </div>
         </section>

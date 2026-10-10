@@ -93,6 +93,11 @@ const MIGRATIONS: string[] = [
     created_at TEXT NOT NULL
   );
   `,
+  // Feature workflows and schedules were removed again.
+  `
+  DROP TABLE IF EXISTS workflows;
+  DROP TABLE IF EXISTS schedules;
+  `,
 ];
 
 export const DEFAULT_SETTINGS: Settings = {
