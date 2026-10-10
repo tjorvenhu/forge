@@ -1,0 +1,29 @@
+{
+  "name": "forge",
+  "private": true,
+  "version": "0.1.0",
+  "description": "FORGE – Claude Development Studio (Desktop-GUI für Claude Code)",
+  "type": "module",
+  "packageManager": "pnpm@10.30.3",
+  "engines": {
+    "node": ">=22.13"
+  },
+  "scripts": {
+    "dev": "pnpm --filter @forge/sidecar build && pnpm --filter @forge/desktop tauri dev",
+    "build": "pnpm --filter @forge/sidecar build && pnpm --filter @forge/desktop tauri build",
+    "build:ui": "pnpm --filter @forge/desktop build",
+    "build:sidecar": "pnpm --filter @forge/sidecar build",
+    "lint": "eslint .",
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm -r test",
+    "test:e2e": "pnpm --filter @forge/sidecar test:e2e"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.12.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "globals": "^17.13.0",
+    "typescript": "~6.0.3",
+    "typescript-eslint": "^8.71.1"
+  }
+}
