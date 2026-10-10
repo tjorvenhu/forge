@@ -5,6 +5,7 @@ import {
   ForgeError,
   type ExternalSession,
   type PermissionMode,
+  type PlanUsage,
   type RuntimeInfo,
   type ServerEvent,
   type Session,
@@ -15,7 +16,8 @@ import type { ApprovalDecision, ApprovalRequest, ClaudeRuntime, RuntimeSession, 
 import { Normalizer } from "../claude/normalize.js";
 import { locateClaude, sessionEnv } from "../claude/environment.js";
 import type { Db, SessionRecord } from "../persistence/db.js";
-import type { GitEngine } from "../git/git.js";
+import { isSensitiveFile, type GitEngine } from "../git/git.js";
+import { buildCommitPrompt, cleanCommitMessage } from "../git/commit-message.js";
 import { checkToolUse, writesOutsideProject } from "../policy/guard.js";
 import { effectivePermissionMode, PROFILES, resolveProfile, type ProfileConfig } from "../policy/profiles.js";
 import { redact } from "../policy/redact.js";
@@ -36,6 +38,9 @@ interface LiveSession {
   interrupting: boolean;
 }
 
+/** Small, fast model: commit messages need speed more than depth. */
+const COMMIT_MESSAGE_MODEL = "haiku";
+
 const MODE_RANK: Record<PermissionMode, number> = { plan: 0, default: 1, acceptEdits: 2, bypassPermissions: 3 };
 
 export class SessionService {
@@ -44,6 +49,7 @@ export class SessionService {
   private cliCapabilities: string[] = [];
   /** from the latest system/init; null until a session has started */
   private mcpServers: Array<{ name: string; status: string }> | null = null;
+  private usageCache: { at: number; value: PlanUsage } | null = null;
 
   constructor(
     private readonly db: Db,
@@ -91,6 +97,51 @@ export class SessionService {
 
   capabilities() {
     return this.runtime.capabilities(this.initCache, this.cliCapabilities);
+  }
+
+  /** Drafts a commit message for the selected (or all) changed files with a one-shot Claude call. */
+  async suggestCommitMessage(projectId: string, paths?: string[]) {
+    const project = this.projects.requireExisting(projectId);
+    const settings = this.db.getSettings();
+    const claudePath = locateClaude(settings.claudePath);
+    if (!claudePath) throw new ForgeError("CLAUDE_NOT_INSTALLED", "Claude Code CLI wurde nicht gefunden.");
+    const status = await this.git.status(project.path);
+    const wanted = paths?.length ? new Set(paths) : null;
+    const files = status.files.filter((f) => !wanted || wanted.has(f.path));
+    if (!files.length) throw new ForgeError("VALIDATION", "Keine Änderungen für eine Commit-Nachricht.");
+    const skipped = files.filter((f) => isSensitiveFile(f.path)).map((f) => f.path);
+    const diffs = [];
+    for (const f of files) {
+      if (skipped.includes(f.path)) continue;
+      diffs.push(await this.git.diff(project.path, f.path, f.staged && !f.unstaged));
+    }
+    const recent = (await this.git.log(project.path, 15)).map((c) => c.subject);
+    const model = COMMIT_MESSAGE_MODEL;
+    const raw = await this.runtime.complete(buildCommitPrompt(diffs, recent, skipped), {
+      cwd: project.path,
+      env: sessionEnv(settings.stripApiKey),
+      claudePath,
+      model,
+    });
+    const message = cleanCommitMessage(raw);
+    if (!message) throw new ForgeError("CLAUDE_RUNTIME", "Claude hat keine Commit-Nachricht geliefert.");
+    return { message, model, skipped };
+  }
+
+  /** Plan usage, cached for a minute so frequent UI refreshes do not spawn a CLI each time. */
+  async planUsage(refresh: boolean): Promise<PlanUsage> {
+    if (!refresh && this.usageCache && Date.now() - this.usageCache.at < 60_000) return this.usageCache.value;
+    const settings = this.db.getSettings();
+    const claudePath = locateClaude(settings.claudePath);
+    const unavailable = (error: string): PlanUsage => ({ available: false, subscriptionType: null, windows: [], fetchedAt: new Date().toISOString(), error });
+    if (!claudePath) return unavailable("Claude Code nicht gefunden");
+    try {
+      const value = await this.runtime.planUsage({ cwd: process.cwd(), env: sessionEnv(settings.stripApiKey), claudePath });
+      this.usageCache = { at: Date.now(), value };
+      return value;
+    } catch (e) {
+      return unavailable(e instanceof Error ? e.message.slice(0, 300) : String(e));
+    }
   }
 
   async runtimeInfo(): Promise<RuntimeInfo | null> {

@@ -1,6 +1,7 @@
-import { describe, expect, it, vi, beforeEach } from "vitest";
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi, beforeEach } from "vitest";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { TooltipProvider } from "@radix-ui/react-tooltip";
 import type { GitStatus, Project } from "@forge/protocol";
 import type * as RpcModuleNs from "@/lib/rpc";
 
@@ -38,10 +39,14 @@ function setup() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={qc}>
-      <GitPanel project={project} />
+      <TooltipProvider>
+        <GitPanel project={project} />
+      </TooltipProvider>
     </QueryClientProvider>,
   );
 }
+
+afterEach(cleanup);
 
 beforeEach(() => {
   callMock.mockReset();
@@ -54,6 +59,20 @@ beforeEach(() => {
 });
 
 describe("GitPanel commit flow", () => {
+  it("fills the message from the AI suggestion for the selected files", async () => {
+    callMock.mockImplementation(async (method: string) => {
+      if (method === "git.status") return status;
+      if (method === "git.suggestCommitMessage") return { message: "feat: neue Datei a", model: "haiku", skipped: [] };
+      throw new Error("unexpected " + method);
+    });
+    setup();
+    await screen.findByText("src/a.ts");
+    fireEvent.click(screen.getByRole("checkbox", { name: "src/a.ts auswählen" }));
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Commit-Nachricht mit Claude erzeugen" })));
+    expect(callMock).toHaveBeenCalledWith("git.suggestCommitMessage", { projectId: "p1", paths: ["src/a.ts"] });
+    expect((screen.getByLabelText("Commit-Nachricht") as HTMLTextAreaElement).value).toBe("feat: neue Datei a");
+  });
+
   it("commits exactly the selected files after the review dialog", async () => {
     setup();
     await screen.findByText("src/a.ts");

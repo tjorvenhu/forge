@@ -11,7 +11,8 @@ import {
   type SDKControlInitializeResponse,
   type SDKUserMessage,
 } from "@anthropic-ai/claude-agent-sdk";
-import type { Capability, ExternalSession, PermissionMode } from "@forge/protocol";
+import type { Capability, ExternalSession, PermissionMode, PlanUsage } from "@forge/protocol";
+import { toPlanUsage } from "./usage.js";
 import { AsyncQueue } from "./async-queue.js";
 
 export interface StartOptions {
@@ -70,6 +71,10 @@ export interface ClaudeRuntime {
   sessionHistory(claudeSessionId: string, dir: string): Promise<unknown[]>;
   /** short-lived probe to read models/commands/account without sending a prompt */
   probe(opts: Pick<StartOptions, "cwd" | "env" | "claudePath">): Promise<SDKControlInitializeResponse>;
+  /** one-shot text completion without tools, e.g. commit messages */
+  complete(prompt: string, opts: Pick<StartOptions, "cwd" | "env" | "claudePath"> & { model: string }): Promise<string>;
+  /** plan rate-limit windows; uses an experimental SDK call, so callers must tolerate failure */
+  planUsage(opts: Pick<StartOptions, "cwd" | "env" | "claudePath">): Promise<PlanUsage>;
 }
 
 function userMessage(text: string): SDKUserMessage {
@@ -214,6 +219,45 @@ export class AgentSdkRuntime implements ClaudeRuntime {
 
   async sessionHistory(claudeSessionId: string, dir: string): Promise<unknown[]> {
     return getSessionMessages(claudeSessionId, { dir });
+  }
+
+  async complete(prompt: string, opts: Pick<StartOptions, "cwd" | "env" | "claudePath"> & { model: string }): Promise<string> {
+    const q = query({
+      prompt,
+      options: {
+        cwd: opts.cwd,
+        env: opts.env,
+        model: opts.model,
+        pathToClaudeCodeExecutable: opts.claudePath,
+        tools: [],
+        maxTurns: 1,
+        settingSources: [],
+        persistSession: false,
+      },
+    });
+    let text = "";
+    for await (const m of q) {
+      if (m.type === "result") {
+        if (m.subtype !== "success") throw new Error(`Claude konnte keine Antwort erzeugen (${m.subtype})`);
+        text = m.result;
+      }
+    }
+    return text;
+  }
+
+  async planUsage(opts: Pick<StartOptions, "cwd" | "env" | "claudePath">): Promise<PlanUsage> {
+    const input = new AsyncQueue<SDKUserMessage>();
+    const q = query({
+      prompt: input,
+      options: { cwd: opts.cwd, env: opts.env, pathToClaudeCodeExecutable: opts.claudePath, settingSources: [], persistSession: false },
+    });
+    try {
+      // Experimental in SDK 0.3.x; isolated here so a rename only touches this line.
+      return toPlanUsage(await q.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET({ skipBehaviors: true }));
+    } finally {
+      input.end();
+      q.close();
+    }
   }
 
   async probe(opts: Pick<StartOptions, "cwd" | "env" | "claudePath">): Promise<SDKControlInitializeResponse> {

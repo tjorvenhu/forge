@@ -10,13 +10,14 @@
   },
   "scripts": {
     "dev": "pnpm --filter @forge/sidecar build && pnpm --filter @forge/desktop tauri dev",
-    "build": "pnpm --filter @forge/sidecar build && pnpm --filter @forge/desktop tauri build",
+    "build": "pnpm --filter @forge/sidecar build && node scripts/prepare-runtime.mjs && pnpm --filter @forge/desktop tauri build",
     "build:ui": "pnpm --filter @forge/desktop build",
     "build:sidecar": "pnpm --filter @forge/sidecar build",
     "lint": "eslint .",
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm -r test",
-    "test:e2e": "pnpm --filter @forge/sidecar test:e2e"
+    "test:e2e": "pnpm --filter @forge/sidecar test:e2e",
+    "prepare:runtime": "pnpm --filter @forge/sidecar build && node scripts/prepare-runtime.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

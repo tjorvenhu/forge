@@ -39,19 +39,22 @@ pnpm test:e2e       # echte Claude-Aufrufe (Modell haiku), FORGE_E2E=0 überspri
 pnpm build          # Release + NSIS-Installer unter apps/desktop/src-tauri/target/release/bundle/
 ```
 
+`pnpm build` lädt beim ersten Mal Node, PortableGit und gh (geprüft per SHA-256) nach `.runtime-cache/`.
+
 Rust ist per rustup unter `%USERPROFILE%\.cargo\bin` installiert. Neue Terminals haben es im PATH;
 in bereits offenen Shells ggf. `$env:Path += ";$env:USERPROFILE\.cargo\bin"`.
 
 ## Bekannte Fehler und Einschränkungen
 
-- Linux ungetestet; Installer bündelt Node.js nicht (Node ≥ 22.13 muss installiert sein).
+- Linux ungetestet. Windows-Installer enthält Node, Git und gh (rund 92 MB).
 - Modellanzeige zeigt bei laufenden Sessions den aufgelösten Namen (z. B. `claude-opus-5-5`) statt des Anzeigenamens.
 - Untätige Sessions behalten ihren Claude-Prozess, bis „Beenden“ geklickt oder die App geschlossen wird.
 - Radix-Dialoge schließen sich, wenn das Fenster beim Öffnen keinen Fokus hat (nur bei Fernsteuerung
   per UI Automation beobachtet, bei normaler Bedienung nicht).
 - Das Logo ist ein Vektor-Nachbau der Vorlage, weil das eingefügte Bild nicht als Datei vorlag.
   Original-PNG unter `apps/desktop/src-tauri/icons/` ablegen und `pnpm tauri icon <datei>` ausführen, falls gewünscht.
-- `gh` ist installiert, aber nicht angemeldet (`gh auth login`); wird erst in Phase 2 gebraucht.
+- Claude-Code-Installation aus der App ist nicht getestet (hätte die vorhandene Installation verändert). Claude- und GitHub-Anmeldung sind bis zur Anzeige von URL bzw. Code geprüft; abschließen kann nur der Nutzer im Browser.
+- Die Usage-Anzeige nutzt eine experimentelle SDK-Methode; nach SDK-Updates prüfen.
 
 ## Genau drei nächste Aufgaben
 

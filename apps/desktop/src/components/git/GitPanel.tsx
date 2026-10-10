@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { GitBranch, GitCommitHorizontal, RefreshCw, ShieldAlert } from "lucide-react";
+import { GitBranch, GitCommitHorizontal, RefreshCw, ShieldAlert, Sparkles } from "lucide-react";
 import type { FileStatus, Project } from "@forge/protocol";
 import { call, keys, useGitStatus } from "@/lib/queries";
 import { errorMessage, RpcCallError } from "@/lib/rpc";
@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils";
 import { toast } from "@/stores/toast";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/input";
-import { Badge, Checkbox, EmptyState, ErrorBanner, Spinner } from "@/components/ui/misc";
+import { Badge, Checkbox, EmptyState, ErrorBanner, Spinner, Tooltip } from "@/components/ui/misc";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { DiffView } from "./DiffView";
 
@@ -31,6 +31,7 @@ export function GitPanel({ project, compact = false }: { project: Project; compa
   const [focus, setFocus] = useState<FileStatus | null>(null);
   const [message, setMessage] = useState("");
   const [review, setReview] = useState(false);
+  const [generating, setGenerating] = useState(false);
   const [flagged, setFlagged] = useState<Array<{ path: string; reason: string }> | null>(null);
 
   // Keep the selection consistent with the current status; new files are not auto-selected.
@@ -80,6 +81,19 @@ export function GitPanel({ project, compact = false }: { project: Project; compa
       else n.delete(p);
       return n;
     });
+
+  const generate = async () => {
+    setGenerating(true);
+    try {
+      const r = await call("git.suggestCommitMessage", { projectId: project.id, paths: selected.size ? [...selected] : undefined });
+      setMessage(r.message);
+      if (r.skipped.length) toast.info("Sensible Dateien nicht an Claude gesendet", r.skipped.join(", "));
+    } catch (e) {
+      toast.error("Commit-Nachricht nicht erzeugt", errorMessage(e));
+    } finally {
+      setGenerating(false);
+    }
+  };
 
   const doCommit = async (allowSensitive: boolean) => {
     try {
@@ -157,7 +171,29 @@ export function GitPanel({ project, compact = false }: { project: Project; compa
 
       {files.length > 0 && (
         <div className="flex shrink-0 flex-col gap-2">
-          <Textarea value={message} onChange={(e) => setMessage(e.target.value)} rows={2} placeholder="Commit-Nachricht, z. B. feat: Login mit Passkeys" aria-label="Commit-Nachricht" />
+          <div className="relative">
+            <Textarea
+              value={message}
+              onChange={(e) => setMessage(e.target.value)}
+              rows={message.includes("\n") ? 4 : 2}
+              placeholder="Commit-Nachricht, z. B. feat: Login mit Passkeys"
+              aria-label="Commit-Nachricht"
+              className="pr-10"
+              disabled={generating}
+            />
+            <Tooltip content={selected.size ? `Nachricht aus den ${selected.size} ausgewählten Dateien erzeugen` : "Nachricht aus allen Änderungen erzeugen"}>
+              <Button
+                size="icon-sm"
+                variant="ghost"
+                className="absolute right-1.5 top-1.5 text-accent"
+                onClick={() => void generate()}
+                loading={generating}
+                aria-label="Commit-Nachricht mit Claude erzeugen"
+              >
+                {!generating && <Sparkles className="h-3.5 w-3.5" />}
+              </Button>
+            </Tooltip>
+          </div>
           <Button variant="primary" disabled={!selected.size || !message.trim() || st.summary.conflicted} onClick={() => setReview(true)}>
             <GitCommitHorizontal className="h-4 w-4" /> Commit erstellen ({selected.size})
           </Button>

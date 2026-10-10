@@ -39,6 +39,11 @@ export function NewProjectDialog() {
   const [error, setError] = useState<string | null>(null);
   const [duplicateId, setDuplicateId] = useState<string | null>(null);
 
+  const cloneUrl = useUi((s) => s.cloneUrl);
+  useEffect(() => {
+    if (mode === "clone" && cloneUrl) setUrl(cloneUrl);
+  }, [mode, cloneUrl]);
+
   useEffect(() => {
     if (mode) {
       setError(null);

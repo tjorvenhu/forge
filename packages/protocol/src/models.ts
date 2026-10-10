@@ -264,6 +264,8 @@ export type Capability = z.infer<typeof Capability>;
 
 export const ToolCheck = z.object({
   found: z.boolean(),
+  /** shipped with FORGE (true) or taken from the system (false) */
+  bundled: z.boolean(),
   version: z.string().nullable(),
   path: z.string().nullable(),
   error: z.string().nullable(),
@@ -294,6 +296,25 @@ export type Diagnostics = z.infer<typeof Diagnostics>;
 export const ModelInfo = z.object({ value: z.string(), displayName: z.string(), description: z.string() });
 export type ModelInfo = z.infer<typeof ModelInfo>;
 
+export const UsageWindow = z.object({
+  key: z.string(),
+  label: z.string(),
+  /** percent used, 0-100 */
+  utilization: z.number(),
+  resetsAt: z.string().nullable(),
+});
+export type UsageWindow = z.infer<typeof UsageWindow>;
+
+/** Plan limits as reported by Claude Code (claude.ai usage endpoint). */
+export const PlanUsage = z.object({
+  available: z.boolean(),
+  subscriptionType: z.string().nullable(),
+  windows: z.array(UsageWindow),
+  fetchedAt: z.string(),
+  error: z.string().nullable(),
+});
+export type PlanUsage = z.infer<typeof PlanUsage>;
+
 export const RuntimeInfo = z.object({
   models: z.array(ModelInfo),
   commands: z.array(z.object({ name: z.string(), description: z.string() })),
@@ -305,3 +326,37 @@ export type RuntimeInfo = z.infer<typeof RuntimeInfo>;
 
 export const ProjectTemplate = z.enum(["empty", "node-ts", "python", "rust"]);
 export type ProjectTemplate = z.infer<typeof ProjectTemplate>;
+
+export const GitHubAccount = z.object({
+  login: z.string(),
+  name: z.string().nullable(),
+  avatarUrl: z.string().nullable(),
+  profileUrl: z.string(),
+});
+export type GitHubAccount = z.infer<typeof GitHubAccount>;
+
+export const GitHubLoginState = z.object({
+  phase: z.enum(["idle", "starting", "waiting", "done", "error", "cancelled"]),
+  code: z.string().nullable(),
+  url: z.string().nullable(),
+  message: z.string().nullable(),
+});
+export type GitHubLoginState = z.infer<typeof GitHubLoginState>;
+
+export const GitHubRepo = z.object({
+  fullName: z.string(),
+  description: z.string().nullable(),
+  private: z.boolean(),
+  updatedAt: z.string(),
+  cloneUrl: z.string(),
+});
+export type GitHubRepo = z.infer<typeof GitHubRepo>;
+
+export const ClaudeSetupState = z.object({
+  task: z.enum(["install", "login"]).nullable(),
+  phase: z.enum(["idle", "running", "waiting_code", "done", "error", "cancelled"]),
+  url: z.string().nullable(),
+  log: z.array(z.string()),
+  message: z.string().nullable(),
+});
+export type ClaudeSetupState = z.infer<typeof ClaudeSetupState>;

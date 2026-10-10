@@ -13,29 +13,28 @@ Ein API-Key ist nicht nötig.
 |---|---|
 | ![Home](docs/screenshots/home.png) | ![Freigabe](docs/screenshots/freigabe.png) |
 
-## Voraussetzungen
+## Installation
 
-| Werkzeug | Version (getestet) | Wofür |
-|---|---|---|
-| Windows 11 oder Linux | Windows 11 26200 | Linux: nicht getestet, siehe Lücken |
-| Node.js | ≥ 22.13 (getestet 24.14) | Sidecar, nutzt `node:sqlite` |
-| pnpm | 10.x | Paketverwaltung |
-| Rust + Cargo | stable (getestet 1.99, MSVC) | Tauri-Hülle |
-| Windows: Visual Studio Build Tools | 2022, Workload „C++ Build Tools" | Rust-Linker |
-| Claude Code CLI | getestet 2.1.296 | Sessions |
-| git | getestet 2.53 | Git-Funktionen |
-| GitHub CLI `gh` | optional, getestet 2.102 | ab Phase 2 (PRs) |
+**Für Nutzer:** `FORGE_0.1.0_x64-setup.exe` ausführen. Mehr braucht es nicht: Node.js, Git (inkl. Bash)
+und die GitHub CLI sind enthalten. Fehlt Claude Code, installiert FORGE es auf Knopfdruck über den
+offiziellen Installer. Anmeldung bei Claude und GitHub erfolgt in der App (Einstellungen bzw. GitHub).
 
-Installation unter Windows (einmalig):
+**Für die Entwicklung** (Windows 11 getestet, Linux ungetestet):
+
+| Werkzeug | Version (getestet) |
+|---|---|
+| Node.js | ≥ 22.13 (getestet 24.14) |
+| pnpm | 10.x |
+| Rust + Cargo | stable (getestet 1.99, MSVC) |
+| Windows: Visual Studio Build Tools | 2022, Workload „C++ Build Tools" |
 
 ```powershell
 winget install Microsoft.VisualStudio.2022.BuildTools --override "--wait --passive --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended"
 winget install Rustlang.Rustup
-winget install GitHub.cli   # optional
 ```
 
 Linux (Debian/Ubuntu) braucht zusätzlich die Tauri-Systempakete: `libwebkit2gtk-4.1-dev`, `build-essential`,
-`libssl-dev`, `libayatana-appindicator3-dev`, `librsvg2-dev`.
+`libssl-dev`, `libayatana-appindicator3-dev`, `librsvg2-dev`; zur Laufzeit `nodejs` (≥ 22.13), `git`, `gh`.
 
 ## Claude-Max-Anmeldung
 
@@ -45,7 +44,7 @@ die du im Terminal benutzt:
 
 ```bash
 claude auth status   # sollte "loggedIn": true und "subscriptionType": "max" zeigen
-claude auth login    # falls nicht angemeldet
+claude auth login    # falls nicht angemeldet, oder in FORGE: Einstellungen → Mit Claude-Konto anmelden
 ```
 
 - FORGE liest keine Tokens und speichert keine Zugangsdaten.
@@ -71,7 +70,8 @@ pnpm lint         # ESLint über alle Pakete
 pnpm typecheck    # TypeScript strict für protocol, sidecar, desktop
 pnpm test         # Unit- und Integrationstests (ohne echte Claude-Aufrufe)
 pnpm test:e2e     # E2E mit echter Claude-Session (verbraucht etwas Abo-Kontingent, Modell haiku)
-pnpm build        # Release-Build inkl. Installer (NSIS unter Windows)
+pnpm build        # Release inkl. Installer (lädt und prüft beim ersten Mal Node/Git/gh, ca. 140 MB)
+pnpm prepare:runtime  # nur die mitgelieferte Laufzeit vorbereiten (für pnpm dev mit Bundle-Werkzeugen)
 ```
 
 Umgebungsvariablen für Sonderfälle: `FORGE_NODE` (Pfad zu node), `FORGE_SIDECAR` (Pfad zu `sidecar.mjs`),
@@ -90,6 +90,9 @@ Umgebungsvariablen für Sonderfälle: `FORGE_NODE` (Pfad zu node), `FORGE_SIDECA
   harte Sperrliste in allen Profilen, Audit-Log.
 - **Git:** Status, echter Diff (auch für neue Dateien), Stage/Unstage, Commit nur der ausgewählten Dateien
   mit Review-Dialog und Secret-Prüfung, Verlauf, Branches anlegen und wechseln, git init.
+- **Abo-Nutzung:** 5-Stunden- und Wochenfenster (auch pro Modell) unten links, mit Reset-Zeit.
+- **GitHub:** Anmeldung in der App (Code anzeigen, Browser öffnet sich), Liste deiner Repositories mit Klonen per Klick.
+- **Commit-Nachricht per KI:** Funken-Knopf im Commit-Feld; Claude (Haiku) schreibt die Nachricht aus dem Diff im Stil der bisherigen Commits. Sensible Dateien werden nicht gesendet.
 - **Töne:** Signal, wenn Claude fertig ist, eine Freigabe braucht oder ein Fehler auftritt (abschaltbar).
 - **Diagnose:** CLI-Version, Anmeldestatus, API-Key-Override, git, gh, Capability-Matrix.
 - **Persistenz:** SQLite für Projekte, Sessions, Events, Freigaben, Einstellungen. Beim Start öffnet FORGE das zuletzt genutzte Projekt.
@@ -99,14 +102,15 @@ Tastatur: `Strg+1..4` Workspace-Tabs, `Strg+N` neue Session, `Strg+O` Projekt hi
 
 ## Tests
 
-Letzter Lauf (Details in [docs/TESTING.md](docs/TESTING.md)): Lint und Typecheck ohne Befund, 76 Sidecar-Tests,
-7 Desktop-Tests, 8 E2E-Tests mit echter Claude-Session, alle bestanden.
+Letzter Lauf (Details in [docs/TESTING.md](docs/TESTING.md)): Lint und Typecheck ohne Befund, 85 Sidecar-Tests,
+8 Desktop-Tests, 8 E2E-Tests mit echter Claude-Session (auch mit der mitgelieferten Laufzeit), alle bestanden.
 
 ## Dokumentation
 
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): Prozesse, Module, Statusmaschine
 - [docs/SECURITY.md](docs/SECURITY.md): Permission- und Sicherheitskonzept
 - [docs/adr/](docs/adr): Architekturentscheidungen
+- [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md): mitgelieferte Software
 - [docs/TASKS.md](docs/TASKS.md): Taskliste
 - [HANDOFF.md](HANDOFF.md): aktueller Stand, bekannte Fehler, nächste Schritte
 
@@ -114,10 +118,10 @@ Letzter Lauf (Details in [docs/TESTING.md](docs/TESTING.md)): Lint und Typecheck
 
 - Linux nicht getestet (keine Linux-Umgebung verfügbar). Code ist plattformneutral geschrieben.
 - Kein eingebettetes Terminal (PTY) und kein CLAUDE.md-Editor: Phase 2.
-- Kein Push, Pull und keine PRs aus FORGE: Phase 2 (mit Guardrails).
+- Kein Push, Pull und keine PRs aus FORGE: Phase 2 (mit Guardrails). Die GitHub-Anmeldung ist schon da.
 - Projekt-Tags werden gespeichert und angezeigt, steuern aber noch kein automatisches Verhalten.
 - Bilder/Dateianhänge im Prompt nicht umgesetzt.
-- Der Installer bündelt Node.js nicht; Node ≥ 22.13 muss installiert sein.
+- Claude Code selbst wird nicht mitgeliefert, sondern bei Bedarf aus der App installiert (offizieller Installer).
 
 ## Roadmap
 

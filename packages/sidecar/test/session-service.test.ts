@@ -27,6 +27,12 @@ class FakeRuntime implements ClaudeRuntime {
   async listSessions() {
     return [];
   }
+  async complete(): Promise<never> {
+    throw new Error("no completion in tests");
+  }
+  async planUsage(): Promise<never> {
+    throw new Error("no usage in tests");
+  }
   async sessionHistory() {
     return [];
   }

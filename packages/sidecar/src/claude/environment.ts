@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { which } from "../util/proc.js";
+import { bundledPathEntries, gitBashForClaude } from "../util/tools.js";
 
 /**
  * Variables a parent Claude Code process sets for its children. If FORGE itself
@@ -34,6 +35,13 @@ export function sessionEnv(stripApiKey: boolean, base: NodeJS.ProcessEnv = proce
     if (stripApiKey && API_KEY_VARS.includes(k)) continue;
     out[k] = v;
   }
+  const extra = bundledPathEntries();
+  if (extra.length) {
+    const key = Object.keys(out).find((k) => k.toLowerCase() === "path") ?? "PATH";
+    out[key] = [...extra, out[key] ?? ""].filter(Boolean).join(path.delimiter);
+  }
+  const bash = gitBashForClaude();
+  if (bash && !out.CLAUDE_CODE_GIT_BASH_PATH) out.CLAUDE_CODE_GIT_BASH_PATH = bash;
   return out;
 }
 
