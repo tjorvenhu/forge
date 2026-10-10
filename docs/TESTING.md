@@ -6,9 +6,9 @@ Letzter vollständiger Lauf: 2026-10-10, Windows 11 Pro 26200, Node 24.14, Claud
 |---|---|---|
 | Lint | `pnpm lint` | ohne Befund |
 | Typecheck (protocol, sidecar, desktop) | `pnpm typecheck` | ohne Fehler |
-| Sidecar Unit/Integration | `pnpm --filter @forge/sidecar test` | 85 / 85 bestanden |
+| Sidecar Unit/Integration | `pnpm --filter @forge/sidecar test` | 104 / 104 bestanden |
 | Desktop Unit/Komponenten | `pnpm --filter @forge/desktop test` | 8 / 8 bestanden |
-| E2E mit echter Claude-Session | `pnpm test:e2e` | 8 / 8 bestanden (mit System-Werkzeugen und mit `FORGE_RUNTIME_DIR` auf die mitgelieferte Laufzeit) |
+| E2E mit echter Claude-Session | `pnpm test:e2e` | 12 / 12 bestanden (mit System-Werkzeugen; 8/8 zusätzlich mit `FORGE_RUNTIME_DIR` auf die mitgelieferte Laufzeit) |
 | Release-App ohne Node/Git/gh im PATH | manuell | Sidecar läuft aus `runtime/node`, Diagnose zeigt „mitgeliefert“ |
 | Rust-Hülle | `cargo build` | ohne Warnungen |
 
@@ -23,6 +23,11 @@ Letzter vollständiger Lauf: 2026-10-10, Windows 11 Pro 26200, Node 24.14, Claud
 - `usage-commit.test.ts`: Umwandlung der Usage-Daten, Prompt und Bereinigung der KI-Commit-Nachricht.
 - `setup-tools.test.ts`: Auslesen der Login-URL aus der echten CLI-Ausgabe, Vorrang der mitgelieferten Werkzeuge, PATH für Sessions.
 
+- `claude-config.test.ts`: CLAUDE.md global/Projekt/lokal mit Konflikterkennung, .bak, git exclude; Skills/Subagenten anlegen, auflisten, löschen; Hooks prüfen und nur den Schlüssel ersetzen; MCP-Ausgabe parsen und Argumente bauen.
+- `automation.test.ts`: Zeitplan-Fälligkeit, Worktree anlegen/entfernen (echtes Git), kompletter Feature-Workflow mit simulierter Runtime, Stopp bei roten Tests, Ablehnung bei unsauberer Arbeitskopie.
+- `session-service.test.ts` (ergänzt): Auto-Test + Auto-Commit nur mit Dateien des Durchlaufs, kein Commit bei roten Tests.
+- `project-git.test.ts` (ergänzt): Push/Pull gegen lokales Bare-Remote (main-Schutz, Fast-Forward, Divergenz).
+
 **Desktop**
 - `chat-items.test.ts`: Zusammenbau der Chat-Elemente aus Events, Streaming-Puffer, Store-Merge.
 - `GitPanel.test.tsx`: Commit-Flow in der Komponente (Auswahl, Review-Dialog, exakter RPC-Aufruf) und KI-Vorschlag.
@@ -35,7 +40,11 @@ Letzter vollständiger Lauf: 2026-10-10, Windows 11 Pro 26200, Node 24.14, Claud
 5. Safe: Freigabeanfrage, Ablehnung, Befehl nicht ausgeführt
 6. Autonomous (bypassPermissions): Sperrliste blockiert `git branch -D` per PreToolUse-Hook
 7. Stop mitten im Streaming, Session bleibt nutzbar
-8. Sidecar-Absturz (SIGKILL), Neustart, Session als unterbrochen erkannt, Resume mit Kontext
+8. Bild-Anhang: Claude erkennt die Farbe eines erzeugten PNG
+9. Datei-Checkpoint: von Claude angelegte Datei per Rewind entfernt
+10. Session-Zusammenfassung aus dem Verlauf
+11. Slash-Commands (68 im Test)
+12. Sidecar-Absturz (SIGKILL), Neustart, Session als unterbrochen erkannt, Resume mit Kontext
 
 ## Manueller UI-Smoke-Test (Windows, über UI Automation)
 
@@ -53,10 +62,16 @@ fehlende Error-Boundary; Warnung über parallele Sessions zählte auch untätige
 
 Usage-Balken in der Statuskarte, GitHub-Anmeldung bis zur Code-Anzeige (abgebrochen; abschließen kann nur der Nutzer), KI-Commit-Nachricht über den Funken-Knopf, kompakte Nachrichtenblase, schlichter Profil-Knopf, gebaute App mit bereinigtem PATH.
 
+## Dritter UI-Durchlauf (Windows)
+
+Erweiterungen mit echtem MCP-Server, Terminal-Tab (PowerShell im Projekt), Remote-Steuerung (Erkennung „Ordner nicht freigegeben“, Claude-Vertrauensfrage im eingebetteten Terminal), echter Feature-Workflow über die Oberfläche (Worktree, Umsetzung mit zwei Freigaben im Safe-Profil, Commit auf dem Feature-Branch). Gefundene und behobene Fehler: weiße Seite durch freezePrototype; Workflow zeigte nicht an, dass Claude auf eine Freigabe wartet; MCP-Status englisch; Test-Flake durch Hintergrundarbeit beim Aufräumen.
+
 ## Nicht getestet
 
 - Linux (keine Umgebung verfügbar)
 - Töne: Wiedergabe kann ich nicht hören; Code-Pfad ist typgeprüft, Test-Knöpfe unter Einstellungen
 - Installer-Installation auf einem frischen System ohne Claude Code
 - Claude-Code-Installation aus der App (würde die vorhandene Installation verändern)
+- Remote Control bis zur Steuerung vom Handy (Verbindung und Link wurden vorher per CLI geprüft)
+- Push/PR gegen GitHub mit echtem Konto (gh nicht angemeldet); Logik gegen lokales Bare-Remote getestet
 - Claude-Anmeldung bis zum Ende (URL-Ausgabe in isoliertem Konfigurationsordner geprüft) und GitHub-Anmeldung bis zum Ende

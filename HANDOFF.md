@@ -2,7 +2,7 @@
 
 ## Aktueller Stand
 
-Phase 0 und Phase 1 sind umgesetzt und auf Windows 11 getestet. FORGE startet als Tauri-Fenster, nutzt die
+Phasen 0 bis 3 sind umgesetzt und auf Windows 11 getestet (Details in docs/TASKS.md und ADR 0007). FORGE startet als Tauri-Fenster, nutzt die
 installierte Claude-Code-CLI mit dem bestehenden Max-Login über den Agent SDK und bildet den
 Terminal-Workflow ab: Projekte, Sessions mit Streaming, Freigaben, Stop/Resume, Git-Status/Diff und
 geprüfte Commits. Details: [README.md](README.md), [docs/TASKS.md](docs/TASKS.md).
@@ -51,16 +51,14 @@ in bereits offenen Shells ggf. `$env:Path += ";$env:USERPROFILE\.cargo\bin"`.
 - Untätige Sessions behalten ihren Claude-Prozess, bis „Beenden“ geklickt oder die App geschlossen wird.
 - Radix-Dialoge schließen sich, wenn das Fenster beim Öffnen keinen Fokus hat (nur bei Fernsteuerung
   per UI Automation beobachtet, bei normaler Bedienung nicht).
-- Das Logo ist ein Vektor-Nachbau der Vorlage, weil das eingefügte Bild nicht als Datei vorlag.
-  Original-PNG unter `apps/desktop/src-tauri/icons/` ablegen und `pnpm tauri icon <datei>` ausführen, falls gewünscht.
+- Für Remote Control muss Claude dem Ordner einmal vertrauen (im eingebetteten Terminal bestätigen).
+- Geplante Aufgaben laufen nur bei geöffnetem FORGE.
 - Claude-Code-Installation aus der App ist nicht getestet (hätte die vorhandene Installation verändert). Claude- und GitHub-Anmeldung sind bis zur Anzeige von URL bzw. Code geprüft; abschließen kann nur der Nutzer im Browser.
 - Die Usage-Anzeige nutzt eine experimentelle SDK-Methode; nach SDK-Updates prüfen.
 
 ## Genau drei nächste Aufgaben
 
-1. **gh-PR-Flow und Push mit Guardrails:** Push nur auf Feature-Branches, nie main/master oder force,
-   PR anlegen mit Diff-Zusammenfassung, PR-Status im GitHub-Screen.
-2. **Projekt-Tags mit Verhalten:** `plan-first` (Session startet im Plan-Modus), `auto-test` (konfigurierter
-   Testbefehl nach jedem Turn, Ergebnis im Chat), `review-required` (Commit erst nach Diff-Review).
-3. **CLAUDE.md-Editor und Git-Timeline:** Monaco-Editor für CLAUDE.md mit Speichern über den Sidecar;
-   Commits den Sessions zuordnen (Zeitfenster + geänderte Dateien), Anzeige in einer Timeline.
+1. **Auf GitHub mit echtem Konto prüfen:** `gh`-Login in FORGE abschließen, dann Projekt veröffentlichen,
+   Feature-Workflow mit Push und PR laufen lassen, PR-Status kontrollieren.
+2. **Linux-Build:** Tauri-Abhängigkeiten installieren, `pnpm build` unter Ubuntu, E2E-Lauf, .deb testen.
+3. **Ressourcen:** untätige Claude-Prozesse nach einstellbarer Zeit schließen; Installer signieren.

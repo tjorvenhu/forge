@@ -91,7 +91,9 @@ function McpTab({ projectId }: { projectId?: string }) {
               <div>{s.name}</div>
               <div className="truncate font-mono text-[11px] text-subtle">{s.target}</div>
             </div>
-            <Badge tone={s.status === "connected" ? "success" : s.status === "failed" ? "danger" : s.status === "needs_auth" ? "warning" : "neutral"}>{s.statusText}</Badge>
+            <Badge tone={s.status === "connected" ? "success" : s.status === "failed" ? "danger" : s.status === "needs_auth" ? "warning" : "neutral"} >
+              <span title={s.statusText}>{MCP_STATUS[s.status]}</span>
+            </Badge>
             <Button size="icon-sm" variant="danger-ghost" aria-label={`${s.name} entfernen`} onClick={() => setRemoving(s.name)}>
               <Trash2 className="h-3.5 w-3.5" />
             </Button>
@@ -124,6 +126,8 @@ function McpTab({ projectId }: { projectId?: string }) {
     </section>
   );
 }
+
+const MCP_STATUS = { connected: "verbunden", failed: "Verbindung fehlgeschlagen", needs_auth: "Anmeldung nötig", unknown: "unbekannt" } as const;
 
 const SCOPE_OPTIONS: Array<{ value: "user" | "project" | "local"; label: string; description: string }> = [
   { value: "local", label: "Lokal", description: "Nur dieses Projekt, nur für dich" },

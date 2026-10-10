@@ -3,7 +3,7 @@
 ## Grundsätze
 
 1. **Keine Netzwerk-Schnittstelle.** UI und Sidecar sprechen über stdin/stdout. Es gibt keinen localhost-Port.
-2. **Webview mit minimalen Rechten.** Tauri-Capabilities: `core:default`, `dialog:allow-open`, `opener:allow-open-url` nur für `https://`. Kein Shell-, FS- oder HTTP-Plugin. CSP ohne externe Quellen, `freezePrototype`.
+2. **Webview mit minimalen Rechten.** Tauri-Capabilities: `core:default`, `dialog:allow-open`, `opener:allow-open-url` nur für `https://`. Kein Shell-, FS- oder HTTP-Plugin. CSP ohne externe Quellen (nur GitHub-Avatare als Bilder). `freezePrototype` ist aus, weil Editor- und Terminal-Bibliotheken beim Laden Prototyp-Methoden setzen; es werden keine fremden Inhalte geladen.
 3. **Kein Shell-Interpolieren.** Alle Prozesse (`git`, `gh`, `claude`) starten mit `spawn(cmd, args[], {shell:false})` und explizitem `cwd`.
 4. **Validierung an der Grenze.** Jede RPC-Anfrage wird im Sidecar mit Zod geprüft. Pfade werden kanonisiert; Datei- und Git-Operationen außerhalb des Projektordners werden abgelehnt.
 5. **Keine Credentials in FORGE.** Claude-Anmeldung macht die CLI, GitHub-Anmeldung `gh auth`. FORGE liest weder `~/.claude/.credentials.json` noch Tokens. `ANTHROPIC_API_KEY` wird erkannt, nie angezeigt, und standardmäßig aus Session-Umgebungen entfernt.
@@ -76,3 +76,16 @@ E-Mail-Adresse oder Org-Daten der Claude-Anmeldung.
   werden ausgelassen, der restliche Diff durchläuft den Secret-Redactor.
 - **Usage-Anzeige** nutzt eine als experimentell markierte SDK-Methode. Fällt sie weg, verschwindet nur
   die Anzeige; Sessions sind nicht betroffen.
+
+## Ergänzungen Phase 2/3
+
+- **Schreibzugriffe auf Claude-Konfiguration** (CLAUDE.md, Skills, Subagenten, Hooks) nur nach Klick auf
+  Speichern, mit `.bak` und Konfliktprüfung; Pfade berechnet der Sidecar, die UI übergibt keine Pfade.
+- **Hooks** führen Befehle aus. FORGE prüft nur die Struktur, nicht den Inhalt; ein Hook aus einem
+  fremden Repository in `.claude/settings.json` wird von Claude Code selbst ausgeführt (natives Verhalten).
+- **Remote Control** öffnet das Projekt für Steuerung über claude.ai mit deinem Konto. Für dort gestartete
+  Sessions gilt die FORGE-Sperrliste nicht; der Permission-Modus des Profils schon. Ausschalten beendet den Prozess.
+- **Terminal**: nur Shell oder Claude-CLI startbar, kein Netzwerkzugang zum PTY.
+- **Testbefehle und geplante Aufgaben** laufen mit deinen Rechten im Projektordner.
+- **Auto-Commit/Auto-Push** commiten nur Dateien aus dem aktuellen Durchlauf, nie sensible Dateien, pushen nie
+  auf main/master und nie mit Force.

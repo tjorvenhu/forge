@@ -5,7 +5,7 @@ Projekten, zeigt Antworten live, fragt Freigaben ab und bringt Git-Status, Diffs
 dieselbe Ansicht. Die Anmeldung läuft über deine bestehende Claude-Code-Anmeldung (z. B. Max-Abo).
 Ein API-Key ist nicht nötig.
 
-> Stand: Phase 0 und Phase 1 (MVP). Details zu Umfang und Lücken unten und in [HANDOFF.md](HANDOFF.md).
+> Stand: Phasen 0 bis 3 umgesetzt. Details zu Umfang und Lücken unten und in [HANDOFF.md](HANDOFF.md).
 
 ![Workspace mit Chat, Tool-Karten und Diff](docs/screenshots/workspace.png)
 
@@ -77,10 +77,9 @@ pnpm prepare:runtime  # nur die mitgelieferte Laufzeit vorbereiten (für pnpm de
 Umgebungsvariablen für Sonderfälle: `FORGE_NODE` (Pfad zu node), `FORGE_SIDECAR` (Pfad zu `sidecar.mjs`),
 `FORGE_DATA_DIR` (Datenordner), `FORGE_E2E=0` (E2E überspringen), `FORGE_E2E_MODEL` (Modell für E2E).
 
-## Was funktioniert (Phase 1)
+## Was funktioniert
 
-- **Projekte:** Ordner importieren (kanonisiert, Dubletten-Erkennung), neu anlegen (Vorlagen, git init,
-  README, .gitignore, CLAUDE.md), Repository klonen (nur https/ssh, sichere Argumente), Favoriten, Tags,
+- **Projekte:** Ordner importieren (kanonisiert, Dubletten-Erkennung), neu anlegen (Ordner + git, optional GitHub-Repo), Repository klonen (nur https/ssh, sichere Argumente), Favoriten, Tags,
   Technologie-Erkennung, „Ordner fehlt"-Zustand, Entfernen ohne Dateien zu löschen.
 - **Claude-Sessions:** starten, Prompt senden, echtes Token-Streaming, Tool-Aufrufe als aufklappbare
   Karten, Aufgabenlisten (TodoWrite), Freigabeanfragen mit Erlauben / Für Session erlauben / Ablehnen,
@@ -93,6 +92,15 @@ Umgebungsvariablen für Sonderfälle: `FORGE_NODE` (Pfad zu node), `FORGE_SIDECA
 - **Abo-Nutzung:** 5-Stunden- und Wochenfenster (auch pro Modell) unten links, mit Reset-Zeit.
 - **GitHub:** Anmeldung in der App (Code anzeigen, Browser öffnet sich), Liste deiner Repositories mit Klonen per Klick.
 - **Commit-Nachricht per KI:** Funken-Knopf im Commit-Feld; Claude (Haiku) schreibt die Nachricht aus dem Diff im Stil der bisherigen Commits. Sensible Dateien werden nicht gesendet.
+- **Regeln für Claude:** CLAUDE.md global, pro Projekt und lokal (nicht im Git) direkt in FORGE bearbeiten.
+- **Composer:** Bilder, PDFs und Textdateien anhängen (Knopf, Einfügen, Hineinziehen), Slash-Commands mit Auswahlliste, Dateien auf den Stand vor einer Nachricht zurücksetzen.
+- **Vom Handy steuern:** Remote Control pro Projekt (Link und QR-Code für die Claude-App).
+- **Terminal:** eingebettete Terminals im Projektordner.
+- **Git & GitHub:** Push/Pull mit Schutzregeln, Pull Requests mit KI-Beschreibung und Status, neues Projekt direkt als GitHub-Repo.
+- **Automationen:** Projekt-Tags (plan-first, auto-test, auto-commit, auto-push, review-required, no-network, sandbox-only), Feature-Workflow von der Anforderung bis zum PR, geplante Aufgaben.
+- **Parallele Agenten:** Sessions in eigenen Git-Worktrees.
+- **Erweiterungen:** MCP-Server, Skills, Subagenten und Hooks verwalten.
+- **Wiedereinstieg:** KI-Zusammenfassung einer Session.
 - **Töne:** Signal, wenn Claude fertig ist, eine Freigabe braucht oder ein Fehler auftritt (abschaltbar).
 - **Diagnose:** CLI-Version, Anmeldestatus, API-Key-Override, git, gh, Capability-Matrix.
 - **Persistenz:** SQLite für Projekte, Sessions, Events, Freigaben, Einstellungen. Beim Start öffnet FORGE das zuletzt genutzte Projekt.
@@ -102,8 +110,8 @@ Tastatur: `Strg+1..4` Workspace-Tabs, `Strg+N` neue Session, `Strg+O` Projekt hi
 
 ## Tests
 
-Letzter Lauf (Details in [docs/TESTING.md](docs/TESTING.md)): Lint und Typecheck ohne Befund, 85 Sidecar-Tests,
-8 Desktop-Tests, 8 E2E-Tests mit echter Claude-Session (auch mit der mitgelieferten Laufzeit), alle bestanden.
+Letzter Lauf (Details in [docs/TESTING.md](docs/TESTING.md)): Lint und Typecheck ohne Befund, 104 Sidecar-Tests,
+8 Desktop-Tests, 12 E2E-Tests mit echter Claude-Session, alle bestanden.
 
 ## Dokumentation
 
@@ -117,15 +125,12 @@ Letzter Lauf (Details in [docs/TESTING.md](docs/TESTING.md)): Lint und Typecheck
 ## Bekannte Lücken
 
 - Linux nicht getestet (keine Linux-Umgebung verfügbar). Code ist plattformneutral geschrieben.
-- Kein eingebettetes Terminal (PTY) und kein CLAUDE.md-Editor: Phase 2.
-- Kein Push, Pull und keine PRs aus FORGE: Phase 2 (mit Guardrails). Die GitHub-Anmeldung ist schon da.
-- Projekt-Tags werden gespeichert und angezeigt, steuern aber noch kein automatisches Verhalten.
-- Bilder/Dateianhänge im Prompt nicht umgesetzt.
+- Geplante Aufgaben laufen nur, solange FORGE geöffnet ist.
+- Für Remote Control muss Claude dem Ordner einmal vertrauen (Bestätigung im eingebetteten Terminal).
 - Claude Code selbst wird nicht mitgeliefert, sondern bei Bedarf aus der App installiert (offizieller Installer).
 
 ## Roadmap
 
-1. **Phase 2:** Tag-Verhalten (plan-first, auto-test, review-required), gh-PR-Flow, Push/Pull mit
-   Guardrails, CLAUDE.md-Editor (Monaco), Git-Timeline je Session, Terminal (xterm.js + PTY).
-2. **Phase 3:** Git-Worktrees für parallele Agenten, MCP-/Skills-/Hooks-Verwaltung, Resume-Zusammenfassungen,
-   Setup-Wizard, Installer mit gebündeltem Node.
+- Linux-Build testen und als .deb/.AppImage ausliefern.
+- Installer signieren (Windows SmartScreen).
+- Merge-Hilfe für parallele Agenten (Konflikte gemeinsam mit Claude lösen).

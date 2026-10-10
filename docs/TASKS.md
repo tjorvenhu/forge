@@ -37,11 +37,27 @@ Status: `[x]` erledigt und verifiziert · `[~]` teilweise · `[ ]` offen
 - [x] KI-Commit-Nachricht
 - [ ] Linux-Smoke-Test
 
-## Phase 2
+## Phase 2 – Workflow
 
-- [ ] Projekt-Tags mit Verhalten (plan-first, auto-test, review-required …)
-- [ ] gh-PR-Flow, Push/Pull mit Guardrails
-- [ ] CLAUDE.md-Editor (Monaco)
-- [ ] Git Timeline je Session
-- [ ] Eingebettetes Terminal (xterm.js + PTY)
+- [x] Rechteprofile mit bestätigungspflichtigen Tool-Aktionen (seit Phase 1)
+- [x] Projekt-Tags mit Verhalten (plan-first, auto-test, auto-commit, auto-push, review-required, no-network, sandbox-only)
+- [x] Automatisierte Checks (Testbefehl pro Projekt, Ergebnis im Chat)
+- [x] gh-PR-Flow, Push/Pull mit Guardrails, PR-Status
+- [x] Git-Autopilot mit Guardrails (nur Dateien des Durchlaufs, nie main/master, nie Force)
+- [x] CLAUDE.md-Editor (CodeMirror statt Monaco, ADR 0003/0007)
+- [x] Git-Timeline je Session (Checkpoints, Auto-Commits, Datei-Rewind)
+- [x] Eingebettetes Terminal (xterm.js + PTY in Rust)
+- [x] Anhänge, Slash-Commands
+- [x] Remote Control für die Claude-App
+
+## Phase 3 – Pro
+
+- [x] Git-Worktrees für parallele Agenten
+- [x] Feature-Workflow (Plan, Freigabe, Umsetzung, Tests, Review, Commit, Push, PR)
+- [x] Geplante Aufgaben
+- [x] MCP-/Skills-/Subagenten-/Hooks-Verwaltung
+- [x] Resume-Zusammenfassungen
+- [x] Usage-Anzeige, Diagnose, Einrichtung in der App
+- [x] Installer mit mitgelieferter Laufzeit
 - [ ] Untätige Claude-Prozesse nach Zeit automatisch schließen
+- [ ] Installer signieren
