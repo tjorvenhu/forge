@@ -1,11 +1,11 @@
-import { Bot, ExternalLink, Workflow } from "lucide-react";
+import { ExternalLink } from "lucide-react";
 import { GitHubAccountCard, GitHubRepoList, useAutoOpenGitHub } from "@/components/github/GitHubPanel";
-import { useDiagnostics, useProject, useRuntimeInfo } from "@/lib/queries";
+import { useDiagnostics, useProject } from "@/lib/queries";
 import { openExternal, remoteToWebUrl } from "@/lib/native";
 import { useUi } from "@/stores/ui";
 import { Page } from "@/components/layout/Page";
 import { Button } from "@/components/ui/button";
-import { EmptyState, SectionTitle, Spinner } from "@/components/ui/misc";
+import { SectionTitle } from "@/components/ui/misc";
 
 export function GitHubView() {
   const diag = useDiagnostics();
@@ -44,43 +44,6 @@ export function GitHubView() {
         </section>
         <p className="text-xs text-subtle">Push mit Schutzregeln und Pull Requests folgen in Phase 2.</p>
       </div>
-    </Page>
-  );
-}
-
-export function AgentsView() {
-  const info = useRuntimeInfo();
-  const agents = info.data?.agents ?? [];
-  return (
-    <Page title="Agenten" subtitle="Von Claude Code gemeldete Subagenten (eingebaut, Nutzer- und Projektkonfiguration)">
-      {info.isLoading && <Spinner />}
-      {info.isSuccess && agents.length === 0 && (
-        <EmptyState icon={<Bot className="h-10 w-10" />} title="Keine Agenten gemeldet">
-          Die Liste stammt aus der Claude-Code-Initialisierung.
-        </EmptyState>
-      )}
-      <div className="grid max-w-5xl grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-3">
-        {agents.map((a) => (
-          <div key={a.name} className="rounded-xl border border-border bg-surface p-4">
-            <div className="flex items-center gap-2 text-[13px] font-medium">
-              <Bot className="h-4 w-4 text-accent" /> {a.name}
-            </div>
-            <p className="mt-1.5 line-clamp-4 text-xs text-muted">{a.description}</p>
-          </div>
-        ))}
-      </div>
-      <p className="mt-6 text-xs text-subtle">Agentenorchestrierung mit getrennten Worktrees ist für Phase 3 geplant.</p>
-    </Page>
-  );
-}
-
-export function AutomationsView() {
-  return (
-    <Page title="Automatisierungen" subtitle="Feature-Workflows, Checks und geplante Aufgaben">
-      <EmptyState icon={<Workflow className="h-10 w-10" />} title="Noch nicht verfügbar">
-        Der One-Click-Feature-Workflow (Plan, Branch, Implementierung, Tests, Review, Commit, PR) und automatische Checks sind für Phase 2 geplant. Bis dahin laufen alle
-        Schritte manuell im Workspace.
-      </EmptyState>
     </Page>
   );
 }

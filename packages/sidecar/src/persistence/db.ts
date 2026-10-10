@@ -59,6 +59,40 @@ const MIGRATIONS: string[] = [
     value TEXT NOT NULL
   );
   `,
+  `
+  ALTER TABLE projects ADD COLUMN test_command TEXT;
+  ALTER TABLE projects ADD COLUMN parent_id TEXT;
+  CREATE TABLE workflows (
+    id TEXT PRIMARY KEY,
+    project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    title TEXT NOT NULL,
+    requirement TEXT NOT NULL,
+    options TEXT NOT NULL,
+    status TEXT NOT NULL,
+    step TEXT NOT NULL,
+    steps TEXT NOT NULL,
+    branch TEXT,
+    session_id TEXT,
+    work_project_id TEXT,
+    pr_url TEXT,
+    error TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+  CREATE TABLE schedules (
+    id TEXT PRIMARY KEY,
+    project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    prompt TEXT NOT NULL,
+    time TEXT NOT NULL,
+    weekdays TEXT NOT NULL,
+    plan_only INTEGER NOT NULL DEFAULT 0,
+    enabled INTEGER NOT NULL DEFAULT 1,
+    last_run_at TEXT,
+    last_session_id TEXT,
+    created_at TEXT NOT NULL
+  );
+  `,
 ];
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -86,6 +120,8 @@ interface ProjectRow {
   default_model: string | null;
   created_at: string;
   last_opened_at: string | null;
+  test_command: string | null;
+  parent_id: string | null;
 }
 
 interface SessionRow {
@@ -122,6 +158,8 @@ function toProject(r: ProjectRow): ProjectRecord {
     defaultModel: r.default_model,
     createdAt: r.created_at,
     lastOpenedAt: r.last_opened_at,
+    testCommand: r.test_command,
+    parentId: r.parent_id,
   };
 }
 
@@ -214,8 +252,8 @@ export class Db {
   insertProject(p: ProjectRecord, pathKey: string) {
     this.sql
       .prepare(
-        `INSERT INTO projects(id, name, path, path_key, favorite, tags, technologies, profile, autonomous_confirmed, default_model, created_at, last_opened_at)
-         VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO projects(id, name, path, path_key, favorite, tags, technologies, profile, autonomous_confirmed, default_model, created_at, last_opened_at, test_command, parent_id)
+         VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         p.id,
@@ -230,6 +268,8 @@ export class Db {
         p.defaultModel,
         p.createdAt,
         p.lastOpenedAt,
+        p.testCommand,
+        p.parentId,
       );
   }
 
@@ -243,6 +283,7 @@ export class Db {
     if (patch.autonomousConfirmed !== undefined) cols.autonomous_confirmed = patch.autonomousConfirmed ? 1 : 0;
     if (patch.defaultModel !== undefined) cols.default_model = patch.defaultModel;
     if (patch.lastOpenedAt !== undefined) cols.last_opened_at = patch.lastOpenedAt;
+    if (patch.testCommand !== undefined) cols.test_command = patch.testCommand;
     const keys = Object.keys(cols);
     if (!keys.length) return;
     this.sql

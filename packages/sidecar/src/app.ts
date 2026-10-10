@@ -6,6 +6,9 @@ import { GitHubService } from "./github/github.js";
 import { ClaudeSetupService } from "./claude/setup.js";
 import { McpService } from "./config/mcp.js";
 import { RemoteService } from "./remote/remote.js";
+import { WorktreeService } from "./automation/worktrees.js";
+import { WorkflowService } from "./automation/workflows.js";
+import { ScheduleService } from "./automation/schedules.js";
 import { locateClaude, sessionEnv } from "./claude/environment.js";
 import { Db } from "./persistence/db.js";
 import { ProjectManager } from "./projects/project-manager.js";
@@ -21,7 +24,7 @@ export interface App {
 }
 
 /** Wires all services. Separate from index.ts so tests can run it in-process. */
-export function createApp(opts: { dataDir: string; write: Writer; log?: (m: string) => void; runtime?: ClaudeRuntime }): App {
+export function createApp(opts: { dataDir: string; write: Writer; log?: (m: string) => void; runtime?: ClaudeRuntime; schedulerEnabled?: boolean }): App {
   const db = new Db(path.join(opts.dataDir, "forge.db"));
   db.markOrphanedSessions();
   const git = new GitEngine();
@@ -43,9 +46,16 @@ export function createApp(opts: { dataDir: string; write: Writer; log?: (m: stri
     () => locateClaude(db.getSettings().claudePath),
     () => sessionEnv(db.getSettings().stripApiKey),
   );
+  const worktrees = new WorktreeService(git, projects);
+  const workflows = new WorkflowService(db, projects, git, github, sessions, worktrees, (payload) => emit({ event: "workflow.updated", payload }));
+  const schedules = new ScheduleService(db, sessions, () => emit({ event: "schedules.updated", payload: {} }));
+  if (opts.schedulerEnabled !== false) schedules.startTicking();
   const handlers = createHandlers({
     mcp,
     remote,
+    workflows,
+    schedules,
+    worktrees,
     github,
     claudeSetup,
     db,
@@ -65,6 +75,7 @@ export function createApp(opts: { dataDir: string; write: Writer; log?: (m: stri
       github.shutdown();
       claudeSetup.shutdown();
       remote.shutdown();
+      schedules.shutdown();
       db.close();
     },
   };

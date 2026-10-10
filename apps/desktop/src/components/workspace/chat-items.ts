@@ -27,7 +27,8 @@ export type ChatItem =
   | { kind: "blocked"; key: string; ts: string; body: Body<"policy.blocked"> }
   | { kind: "result"; key: string; ts: string; body: Body<"turn.result"> }
   | { kind: "error"; key: string; ts: string; message: string; retryable: boolean }
-  | { kind: "notice"; key: string; ts: string; text: string; tone: "info" | "warning" };
+  | { kind: "notice"; key: string; ts: string; text: string; tone: "info" | "warning" | "success" | "danger" }
+  | { kind: "check"; key: string; ts: string; body: Body<"check.result"> };
 
 function parseTodos(input: Record<string, unknown>): TodoEntry[] | null {
   const raw = input.todos;
@@ -113,6 +114,32 @@ export function buildChatItems(events: SessionEvent[], streaming: Record<string,
         else items.push({ kind: "blocked", key: `b${ev.seq}`, ts: ev.ts, body: b });
         break;
       }
+      case "check.result":
+        items.push({ kind: "check", key: `c${ev.seq}`, ts: ev.ts, body: b });
+        break;
+      case "git.checkpoint":
+        items.push({
+          kind: "notice",
+          key: `g${ev.seq}`,
+          ts: ev.ts,
+          text: `Checkpoint ${b.head ?? "ohne Commit"} auf ${b.branch ?? "detached"} · ${b.changedFiles} geänderte Datei(en)`,
+          tone: "info",
+        });
+        break;
+      case "automation":
+        items.push({
+          kind: "notice",
+          key: `m${ev.seq}`,
+          ts: ev.ts,
+          text:
+            b.action === "commit" && b.ok
+              ? `Auto-Commit ${b.hash?.slice(0, 7) ?? ""}: ${b.message} (${b.files.length} Datei(en))`
+              : b.action === "push" && b.ok
+                ? `Auto-Push: ${b.message}`
+                : b.message,
+          tone: !b.ok ? "danger" : b.action === "skip" ? "warning" : "success",
+        });
+        break;
       case "files.rewound":
         items.push({
           kind: "notice",

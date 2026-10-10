@@ -11,6 +11,7 @@ import { Badge, EmptyState, ErrorBanner, SectionTitle, Spinner } from "@/compone
 import { ProjectCard } from "@/components/projects/ProjectCard";
 import { RemoveProjectDialog } from "@/components/projects/RemoveProjectDialog";
 import { SessionStatusBadge } from "@/components/workspace/SessionStatusBadge";
+import { SummaryButton } from "@/components/workspace/SummaryButton";
 
 export function HomeView() {
   const projects = useProjects();
@@ -113,6 +114,7 @@ function ResumeSection() {
                 {s.model ? ` · ${s.model}` : ""}
               </div>
             </div>
+            <SummaryButton sessionId={s.id} title={s.title} size="icon-sm" />
             <Button size="sm" variant="ghost" onClick={() => openProject(s.projectId, s.id)}>
               {s.live ? <Play className="h-3.5 w-3.5" /> : <RotateCcw className="h-3.5 w-3.5" />}
               {s.live ? "Öffnen" : "Fortsetzen"}
