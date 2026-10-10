@@ -171,6 +171,35 @@ describe.skipIf(!enabled)("E2E: sidecar with real Claude Code", () => {
     await c.request("projects.update", { projectId, profile: "balanced" });
   }, 240_000);
 
+  it("shows a background task and follows the turn Claude starts when it finishes", async () => {
+    const before = c.events.length;
+    const s = await c.request("sessions.start", {
+      projectId,
+      model: MODEL,
+      prompt:
+        "Use the Bash tool with run_in_background set to true to run: sleep 10 && echo FINISHED. Do not wait for it; reply with the word STARTED. When you later learn it finished, reply with the word COMPLETE.",
+    });
+    await c.waitTurn(s.id, before);
+    const mid = await c.request("sessions.get", { sessionId: s.id });
+    expect(mid.background.length).toBe(1);
+    const afterFirst = c.events.length;
+    // The second turn has no user message: FORGE must report it as running and then finish it.
+    await c.waitFor(
+      (e) => c.events.indexOf(e) >= afterFirst && e.event === "session.updated" && e.payload.id === s.id && e.payload.status === "running",
+      120_000,
+      "running again",
+    );
+    const result = await c.waitTurn(s.id, afterFirst);
+    expect(result).toMatchObject({ type: "turn.result", isError: false });
+    const done = await c.request("sessions.get", { sessionId: s.id });
+    expect(done).toMatchObject({ status: "idle", background: [] });
+    const states = c.events
+      .slice(before)
+      .flatMap((e) => (e.event === "session.event" && e.payload.sessionId === s.id && e.payload.body.type === "background.task" ? [e.payload.body.state] : []));
+    expect(states).toEqual(["started", "completed"]);
+    await c.request("sessions.close", { sessionId: s.id });
+  }, 240_000);
+
   it("sends an image attachment that Claude can see", async () => {
     const before = c.events.length;
     const s = await c.request("sessions.start", {

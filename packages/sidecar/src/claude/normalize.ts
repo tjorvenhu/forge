@@ -13,6 +13,8 @@ export class Normalizer {
   private streamedTextIdx = new Map<string, number[]>();
   private finalTextCount = new Map<string, number>();
   private thinkingSeen = new Set<string>();
+  /** taskId -> description of tasks Claude moved to the background */
+  private backgroundTasks = new Map<string, string>();
 
   normalize(raw: unknown): SessionEventBody[] {
     if (!raw || typeof raw !== "object") return [];
@@ -45,6 +47,22 @@ export class Normalizer {
   }
 
   private system(m: Record<string, unknown>): SessionEventBody[] {
+    // Only backgrounded tasks: foreground tool calls report task_started/task_notification too.
+    if (m.subtype === "task_started" && m.is_backgrounded === true) {
+      const taskId = str(m.task_id) ?? "";
+      const description = str(m.description) ?? "Hintergrundaufgabe";
+      this.backgroundTasks.set(taskId, description);
+      return [{ type: "background.task", taskId, description, state: "started", summary: null }];
+    }
+    if (m.subtype === "task_notification") {
+      const taskId = str(m.task_id) ?? "";
+      const description = this.backgroundTasks.get(taskId);
+      if (description === undefined) return [];
+      this.backgroundTasks.delete(taskId);
+      const status = str(m.status);
+      const state = status === "completed" ? "completed" : status === "failed" ? "failed" : "stopped";
+      return [{ type: "background.task", taskId, description, state, summary: str(m.summary) }];
+    }
     if (m.subtype !== "init") return [];
     return [
       {

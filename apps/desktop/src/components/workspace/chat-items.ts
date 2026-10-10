@@ -155,6 +155,19 @@ export function buildChatItems(events: SessionEvent[], streaming: Record<string,
       case "error":
         items.push({ kind: "error", key: `e${ev.seq}`, ts: ev.ts, message: b.message, retryable: b.retryable });
         break;
+      case "background.task": {
+        const text =
+          b.state === "started"
+            ? `Läuft im Hintergrund: ${b.description}. Claude meldet sich, wenn die Aufgabe fertig ist.`
+            : b.state === "completed"
+              ? `Hintergrundaufgabe fertig: ${b.description}`
+              : b.state === "failed"
+                ? `Hintergrundaufgabe fehlgeschlagen: ${b.description}`
+                : `Hintergrundaufgabe beendet: ${b.description}`;
+        const tone = b.state === "completed" ? "success" : b.state === "failed" ? "danger" : b.state === "stopped" ? "warning" : "info";
+        items.push({ kind: "notice", key: `n${ev.seq}`, ts: ev.ts, text, tone });
+        break;
+      }
       case "status":
         if (b.detail && b.detail.startsWith("Achtung")) items.push({ kind: "notice", key: `n${ev.seq}`, ts: ev.ts, text: b.detail, tone: "warning" });
         break;

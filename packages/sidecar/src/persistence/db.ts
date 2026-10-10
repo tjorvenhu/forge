@@ -156,7 +156,7 @@ interface SessionRow {
 }
 
 export type ProjectRecord = Omit<Project, "exists">;
-export type SessionRecord = Omit<Session, "live">;
+export type SessionRecord = Omit<Session, "live" | "background">;
 
 const now = () => new Date().toISOString();
 
