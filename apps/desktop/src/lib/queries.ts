@@ -34,6 +34,7 @@ export const keys = {
   githubLogin: ["githubLogin"] as const,
   githubRepos: ["githubRepos"] as const,
   claudeSetup: ["claudeSetup"] as const,
+  claudeUpdate: ["claudeUpdate"] as const,
   files: (id: string, dir: string) => ["files", id, dir] as const,
   file: (id: string, path: string) => ["file", id, path] as const,
   claudeMd: (id: string) => ["claudeMd", id] as const,
@@ -98,6 +99,12 @@ export function useServerEvents() {
             void call("system.diagnostics", { refresh: true }).then((d) => qc.setQueryData(keys.diagnostics, d));
             void qc.invalidateQueries({ queryKey: keys.usage });
             void qc.invalidateQueries({ queryKey: keys.runtimeInfo });
+            void qc.invalidateQueries({ queryKey: keys.claudeUpdate });
+          }
+          if (e.payload.task === "update" && e.payload.phase === "done") {
+            toast.success("Claude Code aktualisiert", `${e.payload.message ?? ""} Offene Sessions nutzen die neue Version nach einem Neustart.`.trim());
+          } else if (e.payload.task === "update" && e.payload.phase === "error") {
+            toast.error("Update fehlgeschlagen", e.payload.message ?? undefined);
           }
           break;
         case "remote.updated":
@@ -132,6 +139,17 @@ export const useGitHubAccount = () =>
 export const useGitHubLogin = () => useQuery({ queryKey: keys.githubLogin, queryFn: () => call("github.loginState", {}), staleTime: Infinity });
 
 export const useClaudeSetup = () => useQuery({ queryKey: keys.claudeSetup, queryFn: () => call("claude.setupState", {}), staleTime: Infinity });
+
+/** Checked on app start (the sidebar mounts this right away) and every six hours after that. */
+export const useClaudeUpdate = () =>
+  useQuery({
+    queryKey: keys.claudeUpdate,
+    queryFn: () => call("claude.checkUpdate", {}),
+    staleTime: Infinity,
+    refetchInterval: 6 * 60 * 60_000,
+    refetchOnWindowFocus: false,
+    retry: false,
+  });
 
 /** Plan usage; refreshed every 5 minutes and after each finished turn. */
 export const useUsage = () =>

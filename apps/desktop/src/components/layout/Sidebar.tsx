@@ -1,6 +1,9 @@
 import type { ReactNode } from "react";
-import { Blocks, Bot, FolderKanban, GitPullRequest, History, Home, Plus, Settings } from "lucide-react";
-import { useDiagnostics, useProjects, useUsage } from "@/lib/queries";
+import { Blocks, Bot, Download, FolderKanban, GitPullRequest, History, Home, Plus, Settings } from "lucide-react";
+import { call, useClaudeSetup, useClaudeUpdate, useDiagnostics, useProjects, useUsage } from "@/lib/queries";
+import { errorMessage } from "@/lib/rpc";
+import { toast } from "@/stores/toast";
+import { Button } from "@/components/ui/button";
 import { useUi, type View } from "@/stores/ui";
 import { capitalize, cn, relativeTime } from "@/lib/utils";
 import { Logo } from "./Logo";
@@ -109,29 +112,53 @@ function ClaudeStatusCard() {
   }
   const windows = usage.data?.available ? usage.data.windows.slice(0, 3) : [];
   return (
-    <button
-      onClick={() => setView("settings")}
-      className="m-2 flex flex-col gap-2 rounded-lg border border-border bg-surface px-3 py-2.5 text-left hover:border-border-strong"
-      title="Claude-Code-Status, Nutzung und Diagnose"
-    >
-      <div className="flex w-full items-center gap-2.5">
-        <div className="min-w-0 flex-1">
-          <div className="text-[13px]">Claude Code</div>
-          <div className="flex items-center gap-1.5 text-[11px] text-muted">
-            <span className={cn("h-1.5 w-1.5 rounded-full", tone)} />
-            {line}
+    <div className="m-2 flex flex-col gap-2 rounded-lg border border-border bg-surface px-3 py-2.5 hover:border-border-strong">
+      <button onClick={() => setView("settings")} className="flex flex-col gap-2 text-left" title="Claude-Code-Status, Nutzung und Diagnose">
+        <div className="flex w-full items-center gap-2.5">
+          <div className="min-w-0 flex-1">
+            <div className="text-[13px]">Claude Code</div>
+            <div className="flex items-center gap-1.5 text-[11px] text-muted">
+              <span className={cn("h-1.5 w-1.5 rounded-full", tone)} />
+              {line}
+            </div>
           </div>
+          <span className="text-[11px] text-subtle">{d?.claude.version?.split(" ")[0] ?? ""}</span>
         </div>
-        <span className="text-[11px] text-subtle">{d?.claude.version?.split(" ")[0] ?? ""}</span>
-      </div>
-      {windows.length > 0 && (
-        <div className="flex w-full flex-col gap-1.5" aria-label="Nutzung des Abos">
-          {windows.map((w) => (
-            <UsageBar key={w.key} label={w.label} value={w.utilization} resetsAt={w.resetsAt} />
-          ))}
-        </div>
+        {windows.length > 0 && (
+          <div className="flex w-full flex-col gap-1.5" aria-label="Nutzung des Abos">
+            {windows.map((w) => (
+              <UsageBar key={w.key} label={w.label} value={w.utilization} resetsAt={w.resetsAt} />
+            ))}
+          </div>
+        )}
+      </button>
+      <ClaudeUpdateButton />
+    </div>
+  );
+}
+
+function ClaudeUpdateButton() {
+  const update = useClaudeUpdate();
+  const setup = useClaudeSetup();
+  const updating = setup.data?.task === "update" && setup.data.phase === "running";
+  const info = update.data;
+  if (!updating && !info?.available) return null;
+  return (
+    <Button
+      size="sm"
+      variant="primary"
+      className="w-full"
+      loading={updating}
+      disabled={setup.data?.phase === "running"}
+      title={info ? `Installiert: ${info.installed ?? "unbekannt"}, verfügbar: ${info.latest} (Kanal ${info.channel})` : undefined}
+      onClick={() => call("claude.update", {}).catch((e: unknown) => toast.error("Update nicht gestartet", errorMessage(e)))}
+    >
+      {updating ? "Wird aktualisiert …" : (
+        <>
+          <Download className="h-3.5 w-3.5" /> Update auf {info?.latest}
+        </>
       )}
-    </button>
+    </Button>
   );
 }
 

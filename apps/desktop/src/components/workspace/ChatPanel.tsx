@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { AlertTriangle, CheckCircle2, ChevronDown, Clock, FileText, History, ImageIcon, Info, MessageSquarePlus, Power, RotateCcw, ShieldAlert, Smartphone, Terminal, Undo2, XCircle } from "lucide-react";
+import { AlertTriangle, CheckCircle2, ChevronDown, Clock, FileText, History, ImageIcon, Info, MessageSquarePlus, Power, RotateCcw, ShieldAlert, Smartphone, Terminal, Trash2, Undo2, XCircle } from "lucide-react";
 import type { ExternalSession, Project, RewindResult, Session } from "@forge/protocol";
 import { call, useSession, useSessionHistory, useSessions } from "@/lib/queries";
 import { errorMessage } from "@/lib/rpc";
@@ -19,6 +19,9 @@ import { SessionStatusBadge } from "./SessionStatusBadge";
 import { ClaudeMark } from "./ClaudeMark";
 import { SummaryButton } from "./SummaryButton";
 import { SessionTabs } from "./SessionTabs";
+import { DeleteSessionDialog } from "./DeleteSessionDialog";
+import { WorkingIndicator } from "./WorkingIndicator";
+import { turnStartedAt } from "./working";
 
 /** activeSession values starting with this prefix point at a terminal session not yet adopted by FORGE */
 export const EXTERNAL_PREFIX = "ext:";
@@ -76,6 +79,7 @@ function SessionBar({
   onSelect: (id: string | null) => void;
 }) {
   const title = session?.title ?? (external ? external.summary : "Neue Session");
+  const [deleting, setDeleting] = useState(false);
   return (
     <div className="flex h-11 shrink-0 items-center gap-2 border-b border-border px-4">
       <DropdownMenu
@@ -133,9 +137,17 @@ function SessionBar({
           <Power className="h-3.5 w-3.5" /> Beenden
         </Button>
       )}
+      {session && (
+        <Tooltip content="Session löschen">
+          <Button size="icon-sm" variant="ghost" aria-label="Session löschen" className="hover:text-danger" onClick={() => setDeleting(true)}>
+            <Trash2 className="h-3.5 w-3.5" />
+          </Button>
+        </Tooltip>
+      )}
       <Button size="sm" variant="ghost" onClick={() => onSelect(null)} title="Neue Session (Strg+N)">
         <MessageSquarePlus className="h-3.5 w-3.5" /> Neu
       </Button>
+      <DeleteSessionDialog session={deleting ? session : null} onClose={() => setDeleting(false)} />
     </div>
   );
 }
@@ -165,9 +177,8 @@ function SessionThread({ sessionId, session, project }: { sessionId: string; ses
   const buffer = useSessionHistory(sessionId);
   const items = useMemo(() => buildChatItems(buffer?.events ?? [], buffer?.streaming ?? {}), [buffer?.events, buffer?.streaming]);
   const retryPrompt = useMemo(() => lastUserPrompt(buffer?.events ?? []), [buffer?.events]);
-  const lastEvent = buffer?.events.at(-1)?.body;
   const working = session?.status === "running" || session?.status === "starting";
-  const thinking = working && (lastEvent?.type === "assistant.thinking" || lastEvent?.type === "user.message" || lastEvent?.type === "session.init" || lastEvent?.type === "status");
+  const startedAt = useMemo(() => (working ? (turnStartedAt(buffer?.events ?? []) ?? session?.updatedAt ?? null) : null), [working, buffer?.events, session?.updatedAt]);
   const [retryText, setRetryText] = useState<string | null>(null);
 
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -224,11 +235,7 @@ function SessionThread({ sessionId, session, project }: { sessionId: string; ses
             </div>
           ))}
         </div>
-        {thinking && (
-          <div className="mx-auto flex max-w-4xl items-center gap-2 px-6 pb-4 text-xs text-muted">
-            <span className="animate-soft-pulse h-2 w-2 rounded-full bg-accent" /> Claude denkt nach …
-          </div>
-        )}
+        {startedAt && <WorkingIndicator startedAt={startedAt} />}
       </div>
       <Composer project={project} session={session} prefill={retryText} onPrefillConsumed={() => setRetryText(null)} />
     </>

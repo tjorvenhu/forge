@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import {
   listSessions as sdkListSessions,
+  deleteSession as sdkDeleteSession,
   getSessionMessages,
   query,
   type CanUseTool,
@@ -85,6 +86,8 @@ export interface ClaudeRuntime {
   resumeSession(claudeSessionId: string, opts: Omit<StartOptions, "resume">, sink: SessionSink): RuntimeSession;
   listSessions(dir: string): Promise<ExternalSession[]>;
   sessionHistory(claudeSessionId: string, dir: string): Promise<unknown[]>;
+  /** removes the CLI's transcript, so the session is gone from `claude --resume` too */
+  deleteTranscript(claudeSessionId: string, dir: string): Promise<void>;
   /** short-lived probe to read models/commands/account without sending a prompt */
   probe(opts: Pick<StartOptions, "cwd" | "env" | "claudePath">): Promise<SDKControlInitializeResponse>;
   /** slash commands and skills available in a project (custom + those the headless CLI supports) */
@@ -267,6 +270,10 @@ export class AgentSdkRuntime implements ClaudeRuntime {
 
   async sessionHistory(claudeSessionId: string, dir: string): Promise<unknown[]> {
     return getSessionMessages(claudeSessionId, { dir });
+  }
+
+  async deleteTranscript(claudeSessionId: string, dir: string): Promise<void> {
+    await sdkDeleteSession(claudeSessionId, { dir });
   }
 
   async commands(opts: Pick<StartOptions, "cwd" | "env" | "claudePath">): Promise<SlashCommand[]> {

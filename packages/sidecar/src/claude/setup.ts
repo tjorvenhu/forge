@@ -1,6 +1,8 @@
 import { spawn, type ChildProcess } from "node:child_process";
-import { ForgeError, type ClaudeSetupState } from "@forge/protocol";
+import { ForgeError, type ClaudeSetupState, type ClaudeUpdateInfo } from "@forge/protocol";
+import { run } from "../util/proc.js";
 import { locateClaude, sessionEnv } from "./environment.js";
+import { compareVersions, fetchLatestVersion, parseVersion, readUpdateChannel } from "./update.js";
 
 // Official installers (https://docs.claude.com/en/docs/claude-code/setup).
 const INSTALL_WINDOWS = ["powershell.exe", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "irm https://claude.ai/install.ps1 | iex"]] as const;
@@ -66,6 +68,50 @@ export class ClaudeSetupService {
       const found = locateClaude(this.settings().claudePath);
       if (code === 0 && found) this.set({ phase: "done", message: `Installiert: ${found}` });
       else this.set({ phase: "error", message: code === 0 ? "Installer beendet, aber Claude Code wurde nicht gefunden." : `Installer beendet mit Code ${code}` });
+    });
+    return this.state;
+  }
+
+  /** Compares the installed CLI with the release channel it updates from. Never throws. */
+  async checkUpdate(): Promise<ClaudeUpdateInfo> {
+    const channel = await readUpdateChannel();
+    const base = { channel, checkedAt: new Date().toISOString() };
+    const s = this.settings();
+    const claude = locateClaude(s.claudePath);
+    const installed = claude ? parseVersion((await run(claude, ["--version"], { env: sessionEnv(s.stripApiKey), timeoutMs: 20_000 })).stdout) : null;
+    try {
+      const latest = await fetchLatestVersion(channel);
+      return { ...base, installed, latest, available: !!installed && compareVersions(latest, installed) > 0, error: null };
+    } catch (e) {
+      return { ...base, installed, latest: null, available: false, error: e instanceof Error ? e.message : String(e) };
+    }
+  }
+
+  /** Runs the CLI's own updater. Open sessions keep the old version until they are restarted. */
+  update(): ClaudeSetupState {
+    this.ensureIdle();
+    const s = this.settings();
+    const claude = locateClaude(s.claudePath);
+    if (!claude) throw new ForgeError("CLAUDE_NOT_INSTALLED", "Claude Code ist nicht installiert.");
+    this.set({ task: "update", phase: "running", url: null, log: [], message: null });
+    const child = spawn(claude, ["update"], { env: sessionEnv(s.stripApiKey), shell: false, windowsHide: true, stdio: ["ignore", "pipe", "pipe"] });
+    this.proc = child;
+    child.stdout?.on("data", (d: Buffer) => this.appendLog(d.toString()));
+    child.stderr?.on("data", (d: Buffer) => this.appendLog(d.toString()));
+    child.on("error", (e) => {
+      this.proc = null;
+      this.set({ phase: "error", message: e.message });
+    });
+    child.on("close", (code) => {
+      this.proc = null;
+      if (code !== 0) {
+        this.set({ phase: "error", message: this.state.log.at(-1) ?? `Update beendet mit Code ${code}` });
+        return;
+      }
+      void run(claude, ["--version"], { env: sessionEnv(s.stripApiKey), timeoutMs: 20_000 }).then((r) => {
+        const v = parseVersion(r.stdout);
+        this.set({ phase: "done", message: v ? `Claude Code ${v} ist installiert.` : "Update abgeschlossen." });
+      });
     });
     return this.state;
   }
