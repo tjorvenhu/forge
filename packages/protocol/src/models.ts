@@ -434,3 +434,25 @@ export const RewindResult = z.object({
   deletions: z.number(),
 });
 export type RewindResult = z.infer<typeof RewindResult>;
+
+export const RemoteState = z.object({
+  phase: z.enum(["off", "starting", "connected", "untrusted", "error"]),
+  url: z.string().nullable(),
+  message: z.string().nullable(),
+  /** e.g. "Capacity: 1/32" as reported by the CLI */
+  detail: z.string().nullable(),
+});
+export type RemoteState = z.infer<typeof RemoteState>;
+
+export const PullRequest = z.object({
+  number: z.number(),
+  title: z.string(),
+  state: z.string(),
+  url: z.string(),
+  draft: z.boolean(),
+  reviewDecision: z.string().nullable(),
+  base: z.string(),
+  head: z.string(),
+  checks: z.object({ total: z.number(), failed: z.number(), pending: z.number() }),
+});
+export type PullRequest = z.infer<typeof PullRequest>;

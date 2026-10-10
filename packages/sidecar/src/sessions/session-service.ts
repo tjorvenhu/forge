@@ -23,7 +23,7 @@ import { isSensitiveFile, type GitEngine } from "../git/git.js";
 import { buildCommitPrompt, cleanCommitMessage } from "../git/commit-message.js";
 import { checkToolUse, writesOutsideProject } from "../policy/guard.js";
 import { effectivePermissionMode, PROFILES, resolveProfile, type ProfileConfig } from "../policy/profiles.js";
-import { redact } from "../policy/redact.js";
+import { redact, redactText } from "../policy/redact.js";
 import type { ProjectManager } from "../projects/project-manager.js";
 
 interface PendingApproval {
@@ -129,6 +129,38 @@ export class SessionService {
     const message = cleanCommitMessage(raw);
     if (!message) throw new ForgeError("CLAUDE_RUNTIME", "Claude hat keine Commit-Nachricht geliefert.");
     return { message, model, skipped };
+  }
+
+  /** Drafts PR title and body from the branch's commits and diff against the default branch. */
+  async suggestPullRequest(projectId: string) {
+    const project = this.projects.requireExisting(projectId);
+    const settings = this.db.getSettings();
+    const claudePath = locateClaude(settings.claudePath);
+    if (!claudePath) throw new ForgeError("CLAUDE_NOT_INSTALLED", "Claude Code CLI wurde nicht gefunden.");
+    const head = await this.git.currentBranch(project.path);
+    if (!head) throw new ForgeError("GIT_FAILED", "Kein Branch ausgecheckt.");
+    const base = await this.git.defaultBranch(project.path);
+    const { commits, diff } = await this.git.rangeSummary(project.path, base);
+    if (!commits.length) throw new ForgeError("VALIDATION", `Keine Commits gegenüber ${base}. Erst committen.`);
+    const prompt = [
+      "Schreibe Titel und Beschreibung für einen GitHub Pull Request.",
+      "Format exakt:",
+      "TITEL: <eine Zeile, höchstens 72 Zeichen>",
+      "BESCHREIBUNG:",
+      "<Markdown: kurze Zusammenfassung, dann Abschnitt '## Änderungen' mit Stichpunkten, dann '## Test' mit dem, was geprüft werden sollte>",
+      "Nur beschreiben, was in Commits und Diff steht. Nichts erfinden. Sprache: wie die Commits.",
+      "",
+      `Branch: ${head} -> ${base}`,
+      "Commits:",
+      ...commits.map((c) => `- ${c}`),
+      "",
+      "Diff (gekürzt):",
+      redactText(diff),
+    ].join("\n");
+    const raw = await this.runtime.complete(prompt, { cwd: project.path, env: sessionEnv(settings.stripApiKey), claudePath, model: COMMIT_MESSAGE_MODEL });
+    const title = /TITEL:\s*(.+)/.exec(raw)?.[1]?.trim() ?? commits[0]!;
+    const body = raw.split(/BESCHREIBUNG:\s*/)[1]?.trim() ?? raw.trim();
+    return { title: title.slice(0, 256), body, base, head };
   }
 
   /** Plan usage, cached for a minute so frequent UI refreshes do not spawn a CLI each time. */

@@ -15,6 +15,10 @@ interface UiState {
   newProject: NewProjectMode | null;
   /** prefilled URL for the clone dialog (e.g. from the GitHub repo list) */
   cloneUrl: string | null;
+  /** asks the bottom panel of a project to open a terminal tab */
+  terminalRequest: { projectId: string; program: "shell" | "claude"; label?: string } | null;
+  openTerminal: (projectId: string, program: "shell" | "claude", label?: string) => void;
+  clearTerminalRequest: () => void;
   setView: (v: View) => void;
   openProject: (projectId: string, sessionId?: string | null) => void;
   closeProject: () => void;
@@ -60,7 +64,10 @@ export const useUi = create<UiState>((set, get) => ({
   bottomPanelOpen: false,
   newProject: null,
   cloneUrl: null,
+  terminalRequest: null,
   ...loadPrefs(),
+  openTerminal: (projectId, program, label) => set({ terminalRequest: { projectId, program, label }, bottomPanelOpen: true }),
+  clearTerminalRequest: () => set({ terminalRequest: null }),
   setView: (view) => set({ view }),
   openProject: (projectId, sessionId) => {
     set((s) => ({

@@ -1,4 +1,4 @@
-import { mkdirSync, rmSync, writeFileSync, existsSync } from "node:fs";
+import { mkdirSync, readFileSync, rmSync, writeFileSync, existsSync } from "node:fs";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { ForgeError } from "@forge/protocol";
@@ -181,5 +181,50 @@ describe("GitEngine against a real repository", () => {
     writeFileSync(path.join(fresh, "x.txt"), "x\n");
     expect(await engine.log(fresh, 5)).toEqual([]);
     await expect(engine.commit(fresh, "erster commit", ["x.txt"], false)).resolves.toMatchObject({ summary: "erster commit" });
+  });
+});
+
+describe("push and pull guardrails against a local bare remote", () => {
+  it("pushes feature branches, guards main, pulls fast-forward only and reports divergence", async () => {
+    const remote = path.join(t.dir, "remote.git");
+    const a = path.join(t.dir, "a");
+    const b = path.join(t.dir, "b");
+    mkdirSync(a);
+    await git(t.dir, "init", "--bare", "-b", "main", remote);
+    await initRepo(a);
+    writeFileSync(path.join(a, "x.txt"), "1\n");
+    await git(a, "add", ".");
+    await git(a, "commit", "-m", "init");
+    await git(a, "remote", "add", "origin", remote);
+
+    await expect(engine.push(a, false)).rejects.toSatisfy((e: unknown) => e instanceof ForgeError && e.code === "POLICY_DENIED");
+    await expect(engine.push(a, true)).resolves.toMatchObject({ branch: "main" });
+
+    await engine.checkout(a, "feature/x", true);
+    writeFileSync(path.join(a, "y.txt"), "y\n");
+    await engine.commit(a, "feat: y", ["y.txt"], false);
+    await expect(engine.push(a, false)).resolves.toMatchObject({ branch: "feature/x" });
+    expect(await git(remote, "branch", "--list", "feature/x")).toContain("feature/x");
+
+    await git(t.dir, "clone", remote, b);
+    await initRepo(b).catch(() => {});
+    await git(b, "config", "user.email", "b@forge.local");
+    await git(b, "config", "user.name", "B");
+    writeFileSync(path.join(b, "x.txt"), "2\n");
+    await git(b, "commit", "-am", "remote change");
+    await git(b, "push", "origin", "main");
+
+    await engine.checkout(a, "main", false);
+    await expect(engine.pull(a)).resolves.toBeTruthy();
+    expect(readFileSync(path.join(a, "x.txt"), "utf8").trim()).toBe("2");
+
+    writeFileSync(path.join(b, "x.txt"), "3\n");
+    await git(b, "commit", "-am", "remote again");
+    await git(b, "push", "origin", "main");
+    writeFileSync(path.join(a, "x.txt"), "local\n");
+    await git(a, "commit", "-am", "local change");
+    await expect(engine.pull(a)).rejects.toThrow(/auseinandergelaufen/);
+    await expect(engine.push(a, true)).rejects.toThrow(/Erst Pull/);
+    expect(await engine.defaultBranch(a)).toBe("main");
   });
 });

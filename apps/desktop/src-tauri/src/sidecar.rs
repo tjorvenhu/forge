@@ -36,7 +36,7 @@ struct ExitPayload {
 
 /// Directory with the bundled tools (node, git, gh, sidecar). In dev builds the
 /// prepared folder next to Cargo.toml is used when it exists.
-fn runtime_dir(app: &AppHandle) -> Option<PathBuf> {
+pub fn runtime_dir(app: &AppHandle) -> Option<PathBuf> {
     if cfg!(debug_assertions) {
         let dev = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("runtime");
         if dev.exists() {

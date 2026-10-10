@@ -5,6 +5,7 @@ import { GitEngine } from "./git/git.js";
 import { GitHubService } from "./github/github.js";
 import { ClaudeSetupService } from "./claude/setup.js";
 import { McpService } from "./config/mcp.js";
+import { RemoteService } from "./remote/remote.js";
 import { locateClaude, sessionEnv } from "./claude/environment.js";
 import { Db } from "./persistence/db.js";
 import { ProjectManager } from "./projects/project-manager.js";
@@ -37,8 +38,14 @@ export function createApp(opts: { dataDir: string; write: Writer; log?: (m: stri
     () => locateClaude(db.getSettings().claudePath),
     () => sessionEnv(db.getSettings().stripApiKey),
   );
+  const remote = new RemoteService(
+    (projectId, state) => emit({ event: "remote.updated", payload: { projectId, state } }),
+    () => locateClaude(db.getSettings().claudePath),
+    () => sessionEnv(db.getSettings().stripApiKey),
+  );
   const handlers = createHandlers({
     mcp,
+    remote,
     github,
     claudeSetup,
     db,
@@ -57,6 +64,7 @@ export function createApp(opts: { dataDir: string; write: Writer; log?: (m: stri
       sessions.shutdown();
       github.shutdown();
       claudeSetup.shutdown();
+      remote.shutdown();
       db.close();
     },
   };
