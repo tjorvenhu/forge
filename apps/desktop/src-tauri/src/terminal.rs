@@ -50,7 +50,11 @@ const STRIP_ENV: &[&str] = &[
 
 fn default_shell() -> (String, Vec<String>) {
     if cfg!(windows) {
-        ("powershell.exe".into(), vec!["-NoLogo".into()])
+        // Absolute path: Windows PowerShell is not guaranteed to be on PATH.
+        let root = std::env::var("SystemRoot").unwrap_or_else(|_| r"C:\Windows".into());
+        let ps = Path::new(&root).join("System32").join("WindowsPowerShell").join("v1.0").join("powershell.exe");
+        let exe = if ps.is_file() { ps.to_string_lossy().into_owned() } else { "powershell.exe".into() };
+        (exe, vec!["-NoLogo".into()])
     } else {
         (std::env::var("SHELL").unwrap_or_else(|_| "/bin/bash".into()), vec!["-l".into()])
     }

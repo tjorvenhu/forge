@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { CalendarClock, CheckCircle2, Circle, CircleDashed, ExternalLink, Loader2, Pause, Play, Plus, Rocket, Trash2, XCircle } from "lucide-react";
 import type { Schedule, WorkflowOptions, WorkflowRun, WorkflowStepState } from "@forge/protocol";
-import { call, useProjects } from "@/lib/queries";
+import { call, useProjects, useSession } from "@/lib/queries";
 import { errorMessage } from "@/lib/rpc";
 import { openExternal } from "@/lib/native";
 import { cn, relativeTime } from "@/lib/utils";
@@ -142,6 +142,8 @@ function RunDetail({ run }: { run: WorkflowRun }) {
     }
   };
   const waitingStep = run.status === "waiting" ? run.step : null;
+  const session = useSession(run.status === "running" ? run.sessionId : null);
+  const needsApproval = session.data?.status === "waiting_approval";
   const workProject = run.workProjectId ?? run.projectId;
 
   return (
@@ -171,6 +173,14 @@ function RunDetail({ run }: { run: WorkflowRun }) {
         )}
       </div>
       <p className="whitespace-pre-wrap rounded-lg bg-bg p-3 text-[13px] text-muted">{run.requirement}</p>
+      {needsApproval && (
+        <div className="flex items-center gap-3 rounded-lg border border-warning/40 bg-warning-soft p-3">
+          <p className="flex-1 text-[13px]">Claude wartet in der Session auf eine Freigabe (Profil des Projekts).</p>
+          <Button size="sm" variant="primary" onClick={() => openProject(workProject, run.sessionId)}>
+            Zur Freigabe
+          </Button>
+        </div>
+      )}
 
       <ol className="flex flex-col gap-1">
         {run.steps.map((s) => (
