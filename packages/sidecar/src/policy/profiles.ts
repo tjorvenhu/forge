@@ -38,22 +38,15 @@ export const PROFILES: Record<ProfileId, ProfileConfig> = {
   },
 };
 
-export interface ProfileGate {
-  autonomousUnlocked: boolean;
-  projectConfirmed: boolean;
-}
+export const SANDBOX_ONLY_TAG = "sandbox-only";
 
 /**
- * Resolves the effective profile for a session start. Autonomous needs both the
- * global unlock and the per-project confirmation; nothing from the repository
- * can satisfy either.
+ * Resolves the effective profile for a session start. The sandbox-only tag is
+ * checked again here so a project can never start with bypass while it is set.
  */
-export function resolveProfile(profile: ProfileId, gate: ProfileGate): ProfileConfig {
-  if (profile === "autonomous" && !(gate.autonomousUnlocked && gate.projectConfirmed)) {
-    throw new ForgeError(
-      "PROFILE_LOCKED",
-      "Autonomous ist gesperrt. Erst in den Einstellungen freischalten und im Projekt bestätigen.",
-    );
+export function resolveProfile(profile: ProfileId, tags: readonly string[]): ProfileConfig {
+  if (profile === "autonomous" && tags.includes(SANDBOX_ONLY_TAG)) {
+    throw new ForgeError("POLICY_DENIED", "Das Tag sandbox-only verbietet Autonomous in diesem Projekt.");
   }
   return PROFILES[profile];
 }

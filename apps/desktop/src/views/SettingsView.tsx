@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { CheckCircle2, CircleDashed, CircleSlash, FolderOpen, Lock, RefreshCw, Unlock, Volume2, XCircle } from "lucide-react";
+import { CheckCircle2, CircleDashed, CircleSlash, FolderOpen, RefreshCw, ShieldAlert, Volume2, XCircle } from "lucide-react";
 import type { Diagnostics, ProfileId, Settings, ToolCheck, EffortLevel } from "@forge/protocol";
 import { call, keys, useDiagnostics, useRuntimeInfo, useSettings } from "@/lib/queries";
 import { errorMessage } from "@/lib/rpc";
@@ -12,8 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Field, Input } from "@/components/ui/input";
 import { Badge, Checkbox, ErrorBanner, SectionTitle, Loading } from "@/components/ui/misc";
 import { Select } from "@/components/ui/select";
-import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import { PROFILE_INFO } from "@/components/projects/ProfileBadge";
+import { PROFILE_IDS, PROFILE_INFO } from "@/components/projects/ProfileBadge";
 import { ClaudeSetupCard } from "@/components/settings/ClaudeSetupCard";
 import { MemoryEditor } from "@/components/settings/MemoryEditor";
 import { capitalize, cn } from "@/lib/utils";
@@ -22,7 +21,6 @@ import { EFFORT_LEVELS } from "@/lib/models";
 export function SettingsView() {
   const settings = useSettings();
   const qc = useQueryClient();
-  const [unlockOpen, setUnlockOpen] = useState(false);
 
   const save = async (patch: Partial<Settings>) => {
     try {
@@ -57,10 +55,7 @@ export function SettingsView() {
                   value={s.defaultProfile}
                   onChange={(v) => void save({ defaultProfile: v })}
                   className="w-full"
-                  options={[
-                    { value: "safe", label: "Safe", description: PROFILE_INFO.safe.description },
-                    { value: "balanced", label: "Balanced", description: PROFILE_INFO.balanced.description },
-                  ]}
+                  options={PROFILE_IDS.map((p) => ({ value: p, label: PROFILE_INFO[p].label, description: PROFILE_INFO[p].description }))}
                 />
               </Field>
               <Field label="Standardordner für neue Projekte">
@@ -108,24 +103,15 @@ export function SettingsView() {
 
           <Card title="Sicherheit">
             <div className="flex items-start gap-3">
-              {s.autonomousUnlocked ? <Unlock className="mt-0.5 h-4 w-4 text-danger" /> : <Lock className="mt-0.5 h-4 w-4 text-success" />}
+              <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0 text-danger" />
               <div className="flex-1 text-[13px]">
-                <div className="font-medium">Autonomous-Profil {s.autonomousUnlocked ? "freigeschaltet" : "gesperrt"}</div>
+                <div className="font-medium">Autonomous-Profil</div>
                 <p className="mt-1 text-muted">
-                  Autonomous startet Claude mit bypassPermissions: keine Rückfragen vor Befehlen und Dateiänderungen. Bypass ist keine Sandbox. Nutze es nur in einer
-                  isolierten Umgebung (VM oder Container) ohne Zugangsdaten. Die FORGE-Sperrliste (Force-Push, reset --hard, Zugriffe auf ~/.ssh und mehr) gilt weiterhin.
-                  Jedes Projekt muss zusätzlich einzeln bestätigt werden.
+                  Autonomous startet Claude mit bypassPermissions: keine Rückfragen vor Befehlen und Dateiänderungen. Befehle laufen mit deinen Benutzerrechten. Die
+                  FORGE-Sperrliste gilt weiterhin: kein Force-Push, kein reset --hard, keine Zugriffe auf ~/.ssh und andere Zugangsdaten, keine Schreibzugriffe außerhalb des
+                  Projekts. Mit dem Tag sandbox-only schließt du einzelne Projekte aus.
                 </p>
               </div>
-              {s.autonomousUnlocked ? (
-                <Button variant="outline" onClick={() => void save({ autonomousUnlocked: false })}>
-                  Wieder sperren
-                </Button>
-              ) : (
-                <Button variant="danger-ghost" onClick={() => setUnlockOpen(true)}>
-                  Freischalten
-                </Button>
-              )}
             </div>
           </Card>
 
@@ -149,16 +135,6 @@ export function SettingsView() {
           </div>
         </div>
       )}
-      <ConfirmDialog
-        open={unlockOpen}
-        onOpenChange={setUnlockOpen}
-        title="Autonomous freischalten?"
-        description="Claude kann dann ohne Rückfrage Befehle ausführen und Dateien ändern. Bestätige, dass du FORGE in einer isolierten Umgebung ohne Zugangsdaten nutzt."
-        confirmLabel="Freischalten"
-        danger
-        requireText="BYPASS"
-        onConfirm={() => save({ autonomousUnlocked: true })}
-      />
     </Page>
   );
 }

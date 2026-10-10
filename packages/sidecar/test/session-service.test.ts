@@ -27,6 +27,7 @@ class FakeRuntime implements ClaudeRuntime {
   sentUuids: string[] = [];
   remoteCalls: Array<{ enabled: boolean; name: string }> = [];
   efforts: Array<string | null> = [];
+  modes: string[] = [];
   capabilities = new AgentSdkRuntime().capabilities;
   async listSessions() {
     return [];
@@ -42,6 +43,10 @@ class FakeRuntime implements ClaudeRuntime {
   }
   async sessionHistory() {
     return [];
+  }
+  deletedTranscripts: string[] = [];
+  async deleteTranscript(id: string) {
+    this.deletedTranscripts.push(id);
   }
   async probe(): Promise<never> {
     throw new Error("no probe in tests");
@@ -68,7 +73,9 @@ class FakeRuntime implements ClaudeRuntime {
         sink.onEnd(null);
       },
       setModel: async () => {},
-      setPermissionMode: async () => {},
+      setPermissionMode: async (mode) => {
+        this.modes.push(mode);
+      },
       setEffort: async (e) => {
         this.efforts.push(e);
       },
@@ -134,13 +141,12 @@ describe("SessionService", () => {
     expect(rt.started[0]).toMatchObject({ permissionMode: "default", disallowedTools: ["WebFetch", "WebSearch"] });
   });
 
-  it("refuses autonomous without unlock and passes bypass only when unlocked+confirmed", async () => {
-    db.sql.prepare("UPDATE projects SET profile = 'autonomous' WHERE id = ?").run(projectId);
-    await expect(svc.start({ projectId, prompt: "x" })).rejects.toThrow(/gesperrt/);
-    db.updateSettings({ autonomousUnlocked: true });
-    projects.confirmAutonomous(projectId, "proj", true);
+  it("passes bypass for autonomous and refuses it while sandbox-only is set", async () => {
+    projects.update(projectId, { profile: "autonomous" });
     await svc.start({ projectId, prompt: "x" });
     expect(rt.started[0]?.permissionMode).toBe("bypassPermissions");
+    db.sql.prepare("UPDATE projects SET tags = '[\"sandbox-only\"]' WHERE id = ?").run(projectId);
+    await expect(svc.start({ projectId, prompt: "x" })).rejects.toThrow(/sandbox-only/);
   });
 
   it("routes approvals through the UI and records the audit trail", async () => {
@@ -330,5 +336,57 @@ describe("turn automation via project tags", () => {
     expect(rt.efforts).toEqual(["max"]);
     const reset = await svc.setEffort(s.id, null);
     expect(reset.effort).toBeNull();
+  });
+
+  it("accepts a message while Claude works and keeps the session running until the CLI is done", async () => {
+    const s = await svc.start({ projectId, prompt: "erst das" });
+    await svc.send(s.id, "und noch das");
+    expect(rt.sent).toEqual(["und noch das"]);
+    expect(svc.get(s.id).status).toBe("running");
+    expect(persistedTypes(s.id).filter((t) => t === "status").length).toBe(1);
+
+    // The turn ended before the CLI folded the message in: it starts its own turn.
+    const sink = rt.sinks[0]!;
+    sink.onMessage({ type: "result", subtype: "success", is_error: false, result: "ok", usage: {} });
+    expect(svc.get(s.id).status).toBe("idle");
+    sink.onMessage({ type: "command_lifecycle", command_uuid: rt.sentUuids[0], state: "started" });
+    expect(svc.get(s.id).status).toBe("running");
+    sink.onMessage({ type: "result", subtype: "success", is_error: false, result: "ok", usage: {} });
+    expect(svc.get(s.id).status).toBe("idle");
+    expect(svc.listLive().map((x) => [x.id, x.projectName])).toEqual([[s.id, "proj"]]);
+  });
+
+  it("deletes a session: ends the process, removes timeline and transcript, keeps the audit log", async () => {
+    const s = await svc.start({ projectId, prompt: "Lies a.txt" });
+    rt.replay();
+    db.recordApproval({ sessionId: s.id, requestId: "r", toolName: "Bash", input: {}, decision: "allow", scope: "once", source: "user", reason: null });
+    expect(svc.get(s.id).live).toBe(true);
+    const r = await svc.delete(s.id, true);
+    expect(r).toEqual({ deleted: true, transcriptDeleted: true });
+    expect(rt.closed).toBe(1);
+    expect(rt.deletedTranscripts).toEqual(["d69118dc-ef0c-4925-9945-3091ab75cb15"]);
+    expect(() => svc.get(s.id)).toThrow(/nicht gefunden/);
+    expect(db.listEvents(s.id)).toEqual([]);
+    expect(db.sql.prepare("SELECT COUNT(*) AS n FROM approvals WHERE session_id = ?").get(s.id)).toEqual({ n: 1 });
+
+    const keep = await svc.start({ projectId, prompt: "b" });
+    await svc.delete(keep.id, false);
+    expect(rt.deletedTranscripts).toHaveLength(1);
+  });
+
+  it("applies a profile change to running sessions right away", async () => {
+    const a = await svc.start({ projectId, prompt: "a" });
+    const b = await svc.start({ projectId, prompt: "b", planOnly: true });
+    projects.update(projectId, { profile: "autonomous" });
+    await svc.applyProjectProfile(projectId);
+    expect(rt.modes).toEqual(["bypassPermissions", "plan"]);
+    expect(svc.get(a.id)).toMatchObject({ profile: "autonomous", permissionMode: "bypassPermissions" });
+    expect(svc.get(b.id)).toMatchObject({ profile: "autonomous", permissionMode: "plan" });
+
+    // Safe disables web tools; the running process got its tool list at start, so the hook enforces it.
+    projects.update(projectId, { profile: "safe" });
+    await svc.applyProjectProfile(projectId);
+    expect(svc.get(a.id).permissionMode).toBe("default");
+    expect((await rt.sinks[0]!.preToolUse("WebFetch", { url: "https://example.com" }, "t1"))?.rule).toBe("profile-tool");
   });
 });

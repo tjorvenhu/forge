@@ -57,6 +57,8 @@ export function createHandlers(s: Services): Handlers {
     "claude.setupState": () => s.claudeSetup.current(),
     "claude.install": () => s.claudeSetup.install(),
     "claude.login": () => s.claudeSetup.login(),
+    "claude.checkUpdate": () => s.claudeSetup.checkUpdate(),
+    "claude.update": () => s.claudeSetup.update(),
     "claude.submitLoginCode": ({ code }) => s.claudeSetup.submitCode(code),
     "claude.cancelSetup": () => s.claudeSetup.cancel(),
 
@@ -134,9 +136,12 @@ export function createHandlers(s: Services): Handlers {
       }
     },
     "projects.clone": ({ url, parentDir, dirName }) => s.projects.clone(url, parentDir, dirName),
-    "projects.update": ({ projectId, ...patch }) => s.projects.update(projectId, patch),
-    "projects.confirmAutonomous": ({ projectId, confirmName }) =>
-      s.projects.confirmAutonomous(projectId, confirmName, s.db.getSettings().autonomousUnlocked),
+    "projects.update": async ({ projectId, ...patch }) => {
+      const before = s.projects.get(projectId).profile;
+      const project = s.projects.update(projectId, patch);
+      if (project.profile !== before) await s.sessions.applyProjectProfile(projectId);
+      return project;
+    },
     "projects.removalInfo": ({ projectId }) => removalInfo(projectId, s),
     "projects.remove": ({ projectId, deleteFolder, deleteGitHubRepo }) => removeProject(projectId, { deleteFolder, deleteGitHubRepo }, s),
     "projects.touch": ({ projectId }) => s.projects.touch(projectId),
@@ -146,6 +151,8 @@ export function createHandlers(s: Services): Handlers {
 
     "sessions.list": ({ projectId }) => s.sessions.list(projectId),
     "sessions.listAll": ({ query, status }) => s.sessions.listAll(query, status),
+    "sessions.listLive": () => s.sessions.listLive(),
+    "sessions.delete": ({ sessionId, deleteTranscript }) => s.sessions.delete(sessionId, deleteTranscript),
     "sessions.get": ({ sessionId }) => s.sessions.get(sessionId),
     "sessions.events": ({ sessionId, afterSeq }) => s.sessions.events(sessionId, afterSeq),
     "sessions.start": (p) => s.sessions.start(p),

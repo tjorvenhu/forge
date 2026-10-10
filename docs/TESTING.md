@@ -16,7 +16,7 @@ Letzter vollständiger Lauf: 2026-10-10, Windows 11 Pro 26200, Node 24.14, Claud
 
 **Unit/Integration (Sidecar)**
 - `git-parsers.test.ts`: Porcelain-v2-Status (Umbenennungen, Konflikte, Leerzeichen, Umlaute, detached HEAD), Unified-Diff-Parser, Log, Branches, Secret-/Artefakt-Erkennung, Clone-URL-Validierung (`ext::`, `--upload-pack`, `file://` abgelehnt).
-- `policy.test.ts`: Sperrliste (Force-Push, Push auf main, reset --hard, Branch löschen, rm -rf /, sensible Pfade), Profile, Autonomous-Sperre, Redaction.
+- `policy.test.ts`: Sperrliste (Force-Push, Push auf main, reset --hard, Branch löschen, rm -rf /, sensible Pfade), Profile, sandbox-only sperrt Autonomous, Redaction.
 - `project-git.test.ts`: Import/Kanonisierung/Dubletten (auch Groß-/Kleinschreibung unter Windows), Persistenz über DB-Neustart, Projekt anlegen mit Vorlagen, fehlender Ordner, echte Git-Repos: Diff, Commit nur der ausgewählten Dateien, Secret-Stopp, Konflikt-Stopp, erster Commit.
 - `normalize.test.ts`: Normalizer gegen eine aufgezeichnete echte `stream-json`-Ausgabe (Fixture), Robustheit gegen kaputte/unbekannte Events.
 - `session-service.test.ts`: Session-Lebenszyklus mit simulierter Runtime: Profil-Modi, Freigaben + Audit, Sperrliste, Stop, Absturz und Resume, Fehlerdarstellung, Redaction.

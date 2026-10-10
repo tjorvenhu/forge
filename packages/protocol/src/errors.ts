@@ -17,7 +17,6 @@ export const ErrorCode = z.enum([
   "GIT_FAILED",
   "GIT_CONFLICT",
   "POLICY_DENIED",
-  "PROFILE_LOCKED",
   "INTERNAL",
 ]);
 export type ErrorCode = z.infer<typeof ErrorCode>;

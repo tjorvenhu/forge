@@ -57,6 +57,9 @@ const COMMIT_MESSAGE_MODEL = "haiku";
 
 const MODE_RANK: Record<PermissionMode, number> = { plan: 0, default: 1, acceptEdits: 2, bypassPermissions: 3 };
 
+/** Statuses in which the CLI may be touching files. */
+const BUSY: SessionStatus[] = ["starting", "running", "waiting_approval"];
+
 export class SessionService {
   private live = new Map<string, LiveSession>();
   private initCache: SDKControlInitializeResponse | null = null;
@@ -357,8 +360,9 @@ export class SessionService {
 
   /** Builds the outgoing turn (text + attachment blocks + id) and records it in the timeline. */
   private async prepareTurn(sessionId: string, text: string, attachments: Attachment[]): Promise<OutgoingMessage> {
-    const cwd = this.db.getSession(sessionId)?.cwd;
-    if (cwd) await this.captureBaseline(sessionId, cwd);
+    const rec = this.db.getSession(sessionId);
+    // A message sent mid-turn joins the running turn; its baseline must stay the one from the turn start.
+    if (rec && !(this.live.has(sessionId) && BUSY.includes(rec.status))) await this.captureBaseline(sessionId, rec.cwd);
     const { blocks, meta } = attachments.length ? await buildAttachmentBlocks(attachments) : { blocks: [], meta: [] };
     const uuid = randomUUID();
     this.live.get(sessionId)?.seenUuids.add(uuid);
@@ -380,10 +384,7 @@ export class SessionService {
   }): Promise<Session> {
     const project = this.projects.requireExisting(params.projectId);
     const settings = this.db.getSettings();
-    const profile = resolveProfile(project.profile, {
-      autonomousUnlocked: settings.autonomousUnlocked,
-      projectConfirmed: project.autonomousConfirmed,
-    });
+    const profile = resolveProfile(project.profile, project.tags);
     const claudePath = locateClaude(settings.claudePath);
     if (!claudePath) throw new ForgeError("CLAUDE_NOT_INSTALLED", "Claude Code CLI wurde nicht gefunden. Pfad in den Einstellungen prüfen.");
 
@@ -412,9 +413,8 @@ export class SessionService {
     if (params.resumeClaudeSessionId) await this.importHistory(rec.id, params.resumeClaudeSessionId, project.path);
 
     // Idle sessions keep their CLI process but do not touch files; only busy ones can collide.
-    const busy: SessionStatus[] = ["starting", "running", "waiting_approval"];
     const others = [...this.live.entries()].filter(
-      ([id, l]) => l.projectDir === project.path && busy.includes(this.db.getSession(id)?.status ?? "stopped"),
+      ([id, l]) => l.projectDir === project.path && BUSY.includes(this.db.getSession(id)?.status ?? "stopped"),
     ).length;
     let first: OutgoingMessage | null;
     try {
@@ -445,10 +445,7 @@ export class SessionService {
     if (!existsSync(rec.cwd)) throw new ForgeError("PATH_NOT_ACCESSIBLE", `Arbeitsverzeichnis existiert nicht mehr: ${rec.cwd}`);
     const project = this.projects.requireExisting(rec.projectId);
     const settings = this.db.getSettings();
-    const profile = resolveProfile(project.profile, {
-      autonomousUnlocked: settings.autonomousUnlocked,
-      projectConfirmed: project.autonomousConfirmed,
-    });
+    const profile = resolveProfile(project.profile, project.tags);
     const claudePath = locateClaude(settings.claudePath);
     if (!claudePath) throw new ForgeError("CLAUDE_NOT_INSTALLED", "Claude Code CLI wurde nicht gefunden.");
     const permissionMode = rec.permissionMode === "plan" ? "plan" : profile.permissionMode;
@@ -588,11 +585,14 @@ export class SessionService {
       onApproval: (req, signal) => this.requestApproval(id, live, req, signal),
       preToolUse: async (toolName, input, toolUseId) => {
         const branch = await this.currentBranch(live.projectDir);
-        const v = checkToolUse(toolName, input, {
-          projectDir: live.projectDir,
-          confineWritesToProject: live.profile.confineWritesToProject,
-          currentBranch: branch,
-        });
+        // disallowedTools is fixed at process start; a later switch to a stricter profile is enforced here.
+        const v = live.profile.disallowedTools.includes(toolName)
+          ? { rule: "profile-tool", message: `Das Profil ${live.profile.label} erlaubt ${toolName} nicht.` }
+          : checkToolUse(toolName, input, {
+              projectDir: live.projectDir,
+              confineWritesToProject: live.profile.confineWritesToProject,
+              currentBranch: branch,
+            });
         if (v) {
           this.record(id, { type: "policy.blocked", toolUseId, toolName, rule: v.rule, message: v.message });
           this.db.recordApproval({
@@ -698,8 +698,9 @@ export class SessionService {
     const live = this.live.get(sessionId);
     if (!live) return this.resume(sessionId, text, attachments);
     if (live.pending.size > 0) throw new ForgeError("SESSION_BUSY", "Erst die offene Freigabeanfrage beantworten.");
+    // While a turn runs the CLI queues the message and folds it in after the current tool step.
     live.rt.sendMessage(await this.prepareTurn(sessionId, text, attachments));
-    this.setStatus(sessionId, "running");
+    if (this.db.getSession(sessionId)?.status !== "running") this.setStatus(sessionId, "running");
     return this.get(sessionId);
   }
 
@@ -726,6 +727,36 @@ export class SessionService {
     for (const id of ids) if (this.remote.has(id)) await this.remoteStop(id);
     for (const id of open()) this.live.get(id)?.rt.close();
     for (let i = 0; i < 50 && open().length; i++) await new Promise((r) => setTimeout(r, 100));
+  }
+
+  /**
+   * Removes a session from FORGE: ends its process, deletes the timeline and, if asked, the CLI
+   * transcript. Without the transcript deletion it shows up again as a terminal session.
+   * The approval audit log is kept.
+   */
+  async delete(sessionId: string, deleteTranscript: boolean) {
+    const rec = this.db.getSession(sessionId);
+    if (!rec) throw new ForgeError("SESSION_NOT_FOUND", "Session nicht gefunden.");
+    if (this.live.has(sessionId)) {
+      this.dropRemoteSession(sessionId);
+      this.live.get(sessionId)?.rt.close();
+      for (let i = 0; i < 50 && this.live.has(sessionId); i++) await new Promise((r) => setTimeout(r, 100));
+      // Deleting the row while the process still reports would break its event writes.
+      if (this.live.has(sessionId)) throw new ForgeError("SESSION_BUSY", "Die Session ließ sich nicht beenden. Bitte erneut versuchen.");
+    }
+    let transcriptDeleted = false;
+    if (deleteTranscript && rec.claudeSessionId) {
+      try {
+        await this.runtime.deleteTranscript(rec.claudeSessionId, rec.cwd);
+        transcriptDeleted = true;
+      } catch (e) {
+        if (!/not found/i.test(e instanceof Error ? e.message : String(e))) {
+          throw new ForgeError("CLAUDE_RUNTIME", `Transkript nicht gelöscht: ${describeRuntimeError(e)}`);
+        }
+      }
+    }
+    this.turnBaseline.delete(sessionId);
+    return { deleted: this.db.deleteSession(sessionId), transcriptDeleted };
   }
 
   close(sessionId: string): Session {
@@ -762,6 +793,37 @@ export class SessionService {
     const updated = this.db.updateSession(sessionId, { permissionMode: mode });
     if (updated) this.emit({ event: "session.updated", payload: this.toSession(updated) });
     return this.get(sessionId);
+  }
+
+  /**
+   * Applies the project's current profile to its open sessions: permission mode, approval scope and
+   * write confinement take effect right away, also in the middle of a turn. Plan mode stays on.
+   */
+  async applyProjectProfile(projectId: string) {
+    const project = this.projects.get(projectId);
+    const profile = resolveProfile(project.profile, project.tags);
+    for (const [id, live] of this.live) {
+      const rec = this.db.getSession(id);
+      if (rec?.projectId !== projectId) continue;
+      const mode = rec.permissionMode === "plan" ? "plan" : profile.permissionMode;
+      try {
+        await live.rt.setPermissionMode(mode);
+      } catch {
+        // The process is ending (closed or crashed); it picks up the project profile when resumed.
+        continue;
+      }
+      live.profile = profile;
+      const updated = this.db.updateSession(id, { profile: profile.id, permissionMode: mode });
+      if (updated) this.emit({ event: "session.updated", payload: this.toSession(updated) });
+    }
+  }
+
+  /** Sessions with a running CLI process, across all projects (for the session tabs). */
+  listLive() {
+    return [...this.live.keys()].flatMap((id) => {
+      const rec = this.db.getSession(id);
+      return rec ? [{ ...this.toSession(rec), projectName: this.projects.get(rec.projectId).name }] : [];
+    });
   }
 
   // ---------- Remote Control (Claude app / claude.ai)
@@ -853,10 +915,13 @@ export class SessionService {
       return true;
     }
     if (m.type === "command_lifecycle") {
-      if (m.state === "started" && typeof m.command_uuid === "string" && !live.seenUuids.has(m.command_uuid)) {
-        live.remoteTurn = { sawMessage: false };
+      if (m.state === "started" && typeof m.command_uuid === "string") {
         const rec = this.db.getSession(id);
-        if (rec) void this.captureBaseline(id, rec.cwd);
+        if (!live.seenUuids.has(m.command_uuid)) {
+          live.remoteTurn = { sawMessage: false };
+          if (rec) void this.captureBaseline(id, rec.cwd);
+        }
+        // Also own messages: one queued during a turn that ended first starts its own turn now.
         if (rec?.status === "idle") this.setStatus(id, "running");
       }
       return true;

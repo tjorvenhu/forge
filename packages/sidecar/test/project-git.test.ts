@@ -75,16 +75,19 @@ describe("ProjectManager", () => {
     expect(() => pm.requireExisting(p.id)).toThrow(/existiert nicht mehr/);
   });
 
-  it("guards autonomous behind global unlock and typed confirmation", async () => {
+  it("switches to autonomous directly and respects sandbox-only", async () => {
     const dir = path.join(t.dir, "auto");
     mkdirSync(dir);
     const p = await pm.import(dir);
-    expect(() => pm.update(p.id, { profile: "autonomous" })).toThrow(/bestätigt/);
-    expect(() => pm.confirmAutonomous(p.id, "auto", false)).toThrow(/global gesperrt/);
-    expect(() => pm.confirmAutonomous(p.id, "falsch", true)).toThrow(/stimmt nicht/);
-    expect(pm.confirmAutonomous(p.id, "auto", true).profile).toBe("autonomous");
-    const back = pm.update(p.id, { profile: "safe" });
-    expect(back.autonomousConfirmed).toBe(false);
+    expect(pm.update(p.id, { profile: "safe" }).profile).toBe("safe");
+    expect(pm.update(p.id, { profile: "autonomous" }).profile).toBe("autonomous");
+    expect(pm.update(p.id, { tags: ["sandbox-only"] }).profile).toBe("balanced");
+    expect(() => pm.update(p.id, { profile: "autonomous" })).toThrow(/sandbox-only/);
+
+    const autoDir = path.join(t.dir, "auto-default");
+    mkdirSync(autoDir);
+    const autoPm = new ProjectManager(db, engine, () => "autonomous");
+    expect((await autoPm.import(autoDir)).profile).toBe("autonomous");
   });
 
   it("blocks reading files outside the project", async () => {

@@ -7,7 +7,7 @@
 3. **Kein Shell-Interpolieren.** Alle Prozesse (`git`, `gh`, `claude`) starten mit `spawn(cmd, args[], {shell:false})` und explizitem `cwd`.
 4. **Validierung an der Grenze.** Jede RPC-Anfrage wird im Sidecar mit Zod geprüft. Pfade werden kanonisiert; Datei- und Git-Operationen außerhalb des Projektordners werden abgelehnt.
 5. **Keine Credentials in FORGE.** Claude-Anmeldung macht die CLI, GitHub-Anmeldung `gh auth`. FORGE liest weder `~/.claude/.credentials.json` noch Tokens. `ANTHROPIC_API_KEY` wird erkannt, nie angezeigt, und standardmäßig aus Session-Umgebungen entfernt.
-6. **Keine Telemetrie.** Alle Daten bleiben lokal.
+6. **Keine Telemetrie.** Alle Daten bleiben lokal. Einzige eigene Netzwerkanfrage: Beim Start und danach alle sechs Stunden liest FORGE die aktuelle Claude-Code-Versionsnummer von `https://downloads.claude.ai/claude-code-releases/<latest|stable>` (derselbe Endpunkt wie der offizielle Installer, Kanal aus `autoUpdatesChannel`). Dabei werden keine Daten mitgeschickt. Das Update selbst führt `claude update` aus.
 
 ## Permission-Profile
 
@@ -17,7 +17,7 @@ Siehe [ADR 0004](adr/0004-permission-profile.md). Kurz:
 |---|---|---|
 | Safe | `default` | jede Anfrage, kein „für Session erlauben", keine Web-Tools |
 | Balanced | `acceptEdits` | Edits im Projekt automatisch, Befehle mit Freigabe |
-| Autonomous | `bypassPermissions` | keine; doppelt gesperrt (global + pro Projekt mit Namensbestätigung) |
+| Autonomous | `bypassPermissions` | keine; Standard für neue Projekte, per Tag `sandbox-only` pro Projekt abschaltbar |
 
 Wirksamkeit ist getestet: `session-service.test.ts` prüft die übergebenen Modi, `real-claude.e2e.test.ts`
 prüft mit echter CLI, dass Safe eine Freigabe anfordert und eine Ablehnung die Ausführung verhindert.
@@ -36,8 +36,8 @@ der Rechteprüfung laufen. Blockiert werden u. a.:
 Jede Blockade wird als `policy.blocked`-Event angezeigt und in `approvals` auditiert.
 
 **Grenzen:** Die Sperrliste arbeitet mit Mustern auf Befehlstexten. Sie ist eine Leitplanke, keine Sandbox.
-Ein verschleierter Befehl (z. B. per Skript-Datei) kann sie umgehen. Deshalb bleibt Autonomous an eine
-isolierte Umgebung gebunden.
+Ein verschleierter Befehl (z. B. per Skript-Datei) kann sie umgehen. Autonomous ist trotzdem der Standard
+(Entscheidung in ADR 0004). Für Projekte mit erhöhtem Risiko gibt es das Tag `sandbox-only`.
 
 ## Commits
 
