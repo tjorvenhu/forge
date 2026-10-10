@@ -102,14 +102,18 @@ const MIGRATIONS: string[] = [
   ALTER TABLE projects ADD COLUMN default_effort TEXT;
   ALTER TABLE sessions ADD COLUMN effort TEXT;
   `,
+  // Autonomous no longer needs a global unlock or a per-project confirmation.
+  `
+  ALTER TABLE projects DROP COLUMN autonomous_confirmed;
+  DELETE FROM settings WHERE key = 'autonomousUnlocked';
+  `,
 ];
 
 export const DEFAULT_SETTINGS: Settings = {
   claudePath: null,
   defaultModel: null,
   defaultEffort: null,
-  defaultProfile: "balanced",
-  autonomousUnlocked: false,
+  defaultProfile: "autonomous",
   stripApiKey: true,
   enterToSend: true,
   sounds: true,
@@ -126,7 +130,6 @@ interface ProjectRow {
   tags: string;
   technologies: string;
   profile: string;
-  autonomous_confirmed: number;
   default_model: string | null;
   default_effort: string | null;
   created_at: string;
@@ -166,7 +169,6 @@ function toProject(r: ProjectRow): ProjectRecord {
     tags: JSON.parse(r.tags) as string[],
     technologies: JSON.parse(r.technologies) as string[],
     profile: r.profile as ProfileId,
-    autonomousConfirmed: !!r.autonomous_confirmed,
     defaultModel: r.default_model,
     defaultEffort: (r.default_effort as EffortLevel | null) ?? null,
     createdAt: r.created_at,
@@ -266,8 +268,8 @@ export class Db {
   insertProject(p: ProjectRecord, pathKey: string) {
     this.sql
       .prepare(
-        `INSERT INTO projects(id, name, path, path_key, favorite, tags, technologies, profile, autonomous_confirmed, default_model, default_effort, created_at, last_opened_at, test_command, parent_id)
-         VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO projects(id, name, path, path_key, favorite, tags, technologies, profile, default_model, default_effort, created_at, last_opened_at, test_command, parent_id)
+         VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         p.id,
@@ -278,7 +280,6 @@ export class Db {
         JSON.stringify(p.tags),
         JSON.stringify(p.technologies),
         p.profile,
-        p.autonomousConfirmed ? 1 : 0,
         p.defaultModel,
         p.defaultEffort,
         p.createdAt,
@@ -295,7 +296,6 @@ export class Db {
     if (patch.tags !== undefined) cols.tags = JSON.stringify(patch.tags);
     if (patch.technologies !== undefined) cols.technologies = JSON.stringify(patch.technologies);
     if (patch.profile !== undefined) cols.profile = patch.profile;
-    if (patch.autonomousConfirmed !== undefined) cols.autonomous_confirmed = patch.autonomousConfirmed ? 1 : 0;
     if (patch.defaultModel !== undefined) cols.default_model = patch.defaultModel;
     if (patch.defaultEffort !== undefined) cols.default_effort = patch.defaultEffort;
     if (patch.lastOpenedAt !== undefined) cols.last_opened_at = patch.lastOpenedAt;
@@ -343,6 +343,7 @@ export class Db {
       title: "title",
       model: "model",
       effort: "effort",
+      profile: "profile",
       permissionMode: "permission_mode",
       status: "status",
       apiKeySource: "api_key_source",
@@ -359,6 +360,11 @@ export class Db {
     }
     this.sql.prepare(`UPDATE sessions SET ${sets.join(", ")} WHERE id = ?`).run(...vals, id);
     return this.getSession(id);
+  }
+
+  /** Events go with the session (ON DELETE CASCADE); approvals stay as audit log. */
+  deleteSession(id: string): boolean {
+    return this.sql.prepare("DELETE FROM sessions WHERE id = ?").run(id).changes > 0;
   }
 
   getSession(id: string): SessionRecord | null {

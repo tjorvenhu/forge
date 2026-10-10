@@ -6,6 +6,7 @@ import { ForgeError, type Project, type ProjectWithStatus } from "@forge/protoco
 import type { Db, ProjectRecord } from "../persistence/db.js";
 import { repoNameFromUrl, validateCloneUrl, type GitEngine } from "../git/git.js";
 import { canonicalize, isInside, pathKey, validateDirName } from "../util/paths.js";
+import { SANDBOX_ONLY_TAG } from "../policy/profiles.js";
 import { detectTechnologies, detectTestCommand } from "./tech.js";
 
 export interface CreateProjectInput {
@@ -89,8 +90,7 @@ export class ProjectManager {
       favorite: false,
       tags: [],
       technologies: await detectTechnologies(canonical),
-      profile: this.defaultProfile() === "autonomous" ? "balanced" : this.defaultProfile(),
-      autonomousConfirmed: false,
+      profile: this.defaultProfile(),
       defaultModel: null,
       defaultEffort: null,
       createdAt: new Date().toISOString(),
@@ -131,25 +131,14 @@ export class ProjectManager {
 
   update(id: string, patch: Partial<Pick<ProjectRecord, "name" | "favorite" | "tags" | "profile" | "defaultModel" | "defaultEffort" | "testCommand">>): Project {
     const cur = this.get(id);
-    // Switching to autonomous needs the separate confirmation flow.
-    if (patch.profile === "autonomous" && (cur.tags.includes("sandbox-only") || patch.tags?.includes("sandbox-only"))) {
+    const sandboxOnly = (patch.tags ?? cur.tags).includes(SANDBOX_ONLY_TAG);
+    if (patch.profile === "autonomous" && sandboxOnly) {
       throw new ForgeError("POLICY_DENIED", "Das Tag sandbox-only verbietet Autonomous in diesem Projekt.");
     }
-    if (patch.profile === "autonomous" && !cur.autonomousConfirmed) {
-      throw new ForgeError("PROFILE_LOCKED", "Autonomous muss für dieses Projekt erst bestätigt werden.");
-    }
     const next: Partial<ProjectRecord> = { ...patch };
-    // Leaving autonomous revokes the confirmation so re-enabling asks again.
-    if (patch.profile && patch.profile !== "autonomous" && cur.autonomousConfirmed) next.autonomousConfirmed = false;
+    // Setting sandbox-only on an autonomous project falls back to Balanced instead of failing.
+    if (sandboxOnly && !patch.profile && cur.profile === "autonomous") next.profile = "balanced";
     this.db.updateProject(id, next);
-    return this.get(id);
-  }
-
-  confirmAutonomous(id: string, confirmName: string, globallyUnlocked: boolean): Project {
-    const p = this.get(id);
-    if (!globallyUnlocked) throw new ForgeError("PROFILE_LOCKED", "Autonomous ist global gesperrt. Erst in den Einstellungen freischalten.");
-    if (confirmName.trim() !== p.name) throw new ForgeError("VALIDATION", "Der eingegebene Projektname stimmt nicht.");
-    this.db.updateProject(id, { autonomousConfirmed: true, profile: "autonomous" });
     return this.get(id);
   }
 

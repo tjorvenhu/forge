@@ -43,7 +43,7 @@ export class WorktreeService {
     const r = await this.git.exec(parent.path, exists ? ["worktree", "add", dir, branch] : ["worktree", "add", "-b", branch, dir], undefined, 120_000);
     if (r.code !== 0) throw new ForgeError("GIT_FAILED", (r.stderr || r.stdout).trim() || "Worktree konnte nicht angelegt werden");
     const project = await this.projects.import(dir, parent.id);
-    this.projects.update(project.id, { name: `${parent.name} · ${branch}`, profile: parent.profile === "autonomous" ? "balanced" : parent.profile, tags: parent.tags.filter((t) => t !== "sandbox-only"), testCommand: parent.testCommand });
+    this.projects.update(project.id, { name: `${parent.name} · ${branch}`, profile: parent.profile, tags: parent.tags,testCommand: parent.testCommand });
     return this.projects.get(project.id);
   }
 

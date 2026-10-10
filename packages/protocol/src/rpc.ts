@@ -4,6 +4,7 @@ import {
   Attachment,
   BranchInfo,
   ClaudeSetupState,
+  ClaudeUpdateInfo,
   CommitInfo,
   ConfigDoc,
   ConfigDocKind,
@@ -55,6 +56,8 @@ export const methods = {
   "claude.setupState": { params: empty, result: ClaudeSetupState },
   "claude.install": { params: empty, result: ClaudeSetupState },
   "claude.login": { params: empty, result: ClaudeSetupState },
+  "claude.checkUpdate": { params: empty, result: ClaudeUpdateInfo },
+  "claude.update": { params: empty, result: ClaudeSetupState },
   "claude.submitLoginCode": { params: z.object({ code: z.string().min(1).max(2000) }), result: ClaudeSetupState },
   "claude.cancelSetup": { params: empty, result: ClaudeSetupState },
 
@@ -168,10 +171,6 @@ export const methods = {
     }),
     result: Project,
   },
-  "projects.confirmAutonomous": {
-    params: projectRef.extend({ confirmName: z.string() }),
-    result: Project,
-  },
   "projects.removalInfo": { params: projectRef, result: ProjectRemovalInfo },
   "projects.remove": {
     params: projectRef.extend({ deleteFolder: z.boolean().default(false), deleteGitHubRepo: z.boolean().default(false) }),
@@ -198,6 +197,11 @@ export const methods = {
   "sessions.listAll": {
     params: z.object({ query: z.string().max(200).optional(), status: z.string().max(40).optional() }),
     result: z.array(Session.extend({ projectName: z.string() })),
+  },
+  "sessions.listLive": { params: z.object({}), result: z.array(Session.extend({ projectName: z.string() })) },
+  "sessions.delete": {
+    params: sessionRef.extend({ deleteTranscript: z.boolean().default(true) }),
+    result: z.object({ deleted: z.boolean(), transcriptDeleted: z.boolean() }),
   },
   "sessions.get": { params: sessionRef, result: Session },
   "sessions.events": {

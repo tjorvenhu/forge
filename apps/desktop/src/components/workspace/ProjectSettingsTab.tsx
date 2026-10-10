@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, ShieldAlert, Trash2, X } from "lucide-react";
+import { ShieldAlert, Trash2, X } from "lucide-react";
 import type { ProfileId, Project, EffortLevel } from "@forge/protocol";
 import { call, keys, useRuntimeInfo, useSettings } from "@/lib/queries";
 import { EFFORT_LEVELS, modelLabel } from "@/lib/models";
@@ -12,8 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Field, Input } from "@/components/ui/input";
 import { Badge, SectionTitle } from "@/components/ui/misc";
 import { Select } from "@/components/ui/select";
-import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import { PROFILE_INFO } from "@/components/projects/ProfileBadge";
+import { PROFILE_IDS, PROFILE_INFO } from "@/components/projects/ProfileBadge";
 import { RemoveProjectDialog } from "@/components/projects/RemoveProjectDialog";
 import { MemoryEditor } from "@/components/settings/MemoryEditor";
 
@@ -32,7 +31,6 @@ export function ProjectSettingsTab({ project }: { project: Project }) {
   const qc = useQueryClient();
   const settings = useSettings();
   const runtime = useRuntimeInfo();
-  const [confirmAuto, setConfirmAuto] = useState(false);
   const [removing, setRemoving] = useState(false);
   const [tagDraft, setTagDraft] = useState("");
 
@@ -63,14 +61,16 @@ export function ProjectSettingsTab({ project }: { project: Project }) {
         <section className="rounded-xl border border-border bg-surface p-4">
           <SectionTitle>Permission-Profil</SectionTitle>
           <div className="flex flex-col gap-2">
-            {(["safe", "balanced", "autonomous"] as const).map((p) => {
-              const locked = p === "autonomous" && !project.autonomousConfirmed;
+            {PROFILE_IDS.map((p) => {
+              const locked = p === "autonomous" && project.tags.includes("sandbox-only");
               return (
                 <button
                   key={p}
-                  onClick={() => (locked ? setConfirmAuto(true) : void update({ profile: p }))}
+                  onClick={() => void update({ profile: p })}
+                  disabled={locked}
+                  title={locked ? TAG_INFO["sandbox-only"] : undefined}
                   className={cn(
-                    "flex items-start gap-3 rounded-lg border px-3 py-2.5 text-left",
+                    "flex items-start gap-3 rounded-lg border px-3 py-2.5 text-left disabled:cursor-not-allowed disabled:opacity-50",
                     project.profile === p ? "border-accent bg-accent-soft" : "border-border hover:border-border-strong",
                   )}
                   aria-pressed={project.profile === p}
@@ -89,8 +89,8 @@ export function ProjectSettingsTab({ project }: { project: Project }) {
             })}
           </div>
           <p className="mt-3 text-xs text-subtle">
-            Das Profil wird beim Start oder Fortsetzen einer Session an Claude Code übergeben (Permission-Modus default, acceptEdits oder bypassPermissions). Die FORGE-Sperrliste gilt
-            in jedem Profil.
+            Das Profil gilt sofort, auch für laufende Sessions (Permission-Modus default, acceptEdits oder bypassPermissions). Ein aktiver Plan-Modus bleibt bestehen. Die
+            FORGE-Sperrliste gilt in jedem Profil.
           </p>
         </section>
 
@@ -188,36 +188,6 @@ export function ProjectSettingsTab({ project }: { project: Project }) {
         </section>
       </div>
 
-      <ConfirmDialog
-        open={confirmAuto}
-        onOpenChange={setConfirmAuto}
-        title="Autonomous für dieses Projekt aktivieren?"
-        description={
-          settings.data?.autonomousUnlocked
-            ? "Claude arbeitet dann ohne Rückfragen (bypassPermissions). Nutze das nur, wenn dieses Projekt in einer isolierten Umgebung ohne Zugangsdaten liegt."
-            : "Autonomous ist global gesperrt. Schalte es zuerst unter Einstellungen > Sicherheit frei."
-        }
-        confirmLabel="Autonomous aktivieren"
-        danger
-        requireText={settings.data?.autonomousUnlocked ? project.name : undefined}
-        onConfirm={async () => {
-          if (!settings.data?.autonomousUnlocked) return;
-          try {
-            await call("projects.confirmAutonomous", { projectId: project.id, confirmName: project.name });
-            await qc.invalidateQueries({ queryKey: keys.project(project.id) });
-            void qc.invalidateQueries({ queryKey: keys.projects });
-            toast.success("Autonomous aktiv", "Gilt ab der nächsten Session.");
-          } catch (e) {
-            toast.error("Nicht aktiviert", errorMessage(e));
-          }
-        }}
-      >
-        <div className="flex items-start gap-2 rounded-md bg-danger-soft px-3 py-2 text-xs">
-          <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-danger" />
-          Bypass ist keine Sandbox. Befehle laufen mit deinen Benutzerrechten. Schreibzugriffe außerhalb des Projekts, Force-Push, reset --hard und Zugriffe auf Zugangsdaten bleiben
-          von FORGE gesperrt.
-        </div>
-      </ConfirmDialog>
       <RemoveProjectDialog project={removing ? project : null} onClose={() => setRemoving(false)} />
     </div>
   );

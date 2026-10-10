@@ -12,7 +12,7 @@ import { DropdownMenu } from "@/components/ui/dropdown";
 import { Badge, EmptyState, ErrorBanner, Loading } from "@/components/ui/misc";
 import { TabBar } from "@/components/ui/tabs";
 import { ProjectIcon } from "@/components/projects/ProjectIcon";
-import { PROFILE_INFO, ProfileBadge } from "@/components/projects/ProfileBadge";
+import { PROFILE_IDS, PROFILE_INFO, ProfileBadge } from "@/components/projects/ProfileBadge";
 import { ChatPanel } from "@/components/workspace/ChatPanel";
 import { GitPanel } from "@/components/git/GitPanel";
 import { GitCenter, NewBranchDialog, checkoutBranch } from "@/components/git/GitCenter";
@@ -144,7 +144,6 @@ function RightPanel({ projectId }: { projectId: string }) {
 function WorkspaceHeader({ projectId }: { projectId: string }) {
   const project = useProject(projectId).data!;
   const qc = useQueryClient();
-  const setWorkspaceTab = useUi((s) => s.setWorkspaceTab);
   const [newBranch, setNewBranch] = useState(false);
   const branches = useQuery({
     queryKey: keys.branches(projectId),
@@ -153,17 +152,14 @@ function WorkspaceHeader({ projectId }: { projectId: string }) {
     retry: false,
   });
 
+  const sandboxOnly = project.tags.includes("sandbox-only");
+
   const setProfile = async (profile: ProfileId) => {
-    if (profile === "autonomous" && !project.autonomousConfirmed) {
-      setWorkspaceTab("settings");
-      toast.info("Autonomous muss bestätigt werden", "Unter Einstellungen im Abschnitt Profil.");
-      return;
-    }
     try {
       await call("projects.update", { projectId, profile });
       await qc.invalidateQueries({ queryKey: keys.project(projectId) });
       void qc.invalidateQueries({ queryKey: keys.projects });
-      toast.success(`Profil ${PROFILE_INFO[profile].label}`, "Gilt für neu gestartete oder fortgesetzte Sessions.");
+      toast.success(`Profil ${PROFILE_INFO[profile].label}`, "Gilt sofort, auch für laufende Sessions.");
     } catch (e) {
       toast.error("Profil nicht geändert", errorMessage(e));
     }
@@ -238,9 +234,10 @@ function WorkspaceHeader({ projectId }: { projectId: string }) {
             <ChevronDown className="h-3.5 w-3.5 text-muted" />
           </button>
         }
-        items={(["safe", "balanced", "autonomous"] as const).map((p) => ({
+        items={PROFILE_IDS.map((p) => ({
           label: `${PROFILE_INFO[p].label}${p === project.profile ? " (aktiv)" : ""}`,
-          hint: p === "autonomous" && !project.autonomousConfirmed ? "gesperrt" : undefined,
+          disabled: p === "autonomous" && sandboxOnly,
+          hint: p === "autonomous" && sandboxOnly ? "sandbox-only" : undefined,
           icon: p === "autonomous" ? <AlertTriangle className="h-3.5 w-3.5 text-danger" /> : undefined,
           onSelect: () => void setProfile(p),
         }))}

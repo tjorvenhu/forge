@@ -54,6 +54,9 @@ describe.skipIf(!enabled)("E2E: sidecar with real Claude Code", () => {
     const p = await c.request("projects.import", { path: projectPath });
     projectId = p.id;
     expect(p.exists).toBe(true);
+    expect(p.profile).toBe("autonomous");
+    // The following tests start from Balanced and switch profiles explicitly.
+    await c.request("projects.update", { projectId, profile: "balanced" });
     const list = await c.request("projects.list", {});
     expect(list.find((x) => x.id === projectId)?.git?.branch).toBe("main");
   });
@@ -131,8 +134,7 @@ describe.skipIf(!enabled)("E2E: sidecar with real Claude Code", () => {
 
   it("Autonomous (bypassPermissions) still enforces the FORGE guard via PreToolUse hook", async () => {
     await git(projectPath, "branch", "keep-me");
-    await c.request("settings.update", { autonomousUnlocked: true });
-    await c.request("projects.confirmAutonomous", { projectId, confirmName: "e2e projekt" });
+    await c.request("projects.update", { projectId, profile: "autonomous" });
     const before = c.events.length;
     const s = await c.request("sessions.start", {
       projectId,
@@ -150,7 +152,23 @@ describe.skipIf(!enabled)("E2E: sidecar with real Claude Code", () => {
     expect(await git(projectPath, "branch", "--list", "keep-me")).toContain("keep-me");
     await c.request("sessions.close", { sessionId: s.id });
     await c.request("projects.update", { projectId, profile: "balanced" });
-    await c.request("settings.update", { autonomousUnlocked: false });
+  }, 240_000);
+
+  it("switches a running session from Balanced to Autonomous without a restart", async () => {
+    let before = c.events.length;
+    const s = await c.request("sessions.start", { projectId, model: MODEL, prompt: "Reply with the single word READY." });
+    expect(s.permissionMode).toBe("acceptEdits");
+    await c.waitTurn(s.id, before);
+    await c.request("projects.update", { projectId, profile: "autonomous" });
+    expect((await c.request("sessions.get", { sessionId: s.id })).permissionMode).toBe("bypassPermissions");
+    before = c.events.length;
+    await c.request("sessions.send", { sessionId: s.id, text: "Run exactly this shell command with the Bash tool: git status --short. Then reply DONE." });
+    const result = await c.waitTurn(s.id, before);
+    expect(result).toMatchObject({ type: "turn.result", isError: false });
+    const approvals = c.events.slice(before).filter((e) => e.event === "session.event" && e.payload.sessionId === s.id && e.payload.body.type === "approval.request");
+    expect(approvals).toEqual([]);
+    await c.request("sessions.close", { sessionId: s.id });
+    await c.request("projects.update", { projectId, profile: "balanced" });
   }, 240_000);
 
   it("sends an image attachment that Claude can see", async () => {

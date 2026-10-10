@@ -36,7 +36,6 @@ export const Project = z.object({
   tags: z.array(z.string()),
   technologies: z.array(z.string()),
   profile: ProfileId,
-  autonomousConfirmed: z.boolean(),
   defaultModel: z.string().nullable(),
   defaultEffort: EffortLevel.nullable(),
   createdAt: z.string(),
@@ -290,7 +289,6 @@ export const Settings = z.object({
   defaultModel: z.string().nullable(),
   defaultEffort: EffortLevel.nullable(),
   defaultProfile: ProfileId,
-  autonomousUnlocked: z.boolean(),
   stripApiKey: z.boolean(),
   enterToSend: z.boolean(),
   sounds: z.boolean(),
@@ -403,8 +401,18 @@ export const GitHubRepo = z.object({
 });
 export type GitHubRepo = z.infer<typeof GitHubRepo>;
 
+export const ClaudeUpdateInfo = z.object({
+  installed: z.string().nullable(),
+  latest: z.string().nullable(),
+  channel: z.enum(["latest", "stable"]),
+  available: z.boolean(),
+  checkedAt: z.string(),
+  error: z.string().nullable(),
+});
+export type ClaudeUpdateInfo = z.infer<typeof ClaudeUpdateInfo>;
+
 export const ClaudeSetupState = z.object({
-  task: z.enum(["install", "login"]).nullable(),
+  task: z.enum(["install", "login", "update"]).nullable(),
   phase: z.enum(["idle", "running", "waiting_code", "done", "error", "cancelled"]),
   url: z.string().nullable(),
   log: z.array(z.string()),

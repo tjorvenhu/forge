@@ -89,11 +89,10 @@ describe("profiles", () => {
     expect(effectivePermissionMode(PROFILES.balanced, true)).toBe("plan");
   });
 
-  it("keeps autonomous locked unless globally unlocked AND confirmed for the project", () => {
-    expect(() => resolveProfile("autonomous", { autonomousUnlocked: false, projectConfirmed: true })).toThrow(/gesperrt/);
-    expect(() => resolveProfile("autonomous", { autonomousUnlocked: true, projectConfirmed: false })).toThrow(/gesperrt/);
-    expect(resolveProfile("autonomous", { autonomousUnlocked: true, projectConfirmed: true }).id).toBe("autonomous");
-    expect(resolveProfile("safe", { autonomousUnlocked: false, projectConfirmed: false }).id).toBe("safe");
+  it("allows autonomous without unlock, except in sandbox-only projects", () => {
+    expect(resolveProfile("autonomous", []).id).toBe("autonomous");
+    expect(() => resolveProfile("autonomous", ["sandbox-only"])).toThrow(/sandbox-only/);
+    expect(resolveProfile("balanced", ["sandbox-only"]).id).toBe("balanced");
   });
 });
 
