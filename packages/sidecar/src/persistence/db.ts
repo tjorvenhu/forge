@@ -1,0 +1,401 @@
+import { DatabaseSync } from "node:sqlite";
+import type { PermissionMode, ProfileId, Project, Session, SessionEvent, SessionEventBody, SessionStatus, Settings } from "@forge/protocol";
+
+const MIGRATIONS: string[] = [
+  `
+  CREATE TABLE projects (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    path TEXT NOT NULL,
+    path_key TEXT NOT NULL UNIQUE,
+    favorite INTEGER NOT NULL DEFAULT 0,
+    tags TEXT NOT NULL DEFAULT '[]',
+    technologies TEXT NOT NULL DEFAULT '[]',
+    profile TEXT NOT NULL DEFAULT 'balanced',
+    autonomous_confirmed INTEGER NOT NULL DEFAULT 0,
+    default_model TEXT,
+    created_at TEXT NOT NULL,
+    last_opened_at TEXT
+  );
+  CREATE TABLE sessions (
+    id TEXT PRIMARY KEY,
+    project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    claude_session_id TEXT,
+    cwd TEXT NOT NULL,
+    title TEXT,
+    model TEXT,
+    profile TEXT NOT NULL,
+    permission_mode TEXT NOT NULL,
+    status TEXT NOT NULL,
+    api_key_source TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    last_error TEXT
+  );
+  CREATE INDEX sessions_project ON sessions(project_id, updated_at DESC);
+  CREATE INDEX sessions_claude ON sessions(claude_session_id);
+  CREATE TABLE events (
+    session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+    seq INTEGER NOT NULL,
+    ts TEXT NOT NULL,
+    type TEXT NOT NULL,
+    body TEXT NOT NULL,
+    PRIMARY KEY (session_id, seq)
+  );
+  CREATE TABLE approvals (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id TEXT NOT NULL,
+    request_id TEXT NOT NULL,
+    tool_name TEXT NOT NULL,
+    input TEXT NOT NULL,
+    decision TEXT NOT NULL,
+    scope TEXT NOT NULL,
+    source TEXT NOT NULL,
+    reason TEXT,
+    ts TEXT NOT NULL
+  );
+  CREATE TABLE settings (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+  );
+  `,
+];
+
+export const DEFAULT_SETTINGS: Settings = {
+  claudePath: null,
+  defaultModel: null,
+  defaultProfile: "balanced",
+  autonomousUnlocked: false,
+  stripApiKey: true,
+  enterToSend: true,
+  debugLogs: false,
+  defaultProjectDir: null,
+};
+
+interface ProjectRow {
+  id: string;
+  name: string;
+  path: string;
+  path_key: string;
+  favorite: number;
+  tags: string;
+  technologies: string;
+  profile: string;
+  autonomous_confirmed: number;
+  default_model: string | null;
+  created_at: string;
+  last_opened_at: string | null;
+}
+
+interface SessionRow {
+  id: string;
+  project_id: string;
+  claude_session_id: string | null;
+  cwd: string;
+  title: string | null;
+  model: string | null;
+  profile: string;
+  permission_mode: string;
+  status: string;
+  api_key_source: string | null;
+  created_at: string;
+  updated_at: string;
+  last_error: string | null;
+}
+
+export type ProjectRecord = Omit<Project, "exists">;
+export type SessionRecord = Omit<Session, "live">;
+
+const now = () => new Date().toISOString();
+
+function toProject(r: ProjectRow): ProjectRecord {
+  return {
+    id: r.id,
+    name: r.name,
+    path: r.path,
+    favorite: !!r.favorite,
+    tags: JSON.parse(r.tags) as string[],
+    technologies: JSON.parse(r.technologies) as string[],
+    profile: r.profile as ProfileId,
+    autonomousConfirmed: !!r.autonomous_confirmed,
+    defaultModel: r.default_model,
+    createdAt: r.created_at,
+    lastOpenedAt: r.last_opened_at,
+  };
+}
+
+function toSession(r: SessionRow): SessionRecord {
+  return {
+    id: r.id,
+    projectId: r.project_id,
+    claudeSessionId: r.claude_session_id,
+    cwd: r.cwd,
+    title: r.title,
+    model: r.model,
+    profile: r.profile as ProfileId,
+    permissionMode: r.permission_mode as PermissionMode,
+    status: r.status as SessionStatus,
+    apiKeySource: r.api_key_source,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+    lastError: r.last_error,
+  };
+}
+
+export class Db {
+  readonly sql: DatabaseSync;
+  private seqCache = new Map<string, number>();
+
+  constructor(file: string) {
+    this.sql = new DatabaseSync(file);
+    this.sql.exec("PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 3000;");
+    this.migrate();
+  }
+
+  private migrate() {
+    const row = this.sql.prepare("PRAGMA user_version").get() as { user_version: number };
+    for (let v = row.user_version; v < MIGRATIONS.length; v++) {
+      this.sql.exec("BEGIN");
+      try {
+        this.sql.exec(MIGRATIONS[v]!);
+        this.sql.exec(`PRAGMA user_version = ${v + 1}`);
+        this.sql.exec("COMMIT");
+      } catch (e) {
+        this.sql.exec("ROLLBACK");
+        throw e;
+      }
+    }
+  }
+
+  close() {
+    this.sql.close();
+  }
+
+  // ---- settings
+
+  getSettings(): Settings {
+    const rows = this.sql.prepare("SELECT key, value FROM settings").all() as Array<{ key: string; value: string }>;
+    const out: Record<string, unknown> = { ...DEFAULT_SETTINGS };
+    for (const r of rows) if (r.key in DEFAULT_SETTINGS) out[r.key] = JSON.parse(r.value);
+    return out as Settings;
+  }
+
+  updateSettings(patch: Partial<Settings>): Settings {
+    const stmt = this.sql.prepare(
+      "INSERT INTO settings(key, value) VALUES(?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+    );
+    for (const [k, v] of Object.entries(patch)) {
+      if (v === undefined || !(k in DEFAULT_SETTINGS)) continue;
+      stmt.run(k, JSON.stringify(v));
+    }
+    return this.getSettings();
+  }
+
+  // ---- projects
+
+  listProjects(): ProjectRecord[] {
+    const rows = this.sql
+      .prepare("SELECT * FROM projects ORDER BY favorite DESC, COALESCE(last_opened_at, created_at) DESC")
+      .all() as unknown as ProjectRow[];
+    return rows.map(toProject);
+  }
+
+  getProject(id: string): ProjectRecord | null {
+    const r = this.sql.prepare("SELECT * FROM projects WHERE id = ?").get(id) as ProjectRow | undefined;
+    return r ? toProject(r) : null;
+  }
+
+  findProjectByKey(pathKey: string): ProjectRecord | null {
+    const r = this.sql.prepare("SELECT * FROM projects WHERE path_key = ?").get(pathKey) as ProjectRow | undefined;
+    return r ? toProject(r) : null;
+  }
+
+  insertProject(p: ProjectRecord, pathKey: string) {
+    this.sql
+      .prepare(
+        `INSERT INTO projects(id, name, path, path_key, favorite, tags, technologies, profile, autonomous_confirmed, default_model, created_at, last_opened_at)
+         VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        p.id,
+        p.name,
+        p.path,
+        pathKey,
+        p.favorite ? 1 : 0,
+        JSON.stringify(p.tags),
+        JSON.stringify(p.technologies),
+        p.profile,
+        p.autonomousConfirmed ? 1 : 0,
+        p.defaultModel,
+        p.createdAt,
+        p.lastOpenedAt,
+      );
+  }
+
+  updateProject(id: string, patch: Partial<ProjectRecord>) {
+    const cols: Record<string, unknown> = {};
+    if (patch.name !== undefined) cols.name = patch.name;
+    if (patch.favorite !== undefined) cols.favorite = patch.favorite ? 1 : 0;
+    if (patch.tags !== undefined) cols.tags = JSON.stringify(patch.tags);
+    if (patch.technologies !== undefined) cols.technologies = JSON.stringify(patch.technologies);
+    if (patch.profile !== undefined) cols.profile = patch.profile;
+    if (patch.autonomousConfirmed !== undefined) cols.autonomous_confirmed = patch.autonomousConfirmed ? 1 : 0;
+    if (patch.defaultModel !== undefined) cols.default_model = patch.defaultModel;
+    if (patch.lastOpenedAt !== undefined) cols.last_opened_at = patch.lastOpenedAt;
+    const keys = Object.keys(cols);
+    if (!keys.length) return;
+    this.sql
+      .prepare(`UPDATE projects SET ${keys.map((k) => `${k} = ?`).join(", ")} WHERE id = ?`)
+      .run(...(Object.values(cols) as Array<string | number | null>), id);
+  }
+
+  deleteProject(id: string): boolean {
+    return this.sql.prepare("DELETE FROM projects WHERE id = ?").run(id).changes > 0;
+  }
+
+  // ---- sessions
+
+  insertSession(s: SessionRecord) {
+    this.sql
+      .prepare(
+        `INSERT INTO sessions(id, project_id, claude_session_id, cwd, title, model, profile, permission_mode, status, api_key_source, created_at, updated_at, last_error)
+         VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        s.id,
+        s.projectId,
+        s.claudeSessionId,
+        s.cwd,
+        s.title,
+        s.model,
+        s.profile,
+        s.permissionMode,
+        s.status,
+        s.apiKeySource,
+        s.createdAt,
+        s.updatedAt,
+        s.lastError,
+      );
+  }
+
+  updateSession(id: string, patch: Partial<SessionRecord>): SessionRecord | null {
+    const map: Record<string, string> = {
+      claudeSessionId: "claude_session_id",
+      title: "title",
+      model: "model",
+      permissionMode: "permission_mode",
+      status: "status",
+      apiKeySource: "api_key_source",
+      lastError: "last_error",
+    };
+    const sets: string[] = ["updated_at = ?"];
+    const vals: Array<string | null> = [now()];
+    for (const [k, col] of Object.entries(map)) {
+      const v = (patch as Record<string, unknown>)[k];
+      if (v !== undefined) {
+        sets.push(`${col} = ?`);
+        vals.push(v as string | null);
+      }
+    }
+    this.sql.prepare(`UPDATE sessions SET ${sets.join(", ")} WHERE id = ?`).run(...vals, id);
+    return this.getSession(id);
+  }
+
+  getSession(id: string): SessionRecord | null {
+    const r = this.sql.prepare("SELECT * FROM sessions WHERE id = ?").get(id) as SessionRow | undefined;
+    return r ? toSession(r) : null;
+  }
+
+  listSessions(projectId: string): SessionRecord[] {
+    const rows = this.sql
+      .prepare("SELECT * FROM sessions WHERE project_id = ? ORDER BY updated_at DESC")
+      .all(projectId) as unknown as SessionRow[];
+    return rows.map(toSession);
+  }
+
+  listAllSessions(query?: string, status?: string): Array<SessionRecord & { projectName: string }> {
+    const where: string[] = [];
+    const vals: string[] = [];
+    if (query) {
+      where.push("(s.title LIKE ? OR p.name LIKE ? OR s.claude_session_id LIKE ?)");
+      const q = `%${query}%`;
+      vals.push(q, q, q);
+    }
+    if (status) {
+      where.push("s.status = ?");
+      vals.push(status);
+    }
+    const rows = this.sql
+      .prepare(
+        `SELECT s.*, p.name AS project_name FROM sessions s JOIN projects p ON p.id = s.project_id
+         ${where.length ? "WHERE " + where.join(" AND ") : ""} ORDER BY s.updated_at DESC LIMIT 500`,
+      )
+      .all(...vals) as unknown as Array<SessionRow & { project_name: string }>;
+    return rows.map((r) => ({ ...toSession(r), projectName: r.project_name }));
+  }
+
+  latestSession(projectId: string): SessionRecord | null {
+    const r = this.sql
+      .prepare("SELECT * FROM sessions WHERE project_id = ? ORDER BY updated_at DESC LIMIT 1")
+      .get(projectId) as SessionRow | undefined;
+    return r ? toSession(r) : null;
+  }
+
+  /** On startup: sessions that were live when the app died can't be live anymore. */
+  markOrphanedSessions(): number {
+    return Number(
+      this.sql
+        .prepare(
+          `UPDATE sessions SET status = 'interrupted', updated_at = ? WHERE status IN ('starting','running','waiting_approval','stopping','idle')`,
+        )
+        .run(now()).changes,
+    );
+  }
+
+  // ---- events
+
+  private nextSeq(sessionId: string): number {
+    let cur = this.seqCache.get(sessionId);
+    if (cur === undefined) {
+      const r = this.sql.prepare("SELECT MAX(seq) AS m FROM events WHERE session_id = ?").get(sessionId) as { m: number | null };
+      cur = r.m ?? 0;
+    }
+    cur += 1;
+    this.seqCache.set(sessionId, cur);
+    return cur;
+  }
+
+  appendEvent(sessionId: string, body: SessionEventBody): SessionEvent {
+    const ev: SessionEvent = { seq: this.nextSeq(sessionId), sessionId, ts: now(), body };
+    this.sql
+      .prepare("INSERT INTO events(session_id, seq, ts, type, body) VALUES(?, ?, ?, ?, ?)")
+      .run(sessionId, ev.seq, ev.ts, body.type, JSON.stringify(body));
+    return ev;
+  }
+
+  listEvents(sessionId: string, afterSeq = 0): SessionEvent[] {
+    const rows = this.sql
+      .prepare("SELECT seq, ts, body FROM events WHERE session_id = ? AND seq > ? ORDER BY seq ASC LIMIT 20000")
+      .all(sessionId, afterSeq) as Array<{ seq: number; ts: string; body: string }>;
+    return rows.map((r) => ({ seq: r.seq, sessionId, ts: r.ts, body: JSON.parse(r.body) as SessionEventBody }));
+  }
+
+  // ---- approvals audit
+
+  recordApproval(a: {
+    sessionId: string;
+    requestId: string;
+    toolName: string;
+    input: unknown;
+    decision: string;
+    scope: string;
+    source: string;
+    reason: string | null;
+  }) {
+    this.sql
+      .prepare(
+        "INSERT INTO approvals(session_id, request_id, tool_name, input, decision, scope, source, reason, ts) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      )
+      .run(a.sessionId, a.requestId, a.toolName, JSON.stringify(a.input), a.decision, a.scope, a.source, a.reason, now());
+  }
+}

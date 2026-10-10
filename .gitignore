@@ -1,0 +1,17 @@
+node_modules/
+dist/
+coverage/
+*.log
+.env
+.env.*
+!.env.example
+
+# Tauri / Rust
+apps/desktop/src-tauri/target/
+apps/desktop/src-tauri/gen/schemas/
+
+# lokale Claude-Overrides nie committen
+.claude/settings.local.json
+
+# Test-Artefakte
+packages/sidecar/.e2e-tmp/
