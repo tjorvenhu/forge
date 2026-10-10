@@ -61,6 +61,7 @@ export function DevServerButton({ project }: { project: Project }) {
           <Button
             size="sm"
             variant="ghost"
+            className="h-8"
             onClick={() => {
               if (!state.effectiveCommand) {
                 useUi.getState().setWorkspaceTab("settings");
