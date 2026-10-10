@@ -6,7 +6,7 @@ import { ArrowUp, FileText, ImageIcon, ListTodo, Paperclip, Square, X } from "lu
 import type { Attachment, PermissionMode, Project, Session, EffortLevel } from "@forge/protocol";
 import { call, keys, useRuntimeInfo, useSettings } from "@/lib/queries";
 import { errorMessage } from "@/lib/rpc";
-import { EFFORT_LABELS, EFFORT_LEVELS, findModel, modelLabel } from "@/lib/models";
+import { EFFORT_LEVELS, findModel, modelLabel } from "@/lib/models";
 import { cn } from "@/lib/utils";
 import { useUi } from "@/stores/ui";
 import { toast } from "@/stores/toast";
@@ -216,8 +216,7 @@ export function Composer({
     }
   };
 
-  const changeEffort = async (v: string) => {
-    const next = v === "__default" ? null : (v as EffortLevel);
+  const changeEffort = async (next: EffortLevel | null) => {
     if (!session) return setEffort(next);
     try {
       qc.setQueryData(keys.session(session.id), await call("sessions.setEffort", { sessionId: session.id, effort: next }));
@@ -247,10 +246,6 @@ export function Composer({
   const effortLevels = modelInfo?.supportedEffortLevels?.length ? modelInfo.supportedEffortLevels : EFFORT_LEVELS;
   // Unknown models keep the picker; listed ones only when Claude Code reports effort support.
   const showEffort = !modelInfo || modelInfo.supportsEffort === true;
-  const effortOptions = [
-    { value: "__default", label: "Effort: Standard" },
-    ...effortLevels.map((l) => ({ value: l, label: `Effort: ${EFFORT_LABELS[l]}` })),
-  ];
 
   const placeholder = waiting
     ? "Erst die Freigabeanfrage oben beantworten"
@@ -386,7 +381,15 @@ export function Composer({
             )}
           </span>
           {showEffort && (
-            <Select size="sm" value={effectiveEffort ?? "__default"} onChange={(v) => void changeEffort(v)} options={effortOptions} className="w-36" aria-label="Effort" disabled={working} />
+            <Select
+              size="sm"
+              value={effectiveEffort ?? "__default"}
+              onChange={(v) => void changeEffort(v === "__default" ? null : (v as EffortLevel))}
+              options={[{ value: "__default", label: "Effort: Standard" }, ...effortLevels.map((l) => ({ value: l, label: `Effort: ${l}` }))]}
+              className="w-36"
+              aria-label="Effort"
+              disabled={working}
+            />
           )}
           <Select size="sm" value={effectiveModel ?? "__default"} onChange={(v) => void changeModel(v)} options={modelOptions} className="w-40" aria-label="Modell" disabled={working} />
           {working ? (

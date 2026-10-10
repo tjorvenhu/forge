@@ -21,14 +21,6 @@ export function useModelLabel(): (value: string) => string {
 
 export const EFFORT_LEVELS = ["low", "medium", "high", "xhigh", "max"] as const satisfies readonly EffortLevel[];
 
-export const EFFORT_LABELS: Record<EffortLevel, string> = {
-  low: "Niedrig",
-  medium: "Mittel",
-  high: "Hoch",
-  xhigh: "Sehr hoch",
-  max: "Maximal",
-};
-
 /** Model entry for a value, alias or resolved ID ("claude-opus-5-5" matches "Opus 5.5"). */
 export function findModel<M extends { value: string; displayName: string }>(value: string | null, models: M[]): M | undefined {
   const v = value ?? "default";
