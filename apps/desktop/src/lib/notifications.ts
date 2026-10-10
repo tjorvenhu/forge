@@ -42,7 +42,12 @@ export async function notifySession(qc: QueryClient, ev: SessionEvent, kind: Not
   const detail =
     b.type === "approval.request" ? (b.title ?? b.toolName) : b.type === "error" ? b.message : b.type === "turn.result" && b.isError ? (b.text ?? b.subtype) : null;
   const action = { label: "Session öffnen", onClick: () => useUi.getState().openProject(session.projectId, session.id) };
-  if (kind === "approval") toast.notify({ tone: "warning", title: "Freigabe nötig", body: [where, detail].filter(Boolean).join("\n"), action, duration: 12_000 });
+  if (kind === "approval") {
+    const tool = b.type === "approval.request" ? b.toolName : "";
+    const title = tool === "AskUserQuestion" ? "Rückfrage von Claude" : tool === "ExitPlanMode" ? "Plan zur Freigabe" : "Freigabe nötig";
+    const text = tool === "AskUserQuestion" || tool === "ExitPlanMode" ? null : detail;
+    toast.notify({ tone: "warning", title, body: [where, text].filter(Boolean).join("\n"), action, duration: 12_000 });
+  }
   else if (kind === "error") toast.notify({ tone: "error", title: "Fehler in der Session", body: [where, detail?.slice(0, 300)].filter(Boolean).join("\n"), action });
   else {
     // The session cache is updated synchronously by session.updated; the live list is refetched later.

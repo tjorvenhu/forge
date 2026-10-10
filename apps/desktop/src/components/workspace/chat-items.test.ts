@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { SessionEvent, SessionEventBody } from "@forge/protocol";
-import { buildChatItems, lastUserPrompt, toolSummary } from "./chat-items";
+import { buildChatItems, itemIndexForSeq, lastUserPrompt, toolSummary } from "./chat-items";
 import { useSessionEvents } from "@/stores/session-events";
 
 let seq = 0;
@@ -93,5 +93,36 @@ describe("session event store", () => {
     const b = useSessionEvents.getState().buffers.x!;
     expect(b.events.map((e) => e.seq)).toEqual([1, 2, 3, 4]);
     expect(b.streaming).toEqual({});
+  });
+});
+
+describe("search focus and compaction", () => {
+  it("finds the item for a search hit, also when the exact event is not shown on its own", () => {
+    seq = 0;
+    const items = buildChatItems(
+      [
+        ev({ type: "user.message", text: "a" }),
+        ev({ type: "assistant.text", messageId: "m1", index: 0, text: "b" }),
+        ev({ type: "tool.use", toolUseId: "t1", name: "Read", input: {}, parentToolUseId: null }),
+        ev({ type: "user.message", text: "c" }),
+      ],
+      {},
+    );
+    expect(items[itemIndexForSeq(items, 2)]).toMatchObject({ kind: "assistant", text: "b" });
+    expect(items[itemIndexForSeq(items, 3)]).toMatchObject({ kind: "assistant", text: "b" });
+    expect(items[itemIndexForSeq(items, 4)]).toMatchObject({ kind: "user", text: "c" });
+    expect(itemIndexForSeq(items, 0)).toBe(-1);
+  });
+
+  it("shows a compaction as a notice with token counts", () => {
+    seq = 0;
+    const items = buildChatItems([ev({ type: "context.compacted", trigger: "auto", preTokens: 170_000, postTokens: 12_400 })], {});
+    expect(items[0]).toMatchObject({ kind: "notice", tone: "info" });
+    expect((items[0] as { text: string }).text).toMatch(/^Kontext automatisch komprimiert: vorher 170k, nachher 12k Tokens\./);
+  });
+
+  it("summarises questions and plans in cards and the activity feed", () => {
+    expect(toolSummary("AskUserQuestion", { questions: [{ question: "Welche Datenbank?" }] })).toBe("Welche Datenbank?");
+    expect(toolSummary("ExitPlanMode", { plan: "x" })).toBe("Plan zur Freigabe");
   });
 });

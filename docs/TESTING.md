@@ -1,14 +1,14 @@
 # Tests und Ergebnisse
 
-Letzter vollständiger Lauf: 2026-10-10, Windows 11 Pro 26200, Node 24.14, Claude Code 2.1.296 (Max-Login).
+Letzter vollständiger Lauf: 2026-10-11, Windows 11 Pro 26200, Node 24.14, Claude Code 2.1.296 (Max-Login).
 
 | Suite | Befehl | Ergebnis |
 |---|---|---|
 | Lint | `pnpm lint` | ohne Befund |
 | Typecheck (protocol, sidecar, desktop) | `pnpm typecheck` | ohne Fehler |
-| Sidecar Unit/Integration | `pnpm --filter @forge/sidecar test` | 104 / 104 bestanden |
-| Desktop Unit/Komponenten | `pnpm --filter @forge/desktop test` | 8 / 8 bestanden |
-| E2E mit echter Claude-Session | `pnpm test:e2e` | 12 / 12 bestanden (mit System-Werkzeugen; 8/8 zusätzlich mit `FORGE_RUNTIME_DIR` auf die mitgelieferte Laufzeit) |
+| Sidecar Unit/Integration | `pnpm --filter @forge/sidecar test` | 129 / 129 bestanden |
+| Desktop Unit/Komponenten | `pnpm --filter @forge/desktop test` | 21 / 21 bestanden |
+| E2E mit echter Claude-Session | `pnpm test:e2e` | 16 / 16 bestanden (mit System-Werkzeugen) |
 | Release-App ohne Node/Git/gh im PATH | manuell | Sidecar läuft aus `runtime/node`, Diagnose zeigt „mitgeliefert“ |
 | Rust-Hülle | `cargo build` | ohne Warnungen |
 
@@ -30,9 +30,15 @@ Letzter vollständiger Lauf: 2026-10-10, Windows 11 Pro 26200, Node 24.14, Claud
 - `session-service.test.ts` (ergänzt): Auto-Test + Auto-Commit nur mit Dateien des Durchlaufs, kein Commit bei roten Tests.
 - `project-git.test.ts` (ergänzt): Push/Pull gegen lokales Bare-Remote (main-Schutz, Fast-Forward, Divergenz).
 
+- `session-service.test.ts` (Phase 4): Antworten auf Rückfragen als `updatedInput.answers`, Überspringen, Plan annehmen setzt den Profilmodus, Feedback hält den Plan-Modus, Modus-Sync aus `system/status`, Kontextstand nach dem Durchlauf, Komprimierung im Verlauf.
+- `policy.test.ts` (Phase 4): Plan-Datei in `~/.claude/plans` erlaubt, alles andere außerhalb weiter gesperrt (auch per `..`).
+- `search-devserver.test.ts`: Volltextsuche (Präfix, Groß-/Kleinschreibung, Umlaute, FTS-Syntax wirkungslos, Treffer verschwinden mit der Session); Dev-Server-Erkennung (inkl. `npm run dev`), Adress-Erkennung aus typischer Ausgabe, Start/Stopp mit echtem Prozess, Absturz mit Exit-Code.
+
 **Desktop**
 - `chat-items.test.ts`: Zusammenbau der Chat-Elemente aus Events, Streaming-Puffer, Store-Merge.
 - `title-tooltips.test.tsx`: eigener Tooltip statt nativem `title`, Wiederherstellen des Attributs, Schließen bei Klick.
+- `chat-items.test.ts` (Phase 4): Sprung zur Nachricht eines Suchtreffers, Hinweis bei Komprimierung, Kurztexte für Rückfrage und Plan.
+- `InteractiveCards.test.ts`: Fragen robust lesen, Antworten zusammensetzen (Einfach-/Mehrfachauswahl, eigene Antwort), Warnstufen der Kontextanzeige.
 - `GitPanel.test.tsx`: Commit-Flow in der Komponente (Auswahl, Review-Dialog, exakter RPC-Aufruf) und KI-Vorschlag.
 
 **E2E (`real-claude.e2e.test.ts`)**, echter Sidecar-Prozess + installierte CLI + echtes Git:
@@ -48,6 +54,19 @@ Letzter vollständiger Lauf: 2026-10-10, Windows 11 Pro 26200, Node 24.14, Claud
 10. Session-Zusammenfassung aus dem Verlauf
 11. Slash-Commands (68 im Test)
 12. Sidecar-Absturz (SIGKILL), Neustart, Session als unterbrochen erkannt, Resume mit Kontext
+13. Rückfrage im Autonomous-Profil beantwortet, Claude nennt die gewählte Antwort; Kontextstand gemeldet; `/compact` erzeugt `context.compacted`
+14. Plan-Modus im Autonomous-Profil: Plan-Datei nicht blockiert, Plan angenommen, Modus wechselt auf `bypassPermissions`, Datei angelegt
+
+(Weitere E2E-Fälle seit Phase 2: Profilwechsel im Lauf, Hintergrundaufgaben.)
+
+## Manueller UI-Smoke-Test Phase 4 (2026-10-11)
+
+Dev-Build mit eigenem `FORGE_DATA_DIR` und `WEBVIEW2_USER_DATA_FOLDER` (die installierte FORGE lief parallel
+unberührt), Testdaten per Skript: Suchfeld in der Sidebar, Strg+K mit Sessions und Volltexttreffern,
+Sprung zur Nachricht mit Hervorhebung, Rückfrage-Karte offen und beantwortet, Plan-Karte, Komprimierungs-Hinweis,
+Dev-Server über Kopfzeile und Panel gestartet (HTTP-Antwort geprüft), „An Claude“ füllt den Entwurf, Stoppen
+beendet den Prozessbaum (Port frei). Gefunden und behoben: ohne Lockfile wurde `npm dev` statt `npm run dev` erkannt.
+Nicht im Fenster geprüft: die Kontextanzeige (braucht eine laufende Session; im E2E-Test abgedeckt).
 
 ## Manueller UI-Smoke-Test (Windows, über UI Automation)
 

@@ -10,10 +10,11 @@ import { EFFORT_LEVELS, findModel, modelLabel } from "@/lib/models";
 import { cn } from "@/lib/utils";
 import { useUi } from "@/stores/ui";
 import { toast } from "@/stores/toast";
-import { NO_FILES, useDrafts, type PendingFile } from "@/stores/drafts";
+import { NO_FILES, draftKey, useDrafts, type PendingFile } from "@/stores/drafts";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
 import { Kbd, Tooltip } from "@/components/ui/misc";
+import { ContextMeter } from "./ContextMeter";
 
 const PROFILE_MODE: Record<Project["profile"], PermissionMode> = { safe: "default", balanced: "acceptEdits", autonomous: "bypassPermissions" };
 const MAX_ATTACHMENTS = 10;
@@ -42,11 +43,11 @@ export function Composer({
   prefill?: string | null;
   onPrefillConsumed?: () => void;
 }) {
-  const draftKey = session?.id ?? `new:${project.id}:${resumeClaudeSessionId ?? ""}`;
-  const text = useDrafts((s) => s.drafts[draftKey]?.text ?? "");
-  const files = useDrafts((s) => s.drafts[draftKey]?.files ?? NO_FILES);
-  const setText = useCallback((t: string) => useDrafts.getState().setText(draftKey, t), [draftKey]);
-  const setFiles = useCallback((fn: (cur: PendingFile[]) => PendingFile[]) => useDrafts.getState().updateFiles(draftKey, fn), [draftKey]);
+  const key = draftKey(project.id, session?.id ?? null, resumeClaudeSessionId);
+  const text = useDrafts((s) => s.drafts[key]?.text ?? "");
+  const files = useDrafts((s) => s.drafts[key]?.files ?? NO_FILES);
+  const setText = useCallback((t: string) => useDrafts.getState().setText(key, t), [key]);
+  const setFiles = useCallback((fn: (cur: PendingFile[]) => PendingFile[]) => useDrafts.getState().updateFiles(key, fn), [key]);
   const [sending, setSending] = useState(false);
   const [planOnly, setPlanOnly] = useState(project.tags.includes("plan-first"));
   const [model, setModel] = useState<string | null>(null);
@@ -170,7 +171,6 @@ export function Composer({
     const prompt = text.trim() || (files.length ? "Siehe Anhang." : "");
     if (!prompt || sending || waiting) return;
     setSending(true);
-    const key = draftKey;
     const attachments = files.map((f) => f.attachment);
     try {
       if (!session) {
@@ -192,6 +192,15 @@ export function Composer({
       toast.error("Nachricht nicht gesendet", errorMessage(e));
     } finally {
       setSending(false);
+    }
+  };
+
+  const compact = async () => {
+    if (!session) return;
+    try {
+      qc.setQueryData(keys.session(session.id), await call("sessions.send", { sessionId: session.id, text: "/compact", attachments: [] }));
+    } catch (e) {
+      toast.error("Komprimieren fehlgeschlagen", errorMessage(e));
     }
   };
 
@@ -247,7 +256,7 @@ export function Composer({
   const showEffort = !modelInfo || modelInfo.supportsEffort === true;
 
   const placeholder = waiting
-    ? "Erst die Freigabeanfrage oben beantworten"
+    ? "Erst die Anfrage oben beantworten"
     : working
       ? "Claude arbeitet. Weitere Anweisung schreiben, sie wird beim nächsten Schritt übernommen. Esc stoppt."
       : session && !session.live
@@ -368,6 +377,7 @@ export function Composer({
             </Button>
           </Tooltip>
           <div className="flex-1" />
+          {session?.context && <ContextMeter usage={session.context} onCompact={() => void compact()} disabled={working || waiting || sending} />}
           <span className="hidden whitespace-nowrap text-[11px] text-subtle 2xl:inline">
             {enterToSend ? (
               <>

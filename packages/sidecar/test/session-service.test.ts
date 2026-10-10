@@ -79,6 +79,7 @@ class FakeRuntime implements ClaudeRuntime {
       setEffort: async (e) => {
         this.efforts.push(e);
       },
+      contextUsage: async () => ({ totalTokens: 62_000, maxTokens: 200_000, percentage: 31, categories: [{ name: "Messages", tokens: 40_000, kind: "used" as const }], updatedAt: new Date().toISOString() }),
       setRemoteControl: async (enabled, name) => {
         this.remoteCalls.push({ enabled, name });
         return enabled ? "https://claude.ai/code/session_test" : null;
@@ -405,6 +406,74 @@ describe("turn automation via project tags", () => {
     const keep = await svc.start({ projectId, prompt: "b" });
     await svc.delete(keep.id, false);
     expect(rt.deletedTranscripts).toHaveLength(1);
+  });
+
+  it("passes answers to a question back to Claude and keeps them in the timeline", async () => {
+    const s = await svc.start({ projectId, prompt: "x" });
+    const input = { questions: [{ question: "Welche Farbe?", header: "Farbe", multiSelect: false, options: [{ label: "Rot", description: "" }, { label: "Blau", description: "" }] }] };
+    const pending = rt.sinks[0]!.onApproval(
+      { requestId: "q1", toolUseId: "tq", toolName: "AskUserQuestion", input, title: null, description: null, reason: null, suppressAlwaysAllow: false },
+      new AbortController().signal,
+    );
+    const req = db.listEvents(s.id).find((e) => e.body.type === "approval.request")?.body as Extract<SessionEventBody, { type: "approval.request" }>;
+    expect(req.allowSessionScope).toBe(false);
+    expect(() => svc.respondApproval(s.id, "q1", "allow", "once", undefined, { "Welche Farbe?": "  " })).toThrow(/mindestens eine Frage/);
+    svc.respondApproval(s.id, "q1", "allow", "once", undefined, { "Welche Farbe?": "Blau" });
+    await expect(pending).resolves.toEqual({ behavior: "allow", scope: "once", updatedInput: { ...input, answers: { "Welche Farbe?": "Blau" } } });
+    const resolved = db.listEvents(s.id).find((e) => e.body.type === "approval.resolved")?.body;
+    expect(resolved).toMatchObject({ decision: "allow", answers: { "Welche Farbe?": "Blau" } });
+  });
+
+  it("tells Claude when a question is skipped", async () => {
+    const s = await svc.start({ projectId, prompt: "x" });
+    const pending = rt.sinks[0]!.onApproval(
+      { requestId: "q2", toolUseId: "tq2", toolName: "AskUserQuestion", input: { questions: [] }, title: null, description: null, reason: null, suppressAlwaysAllow: false },
+      new AbortController().signal,
+    );
+    svc.respondApproval(s.id, "q2", "deny", "once");
+    await expect(pending).resolves.toEqual({ behavior: "deny", message: "Der Nutzer möchte die Rückfrage nicht beantworten." });
+  });
+
+  it("leaves plan mode for the profile's mode when the plan is accepted, and keeps it on feedback", async () => {
+    const s = await svc.start({ projectId, prompt: "x", planOnly: true });
+    expect(svc.get(s.id).permissionMode).toBe("plan");
+    const input = { plan: "1. Datei anlegen", planFilePath: "C:/x/plan.md" };
+    const first = rt.sinks[0]!.onApproval(
+      { requestId: "p1", toolUseId: "tp1", toolName: "ExitPlanMode", input, title: null, description: null, reason: null, suppressAlwaysAllow: false },
+      new AbortController().signal,
+    );
+    svc.respondApproval(s.id, "p1", "deny", "once", "Bitte mit Tests");
+    await expect(first).resolves.toEqual({ behavior: "deny", message: "Bitte mit Tests" });
+    expect(svc.get(s.id).permissionMode).toBe("plan");
+
+    const second = rt.sinks[0]!.onApproval(
+      { requestId: "p2", toolUseId: "tp2", toolName: "ExitPlanMode", input, title: null, description: null, reason: null, suppressAlwaysAllow: false },
+      new AbortController().signal,
+    );
+    svc.respondApproval(s.id, "p2", "allow", "once");
+    await expect(second).resolves.toEqual({ behavior: "allow", scope: "once", mode: "acceptEdits" });
+    expect(svc.get(s.id).permissionMode).toBe("acceptEdits");
+  });
+
+  it("follows mode changes reported by Claude Code", async () => {
+    const s = await svc.start({ projectId, prompt: "x" });
+    rt.sinks[0]!.onMessage({ type: "system", subtype: "status", status: null, permissionMode: "plan" });
+    expect(svc.get(s.id).permissionMode).toBe("plan");
+    rt.sinks[0]!.onMessage({ type: "system", subtype: "status", status: null, permissionMode: "nonsense" });
+    expect(svc.get(s.id).permissionMode).toBe("plan");
+  });
+
+  it("reports context usage after each turn and records compaction", async () => {
+    const s = await svc.start({ projectId, prompt: "x" });
+    expect(svc.get(s.id).context).toBeNull();
+    rt.replay();
+    await svc.drain();
+    expect(svc.get(s.id).context).toMatchObject({ percentage: 31, maxTokens: 200_000 });
+    rt.sinks[0]!.onMessage({ type: "system", subtype: "compact_boundary", compact_metadata: { trigger: "manual", pre_tokens: 150_000, post_tokens: 9_000 } });
+    expect(db.listEvents(s.id).at(-1)?.body).toEqual({ type: "context.compacted", trigger: "manual", preTokens: 150_000, postTokens: 9_000 });
+    svc.close(s.id);
+    expect(svc.get(s.id).context).toBeNull();
+    expect(await svc.contextUsage(s.id)).toBeNull();
   });
 
   it("applies a profile change to running sessions right away", async () => {

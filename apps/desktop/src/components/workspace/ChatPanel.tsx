@@ -11,7 +11,8 @@ import { Button } from "@/components/ui/button";
 import { DropdownMenu } from "@/components/ui/dropdown";
 import { Badge, EmptyState, Tooltip, Loading } from "@/components/ui/misc";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import { buildChatItems, lastUserPrompt, type ChatItem } from "./chat-items";
+import { buildChatItems, itemIndexForSeq, lastUserPrompt, type ChatItem } from "./chat-items";
+import { PlanCard, QuestionCard } from "./InteractiveCards";
 import { Composer } from "./Composer";
 import { Markdown } from "./Markdown";
 import { ApprovalBlock, ToolCard } from "./ToolCard";
@@ -204,6 +205,26 @@ function SessionThread({ sessionId, session, project }: { sessionId: string; ses
     getItemKey: (i) => items[i]!.key,
   });
 
+  // A search hit asked for this session: scroll to the message once the history is there.
+  const focus = useUi((s) => s.focusEvent);
+  const [highlight, setHighlight] = useState<string | null>(null);
+  useEffect(() => {
+    if (!focus || focus.sessionId !== sessionId || !buffer?.loaded) return;
+    useUi.getState().setFocusEvent(null);
+    const i = itemIndexForSeq(items, focus.seq);
+    if (i < 0) return;
+    pinned.current = false;
+    virtualizer.scrollToIndex(i, { align: "center" });
+    // Item heights are measured while scrolling; a second pass lands on the final position.
+    requestAnimationFrame(() => virtualizer.scrollToIndex(i, { align: "center" }));
+    setHighlight(items[i]!.key);
+  }, [focus, sessionId, buffer?.loaded, items, virtualizer]);
+  useEffect(() => {
+    if (!highlight) return;
+    const t = setTimeout(() => setHighlight(null), 2500);
+    return () => clearTimeout(t);
+  }, [highlight]);
+
   // Follow new content only while pinned, and only when the content actually grew. Scrolling
   // on every render fought the user: the virtualizer re-renders during a scroll before onScroll runs.
   const lastHeight = useRef(0);
@@ -238,6 +259,7 @@ function SessionThread({ sessionId, session, project }: { sessionId: string; ses
         <div className="relative mx-auto w-full max-w-4xl" style={{ height: virtualizer.getTotalSize() + 24 }}>
           {virtualizer.getVirtualItems().map((v) => (
             <div key={v.key} data-index={v.index} ref={virtualizer.measureElement} className="absolute left-0 right-0 px-6 pt-3" style={{ transform: `translateY(${v.start}px)` }}>
+              <div className={cn("rounded-lg transition-shadow duration-500", highlight === items[v.index]!.key && "ring-2 ring-accent/60 ring-offset-4 ring-offset-bg")}>
               <ItemView
                 item={items[v.index]!}
                 sessionId={sessionId}
@@ -245,6 +267,7 @@ function SessionThread({ sessionId, session, project }: { sessionId: string; ses
                 projectDir={session?.cwd ?? project.path}
                 onRetry={retryPrompt && !working ? () => setRetryText(retryPrompt) : undefined}
               />
+              </div>
             </div>
           ))}
         </div>
@@ -279,6 +302,21 @@ function ItemView({ item, sessionId, live, projectDir, onRetry }: { item: ChatIt
         </div>
       );
     case "approval":
+      if (item.req.toolName === "AskUserQuestion" || item.req.toolName === "ExitPlanMode") {
+        // The approval came without a preceding tool event; show the same card as usual.
+        const tool: Extract<ChatItem, { kind: "tool" }> = {
+          kind: "tool",
+          key: item.key,
+          ts: item.ts,
+          use: { type: "tool.use", toolUseId: item.req.toolUseId, name: item.req.toolName, input: item.req.input, parentToolUseId: null },
+          result: null,
+          approval: { req: item.req, resolved: item.resolved },
+          blocked: null,
+          todos: null,
+          superseded: false,
+        };
+        return <div className="pl-10">{item.req.toolName === "AskUserQuestion" ? <QuestionCard item={tool} sessionId={sessionId} /> : <PlanCard item={tool} sessionId={sessionId} />}</div>;
+      }
       return (
         <div className="overflow-hidden rounded-lg border border-warning/50 pl-0">
           <ApprovalBlock req={item.req} resolved={item.resolved} sessionId={sessionId} projectDir={projectDir} />

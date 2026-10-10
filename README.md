@@ -101,6 +101,10 @@ Umgebungsvariablen für Sonderfälle: `FORGE_NODE` (Pfad zu node), `FORGE_SIDECA
 - **Parallele Agenten:** Sessions in eigenen Git-Worktrees.
 - **Erweiterungen:** MCP-Server, Skills, Subagenten und Hooks verwalten.
 - **Wiedereinstieg:** KI-Zusammenfassung einer Session.
+- **Rückfragen und Pläne:** Fragt Claude nach (AskUserQuestion), erscheinen die Optionen als Karte im Chat. Pläne aus dem Plan-Modus lassen sich annehmen oder mit Feedback zurückgeben.
+- **Kontextanzeige:** Belegung des Kontextfensters am Composer, Komprimieren per Knopf (/compact).
+- **Befehlspalette (Strg+K):** Projekte, Sessions, Aktionen und Volltextsuche über alle Verläufe.
+- **Dev-Server:** Startbefehl pro Projekt (oder erkannt aus package.json), Adresse als Link, Ausgabe im unteren Panel, letzte Zeilen per Knopf an Claude.
 - **Töne:** Signal, wenn Claude fertig ist, eine Freigabe braucht oder ein Fehler auftritt (abschaltbar).
 - **Diagnose:** CLI-Version, Anmeldestatus, API-Key-Override, git, gh, Capability-Matrix.
 - **Persistenz:** SQLite für Projekte, Sessions, Events, Freigaben, Einstellungen. Beim Start öffnet FORGE das zuletzt genutzte Projekt.
@@ -131,5 +135,5 @@ Letzter Lauf (Details in [docs/TESTING.md](docs/TESTING.md)): Lint und Typecheck
 ## Roadmap
 
 - Linux-Build testen und als .deb/.AppImage ausliefern.
-- Installer signieren (Windows SmartScreen).
+- Installer signieren (Windows SmartScreen), sobald ein Code-Signing-Zertifikat vorhanden ist.
 - Merge-Hilfe für parallele Agenten (Konflikte gemeinsam mit Claude lösen).

@@ -42,6 +42,8 @@ export const Project = z.object({
   lastOpenedAt: z.string().nullable(),
   /** command run by the auto-test tag, e.g. "pnpm test" */
   testCommand: z.string().nullable(),
+  /** command that starts the project's dev server, e.g. "pnpm dev"; null uses the detected one */
+  devCommand: z.string().nullable(),
   /** set for git worktrees: the project they belong to */
   parentId: z.string().nullable(),
   /** false when the folder no longer exists on disk */
@@ -78,6 +80,17 @@ export const BackgroundTask = z.object({
 });
 export type BackgroundTask = z.infer<typeof BackgroundTask>;
 
+/** Context window usage as reported by Claude Code (`getContextUsage`). */
+export const ContextUsage = z.object({
+  totalTokens: z.number(),
+  maxTokens: z.number(),
+  /** 0-100, may exceed 100 when over the limit */
+  percentage: z.number(),
+  categories: z.array(z.object({ name: z.string(), tokens: z.number(), kind: z.enum(["used", "free", "buffer", "deferred"]) })),
+  updatedAt: z.string(),
+});
+export type ContextUsage = z.infer<typeof ContextUsage>;
+
 export const Session = z.object({
   id: z.string(),
   projectId: z.string(),
@@ -98,6 +111,8 @@ export const Session = z.object({
   live: z.boolean(),
   /** commands Claude started in the background that are still running (not persisted) */
   background: z.array(BackgroundTask),
+  /** context window usage after the last turn; only while the process runs (not persisted) */
+  context: ContextUsage.nullable(),
 });
 export type Session = z.infer<typeof Session>;
 
@@ -204,6 +219,14 @@ export const SessionEventBody = z.discriminatedUnion("type", [
     scope: z.enum(["once", "session"]),
     source: z.enum(["user", "policy", "abort"]),
     message: z.string().nullable(),
+    /** AskUserQuestion: question text -> answer */
+    answers: z.record(z.string(), z.string()).optional(),
+  }),
+  z.object({
+    type: z.literal("context.compacted"),
+    trigger: z.enum(["manual", "auto"]),
+    preTokens: z.number().nullable(),
+    postTokens: z.number().nullable(),
   }),
   z.object({
     type: z.literal("policy.blocked"),
@@ -545,4 +568,37 @@ export const PullRequest = z.object({
   checks: z.object({ total: z.number(), failed: z.number(), pending: z.number() }),
 });
 export type PullRequest = z.infer<typeof PullRequest>;
+
+/** Markers around matched terms in SearchHit.snippet (control characters never occur in stored text). */
+export const SEARCH_MARK_START = "\u0001";
+export const SEARCH_MARK_END = "\u0002";
+
+/** One message in a session timeline that matches a full-text search. */
+export const SearchHit = z.object({
+  sessionId: z.string(),
+  projectId: z.string(),
+  projectName: z.string(),
+  sessionTitle: z.string().nullable(),
+  seq: z.number().int(),
+  ts: z.string(),
+  role: z.enum(["user", "assistant"]),
+  /** excerpt with matches wrapped in SEARCH_MARK_START / SEARCH_MARK_END */
+  snippet: z.string(),
+});
+export type SearchHit = z.infer<typeof SearchHit>;
+
+export const DevServerState = z.object({
+  projectId: z.string(),
+  status: z.enum(["stopped", "running", "exited", "failed"]),
+  /** command that runs or ran; null when stopped */
+  command: z.string().nullable(),
+  /** first local address found in the output */
+  url: z.string().nullable(),
+  startedAt: z.string().nullable(),
+  exitCode: z.number().nullable(),
+  error: z.string().nullable(),
+  /** command used on start: the project's dev command, else the detected one */
+  effectiveCommand: z.string().nullable(),
+});
+export type DevServerState = z.infer<typeof DevServerState>;
 

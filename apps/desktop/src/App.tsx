@@ -8,6 +8,7 @@ import { Toaster } from "@/components/layout/Toaster";
 import { TitleTooltips } from "@/components/ui/title-tooltips";
 import { ErrorBoundary } from "@/components/layout/ErrorBoundary";
 import { NewProjectDialog } from "@/components/projects/NewProjectDialog";
+import { CommandPalette } from "@/components/layout/CommandPalette";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/misc";
 import { HomeView } from "@/views/HomeView";
@@ -90,6 +91,7 @@ function Shell() {
         </ErrorBoundary>
       </main>
       <NewProjectDialog />
+      <CommandPalette />
       <Toaster />
       <TitleTooltips />
     </div>

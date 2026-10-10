@@ -63,6 +63,10 @@ export class Normalizer {
       const state = status === "completed" ? "completed" : status === "failed" ? "failed" : "stopped";
       return [{ type: "background.task", taskId, description, state, summary: str(m.summary) }];
     }
+    if (m.subtype === "compact_boundary") {
+      const meta = (m.compact_metadata ?? {}) as Record<string, unknown>;
+      return [{ type: "context.compacted", trigger: meta.trigger === "auto" ? "auto" : "manual", preTokens: num(meta.pre_tokens), postTokens: num(meta.post_tokens) }];
+    }
     if (m.subtype !== "init") return [];
     return [
       {

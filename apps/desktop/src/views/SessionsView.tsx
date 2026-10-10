@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { History, Power, Search, Trash2 } from "lucide-react";
 import type { Session } from "@forge/protocol";
-import { call, keys } from "@/lib/queries";
+import { call, keys, useSearch } from "@/lib/queries";
 import { errorMessage } from "@/lib/rpc";
 import { relativeTime } from "@/lib/utils";
 import { useUi } from "@/stores/ui";
@@ -10,11 +10,12 @@ import { toast } from "@/stores/toast";
 import { Page } from "@/components/layout/Page";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { EmptyState, ErrorBanner, Loading, Tooltip } from "@/components/ui/misc";
+import { EmptyState, ErrorBanner, Loading, SectionTitle, Spinner, Tooltip } from "@/components/ui/misc";
 import { DeleteSessionDialog } from "@/components/workspace/DeleteSessionDialog";
 import { Select } from "@/components/ui/select";
 import { SessionStatusBadge } from "@/components/workspace/SessionStatusBadge";
 import { ProfileBadge } from "@/components/projects/ProfileBadge";
+import { openSearchHit, SearchHitRow } from "@/components/search/SearchHits";
 
 const STATUS = [
   { value: "all", label: "Alle Status" },
@@ -36,19 +37,37 @@ export function SessionsView() {
     queryFn: () => call("sessions.listAll", { query: q || undefined, status: status === "all" ? undefined : status }),
     placeholderData: (prev) => prev,
   });
+  const hits = useSearch(q);
+  const searching = q.trim().length >= 3;
 
   return (
     <Page title="Sessions" subtitle="Alle in FORGE gestarteten oder übernommenen Claude-Sessions">
       <div className="mb-4 flex gap-2">
         <div className="relative flex-1">
           <Search className="pointer-events-none absolute left-2.5 top-2 h-4 w-4 text-subtle" />
-          <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Titel, Projekt oder Session-ID" className="pl-8" aria-label="Sessions durchsuchen" />
+          <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Titel, Projekt, Session-ID oder Inhalt der Verläufe" className="pl-8" aria-label="Sessions durchsuchen" />
         </div>
         <Select value={status} onChange={setStatus} options={STATUS} className="w-52" aria-label="Status-Filter" />
       </div>
+      {searching && (
+        <section className="mb-6">
+          <SectionTitle action={hits.isFetching ? <Spinner className="h-3.5 w-3.5" /> : undefined}>Treffer in Verläufen</SectionTitle>
+          {hits.isError && <ErrorBanner>Suche fehlgeschlagen.</ErrorBanner>}
+          {hits.data && hits.data.length === 0 && <div className="text-[13px] text-muted">Kein Prompt und keine Antwort enthält diese Wörter.</div>}
+          {!!hits.data?.length && (
+            <div className="rounded-xl border border-border bg-surface p-1">
+              {hits.data.map((h) => (
+                <SearchHitRow key={`${h.sessionId}:${h.seq}`} hit={h} onSelect={() => openSearchHit(h)} />
+              ))}
+            </div>
+          )}
+        </section>
+      )}
+      {searching && <SectionTitle>Sessions</SectionTitle>}
       {sessions.isLoading && <Loading />}
       {sessions.isError && <ErrorBanner>Sessions konnten nicht geladen werden.</ErrorBanner>}
-      {sessions.isSuccess && sessions.data.length === 0 && (
+      {sessions.isSuccess && sessions.data.length === 0 && q && <div className="text-[13px] text-muted">Kein Titel, Projekt und keine Session-ID passt.</div>}
+      {sessions.isSuccess && sessions.data.length === 0 && !q && (
         <EmptyState icon={<History className="h-10 w-10" />} title="Keine Sessions">
           Starte im Workspace eines Projekts eine neue Session. Im Terminal gestartete Sessions erscheinen im Workspace unter „Aus dem Terminal“.
         </EmptyState>

@@ -9,8 +9,8 @@ export interface TodoEntry {
 }
 
 export type ChatItem =
-  | { kind: "user"; key: string; text: string; ts: string; uuid: string | null; attachments: Array<{ name: string; mediaType: string; size: number }>; remote: boolean }
-  | { kind: "assistant"; key: string; text: string; streaming: boolean; ts: string | null }
+  | { kind: "user"; key: string; seq: number; text: string; ts: string; uuid: string | null; attachments: Array<{ name: string; mediaType: string; size: number }>; remote: boolean }
+  | { kind: "assistant"; key: string; seq: number | null; text: string; streaming: boolean; ts: string | null }
   | {
       kind: "tool";
       key: string;
@@ -57,12 +57,12 @@ export function buildChatItems(events: SessionEvent[], streaming: Record<string,
     const b = ev.body;
     switch (b.type) {
       case "user.message":
-        items.push({ kind: "user", key: `u${ev.seq}`, text: b.text, ts: ev.ts, uuid: b.uuid ?? null, attachments: b.attachments ?? [], remote: b.source === "remote" });
+        items.push({ kind: "user", key: `u${ev.seq}`, seq: ev.seq, text: b.text, ts: ev.ts, uuid: b.uuid ?? null, attachments: b.attachments ?? [], remote: b.source === "remote" });
         break;
       case "assistant.text": {
         const key = `${b.messageId}:${b.index}`;
         const existing = textIdx.get(key);
-        const item: ChatItem = { kind: "assistant", key: `a${key}`, text: b.text, streaming: false, ts: ev.ts };
+        const item: ChatItem = { kind: "assistant", key: `a${key}`, seq: ev.seq, text: b.text, streaming: false, ts: ev.ts };
         if (existing !== undefined) items[existing] = item;
         else {
           textIdx.set(key, items.length);
@@ -152,6 +152,15 @@ export function buildChatItems(events: SessionEvent[], streaming: Record<string,
       case "turn.result":
         items.push({ kind: "result", key: `r${ev.seq}`, ts: ev.ts, body: b });
         break;
+      case "context.compacted":
+        items.push({
+          kind: "notice",
+          key: `k${ev.seq}`,
+          ts: ev.ts,
+          text: `${b.trigger === "auto" ? "Kontext automatisch komprimiert" : "Kontext komprimiert"}${b.preTokens !== null ? `: vorher ${formatK(b.preTokens)}${b.postTokens !== null ? `, nachher ${formatK(b.postTokens)}` : ""} Tokens` : ""}. Claude arbeitet mit einer Zusammenfassung des bisherigen Verlaufs weiter.`,
+          tone: "info",
+        });
+        break;
       case "error":
         items.push({ kind: "error", key: `e${ev.seq}`, ts: ev.ts, message: b.message, retryable: b.retryable });
         break;
@@ -184,9 +193,27 @@ export function buildChatItems(events: SessionEvent[], streaming: Record<string,
 
   for (const [key, text] of Object.entries(streaming)) {
     if (textIdx.has(key) || !text) continue;
-    items.push({ kind: "assistant", key: `a${key}`, text, streaming: true, ts: null });
+    items.push({ kind: "assistant", key: `a${key}`, seq: null, text, streaming: true, ts: null });
   }
   return items;
+}
+
+function formatK(n: number): string {
+  return n >= 1000 ? `${Math.round(n / 1000)}k` : String(n);
+}
+
+/** Index of the item that shows the event with this seq (search hits), or of the nearest one before it. */
+export function itemIndexForSeq(items: ChatItem[], seq: number): number {
+  let best = -1;
+  let bestSeq = -1;
+  items.forEach((it, i) => {
+    const s = it.kind === "user" || it.kind === "assistant" ? it.seq : null;
+    if (s !== null && s <= seq && s > bestSeq) {
+      best = i;
+      bestSeq = s;
+    }
+  });
+  return best;
 }
 
 /** The last user prompt, for "retry". */
@@ -233,6 +260,12 @@ export function toolSummary(name: string, input: Record<string, unknown>, projec
       return s("description") || s("subagent_type");
     case "TodoWrite":
       return "Aufgabenliste aktualisiert";
+    case "AskUserQuestion": {
+      const qs = Array.isArray(input.questions) ? (input.questions as Array<{ question?: unknown }>) : [];
+      return typeof qs[0]?.question === "string" ? qs[0].question : "";
+    }
+    case "ExitPlanMode":
+      return "Plan zur Freigabe";
     default:
       return Object.values(input).find((v): v is string => typeof v === "string")?.slice(0, 120) ?? "";
   }
@@ -253,4 +286,6 @@ export const TOOL_LABELS: Record<string, string> = {
   Task: "Subagent",
   Agent: "Subagent",
   TodoWrite: "Aufgaben",
+  AskUserQuestion: "Rückfrage",
+  ExitPlanMode: "Plan",
 };

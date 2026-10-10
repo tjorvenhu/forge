@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
-import { Bot, Plus, SquareTerminal, X } from "lucide-react";
+import { Bot, Play, Plus, SquareTerminal, X } from "lucide-react";
 import type { Project } from "@forge/protocol";
 import { useDiagnostics } from "@/lib/queries";
 import { cn } from "@/lib/utils";
 import { useUi } from "@/stores/ui";
 import { OutputPanel } from "./OutputPanel";
 import { TerminalView } from "./TerminalView";
+import { DevServerPanel } from "./DevServer";
 
 interface Tab {
   key: string;
@@ -14,14 +15,16 @@ interface Tab {
 }
 
 /**
- * Bottom panel: terminals for the project plus the raw Claude event log. Stays mounted while
- * collapsed so running terminals keep their process.
+ * Bottom panel: terminals for the project, the dev server output and the raw Claude event log.
+ * Stays mounted while collapsed so running terminals keep their process.
  */
 export function BottomPanel({ project }: { project: Project }) {
   const open = useUi((s) => s.bottomPanelOpen);
   const toggle = useUi((s) => s.toggleBottomPanel);
   const request = useUi((s) => s.terminalRequest);
   const clearRequest = useUi((s) => s.clearTerminalRequest);
+  const panelRequest = useUi((s) => s.panelRequest);
+  const clearPanelRequest = useUi((s) => s.clearPanelRequest);
   const diag = useDiagnostics();
   const [tabs, setTabs] = useState<Tab[]>([]);
   const [active, setActive] = useState<string>("output");
@@ -40,6 +43,13 @@ export function BottomPanel({ project }: { project: Project }) {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- react to new requests only
   }, [request]);
+
+  useEffect(() => {
+    if (panelRequest && panelRequest.projectId === project.id) {
+      setActive(panelRequest.tab);
+      clearPanelRequest();
+    }
+  }, [panelRequest, project.id, clearPanelRequest]);
 
   const closeTab = (key: string) => {
     setTabs((t) => t.filter((x) => x.key !== key));
@@ -63,7 +73,10 @@ export function BottomPanel({ project }: { project: Project }) {
         <button className="rounded p-1 text-subtle hover:bg-surface-3 hover:text-fg" aria-label="Neues Terminal" title="Neues Terminal" onClick={() => add("shell")}>
           <Plus className="h-3.5 w-3.5" />
         </button>
-        <button className={cn("ml-2 rounded px-2 py-1", active === "output" ? "bg-surface-3 text-fg" : "text-muted hover:text-fg")} onClick={() => setActive("output")}>
+        <button className={cn("ml-2 flex items-center gap-1.5 rounded px-2 py-1", active === "dev" ? "bg-surface-3 text-fg" : "text-muted hover:text-fg")} onClick={() => setActive("dev")}>
+          <Play className="h-3 w-3" /> Dev-Server
+        </button>
+        <button className={cn("rounded px-2 py-1", active === "output" ? "bg-surface-3 text-fg" : "text-muted hover:text-fg")} onClick={() => setActive("output")}>
           Claude Output
         </button>
         <div className="flex-1" />
@@ -82,7 +95,12 @@ export function BottomPanel({ project }: { project: Project }) {
             <OutputPanel projectId={project.id} embedded />
           </div>
         )}
-        {tabs.length === 0 && active !== "output" && <div className="p-3 text-xs text-subtle">Kein Terminal offen.</div>}
+        {active === "dev" && (
+          <div className="absolute inset-0">
+            <DevServerPanel project={project} />
+          </div>
+        )}
+        {tabs.length === 0 && active !== "output" && active !== "dev" && <div className="p-3 text-xs text-subtle">Kein Terminal offen.</div>}
       </div>
     </div>
   );

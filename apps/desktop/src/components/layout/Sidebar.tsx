@@ -1,9 +1,10 @@
 import type { ReactNode } from "react";
-import { Blocks, Bot, Download, FolderKanban, GitPullRequest, History, Home, Plus, Settings } from "lucide-react";
+import { Blocks, Bot, Download, FolderKanban, GitPullRequest, History, Home, Plus, Search, Settings } from "lucide-react";
 import { call, useClaudeSetup, useClaudeUpdate, useDiagnostics, useProjects, useUsage } from "@/lib/queries";
 import { errorMessage } from "@/lib/rpc";
 import { toast } from "@/stores/toast";
 import { Button } from "@/components/ui/button";
+import { Kbd } from "@/components/ui/misc";
 import { useUi, type View } from "@/stores/ui";
 import { capitalize, cn, relativeTime } from "@/lib/utils";
 import { Logo } from "./Logo";
@@ -34,6 +35,17 @@ export function Sidebar() {
           <div className="text-[15px] font-bold tracking-wide">FORGE</div>
           <div className="text-[11px] text-subtle">Claude Development Studio</div>
         </div>
+      </div>
+
+      <div className="px-2 pb-2">
+        <button
+          onClick={() => useUi.getState().setPaletteOpen(true)}
+          className="flex h-8 w-full items-center gap-2 rounded-md border border-border bg-surface px-2.5 text-[13px] text-subtle hover:border-border-strong hover:text-muted"
+        >
+          <Search className="h-3.5 w-3.5" />
+          <span className="flex-1 text-left">Suchen und Befehle</span>
+          <Kbd>Strg+K</Kbd>
+        </button>
       </div>
 
       <nav className="flex flex-col gap-0.5 px-2" aria-label="Hauptnavigation">
