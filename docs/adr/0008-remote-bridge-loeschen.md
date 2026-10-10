@@ -44,7 +44,7 @@ beim Hover nach `data-forge-title` und danach zurück. So greift das eigene Auss
 
 ## Effort
 
-Effort (low bis max) wie das Modell auf drei Ebenen: global (Einstellungen), pro Projekt und pro Session im
+Effort (low, medium, high, xhigh, max, die Namen von Claude Code) als Auswahl auf drei Ebenen: global (Einstellungen), pro Projekt und pro Session im
 Composer. Start über die SDK-Option `effort`, Wechsel in laufender Session über `applyFlagSettings({ effortLevel })`.
 Welche Stufen ein Modell kann, meldet Claude Code in der Modellliste (`supportsEffort`, `supportedEffortLevels`);
 ohne Unterstützung blendet FORGE die Auswahl aus. Migration 4: `projects.default_effort`, `sessions.effort`.

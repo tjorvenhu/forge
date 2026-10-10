@@ -3,7 +3,8 @@ import { useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, ShieldAlert, Trash2, X } from "lucide-react";
 import type { ProfileId, Project, EffortLevel } from "@forge/protocol";
 import { call, keys, useRuntimeInfo, useSettings } from "@/lib/queries";
-import { EFFORT_LABELS, EFFORT_LEVELS, modelLabel } from "@/lib/models";
+import { EFFORT_LEVELS, modelLabel } from "@/lib/models";
+
 import { errorMessage } from "@/lib/rpc";
 import { cn } from "@/lib/utils";
 import { toast } from "@/stores/toast";
@@ -116,8 +117,8 @@ export function ProjectSettingsTab({ project }: { project: Project }) {
                 onChange={(v) => void update({ defaultEffort: v === "__inherit" ? null : (v as EffortLevel) })}
                 className="w-full"
                 options={[
-                  { value: "__inherit", label: `Globale Einstellung (${settings.data?.defaultEffort ? EFFORT_LABELS[settings.data.defaultEffort] : "Claude-Code-Standard"})` },
-                  ...EFFORT_LEVELS.map((l) => ({ value: l, label: EFFORT_LABELS[l] })),
+                  { value: "__inherit", label: `Globale Einstellung (${settings.data?.defaultEffort ?? "Claude-Code-Standard"})` },
+                  ...EFFORT_LEVELS.map((l) => ({ value: l, label: l })),
                 ]}
               />
             </Field>

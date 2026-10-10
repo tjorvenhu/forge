@@ -17,7 +17,7 @@ import { PROFILE_INFO } from "@/components/projects/ProfileBadge";
 import { ClaudeSetupCard } from "@/components/settings/ClaudeSetupCard";
 import { MemoryEditor } from "@/components/settings/MemoryEditor";
 import { capitalize, cn } from "@/lib/utils";
-import { EFFORT_LABELS, EFFORT_LEVELS } from "@/lib/models";
+import { EFFORT_LEVELS } from "@/lib/models";
 
 export function SettingsView() {
   const settings = useSettings();
@@ -49,7 +49,7 @@ export function SettingsView() {
                   value={s.defaultEffort ?? "__default"}
                   onChange={(v) => void save({ defaultEffort: v === "__default" ? null : (v as EffortLevel) })}
                   className="w-full"
-                  options={[{ value: "__default", label: "Claude-Code-Standard" }, ...EFFORT_LEVELS.map((l) => ({ value: l, label: EFFORT_LABELS[l] }))]}
+                  options={[{ value: "__default", label: "Claude-Code-Standard" }, ...EFFORT_LEVELS.map((l) => ({ value: l, label: l }))]}
                 />
               </Field>
               <Field label="Standardprofil für neue Projekte">
