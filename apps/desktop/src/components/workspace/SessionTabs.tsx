@@ -34,7 +34,7 @@ export function SessionTabs({ projectId }: { projectId: string }) {
     <div className="flex h-9 shrink-0 items-end gap-1 overflow-x-auto border-b border-border bg-sidebar px-2" role="tablist" aria-label="Aktive Sessions">
       {sessions.map((s) => {
         const active = s.projectId === projectId && s.id === activeSession;
-        const busy = BUSY.includes(s.status);
+        const busy = BUSY.includes(s.status) || s.background.length > 0;
         return (
           <div
             key={s.id}
@@ -43,7 +43,7 @@ export function SessionTabs({ projectId }: { projectId: string }) {
             tabIndex={0}
             onClick={() => openProject(s.projectId, s.id)}
             onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && openProject(s.projectId, s.id)}
-            title={`${s.projectName}: ${s.title ?? "Ohne Titel"} (${STATUS_LABEL[s.status] ?? s.status}). Strg+Tab wechselt zur nächsten Session.`}
+            title={`${s.projectName}: ${s.title ?? "Ohne Titel"} (${STATUS_LABEL[s.status] ?? s.status}${s.background.length ? `, ${s.background.length} im Hintergrund` : ""}). Strg+Tab wechselt zur nächsten Session.`}
             className={cn(
               "group flex h-8 min-w-0 max-w-60 shrink-0 cursor-default select-none items-center gap-2 rounded-t-md border border-b-0 px-2.5 text-xs",
               active ? "border-border bg-bg text-fg" : "border-transparent text-muted hover:bg-surface-3 hover:text-fg",

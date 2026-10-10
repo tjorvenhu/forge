@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { AlertTriangle, CheckCircle2, ChevronDown, Clock, FileText, History, ImageIcon, Info, MessageSquarePlus, Power, RotateCcw, ShieldAlert, Smartphone, Terminal, Trash2, Undo2, XCircle } from "lucide-react";
+import { AlertTriangle, CheckCircle2, ChevronDown, Clock, FileText, History, Hourglass, ImageIcon, Info, MessageSquarePlus, Power, RotateCcw, ShieldAlert, Smartphone, Terminal, Trash2, Undo2, XCircle } from "lucide-react";
 import type { ExternalSession, Project, RewindResult, Session } from "@forge/protocol";
 import { call, useSession, useSessionHistory, useSessions } from "@/lib/queries";
 import { errorMessage } from "@/lib/rpc";
@@ -20,7 +20,7 @@ import { ClaudeMark } from "./ClaudeMark";
 import { SummaryButton } from "./SummaryButton";
 import { SessionTabs } from "./SessionTabs";
 import { DeleteSessionDialog } from "./DeleteSessionDialog";
-import { WorkingIndicator } from "./WorkingIndicator";
+import { BackgroundIndicator, WorkingIndicator } from "./WorkingIndicator";
 import { turnStartedAt } from "./working";
 
 /** activeSession values starting with this prefix point at a terminal session not yet adopted by FORGE */
@@ -109,6 +109,15 @@ function SessionBar({
         ]}
       />
       {session && <SessionStatusBadge status={session.status} live={session.live} />}
+      {!!session?.background.length && (
+        <Tooltip content={session.background.map((t) => t.description).join(", ")}>
+          <span>
+            <Badge tone="accent">
+              <Hourglass className="h-3 w-3" /> {session.background.length} im Hintergrund
+            </Badge>
+          </span>
+        </Tooltip>
+      )}
       {session?.permissionMode === "plan" && <Badge tone="accent">Nur planen</Badge>}
       {session?.permissionMode === "bypassPermissions" && (
         <Badge tone="danger">
@@ -131,7 +140,11 @@ function SessionBar({
         <Button
           size="sm"
           variant="ghost"
-          title="Claude-Prozess dieser Session beenden. Sie bleibt fortsetzbar."
+          title={
+            session.background.length
+              ? "Claude-Prozess beenden. Bricht auch die Aufgaben im Hintergrund ab. Die Session bleibt fortsetzbar."
+              : "Claude-Prozess dieser Session beenden. Sie bleibt fortsetzbar."
+          }
           onClick={() => call("sessions.close", { sessionId: session.id }).catch((e: unknown) => toast.error("Beenden fehlgeschlagen", errorMessage(e)))}
         >
           <Power className="h-3.5 w-3.5" /> Beenden
@@ -236,6 +249,7 @@ function SessionThread({ sessionId, session, project }: { sessionId: string; ses
           ))}
         </div>
         {startedAt && <WorkingIndicator startedAt={startedAt} />}
+        {!!session?.background.length && <BackgroundIndicator tasks={session.background} />}
       </div>
       <Composer project={project} session={session} prefill={retryText} onPrefillConsumed={() => setRetryText(null)} />
     </>

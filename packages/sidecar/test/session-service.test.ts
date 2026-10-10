@@ -356,6 +356,39 @@ describe("turn automation via project tags", () => {
     expect(svc.listLive().map((x) => [x.id, x.projectName])).toEqual([[s.id, "proj"]]);
   });
 
+  it("tracks background tasks and follows the turn Claude starts on its own when one finishes", async () => {
+    const s = await svc.start({ projectId, prompt: "Build im Hintergrund" });
+    const sink = rt.sinks[0]!;
+    const task = { task_id: "b2kzcbhw6", run_id: "r1", task_type: "local_bash", description: "Build release" };
+    sink.onMessage({ type: "system", subtype: "background_tasks_changed", tasks: [task] });
+    sink.onMessage({ type: "system", subtype: "task_started", ...task, tool_use_id: "toolu_1", is_backgrounded: true });
+    sink.onMessage({ type: "result", subtype: "success", is_error: false, result: "STARTED", usage: {} });
+    expect(svc.get(s.id)).toMatchObject({ status: "idle", background: [{ taskId: "b2kzcbhw6", description: "Build release", taskType: "local_bash" }] });
+    expect(svc.listLive()[0]!.background).toHaveLength(1);
+
+    sink.onMessage({ type: "system", subtype: "task_notification", task_id: "b2kzcbhw6", status: "completed", summary: "Background command finished" });
+    sink.onMessage({ type: "system", subtype: "background_tasks_changed", tasks: [] });
+    expect(svc.get(s.id).background).toEqual([]);
+    sink.onMessage({ type: "stream_event", event: { type: "message_start", message: { id: "msg_2" } } });
+    expect(svc.get(s.id).status).toBe("running");
+    sink.onMessage({ type: "result", subtype: "success", is_error: false, result: "COMPLETE", usage: {} });
+    expect(svc.get(s.id).status).toBe("idle");
+
+    const notices = db.listEvents(s.id).flatMap((e) => (e.body.type === "background.task" ? [[e.body.state, e.body.description]] : []));
+    expect(notices).toEqual([
+      ["started", "Build release"],
+      ["completed", "Build release"],
+    ]);
+  });
+
+  it("ignores task events of foreground tool calls", async () => {
+    const s = await svc.start({ projectId, prompt: "x" });
+    const sink = rt.sinks[0]!;
+    sink.onMessage({ type: "system", subtype: "task_started", task_id: "fg1", description: "Sleep", task_type: "local_bash", is_backgrounded: false });
+    sink.onMessage({ type: "system", subtype: "task_notification", task_id: "fg1", status: "completed" });
+    expect(persistedTypes(s.id)).not.toContain("background.task");
+  });
+
   it("deletes a session: ends the process, removes timeline and transcript, keeps the audit log", async () => {
     const s = await svc.start({ projectId, prompt: "Lies a.txt" });
     rt.replay();

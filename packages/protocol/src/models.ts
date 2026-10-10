@@ -69,6 +69,15 @@ export const SessionStatus = z.enum([
 ]);
 export type SessionStatus = z.infer<typeof SessionStatus>;
 
+export const BackgroundTask = z.object({
+  taskId: z.string(),
+  description: z.string(),
+  taskType: z.string(),
+  /** when FORGE first saw the task */
+  startedAt: z.string(),
+});
+export type BackgroundTask = z.infer<typeof BackgroundTask>;
+
 export const Session = z.object({
   id: z.string(),
   projectId: z.string(),
@@ -87,6 +96,8 @@ export const Session = z.object({
   lastError: z.string().nullable(),
   /** true while a live SDK process is attached in this app instance */
   live: z.boolean(),
+  /** commands Claude started in the background that are still running (not persisted) */
+  background: z.array(BackgroundTask),
 });
 export type Session = z.infer<typeof Session>;
 
@@ -202,6 +213,13 @@ export const SessionEventBody = z.discriminatedUnion("type", [
     message: z.string(),
   }),
   z.object({ type: z.literal("status"), status: SessionStatus, detail: z.string().nullable() }),
+  z.object({
+    type: z.literal("background.task"),
+    taskId: z.string(),
+    description: z.string(),
+    state: z.enum(["started", "completed", "failed", "stopped"]),
+    summary: z.string().nullable(),
+  }),
   z.object({
     type: z.literal("turn.result"),
     subtype: z.string(),

@@ -6,6 +6,7 @@ import {
   type Attachment,
   type EffortLevel,
   type SlashCommand,
+  type BackgroundTask,
   type ExternalSession,
   type PermissionMode,
   type PlanUsage,
@@ -47,6 +48,8 @@ interface LiveSession {
   seenUuids: Set<string>;
   /** a turn started by a message from the Claude app (Remote Control) */
   remoteTurn: { sawMessage: boolean } | null;
+  /** still running background tasks, keyed by task id; ends with the process */
+  background: Map<string, BackgroundTask>;
 }
 
 /** Title of a session that was opened empty for the Claude app; replaced by the first message. */
@@ -79,7 +82,8 @@ export class SessionService {
   // ---------- queries
 
   private toSession(r: SessionRecord): Session {
-    return { ...r, live: this.live.has(r.id) };
+    const live = this.live.get(r.id);
+    return { ...r, live: !!live, background: live ? [...live.background.values()] : [] };
   }
 
   get(id: string): Session {
@@ -511,6 +515,7 @@ export class SessionService {
       interrupting: false,
       seenUuids: new Set(this.db.listEvents(rec.id).flatMap((e) => (e.body.type === "user.message" && e.body.uuid ? [e.body.uuid] : []))),
       remoteTurn: null,
+      background: new Map(),
     };
     this.live.set(rec.id, live);
     const sink = this.sinkFor(rec.id, live);
@@ -561,6 +566,13 @@ export class SessionService {
           }
         }
         if (this.handleRemoteInput(id, live, m)) return;
+        if (m.type === "system" && m.subtype === "background_tasks_changed") {
+          this.syncBackgroundTasks(id, live, m.tasks);
+          return;
+        }
+        // A finished background task makes the CLI start a turn on its own, without a user message.
+        const turnOutput = m.type === "assistant" || (m.type === "stream_event" && (m.event as Record<string, unknown> | undefined)?.type === "message_start");
+        if (turnOutput && this.db.getSession(id)?.status === "idle") this.setStatus(id, "running");
         for (const body of live.normalizer.normalize(msg)) {
           this.record(id, body);
           if (body.type === "session.init") {
@@ -623,6 +635,24 @@ export class SessionService {
         }
       },
     };
+  }
+
+  /** The CLI sends the full list on every change; start times are kept for tasks already known. */
+  private syncBackgroundTasks(id: string, live: LiveSession, raw: unknown) {
+    const next = new Map<string, BackgroundTask>();
+    for (const t of Array.isArray(raw) ? (raw as Array<Record<string, unknown>>) : []) {
+      const taskId = typeof t.task_id === "string" ? t.task_id : null;
+      if (!taskId) continue;
+      next.set(taskId, {
+        taskId,
+        description: typeof t.description === "string" && t.description ? t.description : "Hintergrundaufgabe",
+        taskType: typeof t.task_type === "string" ? t.task_type : "unknown",
+        startedAt: live.background.get(taskId)?.startedAt ?? new Date().toISOString(),
+      });
+    }
+    live.background = next;
+    const rec = this.db.getSession(id);
+    if (rec) this.emit({ event: "session.updated", payload: this.toSession(rec) });
   }
 
   private async currentBranch(dir: string): Promise<string | null> {
