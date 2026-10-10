@@ -251,6 +251,17 @@ export class SessionService {
   /** Files already changed before a turn; auto-commit never takes those (foreign dirty state). */
   private turnBaseline = new Map<string, Set<string>>();
   private turnWaiters = new Map<string, Array<(error: string | null) => void>>();
+  private background = new Set<Promise<unknown>>();
+
+  private track(p: Promise<unknown>) {
+    const done = p.catch(() => {}).finally(() => this.background.delete(done));
+    this.background.add(done);
+  }
+
+  /** Waits for post-turn work (tests, auto-commit) to finish; used on shutdown and in tests. */
+  async drain() {
+    while (this.background.size) await Promise.all([...this.background]);
+  }
 
   /** Resolves when the current turn of the session finished (null) or failed (message). */
   waitForTurn(sessionId: string): Promise<string | null> {
@@ -549,7 +560,7 @@ export class SessionService {
             const failed = body.isError && !wasInterrupt;
             this.setStatus(id, "idle", wasInterrupt ? "Gestoppt" : null, { lastError: failed ? body.text ?? body.subtype : null });
             const ok = !wasInterrupt && !body.isError;
-            void (ok ? this.afterTurn(id) : Promise.resolve()).finally(() => this.settleTurn(id, ok ? null : body.text ?? (wasInterrupt ? "Gestoppt" : body.subtype)));
+            this.track((ok ? this.afterTurn(id) : Promise.resolve()).finally(() => this.settleTurn(id, ok ? null : body.text ?? (wasInterrupt ? "Gestoppt" : body.subtype))));
           }
         }
       },

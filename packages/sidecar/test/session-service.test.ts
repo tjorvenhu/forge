@@ -92,7 +92,8 @@ beforeEach(async () => {
   svc = new SessionService(db, projects, git, rt, (e) => emitted.push(e));
   projectId = (await projects.import(path.join(t.dir, "proj"))).id;
 });
-afterEach(() => {
+afterEach(async () => {
+  await svc.drain();
   svc.shutdown();
   db.close();
   t.cleanup();
