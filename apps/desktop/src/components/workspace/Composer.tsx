@@ -3,9 +3,10 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { open } from "@tauri-apps/plugin-dialog";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { ArrowUp, FileText, ImageIcon, ListTodo, Paperclip, Square, X } from "lucide-react";
-import type { Attachment, PermissionMode, Project, Session } from "@forge/protocol";
+import type { Attachment, PermissionMode, Project, Session, EffortLevel } from "@forge/protocol";
 import { call, keys, useRuntimeInfo, useSettings } from "@/lib/queries";
 import { errorMessage } from "@/lib/rpc";
+import { EFFORT_LABELS, EFFORT_LEVELS, findModel, modelLabel } from "@/lib/models";
 import { cn } from "@/lib/utils";
 import { useUi } from "@/stores/ui";
 import { toast } from "@/stores/toast";
@@ -27,11 +28,6 @@ interface Pending {
 }
 
 /** "claude-opus-5-5" -> "Opus 5.5" for models the picker does not list by alias. */
-export function prettyModel(m: string): string {
-  const core = m.replace(/^claude-/, "").replace(/-(\d+)-(\d+)$/, " $1.$2").replace(/-(\d+)$/, " $1");
-  return core.charAt(0).toUpperCase() + core.slice(1);
-}
-
 function readAsBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const r = new FileReader();
@@ -58,6 +54,7 @@ export function Composer({
   const [sending, setSending] = useState(false);
   const [planOnly, setPlanOnly] = useState(project.tags.includes("plan-first"));
   const [model, setModel] = useState<string | null>(null);
+  const [effort, setEffort] = useState<EffortLevel | null>(null);
   const [files, setFiles] = useState<Pending[]>([]);
   const [dragging, setDragging] = useState(false);
   const [cmdIndex, setCmdIndex] = useState(0);
@@ -72,6 +69,7 @@ export function Composer({
   const waiting = session?.status === "waiting_approval";
   const effectiveModel = session ? session.model : (model ?? project.defaultModel ?? settings.data?.defaultModel ?? null);
   const isPlan = session ? session.permissionMode === "plan" : planOnly;
+  const effectiveEffort = session ? session.effort : (effort ?? project.defaultEffort ?? settings.data?.defaultEffort ?? null);
 
   // ---------- slash commands
   const slashMode = /^\/[^\s]*$/.test(text);
@@ -180,7 +178,7 @@ export function Composer({
     const attachments = files.map((f) => f.attachment);
     try {
       if (!session) {
-        const s = await call("sessions.start", { projectId: project.id, prompt, model: effectiveModel, planOnly, resumeClaudeSessionId, attachments });
+        const s = await call("sessions.start", { projectId: project.id, prompt, model: effectiveModel, effort: effectiveEffort, planOnly, resumeClaudeSessionId, attachments });
         qc.setQueryData(keys.session(s.id), s);
         void qc.invalidateQueries({ queryKey: keys.sessions(project.id) });
         setActive(project.id, s.id);
@@ -218,6 +216,16 @@ export function Composer({
     }
   };
 
+  const changeEffort = async (v: string) => {
+    const next = v === "__default" ? null : (v as EffortLevel);
+    if (!session) return setEffort(next);
+    try {
+      qc.setQueryData(keys.session(session.id), await call("sessions.setEffort", { sessionId: session.id, effort: next }));
+    } catch (e) {
+      toast.error("Effort nicht gewechselt", errorMessage(e));
+    }
+  };
+
   const togglePlan = async () => {
     if (!session) return setPlanOnly(!planOnly);
     const mode: PermissionMode = isPlan ? PROFILE_MODE[session.profile] : "plan";
@@ -233,7 +241,16 @@ export function Composer({
     ...(session && effectiveModel ? [] : [{ value: "__default", label: "Standardmodell" }]),
     ...models.map((m) => ({ value: m.value, label: m.displayName || m.value, description: m.description })),
   ];
-  if (effectiveModel && !modelOptions.some((o) => o.value === effectiveModel)) modelOptions.push({ value: effectiveModel, label: prettyModel(effectiveModel), description: "" });
+  if (effectiveModel && !modelOptions.some((o) => o.value === effectiveModel)) modelOptions.push({ value: effectiveModel, label: modelLabel(effectiveModel, runtime.data?.models), description: "" });
+
+  const modelInfo = findModel(effectiveModel, runtime.data?.models ?? []);
+  const effortLevels = modelInfo?.supportedEffortLevels?.length ? modelInfo.supportedEffortLevels : EFFORT_LEVELS;
+  // Unknown models keep the picker; listed ones only when Claude Code reports effort support.
+  const showEffort = !modelInfo || modelInfo.supportsEffort === true;
+  const effortOptions = [
+    { value: "__default", label: "Effort: Standard" },
+    ...effortLevels.map((l) => ({ value: l, label: `Effort: ${EFFORT_LABELS[l]}` })),
+  ];
 
   const placeholder = waiting
     ? "Erst die Freigabeanfrage oben beantworten"
@@ -357,7 +374,7 @@ export function Composer({
             </Button>
           </Tooltip>
           <div className="flex-1" />
-          <span className="hidden text-[11px] text-subtle xl:inline">
+          <span className="hidden whitespace-nowrap text-[11px] text-subtle 2xl:inline">
             {enterToSend ? (
               <>
                 <Kbd>Enter</Kbd> senden · <Kbd>Umschalt+Enter</Kbd> Zeile
@@ -368,6 +385,9 @@ export function Composer({
               </>
             )}
           </span>
+          {showEffort && (
+            <Select size="sm" value={effectiveEffort ?? "__default"} onChange={(v) => void changeEffort(v)} options={effortOptions} className="w-36" aria-label="Effort" disabled={working} />
+          )}
           <Select size="sm" value={effectiveModel ?? "__default"} onChange={(v) => void changeModel(v)} options={modelOptions} className="w-40" aria-label="Modell" disabled={working} />
           {working ? (
             <Button size="icon-sm" variant="danger" onClick={() => void stop()} aria-label="Stoppen (Esc)" title="Stoppen (Esc)" disabled={session?.status === "stopping"}>

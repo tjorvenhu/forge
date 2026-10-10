@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils";
 import { toast } from "@/stores/toast";
 import { Button } from "@/components/ui/button";
 import { CodeEditor } from "@/components/ui/code-editor";
-import { ErrorBanner, Spinner } from "@/components/ui/misc";
+import { ErrorBanner, Loading } from "@/components/ui/misc";
 import { Markdown } from "@/components/workspace/Markdown";
 
 const EMPTY_HINT: Record<MemoryScope, string> = {
@@ -59,7 +59,7 @@ export function MemoryEditor({ projectId, scopes, height = "h-[420px]" }: { proj
     }
   }, [current, draft, doc.data?.mtimeMs, projectId, qc]);
 
-  if (list.isLoading) return <Spinner />;
+  if (list.isLoading) return <Loading />;
   if (list.isError) return <ErrorBanner>{errorMessage(list.error)}</ErrorBanner>;
   if (!current) return null;
 
@@ -98,7 +98,7 @@ export function MemoryEditor({ projectId, scopes, height = "h-[420px]" }: { proj
       </div>
       <div className="truncate font-mono text-[11px] text-subtle" title={current.path}>{current.path}</div>
       {doc.isLoading ? (
-        <Spinner />
+        <Loading />
       ) : !current.exists && draft === null ? (
         <div className={cn("flex flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-border", height)}>
           <p className="text-[13px] text-muted">Diese Datei gibt es noch nicht.</p>

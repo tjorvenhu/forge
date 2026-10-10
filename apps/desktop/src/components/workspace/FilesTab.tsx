@@ -5,7 +5,7 @@ import type { Project } from "@forge/protocol";
 import { call, keys } from "@/lib/queries";
 import { errorMessage } from "@/lib/rpc";
 import { cn } from "@/lib/utils";
-import { EmptyState, ErrorBanner, Spinner } from "@/components/ui/misc";
+import { EmptyState, ErrorBanner, Spinner, Loading } from "@/components/ui/misc";
 
 /** Read-only project browser. Editing happens through Claude or your editor. */
 export function FilesTab({ project }: { project: Project }) {
@@ -69,7 +69,7 @@ function FileViewer({ projectId, path }: { projectId: string; path: string }) {
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex h-8 shrink-0 items-center border-b border-border px-3 font-mono text-xs text-muted">{path}</div>
-      {q.isLoading && <div className="p-4"><Spinner /></div>}
+      {q.isLoading && <Loading />}
       {q.isError && <div className="p-3"><ErrorBanner>{errorMessage(q.error)}</ErrorBanner></div>}
       {q.data?.binary && <div className="p-4 text-xs text-muted">Binärdatei, keine Vorschau.</div>}
       {q.data && !q.data.binary && (

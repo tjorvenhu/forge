@@ -24,7 +24,7 @@ export function Sidebar() {
   const shown = favorites.length ? favorites : list.slice(0, 4);
 
   return (
-    <aside className="flex w-60 shrink-0 flex-col border-r border-border bg-sidebar">
+    <aside className="flex w-60 shrink-0 select-none flex-col border-r border-border bg-sidebar">
       <div className="flex items-center gap-2.5 px-4 pb-4 pt-4">
         <Logo />
         <div className="leading-tight">

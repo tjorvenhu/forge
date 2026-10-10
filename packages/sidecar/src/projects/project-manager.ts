@@ -92,6 +92,7 @@ export class ProjectManager {
       profile: this.defaultProfile() === "autonomous" ? "balanced" : this.defaultProfile(),
       autonomousConfirmed: false,
       defaultModel: null,
+      defaultEffort: null,
       createdAt: new Date().toISOString(),
       lastOpenedAt: new Date().toISOString(),
       testCommand: await detectTestCommand(canonical),
@@ -128,7 +129,7 @@ export class ProjectManager {
     return this.import(target);
   }
 
-  update(id: string, patch: Partial<Pick<ProjectRecord, "name" | "favorite" | "tags" | "profile" | "defaultModel" | "testCommand">>): Project {
+  update(id: string, patch: Partial<Pick<ProjectRecord, "name" | "favorite" | "tags" | "profile" | "defaultModel" | "defaultEffort" | "testCommand">>): Project {
     const cur = this.get(id);
     // Switching to autonomous needs the separate confirmation flow.
     if (patch.profile === "autonomous" && (cur.tags.includes("sandbox-only") || patch.tags?.includes("sandbox-only"))) {

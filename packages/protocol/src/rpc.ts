@@ -26,6 +26,7 @@ import {
   ProjectWithStatus,
   PullRequest,
   RemoteState,
+  EffortLevel,
   ProjectRemovalInfo,
   RewindResult,
   RuntimeInfo,
@@ -162,6 +163,7 @@ export const methods = {
       tags: z.array(ProjectTag).max(30).optional(),
       profile: ProfileId.optional(),
       defaultModel: z.string().max(100).nullable().optional(),
+      defaultEffort: EffortLevel.nullable().optional(),
       testCommand: z.string().max(500).nullable().optional(),
     }),
     result: Project,
@@ -206,6 +208,7 @@ export const methods = {
     params: projectRef.extend({
       prompt: z.string().min(1).max(200_000),
       model: z.string().max(100).nullable().optional(),
+      effort: EffortLevel.nullable().optional(),
       planOnly: z.boolean().optional(),
       resumeClaudeSessionId: z.string().max(100).optional(),
       attachments: z.array(Attachment).max(10).default([]),
@@ -222,6 +225,7 @@ export const methods = {
   "sessions.stop": { params: sessionRef, result: Session },
   "sessions.close": { params: sessionRef, result: Session },
   "sessions.setModel": { params: sessionRef.extend({ model: z.string().max(100) }), result: Session },
+  "sessions.setEffort": { params: sessionRef.extend({ effort: EffortLevel.nullable() }), result: Session },
   "sessions.setPermissionMode": { params: sessionRef.extend({ mode: PermissionMode }), result: Session },
   "sessions.respondApproval": {
     params: sessionRef.extend({

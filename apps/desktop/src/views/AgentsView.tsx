@@ -12,7 +12,7 @@ import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Dialog } from "@/components/ui/dialog";
 import { Field, Input, Textarea } from "@/components/ui/input";
-import { Badge, EmptyState, SectionTitle, Spinner } from "@/components/ui/misc";
+import { Badge, EmptyState, SectionTitle, Loading } from "@/components/ui/misc";
 import { Select } from "@/components/ui/select";
 import { SessionStatusBadge } from "@/components/workspace/SessionStatusBadge";
 
@@ -46,7 +46,7 @@ export function AgentsView() {
       <div className="flex max-w-5xl flex-col gap-6">
         <section>
           <SectionTitle>Laufende Worktrees</SectionTitle>
-          {projects.isLoading && <Spinner />}
+          {projects.isLoading && <Loading />}
           {projects.isSuccess && worktrees.length === 0 && (
             <EmptyState icon={<Users className="h-9 w-9" />} title="Noch keine parallelen Agenten">
               Ein paralleler Agent bekommt einen eigenen Ordner mit eigenem Branch. Du kannst mehrere gleichzeitig arbeiten lassen und am Ende per Pull Request zusammenführen.

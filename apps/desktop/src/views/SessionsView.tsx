@@ -6,7 +6,7 @@ import { relativeTime } from "@/lib/utils";
 import { useUi } from "@/stores/ui";
 import { Page } from "@/components/layout/Page";
 import { Input } from "@/components/ui/input";
-import { EmptyState, ErrorBanner, Spinner } from "@/components/ui/misc";
+import { EmptyState, ErrorBanner, Loading } from "@/components/ui/misc";
 import { Select } from "@/components/ui/select";
 import { SessionStatusBadge } from "@/components/workspace/SessionStatusBadge";
 import { ProfileBadge } from "@/components/projects/ProfileBadge";
@@ -40,7 +40,7 @@ export function SessionsView() {
         </div>
         <Select value={status} onChange={setStatus} options={STATUS} className="w-52" aria-label="Status-Filter" />
       </div>
-      {sessions.isLoading && <Spinner />}
+      {sessions.isLoading && <Loading />}
       {sessions.isError && <ErrorBanner>Sessions konnten nicht geladen werden.</ErrorBanner>}
       {sessions.isSuccess && sessions.data.length === 0 && (
         <EmptyState icon={<History className="h-10 w-10" />} title="Keine Sessions">

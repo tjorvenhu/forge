@@ -9,7 +9,7 @@ import { useUi, type WorkspaceTab } from "@/stores/ui";
 import { toast } from "@/stores/toast";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu } from "@/components/ui/dropdown";
-import { Badge, EmptyState, ErrorBanner, Spinner } from "@/components/ui/misc";
+import { Badge, EmptyState, ErrorBanner, Loading } from "@/components/ui/misc";
 import { TabBar } from "@/components/ui/tabs";
 import { ProjectIcon } from "@/components/projects/ProjectIcon";
 import { PROFILE_INFO, ProfileBadge } from "@/components/projects/ProfileBadge";
@@ -42,7 +42,7 @@ export function WorkspaceView() {
   }, [projectId, qc]);
 
   if (!projectId) return <EmptyState title="Kein Projekt geöffnet">Wähle links ein Projekt oder füge eines hinzu.</EmptyState>;
-  if (project.isLoading) return <div className="p-6"><Spinner /></div>;
+  if (project.isLoading) return <Loading className="py-12" />;
   if (project.isError || !project.data)
     return (
       <div className="p-6">

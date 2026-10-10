@@ -9,7 +9,7 @@ import { useUi } from "@/stores/ui";
 import { toast } from "@/stores/toast";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import { Checkbox, ErrorBanner, Spinner } from "@/components/ui/misc";
+import { Checkbox, ErrorBanner, Spinner, Loading } from "@/components/ui/misc";
 import { useAutoOpenGitHub } from "@/components/github/GitHubPanel";
 
 export function RemoveProjectDialog({ project, onClose }: { project: Pick<Project, "id" | "name" | "path"> | null; onClose: () => void }) {
@@ -65,7 +65,7 @@ export function RemoveProjectDialog({ project, onClose }: { project: Pick<Projec
     >
       {project && (
         <div className="flex flex-col gap-3">
-          {info.isLoading && <Spinner />}
+          {info.isLoading && <Loading />}
           {info.isError && <ErrorBanner>{errorMessage(info.error)}</ErrorBanner>}
           {i && (
             <>

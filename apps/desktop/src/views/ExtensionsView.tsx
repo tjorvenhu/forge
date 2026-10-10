@@ -13,7 +13,7 @@ import { CodeEditor } from "@/components/ui/code-editor";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Dialog } from "@/components/ui/dialog";
 import { Field, Input } from "@/components/ui/input";
-import { Badge, EmptyState, ErrorBanner, SectionTitle, Spinner } from "@/components/ui/misc";
+import { Badge, EmptyState, ErrorBanner, SectionTitle, Loading } from "@/components/ui/misc";
 import { Select } from "@/components/ui/select";
 import { TabBar } from "@/components/ui/tabs";
 
@@ -76,14 +76,10 @@ function McpTab({ projectId }: { projectId?: string }) {
         MCP Server
       </SectionTitle>
       <p className="mb-3 text-xs text-muted">Verwaltet über die offiziellen Befehle von Claude Code. Der Status wird beim Prüfen live abgefragt.</p>
-      {list.isLoading && (
-        <div className="flex items-center gap-2 text-xs text-muted">
-          <Spinner className="h-3.5 w-3.5" /> Server werden geprüft …
-        </div>
-      )}
+      {list.isLoading && <Loading label="Server werden geprüft …" />}
       {list.isError && <ErrorBanner>{errorMessage(list.error)}</ErrorBanner>}
       {list.data?.length === 0 && <EmptyState icon={<Server className="h-8 w-8" />} title="Keine MCP Server konfiguriert" />}
-      <div className="divide-y divide-border rounded-lg border border-border">
+      <div className={cn("divide-y divide-border rounded-lg border border-border", !list.data?.length && "hidden")}>
         {list.data?.map((s) => (
           <div key={s.name} className="flex items-center gap-3 px-3 py-2 text-[13px]">
             <Server className="h-4 w-4 shrink-0 text-muted" />
@@ -244,7 +240,7 @@ function DocsTab({ kind, projectId }: { kind: ConfigDocKind; projectId?: string 
         >
           {kind === "skill" ? "Skills" : "Subagenten"}
         </SectionTitle>
-        {docs.isLoading && <Spinner />}
+        {docs.isLoading && <Loading />}
         {docs.data?.length === 0 && <p className="px-1 text-xs text-muted">Noch keine eigenen {kind === "skill" ? "Skills" : "Subagenten"}.</p>}
         <ul className="flex flex-col gap-0.5">
           {docs.data?.map((d) => (
@@ -331,7 +327,7 @@ function DocEditor({ doc, projectId, onDelete }: { doc: ConfigDoc; projectId?: s
       setSaving(false);
     }
   }, [draft, doc, projectId, q]);
-  if (q.isLoading) return <Spinner />;
+  if (q.isLoading) return <Loading />;
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-center gap-2">
@@ -476,7 +472,7 @@ function HooksTab({ projectId }: { projectId?: string }) {
       </div>
       {q.isError && <ErrorBanner>{errorMessage(q.error)}</ErrorBanner>}
       {q.isLoading ? (
-        <Spinner />
+        <Loading />
       ) : (
         <div className="h-[420px]">
           <CodeEditor value={draft ?? q.data?.hooks ?? "{}"} onChange={setDraft} language="json" onSave={() => void save()} ariaLabel="Hooks (JSON)" />

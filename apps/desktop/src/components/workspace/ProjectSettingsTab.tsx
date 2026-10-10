@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, ShieldAlert, Trash2, X } from "lucide-react";
-import type { ProfileId, Project } from "@forge/protocol";
+import type { ProfileId, Project, EffortLevel } from "@forge/protocol";
 import { call, keys, useRuntimeInfo, useSettings } from "@/lib/queries";
+import { EFFORT_LABELS, EFFORT_LEVELS, modelLabel } from "@/lib/models";
 import { errorMessage } from "@/lib/rpc";
 import { cn } from "@/lib/utils";
 import { toast } from "@/stores/toast";
@@ -34,7 +35,7 @@ export function ProjectSettingsTab({ project }: { project: Project }) {
   const [removing, setRemoving] = useState(false);
   const [tagDraft, setTagDraft] = useState("");
 
-  const update = async (patch: { profile?: ProfileId; tags?: string[]; defaultModel?: string | null; name?: string; testCommand?: string | null }) => {
+  const update = async (patch: { profile?: ProfileId; tags?: string[]; defaultModel?: string | null; defaultEffort?: EffortLevel | null; name?: string; testCommand?: string | null }) => {
     try {
       await call("projects.update", { projectId: project.id, ...patch });
       await qc.invalidateQueries({ queryKey: keys.project(project.id) });
@@ -104,8 +105,19 @@ export function ProjectSettingsTab({ project }: { project: Project }) {
                 onChange={(v) => void update({ defaultModel: v === "__inherit" ? null : v })}
                 className="w-full"
                 options={[
-                  { value: "__inherit", label: `Globale Einstellung${settings.data?.defaultModel ? ` (${settings.data.defaultModel})` : ""}` },
+                  { value: "__inherit", label: `Globale Einstellung (${settings.data?.defaultModel ? modelLabel(settings.data.defaultModel, runtime.data?.models) : "Claude-Code-Standard"})` },
                   ...(runtime.data?.models ?? []).filter((m) => m.value !== "default").map((m) => ({ value: m.value, label: m.displayName || m.value })),
+                ]}
+              />
+            </Field>
+            <Field label="Effort für dieses Projekt" hint="Wie gründlich Claude nachdenkt. Höher ist genauer, aber langsamer und verbraucht mehr vom Abo.">
+              <Select
+                value={project.defaultEffort ?? "__inherit"}
+                onChange={(v) => void update({ defaultEffort: v === "__inherit" ? null : (v as EffortLevel) })}
+                className="w-full"
+                options={[
+                  { value: "__inherit", label: `Globale Einstellung (${settings.data?.defaultEffort ? EFFORT_LABELS[settings.data.defaultEffort] : "Claude-Code-Standard"})` },
+                  ...EFFORT_LEVELS.map((l) => ({ value: l, label: EFFORT_LABELS[l] })),
                 ]}
               />
             </Field>

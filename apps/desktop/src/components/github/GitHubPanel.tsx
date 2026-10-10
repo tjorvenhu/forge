@@ -4,13 +4,13 @@ import { Copy, Download, ExternalLink, Lock, LogOut, Search } from "lucide-react
 import { call, keys, useGitHubAccount, useGitHubLogin } from "@/lib/queries";
 import { errorMessage } from "@/lib/rpc";
 import { openExternal } from "@/lib/native";
-import { relativeTime } from "@/lib/utils";
+import { cn, relativeTime } from "@/lib/utils";
 import { useUi } from "@/stores/ui";
 import { toast } from "@/stores/toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import { Badge, ErrorBanner, SectionTitle, Spinner } from "@/components/ui/misc";
+import { Badge, ErrorBanner, SectionTitle, Spinner, Loading } from "@/components/ui/misc";
 
 /** Sign in with GitHub inside FORGE (device flow via the shipped GitHub CLI) and list repositories. */
 export function GitHubAccountCard() {
@@ -30,7 +30,7 @@ export function GitHubAccountCard() {
     }
   };
 
-  if (account.isLoading) return <Spinner />;
+  if (account.isLoading) return <Loading />;
 
   if (account.data) {
     const a = account.data;
@@ -150,9 +150,9 @@ export function GitHubRepoList() {
         <Search className="pointer-events-none absolute left-2.5 top-2 h-4 w-4 text-subtle" />
         <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Repository suchen" className="pl-8" aria-label="Repositories durchsuchen" />
       </div>
-      {repos.isLoading && <Spinner />}
+      {repos.isLoading && <Loading label="Repositories werden geladen …" />}
       {repos.isError && <ErrorBanner>{errorMessage(repos.error)}</ErrorBanner>}
-      <div className="max-h-[50vh] divide-y divide-border overflow-y-auto rounded-lg border border-border">
+      <div className={cn("max-h-[50vh] divide-y divide-border overflow-y-auto rounded-lg border border-border", !repos.isSuccess && "hidden")}>
         {filtered.map((r) => (
           <div key={r.fullName} className="flex items-center gap-3 px-3 py-2">
             <div className="min-w-0 flex-1">

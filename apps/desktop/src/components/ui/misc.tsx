@@ -26,6 +26,15 @@ export function Spinner({ className }: { className?: string }) {
   return <Loader2 className={cn("h-4 w-4 animate-spin text-muted", className)} aria-label="Lädt" />;
 }
 
+/** Loading placeholder for a section: centred spinner with a short text and room around it. */
+export function Loading({ label = "Lädt …", className }: { label?: string; className?: string }) {
+  return (
+    <div className={cn("flex items-center justify-center gap-2 py-6 text-xs text-muted", className)} role="status">
+      <Spinner className="h-3.5 w-3.5" /> {label}
+    </div>
+  );
+}
+
 export function Checkbox({ checked, onChange, label, disabled }: { checked: boolean; onChange: (v: boolean) => void; label?: string; disabled?: boolean }) {
   return (
     <C.Root

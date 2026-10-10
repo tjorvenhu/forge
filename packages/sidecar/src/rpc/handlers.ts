@@ -156,6 +156,7 @@ export function createHandlers(s: Services): Handlers {
     "sessions.stop": ({ sessionId }) => s.sessions.stop(sessionId),
     "sessions.close": ({ sessionId }) => s.sessions.close(sessionId),
     "sessions.setModel": ({ sessionId, model }) => s.sessions.setModel(sessionId, model),
+    "sessions.setEffort": ({ sessionId, effort }) => s.sessions.setEffort(sessionId, effort),
     "sessions.setPermissionMode": ({ sessionId, mode }) => s.sessions.setPermissionMode(sessionId, mode),
     "sessions.respondApproval": ({ sessionId, requestId, decision, scope, message }) =>
       s.sessions.respondApproval(sessionId, requestId, decision, scope, message),

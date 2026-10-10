@@ -5,7 +5,7 @@ import { X } from "lucide-react";
 import { call, keys } from "@/lib/queries";
 import { errorMessage } from "@/lib/rpc";
 import { cn } from "@/lib/utils";
-import { ErrorBanner, Spinner } from "@/components/ui/misc";
+import { ErrorBanner, Loading } from "@/components/ui/misc";
 
 export function DiffView({ projectId, path, staged, onClose }: { projectId: string; path: string; staged: boolean; onClose?: () => void }) {
   const diff = useQuery({ queryKey: keys.diff(projectId, path, staged), queryFn: () => call("git.diff", { projectId, path, staged }) });
@@ -30,11 +30,7 @@ export function DiffView({ projectId, path, staged, onClose }: { projectId: stri
           </button>
         )}
       </div>
-      {diff.isLoading && (
-        <div className="p-4">
-          <Spinner />
-        </div>
-      )}
+      {diff.isLoading && <Loading />}
       {diff.isError && (
         <div className="p-3">
           <ErrorBanner>{errorMessage(diff.error)}</ErrorBanner>

@@ -1,5 +1,5 @@
 import { DatabaseSync } from "node:sqlite";
-import type { PermissionMode, ProfileId, Project, Session, SessionEvent, SessionEventBody, SessionStatus, Settings } from "@forge/protocol";
+import type { EffortLevel, PermissionMode, ProfileId, Project, Session, SessionEvent, SessionEventBody, SessionStatus, Settings } from "@forge/protocol";
 
 const MIGRATIONS: string[] = [
   `
@@ -98,11 +98,16 @@ const MIGRATIONS: string[] = [
   DROP TABLE IF EXISTS workflows;
   DROP TABLE IF EXISTS schedules;
   `,
+  `
+  ALTER TABLE projects ADD COLUMN default_effort TEXT;
+  ALTER TABLE sessions ADD COLUMN effort TEXT;
+  `,
 ];
 
 export const DEFAULT_SETTINGS: Settings = {
   claudePath: null,
   defaultModel: null,
+  defaultEffort: null,
   defaultProfile: "balanced",
   autonomousUnlocked: false,
   stripApiKey: true,
@@ -123,6 +128,7 @@ interface ProjectRow {
   profile: string;
   autonomous_confirmed: number;
   default_model: string | null;
+  default_effort: string | null;
   created_at: string;
   last_opened_at: string | null;
   test_command: string | null;
@@ -136,6 +142,7 @@ interface SessionRow {
   cwd: string;
   title: string | null;
   model: string | null;
+  effort: string | null;
   profile: string;
   permission_mode: string;
   status: string;
@@ -161,6 +168,7 @@ function toProject(r: ProjectRow): ProjectRecord {
     profile: r.profile as ProfileId,
     autonomousConfirmed: !!r.autonomous_confirmed,
     defaultModel: r.default_model,
+    defaultEffort: (r.default_effort as EffortLevel | null) ?? null,
     createdAt: r.created_at,
     lastOpenedAt: r.last_opened_at,
     testCommand: r.test_command,
@@ -176,6 +184,7 @@ function toSession(r: SessionRow): SessionRecord {
     cwd: r.cwd,
     title: r.title,
     model: r.model,
+    effort: (r.effort as EffortLevel | null) ?? null,
     profile: r.profile as ProfileId,
     permissionMode: r.permission_mode as PermissionMode,
     status: r.status as SessionStatus,
@@ -257,8 +266,8 @@ export class Db {
   insertProject(p: ProjectRecord, pathKey: string) {
     this.sql
       .prepare(
-        `INSERT INTO projects(id, name, path, path_key, favorite, tags, technologies, profile, autonomous_confirmed, default_model, created_at, last_opened_at, test_command, parent_id)
-         VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO projects(id, name, path, path_key, favorite, tags, technologies, profile, autonomous_confirmed, default_model, default_effort, created_at, last_opened_at, test_command, parent_id)
+         VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         p.id,
@@ -271,6 +280,7 @@ export class Db {
         p.profile,
         p.autonomousConfirmed ? 1 : 0,
         p.defaultModel,
+        p.defaultEffort,
         p.createdAt,
         p.lastOpenedAt,
         p.testCommand,
@@ -287,6 +297,7 @@ export class Db {
     if (patch.profile !== undefined) cols.profile = patch.profile;
     if (patch.autonomousConfirmed !== undefined) cols.autonomous_confirmed = patch.autonomousConfirmed ? 1 : 0;
     if (patch.defaultModel !== undefined) cols.default_model = patch.defaultModel;
+    if (patch.defaultEffort !== undefined) cols.default_effort = patch.defaultEffort;
     if (patch.lastOpenedAt !== undefined) cols.last_opened_at = patch.lastOpenedAt;
     if (patch.testCommand !== undefined) cols.test_command = patch.testCommand;
     const keys = Object.keys(cols);
@@ -305,8 +316,8 @@ export class Db {
   insertSession(s: SessionRecord) {
     this.sql
       .prepare(
-        `INSERT INTO sessions(id, project_id, claude_session_id, cwd, title, model, profile, permission_mode, status, api_key_source, created_at, updated_at, last_error)
-         VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO sessions(id, project_id, claude_session_id, cwd, title, model, effort, profile, permission_mode, status, api_key_source, created_at, updated_at, last_error)
+         VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         s.id,
@@ -315,6 +326,7 @@ export class Db {
         s.cwd,
         s.title,
         s.model,
+        s.effort,
         s.profile,
         s.permissionMode,
         s.status,
@@ -330,6 +342,7 @@ export class Db {
       claudeSessionId: "claude_session_id",
       title: "title",
       model: "model",
+      effort: "effort",
       permissionMode: "permission_mode",
       status: "status",
       apiKeySource: "api_key_source",

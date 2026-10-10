@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { CheckCircle2, CircleDashed, CircleSlash, FolderOpen, Lock, RefreshCw, Unlock, Volume2, XCircle } from "lucide-react";
-import type { Diagnostics, ProfileId, Settings, ToolCheck } from "@forge/protocol";
+import type { Diagnostics, ProfileId, Settings, ToolCheck, EffortLevel } from "@forge/protocol";
 import { call, keys, useDiagnostics, useRuntimeInfo, useSettings } from "@/lib/queries";
 import { errorMessage } from "@/lib/rpc";
 import { pickFolder } from "@/lib/native";
@@ -10,13 +10,14 @@ import { toast } from "@/stores/toast";
 import { Page } from "@/components/layout/Page";
 import { Button } from "@/components/ui/button";
 import { Field, Input } from "@/components/ui/input";
-import { Badge, Checkbox, ErrorBanner, SectionTitle, Spinner } from "@/components/ui/misc";
+import { Badge, Checkbox, ErrorBanner, SectionTitle, Loading } from "@/components/ui/misc";
 import { Select } from "@/components/ui/select";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { PROFILE_INFO } from "@/components/projects/ProfileBadge";
 import { ClaudeSetupCard } from "@/components/settings/ClaudeSetupCard";
 import { MemoryEditor } from "@/components/settings/MemoryEditor";
 import { capitalize, cn } from "@/lib/utils";
+import { EFFORT_LABELS, EFFORT_LEVELS } from "@/lib/models";
 
 export function SettingsView() {
   const settings = useSettings();
@@ -37,12 +38,20 @@ export function SettingsView() {
   return (
     <Page title="Einstellungen" subtitle="FORGE-eigene Einstellungen. Claude-Code-Konfiguration (~/.claude) bleibt unverändert.">
       {!s ? (
-        <Spinner />
+        <Loading />
       ) : (
         <div className="grid max-w-5xl gap-6 xl:grid-cols-2">
           <Card title="Allgemein">
             <div className="flex flex-col gap-4">
               <ModelSetting value={s.defaultModel} onChange={(v) => void save({ defaultModel: v })} />
+              <Field label="Standard-Effort" hint="Wie gründlich Claude nachdenkt. Höher ist genauer, aber langsamer und verbraucht mehr vom Abo.">
+                <Select
+                  value={s.defaultEffort ?? "__default"}
+                  onChange={(v) => void save({ defaultEffort: v === "__default" ? null : (v as EffortLevel) })}
+                  className="w-full"
+                  options={[{ value: "__default", label: "Claude-Code-Standard" }, ...EFFORT_LEVELS.map((l) => ({ value: l, label: EFFORT_LABELS[l] }))]}
+                />
+              </Field>
               <Field label="Standardprofil für neue Projekte">
                 <Select<ProfileId>
                   value={s.defaultProfile}
@@ -234,7 +243,7 @@ function DiagnosticsPanel() {
       >
         Diagnose
       </SectionTitle>
-      {diag.isLoading && <Spinner />}
+      {diag.isLoading && <Loading label="Diagnose läuft …" />}
       {diag.isError && <ErrorBanner>{errorMessage(diag.error)}</ErrorBanner>}
       {d && (
         <div className="grid gap-6 lg:grid-cols-2">

@@ -51,6 +51,7 @@ Status: `[x]` erledigt und verifiziert · `[~]` teilweise · `[ ]` offen · `[-]
 - [x] Remote Control für die Claude-App (FORGE-Sessions selbst, Nachrichten in beide Richtungen, ADR 0008)
 - [x] Projekt löschen mit Ordner und GitHub-Repository
 - [x] Eigene Tooltips statt der nativen
+- [x] Effort global, pro Projekt und pro Session
 
 ## Phase 3 – Pro
 

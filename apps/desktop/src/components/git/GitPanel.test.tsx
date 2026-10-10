@@ -30,6 +30,7 @@ const project: Project = {
   profile: "balanced",
   autonomousConfirmed: false,
   defaultModel: null,
+  defaultEffort: null,
   createdAt: "2026-10-10T00:00:00Z",
   lastOpenedAt: null,
   testCommand: null,
