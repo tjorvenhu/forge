@@ -1,15 +1,16 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { open } from "@tauri-apps/plugin-dialog";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { ArrowUp, FileText, ImageIcon, ListTodo, Paperclip, Square, X } from "lucide-react";
-import type { Attachment, PermissionMode, Project, Session, EffortLevel } from "@forge/protocol";
+import type { PermissionMode, Project, Session, EffortLevel } from "@forge/protocol";
 import { call, keys, useRuntimeInfo, useSettings } from "@/lib/queries";
 import { errorMessage } from "@/lib/rpc";
 import { EFFORT_LEVELS, findModel, modelLabel } from "@/lib/models";
 import { cn } from "@/lib/utils";
 import { useUi } from "@/stores/ui";
 import { toast } from "@/stores/toast";
+import { NO_FILES, useDrafts, type PendingFile } from "@/stores/drafts";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
 import { Kbd, Tooltip } from "@/components/ui/misc";
@@ -17,15 +18,6 @@ import { Kbd, Tooltip } from "@/components/ui/misc";
 const PROFILE_MODE: Record<Project["profile"], PermissionMode> = { safe: "default", balanced: "acceptEdits", autonomous: "bypassPermissions" };
 const MAX_ATTACHMENTS = 10;
 const IMAGE_EXT = /\.(png|jpe?g|gif|webp)$/i;
-
-interface Pending {
-  id: string;
-  name: string;
-  attachment: Attachment;
-  /** object URL for pasted images */
-  preview: string | null;
-  isImage: boolean;
-}
 
 /** "claude-opus-5-5" -> "Opus 5.5" for models the picker does not list by alias. */
 function readAsBase64(file: File): Promise<string> {
@@ -50,12 +42,15 @@ export function Composer({
   prefill?: string | null;
   onPrefillConsumed?: () => void;
 }) {
-  const [text, setText] = useState("");
+  const draftKey = session?.id ?? `new:${project.id}:${resumeClaudeSessionId ?? ""}`;
+  const text = useDrafts((s) => s.drafts[draftKey]?.text ?? "");
+  const files = useDrafts((s) => s.drafts[draftKey]?.files ?? NO_FILES);
+  const setText = useCallback((t: string) => useDrafts.getState().setText(draftKey, t), [draftKey]);
+  const setFiles = useCallback((fn: (cur: PendingFile[]) => PendingFile[]) => useDrafts.getState().updateFiles(draftKey, fn), [draftKey]);
   const [sending, setSending] = useState(false);
   const [planOnly, setPlanOnly] = useState(project.tags.includes("plan-first"));
   const [model, setModel] = useState<string | null>(null);
   const [effort, setEffort] = useState<EffortLevel | null>(null);
-  const [files, setFiles] = useState<Pending[]>([]);
   const [dragging, setDragging] = useState(false);
   const [cmdIndex, setCmdIndex] = useState(0);
   const ref = useRef<HTMLTextAreaElement>(null);
@@ -91,7 +86,7 @@ export function Composer({
   };
 
   // ---------- attachments
-  const addPaths = (paths: string[]) => {
+  const addPaths = useCallback((paths: string[]) => {
     setFiles((cur) => {
       const room = MAX_ATTACHMENTS - cur.length;
       if (paths.length > room) toast.info(`Höchstens ${MAX_ATTACHMENTS} Anhänge`);
@@ -104,7 +99,7 @@ export function Composer({
       }));
       return [...cur, ...add];
     });
-  };
+  }, [setFiles]);
 
   const addBlobs = async (list: File[]) => {
     for (const f of list.slice(0, MAX_ATTACHMENTS - files.length)) {
@@ -141,7 +136,7 @@ export function Composer({
       })
       .then((u) => (unlisten = u));
     return () => unlisten?.();
-  }, []);
+  }, [addPaths]);
 
   const pickFiles = async () => {
     const r = await open({
@@ -162,7 +157,7 @@ export function Composer({
       onPrefillConsumed?.();
       ref.current?.focus();
     }
-  }, [prefill, onPrefillConsumed]);
+  }, [prefill, onPrefillConsumed, setText]);
 
   useEffect(() => {
     const el = ref.current;
@@ -173,8 +168,9 @@ export function Composer({
 
   const send = async () => {
     const prompt = text.trim() || (files.length ? "Siehe Anhang." : "");
-    if (!prompt || sending || working || waiting) return;
+    if (!prompt || sending || waiting) return;
     setSending(true);
+    const key = draftKey;
     const attachments = files.map((f) => f.attachment);
     try {
       if (!session) {
@@ -186,9 +182,12 @@ export function Composer({
         const s = await call("sessions.send", { sessionId: session.id, text: prompt, attachments });
         qc.setQueryData(keys.session(s.id), s);
       }
-      setText("");
+      // Only drop what was sent: with sending allowed mid-turn the user may already be typing the next message.
+      const sentIds = new Set(files.map((f) => f.id));
       files.forEach((f) => f.preview && URL.revokeObjectURL(f.preview));
-      setFiles([]);
+      const drafts = useDrafts.getState();
+      drafts.updateFiles(key, (cur) => cur.filter((f) => !sentIds.has(f.id)));
+      if ((drafts.drafts[key]?.text ?? "") === text) drafts.setText(key, "");
     } catch (e) {
       toast.error("Nachricht nicht gesendet", errorMessage(e));
     } finally {
@@ -250,7 +249,7 @@ export function Composer({
   const placeholder = waiting
     ? "Erst die Freigabeanfrage oben beantworten"
     : working
-      ? "Claude arbeitet. Esc stoppt."
+      ? "Claude arbeitet. Weitere Anweisung schreiben, sie wird beim nächsten Schritt übernommen. Esc stoppt."
       : session && !session.live
         ? "Nachricht schreiben, um die Session fortzusetzen"
         : "Nachricht an Claude, / für Befehle, Dateien hineinziehen oder einfügen";
@@ -392,12 +391,21 @@ export function Composer({
             />
           )}
           <Select size="sm" value={effectiveModel ?? "__default"} onChange={(v) => void changeModel(v)} options={modelOptions} className="w-40" aria-label="Modell" disabled={working} />
-          {working ? (
+          {working && (
             <Button size="icon-sm" variant="danger" onClick={() => void stop()} aria-label="Stoppen (Esc)" title="Stoppen (Esc)" disabled={session?.status === "stopping"}>
               <Square className="h-3.5 w-3.5 fill-current" />
             </Button>
-          ) : (
-            <Button size="icon-sm" variant="primary" onClick={() => void send()} disabled={(!text.trim() && !files.length) || waiting} loading={sending} aria-label="Senden">
+          )}
+          {(!working || text.trim() || files.length > 0) && (
+            <Button
+              size="icon-sm"
+              variant="primary"
+              onClick={() => void send()}
+              disabled={(!text.trim() && !files.length) || waiting}
+              loading={sending}
+              aria-label={working ? "Dazwischen senden" : "Senden"}
+              title={working ? "Dazwischen senden: Claude übernimmt die Nachricht beim nächsten Schritt" : undefined}
+            >
               {!sending && <ArrowUp className="h-4 w-4" />}
             </Button>
           )}

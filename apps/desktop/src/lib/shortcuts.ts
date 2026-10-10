@@ -1,11 +1,15 @@
 import { useEffect } from "react";
+import type { ResultOf } from "@forge/protocol";
 import { useUi, type WorkspaceTab } from "@/stores/ui";
+import { keys, queryClient } from "@/lib/queries";
+import { sortTabs } from "@/components/workspace/SessionTabs";
 
 const TABS: WorkspaceTab[] = ["chat", "git", "files", "settings"];
 
 /**
  * App-wide shortcuts. Ctrl+1..4 workspace tabs, Ctrl+J bottom panel,
- * Ctrl+Shift+E right panel, Ctrl+N new session, Ctrl+O add project.
+ * Ctrl+Shift+E right panel, Ctrl+N new session, Ctrl+O add project,
+ * Ctrl+Tab / Ctrl+Shift+Tab next / previous active session.
  */
 export function useGlobalShortcuts() {
   useEffect(() => {
@@ -13,7 +17,15 @@ export function useGlobalShortcuts() {
       if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
       const ui = useUi.getState();
       const k = e.key.toLowerCase();
-      if (!e.shiftKey && k >= "1" && k <= "4" && ui.view === "workspace") {
+      if (k === "tab") {
+        const tabs = sortTabs(queryClient.getQueryData<ResultOf<"sessions.listLive">>(keys.liveSessions) ?? []);
+        if (tabs.length < 2) return;
+        e.preventDefault();
+        const current = tabs.findIndex((s) => s.projectId === ui.activeProjectId && s.id === ui.activeSession[s.projectId]);
+        const from = current < 0 ? (e.shiftKey ? 0 : -1) : current;
+        const next = tabs[(from + (e.shiftKey ? -1 : 1) + tabs.length) % tabs.length]!;
+        ui.openProject(next.projectId, next.id);
+      } else if (!e.shiftKey && k >= "1" && k <= "4" && ui.view === "workspace") {
         ui.setWorkspaceTab(TABS[Number(k) - 1]!);
         e.preventDefault();
       } else if (!e.shiftKey && k === "j") {

@@ -18,6 +18,7 @@ import { ApprovalBlock, ToolCard } from "./ToolCard";
 import { SessionStatusBadge } from "./SessionStatusBadge";
 import { ClaudeMark } from "./ClaudeMark";
 import { SummaryButton } from "./SummaryButton";
+import { SessionTabs } from "./SessionTabs";
 
 /** activeSession values starting with this prefix point at a terminal session not yet adopted by FORGE */
 export const EXTERNAL_PREFIX = "ext:";
@@ -41,6 +42,7 @@ export function ChatPanel({ project }: { project: Project }) {
 
   return (
     <div className="flex h-full min-h-0 flex-col">
+      <SessionTabs projectId={project.id} />
       <SessionBar
         project={project}
         session={session.data ?? null}
@@ -154,7 +156,7 @@ function NewSessionPane({ project, external }: { project: Project; external: Ext
           </EmptyState>
         )}
       </div>
-      <Composer project={project} session={null} resumeClaudeSessionId={external?.claudeSessionId} />
+      <Composer key={external?.claudeSessionId ?? "new"} project={project} session={null} resumeClaudeSessionId={external?.claudeSessionId} />
     </>
   );
 }

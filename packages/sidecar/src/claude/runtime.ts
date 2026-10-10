@@ -190,7 +190,9 @@ export class AgentSdkRuntime implements ClaudeRuntime {
         model: opts.model ?? undefined,
         ...(opts.effort ? { effort: opts.effort } : {}),
         permissionMode: opts.permissionMode,
-        allowDangerouslySkipPermissions: opts.permissionMode === "bypassPermissions",
+        // Always allowed so a profile switch can move a running session to bypass; without the flag the
+        // CLI refuses setPermissionMode("bypassPermissions"). The active mode is still set explicitly.
+        allowDangerouslySkipPermissions: true,
         resume: opts.resume ?? undefined,
         disallowedTools: opts.disallowedTools,
         includePartialMessages: true,
