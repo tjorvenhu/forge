@@ -62,7 +62,6 @@ export class SessionService {
       emit,
       turnStarted: (id, live, fromRemote) => this.turns.cliTurnStarted(id, live, fromRemote),
       titleFromFirstMessage: (id, text) => this.turns.titleFromFirstMessage(id, text),
-      startEmpty: (projectId) => this.start({ projectId, prompt: "" }),
     });
     this.turns = new TurnDispatch(core, this.automation, this.remote, {
       resume: (id, text, attachments) => this.lifecycle.resume(id, text, attachments),
@@ -250,17 +249,17 @@ export class SessionService {
     return this.approvals.respond(sessionId, requestId, decision, scope, message, answers);
   }
 
-  // ---------- Remote Control (Claude app / claude.ai)
+  // ---------- Remote Control (Claude app / claude.ai), global for all running sessions
 
-  remoteState(projectId: string): RemoteState {
-    return this.remote.state(projectId);
+  remoteState(): RemoteState {
+    return this.remote.state();
   }
 
-  remoteStart(projectId: string): Promise<RemoteState> {
-    return this.remote.start(projectId);
+  remoteStart(): Promise<RemoteState> {
+    return this.remote.start();
   }
 
-  remoteStop(projectId: string): Promise<RemoteState> {
-    return this.remote.stop(projectId);
+  remoteStop(): Promise<RemoteState> {
+    return this.remote.stop();
   }
 }

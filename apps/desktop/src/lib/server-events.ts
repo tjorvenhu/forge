@@ -92,7 +92,7 @@ export function routeServerEvent(qc: QueryClient, git: GitRefresher, e: ServerEv
       }
       break;
     case "remote.updated":
-      qc.setQueryData(["remote", e.payload.projectId], e.payload.state);
+      qc.setQueryData(keys.remote, e.payload);
       break;
     case "devserver.updated":
       qc.setQueryData(keys.devServer(e.payload.projectId), e.payload);

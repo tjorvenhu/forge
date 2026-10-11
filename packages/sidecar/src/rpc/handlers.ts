@@ -11,7 +11,7 @@ import type { WorktreeService } from "../automation/worktrees.js";
 import type { DevServerService } from "../devserver/dev-server.js";
 import type { PhoneService } from "../phone/phone-service.js";
 import * as cfg from "../config/claude-config.js";
-import { removalInfo, removeProject } from "../projects/removal.js";
+import { removalInfo, removeProject, removeWorktree } from "../projects/removal.js";
 import os from "node:os";
 
 export interface Services {
@@ -66,9 +66,9 @@ export function createHandlers(s: Services): Handlers {
     "claude.submitLoginCode": ({ code }) => s.claudeSetup.submitCode(code),
     "claude.cancelSetup": () => s.claudeSetup.cancel(),
 
-    "remote.state": ({ projectId }) => s.sessions.remoteState(projectId),
-    "remote.start": ({ projectId }) => s.sessions.remoteStart(projectId),
-    "remote.stop": ({ projectId }) => s.sessions.remoteStop(projectId),
+    "remote.state": () => s.sessions.remoteState(),
+    "remote.start": () => s.sessions.remoteStart(),
+    "remote.stop": () => s.sessions.remoteStop(),
 
     "github.account": () => s.github.account(),
     "github.loginState": () => s.github.loginState(),
@@ -114,8 +114,7 @@ export function createHandlers(s: Services): Handlers {
 
     "worktrees.create": ({ projectId, branch }) => s.worktrees.create(s.projects.requireExisting(projectId), branch),
     "worktrees.remove": async ({ projectId, force }) => {
-      await s.devServers.forget(projectId);
-      await s.worktrees.remove(s.projects.get(projectId), force);
+      await removeWorktree(projectId, force, s);
       return { ok: true };
     },
     "sessions.summarize": ({ sessionId }) => s.sessions.summarize(sessionId),

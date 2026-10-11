@@ -101,9 +101,11 @@ E-Mail-Adresse oder Org-Daten der Claude-Anmeldung.
   gelöschte Subagenten werden zu `<name>.md.bak`.
 - **Hooks** führen Befehle aus. FORGE prüft nur die Struktur, nicht den Inhalt; ein Hook aus einem
   fremden Repository in `.claude/settings.json` wird von Claude Code selbst ausgeführt (natives Verhalten).
-- **Remote Control** verbindet die laufenden FORGE-Sessions eines Projekts mit claude.ai und der Claude-App
-  (dein Konto). Nachrichten von dort laufen durch dieselbe Session: Profil, Freigaben und Sperrliste gelten.
-  Ausschalten trennt die Verbindung, die Session läuft lokal weiter.
+- **Remote Control** gilt global: Eingeschaltet ist jede laufende FORGE-Session (alle Projekte, wie die
+  Session-Tabs) ein eigener Eintrag in claude.ai und der Claude-App (dein Konto). Sessions, die danach starten
+  oder fortgesetzt werden, kommen automatisch dazu; FORGE startet dafür keine eigene Session. Nachrichten von
+  dort laufen durch dieselbe Session: Profil, Freigaben und Sperrliste gelten. Eine beendete Session fällt
+  heraus. Ausschalten trennt alle Verbindungen, die Sessions laufen lokal weiter.
 - **Terminal**: nur Shell oder Claude-CLI startbar, kein Netzwerkzugang zum PTY.
 - **Testbefehle** laufen mit deinen Rechten im Projektordner.
 - **Projekt löschen** mit Ordner oder GitHub-Repository verlangt das Eintippen des Projektnamens. Gesperrt sind

@@ -198,7 +198,7 @@ export class SessionLifecycle {
     }
     if (first) this.automation.noteTurnStart(rec.id);
     this.core.setStatus(rec.id, first ? "running" : "idle");
-    if (this.remote.enabled(rec.projectId)) void this.remote.bridge(rec.id);
+    if (this.remote.enabled()) void this.remote.bridge(rec.id);
     live.rt
       .initialization()
       .then((init) => this.catalog.noteInitialization(init))
@@ -272,9 +272,9 @@ export class SessionLifecycle {
   async closeProject(projectIds: string[]) {
     const ids = new Set(projectIds);
     const open = () => [...this.core.live.keys()].filter((id) => ids.has(this.core.db.getSession(id)?.projectId ?? ""));
-    for (const id of ids) if (this.remote.enabled(id)) await this.remote.stop(id);
     for (const id of open()) {
       const l = this.core.live.get(id);
+      this.remote.drop(id);
       if (l) closeLive(l);
     }
     for (let i = 0; i < 50 && open().length; i++) await new Promise((r) => setTimeout(r, 100));

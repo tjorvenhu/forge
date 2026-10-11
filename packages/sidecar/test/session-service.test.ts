@@ -26,7 +26,8 @@ class FakeRuntime implements ClaudeRuntime {
   closed = 0;
   sent: string[] = [];
   sentUuids: string[] = [];
-  remoteCalls: Array<{ enabled: boolean; name: string }> = [];
+  /** session = index of the started CLI process */
+  remoteCalls: Array<{ enabled: boolean; name: string; session: number }> = [];
   efforts: Array<string | null> = [];
   modes: string[] = [];
   /** close() does not end the process right away; the test calls onEnd itself */
@@ -56,6 +57,7 @@ class FakeRuntime implements ClaudeRuntime {
     throw new Error("no probe in tests");
   }
   startSession(opts: StartOptions, sink: SessionSink): RuntimeSession {
+    const session = this.started.length;
     this.started.push(opts);
     this.sinks.push(sink);
     return {
@@ -83,7 +85,7 @@ class FakeRuntime implements ClaudeRuntime {
       contextUsage: async () => ({ totalTokens: 62_000, maxTokens: 200_000, percentage: 31, categories: [{ name: "Messages", tokens: 40_000, kind: "used" as const }], updatedAt: new Date().toISOString() }),
       setRemoteControl: async (enabled, name) => {
         if (this.remoteError) throw this.remoteError;
-        this.remoteCalls.push({ enabled, name });
+        this.remoteCalls.push({ enabled, name, session });
         return enabled ? "https://claude.ai/code/session_test" : null;
       },
       initialization: () => new Promise(() => {}),
@@ -278,12 +280,12 @@ describe("turn automation via project tags", () => {
   it("connects open sessions to the Claude app and shows messages typed there", async () => {
     const s = await svc.start({ projectId, prompt: "Lies a.txt" });
     rt.replay();
-    const state = await svc.remoteStart(projectId);
-    expect(rt.remoteCalls).toEqual([{ enabled: true, name: `FORGE · proj · Lies a.txt` }]);
-    expect(state.sessions[0]).toMatchObject({ sessionId: s.id, url: "https://claude.ai/code/session_test", state: "connecting" });
+    const state = await svc.remoteStart();
+    expect(rt.remoteCalls).toEqual([{ enabled: true, name: "FORGE · proj: Lies a.txt", session: 0 }]);
+    expect(state.sessions[0]).toMatchObject({ sessionId: s.id, projectId, projectName: "proj", url: "https://claude.ai/code/session_test", state: "connecting" });
     const sink = rt.sinks[0]!;
     sink.onMessage({ type: "system", subtype: "bridge_state", state: "connected" });
-    expect(svc.remoteState(projectId).sessions[0]!.state).toBe("connected");
+    expect(svc.remoteState().sessions[0]!.state).toBe("connected");
 
     // own message: the echo must not show up twice
     await svc.send(s.id, "weiter");
@@ -307,20 +309,9 @@ describe("turn automation via project tags", () => {
       ["Vom Handy", "remote"],
     ]);
 
-    await svc.remoteStop(projectId);
+    await svc.remoteStop();
     expect(rt.remoteCalls.at(-1)?.enabled).toBe(false);
-    expect(svc.remoteState(projectId)).toEqual({ enabled: false, sessions: [] });
-  });
-
-  it("opens an empty session for the Claude app when none is open and titles it from the first message", async () => {
-    await svc.remoteStart(projectId);
-    expect(rt.started).toHaveLength(1);
-    expect(rt.started[0]!.firstMessage).toBeNull();
-    const [s] = svc.listAll();
-    expect(s).toMatchObject({ title: "Remote-Session", status: "idle" });
-    expect(rt.remoteCalls[0]!.name).toBe("FORGE · proj");
-    rt.sinks[0]!.onMessage({ type: "user", isReplay: true, uuid: "aaaaaaaa-bbbb-4ccc-8ddd-000000000001", message: { role: "user", content: "Baue einen Login" } });
-    expect(svc.get(s!.id).title).toBe("Baue einen Login");
+    expect(svc.remoteState()).toEqual({ enabled: false, sessions: [] });
   });
 
   it("starts with the project's effort and changes it live", async () => {
@@ -642,15 +633,15 @@ describe("Remote Control wire messages", () => {
   it("handles recorded Remote Control messages and ignores unknown or malformed ones", async () => {
     const s = await svc.start({ projectId, prompt: "Lies a.txt" });
     rt.replay();
-    await svc.remoteStart(projectId);
+    await svc.remoteStart();
     const sink = rt.sinks[0]!;
     const states: string[] = [];
     for (const m of remoteFixture) {
       sink.onMessage(m);
-      states.push(svc.remoteState(projectId).sessions[0]!.state);
+      states.push(svc.remoteState().sessions[0]!.state);
     }
     expect(states.slice(0, 2)).toEqual(["connecting", "connected"]);
-    expect(svc.remoteState(projectId).sessions[0]).toMatchObject({ state: "error", message: "Verbindung zur Claude-App verloren" });
+    expect(svc.remoteState().sessions[0]).toMatchObject({ state: "error", message: "Verbindung zur Claude-App verloren" });
     const users = db.listEvents(s.id).flatMap((e) => (e.body.type === "user.message" ? [e.body] : []));
     expect(users.map((u) => [u.text, u.source ?? "forge"])).toEqual([
       ["Lies a.txt", "forge"],
@@ -663,8 +654,95 @@ describe("Remote Control wire messages", () => {
   it("reports Remote Control the CLI does not offer as an error instead of crashing", async () => {
     await svc.start({ projectId, prompt: "x" });
     rt.remoteError = new Error(REMOTE_UNAVAILABLE);
-    const state = await svc.remoteStart(projectId);
+    const state = await svc.remoteStart();
     expect(state.sessions[0]).toMatchObject({ state: "error", message: REMOTE_UNAVAILABLE });
+    // switching on again retries the failed session
+    rt.remoteError = null;
+    expect((await svc.remoteStart()).sessions[0]).toMatchObject({ state: "connecting", url: "https://claude.ai/code/session_test", message: null });
+  });
+});
+
+describe("Remote Control for all running sessions", () => {
+  const remoteEvents = () => emitted.flatMap((e) => (e.event === "remote.updated" ? [e.payload] : []));
+
+  it("starts no session when Remote is switched on without a running one", async () => {
+    await storedSession();
+    const calls = rt.remoteCalls.length;
+    const state = await svc.remoteStart();
+    expect(state).toEqual({ enabled: true, sessions: [] });
+    expect(rt.started).toHaveLength(1);
+    expect(rt.remoteCalls).toHaveLength(calls);
+    expect(svc.listAll()).toHaveLength(1);
+    expect(remoteEvents().at(-1)).toEqual({ enabled: true, sessions: [] });
+  });
+
+  it("connects every running session of every project under its own name", async () => {
+    mkdirSync(path.join(t.dir, "proj2"), { recursive: true });
+    const other = (await projects.import(path.join(t.dir, "proj2"))).id;
+    const a = await svc.start({ projectId, prompt: "Lies a.txt" });
+    const b = await svc.start({ projectId, prompt: "Lies a.txt" });
+    const c = await svc.start({ projectId: other, prompt: "Fix den Login" });
+    const stored = await storedSession();
+    const state = await svc.remoteStart();
+    expect(rt.remoteCalls.map((r) => [r.session, r.name])).toEqual([
+      [0, "FORGE · proj: Lies a.txt"],
+      [1, "FORGE · proj: Lies a.txt (2)"],
+      [2, "FORGE · proj2: Fix den Login"],
+    ]);
+    expect(state.sessions.map((s) => [s.sessionId, s.projectName])).toEqual([
+      [a.id, "proj"],
+      [b.id, "proj"],
+      [c.id, "proj2"],
+    ]);
+    expect(state.sessions.some((s) => s.sessionId === stored.id)).toBe(false);
+    // switching on again keeps connected sessions as they are
+    await svc.remoteStart();
+    expect(rt.remoteCalls).toHaveLength(3);
+  });
+
+  it("connects sessions that start or resume while Remote is on", async () => {
+    const stored = await storedSession();
+    await svc.remoteStart();
+    const s = await svc.start({ projectId, prompt: "Neue Aufgabe" });
+    await vi.waitFor(() => expect(svc.remoteState().sessions.map((x) => x.sessionId)).toEqual([s.id]));
+    expect(rt.remoteCalls.at(-1)).toEqual({ enabled: true, name: "FORGE · proj: Neue Aufgabe", session: 1 });
+    await svc.resume(stored.id, "weiter");
+    await vi.waitFor(() => expect(svc.remoteState().sessions).toHaveLength(2));
+    expect(rt.remoteCalls.at(-1)).toEqual({ enabled: true, name: "FORGE · proj: Lies a.txt", session: 2 });
+  });
+
+  it("removes a session from Remote when it ends or is deleted", async () => {
+    const a = await svc.start({ projectId, prompt: "eins" });
+    const b = await svc.start({ projectId, prompt: "zwei" });
+    await svc.remoteStart();
+    svc.close(a.id);
+    expect(svc.remoteState().sessions.map((s) => s.sessionId)).toEqual([b.id]);
+    await svc.delete(b.id, false);
+    expect(svc.remoteState()).toEqual({ enabled: true, sessions: [] });
+    expect(remoteEvents().at(-1)).toEqual({ enabled: true, sessions: [] });
+  });
+
+  it("disconnects all sessions when switched off and connects no new ones", async () => {
+    await svc.start({ projectId, prompt: "eins" });
+    await svc.start({ projectId, prompt: "zwei" });
+    await svc.remoteStart();
+    const state = await svc.remoteStop();
+    expect(state).toEqual({ enabled: false, sessions: [] });
+    expect(rt.remoteCalls.filter((r) => !r.enabled).map((r) => r.session).sort()).toEqual([0, 1]);
+    expect(svc.listLive()).toHaveLength(2);
+    await svc.start({ projectId, prompt: "drei" });
+    await new Promise((r) => setTimeout(r, 10));
+    expect(rt.remoteCalls.filter((r) => r.enabled)).toHaveLength(2);
+    expect(svc.remoteState().sessions).toEqual([]);
+  });
+
+  it("gives a session started without a prompt the title of its first message", async () => {
+    await svc.remoteStart();
+    const s = await svc.start({ projectId, prompt: "" });
+    await vi.waitFor(() => expect(svc.remoteState().sessions).toHaveLength(1));
+    rt.sinks[0]!.onMessage({ type: "user", isReplay: true, uuid: "aaaaaaaa-bbbb-4ccc-8ddd-000000000001", message: { role: "user", content: "Baue einen Login" } });
+    expect(svc.get(s.id).title).toBe("Baue einen Login");
+    expect(svc.remoteState().sessions[0]!.title).toBe("Baue einen Login");
   });
 });
 

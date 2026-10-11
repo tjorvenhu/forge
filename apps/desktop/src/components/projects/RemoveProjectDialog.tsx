@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { KeyRound } from "lucide-react";
-import type { Project } from "@forge/protocol";
+import type { Project, ProjectWithStatus } from "@forge/protocol";
 import { call, keys, useGitHubLogin } from "@/lib/queries";
 import { errorMessage } from "@/lib/rpc";
+import { closeProjectTerminals } from "@/lib/terminal-registry";
 import { useUi } from "@/stores/ui";
 import { toast } from "@/stores/toast";
 import { Button } from "@/components/ui/button";
@@ -50,6 +51,10 @@ export function RemoveProjectDialog({ project, onClose }: { project: Pick<Projec
       onConfirm={async () => {
         if (!project) return;
         try {
+          if (deleteFolder) {
+            const worktrees = (qc.getQueryData<ProjectWithStatus[]>(keys.projects) ?? []).filter((p) => p.parentId === project.id);
+            closeProjectTerminals([project.id, ...worktrees.map((p) => p.id)]);
+          }
           const r = await call("projects.remove", { projectId: project.id, deleteFolder, deleteGitHubRepo: deleteRepo });
           const ui = useUi.getState();
           if (ui.activeProjectId === project.id) ui.closeProject();

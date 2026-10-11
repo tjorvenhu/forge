@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { mkdir } from "node:fs/promises";
+import { mkdir, rm } from "node:fs/promises";
 import path from "node:path";
 import { ForgeError, type Project } from "@forge/protocol";
 import type { GitEngine } from "../git/git.js";
@@ -96,21 +96,57 @@ export class WorktreeService {
     return true;
   }
 
-  /** Removes the worktree folder; the branch and its commits stay in the repository. */
-  async remove(worktree: Project, force: boolean) {
+  /** Throws CONFLICT if the worktree has uncommitted changes and the removal is not forced. */
+  async assertRemovable(worktree: Project, force: boolean) {
     if (!worktree.parentId) throw new ForgeError("VALIDATION", "Das ist kein Worktree-Projekt.");
-    if (!force && existsSync(worktree.path)) {
-      const st = await this.git.status(worktree.path);
-      if (st.files.length) throw new ForgeError("CONFLICT", `Der Worktree hat ${st.files.length} nicht committete Änderungen.`, { dirty: st.files.length });
-    }
+    if (force || !existsSync(path.join(worktree.path, ".git"))) return;
+    const st = await this.git.status(worktree.path);
+    if (st.files.length) throw new ForgeError("CONFLICT", `Der Worktree hat ${st.files.length} nicht committete Änderungen.`, { dirty: st.files.length });
+  }
+
+  /**
+   * Removes the worktree folder; the branch and its commits stay in the repository. Processes
+   * running inside the folder (sessions, dev server) must be ended first: Windows refuses to delete
+   * a folder that is the current directory of a process.
+   */
+  async remove(worktree: Project, force: boolean) {
+    await this.assertRemovable(worktree, force);
     const cwd = await this.controlDir(worktree);
-    if (existsSync(worktree.path)) {
-      if (!cwd) throw new ForgeError("GIT_FAILED", `Das Repository zu diesem Worktree wurde nicht gefunden: ${worktree.path}`);
-      const r = await this.git.exec(cwd, ["worktree", "remove", ...(force ? ["--force"] : []), worktree.path], undefined, 60_000);
-      if (r.code !== 0) throw new ForgeError("GIT_FAILED", (r.stderr || r.stdout).trim() || "Worktree konnte nicht entfernt werden");
-    } else if (cwd) {
-      await this.git.exec(cwd, ["worktree", "prune"]);
-    }
+    if (existsSync(worktree.path)) await this.deleteFolder(worktree.path, cwd, force);
+    if (cwd) await this.git.exec(cwd, ["worktree", "prune"]);
     this.projects.remove(worktree.id);
   }
+
+  private async deleteFolder(dir: string, cwd: string | null, force: boolean) {
+    let last = "";
+    for (let attempt = 0; attempt < REMOVE_ATTEMPTS; attempt++) {
+      if (attempt) await new Promise((r) => setTimeout(r, REMOVE_RETRY_MS));
+      if (!existsSync(dir)) return;
+      if (existsSync(path.join(dir, ".git"))) {
+        if (!cwd) throw new ForgeError("GIT_FAILED", `Das Repository zu diesem Worktree wurde nicht gefunden: ${dir}`);
+        const r = await this.git.exec(cwd, ["worktree", "remove", ...(force ? ["--force"] : []), dir], undefined, 60_000);
+        if (r.code === 0) return;
+        last = (r.stderr || r.stdout).trim();
+        if (!FOLDER_IN_USE.test(last)) throw new ForgeError("GIT_FAILED", last || "Worktree konnte nicht entfernt werden");
+      } else {
+        // An earlier attempt got as far as deleting the .git file: git no longer sees a worktree
+        // here, only the leftover files of one.
+        try {
+          await rm(dir, { recursive: true, force: true, maxRetries: 2, retryDelay: 100 });
+          return;
+        } catch (e) {
+          last = e instanceof Error ? e.message : String(e);
+        }
+      }
+    }
+    throw new ForgeError(
+      "PATH_NOT_ACCESSIBLE",
+      `Der Worktree-Ordner wird noch von einem anderen Programm benutzt, etwa einem Terminal, Editor oder Explorer-Fenster. Schließe es und versuche es noch einmal. (${last})`,
+    );
+  }
 }
+
+/** git and Node messages for a folder that another process still holds open. */
+const FOLDER_IN_USE = /permission denied|resource busy|directory not empty|used by another process|EPERM|EBUSY|ENOTEMPTY|EACCES/i;
+const REMOVE_ATTEMPTS = 6;
+const REMOVE_RETRY_MS = 300;

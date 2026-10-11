@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useShallow } from "zustand/react/shallow";
-import { Activity, FolderTree, GitCompare, AlertTriangle, ChevronDown, FileText, GitBranch, MessageSquare, PanelBottom, PanelRight, Plus, Settings2, Star } from "lucide-react";
+import { Activity, Bot, FolderTree, GitCompare, AlertTriangle, ChevronDown, FileText, GitBranch, MessageSquare, PanelBottom, PanelRight, Plus, Settings2, Star } from "lucide-react";
 import type { ProfileId } from "@forge/protocol";
 import { call, keys, useProject } from "@/lib/queries";
 import { errorMessage, RpcCallError } from "@/lib/rpc";
@@ -19,6 +19,7 @@ import { GitPanel } from "@/components/git/GitPanel";
 import { GitCenter, NewBranchDialog, checkoutBranch } from "@/components/git/GitCenter";
 import { FilesTab } from "@/components/workspace/FilesTab";
 import { ProjectSettingsTab } from "@/components/workspace/ProjectSettingsTab";
+import { AgentsTab } from "@/components/workspace/AgentsTab";
 import { ActivityFeed } from "@/components/workspace/ActivityFeed";
 import { FileTree } from "@/components/workspace/FileTree";
 import { WorkingCard } from "@/components/workspace/WorkingCard";
@@ -101,6 +102,7 @@ function Workspace({ projectId }: { projectId: string }) {
               onChange={setWorkspaceTab}
               tabs={[
                 { value: "chat", label: "Chat", icon: <MessageSquare className="h-4 w-4" /> },
+                { value: "agents", label: "Agenten", icon: <Bot className="h-4 w-4" /> },
                 { value: "git", label: "Git", icon: <GitBranch className="h-4 w-4" />, badge: project.git?.changedCount ? <Badge tone="warning">{project.git.changedCount}</Badge> : undefined },
                 { value: "files", label: "Dateien", icon: <FileText className="h-4 w-4" /> },
                 { value: "settings", label: "Einstellungen", icon: <Settings2 className="h-4 w-4" /> },
@@ -125,6 +127,7 @@ function Workspace({ projectId }: { projectId: string }) {
           <div className="min-h-0 flex-1">
             {workspaceTab === "chat" &&
               (project.exists ? <ChatPanel project={project} workingInPanel={showRight} /> : <EmptyState title="Chat nicht verfügbar">Der Projektordner fehlt.</EmptyState>)}
+            {workspaceTab === "agents" && <AgentsTab project={project} />}
             {workspaceTab === "git" && <GitCenter project={project} />}
             {workspaceTab === "files" && <FilesTab project={project} />}
             {workspaceTab === "settings" && <ProjectSettingsTab project={project} />}

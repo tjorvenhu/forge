@@ -26,7 +26,7 @@ Letzter vollständiger Lauf: 2026-10-11, Windows 11 Pro 26200, Node 24.14, Claud
 - `claude-config.test.ts`: CLAUDE.md global/Projekt/lokal mit Konflikterkennung, .bak, git exclude; Skills/Subagenten anlegen, auflisten, löschen; Hooks prüfen und nur den Schlüssel ersetzen; MCP-Ausgabe parsen und Argumente bauen.
 - `worktrees.test.ts`: Worktree anlegen/entfernen (echtes Git), Branch-Slugs.
 - `removal.test.ts`: GitHub-Repo aus dem Remote lesen, gesperrte Ordner (Laufwerk, Home, Standardordner, FORGE-Daten, verschachtelte Projekte), Löschen von Ordner (inkl. schreibgeschützter Git-Objekte) und Repo mit simuliertem gh.
-- `session-service.test.ts` (Remote): Bridge für offene Sessions, Echo eigener Nachrichten ohne Dublette, Nachricht vom Handy startet einen Durchlauf und landet mit Markierung im Verlauf, leere Session mit Titel aus der ersten Nachricht.
+- `session-service.test.ts` (Remote): Bridge für offene Sessions, Echo eigener Nachrichten ohne Dublette, Nachricht vom Handy startet einen Durchlauf und landet mit Markierung im Verlauf. Remote ist global: Einschalten ohne laufende Session startet nichts, N laufende Sessions aus mehreren Projekten bekommen N Einträge mit eindeutigen Namen, gestartete und fortgesetzte Sessions werden automatisch verbunden, beendete und gelöschte fallen heraus, Ausschalten trennt alle, erneutes Einschalten verbindet fehlgeschlagene neu.
 - `session-service.test.ts` (ergänzt): Auto-Test + Auto-Commit nur mit Dateien des Durchlaufs, kein Commit bei roten Tests.
 - `project-git.test.ts` (ergänzt): Push/Pull gegen lokales Bare-Remote (main-Schutz, Fast-Forward, Divergenz).
 
