@@ -6,6 +6,7 @@ import { errorMessage } from "@/lib/rpc";
 import { useUi } from "@/stores/ui";
 import { toast } from "@/stores/toast";
 import { NO_OPTIONS, useDrafts, type PendingFile } from "@/stores/drafts";
+import { isClearCommand } from "./SlashCommandMenu";
 
 const PROFILE_MODE: Record<Project["profile"], PermissionMode> = { safe: "default", balanced: "acceptEdits", autonomous: "bypassPermissions" };
 
@@ -68,6 +69,10 @@ export function useSendMessage({
   const [sending, setSending] = useState(false);
 
   const send = async (text: string, files: PendingFile[]): Promise<boolean> => {
+    if (isClearCommand(text)) {
+      clearConversation(project.id, session, draftKey);
+      return true;
+    }
     const prompt = text.trim() || (files.length ? "Siehe Anhang." : "");
     if (!prompt || sending) return false;
     setSending(true);
@@ -100,6 +105,18 @@ export function useSendMessage({
   };
 
   return { send, sending };
+}
+
+/**
+ * /clear like in the terminal: the chat starts over as a new, empty session. The previous session stays in
+ * the list and can be continued; an idle Claude process is ended, a working one keeps running.
+ */
+export function clearConversation(projectId: string, session: Session | null, draftKey: string) {
+  useDrafts.getState().setText(draftKey, "");
+  useUi.getState().setActiveSession(projectId, null);
+  if (session?.live && (session.status === "idle" || session.status === "error")) {
+    void call("sessions.close", { sessionId: session.id }).catch((e: unknown) => toast.error("Claude-Prozess nicht beendet", errorMessage(e)));
+  }
 }
 
 export async function compactSession(sessionId: string) {

@@ -11,7 +11,7 @@ import { Select } from "@/components/ui/select";
 import { Kbd, Tooltip } from "@/components/ui/misc";
 import { ContextMeter } from "./ContextMeter";
 import { AttachmentList } from "./AttachmentList";
-import { SlashCommandMenu, useSlashCommands } from "./SlashCommandMenu";
+import { CLEAR_COMMANDS, isClearCommand, SlashCommandMenu, useSlashCommands } from "./SlashCommandMenu";
 import { useAttachments } from "./useAttachments";
 import { compactSession, stopSession, useComposerOptions, useSendMessage } from "./useSendMessage";
 
@@ -66,8 +66,9 @@ export function Composer({
     el.style.height = Math.min(el.scrollHeight, 260) + "px";
   }, [text]);
 
+  const clearTyped = isClearCommand(text);
   const submit = () => {
-    if (!waiting) void send(text, files);
+    if (!waiting || clearTyped) void send(text, files);
   };
   const stop = () => {
     if (session) void stopSession(session.id);
@@ -131,7 +132,10 @@ export function Composer({
               }
               if (e.key === "Tab" || (e.key === "Enter" && !e.shiftKey)) {
                 e.preventDefault();
-                pickCommand(matches[cmdIndex]!.name);
+                const name = matches[cmdIndex]!.name;
+                // Like the terminal: Enter on /clear runs it right away, Tab only completes.
+                if (e.key === "Enter" && CLEAR_COMMANDS.includes(name)) void send(`/${name}`, []);
+                else pickCommand(name);
                 return;
               }
               if (e.key === "Escape") {
@@ -214,7 +218,7 @@ export function Composer({
               variant="primary"
               className="h-9 w-9 rounded-lg"
               onClick={submit}
-              disabled={(!text.trim() && !files.length) || waiting}
+              disabled={(!text.trim() && !files.length) || (waiting && !clearTyped)}
               loading={sending}
               aria-label={working ? "Dazwischen senden" : "Senden"}
               title={working ? "Dazwischen senden: Claude übernimmt die Nachricht beim nächsten Schritt" : undefined}
