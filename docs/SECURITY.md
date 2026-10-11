@@ -93,3 +93,22 @@ E-Mail-Adresse oder Org-Daten der Claude-Anmeldung.
   Die GitHub-Berechtigung `delete_repo` fragt FORGE erst an, wenn sie gebraucht wird.
 - **Auto-Commit/Auto-Push** commiten nur Dateien aus dem aktuellen Durchlauf, nie sensible Dateien, pushen nie
   auf main/master und nie mit Force.
+
+## Telefon (Phase 5, ADR 0010)
+
+- **Wer anrufen darf:** nur Nummern aus der Liste „Erlaubte Anrufer“. Leere Liste heißt: niemand. Kurze Nummern
+  (Durchwahlen) müssen exakt passen, lange Nummern dürfen sich nur in der Vorwahl-Schreibweise unterscheiden.
+  Andere Anrufe weist FORGE mit 403 ab und protokolliert sie.
+- **PIN fürs Steuern:** Senden, Starten, Freigeben, Stoppen und Dev-Server brauchen standardmäßig die PIN. Sie wird
+  über die Telefontastatur (DTMF, RFC 4733 oder SIP INFO) eingegeben und mit # bestätigt. Sie läuft nie durch das
+  Sprachmodell und wird nicht vorgelesen. Gespeichert ist nur ein scrypt-Hash. Nach drei falschen Versuchen legt
+  FORGE auf. Grund: Anrufernummern lassen sich fälschen.
+- **Was Claude am Telefon kann:** nur die FORGE-Werkzeuge (Status, Details, Senden, Starten, Antworten, Stoppen,
+  Dev-Server, Auflegen). Keine Datei-, Shell- oder Web-Werkzeuge (`tools: []`, eigene Werkzeuge per MCP im Prozess).
+  Gestartete oder fortgesetzte Sessions laufen wie immer mit Profil, Freigaben und Sperrliste des Projekts.
+- **Geheimnisse:** SIP-Passwort und OpenAI-Key liegen unter `<Datenordner>/secrets`, unter Windows mit DPAPI für das
+  Benutzerkonto verschlüsselt (PowerShell, Übergabe per stdin). Die UI sieht nur, ob sie gesetzt sind.
+- **Datenfluss:** Gesprächsaudio der Anrufer geht zur Transkription an OpenAI, die Antworttexte zur Sprachausgabe.
+  Das Gespräch selbst führt Claude (Haiku) über das Claude-Code-Abo. Transkripte stehen lokal im Anrufprotokoll.
+- **Restrisiken:** SIP über UDP und RTP sind unverschlüsselt (kein TLS, kein SRTP). Im eigenen Netz oder über ein
+  VPN zur Anlage betreiben. Die Windows-Firewall fragt beim ersten Anruf nach Zugriff für Node.js.

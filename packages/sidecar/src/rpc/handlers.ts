@@ -9,6 +9,7 @@ import type { ClaudeSetupService } from "../claude/setup.js";
 import type { McpService } from "../config/mcp.js";
 import type { WorktreeService } from "../automation/worktrees.js";
 import type { DevServerService } from "../devserver/dev-server.js";
+import type { PhoneService } from "../phone/phone-service.js";
 import * as cfg from "../config/claude-config.js";
 import { removalInfo, removeProject } from "../projects/removal.js";
 import os from "node:os";
@@ -24,6 +25,7 @@ export interface Services {
   mcp: McpService;
   worktrees: WorktreeService;
   devServers: DevServerService;
+  phone: PhoneService;
   notifyProject: (projectId: string) => void;
 }
 
@@ -180,6 +182,14 @@ export function createHandlers(s: Services): Handlers {
     "devserver.start": ({ projectId }) => s.devServers.start(projectId),
     "devserver.stop": ({ projectId }) => s.devServers.stop(projectId),
     "devserver.output": ({ projectId }) => ({ text: s.devServers.output(projectId) }),
+
+    "phone.config": () => s.phone.config(),
+    "phone.saveConfig": (patch) => s.phone.saveConfig(patch),
+    "phone.state": () => s.phone.state(),
+    "phone.setEnabled": ({ enabled }) => s.phone.setEnabled(enabled),
+    "phone.testCall": () => s.phone.testCall(),
+    "phone.hangup": () => s.phone.hangup(),
+    "phone.calls": ({ limit }) => s.phone.calls(limit),
 
     "git.status": ({ projectId }) => s.git.status(projectDir(projectId)),
     "git.diff": ({ projectId, path, staged }) => s.git.diff(projectDir(projectId), path, staged),

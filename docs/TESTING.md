@@ -6,9 +6,9 @@ Letzter vollständiger Lauf: 2026-10-11, Windows 11 Pro 26200, Node 24.14, Claud
 |---|---|---|
 | Lint | `pnpm lint` | ohne Befund |
 | Typecheck (protocol, sidecar, desktop) | `pnpm typecheck` | ohne Fehler |
-| Sidecar Unit/Integration | `pnpm --filter @forge/sidecar test` | 129 / 129 bestanden |
+| Sidecar Unit/Integration | `pnpm --filter @forge/sidecar test` | 150 / 150 bestanden |
 | Desktop Unit/Komponenten | `pnpm --filter @forge/desktop test` | 21 / 21 bestanden |
-| E2E mit echter Claude-Session | `pnpm test:e2e` | 16 / 16 bestanden (mit System-Werkzeugen) |
+| E2E mit echter Claude-Session | `pnpm test:e2e` | 17 / 17 bestanden (mit System-Werkzeugen) |
 | Release-App ohne Node/Git/gh im PATH | manuell | Sidecar läuft aus `runtime/node`, Diagnose zeigt „mitgeliefert“ |
 | Rust-Hülle | `cargo build` | ohne Warnungen |
 
@@ -34,6 +34,9 @@ Letzter vollständiger Lauf: 2026-10-11, Windows 11 Pro 26200, Node 24.14, Claud
 - `policy.test.ts` (Phase 4): Plan-Datei in `~/.claude/plans` erlaubt, alles andere außerhalb weiter gesperrt (auch per `..`).
 - `search-devserver.test.ts`: Volltextsuche (Präfix, Groß-/Kleinschreibung, Umlaute, FTS-Syntax wirkungslos, Treffer verschwinden mit der Session); Dev-Server-Erkennung (inkl. `npm run dev`), Adress-Erkennung aus typischer Ausgabe, Start/Stopp mit echtem Prozess, Absturz mit Exit-Code.
 
+- `phone-units.test.ts`: SIP-Parser (Kurzformen, Fortsetzungszeilen, Header-Listen), Antworten, Digest gegen das RFC-2617-Beispiel, SDP, G.711 gegen Referenzwerte, Downsampling ohne Aliasing, WAV, Sprachpausen-Erkennung (auch höhere Schwelle während FORGE spricht), RTP mit Takt, Stille und DTMF, Nummernvergleich, vorlesbarer Text, DPAPI-Ablage mit Sonderzeichen.
+- `phone-call.test.ts`: Test-Anlage über echtes UDP: Registrierung mit Digest und NAT-Erkennung, falsches Passwort, Wählen nur mit Ziffern und CANCEL beim Klingeln; PhoneService Ende zu Ende: fremde Nummer abgewiesen, erlaubter Anruf mit Begrüßung, Audio in beide Richtungen, Erkennung bis zu Claude, gesperrtes Steuern, falsche und richtige PIN per DTMF, Auflegen durch die Gegenstelle, Protokoll mit Transkript; Rückruf nach fertiger Session mit Proxy-Auth, Sprache erst nach dem Abnehmen, PCMU, Auflegen durch FORGE.
+
 **Desktop**
 - `chat-items.test.ts`: Zusammenbau der Chat-Elemente aus Events, Streaming-Puffer, Store-Merge.
 - `title-tooltips.test.tsx`: eigener Tooltip statt nativem `title`, Wiederherstellen des Attributs, Schließen bei Klick.
@@ -57,7 +60,19 @@ Letzter vollständiger Lauf: 2026-10-11, Windows 11 Pro 26200, Node 24.14, Claud
 13. Rückfrage im Autonomous-Profil beantwortet, Claude nennt die gewählte Antwort; Kontextstand gemeldet; `/compact` erzeugt `context.compacted`
 14. Plan-Modus im Autonomous-Profil: Plan-Datei nicht blockiert, Plan angenommen, Modus wechselt auf `bypassPermissions`, Datei angelegt
 
+15. Telefon: Claude (Haiku) nutzt das Werkzeug status, antwortet in kurzen deutschen Sätzen ohne Markdown und legt bei „Tschüss“ selbst auf
+
 (Weitere E2E-Fälle seit Phase 2: Profilwechsel im Lauf, Hintergrundaufgaben.)
+
+Nicht getestet: echte Telefonanlage und echte OpenAI-Sprachdienste (keine Zugangsdaten im Testlauf).
+
+## Manueller UI-Smoke-Test Telefon (2026-10-11)
+
+Isolierter Dev-Build gegen eine Mini-Anlage auf 127.0.0.1: Telefon-Knopf oben rechts (angemeldet, Menü),
+Einstellungen mit Status und gespeicherten Geheimnissen, Testanruf mit Anzeige „klingelt“ und Auflegen. Gefunden
+und behoben: Auflegen beim Klingeln wartete bis zu 32 s auf die Antwort zum CANCEL; Nummern mit Leerzeichen wurden
+URL-kodiert gewählt; Statusanzeige „Gespräch läuft“ schon beim Klingeln. Beobachtet: Die Windows-Firewall fragt
+beim ersten Anruf nach Zugriff für Node.js (Hinweis in den Einstellungen ergänzt).
 
 ## Manueller UI-Smoke-Test Phase 4 (2026-10-11)
 

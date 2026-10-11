@@ -602,3 +602,69 @@ export const DevServerState = z.object({
 });
 export type DevServerState = z.infer<typeof DevServerState>;
 
+
+/** Settings of the phone connection (SIP). Secrets are never sent to the UI, only whether they are set. */
+export const PhoneConfig = z.object({
+  /** registrar / PBX host name or IP */
+  server: z.string(),
+  port: z.number().int(),
+  /** SIP user (extension) */
+  username: z.string(),
+  /** user for authentication if it differs from the SIP user */
+  authUsername: z.string().nullable(),
+  /** SIP domain; empty uses the server */
+  domain: z.string().nullable(),
+  displayName: z.string(),
+  /** OpenAI voice for speech output */
+  voice: z.string(),
+  /** OpenAI model for speech recognition */
+  sttModel: z.string(),
+  /** OpenAI model for speech output */
+  ttsModel: z.string(),
+  /** numbers that may call FORGE; empty means nobody */
+  allowedCallers: z.array(z.string()),
+  /** number FORGE calls for notifications */
+  notifyNumber: z.string().nullable(),
+  notifyOn: z.object({ done: z.boolean(), approval: z.boolean(), error: z.boolean() }),
+  /** steering actions (send, start, approve, stop) need the PIN via keypad */
+  requirePin: z.boolean(),
+  enabled: z.boolean(),
+  hasPassword: z.boolean(),
+  hasOpenAiKey: z.boolean(),
+  hasPin: z.boolean(),
+});
+export type PhoneConfig = z.infer<typeof PhoneConfig>;
+
+export const PhoneCallInfo = z.object({
+  id: z.string(),
+  direction: z.enum(["in", "out"]),
+  number: z.string(),
+  state: z.enum(["ringing", "active"]),
+  startedAt: z.string(),
+  /** PIN entered in this call */
+  unlocked: z.boolean(),
+  /** why FORGE calls (outgoing), e.g. "Session fertig: Warenkorb" */
+  reason: z.string().nullable(),
+});
+export type PhoneCallInfo = z.infer<typeof PhoneCallInfo>;
+
+export const PhoneState = z.object({
+  enabled: z.boolean(),
+  registration: z.enum(["off", "registering", "registered", "failed"]),
+  message: z.string().nullable(),
+  call: PhoneCallInfo.nullable(),
+});
+export type PhoneState = z.infer<typeof PhoneState>;
+
+export const PhoneCallRecord = z.object({
+  id: z.string(),
+  direction: z.enum(["in", "out"]),
+  number: z.string(),
+  reason: z.string().nullable(),
+  startedAt: z.string(),
+  endedAt: z.string().nullable(),
+  result: z.enum(["answered", "rejected", "missed", "failed"]),
+  detail: z.string().nullable(),
+  transcript: z.array(z.object({ role: z.enum(["caller", "forge"]), text: z.string(), ts: z.string() })),
+});
+export type PhoneCallRecord = z.infer<typeof PhoneCallRecord>;

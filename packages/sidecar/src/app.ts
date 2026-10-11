@@ -7,6 +7,8 @@ import { ClaudeSetupService } from "./claude/setup.js";
 import { McpService } from "./config/mcp.js";
 import { WorktreeService } from "./automation/worktrees.js";
 import { DevServerService } from "./devserver/dev-server.js";
+import { PhoneService } from "./phone/phone-service.js";
+import { SecretStore } from "./phone/secrets.js";
 import { locateClaude, sessionEnv } from "./claude/environment.js";
 import { Db } from "./persistence/db.js";
 import { ProjectManager } from "./projects/project-manager.js";
@@ -28,7 +30,11 @@ export function createApp(opts: { dataDir: string; write: Writer; log?: (m: stri
   const git = new GitEngine();
   const projects = new ProjectManager(db, git, () => db.getSettings().defaultProfile);
   let server: RpcServer | null = null;
-  const emit = (e: ServerEvent) => server?.emit(e);
+  let phone: PhoneService | null = null;
+  const emit = (e: ServerEvent) => {
+    server?.emit(e);
+    phone?.onServerEvent(e);
+  };
   const sessions = new SessionService(db, projects, git, opts.runtime ?? new AgentSdkRuntime(), emit);
   const github = new GitHubService((payload) => emit({ event: "github.login", payload }));
   const claudeSetup = new ClaudeSetupService(
@@ -41,10 +47,25 @@ export function createApp(opts: { dataDir: string; write: Writer; log?: (m: stri
   );
   const worktrees = new WorktreeService(git, projects);
   const devServers = new DevServerService(projects, () => sessionEnv(db.getSettings().stripApiKey), emit);
+  phone = new PhoneService({
+    db,
+    projects,
+    sessions,
+    devServers,
+    secrets: new SecretStore(path.join(opts.dataDir, "secrets")),
+    emit,
+    claude: () => {
+      const settings = db.getSettings();
+      return { path: locateClaude(settings.claudePath), env: sessionEnv(settings.stripApiKey), cwd: opts.dataDir };
+    },
+    log: (m) => opts.log?.(m),
+  });
+  void phone.init();
   const handlers = createHandlers({
     mcp,
     worktrees,
     devServers,
+    phone,
     github,
     claudeSetup,
     db,
@@ -62,6 +83,7 @@ export function createApp(opts: { dataDir: string; write: Writer; log?: (m: stri
     shutdown() {
       sessions.shutdown();
       devServers.shutdown();
+      phone?.shutdown();
       github.shutdown();
       claudeSetup.shutdown();
       db.close();

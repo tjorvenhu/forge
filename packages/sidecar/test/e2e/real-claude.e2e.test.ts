@@ -5,6 +5,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { SessionEventBody } from "@forge/protocol";
 import { initRepo, tempDir, git } from "../helpers.js";
 import { SidecarClient } from "./client.js";
+import { PhoneAgent } from "../../src/phone/phone-agent.js";
 
 /**
  * Real end-to-end run: built sidecar process + installed Claude Code CLI with the
@@ -337,6 +338,54 @@ describe.skipIf(!enabled)("E2E: sidecar with real Claude Code", () => {
     expect(blocked).toEqual([]);
     await c.request("sessions.close", { sessionId: s.id });
   }, 300_000);
+
+  it("phone: Claude answers in short German sentences and uses the FORGE tools, also to hang up", async () => {
+    const d = await c.request("system.diagnostics", {});
+    const calls: string[] = [];
+    const sentences: string[] = [];
+    let turns = 0;
+    let hungUp = false;
+    let error: string | null = null;
+    const agent = new PhoneAgent({
+      claudePath: d.claude.path!,
+      env: Object.fromEntries(Object.entries(process.env).filter(([k, v]) => v !== undefined && k !== "ANTHROPIC_API_KEY")) as Record<string, string>,
+      cwd: t.dir,
+      model: MODEL,
+      context: "Eingehender Anruf. Steuern ist ohne PIN erlaubt.",
+      tools: {
+        status: async () => {
+          calls.push("status");
+          return "S1: „Warenkorb“ im Projekt shop, fertig, wartet auf Anweisungen, zuletzt vor 2 Minuten.";
+        },
+        details: async () => (calls.push("details"), "Letztes Ergebnis: Alle Tests grün."),
+        sendMessage: async (s, text) => (calls.push(`send:${s}:${text}`), "Gesendet."),
+        startSession: async () => (calls.push("start"), "Gestartet."),
+        respond: async () => (calls.push("respond"), "Erledigt."),
+        stop: async () => (calls.push("stop"), "Gestoppt."),
+        devServer: async () => (calls.push("dev"), "Läuft."),
+      },
+      onSentence: (s) => sentences.push(s),
+      onTurnDone: () => turns++,
+      onHangup: () => (hungUp = true),
+      onError: (m) => (error = m),
+    });
+    try {
+      agent.say("Hallo, wie ist der Stand meiner Sessions?");
+      const deadline = Date.now() + 120_000;
+      while (turns < 1 && !error && Date.now() < deadline) await new Promise((r) => setTimeout(r, 200));
+      expect(error).toBeNull();
+      expect(calls).toContain("status");
+      expect(sentences.join(" ")).toMatch(/Warenkorb|S1/);
+      expect(sentences.every((s) => !/[*#`]/.test(s))).toBe(true);
+      console.log("[e2e] phone said:", sentences.join(" | "));
+
+      agent.say("Danke, das war alles. Tschüss!");
+      while (turns < 2 && !error && Date.now() < deadline + 60_000) await new Promise((r) => setTimeout(r, 200));
+      expect(hungUp).toBe(true);
+    } finally {
+      agent.close();
+    }
+  }, 240_000);
 
   it("survives a sidecar crash: session is marked interrupted and resumes with its context", async () => {
     await c.kill();

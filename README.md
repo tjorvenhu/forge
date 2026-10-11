@@ -104,6 +104,7 @@ Umgebungsvariablen für Sonderfälle: `FORGE_NODE` (Pfad zu node), `FORGE_SIDECA
 - **Rückfragen und Pläne:** Fragt Claude nach (AskUserQuestion), erscheinen die Optionen als Karte im Chat. Pläne aus dem Plan-Modus lassen sich annehmen oder mit Feedback zurückgeben.
 - **Kontextanzeige:** Belegung des Kontextfensters am Composer, Komprimieren per Knopf (/compact).
 - **Befehlspalette (Strg+K):** Projekte, Sessions, Aktionen und Volltextsuche über alle Verläufe.
+- **Telefon (SIP):** FORGE meldet sich mit deinen SIP-Zugangsdaten an deiner Telefonanlage an. Ruf an und frag nach dem Stand oder steuere Sessions (mit PIN über die Tastatur). FORGE ruft dich an, wenn eine Session fertig ist, eine Entscheidung braucht oder ein Fehler auftritt. Sprache über OpenAI, das Gespräch führt Claude über dein Abo. Ein- und ausschalten oben rechts, Einrichtung unter Einstellungen → Telefon.
 - **Dev-Server:** Startbefehl pro Projekt (oder erkannt aus package.json), Adresse als Link, Ausgabe im unteren Panel, letzte Zeilen per Knopf an Claude.
 - **Töne:** Signal, wenn Claude fertig ist, eine Freigabe braucht oder ein Fehler auftritt (abschaltbar).
 - **Diagnose:** CLI-Version, Anmeldestatus, API-Key-Override, git, gh, Capability-Matrix.
@@ -129,6 +130,7 @@ Letzter Lauf (Details in [docs/TESTING.md](docs/TESTING.md)): Lint und Typecheck
 ## Bekannte Lücken
 
 - Linux nicht getestet (keine Linux-Umgebung verfügbar). Code ist plattformneutral geschrieben.
+- Telefon: nur SIP über UDP mit G.711, kein TLS/SRTP. Mit einer echten Anlage noch nicht getestet, nur gegen eine Test-Anlage im Testlauf.
 - Remote Control funktioniert nur, solange FORGE geöffnet ist. Die genutzte SDK-Funktion ist nicht offiziell dokumentiert.
 - Claude Code selbst wird nicht mitgeliefert, sondern bei Bedarf aus der App installiert (offizieller Installer).
 
