@@ -40,6 +40,9 @@ export const keys = {
   file: (id: string, path: string) => ["file", id, path] as const,
   claudeMd: (id: string) => ["claudeMd", id] as const,
   devServer: (id: string) => ["devServer", id] as const,
+  phoneState: ["phoneState"] as const,
+  phoneConfig: ["phoneConfig"] as const,
+  phoneCalls: ["phoneCalls"] as const,
   search: (q: string) => ["search", q] as const,
 };
 
@@ -119,6 +122,12 @@ export function useServerEvents() {
         case "devserver.output":
           useDevOutput.getState().append(e.payload.projectId, e.payload.text);
           break;
+        case "phone.updated": {
+          const prev = qc.getQueryData<ResultOf<"phone.state">>(keys.phoneState);
+          qc.setQueryData(keys.phoneState, e.payload);
+          if (prev?.call && !e.payload.call) void qc.invalidateQueries({ queryKey: keys.phoneCalls });
+          break;
+        }
         case "project.updated":
           void qc.invalidateQueries({ queryKey: keys.git(e.payload.projectId) });
           void qc.invalidateQueries({ queryKey: ["diff", e.payload.projectId] });
@@ -180,6 +189,9 @@ export const useGitStatus = (projectId: string | null, enabled = true) =>
     enabled: !!projectId && enabled,
     retry: false,
   });
+
+export const usePhoneState = () => useQuery({ queryKey: keys.phoneState, queryFn: () => call("phone.state", {}), staleTime: Infinity });
+export const usePhoneConfig = () => useQuery({ queryKey: keys.phoneConfig, queryFn: () => call("phone.config", {}), staleTime: Infinity });
 
 export const useDevServer = (projectId: string) =>
   useQuery({ queryKey: keys.devServer(projectId), queryFn: () => call("devserver.state", { projectId }), staleTime: 30_000 });

@@ -15,6 +15,7 @@ import { Select } from "@/components/ui/select";
 import { PROFILE_IDS, PROFILE_INFO } from "@/components/projects/ProfileBadge";
 import { ClaudeSetupCard } from "@/components/settings/ClaudeSetupCard";
 import { MemoryEditor } from "@/components/settings/MemoryEditor";
+import { PhoneSettings } from "@/components/settings/PhoneSettings";
 import { capitalize, cn } from "@/lib/utils";
 import { EFFORT_LEVELS } from "@/lib/models";
 
@@ -101,6 +102,12 @@ export function SettingsView() {
             </div>
           </Card>
 
+          <div className="xl:col-span-2" id="telefon">
+            <Card title="Telefon">
+              <PhoneSettings />
+            </Card>
+          </div>
+
           <Card title="Sicherheit">
             <div className="flex items-start gap-3">
               <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0 text-danger" />
@@ -124,7 +131,8 @@ export function SettingsView() {
 
           <Card title="Datenschutz">
             <ul className="list-disc space-y-1 pl-5 text-[13px] text-muted">
-              <li>Keine Telemetrie durch FORGE. Alle Daten bleiben lokal.</li>
+              <li>Keine Telemetrie durch FORGE. Projektdaten bleiben lokal.</li>
+              <li>Ausnahme Telefon: Ist es eingeschaltet, gehen Gesprächsaudio und vorgelesene Texte zur Spracherkennung und Sprachausgabe an OpenAI.</li>
               <li>Tool-Ein- und Ausgaben werden vor dem Speichern auf bekannte Secret-Muster geprüft und maskiert.</li>
               <li>FORGE liest keine Claude-Zugangsdaten. Die Anmeldung erledigt die Claude-CLI selbst.</li>
             </ul>

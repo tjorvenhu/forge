@@ -1,5 +1,5 @@
 import { DatabaseSync } from "node:sqlite";
-import { SEARCH_MARK_END, SEARCH_MARK_START, type EffortLevel, type PermissionMode, type ProfileId, type Project, type SearchHit, type Session, type SessionEvent, type SessionEventBody, type SessionStatus, type Settings } from "@forge/protocol";
+import { SEARCH_MARK_END, SEARCH_MARK_START, type EffortLevel, type PermissionMode, type ProfileId, type Project, type PhoneCallRecord, type SearchHit, type Session, type SessionEvent, type SessionEventBody, type SessionStatus, type Settings } from "@forge/protocol";
 
 const MIGRATIONS: string[] = [
   `
@@ -122,6 +122,21 @@ const MIGRATIONS: string[] = [
     WHEN old.type IN ('user.message', 'assistant.text') BEGIN
       DELETE FROM events_fts WHERE rowid = old.rowid;
     END;
+  `,
+  // Phone calls with their transcript (the phone settings live in the settings table under "phone").
+  `
+  CREATE TABLE phone_calls (
+    id TEXT PRIMARY KEY,
+    direction TEXT NOT NULL,
+    number TEXT NOT NULL,
+    reason TEXT,
+    started_at TEXT NOT NULL,
+    ended_at TEXT,
+    result TEXT NOT NULL,
+    detail TEXT,
+    transcript TEXT NOT NULL DEFAULT '[]'
+  );
+  CREATE INDEX phone_calls_started ON phone_calls(started_at DESC);
   `,
 ];
 
@@ -498,6 +513,48 @@ export class Db {
       ts: r.ts,
       role: r.type === "user.message" ? "user" : "assistant",
       snippet: r.snippet,
+    }));
+  }
+
+  // ---- phone
+
+  /** Raw stored phone settings; the phone service fills in defaults. */
+  getPhoneSettings(): Record<string, unknown> {
+    const r = this.sql.prepare("SELECT value FROM settings WHERE key = 'phone'").get() as { value: string } | undefined;
+    try {
+      return r ? (JSON.parse(r.value) as Record<string, unknown>) : {};
+    } catch {
+      return {};
+    }
+  }
+
+  setPhoneSettings(value: Record<string, unknown>) {
+    this.sql
+      .prepare("INSERT INTO settings(key, value) VALUES('phone', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value")
+      .run(JSON.stringify(value));
+  }
+
+  savePhoneCall(c: PhoneCallRecord) {
+    this.sql
+      .prepare(
+        `INSERT INTO phone_calls(id, direction, number, reason, started_at, ended_at, result, detail, transcript) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET ended_at = excluded.ended_at, result = excluded.result, detail = excluded.detail, transcript = excluded.transcript`,
+      )
+      .run(c.id, c.direction, c.number, c.reason, c.startedAt, c.endedAt, c.result, c.detail, JSON.stringify(c.transcript));
+  }
+
+  listPhoneCalls(limit: number): PhoneCallRecord[] {
+    const rows = this.sql.prepare("SELECT * FROM phone_calls ORDER BY started_at DESC LIMIT ?").all(limit) as Array<Record<string, string | null>>;
+    return rows.map((r) => ({
+      id: r.id!,
+      direction: r.direction as PhoneCallRecord["direction"],
+      number: r.number!,
+      reason: r.reason ?? null,
+      startedAt: r.started_at!,
+      endedAt: r.ended_at ?? null,
+      result: r.result as PhoneCallRecord["result"],
+      detail: r.detail ?? null,
+      transcript: JSON.parse(r.transcript ?? "[]") as PhoneCallRecord["transcript"],
     }));
   }
 

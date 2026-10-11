@@ -9,6 +9,9 @@ import {
   ContextUsage,
   DevServerState,
   SearchHit,
+  PhoneConfig,
+  PhoneState,
+  PhoneCallRecord,
   ConfigDoc,
   ConfigDocKind,
   ConfigScope,
@@ -257,6 +260,37 @@ export const methods = {
   "devserver.stop": { params: projectRef, result: DevServerState },
   "devserver.output": { params: projectRef, result: z.object({ text: z.string() }) },
 
+  "phone.config": { params: empty, result: PhoneConfig },
+  "phone.saveConfig": {
+    params: z.object({
+      server: z.string().max(253).optional(),
+      port: z.number().int().min(1).max(65535).optional(),
+      username: z.string().max(100).optional(),
+      authUsername: z.string().max(100).nullable().optional(),
+      domain: z.string().max(253).nullable().optional(),
+      displayName: z.string().max(60).optional(),
+      voice: z.string().max(40).optional(),
+      sttModel: z.string().max(60).optional(),
+      ttsModel: z.string().max(60).optional(),
+      allowedCallers: z.array(z.string().max(40)).max(20).optional(),
+      notifyNumber: z.string().max(40).nullable().optional(),
+      notifyOn: z.object({ done: z.boolean(), approval: z.boolean(), error: z.boolean() }).optional(),
+      requirePin: z.boolean().optional(),
+      /** new SIP password; empty string removes it */
+      password: z.string().max(200).optional(),
+      /** new OpenAI API key; empty string removes it */
+      openAiKey: z.string().max(400).optional(),
+      /** new PIN (4 to 8 digits); empty string removes it */
+      pin: z.string().regex(/^(\d{4,8})?$/, "PIN: 4 bis 8 Ziffern").optional(),
+    }),
+    result: PhoneConfig,
+  },
+  "phone.state": { params: empty, result: PhoneState },
+  "phone.setEnabled": { params: z.object({ enabled: z.boolean() }), result: PhoneState },
+  "phone.testCall": { params: empty, result: PhoneState },
+  "phone.hangup": { params: empty, result: PhoneState },
+  "phone.calls": { params: z.object({ limit: z.number().int().min(1).max(100).default(20) }), result: z.array(PhoneCallRecord) },
+
   "git.status": { params: projectRef, result: GitStatus },
   "git.diff": {
     params: projectRef.extend({ path: z.string().min(1).max(4096), staged: z.boolean() }),
@@ -324,6 +358,7 @@ export type ServerEvent =
   | { event: "remote.updated"; payload: { projectId: string; state: RemoteState } }
   | { event: "devserver.updated"; payload: DevServerState }
   | { event: "devserver.output"; payload: { projectId: string; text: string } }
+  | { event: "phone.updated"; payload: PhoneState }
   | { event: "sidecar.ready"; payload: { version: string } }
   | { event: "log"; payload: { level: "info" | "warn" | "error"; message: string } };
 

@@ -74,3 +74,20 @@ Status: `[x]` erledigt und verifiziert · `[~]` teilweise · `[ ]` offen · `[-]
 - [x] Volltextsuche über Prompts und Antworten (FTS5), Sprung zur Nachricht
 - [x] Dev-Server pro Projekt mit Adress-Erkennung, Ausgabe-Panel, „An Claude“
 - [-] Auto-Update: braucht signierte Updates, zurückgestellt
+
+## Phase 5 – Telefon (ADR 0010)
+
+- [x] SIP-Client im Sidecar: Registrierung mit Digest (auch Proxy-Auth), NAT-Erkennung über rport, Keepalive
+- [x] Ankommende Anrufe nur von erlaubten Nummern; abgehende Anrufe; CANCEL, BYE, Re-INVITE, INFO
+- [x] RTP mit G.711 (PCMA/PCMU), DTMF (RFC 4733 und SIP INFO), symmetrisches RTP
+- [x] Gespräch: Sprachpausen-Erkennung, OpenAI-Transkription, Claude Haiku mit FORGE-Werkzeugen, OpenAI-Sprachausgabe satzweise, Dazwischensprechen
+- [x] PIN über Tastatur für steuernde Werkzeuge, scrypt-Hash, drei Versuche
+- [x] Rückrufe bei fertig, Entscheidung nötig, Fehler (mit Verzögerung und Sperrzeit)
+- [x] Telefon-Knopf oben rechts, Einstellungen mit Testanruf, Anrufprotokoll mit Transkript
+- [x] SIP-Passwort und OpenAI-Key mit DPAPI verschlüsselt
+- [x] Test mit der echten Telefonanlage des Nutzers (läuft; Knacken in der Stimme behoben: keine aufgefüllten Teil-Frames mehr, 300 ms Vorpuffer pro Satz, Pegelreserve, weiches Ausblenden)
+- [ ] SIP über TLS und SRTP
+
+## Design (2026-10-11)
+
+- [x] Gestaltung nach Vorlage des Nutzers, ohne Funktionsänderung: kühlere Farbtokens, größere Seitenleiste mit Favoriten, Suchfeld in der Kopfzeile (öffnet Strg+K), Dev-Server als Status-Pille, große Tabs, rechte Spalte mit Datei-Explorer (Datei-Icons, Git-Markierungen), Änderungen und Aktivität, Karte „Claude arbeitet“, Chat als Karten, Ereigniskarten, größerer Composer

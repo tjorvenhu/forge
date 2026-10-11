@@ -4,7 +4,8 @@
 
 Phasen 0 bis 4 sind umgesetzt und auf Windows 11 getestet (Details in docs/TASKS.md, ADR 0007 und 0009).
 Phase 4: Rückfragen- und Plan-Karten, Kontextanzeige mit Komprimieren, Befehlspalette (Strg+K),
-Volltextsuche über alle Verläufe, Dev-Server pro Projekt. FORGE startet als Tauri-Fenster, nutzt die
+Volltextsuche über alle Verläufe, Dev-Server pro Projekt.
+Phase 5: Telefon über SIP (ADR 0010): Anrufe an FORGE und Rückrufe von FORGE, Claude als Gesprächspartner. FORGE startet als Tauri-Fenster, nutzt die
 installierte Claude-Code-CLI mit dem bestehenden Max-Login über den Agent SDK und bildet den
 Terminal-Workflow ab: Projekte, Sessions mit Streaming, Freigaben, Stop/Resume, Git-Status/Diff und
 geprüfte Commits. Details: [README.md](README.md), [docs/TASKS.md](docs/TASKS.md).
@@ -28,8 +29,8 @@ Definition of Done (Master-Prompt, Abschnitt 12):
 
 ## Testresultate
 
-Siehe [docs/TESTING.md](docs/TESTING.md): Lint/Typecheck sauber, 129 + 21 Unit-/Integrationstests,
-16 E2E-Tests mit echter Claude-Session, alle grün. Linux nicht getestet.
+Siehe [docs/TESTING.md](docs/TESTING.md): Lint/Typecheck sauber, 150 + 21 Unit-/Integrationstests,
+17 E2E-Tests mit echter Claude-Session, alle grün. Linux nicht getestet.
 
 ## Befehle
 
@@ -61,9 +62,13 @@ in bereits offenen Shells ggf. `$env:Path += ";$env:USERPROFILE\.cargo\bin"`.
 - Die Kontextanzeige gibt es nur bei laufendem Claude-Prozess (nach dem ersten Durchlauf), nicht für beendete Sessions.
 - Ein Dev-Server ohne Adresse in der Ausgabe zeigt „startet …“, bis er eine meldet.
 - Installer-Signierung und Auto-Update sind zurückgestellt: kein Code-Signing-Zertifikat.
+- Telefon: nur gegen eine Test-Anlage geprüft, nicht gegen die echte Anlage und nicht mit echten OpenAI-Sprachdiensten.
+  Nur UDP und G.711, kein TLS/SRTP. Die Windows-Firewall fragt beim ersten Anruf nach Zugriff für Node.js.
 
 ## Genau drei nächste Aufgaben
 
+0. **Telefon mit der echten Anlage testen:** Zugangsdaten und OpenAI-Key unter Einstellungen → Telefon eintragen,
+   einschalten, Testanruf, dann einmal selbst anrufen (Status fragen, PIN eingeben, Anweisung schicken).
 1. **Auf GitHub mit echtem Konto prüfen:** `gh`-Login in FORGE abschließen, dann Projekt veröffentlichen,
    Push, PR und Projekt löschen mit GitHub-Repository prüfen.
 2. **Linux-Build:** Tauri-Abhängigkeiten installieren, `pnpm build` unter Ubuntu, E2E-Lauf, .deb testen.

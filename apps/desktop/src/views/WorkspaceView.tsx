@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Activity, AlertTriangle, ChevronDown, FileText, GitBranch, MessageSquare, PanelBottom, PanelRight, Plus, Settings2, Star } from "lucide-react";
+import { Activity, FolderTree, GitCompare, AlertTriangle, ChevronDown, FileText, GitBranch, MessageSquare, PanelBottom, PanelRight, Plus, Settings2, Star } from "lucide-react";
 import type { ProfileId } from "@forge/protocol";
 import { call, keys, useProject } from "@/lib/queries";
 import { errorMessage, RpcCallError } from "@/lib/rpc";
@@ -19,9 +19,14 @@ import { GitCenter, NewBranchDialog, checkoutBranch } from "@/components/git/Git
 import { FilesTab } from "@/components/workspace/FilesTab";
 import { ProjectSettingsTab } from "@/components/workspace/ProjectSettingsTab";
 import { ActivityFeed } from "@/components/workspace/ActivityFeed";
+import { FileTree } from "@/components/workspace/FileTree";
+import { WorkingCard } from "@/components/workspace/WorkingCard";
 import { BottomPanel } from "@/components/workspace/BottomPanel";
 import { RemoteControlButton } from "@/components/workspace/RemoteControl";
 import { DevServerButton } from "@/components/workspace/DevServer";
+import { PhoneButton } from "@/components/layout/PhoneButton";
+import { HeaderDivider } from "@/components/layout/Page";
+import { SearchField } from "@/components/layout/SearchField";
 import { useQuery } from "@tanstack/react-query";
 
 export function WorkspaceView() {
@@ -69,33 +74,6 @@ function Workspace({ projectId }: { projectId: string }) {
   return (
     <div className="flex h-full min-h-0 flex-col">
       <WorkspaceHeader projectId={projectId} />
-      <div className="flex h-10 shrink-0 items-center border-b border-border px-3">
-        <TabBar<WorkspaceTab>
-          value={workspaceTab}
-          onChange={setWorkspaceTab}
-          tabs={[
-            { value: "chat", label: "Chat", icon: <MessageSquare className="h-3.5 w-3.5" /> },
-            { value: "git", label: "Git", icon: <GitBranch className="h-3.5 w-3.5" />, badge: project.git?.changedCount ? <Badge tone="warning">{project.git.changedCount}</Badge> : undefined },
-            { value: "files", label: "Dateien", icon: <FileText className="h-3.5 w-3.5" /> },
-            { value: "settings", label: "Einstellungen", icon: <Settings2 className="h-3.5 w-3.5" /> },
-          ]}
-        />
-        <div className="flex-1" />
-        <Button size="icon-sm" variant="ghost" onClick={() => toggleBottomPanel()} aria-pressed={bottomPanelOpen} title="Terminal und Claude Output (Strg+J)" className={cn(bottomPanelOpen && "text-accent")}>
-          <PanelBottom className="h-4 w-4" />
-        </Button>
-        <Button
-          size="icon-sm"
-          variant="ghost"
-          onClick={() => toggleRightPanel()}
-          aria-pressed={showRight}
-          disabled={narrow || workspaceTab !== "chat"}
-          title={narrow ? "Fenster zu schmal für die Seitenleiste" : "Seitenleiste (Strg+Umschalt+E)"}
-          className={cn(showRight && "text-accent")}
-        >
-          <PanelRight className="h-4 w-4" />
-        </Button>
-      </div>
 
       {!project.exists && (
         <div className="px-4 pt-3">
@@ -107,9 +85,37 @@ function Workspace({ projectId }: { projectId: string }) {
 
       <div className="flex min-h-0 flex-1">
         <div className="flex min-w-0 flex-1 flex-col">
+          <div className="flex h-12 shrink-0 items-center border-b border-border px-4">
+            <TabBar<WorkspaceTab>
+              size="lg"
+              value={workspaceTab}
+              onChange={setWorkspaceTab}
+              tabs={[
+                { value: "chat", label: "Chat", icon: <MessageSquare className="h-4 w-4" /> },
+                { value: "git", label: "Git", icon: <GitBranch className="h-4 w-4" />, badge: project.git?.changedCount ? <Badge tone="warning">{project.git.changedCount}</Badge> : undefined },
+                { value: "files", label: "Dateien", icon: <FileText className="h-4 w-4" /> },
+                { value: "settings", label: "Einstellungen", icon: <Settings2 className="h-4 w-4" /> },
+              ]}
+            />
+            <div className="flex-1" />
+            <Button size="icon-sm" variant="ghost" onClick={() => toggleBottomPanel()} aria-pressed={bottomPanelOpen} title="Terminal, Dev-Server und Claude Output (Strg+J)" className={cn(bottomPanelOpen && "text-accent")}>
+              <PanelBottom className="h-4 w-4" />
+            </Button>
+            <Button
+              size="icon-sm"
+              variant="ghost"
+              onClick={() => toggleRightPanel()}
+              aria-pressed={showRight}
+              disabled={narrow || workspaceTab !== "chat"}
+              title={narrow ? "Fenster zu schmal für die Seitenleiste" : "Seitenleiste mit Dateien und Änderungen (Strg+Umschalt+E)"}
+              className={cn(showRight && "text-accent")}
+            >
+              <PanelRight className="h-4 w-4" />
+            </Button>
+          </div>
           <div className="min-h-0 flex-1">
             {workspaceTab === "chat" &&
-              (project.exists ? <ChatPanel project={project} /> : <EmptyState title="Chat nicht verfügbar">Der Projektordner fehlt.</EmptyState>)}
+              (project.exists ? <ChatPanel project={project} workingInPanel={showRight} /> : <EmptyState title="Chat nicht verfügbar">Der Projektordner fehlt.</EmptyState>)}
             {workspaceTab === "git" && <GitCenter project={project} />}
             {workspaceTab === "files" && <FilesTab project={project} />}
             {workspaceTab === "settings" && <ProjectSettingsTab project={project} />}
@@ -122,22 +128,29 @@ function Workspace({ projectId }: { projectId: string }) {
   );
 }
 
+type RightTab = "files" | "git" | "activity";
+
 function RightPanel({ projectId }: { projectId: string }) {
   const project = useProject(projectId).data!;
-  const [tab, setTab] = useState<"git" | "activity">("git");
+  const [tab, setTab] = useState<RightTab>("files");
   return (
     <aside className="flex w-[400px] shrink-0 flex-col border-l border-border bg-sidebar xl:w-[440px]">
-      <div className="flex h-10 shrink-0 items-center border-b border-border px-2">
-        <TabBar
+      <div className="flex h-12 shrink-0 items-center border-b border-border px-3">
+        <TabBar<RightTab>
+          size="lg"
           value={tab}
           onChange={setTab}
           tabs={[
-            { value: "git", label: "Git & Änderungen", icon: <GitBranch className="h-3.5 w-3.5" /> },
-            { value: "activity", label: "Aktivität", icon: <Activity className="h-3.5 w-3.5" /> },
+            { value: "files", label: "Dateien", icon: <FolderTree className="h-4 w-4" /> },
+            { value: "git", label: "Änderungen", icon: <GitCompare className="h-4 w-4" />, badge: project.git?.changedCount ? <Badge tone="warning">{project.git.changedCount}</Badge> : undefined },
+            { value: "activity", label: "Aktivität", icon: <Activity className="h-4 w-4" /> },
           ]}
         />
       </div>
-      <div className="min-h-0 flex-1">{tab === "git" ? <GitPanel project={project} compact /> : <ActivityFeed projectId={projectId} projectDir={project.path} />}</div>
+      <div className="min-h-0 flex-1">
+        {tab === "files" ? <FileTree project={project} /> : tab === "git" ? <GitPanel project={project} compact /> : <ActivityFeed projectId={projectId} projectDir={project.path} />}
+      </div>
+      <WorkingCard project={project} />
     </aside>
   );
 }
@@ -177,18 +190,13 @@ function WorkspaceHeader({ projectId }: { projectId: string }) {
   };
 
   return (
-    <header className="flex h-16 shrink-0 items-center gap-3 border-b border-border px-4">
-      <ProjectIcon name={project.name} size={38} />
-      <div className="min-w-0">
-        <div className="flex items-center gap-1.5">
-          <h1 className="truncate text-base font-semibold">{project.name}</h1>
-          <button onClick={() => void toggleFavorite()} className="rounded p-0.5 text-subtle hover:text-warning" aria-label={project.favorite ? "Aus Favoriten entfernen" : "Zu Favoriten"}>
-            <Star className={cn("h-3.5 w-3.5", project.favorite && "fill-warning text-warning")} />
-          </button>
-        </div>
-        <div className="truncate font-mono text-[11px] text-subtle" title={project.path}>
-          {shortPath(project.path, 4)}
-        </div>
+    <header className="flex h-16 shrink-0 items-center gap-3 border-b border-border px-5">
+      <ProjectIcon name={project.name} size={36} />
+      <div className="flex min-w-0 items-center gap-2" title={shortPath(project.path, 4)}>
+        <h1 className="truncate text-[18px] font-semibold">{project.name}</h1>
+        <button onClick={() => void toggleFavorite()} className="rounded p-0.5 text-subtle hover:text-warning" aria-label={project.favorite ? "Aus Favoriten entfernen" : "Zu Favoriten"}>
+          <Star className={cn("h-4 w-4", project.favorite && "fill-warning text-warning")} />
+        </button>
       </div>
 
       {project.git && (
@@ -196,9 +204,9 @@ function WorkspaceHeader({ projectId }: { projectId: string }) {
           align="start"
           header="Branch wechseln"
           trigger={
-            <button className="ml-2 flex h-8 items-center gap-1.5 rounded-md border border-border bg-surface px-2.5 text-[13px] hover:border-border-strong">
-              <GitBranch className="h-3.5 w-3.5 text-muted" />
-              <span className="max-w-48 truncate font-mono text-xs">{project.git.branch ?? "detached"}</span>
+            <button className="ml-2 flex h-9 items-center gap-2 rounded-lg border border-border bg-surface px-3 text-[13.5px] hover:border-border-strong">
+              <GitBranch className="h-4 w-4 text-muted" />
+              <span className="max-w-48 truncate">{project.git.branch ?? "detached"}</span>
               {project.git.changedCount > 0 && <span className="h-1.5 w-1.5 rounded-full bg-warning" title="Uncommittete Änderungen" />}
               <ChevronDown className="h-3.5 w-3.5 text-muted" />
             </button>
@@ -213,22 +221,27 @@ function WorkspaceHeader({ projectId }: { projectId: string }) {
         />
       )}
 
+      {project.exists && <DevServerButton project={project} />}
+
+      {project.tags.length > 0 && (
+        <div className="hidden min-w-0 items-center gap-1.5 xl:flex" title={project.tags.join(", ")}>
+          {project.tags.slice(0, 4).map((t) => (
+            <Badge key={t}>{t}</Badge>
+          ))}
+          {project.tags.length > 4 && <span className="text-[11px] text-subtle">+{project.tags.length - 4}</span>}
+        </div>
+      )}
+
       <div className="flex-1" />
 
-      {project.exists && <DevServerButton project={project} />}
+      <SearchField />
       <RemoteControlButton project={project} />
-
-      <div className="hidden items-center gap-1.5 lg:flex">
-        {project.tags.slice(0, 4).map((t) => (
-          <Badge key={t}>{t}</Badge>
-        ))}
-      </div>
 
       <DropdownMenu
         header="Permission-Profil"
         trigger={
           <button
-            className="flex items-center gap-1 rounded-md px-1.5 py-1 hover:bg-surface-3"
+            className="flex h-9 items-center gap-1 rounded-lg px-2 hover:bg-surface-3"
             aria-label={`Permission-Profil: ${PROFILE_INFO[project.profile].label}. Klicken zum Ändern`}
             title="Permission-Profil ändern"
           >
@@ -244,6 +257,8 @@ function WorkspaceHeader({ projectId }: { projectId: string }) {
           onSelect: () => void setProfile(p),
         }))}
       />
+      <HeaderDivider />
+      <PhoneButton />
       <NewBranchDialog open={newBranch} onOpenChange={setNewBranch} projectId={projectId} />
     </header>
   );
