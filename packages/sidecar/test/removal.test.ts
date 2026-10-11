@@ -33,6 +33,31 @@ describe("folderDeleteBlocker", () => {
     expect(folderDeleteBlocker(path.join(home, "code"), [path.join(home, "code", "app")], [], home)).toMatch(/weiteres Projekt/);
     expect(folderDeleteBlocker(path.join(home, "code", "app"), [path.join(home, "code", "other")], [], home)).toBeNull();
   });
+
+  it("protects Claude data, credentials, dot folders, program and system folders", () => {
+    const env = { CLAUDE_CONFIG_DIR: path.join(home, "claude-config"), OneDrive: path.join(home, "OneDrive - Firma") };
+    const blocked = [
+      path.join(home, ".claude"),
+      path.join(home, ".ssh"),
+      path.join(home, ".config"),
+      path.join(home, ".config", "gh"),
+      path.join(home, ".aws", "sso"),
+      path.join(home, "AppData"),
+      path.join(home, "OneDrive - Firma"),
+      path.join(home, "OneDrive - Firma", "Documents"),
+      path.join(home, "claude-config"),
+      path.join(home, "claude-config", "skills"),
+    ];
+    for (const dir of blocked) expect(folderDeleteBlocker(dir, [], [], home, env), dir).not.toBeNull();
+    expect(folderDeleteBlocker(path.join(home, ".forge-worktrees", "app", "feature"), [], [], home, env)).toBeNull();
+    expect(folderDeleteBlocker(path.join(home, "OneDrive - Firma", "Projekte", "app"), [], [], home, env)).toBeNull();
+
+    const sys = { ...env, ProgramFiles: "C:\\Program Files", SystemRoot: "C:\\Windows", LOCALAPPDATA: path.join(home, "AppData", "Local") };
+    expect(folderDeleteBlocker("C:\\Program Files", [], [], home, sys)).not.toBeNull();
+    expect(folderDeleteBlocker("C:\\Program Files\\nodejs", [], [], home, sys)).not.toBeNull();
+    expect(folderDeleteBlocker("C:\\Windows\\System32", [], [], home, sys)).not.toBeNull();
+    expect(folderDeleteBlocker(path.join(home, "AppData", "Local", "Programs", "app"), [], [], home, sys)).not.toBeNull();
+  });
 });
 
 describe("removeProject", () => {
@@ -41,6 +66,7 @@ describe("removeProject", () => {
   let deps: RemovalDeps;
   let deleted: string[];
   let closed: string[][];
+  let forgotten: string[];
 
   beforeEach(() => {
     t = tempDir("forge-rm-");
@@ -61,7 +87,13 @@ describe("removeProject", () => {
         closed.push(ids);
       },
     } as unknown as SessionService;
-    deps = { projects, git: engine, github, sessions, worktrees: new WorktreeService(engine, projects), dataDir: path.join(t.dir, "data") };
+    forgotten = [];
+    const devServers = {
+      forget: async (id: string) => {
+        forgotten.push(id);
+      },
+    };
+    deps = { projects, git: engine, github, sessions, worktrees: new WorktreeService(engine, projects), devServers, dataDir: path.join(t.dir, "data") };
   });
   afterEach(() => {
     db.close();
@@ -108,5 +140,46 @@ describe("removeProject", () => {
     await expect(removeProject(p.id, { deleteFolder: true, deleteGitHubRepo: false }, deps)).rejects.toThrow(/weiteres Projekt/);
     expect(existsSync(outer)).toBe(true);
     expect(deps.projects.all()).toHaveLength(2);
+    expect(forgotten).toEqual([]);
+  });
+
+  it("stops the dev servers of the project and of its worktrees before deleting them", async () => {
+    const dir = await repoWithCommit("withwt");
+    const p = await deps.projects.import(dir);
+    const wt = await deps.worktrees.create(p, "feature/a");
+    await removeProject(p.id, { deleteFolder: true, deleteGitHubRepo: false }, deps);
+    expect(forgotten.sort()).toEqual([p.id, wt.id].sort());
+    expect(closed[0]!.sort()).toEqual([p.id, wt.id].sort());
+    expect(existsSync(wt.path)).toBe(false);
+    expect(existsSync(dir)).toBe(false);
+    expect(deps.projects.all()).toEqual([]);
+  });
+
+  it("keeps worktrees as standalone projects when only the parent entry is removed", async () => {
+    const dir = await repoWithCommit("parent");
+    const p = await deps.projects.import(dir);
+    const wt = await deps.worktrees.create(p, "feature/b");
+    await removeProject(p.id, { deleteFolder: false, deleteGitHubRepo: false }, deps);
+    expect(forgotten).toEqual([p.id]);
+    const left = deps.projects.get(wt.id);
+    expect(left.parentId).toBeNull();
+    expect((await removalInfo(wt.id, deps)).isWorktree).toBe(false);
+
+    // Deleting the former worktree later goes through git, so the repository forgets it too.
+    await removeProject(wt.id, { deleteFolder: true, deleteGitHubRepo: false }, deps);
+    expect(existsSync(wt.path)).toBe(false);
+    expect(existsSync(dir)).toBe(true);
+    expect(await git(dir, "worktree", "list")).not.toContain("feature/b");
+    expect(await git(dir, "branch", "--list", "feature/b")).toContain("feature/b");
+  });
+
+  it("removes a worktree whose parent entry vanished", async () => {
+    const dir = await repoWithCommit("legacy");
+    const p = await deps.projects.import(dir);
+    const wt = await deps.worktrees.create(p, "feature/c");
+    db.deleteProject(p.id);
+    await removeProject(wt.id, { deleteFolder: true, deleteGitHubRepo: false }, deps);
+    expect(existsSync(wt.path)).toBe(false);
+    expect(await git(dir, "worktree", "list")).not.toContain("feature/c");
   });
 });

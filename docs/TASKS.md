@@ -35,7 +35,6 @@ Status: `[x]` erledigt und verifiziert · `[~]` teilweise · `[ ]` offen · `[-]
 - [x] GitHub-Anmeldung und Repository-Liste in der App
 - [x] Claude-Code-Installation und -Anmeldung in der App (Ende-zu-Ende nicht getestet)
 - [x] KI-Commit-Nachricht
-- [ ] Linux-Smoke-Test
 
 ## Phase 2 – Workflow
 

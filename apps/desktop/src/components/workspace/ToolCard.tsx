@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import type { ReactNode } from "react";
 import {
   Bot,
   Check,
@@ -26,6 +26,7 @@ import { call } from "@/lib/queries";
 import { errorMessage } from "@/lib/rpc";
 import { cn } from "@/lib/utils";
 import { toast } from "@/stores/toast";
+import { cardKey, useCardState } from "@/stores/card-state";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/misc";
 import { Input } from "@/components/ui/input";
@@ -58,7 +59,7 @@ export function toolIcon(name: string) {
 }
 
 export function ToolCard({ item, sessionId, sessionLive, projectDir }: { item: ToolItem; sessionId: string; sessionLive: boolean; projectDir: string }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useCardState(cardKey(sessionId, item.key, "open"), false);
   const { use, result, approval, blocked } = item;
   const pendingApproval = approval && !approval.resolved;
   const running = !result && !blocked && !pendingApproval && sessionLive;
@@ -85,7 +86,7 @@ export function ToolCard({ item, sessionId, sessionLive, projectDir }: { item: T
       <button className="flex w-full items-center gap-2 px-3 py-2 text-left" onClick={() => setOpen(!open)} aria-expanded={open}>
         <ChevronRight className={cn("h-3.5 w-3.5 shrink-0 text-subtle transition-transform", open && "rotate-90")} />
         <span className="text-muted">{toolIcon(use.name)}</span>
-        <span className="shrink-0 text-[13px] font-medium">{TOOL_LABELS[use.name] ?? use.name}</span>
+        <span className="shrink-0 text-body font-medium">{TOOL_LABELS[use.name] ?? use.name}</span>
         <span className="min-w-0 flex-1 truncate font-mono text-xs text-muted">{toolSummary(use.name, use.input, projectDir)}</span>
         {use.parentToolUseId && <Badge>Subagent</Badge>}
         <StateIcon state={state} />
@@ -131,20 +132,24 @@ function StateIcon({ state }: { state: string }) {
 function Pre({ label, text, truncated, error }: { label: string; text: string; truncated?: boolean; error?: boolean }) {
   return (
     <div>
-      <div className="mb-1 text-[11px] font-medium uppercase tracking-wide text-subtle">{label}</div>
-      <pre className={cn("max-h-72 overflow-auto whitespace-pre-wrap break-all rounded-md bg-bg p-2 font-mono text-[11.5px]", error ? "text-danger" : "text-muted")}>{text}</pre>
-      {truncated && <div className="mt-1 text-[11px] text-subtle">Gekürzt auf 20.000 Zeichen.</div>}
+      <div className="mb-1 text-caption font-medium uppercase tracking-wide text-subtle">{label}</div>
+      <pre className={cn("max-h-72 overflow-auto whitespace-pre-wrap break-all rounded-md bg-bg p-2 font-mono text-caption-lg", error ? "text-danger" : "text-muted")}>{text}</pre>
+      {truncated && <div className="mt-1 text-caption text-subtle">Gekürzt auf 20.000 Zeichen.</div>}
     </div>
   );
 }
 
 export function ApprovalBlock({ req, resolved, sessionId, projectDir }: { req: ApprovalItem["req"]; resolved: ApprovalItem["resolved"]; sessionId: string; projectDir?: string }) {
-  const [reason, setReason] = useState("");
+  const [reason, setReason] = useCardState(cardKey(sessionId, req.requestId, "reason"), "");
+  // Stays set until approval.resolved arrives, also across remounts, so a second click cannot answer twice.
+  const [sent, setSent] = useCardState(cardKey(sessionId, req.requestId, "sent"), false);
   const respond = useMutation({
     mutationFn: (p: { decision: "allow" | "deny"; scope: "once" | "session" }) =>
       call("sessions.respondApproval", { sessionId, requestId: req.requestId, decision: p.decision, scope: p.scope, message: reason || undefined }),
+    onSuccess: () => setSent(true),
     onError: (e) => toast.error("Antwort nicht übermittelt", errorMessage(e)),
   });
+  const locked = respond.isPending || sent;
 
   if (resolved) {
     return (
@@ -163,29 +168,29 @@ export function ApprovalBlock({ req, resolved, sessionId, projectDir }: { req: A
 
   return (
     <div className="border-t border-warning/40 bg-warning-soft px-3 py-2.5" role="group" aria-label="Freigabeanfrage">
-      <div className="flex items-start gap-2 text-[13px]">
+      <div className="flex items-start gap-2 text-body">
         <ShieldQuestion className="mt-0.5 h-4 w-4 shrink-0 text-warning" />
         <div className="min-w-0 flex-1">
           <div className="font-medium">{req.title ?? approvalTitle(req.toolName)}</div>
           {req.description && <div className="text-xs text-muted">{req.description}</div>}
           {req.outsideProject && <div className="mt-1 text-xs font-medium text-danger">Achtung: Schreibzugriff außerhalb des Projektordners.</div>}
-          <pre className="mt-1.5 max-h-40 overflow-auto whitespace-pre-wrap break-all rounded bg-bg/60 p-2 font-mono text-[11.5px] text-fg/90">
+          <pre className="mt-1.5 max-h-40 overflow-auto whitespace-pre-wrap break-all rounded bg-bg/60 p-2 font-mono text-caption-lg text-fg/90">
             {toolSummary(req.toolName, req.input, projectDir) || JSON.stringify(req.input, null, 2)}
           </pre>
         </div>
       </div>
       <div className="mt-2 flex flex-wrap items-center gap-2 pl-6">
-        <Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Begründung bei Ablehnung (optional)" className="h-7 max-w-64 text-xs" />
+        <Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Begründung bei Ablehnung (optional)" className="h-7 max-w-64 text-xs" disabled={locked} />
         <div className="flex-1" />
-        <Button size="sm" variant="outline" onClick={() => respond.mutate({ decision: "deny", scope: "once" })} disabled={respond.isPending} autoFocus>
+        <Button size="sm" variant="outline" onClick={() => respond.mutate({ decision: "deny", scope: "once" })} disabled={locked}>
           Ablehnen
         </Button>
         {req.allowSessionScope && (
-          <Button size="sm" variant="secondary" onClick={() => respond.mutate({ decision: "allow", scope: "session" })} disabled={respond.isPending}>
+          <Button size="sm" variant="secondary" onClick={() => respond.mutate({ decision: "allow", scope: "session" })} disabled={locked}>
             Für Session erlauben
           </Button>
         )}
-        <Button size="sm" variant="primary" onClick={() => respond.mutate({ decision: "allow", scope: "once" })} loading={respond.isPending}>
+        <Button size="sm" variant="primary" onClick={() => respond.mutate({ decision: "allow", scope: "once" })} loading={respond.isPending} disabled={sent}>
           Erlauben
         </Button>
       </div>
@@ -217,7 +222,7 @@ function TodoCard({ todos }: { todos: Array<{ content: string; status: string; a
       </div>
       <ul className="space-y-1.5">
         {todos.map((t, i) => (
-          <li key={i} className="flex items-start gap-2 text-[13px]">
+          <li key={i} className="flex items-start gap-2 text-body">
             {t.status === "completed" ? (
               <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded bg-success">
                 <Check className="h-3 w-3 text-bg" strokeWidth={3} />

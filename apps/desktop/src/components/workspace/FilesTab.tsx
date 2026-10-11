@@ -34,7 +34,7 @@ function Dir({ projectId, dir, depth, selected, onSelect }: { projectId: string;
       {q.data?.map((e) => (
         <li key={e.path}>
           <button
-            className={cn("flex w-full items-center gap-1.5 py-0.5 pr-2 text-left text-[12.5px] hover:bg-surface-2", selected === e.path && "bg-surface-3")}
+            className={cn("flex w-full items-center gap-1.5 py-0.5 pr-2 text-left text-small-lg hover:bg-surface-2", selected === e.path && "bg-surface-3")}
             style={{ paddingLeft: 10 + depth * 14 }}
             onClick={() => {
               if (!e.isDir) return onSelect(e.path);
@@ -81,7 +81,7 @@ function FileViewer({ projectId, path }: { projectId: string; path: string }) {
       {q.isError && <div className="p-3"><ErrorBanner>{errorMessage(q.error)}</ErrorBanner></div>}
       {q.data?.binary && <div className="p-4 text-xs text-muted">Binärdatei, keine Vorschau.</div>}
       {q.data && !q.data.binary && (
-        <pre className="min-h-0 flex-1 overflow-auto p-3 font-mono text-[12px] leading-[18px] text-fg/90">
+        <pre className="min-h-0 flex-1 overflow-auto p-3 font-mono text-small leading-4.5 text-fg/90">
           {q.data.content}
           {q.data.truncated && "\n\n[Vorschau auf 512 KB gekürzt]"}
         </pre>

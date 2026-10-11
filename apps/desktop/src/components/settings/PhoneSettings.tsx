@@ -1,23 +1,35 @@
 import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChevronRight, PhoneIncoming, PhoneOutgoing, Power } from "lucide-react";
-import type { ParamsOf, PhoneConfig } from "@forge/protocol";
+import { PHONE_VOICES, type ParamsOf, type PhoneConfig } from "@forge/protocol";
 import { call, keys, usePhoneConfig, usePhoneState } from "@/lib/queries";
 import { errorMessage } from "@/lib/rpc";
 import { cn, relativeTime } from "@/lib/utils";
 import { toast } from "@/stores/toast";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Textarea } from "@/components/ui/input";
-import { Checkbox, ErrorBanner, Loading, SectionTitle } from "@/components/ui/misc";
+import { ErrorBanner, Loading, SectionTitle, ToggleRow } from "@/components/ui/misc";
 import { Select } from "@/components/ui/select";
 import { PhoneStatusBadge } from "@/components/layout/PhoneButton";
 
-const VOICES = ["marin", "cedar", "alloy", "ash", "ballad", "coral", "echo", "fable", "nova", "onyx", "sage", "shimmer", "verse"];
+const DEFAULT_PORT = "5060";
 
-type Draft = Omit<PhoneConfig, "enabled" | "hasPassword" | "hasOpenAiKey" | "hasPin"> & { password: string; openAiKey: string; pin: string; callers: string };
+/** `port` stays text while editing, so the field can be empty for a moment. */
+type Draft = Omit<PhoneConfig, "enabled" | "hasPassword" | "hasOpenAiKey" | "hasPin" | "port"> & {
+  port: string;
+  password: string;
+  openAiKey: string;
+  pin: string;
+  callers: string;
+};
 
 function toDraft(c: PhoneConfig): Draft {
-  return { ...c, password: "", openAiKey: "", pin: "", callers: c.allowedCallers.join("\n") };
+  return { ...c, port: String(c.port), password: "", openAiKey: "", pin: "", callers: c.allowedCallers.join("\n") };
+}
+
+function parsePort(text: string): number | null {
+  const n = Number(text);
+  return Number.isInteger(n) && n >= 1 && n <= 65535 ? n : null;
 }
 
 /** Phone settings: SIP login of the user's PBX, voice, who may call, when FORGE calls, PIN. */
@@ -39,11 +51,16 @@ export function PhoneSettings() {
   const up = (patch: Partial<Draft>) => setDraft({ ...draft, ...patch });
 
   const save = async () => {
+    const port = parsePort(draft.port);
+    if (port === null) {
+      toast.error("Nicht gespeichert", "Der Port muss eine Zahl von 1 bis 65535 sein.");
+      return;
+    }
     setSaving(true);
     try {
       const patch: ParamsOf<"phone.saveConfig"> = {
         server: draft.server,
-        port: draft.port,
+        port,
         username: draft.username,
         authUsername: draft.authUsername?.trim() || null,
         domain: draft.domain?.trim() || null,
@@ -62,7 +79,10 @@ export function PhoneSettings() {
       const next = await call("phone.saveConfig", patch);
       qc.setQueryData(keys.phoneConfig, next);
       setDraft(toDraft(next));
-      toast.success("Telefon-Einstellungen gespeichert", c.enabled ? "Die Verbindung zur Anlage wird bei Bedarf neu aufgebaut." : undefined);
+      toast.success(
+        "Telefon-Einstellungen gespeichert",
+        c.enabled ? "Geänderte Verbindungsdaten übernimmt FORGE sofort, während eines Gesprächs erst nach dem Auflegen." : undefined,
+      );
     } catch (e) {
       toast.error("Nicht gespeichert", errorMessage(e));
     } finally {
@@ -111,7 +131,7 @@ export function PhoneSettings() {
     <div className="flex flex-col gap-5">
       <div className="flex flex-wrap items-center gap-3 rounded-lg border border-border bg-surface-2 px-3 py-2.5">
         {state && <PhoneStatusBadge state={state} />}
-        <span className="min-w-0 flex-1 text-[13px] text-muted">
+        <span className="min-w-0 flex-1 text-body text-muted">
           {state?.registration === "failed" && state.message
             ? state.message
             : state?.registration === "registered"
@@ -136,7 +156,14 @@ export function PhoneSettings() {
               <Input value={draft.server} onChange={(e) => up({ server: e.target.value })} placeholder="z. B. pbx.example.de oder 192.168.1.10" className="font-mono text-xs" />
             </Field>
             <Field label="Port">
-              <Input value={String(draft.port)} onChange={(e) => up({ port: Number(e.target.value.replace(/\D/g, "")) || 5060 })} inputMode="numeric" className="font-mono text-xs" />
+              <Input
+                value={draft.port}
+                onChange={(e) => up({ port: e.target.value.replace(/\D/g, "").slice(0, 5) })}
+                onBlur={() => !draft.port && up({ port: DEFAULT_PORT })}
+                inputMode="numeric"
+                aria-invalid={parsePort(draft.port) === null || undefined}
+                className="font-mono text-xs"
+              />
             </Field>
           </div>
           <div className="grid grid-cols-2 gap-3">
@@ -177,7 +204,7 @@ export function PhoneSettings() {
           <SectionTitle>Sprache</SectionTitle>
           {secret("OpenAI-API-Key", c.hasOpenAiKey, draft.openAiKey, (v) => up({ openAiKey: v }), "openAiKey", "Für Spracherkennung und Sprachausgabe. Das Gespräch selbst führt Claude über dein Abo.")}
           <Field label="Stimme">
-            <Select value={draft.voice} onChange={(v) => up({ voice: v })} options={VOICES.map((v) => ({ value: v, label: v }))} className="w-full" />
+            <Select value={draft.voice} onChange={(v) => up({ voice: v })} options={PHONE_VOICES.map((v) => ({ value: v, label: v }))} className="w-full" />
           </Field>
           <SectionTitle>Wer darf anrufen, wann ruft FORGE an</SectionTitle>
           <Field label="Erlaubte Anrufer" hint="Eine Nummer pro Zeile. Andere Anrufe weist FORGE ab. Ist die Liste leer, nimmt FORGE keine Anrufe an.">
@@ -194,30 +221,16 @@ export function PhoneSettings() {
                 ["error", "Bei Fehlern", "abgebrochene Durchläufe und Fehlermeldungen"],
               ] as const
             ).map(([k, label, hint]) => (
-              <label key={k} className="flex items-start gap-2.5">
-                <span className="mt-0.5">
-                  <Checkbox checked={draft.notifyOn[k]} onChange={(v) => up({ notifyOn: { ...draft.notifyOn, [k]: v } })} label={label} />
-                </span>
-                <span>
-                  <span className="block text-[13px]">{label}</span>
-                  <span className="block text-xs text-muted">{hint}</span>
-                </span>
-              </label>
+              <ToggleRow key={k} checked={draft.notifyOn[k]} onChange={(v) => up({ notifyOn: { ...draft.notifyOn, [k]: v } })} label={label}>
+                {hint}
+              </ToggleRow>
             ))}
           </div>
           <SectionTitle>Steuern am Telefon</SectionTitle>
           {secret("PIN", c.hasPin, draft.pin, (v) => up({ pin: v.replace(/\D/g, "").slice(0, 8) }), "pin", "4 bis 8 Ziffern. Im Gespräch über die Telefontastatur eingeben und mit # bestätigen.", "numeric")}
-          <label className="flex items-start gap-2.5">
-            <span className="mt-0.5">
-              <Checkbox checked={draft.requirePin} onChange={(v) => up({ requirePin: v })} label="PIN zum Steuern verlangen" />
-            </span>
-            <span>
-              <span className="block text-[13px]">PIN zum Steuern verlangen</span>
-              <span className="block text-xs text-muted">
-                Empfohlen. Ohne PIN darf jeder mit einer erlaubten Nummer Sessions starten, Anweisungen schicken und Freigaben erteilen. Anrufernummern lassen sich fälschen.
-              </span>
-            </span>
-          </label>
+          <ToggleRow checked={draft.requirePin} onChange={(v) => up({ requirePin: v })} label="PIN zum Steuern verlangen">
+            Empfohlen. Ohne PIN darf jeder mit einer erlaubten Nummer Sessions starten, Anweisungen schicken und Freigaben erteilen. Anrufernummern lassen sich fälschen.
+          </ToggleRow>
         </div>
       </div>
 
@@ -245,14 +258,14 @@ function CallLog() {
       <div className="divide-y divide-border rounded-lg border border-border">
         {calls.data.map((c) => (
           <div key={c.id}>
-            <button className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-[13px] hover:bg-surface-2" onClick={() => setOpen(open === c.id ? null : c.id)} aria-expanded={open === c.id}>
+            <button className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-body hover:bg-surface-2" onClick={() => setOpen(open === c.id ? null : c.id)} aria-expanded={open === c.id}>
               {c.direction === "in" ? <PhoneIncoming className="h-3.5 w-3.5 text-muted" /> : <PhoneOutgoing className="h-3.5 w-3.5 text-muted" />}
               <span className="font-mono text-xs">{c.number || "unbekannt"}</span>
               <span className={cn("text-xs", c.result === "answered" ? "text-success" : c.result === "missed" ? "text-warning" : "text-danger")}>
                 {c.result === "answered" ? "Gespräch" : c.result === "missed" ? "nicht erreicht" : c.result === "rejected" ? "abgewiesen" : "fehlgeschlagen"}
               </span>
               <span className="min-w-0 flex-1 truncate text-xs text-muted">{c.reason ?? c.detail ?? ""}</span>
-              <span className="text-[11px] text-subtle">{relativeTime(c.startedAt)}</span>
+              <span className="text-caption text-subtle">{relativeTime(c.startedAt)}</span>
             </button>
             {open === c.id && (
               <div className="space-y-1 bg-surface-2 px-3 py-2 text-xs">

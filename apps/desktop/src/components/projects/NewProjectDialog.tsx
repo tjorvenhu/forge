@@ -10,6 +10,7 @@ import { Dialog } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Field, Input } from "@/components/ui/input";
 import { Checkbox, ErrorBanner } from "@/components/ui/misc";
+import { RadioGroup } from "@/components/ui/radio-group";
 import { TabBar } from "@/components/ui/tabs";
 
 export function NewProjectDialog() {
@@ -91,7 +92,7 @@ export function NewProjectDialog() {
       open={mode !== null}
       onOpenChange={(o) => !o && close()}
       title="Projekt hinzufügen"
-      className="w-[580px]"
+      className="w-145"
       footer={
         <>
           <Button variant="ghost" onClick={close} disabled={busy}>
@@ -134,24 +135,27 @@ export function NewProjectDialog() {
               <FolderInput value={parent} onChange={setParent} title="Übergeordneten Ordner wählen" />
             </Field>
             <p className="-mt-1 text-xs text-subtle">FORGE legt nur den Ordner an. Struktur, README und Konfiguration erstellt Claude in der ersten Session.</p>
-            <label className="flex items-center gap-2 text-[13px]">
+            <label className="flex items-center gap-2 text-body">
               <Checkbox checked={gitInit || onGitHub} onChange={setGitInit} disabled={onGitHub} label="Git initialisieren" />
               Git initialisieren
             </label>
             <div className="rounded-lg border border-border p-3">
-              <label className="flex items-center gap-2 text-[13px]">
+              <label className="flex items-center gap-2 text-body">
                 <Checkbox checked={onGitHub} onChange={setOnGitHub} disabled={!github.data} label="Repository auf GitHub anlegen" />
                 Repository auf GitHub anlegen
               </label>
               {github.data ? (
                 onGitHub && (
-                  <div className="mt-2.5 flex items-center gap-4 pl-6 text-[13px]">
-                    <label className="flex items-center gap-2">
-                      <input type="radio" name="gh-visibility" checked={ghPrivate} onChange={() => setGhPrivate(true)} className="accent-accent" /> Privat
-                    </label>
-                    <label className="flex items-center gap-2">
-                      <input type="radio" name="gh-visibility" checked={!ghPrivate} onChange={() => setGhPrivate(false)} className="accent-accent" /> Öffentlich
-                    </label>
+                  <div className="mt-2.5 flex items-center gap-4 pl-6 text-body">
+                    <RadioGroup
+                      aria-label="Sichtbarkeit des Repositorys"
+                      value={ghPrivate ? "private" : "public"}
+                      onChange={(v) => setGhPrivate(v === "private")}
+                      options={[
+                        { value: "private", label: "Privat" },
+                        { value: "public", label: "Öffentlich" },
+                      ]}
+                    />
                     <span className="text-xs text-subtle">als {github.data.login}/{name.trim().replace(/\s+/g, "-") || "…"}</span>
                   </div>
                 )

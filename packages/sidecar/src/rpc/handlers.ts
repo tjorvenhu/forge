@@ -148,10 +148,7 @@ export function createHandlers(s: Services): Handlers {
       return project;
     },
     "projects.removalInfo": ({ projectId }) => removalInfo(projectId, s),
-    "projects.remove": async ({ projectId, deleteFolder, deleteGitHubRepo }) => {
-      await s.devServers.forget(projectId);
-      return removeProject(projectId, { deleteFolder, deleteGitHubRepo }, s);
-    },
+    "projects.remove": ({ projectId, deleteFolder, deleteGitHubRepo }) => removeProject(projectId, { deleteFolder, deleteGitHubRepo }, s),
     "projects.touch": ({ projectId }) => s.projects.touch(projectId),
     "projects.readClaudeMd": ({ projectId }) => s.projects.readClaudeMd(projectId),
     "projects.listFiles": ({ projectId, dir }) => s.projects.listFiles(projectId, dir),
@@ -162,7 +159,7 @@ export function createHandlers(s: Services): Handlers {
     "sessions.listLive": () => s.sessions.listLive(),
     "sessions.delete": ({ sessionId, deleteTranscript }) => s.sessions.delete(sessionId, deleteTranscript),
     "sessions.get": ({ sessionId }) => s.sessions.get(sessionId),
-    "sessions.events": ({ sessionId, afterSeq }) => s.sessions.events(sessionId, afterSeq),
+    "sessions.events": ({ sessionId, afterSeq, beforeSeq }) => s.sessions.events(sessionId, afterSeq, beforeSeq),
     "sessions.start": (p) => s.sessions.start(p),
     "sessions.send": ({ sessionId, text, attachments }) => s.sessions.send(sessionId, text, attachments),
     "sessions.resume": ({ sessionId, prompt, attachments }) => s.sessions.resume(sessionId, prompt, attachments),
@@ -175,6 +172,7 @@ export function createHandlers(s: Services): Handlers {
     "sessions.setPermissionMode": ({ sessionId, mode }) => s.sessions.setPermissionMode(sessionId, mode),
     "sessions.respondApproval": ({ sessionId, requestId, decision, scope, message, answers }) =>
       s.sessions.respondApproval(sessionId, requestId, decision, scope, message, answers),
+    "sessions.confirmAutoCommit": ({ sessionId, requestId, commit }) => s.sessions.confirmAutoCommit(sessionId, requestId, commit),
     "sessions.contextUsage": ({ sessionId }) => s.sessions.contextUsage(sessionId),
     "search.sessions": ({ query, limit }) => s.db.searchEvents(query, limit),
 

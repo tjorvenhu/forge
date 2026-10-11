@@ -36,12 +36,12 @@ export function ActivityFeed({ projectId, projectDir }: { projectId: string; pro
         <li key={r.key} className="flex items-start gap-2.5 px-3 py-2">
           <span className={r.tone ?? "text-muted"}>{r.icon}</span>
           <div className="min-w-0 flex-1">
-            <div className="text-[13px]">{r.title}</div>
-            <div className="truncate font-mono text-[11px] text-subtle" title={r.detail}>
+            <div className="text-body">{r.title}</div>
+            <div className="truncate font-mono text-caption text-subtle" title={r.detail}>
               {r.detail}
             </div>
           </div>
-          <span className="shrink-0 text-[11px] text-subtle">{relativeTime(r.ts)}</span>
+          <span className="shrink-0 text-caption text-subtle">{relativeTime(r.ts)}</span>
         </li>
       ))}
     </ul>

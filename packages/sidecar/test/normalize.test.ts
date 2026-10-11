@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { Normalizer } from "../src/claude/normalize.js";
+import { MAX_INPUT_STRING, Normalizer, truncateInput } from "../src/claude/normalize.js";
 
 const fixture = readFileSync(path.join(import.meta.dirname, "fixtures", "stream-read-tool.jsonl"), "utf8")
   .trim()
@@ -77,6 +77,24 @@ describe("Normalizer robustness", () => {
     });
     expect(ev).toMatchObject({ type: "tool.result", content: { truncated: true } });
     if (ev?.type === "tool.result") expect(ev.content.text.length).toBe(20_000);
+  });
+
+  it("shortens large string fields of tool inputs and flags it", () => {
+    const n = new Normalizer();
+    const [ev] = n.normalize({
+      type: "assistant",
+      message: { id: "m1", content: [{ type: "tool_use", id: "t1", name: "Write", input: { file_path: "big.txt", content: "y".repeat(50_000) } }] },
+    });
+    expect(ev).toMatchObject({ type: "tool.use", inputTruncated: true, input: { file_path: "big.txt" } });
+    if (ev?.type === "tool.use") expect((ev.input.content as string).length).toBeLessThan(MAX_INPUT_STRING + 50);
+    const [small] = n.normalize({ type: "assistant", message: { id: "m2", content: [{ type: "tool_use", id: "t2", name: "Read", input: { file_path: "a" } }] } });
+    expect(small).not.toHaveProperty("inputTruncated");
+  });
+
+  it("shortens nested strings, e.g. MultiEdit edits", () => {
+    const { input, truncated } = truncateInput({ edits: [{ old_string: "a", new_string: "b".repeat(30_000) }] }, 100);
+    expect(truncated).toBe(true);
+    expect(((input.edits as Array<{ new_string: string }>)[0]!.new_string).length).toBeLessThan(150);
   });
 
   it("skips subagent text but keeps subagent tool uses", () => {

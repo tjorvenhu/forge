@@ -2,11 +2,14 @@ mod sidecar;
 mod terminal;
 
 use sidecar::Sidecar;
-use terminal::Terminals;
 use tauri::{Manager, RunEvent};
+use terminal::{OpenRequest, Terminals};
 
 /// Upper bound for one protocol line from the UI (prompts are capped at 200k chars in the protocol).
 const MAX_LINE_BYTES: usize = 4 * 1024 * 1024;
+
+// Commands without `async` run on the main thread. The ones below only queue data or do short
+// system calls; everything that can wait on a process or a pipe runs elsewhere.
 
 #[tauri::command]
 fn sidecar_send(line: String, state: tauri::State<'_, Sidecar>) -> Result<(), String> {
@@ -24,9 +27,16 @@ fn sidecar_status(state: tauri::State<'_, Sidecar>) -> bool {
     state.is_running()
 }
 
+/// Shutdown waits up to the grace period, so the restart runs off the main thread.
 #[tauri::command]
-fn sidecar_restart(app: tauri::AppHandle, state: tauri::State<'_, Sidecar>) -> Result<(), String> {
-    state.restart(&app)
+async fn sidecar_restart(app: tauri::AppHandle) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<Sidecar>();
+        state.shutdown();
+        state.start(&app)
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
@@ -39,7 +49,7 @@ fn term_open(
     program: String,
     claude_path: Option<String>,
 ) -> Result<u32, String> {
-    state.open(&app, sidecar::runtime_dir(&app), &cwd, cols, rows, &program, claude_path)
+    state.open(&app, sidecar::runtime_dir(&app), OpenRequest { cwd, cols, rows, program, claude_path })
 }
 
 #[tauri::command]

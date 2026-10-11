@@ -12,7 +12,7 @@ import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Dialog } from "@/components/ui/dialog";
 import { Field, Input, Textarea } from "@/components/ui/input";
-import { Badge, EmptyState, SectionTitle, Loading } from "@/components/ui/misc";
+import { Badge, EmptyState, ErrorBanner, SectionTitle, Loading } from "@/components/ui/misc";
 import { Select } from "@/components/ui/select";
 import { SessionStatusBadge } from "@/components/workspace/SessionStatusBadge";
 
@@ -60,7 +60,7 @@ export function AgentsView() {
                 <div key={w.id} className="flex flex-col gap-2 rounded-xl border border-border bg-surface p-4">
                   <div className="flex items-center gap-2">
                     <GitBranch className="h-4 w-4 text-accent" />
-                    <span className="min-w-0 flex-1 truncate font-mono text-[13px]">{w.git?.branch ?? "?"}</span>
+                    <span className="min-w-0 flex-1 truncate font-mono text-body">{w.git?.branch ?? "?"}</span>
                     {w.git && (w.git.changedCount > 0 ? <Badge tone="warning">{w.git.changedCount} geändert</Badge> : <Badge tone="success">sauber</Badge>)}
                   </div>
                   <div className="text-xs text-muted">aus {parent?.name ?? "Projekt"}</div>
@@ -100,10 +100,13 @@ export function AgentsView() {
         <section>
           <SectionTitle>Subagenten</SectionTitle>
           <p className="mb-2 text-xs text-muted">Spezialisierte Helfer, die Claude innerhalb einer Session startet. Eigene Subagenten legst du unter Erweiterungen an.</p>
+          {info.isLoading && <Loading label="Subagenten werden von Claude Code gelesen …" />}
+          {info.isError && <ErrorBanner title="Subagenten nicht geladen">{errorMessage(info.error)}</ErrorBanner>}
+          {info.isSuccess && subagents.length === 0 && <p className="text-xs text-subtle">Claude Code meldet keine Subagenten.</p>}
           <div className="grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-2">
             {subagents.map((a) => (
               <div key={a.name} className="rounded-lg border border-border bg-surface p-3">
-                <div className="flex items-center gap-2 text-[13px]">
+                <div className="flex items-center gap-2 text-body">
                   <Bot className="h-4 w-4 text-accent" /> {a.name}
                 </div>
                 <p className="mt-1 line-clamp-3 text-xs text-muted">{a.description}</p>
@@ -129,10 +132,10 @@ export function AgentsView() {
             void qc.invalidateQueries({ queryKey: keys.projects });
             toast.success("Worktree entfernt");
           } catch (e) {
-            if (e instanceof RpcCallError && e.code === "CONFLICT") {
-              setForce(true);
-              setTimeout(() => setRemoving(removing), 0);
-            } else toast.error("Nicht entfernt", errorMessage(e));
+            // Uncommitted changes: the dialog stays open and switches to the forced variant.
+            if (e instanceof RpcCallError && e.code === "CONFLICT" && !force) setForce(true);
+            else toast.error("Nicht entfernt", errorMessage(e));
+            throw e;
           }
         }}
       />
@@ -150,6 +153,11 @@ function NewAgentDialog({ open, onOpenChange, parents }: { open: boolean; onOpen
   const [prompt, setPrompt] = useState("");
   const [busy, setBusy] = useState(false);
   const project = withGit.find((p) => p.id === projectId) ?? withGit[0];
+  const closeAndReset = () => {
+    onOpenChange(false);
+    setBranch("agent/");
+    setPrompt("");
+  };
   return (
     <Dialog
       open={open}
@@ -170,10 +178,25 @@ function NewAgentDialog({ open, onOpenChange, parents }: { open: boolean; onOpen
               setBusy(true);
               try {
                 const wt = await call("worktrees.create", { projectId: project.id, branch: branch.trim() });
-                let sessionId: string | null = null;
-                if (prompt.trim()) sessionId = (await call("sessions.start", { projectId: wt.id, prompt })).id;
                 void qc.invalidateQueries({ queryKey: keys.projects });
-                onOpenChange(false);
+                let sessionId: string | null = null;
+                if (prompt.trim()) {
+                  try {
+                    sessionId = (await call("sessions.start", { projectId: wt.id, prompt })).id;
+                  } catch (e) {
+                    // The worktree exists now; a retry from this dialog would fail on the existing branch.
+                    closeAndReset();
+                    toast.notify({
+                      tone: "error",
+                      title: "Worktree angelegt, Session nicht gestartet",
+                      body: errorMessage(e),
+                      action: { label: "Worktree öffnen", onClick: () => openProject(wt.id) },
+                      duration: 15_000,
+                    });
+                    return;
+                  }
+                }
+                closeAndReset();
                 openProject(wt.id, sessionId);
               } catch (e) {
                 toast.error("Agent nicht gestartet", errorMessage(e));

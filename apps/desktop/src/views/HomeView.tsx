@@ -1,14 +1,15 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { FolderOpen, FolderPlus, GitBranch, Play, RotateCcw } from "lucide-react";
+import { FolderOpen, Play, RotateCcw } from "lucide-react";
 import type { ProjectWithStatus } from "@forge/protocol";
-import { call, useDiagnostics, useProjects } from "@/lib/queries";
+import { call, keys, useDiagnostics, useProjects } from "@/lib/queries";
 import { useModelLabel } from "@/lib/models";
 import { relativeTime } from "@/lib/utils";
 import { useUi } from "@/stores/ui";
 import { Page } from "@/components/layout/Page";
 import { Button } from "@/components/ui/button";
 import { Badge, EmptyState, ErrorBanner, SectionTitle, Loading } from "@/components/ui/misc";
+import { AddProjectActions } from "@/components/projects/AddProjectActions";
 import { ProjectCard } from "@/components/projects/ProjectCard";
 import { RemoveProjectDialog } from "@/components/projects/RemoveProjectDialog";
 import { SessionStatusBadge } from "@/components/workspace/SessionStatusBadge";
@@ -27,21 +28,9 @@ export function HomeView() {
 
   return (
     <Page
-      title="Home"
+      title="Start"
       subtitle="Projekte, laufende Arbeit und Status auf einen Blick"
-      actions={
-        <>
-          <Button onClick={() => setNewProject("clone")}>
-            <GitBranch className="h-3.5 w-3.5" /> Klonen
-          </Button>
-          <Button onClick={() => setNewProject("create")}>
-            <FolderPlus className="h-3.5 w-3.5" /> Neu
-          </Button>
-          <Button variant="primary" onClick={() => setNewProject("import")}>
-            <FolderOpen className="h-3.5 w-3.5" /> Ordner öffnen
-          </Button>
-        </>
-      }
+      actions={<AddProjectActions />}
     >
       <ApiKeyWarning />
       {projects.isLoading && <Loading />}
@@ -99,7 +88,7 @@ function Grid({ items, onRemove }: { items: ProjectWithStatus[]; onRemove: (p: P
 function ResumeSection() {
   const label = useModelLabel();
   const openProject = useUi((s) => s.openProject);
-  const sessions = useQuery({ queryKey: ["allSessions", "", ""], queryFn: () => call("sessions.listAll", {}) });
+  const sessions = useQuery({ queryKey: keys.allSessions("", "all"), queryFn: () => call("sessions.listAll", {}) });
   const items = (sessions.data ?? []).slice(0, 5);
   if (!items.length) return null;
   return (
@@ -110,8 +99,8 @@ function ResumeSection() {
           <div key={s.id} className="flex items-center gap-3 px-4 py-2.5">
             <SessionStatusBadge status={s.status} live={s.live} />
             <div className="min-w-0 flex-1">
-              <div className="truncate text-[13px]">{s.title ?? "Ohne Titel"}</div>
-              <div className="text-[11px] text-subtle">
+              <div className="truncate text-body">{s.title ?? "Ohne Titel"}</div>
+              <div className="text-caption text-subtle">
                 {s.projectName} · {relativeTime(s.updatedAt)}
                 {s.model ? ` · ${label(s.model)}` : ""}
               </div>
@@ -160,7 +149,7 @@ function ApiKeyWarning() {
     );
   if (keyActive)
     return (
-      <div className="mb-5 flex items-center gap-2 rounded-lg border border-warning/30 bg-warning-soft px-3 py-2 text-[13px]">
+      <div className="mb-5 flex items-center gap-2 rounded-lg border border-warning/30 bg-warning-soft px-3 py-2 text-body">
         <Badge tone="warning">Hinweis</Badge>
         ANTHROPIC_API_KEY ist gesetzt und wird an Sessions weitergegeben. Das kann API-Kosten statt Abo-Nutzung auslösen.
       </div>

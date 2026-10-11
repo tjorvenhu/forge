@@ -3,16 +3,16 @@ import type { ResultOf, SessionEvent } from "@forge/protocol";
 import { rpc } from "./rpc";
 import { useUi } from "@/stores/ui";
 import { toast } from "@/stores/toast";
+import { isInterrupted } from "./working";
 
 export type NotifyKind = "done" | "approval" | "error";
 
 /** Which session events get a sound and a notification; null for all others. */
 export function notifyKind(body: SessionEvent["body"]): NotifyKind | null {
-  if (body.type === "approval.request") return "approval";
+  if (body.type === "approval.request" || body.type === "automation.confirm") return "approval";
   if (body.type === "error") return "error";
   if (body.type === "turn.result") {
-    const interrupted = body.isError && /interrupt|abort/i.test(`${body.subtype} ${body.text ?? ""}`);
-    if (interrupted) return null;
+    if (isInterrupted(body)) return null;
     return body.isError ? "error" : "done";
   }
   return null;
@@ -44,8 +44,9 @@ export async function notifySession(qc: QueryClient, ev: SessionEvent, kind: Not
   const action = { label: "Session öffnen", onClick: () => useUi.getState().openProject(session.projectId, session.id) };
   if (kind === "approval") {
     const tool = b.type === "approval.request" ? b.toolName : "";
-    const title = tool === "AskUserQuestion" ? "Rückfrage von Claude" : tool === "ExitPlanMode" ? "Plan zur Freigabe" : "Freigabe nötig";
-    const text = tool === "AskUserQuestion" || tool === "ExitPlanMode" ? null : detail;
+    const title =
+      b.type === "automation.confirm" ? "Auto-Commit wartet" : tool === "AskUserQuestion" ? "Rückfrage von Claude" : tool === "ExitPlanMode" ? "Plan zur Freigabe" : "Freigabe nötig";
+    const text = b.type === "automation.confirm" ? "Mögliche Secrets gefunden. Trotzdem committen?" : tool === "AskUserQuestion" || tool === "ExitPlanMode" ? null : detail;
     toast.notify({ tone: "warning", title, body: [where, text].filter(Boolean).join("\n"), action, duration: 12_000 });
   }
   else if (kind === "error") toast.notify({ tone: "error", title: "Fehler in der Session", body: [where, detail?.slice(0, 300)].filter(Boolean).join("\n"), action });

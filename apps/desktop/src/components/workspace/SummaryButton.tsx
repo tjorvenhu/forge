@@ -30,7 +30,7 @@ export function SummaryButton({ sessionId, title, size = "sm" }: { sessionId: st
       </Button>
       <Dialog open={open} onOpenChange={setOpen} title="Wo war ich?" description={title ?? undefined}>
         {m.isPending && (
-          <div className="flex items-center gap-2 text-[13px] text-muted">
+          <div className="flex items-center gap-2 text-body text-muted">
             <Spinner className="h-4 w-4" /> Claude fasst die Session zusammen …
           </div>
         )}
@@ -38,7 +38,7 @@ export function SummaryButton({ sessionId, title, size = "sm" }: { sessionId: st
         {m.data && (
           <>
             <Markdown text={m.data.summary} />
-            <p className="mt-3 text-[11px] text-subtle">Von Claude ({modelLabel(m.data.model)}) aus dem gespeicherten Verlauf dieser Session erstellt.</p>
+            <p className="mt-3 text-caption text-subtle">Von Claude ({modelLabel(m.data.model)}) aus dem gespeicherten Verlauf dieser Session erstellt.</p>
           </>
         )}
       </Dialog>

@@ -62,7 +62,7 @@ Projekte, Sessions und ab drei Zeichen die Volltexttreffer. Kein neues Paket: Ra
   Bei npm wird daraus `npm run dev`, weil npm Skripte außer `start`/`test` nicht direkt kennt.
 - Läuft wie der Testbefehl in einer Shell (Befehl kommt vom Nutzer oder aus dem eigenen Projekt).
   `BROWSER=none`, damit kein Dev-Server selbst einen Browser öffnet.
-- Stoppen beendet den ganzen Prozessbaum: `taskkill /T /F` unter Windows, Prozessgruppe sonst. Beim Beenden
+- Stoppen beendet den ganzen Prozessbaum mit `taskkill /T /F`. Beim Beenden
   von FORGE und beim Entfernen eines Projekts werden laufende Dev-Server gestoppt.
 - Die erste lokale Adresse aus der Ausgabe (ANSI entfernt, `0.0.0.0` wird `localhost`) wird als Link gezeigt.
   Der Opener darf dafür zusätzlich `http://localhost:*` und `http://127.0.0.1:*` öffnen.

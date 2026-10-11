@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useRef } from "react";
 import CodeMirror from "@uiw/react-codemirror";
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import { json } from "@codemirror/lang-json";
@@ -54,6 +54,10 @@ interface Props {
 
 /** CodeMirror with FORGE styling. Ctrl+S calls onSave. */
 export function CodeEditor({ value, onChange, language, onSave, readOnly, ariaLabel }: Props) {
+  // Callers pass inline lambdas; reading through a ref keeps the extensions stable so the editor
+  // is not reconfigured on every keystroke.
+  const onSaveRef = useRef(onSave);
+  onSaveRef.current = onSave;
   const extensions = useMemo(
     () => [
       language === "markdown" ? markdown({ base: markdownLanguage }) : json(),
@@ -65,13 +69,13 @@ export function CodeEditor({ value, onChange, language, onSave, readOnly, ariaLa
           key: "Mod-s",
           preventDefault: true,
           run: () => {
-            onSave?.();
+            onSaveRef.current?.();
             return true;
           },
         },
       ]),
     ],
-    [language, onSave, ariaLabel],
+    [language, ariaLabel],
   );
   return (
     <CodeMirror

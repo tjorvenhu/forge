@@ -36,12 +36,12 @@ export function SearchHitRow({ hit, active, onSelect }: { hit: SearchHit; active
       onClick={onSelect}
       className={cn("flex w-full items-start gap-2.5 rounded-md px-2.5 py-2 text-left", active ? "bg-surface-3" : "hover:bg-surface-3")}
     >
-      <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded bg-surface-3 text-[9px] font-semibold text-muted">
+      <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded bg-surface-3 text-3xs font-semibold text-muted">
         {hit.role === "user" ? "Du" : <ClaudeMark size={13} />}
       </span>
       <span className="min-w-0 flex-1">
-        <Snippet text={hit.snippet} className="line-clamp-2 block break-words text-[13px]" />
-        <span className="mt-0.5 block truncate text-[11px] text-subtle">
+        <Snippet text={hit.snippet} className="line-clamp-2 block break-words text-body" />
+        <span className="mt-0.5 block truncate text-caption text-subtle">
           {hit.sessionTitle ?? "Ohne Titel"} · {hit.projectName} · {relativeTime(hit.ts)}
         </span>
       </span>

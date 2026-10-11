@@ -17,10 +17,14 @@ Zusätzlich pro Session: **Nur planen** (`plan`), unabhängig vom Profil.
 Umgesetzt als `PreToolUse`-Hook im Sidecar, nicht als Claude-Setting, damit Repo-Dateien sie nicht
 aufweichen können:
 
-- `git push --force`/`-f`/`--force-with-lease`, Push auf `main`/`master`, `git reset --hard`,
-  `git branch -D`, `git clean -fdx`, rekursives Löschen von Laufwerks- oder Home-Wurzel.
-- Datei-Tools auf sensiblen Pfaden: `~/.ssh`, `~/.aws`, `~/.gnupg`, `~/.config/gh`,
-  `~/.claude/.credentials.json`, Browserprofile (Chrome, Edge, Firefox), Windows Credential Store.
+- `git push --force`/`-f`/`--force-with-lease`, Push auf `main`/`master` (auch über `refs/heads/` oder in
+  Anführungszeichen), `git push --mirror`/`--prune`, Löschen entfernter Branches, `git reset --hard`,
+  `git branch -D`, `git clean -fdx`, rekursives Löschen von Laufwerks- oder Home-Wurzel (auch mit `--`,
+  Langoptionen, `${HOME}`, `/*` und Git-Bash-Laufwerkspfaden wie `/c/`).
+- Datei-Tools auf sensiblen Pfaden: `~/.ssh`, `~/.aws`, `~/.gnupg`, `~/.config/gh`, `~/.npmrc`, `~/.netrc`,
+  `~/.pgpass`, `~/.docker/config.json`, `~/.claude/.credentials.json`, Browserprofile (Chrome, Edge, Firefox),
+  Windows Credential Store. Grep und Glob, wenn Muster oder Suchordner einen dieser Pfade erreichen können.
+- Schlägt der Hook selbst fehl, wird der Aufruf abgelehnt (`guard-error`).
 - Im Autonomous-Profil zusätzlich: Schreibzugriffe außerhalb des Projektordners.
 
 ## Autonomous als Standard (Revision 2026-10-10)
@@ -39,13 +43,18 @@ Ein Profilwechsel gilt sofort auch für laufende Sessions (`SessionService.apply
 Permission-Modus per `setPermissionMode`, Freigabe-Umfang und Schreibsperre über das Profil der
 Live-Session. Ein aktiver Plan-Modus bleibt bestehen. Damit der Wechsel nach Bypass möglich ist, startet
 jede Session mit `allowDangerouslySkipPermissions: true`. Ohne das Flag lehnt die CLI den Wechsel ab.
-Der aktive Modus wird trotzdem immer explizit gesetzt. `disallowedTools` steht beim Prozessstart fest.
+Der aktive Modus wird trotzdem immer explizit gesetzt. Weil das Flag Bypass jederzeit erlaubt, prüft FORGE
+jeden Modus, den Claude Code meldet, gegen das Profil und setzt alles Höhere zurück (Event `policy.blocked`,
+Regel `permission-mode`); klappt das nicht, wird die Session beendet. `disallowedTools` steht beim Prozessstart fest.
 Wechselt eine laufende Session nach Safe, sperrt der PreToolUse-Hook die Web-Tools (`profile-tool`).
 
-Bypass ist weiterhin keine Sandbox. Befehle laufen mit den Rechten des Nutzers. Repo-Dateien wie
+Bypass ist weiterhin keine Sandbox. Befehle laufen mit den Rechten des Nutzers. Die Schreibsperre außerhalb
+des Projekts gilt nur für die Datei-Tools, nicht für Shell-Befehle. Repo-Dateien wie
 `.claude/settings.json` ändern den Modus nicht, weil FORGE ihn immer explizit setzt.
 
 ## Audit
 
 Jede Freigabeentscheidung (Nutzer oder Policy) wird mit Zeit, Session, Tool, Entscheidung und Quelle in
-`approvals` gespeichert. Tool-Eingaben werden vor dem Speichern durch den Secret-Redactor geschickt.
+`approvals` gespeichert. Tool-Eingaben werden vor dem Speichern durch den Secret-Redactor geschickt und
+pro Textfeld auf 20.000 Zeichen gekürzt. Schlägt das Schreiben des Audit-Eintrags fehl, bleibt die
+Ablehnung trotzdem bestehen.

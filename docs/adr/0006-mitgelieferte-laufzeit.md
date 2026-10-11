@@ -9,7 +9,7 @@ Bisher mussten Node.js, git und gh vorhanden sein, Logins liefen über `claude a
 
 ## Entscheidung
 
-- **Mitgeliefert (Windows):** Node.js 24.21.0, PortableGit 2.56.0.2 (enthält Bash, ssh und den Git
+- **Mitgeliefert:** Node.js 24.21.0, PortableGit 2.56.0.2 (enthält Bash, ssh und den Git
   Credential Manager), GitHub CLI 2.102.0. `scripts/prepare-runtime.mjs` lädt die Archive aus den
   offiziellen Quellen, prüft die SHA-256 und legt sie unter `apps/desktop/src-tauri/runtime/` ab.
   Tauri bündelt den Ordner als Ressource. Dokumentation, Manpages, Übersetzungen und Vim werden entfernt.
@@ -29,7 +29,6 @@ Bisher mussten Node.js, git und gh vorhanden sein, Logins liefen über `claude a
   Danach `gh auth setup-git`, damit git über https dieselben Zugangsdaten nutzt.
   Alternative wäre eine eigene GitHub-OAuth-App gewesen; die bräuchte eine registrierte Client-ID und
   würde Tokens in FORGE verwalten.
-- **Linux:** keine Downloads; Node, git und gh kommen als Paketabhängigkeiten aus dem System.
 
 ## Konsequenzen
 

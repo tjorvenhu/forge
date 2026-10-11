@@ -27,12 +27,12 @@ export function RemoteControlButton({ project }: { project: Project }) {
     <>
       <button
         onClick={() => setOpen(true)}
-        className={cn("relative flex h-9 items-center gap-1.5 rounded-lg px-2.5 text-[13px] hover:bg-surface-3 hover:text-fg", connected ? "text-success" : "text-muted")}
+        className={cn("relative flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg px-2.5 text-body hover:bg-surface-3 hover:text-fg", connected ? "text-success" : "text-muted")}
         title="In der Claude-App weiterarbeiten"
         aria-label="Remote-Steuerung"
       >
         <Smartphone className="h-3.5 w-3.5" />
-        <span>Remote</span>
+        <span className="hidden lg:inline">Remote</span>
         {dot && <span className={cn("absolute right-1 top-1 h-1.5 w-1.5 rounded-full", dot)} />}
       </button>
       <RemoteDialog open={open} onOpenChange={setOpen} project={project} state={state.data ?? null} />
@@ -69,7 +69,7 @@ function RemoteDialog({ open, onOpenChange, project, state }: { open: boolean; o
       <div className="flex flex-col gap-4">
         <div className="flex items-center gap-3 rounded-lg border border-border px-3 py-2.5">
           <div className="min-w-0 flex-1">
-            <div className="text-[13px] font-medium">{enabled ? "Eingeschaltet" : "Aus"}</div>
+            <div className="text-body font-medium">{enabled ? "Eingeschaltet" : "Aus"}</div>
             <div className="text-xs text-muted">{enabled ? `${sessions.length} Session${sessions.length === 1 ? "" : "s"} verbunden` : "Gilt für alle offenen Sessions dieses Projekts"}</div>
           </div>
           {enabled ? (
@@ -90,7 +90,7 @@ function RemoteDialog({ open, onOpenChange, project, state }: { open: boolean; o
                 key={s.sessionId}
                 onClick={() => setSelected(s.sessionId)}
                 className={cn(
-                  "flex items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-[13px] hover:bg-surface-3",
+                  "flex items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-body hover:bg-surface-3",
                   current?.sessionId === s.sessionId && "bg-surface-3",
                 )}
               >
@@ -136,7 +136,7 @@ function SessionLink({ session }: { session: RemoteSession }) {
   return (
     <div className="flex items-start gap-4">
       {qr && <img src={qr} alt="QR-Code für die Claude-App" width={140} height={140} className="shrink-0 rounded-lg border border-border" />}
-      <div className="flex min-w-0 flex-col gap-2 text-[13px]">
+      <div className="flex min-w-0 flex-col gap-2 text-body">
         <div className="truncate font-medium">{session.title}</div>
         <p className="text-muted">Mit dem Handy scannen oder in der Claude-App unter Code öffnen.</p>
         <div>

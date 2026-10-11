@@ -15,11 +15,13 @@ const log = (msg: string) => {
 const app = createApp({ dataDir: dataDir(), write, log });
 
 let shuttingDown = false;
-function shutdown(code = 0) {
+async function shutdown(code = 0) {
   if (shuttingDown) return;
   shuttingDown = true;
   try {
-    app.shutdown();
+    await app.shutdown();
+  } catch (e) {
+    log(`Fehler beim Beenden: ${e instanceof Error ? e.message : String(e)}`);
   } finally {
     process.exit(code);
   }
@@ -30,9 +32,9 @@ rl.on("line", (line) => {
   void app.server.handleLine(line);
 });
 // The desktop shell closing stdin means the app is gone: clean up child processes.
-rl.on("close", () => shutdown(0));
-process.on("SIGTERM", () => shutdown(0));
-process.on("SIGINT", () => shutdown(0));
+rl.on("close", () => void shutdown(0));
+process.on("SIGTERM", () => void shutdown(0));
+process.on("SIGINT", () => void shutdown(0));
 process.on("uncaughtException", (e) => {
   log(`uncaughtException: ${e.stack ?? e.message}`);
 });

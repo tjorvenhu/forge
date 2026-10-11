@@ -30,7 +30,7 @@ Definition of Done (Master-Prompt, Abschnitt 12):
 ## Testresultate
 
 Siehe [docs/TESTING.md](docs/TESTING.md): Lint/Typecheck sauber, 150 + 21 Unit-/Integrationstests,
-17 E2E-Tests mit echter Claude-Session, alle grün. Linux nicht getestet.
+17 E2E-Tests mit echter Claude-Session, alle grün.
 
 ## Befehle
 
@@ -49,7 +49,7 @@ in bereits offenen Shells ggf. `$env:Path += ";$env:USERPROFILE\.cargo\bin"`.
 
 ## Bekannte Fehler und Einschränkungen
 
-- Linux ungetestet. Windows-Installer enthält Node, Git und gh (rund 92 MB).
+- FORGE läuft nur unter Windows. Der Installer enthält Node, Git und gh (rund 92 MB).
 - Modellanzeige zeigt bei laufenden Sessions den aufgelösten Namen (z. B. `claude-opus-5-5`) statt des Anzeigenamens.
 - Untätige Sessions behalten ihren Claude-Prozess, bis „Beenden“ geklickt oder die App geschlossen wird.
 - Radix-Dialoge schließen sich, wenn das Fenster beim Öffnen keinen Fokus hat (nur bei Fernsteuerung
@@ -67,9 +67,8 @@ in bereits offenen Shells ggf. `$env:Path += ";$env:USERPROFILE\.cargo\bin"`.
 
 ## Genau drei nächste Aufgaben
 
-0. **Telefon mit der echten Anlage testen:** Zugangsdaten und OpenAI-Key unter Einstellungen → Telefon eintragen,
+1. **Telefon mit der echten Anlage testen:** Zugangsdaten und OpenAI-Key unter Einstellungen → Telefon eintragen,
    einschalten, Testanruf, dann einmal selbst anrufen (Status fragen, PIN eingeben, Anweisung schicken).
-1. **Auf GitHub mit echtem Konto prüfen:** `gh`-Login in FORGE abschließen, dann Projekt veröffentlichen,
+2. **Auf GitHub mit echtem Konto prüfen:** `gh`-Login in FORGE abschließen, dann Projekt veröffentlichen,
    Push, PR und Projekt löschen mit GitHub-Repository prüfen.
-2. **Linux-Build:** Tauri-Abhängigkeiten installieren, `pnpm build` unter Ubuntu, E2E-Lauf, .deb testen.
 3. **Ressourcen:** untätige Claude-Prozesse nach einstellbarer Zeit schließen.

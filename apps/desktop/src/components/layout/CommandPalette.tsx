@@ -1,23 +1,19 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import * as D from "@radix-ui/react-dialog";
 import { useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import {
-  Blocks,
-  Bot,
+  ArrowDown,
+  ArrowUp,
   CornerDownLeft,
   FileText,
-  FolderKanban,
   FolderPlus,
   GitBranch,
-  GitPullRequest,
   History,
-  Home,
   MessageSquarePlus,
   PanelBottom,
   PanelRight,
   Play,
   Search,
-  Settings,
   Settings2,
   Shield,
   Shrink,
@@ -28,7 +24,8 @@ import type { ProfileId, ResultOf, SearchHit } from "@forge/protocol";
 import { call, keys, useProjects, useSearch } from "@/lib/queries";
 import { errorMessage } from "@/lib/rpc";
 import { cn, relativeTime } from "@/lib/utils";
-import { useUi, type View } from "@/stores/ui";
+import { useUi } from "@/stores/ui";
+import { NAV } from "./nav";
 import { toast } from "@/stores/toast";
 import { Kbd, Spinner } from "@/components/ui/misc";
 import { ProjectIcon } from "@/components/projects/ProjectIcon";
@@ -62,16 +59,6 @@ function matches(entry: Entry, words: string[]): boolean {
   return words.every((w) => hay.includes(w));
 }
 
-const NAV: Array<{ view: View; label: string; icon: ReactNode }> = [
-  { view: "home", label: "Home", icon: <Home className="h-4 w-4" /> },
-  { view: "projects", label: "Projekte", icon: <FolderKanban className="h-4 w-4" /> },
-  { view: "sessions", label: "Sessions", icon: <History className="h-4 w-4" /> },
-  { view: "github", label: "GitHub", icon: <GitPullRequest className="h-4 w-4" /> },
-  { view: "agents", label: "Agenten", icon: <Bot className="h-4 w-4" /> },
-  { view: "mcp", label: "Erweiterungen", icon: <Blocks className="h-4 w-4" /> },
-  { view: "settings", label: "Einstellungen", icon: <Settings className="h-4 w-4" /> },
-];
-
 async function setProfile(qc: QueryClient, id: string, profile: ProfileId) {
   try {
     await call("projects.update", { projectId: id, profile });
@@ -90,9 +77,9 @@ export function CommandPalette() {
   return (
     <D.Root open={open} onOpenChange={setOpen}>
       <D.Portal>
-        <D.Overlay className="fixed inset-0 z-40 bg-black/50" />
+        <D.Overlay className="fixed inset-0 z-40 bg-overlay" />
         <D.Content
-          className="fixed left-1/2 top-[12vh] z-50 flex max-h-[70vh] w-[640px] max-w-[92vw] -translate-x-1/2 flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-2xl"
+          className="fixed left-1/2 top-[12vh] z-50 flex max-h-[70vh] w-160 max-w-[92vw] -translate-x-1/2 flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-2xl"
           aria-describedby={undefined}
         >
           <D.Title className="sr-only">Befehlspalette</D.Title>
@@ -107,6 +94,7 @@ function PaletteBody({ onClose }: { onClose: () => void }) {
   const [query, setQuery] = useState("");
   const [index, setIndex] = useState(0);
   const listRef = useRef<HTMLDivElement>(null);
+  const listId = useId();
   const qc = useQueryClient();
   const view = useUi((s) => s.view);
   const activeProjectId = useUi((s) => s.activeProjectId);
@@ -160,7 +148,7 @@ function PaletteBody({ onClose }: { onClose: () => void }) {
     }
     act("add-project", "Projekt hinzufügen", <FolderPlus className="h-4 w-4" />, () => ui.setNewProject("import"), { hint: "Strg+O", keywords: "importieren ordner" });
     act("create-project", "Neues Projekt anlegen", <FolderPlus className="h-4 w-4" />, () => ui.setNewProject("create"));
-    for (const n of NAV) act(`nav-${n.view}`, `Gehe zu ${n.label}`, n.icon, () => ui.setView(n.view));
+    for (const n of NAV) act(`nav-${n.view}`, `Gehe zu ${n.label}`, <n.Icon className="h-4 w-4" />, () => ui.setView(n.view));
 
     for (const p of projects.data ?? []) {
       list.push({
@@ -235,19 +223,30 @@ function PaletteBody({ onClose }: { onClose: () => void }) {
           }}
           placeholder="Projekt, Session, Aktion oder Text aus einem Verlauf"
           aria-label="Befehlspalette durchsuchen"
-          className="h-12 min-w-0 flex-1 bg-transparent text-[14px] text-fg placeholder:text-subtle focus:outline-none"
+          role="combobox"
+          aria-expanded
+          aria-autocomplete="list"
+          aria-controls={listId}
+          aria-activedescendant={shown[index] ? `${listId}-${index}` : undefined}
+          className="h-12 min-w-0 flex-1 bg-transparent text-ui text-fg placeholder:text-subtle focus:outline-none"
         />
         {hits.isFetching && <Spinner className="h-3.5 w-3.5" />}
       </div>
-      <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto p-1.5" role="listbox" aria-label="Ergebnisse">
-        {shown.length === 0 && <div className="px-3 py-6 text-center text-[13px] text-muted">Nichts gefunden.</div>}
+      <div ref={listRef} id={listId} className="min-h-0 flex-1 overflow-y-auto p-1.5" role="listbox" aria-label="Ergebnisse">
+        {shown.length === 0 && <div className="px-3 py-6 text-center text-body text-muted">Nichts gefunden.</div>}
         {shown.map((e, i) => {
           const header = e.group !== lastGroup ? e.group : null;
           lastGroup = e.group;
           return (
-            <div key={e.id}>
-              {header && <div className="px-2.5 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wide text-subtle">{header}</div>}
+            <div key={e.id} role="none">
+              {header && (
+                <div role="presentation" className="px-2.5 pb-1 pt-2 text-caption font-semibold uppercase tracking-wide text-subtle">
+                  {header}
+                </div>
+              )}
               <button
+                id={`${listId}-${i}`}
+                tabIndex={-1}
                 data-index={i}
                 role="option"
                 aria-selected={i === index}
@@ -257,16 +256,16 @@ function PaletteBody({ onClose }: { onClose: () => void }) {
               >
                 {e.hit ? (
                   <span className="min-w-0 flex-1">
-                    <Snippet text={e.hit.snippet} className="line-clamp-1 block text-[13px]" />
-                    <span className="block truncate text-[11px] text-subtle">
+                    <Snippet text={e.hit.snippet} className="line-clamp-1 block text-body" />
+                    <span className="block truncate text-caption text-subtle">
                       {e.hit.role === "user" ? "Du" : "Claude"} · {e.hit.sessionTitle ?? "Ohne Titel"} · {e.hit.projectName}
                     </span>
                   </span>
                 ) : (
                   <>
                     <span className="flex w-5 shrink-0 justify-center text-muted">{e.icon}</span>
-                    <span className="min-w-0 flex-1 truncate text-[13px]">{e.label}</span>
-                    {e.hint && <span className="max-w-56 shrink-0 truncate text-[11px] text-subtle">{e.hint}</span>}
+                    <span className="min-w-0 flex-1 truncate text-body">{e.label}</span>
+                    {e.hint && <span className="max-w-56 shrink-0 truncate text-caption text-subtle">{e.hint}</span>}
                   </>
                 )}
                 {i === index && <CornerDownLeft className="h-3.5 w-3.5 shrink-0 text-subtle" />}
@@ -275,9 +274,15 @@ function PaletteBody({ onClose }: { onClose: () => void }) {
           );
         })}
       </div>
-      <div className="flex items-center gap-3 border-t border-border px-4 py-2 text-[11px] text-subtle">
-        <span>
-          <Kbd>↑</Kbd> <Kbd>↓</Kbd> auswählen
+      <div className="flex items-center gap-3 border-t border-border px-4 py-2 text-caption text-subtle">
+        <span className="flex items-center gap-1">
+          <Kbd>
+            <ArrowUp className="inline h-2.5 w-2.5" aria-label="Pfeil nach oben" />
+          </Kbd>
+          <Kbd>
+            <ArrowDown className="inline h-2.5 w-2.5" aria-label="Pfeil nach unten" />
+          </Kbd>
+          auswählen
         </span>
         <span>
           <Kbd>Enter</Kbd> ausführen

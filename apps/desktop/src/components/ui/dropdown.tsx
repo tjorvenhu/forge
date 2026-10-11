@@ -24,7 +24,7 @@ export function DropdownMenu({ trigger, items, align = "end", header }: { trigge
               disabled={it.disabled}
               onSelect={it.onSelect}
               className={cn(
-                "flex cursor-default select-none items-center gap-2 rounded-md px-2 py-1.5 text-[13px] outline-none data-[disabled]:opacity-40 data-[highlighted]:bg-surface-3",
+                "flex cursor-default select-none items-center gap-2 rounded-md px-2 py-1.5 text-body outline-none data-[disabled]:opacity-40 data-[highlighted]:bg-surface-3",
                 it.danger ? "text-danger" : "text-fg",
               )}
             >

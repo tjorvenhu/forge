@@ -43,7 +43,7 @@ export function Select<T extends string>({ value, onChange, options, placeholder
         ref={trigger}
         aria-label={rest["aria-label"]}
         className={cn(
-          "inline-flex items-center justify-between gap-2 rounded-md border border-border bg-surface-2 px-2.5 text-[13px] text-fg hover:border-border-strong focus:outline-none focus-visible:border-accent disabled:opacity-50",
+          "inline-flex items-center justify-between gap-2 rounded-md border border-border bg-surface-2 px-2.5 text-body text-fg hover:border-border-strong focus:outline-none focus-visible:border-accent disabled:opacity-50",
           size === "sm" ? "h-7 text-xs" : "h-8",
           className,
         )}
@@ -61,7 +61,7 @@ export function Select<T extends string>({ value, onChange, options, placeholder
                 key={o.value}
                 value={o.value}
                 disabled={o.disabled}
-                className="relative flex cursor-default select-none flex-col rounded-md py-1.5 pl-7 pr-3 text-[13px] text-fg outline-none data-[disabled]:opacity-40 data-[highlighted]:bg-surface-3"
+                className="relative flex cursor-default select-none flex-col rounded-md py-1.5 pl-7 pr-3 text-body text-fg outline-none data-[disabled]:opacity-40 data-[highlighted]:bg-surface-3"
               >
                 <S.ItemIndicator className="absolute left-2 top-2">
                   <Check className="h-3.5 w-3.5 text-accent" />

@@ -20,7 +20,7 @@ export function GitHubView() {
         <section className="rounded-xl border border-border bg-surface p-4">
           <SectionTitle>GitHub-Konto</SectionTitle>
           {gh && !gh.found ? (
-            <p className="text-[13px] text-danger">Die GitHub-Anbindung fehlt in dieser Installation. Bitte FORGE neu installieren.</p>
+            <p className="text-body text-danger">Die GitHub-Anbindung fehlt in dieser Installation. Bitte FORGE neu installieren.</p>
           ) : (
             <GitHubAccountCard />
           )}
@@ -29,9 +29,9 @@ export function GitHubView() {
         <section className="rounded-xl border border-border bg-surface p-4">
           <SectionTitle>Aktuelles Projekt</SectionTitle>
           {!project.data ? (
-            <p className="text-[13px] text-muted">Kein Projekt geöffnet.</p>
+            <p className="text-body text-muted">Kein Projekt geöffnet.</p>
           ) : (
-            <div className="flex items-center gap-3 text-[13px]">
+            <div className="flex items-center gap-3 text-body">
               <span className="font-medium">{project.data.name}</span>
               <span className="min-w-0 flex-1 truncate font-mono text-xs text-muted">{project.data.git?.remoteUrl ?? "kein Remote origin"}</span>
               {web && (

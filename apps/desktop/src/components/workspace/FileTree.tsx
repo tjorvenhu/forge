@@ -78,8 +78,8 @@ export function FileTree({ project }: { project: Project }) {
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex h-11 shrink-0 items-center gap-2 px-4">
         <FolderTree className="h-4 w-4 text-muted" />
-        <span className="min-w-0 flex-1 truncate text-[14px] font-medium">{project.name}</span>
-        {!!git.data?.files.length && <span className="text-[11px] text-subtle">{git.data.files.length} geändert</span>}
+        <span className="min-w-0 flex-1 truncate text-ui font-medium">{project.name}</span>
+        {!!git.data?.files.length && <span className="text-caption text-subtle">{git.data.files.length} geändert</span>}
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3">
         <Level project={project} dir="" depth={0} status={status} />
@@ -111,7 +111,7 @@ function Level({ project, dir, depth, status }: { project: Project; dir: string;
           <li key={e.path}>
             <button
               className={cn(
-                "flex h-8 w-full items-center gap-2 rounded-md pr-2 text-left text-[13.5px] transition-colors",
+                "flex h-8 w-full items-center gap-2 rounded-md pr-2 text-left text-body-lg transition-colors",
                 selected === e.path ? "bg-surface-3 text-fg" : "text-fg/90 hover:bg-surface-2",
               )}
               style={pad(depth)}
@@ -139,7 +139,7 @@ function Level({ project, dir, depth, status }: { project: Project; dir: string;
                 </>
               )}
               <span className={cn("min-w-0 flex-1 truncate", e.isDir && status.dirs.has(e.path) && "text-warning/90")}>{e.name}</span>
-              {mark && <span className={cn("shrink-0 font-mono text-[11px] font-semibold", mark.tone)}>{mark.letter}</span>}
+              {mark && <span className={cn("shrink-0 font-mono text-caption font-semibold", mark.tone)}>{mark.letter}</span>}
             </button>
             {e.isDir && isOpen && <Level project={project} dir={e.path} depth={depth + 1} status={status} />}
           </li>

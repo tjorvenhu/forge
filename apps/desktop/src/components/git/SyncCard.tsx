@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Dialog } from "@/components/ui/dialog";
 import { Field, Input, Textarea } from "@/components/ui/input";
-import { Badge, Checkbox, SectionTitle, Spinner } from "@/components/ui/misc";
+import { Badge, Checkbox, ErrorBanner, SectionTitle, Spinner } from "@/components/ui/misc";
 
 /** Push/pull, publish to GitHub and the pull request of the current branch. */
 export function SyncCard({ project }: { project: Project }) {
@@ -37,7 +37,8 @@ export function SyncCard({ project }: { project: Project }) {
     void qc.invalidateQueries({ queryKey: keys.log(project.id) });
   };
 
-  const run = async (label: string, fn: () => Promise<unknown>, success: string) => {
+  /** `rethrow` for calls from a ConfirmDialog, which stays open when onConfirm throws. */
+  const run = async (label: string, fn: () => Promise<unknown>, success: string, rethrow = false) => {
     setBusy(label);
     try {
       await fn();
@@ -49,6 +50,7 @@ export function SyncCard({ project }: { project: Project }) {
       } else {
         toast.error(`${label} fehlgeschlagen`, errorMessage(e));
       }
+      if (rethrow) throw e;
     } finally {
       setBusy(null);
     }
@@ -72,13 +74,13 @@ export function SyncCard({ project }: { project: Project }) {
       <div className="flex flex-col gap-3 rounded-lg border border-border bg-surface p-3">
         {!hasRemote ? (
           <div className="flex items-center gap-3">
-            <p className="flex-1 text-[13px] text-muted">Kein Remote verbunden.</p>
+            <p className="flex-1 text-body text-muted">Kein Remote verbunden.</p>
             <Button size="sm" variant="primary" disabled={!account.data} onClick={() => setPublishing(true)} title={account.data ? undefined : "Erst unter GitHub anmelden"}>
               <UploadCloud className="h-3.5 w-3.5" /> Auf GitHub veröffentlichen
             </Button>
           </div>
         ) : (
-          <div className="flex items-center gap-2 text-[13px]">
+          <div className="flex items-center gap-2 text-body">
             <span className="min-w-0 flex-1 truncate text-muted">
               {summary.upstream ?? "kein Upstream"}
               {summary.ahead > 0 && <span className="ml-2 text-fg">{summary.ahead} zum Pushen</span>}
@@ -97,8 +99,19 @@ export function SyncCard({ project }: { project: Project }) {
           <div className="border-t border-border pt-3">
             {pr.isLoading ? (
               <Spinner className="h-3.5 w-3.5" />
+            ) : pr.isError ? (
+              <ErrorBanner
+                title="Pull Request nicht abgefragt"
+                action={
+                  <Button size="sm" variant="ghost" onClick={() => void pr.refetch()} loading={pr.isFetching}>
+                    <RefreshCw className="h-3.5 w-3.5" /> Erneut
+                  </Button>
+                }
+              >
+                {errorMessage(pr.error)}
+              </ErrorBanner>
             ) : pr.data ? (
-              <div className="flex items-center gap-2 text-[13px]">
+              <div className="flex items-center gap-2 text-body">
                 <GitPullRequest className="h-4 w-4 text-accent" />
                 <span className="min-w-0 flex-1 truncate">
                   #{pr.data.number} {pr.data.title}
@@ -128,7 +141,7 @@ export function SyncCard({ project }: { project: Project }) {
               </div>
             ) : (
               <div className="flex items-center gap-3">
-                <p className="flex-1 text-[13px] text-muted">Kein Pull Request für {summary.branch}.</p>
+                <p className="flex-1 text-body text-muted">Kein Pull Request für {summary.branch}.</p>
                 <Button size="sm" onClick={() => setCreatingPr(true)} disabled={summary.branch === "main" || summary.branch === "master"} title={summary.branch === "main" || summary.branch === "master" ? "Erst einen Feature-Branch anlegen" : undefined}>
                   <GitPullRequest className="h-3.5 w-3.5" /> Pull Request erstellen
                 </Button>
@@ -146,7 +159,7 @@ export function SyncCard({ project }: { project: Project }) {
         confirmLabel="Trotzdem pushen"
         danger
         requireText={confirmProtected ?? undefined}
-        onConfirm={() => run("Push", () => call("git.push", { projectId: project.id, allowProtected: true }), "Gepusht")}
+        onConfirm={() => run("Push", () => call("git.push", { projectId: project.id, allowProtected: true }), "Gepusht", true)}
       />
       <PublishDialog open={publishing} onOpenChange={setPublishing} project={project} onDone={refresh} />
       <CreatePrDialog open={creatingPr} onOpenChange={setCreatingPr} project={project} onDone={refresh} />
@@ -196,7 +209,7 @@ function PublishDialog({ open, onOpenChange, project, onDone }: { open: boolean;
         <Field label="Repository-Name">
           <Input value={name} onChange={(e) => setName(e.target.value)} />
         </Field>
-        <label className="flex items-center gap-2 text-[13px]">
+        <label className="flex items-center gap-2 text-body">
           <Checkbox checked={isPrivate} onChange={setPrivate} label="Privat" /> Privat
         </label>
       </div>
@@ -227,7 +240,13 @@ function CreatePrDialog({ open, onOpenChange, project, onDone }: { open: boolean
   };
 
   useEffect(() => {
-    if (open && !title) void suggest();
+    if (!open) return;
+    // Every opening starts fresh: the branch may have changed since the last PR.
+    setTitle("");
+    setBody("");
+    setBase("main");
+    setDraft(false);
+    void suggest();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- suggest once when the dialog opens
   }, [open]);
 
@@ -236,7 +255,7 @@ function CreatePrDialog({ open, onOpenChange, project, onDone }: { open: boolean
       open={open}
       onOpenChange={onOpenChange}
       title="Pull Request erstellen"
-      className="w-[680px]"
+      className="w-170"
       footer={
         <>
           <Button variant="ghost" onClick={() => onOpenChange(false)}>
@@ -286,7 +305,7 @@ function CreatePrDialog({ open, onOpenChange, project, onDone }: { open: boolean
               <Input value={base} onChange={(e) => setBase(e.target.value)} className="font-mono text-xs" />
             </Field>
           </div>
-          <label className="mt-5 flex items-center gap-2 text-[13px]">
+          <label className="mt-5 flex items-center gap-2 text-body">
             <Checkbox checked={draft} onChange={setDraft} label="Als Entwurf" /> Als Entwurf
           </label>
         </div>

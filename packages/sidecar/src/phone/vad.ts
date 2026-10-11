@@ -62,8 +62,8 @@ export class Vad extends EventEmitter<VadEvents> {
       return;
     }
     this.frames.push(frame);
-    this.silenceMs = loud ? 0 : this.silenceMs + 20;
-    const length = this.frames.length * 20;
+    this.silenceMs = loud ? 0 : this.silenceMs + frame.length / 8;
+    const length = durationMs(this.frames);
     if (this.silenceMs >= this.o.endSilenceMs || length >= this.o.maxUtteranceMs) this.finish();
   }
 
@@ -76,12 +76,22 @@ export class Vad extends EventEmitter<VadEvents> {
   }
 
   private finish() {
-    const voiced = this.frames.length * 20 - this.silenceMs;
+    const voiced = durationMs(this.frames) - this.silenceMs;
     const frames = this.frames;
     this.reset();
     if (voiced < this.o.minUtteranceMs) return;
-    const out = new Int16Array(frames.length * frames[0]!.length);
-    frames.forEach((f, i) => out.set(f, i * f.length));
+    // Packet sizes can change within a call (10, 20 or 30 ms), so frames are not all equally long.
+    const out = new Int16Array(frames.reduce((n, f) => n + f.length, 0));
+    let offset = 0;
+    for (const f of frames) {
+      out.set(f, offset);
+      offset += f.length;
+    }
     this.emit("utterance", out);
   }
+}
+
+/** 8 samples per ms at 8 kHz */
+function durationMs(frames: Int16Array[]): number {
+  return frames.reduce((n, f) => n + f.length, 0) / 8;
 }

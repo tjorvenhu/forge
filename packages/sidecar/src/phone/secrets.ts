@@ -3,9 +3,9 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node
 import path from "node:path";
 
 /**
- * Secrets of the phone feature (SIP password, OpenAI key). On Windows they are encrypted with DPAPI
- * for the current user, so the file is useless on another account or machine. Elsewhere the file is
- * readable by the owner only. Secrets never go to the UI or into logs.
+ * Secrets of the phone feature (SIP password, OpenAI key), encrypted with DPAPI for the current
+ * Windows user, so the file is useless on another account or machine. Secrets never go to the UI
+ * or into logs.
  */
 export class SecretStore {
   private cache = new Map<string, string | null>();
@@ -24,8 +24,7 @@ export class SecretStore {
     if (this.cache.has(name)) return this.cache.get(name)!;
     const f = this.file(name);
     if (!existsSync(f)) return null;
-    const stored = readFileSync(f, "utf8").trim();
-    const value = process.platform === "win32" ? await dpapi("unprotect", stored) : Buffer.from(stored, "base64").toString("utf8");
+    const value = await dpapi("unprotect", readFileSync(f, "utf8").trim());
     this.cache.set(name, value);
     return value;
   }
@@ -38,8 +37,7 @@ export class SecretStore {
       return;
     }
     mkdirSync(this.dir, { recursive: true });
-    const stored = process.platform === "win32" ? await dpapi("protect", value) : Buffer.from(value, "utf8").toString("base64");
-    writeFileSync(f, stored, { mode: 0o600 });
+    writeFileSync(f, await dpapi("protect", value));
     this.cache.set(name, value);
   }
 }
@@ -58,7 +56,7 @@ function dpapi(op: "protect" | "unprotect", input: string): Promise<string> {
     child.stderr.on("data", (d: Buffer) => (err += d.toString("utf8")));
     child.on("error", reject);
     child.on("close", (code) => {
-      if (code === 0) resolve(out.replace(/^\uFEFF/, "").replace(/\r?\n$/, ""));
+      if (code === 0) resolve((out.charCodeAt(0) === 0xfeff ? out.slice(1) : out).replace(/\r?\n$/, ""));
       else reject(new Error(`Geheimnis konnte nicht ${op === "protect" ? "verschlüsselt" : "entschlüsselt"} werden: ${err.trim().slice(0, 200)}`));
     });
     child.stdin.end(input, "utf8");

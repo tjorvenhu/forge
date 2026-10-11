@@ -174,6 +174,20 @@ export const SessionEventBody = z.discriminatedUnion("type", [
     hash: z.string().nullable(),
     files: z.array(z.string()),
   }),
+  /** Auto-commit found possible secrets in the changed content and asks before committing. */
+  z.object({
+    type: z.literal("automation.confirm"),
+    requestId: z.string(),
+    files: z.array(z.string()),
+    flagged: z.array(z.object({ path: z.string(), reason: z.string() })),
+    message: z.string(),
+  }),
+  z.object({
+    type: z.literal("automation.confirmResolved"),
+    requestId: z.string(),
+    /** expired: the files changed after the question, or FORGE restarted meanwhile */
+    decision: z.enum(["commit", "skip", "expired"]),
+  }),
   z.object({
     type: z.literal("files.rewound"),
     toMessageUuid: z.string(),
@@ -193,6 +207,8 @@ export const SessionEventBody = z.discriminatedUnion("type", [
     name: z.string(),
     input: z.record(z.string(), z.unknown()),
     parentToolUseId: z.string().nullable(),
+    /** long string fields of the input were shortened before storing (e.g. the content of a large Write) */
+    inputTruncated: z.boolean().optional(),
   }),
   z.object({
     type: z.literal("tool.result"),
@@ -211,6 +227,8 @@ export const SessionEventBody = z.discriminatedUnion("type", [
     reason: z.string().nullable(),
     allowSessionScope: z.boolean(),
     outsideProject: z.boolean(),
+    /** long string fields of the input were shortened before storing; the decision covers the full input */
+    inputTruncated: z.boolean().optional(),
   }),
   z.object({
     type: z.literal("approval.resolved"),
@@ -602,6 +620,9 @@ export const DevServerState = z.object({
 });
 export type DevServerState = z.infer<typeof DevServerState>;
 
+
+/** OpenAI voices for speech output on the phone; the first one is the default. */
+export const PHONE_VOICES = ["marin", "cedar", "alloy", "ash", "ballad", "coral", "echo", "fable", "nova", "onyx", "sage", "shimmer", "verse"] as const;
 
 /** Settings of the phone connection (SIP). Secrets are never sent to the UI, only whether they are set. */
 export const PhoneConfig = z.object({

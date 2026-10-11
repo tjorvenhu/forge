@@ -3,23 +3,18 @@ import { promisify } from "node:util";
 import os from "node:os";
 import path from "node:path";
 
-const isWin = process.platform === "win32";
-
 export function dataDir(): string {
-  const override = process.env.FORGE_DATA_DIR;
-  const base = override
-    ? override
-    : isWin
-      ? path.join(process.env.APPDATA ?? path.join(os.homedir(), "AppData", "Roaming"), "forge")
-      : path.join(process.env.XDG_DATA_HOME ?? path.join(os.homedir(), ".local", "share"), "forge");
+  const base = process.env.FORGE_DATA_DIR || path.join(process.env.APPDATA ?? path.join(os.homedir(), "AppData", "Roaming"), "forge");
   mkdirSync(base, { recursive: true });
   return base;
 }
 
 /** Key used for duplicate detection: Windows paths are case-insensitive. */
 export function pathKey(p: string): string {
-  const n = path.resolve(p).replace(/[\\/]+$/, "");
-  return isWin ? n.toLowerCase() : n;
+  const resolved = path.resolve(p);
+  // A root keeps its separator: "C:" alone would mean the current directory on drive C.
+  const n = path.parse(resolved).root === resolved ? resolved : resolved.replace(/[\\/]+$/, "");
+  return n.toLowerCase();
 }
 
 export async function canonicalize(p: string): Promise<string> {
@@ -40,35 +35,28 @@ export function isInside(child: string, parent: string): boolean {
  * user decision. Used by the policy guard.
  */
 export function sensitivePaths(home = os.homedir()): string[] {
-  const list = [
+  const local = process.env.LOCALAPPDATA ?? path.join(home, "AppData", "Local");
+  const roaming = process.env.APPDATA ?? path.join(home, "AppData", "Roaming");
+  return [
     path.join(home, ".ssh"),
     path.join(home, ".aws"),
     path.join(home, ".gnupg"),
+    // gh uses this instead of AppData when XDG_CONFIG_HOME is ~/.config (e.g. shared dotfiles).
     path.join(home, ".config", "gh"),
     path.join(home, ".docker", "config.json"),
     path.join(home, ".kube"),
     path.join(home, ".npmrc"),
     path.join(home, ".git-credentials"),
     path.join(home, ".claude", ".credentials.json"),
-    path.join(home, ".mozilla", "firefox"),
-    path.join(home, ".config", "google-chrome"),
-    path.join(home, ".config", "chromium"),
+    path.join(local, "Google", "Chrome", "User Data"),
+    path.join(local, "Microsoft", "Edge", "User Data"),
+    path.join(local, "BraveSoftware"),
+    path.join(roaming, "Mozilla", "Firefox", "Profiles"),
+    path.join(local, "Microsoft", "Credentials"),
+    path.join(roaming, "Microsoft", "Credentials"),
+    path.join(roaming, "Microsoft", "Protect"),
+    path.join(roaming, "GitHub CLI"),
   ];
-  if (isWin) {
-    const local = process.env.LOCALAPPDATA ?? path.join(home, "AppData", "Local");
-    const roaming = process.env.APPDATA ?? path.join(home, "AppData", "Roaming");
-    list.push(
-      path.join(local, "Google", "Chrome", "User Data"),
-      path.join(local, "Microsoft", "Edge", "User Data"),
-      path.join(local, "BraveSoftware"),
-      path.join(roaming, "Mozilla", "Firefox", "Profiles"),
-      path.join(local, "Microsoft", "Credentials"),
-      path.join(roaming, "Microsoft", "Credentials"),
-      path.join(roaming, "Microsoft", "Protect"),
-      path.join(roaming, "GitHub CLI"),
-    );
-  }
-  return list;
 }
 
 const WIN_RESERVED = /^(con|prn|aux|nul|com[0-9]|lpt[0-9])(\..*)?$/i;

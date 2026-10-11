@@ -86,8 +86,10 @@ export class GitHubService {
     });
     this.login = child;
     let output = "";
-    const onData = (d: Buffer) => {
-      output += d.toString();
+    child.stdout?.setEncoding("utf8");
+    child.stderr?.setEncoding("utf8");
+    const onData = (d: string) => {
+      output += d;
       const code = /\b([A-Z0-9]{4}-[A-Z0-9]{4})\b/.exec(output)?.[1] ?? null;
       const url = /(https:\/\/github\.com\/login\/device)/.exec(output)?.[1] ?? null;
       if (code && url && this.state.phase !== "waiting") this.set({ phase: "waiting", code, url });

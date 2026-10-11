@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { AlertTriangle, RotateCw } from "lucide-react";
 import { isTauri, rpc } from "@/lib/rpc";
-import { useServerEvents } from "@/lib/queries";
 import { useUi } from "@/stores/ui";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { Toaster } from "@/components/layout/Toaster";
@@ -38,7 +37,7 @@ export function App() {
       <Centered>
         <AlertTriangle className="h-6 w-6 text-warning" />
         <div className="text-sm font-medium">FORGE läuft nur als Desktop-App.</div>
-        <div className="max-w-md text-center text-[13px] text-muted">
+        <div className="max-w-md text-center text-body text-muted">
           Die Oberfläche braucht den lokalen Hintergrunddienst. Starte sie mit <code className="font-mono">pnpm dev</code> im Projektordner.
         </div>
       </Centered>
@@ -48,7 +47,7 @@ export function App() {
     return (
       <Centered>
         <Spinner />
-        <div className="text-[13px] text-muted">Hintergrunddienst startet …</div>
+        <div className="text-body text-muted">Hintergrunddienst startet …</div>
       </Centered>
     );
   }
@@ -58,7 +57,7 @@ export function App() {
         <AlertTriangle className="h-6 w-6 text-danger" />
         <div className="text-sm font-medium">Der FORGE-Hintergrunddienst läuft nicht.</div>
         {boot.detail && <pre className="max-h-48 max-w-2xl overflow-auto rounded-md bg-surface p-3 font-mono text-xs text-muted">{boot.detail}</pre>}
-        <div className="max-w-md text-center text-[13px] text-muted">Voraussetzung ist Node.js ab Version 22.13 im PATH.</div>
+        <div className="max-w-md text-center text-body text-muted">Voraussetzung ist Node.js ab Version 22.13 im PATH.</div>
         <Button variant="primary" onClick={() => void rpc.restart()}>
           <RotateCw className="h-3.5 w-3.5" /> Neu starten
         </Button>
@@ -69,7 +68,6 @@ export function App() {
 }
 
 function Shell() {
-  useServerEvents();
   useGlobalShortcuts();
   const view = useUi((s) => s.view);
   const activeProjectId = useUi((s) => s.activeProjectId);

@@ -31,6 +31,30 @@ describe("TitleTooltips", () => {
     expect(button.getAttribute("title")).toBe("Ton anhören");
   });
 
+  it("keeps the accessible name of an icon-only button while the title is removed", () => {
+    render(
+      <>
+        <TitleTooltips />
+        <button title="Status aktualisieren">
+          <svg aria-hidden />
+        </button>
+        <button title="Hinweis">Speichern</button>
+      </>,
+    );
+    const icon = screen.getByRole("button", { name: "Status aktualisieren" });
+    fireEvent.pointerOver(icon);
+    expect(icon.hasAttribute("title")).toBe(false);
+    expect(screen.getByRole("button", { name: "Status aktualisieren" })).toBe(icon);
+
+    fireEvent.pointerOut(icon, { relatedTarget: document.body });
+    expect(icon.hasAttribute("aria-label")).toBe(false);
+    expect(icon.getAttribute("title")).toBe("Status aktualisieren");
+
+    const text = screen.getByRole("button", { name: "Speichern" });
+    fireEvent.pointerOver(text);
+    expect(text.hasAttribute("aria-label")).toBe(false);
+  });
+
   it("hides on click and keeps the title when React changed it meanwhile", () => {
     render(
       <>

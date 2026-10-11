@@ -1,34 +1,19 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { open } from "@tauri-apps/plugin-dialog";
-import { getCurrentWebview } from "@tauri-apps/api/webview";
-import { ArrowUp, FileText, ImageIcon, ListTodo, Paperclip, Square, X } from "lucide-react";
-import type { PermissionMode, Project, Session, EffortLevel } from "@forge/protocol";
-import { call, keys, useRuntimeInfo, useSettings } from "@/lib/queries";
-import { errorMessage } from "@/lib/rpc";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { ArrowUp, ListTodo, Paperclip, Square } from "lucide-react";
+import type { EffortLevel, Project, Session } from "@forge/protocol";
+import { useRuntimeInfo, useSettings } from "@/lib/queries";
 import { EFFORT_LEVELS, findModel, modelLabel } from "@/lib/models";
+import { isWorking } from "@/lib/working";
 import { cn } from "@/lib/utils";
-import { useUi } from "@/stores/ui";
-import { toast } from "@/stores/toast";
-import { NO_FILES, draftKey, useDrafts, type PendingFile } from "@/stores/drafts";
+import { draftKey, useDrafts } from "@/stores/drafts";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
 import { Kbd, Tooltip } from "@/components/ui/misc";
 import { ContextMeter } from "./ContextMeter";
-
-const PROFILE_MODE: Record<Project["profile"], PermissionMode> = { safe: "default", balanced: "acceptEdits", autonomous: "bypassPermissions" };
-const MAX_ATTACHMENTS = 10;
-const IMAGE_EXT = /\.(png|jpe?g|gif|webp)$/i;
-
-/** "claude-opus-5-5" -> "Opus 5.5" for models the picker does not list by alias. */
-function readAsBase64(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const r = new FileReader();
-    r.onload = () => resolve(String(r.result).split(",")[1] ?? "");
-    r.onerror = () => reject(r.error ?? new Error("Lesefehler"));
-    r.readAsDataURL(file);
-  });
-}
+import { AttachmentList } from "./AttachmentList";
+import { SlashCommandMenu, useSlashCommands } from "./SlashCommandMenu";
+import { useAttachments } from "./useAttachments";
+import { compactSession, stopSession, useComposerOptions, useSendMessage } from "./useSendMessage";
 
 export function Composer({
   project,
@@ -45,111 +30,25 @@ export function Composer({
 }) {
   const key = draftKey(project.id, session?.id ?? null, resumeClaudeSessionId);
   const text = useDrafts((s) => s.drafts[key]?.text ?? "");
-  const files = useDrafts((s) => s.drafts[key]?.files ?? NO_FILES);
   const setText = useCallback((t: string) => useDrafts.getState().setText(key, t), [key]);
-  const setFiles = useCallback((fn: (cur: PendingFile[]) => PendingFile[]) => useDrafts.getState().updateFiles(key, fn), [key]);
-  const [sending, setSending] = useState(false);
-  const [planOnly, setPlanOnly] = useState(project.tags.includes("plan-first"));
-  const [model, setModel] = useState<string | null>(null);
-  const [effort, setEffort] = useState<EffortLevel | null>(null);
-  const [dragging, setDragging] = useState(false);
+  const attachments = useAttachments(key);
+  const { files } = attachments;
+  const options = useComposerOptions(project, session, key);
+  const { send, sending } = useSendMessage({ project, session, draftKey: key, resumeClaudeSessionId, options });
   const [cmdIndex, setCmdIndex] = useState(0);
   const ref = useRef<HTMLTextAreaElement>(null);
   const settings = useSettings();
   const runtime = useRuntimeInfo();
-  const qc = useQueryClient();
-  const setActive = useUi((s) => s.setActiveSession);
   const enterToSend = settings.data?.enterToSend ?? true;
 
-  const working = session?.status === "running" || session?.status === "starting" || session?.status === "stopping";
+  const working = isWorking(session?.status);
   const waiting = session?.status === "waiting_approval";
-  const effectiveModel = session ? session.model : (model ?? project.defaultModel ?? settings.data?.defaultModel ?? null);
-  const isPlan = session ? session.permissionMode === "plan" : planOnly;
-  const effectiveEffort = session ? session.effort : (effort ?? project.defaultEffort ?? settings.data?.defaultEffort ?? null);
 
-  // ---------- slash commands
-  const slashMode = /^\/[^\s]*$/.test(text);
-  const commands = useQuery({
-    queryKey: ["commands", project.id],
-    queryFn: () => call("system.commands", { projectId: project.id }),
-    enabled: slashMode,
-    staleTime: 5 * 60_000,
-  });
-  const matches = useMemo(() => {
-    if (!slashMode) return [];
-    const q = text.slice(1).toLowerCase();
-    return (commands.data ?? []).filter((c) => c.name.toLowerCase().includes(q)).slice(0, 8);
-  }, [slashMode, text, commands.data]);
+  const matches = useSlashCommands(project.id, text);
   useEffect(() => setCmdIndex(0), [text]);
   const pickCommand = (name: string) => {
     setText(`/${name} `);
     ref.current?.focus();
-  };
-
-  // ---------- attachments
-  const addPaths = useCallback((paths: string[]) => {
-    setFiles((cur) => {
-      const room = MAX_ATTACHMENTS - cur.length;
-      if (paths.length > room) toast.info(`Höchstens ${MAX_ATTACHMENTS} Anhänge`);
-      const add = paths.slice(0, Math.max(0, room)).map((p) => ({
-        id: crypto.randomUUID(),
-        name: p.split(/[\\/]/).pop() ?? p,
-        attachment: { kind: "path" as const, path: p },
-        preview: null,
-        isImage: IMAGE_EXT.test(p),
-      }));
-      return [...cur, ...add];
-    });
-  }, [setFiles]);
-
-  const addBlobs = async (list: File[]) => {
-    for (const f of list.slice(0, MAX_ATTACHMENTS - files.length)) {
-      if (f.size > 10 * 1024 * 1024) {
-        toast.error("Datei zu groß", `${f.name || "Einfügung"} ist größer als 10 MB.`);
-        continue;
-      }
-      const base64 = await readAsBase64(f);
-      const name = f.name || `einfuegung-${new Date().toISOString().slice(11, 19).replace(/:/g, "")}.png`;
-      setFiles((cur) => [
-        ...cur,
-        {
-          id: crypto.randomUUID(),
-          name,
-          attachment: { kind: "data", name, mediaType: f.type || "application/octet-stream", base64 },
-          preview: f.type.startsWith("image/") ? URL.createObjectURL(f) : null,
-          isImage: f.type.startsWith("image/"),
-        },
-      ]);
-    }
-  };
-
-  // Native drag and drop (Tauri delivers real file paths).
-  useEffect(() => {
-    let unlisten: (() => void) | null = null;
-    void getCurrentWebview()
-      .onDragDropEvent((e) => {
-        if (e.payload.type === "over" || e.payload.type === "enter") setDragging(true);
-        else if (e.payload.type === "leave") setDragging(false);
-        else if (e.payload.type === "drop") {
-          setDragging(false);
-          addPaths(e.payload.paths);
-        }
-      })
-      .then((u) => (unlisten = u));
-    return () => unlisten?.();
-  }, [addPaths]);
-
-  const pickFiles = async () => {
-    const r = await open({
-      multiple: true,
-      title: "Dateien anhängen",
-      filters: [
-        { name: "Bilder, PDF, Text", extensions: ["png", "jpg", "jpeg", "gif", "webp", "pdf", "txt", "md", "json", "csv", "log", "ts", "tsx", "js", "py", "rs", "go", "java", "cs", "html", "css", "yaml", "yml", "toml", "xml", "sql"] },
-        { name: "Alle Dateien", extensions: ["*"] },
-      ],
-    });
-    if (Array.isArray(r)) addPaths(r);
-    else if (typeof r === "string") addPaths([r]);
   };
 
   useEffect(() => {
@@ -167,90 +66,21 @@ export function Composer({
     el.style.height = Math.min(el.scrollHeight, 260) + "px";
   }, [text]);
 
-  const send = async () => {
-    const prompt = text.trim() || (files.length ? "Siehe Anhang." : "");
-    if (!prompt || sending || waiting) return;
-    setSending(true);
-    const attachments = files.map((f) => f.attachment);
-    try {
-      if (!session) {
-        const s = await call("sessions.start", { projectId: project.id, prompt, model: effectiveModel, effort: effectiveEffort, planOnly, resumeClaudeSessionId, attachments });
-        qc.setQueryData(keys.session(s.id), s);
-        void qc.invalidateQueries({ queryKey: keys.sessions(project.id) });
-        setActive(project.id, s.id);
-      } else {
-        const s = await call("sessions.send", { sessionId: session.id, text: prompt, attachments });
-        qc.setQueryData(keys.session(s.id), s);
-      }
-      // Only drop what was sent: with sending allowed mid-turn the user may already be typing the next message.
-      const sentIds = new Set(files.map((f) => f.id));
-      files.forEach((f) => f.preview && URL.revokeObjectURL(f.preview));
-      const drafts = useDrafts.getState();
-      drafts.updateFiles(key, (cur) => cur.filter((f) => !sentIds.has(f.id)));
-      if ((drafts.drafts[key]?.text ?? "") === text) drafts.setText(key, "");
-    } catch (e) {
-      toast.error("Nachricht nicht gesendet", errorMessage(e));
-    } finally {
-      setSending(false);
-    }
+  const submit = () => {
+    if (!waiting) void send(text, files);
   };
-
-  const compact = async () => {
-    if (!session) return;
-    try {
-      qc.setQueryData(keys.session(session.id), await call("sessions.send", { sessionId: session.id, text: "/compact", attachments: [] }));
-    } catch (e) {
-      toast.error("Komprimieren fehlgeschlagen", errorMessage(e));
-    }
-  };
-
-  const stop = async () => {
-    if (!session) return;
-    try {
-      await call("sessions.stop", { sessionId: session.id });
-    } catch (e) {
-      toast.error("Stop fehlgeschlagen", errorMessage(e));
-    }
-  };
-
-  const changeModel = async (v: string) => {
-    const next = v === "__default" ? null : v;
-    if (!session) return setModel(next);
-    if (!next) return;
-    try {
-      qc.setQueryData(keys.session(session.id), await call("sessions.setModel", { sessionId: session.id, model: next }));
-    } catch (e) {
-      toast.error("Modell nicht gewechselt", errorMessage(e));
-    }
-  };
-
-  const changeEffort = async (next: EffortLevel | null) => {
-    if (!session) return setEffort(next);
-    try {
-      qc.setQueryData(keys.session(session.id), await call("sessions.setEffort", { sessionId: session.id, effort: next }));
-    } catch (e) {
-      toast.error("Effort nicht gewechselt", errorMessage(e));
-    }
-  };
-
-  const togglePlan = async () => {
-    if (!session) return setPlanOnly(!planOnly);
-    const mode: PermissionMode = isPlan ? PROFILE_MODE[session.profile] : "plan";
-    try {
-      qc.setQueryData(keys.session(session.id), await call("sessions.setPermissionMode", { sessionId: session.id, mode }));
-    } catch (e) {
-      toast.error("Modus nicht gewechselt", errorMessage(e));
-    }
+  const stop = () => {
+    if (session) void stopSession(session.id);
   };
 
   const models = runtime.data?.models.filter((m) => m.value !== "default") ?? [];
   const modelOptions = [
-    ...(session && effectiveModel ? [] : [{ value: "__default", label: "Standardmodell" }]),
+    ...(session && options.model ? [] : [{ value: "__default", label: "Standardmodell" }]),
     ...models.map((m) => ({ value: m.value, label: m.displayName || m.value, description: m.description })),
   ];
-  if (effectiveModel && !modelOptions.some((o) => o.value === effectiveModel)) modelOptions.push({ value: effectiveModel, label: modelLabel(effectiveModel, runtime.data?.models), description: "" });
+  if (options.model && !modelOptions.some((o) => o.value === options.model)) modelOptions.push({ value: options.model, label: modelLabel(options.model, runtime.data?.models), description: "" });
 
-  const modelInfo = findModel(effectiveModel, runtime.data?.models ?? []);
+  const modelInfo = findModel(options.model, runtime.data?.models ?? []);
   const effortLevels = modelInfo?.supportedEffortLevels?.length ? modelInfo.supportedEffortLevels : EFFORT_LEVELS;
   // Unknown models keep the picker; listed ones only when Claude Code reports effort support.
   const showEffort = !modelInfo || modelInfo.supportsEffort === true;
@@ -265,59 +95,17 @@ export function Composer({
 
   return (
     <div className="relative shrink-0 px-6 pb-5 pt-2">
-      {matches.length > 0 && (
-        <div className="absolute bottom-full left-6 right-6 z-20 mx-auto mb-1 max-w-4xl overflow-hidden rounded-lg border border-border bg-surface-2 shadow-xl" role="listbox" aria-label="Slash-Commands">
-          {matches.map((c, i) => (
-            <button
-              key={c.name}
-              role="option"
-              aria-selected={i === cmdIndex}
-              onMouseDown={(e) => {
-                e.preventDefault();
-                pickCommand(c.name);
-              }}
-              className={cn("flex w-full items-baseline gap-3 px-3 py-1.5 text-left", i === cmdIndex ? "bg-surface-3" : "hover:bg-surface-3")}
-            >
-              <span className="shrink-0 font-mono text-[12.5px] text-accent">/{c.name}</span>
-              {c.argumentHint && <span className="shrink-0 font-mono text-[11px] text-subtle">{c.argumentHint}</span>}
-              <span className="min-w-0 truncate text-xs text-muted">{c.description}</span>
-            </button>
-          ))}
-        </div>
-      )}
+      <SlashCommandMenu matches={matches} index={cmdIndex} onPick={pickCommand} />
       <div
         className={cn(
           "relative mx-auto max-w-4xl rounded-2xl border bg-surface shadow-lg shadow-black/20 transition-colors",
-          dragging ? "border-accent bg-accent-soft" : working ? "border-accent/40" : "border-border focus-within:border-accent",
+          attachments.dragging ? "border-accent bg-accent-soft" : working ? "border-accent/40" : "border-border focus-within:border-accent",
         )}
       >
-        {dragging && (
-          <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-xl text-[13px] text-accent">Dateien hier ablegen</div>
+        {attachments.dragging && (
+          <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-xl text-body text-accent">Dateien hier ablegen</div>
         )}
-        {files.length > 0 && (
-          <div className="flex flex-wrap gap-2 px-3 pt-3">
-            {files.map((f) => (
-              <div key={f.id} className="flex items-center gap-2 rounded-lg border border-border bg-surface-3 py-1 pl-1 pr-1.5 text-xs">
-                {f.preview ? (
-                  <img src={f.preview} alt="" className="h-8 w-8 rounded object-cover" />
-                ) : (
-                  <span className="flex h-8 w-8 items-center justify-center rounded bg-surface-2 text-muted">
-                    {f.isImage ? <ImageIcon className="h-4 w-4" /> : <FileText className="h-4 w-4" />}
-                  </span>
-                )}
-                <span className="max-w-40 truncate" title={f.attachment.kind === "path" ? f.attachment.path : f.name}>
-                  {f.name}
-                </span>
-                <button className="rounded p-0.5 text-subtle hover:text-fg" aria-label={`${f.name} entfernen`} onClick={() => {
-                    if (f.preview) URL.revokeObjectURL(f.preview);
-                    setFiles((cur) => cur.filter((x) => x.id !== f.id));
-                  }}>
-                  <X className="h-3.5 w-3.5" />
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
+        <AttachmentList files={files} onRemove={attachments.remove} />
         <textarea
           id="composer-input"
           ref={ref}
@@ -327,13 +115,13 @@ export function Composer({
             const pasted = Array.from(e.clipboardData.files);
             if (pasted.length) {
               e.preventDefault();
-              void addBlobs(pasted);
+              void attachments.addBlobs(pasted);
             }
           }}
           placeholder={placeholder}
           aria-label="Nachricht an Claude"
           rows={2}
-          className="block max-h-[260px] w-full resize-none bg-transparent px-5 pt-4 text-[14px] text-fg placeholder:text-subtle focus:outline-none focus-visible:outline-none"
+          className="block max-h-65 w-full resize-none bg-transparent px-5 pt-4 text-ui text-fg placeholder:text-subtle focus:outline-none focus-visible:outline-none"
           onKeyDown={(e) => {
             if (matches.length) {
               if (e.key === "ArrowDown" || e.key === "ArrowUp") {
@@ -354,31 +142,37 @@ export function Composer({
             }
             if (e.key === "Escape" && working) {
               e.preventDefault();
-              void stop();
+              stop();
               return;
             }
             if (e.key !== "Enter" || e.nativeEvent.isComposing) return;
-            const submit = enterToSend ? !e.shiftKey && !e.ctrlKey : e.ctrlKey || e.metaKey;
-            if (submit) {
+            const isSubmit = enterToSend ? !e.shiftKey && !e.ctrlKey : e.ctrlKey || e.metaKey;
+            if (isSubmit) {
               e.preventDefault();
-              void send();
+              submit();
             }
           }}
         />
         <div className="flex items-center gap-2 px-4 pb-3.5 pt-2">
           <Tooltip content="Bilder, PDFs oder Textdateien anhängen (auch per Einfügen oder Hineinziehen)">
-            <Button size="icon-sm" variant="ghost" onClick={() => void pickFiles()} aria-label="Dateien anhängen" disabled={files.length >= MAX_ATTACHMENTS}>
+            <Button size="icon-sm" variant="ghost" onClick={() => void attachments.pick()} aria-label="Dateien anhängen" disabled={attachments.full}>
               <Paperclip className="h-3.5 w-3.5" />
             </Button>
           </Tooltip>
-          <Tooltip content={isPlan ? "Plan-Modus: Claude plant nur und ändert nichts" : "Nur planen (Plan-Modus)"}>
-            <Button size="sm" variant={isPlan ? "secondary" : "outline"} onClick={() => void togglePlan()} aria-pressed={isPlan} className={cn("h-8 rounded-lg px-3", isPlan && "border-accent/40 text-accent")}>
+          <Tooltip content={options.isPlan ? "Plan-Modus: Claude plant nur und ändert nichts" : "Nur planen (Plan-Modus)"}>
+            <Button
+              size="sm"
+              variant={options.isPlan ? "secondary" : "outline"}
+              onClick={() => void options.togglePlan()}
+              aria-pressed={options.isPlan}
+              className={cn("h-8 rounded-lg px-3", options.isPlan && "border-accent/40 text-accent")}
+            >
               <ListTodo className="h-3.5 w-3.5" /> Planen
             </Button>
           </Tooltip>
           <div className="flex-1" />
-          {session?.context && <ContextMeter usage={session.context} onCompact={() => void compact()} disabled={working || waiting || sending} />}
-          <span className="hidden whitespace-nowrap text-[11px] text-subtle 2xl:inline">
+          {session?.context && <ContextMeter usage={session.context} onCompact={() => void compactSession(session.id)} disabled={working || waiting || sending} />}
+          <span className="hidden whitespace-nowrap text-caption text-subtle 2xl:inline">
             {enterToSend ? (
               <>
                 <Kbd>Enter</Kbd> senden · <Kbd>Umschalt+Enter</Kbd> Zeile
@@ -392,17 +186,25 @@ export function Composer({
           {showEffort && (
             <Select
               size="sm"
-              value={effectiveEffort ?? "__default"}
-              onChange={(v) => void changeEffort(v === "__default" ? null : (v as EffortLevel))}
+              value={options.effort ?? "__default"}
+              onChange={(v) => void options.changeEffort(v === "__default" ? null : (v as EffortLevel))}
               options={[{ value: "__default", label: "Effort: Standard" }, ...effortLevels.map((l) => ({ value: l, label: `Effort: ${l}` }))]}
               className="w-36"
               aria-label="Effort"
               disabled={working}
             />
           )}
-          <Select size="sm" value={effectiveModel ?? "__default"} onChange={(v) => void changeModel(v)} options={modelOptions} className="w-40" aria-label="Modell" disabled={working} />
+          <Select
+            size="sm"
+            value={options.model ?? "__default"}
+            onChange={(v) => void options.changeModel(v === "__default" ? null : v)}
+            options={modelOptions}
+            className="w-40"
+            aria-label="Modell"
+            disabled={working}
+          />
           {working && (
-            <Button size="icon" variant="danger" className="h-9 w-9 rounded-lg" onClick={() => void stop()} aria-label="Stoppen (Esc)" title="Stoppen (Esc)" disabled={session?.status === "stopping"}>
+            <Button size="icon" variant="danger" className="h-9 w-9 rounded-lg" onClick={stop} aria-label="Stoppen (Esc)" title="Stoppen (Esc)" disabled={session?.status === "stopping"}>
               <Square className="h-3.5 w-3.5 fill-current" />
             </Button>
           )}
@@ -411,7 +213,7 @@ export function Composer({
               size="icon"
               variant="primary"
               className="h-9 w-9 rounded-lg"
-              onClick={() => void send()}
+              onClick={submit}
               disabled={(!text.trim() && !files.length) || waiting}
               loading={sending}
               aria-label={working ? "Dazwischen senden" : "Senden"}

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { GitBranch, GitCommitHorizontal, RefreshCw, ShieldAlert, Sparkles } from "lucide-react";
+import { ArrowLeft, GitBranch, GitCommitHorizontal, RefreshCw, ShieldAlert, Sparkles } from "lucide-react";
 import type { FileStatus, Project } from "@forge/protocol";
 import { call, keys, useGitStatus } from "@/lib/queries";
 import { errorMessage, RpcCallError } from "@/lib/rpc";
@@ -28,7 +28,9 @@ export function GitPanel({ project, compact = false }: { project: Project; compa
   const qc = useQueryClient();
   const files = useMemo(() => status.data?.files ?? [], [status.data]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [focus, setFocus] = useState<FileStatus | null>(null);
+  // Only the path is kept; staged/unstaged come from the latest status, not from when it was clicked.
+  const [focusPath, setFocusPath] = useState<string | null>(null);
+  const focus = focusPath ? (files.find((f) => f.path === focusPath) ?? null) : null;
   const [message, setMessage] = useState("");
   const [review, setReview] = useState(false);
   const [generating, setGenerating] = useState(false);
@@ -37,7 +39,7 @@ export function GitPanel({ project, compact = false }: { project: Project; compa
   // Keep the selection consistent with the current status; new files are not auto-selected.
   useEffect(() => {
     setSelected((prev) => new Set([...prev].filter((p) => files.some((f) => f.path === p))));
-    setFocus((f) => (f && files.some((x) => x.path === f.path) ? f : null));
+    setFocusPath((p) => (p && files.some((x) => x.path === p) ? p : null));
   }, [files]);
 
   if (!project.exists) return <EmptyState title="Projektordner fehlt">Der Ordner {project.path} existiert nicht mehr.</EmptyState>;
@@ -105,11 +107,12 @@ export function GitPanel({ project, compact = false }: { project: Project; compa
       void qc.invalidateQueries({ queryKey: keys.git(project.id) });
       void qc.invalidateQueries({ queryKey: keys.log(project.id) });
     } catch (e) {
+      // Flagged files: resolve normally so the review dialog closes and the "Trotzdem committen?" question takes over.
       if (e instanceof RpcCallError && e.code === "POLICY_DENIED") {
         setFlagged(((e.details as { flagged?: Array<{ path: string; reason: string }> })?.flagged ?? []) as Array<{ path: string; reason: string }>);
-      } else {
-        toast.error("Commit fehlgeschlagen", errorMessage(e));
+        return;
       }
+      toast.error("Commit fehlgeschlagen", errorMessage(e));
       throw e;
     }
   };
@@ -118,10 +121,10 @@ export function GitPanel({ project, compact = false }: { project: Project; compa
     <div className="flex h-full min-h-0 flex-col gap-3 p-3">
       <div className={cn("flex items-center gap-3 rounded-lg border px-3 py-2.5", files.length ? "border-accent/30 bg-accent-soft" : "border-border bg-surface")}>
         <div className="min-w-0 flex-1">
-          <div className="text-[13px] font-medium">{files.length ? "Änderungen erkannt" : "Keine Änderungen"}</div>
+          <div className="text-body font-medium">{files.length ? "Änderungen erkannt" : "Keine Änderungen"}</div>
           <div className="text-xs text-muted">
             <GitBranch className="mr-1 inline h-3 w-3" />
-            {st.summary.branch ?? "detached HEAD"}
+            {st.summary.branch ?? "ohne Branch"}
             {st.summary.ahead > 0 && ` · ${st.summary.ahead} voraus`}
             {st.summary.behind > 0 && ` · ${st.summary.behind} zurück`}
             {files.length > 0 && ` · ${files.length} Dateien`}
@@ -146,14 +149,20 @@ export function GitPanel({ project, compact = false }: { project: Project; compa
             {files.map((f) => {
               const k = KIND[f.kind];
               return (
-                <div key={f.path} className={cn("flex items-center gap-2 px-3 py-1 text-[12.5px]", focus?.path === f.path ? "bg-surface-3" : "hover:bg-surface-2")}>
+                <div key={f.path} className={cn("flex items-center gap-2 px-3 py-1 text-small-lg", focus?.path === f.path ? "bg-surface-3" : "hover:bg-surface-2")}>
                   <Checkbox checked={selected.has(f.path)} onChange={(v) => toggle(f.path, v)} label={`${f.path} auswählen`} />
-                  <button className="min-w-0 flex-1 truncate text-left font-mono" onClick={() => setFocus(f)} title={`${f.path} (${k.label})`}>
+                  <button className="min-w-0 flex-1 truncate text-left font-mono" onClick={() => setFocusPath(f.path)} title={`${f.path} (${k.label})`}>
                     {f.path}
-                    {f.origPath && <span className="text-subtle"> ← {f.origPath}</span>}
+                    {f.origPath && (
+                      <span className="text-subtle">
+                        <ArrowLeft className="mx-1 inline h-3 w-3" aria-hidden />
+                        <span className="sr-only">umbenannt von </span>
+                        {f.origPath}
+                      </span>
+                    )}
                   </button>
-                  {f.staged && <span className="text-[10px] text-subtle">staged</span>}
-                  <span className={cn("w-3 text-center font-mono text-[11px] font-bold", k.tone)} title={k.label}>
+                  {f.staged && <span className="text-2xs text-subtle">vorgemerkt</span>}
+                  <span className={cn("w-3 text-center font-mono text-caption font-bold", k.tone)} title={k.label}>
                     {k.letter}
                   </span>
                 </div>
@@ -164,7 +173,7 @@ export function GitPanel({ project, compact = false }: { project: Project; compa
       )}
 
       {focus ? (
-        <DiffView projectId={project.id} path={focus.path} staged={focus.staged && !focus.unstaged} onClose={() => setFocus(null)} />
+        <DiffView projectId={project.id} path={focus.path} staged={focus.staged && !focus.unstaged} onClose={() => setFocusPath(null)} />
       ) : (
         files.length > 0 && <div className="flex-1 rounded-lg border border-dashed border-border p-4 text-center text-xs text-subtle">Datei anklicken, um den Diff zu sehen.</div>
       )}
@@ -206,7 +215,7 @@ export function GitPanel({ project, compact = false }: { project: Project; compa
         title="Commit prüfen"
         description="Nur diese Dateien werden mit ihrem aktuellen Inhalt committet. Andere Änderungen bleiben unberührt. Es wird nichts gepusht."
         confirmLabel="Committen"
-        onConfirm={() => doCommit(false).catch(() => {})}
+        onConfirm={() => doCommit(false)}
       >
         <div className="mb-3 rounded-md bg-surface-2 px-3 py-2 font-mono text-xs whitespace-pre-wrap">{message.trim()}</div>
         <ul className="max-h-60 overflow-y-auto text-xs">
@@ -221,12 +230,11 @@ export function GitPanel({ project, compact = false }: { project: Project; compa
       <ConfirmDialog
         open={!!flagged}
         onOpenChange={(o) => !o && setFlagged(null)}
-        title="Commit gestoppt"
-        description="Unter den ausgewählten Dateien sind mögliche Secrets oder Build-Artefakte. Entferne sie aus der Auswahl oder committe bewusst trotzdem."
+        title="Trotzdem committen?"
+        description="Unter den ausgewählten Dateien sind mögliche Secrets oder Build-Artefakte. Prüfe sie, bevor du committest."
         confirmLabel="Trotzdem committen"
         danger
-        requireText="COMMIT"
-        onConfirm={() => doCommit(true).catch(() => {})}
+        onConfirm={() => doCommit(true)}
       >
         <ul className="space-y-1 text-xs">
           {flagged?.map((f) => (

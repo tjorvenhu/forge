@@ -1,3 +1,4 @@
+import { posix } from "node:path";
 import type { BranchInfo, CommitInfo, DiffLine, FileDiff, FileStatus, GitSummary } from "@forge/protocol";
 
 export interface ParsedStatus {
@@ -83,6 +84,27 @@ export function parseStatusV2(out: string): ParsedStatus {
   return res;
 }
 
+/**
+ * Restricts a status (paths relative to the repository root) to the files below `prefix`
+ * (`git rev-parse --show-prefix`, e.g. "packages/web/") and makes their paths relative to it.
+ * A rename source outside the folder becomes a "../" path, which git still accepts as pathspec.
+ */
+export function scopeToPrefix(s: ParsedStatus, prefix: string, ignoreCase = false): ParsedStatus {
+  if (!prefix) return s;
+  const norm = (p: string) => (ignoreCase ? p.toLowerCase() : p);
+  const pre = norm(prefix);
+  const files = s.files
+    .filter((f) => norm(f.path).startsWith(pre))
+    .map((f) => {
+      let origPath = f.origPath;
+      if (origPath !== null) {
+        origPath = norm(origPath).startsWith(pre) ? origPath.slice(prefix.length) : posix.relative(prefix, origPath);
+      }
+      return { ...f, path: f.path.slice(prefix.length), origPath };
+    });
+  return { ...s, files };
+}
+
 function entry(p: string, orig: string | null, x: string, y: string): FileStatus {
   return {
     path: p,
@@ -121,7 +143,7 @@ export function parseUnifiedDiff(path: string, text: string): FileDiff {
   let binary = false;
   let truncated = false;
   let inHunk = false;
-  const raw = text.split("\n");
+  const raw = text.split(/\r?\n/);
   if (raw.length && raw[raw.length - 1] === "") raw.pop();
   for (const l of raw) {
     if (lines.length >= MAX_DIFF_LINES) {

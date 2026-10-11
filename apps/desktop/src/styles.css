@@ -28,9 +28,26 @@
   --color-diff-del: #f0605a1a;
   --color-claude: #d97757;
   --color-claude-soft: #d977571f;
+  /* backdrop behind dialogs and the command palette */
+  --color-overlay: #05070a99;
 
   --font-sans: "Geist Variable", "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
   --font-mono: "Geist Mono Variable", "Cascadia Code", "Consolas", ui-monospace, monospace;
+
+  /* Font sizes without their own line height: elements keep the inherited one, like before. */
+  --text-3xs: 9px;
+  --text-2xs: 10px;
+  --text-caption: 11px;
+  --text-caption-lg: 11.5px;
+  --text-small: 12px;
+  --text-small-lg: 12.5px;
+  --text-body: 13px;
+  --text-body-lg: 13.5px;
+  --text-ui: 14px;
+  --text-title-sm: 15px;
+  --text-title: 17px;
+  --text-title-lg: 18px;
+  --text-display: 19px;
 
   --radius-sm: 4px;
   --radius-md: 6px;

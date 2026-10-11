@@ -10,14 +10,14 @@ import { toast } from "@/stores/toast";
 import { Page } from "@/components/layout/Page";
 import { Button } from "@/components/ui/button";
 import { Field, Input } from "@/components/ui/input";
-import { Badge, Checkbox, ErrorBanner, SectionTitle, Loading } from "@/components/ui/misc";
+import { Badge, ErrorBanner, SectionTitle, Loading, ToggleRow } from "@/components/ui/misc";
 import { Select } from "@/components/ui/select";
 import { PROFILE_IDS, PROFILE_INFO } from "@/components/projects/ProfileBadge";
 import { ClaudeSetupCard } from "@/components/settings/ClaudeSetupCard";
 import { MemoryEditor } from "@/components/settings/MemoryEditor";
+import { effortOptions, fromChoice, modelOptions, toChoice } from "@/components/settings/model-options";
 import { PhoneSettings } from "@/components/settings/PhoneSettings";
 import { capitalize, cn } from "@/lib/utils";
-import { EFFORT_LEVELS } from "@/lib/models";
 
 export function SettingsView() {
   const settings = useSettings();
@@ -35,7 +35,7 @@ export function SettingsView() {
 
   const s = settings.data;
   return (
-    <Page title="Einstellungen" subtitle="FORGE-eigene Einstellungen. Claude-Code-Konfiguration (~/.claude) bleibt unverändert.">
+    <Page title="Einstellungen" subtitle="Einstellungen von FORGE. Die globalen Regeln unten stehen in ~/.claude/CLAUDE.md und gelten auch für Claude Code im Terminal.">
       {!s ? (
         <Loading />
       ) : (
@@ -43,12 +43,12 @@ export function SettingsView() {
           <Card title="Allgemein">
             <div className="flex flex-col gap-4">
               <ModelSetting value={s.defaultModel} onChange={(v) => void save({ defaultModel: v })} />
-              <Field label="Standard-Effort" hint="Wie gründlich Claude nachdenkt. Höher ist genauer, aber langsamer und verbraucht mehr vom Abo.">
+              <Field label="Standard-Aufwand (Effort)" hint="Wie gründlich Claude nachdenkt. Höher ist genauer, aber langsamer und verbraucht mehr vom Abo.">
                 <Select
-                  value={s.defaultEffort ?? "__default"}
-                  onChange={(v) => void save({ defaultEffort: v === "__default" ? null : (v as EffortLevel) })}
+                  value={toChoice(s.defaultEffort)}
+                  onChange={(v) => void save({ defaultEffort: fromChoice<EffortLevel>(v) })}
                   className="w-full"
-                  options={[{ value: "__default", label: "Claude-Code-Standard" }, ...EFFORT_LEVELS.map((l) => ({ value: l, label: l }))]}
+                  options={effortOptions("Claude-Code-Standard")}
                 />
               </Field>
               <Field label="Standardprofil für neue Projekte">
@@ -64,21 +64,25 @@ export function SettingsView() {
                   <Input value={s.defaultProjectDir ?? ""} readOnly placeholder="nicht gesetzt" className="font-mono text-xs" />
                   <Button
                     onClick={async () => {
-                      const p = await pickFolder("Standardordner wählen", s.defaultProjectDir);
-                      if (p) void save({ defaultProjectDir: p });
+                      try {
+                        const p = await pickFolder("Standardordner wählen", s.defaultProjectDir);
+                        if (p) void save({ defaultProjectDir: p });
+                      } catch (e) {
+                        toast.error("Ordnerdialog fehlgeschlagen", errorMessage(e));
+                      }
                     }}
                   >
                     <FolderOpen className="h-3.5 w-3.5" /> Wählen
                   </Button>
                 </div>
               </Field>
-              <Toggle checked={s.enterToSend} onChange={(v) => void save({ enterToSend: v })} label="Enter sendet, Umschalt+Enter macht eine neue Zeile">
+              <ToggleRow checked={s.enterToSend} onChange={(v) => void save({ enterToSend: v })} label="Enter sendet, Umschalt+Enter macht eine neue Zeile">
                 Ausgeschaltet: Strg+Enter sendet, Enter macht eine neue Zeile.
-              </Toggle>
+              </ToggleRow>
               <div className="flex flex-col gap-1.5">
-                <Toggle checked={s.sounds} onChange={(v) => void save({ sounds: v })} label="Töne abspielen">
+                <ToggleRow checked={s.sounds} onChange={(v) => void save({ sounds: v })} label="Töne abspielen">
                   Signal, wenn Claude fertig ist, eine Freigabe braucht oder ein Fehler auftritt.
-                </Toggle>
+                </ToggleRow>
                 <div className="-ml-2 flex gap-1 pl-6">
                   {(["done", "approval", "error"] as const).map((k) => (
                     <Button key={k} size="sm" variant="ghost" onClick={() => playSound(k)} title="Ton anhören">
@@ -96,9 +100,9 @@ export function SettingsView() {
               <Field label="Pfad zur Claude-CLI" hint="Leer lassen für automatische Suche im PATH.">
                 <ClaudePathInput value={s.claudePath} onSave={(v) => void save({ claudePath: v })} />
               </Field>
-              <Toggle checked={s.stripApiKey} onChange={(v) => void save({ stripApiKey: v })} label="ANTHROPIC_API_KEY für Sessions ausblenden">
+              <ToggleRow checked={s.stripApiKey} onChange={(v) => void save({ stripApiKey: v })} label="ANTHROPIC_API_KEY für Sessions ausblenden">
                 Empfohlen. Ein gesetzter API-Key überschreibt die Abo-Anmeldung und kann separat abgerechnet werden. Der Wert wird nie angezeigt.
-              </Toggle>
+              </ToggleRow>
             </div>
           </Card>
 
@@ -111,7 +115,7 @@ export function SettingsView() {
           <Card title="Sicherheit">
             <div className="flex items-start gap-3">
               <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0 text-danger" />
-              <div className="flex-1 text-[13px]">
+              <div className="flex-1 text-body">
                 <div className="font-medium">Autonomous-Profil</div>
                 <p className="mt-1 text-muted">
                   Autonomous startet Claude mit bypassPermissions: keine Rückfragen vor Befehlen und Dateiänderungen. Befehle laufen mit deinen Benutzerrechten. Die
@@ -130,7 +134,7 @@ export function SettingsView() {
           </div>
 
           <Card title="Datenschutz">
-            <ul className="list-disc space-y-1 pl-5 text-[13px] text-muted">
+            <ul className="list-disc space-y-1 pl-5 text-body text-muted">
               <li>Keine Telemetrie durch FORGE. Projektdaten bleiben lokal.</li>
               <li>Ausnahme Telefon: Ist es eingeschaltet, gehen Gesprächsaudio und vorgelesene Texte zur Spracherkennung und Sprachausgabe an OpenAI.</li>
               <li>Tool-Ein- und Ausgaben werden vor dem Speichern auf bekannte Secret-Muster geprüft und maskiert.</li>
@@ -156,34 +160,12 @@ function Card({ title, children }: { title: string; children: ReactNode }) {
   );
 }
 
-function Toggle({ checked, onChange, label, children }: { checked: boolean; onChange: (v: boolean) => void; label: string; children?: ReactNode }) {
-  return (
-    <label className="flex items-start gap-2.5">
-      <span className="mt-0.5">
-        <Checkbox checked={checked} onChange={onChange} label={label} />
-      </span>
-      <span>
-        <span className="block text-[13px]">{label}</span>
-        {children && <span className="block text-xs text-muted">{children}</span>}
-      </span>
-    </label>
-  );
-}
-
 function ModelSetting({ value, onChange }: { value: string | null; onChange: (v: string | null) => void }) {
   const info = useRuntimeInfo();
   const models = info.data?.models ?? [];
   return (
     <Field label="Standardmodell" hint={info.isLoading ? "Modellliste wird von Claude Code gelesen …" : models.length ? undefined : "Modellliste nicht verfügbar"}>
-      <Select
-        value={value ?? "__default"}
-        onChange={(v) => onChange(v === "__default" ? null : v)}
-        className="w-full"
-        options={[
-          { value: "__default", label: "Claude-Code-Standard" },
-          ...models.filter((m) => m.value !== "default").map((m) => ({ value: m.value, label: m.displayName || m.value, description: m.description })),
-        ]}
-      />
+      <Select value={toChoice(value)} onChange={(v) => onChange(fromChoice(v))} className="w-full" options={modelOptions(models, "Claude-Code-Standard")} />
     </Field>
   );
 }
@@ -231,7 +213,7 @@ function DiagnosticsPanel() {
       {diag.isError && <ErrorBanner>{errorMessage(diag.error)}</ErrorBanner>}
       {d && (
         <div className="grid gap-6 lg:grid-cols-2">
-          <div className="flex flex-col gap-1.5 text-[13px]">
+          <div className="flex flex-col gap-1.5 text-body">
             <Row label="System" value={d.platform} />
             <Row label="Node.js (Sidecar)" value={d.nodeVersion} />
             <Row label="Datenordner" value={<span className="block truncate font-mono text-xs" title={d.dataDir}>{d.dataDir}</span>} />
@@ -253,10 +235,10 @@ function DiagnosticsPanel() {
             <ToolRow label="GitHub CLI" t={d.gh} extra={d.gh.found ? (d.gh.authenticated ? <Badge tone="success">angemeldet</Badge> : <Badge tone="warning">nicht angemeldet</Badge>) : null} />
           </div>
           <div>
-            <div className="mb-2 text-xs font-medium text-muted">Capability-Matrix (aktiver Adapter: Agent SDK)</div>
+            <div className="mb-2 text-xs font-medium text-muted">Funktionsübersicht (aktiver Adapter: Agent SDK)</div>
             <div className="divide-y divide-border rounded-lg border border-border">
               {d.capabilities.map((c) => (
-                <div key={c.key} className="flex items-start gap-2 px-3 py-1.5 text-[13px]">
+                <div key={c.key} className="flex items-start gap-2 px-3 py-1.5 text-body">
                   {c.state === "supported" ? (
                     <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-success" />
                   ) : c.state === "partial" ? (
@@ -325,7 +307,7 @@ function AuthRow({ d }: { d: Diagnostics }) {
             </span>
           </span>
         ) : (
-          <span className="text-danger">nicht angemeldet: im Terminal „claude auth login“ ausführen</span>
+          <span className="text-danger">nicht angemeldet. Die Anmeldung findest du oben in der Karte Claude Code.</span>
         )
       }
     />
