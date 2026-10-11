@@ -236,3 +236,16 @@ describe("chat layout helpers", () => {
     expect(toolDisplayName("mcp__github__create_issue")).toBe("github: create_issue");
   });
 });
+
+describe("startsAnswer", () => {
+  it("marks the first entry after a prompt and at the very top", async () => {
+    const { startsAnswer } = await import("./chat-items");
+    const user = { kind: "user" } as never;
+    const text = { kind: "assistant" } as never;
+    const tool = { kind: "tool" } as never;
+    expect(startsAnswer(undefined, text)).toBe(true);
+    expect(startsAnswer(user, tool)).toBe(true);
+    expect(startsAnswer(text, tool)).toBe(false);
+    expect(startsAnswer(text, user)).toBe(false);
+  });
+});

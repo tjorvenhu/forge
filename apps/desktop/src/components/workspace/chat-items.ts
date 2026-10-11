@@ -420,3 +420,8 @@ export const TOOL_LABELS: Record<string, string> = {
   AskUserQuestion: "Rückfrage",
   ExitPlanMode: "Plan",
 };
+
+/** The first entry after one of your messages (or at the very top) opens Claude's answer. */
+export function startsAnswer(prev: ChatItem | undefined, item: ChatItem): boolean {
+  return item.kind !== "user" && (!prev || prev.kind === "user");
+}

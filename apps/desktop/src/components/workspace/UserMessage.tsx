@@ -1,7 +1,7 @@
 import { useState } from "react";
-import { ChevronRight, FileText, ImageIcon, Smartphone, TimerReset, Undo2 } from "lucide-react";
+import { FileText, ImageIcon, Smartphone, TimerReset, Undo2 } from "lucide-react";
 import type { RewindResult } from "@forge/protocol";
-import { call } from "@/lib/queries";
+import { call, useGitHubAccount } from "@/lib/queries";
 import { errorMessage } from "@/lib/rpc";
 import { clockTime, cn } from "@/lib/utils";
 import { toast } from "@/stores/toast";
@@ -31,7 +31,7 @@ export function UserMessage({ item, sessionId }: { item: Extract<ChatItem, { kin
   const hasMeta = item.attachments.length > 0 || item.remote || item.auto;
   return (
     <div className="group -mx-3 rounded-md bg-surface-2 px-3 py-2.5">
-      <ChatRow className="text-ui leading-[1.65]" marker={<ChevronRight aria-hidden className="h-4 w-4 text-subtle" />}>
+      <ChatRow className="text-ui leading-[1.65]" marker={<UserAvatar />}>
         <div className="flex min-w-0 items-start gap-3">
           <div className="min-w-0 max-w-[90ch] flex-1">
             <div className="whitespace-pre-wrap break-words">{item.text}</div>
@@ -106,5 +106,19 @@ export function UserMessage({ item, sessionId }: { item: Extract<ChatItem, { kin
         </ul>
       </ConfirmDialog>
     </div>
+  );
+}
+
+/** Your GitHub picture when gh is signed in, otherwise a "Du" badge. */
+function UserAvatar() {
+  const avatarUrl = useGitHubAccount().data?.avatarUrl;
+  const [failed, setFailed] = useState(false);
+  if (avatarUrl && !failed) {
+    return <img src={avatarUrl} alt="Du" width={22} height={22} className="h-5.5 w-5.5 shrink-0 rounded-full border border-border" onError={() => setFailed(true)} />;
+  }
+  return (
+    <span aria-label="Du" role="img" className="flex h-5.5 w-5.5 shrink-0 items-center justify-center rounded-full border border-accent/25 bg-accent-soft text-3xs font-semibold text-accent">
+      Du
+    </span>
   );
 }

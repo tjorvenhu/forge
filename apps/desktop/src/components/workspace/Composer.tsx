@@ -96,11 +96,11 @@ export function Composer({
         : "Nachricht an Claude, / für Befehle, Dateien hineinziehen oder einfügen";
 
   return (
-    <div className="relative shrink-0 px-6 pb-5 pt-2">
+    <div className="relative mx-auto w-full max-w-5xl shrink-0 px-6 pb-5 pt-2">
       <SlashCommandMenu matches={matches} index={cmdIndex} onPick={pickCommand} />
       <div
         className={cn(
-          "relative mx-auto max-w-4xl rounded-2xl border bg-surface shadow-lg shadow-black/20 transition-colors",
+          "relative rounded-2xl border bg-surface shadow-lg shadow-black/20 transition-colors",
           attachments.dragging ? "border-accent bg-accent-soft" : working ? "border-accent/40" : "border-border focus-within:border-accent",
         )}
       >

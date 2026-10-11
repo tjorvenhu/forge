@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import { useShallow } from "zustand/react/shallow";
-import { Activity, Bot, FolderTree, GitCompare, AlertTriangle, ChevronDown, FileText, GitBranch, MessageSquare, PanelBottom, PanelRight, Plus, Settings2, Star } from "lucide-react";
+import { Activity, Bot, FolderTree, GitCompare, AlertTriangle, ChevronDown, FileText, GitBranch, MessageSquare, PanelBottom, PanelRight, Settings2, Star } from "lucide-react";
 import type { ProfileId } from "@forge/protocol";
 import { call, keys, useProject } from "@/lib/queries";
 import { errorMessage, RpcCallError } from "@/lib/rpc";
@@ -16,7 +16,7 @@ import { ProjectIcon } from "@/components/projects/ProjectIcon";
 import { PROFILE_IDS, PROFILE_INFO, ProfileBadge } from "@/components/projects/ProfileBadge";
 import { ChatPanel } from "@/components/workspace/ChatPanel";
 import { GitPanel } from "@/components/git/GitPanel";
-import { GitCenter, NewBranchDialog, checkoutBranch } from "@/components/git/GitCenter";
+import { GitCenter } from "@/components/git/GitCenter";
 import { FilesTab } from "@/components/workspace/FilesTab";
 import { ProjectSettingsTab } from "@/components/workspace/ProjectSettingsTab";
 import { AgentsTab } from "@/components/workspace/AgentsTab";
@@ -25,7 +25,7 @@ import { FileTree } from "@/components/workspace/FileTree";
 import { WorkingCard } from "@/components/workspace/WorkingCard";
 import { BottomPanel } from "@/components/workspace/BottomPanel";
 import { RemoteControlButton } from "@/components/workspace/RemoteControl";
-import { DevServerButton } from "@/components/workspace/DevServer";
+import { DevServerMenu } from "@/components/workspace/DevServer";
 import { PhoneButton } from "@/components/layout/PhoneButton";
 import { HeaderDivider } from "@/components/layout/Page";
 import { SearchField } from "@/components/layout/SearchField";
@@ -109,6 +109,7 @@ function Workspace({ projectId }: { projectId: string }) {
               ]}
             />
             <div className="flex-1" />
+            {project.exists && <DevServerMenu project={project} />}
             <Button size="icon-sm" variant="ghost" onClick={() => toggleBottomPanel()} aria-pressed={bottomPanelOpen} title="Terminal, Dev-Server und Claude-Ausgabe (Strg+J)" className={cn(bottomPanelOpen && "text-accent")}>
               <PanelBottom className="h-4 w-4" />
             </Button>
@@ -170,13 +171,6 @@ function RightPanel({ projectId }: { projectId: string }) {
 function WorkspaceHeader({ projectId }: { projectId: string }) {
   const project = useProject(projectId).data!;
   const qc = useQueryClient();
-  const [newBranch, setNewBranch] = useState(false);
-  const branches = useQuery({
-    queryKey: keys.branches(projectId),
-    queryFn: () => call("git.branches", { projectId }),
-    enabled: project.exists && !!project.git,
-    retry: false,
-  });
 
   const sandboxOnly = project.tags.includes("sandbox-only");
 
@@ -202,40 +196,14 @@ function WorkspaceHeader({ projectId }: { projectId: string }) {
   };
 
   return (
-    <header className="flex h-16 shrink-0 items-center gap-3 border-b border-border px-5">
-      <ProjectIcon name={project.name} size={36} />
-      <div className="flex min-w-0 items-center gap-2" title={shortPath(project.path, 4)}>
-        <h1 className="truncate text-title-lg font-semibold">{project.name}</h1>
+    <header className="flex h-12 shrink-0 items-center gap-3 border-b border-border px-5">
+      <ProjectIcon name={project.name} size={26} />
+      <div className="flex min-w-0 items-center gap-1.5" title={shortPath(project.path, 4)}>
+        <h1 className="truncate text-title-sm font-semibold">{project.name}</h1>
         <Button size="icon-sm" variant="ghost" onClick={() => void toggleFavorite()} className="hover:text-warning" aria-label={project.favorite ? "Aus Favoriten entfernen" : "Zu Favoriten"}>
           <Star className={cn("h-4 w-4", project.favorite && "fill-warning text-warning")} />
         </Button>
       </div>
-
-      {project.git && (
-        <DropdownMenu
-          align="start"
-          header="Branch wechseln"
-          trigger={
-            <button className="ml-2 flex h-9 shrink-0 items-center gap-2 whitespace-nowrap rounded-lg border border-border bg-surface px-3 text-body-lg hover:border-border-strong">
-              <GitBranch className="h-4 w-4 text-muted" />
-              <span className="max-w-48 truncate" title={project.git.branch ? undefined : "Kein Branch ausgecheckt"}>
-                {project.git.branch ?? "ohne Branch"}
-              </span>
-              {project.git.changedCount > 0 && <span className="h-1.5 w-1.5 rounded-full bg-warning" title="Uncommittete Änderungen" />}
-              <ChevronDown className="h-3.5 w-3.5 text-muted" />
-            </button>
-          }
-          items={[
-            ...(branches.data ?? [])
-              .filter((b) => !b.current)
-              .slice(0, 20)
-              .map((b) => ({ label: b.name, icon: <GitBranch className="h-3.5 w-3.5" />, onSelect: () => void checkoutBranch(projectId, b.name, false).catch(() => {}) })),
-            { label: "Neuer Branch …", icon: <Plus className="h-3.5 w-3.5" />, onSelect: () => setNewBranch(true) },
-          ]}
-        />
-      )}
-
-      {project.exists && <DevServerButton project={project} />}
 
       {project.tags.length > 0 && (
         <div className="hidden min-w-0 items-center gap-1.5 overflow-hidden xl:flex" title={project.tags.join(", ")}>
@@ -273,7 +241,6 @@ function WorkspaceHeader({ projectId }: { projectId: string }) {
       />
       <HeaderDivider />
       <PhoneButton />
-      <NewBranchDialog open={newBranch} onOpenChange={setNewBranch} projectId={projectId} />
     </header>
   );
 }

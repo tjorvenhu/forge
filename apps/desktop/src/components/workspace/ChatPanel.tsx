@@ -10,13 +10,18 @@ import { toast } from "@/stores/toast";
 import { splitActive, useUi } from "@/stores/ui";
 import { Button } from "@/components/ui/button";
 import { EmptyState, ErrorBanner, Loading } from "@/components/ui/misc";
-import { appendStreaming, buildEventItems, itemIndexForSeq, lastUserPrompt, reuseStableItems, rowSpacing, type ChatItem, type RowSpacing } from "./chat-items";
+import { appendStreaming, buildEventItems, itemIndexForSeq, lastUserPrompt, reuseStableItems, rowSpacing, startsAnswer, type ChatItem, type RowSpacing } from "./chat-items";
 import { Composer } from "./Composer";
 import { SessionBar } from "./SessionBar";
 import { ItemView } from "./ChatItemView";
 import { BackgroundIndicator, WorkingIndicator } from "./WorkingIndicator";
 import { turnStartedAt } from "./working";
 import { anchoredScrollTop, captureAnchor, type ScrollAnchor } from "./scroll-anchor";
+import { LeadMarker } from "./ChatRow";
+import { ClaudeMark } from "./ClaudeMark";
+
+/** Claude's mark in the gutter of the first entry of each answer, like the avatar of a chat. */
+const CLAUDE_LEAD = <ClaudeMark size={20} />;
 
 const NO_EVENTS: SessionEvent[] = [];
 const NO_STREAMING: Record<string, string> = {};
@@ -222,7 +227,9 @@ function SessionThread({ sessionId, session, project, workingInPanel }: { sessio
           {virtualizer.getVirtualItems().map((v) => (
             <div key={v.key} data-index={v.index} ref={virtualizer.measureElement} className={cn("absolute left-0 right-0 px-6", ROW_SPACING[rowSpacing(items[v.index - 1], items[v.index]!)])} style={{ transform: `translateY(${v.start}px)` }}>
               <div className={cn("rounded-md transition-shadow duration-500", highlight === items[v.index]!.key && "ring-2 ring-accent/60 ring-offset-4 ring-offset-bg")}>
-                <ItemView item={items[v.index]!} sessionId={sessionId} live={!!session?.live} projectDir={session?.cwd ?? project.path} onRetry={onRetry} />
+                <LeadMarker.Provider value={startsAnswer(items[v.index - 1], items[v.index]!) ? CLAUDE_LEAD : null}>
+                  <ItemView item={items[v.index]!} sessionId={sessionId} live={!!session?.live} projectDir={session?.cwd ?? project.path} onRetry={onRetry} />
+                </LeadMarker.Provider>
               </div>
             </div>
           ))}

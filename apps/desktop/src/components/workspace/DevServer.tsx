@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { ExternalLink, Play, RotateCw, ScrollText, SendHorizontal, Square } from "lucide-react";
+import { ExternalLink, Play, RotateCw, ScrollText, SendHorizontal, Settings2, Square } from "lucide-react";
 import type { DevServerState, Project } from "@forge/protocol";
 import { call, keys, useDevServer } from "@/lib/queries";
 import { errorMessage } from "@/lib/rpc";
@@ -11,7 +11,8 @@ import { toast } from "@/stores/toast";
 import { activeDraftKey, useDrafts } from "@/stores/drafts";
 import { useDevOutput } from "@/stores/dev-output";
 import { Button } from "@/components/ui/button";
-import { Badge, Tooltip } from "@/components/ui/misc";
+import { Badge } from "@/components/ui/misc";
+import { DropdownMenu, type MenuItem } from "@/components/ui/dropdown";
 
 /** Lines of dev server output handed to Claude; enough for a stack trace, small enough for the prompt. */
 const LINES_FOR_CLAUDE = 80;
@@ -39,73 +40,40 @@ function hostOf(url: string): string {
   return url.replace(/^https?:\/\//, "").replace(/\/$/, "");
 }
 
-/** Start/stop and address of the dev server in the workspace header. */
-export function DevServerButton({ project }: { project: Project }) {
+/**
+ * Dev server in the workspace tab row: a compact button with a status dot; start, stop, browser and
+ * output live in its menu, so the header stays free.
+ */
+export function DevServerMenu({ project }: { project: Project }) {
   const state = useDevServer(project.id).data;
   const { start, stop } = useDevActions(project.id);
-  const openLogs = () => useUi.getState().openPanelTab(project.id, "dev");
   if (!state) return null;
-
-  if (state.status !== "running") {
-    const crashed = (state.status === "exited" && state.exitCode !== 0 && state.exitCode !== null) || state.status === "failed";
-    return (
-      <div className="flex shrink-0 items-center gap-1">
-        <Tooltip content={state.effectiveCommand ? `Dev-Server starten: ${state.effectiveCommand}` : "Kein Startbefehl erkannt. In den Projekt-Einstellungen eintragen."}>
-          <button
-            aria-label={crashed ? "Dev-Server beendet, neu starten" : "Dev-Server starten"}
-            className={cn(
-              "flex h-9 items-center gap-2 whitespace-nowrap rounded-lg border px-3 text-body transition-colors",
-              crashed ? "border-danger/30 bg-danger-soft text-danger" : "border-border text-muted hover:border-border-strong hover:text-fg",
-            )}
-            onClick={() => {
-              if (!state.effectiveCommand) {
-                useUi.getState().setWorkspaceTab("settings");
-                toast.info("Startbefehl fehlt", "Trage unter Dev-Server-Befehl ein, wie das Projekt gestartet wird, z. B. pnpm dev.");
-                return;
-              }
-              void start();
-            }}
-          >
-            <Play className="h-3.5 w-3.5" />
-            <span className="hidden lg:inline">{crashed ? "Dev-Server beendet" : "Dev-Server"}</span>
-          </button>
-        </Tooltip>
-        {crashed && (
-          <Tooltip content="Der Dev-Server wurde unerwartet beendet. Ausgabe ansehen">
-            <Button size="icon" variant="ghost" onClick={openLogs} className="h-9 w-9 rounded-lg text-danger hover:text-danger" aria-label="Ausgabe des Dev-Servers ansehen">
-              <ScrollText className="h-4 w-4" />
-            </Button>
-          </Tooltip>
-        )}
-      </div>
-    );
-  }
-
+  const running = state.status === "running";
+  const crashed = (state.status === "exited" && state.exitCode !== 0 && state.exitCode !== null) || state.status === "failed";
+  const dot = running ? (state.url ? "bg-success" : "animate-soft-pulse bg-warning") : crashed ? "bg-danger" : "bg-subtle";
+  const status = running ? (state.url ? `läuft auf ${hostOf(state.url)}` : "startet …") : crashed ? "unerwartet beendet" : "aus";
+  const items: MenuItem[] = [
+    running
+      ? { label: "Dev-Server stoppen", icon: <Square className="h-3.5 w-3.5" />, onSelect: () => void stop(), danger: true }
+      : state.effectiveCommand
+        ? { label: crashed ? "Neu starten" : "Dev-Server starten", icon: <Play className="h-3.5 w-3.5" />, onSelect: () => void start(), hint: state.effectiveCommand }
+        : { label: "Startbefehl einstellen", icon: <Settings2 className="h-3.5 w-3.5" />, onSelect: () => useUi.getState().setWorkspaceTab("settings") },
+    ...(running && state.url ? [{ label: "Im Browser öffnen", icon: <ExternalLink className="h-3.5 w-3.5" />, onSelect: () => void openExternal(state.url!), hint: hostOf(state.url) }] : []),
+    { label: "Ausgabe anzeigen", icon: <ScrollText className="h-3.5 w-3.5" />, onSelect: () => useUi.getState().openPanelTab(project.id, "dev") },
+  ];
   return (
-    <div className={cn("flex h-9 shrink-0 items-center gap-1 whitespace-nowrap rounded-lg border pl-3 pr-1 text-body", state.url ? "border-success/30 bg-success-soft" : "border-warning/30 bg-warning-soft")}>
-      <span className={cn("h-2 w-2 shrink-0 rounded-full", state.url ? "bg-success" : "animate-soft-pulse bg-warning")} aria-hidden />
-      {state.url ? (
-        <Tooltip content={`${state.url} im Browser öffnen`}>
-          <button onClick={() => void openExternal(state.url!)} className="flex items-center gap-1.5 px-1 text-success hover:underline">
-            <span className="hidden lg:inline">Dev-Server online</span>
-            <span className="hidden font-mono text-xs text-fg/70 xl:inline">{hostOf(state.url)}</span>
-            <ExternalLink className="h-3 w-3" />
-          </button>
-        </Tooltip>
-      ) : (
-        <span className="hidden px-1 text-warning lg:inline">Dev-Server startet …</span>
-      )}
-      <Tooltip content="Ausgabe des Dev-Servers">
-        <Button size="icon-sm" variant="ghost" onClick={openLogs} aria-label="Ausgabe des Dev-Servers">
-          <ScrollText className="h-3.5 w-3.5" />
+    <DropdownMenu
+      align="end"
+      header={`Dev-Server: ${status}`}
+      trigger={
+        <Button size="sm" variant="ghost" aria-label={`Dev-Server, ${status}`} title={`Dev-Server: ${status}`} className={cn("gap-1.5", crashed && "text-danger hover:text-danger")}>
+          <span aria-hidden className={cn("h-1.5 w-1.5 rounded-full", dot)} />
+          <Play className="h-3.5 w-3.5" />
+          <span className="hidden xl:inline">Dev-Server</span>
         </Button>
-      </Tooltip>
-      <Tooltip content="Dev-Server stoppen">
-        <Button size="icon-sm" variant="ghost" onClick={() => void stop()} aria-label="Dev-Server stoppen" className="hover:text-danger">
-          <Square className="h-3 w-3 fill-current" />
-        </Button>
-      </Tooltip>
-    </div>
+      }
+      items={items}
+    />
   );
 }
 

@@ -1,15 +1,27 @@
-import type { ReactNode } from "react";
+import { createContext, useContext, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
 
 /**
- * One line of the chat column: a narrow gutter with a marker (dot, icon, prompt sign) and the content.
+ * A marker that replaces the usual one of the outermost row inside the provider, e.g. Claude's mark on
+ * the first entry of an answer. Rows nested in that row (tool output, subagent calls) do not get it.
+ */
+export const LeadMarker = createContext<ReactNode>(null);
+
+/** Width of the gutter: room for an avatar, the dots and icons sit centred in it. */
+const GUTTER = "w-6";
+
+/**
+ * One line of the chat column: a narrow gutter with a marker (avatar, dot, icon) and the content.
  * The gutter is one line high (1lh), so the marker sits on the first text line in any font size.
  */
 export function ChatRow({ marker, children, className, markerClassName }: { marker?: ReactNode; children: ReactNode; className?: string; markerClassName?: string }) {
+  const lead = useContext(LeadMarker);
   return (
     <div className={cn("flex gap-2.5", className)}>
-      <span className={cn("flex h-[1lh] w-4 shrink-0 items-center justify-center", markerClassName)}>{marker}</span>
-      <div className="min-w-0 flex-1">{children}</div>
+      <span className={cn("flex h-[1lh] shrink-0 items-center justify-center", GUTTER, markerClassName)}>{lead ?? marker}</span>
+      <div className="min-w-0 flex-1">
+        <LeadMarker.Provider value={null}>{children}</LeadMarker.Provider>
+      </div>
     </div>
   );
 }

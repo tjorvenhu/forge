@@ -36,7 +36,7 @@ export function useSlashCommands(projectId: string, text: string): Command[] {
 export function SlashCommandMenu({ matches, index, onPick }: { matches: Command[]; index: number; onPick: (name: string) => void }) {
   if (!matches.length) return null;
   return (
-    <div className="absolute bottom-full left-6 right-6 z-20 mx-auto mb-1 max-w-4xl overflow-hidden rounded-lg border border-border bg-surface-2 shadow-xl" role="listbox" aria-label="Slash-Commands">
+    <div className="absolute bottom-full left-6 right-6 z-20 mb-1 overflow-hidden rounded-lg border border-border bg-surface-2 shadow-xl" role="listbox" aria-label="Slash-Commands">
       {matches.map((c, i) => (
         <button
           key={c.name}
