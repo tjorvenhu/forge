@@ -40,6 +40,7 @@ export function createApp(opts: { dataDir: string; write: Writer; log?: (m: stri
     phone?.onServerEvent(e);
   };
   const sessions = new SessionService(db, projects, git, opts.runtime ?? new AgentSdkRuntime(), emit);
+  sessions.startBackgroundChecks();
   const github = new GitHubService((payload) => emit({ event: "github.login", payload }));
   const claudeSetup = new ClaudeSetupService(
     (payload) => emit({ event: "claude.setup", payload }),
@@ -56,6 +57,7 @@ export function createApp(opts: { dataDir: string; write: Writer; log?: (m: stri
     projects,
     sessions,
     devServers,
+    git,
     secrets: new SecretStore(path.join(opts.dataDir, "secrets")),
     emit,
     claude: () => {

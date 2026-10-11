@@ -2,13 +2,23 @@ import { mkdirSync, readFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { ServerEvent, SessionEventBody } from "@forge/protocol";
+import type { PlanUsage, ServerEvent, SessionEventBody } from "@forge/protocol";
 import type { ClaudeRuntime, RuntimeSession, SessionSink, StartOptions } from "../src/claude/runtime.js";
 import { AgentSdkRuntime, REMOTE_UNAVAILABLE } from "../src/claude/runtime.js";
 import { GitEngine } from "../src/git/git.js";
 import { Db } from "../src/persistence/db.js";
 import { ProjectManager } from "../src/projects/project-manager.js";
 import { SessionService } from "../src/sessions/session-service.js";
+import {
+  AUTO_CONTINUE_PROMPT,
+  CHECK_INTERVAL_MS,
+  MAX_AUTO_CONTINUES,
+  PROBE_INTERVAL_MS,
+  RESET_BUFFER_MS,
+  STARTUP_CHECK_MS,
+  isUsageLimitText,
+  resetFromText,
+} from "../src/sessions/auto-continue.js";
 import { git, initRepo, tempDir } from "./helpers.js";
 import { writeFileSync } from "node:fs";
 
@@ -26,7 +36,8 @@ class FakeRuntime implements ClaudeRuntime {
   closed = 0;
   sent: string[] = [];
   sentUuids: string[] = [];
-  remoteCalls: Array<{ enabled: boolean; name: string }> = [];
+  /** session = index of the started CLI process */
+  remoteCalls: Array<{ enabled: boolean; name: string; session: number }> = [];
   efforts: Array<string | null> = [];
   modes: string[] = [];
   /** close() does not end the process right away; the test calls onEnd itself */
@@ -42,8 +53,10 @@ class FakeRuntime implements ClaudeRuntime {
   async complete() {
     return "feat: neue Datei";
   }
-  async planUsage(): Promise<never> {
-    throw new Error("no usage in tests");
+  usage: PlanUsage | null = null;
+  async planUsage(): Promise<PlanUsage> {
+    if (!this.usage) throw new Error("no usage in tests");
+    return this.usage;
   }
   async sessionHistory() {
     return [];
@@ -56,6 +69,7 @@ class FakeRuntime implements ClaudeRuntime {
     throw new Error("no probe in tests");
   }
   startSession(opts: StartOptions, sink: SessionSink): RuntimeSession {
+    const session = this.started.length;
     this.started.push(opts);
     this.sinks.push(sink);
     return {
@@ -83,7 +97,7 @@ class FakeRuntime implements ClaudeRuntime {
       contextUsage: async () => ({ totalTokens: 62_000, maxTokens: 200_000, percentage: 31, categories: [{ name: "Messages", tokens: 40_000, kind: "used" as const }], updatedAt: new Date().toISOString() }),
       setRemoteControl: async (enabled, name) => {
         if (this.remoteError) throw this.remoteError;
-        this.remoteCalls.push({ enabled, name });
+        this.remoteCalls.push({ enabled, name, session });
         return enabled ? "https://claude.ai/code/session_test" : null;
       },
       initialization: () => new Promise(() => {}),
@@ -238,7 +252,7 @@ describe("SessionService", () => {
 });
 
 describe("turn automation via project tags", () => {
-  it("runs tests, commits only files changed during the turn and records a checkpoint", async () => {
+  it("runs tests and commits only files changed during the turn", async () => {
     const repo = projects.get(projectId).path;
     await initRepo(repo);
     writeFileSync(path.join(repo, "alt.txt"), "fremd\n");
@@ -253,7 +267,6 @@ describe("turn automation via project tags", () => {
     await svc.drain();
 
     const types = db.listEvents(s.id).map((e) => e.body);
-    expect(types.find((b) => b.type === "git.checkpoint")).toBeTruthy();
     expect(types.find((b) => b.type === "check.result")).toMatchObject({ ok: true });
     expect(types.find((b) => b.type === "automation")).toMatchObject({ action: "commit", ok: true, files: ["neu.txt"] });
     const log = await git(repo, "log", "--format=%s", "-1");
@@ -279,12 +292,12 @@ describe("turn automation via project tags", () => {
   it("connects open sessions to the Claude app and shows messages typed there", async () => {
     const s = await svc.start({ projectId, prompt: "Lies a.txt" });
     rt.replay();
-    const state = await svc.remoteStart(projectId);
-    expect(rt.remoteCalls).toEqual([{ enabled: true, name: `FORGE · proj · Lies a.txt` }]);
-    expect(state.sessions[0]).toMatchObject({ sessionId: s.id, url: "https://claude.ai/code/session_test", state: "connecting" });
+    const state = await svc.remoteStart();
+    expect(rt.remoteCalls).toEqual([{ enabled: true, name: "FORGE · proj: Lies a.txt", session: 0 }]);
+    expect(state.sessions[0]).toMatchObject({ sessionId: s.id, projectId, projectName: "proj", url: "https://claude.ai/code/session_test", state: "connecting" });
     const sink = rt.sinks[0]!;
     sink.onMessage({ type: "system", subtype: "bridge_state", state: "connected" });
-    expect(svc.remoteState(projectId).sessions[0]!.state).toBe("connected");
+    expect(svc.remoteState().sessions[0]!.state).toBe("connected");
 
     // own message: the echo must not show up twice
     await svc.send(s.id, "weiter");
@@ -308,20 +321,9 @@ describe("turn automation via project tags", () => {
       ["Vom Handy", "remote"],
     ]);
 
-    await svc.remoteStop(projectId);
+    await svc.remoteStop();
     expect(rt.remoteCalls.at(-1)?.enabled).toBe(false);
-    expect(svc.remoteState(projectId)).toEqual({ enabled: false, sessions: [] });
-  });
-
-  it("opens an empty session for the Claude app when none is open and titles it from the first message", async () => {
-    await svc.remoteStart(projectId);
-    expect(rt.started).toHaveLength(1);
-    expect(rt.started[0]!.firstMessage).toBeNull();
-    const [s] = svc.listAll();
-    expect(s).toMatchObject({ title: "Remote-Session", status: "idle" });
-    expect(rt.remoteCalls[0]!.name).toBe("FORGE · proj");
-    rt.sinks[0]!.onMessage({ type: "user", isReplay: true, uuid: "aaaaaaaa-bbbb-4ccc-8ddd-000000000001", message: { role: "user", content: "Baue einen Login" } });
-    expect(svc.get(s!.id).title).toBe("Baue einen Login");
+    expect(svc.remoteState()).toEqual({ enabled: false, sessions: [] });
   });
 
   it("starts with the project's effort and changes it live", async () => {
@@ -643,15 +645,15 @@ describe("Remote Control wire messages", () => {
   it("handles recorded Remote Control messages and ignores unknown or malformed ones", async () => {
     const s = await svc.start({ projectId, prompt: "Lies a.txt" });
     rt.replay();
-    await svc.remoteStart(projectId);
+    await svc.remoteStart();
     const sink = rt.sinks[0]!;
     const states: string[] = [];
     for (const m of remoteFixture) {
       sink.onMessage(m);
-      states.push(svc.remoteState(projectId).sessions[0]!.state);
+      states.push(svc.remoteState().sessions[0]!.state);
     }
     expect(states.slice(0, 2)).toEqual(["connecting", "connected"]);
-    expect(svc.remoteState(projectId).sessions[0]).toMatchObject({ state: "error", message: "Verbindung zur Claude-App verloren" });
+    expect(svc.remoteState().sessions[0]).toMatchObject({ state: "error", message: "Verbindung zur Claude-App verloren" });
     const users = db.listEvents(s.id).flatMap((e) => (e.body.type === "user.message" ? [e.body] : []));
     expect(users.map((u) => [u.text, u.source ?? "forge"])).toEqual([
       ["Lies a.txt", "forge"],
@@ -664,8 +666,95 @@ describe("Remote Control wire messages", () => {
   it("reports Remote Control the CLI does not offer as an error instead of crashing", async () => {
     await svc.start({ projectId, prompt: "x" });
     rt.remoteError = new Error(REMOTE_UNAVAILABLE);
-    const state = await svc.remoteStart(projectId);
+    const state = await svc.remoteStart();
     expect(state.sessions[0]).toMatchObject({ state: "error", message: REMOTE_UNAVAILABLE });
+    // switching on again retries the failed session
+    rt.remoteError = null;
+    expect((await svc.remoteStart()).sessions[0]).toMatchObject({ state: "connecting", url: "https://claude.ai/code/session_test", message: null });
+  });
+});
+
+describe("Remote Control for all running sessions", () => {
+  const remoteEvents = () => emitted.flatMap((e) => (e.event === "remote.updated" ? [e.payload] : []));
+
+  it("starts no session when Remote is switched on without a running one", async () => {
+    await storedSession();
+    const calls = rt.remoteCalls.length;
+    const state = await svc.remoteStart();
+    expect(state).toEqual({ enabled: true, sessions: [] });
+    expect(rt.started).toHaveLength(1);
+    expect(rt.remoteCalls).toHaveLength(calls);
+    expect(svc.listAll()).toHaveLength(1);
+    expect(remoteEvents().at(-1)).toEqual({ enabled: true, sessions: [] });
+  });
+
+  it("connects every running session of every project under its own name", async () => {
+    mkdirSync(path.join(t.dir, "proj2"), { recursive: true });
+    const other = (await projects.import(path.join(t.dir, "proj2"))).id;
+    const a = await svc.start({ projectId, prompt: "Lies a.txt" });
+    const b = await svc.start({ projectId, prompt: "Lies a.txt" });
+    const c = await svc.start({ projectId: other, prompt: "Fix den Login" });
+    const stored = await storedSession();
+    const state = await svc.remoteStart();
+    expect(rt.remoteCalls.map((r) => [r.session, r.name])).toEqual([
+      [0, "FORGE · proj: Lies a.txt"],
+      [1, "FORGE · proj: Lies a.txt (2)"],
+      [2, "FORGE · proj2: Fix den Login"],
+    ]);
+    expect(state.sessions.map((s) => [s.sessionId, s.projectName])).toEqual([
+      [a.id, "proj"],
+      [b.id, "proj"],
+      [c.id, "proj2"],
+    ]);
+    expect(state.sessions.some((s) => s.sessionId === stored.id)).toBe(false);
+    // switching on again keeps connected sessions as they are
+    await svc.remoteStart();
+    expect(rt.remoteCalls).toHaveLength(3);
+  });
+
+  it("connects sessions that start or resume while Remote is on", async () => {
+    const stored = await storedSession();
+    await svc.remoteStart();
+    const s = await svc.start({ projectId, prompt: "Neue Aufgabe" });
+    await vi.waitFor(() => expect(svc.remoteState().sessions.map((x) => x.sessionId)).toEqual([s.id]));
+    expect(rt.remoteCalls.at(-1)).toEqual({ enabled: true, name: "FORGE · proj: Neue Aufgabe", session: 1 });
+    await svc.resume(stored.id, "weiter");
+    await vi.waitFor(() => expect(svc.remoteState().sessions).toHaveLength(2));
+    expect(rt.remoteCalls.at(-1)).toEqual({ enabled: true, name: "FORGE · proj: Lies a.txt", session: 2 });
+  });
+
+  it("removes a session from Remote when it ends or is deleted", async () => {
+    const a = await svc.start({ projectId, prompt: "eins" });
+    const b = await svc.start({ projectId, prompt: "zwei" });
+    await svc.remoteStart();
+    svc.close(a.id);
+    expect(svc.remoteState().sessions.map((s) => s.sessionId)).toEqual([b.id]);
+    await svc.delete(b.id, false);
+    expect(svc.remoteState()).toEqual({ enabled: true, sessions: [] });
+    expect(remoteEvents().at(-1)).toEqual({ enabled: true, sessions: [] });
+  });
+
+  it("disconnects all sessions when switched off and connects no new ones", async () => {
+    await svc.start({ projectId, prompt: "eins" });
+    await svc.start({ projectId, prompt: "zwei" });
+    await svc.remoteStart();
+    const state = await svc.remoteStop();
+    expect(state).toEqual({ enabled: false, sessions: [] });
+    expect(rt.remoteCalls.filter((r) => !r.enabled).map((r) => r.session).sort()).toEqual([0, 1]);
+    expect(svc.listLive()).toHaveLength(2);
+    await svc.start({ projectId, prompt: "drei" });
+    await new Promise((r) => setTimeout(r, 10));
+    expect(rt.remoteCalls.filter((r) => r.enabled)).toHaveLength(2);
+    expect(svc.remoteState().sessions).toEqual([]);
+  });
+
+  it("gives a session started without a prompt the title of its first message", async () => {
+    await svc.remoteStart();
+    const s = await svc.start({ projectId, prompt: "" });
+    await vi.waitFor(() => expect(svc.remoteState().sessions).toHaveLength(1));
+    rt.sinks[0]!.onMessage({ type: "user", isReplay: true, uuid: "aaaaaaaa-bbbb-4ccc-8ddd-000000000001", message: { role: "user", content: "Baue einen Login" } });
+    expect(svc.get(s.id).title).toBe("Baue einen Login");
+    expect(svc.remoteState().sessions[0]!.title).toBe("Baue einen Login");
   });
 });
 
@@ -725,5 +814,245 @@ describe("turn automation holds the next turn", () => {
     rt.sinks[0]!.onMessage({ type: "command_lifecycle", command_uuid: "aaaaaaaa-bbbb-4ccc-8ddd-000000000009", state: "started" });
     await svc.drain();
     expect(db.listEvents(s.id).find((e) => e.body.type === "automation")?.body).toMatchObject({ action: "skip" });
+  });
+});
+
+describe("automatic continuation after a usage limit", () => {
+  const START = Date.parse("2026-10-11T12:00:00.000Z");
+  const RESET_S = START / 1000 + 3600;
+  const DUE = new Date(RESET_S * 1000 + RESET_BUFFER_MS).toISOString();
+  let clock: number;
+  let svc2: SessionService;
+
+  beforeEach(() => {
+    clock = START;
+    svc2 = new SessionService(db, projects, new GitEngine(), rt, (e) => emitted.push(e), () => clock);
+  });
+  afterEach(async () => {
+    await svc2.drain();
+    svc2.shutdown();
+  });
+
+  const limitHit = (sink: SessionSink, opts: { resetsAt?: number | null; text?: string } = {}) => {
+    if (opts.resetsAt !== null) sink.onMessage({ type: "rate_limit_event", rate_limit_info: { status: "rejected", resetsAt: opts.resetsAt ?? RESET_S, rateLimitType: "five_hour" } });
+    sink.onMessage({ type: "result", subtype: "success", is_error: true, result: opts.text ?? "You've hit your limit · resets 2pm" });
+  };
+  const autoEvents = (id: string) => db.listEvents(id).flatMap((e) => (e.body.type === "auto_continue" ? [e.body] : []));
+
+  /** A session with a claude session id (needed to resume) whose second turn ran into the limit. */
+  async function limited(opts: { resetsAt?: number | null; text?: string } = {}) {
+    const s = await svc2.start({ projectId, prompt: "Lies a.txt" });
+    rt.replay();
+    await svc2.send(s.id, "Bau das Feature");
+    limitHit(rt.sinks.at(-1)!, opts);
+    await svc2.drain();
+    return s;
+  }
+
+  it("plans the continuation at the reported reset plus a buffer and stores it", async () => {
+    const s = await limited();
+    expect(db.getAutoContinue(s.id)).toMatchObject({ dueAt: DUE, resetsAt: new Date(RESET_S * 1000).toISOString(), attempts: 0 });
+    expect(svc2.get(s.id).autoContinueAt).toBe(DUE);
+    expect(autoEvents(s.id)).toEqual([{ type: "auto_continue", state: "scheduled", scheduledFor: DUE, resetKnown: true, attempt: 1, message: null }]);
+    expect(emitted.some((e) => e.event === "session.updated" && e.payload.id === s.id && e.payload.autoContinueAt === DUE)).toBe(true);
+  });
+
+  it("sends the continuation prompt once due, marked as automatic", async () => {
+    const s = await limited();
+    clock = Date.parse(DUE) - 1000;
+    await svc2.checkAutoContinue();
+    expect(rt.sent).toEqual(["Bau das Feature"]);
+    clock = Date.parse(DUE);
+    await svc2.checkAutoContinue();
+    expect(rt.sent).toEqual(["Bau das Feature", AUTO_CONTINUE_PROMPT]);
+    expect(autoEvents(s.id).at(-1)).toMatchObject({ state: "resumed", scheduledFor: DUE, attempt: 1 });
+    expect(db.listEvents(s.id).find((e) => e.body.type === "user.message" && e.body.text === AUTO_CONTINUE_PROMPT)?.body).toMatchObject({ source: "auto" });
+    expect(svc2.get(s.id)).toMatchObject({ autoContinueAt: null, status: "running" });
+  });
+
+  it("resumes the session first when its process is gone", async () => {
+    const s = await limited();
+    svc2.close(s.id);
+    expect(svc2.get(s.id).live).toBe(false);
+    clock = Date.parse(DUE) + 5000;
+    await svc2.checkAutoContinue();
+    expect(rt.started.at(-1)).toMatchObject({ resume: "d69118dc-ef0c-4925-9945-3091ab75cb15", firstMessage: expect.objectContaining({ text: AUTO_CONTINUE_PROMPT }) });
+  });
+
+  it("runs an overdue plan on the first check after the computer slept, driven by the wall clock", async () => {
+    const s = await limited();
+    vi.useFakeTimers({ toFake: ["setTimeout", "setInterval"] });
+    try {
+      svc2.startBackgroundChecks();
+      await vi.advanceTimersByTimeAsync(STARTUP_CHECK_MS + CHECK_INTERVAL_MS);
+      expect(autoEvents(s.id).some((b) => b.state === "resumed")).toBe(false);
+      // Asleep: no timer ran, but the wall clock moved on by hours. The next tick sees the plan as overdue.
+      clock = Date.parse(DUE) + 3 * 60 * 60_000;
+      await vi.advanceTimersByTimeAsync(CHECK_INTERVAL_MS);
+    } finally {
+      vi.useRealTimers();
+    }
+    // Sending captures a git baseline (a real child process), so wait in real time.
+    await vi.waitFor(() => expect(rt.sent.at(-1)).toBe(AUTO_CONTINUE_PROMPT));
+    await svc2.checkAutoContinue();
+    expect(autoEvents(s.id).filter((b) => b.state === "resumed")).toHaveLength(1);
+    expect(rt.sent.filter((t) => t === AUTO_CONTINUE_PROMPT)).toHaveLength(1);
+  });
+
+  it("drops the plan when the user writes before the reset", async () => {
+    const s = await limited();
+    await svc2.send(s.id, "Ich mach selbst weiter");
+    expect(svc2.get(s.id).autoContinueAt).toBeNull();
+    expect(db.getAutoContinue(s.id)).toBeNull();
+    clock = Date.parse(DUE) + 1000;
+    await svc2.checkAutoContinue();
+    expect(rt.sent).not.toContain(AUTO_CONTINUE_PROMPT);
+  });
+
+  it("drops the plan when a message comes in from the Claude app", async () => {
+    const s = await limited();
+    svc2["core"].record(s.id, { type: "user.message", text: "vom Handy", source: "remote" });
+    expect(svc2.get(s.id).autoContinueAt).toBeNull();
+  });
+
+  it("cancels on request and records it in the timeline", async () => {
+    const s = await limited();
+    expect(svc2.cancelAutoContinue(s.id).autoContinueAt).toBeNull();
+    expect(autoEvents(s.id).at(-1)).toMatchObject({ state: "cancelled", scheduledFor: DUE });
+    clock = Date.parse(DUE) + 1000;
+    await svc2.checkAutoContinue();
+    expect(rt.sent).not.toContain(AUTO_CONTINUE_PROMPT);
+  });
+
+  it("cancels when the user stops the session", async () => {
+    const s = await limited();
+    await svc2.stop(s.id);
+    expect(svc2.get(s.id).autoContinueAt).toBeNull();
+    expect(autoEvents(s.id).at(-1)).toMatchObject({ state: "cancelled", message: "Session gestoppt." });
+  });
+
+  it("plans nothing when the setting is off, and switching it off drops pending plans", async () => {
+    db.updateSettings({ autoContinueAfterLimit: false });
+    const s = await limited();
+    expect(db.getAutoContinue(s.id)).toBeNull();
+    expect(autoEvents(s.id)).toEqual([]);
+    db.updateSettings({ autoContinueAfterLimit: true });
+    await svc2.send(s.id, "nochmal");
+    limitHit(rt.sinks.at(-1)!);
+    await svc2.drain();
+    expect(svc2.get(s.id).autoContinueAt).toBe(DUE);
+    db.updateSettings({ autoContinueAfterLimit: false });
+    svc2.settingsChanged();
+    expect(svc2.get(s.id).autoContinueAt).toBeNull();
+    expect(autoEvents(s.id).at(-1)).toMatchObject({ state: "cancelled" });
+  });
+
+  it("does not plan for an ordinary error", async () => {
+    const s = await svc2.start({ projectId, prompt: "x" });
+    rt.sinks[0]!.onMessage({ type: "result", subtype: "error_during_execution", is_error: true, errors: ["API Error: 500"] });
+    await svc2.drain();
+    expect(db.getAutoContinue(s.id)).toBeNull();
+  });
+
+  it("re-arms the plan from the database after a restart", async () => {
+    const s = await limited();
+    svc2.shutdown();
+    expect(db.markOrphanedSessions()).toBe(0);
+    const svc3 = new SessionService(db, projects, new GitEngine(), rt, () => {}, () => clock);
+    try {
+      expect(svc3.get(s.id)).toMatchObject({ live: false, autoContinueAt: DUE });
+      clock = Date.parse(DUE) + 60_000;
+      await svc3.checkAutoContinue();
+      expect(rt.started.at(-1)).toMatchObject({ resume: "d69118dc-ef0c-4925-9945-3091ab75cb15", firstMessage: expect.objectContaining({ text: AUTO_CONTINUE_PROMPT }) });
+    } finally {
+      await svc3.drain();
+      svc3.shutdown();
+    }
+  });
+
+  it("stops after three automatic continuations without user input", async () => {
+    const s = await limited();
+    for (let i = 1; i <= MAX_AUTO_CONTINUES; i++) {
+      clock = Date.parse(db.getAutoContinue(s.id)!.dueAt!) + 1000;
+      await svc2.checkAutoContinue();
+      expect(rt.sent.filter((t) => t === AUTO_CONTINUE_PROMPT)).toHaveLength(i);
+      limitHit(rt.sinks.at(-1)!, { resetsAt: clock / 1000 + 600 });
+      await svc2.drain();
+    }
+    expect(svc2.get(s.id).autoContinueAt).toBeNull();
+    expect(autoEvents(s.id).at(-1)).toMatchObject({ state: "exhausted", attempt: MAX_AUTO_CONTINUES });
+    // The next own message starts the count over.
+    await svc2.send(s.id, "weiter");
+    limitHit(rt.sinks.at(-1)!, { resetsAt: clock / 1000 + 600 });
+    await svc2.drain();
+    expect(autoEvents(s.id).at(-1)).toMatchObject({ state: "scheduled", attempt: 1 });
+  });
+
+  it("checks the plan usage periodically while the reset time is unknown", async () => {
+    const s = await limited({ resetsAt: null, text: "You've hit your limit" });
+    const probeAt = new Date(START + PROBE_INTERVAL_MS).toISOString();
+    expect(db.getAutoContinue(s.id)).toMatchObject({ dueAt: probeAt, resetsAt: null });
+    expect(autoEvents(s.id).at(-1)).toMatchObject({ state: "scheduled", resetKnown: false });
+    const reset = new Date(START + 2 * 60 * 60_000).toISOString();
+    rt.usage = { available: true, subscriptionType: "max", windows: [{ key: "five_hour", label: "5 Stunden", utilization: 100, resetsAt: reset }], fetchedAt: reset, error: null };
+    clock = Date.parse(probeAt);
+    await svc2.checkAutoContinue();
+    const due = new Date(Date.parse(reset) + RESET_BUFFER_MS).toISOString();
+    expect(db.getAutoContinue(s.id)).toMatchObject({ dueAt: due, resetsAt: reset });
+    expect(autoEvents(s.id).at(-1)).toMatchObject({ state: "scheduled", resetKnown: true, scheduledFor: due });
+    expect(rt.sent).not.toContain(AUTO_CONTINUE_PROMPT);
+  });
+
+  it("takes the reset time from the plan usage when the limit event has none", async () => {
+    const reset = new Date(START + 90 * 60_000).toISOString();
+    rt.usage = { available: true, subscriptionType: "max", windows: [{ key: "seven_day", label: "Woche", utilization: 100, resetsAt: reset }], fetchedAt: reset, error: null };
+    const s = await limited({ resetsAt: null, text: "You've reached your weekly limit" });
+    expect(db.getAutoContinue(s.id)).toMatchObject({ resetsAt: reset });
+  });
+});
+
+describe("account rate limit state", () => {
+  it("keeps the latest warning, reports changes once and clears it after the reset or when allowed", async () => {
+    let clock = Date.parse("2026-10-11T12:00:00.000Z");
+    const svc2 = new SessionService(db, projects, new GitEngine(), rt, (e) => emitted.push(e), () => clock);
+    try {
+      expect(svc2.rateLimit().status).toBe("ok");
+      await svc2.start({ projectId, prompt: "x" });
+      const warn = { type: "rate_limit_event", rate_limit_info: { status: "allowed_warning", resetsAt: clock / 1000 + 1800, rateLimitType: "five_hour", utilization: 0.9 } };
+      rt.sinks[0]!.onMessage(warn);
+      rt.sinks[0]!.onMessage(warn);
+      const resetsAt = new Date(clock + 1800_000).toISOString();
+      expect(svc2.rateLimit()).toMatchObject({ status: "warning", limitType: "five_hour", resetsAt, utilization: 90 });
+      expect(emitted.filter((e) => e.event === "ratelimit.updated")).toHaveLength(1);
+      clock += 1800_000;
+      expect(svc2.rateLimit()).toMatchObject({ status: "ok", resetsAt: null });
+      rt.sinks[0]!.onMessage({ type: "rate_limit_event", rate_limit_info: { status: "rejected", resetsAt: clock / 1000 + 600, rateLimitType: "seven_day" } });
+      expect(svc2.rateLimit()).toMatchObject({ status: "reached", limitType: "seven_day" });
+      rt.sinks[0]!.onMessage({ type: "rate_limit_event", rate_limit_info: { status: "allowed", resetsAt: clock / 1000 + 600, rateLimitType: "seven_day" } });
+      expect(svc2.rateLimit().status).toBe("ok");
+    } finally {
+      await svc2.drain();
+      svc2.shutdown();
+    }
+  });
+});
+
+describe("reset time from limit messages", () => {
+  const now = new Date(2026, 9, 11, 12, 0, 0).getTime();
+  it("reads clock times, dates and the old unix suffix", () => {
+    expect(resetFromText("You've hit your limit · resets 3pm (Europe/Berlin)", now)).toBe(new Date(2026, 9, 11, 15, 0).getTime());
+    expect(resetFromText("5-hour limit reached · resets 9:30am", now)).toBe(new Date(2026, 9, 12, 9, 30).getTime());
+    expect(resetFromText("You've hit your weekly limit · resets Oct 14, 6pm", now)).toBe(new Date(2026, 9, 14, 18, 0).getTime());
+    expect(resetFromText("Claude AI usage limit reached|1791661200", now)).toBe(1791661200_000);
+    expect(resetFromText("resets 15:00", now)).toBe(new Date(2026, 9, 11, 15, 0).getTime());
+    expect(resetFromText("You've hit your limit", now)).toBeNull();
+    expect(resetFromText("resets 3", now)).toBeNull();
+  });
+
+  it("recognises limit texts but not ordinary errors", () => {
+    expect(isUsageLimitText("You've hit your limit · resets 3pm")).toBe(true);
+    expect(isUsageLimitText("Claude AI usage limit reached|1791661200")).toBe(true);
+    expect(isUsageLimitText("API Error: 529 Overloaded")).toBe(false);
+    expect(isUsageLimitText(null)).toBe(false);
   });
 });

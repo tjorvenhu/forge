@@ -1,3 +1,4 @@
+import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -6,7 +7,7 @@ import { GitEngine } from "../src/git/git.js";
 import { githubRepoFromRemote, type GitHubService } from "../src/github/github.js";
 import { Db } from "../src/persistence/db.js";
 import { ProjectManager } from "../src/projects/project-manager.js";
-import { folderDeleteBlocker, removalInfo, removeProject, type RemovalDeps } from "../src/projects/removal.js";
+import { folderDeleteBlocker, removalInfo, removeProject, removeWorktree, type RemovalDeps } from "../src/projects/removal.js";
 import type { SessionService } from "../src/sessions/session-service.js";
 import { WorktreeService } from "../src/automation/worktrees.js";
 import { git, initRepo, tempDir } from "./helpers.js";
@@ -171,6 +172,72 @@ describe("removeProject", () => {
     expect(existsSync(dir)).toBe(true);
     expect(await git(dir, "worktree", "list")).not.toContain("feature/b");
     expect(await git(dir, "branch", "--list", "feature/b")).toContain("feature/b");
+  });
+
+  /** A process whose current directory is `dir`, like the Claude CLI of an agent session. */
+  async function processIn(dir: string) {
+    const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { cwd: dir, stdio: "ignore", windowsHide: true });
+    await new Promise((resolve, reject) => child.once("spawn", resolve).once("error", reject));
+    const exited = new Promise((resolve) => child.once("exit", resolve));
+    return {
+      stop: async () => {
+        child.kill();
+        await exited;
+      },
+    };
+  }
+
+  it("ends the agent's session and dev server before deleting its worktree", async () => {
+    const dir = await repoWithCommit("agents");
+    const p = await deps.projects.import(dir);
+    const wt = await deps.worktrees.create(p, "agent/login");
+    const claude = await processIn(wt.path);
+    deps.sessions = {
+      closeProject: async (ids: string[]) => {
+        closed.push(ids);
+        await claude.stop();
+      },
+    } as unknown as SessionService;
+    try {
+      await removeWorktree(wt.id, false, deps);
+    } finally {
+      await claude.stop();
+    }
+    expect(closed).toEqual([[wt.id]]);
+    expect(forgotten).toEqual([wt.id]);
+    expect(existsSync(wt.path)).toBe(false);
+    expect(deps.projects.all().map((x) => x.id)).toEqual([p.id]);
+    expect(await git(dir, "worktree", "list")).not.toContain("agent-login");
+    expect(await git(dir, "branch", "--list", "agent/login")).toContain("agent/login");
+  });
+
+  it("leaves the agent running when the worktree has uncommitted changes", async () => {
+    const dir = await repoWithCommit("dirty");
+    const p = await deps.projects.import(dir);
+    const wt = await deps.worktrees.create(p, "agent/dirty");
+    writeFileSync(path.join(wt.path, "neu.txt"), "x\n");
+    await expect(removeWorktree(wt.id, false, deps)).rejects.toMatchObject({ code: "CONFLICT" });
+    expect(closed).toEqual([]);
+    expect(forgotten).toEqual([]);
+    expect(existsSync(path.join(wt.path, "neu.txt"))).toBe(true);
+  });
+
+  it.runIf(process.platform === "win32")("explains a folder held by another process and removes the rest on the next try", async () => {
+    const dir = await repoWithCommit("held");
+    const p = await deps.projects.import(dir);
+    const wt = await deps.worktrees.create(p, "agent/held");
+    const terminal = await processIn(wt.path);
+    try {
+      await expect(removeWorktree(wt.id, false, deps)).rejects.toMatchObject({ code: "PATH_NOT_ACCESSIBLE", message: expect.stringMatching(/anderen Programm/) });
+    } finally {
+      await terminal.stop();
+    }
+    expect(deps.projects.all().some((x) => x.id === wt.id)).toBe(true);
+
+    // git already deleted the .git file in the first attempt; the leftover folder still goes.
+    await removeWorktree(wt.id, false, deps);
+    expect(existsSync(wt.path)).toBe(false);
+    expect(await git(dir, "worktree", "list")).not.toContain("agent-held");
   });
 
   it("removes a worktree whose parent entry vanished", async () => {

@@ -156,11 +156,11 @@ describe("GitEngine against a real repository", () => {
     expect(log.map((c) => c.subject)).toEqual(["feat: a und b", "init"]);
   });
 
-  it("stops commits of secrets unless explicitly allowed", async () => {
+  it("stops commits of sensitive files unless explicitly allowed, without scanning contents", async () => {
     writeFileSync(path.join(repo, ".env"), "X=1\n");
-    writeFileSync(path.join(repo, "config.ts"), 'export const key = "ghp_abcdefghijklmnopqrstuvwxyz0123";\n');
+    writeFileSync(path.join(repo, "config.ts"), "export const key = process.env.KEY;\n");
     await expectCode(engine.commit(repo, "oops", [".env"], false), "POLICY_DENIED");
-    await expectCode(engine.commit(repo, "oops", ["config.ts"], false), "POLICY_DENIED");
+    await expect(engine.commit(repo, "config", ["config.ts"], false)).resolves.toMatchObject({ summary: "config" });
     await expect(engine.commit(repo, "bewusst", [".env"], true)).resolves.toMatchObject({ summary: "bewusst" });
   });
 
@@ -292,5 +292,6 @@ describe("push and pull guardrails against a local bare remote", () => {
     await expect(engine.pull(a)).rejects.toThrow(/auseinandergelaufen/);
     await expect(engine.push(a, true)).rejects.toThrow(/Erst Pull/);
     expect(await engine.defaultBranch(a)).toBe("main");
-  });
+    // About 25 git processes against a real bare remote; on Windows that alone takes several seconds.
+  }, 30_000);
 });

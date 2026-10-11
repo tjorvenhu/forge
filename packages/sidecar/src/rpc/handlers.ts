@@ -11,7 +11,7 @@ import type { WorktreeService } from "../automation/worktrees.js";
 import type { DevServerService } from "../devserver/dev-server.js";
 import type { PhoneService } from "../phone/phone-service.js";
 import * as cfg from "../config/claude-config.js";
-import { removalInfo, removeProject } from "../projects/removal.js";
+import { removalInfo, removeProject, removeWorktree } from "../projects/removal.js";
 import os from "node:os";
 
 export interface Services {
@@ -57,6 +57,7 @@ export function createHandlers(s: Services): Handlers {
     },
     "system.runtimeInfo": () => s.sessions.runtimeInfo(),
     "system.usage": ({ refresh }) => s.sessions.planUsage(refresh === true),
+    "system.rateLimit": () => s.sessions.rateLimit(),
 
     "claude.setupState": () => s.claudeSetup.current(),
     "claude.install": () => s.claudeSetup.install(),
@@ -66,9 +67,9 @@ export function createHandlers(s: Services): Handlers {
     "claude.submitLoginCode": ({ code }) => s.claudeSetup.submitCode(code),
     "claude.cancelSetup": () => s.claudeSetup.cancel(),
 
-    "remote.state": ({ projectId }) => s.sessions.remoteState(projectId),
-    "remote.start": ({ projectId }) => s.sessions.remoteStart(projectId),
-    "remote.stop": ({ projectId }) => s.sessions.remoteStop(projectId),
+    "remote.state": () => s.sessions.remoteState(),
+    "remote.start": () => s.sessions.remoteStart(),
+    "remote.stop": () => s.sessions.remoteStop(),
 
     "github.account": () => s.github.account(),
     "github.loginState": () => s.github.loginState(),
@@ -113,17 +114,18 @@ export function createHandlers(s: Services): Handlers {
     "mcp.remove": ({ projectId, name, scope }) => s.mcp.remove(dirOf(projectId) ?? os.homedir(), name, scope),
 
     "worktrees.create": ({ projectId, branch }) => s.worktrees.create(s.projects.requireExisting(projectId), branch),
-    "worktrees.remove": async ({ projectId, force }) => {
-      await s.devServers.forget(projectId);
-      await s.worktrees.remove(s.projects.get(projectId), force);
-      return { ok: true };
+    "worktrees.remove": async ({ projectId, force, deleteBranch }) => {
+      const r = await removeWorktree(projectId, force, s, { deleteBranch });
+      return { ok: true, ...r };
     },
     "sessions.summarize": ({ sessionId }) => s.sessions.summarize(sessionId),
 
     "settings.get": () => s.db.getSettings(),
     "settings.update": (patch) => {
       diagCache = null;
-      return s.db.updateSettings(patch);
+      const next = s.db.updateSettings(patch);
+      if (patch.autoContinueAfterLimit !== undefined) s.sessions.settingsChanged();
+      return next;
     },
 
     "projects.list": () => s.projects.list(),
@@ -166,13 +168,13 @@ export function createHandlers(s: Services): Handlers {
     "sessions.rewind": ({ sessionId, messageUuid, dryRun }) => s.sessions.rewind(sessionId, messageUuid, dryRun),
     "system.commands": ({ projectId }) => s.sessions.commands(projectId),
     "sessions.stop": ({ sessionId }) => s.sessions.stop(sessionId),
+    "sessions.cancelAutoContinue": ({ sessionId }) => s.sessions.cancelAutoContinue(sessionId),
     "sessions.close": ({ sessionId }) => s.sessions.close(sessionId),
     "sessions.setModel": ({ sessionId, model }) => s.sessions.setModel(sessionId, model),
     "sessions.setEffort": ({ sessionId, effort }) => s.sessions.setEffort(sessionId, effort),
     "sessions.setPermissionMode": ({ sessionId, mode }) => s.sessions.setPermissionMode(sessionId, mode),
     "sessions.respondApproval": ({ sessionId, requestId, decision, scope, message, answers }) =>
       s.sessions.respondApproval(sessionId, requestId, decision, scope, message, answers),
-    "sessions.confirmAutoCommit": ({ sessionId, requestId, commit }) => s.sessions.confirmAutoCommit(sessionId, requestId, commit),
     "sessions.contextUsage": ({ sessionId }) => s.sessions.contextUsage(sessionId),
     "search.sessions": ({ query, limit }) => s.db.searchEvents(query, limit),
 
@@ -205,7 +207,21 @@ export function createHandlers(s: Services): Handlers {
       return r;
     },
     "git.log": ({ projectId, limit }) => s.git.log(projectDir(projectId), limit),
+    "git.restoreTo": async ({ projectId, commit }) => {
+      const busy = s.sessions
+        .listAll()
+        .some((x) => x.projectId === projectId && x.live && (x.status === "running" || x.status === "waiting_approval"));
+      if (busy) throw new ForgeError("SESSION_BUSY", "Eine aktive Session arbeitet gerade in diesem Projekt. Erst stoppen, dann wiederherstellen.");
+      const r = await s.git.restoreTo(projectDir(projectId), commit);
+      s.notifyProject(projectId);
+      return r;
+    },
     "git.branches": ({ projectId }) => s.git.branches(projectDir(projectId)),
+    "git.deleteBranch": async ({ projectId, branch, force }) => {
+      await s.git.deleteBranch(projectDir(projectId), branch, force);
+      s.notifyProject(projectId);
+      return s.git.branches(projectDir(projectId));
+    },
     "git.checkout": async ({ projectId, branch, create }) => {
       const busy = s.sessions
         .listAll()

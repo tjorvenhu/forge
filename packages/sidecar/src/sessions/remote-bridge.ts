@@ -2,7 +2,7 @@ import type { RemoteSession, RemoteState, ServerEvent, SessionEventBody } from "
 import type { ClaudeRuntime } from "../claude/runtime.js";
 import type { Db } from "../persistence/db.js";
 import type { ProjectManager } from "../projects/project-manager.js";
-import { describeRuntimeError, REMOTE_PLACEHOLDER_TITLE, type LiveSession } from "./live-session.js";
+import { describeRuntimeError, type LiveSession } from "./live-session.js";
 
 export interface BridgeHost {
   live(sessionId: string): LiveSession | undefined;
@@ -12,8 +12,6 @@ export interface BridgeHost {
   /** a CLI turn started without a FORGE message (Claude app, or an own message queued in the CLI) */
   turnStarted(sessionId: string, live: LiveSession, fromRemote: boolean): void;
   titleFromFirstMessage(sessionId: string, text: string): void;
-  /** opens an empty session for the Claude app */
-  startEmpty(projectId: string): Promise<unknown>;
 }
 
 interface RemoteUserContent {
@@ -21,14 +19,19 @@ interface RemoteUserContent {
   images: Array<{ mediaType: string; size: number }>;
 }
 
+/** Leaves room for a " (n)" suffix within the name length the Claude app shows. */
+const NAME_MAX = 110;
+
 /**
- * Remote Control (Claude app / claude.ai): connects the open FORGE sessions of a project to the
- * Claude app. The wire messages used here (bridge_state, command_lifecycle, replayed user messages)
- * are not typed in the SDK, so every field is checked before use and unknown shapes are ignored.
+ * Remote Control (Claude app / claude.ai): while switched on, every FORGE session with a running CLI
+ * process (all projects, the same set as the session tabs) is its own entry in the Claude app.
+ * Sessions that start or resume later are connected automatically; FORGE never opens a session for it.
+ * The wire messages used here (bridge_state, command_lifecycle, replayed user messages) are not typed
+ * in the SDK, so every field is checked before use and unknown shapes are ignored.
  */
 export class RemoteBridge {
-  /** projectId → bridged sessions; a project is in the map while Remote is switched on */
-  private remote = new Map<string, Map<string, RemoteSession>>();
+  /** sessionId → connected session; null while Remote is switched off */
+  private sessions: Map<string, RemoteSession> | null = null;
 
   constructor(
     private readonly db: Db,
@@ -37,85 +40,87 @@ export class RemoteBridge {
     private readonly host: BridgeHost,
   ) {}
 
-  enabled(projectId: string): boolean {
-    return this.remote.has(projectId);
+  enabled(): boolean {
+    return this.sessions !== null;
   }
 
-  state(projectId: string): RemoteState {
-    const sessions = this.remote.get(projectId);
-    return { enabled: !!sessions, sessions: sessions ? [...sessions.values()] : [] };
+  state(): RemoteState {
+    return { enabled: this.enabled(), sessions: [...(this.sessions?.values() ?? [])] };
   }
 
-  private emitState(projectId: string) {
-    this.host.emit({ event: "remote.updated", payload: { projectId, state: this.state(projectId) } });
+  private emitState() {
+    this.host.emit({ event: "remote.updated", payload: this.state() });
   }
 
-  /** Updates the remote entry of a session; with an empty patch it only refreshes the title. */
+  /** Patches the entry of a connected session; with an empty patch it only refreshes the title. */
   update(sessionId: string, patch: Partial<RemoteSession>) {
+    const cur = this.sessions?.get(sessionId);
     const rec = this.db.getSession(sessionId);
-    const map = rec && this.remote.get(rec.projectId);
-    if (!rec || !map) return;
-    const cur: RemoteSession = map.get(sessionId) ?? { sessionId, title: rec.title ?? "", url: null, state: "connecting", message: null };
-    map.set(sessionId, { ...cur, title: rec.title ?? "", ...patch });
-    this.emitState(rec.projectId);
+    if (!cur || !rec) return;
+    this.sessions!.set(sessionId, { ...cur, title: rec.title ?? "", ...patch });
+    this.emitState();
   }
 
   drop(sessionId: string) {
-    const rec = this.db.getSession(sessionId);
-    const map = rec && this.remote.get(rec.projectId);
-    if (rec && map?.delete(sessionId)) this.emitState(rec.projectId);
+    if (this.sessions?.delete(sessionId)) this.emitState();
   }
 
   /**
-   * Switches Remote Control on for a project: every open FORGE session of the project is connected to
-   * the Claude app, so messages show up on both sides and FORGE's approvals and policy keep applying.
-   * Without an open session FORGE opens an empty one that can be started from the phone.
+   * Switches Remote Control on and connects every running session that is not connected yet (failed
+   * ones are retried). Messages show up on both sides; FORGE's approvals and policy keep applying.
+   * Without a running session Remote is just on: nothing is started.
    */
-  async start(projectId: string): Promise<RemoteState> {
-    this.projects.requireExisting(projectId);
-    if (!this.remote.has(projectId)) this.remote.set(projectId, new Map());
-    const open = this.host.liveIds().filter((id) => this.db.getSession(id)?.projectId === projectId);
-    if (open.length) await Promise.all(open.map((id) => this.bridge(id)));
-    else await this.host.startEmpty(projectId);
-    return this.state(projectId);
+  async start(): Promise<RemoteState> {
+    const map = (this.sessions ??= new Map());
+    const todo = this.host.liveIds().filter((id) => (map.get(id)?.state ?? "error") === "error");
+    await Promise.all(todo.map((id) => this.bridge(id)));
+    this.emitState();
+    return this.state();
   }
 
-  async stop(projectId: string): Promise<RemoteState> {
-    const map = this.remote.get(projectId);
-    this.remote.delete(projectId);
-    for (const id of map?.keys() ?? []) {
-      await this.host
-        .live(id)
-        ?.rt.setRemoteControl(false, "")
-        .catch(() => {});
-    }
-    this.emitState(projectId);
-    return this.state(projectId);
+  async stop(): Promise<RemoteState> {
+    const ids = [...(this.sessions?.keys() ?? [])];
+    this.sessions = null;
+    await Promise.all(ids.map((id) => this.host.live(id)?.rt.setRemoteControl(false, "").catch(() => {})));
+    this.emitState();
+    return this.state();
   }
 
   async bridge(sessionId: string) {
+    const map = this.sessions;
     const live = this.host.live(sessionId);
     const rec = this.db.getSession(sessionId);
-    if (!live || !rec) return;
+    if (!map || !live || !rec) return;
     const project = this.projects.get(rec.projectId);
-    this.update(sessionId, { state: "connecting", message: null });
-    const name = rec.title === REMOTE_PLACEHOLDER_TITLE ? `FORGE · ${project.name}` : `FORGE · ${project.name} · ${rec.title}`;
+    const title = rec.title ?? "";
+    const name = this.uniqueName(sessionId, `FORGE · ${project.name}: ${title || "Session"}`);
+    map.set(sessionId, { sessionId, projectId: rec.projectId, projectName: project.name, title, name, url: null, state: "connecting", message: null });
+    this.emitState();
     try {
-      const url = await live.rt.setRemoteControl(true, name.slice(0, 120));
-      if (!this.remote.has(rec.projectId)) {
-        // switched off while connecting
-        await live.rt.setRemoteControl(false, name).catch(() => {});
+      const url = await live.rt.setRemoteControl(true, name);
+      if (this.sessions !== map) {
+        // Switched off while connecting. Off and on again: the new start connects it itself.
+        if (!this.sessions) await live.rt.setRemoteControl(false, name).catch(() => {});
         return;
       }
-      this.update(sessionId, { url });
+      if (this.host.live(sessionId) === live) this.update(sessionId, { url });
     } catch (e) {
-      this.update(sessionId, { state: "error", message: describeRuntimeError(e) });
+      if (this.sessions === map && this.host.live(sessionId) === live) this.update(sessionId, { state: "error", message: describeRuntimeError(e) });
     }
+  }
+
+  /** Two sessions with the same project and title must still be told apart in the Claude app. */
+  private uniqueName(sessionId: string, base: string): string {
+    const short = base.length > NAME_MAX ? `${base.slice(0, NAME_MAX - 1)}…` : base;
+    const taken = new Set([...(this.sessions?.values() ?? [])].filter((s) => s.sessionId !== sessionId).map((s) => s.name));
+    let name = short;
+    for (let n = 2; taken.has(name); n++) name = `${short} (${n})`;
+    return name;
   }
 
   /** Reason for an approval prompt that was aborted by the CLI. */
   abortReason(sessionId: string): string {
-    return this.remote.has(this.db.getSession(sessionId)?.projectId ?? "") ? "In der Claude-App beantwortet oder abgebrochen" : "Abgebrochen";
+    return this.sessions?.has(sessionId) ? "In der Claude-App beantwortet oder abgebrochen" : "Abgebrochen";
   }
 
   /**

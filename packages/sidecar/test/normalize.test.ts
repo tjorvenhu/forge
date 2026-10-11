@@ -53,7 +53,15 @@ describe("Normalizer with real CLI stream-json fixture", () => {
   });
 
   it("keeps rate limit info", () => {
-    expect(events.find((e) => e.type === "rate_limit")).toMatchObject({ status: "allowed", limitType: "five_hour" });
+    expect(events.find((e) => e.type === "rate_limit")).toMatchObject({ status: "allowed", limitType: "five_hour", utilization: 0 });
+  });
+
+  it("reads utilization as percent and marks requests served from extra usage", () => {
+    const [ev] = new Normalizer().normalize({
+      type: "rate_limit_event",
+      rate_limit_info: { status: "rejected", resetsAt: 1791661200, rateLimitType: "seven_day", isUsingOverage: true, unifiedWindows: { seven_day: { utilization: 0.97 } } },
+    });
+    expect(ev).toEqual({ type: "rate_limit", status: "rejected", resetsAt: 1791661200, limitType: "seven_day", utilization: 97, overageInUse: true });
   });
 });
 

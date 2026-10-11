@@ -1,3 +1,4 @@
+mod job;
 mod sidecar;
 mod terminal;
 

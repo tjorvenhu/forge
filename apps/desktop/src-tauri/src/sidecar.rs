@@ -15,6 +15,8 @@ use std::time::{Duration, Instant};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager};
 
+use crate::job;
+
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
 const STDERR_TAIL_BYTES: usize = 8 * 1024;
@@ -36,68 +38,6 @@ pub struct Sidecar {
 struct ExitPayload {
     code: Option<i32>,
     stderr: String,
-}
-
-mod job {
-    use std::os::windows::io::AsRawHandle;
-    use std::process::Child;
-
-    use windows_sys::Win32::Foundation::{CloseHandle, HANDLE};
-    use windows_sys::Win32::System::JobObjects::{
-        AssignProcessToJobObject, CreateJobObjectW, JobObjectExtendedLimitInformation, SetInformationJobObject, TerminateJobObject,
-        JOBOBJECT_EXTENDED_LIMIT_INFORMATION, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
-    };
-
-    /// Job object with KILL_ON_JOB_CLOSE: when FORGE ends in any way (even a crash), Windows
-    /// ends every process in it, including grandchildren like `pnpm dev` or Claude.
-    pub struct Job(HANDLE);
-
-    // SAFETY: a job handle is a kernel object handle; it may be used and closed from any thread.
-    unsafe impl Send for Job {}
-
-    impl Job {
-        pub fn for_child(child: &Child) -> Result<Job, String> {
-            // SAFETY: plain Win32 calls with valid arguments; the handle is owned by Job and closed in Drop.
-            unsafe {
-                let handle = CreateJobObjectW(std::ptr::null(), std::ptr::null());
-                if handle.is_null() {
-                    return Err(std::io::Error::last_os_error().to_string());
-                }
-                let job = Job(handle);
-                let mut info = JOBOBJECT_EXTENDED_LIMIT_INFORMATION::default();
-                info.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
-                let ok = SetInformationJobObject(
-                    handle,
-                    JobObjectExtendedLimitInformation,
-                    (&info as *const JOBOBJECT_EXTENDED_LIMIT_INFORMATION).cast(),
-                    std::mem::size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32,
-                );
-                if ok == 0 {
-                    return Err(std::io::Error::last_os_error().to_string());
-                }
-                if AssignProcessToJobObject(handle, child.as_raw_handle() as HANDLE) == 0 {
-                    return Err(std::io::Error::last_os_error().to_string());
-                }
-                Ok(job)
-            }
-        }
-
-        pub fn terminate(&self) {
-            // SAFETY: the handle is valid until Drop.
-            unsafe {
-                TerminateJobObject(self.0, 1);
-            }
-        }
-    }
-
-    impl Drop for Job {
-        fn drop(&mut self) {
-            // SAFETY: closing the handle we own exactly once.
-            unsafe {
-                CloseHandle(self.0);
-            }
-        }
-    }
 }
 
 /// Directory with the bundled tools (node, git, gh, sidecar). In dev builds the

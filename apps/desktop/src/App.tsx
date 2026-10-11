@@ -3,6 +3,7 @@ import { AlertTriangle, RotateCw } from "lucide-react";
 import { isTauri, rpc } from "@/lib/rpc";
 import { useUi } from "@/stores/ui";
 import { Sidebar } from "@/components/layout/Sidebar";
+import { SessionTabs } from "@/components/layout/SessionTabs";
 import { Toaster } from "@/components/layout/Toaster";
 import { TitleTooltips } from "@/components/ui/title-tooltips";
 import { ErrorBoundary } from "@/components/layout/ErrorBoundary";
@@ -16,7 +17,6 @@ import { SessionsView } from "@/views/SessionsView";
 import { SettingsView } from "@/views/SettingsView";
 import { WorkspaceView } from "@/views/WorkspaceView";
 import { GitHubView } from "@/views/GitHubView";
-import { AgentsView } from "@/views/AgentsView";
 import { ExtensionsView } from "@/views/ExtensionsView";
 import { useGlobalShortcuts } from "@/lib/shortcuts";
 
@@ -72,22 +72,26 @@ function Shell() {
   const view = useUi((s) => s.view);
   const activeProjectId = useUi((s) => s.activeProjectId);
   return (
-    <div className="flex h-full min-w-0">
+    <div className="flex h-full min-w-0 flex-col">
       <ErrorBoundary>
-        <Sidebar />
+        <SessionTabs />
       </ErrorBoundary>
-      <main className="flex min-w-0 flex-1 flex-col">
-        <ErrorBoundary resetKey={`${view}:${activeProjectId}`}>
-          {view === "home" && <HomeView />}
-          {view === "projects" && <ProjectsView />}
-          {view === "sessions" && <SessionsView />}
-          {view === "settings" && <SettingsView />}
-          {view === "workspace" && <WorkspaceView />}
-          {view === "github" && <GitHubView />}
-          {view === "agents" && <AgentsView />}
-          {view === "mcp" && <ExtensionsView />}
+      <div className="flex min-h-0 min-w-0 flex-1">
+        <ErrorBoundary>
+          <Sidebar />
         </ErrorBoundary>
-      </main>
+        <main className="flex min-w-0 flex-1 flex-col">
+          <ErrorBoundary resetKey={`${view}:${activeProjectId}`}>
+            {view === "home" && <HomeView />}
+            {view === "projects" && <ProjectsView />}
+            {view === "sessions" && <SessionsView />}
+            {view === "settings" && <SettingsView />}
+            {view === "workspace" && <WorkspaceView />}
+            {view === "github" && <GitHubView />}
+            {view === "mcp" && <ExtensionsView />}
+          </ErrorBoundary>
+        </main>
+      </div>
       <NewProjectDialog />
       <CommandPalette />
       <Toaster />

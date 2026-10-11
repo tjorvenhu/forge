@@ -47,10 +47,22 @@ außerhalb des Projekts werden nicht eingeschränkt; die Schreibsperre im Autono
 
 `git.commit` committet ausschließlich die im UI ausgewählten Dateien (`git commit --only -- <pfade>`).
 Vorher wird geprüft: keine Konflikte, Dateien haben tatsächlich Änderungen, keine sensiblen Dateien
-(`.env`, Schlüssel, Zertifikate, Credentials), keine Build-Artefakte, keine bekannten Token-Muster im
-neuen Inhalt. Bei Treffern fragt FORGE nach, ob trotzdem committet werden soll, und zeigt die betroffenen
-Dateien mit Grund. Committet wird nur nach ausdrücklicher Bestätigung.
+(`.env`, Schlüssel, Zertifikate, Credentials) und keine Build-Artefakte. Geprüft werden nur Dateinamen und
+Pfade, nicht der Inhalt: Die Inhaltsprüfung brauchte einen git-Aufruf pro Datei und machte Commits zu langsam.
+Bei Treffern fragt FORGE nach, ob trotzdem committet werden soll, und zeigt die betroffenen Dateien mit Grund.
+Committet wird nur nach ausdrücklicher Bestätigung.
 FORGE pusht in Phase 1 nie.
+
+**Branches löschen** (`git.deleteBranch`) ist eine Aktion im Git-Bereich, nicht für Claude: Die Sperrliste blockiert
+`git branch -d/-D` weiterhin für Claudes Shell. Gelöscht wird nur lokal. Der aktuelle Branch, `main`, `master` und der
+Standard-Branch von `origin` sind gesperrt, ebenso Branches, die in einem Worktree ausgecheckt sind. Branches mit Commits,
+die in keinem anderen Branch stehen, löscht FORGE erst nach einer zweiten Bestätigung. Beim Entfernen eines Agenten kann
+sein Branch auf ausdrücklichen Wunsch ohne Merge mitgelöscht werden.
+
+**Wiederherstellen** (`git.restoreTo`) holt die Dateien des Projektordners auf den Stand eines Commits zurück
+(`git restore --source=<commit> --staged --worktree -- .`). Branch und Verlauf bleiben unverändert, das Ergebnis
+sind neue, nicht committete Änderungen. Offene Änderungen inklusive neuer Dateien sichert FORGE vorher als Git-Stash.
+Die Commit-Kennung muss hexadezimal sein; während eine Session im Projekt arbeitet, ist Wiederherstellen gesperrt.
 
 ## Redaction
 
@@ -95,23 +107,31 @@ E-Mail-Adresse oder Org-Daten der Claude-Anmeldung.
   gelöschte Subagenten werden zu `<name>.md.bak`.
 - **Hooks** führen Befehle aus. FORGE prüft nur die Struktur, nicht den Inhalt; ein Hook aus einem
   fremden Repository in `.claude/settings.json` wird von Claude Code selbst ausgeführt (natives Verhalten).
-- **Remote Control** verbindet die laufenden FORGE-Sessions eines Projekts mit claude.ai und der Claude-App
-  (dein Konto). Nachrichten von dort laufen durch dieselbe Session: Profil, Freigaben und Sperrliste gelten.
-  Ausschalten trennt die Verbindung, die Session läuft lokal weiter.
+- **Remote Control** gilt global: Eingeschaltet ist jede laufende FORGE-Session (alle Projekte, wie die
+  Session-Tabs) ein eigener Eintrag in claude.ai und der Claude-App (dein Konto). Sessions, die danach starten
+  oder fortgesetzt werden, kommen automatisch dazu; FORGE startet dafür keine eigene Session. Nachrichten von
+  dort laufen durch dieselbe Session: Profil, Freigaben und Sperrliste gelten. Eine beendete Session fällt
+  heraus. Ausschalten trennt alle Verbindungen, die Sessions laufen lokal weiter.
+- **Automatisches Weitermachen nach dem Nutzungslimit** sendet Nachrichten ohne dich, aber eng begrenzt:
+  nur nachdem ein Nutzungslimit einen Durchlauf dieser Session gestoppt hat, nur an diese eine Session und
+  immer mit demselben festen Text. Die Session läuft mit ihrem normalen Profil, ihren Freigaben und der
+  Sperrliste; es gibt keine Ausnahme und keinen höheren Permission-Modus. Offene Freigaben bleiben offen,
+  bis du antwortest. Höchstens drei automatische Fortsetzungen ohne deine Eingabe, dann ist Schluss.
+  Eine eigene Nachricht, Stopp, Löschen oder „Nicht automatisch weitermachen“ heben den Plan auf;
+  in den Einstellungen lässt sich die Funktion ganz abschalten (Standard: an).
 - **Terminal**: nur Shell oder Claude-CLI startbar, kein Netzwerkzugang zum PTY.
 - **Testbefehle** laufen mit deinen Rechten im Projektordner.
 - **Projekt löschen** mit Ordner oder GitHub-Repository verlangt das Eintippen des Projektnamens. Gesperrt sind
   Laufwerke, das Benutzerverzeichnis, Punkt-Ordner und Standardordner direkt darunter (auch OneDrive), die
   Claude-Konfiguration, Credential-Ordner, AppData, Programme, ProgramData, das Windows-Verzeichnis,
   FORGE-Daten und Ordner mit weiteren Projekten. Gesperrt heißt: der Ordner,
-  alles darin und seine übergeordneten Ordner. Dev-Server des Projekts und seiner Worktrees werden vorher beendet.
+  alles darin und seine übergeordneten Ordner. Sessions, Terminals und Dev-Server des Projekts und seiner Worktrees werden vorher beendet.
   Die GitHub-Berechtigung `delete_repo` fragt FORGE erst an, wenn sie gebraucht wird.
 - **Auto-Commit/Auto-Push** commiten nur Dateien aus dem aktuellen Durchlauf, nie sensible Dateien, pushen nie
   auf main/master und nie mit Force. Neue Nachrichten aus FORGE warten, bis Tests und Auto-Commit des letzten
   Durchlaufs fertig sind. Hat sich eine Datei seit dem Ende des Durchlaufs geändert oder hat inzwischen ein
-  neuer Durchlauf begonnen (etwa aus der Claude-App), entfällt der Auto-Commit. Sieht ein geänderter Inhalt nach
-  einem Schlüssel oder Token aus, stellt FORGE im Chat die Frage „Trotzdem committen?“ (mit Desktop-Hinweis).
-  Committet wird nur nach Klick und nur, wenn sich die Dateien seit der Frage nicht geändert haben.
+  neuer Durchlauf begonnen (etwa aus der Claude-App), entfällt der Auto-Commit. Der Inhalt der Dateien wird
+  nicht auf Schlüssel oder Passwörter geprüft.
 
 ## Telefon (Phase 5, ADR 0010)
 
@@ -120,19 +140,26 @@ E-Mail-Adresse oder Org-Daten der Claude-Anmeldung.
   Ländervorwahl 49) und müssen danach exakt gleich sein. Andere Anrufe weist FORGE mit 403 ab und protokolliert sie.
   FORGE nimmt SIP nur von der Adresse der Anlage an; Pakete anderer Absender werden verworfen und protokolliert.
   Anfragen innerhalb eines Gesprächs müssen das Tag von FORGE tragen.
-- **PIN fürs Steuern:** Senden, Starten, Freigeben, Stoppen und Dev-Server brauchen standardmäßig die PIN. Sie wird
+- **PIN fürs Steuern:** Alles außer Status, Nutzung und Auflegen braucht standardmäßig die PIN. Sie wird
   über die Telefontastatur (DTMF, RFC 4733 oder SIP INFO) eingegeben und mit # bestätigt. Sie läuft nie durch das
   Sprachmodell und wird nicht vorgelesen. Gespeichert ist nur ein scrypt-Hash. Nach drei falschen Versuchen legt
   FORGE auf; danach werden keine Ziffern mehr geprüft. Fünf Fehlversuche einer Nummer oder zehn insgesamt innerhalb
   einer Stunde sperren die PIN-Eingabe für eine Stunde, auch über Neustarts hinweg. Jeder Fehlversuch wird später
   beantwortet (1 s, verdoppelt, höchstens 16 s). Eine neue PIN in FORGE hebt die Sperre auf. Ohne PIN nennt
   `status` nur Anzahlen, `details` ist gesperrt. Grund: Anrufernummern lassen sich fälschen.
-- **Bestätigung per Taste:** Senden, Starten und Antworten auf Freigaben führt FORGE erst aus, wenn der Anrufer die
-  Taste 1 drückt. FORGE liest dafür selbst vor, was passiert; lange Texte nur mit Hinweis auf die Kürzung. Ein
-  gesprochenes Ja reicht nicht. Text aus Sessions erhält Claude als markierte Daten, nicht als Anweisung.
-- **Was Claude am Telefon kann:** nur die FORGE-Werkzeuge (Status, Details, Senden, Starten, Antworten, Stoppen,
-  Dev-Server, Auflegen). Keine Datei-, Shell- oder Web-Werkzeuge (`tools: []`, eigene Werkzeuge per MCP im Prozess).
-  Gestartete oder fortgesetzte Sessions laufen wie immer mit Profil, Freigaben und Sperrliste des Projekts.
+- **Keine Bestätigung per Taste (seit 2026-10-11):** Nach der PIN führt FORGE steuernde Aktionen sofort aus, wenn
+  der Anrufer sie verlangt. Die frühere Bestätigung mit Taste 1 war im Gespräch zu umständlich und wurde auf Wunsch
+  des Nutzers entfernt. Text aus Sessions erhält Claude weiter als markierte Daten, nicht als Anweisung, und der
+  System-Prompt verbietet, ihretwegen Werkzeuge zu benutzen. Restrisiko: Bringt Session-Text Claude trotzdem dazu,
+  ein Werkzeug aufzurufen, gibt es keine zweite Hürde mehr. Die Werkzeuge haben deshalb eigene Grenzen: Commits
+  lassen sensible Dateien und Build-Artefakte immer aus, Push nie mit Force, Pull nur fast-forward.
+- **Was Claude am Telefon kann:** nur die FORGE-Werkzeuge: Status, Details, Senden, Starten, Antworten auf
+  Freigaben, Stoppen, Schließen, Modell/Denkaufwand/Modus einer Session, automatisches Weitermachen abbrechen,
+  Remote Control, Dev-Server, Git (Status, Commit, Push, Pull), Projekte, Nutzung, Auflegen. Keine Datei-, Shell-
+  oder Web-Werkzeuge (`tools: []`, eigene Werkzeuge per MCP im Prozess). Gestartete oder fortgesetzte Sessions
+  laufen wie immer mit Profil, Freigaben und Sperrliste des Projekts. Push auf `main`/`master` geht am Telefon nur,
+  wenn der Anrufer es ausdrücklich verlangt (Parameter `allow_protected`); am Rechner braucht es das Eintippen des
+  Branch-Namens.
 - **Geheimnisse:** SIP-Passwort und OpenAI-Key liegen unter `<Datenordner>/secrets`, mit DPAPI für das
   Windows-Benutzerkonto verschlüsselt (PowerShell, Übergabe per stdin). Die UI sieht nur, ob sie gesetzt sind.
 - **Datenfluss:** Gesprächsaudio der Anrufer geht zur Transkription an OpenAI, die Antworttexte zur Sprachausgabe.

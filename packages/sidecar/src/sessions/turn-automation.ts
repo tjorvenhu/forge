@@ -1,7 +1,7 @@
-import { createHash, randomUUID } from "node:crypto";
+import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import { ForgeError, type Project, type ServerEvent, type SessionEventBody } from "@forge/protocol";
+import type { Project, ServerEvent, SessionEventBody } from "@forge/protocol";
 import { sessionEnv } from "../claude/environment.js";
 import type { Db } from "../persistence/db.js";
 import { isArtifactPath, isSensitiveFile, type GitEngine } from "../git/git.js";
@@ -14,22 +14,6 @@ export interface AutomationHost {
   suggestCommitMessage(projectId: string, paths: string[]): Promise<{ message: string }>;
 }
 
-interface FlaggedFile {
-  path: string;
-  reason: string;
-}
-
-interface PendingCommit {
-  sessionId: string;
-  projectId: string;
-  cwd: string;
-  files: string[];
-  message: string;
-  branch: string | null;
-  /** content hashes when the question was asked; a changed file voids the question */
-  hashes: Map<string, string>;
-}
-
 /** A turn FORGE holds back while the previous turn's tests and auto-commit run. */
 export interface HeldTurn {
   deliver(): void;
@@ -38,8 +22,7 @@ export interface HeldTurn {
 }
 
 /**
- * Work after a successful turn: git checkpoint, then the project tags (auto-test, auto-commit,
- * auto-push). Runs in the background; new FORGE messages for the session wait until it is done, so
+ * Work after a successful turn, driven by the project tags (auto-test, auto-commit, auto-push). Runs in the background; new FORGE messages for the session wait until it is done, so
  * the commit only contains what the finished turn changed.
  */
 export class TurnAutomation {
@@ -50,8 +33,6 @@ export class TurnAutomation {
   private running = new Map<string, Promise<void>>();
   private held = new Map<string, HeldTurn[]>();
   private background = new Set<Promise<unknown>>();
-  /** Auto-commits waiting for the user because the changed content looks like it contains secrets. */
-  private pending = new Map<string, PendingCommit>();
 
   constructor(
     private readonly db: Db,
@@ -70,13 +51,14 @@ export class TurnAutomation {
     while (this.background.size) await Promise.all([...this.background]);
   }
 
-  async captureBaseline(sessionId: string, cwd: string) {
-    try {
-      const st = await this.git.status(cwd);
-      this.baseline.set(sessionId, new Set(st.files.map((f) => f.path)));
-    } catch {
-      this.baseline.set(sessionId, new Set());
-    }
+  /** Callers often do not await this; tracking it lets drain() and shutdown wait for the git process. */
+  captureBaseline(sessionId: string, cwd: string): Promise<void> {
+    const p = this.git.status(cwd).then(
+      (st) => void this.baseline.set(sessionId, new Set(st.files.map((f) => f.path))),
+      () => void this.baseline.set(sessionId, new Set()),
+    );
+    this.track(p);
+    return p;
   }
 
   noteTurnStart(sessionId: string) {
@@ -106,49 +88,11 @@ export class TurnAutomation {
     this.baseline.delete(sessionId);
     this.turnSeq.delete(sessionId);
     this.held.delete(sessionId);
-    for (const [id, p] of this.pending) if (p.sessionId === sessionId) this.pending.delete(id);
-  }
-
-  /**
-   * Answer to an automation.confirm question. Commits only if the files still have the content the
-   * question was about; otherwise the question expires and the files stay for the Git area.
-   */
-  async confirm(sessionId: string, requestId: string, commit: boolean): Promise<{ ok: boolean }> {
-    const p = this.pending.get(requestId);
-    if (!p || p.sessionId !== sessionId) {
-      throw new ForgeError("NOT_FOUND", "Diese Rückfrage ist nicht mehr offen. Die Dateien kannst du im Git-Bereich committen.");
-    }
-    this.pending.delete(requestId);
-    if (!commit) {
-      this.host.record(sessionId, { type: "automation.confirmResolved", requestId, decision: "skip" });
-      this.host.record(sessionId, { type: "automation", action: "skip", ok: true, message: "Auto-Commit nicht ausgeführt. Die Dateien bleiben uncommittet.", hash: null, files: [] });
-      return { ok: true };
-    }
-    const now = await this.hashFiles(p.cwd, p.files);
-    if (p.files.some((f) => p.hashes.get(f) !== now.get(f))) {
-      this.host.record(sessionId, { type: "automation.confirmResolved", requestId, decision: "expired" });
-      this.host.record(sessionId, { type: "automation", action: "skip", ok: true, message: "Auto-Commit nicht ausgeführt: Die Dateien haben sich seit der Rückfrage geändert. Bitte im Git-Bereich prüfen.", hash: null, files: [] });
-      return { ok: true };
-    }
-    this.host.record(sessionId, { type: "automation.confirmResolved", requestId, decision: "commit" });
-    const project = this.projects.get(p.projectId);
-    const job = this.commitAndPush(sessionId, project, p.cwd, p.files, p.message, true, p.branch);
-    this.running.set(sessionId, job);
-    this.track(job);
-    try {
-      await job;
-    } finally {
-      if (this.running.get(sessionId) === job) this.running.delete(sessionId);
-      const list = this.held.get(sessionId) ?? [];
-      this.held.delete(sessionId);
-      for (const t of list) t.deliver();
-    }
-    return { ok: true };
   }
 
   /**
    * Starts the post-turn work of a successful turn. When it runs tests or commits, new turns are held
-   * until it is done; a bare checkpoint does not need that.
+   * until it is done; without either there is nothing to wait for.
    */
   schedule(sessionId: string) {
     const rec = this.db.getSession(sessionId);
@@ -185,19 +129,16 @@ export class TurnAutomation {
     const cwd = rec.cwd;
     const seq = this.turnSeq.get(sessionId) ?? 0;
     const baseline = this.baseline.get(sessionId) ?? new Set<string>();
-    let status;
-    try {
-      status = await this.git.status(cwd);
-    } catch {
-      return; // not a git repository: nothing to automate
-    }
-    const head = (await this.git.exec(cwd, ["rev-parse", "--short", "HEAD"])).stdout.trim() || null;
-    this.host.record(sessionId, { type: "git.checkpoint", head, branch: status.summary.branch, changedFiles: status.files.length });
-
     const tags = new Set(project.tags);
     if (!tags.has("auto-commit")) {
       await this.runTests(sessionId, project.testCommand, tags, cwd);
       return;
+    }
+    let status;
+    try {
+      status = await this.git.status(cwd);
+    } catch {
+      return; // not a git repository: nothing to commit
     }
     const files = status.files
       .filter((f) => !baseline.has(f.path) && f.kind !== "conflicted" && !isSensitiveFile(f.path) && !isArtifactPath(f.path))
@@ -227,13 +168,13 @@ export class TurnAutomation {
       this.host.record(sessionId, { type: "automation", action: "commit", ok: false, message: e instanceof Error ? e.message : String(e), hash: null, files });
       return;
     }
-    await this.commitAndPush(sessionId, project, cwd, files, message, false, status.summary.branch);
+    await this.commitAndPush(sessionId, project, cwd, files, message, status.summary.branch);
   }
 
-  /** Commits the files and pushes when the project has auto-push. Possible secrets turn into a question to the user. */
-  private async commitAndPush(sessionId: string, project: Project, cwd: string, files: string[], message: string, allowSensitive: boolean, branch: string | null) {
+  /** Commits the files and pushes when the project has auto-push. Sensitive files were filtered out before. */
+  private async commitAndPush(sessionId: string, project: Project, cwd: string, files: string[], message: string, branch: string | null) {
     try {
-      const r = await this.git.commit(cwd, message, files, allowSensitive);
+      const r = await this.git.commit(cwd, message, files, false);
       this.host.record(sessionId, { type: "automation", action: "commit", ok: true, message: r.summary, hash: r.hash, files });
       this.host.emit({ event: "project.updated", payload: { projectId: project.id } });
       if (project.tags.includes("auto-push")) {
@@ -245,13 +186,6 @@ export class TurnAutomation {
         }
       }
     } catch (e) {
-      const flagged = !allowSensitive && e instanceof ForgeError && e.code === "POLICY_DENIED" ? (e.details as { flagged?: FlaggedFile[] } | undefined)?.flagged : undefined;
-      if (flagged?.length) {
-        const requestId = randomUUID();
-        this.pending.set(requestId, { sessionId, projectId: project.id, cwd, files, message, branch, hashes: await this.hashFiles(cwd, files) });
-        this.host.record(sessionId, { type: "automation.confirm", requestId, files, flagged, message });
-        return;
-      }
       this.host.record(sessionId, { type: "automation", action: "commit", ok: false, message: e instanceof Error ? e.message : String(e), hash: null, files });
     }
   }

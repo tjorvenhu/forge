@@ -38,7 +38,7 @@ export interface LiveSession {
 /** Statuses in which the CLI may be touching files. */
 export const BUSY: SessionStatus[] = ["starting", "running", "waiting_approval"];
 
-/** Title of a session that was opened empty for the Claude app; replaced by the first message. */
+/** Title of a session started without a prompt (older versions opened one for the Claude app); replaced by the first message. */
 export const REMOTE_PLACEHOLDER_TITLE = "Remote-Session";
 
 /** Enough to recognise echoes and find the last known message in a transcript; older ids are not needed. */

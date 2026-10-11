@@ -1,8 +1,9 @@
 import type { SessionEvent, SessionEventBody } from "@forge/protocol";
+import { limitLabel, limitTime } from "@/lib/rate-limit";
 
 type Body<T extends SessionEventBody["type"]> = Extract<SessionEventBody, { type: T }>;
 
-export type NoticeIcon = "checkpoint" | "commit" | "push" | "skip" | "rewind" | "compact" | "background" | "limit";
+export type NoticeIcon = "commit" | "push" | "skip" | "rewind" | "compact" | "background" | "limit";
 
 export interface TodoEntry {
   content: string;
@@ -11,7 +12,7 @@ export interface TodoEntry {
 }
 
 export type ChatItem =
-  | { kind: "user"; key: string; seq: number; text: string; ts: string; uuid: string | null; attachments: Array<{ name: string; mediaType: string; size: number }>; remote: boolean }
+  | { kind: "user"; key: string; seq: number; text: string; ts: string; uuid: string | null; attachments: Array<{ name: string; mediaType: string; size: number }>; remote: boolean; auto: boolean }
   | { kind: "assistant"; key: string; seq: number | null; text: string; streaming: boolean; ts: string | null }
   | {
       kind: "tool";
@@ -25,9 +26,7 @@ export type ChatItem =
       todos: TodoEntry[] | null;
       superseded: boolean;
     }
-  | { kind: "approval"; key: string; ts: string; req: Body<"approval.request">; resolved: Body<"approval.resolved"> | null }
-  | { kind: "autocommit"; key: string; ts: string; req: Body<"automation.confirm">; resolved: Body<"automation.confirmResolved"> | null }
-  | { kind: "blocked"; key: string; ts: string; body: Body<"policy.blocked"> }
+  | { kind: "approval"; key: string; ts: string; req: Body<"approval.request">; resolved: Body<"approval.resolved"> | null }  | { kind: "blocked"; key: string; ts: string; body: Body<"policy.blocked"> }
   | { kind: "result"; key: string; ts: string; body: Body<"turn.result"> }
   | { kind: "error"; key: string; ts: string; message: string; retryable: boolean }
   | {
@@ -39,7 +38,11 @@ export type ChatItem =
       /** shown as an event card when set: title, a highlighted reference (hash, branch) and a detail line */
       card?: { title: string; ref: string | null; detail: string; icon: NoticeIcon };
     }
-  | { kind: "check"; key: string; ts: string; body: Body<"check.result"> };
+  | { kind: "check"; key: string; ts: string; body: Body<"check.result"> }
+  | AutoContinueItem;
+
+/** Automatic continuation after a usage limit; `open`: no later message or step replaced this plan. */
+export type AutoContinueItem = { kind: "autoContinue"; key: string; ts: string; body: Body<"auto_continue">; open: boolean };
 
 function parseTodos(input: Record<string, unknown>): TodoEntry[] | null {
   const raw = input.todos;
@@ -105,16 +108,24 @@ export function reuseStableItems(prev: readonly ChatItem[], next: ChatItem[]): C
 export function buildEventItems(events: SessionEvent[]): ChatItem[] {
   const items: ChatItem[] = [];
   const toolIdx = new Map<string, number>();
-  const approvalIdx = new Map<string, { item: number; inTool: boolean }>();
-  const confirmIdx = new Map<string, number>();
-  const textIdx = new Map<string, number>();
+  const approvalIdx = new Map<string, { item: number; inTool: boolean }>();  const textIdx = new Map<string, number>();
   let lastTodo: number | null = null;
+  /** the "limit reached" notice of the current turn; replaced by the plan card when one follows */
+  let limitNotice: number | null = null;
+  /** the plan card that is still the latest word on the automatic continuation */
+  let openPlan: number | null = null;
+  const dropped = new Set<number>();
 
   for (const ev of events) {
     const b = ev.body;
     switch (b.type) {
       case "user.message":
-        items.push({ kind: "user", key: `u${ev.seq}`, seq: ev.seq, text: b.text, ts: ev.ts, uuid: b.uuid ?? null, attachments: b.attachments ?? [], remote: b.source === "remote" });
+        if (b.source !== "auto" && openPlan !== null) {
+          items[openPlan] = { ...(items[openPlan] as AutoContinueItem), open: false };
+          openPlan = null;
+        }
+        limitNotice = null;
+        items.push({ kind: "user", key: `u${ev.seq}`, seq: ev.seq, text: b.text, ts: ev.ts, uuid: b.uuid ?? null, attachments: b.attachments ?? [], remote: b.source === "remote", auto: b.source === "auto" });
         break;
       case "assistant.text": {
         const key = `${b.messageId}:${b.index}`;
@@ -164,16 +175,6 @@ export function buildEventItems(events: SessionEvent[]): ChatItem[] {
         else if (it?.kind === "approval") items[ref.item] = { ...it, resolved: b };
         break;
       }
-      case "automation.confirm":
-        confirmIdx.set(b.requestId, items.length);
-        items.push({ kind: "autocommit", key: `q${b.requestId}`, ts: ev.ts, req: b, resolved: null });
-        break;
-      case "automation.confirmResolved": {
-        const i = confirmIdx.get(b.requestId);
-        const it = i !== undefined ? items[i] : undefined;
-        if (it?.kind === "autocommit") items[i!] = { ...it, resolved: b };
-        break;
-      }
       case "policy.blocked": {
         const i = b.toolUseId ? toolIdx.get(b.toolUseId) : undefined;
         const it = i !== undefined ? items[i] : undefined;
@@ -183,21 +184,6 @@ export function buildEventItems(events: SessionEvent[]): ChatItem[] {
       }
       case "check.result":
         items.push({ kind: "check", key: `c${ev.seq}`, ts: ev.ts, body: b });
-        break;
-      case "git.checkpoint":
-        items.push({
-          kind: "notice",
-          key: `g${ev.seq}`,
-          ts: ev.ts,
-          text: `Checkpoint ${b.head ?? "ohne Commit"} ${b.branch ? `auf ${b.branch}` : "ohne Branch"} ·${b.changedFiles} geänderte Datei(en)`,
-          tone: "info",
-          card: {
-            title: "Checkpoint erstellt",
-            ref: b.branch ?? "ohne Branch",
-            detail: `${b.head ? `${b.head} · ` : ""}${b.changedFiles} geänderte Datei(en)`,
-            icon: "checkpoint",
-          },
-        });
         break;
       case "automation":
         items.push({
@@ -275,25 +261,31 @@ export function buildEventItems(events: SessionEvent[]): ChatItem[] {
       case "status":
         if (b.detail && b.detail.startsWith("Achtung")) items.push({ kind: "notice", key: `n${ev.seq}`, ts: ev.ts, text: b.detail, tone: "warning" });
         break;
+      // Warnings ("allowed_warning") arrive with every request near the limit; the composer shows them
+      // permanently instead. Only a real stop belongs in the chat.
       case "rate_limit":
-        if (b.status !== "allowed") {
-          const when = b.resetsAt ? new Date(b.resetsAt * 1000).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" }) : null;
-          items.push({
-            kind: "notice",
-            key: `n${ev.seq}`,
-            ts: ev.ts,
-            text: `Nutzungslimit: ${b.status}${when ? `, zurückgesetzt um ${when}` : ""}`,
-            tone: "warning",
-            card: { title: "Nutzungslimit", ref: null, detail: `${b.status}${when ? ` · zurückgesetzt um ${when}` : ""}`, icon: "limit" },
-          });
+        if (b.status === "rejected" && !b.overageInUse) {
+          const when = b.resetsAt ? limitTime(new Date(b.resetsAt * 1000).toISOString(), Date.parse(ev.ts)) : null;
+          const detail = `${limitLabel(b.limitType)}${when ? ` · zurückgesetzt um ${when}` : ""}`;
+          limitNotice = items.length;
+          items.push({ kind: "notice", key: `n${ev.seq}`, ts: ev.ts, text: `Nutzungslimit erreicht: ${detail}`, tone: "warning", card: { title: "Nutzungslimit erreicht", ref: null, detail, icon: "limit" } });
         }
+        break;
+      case "auto_continue":
+        if (openPlan !== null) items[openPlan] = { ...(items[openPlan] as AutoContinueItem), open: false };
+        openPlan = null;
+        // The plan card says the limit was reached; the plain notice right before it would repeat that.
+        if (b.state === "scheduled" && limitNotice !== null) dropped.add(limitNotice);
+        limitNotice = null;
+        if (b.state === "scheduled") openPlan = items.length;
+        items.push({ kind: "autoContinue", key: `l${ev.seq}`, ts: ev.ts, body: b, open: b.state === "scheduled" });
         break;
       default:
         break;
     }
   }
 
-  return items;
+  return dropped.size ? items.filter((_, i) => !dropped.has(i)) : items;
 }
 
 function formatK(n: number): string {

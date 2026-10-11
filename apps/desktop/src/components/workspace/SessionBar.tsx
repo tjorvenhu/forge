@@ -60,7 +60,7 @@ export function SessionBar({
           })),
         ]}
       />
-      {session && <SessionStatusBadge status={session.status} live={session.live} />}
+      {session && <SessionStatusBadge status={session.status} live={session.live} autoContinueAt={session.autoContinueAt} />}
       {!!session?.background.length && (
         <Tooltip content={session.background.map((t) => t.description).join(", ")}>
           <span>

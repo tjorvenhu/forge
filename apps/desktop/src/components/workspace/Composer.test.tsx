@@ -51,6 +51,7 @@ const session: Session = {
   live: true,
   background: [],
   context: null,
+  autoContinueAt: null,
 };
 
 function setup(ui: React.ReactNode) {
@@ -117,5 +118,43 @@ describe("Composer", () => {
     expect(planButton().getAttribute("aria-pressed")).toBe("false");
     view.rerender(<Composer key={draftKey("pB", null)} project={plain} session={null} />);
     expect(planButton().getAttribute("aria-pressed")).toBe("true");
+  });
+});
+
+describe("/clear", () => {
+  it("starts over with an empty chat and ends the idle Claude process instead of sending", async () => {
+    const { useUi } = await import("@/stores/ui");
+    useUi.getState().setActiveSession("p1", "s1");
+    callMock.mockImplementation(async (method: string) => {
+      if (method === "settings.get") return { enterToSend: true };
+      if (method === "sessions.close") return { ...session, live: false, status: "stopped" };
+      return { models: [] };
+    });
+    useDrafts.getState().setText("s1", "/clear");
+    setup(<Composer project={project("p1")} session={session} />);
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Senden" })));
+    expect(callMock).not.toHaveBeenCalledWith("sessions.send", expect.anything());
+    expect(callMock).toHaveBeenCalledWith("sessions.close", { sessionId: "s1" });
+    expect(useUi.getState().activeSession.p1).toBeNull();
+    expect(useDrafts.getState().drafts.s1?.text).toBe("");
+  });
+
+  it("leaves a working session running", async () => {
+    const { useUi } = await import("@/stores/ui");
+    useUi.getState().setActiveSession("p1", "s1");
+    useDrafts.getState().setText("s1", "/reset");
+    setup(<Composer project={project("p1")} session={{ ...session, status: "running" }} />);
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Dazwischen senden" })));
+    expect(callMock).not.toHaveBeenCalledWith("sessions.close", expect.anything());
+    expect(callMock).not.toHaveBeenCalledWith("sessions.send", expect.anything());
+    expect(useUi.getState().activeSession.p1).toBeNull();
+  });
+});
+
+describe("isClearCommand", () => {
+  it("accepts /clear and its aliases only as the whole input", async () => {
+    const { isClearCommand } = await import("./SlashCommandMenu");
+    expect(["/clear", " /CLEAR ", "/reset", "/new"].map(isClearCommand)).toEqual([true, true, true, true]);
+    expect(["/clear bitte", "/compact", "clear", "/clearer"].map(isClearCommand)).toEqual([false, false, false, false]);
   });
 });

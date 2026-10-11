@@ -6,6 +6,16 @@ import { cn } from "@/lib/utils";
 
 type Command = ResultOf<"system.commands">[number];
 
+/** Commands FORGE handles itself instead of sending them to Claude Code (like /clear in the terminal). */
+export const CLEAR_COMMANDS = ["clear", "reset", "new"];
+const BUILT_IN: Command[] = [{ name: "clear", description: "Neues Gespräch starten und den Chat leeren. Das bisherige bleibt in der Session-Liste.", argumentHint: "" }];
+
+/** True for "/clear" and its aliases, exactly as typed in the composer. */
+export function isClearCommand(text: string): boolean {
+  const m = /^\/(\w+)$/.exec(text.trim());
+  return !!m && CLEAR_COMMANDS.includes(m[1]!.toLowerCase());
+}
+
 /** Slash commands matching the composer text while it is a single "/word". */
 export function useSlashCommands(projectId: string, text: string): Command[] {
   const slashMode = /^\/[^\s]*$/.test(text);
@@ -18,7 +28,8 @@ export function useSlashCommands(projectId: string, text: string): Command[] {
   return useMemo(() => {
     if (!slashMode) return [];
     const q = text.slice(1).toLowerCase();
-    return (commands.data ?? []).filter((c) => c.name.toLowerCase().includes(q)).slice(0, 8);
+    const fromCli = (commands.data ?? []).filter((c) => !CLEAR_COMMANDS.includes(c.name.toLowerCase()));
+    return [...BUILT_IN, ...fromCli].filter((c) => c.name.toLowerCase().includes(q)).slice(0, 8);
   }, [slashMode, text, commands.data]);
 }
 

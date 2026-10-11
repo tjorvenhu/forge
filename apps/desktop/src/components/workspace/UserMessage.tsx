@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { FileText, ImageIcon, Smartphone, Undo2 } from "lucide-react";
+import { FileText, ImageIcon, Smartphone, TimerReset, Undo2 } from "lucide-react";
 import type { RewindResult } from "@forge/protocol";
 import { call } from "@/lib/queries";
 import { errorMessage } from "@/lib/rpc";
@@ -47,6 +47,11 @@ export function UserMessage({ item, sessionId }: { item: Extract<ChatItem, { kin
             {item.remote && (
               <span className="flex items-center gap-0.5" title="In der Claude-App geschrieben">
                 <Smartphone className="h-3 w-3" /> App
+              </span>
+            )}
+            {item.auto && (
+              <span className="flex items-center gap-0.5" title="Von FORGE gesendet, nachdem das Nutzungslimit zurückgesetzt war">
+                <TimerReset className="h-3 w-3" /> Automatisch
               </span>
             )}
             {clockTime(item.ts)}

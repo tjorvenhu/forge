@@ -12,7 +12,6 @@ import { Button } from "@/components/ui/button";
 import { EmptyState, ErrorBanner, Loading } from "@/components/ui/misc";
 import { appendStreaming, buildEventItems, itemIndexForSeq, lastUserPrompt, reuseStableItems, type ChatItem } from "./chat-items";
 import { Composer } from "./Composer";
-import { SessionTabs } from "./SessionTabs";
 import { SessionBar } from "./SessionBar";
 import { ItemView } from "./ChatItemView";
 import { BackgroundIndicator, WorkingIndicator } from "./WorkingIndicator";
@@ -45,7 +44,6 @@ export function ChatPanel({ project, workingInPanel = false }: { project: Projec
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <SessionTabs projectId={project.id} />
       <SessionBar
         project={project}
         session={session.data ?? null}

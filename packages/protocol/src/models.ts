@@ -113,6 +113,8 @@ export const Session = z.object({
   background: z.array(BackgroundTask),
   /** context window usage after the last turn; only while the process runs (not persisted) */
   context: ContextUsage.nullable(),
+  /** when FORGE continues the session on its own after a usage limit (ISO); null when nothing is planned */
+  autoContinueAt: z.string().nullable(),
 });
 export type Session = z.infer<typeof Session>;
 
@@ -149,8 +151,8 @@ export const SessionEventBody = z.discriminatedUnion("type", [
     /** id passed to Claude Code; needed to rewind files to this point */
     uuid: z.string().optional(),
     attachments: z.array(z.object({ name: z.string(), mediaType: z.string(), size: z.number() })).optional(),
-    /** "remote": typed in the Claude app (Remote Control) */
-    source: z.enum(["forge", "remote"]).optional(),
+    /** "remote": typed in the Claude app (Remote Control); "auto": sent by FORGE after a usage limit reset */
+    source: z.enum(["forge", "remote", "auto"]).optional(),
   }),
   z.object({
     type: z.literal("check.result"),
@@ -161,32 +163,12 @@ export const SessionEventBody = z.discriminatedUnion("type", [
     output: z.string(),
   }),
   z.object({
-    type: z.literal("git.checkpoint"),
-    head: z.string().nullable(),
-    branch: z.string().nullable(),
-    changedFiles: z.number(),
-  }),
-  z.object({
     type: z.literal("automation"),
     action: z.enum(["commit", "push", "skip"]),
     ok: z.boolean(),
     message: z.string(),
     hash: z.string().nullable(),
     files: z.array(z.string()),
-  }),
-  /** Auto-commit found possible secrets in the changed content and asks before committing. */
-  z.object({
-    type: z.literal("automation.confirm"),
-    requestId: z.string(),
-    files: z.array(z.string()),
-    flagged: z.array(z.object({ path: z.string(), reason: z.string() })),
-    message: z.string(),
-  }),
-  z.object({
-    type: z.literal("automation.confirmResolved"),
-    requestId: z.string(),
-    /** expired: the files changed after the question, or FORGE restarted meanwhile */
-    decision: z.enum(["commit", "skip", "expired"]),
   }),
   z.object({
     type: z.literal("files.rewound"),
@@ -277,6 +259,22 @@ export const SessionEventBody = z.discriminatedUnion("type", [
     status: z.string(),
     resetsAt: z.number().nullable(),
     limitType: z.string().nullable(),
+    /** percent of the limit used, when Claude Code reports it */
+    utilization: z.number().nullable().optional(),
+    /** requests are served from extra usage, so a "rejected" plan limit does not stop the session */
+    overageInUse: z.boolean().optional(),
+  }),
+  /** FORGE continues a session on its own after a usage limit (plan, run, cancel). */
+  z.object({
+    type: z.literal("auto_continue"),
+    state: z.enum(["scheduled", "resumed", "cancelled", "exhausted", "failed"]),
+    /** planned time (ISO); for "resumed" the time the plan was due */
+    scheduledFor: z.string().nullable(),
+    /** false: the reset time is unknown and FORGE checks the plan usage periodically */
+    resetKnown: z.boolean().optional(),
+    /** automatic continuations without user input so far, including this one */
+    attempt: z.number().int().optional(),
+    message: z.string().nullable(),
   }),
   z.object({ type: z.literal("error"), message: z.string(), retryable: z.boolean() }),
 ]);
@@ -353,8 +351,25 @@ export const Settings = z.object({
   sounds: z.boolean(),
   debugLogs: z.boolean(),
   defaultProjectDir: z.string().nullable(),
+  /** continue a session on its own once a usage limit that stopped it has reset */
+  autoContinueAfterLimit: z.boolean(),
 });
 export type Settings = z.infer<typeof Settings>;
+
+/**
+ * The latest plan rate limit Claude Code reported, for the whole account (not per session).
+ * "warning": close to the limit; "reached": requests are rejected until resetsAt.
+ */
+export const RateLimitState = z.object({
+  status: z.enum(["ok", "warning", "reached"]),
+  /** five_hour, seven_day, seven_day_opus, seven_day_sonnet, overage …; null when unknown */
+  limitType: z.string().nullable(),
+  resetsAt: z.string().nullable(),
+  /** percent used, when reported */
+  utilization: z.number().nullable(),
+  updatedAt: z.string().nullable(),
+});
+export type RateLimitState = z.infer<typeof RateLimitState>;
 
 export const CapabilityState = z.enum(["supported", "partial", "unavailable"]);
 export const Capability = z.object({
@@ -560,7 +575,11 @@ export type ProjectRemovalInfo = z.infer<typeof ProjectRemovalInfo>;
 
 export const RemoteSession = z.object({
   sessionId: z.string(),
+  projectId: z.string(),
+  projectName: z.string(),
   title: z.string(),
+  /** name of the entry in the Claude app; unique among the connected sessions */
+  name: z.string(),
   /** claude.ai/code link of this session; opens in the Claude app on phones */
   url: z.string().nullable(),
   state: z.enum(["connecting", "connected", "error"]),
@@ -568,6 +587,7 @@ export const RemoteSession = z.object({
 });
 export type RemoteSession = z.infer<typeof RemoteSession>;
 
+/** Remote Control is global: while enabled, every session with a running CLI process is connected. */
 export const RemoteState = z.object({
   enabled: z.boolean(),
   sessions: z.array(RemoteSession),

@@ -1,7 +1,6 @@
 import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import { ForgeError, type BranchInfo, type CommitInfo, type FileDiff, type GitStatus, type GitSummary } from "@forge/protocol";
-import { containsSecret } from "../policy/redact.js";
 import { isInside } from "../util/paths.js";
 import { run, type RunResult } from "../util/proc.js";
 import { resolveTool } from "../util/tools.js";
@@ -155,19 +154,15 @@ export class GitEngine {
       throw new ForgeError("VALIDATION", `Diese Dateien haben keine Änderungen: ${unknown.join(", ")}`, { paths: unknown });
     }
 
+    // Only file names are checked: scanning contents cost one git process per file and made commits slow.
     if (!allowSensitive) {
       const flagged: Array<{ path: string; reason: string }> = [];
       for (const p of paths) {
         if (isSensitiveFile(p)) flagged.push({ path: p, reason: "sensible Datei" });
         else if (isArtifactPath(p)) flagged.push({ path: p, reason: "Build-Artefakt" });
-        else if (byPath.get(p)?.kind !== "deleted") {
-          const d = await this.diff(cwd, p, false).catch(() => null);
-          const added = d?.lines.filter((l) => l.kind === "add").map((l) => l.text).join("\n") ?? "";
-          if (added && containsSecret(added)) flagged.push({ path: p, reason: "möglicher Schlüssel/Token im Inhalt" });
-        }
       }
       if (flagged.length) {
-        throw new ForgeError("POLICY_DENIED", "Commit gestoppt: mögliche Secrets oder Build-Artefakte ausgewählt.", { flagged });
+        throw new ForgeError("POLICY_DENIED", "Sensible Dateien oder Build-Artefakte ausgewählt.", { flagged });
       }
     }
 
@@ -180,9 +175,32 @@ export class GitEngine {
     const list = [...pathspec];
     await this.ok(cwd, ["add", "-A", "--", ...list]);
     await this.ok(cwd, ["commit", "-q", "-F", "-", "--only", "--", ...list], message);
-    const hash = (await this.ok(cwd, ["rev-parse", "HEAD"])).trim();
-    const summary = (await this.ok(cwd, ["log", "-1", "--format=%s"])).trim();
+    const [hash = "", summary = ""] = (await this.ok(cwd, ["log", "-1", "--format=%H%n%s"])).split("\n").map((l) => l.replace(/\r$/, "").trim());
     return { hash, summary };
+  }
+
+  /**
+   * Brings every file of the project folder back to the state of `commit`, as new uncommitted changes.
+   * Branch and history stay as they are. Uncommitted work is stashed first, so nothing is lost.
+   */
+  async restoreTo(cwd: string, commit: string): Promise<{ commit: string; subject: string; stashed: boolean; changed: number }> {
+    if (!/^[0-9a-f]{7,40}$/i.test(commit)) throw new ForgeError("VALIDATION", "Ungültige Commit-Kennung.");
+    const st = await this.status(cwd);
+    if (st.summary.conflicted) {
+      throw new ForgeError("GIT_CONFLICT", "Es gibt ungelöste Konflikte. Bitte zuerst auflösen, dann wiederherstellen.");
+    }
+    const resolved = await this.exec(cwd, ["rev-parse", "--verify", "-q", `${commit}^{commit}`]);
+    if (resolved.code !== 0) throw new ForgeError("NOT_FOUND", "Diesen Commit gibt es in diesem Repository nicht.");
+    const full = resolved.stdout.trim();
+    const stashed = st.files.length > 0;
+    if (stashed) {
+      await this.ok(cwd, ["stash", "push", "--include-untracked", "-m", `FORGE: vor Wiederherstellung auf ${full.slice(0, 7)}`, "--", "."]);
+    }
+    // Tracked files that do not exist in the source are removed, so the folder matches the commit exactly.
+    await this.ok(cwd, ["restore", `--source=${full}`, "--staged", "--worktree", "--", "."]);
+    const subject = (await this.ok(cwd, ["log", "-1", "--format=%s", full])).trim();
+    const after = await this.status(cwd);
+    return { commit: full, subject, stashed, changed: after.files.length };
   }
 
   async log(cwd: string, limit: number): Promise<CommitInfo[]> {
@@ -200,6 +218,32 @@ export class GitEngine {
     const check = await this.exec(cwd, ["check-ref-format", "--branch", branch]);
     if (check.code !== 0) throw new ForgeError("VALIDATION", `Ungültiger Branch-Name: ${branch}`);
     await this.ok(cwd, create ? ["switch", "-c", branch] : ["switch", branch]);
+  }
+
+  /**
+   * Deletes a local branch. Without `force` git refuses branches whose commits are in no other branch;
+   * that comes back as CONFLICT so the caller can ask. The current and the default branch are kept.
+   */
+  async deleteBranch(cwd: string, branch: string, force: boolean) {
+    if (branch.startsWith("-")) throw new ForgeError("VALIDATION", "Ungültiger Branch-Name.");
+    const check = await this.exec(cwd, ["check-ref-format", "--branch", branch]);
+    if (check.code !== 0) throw new ForgeError("VALIDATION", `Ungültiger Branch-Name: ${branch}`);
+    if ((await this.currentBranch(cwd)) === branch) {
+      throw new ForgeError("POLICY_DENIED", "Der aktuelle Branch kann nicht gelöscht werden. Wechsle vorher auf einen anderen.");
+    }
+    if (new Set(["main", "master", await this.defaultBranch(cwd)]).has(branch)) {
+      throw new ForgeError("POLICY_DENIED", `${branch} ist der Standard-Branch des Repositorys und wird nicht gelöscht.`);
+    }
+    const r = await this.exec(cwd, ["branch", force ? "-D" : "-d", "--", branch]);
+    if (r.code === 0) return;
+    const msg = (r.stderr || r.stdout).trim();
+    if (/not fully merged/i.test(msg)) {
+      throw new ForgeError("CONFLICT", `Der Branch ${branch} enthält Commits, die in keinem anderen Branch sind.`, { unmerged: true });
+    }
+    if (/used by worktree|checked out at/i.test(msg)) {
+      throw new ForgeError("CONFLICT", `Der Branch ${branch} ist in einem Worktree ausgecheckt. Entferne zuerst den Agenten bzw. Worktree.`);
+    }
+    throw new ForgeError("GIT_FAILED", msg || "Branch konnte nicht gelöscht werden.");
   }
 
   async currentBranch(cwd: string): Promise<string | null> {

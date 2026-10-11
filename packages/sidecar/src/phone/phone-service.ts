@@ -13,6 +13,7 @@ import type { Db } from "../persistence/db.js";
 import type { ProjectManager } from "../projects/project-manager.js";
 import type { SessionService } from "../sessions/session-service.js";
 import type { DevServerService } from "../devserver/dev-server.js";
+import { isArtifactPath, isSensitiveFile, type GitEngine } from "../git/git.js";
 import { CallController, type CallControllerDeps, type Conversation, type ConversationCallbacks } from "./call-controller.js";
 import { asData, PhoneAgent, type PhoneToolset } from "./phone-agent.js";
 import { DEFAULT_PIN_LIMITS, hashPin, PinGuard, verifyPin, type PinGuardState, type PinLimits } from "./pin-guard.js";
@@ -32,14 +33,9 @@ const NOTIFY_COOLDOWN_MS = 60_000;
 const GREETING = "Hallo, hier ist FORGE. Was kann ich für dich tun?";
 /** numbers in national notation (030 ...) belong to this country */
 export const DEFAULT_COUNTRY_CODE = "49";
-/** longest text FORGE reads out in a confirmation before it says that only the start was read */
-const READ_OUT_MAX = 300;
 /** longest command or plan handed to Claude in details */
 const DETAILS_MAX = 4000;
 const SHUTDOWN_TIMEOUT_MS = 4000;
-
-const CONFIRM_PENDING =
-  "Wartet auf Bestätigung. FORGE liest dem Anrufer gerade selbst vor, was passieren soll, und er bestätigt mit der Taste 1. Ausgeführt ist noch nichts. Sag dazu nichts weiter, FORGE meldet dir das Ergebnis.";
 
 type NotifyKind = "done" | "approval" | "error";
 
@@ -95,6 +91,7 @@ export interface PhoneDeps {
   projects: ProjectManager;
   sessions: SessionService;
   devServers: DevServerService;
+  git: GitEngine;
   secrets: SecretStore;
   emit(e: ServerEvent): void;
   claude(): { path: string | null; env: Record<string, string>; cwd: string };
@@ -141,19 +138,12 @@ export function sameNumber(a: string, b: string, countryCode = DEFAULT_COUNTRY_C
   return x !== "" && x === normalizeNumber(b, countryCode);
 }
 
-function relative(iso: string): string {
-  const min = Math.round((Date.now() - new Date(iso).getTime()) / 60_000);
-  if (min < 1) return "gerade eben";
-  if (min < 60) return `vor ${min} Minuten`;
-  const h = Math.round(min / 60);
-  return h < 24 ? `vor ${h} Stunden` : `vor ${Math.round(h / 24)} Tagen`;
-}
-
-/** For FORGE's own read-out: long texts are not cut silently. */
-function readOut(text: string): string {
-  const t = text.replace(/\s+/g, " ").trim();
-  if (t.length <= READ_OUT_MAX) return t;
-  return `Der Text ist lang, ${t.length} Zeichen. Der Anfang lautet: ${t.slice(0, READ_OUT_MAX)}.`;
+/** A reset time as it is said on the phone: "um 14:30" today, else with the weekday. */
+function spokenTime(iso: string): string {
+  const d = new Date(iso);
+  const time = d.toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" });
+  if (d.toDateString() === new Date().toDateString()) return `heute um ${time}`;
+  return `${d.toLocaleDateString("de-DE", { weekday: "long" })} um ${time}`;
 }
 
 function errorText(e: unknown): string {
@@ -163,8 +153,8 @@ function errorText(e: unknown): string {
 /**
  * The phone line of FORGE: registers at the user's PBX, takes calls from allowed numbers and calls
  * the user when a session is done, needs an approval or failed. In a call Claude (haiku, via the
- * Claude Code login) talks with the caller and uses FORGE tools; steering needs the PIN, and every
- * action that hands text to a session needs a key press on the caller's phone.
+ * Claude Code login) talks with the caller and uses FORGE tools; steering needs the PIN and then
+ * runs right away.
  */
 export class PhoneService {
   private cfg: StoredConfig;
@@ -376,7 +366,7 @@ export class PhoneService {
     await this.dial(
       this.cfg.notifyNumber,
       "Testanruf",
-      "[FORGE: Testanruf aus den Einstellungen. Der Nutzer hat gerade abgenommen. Sag in zwei kurzen Sätzen, dass die Telefonverbindung funktioniert und was du am Telefon kannst, dann frag, ob er etwas wissen möchte.]",
+      "[FORGE: Testanruf aus den Einstellungen. Der Nutzer hat gerade abgenommen. Sag nur „Hallo, hier ist FORGE. Die Verbindung steht.“ und warte, ob er etwas will.]",
       new Map(),
     );
     return this.state();
@@ -443,7 +433,11 @@ export class PhoneService {
     const context = [
       `Heute ist ${new Date().toLocaleString("de-DE", { dateStyle: "full", timeStyle: "short" })}.`,
       a.call.direction === "in" ? `Eingehender Anruf von ${a.call.remoteNumber}. Du hast schon mit "${GREETING}" begrüßt.` : `Du rufst ${a.call.remoteNumber} an. Anlass: ${a.info.reason}.`,
-      this.cfg.requirePin ? (pinHash ? "Steuern ist bis zur PIN-Eingabe gesperrt." : "Steuern ist gesperrt, weil keine PIN eingerichtet ist.") : "Steuern ist ohne PIN erlaubt.",
+      this.cfg.requirePin
+        ? pinHash
+          ? "Steuern ist bis zur PIN-Eingabe gesperrt. Erwähne das erst, wenn ein Werkzeug „Gesperrt“ meldet."
+          : "Steuern ist gesperrt, weil keine PIN eingerichtet ist."
+        : "Steuern ist ohne PIN erlaubt.",
     ].join("\n");
     const rec = a.record;
     a.controller = new CallController(a.call, a.rtp!, {
@@ -614,7 +608,7 @@ export class PhoneService {
     await this.dial(
       this.cfg.notifyNumber,
       reason,
-      `[FORGE: Du rufst den Nutzer an. ${what} Er hat gerade abgenommen. Begrüße ihn mit „Hallo, hier ist FORGE.“, sag in höchstens drei kurzen Sätzen, worum es geht, und frag, was er tun möchte.]`,
+      `[FORGE: Du rufst den Nutzer an. ${what} Er hat gerade abgenommen. Sag „Hallo, hier ist FORGE.“ und in einem Satz, worum es geht, ohne Einzelheiten. Wartet etwas auf seine Entscheidung, sag in einem kurzen Satz, was zur Wahl steht. Dann warte, was er sagt.]`,
       refs,
     );
   }
@@ -667,18 +661,17 @@ export class PhoneService {
       if (hits.length > 1) throw new Error(`Mehrere Projekte passen zu „${name}“: ${hits.map((x) => x.name).join(", ")}.`);
       throw new Error(`Kein Projekt „${name}“. Vorhanden: ${all.map((x) => x.name).join(", ")}.`);
     };
-    const guard = async (fn: () => Promise<string>): Promise<string> => {
+    /** Runs a tool; errors become text for Claude. Steering tools (`steer`) need the PIN. */
+    const run = async (steer: boolean, fn: () => Promise<string>): Promise<string> => {
+      const l = steer ? locked() : null;
+      if (l) return l;
       try {
         return await fn();
       } catch (e) {
         return `Fehler: ${errorText(e)}`;
       }
     };
-    const confirm = (what: string, run: () => Promise<string>): string => {
-      if (!a.controller) return "Fehler: Das Gespräch ist noch nicht bereit.";
-      a.controller.requestConfirmation(what, run);
-      return CONFIRM_PENDING;
-    };
+    const projectChanged = (projectId: string) => this.d.emit({ event: "project.updated", payload: { projectId } });
     const statusText = (s: { status: string; live: boolean }) =>
       s.status === "running" || s.status === "starting"
         ? "arbeitet gerade"
@@ -692,33 +685,35 @@ export class PhoneService {
 
     return {
       status: () =>
-        guard(async () => {
+        run(false, async () => {
           const live = sessions.listLive();
-          const recent = sessions.listAll().filter((s) => !s.live).slice(0, 6);
-          const list = [...live, ...recent].slice(0, 10);
-          if (!list.length) return "Es gibt noch keine Sessions.";
+          const recent = sessions
+            .listAll()
+            .filter((s) => !s.live)
+            .slice(0, 3);
+          if (!live.length && !recent.length) return "Es gibt noch keine Sessions.";
           if (locked()) {
             // Before the PIN only counts: titles and results can be confidential.
             const working = live.filter((s) => s.status === "running" || s.status === "starting").length;
             const waiting = live.filter((s) => s.status === "waiting_approval").length;
             return `Aktive Sessions: ${live.length}, davon arbeiten ${working} und ${waiting} warten auf eine Entscheidung. Titel, Ergebnisse und Details gibt es erst nach der PIN.`;
           }
-          return list
-            .map((s) => {
-              const pending = s.status === "waiting_approval" ? ` Offen: ${pendingText(db, s.id, true)}` : "";
-              return `${refFor(s.id)}: ${asData(s.title ?? "ohne Titel")} im Projekt ${s.projectName}, ${statusText(s)}, zuletzt ${relative(s.updatedAt)}.${pending}`;
-            })
+          const line = (s: (typeof live)[number]) => {
+            const pending = s.status === "waiting_approval" ? ` Offen: ${pendingText(db, s.id, true)}` : "";
+            return `${refFor(s.id)}: ${asData(s.title ?? "ohne Titel")} im Projekt ${s.projectName}, ${statusText(s)}.${pending}`;
+          };
+          return [live.length ? live.map(line).join("\n") : "Keine aktive Session.", recent.length ? `Zuletzt beendet:\n${recent.map(line).join("\n")}` : ""]
+            .filter(Boolean)
             .join("\n");
         }),
       details: (ref) =>
-        guard(async () => {
-          const l = locked();
-          if (l) return l;
+        run(true, async () => {
           const s = resolve(ref);
           const project = this.d.projects.get(s.projectId);
           const last = lastAnswer(db, s.id);
+          const setup = [s.model ? `Modell ${s.model}` : "", s.permissionMode ? `Modus ${s.permissionMode}` : ""].filter(Boolean).join(", ");
           return [
-            `${refFor(s.id)}: ${asData(s.title ?? "ohne Titel")} im Projekt ${project.name}, ${statusText(s)}.`,
+            `${refFor(s.id)}: ${asData(s.title ?? "ohne Titel")} im Projekt ${project.name}, ${statusText(s)}.${setup ? ` ${setup}.` : ""}`,
             `Letztes Ergebnis: ${last ? excerptData(last, 1500) : "noch keins"}`,
             s.status === "waiting_approval" ? `Offen: ${pendingText(db, s.id)}` : "",
           ]
@@ -726,32 +721,21 @@ export class PhoneService {
             .join("\n");
         }),
       sendMessage: (ref, text) =>
-        guard(async () => {
-          const l = locked();
-          if (l) return l;
+        run(true, async () => {
           const s = resolve(ref);
-          const r = refFor(s.id);
           if (!text.trim()) return "Fehler: Die Nachricht ist leer.";
-          return confirm(`Nachricht an ${r}: ${readOut(text)}`, async () => {
-            await sessions.send(s.id, text);
-            return `An ${r} gesendet. Claude arbeitet daran.`;
-          });
+          await sessions.send(s.id, text);
+          return `An ${refFor(s.id)} gesendet. Claude arbeitet daran.`;
         }),
-      startSession: (projectName, prompt) =>
-        guard(async () => {
-          const l = locked();
-          if (l) return l;
+      startSession: (projectName, prompt, o) =>
+        run(true, async () => {
           const p = findProject(projectName);
           if (!prompt.trim()) return "Fehler: Der Auftrag ist leer.";
-          return confirm(`Neue Session im Projekt ${p.name} starten. Auftrag: ${readOut(prompt)}`, async () => {
-            const s = await sessions.start({ projectId: p.id, prompt });
-            return `Neue Session ${refFor(s.id)} im Projekt ${p.name} gestartet.`;
-          });
+          const s = await sessions.start({ projectId: p.id, prompt, model: o?.model?.trim() || undefined, planOnly: o?.planOnly });
+          return `Neue Session ${refFor(s.id)} im Projekt ${p.name} gestartet.`;
         }),
       respond: (ref, decision, answers, feedback) =>
-        guard(async () => {
-          const l = locked();
-          if (l) return l;
+        run(true, async () => {
           const s = resolve(ref);
           const r = refFor(s.id);
           const req = openRequest(db, s.id);
@@ -767,32 +751,124 @@ export class PhoneService {
               if (exact) mapped![exact] = v;
             });
           }
-          const what =
-            decision === "allow"
-              ? describeAllow(req, mapped)
-              : `Anfrage ablehnen${feedback?.trim() ? `, mit der Rückmeldung: ${readOut(feedback)}` : ""}.`;
-          return confirm(`${r}: ${what}`, async () => {
-            // Someone may have answered at the desk in the meantime.
-            if (openRequest(db, s.id)?.requestId !== req.requestId) return `Die Anfrage von ${r} ist inzwischen erledigt. Nichts geändert.`;
-            sessions.respondApproval(s.id, req.requestId, decision, "once", feedback, mapped);
-            return decision === "allow" ? `Erledigt, ${r} arbeitet weiter.` : `Abgelehnt, ${r} bekommt die Rückmeldung.`;
-          });
+          sessions.respondApproval(s.id, req.requestId, decision, "once", feedback, mapped);
+          return decision === "allow" ? `Erledigt, ${r} arbeitet weiter.` : `Abgelehnt, ${r} bekommt die Rückmeldung.`;
         }),
       stop: (ref) =>
-        guard(async () => {
-          const l = locked();
-          if (l) return l;
+        run(true, async () => {
           const s = resolve(ref);
           await sessions.stop(s.id);
           return `${refFor(s.id)} gestoppt.`;
         }),
+      close: (ref) =>
+        run(true, async () => {
+          const s = resolve(ref);
+          sessions.close(s.id);
+          return `${refFor(s.id)} geschlossen.`;
+        }),
+      sessionSettings: (ref, patch) =>
+        run(true, async () => {
+          const s = resolve(ref);
+          const done: string[] = [];
+          const model = patch.model?.trim();
+          if (model) {
+            await sessions.setModel(s.id, model);
+            done.push(`Modell ${model}`);
+          }
+          if (patch.effort) {
+            await sessions.setEffort(s.id, patch.effort);
+            done.push(`Denkaufwand ${patch.effort}`);
+          }
+          if (patch.permissionMode) {
+            await sessions.setPermissionMode(s.id, patch.permissionMode);
+            done.push(`Modus ${patch.permissionMode}`);
+          }
+          if (!done.length) return "Fehler: Es wurde nichts zum Ändern angegeben.";
+          return `${refFor(s.id)}: ${done.join(", ")} gesetzt.`;
+        }),
+      cancelAutoContinue: (ref) =>
+        run(true, async () => {
+          const s = resolve(ref);
+          sessions.cancelAutoContinue(s.id);
+          return `Automatisches Weitermachen von ${refFor(s.id)} abgebrochen.`;
+        }),
+      remote: (action) =>
+        run(action !== "status", async () => {
+          const st = action === "on" ? await sessions.remoteStart() : action === "off" ? await sessions.remoteStop() : sessions.remoteState();
+          if (!st.enabled) return "Remote Control ist aus.";
+          const ok = st.sessions.filter((x) => x.state !== "error").length;
+          const failed = st.sessions.filter((x) => x.state === "error");
+          return [
+            `Remote Control ist an, ${ok} ${ok === 1 ? "Session ist" : "Sessions sind"} mit der Claude-App verbunden.`,
+            failed.length ? `Nicht verbunden: ${failed.map((x) => `${refFor(x.sessionId)} (${x.message ?? "Fehler"})`).join(", ")}.` : "",
+            st.sessions.length === 0 ? "Gerade läuft keine Session. Neue Sessions werden automatisch verbunden." : "",
+          ]
+            .filter(Boolean)
+            .join(" ");
+        }),
       devServer: (projectName, action) =>
-        guard(async () => {
-          const l = locked();
-          if (l) return l;
+        run(true, async () => {
           const p = findProject(projectName);
-          const st = action === "start" ? await this.d.devServers.start(p.id) : await this.d.devServers.stop(p.id);
-          return action === "start" ? `Dev-Server von ${p.name} läuft (${st.command ?? ""}).` : `Dev-Server von ${p.name} gestoppt.`;
+          if (action === "stop") {
+            await this.d.devServers.stop(p.id);
+            return `Dev-Server von ${p.name} gestoppt.`;
+          }
+          const st = action === "start" ? await this.d.devServers.start(p.id) : await this.d.devServers.state(p.id);
+          if (st.status === "running") return `Dev-Server von ${p.name} läuft.`;
+          const why = st.error ?? (st.exitCode !== null ? `Exit-Code ${st.exitCode}` : "");
+          if (action === "start") return `Fehler: Der Dev-Server von ${p.name} ist nicht gestartet.${why ? ` ${why}` : ""}`;
+          return st.status === "stopped" ? `Dev-Server von ${p.name} läuft nicht.` : `Dev-Server von ${p.name} ist beendet.${why ? ` ${why}` : ""}`;
+        }),
+      git: (projectName, action, o) =>
+        run(true, async () => {
+          const p = findProject(projectName);
+          const git = this.d.git;
+          if (action === "status") {
+            const { summary: s } = await git.status(p.path);
+            const sync = [s.ahead ? `${s.ahead} Commits nicht gepusht` : "", s.behind ? `${s.behind} Commits auf dem Server neuer` : ""].filter(Boolean);
+            const parts = [`Branch ${s.branch ?? "keiner (detached)"}`, s.changedCount ? `${s.changedCount} geänderte Dateien` : "keine Änderungen", ...sync, s.conflicted ? "es gibt Konflikte" : ""];
+            return `${p.name}: ${parts.filter(Boolean).join(", ")}.`;
+          }
+          if (action === "commit") {
+            const st = await git.status(p.path);
+            // Secrets and build output are never committed from the phone; the caller hears what was left out.
+            const skipped = st.files.filter((f) => isSensitiveFile(f.path) || isArtifactPath(f.path)).map((f) => f.path);
+            const paths = st.files.map((f) => f.path).filter((f) => !skipped.includes(f));
+            if (!paths.length) return skipped.length ? `Nichts committet, geändert sind nur sensible Dateien oder Build-Artefakte: ${skipped.join(", ")}.` : `${p.name} hat keine Änderungen.`;
+            const message = o?.message?.trim() || (await sessions.suggestCommitMessage(p.id, paths)).message;
+            await git.commit(p.path, message, paths, false);
+            projectChanged(p.id);
+            return `Committet in ${p.name}: ${asData(message.split("\n")[0]!)}${skipped.length ? ` Ausgelassen: ${skipped.join(", ")}.` : ""}`;
+          }
+          if (action === "push") {
+            const r = await git.push(p.path, o?.allowProtected === true);
+            projectChanged(p.id);
+            return `Branch ${r.branch} von ${p.name} gepusht.`;
+          }
+          await git.pull(p.path);
+          projectChanged(p.id);
+          return `${p.name} ist auf dem neuesten Stand.`;
+        }),
+      projects: () =>
+        run(true, async () => {
+          const all = this.d.projects.all().filter((p) => p.exists);
+          if (!all.length) return "Es gibt keine Projekte.";
+          const live = sessions.listLive();
+          return all
+            .map((p) => {
+              const n = live.filter((s) => s.projectId === p.id).length;
+              return `${p.name}${n ? `, ${n} aktive ${n === 1 ? "Session" : "Sessions"}` : ""}`;
+            })
+            .join("\n");
+        }),
+      usage: () =>
+        run(false, async () => {
+          const u = await sessions.planUsage(false);
+          const limit = sessions.rateLimit();
+          const reached = limit.status === "reached" ? `Limit erreicht${limit.resetsAt ? `, wieder frei ${spokenTime(limit.resetsAt)}` : ""}.` : "";
+          if (!u.available || !u.windows.length) return reached || `Nutzung nicht verfügbar${u.error ? `: ${u.error}` : ""}.`;
+          const windows = u.windows.map((w) => `${w.label}: ${Math.round(w.utilization)} Prozent${w.resetsAt ? `, zurückgesetzt ${spokenTime(w.resetsAt)}` : ""}`);
+          return [reached, ...windows].filter(Boolean).join("\n");
         }),
     };
   }
@@ -833,17 +909,6 @@ function questionTexts(input: Record<string, unknown>): string[] {
 
 function requestSubject(req: ApprovalRequest): string {
   return typeof req.input.command === "string" ? req.input.command : typeof req.input.file_path === "string" ? req.input.file_path : "";
-}
-
-/** What FORGE reads out before the caller confirms an "allow". */
-function describeAllow(req: ApprovalRequest, answers: Record<string, string> | undefined): string {
-  if (req.toolName === "AskUserQuestion") {
-    const pairs = Object.entries(answers ?? {}).map(([q, v]) => `${q} Antwort: ${v}`);
-    return `Rückfrage beantworten. ${readOut(pairs.join(" "))}`;
-  }
-  if (req.toolName === "ExitPlanMode") return "Plan annehmen. Claude setzt ihn danach um.";
-  const subject = requestSubject(req);
-  return `Freigabe für ${req.toolName} erteilen.${subject ? ` ${readOut(subject)}` : ""}`;
 }
 
 /** What a session waits for, for Claude. `short` (status) names the kind only; details has the full text. */

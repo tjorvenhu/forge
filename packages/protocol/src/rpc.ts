@@ -32,6 +32,7 @@ import {
   ProjectTag,
   ProjectWithStatus,
   PullRequest,
+  RateLimitState,
   RemoteState,
   EffortLevel,
   ProjectRemovalInfo,
@@ -58,6 +59,8 @@ export const methods = {
   "system.diagnostics": { params: z.object({ refresh: z.boolean().optional() }), result: Diagnostics },
   "system.runtimeInfo": { params: empty, result: RuntimeInfo.nullable() },
   "system.usage": { params: z.object({ refresh: z.boolean().optional() }), result: PlanUsage },
+  /** latest plan rate limit reported by any session; changes arrive as ratelimit.updated */
+  "system.rateLimit": { params: empty, result: RateLimitState },
 
   "claude.setupState": { params: empty, result: ClaudeSetupState },
   "claude.install": { params: empty, result: ClaudeSetupState },
@@ -67,9 +70,9 @@ export const methods = {
   "claude.submitLoginCode": { params: z.object({ code: z.string().min(1).max(2000) }), result: ClaudeSetupState },
   "claude.cancelSetup": { params: empty, result: ClaudeSetupState },
 
-  "remote.state": { params: projectRef, result: RemoteState },
-  "remote.start": { params: projectRef, result: RemoteState },
-  "remote.stop": { params: projectRef, result: RemoteState },
+  "remote.state": { params: empty, result: RemoteState },
+  "remote.start": { params: empty, result: RemoteState },
+  "remote.stop": { params: empty, result: RemoteState },
 
   "github.account": { params: empty, result: GitHubAccount.nullable() },
   "github.loginState": { params: empty, result: GitHubLoginState },
@@ -138,7 +141,11 @@ export const methods = {
   },
 
   "worktrees.create": { params: projectRef.extend({ branch: z.string().min(1).max(200) }), result: Project },
-  "worktrees.remove": { params: projectRef.extend({ force: z.boolean().default(false) }), result: z.object({ ok: z.boolean() }) },
+  "worktrees.remove": {
+    /** deleteBranch: also delete the worktree's branch afterwards, merged or not */
+    params: projectRef.extend({ force: z.boolean().default(false), deleteBranch: z.boolean().default(false) }),
+    result: z.object({ ok: z.boolean(), deletedBranch: z.string().nullable(), branchError: z.string().nullable() }),
+  },
   "sessions.summarize": { params: sessionRef, result: z.object({ summary: z.string(), model: z.string() }) },
 
   "settings.get": { params: empty, result: Settings },
@@ -235,6 +242,8 @@ export const methods = {
     result: Session,
   },
   "sessions.stop": { params: sessionRef, result: Session },
+  /** drops the planned automatic continuation after a usage limit */
+  "sessions.cancelAutoContinue": { params: sessionRef, result: Session },
   "sessions.close": { params: sessionRef, result: Session },
   "sessions.setModel": { params: sessionRef.extend({ model: z.string().max(100) }), result: Session },
   "sessions.setEffort": { params: sessionRef.extend({ effort: EffortLevel.nullable() }), result: Session },
@@ -248,11 +257,6 @@ export const methods = {
       /** answers to an AskUserQuestion request: question text -> answer (multi-select comma-separated) */
       answers: z.record(z.string().max(2000), z.string().max(5000)).optional(),
     }),
-    result: z.object({ ok: z.boolean() }),
-  },
-  /** Answer to an automation.confirm question: commit despite the findings, or leave the files uncommitted. */
-  "sessions.confirmAutoCommit": {
-    params: sessionRef.extend({ requestId: id, commit: z.boolean() }),
     result: z.object({ ok: z.boolean() }),
   },
   "sessions.contextUsage": { params: sessionRef, result: ContextUsage.nullable() },
@@ -314,7 +318,17 @@ export const methods = {
     result: z.object({ hash: z.string(), summary: z.string() }),
   },
   "git.log": { params: projectRef.extend({ limit: z.number().int().min(1).max(500).default(50) }), result: z.array(CommitInfo) },
+  /** Files of the project back to the state of a commit, as uncommitted changes; open work is stashed first. */
+  "git.restoreTo": {
+    params: projectRef.extend({ commit: z.string().regex(/^[0-9a-f]{7,40}$/i) }),
+    result: z.object({ commit: z.string(), subject: z.string(), stashed: z.boolean(), changed: z.number().int() }),
+  },
   "git.branches": { params: projectRef, result: z.array(BranchInfo) },
+  /** Local branch; without force, a branch with commits in no other branch fails with CONFLICT (details.unmerged). */
+  "git.deleteBranch": {
+    params: projectRef.extend({ branch: z.string().min(1).max(250), force: z.boolean().default(false) }),
+    result: z.array(BranchInfo),
+  },
   "git.checkout": {
     params: projectRef.extend({ branch: z.string().min(1).max(250), create: z.boolean().default(false) }),
     result: GitStatus,
@@ -361,7 +375,8 @@ export type ServerEvent =
   | { event: "project.updated"; payload: { projectId: string } }
   | { event: "github.login"; payload: GitHubLoginState }
   | { event: "claude.setup"; payload: ClaudeSetupState }
-  | { event: "remote.updated"; payload: { projectId: string; state: RemoteState } }
+  | { event: "remote.updated"; payload: RemoteState }
+  | { event: "ratelimit.updated"; payload: RateLimitState }
   | { event: "devserver.updated"; payload: DevServerState }
   | { event: "devserver.output"; payload: { projectId: string; text: string } }
   | { event: "phone.updated"; payload: PhoneState }

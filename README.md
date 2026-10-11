@@ -84,32 +84,36 @@ Umgebungsvariablen für Sonderfälle: `FORGE_NODE` (Pfad zu node), `FORGE_SIDECA
   Karten, Aufgabenlisten (TodoWrite), Freigabeanfragen mit Erlauben / Für Session erlauben / Ablehnen,
   Stop (Esc), Modell- und Effort-Wechsel (global, pro Projekt, pro Session), Plan-Modus, Resume auch nach App-Absturz, Übernahme von im Terminal
   gestarteten Sessions inkl. Verlauf.
+- **Session-Tabs:** Leiste ganz oben im Fenster, in jeder Ansicht. Zeigt alle Sessions mit laufendem Claude-Prozess
+  und die offene Session, gruppiert nach Projekt. Status als Punkt, wartende Freigaben farbig markiert, Hintergrundaufgaben
+  mit Anzahl. Klick öffnet Projekt und Session, `Strg+Tab` wechselt der Reihe nach.
 - **Permission-Profile:** Safe / Balanced / Autonomous mit echter Wirkung auf den Claude-Permission-Modus,
   harte Sperrliste in allen Profilen, Audit-Log.
 - **Git:** Status, echter Diff (auch für neue Dateien), Stage/Unstage, Commit nur der ausgewählten Dateien
-  mit Review-Dialog und Secret-Prüfung, Verlauf, Branches anlegen und wechseln, git init.
-- **Abo-Nutzung:** 5-Stunden- und Wochenfenster (auch pro Modell) unten links, mit Reset-Zeit.
+  mit Review-Dialog und Rückfrage bei sensiblen Dateien (`.env`, Schlüsseldateien, Build-Artefakte), Verlauf mit Wiederherstellung (alle Dateien auf den Stand eines früheren Commits zurückholen, als neue Änderungen), Branches anlegen, wechseln und löschen (nicht gemergte nur nach Rückfrage), git init. Beim Entfernen eines Agenten lässt sich sein Branch ohne Merge mitlöschen.
+- **Abo-Nutzung:** 5-Stunden- und Wochenfenster (auch pro Modell) unten links, mit Reset-Zeit. Ist ein Limit fast oder ganz erreicht, steht das dauerhaft am Composer („Limit fast erreicht · Reset 19:10“), statt bei jeder Anfrage als Meldung im Chat.
+- **Nach dem Nutzungslimit weitermachen:** Stoppt das Limit eine Session, macht FORGE nach dem Reset (plus 2 Minuten) selbst weiter: Session fortsetzen, falls nötig, und Claude bitten, dort weiterzumachen. Die Karte im Chat zeigt die Uhrzeit und lässt sich abbrechen. Der Plan übersteht einen Neustart von FORGE und Standby. Eine eigene Nachricht oder Stopp hebt ihn auf, nach drei automatischen Fortsetzungen ohne deine Eingabe ist Schluss. Abschaltbar unter Einstellungen → Claude Code.
 - **GitHub:** Anmeldung in der App (Code anzeigen, Browser öffnet sich), Liste deiner Repositories mit Klonen per Klick.
 - **Commit-Nachricht per KI:** Funken-Knopf im Commit-Feld; Claude (Haiku) schreibt die Nachricht aus dem Diff im Stil der bisherigen Commits. Sensible Dateien werden nicht gesendet.
 - **Regeln für Claude:** CLAUDE.md global, pro Projekt und lokal (nicht im Git) direkt in FORGE bearbeiten.
-- **Composer:** Bilder, PDFs und Textdateien anhängen (Knopf, Einfügen, Hineinziehen), Slash-Commands mit Auswahlliste, Dateien auf den Stand vor einer Nachricht zurücksetzen.
-- **In der Claude-App weiterarbeiten:** Remote Control pro Projekt verbindet die FORGE-Sessions mit der Claude-App und claude.ai. Nachrichten erscheinen auf beiden Seiten, Freigaben und Sperrliste gelten weiter.
+- **Composer:** Bilder, PDFs und Textdateien anhängen (Knopf, Einfügen, Hineinziehen), Slash-Commands mit Auswahlliste, `/clear` (auch `/reset`, `/new`) startet wie im Terminal ein neues Gespräch mit leerem Chat, Dateien auf den Stand vor einer Nachricht zurücksetzen.
+- **In der Claude-App weiterarbeiten:** Remote Control macht jede laufende FORGE-Session als eigenen Eintrag in der Claude-App und auf claude.ai anwählbar, aus allen Projekten. Sessions, die später starten oder fortgesetzt werden, kommen automatisch dazu. Nachrichten erscheinen auf beiden Seiten, Freigaben und Sperrliste gelten weiter.
 - **Terminal:** eingebettete Terminals im Projektordner.
 - **Git & GitHub:** Push/Pull mit Schutzregeln, Pull Requests mit KI-Beschreibung und Status, neues Projekt direkt als GitHub-Repo.
 - **Projekt-Tags mit Verhalten:** plan-first, auto-test, auto-commit, auto-push, review-required, no-network, sandbox-only.
-- **Parallele Agenten:** Sessions in eigenen Git-Worktrees.
+- **Parallele Agenten:** Tab „Agenten“ neben „Chat“: Sessions in eigenen Git-Worktrees des offenen Projekts, dazu die eigenen Subagenten.
 - **Erweiterungen:** MCP-Server, Skills, Subagenten und Hooks verwalten.
 - **Wiedereinstieg:** KI-Zusammenfassung einer Session.
 - **Rückfragen und Pläne:** Fragt Claude nach (AskUserQuestion), erscheinen die Optionen als Karte im Chat. Pläne aus dem Plan-Modus lassen sich annehmen oder mit Feedback zurückgeben.
 - **Kontextanzeige:** Belegung des Kontextfensters am Composer, Komprimieren per Knopf (/compact).
 - **Befehlspalette (Strg+K):** Projekte, Sessions, Aktionen und Volltextsuche über alle Verläufe.
-- **Telefon (SIP):** FORGE meldet sich mit deinen SIP-Zugangsdaten an deiner Telefonanlage an. Ruf an und frag nach dem Stand oder steuere Sessions (mit PIN über die Tastatur). FORGE ruft dich an, wenn eine Session fertig ist, eine Entscheidung braucht oder ein Fehler auftritt. Sprache über OpenAI, das Gespräch führt Claude über dein Abo. Ein- und ausschalten oben rechts, Einrichtung unter Einstellungen → Telefon.
+- **Telefon (SIP):** FORGE meldet sich mit deinen SIP-Zugangsdaten an deiner Telefonanlage an. Ruf an und frag nach dem Stand oder steuere FORGE: Sessions, Freigaben, Remote Control, Git und Dev-Server. Steuern geht nach der PIN über die Tastatur und wird sofort ausgeführt. FORGE ruft dich an, wenn eine Session fertig ist, eine Entscheidung braucht oder ein Fehler auftritt. Sprache über OpenAI, das Gespräch führt Claude über dein Abo. Ein- und ausschalten oben rechts, Einrichtung unter Einstellungen → Telefon.
 - **Dev-Server:** Startbefehl pro Projekt (oder erkannt aus package.json), Adresse als Link, Ausgabe im unteren Panel, letzte Zeilen per Knopf an Claude.
 - **Töne:** Signal, wenn Claude fertig ist, eine Freigabe braucht oder ein Fehler auftritt (abschaltbar).
 - **Diagnose:** CLI-Version, Anmeldestatus, API-Key-Override, git, gh, Capability-Matrix.
 - **Persistenz:** SQLite für Projekte, Sessions, Events, Freigaben, Einstellungen. Beim Start öffnet FORGE das zuletzt genutzte Projekt.
 
-Tastatur: `Strg+1..4` Workspace-Tabs, `Strg+N` neue Session, `Strg+O` Projekt hinzufügen, `Strg+J` Claude-Output,
+Tastatur: `Strg+1..5` Workspace-Tabs, `Strg+Tab` / `Strg+Umschalt+Tab` nächster / vorheriger Session-Tab, `Strg+N` neue Session, `Strg+O` Projekt hinzufügen, `Strg+J` Claude-Output,
 `Strg+Umschalt+E` Seitenleiste, `Esc` im Eingabefeld stoppt Claude.
 
 ## Tests

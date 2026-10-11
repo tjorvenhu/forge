@@ -37,19 +37,29 @@ empfiehlt `gpt-transcribe` mit neuem Sprachparameter). Zeitlimits 20 s (Erkennun
 
 **Gesprächspartner:** Claude Haiku über das Claude-Code-Abo (Agent SDK), eigener System-Prompt für gesprochene
 Sprache, keine eingebauten Werkzeuge (`tools: []`), nur FORGE-Werkzeuge über `createSdkMcpServer`: status, details,
-send_message, start_session, respond, stop_session, dev_server, hang_up. Text wird satzweise vorgelesen, sobald ein
-Satz fertig ist. Sessions heißen im Gespräch S1, S2 (Zuordnung pro Anruf). `send_message`, `start_session` und
-`respond` werden erst nach Taste 1 ausgeführt; FORGE liest vorher selbst vor, was passiert. Session-Texte gehen
-markiert als Daten an Claude, nicht als Anweisung.
+send_message, start_session, respond, stop_session, close_session, session_settings, cancel_auto_continue,
+remote_control, dev_server, git, projects, usage, hang_up. Text wird satzweise vorgelesen, sobald ein Satz fertig
+ist. Sessions heißen im Gespräch S1, S2 (Zuordnung pro Anruf). Steuernde Werkzeuge laufen nach der PIN sofort.
+Session-Texte gehen markiert als Daten an Claude, nicht als Anweisung. Der Prompt verlangt ein bis zwei Sätze,
+keine Einleitung, keine Zeitangaben oder Kürzel ohne Not.
+
+Nachtrag 2026-10-11: Die Bestätigung per Taste 1 ist entfernt. Im Gespräch war sie zu umständlich; der Nutzer will
+FORGE am Telefon vollständig und direkt steuern (auch Remote Control, Git, Einstellungen einer Session).
 
 **Ablauf eines Anrufs** (`call-controller.ts`): Energie-VAD mit adaptivem Rauschpegel und Vorlauf; während FORGE
-spricht, gilt eine höhere Schwelle (Echo). Spricht der Anrufer dazwischen, bricht die Ausgabe ab. Ankommend: feste
+spricht, gilt eine höhere Schwelle (Echo) und Sprache muss 240 ms anhalten, bevor sie FORGE unterbricht.
+Sprecherwechsel: Eine Äußerung endet nach 700 ms Stille, der Redebeitrag des Anrufers aber erst nach weiteren
+400 ms, wenn der letzte Satz abgeschlossen klingt, sonst nach 2 s (kein Satzzeichen, „…“, endet auf „und“, „weil“
+usw.). Bis dahin wird gesammelt und als eine Nachricht an Claude gegeben. Claude bekommt nie eine Nachricht, während
+es noch schreibt; Hinweise von FORGE warten ebenso. Spricht der Anrufer, während FORGE redet, hält FORGE sofort an.
+War es nur ein Geräusch oder ein „Mhm“, redet FORGE weiter (den angefangenen Satz von vorn). Sonst verwirft FORGE den
+Rest der Antwort, bricht Claudes laufende Antwort ab (`interrupt`) und gibt die neuen Worte danach weiter. Ankommend: feste
 Begrüßung sofort, Claude antwortet auf das erste Anliegen. Abgehend: Claude bereitet die ersten Sätze vor, während es
 klingelt; gesprochen wird erst nach dem Abnehmen. Auflegen nach 90 s Stille oder 30 min.
 
 **Sicherheit:** siehe docs/SECURITY.md, Abschnitt Telefon. Kurz: Freigabeliste für Anrufer, PIN per DTMF für alles
 Steuernde (nicht über das Sprachmodell), scrypt-Hash, drei Versuche pro Anruf, Sperre nach 5 Fehlversuchen je
-Nummer oder 10 insgesamt pro Stunde, Bestätigung steuernder Aktionen per Taste 1; Geheimnisse mit DPAPI.
+Nummer oder 10 insgesamt pro Stunde; Geheimnisse mit DPAPI.
 
 **Rückrufe:** aus den Session-Ereignissen (`turn.result`, `approval.request`, `error`). Wartezeit 5 s (fertig, Fehler)
 bzw. 15 s (Entscheidung), danach erneute Prüfung, ob der Anlass noch gilt (neuer Durchlauf läuft, Freigabe am
@@ -59,5 +69,6 @@ Rechner beantwortet). Höchstens ein Anruf pro Minute, keiner während eines Ges
 
 Gegen eine Test-Anlage über echtes UDP (Digest, NAT, Anrufe in beide Richtungen, Audio, DTMF, CANCEL, BYE) und mit
 echtem Claude für den Gesprächspartner. Mit Fakes zusätzlich: Absenderprüfung, CANCEL während der Vorbereitung,
-Fehlerpfade, Halten, stale-Nonce, PIN-Sperre, Tastenbestätigung, Zeitlimits der Sprachdienste. Nicht getestet: die echte Anlage des Nutzers und die echten
+Fehlerpfade, Halten, stale-Nonce, PIN-Sperre, Sprecherwechsel und Unterbrechen, Steuerwerkzeuge, Zeitlimits der
+Sprachdienste. Nicht getestet: die echte Anlage des Nutzers und die echten
 OpenAI-Sprachdienste.

@@ -12,13 +12,17 @@ const CLOSE_WAIT_MS = 5_000;
 
 export interface TurnHost {
   /** no process runs for the session: start one with the message */
-  resume(sessionId: string, text: string, attachments: Attachment[]): Promise<Session>;
+  resume(sessionId: string, text: string, attachments: Attachment[], source?: MessageSource): Promise<Session>;
 }
+
+/** "auto": FORGE continues after a usage limit; the timeline marks the message as automatic. */
+export type MessageSource = "auto";
 
 /** A user turn built for sending; recorded in the timeline only right before it is handed to the CLI. */
 export interface BuiltTurn {
   msg: OutgoingMessage;
   meta: Array<{ name: string; mediaType: string; size: number }>;
+  source?: MessageSource;
 }
 
 /**
@@ -52,21 +56,21 @@ export class TurnDispatch {
   }
 
   /** Builds the outgoing turn (text + attachment blocks + id); a turn that starts now gets a fresh baseline. */
-  async build(sessionId: string, text: string, attachments: Attachment[], newTurn: boolean): Promise<BuiltTurn> {
+  async build(sessionId: string, text: string, attachments: Attachment[], newTurn: boolean, source?: MessageSource): Promise<BuiltTurn> {
     const rec = this.core.db.getSession(sessionId);
     // A message sent mid-turn joins the running turn; its baseline must stay the one from the turn start.
     if (rec && newTurn) await this.automation.captureBaseline(sessionId, rec.cwd);
     const { blocks, meta } = attachments.length ? await buildAttachmentBlocks(attachments) : { blocks: [], meta: [] };
-    return { msg: { text, blocks, uuid: randomUUID() }, meta };
+    return { msg: { text, blocks, uuid: randomUUID() }, meta, ...(source ? { source } : {}) };
   }
 
   record(sessionId: string, t: BuiltTurn) {
     this.core.live.get(sessionId)?.seenUuids.add(t.msg.uuid);
-    this.core.record(sessionId, { type: "user.message", text: t.msg.text, uuid: t.msg.uuid, ...(t.meta.length ? { attachments: t.meta } : {}) });
+    this.core.record(sessionId, { type: "user.message", text: t.msg.text, uuid: t.msg.uuid, ...(t.meta.length ? { attachments: t.meta } : {}), ...(t.source ? { source: t.source } : {}) });
     this.titleFromFirstMessage(sessionId, t.msg.text);
   }
 
-  async send(sessionId: string, text: string, attachments: Attachment[] = []): Promise<Session> {
+  async send(sessionId: string, text: string, attachments: Attachment[] = [], source?: MessageSource): Promise<Session> {
     let live = this.core.live.get(sessionId);
     if (live?.closing) {
       // close() was called but the process has not ended yet: its input queue no longer takes messages.
@@ -74,10 +78,10 @@ export class TurnDispatch {
       live = this.core.live.get(sessionId);
       if (live?.closing) throw new ForgeError("SESSION_BUSY", "Die Session wird gerade beendet. Bitte gleich erneut senden.");
     }
-    if (!live) return this.host.resume(sessionId, text, attachments);
+    if (!live) return this.host.resume(sessionId, text, attachments, source);
     if (live.pending.size > 0) throw new ForgeError("SESSION_BUSY", "Erst die offene Freigabeanfrage beantworten.");
     const status = this.core.db.getSession(sessionId)?.status;
-    const turn = await this.build(sessionId, text, attachments, !this.automation.isBusy(sessionId) && !(status && BUSY.includes(status)));
+    const turn = await this.build(sessionId, text, attachments, !this.automation.isBusy(sessionId) && !(status && BUSY.includes(status)), source);
     // Re-checked after the await: nothing is recorded for a message that cannot be delivered.
     if (this.core.live.get(sessionId) !== live || live.closing) throw new ForgeError("SESSION_BUSY", "Die Session wurde beendet, bevor die Nachricht gesendet werden konnte. Bitte erneut senden.");
     if (live.pending.size > 0) throw new ForgeError("SESSION_BUSY", "Erst die offene Freigabeanfrage beantworten.");
@@ -114,7 +118,7 @@ export class TurnDispatch {
     this.core.setStatus(id, "running");
   }
 
-  /** An empty session opened for the Claude app takes its title from the first message, from either side. */
+  /** A session started without a prompt takes its title from the first message, from either side. */
   titleFromFirstMessage(id: string, text: string) {
     const rec = this.core.db.getSession(id);
     if (rec?.title !== REMOTE_PLACEHOLDER_TITLE || !text.trim()) return;

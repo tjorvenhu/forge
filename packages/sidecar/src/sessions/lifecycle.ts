@@ -14,7 +14,7 @@ import type { RuntimeCatalog } from "./runtime-catalog.js";
 import type { SessionCore } from "./session-core.js";
 import type { SessionStream } from "./stream.js";
 import type { TurnAutomation } from "./turn-automation.js";
-import type { BuiltTurn, TurnDispatch } from "./turns.js";
+import type { BuiltTurn, MessageSource, TurnDispatch } from "./turns.js";
 
 export interface StartParams {
   projectId: string;
@@ -122,10 +122,10 @@ export class SessionLifecycle {
   }
 
   /** Continues a stored session (also after an app restart) with a new prompt. */
-  async resume(sessionId: string, prompt: string | null, attachments: Attachment[] = []): Promise<Session> {
+  async resume(sessionId: string, prompt: string | null, attachments: Attachment[] = [], source?: MessageSource): Promise<Session> {
     // A start/resume of this session is in flight (double Enter, UI and phone): wait for it, then send to it.
     for (let p = this.attaching.get(sessionId); p; p = this.attaching.get(sessionId)) await p.catch(() => {});
-    if (this.core.live.has(sessionId)) return prompt === null ? this.core.get(sessionId) : this.turns.send(sessionId, prompt, attachments);
+    if (this.core.live.has(sessionId)) return prompt === null ? this.core.get(sessionId) : this.turns.send(sessionId, prompt, attachments, source);
     const { db } = this.core;
     const rec = db.getSession(sessionId);
     if (!rec) throw new ForgeError("SESSION_NOT_FOUND", "Session nicht gefunden.");
@@ -142,7 +142,7 @@ export class SessionLifecycle {
     const claudeSessionId = rec.claudeSessionId;
     await this.exclusive(sessionId, async () => {
       const hold = this.automation.isBusy(sessionId);
-      const first = prompt === null ? null : await this.turns.build(sessionId, prompt, attachments, !hold);
+      const first = prompt === null ? null : await this.turns.build(sessionId, prompt, attachments, !hold, source);
       if (first) this.turns.record(sessionId, first);
       db.updateSession(sessionId, { status: "starting", lastError: null, permissionMode });
       // The session keeps its original cwd even if the project moved; path assignment stays stable.
@@ -198,7 +198,7 @@ export class SessionLifecycle {
     }
     if (first) this.automation.noteTurnStart(rec.id);
     this.core.setStatus(rec.id, first ? "running" : "idle");
-    if (this.remote.enabled(rec.projectId)) void this.remote.bridge(rec.id);
+    if (this.remote.enabled()) void this.remote.bridge(rec.id);
     live.rt
       .initialization()
       .then((init) => this.catalog.noteInitialization(init))
@@ -272,9 +272,9 @@ export class SessionLifecycle {
   async closeProject(projectIds: string[]) {
     const ids = new Set(projectIds);
     const open = () => [...this.core.live.keys()].filter((id) => ids.has(this.core.db.getSession(id)?.projectId ?? ""));
-    for (const id of ids) if (this.remote.enabled(id)) await this.remote.stop(id);
     for (const id of open()) {
       const l = this.core.live.get(id);
+      this.remote.drop(id);
       if (l) closeLive(l);
     }
     for (let i = 0; i < 50 && open().length; i++) await new Promise((r) => setTimeout(r, 100));
