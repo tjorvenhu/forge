@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { SessionEvent, SessionEventBody } from "@forge/protocol";
-import { appendStreaming, buildChatItems, buildEventItems, itemIndexForSeq, lastUserPrompt, reuseStableItems, toolSummary } from "./chat-items";
+import { appendStreaming, buildChatItems, buildEventItems, itemIndexForSeq, lastUserPrompt, reuseStableItems, rowSpacing, toolDisplayName, toolSummary } from "./chat-items";
 import { useSessionEvents } from "@/stores/session-events";
 
 let seq = 0;
@@ -191,5 +191,48 @@ describe("usage limit in the chat", () => {
 
     const overruled = buildEventItems([ev(scheduled, 1), ev({ type: "user.message", text: "Mach ich selbst" }, 2)]);
     expect(overruled[0]).toMatchObject({ kind: "autoContinue", open: false });
+  });
+});
+
+describe("notifications stored as prompts", () => {
+  it("hides task notifications and reminders that older versions stored as user messages", () => {
+    seq = 0;
+    const events = [
+      ev({ type: "user.message", text: "Starte den Build im Hintergrund" }),
+      ev({ type: "background.task", taskId: "b1", state: "completed", description: "pnpm build", summary: null }),
+      ev({ type: "user.message", text: "<task-notification>\n<task-id>b1</task-id>\n<status>completed</status>\n</task-notification>" }),
+      ev({ type: "user.message", text: "  <system-reminder>Context left</system-reminder>" }),
+      ev({ type: "assistant.text", messageId: "m1", index: 0, text: "Der Build ist fertig." }),
+    ];
+    const items = buildEventItems(events);
+    expect(items.map((i) => i.kind)).toEqual(["user", "notice", "assistant"]);
+    expect(lastUserPrompt(events)).toBe("Starte den Build im Hintergrund");
+  });
+
+  it("keeps prompts that only mention the tags", () => {
+    seq = 0;
+    const items = buildEventItems([ev({ type: "user.message", text: "Was bedeutet <task-notification> im Log?" })]);
+    expect(items).toMatchObject([{ kind: "user" }]);
+  });
+});
+
+describe("chat layout helpers", () => {
+  it("separates turns and stacks one-line rows tightly", () => {
+    seq = 0;
+    const items = buildEventItems([
+      ev({ type: "user.message", text: "a" }),
+      ev({ type: "assistant.text", messageId: "m1", index: 0, text: "b" }),
+      ev({ type: "tool.use", toolUseId: "t1", name: "Read", input: {}, parentToolUseId: null }),
+      ev({ type: "tool.use", toolUseId: "t2", name: "Bash", input: {}, parentToolUseId: null }),
+      ev({ type: "tool.use", toolUseId: "t3", name: "AskUserQuestion", input: {}, parentToolUseId: null }),
+      ev({ type: "turn.result", subtype: "success", isError: false, durationMs: 1, numTurns: 1, inputTokens: null, outputTokens: null, cacheReadTokens: null, text: null }),
+      ev({ type: "user.message", text: "c" }),
+    ]);
+    expect(items.map((it, i) => rowSpacing(items[i - 1], it))).toEqual(["first", "block", "block", "tight", "block", "tight", "turn"]);
+  });
+
+  it("shows MCP tools by server and tool name", () => {
+    expect(toolDisplayName("Bash")).toBe("Bash");
+    expect(toolDisplayName("mcp__github__create_issue")).toBe("github: create_issue");
   });
 });

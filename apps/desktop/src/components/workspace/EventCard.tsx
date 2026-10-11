@@ -2,24 +2,28 @@ import { useState, type ReactNode } from "react";
 import { ChevronRight, GitCommitHorizontal, Hourglass, Shrink, SkipForward, Undo2, Upload, Gauge } from "lucide-react";
 import { clockTime, cn } from "@/lib/utils";
 import type { NoticeIcon } from "./chat-items";
+import { ChatRow, Guide, HoverTime } from "./ChatRow";
 
 type Tone = "info" | "warning" | "success" | "danger";
 
-const TILE: Record<Tone, string> = {
-  info: "bg-accent-soft text-accent",
-  success: "bg-success-soft text-success",
-  warning: "bg-warning-soft text-warning",
-  danger: "bg-danger-soft text-danger",
+const TONE: Record<Tone, string> = {
+  info: "text-muted",
+  success: "text-success",
+  warning: "text-warning",
+  danger: "text-danger",
 };
 
+/** Size of the gutter icons of event rows. */
+export const EVENT_ICON = "h-3.5 w-3.5";
+
 const ICONS: Record<NoticeIcon, ReactNode> = {
-  commit: <GitCommitHorizontal className="h-4.5 w-4.5" />,
-  push: <Upload className="h-4.5 w-4.5" />,
-  skip: <SkipForward className="h-4.5 w-4.5" />,
-  rewind: <Undo2 className="h-4.5 w-4.5" />,
-  compact: <Shrink className="h-4.5 w-4.5" />,
-  background: <Hourglass className="h-4.5 w-4.5" />,
-  limit: <Gauge className="h-4.5 w-4.5" />,
+  commit: <GitCommitHorizontal className={EVENT_ICON} />,
+  push: <Upload className={EVENT_ICON} />,
+  skip: <SkipForward className={EVENT_ICON} />,
+  rewind: <Undo2 className={EVENT_ICON} />,
+  compact: <Shrink className={EVENT_ICON} />,
+  background: <Hourglass className={EVENT_ICON} />,
+  limit: <Gauge className={EVENT_ICON} />,
 };
 
 export function noticeIcon(icon: NoticeIcon): ReactNode {
@@ -27,8 +31,8 @@ export function noticeIcon(icon: NoticeIcon): ReactNode {
 }
 
 /**
- * One event in the chat (auto-commit, tests, rewind …): icon tile, title, a line with an
- * optional highlighted reference, time. With `children` it expands to show details.
+ * One event in the chat (auto-commit, tests, rewind …) as a single line: icon in the gutter, title,
+ * an optional highlighted reference and a muted detail. With `children` it expands to show details.
  */
 export function EventCard({
   icon,
@@ -49,39 +53,35 @@ export function EventCard({
   ts: string;
   children?: ReactNode;
   defaultOpen?: boolean;
-  /** a button shown before the time, e.g. to cancel what the card announces */
+  /** a button shown after the text, e.g. to cancel what the card announces */
   action?: ReactNode;
 }) {
   const [open, setOpen] = useState(defaultOpen);
   const expandable = !!children;
-  const head = (
-    <>
-      <span className={cn("flex h-9 w-9 shrink-0 items-center justify-center rounded-lg", TILE[tone])}>{icon}</span>
-      <span className="min-w-0 flex-1">
-        <span className="block text-ui font-medium">{title}</span>
-        {(refText || detail) && (
-          <span className="block truncate text-small-lg text-muted">
-            {refText && <span className="font-mono text-accent">{refText}</span>}
-            {refText && detail ? " · " : ""}
-            {detail}
-          </span>
-        )}
-      </span>
-      {action}
-      <span className="shrink-0 text-caption-lg text-subtle">{clockTime(ts)}</span>
-      {expandable && <ChevronRight className={cn("h-4 w-4 shrink-0 text-subtle transition-transform", open && "rotate-90")} />}
-    </>
+  const text = (
+    <span className="min-w-0">
+      <span className="font-medium text-fg">{title}</span>
+      {refText && <span className="ml-2 font-mono text-small text-accent">{refText}</span>}
+      {detail && <span className="ml-2 text-muted">{detail}</span>}
+    </span>
   );
   return (
-    <div className="ml-12 overflow-hidden rounded-xl border border-border bg-surface">
-      {expandable ? (
-        <button className="flex w-full items-center gap-3 px-3.5 py-2.5 text-left hover:bg-surface-2" onClick={() => setOpen(!open)} aria-expanded={open}>
-          {head}
-        </button>
-      ) : (
-        <div className="flex items-center gap-3 px-3.5 py-2.5">{head}</div>
-      )}
-      {expandable && open && <div className="border-t border-border">{children}</div>}
-    </div>
+    <ChatRow className="group text-body" marker={<span className={TONE[tone]}>{icon}</span>}>
+      <div className="flex min-w-0 items-baseline gap-2">
+        {expandable ? (
+          <button type="button" className="group/ev flex min-w-0 flex-1 items-start gap-1.5 text-left" onClick={() => setOpen(!open)} aria-expanded={open}>
+            {text}
+            <span className="flex h-[1lh] shrink-0 items-center">
+              <ChevronRight className={cn("h-3.5 w-3.5 text-subtle transition-transform group-hover/ev:text-fg", open && "rotate-90")} />
+            </span>
+          </button>
+        ) : (
+          <div className="min-w-0 flex-1 break-words">{text}</div>
+        )}
+        {action && <div className="-my-1 shrink-0">{action}</div>}
+        <HoverTime time={clockTime(ts)} />
+      </div>
+      {expandable && open && <Guide className="mt-1.5">{children}</Guide>}
+    </ChatRow>
   );
 }

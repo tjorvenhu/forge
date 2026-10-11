@@ -4,9 +4,7 @@ import { keys, useRpcMutation, useSession } from "@/lib/queries";
 import { limitTime } from "@/lib/rate-limit";
 import { Button } from "@/components/ui/button";
 import type { AutoContinueItem } from "./chat-items";
-import { EventCard } from "./EventCard";
-
-const ICON = "h-4.5 w-4.5";
+import { EVENT_ICON as ICON, EventCard } from "./EventCard";
 
 /** What FORGE does after a usage limit: the planned continuation (cancellable), and what came of it. */
 export function AutoContinueCard({ item, sessionId }: { item: AutoContinueItem; sessionId: string }) {

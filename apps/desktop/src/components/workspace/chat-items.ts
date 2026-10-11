@@ -120,6 +120,8 @@ export function buildEventItems(events: SessionEvent[]): ChatItem[] {
     const b = ev.body;
     switch (b.type) {
       case "user.message":
+        // Older FORGE versions stored Claude Code's own notifications as prompts; the background task card covers them.
+        if (isInjectedUserText(b.text)) break;
         if (b.source !== "auto" && openPlan !== null) {
           items[openPlan] = { ...(items[openPlan] as AutoContinueItem), open: false };
           openPlan = null;
@@ -292,6 +294,39 @@ function formatK(n: number): string {
   return n >= 1000 ? `${Math.round(n / 1000)}k` : String(n);
 }
 
+const INJECTED_PREFIXES = ["<task-notification>", "<system-reminder>"];
+
+/** Text Claude Code injects as a user turn (task notifications, reminders), not something the user typed. */
+export function isInjectedUserText(text: string): boolean {
+  const t = text.trimStart();
+  return INJECTED_PREFIXES.some((p) => t.startsWith(p));
+}
+
+/** Vertical gap before a chat row: a new turn stands apart, one-line rows in a row stack tightly. */
+export type RowSpacing = "first" | "turn" | "block" | "tight";
+
+function isCompactRow(item: ChatItem): boolean {
+  switch (item.kind) {
+    case "tool":
+      return !(item.todos && !item.superseded) && item.use.name !== "AskUserQuestion" && item.use.name !== "ExitPlanMode" && !(item.approval && !item.approval.resolved);
+    case "blocked":
+    case "notice":
+    case "check":
+    case "autoContinue":
+      return true;
+    default:
+      return false;
+  }
+}
+
+export function rowSpacing(prev: ChatItem | undefined, item: ChatItem): RowSpacing {
+  if (!prev) return "first";
+  if (item.kind === "user") return "turn";
+  if (item.kind === "result") return "tight";
+  if (isCompactRow(prev) && isCompactRow(item)) return "tight";
+  return "block";
+}
+
 /** Index of the item that shows the event with this seq (search hits), or of the nearest one before it. */
 export function itemIndexForSeq(items: ChatItem[], seq: number): number {
   let best = -1;
@@ -310,7 +345,7 @@ export function itemIndexForSeq(items: ChatItem[], seq: number): number {
 export function lastUserPrompt(events: SessionEvent[]): string | null {
   for (let i = events.length - 1; i >= 0; i--) {
     const b = events[i]!.body;
-    if (b.type === "user.message") return b.text;
+    if (b.type === "user.message" && !isInjectedUserText(b.text)) return b.text;
   }
   return null;
 }
@@ -359,6 +394,12 @@ export function toolSummary(name: string, input: Record<string, unknown>, projec
     default:
       return Object.values(input).find((v): v is string => typeof v === "string")?.slice(0, 120) ?? "";
   }
+}
+
+/** Tool name as Claude Code shows it; MCP tools ("mcp__server__tool") as "server: tool". */
+export function toolDisplayName(name: string): string {
+  const m = /^mcp__(.+?)__(.+)$/.exec(name);
+  return m ? `${m[1]}: ${m[2]}` : name;
 }
 
 export const TOOL_LABELS: Record<string, string> = {

@@ -10,7 +10,7 @@ import { toast } from "@/stores/toast";
 import { splitActive, useUi } from "@/stores/ui";
 import { Button } from "@/components/ui/button";
 import { EmptyState, ErrorBanner, Loading } from "@/components/ui/misc";
-import { appendStreaming, buildEventItems, itemIndexForSeq, lastUserPrompt, reuseStableItems, type ChatItem } from "./chat-items";
+import { appendStreaming, buildEventItems, itemIndexForSeq, lastUserPrompt, reuseStableItems, rowSpacing, type ChatItem, type RowSpacing } from "./chat-items";
 import { Composer } from "./Composer";
 import { SessionBar } from "./SessionBar";
 import { ItemView } from "./ChatItemView";
@@ -22,6 +22,8 @@ const NO_EVENTS: SessionEvent[] = [];
 const NO_STREAMING: Record<string, string> = {};
 /** room above the first row for the "load older" button */
 const OLDER_BAR_HEIGHT = 44;
+/** "tight" must stay pt-1.5: the guide line of subagent calls reaches up exactly that far. */
+const ROW_SPACING: Record<RowSpacing, string> = { first: "pt-5", turn: "pt-8", block: "pt-3.5", tight: "pt-1.5" };
 
 const toastNotFound = () => toast.error("Eintrag nicht gefunden", "Der Eintrag ist im Verlauf dieser Session nicht vorhanden.");
 
@@ -104,7 +106,7 @@ function SessionThread({ sessionId, session, project, workingInPanel }: { sessio
   const virtualizer = useVirtualizer({
     count: items.length,
     getScrollElement: () => scrollRef.current,
-    estimateSize: () => 72,
+    estimateSize: () => 48,
     overscan: 8,
     getItemKey: (i) => items[i]!.key,
     paddingStart: buffer?.hasOlder ? OLDER_BAR_HEIGHT : 0,
@@ -209,7 +211,7 @@ function SessionThread({ sessionId, session, project, workingInPanel }: { sessio
           pinned.current = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
         }}
       >
-        <div className="relative mx-auto w-full max-w-4xl" style={{ height: virtualizer.getTotalSize() + 24 }}>
+        <div className="relative mx-auto w-full max-w-5xl" style={{ height: virtualizer.getTotalSize() + 24 }}>
           {hasOlder && (
             <div className="absolute inset-x-0 top-0 flex items-end justify-center" style={{ height: OLDER_BAR_HEIGHT }}>
               <Button size="sm" variant="outline" loading={loadingOlder} onClick={() => void loadOlder()}>
@@ -218,8 +220,8 @@ function SessionThread({ sessionId, session, project, workingInPanel }: { sessio
             </div>
           )}
           {virtualizer.getVirtualItems().map((v) => (
-            <div key={v.key} data-index={v.index} ref={virtualizer.measureElement} className="absolute left-0 right-0 px-6 pt-4" style={{ transform: `translateY(${v.start}px)` }}>
-              <div className={cn("rounded-lg transition-shadow duration-500", highlight === items[v.index]!.key && "ring-2 ring-accent/60 ring-offset-4 ring-offset-bg")}>
+            <div key={v.key} data-index={v.index} ref={virtualizer.measureElement} className={cn("absolute left-0 right-0 px-6", ROW_SPACING[rowSpacing(items[v.index - 1], items[v.index]!)])} style={{ transform: `translateY(${v.start}px)` }}>
+              <div className={cn("rounded-md transition-shadow duration-500", highlight === items[v.index]!.key && "ring-2 ring-accent/60 ring-offset-4 ring-offset-bg")}>
                 <ItemView item={items[v.index]!} sessionId={sessionId} live={!!session?.live} projectDir={session?.cwd ?? project.path} onRetry={onRetry} />
               </div>
             </div>

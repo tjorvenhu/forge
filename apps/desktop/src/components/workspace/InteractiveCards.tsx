@@ -65,6 +65,11 @@ function useRespond(sessionId: string, requestId: string | undefined, cardId: st
   return { mutate: mutation.mutate, isPending: mutation.isPending, sent, locked: mutation.isPending || sent };
 }
 
+/** A card that waits for the user stands out with an accent edge; answered ones step back. */
+function cardClass(pending: boolean) {
+  return cn("rounded-md border border-l-2 bg-surface", pending ? "border-accent/40 border-l-accent" : "border-border border-l-border-strong");
+}
+
 function CardHeader({ icon, title, children }: { icon: React.ReactNode; title: string; children?: React.ReactNode }) {
   return (
     <div className="flex items-center gap-2 px-3 py-2 text-body">
@@ -95,7 +100,7 @@ export function QuestionCard({ item, sessionId }: { item: ToolItem; sessionId: s
   };
 
   return (
-    <div className={cn("rounded-lg border bg-surface", pending ? "border-accent/60" : "border-border")} role="group" aria-label="Rückfrage von Claude">
+    <div className={cardClass(pending)} role="group" aria-label="Rückfrage von Claude">
       <CardHeader icon={<MessageCircleQuestion className="h-4 w-4" />} title={pending ? "Claude hat eine Rückfrage" : "Rückfrage"}>
         {resolved && <ResolvedBadge decision={resolved.decision} source={resolved.source} allowText="Beantwortet" denyText="Übersprungen" />}
       </CardHeader>
@@ -203,7 +208,7 @@ export function PlanCard({ item, sessionId }: { item: ToolItem; sessionId: strin
   const showPlan = pending || open;
 
   return (
-    <div className={cn("rounded-lg border bg-surface", pending ? "border-accent/60" : "border-border")} role="group" aria-label="Plan zur Freigabe">
+    <div className={cardClass(pending)} role="group" aria-label="Plan zur Freigabe">
       <CardHeader icon={<ClipboardList className="h-4 w-4" />} title={pending ? "Plan zur Freigabe" : "Plan"}>
         {resolved && <ResolvedBadge decision={resolved.decision} source={resolved.source} allowText="Angenommen" denyText="Zurück zur Überarbeitung" />}
         {!pending && (

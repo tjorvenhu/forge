@@ -1,20 +1,21 @@
-import { memo } from "react";
-import { AlertTriangle, CheckCircle2, Clock, Info, RotateCcw, ShieldAlert, XCircle } from "lucide-react";
+import { memo, type ReactNode } from "react";
+import { AlertTriangle, CheckCircle2, Info, RotateCcw, ShieldAlert, XCircle } from "lucide-react";
 import { clockTime, cn, formatDuration, formatTokens } from "@/lib/utils";
 import { useThrottledValue } from "@/lib/timing-hooks";
 import { isInterrupted } from "@/lib/working";
 import { Button } from "@/components/ui/button";
 import type { ChatItem } from "./chat-items";
-import { PlanCard, QuestionCard } from "./InteractiveCards";
 import { Markdown } from "./Markdown";
 import { ApprovalBlock, ToolCard } from "./ToolCard";
-import { EventCard, noticeIcon } from "./EventCard";
-import { ClaudeMark } from "./ClaudeMark";
+import { EVENT_ICON, EventCard, noticeIcon } from "./EventCard";
+import { ChatRow, Dot, HoverTime } from "./ChatRow";
 import { UserMessage } from "./UserMessage";
 import { AutoContinueCard } from "./AutoContinueCard";
 
 /** Re-parsing the markdown on every delta is the expensive part of streaming; a few updates per second read the same. */
 const STREAM_RENDER_MS = 100;
+
+const NOTICE_TONE = { info: "text-muted", warning: "text-warning", danger: "text-danger", success: "text-success" } as const;
 
 interface ItemViewProps {
   item: ChatItem;
@@ -31,12 +32,18 @@ export const ItemView = memo(function ItemView({ item, sessionId, live, projectD
       return <UserMessage item={item} sessionId={sessionId} />;
     case "assistant":
       return <AssistantMessage item={item} />;
-    case "tool":
+    case "tool": {
+      const card = <ToolCard item={item} sessionId={sessionId} sessionLive={live} projectDir={projectDir} />;
+      if (!item.use.parentToolUseId) return card;
+      // Calls of a subagent hang under its line. Rows are separate list entries, so the guide line
+      // also reaches up over the gap to the previous row.
       return (
-        <div className="pl-12">
-          <ToolCard item={item} sessionId={sessionId} sessionLive={live} projectDir={projectDir} />
+        <div className="relative pl-9">
+          <span aria-hidden className="absolute -top-1.5 bottom-0 left-6.5 w-px bg-border" />
+          {card}
         </div>
       );
+    }
     case "approval":
       if (item.req.toolName === "AskUserQuestion" || item.req.toolName === "ExitPlanMode") {
         // The approval came without a preceding tool event; show the same card as usual.
@@ -51,45 +58,47 @@ export const ItemView = memo(function ItemView({ item, sessionId, live, projectD
           todos: null,
           superseded: false,
         };
-        return <div className="pl-12">{item.req.toolName === "AskUserQuestion" ? <QuestionCard item={tool} sessionId={sessionId} /> : <PlanCard item={tool} sessionId={sessionId} />}</div>;
+        return <ToolCard item={tool} sessionId={sessionId} sessionLive={live} projectDir={projectDir} />;
       }
       return (
-        <div className="ml-12 overflow-hidden rounded-xl border border-warning/50">
+        <ChatRow
+          className="text-body"
+          markerClassName={item.resolved ? undefined : "mt-2.75"}
+          marker={<Dot className={item.resolved ? (item.resolved.decision === "allow" ? "bg-success" : "border-[1.5px] border-danger") : "animate-soft-pulse bg-warning"} label={item.resolved ? undefined : "wartet auf Freigabe"} />}
+        >
           <ApprovalBlock req={item.req} resolved={item.resolved} sessionId={sessionId} projectDir={projectDir} />
-        </div>
+        </ChatRow>
       );
     case "blocked":
       return (
-        <div className="ml-12 flex items-start gap-2 rounded-xl border border-danger/40 bg-danger-soft px-3.5 py-2.5 text-body">
-          <ShieldAlert className="mt-0.5 h-3.5 w-3.5 text-danger" /> Von der FORGE-Policy blockiert ({item.body.toolName}): {item.body.message}
-        </div>
+        <ChatRow className="text-body" marker={<ShieldAlert className={cn(EVENT_ICON, "text-danger")} />}>
+          <span className="break-words">
+            <span className="font-medium text-danger">Von der FORGE-Policy blockiert</span> <span className="text-muted">({item.body.toolName}): {item.body.message}</span>
+          </span>
+        </ChatRow>
       );
     case "result":
       return <ResultLine body={item.body} onRetry={onRetry} />;
     case "error":
       return (
-        <div className="ml-12 flex items-start gap-2 rounded-xl border border-danger/40 bg-danger-soft px-3.5 py-2.5 text-body-lg">
-          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-danger" />
-          <div className="min-w-0 flex-1 break-words">{item.message}</div>
-          {item.retryable && onRetry && (
-            <Button size="sm" variant="outline" onClick={onRetry}>
-              <RotateCcw className="h-3.5 w-3.5" /> Erneut senden
-            </Button>
-          )}
-        </div>
+        <ChatRow className="text-body" marker={<AlertTriangle className={cn(EVENT_ICON, "text-danger")} />}>
+          <div className="flex items-baseline gap-3">
+            <div className="min-w-0 flex-1 break-words text-danger">{item.message}</div>
+            {item.retryable && onRetry && (
+              <Button size="sm" variant="outline" className="-my-1" onClick={onRetry}>
+                <RotateCcw className="h-3.5 w-3.5" /> Erneut senden
+              </Button>
+            )}
+          </div>
+        </ChatRow>
       );
     case "notice":
       if (item.card)
         return <EventCard icon={noticeIcon(item.card.icon)} tone={item.tone} title={item.card.title} refText={item.card.ref} detail={item.card.detail} ts={item.ts} />;
       return (
-        <div
-          className={cn(
-            "ml-12 flex items-center gap-2 text-small-lg",
-            item.tone === "warning" ? "text-warning" : item.tone === "danger" ? "text-danger" : item.tone === "success" ? "text-success" : "text-muted",
-          )}
-        >
-          <Info className="h-3.5 w-3.5 shrink-0" /> <span className="min-w-0 break-words">{item.text}</span>
-        </div>
+        <ChatRow className={cn("text-body", NOTICE_TONE[item.tone])} marker={<Info className={EVENT_ICON} />}>
+          <span className="break-words">{item.text}</span>
+        </ChatRow>
       );
     case "check":
       return <CheckCard body={item.body} ts={item.ts} />;
@@ -101,27 +110,20 @@ export const ItemView = memo(function ItemView({ item, sessionId, live, projectD
 function AssistantMessage({ item }: { item: Extract<ChatItem, { kind: "assistant" }> }) {
   const text = useThrottledValue(item.text, item.streaming ? STREAM_RENDER_MS : 0);
   return (
-    <div className="flex gap-3">
-      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-claude-soft">
-        <ClaudeMark size={20} />
+    <ChatRow className="group relative text-ui leading-[1.65]" marker={<Dot className="bg-fg" />}>
+      <div className="max-w-[90ch]">
+        <Markdown text={text} />
+        {item.streaming && <span className="animate-soft-pulse mt-1 inline-block h-3.5 w-1.5 bg-muted" aria-label="schreibt" />}
       </div>
-      <div className="min-w-0 flex-1 rounded-xl border border-border bg-surface px-4 py-3">
-        <div className="flex items-start gap-4">
-          <div className="min-w-0 flex-1">
-            <Markdown text={text} />
-            {item.streaming && <span className="animate-soft-pulse ml-0.5 inline-block h-3.5 w-1.5 translate-y-0.5 bg-accent" aria-label="schreibt" />}
-          </div>
-          {item.ts && <span className="shrink-0 pt-0.5 text-caption-lg text-subtle">{clockTime(item.ts)}</span>}
-        </div>
-      </div>
-    </div>
+      {item.ts && <HoverTime time={clockTime(item.ts)} className="absolute right-0 top-0 bg-bg pl-2 leading-[1lh]" />}
+    </ChatRow>
   );
 }
 
 function CheckCard({ body, ts }: { body: Extract<ChatItem, { kind: "check" }>["body"]; ts: string }) {
   return (
     <EventCard
-      icon={body.ok ? <CheckCircle2 className="h-4.5 w-4.5" /> : <XCircle className="h-4.5 w-4.5" />}
+      icon={body.ok ? <CheckCircle2 className={EVENT_ICON} /> : <XCircle className={EVENT_ICON} />}
       tone={body.ok ? "success" : "danger"}
       title={body.ok ? "Tests erfolgreich" : "Tests fehlgeschlagen"}
       refText={body.command}
@@ -129,7 +131,7 @@ function CheckCard({ body, ts }: { body: Extract<ChatItem, { kind: "check" }>["b
       ts={ts}
       defaultOpen={!body.ok}
     >
-      {body.output ? <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-all bg-bg p-3 font-mono text-caption-lg text-muted">{body.output}</pre> : undefined}
+      {body.output ? <pre className="max-h-64 overflow-auto whitespace-pre-wrap font-mono text-small leading-relaxed text-muted wrap-anywhere">{body.output}</pre> : undefined}
     </EventCard>
   );
 }
@@ -137,32 +139,44 @@ function CheckCard({ body, ts }: { body: Extract<ChatItem, { kind: "check" }>["b
 function ResultLine({ body, onRetry }: { body: Extract<ChatItem, { kind: "result" }>["body"]; onRetry?: () => void }) {
   const interrupted = isInterrupted(body);
   return (
-    <div className="ml-12 flex flex-wrap items-center gap-x-3 gap-y-1 px-1 pt-1 text-caption-lg text-subtle">
-      {body.isError ? (
-        interrupted ? (
-          <span className="text-warning">Gestoppt</span>
+    <ChatRow className="text-caption-lg">
+      <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-subtle">
+        {body.isError ? (
+          interrupted ? (
+            <span className="text-warning">Gestoppt</span>
+          ) : (
+            <span className="text-danger">Fehlgeschlagen: {body.text ?? body.subtype}</span>
+          )
         ) : (
-          <span className="text-danger">Fehlgeschlagen: {body.text ?? body.subtype}</span>
-        )
-      ) : (
-        <span className="text-success">Fertig</span>
-      )}
-      {body.durationMs !== null && (
-        <span className="flex items-center gap-1">
-          <Clock className="h-3 w-3" /> {formatDuration(body.durationMs)}
-        </span>
-      )}
-      {body.numTurns !== null && <span>{body.numTurns} {body.numTurns === 1 ? "Schritt" : "Schritte"}</span>}
-      {(body.inputTokens !== null || body.outputTokens !== null) && (
-        <span title="Laut Claude Code gemeldete Tokens dieses Durchlaufs (ohne Cache-Lesezugriffe)">
-          Tokens: {formatTokens(body.inputTokens)} rein, {formatTokens(body.outputTokens)} raus
-        </span>
-      )}
-      {body.isError && !interrupted && onRetry && (
-        <Button size="sm" variant="ghost" onClick={onRetry}>
-          <RotateCcw className="h-3 w-3" /> Erneut senden
-        </Button>
-      )}
-    </div>
+          <span className="text-success">Fertig</span>
+        )}
+        {body.durationMs !== null && <Part>{formatDuration(body.durationMs)}</Part>}
+        {body.numTurns !== null && (
+          <Part>
+            {body.numTurns} {body.numTurns === 1 ? "Schritt" : "Schritte"}
+          </Part>
+        )}
+        {(body.inputTokens !== null || body.outputTokens !== null) && (
+          <Part title="Laut Claude Code gemeldete Tokens dieses Durchlaufs (ohne Cache-Lesezugriffe)">
+            Tokens: {formatTokens(body.inputTokens)} rein, {formatTokens(body.outputTokens)} raus
+          </Part>
+        )}
+        {body.isError && !interrupted && onRetry && (
+          <Button size="sm" variant="ghost" className="-my-1 ml-1" onClick={onRetry}>
+            <RotateCcw className="h-3 w-3" /> Erneut senden
+          </Button>
+        )}
+      </div>
+    </ChatRow>
+  );
+}
+
+/** One fact of the result line, separated from the previous by a small dot. */
+function Part({ children, title }: { children: ReactNode; title?: string }) {
+  return (
+    <span className="flex items-center gap-1.5" title={title}>
+      <span aria-hidden className="h-0.5 w-0.5 rounded-full bg-subtle" />
+      {children}
+    </span>
   );
 }

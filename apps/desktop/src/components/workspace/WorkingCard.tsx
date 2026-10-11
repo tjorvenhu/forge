@@ -11,7 +11,7 @@ import { TOOL_LABELS, toolSummary } from "./chat-items";
 import { formatElapsed, pickPhrase, turnStartedAt } from "./working";
 import { stopSession } from "./useSendMessage";
 
-/** "Claude arbeitet" at the bottom of the side panel while the active session runs, with stop. */
+/** Status line at the bottom of the side panel while the active session runs: phrase, last tool, time, stop. */
 export function WorkingCard({ project }: { project: Project }) {
   const sessionId = useUi((s) => s.activeSession[project.id] ?? null);
   const session = useSession(splitActive(sessionId).sessionId).data;
@@ -35,35 +35,20 @@ export function WorkingCard({ project }: { project: Project }) {
 
   if (!session || !working || !startedAt) return null;
   const elapsed = now - new Date(startedAt).getTime();
+  const stopping = session.status === "stopping";
   return (
-    <div className="m-3 rounded-xl border border-border bg-surface p-3.5">
-      <div className="flex items-start gap-3">
-        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-claude-soft">
-          <ClaudeMark size={20} />
-        </div>
-        <div className="min-w-0 flex-1">
-          <div className="text-ui font-medium">{session.status === "stopping" ? "Claude stoppt …" : "Claude arbeitet"}</div>
-          <div className="truncate text-small text-muted" title={lastTool ?? undefined}>
-            {lastTool ?? `${pickPhrase(startedAt, elapsed)} …`}
-          </div>
-        </div>
-        <Button
-          size="icon-sm"
-          variant="ghost"
-          aria-label="Stoppen"
-          title="Stoppen (Esc im Eingabefeld)"
-          disabled={session.status === "stopping"}
-          onClick={() => void stopSession(session.id)}
-        >
-          <Square className="h-3 w-3 fill-current" />
-        </Button>
-      </div>
-      <div className="mt-3 flex items-center gap-2">
-        <div className="relative h-1 flex-1 overflow-hidden rounded-full bg-surface-3">
-          <div className="animate-indeterminate absolute inset-y-0 w-1/3 rounded-full bg-accent" />
-        </div>
-        <span className="text-caption tabular-nums text-subtle">{formatElapsed(elapsed)}</span>
-      </div>
+    <div className="flex h-10 shrink-0 items-center gap-2 border-t border-border pl-3.5 pr-2 text-small">
+      <span className="flex shrink-0 motion-safe:animate-spin-slow">
+        <ClaudeMark size={13} />
+      </span>
+      <span className="shrink-0 font-medium text-claude">{stopping ? "Claude stoppt …" : `${pickPhrase(startedAt, elapsed)} …`}</span>
+      <span className="min-w-0 flex-1 truncate font-mono text-caption-lg text-muted" title={lastTool ?? undefined}>
+        {lastTool}
+      </span>
+      <span className="shrink-0 text-caption tabular-nums text-subtle">{formatElapsed(elapsed)}</span>
+      <Button size="icon-sm" variant="ghost" aria-label="Stoppen" title="Stoppen (Esc im Eingabefeld)" disabled={stopping} onClick={() => void stopSession(session.id)}>
+        <Square className="h-3 w-3 fill-current" />
+      </Button>
     </div>
   );
 }

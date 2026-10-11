@@ -1,14 +1,15 @@
 import { useState } from "react";
-import { FileText, ImageIcon, Smartphone, TimerReset, Undo2 } from "lucide-react";
+import { ChevronRight, FileText, ImageIcon, Smartphone, TimerReset, Undo2 } from "lucide-react";
 import type { RewindResult } from "@forge/protocol";
 import { call } from "@/lib/queries";
 import { errorMessage } from "@/lib/rpc";
-import { clockTime } from "@/lib/utils";
+import { clockTime, cn } from "@/lib/utils";
 import { toast } from "@/stores/toast";
 import { Button } from "@/components/ui/button";
 import { Tooltip } from "@/components/ui/misc";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import type { ChatItem } from "./chat-items";
+import { ChatRow, HoverTime } from "./ChatRow";
 
 /** A prompt of the user, with rewinding the files to the state before it. */
 export function UserMessage({ item, sessionId }: { item: Extract<ChatItem, { kind: "user" }>; sessionId: string }) {
@@ -27,44 +28,53 @@ export function UserMessage({ item, sessionId }: { item: Extract<ChatItem, { kin
       setLoading(false);
     }
   };
+  const hasMeta = item.attachments.length > 0 || item.remote || item.auto;
   return (
-    <div className="group relative flex gap-3">
-      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-accent/25 bg-accent-soft text-small font-semibold text-accent">Du</div>
-      <div className="flex min-w-0 flex-1 flex-col gap-2 rounded-xl border border-border bg-surface-2 px-4 py-3">
-        {item.attachments.length > 0 && (
-          <div className="flex flex-wrap gap-1.5">
-            {item.attachments.map((a, i) => (
-              <span key={i} className="flex items-center gap-1.5 rounded-md border border-border bg-surface-2 px-2 py-1 text-caption text-muted">
-                {a.mediaType.startsWith("image/") ? <ImageIcon className="h-3.5 w-3.5" /> : <FileText className="h-3.5 w-3.5" />}
-                {a.name}
-              </span>
-            ))}
+    <div className="group -mx-3 rounded-md bg-surface-2 px-3 py-2.5">
+      <ChatRow className="text-ui leading-[1.65]" marker={<ChevronRight aria-hidden className="h-4 w-4 text-subtle" />}>
+        <div className="flex min-w-0 items-start gap-3">
+          <div className="min-w-0 max-w-[90ch] flex-1">
+            <div className="whitespace-pre-wrap break-words">{item.text}</div>
+            {hasMeta && (
+              <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-caption leading-normal text-subtle">
+                {item.attachments.map((a, i) => (
+                  <span key={i} className="flex items-center gap-1 rounded-sm border border-border bg-surface px-1.5 py-0.5 text-muted">
+                    {a.mediaType.startsWith("image/") ? <ImageIcon className="h-3 w-3" /> : <FileText className="h-3 w-3" />}
+                    {a.name}
+                  </span>
+                ))}
+                {item.remote && (
+                  <span className="flex items-center gap-1" title="In der Claude-App geschrieben">
+                    <Smartphone className="h-3 w-3" /> App
+                  </span>
+                )}
+                {item.auto && (
+                  <span className="flex items-center gap-1" title="Von FORGE gesendet, nachdem das Nutzungslimit zurückgesetzt war">
+                    <TimerReset className="h-3 w-3" /> Automatisch
+                  </span>
+                )}
+              </div>
+            )}
           </div>
-        )}
-        <div className="flex min-w-0 items-start gap-4">
-          <div className="min-w-0 flex-1 whitespace-pre-wrap break-words text-ui leading-relaxed">{item.text}</div>
-          <div className="flex shrink-0 items-center gap-1 pt-0.5 text-caption-lg text-subtle">
-            {item.remote && (
-              <span className="flex items-center gap-0.5" title="In der Claude-App geschrieben">
-                <Smartphone className="h-3 w-3" /> App
-              </span>
+          <div className="ml-auto flex h-[1lh] shrink-0 items-center gap-1">
+            <HoverTime time={clockTime(item.ts)} />
+            {item.uuid && (
+              <Tooltip content="Dateien auf den Stand vor dieser Nachricht zurücksetzen">
+                <Button
+                  size="icon-sm"
+                  variant="ghost"
+                  className={cn("opacity-0 group-hover:opacity-100 focus-visible:opacity-100", loading && "opacity-100")}
+                  onClick={() => void check()}
+                  loading={loading}
+                  aria-label="Dateien auf diesen Stand zurücksetzen"
+                >
+                  {!loading && <Undo2 className="h-3.5 w-3.5" />}
+                </Button>
+              </Tooltip>
             )}
-            {item.auto && (
-              <span className="flex items-center gap-0.5" title="Von FORGE gesendet, nachdem das Nutzungslimit zurückgesetzt war">
-                <TimerReset className="h-3 w-3" /> Automatisch
-              </span>
-            )}
-            {clockTime(item.ts)}
           </div>
         </div>
-      </div>
-      {item.uuid && (
-        <Tooltip content="Dateien auf den Stand vor dieser Nachricht zurücksetzen">
-          <Button size="icon-sm" variant="ghost" className="absolute -right-9 top-1.5 opacity-0 group-hover:opacity-100 focus-visible:opacity-100" onClick={() => void check()} loading={loading} aria-label="Dateien auf diesen Stand zurücksetzen">
-            {!loading && <Undo2 className="h-3.5 w-3.5" />}
-          </Button>
-        </Tooltip>
-      )}
+      </ChatRow>
       <ConfirmDialog
         open={!!preview}
         onOpenChange={(o) => !o && setPreview(null)}

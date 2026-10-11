@@ -54,6 +54,14 @@
   --radius-lg: 8px;
   --radius-xl: 12px;
   --radius-2xl: 16px;
+
+  /* the Claude mark while a turn runs, like the spinner in the Claude Code shell */
+  --animate-spin-slow: forge-spin 2.4s linear infinite;
+  @keyframes forge-spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
 }
 
 html,
@@ -90,16 +98,54 @@ body {
   scrollbar-color: var(--color-border-strong) transparent;
 }
 
-.markdown p {
-  margin: 0 0 0.6em;
+/* Prose of Claude's answers, plans and summaries. Sizes in em so the block follows its font size. */
+.markdown {
+  line-height: 1.65;
 }
-.markdown p:last-child {
+.markdown > :first-child {
+  margin-top: 0;
+}
+.markdown > :last-child {
   margin-bottom: 0;
+}
+.markdown p {
+  margin: 0 0 0.75em;
+}
+.markdown strong {
+  font-weight: 600;
+  color: var(--color-fg);
+}
+.markdown h1,
+.markdown h2,
+.markdown h3,
+.markdown h4,
+.markdown h5,
+.markdown h6 {
+  font-weight: 600;
+  line-height: 1.35;
+  margin: 1.3em 0 0.5em;
+}
+.markdown h1 {
+  font-size: 1.2em;
+}
+.markdown h2 {
+  font-size: 1.1em;
+}
+.markdown h3,
+.markdown h4,
+.markdown h5,
+.markdown h6 {
+  font-size: 1em;
+}
+.markdown h4,
+.markdown h5,
+.markdown h6 {
+  color: var(--color-muted);
 }
 .markdown ul,
 .markdown ol {
-  margin: 0.4em 0 0.6em;
-  padding-left: 1.4em;
+  margin: 0.25em 0 0.75em;
+  padding-left: 1.5em;
 }
 .markdown ul {
   list-style: disc;
@@ -107,54 +153,94 @@ body {
 .markdown ol {
   list-style: decimal;
 }
+.markdown li {
+  margin: 0.2em 0;
+  padding-left: 0.15em;
+}
+.markdown li::marker {
+  color: var(--color-subtle);
+}
+.markdown li > p {
+  margin: 0 0 0.35em;
+}
+.markdown li > ul,
+.markdown li > ol {
+  margin: 0.2em 0 0.35em;
+}
+.markdown li:has(> input[type="checkbox"]) {
+  list-style: none;
+  margin-left: -1.3em;
+}
+.markdown li > input[type="checkbox"] {
+  margin: 0 0.45em 0 0;
+  vertical-align: -0.1em;
+  accent-color: var(--color-accent);
+}
 .markdown code {
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: 0.86em;
   background: var(--color-surface-3);
   border-radius: var(--radius-sm);
-  padding: 1px 4px;
+  padding: 0.1em 0.35em;
+}
+.markdown .code-block {
+  position: relative;
+  margin: 0.75em 0;
 }
 .markdown pre {
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
-  padding: 8px 12px;
+  padding: 10px 14px;
   overflow-x: auto;
-  margin: 0.5em 0;
+  font-size: 12.5px;
+  line-height: 1.6;
+  margin: 0;
 }
 .markdown pre code {
   background: none;
   padding: 0;
+  font-size: inherit;
+  border-radius: 0;
 }
 .markdown a {
   color: var(--color-accent);
   text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--color-accent) 45%, transparent);
+  text-underline-offset: 2px;
 }
-.markdown h1,
-.markdown h2,
-.markdown h3 {
-  font-weight: 600;
-  margin: 0.8em 0 0.4em;
+.markdown a:hover {
+  text-decoration-color: currentColor;
 }
-.markdown h1 {
-  font-size: 1.25em;
+.markdown blockquote {
+  margin: 0.75em 0;
+  border-left: 2px solid var(--color-border-strong);
+  padding-left: 12px;
+  color: var(--color-muted);
 }
-.markdown h2 {
-  font-size: 1.15em;
+.markdown hr {
+  border: 0;
+  border-top: 1px solid var(--color-border);
+  margin: 1.25em 0;
 }
 .markdown table {
+  display: block;
+  max-width: 100%;
+  width: max-content;
+  overflow-x: auto;
   border-collapse: collapse;
-  margin: 0.5em 0;
+  margin: 0.75em 0;
+  font-size: 0.93em;
 }
 .markdown th,
 .markdown td {
   border: 1px solid var(--color-border);
-  padding: 4px 8px;
+  padding: 4px 10px;
+  text-align: left;
 }
-.markdown blockquote {
-  border-left: 3px solid var(--color-border-strong);
-  padding-left: 10px;
-  color: var(--color-muted);
+.markdown th {
+  background: var(--color-surface-2);
+  font-weight: 600;
 }
 
 @keyframes forge-pulse {
@@ -168,16 +254,4 @@ body {
 }
 .animate-soft-pulse {
   animation: forge-pulse 1.4s ease-in-out infinite;
-}
-
-@keyframes forge-indeterminate {
-  0% {
-    left: -35%;
-  }
-  100% {
-    left: 100%;
-  }
-}
-.animate-indeterminate {
-  animation: forge-indeterminate 1.6s ease-in-out infinite;
 }
