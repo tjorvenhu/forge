@@ -12,7 +12,7 @@ import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Dialog } from "@/components/ui/dialog";
 import { Field, Input, Textarea } from "@/components/ui/input";
-import { Badge, EmptyState, ErrorBanner, Loading, SectionTitle } from "@/components/ui/misc";
+import { Badge, Checkbox, EmptyState, ErrorBanner, Loading, SectionTitle } from "@/components/ui/misc";
 import { SessionStatusBadge } from "./SessionStatusBadge";
 
 /**
@@ -26,6 +26,7 @@ export function AgentsTab({ project }: { project: ProjectWithStatus }) {
   const [creating, setCreating] = useState(false);
   const [removing, setRemoving] = useState<ProjectWithStatus | null>(null);
   const [force, setForce] = useState(false);
+  const [deleteBranch, setDeleteBranch] = useState(false);
   const qc = useQueryClient();
   const all = projects.data ?? [];
   const rootId = project.parentId ?? project.id;
@@ -37,14 +38,17 @@ export function AgentsTab({ project }: { project: ProjectWithStatus }) {
     if (!removing) return;
     try {
       closeProjectTerminals([removing.id]);
-      await call("worktrees.remove", { projectId: removing.id, force });
+      const r = await call("worktrees.remove", { projectId: removing.id, force, deleteBranch });
       const ui = useUi.getState();
       if (ui.activeProjectId === removing.id) {
         if (root) ui.openProject(root.id);
         else ui.closeProject();
       }
       await qc.invalidateQueries({ queryKey: keys.projects });
-      toast.success("Worktree entfernt", `Der Branch ${removing.git?.branch ?? ""} bleibt im Repository.`);
+      if (root) void qc.invalidateQueries({ queryKey: keys.branches(root.id) });
+      if (r.branchError) toast.error("Worktree entfernt, Branch nicht gelöscht", r.branchError);
+      else if (r.deletedBranch) toast.success("Worktree und Branch gelöscht", r.deletedBranch);
+      else toast.success("Worktree entfernt", `Der Branch ${removing.git?.branch ?? ""} bleibt im Repository.`);
     } catch (e) {
       // Uncommitted changes: the dialog stays open and switches to the forced variant.
       if (e instanceof RpcCallError && e.code === "CONFLICT" && !force) setForce(true);
@@ -122,6 +126,7 @@ export function AgentsTab({ project }: { project: ProjectWithStatus }) {
                       variant="danger-ghost"
                       onClick={() => {
                         setForce(w.exists && !!w.git?.changedCount);
+                        setDeleteBranch(false);
                         setRemoving(w);
                       }}
                     >
@@ -142,17 +147,23 @@ export function AgentsTab({ project }: { project: ProjectWithStatus }) {
         open={!!removing}
         onOpenChange={(o) => !o && setRemoving(null)}
         title="Worktree entfernen?"
-        description={
-          force
-            ? "Der Worktree hat nicht committete Änderungen. Der Ordner wird samt dieser Änderungen gelöscht. Der Branch und seine Commits bleiben im Repository."
-            : "Der Ordner wird entfernt. Branch und Commits bleiben im Repository erhalten."
-        }
-        confirmLabel={force ? "Trotzdem entfernen" : "Entfernen"}
+        description={[
+          force ? "Der Worktree hat nicht committete Änderungen. Der Ordner wird samt dieser Änderungen gelöscht." : "Der Ordner wird entfernt.",
+          deleteBranch ? "Der Branch wird ohne Merge gelöscht, seine Commits gehen verloren." : "Branch und Commits bleiben im Repository erhalten.",
+        ].join(" ")}
+        confirmLabel={force || deleteBranch ? "Trotzdem entfernen" : "Entfernen"}
         danger
         requireText={force ? "LÖSCHEN" : undefined}
         onConfirm={remove}
       >
-        <p className="text-xs text-muted">Eine laufende Session, Terminals und der Dev-Server dieses Worktrees werden vorher beendet.</p>
+        <div className="space-y-3">
+          <Checkbox
+            checked={deleteBranch}
+            onChange={setDeleteBranch}
+            label={removing?.git?.branch ? `Branch ${removing.git.branch} auch löschen (ohne Merge)` : "Branch auch löschen (ohne Merge)"}
+          />
+          <p className="text-xs text-muted">Eine laufende Session, Terminals und der Dev-Server dieses Worktrees werden vorher beendet.</p>
+        </div>
       </ConfirmDialog>
     </div>
   );

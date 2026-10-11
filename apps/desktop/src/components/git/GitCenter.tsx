@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { GitBranch, GitCommitHorizontal, Plus, RotateCcw } from "lucide-react";
+import { GitBranch, GitCommitHorizontal, Plus, RotateCcw, Trash2 } from "lucide-react";
 import type { CommitInfo, Project } from "@forge/protocol";
 import { call, keys, useGitStatus } from "@/lib/queries";
 import { errorMessage, RpcCallError } from "@/lib/rpc";
@@ -13,6 +13,7 @@ import { Badge, ErrorBanner, SectionTitle, Loading } from "@/components/ui/misc"
 import { GitPanel } from "./GitPanel";
 import { SyncCard } from "./SyncCard";
 import { RestoreDialog } from "./RestoreDialog";
+import { DeleteBranchDialog } from "./DeleteBranchDialog";
 
 /** Workspace tab: changes + history + branches. */
 export function GitCenter({ project }: { project: Project }) {
@@ -20,6 +21,7 @@ export function GitCenter({ project }: { project: Project }) {
   const branches = useQuery({ queryKey: keys.branches(project.id), queryFn: () => call("git.branches", { projectId: project.id }), enabled: project.exists, retry: false });
   const [newBranch, setNewBranch] = useState(false);
   const [restoring, setRestoring] = useState<CommitInfo | null>(null);
+  const [deletingBranch, setDeletingBranch] = useState<string | null>(null);
   const status = useGitStatus(project.id, project.exists);
   const openChanges = status.data?.files.length ?? 0;
 
@@ -55,9 +57,21 @@ export function GitCenter({ project }: { project: Project }) {
                 {b.current ? (
                   <Badge tone="accent">aktuell</Badge>
                 ) : (
-                  <Button size="sm" variant="ghost" onClick={() => void checkout(project.id, b.name, false)}>
-                    Wechseln
-                  </Button>
+                  <>
+                    <Button size="sm" variant="ghost" onClick={() => void checkout(project.id, b.name, false)}>
+                      Wechseln
+                    </Button>
+                    <Button
+                      size="icon-sm"
+                      variant="ghost"
+                      className="hover:text-danger"
+                      onClick={() => setDeletingBranch(b.name)}
+                      aria-label={`Branch ${b.name} löschen`}
+                      title="Branch löschen"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  </>
                 )}
               </div>
             ))}
@@ -103,6 +117,7 @@ export function GitCenter({ project }: { project: Project }) {
         </section>
       </div>
       <NewBranchDialog open={newBranch} onOpenChange={setNewBranch} projectId={project.id} />
+      <DeleteBranchDialog projectId={project.id} branch={deletingBranch} onOpenChange={(o) => !o && setDeletingBranch(null)} />
       <RestoreDialog
         projectId={project.id}
         commit={restoring}

@@ -50,6 +50,18 @@ describe("worktrees", () => {
     expect(await git(repo, "branch", "--list", "feature/parallel")).toContain("feature/parallel");
   });
 
+  it("also deletes the worktree's branch on request, even with unmerged commits", async () => {
+    const parent = await projects.import(repo);
+    const wt = await worktrees.create(parent, "agent/versuch");
+    writeFileSync(path.join(wt.path, "idee.txt"), "nie gemergt\n");
+    await git(wt.path, "add", ".");
+    await git(wt.path, "commit", "-m", "Versuch");
+    const r = await worktrees.remove(wt, false, { deleteBranch: true });
+    expect(r).toEqual({ deletedBranch: "agent/versuch", branchError: null });
+    expect(existsSync(wt.path)).toBe(false);
+    expect(await git(repo, "branch", "--list", "agent/versuch")).toBe("");
+  });
+
   it("numbers colliding folders from a fixed base", () => {
     const taken = new Set(["/x/a", "/x/a-2", "/x/a-3"]);
     expect(freeDir("/x/a", (p) => taken.has(p))).toBe("/x/a-4");

@@ -113,9 +113,9 @@ export function createHandlers(s: Services): Handlers {
     "mcp.remove": ({ projectId, name, scope }) => s.mcp.remove(dirOf(projectId) ?? os.homedir(), name, scope),
 
     "worktrees.create": ({ projectId, branch }) => s.worktrees.create(s.projects.requireExisting(projectId), branch),
-    "worktrees.remove": async ({ projectId, force }) => {
-      await removeWorktree(projectId, force, s);
-      return { ok: true };
+    "worktrees.remove": async ({ projectId, force, deleteBranch }) => {
+      const r = await removeWorktree(projectId, force, s, { deleteBranch });
+      return { ok: true, ...r };
     },
     "sessions.summarize": ({ sessionId }) => s.sessions.summarize(sessionId),
 
@@ -213,6 +213,11 @@ export function createHandlers(s: Services): Handlers {
       return r;
     },
     "git.branches": ({ projectId }) => s.git.branches(projectDir(projectId)),
+    "git.deleteBranch": async ({ projectId, branch, force }) => {
+      await s.git.deleteBranch(projectDir(projectId), branch, force);
+      s.notifyProject(projectId);
+      return s.git.branches(projectDir(projectId));
+    },
     "git.checkout": async ({ projectId, branch, create }) => {
       const busy = s.sessions
         .listAll()

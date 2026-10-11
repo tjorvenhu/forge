@@ -72,7 +72,7 @@ beforeEach(() => {
   callMock.mockImplementation(async (method: string) => {
     if (method === "projects.list") return [app, login, dirty, other, otherWt];
     if (method === "config.docs") return [];
-    if (method === "worktrees.remove") return { ok: true };
+    if (method === "worktrees.remove") return { ok: true, deletedBranch: null, branchError: null };
     throw new Error("unexpected " + method);
   });
 });
@@ -102,9 +102,27 @@ describe("AgentsTab", () => {
       fireEvent.click(screen.getByRole("button", { name: "Entfernen" }));
     });
     expect(closeTerminalsMock).toHaveBeenCalledWith(["wt-login"]);
-    expect(callMock).toHaveBeenCalledWith("worktrees.remove", { projectId: "wt-login", force: false });
+    expect(callMock).toHaveBeenCalledWith("worktrees.remove", { projectId: "wt-login", force: false, deleteBranch: false });
     expect(useUi.getState().activeProjectId).toBe("app");
     expect(useToasts.getState().toasts.at(-1)).toMatchObject({ tone: "success", title: "Worktree entfernt" });
+  });
+
+  it("deletes the branch too when the box is ticked", async () => {
+    callMock.mockImplementation(async (method: string) => {
+      if (method === "projects.list") return [app, login, dirty];
+      if (method === "config.docs") return [];
+      if (method === "worktrees.remove") return { ok: true, deletedBranch: "agent/login", branchError: null };
+      throw new Error("unexpected " + method);
+    });
+    setup(app);
+    await openRemoval("agent/login");
+    fireEvent.click(screen.getByRole("checkbox", { name: /Branch agent\/login auch löschen/ }));
+    expect(screen.getByText(/ohne Merge gelöscht, seine Commits gehen verloren/)).toBeTruthy();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Trotzdem entfernen" }));
+    });
+    expect(callMock).toHaveBeenCalledWith("worktrees.remove", { projectId: "wt-login", force: false, deleteBranch: true });
+    expect(useToasts.getState().toasts.at(-1)).toMatchObject({ tone: "success", title: "Worktree und Branch gelöscht" });
   });
 
   it("asks for the typed confirmation right away when the worktree has changes", async () => {
@@ -116,7 +134,7 @@ describe("AgentsTab", () => {
     await act(async () => {
       fireEvent.click(confirm);
     });
-    expect(callMock).toHaveBeenCalledWith("worktrees.remove", { projectId: "wt-dirty", force: true });
+    expect(callMock).toHaveBeenCalledWith("worktrees.remove", { projectId: "wt-dirty", force: true, deleteBranch: false });
   });
 
   it("keeps the dialog open and shows why when the folder is still in use", async () => {

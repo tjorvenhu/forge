@@ -53,6 +53,12 @@ Bei Treffern fragt FORGE nach, ob trotzdem committet werden soll, und zeigt die 
 Committet wird nur nach ausdrücklicher Bestätigung.
 FORGE pusht in Phase 1 nie.
 
+**Branches löschen** (`git.deleteBranch`) ist eine Aktion im Git-Bereich, nicht für Claude: Die Sperrliste blockiert
+`git branch -d/-D` weiterhin für Claudes Shell. Gelöscht wird nur lokal. Der aktuelle Branch, `main`, `master` und der
+Standard-Branch von `origin` sind gesperrt, ebenso Branches, die in einem Worktree ausgecheckt sind. Branches mit Commits,
+die in keinem anderen Branch stehen, löscht FORGE erst nach einer zweiten Bestätigung. Beim Entfernen eines Agenten kann
+sein Branch auf ausdrücklichen Wunsch ohne Merge mitgelöscht werden.
+
 **Wiederherstellen** (`git.restoreTo`) holt die Dateien des Projektordners auf den Stand eines Commits zurück
 (`git restore --source=<commit> --staged --worktree -- .`). Branch und Verlauf bleiben unverändert, das Ergebnis
 sind neue, nicht committete Änderungen. Offene Änderungen inklusive neuer Dateien sichert FORGE vorher als Git-Stash.
