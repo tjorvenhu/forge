@@ -238,7 +238,7 @@ describe("SessionService", () => {
 });
 
 describe("turn automation via project tags", () => {
-  it("runs tests, commits only files changed during the turn and records a checkpoint", async () => {
+  it("runs tests and commits only files changed during the turn", async () => {
     const repo = projects.get(projectId).path;
     await initRepo(repo);
     writeFileSync(path.join(repo, "alt.txt"), "fremd\n");
@@ -253,7 +253,6 @@ describe("turn automation via project tags", () => {
     await svc.drain();
 
     const types = db.listEvents(s.id).map((e) => e.body);
-    expect(types.find((b) => b.type === "git.checkpoint")).toBeTruthy();
     expect(types.find((b) => b.type === "check.result")).toMatchObject({ ok: true });
     expect(types.find((b) => b.type === "automation")).toMatchObject({ action: "commit", ok: true, files: ["neu.txt"] });
     const log = await git(repo, "log", "--format=%s", "-1");

@@ -22,8 +22,7 @@ export interface HeldTurn {
 }
 
 /**
- * Work after a successful turn: git checkpoint, then the project tags (auto-test, auto-commit,
- * auto-push). Runs in the background; new FORGE messages for the session wait until it is done, so
+ * Work after a successful turn, driven by the project tags (auto-test, auto-commit, auto-push). Runs in the background; new FORGE messages for the session wait until it is done, so
  * the commit only contains what the finished turn changed.
  */
 export class TurnAutomation {
@@ -52,13 +51,14 @@ export class TurnAutomation {
     while (this.background.size) await Promise.all([...this.background]);
   }
 
-  async captureBaseline(sessionId: string, cwd: string) {
-    try {
-      const st = await this.git.status(cwd);
-      this.baseline.set(sessionId, new Set(st.files.map((f) => f.path)));
-    } catch {
-      this.baseline.set(sessionId, new Set());
-    }
+  /** Callers often do not await this; tracking it lets drain() and shutdown wait for the git process. */
+  captureBaseline(sessionId: string, cwd: string): Promise<void> {
+    const p = this.git.status(cwd).then(
+      (st) => void this.baseline.set(sessionId, new Set(st.files.map((f) => f.path))),
+      () => void this.baseline.set(sessionId, new Set()),
+    );
+    this.track(p);
+    return p;
   }
 
   noteTurnStart(sessionId: string) {
@@ -92,7 +92,7 @@ export class TurnAutomation {
 
   /**
    * Starts the post-turn work of a successful turn. When it runs tests or commits, new turns are held
-   * until it is done; a bare checkpoint does not need that.
+   * until it is done; without either there is nothing to wait for.
    */
   schedule(sessionId: string) {
     const rec = this.db.getSession(sessionId);
@@ -129,19 +129,16 @@ export class TurnAutomation {
     const cwd = rec.cwd;
     const seq = this.turnSeq.get(sessionId) ?? 0;
     const baseline = this.baseline.get(sessionId) ?? new Set<string>();
-    let status;
-    try {
-      status = await this.git.status(cwd);
-    } catch {
-      return; // not a git repository: nothing to automate
-    }
-    const head = (await this.git.exec(cwd, ["rev-parse", "--short", "HEAD"])).stdout.trim() || null;
-    this.host.record(sessionId, { type: "git.checkpoint", head, branch: status.summary.branch, changedFiles: status.files.length });
-
     const tags = new Set(project.tags);
     if (!tags.has("auto-commit")) {
       await this.runTests(sessionId, project.testCommand, tags, cwd);
       return;
+    }
+    let status;
+    try {
+      status = await this.git.status(cwd);
+    } catch {
+      return; // not a git repository: nothing to commit
     }
     const files = status.files
       .filter((f) => !baseline.has(f.path) && f.kind !== "conflicted" && !isSensitiveFile(f.path) && !isArtifactPath(f.path))

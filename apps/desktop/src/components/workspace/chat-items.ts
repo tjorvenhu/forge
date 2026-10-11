@@ -2,7 +2,7 @@ import type { SessionEvent, SessionEventBody } from "@forge/protocol";
 
 type Body<T extends SessionEventBody["type"]> = Extract<SessionEventBody, { type: T }>;
 
-export type NoticeIcon = "checkpoint" | "commit" | "push" | "skip" | "rewind" | "compact" | "background" | "limit";
+export type NoticeIcon = "commit" | "push" | "skip" | "rewind" | "compact" | "background" | "limit";
 
 export interface TodoEntry {
   content: string;
@@ -169,21 +169,6 @@ export function buildEventItems(events: SessionEvent[]): ChatItem[] {
       }
       case "check.result":
         items.push({ kind: "check", key: `c${ev.seq}`, ts: ev.ts, body: b });
-        break;
-      case "git.checkpoint":
-        items.push({
-          kind: "notice",
-          key: `g${ev.seq}`,
-          ts: ev.ts,
-          text: `Checkpoint ${b.head ?? "ohne Commit"} ${b.branch ? `auf ${b.branch}` : "ohne Branch"} ·${b.changedFiles} geänderte Datei(en)`,
-          tone: "info",
-          card: {
-            title: "Checkpoint erstellt",
-            ref: b.branch ?? "ohne Branch",
-            detail: `${b.head ? `${b.head} · ` : ""}${b.changedFiles} geänderte Datei(en)`,
-            icon: "checkpoint",
-          },
-        });
         break;
       case "automation":
         items.push({

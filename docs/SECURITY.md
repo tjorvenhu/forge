@@ -53,6 +53,11 @@ Bei Treffern fragt FORGE nach, ob trotzdem committet werden soll, und zeigt die 
 Committet wird nur nach ausdrücklicher Bestätigung.
 FORGE pusht in Phase 1 nie.
 
+**Wiederherstellen** (`git.restoreTo`) holt die Dateien des Projektordners auf den Stand eines Commits zurück
+(`git restore --source=<commit> --staged --worktree -- .`). Branch und Verlauf bleiben unverändert, das Ergebnis
+sind neue, nicht committete Änderungen. Offene Änderungen inklusive neuer Dateien sichert FORGE vorher als Git-Stash.
+Die Commit-Kennung muss hexadezimal sein; während eine Session im Projekt arbeitet, ist Wiederherstellen gesperrt.
+
 ## Redaction
 
 Tool-Eingaben und -Ausgaben werden vor dem Speichern durch `policy/redact.ts` geschickt (API-Keys inkl.

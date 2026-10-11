@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from "react";
-import { ChevronRight, DatabaseBackup, GitCommitHorizontal, Hourglass, Shrink, SkipForward, Undo2, Upload, Gauge } from "lucide-react";
+import { ChevronRight, GitCommitHorizontal, Hourglass, Shrink, SkipForward, Undo2, Upload, Gauge } from "lucide-react";
 import { clockTime, cn } from "@/lib/utils";
 import type { NoticeIcon } from "./chat-items";
 
@@ -13,7 +13,6 @@ const TILE: Record<Tone, string> = {
 };
 
 const ICONS: Record<NoticeIcon, ReactNode> = {
-  checkpoint: <DatabaseBackup className="h-4.5 w-4.5" />,
   commit: <GitCommitHorizontal className="h-4.5 w-4.5" />,
   push: <Upload className="h-4.5 w-4.5" />,
   skip: <SkipForward className="h-4.5 w-4.5" />,
@@ -28,7 +27,7 @@ export function noticeIcon(icon: NoticeIcon): ReactNode {
 }
 
 /**
- * One event in the chat (checkpoint, auto-commit, tests …): icon tile, title, a line with an
+ * One event in the chat (auto-commit, tests, rewind …): icon tile, title, a line with an
  * optional highlighted reference, time. With `children` it expands to show details.
  */
 export function EventCard({

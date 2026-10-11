@@ -309,6 +309,11 @@ export const methods = {
     result: z.object({ hash: z.string(), summary: z.string() }),
   },
   "git.log": { params: projectRef.extend({ limit: z.number().int().min(1).max(500).default(50) }), result: z.array(CommitInfo) },
+  /** Files of the project back to the state of a commit, as uncommitted changes; open work is stashed first. */
+  "git.restoreTo": {
+    params: projectRef.extend({ commit: z.string().regex(/^[0-9a-f]{7,40}$/i) }),
+    result: z.object({ commit: z.string(), subject: z.string(), stashed: z.boolean(), changed: z.number().int() }),
+  },
   "git.branches": { params: projectRef, result: z.array(BranchInfo) },
   "git.checkout": {
     params: projectRef.extend({ branch: z.string().min(1).max(250), create: z.boolean().default(false) }),
