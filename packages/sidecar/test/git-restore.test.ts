@@ -25,7 +25,8 @@ beforeEach(async () => {
 
 afterEach(() => t.cleanup());
 
-describe("restoreTo", () => {
+// Each case runs a dozen real git processes; on Windows under a full test run that exceeds the 5 s default.
+describe("restoreTo", { timeout: 30_000 }, () => {
   it("brings files back to an older commit as uncommitted changes and keeps the history", async () => {
     writeFileSync(path.join(repo, "a.txt"), "alt\n");
     const first = await commitAll("erster Stand");

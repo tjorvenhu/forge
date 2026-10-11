@@ -92,7 +92,7 @@ Umgebungsvariablen für Sonderfälle: `FORGE_NODE` (Pfad zu node), `FORGE_SIDECA
 - **GitHub:** Anmeldung in der App (Code anzeigen, Browser öffnet sich), Liste deiner Repositories mit Klonen per Klick.
 - **Commit-Nachricht per KI:** Funken-Knopf im Commit-Feld; Claude (Haiku) schreibt die Nachricht aus dem Diff im Stil der bisherigen Commits. Sensible Dateien werden nicht gesendet.
 - **Regeln für Claude:** CLAUDE.md global, pro Projekt und lokal (nicht im Git) direkt in FORGE bearbeiten.
-- **Composer:** Bilder, PDFs und Textdateien anhängen (Knopf, Einfügen, Hineinziehen), Slash-Commands mit Auswahlliste, Dateien auf den Stand vor einer Nachricht zurücksetzen.
+- **Composer:** Bilder, PDFs und Textdateien anhängen (Knopf, Einfügen, Hineinziehen), Slash-Commands mit Auswahlliste, `/clear` (auch `/reset`, `/new`) startet wie im Terminal ein neues Gespräch mit leerem Chat, Dateien auf den Stand vor einer Nachricht zurücksetzen.
 - **In der Claude-App weiterarbeiten:** Remote Control pro Projekt verbindet die FORGE-Sessions mit der Claude-App und claude.ai. Nachrichten erscheinen auf beiden Seiten, Freigaben und Sperrliste gelten weiter.
 - **Terminal:** eingebettete Terminals im Projektordner.
 - **Git & GitHub:** Push/Pull mit Schutzregeln, Pull Requests mit KI-Beschreibung und Status, neues Projekt direkt als GitHub-Repo.
