@@ -1,15 +1,18 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { ChevronRight, File, Folder } from "lucide-react";
+import { ChevronRight, Folder } from "lucide-react";
 import type { Project } from "@forge/protocol";
 import { call, keys } from "@/lib/queries";
 import { errorMessage } from "@/lib/rpc";
 import { cn } from "@/lib/utils";
 import { EmptyState, ErrorBanner, Spinner, Loading } from "@/components/ui/misc";
+import { useUi } from "@/stores/ui";
+import { fileIcon } from "./FileTree";
 
 /** Read-only project browser. Editing happens through Claude or your editor. */
 export function FilesTab({ project }: { project: Project }) {
-  const [file, setFile] = useState<string | null>(null);
+  const file = useUi((s) => s.selectedFile[project.id] ?? null);
+  const setFile = (p: string) => useUi.getState().selectFile(project.id, p);
   if (!project.exists) return <EmptyState title="Projektordner fehlt" />;
   return (
     <div className="grid h-full min-h-0 grid-cols-[300px_minmax(0,1fr)]">
@@ -47,12 +50,12 @@ function Dir({ projectId, dir, depth, selected, onSelect }: { projectId: string;
             {e.isDir ? (
               <>
                 <ChevronRight className={cn("h-3 w-3 shrink-0 text-subtle transition-transform", open.has(e.path) && "rotate-90")} />
-                <Folder className="h-3.5 w-3.5 shrink-0 text-accent" />
+                <Folder className="h-3.5 w-3.5 shrink-0 fill-accent/25 text-accent" />
               </>
             ) : (
               <>
                 <span className="w-3 shrink-0" />
-                <File className="h-3.5 w-3.5 shrink-0 text-muted" />
+                <FileIconFor name={e.name} />
               </>
             )}
             <span className="truncate">{e.name}</span>
@@ -62,6 +65,11 @@ function Dir({ projectId, dir, depth, selected, onSelect }: { projectId: string;
       ))}
     </ul>
   );
+}
+
+function FileIconFor({ name }: { name: string }) {
+  const [Icon, tone] = fileIcon(name);
+  return <Icon className={cn("h-3.5 w-3.5 shrink-0", tone)} />;
 }
 
 function FileViewer({ projectId, path }: { projectId: string; path: string }) {

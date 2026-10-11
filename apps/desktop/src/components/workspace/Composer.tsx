@@ -264,7 +264,7 @@ export function Composer({
         : "Nachricht an Claude, / für Befehle, Dateien hineinziehen oder einfügen";
 
   return (
-    <div className="relative shrink-0 px-6 pb-4 pt-2">
+    <div className="relative shrink-0 px-6 pb-5 pt-2">
       {matches.length > 0 && (
         <div className="absolute bottom-full left-6 right-6 z-20 mx-auto mb-1 max-w-4xl overflow-hidden rounded-lg border border-border bg-surface-2 shadow-xl" role="listbox" aria-label="Slash-Commands">
           {matches.map((c, i) => (
@@ -287,7 +287,7 @@ export function Composer({
       )}
       <div
         className={cn(
-          "relative mx-auto max-w-4xl rounded-xl border bg-surface-2 transition-colors",
+          "relative mx-auto max-w-4xl rounded-2xl border bg-surface shadow-lg shadow-black/20 transition-colors",
           dragging ? "border-accent bg-accent-soft" : working ? "border-accent/40" : "border-border focus-within:border-accent",
         )}
       >
@@ -333,7 +333,7 @@ export function Composer({
           placeholder={placeholder}
           aria-label="Nachricht an Claude"
           rows={2}
-          className="block max-h-[260px] w-full resize-none bg-transparent px-4 pt-3 text-[13.5px] text-fg placeholder:text-subtle focus:outline-none focus-visible:outline-none"
+          className="block max-h-[260px] w-full resize-none bg-transparent px-5 pt-4 text-[14px] text-fg placeholder:text-subtle focus:outline-none focus-visible:outline-none"
           onKeyDown={(e) => {
             if (matches.length) {
               if (e.key === "ArrowDown" || e.key === "ArrowUp") {
@@ -365,14 +365,14 @@ export function Composer({
             }
           }}
         />
-        <div className="flex items-center gap-2 px-3 pb-2.5 pt-1">
+        <div className="flex items-center gap-2 px-4 pb-3.5 pt-2">
           <Tooltip content="Bilder, PDFs oder Textdateien anhängen (auch per Einfügen oder Hineinziehen)">
             <Button size="icon-sm" variant="ghost" onClick={() => void pickFiles()} aria-label="Dateien anhängen" disabled={files.length >= MAX_ATTACHMENTS}>
               <Paperclip className="h-3.5 w-3.5" />
             </Button>
           </Tooltip>
           <Tooltip content={isPlan ? "Plan-Modus: Claude plant nur und ändert nichts" : "Nur planen (Plan-Modus)"}>
-            <Button size="sm" variant={isPlan ? "secondary" : "ghost"} onClick={() => void togglePlan()} aria-pressed={isPlan} className={cn(isPlan && "text-accent")}>
+            <Button size="sm" variant={isPlan ? "secondary" : "outline"} onClick={() => void togglePlan()} aria-pressed={isPlan} className={cn("h-8 rounded-lg px-3", isPlan && "border-accent/40 text-accent")}>
               <ListTodo className="h-3.5 w-3.5" /> Planen
             </Button>
           </Tooltip>
@@ -402,14 +402,15 @@ export function Composer({
           )}
           <Select size="sm" value={effectiveModel ?? "__default"} onChange={(v) => void changeModel(v)} options={modelOptions} className="w-40" aria-label="Modell" disabled={working} />
           {working && (
-            <Button size="icon-sm" variant="danger" onClick={() => void stop()} aria-label="Stoppen (Esc)" title="Stoppen (Esc)" disabled={session?.status === "stopping"}>
+            <Button size="icon" variant="danger" className="h-9 w-9 rounded-lg" onClick={() => void stop()} aria-label="Stoppen (Esc)" title="Stoppen (Esc)" disabled={session?.status === "stopping"}>
               <Square className="h-3.5 w-3.5 fill-current" />
             </Button>
           )}
           {(!working || text.trim() || files.length > 0) && (
             <Button
-              size="icon-sm"
+              size="icon"
               variant="primary"
+              className="h-9 w-9 rounded-lg"
               onClick={() => void send()}
               disabled={(!text.trim() && !files.length) || waiting}
               loading={sending}

@@ -16,6 +16,7 @@ import { PlanCard, QuestionCard } from "./InteractiveCards";
 import { Composer } from "./Composer";
 import { Markdown } from "./Markdown";
 import { ApprovalBlock, ToolCard } from "./ToolCard";
+import { EventCard, noticeIcon } from "./EventCard";
 import { SessionStatusBadge } from "./SessionStatusBadge";
 import { ClaudeMark } from "./ClaudeMark";
 import { SummaryButton } from "./SummaryButton";
@@ -27,7 +28,7 @@ import { turnStartedAt } from "./working";
 /** activeSession values starting with this prefix point at a terminal session not yet adopted by FORGE */
 export const EXTERNAL_PREFIX = "ext:";
 
-export function ChatPanel({ project }: { project: Project }) {
+export function ChatPanel({ project, workingInPanel = false }: { project: Project; workingInPanel?: boolean }) {
   const active = useUi((s) => s.activeSession[project.id] ?? null);
   const setActive = useUi((s) => s.setActiveSession);
   const sessions = useSessions(project.id);
@@ -56,7 +57,7 @@ export function ChatPanel({ project }: { project: Project }) {
         onSelect={(id) => setActive(project.id, id)}
       />
       {sessionId ? (
-        <SessionThread key={sessionId} sessionId={sessionId} session={session.data ?? null} project={project} />
+        <SessionThread key={sessionId} sessionId={sessionId} session={session.data ?? null} project={project} workingInPanel={workingInPanel} />
       ) : (
         <NewSessionPane project={project} external={external} />
       )}
@@ -187,7 +188,7 @@ function NewSessionPane({ project, external }: { project: Project; external: Ext
   );
 }
 
-function SessionThread({ sessionId, session, project }: { sessionId: string; session: Session | null; project: Project }) {
+function SessionThread({ sessionId, session, project, workingInPanel }: { sessionId: string; session: Session | null; project: Project; workingInPanel: boolean }) {
   const buffer = useSessionHistory(sessionId);
   const items = useMemo(() => buildChatItems(buffer?.events ?? [], buffer?.streaming ?? {}), [buffer?.events, buffer?.streaming]);
   const retryPrompt = useMemo(() => lastUserPrompt(buffer?.events ?? []), [buffer?.events]);
@@ -258,7 +259,7 @@ function SessionThread({ sessionId, session, project }: { sessionId: string; ses
       >
         <div className="relative mx-auto w-full max-w-4xl" style={{ height: virtualizer.getTotalSize() + 24 }}>
           {virtualizer.getVirtualItems().map((v) => (
-            <div key={v.key} data-index={v.index} ref={virtualizer.measureElement} className="absolute left-0 right-0 px-6 pt-3" style={{ transform: `translateY(${v.start}px)` }}>
+            <div key={v.key} data-index={v.index} ref={virtualizer.measureElement} className="absolute left-0 right-0 px-6 pt-4" style={{ transform: `translateY(${v.start}px)` }}>
               <div className={cn("rounded-lg transition-shadow duration-500", highlight === items[v.index]!.key && "ring-2 ring-accent/60 ring-offset-4 ring-offset-bg")}>
               <ItemView
                 item={items[v.index]!}
@@ -271,7 +272,7 @@ function SessionThread({ sessionId, session, project }: { sessionId: string; ses
             </div>
           ))}
         </div>
-        {startedAt && <WorkingIndicator startedAt={startedAt} />}
+        {startedAt && !workingInPanel && <WorkingIndicator startedAt={startedAt} />}
         {!!session?.background.length && <BackgroundIndicator tasks={session.background} />}
       </div>
       <Composer project={project} session={session} prefill={retryText} onPrefillConsumed={() => setRetryText(null)} />
@@ -286,18 +287,23 @@ function ItemView({ item, sessionId, live, projectDir, onRetry }: { item: ChatIt
     case "assistant":
       return (
         <div className="flex gap-3">
-          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-claude-soft">
-            <ClaudeMark size={18} />
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-claude-soft">
+            <ClaudeMark size={20} />
           </div>
-          <div className="min-w-0 flex-1 pt-0.5">
-            <Markdown text={item.text} />
-            {item.streaming && <span className="animate-soft-pulse ml-0.5 inline-block h-3.5 w-1.5 translate-y-0.5 bg-accent" aria-label="schreibt" />}
+          <div className="min-w-0 flex-1 rounded-xl border border-border bg-surface px-4 py-3">
+            <div className="flex items-start gap-4">
+              <div className="min-w-0 flex-1">
+                <Markdown text={item.text} />
+                {item.streaming && <span className="animate-soft-pulse ml-0.5 inline-block h-3.5 w-1.5 translate-y-0.5 bg-accent" aria-label="schreibt" />}
+              </div>
+              {item.ts && <span className="shrink-0 pt-0.5 text-[11.5px] text-subtle">{clockTime(item.ts)}</span>}
+            </div>
           </div>
         </div>
       );
     case "tool":
       return (
-        <div className="pl-10">
+        <div className="pl-12">
           <ToolCard item={item} sessionId={sessionId} sessionLive={live} projectDir={projectDir} />
         </div>
       );
@@ -315,16 +321,16 @@ function ItemView({ item, sessionId, live, projectDir, onRetry }: { item: ChatIt
           todos: null,
           superseded: false,
         };
-        return <div className="pl-10">{item.req.toolName === "AskUserQuestion" ? <QuestionCard item={tool} sessionId={sessionId} /> : <PlanCard item={tool} sessionId={sessionId} />}</div>;
+        return <div className="pl-12">{item.req.toolName === "AskUserQuestion" ? <QuestionCard item={tool} sessionId={sessionId} /> : <PlanCard item={tool} sessionId={sessionId} />}</div>;
       }
       return (
-        <div className="overflow-hidden rounded-lg border border-warning/50 pl-0">
+        <div className="ml-12 overflow-hidden rounded-xl border border-warning/50">
           <ApprovalBlock req={item.req} resolved={item.resolved} sessionId={sessionId} projectDir={projectDir} />
         </div>
       );
     case "blocked":
       return (
-        <div className="ml-10 flex items-start gap-2 rounded-lg border border-danger/40 bg-danger-soft px-3 py-2 text-xs">
+        <div className="ml-12 flex items-start gap-2 rounded-xl border border-danger/40 bg-danger-soft px-3.5 py-2.5 text-[13px]">
           <ShieldAlert className="mt-0.5 h-3.5 w-3.5 text-danger" /> Von der FORGE-Policy blockiert ({item.body.toolName}): {item.body.message}
         </div>
       );
@@ -332,7 +338,7 @@ function ItemView({ item, sessionId, live, projectDir, onRetry }: { item: ChatIt
       return <ResultLine body={item.body} onRetry={onRetry} />;
     case "error":
       return (
-        <div className="ml-10 flex items-start gap-2 rounded-lg border border-danger/40 bg-danger-soft px-3 py-2 text-[13px]">
+        <div className="ml-12 flex items-start gap-2 rounded-xl border border-danger/40 bg-danger-soft px-3.5 py-2.5 text-[13.5px]">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-danger" />
           <div className="min-w-0 flex-1 break-words">{item.message}</div>
           {item.retryable && onRetry && (
@@ -343,10 +349,12 @@ function ItemView({ item, sessionId, live, projectDir, onRetry }: { item: ChatIt
         </div>
       );
     case "notice":
+      if (item.card)
+        return <EventCard icon={noticeIcon(item.card.icon)} tone={item.tone} title={item.card.title} refText={item.card.ref} detail={item.card.detail} ts={item.ts} />;
       return (
         <div
           className={cn(
-            "ml-10 flex items-center gap-2 text-xs",
+            "ml-12 flex items-center gap-2 text-[12.5px]",
             item.tone === "warning" ? "text-warning" : item.tone === "danger" ? "text-danger" : item.tone === "success" ? "text-success" : "text-muted",
           )}
         >
@@ -354,31 +362,30 @@ function ItemView({ item, sessionId, live, projectDir, onRetry }: { item: ChatIt
         </div>
       );
     case "check":
-      return <CheckCard body={item.body} />;
+      return <CheckCard body={item.body} ts={item.ts} />;
   }
 }
 
-function CheckCard({ body }: { body: Extract<ChatItem, { kind: "check" }>["body"] }) {
-  const [open, setOpen] = useState(!body.ok);
+function CheckCard({ body, ts }: { body: Extract<ChatItem, { kind: "check" }>["body"]; ts: string }) {
   return (
-    <div className={cn("ml-10 rounded-lg border bg-surface", body.ok ? "border-success/30" : "border-danger/40")}>
-      <button className="flex w-full items-center gap-2 px-3 py-2 text-left text-[13px]" onClick={() => setOpen(!open)} aria-expanded={open}>
-        {body.ok ? <CheckCircle2 className="h-4 w-4 text-success" /> : <XCircle className="h-4 w-4 text-danger" />}
-        <span className="font-medium">{body.ok ? "Tests grün" : "Tests fehlgeschlagen"}</span>
-        <span className="min-w-0 flex-1 truncate font-mono text-xs text-muted">{body.command}</span>
-        <span className="text-[11px] text-subtle">{formatDuration(body.durationMs)}</span>
-      </button>
-      {open && body.output && (
-        <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-all border-t border-border bg-bg p-2 font-mono text-[11px] text-muted">{body.output}</pre>
-      )}
-    </div>
+    <EventCard
+      icon={body.ok ? <CheckCircle2 className="h-[18px] w-[18px]" /> : <XCircle className="h-[18px] w-[18px]" />}
+      tone={body.ok ? "success" : "danger"}
+      title={body.ok ? "Tests erfolgreich" : "Tests fehlgeschlagen"}
+      refText={body.command}
+      detail={formatDuration(body.durationMs)}
+      ts={ts}
+      defaultOpen={!body.ok}
+    >
+      {body.output ? <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-all bg-bg p-3 font-mono text-[11.5px] text-muted">{body.output}</pre> : undefined}
+    </EventCard>
   );
 }
 
 function ResultLine({ body, onRetry }: { body: Extract<ChatItem, { kind: "result" }>["body"]; onRetry?: () => void }) {
   const interrupted = body.isError && /interrupt|abgebrochen|aborted/i.test(`${body.subtype} ${body.text ?? ""}`);
   return (
-    <div className="ml-10 flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-border/60 pt-2 text-[11px] text-subtle">
+    <div className="ml-12 flex flex-wrap items-center gap-x-3 gap-y-1 px-1 pt-1 text-[11.5px] text-subtle">
       {body.isError ? (
         interrupted ? (
           <span className="text-warning">Gestoppt</span>
@@ -425,9 +432,9 @@ function UserMessage({ item, sessionId }: { item: Extract<ChatItem, { kind: "use
     }
   };
   return (
-    <div className="group flex gap-3">
-      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-surface-3 text-xs font-semibold text-muted">Du</div>
-      <div className="flex min-w-0 max-w-full flex-col items-start gap-1.5">
+    <div className="group relative flex gap-3">
+      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-accent/25 bg-accent-soft text-[12px] font-semibold text-accent">Du</div>
+      <div className="flex min-w-0 flex-1 flex-col gap-2 rounded-xl border border-border bg-surface-2 px-4 py-3">
         {item.attachments.length > 0 && (
           <div className="flex flex-wrap gap-1.5">
             {item.attachments.map((a, i) => (
@@ -438,9 +445,9 @@ function UserMessage({ item, sessionId }: { item: Extract<ChatItem, { kind: "use
             ))}
           </div>
         )}
-        <div className="flex w-fit min-w-0 max-w-full items-end gap-3 rounded-lg border border-border bg-surface-2 px-3 py-1.5">
-          <div className="min-w-0 whitespace-pre-wrap break-words text-[13.5px]">{item.text}</div>
-          <div className="flex shrink-0 items-center gap-1 pb-px text-[11px] text-subtle">
+        <div className="flex min-w-0 items-start gap-4">
+          <div className="min-w-0 flex-1 whitespace-pre-wrap break-words text-[14px] leading-relaxed">{item.text}</div>
+          <div className="flex shrink-0 items-center gap-1 pt-0.5 text-[11.5px] text-subtle">
             {item.remote && (
               <span className="flex items-center gap-0.5" title="In der Claude-App geschrieben">
                 <Smartphone className="h-3 w-3" /> App
@@ -452,7 +459,7 @@ function UserMessage({ item, sessionId }: { item: Extract<ChatItem, { kind: "use
       </div>
       {item.uuid && (
         <Tooltip content="Dateien auf den Stand vor dieser Nachricht zurücksetzen">
-          <Button size="icon-sm" variant="ghost" className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100" onClick={() => void check()} loading={loading} aria-label="Dateien auf diesen Stand zurücksetzen">
+          <Button size="icon-sm" variant="ghost" className="absolute -right-9 top-1.5 opacity-0 group-hover:opacity-100 focus-visible:opacity-100" onClick={() => void check()} loading={loading} aria-label="Dateien auf diesen Stand zurücksetzen">
             {!loading && <Undo2 className="h-3.5 w-3.5" />}
           </Button>
         </Tooltip>

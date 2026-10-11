@@ -6,7 +6,7 @@ import { openExternal } from "@/lib/native";
 /** Renders assistant markdown. Raw HTML is not rendered; links open in the system browser. */
 export const Markdown = memo(function Markdown({ text }: { text: string }) {
   return (
-    <div className="markdown break-words text-[13.5px] leading-relaxed">
+    <div className="markdown break-words text-[14px] leading-relaxed">
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         components={{

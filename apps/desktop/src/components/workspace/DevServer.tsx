@@ -5,6 +5,7 @@ import type { DevServerState, Project } from "@forge/protocol";
 import { call, keys, useDevServer } from "@/lib/queries";
 import { errorMessage } from "@/lib/rpc";
 import { openExternal } from "@/lib/native";
+import { cn } from "@/lib/utils";
 import { useUi } from "@/stores/ui";
 import { toast } from "@/stores/toast";
 import { draftKey, useDrafts } from "@/stores/drafts";
@@ -47,21 +48,15 @@ export function DevServerButton({ project }: { project: Project }) {
   if (!state) return null;
 
   if (state.status !== "running") {
-    const crashed = state.status === "exited" && state.exitCode !== 0 && state.exitCode !== null;
+    const crashed = (state.status === "exited" && state.exitCode !== 0 && state.exitCode !== null) || state.status === "failed";
     return (
-      <div className="flex items-center">
-        {(crashed || state.status === "failed") && (
-          <Tooltip content="Der Dev-Server wurde unerwartet beendet. Ausgabe ansehen">
-            <button onClick={openLogs} className="mr-1 rounded p-1 text-danger hover:bg-surface-3" aria-label="Ausgabe des Dev-Servers ansehen">
-              <ScrollText className="h-3.5 w-3.5" />
-            </button>
-          </Tooltip>
-        )}
+      <div className="flex items-center gap-1">
         <Tooltip content={state.effectiveCommand ? `Dev-Server starten: ${state.effectiveCommand}` : "Kein Startbefehl erkannt. In den Projekt-Einstellungen eintragen."}>
-          <Button
-            size="sm"
-            variant="ghost"
-            className="h-8"
+          <button
+            className={cn(
+              "flex h-9 items-center gap-2 rounded-lg border px-3 text-[13px] transition-colors",
+              crashed ? "border-danger/30 bg-danger-soft text-danger" : "border-border text-muted hover:border-border-strong hover:text-fg",
+            )}
             onClick={() => {
               if (!state.effectiveCommand) {
                 useUi.getState().setWorkspaceTab("settings");
@@ -71,24 +66,33 @@ export function DevServerButton({ project }: { project: Project }) {
               void start();
             }}
           >
-            <Play className="h-3.5 w-3.5" /> Dev-Server
-          </Button>
+            <Play className="h-3.5 w-3.5" /> {crashed ? "Dev-Server beendet" : "Dev-Server"}
+          </button>
         </Tooltip>
+        {crashed && (
+          <Tooltip content="Der Dev-Server wurde unerwartet beendet. Ausgabe ansehen">
+            <button onClick={openLogs} className="flex h-9 w-9 items-center justify-center rounded-lg text-danger hover:bg-surface-3" aria-label="Ausgabe des Dev-Servers ansehen">
+              <ScrollText className="h-4 w-4" />
+            </button>
+          </Tooltip>
+        )}
       </div>
     );
   }
 
   return (
-    <div className="flex h-8 items-center gap-1 rounded-md border border-border bg-surface pl-2 pr-0.5">
-      <span className="h-1.5 w-1.5 animate-soft-pulse rounded-full bg-success" aria-hidden />
+    <div className={cn("flex h-9 items-center gap-1 rounded-lg border pl-3 pr-1 text-[13px]", state.url ? "border-success/30 bg-success-soft" : "border-warning/30 bg-warning-soft")}>
+      <span className={cn("h-2 w-2 shrink-0 rounded-full", state.url ? "bg-success" : "animate-soft-pulse bg-warning")} aria-hidden />
       {state.url ? (
         <Tooltip content={`${state.url} im Browser öffnen`}>
-          <button onClick={() => void openExternal(state.url!)} className="flex items-center gap-1 px-1 font-mono text-xs hover:text-accent">
-            {hostOf(state.url)} <ExternalLink className="h-3 w-3" />
+          <button onClick={() => void openExternal(state.url!)} className="flex items-center gap-1.5 px-1 text-success hover:underline">
+            Dev-Server online
+            <span className="font-mono text-xs text-fg/70">{hostOf(state.url)}</span>
+            <ExternalLink className="h-3 w-3" />
           </button>
         </Tooltip>
       ) : (
-        <span className="px-1 text-xs text-muted">startet …</span>
+        <span className="px-1 text-warning">Dev-Server startet …</span>
       )}
       <Tooltip content="Ausgabe des Dev-Servers">
         <Button size="icon-sm" variant="ghost" onClick={openLogs} aria-label="Ausgabe des Dev-Servers">

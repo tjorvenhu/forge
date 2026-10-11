@@ -2,6 +2,8 @@ import type { SessionEvent, SessionEventBody } from "@forge/protocol";
 
 type Body<T extends SessionEventBody["type"]> = Extract<SessionEventBody, { type: T }>;
 
+export type NoticeIcon = "checkpoint" | "commit" | "push" | "skip" | "rewind" | "compact" | "background" | "limit";
+
 export interface TodoEntry {
   content: string;
   status: "pending" | "in_progress" | "completed";
@@ -27,7 +29,15 @@ export type ChatItem =
   | { kind: "blocked"; key: string; ts: string; body: Body<"policy.blocked"> }
   | { kind: "result"; key: string; ts: string; body: Body<"turn.result"> }
   | { kind: "error"; key: string; ts: string; message: string; retryable: boolean }
-  | { kind: "notice"; key: string; ts: string; text: string; tone: "info" | "warning" | "success" | "danger" }
+  | {
+      kind: "notice";
+      key: string;
+      ts: string;
+      text: string;
+      tone: "info" | "warning" | "success" | "danger";
+      /** shown as an event card when set: title, a highlighted reference (hash, branch) and a detail line */
+      card?: { title: string; ref: string | null; detail: string; icon: NoticeIcon };
+    }
   | { kind: "check"; key: string; ts: string; body: Body<"check.result"> };
 
 function parseTodos(input: Record<string, unknown>): TodoEntry[] | null {
@@ -124,6 +134,12 @@ export function buildChatItems(events: SessionEvent[], streaming: Record<string,
           ts: ev.ts,
           text: `Checkpoint ${b.head ?? "ohne Commit"} auf ${b.branch ?? "detached"} · ${b.changedFiles} geänderte Datei(en)`,
           tone: "info",
+          card: {
+            title: "Checkpoint erstellt",
+            ref: b.branch ?? "detached",
+            detail: `${b.head ? `${b.head} · ` : ""}${b.changedFiles} geänderte Datei(en)`,
+            icon: "checkpoint",
+          },
         });
         break;
       case "automation":
@@ -138,6 +154,12 @@ export function buildChatItems(events: SessionEvent[], streaming: Record<string,
                 ? `Auto-Push: ${b.message}`
                 : b.message,
           tone: !b.ok ? "danger" : b.action === "skip" ? "warning" : "success",
+          card:
+            b.action === "commit"
+              ? { title: b.ok ? "Auto-Commit" : "Auto-Commit fehlgeschlagen", ref: b.ok ? (b.hash?.slice(0, 7) ?? null) : null, detail: b.ok ? `${b.message} · ${b.files.length} Datei(en)` : b.message, icon: "commit" }
+              : b.action === "push"
+                ? { title: b.ok ? "Auto-Push" : "Auto-Push fehlgeschlagen", ref: null, detail: b.message, icon: "push" }
+                : { title: "Automatik übersprungen", ref: null, detail: b.message.replace(/^Auto-(Commit|Push) übersprungen:\s*/, ""), icon: "skip" },
         });
         break;
       case "files.rewound":
@@ -147,6 +169,7 @@ export function buildChatItems(events: SessionEvent[], streaming: Record<string,
           ts: ev.ts,
           text: b.filesChanged.length ? `Dateien zurückgesetzt: ${b.filesChanged.length} Datei(en)` : "Zurückgesetzt, keine Dateien geändert",
           tone: "info",
+          card: { title: "Dateien zurückgesetzt", ref: null, detail: b.filesChanged.length ? `${b.filesChanged.length} Datei(en) auf den früheren Stand` : "Keine Dateien geändert", icon: "rewind" },
         });
         break;
       case "turn.result":
@@ -159,6 +182,12 @@ export function buildChatItems(events: SessionEvent[], streaming: Record<string,
           ts: ev.ts,
           text: `${b.trigger === "auto" ? "Kontext automatisch komprimiert" : "Kontext komprimiert"}${b.preTokens !== null ? `: vorher ${formatK(b.preTokens)}${b.postTokens !== null ? `, nachher ${formatK(b.postTokens)}` : ""} Tokens` : ""}. Claude arbeitet mit einer Zusammenfassung des bisherigen Verlaufs weiter.`,
           tone: "info",
+          card: {
+            title: b.trigger === "auto" ? "Kontext automatisch komprimiert" : "Kontext komprimiert",
+            ref: null,
+            detail: b.preTokens !== null ? `vorher ${formatK(b.preTokens)}${b.postTokens !== null ? `, nachher ${formatK(b.postTokens)}` : ""} Tokens · Claude arbeitet mit einer Zusammenfassung weiter` : "Claude arbeitet mit einer Zusammenfassung weiter",
+            icon: "compact",
+          },
         });
         break;
       case "error":
@@ -174,7 +203,16 @@ export function buildChatItems(events: SessionEvent[], streaming: Record<string,
                 ? `Hintergrundaufgabe fehlgeschlagen: ${b.description}`
                 : `Hintergrundaufgabe beendet: ${b.description}`;
         const tone = b.state === "completed" ? "success" : b.state === "failed" ? "danger" : b.state === "stopped" ? "warning" : "info";
-        items.push({ kind: "notice", key: `n${ev.seq}`, ts: ev.ts, text, tone });
+        const title =
+          b.state === "started" ? "Läuft im Hintergrund" : b.state === "completed" ? "Hintergrundaufgabe fertig" : b.state === "failed" ? "Hintergrundaufgabe fehlgeschlagen" : "Hintergrundaufgabe beendet";
+        items.push({
+          kind: "notice",
+          key: `n${ev.seq}`,
+          ts: ev.ts,
+          text,
+          tone,
+          card: { title, ref: null, detail: b.state === "started" ? `${b.description} · Claude meldet sich, wenn sie fertig ist` : b.description, icon: "background" },
+        });
         break;
       }
       case "status":
@@ -183,7 +221,14 @@ export function buildChatItems(events: SessionEvent[], streaming: Record<string,
       case "rate_limit":
         if (b.status !== "allowed") {
           const when = b.resetsAt ? new Date(b.resetsAt * 1000).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" }) : null;
-          items.push({ kind: "notice", key: `n${ev.seq}`, ts: ev.ts, text: `Nutzungslimit: ${b.status}${when ? `, zurückgesetzt um ${when}` : ""}`, tone: "warning" });
+          items.push({
+            kind: "notice",
+            key: `n${ev.seq}`,
+            ts: ev.ts,
+            text: `Nutzungslimit: ${b.status}${when ? `, zurückgesetzt um ${when}` : ""}`,
+            tone: "warning",
+            card: { title: "Nutzungslimit", ref: null, detail: `${b.status}${when ? ` · zurückgesetzt um ${when}` : ""}`, icon: "limit" },
+          });
         }
         break;
       default:
