@@ -5,6 +5,7 @@ import type {
   ExternalSession,
   PermissionMode,
   PlanUsage,
+  RateLimitState,
   RemoteState,
   RuntimeInfo,
   ServerEvent,
@@ -17,9 +18,12 @@ import type { Db } from "../persistence/db.js";
 import type { GitEngine } from "../git/git.js";
 import type { ProjectManager } from "../projects/project-manager.js";
 import { ApprovalGate } from "./approvals.js";
+import { AutoContinue } from "./auto-continue.js";
 import { ClaudeAssist } from "./claude-assist.js";
 import { SessionLifecycle, type StartParams } from "./lifecycle.js";
+import { BUSY } from "./live-session.js";
 import { PermissionModes } from "./permission-mode.js";
+import { RateLimitTracker } from "./rate-limit.js";
 import { RemoteBridge } from "./remote-bridge.js";
 import { RuntimeCatalog } from "./runtime-catalog.js";
 import { SessionCore } from "./session-core.js";
@@ -38,6 +42,8 @@ export class SessionService {
   private readonly modes: PermissionModes;
   private readonly approvals: ApprovalGate;
   private readonly lifecycle: SessionLifecycle;
+  private readonly autoContinue: AutoContinue;
+  private readonly limits: RateLimitTracker;
 
   constructor(
     private readonly db: Db,
@@ -45,9 +51,12 @@ export class SessionService {
     git: GitEngine,
     private readonly runtime: ClaudeRuntime,
     emit: (e: ServerEvent) => void,
+    /** wall clock; tests move it to simulate waiting and sleep */
+    now: () => number = Date.now,
   ) {
     const core = (this.core = new SessionCore(db, emit));
     const record = core.record.bind(core);
+    this.limits = new RateLimitTracker(emit, now);
     this.assist = new ClaudeAssist(db, projects, git, runtime);
     this.catalog = new RuntimeCatalog(core, projects, runtime);
     this.automation = new TurnAutomation(db, projects, git, {
@@ -71,7 +80,32 @@ export class SessionService {
       abortReason: (id) => this.remote.abortReason(id),
       syncPermissionMode: (id, mode) => this.modes.sync(id, mode),
     });
-    const stream = new SessionStream(core, { automation: this.automation, remote: this.remote, turns: this.turns, modes: this.modes, catalog: this.catalog });
+    this.autoContinue = new AutoContinue(
+      db,
+      {
+        record,
+        publish: (id) => core.publish(db.getSession(id)),
+        enabled: () => db.getSettings().autoContinueAfterLimit,
+        planUsage: () => this.catalog.planUsage(true),
+        isBusy: (id) => [...BUSY, "stopping"].includes(db.getSession(id)?.status ?? "stopped"),
+        send: (id, text) => this.lifecycle.resume(id, text, [], "auto"),
+        track: (p) => this.automation.track(p),
+      },
+      now,
+    );
+    // User messages arrive from FORGE, the phone and the Claude app; each one ends a pending plan.
+    core.onRecord = (id, body) => {
+      if (body.type === "user.message" && body.source !== "auto") this.autoContinue.userInput(id);
+    };
+    const stream = new SessionStream(core, {
+      automation: this.automation,
+      remote: this.remote,
+      turns: this.turns,
+      modes: this.modes,
+      catalog: this.catalog,
+      autoContinue: this.autoContinue,
+      limits: this.limits,
+    });
     this.lifecycle = new SessionLifecycle(core, projects, runtime, {
       automation: this.automation,
       remote: this.remote,
@@ -178,7 +212,35 @@ export class SessionService {
   }
 
   stop(sessionId: string): Promise<Session> {
+    this.autoContinue.cancel(sessionId, "Session gestoppt.");
     return this.lifecycle.stop(sessionId);
+  }
+
+  // ---------- automatic continuation after a usage limit
+
+  cancelAutoContinue(sessionId: string): Session {
+    this.get(sessionId);
+    this.autoContinue.cancel(sessionId, "Du hast das automatische Weitermachen abgebrochen.");
+    return this.get(sessionId);
+  }
+
+  /** Switching the setting off drops all pending plans right away instead of at the next check. */
+  settingsChanged() {
+    if (!this.db.getSettings().autoContinueAfterLimit) this.autoContinue.cancelAll("Automatisches Weitermachen ist in den Einstellungen ausgeschaltet.");
+  }
+
+  /** Starts the periodic checks (due continuations, passed limit resets); the app calls this once. */
+  startBackgroundChecks() {
+    this.autoContinue.start(() => this.limits.tick());
+  }
+
+  /** Runs due continuations now; the periodic check calls the same. */
+  checkAutoContinue() {
+    return this.autoContinue.check();
+  }
+
+  rateLimit(): RateLimitState {
+    return this.limits.state();
   }
 
   close(sessionId: string): Session {
@@ -190,10 +252,12 @@ export class SessionService {
   }
 
   delete(sessionId: string, deleteTranscript: boolean) {
+    this.autoContinue.forget(sessionId);
     return this.lifecycle.delete(sessionId, deleteTranscript);
   }
 
   shutdown() {
+    this.autoContinue.stop();
     this.lifecycle.shutdown();
   }
 

@@ -1,6 +1,8 @@
 import type { BackgroundTask } from "@forge/protocol";
+import type { AutoContinue } from "./auto-continue.js";
 import { pruneSeenUuids, type LiveSession } from "./live-session.js";
 import type { PermissionModes } from "./permission-mode.js";
+import type { RateLimitTracker } from "./rate-limit.js";
 import type { RemoteBridge } from "./remote-bridge.js";
 import type { RuntimeCatalog } from "./runtime-catalog.js";
 import type { SessionCore } from "./session-core.js";
@@ -13,6 +15,8 @@ export interface StreamParts {
   turns: TurnDispatch;
   modes: PermissionModes;
   catalog: RuntimeCatalog;
+  autoContinue: AutoContinue;
+  limits: RateLimitTracker;
 }
 
 /** Turns the CLI's message stream into timeline events and session state (status, context, background tasks). */
@@ -22,6 +26,8 @@ export class SessionStream {
   private readonly turns: TurnDispatch;
   private readonly modes: PermissionModes;
   private readonly catalog: RuntimeCatalog;
+  private readonly autoContinue: AutoContinue;
+  private readonly limits: RateLimitTracker;
 
   constructor(
     private readonly core: SessionCore,
@@ -32,6 +38,8 @@ export class SessionStream {
     this.turns = parts.turns;
     this.modes = parts.modes;
     this.catalog = parts.catalog;
+    this.autoContinue = parts.autoContinue;
+    this.limits = parts.limits;
   }
 
   handle(id: string, live: LiveSession, msg: unknown) {
@@ -60,6 +68,9 @@ export class SessionStream {
         );
       } else if (body.type === "context.compacted") {
         this.refreshContext(id, live);
+      } else if (body.type === "rate_limit") {
+        this.limits.note(body);
+        this.autoContinue.noteRateLimit(id, body);
       } else if (body.type === "turn.result") {
         this.refreshContext(id, live);
         const wasInterrupt = live.interrupting;
@@ -70,6 +81,7 @@ export class SessionStream {
         const failed = body.isError && !wasInterrupt;
         this.core.setStatus(id, "idle", wasInterrupt ? "Gestoppt" : null, { lastError: failed ? (body.text ?? body.subtype) : null });
         if (!wasInterrupt && !body.isError) this.automation.schedule(id);
+        this.autoContinue.onTurnResult(id, body, wasInterrupt);
       }
     }
   }

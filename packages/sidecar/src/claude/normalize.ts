@@ -59,6 +59,8 @@ export class Normalizer {
             status: str(info.status) ?? "unknown",
             resetsAt: num(info.resetsAt),
             limitType: str(info.rateLimitType),
+            utilization: limitUtilization(info),
+            ...(info.isUsingOverage === true || info.overageInUse === true ? { overageInUse: true } : {}),
           },
         ];
       }
@@ -225,6 +227,18 @@ function toolResultText(content: unknown): string {
       .join("\n");
   }
   return "";
+}
+
+/**
+ * Percent used of the reported limit. Recorded CLI output sends fractions (0.34) in unifiedWindows,
+ * so values up to 1 are read as fractions.
+ */
+function limitUtilization(info: Record<string, unknown>): number | null {
+  const windows = (info.unifiedWindows ?? {}) as Record<string, { utilization?: unknown } | undefined>;
+  const type = str(info.rateLimitType);
+  const raw = num(info.utilization) ?? (type ? num(windows[type]?.utilization) : null);
+  if (raw === null) return null;
+  return Math.max(0, Math.min(100, Math.round(raw <= 1 ? raw * 100 : raw)));
 }
 
 function str(v: unknown): string | null {

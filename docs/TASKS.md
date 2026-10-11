@@ -90,3 +90,4 @@ Status: `[x]` erledigt und verifiziert · `[~]` teilweise · `[ ]` offen · `[-]
 ## Design (2026-10-11)
 
 - [x] Gestaltung nach Vorlage des Nutzers, ohne Funktionsänderung: kühlere Farbtokens, größere Seitenleiste mit Favoriten, Suchfeld in der Kopfzeile (öffnet Strg+K), Dev-Server als Status-Pille, große Tabs, rechte Spalte mit Datei-Explorer (Datei-Icons, Git-Markierungen), Änderungen und Aktivität, Karte „Claude arbeitet“, Chat als Karten, Ereigniskarten, größerer Composer
+- [x] Session-Tabs als Leiste ganz oben über Seitenleiste und Ansicht, in jeder Ansicht sichtbar, gruppiert nach Projekt; vorher im Chat zwischen Workspace-Tabs und Session-Leiste
