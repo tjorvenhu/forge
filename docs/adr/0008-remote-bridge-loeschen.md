@@ -13,8 +13,9 @@ sie ist in `AgentSdkRuntime` gekapselt. Antwort: `session_url` (claude.ai/code/s
 `system/bridge_state` (ready, connected). Im Spike verbunden, auch ohne erste Nachricht und ohne
 Ordner-Vertrauen.
 
-- Remote ist pro Projekt an: alle offenen Sessions werden verbunden, neue und fortgesetzte automatisch.
-  Ohne offene Session öffnet FORGE eine leere („Remote-Session“), die den Titel der ersten Nachricht bekommt.
+- ~~Remote ist pro Projekt an: alle offenen Sessions werden verbunden, neue und fortgesetzte automatisch.
+  Ohne offene Session öffnet FORGE eine leere („Remote-Session“), die den Titel der ersten Nachricht bekommt.~~
+  Ersetzt am 2026-10-11, siehe Nachtrag unten.
 - Nachrichten aus der App: Sessions laufen mit `--replay-user-messages` (über `extraArgs`). Eigene Nachrichten
   kommen mit der eigenen `uuid` zurück und werden ignoriert; unbekannte `uuid`s sind Nachrichten aus der App.
   `command_lifecycle: started` mit unbekannter `uuid` markiert einen Durchlauf von dort (Status, Git-Basis für
@@ -22,6 +23,21 @@ Ordner-Vertrauen.
 - Sicherheit: Nachrichten von der App laufen durch dieselbe Session, also mit Profil, Freigaben (`canUseTool`)
   und Sperrliste (PreToolUse-Hook). Das ist strenger als vorher.
 - Remote-Zustand wird nicht gespeichert; nach Neustart ist er aus.
+
+### Nachtrag 2026-10-11: global, keine eigene Session
+
+Wunsch des Nutzers: Einschalten soll keine zusätzliche Session öffnen, sondern jede in FORGE offene Session
+einzeln in der Claude-App anwählbar machen.
+
+- Remote ist global statt pro Projekt (`remote.state/start/stop` ohne `projectId`, `remote.updated` trägt
+  nur den `RemoteState`). „Offen“ heißt: Session mit laufendem CLI-Prozess, also genau die Session-Tabs.
+  Gespeicherte Sessions ohne Prozess lassen sich nicht verbinden; sie kommen dazu, sobald sie fortgesetzt werden.
+- Jede Session bekommt einen eigenen Bridge-Eintrag mit Namen `FORGE · <Projekt>: <Titel>`; gleiche Namen
+  werden mit ` (2)`, ` (3)` unterschieden. Der Name wird beim Verbinden vergeben und danach nicht geändert.
+- Ohne laufende Session ist Remote nur eingeschaltet; die UI sagt das. Startet oder fortgesetzt wird eine
+  Session danach, verbindet FORGE sie automatisch.
+- Eine beendete oder gelöschte Session fällt aus der Liste. Erneutes Einschalten verbindet fehlgeschlagene
+  Sessions neu. Ausschalten trennt alle (`enableRemoteControl(false)`).
 
 ## Projekt löschen
 

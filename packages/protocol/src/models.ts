@@ -540,7 +540,11 @@ export type ProjectRemovalInfo = z.infer<typeof ProjectRemovalInfo>;
 
 export const RemoteSession = z.object({
   sessionId: z.string(),
+  projectId: z.string(),
+  projectName: z.string(),
   title: z.string(),
+  /** name of the entry in the Claude app; unique among the connected sessions */
+  name: z.string(),
   /** claude.ai/code link of this session; opens in the Claude app on phones */
   url: z.string().nullable(),
   state: z.enum(["connecting", "connected", "error"]),
@@ -548,6 +552,7 @@ export const RemoteSession = z.object({
 });
 export type RemoteSession = z.infer<typeof RemoteSession>;
 
+/** Remote Control is global: while enabled, every session with a running CLI process is connected. */
 export const RemoteState = z.object({
   enabled: z.boolean(),
   sessions: z.array(RemoteSession),

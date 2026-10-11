@@ -67,9 +67,9 @@ export const methods = {
   "claude.submitLoginCode": { params: z.object({ code: z.string().min(1).max(2000) }), result: ClaudeSetupState },
   "claude.cancelSetup": { params: empty, result: ClaudeSetupState },
 
-  "remote.state": { params: projectRef, result: RemoteState },
-  "remote.start": { params: projectRef, result: RemoteState },
-  "remote.stop": { params: projectRef, result: RemoteState },
+  "remote.state": { params: empty, result: RemoteState },
+  "remote.start": { params: empty, result: RemoteState },
+  "remote.stop": { params: empty, result: RemoteState },
 
   "github.account": { params: empty, result: GitHubAccount.nullable() },
   "github.loginState": { params: empty, result: GitHubLoginState },
@@ -361,7 +361,7 @@ export type ServerEvent =
   | { event: "project.updated"; payload: { projectId: string } }
   | { event: "github.login"; payload: GitHubLoginState }
   | { event: "claude.setup"; payload: ClaudeSetupState }
-  | { event: "remote.updated"; payload: { projectId: string; state: RemoteState } }
+  | { event: "remote.updated"; payload: RemoteState }
   | { event: "devserver.updated"; payload: DevServerState }
   | { event: "devserver.output"; payload: { projectId: string; text: string } }
   | { event: "phone.updated"; payload: PhoneState }

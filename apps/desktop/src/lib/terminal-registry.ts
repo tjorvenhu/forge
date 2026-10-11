@@ -3,7 +3,7 @@ import { listen } from "@tauri-apps/api/event";
 import { Terminal, type IDisposable } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import "@xterm/xterm/css/xterm.css";
-import type { TerminalProgram } from "@/stores/terminals";
+import { useTerminals, type TerminalProgram } from "@/stores/terminals";
 
 export interface TerminalSpec {
   cwd: string;
@@ -190,4 +190,15 @@ export function closeTerminal(key: string) {
   }
   entry.term.dispose();
   entry.el.remove();
+}
+
+/** Ends every terminal tab of these projects. Before deleting a folder: Windows keeps a shell's current folder locked. */
+export function closeProjectTerminals(projectIds: string[]) {
+  const store = useTerminals.getState();
+  for (const projectId of projectIds) {
+    for (const t of store.tabs[projectId] ?? []) {
+      closeTerminal(t.key);
+      store.remove(projectId, t.key);
+    }
+  }
 }

@@ -114,7 +114,7 @@ export class TurnDispatch {
     this.core.setStatus(id, "running");
   }
 
-  /** An empty session opened for the Claude app takes its title from the first message, from either side. */
+  /** A session started without a prompt takes its title from the first message, from either side. */
   titleFromFirstMessage(id: string, text: string) {
     const rec = this.core.db.getSession(id);
     if (rec?.title !== REMOTE_PLACEHOLDER_TITLE || !text.trim()) return;

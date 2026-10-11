@@ -16,7 +16,6 @@ import { SessionsView } from "@/views/SessionsView";
 import { SettingsView } from "@/views/SettingsView";
 import { WorkspaceView } from "@/views/WorkspaceView";
 import { GitHubView } from "@/views/GitHubView";
-import { AgentsView } from "@/views/AgentsView";
 import { ExtensionsView } from "@/views/ExtensionsView";
 import { useGlobalShortcuts } from "@/lib/shortcuts";
 
@@ -84,7 +83,6 @@ function Shell() {
           {view === "settings" && <SettingsView />}
           {view === "workspace" && <WorkspaceView />}
           {view === "github" && <GitHubView />}
-          {view === "agents" && <AgentsView />}
           {view === "mcp" && <ExtensionsView />}
         </ErrorBoundary>
       </main>

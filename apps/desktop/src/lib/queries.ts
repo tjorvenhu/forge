@@ -40,6 +40,7 @@ export const keys = {
   phoneState: ["phoneState"] as const,
   phoneConfig: ["phoneConfig"] as const,
   phoneCalls: ["phoneCalls"] as const,
+  remote: ["remote"] as const,
   search: (q: string) => ["search", q] as const,
 };
 
