@@ -144,7 +144,7 @@ export class RemoteBridge {
     }
     if (m.type === "user" && m.isReplay === true) {
       const uuid = typeof m.uuid === "string" ? m.uuid : null;
-      if (!uuid || live.seenUuids.has(uuid) || m.isSynthetic === true) return true;
+      if (!uuid || live.seenUuids.has(uuid) || m.isSynthetic === true || !fromHuman(m)) return true;
       const parsed = remoteUserContent((m.message as Record<string, unknown> | undefined)?.content);
       if (parsed) this.recordMessage(id, live, uuid, parsed);
       return true;
@@ -175,6 +175,7 @@ export class RemoteBridge {
       const users = msgs.filter((m) => m.type === "user" && typeof m.uuid === "string");
       const lastSeen = users.map((m) => live.seenUuids.has(m.uuid as string)).lastIndexOf(true);
       for (const m of users.slice(lastSeen + 1)) {
+        if (!fromHuman(m)) continue;
         const parsed = remoteUserContent((m.message as Record<string, unknown> | undefined)?.content);
         if (parsed) this.recordMessage(id, live, m.uuid as string, parsed);
       }
@@ -182,6 +183,19 @@ export class RemoteBridge {
       /* transcript not readable: the answer is still in the timeline */
     }
   }
+}
+
+/**
+ * Claude Code also puts messages of its own into the conversation as user messages, above all a
+ * `<task-notification>` when a background command finished. Only messages a person wrote are shown as
+ * theirs. Older CLI versions send no origin; their notifications are recognised by the text.
+ */
+export function fromHuman(m: Record<string, unknown>): boolean {
+  const origin = m.origin as { kind?: unknown } | undefined;
+  if (origin && typeof origin.kind === "string") return origin.kind === "human";
+  const content = (m.message as Record<string, unknown> | undefined)?.content;
+  const first = typeof content === "string" ? content : Array.isArray(content) ? (content as Array<Record<string, unknown> | null>).find((b) => b?.type === "text")?.text : null;
+  return !(typeof first === "string" && /^\s*<(task-notification|system-reminder)>/.test(first));
 }
 
 /** Text and images of a message typed in the Claude app; null for tool results and empty content. */
