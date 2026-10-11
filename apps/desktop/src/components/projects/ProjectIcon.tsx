@@ -11,7 +11,7 @@ export function ProjectIcon({ name, size = 32, className }: { name: string; size
       .join("") || "?";
   return (
     <div
-      className={cn("flex shrink-0 items-center justify-center rounded-md border border-border bg-surface-3 font-semibold text-accent", className)}
+      className={cn("flex shrink-0 items-center justify-center rounded-lg border border-accent/20 bg-accent-soft font-semibold text-accent", className)}
       style={{ width: size, height: size, fontSize: Math.round(size * 0.38) }}
       aria-hidden
     >

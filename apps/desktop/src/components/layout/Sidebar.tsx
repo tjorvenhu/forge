@@ -1,23 +1,22 @@
 import type { ReactNode } from "react";
-import { Blocks, Bot, Download, FolderKanban, GitPullRequest, History, Home, Plus, Search, Settings } from "lucide-react";
+import { Blocks, Bot, Download, FolderKanban, GitPullRequest, History, Home, Plus, Settings } from "lucide-react";
 import { call, useClaudeSetup, useClaudeUpdate, useDiagnostics, useProjects, useUsage } from "@/lib/queries";
 import { errorMessage } from "@/lib/rpc";
 import { toast } from "@/stores/toast";
 import { Button } from "@/components/ui/button";
-import { Kbd } from "@/components/ui/misc";
 import { useUi, type View } from "@/stores/ui";
 import { capitalize, cn, relativeTime } from "@/lib/utils";
 import { Logo } from "./Logo";
 import { ProjectIcon } from "@/components/projects/ProjectIcon";
 
 const NAV: Array<{ view: View; label: string; icon: ReactNode }> = [
-  { view: "home", label: "Home", icon: <Home className="h-4 w-4" /> },
-  { view: "projects", label: "Projekte", icon: <FolderKanban className="h-4 w-4" /> },
-  { view: "sessions", label: "Sessions", icon: <History className="h-4 w-4" /> },
-  { view: "github", label: "GitHub", icon: <GitPullRequest className="h-4 w-4" /> },
-  { view: "agents", label: "Agenten", icon: <Bot className="h-4 w-4" /> },
-  { view: "mcp", label: "Erweiterungen", icon: <Blocks className="h-4 w-4" /> },
-  { view: "settings", label: "Einstellungen", icon: <Settings className="h-4 w-4" /> },
+  { view: "home", label: "Home", icon: <Home className="h-[18px] w-[18px]" /> },
+  { view: "projects", label: "Projekte", icon: <FolderKanban className="h-[18px] w-[18px]" /> },
+  { view: "sessions", label: "Sessions", icon: <History className="h-[18px] w-[18px]" /> },
+  { view: "github", label: "GitHub", icon: <GitPullRequest className="h-[18px] w-[18px]" /> },
+  { view: "agents", label: "Agenten", icon: <Bot className="h-[18px] w-[18px]" /> },
+  { view: "mcp", label: "Erweiterungen", icon: <Blocks className="h-[18px] w-[18px]" /> },
+  { view: "settings", label: "Einstellungen", icon: <Settings className="h-[18px] w-[18px]" /> },
 ];
 
 export function Sidebar() {
@@ -28,27 +27,18 @@ export function Sidebar() {
   const shown = favorites.length ? favorites : list.slice(0, 4);
 
   return (
-    <aside className="flex w-60 shrink-0 select-none flex-col border-r border-border bg-sidebar">
-      <div className="flex items-center gap-2.5 px-4 pb-4 pt-4">
-        <Logo />
+    <aside className="flex w-64 shrink-0 select-none flex-col border-r border-border bg-sidebar">
+      <div className="flex items-center gap-3 px-5 pb-5 pt-5">
+        <Logo size={38} />
         <div className="leading-tight">
-          <div className="text-[15px] font-bold tracking-wide">FORGE</div>
-          <div className="text-[11px] text-subtle">Claude Development Studio</div>
+          <div className="text-[17px] font-bold tracking-wide">FORGE</div>
+          <div className="text-[11.5px] text-muted">Claude Development Studio</div>
         </div>
       </div>
 
-      <div className="px-2 pb-2">
-        <button
-          onClick={() => useUi.getState().setPaletteOpen(true)}
-          className="flex h-8 w-full items-center gap-2 rounded-md border border-border bg-surface px-2.5 text-[13px] text-subtle hover:border-border-strong hover:text-muted"
-        >
-          <Search className="h-3.5 w-3.5" />
-          <span className="flex-1 text-left">Suchen und Befehle</span>
-          <Kbd>Strg+K</Kbd>
-        </button>
-      </div>
+      <div className="mx-4 border-t border-border" />
 
-      <nav className="flex flex-col gap-0.5 px-2" aria-label="Hauptnavigation">
+      <nav className="flex flex-col gap-1 px-3 pt-3" aria-label="Hauptnavigation">
         {NAV.map((n) => {
           const active = view === n.view || (n.view === "projects" && view === "workspace");
           return (
@@ -57,39 +47,50 @@ export function Sidebar() {
               onClick={() => setView(n.view)}
               aria-current={active ? "page" : undefined}
               className={cn(
-                "flex h-8 items-center gap-2.5 rounded-md px-2.5 text-[13px] transition-colors",
-                active ? "bg-accent-soft text-fg" : "text-muted hover:bg-surface-3 hover:text-fg",
+                "flex h-10 items-center gap-3 rounded-lg px-3 text-[14px] transition-colors",
+                active ? "bg-accent-soft font-medium text-fg" : "text-muted hover:bg-surface-2 hover:text-fg",
               )}
             >
               <span className={active ? "text-accent" : ""}>{n.icon}</span>
               <span className="flex-1 text-left">{n.label}</span>
-              {n.view === "projects" && list.length > 0 && <span className="rounded bg-surface-3 px-1.5 text-[11px] text-muted">{list.length}</span>}
+              {n.view === "projects" && list.length > 0 && (
+                <span className={cn("rounded-md px-2 py-0.5 text-[11px] tabular-nums", active ? "bg-accent/25 text-fg" : "bg-surface-3 text-muted")}>{list.length}</span>
+              )}
             </button>
           );
         })}
       </nav>
 
-      <div className="mt-5 min-h-0 flex-1 overflow-y-auto px-2">
-        <div className="px-2.5 pb-1.5 text-[11px] font-semibold uppercase tracking-wide text-subtle">{favorites.length ? "Favoriten" : "Zuletzt"}</div>
-        {shown.map((p) => (
-          <button
-            key={p.id}
-            onClick={() => openProject(p.id)}
-            className={cn(
-              "flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left transition-colors",
-              view === "workspace" && activeProjectId === p.id ? "bg-surface-3" : "hover:bg-surface-3",
-            )}
-          >
-            <ProjectIcon name={p.name} size={28} />
-            <div className="min-w-0 flex-1">
-              <div className="truncate text-[13px]">{p.name}</div>
-              <div className="truncate text-[11px] text-subtle">{p.technologies.slice(0, 2).join(" · ") || "Projekt"}</div>
-            </div>
+      <div className="mx-4 mt-3 border-t border-border" />
+
+      <div className="min-h-0 flex-1 overflow-y-auto px-3 pt-3">
+        <div className="flex items-center justify-between px-3 pb-2">
+          <span className="text-[13px] text-muted">{favorites.length ? "Favoriten" : "Zuletzt"}</span>
+          <button onClick={() => setNewProject("import")} className="rounded-md p-1 text-subtle hover:bg-surface-2 hover:text-fg" aria-label="Projekt hinzufügen" title="Projekt hinzufügen">
+            <Plus className="h-4 w-4" />
           </button>
-        ))}
+        </div>
+        <div className="flex flex-col gap-1">
+          {shown.map((p) => (
+            <button
+              key={p.id}
+              onClick={() => openProject(p.id)}
+              className={cn(
+                "flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-left transition-colors",
+                view === "workspace" && activeProjectId === p.id ? "bg-surface-3" : "hover:bg-surface-2",
+              )}
+            >
+              <ProjectIcon name={p.name} size={34} />
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-[14px]">{p.name}</div>
+                <div className="truncate text-[12px] text-subtle">{p.technologies.slice(0, 2).join(" · ") || "Projekt"}</div>
+              </div>
+            </button>
+          ))}
+        </div>
         <button
           onClick={() => setNewProject("import")}
-          className="mt-1 flex w-full items-center gap-2 rounded-md border border-dashed border-border px-2.5 py-2 text-[13px] text-muted hover:border-border-strong hover:text-fg"
+          className="mt-2 flex h-11 w-full items-center gap-2.5 rounded-lg border border-dashed border-border px-3 text-[13.5px] text-muted hover:border-border-strong hover:text-fg"
         >
           <Plus className="h-4 w-4" /> Projekt hinzufügen
         </button>
@@ -124,7 +125,7 @@ function ClaudeStatusCard() {
   }
   const windows = usage.data?.available ? usage.data.windows.slice(0, 3) : [];
   return (
-    <div className="m-2 flex flex-col gap-2 rounded-lg border border-border bg-surface px-3 py-2.5 hover:border-border-strong">
+    <div className="m-3 flex flex-col gap-2.5 rounded-xl border border-border bg-surface px-3.5 py-3 hover:border-border-strong">
       <button onClick={() => setView("settings")} className="flex flex-col gap-2 text-left" title="Claude-Code-Status, Nutzung und Diagnose">
         <div className="flex w-full items-center gap-2.5">
           <div className="min-w-0 flex-1">

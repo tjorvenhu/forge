@@ -27,7 +27,7 @@ export function RemoteControlButton({ project }: { project: Project }) {
     <>
       <button
         onClick={() => setOpen(true)}
-        className={cn("relative flex h-8 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium hover:bg-surface-3 hover:text-fg", connected ? "text-success" : "text-muted")}
+        className={cn("relative flex h-9 items-center gap-1.5 rounded-lg px-2.5 text-[13px] hover:bg-surface-3 hover:text-fg", connected ? "text-success" : "text-muted")}
         title="In der Claude-App weiterarbeiten"
         aria-label="Remote-Steuerung"
       >

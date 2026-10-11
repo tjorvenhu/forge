@@ -29,6 +29,11 @@ interface UiState {
   /** message to scroll to once its session is shown (from search) */
   focusEvent: { sessionId: string; seq: number } | null;
   setFocusEvent: (f: { sessionId: string; seq: number } | null) => void;
+  /** file shown in the Dateien tab, per project */
+  selectedFile: Record<string, string | null>;
+  selectFile: (projectId: string, path: string | null) => void;
+  /** shows a file in the Dateien tab (from the file explorer) */
+  openFile: (projectId: string, path: string) => void;
   setView: (v: View) => void;
   openProject: (projectId: string, sessionId?: string | null) => void;
   closeProject: () => void;
@@ -78,6 +83,7 @@ export const useUi = create<UiState>((set, get) => ({
   panelRequest: null,
   paletteOpen: false,
   focusEvent: null,
+  selectedFile: {},
   ...loadPrefs(),
   openTerminal: (projectId, program, label) => set({ terminalRequest: { projectId, program, label }, bottomPanelOpen: true }),
   clearTerminalRequest: () => set({ terminalRequest: null }),
@@ -88,6 +94,8 @@ export const useUi = create<UiState>((set, get) => ({
   clearPanelRequest: () => set({ panelRequest: null }),
   setPaletteOpen: (paletteOpen) => set({ paletteOpen }),
   setFocusEvent: (focusEvent) => set({ focusEvent }),
+  selectFile: (projectId, path) => set((s) => ({ selectedFile: { ...s.selectedFile, [projectId]: path } })),
+  openFile: (projectId, path) => set((s) => ({ selectedFile: { ...s.selectedFile, [projectId]: path }, workspaceTab: "files" })),
   setView: (view) => set({ view }),
   openProject: (projectId, sessionId) => {
     set((s) => ({

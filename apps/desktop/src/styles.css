@@ -4,19 +4,19 @@
 
 /* Design tokens. Components use these via Tailwind classes (bg-surface, text-muted …), never raw colors. */
 @theme {
-  --color-bg: #0e0f12;
-  --color-sidebar: #121317;
-  --color-surface: #16171c;
-  --color-surface-2: #1c1d23;
-  --color-surface-3: #24252c;
-  --color-border: #2a2b33;
-  --color-border-strong: #383943;
-  --color-fg: #e8e8ec;
-  --color-muted: #9b9ca6;
-  --color-subtle: #6e6f7a;
-  --color-accent: #6e6bf7;
+  --color-bg: #0d1017;
+  --color-sidebar: #10131b;
+  --color-surface: #151924;
+  --color-surface-2: #1a1f2c;
+  --color-surface-3: #222838;
+  --color-border: #232a3a;
+  --color-border-strong: #313a4f;
+  --color-fg: #e9ebf2;
+  --color-muted: #9ba2b6;
+  --color-subtle: #6b7287;
+  --color-accent: #6d6cf6;
   --color-accent-strong: #5b57ee;
-  --color-accent-soft: #6e6bf724;
+  --color-accent-soft: #6d6cf626;
   --color-accent-fg: #ffffff;
   --color-success: #3fb97a;
   --color-success-soft: #3fb97a1f;
@@ -36,6 +36,7 @@
   --radius-md: 6px;
   --radius-lg: 8px;
   --radius-xl: 12px;
+  --radius-2xl: 16px;
 }
 
 html,
@@ -150,4 +151,16 @@ body {
 }
 .animate-soft-pulse {
   animation: forge-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes forge-indeterminate {
+  0% {
+    left: -35%;
+  }
+  100% {
+    left: 100%;
+  }
+}
+.animate-indeterminate {
+  animation: forge-indeterminate 1.6s ease-in-out infinite;
 }
