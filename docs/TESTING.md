@@ -63,7 +63,7 @@ Letzter vollständiger Lauf: 2026-10-11, Windows 11 Pro 26200, Node 24.14, Claud
 13. Rückfrage im Autonomous-Profil beantwortet, Claude nennt die gewählte Antwort; Kontextstand gemeldet; `/compact` erzeugt `context.compacted`
 14. Plan-Modus im Autonomous-Profil: Plan-Datei nicht blockiert, Plan angenommen, Modus wechselt auf `bypassPermissions`, Datei angelegt
 
-15. Telefon: Claude (Haiku) nutzt das Werkzeug status, antwortet in kurzen deutschen Sätzen ohne Markdown und legt bei „Tschüss“ selbst auf
+15. Telefon: Claude (Haiku) nutzt das Werkzeug status, antwortet in höchstens drei kurzen deutschen Sätzen ohne Markdown, schaltet Remote Control auf Zuruf ohne Rückfrage ein und legt bei „Tschüss“ selbst auf
 
 (Weitere E2E-Fälle seit Phase 2: Profilwechsel im Lauf, Hintergrundaufgaben.)
 
