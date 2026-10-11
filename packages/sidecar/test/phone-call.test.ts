@@ -356,6 +356,8 @@ describe("PhoneService end to end with a test PBX", () => {
   let transcripts: string[];
   let convs: Array<{ said: string[]; tools: PhoneToolset; context: string; cb: ConversationCallbacks }>;
   const sent: Array<[string, string]> = [];
+  const steered: string[] = [];
+  let remoteOn = false;
   let projectId = "";
   let sessionList: Array<{ id: string; projectId: string; title: string; status: string; live: boolean; updatedAt: string; projectName: string }>;
   let secrets: SlowSecrets;
@@ -378,6 +380,8 @@ describe("PhoneService end to end with a test PBX", () => {
     transcripts = [];
     convs = [];
     sent.length = 0;
+    steered.length = 0;
+    remoteOn = false;
     failConversation = false;
     rtps = [];
     logs = [];
@@ -394,6 +398,13 @@ describe("PhoneService end to end with a test PBX", () => {
         sent.push([id, text]);
         return sessionList[0];
       },
+      remoteState: () => ({ enabled: remoteOn, sessions: remoteOn ? [{ sessionId: "s1", state: "connected", message: null }] : [] }),
+      remoteStart: async () => {
+        remoteOn = true;
+        return { enabled: true, sessions: [{ sessionId: "s1", state: "connected", message: null }] };
+      },
+      setPermissionMode: async (id: string, mode: string) => steered.push(`mode:${id}:${mode}`),
+      close: (id: string) => steered.push(`close:${id}`),
     } as unknown as SessionService;
     secrets = new SlowSecrets(path.join(t.dir, "secrets"));
     const voice: VoiceProvider = {
@@ -408,6 +419,7 @@ describe("PhoneService end to end with a test PBX", () => {
       projects,
       sessions,
       devServers: {} as DevServerService,
+      git: new GitEngine(),
       secrets,
       emit: (e) => events.push(e),
       claude: () => ({ path: "claude", env: {}, cwd: t.dir }),
@@ -431,7 +443,9 @@ describe("PhoneService end to end with a test PBX", () => {
               c.said.push(text);
               if (text.startsWith("[FORGE: Du rufst")) cb.onSentence("Hallo, hier ist FORGE. Die Tests sind grün.");
               else if (!text.startsWith("[")) cb.onSentence("Alles läuft.");
+              cb.onTurnDone();
             },
+            interrupt() {},
             close() {},
           };
           convs.push(c);
@@ -505,17 +519,12 @@ describe("PhoneService end to end with a test PBX", () => {
     await until(() => spoken.some((s) => s.startsWith("Die PIN ist falsch")), 5000, "wrong PIN");
     await phoneEnd.digits("4711#");
     await until(() => svc.state().call?.unlocked, 5000, "unlocked");
-    expect(conv.said.some((s) => s.includes("PIN richtig eingegeben"))).toBe(true);
+    expect(conv.said.some((s) => s.includes("PIN richtig"))).toBe(true);
     expect(await conv.tools.status()).toContain("S1: <<<SESSION-DATEN>>>Warenkorb<<<ENDE SESSION-DATEN>>> im Projekt shop, fertig, wartet auf Anweisungen");
 
-    // Steering that hands text to a session needs key 1, read out by FORGE itself.
-    expect(await conv.tools.sendMessage("S1", "Mach weiter")).toMatch(/^Wartet auf Bestätigung/);
-    await until(() => spoken.some((s) => s.startsWith("Nachricht an S1: Mach weiter") && s.includes("Taste 1")), 5000, "confirmation read out");
-    expect(sent).toHaveLength(0);
-    await phoneEnd.digits("1");
-    await until(() => sent.length === 1, 5000, "sent after key 1");
+    // After the PIN, steering runs right away.
+    expect(await conv.tools.sendMessage("S1", "Mach weiter")).toBe("An S1 gesendet. Claude arbeitet daran.");
     expect(sent).toEqual([["s1", "Mach weiter"]]);
-    await until(() => conv.said.some((s) => s.includes("Taste 1 bestätigt") && s.includes("An S1 gesendet")), 5000, "result to Claude");
 
     // The caller hangs up.
     pbx.send(inDialog("BYE", 2, inv, ok, pbx, "bye1"), pbx.uaContact.port);
@@ -658,6 +667,30 @@ describe("PhoneService end to end with a test PBX", () => {
     // Not busy any more.
     const { inv: inv2, ok } = await answeredCall("c-next");
     await byeFromPbx("c-next", inv2, ok);
+  }, 30_000);
+
+  it("steers Remote Control, session settings and git right away once unlocked", async () => {
+    await svc.setEnabled(true);
+    await until(() => svc.state().registration === "registered", 5000, "registered");
+    const { inv, ok } = await answeredCall("c-steer");
+    const conv = await until(() => convs[0], 5000, "conversation");
+    expect(await conv.tools.remote("on")).toMatch(/^Gesperrt/);
+    expect(await conv.tools.remote("status")).toBe("Remote Control ist aus.");
+    expect(remoteOn).toBe(false);
+    await sleep(200);
+    await phoneEnd.digits("4711#");
+    await until(() => svc.state().call?.unlocked, 5000, "unlocked");
+    expect(await conv.tools.remote("on")).toBe("Remote Control ist an, 1 Session ist mit der Claude-App verbunden.");
+    expect(remoteOn).toBe(true);
+    await conv.tools.status();
+    expect(await conv.tools.sessionSettings("S1", { permissionMode: "acceptEdits" })).toBe("S1: Modus acceptEdits gesetzt.");
+    expect(await conv.tools.sessionSettings("S1", {})).toMatch(/^Fehler/);
+    expect(await conv.tools.close("S1")).toBe("S1 geschlossen.");
+    expect(steered).toEqual(["mode:s1:acceptEdits", "close:s1"]);
+    // The test project is no git repository: the error reaches Claude as text.
+    expect(await conv.tools.git("shop", "status")).toMatch(/^Fehler: Kein Git-Repository/);
+    expect(await conv.tools.git("nirgends", "push")).toMatch(/^Fehler: Kein Projekt/);
+    await byeFromPbx("c-steer", inv, ok);
   }, 30_000);
 
   it("finds sessions only by a known short name or a unique title", async () => {

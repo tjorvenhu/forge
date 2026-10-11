@@ -362,7 +362,14 @@ describe.skipIf(!enabled)("E2E: sidecar with real Claude Code", () => {
         startSession: async () => (calls.push("start"), "Gestartet."),
         respond: async () => (calls.push("respond"), "Erledigt."),
         stop: async () => (calls.push("stop"), "Gestoppt."),
+        close: async () => (calls.push("close"), "Geschlossen."),
+        sessionSettings: async () => (calls.push("settings"), "Gesetzt."),
+        cancelAutoContinue: async () => (calls.push("cancel"), "Abgebrochen."),
+        remote: async (action) => (calls.push(`remote:${action}`), action === "on" ? "Remote Control ist an, 1 Session ist mit der Claude-App verbunden." : "Remote Control ist aus."),
         devServer: async () => (calls.push("dev"), "Läuft."),
+        git: async (_p, action) => (calls.push(`git:${action}`), "Erledigt."),
+        projects: async () => (calls.push("projects"), "shop"),
+        usage: async () => (calls.push("usage"), "Fünf Stunden: 20 Prozent."),
       },
       onSentence: (s) => sentences.push(s),
       onTurnDone: () => turns++,
@@ -377,10 +384,19 @@ describe.skipIf(!enabled)("E2E: sidecar with real Claude Code", () => {
       expect(calls).toContain("status");
       expect(sentences.join(" ")).toMatch(/Warenkorb|S1/);
       expect(sentences.every((s) => !/[*#`]/.test(s))).toBe(true);
+      // Short on the phone: no recap of everything it can do.
+      expect(sentences.length).toBeLessThanOrEqual(3);
       console.log("[e2e] phone said:", sentences.join(" | "));
 
-      agent.say("Danke, das war alles. Tschüss!");
+      // Steering runs right away, without asking back first.
+      const said = sentences.length;
+      agent.say("Schalte bitte Remote Control ein.");
       while (turns < 2 && !error && Date.now() < deadline + 60_000) await new Promise((r) => setTimeout(r, 200));
+      expect(calls).toContain("remote:on");
+      console.log("[e2e] phone said:", sentences.slice(said).join(" | "));
+
+      agent.say("Danke, das war alles. Tschüss!");
+      while (turns < 3 && !error && Date.now() < deadline + 120_000) await new Promise((r) => setTimeout(r, 200));
       expect(hungUp).toBe(true);
     } finally {
       agent.close();

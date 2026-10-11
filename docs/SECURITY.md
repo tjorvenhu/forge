@@ -140,19 +140,26 @@ E-Mail-Adresse oder Org-Daten der Claude-Anmeldung.
   Ländervorwahl 49) und müssen danach exakt gleich sein. Andere Anrufe weist FORGE mit 403 ab und protokolliert sie.
   FORGE nimmt SIP nur von der Adresse der Anlage an; Pakete anderer Absender werden verworfen und protokolliert.
   Anfragen innerhalb eines Gesprächs müssen das Tag von FORGE tragen.
-- **PIN fürs Steuern:** Senden, Starten, Freigeben, Stoppen und Dev-Server brauchen standardmäßig die PIN. Sie wird
+- **PIN fürs Steuern:** Alles außer Status, Nutzung und Auflegen braucht standardmäßig die PIN. Sie wird
   über die Telefontastatur (DTMF, RFC 4733 oder SIP INFO) eingegeben und mit # bestätigt. Sie läuft nie durch das
   Sprachmodell und wird nicht vorgelesen. Gespeichert ist nur ein scrypt-Hash. Nach drei falschen Versuchen legt
   FORGE auf; danach werden keine Ziffern mehr geprüft. Fünf Fehlversuche einer Nummer oder zehn insgesamt innerhalb
   einer Stunde sperren die PIN-Eingabe für eine Stunde, auch über Neustarts hinweg. Jeder Fehlversuch wird später
   beantwortet (1 s, verdoppelt, höchstens 16 s). Eine neue PIN in FORGE hebt die Sperre auf. Ohne PIN nennt
   `status` nur Anzahlen, `details` ist gesperrt. Grund: Anrufernummern lassen sich fälschen.
-- **Bestätigung per Taste:** Senden, Starten und Antworten auf Freigaben führt FORGE erst aus, wenn der Anrufer die
-  Taste 1 drückt. FORGE liest dafür selbst vor, was passiert; lange Texte nur mit Hinweis auf die Kürzung. Ein
-  gesprochenes Ja reicht nicht. Text aus Sessions erhält Claude als markierte Daten, nicht als Anweisung.
-- **Was Claude am Telefon kann:** nur die FORGE-Werkzeuge (Status, Details, Senden, Starten, Antworten, Stoppen,
-  Dev-Server, Auflegen). Keine Datei-, Shell- oder Web-Werkzeuge (`tools: []`, eigene Werkzeuge per MCP im Prozess).
-  Gestartete oder fortgesetzte Sessions laufen wie immer mit Profil, Freigaben und Sperrliste des Projekts.
+- **Keine Bestätigung per Taste (seit 2026-10-11):** Nach der PIN führt FORGE steuernde Aktionen sofort aus, wenn
+  der Anrufer sie verlangt. Die frühere Bestätigung mit Taste 1 war im Gespräch zu umständlich und wurde auf Wunsch
+  des Nutzers entfernt. Text aus Sessions erhält Claude weiter als markierte Daten, nicht als Anweisung, und der
+  System-Prompt verbietet, ihretwegen Werkzeuge zu benutzen. Restrisiko: Bringt Session-Text Claude trotzdem dazu,
+  ein Werkzeug aufzurufen, gibt es keine zweite Hürde mehr. Die Werkzeuge haben deshalb eigene Grenzen: Commits
+  lassen sensible Dateien und Build-Artefakte immer aus, Push nie mit Force, Pull nur fast-forward.
+- **Was Claude am Telefon kann:** nur die FORGE-Werkzeuge: Status, Details, Senden, Starten, Antworten auf
+  Freigaben, Stoppen, Schließen, Modell/Denkaufwand/Modus einer Session, automatisches Weitermachen abbrechen,
+  Remote Control, Dev-Server, Git (Status, Commit, Push, Pull), Projekte, Nutzung, Auflegen. Keine Datei-, Shell-
+  oder Web-Werkzeuge (`tools: []`, eigene Werkzeuge per MCP im Prozess). Gestartete oder fortgesetzte Sessions
+  laufen wie immer mit Profil, Freigaben und Sperrliste des Projekts. Push auf `main`/`master` geht am Telefon nur,
+  wenn der Anrufer es ausdrücklich verlangt (Parameter `allow_protected`); am Rechner braucht es das Eintippen des
+  Branch-Namens.
 - **Geheimnisse:** SIP-Passwort und OpenAI-Key liegen unter `<Datenordner>/secrets`, mit DPAPI für das
   Windows-Benutzerkonto verschlüsselt (PowerShell, Übergabe per stdin). Die UI sieht nur, ob sie gesetzt sind.
 - **Datenfluss:** Gesprächsaudio der Anrufer geht zur Transkription an OpenAI, die Antworttexte zur Sprachausgabe.
