@@ -43,6 +43,8 @@ Letzter vollständiger Lauf: 2026-10-11, Windows 11 Pro 26200, Node 24.14, Claud
 - `chat-items.test.ts` (Phase 4): Sprung zur Nachricht eines Suchtreffers, Hinweis bei Komprimierung, Kurztexte für Rückfrage und Plan.
 - `InteractiveCards.test.ts`: Fragen robust lesen, Antworten zusammensetzen (Einfach-/Mehrfachauswahl, eigene Antwort), Warnstufen der Kontextanzeige.
 - `AgentsTab.test.tsx`: Worktrees nur des offenen Projekts, Entfernen beendet die Terminals des Worktrees und verlässt ihn, wenn er offen war, Bestätigung bei Änderungen.
+- `SessionTabs.test.tsx`: Session-Tabs oben im Fenster: ausgeblendet ohne Sessions, Gruppen pro Projekt in stabiler Reihenfolge, aktive Session nur im Workspace markiert, offene Session ohne Prozess als letzter Tab ihrer Gruppe, Klick öffnet Projekt und Session, Beenden nur ohne laufende Arbeit, Pfeiltasten über Gruppen hinweg.
+- `shortcuts.test.tsx` (ergänzt): `Strg+Tab` in der Reihenfolge der Tab-Leiste.
 - `GitPanel.test.tsx`: Commit-Flow in der Komponente (Auswahl, Review-Dialog, exakter RPC-Aufruf) und KI-Vorschlag.
 
 **E2E (`real-claude.e2e.test.ts`)**, echter Sidecar-Prozess + installierte CLI + echtes Git:

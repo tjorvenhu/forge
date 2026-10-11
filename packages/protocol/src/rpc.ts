@@ -32,6 +32,7 @@ import {
   ProjectTag,
   ProjectWithStatus,
   PullRequest,
+  RateLimitState,
   RemoteState,
   EffortLevel,
   ProjectRemovalInfo,
@@ -58,6 +59,8 @@ export const methods = {
   "system.diagnostics": { params: z.object({ refresh: z.boolean().optional() }), result: Diagnostics },
   "system.runtimeInfo": { params: empty, result: RuntimeInfo.nullable() },
   "system.usage": { params: z.object({ refresh: z.boolean().optional() }), result: PlanUsage },
+  /** latest plan rate limit reported by any session; changes arrive as ratelimit.updated */
+  "system.rateLimit": { params: empty, result: RateLimitState },
 
   "claude.setupState": { params: empty, result: ClaudeSetupState },
   "claude.install": { params: empty, result: ClaudeSetupState },
@@ -239,6 +242,8 @@ export const methods = {
     result: Session,
   },
   "sessions.stop": { params: sessionRef, result: Session },
+  /** drops the planned automatic continuation after a usage limit */
+  "sessions.cancelAutoContinue": { params: sessionRef, result: Session },
   "sessions.close": { params: sessionRef, result: Session },
   "sessions.setModel": { params: sessionRef.extend({ model: z.string().max(100) }), result: Session },
   "sessions.setEffort": { params: sessionRef.extend({ effort: EffortLevel.nullable() }), result: Session },
@@ -371,6 +376,7 @@ export type ServerEvent =
   | { event: "github.login"; payload: GitHubLoginState }
   | { event: "claude.setup"; payload: ClaudeSetupState }
   | { event: "remote.updated"; payload: RemoteState }
+  | { event: "ratelimit.updated"; payload: RateLimitState }
   | { event: "devserver.updated"; payload: DevServerState }
   | { event: "devserver.output"; payload: { projectId: string; text: string } }
   | { event: "phone.updated"; payload: PhoneState }

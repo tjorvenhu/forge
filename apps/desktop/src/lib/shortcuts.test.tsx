@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { cleanup, fireEvent, renderHook } from "@testing-library/react";
+import type { ResultOf } from "@forge/protocol";
 import { useUi } from "@/stores/ui";
+import { keys, queryClient } from "@/lib/queries";
 import { useGlobalShortcuts } from "./shortcuts";
 
 function openDialog() {
@@ -46,6 +48,20 @@ describe("global shortcuts", () => {
     e.preventDefault();
     window.dispatchEvent(e);
     expect(useUi.getState().bottomPanelOpen).toBe(false);
+  });
+
+  it("cycles session tabs with Ctrl+Tab in the grouped order of the tab strip", () => {
+    const tab = (id: string, projectId: string, createdAt: string) => ({ id, projectId, projectName: projectId, createdAt }) as ResultOf<"sessions.listLive">[number];
+    // oldest per project first: app (a1, a2), then web (w1)
+    queryClient.setQueryData(keys.liveSessions, [tab("a2", "app", "2026-10-11T10:03:00Z"), tab("w1", "web", "2026-10-11T10:02:00Z"), tab("a1", "app", "2026-10-11T10:01:00Z")]);
+    useUi.setState({ view: "workspace", activeProjectId: "app", activeSession: { app: "a1" } });
+    fireEvent.keyDown(window, { key: "Tab", ctrlKey: true });
+    expect(useUi.getState().activeSession.app).toBe("a2");
+    fireEvent.keyDown(window, { key: "Tab", ctrlKey: true });
+    expect(useUi.getState().activeProjectId).toBe("web");
+    fireEvent.keyDown(window, { key: "Tab", ctrlKey: true, shiftKey: true });
+    expect(useUi.getState()).toMatchObject({ activeProjectId: "app", activeSession: { app: "a2" } });
+    queryClient.removeQueries({ queryKey: keys.liveSessions });
   });
 
   it("still closes the open command palette with Ctrl+K", () => {

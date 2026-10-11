@@ -7,6 +7,8 @@ import type { LiveSession } from "./live-session.js";
 export class SessionCore {
   /** sessions with a running CLI process in this app instance */
   readonly live = new Map<string, LiveSession>();
+  /** sees every persisted event; user messages and rate limits arrive from several modules */
+  onRecord: ((id: string, body: SessionEventBody) => void) | null = null;
 
   constructor(
     readonly db: Db,
@@ -15,7 +17,13 @@ export class SessionCore {
 
   toSession(r: SessionRecord): Session {
     const live = this.live.get(r.id);
-    return { ...r, live: !!live, background: live ? [...live.background.values()] : [], context: live?.context ?? null };
+    return {
+      ...r,
+      live: !!live,
+      background: live ? [...live.background.values()] : [],
+      context: live?.context ?? null,
+      autoContinueAt: this.db.getAutoContinue(r.id)?.dueAt ?? null,
+    };
   }
 
   get(id: string): Session {
@@ -37,6 +45,7 @@ export class SessionCore {
     }
     const ev = this.db.appendEvent(id, redact(body));
     this.emit({ event: "session.event", payload: ev });
+    this.onRecord?.(id, body);
   }
 
   setStatus(id: string, status: SessionStatus, detail: string | null = null, extra: Partial<SessionRecord> = {}) {

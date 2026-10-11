@@ -138,6 +138,20 @@ const MIGRATIONS: string[] = [
   );
   CREATE INDEX phone_calls_started ON phone_calls(started_at DESC);
   `,
+  // Automatic continuation after a usage limit. due_at NULL: nothing planned, the row only keeps the
+  // count of continuations without user input. resets_at NULL: reset time unknown, due_at is the next check.
+  `
+  CREATE TABLE auto_continue (
+    session_id TEXT PRIMARY KEY REFERENCES sessions(id) ON DELETE CASCADE,
+    due_at TEXT,
+    resets_at TEXT,
+    after_seq INTEGER NOT NULL DEFAULT 0,
+    attempts INTEGER NOT NULL DEFAULT 0,
+    probes INTEGER NOT NULL DEFAULT 0,
+    updated_at TEXT NOT NULL
+  );
+  CREATE INDEX auto_continue_due ON auto_continue(due_at);
+  `,
 ];
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -150,6 +164,7 @@ export const DEFAULT_SETTINGS: Settings = {
   sounds: true,
   debugLogs: false,
   defaultProjectDir: null,
+  autoContinueAfterLimit: true,
 };
 
 interface ProjectRow {
@@ -188,7 +203,34 @@ interface SessionRow {
 }
 
 export type ProjectRecord = Omit<Project, "exists">;
-export type SessionRecord = Omit<Session, "live" | "background" | "context">;
+export type SessionRecord = Omit<Session, "live" | "background" | "context" | "autoContinueAt">;
+
+export interface AutoContinueRecord {
+  sessionId: string;
+  /** ISO; null when nothing is planned */
+  dueAt: string | null;
+  /** ISO; null when the reset time is unknown */
+  resetsAt: string | null;
+  /** last event of the session when the limit stopped it; later user messages or results make the plan stale */
+  afterSeq: number;
+  /** automatic continuations without user input */
+  attempts: number;
+  /** plan usage checks while the reset time is unknown */
+  probes: number;
+}
+
+interface AutoContinueRow {
+  session_id: string;
+  due_at: string | null;
+  resets_at: string | null;
+  after_seq: number;
+  attempts: number;
+  probes: number;
+}
+
+function toAutoContinue(r: AutoContinueRow): AutoContinueRecord {
+  return { sessionId: r.session_id, dueAt: r.due_at, resetsAt: r.resets_at, afterSeq: r.after_seq, attempts: r.attempts, probes: r.probes };
+}
 
 const now = () => new Date().toISOString();
 
@@ -470,6 +512,49 @@ export class Db {
         )
         .run(now()).changes,
     );
+  }
+
+  // ---- automatic continuation after a usage limit
+
+  getAutoContinue(sessionId: string): AutoContinueRecord | null {
+    const r = this.stmt("SELECT * FROM auto_continue WHERE session_id = ?").get(sessionId) as AutoContinueRow | undefined;
+    return r ? toAutoContinue(r) : null;
+  }
+
+  setAutoContinue(a: AutoContinueRecord) {
+    this.stmt(
+      `INSERT INTO auto_continue(session_id, due_at, resets_at, after_seq, attempts, probes, updated_at) VALUES(?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(session_id) DO UPDATE SET due_at = excluded.due_at, resets_at = excluded.resets_at, after_seq = excluded.after_seq,
+         attempts = excluded.attempts, probes = excluded.probes, updated_at = excluded.updated_at`,
+    ).run(a.sessionId, a.dueAt, a.resetsAt, a.afterSeq, a.attempts, a.probes, now());
+  }
+
+  clearAutoContinue(sessionId: string): boolean {
+    return this.stmt("DELETE FROM auto_continue WHERE session_id = ?").run(sessionId).changes > 0;
+  }
+
+  /** Plans due at or before `at` (ISO strings of the same format compare chronologically). */
+  listDueAutoContinue(at: string): AutoContinueRecord[] {
+    const rows = this.stmt("SELECT * FROM auto_continue WHERE due_at IS NOT NULL AND due_at <= ? ORDER BY due_at").all(at) as unknown as AutoContinueRow[];
+    return rows.map(toAutoContinue);
+  }
+
+  listPendingAutoContinue(): AutoContinueRecord[] {
+    const rows = this.stmt("SELECT * FROM auto_continue WHERE due_at IS NOT NULL").all() as unknown as AutoContinueRow[];
+    return rows.map(toAutoContinue);
+  }
+
+  /** Types of the session's events after afterSeq that a plan cares about. */
+  hasEventsAfter(sessionId: string, afterSeq: number, types: string[]): boolean {
+    const r = this.sql
+      .prepare(`SELECT 1 AS x FROM events WHERE session_id = ? AND seq > ? AND type IN (${types.map(() => "?").join(", ")}) LIMIT 1`)
+      .get(sessionId, afterSeq, ...types);
+    return !!r;
+  }
+
+  lastEventSeq(sessionId: string): number {
+    const r = this.stmt("SELECT MAX(seq) AS m FROM events WHERE session_id = ?").get(sessionId) as { m: number | null };
+    return r.m ?? 0;
   }
 
   // ---- events

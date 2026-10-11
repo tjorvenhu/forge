@@ -84,6 +84,9 @@ Umgebungsvariablen für Sonderfälle: `FORGE_NODE` (Pfad zu node), `FORGE_SIDECA
   Karten, Aufgabenlisten (TodoWrite), Freigabeanfragen mit Erlauben / Für Session erlauben / Ablehnen,
   Stop (Esc), Modell- und Effort-Wechsel (global, pro Projekt, pro Session), Plan-Modus, Resume auch nach App-Absturz, Übernahme von im Terminal
   gestarteten Sessions inkl. Verlauf.
+- **Session-Tabs:** Leiste ganz oben im Fenster, in jeder Ansicht. Zeigt alle Sessions mit laufendem Claude-Prozess
+  und die offene Session, gruppiert nach Projekt. Status als Punkt, wartende Freigaben farbig markiert, Hintergrundaufgaben
+  mit Anzahl. Klick öffnet Projekt und Session, `Strg+Tab` wechselt der Reihe nach.
 - **Permission-Profile:** Safe / Balanced / Autonomous mit echter Wirkung auf den Claude-Permission-Modus,
   harte Sperrliste in allen Profilen, Audit-Log.
 - **Git:** Status, echter Diff (auch für neue Dateien), Stage/Unstage, Commit nur der ausgewählten Dateien
@@ -109,7 +112,7 @@ Umgebungsvariablen für Sonderfälle: `FORGE_NODE` (Pfad zu node), `FORGE_SIDECA
 - **Diagnose:** CLI-Version, Anmeldestatus, API-Key-Override, git, gh, Capability-Matrix.
 - **Persistenz:** SQLite für Projekte, Sessions, Events, Freigaben, Einstellungen. Beim Start öffnet FORGE das zuletzt genutzte Projekt.
 
-Tastatur: `Strg+1..5` Workspace-Tabs, `Strg+N` neue Session, `Strg+O` Projekt hinzufügen, `Strg+J` Claude-Output,
+Tastatur: `Strg+1..5` Workspace-Tabs, `Strg+Tab` / `Strg+Umschalt+Tab` nächster / vorheriger Session-Tab, `Strg+N` neue Session, `Strg+O` Projekt hinzufügen, `Strg+J` Claude-Output,
 `Strg+Umschalt+E` Seitenleiste, `Esc` im Eingabefeld stoppt Claude.
 
 ## Tests

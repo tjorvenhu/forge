@@ -57,6 +57,7 @@ export function createHandlers(s: Services): Handlers {
     },
     "system.runtimeInfo": () => s.sessions.runtimeInfo(),
     "system.usage": ({ refresh }) => s.sessions.planUsage(refresh === true),
+    "system.rateLimit": () => s.sessions.rateLimit(),
 
     "claude.setupState": () => s.claudeSetup.current(),
     "claude.install": () => s.claudeSetup.install(),
@@ -122,7 +123,9 @@ export function createHandlers(s: Services): Handlers {
     "settings.get": () => s.db.getSettings(),
     "settings.update": (patch) => {
       diagCache = null;
-      return s.db.updateSettings(patch);
+      const next = s.db.updateSettings(patch);
+      if (patch.autoContinueAfterLimit !== undefined) s.sessions.settingsChanged();
+      return next;
     },
 
     "projects.list": () => s.projects.list(),
@@ -165,6 +168,7 @@ export function createHandlers(s: Services): Handlers {
     "sessions.rewind": ({ sessionId, messageUuid, dryRun }) => s.sessions.rewind(sessionId, messageUuid, dryRun),
     "system.commands": ({ projectId }) => s.sessions.commands(projectId),
     "sessions.stop": ({ sessionId }) => s.sessions.stop(sessionId),
+    "sessions.cancelAutoContinue": ({ sessionId }) => s.sessions.cancelAutoContinue(sessionId),
     "sessions.close": ({ sessionId }) => s.sessions.close(sessionId),
     "sessions.setModel": ({ sessionId, model }) => s.sessions.setModel(sessionId, model),
     "sessions.setEffort": ({ sessionId, effort }) => s.sessions.setEffort(sessionId, effort),
