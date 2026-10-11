@@ -103,6 +103,9 @@ export function SettingsView() {
               <ToggleRow checked={s.stripApiKey} onChange={(v) => void save({ stripApiKey: v })} label="ANTHROPIC_API_KEY für Sessions ausblenden">
                 Empfohlen. Ein gesetzter API-Key überschreibt die Abo-Anmeldung und kann separat abgerechnet werden. Der Wert wird nie angezeigt.
               </ToggleRow>
+              <ToggleRow checked={s.autoContinueAfterLimit} onChange={(v) => void save({ autoContinueAfterLimit: v })} label="Nach Nutzungslimit automatisch weitermachen">
+                Stoppt das Nutzungslimit eine Session, schickt FORGE nach dem Reset selbst eine Nachricht, damit Claude weiterarbeitet. Nur für diese Session, mit ihrem Profil, höchstens dreimal ohne deine Eingabe. FORGE muss dafür laufen.
+              </ToggleRow>
             </div>
           </Card>
 

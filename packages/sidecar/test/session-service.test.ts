@@ -2,13 +2,23 @@ import { mkdirSync, readFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { ServerEvent, SessionEventBody } from "@forge/protocol";
+import type { PlanUsage, ServerEvent, SessionEventBody } from "@forge/protocol";
 import type { ClaudeRuntime, RuntimeSession, SessionSink, StartOptions } from "../src/claude/runtime.js";
 import { AgentSdkRuntime, REMOTE_UNAVAILABLE } from "../src/claude/runtime.js";
 import { GitEngine } from "../src/git/git.js";
 import { Db } from "../src/persistence/db.js";
 import { ProjectManager } from "../src/projects/project-manager.js";
 import { SessionService } from "../src/sessions/session-service.js";
+import {
+  AUTO_CONTINUE_PROMPT,
+  CHECK_INTERVAL_MS,
+  MAX_AUTO_CONTINUES,
+  PROBE_INTERVAL_MS,
+  RESET_BUFFER_MS,
+  STARTUP_CHECK_MS,
+  isUsageLimitText,
+  resetFromText,
+} from "../src/sessions/auto-continue.js";
 import { git, initRepo, tempDir } from "./helpers.js";
 import { writeFileSync } from "node:fs";
 
@@ -43,8 +53,10 @@ class FakeRuntime implements ClaudeRuntime {
   async complete() {
     return "feat: neue Datei";
   }
-  async planUsage(): Promise<never> {
-    throw new Error("no usage in tests");
+  usage: PlanUsage | null = null;
+  async planUsage(): Promise<PlanUsage> {
+    if (!this.usage) throw new Error("no usage in tests");
+    return this.usage;
   }
   async sessionHistory() {
     return [];
@@ -802,5 +814,245 @@ describe("turn automation holds the next turn", () => {
     rt.sinks[0]!.onMessage({ type: "command_lifecycle", command_uuid: "aaaaaaaa-bbbb-4ccc-8ddd-000000000009", state: "started" });
     await svc.drain();
     expect(db.listEvents(s.id).find((e) => e.body.type === "automation")?.body).toMatchObject({ action: "skip" });
+  });
+});
+
+describe("automatic continuation after a usage limit", () => {
+  const START = Date.parse("2026-10-11T12:00:00.000Z");
+  const RESET_S = START / 1000 + 3600;
+  const DUE = new Date(RESET_S * 1000 + RESET_BUFFER_MS).toISOString();
+  let clock: number;
+  let svc2: SessionService;
+
+  beforeEach(() => {
+    clock = START;
+    svc2 = new SessionService(db, projects, new GitEngine(), rt, (e) => emitted.push(e), () => clock);
+  });
+  afterEach(async () => {
+    await svc2.drain();
+    svc2.shutdown();
+  });
+
+  const limitHit = (sink: SessionSink, opts: { resetsAt?: number | null; text?: string } = {}) => {
+    if (opts.resetsAt !== null) sink.onMessage({ type: "rate_limit_event", rate_limit_info: { status: "rejected", resetsAt: opts.resetsAt ?? RESET_S, rateLimitType: "five_hour" } });
+    sink.onMessage({ type: "result", subtype: "success", is_error: true, result: opts.text ?? "You've hit your limit · resets 2pm" });
+  };
+  const autoEvents = (id: string) => db.listEvents(id).flatMap((e) => (e.body.type === "auto_continue" ? [e.body] : []));
+
+  /** A session with a claude session id (needed to resume) whose second turn ran into the limit. */
+  async function limited(opts: { resetsAt?: number | null; text?: string } = {}) {
+    const s = await svc2.start({ projectId, prompt: "Lies a.txt" });
+    rt.replay();
+    await svc2.send(s.id, "Bau das Feature");
+    limitHit(rt.sinks.at(-1)!, opts);
+    await svc2.drain();
+    return s;
+  }
+
+  it("plans the continuation at the reported reset plus a buffer and stores it", async () => {
+    const s = await limited();
+    expect(db.getAutoContinue(s.id)).toMatchObject({ dueAt: DUE, resetsAt: new Date(RESET_S * 1000).toISOString(), attempts: 0 });
+    expect(svc2.get(s.id).autoContinueAt).toBe(DUE);
+    expect(autoEvents(s.id)).toEqual([{ type: "auto_continue", state: "scheduled", scheduledFor: DUE, resetKnown: true, attempt: 1, message: null }]);
+    expect(emitted.some((e) => e.event === "session.updated" && e.payload.id === s.id && e.payload.autoContinueAt === DUE)).toBe(true);
+  });
+
+  it("sends the continuation prompt once due, marked as automatic", async () => {
+    const s = await limited();
+    clock = Date.parse(DUE) - 1000;
+    await svc2.checkAutoContinue();
+    expect(rt.sent).toEqual(["Bau das Feature"]);
+    clock = Date.parse(DUE);
+    await svc2.checkAutoContinue();
+    expect(rt.sent).toEqual(["Bau das Feature", AUTO_CONTINUE_PROMPT]);
+    expect(autoEvents(s.id).at(-1)).toMatchObject({ state: "resumed", scheduledFor: DUE, attempt: 1 });
+    expect(db.listEvents(s.id).find((e) => e.body.type === "user.message" && e.body.text === AUTO_CONTINUE_PROMPT)?.body).toMatchObject({ source: "auto" });
+    expect(svc2.get(s.id)).toMatchObject({ autoContinueAt: null, status: "running" });
+  });
+
+  it("resumes the session first when its process is gone", async () => {
+    const s = await limited();
+    svc2.close(s.id);
+    expect(svc2.get(s.id).live).toBe(false);
+    clock = Date.parse(DUE) + 5000;
+    await svc2.checkAutoContinue();
+    expect(rt.started.at(-1)).toMatchObject({ resume: "d69118dc-ef0c-4925-9945-3091ab75cb15", firstMessage: expect.objectContaining({ text: AUTO_CONTINUE_PROMPT }) });
+  });
+
+  it("runs an overdue plan on the first check after the computer slept, driven by the wall clock", async () => {
+    const s = await limited();
+    vi.useFakeTimers({ toFake: ["setTimeout", "setInterval"] });
+    try {
+      svc2.startBackgroundChecks();
+      await vi.advanceTimersByTimeAsync(STARTUP_CHECK_MS + CHECK_INTERVAL_MS);
+      expect(autoEvents(s.id).some((b) => b.state === "resumed")).toBe(false);
+      // Asleep: no timer ran, but the wall clock moved on by hours. The next tick sees the plan as overdue.
+      clock = Date.parse(DUE) + 3 * 60 * 60_000;
+      await vi.advanceTimersByTimeAsync(CHECK_INTERVAL_MS);
+    } finally {
+      vi.useRealTimers();
+    }
+    // Sending captures a git baseline (a real child process), so wait in real time.
+    await vi.waitFor(() => expect(rt.sent.at(-1)).toBe(AUTO_CONTINUE_PROMPT));
+    await svc2.checkAutoContinue();
+    expect(autoEvents(s.id).filter((b) => b.state === "resumed")).toHaveLength(1);
+    expect(rt.sent.filter((t) => t === AUTO_CONTINUE_PROMPT)).toHaveLength(1);
+  });
+
+  it("drops the plan when the user writes before the reset", async () => {
+    const s = await limited();
+    await svc2.send(s.id, "Ich mach selbst weiter");
+    expect(svc2.get(s.id).autoContinueAt).toBeNull();
+    expect(db.getAutoContinue(s.id)).toBeNull();
+    clock = Date.parse(DUE) + 1000;
+    await svc2.checkAutoContinue();
+    expect(rt.sent).not.toContain(AUTO_CONTINUE_PROMPT);
+  });
+
+  it("drops the plan when a message comes in from the Claude app", async () => {
+    const s = await limited();
+    svc2["core"].record(s.id, { type: "user.message", text: "vom Handy", source: "remote" });
+    expect(svc2.get(s.id).autoContinueAt).toBeNull();
+  });
+
+  it("cancels on request and records it in the timeline", async () => {
+    const s = await limited();
+    expect(svc2.cancelAutoContinue(s.id).autoContinueAt).toBeNull();
+    expect(autoEvents(s.id).at(-1)).toMatchObject({ state: "cancelled", scheduledFor: DUE });
+    clock = Date.parse(DUE) + 1000;
+    await svc2.checkAutoContinue();
+    expect(rt.sent).not.toContain(AUTO_CONTINUE_PROMPT);
+  });
+
+  it("cancels when the user stops the session", async () => {
+    const s = await limited();
+    await svc2.stop(s.id);
+    expect(svc2.get(s.id).autoContinueAt).toBeNull();
+    expect(autoEvents(s.id).at(-1)).toMatchObject({ state: "cancelled", message: "Session gestoppt." });
+  });
+
+  it("plans nothing when the setting is off, and switching it off drops pending plans", async () => {
+    db.updateSettings({ autoContinueAfterLimit: false });
+    const s = await limited();
+    expect(db.getAutoContinue(s.id)).toBeNull();
+    expect(autoEvents(s.id)).toEqual([]);
+    db.updateSettings({ autoContinueAfterLimit: true });
+    await svc2.send(s.id, "nochmal");
+    limitHit(rt.sinks.at(-1)!);
+    await svc2.drain();
+    expect(svc2.get(s.id).autoContinueAt).toBe(DUE);
+    db.updateSettings({ autoContinueAfterLimit: false });
+    svc2.settingsChanged();
+    expect(svc2.get(s.id).autoContinueAt).toBeNull();
+    expect(autoEvents(s.id).at(-1)).toMatchObject({ state: "cancelled" });
+  });
+
+  it("does not plan for an ordinary error", async () => {
+    const s = await svc2.start({ projectId, prompt: "x" });
+    rt.sinks[0]!.onMessage({ type: "result", subtype: "error_during_execution", is_error: true, errors: ["API Error: 500"] });
+    await svc2.drain();
+    expect(db.getAutoContinue(s.id)).toBeNull();
+  });
+
+  it("re-arms the plan from the database after a restart", async () => {
+    const s = await limited();
+    svc2.shutdown();
+    expect(db.markOrphanedSessions()).toBe(0);
+    const svc3 = new SessionService(db, projects, new GitEngine(), rt, () => {}, () => clock);
+    try {
+      expect(svc3.get(s.id)).toMatchObject({ live: false, autoContinueAt: DUE });
+      clock = Date.parse(DUE) + 60_000;
+      await svc3.checkAutoContinue();
+      expect(rt.started.at(-1)).toMatchObject({ resume: "d69118dc-ef0c-4925-9945-3091ab75cb15", firstMessage: expect.objectContaining({ text: AUTO_CONTINUE_PROMPT }) });
+    } finally {
+      await svc3.drain();
+      svc3.shutdown();
+    }
+  });
+
+  it("stops after three automatic continuations without user input", async () => {
+    const s = await limited();
+    for (let i = 1; i <= MAX_AUTO_CONTINUES; i++) {
+      clock = Date.parse(db.getAutoContinue(s.id)!.dueAt!) + 1000;
+      await svc2.checkAutoContinue();
+      expect(rt.sent.filter((t) => t === AUTO_CONTINUE_PROMPT)).toHaveLength(i);
+      limitHit(rt.sinks.at(-1)!, { resetsAt: clock / 1000 + 600 });
+      await svc2.drain();
+    }
+    expect(svc2.get(s.id).autoContinueAt).toBeNull();
+    expect(autoEvents(s.id).at(-1)).toMatchObject({ state: "exhausted", attempt: MAX_AUTO_CONTINUES });
+    // The next own message starts the count over.
+    await svc2.send(s.id, "weiter");
+    limitHit(rt.sinks.at(-1)!, { resetsAt: clock / 1000 + 600 });
+    await svc2.drain();
+    expect(autoEvents(s.id).at(-1)).toMatchObject({ state: "scheduled", attempt: 1 });
+  });
+
+  it("checks the plan usage periodically while the reset time is unknown", async () => {
+    const s = await limited({ resetsAt: null, text: "You've hit your limit" });
+    const probeAt = new Date(START + PROBE_INTERVAL_MS).toISOString();
+    expect(db.getAutoContinue(s.id)).toMatchObject({ dueAt: probeAt, resetsAt: null });
+    expect(autoEvents(s.id).at(-1)).toMatchObject({ state: "scheduled", resetKnown: false });
+    const reset = new Date(START + 2 * 60 * 60_000).toISOString();
+    rt.usage = { available: true, subscriptionType: "max", windows: [{ key: "five_hour", label: "5 Stunden", utilization: 100, resetsAt: reset }], fetchedAt: reset, error: null };
+    clock = Date.parse(probeAt);
+    await svc2.checkAutoContinue();
+    const due = new Date(Date.parse(reset) + RESET_BUFFER_MS).toISOString();
+    expect(db.getAutoContinue(s.id)).toMatchObject({ dueAt: due, resetsAt: reset });
+    expect(autoEvents(s.id).at(-1)).toMatchObject({ state: "scheduled", resetKnown: true, scheduledFor: due });
+    expect(rt.sent).not.toContain(AUTO_CONTINUE_PROMPT);
+  });
+
+  it("takes the reset time from the plan usage when the limit event has none", async () => {
+    const reset = new Date(START + 90 * 60_000).toISOString();
+    rt.usage = { available: true, subscriptionType: "max", windows: [{ key: "seven_day", label: "Woche", utilization: 100, resetsAt: reset }], fetchedAt: reset, error: null };
+    const s = await limited({ resetsAt: null, text: "You've reached your weekly limit" });
+    expect(db.getAutoContinue(s.id)).toMatchObject({ resetsAt: reset });
+  });
+});
+
+describe("account rate limit state", () => {
+  it("keeps the latest warning, reports changes once and clears it after the reset or when allowed", async () => {
+    let clock = Date.parse("2026-10-11T12:00:00.000Z");
+    const svc2 = new SessionService(db, projects, new GitEngine(), rt, (e) => emitted.push(e), () => clock);
+    try {
+      expect(svc2.rateLimit().status).toBe("ok");
+      await svc2.start({ projectId, prompt: "x" });
+      const warn = { type: "rate_limit_event", rate_limit_info: { status: "allowed_warning", resetsAt: clock / 1000 + 1800, rateLimitType: "five_hour", utilization: 0.9 } };
+      rt.sinks[0]!.onMessage(warn);
+      rt.sinks[0]!.onMessage(warn);
+      const resetsAt = new Date(clock + 1800_000).toISOString();
+      expect(svc2.rateLimit()).toMatchObject({ status: "warning", limitType: "five_hour", resetsAt, utilization: 90 });
+      expect(emitted.filter((e) => e.event === "ratelimit.updated")).toHaveLength(1);
+      clock += 1800_000;
+      expect(svc2.rateLimit()).toMatchObject({ status: "ok", resetsAt: null });
+      rt.sinks[0]!.onMessage({ type: "rate_limit_event", rate_limit_info: { status: "rejected", resetsAt: clock / 1000 + 600, rateLimitType: "seven_day" } });
+      expect(svc2.rateLimit()).toMatchObject({ status: "reached", limitType: "seven_day" });
+      rt.sinks[0]!.onMessage({ type: "rate_limit_event", rate_limit_info: { status: "allowed", resetsAt: clock / 1000 + 600, rateLimitType: "seven_day" } });
+      expect(svc2.rateLimit().status).toBe("ok");
+    } finally {
+      await svc2.drain();
+      svc2.shutdown();
+    }
+  });
+});
+
+describe("reset time from limit messages", () => {
+  const now = new Date(2026, 9, 11, 12, 0, 0).getTime();
+  it("reads clock times, dates and the old unix suffix", () => {
+    expect(resetFromText("You've hit your limit · resets 3pm (Europe/Berlin)", now)).toBe(new Date(2026, 9, 11, 15, 0).getTime());
+    expect(resetFromText("5-hour limit reached · resets 9:30am", now)).toBe(new Date(2026, 9, 12, 9, 30).getTime());
+    expect(resetFromText("You've hit your weekly limit · resets Oct 14, 6pm", now)).toBe(new Date(2026, 9, 14, 18, 0).getTime());
+    expect(resetFromText("Claude AI usage limit reached|1791661200", now)).toBe(1791661200_000);
+    expect(resetFromText("resets 15:00", now)).toBe(new Date(2026, 9, 11, 15, 0).getTime());
+    expect(resetFromText("You've hit your limit", now)).toBeNull();
+    expect(resetFromText("resets 3", now)).toBeNull();
+  });
+
+  it("recognises limit texts but not ordinary errors", () => {
+    expect(isUsageLimitText("You've hit your limit · resets 3pm")).toBe(true);
+    expect(isUsageLimitText("Claude AI usage limit reached|1791661200")).toBe(true);
+    expect(isUsageLimitText("API Error: 529 Overloaded")).toBe(false);
+    expect(isUsageLimitText(null)).toBe(false);
   });
 });

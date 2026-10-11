@@ -31,17 +31,35 @@ export function shouldNotify(sessionId: string, kind: NotifyKind): boolean {
   return Date.now() - prev > 3000;
 }
 
-/** Shows a notification at the bottom right that leads to the session. */
-export async function notifySession(qc: QueryClient, ev: SessionEvent, kind: NotifyKind) {
-  const live = qc.getQueryData<ResultOf<"sessions.listLive">>(["liveSessions"])?.find((s) => s.id === ev.sessionId);
-  const session = live ?? qc.getQueryData<ResultOf<"sessions.get">>(["session", ev.sessionId]) ?? (await rpc.call("sessions.get", { sessionId: ev.sessionId }).catch(() => null));
-  if (!session) return;
+/** The session of an event with "Projekt: Titel" and an action that opens it. */
+async function sessionContext(qc: QueryClient, sessionId: string) {
+  const live = qc.getQueryData<ResultOf<"sessions.listLive">>(["liveSessions"])?.find((s) => s.id === sessionId);
+  const session = live ?? qc.getQueryData<ResultOf<"sessions.get">>(["session", sessionId]) ?? (await rpc.call("sessions.get", { sessionId }).catch(() => null));
+  if (!session) return null;
   const projectName = live?.projectName ?? qc.getQueryData<ResultOf<"projects.list">>(["projects"])?.find((p) => p.id === session.projectId)?.name;
   const where = [projectName, session.title ?? "Ohne Titel"].filter(Boolean).join(": ");
+  const action = { label: "Session öffnen", onClick: () => useUi.getState().openProject(session.projectId, session.id) };
+  return { session, where, action };
+}
+
+/** Tells the user that FORGE continued a session after a usage limit, or gave up doing so. */
+export async function notifyAutoContinue(qc: QueryClient, ev: SessionEvent) {
+  const b = ev.body;
+  if (b.type !== "auto_continue" || (b.state !== "resumed" && b.state !== "exhausted" && b.state !== "failed")) return;
+  const ctx = await sessionContext(qc, ev.sessionId);
+  if (!ctx) return;
+  if (b.state === "resumed") toast.notify({ tone: "info", title: "Automatisch fortgesetzt", body: `${ctx.where}\nDas Nutzungslimit ist zurückgesetzt, Claude arbeitet weiter.`, action: ctx.action, duration: 8000 });
+  else toast.notify({ tone: "warning", title: "Nicht automatisch fortgesetzt", body: [ctx.where, b.message].filter(Boolean).join("\n"), action: ctx.action, duration: 12_000 });
+}
+
+/** Shows a notification at the bottom right that leads to the session. */
+export async function notifySession(qc: QueryClient, ev: SessionEvent, kind: NotifyKind) {
+  const ctx = await sessionContext(qc, ev.sessionId);
+  if (!ctx) return;
+  const { session, where, action } = ctx;
   const b = ev.body;
   const detail =
     b.type === "approval.request" ? (b.title ?? b.toolName) : b.type === "error" ? b.message : b.type === "turn.result" && b.isError ? (b.text ?? b.subtype) : null;
-  const action = { label: "Session öffnen", onClick: () => useUi.getState().openProject(session.projectId, session.id) };
   if (kind === "approval") {
     const tool = b.type === "approval.request" ? b.toolName : "";
     const title = tool === "AskUserQuestion" ? "Rückfrage von Claude" : tool === "ExitPlanMode" ? "Plan zur Freigabe" : "Freigabe nötig";

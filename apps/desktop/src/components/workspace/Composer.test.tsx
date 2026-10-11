@@ -51,6 +51,7 @@ const session: Session = {
   live: true,
   background: [],
   context: null,
+  autoContinueAt: null,
 };
 
 function setup(ui: React.ReactNode) {

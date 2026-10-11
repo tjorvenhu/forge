@@ -39,6 +39,7 @@ export function EventCard({
   ts,
   children,
   defaultOpen = false,
+  action,
 }: {
   icon: ReactNode;
   tone: Tone;
@@ -48,6 +49,8 @@ export function EventCard({
   ts: string;
   children?: ReactNode;
   defaultOpen?: boolean;
+  /** a button shown before the time, e.g. to cancel what the card announces */
+  action?: ReactNode;
 }) {
   const [open, setOpen] = useState(defaultOpen);
   const expandable = !!children;
@@ -64,6 +67,7 @@ export function EventCard({
           </span>
         )}
       </span>
+      {action}
       <span className="shrink-0 text-caption-lg text-subtle">{clockTime(ts)}</span>
       {expandable && <ChevronRight className={cn("h-4 w-4 shrink-0 text-subtle transition-transform", open && "rotate-90")} />}
     </>
