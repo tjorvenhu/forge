@@ -220,6 +220,32 @@ export class GitEngine {
     await this.ok(cwd, create ? ["switch", "-c", branch] : ["switch", branch]);
   }
 
+  /**
+   * Deletes a local branch. Without `force` git refuses branches whose commits are in no other branch;
+   * that comes back as CONFLICT so the caller can ask. The current and the default branch are kept.
+   */
+  async deleteBranch(cwd: string, branch: string, force: boolean) {
+    if (branch.startsWith("-")) throw new ForgeError("VALIDATION", "Ungültiger Branch-Name.");
+    const check = await this.exec(cwd, ["check-ref-format", "--branch", branch]);
+    if (check.code !== 0) throw new ForgeError("VALIDATION", `Ungültiger Branch-Name: ${branch}`);
+    if ((await this.currentBranch(cwd)) === branch) {
+      throw new ForgeError("POLICY_DENIED", "Der aktuelle Branch kann nicht gelöscht werden. Wechsle vorher auf einen anderen.");
+    }
+    if (new Set(["main", "master", await this.defaultBranch(cwd)]).has(branch)) {
+      throw new ForgeError("POLICY_DENIED", `${branch} ist der Standard-Branch des Repositorys und wird nicht gelöscht.`);
+    }
+    const r = await this.exec(cwd, ["branch", force ? "-D" : "-d", "--", branch]);
+    if (r.code === 0) return;
+    const msg = (r.stderr || r.stdout).trim();
+    if (/not fully merged/i.test(msg)) {
+      throw new ForgeError("CONFLICT", `Der Branch ${branch} enthält Commits, die in keinem anderen Branch sind.`, { unmerged: true });
+    }
+    if (/used by worktree|checked out at/i.test(msg)) {
+      throw new ForgeError("CONFLICT", `Der Branch ${branch} ist in einem Worktree ausgecheckt. Entferne zuerst den Agenten bzw. Worktree.`);
+    }
+    throw new ForgeError("GIT_FAILED", msg || "Branch konnte nicht gelöscht werden.");
+  }
+
   async currentBranch(cwd: string): Promise<string | null> {
     const r = await this.exec(cwd, ["symbolic-ref", "--short", "-q", "HEAD"]);
     return r.code === 0 ? r.stdout.trim() || null : null;

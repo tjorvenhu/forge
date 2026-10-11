@@ -109,12 +109,23 @@ export class WorktreeService {
    * running inside the folder (sessions, dev server) must be ended first: Windows refuses to delete
    * a folder that is the current directory of a process.
    */
-  async remove(worktree: Project, force: boolean) {
+  async remove(worktree: Project, force: boolean, opts: { deleteBranch?: boolean } = {}): Promise<{ deletedBranch: string | null; branchError: string | null }> {
     await this.assertRemovable(worktree, force);
     const cwd = await this.controlDir(worktree);
+    const branch = opts.deleteBranch && existsSync(worktree.path) ? await this.git.currentBranch(worktree.path).catch(() => null) : null;
     if (existsSync(worktree.path)) await this.deleteFolder(worktree.path, cwd, force);
     if (cwd) await this.git.exec(cwd, ["worktree", "prune"]);
     this.projects.remove(worktree.id);
+    if (!opts.deleteBranch) return { deletedBranch: null, branchError: null };
+    // The worktree is gone at this point; a failed branch deletion is reported, not thrown, so the
+    // caller does not show the removal as failed.
+    if (!branch || !cwd) return { deletedBranch: null, branchError: "Der Branch des Worktrees war nicht mehr zu ermitteln." };
+    try {
+      await this.git.deleteBranch(cwd, branch, true);
+      return { deletedBranch: branch, branchError: null };
+    } catch (e) {
+      return { deletedBranch: null, branchError: e instanceof Error ? e.message : String(e) };
+    }
   }
 
   private async deleteFolder(dir: string, cwd: string | null, force: boolean) {

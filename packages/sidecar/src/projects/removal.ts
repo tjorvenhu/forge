@@ -134,12 +134,17 @@ export async function removalInfo(projectId: string, d: RemovalDeps): Promise<Pr
  * Claude process and dev server run inside the folder, so they end first; otherwise Windows refuses
  * the deletion ("Permission denied"). A refused removal (uncommitted changes) leaves them running.
  */
-export async function removeWorktree(projectId: string, force: boolean, d: Pick<RemovalDeps, "projects" | "sessions" | "worktrees" | "devServers">) {
+export async function removeWorktree(
+  projectId: string,
+  force: boolean,
+  d: Pick<RemovalDeps, "projects" | "sessions" | "worktrees" | "devServers">,
+  opts: { deleteBranch?: boolean } = {},
+) {
   const worktree = d.projects.get(projectId);
   await d.worktrees.assertRemovable(worktree, force);
   await d.sessions.closeProject([worktree.id]);
   await d.devServers.forget(worktree.id);
-  await d.worktrees.remove(worktree, force);
+  return d.worktrees.remove(worktree, force, opts);
 }
 
 /**

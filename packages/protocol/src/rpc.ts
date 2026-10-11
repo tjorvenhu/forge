@@ -138,7 +138,11 @@ export const methods = {
   },
 
   "worktrees.create": { params: projectRef.extend({ branch: z.string().min(1).max(200) }), result: Project },
-  "worktrees.remove": { params: projectRef.extend({ force: z.boolean().default(false) }), result: z.object({ ok: z.boolean() }) },
+  "worktrees.remove": {
+    /** deleteBranch: also delete the worktree's branch afterwards, merged or not */
+    params: projectRef.extend({ force: z.boolean().default(false), deleteBranch: z.boolean().default(false) }),
+    result: z.object({ ok: z.boolean(), deletedBranch: z.string().nullable(), branchError: z.string().nullable() }),
+  },
   "sessions.summarize": { params: sessionRef, result: z.object({ summary: z.string(), model: z.string() }) },
 
   "settings.get": { params: empty, result: Settings },
@@ -315,6 +319,11 @@ export const methods = {
     result: z.object({ commit: z.string(), subject: z.string(), stashed: z.boolean(), changed: z.number().int() }),
   },
   "git.branches": { params: projectRef, result: z.array(BranchInfo) },
+  /** Local branch; without force, a branch with commits in no other branch fails with CONFLICT (details.unmerged). */
+  "git.deleteBranch": {
+    params: projectRef.extend({ branch: z.string().min(1).max(250), force: z.boolean().default(false) }),
+    result: z.array(BranchInfo),
+  },
   "git.checkout": {
     params: projectRef.extend({ branch: z.string().min(1).max(250), create: z.boolean().default(false) }),
     result: GitStatus,
