@@ -47,9 +47,10 @@ außerhalb des Projekts werden nicht eingeschränkt; die Schreibsperre im Autono
 
 `git.commit` committet ausschließlich die im UI ausgewählten Dateien (`git commit --only -- <pfade>`).
 Vorher wird geprüft: keine Konflikte, Dateien haben tatsächlich Änderungen, keine sensiblen Dateien
-(`.env`, Schlüssel, Zertifikate, Credentials), keine Build-Artefakte, keine bekannten Token-Muster im
-neuen Inhalt. Bei Treffern fragt FORGE nach, ob trotzdem committet werden soll, und zeigt die betroffenen
-Dateien mit Grund. Committet wird nur nach ausdrücklicher Bestätigung.
+(`.env`, Schlüssel, Zertifikate, Credentials) und keine Build-Artefakte. Geprüft werden nur Dateinamen und
+Pfade, nicht der Inhalt: Die Inhaltsprüfung brauchte einen git-Aufruf pro Datei und machte Commits zu langsam.
+Bei Treffern fragt FORGE nach, ob trotzdem committet werden soll, und zeigt die betroffenen Dateien mit Grund.
+Committet wird nur nach ausdrücklicher Bestätigung.
 FORGE pusht in Phase 1 nie.
 
 ## Redaction
@@ -109,9 +110,8 @@ E-Mail-Adresse oder Org-Daten der Claude-Anmeldung.
 - **Auto-Commit/Auto-Push** commiten nur Dateien aus dem aktuellen Durchlauf, nie sensible Dateien, pushen nie
   auf main/master und nie mit Force. Neue Nachrichten aus FORGE warten, bis Tests und Auto-Commit des letzten
   Durchlaufs fertig sind. Hat sich eine Datei seit dem Ende des Durchlaufs geändert oder hat inzwischen ein
-  neuer Durchlauf begonnen (etwa aus der Claude-App), entfällt der Auto-Commit. Sieht ein geänderter Inhalt nach
-  einem Schlüssel oder Token aus, stellt FORGE im Chat die Frage „Trotzdem committen?“ (mit Desktop-Hinweis).
-  Committet wird nur nach Klick und nur, wenn sich die Dateien seit der Frage nicht geändert haben.
+  neuer Durchlauf begonnen (etwa aus der Claude-App), entfällt der Auto-Commit. Der Inhalt der Dateien wird
+  nicht auf Schlüssel oder Passwörter geprüft.
 
 ## Telefon (Phase 5, ADR 0010)
 

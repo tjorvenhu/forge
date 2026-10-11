@@ -174,20 +174,6 @@ export const SessionEventBody = z.discriminatedUnion("type", [
     hash: z.string().nullable(),
     files: z.array(z.string()),
   }),
-  /** Auto-commit found possible secrets in the changed content and asks before committing. */
-  z.object({
-    type: z.literal("automation.confirm"),
-    requestId: z.string(),
-    files: z.array(z.string()),
-    flagged: z.array(z.object({ path: z.string(), reason: z.string() })),
-    message: z.string(),
-  }),
-  z.object({
-    type: z.literal("automation.confirmResolved"),
-    requestId: z.string(),
-    /** expired: the files changed after the question, or FORGE restarted meanwhile */
-    decision: z.enum(["commit", "skip", "expired"]),
-  }),
   z.object({
     type: z.literal("files.rewound"),
     toMessageUuid: z.string(),

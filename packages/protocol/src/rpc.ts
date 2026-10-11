@@ -250,11 +250,6 @@ export const methods = {
     }),
     result: z.object({ ok: z.boolean() }),
   },
-  /** Answer to an automation.confirm question: commit despite the findings, or leave the files uncommitted. */
-  "sessions.confirmAutoCommit": {
-    params: sessionRef.extend({ requestId: id, commit: z.boolean() }),
-    result: z.object({ ok: z.boolean() }),
-  },
   "sessions.contextUsage": { params: sessionRef, result: ContextUsage.nullable() },
   "search.sessions": {
     params: z.object({ query: z.string().min(1).max(200), limit: z.number().int().min(1).max(200).default(50) }),

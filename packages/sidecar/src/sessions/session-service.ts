@@ -263,10 +263,4 @@ export class SessionService {
   remoteStop(projectId: string): Promise<RemoteState> {
     return this.remote.stop(projectId);
   }
-
-  // ---------- turn automation
-
-  confirmAutoCommit(sessionId: string, requestId: string, commit: boolean) {
-    return this.automation.confirm(sessionId, requestId, commit);
-  }
 }

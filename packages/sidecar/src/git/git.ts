@@ -1,7 +1,6 @@
 import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import { ForgeError, type BranchInfo, type CommitInfo, type FileDiff, type GitStatus, type GitSummary } from "@forge/protocol";
-import { containsSecret } from "../policy/redact.js";
 import { isInside } from "../util/paths.js";
 import { run, type RunResult } from "../util/proc.js";
 import { resolveTool } from "../util/tools.js";
@@ -155,19 +154,15 @@ export class GitEngine {
       throw new ForgeError("VALIDATION", `Diese Dateien haben keine Änderungen: ${unknown.join(", ")}`, { paths: unknown });
     }
 
+    // Only file names are checked: scanning contents cost one git process per file and made commits slow.
     if (!allowSensitive) {
       const flagged: Array<{ path: string; reason: string }> = [];
       for (const p of paths) {
         if (isSensitiveFile(p)) flagged.push({ path: p, reason: "sensible Datei" });
         else if (isArtifactPath(p)) flagged.push({ path: p, reason: "Build-Artefakt" });
-        else if (byPath.get(p)?.kind !== "deleted") {
-          const d = await this.diff(cwd, p, false).catch(() => null);
-          const added = d?.lines.filter((l) => l.kind === "add").map((l) => l.text).join("\n") ?? "";
-          if (added && containsSecret(added)) flagged.push({ path: p, reason: "möglicher Schlüssel/Token im Inhalt" });
-        }
       }
       if (flagged.length) {
-        throw new ForgeError("POLICY_DENIED", "Commit gestoppt: mögliche Secrets oder Build-Artefakte ausgewählt.", { flagged });
+        throw new ForgeError("POLICY_DENIED", "Sensible Dateien oder Build-Artefakte ausgewählt.", { flagged });
       }
     }
 
@@ -180,8 +175,7 @@ export class GitEngine {
     const list = [...pathspec];
     await this.ok(cwd, ["add", "-A", "--", ...list]);
     await this.ok(cwd, ["commit", "-q", "-F", "-", "--only", "--", ...list], message);
-    const hash = (await this.ok(cwd, ["rev-parse", "HEAD"])).trim();
-    const summary = (await this.ok(cwd, ["log", "-1", "--format=%s"])).trim();
+    const [hash = "", summary = ""] = (await this.ok(cwd, ["log", "-1", "--format=%H%n%s"])).split("\n").map((l) => l.replace(/\r$/, "").trim());
     return { hash, summary };
   }
 
