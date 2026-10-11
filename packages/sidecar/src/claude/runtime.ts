@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import {
   listSessions as sdkListSessions,
   deleteSession as sdkDeleteSession,
+  renameSession as sdkRenameSession,
   getSessionMessages,
   query,
   type CanUseTool,
@@ -85,6 +86,13 @@ export interface RuntimeSession {
   contextUsage(): Promise<ContextUsage>;
   /** connects this session to claude.ai / the Claude app (Remote Control); returns the session link */
   setRemoteControl(enabled: boolean, name: string): Promise<string | null>;
+  /** a short title Claude Code writes for the description; null when this CLI cannot */
+  generateTitle(description: string): Promise<string | null>;
+  /**
+   * sets the title Claude Code (and with Remote Control the Claude app) shows; a no-op when this CLI
+   * cannot. With claudeSessionId the CLI refuses it once it moved to another conversation (/clear).
+   */
+  rename(title: string, claudeSessionId: string | null): Promise<void>;
   initialization(): Promise<SDKControlInitializeResponse>;
 }
 
@@ -97,6 +105,8 @@ export interface ClaudeRuntime {
   sessionHistory(claudeSessionId: string, dir: string): Promise<unknown[]>;
   /** removes the CLI's transcript, so the session is gone from `claude --resume` too */
   deleteTranscript(claudeSessionId: string, dir: string): Promise<void>;
+  /** writes a new title into the CLI's transcript; for sessions without a running process */
+  renameTranscript(claudeSessionId: string, title: string, dir: string): Promise<void>;
   /** short-lived probe to read models/commands/account without sending a prompt */
   probe(opts: Pick<StartOptions, "cwd" | "env" | "claudePath">): Promise<SDKControlInitializeResponse>;
   /** slash commands and skills available in a project (custom + those the headless CLI supports) */
@@ -110,6 +120,12 @@ export interface ClaudeRuntime {
 /** Not in the SDK typings (0.3.x) but used by the official IDE hosts; checked at runtime before use. */
 interface RemoteControlQuery {
   enableRemoteControl?: (enabled: boolean, name?: string) => Promise<{ session_url?: unknown } | undefined>;
+}
+
+/** Not in the SDK typings (0.3.x); checked at runtime before use. */
+interface SessionTitleQuery {
+  generateSessionTitle?: (description: string, opts?: { persist?: boolean }) => Promise<unknown>;
+  renameSession?: (title: string, sessionId?: string) => Promise<void>;
 }
 
 /** Experimental in SDK 0.3.x and announced to be renamed; checked at runtime before use. */
@@ -328,6 +344,18 @@ export class AgentSdkRuntime implements ClaudeRuntime {
         const r = await rc.enableRemoteControl.call(q, enabled, name);
         return typeof r?.session_url === "string" ? r.session_url : null;
       },
+      generateTitle: async (description) => {
+        const tq = q as unknown as SessionTitleQuery;
+        if (typeof tq.generateSessionTitle !== "function") return null;
+        // persist: false, FORGE applies the title itself with rename() so every place shows the same one.
+        const title = await tq.generateSessionTitle.call(q, description, { persist: false });
+        return typeof title === "string" && title.trim() ? title : null;
+      },
+      rename: async (title, claudeSessionId) => {
+        const tq = q as unknown as SessionTitleQuery;
+        if (typeof tq.renameSession !== "function") return;
+        await tq.renameSession.call(q, title, claudeSessionId ?? undefined);
+      },
       initialization: () => q.initializationResult(),
     };
   }
@@ -349,6 +377,10 @@ export class AgentSdkRuntime implements ClaudeRuntime {
 
   async deleteTranscript(claudeSessionId: string, dir: string): Promise<void> {
     await sdkDeleteSession(claudeSessionId, { dir });
+  }
+
+  async renameTranscript(claudeSessionId: string, title: string, dir: string): Promise<void> {
+    await sdkRenameSession(claudeSessionId, title, { dir });
   }
 
   async commands(opts: Pick<StartOptions, "cwd" | "env" | "claudePath">): Promise<SlashCommand[]> {

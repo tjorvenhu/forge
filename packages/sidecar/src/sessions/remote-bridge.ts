@@ -11,7 +11,8 @@ export interface BridgeHost {
   emit(e: ServerEvent): void;
   /** a CLI turn started without a FORGE message (Claude app, or an own message queued in the CLI) */
   turnStarted(sessionId: string, live: LiveSession, fromRemote: boolean): void;
-  titleFromFirstMessage(sessionId: string, text: string): void;
+  /** a message typed in the Claude app reached the timeline */
+  userMessage(sessionId: string, text: string): void;
 }
 
 interface RemoteUserContent {
@@ -93,7 +94,7 @@ export class RemoteBridge {
     if (!map || !live || !rec) return;
     const project = this.projects.get(rec.projectId);
     const title = rec.title ?? "";
-    const name = this.uniqueName(sessionId, `FORGE · ${project.name}: ${title || "Session"}`);
+    const name = this.uniqueName(sessionId, remoteName(project.name, title));
     map.set(sessionId, { sessionId, projectId: rec.projectId, projectName: project.name, title, name, url: null, state: "connecting", message: null });
     this.emitState();
     try {
@@ -107,6 +108,22 @@ export class RemoteBridge {
     } catch (e) {
       if (this.sessions === map && this.host.live(sessionId) === live) this.update(sessionId, { state: "error", message: describeRuntimeError(e) });
     }
+  }
+
+  /**
+   * Takes over a new session title: the entry gets the name built from it. Returns that name for the
+   * rename in the CLI, or null when the session is not connected. The bridge itself keeps the name it
+   * was connected with; the Claude app learns the new title from the CLI's rename.
+   */
+  retitle(sessionId: string): string | null {
+    const cur = this.sessions?.get(sessionId);
+    const rec = this.db.getSession(sessionId);
+    if (!cur || !rec) return null;
+    const title = rec.title ?? "";
+    const name = this.uniqueName(sessionId, remoteName(cur.projectName, title));
+    this.sessions!.set(sessionId, { ...cur, title, name });
+    this.emitState();
+    return name;
   }
 
   /** Two sessions with the same project and title must still be told apart in the Claude app. */
@@ -163,7 +180,7 @@ export class RemoteBridge {
     if (live.remoteTurn) live.remoteTurn.sawMessage = true;
     const attachments = msg.images.map((img, i) => ({ name: `Bild ${i + 1}`, mediaType: img.mediaType, size: img.size }));
     this.host.record(id, { type: "user.message", text: msg.text, uuid, source: "remote", ...(attachments.length ? { attachments } : {}) });
-    this.host.titleFromFirstMessage(id, msg.text);
+    this.host.userMessage(id, msg.text);
   }
 
   /** Fallback when the CLI did not echo a message from the Claude app: read it from the transcript. */
@@ -183,6 +200,10 @@ export class RemoteBridge {
       /* transcript not readable: the answer is still in the timeline */
     }
   }
+}
+
+function remoteName(projectName: string, title: string): string {
+  return `FORGE · ${projectName}: ${title || "Session"}`;
 }
 
 /**

@@ -11,6 +11,7 @@ import { ApprovalGate, denyPending } from "../src/sessions/approvals.js";
 import type { LiveSession } from "../src/sessions/live-session.js";
 import { PermissionModes } from "../src/sessions/permission-mode.js";
 import { SessionCore } from "../src/sessions/session-core.js";
+import { buildTitlePrompt, cleanTitle, isTitleWorthy } from "../src/sessions/titles.js";
 import { tempDir } from "./helpers.js";
 
 let t: ReturnType<typeof tempDir>;
@@ -129,5 +130,33 @@ describe("PermissionModes", () => {
     expect(live.closing).toBe(true);
     expect(db.getSession(SID)?.permissionMode).toBe("acceptEdits");
     expect(db.listEvents(SID).map((e) => e.body.type)).toEqual(["policy.blocked", "error"]);
+  });
+});
+
+describe("session title helpers", () => {
+  it("cleans model answers to one short line", () => {
+    expect(cleanTitle("„Login-Seite bauen.“")).toBe("Login-Seite bauen");
+    expect(cleanTitle('Titel: "Menü umbauen"!\nWeitere Erklärung')).toBe("Menü umbauen");
+    expect(cleanTitle("\n\n  **Tests reparieren**  \n")).toBe("Tests reparieren");
+    expect(cleanTitle("")).toBe("");
+    const long = cleanTitle("Wort ".repeat(40));
+    expect(long).toHaveLength(80);
+    expect(long.endsWith("…")).toBe(true);
+  });
+
+  it("lets only messages about the work change the title", () => {
+    expect(isTitleWorthy("Baue eine Login-Seite")).toBe(true);
+    expect(isTitleWorthy("Vom Handy: bitte README lesen", "remote")).toBe(true);
+    expect(isTitleWorthy("Bitte mach weiter mit dem Login")).toBe(true);
+    expect(isTitleWorthy("Mach bitte mit der Aufgabe weiter", "auto")).toBe(false);
+    expect(isTitleWorthy("/compact Fokus auf die API")).toBe(false);
+    expect(isTitleWorthy("ok")).toBe(false);
+    expect(isTitleWorthy("Ja, mach weiter bitte!")).toBe(false);
+    expect(isTitleWorthy("Danke, das passt so.")).toBe(false);
+  });
+
+  it("puts the newest prompt first and shortens long ones", () => {
+    const prompt = buildTitlePrompt(["Neu\nmit Zeilen", "x".repeat(500)]);
+    expect(prompt).toMatch(/Neueste Anfrage: Neu mit Zeilen\nDavor: x{299}…$/);
   });
 });

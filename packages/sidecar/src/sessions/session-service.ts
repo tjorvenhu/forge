@@ -28,6 +28,7 @@ import { RemoteBridge } from "./remote-bridge.js";
 import { RuntimeCatalog } from "./runtime-catalog.js";
 import { SessionCore } from "./session-core.js";
 import { SessionStream } from "./stream.js";
+import { TitleRefresh } from "./titles.js";
 import { TurnAutomation } from "./turn-automation.js";
 import { TurnDispatch } from "./turns.js";
 
@@ -44,6 +45,7 @@ export class SessionService {
   private readonly lifecycle: SessionLifecycle;
   private readonly autoContinue: AutoContinue;
   private readonly limits: RateLimitTracker;
+  private readonly titles: TitleRefresh;
 
   constructor(
     private readonly db: Db,
@@ -70,10 +72,15 @@ export class SessionService {
       record,
       emit,
       turnStarted: (id, live, fromRemote) => this.turns.cliTurnStarted(id, live, fromRemote),
-      titleFromFirstMessage: (id, text) => this.turns.titleFromFirstMessage(id, text),
+      userMessage: (id, text) => {
+        this.turns.titleFromFirstMessage(id, text);
+        this.titles.note(id, text, "remote");
+      },
     });
+    this.titles = new TitleRefresh(core, runtime, this.assist, this.remote, now);
     this.turns = new TurnDispatch(core, this.automation, this.remote, {
       resume: (id, text, attachments) => this.lifecycle.resume(id, text, attachments),
+      userMessage: (id, text, source) => this.titles.note(id, text, source),
     });
     this.modes = new PermissionModes(core, projects);
     this.approvals = new ApprovalGate(core, git, {
@@ -253,11 +260,13 @@ export class SessionService {
 
   delete(sessionId: string, deleteTranscript: boolean) {
     this.autoContinue.forget(sessionId);
+    this.titles.forget(sessionId);
     return this.lifecycle.delete(sessionId, deleteTranscript);
   }
 
   shutdown() {
     this.autoContinue.stop();
+    this.titles.shutdown();
     this.lifecycle.shutdown();
   }
 

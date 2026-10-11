@@ -6,6 +6,7 @@ import type { SessionSink } from "../src/claude/runtime.js";
 const sdk = vi.hoisted(() => ({
   calls: [] as Array<{ options: Options; q: FakeQuery }>,
   extra: {} as Record<string, unknown>,
+  renameSession: vi.fn(async () => {}),
 }));
 
 interface FakeQuery {
@@ -32,6 +33,7 @@ vi.mock("@anthropic-ai/claude-agent-sdk", () => ({
   },
   listSessions: vi.fn(),
   deleteSession: vi.fn(),
+  renameSession: sdk.renameSession,
   getSessionMessages: vi.fn(),
 }));
 
@@ -115,6 +117,31 @@ describe("session hooks", () => {
     sdk.extra = { enableRemoteControl: async () => ({ session_url: "https://claude.ai/code/x" }) };
     const rs2 = start(sink({}));
     await expect(rs2.setRemoteControl(true, "FORGE")).resolves.toBe("https://claude.ai/code/x");
+  });
+
+  it("feature-detects title generation and renaming", async () => {
+    const rs = start(sink({}));
+    await expect(rs.generateTitle("Login bauen")).resolves.toBeNull();
+    await expect(rs.rename("Login", "c1")).resolves.toBeUndefined();
+    const calls: unknown[][] = [];
+    sdk.extra = {
+      generateSessionTitle: async (...args: unknown[]) => (calls.push(["generate", ...args]), "Login-Seite bauen"),
+      renameSession: async (...args: unknown[]) => void calls.push(["rename", ...args]),
+    };
+    const rs2 = start(sink({}));
+    await expect(rs2.generateTitle("Login bauen")).resolves.toBe("Login-Seite bauen");
+    await rs2.rename("Login-Seite bauen", "c1");
+    await rs2.rename("Login-Seite bauen", null);
+    expect(calls).toEqual([
+      ["generate", "Login bauen", { persist: false }],
+      ["rename", "Login-Seite bauen", "c1"],
+      ["rename", "Login-Seite bauen", undefined],
+    ]);
+  });
+
+  it("writes a title into the transcript of a session without a process", async () => {
+    await new AgentSdkRuntime().renameTranscript("c1", "Login-Seite bauen", "C:/proj");
+    expect(sdk.renameSession).toHaveBeenCalledWith("c1", "Login-Seite bauen", { dir: "C:/proj" });
   });
 
   it("asks the CLI to echo user messages for Remote Control", () => {

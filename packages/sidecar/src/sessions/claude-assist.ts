@@ -10,7 +10,7 @@ import type { ProjectManager } from "../projects/project-manager.js";
 /** Small, fast model: commit messages need speed more than depth. */
 export const ASSIST_MODEL = "haiku";
 
-/** One-shot Claude calls that write text for the user: commit messages, PR texts, session summaries. */
+/** One-shot Claude calls that write text for the user: commit messages, PR texts, session summaries and titles. */
 export class ClaudeAssist {
   constructor(
     private readonly db: Db,
@@ -78,6 +78,14 @@ export class ClaudeAssist {
     ].join("\n");
     const summary = await this.runtime.complete(prompt, { cwd: rec.cwd, env, claudePath, model: ASSIST_MODEL });
     return { summary: summary.trim(), model: ASSIST_MODEL };
+  }
+
+  /** Raw session title for the prompt built by the title refresh; the caller cleans it up. */
+  async sessionTitle(sessionId: string, prompt: string): Promise<string> {
+    const rec = this.db.getSession(sessionId);
+    if (!rec) throw new ForgeError("SESSION_NOT_FOUND", "Session nicht gefunden.");
+    const { claudePath, env } = this.claude();
+    return this.runtime.complete(prompt, { cwd: rec.cwd, env, claudePath, model: ASSIST_MODEL });
   }
 
   /** Drafts PR title and body from the branch's commits and diff against the default branch. */

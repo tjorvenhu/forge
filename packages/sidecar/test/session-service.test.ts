@@ -19,6 +19,7 @@ import {
   isUsageLimitText,
   resetFromText,
 } from "../src/sessions/auto-continue.js";
+import { TITLE_DEBOUNCE_MS, TITLE_MIN_INTERVAL_MS, TITLE_TIMEOUT_MS, isTitleWorthy } from "../src/sessions/titles.js";
 import { git, initRepo, tempDir } from "./helpers.js";
 import { writeFileSync } from "node:fs";
 
@@ -50,8 +51,21 @@ class FakeRuntime implements ClaudeRuntime {
   async commands() {
     return [];
   }
-  async complete() {
-    return "feat: neue Datei";
+  completions: string[] = [];
+  completeResult: string | Error = "feat: neue Datei";
+  async complete(prompt: string) {
+    this.completions.push(prompt);
+    if (this.completeResult instanceof Error) throw this.completeResult;
+    return this.completeResult;
+  }
+  /** what generateTitle of a running session answers; null like a CLI without the call */
+  generatedTitle: string | null | Error | Promise<string | null> = null;
+  titleRequests: string[] = [];
+  renameError: Error | null = null;
+  renames: Array<{ title: string; claudeSessionId: string | null; session: number }> = [];
+  transcriptRenames: Array<{ claudeSessionId: string; title: string; dir: string }> = [];
+  async renameTranscript(claudeSessionId: string, title: string, dir: string) {
+    this.transcriptRenames.push({ claudeSessionId, title, dir });
   }
   usage: PlanUsage | null = null;
   async planUsage(): Promise<PlanUsage> {
@@ -99,6 +113,15 @@ class FakeRuntime implements ClaudeRuntime {
         if (this.remoteError) throw this.remoteError;
         this.remoteCalls.push({ enabled, name, session });
         return enabled ? "https://claude.ai/code/session_test" : null;
+      },
+      generateTitle: async (description) => {
+        this.titleRequests.push(description);
+        if (this.generatedTitle instanceof Error) throw this.generatedTitle;
+        return this.generatedTitle;
+      },
+      rename: async (title, claudeSessionId) => {
+        if (this.renameError) throw this.renameError;
+        this.renames.push({ title, claudeSessionId, session });
       },
       initialization: () => new Promise(() => {}),
     };
@@ -1034,6 +1057,180 @@ describe("account rate limit state", () => {
       await svc2.drain();
       svc2.shutdown();
     }
+  });
+});
+
+describe("session titles follow the newest prompts", () => {
+  const CLAUDE_ID = "d69118dc-ef0c-4925-9945-3091ab75cb15";
+  let clock: number;
+  let svc2: SessionService;
+  const settle = () => new Promise((r) => setImmediate(r));
+  async function tick(ms: number) {
+    clock += ms;
+    await vi.advanceTimersByTimeAsync(ms);
+    await settle();
+  }
+  /** a session that finished its first turn, so it has a Claude session id and is idle */
+  async function idleSession(prompt = "Baue eine Login-Seite mit Formular") {
+    const s = await svc2.start({ projectId, prompt });
+    rt.replay();
+    return s;
+  }
+
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    clock = Date.parse("2026-10-11T12:00:00.000Z");
+    svc2 = new SessionService(db, projects, new GitEngine(), rt, (e) => emitted.push(e), () => clock);
+  });
+  afterEach(() => {
+    svc2.shutdown();
+    vi.useRealTimers();
+  });
+
+  it("asks Claude Code for a title from the newest prompts and applies it everywhere", async () => {
+    rt.generatedTitle = "„Fehlermeldungen übersetzen.“";
+    const s = await idleSession();
+    await svc2.send(s.id, "Jetzt bitte die Fehlermeldungen auf Deutsch übersetzen");
+    await tick(TITLE_DEBOUNCE_MS);
+    expect(svc2.get(s.id).title).toBe("Fehlermeldungen übersetzen");
+    // start and send within the debounce: one request
+    expect(rt.titleRequests).toHaveLength(1);
+    expect(rt.titleRequests[0]).toMatch(/Neueste Anfrage: Jetzt bitte die Fehlermeldungen[\s\S]*Davor: Baue eine Login-Seite/);
+    expect(rt.renames).toEqual([{ title: "Fehlermeldungen übersetzen", claudeSessionId: CLAUDE_ID, session: 0 }]);
+    expect(rt.completions).toEqual([]);
+    expect(emitted.some((e) => e.event === "session.updated" && e.payload.title === "Fehlermeldungen übersetzen")).toBe(true);
+  });
+
+  it("falls back to the small model and then to the prompt itself", async () => {
+    rt.completeResult = "Titel: Login-Seite bauen";
+    const s = await idleSession();
+    await tick(TITLE_DEBOUNCE_MS);
+    expect(svc2.get(s.id).title).toBe("Login-Seite bauen");
+    expect(rt.titleRequests).toHaveLength(1);
+    expect(rt.completions[0]).toMatch(/höchstens 6 Wörter/);
+
+    rt.generatedTitle = new Error("unknown control request");
+    rt.completeResult = new Error("offline");
+    await tick(TITLE_MIN_INTERVAL_MS);
+    await svc2.send(s.id, "Danach die README um einen Abschnitt erweitern");
+    await tick(TITLE_DEBOUNCE_MS);
+    expect(svc2.get(s.id).title).toBe("Danach die README um einen Abschnitt erweitern");
+  });
+
+  it("keeps the title for automatic, slash and filler messages", async () => {
+    rt.generatedTitle = "Neuer Titel";
+    const s = await idleSession("kurz");
+    for (const text of ["/compact", "ok danke", "Ja, mach weiter!", "weiter bitte", "Danke, das passt so."]) {
+      await svc2.send(s.id, text);
+      success(rt.sinks[0]!);
+    }
+    await tick(TITLE_MIN_INTERVAL_MS);
+    expect(rt.titleRequests).toEqual([]);
+    expect(rt.completions).toEqual([]);
+    expect(svc2.get(s.id).title).toBe("kurz");
+    expect(isTitleWorthy(AUTO_CONTINUE_PROMPT, "auto")).toBe(false);
+  });
+
+  it("refreshes at most once a minute and then uses the newest prompt", async () => {
+    rt.generatedTitle = "Menü bauen";
+    const s = await idleSession("Erste Aufgabe für die Session");
+    await tick(1_000);
+    await svc2.send(s.id, "Zweite Aufgabe: das Menü bauen");
+    await tick(TITLE_DEBOUNCE_MS - 1);
+    expect(rt.titleRequests).toHaveLength(0);
+    await tick(1);
+    expect(rt.titleRequests).toHaveLength(1);
+    expect(svc2.get(s.id).title).toBe("Menü bauen");
+
+    rt.generatedTitle = "Doku ergänzen";
+    await svc2.send(s.id, "Dritte Aufgabe: Tests schreiben");
+    await tick(TITLE_DEBOUNCE_MS);
+    await svc2.send(s.id, "Vierte Aufgabe: die Doku ergänzen");
+    await tick(TITLE_DEBOUNCE_MS);
+    expect(rt.titleRequests).toHaveLength(1);
+    await tick(TITLE_MIN_INTERVAL_MS - 2 * TITLE_DEBOUNCE_MS);
+    expect(rt.titleRequests).toHaveLength(2);
+    expect(rt.titleRequests[1]).toMatch(/^Neueste Anfrage: Vierte Aufgabe/m);
+    expect(svc2.get(s.id).title).toBe("Doku ergänzen");
+  });
+
+  it("never runs two refreshes of a session at once", async () => {
+    let answer: (t: string) => void = () => {};
+    rt.generatedTitle = new Promise<string>((r) => (answer = r));
+    const s = await idleSession();
+    await tick(TITLE_DEBOUNCE_MS);
+    expect(rt.titleRequests).toHaveLength(1);
+    await svc2.send(s.id, "Noch eine Aufgabe: das Logo tauschen");
+    await tick(TITLE_TIMEOUT_MS - 1);
+    expect(rt.titleRequests).toHaveLength(1);
+    answer("Login-Seite bauen");
+    await settle();
+    expect(svc2.get(s.id).title).toBe("Login-Seite bauen");
+    // the message that came in meanwhile gets its refresh once the minute is over
+    rt.generatedTitle = "Logo tauschen";
+    await tick(TITLE_MIN_INTERVAL_MS - TITLE_TIMEOUT_MS);
+    expect(rt.titleRequests).toHaveLength(1);
+    await tick(1);
+    expect(rt.titleRequests).toHaveLength(2);
+    expect(svc2.get(s.id).title).toBe("Logo tauschen");
+  });
+
+  it("moves on to the small model when Claude Code does not answer", async () => {
+    rt.generatedTitle = new Promise<string>(() => {});
+    rt.completeResult = "Login-Seite bauen";
+    const s = await idleSession();
+    await tick(TITLE_DEBOUNCE_MS);
+    expect(svc2.get(s.id).title).toBe("Baue eine Login-Seite mit Formular");
+    await tick(TITLE_TIMEOUT_MS);
+    expect(svc2.get(s.id).title).toBe("Login-Seite bauen");
+  });
+
+  it("names the Remote entry and the Claude app session after the new title", async () => {
+    rt.generatedTitle = "Login bauen";
+    const s = await idleSession();
+    await svc2.remoteStart();
+    expect(svc2.remoteState().sessions[0]!.name).toBe("FORGE · proj: Baue eine Login-Seite mit Formular");
+    await tick(TITLE_DEBOUNCE_MS);
+    expect(svc2.remoteState().sessions[0]).toMatchObject({ sessionId: s.id, title: "Login bauen", name: "FORGE · proj: Login bauen" });
+    expect(rt.renames.at(-1)).toEqual({ title: "FORGE · proj: Login bauen", claudeSessionId: CLAUDE_ID, session: 0 });
+    expect(emitted.some((e) => e.event === "remote.updated" && e.payload.sessions[0]?.name === "FORGE · proj: Login bauen")).toBe(true);
+  });
+
+  it("writes the title into the transcript when the process ended meanwhile", async () => {
+    rt.completeResult = "Login-Seite bauen";
+    const s = await idleSession();
+    svc2.close(s.id);
+    await tick(TITLE_DEBOUNCE_MS);
+    expect(svc2.get(s.id).title).toBe("Login-Seite bauen");
+    expect(rt.titleRequests).toEqual([]);
+    expect(rt.renames).toEqual([]);
+    expect(rt.transcriptRenames).toEqual([{ claudeSessionId: CLAUDE_ID, title: "Login-Seite bauen", dir: s.cwd }]);
+  });
+
+  it("never lets a failing title break the session", async () => {
+    rt.generatedTitle = new Error("kaputt");
+    rt.completeResult = new Error("offline");
+    rt.renameError = new Error("rename refused");
+    const s = await idleSession();
+    await svc2.send(s.id, "Bitte die Startseite schneller machen");
+    expect(rt.sent).toEqual(["Bitte die Startseite schneller machen"]);
+    await tick(TITLE_DEBOUNCE_MS);
+    expect(svc2.get(s.id)).toMatchObject({ title: "Bitte die Startseite schneller machen", status: "running", lastError: null });
+    expect(persistedTypes(s.id)).not.toContain("error");
+    success(rt.sinks[0]!);
+    await svc2.send(s.id, "Und danach den Footer anpassen");
+    expect(rt.sent).toHaveLength(2);
+  });
+
+  it("stops refreshing on shutdown and for deleted sessions", async () => {
+    rt.generatedTitle = "Neuer Titel";
+    const a = await idleSession();
+    const b = await idleSession("Zweite Session mit eigener Aufgabe");
+    await svc2.delete(b.id, false);
+    svc2.shutdown();
+    await tick(TITLE_DEBOUNCE_MS);
+    expect(rt.titleRequests).toEqual([]);
+    expect(db.getSession(a.id)?.title).toBe("Baue eine Login-Seite mit Formular");
   });
 });
 

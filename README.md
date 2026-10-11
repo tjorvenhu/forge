@@ -87,6 +87,10 @@ Umgebungsvariablen für Sonderfälle: `FORGE_NODE` (Pfad zu node), `FORGE_SIDECA
 - **Session-Tabs:** Leiste ganz oben im Fenster, in jeder Ansicht. Zeigt alle Sessions mit laufendem Claude-Prozess
   und die offene Session, gruppiert nach Projekt. Status als Punkt, wartende Freigaben farbig markiert, Hintergrundaufgaben
   mit Anzahl. Klick öffnet Projekt und Session, `Strg+Tab` wechselt der Reihe nach.
+- **Sessiontitel:** Der Titel folgt den neuesten Prompts. Nach einer neuen Aufgabe schreibt Claude einen kurzen Titel
+  (höchstens etwa 6 Wörter), sichtbar in den Session-Tabs, unter Sessions, in Claude Code und bei eingeschaltetem
+  Remote Control in der Claude-App. Kurze Antworten wie „ok“ oder „weiter“, Slash-Commands und automatische
+  Nachrichten ändern ihn nicht. Höchstens einmal pro Minute.
 - **Permission-Profile:** Safe / Balanced / Autonomous mit echter Wirkung auf den Claude-Permission-Modus,
   harte Sperrliste in allen Profilen, Audit-Log.
 - **Git:** Status, echter Diff (auch für neue Dateien), Stage/Unstage, Commit nur der ausgewählten Dateien

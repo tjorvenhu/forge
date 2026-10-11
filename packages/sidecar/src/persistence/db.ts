@@ -597,6 +597,12 @@ export class Db {
     return rows.map((r) => r.uuid);
   }
 
+  /** The newest user messages of a session, newest first. */
+  listRecentUserMessages(sessionId: string, limit: number): Array<Extract<SessionEventBody, { type: "user.message" }>> {
+    const rows = this.stmt("SELECT body FROM events WHERE session_id = ? AND type = 'user.message' ORDER BY seq DESC LIMIT ?").all(sessionId, limit) as Array<{ body: string }>;
+    return rows.map((r) => JSON.parse(r.body) as Extract<SessionEventBody, { type: "user.message" }>);
+  }
+
   // ---- full-text search
 
   /**

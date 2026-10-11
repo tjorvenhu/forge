@@ -13,6 +13,8 @@ const CLOSE_WAIT_MS = 5_000;
 export interface TurnHost {
   /** no process runs for the session: start one with the message */
   resume(sessionId: string, text: string, attachments: Attachment[], source?: MessageSource): Promise<Session>;
+  /** a message from FORGE (composer, phone) or an automatic one reached the timeline */
+  userMessage(sessionId: string, text: string, source?: MessageSource): void;
 }
 
 /** "auto": FORGE continues after a usage limit; the timeline marks the message as automatic. */
@@ -68,6 +70,7 @@ export class TurnDispatch {
     this.core.live.get(sessionId)?.seenUuids.add(t.msg.uuid);
     this.core.record(sessionId, { type: "user.message", text: t.msg.text, uuid: t.msg.uuid, ...(t.meta.length ? { attachments: t.meta } : {}), ...(t.source ? { source: t.source } : {}) });
     this.titleFromFirstMessage(sessionId, t.msg.text);
+    this.host.userMessage(sessionId, t.msg.text, t.source);
   }
 
   async send(sessionId: string, text: string, attachments: Attachment[] = [], source?: MessageSource): Promise<Session> {
@@ -123,6 +126,6 @@ export class TurnDispatch {
     const rec = this.core.db.getSession(id);
     if (rec?.title !== REMOTE_PLACEHOLDER_TITLE || !text.trim()) return;
     this.core.publish(this.core.db.updateSession(id, { title: titleFrom(text) }));
-    this.remote.update(id, {});
+    this.remote.retitle(id);
   }
 }

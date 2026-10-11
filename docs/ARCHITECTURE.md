@@ -34,7 +34,7 @@
 | UI | `apps/desktop/src` | Screens, Komponenten, Stores |
 | protocol | `packages/protocol` | RPC-Methoden, Events, Modelle, Fehlercodes (Zod) |
 | claude-runtime | `packages/sidecar/src/claude` | Adapter zum Agent SDK, Normalisierung der Stream-Events |
-| session-service | `packages/sidecar/src/sessions` | Sessions starten/fortsetzen/stoppen, Freigaben, Persistenz. `session-service` ist nur die Fassade (öffentliche API, Verdrahtung). Aufgeteilt in `session-core` (Live-Sessions, Events, Status), `lifecycle` (Start, Fortsetzen, Stop, Schließen, Löschen, Shutdown), `turns` (Nachrichten senden, zurückhalten bis die Automatik fertig ist), `stream` (CLI-Ausgabe zu Timeline, Status, Kontext, Hintergrundaufgaben), `approvals` (Policy-Hook, Freigabeanfragen, Audit), `permission-mode` (Modus auf das Profil begrenzen, Profilwechsel), `runtime-catalog` (Fähigkeiten, Modelle, Befehle, Plan-Nutzung), `live-session`, `remote-bridge` (Remote Control), `turn-automation` (Tests, Auto-Commit, Auto-Push nach einem Durchlauf) und `claude-assist` (Commit-Nachricht, PR-Text, Zusammenfassung) |
+| session-service | `packages/sidecar/src/sessions` | Sessions starten/fortsetzen/stoppen, Freigaben, Persistenz. `session-service` ist nur die Fassade (öffentliche API, Verdrahtung). Aufgeteilt in `session-core` (Live-Sessions, Events, Status), `lifecycle` (Start, Fortsetzen, Stop, Schließen, Löschen, Shutdown), `turns` (Nachrichten senden, zurückhalten bis die Automatik fertig ist), `stream` (CLI-Ausgabe zu Timeline, Status, Kontext, Hintergrundaufgaben), `approvals` (Policy-Hook, Freigabeanfragen, Audit), `permission-mode` (Modus auf das Profil begrenzen, Profilwechsel), `runtime-catalog` (Fähigkeiten, Modelle, Befehle, Plan-Nutzung), `live-session`, `remote-bridge` (Remote Control), `turn-automation` (Tests, Auto-Commit, Auto-Push nach einem Durchlauf), `titles` (Sessiontitel aus den neuesten Prompts) und `claude-assist` (Commit-Nachricht, PR-Text, Zusammenfassung, Titel) |
 | project-manager | `packages/sidecar/src/projects` | Import, Anlage, Klonen, Metadaten |
 | git-engine | `packages/sidecar/src/git` | Status, Diff, Stage, Commit, Branches |
 | security/policy | `packages/sidecar/src/policy` | Profile, Sperrliste, Redaction |
@@ -108,6 +108,30 @@ Unabhängig davon merkt sich `sessions/rate-limit.ts` den zuletzt gemeldeten Lim
 (`system.rateLimit`, Event `ratelimit.updated`): `warning` bei `allowed_warning`, `reached` bei
 `rejected`. Eine spätere Meldung `allowed` oder das Verstreichen von `resetsAt` setzt ihn zurück. Der
 Composer zeigt ihn dauerhaft an; Warnungen erscheinen nicht mehr im Chat.
+
+### Sessiontitel
+
+Beim Start ist der Titel die erste Zeile des ersten Prompts. Danach hält `sessions/titles.ts` ihn auf
+dem Stand der neuesten Prompts. Auslöser ist jede Nutzernachricht aus FORGE, vom Telefon oder aus der
+Claude-App. Nicht zählen: automatische Nachrichten (`source: "auto"`), Slash-Commands, Nachrichten unter
+12 Zeichen und reine Füllantworten („ok“, „ja, mach weiter“, „danke, passt so“). Pro Session wartet
+FORGE 2 Sekunden auf weitere Nachrichten, erneuert höchstens einmal pro Minute (die neueste wartende
+Nachricht gewinnt) und nie zwei Mal gleichzeitig.
+
+Grundlage sind die letzten drei zählenden Prompts aus der Timeline, neueste zuerst, je auf 300 Zeichen
+gekürzt. Der Titel kommt in dieser Reihenfolge von `RuntimeSession.generateTitle` (Control-Request
+`generate_session_title` des laufenden Prozesses, mit `persist: false`), von `ClaudeAssist.sessionTitle`
+(Einmal-Aufruf mit Haiku) und zuletzt aus `titleFrom` des neuesten Prompts. Jede Quelle hat 45 Sekunden.
+Die Antwort wird bereinigt (eine Zeile, ohne Anführungszeichen und Schlusszeichen, höchstens 80
+Zeichen); ein unveränderter Titel wird nicht geschrieben.
+
+Ein neuer Titel geht in die Datenbank und per `session.updated` an Tabs und Sessionliste. Läuft ein
+Prozess, setzt `RuntimeSession.rename` ihn per `rename_session` (mit `source: "host"` und der
+Claude-Session-ID) in Claude Code. Ist die Session mit Remote Control verbunden, heißt der Eintrag
+`FORGE · <Projekt>: <Titel>`; denselben Namen bekommen der Eintrag im Remote-Dialog und das
+`rename_session`. Ohne Prozess schreibt `ClaudeRuntime.renameTranscript` (SDK `renameSession`) den
+Titel ins Transkript. `generateSessionTitle` und `renameSession` am Query stehen nicht in den
+SDK-Typen und werden vor der Nutzung geprüft. Fehler bleiben folgenlos, der alte Titel bleibt stehen.
 
 ## Prozesse und Aufräumen
 
