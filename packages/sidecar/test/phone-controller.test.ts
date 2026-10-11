@@ -1,6 +1,6 @@
 import { EventEmitter } from "node:events";
 import { describe, expect, it } from "vitest";
-import { CallController, type ConversationCallbacks } from "../src/phone/call-controller.js";
+import { CallController, isBackchannel, soundsUnfinished, type CallControllerDeps, type ConversationCallbacks } from "../src/phone/call-controller.js";
 import type { PinResult } from "../src/phone/pin-guard.js";
 import type { RtpSession } from "../src/phone/rtp.js";
 import type { SipCall } from "../src/phone/sip-ua.js";
@@ -29,7 +29,7 @@ class FakeCall extends EventEmitter {
   }
 }
 
-/** Plays instantly: queued audio counts as played. */
+/** Plays instantly: queued audio counts as played; reports the end of playback like the real one, a moment later. */
 class FakeRtp extends EventEmitter {
   played = 0;
   closed = false;
@@ -39,7 +39,9 @@ class FakeRtp extends EventEmitter {
   play(pcm: Int16Array) {
     this.played += pcm.length;
   }
-  flush() {}
+  flush() {
+    setTimeout(() => this.emit("drained"), 0);
+  }
   clearPlayback() {}
   close() {
     this.closed = true;
@@ -54,15 +56,20 @@ interface Setup {
   spoken: string[];
   logs: string[];
   pins: string[];
+  interrupts: number;
+  /** callbacks of the conversation, to play Claude */
+  cb(): ConversationCallbacks;
 }
 
-function setup(o: { checkPin?: ((pin: string) => Promise<PinResult>) | null; voice?: Partial<VoiceProvider>; timing?: { speakTimeoutMs?: number; transcribeTimeoutMs?: number; confirmTimeoutMs?: number } } = {}): Setup {
+/** `autoDone` (default): Claude ends each turn at once without saying anything. */
+function setup(o: { checkPin?: ((pin: string) => Promise<PinResult>) | null; voice?: Partial<VoiceProvider>; timing?: CallControllerDeps["timing"]; autoDone?: boolean } = {}): Setup {
   const call = new FakeCall();
   const rtp = new FakeRtp();
   const said: string[] = [];
   const spoken: string[] = [];
   const logs: string[] = [];
   const pins: string[] = [];
+  let conversation: ConversationCallbacks | null = null;
   const voice: VoiceProvider = {
     transcribe: async () => "",
     async *speak(text) {
@@ -73,7 +80,17 @@ function setup(o: { checkPin?: ((pin: string) => Promise<PinResult>) | null; voi
   };
   const ctl = new CallController(call as unknown as SipCall, rtp as unknown as RtpSession, {
     voice,
-    createConversation: (_cb: ConversationCallbacks) => ({ say: (t: string) => said.push(t), close() {} }),
+    createConversation: (cb: ConversationCallbacks) => {
+      conversation = cb;
+      return {
+        say: (t: string) => {
+          said.push(t);
+          if (o.autoDone !== false) cb.onTurnDone();
+        },
+        interrupt: () => void result.interrupts++,
+        close() {},
+      };
+    },
     checkPin:
       o.checkPin === undefined
         ? async (pin) => {
@@ -86,9 +103,23 @@ function setup(o: { checkPin?: ((pin: string) => Promise<PinResult>) | null; voi
     onTranscript: () => {},
     onUnlock: () => {},
     log: (m) => logs.push(m),
-    timing: o.timing,
+    timing: { turnEndMs: 10, turnEndUnfinishedMs: 100, ...o.timing },
   });
-  return { call, rtp, ctl, said, spoken, logs, pins };
+  const result: Setup = {
+    call,
+    rtp,
+    ctl,
+    said,
+    spoken,
+    logs,
+    pins,
+    interrupts: 0,
+    cb: () => {
+      if (!conversation) throw new Error("no conversation yet");
+      return conversation;
+    },
+  };
+  return result;
 }
 
 const press = (s: Setup, digits: string) => {
@@ -156,46 +187,101 @@ describe("call controller: PIN", () => {
   });
 });
 
-describe("call controller: confirmation by keypad", () => {
-  it("runs a steering action only after key 1 and reports the result to Claude", async () => {
-    const s = setup({ checkPin: null });
+describe("call controller: turn taking", () => {
+  const vadOf = (s: Setup) => (s.ctl as unknown as { vad: EventEmitter }).vad;
+
+  it("waits through pauses in an unfinished sentence and hands the whole turn to Claude at once", async () => {
+    const heard = ["Schick S1 bitte", "dass die Tests laufen sollen."];
+    const s = setup({ timing: { turnEndMs: 20, turnEndUnfinishedMs: 400 }, voice: { transcribe: async () => heard.shift() ?? "" } });
     s.ctl.begin();
-    let runs = 0;
-    s.ctl.requestConfirmation("Nachricht an S1: Mach weiter", async () => {
-      runs++;
-      return "An S1 gesendet.";
-    });
-    await until(() => s.spoken.some((t) => t.startsWith("Nachricht an S1: Mach weiter") && t.includes("Taste 1")), 1000, "read out");
-    press(s, "9");
-    await sleep(20);
-    expect(runs).toBe(0);
-    press(s, "1");
-    await until(() => s.said.some((t) => t.includes("Taste 1 bestätigt") && t.includes("An S1 gesendet.")), 1000, "result note");
-    expect(runs).toBe(1);
-    press(s, "1");
-    await sleep(20);
-    expect(runs).toBe(1);
+    const vad = vadOf(s);
+    vad.emit("speechStart");
+    vad.emit("utterance", new Int16Array(800));
+    await sleep(150);
+    // "... bitte" without punctuation: the caller is not done yet.
+    expect(s.said).toEqual([]);
+    vad.emit("speechStart");
+    vad.emit("utterance", new Int16Array(800));
+    await until(() => s.said.length === 1, 1000, "turn handed over");
+    expect(s.said).toEqual(["Schick S1 bitte dass die Tests laufen sollen."]);
     s.ctl.dispose();
   });
 
-  it("cancels with key 2, on timeout and when the call ends", async () => {
-    const s = setup({ checkPin: null, timing: { confirmTimeoutMs: 50 } });
+  it("stops talking when the caller talks, goes on after noise or a mhm, and drops the reply for real words", async () => {
+    const heard: string[] = [];
+    const s = setup({ autoDone: false, timing: { turnEndMs: 10 }, voice: { transcribe: async () => heard.shift() ?? "" } });
     s.ctl.begin();
-    let runs = 0;
-    const run = async () => {
-      runs++;
-      return "ok";
-    };
-    s.ctl.requestConfirmation("A", run);
-    press(s, "2");
-    expect(s.said.at(-1)).toMatch(/abgebrochen/);
-    s.ctl.requestConfirmation("B", run);
-    await until(() => s.said.at(-1)?.includes("nicht über die Tastatur bestätigt"), 1000, "timeout");
-    s.ctl.requestConfirmation("C", run);
-    s.ctl.dispose();
-    press(s, "1");
+    const vad = vadOf(s);
+    heard.push("Wie ist der Stand?");
+    vad.emit("speechStart");
+    vad.emit("utterance", new Int16Array(800));
+    await until(() => s.said.length === 1, 1000, "first turn");
+    const cb = s.cb();
+    cb.onSentence("S1 ist fertig.");
+    await until(() => s.spoken.includes("S1 ist fertig."), 1000, "first sentence");
     await sleep(20);
-    expect(runs).toBe(0);
+
+    // Noise: FORGE holds back while it lasts, then goes on.
+    vad.emit("speechStart");
+    cb.onSentence("Die Tests sind grün.");
+    await sleep(40);
+    expect(s.spoken).not.toContain("Die Tests sind grün.");
+    vad.emit("noise");
+    await until(() => s.spoken.includes("Die Tests sind grün."), 1000, "goes on after noise");
+    await sleep(20);
+
+    // A lone "mhm" is listening, not a new turn.
+    vad.emit("speechStart");
+    cb.onSentence("Soll ich committen?");
+    heard.push("Mhm.");
+    vad.emit("utterance", new Int16Array(800));
+    await until(() => s.spoken.includes("Soll ich committen?"), 1000, "goes on after mhm");
+    expect(s.said).toHaveLength(1);
+    expect(s.interrupts).toBe(0);
+    await sleep(20);
+
+    // Real words: the reply is dropped, Claude stops writing and gets the new words after its turn ends.
+    vad.emit("speechStart");
+    cb.onSentence("Außerdem läuft der Dev-Server.");
+    heard.push("Nein, schalte lieber Remote ein.");
+    vad.emit("utterance", new Int16Array(800));
+    await until(() => s.interrupts === 1, 1000, "interrupted");
+    cb.onSentence("Das kommt zu spät.");
+    await sleep(40);
+    expect(s.said).toHaveLength(1);
+    cb.onTurnDone();
+    await until(() => s.said.length === 2, 1000, "new words to Claude");
+    expect(s.said[1]).toBe("Nein, schalte lieber Remote ein.");
+    expect(s.spoken).not.toContain("Außerdem läuft der Dev-Server.");
+    expect(s.spoken).not.toContain("Das kommt zu spät.");
+    s.ctl.dispose();
+  });
+
+  it("sends notes to Claude only between turns", async () => {
+    const s = setup({ autoDone: false, checkPin: async () => "ok", timing: { turnEndMs: 10 }, voice: { transcribe: async () => "Starte eine Session." } });
+    s.ctl.begin();
+    const vad = vadOf(s);
+    vad.emit("utterance", new Int16Array(800));
+    await until(() => s.said.length === 1, 1000, "turn");
+    press(s, "4711#");
+    await until(() => s.ctl.unlocked, 1000, "unlocked");
+    await sleep(20);
+    expect(s.said).toHaveLength(1);
+    s.cb().onTurnDone();
+    await until(() => s.said.length === 2, 1000, "note after the turn");
+    expect(s.said[1]).toMatch(/PIN richtig/);
+    s.ctl.dispose();
+  });
+
+  it("tells unfinished sentences and listening sounds apart", () => {
+    expect(soundsUnfinished("Schick S1 bitte")).toBe(true);
+    expect(soundsUnfinished("Ich wollte fragen, ob…")).toBe(true);
+    expect(soundsUnfinished("Mach das und.")).toBe(true);
+    expect(soundsUnfinished("Wie ist der Stand?")).toBe(false);
+    expect(isBackchannel("Mhm.")).toBe(true);
+    expect(isBackchannel("Okay!")).toBe(true);
+    expect(isBackchannel("Ja, hallo?")).toBe(true);
+    expect(isBackchannel("Okay, dann stopp S1.")).toBe(false);
   });
 });
 
@@ -230,13 +316,19 @@ describe("call controller: speech service problems", () => {
     vad.emit("utterance", new Int16Array(800));
     await sleep(10);
     expect(pending).toHaveLength(1);
-    pending[0]!("erstens");
+    pending[0]!("erstens,");
     await until(() => pending.length === 2, 1000, "second transcription started");
-    expect(s.said).toEqual(["erstens"]);
+    // The turn is not over while the caller's words are still being transcribed.
+    expect(s.said).toEqual([]);
+    pending[1]!("zweitens.");
+    await until(() => s.said.length === 1, 1000, "turn handed over");
+    expect(s.said).toEqual(["erstens, zweitens."]);
+    vad.emit("utterance", new Int16Array(800));
+    await sleep(10);
     s.call.emit("ended", "Gegenstelle hat aufgelegt");
-    pending[1]!("zweitens");
-    await sleep(20);
-    expect(s.said).toEqual(["erstens"]);
+    pending[2]!("drittens.");
+    await sleep(40);
+    expect(s.said).toEqual(["erstens, zweitens."]);
     expect(s.rtp.closed).toBe(true);
   });
 

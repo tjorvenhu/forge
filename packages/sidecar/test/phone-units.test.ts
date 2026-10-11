@@ -241,6 +241,32 @@ describe("voice activity", () => {
     for (const f of frames(tone(400, 300, 8000, 9000))) vad.push(f);
     expect(starts).toBe(1);
   });
+
+  it("does not let a short sound cut FORGE off, but keeps a short answer when FORGE is silent", () => {
+    const vad = new Vad();
+    let starts = 0;
+    let noises = 0;
+    const got: Int16Array[] = [];
+    vad.on("speechStart", () => starts++);
+    vad.on("noise", () => noises++);
+    vad.on("utterance", (u) => got.push(u));
+    for (const f of frames(noise(1000, 60))) vad.push(f);
+    vad.outputActive = true;
+    for (const f of frames(tone(140, 300, 8000, 9000))) vad.push(f);
+    for (const f of frames(noise(900, 60))) vad.push(f);
+    expect(starts).toBe(0);
+    vad.outputActive = false;
+    // "Ja": about a quarter second.
+    for (const f of frames(tone(240, 300, 8000, 9000))) vad.push(f);
+    for (const f of frames(noise(900, 60))) vad.push(f);
+    expect(got).toHaveLength(1);
+    // A click starts speech but ends as noise, so the controller can go on talking.
+    for (const f of frames(tone(80, 300, 8000, 9000))) vad.push(f);
+    for (const f of frames(noise(900, 60))) vad.push(f);
+    expect(starts).toBe(2);
+    expect(noises).toBe(1);
+    expect(got).toHaveLength(1);
+  });
 });
 
 describe("speech playback without crackling", () => {

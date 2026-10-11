@@ -57,6 +57,7 @@ export function createApp(opts: { dataDir: string; write: Writer; log?: (m: stri
     projects,
     sessions,
     devServers,
+    git,
     secrets: new SecretStore(path.join(opts.dataDir, "secrets")),
     emit,
     claude: () => {

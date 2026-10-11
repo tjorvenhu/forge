@@ -107,7 +107,7 @@ Umgebungsvariablen für Sonderfälle: `FORGE_NODE` (Pfad zu node), `FORGE_SIDECA
 - **Rückfragen und Pläne:** Fragt Claude nach (AskUserQuestion), erscheinen die Optionen als Karte im Chat. Pläne aus dem Plan-Modus lassen sich annehmen oder mit Feedback zurückgeben.
 - **Kontextanzeige:** Belegung des Kontextfensters am Composer, Komprimieren per Knopf (/compact).
 - **Befehlspalette (Strg+K):** Projekte, Sessions, Aktionen und Volltextsuche über alle Verläufe.
-- **Telefon (SIP):** FORGE meldet sich mit deinen SIP-Zugangsdaten an deiner Telefonanlage an. Ruf an und frag nach dem Stand oder steuere Sessions (mit PIN über die Tastatur). FORGE ruft dich an, wenn eine Session fertig ist, eine Entscheidung braucht oder ein Fehler auftritt. Sprache über OpenAI, das Gespräch führt Claude über dein Abo. Ein- und ausschalten oben rechts, Einrichtung unter Einstellungen → Telefon.
+- **Telefon (SIP):** FORGE meldet sich mit deinen SIP-Zugangsdaten an deiner Telefonanlage an. Ruf an und frag nach dem Stand oder steuere FORGE: Sessions, Freigaben, Remote Control, Git und Dev-Server. Steuern geht nach der PIN über die Tastatur und wird sofort ausgeführt. FORGE ruft dich an, wenn eine Session fertig ist, eine Entscheidung braucht oder ein Fehler auftritt. Sprache über OpenAI, das Gespräch führt Claude über dein Abo. Ein- und ausschalten oben rechts, Einrichtung unter Einstellungen → Telefon.
 - **Dev-Server:** Startbefehl pro Projekt (oder erkannt aus package.json), Adresse als Link, Ausgabe im unteren Panel, letzte Zeilen per Knopf an Claude.
 - **Töne:** Signal, wenn Claude fertig ist, eine Freigabe braucht oder ein Fehler auftritt (abschaltbar).
 - **Diagnose:** CLI-Version, Anmeldestatus, API-Key-Override, git, gh, Capability-Matrix.

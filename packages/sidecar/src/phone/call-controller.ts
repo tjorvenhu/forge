@@ -7,7 +7,10 @@ import { SPEAK_TIMEOUT_MS, TRANSCRIBE_TIMEOUT_MS, type VoiceProvider } from "./v
 
 /** The part of the conversation partner the controller needs (PhoneAgent in production). */
 export interface Conversation {
+  /** starts a turn; the controller sends the next message only after onTurnDone */
   say(text: string): void;
+  /** stops the reply Claude is writing; onTurnDone still follows for the turn */
+  interrupt(): void;
   close(): void;
 }
 
@@ -31,7 +34,7 @@ export interface CallControllerDeps {
   onUnlock(): void;
   log(message: string): void;
   /** shorter limits in tests */
-  timing?: { speakTimeoutMs?: number; transcribeTimeoutMs?: number; confirmTimeoutMs?: number };
+  timing?: { speakTimeoutMs?: number; transcribeTimeoutMs?: number; turnEndMs?: number; turnEndUnfinishedMs?: number };
 }
 
 const MAX_PIN_TRIES = 3;
@@ -39,39 +42,61 @@ const IDLE_HANGUP_MS = 90_000;
 const MAX_CALL_MS = 30 * 60_000;
 const MAX_VOICE_ERRORS = 3;
 const PREBUFFER_MS = 300;
-const CONFIRM_TIMEOUT_MS = 45_000;
-/** keypad digits for a pending confirmation */
-const CONFIRM_KEY = "1";
-const CANCEL_KEY = "2";
-
-interface PendingConfirmation {
-  run: () => Promise<string>;
-  timer: ReturnType<typeof setTimeout>;
-}
+/**
+ * Silence after an utterance (on top of the VAD's 700 ms) before the caller's turn counts as over.
+ * Transcription runs in the meantime, so this costs little; a sentence that sounds unfinished
+ * ("... und", "... weil", no closing punctuation) gets much longer, people pause to think there.
+ */
+const TURN_END_MS = 400;
+const TURN_END_UNFINISHED_MS = 2_000;
+/** an interrupted turn normally ends at once; if its result never comes, the conversation must not hang */
+const INTERRUPT_SETTLE_MS = 5_000;
 
 /**
  * Runs one phone conversation over an established call: caller audio -> voice activity ->
- * transcription -> Claude -> speech -> RTP. The caller can interrupt FORGE (barge-in). Digits from
- * the keypad unlock steering (PIN + #) and confirm steering actions (1); neither goes through the
- * language model, so nothing Claude reads or hears can unlock or confirm on its own.
+ * transcription -> Claude -> speech -> RTP.
+ *
+ * Turn taking: FORGE never starts talking while the caller talks. Short pauses do not end the
+ * caller's turn; what was said is collected until the caller is really done and then goes to
+ * Claude in one message. If the caller talks while FORGE speaks, FORGE stops at once; a cough or
+ * a lone "mhm" lets it go on, anything else drops the reply and Claude answers the new words.
+ * Claude gets one message per turn, never one while it still writes.
+ *
+ * Digits from the keypad unlock steering (PIN + #); that does not go through the language model,
+ * so nothing Claude reads or hears can unlock on its own.
  */
 export class CallController {
   unlocked = false;
   private readonly vad = new Vad();
   private conversation: Conversation | null = null;
+  /** Claude is writing a reply */
+  private turnActive = false;
+  /** sentences of the current turn are dropped (the caller moved on) */
+  private muted = false;
+  /** messages for Claude that wait for the current turn to end */
+  private outbox: string[] = [];
+  private settleTimer: ReturnType<typeof setTimeout> | null = null;
   private speechQueue: string[] = [];
+  /** sentences started but not yet fully played; spoken again if the caller only coughed */
+  private unfinished: string[] = [];
+  private current: string | null = null;
   private speaking = false;
+  /** the caller has the floor: nothing new is spoken */
+  private paused = false;
   private abort: AbortController | null = null;
   /** aborted when the call ends: cancels transcriptions still in flight */
   private readonly life = new AbortController();
   private utterances: Int16Array[] = [];
   private transcribing = false;
+  /** what the caller said in this turn, not yet handed to Claude */
+  private heard: string[] = [];
+  private lastUtteranceAt = 0;
+  private turnEndTimer: ReturnType<typeof setTimeout> | null = null;
   private pin = "";
   private pinTries = 0;
   /** no more PIN attempts in this call: limit reached or locked */
   private pinClosed = false;
   private pinChecking = false;
-  private confirmation: PendingConfirmation | null = null;
   private voiceErrors = 0;
   private hangupPending = false;
   /** FORGE is saying goodbye; set once and never cleared */
@@ -97,6 +122,7 @@ export class CallController {
     this.rtp.on("drained", () => this.onDrained());
     this.vad.on("speechStart", () => this.onSpeechStart());
     this.vad.on("utterance", (pcm) => this.onUtterance(pcm));
+    this.vad.on("noise", () => this.settleTurn());
     this.call.on("ended", () => this.dispose());
   }
 
@@ -125,13 +151,21 @@ export class CallController {
   private startConversation() {
     this.conversation = this.d.createConversation({
       onSentence: (s) => {
+        if (this.muted || this.ended) return;
         this.d.onTranscript("forge", s);
         if (this.held) this.held.push(s);
         else this.speak(s);
       },
-      onTurnDone: () => this.touch(),
+      onTurnDone: () => {
+        this.turnActive = false;
+        this.muted = false;
+        if (this.settleTimer) clearTimeout(this.settleTimer);
+        this.settleTimer = null;
+        this.touch();
+        this.flushOutbox();
+      },
       onHangup: () => {
-        this.closing = true;
+        this.startClosing();
         this.hangupPending = true;
         this.maybeHangup();
       },
@@ -140,71 +174,62 @@ export class CallController {
         this.farewell("Ich habe gerade ein technisches Problem und lege auf. Bitte versuch es gleich noch einmal.");
       },
     });
-    if (this.d.opening) this.conversation.say(this.d.opening);
+    if (this.d.opening) this.tell(this.d.opening);
+  }
+
+  /** Hands text to Claude: right away, or when the reply it is writing is done. */
+  private tell(text: string) {
+    if (this.ended) return;
+    this.outbox.push(text);
+    this.flushOutbox();
+  }
+
+  private flushOutbox() {
+    if (this.turnActive || !this.outbox.length || !this.conversation || this.ended) return;
+    const text = this.outbox.join("\n");
+    this.outbox = [];
+    this.turnActive = true;
+    this.muted = false;
+    this.conversation.say(text);
+  }
+
+  /** The caller said something new: what FORGE was about to say no longer fits. */
+  private dropReply() {
+    this.speechQueue = [];
+    this.unfinished = [];
+    if (!this.turnActive || this.muted) return;
+    this.muted = true;
+    this.conversation?.interrupt();
+    this.settleTimer = setTimeout(() => {
+      this.settleTimer = null;
+      if (!this.muted) return;
+      this.d.log("Claude: unterbrochene Antwort endet nicht, Gespräch geht weiter");
+      this.turnActive = false;
+      this.flushOutbox();
+    }, INTERRUPT_SETTLE_MS);
   }
 
   /** Says goodbye and hangs up once it is spoken. */
   farewell(text: string) {
     if (this.ended) return;
-    this.closing = true;
-    this.cancelConfirmation(null);
+    this.startClosing();
     this.speak(text);
     this.hangupPending = true;
     this.maybeHangup();
   }
 
+  /** From here on FORGE finishes what it says, also when the caller talks. */
+  private startClosing() {
+    this.closing = true;
+    if (this.paused) {
+      this.paused = false;
+      void this.speakNext();
+    }
+  }
+
   private touch() {
     if (this.idleTimer) clearTimeout(this.idleTimer);
     this.idleTimer = setTimeout(() => this.farewell("Ich höre nichts mehr und lege jetzt auf. Bis später."), IDLE_HANGUP_MS);
-  }
-
-  // ---------- confirmation of steering actions via keypad
-
-  /**
-   * FORGE itself reads out what is about to happen; `run` executes only after the caller presses 1.
-   * The outcome reaches Claude as a note. A spoken "yes" is not enough on purpose: text from sessions
-   * could talk Claude into calling a tool, but it cannot press a key on the caller's phone.
-   */
-  requestConfirmation(text: string, run: () => Promise<string>) {
-    if (this.ended || this.closing) return;
-    this.cancelConfirmation("[FORGE: Die vorige Bestätigung wurde durch eine neue ersetzt und nicht ausgeführt.]");
-    const timer = setTimeout(
-      () => this.cancelConfirmation("[FORGE: Der Anrufer hat nicht über die Tastatur bestätigt. Nichts wurde ausgeführt.]"),
-      this.d.timing?.confirmTimeoutMs ?? CONFIRM_TIMEOUT_MS,
-    );
-    this.confirmation = { run, timer };
-    this.speak(`${text} Zum Bestätigen die Taste 1 drücken, zum Abbrechen die 2.`);
-  }
-
-  get confirmationPending(): boolean {
-    return this.confirmation !== null;
-  }
-
-  private cancelConfirmation(note: string | null) {
-    const c = this.confirmation;
-    if (!c) return;
-    clearTimeout(c.timer);
-    this.confirmation = null;
-    if (note) this.conversation?.say(note);
-  }
-
-  private onConfirmDigit(digit: string) {
-    const c = this.confirmation;
-    if (!c) return;
-    if (digit === CANCEL_KEY) {
-      this.cancelConfirmation("[FORGE: Der Anrufer hat mit der Taste 2 abgebrochen. Nichts wurde ausgeführt.]");
-      return;
-    }
-    if (digit !== CONFIRM_KEY) return;
-    clearTimeout(c.timer);
-    this.confirmation = null;
-    this.rtp.play(beep());
-    void c
-      .run()
-      .catch((e: unknown) => `Fehler: ${e instanceof Error ? e.message : String(e)}`)
-      .then((result) => {
-        if (!this.ended) this.conversation?.say(`[FORGE: Der Anrufer hat mit der Taste 1 bestätigt. Ergebnis: ${result}]`);
-      });
   }
 
   // ---------- speech output
@@ -217,6 +242,10 @@ export class CallController {
 
   private async speakNext() {
     if (this.speaking || this.ended) return;
+    if (this.paused) {
+      this.updateOutput();
+      return;
+    }
     const text = this.speechQueue.shift();
     if (text === undefined) {
       this.updateOutput();
@@ -224,6 +253,8 @@ export class CallController {
       return;
     }
     this.speaking = true;
+    this.current = text;
+    this.unfinished.push(text);
     this.updateOutput();
     const abort = (this.abort = new AbortController());
     const signal = AbortSignal.any([abort.signal, AbortSignal.timeout(this.d.timing?.speakTimeoutMs ?? SPEAK_TIMEOUT_MS)]);
@@ -260,16 +291,18 @@ export class CallController {
       }
     } finally {
       this.speaking = false;
+      this.current = null;
       this.abort = null;
       void this.speakNext();
     }
   }
 
   private updateOutput() {
-    this.vad.outputActive = this.speaking || this.rtp.playing || this.speechQueue.length > 0;
+    this.vad.outputActive = this.speaking || this.rtp.playing || (!this.paused && this.speechQueue.length > 0);
   }
 
   private onDrained() {
+    this.unfinished = this.current ? [this.current] : [];
     this.updateOutput();
     this.maybeHangup();
   }
@@ -282,13 +315,23 @@ export class CallController {
     this.hangupPending = false;
   }
 
-  /** The caller talks while FORGE speaks: stop talking and listen. */
+  /** The caller starts talking: FORGE stops at once and keeps what it had not finished saying. */
   private onSpeechStart() {
-    if (!(this.speaking || this.rtp.playing || this.speechQueue.length) || this.closing) return;
-    this.speechQueue = [];
+    if (this.turnEndTimer) clearTimeout(this.turnEndTimer);
+    this.turnEndTimer = null;
+    if (this.closing || this.paused) return;
+    this.paused = true;
+    if (this.unfinished.length) this.speechQueue.unshift(...this.unfinished);
+    this.unfinished = [];
     this.abort?.abort();
     this.rtp.clearPlayback();
     this.updateOutput();
+  }
+
+  private resumeOutput() {
+    if (!this.paused) return;
+    this.paused = false;
+    void this.speakNext();
   }
 
   // ---------- speech input
@@ -297,6 +340,7 @@ export class CallController {
   private onUtterance(pcm: Int16Array) {
     if (this.ended) return;
     this.touch();
+    this.lastUtteranceAt = Date.now();
     this.utterances.push(pcm);
     void this.transcribeNext();
   }
@@ -315,6 +359,7 @@ export class CallController {
       } catch (e) {
         if (this.ended) return;
         this.d.log(`Spracherkennung: ${e instanceof Error ? e.message : String(e)}`);
+        this.dropReply();
         if (++this.voiceErrors >= MAX_VOICE_ERRORS) this.farewell("Die Spracherkennung funktioniert gerade nicht. Ich lege auf.");
         else this.speak("Das habe ich nicht verstanden. Sag es bitte noch einmal.");
         return;
@@ -322,20 +367,49 @@ export class CallController {
       if (this.ended) return;
       // Silence and noise come back as nothing or as a lone filler.
       if (!text || /^[\s.,!?…-]*$/.test(text)) return;
+      // "Mhm" while FORGE talks is listening, not a new turn.
+      if (this.paused && this.speechQueue.length && !this.heard.length && isBackchannel(text)) return;
       this.d.onTranscript("caller", text);
-      this.conversation?.say(text);
+      this.heard.push(text);
+      this.dropReply();
     } finally {
       this.transcribing = false;
-      void this.transcribeNext();
+      if (this.utterances.length) void this.transcribeNext();
+      else this.settleTurn();
     }
   }
 
-  // ---------- keypad: confirmation and PIN
+  /**
+   * Called whenever the caller may have finished: after a transcription, after noise. With nothing
+   * heard FORGE goes on talking; otherwise the turn ends after a pause that fits how the last
+   * sentence ended.
+   */
+  private settleTurn() {
+    if (this.ended || this.vad.active || this.transcribing || this.utterances.length) return;
+    if (!this.heard.length) {
+      this.resumeOutput();
+      return;
+    }
+    const t = this.d.timing;
+    const pause = soundsUnfinished(this.heard.at(-1)!) ? (t?.turnEndUnfinishedMs ?? TURN_END_UNFINISHED_MS) : (t?.turnEndMs ?? TURN_END_MS);
+    if (this.turnEndTimer) clearTimeout(this.turnEndTimer);
+    this.turnEndTimer = setTimeout(() => this.endTurn(), Math.max(0, pause - (Date.now() - this.lastUtteranceAt)));
+  }
+
+  private endTurn() {
+    this.turnEndTimer = null;
+    if (this.ended || this.vad.active || this.transcribing || this.utterances.length || !this.heard.length) return;
+    const text = this.heard.join(" ");
+    this.heard = [];
+    this.tell(text);
+    this.resumeOutput();
+  }
+
+  // ---------- keypad: PIN
 
   private onDigit(digit: string) {
     if (this.ended || !this.begun) return;
     this.touch();
-    if (this.confirmation) return this.onConfirmDigit(digit);
     if (!this.d.checkPin || this.unlocked || this.pinClosed || this.closing || this.pinChecking) return;
     if (digit === "*") {
       this.pin = "";
@@ -367,7 +441,7 @@ export class CallController {
       this.unlocked = true;
       this.d.onUnlock();
       this.rtp.play(beep());
-      this.conversation?.say("[FORGE: Der Anrufer hat die PIN richtig eingegeben. Steuernde Werkzeuge sind jetzt frei. Bestätige das in einem kurzen Satz.]");
+      this.tell("[FORGE: PIN richtig, Steuern ist frei. Sag nur „Freigeschaltet.“ Wollte der Anrufer vorher schon etwas Gesperrtes, erledige es jetzt.]");
       return;
     }
     if (result === "locked") {
@@ -392,13 +466,36 @@ export class CallController {
     this.abort?.abort();
     this.speechQueue = [];
     this.utterances = [];
-    this.cancelConfirmation(null);
-    if (this.idleTimer) clearTimeout(this.idleTimer);
-    if (this.maxTimer) clearTimeout(this.maxTimer);
+    this.heard = [];
+    this.outbox = [];
+    for (const t of [this.idleTimer, this.maxTimer, this.turnEndTimer, this.settleTimer]) if (t) clearTimeout(t);
     this.vad.reset();
     this.conversation?.close();
     this.rtp.close();
   }
+}
+
+const TRAILING_CONNECTIVE = /\b(und|oder|aber|also|dass|weil|wenn|ob|damit|sowie|bzw|dann|äh|ähm|öhm|hm|halt|quasi|sondern|denn|bis|mit|für|von|zu|in|im|an|am|der|die|das|den|dem|ein|eine|einen)\W*$/i;
+
+/** The transcription ends like a sentence that goes on: no closing punctuation, "...", a trailing "und". */
+export function soundsUnfinished(text: string): boolean {
+  const t = text.trim();
+  if (/(\.\.\.|…)$/.test(t)) return true;
+  if (!/[.!?]["'»«“”]?$/.test(t)) return true;
+  return TRAILING_CONNECTIVE.test(t);
+}
+
+/**
+ * A short listening sound or acknowledgement, said while the other one talks. "Hallo" belongs here
+ * because people say it when they pick up, right as FORGE starts speaking.
+ */
+export function isBackchannel(text: string): boolean {
+  const t = text
+    .toLowerCase()
+    .replace(/[^a-zäöüß ]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return /^(m+h*m+|hm+|aha|ah|oh|ja|jaja|jap|okay|ok|genau|richtig|stimmt|klar|alles klar|gut|super|(ja )?hallo( hallo)?|ja bitte)$/.test(t);
 }
 
 /** Rejects as soon as the signal aborts, even if the promise itself never settles. */
