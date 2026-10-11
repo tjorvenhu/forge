@@ -8,12 +8,14 @@ interface DialogProps {
   onOpenChange: (open: boolean) => void;
   title: string;
   description?: ReactNode;
-  children: ReactNode;
+  /** Without content the body is left out, so title and buttons are not separated by an empty strip. */
+  children?: ReactNode;
   footer?: ReactNode;
   className?: string;
 }
 
 export function Dialog({ open, onOpenChange, title, description, children, footer, className }: DialogProps) {
+  const hasBody = children !== undefined && children !== null && children !== false;
   return (
     <D.Root open={open} onOpenChange={onOpenChange}>
       <D.Portal>
@@ -24,7 +26,7 @@ export function Dialog({ open, onOpenChange, title, description, children, foote
             className,
           )}
         >
-          <div className="flex items-start justify-between gap-4 border-b border-border px-5 py-4">
+          <div className={cn("flex items-start justify-between gap-4 px-5 py-4", hasBody && "border-b border-border")}>
             <div>
               <D.Title className="text-title-sm font-semibold">{title}</D.Title>
               {description ? (
@@ -37,7 +39,7 @@ export function Dialog({ open, onOpenChange, title, description, children, foote
               <X className="h-4 w-4" />
             </D.Close>
           </div>
-          <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">{children}</div>
+          {hasBody && <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">{children}</div>}
           {footer && <div className="flex justify-end gap-2 border-t border-border px-5 py-3">{footer}</div>}
         </D.Content>
       </D.Portal>
