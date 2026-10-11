@@ -1,9 +1,10 @@
 import { mkdirSync, readFileSync } from "node:fs";
+import os from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ServerEvent, SessionEventBody } from "@forge/protocol";
 import type { ClaudeRuntime, RuntimeSession, SessionSink, StartOptions } from "../src/claude/runtime.js";
-import { AgentSdkRuntime } from "../src/claude/runtime.js";
+import { AgentSdkRuntime, REMOTE_UNAVAILABLE } from "../src/claude/runtime.js";
 import { GitEngine } from "../src/git/git.js";
 import { Db } from "../src/persistence/db.js";
 import { ProjectManager } from "../src/projects/project-manager.js";
@@ -28,6 +29,9 @@ class FakeRuntime implements ClaudeRuntime {
   remoteCalls: Array<{ enabled: boolean; name: string }> = [];
   efforts: Array<string | null> = [];
   modes: string[] = [];
+  /** close() does not end the process right away; the test calls onEnd itself */
+  deferEnd = false;
+  remoteError: Error | null = null;
   capabilities = new AgentSdkRuntime().capabilities;
   async listSessions() {
     return [];
@@ -51,9 +55,6 @@ class FakeRuntime implements ClaudeRuntime {
   async probe(): Promise<never> {
     throw new Error("no probe in tests");
   }
-  resumeSession(id: string, opts: Omit<StartOptions, "resume">, sink: SessionSink) {
-    return this.startSession({ ...opts, resume: id }, sink);
-  }
   startSession(opts: StartOptions, sink: SessionSink): RuntimeSession {
     this.started.push(opts);
     this.sinks.push(sink);
@@ -70,7 +71,7 @@ class FakeRuntime implements ClaudeRuntime {
       },
       close: () => {
         this.closed++;
-        sink.onEnd(null);
+        if (!this.deferEnd) sink.onEnd(null);
       },
       setModel: async () => {},
       setPermissionMode: async (mode) => {
@@ -81,6 +82,7 @@ class FakeRuntime implements ClaudeRuntime {
       },
       contextUsage: async () => ({ totalTokens: 62_000, maxTokens: 200_000, percentage: 31, categories: [{ name: "Messages", tokens: 40_000, kind: "used" as const }], updatedAt: new Date().toISOString() }),
       setRemoteControl: async (enabled, name) => {
+        if (this.remoteError) throw this.remoteError;
         this.remoteCalls.push({ enabled, name });
         return enabled ? "https://claude.ai/code/session_test" : null;
       },
@@ -247,9 +249,8 @@ describe("turn automation via project tags", () => {
 
     const s = await svc.start({ projectId, prompt: "mach was" });
     writeFileSync(path.join(repo, "neu.txt"), "von Claude\n");
-    const done = svc.waitForTurn(s.id);
     rt.sinks[0]!.onMessage({ type: "result", subtype: "success", is_error: false, result: "ok", usage: {} });
-    expect(await done).toBeNull();
+    await svc.drain();
 
     const types = db.listEvents(s.id).map((e) => e.body);
     expect(types.find((b) => b.type === "git.checkpoint")).toBeTruthy();
@@ -268,9 +269,8 @@ describe("turn automation via project tags", () => {
     projects.update(projectId, { tags: ["auto-test", "auto-commit"], testCommand: "node -e \"process.exit(3)\"" });
     const s = await svc.start({ projectId, prompt: "x" });
     writeFileSync(path.join(repo, "a.txt"), "a\n");
-    const done = svc.waitForTurn(s.id);
     rt.sinks[0]!.onMessage({ type: "result", subtype: "success", is_error: false, result: "ok", usage: {} });
-    await done;
+    await svc.drain();
     const bodies = db.listEvents(s.id).map((e) => e.body);
     expect(bodies.find((b) => b.type === "check.result")).toMatchObject({ ok: false, exitCode: 3 });
     expect(bodies.find((b) => b.type === "automation")).toMatchObject({ action: "skip", ok: false });
@@ -490,5 +490,240 @@ describe("turn automation via project tags", () => {
     await svc.applyProjectProfile(projectId);
     expect(svc.get(a.id).permissionMode).toBe("default");
     expect((await rt.sinks[0]!.preToolUse("WebFetch", { url: "https://example.com" }, "t1"))?.rule).toBe("profile-tool");
+  });
+});
+
+const remoteFixture = readFileSync(path.join(import.meta.dirname, "fixtures", "remote-control.jsonl"), "utf8")
+  .trim()
+  .split("\n")
+  .map((l) => JSON.parse(l) as Record<string, unknown>);
+
+const FORCE_PUSH = "git push --force";
+const success = (sink: SessionSink) => sink.onMessage({ type: "result", subtype: "success", is_error: false, result: "ok", usage: {} });
+const userTexts = (id: string) => db.listEvents(id).flatMap((e) => (e.body.type === "user.message" ? [e.body.text] : []));
+
+/** A stored session with a Claude session id and no running process. */
+async function storedSession() {
+  const s = await svc.start({ projectId, prompt: "Lies a.txt" });
+  rt.replay();
+  svc.close(s.id);
+  expect(svc.get(s.id).live).toBe(false);
+  return s;
+}
+
+describe("concurrency and lifecycle", () => {
+  it("starts only one CLI process for overlapping resume and send", async () => {
+    const s = await storedSession();
+    const before = rt.started.length;
+    await Promise.all([svc.resume(s.id, "eins"), svc.send(s.id, "zwei"), svc.resume(s.id, "drei")]);
+    expect(rt.started.length).toBe(before + 1);
+    expect(rt.started.at(-1)!.firstMessage?.text).toBe("eins");
+    expect([...rt.sent].sort()).toEqual(["drei", "zwei"]);
+    expect(userTexts(s.id).slice(1).sort()).toEqual(["drei", "eins", "zwei"]);
+  });
+
+  it("ignores the end and the output of a process that was already replaced", async () => {
+    const s = await storedSession();
+    const oldSink = rt.sinks[0]!;
+    await svc.resume(s.id, "weiter");
+    oldSink.onEnd(null);
+    expect(svc.get(s.id)).toMatchObject({ live: true, status: "running" });
+    success(oldSink);
+    expect(svc.get(s.id).status).toBe("running");
+  });
+
+  it("waits for a closing process before sending instead of losing the message", async () => {
+    const s = await svc.start({ projectId, prompt: "x" });
+    rt.replay();
+    rt.deferEnd = true;
+    svc.close(s.id);
+    const sending = svc.send(s.id, "danach");
+    await new Promise((r) => setTimeout(r, 20));
+    expect(rt.sent).toEqual([]);
+    expect(userTexts(s.id)).not.toContain("danach");
+    rt.sinks[0]!.onEnd(null);
+    await sending;
+    expect(rt.started).toHaveLength(2);
+    expect(rt.started[1]!.firstMessage?.text).toBe("danach");
+    expect(userTexts(s.id).filter((t) => t === "danach")).toHaveLength(1);
+  });
+
+  it("ignores stop on an idle session and does not carry it into the next turn", async () => {
+    const s = await svc.start({ projectId, prompt: "x" });
+    success(rt.sinks[0]!);
+    await svc.stop(s.id);
+    expect(svc.get(s.id).status).toBe("idle");
+    expect(rt.interrupted).toBe(0);
+    await svc.send(s.id, "nächster");
+    rt.sinks[0]!.onMessage({ type: "result", subtype: "error_during_execution", is_error: true, errors: ["kaputt"] });
+    expect(svc.get(s.id)).toMatchObject({ status: "idle", lastError: "kaputt" });
+    const lastStatus = db.listEvents(s.id).filter((e) => e.body.type === "status").at(-1)?.body;
+    expect(lastStatus).toMatchObject({ status: "idle", detail: null });
+  });
+
+  it("marks open sessions as interrupted on shutdown so they can be resumed", async () => {
+    const s = await svc.start({ projectId, prompt: "x" });
+    svc.shutdown();
+    expect(svc.get(s.id)).toMatchObject({ status: "interrupted", live: false });
+  });
+
+  it("asks to update Claude Code when the CLI does not know a flag FORGE needs", async () => {
+    const s = await svc.start({ projectId, prompt: "x" });
+    rt.sinks[0]!.onEnd(new Error("error: unknown option '--replay-user-messages'"));
+    expect(svc.get(s.id).lastError).toMatch(/zu alt/);
+  });
+
+  it("points to the in-app sign-in when Claude Code is not logged in", async () => {
+    const s = await svc.start({ projectId, prompt: "x" });
+    rt.sinks[0]!.onEnd(new Error("Not logged in · Please run /login"));
+    expect(svc.get(s.id).lastError).toMatch(/Einstellungen/);
+    expect(svc.get(s.id).lastError).not.toMatch(/Terminal/);
+  });
+});
+
+describe("policy inside the session", () => {
+  it("resolves ~ against the home folder in the hook the session installs", async () => {
+    projects.update(projectId, { profile: "autonomous" });
+    await svc.start({ projectId, prompt: "x" });
+    const sink = rt.sinks[0]!;
+    expect((await sink.preToolUse("Write", { file_path: "~/.claude/settings.json", content: "{}" }, "t1"))?.rule).toBe("write-outside-project");
+    expect((await sink.preToolUse("Read", { file_path: "~/.npmrc" }, "t2"))?.rule).toBe("sensitive-path");
+    expect((await sink.preToolUse("Grep", { pattern: "KEY", path: os.homedir(), glob: ".ssh/*" }, "t3"))?.rule).toBe("sensitive-path");
+    expect((await sink.preToolUse("Glob", { pattern: path.join(os.homedir(), ".ssh", "*") }, "t4"))?.rule).toBe("sensitive-path");
+    expect(await sink.preToolUse("Write", { file_path: "src/a.ts", content: "" }, "t5")).toBeNull();
+  });
+
+  it("denies the tool call even when logging the violation fails", async () => {
+    await svc.start({ projectId, prompt: "x" });
+    vi.spyOn(db, "recordApproval").mockImplementation(() => {
+      throw new Error("disk full");
+    });
+    expect((await rt.sinks[0]!.preToolUse("Bash", { command: FORCE_PUSH }, "t1"))?.rule).toBe("git-force-push");
+  });
+
+  it("denies when the check itself throws", async () => {
+    await svc.start({ projectId, prompt: "x" });
+    const input = Object.defineProperty({}, "command", {
+      enumerable: true,
+      get() {
+        throw new Error("boom");
+      },
+    }) as Record<string, unknown>;
+    expect((await rt.sinks[0]!.preToolUse("Bash", input, "t1"))?.rule).toBe("guard-error");
+  });
+
+  it("resets a permission mode above the profile that Claude Code reports", async () => {
+    const s = await svc.start({ projectId, prompt: "x" });
+    rt.sinks[0]!.onMessage({ type: "system", subtype: "status", status: null, permissionMode: "bypassPermissions" });
+    expect(svc.get(s.id).permissionMode).toBe("acceptEdits");
+    expect(rt.modes).toEqual(["acceptEdits"]);
+    expect(db.listEvents(s.id).find((e) => e.body.type === "policy.blocked")?.body).toMatchObject({ rule: "permission-mode", toolName: "PermissionMode" });
+    rt.sinks[0]!.onMessage({ type: "system", subtype: "status", status: null, permissionMode: "default" });
+    expect(svc.get(s.id).permissionMode).toBe("default");
+  });
+
+  it("stores a large tool input shortened but approves the full input", async () => {
+    const s = await svc.start({ projectId, prompt: "x" });
+    const content = "x".repeat(50_000);
+    const pending = rt.sinks[0]!.onApproval(
+      { requestId: "big", toolUseId: "tb", toolName: "Write", input: { file_path: "a.txt", content }, title: null, description: null, reason: null, suppressAlwaysAllow: false },
+      new AbortController().signal,
+    );
+    const req = db.listEvents(s.id).find((e) => e.body.type === "approval.request")?.body as Extract<SessionEventBody, { type: "approval.request" }>;
+    expect(req).toMatchObject({ inputTruncated: true, input: { file_path: "a.txt" } });
+    expect((req.input.content as string).length).toBeLessThan(21_000);
+    svc.respondApproval(s.id, "big", "allow", "once");
+    await expect(pending).resolves.toEqual({ behavior: "allow", scope: "once" });
+    const audit = db.sql.prepare("SELECT input FROM approvals").get() as { input: string };
+    expect(audit.input.length).toBeLessThan(21_000);
+  });
+});
+
+describe("Remote Control wire messages", () => {
+  it("handles recorded Remote Control messages and ignores unknown or malformed ones", async () => {
+    const s = await svc.start({ projectId, prompt: "Lies a.txt" });
+    rt.replay();
+    await svc.remoteStart(projectId);
+    const sink = rt.sinks[0]!;
+    const states: string[] = [];
+    for (const m of remoteFixture) {
+      sink.onMessage(m);
+      states.push(svc.remoteState(projectId).sessions[0]!.state);
+    }
+    expect(states.slice(0, 2)).toEqual(["connecting", "connected"]);
+    expect(svc.remoteState(projectId).sessions[0]).toMatchObject({ state: "error", message: "Verbindung zur Claude-App verloren" });
+    const users = db.listEvents(s.id).flatMap((e) => (e.body.type === "user.message" ? [e.body] : []));
+    expect(users.map((u) => [u.text, u.source ?? "forge"])).toEqual([
+      ["Lies a.txt", "forge"],
+      ["Vom Handy: bitte README lesen", "remote"],
+    ]);
+    expect(users[1]!.attachments).toEqual([{ name: "Bild 1", mediaType: "image/png", size: expect.any(Number) }]);
+    expect(svc.get(s.id).status).toBe("idle");
+  });
+
+  it("reports Remote Control the CLI does not offer as an error instead of crashing", async () => {
+    await svc.start({ projectId, prompt: "x" });
+    rt.remoteError = new Error(REMOTE_UNAVAILABLE);
+    const state = await svc.remoteStart(projectId);
+    expect(state.sessions[0]).toMatchObject({ state: "error", message: REMOTE_UNAVAILABLE });
+  });
+});
+
+describe("turn automation holds the next turn", () => {
+  async function repoWithTags(testCommand: string) {
+    const repo = projects.get(projectId).path;
+    await initRepo(repo);
+    await git(repo, "commit", "-m", "init", "--allow-empty");
+    projects.update(projectId, { tags: ["auto-test", "auto-commit"], testCommand });
+    return repo;
+  }
+
+  it("holds a new message until tests and auto-commit of the last turn are done", async () => {
+    const repo = await repoWithTags('node -e "setTimeout(() => {}, 400)"');
+    const s = await svc.start({ projectId, prompt: "mach was" });
+    writeFileSync(path.join(repo, "neu.txt"), "von Claude\n");
+    success(rt.sinks[0]!);
+    await svc.send(s.id, "weiter");
+    expect(rt.sent).toEqual([]);
+    expect(svc.get(s.id).status).toBe("running");
+    expect(userTexts(s.id)).toContain("weiter");
+    await svc.drain();
+    expect(rt.sent).toEqual(["weiter"]);
+    const bodies = db.listEvents(s.id).map((e) => e.body);
+    expect(bodies.find((b) => b.type === "automation")).toMatchObject({ action: "commit", ok: true, files: ["neu.txt"] });
+  });
+
+  it("drops a held message when the user stops", async () => {
+    const repo = await repoWithTags('node -e "setTimeout(() => {}, 400)"');
+    const s = await svc.start({ projectId, prompt: "mach was" });
+    writeFileSync(path.join(repo, "neu.txt"), "von Claude\n");
+    success(rt.sinks[0]!);
+    await svc.send(s.id, "weiter");
+    await svc.stop(s.id);
+    expect(svc.get(s.id).status).toBe("idle");
+    expect(rt.interrupted).toBe(0);
+    await svc.drain();
+    expect(rt.sent).toEqual([]);
+    expect(db.listEvents(s.id).some((e) => e.body.type === "error" && /nicht gesendet: Gestoppt/.test(e.body.message))).toBe(true);
+  });
+
+  it("skips the auto-commit when files change after the turn", async () => {
+    const repo = await repoWithTags("node -e \"require('fs').appendFileSync('neu.txt', 'mehr')\"");
+    const s = await svc.start({ projectId, prompt: "mach was" });
+    writeFileSync(path.join(repo, "neu.txt"), "von Claude\n");
+    success(rt.sinks[0]!);
+    await svc.drain();
+    expect(db.listEvents(s.id).find((e) => e.body.type === "automation")?.body).toMatchObject({ action: "skip" });
+    expect((await git(repo, "log", "--format=%s")).trim()).toBe("init");
+  });
+
+  it("skips the auto-commit when a turn from the Claude app started meanwhile", async () => {
+    const repo = await repoWithTags('node -e "setTimeout(() => {}, 300)"');
+    const s = await svc.start({ projectId, prompt: "mach was" });
+    writeFileSync(path.join(repo, "neu.txt"), "von Claude\n");
+    success(rt.sinks[0]!);
+    rt.sinks[0]!.onMessage({ type: "command_lifecycle", command_uuid: "aaaaaaaa-bbbb-4ccc-8ddd-000000000009", state: "started" });
+    await svc.drain();
+    expect(db.listEvents(s.id).find((e) => e.body.type === "automation")?.body).toMatchObject({ action: "skip" });
   });
 });

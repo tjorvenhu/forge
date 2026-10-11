@@ -16,7 +16,7 @@ Datum: 2026-10-10 · Status: angenommen
 - **Persistenz: `node:sqlite`** (in Node ≥ 22.13 ohne Flag) statt Drizzle/better-sqlite3. Grund: kein
   nativer Build, keine ABI-Probleme beim Paketieren. Schema über nummerierte SQL-Migrationen.
   Abweichung vom Vorschlag (Drizzle) bewusst; die Repository-Schicht kapselt SQL.
-- Daten liegen in `%APPDATA%/forge` (Windows) bzw. `$XDG_DATA_HOME/forge` (Linux).
+- Daten liegen in `%APPDATA%/forge`. FORGE läuft nur unter Windows.
 
 ## Abweichungen vom bevorzugten Stack
 

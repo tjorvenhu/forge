@@ -1,7 +1,7 @@
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { checkToolUse, claudePlansDir, writesOutsideProject } from "../src/policy/guard.js";
+import { checkToolUse, claudePlansDir, resolveToolPath, writesOutsideProject } from "../src/policy/guard.js";
 import { effectivePermissionMode, PROFILES, resolveProfile } from "../src/policy/profiles.js";
 import { containsSecret, redact, redactText } from "../src/policy/redact.js";
 
@@ -29,6 +29,36 @@ describe("guard: shell rules (all profiles)", () => {
     ["format C:", "format-disk"],
     ["cat ~/.ssh/id_rsa", "sensitive-path"],
     ["type %USERPROFILE%\\.aws\\credentials", "sensitive-path"],
+    // bypasses found in review
+    ["git push origin HEAD:refs/heads/main", "git-push-protected"],
+    ["git push origin refs/heads/master", "git-push-protected"],
+    ['git push origin "main"', "git-push-protected"],
+    ["git push origin 'HEAD:main'", "git-push-protected"],
+    ["git push --mirror", "git-push-mirror"],
+    ["git push origin --prune", "git-push-mirror"],
+    ["git push origin --delete feature/x", "git-push-delete"],
+    ["git push origin :feature/x", "git-push-delete"],
+    ['git push origin "+feature/x"', "git-force-push"],
+    ["rm -rf -- /", "rm-root"],
+    ["rm --recursive --force ~", "rm-root"],
+    ["rm -rf ${HOME}", "rm-root"],
+    ['rm -rf "$HOME"', "rm-root"],
+    ["rm -rf $HOME/*", "rm-root"],
+    ["rm -rf ~/", "rm-root"],
+    ["rm -rf /*", "rm-root"],
+    ["rm -rf /c/", "rm-root"],
+    ["rm -rf /mnt/c", "rm-root"],
+    ["rm -r -f /", "rm-root"],
+    ["sudo rm -Rf /", "rm-root"],
+    ["cd x; rm -fr C:\\*", "rm-root"],
+    ["Remove-Item -Recurse -Force $env:USERPROFILE\\*", "rm-root-win"],
+    ['Remove-Item -Recurse -Force "${env:USERPROFILE}"', "rm-root-win"],
+    ["Remove-Item -Path:C:\\ -Recurse", "rm-root-win"],
+    ["rd /s /q C:\\", "rm-root-win"],
+    ["cat ~/.npmrc", "sensitive-path"],
+    ["cat $HOME/.docker/config.json", "sensitive-path"],
+    ["Get-Content $env:USERPROFILE\\.npmrc", "sensitive-path"],
+    [`type "${path.join(home, ".npmrc")}"`, "sensitive-path"],
   ])("blocks %s", (cmd, rule) => {
     expect(bash(cmd)).toBe(rule);
   });
@@ -36,12 +66,27 @@ describe("guard: shell rules (all profiles)", () => {
   it.each([
     "git push origin feature/x",
     "git push -u origin feature/main-fix",
+    "git push origin refs/heads/feature/x",
+    "git push origin maintenance",
+    "git push origin main:feature/x",
     "git status && git diff",
     "git branch feature/new",
     "rm -rf node_modules",
     "rm -rf ./dist",
+    "rm -rf -- ./build",
+    "rm --recursive --force dist/",
+    "rm -rf ~/.cache/forge-test",
+    "rm -rf $HOME/tmp/x",
+    "rm -f /tmp/x.log",
+    "rm *.log",
+    "Remove-Item -Recurse -Force .\\dist",
+    "Remove-Item -Recurse $env:TEMP\\forge-test",
+    "rd /s /q build",
+    'echo "rm -rf /"',
     "pnpm test",
     "git clean -n",
+    "cat .npmrc",
+    "cat ./config/.npmrc",
   ])("allows %s", (cmd) => {
     expect(bash(cmd)).toBeNull();
   });
@@ -79,6 +124,40 @@ describe("guard: file tools", () => {
     expect(checkToolUse("Write", { file_path: path.join(home, ".claude", "settings.json") }, strict)?.rule).toBe("write-outside-project");
     expect(checkToolUse("Write", { file_path: path.join(plans, "..", "evil.md") }, strict)?.rule).toBe("write-outside-project");
     expect(writesOutsideProject("Write", { file_path: path.join(plans, "plan-x.md") }, projectDir, home, [plans])).toBe(false);
+  });
+
+  it("resolves ~ against the home folder when the context has no home (as in the session service)", () => {
+    const prodCtx = { projectDir, confineWritesToProject: true, currentBranch: null, extraWriteDirs: [claudePlansDir()] };
+    expect(checkToolUse("Write", { file_path: "~/.claude/settings.json" }, prodCtx)?.rule).toBe("write-outside-project");
+    expect(checkToolUse("Read", { file_path: "~/.npmrc" }, prodCtx)?.rule).toBe("sensitive-path");
+    expect(checkToolUse("Read", { file_path: "~/.docker/config.json" }, prodCtx)?.rule).toBe("sensitive-path");
+    expect(checkToolUse("Write", { file_path: "src/~notes.md" }, prodCtx)).toBeNull();
+    expect(resolveToolPath("~/x", projectDir)).toBe(path.join(home, "x"));
+    expect(resolveToolPath("~", projectDir)).toBe(home);
+  });
+
+  it("blocks Grep and Glob that can reach a credentials folder through glob or search root", () => {
+    expect(checkToolUse("Grep", { pattern: "PRIVATE", path: home, glob: ".ssh/*" }, ctx)?.rule).toBe("sensitive-path");
+    expect(checkToolUse("Glob", { pattern: path.join(home, ".ssh", "*") }, ctx)?.rule).toBe("sensitive-path");
+    expect(checkToolUse("Glob", { pattern: `${home.replace(/\\/g, "/")}/.s*/*` }, ctx)?.rule).toBe("sensitive-path");
+    expect(checkToolUse("Glob", { pattern: "~/**/id_*" }, ctx)?.rule).toBe("sensitive-path");
+    // search root above ~/.ssh: no glob, filename-only glob and wildcard first segment all reach it
+    expect(checkToolUse("Grep", { pattern: "BEGIN OPENSSH", path: home }, ctx)?.rule).toBe("sensitive-path");
+    expect(checkToolUse("Grep", { pattern: "x", path: "~", glob: "*" }, ctx)?.rule).toBe("sensitive-path");
+    expect(checkToolUse("Grep", { pattern: "x", path: home, glob: "*/id_*" }, ctx)?.rule).toBe("sensitive-path");
+    expect(checkToolUse("Glob", { pattern: "**/*", path: home }, ctx)?.rule).toBe("sensitive-path");
+    expect(checkToolUse("Glob", { pattern: "**/*", path: path.parse(home).root }, ctx)?.rule).toBe("sensitive-path");
+  });
+
+  it("allows normal Grep and Glob calls", () => {
+    expect(checkToolUse("Grep", { pattern: "password", path: "src" }, ctx)).toBeNull();
+    expect(checkToolUse("Grep", { pattern: "TODO" }, ctx)).toBeNull();
+    expect(checkToolUse("Grep", { pattern: "x", glob: "**/*.ts" }, ctx)).toBeNull();
+    expect(checkToolUse("Glob", { pattern: "**/*.ts" }, ctx)).toBeNull();
+    expect(checkToolUse("Glob", { pattern: "src/**/*.tsx", path: projectDir }, ctx)).toBeNull();
+    // narrowed to a literal subfolder of home that holds no credentials
+    expect(checkToolUse("Glob", { pattern: "Projects/**/*.ts", path: home }, ctx)).toBeNull();
+    expect(checkToolUse("Grep", { pattern: "x", path: home, glob: "Projects/**/*.md" }, ctx)).toBeNull();
   });
 
   it("detects writes outside the project, including traversal", () => {
@@ -119,6 +198,46 @@ describe("redaction", () => {
     expect(out).not.toMatch(/sk-ant-api03|ghp_abc|AKIAABCD|hunter2|abcdefghijklmnopqrstuvwxyz\.123|OPENSSH PRIVATE KEY-----\nabc/);
     expect(containsSecret(text)).toBe(true);
     expect(containsSecret("const x = 1;")).toBe(false);
+  });
+
+  it.each([
+    ["OpenAI project key", "OPENAI=sk-proj-abcDEF123_ghiJKL456-mnoPQR789stu", "sk-proj-abc"],
+    ["OpenAI service account key", "key sk-svcacct-abcdefghijklmnopqrstuvwx", "sk-svcacct-abc"],
+    ["JSON password", '{"password": "hunter2hunter2"}', "hunter2"],
+    ["JSON api key with single quotes", "{'api_key': 'abcdef123456'}", "abcdef123456"],
+    ["SECRET_KEY", "SECRET_KEY=django-insecure-9f8e7d6c5b", "django-insecure"],
+    ["GITHUB_TOKEN", "GITHUB_TOKEN=0123456789abcdef0123", "0123456789abcdef"],
+    ["AWS secret in env", "AWS_SECRET_ACCESS_KEY: wJalrXUtnFEMIK7MDENGbPxRfiCY", "wJalrXUtn"],
+    ["Postgres URL", "DATABASE_URL=postgres://forge:s3cretPass@db.local:5432/app", "s3cretPass"],
+    ["Redis URL", "redis://:hunter22@cache:6379", "hunter22"],
+  ])("redacts %s", (_label, text, leaked) => {
+    const out = redactText(text);
+    expect(out).not.toContain(leaked);
+    expect(out).toContain("[REDACTED]");
+    expect(containsSecret(text)).toBe(true);
+  });
+
+  it("keeps the user part of connection strings", () => {
+    expect(redactText("postgres://forge:s3cretPass@db.local:5432/app")).toBe("postgres://forge:[REDACTED]@db.local:5432/app");
+  });
+
+  it.each([
+    "MAX_TOKENS=4096",
+    "NODE_ENV=production",
+    '"inputTokens": 123456789',
+    "tokens: 1234",
+    "The password field is required.",
+    "http://localhost:3000/api",
+    "https://example.com:8443/path@v2",
+    "git@github.com:org/repo.git",
+    "mailto:user@example.com",
+    "GITHUB_TOKEN=${GITHUB_TOKEN}",
+    "API_KEY=<your-key>",
+    "PRIMARY_KEY=id",
+    "const sk = 'sk-short';",
+  ])("does not redact %s", (text) => {
+    expect(redactText(text)).toBe(text);
+    expect(containsSecret(text)).toBe(false);
   });
 
   it("redacts nested values without touching structure", () => {

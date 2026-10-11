@@ -14,6 +14,7 @@ interface ConfirmDialogProps {
   /** if set, the user must type this exact text before confirming */
   requireText?: string;
   confirmDisabled?: boolean;
+  /** Closes the dialog on success. On failure: show the error yourself, then rethrow to keep the dialog open. */
   onConfirm: () => Promise<void> | void;
 }
 
@@ -48,7 +49,7 @@ export function ConfirmDialog({ open, onOpenChange, title, description, children
                 await onConfirm();
                 close(false);
               } catch {
-                // onConfirm reports its own errors; the dialog stays open for another try
+                // Contract: onConfirm shows its own error (toast) and rethrows, so the dialog stays open for another try.
               } finally {
                 setBusy(false);
               }
@@ -61,7 +62,7 @@ export function ConfirmDialog({ open, onOpenChange, title, description, children
     >
       {children}
       {requireText !== undefined && (
-        <label className="mt-3 block text-[13px] text-muted">
+        <label className="mt-3 block text-body text-muted">
           Zur Bestätigung <span className="font-mono text-fg">{requireText}</span> eingeben
           <Input className="mt-1.5" value={typed} onChange={(e) => setTyped(e.target.value)} autoFocus />
         </label>

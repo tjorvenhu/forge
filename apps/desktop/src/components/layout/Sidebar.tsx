@@ -1,26 +1,20 @@
-import type { ReactNode } from "react";
-import { Blocks, Bot, Download, FolderKanban, GitPullRequest, History, Home, Plus, Settings } from "lucide-react";
+import { Download, Plus } from "lucide-react";
 import { call, useClaudeSetup, useClaudeUpdate, useDiagnostics, useProjects, useUsage } from "@/lib/queries";
 import { errorMessage } from "@/lib/rpc";
 import { toast } from "@/stores/toast";
 import { Button } from "@/components/ui/button";
-import { useUi, type View } from "@/stores/ui";
+import { useUi } from "@/stores/ui";
 import { capitalize, cn, relativeTime } from "@/lib/utils";
 import { Logo } from "./Logo";
+import { NAV } from "./nav";
 import { ProjectIcon } from "@/components/projects/ProjectIcon";
 
-const NAV: Array<{ view: View; label: string; icon: ReactNode }> = [
-  { view: "home", label: "Home", icon: <Home className="h-[18px] w-[18px]" /> },
-  { view: "projects", label: "Projekte", icon: <FolderKanban className="h-[18px] w-[18px]" /> },
-  { view: "sessions", label: "Sessions", icon: <History className="h-[18px] w-[18px]" /> },
-  { view: "github", label: "GitHub", icon: <GitPullRequest className="h-[18px] w-[18px]" /> },
-  { view: "agents", label: "Agenten", icon: <Bot className="h-[18px] w-[18px]" /> },
-  { view: "mcp", label: "Erweiterungen", icon: <Blocks className="h-[18px] w-[18px]" /> },
-  { view: "settings", label: "Einstellungen", icon: <Settings className="h-[18px] w-[18px]" /> },
-];
-
 export function Sidebar() {
-  const { view, setView, activeProjectId, openProject, setNewProject } = useUi();
+  const view = useUi((s) => s.view);
+  const setView = useUi((s) => s.setView);
+  const activeProjectId = useUi((s) => s.activeProjectId);
+  const openProject = useUi((s) => s.openProject);
+  const setNewProject = useUi((s) => s.setNewProject);
   const projects = useProjects();
   const list = projects.data ?? [];
   const favorites = list.filter((p) => p.favorite);
@@ -31,8 +25,8 @@ export function Sidebar() {
       <div className="flex items-center gap-3 px-5 pb-5 pt-5">
         <Logo size={38} />
         <div className="leading-tight">
-          <div className="text-[17px] font-bold tracking-wide">FORGE</div>
-          <div className="text-[11.5px] text-muted">Claude Development Studio</div>
+          <div className="text-title font-bold tracking-wide">FORGE</div>
+          <div className="text-caption-lg text-muted">Claude Development Studio</div>
         </div>
       </div>
 
@@ -47,14 +41,16 @@ export function Sidebar() {
               onClick={() => setView(n.view)}
               aria-current={active ? "page" : undefined}
               className={cn(
-                "flex h-10 items-center gap-3 rounded-lg px-3 text-[14px] transition-colors",
+                "flex h-10 items-center gap-3 rounded-lg px-3 text-ui transition-colors",
                 active ? "bg-accent-soft font-medium text-fg" : "text-muted hover:bg-surface-2 hover:text-fg",
               )}
             >
-              <span className={active ? "text-accent" : ""}>{n.icon}</span>
+              <span className={active ? "text-accent" : ""}>
+                <n.Icon className="h-4.5 w-4.5" />
+              </span>
               <span className="flex-1 text-left">{n.label}</span>
               {n.view === "projects" && list.length > 0 && (
-                <span className={cn("rounded-md px-2 py-0.5 text-[11px] tabular-nums", active ? "bg-accent/25 text-fg" : "bg-surface-3 text-muted")}>{list.length}</span>
+                <span className={cn("rounded-md px-2 py-0.5 text-caption tabular-nums", active ? "bg-accent/25 text-fg" : "bg-surface-3 text-muted")}>{list.length}</span>
               )}
             </button>
           );
@@ -65,10 +61,10 @@ export function Sidebar() {
 
       <div className="min-h-0 flex-1 overflow-y-auto px-3 pt-3">
         <div className="flex items-center justify-between px-3 pb-2">
-          <span className="text-[13px] text-muted">{favorites.length ? "Favoriten" : "Zuletzt"}</span>
-          <button onClick={() => setNewProject("import")} className="rounded-md p-1 text-subtle hover:bg-surface-2 hover:text-fg" aria-label="Projekt hinzufügen" title="Projekt hinzufügen">
+          <span className="text-body text-muted">{favorites.length ? "Favoriten" : "Zuletzt"}</span>
+          <Button size="icon-sm" variant="ghost" onClick={() => setNewProject("import")} className="h-6 w-6 text-subtle hover:bg-surface-2" aria-label="Projekt hinzufügen" title="Projekt hinzufügen">
             <Plus className="h-4 w-4" />
-          </button>
+          </Button>
         </div>
         <div className="flex flex-col gap-1">
           {shown.map((p) => (
@@ -82,18 +78,19 @@ export function Sidebar() {
             >
               <ProjectIcon name={p.name} size={34} />
               <div className="min-w-0 flex-1">
-                <div className="truncate text-[14px]">{p.name}</div>
-                <div className="truncate text-[12px] text-subtle">{p.technologies.slice(0, 2).join(" · ") || "Projekt"}</div>
+                <div className="truncate text-ui">{p.name}</div>
+                <div className="truncate text-small text-subtle">{p.technologies.slice(0, 2).join(" · ") || "Projekt"}</div>
               </div>
             </button>
           ))}
         </div>
-        <button
+        <Button
+          variant="outline"
           onClick={() => setNewProject("import")}
-          className="mt-2 flex h-11 w-full items-center gap-2.5 rounded-lg border border-dashed border-border px-3 text-[13.5px] text-muted hover:border-border-strong hover:text-fg"
+          className="mt-2 h-11 w-full justify-start gap-2.5 rounded-lg border-dashed px-3 text-body-lg font-normal text-muted hover:border-border-strong hover:bg-transparent hover:text-fg"
         >
           <Plus className="h-4 w-4" /> Projekt hinzufügen
-        </button>
+        </Button>
       </div>
 
       <ClaudeStatusCard />
@@ -129,13 +126,13 @@ function ClaudeStatusCard() {
       <button onClick={() => setView("settings")} className="flex flex-col gap-2 text-left" title="Claude-Code-Status, Nutzung und Diagnose">
         <div className="flex w-full items-center gap-2.5">
           <div className="min-w-0 flex-1">
-            <div className="text-[13px]">Claude Code</div>
-            <div className="flex items-center gap-1.5 text-[11px] text-muted">
+            <div className="text-body">Claude Code</div>
+            <div className="flex items-center gap-1.5 text-caption text-muted">
               <span className={cn("h-1.5 w-1.5 rounded-full", tone)} />
               {line}
             </div>
           </div>
-          <span className="text-[11px] text-subtle">{d?.claude.version?.split(" ")[0] ?? ""}</span>
+          <span className="text-caption text-subtle">{d?.claude.version?.split(" ")[0] ?? ""}</span>
         </div>
         {windows.length > 0 && (
           <div className="flex w-full flex-col gap-1.5" aria-label="Nutzung des Abos">
@@ -177,15 +174,16 @@ function ClaudeUpdateButton() {
 
 function UsageBar({ label, value, resetsAt }: { label: string; value: number; resetsAt: string | null }) {
   const tone = value >= 95 ? "bg-danger" : value >= 80 ? "bg-warning" : "bg-accent";
+  const width = Math.min(100, Math.max(0, value));
   const reset = resetsAt ? `Zurückgesetzt ${relativeTime(resetsAt)} (${new Date(resetsAt).toLocaleString("de-DE", { weekday: "short", hour: "2-digit", minute: "2-digit" })})` : undefined;
   return (
     <div title={reset}>
-      <div className="mb-0.5 flex justify-between text-[11px]">
+      <div className="mb-0.5 flex justify-between text-caption">
         <span className="text-muted">{label}</span>
         <span className="tabular-nums text-subtle">{value} %</span>
       </div>
-      <div className="h-1 overflow-hidden rounded-full bg-surface-3" role="progressbar" aria-valuenow={value} aria-valuemin={0} aria-valuemax={100} aria-label={label}>
-        <div className={cn("h-full rounded-full", tone)} style={{ width: `${value}%` }} />
+      <div className="h-1 overflow-hidden rounded-full bg-surface-3" role="progressbar" aria-valuenow={width} aria-valuemin={0} aria-valuemax={100} aria-label={label}>
+        <div className={cn("h-full rounded-full", tone)} style={{ width: `${width}%` }} />
       </div>
     </div>
   );

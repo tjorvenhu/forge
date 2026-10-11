@@ -1,8 +1,12 @@
+import { randomBytes } from "node:crypto";
 import { existsSync } from "node:fs";
-import { appendFile, copyFile, mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { appendFile, copyFile, cp, mkdir, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { ForgeError, type ConfigDoc, type ConfigDocKind, type ConfigScope, type MemoryFile, type MemoryScope } from "@forge/protocol";
+import { dataDir } from "../util/paths.js";
+import { run } from "../util/proc.js";
+import { resolveTool } from "../util/tools.js";
 
 /**
  * Read/write access to Claude Code's own configuration files. Paths are always derived from
@@ -59,6 +63,32 @@ async function readText(p: string): Promise<{ content: string; mtimeMs: number |
   return { content: await readFile(p, "utf8"), mtimeMs: info.mtimeMs };
 }
 
+/** Windows refuses a rename over a file that another process (editor, virus scanner) has open for a moment. */
+async function renameWithRetry(from: string, to: string) {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      await rename(from, to);
+      return;
+    } catch (e) {
+      const code = (e as NodeJS.ErrnoException).code;
+      if (attempt >= 10 || !(code === "EPERM" || code === "EBUSY" || code === "EACCES")) throw e;
+      await new Promise((r) => setTimeout(r, 50 * (attempt + 1)));
+    }
+  }
+}
+
+/** Writes via a temp file in the same folder: a crash never leaves a half-written settings.json behind. */
+export async function writeAtomic(p: string, content: string) {
+  const tmp = path.join(path.dirname(p), `.${path.basename(p)}.${process.pid}.${randomBytes(4).toString("hex")}.tmp`);
+  await writeFile(tmp, content, "utf8");
+  try {
+    await renameWithRetry(tmp, p);
+  } catch (e) {
+    await rm(tmp, { force: true });
+    throw e;
+  }
+}
+
 async function writeText(p: string, content: string, expectedMtimeMs: number | null): Promise<number> {
   if (Buffer.byteLength(content) > MAX_DOC_BYTES) throw new ForgeError("VALIDATION", "Inhalt ist größer als 1 MB.");
   const info = await fileInfo(p);
@@ -70,14 +100,20 @@ async function writeText(p: string, content: string, expectedMtimeMs: number | n
   }
   await mkdir(path.dirname(p), { recursive: true });
   if (info.exists) await copyFile(p, p + ".bak");
-  await writeFile(p, content, "utf8");
+  await writeAtomic(p, content);
   return (await fileInfo(p)).mtimeMs ?? Date.now();
 }
 
-/** CLAUDE.local.md must never be committed: exclude it locally without touching tracked files. */
+/**
+ * CLAUDE.local.md must never be committed: exclude it locally without touching tracked files.
+ * In worktrees and submodules `.git` is a file, so git itself names the exclude file.
+ */
 async function ensureLocalExcluded(projectDir: string) {
-  const exclude = path.join(projectDir, ".git", "info", "exclude");
-  if (!existsSync(path.join(projectDir, ".git"))) return;
+  const git = resolveTool("git")?.path ?? "git";
+  const r = await run(git, ["rev-parse", "--git-path", "info/exclude"], { cwd: projectDir, timeoutMs: 15_000 });
+  const rel = r.code === 0 ? r.stdout.trim() : "";
+  if (!rel) return;
+  const exclude = path.resolve(projectDir, rel);
   const cur = existsSync(exclude) ? await readFile(exclude, "utf8") : "";
   if (/^\/?CLAUDE\.local\.md$/m.test(cur)) return;
   await mkdir(path.dirname(exclude), { recursive: true });
@@ -91,8 +127,9 @@ export async function readMemory(scope: MemoryScope, projectDir: string | null) 
 
 export async function writeMemory(scope: MemoryScope, projectDir: string | null, content: string, expectedMtimeMs: number | null) {
   const p = memoryPath(scope, projectDir);
+  // Before the write: the private file must not show up as committable, even for a moment.
+  if (scope === "local" && projectDir) await ensureLocalExcluded(projectDir).catch(() => {});
   const mtimeMs = await writeText(p, content, expectedMtimeMs);
-  if (scope === "local" && projectDir) await ensureLocalExcluded(projectDir);
   return { path: p, mtimeMs };
 }
 
@@ -160,13 +197,36 @@ export function docTemplate(kind: ConfigDocKind, name: string, description: stri
   return `---\nname: ${name}\ndescription: ${description}\n---\n\nDu bist ein spezialisierter Subagent. Beschreibe hier Rolle, Vorgehen und Grenzen.\n`;
 }
 
-export async function deleteDoc(kind: ConfigDocKind, scope: ConfigScope, projectDir: string | null, name: string) {
+/** Deleted skill folders are moved here, outside every folder Claude Code loads skills from. */
+export function skillTrashDir(): string {
+  return path.join(dataDir(), "trash", "skills");
+}
+
+/**
+ * Deletes a skill or subagent and returns where the backup went. Skills are folders (SKILL.md plus
+ * optional resources) and move as a whole to skillTrashDir(); subagents keep `<name>.md.bak` next
+ * to the file. The trash is not inside .claude/ because project skills are usually committed.
+ */
+export async function deleteDoc(kind: ConfigDocKind, scope: ConfigScope, projectDir: string | null, name: string): Promise<{ backupPath: string | null }> {
   const p = docPath(kind, scope, projectDir, name);
-  if (!existsSync(p)) return;
-  // Skills are folders (SKILL.md plus optional resources); keep a backup copy of the main file.
-  await copyFile(p, p + ".bak");
-  if (kind === "skill") await rm(path.dirname(p), { recursive: true, force: true });
-  else await rm(p);
+  if (!existsSync(p)) return { backupPath: null };
+  if (kind === "agent") {
+    await renameWithRetry(p, p + ".bak");
+    return { backupPath: p + ".bak" };
+  }
+  const folder = path.dirname(p);
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+  const target = path.join(skillTrashDir(), `${scope}-${name}-${stamp}`);
+  await mkdir(path.dirname(target), { recursive: true });
+  try {
+    await renameWithRetry(folder, target);
+  } catch (e) {
+    // Different drive than the FORGE data folder: copy, then delete.
+    if ((e as NodeJS.ErrnoException).code !== "EXDEV") throw e;
+    await cp(folder, target, { recursive: true });
+    await rm(folder, { recursive: true, force: true });
+  }
+  return { backupPath: target };
 }
 
 // ---------- hooks in settings.json

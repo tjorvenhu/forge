@@ -35,7 +35,7 @@ export function formatDuration(ms: number | null): string {
 }
 
 export function formatTokens(n: number | null): string {
-  if (n === null) return "–";
+  if (n === null) return "k. A.";
   return n >= 1000 ? `${(n / 1000).toFixed(1).replace(".", ",")}k` : String(n);
 }
 

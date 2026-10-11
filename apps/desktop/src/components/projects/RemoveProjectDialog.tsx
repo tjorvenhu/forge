@@ -1,15 +1,15 @@
 import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Copy, ExternalLink, KeyRound } from "lucide-react";
+import { KeyRound } from "lucide-react";
 import type { Project } from "@forge/protocol";
 import { call, keys, useGitHubLogin } from "@/lib/queries";
 import { errorMessage } from "@/lib/rpc";
-import { openExternal } from "@/lib/native";
 import { useUi } from "@/stores/ui";
 import { toast } from "@/stores/toast";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import { Checkbox, ErrorBanner, Spinner, Loading } from "@/components/ui/misc";
+import { Checkbox, ErrorBanner, Loading } from "@/components/ui/misc";
+import { DeviceCode } from "@/components/github/DeviceCode";
 import { useAutoOpenGitHub } from "@/components/github/GitHubPanel";
 
 export function RemoveProjectDialog({ project, onClose }: { project: Pick<Project, "id" | "name" | "path"> | null; onClose: () => void }) {
@@ -70,7 +70,7 @@ export function RemoveProjectDialog({ project, onClose }: { project: Pick<Projec
           {i && (
             <>
               <div className="rounded-lg border border-border p-3">
-                <label className="flex items-center gap-2 text-[13px]">
+                <label className="flex items-center gap-2 text-body">
                   <Checkbox checked={deleteFolder} onChange={setDeleteFolder} disabled={!i.folderExists || !!i.folderBlocker} label="Lokalen Ordner löschen" />
                   Lokalen Ordner löschen
                 </label>
@@ -87,7 +87,7 @@ export function RemoveProjectDialog({ project, onClose }: { project: Pick<Projec
 
               {i.githubRepo && (
                 <div className="rounded-lg border border-border p-3">
-                  <label className="flex items-center gap-2 text-[13px]">
+                  <label className="flex items-center gap-2 text-body">
                     <Checkbox checked={deleteRepo} onChange={setDeleteRepo} disabled={!i.githubSignedIn} label="Repository auf GitHub löschen" />
                     Repository auf GitHub löschen
                   </label>
@@ -130,20 +130,8 @@ function GrantDeleteScope({ onGranted }: { onGranted: () => void }) {
 
   if (started && login?.phase === "waiting" && login.code && login.url) {
     return (
-      <div className="mt-2.5 flex flex-col items-start gap-2 pl-6">
-        <p className="text-xs text-muted">Gib diesen Code auf der GitHub-Seite ein:</p>
-        <div className="flex items-center gap-2">
-          <span className="rounded-md border border-accent/40 bg-accent-soft px-3 py-1 font-mono text-base tracking-widest">{login.code}</span>
-          <Button size="icon-sm" variant="ghost" aria-label="Code kopieren" onClick={() => void navigator.clipboard.writeText(login.code!).then(() => toast.success("Code kopiert"))}>
-            <Copy className="h-3.5 w-3.5" />
-          </Button>
-          <Button size="sm" onClick={() => void openExternal(login.url!)}>
-            <ExternalLink className="h-3.5 w-3.5" /> GitHub öffnen
-          </Button>
-        </div>
-        <span className="flex items-center gap-2 text-xs text-muted">
-          <Spinner className="h-3.5 w-3.5" /> Warte auf Bestätigung
-        </span>
+      <div className="mt-2.5 pl-6">
+        <DeviceCode code={login.code} url={login.url} prompt="Gib diesen Code auf der GitHub-Seite ein:" compact />
       </div>
     );
   }

@@ -1,13 +1,23 @@
-import { randomBytes, randomUUID, scryptSync, timingSafeEqual } from "node:crypto";
-import { ForgeError, type PhoneCallInfo, type PhoneCallRecord, type PhoneConfig, type PhoneState, type ServerEvent, type SessionEventBody } from "@forge/protocol";
+import { randomUUID } from "node:crypto";
+import {
+  ForgeError,
+  type PhoneCallInfo,
+  type PhoneCallRecord,
+  type PhoneConfig,
+  type PhoneSetupIncomplete,
+  type PhoneState,
+  type ServerEvent,
+  type SessionEventBody,
+} from "@forge/protocol";
 import type { Db } from "../persistence/db.js";
 import type { ProjectManager } from "../projects/project-manager.js";
 import type { SessionService } from "../sessions/session-service.js";
 import type { DevServerService } from "../devserver/dev-server.js";
-import { CallController, type Conversation, type ConversationCallbacks } from "./call-controller.js";
-import { PhoneAgent, type PhoneToolset } from "./phone-agent.js";
+import { CallController, type CallControllerDeps, type Conversation, type ConversationCallbacks } from "./call-controller.js";
+import { asData, PhoneAgent, type PhoneToolset } from "./phone-agent.js";
+import { DEFAULT_PIN_LIMITS, hashPin, PinGuard, verifyPin, type PinGuardState, type PinLimits } from "./pin-guard.js";
 import { RtpSession } from "./rtp.js";
-import { buildSdp, chooseCodec, parseSdp, PT_PCMA } from "./sdp.js";
+import { answerDirection, buildSdp, chooseCodec, parseSdp, PT_PCMA } from "./sdp.js";
 import type { SecretStore } from "./secrets.js";
 import { SipUserAgent, type SipAccount, type SipCall } from "./sip-ua.js";
 import { DEFAULT_STT_MODEL, DEFAULT_TTS_MODEL, DEFAULT_VOICE, OpenAiVoice, type VoiceProvider } from "./voice.js";
@@ -20,6 +30,16 @@ const PHONE_MODEL = "haiku";
 const NOTIFY_DELAY_MS = { done: 5_000, error: 5_000, approval: 15_000 };
 const NOTIFY_COOLDOWN_MS = 60_000;
 const GREETING = "Hallo, hier ist FORGE. Was kann ich für dich tun?";
+/** numbers in national notation (030 ...) belong to this country */
+export const DEFAULT_COUNTRY_CODE = "49";
+/** longest text FORGE reads out in a confirmation before it says that only the start was read */
+const READ_OUT_MAX = 300;
+/** longest command or plan handed to Claude in details */
+const DETAILS_MAX = 4000;
+const SHUTDOWN_TIMEOUT_MS = 4000;
+
+const CONFIRM_PENDING =
+  "Wartet auf Bestätigung. FORGE liest dem Anrufer gerade selbst vor, was passieren soll, und er bestätigt mit der Taste 1. Ausgeführt ist noch nichts. Sag dazu nichts weiter, FORGE meldet dir das Ergebnis.";
 
 type NotifyKind = "done" | "approval" | "error";
 
@@ -40,6 +60,8 @@ interface StoredConfig {
   enabled: boolean;
   /** "salt:hash" (scrypt, hex) */
   pinHash: string | null;
+  /** wrong PINs and lockouts, kept across calls and restarts */
+  pinGuard?: PinGuardState;
 }
 
 const DEFAULTS: StoredConfig = {
@@ -79,41 +101,44 @@ export interface PhoneDeps {
   log(message: string): void;
   factories?: Partial<PhoneFactories>;
   /** shorter waits in tests */
-  timing?: { notifyDelayMs?: number; notifyCooldownMs?: number };
+  timing?: { notifyDelayMs?: number; notifyCooldownMs?: number; pinLimits?: Partial<PinLimits>; controller?: CallControllerDeps["timing"] };
 }
 
 interface ActiveCall {
   call: SipCall;
-  controller: CallController;
+  /** null while the call is being set up */
+  controller: CallController | null;
+  rtp: RtpSession | null;
   info: PhoneCallInfo;
   record: PhoneCallRecord;
   /** S1, S2 ... -> session id, as told to Claude in this call */
   refs: Map<string, string>;
+  answered: boolean;
+  /** set when FORGE ended the call because of an error */
+  failure: string | null;
+  /** o= line of our SDP; a new answer in the same call needs the same session and a higher version */
+  sdp: { session: string; version: number };
 }
 
 /**
- * Same phone number in different notations: +49 30 1234567, 0049301234567 and 030 1234567 match.
- * Short numbers (internal extensions) must match exactly, so "21" never allows "+49 30 121".
+ * A phone number in one canonical form, so different notations compare equal: "+49 30 1234567",
+ * "0049 30 1234567" and "030 1234567" all become "+49301234567". Short numbers without a leading
+ * zero (internal extensions) stay as they are and only match exactly.
  */
-export function sameNumber(a: string, b: string): boolean {
-  const x = a.replace(/\D/g, "").replace(/^0+/, "");
-  const y = b.replace(/\D/g, "").replace(/^0+/, "");
-  if (!x || !y) return false;
-  if (x === y) return true;
-  const [short, long] = x.length <= y.length ? [x, y] : [y, x];
-  return short.length >= 6 && long.endsWith(short);
+export function normalizeNumber(raw: string, countryCode = DEFAULT_COUNTRY_CODE): string {
+  const s = raw.trim().replace(/\(0\)/g, "");
+  const digits = s.replace(/[^\d*#]/g, "");
+  if (!digits) return "";
+  if (s.startsWith("+")) return `+${digits}`;
+  if (digits.startsWith("00")) return `+${digits.slice(2)}`;
+  if (digits.startsWith("0")) return `+${countryCode}${digits.slice(1)}`;
+  return digits;
 }
 
-function hashPin(pin: string): string {
-  const salt = randomBytes(16);
-  return `${salt.toString("hex")}:${scryptSync(pin, salt, 32).toString("hex")}`;
-}
-
-function verifyPin(pin: string, stored: string): boolean {
-  const [salt, hash] = stored.split(":");
-  if (!salt || !hash) return false;
-  const actual = scryptSync(pin, Buffer.from(salt, "hex"), 32);
-  return timingSafeEqual(actual, Buffer.from(hash, "hex"));
+/** Same number after normalizing; "234567" never matches "+49 30 1234567". */
+export function sameNumber(a: string, b: string, countryCode = DEFAULT_COUNTRY_CODE): boolean {
+  const x = normalizeNumber(a, countryCode);
+  return x !== "" && x === normalizeNumber(b, countryCode);
 }
 
 function relative(iso: string): string {
@@ -124,10 +149,22 @@ function relative(iso: string): string {
   return h < 24 ? `vor ${h} Stunden` : `vor ${Math.round(h / 24)} Tagen`;
 }
 
+/** For FORGE's own read-out: long texts are not cut silently. */
+function readOut(text: string): string {
+  const t = text.replace(/\s+/g, " ").trim();
+  if (t.length <= READ_OUT_MAX) return t;
+  return `Der Text ist lang, ${t.length} Zeichen. Der Anfang lautet: ${t.slice(0, READ_OUT_MAX)}.`;
+}
+
+function errorText(e: unknown): string {
+  return e instanceof Error ? e.message : String(e);
+}
+
 /**
  * The phone line of FORGE: registers at the user's PBX, takes calls from allowed numbers and calls
  * the user when a session is done, needs an approval or failed. In a call Claude (haiku, via the
- * Claude Code login) talks with the caller and uses FORGE tools; steering needs the PIN.
+ * Claude Code login) talks with the caller and uses FORGE tools; steering needs the PIN, and every
+ * action that hands text to a session needs a key press on the caller's phone.
  */
 export class PhoneService {
   private cfg: StoredConfig;
@@ -135,9 +172,14 @@ export class PhoneService {
   private registration: PhoneState["registration"] = "off";
   private message: string | null = null;
   private active: ActiveCall | null = null;
+  /** an outgoing call is being prepared; the line counts as busy */
+  private dialing = false;
+  /** connection settings changed during a call; applied when it ends */
+  private pendingReconnect = false;
   private notifyTimers = new Map<string, ReturnType<typeof setTimeout>>();
   private lastNotifyAt = 0;
   private readonly f: PhoneFactories;
+  private readonly pinGuard: PinGuard;
 
   constructor(private readonly d: PhoneDeps) {
     this.cfg = { ...DEFAULTS, ...(d.db.getPhoneSettings() as Partial<StoredConfig>) };
@@ -153,6 +195,14 @@ export class PhoneService {
       },
       ...d.factories,
     };
+    this.pinGuard = new PinGuard(
+      this.cfg.pinGuard,
+      (s) => {
+        this.cfg = { ...this.cfg, pinGuard: s };
+        this.persist();
+      },
+      { ...DEFAULT_PIN_LIMITS, ...d.timing?.pinLimits },
+    );
   }
 
   /** Starts the line on app start if it was switched on before. */
@@ -160,10 +210,18 @@ export class PhoneService {
     if (this.cfg.enabled) await this.connect().catch((e: unknown) => this.fail(e));
   }
 
+  private persist() {
+    this.d.db.setPhoneSettings(this.cfg as unknown as Record<string, unknown>);
+  }
+
+  private get busy(): boolean {
+    return this.active !== null || this.dialing;
+  }
+
   // ---------- config
 
   config(): PhoneConfig {
-    const { pinHash, ...rest } = this.cfg;
+    const { pinHash, pinGuard: _pinGuard, ...rest } = this.cfg;
     return {
       ...rest,
       hasPassword: this.d.secrets.has(SECRET_PASSWORD),
@@ -179,13 +237,19 @@ export class PhoneService {
     for (const [k, v] of Object.entries(rest)) if (v !== undefined) (next as unknown as Record<string, unknown>)[k] = typeof v === "string" ? v.trim() : v;
     next.allowedCallers = next.allowedCallers.map((n) => n.trim()).filter(Boolean);
     if (next.notifyNumber !== null && !next.notifyNumber.trim()) next.notifyNumber = null;
-    if (pin !== undefined) next.pinHash = pin ? hashPin(pin) : null;
+    if (pin !== undefined) next.pinHash = pin ? await hashPin(pin) : null;
     if (password !== undefined) await this.d.secrets.set(SECRET_PASSWORD, password || null);
     if (openAiKey !== undefined) await this.d.secrets.set(SECRET_OPENAI, openAiKey.trim() || null);
-    this.cfg = next;
-    this.d.db.setPhoneSettings(next as unknown as Record<string, unknown>);
+    this.cfg = { ...next, pinGuard: this.cfg.pinGuard };
+    this.persist();
+    // Setting a new PIN at the desk is the owner's decision, so it lifts a lockout.
+    if (pin !== undefined) this.pinGuard.reset();
     const changed = before !== JSON.stringify(this.connectionKey()) || password !== undefined;
-    if (this.cfg.enabled && changed && !this.active) await this.reconnect();
+    if (this.cfg.enabled && changed) {
+      // Rebuilding the connection would drop the running call; do it when the call ends.
+      if (this.busy) this.pendingReconnect = true;
+      else await this.reconnect();
+    }
     return this.config();
   }
 
@@ -206,7 +270,7 @@ export class PhoneService {
 
   private persistEnabled(enabled: boolean) {
     this.cfg = { ...this.cfg, enabled };
-    this.d.db.setPhoneSettings(this.cfg as unknown as Record<string, unknown>);
+    this.persist();
   }
 
   async setEnabled(enabled: boolean): Promise<PhoneState> {
@@ -216,7 +280,10 @@ export class PhoneService {
       return this.state();
     }
     const missing = this.missingSetup();
-    if (missing) throw new ForgeError("VALIDATION", `Telefon nicht eingerichtet: ${missing} Unter Einstellungen → Telefon ergänzen.`);
+    if (missing) {
+      const details: PhoneSetupIncomplete = { phoneSetupIncomplete: true };
+      throw new ForgeError("VALIDATION", `Telefon nicht eingerichtet: ${missing} Bitte in den Einstellungen unter Telefon ergänzen.`, details);
+    }
     this.persistEnabled(true);
     await this.connect().catch((e: unknown) => this.fail(e));
     return this.state();
@@ -232,7 +299,7 @@ export class PhoneService {
 
   private fail(e: unknown) {
     this.registration = "failed";
-    const msg = e instanceof Error ? e.message : String(e);
+    const msg = errorText(e);
     this.message = /ENOTFOUND|EAI_AGAIN/.test(msg) ? `Server ${this.cfg.server} nicht gefunden.` : msg.slice(0, 300);
     this.emitState();
   }
@@ -257,7 +324,7 @@ export class PhoneService {
       this.message = message;
       this.emitState();
     });
-    ua.on("incoming", (call) => void this.onIncoming(call));
+    ua.on("incoming", (call) => void this.onIncoming(ua, call));
     ua.on("log", (m) => this.d.log(`Telefon: ${m}`));
     this.registration = "registering";
     this.message = null;
@@ -266,6 +333,7 @@ export class PhoneService {
   }
 
   private async disconnect() {
+    this.pendingReconnect = false;
     for (const t of this.notifyTimers.values()) clearTimeout(t);
     this.notifyTimers.clear();
     const ua = this.ua;
@@ -280,8 +348,18 @@ export class PhoneService {
     await this.connect().catch((e: unknown) => this.fail(e));
   }
 
-  shutdown() {
-    void this.disconnect();
+  /**
+   * Hangs up a running call, signs off at the PBX and closes the sockets. Resolves when that is done
+   * or after `timeoutMs`, whichever comes first; never rejects.
+   */
+  async shutdown(timeoutMs = SHUTDOWN_TIMEOUT_MS): Promise<void> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const limit = new Promise<void>((resolve) => {
+      timer = setTimeout(resolve, timeoutMs);
+      timer.unref?.();
+    });
+    await Promise.race([this.disconnect().catch(() => {}), limit]);
+    clearTimeout(timer);
   }
 
   calls(limit: number) {
@@ -294,7 +372,7 @@ export class PhoneService {
   }
 
   async testCall(): Promise<PhoneState> {
-    if (!this.cfg.notifyNumber) throw new ForgeError("VALIDATION", "Erst unter Einstellungen → Telefon die Nummer für Anrufe von FORGE eintragen.");
+    if (!this.cfg.notifyNumber) throw new ForgeError("VALIDATION", "Bitte zuerst in den Einstellungen unter Telefon die Nummer eintragen, die FORGE anrufen soll.");
     await this.dial(
       this.cfg.notifyNumber,
       "Testanruf",
@@ -323,13 +401,79 @@ export class PhoneService {
     this.d.db.savePhoneCall(rec);
   }
 
-  private async onIncoming(call: SipCall) {
+  /**
+   * Takes the line for a call before anything is awaited, so a second call gets "busy" and an early
+   * end (CANCEL while FORGE is still preparing) frees the line and closes what was opened so far.
+   */
+  private attach(call: SipCall, rec: PhoneCallRecord, reason: string | null, refs: Map<string, string>, sdpSession: string): ActiveCall {
+    const info: PhoneCallInfo = { id: rec.id, direction: call.direction, number: call.remoteNumber, state: "ringing", startedAt: rec.startedAt, unlocked: false, reason };
+    const a: ActiveCall = { call, controller: null, rtp: null, info, record: rec, refs, answered: false, failure: null, sdp: { session: sdpSession, version: 1 } };
+    call.on("answered", () => (a.answered = true));
+    call.on("ended", (why) => {
+      if (this.active === a) this.active = null;
+      a.controller?.dispose();
+      a.rtp?.close();
+      this.finishRecord(rec, a.failure ? "failed" : a.answered ? "answered" : "missed", a.failure ?? why);
+      this.emitState();
+      if (this.pendingReconnect && this.cfg.enabled && this.ua && !this.busy) {
+        this.pendingReconnect = false;
+        void this.reconnect();
+      }
+    });
+    call.onOffer = (sdp) => this.answerReoffer(a, sdp);
+    this.active = a;
+    this.emitState();
+    return a;
+  }
+
+  /** Re-INVITE or UPDATE with new SDP: follow the new address and answer hold with recvonly. */
+  private answerReoffer(a: ActiveCall, body: string): string | null {
+    const offer = parseSdp(body);
+    const codec = offer && !offer.secure ? chooseCodec(offer) : null;
+    if (!offer || codec === null || !a.rtp || !this.ua) return null;
+    const direction = answerDirection(offer.direction);
+    a.rtp.configure({ ip: offer.ip, port: offer.port }, codec, offer.dtmfPt, [this.ua.serverIp]);
+    a.rtp.setDirection(direction);
+    return buildSdp({ ip: this.ua.localIp, port: a.rtp.port, sessionId: a.sdp.session, version: ++a.sdp.version, codec, dtmfPt: offer.dtmfPt, direction });
+  }
+
+  private createController(a: ActiveCall, voice: VoiceProvider, greeting: string | null, opening: string | null): CallController {
+    const pinHash = this.cfg.pinHash;
+    const caller = normalizeNumber(a.call.remoteNumber) || "unbekannt";
+    const context = [
+      `Heute ist ${new Date().toLocaleString("de-DE", { dateStyle: "full", timeStyle: "short" })}.`,
+      a.call.direction === "in" ? `Eingehender Anruf von ${a.call.remoteNumber}. Du hast schon mit "${GREETING}" begrüßt.` : `Du rufst ${a.call.remoteNumber} an. Anlass: ${a.info.reason}.`,
+      this.cfg.requirePin ? (pinHash ? "Steuern ist bis zur PIN-Eingabe gesperrt." : "Steuern ist gesperrt, weil keine PIN eingerichtet ist.") : "Steuern ist ohne PIN erlaubt.",
+    ].join("\n");
+    const rec = a.record;
+    a.controller = new CallController(a.call, a.rtp!, {
+      voice,
+      createConversation: (cb) => this.f.conversation({ tools: this.toolsFor(a), context, cb }),
+      checkPin: this.cfg.requirePin && pinHash ? (pin) => this.pinGuard.check(caller, () => verifyPin(pin, pinHash)) : null,
+      greeting,
+      opening,
+      onTranscript: (role, text) => rec.transcript.push({ role, text, ts: new Date().toISOString() }),
+      onUnlock: () => {
+        a.info.unlocked = true;
+        this.emitState();
+      },
+      log: (m) => {
+        rec.detail = m;
+        this.d.log(`Telefon: ${m}`);
+      },
+      timing: this.d.timing?.controller,
+    });
+    return a.controller;
+  }
+
+  private async onIncoming(ua: SipUserAgent, call: SipCall) {
     const rec = this.newRecord("in", call.remoteNumber, null);
     const reject = (status: number, reason: string, detail: string) => {
       call.reject(status, reason);
       this.finishRecord(rec, "rejected", detail);
     };
-    if (this.active) return reject(486, "Busy Here", "FORGE telefoniert bereits.");
+    if (this.busy) return reject(486, "Busy Here", "FORGE telefoniert bereits.");
+    if (this.ua !== ua) return reject(503, "Service Unavailable", "Telefon wird gerade neu verbunden.");
     if (!this.cfg.allowedCallers.some((n) => sameNumber(n, call.remoteNumber))) {
       this.d.log(`Telefon: Anruf von ${call.remoteNumber || "unbekannt"} abgewiesen (nicht freigegeben)`);
       return reject(403, "Forbidden", "Nummer ist nicht freigegeben.");
@@ -337,99 +481,83 @@ export class PhoneService {
     const offer = parseSdp(call.remoteSdp);
     const codec = offer && !offer.secure ? chooseCodec(offer) : null;
     if (!offer || codec === null) return reject(488, "Not Acceptable Here", "Audio-Format nicht unterstützt (kein G.711 oder verschlüsseltes RTP).");
+    const a = this.attach(call, rec, null, new Map(), String(Date.now()));
     try {
-      const rtp = this.f.rtp(this.ua!.localIp);
+      const voice = await this.voice();
+      if (ended(call)) return;
+      const rtp = (a.rtp = this.f.rtp(ua.bindIp));
       await rtp.open();
-      rtp.configure({ ip: offer.ip, port: offer.port }, codec, offer.dtmfPt);
-      const sdp = buildSdp({ ip: this.ua!.localIp, port: rtp.port, sessionId: String(Date.now()), version: 1, codec, dtmfPt: offer.dtmfPt });
-      const controller = await this.startCall(call, rtp, rec, null, GREETING, null, new Map());
+      // The caller may have hung up while the port was opened; the end handler ran before that.
+      if (ended(call)) return rtp.close();
+      const direction = answerDirection(offer.direction);
+      rtp.configure({ ip: offer.ip, port: offer.port }, codec, offer.dtmfPt, [ua.serverIp]);
+      rtp.setDirection(direction);
+      const sdp = buildSdp({ ip: ua.localIp, port: rtp.port, sessionId: a.sdp.session, version: a.sdp.version, codec, dtmfPt: offer.dtmfPt, direction });
+      const controller = this.createController(a, voice, GREETING, null);
       call.accept(sdp);
-      this.active!.info.state = "active";
+      a.answered = true;
+      a.info.state = "active";
       this.emitState();
       controller.begin();
     } catch (e) {
-      this.d.log(`Telefon: Anruf nicht angenommen: ${e instanceof Error ? e.message : String(e)}`);
-      if (call.state === "ringing") reject(500, "Server Internal Error", e instanceof Error ? e.message : String(e));
-      this.active = null;
-      this.emitState();
+      const msg = errorText(e);
+      this.d.log(`Telefon: Anruf nicht angenommen: ${msg}`);
+      a.failure = msg;
+      if (call.state === "ringing") call.reject(500, "Server Internal Error", msg);
+      else void call.hangup("Technischer Fehler");
     }
   }
 
   /** Calls the user (notifications and test call); Claude prepares the first words while it rings. */
   private async dial(number: string, reason: string, opening: string, refs: Map<string, string>) {
-    if (this.active) throw new ForgeError("SESSION_BUSY", "FORGE telefoniert bereits.");
-    if (!this.ua || this.registration !== "registered") throw new ForgeError("VALIDATION", "Das Telefon ist nicht an der Anlage angemeldet.");
-    const rec = this.newRecord("out", number, reason);
-    // Fails early (e.g. no OpenAI key) before the phone rings.
-    await this.voice();
-    const rtp = this.f.rtp(this.ua.localIp);
-    await rtp.open();
-    const sdp = buildSdp({ ip: this.ua.localIp, port: rtp.port, sessionId: String(Date.now()), version: 1 });
-    const call = this.ua.call(number, sdp);
-    let controller: CallController;
+    if (this.busy) throw new ForgeError("SESSION_BUSY", "FORGE telefoniert bereits.");
+    const ua = this.ua;
+    if (!ua || this.registration !== "registered") throw new ForgeError("VALIDATION", "Das Telefon ist nicht an der Anlage angemeldet.");
+    this.dialing = true;
+    let rtp: RtpSession | null = null;
+    let a: ActiveCall | null = null;
     try {
-      controller = await this.startCall(call, rtp, rec, reason, null, opening, refs);
+      // Fails early (e.g. no OpenAI key) before the phone rings.
+      const voice = await this.voice();
+      rtp = this.f.rtp(ua.bindIp);
+      await rtp.open();
+      if (this.ua !== ua) throw new Error("Das Telefon wurde inzwischen ausgeschaltet.");
+      const session = String(Date.now());
+      const call = ua.call(number, buildSdp({ ip: ua.localIp, port: rtp.port, sessionId: session, version: 1 }));
+      a = this.attach(call, this.newRecord("out", number, reason), reason, refs, session);
+      a.rtp = rtp;
+      rtp = null;
+      const active = a;
+      const controller = this.createController(active, voice, null, opening);
+      call.on("answered", (body) => {
+        const offer = parseSdp(body);
+        if (offer && active.rtp) {
+          active.rtp.configure({ ip: offer.ip, port: offer.port }, chooseCodec(offer) ?? PT_PCMA, offer.dtmfPt, [ua.serverIp]);
+          active.rtp.setDirection(answerDirection(offer.direction));
+        }
+        if (this.active === active) {
+          active.info.state = "active";
+          this.emitState();
+        }
+        try {
+          controller.begin();
+        } catch (e) {
+          active.failure = errorText(e);
+          this.d.log(`Telefon: Gespräch nicht gestartet: ${active.failure}`);
+          void call.hangup("Technischer Fehler");
+        }
+      });
+      controller.prepare();
     } catch (e) {
-      rtp.close();
-      await call.hangup("Abgebrochen");
-      throw e;
-    }
-    controller.prepare();
-    call.on("answered", (body) => {
-      const offer = parseSdp(body);
-      const codec = offer ? (chooseCodec(offer) ?? PT_PCMA) : PT_PCMA;
-      if (offer) rtp.configure({ ip: offer.ip, port: offer.port }, codec, offer.dtmfPt);
-      if (this.active?.call === call) {
-        this.active.info.state = "active";
-        this.emitState();
+      rtp?.close();
+      if (a) {
+        a.failure = errorText(e);
+        await a.call.hangup("Abgebrochen");
       }
-      controller.begin();
-    });
-  }
-
-  private async startCall(call: SipCall, rtp: RtpSession, rec: PhoneCallRecord, reason: string | null, greeting: string | null, opening: string | null, refs: Map<string, string>) {
-    const voice = await this.voice();
-    const pinHash = this.cfg.pinHash;
-    const info: PhoneCallInfo = { id: rec.id, direction: call.direction, number: call.remoteNumber, state: "ringing", startedAt: rec.startedAt, unlocked: false, reason };
-    let answered = false;
-    call.on("answered", () => (answered = true));
-    const active: ActiveCall = {
-      call,
-      info,
-      record: rec,
-      refs,
-      controller: null as unknown as CallController,
-    };
-    const context = [
-      `Heute ist ${new Date().toLocaleString("de-DE", { dateStyle: "full", timeStyle: "short" })}.`,
-      call.direction === "in" ? `Eingehender Anruf von ${call.remoteNumber}. Du hast schon mit "${GREETING}" begrüßt.` : `Du rufst ${call.remoteNumber} an. Anlass: ${reason}.`,
-      this.cfg.requirePin ? (pinHash ? "Steuern ist bis zur PIN-Eingabe gesperrt." : "Steuern ist gesperrt, weil keine PIN eingerichtet ist.") : "Steuern ist ohne PIN erlaubt.",
-    ].join("\n");
-    active.controller = new CallController(call, rtp, {
-      voice,
-      createConversation: (cb) => this.f.conversation({ tools: this.toolsFor(active), context, cb }),
-      checkPin: this.cfg.requirePin && pinHash ? (pin) => verifyPin(pin, pinHash) : null,
-      greeting,
-      opening,
-      onTranscript: (role, text) => rec.transcript.push({ role, text, ts: new Date().toISOString() }),
-      onUnlock: () => {
-        info.unlocked = true;
-        this.emitState();
-      },
-      log: (m) => {
-        rec.detail = m;
-        this.d.log(`Telefon: ${m}`);
-      },
-    });
-    if (call.direction === "in") answered = true;
-    call.on("ended", (why) => {
-      if (this.active === active) this.active = null;
-      this.finishRecord(rec, answered ? "answered" : call.direction === "out" ? "missed" : "rejected", why);
-      this.emitState();
-    });
-    this.active = active;
-    this.emitState();
-    return active.controller;
+      throw e;
+    } finally {
+      this.dialing = false;
+    }
   }
 
   // ---------- notifications
@@ -453,13 +581,13 @@ export class PhoneService {
       key,
       setTimeout(() => {
         this.notifyTimers.delete(key);
-        void this.notify(sessionId, kind!, b).catch((err: unknown) => this.d.log(`Telefon: Anruf nicht möglich: ${err instanceof Error ? err.message : String(err)}`));
+        void this.notify(sessionId, kind!, b).catch((err: unknown) => this.d.log(`Telefon: Anruf nicht möglich: ${errorText(err)}`));
       }, this.d.timing?.notifyDelayMs ?? NOTIFY_DELAY_MS[kind]),
     );
   }
 
   private async notify(sessionId: string, kind: NotifyKind, body: SessionEventBody) {
-    if (this.active || this.registration !== "registered" || !this.cfg.notifyNumber) return;
+    if (this.busy || this.registration !== "registered" || !this.cfg.notifyNumber) return;
     if (Date.now() - this.lastNotifyAt < (this.d.timing?.notifyCooldownMs ?? NOTIFY_COOLDOWN_MS)) return;
     let session;
     try {
@@ -473,12 +601,14 @@ export class PhoneService {
     const project = this.d.projects.get(session.projectId);
     const refs = new Map([["S1", sessionId]]);
     const title = session.title ?? "ohne Titel";
+    const result = body.type === "turn.result" ? (body.text ?? lastAnswer(this.d.db, sessionId)) : lastAnswer(this.d.db, sessionId);
+    const failure = body.type === "turn.result" ? (body.text ?? body.subtype) : body.type === "error" ? body.message : "";
     const what =
       kind === "done"
-        ? `Die Session S1 „${title}“ im Projekt ${project.name} ist fertig. Letztes Ergebnis von Claude Code: ${quote(body.type === "turn.result" ? (body.text ?? lastAnswer(this.d.db, sessionId)) : lastAnswer(this.d.db, sessionId))}`
+        ? `Die Session S1 ${asData(title)} im Projekt ${project.name} ist fertig. Letztes Ergebnis von Claude Code: ${excerptData(result, 1500)}`
         : kind === "approval"
-          ? `Die Session S1 „${title}“ im Projekt ${project.name} wartet auf eine Entscheidung. ${pendingText(this.d.db, sessionId)}`
-          : `In der Session S1 „${title}“ im Projekt ${project.name} ist ein Fehler aufgetreten: ${quote(body.type === "turn.result" ? (body.text ?? body.subtype) : body.type === "error" ? body.message : "")}`;
+          ? `Die Session S1 ${asData(title)} im Projekt ${project.name} wartet auf eine Entscheidung. ${pendingText(this.d.db, sessionId)}`
+          : `In der Session S1 ${asData(title)} im Projekt ${project.name} ist ein Fehler aufgetreten: ${excerptData(failure, 1500)}`;
     const reason = kind === "done" ? `Session fertig: ${title}` : kind === "approval" ? `Entscheidung nötig: ${title}` : `Fehler: ${title}`;
     this.lastNotifyAt = Date.now();
     await this.dial(
@@ -493,6 +623,7 @@ export class PhoneService {
 
   private toolsFor(a: ActiveCall): PhoneToolset {
     const sessions = this.d.sessions;
+    const db = this.d.db;
     const locked = (): string | null => {
       if (!this.cfg.requirePin || a.info.unlocked) return null;
       return this.cfg.pinHash
@@ -506,27 +637,47 @@ export class PhoneService {
       return r;
     };
     const resolve = (ref: string) => {
-      const key = ref.trim().toUpperCase().replace(/\s+/g, "");
-      const byRef = a.refs.get(key) ?? a.refs.get(`S${key}`);
-      if (byRef) return sessions.get(byRef);
-      const q = ref.trim().toLowerCase();
-      const hit = sessions.listAll().find((s) => (s.title ?? "").toLowerCase().includes(q) || s.projectName.toLowerCase().includes(q));
-      if (!hit) throw new Error(`Keine Session zu „${ref}“ gefunden. Erst status aufrufen.`);
-      return hit;
+      const raw = ref.trim();
+      if (!raw) throw new Error("Welche Session? Bitte ein Kürzel wie S1 oder einen Teil des Titels angeben.");
+      const key = raw.toUpperCase().replace(/\s+/g, "");
+      if (/^S?\d+$/.test(key)) {
+        const r = key.startsWith("S") ? key : `S${key}`;
+        const id = a.refs.get(r);
+        if (!id) throw new Error(`${r} ist in diesem Gespräch nicht vergeben. Erst status aufrufen.`);
+        return sessions.get(id);
+      }
+      const q = raw.toLowerCase();
+      const all = sessions.listAll();
+      const exact = all.filter((s) => (s.title ?? "").toLowerCase() === q);
+      const hits = exact.length ? exact : all.filter((s) => (s.title ?? "").toLowerCase().includes(q) || s.projectName.toLowerCase().includes(q));
+      if (!hits.length) throw new Error(`Keine Session zu „${raw}“ gefunden. Erst status aufrufen.`);
+      if (hits.length > 1) {
+        const names = hits.slice(0, 5).map((s) => `${refFor(s.id)} ${asData(s.title ?? "ohne Titel")}`);
+        throw new Error(`Mehrere Sessions passen zu „${raw}“: ${names.join(", ")}. Bitte das Kürzel nehmen.`);
+      }
+      return hits[0]!;
     };
     const findProject = (name: string) => {
       const q = name.trim().toLowerCase();
       const all = this.d.projects.all().filter((p) => p.exists);
-      const p = all.find((x) => x.name.toLowerCase() === q) ?? all.find((x) => x.name.toLowerCase().includes(q));
-      if (!p) throw new Error(`Kein Projekt „${name}“. Vorhanden: ${all.map((x) => x.name).join(", ")}.`);
-      return p;
+      if (!q) throw new Error(`Welches Projekt? Vorhanden: ${all.map((x) => x.name).join(", ")}.`);
+      const exact = all.filter((x) => x.name.toLowerCase() === q);
+      const hits = exact.length ? exact : all.filter((x) => x.name.toLowerCase().includes(q));
+      if (hits.length === 1) return hits[0]!;
+      if (hits.length > 1) throw new Error(`Mehrere Projekte passen zu „${name}“: ${hits.map((x) => x.name).join(", ")}.`);
+      throw new Error(`Kein Projekt „${name}“. Vorhanden: ${all.map((x) => x.name).join(", ")}.`);
     };
     const guard = async (fn: () => Promise<string>): Promise<string> => {
       try {
         return await fn();
       } catch (e) {
-        return `Fehler: ${e instanceof Error ? e.message : String(e)}`;
+        return `Fehler: ${errorText(e)}`;
       }
+    };
+    const confirm = (what: string, run: () => Promise<string>): string => {
+      if (!a.controller) return "Fehler: Das Gespräch ist noch nicht bereit.";
+      a.controller.requestConfirmation(what, run);
+      return CONFIRM_PENDING;
     };
     const statusText = (s: { status: string; live: boolean }) =>
       s.status === "running" || s.status === "starting"
@@ -546,21 +697,30 @@ export class PhoneService {
           const recent = sessions.listAll().filter((s) => !s.live).slice(0, 6);
           const list = [...live, ...recent].slice(0, 10);
           if (!list.length) return "Es gibt noch keine Sessions.";
+          if (locked()) {
+            // Before the PIN only counts: titles and results can be confidential.
+            const working = live.filter((s) => s.status === "running" || s.status === "starting").length;
+            const waiting = live.filter((s) => s.status === "waiting_approval").length;
+            return `Aktive Sessions: ${live.length}, davon arbeiten ${working} und ${waiting} warten auf eine Entscheidung. Titel, Ergebnisse und Details gibt es erst nach der PIN.`;
+          }
           return list
             .map((s) => {
-              const pending = s.status === "waiting_approval" ? ` Offen: ${pendingText(this.d.db, s.id, true)}` : "";
-              return `${refFor(s.id)}: „${s.title ?? "ohne Titel"}“ im Projekt ${s.projectName}, ${statusText(s)}, zuletzt ${relative(s.updatedAt)}.${pending}`;
+              const pending = s.status === "waiting_approval" ? ` Offen: ${pendingText(db, s.id, true)}` : "";
+              return `${refFor(s.id)}: ${asData(s.title ?? "ohne Titel")} im Projekt ${s.projectName}, ${statusText(s)}, zuletzt ${relative(s.updatedAt)}.${pending}`;
             })
             .join("\n");
         }),
       details: (ref) =>
         guard(async () => {
+          const l = locked();
+          if (l) return l;
           const s = resolve(ref);
           const project = this.d.projects.get(s.projectId);
+          const last = lastAnswer(db, s.id);
           return [
-            `${refFor(s.id)}: „${s.title ?? "ohne Titel"}“ im Projekt ${project.name}, ${statusText(s)}.`,
-            `Letztes Ergebnis: ${lastAnswer(this.d.db, s.id) || "noch keins"}`,
-            s.status === "waiting_approval" ? `Offen: ${pendingText(this.d.db, s.id)}` : "",
+            `${refFor(s.id)}: ${asData(s.title ?? "ohne Titel")} im Projekt ${project.name}, ${statusText(s)}.`,
+            `Letztes Ergebnis: ${last ? excerptData(last, 1500) : "noch keins"}`,
+            s.status === "waiting_approval" ? `Offen: ${pendingText(db, s.id)}` : "",
           ]
             .filter(Boolean)
             .join("\n");
@@ -570,24 +730,32 @@ export class PhoneService {
           const l = locked();
           if (l) return l;
           const s = resolve(ref);
-          await sessions.send(s.id, text);
-          return `An ${refFor(s.id)} gesendet. Claude arbeitet daran.`;
+          const r = refFor(s.id);
+          if (!text.trim()) return "Fehler: Die Nachricht ist leer.";
+          return confirm(`Nachricht an ${r}: ${readOut(text)}`, async () => {
+            await sessions.send(s.id, text);
+            return `An ${r} gesendet. Claude arbeitet daran.`;
+          });
         }),
       startSession: (projectName, prompt) =>
         guard(async () => {
           const l = locked();
           if (l) return l;
           const p = findProject(projectName);
-          const s = await sessions.start({ projectId: p.id, prompt });
-          return `Neue Session ${refFor(s.id)} im Projekt ${p.name} gestartet.`;
+          if (!prompt.trim()) return "Fehler: Der Auftrag ist leer.";
+          return confirm(`Neue Session im Projekt ${p.name} starten. Auftrag: ${readOut(prompt)}`, async () => {
+            const s = await sessions.start({ projectId: p.id, prompt });
+            return `Neue Session ${refFor(s.id)} im Projekt ${p.name} gestartet.`;
+          });
         }),
       respond: (ref, decision, answers, feedback) =>
         guard(async () => {
           const l = locked();
           if (l) return l;
           const s = resolve(ref);
-          const req = openRequest(this.d.db, s.id);
-          if (!req) return `${refFor(s.id)} hat keine offene Anfrage.`;
+          const r = refFor(s.id);
+          const req = openRequest(db, s.id);
+          if (!req) return `${r} hat keine offene Anfrage.`;
           let mapped: Record<string, string> | undefined;
           if (req.toolName === "AskUserQuestion" && decision === "allow") {
             const questions = questionTexts(req.input);
@@ -599,8 +767,16 @@ export class PhoneService {
               if (exact) mapped![exact] = v;
             });
           }
-          sessions.respondApproval(s.id, req.requestId, decision, "once", feedback, mapped);
-          return decision === "allow" ? `Erledigt, ${refFor(s.id)} arbeitet weiter.` : `Abgelehnt, ${refFor(s.id)} bekommt die Rückmeldung.`;
+          const what =
+            decision === "allow"
+              ? describeAllow(req, mapped)
+              : `Anfrage ablehnen${feedback?.trim() ? `, mit der Rückmeldung: ${readOut(feedback)}` : ""}.`;
+          return confirm(`${r}: ${what}`, async () => {
+            // Someone may have answered at the desk in the meantime.
+            if (openRequest(db, s.id)?.requestId !== req.requestId) return `Die Anfrage von ${r} ist inzwischen erledigt. Nichts geändert.`;
+            sessions.respondApproval(s.id, req.requestId, decision, "once", feedback, mapped);
+            return decision === "allow" ? `Erledigt, ${r} arbeitet weiter.` : `Abgelehnt, ${r} bekommt die Rückmeldung.`;
+          });
         }),
       stop: (ref) =>
         guard(async () => {
@@ -622,9 +798,11 @@ export class PhoneService {
   }
 }
 
-function quote(text: string): string {
+/** Session text for Claude: marked as data, and a cut is said, not hidden. */
+function excerptData(text: string, max: number): string {
   const t = text.replace(/\s+/g, " ").trim();
-  return t ? `„${t.length > 1500 ? t.slice(0, 1500) + " …" : t}“` : "(kein Text)";
+  if (!t) return "(kein Text)";
+  return t.length > max ? `${asData(t.slice(0, max))} (gekürzt, insgesamt ${t.length} Zeichen)` : asData(t);
 }
 
 /** The last thing Claude said in a session (result text, else last answer). */
@@ -632,8 +810,8 @@ function lastAnswer(db: Db, sessionId: string): string {
   const events = db.listEvents(sessionId);
   for (let i = events.length - 1; i >= 0; i--) {
     const b = events[i]!.body;
-    if (b.type === "turn.result" && b.text && !b.isError) return b.text.slice(0, 1500);
-    if (b.type === "assistant.text" && b.text.trim()) return b.text.slice(0, 1500);
+    if (b.type === "turn.result" && b.text && !b.isError) return b.text;
+    if (b.type === "assistant.text" && b.text.trim()) return b.text;
   }
   return "";
 }
@@ -653,20 +831,41 @@ function questionTexts(input: Record<string, unknown>): string[] {
   return Array.isArray(input.questions) ? (input.questions as Array<{ question?: unknown }>).flatMap((q) => (typeof q.question === "string" ? [q.question] : [])) : [];
 }
 
-/** What a session waits for, in words that can be read out. */
+function requestSubject(req: ApprovalRequest): string {
+  return typeof req.input.command === "string" ? req.input.command : typeof req.input.file_path === "string" ? req.input.file_path : "";
+}
+
+/** What FORGE reads out before the caller confirms an "allow". */
+function describeAllow(req: ApprovalRequest, answers: Record<string, string> | undefined): string {
+  if (req.toolName === "AskUserQuestion") {
+    const pairs = Object.entries(answers ?? {}).map(([q, v]) => `${q} Antwort: ${v}`);
+    return `Rückfrage beantworten. ${readOut(pairs.join(" "))}`;
+  }
+  if (req.toolName === "ExitPlanMode") return "Plan annehmen. Claude setzt ihn danach um.";
+  const subject = requestSubject(req);
+  return `Freigabe für ${req.toolName} erteilen.${subject ? ` ${readOut(subject)}` : ""}`;
+}
+
+/** What a session waits for, for Claude. `short` (status) names the kind only; details has the full text. */
 function pendingText(db: Db, sessionId: string, short = false): string {
   const req = openRequest(db, sessionId);
   if (!req) return "nichts";
   if (req.toolName === "AskUserQuestion") {
     if (short) return "eine Rückfrage von Claude.";
     const qs = Array.isArray(req.input.questions) ? (req.input.questions as Array<{ question?: string; options?: Array<{ label?: string }> }>) : [];
-    return `Rückfrage von Claude: ${qs.map((q) => `${q.question ?? ""} Optionen: ${(q.options ?? []).map((o) => o.label).join(", ")}.`).join(" ")}`;
+    return `Rückfrage von Claude: ${asData(qs.map((q) => `${q.question ?? ""} Optionen: ${(q.options ?? []).map((o) => o.label).join(", ")}.`).join(" "))}`;
   }
   if (req.toolName === "ExitPlanMode") {
     if (short) return "ein Plan zur Freigabe.";
     const plan = typeof req.input.plan === "string" ? req.input.plan : "";
-    return `Ein Plan zur Freigabe: ${quote(plan)}`;
+    return `Ein Plan zur Freigabe: ${excerptData(plan, DETAILS_MAX)}`;
   }
-  const cmd = typeof req.input.command === "string" ? req.input.command : typeof req.input.file_path === "string" ? req.input.file_path : "";
-  return `Freigabe für ${req.toolName}${cmd ? `: ${cmd.slice(0, 200)}` : ""}.`;
+  if (short) return `eine Freigabe für ${req.toolName}.`;
+  const subject = requestSubject(req);
+  return `Freigabe für ${req.toolName}${subject ? `: ${excerptData(subject, DETAILS_MAX)}` : "."}`;
+}
+
+/** Read through a function: TypeScript keeps a narrowed `call.state` across awaits, the call does not. */
+function ended(call: SipCall): boolean {
+  return call.state === "ended";
 }

@@ -23,7 +23,7 @@ export function DiffView({ projectId, path, staged, onClose }: { projectId: stri
             <span className="text-danger">-{diff.data.deletions}</span>
           </>
         )}
-        {staged && <span className="text-subtle">gestaged</span>}
+        {staged && <span className="text-subtle">vorgemerkt</span>}
         {onClose && (
           <button onClick={onClose} className="rounded p-0.5 text-subtle hover:text-fg" aria-label="Diff schließen">
             <X className="h-3.5 w-3.5" />
@@ -38,7 +38,7 @@ export function DiffView({ projectId, path, staged, onClose }: { projectId: stri
       )}
       {diff.data?.binary && <div className="p-4 text-xs text-muted">Binärdatei oder zu groß für die Anzeige.</div>}
       {diff.data && !diff.data.binary && lines.length === 0 && <div className="p-4 text-xs text-muted">Keine Textänderungen (z. B. nur Dateirechte).</div>}
-      <div ref={scrollRef} className="min-h-0 flex-1 overflow-auto font-mono text-[11.5px] leading-[18px]">
+      <div ref={scrollRef} className="min-h-0 flex-1 overflow-auto font-mono text-caption-lg leading-4.5">
         <div className="relative min-w-max" style={{ height: v.getTotalSize() }}>
           {v.getVirtualItems().map((row) => {
             const l = lines[row.index]!;
@@ -65,7 +65,7 @@ export function DiffView({ projectId, path, staged, onClose }: { projectId: stri
           })}
         </div>
       </div>
-      {diff.data?.truncated && <div className="border-t border-border px-3 py-1 text-[11px] text-subtle">Anzeige auf 5.000 Zeilen gekürzt.</div>}
+      {diff.data?.truncated && <div className="border-t border-border px-3 py-1 text-caption text-subtle">Anzeige auf 5.000 Zeilen gekürzt.</div>}
     </div>
   );
 }

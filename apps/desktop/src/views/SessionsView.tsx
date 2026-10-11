@@ -5,6 +5,7 @@ import type { Session } from "@forge/protocol";
 import { call, keys, useSearch } from "@/lib/queries";
 import { errorMessage } from "@/lib/rpc";
 import { relativeTime } from "@/lib/utils";
+import { useDebouncedValue } from "@/lib/timing-hooks";
 import { useUi } from "@/stores/ui";
 import { toast } from "@/stores/toast";
 import { Page } from "@/components/layout/Page";
@@ -32,13 +33,15 @@ export function SessionsView() {
   const [status, setStatus] = useState("all");
   const openProject = useUi((s) => s.openProject);
   const [deleting, setDeleting] = useState<Session | null>(null);
+  // Both lists hit the sidecar (the full-text search reads every transcript); wait until typing pauses.
+  const query = useDebouncedValue(q, 250);
   const sessions = useQuery({
-    queryKey: keys.allSessions(q, status),
-    queryFn: () => call("sessions.listAll", { query: q || undefined, status: status === "all" ? undefined : status }),
+    queryKey: keys.allSessions(query, status),
+    queryFn: () => call("sessions.listAll", { query: query || undefined, status: status === "all" ? undefined : status }),
     placeholderData: (prev) => prev,
   });
-  const hits = useSearch(q);
-  const searching = q.trim().length >= 3;
+  const hits = useSearch(query);
+  const searching = query.trim().length >= 3;
 
   return (
     <Page title="Sessions" subtitle="Alle in FORGE gestarteten oder übernommenen Claude-Sessions">
@@ -53,7 +56,7 @@ export function SessionsView() {
         <section className="mb-6">
           <SectionTitle action={hits.isFetching ? <Spinner className="h-3.5 w-3.5" /> : undefined}>Treffer in Verläufen</SectionTitle>
           {hits.isError && <ErrorBanner>Suche fehlgeschlagen.</ErrorBanner>}
-          {hits.data && hits.data.length === 0 && <div className="text-[13px] text-muted">Kein Prompt und keine Antwort enthält diese Wörter.</div>}
+          {hits.data && hits.data.length === 0 && <div className="text-body text-muted">Kein Prompt und keine Antwort enthält diese Wörter.</div>}
           {!!hits.data?.length && (
             <div className="rounded-xl border border-border bg-surface p-1">
               {hits.data.map((h) => (
@@ -66,15 +69,15 @@ export function SessionsView() {
       {searching && <SectionTitle>Sessions</SectionTitle>}
       {sessions.isLoading && <Loading />}
       {sessions.isError && <ErrorBanner>Sessions konnten nicht geladen werden.</ErrorBanner>}
-      {sessions.isSuccess && sessions.data.length === 0 && q && <div className="text-[13px] text-muted">Kein Titel, Projekt und keine Session-ID passt.</div>}
-      {sessions.isSuccess && sessions.data.length === 0 && !q && (
+      {sessions.isSuccess && sessions.data.length === 0 && query && <div className="text-body text-muted">Kein Titel, Projekt und keine Session-ID passt.</div>}
+      {sessions.isSuccess && sessions.data.length === 0 && !query && (
         <EmptyState icon={<History className="h-10 w-10" />} title="Keine Sessions">
           Starte im Workspace eines Projekts eine neue Session. Im Terminal gestartete Sessions erscheinen im Workspace unter „Aus dem Terminal“.
         </EmptyState>
       )}
       {!!sessions.data?.length && (
         <div className="overflow-hidden rounded-xl border border-border">
-          <table className="w-full text-[13px]">
+          <table className="w-full text-body">
             <thead className="bg-surface-2 text-left text-xs text-muted">
               <tr>
                 <th className="px-4 py-2 font-medium">Session</th>
@@ -95,7 +98,7 @@ export function SessionsView() {
                     <button className="block w-full truncate text-left" onClick={() => openProject(s.projectId, s.id)}>
                       {s.title ?? "Ohne Titel"}
                     </button>
-                    <div className="truncate font-mono text-[10px] text-subtle">{s.claudeSessionId ?? "noch keine Claude-ID"}</div>
+                    <div className="truncate font-mono text-2xs text-subtle">{s.claudeSessionId ?? "noch keine Claude-ID"}</div>
                   </td>
                   <td className="px-4 py-2 text-muted">{s.projectName}</td>
                   <td className="px-4 py-2">

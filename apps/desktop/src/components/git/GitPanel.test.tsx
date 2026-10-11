@@ -89,6 +89,40 @@ describe("GitPanel commit flow", () => {
     expect(callMock).toHaveBeenCalledWith("git.commit", { projectId: "p1", message: "feat: test", paths: ["src/a.ts"], allowSensitive: false });
   });
 
+  async function openReview() {
+    setup();
+    await screen.findByText("src/a.ts");
+    fireEvent.click(screen.getByRole("checkbox", { name: "src/a.ts auswählen" }));
+    fireEvent.change(screen.getByLabelText("Commit-Nachricht"), { target: { value: "feat: test" } });
+    fireEvent.click(screen.getByRole("button", { name: /Commit erstellen \(1\)/ }));
+    return screen.findByRole("button", { name: "Committen" });
+  }
+
+  it("keeps the review dialog open when the commit fails", async () => {
+    const { RpcCallError } = await import("@/lib/rpc");
+    callMock.mockImplementation(async (method: string) => {
+      if (method === "git.status") return status;
+      if (method === "git.commit") throw new RpcCallError("GIT_FAILED", "kaputt");
+      throw new Error("unexpected " + method);
+    });
+    const confirm = await openReview();
+    await act(async () => fireEvent.click(confirm));
+    expect(screen.getByRole("button", { name: "Committen" })).toBeTruthy();
+  });
+
+  it("replaces the review dialog with the flagged-files dialog on a policy stop", async () => {
+    const { RpcCallError } = await import("@/lib/rpc");
+    callMock.mockImplementation(async (method: string) => {
+      if (method === "git.status") return status;
+      if (method === "git.commit") throw new RpcCallError("POLICY_DENIED", "gestoppt", { flagged: [{ path: "src/a.ts", reason: "Secret" }] });
+      throw new Error("unexpected " + method);
+    });
+    const confirm = await openReview();
+    await act(async () => fireEvent.click(confirm));
+    expect(screen.queryByRole("button", { name: "Committen" })).toBeNull();
+    expect(await screen.findByRole("button", { name: "Trotzdem committen" })).toBeTruthy();
+  });
+
   it("keeps the commit button disabled without selection or message", async () => {
     setup();
     await screen.findByText("src/a.ts");

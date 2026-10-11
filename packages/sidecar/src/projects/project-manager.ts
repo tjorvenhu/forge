@@ -17,6 +17,22 @@ export interface CreateProjectInput {
 
 const MAX_FILE_BYTES = 512 * 1024;
 
+/** Real path of `p`, or of its nearest existing ancestor with the missing rest appended. */
+async function canonicalizeExisting(p: string): Promise<string> {
+  const rest: string[] = [];
+  let cur = p;
+  for (;;) {
+    try {
+      return path.join(await canonicalize(cur), ...rest);
+    } catch (e) {
+      const parent = path.dirname(cur);
+      if ((e as NodeJS.ErrnoException).code !== "ENOENT" || parent === cur) throw e;
+      rest.unshift(path.basename(cur));
+      cur = parent;
+    }
+  }
+}
+
 export class ProjectManager {
   constructor(
     private readonly db: Db,
@@ -152,13 +168,23 @@ export class ProjectManager {
   }
 
   remove(id: string): boolean {
+    this.db.detachChildProjects(id);
     return this.db.deleteProject(id);
   }
 
-  private resolveInside(p: Project, rel: string): string {
+  /**
+   * Resolves a project-relative path and checks it after following symlinks: a committed link like
+   * docs/x -> ~/.ssh/id_rsa must not be readable through FORGE. Paths that do not exist yet are
+   * checked via their nearest existing ancestor.
+   */
+  private async resolveInside(p: Project, rel: string): Promise<string> {
     const abs = path.resolve(p.path, rel);
-    if (!isInside(abs, p.path)) throw new ForgeError("PATH_INVALID", "Pfad liegt außerhalb des Projekts.");
-    return abs;
+    const outside = () => new ForgeError("PATH_INVALID", "Pfad liegt außerhalb des Projekts.");
+    if (!isInside(abs, p.path)) throw outside();
+    const root = await canonicalize(p.path).catch(() => p.path);
+    const real = await canonicalizeExisting(abs);
+    if (!isInside(real, root)) throw outside();
+    return real;
   }
 
   async readClaudeMd(id: string) {
@@ -170,7 +196,8 @@ export class ProjectManager {
 
   async listFiles(id: string, dir: string) {
     const p = this.requireExisting(id);
-    const abs = this.resolveInside(p, dir || ".");
+    const abs = await this.resolveInside(p, dir || ".");
+    const root = await canonicalize(p.path).catch(() => p.path);
     const entries = await readdir(abs, { withFileTypes: true });
     const out = await Promise.all(
       entries
@@ -178,7 +205,7 @@ export class ProjectManager {
         .map(async (e) => {
           const full = path.join(abs, e.name);
           const size = e.isFile() ? (await stat(full).catch(() => null))?.size ?? 0 : 0;
-          return { name: e.name, path: path.relative(p.path, full).replace(/\\/g, "/"), isDir: e.isDirectory(), size };
+          return { name: e.name, path: path.relative(root, full).replace(/\\/g, "/"), isDir: e.isDirectory(), size };
         }),
     );
     return out.sort((a, b) => (a.isDir === b.isDir ? a.name.localeCompare(b.name) : a.isDir ? -1 : 1));
@@ -186,7 +213,7 @@ export class ProjectManager {
 
   async readFile(id: string, rel: string) {
     const p = this.requireExisting(id);
-    const abs = this.resolveInside(p, rel);
+    const abs = await this.resolveInside(p, rel);
     const fh = await open(abs, "r");
     try {
       const { size } = await fh.stat();

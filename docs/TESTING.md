@@ -109,7 +109,6 @@ Remote Control echt: Einschalten ohne offene Session öffnet eine leere Session,
 
 ## Nicht getestet
 
-- Linux (keine Umgebung verfügbar)
 - Töne: Wiedergabe kann ich nicht hören; Code-Pfad ist typgeprüft, Test-Knöpfe unter Einstellungen
 - Installer-Installation auf einem frischen System ohne Claude Code
 - Claude-Code-Installation aus der App (würde die vorhandene Installation verändern)

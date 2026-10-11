@@ -3,7 +3,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { ShieldAlert, Trash2, X } from "lucide-react";
 import type { ProfileId, Project, EffortLevel } from "@forge/protocol";
 import { call, keys, useDevServer, useRuntimeInfo, useSettings } from "@/lib/queries";
-import { EFFORT_LEVELS, modelLabel } from "@/lib/models";
+import { modelLabel } from "@/lib/models";
 
 import { errorMessage } from "@/lib/rpc";
 import { cn } from "@/lib/utils";
@@ -15,6 +15,7 @@ import { Select } from "@/components/ui/select";
 import { PROFILE_IDS, PROFILE_INFO } from "@/components/projects/ProfileBadge";
 import { RemoveProjectDialog } from "@/components/projects/RemoveProjectDialog";
 import { MemoryEditor } from "@/components/settings/MemoryEditor";
+import { effortOptions, fromChoice, modelOptions, toChoice } from "@/components/settings/model-options";
 
 /** Tags with behaviour in FORGE (sessions, turn automation, policy). */
 const TAG_INFO: Record<string, string> = {
@@ -87,7 +88,7 @@ export function ProjectSettingsTab({ project }: { project: Project }) {
                 >
                   <span className={cn("mt-1 h-3 w-3 shrink-0 rounded-full border-2", project.profile === p ? "border-accent bg-accent" : "border-border-strong")} />
                   <span className="flex-1">
-                    <span className="flex items-center gap-2 text-[13px] font-medium">
+                    <span className="flex items-center gap-2 text-body font-medium">
                       {PROFILE_INFO[p].label}
                       {p === "autonomous" && <ShieldAlert className="h-3.5 w-3.5 text-danger" />}
                       {locked && <Badge>gesperrt</Badge>}
@@ -99,7 +100,7 @@ export function ProjectSettingsTab({ project }: { project: Project }) {
             })}
           </div>
           <p className="mt-3 text-xs text-subtle">
-            Das Profil gilt sofort, auch für laufende Sessions (Permission-Modus default, acceptEdits oder bypassPermissions). Ein aktiver Plan-Modus bleibt bestehen. Die
+            Das Profil gilt sofort, auch für laufende Sessions (Berechtigungsmodus default, acceptEdits oder bypassPermissions). Ein aktiver Plan-Modus bleibt bestehen. Die
             FORGE-Sperrliste gilt in jedem Profil.
           </p>
         </section>
@@ -112,24 +113,22 @@ export function ProjectSettingsTab({ project }: { project: Project }) {
             </Field>
             <Field label="Standardmodell für dieses Projekt">
               <Select
-                value={project.defaultModel ?? "__inherit"}
-                onChange={(v) => void update({ defaultModel: v === "__inherit" ? null : v })}
+                value={toChoice(project.defaultModel)}
+                onChange={(v) => void update({ defaultModel: fromChoice(v) })}
                 className="w-full"
-                options={[
-                  { value: "__inherit", label: `Globale Einstellung (${settings.data?.defaultModel ? modelLabel(settings.data.defaultModel, runtime.data?.models) : "Claude-Code-Standard"})` },
-                  ...(runtime.data?.models ?? []).filter((m) => m.value !== "default").map((m) => ({ value: m.value, label: m.displayName || m.value })),
-                ]}
+                options={modelOptions(
+                  runtime.data?.models ?? [],
+                  `Globale Einstellung (${settings.data?.defaultModel ? modelLabel(settings.data.defaultModel, runtime.data?.models) : "Claude-Code-Standard"})`,
+                  { descriptions: false },
+                )}
               />
             </Field>
             <Field label="Effort für dieses Projekt" hint="Wie gründlich Claude nachdenkt. Höher ist genauer, aber langsamer und verbraucht mehr vom Abo.">
               <Select
-                value={project.defaultEffort ?? "__inherit"}
-                onChange={(v) => void update({ defaultEffort: v === "__inherit" ? null : (v as EffortLevel) })}
+                value={toChoice(project.defaultEffort)}
+                onChange={(v) => void update({ defaultEffort: fromChoice<EffortLevel>(v) })}
                 className="w-full"
-                options={[
-                  { value: "__inherit", label: `Globale Einstellung (${settings.data?.defaultEffort ?? "Claude-Code-Standard"})` },
-                  ...EFFORT_LEVELS.map((l) => ({ value: l, label: l })),
-                ]}
+                options={effortOptions(`Globale Einstellung (${settings.data?.defaultEffort ?? "Claude-Code-Standard"})`)}
               />
             </Field>
             <Field label="Testbefehl" hint="Für den Tag auto-test. Wird in einer Shell im Projektordner ausgeführt.">
@@ -183,7 +182,7 @@ export function ProjectSettingsTab({ project }: { project: Project }) {
                     <li key={t} className="contents">
                       <button
                         onClick={() => (active ? void update({ tags: project.tags.filter((x) => x !== t) }) : addTag(t))}
-                        className={cn("justify-self-start rounded border px-1.5 py-0.5 font-mono text-[11px]", active ? "border-accent bg-accent-soft text-fg" : "border-dashed border-border text-muted hover:text-fg")}
+                        className={cn("justify-self-start rounded border px-1.5 py-0.5 font-mono text-caption", active ? "border-accent bg-accent-soft text-fg" : "border-dashed border-border text-muted hover:text-fg")}
                         aria-pressed={active}
                       >
                         {t}
@@ -205,7 +204,7 @@ export function ProjectSettingsTab({ project }: { project: Project }) {
         <section className="rounded-xl border border-danger/30 bg-surface p-4 xl:col-span-2">
           <SectionTitle>Entfernen oder löschen</SectionTitle>
           <div className="flex items-center gap-3">
-            <p className="flex-1 text-[13px] text-muted">Entfernt das Projekt aus FORGE. Auf Wunsch löscht FORGE auch den lokalen Ordner und das GitHub-Repository.</p>
+            <p className="flex-1 text-body text-muted">Entfernt das Projekt aus FORGE. Auf Wunsch löscht FORGE auch den lokalen Ordner und das GitHub-Repository.</p>
             <Button variant="danger-ghost" onClick={() => setRemoving(true)}>
               <Trash2 className="h-3.5 w-3.5" /> Entfernen …
             </Button>

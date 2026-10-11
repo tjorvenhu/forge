@@ -1,0 +1,15 @@
+{"type":"system","subtype":"bridge_state","state":"connecting","session_id":"d69118dc-ef0c-4925-9945-3091ab75cb15","uuid":"0b5e6f3c-1d2a-4c47-9a51-3f7a2b9e0c01"}
+{"type":"system","subtype":"bridge_state","state":"connected","session_id":"d69118dc-ef0c-4925-9945-3091ab75cb15","uuid":"0b5e6f3c-1d2a-4c47-9a51-3f7a2b9e0c02"}
+{"type":"command_lifecycle","command_uuid":"7c1f0a52-8e3b-4d6f-b2a9-5e4d3c2b1a01","state":"queued","session_id":"d69118dc-ef0c-4925-9945-3091ab75cb15"}
+{"type":"command_lifecycle","command_uuid":"7c1f0a52-8e3b-4d6f-b2a9-5e4d3c2b1a01","state":"started","session_id":"d69118dc-ef0c-4925-9945-3091ab75cb15"}
+{"type":"user","isReplay":true,"uuid":"7c1f0a52-8e3b-4d6f-b2a9-5e4d3c2b1a01","session_id":"d69118dc-ef0c-4925-9945-3091ab75cb15","parent_tool_use_id":null,"message":{"role":"user","content":[{"type":"text","text":"Vom Handy: bitte README lesen"},{"type":"image","source":{"type":"base64","media_type":"image/png","data":"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="}}]}}
+{"type":"user","isReplay":true,"isSynthetic":true,"uuid":"7c1f0a52-8e3b-4d6f-b2a9-5e4d3c2b1a02","session_id":"d69118dc-ef0c-4925-9945-3091ab75cb15","parent_tool_use_id":null,"message":{"role":"user","content":"<system-reminder>synthetic</system-reminder>"}}
+{"type":"assistant","message":{"id":"msg_remote_1","type":"message","role":"assistant","model":"claude-haiku-5-5","content":[{"type":"text","text":"Die README beschreibt FORGE."}]},"parent_tool_use_id":null,"session_id":"d69118dc-ef0c-4925-9945-3091ab75cb15","uuid":"5a4b3c2d-1e0f-4a9b-8c7d-6e5f4a3b2c01"}
+{"type":"result","subtype":"success","is_error":false,"duration_ms":2310,"num_turns":1,"result":"Die README beschreibt FORGE.","session_id":"d69118dc-ef0c-4925-9945-3091ab75cb15","usage":{"input_tokens":12,"output_tokens":9,"cache_read_input_tokens":0}}
+{"type":"command_lifecycle","command_uuid":"7c1f0a52-8e3b-4d6f-b2a9-5e4d3c2b1a01","state":"completed","session_id":"d69118dc-ef0c-4925-9945-3091ab75cb15"}
+{"type":"system","subtype":"bridge_state","session_id":"d69118dc-ef0c-4925-9945-3091ab75cb15"}
+{"type":"command_lifecycle","command_uuid":42,"state":"started"}
+{"type":"user","isReplay":true,"session_id":"d69118dc-ef0c-4925-9945-3091ab75cb15","message":{"role":"user","content":"ohne uuid"}}
+{"type":"bridge_heartbeat","seq":17,"session_id":"d69118dc-ef0c-4925-9945-3091ab75cb15"}
+{"type":"system","subtype":"bridge_state","state":"reconnecting","session_id":"d69118dc-ef0c-4925-9945-3091ab75cb15"}
+{"type":"system","subtype":"bridge_state","state":"failed","error":"Verbindung zur Claude-App verloren","session_id":"d69118dc-ef0c-4925-9945-3091ab75cb15"}

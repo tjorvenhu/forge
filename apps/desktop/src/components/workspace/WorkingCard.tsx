@@ -1,22 +1,22 @@
 import { useEffect, useMemo, useState } from "react";
 import { Square } from "lucide-react";
 import type { Project } from "@forge/protocol";
-import { call, useSession } from "@/lib/queries";
-import { errorMessage } from "@/lib/rpc";
+import { useSession } from "@/lib/queries";
+import { isWorking } from "@/lib/working";
 import { useSessionEvents } from "@/stores/session-events";
-import { useUi } from "@/stores/ui";
-import { toast } from "@/stores/toast";
+import { splitActive, useUi } from "@/stores/ui";
 import { Button } from "@/components/ui/button";
 import { ClaudeMark } from "./ClaudeMark";
 import { TOOL_LABELS, toolSummary } from "./chat-items";
 import { formatElapsed, pickPhrase, turnStartedAt } from "./working";
+import { stopSession } from "./useSendMessage";
 
 /** "Claude arbeitet" at the bottom of the side panel while the active session runs, with stop. */
 export function WorkingCard({ project }: { project: Project }) {
   const sessionId = useUi((s) => s.activeSession[project.id] ?? null);
-  const session = useSession(sessionId && !sessionId.startsWith("ext:") ? sessionId : null).data;
+  const session = useSession(splitActive(sessionId).sessionId).data;
   const events = useSessionEvents((s) => (sessionId ? s.buffers[sessionId]?.events : undefined));
-  const working = session?.status === "running" || session?.status === "starting" || session?.status === "stopping";
+  const working = isWorking(session?.status);
   const startedAt = useMemo(() => (working ? (turnStartedAt(events ?? []) ?? session?.updatedAt ?? null) : null), [working, events, session?.updatedAt]);
   const lastTool = useMemo(() => {
     for (let i = (events?.length ?? 0) - 1; i >= 0; i--) {
@@ -42,8 +42,8 @@ export function WorkingCard({ project }: { project: Project }) {
           <ClaudeMark size={20} />
         </div>
         <div className="min-w-0 flex-1">
-          <div className="text-[14px] font-medium">{session.status === "stopping" ? "Claude stoppt …" : "Claude arbeitet"}</div>
-          <div className="truncate text-[12px] text-muted" title={lastTool ?? undefined}>
+          <div className="text-ui font-medium">{session.status === "stopping" ? "Claude stoppt …" : "Claude arbeitet"}</div>
+          <div className="truncate text-small text-muted" title={lastTool ?? undefined}>
             {lastTool ?? `${pickPhrase(startedAt, elapsed)} …`}
           </div>
         </div>
@@ -53,7 +53,7 @@ export function WorkingCard({ project }: { project: Project }) {
           aria-label="Stoppen"
           title="Stoppen (Esc im Eingabefeld)"
           disabled={session.status === "stopping"}
-          onClick={() => call("sessions.stop", { sessionId: session.id }).catch((e: unknown) => toast.error("Stop fehlgeschlagen", errorMessage(e)))}
+          onClick={() => void stopSession(session.id)}
         >
           <Square className="h-3 w-3 fill-current" />
         </Button>
@@ -62,7 +62,7 @@ export function WorkingCard({ project }: { project: Project }) {
         <div className="relative h-1 flex-1 overflow-hidden rounded-full bg-surface-3">
           <div className="animate-indeterminate absolute inset-y-0 w-1/3 rounded-full bg-accent" />
         </div>
-        <span className="text-[11px] tabular-nums text-subtle">{formatElapsed(elapsed)}</span>
+        <span className="text-caption tabular-nums text-subtle">{formatElapsed(elapsed)}</span>
       </div>
     </div>
   );

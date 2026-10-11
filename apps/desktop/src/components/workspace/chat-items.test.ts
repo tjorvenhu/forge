@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { SessionEvent, SessionEventBody } from "@forge/protocol";
-import { buildChatItems, itemIndexForSeq, lastUserPrompt, toolSummary } from "./chat-items";
+import { appendStreaming, buildChatItems, buildEventItems, itemIndexForSeq, lastUserPrompt, reuseStableItems, toolSummary } from "./chat-items";
 import { useSessionEvents } from "@/stores/session-events";
 
 let seq = 0;
@@ -124,5 +124,46 @@ describe("search focus and compaction", () => {
   it("summarises questions and plans in cards and the activity feed", () => {
     expect(toolSummary("AskUserQuestion", { questions: [{ question: "Welche Datenbank?" }] })).toBe("Welche Datenbank?");
     expect(toolSummary("ExitPlanMode", { plan: "x" })).toBe("Plan zur Freigabe");
+  });
+});
+
+describe("stable chat items", () => {
+  it("keeps unchanged items and only replaces the ones a new event touched", () => {
+    seq = 0;
+    const base = [
+      ev({ type: "user.message", text: "Bitte lesen" }),
+      ev({ type: "tool.use", toolUseId: "t1", name: "TodoWrite", input: { todos: [{ content: "a", status: "pending" }] }, parentToolUseId: null }),
+      ev({ type: "tool.use", toolUseId: "t2", name: "Read", input: { file_path: "a.ts" }, parentToolUseId: null }),
+    ];
+    const first = buildEventItems(base);
+    const withResult = [...base, ev({ type: "tool.result", toolUseId: "t2", isError: false, content: { text: "inhalt", truncated: false } })];
+    const second = reuseStableItems(first, buildEventItems(withResult));
+    expect(second[0]).toBe(first[0]);
+    expect(second[1]).toBe(first[1]);
+    expect(second[2]).not.toBe(first[2]);
+    expect(reuseStableItems(second, buildEventItems(withResult))).toBe(second);
+  });
+
+  it("adds streaming text after the events and drops it once the final text is there", () => {
+    seq = 0;
+    const items = buildEventItems([ev({ type: "assistant.text", messageId: "m1", index: 0, text: "fertig" })]);
+    expect(appendStreaming(items, {})).toBe(items);
+    expect(appendStreaming(items, { "m1:0": "fer" })).toBe(items);
+    const live = appendStreaming(items, { "m2:0": "Ich schau" });
+    expect(live.at(-1)).toMatchObject({ kind: "assistant", key: "am2:0", streaming: true, text: "Ich schau" });
+    expect(live[0]).toBe(items[0]);
+  });
+});
+
+describe("auto-commit question", () => {
+  it("shows one card per question and attaches the decision", () => {
+    seq = 0;
+    const items = buildEventItems([
+      ev({ type: "automation.confirm", requestId: "q1", files: ["config.ts"], flagged: [{ path: "config.ts", reason: "möglicher Schlüssel/Token im Inhalt" }], message: "feat: config" }),
+      ev({ type: "automation.confirmResolved", requestId: "q1", decision: "commit" }),
+      ev({ type: "automation.confirmResolved", requestId: "unbekannt", decision: "skip" }),
+    ]);
+    expect(items).toHaveLength(1);
+    expect(items[0]).toMatchObject({ kind: "autocommit", key: "qq1", resolved: { decision: "commit" } });
   });
 });

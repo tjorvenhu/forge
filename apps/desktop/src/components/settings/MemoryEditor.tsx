@@ -1,13 +1,14 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Eye, FilePlus2, Pencil, RotateCcw, Save } from "lucide-react";
 import type { MemoryScope } from "@forge/protocol";
 import { call } from "@/lib/queries";
-import { errorMessage } from "@/lib/rpc";
+import { errorMessage, RpcCallError } from "@/lib/rpc";
 import { cn } from "@/lib/utils";
 import { toast } from "@/stores/toast";
 import { Button } from "@/components/ui/button";
 import { CodeEditor } from "@/components/ui/code-editor";
+import { ExternalChangeBanner, useFileDraft } from "@/components/ui/file-draft";
 import { ErrorBanner, Loading } from "@/components/ui/misc";
 import { Markdown } from "@/components/workspace/Markdown";
 
@@ -22,7 +23,7 @@ const EMPTY_HINT: Record<MemoryScope, string> = {
  * Edit CLAUDE.md files. `scopes` decides which files are offered (global only in the app settings,
  * project + local + global inside a project).
  */
-export function MemoryEditor({ projectId, scopes, height = "h-[420px]" }: { projectId?: string; scopes: MemoryScope[]; height?: string }) {
+export function MemoryEditor({ projectId, scopes, height = "h-105" }: { projectId?: string; scopes: MemoryScope[]; height?: string }) {
   const qc = useQueryClient();
   const list = useQuery({ queryKey: ["memory", projectId ?? "global"], queryFn: () => call("config.memoryList", { projectId }) });
   const files = (list.data ?? []).filter((f) => scopes.includes(f.scope));
@@ -34,30 +35,27 @@ export function MemoryEditor({ projectId, scopes, height = "h-[420px]" }: { proj
     queryFn: () => call("config.memoryRead", { projectId, scope: current!.scope }),
     enabled: !!current,
   });
-  const [draft, setDraft] = useState<string | null>(null);
   const [preview, setPreview] = useState(false);
   const [saving, setSaving] = useState(false);
-  useEffect(() => {
-    setDraft(null);
-  }, [current?.scope, doc.data?.mtimeMs]);
+  const { draft, setDraft, dirty, externalChange, expectedVersion, reload, keepEditing } = useFileDraft(doc.data?.content, doc.data?.mtimeMs, current?.scope);
 
   const text = draft ?? doc.data?.content ?? "";
-  const dirty = draft !== null && draft !== (doc.data?.content ?? "");
 
   const save = useCallback(async () => {
-    if (!current || draft === null) return;
+    if (!current || draft === null || externalChange) return;
     setSaving(true);
     try {
-      await call("config.memoryWrite", { projectId, scope: current.scope, content: draft, expectedMtimeMs: doc.data?.mtimeMs ?? null });
+      await call("config.memoryWrite", { projectId, scope: current.scope, content: draft, expectedMtimeMs: expectedVersion });
       toast.success("Gespeichert", current.path);
       await qc.invalidateQueries({ queryKey: ["memory", projectId ?? "global"] });
       await qc.invalidateQueries({ queryKey: ["memoryDoc", projectId ?? "global", current.scope] });
     } catch (e) {
       toast.error("Nicht gespeichert", errorMessage(e));
+      if (e instanceof RpcCallError && e.code === "CONFLICT") void doc.refetch();
     } finally {
       setSaving(false);
     }
-  }, [current, draft, doc.data?.mtimeMs, projectId, qc]);
+  }, [current, draft, externalChange, expectedVersion, projectId, qc, doc]);
 
   if (list.isLoading) return <Loading />;
   if (list.isError) return <ErrorBanner>{errorMessage(list.error)}</ErrorBanner>;
@@ -92,16 +90,17 @@ export function MemoryEditor({ projectId, scopes, height = "h-[420px]" }: { proj
             <RotateCcw className="h-3.5 w-3.5" /> Verwerfen
           </Button>
         )}
-        <Button size="sm" variant="primary" onClick={() => void save()} disabled={!dirty} loading={saving} title="Speichern (Strg+S)">
+        <Button size="sm" variant="primary" onClick={() => void save()} disabled={!dirty || externalChange} loading={saving} title="Speichern (Strg+S)">
           <Save className="h-3.5 w-3.5" /> Speichern
         </Button>
       </div>
-      <div className="truncate font-mono text-[11px] text-subtle" title={current.path}>{current.path}</div>
+      <div className="truncate font-mono text-caption text-subtle" title={current.path}>{current.path}</div>
+      {externalChange && <ExternalChangeBanner onReload={reload} onKeep={keepEditing} />}
       {doc.isLoading ? (
         <Loading />
       ) : !current.exists && draft === null ? (
         <div className={cn("flex flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-border", height)}>
-          <p className="text-[13px] text-muted">Diese Datei gibt es noch nicht.</p>
+          <p className="text-body text-muted">Diese Datei gibt es noch nicht.</p>
           <Button onClick={() => setDraft(EMPTY_HINT[current.scope])}>
             <FilePlus2 className="h-3.5 w-3.5" /> Anlegen
           </Button>

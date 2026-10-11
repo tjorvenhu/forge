@@ -91,8 +91,8 @@ export interface RuntimeSession {
 export interface ClaudeRuntime {
   readonly id: string;
   capabilities(init?: SDKControlInitializeResponse | null, cliCapabilities?: string[]): Capability[];
+  /** starts a CLI process; with opts.resume it continues that Claude session */
   startSession(opts: StartOptions, sink: SessionSink): RuntimeSession;
-  resumeSession(claudeSessionId: string, opts: Omit<StartOptions, "resume">, sink: SessionSink): RuntimeSession;
   listSessions(dir: string): Promise<ExternalSession[]>;
   sessionHistory(claudeSessionId: string, dir: string): Promise<unknown[]>;
   /** removes the CLI's transcript, so the session is gone from `claude --resume` too */
@@ -107,9 +107,22 @@ export interface ClaudeRuntime {
   planUsage(opts: Pick<StartOptions, "cwd" | "env" | "claudePath">): Promise<PlanUsage>;
 }
 
+/** Not in the SDK typings (0.3.x) but used by the official IDE hosts; checked at runtime before use. */
 interface RemoteControlQuery {
-  enableRemoteControl(enabled: boolean, name?: string): Promise<{ session_url?: unknown } | undefined>;
+  enableRemoteControl?: (enabled: boolean, name?: string) => Promise<{ session_url?: unknown } | undefined>;
 }
+
+/** Experimental in SDK 0.3.x and announced to be renamed; checked at runtime before use. */
+interface UsageQuery {
+  usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET?: Query["usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET"];
+}
+
+export const REPLAY_FLAG = "replay-user-messages";
+export const REMOTE_UNAVAILABLE = "Remote Control ist mit dieser Claude-Code-Version nicht verfügbar.";
+export const USAGE_UNAVAILABLE = "Die Plan-Auslastung ist mit dieser Claude-Code-Version nicht verfügbar.";
+
+/** Upper bound for one-shot CLI calls (probe, commands, completions, usage); a hung CLI must not block the UI. */
+const ONE_SHOT_TIMEOUT_MS = 45_000;
 
 function userMessage(m: OutgoingMessage): SDKUserMessage {
   const content = m.blocks.length ? [...m.blocks, { type: "text", text: m.text }] : m.text;
@@ -118,6 +131,37 @@ function userMessage(m: OutgoingMessage): SDKUserMessage {
 
 export class AgentSdkRuntime implements ClaudeRuntime {
   readonly id = "agent-sdk";
+  private readonly oneShotTimeoutMs: number;
+
+  constructor(opts: { oneShotTimeoutMs?: number } = {}) {
+    this.oneShotTimeoutMs = opts.oneShotTimeoutMs ?? ONE_SHOT_TIMEOUT_MS;
+  }
+
+  /**
+   * Runs a short-lived CLI call with a time limit. On timeout the query is aborted and closed so the
+   * CLI process does not linger; the late result or error of `work` is dropped.
+   */
+  private async oneShot<T>(what: string, q: Query, ac: AbortController, work: Promise<T>, cleanup: () => void = () => {}): Promise<T> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timeout = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => {
+        ac.abort();
+        reject(new Error(`${what}: Claude Code hat nicht innerhalb von ${Math.round(this.oneShotTimeoutMs / 1000)} Sekunden geantwortet.`));
+      }, this.oneShotTimeoutMs);
+    });
+    work.catch(() => {});
+    try {
+      return await Promise.race([work, timeout]);
+    } finally {
+      clearTimeout(timer);
+      cleanup();
+      try {
+        q.close();
+      } catch {
+        /* already closed */
+      }
+    }
+  }
 
   capabilities(init?: SDKControlInitializeResponse | null, cliCapabilities: string[] = []): Capability[] {
     const commands = init?.commands?.length ?? 0;
@@ -160,19 +204,24 @@ export class AgentSdkRuntime implements ClaudeRuntime {
     if (opts.firstMessage) input.push(userMessage(opts.firstMessage));
 
     const canUseTool: CanUseTool = async (toolName, toolInput, o) => {
-      const decision = await sink.onApproval(
-        {
-          requestId: randomUUID(),
-          toolUseId: o.toolUseID,
-          toolName,
-          input: toolInput,
-          title: o.title ?? null,
-          description: o.description ?? null,
-          reason: o.decisionReason ?? null,
-          suppressAlwaysAllow: o.suppressAlwaysAllowRule === true,
-        },
-        o.signal,
-      );
+      let decision: ApprovalDecision;
+      try {
+        decision = await sink.onApproval(
+          {
+            requestId: randomUUID(),
+            toolUseId: o.toolUseID,
+            toolName,
+            input: toolInput,
+            title: o.title ?? null,
+            description: o.description ?? null,
+            reason: o.decisionReason ?? null,
+            suppressAlwaysAllow: o.suppressAlwaysAllowRule === true,
+          },
+          o.signal,
+        );
+      } catch {
+        decision = { behavior: "deny", message: "Die Freigabeanfrage konnte nicht verarbeitet werden." };
+      }
       if (decision.behavior === "deny") return { behavior: "deny", message: decision.message } satisfies PermissionResult;
       const updates: PermissionUpdate[] = [];
       if (decision.scope === "session" && o.suggestions?.length) {
@@ -186,7 +235,13 @@ export class AgentSdkRuntime implements ClaudeRuntime {
     const guard: HookCallback = async (hookInput, toolUseId) => {
       if (hookInput.hook_event_name !== "PreToolUse") return {};
       const ti = (hookInput.tool_input && typeof hookInput.tool_input === "object" ? hookInput.tool_input : {}) as Record<string, unknown>;
-      const v = await sink.preToolUse(hookInput.tool_name, ti, toolUseId ?? null);
+      let v: { rule: string; message: string } | null;
+      try {
+        v = await sink.preToolUse(hookInput.tool_name, ti, toolUseId ?? null);
+      } catch {
+        // Fail closed: a check that could not run must not let the call through.
+        v = { rule: "guard-error", message: "Die Policy-Prüfung ist fehlgeschlagen, der Aufruf wurde vorsichtshalber abgelehnt." };
+      }
       if (!v) return {};
       return {
         hookSpecificOutput: {
@@ -217,7 +272,8 @@ export class AgentSdkRuntime implements ClaudeRuntime {
         canUseTool,
         hooks: { PreToolUse: [{ hooks: [guard] }] },
         // Echoes user messages, so messages typed in the Claude app (Remote Control) reach the timeline.
-        extraArgs: { "replay-user-messages": null },
+        // A CLI flag, not an SDK option: a CLI without it fails at start, reported as "please update".
+        extraArgs: { [REPLAY_FLAG]: null },
       },
     });
 
@@ -267,16 +323,13 @@ export class AgentSdkRuntime implements ClaudeRuntime {
         };
       },
       setRemoteControl: async (enabled, name) => {
-        // Not in the SDK typings (0.3.x) but used by the official IDE hosts; isolated here so a rename only touches this line.
-        const r = await (q as unknown as RemoteControlQuery).enableRemoteControl(enabled, name);
+        const rc = q as unknown as RemoteControlQuery;
+        if (typeof rc.enableRemoteControl !== "function") throw new Error(REMOTE_UNAVAILABLE);
+        const r = await rc.enableRemoteControl.call(q, enabled, name);
         return typeof r?.session_url === "string" ? r.session_url : null;
       },
       initialization: () => q.initializationResult(),
     };
-  }
-
-  resumeSession(claudeSessionId: string, opts: Omit<StartOptions, "resume">, sink: SessionSink): RuntimeSession {
-    return this.startSession({ ...opts, resume: claudeSessionId }, sink);
   }
 
   async listSessions(dir: string): Promise<ExternalSession[]> {
@@ -300,19 +353,16 @@ export class AgentSdkRuntime implements ClaudeRuntime {
 
   async commands(opts: Pick<StartOptions, "cwd" | "env" | "claudePath">): Promise<SlashCommand[]> {
     const input = new AsyncQueue<SDKUserMessage>();
+    const ac = new AbortController();
     const q = query({
       prompt: input,
-      options: { cwd: opts.cwd, env: opts.env, pathToClaudeCodeExecutable: opts.claudePath, settingSources: ["user", "project", "local"], persistSession: false },
+      options: { cwd: opts.cwd, env: opts.env, pathToClaudeCodeExecutable: opts.claudePath, settingSources: ["user", "project", "local"], persistSession: false, abortController: ac },
     });
-    try {
-      return (await q.supportedCommands()).map(toCommand);
-    } finally {
-      input.end();
-      q.close();
-    }
+    return this.oneShot("Slash-Commands laden", q, ac, q.supportedCommands().then((list) => list.map(toCommand)), () => input.end());
   }
 
   async complete(prompt: string, opts: Pick<StartOptions, "cwd" | "env" | "claudePath"> & { model: string }): Promise<string> {
+    const ac = new AbortController();
     const q = query({
       prompt,
       options: {
@@ -324,35 +374,41 @@ export class AgentSdkRuntime implements ClaudeRuntime {
         maxTurns: 1,
         settingSources: [],
         persistSession: false,
+        abortController: ac,
       },
     });
-    let text = "";
-    for await (const m of q) {
-      if (m.type === "result") {
-        if (m.subtype !== "success") throw new Error(`Claude konnte keine Antwort erzeugen (${m.subtype})`);
-        text = m.result;
+    const work = (async () => {
+      let text = "";
+      for await (const m of q) {
+        if (m.type === "result") {
+          if (m.subtype !== "success") throw new Error(`Claude konnte keine Antwort erzeugen (${m.subtype})`);
+          text = m.result;
+        }
       }
-    }
-    return text;
+      return text;
+    })();
+    return this.oneShot("Antwort von Claude", q, ac, work);
   }
 
   async planUsage(opts: Pick<StartOptions, "cwd" | "env" | "claudePath">): Promise<PlanUsage> {
     const input = new AsyncQueue<SDKUserMessage>();
+    const ac = new AbortController();
     const q = query({
       prompt: input,
-      options: { cwd: opts.cwd, env: opts.env, pathToClaudeCodeExecutable: opts.claudePath, settingSources: [], persistSession: false },
+      options: { cwd: opts.cwd, env: opts.env, pathToClaudeCodeExecutable: opts.claudePath, settingSources: [], persistSession: false, abortController: ac },
     });
-    try {
-      // Experimental in SDK 0.3.x; isolated here so a rename only touches this line.
-      return toPlanUsage(await q.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET({ skipBehaviors: true }));
-    } finally {
+    const usage = (q as unknown as UsageQuery).usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET;
+    if (typeof usage !== "function") {
       input.end();
       q.close();
+      throw new Error(USAGE_UNAVAILABLE);
     }
+    return this.oneShot("Plan-Auslastung", q, ac, usage.call(q, { skipBehaviors: true }).then(toPlanUsage), () => input.end());
   }
 
   async probe(opts: Pick<StartOptions, "cwd" | "env" | "claudePath">): Promise<SDKControlInitializeResponse> {
     const input = new AsyncQueue<SDKUserMessage>();
+    const ac = new AbortController();
     const q = query({
       prompt: input,
       options: {
@@ -361,14 +417,10 @@ export class AgentSdkRuntime implements ClaudeRuntime {
         pathToClaudeCodeExecutable: opts.claudePath,
         settingSources: ["user"],
         persistSession: false,
+        abortController: ac,
       },
     });
-    try {
-      return await q.initializationResult();
-    } finally {
-      input.end();
-      q.close();
-    }
+    return this.oneShot("Claude-Code-Abfrage", q, ac, q.initializationResult(), () => input.end());
   }
 }
 

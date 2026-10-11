@@ -1,4 +1,4 @@
-import { mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { SEARCH_MARK_END, SEARCH_MARK_START, type DevServerState } from "@forge/protocol";
@@ -119,6 +119,22 @@ describe("dev server", () => {
     expect(stopped.status).toBe("stopped");
     const last = events.filter((e) => e.event === "devserver.updated").at(-1)?.payload as DevServerState;
     expect(last.status).toBe("stopped");
+  }, 30_000);
+
+  it("starts only one process on a double click", async () => {
+    const script = path.join(t.dir, "web", "count.cjs");
+    const marker = path.join(t.dir, "starts.txt");
+    writeFileSync(script, `require("node:fs").appendFileSync(${JSON.stringify(marker)}, "x");\nsetInterval(() => {}, 1000);\n`);
+    projects.update(projectId, { devCommand: `node "${script}"` });
+    const svc = new DevServerService(projects, () => ({ ...process.env }) as Record<string, string>, () => {});
+    const [a, b] = await Promise.all([svc.start(projectId), svc.start(projectId)]);
+    expect(a.status).toBe("running");
+    expect(b.status).toBe("running");
+    const deadline = Date.now() + 15_000;
+    while (!existsSync(marker) && Date.now() < deadline) await new Promise((r) => setTimeout(r, 100));
+    await new Promise((r) => setTimeout(r, 1000));
+    expect(readFileSync(marker, "utf8")).toBe("x");
+    await svc.stop(projectId);
   }, 30_000);
 
   it("reports a command that exits on its own", async () => {

@@ -2,6 +2,7 @@ import { createSocket, type Socket } from "node:dgram";
 import { randomInt } from "node:crypto";
 import { EventEmitter } from "node:events";
 import { decodeG711, encodeG711, FRAME_SAMPLES } from "./audio.js";
+import type { MediaDirection } from "./sdp.js";
 
 const DTMF_EVENTS = "0123456789*#ABCD";
 const SILENCE = new Int16Array(FRAME_SAMPLES);
@@ -32,20 +33,23 @@ export class RtpSession extends EventEmitter<RtpEvents> {
   private nextAt = 0;
   private lastDtmfTs: number | null = null;
   private latched = false;
+  /** source IPs audio may come from: the SDP address and the PBX */
+  private allowed = new Set<string>();
+  private sending = true;
   port = 0;
 
   constructor(private readonly localIp: string) {
     super();
   }
 
-  /** Binds an even port in the usual RTP range. */
+  /** Binds an even port in the usual RTP range on the local interface towards the PBX. */
   async open(): Promise<number> {
     for (let attempt = 0; attempt < 20; attempt++) {
       const port = 2 * randomInt(20000, 30000);
       const sock = createSocket("udp4");
       const ok = await new Promise<boolean>((resolve) => {
         sock.once("error", () => resolve(false));
-        sock.bind(port, () => resolve(true));
+        sock.bind({ port, address: this.localIp }, () => resolve(true));
       });
       if (!ok) {
         sock.close();
@@ -64,10 +68,18 @@ export class RtpSession extends EventEmitter<RtpEvents> {
     return { ip: this.localIp, port: this.port };
   }
 
-  configure(remote: { ip: string; port: number }, pt: number, dtmfPt: number | null) {
+  /** `peers`: further addresses audio may come from (the PBX itself when it relays media). */
+  configure(remote: { ip: string; port: number }, pt: number, dtmfPt: number | null, peers: string[] = []) {
     this.remote = remote;
     this.pt = pt;
     this.dtmfPt = dtmfPt;
+    this.allowed = new Set([remote.ip, ...peers]);
+    this.latched = false;
+  }
+
+  /** Our side of the SDP direction: on hold (recvonly, inactive) FORGE sends nothing. */
+  setDirection(direction: MediaDirection) {
+    this.sending = direction === "sendrecv" || direction === "sendonly";
   }
 
   start() {
@@ -152,17 +164,22 @@ export class RtpSession extends EventEmitter<RtpEvents> {
     header.writeUInt32BE(this.ssrc, 8);
     this.seq = (this.seq + 1) & 0xffff;
     this.ts = (this.ts + FRAME_SAMPLES) >>> 0;
-    this.socket.send(Buffer.concat([header, encodeG711(frame, this.pt)]), this.remote.port, this.remote.ip);
+    if (this.sending) this.socket.send(Buffer.concat([header, encodeG711(frame, this.pt)]), this.remote.port, this.remote.ip);
     if (had && this.queue.length === 0) this.emit("drained");
   }
 
   private onPacket(buf: Buffer, ip: string, port: number) {
     if (buf.length < 12 || buf[0]! >> 6 !== 2) return;
-    // Symmetric RTP: behind NAT the PBX may send from another address than its SDP says.
-    if (!this.latched && this.remote && (this.remote.ip !== ip || this.remote.port !== port)) {
+    // Before the answer's SDP is known (early media on outgoing calls) nobody is entitled to send.
+    if (!this.remote) return;
+    if (this.latched) {
+      if (ip !== this.remote.ip || port !== this.remote.port) return;
+    } else {
+      // Symmetric RTP: behind NAT the port can differ from the SDP, the address must not.
+      if (!this.allowed.has(ip)) return;
       this.remote = { ip, port };
+      this.latched = true;
     }
-    this.latched = true;
     const cc = buf[0]! & 0x0f;
     const hasExt = (buf[0]! & 0x10) !== 0;
     const padding = (buf[0]! & 0x20) !== 0;

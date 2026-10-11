@@ -7,7 +7,8 @@ import type { GitEngine } from "../git/git.js";
 import { githubRepoFromRemote, type GitHubService } from "../github/github.js";
 import type { SessionService } from "../sessions/session-service.js";
 import type { WorktreeService } from "../automation/worktrees.js";
-import { isInside, pathKey } from "../util/paths.js";
+import type { DevServerService } from "../devserver/dev-server.js";
+import { isInside, pathKey, sensitivePaths } from "../util/paths.js";
 import type { ProjectManager } from "./project-manager.js";
 
 export interface RemovalDeps {
@@ -16,19 +17,81 @@ export interface RemovalDeps {
   github: GitHubService;
   sessions: SessionService;
   worktrees: WorktreeService;
+  devServers: Pick<DevServerService, "forget">;
   dataDir: string;
 }
 
-const HOME_FOLDERS = ["Desktop", "Documents", "Downloads", "Pictures", "Music", "Videos", "OneDrive", "Dokumente", "Bilder", "Musik"];
+/** Folders directly under the home directory (or a OneDrive root) that are never a project. */
+const KNOWN_FOLDERS = new Set(
+  [
+    "Desktop",
+    "Documents",
+    "Downloads",
+    "Pictures",
+    "Music",
+    "Videos",
+    "OneDrive",
+    "Dokumente",
+    "Bilder",
+    "Musik",
+    "Schreibtisch",
+    "AppData",
+    "Favorites",
+    "Favoriten",
+    "Links",
+    "Contacts",
+    "Kontakte",
+    "Searches",
+    "Saved Games",
+    "3D Objects",
+    "Public",
+    "Templates",
+    "Vorlagen",
+  ].map((f) => f.toLowerCase()),
+);
+
+/** Folders that belong to the operating system, installed programs, Claude or credentials. */
+export function systemDirs(home = os.homedir(), env: NodeJS.ProcessEnv = process.env): string[] {
+  const list = [...sensitivePaths(home), env.CLAUDE_CONFIG_DIR || path.join(home, ".claude")];
+  for (const k of ["ProgramFiles", "ProgramFiles(x86)", "ProgramW6432", "ProgramData", "SystemRoot", "windir", "APPDATA", "LOCALAPPDATA"]) {
+    const v = env[k];
+    if (v) list.push(v);
+  }
+  list.push(path.join(home, "AppData"));
+  return list;
+}
+
+function oneDriveRoots(env: NodeJS.ProcessEnv): string[] {
+  return ["OneDrive", "OneDriveConsumer", "OneDriveCommercial"].map((k) => env[k]).filter((v): v is string => !!v);
+}
 
 /** Why a project folder must never be deleted from FORGE, or null if it may be. */
-export function folderDeleteBlocker(dir: string, others: string[], protectedDirs: string[], home = os.homedir()): string | null {
+export function folderDeleteBlocker(dir: string, others: string[], protectedDirs: string[], home = os.homedir(), env: NodeJS.ProcessEnv = process.env): string | null {
   const abs = path.resolve(dir);
   if (path.parse(abs).root === abs || path.dirname(abs) === abs) return "Ein Laufwerk kann nicht gelöscht werden.";
   if (pathKey(abs) === pathKey(home) || isInside(home, abs)) return "Das Benutzerverzeichnis kann nicht gelöscht werden.";
-  if (pathKey(path.dirname(abs)) === pathKey(home) && HOME_FOLDERS.some((f) => f.toLowerCase() === path.basename(abs).toLowerCase())) {
-    return `Der Ordner ${path.basename(abs)} kann nicht gelöscht werden.`;
+
+  const name = path.basename(abs);
+  const lower = name.toLowerCase();
+  const oneDrive = oneDriveRoots(env);
+  const parentKey = pathKey(path.dirname(abs));
+  const underHome = parentKey === pathKey(home);
+  const underRoot = underHome || oneDrive.some((r) => pathKey(r) === parentKey);
+  if (underRoot && (KNOWN_FOLDERS.has(lower) || name.startsWith(".")) || (underHome && lower.startsWith("onedrive"))) {
+    return `Der Ordner ${name} kann nicht gelöscht werden.`;
   }
+  if (oneDrive.some((r) => isInside(r, abs))) return "Der Ordner enthält den OneDrive-Ordner.";
+
+  // Projects in the temp folder stay deletable although it lies inside AppData on Windows.
+  const tmp = os.tmpdir();
+  const inTemp = isInside(abs, tmp) && pathKey(abs) !== pathKey(tmp);
+  for (const sys of systemDirs(home, env)) {
+    if (isInside(sys, abs)) return "Der Ordner enthält System-, Programm- oder Zugangsdaten und kann nicht gelöscht werden.";
+    if (isInside(abs, sys) && !(inTemp && isInside(tmp, sys))) {
+      return "Der Ordner gehört zum System, zu einem Programm oder zu Claude und kann nicht gelöscht werden.";
+    }
+  }
+
   if (protectedDirs.some((p) => isInside(p, abs))) return "Der Ordner enthält Daten von FORGE.";
   const nested = others.filter((o) => isInside(o, abs));
   if (nested.length) return `Der Ordner enthält ${nested.length === 1 ? "ein weiteres Projekt" : `${nested.length} weitere Projekte`}.`;
@@ -69,6 +132,7 @@ export async function removalInfo(projectId: string, d: RemovalDeps): Promise<Pr
 /**
  * Removes a project from FORGE and, if asked, its GitHub repository and local folder. Order matters:
  * GitHub first (most likely to fail, nothing is lost then), then the folder, then the entry.
+ * Without deleteFolder, worktrees of the project stay as standalone projects.
  */
 export async function removeProject(projectId: string, opts: { deleteFolder: boolean; deleteGitHubRepo: boolean }, d: RemovalDeps) {
   const project = d.projects.get(projectId);
@@ -76,8 +140,10 @@ export async function removeProject(projectId: string, opts: { deleteFolder: boo
   if (opts.deleteFolder && info.folderBlocker) throw new ForgeError("POLICY_DENIED", info.folderBlocker);
   if (opts.deleteGitHubRepo && !info.githubRepo) throw new ForgeError("VALIDATION", "Das Projekt hat kein GitHub-Repository als origin.");
 
-  const children = d.projects.all().filter((p) => p.parentId === project.id);
-  await d.sessions.closeProject([project.id, ...(opts.deleteFolder ? children.map((c) => c.id) : [])]);
+  const children = opts.deleteFolder ? d.projects.all().filter((p) => p.parentId === project.id) : [];
+  const affected = [project.id, ...children.map((c) => c.id)];
+  await d.sessions.closeProject(affected);
+  for (const id of affected) await d.devServers.forget(id);
 
   let githubDeleted = false;
   if (opts.deleteGitHubRepo && info.githubRepo) {
@@ -87,16 +153,17 @@ export async function removeProject(projectId: string, opts: { deleteFolder: boo
 
   let folderDeleted = false;
   if (opts.deleteFolder && info.folderExists) {
-    for (const c of children) await d.worktrees.remove(c, true);
+    const prefix = githubDeleted ? "Das GitHub-Repository wurde gelöscht, der Ordner aber nicht vollständig. " : "";
     try {
+      for (const c of children) await d.worktrees.remove(c, true);
       if (project.parentId) await d.worktrees.remove(project, true);
-      else await rm(project.path, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+      else if (!(await d.worktrees.removeIfWorktree(project.path))) {
+        await rm(project.path, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+      }
     } catch (e) {
+      if (e instanceof ForgeError) throw new ForgeError(e.code, prefix + e.message, e.details);
       const why = e instanceof Error ? e.message : String(e);
-      throw new ForgeError(
-        "PATH_NOT_ACCESSIBLE",
-        `${githubDeleted ? "Das GitHub-Repository wurde gelöscht, der Ordner aber nicht vollständig. " : ""}Ist er noch in einem Terminal oder Editor geöffnet? (${why})`,
-      );
+      throw new ForgeError("PATH_NOT_ACCESSIBLE", `${prefix}Ist er noch in einem Terminal oder Editor geöffnet? (${why})`);
     }
     folderDeleted = true;
   }

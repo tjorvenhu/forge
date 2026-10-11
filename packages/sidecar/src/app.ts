@@ -20,8 +20,12 @@ export interface App {
   server: RpcServer;
   sessions: SessionService;
   db: Db;
-  shutdown(): void;
+  /** Lets post-turn work and the phone finish (within limitMs), then ends all child processes and closes the DB. */
+  shutdown(limitMs?: number): Promise<void>;
 }
+
+/** Upper bound for a clean shutdown; the desktop shell is waiting for the sidecar to exit. */
+export const SHUTDOWN_LIMIT_MS = 5_000;
 
 /** Wires all services. Separate from index.ts so tests can run it in-process. */
 export function createApp(opts: { dataDir: string; write: Writer; log?: (m: string) => void; runtime?: ClaudeRuntime }): App {
@@ -80,10 +84,14 @@ export function createApp(opts: { dataDir: string; write: Writer; log?: (m: stri
     server,
     sessions,
     db,
-    shutdown() {
+    async shutdown(limitMs = SHUTDOWN_LIMIT_MS) {
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const limit = new Promise<void>((r) => (timer = setTimeout(r, limitMs)));
+      // The phone hangs up and unregisters; tests and auto-commits of finished turns get a chance to land.
+      await Promise.race([Promise.allSettled([sessions.drain(), Promise.resolve().then(() => phone?.shutdown())]), limit]);
+      clearTimeout(timer);
       sessions.shutdown();
       devServers.shutdown();
-      phone?.shutdown();
       github.shutdown();
       claudeSetup.shutdown();
       db.close();

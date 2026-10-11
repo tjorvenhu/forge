@@ -8,7 +8,7 @@ import type { SessionEvent } from "@forge/protocol";
 
 const NO_EVENTS: SessionEvent[] = [];
 
-/** Raw, persisted event log of the active session (the "Claude Output" panel). */
+/** Raw, persisted event log of the active session (the "Claude-Ausgabe" panel). */
 export function OutputPanel({ projectId, embedded = false }: { projectId: string; embedded?: boolean }) {
   const sessionId = useUi((s) => s.activeSession[projectId] ?? null);
   const toggle = useUi((s) => s.toggleBottomPanel);
@@ -19,7 +19,7 @@ export function OutputPanel({ projectId, embedded = false }: { projectId: string
   return (
     <div className={embedded ? "flex h-full flex-col" : "flex h-56 shrink-0 flex-col border-t border-border bg-bg"}>
       <div className={embedded ? "hidden" : "flex h-8 shrink-0 items-center gap-2 border-b border-border px-3 text-xs"}>
-        <span className="font-medium">Claude Output</span>
+        <span className="font-medium">Claude-Ausgabe</span>
         <span className="text-subtle">{events.length} Events</span>
         <div className="flex-1" />
         <button onClick={() => toggle(false)} className="rounded p-0.5 text-subtle hover:text-fg" aria-label="Panel schließen">
@@ -29,7 +29,7 @@ export function OutputPanel({ projectId, embedded = false }: { projectId: string
       {!sessionId ? (
         <div className="p-3 text-xs text-subtle">Keine Session ausgewählt.</div>
       ) : (
-        <div ref={scrollRef} className="min-h-0 flex-1 overflow-auto font-mono text-[11px] leading-[18px]">
+        <div ref={scrollRef} className="min-h-0 flex-1 overflow-auto font-mono text-caption leading-4.5">
           <div className="relative" style={{ height: v.getTotalSize() }}>
             {v.getVirtualItems().map((row) => {
               const e = events[row.index]!;

@@ -4,6 +4,7 @@ import path from "node:path";
 import { ForgeError, type Project } from "@forge/protocol";
 import type { GitEngine } from "../git/git.js";
 import type { ProjectManager } from "../projects/project-manager.js";
+import { pathKey } from "../util/paths.js";
 
 /** Branch-safe slug from free text. */
 export function slugify(text: string, max = 40): string {
@@ -18,6 +19,15 @@ export function slugify(text: string, max = 40): string {
       .slice(0, max)
       .replace(/-+$/g, "") || "aufgabe"
   );
+}
+
+/** First of base, base-2, base-3, ... that does not exist yet. */
+export function freeDir(base: string, exists: (p: string) => boolean = existsSync): string {
+  if (!exists(base)) return base;
+  for (let i = 2; ; i++) {
+    const candidate = `${base}-${i}`;
+    if (!exists(candidate)) return candidate;
+  }
 }
 
 /**
@@ -37,29 +47,69 @@ export class WorktreeService {
     if (check.code !== 0 || branch.startsWith("-")) throw new ForgeError("VALIDATION", `Ungültiger Branch-Name: ${branch}`);
     const root = path.join(path.dirname(parent.path), ".forge-worktrees", path.basename(parent.path));
     await mkdir(root, { recursive: true });
-    let dir = path.join(root, slugify(branch.replace(/\//g, "-"), 60));
-    for (let i = 2; existsSync(dir); i++) dir = `${dir}-${i}`;
+    const dir = freeDir(path.join(root, slugify(branch.replace(/\//g, "-"), 60)));
     const exists = (await this.git.exec(parent.path, ["rev-parse", "--verify", "-q", `refs/heads/${branch}`])).code === 0;
     const r = await this.git.exec(parent.path, exists ? ["worktree", "add", dir, branch] : ["worktree", "add", "-b", branch, dir], undefined, 120_000);
     if (r.code !== 0) throw new ForgeError("GIT_FAILED", (r.stderr || r.stdout).trim() || "Worktree konnte nicht angelegt werden");
-    const project = await this.projects.import(dir, parent.id);
+    let project: Project;
+    try {
+      project = await this.projects.import(dir, parent.id);
+    } catch (e) {
+      // The branch stays (it may hold commits already); only the folder FORGE just created goes.
+      await this.git.exec(parent.path, ["worktree", "remove", "--force", dir], undefined, 60_000).catch(() => null);
+      throw e;
+    }
     this.projects.update(project.id, { name: `${parent.name} · ${branch}`, profile: parent.profile, tags: parent.tags, testCommand: parent.testCommand, devCommand: parent.devCommand });
     return this.projects.get(project.id);
+  }
+
+  /** Main working tree of `dir` if `dir` is the root of a linked worktree, else null. */
+  async mainWorkingTree(dir: string): Promise<string | null> {
+    if (!existsSync(dir)) return null;
+    const r = await this.git.exec(dir, ["rev-parse", "--path-format=absolute", "--show-toplevel", "--git-dir", "--git-common-dir"]).catch(() => null);
+    if (!r || r.code !== 0) return null;
+    const [top = "", gitDir = "", common = ""] = r.stdout.split("\n").map((l) => l.trim());
+    if (!top || !gitDir || !common || pathKey(top) !== pathKey(dir) || pathKey(gitDir) === pathKey(common)) return null;
+    return path.basename(common) === ".git" ? path.dirname(common) : common;
+  }
+
+  /**
+   * Folder to run `git worktree` commands for a worktree from. Normally the parent project; if that
+   * entry is gone, the main working tree. Never the worktree itself: Windows cannot delete a folder
+   * that is the current directory of a process.
+   */
+  private async controlDir(worktree: Project): Promise<string | null> {
+    const parent = this.projects.all().find((p) => p.id === worktree.parentId);
+    if (parent?.exists) return parent.path;
+    return this.mainWorkingTree(worktree.path);
+  }
+
+  /**
+   * Deletes `dir` through git if it is a linked worktree, so the repository forgets it too (a
+   * worktree whose parent entry was removed is a standalone project). False if it is none.
+   */
+  async removeIfWorktree(dir: string): Promise<boolean> {
+    const main = await this.mainWorkingTree(dir);
+    if (!main) return false;
+    const r = await this.git.exec(main, ["worktree", "remove", "--force", dir], undefined, 60_000);
+    if (r.code !== 0) throw new ForgeError("GIT_FAILED", (r.stderr || r.stdout).trim() || "Worktree konnte nicht entfernt werden");
+    return true;
   }
 
   /** Removes the worktree folder; the branch and its commits stay in the repository. */
   async remove(worktree: Project, force: boolean) {
     if (!worktree.parentId) throw new ForgeError("VALIDATION", "Das ist kein Worktree-Projekt.");
-    const parent = this.projects.get(worktree.parentId);
     if (!force && existsSync(worktree.path)) {
       const st = await this.git.status(worktree.path);
       if (st.files.length) throw new ForgeError("CONFLICT", `Der Worktree hat ${st.files.length} nicht committete Änderungen.`, { dirty: st.files.length });
     }
+    const cwd = await this.controlDir(worktree);
     if (existsSync(worktree.path)) {
-      const r = await this.git.exec(parent.path, ["worktree", "remove", ...(force ? ["--force"] : []), worktree.path], undefined, 60_000);
-      if (r.code !== 0) throw new ForgeError("GIT_FAILED", (r.stderr || r.stdout).trim());
-    } else {
-      await this.git.exec(parent.path, ["worktree", "prune"]);
+      if (!cwd) throw new ForgeError("GIT_FAILED", `Das Repository zu diesem Worktree wurde nicht gefunden: ${worktree.path}`);
+      const r = await this.git.exec(cwd, ["worktree", "remove", ...(force ? ["--force"] : []), worktree.path], undefined, 60_000);
+      if (r.code !== 0) throw new ForgeError("GIT_FAILED", (r.stderr || r.stdout).trim() || "Worktree konnte nicht entfernt werden");
+    } else if (cwd) {
+      await this.git.exec(cwd, ["worktree", "prune"]);
     }
     this.projects.remove(worktree.id);
   }

@@ -26,6 +26,7 @@ export type ChatItem =
       superseded: boolean;
     }
   | { kind: "approval"; key: string; ts: string; req: Body<"approval.request">; resolved: Body<"approval.resolved"> | null }
+  | { kind: "autocommit"; key: string; ts: string; req: Body<"automation.confirm">; resolved: Body<"automation.confirmResolved"> | null }
   | { kind: "blocked"; key: string; ts: string; body: Body<"policy.blocked"> }
   | { kind: "result"; key: string; ts: string; body: Body<"turn.result"> }
   | { kind: "error"; key: string; ts: string; message: string; retryable: boolean }
@@ -57,9 +58,55 @@ function parseTodos(input: Record<string, unknown>): TodoEntry[] | null {
  * Pure function: same input, same output.
  */
 export function buildChatItems(events: SessionEvent[], streaming: Record<string, string>): ChatItem[] {
+  return appendStreaming(buildEventItems(events), streaming);
+}
+
+/** Live text deltas as assistant items after the event items; texts that arrived in final form are skipped. */
+export function appendStreaming(items: ChatItem[], streaming: Record<string, string>): ChatItem[] {
+  const live = Object.entries(streaming).filter(([, text]) => !!text);
+  if (!live.length) return items;
+  const final = new Set(items.filter((i) => i.kind === "assistant").map((i) => i.key));
+  const extra: ChatItem[] = live
+    .filter(([key]) => !final.has(`a${key}`))
+    .map(([key, text]) => ({ kind: "assistant", key: `a${key}`, seq: null, text, streaming: true, ts: null }));
+  return extra.length ? [...items, ...extra] : items;
+}
+
+function sameValue(a: unknown, b: unknown, depth: number): boolean {
+  if (a === b) return true;
+  if (depth === 0 || typeof a !== "object" || typeof b !== "object" || a === null || b === null) return false;
+  if (Array.isArray(a) !== Array.isArray(b)) return false;
+  const ra = a as Record<string, unknown>;
+  const rb = b as Record<string, unknown>;
+  const ka = Object.keys(ra);
+  if (ka.length !== Object.keys(rb).length) return false;
+  return ka.every((k) => sameValue(ra[k], rb[k], depth - 1));
+}
+
+/**
+ * Keeps the previous object for every item whose content did not change, so memoized rows skip
+ * rendering when a new event arrives. Returns `prev` itself when nothing changed.
+ */
+export function reuseStableItems(prev: readonly ChatItem[], next: ChatItem[]): ChatItem[] {
+  if (!prev.length) return next;
+  const byKey = new Map(prev.map((i) => [i.key, i]));
+  let changed = prev.length !== next.length;
+  const out = next.map((item, i) => {
+    const old = byKey.get(item.key);
+    // Items hold event bodies (stable references) plus small wrapper objects and arrays built per pass.
+    const keep = old && sameValue(old, item, 3) ? old : item;
+    if (keep !== prev[i]) changed = true;
+    return keep;
+  });
+  return changed ? out : (prev as ChatItem[]);
+}
+
+/** Chat items of the persisted events only, without live deltas. */
+export function buildEventItems(events: SessionEvent[]): ChatItem[] {
   const items: ChatItem[] = [];
   const toolIdx = new Map<string, number>();
   const approvalIdx = new Map<string, { item: number; inTool: boolean }>();
+  const confirmIdx = new Map<string, number>();
   const textIdx = new Map<string, number>();
   let lastTodo: number | null = null;
 
@@ -117,6 +164,16 @@ export function buildChatItems(events: SessionEvent[], streaming: Record<string,
         else if (it?.kind === "approval") items[ref.item] = { ...it, resolved: b };
         break;
       }
+      case "automation.confirm":
+        confirmIdx.set(b.requestId, items.length);
+        items.push({ kind: "autocommit", key: `q${b.requestId}`, ts: ev.ts, req: b, resolved: null });
+        break;
+      case "automation.confirmResolved": {
+        const i = confirmIdx.get(b.requestId);
+        const it = i !== undefined ? items[i] : undefined;
+        if (it?.kind === "autocommit") items[i!] = { ...it, resolved: b };
+        break;
+      }
       case "policy.blocked": {
         const i = b.toolUseId ? toolIdx.get(b.toolUseId) : undefined;
         const it = i !== undefined ? items[i] : undefined;
@@ -132,11 +189,11 @@ export function buildChatItems(events: SessionEvent[], streaming: Record<string,
           kind: "notice",
           key: `g${ev.seq}`,
           ts: ev.ts,
-          text: `Checkpoint ${b.head ?? "ohne Commit"} auf ${b.branch ?? "detached"} · ${b.changedFiles} geänderte Datei(en)`,
+          text: `Checkpoint ${b.head ?? "ohne Commit"} ${b.branch ? `auf ${b.branch}` : "ohne Branch"} ·${b.changedFiles} geänderte Datei(en)`,
           tone: "info",
           card: {
             title: "Checkpoint erstellt",
-            ref: b.branch ?? "detached",
+            ref: b.branch ?? "ohne Branch",
             detail: `${b.head ? `${b.head} · ` : ""}${b.changedFiles} geänderte Datei(en)`,
             icon: "checkpoint",
           },
@@ -236,10 +293,6 @@ export function buildChatItems(events: SessionEvent[], streaming: Record<string,
     }
   }
 
-  for (const [key, text] of Object.entries(streaming)) {
-    if (textIdx.has(key) || !text) continue;
-    items.push({ kind: "assistant", key: `a${key}`, seq: null, text, streaming: true, ts: null });
-  }
   return items;
 }
 

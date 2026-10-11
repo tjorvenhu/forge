@@ -1,4 +1,4 @@
-import { DatabaseSync } from "node:sqlite";
+import { DatabaseSync, type StatementSync } from "node:sqlite";
 import { SEARCH_MARK_END, SEARCH_MARK_START, type EffortLevel, type PermissionMode, type ProfileId, type Project, type PhoneCallRecord, type SearchHit, type Session, type SessionEvent, type SessionEventBody, type SessionStatus, type Settings } from "@forge/protocol";
 
 const MIGRATIONS: string[] = [
@@ -192,6 +192,9 @@ export type SessionRecord = Omit<Session, "live" | "background" | "context">;
 
 const now = () => new Date().toISOString();
 
+/** Events per sessions.events call; the newest ones, older ones via beforeSeq. */
+export const EVENT_PAGE_LIMIT = 20_000;
+
 function toProject(r: ProjectRow): ProjectRecord {
   return {
     id: r.id,
@@ -233,6 +236,17 @@ function toSession(r: SessionRow): SessionRecord {
 export class Db {
   readonly sql: DatabaseSync;
   private seqCache = new Map<string, number>();
+  private stmts = new Map<string, StatementSync>();
+
+  /** Prepared once per SQL text; used on the hot paths (every stream event hits them). */
+  private stmt(sql: string): StatementSync {
+    let s = this.stmts.get(sql);
+    if (!s) {
+      s = this.sql.prepare(sql);
+      this.stmts.set(sql, s);
+    }
+    return s;
+  }
 
   constructor(file: string) {
     this.sql = new DatabaseSync(file);
@@ -346,6 +360,11 @@ export class Db {
     return this.sql.prepare("DELETE FROM projects WHERE id = ?").run(id).changes > 0;
   }
 
+  /** parent_id has no foreign key: worktrees of a removed project become standalone projects. */
+  detachChildProjects(parentId: string) {
+    this.sql.prepare("UPDATE projects SET parent_id = NULL WHERE parent_id = ?").run(parentId);
+  }
+
   // ---- sessions
 
   insertSession(s: SessionRecord) {
@@ -393,7 +412,7 @@ export class Db {
         vals.push(v as string | null);
       }
     }
-    this.sql.prepare(`UPDATE sessions SET ${sets.join(", ")} WHERE id = ?`).run(...vals, id);
+    this.stmt(`UPDATE sessions SET ${sets.join(", ")} WHERE id = ?`).run(...vals, id);
     return this.getSession(id);
   }
 
@@ -403,7 +422,7 @@ export class Db {
   }
 
   getSession(id: string): SessionRecord | null {
-    const r = this.sql.prepare("SELECT * FROM sessions WHERE id = ?").get(id) as SessionRow | undefined;
+    const r = this.stmt("SELECT * FROM sessions WHERE id = ?").get(id) as SessionRow | undefined;
     return r ? toSession(r) : null;
   }
 
@@ -458,7 +477,7 @@ export class Db {
   private nextSeq(sessionId: string): number {
     let cur = this.seqCache.get(sessionId);
     if (cur === undefined) {
-      const r = this.sql.prepare("SELECT MAX(seq) AS m FROM events WHERE session_id = ?").get(sessionId) as { m: number | null };
+      const r = this.stmt("SELECT MAX(seq) AS m FROM events WHERE session_id = ?").get(sessionId) as { m: number | null };
       cur = r.m ?? 0;
     }
     cur += 1;
@@ -468,17 +487,29 @@ export class Db {
 
   appendEvent(sessionId: string, body: SessionEventBody): SessionEvent {
     const ev: SessionEvent = { seq: this.nextSeq(sessionId), sessionId, ts: now(), body };
-    this.sql
-      .prepare("INSERT INTO events(session_id, seq, ts, type, body) VALUES(?, ?, ?, ?, ?)")
-      .run(sessionId, ev.seq, ev.ts, body.type, JSON.stringify(body));
+    this.stmt("INSERT INTO events(session_id, seq, ts, type, body) VALUES(?, ?, ?, ?, ?)").run(sessionId, ev.seq, ev.ts, body.type, JSON.stringify(body));
     return ev;
   }
 
-  listEvents(sessionId: string, afterSeq = 0): SessionEvent[] {
-    const rows = this.sql
-      .prepare("SELECT seq, ts, body FROM events WHERE session_id = ? AND seq > ? ORDER BY seq ASC LIMIT 20000")
-      .all(sessionId, afterSeq) as Array<{ seq: number; ts: string; body: string }>;
+  /**
+   * The newest `limit` events with afterSeq < seq < beforeSeq, in ascending order. A long session
+   * thus always shows its latest state; older events are paged with beforeSeq.
+   */
+  listEvents(sessionId: string, afterSeq = 0, opts: { beforeSeq?: number; limit?: number } = {}): SessionEvent[] {
+    const rows = this.stmt(
+      `SELECT seq, ts, body FROM (
+         SELECT seq, ts, body FROM events WHERE session_id = ? AND seq > ? AND seq < ? ORDER BY seq DESC LIMIT ?
+       ) ORDER BY seq ASC`,
+    ).all(sessionId, afterSeq, opts.beforeSeq ?? Number.MAX_SAFE_INTEGER, opts.limit ?? EVENT_PAGE_LIMIT) as Array<{ seq: number; ts: string; body: string }>;
     return rows.map((r) => ({ seq: r.seq, sessionId, ts: r.ts, body: JSON.parse(r.body) as SessionEventBody }));
+  }
+
+  /** Ids of all user messages of a session (own sends, imports, remote echoes), however long it is. */
+  listUserMessageUuids(sessionId: string): string[] {
+    const rows = this.stmt(
+      "SELECT json_extract(body, '$.uuid') AS uuid FROM events WHERE session_id = ? AND type = 'user.message' AND json_extract(body, '$.uuid') IS NOT NULL",
+    ).all(sessionId) as Array<{ uuid: string }>;
+    return rows.map((r) => r.uuid);
   }
 
   // ---- full-text search
@@ -570,10 +601,6 @@ export class Db {
     source: string;
     reason: string | null;
   }) {
-    this.sql
-      .prepare(
-        "INSERT INTO approvals(session_id, request_id, tool_name, input, decision, scope, source, reason, ts) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)",
-      )
-      .run(a.sessionId, a.requestId, a.toolName, JSON.stringify(a.input), a.decision, a.scope, a.source, a.reason, now());
+    this.stmt("INSERT INTO approvals(session_id, request_id, tool_name, input, decision, scope, source, reason, ts) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)").run(a.sessionId, a.requestId, a.toolName, JSON.stringify(a.input), a.decision, a.scope, a.source, a.reason, now());
   }
 }

@@ -19,22 +19,21 @@ Ein API-Key ist nicht nötig.
 und die GitHub CLI sind enthalten. Fehlt Claude Code, installiert FORGE es auf Knopfdruck über den
 offiziellen Installer. Anmeldung bei Claude und GitHub erfolgt in der App (Einstellungen bzw. GitHub).
 
-**Für die Entwicklung** (Windows 11 getestet, Linux ungetestet):
+FORGE läuft nur unter Windows (getestet mit Windows 11).
+
+**Für die Entwicklung:**
 
 | Werkzeug | Version (getestet) |
 |---|---|
 | Node.js | ≥ 22.13 (getestet 24.14) |
 | pnpm | 10.x |
 | Rust + Cargo | stable (getestet 1.99, MSVC) |
-| Windows: Visual Studio Build Tools | 2022, Workload „C++ Build Tools" |
+| Visual Studio Build Tools | 2022, Workload „C++ Build Tools" |
 
 ```powershell
 winget install Microsoft.VisualStudio.2022.BuildTools --override "--wait --passive --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended"
 winget install Rustlang.Rustup
 ```
-
-Linux (Debian/Ubuntu) braucht zusätzlich die Tauri-Systempakete: `libwebkit2gtk-4.1-dev`, `build-essential`,
-`libssl-dev`, `libayatana-appindicator3-dev`, `librsvg2-dev`; zur Laufzeit `nodejs` (≥ 22.13), `git`, `gh`.
 
 ## Claude-Max-Anmeldung
 
@@ -129,13 +128,11 @@ Letzter Lauf (Details in [docs/TESTING.md](docs/TESTING.md)): Lint und Typecheck
 
 ## Bekannte Lücken
 
-- Linux nicht getestet (keine Linux-Umgebung verfügbar). Code ist plattformneutral geschrieben.
 - Telefon: nur SIP über UDP mit G.711, kein TLS/SRTP. Mit einer echten Anlage noch nicht getestet, nur gegen eine Test-Anlage im Testlauf.
 - Remote Control funktioniert nur, solange FORGE geöffnet ist. Die genutzte SDK-Funktion ist nicht offiziell dokumentiert.
 - Claude Code selbst wird nicht mitgeliefert, sondern bei Bedarf aus der App installiert (offizieller Installer).
 
 ## Roadmap
 
-- Linux-Build testen und als .deb/.AppImage ausliefern.
 - Installer signieren (Windows SmartScreen), sobald ein Code-Signing-Zertifikat vorhanden ist.
 - Merge-Hilfe für parallele Agenten (Konflikte gemeinsam mit Claude lösen).

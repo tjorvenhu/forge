@@ -20,7 +20,7 @@ export function Toaster() {
           {t.tone === "warning" && <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning" />}
           {t.tone === "info" && <Info className="mt-0.5 h-4 w-4 shrink-0 text-accent" />}
           <div className="min-w-0 flex-1">
-            <div className="text-[13px] font-medium">{t.title}</div>
+            <div className="text-body font-medium">{t.title}</div>
             {t.body && <div className="mt-0.5 line-clamp-4 whitespace-pre-wrap break-words text-xs text-muted">{t.body}</div>}
             {t.action && (
               <button

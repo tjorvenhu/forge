@@ -212,7 +212,8 @@ export const methods = {
   },
   "sessions.get": { params: sessionRef, result: Session },
   "sessions.events": {
-    params: sessionRef.extend({ afterSeq: z.number().int().optional() }),
+    /** the newest events (at most 20,000) after afterSeq; older ones page by passing the first seq as beforeSeq */
+    params: sessionRef.extend({ afterSeq: z.number().int().optional(), beforeSeq: z.number().int().optional() }),
     result: z.array(SessionEvent),
   },
   "sessions.start": {
@@ -247,6 +248,11 @@ export const methods = {
       /** answers to an AskUserQuestion request: question text -> answer (multi-select comma-separated) */
       answers: z.record(z.string().max(2000), z.string().max(5000)).optional(),
     }),
+    result: z.object({ ok: z.boolean() }),
+  },
+  /** Answer to an automation.confirm question: commit despite the findings, or leave the files uncommitted. */
+  "sessions.confirmAutoCommit": {
+    params: sessionRef.extend({ requestId: id, commit: z.boolean() }),
     result: z.object({ ok: z.boolean() }),
   },
   "sessions.contextUsage": { params: sessionRef, result: ContextUsage.nullable() },

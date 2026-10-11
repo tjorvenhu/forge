@@ -16,7 +16,7 @@ const toneClass: Record<Tone, string> = {
 
 export function Badge({ tone = "neutral", children, className }: { tone?: Tone; children: ReactNode; className?: string }) {
   return (
-    <span className={cn("inline-flex h-5 shrink-0 items-center gap-1 whitespace-nowrap rounded border px-1.5 text-[11px] font-medium", toneClass[tone], className)}>
+    <span className={cn("inline-flex h-5 shrink-0 items-center gap-1 whitespace-nowrap rounded border px-1.5 text-caption font-medium", toneClass[tone], className)}>
       {children}
     </span>
   );
@@ -51,6 +51,34 @@ export function Checkbox({ checked, onChange, label, disabled }: { checked: bool
   );
 }
 
+/** Checkbox with a label and an optional hint line below it; the whole row is clickable. */
+export function ToggleRow({
+  checked,
+  onChange,
+  label,
+  disabled,
+  children,
+}: {
+  checked: boolean;
+  onChange: (v: boolean) => void;
+  label: string;
+  disabled?: boolean;
+  /** hint below the label */
+  children?: ReactNode;
+}) {
+  return (
+    <label className={cn("flex items-start gap-2.5", disabled && "opacity-60")}>
+      <span className="mt-0.5">
+        <Checkbox checked={checked} onChange={onChange} label={label} disabled={disabled} />
+      </span>
+      <span>
+        <span className="block text-body">{label}</span>
+        {children && <span className="block text-xs text-muted">{children}</span>}
+      </span>
+    </label>
+  );
+}
+
 export function Tooltip({ content, children }: { content: ReactNode; children: ReactNode }) {
   return (
     <T.Root delayDuration={400}>
@@ -69,7 +97,7 @@ export function EmptyState({ icon, title, children, action }: { icon?: ReactNode
     <div className="flex flex-col items-center justify-center gap-3 px-6 py-12 text-center">
       {icon && <div className="text-subtle">{icon}</div>}
       <div className="text-sm font-medium">{title}</div>
-      {children && <div className="max-w-md text-[13px] text-muted">{children}</div>}
+      {children && <div className="max-w-md text-body text-muted">{children}</div>}
       {action}
     </div>
   );
@@ -77,7 +105,7 @@ export function EmptyState({ icon, title, children, action }: { icon?: ReactNode
 
 export function ErrorBanner({ title = "Fehler", children, action }: { title?: string; children: ReactNode; action?: ReactNode }) {
   return (
-    <div role="alert" className="flex items-start gap-3 rounded-lg border border-danger/30 bg-danger-soft px-3 py-2.5 text-[13px]">
+    <div role="alert" className="flex items-start gap-3 rounded-lg border border-danger/30 bg-danger-soft px-3 py-2.5 text-body">
       <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-danger" />
       <div className="min-w-0 flex-1">
         <div className="font-medium text-danger">{title}</div>
@@ -98,5 +126,5 @@ export function SectionTitle({ children, action }: { children: ReactNode; action
 }
 
 export function Kbd({ children }: { children: ReactNode }) {
-  return <kbd className="rounded border border-border bg-surface-3 px-1 font-mono text-[10px] text-muted">{children}</kbd>;
+  return <kbd className="rounded border border-border bg-surface-3 px-1 font-mono text-2xs text-muted">{children}</kbd>;
 }

@@ -5,6 +5,7 @@ import { call, keys } from "@/lib/queries";
 import { errorMessage } from "@/lib/rpc";
 import { useUi } from "@/stores/ui";
 import { useDrafts } from "@/stores/drafts";
+import { useSessionEvents } from "@/stores/session-events";
 import { toast } from "@/stores/toast";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Checkbox } from "@/components/ui/misc";
@@ -32,6 +33,7 @@ export function DeleteSessionDialog({ session, onClose }: { session: SessionRef 
           const ui = useUi.getState();
           if (ui.activeSession[s.projectId] === s.id) ui.setActiveSession(s.projectId, null);
           useDrafts.getState().clear(s.id);
+          useSessionEvents.getState().drop(s.id);
           qc.removeQueries({ queryKey: keys.session(s.id) });
           void qc.invalidateQueries({ queryKey: keys.sessions(s.projectId) });
           void qc.invalidateQueries({ queryKey: ["allSessions"] });
@@ -44,7 +46,7 @@ export function DeleteSessionDialog({ session, onClose }: { session: SessionRef 
       }}
     >
       {s?.claudeSessionId && (
-        <label className="flex items-start gap-2.5 text-[13px]">
+        <label className="flex items-start gap-2.5 text-body">
           <span className="mt-0.5">
             <Checkbox checked={withTranscript} onChange={setWithTranscript} label="Auch aus Claude Code löschen" />
           </span>

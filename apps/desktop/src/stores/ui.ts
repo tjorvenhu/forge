@@ -5,6 +5,16 @@ export type WorkspaceTab = "chat" | "git" | "files" | "settings";
 export type NewProjectMode = "import" | "create" | "clone";
 export type BottomTab = "output" | "dev";
 
+/** activeSession values starting with this prefix point at a terminal session not yet adopted by FORGE */
+export const EXTERNAL_PREFIX = "ext:";
+
+/** Splits an activeSession value into a FORGE session id or the Claude session id of a terminal session. */
+export function splitActive(active: string | null | undefined): { sessionId: string | null; externalId: string | null } {
+  if (!active) return { sessionId: null, externalId: null };
+  if (active.startsWith(EXTERNAL_PREFIX)) return { sessionId: null, externalId: active.slice(EXTERNAL_PREFIX.length) };
+  return { sessionId: active, externalId: null };
+}
+
 interface UiState {
   view: View;
   activeProjectId: string | null;

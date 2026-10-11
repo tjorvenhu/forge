@@ -1,13 +1,10 @@
-import { useEffect } from "react";
-import { QueryClient, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { QueryClient, useMutation, useQuery } from "@tanstack/react-query";
 import type { MethodName, ParamsOf, ResultOf } from "@forge/protocol";
 import { rpc } from "./rpc";
-import { useSessionEvents } from "@/stores/session-events";
-import { useDevOutput } from "@/stores/dev-output";
+import { loadOlderPages, useSessionEvents } from "@/stores/session-events";
 import { toast } from "@/stores/toast";
 import { errorMessage } from "./rpc";
-import { playSound } from "./sounds";
-import { notifyKind, notifySession, shouldNotify } from "./notifications";
 
 export const queryClient = new QueryClient({
   defaultOptions: {
@@ -48,97 +45,6 @@ export const keys = {
 
 export function call<M extends MethodName>(method: M, params: ParamsOf<M>): Promise<ResultOf<M>> {
   return rpc.call(method, params);
-}
-
-/** Routes sidecar push events into caches and the session event store. Mount once. */
-export function useServerEvents() {
-  const qc = useQueryClient();
-  useEffect(() => {
-    let gitTimer: ReturnType<typeof setTimeout> | null = null;
-    const refreshGitSoon = (projectId: string) => {
-      if (gitTimer) clearTimeout(gitTimer);
-      gitTimer = setTimeout(() => {
-        void qc.invalidateQueries({ queryKey: keys.git(projectId) });
-        void qc.invalidateQueries({ queryKey: keys.project(projectId) });
-        void qc.invalidateQueries({ queryKey: ["diff", projectId] });
-      }, 400);
-    };
-    return rpc.subscribe((e) => {
-      switch (e.event) {
-        case "session.event": {
-          useSessionEvents.getState().apply(e.payload);
-          const t = e.payload.body.type;
-          const kind = notifyKind(e.payload.body);
-          if (kind && shouldNotify(e.payload.sessionId, kind)) {
-            if (qc.getQueryData<ResultOf<"settings.get">>(keys.settings)?.sounds !== false) playSound(kind);
-            void notifySession(qc, e.payload, kind);
-          }
-          if (t === "tool.result" || t === "turn.result") {
-            const s = qc.getQueryData<ResultOf<"sessions.get">>(keys.session(e.payload.sessionId));
-            if (s) refreshGitSoon(s.projectId);
-          }
-          break;
-        }
-        case "session.updated":
-          qc.setQueryData(keys.session(e.payload.id), e.payload);
-          void qc.invalidateQueries({ queryKey: keys.sessions(e.payload.projectId) });
-          void qc.invalidateQueries({ queryKey: ["allSessions"] });
-          void qc.invalidateQueries({ queryKey: keys.liveSessions });
-          if (e.payload.status === "idle" || e.payload.status === "stopped") {
-            refreshGitSoon(e.payload.projectId);
-            void qc.invalidateQueries({ queryKey: keys.projects });
-            void qc.invalidateQueries({ queryKey: keys.project(e.payload.projectId) });
-            void qc.invalidateQueries({ queryKey: keys.usage });
-          }
-          break;
-        case "github.login":
-          qc.setQueryData(keys.githubLogin, e.payload);
-          if (e.payload.phase === "done") {
-            void qc.invalidateQueries({ queryKey: keys.githubAccount });
-            void qc.invalidateQueries({ queryKey: keys.githubRepos });
-            void qc.invalidateQueries({ queryKey: keys.diagnostics });
-          }
-          break;
-        case "claude.setup":
-          qc.setQueryData(keys.claudeSetup, e.payload);
-          if (e.payload.phase === "done") {
-            void call("system.diagnostics", { refresh: true }).then((d) => qc.setQueryData(keys.diagnostics, d));
-            void qc.invalidateQueries({ queryKey: keys.usage });
-            void qc.invalidateQueries({ queryKey: keys.runtimeInfo });
-            void qc.invalidateQueries({ queryKey: keys.claudeUpdate });
-          }
-          if (e.payload.task === "update" && e.payload.phase === "done") {
-            toast.success("Claude Code aktualisiert", `${e.payload.message ?? ""} Offene Sessions nutzen die neue Version nach einem Neustart.`.trim());
-          } else if (e.payload.task === "update" && e.payload.phase === "error") {
-            toast.error("Update fehlgeschlagen", e.payload.message ?? undefined);
-          }
-          break;
-        case "remote.updated":
-          qc.setQueryData(["remote", e.payload.projectId], e.payload.state);
-          break;
-        case "devserver.updated":
-          qc.setQueryData(keys.devServer(e.payload.projectId), e.payload);
-          break;
-        case "devserver.output":
-          useDevOutput.getState().append(e.payload.projectId, e.payload.text);
-          break;
-        case "phone.updated": {
-          const prev = qc.getQueryData<ResultOf<"phone.state">>(keys.phoneState);
-          qc.setQueryData(keys.phoneState, e.payload);
-          if (prev?.call && !e.payload.call) void qc.invalidateQueries({ queryKey: keys.phoneCalls });
-          break;
-        }
-        case "project.updated":
-          void qc.invalidateQueries({ queryKey: keys.git(e.payload.projectId) });
-          void qc.invalidateQueries({ queryKey: ["diff", e.payload.projectId] });
-          void qc.invalidateQueries({ queryKey: keys.log(e.payload.projectId) });
-          void qc.invalidateQueries({ queryKey: keys.branches(e.payload.projectId) });
-          void qc.invalidateQueries({ queryKey: keys.projects });
-          void qc.invalidateQueries({ queryKey: keys.project(e.payload.projectId) });
-          break;
-      }
-    });
-  }, [qc]);
 }
 
 export const useProjects = () => useQuery({ queryKey: keys.projects, queryFn: () => call("projects.list", {}) });
@@ -217,9 +123,11 @@ export const useLiveSessions = () => useQuery({ queryKey: keys.liveSessions, que
 export const useSession = (sessionId: string | null) =>
   useQuery({ queryKey: keys.session(sessionId ?? ""), queryFn: () => call("sessions.get", { sessionId: sessionId! }), enabled: !!sessionId });
 
-/** Loads persisted history once per session; live events arrive via useServerEvents. */
+/** Loads persisted history once per session; live events arrive via startServerEvents. */
 export function useSessionHistory(sessionId: string | null) {
   const loaded = useSessionEvents((s) => (sessionId ? s.buffers[sessionId]?.loaded : true));
+  const [failure, setFailure] = useState<{ sessionId: string; message: string } | null>(null);
+  const [attempt, setAttempt] = useState(0);
   useEffect(() => {
     if (!sessionId || loaded) return;
     let cancelled = false;
@@ -227,12 +135,63 @@ export function useSessionHistory(sessionId: string | null) {
       .then((events) => {
         if (!cancelled) useSessionEvents.getState().setHistory(sessionId, events);
       })
-      .catch((e: unknown) => toast.error("Verlauf konnte nicht geladen werden", errorMessage(e)));
+      .catch((e: unknown) => {
+        if (!cancelled) setFailure({ sessionId, message: errorMessage(e) });
+      });
     return () => {
       cancelled = true;
     };
-  }, [sessionId, loaded]);
-  return useSessionEvents((s) => (sessionId ? s.buffers[sessionId] : undefined));
+  }, [sessionId, loaded, attempt]);
+  const buffer = useSessionEvents((s) => (sessionId ? s.buffers[sessionId] : undefined));
+  const error = failure && failure.sessionId === sessionId && !buffer?.loaded ? failure.message : null;
+  const retry = () => {
+    setFailure(null);
+    setAttempt((n) => n + 1);
+  };
+  return { buffer, error, retry };
+}
+
+/**
+ * Loads older pages of a session's history on demand: the next one, or with `loadUntil` all pages
+ * down to a seq. `beforeApply` runs right before each page lands in the store, so the caller can
+ * remember its scroll position. Loads run one after another; each resolves to whether it reached
+ * its goal, or null after an error (already shown as a toast).
+ */
+export function useOlderHistory(sessionId: string, beforeApply?: () => void) {
+  const hasOlder = useSessionEvents((s) => !!s.buffers[sessionId]?.hasOlder);
+  const [loading, setLoading] = useState(false);
+  const queue = useRef<Promise<unknown>>(Promise.resolve());
+  const pending = useRef(0);
+  const beforeApplyRef = useRef(beforeApply);
+  useEffect(() => {
+    beforeApplyRef.current = beforeApply;
+  });
+  const loadUntil = useCallback(
+    (untilSeq?: number): Promise<boolean | null> => {
+      pending.current += 1;
+      setLoading(true);
+      const run = queue.current
+        .then(() =>
+          loadOlderPages(sessionId, (beforeSeq) => call("sessions.events", { sessionId, beforeSeq }), {
+            untilSeq,
+            beforeApply: () => beforeApplyRef.current?.(),
+          }),
+        )
+        .catch((e: unknown) => {
+          toast.error("Ältere Einträge nicht geladen", errorMessage(e));
+          return null;
+        })
+        .finally(() => {
+          pending.current -= 1;
+          if (!pending.current) setLoading(false);
+        });
+      queue.current = run;
+      return run;
+    },
+    [sessionId],
+  );
+  const loadOlder = useCallback(() => loadUntil(), [loadUntil]);
+  return { hasOlder, loading, loadOlder, loadUntil };
 }
 
 /** Mutation wrapper that shows errors as toasts. */

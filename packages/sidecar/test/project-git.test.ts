@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, rmSync, writeFileSync, existsSync } from "node:fs";
+import { mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync, existsSync } from "node:fs";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { ForgeError } from "@forge/protocol";
@@ -37,7 +37,7 @@ describe("ProjectManager", () => {
     expect(p.technologies).toEqual(expect.arrayContaining(["Next.js", "React", "TypeScript"]));
     expect(p.exists).toBe(true);
     await expectCode(pm.import(dir + path.sep), "DUPLICATE_PROJECT");
-    if (process.platform === "win32") await expectCode(pm.import(dir.toUpperCase()), "DUPLICATE_PROJECT");
+    await expectCode(pm.import(dir.toUpperCase()), "DUPLICATE_PROJECT");
   });
 
   it("persists across a new Db instance (app restart)", async () => {
@@ -97,6 +97,21 @@ describe("ProjectManager", () => {
     const p = await pm.import(dir);
     expect((await pm.readFile(p.id, "a.txt")).content).toBe("hallo");
     await expect(pm.readFile(p.id, "../forge.db")).rejects.toThrow(/außerhalb/);
+  });
+
+  it("does not follow links that point outside the project", async () => {
+    const dir = path.join(t.dir, "linked");
+    const secret = path.join(t.dir, "geheim");
+    mkdirSync(path.join(dir, "docs"), { recursive: true });
+    mkdirSync(secret);
+    writeFileSync(path.join(secret, "id_rsa"), "PRIVATE");
+    // A junction needs no extra rights on Windows; elsewhere it is a normal directory symlink.
+    symlinkSync(secret, path.join(dir, "docs", "x"), "junction");
+    const p = await pm.import(dir);
+    await expect(pm.readFile(p.id, "docs/x/id_rsa")).rejects.toThrow(/außerhalb/);
+    await expect(pm.listFiles(p.id, "docs/x")).rejects.toThrow(/außerhalb/);
+    expect((await pm.listFiles(p.id, "docs")).map((f) => f.path)).toEqual(["docs/x"]);
+    await expect(pm.readFile(p.id, "docs/fehlt.txt")).rejects.toThrow(/ENOENT/);
   });
 });
 
@@ -175,6 +190,54 @@ describe("GitEngine against a real repository", () => {
     expect((await engine.branches(repo)).find((b) => b.current)?.name).toBe("feature/test");
     await expectCode(engine.checkout(repo, "-evil", false), "VALIDATION");
     await expectCode(engine.checkout(repo, "bad..name", false), "VALIDATION");
+  });
+
+  it("treats file names with glob characters literally", async () => {
+    mkdirSync(path.join(repo, "app", "[id]"), { recursive: true });
+    mkdirSync(path.join(repo, "app", "i"), { recursive: true });
+    writeFileSync(path.join(repo, "app", "[id]", "page.tsx"), "a\n");
+    writeFileSync(path.join(repo, "app", "i", "page.tsx"), "b\n");
+    writeFileSync(path.join(repo, ".e[n]v"), "harmlos\n");
+    writeFileSync(path.join(repo, ".env"), "SECRET=1\n");
+    await engine.commit(repo, "feat: slug", ["app/[id]/page.tsx", ".e[n]v"], false);
+    const committed = (await git(repo, "show", "--name-only", "--format=", "HEAD")).split("\n").filter(Boolean);
+    expect(committed.sort()).toEqual([".e[n]v", "app/[id]/page.tsx"]);
+    expect((await engine.status(repo)).files.map((f) => f.path).sort()).toEqual([".env", "app/i/page.tsx"]);
+
+    await engine.stage(repo, ["app/[id]/page.tsx"]);
+    writeFileSync(path.join(repo, "app", "[id]", "page.tsx"), "a2\n");
+    await engine.stage(repo, ["app/[id]/page.tsx"]);
+    expect((await engine.status(repo)).files.find((f) => f.path === "app/i/page.tsx")).toMatchObject({ staged: false });
+  });
+
+  it("works on a project that is a subfolder of a repository", async () => {
+    const web = path.join(repo, "packages", "web");
+    mkdirSync(path.join(web, "src"), { recursive: true });
+    writeFileSync(path.join(web, "src", "page.tsx"), "eins\n");
+    await git(repo, "add", ".");
+    await git(repo, "commit", "-m", "web");
+    writeFileSync(path.join(web, "src", "page.tsx"), "zwei\n");
+    writeFileSync(path.join(web, "neu.ts"), "neu\n");
+    writeFileSync(path.join(repo, "a.txt"), "root change\n");
+
+    const st = await engine.status(web);
+    expect(st.files.map((f) => [f.path, f.kind])).toEqual([
+      ["src/page.tsx", "modified"],
+      ["neu.ts", "untracked"],
+    ]);
+    expect(st.summary.changedCount).toBe(2);
+    const d = await engine.diff(web, "src/page.tsx", false);
+    expect(d.lines.find((l) => l.kind === "add")?.text).toBe("zwei");
+    expect((await engine.diff(web, "neu.ts", false)).lines.find((l) => l.kind === "add")?.text).toBe("neu");
+
+    await engine.stage(web, ["src/page.tsx"]);
+    expect((await engine.status(web)).files[0]).toMatchObject({ path: "src/page.tsx", staged: true });
+    await engine.unstage(web, ["src/page.tsx"]);
+    await engine.commit(web, "feat: web", ["src/page.tsx", "neu.ts"], false);
+    const committed = (await git(repo, "show", "--name-only", "--format=", "HEAD")).split("\n").filter(Boolean);
+    expect(committed.sort()).toEqual(["packages/web/neu.ts", "packages/web/src/page.tsx"]);
+    expect(await engine.status(web)).toMatchObject({ files: [] });
+    expect((await engine.status(repo)).files.map((f) => f.path)).toEqual(["a.txt"]);
   });
 
   it("supports the first commit in a fresh repository", async () => {

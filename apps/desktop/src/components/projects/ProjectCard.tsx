@@ -6,6 +6,7 @@ import { errorMessage } from "@/lib/rpc";
 import { relativeTime, shortPath, cn } from "@/lib/utils";
 import { useUi } from "@/stores/ui";
 import { toast } from "@/stores/toast";
+import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/misc";
 import { DropdownMenu } from "@/components/ui/dropdown";
 import { ProjectIcon } from "./ProjectIcon";
@@ -33,7 +34,7 @@ export function ProjectCard({ p, onRemove }: { p: ProjectWithStatus; onRemove: (
             <span className="truncate text-sm font-semibold">{p.name}</span>
             {p.favorite && <Star className="h-3.5 w-3.5 shrink-0 fill-warning text-warning" aria-label="Favorit" />}
           </div>
-          <div className="truncate font-mono text-[11px] text-subtle" title={p.path}>
+          <div className="truncate font-mono text-caption text-subtle" title={p.path}>
             {shortPath(p.path)}
           </div>
         </div>
@@ -47,7 +48,7 @@ export function ProjectCard({ p, onRemove }: { p: ProjectWithStatus; onRemove: (
         ) : p.git ? (
           <>
             <Badge tone="neutral">
-              <GitBranch className="h-3 w-3" /> {p.git.branch ?? "detached"}
+              <GitBranch className="h-3 w-3" /> {p.git.branch ?? "ohne Branch"}
             </Badge>
             {p.git.conflicted ? (
               <Badge tone="danger">Konflikt</Badge>
@@ -73,15 +74,15 @@ export function ProjectCard({ p, onRemove }: { p: ProjectWithStatus; onRemove: (
         ))}
       </div>
 
-      <div className="mt-auto flex items-center justify-between border-t border-border px-4 py-2 text-[11px] text-muted">
+      <div className="mt-auto flex items-center justify-between border-t border-border px-4 py-2 text-caption text-muted">
         <span className="truncate">
           {p.lastSession ? `Letzte Session ${relativeTime(p.lastSession.updatedAt)}: ${p.lastSession.title ?? "ohne Titel"}` : "Noch keine Session"}
         </span>
         <DropdownMenu
           trigger={
-            <button className="rounded p-1 text-subtle hover:bg-surface-3 hover:text-fg" aria-label="Projektaktionen">
+            <Button size="icon-sm" variant="ghost" className="h-6 w-6 rounded text-subtle" aria-label="Projektaktionen">
               <MoreHorizontal className="h-4 w-4" />
-            </button>
+            </Button>
           }
           items={[
             { label: p.favorite ? "Aus Favoriten entfernen" : "Zu Favoriten", icon: <Star className="h-3.5 w-3.5" />, onSelect: () => void toggleFavorite() },

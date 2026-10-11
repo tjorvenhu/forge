@@ -1,7 +1,8 @@
 import { createSocket, type Socket } from "node:dgram";
 import { lookup } from "node:dns/promises";
 import { EventEmitter } from "node:events";
-import { digestAuthorization, parseChallenge } from "./digest.js";
+import { digestAuthorization, pickChallenge } from "./digest.js";
+import { answerDirection, parseSdp, withDirection } from "./sdp.js";
 import {
   cseqOf,
   getHeader,
@@ -37,6 +38,7 @@ const KEEPALIVE_MS = 25_000;
 const REGISTER_EXPIRES = 300;
 const RETRY_REGISTER_MS = 60_000;
 const RING_TIMEOUT_MS = 45_000;
+const DROP_LOG_INTERVAL_MS = 60_000;
 const ALLOW = "INVITE, ACK, CANCEL, BYE, OPTIONS, INFO, UPDATE, NOTIFY";
 const USER_AGENT = "FORGE";
 
@@ -47,6 +49,12 @@ interface ClientTx {
   onProvisional?: (res: SipMessage) => void;
   timer: ReturnType<typeof setTimeout> | null;
   deadline: ReturnType<typeof setTimeout> | null;
+  provisional: boolean;
+}
+
+interface Address {
+  ip: string;
+  port: number;
 }
 
 export interface CallEvents {
@@ -71,8 +79,16 @@ export class SipCall extends EventEmitter<CallEvents> {
   remoteSdp = "";
   /** incoming: the INVITE; outgoing: the current INVITE (for CANCEL) */
   invite: SipMessage | null = null;
+  /** outgoing: the ACK we sent, repeated when the 2xx comes again */
   lastAck: SipMessage | null = null;
-  private okTimer: ReturnType<typeof setTimeout> | null = null;
+  /** incoming: where the INVITE came from; responses to it go back there, not to the Via */
+  peer: Address | null = null;
+  /**
+   * New SDP offer inside the dialog (re-INVITE, UPDATE). Returns our answer or null to reject it with
+   * 488. Without a handler the media stay as they are and only the direction is answered.
+   */
+  onOffer: ((sdp: string) => string | null) | null = null;
+  private repeat: { cseq: number; timer: ReturnType<typeof setTimeout> | null } | null = null;
   private ringTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(
@@ -90,33 +106,22 @@ export class SipCall extends EventEmitter<CallEvents> {
     this.localSdp = sdp;
     const res = this.ua.inviteResponse(this, 200, "OK", sdp);
     this.state = "active";
-    let interval = T1;
-    const started = Date.now();
-    const resend = () => {
-      if (this.state !== "active" || this.lastAck) return;
-      if (Date.now() - started > TX_TIMEOUT) {
-        void this.hangup("Keine Bestätigung (ACK) von der Anlage");
-        return;
-      }
-      this.ua.sendRaw(res);
-      interval = Math.min(interval * 2, T2);
-      this.okTimer = setTimeout(resend, interval);
-    };
-    this.okTimer = setTimeout(resend, interval);
+    this.repeatUntilAck(() => this.ua.respond(this, res), cseqOf(this.invite).seq, () => void this.hangup("Keine Bestätigung (ACK) von der Anlage"));
   }
 
-  reject(status = 486, reason = "Busy Here") {
-    if (this.direction !== "in" || this.state !== "ringing") return;
-    this.ua.inviteResponse(this, status, reason);
-    this.end("Abgewiesen");
+  /** Incoming call that is still ringing: final error response, repeated until the ACK (Timer G/H). */
+  reject(status = 486, reason = "Busy Here", why = "Abgewiesen") {
+    if (this.direction !== "in" || this.state !== "ringing" || !this.invite) return;
+    this.end(why);
+    const res = this.ua.inviteResponse(this, status, reason);
+    this.repeatUntilAck(() => this.ua.respond(this, res), cseqOf(this.invite).seq, null);
   }
 
   async hangup(reason = "Aufgelegt") {
     if (this.state === "ended") return;
     if (this.state === "ringing") {
       if (this.direction === "in") {
-        this.reject(603, "Decline");
-        this.end(reason);
+        this.reject(603, "Decline", reason);
         return;
       }
       // End right away; the PBX's answer to CANCEL does not matter to the user.
@@ -128,10 +133,35 @@ export class SipCall extends EventEmitter<CallEvents> {
     await this.ua.bye(this);
   }
 
+  /** @internal Repeats a final response with T1 doubling up to T2 until the matching ACK or 32 s. */
+  repeatUntilAck(send: () => void, cseq: number, onTimeout: (() => void) | null) {
+    this.stopRepeat();
+    let interval = T1;
+    const started = Date.now();
+    const repeat: { cseq: number; timer: ReturnType<typeof setTimeout> | null } = { cseq, timer: null };
+    const tick = () => {
+      if (this.repeat !== repeat) return;
+      if (Date.now() - started > TX_TIMEOUT) {
+        this.repeat = null;
+        onTimeout?.();
+        return;
+      }
+      send();
+      interval = Math.min(interval * 2, T2);
+      repeat.timer = setTimeout(tick, interval);
+    };
+    repeat.timer = setTimeout(tick, interval);
+    this.repeat = repeat;
+  }
+
+  private stopRepeat() {
+    if (this.repeat?.timer) clearTimeout(this.repeat.timer);
+    this.repeat = null;
+  }
+
   /** @internal */
   onAck(ack: SipMessage) {
-    this.lastAck = ack;
-    if (this.okTimer) clearTimeout(this.okTimer);
+    if (this.repeat && cseqOf(ack).seq === this.repeat.cseq) this.stopRepeat();
   }
 
   /** @internal */
@@ -143,7 +173,7 @@ export class SipCall extends EventEmitter<CallEvents> {
   end(reason: string) {
     if (this.state === "ended") return;
     this.state = "ended";
-    if (this.okTimer) clearTimeout(this.okTimer);
+    this.stopRepeat();
     if (this.ringTimer) clearTimeout(this.ringTimer);
     this.emit("ended", reason);
     this.ua.forget(this);
@@ -158,15 +188,17 @@ export interface UaEvents {
 
 /**
  * Minimal SIP user agent over UDP (RFC 3261): registers at the PBX with digest auth, receives and
- * places calls. All requests go to the PBX (it acts as outbound proxy); responses go back where the
- * request came from. Media (RTP) is handled by the caller through SDP.
+ * places calls. All requests go to the PBX (it acts as outbound proxy). Only the PBX may talk to
+ * FORGE: datagrams from any other address are dropped, because anyone else in the network could
+ * otherwise call FORGE directly with a forged caller number. Media (RTP) is handled by the caller
+ * through SDP.
  */
 export class SipUserAgent extends EventEmitter<UaEvents> {
   private sock: Socket | null = null;
-  private server = { ip: "", port: 5060 };
-  private local = { ip: "", port: 0 };
+  private server: Address = { ip: "", port: 5060 };
+  private local: Address = { ip: "", port: 0 };
   /** address the PBX sees us at (from rport/received), used in Contact */
-  private contact = { ip: "", port: 0 };
+  private contact: Address = { ip: "", port: 0 };
   private clientTx = new Map<string, ClientTx>();
   private serverTx = new Map<string, { res: SipMessage | null; at: number }>();
   private calls = new Map<string, SipCall>();
@@ -175,7 +207,7 @@ export class SipUserAgent extends EventEmitter<UaEvents> {
   private regCseq = 1;
   private regTimer: ReturnType<typeof setTimeout> | null = null;
   private keepalive: ReturnType<typeof setInterval> | null = null;
-  private contactLearned = false;
+  private dropLogged = new Map<string, number>();
   private stopped = false;
   state: RegistrationState = "off";
 
@@ -191,28 +223,65 @@ export class SipUserAgent extends EventEmitter<UaEvents> {
     return `sip:${this.account.username}@${this.domain}`;
   }
 
-  /** Local IP towards the PBX; RTP binds to it and SDP announces it. */
+  /** Address announced in SDP: the public one behind NAT, else the local one. */
   get localIp(): string {
     return this.contact.ip || this.local.ip;
   }
 
+  /** Local interface towards the PBX; sockets (SIP and RTP) bind to it. */
+  get bindIp(): string {
+    return this.local.ip;
+  }
+
+  /** The PBX's address; RTP accepts it as a media source besides the SDP address. */
+  get serverIp(): string {
+    return this.server.ip;
+  }
+
   async start() {
     this.stopped = false;
+    await this.resolveServer();
+    await this.openSocket();
+    this.keepalive = setInterval(() => this.sendTo("\r\n\r\n", this.server.ip, this.server.port), KEEPALIVE_MS);
+    await this.register();
+  }
+
+  private async resolveServer() {
     const resolved = await lookup(this.account.server, { family: 4 });
     this.server = { ip: resolved.address, port: this.account.port };
     this.local.ip = await localIpTowards(this.server.ip, this.server.port);
+  }
+
+  private async openSocket() {
     const sock = createSocket("udp4");
     await new Promise<void>((resolve, reject) => {
       sock.once("error", reject);
-      sock.bind(0, () => resolve());
+      sock.bind({ port: 0, address: this.local.ip }, () => resolve());
     });
     sock.on("error", (e) => this.emit("log", `SIP-Socket: ${e.message}`));
     sock.on("message", (buf, rinfo) => this.onDatagram(buf.toString("utf8"), rinfo.address, rinfo.port));
     this.sock = sock;
     this.local.port = sock.address().port;
     this.contact = { ...this.local };
-    this.keepalive = setInterval(() => this.sendTo("\r\n\r\n", this.server.ip, this.server.port), KEEPALIVE_MS);
-    await this.register();
+  }
+
+  /**
+   * After a failed refresh: the network may have changed (other Wi-Fi, VPN up or down). Looks up the
+   * PBX and the local interface again and binds a new socket if the interface changed.
+   */
+  private async refreshTransport() {
+    if (this.stopped || [...this.calls.values()].some((c) => c.state !== "ended")) return;
+    const before = this.local.ip;
+    try {
+      await this.resolveServer();
+    } catch {
+      return;
+    }
+    if (this.stopped || this.local.ip === before) return;
+    this.emit("log", `Netzwerk geändert, neue lokale Adresse ${this.local.ip}`);
+    this.sock?.close();
+    this.sock = null;
+    await this.openSocket().catch((e: unknown) => this.emit("log", `SIP-Socket: ${e instanceof Error ? e.message : String(e)}`));
   }
 
   async stop() {
@@ -236,7 +305,7 @@ export class SipUserAgent extends EventEmitter<UaEvents> {
     this.emit("registration", state, message);
   }
 
-  private async register(expires = REGISTER_EXPIRES): Promise<void> {
+  private async register(expires = REGISTER_EXPIRES, relearned = false): Promise<void> {
     if (this.regTimer) clearTimeout(this.regTimer);
     if (expires > 0) this.setState(this.state === "registered" ? "registered" : "registering", null);
     const uri = `sip:${this.domain}`;
@@ -256,21 +325,21 @@ export class SipUserAgent extends EventEmitter<UaEvents> {
     if (!res) return this.registerFailed(`Keine Antwort von ${this.account.server}:${this.account.port}. Server und Port prüfen.`);
     if (res.status === 423) {
       const min = Number(getHeader(res, "min-expires"));
-      if (min > 0) return this.register(min);
+      if (min > 0) return this.register(min, relearned);
     }
     if (res.status !== 200) {
       const why = res.status === 401 || res.status === 403 || res.status === 407 ? "Zugangsdaten abgelehnt" : "Anmeldung abgelehnt";
       return this.registerFailed(`${why} (${res.status} ${res.reason ?? ""}).`.replace(" )", ")"));
     }
-    // Behind NAT the PBX tells us our public address; register that so calls can reach us.
+    // Behind NAT the PBX tells us our public address; register that so calls can reach us. It is
+    // checked on every refresh because the NAT mapping can change.
     const via = parseVia(getHeaders(res, "via")[0] ?? "");
     const seenIp = via?.params.received || null;
     const seenPort = via?.params.rport ? Number(via.params.rport) : null;
-    if (!this.contactLearned && seenIp && seenPort && (seenIp !== this.contact.ip || seenPort !== this.contact.port)) {
-      this.contactLearned = true;
+    if (!relearned && seenIp && seenPort && (seenIp !== this.contact.ip || seenPort !== this.contact.port)) {
       this.contact = { ip: seenIp, port: seenPort };
       this.emit("log", `NAT erkannt, Kontaktadresse ${seenIp}:${seenPort}`);
-      return this.register(expires);
+      return this.register(expires, true);
     }
     const granted = grantedExpires(res, this.contact) ?? expires;
     this.setState("registered", null);
@@ -279,7 +348,9 @@ export class SipUserAgent extends EventEmitter<UaEvents> {
 
   private registerFailed(message: string) {
     this.setState("failed", message);
-    if (!this.stopped) this.regTimer = setTimeout(() => void this.register(), RETRY_REGISTER_MS);
+    if (this.stopped) return;
+    this.regTimer = setTimeout(() => void this.register(), RETRY_REGISTER_MS);
+    void this.refreshTransport();
   }
 
   // ---------- outgoing calls
@@ -369,6 +440,12 @@ export class SipUserAgent extends EventEmitter<UaEvents> {
     const inv = call.invite;
     if (!inv) return;
     const via = getHeaders(inv, "via")[0] ?? "";
+    // The PBX must end the INVITE with 487 now; if it never does, the transaction ends anyway.
+    const inviteTx = this.clientTx.get(`${parseVia(via)?.params.branch ?? ""}:INVITE`);
+    if (inviteTx) {
+      if (inviteTx.deadline) clearTimeout(inviteTx.deadline);
+      inviteTx.deadline = setTimeout(() => this.finishTx(inviteTx, null), TX_TIMEOUT);
+    }
     const cancel: SipMessage = {
       method: "CANCEL",
       uri: inv.uri,
@@ -419,16 +496,37 @@ export class SipUserAgent extends EventEmitter<UaEvents> {
       res.headers.push(["content-type", "application/sdp"]);
       res.body = sdp;
     }
-    this.replyTx(inv, res);
+    const branch = parseVia(getHeaders(inv, "via")[0] ?? "")?.params.branch ?? "";
+    this.serverTx.set(`${branch}:INVITE`, { res, at: Date.now() });
+    this.respond(call, res);
     return res;
+  }
+
+  /** @internal Sends a response of an incoming call to where its INVITE came from. */
+  respond(call: SipCall, res: SipMessage) {
+    if (call.peer) this.sendTo(serializeSip(res), call.peer.ip, call.peer.port);
+    else this.sendRaw(res, call.invite ?? undefined);
   }
 
   private onDatagram(raw: string, ip: string, port: number) {
     if (!raw.trim()) return;
+    if (ip !== this.server.ip) {
+      this.logDropped(ip, port);
+      return;
+    }
     const msg = parseSip(raw);
     if (!msg) return;
     if (msg.status !== undefined) this.onResponse(msg);
     else this.onRequest(msg, ip, port);
+  }
+
+  /** Once a minute per address, so a flood cannot fill the log. */
+  private logDropped(ip: string, port: number) {
+    const now = Date.now();
+    if (now - (this.dropLogged.get(ip) ?? 0) < DROP_LOG_INTERVAL_MS) return;
+    if (this.dropLogged.size > 100) this.dropLogged.clear();
+    this.dropLogged.set(ip, now);
+    this.emit("log", `SIP-Paket von ${ip}:${port} verworfen: nicht die Anlage (${this.server.ip})`);
   }
 
   private onResponse(res: SipMessage) {
@@ -443,11 +541,15 @@ export class SipUserAgent extends EventEmitter<UaEvents> {
       return;
     }
     if (res.status! < 200) {
-      if (tx.timer && tx.method === "INVITE") {
-        clearTimeout(tx.timer);
+      if (tx.method === "INVITE") {
+        if (tx.timer) clearTimeout(tx.timer);
         tx.timer = null;
-        if (tx.deadline) clearTimeout(tx.deadline);
-        tx.deadline = null;
+        // Ringing may take a while, but not forever: Timer C of RFC 3261, sized to our ring limit.
+        if (!tx.provisional) {
+          tx.provisional = true;
+          if (tx.deadline) clearTimeout(tx.deadline);
+          tx.deadline = setTimeout(() => this.finishTx(tx, null), RING_TIMEOUT_MS + TX_TIMEOUT);
+        }
       }
       tx.onProvisional?.(res);
       return;
@@ -471,12 +573,33 @@ export class SipUserAgent extends EventEmitter<UaEvents> {
     this.finishTx(tx, res);
   }
 
+  /** Requests inside a dialog carry our tag in To; a guessed Call-ID alone is not enough. */
+  private inDialog(call: SipCall, req: SipMessage): boolean {
+    return tagOf(getHeader(req, "to")) === call.localTag;
+  }
+
+  /** Our answer to an SDP offer inside the dialog, or null (488). */
+  private answerOffer(call: SipCall, offer: string): string | null {
+    if (!offer) return call.localSdp;
+    let answer: string | null;
+    if (call.onOffer) answer = call.onOffer(offer);
+    else {
+      const parsed = parseSdp(offer);
+      answer = parsed && !parsed.secure ? withDirection(call.localSdp, answerDirection(parsed.direction)) : null;
+    }
+    if (answer !== null) {
+      call.remoteSdp = offer;
+      call.localSdp = answer;
+    }
+    return answer;
+  }
+
   private onRequest(req: SipMessage, ip: string, port: number) {
     const method = req.method!;
     const callId = getHeader(req, "call-id") ?? "";
     const call = this.calls.get(callId);
     if (method === "ACK") {
-      call?.onAck(req);
+      if (call && this.inDialog(call, req)) call.onAck(req);
       return;
     }
     const branch = parseVia(getHeaders(req, "via")[0] ?? "")?.params.branch ?? "";
@@ -488,16 +611,21 @@ export class SipUserAgent extends EventEmitter<UaEvents> {
     }
     this.serverTx.set(key, { res: null, at: Date.now() });
     this.pruneServerTx();
-    const reply = (status: number, reason: string, extra: Array<[string, string]> = [], body = "", toTag?: string) => {
+    const build = (status: number, reason: string, extra: Array<[string, string]> = [], body = "", toTag?: string) => {
       const res = responseTo(req, status, reason, toTag);
       res.headers.push(["user-agent", USER_AGENT], ...extra);
       if (body) {
         res.headers.push(["content-type", "application/sdp"]);
         res.body = body;
       }
+      return res;
+    };
+    const send = (res: SipMessage) => {
       this.serverTx.set(key, { res, at: Date.now() });
       this.sendTo(serializeSip(res), ip, port);
     };
+    const reply = (status: number, reason: string, extra: Array<[string, string]> = [], body = "", toTag?: string) => send(build(status, reason, extra, body, toTag));
+    const noDialog = () => reply(481, "Call/Transaction Does Not Exist");
 
     switch (method) {
       case "OPTIONS":
@@ -505,15 +633,20 @@ export class SipUserAgent extends EventEmitter<UaEvents> {
         return;
       case "INVITE": {
         if (call && tagOf(getHeader(req, "to"))) {
-          // Re-INVITE (hold, session refresh): keep our media as it is.
-          if (req.body) call.remoteSdp = req.body;
-          reply(200, "OK", [["contact", this.contactHeader()], ["allow", ALLOW]], call.localSdp);
+          // Re-INVITE (hold, new media address, session refresh).
+          if (!this.inDialog(call, req) || call.state !== "active") return noDialog();
+          const answer = this.answerOffer(call, req.body);
+          if (answer === null) return reply(488, "Not Acceptable Here");
+          const res = build(200, "OK", [["contact", this.contactHeader()], ["allow", ALLOW]], answer);
+          send(res);
+          call.repeatUntilAck(() => this.sendTo(serializeSip(res), ip, port), cseqOf(req).seq, null);
           return;
         }
         if (call) return;
         const identity = getHeader(req, "p-asserted-identity") ?? getHeader(req, "from") ?? "";
         const incoming = new SipCall(this, callId, "in", uriUser(parseNameAddr(identity).uri));
         incoming.invite = req;
+        incoming.peer = { ip, port };
         incoming.remoteSdp = req.body;
         incoming.localHeader = `${getHeader(req, "to") ?? ""};tag=${incoming.localTag}`;
         incoming.remoteHeader = getHeader(req, "from") ?? "";
@@ -522,40 +655,37 @@ export class SipUserAgent extends EventEmitter<UaEvents> {
         incoming.remoteTarget = contact ? parseNameAddr(contact).uri : (req.uri ?? "");
         incoming.routeSet = getHeaders(req, "record-route");
         this.calls.set(callId, incoming);
-        this.serverTx.set(key, { res: null, at: Date.now() });
-        const trying = responseTo(req, 100, "Trying");
-        this.sendTo(serializeSip(trying), ip, port);
-        this.serverTx.set(key, { res: trying, at: Date.now() });
+        send(build(100, "Trying"));
         this.emit("incoming", incoming);
         return;
       }
       case "CANCEL": {
-        if (!call || call.direction !== "in" || call.state !== "ringing") {
-          reply(481, "Call/Transaction Does Not Exist");
-          return;
-        }
+        const inviteBranch = call?.invite ? parseVia(getHeaders(call.invite, "via")[0] ?? "")?.params.branch : undefined;
+        if (!call || call.direction !== "in" || call.state !== "ringing" || inviteBranch !== branch) return noDialog();
         reply(200, "OK");
-        this.inviteResponse(call, 487, "Request Terminated");
-        call.end("Anrufer hat aufgelegt");
+        call.reject(487, "Request Terminated", "Anrufer hat aufgelegt");
         return;
       }
       case "BYE":
-        if (!call) {
-          reply(481, "Call/Transaction Does Not Exist");
-          return;
-        }
+        if (!call || !this.inDialog(call, req)) return noDialog();
         reply(200, "OK");
         call.end("Gegenstelle hat aufgelegt");
         return;
       case "INFO": {
+        if (!call || !this.inDialog(call, req)) return noDialog();
         reply(200, "OK");
         const signal = /Signal\s*=\s*([0-9*#A-D])/i.exec(req.body)?.[1];
-        if (call && signal) call.emit("dtmf", signal.toUpperCase());
+        if (signal) call.emit("dtmf", signal.toUpperCase());
         return;
       }
-      case "UPDATE":
-        reply(200, "OK", [["contact", this.contactHeader()]], req.body && call ? call.localSdp : "");
+      case "UPDATE": {
+        if (!call || !this.inDialog(call, req)) return noDialog();
+        if (!req.body) return reply(200, "OK", [["contact", this.contactHeader()]]);
+        const answer = this.answerOffer(call, req.body);
+        if (answer === null) return reply(488, "Not Acceptable Here");
+        reply(200, "OK", [["contact", this.contactHeader()]], answer);
         return;
+      }
       case "NOTIFY":
       case "MESSAGE":
         reply(200, "OK");
@@ -568,12 +698,6 @@ export class SipUserAgent extends EventEmitter<UaEvents> {
   private pruneServerTx() {
     const limit = Date.now() - TX_TIMEOUT;
     for (const [k, v] of this.serverTx) if (v.at < limit) this.serverTx.delete(k);
-  }
-
-  private replyTx(req: SipMessage, res: SipMessage) {
-    const branch = parseVia(getHeaders(req, "via")[0] ?? "")?.params.branch ?? "";
-    this.serverTx.set(`${branch}:${req.method}`, { res, at: Date.now() });
-    this.sendRaw(res, req);
   }
 
   // ---------- transport and transactions
@@ -603,8 +727,9 @@ export class SipUserAgent extends EventEmitter<UaEvents> {
   }
 
   /**
-   * Sends a request and answers one 401/407 challenge with digest auth. `build` creates the request
-   * (again) with the Authorization header; `onRetry` bumps CSeq where the caller keeps it.
+   * Sends a request and answers a 401/407 challenge with digest auth. `build` creates the request
+   * (again) with the Authorization header; `onRetry` bumps CSeq where the caller keeps it. A second
+   * challenge is only answered when it says stale=true (expired nonce, credentials were right).
    */
   private async requestWithAuth(
     build: (auth?: [string, string]) => SipMessage,
@@ -613,27 +738,33 @@ export class SipUserAgent extends EventEmitter<UaEvents> {
     onRetry?: () => void,
   ): Promise<SipMessage | null> {
     const first = build();
-    const res = await this.request(first, invite, onProvisional);
-    if (!res || (res.status !== 401 && res.status !== 407)) return res;
-    const header = getHeader(res, res.status === 401 ? "www-authenticate" : "proxy-authenticate");
-    const ch = header ? parseChallenge(header) : null;
-    if (!ch) return res;
-    onRetry?.();
-    const value = digestAuthorization(ch, {
-      username: this.account.authUsername || this.account.username,
-      password: this.account.password,
-      method: first.method!,
-      uri: first.uri!,
-    });
-    const second = build([res.status === 401 ? "authorization" : "proxy-authorization", value]);
-    return this.request(second, invite, onProvisional);
+    let res = await this.request(first, invite, onProvisional);
+    for (let attempt = 0; attempt < 2; attempt++) {
+      if (!res || (res.status !== 401 && res.status !== 407)) return res;
+      const ch = pickChallenge(getHeaders(res, res.status === 401 ? "www-authenticate" : "proxy-authenticate"));
+      if (!ch) {
+        this.emit("log", "Anmeldeverfahren der Anlage wird nicht unterstützt (Digest MD5 oder SHA-256 nötig)");
+        return res;
+      }
+      if (attempt > 0 && !ch.stale) return res;
+      onRetry?.();
+      const value = digestAuthorization(ch, {
+        username: this.account.authUsername || this.account.username,
+        password: this.account.password,
+        method: first.method!,
+        uri: first.uri!,
+        body: first.body,
+      });
+      res = await this.request(build([res.status === 401 ? "authorization" : "proxy-authorization", value]), invite, onProvisional);
+    }
+    return res;
   }
 
   private request(msg: SipMessage, invite: boolean, onProvisional?: (res: SipMessage) => void): Promise<SipMessage | null> {
     const branch = parseVia(getHeaders(msg, "via")[0] ?? "")?.params.branch ?? newBranch();
     const method = msg.method!;
     return new Promise((resolve) => {
-      const tx: ClientTx = { msg, method, resolve, onProvisional, timer: null, deadline: null };
+      const tx: ClientTx = { msg, method, resolve, onProvisional, timer: null, deadline: null, provisional: false };
       this.clientTx.set(`${branch}:${method}`, tx);
       let interval = T1;
       const send = () => {
@@ -678,7 +809,7 @@ export class SipUserAgent extends EventEmitter<UaEvents> {
   }
 }
 
-function grantedExpires(res: SipMessage, contact: { ip: string; port: number }): number | null {
+function grantedExpires(res: SipMessage, contact: Address): number | null {
   for (const c of getHeaders(res, "contact")) {
     const na = parseNameAddr(c);
     if (na.uri.includes(`@${contact.ip}:${contact.port}`) && na.params.expires) return Number(na.params.expires);
@@ -709,4 +840,3 @@ async function localIpTowards(ip: string, port: number): Promise<string> {
     s.close();
   }
 }
-

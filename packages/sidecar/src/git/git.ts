@@ -5,7 +5,7 @@ import { containsSecret } from "../policy/redact.js";
 import { isInside } from "../util/paths.js";
 import { run, type RunResult } from "../util/proc.js";
 import { resolveTool } from "../util/tools.js";
-import { LOG_FORMAT, parseBranches, parseLog, parseStatusV2, parseUnifiedDiff, summarize, untrackedDiff } from "./parsers.js";
+import { LOG_FORMAT, parseBranches, parseLog, parseStatusV2, parseUnifiedDiff, scopeToPrefix, summarize, untrackedDiff } from "./parsers.js";
 
 const SENSITIVE_FILE =
   /(^|\/)(\.env(\..*)?|.*\.pem|.*\.key|id_(rsa|dsa|ecdsa|ed25519)(\.pub)?|.*\.p12|.*\.pfx|.*\.keystore|credentials(\..*)?\.json|secrets?\.(json|ya?ml|toml)|\.npmrc|\.pypirc|\.netrc)$/i;
@@ -29,7 +29,9 @@ export class GitEngine {
   }
 
   private env(): NodeJS.ProcessEnv {
-    return { ...process.env, GIT_TERMINAL_PROMPT: "0", GIT_OPTIONAL_LOCKS: "0", LC_ALL: "C" };
+    // Literal pathspecs: file names like app/[id]/page.tsx or .e[n]v must not act as globs that
+    // pull other files (e.g. .env) into a commit.
+    return { ...process.env, GIT_TERMINAL_PROMPT: "0", GIT_OPTIONAL_LOCKS: "0", GIT_LITERAL_PATHSPECS: "1", LC_ALL: "C" };
   }
 
   async exec(cwd: string, args: string[], input?: string, timeoutMs = 60_000): Promise<RunResult> {
@@ -76,10 +78,17 @@ export class GitEngine {
     return r.code === 0 ? r.stdout.trim() || null : null;
   }
 
+  /**
+   * Status of the project folder. The folder may be a subfolder of a larger repository (monorepo):
+   * only files below it are listed, with paths relative to it, so that every follow-up command
+   * run with the same cwd (diff, add, commit) resolves them the same way.
+   */
   async status(cwd: string): Promise<GitStatus> {
-    if (!(await this.isRepo(cwd))) throw new ForgeError("GIT_NOT_REPO", "Kein Git-Repository.");
-    const out = await this.ok(cwd, ["status", "--porcelain=v2", "--branch", "-z", "--untracked-files=all"]);
-    const parsed = parseStatusV2(out);
+    const info = await this.exec(cwd, ["rev-parse", "--is-inside-work-tree", "--show-prefix"]);
+    const [inside, prefix = ""] = info.stdout.split("\n").map((l) => l.replace(/\r$/, ""));
+    if (info.code !== 0 || inside !== "true") throw new ForgeError("GIT_NOT_REPO", "Kein Git-Repository.");
+    const out = await this.ok(cwd, ["status", "--porcelain=v2", "--branch", "-z", "--untracked-files=all", "--", "."]);
+    const parsed = scopeToPrefix(parseStatusV2(out), prefix, true);
     return { summary: summarize(parsed, await this.remoteUrl(cwd)), files: parsed.files };
   }
 

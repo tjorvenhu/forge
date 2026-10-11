@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import type { SessionEvent } from "@forge/protocol";
 import { buildEventItems, reuseStableItems } from "@/components/workspace/chat-items";
-import { EVENT_PAGE_SIZE, pageHasOlder, useSessionEvents } from "./session-events";
+import { EVENT_PAGE_SIZE, loadOlderPages, pageHasOlder, useSessionEvents } from "./session-events";
 
 const ev = (seq: number, text = `m${seq}`): SessionEvent => ({ seq, sessionId: "s", ts: "2026-10-10T12:00:00.000Z", body: { type: "user.message", text } });
 /** events from..to inclusive */
@@ -82,6 +82,59 @@ describe("paged history", () => {
     st.setHistory("s", range(EVENT_PAGE_SIZE + 1, 2 * EVENT_PAGE_SIZE));
     expect(seqs()[0]).toBe(EVENT_PAGE_SIZE + 1);
     expect(buffer().hasOlder).toBe(true);
+  });
+});
+
+describe("loadOlderPages", () => {
+  const PAGE = EVENT_PAGE_SIZE;
+  const total = 3 * PAGE + 5;
+  /** sessions.events with beforeSeq over a log of seqs 1..total */
+  const fetcher = () => {
+    const calls: number[] = [];
+    const fetchPage = (beforeSeq: number) => {
+      calls.push(beforeSeq);
+      const to = Math.min(beforeSeq - 1, total);
+      return Promise.resolve(range(Math.max(1, to - PAGE + 1), to));
+    };
+    return { calls, fetchPage };
+  };
+  const loadNewest = () => useSessionEvents.getState().setHistory("s", range(total - PAGE + 1, total));
+
+  it("loads pages until the seq is in the buffer and stops there", async () => {
+    loadNewest();
+    const { calls, fetchPage } = fetcher();
+    let applied = 0;
+    const target = PAGE; // two pages back
+    await expect(loadOlderPages("s", fetchPage, { untilSeq: target, beforeApply: () => applied++ })).resolves.toBe(true);
+    expect(calls).toEqual([total - PAGE + 1, total - 2 * PAGE + 1]);
+    expect(applied).toBe(2);
+    expect(seqs()[0]).toBeLessThanOrEqual(target);
+    expect(buffer().hasOlder).toBe(true);
+  });
+
+  it("does not fetch when the seq is already loaded, and loads one page without a target", async () => {
+    loadNewest();
+    const { calls, fetchPage } = fetcher();
+    await expect(loadOlderPages("s", fetchPage, { untilSeq: total - 3 })).resolves.toBe(true);
+    expect(calls).toEqual([]);
+    await expect(loadOlderPages("s", fetchPage)).resolves.toBe(true);
+    expect(calls).toHaveLength(1);
+  });
+
+  it("reports a seq before the first event as missing after paging to the start", async () => {
+    loadNewest();
+    const { calls, fetchPage } = fetcher();
+    await expect(loadOlderPages("s", fetchPage, { untilSeq: 0 })).resolves.toBe(false);
+    expect(calls).toHaveLength(3);
+    expect(seqs()[0]).toBe(1);
+    expect(buffer().hasOlder).toBe(false);
+  });
+
+  it("stops when the buffer is gone and passes fetch errors on", async () => {
+    const { fetchPage } = fetcher();
+    await expect(loadOlderPages("s", fetchPage, { untilSeq: 1 })).resolves.toBe(false);
+    loadNewest();
+    await expect(loadOlderPages("s", () => Promise.reject(new Error("offline")), { untilSeq: 1 })).rejects.toThrow("offline");
   });
 });
 

@@ -30,6 +30,10 @@ export function TitleTooltips() {
         if (!target.hasAttribute("title")) target.setAttribute("title", target.dataset.forgeTitle);
         delete target.dataset.forgeTitle;
       }
+      if (target?.dataset.forgeAriaLabel !== undefined) {
+        target.removeAttribute("aria-label");
+        delete target.dataset.forgeAriaLabel;
+      }
       target = null;
       setTip(null);
     };
@@ -41,6 +45,11 @@ export function TitleTooltips() {
       const text = el?.getAttribute("title")?.trim();
       if (!el || !text) return;
       target = el;
+      // Without the title an icon-only button would lose its accessible name while hovered.
+      if (!el.hasAttribute("aria-label") && !el.hasAttribute("aria-labelledby") && !el.textContent?.trim()) {
+        el.setAttribute("aria-label", text);
+        el.dataset.forgeAriaLabel = "";
+      }
       el.dataset.forgeTitle = el.getAttribute("title") ?? "";
       el.removeAttribute("title");
       timer = window.setTimeout(() => {

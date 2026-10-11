@@ -1,13 +1,12 @@
 import { useMemo, useState } from "react";
-import { FolderOpen, FolderPlus, GitBranch, Search } from "lucide-react";
+import { Search } from "lucide-react";
 import type { ProjectWithStatus } from "@forge/protocol";
 import { useProjects } from "@/lib/queries";
-import { useUi } from "@/stores/ui";
 import { Page } from "@/components/layout/Page";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { EmptyState, ErrorBanner, Loading } from "@/components/ui/misc";
 import { Select } from "@/components/ui/select";
+import { AddProjectActions } from "@/components/projects/AddProjectActions";
 import { ProjectCard } from "@/components/projects/ProjectCard";
 import { RemoveProjectDialog } from "@/components/projects/RemoveProjectDialog";
 
@@ -15,7 +14,6 @@ type Filter = "all" | "favorites" | "dirty" | "missing";
 
 export function ProjectsView() {
   const projects = useProjects();
-  const setNewProject = useUi((s) => s.setNewProject);
   const [q, setQ] = useState("");
   const [filter, setFilter] = useState<Filter>("all");
   const [removing, setRemoving] = useState<ProjectWithStatus | null>(null);
@@ -35,19 +33,7 @@ export function ProjectsView() {
     <Page
       title="Projekte"
       subtitle={`${projects.data?.length ?? 0} Projekte`}
-      actions={
-        <>
-          <Button onClick={() => setNewProject("clone")}>
-            <GitBranch className="h-3.5 w-3.5" /> Klonen
-          </Button>
-          <Button onClick={() => setNewProject("create")}>
-            <FolderPlus className="h-3.5 w-3.5" /> Neu
-          </Button>
-          <Button variant="primary" onClick={() => setNewProject("import")}>
-            <FolderOpen className="h-3.5 w-3.5" /> Ordner öffnen
-          </Button>
-        </>
-      }
+      actions={<AddProjectActions />}
     >
       <div className="mb-4 flex gap-2">
         <div className="relative flex-1">

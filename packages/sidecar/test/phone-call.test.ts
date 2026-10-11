@@ -12,6 +12,7 @@ import { buildSdp } from "../src/phone/sdp.js";
 import { SecretStore } from "../src/phone/secrets.js";
 import { getHeader, getHeaders, parseNameAddr, parseSip, responseTo, serializeSip, type SipMessage } from "../src/phone/sip-message.js";
 import { SipUserAgent } from "../src/phone/sip-ua.js";
+import { RtpSession } from "../src/phone/rtp.js";
 import type { VoiceProvider } from "../src/phone/voice.js";
 import { Db } from "../src/persistence/db.js";
 import { GitEngine } from "../src/git/git.js";
@@ -34,6 +35,17 @@ async function until<T>(fn: () => T | undefined | null | false, ms = 8000, label
   }
 }
 
+/** Secret store whose reads can be held back, like the slow first DPAPI call through PowerShell. */
+class SlowSecrets extends SecretStore {
+  gate: Promise<void> | null = null;
+  override async get(name: string) {
+    if (this.gate) await this.gate;
+    return super.get(name);
+  }
+}
+
+const socketOf = (r: RtpSession) => (r as unknown as { socket: unknown }).socket;
+
 interface Received {
   msg: SipMessage;
   ip: string;
@@ -50,6 +62,9 @@ class FakePbx {
   natAddress: { ip: string; port: number } | null = null;
   registrations: SipMessage[] = [];
   readonly password = "geheim";
+  nonce = "n0nce";
+  /** answer the next authorized REGISTER with stale=true */
+  expireNonce = false;
 
   async start() {
     await new Promise<void>((r) => this.sock.bind(0, "127.0.0.1", () => r()));
@@ -66,13 +81,20 @@ class FakePbx {
   private onRegister({ msg, ip, port }: Received) {
     this.registrations.push(msg);
     const auth = getHeader(msg, "authorization");
-    if (!auth) {
+    const challenge = (stale: boolean) => {
       const res = responseTo(msg, 401, "Unauthorized", "pbx");
-      res.headers.push(["www-authenticate", 'Digest realm="pbx", nonce="n0nce", qop="auth", algorithm=MD5']);
-      return this.send(res, port, ip);
-    }
+      res.headers.push(["www-authenticate", `Digest realm="pbx", nonce="${this.nonce}", qop="auth", algorithm=MD5${stale ? ", stale=true" : ""}`]);
+      this.send(res, port, ip);
+    };
+    if (!auth) return challenge(false);
     const p = Object.fromEntries([...auth.matchAll(/(\w+)="?([^",]+)"?/g)].map((m) => [m[1], m[2]]));
-    const expected = md5(`${md5(`${p.username}:pbx:${this.password}`)}:n0nce:${p.nc}:${p.cnonce}:auth:${md5(`REGISTER:${p.uri}`)}`);
+    if (this.expireNonce) {
+      // The nonce the UA just used has expired: the credentials were right, it must try once more.
+      this.expireNonce = false;
+      this.nonce = `${this.nonce}x`;
+      return challenge(true);
+    }
+    const expected = md5(`${md5(`${p.username}:pbx:${this.password}`)}:${this.nonce}:${p.nc}:${p.cnonce}:auth:${md5(`REGISTER:${p.uri}`)}`);
     if (p.response !== expected) return this.send(responseTo(msg, 403, "Forbidden", "pbx"), port, ip);
     const res = responseTo(msg, 200, "OK", "pbx");
     if (this.natAddress) {
@@ -230,6 +252,88 @@ describe("SIP user agent against a test PBX", () => {
     await ua.stop();
   });
 
+  it("retries once with the new nonce when the PBX says stale=true", async () => {
+    pbx.expireNonce = true;
+    const ua = new SipUserAgent({ server: "127.0.0.1", port: pbx.port, username: "forge", authUsername: null, password: pbx.password, domain: null, displayName: "FORGE" });
+    await ua.start();
+    await until(() => ua.state === "registered", 5000, "registered after stale nonce");
+    expect(getHeader(pbx.registrations.at(-1)!, "authorization")).toContain(`nonce="${pbx.nonce}"`);
+    await ua.stop();
+  });
+
+  it("drops SIP from anyone but the PBX, also requests with a guessed Call-ID", async () => {
+    const ua = new SipUserAgent({ server: "127.0.0.1", port: pbx.port, username: "forge", authUsername: null, password: pbx.password, domain: null, displayName: "FORGE" });
+    const logs: string[] = [];
+    ua.on("log", (m) => logs.push(m));
+    let incoming = 0;
+    ua.on("incoming", () => incoming++);
+    await ua.start();
+    await until(() => ua.state === "registered", 5000, "registered");
+    const attacker = createSocket("udp4");
+    const bound = await new Promise<boolean>((r) => {
+      attacker.once("error", () => r(false));
+      attacker.bind(0, "127.0.0.2", () => r(true));
+    });
+    if (bound) {
+      const answers: string[] = [];
+      attacker.on("message", (b) => answers.push(b.toString()));
+      attacker.send(serializeSip(invite(pbx, "+49301112233", "c-spoof", 40000)), pbx.uaContact.port, "127.0.0.1");
+      await sleep(300);
+      expect(incoming).toBe(0);
+      expect(answers).toEqual([]);
+      expect(logs.some((l) => l.includes("127.0.0.2") && l.includes("verworfen"))).toBe(true);
+    }
+    attacker.close();
+
+    // From the PBX's address, but without our tag: no dialog, 481.
+    pbx.send(invite(pbx, "+49301112233", "c-real", 40000), pbx.uaContact.port);
+    await until(() => incoming === 1, 3000, "real INVITE");
+    const bye: SipMessage = {
+      method: "BYE",
+      uri: `sip:forge@127.0.0.1:${pbx.uaContact.port}`,
+      headers: [
+        ["via", `SIP/2.0/UDP 127.0.0.1:${pbx.port};branch=z9hG4bKbye-guess`],
+        ["from", "<sip:+49301112233@pbx>;tag=p1"],
+        ["to", "<sip:forge@pbx>;tag=wrong"],
+        ["call-id", "c-real"],
+        ["cseq", "2 BYE"],
+      ],
+      body: "",
+    };
+    pbx.send(bye, pbx.uaContact.port);
+    await pbx.next((m) => m.status === 481 && getHeader(m, "call-id") === "c-real");
+    await ua.stop();
+  });
+
+  it("repeats a rejection of an incoming call until the ACK arrives", async () => {
+    const ua = new SipUserAgent({ server: "127.0.0.1", port: pbx.port, username: "forge", authUsername: null, password: pbx.password, domain: null, displayName: "FORGE" });
+    ua.on("incoming", (c) => c.reject(403, "Forbidden"));
+    await ua.start();
+    await until(() => ua.state === "registered", 5000, "registered");
+    const inv = invite(pbx, "+4930999", "c-rej", 40000);
+    pbx.send(inv, pbx.uaContact.port);
+    const first = await pbx.next((m) => m.status === 403);
+    await pbx.next((m) => m.status === 403, 2000);
+    const ack: SipMessage = {
+      method: "ACK",
+      uri: inv.uri,
+      headers: [
+        ["via", getHeaders(inv, "via")[0]!],
+        ["from", getHeader(inv, "from")!],
+        ["to", getHeader(first.msg, "to")!],
+        ["call-id", "c-rej"],
+        ["cseq", "1 ACK"],
+      ],
+      body: "",
+    };
+    pbx.send(ack, pbx.uaContact.port);
+    await sleep(100);
+    const count = pbx.inbox.filter((r) => r.msg.status === 403).length;
+    await sleep(1600);
+    expect(pbx.inbox.filter((r) => r.msg.status === 403).length).toBe(count);
+    await ua.stop();
+  }, 15_000);
+
   it("reports wrong credentials", async () => {
     const ua = new SipUserAgent({ server: "127.0.0.1", port: pbx.port, username: "forge", authUsername: null, password: "falsch", domain: null, displayName: "FORGE" });
     let message: string | null = null;
@@ -253,6 +357,11 @@ describe("PhoneService end to end with a test PBX", () => {
   let convs: Array<{ said: string[]; tools: PhoneToolset; context: string; cb: ConversationCallbacks }>;
   const sent: Array<[string, string]> = [];
   let projectId = "";
+  let sessionList: Array<{ id: string; projectId: string; title: string; status: string; live: boolean; updatedAt: string; projectName: string }>;
+  let secrets: SlowSecrets;
+  let failConversation: boolean;
+  let rtps: RtpSession[];
+  let logs: string[];
 
   beforeEach(async () => {
     t = tempDir();
@@ -269,16 +378,24 @@ describe("PhoneService end to end with a test PBX", () => {
     transcripts = [];
     convs = [];
     sent.length = 0;
-    const session = { id: "s1", projectId, title: "Warenkorb", status: "idle", live: true, updatedAt: new Date().toISOString(), projectName: "shop" };
+    failConversation = false;
+    rtps = [];
+    logs = [];
+    sessionList = [{ id: "s1", projectId, title: "Warenkorb", status: "idle", live: true, updatedAt: new Date().toISOString(), projectName: "shop" }];
     const sessions = {
-      get: () => session,
-      listLive: () => [session],
-      listAll: () => [session],
+      get: (id: string) => {
+        const s = sessionList.find((x) => x.id === id);
+        if (!s) throw new Error("not found");
+        return s;
+      },
+      listLive: () => sessionList.filter((s) => s.live),
+      listAll: () => sessionList,
       send: async (id: string, text: string) => {
         sent.push([id, text]);
-        return session;
+        return sessionList[0];
       },
     } as unknown as SessionService;
+    secrets = new SlowSecrets(path.join(t.dir, "secrets"));
     const voice: VoiceProvider = {
       transcribe: async () => transcripts.shift() ?? "",
       async *speak(text) {
@@ -291,14 +408,20 @@ describe("PhoneService end to end with a test PBX", () => {
       projects,
       sessions,
       devServers: {} as DevServerService,
-      secrets: new SecretStore(path.join(t.dir, "secrets")),
+      secrets,
       emit: (e) => events.push(e),
       claude: () => ({ path: "claude", env: {}, cwd: t.dir }),
-      log: () => {},
-      timing: { notifyDelayMs: 50, notifyCooldownMs: 0 },
+      log: (m) => logs.push(m),
+      timing: { notifyDelayMs: 50, notifyCooldownMs: 0, pinLimits: { perCaller: 2, baseDelayMs: 0 } },
       factories: {
         voice: () => voice,
+        rtp: (ip) => {
+          const r = new RtpSession(ip);
+          rtps.push(r);
+          return r;
+        },
         conversation: ({ tools, context, cb }) => {
+          if (failConversation) throw new Error("Claude startet nicht");
           const c = {
             said: [] as string[],
             tools,
@@ -372,15 +495,27 @@ describe("PhoneService end to end with a test PBX", () => {
 
     // Steering is locked until the PIN comes in via keypad.
     expect(await conv.tools.sendMessage("S1", "Mach weiter")).toMatch(/^Gesperrt/);
+    expect(await conv.tools.details("S1")).toMatch(/^Gesperrt/);
     expect(sent).toHaveLength(0);
-    expect(await conv.tools.status()).toContain("S1: „Warenkorb“ im Projekt shop, fertig, wartet auf Anweisungen");
+    // Before the PIN, status gives counts only, no titles.
+    const lockedStatus = await conv.tools.status();
+    expect(lockedStatus).toContain("Aktive Sessions: 1");
+    expect(lockedStatus).not.toContain("Warenkorb");
     await phoneEnd.digits("0000#");
     await until(() => spoken.some((s) => s.startsWith("Die PIN ist falsch")), 5000, "wrong PIN");
     await phoneEnd.digits("4711#");
     await until(() => svc.state().call?.unlocked, 5000, "unlocked");
     expect(conv.said.some((s) => s.includes("PIN richtig eingegeben"))).toBe(true);
-    expect(await conv.tools.sendMessage("S1", "Mach weiter")).toMatch(/gesendet/);
+    expect(await conv.tools.status()).toContain("S1: <<<SESSION-DATEN>>>Warenkorb<<<ENDE SESSION-DATEN>>> im Projekt shop, fertig, wartet auf Anweisungen");
+
+    // Steering that hands text to a session needs key 1, read out by FORGE itself.
+    expect(await conv.tools.sendMessage("S1", "Mach weiter")).toMatch(/^Wartet auf Bestätigung/);
+    await until(() => spoken.some((s) => s.startsWith("Nachricht an S1: Mach weiter") && s.includes("Taste 1")), 5000, "confirmation read out");
+    expect(sent).toHaveLength(0);
+    await phoneEnd.digits("1");
+    await until(() => sent.length === 1, 5000, "sent after key 1");
     expect(sent).toEqual([["s1", "Mach weiter"]]);
+    await until(() => conv.said.some((s) => s.includes("Taste 1 bestätigt") && s.includes("An S1 gesendet")), 5000, "result to Claude");
 
     // The caller hangs up.
     pbx.send(inDialog("BYE", 2, inv, ok, pbx, "bye1"), pbx.uaContact.port);
@@ -442,6 +577,162 @@ describe("PhoneService end to end with a test PBX", () => {
 
   it("refuses to switch on while the setup is incomplete", async () => {
     await svc.saveConfig({ openAiKey: "" });
-    await expect(svc.setEnabled(true)).rejects.toThrow(/OpenAI-API-Key fehlt/);
+    await expect(svc.setEnabled(true)).rejects.toMatchObject({ message: expect.stringMatching(/OpenAI-API-Key fehlt/), details: { phoneSetupIncomplete: true } });
   });
+
+  /** INVITE from the PBX, 200 OK, ACK; FakePhone talks to FORGE's RTP port afterwards. */
+  async function answeredCall(callId: string, from = "0301112233") {
+    const inv = invite(pbx, from, callId, phoneEnd.port);
+    pbx.send(inv, pbx.uaContact.port);
+    const ok = (await pbx.next((m) => m.status === 200 && getHeader(m, "call-id") === callId)).msg;
+    phoneEnd.remote = Number(/m=audio (\d+)/.exec(ok.body)![1]);
+    pbx.send(inDialog("ACK", 1, inv, ok, pbx, `ack-${callId}`), pbx.uaContact.port);
+    return { inv, ok };
+  }
+
+  async function byeFromPbx(callId: string, inv: SipMessage, ok: SipMessage) {
+    pbx.send(inDialog("BYE", 2, inv, ok, pbx, `bye-${callId}`), pbx.uaContact.port);
+    await until(() => svc.state().call === null, 3000, "call ended");
+  }
+
+  it("frees the line when the caller hangs up while FORGE is still preparing the call", async () => {
+    await svc.setEnabled(true);
+    await until(() => svc.state().registration === "registered", 5000, "registered");
+    let release: () => void = () => {};
+    secrets.gate = new Promise<void>((r) => (release = r));
+    const inv = invite(pbx, "0301112233", "c-cancel", phoneEnd.port);
+    pbx.send(inv, pbx.uaContact.port);
+    await pbx.next((m) => m.status === 100 && getHeader(m, "call-id") === "c-cancel");
+    expect(svc.state().call).toMatchObject({ state: "ringing" });
+    const cancel: SipMessage = {
+      method: "CANCEL",
+      uri: inv.uri,
+      headers: [
+        ["via", getHeaders(inv, "via")[0]!],
+        ["from", getHeader(inv, "from")!],
+        ["to", getHeader(inv, "to")!],
+        ["call-id", "c-cancel"],
+        ["cseq", "1 CANCEL"],
+      ],
+      body: "",
+    };
+    pbx.send(cancel, pbx.uaContact.port);
+    await pbx.next((m) => m.status === 487 && getHeader(m, "call-id") === "c-cancel");
+    expect(svc.state().call).toBeNull();
+    secrets.gate = null;
+    release();
+    await sleep(300);
+    expect(pbx.inbox.some((r) => r.msg.status === 200 && getHeader(r.msg, "call-id") === "c-cancel" && cseqIs(r.msg, "INVITE"))).toBe(false);
+    expect(rtps.every((r) => !socketOf(r))).toBe(true);
+    expect(svc.calls(5).find((c) => c.number === "0301112233")).toMatchObject({ result: "missed", detail: "Anrufer hat aufgelegt" });
+
+    // The line is free again: the next call is answered, not "busy".
+    const { inv: inv2, ok } = await answeredCall("c-after");
+    expect(svc.state().call).toMatchObject({ state: "active" });
+    await byeFromPbx("c-after", inv2, ok);
+  }, 30_000);
+
+  it("hangs up and cleans up when the conversation cannot start after answering", async () => {
+    await svc.setEnabled(true);
+    await until(() => svc.state().registration === "registered", 5000, "registered");
+    failConversation = true;
+    await answeredCall("c-fail");
+    const bye = await pbx.next((m) => m.method === "BYE" && getHeader(m, "call-id") === "c-fail");
+    pbx.send(responseTo(bye.msg, 200, "OK"), bye.port);
+    await until(() => svc.state().call === null, 3000, "line free");
+    expect(rtps.every((r) => !socketOf(r))).toBe(true);
+    expect(svc.calls(5)[0]).toMatchObject({ result: "failed", detail: "Claude startet nicht" });
+  }, 30_000);
+
+  it("cancels an outgoing call and frees the line when preparing it fails", async () => {
+    await svc.setEnabled(true);
+    await until(() => svc.state().registration === "registered", 5000, "registered");
+    failConversation = true;
+    await expect(svc.testCall()).rejects.toThrow(/Claude startet nicht/);
+    const inv = await pbx.next((m) => m.method === "INVITE");
+    await pbx.next((m) => m.method === "CANCEL" && getHeader(m, "call-id") === getHeader(inv.msg, "call-id"));
+    expect(svc.state().call).toBeNull();
+    expect(rtps.every((r) => !socketOf(r))).toBe(true);
+    failConversation = false;
+    await svc.saveConfig({ requirePin: false });
+    // Not busy any more.
+    const { inv: inv2, ok } = await answeredCall("c-next");
+    await byeFromPbx("c-next", inv2, ok);
+  }, 30_000);
+
+  it("finds sessions only by a known short name or a unique title", async () => {
+    await svc.saveConfig({ requirePin: false });
+    sessionList.push(
+      { id: "s2", projectId, title: "Warenkorb Export", status: "idle", live: true, updatedAt: new Date().toISOString(), projectName: "shop" },
+      { id: "s3", projectId, title: "Login", status: "idle", live: true, updatedAt: new Date().toISOString(), projectName: "shop" },
+    );
+    await svc.setEnabled(true);
+    await until(() => svc.state().registration === "registered", 5000, "registered");
+    const { inv, ok } = await answeredCall("c-refs");
+    const conv = await until(() => convs[0], 5000, "conversation");
+    expect(await conv.tools.details("")).toMatch(/^Fehler: Welche Session/);
+    expect(await conv.tools.details("S3")).toMatch(/^Fehler: S3 ist in diesem Gespräch nicht vergeben/);
+    expect(await conv.tools.stop("  ")).toMatch(/^Fehler/);
+    // "Warenkorb" is the exact title of one session, "waren" matches two.
+    expect(await conv.tools.details("Warenkorb")).toContain("Warenkorb<<<ENDE");
+    expect(await conv.tools.details("waren")).toMatch(/^Fehler: Mehrere Sessions passen/);
+    expect(await conv.tools.details("login")).toContain("Login");
+    await byeFromPbx("c-refs", inv, ok);
+  }, 30_000);
+
+  it("keeps PIN failures across calls and locks the number", async () => {
+    await svc.setEnabled(true);
+    await until(() => svc.state().registration === "registered", 5000, "registered");
+    const first = await answeredCall("c-pin1");
+    await sleep(200);
+    await phoneEnd.digits("0000#");
+    await until(() => spoken.some((s) => s.startsWith("Die PIN ist falsch")), 5000, "wrong PIN");
+    await byeFromPbx("c-pin1", first.inv, first.ok);
+
+    const second = await answeredCall("c-pin2");
+    await sleep(200);
+    await phoneEnd.digits("1111#");
+    await until(() => spoken.some((s) => s.includes("vorübergehend gesperrt")), 5000, "locked");
+    await phoneEnd.digits("4711#");
+    await sleep(300);
+    expect(svc.state().call?.unlocked).toBe(false);
+    await byeFromPbx("c-pin2", second.inv, second.ok);
+    // A new PIN set at the desk lifts the lock.
+    await svc.saveConfig({ pin: "1234" });
+    const third = await answeredCall("c-pin3");
+    await sleep(200);
+    await phoneEnd.digits("1234#");
+    await until(() => svc.state().call?.unlocked, 5000, "unlocked with new PIN");
+    await byeFromPbx("c-pin3", third.inv, third.ok);
+  }, 40_000);
+
+  it("answers hold with recvonly and repeats the 200 OK until the ACK", async () => {
+    await svc.setEnabled(true);
+    await until(() => svc.state().registration === "registered", 5000, "registered");
+    const { inv, ok } = await answeredCall("c-hold");
+    await until(() => phoneEnd.levels.length > 5, 5000, "audio flows");
+    const reinvite = inDialog("INVITE", 2, inv, ok, pbx, "reinv1");
+    reinvite.headers.push(["content-type", "application/sdp"]);
+    reinvite.body = buildSdp({ ip: "127.0.0.1", port: phoneEnd.port, sessionId: "9", version: 2 }).replace("a=sendrecv", "a=sendonly");
+    pbx.send(reinvite, pbx.uaContact.port);
+    const answer = (await pbx.next((m) => m.status === 200 && getHeader(m, "cseq") === "2 INVITE")).msg;
+    expect(answer.body).toContain("a=recvonly");
+    expect(answer.body).toMatch(/o=FORGE \d+ 2 IN IP4/);
+    await pbx.next((m) => m.status === 200 && getHeader(m, "cseq") === "2 INVITE", 2000);
+    // On hold FORGE sends no audio.
+    await sleep(100);
+    const before = phoneEnd.levels.length;
+    await sleep(300);
+    expect(phoneEnd.levels.length).toBe(before);
+    pbx.send(inDialog("ACK", 2, inv, ok, pbx, "reack"), pbx.uaContact.port);
+    await sleep(100);
+    const repeats = pbx.inbox.filter((r) => r.msg.status === 200 && getHeader(r.msg, "cseq") === "2 INVITE").length;
+    await sleep(1600);
+    expect(pbx.inbox.filter((r) => r.msg.status === 200 && getHeader(r.msg, "cseq") === "2 INVITE").length).toBe(repeats);
+    await byeFromPbx("c-hold", inv, ok);
+  }, 30_000);
 });
+
+function cseqIs(m: SipMessage, method: string) {
+  return (getHeader(m, "cseq") ?? "").endsWith(method);
+}

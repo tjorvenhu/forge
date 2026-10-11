@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Phone, PhoneCall, PhoneOff, PhoneOutgoing, Power, RotateCw, Settings, ShieldCheck } from "lucide-react";
-import type { PhoneState } from "@forge/protocol";
+import type { PhoneSetupIncomplete, PhoneState } from "@forge/protocol";
 import { call, keys, usePhoneConfig, usePhoneState } from "@/lib/queries";
-import { errorMessage } from "@/lib/rpc";
+import { errorMessage, RpcCallError } from "@/lib/rpc";
 import { cn } from "@/lib/utils";
 import { useUi } from "@/stores/ui";
 import { toast } from "@/stores/toast";
@@ -33,7 +33,7 @@ export function PhoneButton() {
       set(await fn());
     } catch (e) {
       toast.error(errorTitle, errorMessage(e));
-      if (/nicht eingerichtet/.test(errorMessage(e))) useUi.getState().setView("settings");
+      if (e instanceof RpcCallError && (e.details as Partial<PhoneSetupIncomplete> | undefined)?.phoneSetupIncomplete) useUi.getState().setView("settings");
     }
   };
   const enable = () => run(() => call("phone.setEnabled", { enabled: true }), "Telefon nicht eingeschaltet");
@@ -45,7 +45,7 @@ export function PhoneButton() {
   if (state.call) {
     const c = state.call;
     return (
-      <div className="flex h-9 items-center gap-1.5 rounded-lg border border-success/40 bg-success-soft pl-3 pr-1 text-[13px]">
+      <div className="flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg border border-success/40 bg-success-soft pl-3 pr-1 text-body">
         <PhoneCall className="h-3.5 w-3.5 animate-soft-pulse text-success" />
         <span className="max-w-36 truncate font-mono">{c.number || "unbekannt"}</span>
         {c.state === "ringing" ? <span className="text-muted">{c.direction === "out" ? "klingelt …" : "verbindet …"}</span> : <Duration since={c.startedAt} />}
@@ -84,10 +84,10 @@ export function PhoneButton() {
     <DropdownMenu
       header={label}
       trigger={
-        <button className="relative flex h-9 w-9 items-center justify-center rounded-lg text-muted hover:bg-surface-3 hover:text-fg" aria-label={label} title={label}>
+        <Button size="icon" variant="ghost" className="relative h-9 w-9 rounded-lg" aria-label={label} title={label}>
           <Phone className={cn("h-4 w-4", state.registration === "registered" && "text-success")} />
           <span className={cn("absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full", dot)} />
-        </button>
+        </Button>
       }
       items={[
         ...(state.registration === "registered" && config?.notifyNumber

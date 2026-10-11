@@ -38,7 +38,7 @@ export function ContextMeter({ usage, onCompact, disabled }: { usage: ContextUsa
           </div>
         }
       >
-        <div className="flex h-7 items-center gap-1.5 rounded-md px-1.5 text-[11px] text-muted" aria-label={`Kontext zu ${pct} Prozent belegt`} role="meter" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}>
+        <div className="flex h-7 items-center gap-1.5 rounded-md px-1.5 text-caption text-muted" aria-label={`Kontext zu ${pct} Prozent belegt`} role="meter" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}>
           <div className="h-1.5 w-12 overflow-hidden rounded-full bg-surface-3">
             <div
               className={cn("h-full rounded-full", tone === "danger" ? "bg-danger" : tone === "warn" ? "bg-warning" : "bg-accent")}

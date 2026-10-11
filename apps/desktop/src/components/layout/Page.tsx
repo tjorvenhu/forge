@@ -12,8 +12,8 @@ export function Page({ title, subtitle, actions, children }: { title: string; su
     <div className="flex h-full min-h-0 flex-col">
       <header className="flex min-h-16 items-center justify-between gap-4 border-b border-border px-6 py-3">
         <div className="min-w-0">
-          <h1 className="text-[19px] font-semibold">{title}</h1>
-          {subtitle && <div className="text-[13px] text-muted">{subtitle}</div>}
+          <h1 className="text-display font-semibold">{title}</h1>
+          {subtitle && <div className="text-body text-muted">{subtitle}</div>}
         </div>
         <div className="flex shrink-0 items-center gap-2">
           {actions}

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseBranches, parseLog, parseStatusV2, parseUnifiedDiff, untrackedDiff } from "../src/git/parsers.js";
+import { parseBranches, parseLog, parseStatusV2, parseUnifiedDiff, scopeToPrefix, untrackedDiff } from "../src/git/parsers.js";
 import { isArtifactPath, isSensitiveFile, repoNameFromUrl, validateCloneUrl } from "../src/git/git.js";
 
 describe("parseStatusV2", () => {
@@ -34,6 +34,28 @@ describe("parseStatusV2", () => {
     const fresh = parseStatusV2("# branch.oid (initial)\0# branch.head main\0");
     expect(fresh).toMatchObject({ branch: "main", ahead: 0, behind: 0, files: [] });
   });
+
+  it("scopes a repository status to a project subfolder", () => {
+    const s = parseStatusV2(
+      [
+        "# branch.head main",
+        "1 .M N... 100644 100644 100644 a b packages/web/src/page.tsx",
+        "1 .M N... 100644 100644 100644 a b README.md",
+        "2 R. N... 100644 100644 100644 a b R100 packages/web/moved.ts",
+        "packages/api/moved.ts",
+        "? Packages/Web/neu.ts",
+        "",
+      ].join("\0"),
+    );
+    const scoped = scopeToPrefix(s, "packages/web/");
+    expect(scoped.branch).toBe("main");
+    expect(scoped.files.map((f) => [f.path, f.origPath])).toEqual([
+      ["src/page.tsx", null],
+      ["moved.ts", "../api/moved.ts"],
+    ]);
+    expect(scopeToPrefix(s, "packages/web/", true).files.map((f) => f.path)).toContain("neu.ts");
+    expect(scopeToPrefix(s, "")).toBe(s);
+  });
 });
 
 describe("parseUnifiedDiff", () => {
@@ -64,6 +86,15 @@ describe("parseUnifiedDiff", () => {
       ["add", null, 3],
       ["context", 3, 4],
       ["meta", null, null],
+    ]);
+  });
+
+  it("strips CR from diffs of files with Windows line endings", () => {
+    const d = parseUnifiedDiff("a.ts", "diff --git a/a.ts b/a.ts\r\n@@ -1,2 +1,2 @@\r\n eins\r\n-zwei\r\n+drei\r\n");
+    expect(d.lines.filter((l) => l.kind !== "hunk").map((l) => [l.kind, l.text])).toEqual([
+      ["context", "eins"],
+      ["del", "zwei"],
+      ["add", "drei"],
     ]);
   });
 

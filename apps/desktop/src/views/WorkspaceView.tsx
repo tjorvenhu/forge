@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useShallow } from "zustand/react/shallow";
 import { Activity, FolderTree, GitCompare, AlertTriangle, ChevronDown, FileText, GitBranch, MessageSquare, PanelBottom, PanelRight, Plus, Settings2, Star } from "lucide-react";
 import type { ProfileId } from "@forge/protocol";
 import { call, keys, useProject } from "@/lib/queries";
@@ -27,7 +28,6 @@ import { DevServerButton } from "@/components/workspace/DevServer";
 import { PhoneButton } from "@/components/layout/PhoneButton";
 import { HeaderDivider } from "@/components/layout/Page";
 import { SearchField } from "@/components/layout/SearchField";
-import { useQuery } from "@tanstack/react-query";
 
 export function WorkspaceView() {
   const projectId = useUi((s) => s.activeProjectId);
@@ -60,7 +60,16 @@ export function WorkspaceView() {
 
 function Workspace({ projectId }: { projectId: string }) {
   const project = useProject(projectId).data!;
-  const { workspaceTab, setWorkspaceTab, rightPanelOpen, toggleRightPanel, bottomPanelOpen, toggleBottomPanel } = useUi();
+  const { workspaceTab, setWorkspaceTab, rightPanelOpen, toggleRightPanel, bottomPanelOpen, toggleBottomPanel } = useUi(
+    useShallow((s) => ({
+      workspaceTab: s.workspaceTab,
+      setWorkspaceTab: s.setWorkspaceTab,
+      rightPanelOpen: s.rightPanelOpen,
+      toggleRightPanel: s.toggleRightPanel,
+      bottomPanelOpen: s.bottomPanelOpen,
+      toggleBottomPanel: s.toggleBottomPanel,
+    })),
+  );
   const [narrow, setNarrow] = useState(() => window.innerWidth < 1280);
 
   useEffect(() => {
@@ -98,7 +107,7 @@ function Workspace({ projectId }: { projectId: string }) {
               ]}
             />
             <div className="flex-1" />
-            <Button size="icon-sm" variant="ghost" onClick={() => toggleBottomPanel()} aria-pressed={bottomPanelOpen} title="Terminal, Dev-Server und Claude Output (Strg+J)" className={cn(bottomPanelOpen && "text-accent")}>
+            <Button size="icon-sm" variant="ghost" onClick={() => toggleBottomPanel()} aria-pressed={bottomPanelOpen} title="Terminal, Dev-Server und Claude-Ausgabe (Strg+J)" className={cn(bottomPanelOpen && "text-accent")}>
               <PanelBottom className="h-4 w-4" />
             </Button>
             <Button
@@ -134,7 +143,7 @@ function RightPanel({ projectId }: { projectId: string }) {
   const project = useProject(projectId).data!;
   const [tab, setTab] = useState<RightTab>("files");
   return (
-    <aside className="flex w-[400px] shrink-0 flex-col border-l border-border bg-sidebar xl:w-[440px]">
+    <aside className="flex w-100 shrink-0 flex-col border-l border-border bg-sidebar xl:w-110">
       <div className="flex h-12 shrink-0 items-center border-b border-border px-3">
         <TabBar<RightTab>
           size="lg"
@@ -193,10 +202,10 @@ function WorkspaceHeader({ projectId }: { projectId: string }) {
     <header className="flex h-16 shrink-0 items-center gap-3 border-b border-border px-5">
       <ProjectIcon name={project.name} size={36} />
       <div className="flex min-w-0 items-center gap-2" title={shortPath(project.path, 4)}>
-        <h1 className="truncate text-[18px] font-semibold">{project.name}</h1>
-        <button onClick={() => void toggleFavorite()} className="rounded p-0.5 text-subtle hover:text-warning" aria-label={project.favorite ? "Aus Favoriten entfernen" : "Zu Favoriten"}>
+        <h1 className="truncate text-title-lg font-semibold">{project.name}</h1>
+        <Button size="icon-sm" variant="ghost" onClick={() => void toggleFavorite()} className="hover:text-warning" aria-label={project.favorite ? "Aus Favoriten entfernen" : "Zu Favoriten"}>
           <Star className={cn("h-4 w-4", project.favorite && "fill-warning text-warning")} />
-        </button>
+        </Button>
       </div>
 
       {project.git && (
@@ -204,9 +213,11 @@ function WorkspaceHeader({ projectId }: { projectId: string }) {
           align="start"
           header="Branch wechseln"
           trigger={
-            <button className="ml-2 flex h-9 items-center gap-2 rounded-lg border border-border bg-surface px-3 text-[13.5px] hover:border-border-strong">
+            <button className="ml-2 flex h-9 shrink-0 items-center gap-2 whitespace-nowrap rounded-lg border border-border bg-surface px-3 text-body-lg hover:border-border-strong">
               <GitBranch className="h-4 w-4 text-muted" />
-              <span className="max-w-48 truncate">{project.git.branch ?? "detached"}</span>
+              <span className="max-w-48 truncate" title={project.git.branch ? undefined : "Kein Branch ausgecheckt"}>
+                {project.git.branch ?? "ohne Branch"}
+              </span>
               {project.git.changedCount > 0 && <span className="h-1.5 w-1.5 rounded-full bg-warning" title="Uncommittete Änderungen" />}
               <ChevronDown className="h-3.5 w-3.5 text-muted" />
             </button>
@@ -224,11 +235,11 @@ function WorkspaceHeader({ projectId }: { projectId: string }) {
       {project.exists && <DevServerButton project={project} />}
 
       {project.tags.length > 0 && (
-        <div className="hidden min-w-0 items-center gap-1.5 xl:flex" title={project.tags.join(", ")}>
+        <div className="hidden min-w-0 items-center gap-1.5 overflow-hidden xl:flex" title={project.tags.join(", ")}>
           {project.tags.slice(0, 4).map((t) => (
             <Badge key={t}>{t}</Badge>
           ))}
-          {project.tags.length > 4 && <span className="text-[11px] text-subtle">+{project.tags.length - 4}</span>}
+          {project.tags.length > 4 && <span className="text-caption text-subtle">+{project.tags.length - 4}</span>}
         </div>
       )}
 
@@ -238,12 +249,12 @@ function WorkspaceHeader({ projectId }: { projectId: string }) {
       <RemoteControlButton project={project} />
 
       <DropdownMenu
-        header="Permission-Profil"
+        header="Berechtigungsprofil"
         trigger={
           <button
-            className="flex h-9 items-center gap-1 rounded-lg px-2 hover:bg-surface-3"
-            aria-label={`Permission-Profil: ${PROFILE_INFO[project.profile].label}. Klicken zum Ändern`}
-            title="Permission-Profil ändern"
+            className="flex h-9 shrink-0 items-center gap-1 whitespace-nowrap rounded-lg px-2 hover:bg-surface-3"
+            aria-label={`Berechtigungsprofil: ${PROFILE_INFO[project.profile].label}. Klicken zum Ändern`}
+            title="Berechtigungsprofil ändern"
           >
             <ProfileBadge profile={project.profile} />
             <ChevronDown className="h-3.5 w-3.5 text-muted" />

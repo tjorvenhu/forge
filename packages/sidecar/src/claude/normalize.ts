@@ -1,6 +1,26 @@
 import type { SessionEventBody } from "@forge/protocol";
 
 const MAX_TOOL_RESULT = 20_000;
+/** per string field of a tool input; a Write of a large file would otherwise land in the DB in full */
+export const MAX_INPUT_STRING = 20_000;
+const TRUNCATION_MARK = "\n[… gekürzt]";
+
+/** Shortens long string fields (also nested, e.g. MultiEdit edits) of a tool input for storing. */
+export function truncateInput(input: Record<string, unknown>, max = MAX_INPUT_STRING): { input: Record<string, unknown>; truncated: boolean } {
+  let truncated = false;
+  const walk = (v: unknown): unknown => {
+    if (typeof v === "string") {
+      if (v.length <= max) return v;
+      truncated = true;
+      return v.slice(0, max) + TRUNCATION_MARK;
+    }
+    if (Array.isArray(v)) return v.map(walk);
+    if (v && typeof v === "object") return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, walk(x)]));
+    return v;
+  };
+  const out = walk(input) as Record<string, unknown>;
+  return { input: truncated ? out : input, truncated };
+}
 
 /**
  * Converts raw Claude Code stream messages (SDK `SDKMessage` / CLI stream-json lines)
@@ -29,6 +49,7 @@ export class Normalizer {
       case "user":
         return this.user(m);
       case "result":
+        this.endTurn();
         return [this.result(m)];
       case "rate_limit_event": {
         const info = (m.rate_limit_info ?? {}) as Record<string, unknown>;
@@ -44,6 +65,14 @@ export class Normalizer {
       default:
         return [];
     }
+  }
+
+  /** Per-message bookkeeping is only needed within a turn; a long session would otherwise grow it forever. */
+  private endTurn() {
+    this.currentMessageId = null;
+    this.streamedTextIdx.clear();
+    this.finalTextCount.clear();
+    this.thinkingSeen.clear();
   }
 
   private system(m: Record<string, unknown>): SessionEventBody[] {
@@ -132,12 +161,14 @@ export class Normalizer {
         const index = this.streamedTextIdx.get(id)?.[n] ?? n;
         out.push({ type: "assistant.text", messageId: id, index, text: block.text });
       } else if (block.type === "tool_use") {
+        const { input, truncated } = truncateInput((block.input && typeof block.input === "object" ? block.input : {}) as Record<string, unknown>);
         out.push({
           type: "tool.use",
           toolUseId: str(block.id) ?? "",
           name: str(block.name) ?? "unknown",
-          input: (block.input && typeof block.input === "object" ? block.input : {}) as Record<string, unknown>,
+          input,
           parentToolUseId: parent,
+          ...(truncated ? { inputTruncated: true } : {}),
         });
       }
     }

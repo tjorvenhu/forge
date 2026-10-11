@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Copy, Download, ExternalLink, Lock, LogOut, Search } from "lucide-react";
+import { Download, ExternalLink, Lock, LogOut, Search } from "lucide-react";
 import { call, keys, useGitHubAccount, useGitHubLogin } from "@/lib/queries";
 import { errorMessage } from "@/lib/rpc";
 import { openExternal } from "@/lib/native";
@@ -10,7 +10,8 @@ import { toast } from "@/stores/toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import { Badge, ErrorBanner, SectionTitle, Spinner, Loading } from "@/components/ui/misc";
+import { Badge, ErrorBanner, SectionTitle, Loading } from "@/components/ui/misc";
+import { DeviceCode } from "./DeviceCode";
 
 /** Sign in with GitHub inside FORGE (device flow via the shipped GitHub CLI) and list repositories. */
 export function GitHubAccountCard() {
@@ -65,6 +66,7 @@ export function GitHubAccountCard() {
               qc.removeQueries({ queryKey: keys.githubRepos });
             } catch (e) {
               toast.error("Abmelden fehlgeschlagen", errorMessage(e));
+              throw e;
             }
           }}
         />
@@ -74,39 +76,22 @@ export function GitHubAccountCard() {
 
   if (state?.phase === "waiting" && state.code && state.url) {
     return (
-      <div className="flex flex-col items-start gap-3">
-        <p className="text-[13px] text-muted">Gib diesen Code auf der GitHub-Seite ein, die sich im Browser geöffnet hat:</p>
-        <div className="flex items-center gap-2">
-          <span className="rounded-lg border border-accent/40 bg-accent-soft px-4 py-2 font-mono text-2xl tracking-widest" aria-label="Einmal-Code">
-            {state.code}
-          </span>
-          <Button
-            size="icon"
-            variant="ghost"
-            aria-label="Code kopieren"
-            onClick={() => void navigator.clipboard.writeText(state.code!).then(() => toast.success("Code kopiert"))}
-          >
-            <Copy className="h-4 w-4" />
-          </Button>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button variant="primary" onClick={() => void openExternal(state.url!)}>
-            <ExternalLink className="h-3.5 w-3.5" /> GitHub öffnen
-          </Button>
-          <Button variant="ghost" onClick={() => void call("github.cancelLogin", {}).then((s) => qc.setQueryData(keys.githubLogin, s))}>
-            Abbrechen
-          </Button>
-          <span className="flex items-center gap-2 text-xs text-muted">
-            <Spinner className="h-3.5 w-3.5" /> Warte auf Bestätigung
-          </span>
-        </div>
-      </div>
+      <DeviceCode
+        code={state.code}
+        url={state.url}
+        prompt="Gib diesen Code auf der GitHub-Seite ein, die sich im Browser geöffnet hat:"
+        onCancel={() =>
+          void call("github.cancelLogin", {})
+            .then((s) => qc.setQueryData(keys.githubLogin, s))
+            .catch((e: unknown) => toast.error("Abbrechen fehlgeschlagen", errorMessage(e)))
+        }
+      />
     );
   }
 
   return (
     <div className="flex flex-col items-start gap-3">
-      <p className="text-[13px] text-muted">
+      <p className="text-body text-muted">
         Melde dich an, um private Repositories zu klonen, zu pushen und Pull Requests zu erstellen. Die Anmeldung läuft über GitHub im Browser; das Token liegt im
         Windows-Anmeldeinformationsspeicher, nicht in FORGE.
       </p>
@@ -156,7 +141,7 @@ export function GitHubRepoList() {
         {filtered.map((r) => (
           <div key={r.fullName} className="flex items-center gap-3 px-3 py-2">
             <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-1.5 text-[13px]">
+              <div className="flex items-center gap-1.5 text-body">
                 <span className="truncate">{r.fullName}</span>
                 {r.private && (
                   <Badge>
@@ -164,7 +149,7 @@ export function GitHubRepoList() {
                   </Badge>
                 )}
               </div>
-              <div className="truncate text-[11px] text-subtle">
+              <div className="truncate text-caption text-subtle">
                 {r.description ? `${r.description} · ` : ""}aktualisiert {relativeTime(r.updatedAt)}
               </div>
             </div>

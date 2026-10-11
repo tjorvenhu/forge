@@ -28,6 +28,11 @@ export const RpcErrorSchema = z.object({
 });
 export type RpcError = z.infer<typeof RpcErrorSchema>;
 
+/** `details` of the VALIDATION error when the phone is switched on before its setup is complete. */
+export interface PhoneSetupIncomplete {
+  phoneSetupIncomplete: true;
+}
+
 /** Thrown inside the sidecar; serialized as RpcError over the wire. */
 export class ForgeError extends Error {
   constructor(

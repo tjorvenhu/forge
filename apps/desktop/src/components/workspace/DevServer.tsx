@@ -8,11 +8,10 @@ import { openExternal } from "@/lib/native";
 import { cn } from "@/lib/utils";
 import { useUi } from "@/stores/ui";
 import { toast } from "@/stores/toast";
-import { draftKey, useDrafts } from "@/stores/drafts";
+import { activeDraftKey, useDrafts } from "@/stores/drafts";
 import { useDevOutput } from "@/stores/dev-output";
 import { Button } from "@/components/ui/button";
 import { Badge, Tooltip } from "@/components/ui/misc";
-import { EXTERNAL_PREFIX } from "./ChatPanel";
 
 /** Lines of dev server output handed to Claude; enough for a stack trace, small enough for the prompt. */
 const LINES_FOR_CLAUDE = 80;
@@ -50,11 +49,12 @@ export function DevServerButton({ project }: { project: Project }) {
   if (state.status !== "running") {
     const crashed = (state.status === "exited" && state.exitCode !== 0 && state.exitCode !== null) || state.status === "failed";
     return (
-      <div className="flex items-center gap-1">
+      <div className="flex shrink-0 items-center gap-1">
         <Tooltip content={state.effectiveCommand ? `Dev-Server starten: ${state.effectiveCommand}` : "Kein Startbefehl erkannt. In den Projekt-Einstellungen eintragen."}>
           <button
+            aria-label={crashed ? "Dev-Server beendet, neu starten" : "Dev-Server starten"}
             className={cn(
-              "flex h-9 items-center gap-2 rounded-lg border px-3 text-[13px] transition-colors",
+              "flex h-9 items-center gap-2 whitespace-nowrap rounded-lg border px-3 text-body transition-colors",
               crashed ? "border-danger/30 bg-danger-soft text-danger" : "border-border text-muted hover:border-border-strong hover:text-fg",
             )}
             onClick={() => {
@@ -66,14 +66,15 @@ export function DevServerButton({ project }: { project: Project }) {
               void start();
             }}
           >
-            <Play className="h-3.5 w-3.5" /> {crashed ? "Dev-Server beendet" : "Dev-Server"}
+            <Play className="h-3.5 w-3.5" />
+            <span className="hidden lg:inline">{crashed ? "Dev-Server beendet" : "Dev-Server"}</span>
           </button>
         </Tooltip>
         {crashed && (
           <Tooltip content="Der Dev-Server wurde unerwartet beendet. Ausgabe ansehen">
-            <button onClick={openLogs} className="flex h-9 w-9 items-center justify-center rounded-lg text-danger hover:bg-surface-3" aria-label="Ausgabe des Dev-Servers ansehen">
+            <Button size="icon" variant="ghost" onClick={openLogs} className="h-9 w-9 rounded-lg text-danger hover:text-danger" aria-label="Ausgabe des Dev-Servers ansehen">
               <ScrollText className="h-4 w-4" />
-            </button>
+            </Button>
           </Tooltip>
         )}
       </div>
@@ -81,18 +82,18 @@ export function DevServerButton({ project }: { project: Project }) {
   }
 
   return (
-    <div className={cn("flex h-9 items-center gap-1 rounded-lg border pl-3 pr-1 text-[13px]", state.url ? "border-success/30 bg-success-soft" : "border-warning/30 bg-warning-soft")}>
+    <div className={cn("flex h-9 shrink-0 items-center gap-1 whitespace-nowrap rounded-lg border pl-3 pr-1 text-body", state.url ? "border-success/30 bg-success-soft" : "border-warning/30 bg-warning-soft")}>
       <span className={cn("h-2 w-2 shrink-0 rounded-full", state.url ? "bg-success" : "animate-soft-pulse bg-warning")} aria-hidden />
       {state.url ? (
         <Tooltip content={`${state.url} im Browser öffnen`}>
           <button onClick={() => void openExternal(state.url!)} className="flex items-center gap-1.5 px-1 text-success hover:underline">
-            Dev-Server online
-            <span className="font-mono text-xs text-fg/70">{hostOf(state.url)}</span>
+            <span className="hidden lg:inline">Dev-Server online</span>
+            <span className="hidden font-mono text-xs text-fg/70 xl:inline">{hostOf(state.url)}</span>
             <ExternalLink className="h-3 w-3" />
           </button>
         </Tooltip>
       ) : (
-        <span className="px-1 text-warning">Dev-Server startet …</span>
+        <span className="hidden px-1 text-warning lg:inline">Dev-Server startet …</span>
       )}
       <Tooltip content="Ausgabe des Dev-Servers">
         <Button size="icon-sm" variant="ghost" onClick={openLogs} aria-label="Ausgabe des Dev-Servers">
@@ -145,8 +146,7 @@ export function DevServerPanel({ project }: { project: Project }) {
     const lines = (text ?? "").trimEnd().split(/\r?\n/).slice(-LINES_FOR_CLAUDE).join("\n");
     if (!lines.trim()) return;
     const ui = useUi.getState();
-    const active = ui.activeSession[project.id] ?? null;
-    const key = active?.startsWith(EXTERNAL_PREFIX) ? draftKey(project.id, null, active.slice(EXTERNAL_PREFIX.length)) : draftKey(project.id, active);
+    const key = activeDraftKey(project.id, ui.activeSession[project.id]);
     const block = `Ausgabe des Dev-Servers (${state?.command ?? "Dev-Server"}), letzte Zeilen:\n\n\`\`\`\n${lines}\n\`\`\`\n`;
     const drafts = useDrafts.getState();
     const cur = drafts.drafts[key]?.text ?? "";
@@ -193,7 +193,7 @@ export function DevServerPanel({ project }: { project: Project }) {
           const el = e.currentTarget;
           pinned.current = el.scrollHeight - el.scrollTop - el.clientHeight < 30;
         }}
-        className="min-h-0 flex-1 overflow-auto whitespace-pre-wrap break-all px-3 py-2 font-mono text-[11.5px] leading-[1.45] text-muted"
+        className="min-h-0 flex-1 overflow-auto whitespace-pre-wrap break-all px-3 py-2 font-mono text-caption-lg leading-[1.45] text-muted"
       >
         {text || (state.effectiveCommand ? `Noch keine Ausgabe. Starten führt „${state.effectiveCommand}“ im Projektordner aus.` : "Kein Startbefehl erkannt. Trage ihn in den Projekt-Einstellungen unter Dev-Server-Befehl ein.")}
       </pre>

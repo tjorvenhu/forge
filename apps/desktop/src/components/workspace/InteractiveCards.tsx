@@ -1,10 +1,11 @@
-import { useState } from "react";
+import { useRef } from "react";
 import { useMutation } from "@tanstack/react-query";
-import { Check, ChevronRight, ClipboardList, MessageCircleQuestion, X } from "lucide-react";
+import { Check, ChevronRight, ClipboardList, GitCommitHorizontal, MessageCircleQuestion, ShieldAlert, X } from "lucide-react";
 import { call } from "@/lib/queries";
 import { errorMessage } from "@/lib/rpc";
 import { cn } from "@/lib/utils";
 import { toast } from "@/stores/toast";
+import { cardKey, useCardState } from "@/stores/card-state";
 import { Button } from "@/components/ui/button";
 import { Input, Textarea } from "@/components/ui/input";
 import { Badge } from "@/components/ui/misc";
@@ -49,17 +50,24 @@ export function buildAnswers(questions: Question[], picked: string[][], other: s
   return out;
 }
 
-function useRespond(sessionId: string, requestId: string | undefined) {
-  return useMutation({
+/**
+ * Answers the approval behind a card. `locked` stays set after a successful answer until approval.resolved
+ * arrives, also when the row remounts, so a second click cannot answer twice.
+ */
+function useRespond(sessionId: string, requestId: string | undefined, cardId: string) {
+  const [sent, setSent] = useCardState(cardKey(sessionId, cardId, "sent"), false);
+  const mutation = useMutation({
     mutationFn: (p: { decision: "allow" | "deny"; message?: string; answers?: Record<string, string> }) =>
       call("sessions.respondApproval", { sessionId, requestId: requestId!, decision: p.decision, scope: "once", message: p.message, answers: p.answers }),
+    onSuccess: () => setSent(true),
     onError: (e) => toast.error("Antwort nicht übermittelt", errorMessage(e)),
   });
+  return { mutate: mutation.mutate, isPending: mutation.isPending, sent, locked: mutation.isPending || sent };
 }
 
 function CardHeader({ icon, title, children }: { icon: React.ReactNode; title: string; children?: React.ReactNode }) {
   return (
-    <div className="flex items-center gap-2 px-3 py-2 text-[13px]">
+    <div className="flex items-center gap-2 px-3 py-2 text-body">
       <span className="text-accent">{icon}</span>
       <span className="font-medium">{title}</span>
       <div className="flex-1" />
@@ -73,9 +81,10 @@ export function QuestionCard({ item, sessionId }: { item: ToolItem; sessionId: s
   const req = item.approval?.req;
   const resolved = item.approval?.resolved ?? null;
   const questions = parseQuestions(req?.input ?? item.use.input);
-  const [picked, setPicked] = useState<string[][]>(() => questions.map(() => []));
-  const [other, setOther] = useState<string[]>(() => questions.map(() => ""));
-  const respond = useRespond(sessionId, req?.requestId);
+  const cardId = req?.requestId ?? item.use.toolUseId;
+  const [picked, setPicked] = useCardState<string[][]>(cardKey(sessionId, cardId, "picked"), () => questions.map(() => []));
+  const [other, setOther] = useCardState<string[]>(cardKey(sessionId, cardId, "other"), () => questions.map(() => ""));
+  const respond = useRespond(sessionId, req?.requestId, cardId);
   const pending = !!req && !resolved;
   const answers = buildAnswers(questions, picked, other);
   const complete = questions.length > 0 && questions.every((q) => answers[q.question]);
@@ -98,7 +107,7 @@ export function QuestionCard({ item, sessionId }: { item: ToolItem; sessionId: s
             <div key={qi}>
               <div className="flex items-start gap-2">
                 {q.header && <Badge tone="accent">{q.header}</Badge>}
-                <div className="text-[13.5px]">{q.question}</div>
+                <div className="text-body-lg">{q.question}</div>
               </div>
               {pending ? (
                 <>
@@ -125,14 +134,14 @@ export function QuestionCard({ item, sessionId }: { item: ToolItem; sessionId: s
                             {on && <Check className="h-2.5 w-2.5 text-accent-fg" strokeWidth={3} />}
                           </span>
                           <span className="min-w-0">
-                            <span className="block text-[13px] font-medium">{o.label}</span>
+                            <span className="block text-body font-medium">{o.label}</span>
                             {o.description && <span className="block text-xs text-muted">{o.description}</span>}
                           </span>
                         </button>
                       );
                     })}
                   </div>
-                  {focused?.preview && <pre className="mt-2 max-h-56 overflow-auto whitespace-pre-wrap rounded-md bg-bg p-2 font-mono text-[11.5px] text-muted">{focused.preview}</pre>}
+                  {focused?.preview && <pre className="mt-2 max-h-56 overflow-auto whitespace-pre-wrap rounded-md bg-bg p-2 font-mono text-caption-lg text-muted">{focused.preview}</pre>}
                   <Input
                     value={other[qi] ?? ""}
                     onChange={(e) => {
@@ -146,7 +155,7 @@ export function QuestionCard({ item, sessionId }: { item: ToolItem; sessionId: s
                   />
                 </>
               ) : (
-                <div className="mt-1 text-[13px] text-muted">
+                <div className="mt-1 text-body text-muted">
                   {given ? (
                     <span className="text-fg">{given}</span>
                   ) : resolved?.decision === "deny" ? (
@@ -166,10 +175,10 @@ export function QuestionCard({ item, sessionId }: { item: ToolItem; sessionId: s
         <div className="flex items-center gap-2 border-t border-border px-3 py-2">
           <span className="text-xs text-subtle">Claude wartet auf deine Antwort.</span>
           <div className="flex-1" />
-          <Button size="sm" variant="ghost" onClick={() => respond.mutate({ decision: "deny" })} disabled={respond.isPending}>
+          <Button size="sm" variant="ghost" onClick={() => respond.mutate({ decision: "deny" })} disabled={respond.locked}>
             Überspringen
           </Button>
-          <Button size="sm" variant="primary" onClick={() => respond.mutate({ decision: "allow", answers })} disabled={!complete} loading={respond.isPending}>
+          <Button size="sm" variant="primary" onClick={() => respond.mutate({ decision: "allow", answers })} disabled={!complete || respond.sent} loading={respond.isPending}>
             Antworten
           </Button>
         </div>
@@ -185,10 +194,12 @@ export function PlanCard({ item, sessionId }: { item: ToolItem; sessionId: strin
   const input = req?.input ?? item.use.input;
   const plan = typeof input.plan === "string" ? input.plan : null;
   const pending = !!req && !resolved;
-  const [open, setOpen] = useState(true);
-  const [revising, setRevising] = useState(false);
-  const [feedback, setFeedback] = useState("");
-  const respond = useRespond(sessionId, req?.requestId);
+  const cardId = req?.requestId ?? item.use.toolUseId;
+  const [open, setOpen] = useCardState(cardKey(sessionId, cardId, "open"), true);
+  const [revising, setRevising] = useCardState(cardKey(sessionId, cardId, "revising"), false);
+  const [feedback, setFeedback] = useCardState(cardKey(sessionId, cardId, "feedback"), "");
+  const respond = useRespond(sessionId, req?.requestId, cardId);
+  const feedbackRef = useRef<HTMLTextAreaElement>(null);
   const showPlan = pending || open;
 
   return (
@@ -215,18 +226,18 @@ export function PlanCard({ item, sessionId }: { item: ToolItem; sessionId: strin
             <div className="space-y-2">
               <Textarea
                 value={feedback}
+                ref={feedbackRef}
                 onChange={(e) => setFeedback(e.target.value)}
                 rows={3}
-                autoFocus
                 placeholder="Was soll Claude am Plan ändern?"
                 aria-label="Feedback zum Plan"
-                className="text-[13px]"
+                className="text-body"
               />
               <div className="flex justify-end gap-2">
-                <Button size="sm" variant="ghost" onClick={() => setRevising(false)} disabled={respond.isPending}>
+                <Button size="sm" variant="ghost" onClick={() => setRevising(false)} disabled={respond.locked}>
                   Abbrechen
                 </Button>
-                <Button size="sm" variant="primary" onClick={() => respond.mutate({ decision: "deny", message: feedback })} disabled={!feedback.trim()} loading={respond.isPending}>
+                <Button size="sm" variant="primary" onClick={() => respond.mutate({ decision: "deny", message: feedback })} disabled={!feedback.trim() || respond.sent} loading={respond.isPending}>
                   Feedback senden
                 </Button>
               </div>
@@ -235,10 +246,18 @@ export function PlanCard({ item, sessionId }: { item: ToolItem; sessionId: strin
             <div className="flex items-center gap-2">
               <span className="text-xs text-subtle">Nach dem Annehmen setzt Claude den Plan im Modus deines Profils um.</span>
               <div className="flex-1" />
-              <Button size="sm" variant="outline" onClick={() => setRevising(true)} disabled={respond.isPending}>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setRevising(true);
+                  requestAnimationFrame(() => feedbackRef.current?.focus());
+                }}
+                disabled={respond.locked}
+              >
                 Überarbeiten
               </Button>
-              <Button size="sm" variant="primary" onClick={() => respond.mutate({ decision: "allow" })} loading={respond.isPending}>
+              <Button size="sm" variant="primary" onClick={() => respond.mutate({ decision: "allow" })} loading={respond.isPending} disabled={respond.sent}>
                 Plan annehmen
               </Button>
             </div>
@@ -259,5 +278,60 @@ function ResolvedBadge({ decision, source, allowText, denyText }: { decision: "a
     <Badge tone="warning">
       <X className="h-3 w-3" /> {denyText}
     </Badge>
+  );
+}
+
+type AutoCommitItem = Extract<ChatItem, { kind: "autocommit" }>;
+
+const AUTOCOMMIT_RESULT = {
+  commit: { tone: "success", text: "Trotzdem committet" },
+  skip: { tone: "neutral", text: "Nicht committet" },
+  expired: { tone: "warning", text: "Abgelaufen" },
+} as const;
+
+/** Auto-commit stopped at possible secrets: the user decides whether FORGE commits anyway. */
+export function AutoCommitCard({ item, sessionId }: { item: AutoCommitItem; sessionId: string }) {
+  const { req, resolved } = item;
+  const [sent, setSent] = useCardState(cardKey(sessionId, req.requestId, "sent"), false);
+  const answer = useMutation({
+    mutationFn: (commit: boolean) => call("sessions.confirmAutoCommit", { sessionId, requestId: req.requestId, commit }),
+    onSuccess: () => setSent(true),
+    onError: (e) => toast.error("Antwort nicht übermittelt", errorMessage(e)),
+  });
+  const pending = !resolved;
+  const locked = answer.isPending || sent;
+  const result = resolved ? AUTOCOMMIT_RESULT[resolved.decision] : null;
+
+  return (
+    <div className={cn("rounded-lg border bg-surface", pending ? "border-warning/60" : "border-border")} role="group" aria-label="Rückfrage zum Auto-Commit">
+      <CardHeader icon={<ShieldAlert className="h-4 w-4 text-warning" />} title={pending ? "Trotzdem committen?" : "Auto-Commit mit Hinweis"}>
+        {result && <Badge tone={result.tone}>{result.text}</Badge>}
+      </CardHeader>
+      <div className="space-y-2 border-t border-border px-3 py-2.5">
+        <div className="text-body">In diesen Dateien sieht etwas wie ein Schlüssel, Token oder Passwort aus. Prüfe sie, bevor du committest.</div>
+        <ul className="space-y-1 text-xs">
+          {req.flagged.map((f) => (
+            <li key={f.path} className="flex items-center gap-2">
+              <span className="truncate font-mono">{f.path}</span>
+              <Badge tone="warning">{f.reason}</Badge>
+            </li>
+          ))}
+        </ul>
+        <div className="rounded-md bg-surface-2 px-2.5 py-1.5 font-mono text-xs whitespace-pre-wrap text-muted">{req.message}</div>
+        {resolved?.decision === "expired" && <div className="text-xs text-subtle">Die Dateien haben sich nach der Rückfrage geändert. Bitte im Git-Bereich prüfen.</div>}
+      </div>
+      {pending && (
+        <div className="flex items-center gap-2 border-t border-border px-3 py-2">
+          <span className="text-xs text-subtle">{req.files.length} Datei(en) warten auf deine Entscheidung.</span>
+          <div className="flex-1" />
+          <Button size="sm" variant="ghost" onClick={() => answer.mutate(false)} disabled={locked}>
+            Nicht committen
+          </Button>
+          <Button size="sm" variant="danger" onClick={() => answer.mutate(true)} disabled={locked} loading={answer.isPending && answer.variables === true}>
+            <GitCommitHorizontal className="h-3.5 w-3.5" /> Trotzdem committen
+          </Button>
+        </div>
+      )}
+    </div>
   );
 }

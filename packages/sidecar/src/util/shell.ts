@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { killTree, onFinished } from "./proc.js";
 
 export interface ShellResult {
   exitCode: number | null;
@@ -19,17 +20,24 @@ export function runUserCommand(command: string, cwd: string, env: Record<string,
   return new Promise((resolve) => {
     let out = "";
     let timedOut = false;
+    let settled = false;
     const child = spawn(command, { cwd, env, shell: true, windowsHide: true, stdio: ["ignore", "pipe", "pipe"] });
-    const append = (d: Buffer) => {
-      out = (out + d.toString()).slice(-MAX_OUTPUT * 2);
+    const append = (d: string) => {
+      out = (out + d).slice(-MAX_OUTPUT * 2);
     };
+    child.stdout.setEncoding("utf8");
+    child.stderr.setEncoding("utf8");
     child.stdout.on("data", append);
     child.stderr.on("data", append);
+    child.stdout.on("error", () => {});
+    child.stderr.on("error", () => {});
     const timer = setTimeout(() => {
       timedOut = true;
-      child.kill();
+      killTree(child);
     }, timeoutMs);
     const done = (exitCode: number | null) => {
+      if (settled) return;
+      settled = true;
       clearTimeout(timer);
       resolve({ exitCode, output: out.slice(-MAX_OUTPUT), durationMs: Date.now() - started, timedOut });
     };
@@ -37,6 +45,6 @@ export function runUserCommand(command: string, cwd: string, env: Record<string,
       out += `\n${e.message}`;
       done(null);
     });
-    child.on("close", done);
+    onFinished(child, done);
   });
 }
