@@ -50,7 +50,6 @@ export function locateClaude(configured: string | null): string | null {
   if (configured) return existsSync(configured) ? configured : null;
   const fromPath = which("claude");
   if (fromPath) return fromPath;
-  const exe = process.platform === "win32" ? "claude.exe" : "claude";
-  const candidates = [path.join(os.homedir(), ".local", "bin", exe), path.join(os.homedir(), ".claude", "local", exe)];
+  const candidates = [path.join(os.homedir(), ".local", "bin", "claude.exe"), path.join(os.homedir(), ".claude", "local", "claude.exe")];
   return candidates.find((c) => existsSync(c)) ?? null;
 }

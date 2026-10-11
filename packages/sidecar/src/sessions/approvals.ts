@@ -1,0 +1,178 @@
+import { randomUUID } from "node:crypto";
+import os from "node:os";
+import { ForgeError, type PermissionMode } from "@forge/protocol";
+import type { ApprovalDecision, ApprovalRequest } from "../claude/runtime.js";
+import { truncateInput } from "../claude/normalize.js";
+import type { GitEngine } from "../git/git.js";
+import { checkToolUse, claudePlansDir, needsBranch, writesOutsideProject, type GuardViolation } from "../policy/guard.js";
+import { redact } from "../policy/redact.js";
+import type { LiveSession } from "./live-session.js";
+import type { SessionCore } from "./session-core.js";
+
+/** Tools that ask the user something instead of doing something; answered in their own cards. */
+const QUESTION_TOOL = "AskUserQuestion";
+const PLAN_TOOL = "ExitPlanMode";
+const INTERACTIVE_TOOLS = new Set([QUESTION_TOOL, PLAN_TOOL]);
+
+const GUARD_ERROR: GuardViolation = { rule: "guard-error", message: "Die Policy-Prüfung ist fehlgeschlagen, der Aufruf wurde vorsichtshalber abgelehnt." };
+
+export interface ApprovalHost {
+  /** reason recorded when the CLI aborts an open prompt */
+  abortReason(sessionId: string): string;
+  /** an accepted plan moved the session out of plan mode */
+  syncPermissionMode(sessionId: string, mode: PermissionMode): void;
+}
+
+/** Denies every open prompt of a process (stop, end, shutdown). */
+export function denyPending(live: LiveSession, message: string) {
+  for (const p of [...live.pending.values()]) p.resolve({ behavior: "deny", message });
+}
+
+/**
+ * FORGE's side of tool permissions: the hard policy check before every tool call (PreToolUse hook)
+ * and the approval prompts of the CLI, answered in the UI or on the phone. Every decision is written
+ * to the approvals audit table.
+ */
+export class ApprovalGate {
+  constructor(
+    private readonly core: SessionCore,
+    private readonly git: GitEngine,
+    private readonly host: ApprovalHost,
+  ) {}
+
+  async guard(id: string, live: LiveSession, toolName: string, input: Record<string, unknown>, toolUseId: string | null): Promise<GuardViolation | null> {
+    // Decide first; logging comes after and must never turn a deny into an allow.
+    let v: GuardViolation | null;
+    try {
+      // disallowedTools is fixed at process start; a later switch to a stricter profile is enforced here.
+      v = live.profile.disallowedTools.includes(toolName)
+        ? { rule: "profile-tool", message: `Das Profil ${live.profile.label} erlaubt ${toolName} nicht.` }
+        : checkToolUse(toolName, input, {
+            projectDir: live.projectDir,
+            confineWritesToProject: live.profile.confineWritesToProject,
+            // only a push needs the branch; looking it up on every tool call would spawn git each time
+            currentBranch: needsBranch(toolName, input) ? await this.currentBranch(live.projectDir) : null,
+            home: os.homedir(),
+            extraWriteDirs: [claudePlansDir()],
+          });
+    } catch {
+      v = GUARD_ERROR;
+    }
+    if (v) {
+      try {
+        this.core.record(id, { type: "policy.blocked", toolUseId, toolName, rule: v.rule, message: v.message });
+        this.core.db.recordApproval({
+          sessionId: id,
+          requestId: toolUseId ?? randomUUID(),
+          toolName,
+          input: redact(truncateInput(input).input),
+          decision: "deny",
+          scope: "once",
+          source: "policy",
+          reason: v.rule,
+        });
+      } catch {
+        /* the deny stands even if it could not be logged */
+      }
+    }
+    return v;
+  }
+
+  request(id: string, live: LiveSession, req: ApprovalRequest, signal: AbortSignal): Promise<ApprovalDecision> {
+    const allowSessionScope = live.profile.allowSessionScope && !req.suppressAlwaysAllow && !INTERACTIVE_TOOLS.has(req.toolName);
+    const { input, truncated } = truncateInput(req.input);
+    this.core.record(id, {
+      type: "approval.request",
+      requestId: req.requestId,
+      toolUseId: req.toolUseId,
+      toolName: req.toolName,
+      input,
+      title: req.title,
+      description: req.description,
+      reason: req.reason,
+      allowSessionScope,
+      outsideProject: writesOutsideProject(req.toolName, req.input, live.projectDir, os.homedir(), [claudePlansDir()]),
+      ...(truncated ? { inputTruncated: true } : {}),
+    });
+    this.core.setStatus(id, "waiting_approval", req.title ?? req.toolName);
+    return new Promise<ApprovalDecision>((resolve) => {
+      const finish = (d: ApprovalDecision, source: "user" | "abort", scope: "once" | "session") => {
+        if (!live.pending.delete(req.requestId)) return;
+        try {
+          this.core.record(id, {
+            type: "approval.resolved",
+            requestId: req.requestId,
+            decision: d.behavior,
+            scope,
+            source,
+            message: d.behavior === "deny" ? d.message : null,
+            ...(d.behavior === "allow" && isAnswers(d.updatedInput?.answers) ? { answers: d.updatedInput.answers } : {}),
+          });
+          this.core.db.recordApproval({
+            sessionId: id,
+            requestId: req.requestId,
+            toolName: req.toolName,
+            input: redact(input),
+            decision: d.behavior,
+            scope,
+            source,
+            reason: d.behavior === "deny" ? d.message : null,
+          });
+          if (this.core.live.get(id) === live && live.pending.size === 0) this.core.setStatus(id, "running");
+        } finally {
+          // The CLI waits for this answer; a failed log write must not leave it hanging.
+          resolve(d);
+        }
+      };
+      live.pending.set(req.requestId, {
+        req,
+        resolve: (d) => finish(d, "user", d.behavior === "allow" ? d.scope : "once"),
+      });
+      // With Remote Control the prompt may also have been answered in the Claude app.
+      signal.addEventListener("abort", () => finish({ behavior: "deny", message: this.host.abortReason(id) }, "abort", "once"), { once: true });
+    });
+  }
+
+  respond(sessionId: string, requestId: string, decision: "allow" | "deny", scope: "once" | "session", message?: string, answers?: Record<string, string>) {
+    const live = this.core.live.get(sessionId);
+    const p = live?.pending.get(requestId);
+    if (!live || !p) throw new ForgeError("NOT_FOUND", "Diese Freigabeanfrage ist nicht mehr offen.");
+    const tool = p.req.toolName;
+    if (decision === "deny") {
+      const fallback = tool === QUESTION_TOOL ? "Der Nutzer möchte die Rückfrage nicht beantworten." : tool === PLAN_TOOL ? "Der Nutzer möchte den Plan überarbeiten." : "Vom Nutzer abgelehnt";
+      p.resolve({ behavior: "deny", message: message?.trim() || fallback });
+      return { ok: true };
+    }
+    if (tool === QUESTION_TOOL) {
+      const given = Object.fromEntries(Object.entries(answers ?? {}).filter(([, v]) => v.trim()));
+      if (!Object.keys(given).length) throw new ForgeError("VALIDATION", "Bitte mindestens eine Frage beantworten.");
+      p.resolve({ behavior: "allow", scope: "once", updatedInput: { ...p.req.input, answers: given } });
+      return { ok: true };
+    }
+    if (tool === PLAN_TOOL) {
+      // Accepting the plan leaves plan mode for the mode of the project's profile, like the CLI dialog.
+      const mode = live.profile.permissionMode;
+      p.resolve({ behavior: "allow", scope: "once", mode });
+      this.host.syncPermissionMode(sessionId, mode);
+      return { ok: true };
+    }
+    if (scope === "session" && !(live.profile.allowSessionScope && !p.req.suppressAlwaysAllow)) {
+      throw new ForgeError("POLICY_DENIED", "Für dieses Profil oder dieses Tool ist keine Freigabe für die ganze Session erlaubt.");
+    }
+    p.resolve({ behavior: "allow", scope });
+    return { ok: true };
+  }
+
+  private async currentBranch(dir: string): Promise<string | null> {
+    try {
+      const r = await this.git.exec(dir, ["rev-parse", "--abbrev-ref", "HEAD"]);
+      return r.code === 0 ? r.stdout.trim() : null;
+    } catch {
+      return null;
+    }
+  }
+}
+
+function isAnswers(v: unknown): v is Record<string, string> {
+  return !!v && typeof v === "object" && Object.values(v).every((x) => typeof x === "string");
+}

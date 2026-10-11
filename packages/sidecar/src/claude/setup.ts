@@ -4,9 +4,8 @@ import { run } from "../util/proc.js";
 import { locateClaude, sessionEnv } from "./environment.js";
 import { compareVersions, fetchLatestVersion, parseVersion, readUpdateChannel } from "./update.js";
 
-// Official installers (https://docs.claude.com/en/docs/claude-code/setup).
-const INSTALL_WINDOWS = ["powershell.exe", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "irm https://claude.ai/install.ps1 | iex"]] as const;
-const INSTALL_UNIX = ["bash", ["-c", "curl -fsSL https://claude.ai/install.sh | bash"]] as const;
+// Official installer (https://docs.claude.com/en/docs/claude-code/setup).
+const INSTALL_ARGS = ["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "irm https://claude.ai/install.ps1 | iex"];
 
 /** Strips OSC 8 hyperlinks and other escape sequences from CLI output. */
 export function stripAnsi(s: string): string {
@@ -53,9 +52,8 @@ export class ClaudeSetupService {
 
   install(): ClaudeSetupState {
     this.ensureIdle();
-    const [cmd, args] = process.platform === "win32" ? INSTALL_WINDOWS : INSTALL_UNIX;
     this.set({ task: "install", phase: "running", url: null, log: [], message: null });
-    const child = spawn(cmd, [...args], { shell: false, windowsHide: true, stdio: ["ignore", "pipe", "pipe"] });
+    const child = spawn("powershell.exe", INSTALL_ARGS, { shell: false, windowsHide: true, stdio: ["ignore", "pipe", "pipe"] });
     this.proc = child;
     child.stdout?.on("data", (d: Buffer) => this.appendLog(d.toString()));
     child.stderr?.on("data", (d: Buffer) => this.appendLog(d.toString()));

@@ -22,7 +22,7 @@ describe("claude login output parsing", () => {
   });
 });
 
-describe.runIf(process.platform === "win32")("bundled runtime resolution", () => {
+describe("bundled runtime resolution", () => {
   const t = tempDir("forge-runtime-");
   const prev = process.env.FORGE_RUNTIME_DIR;
   afterEach(() => {
