@@ -28,6 +28,7 @@ export const keys = {
   diagnostics: ["diagnostics"] as const,
   runtimeInfo: ["runtimeInfo"] as const,
   usage: ["usage"] as const,
+  rateLimit: ["rateLimit"] as const,
   githubAccount: ["githubAccount"] as const,
   githubLogin: ["githubLogin"] as const,
   githubRepos: ["githubRepos"] as const,
@@ -85,6 +86,10 @@ export const useUsage = () =>
     refetchInterval: 5 * 60_000,
     refetchOnWindowFocus: false,
   });
+
+/** Latest plan rate limit of the account; changes arrive as ratelimit.updated. */
+export const useRateLimit = () =>
+  useQuery({ queryKey: keys.rateLimit, queryFn: () => call("system.rateLimit", {}), staleTime: Infinity, refetchOnWindowFocus: false });
 
 export const useRuntimeInfo = () =>
   useQuery({ queryKey: keys.runtimeInfo, queryFn: () => call("system.runtimeInfo", {}), staleTime: 10 * 60_000, refetchOnWindowFocus: false });

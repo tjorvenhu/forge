@@ -91,7 +91,8 @@ Umgebungsvariablen für Sonderfälle: `FORGE_NODE` (Pfad zu node), `FORGE_SIDECA
   harte Sperrliste in allen Profilen, Audit-Log.
 - **Git:** Status, echter Diff (auch für neue Dateien), Stage/Unstage, Commit nur der ausgewählten Dateien
   mit Review-Dialog und Rückfrage bei sensiblen Dateien (`.env`, Schlüsseldateien, Build-Artefakte), Verlauf mit Wiederherstellung (alle Dateien auf den Stand eines früheren Commits zurückholen, als neue Änderungen), Branches anlegen, wechseln und löschen (nicht gemergte nur nach Rückfrage), git init. Beim Entfernen eines Agenten lässt sich sein Branch ohne Merge mitlöschen.
-- **Abo-Nutzung:** 5-Stunden- und Wochenfenster (auch pro Modell) unten links, mit Reset-Zeit.
+- **Abo-Nutzung:** 5-Stunden- und Wochenfenster (auch pro Modell) unten links, mit Reset-Zeit. Ist ein Limit fast oder ganz erreicht, steht das dauerhaft am Composer („Limit fast erreicht · Reset 19:10“), statt bei jeder Anfrage als Meldung im Chat.
+- **Nach dem Nutzungslimit weitermachen:** Stoppt das Limit eine Session, macht FORGE nach dem Reset (plus 2 Minuten) selbst weiter: Session fortsetzen, falls nötig, und Claude bitten, dort weiterzumachen. Die Karte im Chat zeigt die Uhrzeit und lässt sich abbrechen. Der Plan übersteht einen Neustart von FORGE und Standby. Eine eigene Nachricht oder Stopp hebt ihn auf, nach drei automatischen Fortsetzungen ohne deine Eingabe ist Schluss. Abschaltbar unter Einstellungen → Claude Code.
 - **GitHub:** Anmeldung in der App (Code anzeigen, Browser öffnet sich), Liste deiner Repositories mit Klonen per Klick.
 - **Commit-Nachricht per KI:** Funken-Knopf im Commit-Feld; Claude (Haiku) schreibt die Nachricht aus dem Diff im Stil der bisherigen Commits. Sensible Dateien werden nicht gesendet.
 - **Regeln für Claude:** CLAUDE.md global, pro Projekt und lokal (nicht im Git) direkt in FORGE bearbeiten.

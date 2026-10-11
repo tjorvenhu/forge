@@ -154,3 +154,42 @@ describe("stable chat items", () => {
     expect(live[0]).toBe(items[0]);
   });
 });
+
+describe("usage limit in the chat", () => {
+  const reset = Date.parse("2026-10-10T17:10:00.000Z") / 1000;
+  const limit = (status: string, extra: Partial<Extract<SessionEventBody, { type: "rate_limit" }>> = {}): SessionEventBody => ({ type: "rate_limit", status, resetsAt: reset, limitType: "five_hour", ...extra });
+  const failed: SessionEventBody = { type: "turn.result", subtype: "success", isError: true, durationMs: 10, numTurns: 1, inputTokens: null, outputTokens: null, cacheReadTokens: null, text: "You've hit your limit" };
+
+  it("shows no notice for warnings or allowed reports, however often they come", () => {
+    seq = 0;
+    const items = buildEventItems([ev({ type: "user.message", text: "x" }), ev(limit("allowed_warning")), ev(limit("allowed_warning")), ev(limit("allowed"))]);
+    expect(items.map((i) => i.kind)).toEqual(["user"]);
+  });
+
+  it("shows a real stop in German without raw status names", () => {
+    seq = 0;
+    const items = buildEventItems([ev(limit("rejected")), ev(limit("rejected", { overageInUse: true }))]);
+    expect(items).toHaveLength(1);
+    expect(items[0]).toMatchObject({ kind: "notice", card: { title: "Nutzungslimit erreicht", detail: expect.stringMatching(/^5-Stunden-Limit · zurückgesetzt um \d\d:\d\d$/) } });
+    expect(JSON.stringify(items)).not.toMatch(/rejected|allowed/);
+  });
+
+  it("replaces the stop notice with the plan card and closes the plan once something follows", () => {
+    seq = 0;
+    const scheduled: SessionEventBody = { type: "auto_continue", state: "scheduled", scheduledFor: "2026-10-10T17:12:00.000Z", resetKnown: true, attempt: 1, message: null };
+    const planned = buildEventItems([ev({ type: "user.message", text: "Bau das" }), ev(limit("rejected")), ev(failed), ev(scheduled)]);
+    expect(planned.map((i) => i.kind)).toEqual(["user", "result", "autoContinue"]);
+    expect(planned.at(-1)).toMatchObject({ open: true });
+
+    const ran = buildEventItems([
+      ...[ev({ type: "user.message", text: "Bau das" }, 1), ev(limit("rejected"), 2), ev(failed, 3), ev(scheduled, 4)],
+      ev({ type: "auto_continue", state: "resumed", scheduledFor: "2026-10-10T17:12:00.000Z", attempt: 1, message: null }, 5),
+      ev({ type: "user.message", text: "Das Nutzungslimit ist zurückgesetzt.", source: "auto" }, 6),
+    ]);
+    expect(ran.map((i) => (i.kind === "autoContinue" ? `${i.body.state}:${i.open}` : i.kind))).toEqual(["user", "result", "scheduled:false", "resumed:false", "user"]);
+    expect(ran.at(-1)).toMatchObject({ kind: "user", auto: true });
+
+    const overruled = buildEventItems([ev(scheduled, 1), ev({ type: "user.message", text: "Mach ich selbst" }, 2)]);
+    expect(overruled[0]).toMatchObject({ kind: "autoContinue", open: false });
+  });
+});

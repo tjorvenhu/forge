@@ -112,6 +112,13 @@ E-Mail-Adresse oder Org-Daten der Claude-Anmeldung.
   oder fortgesetzt werden, kommen automatisch dazu; FORGE startet dafür keine eigene Session. Nachrichten von
   dort laufen durch dieselbe Session: Profil, Freigaben und Sperrliste gelten. Eine beendete Session fällt
   heraus. Ausschalten trennt alle Verbindungen, die Sessions laufen lokal weiter.
+- **Automatisches Weitermachen nach dem Nutzungslimit** sendet Nachrichten ohne dich, aber eng begrenzt:
+  nur nachdem ein Nutzungslimit einen Durchlauf dieser Session gestoppt hat, nur an diese eine Session und
+  immer mit demselben festen Text. Die Session läuft mit ihrem normalen Profil, ihren Freigaben und der
+  Sperrliste; es gibt keine Ausnahme und keinen höheren Permission-Modus. Offene Freigaben bleiben offen,
+  bis du antwortest. Höchstens drei automatische Fortsetzungen ohne deine Eingabe, dann ist Schluss.
+  Eine eigene Nachricht, Stopp, Löschen oder „Nicht automatisch weitermachen“ heben den Plan auf;
+  in den Einstellungen lässt sich die Funktion ganz abschalten (Standard: an).
 - **Terminal**: nur Shell oder Claude-CLI startbar, kein Netzwerkzugang zum PTY.
 - **Testbefehle** laufen mit deinen Rechten im Projektordner.
 - **Projekt löschen** mit Ordner oder GitHub-Repository verlangt das Eintippen des Projektnamens. Gesperrt sind

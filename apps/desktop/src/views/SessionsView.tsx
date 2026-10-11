@@ -102,7 +102,7 @@ export function SessionsView() {
                   </td>
                   <td className="px-4 py-2 text-muted">{s.projectName}</td>
                   <td className="px-4 py-2">
-                    <SessionStatusBadge status={s.status} live={s.live} />
+                    <SessionStatusBadge status={s.status} live={s.live} autoContinueAt={s.autoContinueAt} />
                   </td>
                   <td className="px-4 py-2">
                     <ProfileBadge profile={s.profile} />

@@ -11,6 +11,7 @@ import { ApprovalBlock, ToolCard } from "./ToolCard";
 import { EventCard, noticeIcon } from "./EventCard";
 import { ClaudeMark } from "./ClaudeMark";
 import { UserMessage } from "./UserMessage";
+import { AutoContinueCard } from "./AutoContinueCard";
 
 /** Re-parsing the markdown on every delta is the expensive part of streaming; a few updates per second read the same. */
 const STREAM_RENDER_MS = 100;
@@ -92,6 +93,8 @@ export const ItemView = memo(function ItemView({ item, sessionId, live, projectD
       );
     case "check":
       return <CheckCard body={item.body} ts={item.ts} />;
+    case "autoContinue":
+      return <AutoContinueCard item={item} sessionId={sessionId} />;
   }
 });
 

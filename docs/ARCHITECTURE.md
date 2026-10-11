@@ -82,6 +82,33 @@ Token-Deltas werden nur live gesendet, nie gespeichert. `sessions.events` liefer
 20.000 Events in aufsteigender Reihenfolge, ältere über den Parameter `beforeSeq`. Einmal-Aufrufe
 der CLI (Prüfung, Befehlsliste, Commit-Nachricht, Usage) brechen nach 45 Sekunden ab.
 
+### Nutzungslimit und automatisches Weitermachen
+
+`sessions/auto-continue.ts`. Ein Durchlauf gilt als vom Limit gestoppt, wenn sein `turn.result` ein Fehler
+ist (kein Stopp durch den Nutzer) und entweder im selben Durchlauf ein `rate_limit_event` mit
+`status: "rejected"` kam (ohne `isUsingOverage`/`overageInUse`) oder der Ergebnistext eine Limit-Meldung
+ist („You've hit your …“, ältere CLI „Claude AI usage limit reached|<unix>“). Die Reset-Zeit kommt in
+dieser Reihenfolge aus `rate_limit_info.resetsAt`, der Plan-Auslastung (`system.usage`, Fenster des
+gemeldeten Limits oder das späteste volle) und dem Text der Meldung. Ist sie unbekannt, fragt FORGE alle
+15 Minuten die Plan-Auslastung ab, höchstens 20-mal, dann folgt ein Versuch.
+
+Der Plan liegt in der Tabelle `auto_continue` (fällig um, Reset, letzte Event-Nummer beim Limit,
+Anzahl der Versuche). Alle 30 Sekunden (erstmals 10 Sekunden nach dem Start) vergleicht der Sidecar die
+Uhrzeit mit den fälligen Plänen. Es gibt keinen langen Timer, der im Standby stehen bliebe: nach dem
+Aufwachen ist ein Plan überfällig und läuft beim nächsten Check. Fällig heißt: Session prüfen (gibt es
+seit dem Limit eine Nutzernachricht oder ein weiteres Ergebnis, oder läuft gerade ein Durchlauf, entfällt
+der Plan), dann über den normalen Resume-Pfad `AUTO_CONTINUE_PROMPT` senden, als `user.message` mit
+`source: "auto"`. Jede Nutzernachricht (FORGE, Telefon, Claude-App), `sessions.stop`,
+`sessions.cancelAutoContinue`, das Löschen der Session und die Einstellung `autoContinueAfterLimit` heben
+den Plan auf. Ohne Nutzereingabe macht FORGE höchstens dreimal hintereinander automatisch weiter.
+Die Timeline zeigt das über Events `auto_continue` (`scheduled`, `resumed`, `cancelled`, `exhausted`,
+`failed`); `Session.autoContinueAt` trägt die geplante Zeit.
+
+Unabhängig davon merkt sich `sessions/rate-limit.ts` den zuletzt gemeldeten Limit-Stand des Kontos
+(`system.rateLimit`, Event `ratelimit.updated`): `warning` bei `allowed_warning`, `reached` bei
+`rejected`. Eine spätere Meldung `allowed` oder das Verstreichen von `resetsAt` setzt ihn zurück. Der
+Composer zeigt ihn dauerhaft an; Warnungen erscheinen nicht mehr im Chat.
+
 ## Prozesse und Aufräumen
 
 - **Job Object:** Jeder Sidecar-Start läuft in einem eigenen Job Object mit `KILL_ON_JOB_CLOSE`. Beenden,
@@ -95,7 +122,8 @@ der CLI (Prüfung, Befehlsliste, Commit-Nachricht, Usage) brechen nach 45 Sekund
 ## Datenablage
 
 - `%APPDATA%\forge\forge.db`, überschreibbar mit `FORGE_DATA_DIR`.
-- Tabellen: `projects`, `sessions`, `events`, `approvals` (Audit), `settings`.
+- Tabellen: `projects`, `sessions`, `events`, `approvals` (Audit), `settings`, `auto_continue`
+  (geplantes Weitermachen nach einem Nutzungslimit, wird mit der Session gelöscht).
 - Claude-eigene Daten (`~/.claude`, `.claude/settings.json`, `CLAUDE.md`) schreibt FORGE nur auf Klick:
   CLAUDE.md-Dateien, Skills, Subagenten und den Schlüssel `hooks` in `settings.json`. Schreiben ist atomar,
   legt eine `.bak` an und erkennt gleichzeitige Änderungen. Gelöschte Skills wandern nach

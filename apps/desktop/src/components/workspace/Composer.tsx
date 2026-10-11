@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
 import { Kbd, Tooltip } from "@/components/ui/misc";
 import { ContextMeter } from "./ContextMeter";
+import { RateLimitBadge } from "./RateLimitBadge";
 import { AttachmentList } from "./AttachmentList";
 import { CLEAR_COMMANDS, isClearCommand, SlashCommandMenu, useSlashCommands } from "./SlashCommandMenu";
 import { useAttachments } from "./useAttachments";
@@ -175,6 +176,7 @@ export function Composer({
             </Button>
           </Tooltip>
           <div className="flex-1" />
+          <RateLimitBadge autoContinueAt={session?.autoContinueAt ?? null} />
           {session?.context && <ContextMeter usage={session.context} onCompact={() => void compactSession(session.id)} disabled={working || waiting || sending} />}
           <span className="hidden whitespace-nowrap text-caption text-subtle 2xl:inline">
             {enterToSend ? (

@@ -7,7 +7,7 @@ import { toast } from "@/stores/toast";
 import { call, keys } from "./queries";
 import { rpc } from "./rpc";
 import { playSound } from "./sounds";
-import { notifyKind, notifySession, shouldNotify } from "./notifications";
+import { notifyAutoContinue, notifyKind, notifySession, shouldNotify } from "./notifications";
 
 const GIT_REFRESH_DELAY_MS = 400;
 const EVICT_INTERVAL_MS = 60_000;
@@ -51,6 +51,7 @@ export function routeServerEvent(qc: QueryClient, git: GitRefresher, e: ServerEv
         if (qc.getQueryData<ResultOf<"settings.get">>(keys.settings)?.sounds !== false) playSound(kind);
         void notifySession(qc, e.payload, kind);
       }
+      if (t === "auto_continue") void notifyAutoContinue(qc, e.payload);
       if (t === "tool.result" || t === "turn.result") {
         const s = qc.getQueryData<ResultOf<"sessions.get">>(keys.session(e.payload.sessionId));
         if (s) git.schedule(s.projectId);
@@ -93,6 +94,9 @@ export function routeServerEvent(qc: QueryClient, git: GitRefresher, e: ServerEv
       break;
     case "remote.updated":
       qc.setQueryData(keys.remote, e.payload);
+      break;
+    case "ratelimit.updated":
+      qc.setQueryData(keys.rateLimit, e.payload);
       break;
     case "devserver.updated":
       qc.setQueryData(keys.devServer(e.payload.projectId), e.payload);
