@@ -41,13 +41,3 @@ export function redact<T>(value: T): T {
   }
   return value;
 }
-
-/** True if the text likely contains a credential. Used to block commits. */
-export function containsSecret(text: string): boolean {
-  return PATTERNS.some(([re]) => {
-    re.lastIndex = 0;
-    const hit = re.test(text);
-    re.lastIndex = 0;
-    return hit;
-  });
-}

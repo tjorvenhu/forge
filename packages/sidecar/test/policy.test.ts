@@ -3,7 +3,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { checkToolUse, claudePlansDir, resolveToolPath, writesOutsideProject } from "../src/policy/guard.js";
 import { effectivePermissionMode, PROFILES, resolveProfile } from "../src/policy/profiles.js";
-import { containsSecret, redact, redactText } from "../src/policy/redact.js";
+import { redact, redactText } from "../src/policy/redact.js";
 
 const home = os.homedir();
 const projectDir = path.join(home, "Projects", "demo app");
@@ -196,8 +196,6 @@ describe("redaction", () => {
     ].join("\n");
     const out = redactText(text);
     expect(out).not.toMatch(/sk-ant-api03|ghp_abc|AKIAABCD|hunter2|abcdefghijklmnopqrstuvwxyz\.123|OPENSSH PRIVATE KEY-----\nabc/);
-    expect(containsSecret(text)).toBe(true);
-    expect(containsSecret("const x = 1;")).toBe(false);
   });
 
   it.each([
@@ -214,7 +212,6 @@ describe("redaction", () => {
     const out = redactText(text);
     expect(out).not.toContain(leaked);
     expect(out).toContain("[REDACTED]");
-    expect(containsSecret(text)).toBe(true);
   });
 
   it("keeps the user part of connection strings", () => {
@@ -237,7 +234,6 @@ describe("redaction", () => {
     "const sk = 'sk-short';",
   ])("does not redact %s", (text) => {
     expect(redactText(text)).toBe(text);
-    expect(containsSecret(text)).toBe(false);
   });
 
   it("redacts nested values without touching structure", () => {

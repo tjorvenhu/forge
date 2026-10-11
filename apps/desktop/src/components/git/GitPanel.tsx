@@ -231,7 +231,7 @@ export function GitPanel({ project, compact = false }: { project: Project; compa
         open={!!flagged}
         onOpenChange={(o) => !o && setFlagged(null)}
         title="Trotzdem committen?"
-        description="Unter den ausgewählten Dateien sind mögliche Secrets oder Build-Artefakte. Prüfe sie, bevor du committest."
+        description="Unter den ausgewählten Dateien sind sensible Dateien (z. B. .env oder Schlüsseldateien) oder Build-Artefakte. Prüfe sie, bevor du committest."
         confirmLabel="Trotzdem committen"
         danger
         onConfirm={() => doCommit(true)}

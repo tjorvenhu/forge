@@ -154,16 +154,3 @@ describe("stable chat items", () => {
     expect(live[0]).toBe(items[0]);
   });
 });
-
-describe("auto-commit question", () => {
-  it("shows one card per question and attaches the decision", () => {
-    seq = 0;
-    const items = buildEventItems([
-      ev({ type: "automation.confirm", requestId: "q1", files: ["config.ts"], flagged: [{ path: "config.ts", reason: "möglicher Schlüssel/Token im Inhalt" }], message: "feat: config" }),
-      ev({ type: "automation.confirmResolved", requestId: "q1", decision: "commit" }),
-      ev({ type: "automation.confirmResolved", requestId: "unbekannt", decision: "skip" }),
-    ]);
-    expect(items).toHaveLength(1);
-    expect(items[0]).toMatchObject({ kind: "autocommit", key: "qq1", resolved: { decision: "commit" } });
-  });
-});

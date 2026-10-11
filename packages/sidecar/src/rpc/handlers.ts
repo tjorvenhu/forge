@@ -172,7 +172,6 @@ export function createHandlers(s: Services): Handlers {
     "sessions.setPermissionMode": ({ sessionId, mode }) => s.sessions.setPermissionMode(sessionId, mode),
     "sessions.respondApproval": ({ sessionId, requestId, decision, scope, message, answers }) =>
       s.sessions.respondApproval(sessionId, requestId, decision, scope, message, answers),
-    "sessions.confirmAutoCommit": ({ sessionId, requestId, commit }) => s.sessions.confirmAutoCommit(sessionId, requestId, commit),
     "sessions.contextUsage": ({ sessionId }) => s.sessions.contextUsage(sessionId),
     "search.sessions": ({ query, limit }) => s.db.searchEvents(query, limit),
 

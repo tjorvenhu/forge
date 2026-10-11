@@ -9,7 +9,7 @@ export type NotifyKind = "done" | "approval" | "error";
 
 /** Which session events get a sound and a notification; null for all others. */
 export function notifyKind(body: SessionEvent["body"]): NotifyKind | null {
-  if (body.type === "approval.request" || body.type === "automation.confirm") return "approval";
+  if (body.type === "approval.request") return "approval";
   if (body.type === "error") return "error";
   if (body.type === "turn.result") {
     if (isInterrupted(body)) return null;
@@ -44,9 +44,8 @@ export async function notifySession(qc: QueryClient, ev: SessionEvent, kind: Not
   const action = { label: "Session öffnen", onClick: () => useUi.getState().openProject(session.projectId, session.id) };
   if (kind === "approval") {
     const tool = b.type === "approval.request" ? b.toolName : "";
-    const title =
-      b.type === "automation.confirm" ? "Auto-Commit wartet" : tool === "AskUserQuestion" ? "Rückfrage von Claude" : tool === "ExitPlanMode" ? "Plan zur Freigabe" : "Freigabe nötig";
-    const text = b.type === "automation.confirm" ? "Mögliche Secrets gefunden. Trotzdem committen?" : tool === "AskUserQuestion" || tool === "ExitPlanMode" ? null : detail;
+    const title = tool === "AskUserQuestion" ? "Rückfrage von Claude" : tool === "ExitPlanMode" ? "Plan zur Freigabe" : "Freigabe nötig";
+    const text = tool === "AskUserQuestion" || tool === "ExitPlanMode" ? null : detail;
     toast.notify({ tone: "warning", title, body: [where, text].filter(Boolean).join("\n"), action, duration: 12_000 });
   }
   else if (kind === "error") toast.notify({ tone: "error", title: "Fehler in der Session", body: [where, detail?.slice(0, 300)].filter(Boolean).join("\n"), action });

@@ -1,7 +1,7 @@
-import { createHash, randomUUID } from "node:crypto";
+import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import { ForgeError, type Project, type ServerEvent, type SessionEventBody } from "@forge/protocol";
+import type { Project, ServerEvent, SessionEventBody } from "@forge/protocol";
 import { sessionEnv } from "../claude/environment.js";
 import type { Db } from "../persistence/db.js";
 import { isArtifactPath, isSensitiveFile, type GitEngine } from "../git/git.js";
@@ -12,22 +12,6 @@ export interface AutomationHost {
   record(sessionId: string, body: SessionEventBody): void;
   emit(e: ServerEvent): void;
   suggestCommitMessage(projectId: string, paths: string[]): Promise<{ message: string }>;
-}
-
-interface FlaggedFile {
-  path: string;
-  reason: string;
-}
-
-interface PendingCommit {
-  sessionId: string;
-  projectId: string;
-  cwd: string;
-  files: string[];
-  message: string;
-  branch: string | null;
-  /** content hashes when the question was asked; a changed file voids the question */
-  hashes: Map<string, string>;
 }
 
 /** A turn FORGE holds back while the previous turn's tests and auto-commit run. */
@@ -50,8 +34,6 @@ export class TurnAutomation {
   private running = new Map<string, Promise<void>>();
   private held = new Map<string, HeldTurn[]>();
   private background = new Set<Promise<unknown>>();
-  /** Auto-commits waiting for the user because the changed content looks like it contains secrets. */
-  private pending = new Map<string, PendingCommit>();
 
   constructor(
     private readonly db: Db,
@@ -106,44 +88,6 @@ export class TurnAutomation {
     this.baseline.delete(sessionId);
     this.turnSeq.delete(sessionId);
     this.held.delete(sessionId);
-    for (const [id, p] of this.pending) if (p.sessionId === sessionId) this.pending.delete(id);
-  }
-
-  /**
-   * Answer to an automation.confirm question. Commits only if the files still have the content the
-   * question was about; otherwise the question expires and the files stay for the Git area.
-   */
-  async confirm(sessionId: string, requestId: string, commit: boolean): Promise<{ ok: boolean }> {
-    const p = this.pending.get(requestId);
-    if (!p || p.sessionId !== sessionId) {
-      throw new ForgeError("NOT_FOUND", "Diese Rückfrage ist nicht mehr offen. Die Dateien kannst du im Git-Bereich committen.");
-    }
-    this.pending.delete(requestId);
-    if (!commit) {
-      this.host.record(sessionId, { type: "automation.confirmResolved", requestId, decision: "skip" });
-      this.host.record(sessionId, { type: "automation", action: "skip", ok: true, message: "Auto-Commit nicht ausgeführt. Die Dateien bleiben uncommittet.", hash: null, files: [] });
-      return { ok: true };
-    }
-    const now = await this.hashFiles(p.cwd, p.files);
-    if (p.files.some((f) => p.hashes.get(f) !== now.get(f))) {
-      this.host.record(sessionId, { type: "automation.confirmResolved", requestId, decision: "expired" });
-      this.host.record(sessionId, { type: "automation", action: "skip", ok: true, message: "Auto-Commit nicht ausgeführt: Die Dateien haben sich seit der Rückfrage geändert. Bitte im Git-Bereich prüfen.", hash: null, files: [] });
-      return { ok: true };
-    }
-    this.host.record(sessionId, { type: "automation.confirmResolved", requestId, decision: "commit" });
-    const project = this.projects.get(p.projectId);
-    const job = this.commitAndPush(sessionId, project, p.cwd, p.files, p.message, true, p.branch);
-    this.running.set(sessionId, job);
-    this.track(job);
-    try {
-      await job;
-    } finally {
-      if (this.running.get(sessionId) === job) this.running.delete(sessionId);
-      const list = this.held.get(sessionId) ?? [];
-      this.held.delete(sessionId);
-      for (const t of list) t.deliver();
-    }
-    return { ok: true };
   }
 
   /**
@@ -227,13 +171,13 @@ export class TurnAutomation {
       this.host.record(sessionId, { type: "automation", action: "commit", ok: false, message: e instanceof Error ? e.message : String(e), hash: null, files });
       return;
     }
-    await this.commitAndPush(sessionId, project, cwd, files, message, false, status.summary.branch);
+    await this.commitAndPush(sessionId, project, cwd, files, message, status.summary.branch);
   }
 
-  /** Commits the files and pushes when the project has auto-push. Possible secrets turn into a question to the user. */
-  private async commitAndPush(sessionId: string, project: Project, cwd: string, files: string[], message: string, allowSensitive: boolean, branch: string | null) {
+  /** Commits the files and pushes when the project has auto-push. Sensitive files were filtered out before. */
+  private async commitAndPush(sessionId: string, project: Project, cwd: string, files: string[], message: string, branch: string | null) {
     try {
-      const r = await this.git.commit(cwd, message, files, allowSensitive);
+      const r = await this.git.commit(cwd, message, files, false);
       this.host.record(sessionId, { type: "automation", action: "commit", ok: true, message: r.summary, hash: r.hash, files });
       this.host.emit({ event: "project.updated", payload: { projectId: project.id } });
       if (project.tags.includes("auto-push")) {
@@ -245,13 +189,6 @@ export class TurnAutomation {
         }
       }
     } catch (e) {
-      const flagged = !allowSensitive && e instanceof ForgeError && e.code === "POLICY_DENIED" ? (e.details as { flagged?: FlaggedFile[] } | undefined)?.flagged : undefined;
-      if (flagged?.length) {
-        const requestId = randomUUID();
-        this.pending.set(requestId, { sessionId, projectId: project.id, cwd, files, message, branch, hashes: await this.hashFiles(cwd, files) });
-        this.host.record(sessionId, { type: "automation.confirm", requestId, files, flagged, message });
-        return;
-      }
       this.host.record(sessionId, { type: "automation", action: "commit", ok: false, message: e instanceof Error ? e.message : String(e), hash: null, files });
     }
   }

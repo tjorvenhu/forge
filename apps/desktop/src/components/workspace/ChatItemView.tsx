@@ -5,7 +5,7 @@ import { useThrottledValue } from "@/lib/timing-hooks";
 import { isInterrupted } from "@/lib/working";
 import { Button } from "@/components/ui/button";
 import type { ChatItem } from "./chat-items";
-import { AutoCommitCard, PlanCard, QuestionCard } from "./InteractiveCards";
+import { PlanCard, QuestionCard } from "./InteractiveCards";
 import { Markdown } from "./Markdown";
 import { ApprovalBlock, ToolCard } from "./ToolCard";
 import { EventCard, noticeIcon } from "./EventCard";
@@ -55,12 +55,6 @@ export const ItemView = memo(function ItemView({ item, sessionId, live, projectD
       return (
         <div className="ml-12 overflow-hidden rounded-xl border border-warning/50">
           <ApprovalBlock req={item.req} resolved={item.resolved} sessionId={sessionId} projectDir={projectDir} />
-        </div>
-      );
-    case "autocommit":
-      return (
-        <div className="pl-12">
-          <AutoCommitCard item={item} sessionId={sessionId} />
         </div>
       );
     case "blocked":

@@ -25,9 +25,7 @@ export type ChatItem =
       todos: TodoEntry[] | null;
       superseded: boolean;
     }
-  | { kind: "approval"; key: string; ts: string; req: Body<"approval.request">; resolved: Body<"approval.resolved"> | null }
-  | { kind: "autocommit"; key: string; ts: string; req: Body<"automation.confirm">; resolved: Body<"automation.confirmResolved"> | null }
-  | { kind: "blocked"; key: string; ts: string; body: Body<"policy.blocked"> }
+  | { kind: "approval"; key: string; ts: string; req: Body<"approval.request">; resolved: Body<"approval.resolved"> | null }  | { kind: "blocked"; key: string; ts: string; body: Body<"policy.blocked"> }
   | { kind: "result"; key: string; ts: string; body: Body<"turn.result"> }
   | { kind: "error"; key: string; ts: string; message: string; retryable: boolean }
   | {
@@ -105,9 +103,7 @@ export function reuseStableItems(prev: readonly ChatItem[], next: ChatItem[]): C
 export function buildEventItems(events: SessionEvent[]): ChatItem[] {
   const items: ChatItem[] = [];
   const toolIdx = new Map<string, number>();
-  const approvalIdx = new Map<string, { item: number; inTool: boolean }>();
-  const confirmIdx = new Map<string, number>();
-  const textIdx = new Map<string, number>();
+  const approvalIdx = new Map<string, { item: number; inTool: boolean }>();  const textIdx = new Map<string, number>();
   let lastTodo: number | null = null;
 
   for (const ev of events) {
@@ -162,16 +158,6 @@ export function buildEventItems(events: SessionEvent[]): ChatItem[] {
         const it = items[ref.item];
         if (it?.kind === "tool" && it.approval) items[ref.item] = { ...it, approval: { ...it.approval, resolved: b } };
         else if (it?.kind === "approval") items[ref.item] = { ...it, resolved: b };
-        break;
-      }
-      case "automation.confirm":
-        confirmIdx.set(b.requestId, items.length);
-        items.push({ kind: "autocommit", key: `q${b.requestId}`, ts: ev.ts, req: b, resolved: null });
-        break;
-      case "automation.confirmResolved": {
-        const i = confirmIdx.get(b.requestId);
-        const it = i !== undefined ? items[i] : undefined;
-        if (it?.kind === "autocommit") items[i!] = { ...it, resolved: b };
         break;
       }
       case "policy.blocked": {

@@ -1,6 +1,6 @@
 import { useRef } from "react";
 import { useMutation } from "@tanstack/react-query";
-import { Check, ChevronRight, ClipboardList, GitCommitHorizontal, MessageCircleQuestion, ShieldAlert, X } from "lucide-react";
+import { Check, ChevronRight, ClipboardList, MessageCircleQuestion, X } from "lucide-react";
 import { call } from "@/lib/queries";
 import { errorMessage } from "@/lib/rpc";
 import { cn } from "@/lib/utils";
@@ -278,60 +278,5 @@ function ResolvedBadge({ decision, source, allowText, denyText }: { decision: "a
     <Badge tone="warning">
       <X className="h-3 w-3" /> {denyText}
     </Badge>
-  );
-}
-
-type AutoCommitItem = Extract<ChatItem, { kind: "autocommit" }>;
-
-const AUTOCOMMIT_RESULT = {
-  commit: { tone: "success", text: "Trotzdem committet" },
-  skip: { tone: "neutral", text: "Nicht committet" },
-  expired: { tone: "warning", text: "Abgelaufen" },
-} as const;
-
-/** Auto-commit stopped at possible secrets: the user decides whether FORGE commits anyway. */
-export function AutoCommitCard({ item, sessionId }: { item: AutoCommitItem; sessionId: string }) {
-  const { req, resolved } = item;
-  const [sent, setSent] = useCardState(cardKey(sessionId, req.requestId, "sent"), false);
-  const answer = useMutation({
-    mutationFn: (commit: boolean) => call("sessions.confirmAutoCommit", { sessionId, requestId: req.requestId, commit }),
-    onSuccess: () => setSent(true),
-    onError: (e) => toast.error("Antwort nicht übermittelt", errorMessage(e)),
-  });
-  const pending = !resolved;
-  const locked = answer.isPending || sent;
-  const result = resolved ? AUTOCOMMIT_RESULT[resolved.decision] : null;
-
-  return (
-    <div className={cn("rounded-lg border bg-surface", pending ? "border-warning/60" : "border-border")} role="group" aria-label="Rückfrage zum Auto-Commit">
-      <CardHeader icon={<ShieldAlert className="h-4 w-4 text-warning" />} title={pending ? "Trotzdem committen?" : "Auto-Commit mit Hinweis"}>
-        {result && <Badge tone={result.tone}>{result.text}</Badge>}
-      </CardHeader>
-      <div className="space-y-2 border-t border-border px-3 py-2.5">
-        <div className="text-body">In diesen Dateien sieht etwas wie ein Schlüssel, Token oder Passwort aus. Prüfe sie, bevor du committest.</div>
-        <ul className="space-y-1 text-xs">
-          {req.flagged.map((f) => (
-            <li key={f.path} className="flex items-center gap-2">
-              <span className="truncate font-mono">{f.path}</span>
-              <Badge tone="warning">{f.reason}</Badge>
-            </li>
-          ))}
-        </ul>
-        <div className="rounded-md bg-surface-2 px-2.5 py-1.5 font-mono text-xs whitespace-pre-wrap text-muted">{req.message}</div>
-        {resolved?.decision === "expired" && <div className="text-xs text-subtle">Die Dateien haben sich nach der Rückfrage geändert. Bitte im Git-Bereich prüfen.</div>}
-      </div>
-      {pending && (
-        <div className="flex items-center gap-2 border-t border-border px-3 py-2">
-          <span className="text-xs text-subtle">{req.files.length} Datei(en) warten auf deine Entscheidung.</span>
-          <div className="flex-1" />
-          <Button size="sm" variant="ghost" onClick={() => answer.mutate(false)} disabled={locked}>
-            Nicht committen
-          </Button>
-          <Button size="sm" variant="danger" onClick={() => answer.mutate(true)} disabled={locked} loading={answer.isPending && answer.variables === true}>
-            <GitCommitHorizontal className="h-3.5 w-3.5" /> Trotzdem committen
-          </Button>
-        </div>
-      )}
-    </div>
   );
 }
