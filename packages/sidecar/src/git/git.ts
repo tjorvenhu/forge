@@ -179,6 +179,30 @@ export class GitEngine {
     return { hash, summary };
   }
 
+  /**
+   * Brings every file of the project folder back to the state of `commit`, as new uncommitted changes.
+   * Branch and history stay as they are. Uncommitted work is stashed first, so nothing is lost.
+   */
+  async restoreTo(cwd: string, commit: string): Promise<{ commit: string; subject: string; stashed: boolean; changed: number }> {
+    if (!/^[0-9a-f]{7,40}$/i.test(commit)) throw new ForgeError("VALIDATION", "Ungültige Commit-Kennung.");
+    const st = await this.status(cwd);
+    if (st.summary.conflicted) {
+      throw new ForgeError("GIT_CONFLICT", "Es gibt ungelöste Konflikte. Bitte zuerst auflösen, dann wiederherstellen.");
+    }
+    const resolved = await this.exec(cwd, ["rev-parse", "--verify", "-q", `${commit}^{commit}`]);
+    if (resolved.code !== 0) throw new ForgeError("NOT_FOUND", "Diesen Commit gibt es in diesem Repository nicht.");
+    const full = resolved.stdout.trim();
+    const stashed = st.files.length > 0;
+    if (stashed) {
+      await this.ok(cwd, ["stash", "push", "--include-untracked", "-m", `FORGE: vor Wiederherstellung auf ${full.slice(0, 7)}`, "--", "."]);
+    }
+    // Tracked files that do not exist in the source are removed, so the folder matches the commit exactly.
+    await this.ok(cwd, ["restore", `--source=${full}`, "--staged", "--worktree", "--", "."]);
+    const subject = (await this.ok(cwd, ["log", "-1", "--format=%s", full])).trim();
+    const after = await this.status(cwd);
+    return { commit: full, subject, stashed, changed: after.files.length };
+  }
+
   async log(cwd: string, limit: number): Promise<CommitInfo[]> {
     const hasHead = (await this.exec(cwd, ["rev-parse", "--verify", "-q", "HEAD"])).code === 0;
     if (!hasHead) return [];

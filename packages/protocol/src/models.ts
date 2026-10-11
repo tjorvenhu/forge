@@ -161,12 +161,6 @@ export const SessionEventBody = z.discriminatedUnion("type", [
     output: z.string(),
   }),
   z.object({
-    type: z.literal("git.checkpoint"),
-    head: z.string().nullable(),
-    branch: z.string().nullable(),
-    changedFiles: z.number(),
-  }),
-  z.object({
     type: z.literal("automation"),
     action: z.enum(["commit", "push", "skip"]),
     ok: z.boolean(),

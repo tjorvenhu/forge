@@ -204,6 +204,15 @@ export function createHandlers(s: Services): Handlers {
       return r;
     },
     "git.log": ({ projectId, limit }) => s.git.log(projectDir(projectId), limit),
+    "git.restoreTo": async ({ projectId, commit }) => {
+      const busy = s.sessions
+        .listAll()
+        .some((x) => x.projectId === projectId && x.live && (x.status === "running" || x.status === "waiting_approval"));
+      if (busy) throw new ForgeError("SESSION_BUSY", "Eine aktive Session arbeitet gerade in diesem Projekt. Erst stoppen, dann wiederherstellen.");
+      const r = await s.git.restoreTo(projectDir(projectId), commit);
+      s.notifyProject(projectId);
+      return r;
+    },
     "git.branches": ({ projectId }) => s.git.branches(projectDir(projectId)),
     "git.checkout": async ({ projectId, branch, create }) => {
       const busy = s.sessions
