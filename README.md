@@ -97,7 +97,7 @@ Umgebungsvariablen für Sonderfälle: `FORGE_NODE` (Pfad zu node), `FORGE_SIDECA
 - **Terminal:** eingebettete Terminals im Projektordner.
 - **Git & GitHub:** Push/Pull mit Schutzregeln, Pull Requests mit KI-Beschreibung und Status, neues Projekt direkt als GitHub-Repo.
 - **Projekt-Tags mit Verhalten:** plan-first, auto-test, auto-commit, auto-push, review-required, no-network, sandbox-only.
-- **Parallele Agenten:** Sessions in eigenen Git-Worktrees.
+- **Parallele Agenten:** Tab „Agenten“ neben „Chat“: Sessions in eigenen Git-Worktrees des offenen Projekts, dazu die eigenen Subagenten.
 - **Erweiterungen:** MCP-Server, Skills, Subagenten und Hooks verwalten.
 - **Wiedereinstieg:** KI-Zusammenfassung einer Session.
 - **Rückfragen und Pläne:** Fragt Claude nach (AskUserQuestion), erscheinen die Optionen als Karte im Chat. Pläne aus dem Plan-Modus lassen sich annehmen oder mit Feedback zurückgeben.
@@ -109,7 +109,7 @@ Umgebungsvariablen für Sonderfälle: `FORGE_NODE` (Pfad zu node), `FORGE_SIDECA
 - **Diagnose:** CLI-Version, Anmeldestatus, API-Key-Override, git, gh, Capability-Matrix.
 - **Persistenz:** SQLite für Projekte, Sessions, Events, Freigaben, Einstellungen. Beim Start öffnet FORGE das zuletzt genutzte Projekt.
 
-Tastatur: `Strg+1..4` Workspace-Tabs, `Strg+N` neue Session, `Strg+O` Projekt hinzufügen, `Strg+J` Claude-Output,
+Tastatur: `Strg+1..5` Workspace-Tabs, `Strg+N` neue Session, `Strg+O` Projekt hinzufügen, `Strg+J` Claude-Output,
 `Strg+Umschalt+E` Seitenleiste, `Esc` im Eingabefeld stoppt Claude.
 
 ## Tests

@@ -4,6 +4,7 @@ import { useQuery, useQueryClient, type QueryClient } from "@tanstack/react-quer
 import {
   ArrowDown,
   ArrowUp,
+  Bot,
   CornerDownLeft,
   FileText,
   FolderPlus,
@@ -135,9 +136,10 @@ function PaletteBody({ onClose }: { onClose: () => void }) {
           call("devserver.start", { projectId: project.id }).then((s) => qc.setQueryData(keys.devServer(project.id), s)).catch((e: unknown) => toast.error("Dev-Server nicht gestartet", errorMessage(e)));
         }, { hint: dev.effectiveCommand });
       }
-      act("tab-git", "Git öffnen", <GitBranch className="h-4 w-4" />, () => ui.setWorkspaceTab("git"), { hint: "Strg+2", keywords: "commit diff änderungen" });
-      act("tab-files", "Dateien öffnen", <FileText className="h-4 w-4" />, () => ui.setWorkspaceTab("files"), { hint: "Strg+3" });
-      act("tab-settings", "Projekt-Einstellungen", <Settings2 className="h-4 w-4" />, () => ui.setWorkspaceTab("settings"), { hint: "Strg+4", keywords: "claude.md tags testbefehl" });
+      act("tab-agents", "Agenten öffnen", <Bot className="h-4 w-4" />, () => ui.setWorkspaceTab("agents"), { hint: "Strg+2", keywords: "parallel worktree subagenten" });
+      act("tab-git", "Git öffnen", <GitBranch className="h-4 w-4" />, () => ui.setWorkspaceTab("git"), { hint: "Strg+3", keywords: "commit diff änderungen" });
+      act("tab-files", "Dateien öffnen", <FileText className="h-4 w-4" />, () => ui.setWorkspaceTab("files"), { hint: "Strg+4" });
+      act("tab-settings", "Projekt-Einstellungen", <Settings2 className="h-4 w-4" />, () => ui.setWorkspaceTab("settings"), { hint: "Strg+5", keywords: "claude.md tags testbefehl" });
       act("terminal", "Terminal öffnen", <SquareTerminal className="h-4 w-4" />, () => ui.openTerminal(project.id, "shell"), { keywords: "shell konsole" });
       act("bottom", "Unteres Panel ein- oder ausblenden", <PanelBottom className="h-4 w-4" />, () => ui.toggleBottomPanel(), { hint: "Strg+J" });
       act("right", "Seitenleiste ein- oder ausblenden", <PanelRight className="h-4 w-4" />, () => ui.toggleRightPanel(), { hint: "Strg+Umschalt+E" });

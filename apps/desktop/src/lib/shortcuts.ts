@@ -4,7 +4,8 @@ import { useUi, type WorkspaceTab } from "@/stores/ui";
 import { keys, queryClient } from "@/lib/queries";
 import { sortTabs } from "@/components/workspace/SessionTabs";
 
-const TABS: WorkspaceTab[] = ["chat", "git", "files", "settings"];
+/** In the order of the tab bar. */
+const TABS: WorkspaceTab[] = ["chat", "agents", "git", "files", "settings"];
 
 /** An open dialog owns the keyboard: switching sessions behind it would change what it acts on. */
 function dialogOpen(): boolean {
@@ -12,7 +13,7 @@ function dialogOpen(): boolean {
 }
 
 /**
- * App-wide shortcuts. Ctrl+K command palette, Ctrl+1..4 workspace tabs, Ctrl+J bottom panel,
+ * App-wide shortcuts. Ctrl+K command palette, Ctrl+1..5 workspace tabs, Ctrl+J bottom panel,
  * Ctrl+Shift+E right panel, Ctrl+N new session, Ctrl+O add project,
  * Ctrl+Tab / Ctrl+Shift+Tab next / previous active session.
  */
@@ -38,7 +39,7 @@ export function handleGlobalShortcut(e: KeyboardEvent) {
     const from = current < 0 ? (e.shiftKey ? 0 : -1) : current;
     const next = tabs[(from + (e.shiftKey ? -1 : 1) + tabs.length) % tabs.length]!;
     ui.openProject(next.projectId, next.id);
-  } else if (!e.shiftKey && k >= "1" && k <= "4" && ui.view === "workspace") {
+  } else if (!e.shiftKey && k >= "1" && k <= "5" && ui.view === "workspace") {
     ui.setWorkspaceTab(TABS[Number(k) - 1]!);
     e.preventDefault();
   } else if (!e.shiftKey && k === "j") {
