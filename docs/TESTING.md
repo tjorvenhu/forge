@@ -25,7 +25,7 @@ Letzter vollständiger Lauf: 2026-10-11, Windows 11 Pro 26200, Node 24.14, Claud
 
 - `claude-config.test.ts`: CLAUDE.md global/Projekt/lokal mit Konflikterkennung, .bak, git exclude; Skills/Subagenten anlegen, auflisten, löschen; Hooks prüfen und nur den Schlüssel ersetzen; MCP-Ausgabe parsen und Argumente bauen.
 - `worktrees.test.ts`: Worktree anlegen/entfernen (echtes Git), Branch-Slugs.
-- `removal.test.ts`: GitHub-Repo aus dem Remote lesen, gesperrte Ordner (Laufwerk, Home, Standardordner, FORGE-Daten, verschachtelte Projekte), Löschen von Ordner (inkl. schreibgeschützter Git-Objekte) und Repo mit simuliertem gh.
+- `removal.test.ts`: GitHub-Repo aus dem Remote lesen, gesperrte Ordner (Laufwerk, Home, Standardordner, FORGE-Daten, verschachtelte Projekte), Löschen von Ordner (inkl. schreibgeschützter Git-Objekte) und Repo mit simuliertem gh. Worktree eines Agenten entfernen, während ein Prozess im Ordner läuft (Session wird vorher beendet; belegter Ordner gibt eine klare Meldung, der Rest geht beim nächsten Versuch).
 - `session-service.test.ts` (Remote): Bridge für offene Sessions, Echo eigener Nachrichten ohne Dublette, Nachricht vom Handy startet einen Durchlauf und landet mit Markierung im Verlauf. Remote ist global: Einschalten ohne laufende Session startet nichts, N laufende Sessions aus mehreren Projekten bekommen N Einträge mit eindeutigen Namen, gestartete und fortgesetzte Sessions werden automatisch verbunden, beendete und gelöschte fallen heraus, Ausschalten trennt alle, erneutes Einschalten verbindet fehlgeschlagene neu.
 - `session-service.test.ts` (ergänzt): Auto-Test + Auto-Commit nur mit Dateien des Durchlaufs, kein Commit bei roten Tests.
 - `project-git.test.ts` (ergänzt): Push/Pull gegen lokales Bare-Remote (main-Schutz, Fast-Forward, Divergenz).
@@ -42,6 +42,7 @@ Letzter vollständiger Lauf: 2026-10-11, Windows 11 Pro 26200, Node 24.14, Claud
 - `title-tooltips.test.tsx`: eigener Tooltip statt nativem `title`, Wiederherstellen des Attributs, Schließen bei Klick.
 - `chat-items.test.ts` (Phase 4): Sprung zur Nachricht eines Suchtreffers, Hinweis bei Komprimierung, Kurztexte für Rückfrage und Plan.
 - `InteractiveCards.test.ts`: Fragen robust lesen, Antworten zusammensetzen (Einfach-/Mehrfachauswahl, eigene Antwort), Warnstufen der Kontextanzeige.
+- `AgentsTab.test.tsx`: Worktrees nur des offenen Projekts, Entfernen beendet die Terminals des Worktrees und verlässt ihn, wenn er offen war, Bestätigung bei Änderungen.
 - `GitPanel.test.tsx`: Commit-Flow in der Komponente (Auswahl, Review-Dialog, exakter RPC-Aufruf) und KI-Vorschlag.
 
 **E2E (`real-claude.e2e.test.ts`)**, echter Sidecar-Prozess + installierte CLI + echtes Git:

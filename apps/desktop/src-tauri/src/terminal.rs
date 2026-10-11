@@ -14,6 +14,8 @@ use portable_pty::{native_pty_system, ChildKiller, CommandBuilder, MasterPty, Pt
 use serde::Serialize;
 use tauri::{AppHandle, Emitter};
 
+use crate::job::Job;
+
 /// One terminal. Shared as Arc so a slow call on one terminal never holds the map lock.
 struct Term {
     /// Dropping the master closes the pseudoconsole; under ConPTY that is what ends the output pipe.
@@ -21,10 +23,16 @@ struct Term {
     /// Keystrokes go to a writer thread: a full input pipe must not block the command.
     input: Sender<Vec<u8>>,
     killer: Mutex<Box<dyn ChildKiller + Send + Sync>>,
+    /// Holds the shell and everything started in it. Killing only the shell would leave e.g. `pnpm dev`
+    /// running and keep the folder locked; dropping the Term (also when the shell exits) ends them too.
+    job: Option<Job>,
 }
 
 impl Term {
     fn kill(&self) {
+        if let Some(job) = &self.job {
+            job.terminate();
+        }
         let _ = self.killer.lock().unwrap().kill();
     }
 }
@@ -127,6 +135,7 @@ impl Terminals {
         let mut reader = pair.master.try_clone_reader().map_err(|e| e.to_string())?;
         let mut writer = pair.master.take_writer().map_err(|e| e.to_string())?;
         let killer = child.clone_killer();
+        let job = child.process_id().and_then(|pid| Job::for_pid(pid).map_err(|e| eprintln!("[forge] terminal job object failed: {e}")).ok());
 
         let (input, keys) = mpsc::channel::<Vec<u8>>();
         thread::spawn(move || {
@@ -138,7 +147,7 @@ impl Terminals {
         });
 
         let id = self.next.fetch_add(1, Ordering::SeqCst) + 1;
-        let term = Arc::new(Term { master: Mutex::new(pair.master), input, killer: Mutex::new(killer) });
+        let term = Arc::new(Term { master: Mutex::new(pair.master), input, killer: Mutex::new(killer), job });
         self.terms.lock().unwrap().insert(id, term);
 
         let (drained_tx, drained_rx) = mpsc::channel::<()>();

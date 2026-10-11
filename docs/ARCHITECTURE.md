@@ -86,7 +86,8 @@ der CLI (Prüfung, Befehlsliste, Commit-Nachricht, Usage) brechen nach 45 Sekund
 
 - **Job Object:** Jeder Sidecar-Start läuft in einem eigenen Job Object mit `KILL_ON_JOB_CLOSE`. Beenden,
   Neustart oder Absturz von FORGE beenden damit auch alle Kindprozesse (Claude, Dev-Server, Tests).
-  Terminals sind davon getrennt.
+  Jeder Terminal-Tab hat ein eigenes Job Object (`src-tauri/src/job.rs`): Schließen des Tabs, Ende der
+  Shell oder von FORGE beendet auch alles, was darin gestartet wurde, etwa `pnpm dev`.
 - **Zeitlimits:** Ein Timeout beendet den ganzen Prozessbaum (`taskkill /T /F`).
   Rust wartet beim Beenden 7 Sekunden auf den Sidecar; das muss über dessen eigenem Limit von
   5 Sekunden bleiben (`SHUTDOWN_GRACE` in `sidecar.rs`, `SHUTDOWN_LIMIT_MS` in `app.ts`).

@@ -112,7 +112,7 @@ E-Mail-Adresse oder Org-Daten der Claude-Anmeldung.
   Laufwerke, das Benutzerverzeichnis, Punkt-Ordner und Standardordner direkt darunter (auch OneDrive), die
   Claude-Konfiguration, Credential-Ordner, AppData, Programme, ProgramData, das Windows-Verzeichnis,
   FORGE-Daten und Ordner mit weiteren Projekten. Gesperrt heißt: der Ordner,
-  alles darin und seine übergeordneten Ordner. Dev-Server des Projekts und seiner Worktrees werden vorher beendet.
+  alles darin und seine übergeordneten Ordner. Sessions, Terminals und Dev-Server des Projekts und seiner Worktrees werden vorher beendet.
   Die GitHub-Berechtigung `delete_repo` fragt FORGE erst an, wenn sie gebraucht wird.
 - **Auto-Commit/Auto-Push** commiten nur Dateien aus dem aktuellen Durchlauf, nie sensible Dateien, pushen nie
   auf main/master und nie mit Force. Neue Nachrichten aus FORGE warten, bis Tests und Auto-Commit des letzten

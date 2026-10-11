@@ -25,6 +25,14 @@ describe("global shortcuts", () => {
     expect(useUi.getState().bottomPanelOpen).toBe(true);
   });
 
+  it("switches workspace tabs in the order of the tab bar", () => {
+    useUi.setState({ view: "workspace", workspaceTab: "chat" });
+    fireEvent.keyDown(window, { key: "2", ctrlKey: true });
+    expect(useUi.getState().workspaceTab).toBe("agents");
+    fireEvent.keyDown(window, { key: "5", ctrlKey: true });
+    expect(useUi.getState().workspaceTab).toBe("settings");
+  });
+
   it("ignores shortcuts while a dialog is open", () => {
     openDialog();
     fireEvent.keyDown(window, { key: "j", ctrlKey: true });
