@@ -63,7 +63,7 @@ function run(cmd, args, opts = {}) {
 function unzip(zip, dest) {
   mkdirSync(dest, { recursive: true });
   // Windows bsdtar reads zip archives; call it by full path so GNU tar from Git on PATH is not used.
-  const tar = process.platform === "win32" ? path.join(process.env.SystemRoot ?? "C:\\Windows", "System32", "tar.exe") : "tar";
+  const tar = path.join(process.env.SystemRoot ?? "C:\\Windows", "System32", "tar.exe");
   run(tar, ["-xf", zip, "-C", dest]);
 }
 
@@ -125,12 +125,12 @@ async function prepareWindows(state) {
 }
 
 async function main() {
+  if (process.platform !== "win32") throw new Error("FORGE wird nur unter Windows gebaut.");
   mkdirSync(OUT, { recursive: true });
   const stateFile = path.join(OUT, "VERSIONS.json");
   const state = existsSync(stateFile) ? JSON.parse(readFileSync(stateFile, "utf8")) : {};
 
-  if (process.platform === "win32") await prepareWindows(state);
-  else log("Linux/macOS: Node, git und gh kommen aus dem System (Paketabhängigkeiten), es wird nichts heruntergeladen.");
+  await prepareWindows(state);
 
   const sidecar = path.join(ROOT, "packages/sidecar/dist/sidecar.mjs");
   if (!existsSync(sidecar)) throw new Error("Sidecar nicht gebaut: zuerst `pnpm build:sidecar` ausführen.");

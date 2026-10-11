@@ -9,8 +9,6 @@ export interface ResolvedTool {
   bundled: boolean;
 }
 
-const isWin = process.platform === "win32";
-
 /** Set by the desktop shell to the folder with the shipped node/git/gh. */
 export function runtimeDir(): string | null {
   const d = process.env.FORGE_RUNTIME_DIR;
@@ -19,7 +17,7 @@ export function runtimeDir(): string | null {
 
 function bundledPath(tool: ToolName): string | null {
   const dir = runtimeDir();
-  if (!dir || !isWin) return null;
+  if (!dir) return null;
   const rel: Record<ToolName, string> = {
     git: path.join("git", "cmd", "git.exe"),
     gh: path.join("gh", "bin", "gh.exe"),
@@ -31,19 +29,19 @@ function bundledPath(tool: ToolName): string | null {
 
 /**
  * Shipped tools win so every install behaves the same; the system copy is the fallback
- * (development, Linux packages).
+ * (development).
  */
 export function resolveTool(tool: ToolName): ResolvedTool | null {
   const b = bundledPath(tool);
   if (b) return { path: b, bundled: true };
-  const sys = which(tool) ?? (isWin && tool === "gh" ? which("gh", "C:\\Program Files\\GitHub CLI") : null);
+  const sys = which(tool) ?? (tool === "gh" ? which("gh", "C:\\Program Files\\GitHub CLI") : null);
   return sys ? { path: sys, bundled: false } : null;
 }
 
 /** PATH additions so Claude's own Bash/PowerShell tools find the shipped git and gh. */
 export function bundledPathEntries(): string[] {
   const dir = runtimeDir();
-  if (!dir || !isWin) return [];
+  if (!dir) return [];
   return [path.join(dir, "git", "cmd"), path.join(dir, "gh", "bin")].filter((p) => existsSync(p));
 }
 
@@ -52,7 +50,6 @@ export function bundledPathEntries(): string[] {
  * point it at the shipped bash.
  */
 export function gitBashForClaude(): string | null {
-  if (!isWin) return null;
   const systemGit = which("git");
   if (systemGit) {
     const candidate = path.join(path.dirname(path.dirname(systemGit)), "bin", "bash.exe");
