@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowDown, ArrowUp, CheckCircle2, CircleDashed, CloudDownload, ExternalLink, GitPullRequest, RefreshCw, Sparkles, UploadCloud, XCircle } from "lucide-react";
-import type { Project } from "@forge/protocol";
+import type { GitIntegrated, Project, Session } from "@forge/protocol";
 import { call, keys, useGitHubAccount, useGitStatus } from "@/lib/queries";
+import { useUi } from "@/stores/ui";
 import { errorMessage, RpcCallError } from "@/lib/rpc";
 import { openExternal } from "@/lib/native";
 import { toast } from "@/stores/toast";
@@ -21,23 +22,42 @@ function useRefreshGit(projectId: string) {
   };
 }
 
+/** "3 neue Commits vom Remote übernommen, 2 eigene darauf gesetzt" for the toast after push or pull. */
+export function integratedText(i: GitIntegrated | null): string | undefined {
+  if (!i) return undefined;
+  const remote = i.remoteCommits === 1 ? "1 neuer Commit" : `${i.remoteCommits} neue Commits`;
+  if (i.mode === "fast-forward") return `${remote} vom Remote übernommen.`;
+  return `${remote} vom Remote übernommen, ${i.localCommits === 1 ? "dein Commit" : `deine ${i.localCommits} Commits`} darauf gesetzt (Rebase).`;
+}
+
+type SyncResult = { integrated: GitIntegrated | null; session: Session | null };
+
 /** Fetch, pull and push as icon buttons for a section header; "Veröffentlichen" without a remote. */
 export function SyncActions({ project }: { project: Project }) {
   const status = useGitStatus(project.id, project.exists);
   const account = useGitHubAccount();
   const refresh = useRefreshGit(project.id);
+  const qc = useQueryClient();
   const summary = status.data?.summary;
   const [busy, setBusy] = useState<string | null>(null);
   const [confirmProtected, setConfirmProtected] = useState<string | null>(null);
   const [publishing, setPublishing] = useState(false);
 
   /** `rethrow` for calls from a ConfirmDialog, which stays open when onConfirm throws. */
-  const run = async (label: string, fn: () => Promise<unknown>, success: string, rethrow = false) => {
+  const run = async (label: string, fn: () => Promise<SyncResult | unknown>, success: string, rethrow = false) => {
     setBusy(label);
     try {
-      await fn();
-      toast.success(success);
+      const r = (await fn()) as Partial<SyncResult> | undefined;
       refresh();
+      if (r?.session) {
+        // Conflicts with origin: Claude resolves them in a new session and asks when it is unclear.
+        qc.setQueryData(keys.session(r.session.id), r.session);
+        void qc.invalidateQueries({ queryKey: keys.sessions(project.id) });
+        useUi.getState().openProject(project.id, r.session.id);
+        toast.info("Konflikte mit dem Remote", "Claude führt die Stände in einer neuen Session zusammen und fragt nach, wenn etwas unklar ist.");
+      } else {
+        toast.success(success, integratedText(r?.integrated ?? null));
+      }
     } catch (e) {
       if (e instanceof RpcCallError && e.code === "POLICY_DENIED" && (e.details as { protectedBranch?: string })?.protectedBranch) {
         setConfirmProtected((e.details as { protectedBranch: string }).protectedBranch);
@@ -97,7 +117,7 @@ export function SyncActions({ project }: { project: Project }) {
             onClick={() => void run("Push", () => call("git.push", { projectId: project.id }), "Gepusht")}
             loading={busy === "Push"}
             aria-label="Push"
-            title={summary.ahead > 0 ? `Push: ${summary.ahead} Commits zum Pushen` : "Push"}
+            title={`${summary.ahead > 0 ? `Push: ${summary.ahead} Commits zum Pushen` : "Push"}. Neue Commits vom Remote übernimmt FORGE vorher, bei Konflikten hilft Claude.`}
           >
             <ArrowUp className="h-3.5 w-3.5" />
             {summary.ahead > 0 && <span className="text-fg">{summary.ahead}</span>}

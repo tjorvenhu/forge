@@ -266,7 +266,7 @@ describe("GitEngine against a real repository", () => {
 });
 
 describe("push and pull guardrails against a local bare remote", () => {
-  it("pushes feature branches, guards main, pulls fast-forward only and reports divergence", async () => {
+  it("pushes feature branches, guards main, pulls and reports conflicting divergence", async () => {
     const remote = path.join(t.dir, "remote.git");
     const a = path.join(t.dir, "a");
     const b = path.join(t.dir, "b");
@@ -304,8 +304,10 @@ describe("push and pull guardrails against a local bare remote", () => {
     await git(b, "push", "origin", "main");
     writeFileSync(path.join(a, "x.txt"), "local\n");
     await git(a, "commit", "-am", "local change");
-    await expect(engine.pull(a)).rejects.toThrow(/auseinandergelaufen/);
-    await expect(engine.push(a, true)).rejects.toThrow(/Erst Pull/);
+    // Both changed the same line: no automatic rebase, the repository stays as it was.
+    await expect(engine.pull(a)).rejects.toMatchObject({ code: "GIT_CONFLICT", details: { integration: { files: ["x.txt"] } } });
+    await expect(engine.push(a, true)).rejects.toMatchObject({ code: "GIT_CONFLICT" });
+    expect(readFileSync(path.join(a, "x.txt"), "utf8").trim()).toBe("local");
     expect(await engine.defaultBranch(a)).toBe("main");
     // About 25 git processes against a real bare remote; on Windows that alone takes several seconds.
   }, 30_000);

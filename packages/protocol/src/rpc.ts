@@ -26,6 +26,7 @@ import {
   GitHubAccount,
   GitHubLoginState,
   GitHubRepo,
+  GitIntegrated,
   GitStatus,
   McpServer,
   MarketplacePlugin,
@@ -407,8 +408,16 @@ export const methods = {
     params: projectRef.extend({ branch: z.string().min(1).max(250), create: z.boolean().default(false) }),
     result: GitStatus,
   },
-  "git.push": { params: projectRef.extend({ allowProtected: z.boolean().default(false) }), result: z.object({ branch: z.string() }) },
-  "git.pull": { params: projectRef, result: z.object({ output: z.string() }) },
+  /**
+   * Takes over new commits from origin first (fast-forward or rebase), then pushes. When that runs
+   * into conflicts, a Claude session is started to resolve them and push; it comes back as `session`.
+   */
+  "git.push": {
+    params: projectRef.extend({ allowProtected: z.boolean().default(false) }),
+    result: z.object({ branch: z.string().nullable(), integrated: GitIntegrated.nullable(), session: Session.nullable() }),
+  },
+  /** like git.push without the push; conflicts also start a Claude session */
+  "git.pull": { params: projectRef, result: z.object({ output: z.string(), integrated: GitIntegrated.nullable(), session: Session.nullable() }) },
   "git.fetch": { params: projectRef, result: GitStatus },
   "github.pr": { params: projectRef, result: PullRequest.nullable() },
   "github.suggestPr": { params: projectRef, result: z.object({ title: z.string(), body: z.string(), base: z.string(), head: z.string() }) },

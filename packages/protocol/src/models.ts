@@ -583,6 +583,24 @@ export const McpServer = z.object({
 });
 export type McpServer = z.infer<typeof McpServer>;
 
+/** New commits from origin taken over before a push or on pull. */
+export const GitIntegrated = z.object({
+  mode: z.enum(["fast-forward", "rebase"]),
+  remoteCommits: z.number().int(),
+  localCommits: z.number().int(),
+});
+export type GitIntegrated = z.infer<typeof GitIntegrated>;
+
+/** `details.integration` of the GIT_CONFLICT error when origin's commits could not be taken over automatically. */
+export interface GitIntegrationConflict {
+  branch: string;
+  remoteCommits: number;
+  localCommits: number;
+  files: string[];
+  /** the branch is up to date; the conflict is between it and the uncommitted changes (kept in the stash) */
+  stash?: boolean;
+}
+
 /** A plugin from a Claude Code marketplace; plugins bring skills (and sometimes agents, hooks, MCP servers). */
 export const MarketplacePlugin = z.object({
   /** name@marketplace */

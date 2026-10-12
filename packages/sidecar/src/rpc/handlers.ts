@@ -1,4 +1,5 @@
-import { ForgeError, type MethodName, type ParsedParamsOf, type ResultOf } from "@forge/protocol";
+import { ForgeError, type GitIntegrationConflict, type MethodName, type ParsedParamsOf, type ResultOf } from "@forge/protocol";
+import { integrationPrompt } from "../git/integration-prompt.js";
 import { collectDiagnostics } from "../claude/diagnostics.js";
 import type { Db } from "../persistence/db.js";
 import type { GitEngine } from "../git/git.js";
@@ -43,6 +44,13 @@ export function createHandlers(s: Services): Handlers {
 
   const projectDir = (projectId: string) => s.projects.requireExisting(projectId).path;
   const dirOf = (projectId: string | undefined) => (projectId ? projectDir(projectId) : null);
+  /** Origin's commits did not go in automatically: Claude takes over in a new session of the project. */
+  const resolveInSession = async (projectId: string, e: unknown, push: boolean) => {
+    const integration = e instanceof ForgeError && e.code === "GIT_CONFLICT" ? (e.details as { integration?: GitIntegrationConflict } | undefined)?.integration : undefined;
+    if (!integration) return null;
+    s.notifyProject(projectId);
+    return s.sessions.start({ projectId, prompt: integrationPrompt(integration, push) });
+  };
   const gitChanged = async (projectId: string) => {
     s.notifyProject(projectId);
     return s.git.status(projectDir(projectId));
@@ -260,14 +268,26 @@ export function createHandlers(s: Services): Handlers {
     },
     "git.suggestCommitMessage": ({ projectId, paths }) => s.sessions.suggestCommitMessage(projectId, paths),
     "git.push": async ({ projectId, allowProtected }) => {
-      const r = await s.git.push(projectDir(projectId), allowProtected);
-      s.notifyProject(projectId);
-      return { branch: r.branch };
+      try {
+        const r = await s.git.push(projectDir(projectId), allowProtected);
+        s.notifyProject(projectId);
+        return { branch: r.branch, integrated: r.integrated, session: null };
+      } catch (e) {
+        const session = await resolveInSession(projectId, e, true);
+        if (!session) throw e;
+        return { branch: null, integrated: null, session };
+      }
     },
     "git.pull": async ({ projectId }) => {
-      const r = await s.git.pull(projectDir(projectId));
-      s.notifyProject(projectId);
-      return r;
+      try {
+        const r = await s.git.pull(projectDir(projectId));
+        s.notifyProject(projectId);
+        return { ...r, session: null };
+      } catch (e) {
+        const session = await resolveInSession(projectId, e, false);
+        if (!session) throw e;
+        return { output: "Claude führt die Stände zusammen.", integrated: null, session };
+      }
     },
     "git.fetch": async ({ projectId }) => {
       await s.git.fetch(projectDir(projectId));

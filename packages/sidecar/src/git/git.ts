@@ -1,6 +1,15 @@
 import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
-import { ForgeError, type BranchInfo, type CommitInfo, type FileDiff, type GitStatus, type GitSummary } from "@forge/protocol";
+import {
+  ForgeError,
+  type BranchInfo,
+  type CommitInfo,
+  type FileDiff,
+  type GitIntegrated,
+  type GitIntegrationConflict,
+  type GitStatus,
+  type GitSummary,
+} from "@forge/protocol";
 import { isInside } from "../util/paths.js";
 import { run, type RunResult } from "../util/proc.js";
 import { resolveTool } from "../util/tools.js";
@@ -256,45 +265,104 @@ export class GitEngine {
 
   /**
    * Pushes the current branch to origin. Never forces; protected branches need an explicit flag
-   * from a user confirmation.
+   * from a user confirmation. New commits on origin are taken over first (see integrateRemote), so
+   * a push is not rejected for being behind. Conflicts end in GIT_CONFLICT with `details.integration`.
    */
-  async push(cwd: string, allowProtected: boolean): Promise<{ branch: string; output: string }> {
+  async push(cwd: string, allowProtected: boolean): Promise<{ branch: string; output: string; integrated: GitIntegrated | null }> {
     const branch = await this.currentBranch(cwd);
     if (!branch) throw new ForgeError("GIT_FAILED", "Kein Branch ausgecheckt (detached HEAD).");
     if (PROTECTED.has(branch) && !allowProtected) {
       throw new ForgeError("POLICY_DENIED", `Push auf ${branch} braucht eine ausdrückliche Bestätigung.`, { protectedBranch: branch });
     }
     if (!(await this.remoteUrl(cwd))) throw new ForgeError("GIT_FAILED", "Kein Remote origin. Veröffentliche das Projekt zuerst auf GitHub.");
+    const integrated = await this.integrateRemote(cwd, branch);
     const r = await this.exec(cwd, ["push", "-u", "origin", `HEAD:refs/heads/${branch}`], undefined, 180_000);
     const output = (r.stdout + r.stderr).trim();
     if (r.code !== 0) {
       if (/rejected|non-fast-forward|fetch first/i.test(output)) {
-        throw new ForgeError("GIT_CONFLICT", "Push abgelehnt: Auf dem Remote gibt es neuere Commits. Erst Pull ausführen, dann erneut pushen.");
+        throw new ForgeError("GIT_CONFLICT", "Push abgelehnt: Während des Pushs kamen neue Commits auf den Remote. Bitte erneut pushen.");
       }
       throw new ForgeError("GIT_FAILED", output || "Push fehlgeschlagen");
     }
-    return { branch, output };
+    return { branch, output, integrated };
   }
 
-  /** Fast-forward only: never creates merge commits or rewrites local work. */
-  async pull(cwd: string): Promise<{ output: string }> {
+  /** Takes over new commits from origin: fast-forward, or a rebase of the local commits on top. */
+  async pull(cwd: string): Promise<{ output: string; integrated: GitIntegrated | null }> {
+    const branch = await this.currentBranch(cwd);
+    if (!branch) throw new ForgeError("GIT_FAILED", "Kein Branch ausgecheckt (detached HEAD).");
+    if (!(await this.remoteUrl(cwd))) throw new ForgeError("GIT_FAILED", "Kein Remote origin.");
+    const integrated = await this.integrateRemote(cwd, branch);
+    const output = !integrated
+      ? "Schon auf dem neuesten Stand."
+      : integrated.mode === "fast-forward"
+        ? `${integrated.remoteCommits} neue Commits übernommen.`
+        : `${integrated.remoteCommits} neue Commits übernommen, ${integrated.localCommits} eigene darauf gesetzt (Rebase).`;
+    return { output, integrated };
+  }
+
+  /**
+   * Fetches origin and brings the branch up to date with origin/<branch>. Without own commits it
+   * fast-forwards; with own commits it rebases them on top (merge commits kept). Uncommitted
+   * changes are stashed and put back. On a conflict the rebase is aborted, the repository is as
+   * before, and GIT_CONFLICT carries the details for whoever resolves it.
+   */
+  async integrateRemote(cwd: string, branch: string): Promise<GitIntegrated | null> {
     const st = await this.status(cwd);
-    if (st.summary.conflicted) throw new ForgeError("GIT_CONFLICT", "Es gibt ungelöste Konflikte.");
-    const r = await this.exec(cwd, ["pull", "--ff-only"], undefined, 180_000);
-    const output = (r.stdout + r.stderr).trim();
-    if (r.code !== 0) {
-      if (/not possible to fast-forward|diverg/i.test(output)) {
-        throw new ForgeError(
-          "GIT_CONFLICT",
-          "Lokaler und entfernter Stand sind auseinandergelaufen. Optionen: Claude bitten, die Änderungen per Rebase zusammenzuführen, oder einen neuen Branch anlegen und einen Pull Request öffnen.",
-        );
-      }
-      if (/would be overwritten/i.test(output)) {
-        throw new ForgeError("GIT_CONFLICT", "Lokale, nicht committete Änderungen würden überschrieben. Erst committen oder verwerfen.");
-      }
-      throw new ForgeError("GIT_FAILED", output || "Pull fehlgeschlagen");
+    if (st.summary.conflicted) throw new ForgeError("GIT_CONFLICT", "Es gibt ungelöste Konflikte. Bitte zuerst auflösen.");
+    if (await this.operationInProgress(cwd)) {
+      throw new ForgeError("GIT_CONFLICT", "Ein Rebase oder Merge ist noch nicht abgeschlossen. Bitte zuerst beenden oder abbrechen.");
     }
-    return { output };
+    const fetched = await this.exec(cwd, ["fetch", "--prune", "origin"], undefined, 120_000);
+    if (fetched.code !== 0) throw new ForgeError("GIT_FAILED", (fetched.stderr || fetched.stdout).trim() || "Abrufen von origin fehlgeschlagen");
+    const remote = `refs/remotes/origin/${branch}`;
+    if ((await this.exec(cwd, ["rev-parse", "--verify", "-q", remote])).code !== 0) return null;
+    const counts = (await this.ok(cwd, ["rev-list", "--left-right", "--count", `HEAD...${remote}`])).trim().split(/\s+/);
+    const localCommits = Number(counts[0] ?? 0);
+    const remoteCommits = Number(counts[1] ?? 0);
+    if (!remoteCommits) return null;
+
+    if (!localCommits) {
+      const r = await this.exec(cwd, ["merge", "--ff-only", "--autostash", remote], undefined, 120_000);
+      if (r.code !== 0) throw new ForgeError("GIT_FAILED", (r.stderr || r.stdout).trim() || "Vorspulen fehlgeschlagen");
+      await this.assertNoConflicts(cwd, branch, remoteCommits, localCommits);
+      return { mode: "fast-forward", remoteCommits, localCommits };
+    }
+
+    const r = await this.exec(cwd, ["rebase", "--autostash", "--rebase-merges", remote], undefined, 180_000);
+    if (r.code !== 0) {
+      const files = (await this.exec(cwd, ["diff", "--name-only", "--diff-filter=U"])).stdout.split("\n").map((l) => l.trim()).filter(Boolean);
+      await this.exec(cwd, ["rebase", "--abort"]);
+      const integration: GitIntegrationConflict = { branch, remoteCommits, localCommits, files };
+      throw new ForgeError(
+        "GIT_CONFLICT",
+        `Auf origin/${branch} gibt es ${remoteCommits} neue Commits, die sich mit deinen ${localCommits} lokalen nicht automatisch zusammenführen lassen${files.length ? ` (Konflikte in ${files.join(", ")})` : ""}.`,
+        { integration },
+      );
+    }
+    await this.assertNoConflicts(cwd, branch, remoteCommits, localCommits);
+    return { mode: "rebase", remoteCommits, localCommits };
+  }
+
+  /** --autostash puts uncommitted changes back after the update; that step itself can conflict. */
+  private async assertNoConflicts(cwd: string, branch: string, remoteCommits: number, localCommits: number) {
+    const files = (await this.status(cwd)).files.filter((f) => f.kind === "conflicted").map((f) => f.path);
+    if (!files.length) return;
+    const integration: GitIntegrationConflict = { branch, remoteCommits, localCommits, files, stash: true };
+    throw new ForgeError(
+      "GIT_CONFLICT",
+      `Der Branch ist auf dem Stand von origin/${branch}, aber deine nicht committeten Änderungen kollidieren damit (${files.join(", ")}). Sie liegen zusätzlich im Stash.`,
+      { integration },
+    );
+  }
+
+  private async operationInProgress(cwd: string): Promise<boolean> {
+    const r = await this.exec(cwd, ["rev-parse", "--git-path", "rebase-merge", "--git-path", "rebase-apply", "--git-path", "MERGE_HEAD", "--git-path", "CHERRY_PICK_HEAD"]);
+    const paths = r.stdout.split("\n").map((l) => l.trim()).filter(Boolean);
+    for (const p of paths) {
+      if (await stat(path.resolve(cwd, p)).then(() => true, () => false)) return true;
+    }
+    return false;
   }
 
   async fetch(cwd: string) {
