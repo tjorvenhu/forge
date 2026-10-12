@@ -20,7 +20,7 @@ const { useDictation } = await import("./useDictation");
 const { useToasts } = await import("@/stores/toast");
 
 const RATE = 16_000;
-const BLOCK = 4096;
+const BLOCK = 2048;
 
 /** Stands in for the Web Audio graph: `feed` delivers microphone blocks like the browser does. */
 class FakeAudioContext {

@@ -2,14 +2,24 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { TooltipProvider } from "@radix-ui/react-tooltip";
-import type { Project, Session } from "@forge/protocol";
+import type { Project, ServerEvent, Session } from "@forge/protocol";
 import type * as RpcModuleNs from "@/lib/rpc";
 import { draftKey, useDrafts } from "@/stores/drafts";
 
 type RpcModule = typeof RpcModuleNs;
 
 const callMock = vi.fn();
-vi.mock("@/lib/rpc", async (orig) => ({ ...(await orig<RpcModule>()), rpc: { call: (...a: unknown[]) => callMock(...a), subscribe: () => () => {} } }));
+const listeners = new Set<(e: ServerEvent) => void>();
+vi.mock("@/lib/rpc", async (orig) => ({
+  ...(await orig<RpcModule>()),
+  rpc: {
+    call: (...a: unknown[]) => callMock(...a),
+    subscribe: (l: (e: ServerEvent) => void) => {
+      listeners.add(l);
+      return () => listeners.delete(l);
+    },
+  },
+}));
 vi.mock("@tauri-apps/api/webview", () => ({ getCurrentWebview: () => ({ onDragDropEvent: () => Promise.resolve(() => {}) }) }));
 vi.mock("@tauri-apps/plugin-dialog", () => ({ open: vi.fn() }));
 
@@ -186,6 +196,76 @@ describe("dictation", () => {
     fireEvent.keyDown(box, { key: " ", repeat: true });
     await waitFor(() => expect(callMock).toHaveBeenCalledWith("voice.start", { language: "de", keyterms: expect.arrayContaining(["FORGE", "Kundenportal", "Next.js"]) }));
     expect(useDrafts.getState().drafts[draftKey("p1", null)]?.text).toBe("Bitte");
+  });
+
+  describe("live text", () => {
+    const key = draftKey("p1", null);
+    const draft = () => useDrafts.getState().drafts[key]?.text;
+    const heard = (text: string) => act(() => listeners.forEach((l) => l({ event: "voice.transcript", payload: { id: "v1", text } })));
+
+    beforeEach(() => {
+      callMock.mockImplementation(async (method: string) => {
+        if (method === "settings.get") return { enterToSend: true };
+        if (method === "voice.start") return { id: "v1" };
+        if (method === "voice.stop") return { text: "die Tests ausführen." };
+        return { models: [] };
+      });
+      const proc = { onaudioprocess: null, connect: vi.fn(), disconnect: vi.fn() };
+      vi.stubGlobal(
+        "AudioContext",
+        class {
+          destination = {};
+          createMediaStreamSource = () => ({ connect: vi.fn() });
+          createScriptProcessor = () => proc;
+          close = async () => {};
+        },
+      );
+      Object.defineProperty(navigator, "mediaDevices", { configurable: true, value: { getUserMedia: vi.fn(async () => ({ getTracks: () => [{ stop: vi.fn() }] })) } });
+    });
+    afterEach(() => vi.unstubAllGlobals());
+
+    async function record(start: string, caret = start.length) {
+      useDrafts.getState().setText(key, start);
+      setup(<Composer project={project("p1")} session={null} />);
+      const box = screen.getByRole("textbox", { name: "Nachricht an Claude" }) as HTMLTextAreaElement;
+      box.setSelectionRange(caret, caret);
+      fireEvent.click(screen.getByRole("button", { name: "Diktieren" }));
+      await screen.findByRole("button", { name: "Aufnahme beenden" });
+      // The connection id arrives after the microphone runs.
+      await act(async () => {});
+      return box;
+    }
+
+    it("writes the words into the field while speaking and lets the service correct them", async () => {
+      await record("Bitte Danke", 5);
+      heard("die");
+      expect(draft()).toBe("Bitte die Danke");
+      heard("die Test");
+      expect(draft()).toBe("Bitte die Test Danke");
+      heard("die Tests aus");
+      expect(draft()).toBe("Bitte die Tests aus Danke");
+      await act(async () => fireEvent.click(screen.getByRole("button", { name: "Aufnahme beenden" })));
+      await waitFor(() => expect(draft()).toBe("Bitte die Tests ausführen. Danke"));
+    });
+
+    it("takes the live words back when the recording is discarded", async () => {
+      const box = await record("Bitte");
+      heard("die Tests");
+      expect(draft()).toBe("Bitte die Tests");
+      fireEvent.keyDown(box, { key: "Escape" });
+      expect(draft()).toBe("Bitte");
+    });
+
+    it("stops writing once the user types and puts the result at the cursor", async () => {
+      const box = await record("");
+      heard("die");
+      fireEvent.change(box, { target: { value: "Hallo die" } });
+      heard("die Tests");
+      expect(draft()).toBe("Hallo die");
+      box.setSelectionRange(0, 0);
+      await act(async () => fireEvent.click(screen.getByRole("button", { name: "Aufnahme beenden" })));
+      await waitFor(() => expect(draft()).toBe("die Tests ausführen. Hallo die"));
+    });
   });
 
   it("types a plain space on a short press", async () => {

@@ -5,6 +5,7 @@ import { toast } from "@/stores/toast";
 
 /** What Claude's speech service expects; Chromium resamples the microphone to it. */
 const RATE = 16_000;
+const BLOCK = 2048;
 
 export type DictationState = "idle" | "starting" | "recording" | "transcribing";
 
@@ -23,8 +24,8 @@ interface Recording {
 
 /**
  * Dictation for the composer over Claude's speech service (the one of /voice in the terminal): the
- * microphone streams to the sidecar, `live` shows what was understood so far, and `onText` gets the
- * finished text when the recording is stopped.
+ * microphone streams to the sidecar, `live` is what was understood so far (the service still corrects
+ * it), and `onText` gets the finished text when the recording is stopped.
  */
 export function useDictation(onText: (text: string) => void, keyterms: string[]) {
   const [state, setState] = useState<DictationState>("idle");
@@ -105,7 +106,9 @@ export function useDictation(onText: (text: string) => void, keyterms: string[])
     opening.catch(() => {});
     let r: Recording | null = null;
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+      // Raw voice like Claude Code records it: Chromium's noise suppression and echo cancellation cut
+      // word starts and quiet syllables, which the recognizer then guesses wrong.
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: false, noiseSuppression: false, autoGainControl: true } });
       // Windows may take a moment to grant the microphone; the composer can be gone by then.
       if (!mounted.current || early.current === "cancel") {
         stream.getTracks().forEach((t) => t.stop());
@@ -115,8 +118,9 @@ export function useDictation(onText: (text: string) => void, keyterms: string[])
       }
       const ctx = new AudioContext({ sampleRate: RATE });
       const source = ctx.createMediaStreamSource(stream);
-      // ScriptProcessor instead of an AudioWorklet: the CSP allows no worklet from a blob, and 256 ms blocks are fine here.
-      const proc = ctx.createScriptProcessor(4096, 1, 1);
+      // ScriptProcessor instead of an AudioWorklet: the CSP allows no worklet from a blob. 128 ms blocks
+      // keep the live text close to the voice; smaller ones crackle when the UI is busy.
+      const proc = ctx.createScriptProcessor(BLOCK, 1, 1);
       const rr: Recording = { stream, ctx, proc, id: null, queue: [], samples: 0, ready: opening.then((o) => o.id, () => null), cancelled: false };
       r = rr;
       rec.current = rr;

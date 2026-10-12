@@ -83,11 +83,40 @@ export const Composer = memo(function Composer({
     el.style.height = Math.min(el.scrollHeight, 260) + "px";
   }, [text]);
 
-  /** Dictated text goes where the cursor was, with a space to its neighbours. */
+  /**
+   * Like Claude Code, the words appear in the field while they are spoken and get corrected in place.
+   * `anchor` is the text around the cursor at the first word; `written` is what the field held after
+   * the last update. Once the user types meanwhile, the field is left alone until the end.
+   */
+  const anchor = useRef<{ before: string; after: string; written: string | null } | null>(null);
+  const draftText = useCallback(() => useDrafts.getState().drafts[key]?.text ?? "", [key]);
+  const writeSpoken = useCallback(
+    (spoken: string, focus: boolean) => {
+      const a = anchor.current;
+      if (!a) return;
+      const { text: next, caret } = insertSpoken(a.before + a.after, a.before.length, a.before.length, spoken);
+      a.written = next;
+      setText(next);
+      requestAnimationFrame(() => {
+        if (focus) ref.current?.focus();
+        if (document.activeElement === ref.current) ref.current?.setSelectionRange(caret, caret);
+      });
+    },
+    [setText],
+  );
+  const ownsField = useCallback(() => !!anchor.current && (anchor.current.written === null || anchor.current.written === draftText()), [draftText]);
+
+  /** The finished text replaces the live one; if the user typed meanwhile, it goes where the cursor is. */
   const insertDictation = useCallback(
     (spoken: string) => {
+      if (ownsField()) {
+        writeSpoken(spoken, true);
+        anchor.current = null;
+        return;
+      }
+      anchor.current = null;
       const el = ref.current;
-      const cur = useDrafts.getState().drafts[key]?.text ?? "";
+      const cur = draftText();
       const { text: next, caret } = insertSpoken(cur, el ? el.selectionStart : cur.length, el ? el.selectionEnd : cur.length, spoken);
       setText(next);
       requestAnimationFrame(() => {
@@ -95,11 +124,27 @@ export const Composer = memo(function Composer({
         ref.current?.setSelectionRange(caret, caret);
       });
     },
-    [key, setText],
+    [draftText, ownsField, setText, writeSpoken],
   );
   // Project words help the recognition with names it would otherwise spell like everyday words.
   const keyterms = useMemo(() => [...DICTATION_TERMS, project.name, ...project.technologies], [project.name, project.technologies]);
   const dictation = useDictation(insertDictation, keyterms);
+
+  useEffect(() => {
+    if (dictation.state === "idle") {
+      // Ended without a result (discarded or nothing recognized): the live words go again.
+      if (anchor.current?.written != null && ownsField()) setText(anchor.current.before + anchor.current.after);
+      anchor.current = null;
+      return;
+    }
+    if (!dictation.live) return;
+    if (!anchor.current) {
+      const el = ref.current;
+      const cur = draftText();
+      anchor.current = { before: cur.slice(0, el ? el.selectionStart : cur.length), after: cur.slice(el ? el.selectionEnd : cur.length), written: null };
+    }
+    if (ownsField()) writeSpoken(dictation.live, false);
+  }, [dictation.live, dictation.state, draftText, ownsField, setText, writeSpoken]);
   const toggleDictation = () => {
     if (dictation.state === "recording") return void dictation.stop();
     if (dictation.state === "idle") void dictation.start();
@@ -202,11 +247,6 @@ export const Composer = memo(function Composer({
           <div className="pointer-events-none absolute inset-0 z-10 flex animate-fade-in items-center justify-center rounded-xl text-body text-accent">Dateien hier ablegen</div>
         )}
         <AttachmentList files={files} onRemove={attachments.remove} />
-        {dictation.state !== "idle" && dictation.live && (
-          <div className="animate-fade-in border-b border-border px-5 py-2.5 text-ui text-muted" aria-live="polite">
-            {dictation.live}
-          </div>
-        )}
         <textarea
           id="composer-input"
           ref={ref}
