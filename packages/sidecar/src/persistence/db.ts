@@ -1,5 +1,5 @@
 import { DatabaseSync, type StatementSync } from "node:sqlite";
-import { SEARCH_MARK_END, SEARCH_MARK_START, type EffortLevel, type PermissionMode, type ProfileId, type Project, type PhoneCallRecord, type SearchHit, type Session, type SessionEvent, type SessionEventBody, type SessionStatus, type Settings } from "@forge/protocol";
+import { DEFAULT_DISABLED_POLICY_RULES, SEARCH_MARK_END, SEARCH_MARK_START, type EffortLevel, type PermissionMode, type ProfileId, type Project, type PhoneCallRecord, type SearchHit, type Session, type SessionEvent, type SessionEventBody, type SessionStatus, type Settings } from "@forge/protocol";
 
 const MIGRATIONS: string[] = [
   `
@@ -152,6 +152,13 @@ const MIGRATIONS: string[] = [
   );
   CREATE INDEX auto_continue_due ON auto_continue(due_at);
   `,
+  // Push to main/master is allowed by default now. Existing installs get the rule switched off once;
+  // without a stored list the new default applies. Switching it back on afterwards sticks.
+  `
+  UPDATE settings SET value = json_insert(value, '$[#]', 'git-push-protected')
+  WHERE key = 'disabledPolicyRules'
+    AND NOT EXISTS (SELECT 1 FROM json_each(settings.value) WHERE json_each.value = 'git-push-protected');
+  `,
 ];
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -167,7 +174,7 @@ export const DEFAULT_SETTINGS: Settings = {
   autoContinueAfterLimit: true,
   updateChecks: true,
   desktopNotifications: true,
-  disabledPolicyRules: [],
+  disabledPolicyRules: [...DEFAULT_DISABLED_POLICY_RULES],
 };
 
 interface ProjectRow {

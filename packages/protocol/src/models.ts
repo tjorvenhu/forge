@@ -19,6 +19,9 @@ export const PolicyRuleId = z.enum([
 ]);
 export type PolicyRuleId = z.infer<typeof PolicyRuleId>;
 
+/** Rules that are off unless the user switches them on; pushing to main/master is allowed by default. */
+export const DEFAULT_DISABLED_POLICY_RULES: readonly PolicyRuleId[] = ["git-push-protected"];
+
 export const PermissionMode = z.enum(["default", "acceptEdits", "plan", "bypassPermissions"]);
 export type PermissionMode = z.infer<typeof PermissionMode>;
 

@@ -27,7 +27,7 @@ prüft mit echter CLI, dass Safe eine Freigabe anfordert und eine Ablehnung die 
 Umgesetzt als `PreToolUse`-Hook (`policy/guard.ts`). Sie wirkt auch bei `bypassPermissions`, weil Hooks vor
 der Rechteprüfung laufen. Blockiert werden u. a.:
 
-- `git push --force` / `-f` / `--force-with-lease` / `+refspec`, Push auf `main`/`master` (auch als `refs/heads/main`, `HEAD:main` oder in Anführungszeichen), Push vom geschützten Branch, `git push --mirror`/`--prune`, Löschen entfernter Branches (`--delete`, `-d`, `:branch`)
+- `git push --force` / `-f` / `--force-with-lease` / `+refspec`, Push auf `main`/`master` (auch als `refs/heads/main`, `HEAD:main` oder in Anführungszeichen) und Push vom geschützten Branch (beides standardmäßig aus, siehe unten), `git push --mirror`/`--prune`, Löschen entfernter Branches (`--delete`, `-d`, `:branch`)
 - `git reset --hard`, `git branch -d/-D/--delete`, `git clean -f…`
 - rekursives Löschen von `/`, `~`, `$HOME`/`${HOME}`, Laufwerkswurzeln (auch `/c/`, `/mnt/c`), mit `--`, Langoptionen oder angehängtem `/*` bzw. `\*`; `Remove-Item`/`rd /s` auf Laufwerkswurzeln und `$env:USERPROFILE`; Formatieren von Datenträgern
 - Datei-Tools und Befehle auf `~/.ssh`, `~/.aws`, `~/.gnupg`, `~/.kube`, `~/.config/gh`, `~/.git-credentials`, `~/.npmrc`, `~/.netrc`, `~/.pgpass`, `~/.docker/config.json`, `~/.claude/.credentials.json`, Browserprofilen, Windows-Credential-Store. `~` wird dabei immer gegen das echte Benutzerverzeichnis aufgelöst.
@@ -36,7 +36,10 @@ der Rechteprüfung laufen. Blockiert werden u. a.:
 - ein Permission-Modus über dem Profil: Meldet Claude Code einen höheren Modus (etwa nach einem Wechsel über Remote Control), setzt FORGE ihn zurück (Regel `permission-mode`); klappt das nicht, wird die Session beendet
 
 Unter Einstellungen → Sperrliste lässt sich jede Regel einzeln ausschalten (Setting `disabledPolicyRules`, gilt global
-für alle Projekte und Profile ab dem nächsten Tool-Aufruf). Standard: alle Regeln an. Nicht abschaltbar sind die
+für alle Projekte und Profile ab dem nächsten Tool-Aufruf). Standard: alle Regeln an außer `git-push-protected`
+(Push auf `main`/`master` ist erlaubt; Force-Push, `--mirror`/`--prune` und Löschen entfernter Branches bleiben
+gesperrt). Bestehende Installationen bekommen diese Regel beim Update einmalig ausgeschaltet (DB-Migration);
+wer sie danach wieder einschaltet, behält das. Nicht abschaltbar sind die
 Profil-Regeln (`profile-tool`, `permission-mode`) und `guard-error`.
 
 Jede Blockade wird als `policy.blocked`-Event angezeigt und in `approvals` auditiert. Schlägt die Prüfung selbst

@@ -1,5 +1,5 @@
 import { RotateCcw, ShieldAlert } from "lucide-react";
-import type { PolicyRuleId, Settings } from "@forge/protocol";
+import { DEFAULT_DISABLED_POLICY_RULES, type PolicyRuleId, type Settings } from "@forge/protocol";
 import { Button } from "@/components/ui/button";
 import { Group, SwitchRow } from "./layout";
 
@@ -9,7 +9,7 @@ const RULE_GROUPS: ReadonlyArray<{ title: string; description: string; rules: Re
     description: "Befehle, die Verlauf auf dem Remote oder nicht committete Arbeit unwiderruflich ändern.",
     rules: [
       { id: "git-force-push", label: "Force-Push", info: "git push --force, -f, --force-with-lease und +refspec. Überschreibt Commits auf dem Remote." },
-      { id: "git-push-protected", label: "Push auf main und master", info: "Push auf main oder master und jeder Push, solange einer dieser Branches ausgecheckt ist." },
+      { id: "git-push-protected", label: "Push auf main und master", info: "Push auf main oder master und jeder Push, solange einer dieser Branches ausgecheckt ist. Standardmäßig aus." },
       { id: "git-push-delete", label: "Remote-Branches löschen", info: "git push --delete und git push origin :branch." },
       { id: "git-push-mirror", label: "Push mit --mirror oder --prune", info: "Beide löschen Branches auf dem Remote, die es lokal nicht gibt." },
       { id: "git-reset-hard", label: "git reset --hard", info: "Verwirft nicht committete Änderungen ohne Rückweg." },
@@ -47,17 +47,19 @@ const RULE_GROUPS: ReadonlyArray<{ title: string; description: string; rules: Re
 export function PolicySettings({ s, save }: { s: Settings; save: (patch: Partial<Settings>) => Promise<void> }) {
   const off = new Set(s.disabledPolicyRules);
   const set = (id: PolicyRuleId, active: boolean) => void save({ disabledPolicyRules: active ? s.disabledPolicyRules.filter((r) => r !== id) : [...s.disabledPolicyRules, id] });
+  // Only rules switched off beyond the default are worth a warning.
+  const extraOff = s.disabledPolicyRules.filter((r) => !DEFAULT_DISABLED_POLICY_RULES.includes(r)).length;
 
   return (
     <>
-      {off.size > 0 && (
+      {extraOff > 0 && (
         <div className="flex items-start gap-3 rounded-xl border border-danger/30 bg-danger-soft/40 px-4 py-3">
           <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0 text-danger" />
           <p className="min-w-0 flex-1 text-xs text-muted">
-            {off.size === 1 ? "Eine Regel ist" : `${off.size} Regeln sind`} ausgeschaltet. Das gilt für alle Projekte und Profile, auch für Autonomous ohne Rückfrage.
+            {extraOff === 1 ? "Eine Regel ist" : `${extraOff} Regeln sind`} mehr ausgeschaltet als im Standard. Das gilt für alle Projekte und Profile, auch für Autonomous ohne Rückfrage.
           </p>
-          <Button size="sm" variant="ghost" onClick={() => void save({ disabledPolicyRules: [] })}>
-            <RotateCcw className="h-3.5 w-3.5" /> Alle einschalten
+          <Button size="sm" variant="ghost" onClick={() => void save({ disabledPolicyRules: [...DEFAULT_DISABLED_POLICY_RULES] })}>
+            <RotateCcw className="h-3.5 w-3.5" /> Standard wiederherstellen
           </Button>
         </div>
       )}
