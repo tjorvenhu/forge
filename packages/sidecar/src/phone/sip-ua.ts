@@ -818,13 +818,16 @@ function grantedExpires(res: SipMessage, contact: Address): number | null {
   return Number.isFinite(h) && h > 0 ? h : null;
 }
 
+/** Readable reason with the SIP answer, so the call log tells e.g. "not registered" (480) from "no answer" (487). */
 function describeFailure(status: number, reason: string): string {
-  if (status === 486 || status === 600) return "Besetzt";
-  if (status === 603) return "Abgelehnt";
-  if (status === 404 || status === 484) return "Nummer nicht erreichbar";
-  if (status === 408 || status === 480 || status === 487) return "Nicht angenommen";
-  if (status === 401 || status === 403 || status === 407) return "Anlage hat den Anruf nicht erlaubt";
-  return `Anruf fehlgeschlagen (${status} ${reason})`.trim();
+  const sip = `SIP ${status}${reason ? ` ${reason}` : ""}`;
+  if (status === 486 || status === 600) return `Besetzt (${sip})`;
+  if (status === 603) return `Abgelehnt (${sip})`;
+  if (status === 404 || status === 484) return `Nummer nicht erreichbar (${sip})`;
+  if (status === 480) return `Nicht erreichbar, Telefon nicht angemeldet oder „Nicht stören“ (${sip})`;
+  if (status === 408 || status === 487) return `Nicht angenommen (${sip})`;
+  if (status === 401 || status === 403 || status === 407) return `Anlage hat den Anruf nicht erlaubt (${sip})`;
+  return `Anruf fehlgeschlagen (${sip})`;
 }
 
 /** The local IP the OS would use to reach the PBX (no packet is sent). */
