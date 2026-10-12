@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useQueryClient } from "@tanstack/react-query";
 import { ArrowUpCircle, Download, RefreshCw, Sparkles } from "lucide-react";
@@ -15,10 +15,11 @@ import { Markdown } from "@/components/workspace/Markdown";
 import { useUi } from "@/stores/ui";
 import { Logo } from "./Logo";
 
-/** "kleines Update · 4 MB" or "vollständiger Installer · 92 MB". */
+/** "kleines Update · 4 MB", "vollständiger Installer · 92 MB" or, in two steps, "erst Installer 0.1.9 · 92 MB, dann kleines Update". */
 function sizeLabel(latest: NonNullable<AppUpdateState["latest"]>): string {
-  const kind = latest.kind === "patch" ? "kleines Update" : "vollständiger Installer";
-  return latest.size ? `${kind} · ${Math.max(1, Math.round(latest.size / 1048576))} MB` : kind;
+  const kind = latest.via ? `erst Installer ${latest.via}` : latest.kind === "patch" ? "kleines Update" : "vollständiger Installer";
+  const sized = latest.size ? `${kind} · ${Math.max(1, Math.round(latest.size / 1048576))} MB` : kind;
+  return latest.via ? `${sized}, dann kleines Update` : sized;
 }
 
 /** Downloads the installer if needed, then lets the desktop shell run it; FORGE restarts on its own. */
@@ -92,6 +93,14 @@ export function AppUpdateDialog() {
   const s = useAppUpdate().data;
   const [dismissed, setDismissed] = useState<string | null>(null);
   const { install, installing } = useInstall();
+  // Second step of an update the user started before the restart: no second click.
+  const autoStarted = useRef(false);
+  const autoInstall = !!s?.autoInstall && s.installable && OFFERED.includes(s.phase);
+  useEffect(() => {
+    if (!autoInstall || autoStarted.current) return;
+    autoStarted.current = true;
+    void install();
+  }, [autoInstall, install]);
   const openSettings = useUi((u) => u.openSettings);
   const tag = s?.latest && OFFERED.includes(s.phase) ? s.latest.tag : null;
   if (!s?.latest || !tag || dismissed === tag) return null;

@@ -53,7 +53,7 @@ export class SessionService {
   private readonly autoContinue: AutoContinue;
   private readonly limits: RateLimitTracker;
   private readonly titles: TitleRefresh;
-  private readonly agents = new AgentRegistry();
+  private readonly agents: AgentRegistry;
 
   constructor(
     private readonly db: Db,
@@ -66,6 +66,7 @@ export class SessionService {
   ) {
     const core = (this.core = new SessionCore(db, emit));
     const worktrees = new WorktreeService(git, projects);
+    this.agents = new AgentRegistry(db);
     const record = core.record.bind(core);
     this.limits = new RateLimitTracker(emit, now);
     this.assist = new ClaudeAssist(db, projects, git, runtime);
@@ -194,12 +195,13 @@ export class SessionService {
     return this.db.listEvents(id, afterSeq, { beforeSeq, limit: HISTORY_PAGE_LIMIT });
   }
 
-  /** Current context usage of a running session; null when no process runs. */
+  /** Current context usage of a running session; without a process the last value measured. */
   async contextUsage(sessionId: string): Promise<ContextUsage | null> {
     const live = this.core.live.get(sessionId);
-    if (!live) return null;
+    if (!live) return this.db.getSessionContext(sessionId);
     try {
       live.context = await live.rt.contextUsage();
+      this.db.setSessionContext(sessionId, live.context);
     } catch {
       /* keep the last known value */
     }
@@ -295,7 +297,6 @@ export class SessionService {
     this.externalCache.clear();
     this.autoContinue.forget(sessionId);
     this.titles.forget(sessionId);
-    this.agents.forget(sessionId);
     return this.lifecycle.delete(sessionId, deleteTranscript);
   }
 

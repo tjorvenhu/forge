@@ -5,6 +5,7 @@ import type { Session } from "@forge/protocol";
 import { call, keys, useLiveSessions, useSearch } from "@/lib/queries";
 import { errorMessage } from "@/lib/rpc";
 import { relativeTime } from "@/lib/utils";
+import { useModelLabel } from "@/lib/models";
 import { useDebouncedValue } from "@/lib/timing-hooks";
 import { useUi } from "@/stores/ui";
 import { toast } from "@/stores/toast";
@@ -34,6 +35,7 @@ export function SessionsView() {
   const [status, setStatus] = useState("all");
   const openProject = useUi((s) => s.openProject);
   const [deleting, setDeleting] = useState<Session | null>(null);
+  const modelLabel = useModelLabel();
   // Both lists hit the sidecar (the full-text search reads every transcript); wait until typing pauses.
   const query = useDebouncedValue(q, 250);
   const sessions = useQuery({
@@ -110,7 +112,7 @@ export function SessionsView() {
                   <td className="px-4 py-2">
                     <ProfileBadge profile={s.profile} />
                   </td>
-                  <td className="px-4 py-2 text-muted">{s.model ?? "Standard"}</td>
+                  <td className="px-4 py-2 text-muted">{s.model ? modelLabel(s.model) : "Standard"}</td>
                   <td className="px-4 py-2 text-muted">{relativeTime(s.updatedAt)}</td>
                   <td className="px-2 py-1" onClick={(e) => e.stopPropagation()}>
                     <div className="flex justify-end gap-0.5">

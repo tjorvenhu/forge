@@ -93,6 +93,7 @@ export class SessionStream {
       live.rt.contextUsage().then((context) => {
         if (this.core.live.get(id) !== live) return;
         live.context = context;
+        this.core.db.setSessionContext(id, context);
         this.core.publish(this.core.db.getSession(id));
       }),
     );

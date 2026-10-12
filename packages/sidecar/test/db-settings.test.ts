@@ -2,7 +2,7 @@ import { mkdirSync } from "node:fs";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { PolicyRuleId } from "@forge/protocol";
-import { Db } from "../src/persistence/db.js";
+import { Db, MIGRATIONS } from "../src/persistence/db.js";
 import { tempDir } from "./helpers.js";
 
 let t: ReturnType<typeof tempDir>;
@@ -15,14 +15,15 @@ beforeEach(() => {
 });
 afterEach(() => t.cleanup());
 
-/** Stores the list, then reopens the database one schema version back, as an install before the update. */
+/**
+ * Stores the list as an install before the update had it, then runs the update's migration on it.
+ * Later migrations are not idempotent, so only this one runs again.
+ */
 function reopenFromBeforeUpdate(stored: PolicyRuleId[]) {
   const db = new Db(file);
   db.updateSettings({ disabledPolicyRules: stored });
-  const version = (db.sql.prepare("PRAGMA user_version").get() as { user_version: number }).user_version;
-  db.sql.exec(`PRAGMA user_version = ${version - 1}`);
-  db.close();
-  return new Db(file);
+  db.sql.exec(MIGRATIONS.find((m) => m.includes("'git-push-protected'"))!);
+  return db;
 }
 
 describe("push to main/master", () => {

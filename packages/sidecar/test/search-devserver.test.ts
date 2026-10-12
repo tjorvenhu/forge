@@ -51,7 +51,6 @@ describe("full-text search over session timelines", () => {
     addSession("s1", "Datenbank");
     db.appendEvent("s1", { type: "user.message", text: "Wie läuft die Migration der Tabelle?" });
     db.appendEvent("s1", { type: "assistant.text", messageId: "m1", index: 0, text: "Die MIGRATION ist in db.ts, Schritt 6." });
-    db.appendEvent("s1", { type: "tool.use", toolUseId: "t", name: "Read", input: { note: "migration" }, parentToolUseId: null });
 
     const hits = db.searchEvents("migra", 10);
     expect(hits.map((h) => h.role).sort()).toEqual(["assistant", "user"]);
@@ -59,6 +58,21 @@ describe("full-text search over session timelines", () => {
     expect(hits.find((h) => h.role === "user")!.snippet).toContain(`${SEARCH_MARK_START}Migration${SEARCH_MARK_END}`);
     expect(db.searchEvents("LAUFT tabelle", 10)).toHaveLength(1);
     expect(db.searchEvents("migration nirgends", 10)).toHaveLength(0);
+  });
+
+  it("finds tool calls by name and nested input, and tool results by their text", () => {
+    addSession("s4", "Werkzeuge");
+    db.appendEvent("s4", { type: "tool.use", toolUseId: "t1", name: "Bash", input: { command: "pnpm vitest run", options: { cwd: "packages/zebrafisch" } }, parentToolUseId: null });
+    db.appendEvent("s4", { type: "tool.result", toolUseId: "t1", isError: true, content: { text: "TypeError: Kolibri is undefined", truncated: false } });
+
+    expect(db.searchEvents("vitest", 5)).toMatchObject([{ role: "tool", seq: 1 }]);
+    expect(db.searchEvents("zebrafisch", 5)).toMatchObject([{ role: "tool", seq: 1 }]);
+    expect(db.searchEvents("bash", 5)).toHaveLength(1);
+    expect(db.searchEvents("kolibri", 5)).toMatchObject([{ role: "tool", seq: 2 }]);
+    db.appendEvent("s4", { type: "assistant.text", messageId: "m1", index: 0, text: "Kolibri" });
+    expect(db.searchEvents("kolibri", 5).map((h) => h.role)).toEqual(["assistant", "tool"]);
+    db.deleteSession("s4");
+    expect(db.searchEvents("kolibri", 5)).toHaveLength(0);
   });
 
   it("treats FTS syntax in the query as plain words", () => {

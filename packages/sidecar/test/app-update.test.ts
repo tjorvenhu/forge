@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
@@ -21,7 +21,12 @@ function release(tag: string, digest: string | null = DIGEST) {
   return JSON.stringify([rel(tag, undefined, digest)]);
 }
 
-function service(answer: (args: string[]) => { code: number; stdout?: string; stderr?: string }, version = "0.1.0") {
+/** Own file per test: the real one in the temp folder belongs to the installed app. */
+function chainFile() {
+  return path.join(mkdtempSync(path.join(os.tmpdir(), "forge-chain-")), "chain.json");
+}
+
+function service(answer: (args: string[]) => { code: number; stdout?: string; stderr?: string }, version = "0.1.0", opts: { runtimeKey?: string | null; chainFile?: string } = {}) {
   const calls: string[][] = [];
   const states: AppUpdateState[] = [];
   const svc = new AppUpdateService({
@@ -30,7 +35,8 @@ function service(answer: (args: string[]) => { code: number; stdout?: string; st
     log: () => {},
     currentVersion: version,
     installable: true,
-    runtimeKey: () => KEY,
+    runtimeKey: () => (opts.runtimeKey === undefined ? KEY : opts.runtimeKey),
+    chainFile: opts.chainFile ?? chainFile(),
     gh: async (args) => {
       calls.push(args);
       if (args[0] === "release" && args[1] === "download") {
@@ -56,8 +62,8 @@ describe("app updates", () => {
   it("offers a newer release, downloads the installer and checks its SHA-256", async () => {
     const { svc, calls } = service(() => ({ code: 0, stdout: release("v0.1.7") }));
     const checked = await svc.check();
-    expect(calls[0]).toEqual(["api", `repos/${UPDATE_REPO}/releases?per_page=30`]);
-    expect(checked).toMatchObject({ phase: "available", latest: { version: "0.1.7", tag: "v0.1.7", notes: "- feat: Update-Funktion", kind: "full" } });
+    expect(calls[0]).toEqual(["api", `repos/${UPDATE_REPO}/releases?per_page=100`]);
+    expect(checked).toMatchObject({ phase: "available", autoInstall: false, latest: { version: "0.1.7", tag: "v0.1.7", notes: "- feat: Update-Funktion", kind: "full", via: null } });
     const ready = await svc.download();
     expect(ready.phase).toBe("ready");
     expect(readFileSync(ready.installerPath!)).toEqual(INSTALLER);
@@ -92,6 +98,7 @@ describe("app updates", () => {
       log: () => {},
       currentVersion: "0.1.0",
       installable: true,
+      chainFile: chainFile(),
       gh: async (args) =>
         args[1]?.includes("/compare/")
           ? { code: 0, stdout: "feat: Backups\nfix: Telefon\n", stderr: "" }
@@ -127,11 +134,39 @@ describe("app updates", () => {
       { ...rel("v0.2.0-beta", [`FORGE_0.2.0-beta_update_${KEY}.zip`]), prerelease: true },
     ];
     // Same runtime: the newest release, a few MB.
-    expect(pickRelease(list, "0.1.6", KEY)).toMatchObject({ kind: "patch", release: { tag_name: "v0.1.9" }, asset: { name: `FORGE_0.1.9_update_${KEY}.zip` } });
-    // Older runtime (or none): the newest full installer; the small updates follow after it.
-    expect(pickRelease(list, "0.1.6", "node-22.0.0_git-2.50.0_gh-2.90.0")).toMatchObject({ kind: "full", release: { tag_name: "v0.1.8" } });
-    expect(pickRelease(list, "0.1.0", null)).toMatchObject({ kind: "full", release: { tag_name: "v0.1.8" } });
+    expect(pickRelease(list, "0.1.6", KEY)).toMatchObject({ kind: "patch", newest: { tag_name: "v0.1.9" }, release: { tag_name: "v0.1.9" }, asset: { name: `FORGE_0.1.9_update_${KEY}.zip` } });
+    // Older runtime (or none): the newest full installer first, the newest version stays the goal.
+    expect(pickRelease(list, "0.1.6", "node-22.0.0_git-2.50.0_gh-2.90.0")).toMatchObject({ kind: "full", newest: { tag_name: "v0.1.9" }, release: { tag_name: "v0.1.8" } });
+    expect(pickRelease(list, "0.1.0", null)).toMatchObject({ kind: "full", newest: { tag_name: "v0.1.9" }, release: { tag_name: "v0.1.8" } });
     expect(pickRelease(list, "0.1.9", KEY)).toBeNull();
+  });
+
+  it("sorts 0.1.10 above 0.1.9, whatever order GitHub lists them in", () => {
+    const list = [rel("v0.1.9", [`FORGE_0.1.9_update_${KEY}.zip`]), rel("v0.1.10", [`FORGE_0.1.10_update_${KEY}.zip`]), rel("v0.1.8", [`FORGE_0.1.8_update_${KEY}.zip`])];
+    expect(pickRelease(list, "0.1.7", KEY)).toMatchObject({ newest: { tag_name: "v0.1.10" }, release: { tag_name: "v0.1.10" } });
+  });
+
+  it("offers the newest version over a full installer and installs its small update after the restart", async () => {
+    const OLD = "node-22.0.0_git-2.50.0_gh-2.90.0";
+    const list = JSON.stringify([
+      rel("v0.1.15", [`FORGE_0.1.15_update_${KEY}.zip`]),
+      rel("v0.1.10", [`FORGE_0.1.10_update_${KEY}.zip`]),
+      rel("v0.1.9", [`FORGE_0.1.9_update_${KEY}.zip`, `FORGE_0.1.9_${KEY}_x64-setup.exe`]),
+      rel("v0.1.7"),
+    ]);
+    const chain = chainFile();
+    const before = service(() => ({ code: 0, stdout: list }), "0.1.7", { runtimeKey: OLD, chainFile: chain });
+    expect(await before.svc.check()).toMatchObject({ autoInstall: false, latest: { version: "0.1.15", tag: "v0.1.15", kind: "full", via: "0.1.9" } });
+    expect((await before.svc.download()).phase).toBe("ready");
+    expect(before.calls[1]).toEqual(expect.arrayContaining(["release", "download", "v0.1.9", "--pattern", `FORGE_0.1.9_${KEY}_x64-setup.exe`]));
+    expect(existsSync(chain)).toBe(true);
+
+    // After the full installer: 0.1.9 with the new runtime finds the small update and installs it without asking.
+    const after = service(() => ({ code: 0, stdout: list }), "0.1.9", { chainFile: chain });
+    expect(await after.svc.check()).toMatchObject({ autoInstall: true, latest: { version: "0.1.15", kind: "patch", via: null } });
+    expect(existsSync(chain)).toBe(false);
+    // Only once: the next check asks again.
+    expect((await after.svc.check()).autoInstall).toBe(false);
   });
 
   it("downloads the small update and checks it like an installer", async () => {
@@ -154,7 +189,8 @@ describe("app updates", () => {
       expect(installedRuntimeKey(dir)).toBeNull();
       writeFileSync(path.join(dir, "VERSIONS.json"), JSON.stringify({ node: "24.21.0", git: "2.56.0.2", gh: "2.102.0" }));
       expect(installedRuntimeKey(dir)).toBe(KEY);
-      expect(installedRuntimeKey(undefined)).toBeNull();
+      // Not undefined: that falls back to FORGE_RUNTIME_DIR, which is set when the tests run inside FORGE.
+      expect(installedRuntimeKey("")).toBeNull();
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

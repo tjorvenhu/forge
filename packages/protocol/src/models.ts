@@ -148,7 +148,7 @@ export const Session = z.object({
   background: z.array(BackgroundTask),
   /** subagents running in the current turn */
   subagents: z.array(SubagentProgress),
-  /** context window usage after the last turn; only while the process runs (not persisted) */
+  /** context window usage after the last turn; for ended sessions the last value measured */
   context: ContextUsage.nullable(),
   /** when FORGE continues the session on its own after a usage limit (ISO); null when nothing is planned */
   autoContinueAt: z.string().nullable(),
@@ -704,7 +704,8 @@ export const SearchHit = z.object({
   sessionTitle: z.string().nullable(),
   seq: z.number().int(),
   ts: z.string(),
-  role: z.enum(["user", "assistant"]),
+  /** tool: a tool call (name and input) or its result */
+  role: z.enum(["user", "assistant", "tool"]),
   /** excerpt with matches wrapped in SEARCH_MARK_START / SEARCH_MARK_END */
   snippet: z.string(),
 });
@@ -742,8 +743,15 @@ export const AppUpdateState = z.object({
       size: z.number().nullable(),
       /** patch: only exe and sidecar (a few MB); full: installer with the bundled runtime */
       kind: z.enum(["patch", "full"]),
+      /**
+       * Version whose full installer goes first, when `version` itself is only a small update for a
+       * newer runtime than the installed one. The small update follows by itself after the restart.
+       */
+      via: z.string().nullable(),
     })
     .nullable(),
+  /** second step of an update the user already started before the restart: install without asking */
+  autoInstall: z.boolean(),
   /** downloaded and checked installer, ready to run */
   installerPath: z.string().nullable(),
   /** false in a development build: there is no installation to update */

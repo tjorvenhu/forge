@@ -22,7 +22,7 @@ export class SessionCore {
       live: !!live,
       background: live ? [...live.background.values()] : [],
       subagents: live ? [...live.subagents.values()] : [],
-      context: live?.context ?? null,
+      context: live?.context ?? this.db.getSessionContext(r.id),
       autoContinueAt: this.db.getAutoContinue(r.id)?.dueAt ?? null,
     };
   }

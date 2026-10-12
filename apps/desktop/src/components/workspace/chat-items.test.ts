@@ -125,9 +125,25 @@ describe("search focus and compaction", () => {
       {},
     );
     expect(items[itemIndexForSeq(items, 2)]).toMatchObject({ kind: "assistant", text: "b" });
-    expect(items[itemIndexForSeq(items, 3)]).toMatchObject({ kind: "assistant", text: "b" });
+    expect(items[itemIndexForSeq(items, 3)]).toMatchObject({ kind: "tool", use: { toolUseId: "t1" } });
     expect(items[itemIndexForSeq(items, 4)]).toMatchObject({ kind: "user", text: "c" });
     expect(itemIndexForSeq(items, 0)).toBe(-1);
+  });
+
+  it("lands on the tool card for a hit in a tool result, also with parallel calls", () => {
+    seq = 0;
+    const items = buildChatItems(
+      [
+        ev({ type: "assistant.text", messageId: "m1", index: 0, text: "a" }),
+        ev({ type: "tool.use", toolUseId: "t1", name: "Read", input: {}, parentToolUseId: null }),
+        ev({ type: "tool.use", toolUseId: "t2", name: "Grep", input: {}, parentToolUseId: null }),
+        ev({ type: "tool.result", toolUseId: "t1", isError: false, content: { text: "eins", truncated: false } }),
+        ev({ type: "tool.result", toolUseId: "t2", isError: false, content: { text: "zwei", truncated: false } }),
+      ],
+      {},
+    );
+    expect(items[itemIndexForSeq(items, 4)]).toMatchObject({ kind: "tool", use: { toolUseId: "t1" } });
+    expect(items[itemIndexForSeq(items, 5)]).toMatchObject({ kind: "tool", use: { toolUseId: "t2" } });
   });
 
   it("shows a compaction as a notice with token counts", () => {

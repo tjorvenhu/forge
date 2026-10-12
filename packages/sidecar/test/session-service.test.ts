@@ -264,7 +264,18 @@ describe("SessionService", () => {
 
     expect(await tool("notify").run({ message: "Export fertig, bitte prüfen", urgent: true })).toMatch(/dringend/);
     expect(db.listEvents(s.id).at(-1)?.body).toEqual({ type: "notify", message: "Export fertig, bitte prüfen", urgent: true });
-  });
+
+    // After a restart the agent still belongs to its session.
+    rt.replay(0);
+    await svc.drain();
+    svc.shutdown();
+    svc = new SessionService(db, projects, new GitEngine(), rt, (e) => emitted.push(e));
+    await svc.send(s.id, "Wie weit ist der Agent?");
+    const resumed = rt.started.at(-1)!;
+    expect(resumed.tools!.map((t) => t.name)).toContain("agent_status");
+    expect(await resumed.tools!.find((t) => t.name === "agent_status")!.run({})).toMatch(new RegExp(`^${agentId}`));
+    // Real git worktrees plus a restart: slow on Windows while the other test files run alongside.
+  }, 20_000);
 
   it("tracks subagent progress, stops single tasks and moves work into the background", async () => {
     const s = await svc.start({ projectId, prompt: "Analysiere das Projekt" });
@@ -607,9 +618,10 @@ describe("turn automation via project tags", () => {
     expect(svc.get(s.id).context).toMatchObject({ percentage: 31, maxTokens: 200_000 });
     rt.sinks[0]!.onMessage({ type: "system", subtype: "compact_boundary", compact_metadata: { trigger: "manual", pre_tokens: 150_000, post_tokens: 9_000 } });
     expect(db.listEvents(s.id).at(-1)?.body).toEqual({ type: "context.compacted", trigger: "manual", preTokens: 150_000, postTokens: 9_000 });
+    // Ended sessions keep the last value measured.
     svc.close(s.id);
-    expect(svc.get(s.id).context).toBeNull();
-    expect(await svc.contextUsage(s.id)).toBeNull();
+    expect(svc.get(s.id)).toMatchObject({ live: false, context: { percentage: 31 } });
+    expect(await svc.contextUsage(s.id)).toMatchObject({ percentage: 31 });
   });
 
   it("applies a profile change to running sessions right away", async () => {

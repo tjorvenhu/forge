@@ -85,9 +85,10 @@ export const Composer = memo(function Composer({
     ...(session && options.model ? [] : [{ value: "__default", label: "Standardmodell" }]),
     ...models.map((m) => ({ value: m.value, label: m.displayName || m.value, description: m.description })),
   ];
-  if (options.model && !modelOptions.some((o) => o.value === options.model)) modelOptions.push({ value: options.model, label: modelLabel(options.model, runtime.data?.models), description: "" });
-
   const modelInfo = findModel(options.model, runtime.data?.models ?? []);
+  // A running session reports the resolved ID ("claude-opus-5-5"); select the listed entry ("Opus 5.5") instead.
+  const modelValue = options.model ? (modelInfo && modelInfo.value !== "default" ? modelInfo.value : options.model) : "__default";
+  if (options.model && !modelOptions.some((o) => o.value === modelValue)) modelOptions.push({ value: modelValue, label: modelLabel(modelValue, runtime.data?.models), description: "" });
   const effortLevels = modelInfo?.supportedEffortLevels?.length ? modelInfo.supportedEffortLevels : EFFORT_LEVELS;
   // Unknown models keep the picker; listed ones only when Claude Code reports effort support.
   const showEffort = !modelInfo || modelInfo.supportsEffort === true;
@@ -207,7 +208,7 @@ export const Composer = memo(function Composer({
           )}
           <Select
             size="sm"
-            value={options.model ?? "__default"}
+            value={modelValue}
             onChange={(v) => void options.changeModel(v === "__default" ? null : v)}
             options={modelOptions}
             className="w-40"

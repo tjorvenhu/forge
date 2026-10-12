@@ -25,6 +25,8 @@ export type ChatItem =
       /** for TodoWrite: parsed list; superseded lists are rendered compact */
       todos: TodoEntry[] | null;
       superseded: boolean;
+      /** event numbers of the call and its result, so a search hit lands on this card */
+      seqs?: number[];
     }
   | { kind: "approval"; key: string; ts: string; req: Body<"approval.request">; resolved: Body<"approval.resolved"> | null }  | { kind: "blocked"; key: string; ts: string; body: Body<"policy.blocked"> }
   | { kind: "result"; key: string; ts: string; body: Body<"turn.result"> }
@@ -152,13 +154,13 @@ function itemFolder() {
           }
           toolIdx.set(b.toolUseId, items.length);
           if (todos) lastTodo = items.length;
-          items.push({ kind: "tool", key: `t${b.toolUseId || ev.seq}`, ts: ev.ts, use: b, result: null, approval: null, blocked: null, todos, superseded: false });
+          items.push({ kind: "tool", key: `t${b.toolUseId || ev.seq}`, ts: ev.ts, use: b, result: null, approval: null, blocked: null, todos, superseded: false, seqs: [ev.seq] });
           break;
         }
         case "tool.result": {
           const i = toolIdx.get(b.toolUseId);
           const it = i !== undefined ? items[i] : undefined;
-          if (it?.kind === "tool") items[i!] = { ...it, result: b };
+          if (it?.kind === "tool") items[i!] = { ...it, result: b, seqs: [...(it.seqs ?? []), ev.seq] };
           break;
         }
         case "approval.request": {
@@ -376,6 +378,8 @@ export function rowSpacing(prev: ChatItem | undefined, item: ChatItem): RowSpaci
 
 /** Index of the item that shows the event with this seq (search hits), or of the nearest one before it. */
 export function itemIndexForSeq(items: ChatItem[], seq: number): number {
+  const tool = items.findIndex((it) => it.kind === "tool" && it.seqs?.includes(seq));
+  if (tool >= 0) return tool;
   let best = -1;
   let bestSeq = -1;
   items.forEach((it, i) => {

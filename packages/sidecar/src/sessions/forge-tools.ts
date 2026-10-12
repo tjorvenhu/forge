@@ -12,13 +12,14 @@ export const MAX_AGENTS = 4;
 const RUNNING = new Set(["starting", "running", "waiting_approval", "stopping"]);
 
 /**
- * Which sessions were started as agents by which session. Kept in memory: after a restart former
- * agents are plain sessions again (they keep their worktree and branch).
+ * Which sessions were started as agents by which session. Stored with the session, so agents stay
+ * agents after a restart; deleting the starting session turns them into plain sessions.
  */
 export class AgentRegistry {
   /** worktree project -> session that asked for it; known before the agent's session exists */
   private readonly byProject = new Map<string, string>();
-  private readonly parentOf = new Map<string, string>();
+
+  constructor(private readonly db: Db) {}
 
   reserve(projectId: string, parentId: string) {
     this.byProject.set(projectId, parentId);
@@ -26,20 +27,23 @@ export class AgentRegistry {
 
   adopt(childId: string, projectId: string) {
     const parent = this.byProject.get(projectId);
-    if (parent) this.parentOf.set(childId, parent);
+    if (!parent) return;
+    this.db.setSessionParent(childId, parent);
+    this.byProject.delete(projectId);
   }
 
   /** The session that started this one (by session, or by its worktree while it is being started). */
   parent(rec: Pick<SessionRecord, "id" | "projectId">): string | null {
-    return this.parentOf.get(rec.id) ?? this.byProject.get(rec.projectId) ?? null;
+    return this.db.getSessionParent(rec.id) ?? this.byProject.get(rec.projectId) ?? null;
   }
 
   children(parentId: string): string[] {
-    return [...this.parentOf].filter(([, p]) => p === parentId).map(([c]) => c);
+    return this.db.listSessionChildren(parentId);
   }
 
-  forget(sessionId: string) {
-    this.parentOf.delete(sessionId);
+  /** A failed start leaves no reservation behind. */
+  release(projectId: string) {
+    this.byProject.delete(projectId);
   }
 }
 
@@ -134,7 +138,13 @@ export function forgeSessionTools(rec: SessionRecord, d: ForgeToolDeps): { tools
       const wt = await d.worktrees.create(d.projects.requireExisting(root.id), branch);
       d.emit({ event: "project.updated", payload: { projectId: wt.id } });
       d.agents.reserve(wt.id, sessionId);
-      const child = await d.start({ projectId: wt.id, prompt: task });
+      let child: Session;
+      try {
+        child = await d.start({ projectId: wt.id, prompt: task });
+      } catch (e) {
+        d.agents.release(wt.id);
+        throw e;
+      }
       d.agents.adopt(child.id, wt.id);
       return `Agent ${short(child.id)} gestartet, Branch ${branch}, Ordner ${wt.path}. Er arbeitet unabhängig; den Stand gibt agent_status. Seine Änderungen liegen nur auf seinem Branch.`;
     },

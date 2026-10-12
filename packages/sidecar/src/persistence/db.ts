@@ -1,7 +1,7 @@
 import { DatabaseSync, type StatementSync } from "node:sqlite";
-import { DEFAULT_DISABLED_POLICY_RULES, SEARCH_MARK_END, SEARCH_MARK_START, type EffortLevel, type PermissionMode, type ProfileId, type Project, type PhoneCallRecord, type SearchHit, type Session, type SessionEvent, type SessionEventBody, type SessionStatus, type Settings } from "@forge/protocol";
+import { DEFAULT_DISABLED_POLICY_RULES, SEARCH_MARK_END, SEARCH_MARK_START, type ContextUsage, type EffortLevel, type PermissionMode, type ProfileId, type Project, type PhoneCallRecord, type SearchHit, type Session, type SessionEvent, type SessionEventBody, type SessionStatus, type Settings } from "@forge/protocol";
 
-const MIGRATIONS: string[] = [
+export const MIGRATIONS: string[] = [
   `
   CREATE TABLE projects (
     id TEXT PRIMARY KEY,
@@ -158,6 +158,32 @@ const MIGRATIONS: string[] = [
   UPDATE settings SET value = json_insert(value, '$[#]', 'git-push-protected')
   WHERE key = 'disabledPolicyRules'
     AND NOT EXISTS (SELECT 1 FROM json_each(settings.value) WHERE json_each.value = 'git-push-protected');
+  `,
+  // Last context usage, so ended sessions still show it; the session that started an agent (survives
+  // restarts); tool calls and their results in the full-text index (tool calls: name plus every
+  // string in the input).
+  `
+  ALTER TABLE sessions ADD COLUMN context TEXT;
+  ALTER TABLE sessions ADD COLUMN parent_session_id TEXT REFERENCES sessions(id) ON DELETE SET NULL;
+  CREATE INDEX sessions_parent ON sessions(parent_session_id);
+  DROP TRIGGER events_fts_insert;
+  DROP TRIGGER events_fts_delete;
+  INSERT INTO events_fts(rowid, text)
+    SELECT rowid, CASE type
+      WHEN 'tool.use' THEN json_extract(body, '$.name') || ' ' || coalesce((SELECT group_concat(value, ' ') FROM json_tree(body, '$.input') WHERE json_tree.type = 'text'), '')
+      ELSE json_extract(body, '$.content.text') END
+    FROM events WHERE type IN ('tool.use', 'tool.result');
+  CREATE TRIGGER events_fts_insert AFTER INSERT ON events
+    WHEN new.type IN ('user.message', 'assistant.text', 'tool.use', 'tool.result') BEGIN
+      INSERT INTO events_fts(rowid, text) VALUES (new.rowid, CASE new.type
+        WHEN 'tool.use' THEN json_extract(new.body, '$.name') || ' ' || coalesce((SELECT group_concat(value, ' ') FROM json_tree(new.body, '$.input') WHERE json_tree.type = 'text'), '')
+        WHEN 'tool.result' THEN json_extract(new.body, '$.content.text')
+        ELSE json_extract(new.body, '$.text') END);
+    END;
+  CREATE TRIGGER events_fts_delete AFTER DELETE ON events
+    WHEN old.type IN ('user.message', 'assistant.text', 'tool.use', 'tool.result') BEGIN
+      DELETE FROM events_fts WHERE rowid = old.rowid;
+    END;
   `,
 ];
 
@@ -505,6 +531,32 @@ export class Db {
     return r ? toSession(r) : null;
   }
 
+  getSessionContext(id: string): ContextUsage | null {
+    const r = this.stmt("SELECT context FROM sessions WHERE id = ?").get(id) as { context: string | null } | undefined;
+    return r?.context ? (JSON.parse(r.context) as ContextUsage) : null;
+  }
+
+  /** Not via updateSession: a new context value is no activity and must not move the session up the list. */
+  setSessionContext(id: string, context: ContextUsage | null) {
+    this.stmt("UPDATE sessions SET context = ? WHERE id = ?").run(context ? JSON.stringify(context) : null, id);
+  }
+
+  /** The session that started this one as an agent. */
+  getSessionParent(id: string): string | null {
+    const r = this.stmt("SELECT parent_session_id FROM sessions WHERE id = ?").get(id) as { parent_session_id: string | null } | undefined;
+    return r?.parent_session_id ?? null;
+  }
+
+  setSessionParent(id: string, parentId: string | null) {
+    this.stmt("UPDATE sessions SET parent_session_id = ? WHERE id = ?").run(parentId, id);
+  }
+
+  /** Agents started by this session, oldest first. */
+  listSessionChildren(parentId: string): string[] {
+    const rows = this.stmt("SELECT id FROM sessions WHERE parent_session_id = ? ORDER BY created_at").all(parentId) as Array<{ id: string }>;
+    return rows.map((r) => r.id);
+  }
+
   listSessions(projectId: string): SessionRecord[] {
     const rows = this.sql
       .prepare("SELECT * FROM sessions WHERE project_id = ? ORDER BY updated_at DESC")
@@ -654,8 +706,8 @@ export class Db {
   // ---- full-text search
 
   /**
-   * Prompts and answers matching all words of the query (prefix match, case and accents ignored),
-   * best matches first. The query is reduced to plain words, so FTS syntax in it has no effect.
+   * Prompts, answers, tool calls and tool results matching all words of the query (prefix match, case and accents ignored),
+   * best matches first. Prompts and answers come before tool hits: tool output is plentiful and would push them out. The query is reduced to plain words, so FTS syntax in it has no effect.
    */
   searchEvents(query: string, limit: number): SearchHit[] {
     const words = query.match(/[\p{L}\p{N}_]+/gu)?.slice(0, 8) ?? [];
@@ -670,7 +722,7 @@ export class Db {
          JOIN sessions s ON s.id = e.session_id
          JOIN projects p ON p.id = s.project_id
          WHERE events_fts MATCH ?
-         ORDER BY f.rank, e.ts DESC
+         ORDER BY e.type IN ('tool.use', 'tool.result'), f.rank, e.ts DESC
          LIMIT ?`,
       )
       .all(match, limit) as Array<{ session_id: string; seq: number; ts: string; type: string; project_id: string; title: string | null; project_name: string; snippet: string }>;
@@ -681,7 +733,7 @@ export class Db {
       sessionTitle: r.title,
       seq: r.seq,
       ts: r.ts,
-      role: r.type === "user.message" ? "user" : "assistant",
+      role: r.type === "user.message" ? "user" : r.type === "assistant.text" ? "assistant" : "tool",
       snippet: r.snippet,
     }));
   }

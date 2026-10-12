@@ -32,7 +32,7 @@ import { toast } from "@/stores/toast";
 import { Kbd, Spinner } from "@/components/ui/misc";
 import { ProjectIcon } from "@/components/projects/ProjectIcon";
 import { PROFILE_IDS, PROFILE_INFO } from "@/components/projects/ProfileBadge";
-import { openSearchHit, Snippet } from "@/components/search/SearchHits";
+import { HIT_ROLE_LABEL, openSearchHit, Snippet } from "@/components/search/SearchHits";
 
 type Group = "Aktionen" | "Projekte" | "Sessions" | "In Verläufen";
 
@@ -265,7 +265,7 @@ function PaletteBody({ onClose }: { onClose: () => void }) {
                   <span className="min-w-0 flex-1">
                     <Snippet text={e.hit.snippet} className="line-clamp-1 block text-body" />
                     <span className="block truncate text-caption text-subtle">
-                      {e.hit.role === "user" ? "Du" : "Claude"} · {e.hit.sessionTitle ?? "Ohne Titel"} · {e.hit.projectName}
+                      {HIT_ROLE_LABEL[e.hit.role]} ·{e.hit.sessionTitle ?? "Ohne Titel"} · {e.hit.projectName}
                     </span>
                   </span>
                 ) : (
