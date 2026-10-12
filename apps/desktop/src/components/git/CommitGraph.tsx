@@ -71,10 +71,12 @@ export function CommitGraph({
                   <circle cx={x(row.lane)} cy={ROW_H / 2} r={c.parents.length > 1 ? 3 : 3.5} className={lane.fill} />
                 )}
               </svg>
-              <AuthorAvatar name={c.author} url={c.avatarUrl ?? avatars?.[c.authorEmail]} className="mr-1 h-4 w-4" />
               <span className="min-w-0 flex-1 truncate">
                 <span className={cn(head && "font-semibold")}>{c.subject}</span>
-                <span className="ml-2 text-caption text-subtle">{c.author}</span>
+                <span className="ml-2 inline-flex items-center gap-1 align-middle text-caption text-subtle">
+                  <AuthorAvatar name={c.author} url={c.avatarUrl ?? avatars?.[c.authorEmail]} className="h-3.5 w-3.5" />
+                  {c.author}
+                </span>
               </span>
               <RefBadges refs={c.refs} localBranches={localBranches} />
             </button>
