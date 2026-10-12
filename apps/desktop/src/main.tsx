@@ -5,9 +5,11 @@ import { TooltipProvider } from "@radix-ui/react-tooltip";
 import { App } from "./App";
 import { queryClient } from "./lib/queries";
 import { startServerEvents } from "./lib/server-events";
+import { startPresenceReporting } from "./lib/presence";
 import "./styles.css";
 
 startServerEvents(queryClient);
+startPresenceReporting();
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>

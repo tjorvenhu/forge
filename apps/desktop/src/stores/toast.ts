@@ -14,7 +14,9 @@ export interface Toast {
 
 interface ToastState {
   toasts: Toast[];
-  push: (t: Omit<Toast, "id" | "leaving">) => void;
+  push: (t: Omit<Toast, "id" | "leaving">) => number;
+  /** starts the auto-close time of an open toast again */
+  extend: (id: number, ms: number) => void;
   /** closes with the exit animation */
   dismiss: (id: number) => void;
   /** the pointer is over the toast: it stays until the pointer leaves */
@@ -45,6 +47,12 @@ export const useToasts = create<ToastState>((set, get) => {
       for (const old of get().toasts) if (!kept.includes(old)) timers.delete(old.id);
       set({ toasts: [...kept, { ...t, id }] });
       arm(id, t.duration ?? (t.tone === "error" ? 8000 : 4000));
+      return id;
+    },
+    extend: (id, ms) => {
+      const timer = timers.get(id)?.timer;
+      if (timer) clearTimeout(timer);
+      if (get().toasts.some((t) => t.id === id && !t.leaving)) arm(id, ms);
     },
     dismiss: (id) => {
       const t = get().toasts.find((x) => x.id === id);
@@ -69,7 +77,17 @@ export const useToasts = create<ToastState>((set, get) => {
   };
 });
 
+/** the open "saved" toast; further saves keep it up instead of stacking new ones */
+let savedId: number | null = null;
+const SAVED_MS = 2000;
+
 export const toast = {
+  /** Settings save on every change; this confirms it quietly, once for a burst of changes. */
+  saved: () => {
+    const s = useToasts.getState();
+    if (savedId !== null && s.toasts.some((t) => t.id === savedId && !t.leaving)) s.extend(savedId, SAVED_MS);
+    else savedId = s.push({ tone: "success", title: "Automatisch gespeichert", duration: SAVED_MS });
+  },
   success: (title: string, body?: string) => useToasts.getState().push({ tone: "success", title, body }),
   error: (title: string, body?: string) => useToasts.getState().push({ tone: "error", title, body }),
   info: (title: string, body?: string) => useToasts.getState().push({ tone: "info", title, body }),

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { TOAST_EXIT_MS, useToasts } from "./toast";
+import { toast, TOAST_EXIT_MS, useToasts } from "./toast";
 
 const toasts = () => useToasts.getState().toasts;
 
@@ -31,5 +31,19 @@ describe("toasts", () => {
     expect(toasts()[0]?.leaving).toBeFalsy();
     vi.advanceTimersByTime(100 + TOAST_EXIT_MS);
     expect(toasts()).toEqual([]);
+  });
+
+  it("shows one \"Automatisch gespeichert\" for a burst of saves and keeps it up while they go on", () => {
+    toast.saved();
+    vi.advanceTimersByTime(1500);
+    toast.saved();
+    toast.saved();
+    expect(toasts().filter((t) => t.title === "Automatisch gespeichert")).toHaveLength(1);
+    vi.advanceTimersByTime(1500);
+    expect(toasts()[0]?.leaving).toBeFalsy();
+    vi.advanceTimersByTime(600 + TOAST_EXIT_MS);
+    expect(toasts()).toEqual([]);
+    toast.saved();
+    expect(toasts()).toHaveLength(1);
   });
 });

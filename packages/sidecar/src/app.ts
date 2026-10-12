@@ -10,6 +10,7 @@ import { WorktreeService } from "./automation/worktrees.js";
 import { DevServerService } from "./devserver/dev-server.js";
 import { PhoneService } from "./phone/phone-service.js";
 import { DictationService } from "./dictation/dictation.js";
+import { Presence } from "./util/presence.js";
 import { AppUpdateService } from "./update/app-update.js";
 import { SecretStore } from "./phone/secrets.js";
 import { locateClaude, sessionEnv } from "./claude/environment.js";
@@ -67,6 +68,7 @@ export function createApp(opts: { dataDir: string; write: Writer; log?: (m: stri
   );
   const worktrees = new WorktreeService(git, projects);
   const devServers = new DevServerService(projects, () => sessionEnv(db.getSettings().stripApiKey), emit);
+  const presence = new Presence();
   const secrets = new SecretStore(path.join(opts.dataDir, "secrets"));
   phone = new PhoneService({
     db,
@@ -82,6 +84,7 @@ export function createApp(opts: { dataDir: string; write: Writer; log?: (m: stri
       return { path: locateClaude(settings.claudePath), env: sessionEnv(settings.stripApiKey), cwd: opts.dataDir };
     },
     log: (m) => opts.log?.(m),
+    userPresent: () => presence.isPresent(),
   });
   void phone.init();
   const claudeFor = () => {
@@ -135,6 +138,7 @@ export function createApp(opts: { dataDir: string; write: Writer; log?: (m: stri
   });
   const handlers = createHandlers({
     dictation,
+    presence,
     backups,
     updates,
     mcp,

@@ -65,6 +65,7 @@ export function SettingsView() {
       const next = await call("settings.update", patch);
       qc.setQueryData(keys.settings, next);
       void qc.invalidateQueries({ queryKey: keys.diagnostics });
+      toast.saved();
     } catch (e) {
       toast.error("Einstellung nicht gespeichert", errorMessage(e));
     }
@@ -235,16 +236,22 @@ function ClaudeSection({ s, save }: { s: Settings; save: Save }) {
   );
 }
 
+/** Saved when the field is left or with Enter, so a half-typed path is never used. */
 function ClaudePathInput({ value, onSave }: { value: string | null; onSave: (v: string | null) => void }) {
   const [draft, setDraft] = useState(value ?? "");
-  const dirty = draft !== (value ?? "");
+  const commit = () => {
+    if (draft.trim() !== (value ?? "")) onSave(draft.trim() || null);
+  };
   return (
-    <div className="flex gap-2">
-      <Input value={draft} onChange={(e) => setDraft(e.target.value)} placeholder="automatisch" className="font-mono text-xs" />
-      <Button disabled={!dirty} onClick={() => onSave(draft.trim() || null)}>
-        Speichern
-      </Button>
-    </div>
+    <Input
+      value={draft}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => e.key === "Enter" && commit()}
+      placeholder="automatisch"
+      className="font-mono text-xs"
+      aria-label="Pfad zur Claude-CLI"
+    />
   );
 }
 

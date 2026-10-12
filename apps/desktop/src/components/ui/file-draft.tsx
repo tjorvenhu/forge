@@ -37,6 +37,8 @@ export function useFileDraft(content: string | undefined, version: number | null
     },
     /** keep the draft; the next save overwrites the outside change */
     keepEditing: () => setBaseVersion(version),
+    /** after an own save: the new version on disk is no outside change */
+    markSaved: (saved: number) => setBaseVersion(saved),
   };
 }
 

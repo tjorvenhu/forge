@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type FocusEvent, type ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChevronRight, Copy, MonitorSmartphone, PhoneIncoming, PhoneOutgoing, Power } from "lucide-react";
 import { PHONE_GEMINI_VOICES, PHONE_VOICES, type ParamsOf, type PhoneConfig, type PhoneEngine, type PhoneState } from "@forge/protocol";
@@ -57,6 +57,66 @@ function parseKeys(text: string, max = 10): number[] | null {
   return keys.every((k) => Number.isInteger(k) && k >= 1 && k <= 30) && keys.length <= max ? keys : null;
 }
 
+/** Fields saved only together with a secret value; the rest of the draft is compared to the last save. */
+const SECRET_FIELDS = ["password", "openAiKey", "geminiKey", "pin"] as const;
+
+/** The draft as a save request; secrets only when typed in, the PIN only when complete. */
+function toPatch(d: Draft): { patch: ParamsOf<"phone.saveConfig">; key: string; secrets: boolean } | { error: string } {
+  const port = parsePort(d.port);
+  const deskPort = parsePort(d.desk.httpPort, 1024);
+  const sessionKeys = parseKeys(d.desk.sessionKeys);
+  const clearKeys = parseKeys(d.desk.clearKeys, 30);
+  if (port === null) return { error: "Der Port muss eine Zahl von 1 bis 65535 sein." };
+  if (deskPort === null) return { error: "Der Port fürs Tischtelefon muss eine Zahl von 1024 bis 65535 sein." };
+  if (sessionKeys === null) return { error: "Session-Tasten: bis zu 10 Tastennummern von 1 bis 30, z. B. 1, 2, 3, 4." };
+  if (clearKeys === null) return { error: "Tasten leeren: Tastennummern von 1 bis 30, z. B. 5, 6, 7, 8." };
+  const { password: deskPassword, ...desk } = d.desk;
+  const base: ParamsOf<"phone.saveConfig"> = {
+    server: d.server,
+    port,
+    username: d.username,
+    authUsername: d.authUsername?.trim() || null,
+    domain: d.domain?.trim() || null,
+    displayName: d.displayName,
+    engine: d.engine,
+    liveModel: d.liveModel,
+    geminiVoice: d.geminiVoice,
+    speechProvider: d.speechProvider,
+    geminiSttModel: d.geminiSttModel,
+    geminiTtsModel: d.geminiTtsModel,
+    voice: d.voice,
+    sttModel: d.sttModel,
+    ttsModel: d.ttsModel,
+    allowedCallers: d.callers.split(/[\n,;]+/).map((x) => x.trim()).filter(Boolean),
+    notifyNumber: d.notifyNumber?.trim() || null,
+    notifyOn: d.notifyOn,
+    requirePin: d.requirePin,
+    desk: { ...desk, httpPort: deskPort, sessionKeys, clearKeys },
+  };
+  const secrets = {
+    ...(d.password ? { password: d.password } : {}),
+    ...(d.openAiKey ? { openAiKey: d.openAiKey } : {}),
+    ...(d.geminiKey ? { geminiKey: d.geminiKey } : {}),
+    ...(deskPassword ? { deskPassword } : {}),
+    ...(d.pin.length >= 4 ? { pin: d.pin } : {}),
+  };
+  return { patch: { ...base, ...secrets }, key: JSON.stringify(base), secrets: Object.keys(secrets).length > 0 };
+}
+
+/** After a save: secret fields that still hold what was sent are emptied (the field then shows "gespeichert"). */
+function clearSent(cur: Draft, sent: Draft): Draft {
+  const next = { ...cur };
+  for (const f of SECRET_FIELDS) if (cur[f] === sent[f] && (f !== "pin" || cur.pin.length >= 4)) next[f] = "";
+  if (cur.desk.password === sent.desk.password) next.desk = { ...cur.desk, password: "" };
+  return next;
+}
+
+/** Typing in a text field: saved when the field is left, not on every key. */
+function isTextField(el: Element | null): boolean {
+  if (el instanceof HTMLTextAreaElement) return true;
+  return el instanceof HTMLInputElement && !["checkbox", "radio", "button"].includes(el.type);
+}
+
 const ENGINES: Array<{ value: PhoneEngine; label: string; description: string }> = [
   { value: "gemini-live", label: "Gemini Live", description: "Hört, denkt und spricht in einem Modell. Am natürlichsten, man kann jederzeit dazwischenreden." },
   { value: "claude", label: "Claude (Abo)", description: "Claude führt das Gespräch über dein Abo. Hören und Sprechen übernimmt OpenAI oder Gemini." },
@@ -68,12 +128,80 @@ export function PhoneSettings() {
   const state = usePhoneState().data;
   const qc = useQueryClient();
   const [draft, setDraft] = useState<Draft | null>(null);
-  const [saving, setSaving] = useState(false);
   const [advanced, setAdvanced] = useState(false);
+  const latest = useRef<Draft | null>(null);
+  /** the non-secret part of the last save; equal drafts are not sent again */
+  const lastSaved = useRef<string | null>(null);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    if (config.data && !draft) setDraft(toDraft(config.data));
+    if (!config.data || draft) return;
+    const d = toDraft(config.data);
+    const r = toPatch(d);
+    lastSaved.current = "key" in r ? r.key : null;
+    setDraft(d);
   }, [config.data, draft]);
+  useEffect(() => {
+    latest.current = draft;
+  }, [draft]);
+
+  /** Saves the draft when it changed; `report`: also say why an invalid one was not saved. */
+  const persist = useCallback(
+    async (report: boolean) => {
+      const d = latest.current;
+      if (!d) return;
+      if (report && d.pin.length > 0 && d.pin.length < 4) toast.error("PIN nicht gespeichert", "Die PIN braucht 4 bis 8 Ziffern.");
+      const r = toPatch(d);
+      if ("error" in r) {
+        if (report) toast.error("Nicht gespeichert", r.error);
+        return;
+      }
+      if (r.key === lastSaved.current && !r.secrets) return;
+      try {
+        const next = await call("phone.saveConfig", r.patch);
+        lastSaved.current = r.key;
+        qc.setQueryData(keys.phoneConfig, next);
+        setDraft((cur) => (cur ? clearSent(cur, d) : cur));
+        toast.saved();
+      } catch (e) {
+        toast.error("Nicht gespeichert", errorMessage(e));
+      }
+    },
+    [qc],
+  );
+  const schedule = useCallback(
+    (report: boolean) => {
+      if (timer.current) clearTimeout(timer.current);
+      timer.current = setTimeout(() => {
+        timer.current = null;
+        void persist(report);
+      }, 300);
+    },
+    [persist],
+  );
+  // Selections and switches save right away; text fields when they are left (onBlur below).
+  useEffect(() => {
+    if (!draft) return;
+    if (!isTextField(document.activeElement)) schedule(false);
+    else if (timer.current) {
+      // Typing goes on: a save still waiting would catch the field half-typed.
+      clearTimeout(timer.current);
+      timer.current = null;
+    }
+  }, [draft, schedule]);
+  // Leaving the settings with a change still pending saves it.
+  useEffect(
+    () => () => {
+      if (!timer.current) return;
+      clearTimeout(timer.current);
+      timer.current = null;
+      void persist(false);
+    },
+    [persist],
+  );
+  const onFieldBlur = (e: FocusEvent<HTMLDivElement>) => {
+    if (isTextField(e.target)) schedule(true);
+  };
 
   if (config.isError) return <ErrorBanner>{errorMessage(config.error)}</ErrorBanner>;
   if (!config.data || !draft) return <Loading />;
@@ -84,62 +212,10 @@ export function PhoneSettings() {
   const needsGemini = live || draft.speechProvider === "gemini";
   const needsOpenAi = !live && draft.speechProvider === "openai";
 
-  const save = async () => {
-    const port = parsePort(draft.port);
-    const deskPort = parsePort(draft.desk.httpPort, 1024);
-    const sessionKeys = parseKeys(draft.desk.sessionKeys);
-    if (port === null) return toast.error("Nicht gespeichert", "Der Port muss eine Zahl von 1 bis 65535 sein.");
-    if (deskPort === null) return toast.error("Nicht gespeichert", "Der Port fürs Tischtelefon muss eine Zahl von 1024 bis 65535 sein.");
-    const clearKeys = parseKeys(draft.desk.clearKeys, 30);
-    if (sessionKeys === null) return toast.error("Nicht gespeichert", "Session-Tasten: bis zu 10 Tastennummern von 1 bis 30, z. B. 1, 2, 3, 4.");
-    if (clearKeys === null) return toast.error("Nicht gespeichert", "Tasten leeren: Tastennummern von 1 bis 30, z. B. 5, 6, 7, 8.");
-    setSaving(true);
-    try {
-      const { password: deskPassword, ...desk } = draft.desk;
-      const patch: ParamsOf<"phone.saveConfig"> = {
-        server: draft.server,
-        port,
-        username: draft.username,
-        authUsername: draft.authUsername?.trim() || null,
-        domain: draft.domain?.trim() || null,
-        displayName: draft.displayName,
-        engine: draft.engine,
-        liveModel: draft.liveModel,
-        geminiVoice: draft.geminiVoice,
-        speechProvider: draft.speechProvider,
-        geminiSttModel: draft.geminiSttModel,
-        geminiTtsModel: draft.geminiTtsModel,
-        voice: draft.voice,
-        sttModel: draft.sttModel,
-        ttsModel: draft.ttsModel,
-        allowedCallers: draft.callers.split(/[\n,;]+/).map((s) => s.trim()).filter(Boolean),
-        notifyNumber: draft.notifyNumber?.trim() || null,
-        notifyOn: draft.notifyOn,
-        requirePin: draft.requirePin,
-        desk: { ...desk, httpPort: deskPort, sessionKeys, clearKeys },
-        ...(draft.password ? { password: draft.password } : {}),
-        ...(draft.openAiKey ? { openAiKey: draft.openAiKey } : {}),
-        ...(draft.geminiKey ? { geminiKey: draft.geminiKey } : {}),
-        ...(deskPassword ? { deskPassword } : {}),
-        ...(draft.pin ? { pin: draft.pin } : {}),
-      };
-      const next = await call("phone.saveConfig", patch);
-      qc.setQueryData(keys.phoneConfig, next);
-      setDraft(toDraft(next));
-      toast.success(
-        "Telefon-Einstellungen gespeichert",
-        c.enabled ? "Geänderte Verbindungsdaten übernimmt FORGE sofort, während eines Gesprächs erst nach dem Auflegen." : undefined,
-      );
-    } catch (e) {
-      toast.error("Nicht gespeichert", errorMessage(e));
-    } finally {
-      setSaving(false);
-    }
-  };
-
   const removeSecret = async (what: Secret) => {
     try {
       qc.setQueryData(keys.phoneConfig, await call("phone.saveConfig", { [what]: "" }));
+      toast.saved();
     } catch (e) {
       toast.error("Nicht entfernt", errorMessage(e));
     }
@@ -175,7 +251,7 @@ export function PhoneSettings() {
   );
 
   return (
-    <div className="flex flex-col gap-5">
+    <div onBlur={onFieldBlur} className="flex flex-col gap-5">
       <div className="flex flex-wrap items-center gap-3 rounded-lg border border-border bg-surface-2 px-3 py-2.5">
         {state && <PhoneStatusBadge state={state} />}
         <span className="min-w-0 flex-1 text-body text-muted">
@@ -299,7 +375,10 @@ export function PhoneSettings() {
           <Field label="Erlaubte Anrufer" hint="Eine Nummer pro Zeile. Andere Anrufe weist FORGE ab. Ist die Liste leer, nimmt FORGE keine Anrufe an.">
             <Textarea value={draft.callers} onChange={(e) => up({ callers: e.target.value })} rows={3} className="font-mono text-xs" placeholder="+49 170 1234567" />
           </Field>
-          <Field label="FORGE ruft diese Nummer an">
+          <Field
+            label="FORGE ruft diese Nummer an"
+            hint="Nicht, solange du in FORGE arbeitest: Ist das Fenster aktiv und du hast es in den letzten 5 Minuten benutzt, bleibt das Telefon still."
+          >
             <Input value={draft.notifyNumber ?? ""} onChange={(e) => up({ notifyNumber: e.target.value })} className="font-mono text-xs" placeholder="z. B. Handy oder Nebenstelle" />
           </Field>
           <div className="flex flex-col gap-2">
@@ -325,14 +404,11 @@ export function PhoneSettings() {
 
       <DeskSettings draft={draft} config={c} state={state} up={upDesk} secret={secret} />
 
-      <div className="flex items-center gap-3 border-t border-border pt-4">
-        <p className="flex-1 text-xs text-subtle">
+      <div className="border-t border-border pt-4">
+        <p className="text-xs text-subtle">
           Bei eingeschaltetem Telefon geht Gesprächsaudio an {live ? "Google (Gemini Live)" : draft.speechProvider === "gemini" ? "Google (Gemini)" : "OpenAI"}. Passwörter und
-          API-Keys speichert FORGE verschlüsselt für dein Windows-Konto.
+          API-Keys speichert FORGE verschlüsselt für dein Windows-Konto. Änderungen speichert FORGE selbst, Textfelder beim Verlassen des Felds.
         </p>
-        <Button variant="primary" onClick={() => void save()} loading={saving} disabled={draft.pin.length > 0 && draft.pin.length < 4}>
-          Speichern
-        </Button>
       </div>
 
       <CallLog />

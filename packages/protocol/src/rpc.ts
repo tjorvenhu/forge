@@ -303,6 +303,8 @@ export const methods = {
   "devserver.output": { params: projectRef, result: z.object({ text: z.string() }) },
 
   "app.updateState": { params: empty, result: AppUpdateState },
+  /** whether the FORGE window is active, and whether the user just used it (keys, mouse); FORGE does not call while they are there */
+  "app.presence": { params: z.object({ focused: z.boolean(), active: z.boolean() }), result: z.object({}) },
   /** looks for a newer release now */
   "app.checkUpdate": { params: empty, result: AppUpdateState },
   /** downloads and checks the installer of the newest release; installing is a command of the desktop shell */

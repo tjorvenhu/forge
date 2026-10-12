@@ -370,6 +370,7 @@ describe("PhoneService end to end with a test PBX", () => {
   let failConversation: boolean;
   let rtps: RtpSession[];
   let logs: string[];
+  let present: boolean;
 
   beforeEach(async () => {
     t = tempDir();
@@ -391,6 +392,7 @@ describe("PhoneService end to end with a test PBX", () => {
     failConversation = false;
     rtps = [];
     logs = [];
+    present = false;
     worktreesCreated = [];
     startedIn = [];
     sessionList = [{ id: "s1", projectId, title: "Warenkorb", status: "idle", live: true, updatedAt: new Date().toISOString(), projectName: "shop" }];
@@ -446,6 +448,7 @@ describe("PhoneService end to end with a test PBX", () => {
       emit: (e) => events.push(e),
       claude: () => ({ path: "claude", env: {}, cwd: t.dir }),
       log: (m) => logs.push(m),
+      userPresent: () => present,
       timing: { notifyDelayMs: 50, notifyCooldownMs: 0, pinLimits: { perCaller: 2, baseDelayMs: 0 }, callbackTickMs: 100 },
       factories: {
         voice: () => voice,
@@ -606,6 +609,24 @@ describe("PhoneService end to end with a test PBX", () => {
     await until(() => svc.state().call === null, 3000, "ended");
     expect(svc.calls(5)[0]).toMatchObject({ direction: "out", number: "0172 999", result: "answered", reason: "Session fertig: Warenkorb" });
   }, 40_000);
+
+  it("does not call while the user works in the FORGE window", async () => {
+    await svc.setEnabled(true);
+    await until(() => svc.state().registration === "registered", 5000, "registered");
+    present = true;
+    svc.onServerEvent({
+      event: "session.event",
+      payload: {
+        seq: 1,
+        sessionId: "s1",
+        ts: new Date().toISOString(),
+        body: { type: "turn.result", subtype: "success", isError: false, durationMs: 1, numTurns: 1, inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, text: "Fertig." },
+      },
+    });
+    await until(() => logs.some((l) => l.includes("kein Rückruf (done), FORGE ist im Vordergrund")), 3000, "skipped");
+    expect(svc.state().call).toBeNull();
+    expect(svc.calls(5).filter((c) => c.direction === "out")).toEqual([]);
+  }, 20_000);
 
   it("refuses to switch on while the setup is incomplete", async () => {
     await svc.saveConfig({ openAiKey: "" });

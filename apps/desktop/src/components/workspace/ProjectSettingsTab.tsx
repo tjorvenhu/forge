@@ -60,6 +60,7 @@ export function ProjectSettingsTab({ project }: { project: Project }) {
       await qc.invalidateQueries({ queryKey: keys.project(project.id) });
       void qc.invalidateQueries({ queryKey: keys.projects });
       if (patch.devCommand !== undefined) void qc.invalidateQueries({ queryKey: keys.devServer(project.id) });
+      toast.saved();
     } catch (e) {
       toast.error("Nicht gespeichert", errorMessage(e));
     }

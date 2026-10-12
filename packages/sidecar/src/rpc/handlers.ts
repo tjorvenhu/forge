@@ -13,6 +13,7 @@ import type { WorktreeService } from "../automation/worktrees.js";
 import type { DevServerService } from "../devserver/dev-server.js";
 import type { PhoneService } from "../phone/phone-service.js";
 import type { DictationService } from "../dictation/dictation.js";
+import type { Presence } from "../util/presence.js";
 import type { AppUpdateService } from "../update/app-update.js";
 import type { BackupService } from "../backup/backup.js";
 import * as cfg from "../config/claude-config.js";
@@ -33,6 +34,7 @@ export interface Services {
   devServers: DevServerService;
   phone: PhoneService;
   dictation: DictationService;
+  presence: Presence;
   updates: AppUpdateService;
   backups: BackupService;
   notifyProject: (projectId: string) => void;
@@ -208,6 +210,10 @@ export function createHandlers(s: Services): Handlers {
     "devserver.output": ({ projectId }) => ({ text: s.devServers.output(projectId) }),
 
     "app.updateState": () => s.updates.get(),
+    "app.presence": ({ focused, active }) => {
+      s.presence.report(focused, active);
+      return {};
+    },
     "app.checkUpdate": () => s.updates.check(),
     "app.downloadUpdate": () => s.updates.download(),
     "app.changelog": () => s.updates.changelog(),

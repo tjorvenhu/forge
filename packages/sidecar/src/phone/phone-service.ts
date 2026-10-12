@@ -157,6 +157,8 @@ export interface PhoneDeps {
   emit(e: ServerEvent): void;
   claude(): { path: string | null; env: Record<string, string>; cwd: string };
   log(message: string): void;
+  /** true while the user works in the FORGE window; then FORGE does not call */
+  userPresent?: () => boolean;
   factories?: Partial<PhoneFactories>;
   /** shorter waits in tests */
   timing?: {
@@ -902,6 +904,11 @@ export class PhoneService {
   private async notify(sessionId: string, kind: NotifyKind, body: SessionEventBody) {
     if (this.busy || this.registration !== "registered" || !this.cfg.notifyNumber) return;
     if (Date.now() - this.lastNotifyAt < (this.d.timing?.notifyCooldownMs ?? NOTIFY_COOLDOWN_MS)) return;
+    // The user is at FORGE and sees it there; a call would only interrupt.
+    if (this.d.userPresent?.()) {
+      this.d.log(`Telefon: kein Rückruf (${kind}), FORGE ist im Vordergrund`);
+      return;
+    }
     let session;
     try {
       session = this.d.sessions.get(sessionId);
