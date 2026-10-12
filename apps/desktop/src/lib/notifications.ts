@@ -1,8 +1,7 @@
 import type { QueryClient } from "@tanstack/react-query";
 import type { ResultOf, SessionEvent } from "@forge/protocol";
 import { rpc } from "./rpc";
-import { useUi } from "@/stores/ui";
-import { toast } from "@/stores/toast";
+import { desktopNotify } from "./native";
 import { isInterrupted } from "./working";
 
 export type NotifyKind = "done" | "approval" | "error";
@@ -33,15 +32,23 @@ export function shouldNotify(sessionId: string, kind: NotifyKind): boolean {
   return Date.now() - prev > 3000;
 }
 
-/** The session of an event with "Projekt: Titel" and an action that opens it. */
+/**
+ * A Windows notification (not inside the app), unless switched off in the settings. The text names
+ * project and session.
+ */
+function notify(qc: QueryClient, title: string, lines: Array<string | null | undefined>) {
+  if (qc.getQueryData<ResultOf<"settings.get">>(["settings"])?.desktopNotifications === false) return;
+  void desktopNotify(title, lines.filter(Boolean).join("\n"));
+}
+
+/** The session of an event with "Projekt: Titel". */
 async function sessionContext(qc: QueryClient, sessionId: string) {
   const live = qc.getQueryData<ResultOf<"sessions.listLive">>(["liveSessions"])?.find((s) => s.id === sessionId);
   const session = live ?? qc.getQueryData<ResultOf<"sessions.get">>(["session", sessionId]) ?? (await rpc.call("sessions.get", { sessionId }).catch(() => null));
   if (!session) return null;
   const projectName = live?.projectName ?? qc.getQueryData<ResultOf<"projects.list">>(["projects"])?.find((p) => p.id === session.projectId)?.name;
   const where = [projectName, session.title ?? "Ohne Titel"].filter(Boolean).join(": ");
-  const action = { label: "Session öffnen", onClick: () => useUi.getState().openProject(session.projectId, session.id) };
-  return { session, where, action };
+  return { session, where };
 }
 
 /** Tells the user that FORGE continued a session after a usage limit, or gave up doing so. */
@@ -50,40 +57,33 @@ export async function notifyAutoContinue(qc: QueryClient, ev: SessionEvent) {
   if (b.type !== "auto_continue" || (b.state !== "resumed" && b.state !== "exhausted" && b.state !== "failed")) return;
   const ctx = await sessionContext(qc, ev.sessionId);
   if (!ctx) return;
-  if (b.state === "resumed") toast.notify({ tone: "info", title: "Automatisch fortgesetzt", body: `${ctx.where}\nDas Nutzungslimit ist zurückgesetzt, Claude arbeitet weiter.`, action: ctx.action, duration: 8000 });
-  else toast.notify({ tone: "warning", title: "Nicht automatisch fortgesetzt", body: [ctx.where, b.message].filter(Boolean).join("\n"), action: ctx.action, duration: 12_000 });
+  if (b.state === "resumed") notify(qc, "Automatisch fortgesetzt", [ctx.where, "Das Nutzungslimit ist zurückgesetzt, Claude arbeitet weiter."]);
+  else notify(qc, "Nicht automatisch fortgesetzt", [ctx.where, b.message]);
 }
 
-/** Shows a notification at the bottom right that leads to the session. */
+/** Windows notification for a finished turn, a needed decision or an error. */
 export async function notifySession(qc: QueryClient, ev: SessionEvent, kind: NotifyKind) {
   const ctx = await sessionContext(qc, ev.sessionId);
   if (!ctx) return;
-  const { session, where, action } = ctx;
+  const { session, where } = ctx;
   const b = ev.body;
   const detail =
     b.type === "approval.request" ? (b.title ?? b.toolName) : b.type === "error" ? b.message : b.type === "turn.result" && b.isError ? (b.text ?? b.subtype) : null;
   if (b.type === "notify") {
-    toast.notify({ tone: b.urgent ? "warning" : "info", title: b.urgent ? "Claude braucht dich" : "Claude meldet sich", body: [where, b.message].filter(Boolean).join("\n"), action, duration: b.urgent ? 20_000 : 10_000 });
+    notify(qc, b.urgent ? "Claude braucht dich" : "Claude meldet sich", [where, b.message]);
     return;
   }
   if (kind === "approval") {
     const tool = b.type === "approval.request" ? b.toolName : "";
     const title = tool === "AskUserQuestion" ? "Rückfrage von Claude" : tool === "ExitPlanMode" ? "Plan zur Freigabe" : "Freigabe nötig";
     const text = tool === "AskUserQuestion" || tool === "ExitPlanMode" ? null : detail;
-    toast.notify({ tone: "warning", title, body: [where, text].filter(Boolean).join("\n"), action, duration: 12_000 });
-  }
-  else if (kind === "error") toast.notify({ tone: "error", title: "Fehler in der Session", body: [where, detail?.slice(0, 300)].filter(Boolean).join("\n"), action });
+    notify(qc, title, [where, text]);
+  } else if (kind === "error") notify(qc, "Fehler in der Session", [where, detail?.slice(0, 300)]);
   else {
     // The session cache is updated synchronously by session.updated; the live list is refetched later.
     const background = (qc.getQueryData<ResultOf<"sessions.get">>(["session", ev.sessionId]) ?? session).background;
     if (background.length) {
-      toast.notify({
-        tone: "info",
-        title: "Durchlauf beendet, Aufgabe läuft weiter",
-        body: `${where}\nIm Hintergrund: ${background.map((t) => t.description).join(", ")}. Claude meldet sich, wenn sie fertig ist.`,
-        action,
-        duration: 8000,
-      });
-    } else toast.notify({ tone: "success", title: "Claude ist fertig", body: where, action, duration: 6000 });
+      notify(qc, "Durchlauf beendet, Aufgabe läuft weiter", [where, `Im Hintergrund: ${background.map((t) => t.description).join(", ")}. Claude meldet sich, wenn sie fertig ist.`]);
+    } else notify(qc, "Claude ist fertig", [where]);
   }
 }

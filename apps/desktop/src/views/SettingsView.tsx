@@ -15,7 +15,6 @@ import {
   SquareTerminal,
   Volume2,
   XCircle,
-  type LucideIcon,
 } from "lucide-react";
 import type { Diagnostics, ProfileId, Settings, ToolCheck, EffortLevel } from "@forge/protocol";
 import { call, keys, useDiagnostics, usePhoneState, useRuntimeInfo, useSettings } from "@/lib/queries";
@@ -30,6 +29,7 @@ import { Input } from "@/components/ui/input";
 import { Badge, ErrorBanner, Loading } from "@/components/ui/misc";
 import { Select } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import { Group, Row, SettingsLayout, SwitchRow, type SettingsSectionDef } from "@/components/settings/layout";
 import { PROFILE_IDS, PROFILE_INFO } from "@/components/projects/ProfileBadge";
 import { ClaudeSetupCard } from "@/components/settings/ClaudeSetupCard";
 import { MemoryEditor } from "@/components/settings/MemoryEditor";
@@ -41,7 +41,7 @@ import { capitalize, cn } from "@/lib/utils";
 
 type Save = (patch: Partial<Settings>) => Promise<void>;
 
-const SECTIONS: ReadonlyArray<{ id: SettingsSection; label: string; hint: string; Icon: LucideIcon }> = [
+const SECTIONS: ReadonlyArray<SettingsSectionDef<SettingsSection>> = [
   { id: "general", label: "Allgemein", hint: "Modell, Profil, Bedienung", Icon: SlidersHorizontal },
   { id: "claude", label: "Claude Code", hint: "Installation, Anmeldung, Limits", Icon: SquareTerminal },
   { id: "phone", label: "Telefon", hint: "Anrufe, Sprache, Tischtelefon", Icon: Phone },
@@ -70,94 +70,32 @@ export function SettingsView() {
   const current = SECTIONS.find((x) => x.id === section) ?? SECTIONS[0]!;
   return (
     <Page title="Einstellungen" subtitle="Änderungen gelten sofort. Ein Backup davon legt FORGE bei jedem Start an.">
-      <div className="mx-auto flex max-w-6xl gap-8">
-        <nav className="sticky top-0 flex w-56 shrink-0 flex-col gap-1 self-start" aria-label="Bereiche der Einstellungen">
-          {SECTIONS.map((x) => {
-            const active = x.id === current.id;
-            return (
-              <button
-                key={x.id}
-                onClick={() => openSettings(x.id)}
-                aria-current={active ? "page" : undefined}
-                className={cn(
-                  "flex items-start gap-3 rounded-lg px-3 py-2.5 text-left transition-[color,background-color,transform] duration-120 active:scale-[0.98]",
-                  active ? "bg-accent-soft text-fg" : "text-muted hover:bg-surface-2 hover:text-fg",
-                )}
-              >
-                <x.Icon className={cn("mt-0.5 h-4 w-4 shrink-0", active && "text-accent")} />
-                <span className="min-w-0">
-                  <span className="block text-body-lg">{x.label}</span>
-                  <span className="block truncate text-caption text-subtle">{x.hint}</span>
-                </span>
-              </button>
-            );
-          })}
-        </nav>
-
-        <div key={current.id} className="flex min-w-0 max-w-3xl flex-1 animate-view-in flex-col gap-6 pb-10">
-          {!s ? (
-            <Loading />
-          ) : current.id === "general" ? (
-            <GeneralSection s={s} save={save} />
-          ) : current.id === "claude" ? (
-            <ClaudeSection s={s} save={save} />
-          ) : current.id === "phone" ? (
-            <PhoneSection />
-          ) : current.id === "backup" ? (
-            <Group title="Backup" description="Einstellungen sichern, als Datei herunterladen und auf einen früheren Stand zurücksetzen.">
-              <div className="p-4">
-                <BackupSettings />
-              </div>
-            </Group>
-          ) : current.id === "rules" ? (
-            <Group title="Globale Regeln für Claude" description="Stehen in ~/.claude/CLAUDE.md und gelten in jedem Projekt, zusätzlich zur CLAUDE.md des Projekts. Auch Claude Code im Terminal liest sie.">
-              <div className="p-4">
-                <MemoryEditor scopes={["global"]} />
-              </div>
-            </Group>
-          ) : (
-            <AboutSection s={s} save={save} />
-          )}
-        </div>
-      </div>
+      <SettingsLayout sections={SECTIONS} current={current.id} onSelect={openSettings} label="Bereiche der Einstellungen">
+        {!s ? (
+          <Loading />
+        ) : current.id === "general" ? (
+          <GeneralSection s={s} save={save} />
+        ) : current.id === "claude" ? (
+          <ClaudeSection s={s} save={save} />
+        ) : current.id === "phone" ? (
+          <PhoneSection />
+        ) : current.id === "backup" ? (
+          <Group title="Backup" description="Einstellungen sichern, als Datei herunterladen und auf einen früheren Stand zurücksetzen.">
+            <div className="p-4">
+              <BackupSettings />
+            </div>
+          </Group>
+        ) : current.id === "rules" ? (
+          <Group title="Globale Regeln für Claude" description="Stehen in ~/.claude/CLAUDE.md und gelten in jedem Projekt, zusätzlich zur CLAUDE.md des Projekts. Auch Claude Code im Terminal liest sie.">
+            <div className="p-4">
+              <MemoryEditor scopes={["global"]} />
+            </div>
+          </Group>
+        ) : (
+          <AboutSection s={s} save={save} />
+        )}
+      </SettingsLayout>
     </Page>
-  );
-}
-
-/** A titled card of settings rows. */
-function Group({ title, description, action, children }: { title: string; description?: ReactNode; action?: ReactNode; children: ReactNode }) {
-  return (
-    <section className="overflow-hidden rounded-xl border border-border bg-surface">
-      <header className="flex items-start justify-between gap-4 border-b border-border px-4 py-3">
-        <div className="min-w-0">
-          <h2 className="text-ui font-semibold">{title}</h2>
-          {description && <p className="mt-0.5 text-xs text-muted">{description}</p>}
-        </div>
-        {action}
-      </header>
-      <div className="divide-y divide-border">{children}</div>
-    </section>
-  );
-}
-
-/** One setting: what it is and what it does on the left, the control on the right (or below with `stacked`). */
-function Row({ label, description, children, stacked }: { label: string; description?: ReactNode; children: ReactNode; stacked?: boolean }) {
-  return (
-    <div className={cn("px-4 py-3.5", stacked ? "flex flex-col gap-2.5" : "flex items-center justify-between gap-6")}>
-      <div className="min-w-0 flex-1">
-        <div className="text-body font-medium">{label}</div>
-        {description && <div className="mt-0.5 text-xs text-muted">{description}</div>}
-      </div>
-      {children}
-    </div>
-  );
-}
-
-function SwitchRow({ label, description, checked, onChange }: { label: string; description?: ReactNode; checked: boolean; onChange: (v: boolean) => void }) {
-  return (
-    <Row label={label} description={description}>
-      <Switch checked={checked} onChange={onChange} label={label} />
-    </Row>
   );
 }
 
@@ -216,6 +154,12 @@ function GeneralSection({ s, save }: { s: Settings; save: Save }) {
           description={s.enterToSend ? "Umschalt+Enter macht eine neue Zeile." : "Strg+Enter sendet, Enter macht eine neue Zeile."}
           checked={s.enterToSend}
           onChange={(v) => void save({ enterToSend: v })}
+        />
+        <SwitchRow
+          label="Windows-Benachrichtigungen"
+          description="Meldung von Windows, wenn Claude fertig ist, eine Freigabe oder Antwort braucht oder ein Fehler auftritt. Erscheint auch, wenn FORGE im Hintergrund ist."
+          checked={s.desktopNotifications}
+          onChange={(v) => void save({ desktopNotifications: v })}
         />
         <Row label="Töne" description="Signal, wenn Claude fertig ist, eine Freigabe braucht oder ein Fehler auftritt.">
           <div className="flex items-center gap-1">

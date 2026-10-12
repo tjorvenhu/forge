@@ -1,4 +1,5 @@
 import { open, save } from "@tauri-apps/plugin-dialog";
+import { isPermissionGranted, requestPermission, sendNotification } from "@tauri-apps/plugin-notification";
 import { openUrl } from "@tauri-apps/plugin-opener";
 
 export async function pickFolder(title: string, defaultPath?: string | null): Promise<string | null> {
@@ -33,4 +34,12 @@ export function remoteToWebUrl(remote: string | null): string | null {
   const https = /^https:\/\/(?:[^@/]+@)?([^/]+)\/(.+?)(\.git)?$/.exec(remote);
   if (https) return `https://${https[1]}/${https[2]}`;
   return null;
+}
+
+let notifyAllowed: Promise<boolean> | null = null;
+
+/** Windows notification in the action center. Asks for permission once; Windows usually grants it without asking. */
+export async function desktopNotify(title: string, body: string) {
+  notifyAllowed ??= (async () => (await isPermissionGranted()) || (await requestPermission()) === "granted")().catch(() => false);
+  if (await notifyAllowed) sendNotification({ title, body });
 }

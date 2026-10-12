@@ -60,15 +60,13 @@ interface UiState {
 
 const PREFS_KEY = "forge.ui";
 
-type Prefs = Pick<UiState, "rightPanelOpen" | "bottomPanelOpen" | "activeProjectId">;
+type Prefs = Pick<UiState, "activeProjectId">;
 
-/** Restores panel layout and reopens the last project on start. */
+/** Reopens the last project on start. Side and bottom panel always start closed and open only on request. */
 function loadPrefs(): Partial<UiState> {
   try {
     const p = JSON.parse(localStorage.getItem(PREFS_KEY) ?? "{}") as Partial<Prefs>;
     return {
-      ...(typeof p.rightPanelOpen === "boolean" ? { rightPanelOpen: p.rightPanelOpen } : {}),
-      ...(typeof p.bottomPanelOpen === "boolean" ? { bottomPanelOpen: p.bottomPanelOpen } : {}),
       ...(typeof p.activeProjectId === "string" ? { activeProjectId: p.activeProjectId, view: "workspace" as const } : {}),
     };
   } catch {
@@ -78,7 +76,7 @@ function loadPrefs(): Partial<UiState> {
 
 function savePrefs(s: Prefs) {
   try {
-    localStorage.setItem(PREFS_KEY, JSON.stringify({ rightPanelOpen: s.rightPanelOpen, bottomPanelOpen: s.bottomPanelOpen, activeProjectId: s.activeProjectId }));
+    localStorage.setItem(PREFS_KEY, JSON.stringify({ activeProjectId: s.activeProjectId }));
   } catch {
     /* preferences are optional */
   }
@@ -89,7 +87,7 @@ export const useUi = create<UiState>((set, get) => ({
   activeProjectId: null,
   activeSession: {},
   workspaceTab: "chat",
-  rightPanelOpen: true,
+  rightPanelOpen: false,
   bottomPanelOpen: false,
   newProject: null,
   cloneUrl: null,
@@ -103,7 +101,6 @@ export const useUi = create<UiState>((set, get) => ({
   clearTerminalRequest: () => set({ terminalRequest: null }),
   openPanelTab: (projectId, tab) => {
     set({ panelRequest: { projectId, tab }, bottomPanelOpen: true });
-    savePrefs(get());
   },
   clearPanelRequest: () => set({ panelRequest: null }),
   setPaletteOpen: (paletteOpen) => set({ paletteOpen }),
@@ -130,11 +127,9 @@ export const useUi = create<UiState>((set, get) => ({
   setWorkspaceTab: (workspaceTab) => set({ workspaceTab }),
   toggleRightPanel: (open) => {
     set((s) => ({ rightPanelOpen: open ?? !s.rightPanelOpen }));
-    savePrefs(get());
   },
   toggleBottomPanel: (open) => {
     set((s) => ({ bottomPanelOpen: open ?? !s.bottomPanelOpen }));
-    savePrefs(get());
   },
   setNewProject: (newProject, cloneUrl) => set({ newProject, cloneUrl: cloneUrl ?? null }),
 }));

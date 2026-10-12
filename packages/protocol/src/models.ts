@@ -375,6 +375,8 @@ export const Settings = z.object({
   autoContinueAfterLimit: z.boolean(),
   /** look for new FORGE releases on GitHub (start and every 30 minutes) */
   updateChecks: z.boolean(),
+  /** Windows notifications when Claude is done, needs a decision or fails */
+  desktopNotifications: z.boolean(),
 });
 export type Settings = z.infer<typeof Settings>;
 

@@ -4,17 +4,17 @@
 
 /* Design tokens. Components use these via Tailwind classes (bg-surface, text-muted …), never raw colors. */
 @theme {
-  /* FORGE brand (Branding Kit): Charcoal #0F172A, Forge Orange #F97316, Steel Gray #475569, Light #E5E7EB. */
-  --color-bg: #0f172a;
-  --color-sidebar: #16203a;
-  --color-surface: #141e33;
-  --color-surface-2: #1a253c;
-  --color-surface-3: #212d46;
-  --color-border: #243049;
-  --color-border-strong: #364560;
+  /* FORGE brand (Branding Kit): Forge Orange #F97316, Light #E5E7EB; dark surfaces a neutral anthracite (kit: #111827) with only a hint of blue. */
+  --color-bg: #14171d;
+  --color-sidebar: #1a1e25;
+  --color-surface: #1a1e25;
+  --color-surface-2: #21262e;
+  --color-surface-3: #292f38;
+  --color-border: #2b313a;
+  --color-border-strong: #3c444f;
   --color-fg: #e5e7eb;
-  --color-muted: #9aa6b8;
-  --color-subtle: #66748a;
+  --color-muted: #9ca3ae;
+  --color-subtle: #6b7280;
   /* Orange sparingly: active elements, primary buttons, highlights. */
   --color-accent: #f97316;
   --color-accent-strong: #ea580c;
@@ -31,7 +31,7 @@
   --color-claude: #d97757;
   --color-claude-soft: #d977571f;
   /* backdrop behind dialogs and the command palette */
-  --color-overlay: #02061799;
+  --color-overlay: #0a0c1099;
 
   --font-sans: "Geist Variable", "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
   --font-mono: "Geist Mono Variable", "Cascadia Code", "Consolas", ui-monospace, monospace;

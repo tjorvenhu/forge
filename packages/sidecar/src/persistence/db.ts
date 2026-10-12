@@ -166,6 +166,7 @@ export const DEFAULT_SETTINGS: Settings = {
   defaultProjectDir: null,
   autoContinueAfterLimit: true,
   updateChecks: true,
+  desktopNotifications: true,
 };
 
 interface ProjectRow {

@@ -41,7 +41,8 @@ function hostOf(url: string): string {
 }
 
 /**
- * Dev server in the workspace tab row: a compact button with a status dot; start, stop, browser and
+ * Dev server in the workspace tab row: a compact button colored by its state (green running, amber starting,
+ * red crashed, gray off); start, stop, browser and
  * output live in its menu, so the header stays free.
  */
 export function DevServerMenu({ project }: { project: Project }) {
@@ -50,7 +51,13 @@ export function DevServerMenu({ project }: { project: Project }) {
   if (!state) return null;
   const running = state.status === "running";
   const crashed = (state.status === "exited" && state.exitCode !== 0 && state.exitCode !== null) || state.status === "failed";
-  const dot = running ? (state.url ? "bg-success" : "animate-soft-pulse bg-warning") : crashed ? "bg-danger" : "bg-subtle";
+  const tone = running
+    ? state.url
+      ? "bg-success-soft text-success hover:bg-success-soft hover:text-success"
+      : "bg-warning-soft text-warning hover:bg-warning-soft hover:text-warning"
+    : crashed
+      ? "bg-danger-soft text-danger hover:bg-danger-soft hover:text-danger"
+      : "";
   const status = running ? (state.url ? `läuft auf ${hostOf(state.url)}` : "startet …") : crashed ? "unerwartet beendet" : "aus";
   const items: MenuItem[] = [
     running
@@ -66,9 +73,8 @@ export function DevServerMenu({ project }: { project: Project }) {
       align="end"
       header={`Dev-Server: ${status}`}
       trigger={
-        <Button size="sm" variant="ghost" aria-label={`Dev-Server, ${status}`} title={`Dev-Server: ${status}`} className={cn("gap-1.5", crashed && "text-danger hover:text-danger")}>
-          <span aria-hidden className={cn("h-1.5 w-1.5 rounded-full", dot)} />
-          <Play className="h-3.5 w-3.5" />
+        <Button size="sm" variant="ghost" aria-label={`Dev-Server, ${status}`} title={`Dev-Server: ${status}`} className={cn("gap-1.5", tone)}>
+          <Play className={cn("h-3.5 w-3.5", running && !state.url && "animate-soft-pulse")} />
           <span className="hidden xl:inline">Dev-Server</span>
         </Button>
       }

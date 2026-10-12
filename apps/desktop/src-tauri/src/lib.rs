@@ -100,6 +100,7 @@ pub fn run() {
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_notification::init())
         .manage(Sidecar::default())
         .manage(Terminals::default())
         .invoke_handler(tauri::generate_handler![sidecar_send, sidecar_status, sidecar_restart, install_update, term_open, term_write, term_resize, term_close])
