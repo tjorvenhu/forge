@@ -12,6 +12,7 @@ import type { PluginService } from "../config/plugins.js";
 import type { WorktreeService } from "../automation/worktrees.js";
 import type { DevServerService } from "../devserver/dev-server.js";
 import type { PhoneService } from "../phone/phone-service.js";
+import type { DictationService } from "../dictation/dictation.js";
 import type { AppUpdateService } from "../update/app-update.js";
 import type { BackupService } from "../backup/backup.js";
 import * as cfg from "../config/claude-config.js";
@@ -31,6 +32,7 @@ export interface Services {
   worktrees: WorktreeService;
   devServers: DevServerService;
   phone: PhoneService;
+  dictation: DictationService;
   updates: AppUpdateService;
   backups: BackupService;
   notifyProject: (projectId: string) => void;
@@ -228,6 +230,16 @@ export function createHandlers(s: Services): Handlers {
     "phone.hangup": () => s.phone.hangup(),
     "phone.deskTest": () => s.phone.deskTest(),
     "phone.calls": ({ limit }) => s.phone.calls(limit),
+    "voice.start": (p) => s.dictation.start(p),
+    "voice.audio": ({ id, pcm }) => {
+      s.dictation.audio(id, pcm);
+      return {};
+    },
+    "voice.stop": ({ id }) => s.dictation.stop(id),
+    "voice.cancel": ({ id }) => {
+      s.dictation.cancel(id);
+      return {};
+    },
 
     "git.status": ({ projectId }) => s.git.status(projectDir(projectId)),
     "git.diff": ({ projectId, path, staged }) => s.git.diff(projectDir(projectId), path, staged),

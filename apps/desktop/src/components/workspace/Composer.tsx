@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowUp, ListTodo, Paperclip, Square } from "lucide-react";
 import type { EffortLevel, Project, Session } from "@forge/protocol";
 import { useRuntimeInfo, useSettings } from "@/lib/queries";
@@ -14,7 +14,21 @@ import { RateLimitBadge } from "./RateLimitBadge";
 import { AttachmentList } from "./AttachmentList";
 import { CLEAR_COMMANDS, isClearCommand, SlashCommandMenu, useSlashCommands } from "./SlashCommandMenu";
 import { useAttachments } from "./useAttachments";
+import { DictationButton } from "./DictationButton";
+import { useDictation } from "./useDictation";
 import { compactSession, stopSession, useComposerOptions, useSendMessage } from "./useSendMessage";
+
+/** Words of the trade the speech service should expect; the project adds its name and stack. */
+const DICTATION_TERMS = ["FORGE", "Claude", "Claude Code", "Commit", "Branch", "Pull Request", "Merge", "Deploy", "Worktree", "TypeScript", "JavaScript", "React", "Next.js", "Node", "pnpm", "API", "Endpoint", "Komponente", "Refactoring", "Bug", "Diff", "Session"];
+
+/** Puts dictated text in place of the selection, with a space to its neighbours; `caret` lands after it. */
+export function insertSpoken(cur: string, from: number, to: number, spoken: string): { text: string; caret: number } {
+  const before = cur.slice(0, from);
+  const after = cur.slice(to);
+  const lead = before && !/\s$/.test(before) ? " " : "";
+  const trail = after && !/^\s/.test(after) ? " " : "";
+  return { text: before + lead + spoken + trail + after, caret: (before + lead + spoken).length };
+}
 
 /** Memoized: the chat re-renders while text streams in, the composer has nothing to do with that. */
 export const Composer = memo(function Composer({
@@ -68,6 +82,28 @@ export const Composer = memo(function Composer({
     el.style.height = Math.min(el.scrollHeight, 260) + "px";
   }, [text]);
 
+  /** Dictated text goes where the cursor was, with a space to its neighbours. */
+  const insertDictation = useCallback(
+    (spoken: string) => {
+      const el = ref.current;
+      const cur = useDrafts.getState().drafts[key]?.text ?? "";
+      const { text: next, caret } = insertSpoken(cur, el ? el.selectionStart : cur.length, el ? el.selectionEnd : cur.length, spoken);
+      setText(next);
+      requestAnimationFrame(() => {
+        ref.current?.focus();
+        ref.current?.setSelectionRange(caret, caret);
+      });
+    },
+    [key, setText],
+  );
+  // Project words help the recognition with names it would otherwise spell like everyday words.
+  const keyterms = useMemo(() => [...DICTATION_TERMS, project.name, ...project.technologies], [project.name, project.technologies]);
+  const dictation = useDictation(insertDictation, keyterms);
+  const toggleDictation = () => {
+    if (dictation.state === "recording") return void dictation.stop();
+    if (dictation.state === "idle") void dictation.start();
+  };
+
   const clearTyped = isClearCommand(text);
   /** counts sends; the arrow animation restarts with each */
   const [sentTick, setSentTick] = useState(0);
@@ -93,7 +129,11 @@ export const Composer = memo(function Composer({
   // Unknown models keep the picker; listed ones only when Claude Code reports effort support.
   const showEffort = !modelInfo || modelInfo.supportsEffort === true;
 
-  const placeholder = waiting
+  const placeholder = dictation.state === "recording"
+    ? "Sprich jetzt. Strg+M beendet die Aufnahme, Esc verwirft sie."
+    : dictation.state === "transcribing"
+      ? "Claude schreibt den Rest mit …"
+      : waiting
     ? "Erst die Anfrage oben beantworten"
     : working
       ? "Claude arbeitet. Weitere Anweisung schreiben, sie wird beim nächsten Schritt übernommen. Esc stoppt."
@@ -114,6 +154,11 @@ export const Composer = memo(function Composer({
           <div className="pointer-events-none absolute inset-0 z-10 flex animate-fade-in items-center justify-center rounded-xl text-body text-accent">Dateien hier ablegen</div>
         )}
         <AttachmentList files={files} onRemove={attachments.remove} />
+        {dictation.state !== "idle" && dictation.live && (
+          <div className="animate-fade-in border-b border-border px-5 py-2.5 text-ui text-muted" aria-live="polite">
+            {dictation.live}
+          </div>
+        )}
         <textarea
           id="composer-input"
           ref={ref}
@@ -131,6 +176,16 @@ export const Composer = memo(function Composer({
           rows={2}
           className="block max-h-65 w-full resize-none bg-transparent px-5 pt-4 text-ui text-fg placeholder:text-subtle focus:outline-none focus-visible:outline-none"
           onKeyDown={(e) => {
+            if (e.ctrlKey && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "m") {
+              e.preventDefault();
+              toggleDictation();
+              return;
+            }
+            if (e.key === "Escape" && dictation.state === "recording") {
+              e.preventDefault();
+              dictation.cancel();
+              return;
+            }
             if (matches.length) {
               if (e.key === "ArrowDown" || e.key === "ArrowUp") {
                 e.preventDefault();
@@ -170,6 +225,7 @@ export const Composer = memo(function Composer({
               <Paperclip className="h-3.5 w-3.5" />
             </Button>
           </Tooltip>
+          <DictationButton state={dictation.state} seconds={dictation.seconds} onToggle={toggleDictation} />
           <Tooltip content={options.isPlan ? "Plan-Modus: Claude plant nur und ändert nichts" : "Nur planen (Plan-Modus)"}>
             <Button
               size="sm"

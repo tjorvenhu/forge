@@ -222,6 +222,14 @@ export class SessionService {
     return this.catalog.runtimeInfo();
   }
 
+  invalidateRuntimeInfo() {
+    this.catalog.invalidate();
+  }
+
+  refreshClaudeLogin() {
+    return this.catalog.refreshLogin();
+  }
+
   commands(projectId: string | undefined): Promise<SlashCommand[]> {
     return this.catalog.commands(projectId);
   }

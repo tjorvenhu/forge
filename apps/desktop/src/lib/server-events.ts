@@ -126,6 +126,13 @@ export function routeServerEvent(qc: QueryClient, git: GitRefresher, e: ServerEv
     case "update.updated":
       qc.setQueryData(keys.appUpdate, e.payload);
       break;
+    case "runtime.models": {
+      void qc.invalidateQueries({ queryKey: keys.runtimeInfo });
+      const names = e.payload.added.map((m) => m.displayName);
+      if (names.length === 1) toast.info("Neues Modell verfügbar", `${names[0]} lässt sich jetzt im Composer und in den Einstellungen auswählen.`);
+      else if (names.length > 1) toast.info("Neue Modelle verfügbar", `${names.join(", ")} lassen sich jetzt im Composer und in den Einstellungen auswählen.`);
+      break;
+    }
     case "phone.updated": {
       const prev = qc.getQueryData<ResultOf<"phone.state">>(keys.phoneState);
       qc.setQueryData(keys.phoneState, e.payload);

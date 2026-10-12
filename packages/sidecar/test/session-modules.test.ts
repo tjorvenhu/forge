@@ -1,7 +1,8 @@
 import { mkdirSync } from "node:fs";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { ApprovalRequest, RuntimeSession } from "../src/claude/runtime.js";
+import type { ServerEvent } from "@forge/protocol";
+import type { ApprovalRequest, ClaudeRuntime, RuntimeSession } from "../src/claude/runtime.js";
 import { Normalizer } from "../src/claude/normalize.js";
 import { GitEngine } from "../src/git/git.js";
 import { Db } from "../src/persistence/db.js";
@@ -12,6 +13,7 @@ import type { LiveSession } from "../src/sessions/live-session.js";
 import { PermissionModes } from "../src/sessions/permission-mode.js";
 import { SessionCore } from "../src/sessions/session-core.js";
 import { buildTitlePrompt, cleanTitle, isTitleWorthy } from "../src/sessions/titles.js";
+import { RuntimeCatalog } from "../src/sessions/runtime-catalog.js";
 import { tempDir } from "./helpers.js";
 
 let t: ReturnType<typeof tempDir>;
@@ -159,5 +161,49 @@ describe("session title helpers", () => {
   it("puts the newest prompt first and shortens long ones", () => {
     const prompt = buildTitlePrompt(["Neu\nmit Zeilen", "x".repeat(500)]);
     expect(prompt).toMatch(/Neueste Anfrage: Neu mit Zeilen\nDavor: x{299}…$/);
+  });
+});
+
+describe("RuntimeCatalog", () => {
+  const model = (value: string, displayName: string) => ({ value, displayName, description: "" });
+  const init = (...models: Array<ReturnType<typeof model>>) => ({ models: [model("default", "Default"), ...models], commands: [], agents: [] }) as never;
+
+  it("notices new models from Claude Code and remembers them across restarts", async () => {
+    const events: ServerEvent[] = [];
+    const catalog = () => new RuntimeCatalog(new SessionCore(db, (e) => events.push(e)), {} as ProjectManager, {} as ClaudeRuntime);
+    const first = catalog();
+    // The first list ever: nothing to announce.
+    first.noteInitialization(init(model("opus", "Opus 5.5"), model("haiku", "Haiku 4.5")));
+    expect(events).toEqual([]);
+    first.noteInitialization(init(model("opus", "Opus 5.5"), model("haiku", "Haiku 4.5")));
+    expect(events).toEqual([]);
+
+    // A Claude Code update brings a model: after a restart, FORGE still knows what is new.
+    const next = catalog();
+    next.noteInitialization(init(model("opus", "Opus 5.5"), model("haiku", "Haiku 4.5"), model("claude-opus-6", "Opus 6")));
+    expect(events).toEqual([{ event: "runtime.models", payload: { added: [{ value: "claude-opus-6", displayName: "Opus 6" }] } }]);
+    // A model that goes away is a change, but nothing new.
+    next.noteInitialization(init(model("opus", "Opus 5.5"), model("claude-opus-6", "Opus 6")));
+    expect(events.at(-1)).toEqual({ event: "runtime.models", payload: { added: [] } });
+    expect(await next.runtimeInfo()).toMatchObject({ models: [{ value: "default" }, { value: "opus" }, { value: "claude-opus-6" }] });
+  });
+
+  it("reads the list again after invalidate and keeps the old one when that fails", async () => {
+    let probes = 0;
+    const runtime = {
+      probe: async () => {
+        probes++;
+        if (probes > 1) throw new Error("offline");
+        return init(model("opus", "Opus 5.5"));
+      },
+    } as unknown as ClaudeRuntime;
+    db.updateSettings({ claudePath: process.execPath });
+    const catalog = new RuntimeCatalog(core, {} as ProjectManager, runtime);
+    expect((await catalog.runtimeInfo())?.models).toHaveLength(2);
+    await catalog.runtimeInfo();
+    expect(probes).toBe(1);
+    catalog.invalidate();
+    expect((await catalog.runtimeInfo())?.models).toHaveLength(2);
+    expect(probes).toBe(2);
   });
 });

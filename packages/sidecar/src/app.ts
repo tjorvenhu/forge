@@ -9,6 +9,7 @@ import { PluginService } from "./config/plugins.js";
 import { WorktreeService } from "./automation/worktrees.js";
 import { DevServerService } from "./devserver/dev-server.js";
 import { PhoneService } from "./phone/phone-service.js";
+import { DictationService } from "./dictation/dictation.js";
 import { AppUpdateService } from "./update/app-update.js";
 import { SecretStore } from "./phone/secrets.js";
 import { locateClaude, sessionEnv } from "./claude/environment.js";
@@ -49,7 +50,11 @@ export function createApp(opts: { dataDir: string; write: Writer; log?: (m: stri
   sessions.startBackgroundChecks();
   const github = new GitHubService((payload) => emit({ event: "github.login", payload }));
   const claudeSetup = new ClaudeSetupService(
-    (payload) => emit({ event: "claude.setup", payload }),
+    (payload) => {
+      // A new or updated Claude Code may bring new models and commands.
+      if (payload.phase === "done") sessions.invalidateRuntimeInfo();
+      emit({ event: "claude.setup", payload });
+    },
     () => db.getSettings(),
   );
   const mcp = new McpService(
@@ -123,7 +128,13 @@ export function createApp(opts: { dataDir: string; write: Writer; log?: (m: stri
       claudeSetup.install();
     }
   }
+  const dictation = new DictationService({
+    emit,
+    cliVersion: () => claudeSetup.installedVersion(),
+    refreshLogin: () => sessions.refreshClaudeLogin(),
+  });
   const handlers = createHandlers({
+    dictation,
     backups,
     updates,
     mcp,
@@ -156,6 +167,7 @@ export function createApp(opts: { dataDir: string; write: Writer; log?: (m: stri
       devServers.shutdown();
       github.shutdown();
       claudeSetup.shutdown();
+      dictation.shutdown();
       db.close();
     },
   };

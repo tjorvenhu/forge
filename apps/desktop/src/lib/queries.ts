@@ -100,7 +100,8 @@ export const useRateLimit = () =>
   useQuery({ queryKey: keys.rateLimit, queryFn: () => call("system.rateLimit", {}), staleTime: Infinity, refetchOnWindowFocus: false });
 
 export const useRuntimeInfo = () =>
-  useQuery({ queryKey: keys.runtimeInfo, queryFn: () => call("system.runtimeInfo", {}), staleTime: 10 * 60_000, refetchOnWindowFocus: false });
+  // Hourly: Claude Code updates itself in the background, new models show up without a restart.
+  useQuery({ queryKey: keys.runtimeInfo, queryFn: () => call("system.runtimeInfo", {}), staleTime: 10 * 60_000, refetchInterval: 60 * 60_000, refetchOnWindowFocus: false });
 
 export const useGitStatus = (projectId: string | null, enabled = true) =>
   useQuery({

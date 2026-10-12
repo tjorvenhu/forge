@@ -38,7 +38,22 @@ export class ClaudeSetupService {
 
   private set(s: Partial<ClaudeSetupState>) {
     this.state = { ...this.state, ...s };
+    // An install or update changes the version.
+    if (s.phase === "done") this.version = null;
     this.emit(this.state);
+  }
+
+  private version: Promise<string | null> | null = null;
+
+  /** Version of the installed CLI, asked once and kept until the next install or update. */
+  installedVersion(): Promise<string | null> {
+    this.version ??= (async () => {
+      const s = this.settings();
+      const claude = locateClaude(s.claudePath);
+      if (!claude) return null;
+      return parseVersion((await run(claude, ["--version"], { env: sessionEnv(s.stripApiKey), timeoutMs: 20_000 })).stdout);
+    })().catch(() => null);
+    return this.version;
   }
 
   private appendLog(chunk: string) {

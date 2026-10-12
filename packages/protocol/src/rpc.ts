@@ -382,6 +382,19 @@ export const methods = {
   "phone.deskTest": { params: empty, result: PhoneState },
   "phone.calls": { params: z.object({ limit: z.number().int().min(1).max(100).default(20) }), result: z.array(PhoneCallRecord) },
 
+  /**
+   * Dictation in the composer over Claude's speech service (the one of /voice in the terminal).
+   * start opens the stream, audio sends 16-bit mono samples at 16 kHz (base64), stop returns the text.
+   * While recording, "voice.transcript" events carry the text so far.
+   */
+  "voice.start": {
+    params: z.object({ language: z.string().min(2).max(12).default("de"), keyterms: z.array(z.string().max(100)).max(200).default([]) }),
+    result: z.object({ id: z.string() }),
+  },
+  "voice.audio": { params: z.object({ id: z.string(), pcm: z.string().min(1).max(400_000) }), result: z.object({}) },
+  "voice.stop": { params: z.object({ id: z.string() }), result: z.object({ text: z.string() }) },
+  "voice.cancel": { params: z.object({ id: z.string() }), result: z.object({}) },
+
   "git.status": { params: projectRef, result: GitStatus },
   "git.diff": {
     params: projectRef.extend({ path: z.string().min(1).max(4096), staged: z.boolean() }),
@@ -479,6 +492,10 @@ export type ServerEvent =
   | { event: "phone.updated"; payload: PhoneState }
   | { event: "update.updated"; payload: AppUpdateState }
   | { event: "sidecar.ready"; payload: { version: string } }
+  /** dictation: the text of a running recording so far (finished utterances plus the current one) */
+  | { event: "voice.transcript"; payload: { id: string; text: string } }
+  /** Claude Code's model list changed; `added`: models FORGE has not seen before (empty on the first run) */
+  | { event: "runtime.models"; payload: { added: Array<{ value: string; displayName: string }> } }
   | { event: "log"; payload: { level: "info" | "warn" | "error"; message: string } };
 
 export type ServerEventName = ServerEvent["event"];

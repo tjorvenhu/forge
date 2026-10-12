@@ -376,6 +376,16 @@ export class Db {
     return this.getSettings();
   }
 
+  /** Model values Claude Code offered so far; null before the first look. Not a setting, so not in getSettings. */
+  getKnownModels(): string[] | null {
+    const r = this.stmt("SELECT value FROM settings WHERE key = 'knownModels'").get() as { value: string } | undefined;
+    return r ? (JSON.parse(r.value) as string[]) : null;
+  }
+
+  setKnownModels(values: string[]) {
+    this.stmt("INSERT INTO settings(key, value) VALUES('knownModels', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(JSON.stringify(values));
+  }
+
   /** Every stored setting as raw JSON text (the phone settings included), for backups. */
   rawSettings(): Record<string, string> {
     const rows = this.sql.prepare("SELECT key, value FROM settings ORDER BY key").all() as Array<{ key: string; value: string }>;

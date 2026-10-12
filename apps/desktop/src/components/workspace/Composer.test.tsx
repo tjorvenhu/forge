@@ -160,3 +160,24 @@ describe("isClearCommand", () => {
     expect(["/clear bitte", "/compact", "clear", "/clearer"].map(isClearCommand)).toEqual([false, false, false, false]);
   });
 });
+
+describe("dictation", () => {
+  it("puts the spoken text at the cursor with spaces to its neighbours", async () => {
+    const { insertSpoken } = await import("./Composer");
+    expect(insertSpoken("", 0, 0, "Hallo.")).toEqual({ text: "Hallo.", caret: 6 });
+    expect(insertSpoken("Bitte", 5, 5, "die Tests")).toEqual({ text: "Bitte die Tests", caret: 15 });
+    expect(insertSpoken("Bitte  ausführen", 6, 6, "testen")).toEqual({ text: "Bitte testen ausführen", caret: 12 });
+    expect(insertSpoken("Mach ALT fertig", 5, 8, "das")).toEqual({ text: "Mach das fertig", caret: 8 });
+  });
+
+  it("starts Claude's dictation with Strg+M and tells it the project's words", async () => {
+    callMock.mockImplementation(async (method: string) => {
+      if (method === "settings.get") return { enterToSend: true };
+      if (method === "voice.start") return { id: "v1" };
+      return { models: [] };
+    });
+    setup(<Composer project={{ ...project("p1"), name: "Kundenportal", technologies: ["Next.js"] }} session={null} />);
+    fireEvent.keyDown(screen.getByRole("textbox", { name: "Nachricht an Claude" }), { key: "m", ctrlKey: true });
+    await waitFor(() => expect(callMock).toHaveBeenCalledWith("voice.start", { language: "de", keyterms: expect.arrayContaining(["FORGE", "Kundenportal", "Next.js"]) }));
+  });
+});
