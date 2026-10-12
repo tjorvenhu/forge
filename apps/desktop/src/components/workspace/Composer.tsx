@@ -301,11 +301,11 @@ export const Composer = memo(function Composer({
           <span className="hidden whitespace-nowrap text-caption text-subtle 2xl:inline">
             {enterToSend ? (
               <>
-                <Kbd>Enter</Kbd> senden · <Kbd>Umschalt+Enter</Kbd> Zeile · <Kbd>Leertaste</Kbd> halten diktiert
+                <Kbd>Enter</Kbd> senden · <Kbd>Umschalt+Enter</Kbd> Zeile
               </>
             ) : (
               <>
-                <Kbd>Strg+Enter</Kbd> senden · <Kbd>Leertaste</Kbd> halten diktiert
+                <Kbd>Strg+Enter</Kbd> senden
               </>
             )}
           </span>
