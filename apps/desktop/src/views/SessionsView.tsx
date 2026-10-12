@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { EmptyState, ErrorBanner, SectionTitle, Spinner, Tooltip } from "@/components/ui/misc";
 import { DeleteSessionDialog } from "@/components/workspace/DeleteSessionDialog";
+import { DeleteAllSessionsDialog } from "@/components/workspace/DeleteAllSessionsDialog";
 import { Select } from "@/components/ui/select";
 import { SessionStatusBadge } from "@/components/workspace/SessionStatusBadge";
 import { ProfileBadge } from "@/components/projects/ProfileBadge";
@@ -35,6 +36,7 @@ export function SessionsView() {
   const [status, setStatus] = useState("all");
   const openProject = useUi((s) => s.openProject);
   const [deleting, setDeleting] = useState<Session | null>(null);
+  const [deletingAll, setDeletingAll] = useState(false);
   const modelLabel = useModelLabel();
   // Both lists hit the sidecar (the full-text search reads every transcript); wait until typing pauses.
   const query = useDebouncedValue(q, 250);
@@ -46,10 +48,21 @@ export function SessionsView() {
   const hits = useSearch(query);
   // Counted from the live list, not from `sessions`: that one is narrowed by search and status filter.
   const openCount = useLiveSessions().data?.length ?? 0;
+  // Unfiltered, so the button stays usable while a search or status filter shows nothing.
+  const anySessions = useQuery({ queryKey: keys.allSessions("", "all"), queryFn: () => call("sessions.listAll", {}) });
   const searching = query.trim().length >= 3;
 
   return (
-    <Page title="Sessions" subtitle={`${openCount} ${openCount === 1 ? "offene Session" : "offene Sessions"}`}>
+    <Page
+      title="Sessions"
+      subtitle={`${openCount} ${openCount === 1 ? "offene Session" : "offene Sessions"}`}
+      actions={
+        <Button variant="danger-ghost" disabled={!anySessions.data?.length} onClick={() => setDeletingAll(true)}>
+          <Trash2 className="h-4 w-4" />
+          Alle löschen
+        </Button>
+      }
+    >
       <div className="mb-4 flex gap-2">
         <div className="relative flex-1">
           <Search className="pointer-events-none absolute left-2.5 top-2 h-4 w-4 text-subtle" />
@@ -142,6 +155,7 @@ export function SessionsView() {
         </div>
       )}
       <DeleteSessionDialog session={deleting} onClose={() => setDeleting(null)} />
+      <DeleteAllSessionsDialog open={deletingAll} liveCount={openCount} onClose={() => setDeletingAll(false)} />
     </Page>
   );
 }

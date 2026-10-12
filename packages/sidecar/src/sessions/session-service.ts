@@ -308,6 +308,16 @@ export class SessionService {
     return this.lifecycle.delete(sessionId, deleteTranscript);
   }
 
+  /** Deletes every session. In parallel, because each live one may wait up to 5 s for its process to end. */
+  async deleteAll(deleteTranscript: boolean) {
+    const ids = this.db.listSessionIds();
+    const results = await Promise.allSettled(ids.map((id) => this.delete(id, deleteTranscript)));
+    const deleted = ids.filter((_, i) => results[i]!.status === "fulfilled");
+    const reason = results.find((r): r is PromiseRejectedResult => r.status === "rejected")?.reason as unknown;
+    const error = reason === undefined ? null : reason instanceof Error ? reason.message : String(reason);
+    return { deleted, failed: ids.length - deleted.length, error };
+  }
+
   shutdown() {
     this.autoContinue.stop();
     this.titles.shutdown();

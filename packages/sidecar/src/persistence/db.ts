@@ -567,6 +567,10 @@ export class Db {
     return rows.map((r) => r.id);
   }
 
+  listSessionIds(): string[] {
+    return (this.stmt("SELECT id FROM sessions").all() as Array<{ id: string }>).map((r) => r.id);
+  }
+
   listSessions(projectId: string): SessionRecord[] {
     const rows = this.sql
       .prepare("SELECT * FROM sessions WHERE project_id = ? ORDER BY updated_at DESC")

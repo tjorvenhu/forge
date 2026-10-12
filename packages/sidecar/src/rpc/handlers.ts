@@ -182,6 +182,7 @@ export function createHandlers(s: Services): Handlers {
     "sessions.listAll": ({ query, status }) => s.sessions.listAll(query, status),
     "sessions.listLive": () => s.sessions.listLive(),
     "sessions.delete": ({ sessionId, deleteTranscript }) => s.sessions.delete(sessionId, deleteTranscript),
+    "sessions.deleteAll": ({ deleteTranscript }) => s.sessions.deleteAll(deleteTranscript),
     "sessions.get": ({ sessionId }) => s.sessions.get(sessionId),
     "sessions.stopTask": ({ sessionId, taskId }) => s.sessions.stopTask(sessionId, taskId),
     "sessions.toBackground": ({ sessionId, toolUseId }) => s.sessions.toBackground(sessionId, toolUseId),

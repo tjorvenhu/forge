@@ -555,6 +555,17 @@ describe("turn automation via project tags", () => {
     expect(rt.deletedTranscripts).toHaveLength(1);
   });
 
+  it("deletes all sessions at once, live ones included", async () => {
+    const a = await svc.start({ projectId, prompt: "a" });
+    rt.replay();
+    const b = await svc.start({ projectId, prompt: "b" });
+    const r = await svc.deleteAll(false);
+    expect(r.deleted.sort()).toEqual([a.id, b.id].sort());
+    expect(r).toMatchObject({ failed: 0, error: null });
+    expect(svc.listAll()).toEqual([]);
+    expect(rt.deletedTranscripts).toEqual([]);
+  });
+
   it("passes answers to a question back to Claude and keeps them in the timeline", async () => {
     const s = await svc.start({ projectId, prompt: "x" });
     const input = { questions: [{ question: "Welche Farbe?", header: "Farbe", multiSelect: false, options: [{ label: "Rot", description: "" }, { label: "Blau", description: "" }] }] };

@@ -231,6 +231,11 @@ export const methods = {
     params: sessionRef.extend({ deleteTranscript: z.boolean().default(true) }),
     result: z.object({ deleted: z.boolean(), transcriptDeleted: z.boolean() }),
   },
+  /** deletes every session; failures (e.g. a process that would not end) leave that session in place */
+  "sessions.deleteAll": {
+    params: z.object({ deleteTranscript: z.boolean().default(true) }),
+    result: z.object({ deleted: z.array(z.string()), failed: z.number().int(), error: z.string().nullable() }),
+  },
   "sessions.get": { params: sessionRef, result: Session },
   /** stops one background task or subagent; the turn and other tasks go on */
   "sessions.stopTask": { params: sessionRef.extend({ taskId: z.string().min(1) }), result: z.object({ ok: z.boolean() }) },
