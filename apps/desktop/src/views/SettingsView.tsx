@@ -38,13 +38,14 @@ import { effortOptions, fromChoice, modelOptions, toChoice } from "@/components/
 import { PhoneSettings } from "@/components/settings/PhoneSettings";
 import { BackupSettings } from "@/components/settings/BackupSettings";
 import { PolicySettings } from "@/components/settings/PolicySettings";
+import { GitHubSettings } from "@/components/settings/GitHubSettings";
 import { AppUpdateSettings } from "@/components/layout/AppUpdate";
-import { capitalize, cn } from "@/lib/utils";
+import { cn, planLabel } from "@/lib/utils";
 
 type Save = (patch: Partial<Settings>) => Promise<void>;
 
 const SECTIONS: ReadonlyArray<SettingsSectionDef<SettingsSection>> = [
-  { id: "general", label: "Allgemein", hint: "Modell, Profil, Bedienung", Icon: SlidersHorizontal },
+  { id: "general", label: "Allgemein", hint: "Modell, Profil, GitHub, Bedienung", Icon: SlidersHorizontal },
   { id: "claude", label: "Claude Code", hint: "Installation, Anmeldung, Limits", Icon: SquareTerminal },
   { id: "policy", label: "Sperrliste", hint: "Was FORGE immer blockiert", Icon: ShieldBan },
   { id: "phone", label: "Telefon", hint: "Anrufe, Sprache, Tischtelefon", Icon: Phone },
@@ -152,6 +153,8 @@ function GeneralSection({ s, save }: { s: Settings; save: Save }) {
           </div>
         </Row>
       </Group>
+
+      <GitHubSettings />
 
       <Group title="Bedienung">
         <SwitchRow
@@ -413,7 +416,7 @@ function AuthRow({ d }: { d: Diagnostics }) {
             <Badge tone="success">angemeldet</Badge>
             <span className="text-muted">
               {d.auth.authMethod === "claude.ai" ? "Claude-Konto" : d.auth.authMethod}
-              {d.auth.subscriptionType ? `, ${capitalize(d.auth.subscriptionType)} Abo` : ""}
+              {d.auth.subscriptionType ? `, ${planLabel(d.auth)}` : ""}
             </span>
           </span>
         ) : (

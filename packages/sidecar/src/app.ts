@@ -5,6 +5,7 @@ import { GitEngine } from "./git/git.js";
 import { GitHubService } from "./github/github.js";
 import { ClaudeSetupService } from "./claude/setup.js";
 import { McpService } from "./config/mcp.js";
+import { PluginService } from "./config/plugins.js";
 import { WorktreeService } from "./automation/worktrees.js";
 import { DevServerService } from "./devserver/dev-server.js";
 import { PhoneService } from "./phone/phone-service.js";
@@ -52,6 +53,10 @@ export function createApp(opts: { dataDir: string; write: Writer; log?: (m: stri
     () => db.getSettings(),
   );
   const mcp = new McpService(
+    () => locateClaude(db.getSettings().claudePath),
+    () => sessionEnv(db.getSettings().stripApiKey),
+  );
+  const plugins = new PluginService(
     () => locateClaude(db.getSettings().claudePath),
     () => sessionEnv(db.getSettings().stripApiKey),
   );
@@ -122,6 +127,7 @@ export function createApp(opts: { dataDir: string; write: Writer; log?: (m: stri
     backups,
     updates,
     mcp,
+    plugins,
     worktrees,
     devServers,
     phone,

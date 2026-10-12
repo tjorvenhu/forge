@@ -7,7 +7,8 @@ publish = false
 
 [lib]
 name = "forge_desktop_lib"
-crate-type = ["staticlib", "cdylib", "rlib"]
+# Desktop only: staticlib and cdylib are for Tauri mobile and each cost a full extra link.
+crate-type = ["rlib"]
 
 [build-dependencies]
 tauri-build = { version = "2.7", features = [] }
@@ -23,8 +24,8 @@ portable-pty = "0.9"
 windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Security", "Win32_System_JobObjects", "Win32_System_Threading"] }
 
 [profile.release]
-# Thin LTO with parallel code generation: the release build takes a fraction of the time of full
-# LTO with one unit, the binary is barely larger. The shell only manages windows and processes.
-lto = "thin"
+# No LTO: with cached dependencies the release build takes 40 s instead of 1.5 min (thin LTO),
+# the exe grows by about 9 %. The shell only manages windows and processes, speed does not matter.
+lto = false
 opt-level = "s"
 strip = true

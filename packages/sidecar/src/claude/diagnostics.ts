@@ -1,7 +1,9 @@
+import { readFile } from "node:fs/promises";
 import os from "node:os";
 import type { Capability, Diagnostics, ToolCheck } from "@forge/protocol";
 import { run } from "../util/proc.js";
 import { resolveTool } from "../util/tools.js";
+import { claudeJsonPath } from "../util/paths.js";
 import { apiKeyEnvPresent, locateClaude, sessionEnv } from "./environment.js";
 
 async function versionOf(bin: string | null, args: string[], env?: NodeJS.ProcessEnv, bundled = false): Promise<ToolCheck> {
@@ -12,7 +14,30 @@ async function versionOf(bin: string | null, args: string[], env?: NodeJS.Proces
   return { found: true, bundled, version: r.stdout.trim().split("\n")[0] ?? null, path: bin, error: null };
 }
 
-const NOT_CHECKED: Diagnostics["auth"] = { checked: false, loggedIn: false, authMethod: null, subscriptionType: null, apiProvider: null, error: null };
+const NOT_CHECKED: Diagnostics["auth"] = {
+  checked: false,
+  loggedIn: false,
+  authMethod: null,
+  subscriptionType: null,
+  rateLimitTier: null,
+  apiProvider: null,
+  error: null,
+};
+
+/**
+ * Rate limit tier of the Claude account (e.g. `default_claude_max_20x`). `claude auth status` does not
+ * report it; Claude Code keeps it in `oauthAccount` of .claude.json. Only this one field is read.
+ */
+export async function readRateLimitTier(file = claudeJsonPath()): Promise<string | null> {
+  try {
+    const j = JSON.parse(await readFile(file, "utf8")) as { oauthAccount?: Record<string, unknown> };
+    const a = j.oauthAccount ?? {};
+    const tier = a.userRateLimitTier ?? a.organizationRateLimitTier;
+    return typeof tier === "string" && tier ? tier : null;
+  } catch {
+    return null;
+  }
+}
 
 /** Sign-in state as `claude auth status` reports it. */
 export async function readAuth(claudeBin: string, env: Record<string, string>): Promise<Diagnostics["auth"]> {
@@ -26,6 +51,7 @@ export async function readAuth(claudeBin: string, env: Record<string, string>): 
     auth.authMethod = typeof j.authMethod === "string" ? j.authMethod : null;
     auth.subscriptionType = typeof j.subscriptionType === "string" ? j.subscriptionType : null;
     auth.apiProvider = typeof j.apiProvider === "string" ? j.apiProvider : null;
+    if (auth.loggedIn && auth.subscriptionType) auth.rateLimitTier = await readRateLimitTier();
   } catch {
     auth.error = (r.stderr || r.stdout).trim().slice(0, 300) || "Auth-Status nicht lesbar";
   }

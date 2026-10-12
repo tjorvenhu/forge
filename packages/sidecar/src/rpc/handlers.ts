@@ -7,6 +7,7 @@ import type { SessionService } from "../sessions/session-service.js";
 import type { GitHubService } from "../github/github.js";
 import type { ClaudeSetupService } from "../claude/setup.js";
 import type { McpService } from "../config/mcp.js";
+import type { PluginService } from "../config/plugins.js";
 import type { WorktreeService } from "../automation/worktrees.js";
 import type { DevServerService } from "../devserver/dev-server.js";
 import type { PhoneService } from "../phone/phone-service.js";
@@ -25,6 +26,7 @@ export interface Services {
   github: GitHubService;
   claudeSetup: ClaudeSetupService;
   mcp: McpService;
+  plugins: PluginService;
   worktrees: WorktreeService;
   devServers: DevServerService;
   phone: PhoneService;
@@ -116,6 +118,9 @@ export function createHandlers(s: Services): Handlers {
     "mcp.list": ({ projectId }) => s.mcp.list(dirOf(projectId) ?? os.homedir()),
     "mcp.add": ({ projectId, ...input }) => s.mcp.add(dirOf(projectId) ?? os.homedir(), input),
     "mcp.remove": ({ projectId, name, scope }) => s.mcp.remove(dirOf(projectId) ?? os.homedir(), name, scope),
+    "plugins.catalog": ({ refresh }) => s.plugins.catalog(refresh),
+    "plugins.install": ({ id }) => s.plugins.install(id),
+    "plugins.uninstall": ({ id }) => s.plugins.uninstall(id),
 
     "worktrees.create": ({ projectId, branch }) => s.worktrees.create(s.projects.requireExisting(projectId), branch),
     "worktrees.remove": async ({ projectId, force, deleteBranch }) => {

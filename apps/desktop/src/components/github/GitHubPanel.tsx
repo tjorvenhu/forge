@@ -1,19 +1,18 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Download, ExternalLink, Lock, LogOut, Search } from "lucide-react";
+import { Check, ExternalLink, Lock, LogOut, Search } from "lucide-react";
 import { call, keys, useGitHubAccount, useGitHubLogin } from "@/lib/queries";
 import { errorMessage } from "@/lib/rpc";
 import { openExternal } from "@/lib/native";
 import { cn, relativeTime } from "@/lib/utils";
-import { useUi } from "@/stores/ui";
 import { toast } from "@/stores/toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import { Badge, ErrorBanner, SectionTitle, Loading } from "@/components/ui/misc";
+import { Badge, ErrorBanner, Loading } from "@/components/ui/misc";
 import { DeviceCode } from "./DeviceCode";
 
-/** Sign in with GitHub inside FORGE (device flow via the shipped GitHub CLI) and list repositories. */
+/** Sign in with GitHub inside FORGE (device flow via the shipped GitHub CLI). */
 export function GitHubAccountCard() {
   const account = useGitHubAccount();
   const login = useGitHubLogin();
@@ -117,9 +116,9 @@ export function useAutoOpenGitHub() {
   }, [code, url]);
 }
 
-export function GitHubRepoList() {
+/** The signed-in account's repositories, to pick one for cloning; nothing without a GitHub login. */
+export function GitHubRepoPicker({ value, onPick }: { value: string; onPick: (cloneUrl: string) => void }) {
   const account = useGitHubAccount();
-  const setNewProject = useUi((s) => s.setNewProject);
   const [q, setQ] = useState("");
   const repos = useQuery({ queryKey: keys.githubRepos, queryFn: () => call("github.repos", {}), enabled: !!account.data, staleTime: 5 * 60_000 });
   const filtered = useMemo(() => {
@@ -129,37 +128,44 @@ export function GitHubRepoList() {
 
   if (!account.data) return null;
   return (
-    <section className="rounded-xl border border-border bg-surface p-4">
-      <SectionTitle>Deine Repositories {repos.data ? `(${repos.data.length})` : ""}</SectionTitle>
-      <div className="relative mb-3">
+    <div className="flex flex-col gap-2">
+      <div className="relative">
         <Search className="pointer-events-none absolute left-2.5 top-2 h-4 w-4 text-subtle" />
-        <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Repository suchen" className="pl-8" aria-label="Repositories durchsuchen" />
+        <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder={`Repositories von ${account.data.login} durchsuchen`} className="pl-8" aria-label="Repositories durchsuchen" autoFocus />
       </div>
       {repos.isLoading && <Loading label="Repositories werden geladen …" />}
       {repos.isError && <ErrorBanner>{errorMessage(repos.error)}</ErrorBanner>}
-      <div className={cn("max-h-[50vh] divide-y divide-border overflow-y-auto rounded-lg border border-border", !repos.isSuccess && "hidden")}>
-        {filtered.map((r) => (
-          <div key={r.fullName} className="flex items-center gap-3 px-3 py-2">
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-1.5 text-body">
-                <span className="truncate">{r.fullName}</span>
-                {r.private && (
-                  <Badge>
-                    <Lock className="h-3 w-3" /> privat
-                  </Badge>
-                )}
+      <div role="listbox" aria-label="Deine Repositories" className={cn("max-h-64 divide-y divide-border overflow-y-auto rounded-lg border border-border", !repos.isSuccess && "hidden")}>
+        {filtered.map((r) => {
+          const selected = value === r.cloneUrl;
+          return (
+            <button
+              key={r.fullName}
+              type="button"
+              role="option"
+              aria-selected={selected}
+              onClick={() => onPick(r.cloneUrl)}
+              className={cn("flex w-full items-center gap-3 px-3 py-2 text-left transition-colors duration-120", selected ? "bg-accent-soft" : "hover:bg-surface-2")}
+            >
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-1.5 text-body">
+                  <span className="truncate">{r.fullName}</span>
+                  {r.private && (
+                    <Badge>
+                      <Lock className="h-3 w-3" /> privat
+                    </Badge>
+                  )}
+                </div>
+                <div className="truncate text-caption text-subtle">
+                  {r.description ? `${r.description} · ` : ""}aktualisiert {relativeTime(r.updatedAt)}
+                </div>
               </div>
-              <div className="truncate text-caption text-subtle">
-                {r.description ? `${r.description} · ` : ""}aktualisiert {relativeTime(r.updatedAt)}
-              </div>
-            </div>
-            <Button size="sm" variant="ghost" onClick={() => setNewProject("clone", r.cloneUrl)}>
-              <Download className="h-3.5 w-3.5" /> Klonen
-            </Button>
-          </div>
-        ))}
+              {selected && <Check className="h-4 w-4 shrink-0 text-accent" />}
+            </button>
+          );
+        })}
         {repos.isSuccess && filtered.length === 0 && <div className="px-3 py-4 text-center text-xs text-muted">Keine Treffer</div>}
       </div>
-    </section>
+    </div>
   );
 }

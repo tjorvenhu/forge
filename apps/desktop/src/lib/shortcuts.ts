@@ -14,7 +14,7 @@ function dialogOpen(): boolean {
 
 /**
  * App-wide shortcuts. Ctrl+K command palette, Ctrl+1..5 workspace tabs, Ctrl+J bottom panel,
- * Ctrl+B left navigation, Ctrl+Shift+E right panel, Ctrl+N new session, Ctrl+O add project,
+ * Ctrl+Shift+E right panel, Ctrl+N new session, Ctrl+O add project,
  * Ctrl+Tab / Ctrl+Shift+Tab next / previous session tab, in the order of the tab strip.
  */
 export function handleGlobalShortcut(e: KeyboardEvent) {
@@ -48,11 +48,6 @@ export function handleGlobalShortcut(e: KeyboardEvent) {
     e.preventDefault();
   } else if (!e.shiftKey && k === "j") {
     ui.toggleBottomPanel();
-    e.preventDefault();
-  } else if (!e.shiftKey && k === "b") {
-    // Inside a terminal Ctrl+B belongs to the shell (cursor back, tmux prefix).
-    if (e.target instanceof Element && e.target.closest(".xterm")) return;
-    ui.toggleSidebar();
     e.preventDefault();
   } else if (e.shiftKey && k === "e") {
     ui.toggleRightPanel();

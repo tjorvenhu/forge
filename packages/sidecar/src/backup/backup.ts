@@ -1,12 +1,11 @@
 import { existsSync } from "node:fs";
 import { mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
-import os from "node:os";
 import path from "node:path";
 import { z } from "zod";
 import { ForgeError, Project, type BackupInfo, type BackupPart } from "@forge/protocol";
 import type { Db } from "../persistence/db.js";
 import { claudeHome, writeAtomic } from "../config/claude-config.js";
-import { pathKey } from "../util/paths.js";
+import { claudeJsonPath, pathKey } from "../util/paths.js";
 
 /** Backups kept in the data folder; older ones are deleted. */
 export const MAX_BACKUPS = 40;
@@ -51,11 +50,6 @@ export interface BackupDeps {
   claudeJson?: string;
 }
 
-/** ~/.claude.json, or .claude.json inside CLAUDE_CONFIG_DIR when that is set. */
-function defaultClaudeJson(): string {
-  return process.env.CLAUDE_CONFIG_DIR ? path.join(process.env.CLAUDE_CONFIG_DIR, ".claude.json") : path.join(os.homedir(), ".claude.json");
-}
-
 /** Backup file names sort chronologically: ISO time with ":" and "." replaced. */
 function backupId(createdAt: string, reason: BackupData["reason"]): string {
   return `${createdAt.replace(/[:.]/g, "-")}-${reason}`;
@@ -81,7 +75,7 @@ export class BackupService {
   }
 
   private get claudeJson() {
-    return this.d.claudeJson ?? defaultClaudeJson();
+    return this.d.claudeJson ?? claudeJsonPath();
   }
 
   private file(id: string) {

@@ -5,6 +5,14 @@ export function capitalize(s: string): string {
   return s ? s[0]!.toUpperCase() + s.slice(1) : s;
 }
 
+/** "Max 20x Abo" for a Max plan with its tier, "Pro Abo" otherwise; null without a plan. */
+export function planLabel(auth: { subscriptionType: string | null; rateLimitTier: string | null }): string | null {
+  if (!auth.subscriptionType) return null;
+  const multiplier = /_(\d+)x$/.exec(auth.rateLimitTier ?? "")?.[1];
+  const tier = multiplier && auth.subscriptionType === "max" ? ` ${multiplier}x` : "";
+  return `${capitalize(auth.subscriptionType)}${tier} Abo`;
+}
+
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }

@@ -449,6 +449,8 @@ export const Diagnostics = z.object({
     loggedIn: z.boolean(),
     authMethod: z.string().nullable(),
     subscriptionType: z.string().nullable(),
+    /** e.g. default_claude_max_5x / default_claude_max_20x, from Claude Code's account data */
+    rateLimitTier: z.string().nullable(),
     apiProvider: z.string().nullable(),
     error: z.string().nullable(),
   }),
@@ -580,6 +582,19 @@ export const McpServer = z.object({
   statusText: z.string(),
 });
 export type McpServer = z.infer<typeof McpServer>;
+
+/** A plugin from a Claude Code marketplace; plugins bring skills (and sometimes agents, hooks, MCP servers). */
+export const MarketplacePlugin = z.object({
+  /** name@marketplace */
+  id: z.string(),
+  name: z.string(),
+  description: z.string(),
+  marketplace: z.string(),
+  installCount: z.number().nullable(),
+  installed: z.boolean(),
+  enabled: z.boolean().nullable(),
+});
+export type MarketplacePlugin = z.infer<typeof MarketplacePlugin>;
 
 export const Attachment = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("path"), path: z.string().min(1).max(4096) }),

@@ -22,15 +22,13 @@ import { useGlobalShortcuts } from "@/lib/shortcuts";
 // in idle time right after the start, so the first switch does not wait either.
 const loadSessions = () => import("@/views/SessionsView");
 const loadSettings = () => import("@/views/SettingsView");
-const loadGitHub = () => import("@/views/GitHubView");
 const loadExtensions = () => import("@/views/ExtensionsView");
 const SessionsView = lazy(() => loadSessions().then((m) => ({ default: m.SessionsView })));
 const SettingsView = lazy(() => loadSettings().then((m) => ({ default: m.SettingsView })));
-const GitHubView = lazy(() => loadGitHub().then((m) => ({ default: m.GitHubView })));
 const ExtensionsView = lazy(() => loadExtensions().then((m) => ({ default: m.ExtensionsView })));
 
 function preloadViews() {
-  const run = () => void Promise.all([loadSessions(), loadSettings(), loadGitHub(), loadExtensions()]).catch(() => {});
+  const run = () => void Promise.all([loadSessions(), loadSettings(), loadExtensions()]).catch(() => {});
   if (typeof requestIdleCallback === "function") requestIdleCallback(run, { timeout: 5000 });
   else setTimeout(run, 2000);
 }
@@ -116,7 +114,6 @@ function Shell() {
                 {view === "sessions" && <SessionsView />}
                 {view === "settings" && <SettingsView />}
                 {view === "workspace" && <WorkspaceView />}
-                {view === "github" && <GitHubView />}
                 {view === "mcp" && <ExtensionsView />}
               </div>
             </Suspense>

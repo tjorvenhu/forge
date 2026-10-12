@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Blocks, Bot, Server, Webhook } from "lucide-react";
+import { Blocks, PackageSearch, PenLine, Server, Webhook } from "lucide-react";
 import { useProject } from "@/lib/queries";
 import { useUi } from "@/stores/ui";
 import { Page } from "@/components/layout/Page";
@@ -7,12 +7,15 @@ import { TabBar } from "@/components/ui/tabs";
 import { DocsTab } from "@/components/extensions/DocsTab";
 import { HooksTab } from "@/components/extensions/HooksTab";
 import { McpTab } from "@/components/extensions/McpTab";
+import { SkillMarketplace } from "@/components/extensions/SkillMarketplace";
 
-type Tab = "mcp" | "skills" | "agents" | "hooks";
+type Tab = "mcp" | "skills" | "hooks";
+type SkillsTab = "marketplace" | "own";
 
-/** Claude Code extensions: MCP servers, skills, subagents and hooks, for the user and the open project. */
+/** Claude Code extensions: MCP servers, skills and hooks, for the user and the open project. */
 export function ExtensionsView() {
   const [tab, setTab] = useState<Tab>("mcp");
+  const [skillsTab, setSkillsTab] = useState<SkillsTab>("marketplace");
   const projectId = useUi((s) => s.activeProjectId) ?? undefined;
   const project = useProject(projectId ?? null);
   return (
@@ -27,15 +30,27 @@ export function ExtensionsView() {
           tabs={[
             { value: "mcp", label: "MCP Server", icon: <Server className="h-3.5 w-3.5" /> },
             { value: "skills", label: "Skills", icon: <Blocks className="h-3.5 w-3.5" /> },
-            { value: "agents", label: "Subagenten", icon: <Bot className="h-3.5 w-3.5" /> },
             { value: "hooks", label: "Hooks", icon: <Webhook className="h-3.5 w-3.5" /> },
           ]}
         />
       </div>
       <div className="max-w-5xl">
         {tab === "mcp" && <McpTab projectId={projectId} />}
-        {tab === "skills" && <DocsTab kind="skill" projectId={projectId} />}
-        {tab === "agents" && <DocsTab kind="agent" projectId={projectId} />}
+        {tab === "skills" && (
+          <>
+            <div className="mb-3">
+              <TabBar<SkillsTab>
+                value={skillsTab}
+                onChange={setSkillsTab}
+                tabs={[
+                  { value: "marketplace", label: "Marketplace", icon: <PackageSearch className="h-3.5 w-3.5" /> },
+                  { value: "own", label: "Eigene Skills", icon: <PenLine className="h-3.5 w-3.5" /> },
+                ]}
+              />
+            </div>
+            {skillsTab === "marketplace" ? <SkillMarketplace /> : <DocsTab kind="skill" projectId={projectId} />}
+          </>
+        )}
         {tab === "hooks" && <HooksTab projectId={projectId} />}
       </div>
     </Page>

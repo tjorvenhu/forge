@@ -112,6 +112,12 @@ E-Mail-Adresse oder Org-Daten der Claude-Anmeldung.
   Speichern, atomar (temporäre Datei, dann Umbenennen), mit `.bak` und Konfliktprüfung; Pfade berechnet der
   Sidecar, die UI übergibt keine Pfade. Gelöschte Skills wandern als Ordner nach `<Datenordner>/trash/skills/`,
   gelöschte Subagenten werden zu `<name>.md.bak`.
+- **Marketplace-Plugins** installiert und entfernt FORGE nur über `claude plugin install|uninstall --scope user`
+  mit geprüfter ID (`name@marketplace`), ohne `-y`: Plugins, die Claude Code vor dem Installieren bestätigen
+  lassen will, schlagen mit dessen Meldung fehl. Der Browser weist darauf hin, dass Hooks und MCP-Server eines
+  Plugins Befehle ausführen.
+- **Max-Stufe (5x/20x)** liest FORGE aus `oauthAccount` in `.claude.json`, nur die Felder `userRateLimitTier`
+  und `organizationRateLimitTier`. `.credentials.json` bleibt tabu.
 - **Hooks** führen Befehle aus. FORGE prüft nur die Struktur, nicht den Inhalt; ein Hook aus einem
   fremden Repository in `.claude/settings.json` wird von Claude Code selbst ausgeführt (natives Verhalten).
 - **Remote Control** gilt global: Eingeschaltet ist jede laufende FORGE-Session (alle Projekte, wie die

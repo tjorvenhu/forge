@@ -5,7 +5,7 @@ import type { MethodName } from "@forge/protocol";
 import { call, keys, useClaudeSetup, useDiagnostics } from "@/lib/queries";
 import { errorMessage } from "@/lib/rpc";
 import { openExternal } from "@/lib/native";
-import { capitalize } from "@/lib/utils";
+import { planLabel } from "@/lib/utils";
 import { toast } from "@/stores/toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -116,7 +116,7 @@ export function ClaudeSetupCard() {
     <div className="flex items-center gap-2 text-body">
       <CheckCircle2 className="h-4 w-4 text-success" />
       Claude Code {d.claude.version?.split(" ")[0]} ist eingerichtet
-      {d.auth.subscriptionType && <Badge tone="success">{capitalize(d.auth.subscriptionType)} Abo</Badge>}
+      {d.auth.subscriptionType && <Badge tone="success">{planLabel(d.auth)}</Badge>}
     </div>
   );
 }

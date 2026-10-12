@@ -12,6 +12,7 @@ import { Field, Input } from "@/components/ui/input";
 import { Checkbox, ErrorBanner } from "@/components/ui/misc";
 import { RadioGroup } from "@/components/ui/radio-group";
 import { TabBar } from "@/components/ui/tabs";
+import { GitHubRepoPicker } from "@/components/github/GitHubPanel";
 
 export function NewProjectDialog() {
   const mode = useUi((s) => s.newProject);
@@ -32,11 +33,6 @@ export function NewProjectDialog() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [duplicateId, setDuplicateId] = useState<string | null>(null);
-
-  const cloneUrl = useUi((s) => s.cloneUrl);
-  useEffect(() => {
-    if (mode === "clone" && cloneUrl) setUrl(cloneUrl);
-  }, [mode, cloneUrl]);
 
   useEffect(() => {
     if (mode) {
@@ -161,7 +157,7 @@ export function NewProjectDialog() {
                 )
               ) : (
                 <p className="mt-1.5 pl-6 text-xs text-subtle">
-                  Dafür zuerst unter <button className="text-accent underline" onClick={() => { close(); useUi.getState().setView("github"); }}>GitHub</button> anmelden.
+                  Dafür zuerst unter <SettingsLink onClick={close} /> bei GitHub anmelden.
                 </p>
               )}
             </div>
@@ -170,9 +166,25 @@ export function NewProjectDialog() {
 
         {mode === "clone" && (
           <>
-            <Field label="Repository-URL" hint="https://, ssh:// oder git@host:pfad. Zugangsdaten verwaltet git bzw. gh.">
-              <Input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://github.com/organisation/repo.git" autoFocus />
-            </Field>
+            {github.data && (
+              <div>
+                <span className="mb-1.5 block text-xs font-medium text-muted">Deine Repositories</span>
+                <GitHubRepoPicker value={url} onPick={setUrl} />
+              </div>
+            )}
+            <div>
+              <Field
+                label={github.data ? "Oder Repository-URL" : "Repository-URL"}
+                hint={github.data ? "Für Repositories anderer Konten oder Anbieter: https://, ssh:// oder git@host:pfad." : "https://, ssh:// oder git@host:pfad."}
+              >
+                <Input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://github.com/organisation/repo.git" autoFocus={!github.data} />
+              </Field>
+              {!github.data && (
+                <p className="mt-1 text-xs text-subtle">
+                  Nach dem GitHub-Login unter <SettingsLink onClick={close} /> stehen hier deine Repositories zur Auswahl.
+                </p>
+              )}
+            </div>
             <Field label="Zielordner">
               <FolderInput value={parent} onChange={setParent} title="Zielordner wählen" />
             </Field>
@@ -204,6 +216,21 @@ export function NewProjectDialog() {
         )}
       </div>
     </Dialog>
+  );
+}
+
+function SettingsLink({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      className="text-accent underline"
+      onClick={() => {
+        onClick();
+        useUi.getState().openSettings("general");
+      }}
+    >
+      Einstellungen → Allgemein
+    </button>
   );
 }
 

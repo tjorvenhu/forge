@@ -1,11 +1,10 @@
-import { Download, PanelLeftClose, PanelLeftOpen, Plus } from "lucide-react";
+import { Download, Plus } from "lucide-react";
 import { call, useClaudeSetup, useClaudeUpdate, useDiagnostics, useLiveSessions, useProjects, useUsage } from "@/lib/queries";
 import { errorMessage } from "@/lib/rpc";
 import { toast } from "@/stores/toast";
 import { Button } from "@/components/ui/button";
-import { ClaudeMark } from "@/components/workspace/ClaudeMark";
 import { useUi, type View } from "@/stores/ui";
-import { capitalize, cn, relativeTime } from "@/lib/utils";
+import { cn, planLabel, relativeTime } from "@/lib/utils";
 import { useArrivals } from "@/lib/arrivals";
 import { Logo } from "./Logo";
 import { AppUpdateCard } from "./AppUpdate";
@@ -19,8 +18,6 @@ export function Sidebar() {
   const activeProjectId = useUi((s) => s.activeProjectId);
   const openProject = useUi((s) => s.openProject);
   const setNewProject = useUi((s) => s.setNewProject);
-  const collapsed = useUi((s) => s.sidebarCollapsed);
-  const toggleSidebar = useUi((s) => s.toggleSidebar);
   const projects = useProjects();
   const liveCount = useLiveSessions().data?.length ?? 0;
   // Agents (worktrees) belong to their project and are not counted or listed on their own.
@@ -33,20 +30,16 @@ export function Sidebar() {
     projects: { n: list.length, label: list.length === 1 ? "1 Projekt" : `${list.length} Projekte` },
     sessions: { n: liveCount, label: liveCount === 1 ? "1 offene Session" : `${liveCount} offene Sessions` },
   };
-  const toggleLabel = collapsed ? "Seitenleiste ausklappen (Strg+B)" : "Seitenleiste einklappen (Strg+B)";
 
   return (
-    <aside className={cn("flex shrink-0 select-none flex-col border-r border-border bg-sidebar", collapsed ? "w-16" : "w-64")}>
-      <div className={cn("flex items-center pb-5 pt-5", collapsed ? "justify-center px-3" : "justify-between gap-2 pl-5 pr-3")}>
-        {!collapsed && <Logo height={38} />}
-        <Button size="icon" variant="ghost" onClick={() => toggleSidebar()} className="shrink-0 text-subtle hover:bg-surface-2 hover:text-fg" aria-label={toggleLabel} aria-expanded={!collapsed} title={toggleLabel}>
-          {collapsed ? <PanelLeftOpen className="h-4.5 w-4.5" /> : <PanelLeftClose className="h-4.5 w-4.5" />}
-        </Button>
+    <aside className="flex w-64 shrink-0 select-none flex-col border-r border-border bg-sidebar">
+      <div className="flex items-center px-5 pb-5 pt-5">
+        <Logo height={44} />
       </div>
 
-      <div className={cn("border-t border-border", collapsed ? "mx-3" : "mx-4")} />
+      <div className="mx-4 border-t border-border" />
 
-      <nav className={cn("flex flex-col gap-1 pt-3", collapsed ? "items-center px-3" : "px-3")} aria-label="Hauptnavigation">
+      <nav className="flex flex-col gap-1 px-3 pt-3" aria-label="Hauptnavigation">
         {NAV.map((n) => {
           const active = view === n.view || (n.view === "projects" && view === "workspace");
           const count = counts[n.view];
@@ -56,98 +49,68 @@ export function Sidebar() {
               key={n.view}
               onClick={() => setView(n.view)}
               aria-current={active ? "page" : undefined}
-              aria-label={collapsed ? (badge ? `${n.label}, ${badge.label}` : n.label) : undefined}
-              title={collapsed ? (badge ? `${n.label}: ${badge.label}` : n.label) : badge?.label}
+              title={badge?.label}
               className={cn(
                 // Same weight active or not: a bolder label would make the text jump.
-                "relative flex h-10 items-center rounded-lg text-ui transition-[color,background-color,transform] duration-120 active:scale-[0.98]",
-                collapsed ? "w-10 justify-center" : "gap-3 px-3",
+                "flex h-10 items-center gap-3 rounded-lg px-3 text-ui transition-[color,background-color,transform] duration-120 active:scale-[0.98]",
                 active ? "bg-accent-soft text-fg" : "text-muted hover:bg-surface-2 hover:text-fg",
               )}
             >
               <span className={active ? "text-accent" : ""}>
                 <n.Icon className="h-4.5 w-4.5" />
               </span>
-              {!collapsed && <span className="flex-1 text-left">{n.label}</span>}
-              {badge &&
-                (collapsed ? (
-                  <span className={cn("absolute -right-1 -top-1 min-w-4 rounded-full px-1 text-center text-3xs leading-4 tabular-nums", active ? "bg-accent text-accent-fg" : "bg-surface-3 text-fg")}>{badge.n}</span>
-                ) : (
-                  <span className={cn("rounded-md px-2 py-0.5 text-caption tabular-nums", active ? "bg-accent/25 text-fg" : "bg-surface-3 text-muted")}>{badge.n}</span>
-                ))}
+              <span className="flex-1 text-left">{n.label}</span>
+              {badge && (
+                <span className={cn("rounded-md px-2 py-0.5 text-caption tabular-nums", active ? "bg-accent/25 text-fg" : "bg-surface-3 text-muted")}>{badge.n}</span>
+              )}
             </button>
           );
         })}
       </nav>
 
-      <div className={cn("mt-3 border-t border-border", collapsed ? "mx-3" : "mx-4")} />
+      <div className="mx-4 mt-3 border-t border-border" />
 
-      <div className={cn("min-h-0 flex-1 overflow-y-auto pt-3", collapsed ? "flex flex-col items-center gap-1 px-3" : "px-3")}>
-        {collapsed ? (
-          <>
-            {shown.map((p) => (
-              <button
-                key={p.id}
-                onClick={() => openProject(p.id)}
-                title={p.name}
-                aria-label={p.name}
-                className={cn(
-                  "flex h-10 w-10 items-center justify-center rounded-lg transition-[background-color,transform] duration-120 active:scale-[0.97]",
-                  isNew(p.id) && "animate-slide-up-in",
-                  view === "workspace" && activeProjectId === p.id ? "bg-surface-3" : "hover:bg-surface-2",
-                )}
-              >
-                <ProjectIcon name={p.name} size={30} />
-              </button>
-            ))}
-            <Button size="icon" variant="ghost" onClick={() => setNewProject("import")} className="h-10 w-10 text-subtle hover:bg-surface-2 hover:text-fg" aria-label="Projekt hinzufügen" title="Projekt hinzufügen">
-              <Plus className="h-4 w-4" />
-            </Button>
-          </>
-        ) : (
-          <>
-            <div className="flex items-center justify-between px-3 pb-2">
-              <span className="text-body text-muted">{favorites.length ? "Favoriten" : "Zuletzt"}</span>
-              <Button size="icon-sm" variant="ghost" onClick={() => setNewProject("import")} className="h-6 w-6 text-subtle hover:bg-surface-2" aria-label="Projekt hinzufügen" title="Projekt hinzufügen">
-                <Plus className="h-4 w-4" />
-              </Button>
-            </div>
-            <div className="flex flex-col gap-1">
-              {shown.map((p) => (
-                <button
-                  key={p.id}
-                  onClick={() => openProject(p.id)}
-                  className={cn(
-                    "flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-left transition-[background-color,transform] duration-120 active:scale-[0.99]",
-                    isNew(p.id) && "animate-slide-up-in",
-                    view === "workspace" && activeProjectId === p.id ? "bg-surface-3" : "hover:bg-surface-2",
-                  )}
-                >
-                  <ProjectIcon name={p.name} size={34} />
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate text-ui">{p.name}</div>
-                    <div className="truncate text-small text-subtle">{p.technologies.slice(0, 2).join(" · ") || "Projekt"}</div>
-                  </div>
-                </button>
-              ))}
-            </div>
-            <Button
-              variant="outline"
-              onClick={() => setNewProject("import")}
-              className="mt-2 h-11 w-full justify-start gap-2.5 rounded-lg border-dashed px-3 text-body-lg font-normal text-muted hover:border-border-strong hover:bg-transparent hover:text-fg"
+      <div className="min-h-0 flex-1 overflow-y-auto px-3 pt-3">
+        <div className="flex items-center justify-between px-3 pb-2">
+          <span className="text-body text-muted">{favorites.length ? "Favoriten" : "Zuletzt"}</span>
+          <Button size="icon-sm" variant="ghost" onClick={() => setNewProject("import")} className="h-6 w-6 text-subtle hover:bg-surface-2" aria-label="Projekt hinzufügen" title="Projekt hinzufügen">
+            <Plus className="h-4 w-4" />
+          </Button>
+        </div>
+        <div className="flex flex-col gap-1">
+          {shown.map((p) => (
+            <button
+              key={p.id}
+              onClick={() => openProject(p.id)}
+              className={cn(
+                "flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-left transition-[background-color,transform] duration-120 active:scale-[0.99]",
+                isNew(p.id) && "animate-slide-up-in",
+                view === "workspace" && activeProjectId === p.id ? "bg-surface-3" : "hover:bg-surface-2",
+              )}
             >
-              <Plus className="h-4 w-4" /> Projekt hinzufügen
-            </Button>
-          </>
-        )}
+              <ProjectIcon name={p.name} size={34} />
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-ui">{p.name}</div>
+                <div className="truncate text-small text-subtle">{p.technologies.slice(0, 2).join(" · ") || "Projekt"}</div>
+              </div>
+            </button>
+          ))}
+        </div>
+        <Button
+          variant="outline"
+          onClick={() => setNewProject("import")}
+          className="mt-2 h-11 w-full justify-start gap-2.5 rounded-lg border-dashed px-3 text-body-lg font-normal text-muted hover:border-border-strong hover:bg-transparent hover:text-fg"
+        >
+          <Plus className="h-4 w-4" /> Projekt hinzufügen
+        </Button>
       </div>
 
-      <ClaudeStatusCard compact={collapsed} />
+      <ClaudeStatusCard />
     </aside>
   );
 }
 
-function ClaudeStatusCard({ compact }: { compact: boolean }) {
+function ClaudeStatusCard() {
   const diag = useDiagnostics();
   const setup = useClaudeSetup().data;
   const usage = useUsage();
@@ -167,30 +130,13 @@ function ClaudeStatusCard({ compact }: { compact: boolean }) {
       line = "Nicht angemeldet";
     } else {
       tone = d.apiKeyEnvPresent && !d.apiKeyStripped ? "bg-warning" : "bg-success";
-      line = d.auth.subscriptionType ? `${capitalize(d.auth.subscriptionType)} Abo` : (d.auth.authMethod ?? "angemeldet");
+      line = planLabel(d.auth) ?? d.auth.authMethod ?? "angemeldet";
     }
   } else if (diag.isError) {
     tone = "bg-danger";
     line = "Status unbekannt";
   }
   const windows = usage.data?.available ? usage.data.windows.slice(0, 3) : [];
-  if (compact) {
-    const title = [`Claude Code: ${line}`, ...windows.map((w) => `${w.label}: ${w.utilization} %`)].join("\n");
-    return (
-      <>
-        <AppUpdateCard compact />
-        <button
-          onClick={() => openSettings("claude")}
-          className="relative mx-auto my-3 flex h-10 w-10 items-center justify-center rounded-lg border border-border bg-surface hover:border-border-strong"
-          title={title}
-          aria-label={title}
-        >
-          <ClaudeMark size={18} />
-          <span className={cn("absolute bottom-1.5 right-1.5 h-1.5 w-1.5 rounded-full", tone)} />
-        </button>
-      </>
-    );
-  }
   return (
     <>
     <AppUpdateCard />
@@ -261,4 +207,3 @@ function UsageBar({ label, value, resetsAt }: { label: string; value: number; re
     </div>
   );
 }
-

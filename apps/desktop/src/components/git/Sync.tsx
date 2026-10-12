@@ -61,7 +61,7 @@ export function SyncActions({ project }: { project: Project }) {
           className="h-6 px-1.5"
           disabled={!account.data}
           onClick={() => setPublishing(true)}
-          title={account.data ? "Auf GitHub veröffentlichen" : "Erst unter GitHub anmelden"}
+          title={account.data ? "Auf GitHub veröffentlichen" : "Erst unter Einstellungen → Allgemein bei GitHub anmelden"}
         >
           <UploadCloud className="h-3.5 w-3.5" /> Veröffentlichen
         </Button>

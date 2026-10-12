@@ -12,7 +12,6 @@ import {
   History,
   MessageSquarePlus,
   PanelBottom,
-  PanelLeft,
   PanelRight,
   Play,
   Search,
@@ -148,13 +147,12 @@ function PaletteBody({ onClose }: { onClose: () => void }) {
       act("tab-settings", "Projekt-Einstellungen", <Settings2 className="h-4 w-4" />, () => ui.setWorkspaceTab("settings"), { hint: "Strg+5", keywords: "claude.md tags testbefehl" });
       act("terminal", "Terminal öffnen", <SquareTerminal className="h-4 w-4" />, () => ui.openTerminal(project.id, "shell"), { keywords: "shell konsole" });
       act("bottom", "Unteres Panel ein- oder ausblenden", <PanelBottom className="h-4 w-4" />, () => ui.toggleBottomPanel(), { hint: "Strg+J" });
-      act("right", "Rechte Seitenleiste ein- oder ausblenden", <PanelRight className="h-4 w-4" />, () => ui.toggleRightPanel(), { hint: "Strg+Umschalt+E" });
+      act("right", "Seitenleiste ein- oder ausblenden", <PanelRight className="h-4 w-4" />, () => ui.toggleRightPanel(), { hint: "Strg+Umschalt+E" });
       for (const p of PROFILE_IDS) {
         if (p === project.profile || (p === "autonomous" && project.tags.includes("sandbox-only"))) continue;
         act(`profile-${p}`, `Profil wechseln: ${PROFILE_INFO[p].label}`, <Shield className="h-4 w-4" />, () => void setProfile(qc, project.id, p), { keywords: "rechte permission" });
       }
     }
-    act("sidebar", "Linke Seitenleiste ein- oder ausklappen", <PanelLeft className="h-4 w-4" />, () => ui.toggleSidebar(), { hint: "Strg+B", keywords: "navigation menü" });
     act("add-project", "Projekt hinzufügen", <FolderPlus className="h-4 w-4" />, () => ui.setNewProject("import"), { hint: "Strg+O", keywords: "importieren ordner" });
     act("create-project", "Neues Projekt anlegen", <FolderPlus className="h-4 w-4" />, () => ui.setNewProject("create"));
     for (const n of NAV) act(`nav-${n.view}`, `Gehe zu ${n.label}`, <n.Icon className="h-4 w-4" />, () => ui.setView(n.view));

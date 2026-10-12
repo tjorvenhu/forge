@@ -12,7 +12,7 @@ dieselbe Ansicht. Die Anmeldung läuft über dein Claude-Abo (z. B. Max). Ein AP
 **Für Nutzer:** `FORGE_0.1.0_x64-setup.exe` ausführen. Mehr braucht es nicht: Node.js, Git (inkl. Bash)
 und die GitHub CLI sind enthalten. Fehlt Claude Code, installiert FORGE es beim ersten Start selbst über den
 offiziellen Installer von Anthropic. Anmeldung bei Claude und GitHub erfolgt in der App (Einstellungen → Claude Code
-bzw. Ansicht GitHub).
+bzw. Einstellungen → Allgemein → GitHub).
 
 FORGE läuft nur unter Windows (getestet mit Windows 11).
 
@@ -92,7 +92,7 @@ Umgebungsvariablen für Sonderfälle: `FORGE_NODE` (Pfad zu node), `FORGE_SIDECA
   mit Review-Dialog und Rückfrage bei sensiblen Dateien (`.env`, Schlüsseldateien, Build-Artefakte), Verlauf mit Wiederherstellung (alle Dateien auf den Stand eines früheren Commits zurückholen, als neue Änderungen), Branches anlegen, wechseln und löschen (nicht gemergte nur nach Rückfrage), git init. Beim Entfernen eines Agenten lässt sich sein Branch ohne Merge mitlöschen.
 - **Abo-Nutzung:** 5-Stunden- und Wochenfenster (auch pro Modell) unten links, mit Reset-Zeit. Ist ein Limit fast oder ganz erreicht, steht das dauerhaft am Composer („Limit fast erreicht · Reset 19:10“), statt bei jeder Anfrage als Meldung im Chat.
 - **Nach dem Nutzungslimit weitermachen:** Stoppt das Limit eine Session, macht FORGE nach dem Reset (plus 2 Minuten) selbst weiter: Session fortsetzen, falls nötig, und Claude bitten, dort weiterzumachen. Die Karte im Chat zeigt die Uhrzeit und lässt sich abbrechen. Der Plan übersteht einen Neustart von FORGE und Standby. Eine eigene Nachricht oder Stopp hebt ihn auf, nach drei automatischen Fortsetzungen ohne deine Eingabe ist Schluss. Abschaltbar unter Einstellungen → Claude Code.
-- **GitHub:** Anmeldung in der App (Code anzeigen, Browser öffnet sich), Liste deiner Repositories mit Klonen per Klick.
+- **GitHub:** Anmeldung unter Einstellungen → Allgemein (Code anzeigen, Browser öffnet sich). Beim Klonen eines neuen Projekts stehen deine Repositories zur Auswahl.
 - **Commit-Nachricht per KI:** Funken-Knopf im Commit-Feld; Claude (Haiku) schreibt die Nachricht aus dem Diff im Stil der bisherigen Commits. Sensible Dateien werden nicht gesendet.
 - **Regeln für Claude:** CLAUDE.md global, pro Projekt und lokal (nicht im Git) direkt in FORGE bearbeiten.
 - **Composer:** Bilder, PDFs und Textdateien anhängen (Knopf, Einfügen, Hineinziehen), Slash-Commands mit Auswahlliste, `/clear` (auch `/reset`, `/new`) startet wie im Terminal ein neues Gespräch mit leerem Chat, Dateien auf den Stand vor einer Nachricht zurücksetzen.
@@ -103,7 +103,7 @@ Umgebungsvariablen für Sonderfälle: `FORGE_NODE` (Pfad zu node), `FORGE_SIDECA
 - **Parallele Agenten:** Auf der Projektseite stehen Agenten in der Kachel ihres Projekts (Branch, arbeitet/wartet, letzte Session), nicht als eigene Projekte. Tab „Agenten“ neben „Chat“: Sessions in eigenen Git-Worktrees des offenen Projekts, dazu die eigenen Subagenten. Claude kann in jeder Session selbst Agenten starten, verfolgen und anschreiben (FORGE-Werkzeuge `start_agent`, `agent_status`, `message_agent`; höchstens 4 je Session, Agenten starten keine weiteren) und dich mit `notify` benachrichtigen, dringend auch per Anruf.
 - **Subagenten und Hintergrund-Aufgaben:** Laufende Subagenten zeigen unter dem Chat eine Zeile Fortschritt (etwa alle 30 Sekunden) und lassen sich in den Hintergrund schicken (wie Strg+B). Hintergrund-Aufgaben lassen sich einzeln stoppen; Stopp beendet nur den Durchlauf.
 - **Verzweigen:** An jeder eigenen Nachricht „Ab hier verzweigen“: neue Session mit dem Verlauf bis davor, die Nachricht steht zum Ändern im Eingabefeld, das Original bleibt. Auf Wunsch werden die Dateien mit zurückgesetzt.
-- **Erweiterungen:** MCP-Server, Skills, Subagenten und Hooks verwalten.
+- **Erweiterungen:** MCP-Server und Hooks verwalten. Skills: Browser für die Marketplaces von Claude Code (Plugins suchen, installieren, entfernen über `claude plugin`), dazu eigene Skills anlegen und bearbeiten.
 - **Wiedereinstieg:** KI-Zusammenfassung einer Session.
 - **PR-Texte** kommen als strukturierte Antwort (JSON-Schema), Opus fällt bei Überlastung automatisch auf Sonnet zurück.
 - **Rückfragen und Pläne:** Fragt Claude nach (AskUserQuestion), erscheinen die Optionen als Karte im Chat. Pläne aus dem Plan-Modus lassen sich annehmen oder mit Feedback zurückgeben.
@@ -120,7 +120,7 @@ Umgebungsvariablen für Sonderfälle: `FORGE_NODE` (Pfad zu node), `FORGE_SIDECA
 - **Persistenz:** SQLite für Projekte, Sessions, Events, Freigaben, Einstellungen (unter `%APPDATA%\forge`, Backups im Unterordner `backups`). Beim Start öffnet FORGE das zuletzt genutzte Projekt.
 
 Tastatur: `Strg+1..5` Workspace-Tabs, `Strg+Tab` / `Strg+Umschalt+Tab` nächster / vorheriger Session-Tab, `Strg+N` neue Session, `Strg+O` Projekt hinzufügen, `Strg+J` Claude-Output,
-`Strg+B` linke Navigation ein- und ausklappen, `Strg+Umschalt+E` rechte Seitenleiste, `Esc` im Eingabefeld stoppt Claude.
+`Strg+Umschalt+E` Seitenleiste, `Esc` im Eingabefeld stoppt Claude.
 
 ## Tests
 

@@ -9,6 +9,11 @@ export function dataDir(): string {
   return base;
 }
 
+/** ~/.claude.json, or .claude.json inside CLAUDE_CONFIG_DIR when that is set. */
+export function claudeJsonPath(): string {
+  return process.env.CLAUDE_CONFIG_DIR ? path.join(process.env.CLAUDE_CONFIG_DIR, ".claude.json") : path.join(os.homedir(), ".claude.json");
+}
+
 /** Key used for duplicate detection: Windows paths are case-insensitive. */
 export function pathKey(p: string): string {
   const resolved = path.resolve(p);

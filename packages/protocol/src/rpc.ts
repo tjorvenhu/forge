@@ -28,6 +28,7 @@ import {
   GitHubRepo,
   GitStatus,
   McpServer,
+  MarketplacePlugin,
   MemoryFile,
   MemoryScope,
   PermissionMode,
@@ -55,6 +56,7 @@ const projectRef = z.object({ projectId: id });
 const sessionRef = z.object({ sessionId: id });
 const relPaths = z.array(z.string().min(1).max(4096)).min(1).max(2000);
 const empty = z.object({}).strict();
+const pluginId = z.string().regex(/^[A-Za-z0-9._-]{1,128}@[A-Za-z0-9._-]{1,128}$/);
 
 /**
  * Every RPC method: params are validated in the sidecar, results are typed for the UI.
@@ -144,6 +146,11 @@ export const methods = {
     params: z.object({ projectId: id.optional(), name: z.string().regex(/^[A-Za-z0-9_-]{1,64}$/), scope: z.enum(["user", "project", "local"]) }),
     result: z.object({ ok: z.boolean(), output: z.string() }),
   },
+
+  /** all plugins of the added marketplaces plus the installed ones (user scope) */
+  "plugins.catalog": { params: z.object({ refresh: z.boolean().optional() }), result: z.array(MarketplacePlugin) },
+  "plugins.install": { params: z.object({ id: pluginId }), result: z.array(MarketplacePlugin) },
+  "plugins.uninstall": { params: z.object({ id: pluginId }), result: z.array(MarketplacePlugin) },
 
   "worktrees.create": { params: projectRef.extend({ branch: z.string().min(1).max(200) }), result: Project },
   "worktrees.remove": {
