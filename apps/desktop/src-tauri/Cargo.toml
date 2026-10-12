@@ -23,7 +23,8 @@ portable-pty = "0.9"
 windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Security", "Win32_System_JobObjects", "Win32_System_Threading"] }
 
 [profile.release]
-codegen-units = 1
-lto = true
+# Thin LTO with parallel code generation: the release build takes a fraction of the time of full
+# LTO with one unit, the binary is barely larger. The shell only manages windows and processes.
+lto = "thin"
 opt-level = "s"
 strip = true

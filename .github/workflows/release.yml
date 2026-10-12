@@ -1,6 +1,12 @@
-# Builds the Windows installer on every push to main and publishes it as a GitHub release.
-# Installed FORGE apps find it (Settings → Updates) and install it with one click.
-# Version: 0.1.<run number>, so every release is newer than the one before.
+# Builds FORGE on every push to main and publishes it as a GitHub release (version 0.1.<run number>).
+#
+# Two kinds of release assets:
+#   FORGE_<v>_update_<runtime>.zip   every release. Only forge-desktop.exe and the sidecar, a few MB.
+#                                    Installed apps with the same bundled runtime install it in seconds.
+#   FORGE_<v>_<runtime>_x64-setup.exe  only when the bundled runtime (node, git, gh) changed, or when
+#                                    asked for (Run workflow → full). Needed for new installations and
+#                                    for apps with an older runtime.
+# The runtime key comes from scripts/prepare-runtime.mjs (node-<v>_git-<v>_gh-<v>).
 name: Release
 
 on:
@@ -12,13 +18,19 @@ on:
       - "*.png"
       - "*.docx"
   workflow_dispatch:
+    inputs:
+      full:
+        description: "Also build the full installer (with node, git, gh)"
+        type: boolean
+        default: false
 
 permissions:
   contents: write
 
+# A newer push makes a running build obsolete: only the newest one is finished.
 concurrency:
   group: release
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   release:
@@ -36,26 +48,35 @@ jobs:
           node-version: 24
           cache: pnpm
 
-      - uses: dtolnay/rust-toolchain@stable
-
+      # The runner ships a stable Rust; updating it on every run cost 40 s for nothing.
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: apps/desktop/src-tauri
 
+      - name: Plan
+        id: plan
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $version = "0.1.${{ github.run_number }}"
+          $key = (node scripts/prepare-runtime.mjs --key).Trim()
+          $assets = gh api "repos/${{ github.repository }}/releases?per_page=100" --jq '.[].assets[].name'
+          $hasInstaller = [bool]($assets | Where-Object { $_ -like "*_${key}_x64-setup.exe" })
+          $full = ("${{ inputs.full }}" -eq "true") -or -not $hasInstaller
+          $conf = "apps/desktop/src-tauri/tauri.conf.json"
+          (Get-Content $conf -Raw) -replace '"version":\s*"[^"]*"', "`"version`": `"$version`"" | Set-Content $conf -NoNewline -Encoding utf8
+          "version=$version" >> $env:GITHUB_OUTPUT
+          "key=$key" >> $env:GITHUB_OUTPUT
+          "full=$($full.ToString().ToLower())" >> $env:GITHUB_OUTPUT
+          Write-Host "Version $version, Laufzeit $key, voller Installer: $full"
+
       - name: Cache bundled runtime downloads
+        if: steps.plan.outputs.full == 'true'
         uses: actions/cache@v4
         with:
           path: .runtime-cache
           key: runtime-${{ hashFiles('scripts/prepare-runtime.mjs') }}
-
-      - name: Version
-        id: version
-        shell: pwsh
-        run: |
-          $version = "0.1.${{ github.run_number }}"
-          $conf = "apps/desktop/src-tauri/tauri.conf.json"
-          (Get-Content $conf -Raw) -replace '"version":\s*"[^"]*"', "`"version`": `"$version`"" | Set-Content $conf -NoNewline -Encoding utf8
-          "version=$version" >> $env:GITHUB_OUTPUT
 
       - run: pnpm install --frozen-lockfile
 
@@ -64,19 +85,65 @@ jobs:
           pnpm lint
           pnpm typecheck
 
-      - name: Build installer
-        run: pnpm build
+      - name: Sidecar and frontend
+        shell: pwsh
+        run: |
+          pnpm --filter @forge/sidecar build
+          # Types were checked above; vite alone builds the frontend the exe embeds.
+          pnpm --filter @forge/desktop exec vite build
+          '{ "build": { "beforeBuildCommand": "" } }' | Set-Content apps/desktop/src-tauri/tauri.ci.json -Encoding utf8
 
-      - name: Publish release
+      - name: Runtime (full installer only)
+        if: steps.plan.outputs.full == 'true'
+        run: node scripts/prepare-runtime.mjs
+
+      - name: Sidecar into the resources (small update only)
+        if: steps.plan.outputs.full != 'true'
+        shell: pwsh
+        run: |
+          # Tauri checks the resource folder even without bundling; the sidecar is the part that ships.
+          New-Item -ItemType Directory -Force apps/desktop/src-tauri/runtime/sidecar | Out-Null
+          Copy-Item packages/sidecar/dist/sidecar.mjs apps/desktop/src-tauri/runtime/sidecar/sidecar.mjs
+
+      - name: Build app
+        shell: pwsh
+        working-directory: apps/desktop
+        run: |
+          if ("${{ steps.plan.outputs.full }}" -eq "true") {
+            pnpm tauri build --config src-tauri/tauri.ci.json
+          } else {
+            pnpm tauri build --no-bundle --config src-tauri/tauri.ci.json
+          }
+
+      - name: Package and publish
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $version = "${{ steps.version.outputs.version }}"
+          $version = "${{ steps.plan.outputs.version }}"
+          $key = "${{ steps.plan.outputs.key }}"
           $tag = "v$version"
-          $exe = Get-ChildItem apps/desktop/src-tauri/target/release/bundle/nsis/*-setup.exe | Select-Object -First 1
+          $pkg = Join-Path $env:RUNNER_TEMP "pkg"
+          New-Item -ItemType Directory -Force "$pkg/runtime/sidecar" | Out-Null
+          Copy-Item apps/desktop/src-tauri/target/release/forge-desktop.exe "$pkg/forge-desktop.exe"
+          Copy-Item packages/sidecar/dist/sidecar.mjs "$pkg/runtime/sidecar/sidecar.mjs"
+          @{ version = $version; runtime = $key } | ConvertTo-Json | Set-Content "$pkg/update.json" -Encoding utf8
+          $zip = Join-Path $env:RUNNER_TEMP "FORGE_${version}_update_${key}.zip"
+          # Windows tar writes zip entries with forward slashes, as the app's tar.exe expects.
+          tar.exe -a -c -f $zip -C $pkg forge-desktop.exe runtime update.json
+          $files = @($zip)
+          if ("${{ steps.plan.outputs.full }}" -eq "true") {
+            $setup = Get-ChildItem apps/desktop/src-tauri/target/release/bundle/nsis/*-setup.exe | Select-Object -First 1
+            $named = Join-Path $env:RUNNER_TEMP "FORGE_${version}_${key}_x64-setup.exe"
+            Copy-Item $setup.FullName $named
+            $files += $named
+          }
           $prev = git describe --tags --abbrev=0 2>$null
           $range = if ($prev) { "$prev..HEAD" } else { "HEAD~20..HEAD" }
           $notes = (git log $range --no-merges --format="- %s") -join "`n"
           if (-not $notes) { $notes = "- Wartung" }
-          gh release create $tag $exe.FullName --title "FORGE $version" --notes $notes --target $env:GITHUB_SHA
+          # "Latest" stays on the newest full installer: the download for new installations, and what
+          # versions before the small updates look for (they only read releases/latest).
+          $latest = if ("${{ steps.plan.outputs.full }}" -eq "true") { "--latest" } else { "--latest=false" }
+          gh release create $tag @files --title "FORGE $version" --notes $notes --target $env:GITHUB_SHA $latest
+          Get-Item $files | ForEach-Object { Write-Host ("{0}  {1:N1} MB" -f $_.Name, ($_.Length / 1MB)) }

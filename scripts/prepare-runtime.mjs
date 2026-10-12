@@ -141,6 +141,20 @@ async function main() {
   log(`fertig: ${JSON.stringify(state)}`);
 }
 
+/**
+ * Key of the bundled runtime versions, e.g. node-24.21.0_git-2.56.0.2_gh-2.102.0. Small updates
+ * (exe and sidecar only) carry it in their name; an installation with another runtime needs the
+ * full installer.
+ */
+export function runtimeKey(versions = { node: WINDOWS.node.version, git: WINDOWS.git.version, gh: WINDOWS.gh.version }) {
+  return `node-${versions.node}_git-${versions.git}_gh-${versions.gh}`;
+}
+
+if (process.argv.includes("--key")) {
+  process.stdout.write(runtimeKey() + "\n");
+  process.exit(0);
+}
+
 if (process.argv.includes("--prune-only")) {
   pruneGit(path.join(OUT, "git"));
   process.exit(0);

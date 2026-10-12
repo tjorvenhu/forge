@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { createReadStream } from "node:fs";
+import { createReadStream, readFileSync } from "node:fs";
 import { mkdir, readdir, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -13,6 +13,45 @@ export const UPDATE_REPO = "tjorvenhu/forge";
 const FIRST_CHECK_MS = 3_000;
 const CHECK_INTERVAL_MS = 30 * 60_000;
 const INSTALLER = /-setup\.exe$/i;
+/** small update: exe and sidecar only, for one runtime (key in the name) */
+const PATCH = /_update_(.+)\.zip$/i;
+
+/**
+ * Key of the installed runtime (bundled node, git, gh), as written by scripts/prepare-runtime.mjs.
+ * null in a development build without bundled runtime.
+ */
+export function installedRuntimeKey(dir = process.env.FORGE_RUNTIME_DIR): string | null {
+  if (!dir) return null;
+  try {
+    const v = JSON.parse(readFileSync(path.join(dir, "VERSIONS.json"), "utf8")) as { node?: string; git?: string; gh?: string };
+    return v.node && v.git && v.gh ? `node-${v.node}_git-${v.git}_gh-${v.gh}` : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Which release to install from a list. The newest release wins when it has a small update for the
+ * installed runtime; otherwise the newest full installer newer than the installed version (after
+ * it, the next check finds the small updates on top).
+ */
+export function pickRelease(
+  releases: Release[],
+  current: string,
+  runtimeKey: string | null,
+): { release: Release; asset: { name: string; size?: number; digest?: string | null }; kind: "patch" | "full" } | null {
+  const newer = releases.filter((r) => r.tag_name && !r.draft && !r.prerelease && compareVersions(r.tag_name, current) > 0);
+  newer.sort((a, b) => compareVersions(b.tag_name!, a.tag_name!));
+  const newest = newer[0];
+  if (!newest) return null;
+  const patch = runtimeKey ? (newest.assets ?? []).find((a) => a.name && PATCH.exec(a.name)?.[1] === runtimeKey) : undefined;
+  if (patch?.name) return { release: newest, asset: { ...patch, name: patch.name }, kind: "patch" };
+  for (const rel of newer) {
+    const full = (rel.assets ?? []).find((a) => a.name && INSTALLER.test(a.name));
+    if (full?.name) return { release: rel, asset: { ...full, name: full.name }, kind: "full" };
+  }
+  return null;
+}
 
 /** Where installers are downloaded; the desktop shell runs installers from this folder only. */
 export function updateDir(): string {
@@ -37,7 +76,7 @@ export function compareVersions(a: string, b: string): number {
   return x.pre < y.pre ? -1 : 1;
 }
 
-interface Release {
+export interface Release {
   tag_name?: string;
   body?: string | null;
   published_at?: string | null;
@@ -58,6 +97,8 @@ export interface UpdateDeps {
   writeChangelog?: (prompt: string) => Promise<string>;
   /** whether Claude can write it right now */
   claudeReady?: () => Promise<"ok" | "no-claude" | "no-login">;
+  /** key of the installed runtime; tests pass one */
+  runtimeKey?: () => string | null;
 }
 
 /** Prompt for the changelog: the user's view, short, only what notes and commits say. */
@@ -150,7 +191,7 @@ export class AppUpdateService {
       const keep = this.state.phase === "ready" ? this.state.installerPath : null;
       this.set({ phase: "checking", message: null });
       try {
-        const r = await this.gh(["api", `repos/${UPDATE_REPO}/releases/latest`], 30_000);
+        const r = await this.gh(["api", `repos/${UPDATE_REPO}/releases?per_page=30`], 30_000);
         if (r.code !== 0) {
           const err = `${r.stderr}${r.stdout}`;
           if (/auth login|not logged|401/i.test(err)) throw new Error("Für Updates bitte in FORGE bei GitHub anmelden (Ansicht GitHub).");
@@ -160,21 +201,22 @@ export class AppUpdateService {
           }
           throw new Error(err.trim().split("\n").at(-1) || "GitHub hat die Anfrage abgelehnt.");
         }
-        const rel = JSON.parse(r.stdout) as Release;
-        const tag = rel.tag_name ?? "";
-        const asset = (rel.assets ?? []).find((a) => a.name && INSTALLER.test(a.name));
+        const list = JSON.parse(r.stdout) as Release[];
         const checkedAt = new Date().toISOString();
-        if (!tag || rel.draft || !asset?.name || compareVersions(tag, this.state.currentVersion) <= 0) {
+        const pick = pickRelease(Array.isArray(list) ? list : [], this.state.currentVersion, (this.d.runtimeKey ?? installedRuntimeKey)());
+        if (!pick) {
           this.asset = null;
           this.set({ phase: "uptodate", latest: null, installerPath: null, checkedAt });
           return this.state;
         }
+        const { release: rel, asset, kind } = pick;
+        const tag = rel.tag_name!;
         const sameRelease = this.state.latest?.tag === tag;
         this.asset = { name: asset.name, digest: asset.digest ?? null };
         this.set({
           phase: sameRelease && keep ? "ready" : "available",
           installerPath: sameRelease ? keep : null,
-          latest: { version: tag.replace(/^v/i, ""), tag, notes: (rel.body ?? "").trim(), publishedAt: rel.published_at ?? null, size: asset.size ?? null },
+          latest: { version: tag.replace(/^v/i, ""), tag, notes: (rel.body ?? "").trim(), publishedAt: rel.published_at ?? null, size: asset.size ?? null, kind },
           checkedAt,
         });
         if (!sameRelease) {
@@ -265,7 +307,7 @@ export class AppUpdateService {
         const r = await this.gh(["release", "download", latest.tag, "--repo", UPDATE_REPO, "--pattern", asset.name, "--dir", dir, "--clobber"], 15 * 60_000);
         if (r.code !== 0) throw new Error(`Download fehlgeschlagen: ${(r.stderr || r.stdout).trim().split("\n").at(-1)}`);
         const file = (await readdir(dir)).find((f) => f === asset.name);
-        if (!file) throw new Error("Der Installer fehlt nach dem Download.");
+        if (!file) throw new Error("Das Update fehlt nach dem Download.");
         const full = path.join(dir, file);
         if (asset.digest?.startsWith("sha256:")) {
           const actual = await sha256(full);
