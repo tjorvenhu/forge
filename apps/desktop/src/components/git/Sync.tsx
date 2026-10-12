@@ -4,11 +4,10 @@ import { ArrowDown, ArrowUp, CheckCircle2, CircleDashed, CloudDownload, External
 import type { GitIntegrated, Project, Session } from "@forge/protocol";
 import { call, keys, useGitHubAccount, useGitStatus } from "@/lib/queries";
 import { useUi } from "@/stores/ui";
-import { errorMessage, RpcCallError } from "@/lib/rpc";
+import { errorMessage } from "@/lib/rpc";
 import { openExternal } from "@/lib/native";
 import { toast } from "@/stores/toast";
 import { Button } from "@/components/ui/button";
-import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Dialog } from "@/components/ui/dialog";
 import { Field, Input, Textarea } from "@/components/ui/input";
 import { Badge, Checkbox, Spinner } from "@/components/ui/misc";
@@ -40,11 +39,9 @@ export function SyncActions({ project }: { project: Project }) {
   const qc = useQueryClient();
   const summary = status.data?.summary;
   const [busy, setBusy] = useState<string | null>(null);
-  const [confirmProtected, setConfirmProtected] = useState<string | null>(null);
   const [publishing, setPublishing] = useState(false);
 
-  /** `rethrow` for calls from a ConfirmDialog, which stays open when onConfirm throws. */
-  const run = async (label: string, fn: () => Promise<SyncResult | unknown>, success: string, rethrow = false) => {
+  const run = async (label: string, fn: () => Promise<SyncResult | unknown>, success: string) => {
     setBusy(label);
     try {
       const r = (await fn()) as Partial<SyncResult> | undefined;
@@ -59,12 +56,7 @@ export function SyncActions({ project }: { project: Project }) {
         toast.success(success, integratedText(r?.integrated ?? null));
       }
     } catch (e) {
-      if (e instanceof RpcCallError && e.code === "POLICY_DENIED" && (e.details as { protectedBranch?: string })?.protectedBranch) {
-        setConfirmProtected((e.details as { protectedBranch: string }).protectedBranch);
-      } else {
-        toast.error(`${label} fehlgeschlagen`, errorMessage(e));
-      }
-      if (rethrow) throw e;
+      toast.error(`${label} fehlgeschlagen`, errorMessage(e));
     } finally {
       setBusy(null);
     }
@@ -114,7 +106,8 @@ export function SyncActions({ project }: { project: Project }) {
             size="sm"
             variant="ghost"
             className="h-6 gap-1 px-1.5"
-            onClick={() => void run("Push", () => call("git.push", { projectId: project.id }), "Gepusht")}
+            // A click on push is the consent, also for main; only automatic pushes stay off protected branches.
+            onClick={() => void run("Push", () => call("git.push", { projectId: project.id, allowProtected: true }), "Gepusht")}
             loading={busy === "Push"}
             aria-label="Push"
             title={`${summary.ahead > 0 ? `Push: ${summary.ahead} Commits zum Pushen` : "Push"}. Neue Commits vom Remote übernimmt FORGE vorher, bei Konflikten hilft Claude.`}
@@ -125,16 +118,6 @@ export function SyncActions({ project }: { project: Project }) {
         </>
       )}
 
-      <ConfirmDialog
-        open={!!confirmProtected}
-        onOpenChange={(o) => !o && setConfirmProtected(null)}
-        title={`Direkt auf ${confirmProtected ?? ""} pushen?`}
-        description="Üblich ist ein Feature-Branch mit Pull Request. Direkt auf den Hauptbranch pushen nur, wenn das in diesem Projekt so gewollt ist. Force-Push gibt es in FORGE nicht."
-        confirmLabel="Trotzdem pushen"
-        danger
-        requireText={confirmProtected ?? undefined}
-        onConfirm={() => run("Push", () => call("git.push", { projectId: project.id, allowProtected: true }), "Gepusht", true)}
-      />
       <PublishDialog open={publishing} onOpenChange={setPublishing} project={project} onDone={refresh} />
     </>
   );
