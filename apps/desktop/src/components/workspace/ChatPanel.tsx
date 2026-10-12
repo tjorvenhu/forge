@@ -72,7 +72,7 @@ export function ChatPanel({ project, workingInPanel = false }: { project: Projec
   }, [project.id, sessions.data, setActive]);
 
   return (
-    <div ref={setSurface} className="relative flex h-full min-h-0 flex-col">
+    <div ref={setSurface} className="chat-surface relative flex h-full min-h-0 flex-col">
       <ChatSurface.Provider value={surface}>
       <SessionBar
         project={project}

@@ -56,7 +56,7 @@ export function InfoCommandDialog({ command, project, session, onClose }: { comm
       title={shown?.title ?? ""}
       description={shown ? `/${shown.name}` : undefined}
       container={surface}
-      overlayClassName="bg-overlay/40 backdrop-blur-sm"
+      overlayClassName="chat-dialog-overlay bg-overlay/40"
       className="w-140"
     >
       {Body && <Body project={project} session={session} onClose={onClose} />}

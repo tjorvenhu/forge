@@ -495,3 +495,15 @@ body {
   opacity: 0.3;
   pointer-events: none;
 }
+
+/*
+ * Dialogs over the chat (/usage, /context …) blur the chat itself. A backdrop-filter on the overlay
+ * missed the rows of the virtual list: they sit on their own compositor layers (transform).
+ * Radix puts overlay and dialog straight into the chat panel, so everything else there is the chat.
+ */
+.chat-surface > * {
+  transition: filter 180ms var(--ease-snappy);
+}
+.chat-surface:has(> .chat-dialog-overlay) > :not(.chat-dialog-overlay, [role="dialog"]) {
+  filter: blur(6px);
+}
