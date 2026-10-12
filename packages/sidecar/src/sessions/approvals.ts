@@ -54,6 +54,7 @@ export class ApprovalGate {
             currentBranch: needsBranch(toolName, input) ? await this.currentBranch(live.projectDir) : null,
             home: os.homedir(),
             extraWriteDirs: [claudePlansDir()],
+            disabledRules: new Set(this.core.db.getSettings().disabledPolicyRules),
           });
     } catch {
       v = GUARD_ERROR;

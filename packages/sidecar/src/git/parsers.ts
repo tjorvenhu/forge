@@ -200,7 +200,8 @@ export function untrackedDiff(path: string, content: Buffer): FileDiff {
   return { path, binary: false, additions: raw.length, deletions: 0, lines, truncated };
 }
 
-export const LOG_FORMAT = "%H%x1f%h%x1f%an%x1f%aI%x1f%s%x1e";
+// The subject comes last: it is the only field that may contain anything.
+export const LOG_FORMAT = "%H%x1f%h%x1f%an%x1f%aI%x1f%P%x1f%D%x1f%s%x1e";
 
 export function parseLog(out: string): CommitInfo[] {
   return out
@@ -208,8 +209,16 @@ export function parseLog(out: string): CommitInfo[] {
     .map((r) => r.replace(/^\s+/, ""))
     .filter(Boolean)
     .map((r) => {
-      const [hash = "", shortHash = "", author = "", date = "", subject = ""] = r.split("\x1f");
-      return { hash, shortHash, author, date, subject };
+      const [hash = "", shortHash = "", author = "", date = "", parents = "", refs = "", ...subject] = r.split("\x1f");
+      return {
+        hash,
+        shortHash,
+        author,
+        date,
+        subject: subject.join("\x1f"),
+        parents: parents.split(" ").filter(Boolean),
+        refs: refs.split(", ").filter(Boolean),
+      };
     });
 }
 

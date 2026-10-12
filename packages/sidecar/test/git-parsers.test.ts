@@ -113,10 +113,20 @@ describe("parseUnifiedDiff", () => {
 
 describe("log and branches", () => {
   it("parses log records", () => {
-    const out = "abc123\x1fabc\x1fJane\x1f2026-10-10T12:00:00+02:00\x1ffeat: login\x1e\ndef456\x1fdef\x1fJoe\x1f2026-10-09T12:00:00+02:00\x1ffix: x\x1e\n";
+    const out =
+      "abc123\x1fabc\x1fJane\x1f2026-10-10T12:00:00+02:00\x1fdef456 fed789\x1fHEAD -> main, origin/main, tag: v1\x1ffeat: login\x1e\n" +
+      "def456\x1fdef\x1fJoe\x1f2026-10-09T12:00:00+02:00\x1f\x1f\x1ffix: x\x1e\n";
     expect(parseLog(out)).toEqual([
-      { hash: "abc123", shortHash: "abc", author: "Jane", date: "2026-10-10T12:00:00+02:00", subject: "feat: login" },
-      { hash: "def456", shortHash: "def", author: "Joe", date: "2026-10-09T12:00:00+02:00", subject: "fix: x" },
+      {
+        hash: "abc123",
+        shortHash: "abc",
+        author: "Jane",
+        date: "2026-10-10T12:00:00+02:00",
+        subject: "feat: login",
+        parents: ["def456", "fed789"],
+        refs: ["HEAD -> main", "origin/main", "tag: v1"],
+      },
+      { hash: "def456", shortHash: "def", author: "Joe", date: "2026-10-09T12:00:00+02:00", subject: "fix: x", parents: [], refs: [] },
     ]);
   });
 

@@ -206,7 +206,7 @@ export class GitEngine {
   async log(cwd: string, limit: number): Promise<CommitInfo[]> {
     const hasHead = (await this.exec(cwd, ["rev-parse", "--verify", "-q", "HEAD"])).code === 0;
     if (!hasHead) return [];
-    return parseLog(await this.ok(cwd, ["log", `-n${limit}`, `--format=${LOG_FORMAT}`]));
+    return parseLog(await this.ok(cwd, ["log", "--topo-order", `-n${limit}`, `--format=${LOG_FORMAT}`]));
   }
 
   async branches(cwd: string): Promise<BranchInfo[]> {

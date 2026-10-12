@@ -167,6 +167,7 @@ export const DEFAULT_SETTINGS: Settings = {
   autoContinueAfterLimit: true,
   updateChecks: true,
   desktopNotifications: true,
+  disabledPolicyRules: [],
 };
 
 interface ProjectRow {

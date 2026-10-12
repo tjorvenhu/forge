@@ -4,7 +4,7 @@ export type View = "home" | "projects" | "sessions" | "github" | "mcp" | "settin
 export type WorkspaceTab = "chat" | "agents" | "git" | "files" | "settings";
 export type NewProjectMode = "import" | "create" | "clone";
 export type BottomTab = "output" | "dev";
-export type SettingsSection = "general" | "claude" | "phone" | "backup" | "rules" | "about";
+export type SettingsSection = "general" | "claude" | "policy" | "phone" | "backup" | "rules" | "about";
 
 /** activeSession values starting with this prefix point at a terminal session not yet adopted by FORGE */
 export const EXTERNAL_PREFIX = "ext:";

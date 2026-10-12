@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowDown, ArrowUp, CheckCircle2, CircleDashed, ExternalLink, GitPullRequest, RefreshCw, Sparkles, UploadCloud, XCircle } from "lucide-react";
+import { ArrowDown, ArrowUp, CheckCircle2, CircleDashed, CloudDownload, ExternalLink, GitPullRequest, RefreshCw, Sparkles, UploadCloud, XCircle } from "lucide-react";
 import type { Project } from "@forge/protocol";
 import { call, keys, useGitHubAccount, useGitStatus } from "@/lib/queries";
 import { errorMessage, RpcCallError } from "@/lib/rpc";
@@ -10,32 +10,26 @@ import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Dialog } from "@/components/ui/dialog";
 import { Field, Input, Textarea } from "@/components/ui/input";
-import { Badge, Checkbox, ErrorBanner, SectionTitle, Spinner } from "@/components/ui/misc";
+import { Badge, Checkbox, Spinner } from "@/components/ui/misc";
 
-/** Push/pull, publish to GitHub and the pull request of the current branch. */
-export function SyncCard({ project }: { project: Project }) {
+function useRefreshGit(projectId: string) {
   const qc = useQueryClient();
+  return () => {
+    void qc.invalidateQueries({ queryKey: keys.git(projectId) });
+    void qc.invalidateQueries({ queryKey: ["pr", projectId] });
+    void qc.invalidateQueries({ queryKey: keys.log(projectId) });
+  };
+}
+
+/** Fetch, pull and push as icon buttons for a section header; "Veröffentlichen" without a remote. */
+export function SyncActions({ project }: { project: Project }) {
   const status = useGitStatus(project.id, project.exists);
   const account = useGitHubAccount();
+  const refresh = useRefreshGit(project.id);
   const summary = status.data?.summary;
-  const hasRemote = !!summary?.remoteUrl;
-  const onGitHub = !!summary?.remoteUrl?.includes("github.com");
-  const pr = useQuery({
-    queryKey: ["pr", project.id, summary?.branch],
-    queryFn: () => call("github.pr", { projectId: project.id }),
-    enabled: onGitHub && !!account.data,
-    staleTime: 30_000,
-  });
   const [busy, setBusy] = useState<string | null>(null);
   const [confirmProtected, setConfirmProtected] = useState<string | null>(null);
   const [publishing, setPublishing] = useState(false);
-  const [creatingPr, setCreatingPr] = useState(false);
-
-  const refresh = () => {
-    void qc.invalidateQueries({ queryKey: keys.git(project.id) });
-    void qc.invalidateQueries({ queryKey: ["pr", project.id] });
-    void qc.invalidateQueries({ queryKey: keys.log(project.id) });
-  };
 
   /** `rethrow` for calls from a ConfirmDialog, which stays open when onConfirm throws. */
   const run = async (label: string, fn: () => Promise<unknown>, success: string, rethrow = false) => {
@@ -59,97 +53,57 @@ export function SyncCard({ project }: { project: Project }) {
   if (!summary) return null;
 
   return (
-    <section>
-      <SectionTitle
-        action={
-          hasRemote && (
-            <Button size="sm" variant="ghost" onClick={() => void run("Abrufen", () => call("git.fetch", { projectId: project.id }), "Remote abgerufen")} loading={busy === "Abrufen"}>
-              <RefreshCw className="h-3.5 w-3.5" /> Abrufen
-            </Button>
-          )
-        }
-      >
-        Synchronisieren
-      </SectionTitle>
-      <div className="flex flex-col gap-3 rounded-lg border border-border bg-surface p-3">
-        {!hasRemote ? (
-          <div className="flex items-center gap-3">
-            <p className="flex-1 text-body text-muted">Kein Remote verbunden.</p>
-            <Button size="sm" variant="primary" disabled={!account.data} onClick={() => setPublishing(true)} title={account.data ? undefined : "Erst unter GitHub anmelden"}>
-              <UploadCloud className="h-3.5 w-3.5" /> Auf GitHub veröffentlichen
-            </Button>
-          </div>
-        ) : (
-          <div className="flex items-center gap-2 text-body">
-            <span className="min-w-0 flex-1 truncate text-muted">
-              {summary.upstream ?? "kein Upstream"}
-              {summary.ahead > 0 && <span className="ml-2 text-fg">{summary.ahead} zum Pushen</span>}
-              {summary.behind > 0 && <span className="ml-2 text-warning">{summary.behind} neu auf dem Remote</span>}
-            </span>
-            <Button size="sm" onClick={() => void run("Pull", () => call("git.pull", { projectId: project.id }), "Aktualisiert")} loading={busy === "Pull"}>
-              <ArrowDown className="h-3.5 w-3.5" /> Pull
-            </Button>
-            <Button size="sm" variant="primary" onClick={() => void run("Push", () => call("git.push", { projectId: project.id }), "Gepusht")} loading={busy === "Push"}>
-              <ArrowUp className="h-3.5 w-3.5" /> Push
-            </Button>
-          </div>
-        )}
-
-        {onGitHub && account.data && (
-          <div className="border-t border-border pt-3">
-            {pr.isLoading ? (
-              <Spinner className="h-3.5 w-3.5" />
-            ) : pr.isError ? (
-              <ErrorBanner
-                title="Pull Request nicht abgefragt"
-                action={
-                  <Button size="sm" variant="ghost" onClick={() => void pr.refetch()} loading={pr.isFetching}>
-                    <RefreshCw className="h-3.5 w-3.5" /> Erneut
-                  </Button>
-                }
-              >
-                {errorMessage(pr.error)}
-              </ErrorBanner>
-            ) : pr.data ? (
-              <div className="flex items-center gap-2 text-body">
-                <GitPullRequest className="h-4 w-4 text-accent" />
-                <span className="min-w-0 flex-1 truncate">
-                  #{pr.data.number} {pr.data.title}
-                </span>
-                <Badge tone={pr.data.state === "OPEN" ? (pr.data.draft ? "neutral" : "success") : pr.data.state === "MERGED" ? "accent" : "neutral"}>
-                  {pr.data.draft ? "Entwurf" : pr.data.state === "OPEN" ? "offen" : pr.data.state === "MERGED" ? "gemergt" : "geschlossen"}
-                </Badge>
-                {pr.data.checks.total > 0 &&
-                  (pr.data.checks.failed > 0 ? (
-                    <Badge tone="danger">
-                      <XCircle className="h-3 w-3" /> {pr.data.checks.failed} Checks rot
-                    </Badge>
-                  ) : pr.data.checks.pending > 0 ? (
-                    <Badge tone="warning">
-                      <CircleDashed className="h-3 w-3" /> Checks laufen
-                    </Badge>
-                  ) : (
-                    <Badge tone="success">
-                      <CheckCircle2 className="h-3 w-3" /> Checks grün
-                    </Badge>
-                  ))}
-                {pr.data.reviewDecision === "APPROVED" && <Badge tone="success">freigegeben</Badge>}
-                {pr.data.reviewDecision === "CHANGES_REQUESTED" && <Badge tone="warning">Änderungen gewünscht</Badge>}
-                <Button size="icon-sm" variant="ghost" aria-label="Pull Request öffnen" onClick={() => void openExternal(pr.data!.url)}>
-                  <ExternalLink className="h-3.5 w-3.5" />
-                </Button>
-              </div>
-            ) : (
-              <div className="flex items-center gap-3">
-                <p className="flex-1 text-body text-muted">Kein Pull Request für {summary.branch}.</p>
-                <Button size="sm" onClick={() => setCreatingPr(true)} disabled={summary.branch === "main" || summary.branch === "master"} title={summary.branch === "main" || summary.branch === "master" ? "Erst einen Feature-Branch anlegen" : undefined}>
-                  <GitPullRequest className="h-3.5 w-3.5" /> Pull Request erstellen
-                </Button>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
+    <>
+      {!summary.remoteUrl ? (
+        <Button
+          size="sm"
+          variant="ghost"
+          className="h-6 px-1.5"
+          disabled={!account.data}
+          onClick={() => setPublishing(true)}
+          title={account.data ? "Auf GitHub veröffentlichen" : "Erst unter GitHub anmelden"}
+        >
+          <UploadCloud className="h-3.5 w-3.5" /> Veröffentlichen
+        </Button>
+      ) : (
+        <>
+          <Button
+            size="icon-sm"
+            variant="ghost"
+            className="h-6 w-6"
+            onClick={() => void run("Abrufen", () => call("git.fetch", { projectId: project.id }), "Remote abgerufen")}
+            loading={busy === "Abrufen"}
+            aria-label="Abrufen"
+            title={`Abrufen (fetch)${summary.upstream ? ` von ${summary.upstream}` : ""}`}
+          >
+            <CloudDownload className="h-3.5 w-3.5" />
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-6 gap-1 px-1.5"
+            onClick={() => void run("Pull", () => call("git.pull", { projectId: project.id }), "Aktualisiert")}
+            loading={busy === "Pull"}
+            aria-label="Pull"
+            title={summary.behind > 0 ? `Pull: ${summary.behind} neu auf dem Remote` : "Pull"}
+          >
+            <ArrowDown className="h-3.5 w-3.5" />
+            {summary.behind > 0 && <span className="text-warning">{summary.behind}</span>}
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-6 gap-1 px-1.5"
+            onClick={() => void run("Push", () => call("git.push", { projectId: project.id }), "Gepusht")}
+            loading={busy === "Push"}
+            aria-label="Push"
+            title={summary.ahead > 0 ? `Push: ${summary.ahead} Commits zum Pushen` : "Push"}
+          >
+            <ArrowUp className="h-3.5 w-3.5" />
+            {summary.ahead > 0 && <span className="text-fg">{summary.ahead}</span>}
+          </Button>
+        </>
+      )}
 
       <ConfirmDialog
         open={!!confirmProtected}
@@ -162,8 +116,81 @@ export function SyncCard({ project }: { project: Project }) {
         onConfirm={() => run("Push", () => call("git.push", { projectId: project.id, allowProtected: true }), "Gepusht", true)}
       />
       <PublishDialog open={publishing} onOpenChange={setPublishing} project={project} onDone={refresh} />
+    </>
+  );
+}
+
+/** The pull request of the current branch (or a button to create one), for GitHub remotes only. */
+export function PullRequestBar({ project }: { project: Project }) {
+  const status = useGitStatus(project.id, project.exists);
+  const account = useGitHubAccount();
+  const refresh = useRefreshGit(project.id);
+  const summary = status.data?.summary;
+  const onGitHub = !!summary?.remoteUrl?.includes("github.com");
+  const pr = useQuery({
+    queryKey: ["pr", project.id, summary?.branch],
+    queryFn: () => call("github.pr", { projectId: project.id }),
+    enabled: onGitHub && !!account.data,
+    staleTime: 30_000,
+  });
+  const [creatingPr, setCreatingPr] = useState(false);
+
+  if (!summary || !onGitHub || !account.data) return null;
+  const onMain = summary.branch === "main" || summary.branch === "master";
+
+  return (
+    <div className="flex h-8 shrink-0 items-center gap-2 border-b border-border px-3 text-small-lg">
+      <GitPullRequest className="h-3.5 w-3.5 shrink-0 text-muted" />
+      {pr.isLoading ? (
+        <Spinner className="h-3.5 w-3.5" />
+      ) : pr.isError ? (
+        <>
+          <span className="min-w-0 flex-1 truncate text-danger" title={errorMessage(pr.error)}>
+            Pull Request nicht abgefragt
+          </span>
+          <Button size="icon-sm" variant="ghost" className="h-6 w-6" onClick={() => void pr.refetch()} loading={pr.isFetching} aria-label="Erneut abfragen" title="Erneut abfragen">
+            <RefreshCw className="h-3.5 w-3.5" />
+          </Button>
+        </>
+      ) : pr.data ? (
+        <>
+          <button className="min-w-0 flex-1 truncate text-left hover:underline" onClick={() => void openExternal(pr.data!.url)} title="Auf GitHub öffnen">
+            #{pr.data.number} {pr.data.title}
+          </button>
+          <Badge tone={pr.data.state === "OPEN" ? (pr.data.draft ? "neutral" : "success") : pr.data.state === "MERGED" ? "accent" : "neutral"}>
+            {pr.data.draft ? "Entwurf" : pr.data.state === "OPEN" ? "offen" : pr.data.state === "MERGED" ? "gemergt" : "geschlossen"}
+          </Badge>
+          {pr.data.checks.total > 0 &&
+            (pr.data.checks.failed > 0 ? (
+              <XCircle className="h-3.5 w-3.5 shrink-0 text-danger" aria-label={`${pr.data.checks.failed} Checks rot`} />
+            ) : pr.data.checks.pending > 0 ? (
+              <CircleDashed className="h-3.5 w-3.5 shrink-0 text-warning" aria-label="Checks laufen" />
+            ) : (
+              <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-success" aria-label="Checks grün" />
+            ))}
+          {pr.data.reviewDecision === "APPROVED" && <Badge tone="success">freigegeben</Badge>}
+          {pr.data.reviewDecision === "CHANGES_REQUESTED" && <Badge tone="warning">Änderungen gewünscht</Badge>}
+          <Button size="icon-sm" variant="ghost" className="h-6 w-6" aria-label="Pull Request öffnen" onClick={() => void openExternal(pr.data!.url)}>
+            <ExternalLink className="h-3.5 w-3.5" />
+          </Button>
+        </>
+      ) : (
+        <>
+          <span className="min-w-0 flex-1 truncate text-muted">Kein Pull Request für {summary.branch}</span>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-6 px-1.5"
+            onClick={() => setCreatingPr(true)}
+            disabled={onMain}
+            title={onMain ? "Erst einen Feature-Branch anlegen" : undefined}
+          >
+            Erstellen
+          </Button>
+        </>
+      )}
       <CreatePrDialog open={creatingPr} onOpenChange={setCreatingPr} project={project} onDone={refresh} />
-    </section>
+    </div>
   );
 }
 

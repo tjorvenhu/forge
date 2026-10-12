@@ -69,7 +69,7 @@ describe("GitPanel commit flow", () => {
       throw new Error("unexpected " + method);
     });
     setup();
-    await screen.findByText("src/a.ts");
+    await screen.findByRole("checkbox", { name: "src/a.ts auswählen" });
     fireEvent.click(screen.getByRole("checkbox", { name: "src/a.ts auswählen" }));
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "Commit-Nachricht mit Claude erzeugen" })));
     expect(callMock).toHaveBeenCalledWith("git.suggestCommitMessage", { projectId: "p1", paths: ["src/a.ts"] });
@@ -78,7 +78,7 @@ describe("GitPanel commit flow", () => {
 
   it("commits exactly the selected files after the review dialog", async () => {
     setup();
-    await screen.findByText("src/a.ts");
+    await screen.findByRole("checkbox", { name: "src/a.ts auswählen" });
     fireEvent.click(screen.getByRole("checkbox", { name: "src/a.ts auswählen" }));
     fireEvent.change(screen.getByLabelText("Commit-Nachricht"), { target: { value: "feat: test" } });
     const commitBtn = screen.getByRole("button", { name: /Commit erstellen \(1\)/ });
@@ -91,7 +91,7 @@ describe("GitPanel commit flow", () => {
 
   async function openReview() {
     setup();
-    await screen.findByText("src/a.ts");
+    await screen.findByRole("checkbox", { name: "src/a.ts auswählen" });
     fireEvent.click(screen.getByRole("checkbox", { name: "src/a.ts auswählen" }));
     fireEvent.change(screen.getByLabelText("Commit-Nachricht"), { target: { value: "feat: test" } });
     fireEvent.click(screen.getByRole("button", { name: /Commit erstellen \(1\)/ }));
@@ -125,7 +125,7 @@ describe("GitPanel commit flow", () => {
 
   it("keeps the commit button disabled without selection or message", async () => {
     setup();
-    await screen.findByText("src/a.ts");
+    await screen.findByRole("checkbox", { name: "src/a.ts auswählen" });
     expect((screen.getByRole("button", { name: /Commit erstellen \(0\)/ }) as HTMLButtonElement).disabled).toBe(true);
   });
 });

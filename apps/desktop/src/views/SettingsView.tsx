@@ -11,6 +11,7 @@ import {
   Phone,
   RefreshCw,
   ShieldAlert,
+  ShieldBan,
   SlidersHorizontal,
   SquareTerminal,
   Volume2,
@@ -36,6 +37,7 @@ import { MemoryEditor } from "@/components/settings/MemoryEditor";
 import { effortOptions, fromChoice, modelOptions, toChoice } from "@/components/settings/model-options";
 import { PhoneSettings } from "@/components/settings/PhoneSettings";
 import { BackupSettings } from "@/components/settings/BackupSettings";
+import { PolicySettings } from "@/components/settings/PolicySettings";
 import { AppUpdateSettings } from "@/components/layout/AppUpdate";
 import { capitalize, cn } from "@/lib/utils";
 
@@ -44,6 +46,7 @@ type Save = (patch: Partial<Settings>) => Promise<void>;
 const SECTIONS: ReadonlyArray<SettingsSectionDef<SettingsSection>> = [
   { id: "general", label: "Allgemein", hint: "Modell, Profil, Bedienung", Icon: SlidersHorizontal },
   { id: "claude", label: "Claude Code", hint: "Installation, Anmeldung, Limits", Icon: SquareTerminal },
+  { id: "policy", label: "Sperrliste", hint: "Was FORGE immer blockiert", Icon: ShieldBan },
   { id: "phone", label: "Telefon", hint: "Anrufe, Sprache, Tischtelefon", Icon: Phone },
   { id: "backup", label: "Backup", hint: "Sichern und zurücksetzen", Icon: ArchiveRestore },
   { id: "rules", label: "Globale Regeln", hint: "CLAUDE.md für alle Projekte", Icon: FileText },
@@ -77,6 +80,8 @@ export function SettingsView() {
           <GeneralSection s={s} save={save} />
         ) : current.id === "claude" ? (
           <ClaudeSection s={s} save={save} />
+        ) : current.id === "policy" ? (
+          <PolicySettings s={s} save={save} />
         ) : current.id === "phone" ? (
           <PhoneSection />
         ) : current.id === "backup" ? (
@@ -124,8 +129,8 @@ function GeneralSection({ s, save }: { s: Settings; save: Save }) {
           <div className="flex items-start gap-3 bg-danger-soft/40 px-4 py-3">
             <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0 text-danger" />
             <p className="text-xs text-muted">
-              Autonomous fragt nicht vor Befehlen und Dateiänderungen. Befehle laufen mit deinen Benutzerrechten. Die Sperrliste von FORGE gilt weiterhin: kein Force-Push,
-              kein reset --hard, kein Zugriff auf ~/.ssh und andere Zugangsdaten, kein Schreiben außerhalb des Projekts. Mit dem Tag sandbox-only nimmst du einzelne Projekte aus.
+              Autonomous fragt nicht vor Befehlen und Dateiänderungen. Befehle laufen mit deinen Benutzerrechten. Die Sperrliste von FORGE gilt weiterhin, ihre Regeln stellst du unter Sperrliste
+              ein. Mit dem Tag sandbox-only nimmst du einzelne Projekte aus.
             </p>
           </div>
         )}

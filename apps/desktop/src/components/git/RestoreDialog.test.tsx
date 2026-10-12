@@ -17,6 +17,8 @@ const commit: CommitInfo = {
   subject: "feat: Login",
   author: "Tjorven",
   date: "2026-10-10T12:00:00Z",
+  parents: [],
+  refs: [],
 };
 
 function setup(props: { current?: boolean; openChanges?: number } = {}) {

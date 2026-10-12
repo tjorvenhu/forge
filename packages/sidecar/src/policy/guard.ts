@@ -1,5 +1,6 @@
 import os from "node:os";
 import path from "node:path";
+import type { PolicyRuleId } from "@forge/protocol";
 import { isInside, sensitivePaths } from "../util/paths.js";
 
 export interface GuardContext {
@@ -11,6 +12,8 @@ export interface GuardContext {
   home?: string;
   /** folders outside the project that may still be written to (Claude Code's plan files) */
   extraWriteDirs?: string[];
+  /** rules the user switched off in the settings */
+  disabledRules?: ReadonlySet<PolicyRuleId>;
 }
 
 export interface GuardViolation {
@@ -29,7 +32,7 @@ const PROTECTED_BRANCHES = new Set(["main", "master"]);
 const SEP = String.raw`[^;&|\n]*`;
 const GIT_PUSH = String.raw`\bgit\b${SEP}\bpush\b${SEP}`;
 
-const GIT_RULES: Array<{ rule: string; re: RegExp; message: string }> = [
+const GIT_RULES: Array<{ rule: PolicyRuleId; re: RegExp; message: string }> = [
   {
     rule: "git-force-push",
     re: new RegExp(String.raw`${GIT_PUSH}(\s--force\b|\s--force-with-lease\b|\s-[a-zA-Z]*f\b|\s["']?\+[^\s]+)`),
@@ -232,36 +235,37 @@ function searchViolation(toolName: string, input: Record<string, unknown>, ctx: 
  */
 export function checkToolUse(toolName: string, input: Record<string, unknown>, ctx: GuardContext): GuardViolation | null {
   const home = ctx.home ?? os.homedir();
+  const on = (rule: PolicyRuleId) => !ctx.disabledRules?.has(rule);
   if (SHELL_TOOLS.has(toolName)) {
     const command = typeof input.command === "string" ? input.command : "";
     for (const r of GIT_RULES) {
-      if (r.re.test(command)) return { rule: r.rule, message: r.message };
+      if (on(r.rule) && r.re.test(command)) return { rule: r.rule, message: r.message };
     }
-    const del = rootDelete(command);
+    const del = on("rm-root") ? rootDelete(command) : null;
     if (del === "unix") return { rule: "rm-root", message: "Rekursives Löschen von Wurzel- oder Home-Verzeichnis ist gesperrt." };
     if (del === "win") return { rule: "rm-root-win", message: "Löschen von Laufwerks- oder Home-Wurzel ist gesperrt." };
-    if (FORMAT_DISK.test(command)) return { rule: "format-disk", message: "Datenträger formatieren ist gesperrt." };
-    if (SENSITIVE_SEGMENTS.test(command) || homeSecretPattern(home).test(command)) {
+    if (on("format-disk") && FORMAT_DISK.test(command)) return { rule: "format-disk", message: "Datenträger formatieren ist gesperrt." };
+    if (on("sensitive-path") && (SENSITIVE_SEGMENTS.test(command) || homeSecretPattern(home).test(command))) {
       return { rule: "sensitive-path", message: "Zugriff auf Zugangsdaten-Ordner (z. B. ~/.ssh) ist gesperrt." };
     }
-    if (ctx.currentBranch && PROTECTED_BRANCHES.has(ctx.currentBranch) && new RegExp(String.raw`\bgit\b${SEP}\bpush\b`).test(command)) {
+    if (on("git-push-protected") && ctx.currentBranch && PROTECTED_BRANCHES.has(ctx.currentBranch) && new RegExp(String.raw`\bgit\b${SEP}\bpush\b`).test(command)) {
       return { rule: "git-push-protected", message: `Push vom geschützten Branch ${ctx.currentBranch} ist gesperrt.` };
     }
     return null;
   }
 
   if (FILE_TOOLS.has(toolName)) {
-    for (const raw of pathFields(input)) {
+    for (const raw of on("sensitive-path") ? pathFields(input) : []) {
       const abs = resolveToolPath(raw, ctx.projectDir, home);
       if (isSensitivePath(abs, home)) {
         return { rule: "sensitive-path", message: `Zugriff auf ${raw} ist gesperrt (Zugangsdaten/Browserprofil).` };
       }
     }
-    if (SEARCH_TOOLS.has(toolName)) {
+    if (on("sensitive-path") && SEARCH_TOOLS.has(toolName)) {
       const v = searchViolation(toolName, input, ctx, home);
       if (v) return v;
     }
-    if (ctx.confineWritesToProject && writesOutsideProject(toolName, input, ctx.projectDir, home, ctx.extraWriteDirs)) {
+    if (on("write-outside-project") && ctx.confineWritesToProject && writesOutsideProject(toolName, input, ctx.projectDir, home, ctx.extraWriteDirs)) {
       return { rule: "write-outside-project", message: "Im Autonomous-Profil sind Schreibzugriffe außerhalb des Projekts gesperrt." };
     }
   }

@@ -30,6 +30,10 @@
   --color-diff-del: #f0605a1a;
   --color-claude: #d97757;
   --color-claude-soft: #d977571f;
+  /* extra lane colors of the commit graph, next to accent, success and warning */
+  --color-graph-blue: #4f9cf0;
+  --color-graph-pink: #e0679f;
+  --color-graph-purple: #a78bfa;
   /* backdrop behind dialogs and the command palette */
   --color-overlay: #0a0c1099;
 

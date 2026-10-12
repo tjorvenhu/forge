@@ -35,6 +35,10 @@ der Rechteprüfung laufen. Blockiert werden u. a.:
 - im Autonomous-Profil: Schreibzugriffe der Datei-Tools (Write, Edit, MultiEdit, NotebookEdit) außerhalb des Projekts
 - ein Permission-Modus über dem Profil: Meldet Claude Code einen höheren Modus (etwa nach einem Wechsel über Remote Control), setzt FORGE ihn zurück (Regel `permission-mode`); klappt das nicht, wird die Session beendet
 
+Unter Einstellungen → Sperrliste lässt sich jede Regel einzeln ausschalten (Setting `disabledPolicyRules`, gilt global
+für alle Projekte und Profile ab dem nächsten Tool-Aufruf). Standard: alle Regeln an. Nicht abschaltbar sind die
+Profil-Regeln (`profile-tool`, `permission-mode`) und `guard-error`.
+
 Jede Blockade wird als `policy.blocked`-Event angezeigt und in `approvals` auditiert. Schlägt die Prüfung selbst
 oder das Protokollieren fehl, wird der Aufruf abgelehnt (Regel `guard-error`).
 

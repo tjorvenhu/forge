@@ -3,6 +3,22 @@ import { z } from "zod";
 export const ProfileId = z.enum(["safe", "balanced", "autonomous"]);
 export type ProfileId = z.infer<typeof ProfileId>;
 
+/** Rules of FORGE's hard blocklist (policy/guard.ts) that can be switched off in the settings. */
+export const PolicyRuleId = z.enum([
+  "git-force-push",
+  "git-push-mirror",
+  "git-push-protected",
+  "git-push-delete",
+  "git-reset-hard",
+  "git-branch-delete",
+  "git-clean-force",
+  "rm-root",
+  "format-disk",
+  "sensitive-path",
+  "write-outside-project",
+]);
+export type PolicyRuleId = z.infer<typeof PolicyRuleId>;
+
 export const PermissionMode = z.enum(["default", "acceptEdits", "plan", "bypassPermissions"]);
 export type PermissionMode = z.infer<typeof PermissionMode>;
 
@@ -351,6 +367,10 @@ export const CommitInfo = z.object({
   author: z.string(),
   date: z.string(),
   subject: z.string(),
+  /** full hashes of the parent commits; empty for a root commit */
+  parents: z.array(z.string()),
+  /** decorations as git prints them, e.g. "HEAD -> main", "origin/main", "tag: v1.0" */
+  refs: z.array(z.string()),
 });
 export type CommitInfo = z.infer<typeof CommitInfo>;
 
@@ -377,6 +397,8 @@ export const Settings = z.object({
   updateChecks: z.boolean(),
   /** Windows notifications when Claude is done, needs a decision or fails */
   desktopNotifications: z.boolean(),
+  /** blocklist rules the user switched off; every other rule applies */
+  disabledPolicyRules: z.array(PolicyRuleId),
 });
 export type Settings = z.infer<typeof Settings>;
 

@@ -1,6 +1,7 @@
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
+import type { PolicyRuleId } from "@forge/protocol";
 import { checkToolUse, claudePlansDir, resolveToolPath, writesOutsideProject } from "../src/policy/guard.js";
 import { effectivePermissionMode, PROFILES, resolveProfile } from "../src/policy/profiles.js";
 import { redact, redactText } from "../src/policy/redact.js";
@@ -164,6 +165,44 @@ describe("guard: file tools", () => {
     expect(writesOutsideProject("Edit", { file_path: "../escape.txt" }, projectDir)).toBe(true);
     expect(writesOutsideProject("Edit", { file_path: "inner/../ok.txt" }, projectDir)).toBe(false);
     expect(writesOutsideProject("Read", { file_path: "../escape.txt" }, projectDir)).toBe(false);
+  });
+});
+
+describe("guard: rules switched off in the settings", () => {
+  const off = (...rules: PolicyRuleId[]) => ({ ...ctx, disabledRules: new Set(rules) });
+
+  it("skips exactly the switched-off rule", () => {
+    expect(bash("git push --force", off("git-force-push"))).toBeNull();
+    expect(bash("git reset --hard", off("git-force-push"))).toBe("git-reset-hard");
+    expect(bash("git branch -D old", off("git-branch-delete"))).toBeNull();
+    expect(bash("format C:", off("format-disk"))).toBeNull();
+  });
+
+  it("switches off push from a protected branch together with push to it", () => {
+    const onMain = { ...off("git-push-protected"), currentBranch: "main" };
+    expect(bash("git push", { ...ctx, currentBranch: "main" })).toBe("git-push-protected");
+    expect(bash("git push", onMain)).toBeNull();
+    expect(bash("git push origin main", onMain)).toBeNull();
+  });
+
+  it("covers Unix and Windows root deletes with one rule", () => {
+    expect(bash("rm -rf /", off("rm-root"))).toBeNull();
+    expect(bash("Remove-Item -Recurse -Force C:\\", off("rm-root"))).toBeNull();
+  });
+
+  it("covers credentials in commands, file tools and searches with one rule", () => {
+    const c = off("sensitive-path");
+    expect(bash("cat ~/.ssh/id_rsa", c)).toBeNull();
+    expect(checkToolUse("Read", { file_path: path.join(home, ".ssh", "id_rsa") }, c)).toBeNull();
+    expect(checkToolUse("Grep", { pattern: "x", path: home }, c)).toBeNull();
+  });
+
+  it("allows writes outside the project in a confining profile", () => {
+    const outside = { file_path: path.join(home, "other", "x.txt") };
+    expect(checkToolUse("Write", outside, { ...off("write-outside-project"), confineWritesToProject: true })).toBeNull();
+    expect(checkToolUse("Write", { file_path: path.join(home, ".ssh", "config") }, { ...off("write-outside-project"), confineWritesToProject: true })?.rule).toBe(
+      "sensitive-path",
+    );
   });
 });
 
