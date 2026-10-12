@@ -80,9 +80,19 @@ export function ToggleRow({
   );
 }
 
-export function Tooltip({ content, children }: { content: ReactNode; children: ReactNode }) {
+export function Tooltip({
+  content,
+  children,
+  open,
+  onOpenChange,
+}: {
+  content: ReactNode;
+  children: ReactNode;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+}) {
   return (
-    <T.Root delayDuration={400}>
+    <T.Root delayDuration={400} open={open} onOpenChange={onOpenChange}>
       <T.Trigger asChild>{children}</T.Trigger>
       <T.Portal>
         <T.Content sideOffset={6} className={cn("z-50 max-w-xs rounded-md border border-border bg-surface-3 px-2 py-1 text-xs text-fg shadow-lg", POPPER_MOTION)}>

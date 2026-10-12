@@ -1,4 +1,4 @@
-import type { RateLimitState } from "@forge/protocol";
+import type { PlanUsage, RateLimitState } from "@forge/protocol";
 
 const LABELS: Record<string, string> = {
   five_hour: "5-Stunden-Limit",
@@ -25,9 +25,15 @@ export function limitDateTime(iso: string): string {
   return new Date(iso).toLocaleString("de-DE", { weekday: "long", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
 }
 
-/** The limit state while it applies; null once it is fine again or its reset time has passed. */
-export function activeRateLimit(state: RateLimitState | undefined, now = Date.now()): RateLimitState | null {
+/**
+ * The limit state while it applies; null once it is fine again or its reset time has passed.
+ * Claude Code does not always send a reset time with the limit; then the matching window of the
+ * plan usage fills it in (for an unnamed limit, the fullest window, since that is the one running out).
+ */
+export function activeRateLimit(state: RateLimitState | undefined, now = Date.now(), usage?: PlanUsage): RateLimitState | null {
   if (!state || state.status === "ok") return null;
-  if (state.resetsAt && Date.parse(state.resetsAt) <= now) return null;
-  return state;
+  if (state.resetsAt) return Date.parse(state.resetsAt) <= now ? null : state;
+  const future = (usage?.windows ?? []).filter((w) => w.resetsAt && Date.parse(w.resetsAt) > now);
+  const window = state.limitType ? future.find((w) => w.key === state.limitType) : future.sort((a, b) => b.utilization - a.utilization)[0];
+  return window ? { ...state, resetsAt: window.resetsAt } : state;
 }

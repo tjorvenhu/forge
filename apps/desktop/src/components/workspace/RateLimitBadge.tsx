@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { AlertTriangle } from "lucide-react";
-import { useRateLimit } from "@/lib/queries";
+import { useRateLimit, useUsage } from "@/lib/queries";
 import { activeRateLimit, limitDateTime, limitLabel, limitTime } from "@/lib/rate-limit";
+import { relativeTime } from "@/lib/utils";
 import { Badge, Tooltip } from "@/components/ui/misc";
 
 /** setTimeout fires immediately for delays above 2^31-1 ms; later resets are rechecked after this. */
@@ -9,12 +10,16 @@ const MAX_TIMER_MS = 2_000_000_000;
 
 /**
  * Account-wide plan limit, shown as long as it applies: close to the limit, or reached. `autoContinueAt`
- * of the shown session replaces the reset time, since that is when work goes on.
+ * of the shown session replaces the reset time, since that is when work goes on. The details open on
+ * hover and also on click, so they can be read without holding the mouse still.
  */
 export function RateLimitBadge({ autoContinueAt }: { autoContinueAt: string | null }) {
   const { data } = useRateLimit();
+  const usage = useUsage();
   const [now, setNow] = useState(() => Date.now());
-  const state = activeRateLimit(data, now);
+  const [hovered, setHovered] = useState(false);
+  const [pinned, setPinned] = useState(false);
+  const state = activeRateLimit(data, now, usage.data);
   const resetsAt = state?.resetsAt ?? null;
 
   // The badge has to go when the reset time passes, even if Claude Code reports nothing new.
@@ -29,23 +34,38 @@ export function RateLimitBadge({ autoContinueAt }: { autoContinueAt: string | nu
   const goOn = reached ? (autoContinueAt ?? resetsAt) : resetsAt;
   const text = reached ? `Limit erreicht${goOn ? ` · weiter um ${limitTime(goOn, now)}` : ""}` : `Limit fast erreicht${resetsAt ? ` · Reset ${limitTime(resetsAt, now)}` : ""}`;
   return (
-    <Tooltip
-      content={
-        <div className="space-y-1 py-0.5">
-          <div className="font-medium">
-            {limitLabel(state.limitType)} {reached ? "erreicht" : "fast erreicht"}
-            {state.utilization !== null ? ` (${state.utilization} % genutzt)` : ""}
+    <span role="status">
+      <Tooltip
+        open={pinned || hovered}
+        onOpenChange={setHovered}
+        content={
+          <div className="space-y-1 py-0.5">
+            <div className="font-medium">
+              {limitLabel(state.limitType)} {reached ? "erreicht" : "fast erreicht"}
+              {state.utilization !== null ? ` (${state.utilization} % genutzt)` : ""}
+            </div>
+            <div className="text-muted">
+              {resetsAt ? `Wird ${relativeTime(resetsAt, now)} zurückgesetzt: ${limitDateTime(resetsAt)}` : "Claude Code hat keine Zeit für den Reset gemeldet."}
+            </div>
+            {reached && autoContinueAt && <div className="text-muted">FORGE macht diese Session am {limitDateTime(autoContinueAt)} automatisch weiter.</div>}
           </div>
-          {resetsAt && <div className="text-muted">Zurückgesetzt am {limitDateTime(resetsAt)}</div>}
-          {reached && autoContinueAt && <div className="text-muted">FORGE macht diese Session am {limitDateTime(autoContinueAt)} automatisch weiter.</div>}
-        </div>
-      }
-    >
-      <span role="status" aria-label={text}>
-        <Badge tone={reached ? "danger" : "warning"}>
-          <AlertTriangle className="h-3 w-3" /> {text}
-        </Badge>
-      </span>
-    </Tooltip>
+        }
+      >
+        <button
+          type="button"
+          className="rounded"
+          aria-expanded={pinned}
+          onClick={() => setPinned((p) => !p)}
+          onBlur={() => setPinned(false)}
+          onKeyDown={(e) => {
+            if (e.key === "Escape") setPinned(false);
+          }}
+        >
+          <Badge tone={reached ? "danger" : "warning"}>
+            <AlertTriangle className="h-3 w-3" /> {text}
+          </Badge>
+        </button>
+      </Tooltip>
+    </span>
   );
 }
