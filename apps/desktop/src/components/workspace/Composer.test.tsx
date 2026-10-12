@@ -138,6 +138,7 @@ describe("/clear", () => {
     expect(callMock).toHaveBeenCalledWith("sessions.close", { sessionId: "s1" });
     expect(useUi.getState().activeSession.p1).toBeNull();
     expect(useDrafts.getState().drafts.s1?.text).toBe("");
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("textbox", { name: "Nachricht an Claude" })));
   });
 
   it("leaves a working session running", async () => {

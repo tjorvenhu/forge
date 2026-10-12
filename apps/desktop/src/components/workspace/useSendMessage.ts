@@ -134,6 +134,8 @@ export function useSendMessage({
 export function clearConversation(projectId: string, session: Session | null, draftKey: string) {
   useDrafts.getState().setText(draftKey, "");
   useUi.getState().setActiveSession(projectId, null);
+  // The new chat mounts a fresh composer, so the focus of the old one is gone.
+  requestAnimationFrame(() => document.getElementById("composer-input")?.focus());
   if (session?.live && (session.status === "idle" || session.status === "error")) {
     void call("sessions.close", { sessionId: session.id }).catch((e: unknown) => toast.error("Claude-Prozess nicht beendet", errorMessage(e)));
   }
