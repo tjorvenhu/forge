@@ -697,7 +697,17 @@ export type DevServerState = z.infer<typeof DevServerState>;
 export const AppUpdateState = z.object({
   currentVersion: z.string(),
   phase: z.enum(["idle", "checking", "uptodate", "available", "downloading", "ready", "error"]),
-  latest: z.object({ version: z.string(), tag: z.string(), notes: z.string(), publishedAt: z.string().nullable(), size: z.number().nullable() }).nullable(),
+  latest: z
+    .object({
+      version: z.string(),
+      tag: z.string(),
+      notes: z.string(),
+      publishedAt: z.string().nullable(),
+      size: z.number().nullable(),
+      /** patch: only exe and sidecar (a few MB); full: installer with the bundled runtime */
+      kind: z.enum(["patch", "full"]),
+    })
+    .nullable(),
   /** downloaded and checked installer, ready to run */
   installerPath: z.string().nullable(),
   /** false in a development build: there is no installation to update */

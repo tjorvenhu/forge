@@ -19,3 +19,6 @@ packages/sidecar/.e2e-tmp/
 # mitgelieferte Laufzeit (scripts/prepare-runtime.mjs)
 apps/desktop/src-tauri/runtime/
 .runtime-cache/
+
+# CI-Override des Release-Workflows
+apps/desktop/src-tauri/tauri.ci.json

@@ -15,6 +15,12 @@ import { Markdown } from "@/components/workspace/Markdown";
 import { useUi } from "@/stores/ui";
 import { Logo } from "./Logo";
 
+/** "kleines Update · 4 MB" or "vollständiger Installer · 92 MB". */
+function sizeLabel(latest: NonNullable<AppUpdateState["latest"]>): string {
+  const kind = latest.kind === "patch" ? "kleines Update" : "vollständiger Installer";
+  return latest.size ? `${kind} · ${Math.max(1, Math.round(latest.size / 1048576))} MB` : kind;
+}
+
 /** Downloads the installer if needed, then lets the desktop shell run it; FORGE restarts on its own. */
 function useInstall() {
   const qc = useQueryClient();
@@ -61,7 +67,7 @@ export function AppUpdateCard({ compact }: { compact?: boolean }) {
         <div className="min-w-0 flex-1">
           <div className="text-body font-medium">FORGE {s.latest.version} ist da</div>
           <div className="text-caption text-muted">
-            Installiert: {s.currentVersion}
+            Installiert: {s.currentVersion} · {sizeLabel(s.latest)}
             {s.latest.publishedAt ? ` · veröffentlicht ${relativeTime(s.latest.publishedAt)}` : ""}
           </div>
         </div>
@@ -105,7 +111,7 @@ export function AppUpdateDialog() {
       open
       onOpenChange={(o) => !o && setDismissed(tag)}
       title={`FORGE ${s.latest.version} ist verfügbar`}
-      description={`Installiert ist ${s.currentVersion}${s.latest.publishedAt ? `. Veröffentlicht ${relativeTime(s.latest.publishedAt)}.` : "."}`}
+      description={`Installiert ist ${s.currentVersion}${s.latest.publishedAt ? `. Veröffentlicht ${relativeTime(s.latest.publishedAt)}` : ""}. ${sizeLabel(s.latest)}.`}
       className="w-150"
       overlayClassName="backdrop-blur-sm"
       footer={

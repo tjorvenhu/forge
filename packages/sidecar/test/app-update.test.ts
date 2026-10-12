@@ -1,15 +1,24 @@
 import { createHash } from "node:crypto";
-import { readFileSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import type { AppUpdateState } from "@forge/protocol";
-import { AppUpdateService, compareVersions, UPDATE_REPO } from "../src/update/app-update.js";
+import { AppUpdateService, compareVersions, installedRuntimeKey, pickRelease, UPDATE_REPO, type Release } from "../src/update/app-update.js";
 
 const INSTALLER = Buffer.from("MZ fake installer");
 const DIGEST = `sha256:${createHash("sha256").update(INSTALLER).digest("hex")}`;
 
+const KEY = "node-24.21.0_git-2.56.0.2_gh-2.102.0";
+
+/** A release as the releases list returns it; by default a full installer only (like 0.1.1 to 0.1.6). */
+function rel(tag: string, assets: string[] = [`FORGE_${tag.slice(1)}_x64-setup.exe`], digest: string | null = DIGEST): Release {
+  return { tag_name: tag, body: "- feat: Update-Funktion", published_at: "2026-10-12T10:00:00Z", assets: assets.map((name) => ({ name, size: INSTALLER.length, digest })) };
+}
+
+/** The answer of the releases list with one release. */
 function release(tag: string, digest: string | null = DIGEST) {
-  return JSON.stringify({ tag_name: tag, body: "- feat: Update-Funktion", published_at: "2026-10-12T10:00:00Z", assets: [{ name: `FORGE_${tag.slice(1)}_x64-setup.exe`, size: INSTALLER.length, digest }] });
+  return JSON.stringify([rel(tag, undefined, digest)]);
 }
 
 function service(answer: (args: string[]) => { code: number; stdout?: string; stderr?: string }, version = "0.1.0") {
@@ -21,6 +30,7 @@ function service(answer: (args: string[]) => { code: number; stdout?: string; st
     log: () => {},
     currentVersion: version,
     installable: true,
+    runtimeKey: () => KEY,
     gh: async (args) => {
       calls.push(args);
       if (args[0] === "release" && args[1] === "download") {
@@ -46,8 +56,8 @@ describe("app updates", () => {
   it("offers a newer release, downloads the installer and checks its SHA-256", async () => {
     const { svc, calls } = service(() => ({ code: 0, stdout: release("v0.1.7") }));
     const checked = await svc.check();
-    expect(calls[0]).toEqual(["api", `repos/${UPDATE_REPO}/releases/latest`]);
-    expect(checked).toMatchObject({ phase: "available", latest: { version: "0.1.7", tag: "v0.1.7", notes: "- feat: Update-Funktion" } });
+    expect(calls[0]).toEqual(["api", `repos/${UPDATE_REPO}/releases?per_page=30`]);
+    expect(checked).toMatchObject({ phase: "available", latest: { version: "0.1.7", tag: "v0.1.7", notes: "- feat: Update-Funktion", kind: "full" } });
     const ready = await svc.download();
     expect(ready.phase).toBe("ready");
     expect(readFileSync(ready.installerPath!)).toEqual(INSTALLER);
@@ -109,9 +119,44 @@ describe("app updates", () => {
     expect(prompts).toHaveLength(1);
   });
 
+  it("takes the small update for the installed runtime, else the newest full installer", () => {
+    const list = [
+      rel("v0.1.9", [`FORGE_0.1.9_update_${KEY}.zip`]),
+      rel("v0.1.8", [`FORGE_0.1.8_update_${KEY}.zip`, `FORGE_0.1.8_${KEY}_x64-setup.exe`]),
+      rel("v0.1.6"),
+      { ...rel("v0.2.0-beta", [`FORGE_0.2.0-beta_update_${KEY}.zip`]), prerelease: true },
+    ];
+    // Same runtime: the newest release, a few MB.
+    expect(pickRelease(list, "0.1.6", KEY)).toMatchObject({ kind: "patch", release: { tag_name: "v0.1.9" }, asset: { name: `FORGE_0.1.9_update_${KEY}.zip` } });
+    // Older runtime (or none): the newest full installer; the small updates follow after it.
+    expect(pickRelease(list, "0.1.6", "node-22.0.0_git-2.50.0_gh-2.90.0")).toMatchObject({ kind: "full", release: { tag_name: "v0.1.8" } });
+    expect(pickRelease(list, "0.1.0", null)).toMatchObject({ kind: "full", release: { tag_name: "v0.1.8" } });
+    expect(pickRelease(list, "0.1.9", KEY)).toBeNull();
+  });
+
+  it("downloads the small update and checks it like an installer", async () => {
+    const { svc, calls } = service(() => ({ code: 0, stdout: JSON.stringify([rel("v0.1.9", [`FORGE_0.1.9_update_${KEY}.zip`])]) }), "0.1.8");
+    expect((await svc.check()).latest).toMatchObject({ kind: "patch", version: "0.1.9" });
+    const ready = await svc.download();
+    expect(ready.installerPath).toMatch(/FORGE_0\.1\.9_update_node-24\.21\.0_git-2\.56\.0\.2_gh-2\.102\.0\.zip$/);
+    expect(calls[1]).toEqual(expect.arrayContaining(["--pattern", `FORGE_0.1.9_update_${KEY}.zip`]));
+  });
+
   it("does not download without a known release", async () => {
     const { svc, calls } = service(() => ({ code: 0 }));
     expect((await svc.download()).phase).toBe("error");
     expect(calls).toEqual([]);
+  });
+
+  it("reads the runtime key of the installation", () => {
+    const dir = mkdtempSync(path.join(os.tmpdir(), "forge-runtime-"));
+    try {
+      expect(installedRuntimeKey(dir)).toBeNull();
+      writeFileSync(path.join(dir, "VERSIONS.json"), JSON.stringify({ node: "24.21.0", git: "2.56.0.2", gh: "2.102.0" }));
+      expect(installedRuntimeKey(dir)).toBe(KEY);
+      expect(installedRuntimeKey(undefined)).toBeNull();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
