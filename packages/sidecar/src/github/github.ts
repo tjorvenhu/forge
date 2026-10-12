@@ -2,6 +2,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { ForgeError, type GitHubAccount, type GitHubLoginState, type GitHubRepo, type PullRequest } from "@forge/protocol";
 import { run } from "../util/proc.js";
 import { resolveTool } from "../util/tools.js";
+import { authorsQuery, avatarKey, commitsToResolve, parseAuthorsResponse } from "./avatars.js";
 
 const HOST = "github.com";
 
@@ -12,6 +13,9 @@ const HOST = "github.com";
 export class GitHubService {
   private login: ChildProcess | null = null;
   private state: GitHubLoginState = { phase: "idle", code: null, url: null, message: null };
+  /** per "owner/repo", per lower-case author email */
+  private readonly avatarCache = new Map<string, Map<string, { url: string | null; at: number }>>();
+  private readonly avatarJobs = new Map<string, Promise<void>>();
 
   constructor(private readonly emit: (s: GitHubLoginState) => void) {}
 
@@ -209,10 +213,65 @@ export class GitHubService {
     return /(https:\/\/github\.com\/\S+\/pull\/\d+)/.exec(out)?.[1] ?? out;
   }
 
+  /**
+   * GitHub pictures of commit authors whose email does not name the account, by the email as given.
+   * One GraphQL request per call for the authors not cached yet; never throws, so a missing gh,
+   * no sign-in or no access just means no pictures.
+   */
+  async authorAvatars(remote: string | null, commits: ReadonlyArray<{ hash: string; authorEmail: string; avatarUrl: string | null }>): Promise<Record<string, string | null>> {
+    const repo = githubRepoFromRemote(remote);
+    if (!repo) return {};
+    const cache = this.avatarCache.get(repo) ?? new Map<string, { url: string | null; at: number }>();
+    this.avatarCache.set(repo, cache);
+    // One lookup per repository at a time; whoever waited finds its authors in the cache afterwards.
+    for (let running = this.avatarJobs.get(repo); running; running = this.avatarJobs.get(repo)) await running;
+
+    const fresh = (key: string) => {
+      const hit = cache.get(key);
+      return !!hit && (hit.url !== null || Date.now() - hit.at < AVATAR_MISS_TTL_MS);
+    };
+    const pending = commitsToResolve(
+      commits.filter((c) => !c.avatarUrl),
+      fresh,
+    );
+    if (pending.size) {
+      const job = this.lookupAuthors(repo, pending, cache)
+        .catch(() => {})
+        .finally(() => this.avatarJobs.delete(repo));
+      this.avatarJobs.set(repo, job);
+      await job;
+    }
+
+    const out: Record<string, string | null> = {};
+    for (const c of commits) {
+      if (c.avatarUrl) continue;
+      const hit = cache.get(avatarKey(c.authorEmail));
+      if (hit) out[c.authorEmail] = hit.url;
+    }
+    return out;
+  }
+
+  private async lookupAuthors(repo: string, pending: Map<string, string[]>, cache: Map<string, { url: string | null; at: number }>) {
+    const owners = [...pending.entries()].flatMap(([key, hashes]) => hashes.map((hash) => ({ key, hash })));
+    const [owner = "", name = ""] = repo.split("/");
+    const r = await this.gh_(["api", "graphql", "-f", `query=${authorsQuery(owners.map((o) => o.hash))}`, "-f", `owner=${owner}`, "-f", `name=${name}`]);
+    // gh exits non-zero when the answer has partial errors (e.g. an unknown commit), the data is still there.
+    const urls = parseAuthorsResponse(r.stdout, owners.length);
+    const now = Date.now();
+    for (const key of pending.keys()) cache.set(key, { url: null, at: now });
+    owners.forEach((o, i) => {
+      const url = urls[i];
+      if (url) cache.set(o.key, { url, at: now });
+    });
+  }
+
   shutdown() {
     this.login?.kill();
   }
 }
+
+/** Authors without a GitHub account found are asked again after this, e.g. once their commits are pushed. */
+const AVATAR_MISS_TTL_MS = 10 * 60_000;
 
 /** "owner/repo" for github.com remotes (https or scp-like), else null. */
 export function githubRepoFromRemote(remote: string | null): string | null {

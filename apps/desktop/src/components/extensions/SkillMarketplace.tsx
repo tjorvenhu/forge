@@ -11,6 +11,7 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Input } from "@/components/ui/input";
 import { Badge, EmptyState, ErrorBanner, Loading } from "@/components/ui/misc";
 import { Select } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 
 import { MARKETPLACE_LABEL, matchPlugins, type PluginShow as Show } from "./plugins";
 
@@ -52,6 +53,19 @@ export function SkillMarketplace() {
       toast.success(`${p.name} installiert`, "Neue Sessions laden die Skills des Plugins.");
     } catch (e) {
       toast.error(`${p.name} nicht installiert`, errorMessage(e));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const setEnabled = async (p: MarketplacePlugin, enabled: boolean) => {
+    setBusy(p.id);
+    try {
+      qc.setQueryData(PLUGINS_KEY, await call("plugins.setEnabled", { id: p.id, enabled }));
+      void qc.invalidateQueries({ queryKey: ["docs", "skill"] });
+      toast.success(enabled ? `${p.name} aktiviert` : `${p.name} deaktiviert`, "Gilt für neue Sessions.");
+    } catch (e) {
+      toast.error(enabled ? `${p.name} nicht aktiviert` : `${p.name} nicht deaktiviert`, errorMessage(e));
     } finally {
       setBusy(null);
     }
@@ -111,9 +125,17 @@ export function SkillMarketplace() {
               {p.description && <p className="mt-0.5 line-clamp-2 text-caption text-muted">{p.description}</p>}
             </div>
             {p.installed ? (
-              <Button size="sm" variant="danger-ghost" onClick={() => setRemoving(p)} disabled={busy !== null} aria-label={`${p.name} entfernen`}>
-                <Trash2 className="h-3.5 w-3.5" /> Entfernen
-              </Button>
+              <div className="flex shrink-0 items-center gap-2">
+                <Switch
+                  checked={p.enabled !== false}
+                  onChange={(v) => void setEnabled(p, v)}
+                  label={p.enabled === false ? `${p.name} aktivieren` : `${p.name} deaktivieren`}
+                  disabled={busy !== null}
+                />
+                <Button size="sm" variant="danger-ghost" onClick={() => setRemoving(p)} disabled={busy !== null} aria-label={`${p.name} entfernen`}>
+                  <Trash2 className="h-3.5 w-3.5" /> Entfernen
+                </Button>
+              </div>
             ) : (
               <Button size="sm" variant="secondary" onClick={() => void install(p)} loading={busy === p.id} disabled={busy !== null && busy !== p.id}>
                 <Download className="h-3.5 w-3.5" /> Installieren

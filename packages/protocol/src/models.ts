@@ -368,6 +368,9 @@ export const CommitInfo = z.object({
   hash: z.string(),
   shortHash: z.string(),
   author: z.string(),
+  authorEmail: z.string(),
+  /** GitHub picture when the email already names the account (noreply address); others come from git.authorAvatars */
+  avatarUrl: z.string().nullable(),
   date: z.string(),
   subject: z.string(),
   /** full hashes of the parent commits; empty for a root commit */

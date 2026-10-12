@@ -152,6 +152,7 @@ export const methods = {
   "plugins.catalog": { params: z.object({ refresh: z.boolean().optional() }), result: z.array(MarketplacePlugin) },
   "plugins.install": { params: z.object({ id: pluginId }), result: z.array(MarketplacePlugin) },
   "plugins.uninstall": { params: z.object({ id: pluginId }), result: z.array(MarketplacePlugin) },
+  "plugins.setEnabled": { params: z.object({ id: pluginId, enabled: z.boolean() }), result: z.array(MarketplacePlugin) },
 
   "worktrees.create": { params: projectRef.extend({ branch: z.string().min(1).max(200) }), result: Project },
   "worktrees.remove": {
@@ -248,6 +249,11 @@ export const methods = {
     /** the newest events (at most 2,000) after afterSeq; older ones page by passing the first seq as beforeSeq */
     params: sessionRef.extend({ afterSeq: z.number().int().optional(), beforeSeq: z.number().int().optional() }),
     result: z.array(SessionEvent),
+  },
+  /** the images of a sent user message, read back from the Claude Code transcript */
+  "sessions.images": {
+    params: sessionRef.extend({ seq: z.number().int() }),
+    result: z.array(z.object({ mediaType: z.string(), base64: z.string() })),
   },
   "sessions.start": {
     params: projectRef.extend({
@@ -393,6 +399,14 @@ export const methods = {
     result: z.object({ hash: z.string(), summary: z.string() }),
   },
   "git.log": { params: projectRef.extend({ limit: z.number().int().min(1).max(500).default(50) }), result: z.array(CommitInfo) },
+  /**
+   * GitHub pictures of the authors in the latest `limit` commits, by author email, looked up on the
+   * GitHub remote via gh. null: no GitHub account found. Emails without an entry were not looked up.
+   */
+  "git.authorAvatars": {
+    params: projectRef.extend({ limit: z.number().int().min(1).max(500).default(50) }),
+    result: z.record(z.string(), z.string().nullable()),
+  },
   /** Files of the project back to the state of a commit, as uncommitted changes; open work is stashed first. */
   "git.restoreTo": {
     params: projectRef.extend({ commit: z.string().regex(/^[0-9a-f]{7,40}$/i) }),

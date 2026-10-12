@@ -129,6 +129,7 @@ export function createHandlers(s: Services): Handlers {
     "plugins.catalog": ({ refresh }) => s.plugins.catalog(refresh),
     "plugins.install": ({ id }) => s.plugins.install(id),
     "plugins.uninstall": ({ id }) => s.plugins.uninstall(id),
+    "plugins.setEnabled": ({ id, enabled }) => s.plugins.setEnabled(id, enabled),
 
     "worktrees.create": ({ projectId, branch }) => s.worktrees.create(s.projects.requireExisting(projectId), branch),
     "worktrees.remove": async ({ projectId, force, deleteBranch }) => {
@@ -182,6 +183,7 @@ export function createHandlers(s: Services): Handlers {
     "sessions.toBackground": ({ sessionId, toolUseId }) => s.sessions.toBackground(sessionId, toolUseId),
     "sessions.fork": ({ sessionId, beforeSeq, rewindFiles }) => s.sessions.fork(sessionId, { beforeSeq, rewindFiles }),
     "sessions.events": ({ sessionId, afterSeq, beforeSeq }) => s.sessions.events(sessionId, afterSeq, beforeSeq),
+    "sessions.images": ({ sessionId, seq }) => s.sessions.images(sessionId, seq),
     "sessions.start": (p) => s.sessions.start(p),
     "sessions.send": ({ sessionId, text, attachments }) => s.sessions.send(sessionId, text, attachments),
     "sessions.resume": ({ sessionId, prompt, attachments }) => s.sessions.resume(sessionId, prompt, attachments),
@@ -243,6 +245,10 @@ export function createHandlers(s: Services): Handlers {
       return r;
     },
     "git.log": ({ projectId, limit }) => s.git.log(projectDir(projectId), limit),
+    "git.authorAvatars": async ({ projectId, limit }) => {
+      const dir = projectDir(projectId);
+      return s.github.authorAvatars(await s.git.remoteUrl(dir), await s.git.log(dir, limit));
+    },
     "git.restoreTo": async ({ projectId, commit }) => {
       const busy = s.sessions
         .listAll()

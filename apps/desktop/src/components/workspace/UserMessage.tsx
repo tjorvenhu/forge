@@ -13,6 +13,7 @@ import { ToggleRow, Tooltip } from "@/components/ui/misc";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import type { ChatItem } from "./chat-items";
 import { ChatRow, HoverTime } from "./ChatRow";
+import { MessageImages, useMessageImages } from "./MessageImages";
 
 /** A prompt of the user, with rewinding the files to the state before it and branching the conversation there. */
 export function UserMessage({ item, sessionId }: { item: Extract<ChatItem, { kind: "user" }>; sessionId: string }) {
@@ -56,16 +57,22 @@ export function UserMessage({ item, sessionId }: { item: Extract<ChatItem, { kin
       setLoading(false);
     }
   };
-  const hasMeta = item.attachments.length > 0 || item.remote || item.auto;
+  const imageNames = item.attachments.filter((a) => a.mediaType.startsWith("image/")).map((a) => a.name);
+  const images = useMessageImages(sessionId, item.seq, imageNames.length > 0);
+  // Without the transcript (e.g. after /clear) the images fall back to their name chips.
+  const showImages = imageNames.length > 0 && !images.isError && (images.data?.length ?? 1) > 0;
+  const chips = showImages ? item.attachments.filter((a) => !a.mediaType.startsWith("image/")) : item.attachments;
+  const hasMeta = chips.length > 0 || item.remote || item.auto;
   return (
     <div className="group -mx-3 rounded-md bg-surface-2 px-3 py-2.5">
       <ChatRow className="text-ui leading-[1.65]" marker={<UserAvatar />}>
         <div className="flex min-w-0 items-start gap-3">
           <div className="min-w-0 max-w-[90ch] flex-1">
             <div className="whitespace-pre-wrap break-words">{item.text}</div>
+            {showImages && <MessageImages images={images.data} names={imageNames} />}
             {hasMeta && (
               <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-caption leading-normal text-subtle">
-                {item.attachments.map((a, i) => (
+                {chips.map((a, i) => (
                   <span key={i} className="flex items-center gap-1 rounded-sm border border-border bg-surface px-1.5 py-0.5 text-muted">
                     {a.mediaType.startsWith("image/") ? <ImageIcon className="h-3 w-3" /> : <FileText className="h-3 w-3" />}
                     {a.name}

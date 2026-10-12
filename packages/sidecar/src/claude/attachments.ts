@@ -60,6 +60,21 @@ function toBlock(f: Loaded): ContentBlock {
   return { type: "text", text: `Angehängte Datei: ${f.name}\n${fence}\n${f.data.toString("utf8")}\n${fence}` };
 }
 
+/** The image blocks of one message in a Claude Code transcript, in the order they were sent; null when the message is not in it. */
+export function transcriptImages(messages: unknown[], uuid: string): Array<{ mediaType: string; base64: string }> | null {
+  const m = (messages as Array<Record<string, unknown> | null>).find((x) => x?.uuid === uuid);
+  if (!m) return null;
+  const content = (m.message as Record<string, unknown> | undefined)?.content;
+  if (!Array.isArray(content)) return [];
+  const images: Array<{ mediaType: string; base64: string }> = [];
+  for (const b of content as Array<Record<string, unknown> | null>) {
+    if (b?.type !== "image") continue;
+    const src = (b.source ?? {}) as Record<string, unknown>;
+    if (src.type === "base64" && typeof src.data === "string" && typeof src.media_type === "string") images.push({ mediaType: src.media_type, base64: src.data });
+  }
+  return images;
+}
+
 /** Loads and validates attachments; returns content blocks plus metadata for the timeline. */
 export async function buildAttachmentBlocks(list: Attachment[]): Promise<{ blocks: ContentBlock[]; meta: AttachmentMeta[] }> {
   const blocks: ContentBlock[] = [];

@@ -85,4 +85,11 @@ export class PluginService {
     this.cache = null;
     return this.catalog();
   }
+
+  async setEnabled(id: string, enabled: boolean): Promise<MarketplacePlugin[]> {
+    const r = await this.cli(["plugin", enabled ? "enable" : "disable", "--scope", "user", id], 60_000);
+    if (r.code !== 0) throw new ForgeError("CLAUDE_RUNTIME", (r.stderr || r.stdout || (enabled ? "Aktivieren fehlgeschlagen" : "Deaktivieren fehlgeschlagen")).trim());
+    this.cache = null;
+    return this.catalog();
+  }
 }

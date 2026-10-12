@@ -27,6 +27,7 @@ export const keys = {
   allSessions: (q: string, status: string) => ["allSessions", q, status] as const,
   liveSessions: ["liveSessions"] as const,
   session: (id: string) => ["session", id] as const,
+  sessionImages: (id: string, seq: number) => ["sessionImages", id, seq] as const,
   settings: ["settings"] as const,
   diagnostics: ["diagnostics"] as const,
   runtimeInfo: ["runtimeInfo"] as const,

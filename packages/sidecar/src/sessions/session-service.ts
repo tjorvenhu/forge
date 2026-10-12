@@ -14,6 +14,7 @@ import type {
   SlashCommand,
 } from "@forge/protocol";
 import { ForgeError } from "@forge/protocol";
+import { transcriptImages } from "../claude/attachments.js";
 import type { ClaudeRuntime } from "../claude/runtime.js";
 import { HISTORY_PAGE_LIMIT, type Db } from "../persistence/db.js";
 import type { GitEngine } from "../git/git.js";
@@ -322,6 +323,21 @@ export class SessionService {
       if (rec) this.core.emit({ event: "project.updated", payload: { projectId: rec.projectId } });
     }
     return r;
+  }
+
+  /**
+   * FORGE keeps only name and size of attachments; the image data lives in the Claude Code transcript.
+   * NOT_FOUND right after sending is normal: the CLI writes the message a moment later.
+   */
+  async images(sessionId: string, seq: number) {
+    const rec = this.db.getSession(sessionId);
+    if (!rec) throw new ForgeError("SESSION_NOT_FOUND", "Session nicht gefunden.");
+    const ev = this.db.getEvent(sessionId, seq);
+    if (ev?.body.type !== "user.message" || !ev.body.uuid) throw new ForgeError("VALIDATION", "Keine Nachricht mit Anhängen.");
+    if (!rec.claudeSessionId) throw new ForgeError("NOT_FOUND", "Bild noch nicht im Verlauf.");
+    const images = transcriptImages(await this.runtime.sessionHistory(rec.claudeSessionId, rec.cwd), ev.body.uuid);
+    if (!images) throw new ForgeError("NOT_FOUND", "Bild nicht im Verlauf von Claude Code.");
+    return images;
   }
 
   /** Stops one background task or subagent of a running session. */
