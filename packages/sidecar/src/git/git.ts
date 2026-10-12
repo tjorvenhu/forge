@@ -173,7 +173,10 @@ export class GitEngine {
       if (orig) pathspec.add(orig);
     }
     const list = [...pathspec];
-    await this.ok(cwd, ["add", "-A", "--", ...list]);
+    // A staged deletion or the old side of a staged rename is neither on disk nor in the index:
+    // `git add` fails on it ("pathspec did not match"). Staged-only entries need no add anyway.
+    const toAdd = paths.filter((p) => byPath.get(p)?.unstaged);
+    if (toAdd.length) await this.ok(cwd, ["add", "-A", "--", ...toAdd]);
     await this.ok(cwd, ["commit", "-q", "-F", "-", "--only", "--", ...list], message);
     const [hash = "", summary = ""] = (await this.ok(cwd, ["log", "-1", "--format=%H%n%s"])).split("\n").map((l) => l.replace(/\r$/, "").trim());
     return { hash, summary };

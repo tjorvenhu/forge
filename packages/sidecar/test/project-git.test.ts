@@ -156,6 +156,21 @@ describe("GitEngine against a real repository", () => {
     expect(log.map((c) => c.subject)).toEqual(["feat: a und b", "init"]);
   });
 
+  it("commits staged deletions and staged renames (git rm, git mv) together with other changes", async () => {
+    writeFileSync(path.join(repo, "b.txt"), "b\n");
+    writeFileSync(path.join(repo, "c.txt"), "c\n");
+    await git(repo, "add", ".");
+    await git(repo, "commit", "-m", "b und c");
+    await git(repo, "rm", "-q", "b.txt");
+    await git(repo, "mv", "c.txt", "d.txt");
+    writeFileSync(path.join(repo, "a.txt"), "changed\n");
+    const st = await engine.status(repo);
+    const r = await engine.commit(repo, "aufräumen", st.files.map((f) => f.path), false);
+    expect(r.summary).toBe("aufräumen");
+    expect((await engine.status(repo)).files).toEqual([]);
+    expect(await git(repo, "ls-files")).toMatch(/^a\.txt\r?\nd\.txt\s*$/);
+  });
+
   it("stops commits of sensitive files unless explicitly allowed, without scanning contents", async () => {
     writeFileSync(path.join(repo, ".env"), "X=1\n");
     writeFileSync(path.join(repo, "config.ts"), "export const key = process.env.KEY;\n");
