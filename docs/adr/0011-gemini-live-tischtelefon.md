@@ -60,6 +60,12 @@ Gesprächspartner gleich. Gemini erfährt nur, dass Steuern frei ist; die Ziffer
 Telefon-Einstellungen, das Telefon und das Tischtelefon gehen aus. Wer vor dieser Version einen SIP-Server
 eingetragen hatte, behält die Funktion sichtbar.
 
+**Rückruf auf Zuruf** (Nachtrag 2026-10-12): Werkzeug `call_back(minutes, about)` für beide Gesprächspartner. Der
+Termin steht in den Telefon-Einstellungen (`callbacks`), ein Takt alle 15 s prüft fällige Termine (kein langer Timer,
+der im Standby stehen bliebe). Gerufen wird die Nummer des Gesprächs, wenn sie erlaubt ist, sonst die Rückrufnummer.
+Beim Rückruf bekommt der Gesprächspartner den Wunsch als markierte Daten und prüft frisch mit den Werkzeugen. Belegte
+Leitung oder fehlende Anmeldung: neuer Versuch beim nächsten Takt, nach 15 Minuten verfällt der Termin.
+
 ## Verworfen
 
 - Konfiguration über GitHub (ein Repository pro Nutzer) für mehrere Nutzer: FORGE ist pro Windows-Konto getrennt

@@ -80,7 +80,22 @@ interface StoredConfig {
   pinHash: string | null;
   /** wrong PINs and lockouts, kept across calls and restarts */
   pinGuard?: PinGuardState;
+  /** callbacks agreed on the phone ("call me back in five minutes and tell me …"); kept across restarts */
+  callbacks?: ScheduledCallback[];
 }
+
+interface ScheduledCallback {
+  id: string;
+  number: string;
+  /** what the user wants to hear then, in the words of the conversation partner */
+  about: string;
+  dueAt: string;
+  createdAt: string;
+}
+
+/** a callback that cannot ring (line busy, not registered) is tried again for this long */
+const CALLBACK_GRACE_MS = 15 * 60_000;
+const CALLBACK_TICK_MS = 15_000;
 
 const DEFAULT_DESK: StoredDesk = {
   enabled: false,
@@ -150,6 +165,7 @@ export interface PhoneDeps {
     pinLimits?: Partial<PinLimits>;
     controller?: CallControllerDeps["timing"];
     live?: LiveControllerDeps["timing"];
+    callbackTickMs?: number;
   };
 }
 
@@ -224,6 +240,7 @@ export class PhoneService {
   /** connection settings changed during a call; applied when it ends */
   private pendingReconnect = false;
   private notifyTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  private callbackTicker: ReturnType<typeof setInterval> | null = null;
   private lastNotifyAt = 0;
   private readonly f: PhoneFactories;
   private readonly pinGuard: PinGuard;
@@ -269,6 +286,7 @@ export class PhoneService {
 
   /** Starts the line on app start if it was switched on before. */
   async init() {
+    this.startCallbackTicker();
     if (!this.cfg.enabled) return;
     await this.startDesk();
     await this.connect().catch((e: unknown) => this.fail(e));
@@ -533,8 +551,60 @@ export class PhoneService {
       timer = setTimeout(resolve, timeoutMs);
       timer.unref?.();
     });
+    if (this.callbackTicker) clearInterval(this.callbackTicker);
+    this.callbackTicker = null;
     await Promise.race([Promise.allSettled([this.disconnect(), this.desk.stop()]), limit]);
     clearTimeout(timer);
+  }
+
+  // ---------- callbacks agreed on the phone
+
+  /** Checks due callbacks every few seconds; a long timer would stand still in standby. */
+  private startCallbackTicker() {
+    if (this.callbackTicker) return;
+    this.callbackTicker = setInterval(() => void this.runDueCallbacks(), this.d.timing?.callbackTickMs ?? CALLBACK_TICK_MS);
+    this.callbackTicker.unref?.();
+  }
+
+  private saveCallbacks(list: ScheduledCallback[]) {
+    this.cfg = { ...this.cfg, callbacks: list };
+    this.persist();
+  }
+
+  /** Agrees a callback; returns the time it rings. */
+  scheduleCallback(number: string, minutes: number, about: string): Date {
+    const due = new Date(Date.now() + minutes * 60_000);
+    const list = [...(this.cfg.callbacks ?? []), { id: randomUUID(), number, about: about.trim(), dueAt: due.toISOString(), createdAt: new Date().toISOString() }];
+    this.saveCallbacks(list);
+    this.startCallbackTicker();
+    return due;
+  }
+
+  private async runDueCallbacks() {
+    const now = Date.now();
+    const list = this.cfg.callbacks ?? [];
+    // Too late to be of use (FORGE was off, line busy the whole time): dropped.
+    const expired = list.filter((c) => now - Date.parse(c.dueAt) > CALLBACK_GRACE_MS);
+    for (const c of expired) this.d.log(`Telefon: Rückruf an ${c.number} verfallen (${c.about})`);
+    const live = list.filter((c) => !expired.includes(c));
+    if (expired.length) this.saveCallbacks(live);
+    const due = live.find((c) => Date.parse(c.dueAt) <= now);
+    if (!due || !this.cfg.enabled || this.busy || this.registration !== "registered") return;
+    this.saveCallbacks(live.filter((c) => c.id !== due.id));
+    const asked = new Date(due.createdAt).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" });
+    try {
+      await this.dial(
+        due.number,
+        `Rückruf wie verabredet: ${due.about}`,
+        `[FORGE: Du rufst den Nutzer wie verabredet zurück. Um ${asked} hat er darum gebeten und wollte dann wissen: ${asData(due.about)} Prüfe das jetzt mit den Werkzeugen, nicht aus der Erinnerung. Er hat gerade abgenommen. Sag „Hallo, hier ist FORGE, wie verabredet.“ und dann in ein bis zwei Sätzen das Ergebnis. Dann warte, was er sagt.]`,
+        new Map(),
+        null,
+      );
+    } catch (e) {
+      // Not reached this time (e.g. line busy a moment ago): try again on a later tick.
+      this.d.log(`Telefon: Rückruf an ${due.number} nicht möglich: ${errorText(e)}`);
+      this.saveCallbacks([...(this.cfg.callbacks ?? []), due]);
+    }
   }
 
   calls(limit: number) {
@@ -1119,6 +1189,17 @@ export class PhoneService {
               return `${p.name}${n ? `, ${n} aktive ${n === 1 ? "Session" : "Sessions"}` : ""}`;
             })
             .join("\n");
+        }),
+      callBack: (minutes, about) =>
+        run(false, async () => {
+          if (!about.trim()) return "Fehler: Was soll ich beim Rückruf sagen?";
+          // Back to the number of this call; only numbers FORGE may talk to anyway.
+          const number = a.call.remoteNumber;
+          const known = this.cfg.allowedCallers.some((n) => sameNumber(n, number)) || (this.cfg.notifyNumber && sameNumber(this.cfg.notifyNumber, number));
+          const target = known ? number : this.cfg.notifyNumber;
+          if (!target) return "Fehler: Für diese Nummer kann ich keinen Rückruf vereinbaren.";
+          const due = this.scheduleCallback(target, minutes, about);
+          return `Rückruf vereinbart für ${due.toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })} Uhr.`;
         }),
       usage: () =>
         run(false, async () => {

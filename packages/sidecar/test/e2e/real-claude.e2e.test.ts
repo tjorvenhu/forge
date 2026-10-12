@@ -370,6 +370,7 @@ describe.skipIf(!enabled)("E2E: sidecar with real Claude Code", () => {
         git: async (_p, action) => (calls.push(`git:${action}`), "Erledigt."),
         projects: async () => (calls.push("projects"), "shop"),
         usage: async () => (calls.push("usage"), "Fünf Stunden: 20 Prozent."),
+        callBack: async (minutes: number) => (calls.push(`callBack:${minutes}`), "Rückruf vereinbart für 18:55 Uhr."),
       },
       onSentence: (s) => sentences.push(s),
       onTurnDone: () => turns++,

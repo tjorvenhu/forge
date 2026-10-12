@@ -8,6 +8,7 @@ import { capitalize, cn, relativeTime } from "@/lib/utils";
 import { useArrivals } from "@/lib/arrivals";
 import { Logo } from "./Logo";
 import { AppUpdateCard } from "./AppUpdate";
+import { splitProjects } from "@/lib/project-tree";
 import { NAV } from "./nav";
 import { ProjectIcon } from "@/components/projects/ProjectIcon";
 
@@ -18,7 +19,8 @@ export function Sidebar() {
   const openProject = useUi((s) => s.openProject);
   const setNewProject = useUi((s) => s.setNewProject);
   const projects = useProjects();
-  const list = projects.data ?? [];
+  // Agents (worktrees) belong to their project and are not counted or listed on their own.
+  const list = splitProjects(projects.data ?? []).roots;
   const favorites = list.filter((p) => p.favorite);
   const shown = favorites.length ? favorites : list.slice(0, 4);
   // Projects added while FORGE runs slide in; the list on start does not.

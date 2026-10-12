@@ -15,12 +15,13 @@ import { RemoveProjectDialog } from "@/components/projects/RemoveProjectDialog";
 import { SessionStatusBadge } from "@/components/workspace/SessionStatusBadge";
 import { SummaryButton } from "@/components/workspace/SummaryButton";
 import { ListSkeleton } from "@/components/ui/skeleton";
+import { splitProjects } from "@/lib/project-tree";
 
 export function HomeView() {
   const projects = useProjects();
   const setNewProject = useUi((s) => s.setNewProject);
   const [removing, setRemoving] = useState<ProjectWithStatus | null>(null);
-  const list = projects.data ?? [];
+  const { roots: list, agentsOf } = splitProjects(projects.data ?? []);
   const favorites = list.filter((p) => p.favorite);
   const recent = [...list]
     .filter((p) => !p.favorite)
@@ -60,13 +61,13 @@ export function HomeView() {
           {favorites.length > 0 && (
             <section>
               <SectionTitle>Favoriten</SectionTitle>
-              <Grid items={favorites} onRemove={setRemoving} />
+              <Grid items={favorites} agentsOf={agentsOf} onRemove={setRemoving} />
             </section>
           )}
           {recent.length > 0 && (
             <section>
               <SectionTitle>Zuletzt geöffnet</SectionTitle>
-              <Grid items={recent} onRemove={setRemoving} />
+              <Grid items={recent} agentsOf={agentsOf} onRemove={setRemoving} />
             </section>
           )}
         </div>
@@ -76,11 +77,11 @@ export function HomeView() {
   );
 }
 
-function Grid({ items, onRemove }: { items: ProjectWithStatus[]; onRemove: (p: ProjectWithStatus) => void }) {
+function Grid({ items, agentsOf, onRemove }: { items: ProjectWithStatus[]; agentsOf: Map<string, ProjectWithStatus[]>; onRemove: (p: ProjectWithStatus) => void }) {
   return (
     <div className="grid grid-cols-[repeat(auto-fill,minmax(300px,1fr))] gap-3">
       {items.map((p) => (
-        <ProjectCard key={p.id} p={p} onRemove={onRemove} />
+        <ProjectCard key={p.id} p={p} agents={agentsOf.get(p.id)} onRemove={onRemove} />
       ))}
     </div>
   );

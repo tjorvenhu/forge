@@ -446,7 +446,7 @@ describe("PhoneService end to end with a test PBX", () => {
       emit: (e) => events.push(e),
       claude: () => ({ path: "claude", env: {}, cwd: t.dir }),
       log: (m) => logs.push(m),
-      timing: { notifyDelayMs: 50, notifyCooldownMs: 0, pinLimits: { perCaller: 2, baseDelayMs: 0 } },
+      timing: { notifyDelayMs: 50, notifyCooldownMs: 0, pinLimits: { perCaller: 2, baseDelayMs: 0 }, callbackTickMs: 100 },
       factories: {
         voice: () => voice,
         rtp: (ip) => {
@@ -611,6 +611,28 @@ describe("PhoneService end to end with a test PBX", () => {
     await svc.saveConfig({ openAiKey: "" });
     await expect(svc.setEnabled(true)).rejects.toMatchObject({ message: expect.stringMatching(/OpenAI-API-Key fehlt/), details: { phoneSetupIncomplete: true } });
   });
+
+  it("calls back as agreed in a call, tells what was asked for and keeps the appointment in the settings until then", async () => {
+    await svc.setEnabled(true);
+    await until(() => svc.state().registration === "registered", 5000, "registered");
+    const { inv, ok } = await answeredCall("c-callback");
+    const conv = await until(() => convs[0], 5000, "conversation");
+    // Agreed without a PIN: it only calls back the number that is calling.
+    expect(await conv.tools.callBack(0.01, "ob die Tests der Session Warenkorb grün sind")).toMatch(/^Rückruf vereinbart für \d\d:\d\d Uhr\.$/);
+    // The appointment is stored, not only held in memory.
+    expect(JSON.stringify(db.getPhoneSettings())).toContain("ob die Tests der Session Warenkorb grün sind");
+    await byeFromPbx("c-callback", inv, ok);
+
+    const call = await pbx.next((m) => m.method === "INVITE", 10_000);
+    expect(call.msg.uri).toBe("sip:0301112233@127.0.0.1");
+    await until(() => convs[1], 5000, "callback conversation");
+    expect(convs[1]!.said[0]).toMatch(/wie verabredet zurück/);
+    expect(convs[1]!.said[0]).toContain("ob die Tests der Session Warenkorb grün sind");
+    expect(svc.state().call).toMatchObject({ direction: "out", reason: "Rückruf wie verabredet: ob die Tests der Session Warenkorb grün sind" });
+    expect(JSON.stringify(db.getPhoneSettings())).not.toContain("Warenkorb grün");
+    pbx.send(responseTo(call.msg, 486, "Busy Here", "callee"), call.port);
+    await until(() => svc.state().call === null, 5000, "callback ended");
+  }, 40_000);
 
   /** INVITE from the PBX, 200 OK, ACK; FakePhone talks to FORGE's RTP port afterwards. */
   async function answeredCall(callId: string, from = "0301112233") {

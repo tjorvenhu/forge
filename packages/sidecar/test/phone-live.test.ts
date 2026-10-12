@@ -42,6 +42,7 @@ function toolset(calls: string[] = []): PhoneToolset {
     git: rec("git"),
     projects: rec("projects"),
     usage: rec("usage"),
+    callBack: rec("callBack"),
   };
 }
 

@@ -1,5 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, GitBranch, Globe, MoreHorizontal, Star, Trash2 } from "lucide-react";
+import { AlertTriangle, Bot, GitBranch, Globe, MoreHorizontal, Star, Trash2 } from "lucide-react";
 import type { ProjectWithStatus } from "@forge/protocol";
 import { call, keys } from "@/lib/queries";
 import { errorMessage } from "@/lib/rpc";
@@ -11,8 +11,9 @@ import { Badge } from "@/components/ui/misc";
 import { DropdownMenu } from "@/components/ui/dropdown";
 import { ProjectIcon } from "./ProjectIcon";
 import { ProfileBadge } from "./ProfileBadge";
+import { agentBusy, agentLabel } from "@/lib/project-tree";
 
-export function ProjectCard({ p, onRemove }: { p: ProjectWithStatus; onRemove: (p: ProjectWithStatus) => void }) {
+export function ProjectCard({ p, agents = [], onRemove }: { p: ProjectWithStatus; agents?: ProjectWithStatus[]; onRemove: (p: ProjectWithStatus) => void }) {
   const openProject = useUi((s) => s.openProject);
   const qc = useQueryClient();
 
@@ -74,6 +75,8 @@ export function ProjectCard({ p, onRemove }: { p: ProjectWithStatus; onRemove: (
         ))}
       </div>
 
+      {agents.length > 0 && <AgentList agents={agents} />}
+
       <div className="mt-auto flex items-center justify-between border-t border-border px-4 py-2 text-caption text-muted">
         <span className="truncate">
           {p.lastSession ? `Letzte Session ${relativeTime(p.lastSession.updatedAt)}: ${p.lastSession.title ?? "ohne Titel"}` : "Noch keine Session"}
@@ -90,6 +93,46 @@ export function ProjectCard({ p, onRemove }: { p: ProjectWithStatus; onRemove: (
           ]}
         />
       </div>
+    </div>
+  );
+}
+
+/** The parallel agents of a project (worktrees), compact inside its card. */
+function AgentList({ agents }: { agents: ProjectWithStatus[] }) {
+  const openProject = useUi((s) => s.openProject);
+  const busy = agents.filter(agentBusy).length;
+  return (
+    <div className="mx-4 mb-3 rounded-lg border border-border bg-surface-2">
+      <div className="flex items-center gap-1.5 px-2.5 pb-1 pt-2 text-caption text-muted">
+        <Bot className="h-3.5 w-3.5" />
+        {agents.length} {agents.length === 1 ? "Agent" : "Agenten"}
+        {busy > 0 && <span className="text-accent">· {busy} {busy === 1 ? "arbeitet" : "arbeiten"}</span>}
+      </div>
+      <ul className="pb-1">
+        {agents.slice(0, 5).map((a) => {
+          const working = agentBusy(a);
+          const waiting = a.lastSession?.status === "waiting_approval";
+          return (
+            <li key={a.id}>
+              <button
+                className="flex w-full items-center gap-2 px-2.5 py-1 text-left text-caption hover:bg-surface-3 active:bg-surface-3"
+                onClick={() => openProject(a.id)}
+                title={`${a.git?.branch ?? a.name} öffnen${a.lastSession ? ` · ${a.lastSession.title ?? "ohne Titel"}` : ""}`}
+              >
+                <span
+                  className={cn("h-1.5 w-1.5 shrink-0 rounded-full", waiting ? "bg-warning" : working ? "animate-soft-pulse bg-accent" : (a.git?.changedCount ?? 0) > 0 ? "bg-warning/60" : "bg-success/70")}
+                  aria-label={waiting ? "wartet auf Freigabe" : working ? "arbeitet" : "bereit"}
+                />
+                <span className="shrink-0 font-mono text-fg">{agentLabel(a)}</span>
+                <span className="min-w-0 flex-1 truncate text-muted">{a.lastSession?.title ?? "noch keine Session"}</span>
+                {(a.git?.changedCount ?? 0) > 0 && <span className="shrink-0 tabular-nums text-warning">{a.git!.changedCount}</span>}
+                {a.lastSession && <span className="shrink-0 text-subtle">{relativeTime(a.lastSession.updatedAt)}</span>}
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+      {agents.length > 5 && <div className="px-2.5 pb-2 text-caption text-subtle">und {agents.length - 5} weitere, im Projekt unter Agenten</div>}
     </div>
   );
 }
