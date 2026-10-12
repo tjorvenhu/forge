@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { ArrowUp, ListTodo, Paperclip, Square } from "lucide-react";
 import type { EffortLevel, Project, Session } from "@forge/protocol";
 import { useRuntimeInfo, useSettings } from "@/lib/queries";
@@ -13,6 +13,7 @@ import { ContextMeter } from "./ContextMeter";
 import { RateLimitBadge } from "./RateLimitBadge";
 import { AttachmentList } from "./AttachmentList";
 import { CLEAR_COMMANDS, isClearCommand, SlashCommandMenu, useSlashCommands } from "./SlashCommandMenu";
+import { InfoCommandDialog, infoCommand, INFO_COMMANDS, type InfoCommand } from "./InfoCommandDialog";
 import { useAttachments } from "./useAttachments";
 import { DictationButton } from "./DictationButton";
 import { useDictation } from "./useDictation";
@@ -104,10 +105,48 @@ export const Composer = memo(function Composer({
     if (dictation.state === "idle") void dictation.start();
   };
 
+  /**
+   * Hold space to dictate, like Claude Code: the first press types a space as usual. Only when the key
+   * repeats is it a hold; the space is taken back and the recording runs until the key comes up.
+   */
+  const spaceDown = useRef<{ text: string; start: number; end: number } | null>(null);
+  const holding = useRef(false);
+  const [held, setHeld] = useState(false);
+  const releaseHold = () => {
+    if (!holding.current) return;
+    holding.current = false;
+    setHeld(false);
+    void dictation.stop();
+  };
+  const onSpaceDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (!e.repeat) {
+      spaceDown.current = dictation.state === "idle" ? { text, start: e.currentTarget.selectionStart, end: e.currentTarget.selectionEnd } : null;
+      return;
+    }
+    if (holding.current) return e.preventDefault();
+    const before = spaceDown.current;
+    if (!before || dictation.state !== "idle") return;
+    e.preventDefault();
+    setText(before.text);
+    requestAnimationFrame(() => ref.current?.setSelectionRange(before.start, before.end));
+    holding.current = true;
+    setHeld(true);
+    void dictation.start();
+  };
+
+  const [info, setInfo] = useState<InfoCommand | null>(null);
+  const openInfo = (cmd: InfoCommand) => {
+    setText("");
+    setInfo(cmd);
+  };
+
   const clearTyped = isClearCommand(text);
+  const localTyped = clearTyped || !!infoCommand(text);
   /** counts sends; the arrow animation restarts with each */
   const [sentTick, setSentTick] = useState(0);
   const submit = () => {
+    const cmd = infoCommand(text);
+    if (cmd) return openInfo(cmd);
     if (waiting && !clearTyped) return;
     setSentTick((n) => n + 1);
     void send(text, files);
@@ -129,8 +168,10 @@ export const Composer = memo(function Composer({
   // Unknown models keep the picker; listed ones only when Claude Code reports effort support.
   const showEffort = !modelInfo || modelInfo.supportsEffort === true;
 
-  const placeholder = dictation.state === "recording"
-    ? "Sprich jetzt. Strg+M beendet die Aufnahme, Esc verwirft sie."
+  const placeholder = dictation.state === "recording" || dictation.state === "starting"
+    ? held
+      ? "Sprich jetzt. Leertaste loslassen fügt den Text ein, Esc verwirft ihn."
+      : "Sprich jetzt. Klick auf die Aufnahme fügt den Text ein, Esc verwirft ihn."
     : dictation.state === "transcribing"
       ? "Claude schreibt den Rest mit …"
       : waiting
@@ -144,10 +185,17 @@ export const Composer = memo(function Composer({
   return (
     <div className="relative mx-auto w-full max-w-5xl shrink-0 px-6 pb-5 pt-2">
       <SlashCommandMenu matches={matches} index={cmdIndex} onPick={pickCommand} />
+      <InfoCommandDialog command={info} project={project} session={session} onClose={() => setInfo(null)} />
       <div
         className={cn(
           "relative rounded-2xl border bg-surface shadow-lg shadow-black/20 transition-[border-color,background-color,transform] duration-150 ease-snappy",
-          attachments.dragging ? "scale-[1.01] border-accent bg-accent-soft" : working ? "border-accent/40" : "border-border focus-within:border-accent",
+          attachments.dragging
+            ? "scale-[1.01] border-accent bg-accent-soft"
+            : dictation.state === "starting" || dictation.state === "recording"
+              ? "dictation-ring"
+              : working
+                ? "border-accent/40"
+                : "border-border focus-within:border-accent",
         )}
       >
         {attachments.dragging && (
@@ -175,14 +223,22 @@ export const Composer = memo(function Composer({
           aria-label="Nachricht an Claude"
           rows={2}
           className="block max-h-65 w-full resize-none bg-transparent px-5 pt-4 text-ui text-fg placeholder:text-subtle focus:outline-none focus-visible:outline-none"
-          onKeyDown={(e) => {
-            if (e.ctrlKey && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "m") {
+          onKeyUp={(e) => {
+            if (e.key !== " ") return;
+            spaceDown.current = null;
+            if (holding.current) {
               e.preventDefault();
-              toggleDictation();
-              return;
+              releaseHold();
             }
-            if (e.key === "Escape" && dictation.state === "recording") {
+          }}
+          // Focus gone while holding: the key-up never arrives here, so the recording ends now.
+          onBlur={releaseHold}
+          onKeyDown={(e) => {
+            if (e.key === " " && !e.ctrlKey && !e.altKey && !e.metaKey && !e.shiftKey && !e.nativeEvent.isComposing) return onSpaceDown(e);
+            if (e.key === "Escape" && (dictation.state === "recording" || dictation.state === "starting")) {
               e.preventDefault();
+              holding.current = false;
+              setHeld(false);
               dictation.cancel();
               return;
             }
@@ -195,8 +251,10 @@ export const Composer = memo(function Composer({
               if (e.key === "Tab" || (e.key === "Enter" && !e.shiftKey)) {
                 e.preventDefault();
                 const name = matches[cmdIndex]!.name;
-                // Like the terminal: Enter on /clear runs it right away, Tab only completes.
-                if (e.key === "Enter" && CLEAR_COMMANDS.includes(name)) void send(`/${name}`, []);
+                // Like the terminal: Enter on /clear or /usage runs it right away, Tab only completes.
+                const info = INFO_COMMANDS.find((c) => c.name === name);
+                if (e.key === "Enter" && info) openInfo(info);
+                else if (e.key === "Enter" && CLEAR_COMMANDS.includes(name)) void send(`/${name}`, []);
                 else pickCommand(name);
                 return;
               }
@@ -243,11 +301,11 @@ export const Composer = memo(function Composer({
           <span className="hidden whitespace-nowrap text-caption text-subtle 2xl:inline">
             {enterToSend ? (
               <>
-                <Kbd>Enter</Kbd> senden · <Kbd>Umschalt+Enter</Kbd> Zeile
+                <Kbd>Enter</Kbd> senden · <Kbd>Umschalt+Enter</Kbd> Zeile · <Kbd>Leertaste</Kbd> halten diktiert
               </>
             ) : (
               <>
-                <Kbd>Strg+Enter</Kbd> senden
+                <Kbd>Strg+Enter</Kbd> senden · <Kbd>Leertaste</Kbd> halten diktiert
               </>
             )}
           </span>
@@ -283,7 +341,7 @@ export const Composer = memo(function Composer({
               className="h-9 w-9 rounded-lg"
               onClick={submit}
               // The message shows in the chat at once ("wird gesendet"), so no spinner here: the arrow flies off.
-              disabled={(!text.trim() && !files.length) || (waiting && !clearTyped) || sending}
+              disabled={(!text.trim() && !files.length) || (waiting && !localTyped) || sending}
               aria-label={working ? "Dazwischen senden" : "Senden"}
               title={working ? "Dazwischen senden: Claude übernimmt die Nachricht beim nächsten Schritt" : undefined}
             >

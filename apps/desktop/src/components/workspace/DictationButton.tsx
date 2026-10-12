@@ -9,7 +9,7 @@ const clock = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2,
 export function DictationButton({ state, seconds, onToggle }: { state: DictationState; seconds: number; onToggle: () => void }) {
   if (state === "recording")
     return (
-      <Tooltip content="Aufnahme beenden und Text einfügen (Strg+M). Esc verwirft sie.">
+      <Tooltip content="Aufnahme beenden und Text einfügen. Esc verwirft sie.">
         <Button size="sm" variant="outline" onClick={onToggle} aria-label="Aufnahme beenden" className="h-8 gap-1.5 rounded-lg border-danger/40 px-2.5 text-danger">
           <span className="h-2 w-2 animate-soft-pulse rounded-full bg-danger" aria-hidden />
           <span className="tabular-nums">{clock(seconds)}</span>
@@ -23,7 +23,7 @@ export function DictationButton({ state, seconds, onToggle }: { state: Dictation
       </Button>
     );
   return (
-    <Tooltip content="Diktieren (Strg+M). Die Spracheingabe von Claude schreibt mit, der Text landet im Eingabefeld.">
+    <Tooltip content="Diktieren: Leertaste im Eingabefeld gedrückt halten oder hier klicken. Die Spracheingabe von Claude schreibt mit, der Text landet im Eingabefeld.">
       <Button size="icon-sm" variant="ghost" onClick={onToggle} aria-label="Diktieren" loading={state === "starting"}>
         <Mic className="h-3.5 w-3.5" />
       </Button>

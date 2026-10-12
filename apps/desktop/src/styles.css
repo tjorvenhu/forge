@@ -449,3 +449,49 @@ body {
 .animate-soft-pulse {
   animation: forge-pulse 1.4s ease-in-out infinite;
 }
+
+/*
+ * Composer frame while dictating, like Claude Code's voice mode: a rainbow that runs around the border,
+ * with a soft glow of the same colors behind it. The surface sits in the padding box, so the gradient
+ * shows only through the transparent border.
+ */
+@property --dictation-angle {
+  syntax: "<angle>";
+  initial-value: 0deg;
+  inherits: true;
+}
+@keyframes forge-dictation-spin {
+  to {
+    --dictation-angle: 360deg;
+  }
+}
+.dictation-ring {
+  --dictation-rainbow: conic-gradient(
+    from var(--dictation-angle),
+    var(--color-danger),
+    var(--color-accent),
+    var(--color-warning),
+    var(--color-success),
+    var(--color-graph-blue),
+    var(--color-graph-purple),
+    var(--color-graph-pink),
+    var(--color-danger)
+  );
+  border-color: transparent;
+  background:
+    linear-gradient(var(--color-surface), var(--color-surface)) padding-box,
+    var(--dictation-rainbow) border-box;
+  animation: forge-dictation-spin 3s linear infinite;
+}
+/* z-index -1 without a stacking context on the composer: the glow paints behind its surface, not over it. */
+.dictation-ring::before {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  z-index: -1;
+  border-radius: inherit;
+  background: var(--dictation-rainbow);
+  filter: blur(12px);
+  opacity: 0.3;
+  pointer-events: none;
+}

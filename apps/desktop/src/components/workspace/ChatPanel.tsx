@@ -17,6 +17,7 @@ import { PendingMessages } from "./PendingMessages";
 import { appendStreaming, IncrementalItems, itemIndexForSeq, lastUserPrompt, reuseStableItems, rowSpacing, startsAnswer, type ChatItem, type RowSpacing } from "./chat-items";
 import { Composer } from "./Composer";
 import { SessionBar } from "./SessionBar";
+import { ChatSurface } from "./chat-surface";
 import { ItemView } from "./ChatItemView";
 import { BackgroundIndicator, WorkingIndicator } from "./WorkingIndicator";
 import { turnStartedAt } from "./working";
@@ -59,6 +60,7 @@ export function ChatPanel({ project, workingInPanel = false }: { project: Projec
   const { sessionId, externalId } = splitActive(active);
   const external = externalId ? (sessions.data?.external.find((e) => e.claudeSessionId === externalId) ?? null) : null;
   const session = useSession(sessionId);
+  const [surface, setSurface] = useState<HTMLDivElement | null>(null);
 
   // First open of a project: pick the most recent session instead of an empty chat.
   const didAutoSelect = useRef<string | null>(null);
@@ -70,7 +72,8 @@ export function ChatPanel({ project, workingInPanel = false }: { project: Projec
   }, [project.id, sessions.data, setActive]);
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <div ref={setSurface} className="relative flex h-full min-h-0 flex-col">
+      <ChatSurface.Provider value={surface}>
       <SessionBar
         project={project}
         session={session.data ?? null}
@@ -84,6 +87,7 @@ export function ChatPanel({ project, workingInPanel = false }: { project: Projec
       ) : (
         <NewSessionPane project={project} external={external} />
       )}
+      </ChatSurface.Provider>
     </div>
   );
 }

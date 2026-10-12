@@ -31,6 +31,8 @@ export function useDictation(onText: (text: string) => void, keyterms: string[])
   const [seconds, setSeconds] = useState(0);
   const [live, setLive] = useState("");
   const rec = useRef<Recording | null>(null);
+  /** stop or cancel asked for while the microphone was still starting (space released early); done once it runs */
+  const early = useRef<"stop" | "cancel" | null>(null);
   const mounted = useRef(true);
   const deliver = useRef(onText);
   const terms = useRef(keyterms);
@@ -59,8 +61,42 @@ export function useDictation(onText: (text: string) => void, keyterms: string[])
     return r;
   }, []);
 
+  const stop = useCallback(async () => {
+    const r = teardown();
+    if (!r) {
+      early.current = "stop";
+      return;
+    }
+    setState("transcribing");
+    try {
+      // Stopped before the connection was open: the queued words go out first.
+      const id = r.id ?? (await r.ready);
+      if (!id) throw new Error("Keine Verbindung zum Sprachdienst von Claude.");
+      for (const pcm of r.queue.splice(0)) void call("voice.audio", { id, pcm }).catch(() => {});
+      const { text } = await call("voice.stop", { id });
+      if (!mounted.current) return;
+      if (text) deliver.current(text);
+      else toast.info("Nichts erkannt", "In der Aufnahme war keine Sprache zu hören.");
+    } catch (e) {
+      toast.error("Spracheingabe fehlgeschlagen", errorMessage(e));
+    } finally {
+      setState("idle");
+      setLive("");
+    }
+  }, [teardown]);
+
+  const cancel = useCallback(() => {
+    const r = teardown();
+    if (!r) early.current = "cancel";
+    if (r) r.cancelled = true;
+    if (r?.id) void call("voice.cancel", { id: r.id }).catch(() => {});
+    setState("idle");
+    setLive("");
+  }, [teardown]);
+
   const start = useCallback(async () => {
     if (rec.current) return;
+    early.current = null;
     setState("starting");
     setSeconds(0);
     setLive("");
@@ -71,9 +107,10 @@ export function useDictation(onText: (text: string) => void, keyterms: string[])
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
       // Windows may take a moment to grant the microphone; the composer can be gone by then.
-      if (!mounted.current) {
+      if (!mounted.current || early.current === "cancel") {
         stream.getTracks().forEach((t) => t.stop());
         void opening.then(({ id }) => call("voice.cancel", { id })).catch(() => {});
+        if (mounted.current) setState("idle");
         return;
       }
       const ctx = new AudioContext({ sampleRate: RATE });
@@ -94,6 +131,7 @@ export function useDictation(onText: (text: string) => void, keyterms: string[])
       // Without a connection to the output the processor gets no audio; it writes silence there.
       proc.connect(ctx.destination);
       setState("recording");
+      if (early.current === "stop") void stop();
 
       const { id } = await opening;
       if (rr.cancelled) {
@@ -117,36 +155,7 @@ export function useDictation(onText: (text: string) => void, keyterms: string[])
         );
       else toast.error("Spracheingabe nicht gestartet", errorMessage(e));
     }
-  }, [teardown]);
-
-  const stop = useCallback(async () => {
-    const r = teardown();
-    if (!r) return;
-    setState("transcribing");
-    try {
-      // Stopped before the connection was open: the queued words go out first.
-      const id = r.id ?? (await r.ready);
-      if (!id) throw new Error("Keine Verbindung zum Sprachdienst von Claude.");
-      for (const pcm of r.queue.splice(0)) void call("voice.audio", { id, pcm }).catch(() => {});
-      const { text } = await call("voice.stop", { id });
-      if (!mounted.current) return;
-      if (text) deliver.current(text);
-      else toast.info("Nichts erkannt", "In der Aufnahme war keine Sprache zu hören.");
-    } catch (e) {
-      toast.error("Spracheingabe fehlgeschlagen", errorMessage(e));
-    } finally {
-      setState("idle");
-      setLive("");
-    }
-  }, [teardown]);
-
-  const cancel = useCallback(() => {
-    const r = teardown();
-    if (r) r.cancelled = true;
-    if (r?.id) void call("voice.cancel", { id: r.id }).catch(() => {});
-    setState("idle");
-    setLive("");
-  }, [teardown]);
+  }, [teardown, stop]);
 
   useEffect(() => {
     mounted.current = true;

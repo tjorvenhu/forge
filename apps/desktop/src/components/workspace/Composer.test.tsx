@@ -170,14 +170,53 @@ describe("dictation", () => {
     expect(insertSpoken("Mach ALT fertig", 5, 8, "das")).toEqual({ text: "Mach das fertig", caret: 8 });
   });
 
-  it("starts Claude's dictation with Strg+M and tells it the project's words", async () => {
+  it("dictates while space is held and tells Claude the project's words", async () => {
     callMock.mockImplementation(async (method: string) => {
       if (method === "settings.get") return { enterToSend: true };
       if (method === "voice.start") return { id: "v1" };
       return { models: [] };
     });
+    useDrafts.getState().setText(draftKey("p1", null), "Bitte");
     setup(<Composer project={{ ...project("p1"), name: "Kundenportal", technologies: ["Next.js"] }} session={null} />);
-    fireEvent.keyDown(screen.getByRole("textbox", { name: "Nachricht an Claude" }), { key: "m", ctrlKey: true });
+    const box = screen.getByRole("textbox", { name: "Nachricht an Claude" });
+    // The first press types its space like any key; only the repeat of a held key starts the recording.
+    fireEvent.keyDown(box, { key: " " });
+    fireEvent.change(box, { target: { value: "Bitte " } });
+    expect(callMock).not.toHaveBeenCalledWith("voice.start", expect.anything());
+    fireEvent.keyDown(box, { key: " ", repeat: true });
     await waitFor(() => expect(callMock).toHaveBeenCalledWith("voice.start", { language: "de", keyterms: expect.arrayContaining(["FORGE", "Kundenportal", "Next.js"]) }));
+    expect(useDrafts.getState().drafts[draftKey("p1", null)]?.text).toBe("Bitte");
+  });
+
+  it("types a plain space on a short press", async () => {
+    setup(<Composer project={project("p1")} session={null} />);
+    const box = screen.getByRole("textbox", { name: "Nachricht an Claude" });
+    fireEvent.keyDown(box, { key: " " });
+    fireEvent.keyUp(box, { key: " " });
+    expect(callMock).not.toHaveBeenCalledWith("voice.start", expect.anything());
+  });
+});
+
+describe("info commands", () => {
+  it("opens /usage as a dialog over the chat instead of sending it", async () => {
+    callMock.mockImplementation(async (method: string) => {
+      if (method === "settings.get") return { enterToSend: true };
+      if (method === "system.diagnostics") return { claude: { found: true, version: "2.1.300" }, auth: { loggedIn: true, subscriptionType: "max", rateLimitTier: "default_claude_max_20x", authMethod: null } };
+      if (method === "system.usage") return { available: true, subscriptionType: "max", windows: [{ key: "five_hour", label: "Aktuelle Session", utilization: 12, resetsAt: null }], fetchedAt: new Date().toISOString(), error: null };
+      return { models: [] };
+    });
+    useDrafts.getState().setText("s1", "/usage");
+    setup(<Composer project={project("p1")} session={session} />);
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Senden" })));
+    expect(callMock).not.toHaveBeenCalledWith("sessions.send", expect.anything());
+    expect(await screen.findByRole("dialog", { name: "Nutzung" })).toBeTruthy();
+    expect(await screen.findByText("12 % genutzt")).toBeTruthy();
+    expect(useDrafts.getState().drafts.s1?.text).toBe("");
+  });
+
+  it("knows its commands only as the whole input", async () => {
+    const { infoCommand } = await import("./InfoCommandDialog");
+    expect(["/usage", " /CONTEXT ", "/status", "/mcp"].map((t) => infoCommand(t)?.name)).toEqual(["usage", "context", "status", "mcp"]);
+    expect(["/usage bitte", "usage", "/usages"].map(infoCommand)).toEqual([null, null, null]);
   });
 });

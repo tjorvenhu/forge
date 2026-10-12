@@ -15,17 +15,21 @@ interface DialogProps {
   className?: string;
   /** extra classes for the backdrop, e.g. a blur behind dialogs that ask for a decision */
   overlayClassName?: string;
+  /** Shows backdrop and dialog over this element (it needs `position: relative`) instead of the whole window. */
+  container?: HTMLElement | null;
 }
 
-export function Dialog({ open, onOpenChange, title, description, children, footer, className, overlayClassName }: DialogProps) {
+export function Dialog({ open, onOpenChange, title, description, children, footer, className, overlayClassName, container }: DialogProps) {
   const hasBody = children !== undefined && children !== null && children !== false;
+  const local = !!container;
   return (
     <D.Root open={open} onOpenChange={onOpenChange}>
-      <D.Portal>
-        <D.Overlay className={cn("fixed inset-0 z-40 bg-overlay", OVERLAY_MOTION, overlayClassName)} />
+      <D.Portal container={container ?? undefined}>
+        <D.Overlay className={cn("fixed inset-0 z-40 bg-overlay", local && "absolute", OVERLAY_MOTION, overlayClassName)} />
         <D.Content
           className={cn(
             "fixed left-1/2 top-1/2 z-50 flex max-h-[85vh] w-130 max-w-[92vw] -translate-x-1/2 -translate-y-1/2 flex-col rounded-xl border border-border bg-surface shadow-2xl",
+            local && "absolute max-h-[85%] max-w-[92%]",
             DIALOG_MOTION,
             className,
           )}

@@ -3,12 +3,18 @@ import { useQuery } from "@tanstack/react-query";
 import type { ResultOf } from "@forge/protocol";
 import { call } from "@/lib/queries";
 import { cn } from "@/lib/utils";
+import { INFO_COMMANDS } from "./InfoCommandDialog";
 
 type Command = ResultOf<"system.commands">[number];
 
 /** Commands FORGE handles itself instead of sending them to Claude Code (like /clear in the terminal). */
 export const CLEAR_COMMANDS = ["clear", "reset", "new"];
-const BUILT_IN: Command[] = [{ name: "clear", description: "Neues Gespräch starten und den Chat leeren. Das bisherige bleibt in der Session-Liste.", argumentHint: "" }];
+const BUILT_IN: Command[] = [
+  { name: "clear", description: "Neues Gespräch starten und den Chat leeren. Das bisherige bleibt in der Session-Liste.", argumentHint: "" },
+  ...INFO_COMMANDS.map((c) => ({ name: c.name, description: c.description, argumentHint: "" })),
+];
+/** Handled by FORGE; the CLI's own entries of the same name are left out. */
+const OWN = new Set([...CLEAR_COMMANDS, ...BUILT_IN.map((c) => c.name)]);
 
 /** True for "/clear" and its aliases, exactly as typed in the composer. */
 export function isClearCommand(text: string): boolean {
@@ -28,7 +34,7 @@ export function useSlashCommands(projectId: string, text: string): Command[] {
   return useMemo(() => {
     if (!slashMode) return [];
     const q = text.slice(1).toLowerCase();
-    const fromCli = (commands.data ?? []).filter((c) => !CLEAR_COMMANDS.includes(c.name.toLowerCase()));
+    const fromCli = (commands.data ?? []).filter((c) => !OWN.has(c.name.toLowerCase()));
     return [...BUILT_IN, ...fromCli].filter((c) => c.name.toLowerCase().includes(q)).slice(0, 8);
   }, [slashMode, text, commands.data]);
 }
