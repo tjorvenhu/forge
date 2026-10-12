@@ -50,11 +50,13 @@ export function authorsQuery(hashes: readonly string[]): string {
 }
 
 /** Avatar URL per alias index from the GraphQL answer; missing commits and authors without an account are null. */
+type AuthorsAnswer = Record<string, { author?: { user?: { avatarUrl?: unknown } | null } | null } | null>;
+
 export function parseAuthorsResponse(stdout: string, count: number): Array<string | null> {
-  let repo: Record<string, { author?: { user?: { avatarUrl?: string } | null } | null } | null> | null = null;
+  let repo: AuthorsAnswer | null;
   try {
-    const j = JSON.parse(stdout) as { data?: { repository?: typeof repo } | null };
-    repo = j.data?.repository ?? null;
+    const j = JSON.parse(stdout) as { data?: { repository?: AuthorsAnswer | null } | null } | null;
+    repo = j?.data?.repository ?? null;
   } catch {
     repo = null;
   }

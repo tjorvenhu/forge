@@ -3,6 +3,7 @@ import { Cloud, GitBranch, Tag } from "lucide-react";
 import type { CommitInfo } from "@forge/protocol";
 import { cn, relativeTime } from "@/lib/utils";
 import { layoutGraph, parseRefs, type GraphSegment, type GraphY } from "./graph-layout";
+import { AuthorAvatar } from "./AuthorAvatar";
 
 const LANE_COLORS = [
   { stroke: "stroke-accent", fill: "fill-accent" },
@@ -30,11 +31,14 @@ function segmentPath(s: GraphSegment): string {
 /** Commit history with lanes, refs and the current commit, like the graph in VS Code. */
 export function CommitGraph({
   commits,
+  avatars,
   localBranches,
   selected,
   onSelect,
 }: {
   commits: CommitInfo[];
+  /** from git.authorAvatars, by author email; may arrive after the commits */
+  avatars: Readonly<Record<string, string | null>> | undefined;
   localBranches: ReadonlySet<string>;
   selected: string | null;
   onSelect: (hash: string) => void;
@@ -67,6 +71,7 @@ export function CommitGraph({
                   <circle cx={x(row.lane)} cy={ROW_H / 2} r={c.parents.length > 1 ? 3 : 3.5} className={lane.fill} />
                 )}
               </svg>
+              <AuthorAvatar name={c.author} url={c.avatarUrl ?? avatars?.[c.authorEmail]} className="mr-1 h-4 w-4" />
               <span className="min-w-0 flex-1 truncate">
                 <span className={cn(head && "font-semibold")}>{c.subject}</span>
                 <span className="ml-2 text-caption text-subtle">{c.author}</span>

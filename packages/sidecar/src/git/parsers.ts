@@ -1,5 +1,6 @@
 import { posix } from "node:path";
 import type { BranchInfo, CommitInfo, DiffLine, FileDiff, FileStatus, GitSummary } from "@forge/protocol";
+import { avatarFromEmail } from "../github/avatars.js";
 
 export interface ParsedStatus {
   branch: string | null;
@@ -201,7 +202,7 @@ export function untrackedDiff(path: string, content: Buffer): FileDiff {
 }
 
 // The subject comes last: it is the only field that may contain anything.
-export const LOG_FORMAT = "%H%x1f%h%x1f%an%x1f%aI%x1f%P%x1f%D%x1f%s%x1e";
+export const LOG_FORMAT = "%H%x1f%h%x1f%an%x1f%ae%x1f%aI%x1f%P%x1f%D%x1f%s%x1e";
 
 export function parseLog(out: string): CommitInfo[] {
   return out
@@ -209,11 +210,13 @@ export function parseLog(out: string): CommitInfo[] {
     .map((r) => r.replace(/^\s+/, ""))
     .filter(Boolean)
     .map((r) => {
-      const [hash = "", shortHash = "", author = "", date = "", parents = "", refs = "", ...subject] = r.split("\x1f");
+      const [hash = "", shortHash = "", author = "", authorEmail = "", date = "", parents = "", refs = "", ...subject] = r.split("\x1f");
       return {
         hash,
         shortHash,
         author,
+        authorEmail,
+        avatarUrl: avatarFromEmail(authorEmail),
         date,
         subject: subject.join("\x1f"),
         parents: parents.split(" ").filter(Boolean),

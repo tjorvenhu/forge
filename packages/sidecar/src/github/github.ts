@@ -230,10 +230,7 @@ export class GitHubService {
       const hit = cache.get(key);
       return !!hit && (hit.url !== null || Date.now() - hit.at < AVATAR_MISS_TTL_MS);
     };
-    const pending = commitsToResolve(
-      commits.filter((c) => !c.avatarUrl),
-      fresh,
-    );
+    const pending = commitsToResolve(commits.filter((c) => !c.avatarUrl), fresh);
     if (pending.size) {
       const job = this.lookupAuthors(repo, pending, cache)
         .catch(() => {})
@@ -252,16 +249,17 @@ export class GitHubService {
   }
 
   private async lookupAuthors(repo: string, pending: Map<string, string[]>, cache: Map<string, { url: string | null; at: number }>) {
-    const owners = [...pending.entries()].flatMap(([key, hashes]) => hashes.map((hash) => ({ key, hash })));
+    // Marked as not found first, so a failing gh (missing, signed out, offline) is not asked again on every refresh.
+    for (const key of pending.keys()) cache.set(key, { url: null, at: Date.now() });
+    const targets = [...pending.entries()].flatMap(([key, hashes]) => hashes.map((hash) => ({ key, hash })));
     const [owner = "", name = ""] = repo.split("/");
-    const r = await this.gh_(["api", "graphql", "-f", `query=${authorsQuery(owners.map((o) => o.hash))}`, "-f", `owner=${owner}`, "-f", `name=${name}`]);
+    const r = await this.gh_(["api", "graphql", "-f", `query=${authorsQuery(targets.map((t) => t.hash))}`, "-f", `owner=${owner}`, "-f", `name=${name}`]);
     // gh exits non-zero when the answer has partial errors (e.g. an unknown commit), the data is still there.
-    const urls = parseAuthorsResponse(r.stdout, owners.length);
+    const urls = parseAuthorsResponse(r.stdout, targets.length);
     const now = Date.now();
-    for (const key of pending.keys()) cache.set(key, { url: null, at: now });
-    owners.forEach((o, i) => {
+    targets.forEach((t, i) => {
       const url = urls[i];
-      if (url) cache.set(o.key, { url, at: now });
+      if (url) cache.set(t.key, { url, at: now });
     });
   }
 

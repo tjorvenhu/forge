@@ -114,19 +114,31 @@ describe("parseUnifiedDiff", () => {
 describe("log and branches", () => {
   it("parses log records", () => {
     const out =
-      "abc123\x1fabc\x1fJane\x1f2026-10-10T12:00:00+02:00\x1fdef456 fed789\x1fHEAD -> main, origin/main, tag: v1\x1ffeat: login\x1e\n" +
-      "def456\x1fdef\x1fJoe\x1f2026-10-09T12:00:00+02:00\x1f\x1f\x1ffix: x\x1e\n";
+      "abc123\x1fabc\x1fJane\x1f583231+jane@users.noreply.github.com\x1f2026-10-10T12:00:00+02:00\x1fdef456 fed789\x1fHEAD -> main, origin/main, tag: v1\x1ffeat: login\x1e\n" +
+      "def456\x1fdef\x1fJoe\x1fjoe@example.com\x1f2026-10-09T12:00:00+02:00\x1f\x1f\x1ffix: x\x1e\n";
     expect(parseLog(out)).toEqual([
       {
         hash: "abc123",
         shortHash: "abc",
         author: "Jane",
+        authorEmail: "583231+jane@users.noreply.github.com",
+        avatarUrl: "https://avatars.githubusercontent.com/u/583231?s=64&v=4",
         date: "2026-10-10T12:00:00+02:00",
         subject: "feat: login",
         parents: ["def456", "fed789"],
         refs: ["HEAD -> main", "origin/main", "tag: v1"],
       },
-      { hash: "def456", shortHash: "def", author: "Joe", date: "2026-10-09T12:00:00+02:00", subject: "fix: x", parents: [], refs: [] },
+      {
+        hash: "def456",
+        shortHash: "def",
+        author: "Joe",
+        authorEmail: "joe@example.com",
+        avatarUrl: null,
+        date: "2026-10-09T12:00:00+02:00",
+        subject: "fix: x",
+        parents: [],
+        refs: [],
+      },
     ]);
   });
 

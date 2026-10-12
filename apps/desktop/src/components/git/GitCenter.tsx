@@ -15,6 +15,7 @@ import { ListSkeleton } from "@/components/ui/skeleton";
 import { GitPanel } from "./GitPanel";
 import { DiffView } from "./DiffView";
 import { CommitGraph, RefBadges } from "./CommitGraph";
+import { AuthorAvatar } from "./AuthorAvatar";
 import { PullRequestBar, SyncActions } from "./Sync";
 import { RestoreDialog } from "./RestoreDialog";
 import { DeleteBranchDialog } from "./DeleteBranchDialog";
@@ -22,6 +23,14 @@ import { DeleteBranchDialog } from "./DeleteBranchDialog";
 /** Workspace tab, laid out like Source Control in VS Code: changes, graph and branches on the left, the diff or commit on the right. */
 export function GitCenter({ project }: { project: Project }) {
   const log = useQuery({ queryKey: keys.log(project.id), queryFn: () => call("git.log", { projectId: project.id, limit: 200 }), enabled: project.exists, retry: false });
+  // Under the log key, so new commits also refresh the pictures. Asks GitHub, so the graph never waits for it.
+  const avatars = useQuery({
+    queryKey: [...keys.log(project.id), "avatars"],
+    queryFn: () => call("git.authorAvatars", { projectId: project.id, limit: 200 }),
+    enabled: project.exists && !!log.data?.length,
+    retry: false,
+    placeholderData: (prev) => prev,
+  });
   const branches = useQuery({ queryKey: keys.branches(project.id), queryFn: () => call("git.branches", { projectId: project.id }), enabled: project.exists, retry: false });
   const status = useGitStatus(project.id, project.exists);
   const [open, setOpen] = useState({ changes: true, graph: true, branches: false });
@@ -99,6 +108,7 @@ export function GitCenter({ project }: { project: Project }) {
           {!!log.data?.length && (
             <CommitGraph
               commits={log.data}
+              avatars={avatars.data}
               localBranches={localBranches}
               selected={selected?.hash ?? null}
               onSelect={(h) => {
@@ -165,6 +175,7 @@ export function GitCenter({ project }: { project: Project }) {
         ) : selected ? (
           <CommitDetails
             commit={selected}
+            avatarUrl={selected.avatarUrl ?? avatars.data?.[selected.authorEmail]}
             current={selected.hash === log.data?.[0]?.hash}
             openChanges={files.length}
             localBranches={localBranches}
@@ -275,6 +286,7 @@ function BranchMenu({ project, branches, onNew }: { project: Project; branches: 
 
 function CommitDetails({
   commit,
+  avatarUrl,
   current,
   openChanges,
   localBranches,
@@ -284,6 +296,7 @@ function CommitDetails({
   onClose,
 }: {
   commit: CommitInfo;
+  avatarUrl: string | null | undefined;
   current: boolean;
   openChanges: number;
   localBranches: ReadonlySet<string>;
@@ -307,7 +320,12 @@ function CommitDetails({
         <h2 className="text-title-sm font-semibold">{commit.subject}</h2>
         <dl className="grid grid-cols-[7rem_minmax(0,1fr)] gap-x-3 gap-y-1.5 text-body">
           <dt className="text-muted">Autor</dt>
-          <dd>{commit.author}</dd>
+          <dd className="flex min-w-0 items-center gap-2">
+            <AuthorAvatar name={commit.author} url={avatarUrl} className="h-5.5 w-5.5" />
+            <span className="truncate" title={commit.authorEmail}>
+              {commit.author}
+            </span>
+          </dd>
           <dt className="text-muted">Datum</dt>
           <dd>
             {new Date(commit.date).toLocaleString("de-DE", { dateStyle: "medium", timeStyle: "short" })}

@@ -65,8 +65,11 @@ export function TabBar<V extends string>({
           <Fragment key={t.value}>
             <T.Trigger
               value={t.value}
+              // A clicked tab would keep the focus, and the next shortcut or a dialog closed with Escape
+              // turns that into a visible focus ring. detail is 0 for clicks from the keyboard.
+              onClick={(e) => e.detail > 0 && e.currentTarget.blur()}
               className={cn(
-                "group relative inline-flex items-center rounded-md text-muted transition-[color,transform] duration-120 hover:text-fg focus-visible:outline-offset-[-2px] active:scale-[0.97] data-[state=active]:text-fg",
+                "group relative inline-flex items-center rounded-md text-muted transition-[color,transform] duration-120 hover:text-fg focus-visible:bg-surface-2 focus-visible:text-fg focus-visible:outline-none active:scale-[0.97] data-[state=active]:text-fg",
                 size === "lg" ? "h-12 gap-2 px-3.5 text-ui" : "h-9 gap-1.5 px-3 text-body",
                 t.onClose && "pr-1",
               )}

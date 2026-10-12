@@ -16,6 +16,8 @@ const commit: CommitInfo = {
   shortHash: "bbbbbbb",
   subject: "feat: Login",
   author: "Tjorven",
+  authorEmail: "tjorven@example.com",
+  avatarUrl: null,
   date: "2026-10-10T12:00:00Z",
   parents: [],
   refs: [],
