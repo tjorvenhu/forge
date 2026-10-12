@@ -27,6 +27,19 @@ describe("global shortcuts", () => {
     expect(useUi.getState().bottomPanelOpen).toBe(true);
   });
 
+  it("collapses and expands the left navigation with Ctrl+B, but not inside a terminal", () => {
+    useUi.setState({ sidebarCollapsed: false });
+    fireEvent.keyDown(window, { key: "b", ctrlKey: true });
+    expect(useUi.getState().sidebarCollapsed).toBe(true);
+    const term = document.createElement("div");
+    term.className = "xterm";
+    document.body.appendChild(term);
+    fireEvent.keyDown(term, { key: "b", ctrlKey: true });
+    expect(useUi.getState().sidebarCollapsed).toBe(true);
+    fireEvent.keyDown(window, { key: "b", ctrlKey: true });
+    expect(useUi.getState().sidebarCollapsed).toBe(false);
+  });
+
   it("switches workspace tabs in the order of the tab bar", () => {
     useUi.setState({ view: "workspace", workspaceTab: "chat" });
     fireEvent.keyDown(window, { key: "2", ctrlKey: true });

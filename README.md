@@ -120,7 +120,7 @@ Umgebungsvariablen für Sonderfälle: `FORGE_NODE` (Pfad zu node), `FORGE_SIDECA
 - **Persistenz:** SQLite für Projekte, Sessions, Events, Freigaben, Einstellungen (unter `%APPDATA%\forge`, Backups im Unterordner `backups`). Beim Start öffnet FORGE das zuletzt genutzte Projekt.
 
 Tastatur: `Strg+1..5` Workspace-Tabs, `Strg+Tab` / `Strg+Umschalt+Tab` nächster / vorheriger Session-Tab, `Strg+N` neue Session, `Strg+O` Projekt hinzufügen, `Strg+J` Claude-Output,
-`Strg+Umschalt+E` Seitenleiste, `Esc` im Eingabefeld stoppt Claude.
+`Strg+B` linke Navigation ein- und ausklappen, `Strg+Umschalt+E` rechte Seitenleiste, `Esc` im Eingabefeld stoppt Claude.
 
 ## Tests
 

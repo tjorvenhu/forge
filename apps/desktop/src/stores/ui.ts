@@ -22,6 +22,8 @@ interface UiState {
   /** selected session per project; null means "new session" */
   activeSession: Record<string, string | null>;
   workspaceTab: WorkspaceTab;
+  /** left navigation shrunk to an icon rail; remembered across starts */
+  sidebarCollapsed: boolean;
   rightPanelOpen: boolean;
   bottomPanelOpen: boolean;
   newProject: NewProjectMode | null;
@@ -53,6 +55,7 @@ interface UiState {
   closeProject: () => void;
   setActiveSession: (projectId: string, sessionId: string | null) => void;
   setWorkspaceTab: (t: WorkspaceTab) => void;
+  toggleSidebar: (collapsed?: boolean) => void;
   toggleRightPanel: (open?: boolean) => void;
   toggleBottomPanel: (open?: boolean) => void;
   setNewProject: (m: NewProjectMode | null, cloneUrl?: string) => void;
@@ -60,14 +63,18 @@ interface UiState {
 
 const PREFS_KEY = "forge.ui";
 
-type Prefs = Pick<UiState, "activeProjectId">;
+type Prefs = Pick<UiState, "activeProjectId" | "sidebarCollapsed">;
 
-/** Reopens the last project on start. Side and bottom panel always start closed and open only on request. */
+/**
+ * Reopens the last project on start and keeps the left navigation as it was left. Side and bottom
+ * panel always start closed and open only on request.
+ */
 function loadPrefs(): Partial<UiState> {
   try {
     const p = JSON.parse(localStorage.getItem(PREFS_KEY) ?? "{}") as Partial<Prefs>;
     return {
       ...(typeof p.activeProjectId === "string" ? { activeProjectId: p.activeProjectId, view: "workspace" as const } : {}),
+      ...(p.sidebarCollapsed === true ? { sidebarCollapsed: true } : {}),
     };
   } catch {
     return {};
@@ -76,7 +83,7 @@ function loadPrefs(): Partial<UiState> {
 
 function savePrefs(s: Prefs) {
   try {
-    localStorage.setItem(PREFS_KEY, JSON.stringify({ activeProjectId: s.activeProjectId }));
+    localStorage.setItem(PREFS_KEY, JSON.stringify({ activeProjectId: s.activeProjectId, sidebarCollapsed: s.sidebarCollapsed }));
   } catch {
     /* preferences are optional */
   }
@@ -87,6 +94,7 @@ export const useUi = create<UiState>((set, get) => ({
   activeProjectId: null,
   activeSession: {},
   workspaceTab: "chat",
+  sidebarCollapsed: false,
   rightPanelOpen: false,
   bottomPanelOpen: false,
   newProject: null,
@@ -125,6 +133,10 @@ export const useUi = create<UiState>((set, get) => ({
   },
   setActiveSession: (projectId, sessionId) => set((s) => ({ activeSession: { ...s.activeSession, [projectId]: sessionId } })),
   setWorkspaceTab: (workspaceTab) => set({ workspaceTab }),
+  toggleSidebar: (collapsed) => {
+    set((s) => ({ sidebarCollapsed: collapsed ?? !s.sidebarCollapsed }));
+    savePrefs(get());
+  },
   toggleRightPanel: (open) => {
     set((s) => ({ rightPanelOpen: open ?? !s.rightPanelOpen }));
   },

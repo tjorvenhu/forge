@@ -5,6 +5,7 @@ import type { Project } from "@forge/protocol";
 import { call, keys } from "@/lib/queries";
 import { errorMessage } from "@/lib/rpc";
 import { cn } from "@/lib/utils";
+import { CodeView } from "@/components/ui/code-view";
 import { EmptyState, ErrorBanner } from "@/components/ui/misc";
 import { useUi } from "@/stores/ui";
 import { fileIcon } from "./FileTree";
@@ -82,10 +83,9 @@ function FileViewer({ projectId, path }: { projectId: string; path: string }) {
       {q.isError && <div className="p-3"><ErrorBanner>{errorMessage(q.error)}</ErrorBanner></div>}
       {q.data?.binary && <div className="p-4 text-xs text-muted">Binärdatei, keine Vorschau.</div>}
       {q.data && !q.data.binary && (
-        <pre className="min-h-0 flex-1 overflow-auto p-3 font-mono text-small leading-4.5 text-fg/90">
-          {q.data.content}
-          {q.data.truncated && "\n\n[Vorschau auf 512 KB gekürzt]"}
-        </pre>
+        <div className="min-h-0 flex-1">
+          <CodeView path={path} content={q.data.content} truncated={q.data.truncated} />
+        </div>
       )}
     </div>
   );

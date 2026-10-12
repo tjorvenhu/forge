@@ -39,11 +39,21 @@ function useInstall() {
 }
 
 /** "Update available" above the Claude Code card in the sidebar; nothing when FORGE is up to date. */
-export function AppUpdateCard() {
+export function AppUpdateCard({ compact }: { compact?: boolean }) {
   const s = useAppUpdate().data;
   const { install, installing } = useInstall();
   if (!s?.latest || !["available", "downloading", "ready"].includes(s.phase)) return null;
   const busy = installing || s.phase === "downloading";
+  if (compact) {
+    const title = s.installable
+      ? `FORGE ${s.latest.version} ist da. ${busy ? "Wird installiert …" : "Klicken zum Aktualisieren."}`
+      : `FORGE ${s.latest.version} ist da. Nur in der installierten App, nicht im Entwicklungsmodus.`;
+    return (
+      <Button size="icon" variant="ghost" className="mx-auto mt-3 h-10 w-10 bg-accent-soft text-accent hover:bg-accent/25" title={title} aria-label={title} disabled={!s.installable || busy} onClick={() => void install()}>
+        {busy ? <Spinner className="h-4 w-4" /> : <ArrowUpCircle className="h-4.5 w-4.5" />}
+      </Button>
+    );
+  }
   return (
     <div className="mx-3 mt-3 flex flex-col gap-2 rounded-xl border border-accent/40 bg-accent-soft px-3.5 py-3 animate-slide-up-in">
       <div className="flex items-start gap-2.5">

@@ -188,6 +188,28 @@
   }
 }
 
+/*
+ * Syntax colors of the file viewer, taken from VS Code "Dark Modern" so code reads like in the editor
+ * people know. Outside @theme: only CodeMirror reads them via var(), there are no utility classes.
+ */
+:root {
+  --syntax-fg: #cccccc;
+  --syntax-keyword: #569cd6;
+  --syntax-control: #c586c0;
+  --syntax-string: #ce9178;
+  --syntax-number: #b5cea8;
+  --syntax-comment: #6a9955;
+  --syntax-function: #dcdcaa;
+  --syntax-variable: #9cdcfe;
+  --syntax-type: #4ec9b0;
+  --syntax-constant: #4fc1ff;
+  --syntax-regexp: #d16969;
+  --syntax-escape: #d7ba7d;
+  --syntax-tag-bracket: #808080;
+  --syntax-invalid: #f44747;
+  --syntax-line-number: #6e7681;
+}
+
 /* No motion for those who asked for none: animations and transitions end right away. */
 @media (prefers-reduced-motion: reduce) {
   *,
