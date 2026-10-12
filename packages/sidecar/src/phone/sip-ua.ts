@@ -291,7 +291,8 @@ export class SipUserAgent extends EventEmitter<UaEvents> {
     // Hang up and sign off, but do not wait long for a PBX that does not answer.
     const bounded = (p: Promise<unknown>) => Promise.race([p.catch(() => {}), new Promise((r) => setTimeout(r, 2000))]);
     await bounded(Promise.all([...this.calls.values()].map((c) => c.hangup("FORGE-Telefon ausgeschaltet"))));
-    if (this.state === "registered") await bounded(this.register(0));
+    // Also while a (re-)registration runs: the PBX may already hold the binding.
+    if (this.state === "registered" || this.state === "registering") await bounded(this.register(0));
     for (const tx of this.clientTx.values()) this.finishTx(tx, null);
     this.sock?.close();
     this.sock = null;
@@ -337,13 +338,34 @@ export class SipUserAgent extends EventEmitter<UaEvents> {
     const seenIp = via?.params.received || null;
     const seenPort = via?.params.rport ? Number(via.params.rport) : null;
     if (!relearned && seenIp && seenPort && (seenIp !== this.contact.ip || seenPort !== this.contact.port)) {
+      const old = this.contact;
       this.contact = { ip: seenIp, port: seenPort };
       this.emit("log", `NAT erkannt, Kontaktadresse ${seenIp}:${seenPort}`);
+      // The address registered a moment ago would otherwise stay at the PBX until it expires, and
+      // the PBX would send calls there too.
+      await this.removeContact(old);
       return this.register(expires, true);
     }
     const granted = grantedExpires(res, this.contact) ?? expires;
     this.setState("registered", null);
     this.regTimer = setTimeout(() => void this.register(), Math.max(30, granted * 0.8) * 1000);
+  }
+
+  /** Removes one contact binding at the PBX (REGISTER with that Contact and expires=0). */
+  private async removeContact(c: Address) {
+    await this.requestWithAuth(
+      (auth) =>
+        this.buildRequest("REGISTER", `sip:${this.domain}`, {
+          from: `"${this.account.displayName}" <${this.aor}>;tag=${this.regTag}`,
+          to: `<${this.aor}>`,
+          callId: this.regCallId,
+          cseq: this.regCseq++,
+          contact: c,
+          contactParams: ";expires=0",
+          extra: [["expires", "0"], ...(auth ? [auth] : [])],
+        }),
+      false,
+    ).catch(() => null);
   }
 
   private registerFailed(message: string) {
@@ -702,14 +724,14 @@ export class SipUserAgent extends EventEmitter<UaEvents> {
 
   // ---------- transport and transactions
 
-  private contactHeader(params = ""): string {
-    return `<sip:${this.account.username}@${this.contact.ip}:${this.contact.port};transport=udp>${params}`;
+  private contactHeader(params = "", c: Address = this.contact): string {
+    return `<sip:${this.account.username}@${c.ip}:${c.port};transport=udp>${params}`;
   }
 
   private buildRequest(
     method: string,
     uri: string,
-    o: { from: string; to: string; callId: string; cseq: number; body?: string; contentType?: string; routes?: string[]; extra?: Array<[string, string]>; contactParams?: string },
+    o: { from: string; to: string; callId: string; cseq: number; body?: string; contentType?: string; routes?: string[]; extra?: Array<[string, string]>; contactParams?: string; contact?: Address },
   ): SipMessage {
     const headers: Array<[string, string]> = [
       ["via", `SIP/2.0/UDP ${this.contact.ip}:${this.contact.port};branch=${newBranch()};rport`],
@@ -720,7 +742,7 @@ export class SipUserAgent extends EventEmitter<UaEvents> {
       ["cseq", `${o.cseq} ${method}`],
     ];
     for (const r of o.routes ?? []) headers.push(["route", r]);
-    if (method !== "ACK" && method !== "CANCEL") headers.push(["contact", this.contactHeader(o.contactParams)], ["allow", ALLOW]);
+    if (method !== "ACK" && method !== "CANCEL") headers.push(["contact", this.contactHeader(o.contactParams, o.contact)], ["allow", ALLOW]);
     headers.push(["user-agent", USER_AGENT], ...(o.extra ?? []));
     if (o.body) headers.push(["content-type", o.contentType ?? "application/sdp"]);
     return { method, uri, headers, body: o.body ?? "" };

@@ -226,6 +226,9 @@ describe("SIP user agent against a test PBX", () => {
     const contacts = pbx.registrations.map((r) => getHeader(r, "contact"));
     expect(contacts.at(-1)).toContain("@10.9.9.9:40123");
     expect(getHeader(pbx.registrations[0]!, "to")).toBe("<sip:forge@pbx.test>");
+    // The private address registered first is removed again, so the PBX does not keep a dead binding.
+    const privateContact = contacts[0]!.replace(/;expires=\d+$/, "");
+    expect(contacts).toContain(`${privateContact};expires=0`);
     pbx.natAddress = null;
     await ua.stop();
     expect(getHeader(pbx.registrations.at(-1)!, "expires")).toBe("0");
