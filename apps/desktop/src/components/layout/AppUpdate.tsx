@@ -1,14 +1,19 @@
 import { useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useQueryClient } from "@tanstack/react-query";
-import { ArrowUpCircle, Download, RefreshCw } from "lucide-react";
+import { ArrowUpCircle, Download, RefreshCw, Sparkles } from "lucide-react";
 import type { AppUpdateState } from "@forge/protocol";
-import { call, keys, useAppUpdate } from "@/lib/queries";
+import { call, keys, useAppChangelog, useAppUpdate } from "@/lib/queries";
 import { errorMessage } from "@/lib/rpc";
 import { relativeTime } from "@/lib/utils";
 import { toast } from "@/stores/toast";
 import { Button } from "@/components/ui/button";
-import { Tooltip } from "@/components/ui/misc";
+import { Dialog } from "@/components/ui/dialog";
+import { Spinner, Tooltip } from "@/components/ui/misc";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Markdown } from "@/components/workspace/Markdown";
+import { useUi } from "@/stores/ui";
+import { Logo } from "./Logo";
 
 /** Downloads the installer if needed, then lets the desktop shell run it; FORGE restarts on its own. */
 function useInstall() {
@@ -67,6 +72,113 @@ export function AppUpdateCard() {
       ) : (
         <div className="text-caption text-subtle">Nur in der installierten App, nicht im Entwicklungsmodus.</div>
       )}
+    </div>
+  );
+}
+
+const OFFERED = ["available", "downloading", "ready"];
+
+/**
+ * Asks to update as soon as a new release is found (shortly after the start). Each release is
+ * offered once per run; "Später" leaves the card in the sidebar.
+ */
+export function AppUpdateDialog() {
+  const s = useAppUpdate().data;
+  const [dismissed, setDismissed] = useState<string | null>(null);
+  const { install, installing } = useInstall();
+  const openSettings = useUi((u) => u.openSettings);
+  const tag = s?.latest && OFFERED.includes(s.phase) ? s.latest.tag : null;
+  if (!s?.latest || !tag || dismissed === tag) return null;
+  const busy = installing || s.phase === "downloading";
+  return (
+    <Dialog
+      open
+      onOpenChange={(o) => !o && setDismissed(tag)}
+      title={`FORGE ${s.latest.version} ist verfügbar`}
+      description={`Installiert ist ${s.currentVersion}${s.latest.publishedAt ? `. Veröffentlicht ${relativeTime(s.latest.publishedAt)}.` : "."}`}
+      className="w-150"
+      overlayClassName="backdrop-blur-sm"
+      footer={
+        <>
+          {!s.installable && <span className="mr-auto self-center text-xs text-subtle">Aktualisieren geht nur in der installierten App.</span>}
+          <Button variant="ghost" onClick={() => setDismissed(tag)}>
+            Später
+          </Button>
+          <Button variant="primary" loading={busy} disabled={!s.installable} onClick={() => void install()}>
+            {busy ? (s.phase === "downloading" ? "Wird geladen …" : "Wird installiert …") : (
+              <>
+                <Download className="h-3.5 w-3.5" /> Jetzt aktualisieren
+              </>
+            )}
+          </Button>
+        </>
+      }
+    >
+      <div className="flex flex-col gap-4">
+        <Logo height={30} />
+        <div className="min-w-0">
+          <div className="mb-2 flex items-center gap-1.5 text-xs font-medium text-muted">
+            <Sparkles className="h-3.5 w-3.5 text-accent" /> Was ist neu
+          </div>
+          <Changelog
+            tag={tag}
+            notes={s.latest.notes}
+            onSetup={() => {
+              setDismissed(tag);
+              openSettings("claude");
+            }}
+          />
+        </div>
+      </div>
+    </Dialog>
+  );
+}
+
+/**
+ * Claude's summary when it is there. Until then (and when there is none) the commit messages or the
+ * release notes, so the dialog never waits on Claude.
+ */
+function Changelog({ tag, notes, onSetup }: { tag: string; notes: string; onSetup: () => void }) {
+  const log = useAppChangelog(tag);
+  const c = log.data;
+  if (c?.status === "ready" && c.text)
+    return (
+      <div className="max-h-80 overflow-y-auto text-body animate-fade-in">
+        <Markdown text={c.text} />
+        <div className="mt-2 text-caption text-subtle">Von Claude aus Release-Notizen und Commit-Messages zusammengefasst.</div>
+      </div>
+    );
+  const raw = c?.commits.length ? c.commits.map((m) => `- ${m}`).join("\n") : notes;
+  const noLogin = c?.unavailable === "no-login" || c?.unavailable === "no-claude";
+  return (
+    <div className="flex flex-col gap-2.5 text-body">
+      {noLogin && (
+        <div className="flex items-center justify-between gap-3 rounded-md border border-border bg-surface-2 px-3 py-2">
+          <p className="text-muted">Kein Changelog verfügbar, weil noch kein Claude-Login eingerichtet ist.</p>
+          <Button size="sm" variant="outline" onClick={onSetup}>
+            Claude einrichten
+          </Button>
+        </div>
+      )}
+      {raw ? (
+        <div className="max-h-60 overflow-y-auto text-muted">
+          <Markdown text={raw} />
+        </div>
+      ) : (
+        !c || c.status === "writing" ? (
+          <div className="flex flex-col gap-2">
+            <Skeleton className="h-3.5 w-11/12" />
+            <Skeleton className="h-3.5 w-4/5" />
+          </div>
+        ) : null
+      )}
+      {(!c || c.status === "writing") && (
+        <div className="flex items-center gap-1.5 text-caption text-subtle" role="status">
+          <Spinner className="h-3 w-3" /> Claude fasst die Änderungen zusammen …
+        </div>
+      )}
+      {c?.unavailable === "error" && <div className="text-caption text-subtle">Die Zusammenfassung von Claude ist gerade nicht verfügbar.</div>}
+      {log.isError && <div className="text-caption text-subtle">Änderungen nicht geladen: {errorMessage(log.error)}</div>}
     </div>
   );
 }

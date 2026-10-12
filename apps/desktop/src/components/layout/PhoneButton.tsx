@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Phone, PhoneCall, PhoneOff, PhoneOutgoing, Power, RotateCw, Settings, ShieldCheck } from "lucide-react";
 import type { PhoneSetupIncomplete, PhoneState } from "@forge/protocol";
-import { call, keys, usePhoneConfig, usePhoneState, useSettings } from "@/lib/queries";
+import { call, keys, usePhoneConfig, usePhoneState } from "@/lib/queries";
 import { errorMessage, RpcCallError } from "@/lib/rpc";
 import { cn } from "@/lib/utils";
 import { useUi } from "@/stores/ui";
@@ -21,9 +21,8 @@ function Duration({ since }: { since: string }) {
   return <span className="tabular-nums">{`${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`}</span>;
 }
 
-/** Phone line on/off and the running call, top right in every view. Hidden unless the phone feature is switched on. */
+/** Phone line on/off and the running call, top right in every view. Hidden until the phone is set up (server entered) or switched on. */
 export function PhoneButton() {
-  const feature = useSettings().data?.phoneFeature;
   const state = usePhoneState().data;
   const config = usePhoneConfig().data;
   const qc = useQueryClient();
@@ -34,15 +33,14 @@ export function PhoneButton() {
       set(await fn());
     } catch (e) {
       toast.error(errorTitle, errorMessage(e));
-      if (e instanceof RpcCallError && (e.details as Partial<PhoneSetupIncomplete> | undefined)?.phoneSetupIncomplete) useUi.getState().setView("settings");
+      if (e instanceof RpcCallError && (e.details as Partial<PhoneSetupIncomplete> | undefined)?.phoneSetupIncomplete) useUi.getState().openSettings("phone");
     }
   };
   const enable = () => run(() => call("phone.setEnabled", { enabled: true }), "Telefon nicht eingeschaltet");
   const disable = () => run(() => call("phone.setEnabled", { enabled: false }), "Telefon nicht ausgeschaltet");
-  const openSettings = () => useUi.getState().setView("settings");
+  const openSettings = () => useUi.getState().openSettings("phone");
 
-  // A call that is still running shows even if the feature was just hidden.
-  if (!state || (!feature && !state.call)) return null;
+  if (!state || !(state.enabled || state.call || config?.server)) return null;
 
   if (state.call) {
     const c = state.call;

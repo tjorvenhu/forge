@@ -45,6 +45,8 @@ export const keys = {
   phoneConfig: ["phoneConfig"] as const,
   phoneCalls: ["phoneCalls"] as const,
   appUpdate: ["appUpdate"] as const,
+  appChangelog: (tag: string) => ["appChangelog", tag] as const,
+  backups: ["backups"] as const,
   remote: ["remote"] as const,
   search: (q: string) => ["search", q] as const,
 };
@@ -112,6 +114,19 @@ export const useGitStatus = (projectId: string | null, enabled = true) =>
 
 /** FORGE updates; changes arrive as update.updated. */
 export const useAppUpdate = () => useQuery({ queryKey: keys.appUpdate, queryFn: () => call("app.updateState", {}), staleTime: Infinity });
+
+/** Claude's changelog of the offered release; asked again every 1.5 s while Claude still writes it. */
+export const useAppChangelog = (tag: string | null) =>
+  useQuery({
+    queryKey: keys.appChangelog(tag ?? ""),
+    queryFn: () => call("app.changelog", {}),
+    enabled: !!tag,
+    staleTime: Infinity,
+    retry: false,
+    refetchInterval: (q) => (q.state.data?.status === "writing" ? 1500 : false),
+  });
+
+export const useBackups = () => useQuery({ queryKey: keys.backups, queryFn: () => call("backup.list", {}), staleTime: 30_000 });
 
 export const usePhoneState = () => useQuery({ queryKey: keys.phoneState, queryFn: () => call("phone.state", {}), staleTime: Infinity });
 export const usePhoneConfig = () => useQuery({ queryKey: keys.phoneConfig, queryFn: () => call("phone.config", {}), staleTime: Infinity });

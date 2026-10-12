@@ -12,6 +12,9 @@ import {
   PhoneConfig,
   PhoneEngine,
   AppUpdateState,
+  AppChangelog,
+  BackupInfo,
+  BackupPart,
   PhoneState,
   PhoneCallRecord,
   ConfigDoc,
@@ -290,6 +293,23 @@ export const methods = {
   "app.checkUpdate": { params: empty, result: AppUpdateState },
   /** downloads and checks the installer of the newest release; installing is a command of the desktop shell */
   "app.downloadUpdate": { params: empty, result: AppUpdateState },
+  /** state of Claude's summary of the offered release; starts it and returns at once (poll while "writing") */
+  "app.changelog": { params: empty, result: AppChangelog.nullable() },
+
+  "backup.list": { params: empty, result: z.array(BackupInfo) },
+  "backup.create": { params: empty, result: BackupInfo },
+  /** writes a backup to a file the user picked: the stored one with `id`, otherwise a fresh one */
+  "backup.export": { params: z.object({ id: z.string().max(200).optional(), path: z.string().min(1).max(4096) }), result: z.object({ path: z.string() }) },
+  /** reads a backup file the user picked, for the preview before restoring */
+  "backup.inspect": { params: z.object({ path: z.string().min(1).max(4096) }), result: BackupInfo },
+  /**
+   * Restores the chosen parts from a stored backup (`id`) or a file (`path`). Saves the current
+   * state first, so the restore itself can be undone.
+   */
+  "backup.restore": {
+    params: z.object({ id: z.string().max(200).optional(), path: z.string().max(4096).optional(), parts: z.array(BackupPart).min(1) }),
+    result: z.object({ restored: z.array(BackupPart), safety: BackupInfo, notes: z.array(z.string()) }),
+  },
 
   "phone.config": { params: empty, result: PhoneConfig },
   "phone.saveConfig": {

@@ -49,8 +49,8 @@ export function ClaudeSetupCard() {
   if (!d.claude.found) {
     return (
       <div className="flex flex-col items-start gap-2.5">
-        <div className="text-body">Claude Code ist auf diesem Rechner noch nicht installiert.</div>
-        <p className="text-xs text-muted">FORGE startet dafür den offiziellen Installer von Anthropic. Das dauert etwa eine Minute.</p>
+        <div className="text-body">{running && s?.task === "install" ? "Claude Code wird installiert." : "Claude Code ist auf diesem Rechner noch nicht installiert."}</div>
+        <p className="text-xs text-muted">FORGE nutzt dafür den offiziellen Installer von Anthropic. Das dauert etwa eine Minute.</p>
         {s?.task === "install" && s.phase === "error" && <ErrorBanner title="Installation fehlgeschlagen">{s.message}</ErrorBanner>}
         <div className="flex gap-2">
           <Button variant="primary" onClick={() => void act("claude.install")} loading={running && s?.task === "install"}>

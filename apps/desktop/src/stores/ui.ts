@@ -4,6 +4,7 @@ export type View = "home" | "projects" | "sessions" | "github" | "mcp" | "settin
 export type WorkspaceTab = "chat" | "agents" | "git" | "files" | "settings";
 export type NewProjectMode = "import" | "create" | "clone";
 export type BottomTab = "output" | "dev";
+export type SettingsSection = "general" | "claude" | "phone" | "backup" | "rules" | "about";
 
 /** activeSession values starting with this prefix point at a terminal session not yet adopted by FORGE */
 export const EXTERNAL_PREFIX = "ext:";
@@ -45,6 +46,9 @@ interface UiState {
   /** shows a file in the Dateien tab (from the file explorer) */
   openFile: (projectId: string, path: string) => void;
   setView: (v: View) => void;
+  settingsSection: SettingsSection;
+  /** opens the settings at one section */
+  openSettings: (section: SettingsSection) => void;
   openProject: (projectId: string, sessionId?: string | null) => void;
   closeProject: () => void;
   setActiveSession: (projectId: string, sessionId: string | null) => void;
@@ -107,6 +111,8 @@ export const useUi = create<UiState>((set, get) => ({
   selectFile: (projectId, path) => set((s) => ({ selectedFile: { ...s.selectedFile, [projectId]: path } })),
   openFile: (projectId, path) => set((s) => ({ selectedFile: { ...s.selectedFile, [projectId]: path }, workspaceTab: "files" })),
   setView: (view) => set({ view }),
+  settingsSection: "general",
+  openSettings: (settingsSection) => set({ view: "settings", settingsSection }),
   openProject: (projectId, sessionId) => {
     set((s) => ({
       view: "workspace",

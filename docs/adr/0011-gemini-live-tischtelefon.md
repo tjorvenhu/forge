@@ -56,7 +56,7 @@ Gesprächspartner gleich. Gemini erfährt nur, dass Steuern frei ist; die Ziffer
   dass es jetzt um diese Session geht.
 - Rückrufe kommen wie bisher über die Anlage (`notifyNumber`), die Session wird auf dem Telefon ausgewählt.
 
-**Optional:** `Settings.phoneFeature`. Aus (Standard bei neuen Installationen): kein Telefon-Knopf, keine
+**Optional (ersetzt am 2026-10-12):** Der Schalter `Settings.phoneFeature` ist entfallen; der Telefon-Knopf erscheint, sobald eine Anlage eingetragen oder das Telefon an ist. Ursprünglich: `Settings.phoneFeature`. Aus (Standard bei neuen Installationen): kein Telefon-Knopf, keine
 Telefon-Einstellungen, das Telefon und das Tischtelefon gehen aus. Wer vor dieser Version einen SIP-Server
 eingetragen hatte, behält die Funktion sichtbar.
 

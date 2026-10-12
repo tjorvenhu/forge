@@ -1,8 +1,21 @@
-import { open } from "@tauri-apps/plugin-dialog";
+import { open, save } from "@tauri-apps/plugin-dialog";
 import { openUrl } from "@tauri-apps/plugin-opener";
 
 export async function pickFolder(title: string, defaultPath?: string | null): Promise<string | null> {
   const r = await open({ directory: true, multiple: false, title, defaultPath: defaultPath ?? undefined });
+  return typeof r === "string" ? r : null;
+}
+
+const JSON_FILTER = [{ name: "FORGE-Backup", extensions: ["json"] }];
+
+/** Where to save a backup file; null when the dialog was cancelled. */
+export async function pickSaveFile(title: string, defaultPath: string): Promise<string | null> {
+  return (await save({ title, defaultPath, filters: JSON_FILTER })) ?? null;
+}
+
+/** A backup file to read; null when the dialog was cancelled. */
+export async function pickBackupFile(title: string): Promise<string | null> {
+  const r = await open({ multiple: false, directory: false, title, filters: JSON_FILTER });
   return typeof r === "string" ? r : null;
 }
 

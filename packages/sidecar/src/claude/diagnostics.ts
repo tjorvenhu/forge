@@ -12,6 +12,26 @@ async function versionOf(bin: string | null, args: string[], env?: NodeJS.Proces
   return { found: true, bundled, version: r.stdout.trim().split("\n")[0] ?? null, path: bin, error: null };
 }
 
+const NOT_CHECKED: Diagnostics["auth"] = { checked: false, loggedIn: false, authMethod: null, subscriptionType: null, apiProvider: null, error: null };
+
+/** Sign-in state as `claude auth status` reports it. */
+export async function readAuth(claudeBin: string, env: Record<string, string>): Promise<Diagnostics["auth"]> {
+  const auth = { ...NOT_CHECKED };
+  const r = await run(claudeBin, ["auth", "status"], { timeoutMs: 20_000, env });
+  auth.checked = true;
+  try {
+    // Only non-identifying fields are kept; email and org are dropped on purpose.
+    const j = JSON.parse(r.stdout) as Record<string, unknown>;
+    auth.loggedIn = j.loggedIn === true;
+    auth.authMethod = typeof j.authMethod === "string" ? j.authMethod : null;
+    auth.subscriptionType = typeof j.subscriptionType === "string" ? j.subscriptionType : null;
+    auth.apiProvider = typeof j.apiProvider === "string" ? j.apiProvider : null;
+  } catch {
+    auth.error = (r.stderr || r.stdout).trim().slice(0, 300) || "Auth-Status nicht lesbar";
+  }
+  return auth;
+}
+
 export async function collectDiagnostics(opts: {
   claudePathSetting: string | null;
   stripApiKey: boolean;
@@ -30,28 +50,7 @@ export async function collectDiagnostics(opts: {
     versionOf(ghBin, ["--version"], undefined, ghTool?.bundled),
   ]);
 
-  const auth: Diagnostics["auth"] = {
-    checked: false,
-    loggedIn: false,
-    authMethod: null,
-    subscriptionType: null,
-    apiProvider: null,
-    error: null,
-  };
-  if (claude.found && claudeBin) {
-    const r = await run(claudeBin, ["auth", "status"], { timeoutMs: 20_000, env });
-    auth.checked = true;
-    try {
-      // Only non-identifying fields are kept; email and org are dropped on purpose.
-      const j = JSON.parse(r.stdout) as Record<string, unknown>;
-      auth.loggedIn = j.loggedIn === true;
-      auth.authMethod = typeof j.authMethod === "string" ? j.authMethod : null;
-      auth.subscriptionType = typeof j.subscriptionType === "string" ? j.subscriptionType : null;
-      auth.apiProvider = typeof j.apiProvider === "string" ? j.apiProvider : null;
-    } catch {
-      auth.error = (r.stderr || r.stdout).trim().slice(0, 300) || "Auth-Status nicht lesbar";
-    }
-  }
+  const auth = claude.found && claudeBin ? await readAuth(claudeBin, env) : NOT_CHECKED;
 
   let ghAuth: boolean | null = null;
   if (gh.found && ghBin) {

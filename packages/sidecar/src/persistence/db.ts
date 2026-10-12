@@ -165,7 +165,6 @@ export const DEFAULT_SETTINGS: Settings = {
   debugLogs: false,
   defaultProjectDir: null,
   autoContinueAfterLimit: true,
-  phoneFeature: false,
   updateChecks: true,
 };
 
@@ -328,8 +327,6 @@ export class Db {
     const rows = this.sql.prepare("SELECT key, value FROM settings").all() as Array<{ key: string; value: string }>;
     const out: Record<string, unknown> = { ...DEFAULT_SETTINGS };
     for (const r of rows) if (r.key in DEFAULT_SETTINGS) out[r.key] = JSON.parse(r.value);
-    // Installations from before the switch: whoever has set up the phone keeps seeing it.
-    if (!rows.some((r) => r.key === "phoneFeature")) out.phoneFeature = !!this.getPhoneSettings().server;
     return out as Settings;
   }
 
@@ -342,6 +339,28 @@ export class Db {
       stmt.run(k, JSON.stringify(v));
     }
     return this.getSettings();
+  }
+
+  /** Every stored setting as raw JSON text (the phone settings included), for backups. */
+  rawSettings(): Record<string, string> {
+    const rows = this.sql.prepare("SELECT key, value FROM settings ORDER BY key").all() as Array<{ key: string; value: string }>;
+    return Object.fromEntries(rows.map((r) => [r.key, r.value]));
+  }
+
+  /** Replaces the stored settings with the given ones; `keep` stays as it is. */
+  replaceRawSettings(values: Record<string, string>, keep: string[] = []) {
+    this.sql.exec("BEGIN");
+    try {
+      const keys = Object.keys(this.rawSettings()).filter((k) => !keep.includes(k));
+      const del = this.sql.prepare("DELETE FROM settings WHERE key = ?");
+      for (const k of keys) del.run(k);
+      const ins = this.sql.prepare("INSERT INTO settings(key, value) VALUES(?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value");
+      for (const [k, v] of Object.entries(values)) if (!keep.includes(k)) ins.run(k, v);
+      this.sql.exec("COMMIT");
+    } catch (e) {
+      this.sql.exec("ROLLBACK");
+      throw e;
+    }
   }
 
   // ---- projects

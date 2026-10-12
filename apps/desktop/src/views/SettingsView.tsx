@@ -1,30 +1,62 @@
 import { useState, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { CheckCircle2, CircleDashed, CircleSlash, FolderOpen, RefreshCw, ShieldAlert, Volume2, XCircle } from "lucide-react";
+import {
+  ArchiveRestore,
+  CheckCircle2,
+  CircleDashed,
+  CircleSlash,
+  FileText,
+  FolderOpen,
+  Info,
+  Phone,
+  RefreshCw,
+  ShieldAlert,
+  SlidersHorizontal,
+  SquareTerminal,
+  Volume2,
+  XCircle,
+  type LucideIcon,
+} from "lucide-react";
 import type { Diagnostics, ProfileId, Settings, ToolCheck, EffortLevel } from "@forge/protocol";
-import { call, keys, useDiagnostics, useRuntimeInfo, useSettings } from "@/lib/queries";
+import { call, keys, useDiagnostics, usePhoneState, useRuntimeInfo, useSettings } from "@/lib/queries";
 import { errorMessage } from "@/lib/rpc";
 import { pickFolder } from "@/lib/native";
 import { playSound } from "@/lib/sounds";
 import { toast } from "@/stores/toast";
+import { useUi, type SettingsSection } from "@/stores/ui";
 import { Page } from "@/components/layout/Page";
 import { Button } from "@/components/ui/button";
-import { Field, Input } from "@/components/ui/input";
-import { Badge, ErrorBanner, SectionTitle, Loading, ToggleRow } from "@/components/ui/misc";
+import { Input } from "@/components/ui/input";
+import { Badge, ErrorBanner, Loading } from "@/components/ui/misc";
 import { Select } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import { PROFILE_IDS, PROFILE_INFO } from "@/components/projects/ProfileBadge";
 import { ClaudeSetupCard } from "@/components/settings/ClaudeSetupCard";
 import { MemoryEditor } from "@/components/settings/MemoryEditor";
 import { effortOptions, fromChoice, modelOptions, toChoice } from "@/components/settings/model-options";
 import { PhoneSettings } from "@/components/settings/PhoneSettings";
+import { BackupSettings } from "@/components/settings/BackupSettings";
 import { AppUpdateSettings } from "@/components/layout/AppUpdate";
 import { capitalize, cn } from "@/lib/utils";
 
+type Save = (patch: Partial<Settings>) => Promise<void>;
+
+const SECTIONS: ReadonlyArray<{ id: SettingsSection; label: string; hint: string; Icon: LucideIcon }> = [
+  { id: "general", label: "Allgemein", hint: "Modell, Profil, Bedienung", Icon: SlidersHorizontal },
+  { id: "claude", label: "Claude Code", hint: "Installation, Anmeldung, Limits", Icon: SquareTerminal },
+  { id: "phone", label: "Telefon", hint: "Anrufe, Sprache, Tischtelefon", Icon: Phone },
+  { id: "backup", label: "Backup", hint: "Sichern und zurücksetzen", Icon: ArchiveRestore },
+  { id: "rules", label: "Globale Regeln", hint: "CLAUDE.md für alle Projekte", Icon: FileText },
+  { id: "about", label: "Über FORGE", hint: "Updates, Datenschutz, Diagnose", Icon: Info },
+];
+
 export function SettingsView() {
   const settings = useSettings();
+  const section = useUi((s) => s.settingsSection);
+  const openSettings = useUi((s) => s.openSettings);
   const qc = useQueryClient();
 
-  const save = async (patch: Partial<Settings>) => {
+  const save: Save = async (patch) => {
     try {
       const next = await call("settings.update", patch);
       qc.setQueryData(keys.settings, next);
@@ -35,153 +67,219 @@ export function SettingsView() {
   };
 
   const s = settings.data;
+  const current = SECTIONS.find((x) => x.id === section) ?? SECTIONS[0]!;
   return (
-    <Page title="Einstellungen" subtitle="Einstellungen von FORGE. Die globalen Regeln unten stehen in ~/.claude/CLAUDE.md und gelten auch für Claude Code im Terminal.">
-      {!s ? (
-        <Loading />
-      ) : (
-        <div className="grid max-w-5xl gap-6 xl:grid-cols-2">
-          <Card title="Allgemein">
-            <div className="flex flex-col gap-4">
-              <ModelSetting value={s.defaultModel} onChange={(v) => void save({ defaultModel: v })} />
-              <Field label="Standard-Aufwand (Effort)" hint="Wie gründlich Claude nachdenkt. Höher ist genauer, aber langsamer und verbraucht mehr vom Abo.">
-                <Select
-                  value={toChoice(s.defaultEffort)}
-                  onChange={(v) => void save({ defaultEffort: fromChoice<EffortLevel>(v) })}
-                  className="w-full"
-                  options={effortOptions("Claude-Code-Standard")}
-                />
-              </Field>
-              <Field label="Standardprofil für neue Projekte">
-                <Select<ProfileId>
-                  value={s.defaultProfile}
-                  onChange={(v) => void save({ defaultProfile: v })}
-                  className="w-full"
-                  options={PROFILE_IDS.map((p) => ({ value: p, label: PROFILE_INFO[p].label, description: PROFILE_INFO[p].description }))}
-                />
-              </Field>
-              <Field label="Standardordner für neue Projekte">
-                <div className="flex gap-2">
-                  <Input value={s.defaultProjectDir ?? ""} readOnly placeholder="nicht gesetzt" className="font-mono text-xs" />
-                  <Button
-                    onClick={async () => {
-                      try {
-                        const p = await pickFolder("Standardordner wählen", s.defaultProjectDir);
-                        if (p) void save({ defaultProjectDir: p });
-                      } catch (e) {
-                        toast.error("Ordnerdialog fehlgeschlagen", errorMessage(e));
-                      }
-                    }}
-                  >
-                    <FolderOpen className="h-3.5 w-3.5" /> Wählen
-                  </Button>
-                </div>
-              </Field>
-              <AppUpdateSettings />
-              <ToggleRow checked={s.updateChecks} onChange={(v) => void save({ updateChecks: v })} label="Automatisch nach Updates suchen">
-                Beim Start und alle 30 Minuten in den GitHub-Releases von FORGE. Braucht die GitHub-Anmeldung in FORGE mit Zugriff auf das Repository.
-              </ToggleRow>
-              <ToggleRow checked={s.phoneFeature} onChange={(v) => void save({ phoneFeature: v })} label="Telefon-Funktion">
-                FORGE anrufen, Sessions und Agenten per Sprache steuern, Rückrufe, Tischtelefon. Ausgeschaltet verschwinden Telefon-Knopf und Einstellungen, das Telefon geht aus.
-              </ToggleRow>
-              <ToggleRow checked={s.enterToSend} onChange={(v) => void save({ enterToSend: v })} label="Enter sendet, Umschalt+Enter macht eine neue Zeile">
-                Ausgeschaltet: Strg+Enter sendet, Enter macht eine neue Zeile.
-              </ToggleRow>
-              <div className="flex flex-col gap-1.5">
-                <ToggleRow checked={s.sounds} onChange={(v) => void save({ sounds: v })} label="Töne abspielen">
-                  Signal, wenn Claude fertig ist, eine Freigabe braucht oder ein Fehler auftritt.
-                </ToggleRow>
-                <div className="-ml-2 flex gap-1 pl-6">
-                  {(["done", "approval", "error"] as const).map((k) => (
-                    <Button key={k} size="sm" variant="ghost" onClick={() => playSound(k)} title="Ton anhören">
-                      <Volume2 className="h-3.5 w-3.5" /> {k === "done" ? "Fertig" : k === "approval" ? "Freigabe" : "Fehler"}
-                    </Button>
-                  ))}
-                </div>
+    <Page title="Einstellungen" subtitle="Änderungen gelten sofort. Ein Backup davon legt FORGE bei jedem Start an.">
+      <div className="mx-auto flex max-w-6xl gap-8">
+        <nav className="sticky top-0 flex w-56 shrink-0 flex-col gap-1 self-start" aria-label="Bereiche der Einstellungen">
+          {SECTIONS.map((x) => {
+            const active = x.id === current.id;
+            return (
+              <button
+                key={x.id}
+                onClick={() => openSettings(x.id)}
+                aria-current={active ? "page" : undefined}
+                className={cn(
+                  "flex items-start gap-3 rounded-lg px-3 py-2.5 text-left transition-[color,background-color,transform] duration-120 active:scale-[0.98]",
+                  active ? "bg-accent-soft text-fg" : "text-muted hover:bg-surface-2 hover:text-fg",
+                )}
+              >
+                <x.Icon className={cn("mt-0.5 h-4 w-4 shrink-0", active && "text-accent")} />
+                <span className="min-w-0">
+                  <span className="block text-body-lg">{x.label}</span>
+                  <span className="block truncate text-caption text-subtle">{x.hint}</span>
+                </span>
+              </button>
+            );
+          })}
+        </nav>
+
+        <div key={current.id} className="flex min-w-0 max-w-3xl flex-1 animate-view-in flex-col gap-6 pb-10">
+          {!s ? (
+            <Loading />
+          ) : current.id === "general" ? (
+            <GeneralSection s={s} save={save} />
+          ) : current.id === "claude" ? (
+            <ClaudeSection s={s} save={save} />
+          ) : current.id === "phone" ? (
+            <PhoneSection />
+          ) : current.id === "backup" ? (
+            <Group title="Backup" description="Einstellungen sichern, als Datei herunterladen und auf einen früheren Stand zurücksetzen.">
+              <div className="p-4">
+                <BackupSettings />
               </div>
-            </div>
-          </Card>
-
-          <Card title="Claude Code">
-            <div className="flex flex-col gap-4">
-              <ClaudeSetupCard />
-              <Field label="Pfad zur Claude-CLI" hint="Leer lassen für automatische Suche im PATH.">
-                <ClaudePathInput value={s.claudePath} onSave={(v) => void save({ claudePath: v })} />
-              </Field>
-              <ToggleRow checked={s.stripApiKey} onChange={(v) => void save({ stripApiKey: v })} label="ANTHROPIC_API_KEY für Sessions ausblenden">
-                Empfohlen. Ein gesetzter API-Key überschreibt die Abo-Anmeldung und kann separat abgerechnet werden. Der Wert wird nie angezeigt.
-              </ToggleRow>
-              <ToggleRow checked={s.autoContinueAfterLimit} onChange={(v) => void save({ autoContinueAfterLimit: v })} label="Nach Nutzungslimit automatisch weitermachen">
-                Stoppt das Nutzungslimit eine Session, schickt FORGE nach dem Reset selbst eine Nachricht, damit Claude weiterarbeitet. Nur für diese Session, mit ihrem Profil, höchstens dreimal ohne deine Eingabe. FORGE muss dafür laufen.
-              </ToggleRow>
-            </div>
-          </Card>
-
-          {s.phoneFeature && (
-            <div className="xl:col-span-2" id="telefon">
-              <Card title="Telefon">
-                <PhoneSettings />
-              </Card>
-            </div>
+            </Group>
+          ) : current.id === "rules" ? (
+            <Group title="Globale Regeln für Claude" description="Stehen in ~/.claude/CLAUDE.md und gelten in jedem Projekt, zusätzlich zur CLAUDE.md des Projekts. Auch Claude Code im Terminal liest sie.">
+              <div className="p-4">
+                <MemoryEditor scopes={["global"]} />
+              </div>
+            </Group>
+          ) : (
+            <AboutSection s={s} save={save} />
           )}
-
-          <Card title="Sicherheit">
-            <div className="flex items-start gap-3">
-              <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0 text-danger" />
-              <div className="flex-1 text-body">
-                <div className="font-medium">Autonomous-Profil</div>
-                <p className="mt-1 text-muted">
-                  Autonomous startet Claude mit bypassPermissions: keine Rückfragen vor Befehlen und Dateiänderungen. Befehle laufen mit deinen Benutzerrechten. Die
-                  FORGE-Sperrliste gilt weiterhin: kein Force-Push, kein reset --hard, keine Zugriffe auf ~/.ssh und andere Zugangsdaten, keine Schreibzugriffe außerhalb des
-                  Projekts. Mit dem Tag sandbox-only schließt du einzelne Projekte aus.
-                </p>
-              </div>
-            </div>
-          </Card>
-
-          <div className="xl:col-span-2">
-            <Card title="Globale Regeln für Claude (~/.claude/CLAUDE.md)">
-              <p className="mb-3 text-xs text-muted">Gilt in jedem Projekt, zusätzlich zur CLAUDE.md des Projekts.</p>
-              <MemoryEditor scopes={["global"]} />
-            </Card>
-          </div>
-
-          <Card title="Datenschutz">
-            <ul className="list-disc space-y-1 pl-5 text-body text-muted">
-              <li>Keine Telemetrie durch FORGE. Projektdaten bleiben lokal.</li>
-              {s.phoneFeature && (
-                <li>Ausnahme Telefon: Ist es eingeschaltet, geht Gesprächsaudio an Google (Gemini) oder OpenAI, je nach Einstellung unter Telefon.</li>
-              )}
-              <li>Tool-Ein- und Ausgaben werden vor dem Speichern auf bekannte Secret-Muster geprüft und maskiert.</li>
-              <li>FORGE liest keine Claude-Zugangsdaten. Die Anmeldung erledigt die Claude-CLI selbst.</li>
-            </ul>
-          </Card>
-
-          <div className="xl:col-span-2">
-            <DiagnosticsPanel />
-          </div>
         </div>
-      )}
+      </div>
     </Page>
   );
 }
 
-function Card({ title, children }: { title: string; children: ReactNode }) {
+/** A titled card of settings rows. */
+function Group({ title, description, action, children }: { title: string; description?: ReactNode; action?: ReactNode; children: ReactNode }) {
   return (
-    <section className="rounded-xl border border-border bg-surface p-4">
-      <SectionTitle>{title}</SectionTitle>
-      {children}
+    <section className="overflow-hidden rounded-xl border border-border bg-surface">
+      <header className="flex items-start justify-between gap-4 border-b border-border px-4 py-3">
+        <div className="min-w-0">
+          <h2 className="text-ui font-semibold">{title}</h2>
+          {description && <p className="mt-0.5 text-xs text-muted">{description}</p>}
+        </div>
+        {action}
+      </header>
+      <div className="divide-y divide-border">{children}</div>
     </section>
   );
 }
 
+/** One setting: what it is and what it does on the left, the control on the right (or below with `stacked`). */
+function Row({ label, description, children, stacked }: { label: string; description?: ReactNode; children: ReactNode; stacked?: boolean }) {
+  return (
+    <div className={cn("px-4 py-3.5", stacked ? "flex flex-col gap-2.5" : "flex items-center justify-between gap-6")}>
+      <div className="min-w-0 flex-1">
+        <div className="text-body font-medium">{label}</div>
+        {description && <div className="mt-0.5 text-xs text-muted">{description}</div>}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function SwitchRow({ label, description, checked, onChange }: { label: string; description?: ReactNode; checked: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <Row label={label} description={description}>
+      <Switch checked={checked} onChange={onChange} label={label} />
+    </Row>
+  );
+}
+
+function GeneralSection({ s, save }: { s: Settings; save: Save }) {
+  return (
+    <>
+      <Group title="Neue Sessions" description="Gilt, solange ein Projekt nichts anderes festlegt. Pro Session lässt sich alles im Chat umstellen.">
+        <ModelSetting value={s.defaultModel} onChange={(v) => void save({ defaultModel: v })} />
+        <Row label="Aufwand" description="Wie gründlich Claude nachdenkt. Höher ist genauer, aber langsamer und verbraucht mehr vom Abo.">
+          <Select
+            value={toChoice(s.defaultEffort)}
+            onChange={(v) => void save({ defaultEffort: fromChoice<EffortLevel>(v) })}
+            className="w-64"
+            options={effortOptions("Claude-Code-Standard")}
+          />
+        </Row>
+        <Row label="Profil für neue Projekte" description={PROFILE_INFO[s.defaultProfile].description}>
+          <Select<ProfileId>
+            value={s.defaultProfile}
+            onChange={(v) => void save({ defaultProfile: v })}
+            className="w-64"
+            options={PROFILE_IDS.map((p) => ({ value: p, label: PROFILE_INFO[p].label, description: PROFILE_INFO[p].description }))}
+          />
+        </Row>
+        {s.defaultProfile === "autonomous" && (
+          <div className="flex items-start gap-3 bg-danger-soft/40 px-4 py-3">
+            <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0 text-danger" />
+            <p className="text-xs text-muted">
+              Autonomous fragt nicht vor Befehlen und Dateiänderungen. Befehle laufen mit deinen Benutzerrechten. Die Sperrliste von FORGE gilt weiterhin: kein Force-Push,
+              kein reset --hard, kein Zugriff auf ~/.ssh und andere Zugangsdaten, kein Schreiben außerhalb des Projekts. Mit dem Tag sandbox-only nimmst du einzelne Projekte aus.
+            </p>
+          </div>
+        )}
+        <Row label="Ordner für neue Projekte" description="Hier legt FORGE neue und geklonte Projekte an." stacked>
+          <div className="flex gap-2">
+            <Input value={s.defaultProjectDir ?? ""} readOnly placeholder="nicht gesetzt" className="font-mono text-xs" />
+            <Button
+              onClick={async () => {
+                try {
+                  const p = await pickFolder("Ordner für neue Projekte wählen", s.defaultProjectDir);
+                  if (p) void save({ defaultProjectDir: p });
+                } catch (e) {
+                  toast.error("Ordnerdialog fehlgeschlagen", errorMessage(e));
+                }
+              }}
+            >
+              <FolderOpen className="h-3.5 w-3.5" /> Wählen
+            </Button>
+          </div>
+        </Row>
+      </Group>
+
+      <Group title="Bedienung">
+        <SwitchRow
+          label="Enter sendet"
+          description={s.enterToSend ? "Umschalt+Enter macht eine neue Zeile." : "Strg+Enter sendet, Enter macht eine neue Zeile."}
+          checked={s.enterToSend}
+          onChange={(v) => void save({ enterToSend: v })}
+        />
+        <Row label="Töne" description="Signal, wenn Claude fertig ist, eine Freigabe braucht oder ein Fehler auftritt.">
+          <div className="flex items-center gap-1">
+            {(["done", "approval", "error"] as const).map((k) => (
+              <Button key={k} size="icon-sm" variant="ghost" onClick={() => playSound(k)} aria-label={`Ton ${SOUND_LABEL[k]} anhören`} title={`Ton ${SOUND_LABEL[k]} anhören`}>
+                <Volume2 className="h-3.5 w-3.5" />
+              </Button>
+            ))}
+            <span className="ml-2">
+              <Switch checked={s.sounds} onChange={(v) => void save({ sounds: v })} label="Töne" />
+            </span>
+          </div>
+        </Row>
+      </Group>
+    </>
+  );
+}
+
+const SOUND_LABEL = { done: "Fertig", approval: "Freigabe", error: "Fehler" } as const;
+
 function ModelSetting({ value, onChange }: { value: string | null; onChange: (v: string | null) => void }) {
   const info = useRuntimeInfo();
   const models = info.data?.models ?? [];
+  const hint = info.isLoading ? "Modellliste wird von Claude Code gelesen …" : models.length ? "Mit welchem Modell eine neue Session startet." : "Modellliste nicht verfügbar.";
   return (
-    <Field label="Standardmodell" hint={info.isLoading ? "Modellliste wird von Claude Code gelesen …" : models.length ? undefined : "Modellliste nicht verfügbar"}>
-      <Select value={toChoice(value)} onChange={(v) => onChange(fromChoice(v))} className="w-full" options={modelOptions(models, "Claude-Code-Standard")} />
-    </Field>
+    <Row label="Modell" description={hint}>
+      <Select value={toChoice(value)} onChange={(v) => onChange(fromChoice(v))} className="w-64" options={modelOptions(models, "Claude-Code-Standard")} />
+    </Row>
+  );
+}
+
+function ClaudeSection({ s, save }: { s: Settings; save: Save }) {
+  return (
+    <>
+      <Group
+        title="Installation und Anmeldung"
+        description="FORGE arbeitet mit Claude Code und deinem Claude-Abo. Fehlt Claude Code, installiert FORGE es beim Start selbst. Die Anmeldung teilt FORGE mit Claude Code im Terminal."
+      >
+        <div className="px-4 py-3.5">
+          <ClaudeSetupCard />
+        </div>
+      </Group>
+
+      <Group title="Verhalten">
+        <SwitchRow
+          label="Nach Nutzungslimit weitermachen"
+          description="Stoppt das Limit eine Session, schickt FORGE nach dem Reset selbst eine Nachricht. Höchstens dreimal ohne deine Eingabe, nur solange FORGE läuft."
+          checked={s.autoContinueAfterLimit}
+          onChange={(v) => void save({ autoContinueAfterLimit: v })}
+        />
+        <SwitchRow
+          label="ANTHROPIC_API_KEY ausblenden"
+          description="Empfohlen. Ein gesetzter API-Key ersetzt die Abo-Anmeldung und wird extra abgerechnet. FORGE zeigt den Wert nie an."
+          checked={s.stripApiKey}
+          onChange={(v) => void save({ stripApiKey: v })}
+        />
+      </Group>
+
+      <Group title="Erweitert">
+        <Row label="Pfad zur Claude-CLI" description="Leer lassen: FORGE sucht Claude Code selbst." stacked>
+          <ClaudePathInput value={s.claudePath} onSave={(v) => void save({ claudePath: v })} />
+        </Row>
+      </Group>
+    </>
   );
 }
 
@@ -195,6 +293,53 @@ function ClaudePathInput({ value, onSave }: { value: string | null; onSave: (v: 
         Speichern
       </Button>
     </div>
+  );
+}
+
+function PhoneSection() {
+  const state = usePhoneState().data;
+  return (
+    <Group
+      title="Telefon"
+      description={
+        state?.enabled
+          ? "Das Telefon ist eingeschaltet. Ausschalten beendet die Anmeldung an der Anlage und das Tischtelefon."
+          : "Ruf FORGE an, frag nach dem Stand, gib Freigaben und starte Agenten per Sprache. Ausgeschaltet nimmt FORGE keine Anrufe an und ruft nicht zurück."
+      }
+    >
+      <div className="p-4">
+        <PhoneSettings />
+      </div>
+    </Group>
+  );
+}
+
+function AboutSection({ s, save }: { s: Settings; save: Save }) {
+  return (
+    <>
+      <Group title="Updates">
+        <div className="px-4 py-3.5">
+          <AppUpdateSettings />
+        </div>
+        <SwitchRow
+          label="Automatisch nach Updates suchen"
+          description="Beim Start und alle 30 Minuten in den GitHub-Releases. Ein neues Update zeigt FORGE mit einer Zusammenfassung von Claude an. Braucht die GitHub-Anmeldung in FORGE."
+          checked={s.updateChecks}
+          onChange={(v) => void save({ updateChecks: v })}
+        />
+      </Group>
+
+      <Group title="Datenschutz">
+        <ul className="list-disc space-y-1.5 py-3.5 pl-9 pr-4 text-body text-muted">
+          <li>Keine Telemetrie durch FORGE. Projektdaten bleiben auf deinem Rechner.</li>
+          <li>Ist das Telefon eingeschaltet, geht Gesprächsaudio an Google (Gemini) oder OpenAI, je nach Einstellung unter Telefon.</li>
+          <li>Tool-Ein- und Ausgaben prüft FORGE vor dem Speichern auf bekannte Secret-Muster und maskiert sie.</li>
+          <li>FORGE liest keine Claude-Zugangsdaten. Die Anmeldung speichert Claude Code selbst.</li>
+        </ul>
+      </Group>
+
+      <DiagnosticsPanel />
+    </>
   );
 }
 
@@ -214,27 +359,30 @@ function DiagnosticsPanel() {
   };
   const d = diag.data;
   return (
-    <section className="rounded-xl border border-border bg-surface p-4">
-      <SectionTitle
-        action={
-          <Button size="sm" variant="ghost" onClick={() => void refresh()} loading={refreshing}>
-            <RefreshCw className="h-3.5 w-3.5" /> Neu prüfen
-          </Button>
-        }
-      >
-        Diagnose
-      </SectionTitle>
+    <Group
+      title="Diagnose"
+      description="Was FORGE auf diesem Rechner gefunden hat."
+      action={
+        <Button size="sm" variant="ghost" onClick={() => void refresh()} loading={refreshing}>
+          <RefreshCw className="h-3.5 w-3.5" /> Neu prüfen
+        </Button>
+      }
+    >
       {diag.isLoading && <Loading label="Diagnose läuft …" />}
-      {diag.isError && <ErrorBanner>{errorMessage(diag.error)}</ErrorBanner>}
+      {diag.isError && (
+        <div className="p-4">
+          <ErrorBanner>{errorMessage(diag.error)}</ErrorBanner>
+        </div>
+      )}
       {d && (
-        <div className="grid gap-6 lg:grid-cols-2">
-          <div className="flex flex-col gap-1.5 text-body">
-            <Row label="System" value={d.platform} />
-            <Row label="Node.js (Sidecar)" value={d.nodeVersion} />
-            <Row label="Datenordner" value={<span className="block truncate font-mono text-xs" title={d.dataDir}>{d.dataDir}</span>} />
+        <>
+          <div className="flex flex-col gap-1.5 px-4 py-3.5 text-body">
+            <InfoRow label="System" value={d.platform} />
+            <InfoRow label="Node.js (Sidecar)" value={d.nodeVersion} />
+            <InfoRow label="Datenordner" value={<span className="block truncate font-mono text-xs" title={d.dataDir}>{d.dataDir}</span>} />
             <ToolRow label="Claude Code" t={d.claude} />
             <AuthRow d={d} />
-            <Row
+            <InfoRow
               label="ANTHROPIC_API_KEY"
               value={
                 !d.apiKeyEnvPresent ? (
@@ -249,7 +397,7 @@ function DiagnosticsPanel() {
             <ToolRow label="git" t={d.git} />
             <ToolRow label="GitHub CLI" t={d.gh} extra={d.gh.found ? (d.gh.authenticated ? <Badge tone="success">angemeldet</Badge> : <Badge tone="warning">nicht angemeldet</Badge>) : null} />
           </div>
-          <div>
+          <div className="px-4 py-3.5">
             <div className="mb-2 text-xs font-medium text-muted">Funktionsübersicht (aktiver Adapter: Agent SDK)</div>
             <div className="divide-y divide-border rounded-lg border border-border">
               {d.capabilities.map((c) => (
@@ -262,20 +410,18 @@ function DiagnosticsPanel() {
                     <CircleSlash className="mt-0.5 h-3.5 w-3.5 shrink-0 text-subtle" />
                   )}
                   <span className="w-44 shrink-0">{c.label}</span>
-                  <span className={cn("min-w-0 flex-1 pt-px text-xs", c.state === "unavailable" ? "text-subtle" : "text-muted")}>
-                    {c.note}
-                  </span>
+                  <span className={cn("min-w-0 flex-1 pt-px text-xs", c.state === "unavailable" ? "text-subtle" : "text-muted")}>{c.note}</span>
                 </div>
               ))}
             </div>
           </div>
-        </div>
+        </>
       )}
-    </section>
+    </Group>
   );
 }
 
-function Row({ label, value }: { label: string; value: ReactNode }) {
+function InfoRow({ label, value }: { label: string; value: ReactNode }) {
   return (
     <div className="flex items-start gap-3">
       <span className="w-40 shrink-0 py-px text-muted">{label}</span>
@@ -286,7 +432,7 @@ function Row({ label, value }: { label: string; value: ReactNode }) {
 
 function ToolRow({ label, t, extra }: { label: string; t: ToolCheck; extra?: ReactNode }) {
   return (
-    <Row
+    <InfoRow
       label={label}
       value={
         t.found ? (
@@ -307,10 +453,10 @@ function ToolRow({ label, t, extra }: { label: string; t: ToolCheck; extra?: Rea
 }
 
 function AuthRow({ d }: { d: Diagnostics }) {
-  if (!d.auth.checked) return <Row label="Anmeldung" value={<span className="text-subtle">nicht geprüft</span>} />;
-  if (d.auth.error) return <Row label="Anmeldung" value={<span className="text-danger">{d.auth.error}</span>} />;
+  if (!d.auth.checked) return <InfoRow label="Anmeldung" value={<span className="text-subtle">nicht geprüft</span>} />;
+  if (d.auth.error) return <InfoRow label="Anmeldung" value={<span className="text-danger">{d.auth.error}</span>} />;
   return (
-    <Row
+    <InfoRow
       label="Anmeldung"
       value={
         d.auth.loggedIn ? (
@@ -322,7 +468,7 @@ function AuthRow({ d }: { d: Diagnostics }) {
             </span>
           </span>
         ) : (
-          <span className="text-danger">nicht angemeldet. Die Anmeldung findest du oben in der Karte Claude Code.</span>
+          <span className="text-danger">nicht angemeldet. Die Anmeldung findest du unter Claude Code.</span>
         )
       }
     />

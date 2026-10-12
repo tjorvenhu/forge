@@ -3,13 +3,14 @@ import { createReadStream } from "node:fs";
 import { mkdir, readdir, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import type { AppUpdateState } from "@forge/protocol";
+import type { AppChangelog, AppUpdateState } from "@forge/protocol";
 import { run } from "../util/proc.js";
 import { resolveTool } from "../util/tools.js";
 
 /** Repository whose GitHub releases carry the FORGE installer (built by .github/workflows/release.yml). */
 export const UPDATE_REPO = "tjorvenhu/forge";
-const FIRST_CHECK_MS = 20_000;
+// Soon after the start, so an available update is offered right away.
+const FIRST_CHECK_MS = 3_000;
 const CHECK_INTERVAL_MS = 30 * 60_000;
 const INSTALLER = /-setup\.exe$/i;
 
@@ -53,6 +54,28 @@ export interface UpdateDeps {
   gh?: (args: string[], timeoutMs: number) => Promise<{ code: number | null; stdout: string; stderr: string }>;
   currentVersion?: string;
   installable?: boolean;
+  /** one-shot Claude call that writes the changelog from the prompt; without it there is none */
+  writeChangelog?: (prompt: string) => Promise<string>;
+  /** whether Claude can write it right now */
+  claudeReady?: () => Promise<"ok" | "no-claude" | "no-login">;
+}
+
+/** Prompt for the changelog: the user's view, short, only what notes and commits say. */
+export function changelogPrompt(version: string, current: string, notes: string, commits: string[]): string {
+  return [
+    `Schreibe für Nutzer von FORGE (Desktop-App für Claude Code), was sich mit Version ${version} gegenüber ${current} ändert.`,
+    "Regeln:",
+    "- Deutsch, Markdown-Liste mit höchstens 8 Punkten, jeder Punkt ein kurzer, konkreter Satz.",
+    "- Aus Sicht der Nutzer: was sie jetzt tun können oder was besser läuft. Tests, Build und interne Umbauten weglassen.",
+    "- Nur, was in den Notizen oder Commits steht. Nichts erfinden.",
+    "- Keine Einleitung, keine Überschrift, keine Gedanken- oder Halbgeviertstriche, keine Emoji.",
+    "",
+    "Release-Notizen:",
+    notes.trim() || "(keine)",
+    "",
+    "Commits:",
+    commits.length ? commits.map((c) => `- ${c}`).join("\n") : "(nicht verfügbar)",
+  ].join("\n");
 }
 
 /**
@@ -65,6 +88,7 @@ export class AppUpdateService {
   private timer: ReturnType<typeof setTimeout> | null = null;
   private asset: { name: string; digest: string | null } | null = null;
   private busy: Promise<AppUpdateState> | null = null;
+  private changelogs = new Map<string, { state: AppChangelog; done: Promise<void> }>();
 
   constructor(private readonly d: UpdateDeps) {
     this.state = {
@@ -153,13 +177,75 @@ export class AppUpdateService {
           latest: { version: tag.replace(/^v/i, ""), tag, notes: (rel.body ?? "").trim(), publishedAt: rel.published_at ?? null, size: asset.size ?? null },
           checkedAt,
         });
-        if (!sameRelease) this.d.log(`Update: FORGE ${tag} ist verfügbar`);
+        if (!sameRelease) {
+          this.d.log(`Update: FORGE ${tag} ist verfügbar`);
+          // Written right away, so it is ready when the update dialog asks for it.
+          if (this.d.writeChangelog) this.changelog();
+        }
         return this.state;
       } catch (e) {
         this.set({ phase: "error", message: e instanceof Error ? e.message : String(e), checkedAt: new Date().toISOString() });
         return this.state;
       }
     });
+  }
+
+  /**
+   * State of Claude's summary of the offered release. Starts writing it on the first call and returns
+   * at once: while `writing`, the commit messages are already there and the caller asks again.
+   * A summary that could not be written is tried again on the next call after it was reported.
+   */
+  changelog(): AppChangelog | null {
+    const latest = this.state.latest;
+    if (!latest) return null;
+    let entry = this.changelogs.get(latest.tag);
+    if (!entry) {
+      entry = { state: { tag: latest.tag, status: "writing", text: null, commits: [], unavailable: null, message: null }, done: Promise.resolve() };
+      const e = entry;
+      e.done = this.writeChangelog(e, latest.version, latest.notes).then((final) => {
+        e.state = final;
+      });
+      this.changelogs.set(latest.tag, entry);
+    }
+    if (entry.state.status === "unavailable") this.changelogs.delete(latest.tag);
+    return entry.state;
+  }
+
+  /** Resolves once the summary of the offered release is written or given up. */
+  async changelogDone(): Promise<AppChangelog | null> {
+    const tag = this.state.latest?.tag;
+    const entry = tag ? this.changelogs.get(tag) : undefined;
+    if (!entry) return null;
+    await entry.done;
+    return entry.state;
+  }
+
+  private async writeChangelog(entry: { state: AppChangelog }, version: string, notes: string): Promise<AppChangelog> {
+    const tag = entry.state.tag;
+    const t0 = Date.now();
+    const ready = this.d.claudeReady?.() ?? Promise.resolve("no-claude" as const);
+    const commits = await this.commitsUpTo(tag);
+    entry.state = { ...entry.state, commits };
+    const base = { ...entry.state, text: null, message: null };
+    try {
+      const r = await ready;
+      if (r !== "ok" || !this.d.writeChangelog) return { ...base, status: "unavailable", unavailable: r === "ok" ? "no-claude" : r };
+      const text = (await this.d.writeChangelog(changelogPrompt(version, this.state.currentVersion, notes, commits))).trim();
+      if (!text) throw new Error("Claude hat keinen Text geliefert.");
+      this.d.log(`Update: Changelog für ${tag} in ${Date.now() - t0} ms geschrieben`);
+      return { ...base, status: "ready", text, unavailable: null };
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      this.d.log(`Update: Changelog für ${tag} nicht geschrieben nach ${Date.now() - t0} ms: ${message}`);
+      return { ...base, status: "unavailable", unavailable: "error", message };
+    }
+  }
+
+  /** First lines of the commits between the installed version and the release; empty when the tag of the installed version is unknown. */
+  private async commitsUpTo(tag: string): Promise<string[]> {
+    const r = await this.gh(["api", `repos/${UPDATE_REPO}/compare/v${this.state.currentVersion}...${tag}`, "--jq", '.commits[].commit.message | split("\\n")[0]'], 10_000).catch(() => null);
+    if (!r || r.code !== 0) return [];
+    return r.stdout.split(/\r?\n/).map((l) => l.trim()).filter(Boolean).slice(-60);
   }
 
   /** Fetches the installer of the newest release into the update folder and checks its SHA-256. */

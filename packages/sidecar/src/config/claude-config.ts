@@ -14,7 +14,7 @@ import { resolveTool } from "../util/tools.js";
  * and detect concurrent edits via mtime.
  */
 
-const claudeHome = () => process.env.CLAUDE_CONFIG_DIR ?? path.join(os.homedir(), ".claude");
+export const claudeHome = () => process.env.CLAUDE_CONFIG_DIR ?? path.join(os.homedir(), ".claude");
 
 const MAX_DOC_BYTES = 1024 * 1024;
 const NAME_RE = /^[a-z0-9][a-z0-9-]{0,63}$/;

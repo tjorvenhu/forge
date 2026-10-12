@@ -9,6 +9,8 @@ import { TitleTooltips } from "@/components/ui/title-tooltips";
 import { ErrorBoundary } from "@/components/layout/ErrorBoundary";
 import { NewProjectDialog } from "@/components/projects/NewProjectDialog";
 import { CommandPalette } from "@/components/layout/CommandPalette";
+import { AppUpdateDialog } from "@/components/layout/AppUpdate";
+import { Logo } from "@/components/layout/Logo";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/misc";
 import { HomeView } from "@/views/HomeView";
@@ -62,8 +64,10 @@ export function App() {
   if (boot.state === "starting") {
     return (
       <Centered>
-        <Spinner />
-        <div className="text-body text-muted">Hintergrunddienst startet …</div>
+        <Logo height={64} />
+        <div className="flex items-center gap-2 text-body text-muted">
+          <Spinner /> FORGE startet …
+        </div>
       </Centered>
     );
   }
@@ -121,6 +125,7 @@ function Shell() {
       </div>
       <NewProjectDialog />
       <CommandPalette />
+      <AppUpdateDialog />
       <Toaster />
       <TitleTooltips />
     </div>

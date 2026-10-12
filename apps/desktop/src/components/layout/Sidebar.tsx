@@ -26,12 +26,8 @@ export function Sidebar() {
 
   return (
     <aside className="flex w-64 shrink-0 select-none flex-col border-r border-border bg-sidebar">
-      <div className="flex items-center gap-3 px-5 pb-5 pt-5">
-        <Logo size={38} />
-        <div className="leading-tight">
-          <div className="text-title font-bold tracking-wide">FORGE</div>
-          <div className="text-caption-lg text-muted">Claude Development Studio</div>
-        </div>
+      <div className="flex items-center px-5 pb-5 pt-5">
+        <Logo height={44} />
       </div>
 
       <div className="mx-4 border-t border-border" />
@@ -106,13 +102,17 @@ export function Sidebar() {
 
 function ClaudeStatusCard() {
   const diag = useDiagnostics();
+  const setup = useClaudeSetup().data;
   const usage = useUsage();
-  const setView = useUi((s) => s.setView);
+  const openSettings = useUi((s) => s.openSettings);
   const d = diag.data;
   let tone = "bg-subtle";
   let line = "Prüfe Status …";
   if (d) {
-    if (!d.claude.found) {
+    if (!d.claude.found && setup?.task === "install" && setup.phase === "running") {
+      tone = "bg-warning animate-soft-pulse";
+      line = "Wird installiert …";
+    } else if (!d.claude.found) {
       tone = "bg-danger";
       line = "CLI nicht gefunden";
     } else if (!d.auth.loggedIn) {
@@ -131,7 +131,7 @@ function ClaudeStatusCard() {
     <>
     <AppUpdateCard />
     <div className="m-3 flex flex-col gap-2.5 rounded-xl border border-border bg-surface px-3.5 py-3 hover:border-border-strong">
-      <button onClick={() => setView("settings")} className="flex flex-col gap-2 text-left" title="Claude-Code-Status, Nutzung und Diagnose">
+      <button onClick={() => openSettings("claude")} className="flex flex-col gap-2 text-left" title="Claude-Code-Status, Nutzung und Diagnose">
         <div className="flex w-full items-center gap-2.5">
           <div className="min-w-0 flex-1">
             <div className="text-body">Claude Code</div>

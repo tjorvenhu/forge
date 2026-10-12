@@ -4,19 +4,21 @@
 
 /* Design tokens. Components use these via Tailwind classes (bg-surface, text-muted …), never raw colors. */
 @theme {
-  --color-bg: #0d1017;
-  --color-sidebar: #10131b;
-  --color-surface: #151924;
-  --color-surface-2: #1a1f2c;
-  --color-surface-3: #222838;
-  --color-border: #232a3a;
-  --color-border-strong: #313a4f;
-  --color-fg: #e9ebf2;
-  --color-muted: #9ba2b6;
-  --color-subtle: #6b7287;
-  --color-accent: #6d6cf6;
-  --color-accent-strong: #5b57ee;
-  --color-accent-soft: #6d6cf626;
+  /* FORGE brand (Branding Kit): Charcoal #0F172A, Forge Orange #F97316, Steel Gray #475569, Light #E5E7EB. */
+  --color-bg: #0f172a;
+  --color-sidebar: #16203a;
+  --color-surface: #141e33;
+  --color-surface-2: #1a253c;
+  --color-surface-3: #212d46;
+  --color-border: #243049;
+  --color-border-strong: #364560;
+  --color-fg: #e5e7eb;
+  --color-muted: #9aa6b8;
+  --color-subtle: #66748a;
+  /* Orange sparingly: active elements, primary buttons, highlights. */
+  --color-accent: #f97316;
+  --color-accent-strong: #ea580c;
+  --color-accent-soft: #f973161f;
   --color-accent-fg: #ffffff;
   --color-success: #3fb97a;
   --color-success-soft: #3fb97a1f;
@@ -29,7 +31,7 @@
   --color-claude: #d97757;
   --color-claude-soft: #d977571f;
   /* backdrop behind dialogs and the command palette */
-  --color-overlay: #05070a99;
+  --color-overlay: #02061799;
 
   --font-sans: "Geist Variable", "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
   --font-mono: "Geist Mono Variable", "Cascadia Code", "Consolas", ui-monospace, monospace;

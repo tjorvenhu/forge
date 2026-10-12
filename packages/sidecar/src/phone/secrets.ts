@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
 /**
@@ -39,6 +39,22 @@ export class SecretStore {
     mkdirSync(this.dir, { recursive: true });
     writeFileSync(f, await dpapi("protect", value));
     this.cache.set(name, value);
+  }
+
+  /** The encrypted files as they are, for backups; they stay readable only for this Windows user. */
+  encrypted(): Record<string, string> {
+    if (!existsSync(this.dir)) return {};
+    const out: Record<string, string> = {};
+    for (const f of readdirSync(this.dir)) if (f.endsWith(".secret")) out[f.slice(0, -".secret".length)] = readFileSync(path.join(this.dir, f), "utf8").trim();
+    return out;
+  }
+
+  /** Puts encrypted files from a backup back; secrets missing from it are removed. */
+  restoreEncrypted(files: Record<string, string>) {
+    mkdirSync(this.dir, { recursive: true });
+    for (const name of Object.keys(this.encrypted())) if (!(name in files)) rmSync(this.file(name), { force: true });
+    for (const [name, blob] of Object.entries(files)) if (/^[\w-]{1,64}$/.test(name)) writeFileSync(this.file(name), blob);
+    this.cache.clear();
   }
 }
 

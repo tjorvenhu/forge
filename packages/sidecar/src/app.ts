@@ -11,6 +11,9 @@ import { PhoneService } from "./phone/phone-service.js";
 import { AppUpdateService } from "./update/app-update.js";
 import { SecretStore } from "./phone/secrets.js";
 import { locateClaude, sessionEnv } from "./claude/environment.js";
+import { readAuth } from "./claude/diagnostics.js";
+import { ASSIST_MODEL } from "./sessions/claude-assist.js";
+import { BackupService } from "./backup/backup.js";
 import { Db } from "./persistence/db.js";
 import { ProjectManager } from "./projects/project-manager.js";
 import { createHandlers } from "./rpc/handlers.js";
@@ -40,7 +43,8 @@ export function createApp(opts: { dataDir: string; write: Writer; log?: (m: stri
     server?.emit(e);
     phone?.onServerEvent(e);
   };
-  const sessions = new SessionService(db, projects, git, opts.runtime ?? new AgentSdkRuntime(), emit);
+  const runtime = opts.runtime ?? new AgentSdkRuntime();
+  const sessions = new SessionService(db, projects, git, runtime, emit);
   sessions.startBackgroundChecks();
   const github = new GitHubService((payload) => emit({ event: "github.login", payload }));
   const claudeSetup = new ClaudeSetupService(
@@ -53,6 +57,7 @@ export function createApp(opts: { dataDir: string; write: Writer; log?: (m: stri
   );
   const worktrees = new WorktreeService(git, projects);
   const devServers = new DevServerService(projects, () => sessionEnv(db.getSettings().stripApiKey), emit);
+  const secrets = new SecretStore(path.join(opts.dataDir, "secrets"));
   phone = new PhoneService({
     db,
     projects,
@@ -60,7 +65,7 @@ export function createApp(opts: { dataDir: string; write: Writer; log?: (m: stri
     devServers,
     git,
     worktrees,
-    secrets: new SecretStore(path.join(opts.dataDir, "secrets")),
+    secrets,
     emit,
     claude: () => {
       const settings = db.getSettings();
@@ -69,14 +74,52 @@ export function createApp(opts: { dataDir: string; write: Writer; log?: (m: stri
     log: (m) => opts.log?.(m),
   });
   void phone.init();
+  const claudeFor = () => {
+    const settings = db.getSettings();
+    return { path: locateClaude(settings.claudePath), env: sessionEnv(settings.stripApiKey) };
+  };
   const updates = new AppUpdateService({
     emit: (payload) => emit({ event: "update.updated", payload }),
     enabled: () => db.getSettings().updateChecks,
     log: (m) => opts.log?.(m),
+    claudeReady: async () => {
+      const c = claudeFor();
+      if (!c.path) return "no-claude";
+      return (await readAuth(c.path, c.env)).loggedIn ? "ok" : "no-login";
+    },
+    writeChangelog: (prompt) => {
+      const c = claudeFor();
+      if (!c.path) throw new Error("Claude Code ist nicht installiert.");
+      return runtime.complete(prompt, { cwd: opts.dataDir, env: c.env, claudePath: c.path, model: ASSIST_MODEL });
+    },
   });
-  // Only in the desktop app (the shell passes its version); tests and the CLI do not look for updates.
-  if (process.env.FORGE_APP_VERSION) updates.start();
+  const backups = new BackupService({
+    dir: path.join(opts.dataDir, "backups"),
+    db,
+    appVersion: process.env.FORGE_APP_VERSION ?? "dev",
+    git,
+    secrets,
+    log: (m) => opts.log?.(m),
+    afterRestore: async (parts) => {
+      if (parts.includes("settings")) sessions.settingsChanged();
+      if (parts.includes("phone")) await phone?.reload();
+      for (const p of db.listProjects()) emit({ event: "project.updated", payload: { projectId: p.id } });
+    },
+  });
+  // Only in the desktop app (the shell passes its version); tests and the CLI do not look for updates,
+  // write no start backups and install nothing.
+  if (process.env.FORGE_APP_VERSION) {
+    updates.start();
+    void backups.createOnStart().catch((e: unknown) => opts.log?.(`Backup beim Start fehlgeschlagen: ${e instanceof Error ? e.message : String(e)}`));
+    // A fresh installation without Claude Code fetches it right away (official installer); a configured path is left alone.
+    const settings = db.getSettings();
+    if (!settings.claudePath && !locateClaude(null)) {
+      opts.log?.("Claude Code fehlt, Installation startet");
+      claudeSetup.install();
+    }
+  }
   const handlers = createHandlers({
+    backups,
     updates,
     mcp,
     worktrees,

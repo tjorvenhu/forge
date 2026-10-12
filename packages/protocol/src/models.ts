@@ -373,8 +373,6 @@ export const Settings = z.object({
   defaultProjectDir: z.string().nullable(),
   /** continue a session on its own once a usage limit that stopped it has reset */
   autoContinueAfterLimit: z.boolean(),
-  /** phone feature visible (button top right, settings); off for users who do not need it */
-  phoneFeature: z.boolean(),
   /** look for new FORGE releases on GitHub (start and every 30 minutes) */
   updateChecks: z.boolean(),
 });
@@ -681,6 +679,38 @@ export const AppUpdateState = z.object({
   message: z.string().nullable(),
 });
 export type AppUpdateState = z.infer<typeof AppUpdateState>;
+
+/**
+ * What changed in the offered release, written by Claude from the release notes and commit messages.
+ * `writing`: Claude is still at it, `commits` are already there to show. `unavailable`: no-claude
+ * (CLI missing), no-login (not signed in), error (generation failed or took too long).
+ */
+export const AppChangelog = z.object({
+  tag: z.string(),
+  status: z.enum(["writing", "ready", "unavailable"]),
+  text: z.string().nullable(),
+  /** first lines of the commit messages since the installed version; empty when unknown */
+  commits: z.array(z.string()),
+  unavailable: z.enum(["no-claude", "no-login", "error"]).nullable(),
+  message: z.string().nullable(),
+});
+export type AppChangelog = z.infer<typeof AppChangelog>;
+
+/** Parts of a backup that can be restored one by one. */
+export const BackupPart = z.enum(["settings", "projects", "phone", "claude", "git"]);
+export type BackupPart = z.infer<typeof BackupPart>;
+
+/** One backup of FORGE's configuration: in the data folder (id) or a file the user picked (no id). */
+export const BackupInfo = z.object({
+  id: z.string().nullable(),
+  createdAt: z.string(),
+  reason: z.enum(["start", "manual", "before-restore", "import"]),
+  appVersion: z.string(),
+  size: z.number(),
+  /** parts present in the backup, with a short count for the list */
+  parts: z.array(z.object({ part: BackupPart, label: z.string() })),
+});
+export type BackupInfo = z.infer<typeof BackupInfo>;
 
 /** OpenAI voices for speech output on the phone; the first one is the default. */
 export const PHONE_VOICES = ["marin", "cedar", "alloy", "ash", "ballad", "coral", "echo", "fable", "nova", "onyx", "sage", "shimmer", "verse"] as const;

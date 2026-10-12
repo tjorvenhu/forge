@@ -1,6 +1,11 @@
-import logoUrl from "@/assets/logo.png";
+import logoUrl from "@/assets/forge-logo.png";
 
-/** FORGE mark: anvil with spark on its dark tile (assets/logo.png, also the app icon source). */
-export function Logo({ size = 40 }: { size?: number }) {
-  return <img src={logoUrl} width={size} height={size} alt="" aria-hidden draggable={false} className="shrink-0 select-none rounded-lg" />;
+/**
+ * FORGE logo (symbol, wordmark, "Claude Development Studio") from the branding kit, recolored for the
+ * dark UI: the charcoal parts are light, the orange stays. Source FORGE_Logo_Horizontal_White_BG.png,
+ * 1055 x 223, several times larger than shown, so it stays sharp. `height` sets the size.
+ * The app icons come from assets/logo.svg (pnpm tauri icon src/assets/logo.svg).
+ */
+export function Logo({ height = 40 }: { height?: number }) {
+  return <img src={logoUrl} height={height} width={Math.round((height * 1055) / 223)} alt="FORGE, Claude Development Studio" draggable={false} className="shrink-0 select-none" />;
 }

@@ -11,6 +11,7 @@ import type { WorktreeService } from "../automation/worktrees.js";
 import type { DevServerService } from "../devserver/dev-server.js";
 import type { PhoneService } from "../phone/phone-service.js";
 import type { AppUpdateService } from "../update/app-update.js";
+import type { BackupService } from "../backup/backup.js";
 import * as cfg from "../config/claude-config.js";
 import { removalInfo, removeProject, removeWorktree } from "../projects/removal.js";
 import os from "node:os";
@@ -28,6 +29,7 @@ export interface Services {
   devServers: DevServerService;
   phone: PhoneService;
   updates: AppUpdateService;
+  backups: BackupService;
   notifyProject: (projectId: string) => void;
 }
 
@@ -123,12 +125,10 @@ export function createHandlers(s: Services): Handlers {
     "sessions.summarize": ({ sessionId }) => s.sessions.summarize(sessionId),
 
     "settings.get": () => s.db.getSettings(),
-    "settings.update": async (patch) => {
+    "settings.update": (patch) => {
       diagCache = null;
       const next = s.db.updateSettings(patch);
       if (patch.autoContinueAfterLimit !== undefined) s.sessions.settingsChanged();
-      // Hiding the phone feature also switches the line and the desk phone off.
-      if (patch.phoneFeature === false) await s.phone.setEnabled(false);
       return next;
     },
 
@@ -193,6 +193,17 @@ export function createHandlers(s: Services): Handlers {
     "app.updateState": () => s.updates.get(),
     "app.checkUpdate": () => s.updates.check(),
     "app.downloadUpdate": () => s.updates.download(),
+    "app.changelog": () => s.updates.changelog(),
+
+    "backup.list": () => s.backups.list(),
+    "backup.create": () => s.backups.create("manual"),
+    "backup.export": ({ id, path }) => s.backups.exportTo(path, id),
+    "backup.inspect": ({ path }) => s.backups.inspect(path),
+    "backup.restore": async ({ id, path, parts }) => {
+      const r = await s.backups.restore({ id, path }, parts);
+      diagCache = null;
+      return r;
+    },
 
     "phone.config": () => s.phone.config(),
     "phone.saveConfig": (patch) => s.phone.saveConfig(patch),

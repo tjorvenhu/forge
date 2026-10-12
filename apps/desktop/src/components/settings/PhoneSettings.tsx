@@ -183,7 +183,9 @@ export function PhoneSettings() {
             ? state.message
             : state?.registration === "registered"
               ? `Angemeldet als ${c.username} an ${c.server}.`
-              : "Ein- und ausschalten auch über das Telefon-Symbol oben rechts."}
+              : !c.server
+                ? "Ruf FORGE an und steuere Sessions per Sprache. Trag dafür unten die Zugangsdaten deiner Telefonanlage ein und schalte das Telefon ein."
+                : "Ein- und ausschalten auch über das Telefon-Symbol oben rechts."}
         </span>
         {state?.registration === "registered" && c.notifyNumber && (
           <Button size="sm" onClick={() => void call("phone.testCall", {}).then((s) => qc.setQueryData(keys.phoneState, s)).catch((e: unknown) => toast.error("Testanruf fehlgeschlagen", errorMessage(e)))}>

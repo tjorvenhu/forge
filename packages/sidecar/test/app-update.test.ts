@@ -73,6 +73,42 @@ describe("app updates", () => {
     expect(none).toMatchObject({ phase: "uptodate", message: "Noch kein Release veröffentlicht." });
   });
 
+  it("lets Claude write the changelog from notes and commits, and says why there is none", async () => {
+    const prompts: string[] = [];
+    let ready: "ok" | "no-login" = "no-login";
+    const svc = new AppUpdateService({
+      emit: () => {},
+      enabled: () => true,
+      log: () => {},
+      currentVersion: "0.1.0",
+      installable: true,
+      gh: async (args) =>
+        args[1]?.includes("/compare/")
+          ? { code: 0, stdout: "feat: Backups\nfix: Telefon\n", stderr: "" }
+          : { code: 0, stdout: release("v0.2.0"), stderr: "" },
+      claudeReady: async () => ready,
+      writeChangelog: async (prompt) => {
+        prompts.push(prompt);
+        return "- Backups der Einstellungen\n";
+      },
+    });
+    expect(svc.changelog()).toBeNull();
+    await svc.check();
+    // Returns at once while Claude writes; the commit messages are there right away.
+    expect(svc.changelog()).toMatchObject({ tag: "v0.2.0", status: "writing", text: null });
+    expect(await svc.changelogDone()).toMatchObject({ status: "unavailable", unavailable: "no-login", commits: ["feat: Backups", "fix: Telefon"] });
+    // Reported once, then tried again: signing in later works.
+    expect(svc.changelog()).toMatchObject({ unavailable: "no-login" });
+    ready = "ok";
+    svc.changelog();
+    expect(await svc.changelogDone()).toMatchObject({ status: "ready", text: "- Backups der Einstellungen", unavailable: null });
+    expect(prompts).toHaveLength(1);
+    expect(prompts[0]).toContain("- feat: Backups");
+    expect(prompts[0]).toContain("- feat: Update-Funktion");
+    expect(svc.changelog()?.status).toBe("ready");
+    expect(prompts).toHaveLength(1);
+  });
+
   it("does not download without a known release", async () => {
     const { svc, calls } = service(() => ({ code: 0 }));
     expect((await svc.download()).phase).toBe("error");

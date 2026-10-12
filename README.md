@@ -1,23 +1,18 @@
-# FORGE – Claude Development Studio
+# FORGE: Claude Development Studio
 
 Desktop-Oberfläche für Claude Code. FORGE startet und steuert echte Claude-Code-Sessions in deinen
 Projekten, zeigt Antworten live, fragt Freigaben ab und bringt Git-Status, Diffs und geprüfte Commits in
-dieselbe Ansicht. Die Anmeldung läuft über deine bestehende Claude-Code-Anmeldung (z. B. Max-Abo).
-Ein API-Key ist nicht nötig.
+dieselbe Ansicht. Die Anmeldung läuft über dein Claude-Abo (z. B. Max). Ein API-Key ist nicht nötig.
 
-> Stand: Phasen 0 bis 3 umgesetzt. Details zu Umfang und Lücken unten und in [HANDOFF.md](HANDOFF.md).
-
-![Workspace mit Chat, Tool-Karten und Diff](docs/screenshots/workspace.png)
-
-| Home | Freigabeanfrage im Safe-Profil |
-|---|---|
-| ![Home](docs/screenshots/home.png) | ![Freigabe](docs/screenshots/freigabe.png) |
+> Stand 2026-10-12: Phasen 0 bis 5 umgesetzt (Sessions, Git, GitHub, Agenten, Telefon), dazu Updates über
+> GitHub, Backups und das neue Branding. Details zu Umfang und Lücken unten und in [HANDOFF.md](HANDOFF.md).
 
 ## Installation
 
 **Für Nutzer:** `FORGE_0.1.0_x64-setup.exe` ausführen. Mehr braucht es nicht: Node.js, Git (inkl. Bash)
-und die GitHub CLI sind enthalten. Fehlt Claude Code, installiert FORGE es auf Knopfdruck über den
-offiziellen Installer. Anmeldung bei Claude und GitHub erfolgt in der App (Einstellungen bzw. GitHub).
+und die GitHub CLI sind enthalten. Fehlt Claude Code, installiert FORGE es beim ersten Start selbst über den
+offiziellen Installer von Anthropic. Anmeldung bei Claude und GitHub erfolgt in der App (Einstellungen → Claude Code
+bzw. Ansicht GitHub).
 
 FORGE läuft nur unter Windows (getestet mit Windows 11).
 
@@ -35,20 +30,20 @@ winget install Microsoft.VisualStudio.2022.BuildTools --override "--wait --passi
 winget install Rustlang.Rustup
 ```
 
-## Claude-Max-Anmeldung
+## Claude-Anmeldung
 
 FORGE nutzt die **installierte Claude-Code-CLI** über den offiziellen Agent SDK
-(`@anthropic-ai/claude-agent-sdk`, Option `pathToClaudeCodeExecutable`). Es gilt also genau die Anmeldung,
-die du im Terminal benutzt:
+(`@anthropic-ai/claude-agent-sdk`, Option `pathToClaudeCodeExecutable`). Anmelden kannst du dich direkt in FORGE
+(Einstellungen → Claude Code). Die Anmeldung speichert Claude Code selbst, sie gilt also auch im Terminal und umgekehrt:
 
 ```bash
 claude auth status   # sollte "loggedIn": true und "subscriptionType": "max" zeigen
-claude auth login    # falls nicht angemeldet, oder in FORGE: Einstellungen → Mit Claude-Konto anmelden
+claude auth login    # falls nicht angemeldet, oder in FORGE: Einstellungen → Claude Code
 ```
 
 - FORGE liest keine Tokens und speichert keine Zugangsdaten.
 - Ist `ANTHROPIC_API_KEY` gesetzt, würde Claude Code den Key statt des Abos nutzen. FORGE erkennt das,
-  warnt und entfernt den Key standardmäßig aus der Session-Umgebung (abschaltbar unter Einstellungen).
+  warnt und entfernt den Key standardmäßig aus der Session-Umgebung (abschaltbar unter Einstellungen → Claude Code).
 - Pro Session zeigt FORGE die von der CLI gemeldete `apiKeySource` an. Im Test: `none` (Abo-Anmeldung).
 - Laut Anthropic-Hilfeartikel „Use the Claude Agent SDK with your Claude plan" (Stand 07.10.2026) ist diese
   Nutzung mit Abo vorgesehen. Bedingungen können sich ändern; prüfe den Artikel bei Unsicherheit.
@@ -114,27 +109,30 @@ Umgebungsvariablen für Sonderfälle: `FORGE_NODE` (Pfad zu node), `FORGE_SIDECA
 - **Rückfragen und Pläne:** Fragt Claude nach (AskUserQuestion), erscheinen die Optionen als Karte im Chat. Pläne aus dem Plan-Modus lassen sich annehmen oder mit Feedback zurückgeben.
 - **Kontextanzeige:** Belegung des Kontextfensters am Composer, Komprimieren per Knopf (/compact).
 - **Befehlspalette (Strg+K):** Projekte, Sessions, Aktionen und Volltextsuche über alle Verläufe.
-- **Telefon (SIP, optional):** Einschalten unter Einstellungen → Allgemein → Telefon-Funktion; ausgeschaltet sieht man davon nichts. FORGE meldet sich mit deinen SIP-Zugangsdaten als eigene Nebenstelle an deiner Telefonanlage an. Ruf die Zentrale an und rede frei: Stand abfragen, Sessions anschreiben oder starten, parallele Agenten im eigenen Worktree starten, Freigaben, Remote Control, Git und Dev-Server. Gesprächspartner ist Gemini 3.8 Live (hört und spricht selbst, man kann jederzeit dazwischenreden) oder wahlweise Claude über dein Abo mit Sprache von Gemini oder OpenAI. Steuern geht nach der PIN über die Tastatur und wird sofort ausgeführt. FORGE ruft dich an, wenn eine Session fertig ist, eine Entscheidung braucht oder ein Fehler auftritt.
+- **Telefon (SIP, optional):** Einrichten und einschalten unter Einstellungen → Telefon. Der Telefon-Knopf oben erscheint erst, wenn eine Anlage eingetragen ist. FORGE meldet sich mit deinen SIP-Zugangsdaten als eigene Nebenstelle an deiner Telefonanlage an. Ruf die Zentrale an und rede frei: Stand abfragen, Sessions anschreiben oder starten, parallele Agenten im eigenen Worktree starten, Freigaben, Remote Control, Git und Dev-Server. Gesprächspartner ist Gemini 3.8 Live (hört und spricht selbst, man kann jederzeit dazwischenreden) oder wahlweise Claude über dein Abo mit Sprache von Gemini oder OpenAI. Steuern geht nach der PIN über die Tastatur und wird sofort ausgeführt. FORGE ruft dich an, wenn eine Session fertig ist, eine Entscheidung braucht oder ein Fehler auftritt.
 - **Tischtelefon (Yealink, optional):** Pro laufender Session eine Taste mit Namen und farbiger LED (arbeitet, wartet, neu, bereit), Status auf dem Display, Freigaben als Menü. Abheben ruft FORGE an, eine Session-Taste startet ein Gespräch über genau diese Session. Einrichtung per Auto-Provisioning von FORGE. Ersetzt das Skript klaus_telefon.
 - **Dev-Server:** Startbefehl pro Projekt (oder erkannt aus package.json), Adresse als Link, Ausgabe im unteren Panel, letzte Zeilen per Knopf an Claude.
 - **Töne:** Signal, wenn Claude fertig ist, eine Freigabe braucht oder ein Fehler auftritt (abschaltbar).
-- **Updates:** Jeder Push auf `main` baut über GitHub Actions einen Installer und veröffentlicht ihn als Release (`v0.1.<Nummer>`). FORGE sucht beim Start und alle 30 Minuten danach, zeigt „FORGE x.y.z ist da“ in der Seitenleiste und installiert mit einem Klick: Installer laden, Prüfsumme prüfen, still installieren, neu starten. Läuft über die GitHub-Anmeldung in FORGE, also auch mit privatem Repository (Zugriff nötig). Abschaltbar unter Einstellungen → Allgemein.
+- **Updates:** Jeder Push auf `main` baut über GitHub Actions einen Installer und veröffentlicht ihn als Release (`v0.1.<Nummer>`). FORGE sucht wenige Sekunden nach dem Start und danach alle 30 Minuten. Ist ein Update da, erscheint ein Fenster mit „Jetzt aktualisieren“ und einem Changelog, den Claude (Haiku) aus Release-Notizen und Commits schreibt. Ohne Claude-Login steht dort, dass kein Changelog verfügbar ist. Installiert wird mit einem Klick: Installer laden, Prüfsumme prüfen, still installieren, neu starten. Läuft über die GitHub-Anmeldung in FORGE, also auch mit privatem Repository (Zugriff nötig). Abschaltbar unter Einstellungen → Über FORGE.
+- **Backups:** Einstellungen, Projektliste, Telefon, Claude-Code-Konfiguration (CLAUDE.md, Hooks, Agenten, Befehle, Skills, MCP-Server) und Git-Name mit E-Mail. FORGE sichert bei jedem Start, sobald sich seit dem letzten Backup etwas geändert hat, und behält die letzten 40. Unter Einstellungen → Backup: von Hand sichern, als Datei herunterladen, aus einer Datei oder auf den Stand eines Datums zurücksetzen, wahlweise nur einzelne Teile. Vor jedem Zurücksetzen sichert FORGE den aktuellen Stand. Nicht enthalten: Chatverläufe, Projektdateien, Logins bei Claude und GitHub.
+- **Einstellungen:** in Bereiche gegliedert (Allgemein, Claude Code, Telefon, Backup, Globale Regeln, Über FORGE), jede Einstellung mit kurzer Erklärung.
 - **Diagnose:** CLI-Version, Anmeldestatus, API-Key-Override, git, gh, Capability-Matrix.
-- **Persistenz:** SQLite für Projekte, Sessions, Events, Freigaben, Einstellungen. Beim Start öffnet FORGE das zuletzt genutzte Projekt.
+- **Persistenz:** SQLite für Projekte, Sessions, Events, Freigaben, Einstellungen (unter `%APPDATA%\forge`, Backups im Unterordner `backups`). Beim Start öffnet FORGE das zuletzt genutzte Projekt.
 
 Tastatur: `Strg+1..5` Workspace-Tabs, `Strg+Tab` / `Strg+Umschalt+Tab` nächster / vorheriger Session-Tab, `Strg+N` neue Session, `Strg+O` Projekt hinzufügen, `Strg+J` Claude-Output,
 `Strg+Umschalt+E` Seitenleiste, `Esc` im Eingabefeld stoppt Claude.
 
 ## Tests
 
-Letzter Lauf (Details in [docs/TESTING.md](docs/TESTING.md)): Lint und Typecheck ohne Befund, 107 Sidecar-Tests,
-12 Desktop-Tests, 12 E2E-Tests mit echter Claude-Session, alle bestanden.
+Letzter Lauf am 2026-10-12 (Details in [docs/TESTING.md](docs/TESTING.md)): Lint und Typecheck ohne Befund,
+399 Sidecar-Tests und 139 Desktop-Tests bestanden. Die 17 E2E-Tests mit echter Claude-Session liefen zuletzt vor den
+Änderungen vom 2026-10-12 grün.
 
 ## Dokumentation
 
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): Prozesse, Module, Statusmaschine
 - [docs/SECURITY.md](docs/SECURITY.md): Permission- und Sicherheitskonzept
-- [docs/adr/](docs/adr): Architekturentscheidungen (Telefon: 0010, Gemini Live und Tischtelefon: 0011, flüssige Oberfläche und Agent SDK: 0012)
+- [docs/adr/](docs/adr): Architekturentscheidungen (Telefon: 0010, Gemini Live und Tischtelefon: 0011, flüssige Oberfläche und Agent SDK: 0012, Updates über GitHub: 0013)
 - [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md): mitgelieferte Software
 - [docs/TASKS.md](docs/TASKS.md): Taskliste
 - [HANDOFF.md](HANDOFF.md): aktueller Stand, bekannte Fehler, nächste Schritte
@@ -144,7 +142,7 @@ Letzter Lauf (Details in [docs/TESTING.md](docs/TESTING.md)): Lint und Typecheck
 - Telefon: nur SIP über UDP mit G.711, kein TLS/SRTP. Mit einer echten Anlage noch nicht getestet, nur gegen eine Test-Anlage im Testlauf. Gemini Live ist gegen den echten Dienst geprüft, aber noch nicht über eine echte Telefonleitung.
 - Tischtelefon: nur gegen Fakes getestet, noch nicht am echten T53W.
 - Remote Control funktioniert nur, solange FORGE geöffnet ist. Die genutzte SDK-Funktion ist nicht offiziell dokumentiert.
-- Claude Code selbst wird nicht mitgeliefert, sondern bei Bedarf aus der App installiert (offizieller Installer).
+- Claude Code selbst wird nicht mitgeliefert, sondern beim ersten Start über den offiziellen Installer geladen. Auf einem frischen System noch nicht getestet.
 
 ## Roadmap
 

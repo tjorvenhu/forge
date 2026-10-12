@@ -274,6 +274,16 @@ export class PhoneService {
     await this.connect().catch((e: unknown) => this.fail(e));
   }
 
+  /** After a backup restore: hangs up, reads the stored settings again and starts like on app start. */
+  async reload() {
+    await this.disconnect();
+    await this.desk.stop();
+    const stored = this.d.db.getPhoneSettings() as Partial<StoredConfig>;
+    this.cfg = { ...DEFAULTS, ...stored, desk: { ...DEFAULT_DESK, ...stored.desk } };
+    this.emitState();
+    await this.init();
+  }
+
   private persist() {
     this.d.db.setPhoneSettings(this.cfg as unknown as Record<string, unknown>);
   }

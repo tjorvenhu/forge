@@ -2,13 +2,13 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { FolderOpen, Play, RotateCcw } from "lucide-react";
 import type { ProjectWithStatus } from "@forge/protocol";
-import { call, keys, useDiagnostics, useProjects } from "@/lib/queries";
+import { call, keys, useClaudeSetup, useDiagnostics, useProjects } from "@/lib/queries";
 import { useModelLabel } from "@/lib/models";
 import { relativeTime } from "@/lib/utils";
 import { useUi } from "@/stores/ui";
 import { Page } from "@/components/layout/Page";
 import { Button } from "@/components/ui/button";
-import { Badge, EmptyState, ErrorBanner, SectionTitle } from "@/components/ui/misc";
+import { Badge, EmptyState, ErrorBanner, SectionTitle, Spinner } from "@/components/ui/misc";
 import { AddProjectActions } from "@/components/projects/AddProjectActions";
 import { ProjectCard } from "@/components/projects/ProjectCard";
 import { RemoveProjectDialog } from "@/components/projects/RemoveProjectDialog";
@@ -119,9 +119,9 @@ function ResumeSection() {
 }
 
 function SetupButton() {
-  const setView = useUi((s) => s.setView);
+  const openSettings = useUi((s) => s.openSettings);
   return (
-    <Button size="sm" variant="primary" onClick={() => setView("settings")}>
+    <Button size="sm" variant="primary" onClick={() => openSettings("claude")}>
       Einrichten
     </Button>
   );
@@ -129,7 +129,15 @@ function SetupButton() {
 
 function ApiKeyWarning() {
   const d = useDiagnostics().data;
+  const setup = useClaudeSetup().data;
   if (!d) return null;
+  if (!d.claude.found && setup?.task === "install" && setup.phase === "running")
+    return (
+      <div className="mb-5 flex items-center gap-2.5 rounded-lg border border-accent/30 bg-accent-soft px-3 py-2.5 text-body">
+        <Spinner className="text-accent" />
+        Claude Code wird installiert. Danach meldest du dich unter Einstellungen mit deinem Claude-Konto an.
+      </div>
+    );
   const notLoggedIn = d.claude.found && d.auth.checked && !d.auth.loggedIn;
   const keyActive = d.apiKeyEnvPresent && !d.apiKeyStripped;
   if (!d.claude.found)
