@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { History, Power, Search, Trash2 } from "lucide-react";
 import type { Session } from "@forge/protocol";
-import { call, keys, useSearch } from "@/lib/queries";
+import { call, keys, useLiveSessions, useSearch } from "@/lib/queries";
 import { errorMessage } from "@/lib/rpc";
 import { relativeTime } from "@/lib/utils";
 import { useDebouncedValue } from "@/lib/timing-hooks";
@@ -42,10 +42,12 @@ export function SessionsView() {
     placeholderData: (prev) => prev,
   });
   const hits = useSearch(query);
+  // Counted from the live list, not from `sessions`: that one is narrowed by search and status filter.
+  const openCount = useLiveSessions().data?.length ?? 0;
   const searching = query.trim().length >= 3;
 
   return (
-    <Page title="Sessions" subtitle="Alle in FORGE gestarteten oder übernommenen Claude-Sessions">
+    <Page title="Sessions" subtitle={`${openCount} ${openCount === 1 ? "offene Session" : "offene Sessions"}`}>
       <div className="mb-4 flex gap-2">
         <div className="relative flex-1">
           <Search className="pointer-events-none absolute left-2.5 top-2 h-4 w-4 text-subtle" />
