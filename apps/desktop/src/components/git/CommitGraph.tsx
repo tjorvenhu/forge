@@ -73,9 +73,8 @@ export function CommitGraph({
               </svg>
               <span className="min-w-0 flex-1 truncate">
                 <span className={cn(head && "font-semibold")}>{c.subject}</span>
-                <span className="ml-2 inline-flex items-center gap-1 align-middle text-caption text-subtle">
-                  <AuthorAvatar name={c.author} url={c.avatarUrl ?? avatars?.[c.authorEmail]} className="h-3.5 w-3.5" />
-                  {c.author}
+                <span className="ml-2 inline-flex align-middle">
+                  <AuthorAvatar name={c.author} url={c.avatarUrl ?? avatars?.[c.authorEmail]} className="h-4 w-4" />
                 </span>
               </span>
               <RefBadges refs={c.refs} localBranches={localBranches} />
