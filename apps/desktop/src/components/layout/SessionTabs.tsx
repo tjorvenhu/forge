@@ -78,20 +78,14 @@ export function SessionTabs() {
         // A mouse wheel only scrolls vertically; the strip only scrolls horizontally.
         if (!e.deltaX && e.deltaY) e.currentTarget.scrollLeft += e.deltaY;
       }}
-      className="flex min-h-10 shrink-0 select-none items-center gap-2 overflow-x-auto overflow-y-hidden border-b border-border bg-sidebar px-2 py-1"
+      className="flex h-12 shrink-0 select-none items-center overflow-x-auto overflow-y-hidden border-b border-border bg-sidebar px-3"
     >
-      {groups.map((g) => (
-        <div
-          key={g.projectId}
-          data-project-group={g.projectId}
-          className={cn(
-            "flex shrink-0 items-center gap-0.5 rounded-lg border bg-surface p-0.5",
-            g.projectId === activeProjectId ? "border-accent/40" : "border-border",
-          )}
-        >
+      {groups.map((g, gi) => (
+        <div key={g.projectId} data-project-group={g.projectId} className="flex shrink-0 items-center gap-1">
+          {gi > 0 && <span aria-hidden className="mx-3 h-5 w-px shrink-0 bg-border" />}
           {/* The project is part of every tab's accessible name; this label is only visual. */}
-          <div aria-hidden title={g.projectName} className={cn("flex max-w-40 shrink-0 items-center gap-1.5 pl-1.5 pr-1 text-caption", g.projectId === activeProjectId ? "font-medium text-fg" : "text-subtle")}>
-            <ProjectIcon name={g.projectName} size={18} className="rounded" />
+          <div aria-hidden title={g.projectName} className={cn("flex max-w-40 shrink-0 items-center gap-2 pl-1 pr-2 text-small", g.projectId === activeProjectId ? "text-fg" : "text-subtle")}>
+            <ProjectIcon name={g.projectName} size={20} className="rounded-md" />
             <span className="truncate">{g.projectName}</span>
           </div>
           {g.tabs.map((s) => {
@@ -105,11 +99,11 @@ export function SessionTabs() {
                 key={s.id}
                 data-session-tab={s.id}
                 className={cn(
-                  "group relative flex h-7 min-w-0 max-w-56 shrink-0 animate-fade-in items-center rounded-md text-small transition-colors",
+                  // Same weight active or not, like the sidebar: a bolder title would make the strip jump.
+                  "group flex h-8 min-w-0 max-w-60 shrink-0 animate-fade-in items-center rounded-lg text-body transition-[color,background-color] duration-120",
                   active ? "bg-surface-3 text-fg" : attention ? "bg-warning-soft text-fg hover:bg-surface-2" : "text-muted hover:bg-surface-2 hover:text-fg",
                 )}
               >
-                {active && <span aria-hidden className="absolute inset-x-2 bottom-0 h-0.5 origin-center animate-fade-in rounded-full bg-accent" />}
                 <button
                   role="tab"
                   aria-selected={active}
@@ -118,7 +112,7 @@ export function SessionTabs() {
                   onClick={() => openProject(s.projectId, s.id)}
                   onKeyDown={(e) => onTabKey(e, i)}
                   title={`${s.projectName}: ${title}\n${statusText(s)}${s.live ? "" : ". Kein laufender Claude-Prozess"}\nStrg+Tab wechselt zur nächsten Session.`}
-                  className={cn("flex h-full min-w-0 cursor-default items-center gap-2 rounded-md pl-2.5 transition-transform duration-75 focus-visible:outline-offset-[-2px] active:scale-[0.97]", closable ? "pr-1" : "pr-2.5")}
+                  className={cn("flex h-full min-w-0 cursor-default items-center gap-2 rounded-lg pl-3 transition-transform duration-75 focus-visible:outline-offset-[-2px] active:scale-[0.97]", closable ? "pr-1.5" : "pr-3")}
                 >
                   <span aria-hidden className={cn("h-1.5 w-1.5 shrink-0 rounded-full", dotClass(s))} />
                   <span className={cn("truncate", !s.live && "italic")}>{title}</span>
@@ -133,7 +127,7 @@ export function SessionTabs() {
                   <Button
                     size="icon-sm"
                     variant="ghost"
-                    className={cn("mr-0.5 h-5 w-5 group-hover:opacity-100 focus-visible:opacity-100", active ? "opacity-100" : "opacity-0")}
+                    className={cn("mr-1 h-5 w-5 rounded-md text-subtle hover:bg-surface-2 hover:text-fg group-hover:opacity-100 focus-visible:opacity-100", active ? "opacity-100" : "opacity-0")}
                     aria-label={`Claude-Prozess von ${title} beenden`}
                     title="Beenden. Die Session bleibt fortsetzbar."
                     onClick={() => call("sessions.close", { sessionId: s.id }).catch((err: unknown) => toast.error("Beenden fehlgeschlagen", errorMessage(err)))}

@@ -247,6 +247,11 @@ export const Composer = memo(function Composer({
           <div className="pointer-events-none absolute inset-0 z-10 flex animate-fade-in items-center justify-center rounded-xl text-body text-accent">Dateien hier ablegen</div>
         )}
         <AttachmentList files={files} onRemove={attachments.remove} />
+        {dictation.state !== "idle" && dictation.live && (
+          <div className="animate-fade-in border-b border-border px-5 py-2.5 text-ui text-muted" aria-live="polite">
+            {dictation.live}
+          </div>
+        )}
         <textarea
           id="composer-input"
           ref={ref}
