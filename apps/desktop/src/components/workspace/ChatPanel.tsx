@@ -21,6 +21,9 @@ import { ItemView } from "./ChatItemView";
 import { BackgroundIndicator, WorkingIndicator } from "./WorkingIndicator";
 import { turnStartedAt } from "./working";
 import { anchoredScrollTop, captureAnchor, type ScrollAnchor } from "./scroll-anchor";
+import { FollowState } from "./follow";
+
+const SCROLL_KEYS = new Set(["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End", " "]);
 import { LeadMarker } from "./ChatRow";
 import { ClaudeMark } from "./ClaudeMark";
 
@@ -141,7 +144,7 @@ function SessionThread({ sessionId, session, project, workingInPanel }: { sessio
   /** "new": content grew while scrolled up; "end": far from the end. Shows the jump button. */
   const [jump, setJump] = useState<"new" | "end" | null>(null);
   const [saved] = useState(() => threadViews.get(sessionId));
-  const pinned = useRef(saved?.pinned ?? true);
+  const [follow] = useState(() => new FollowState(saved?.pinned ?? true));
   const virtualizer = useVirtualizer({
     count: items.length,
     getScrollElement: () => scrollRef.current,
@@ -156,9 +159,9 @@ function SessionThread({ sessionId, session, project, workingInPanel }: { sessio
   useEffect(
     () => () => {
       const el = scrollRef.current;
-      if (el) rememberView(sessionId, { offset: el.scrollTop, pinned: pinned.current, measurements: virtualizer.measurementsCache });
+      if (el) rememberView(sessionId, { offset: el.scrollTop, pinned: follow.pinned, measurements: virtualizer.measurementsCache });
     },
-    [sessionId, virtualizer],
+    [sessionId, virtualizer, follow],
   );
 
   // Older rows land above the viewport: keep the row that was at the top in the same place.
@@ -186,7 +189,7 @@ function SessionThread({ sessionId, session, project, workingInPanel }: { sessio
   useEffect(() => {
     if (!focus || focus.sessionId !== sessionId || !buffer?.loaded) return;
     useUi.getState().setFocusEvent(null);
-    pinned.current = false;
+    follow.unpin();
     if (oldestSeq !== undefined && focus.seq < oldestSeq) {
       // The hit is older than the loaded pages: page back to it, then focus it again.
       void loadUntil(focus.seq).then((found) => {
@@ -204,7 +207,7 @@ function SessionThread({ sessionId, session, project, workingInPanel }: { sessio
     // Item heights are measured while scrolling; a second pass lands on the final position.
     requestAnimationFrame(() => virtualizer.scrollToIndex(i, { align: "center" }));
     setHighlight(items[i]!.key);
-  }, [focus, sessionId, buffer?.loaded, items, virtualizer, oldestSeq, loadUntil]);
+  }, [focus, sessionId, buffer?.loaded, items, virtualizer, oldestSeq, loadUntil, follow]);
   useEffect(() => {
     if (!highlight) return;
     const t = setTimeout(() => setHighlight(null), 2500);
@@ -214,24 +217,42 @@ function SessionThread({ sessionId, session, project, workingInPanel }: { sessio
   // Follow new content only while pinned, and only when the content actually grew. Scrolling
   // on every render fought the user (the virtualizer re-renders during a scroll before onScroll
   // runs), and reading scrollHeight on every streamed token forced a layout each time. A
-  // ResizeObserver reports growth once per frame instead.
+  // ResizeObserver reports growth once per frame instead. The thread itself is observed too: when
+  // the composer grows (approval or plan card), the visible area shrinks and the end moves out of view.
   const loaded = !!buffer?.loaded;
+  useEffect(() => {
+    // The scrollbar can be released outside the thread, even outside the window.
+    const release = () => follow.setDragging(false);
+    window.addEventListener("pointerup", release);
+    window.addEventListener("pointercancel", release);
+    window.addEventListener("blur", release);
+    return () => {
+      window.removeEventListener("pointerup", release);
+      window.removeEventListener("pointercancel", release);
+      window.removeEventListener("blur", release);
+    };
+  }, [follow]);
   useLayoutEffect(() => {
     const el = scrollRef.current;
     const content = contentRef.current;
     if (!el || !content) return;
     let lastHeight = 0;
-    const follow = () => {
+    let lastViewport = 0;
+    const onResize = () => {
       const h = content.offsetHeight;
-      if (pinned.current && h > lastHeight) el.scrollTop = el.scrollHeight;
-      else if (!pinned.current && lastHeight > 0 && h > lastHeight) setJump("new");
+      const viewport = el.clientHeight;
+      const grew = h > lastHeight;
+      if (follow.pinned && (grew || viewport < lastViewport)) el.scrollTop = el.scrollHeight;
+      else if (!follow.pinned && lastHeight > 0 && grew) setJump("new");
       lastHeight = h;
+      lastViewport = viewport;
     };
-    follow();
-    const ro = new ResizeObserver(follow);
+    onResize();
+    const ro = new ResizeObserver(onResize);
     ro.observe(content);
+    ro.observe(el);
     return () => ro.disconnect();
-  }, [loaded]);
+  }, [loaded, follow]);
 
   if (!buffer?.loaded) {
     if (error) {
@@ -258,7 +279,7 @@ function SessionThread({ sessionId, session, project, workingInPanel }: { sessio
   const jumpToEnd = () => {
     const el = scrollRef.current;
     if (!el) return;
-    pinned.current = true;
+    follow.pin();
     setJump(null);
     el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
   };
@@ -269,15 +290,20 @@ function SessionThread({ sessionId, session, project, workingInPanel }: { sessio
       <div
         ref={scrollRef}
         className="min-h-0 flex-1 overflow-y-auto"
-        onWheel={(e) => {
-          if (e.deltaY < 0) pinned.current = false;
+        onWheel={(e) => follow.wheel(e.deltaY, performance.now())}
+        onKeyDown={(e) => {
+          if (SCROLL_KEYS.has(e.key)) follow.userInput(performance.now());
+        }}
+        onTouchMove={() => follow.userInput(performance.now())}
+        onPointerDown={(e) => {
+          // A press on the scroll container itself, not on a row, is a press on its scrollbar.
+          if (e.target === e.currentTarget) follow.setDragging(true);
         }}
         onScroll={(e) => {
           const el = e.currentTarget;
-          const fromEnd = el.scrollHeight - el.scrollTop - el.clientHeight;
-          pinned.current = fromEnd < 40;
-          if (pinned.current) setJump(null);
-          else if (fromEnd > el.clientHeight) setJump((j) => j ?? "end");
+          const hint = follow.scrolled(el.scrollTop, el.scrollHeight, el.clientHeight, performance.now());
+          if (hint === "pinned") setJump(null);
+          else if (hint === "far") setJump((j) => j ?? "end");
         }}
       >
         <div ref={contentRef}>
