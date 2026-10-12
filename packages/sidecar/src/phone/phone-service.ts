@@ -1,9 +1,11 @@
-import { randomUUID } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import {
   ForgeError,
+  type DeskPhoneConfig,
   type PhoneCallInfo,
   type PhoneCallRecord,
   type PhoneConfig,
+  type PhoneEngine,
   type PhoneSetupIncomplete,
   type PhoneState,
   type ServerEvent,
@@ -13,33 +15,53 @@ import type { Db } from "../persistence/db.js";
 import type { ProjectManager } from "../projects/project-manager.js";
 import type { SessionService } from "../sessions/session-service.js";
 import type { DevServerService } from "../devserver/dev-server.js";
+import { slugify, type WorktreeService } from "../automation/worktrees.js";
 import { isArtifactPath, isSensitiveFile, type GitEngine } from "../git/git.js";
-import { CallController, type CallControllerDeps, type Conversation, type ConversationCallbacks } from "./call-controller.js";
+import { CallController, type CallControllerDeps, type CallHandler, type Conversation, type ConversationCallbacks } from "./call-controller.js";
+import { DeskPhone } from "./desk-phone.js";
+import { DEFAULT_LIVE_MODEL, GeminiLive, type LiveConversation, type LiveHandlers } from "./gemini-live.js";
+import { DEFAULT_GEMINI_STT_MODEL, DEFAULT_GEMINI_TTS_MODEL, DEFAULT_GEMINI_VOICE, GeminiVoice } from "./gemini-voice.js";
+import { LiveCallController, type LiveControllerDeps } from "./live-controller.js";
 import { asData, PhoneAgent, type PhoneToolset } from "./phone-agent.js";
+import { excerptData, lastAnswer, openRequest, pendingText, questionTexts } from "./session-info.js";
 import { DEFAULT_PIN_LIMITS, hashPin, PinGuard, verifyPin, type PinGuardState, type PinLimits } from "./pin-guard.js";
 import { RtpSession } from "./rtp.js";
 import { answerDirection, buildSdp, chooseCodec, parseSdp, PT_PCMA } from "./sdp.js";
 import type { SecretStore } from "./secrets.js";
-import { SipUserAgent, type SipAccount, type SipCall } from "./sip-ua.js";
+import { localIpTowards, SipUserAgent, type SipAccount, type SipCall } from "./sip-ua.js";
+import { geminiFunctionDeclarations, phoneSystemPrompt } from "./tools.js";
 import { DEFAULT_STT_MODEL, DEFAULT_TTS_MODEL, DEFAULT_VOICE, OpenAiVoice, type VoiceProvider } from "./voice.js";
 
 const SECRET_PASSWORD = "sip-password";
 const SECRET_OPENAI = "openai-key";
+const SECRET_GEMINI = "gemini-key";
+const SECRET_DESK = "desk-password";
+export const DEFAULT_DESK_PORT = 8766;
 /** Claude on the phone: fast replies matter more than depth. */
 const PHONE_MODEL = "haiku";
 /** wait before calling, so a quick follow-up turn or an answer at the desk makes the call unnecessary */
-const NOTIFY_DELAY_MS = { done: 5_000, error: 5_000, approval: 15_000 };
+const NOTIFY_DELAY_MS = { done: 5_000, error: 5_000, approval: 15_000, notify: 2_000 };
 const NOTIFY_COOLDOWN_MS = 60_000;
 const GREETING = "Hallo, hier ist FORGE. Was kann ich für dich tun?";
 /** numbers in national notation (030 ...) belong to this country */
 export const DEFAULT_COUNTRY_CODE = "49";
-/** longest command or plan handed to Claude in details */
-const DETAILS_MAX = 4000;
 const SHUTDOWN_TIMEOUT_MS = 4000;
 
-type NotifyKind = "done" | "approval" | "error";
+/** notify: Claude asked for the user with the tool notify (urgent) */
+type NotifyKind = "done" | "approval" | "error" | "notify";
+
+type StoredDesk = Omit<DeskPhoneConfig, "hasWebPassword" | "provisioningUrl">;
 
 interface StoredConfig {
+  engine: PhoneEngine;
+  liveModel: string;
+  geminiVoice: string;
+  speechProvider: "openai" | "gemini";
+  geminiSttModel: string;
+  geminiTtsModel: string;
+  desk: StoredDesk;
+  /** secret part of the URLs the desk phone calls; stays the same so its provisioning keeps working */
+  deskToken: string | null;
   server: string;
   port: number;
   username: string;
@@ -60,7 +82,27 @@ interface StoredConfig {
   pinGuard?: PinGuardState;
 }
 
+const DEFAULT_DESK: StoredDesk = {
+  enabled: false,
+  phoneIp: "",
+  httpPort: DEFAULT_DESK_PORT,
+  webUser: "admin",
+  sessionKeys: [1, 2, 3, 4],
+  clearKeys: [],
+  leds: true,
+  hotline: true,
+  display: "lines",
+};
+
 const DEFAULTS: StoredConfig = {
+  engine: "gemini-live",
+  liveModel: DEFAULT_LIVE_MODEL,
+  geminiVoice: DEFAULT_GEMINI_VOICE,
+  speechProvider: "openai",
+  geminiSttModel: DEFAULT_GEMINI_STT_MODEL,
+  geminiTtsModel: DEFAULT_GEMINI_TTS_MODEL,
+  desk: DEFAULT_DESK,
+  deskToken: null,
   server: "",
   port: 5060,
   username: "",
@@ -83,7 +125,10 @@ export interface PhoneFactories {
   ua(account: SipAccount): SipUserAgent;
   rtp(localIp: string): RtpSession;
   voice(apiKey: string, o: { voice: string; sttModel: string; ttsModel: string }): VoiceProvider;
+  geminiVoice(apiKey: string, o: { voice: string; sttModel: string; ttsModel: string }): VoiceProvider;
   conversation(o: { tools: PhoneToolset; context: string; cb: ConversationCallbacks }): Conversation;
+  live(o: { apiKey: string; model: string; voice: string; systemInstruction: string; handlers: LiveHandlers }): LiveConversation;
+  desk(d: ConstructorParameters<typeof DeskPhone>[0]): DeskPhone;
 }
 
 export interface PhoneDeps {
@@ -92,19 +137,31 @@ export interface PhoneDeps {
   sessions: SessionService;
   devServers: DevServerService;
   git: GitEngine;
+  worktrees: WorktreeService;
   secrets: SecretStore;
   emit(e: ServerEvent): void;
   claude(): { path: string | null; env: Record<string, string>; cwd: string };
   log(message: string): void;
   factories?: Partial<PhoneFactories>;
   /** shorter waits in tests */
-  timing?: { notifyDelayMs?: number; notifyCooldownMs?: number; pinLimits?: Partial<PinLimits>; controller?: CallControllerDeps["timing"] };
+  timing?: {
+    notifyDelayMs?: number;
+    notifyCooldownMs?: number;
+    pinLimits?: Partial<PinLimits>;
+    controller?: CallControllerDeps["timing"];
+    live?: LiveControllerDeps["timing"];
+  };
 }
+
+/** Before a call: how it will be talked through. */
+type Speech = { engine: "claude"; voice: VoiceProvider } | { engine: "gemini-live"; apiKey: string };
 
 interface ActiveCall {
   call: SipCall;
   /** null while the call is being set up */
-  controller: CallController | null;
+  controller: CallHandler | null;
+  /** the session this call is about (callback, key on the desk phone); shown on the desk phone */
+  focus: string | null;
   rtp: RtpSession | null;
   info: PhoneCallInfo;
   record: PhoneCallRecord;
@@ -170,21 +227,36 @@ export class PhoneService {
   private lastNotifyAt = 0;
   private readonly f: PhoneFactories;
   private readonly pinGuard: PinGuard;
+  private readonly desk: DeskPhone;
 
   constructor(private readonly d: PhoneDeps) {
-    this.cfg = { ...DEFAULTS, ...(d.db.getPhoneSettings() as Partial<StoredConfig>) };
+    const stored = d.db.getPhoneSettings() as Partial<StoredConfig>;
+    this.cfg = { ...DEFAULTS, ...stored, desk: { ...DEFAULT_DESK, ...stored.desk } };
     const claude = () => d.claude();
     this.f = {
       ua: (a) => new SipUserAgent(a),
       rtp: (ip) => new RtpSession(ip),
       voice: (key, o) => new OpenAiVoice(key, o),
+      geminiVoice: (key, o) => new GeminiVoice(key, o),
       conversation: ({ tools, context, cb }) => {
         const c = claude();
         if (!c.path) throw new ForgeError("CLAUDE_NOT_INSTALLED", "Claude Code CLI wurde nicht gefunden.");
         return new PhoneAgent({ claudePath: c.path, env: c.env, cwd: c.cwd, model: PHONE_MODEL, tools, context, ...cb });
       },
+      live: (o) => new GeminiLive({ ...o, functionDeclarations: geminiFunctionDeclarations() }),
+      desk: (dd) => new DeskPhone(dd),
       ...d.factories,
     };
+    this.desk = this.f.desk({
+      listSessions: () => d.sessions.listLive().sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)),
+      pending: (id) => openRequest(d.db, id),
+      lastAnswer: (id) => lastAnswer(d.db, id),
+      respond: (id, requestId, decision) => d.sessions.respondApproval(id, requestId, decision, "once"),
+      call: () => ({ active: this.active !== null, sessionId: this.active?.focus ?? null }),
+      onKeyInCall: (id) => this.keyInCall(id),
+      onReachability: () => this.emitState(),
+      log: (m) => d.log(m),
+    });
     this.pinGuard = new PinGuard(
       this.cfg.pinGuard,
       (s) => {
@@ -197,7 +269,9 @@ export class PhoneService {
 
   /** Starts the line on app start if it was switched on before. */
   async init() {
-    if (this.cfg.enabled) await this.connect().catch((e: unknown) => this.fail(e));
+    if (!this.cfg.enabled) return;
+    await this.startDesk();
+    await this.connect().catch((e: unknown) => this.fail(e));
   }
 
   private persist() {
@@ -211,25 +285,46 @@ export class PhoneService {
   // ---------- config
 
   config(): PhoneConfig {
-    const { pinHash, pinGuard: _pinGuard, ...rest } = this.cfg;
+    const { pinHash, pinGuard: _pinGuard, deskToken: _deskToken, desk, ...rest } = this.cfg;
     return {
       ...rest,
+      desk: { ...desk, hasWebPassword: this.d.secrets.has(SECRET_DESK), provisioningUrl: this.desk.provisioningUrl },
       hasPassword: this.d.secrets.has(SECRET_PASSWORD),
       hasOpenAiKey: this.d.secrets.has(SECRET_OPENAI),
+      hasGeminiKey: this.d.secrets.has(SECRET_GEMINI),
       hasPin: !!pinHash,
     };
   }
 
-  async saveConfig(patch: Partial<Omit<PhoneConfig, "enabled" | "hasPassword" | "hasOpenAiKey" | "hasPin">> & { password?: string; openAiKey?: string; pin?: string }) {
-    const { password, openAiKey, pin, ...rest } = patch;
+  async saveConfig(
+    patch: Partial<Omit<PhoneConfig, "enabled" | "hasPassword" | "hasOpenAiKey" | "hasGeminiKey" | "hasPin" | "desk">> & {
+      desk?: Partial<StoredDesk>;
+      password?: string;
+      openAiKey?: string;
+      geminiKey?: string;
+      deskPassword?: string;
+      pin?: string;
+    },
+  ) {
+    const { password, openAiKey, geminiKey, deskPassword, pin, desk, ...rest } = patch;
     const before = JSON.stringify(this.connectionKey());
+    const deskBefore = JSON.stringify(this.cfg.desk);
     const next: StoredConfig = { ...this.cfg };
     for (const [k, v] of Object.entries(rest)) if (v !== undefined) (next as unknown as Record<string, unknown>)[k] = typeof v === "string" ? v.trim() : v;
     next.allowedCallers = next.allowedCallers.map((n) => n.trim()).filter(Boolean);
     if (next.notifyNumber !== null && !next.notifyNumber.trim()) next.notifyNumber = null;
+    if (desk) {
+      next.desk = { ...next.desk };
+      for (const [k, v] of Object.entries(desk)) if (v !== undefined) (next.desk as unknown as Record<string, unknown>)[k] = typeof v === "string" ? v.trim() : v;
+      next.desk.sessionKeys = [...new Set(next.desk.sessionKeys)];
+      // A key is either a session key or cleared, never both.
+      next.desk.clearKeys = [...new Set(next.desk.clearKeys)].filter((k) => !next.desk.sessionKeys.includes(k));
+    }
     if (pin !== undefined) next.pinHash = pin ? await hashPin(pin) : null;
     if (password !== undefined) await this.d.secrets.set(SECRET_PASSWORD, password || null);
     if (openAiKey !== undefined) await this.d.secrets.set(SECRET_OPENAI, openAiKey.trim() || null);
+    if (geminiKey !== undefined) await this.d.secrets.set(SECRET_GEMINI, geminiKey.trim() || null);
+    if (deskPassword !== undefined) await this.d.secrets.set(SECRET_DESK, deskPassword || null);
     this.cfg = { ...next, pinGuard: this.cfg.pinGuard };
     this.persist();
     // Setting a new PIN at the desk is the owner's decision, so it lifts a lockout.
@@ -240,6 +335,8 @@ export class PhoneService {
       if (this.busy) this.pendingReconnect = true;
       else await this.reconnect();
     }
+    // The extension is the hotline target, so a new user name changes the provisioning as well.
+    if (this.cfg.enabled && (deskBefore !== JSON.stringify(this.cfg.desk) || deskPassword !== undefined || changed)) await this.startDesk();
     return this.config();
   }
 
@@ -251,11 +348,13 @@ export class PhoneService {
   // ---------- state
 
   state(): PhoneState {
-    return { enabled: this.cfg.enabled, registration: this.registration, message: this.message, call: this.active?.info ?? null };
+    const desk = this.cfg.enabled && this.cfg.desk.enabled ? { reachable: this.desk.reachable, message: this.desk.message } : null;
+    return { enabled: this.cfg.enabled, registration: this.registration, message: this.message, call: this.active?.info ?? null, desk };
   }
 
   private emitState() {
     this.d.emit({ event: "phone.updated", payload: this.state() });
+    this.desk.refresh();
   }
 
   private persistEnabled(enabled: boolean) {
@@ -267,6 +366,7 @@ export class PhoneService {
     if (!enabled) {
       this.persistEnabled(false);
       await this.disconnect();
+      await this.desk.stop();
       return this.state();
     }
     const missing = this.missingSetup();
@@ -275,6 +375,7 @@ export class PhoneService {
       throw new ForgeError("VALIDATION", `Telefon nicht eingerichtet: ${missing} Bitte in den Einstellungen unter Telefon ergänzen.`, details);
     }
     this.persistEnabled(true);
+    await this.startDesk();
     await this.connect().catch((e: unknown) => this.fail(e));
     return this.state();
   }
@@ -282,7 +383,12 @@ export class PhoneService {
   private missingSetup(): string | null {
     if (!this.cfg.server || !this.cfg.username) return "Server und Benutzer fehlen.";
     if (!this.d.secrets.has(SECRET_PASSWORD)) return "SIP-Passwort fehlt.";
-    if (!this.d.secrets.has(SECRET_OPENAI)) return "OpenAI-API-Key fehlt.";
+    if (this.cfg.engine === "gemini-live") {
+      if (!this.d.secrets.has(SECRET_GEMINI)) return "Gemini-API-Key fehlt (für Gemini Live).";
+      return null;
+    }
+    if (this.cfg.speechProvider === "openai" && !this.d.secrets.has(SECRET_OPENAI)) return "OpenAI-API-Key fehlt.";
+    if (this.cfg.speechProvider === "gemini" && !this.d.secrets.has(SECRET_GEMINI)) return "Gemini-API-Key fehlt.";
     if (!this.d.claude().path) return "Claude Code ist nicht installiert.";
     return null;
   }
@@ -292,6 +398,75 @@ export class PhoneService {
     const msg = errorText(e);
     this.message = /ENOTFOUND|EAI_AGAIN/.test(msg) ? `Server ${this.cfg.server} nicht gefunden.` : msg.slice(0, 300);
     this.emitState();
+  }
+
+  /** Starts (or restarts) the desk phone with the current settings; stops it when it is switched off. */
+  private async startDesk() {
+    const c = this.cfg.desk;
+    if (!this.cfg.enabled || !c.enabled || !c.phoneIp) {
+      await this.desk.stop();
+      this.emitState();
+      return;
+    }
+    if (!this.cfg.deskToken) {
+      this.cfg = { ...this.cfg, deskToken: randomBytes(12).toString("hex") };
+      this.persist();
+    }
+    try {
+      await this.desk.start({
+        phoneIp: c.phoneIp,
+        localIp: await localIpTowards(c.phoneIp, 80),
+        httpPort: c.httpPort,
+        webUser: c.webUser,
+        webPassword: await this.d.secrets.get(SECRET_DESK),
+        sessionKeys: c.sessionKeys,
+        clearKeys: c.clearKeys,
+        leds: c.leds,
+        hotline: c.hotline,
+        display: c.display,
+        forgeNumber: this.cfg.username,
+        token: this.cfg.deskToken!,
+      });
+    } catch (e) {
+      const msg = errorText(e);
+      this.d.log(`Tischtelefon: nicht gestartet: ${msg}`);
+      this.desk.reachable = false;
+      this.desk.message = /EADDRINUSE/.test(msg) ? `Port ${c.httpPort} ist belegt (läuft klaus_telefon noch?).` : msg;
+    }
+    this.emitState();
+  }
+
+  /** Shows a test message on the desk phone and sends keys, LEDs and display again. */
+  async deskTest(): Promise<PhoneState> {
+    if (!this.desk.running) throw new ForgeError("VALIDATION", this.desk.message ?? "Das Tischtelefon ist nicht eingeschaltet.");
+    this.desk.notice("FORGE", "Verbindung steht.");
+    this.desk.forceRefresh();
+    return this.state();
+  }
+
+  /** A session key on the desk phone during a call: the conversation is about that session now. */
+  private keyInCall(sessionId: string) {
+    const a = this.active;
+    if (!a?.controller) return;
+    let title = "ohne Titel";
+    try {
+      title = this.d.sessions.get(sessionId).title ?? title;
+    } catch {
+      return;
+    }
+    a.focus = sessionId;
+    a.controller.note(
+      `[FORGE: Der Anrufer hat am Tischtelefon die Taste für Session ${this.refFor(a, sessionId)} ${asData(title)} gedrückt. Ab jetzt geht es um diese Session, wenn er nichts anderes sagt. Sag kurz, wie es um sie steht.]`,
+    );
+    this.desk.refresh();
+  }
+
+  /** The short name (S1, S2 ...) of a session in this call. */
+  private refFor(a: ActiveCall, id: string): string {
+    for (const [r, sid] of a.refs) if (sid === id) return r;
+    const r = `S${a.refs.size + 1}`;
+    a.refs.set(r, id);
+    return r;
   }
 
   private async connect() {
@@ -348,7 +523,7 @@ export class PhoneService {
       timer = setTimeout(resolve, timeoutMs);
       timer.unref?.();
     });
-    await Promise.race([this.disconnect().catch(() => {}), limit]);
+    await Promise.race([Promise.allSettled([this.disconnect(), this.desk.stop()]), limit]);
     clearTimeout(timer);
   }
 
@@ -368,16 +543,28 @@ export class PhoneService {
       "Testanruf",
       "[FORGE: Testanruf aus den Einstellungen. Der Nutzer hat gerade abgenommen. Sag nur „Hallo, hier ist FORGE. Die Verbindung steht.“ und warte, ob er etwas will.]",
       new Map(),
+      null,
     );
     return this.state();
   }
 
   // ---------- calls
 
-  private async voice(): Promise<VoiceProvider> {
+  /** What the call needs before it starts; fails early (missing key) before anything rings. */
+  private async speech(): Promise<Speech> {
+    if (this.cfg.engine === "gemini-live") {
+      const apiKey = await this.d.secrets.get(SECRET_GEMINI);
+      if (!apiKey) throw new Error("Gemini-API-Key fehlt.");
+      return { engine: "gemini-live", apiKey };
+    }
+    if (this.cfg.speechProvider === "gemini") {
+      const key = await this.d.secrets.get(SECRET_GEMINI);
+      if (!key) throw new Error("Gemini-API-Key fehlt.");
+      return { engine: "claude", voice: this.f.geminiVoice(key, { voice: this.cfg.geminiVoice, sttModel: this.cfg.geminiSttModel, ttsModel: this.cfg.geminiTtsModel }) };
+    }
     const key = await this.d.secrets.get(SECRET_OPENAI);
     if (!key) throw new Error("OpenAI-API-Key fehlt.");
-    return this.f.voice(key, { voice: this.cfg.voice, sttModel: this.cfg.sttModel, ttsModel: this.cfg.ttsModel });
+    return { engine: "claude", voice: this.f.voice(key, { voice: this.cfg.voice, sttModel: this.cfg.sttModel, ttsModel: this.cfg.ttsModel }) };
   }
 
   private newRecord(direction: "in" | "out", number: string, reason: string | null): PhoneCallRecord {
@@ -395,15 +582,17 @@ export class PhoneService {
    * Takes the line for a call before anything is awaited, so a second call gets "busy" and an early
    * end (CANCEL while FORGE is still preparing) frees the line and closes what was opened so far.
    */
-  private attach(call: SipCall, rec: PhoneCallRecord, reason: string | null, refs: Map<string, string>, sdpSession: string): ActiveCall {
+  private attach(call: SipCall, rec: PhoneCallRecord, reason: string | null, refs: Map<string, string>, sdpSession: string, focus: string | null): ActiveCall {
     const info: PhoneCallInfo = { id: rec.id, direction: call.direction, number: call.remoteNumber, state: "ringing", startedAt: rec.startedAt, unlocked: false, reason };
-    const a: ActiveCall = { call, controller: null, rtp: null, info, record: rec, refs, answered: false, failure: null, sdp: { session: sdpSession, version: 1 } };
+    const a: ActiveCall = { call, controller: null, focus, rtp: null, info, record: rec, refs, answered: false, failure: null, sdp: { session: sdpSession, version: 1 } };
     call.on("answered", () => (a.answered = true));
     call.on("ended", (why) => {
       if (this.active === a) this.active = null;
       a.controller?.dispose();
       a.rtp?.close();
       this.finishRecord(rec, a.failure ? "failed" : a.answered ? "answered" : "missed", a.failure ?? why);
+      // Talked about on the phone: no longer new on the desk phone.
+      if (a.answered && a.focus) this.desk.markHeard(a.focus);
       this.emitState();
       if (this.pendingReconnect && this.cfg.enabled && this.ua && !this.busy) {
         this.pendingReconnect = false;
@@ -427,36 +616,74 @@ export class PhoneService {
     return buildSdp({ ip: this.ua.localIp, port: a.rtp.port, sessionId: a.sdp.session, version: ++a.sdp.version, codec, dtmfPt: offer.dtmfPt, direction });
   }
 
-  private createController(a: ActiveCall, voice: VoiceProvider, greeting: string | null, opening: string | null): CallController {
+  private createController(a: ActiveCall, speech: Speech, opening: string | null): CallHandler {
     const pinHash = this.cfg.pinHash;
     const caller = normalizeNumber(a.call.remoteNumber) || "unbekannt";
+    const live = speech.engine === "gemini-live";
+    const incoming = a.call.direction === "in";
+    let picked = "";
+    if (incoming && a.focus) {
+      try {
+        const s = this.d.sessions.get(a.focus);
+        picked = `Der Anrufer hat vor dem Anruf am Tischtelefon die Session ${this.refFor(a, a.focus)} ${asData(s.title ?? "ohne Titel")} gewählt. Wenn er nichts anderes sagt, geht es um sie.`;
+      } catch {
+        a.focus = null;
+      }
+    }
     const context = [
       `Heute ist ${new Date().toLocaleString("de-DE", { dateStyle: "full", timeStyle: "short" })}.`,
-      a.call.direction === "in" ? `Eingehender Anruf von ${a.call.remoteNumber}. Du hast schon mit "${GREETING}" begrüßt.` : `Du rufst ${a.call.remoteNumber} an. Anlass: ${a.info.reason}.`,
+      incoming
+        ? live
+          ? `Eingehender Anruf von ${a.call.remoteNumber}.`
+          : `Eingehender Anruf von ${a.call.remoteNumber}. Du hast schon mit "${GREETING}" begrüßt.`
+        : `Du rufst ${a.call.remoteNumber} an. Anlass: ${a.info.reason}.`,
+      picked,
       this.cfg.requirePin
         ? pinHash
           ? "Steuern ist bis zur PIN-Eingabe gesperrt. Erwähne das erst, wenn ein Werkzeug „Gesperrt“ meldet."
           : "Steuern ist gesperrt, weil keine PIN eingerichtet ist."
         : "Steuern ist ohne PIN erlaubt.",
-    ].join("\n");
+    ]
+      .filter(Boolean)
+      .join("\n");
     const rec = a.record;
-    a.controller = new CallController(a.call, a.rtp!, {
-      voice,
-      createConversation: (cb) => this.f.conversation({ tools: this.toolsFor(a), context, cb }),
-      checkPin: this.cfg.requirePin && pinHash ? (pin) => this.pinGuard.check(caller, () => verifyPin(pin, pinHash)) : null,
-      greeting,
+    const common = {
+      checkPin: this.cfg.requirePin && pinHash ? (pin: string) => this.pinGuard.check(caller, () => verifyPin(pin, pinHash)) : null,
       opening,
-      onTranscript: (role, text) => rec.transcript.push({ role, text, ts: new Date().toISOString() }),
+      onTranscript: (role: "caller" | "forge", text: string) => rec.transcript.push({ role, text, ts: new Date().toISOString() }),
       onUnlock: () => {
         a.info.unlocked = true;
         this.emitState();
       },
-      log: (m) => {
+      log: (m: string) => {
         rec.detail = m;
         this.d.log(`Telefon: ${m}`);
       },
-      timing: this.d.timing?.controller,
-    });
+    };
+    if (speech.engine === "gemini-live") {
+      a.controller = new LiveCallController(a.call, a.rtp!, {
+        ...common,
+        greeting: incoming ? (picked ? "Hallo, hier ist FORGE." : GREETING) : null,
+        tools: this.toolsFor(a),
+        createLive: (handlers) =>
+          this.f.live({
+            apiKey: speech.apiKey,
+            model: this.cfg.liveModel,
+            voice: this.cfg.geminiVoice,
+            systemInstruction: `${phoneSystemPrompt("voice")}\n\n${context}`,
+            handlers,
+          }),
+        timing: this.d.timing?.live,
+      });
+    } else {
+      a.controller = new CallController(a.call, a.rtp!, {
+        ...common,
+        voice: speech.voice,
+        greeting: incoming ? GREETING : null,
+        createConversation: (cb) => this.f.conversation({ tools: this.toolsFor(a), context, cb }),
+        timing: this.d.timing?.controller,
+      });
+    }
     return a.controller;
   }
 
@@ -475,9 +702,10 @@ export class PhoneService {
     const offer = parseSdp(call.remoteSdp);
     const codec = offer && !offer.secure ? chooseCodec(offer) : null;
     if (!offer || codec === null) return reject(488, "Not Acceptable Here", "Audio-Format nicht unterstützt (kein G.711 oder verschlüsseltes RTP).");
-    const a = this.attach(call, rec, null, new Map(), String(Date.now()));
+    // A session key pressed on the desk phone just before: this call is about that session.
+    const a = this.attach(call, rec, null, new Map(), String(Date.now()), this.desk.takePickup());
     try {
-      const voice = await this.voice();
+      const speech = await this.speech();
       if (ended(call)) return;
       const rtp = (a.rtp = this.f.rtp(ua.bindIp));
       await rtp.open();
@@ -487,7 +715,9 @@ export class PhoneService {
       rtp.configure({ ip: offer.ip, port: offer.port }, codec, offer.dtmfPt, [ua.serverIp]);
       rtp.setDirection(direction);
       const sdp = buildSdp({ ip: ua.localIp, port: rtp.port, sessionId: a.sdp.session, version: a.sdp.version, codec, dtmfPt: offer.dtmfPt, direction });
-      const controller = this.createController(a, voice, GREETING, null);
+      const controller = this.createController(a, speech, null);
+      // Gemini connects while the answer goes out, so the greeting comes without a gap.
+      if (speech.engine === "gemini-live") controller.prepare();
       call.accept(sdp);
       a.answered = true;
       a.info.state = "active";
@@ -502,8 +732,8 @@ export class PhoneService {
     }
   }
 
-  /** Calls the user (notifications and test call); Claude prepares the first words while it rings. */
-  private async dial(number: string, reason: string, opening: string, refs: Map<string, string>) {
+  /** Calls the user (notifications and test call); the first words are prepared while it rings. */
+  private async dial(number: string, reason: string, opening: string, refs: Map<string, string>, focus: string | null) {
     if (this.busy) throw new ForgeError("SESSION_BUSY", "FORGE telefoniert bereits.");
     const ua = this.ua;
     if (!ua || this.registration !== "registered") throw new ForgeError("VALIDATION", "Das Telefon ist nicht an der Anlage angemeldet.");
@@ -511,18 +741,19 @@ export class PhoneService {
     let rtp: RtpSession | null = null;
     let a: ActiveCall | null = null;
     try {
-      // Fails early (e.g. no OpenAI key) before the phone rings.
-      const voice = await this.voice();
+      // Fails early (e.g. no API key) before the phone rings.
+      const speech = await this.speech();
       rtp = this.f.rtp(ua.bindIp);
       await rtp.open();
       if (this.ua !== ua) throw new Error("Das Telefon wurde inzwischen ausgeschaltet.");
       const session = String(Date.now());
       const call = ua.call(number, buildSdp({ ip: ua.localIp, port: rtp.port, sessionId: session, version: 1 }));
-      a = this.attach(call, this.newRecord("out", number, reason), reason, refs, session);
+      a = this.attach(call, this.newRecord("out", number, reason), reason, refs, session, focus);
+      if (focus) this.desk.select(focus);
       a.rtp = rtp;
       rtp = null;
       const active = a;
-      const controller = this.createController(active, voice, null, opening);
+      const controller = this.createController(active, speech, opening);
       call.on("answered", (body) => {
         const offer = parseSdp(body);
         if (offer && active.rtp) {
@@ -556,18 +787,26 @@ export class PhoneService {
 
   // ---------- notifications
 
-  /** Watches session events for the moments the user wants a call for. */
+  /** Watches session events: for the desk phone, and for the moments the user wants a call for. */
   onServerEvent(e: ServerEvent) {
-    if (e.event !== "session.event" || !this.cfg.enabled || !this.cfg.notifyNumber) return;
+    if (!this.cfg.enabled) return;
+    if (e.event === "session.updated") this.desk.refresh();
+    if (e.event !== "session.event") return;
     const b = e.payload.body;
+    const sessionId = e.payload.sessionId;
+    if (b.type === "turn.result" && !b.isError) this.desk.markUnheard(sessionId);
+    else if (b.type === "user.message") this.desk.markHeard(sessionId);
+    else if (b.type === "approval.request" || b.type === "approval.resolved") this.desk.refresh();
+    if (!this.cfg.notifyNumber) return;
     let kind: NotifyKind | null = null;
     if (b.type === "turn.result") {
       const interrupted = b.isError && /interrupt|abort/i.test(`${b.subtype} ${b.text ?? ""}`);
       if (!interrupted) kind = b.isError ? "error" : "done";
     } else if (b.type === "approval.request") kind = "approval";
     else if (b.type === "error") kind = "error";
-    if (!kind || !this.cfg.notifyOn[kind]) return;
-    const sessionId = e.payload.sessionId;
+    else if (b.type === "notify" && b.urgent) kind = "notify";
+    // An urgent notify means Claude needs the user: it follows the setting for decisions.
+    if (!kind || !this.cfg.notifyOn[kind === "notify" ? "approval" : kind]) return;
     const key = `${sessionId}:${kind}`;
     const prev = this.notifyTimers.get(key);
     if (prev) clearTimeout(prev);
@@ -598,18 +837,21 @@ export class PhoneService {
     const result = body.type === "turn.result" ? (body.text ?? lastAnswer(this.d.db, sessionId)) : lastAnswer(this.d.db, sessionId);
     const failure = body.type === "turn.result" ? (body.text ?? body.subtype) : body.type === "error" ? body.message : "";
     const what =
-      kind === "done"
+      body.type === "notify"
+        ? `Claude Code in der Session S1 ${asData(title)} im Projekt ${project.name} möchte dich erreichen und lässt ausrichten: ${excerptData(body.message, 500)}`
+        : kind === "done"
         ? `Die Session S1 ${asData(title)} im Projekt ${project.name} ist fertig. Letztes Ergebnis von Claude Code: ${excerptData(result, 1500)}`
         : kind === "approval"
           ? `Die Session S1 ${asData(title)} im Projekt ${project.name} wartet auf eine Entscheidung. ${pendingText(this.d.db, sessionId)}`
           : `In der Session S1 ${asData(title)} im Projekt ${project.name} ist ein Fehler aufgetreten: ${excerptData(failure, 1500)}`;
-    const reason = kind === "done" ? `Session fertig: ${title}` : kind === "approval" ? `Entscheidung nötig: ${title}` : `Fehler: ${title}`;
+    const reason = kind === "notify" ? `Claude meldet sich: ${title}` : kind === "done" ? `Session fertig: ${title}` : kind === "approval" ? `Entscheidung nötig: ${title}` : `Fehler: ${title}`;
     this.lastNotifyAt = Date.now();
     await this.dial(
       this.cfg.notifyNumber,
       reason,
       `[FORGE: Du rufst den Nutzer an. ${what} Er hat gerade abgenommen. Sag „Hallo, hier ist FORGE.“ und in einem Satz, worum es geht, ohne Einzelheiten. Wartet etwas auf seine Entscheidung, sag in einem kurzen Satz, was zur Wahl steht. Dann warte, was er sagt.]`,
       refs,
+      sessionId,
     );
   }
 
@@ -624,12 +866,7 @@ export class PhoneService {
         ? "Gesperrt. Der Anrufer muss zuerst seine PIN über die Telefontastatur eingeben und mit Raute bestätigen."
         : "Gesperrt. In FORGE ist keine PIN eingerichtet, deshalb ist Steuern am Telefon aus.";
     };
-    const refFor = (id: string) => {
-      for (const [r, sid] of a.refs) if (sid === id) return r;
-      const r = `S${a.refs.size + 1}`;
-      a.refs.set(r, id);
-      return r;
-    };
+    const refFor = (id: string) => this.refFor(a, id);
     const resolve = (ref: string) => {
       const raw = ref.trim();
       if (!raw) throw new Error("Welche Session? Bitte ein Kürzel wie S1 oder einen Teil des Titels angeben.");
@@ -729,10 +966,22 @@ export class PhoneService {
         }),
       startSession: (projectName, prompt, o) =>
         run(true, async () => {
-          const p = findProject(projectName);
+          const found = findProject(projectName);
           if (!prompt.trim()) return "Fehler: Der Auftrag ist leer.";
-          const s = await sessions.start({ projectId: p.id, prompt, model: o?.model?.trim() || undefined, planOnly: o?.planOnly });
-          return `Neue Session ${refFor(s.id)} im Projekt ${p.name} gestartet.`;
+          const model = o?.model?.trim() || undefined;
+          if (!o?.agent) {
+            const s = await sessions.start({ projectId: found.id, prompt, model, planOnly: o?.planOnly });
+            a.focus = s.id;
+            return `Neue Session ${refFor(s.id)} im Projekt ${found.name} gestartet.`;
+          }
+          // A parallel agent: own worktree and branch next to the project (as in the Agents tab).
+          const root = found.parentId ? this.d.projects.get(found.parentId) : found;
+          const branch = `agent/${slugify(prompt, 32)}-${Date.now().toString(36).slice(-4)}`;
+          const wt = await this.d.worktrees.create(this.d.projects.requireExisting(root.id), branch);
+          projectChanged(wt.id);
+          const s = await sessions.start({ projectId: wt.id, prompt, model, planOnly: o?.planOnly });
+          a.focus = s.id;
+          return `Agent ${refFor(s.id)} im Projekt ${root.name} gestartet, in einem eigenen Worktree auf eigenem Branch.`;
         }),
       respond: (ref, decision, answers, feedback) =>
         run(true, async () => {
@@ -872,62 +1121,6 @@ export class PhoneService {
         }),
     };
   }
-}
-
-/** Session text for Claude: marked as data, and a cut is said, not hidden. */
-function excerptData(text: string, max: number): string {
-  const t = text.replace(/\s+/g, " ").trim();
-  if (!t) return "(kein Text)";
-  return t.length > max ? `${asData(t.slice(0, max))} (gekürzt, insgesamt ${t.length} Zeichen)` : asData(t);
-}
-
-/** The last thing Claude said in a session (result text, else last answer). */
-function lastAnswer(db: Db, sessionId: string): string {
-  const events = db.listEvents(sessionId);
-  for (let i = events.length - 1; i >= 0; i--) {
-    const b = events[i]!.body;
-    if (b.type === "turn.result" && b.text && !b.isError) return b.text;
-    if (b.type === "assistant.text" && b.text.trim()) return b.text;
-  }
-  return "";
-}
-
-type ApprovalRequest = Extract<SessionEventBody, { type: "approval.request" }>;
-
-function openRequest(db: Db, sessionId: string): ApprovalRequest | null {
-  const open = new Map<string, ApprovalRequest>();
-  for (const e of db.listEvents(sessionId)) {
-    if (e.body.type === "approval.request") open.set(e.body.requestId, e.body);
-    else if (e.body.type === "approval.resolved") open.delete(e.body.requestId);
-  }
-  return [...open.values()].at(-1) ?? null;
-}
-
-function questionTexts(input: Record<string, unknown>): string[] {
-  return Array.isArray(input.questions) ? (input.questions as Array<{ question?: unknown }>).flatMap((q) => (typeof q.question === "string" ? [q.question] : [])) : [];
-}
-
-function requestSubject(req: ApprovalRequest): string {
-  return typeof req.input.command === "string" ? req.input.command : typeof req.input.file_path === "string" ? req.input.file_path : "";
-}
-
-/** What a session waits for, for Claude. `short` (status) names the kind only; details has the full text. */
-function pendingText(db: Db, sessionId: string, short = false): string {
-  const req = openRequest(db, sessionId);
-  if (!req) return "nichts";
-  if (req.toolName === "AskUserQuestion") {
-    if (short) return "eine Rückfrage von Claude.";
-    const qs = Array.isArray(req.input.questions) ? (req.input.questions as Array<{ question?: string; options?: Array<{ label?: string }> }>) : [];
-    return `Rückfrage von Claude: ${asData(qs.map((q) => `${q.question ?? ""} Optionen: ${(q.options ?? []).map((o) => o.label).join(", ")}.`).join(" "))}`;
-  }
-  if (req.toolName === "ExitPlanMode") {
-    if (short) return "ein Plan zur Freigabe.";
-    const plan = typeof req.input.plan === "string" ? req.input.plan : "";
-    return `Ein Plan zur Freigabe: ${excerptData(plan, DETAILS_MAX)}`;
-  }
-  if (short) return `eine Freigabe für ${req.toolName}.`;
-  const subject = requestSubject(req);
-  return `Freigabe für ${req.toolName}${subject ? `: ${excerptData(subject, DETAILS_MAX)}` : "."}`;
 }
 
 /** Read through a function: TypeScript keeps a narrowed `call.state` across awaits, the call does not. */

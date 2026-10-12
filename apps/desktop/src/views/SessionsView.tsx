@@ -11,12 +11,13 @@ import { toast } from "@/stores/toast";
 import { Page } from "@/components/layout/Page";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { EmptyState, ErrorBanner, Loading, SectionTitle, Spinner, Tooltip } from "@/components/ui/misc";
+import { EmptyState, ErrorBanner, SectionTitle, Spinner, Tooltip } from "@/components/ui/misc";
 import { DeleteSessionDialog } from "@/components/workspace/DeleteSessionDialog";
 import { Select } from "@/components/ui/select";
 import { SessionStatusBadge } from "@/components/workspace/SessionStatusBadge";
 import { ProfileBadge } from "@/components/projects/ProfileBadge";
 import { openSearchHit, SearchHitRow } from "@/components/search/SearchHits";
+import { ListSkeleton } from "@/components/ui/skeleton";
 
 const STATUS = [
   { value: "all", label: "Alle Status" },
@@ -67,7 +68,7 @@ export function SessionsView() {
         </section>
       )}
       {searching && <SectionTitle>Sessions</SectionTitle>}
-      {sessions.isLoading && <Loading />}
+      {sessions.isLoading && <ListSkeleton rows={8} />}
       {sessions.isError && <ErrorBanner>Sessions konnten nicht geladen werden.</ErrorBanner>}
       {sessions.isSuccess && sessions.data.length === 0 && query && <div className="text-body text-muted">Kein Titel, Projekt und keine Session-ID passt.</div>}
       {sessions.isSuccess && sessions.data.length === 0 && !query && (

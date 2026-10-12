@@ -3,7 +3,7 @@ import { limitLabel, limitTime } from "@/lib/rate-limit";
 
 type Body<T extends SessionEventBody["type"]> = Extract<SessionEventBody, { type: T }>;
 
-export type NoticeIcon = "commit" | "push" | "skip" | "rewind" | "compact" | "background" | "limit";
+export type NoticeIcon = "commit" | "push" | "skip" | "rewind" | "compact" | "background" | "limit" | "notify";
 
 export interface TodoEntry {
   content: string;
@@ -104,8 +104,11 @@ export function reuseStableItems(prev: readonly ChatItem[], next: ChatItem[]): C
   return changed ? out : (prev as ChatItem[]);
 }
 
-/** Chat items of the persisted events only, without live deltas. */
-export function buildEventItems(events: SessionEvent[]): ChatItem[] {
+/**
+ * The fold behind the chat items, event by event. Kept as state so new events at the end only cost
+ * their own work instead of a pass over the whole history.
+ */
+function itemFolder() {
   const items: ChatItem[] = [];
   const toolIdx = new Map<string, number>();
   const approvalIdx = new Map<string, { item: number; inTool: boolean }>();  const textIdx = new Map<string, number>();
@@ -116,178 +119,222 @@ export function buildEventItems(events: SessionEvent[]): ChatItem[] {
   let openPlan: number | null = null;
   const dropped = new Set<number>();
 
-  for (const ev of events) {
-    const b = ev.body;
-    switch (b.type) {
-      case "user.message":
-        // Older FORGE versions stored Claude Code's own notifications as prompts; the background task card covers them.
-        if (isInjectedUserText(b.text)) break;
-        if (b.source !== "auto" && openPlan !== null) {
-          items[openPlan] = { ...(items[openPlan] as AutoContinueItem), open: false };
+  return {
+    add(ev: SessionEvent) {
+      const b = ev.body;
+      switch (b.type) {
+        case "user.message":
+          // Older FORGE versions stored Claude Code's own notifications as prompts; the background task card covers them.
+          if (isInjectedUserText(b.text)) break;
+          if (b.source !== "auto" && openPlan !== null) {
+            items[openPlan] = { ...(items[openPlan] as AutoContinueItem), open: false };
+            openPlan = null;
+          }
+          limitNotice = null;
+          items.push({ kind: "user", key: `u${ev.seq}`, seq: ev.seq, text: b.text, ts: ev.ts, uuid: b.uuid ?? null, attachments: b.attachments ?? [], remote: b.source === "remote", auto: b.source === "auto" });
+          break;
+        case "assistant.text": {
+          const key = `${b.messageId}:${b.index}`;
+          const existing = textIdx.get(key);
+          const item: ChatItem = { kind: "assistant", key: `a${key}`, seq: ev.seq, text: b.text, streaming: false, ts: ev.ts };
+          if (existing !== undefined) items[existing] = item;
+          else {
+            textIdx.set(key, items.length);
+            items.push(item);
+          }
+          break;
+        }
+        case "tool.use": {
+          const todos = b.name === "TodoWrite" ? parseTodos(b.input) : null;
+          if (todos && lastTodo !== null) {
+            const prev = items[lastTodo];
+            if (prev?.kind === "tool") items[lastTodo] = { ...prev, superseded: true };
+          }
+          toolIdx.set(b.toolUseId, items.length);
+          if (todos) lastTodo = items.length;
+          items.push({ kind: "tool", key: `t${b.toolUseId || ev.seq}`, ts: ev.ts, use: b, result: null, approval: null, blocked: null, todos, superseded: false });
+          break;
+        }
+        case "tool.result": {
+          const i = toolIdx.get(b.toolUseId);
+          const it = i !== undefined ? items[i] : undefined;
+          if (it?.kind === "tool") items[i!] = { ...it, result: b };
+          break;
+        }
+        case "approval.request": {
+          const i = toolIdx.get(b.toolUseId);
+          const it = i !== undefined ? items[i] : undefined;
+          if (it?.kind === "tool") {
+            items[i!] = { ...it, approval: { req: b, resolved: null } };
+            approvalIdx.set(b.requestId, { item: i!, inTool: true });
+          } else {
+            approvalIdx.set(b.requestId, { item: items.length, inTool: false });
+            items.push({ kind: "approval", key: `p${b.requestId}`, ts: ev.ts, req: b, resolved: null });
+          }
+          break;
+        }
+        case "approval.resolved": {
+          const ref = approvalIdx.get(b.requestId);
+          if (!ref) break;
+          const it = items[ref.item];
+          if (it?.kind === "tool" && it.approval) items[ref.item] = { ...it, approval: { ...it.approval, resolved: b } };
+          else if (it?.kind === "approval") items[ref.item] = { ...it, resolved: b };
+          break;
+        }
+        case "policy.blocked": {
+          const i = b.toolUseId ? toolIdx.get(b.toolUseId) : undefined;
+          const it = i !== undefined ? items[i] : undefined;
+          if (it?.kind === "tool") items[i!] = { ...it, blocked: b };
+          else items.push({ kind: "blocked", key: `b${ev.seq}`, ts: ev.ts, body: b });
+          break;
+        }
+        case "check.result":
+          items.push({ kind: "check", key: `c${ev.seq}`, ts: ev.ts, body: b });
+          break;
+        case "notify":
+          items.push({
+            kind: "notice",
+            key: `y${ev.seq}`,
+            ts: ev.ts,
+            text: b.message,
+            tone: b.urgent ? "warning" : "info",
+            card: { title: b.urgent ? "Claude braucht dich" : "Claude meldet sich", ref: null, detail: b.message, icon: "notify" },
+          });
+          break;
+        case "automation":
+          items.push({
+            kind: "notice",
+            key: `m${ev.seq}`,
+            ts: ev.ts,
+            text:
+              b.action === "commit" && b.ok
+                ? `Auto-Commit ${b.hash?.slice(0, 7) ?? ""}: ${b.message} (${b.files.length} Datei(en))`
+                : b.action === "push" && b.ok
+                  ? `Auto-Push: ${b.message}`
+                  : b.message,
+            tone: !b.ok ? "danger" : b.action === "skip" ? "warning" : "success",
+            card:
+              b.action === "commit"
+                ? { title: b.ok ? "Auto-Commit" : "Auto-Commit fehlgeschlagen", ref: b.ok ? (b.hash?.slice(0, 7) ?? null) : null, detail: b.ok ? `${b.message} · ${b.files.length} Datei(en)` : b.message, icon: "commit" }
+                : b.action === "push"
+                  ? { title: b.ok ? "Auto-Push" : "Auto-Push fehlgeschlagen", ref: null, detail: b.message, icon: "push" }
+                  : { title: "Automatik übersprungen", ref: null, detail: b.message.replace(/^Auto-(Commit|Push) übersprungen:\s*/, ""), icon: "skip" },
+          });
+          break;
+        case "files.rewound":
+          items.push({
+            kind: "notice",
+            key: `w${ev.seq}`,
+            ts: ev.ts,
+            text: b.filesChanged.length ? `Dateien zurückgesetzt: ${b.filesChanged.length} Datei(en)` : "Zurückgesetzt, keine Dateien geändert",
+            tone: "info",
+            card: { title: "Dateien zurückgesetzt", ref: null, detail: b.filesChanged.length ? `${b.filesChanged.length} Datei(en) auf den früheren Stand` : "Keine Dateien geändert", icon: "rewind" },
+          });
+          break;
+        case "turn.result":
+          items.push({ kind: "result", key: `r${ev.seq}`, ts: ev.ts, body: b });
+          break;
+        case "context.compacted":
+          items.push({
+            kind: "notice",
+            key: `k${ev.seq}`,
+            ts: ev.ts,
+            text: `${b.trigger === "auto" ? "Kontext automatisch komprimiert" : "Kontext komprimiert"}${b.preTokens !== null ? `: vorher ${formatK(b.preTokens)}${b.postTokens !== null ? `, nachher ${formatK(b.postTokens)}` : ""} Tokens` : ""}. Claude arbeitet mit einer Zusammenfassung des bisherigen Verlaufs weiter.`,
+            tone: "info",
+            card: {
+              title: b.trigger === "auto" ? "Kontext automatisch komprimiert" : "Kontext komprimiert",
+              ref: null,
+              detail: b.preTokens !== null ? `vorher ${formatK(b.preTokens)}${b.postTokens !== null ? `, nachher ${formatK(b.postTokens)}` : ""} Tokens · Claude arbeitet mit einer Zusammenfassung weiter` : "Claude arbeitet mit einer Zusammenfassung weiter",
+              icon: "compact",
+            },
+          });
+          break;
+        case "error":
+          items.push({ kind: "error", key: `e${ev.seq}`, ts: ev.ts, message: b.message, retryable: b.retryable });
+          break;
+        case "background.task": {
+          const text =
+            b.state === "started"
+              ? `Läuft im Hintergrund: ${b.description}. Claude meldet sich, wenn die Aufgabe fertig ist.`
+              : b.state === "completed"
+                ? `Hintergrundaufgabe fertig: ${b.description}`
+                : b.state === "failed"
+                  ? `Hintergrundaufgabe fehlgeschlagen: ${b.description}`
+                  : `Hintergrundaufgabe beendet: ${b.description}`;
+          const tone = b.state === "completed" ? "success" : b.state === "failed" ? "danger" : b.state === "stopped" ? "warning" : "info";
+          const title =
+            b.state === "started" ? "Läuft im Hintergrund" : b.state === "completed" ? "Hintergrundaufgabe fertig" : b.state === "failed" ? "Hintergrundaufgabe fehlgeschlagen" : "Hintergrundaufgabe beendet";
+          items.push({
+            kind: "notice",
+            key: `n${ev.seq}`,
+            ts: ev.ts,
+            text,
+            tone,
+            card: { title, ref: null, detail: b.state === "started" ? `${b.description} · Claude meldet sich, wenn sie fertig ist` : b.description, icon: "background" },
+          });
+          break;
+        }
+        case "status":
+          if (b.detail && b.detail.startsWith("Achtung")) items.push({ kind: "notice", key: `n${ev.seq}`, ts: ev.ts, text: b.detail, tone: "warning" });
+          break;
+        // Warnings ("allowed_warning") arrive with every request near the limit; the composer shows them
+        // permanently instead. Only a real stop belongs in the chat.
+        case "rate_limit":
+          if (b.status === "rejected" && !b.overageInUse) {
+            const when = b.resetsAt ? limitTime(new Date(b.resetsAt * 1000).toISOString(), Date.parse(ev.ts)) : null;
+            const detail = `${limitLabel(b.limitType)}${when ? ` · zurückgesetzt um ${when}` : ""}`;
+            limitNotice = items.length;
+            items.push({ kind: "notice", key: `n${ev.seq}`, ts: ev.ts, text: `Nutzungslimit erreicht: ${detail}`, tone: "warning", card: { title: "Nutzungslimit erreicht", ref: null, detail, icon: "limit" } });
+          }
+          break;
+        case "auto_continue":
+          if (openPlan !== null) items[openPlan] = { ...(items[openPlan] as AutoContinueItem), open: false };
           openPlan = null;
-        }
-        limitNotice = null;
-        items.push({ kind: "user", key: `u${ev.seq}`, seq: ev.seq, text: b.text, ts: ev.ts, uuid: b.uuid ?? null, attachments: b.attachments ?? [], remote: b.source === "remote", auto: b.source === "auto" });
-        break;
-      case "assistant.text": {
-        const key = `${b.messageId}:${b.index}`;
-        const existing = textIdx.get(key);
-        const item: ChatItem = { kind: "assistant", key: `a${key}`, seq: ev.seq, text: b.text, streaming: false, ts: ev.ts };
-        if (existing !== undefined) items[existing] = item;
-        else {
-          textIdx.set(key, items.length);
-          items.push(item);
-        }
-        break;
+          // The plan card says the limit was reached; the plain notice right before it would repeat that.
+          if (b.state === "scheduled" && limitNotice !== null) dropped.add(limitNotice);
+          limitNotice = null;
+          if (b.state === "scheduled") openPlan = items.length;
+          items.push({ kind: "autoContinue", key: `l${ev.seq}`, ts: ev.ts, body: b, open: b.state === "scheduled" });
+          break;
+        default:
+          break;
       }
-      case "tool.use": {
-        const todos = b.name === "TodoWrite" ? parseTodos(b.input) : null;
-        if (todos && lastTodo !== null) {
-          const prev = items[lastTodo];
-          if (prev?.kind === "tool") items[lastTodo] = { ...prev, superseded: true };
-        }
-        toolIdx.set(b.toolUseId, items.length);
-        if (todos) lastTodo = items.length;
-        items.push({ kind: "tool", key: `t${b.toolUseId || ev.seq}`, ts: ev.ts, use: b, result: null, approval: null, blocked: null, todos, superseded: false });
-        break;
-      }
-      case "tool.result": {
-        const i = toolIdx.get(b.toolUseId);
-        const it = i !== undefined ? items[i] : undefined;
-        if (it?.kind === "tool") items[i!] = { ...it, result: b };
-        break;
-      }
-      case "approval.request": {
-        const i = toolIdx.get(b.toolUseId);
-        const it = i !== undefined ? items[i] : undefined;
-        if (it?.kind === "tool") {
-          items[i!] = { ...it, approval: { req: b, resolved: null } };
-          approvalIdx.set(b.requestId, { item: i!, inTool: true });
-        } else {
-          approvalIdx.set(b.requestId, { item: items.length, inTool: false });
-          items.push({ kind: "approval", key: `p${b.requestId}`, ts: ev.ts, req: b, resolved: null });
-        }
-        break;
-      }
-      case "approval.resolved": {
-        const ref = approvalIdx.get(b.requestId);
-        if (!ref) break;
-        const it = items[ref.item];
-        if (it?.kind === "tool" && it.approval) items[ref.item] = { ...it, approval: { ...it.approval, resolved: b } };
-        else if (it?.kind === "approval") items[ref.item] = { ...it, resolved: b };
-        break;
-      }
-      case "policy.blocked": {
-        const i = b.toolUseId ? toolIdx.get(b.toolUseId) : undefined;
-        const it = i !== undefined ? items[i] : undefined;
-        if (it?.kind === "tool") items[i!] = { ...it, blocked: b };
-        else items.push({ kind: "blocked", key: `b${ev.seq}`, ts: ev.ts, body: b });
-        break;
-      }
-      case "check.result":
-        items.push({ kind: "check", key: `c${ev.seq}`, ts: ev.ts, body: b });
-        break;
-      case "automation":
-        items.push({
-          kind: "notice",
-          key: `m${ev.seq}`,
-          ts: ev.ts,
-          text:
-            b.action === "commit" && b.ok
-              ? `Auto-Commit ${b.hash?.slice(0, 7) ?? ""}: ${b.message} (${b.files.length} Datei(en))`
-              : b.action === "push" && b.ok
-                ? `Auto-Push: ${b.message}`
-                : b.message,
-          tone: !b.ok ? "danger" : b.action === "skip" ? "warning" : "success",
-          card:
-            b.action === "commit"
-              ? { title: b.ok ? "Auto-Commit" : "Auto-Commit fehlgeschlagen", ref: b.ok ? (b.hash?.slice(0, 7) ?? null) : null, detail: b.ok ? `${b.message} · ${b.files.length} Datei(en)` : b.message, icon: "commit" }
-              : b.action === "push"
-                ? { title: b.ok ? "Auto-Push" : "Auto-Push fehlgeschlagen", ref: null, detail: b.message, icon: "push" }
-                : { title: "Automatik übersprungen", ref: null, detail: b.message.replace(/^Auto-(Commit|Push) übersprungen:\s*/, ""), icon: "skip" },
-        });
-        break;
-      case "files.rewound":
-        items.push({
-          kind: "notice",
-          key: `w${ev.seq}`,
-          ts: ev.ts,
-          text: b.filesChanged.length ? `Dateien zurückgesetzt: ${b.filesChanged.length} Datei(en)` : "Zurückgesetzt, keine Dateien geändert",
-          tone: "info",
-          card: { title: "Dateien zurückgesetzt", ref: null, detail: b.filesChanged.length ? `${b.filesChanged.length} Datei(en) auf den früheren Stand` : "Keine Dateien geändert", icon: "rewind" },
-        });
-        break;
-      case "turn.result":
-        items.push({ kind: "result", key: `r${ev.seq}`, ts: ev.ts, body: b });
-        break;
-      case "context.compacted":
-        items.push({
-          kind: "notice",
-          key: `k${ev.seq}`,
-          ts: ev.ts,
-          text: `${b.trigger === "auto" ? "Kontext automatisch komprimiert" : "Kontext komprimiert"}${b.preTokens !== null ? `: vorher ${formatK(b.preTokens)}${b.postTokens !== null ? `, nachher ${formatK(b.postTokens)}` : ""} Tokens` : ""}. Claude arbeitet mit einer Zusammenfassung des bisherigen Verlaufs weiter.`,
-          tone: "info",
-          card: {
-            title: b.trigger === "auto" ? "Kontext automatisch komprimiert" : "Kontext komprimiert",
-            ref: null,
-            detail: b.preTokens !== null ? `vorher ${formatK(b.preTokens)}${b.postTokens !== null ? `, nachher ${formatK(b.postTokens)}` : ""} Tokens · Claude arbeitet mit einer Zusammenfassung weiter` : "Claude arbeitet mit einer Zusammenfassung weiter",
-            icon: "compact",
-          },
-        });
-        break;
-      case "error":
-        items.push({ kind: "error", key: `e${ev.seq}`, ts: ev.ts, message: b.message, retryable: b.retryable });
-        break;
-      case "background.task": {
-        const text =
-          b.state === "started"
-            ? `Läuft im Hintergrund: ${b.description}. Claude meldet sich, wenn die Aufgabe fertig ist.`
-            : b.state === "completed"
-              ? `Hintergrundaufgabe fertig: ${b.description}`
-              : b.state === "failed"
-                ? `Hintergrundaufgabe fehlgeschlagen: ${b.description}`
-                : `Hintergrundaufgabe beendet: ${b.description}`;
-        const tone = b.state === "completed" ? "success" : b.state === "failed" ? "danger" : b.state === "stopped" ? "warning" : "info";
-        const title =
-          b.state === "started" ? "Läuft im Hintergrund" : b.state === "completed" ? "Hintergrundaufgabe fertig" : b.state === "failed" ? "Hintergrundaufgabe fehlgeschlagen" : "Hintergrundaufgabe beendet";
-        items.push({
-          kind: "notice",
-          key: `n${ev.seq}`,
-          ts: ev.ts,
-          text,
-          tone,
-          card: { title, ref: null, detail: b.state === "started" ? `${b.description} · Claude meldet sich, wenn sie fertig ist` : b.description, icon: "background" },
-        });
-        break;
-      }
-      case "status":
-        if (b.detail && b.detail.startsWith("Achtung")) items.push({ kind: "notice", key: `n${ev.seq}`, ts: ev.ts, text: b.detail, tone: "warning" });
-        break;
-      // Warnings ("allowed_warning") arrive with every request near the limit; the composer shows them
-      // permanently instead. Only a real stop belongs in the chat.
-      case "rate_limit":
-        if (b.status === "rejected" && !b.overageInUse) {
-          const when = b.resetsAt ? limitTime(new Date(b.resetsAt * 1000).toISOString(), Date.parse(ev.ts)) : null;
-          const detail = `${limitLabel(b.limitType)}${when ? ` · zurückgesetzt um ${when}` : ""}`;
-          limitNotice = items.length;
-          items.push({ kind: "notice", key: `n${ev.seq}`, ts: ev.ts, text: `Nutzungslimit erreicht: ${detail}`, tone: "warning", card: { title: "Nutzungslimit erreicht", ref: null, detail, icon: "limit" } });
-        }
-        break;
-      case "auto_continue":
-        if (openPlan !== null) items[openPlan] = { ...(items[openPlan] as AutoContinueItem), open: false };
-        openPlan = null;
-        // The plan card says the limit was reached; the plain notice right before it would repeat that.
-        if (b.state === "scheduled" && limitNotice !== null) dropped.add(limitNotice);
-        limitNotice = null;
-        if (b.state === "scheduled") openPlan = items.length;
-        items.push({ kind: "autoContinue", key: `l${ev.seq}`, ts: ev.ts, body: b, open: b.state === "scheduled" });
-        break;
-      default:
-        break;
-    }
-  }
+    },
+    result(): ChatItem[] {
+      return dropped.size ? items.filter((_, i) => !dropped.has(i)) : items.slice();
+    },
+  };
+}
 
-  return dropped.size ? items.filter((_, i) => !dropped.has(i)) : items;
+/** Chat items of the persisted events only, without live deltas. */
+export function buildEventItems(events: SessionEvent[]): ChatItem[] {
+  const f = itemFolder();
+  for (const ev of events) f.add(ev);
+  return f.result();
+}
+
+/**
+ * buildEventItems for a buffer that mostly grows at the end (live events): continues from the
+ * events it has seen and starts over when the start changed (older pages, reload).
+ */
+export class IncrementalItems {
+  private f = itemFolder();
+  private count = 0;
+  private firstSeq: number | null = null;
+  private lastSeq: number | null = null;
+
+  build(events: readonly SessionEvent[]): ChatItem[] {
+    const continues = this.count > 0 && events.length >= this.count && events[0]?.seq === this.firstSeq && events[this.count - 1]?.seq === this.lastSeq;
+    if (!continues) {
+      this.f = itemFolder();
+      this.count = 0;
+    }
+    for (let i = this.count; i < events.length; i++) this.f.add(events[i]!);
+    this.count = events.length;
+    this.firstSeq = events[0]?.seq ?? null;
+    this.lastSeq = events.at(-1)?.seq ?? null;
+    return this.f.result();
+  }
 }
 
 function formatK(n: number): string {

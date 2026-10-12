@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import * as M from "@radix-ui/react-dropdown-menu";
 import { cn } from "@/lib/utils";
+import { POPPER_MOTION } from "@/lib/motion";
 
 export interface MenuItem {
   label: string;
@@ -16,7 +17,7 @@ export function DropdownMenu({ trigger, items, align = "end", header }: { trigge
     <M.Root>
       <M.Trigger asChild>{trigger}</M.Trigger>
       <M.Portal>
-        <M.Content align={align} sideOffset={4} className="z-50 min-w-48 max-w-80 rounded-lg border border-border bg-surface-2 p-1 shadow-xl">
+        <M.Content align={align} sideOffset={4} className={cn("z-50 min-w-48 max-w-80 rounded-lg border border-border bg-surface-2 p-1 shadow-xl", POPPER_MOTION)}>
           {header && <div className="px-2 py-1.5 text-xs text-subtle">{header}</div>}
           {items.map((it, i) => (
             <M.Item

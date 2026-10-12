@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import QRCode from "qrcode";
 import { ExternalLink, Smartphone } from "lucide-react";
 import type { Project, RemoteSession, RemoteState } from "@forge/protocol";
 import { call, keys } from "@/lib/queries";
@@ -150,7 +149,10 @@ function SessionLink({ session }: { session: RemoteSession }) {
   useEffect(() => {
     if (!session.url) return setQr(null);
     const css = getComputedStyle(document.documentElement);
-    void QRCode.toDataURL(session.url, { margin: 1, width: 220, color: { dark: css.getPropertyValue("--color-fg").trim(), light: css.getPropertyValue("--color-surface").trim() } }).then(setQr);
+    const url = session.url;
+    const color = { dark: css.getPropertyValue("--color-fg").trim(), light: css.getPropertyValue("--color-surface").trim() };
+    // qrcode loads only when a code is shown.
+    void import("qrcode").then(({ default: QRCode }) => QRCode.toDataURL(url, { margin: 1, width: 220, color })).then(setQr);
   }, [session.url]);
 
   if (session.state === "error") return <ErrorBanner title="Verbindung fehlgeschlagen">{session.message ?? "Remote Control konnte nicht gestartet werden."}</ErrorBanner>;

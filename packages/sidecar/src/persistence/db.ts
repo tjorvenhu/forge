@@ -165,6 +165,8 @@ export const DEFAULT_SETTINGS: Settings = {
   debugLogs: false,
   defaultProjectDir: null,
   autoContinueAfterLimit: true,
+  phoneFeature: false,
+  updateChecks: true,
 };
 
 interface ProjectRow {
@@ -203,7 +205,7 @@ interface SessionRow {
 }
 
 export type ProjectRecord = Omit<Project, "exists">;
-export type SessionRecord = Omit<Session, "live" | "background" | "context" | "autoContinueAt">;
+export type SessionRecord = Omit<Session, "live" | "background" | "subagents" | "context" | "autoContinueAt">;
 
 export interface AutoContinueRecord {
   sessionId: string;
@@ -236,6 +238,11 @@ const now = () => new Date().toISOString();
 
 /** Events per sessions.events call; the newest ones, older ones via beforeSeq. */
 export const EVENT_PAGE_LIMIT = 20_000;
+/**
+ * Page size for the chat (sessions.events). Opening a long session used to load, parse and render up
+ * to 20,000 events at once; older pages load when the user scrolls up or a search hit needs them.
+ */
+export const HISTORY_PAGE_LIMIT = 2_000;
 
 function toProject(r: ProjectRow): ProjectRecord {
   return {
@@ -321,6 +328,8 @@ export class Db {
     const rows = this.sql.prepare("SELECT key, value FROM settings").all() as Array<{ key: string; value: string }>;
     const out: Record<string, unknown> = { ...DEFAULT_SETTINGS };
     for (const r of rows) if (r.key in DEFAULT_SETTINGS) out[r.key] = JSON.parse(r.value);
+    // Installations from before the switch: whoever has set up the phone keeps seeing it.
+    if (!rows.some((r) => r.key === "phoneFeature")) out.phoneFeature = !!this.getPhoneSettings().server;
     return out as Settings;
   }
 
@@ -568,6 +577,17 @@ export class Db {
     cur += 1;
     this.seqCache.set(sessionId, cur);
     return cur;
+  }
+
+  /** Copies the events before `beforeSeq` (all without it) of one session into another (branches). */
+  copyEvents(fromSessionId: string, toSessionId: string, beforeSeq = Number.MAX_SAFE_INTEGER) {
+    this.stmt("INSERT INTO events(session_id, seq, ts, type, body) SELECT ?, seq, ts, type, body FROM events WHERE session_id = ? AND seq < ?").run(toSessionId, fromSessionId, beforeSeq);
+  }
+
+  /** One event by its number, or null. */
+  getEvent(sessionId: string, seq: number): SessionEvent | null {
+    const r = this.stmt("SELECT seq, ts, body FROM events WHERE session_id = ? AND seq = ?").get(sessionId, seq) as { seq: number; ts: string; body: string } | undefined;
+    return r ? { seq: r.seq, sessionId, ts: r.ts, body: JSON.parse(r.body) as SessionEventBody } : null;
   }
 
   appendEvent(sessionId: string, body: SessionEventBody): SessionEvent {

@@ -1,8 +1,11 @@
 import { randomUUID } from "node:crypto";
 import {
+  createSdkMcpServer,
+  tool as sdkTool,
   listSessions as sdkListSessions,
   deleteSession as sdkDeleteSession,
   renameSession as sdkRenameSession,
+  forkSession as sdkForkSession,
   getSessionMessages,
   query,
   type CanUseTool,
@@ -14,6 +17,7 @@ import {
   type SDKUserMessage,
 } from "@anthropic-ai/claude-agent-sdk";
 import type { Capability, ContextUsage, EffortLevel, ExternalSession, PermissionMode, PlanUsage, RewindResult, SlashCommand } from "@forge/protocol";
+import type { z } from "zod";
 import type { ContentBlock } from "./attachments.js";
 import { toPlanUsage } from "./usage.js";
 import { AsyncQueue } from "./async-queue.js";
@@ -29,7 +33,34 @@ export interface StartOptions {
   env: Record<string, string>;
   claudePath: string;
   firstMessage: OutgoingMessage | null;
+  /** FORGE tools for this session (MCP server "forge", tool names mcp__forge__<name>) */
+  tools?: SessionTool[];
+  /** added to Claude's context when the session starts or resumes (SessionStart hook) */
+  context?: string | null;
+  /** model the CLI switches to when the main one is overloaded (must differ from it) */
+  fallbackModel?: string | null;
 }
+
+/**
+ * Fallback on overload: Opus falls back to Sonnet. Other models get none (the fallback would be the
+ * bigger and slower model, or the same one); unknown or default models neither, the CLI refuses a
+ * fallback equal to the main model.
+ */
+export function fallbackFor(model: string | null): string | null {
+  return model && /opus/i.test(model) ? "sonnet" : null;
+}
+
+/** A tool FORGE offers inside a coding session. */
+export interface SessionTool {
+  name: string;
+  description: string;
+  shape: Record<string, z.ZodType>;
+  /** allowed without asking (read-only or harmless); the others go through the normal approvals */
+  autoAllow: boolean;
+  run(args: Record<string, unknown>): Promise<string>;
+}
+
+export const FORGE_MCP = "forge";
 
 export interface ApprovalRequest {
   requestId: string;
@@ -74,8 +105,12 @@ export interface RuntimeSession {
   /** restores files to their state before the given user message (file checkpointing) */
   rewindFiles(uuid: string, dryRun: boolean): Promise<RewindResult>;
   supportedCommands(): Promise<SlashCommand[]>;
-  /** stops the current turn; the session stays usable */
+  /** stops the current turn; the session stays usable. Background tasks keep running (perTaskStopAffordance). */
   interrupt(): Promise<void>;
+  /** stops one background task or subagent */
+  stopTask(taskId: string): Promise<void>;
+  /** moves running foreground work into the background (one tool call, or all); false when nothing matched */
+  toBackground(toolUseId?: string): Promise<boolean>;
   /** ends the session and its CLI process */
   close(): void;
   setModel(model: string): Promise<void>;
@@ -107,12 +142,19 @@ export interface ClaudeRuntime {
   deleteTranscript(claudeSessionId: string, dir: string): Promise<void>;
   /** writes a new title into the CLI's transcript; for sessions without a running process */
   renameTranscript(claudeSessionId: string, title: string, dir: string): Promise<void>;
+  /**
+   * copies a transcript into a new Claude session, up to and including `upToMessageId` (null: all);
+   * returns the new session id. The copy has no file checkpoints.
+   */
+  forkTranscript(claudeSessionId: string, dir: string, upToMessageId: string | null, title: string): Promise<string>;
   /** short-lived probe to read models/commands/account without sending a prompt */
   probe(opts: Pick<StartOptions, "cwd" | "env" | "claudePath">): Promise<SDKControlInitializeResponse>;
   /** slash commands and skills available in a project (custom + those the headless CLI supports) */
   commands(opts: Pick<StartOptions, "cwd" | "env" | "claudePath">): Promise<SlashCommand[]>;
   /** one-shot text completion without tools, e.g. commit messages */
   complete(prompt: string, opts: Pick<StartOptions, "cwd" | "env" | "claudePath"> & { model: string }): Promise<string>;
+  /** one-shot answer as JSON matching `schema` (structured output); the caller validates the shape */
+  completeJson(prompt: string, schema: Record<string, unknown>, opts: Pick<StartOptions, "cwd" | "env" | "claudePath"> & { model: string }): Promise<unknown>;
   /** plan rate-limit windows; uses an experimental SDK call, so callers must tolerate failure */
   planUsage(opts: Pick<StartOptions, "cwd" | "env" | "claudePath">): Promise<PlanUsage>;
 }
@@ -206,6 +248,7 @@ export class AgentSdkRuntime implements ClaudeRuntime {
       },
       { key: "attachments", label: "Bilder/Dateien im Prompt", state: "supported", note: "Bilder, PDFs und Textdateien als Content-Blöcke" },
       { key: "rewind", label: "Dateien zurücksetzen", state: "supported", note: "enableFileCheckpointing + rewindFiles()" },
+      { key: "fork", label: "Verzweigen", state: "supported", note: "forkSession() bis vor eine Nachricht" },
       { key: "questions", label: "Rückfragen und Plan-Freigabe", state: "supported", note: "AskUserQuestion-Antworten und ExitPlanMode über canUseTool" },
       { key: "context", label: "Kontextauslastung", state: "supported", note: "getContextUsage() nach jedem Durchlauf, /compact" },
       { key: "remote", label: "Remote Control (Claude-App)", state: "supported", note: "Bridge der laufenden Session; im SDK nicht dokumentiert" },
@@ -274,6 +317,7 @@ export class AgentSdkRuntime implements ClaudeRuntime {
         cwd: opts.cwd,
         env: opts.env,
         model: opts.model ?? undefined,
+        ...(opts.fallbackModel ? { fallbackModel: opts.fallbackModel } : {}),
         ...(opts.effort ? { effort: opts.effort } : {}),
         permissionMode: opts.permissionMode,
         // Always allowed so a profile switch can move a running session to bypass; without the flag the
@@ -283,10 +327,23 @@ export class AgentSdkRuntime implements ClaudeRuntime {
         disallowedTools: opts.disallowedTools,
         includePartialMessages: true,
         enableFileCheckpointing: true,
+        // Subagents report a one-line progress about every 30 s (task_progress.summary).
+        agentProgressSummaries: true,
+        // FORGE stops tasks one by one (sessions.stopTask); Stop then only ends the turn, not every background task.
+        perTaskStopAffordance: true,
         settingSources: ["user", "project", "local"],
         pathToClaudeCodeExecutable: opts.claudePath,
         canUseTool,
-        hooks: { PreToolUse: [{ hooks: [guard] }] },
+        hooks: {
+          PreToolUse: [{ hooks: [guard] }],
+          ...(opts.context ? { SessionStart: [{ hooks: [startContext(opts.context)] }] } : {}),
+        },
+        ...(opts.tools?.length
+          ? {
+              mcpServers: { [FORGE_MCP]: forgeServer(opts.tools) },
+              allowedTools: opts.tools.filter((t) => t.autoAllow).map((t) => `mcp__${FORGE_MCP}__${t.name}`),
+            }
+          : {}),
         // Echoes user messages, so messages typed in the Claude app (Remote Control) reach the timeline.
         // A CLI flag, not an SDK option: a CLI without it fails at start, reported as "please update".
         extraArgs: { [REPLAY_FLAG]: null },
@@ -319,6 +376,8 @@ export class AgentSdkRuntime implements ClaudeRuntime {
       interrupt: async () => {
         await q.interrupt();
       },
+      stopTask: (taskId) => q.stopTask(taskId),
+      toBackground: (toolUseId) => q.backgroundTasks(toolUseId),
       close: () => {
         if (closed) return;
         closed = true;
@@ -383,6 +442,11 @@ export class AgentSdkRuntime implements ClaudeRuntime {
     await sdkRenameSession(claudeSessionId, title, { dir });
   }
 
+  async forkTranscript(claudeSessionId: string, dir: string, upToMessageId: string | null, title: string): Promise<string> {
+    const r = await sdkForkSession(claudeSessionId, { dir, title, ...(upToMessageId ? { upToMessageId } : {}) });
+    return r.sessionId;
+  }
+
   async commands(opts: Pick<StartOptions, "cwd" | "env" | "claudePath">): Promise<SlashCommand[]> {
     const input = new AsyncQueue<SDKUserMessage>();
     const ac = new AbortController();
@@ -422,6 +486,38 @@ export class AgentSdkRuntime implements ClaudeRuntime {
     return this.oneShot("Antwort von Claude", q, ac, work);
   }
 
+  async completeJson(prompt: string, schema: Record<string, unknown>, opts: Pick<StartOptions, "cwd" | "env" | "claudePath"> & { model: string }): Promise<unknown> {
+    const ac = new AbortController();
+    const q = query({
+      prompt,
+      options: {
+        cwd: opts.cwd,
+        env: opts.env,
+        model: opts.model,
+        pathToClaudeCodeExecutable: opts.claudePath,
+        tools: [],
+        outputFormat: { type: "json_schema", schema },
+        // The structured answer is delivered through a tool call: one turn for it plus room for a retry.
+        maxTurns: 3,
+        settingSources: [],
+        persistSession: false,
+        abortController: ac,
+      },
+    });
+    const work = (async () => {
+      let out: unknown;
+      for await (const m of q) {
+        if (m.type === "result") {
+          if (m.subtype !== "success") throw new Error(`Claude konnte keine Antwort erzeugen (${m.subtype})`);
+          out = m.structured_output;
+        }
+      }
+      if (out === undefined) throw new Error("Claude hat keine strukturierte Antwort geliefert.");
+      return out;
+    })();
+    return this.oneShot("Antwort von Claude", q, ac, work);
+  }
+
   async planUsage(opts: Pick<StartOptions, "cwd" | "env" | "claudePath">): Promise<PlanUsage> {
     const input = new AsyncQueue<SDKUserMessage>();
     const ac = new AbortController();
@@ -454,6 +550,30 @@ export class AgentSdkRuntime implements ClaudeRuntime {
     });
     return this.oneShot("Claude-Code-Abfrage", q, ac, q.initializationResult(), () => input.end());
   }
+}
+
+/** The FORGE tools as an in-process MCP server. */
+function forgeServer(tools: SessionTool[]) {
+  return createSdkMcpServer({
+    name: FORGE_MCP,
+    version: "1.0.0",
+    tools: tools.map((t) =>
+      sdkTool(t.name, t.description, t.shape, async (args: Record<string, unknown>) => {
+        let text: string;
+        try {
+          text = await t.run(args);
+        } catch (e) {
+          return { content: [{ type: "text" as const, text: `Fehler: ${e instanceof Error ? e.message : String(e)}` }], isError: true };
+        }
+        return { content: [{ type: "text" as const, text }] };
+      }),
+    ),
+  });
+}
+
+/** SessionStart hook: tells Claude what FORGE offers in this session. */
+function startContext(text: string): HookCallback {
+  return async (input) => (input.hook_event_name === "SessionStart" ? { hookSpecificOutput: { hookEventName: "SessionStart", additionalContext: text } } : {});
 }
 
 function toCommand(c: { name: string; description: string; argumentHint?: string }): SlashCommand {

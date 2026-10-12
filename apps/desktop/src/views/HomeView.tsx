@@ -8,12 +8,13 @@ import { relativeTime } from "@/lib/utils";
 import { useUi } from "@/stores/ui";
 import { Page } from "@/components/layout/Page";
 import { Button } from "@/components/ui/button";
-import { Badge, EmptyState, ErrorBanner, SectionTitle, Loading } from "@/components/ui/misc";
+import { Badge, EmptyState, ErrorBanner, SectionTitle } from "@/components/ui/misc";
 import { AddProjectActions } from "@/components/projects/AddProjectActions";
 import { ProjectCard } from "@/components/projects/ProjectCard";
 import { RemoveProjectDialog } from "@/components/projects/RemoveProjectDialog";
 import { SessionStatusBadge } from "@/components/workspace/SessionStatusBadge";
 import { SummaryButton } from "@/components/workspace/SummaryButton";
+import { ListSkeleton } from "@/components/ui/skeleton";
 
 export function HomeView() {
   const projects = useProjects();
@@ -33,7 +34,7 @@ export function HomeView() {
       actions={<AddProjectActions />}
     >
       <ApiKeyWarning />
-      {projects.isLoading && <Loading />}
+      {projects.isLoading && <ListSkeleton rows={4} />}
       {projects.isError && <ErrorBanner>Projekte konnten nicht geladen werden.</ErrorBanner>}
       {projects.isSuccess && list.length === 0 && (
         <EmptyState

@@ -3,15 +3,18 @@ import { useToasts } from "@/stores/toast";
 import { cn } from "@/lib/utils";
 
 export function Toaster() {
-  const { toasts, dismiss } = useToasts();
+  const { toasts, dismiss, pause, resume } = useToasts();
   return (
     <div className="pointer-events-none fixed bottom-4 right-4 z-[60] flex w-96 max-w-[90vw] flex-col gap-2" aria-live="polite">
       {toasts.map((t) => (
         <div
           key={t.id}
           role={t.tone === "error" ? "alert" : "status"}
+          onPointerEnter={() => pause(t.id)}
+          onPointerLeave={() => resume(t.id)}
           className={cn(
             "pointer-events-auto flex items-start gap-2.5 rounded-lg border bg-surface-2 px-3 py-2.5 shadow-xl",
+            t.leaving ? "pointer-events-none animate-toast-out" : "animate-slide-up-in",
             t.tone === "error" ? "border-danger/40" : t.tone === "success" ? "border-success/40" : t.tone === "warning" ? "border-warning/50" : "border-border",
           )}
         >

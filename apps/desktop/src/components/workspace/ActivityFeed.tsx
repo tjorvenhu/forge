@@ -13,7 +13,10 @@ export function ActivityFeed({ projectId, projectDir }: { projectId: string; pro
   const events = useSessionEvents((s) => (sessionId ? s.buffers[sessionId]?.events : undefined));
   const rows = useMemo(() => {
     const out: Array<{ key: string; icon: React.ReactNode; title: string; detail: string; ts: string; tone?: string }> = [];
-    for (const e of events ?? []) {
+    // Newest first, and only as far back as the list shows: no pass over the whole history per event.
+    const list = events ?? [];
+    for (let i = list.length - 1; i >= 0 && out.length < 200; i--) {
+      const e = list[i]!;
       const b = e.body;
       if (b.type === "tool.use") out.push({ key: `t${e.seq}`, icon: toolIcon(b.name), title: TOOL_LABELS[b.name] ?? b.name, detail: toolSummary(b.name, b.input, projectDir), ts: e.ts });
       else if (b.type === "approval.request")
@@ -21,7 +24,7 @@ export function ActivityFeed({ projectId, projectDir }: { projectId: string; pro
       else if (b.type === "policy.blocked")
         out.push({ key: `b${e.seq}`, icon: <ShieldAlert className="h-3.5 w-3.5" />, title: "Von Policy blockiert", detail: b.message, ts: e.ts, tone: "text-danger" });
     }
-    return out.reverse().slice(0, 200);
+    return out;
   }, [events, projectDir]);
 
   if (!sessionId || !rows.length)

@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import type {
   Attachment,
   ContextUsage,
@@ -14,7 +15,7 @@ import type {
 } from "@forge/protocol";
 import { ForgeError } from "@forge/protocol";
 import type { ClaudeRuntime } from "../claude/runtime.js";
-import type { Db } from "../persistence/db.js";
+import { HISTORY_PAGE_LIMIT, type Db } from "../persistence/db.js";
 import type { GitEngine } from "../git/git.js";
 import type { ProjectManager } from "../projects/project-manager.js";
 import { ApprovalGate } from "./approvals.js";
@@ -22,6 +23,8 @@ import { AutoContinue } from "./auto-continue.js";
 import { ClaudeAssist } from "./claude-assist.js";
 import { SessionLifecycle, type StartParams } from "./lifecycle.js";
 import { BUSY } from "./live-session.js";
+import { AgentRegistry, forgeSessionTools } from "./forge-tools.js";
+import { WorktreeService } from "../automation/worktrees.js";
 import { PermissionModes } from "./permission-mode.js";
 import { RateLimitTracker } from "./rate-limit.js";
 import { RemoteBridge } from "./remote-bridge.js";
@@ -33,6 +36,9 @@ import { TurnAutomation } from "./turn-automation.js";
 import { TurnDispatch } from "./turns.js";
 
 /** Entry point for everything session related; wires the session modules and keeps the public API in one place. */
+/** how long a scan of terminal transcripts is reused */
+const EXTERNAL_CACHE_MS = 20_000;
+
 export class SessionService {
   private readonly core: SessionCore;
   private readonly assist: ClaudeAssist;
@@ -46,6 +52,7 @@ export class SessionService {
   private readonly autoContinue: AutoContinue;
   private readonly limits: RateLimitTracker;
   private readonly titles: TitleRefresh;
+  private readonly agents = new AgentRegistry();
 
   constructor(
     private readonly db: Db,
@@ -57,6 +64,7 @@ export class SessionService {
     now: () => number = Date.now,
   ) {
     const core = (this.core = new SessionCore(db, emit));
+    const worktrees = new WorktreeService(git, projects);
     const record = core.record.bind(core);
     this.limits = new RateLimitTracker(emit, now);
     this.assist = new ClaudeAssist(db, projects, git, runtime);
@@ -120,6 +128,17 @@ export class SessionService {
       approvals: this.approvals,
       stream,
       catalog: this.catalog,
+      sessionTools: (rec) =>
+        forgeSessionTools(rec, {
+          db,
+          projects,
+          worktrees,
+          agents: this.agents,
+          start: (p) => this.start(p),
+          send: (id, text) => this.send(id, text),
+          record,
+          emit,
+        }),
     });
   }
 
@@ -136,12 +155,24 @@ export class SessionService {
     if (project.exists) {
       const known = new Set(sessions.map((s) => s.claudeSessionId).filter(Boolean));
       try {
-        external = (await this.runtime.listSessions(project.path)).filter((e) => !known.has(e.claudeSessionId));
+        external = (await this.externalSessions(project.path)).filter((e) => !known.has(e.claudeSessionId));
       } catch {
         external = [];
       }
     }
     return { sessions, external };
+  }
+
+  /** Transcript scans per project folder, briefly cached: the list is asked for often, the files change rarely. */
+  private readonly externalCache = new Map<string, { at: number; list: Promise<ExternalSession[]> }>();
+
+  private externalSessions(dir: string): Promise<ExternalSession[]> {
+    const hit = this.externalCache.get(dir);
+    if (hit && Date.now() - hit.at < EXTERNAL_CACHE_MS) return hit.list;
+    const list = this.runtime.listSessions(dir);
+    this.externalCache.set(dir, { at: Date.now(), list });
+    list.catch(() => this.externalCache.delete(dir));
+    return list;
   }
 
   listAll(query?: string, status?: string) {
@@ -159,7 +190,7 @@ export class SessionService {
   /** The newest events after afterSeq; older ones are paged with beforeSeq. */
   events(id: string, afterSeq?: number, beforeSeq?: number) {
     this.get(id);
-    return this.db.listEvents(id, afterSeq, { beforeSeq });
+    return this.db.listEvents(id, afterSeq, { beforeSeq, limit: HISTORY_PAGE_LIMIT });
   }
 
   /** Current context usage of a running session; null when no process runs. */
@@ -259,8 +290,11 @@ export class SessionService {
   }
 
   delete(sessionId: string, deleteTranscript: boolean) {
+    // A deleted transcript must not come back as a terminal session from the cache.
+    this.externalCache.clear();
     this.autoContinue.forget(sessionId);
     this.titles.forget(sessionId);
+    this.agents.forget(sessionId);
     return this.lifecycle.delete(sessionId, deleteTranscript);
   }
 
@@ -288,6 +322,62 @@ export class SessionService {
       if (rec) this.core.emit({ event: "project.updated", payload: { projectId: rec.projectId } });
     }
     return r;
+  }
+
+  /** Stops one background task or subagent of a running session. */
+  async stopTask(sessionId: string, taskId: string) {
+    const live = this.core.live.get(sessionId);
+    if (!live) throw new ForgeError("SESSION_NOT_FOUND", "Session ist nicht aktiv.");
+    await live.rt.stopTask(taskId);
+    return { ok: true };
+  }
+
+  /** Moves running foreground work into the background, so the turn goes on (Ctrl+B in the terminal). */
+  async toBackground(sessionId: string, toolUseId?: string) {
+    const live = this.core.live.get(sessionId);
+    if (!live) throw new ForgeError("SESSION_NOT_FOUND", "Session ist nicht aktiv.");
+    return { moved: await live.rt.toBackground(toolUseId) };
+  }
+
+  /**
+   * A branch of the conversation: a new session with the history before `beforeSeq` (a prompt of the
+   * user), or the whole history without it. The original stays as it is. With `rewindFiles` the
+   * files go back to the state before that prompt first (forked transcripts carry no checkpoints).
+   * Branching before the very first prompt is a fresh session: `session` is null then.
+   */
+  async fork(sessionId: string, opts: { beforeSeq?: number; rewindFiles?: boolean }): Promise<{ session: Session | null; prompt: string | null; filesChanged: string[] | null }> {
+    const rec = this.db.getSession(sessionId);
+    if (!rec) throw new ForgeError("SESSION_NOT_FOUND", "Session nicht gefunden.");
+    if (BUSY.includes(rec.status)) throw new ForgeError("SESSION_BUSY", "Claude arbeitet noch. Erst stoppen, dann verzweigen.");
+    if (!rec.claudeSessionId) throw new ForgeError("VALIDATION", "Diese Session hat noch keinen Verlauf bei Claude Code.");
+    let prompt: string | null = null;
+    let promptUuid: string | null = null;
+    /** undefined: copy everything; null: nothing before the prompt */
+    let upTo: string | null | undefined;
+    if (opts.beforeSeq !== undefined) {
+      const ev = this.db.getEvent(sessionId, opts.beforeSeq);
+      if (ev?.body.type !== "user.message" || !ev.body.uuid) throw new ForgeError("VALIDATION", "An dieser Nachricht lässt sich nicht verzweigen.");
+      prompt = ev.body.text;
+      promptUuid = ev.body.uuid;
+      const messages = (await this.runtime.sessionHistory(rec.claudeSessionId, rec.cwd)) as Array<{ uuid?: unknown }>;
+      const i = messages.findIndex((m) => m.uuid === promptUuid);
+      if (i < 0) throw new ForgeError("VALIDATION", "Die Nachricht steht nicht mehr im Verlauf von Claude Code (zum Beispiel nach /clear).");
+      upTo = i > 0 ? String(messages[i - 1]!.uuid) : null;
+    }
+    let filesChanged: string[] | null = null;
+    if (opts.rewindFiles && promptUuid) {
+      const r = await this.rewind(sessionId, promptUuid, false);
+      filesChanged = r.canRewind ? r.filesChanged : [];
+    }
+    if (upTo === null) return { session: null, prompt, filesChanged };
+    const title = `${rec.title ?? "Session"} (Zweig)`;
+    const claudeSessionId = await this.runtime.forkTranscript(rec.claudeSessionId, rec.cwd, upTo ?? null, title);
+    const now = new Date().toISOString();
+    const branch = { ...rec, id: randomUUID(), claudeSessionId, title, status: "stopped" as const, apiKeySource: null, createdAt: now, updatedAt: now, lastError: null };
+    this.db.insertSession(branch);
+    this.db.copyEvents(sessionId, branch.id, opts.beforeSeq);
+    this.core.publish(branch);
+    return { session: this.get(branch.id), prompt, filesChanged };
   }
 
   // ---------- settings of a session

@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { Collapse } from "@/components/ui/collapse";
 import {
   Bot,
   Check,
@@ -28,7 +29,7 @@ import { Input } from "@/components/ui/input";
 import { TOOL_LABELS, toolDisplayName, toolSummary, type ChatItem, type TodoEntry } from "./chat-items";
 import { PlanCard, QuestionCard } from "./InteractiveCards";
 import { ChatRow, Dot, Guide } from "./ChatRow";
-import { cleanToolOutput, countLines, diffStats, editDiff, splitPreview, type DiffLine } from "./tool-view";
+import { cachedEditDiff, cleanToolOutput, countLines, diffStats, inputJson, splitPreview, type DiffLine } from "./tool-view";
 
 type ToolItem = Extract<ChatItem, { kind: "tool" }>;
 type ApprovalItem = Extract<ChatItem, { kind: "approval" }>;
@@ -100,7 +101,7 @@ export function ToolCard({ item, sessionId, sessionLive, projectDir }: { item: T
       </ChatRow>
     );
 
-  const diff = result?.isError ? null : editDiff(use.name, use.input);
+  const diff = result?.isError ? null : cachedEditDiff(use.name, use.input);
   const stats = diff ? diffStats(diff) : null;
   const summary = toolSummary(use.name, use.input, projectDir);
   const label = TOOL_LABELS[use.name];
@@ -114,7 +115,7 @@ export function ToolCard({ item, sessionId, sessionLive, projectDir }: { item: T
     <ChatRow className="text-body" marker={<StateDot state={state} />}>
       <button
         type="button"
-        className="group/tool flex w-full min-w-0 items-baseline gap-2 text-left"
+        className="group/tool flex w-full min-w-0 items-baseline gap-2 text-left transition-opacity duration-75 active:opacity-70"
         onClick={() => setOpen(!open)}
         aria-expanded={open}
         title={label ? `${label}: Details ${open ? "ausblenden" : "anzeigen"}` : `Details ${open ? "ausblenden" : "anzeigen"}`}
@@ -147,12 +148,12 @@ export function ToolCard({ item, sessionId, sessionLive, projectDir }: { item: T
           </div>
         </Guide>
       )}
-      {open && (
+      <Collapse open={open}>
         <Guide className="mt-1.5 space-y-2 pb-1">
-          <Pre label="Eingabe" text={JSON.stringify(use.input, null, 2)} />
+          <Pre label="Eingabe" text={inputJson(use.input)} />
           {result && <Pre label={result.isError ? "Fehler" : "Ergebnis"} text={result.content.text || "(leer)"} truncated={result.content.truncated} error={result.isError} />}
         </Guide>
-      )}
+      </Collapse>
       {preview && <Guide className="mt-1">{preview}</Guide>}
       {approval &&
         (approval.resolved ? (
@@ -243,13 +244,29 @@ export function ApprovalBlock({ req, resolved, sessionId, projectDir }: { req: A
   const [reason, setReason] = useCardState(cardKey(sessionId, req.requestId, "reason"), "");
   // Stays set until approval.resolved arrives, also across remounts, so a second click cannot answer twice.
   const [sent, setSent] = useCardState(cardKey(sessionId, req.requestId, "sent"), false);
+  // The choice shows at once; the request card comes back only if the answer could not be sent.
+  const [answer, setAnswer] = useCardState<{ decision: "allow" | "deny"; scope: "once" | "session" } | null>(cardKey(sessionId, req.requestId, "answer"), null);
   const respond = useMutation({
     mutationFn: (p: { decision: "allow" | "deny"; scope: "once" | "session" }) =>
       call("sessions.respondApproval", { sessionId, requestId: req.requestId, decision: p.decision, scope: p.scope, message: reason || undefined }),
+    onMutate: (p) => setAnswer(p),
     onSuccess: () => setSent(true),
-    onError: (e) => toast.error("Antwort nicht übermittelt", errorMessage(e)),
+    onError: (e) => {
+      setAnswer(null);
+      toast.error("Antwort nicht übermittelt", errorMessage(e));
+    },
   });
   const locked = respond.isPending || sent;
+
+  if (!resolved && answer) {
+    return (
+      <div className="flex animate-fade-in items-center gap-1.5 text-small text-muted">
+        {answer.decision === "allow" ? <Check className="h-3.5 w-3.5 shrink-0 text-success" /> : <X className="h-3.5 w-3.5 shrink-0 text-danger" />}
+        <span className="min-w-0 break-words">{answer.decision === "allow" ? (answer.scope === "session" ? "Für diese Session erlaubt" : "Einmal erlaubt") : "Abgelehnt"}</span>
+        <span className="animate-soft-pulse text-subtle">…</span>
+      </div>
+    );
+  }
 
   if (resolved) {
     return (

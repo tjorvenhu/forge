@@ -5,15 +5,18 @@ import { useThrottledValue } from "@/lib/timing-hooks";
 import { isInterrupted } from "@/lib/working";
 import { Button } from "@/components/ui/button";
 import type { ChatItem } from "./chat-items";
-import { Markdown } from "./Markdown";
+import { Markdown, StreamingMarkdown } from "./Markdown";
 import { ApprovalBlock, ToolCard } from "./ToolCard";
 import { EVENT_ICON, EventCard, noticeIcon } from "./EventCard";
 import { ChatRow, Dot, HoverTime } from "./ChatRow";
 import { UserMessage } from "./UserMessage";
 import { AutoContinueCard } from "./AutoContinueCard";
 
-/** Re-parsing the markdown on every delta is the expensive part of streaming; a few updates per second read the same. */
-const STREAM_RENDER_MS = 100;
+/**
+ * Text updates while streaming. Only the last paragraph is parsed again (StreamingMarkdown), so this
+ * can be short enough to read as continuous.
+ */
+const STREAM_RENDER_MS = 50;
 
 const NOTICE_TONE = { info: "text-muted", warning: "text-warning", danger: "text-danger", success: "text-success" } as const;
 
@@ -112,7 +115,7 @@ function AssistantMessage({ item }: { item: Extract<ChatItem, { kind: "assistant
   return (
     <ChatRow className="group relative text-ui leading-[1.65]" marker={<Dot className="bg-fg" />}>
       <div className="max-w-[90ch]">
-        <Markdown text={text} />
+        {item.streaming ? <StreamingMarkdown text={text} /> : <Markdown text={text} />}
         {item.streaming && <span className="animate-soft-pulse mt-1 inline-block h-3.5 w-1.5 bg-muted" aria-label="schreibt" />}
       </div>
       {item.ts && <HoverTime time={clockTime(item.ts)} className="absolute right-0 top-0 bg-bg pl-2 leading-[1lh]" />}

@@ -40,6 +40,34 @@ async fn sidecar_restart(app: tauri::AppHandle) -> Result<(), String> {
     .map_err(|e| e.to_string())?
 }
 
+/// Runs a downloaded FORGE installer and quits. Only an installer from the update folder of the
+/// sidecar is accepted. The sidecar and the terminals are ended first and cleanly; the installer is
+/// started by the shell, not by the sidecar, because the sidecar's job object would end it with FORGE.
+/// `/P` installs without questions, `/UPDATE` keeps the settings, `/R` starts FORGE again.
+#[tauri::command]
+async fn install_update(app: tauri::AppHandle, path: String) -> Result<(), String> {
+    let installer = std::path::PathBuf::from(&path);
+    let dir = std::env::temp_dir().join("forge-update");
+    let canonical = installer.canonicalize().map_err(|_| "Installer nicht gefunden".to_string())?;
+    let allowed = dir.canonicalize().map_err(|_| "Kein Update heruntergeladen".to_string())?;
+    let name_ok = canonical.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.to_ascii_lowercase().ends_with("-setup.exe"));
+    if !canonical.starts_with(&allowed) || !name_ok {
+        return Err("Ungültiger Installer".into());
+    }
+    tauri::async_runtime::spawn_blocking(move || {
+        app.state::<Terminals>().shutdown();
+        app.state::<Sidecar>().shutdown();
+        std::process::Command::new(&canonical)
+            .args(["/P", "/UPDATE", "/R"])
+            .spawn()
+            .map_err(|e| format!("Installer startet nicht: {e}"))?;
+        app.exit(0);
+        Ok(())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 #[tauri::command]
 fn term_open(
     app: tauri::AppHandle,
@@ -74,7 +102,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .manage(Sidecar::default())
         .manage(Terminals::default())
-        .invoke_handler(tauri::generate_handler![sidecar_send, sidecar_status, sidecar_restart, term_open, term_write, term_resize, term_close])
+        .invoke_handler(tauri::generate_handler![sidecar_send, sidecar_status, sidecar_restart, install_update, term_open, term_write, term_resize, term_close])
         .setup(|app| {
             let handle = app.handle().clone();
             if let Err(e) = app.state::<Sidecar>().start(&handle) {

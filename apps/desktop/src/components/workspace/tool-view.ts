@@ -98,6 +98,27 @@ export function collapseContext(lines: DiffLine[], keep = CONTEXT): DiffLine[] {
 
 const str = (v: unknown) => (typeof v === "string" ? v : "");
 
+const diffCache = new WeakMap<Record<string, unknown>, DiffLine[] | null>();
+const jsonCache = new WeakMap<Record<string, unknown>, string>();
+
+/**
+ * editDiff, computed once per tool input. The chat is virtualized: a card that scrolls back into
+ * view mounts again, and the line diff of a large edit costs noticeable time.
+ */
+export function cachedEditDiff(name: string, input: Record<string, unknown>): DiffLine[] | null {
+  if (diffCache.has(input)) return diffCache.get(input)!;
+  const d = editDiff(name, input);
+  diffCache.set(input, d);
+  return d;
+}
+
+/** Pretty-printed tool input, once per input. */
+export function inputJson(input: Record<string, unknown>): string {
+  let j = jsonCache.get(input);
+  if (j === undefined) jsonCache.set(input, (j = JSON.stringify(input, null, 2)));
+  return j;
+}
+
 /** The change an Edit, MultiEdit or Write makes, from its input; null for other tools. */
 export function editDiff(name: string, input: Record<string, unknown>): DiffLine[] | null {
   switch (name) {

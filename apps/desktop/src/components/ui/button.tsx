@@ -4,13 +4,14 @@ import { Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const buttonVariants = cva(
-  "inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium transition-colors disabled:pointer-events-none disabled:opacity-50 select-none",
+  // Pressed state: a short dip on mousedown, so every click is felt before anything else happens.
+  "inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium transition-[color,background-color,border-color,opacity,transform] duration-120 ease-snappy active:scale-[0.97] active:duration-75 disabled:pointer-events-none disabled:opacity-50 select-none",
   {
     variants: {
       variant: {
         primary: "bg-accent text-accent-fg hover:bg-accent-strong",
         secondary: "bg-surface-3 text-fg hover:bg-border-strong border border-border",
-        ghost: "text-muted hover:text-fg hover:bg-surface-3",
+        ghost: "text-muted hover:text-fg hover:bg-surface-3 active:bg-border-strong",
         outline: "border border-border text-fg hover:bg-surface-3",
         danger: "bg-danger text-accent-fg hover:opacity-90",
         "danger-ghost": "text-danger hover:bg-danger-soft",

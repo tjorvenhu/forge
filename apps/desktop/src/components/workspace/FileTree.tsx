@@ -1,5 +1,5 @@
 import { useMemo, useState, type ComponentType } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ChevronRight,
   Database,
@@ -24,7 +24,8 @@ import { call, keys, useGitStatus } from "@/lib/queries";
 import { errorMessage } from "@/lib/rpc";
 import { cn } from "@/lib/utils";
 import { useUi } from "@/stores/ui";
-import { Spinner } from "@/components/ui/misc";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Collapse } from "@/components/ui/collapse";
 
 type Icon = ComponentType<{ className?: string }>;
 
@@ -90,13 +91,19 @@ export function FileTree({ project }: { project: Project }) {
 
 function Level({ project, dir, depth, status }: { project: Project; dir: string; depth: number; status: { files: Map<string, FileStatus["kind"]>; dirs: Set<string> } }) {
   const q = useQuery({ queryKey: keys.files(project.id, dir), queryFn: () => call("projects.listFiles", { projectId: project.id, dir }) });
+  const qc = useQueryClient();
   const [open, setOpen] = useState<Set<string>>(new Set());
   const selected = useUi((s) => s.selectedFile[project.id] ?? null);
   const pad = (d: number) => ({ paddingLeft: 8 + d * 16 });
   if (q.isLoading)
     return (
-      <div style={pad(depth)} className="py-1.5">
-        <Spinner className="h-3.5 w-3.5" />
+      <div className="flex flex-col gap-2 py-2" role="status" aria-label="Lädt">
+        {[60, 45].map((w) => (
+          <div key={w} style={pad(depth)} className="flex items-center gap-2">
+            <Skeleton className="h-3.5 w-3.5 rounded-sm" />
+            <Skeleton className="h-3 rounded-sm" style={{ width: `${w}%` }} />
+          </div>
+        ))}
       </div>
     );
   if (q.isError) return <div className="px-3 py-1 text-xs text-danger">{errorMessage(q.error)}</div>;
@@ -115,6 +122,10 @@ function Level({ project, dir, depth, status }: { project: Project; dir: string;
                 selected === e.path ? "bg-surface-3 text-fg" : "text-fg/90 hover:bg-surface-2",
               )}
               style={pad(depth)}
+              // Folders load their entries while the pointer is on them, so opening shows them at once.
+              onPointerEnter={() => {
+                if (e.isDir && !isOpen) void qc.prefetchQuery({ queryKey: keys.files(project.id, e.path), queryFn: () => call("projects.listFiles", { projectId: project.id, dir: e.path }), staleTime: 30_000 });
+              }}
               onClick={() => {
                 if (!e.isDir) return useUi.getState().openFile(project.id, e.path);
                 setOpen((s) => {
@@ -141,7 +152,11 @@ function Level({ project, dir, depth, status }: { project: Project; dir: string;
               <span className={cn("min-w-0 flex-1 truncate", e.isDir && status.dirs.has(e.path) && "text-warning/90")}>{e.name}</span>
               {mark && <span className={cn("shrink-0 font-mono text-caption font-semibold", mark.tone)}>{mark.letter}</span>}
             </button>
-            {e.isDir && isOpen && <Level project={project} dir={e.path} depth={depth + 1} status={status} />}
+            {e.isDir && (
+              <Collapse open={isOpen}>
+                <Level project={project} dir={e.path} depth={depth + 1} status={status} />
+              </Collapse>
+            )}
           </li>
         );
       })}

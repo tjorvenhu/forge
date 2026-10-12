@@ -77,8 +77,24 @@ export const BackgroundTask = z.object({
   taskType: z.string(),
   /** when FORGE first saw the task */
   startedAt: z.string(),
+  /** one-line progress (subagents: written by the model about every 30 s) */
+  summary: z.string().nullable(),
 });
 export type BackgroundTask = z.infer<typeof BackgroundTask>;
+
+/** A subagent working in the foreground of the current turn (Task tool), with its latest progress. */
+export const SubagentProgress = z.object({
+  taskId: z.string(),
+  toolUseId: z.string().nullable(),
+  description: z.string(),
+  agentType: z.string().nullable(),
+  /** one-line progress written by the model, e.g. "Analysiert das Auth-Modul" */
+  summary: z.string().nullable(),
+  lastTool: z.string().nullable(),
+  toolUses: z.number(),
+  startedAt: z.string(),
+});
+export type SubagentProgress = z.infer<typeof SubagentProgress>;
 
 /** Context window usage as reported by Claude Code (`getContextUsage`). */
 export const ContextUsage = z.object({
@@ -111,6 +127,8 @@ export const Session = z.object({
   live: z.boolean(),
   /** commands Claude started in the background that are still running (not persisted) */
   background: z.array(BackgroundTask),
+  /** subagents running in the current turn */
+  subagents: z.array(SubagentProgress),
   /** context window usage after the last turn; only while the process runs (not persisted) */
   context: ContextUsage.nullable(),
   /** when FORGE continues the session on its own after a usage limit (ISO); null when nothing is planned */
@@ -236,6 +254,8 @@ export const SessionEventBody = z.discriminatedUnion("type", [
     message: z.string(),
   }),
   z.object({ type: z.literal("status"), status: SessionStatus, detail: z.string().nullable() }),
+  /** Claude asked FORGE to get the user's attention (tool notify); urgent ones may ring the phone */
+  z.object({ type: z.literal("notify"), message: z.string(), urgent: z.boolean() }),
   z.object({
     type: z.literal("background.task"),
     taskId: z.string(),
@@ -353,6 +373,10 @@ export const Settings = z.object({
   defaultProjectDir: z.string().nullable(),
   /** continue a session on its own once a usage limit that stopped it has reset */
   autoContinueAfterLimit: z.boolean(),
+  /** phone feature visible (button top right, settings); off for users who do not need it */
+  phoneFeature: z.boolean(),
+  /** look for new FORGE releases on GitHub (start and every 30 minutes) */
+  updateChecks: z.boolean(),
 });
 export type Settings = z.infer<typeof Settings>;
 
@@ -641,11 +665,74 @@ export const DevServerState = z.object({
 export type DevServerState = z.infer<typeof DevServerState>;
 
 
+/**
+ * FORGE updates from the GitHub releases of the repository. The installer is fetched with the gh
+ * login, so a private repository works for everyone with access to it.
+ */
+export const AppUpdateState = z.object({
+  currentVersion: z.string(),
+  phase: z.enum(["idle", "checking", "uptodate", "available", "downloading", "ready", "error"]),
+  latest: z.object({ version: z.string(), tag: z.string(), notes: z.string(), publishedAt: z.string().nullable(), size: z.number().nullable() }).nullable(),
+  /** downloaded and checked installer, ready to run */
+  installerPath: z.string().nullable(),
+  /** false in a development build: there is no installation to update */
+  installable: z.boolean(),
+  checkedAt: z.string().nullable(),
+  message: z.string().nullable(),
+});
+export type AppUpdateState = z.infer<typeof AppUpdateState>;
+
 /** OpenAI voices for speech output on the phone; the first one is the default. */
 export const PHONE_VOICES = ["marin", "cedar", "alloy", "ash", "ballad", "coral", "echo", "fable", "nova", "onyx", "sage", "shimmer", "verse"] as const;
 
+/** Gemini voices (Live and speech output); the first one is the default. */
+export const PHONE_GEMINI_VOICES = ["Kore", "Puck", "Charon", "Fenrir", "Aoede", "Leda", "Orus", "Zephyr"] as const;
+
+/**
+ * Who leads the conversation on the phone. `gemini-live`: Gemini hears, thinks and speaks in one
+ * model. `claude`: Claude (subscription) answers; speech recognition and output come from
+ * `speechProvider`.
+ */
+export const PhoneEngine = z.enum(["gemini-live", "claude"]);
+export type PhoneEngine = z.infer<typeof PhoneEngine>;
+
+/** Yealink desk phone (T5x): session keys with LEDs, status on the display, provisioning by FORGE. */
+export const DeskPhoneConfig = z.object({
+  enabled: z.boolean(),
+  /** IP of the desk phone in the LAN */
+  phoneIp: z.string(),
+  /** port of FORGE's small HTTP server for the phone (keys, provisioning) */
+  httpPort: z.number().int(),
+  /** web login of the phone (push messages, LEDs, remote keys) */
+  webUser: z.string(),
+  hasWebPassword: z.boolean(),
+  /** line keys that show sessions, in order (S1 on the first) */
+  sessionKeys: z.array(z.number().int().min(1).max(30)),
+  /** line keys FORGE sets to "not used" (e.g. leftovers from an earlier setup) */
+  clearKeys: z.array(z.number().int().min(1).max(30)),
+  leds: z.boolean(),
+  /** picking up the handset calls FORGE after a second (typing a number right away calls normally) */
+  hotline: z.boolean(),
+  /** status on the idle screen: several lines, one compact line, or nothing */
+  display: z.enum(["lines", "statusline", "off"]),
+  /** Auto Provision server URL to enter in the phone; null until the LAN address is known */
+  provisioningUrl: z.string().nullable(),
+});
+export type DeskPhoneConfig = z.infer<typeof DeskPhoneConfig>;
+
 /** Settings of the phone connection (SIP). Secrets are never sent to the UI, only whether they are set. */
 export const PhoneConfig = z.object({
+  engine: PhoneEngine,
+  /** Gemini Live model */
+  liveModel: z.string(),
+  /** Gemini voice (Live, and speech output with speechProvider gemini) */
+  geminiVoice: z.string(),
+  /** speech recognition and output when Claude leads the conversation */
+  speechProvider: z.enum(["openai", "gemini"]),
+  geminiSttModel: z.string(),
+  geminiTtsModel: z.string(),
+  hasGeminiKey: z.boolean(),
+  desk: DeskPhoneConfig,
   /** registrar / PBX host name or IP */
   server: z.string(),
   port: z.number().int(),
@@ -694,6 +781,8 @@ export const PhoneState = z.object({
   registration: z.enum(["off", "registering", "registered", "failed"]),
   message: z.string().nullable(),
   call: PhoneCallInfo.nullable(),
+  /** desk phone: null when switched off; reachable null until FORGE has tried */
+  desk: z.object({ reachable: z.boolean().nullable(), message: z.string().nullable() }).nullable(),
 });
 export type PhoneState = z.infer<typeof PhoneState>;
 

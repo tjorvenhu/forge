@@ -9,11 +9,12 @@ import { toast } from "@/stores/toast";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { Field, Input } from "@/components/ui/input";
-import { Badge, ErrorBanner, SectionTitle, Loading } from "@/components/ui/misc";
+import { Badge, ErrorBanner, SectionTitle } from "@/components/ui/misc";
 import { GitPanel } from "./GitPanel";
 import { SyncCard } from "./SyncCard";
 import { RestoreDialog } from "./RestoreDialog";
 import { DeleteBranchDialog } from "./DeleteBranchDialog";
+import { ListSkeleton } from "@/components/ui/skeleton";
 
 /** Workspace tab: changes + history + branches. */
 export function GitCenter({ project }: { project: Project }) {
@@ -46,7 +47,7 @@ export function GitCenter({ project }: { project: Project }) {
           >
             Branches
           </SectionTitle>
-          {branches.isLoading && <Loading />}
+          {branches.isLoading && <ListSkeleton rows={3} />}
           {branches.isError && <ErrorBanner title="Branches nicht geladen">{errorMessage(branches.error)}</ErrorBanner>}
           <div className={cn("divide-y divide-border rounded-lg border border-border bg-surface", !branches.data?.length && "hidden")}>
             {branches.data?.map((b) => (
@@ -79,7 +80,7 @@ export function GitCenter({ project }: { project: Project }) {
         </section>
         <section className="min-h-0">
           <SectionTitle>Verlauf und Wiederherstellung</SectionTitle>
-          {log.isLoading && <Loading />}
+          {log.isLoading && <ListSkeleton rows={6} />}
           {log.isError && <ErrorBanner title="Verlauf nicht geladen">{errorMessage(log.error)}</ErrorBanner>}
           {log.data?.length === 0 && <div className="text-xs text-muted">Noch keine Commits.</div>}
           {!!log.data?.length && <p className="mb-2 text-xs text-muted">Wähle einen Commit, um alle Dateien auf seinen Stand zurückzuholen. Der Verlauf bleibt erhalten.</p>}

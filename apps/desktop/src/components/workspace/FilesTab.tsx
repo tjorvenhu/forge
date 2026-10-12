@@ -5,9 +5,10 @@ import type { Project } from "@forge/protocol";
 import { call, keys } from "@/lib/queries";
 import { errorMessage } from "@/lib/rpc";
 import { cn } from "@/lib/utils";
-import { EmptyState, ErrorBanner, Spinner, Loading } from "@/components/ui/misc";
+import { EmptyState, ErrorBanner } from "@/components/ui/misc";
 import { useUi } from "@/stores/ui";
 import { fileIcon } from "./FileTree";
+import { ListSkeleton } from "@/components/ui/skeleton";
 
 /** Read-only project browser. Editing happens through Claude or your editor. */
 export function FilesTab({ project }: { project: Project }) {
@@ -27,7 +28,7 @@ export function FilesTab({ project }: { project: Project }) {
 function Dir({ projectId, dir, depth, selected, onSelect }: { projectId: string; dir: string; depth: number; selected: string | null; onSelect: (p: string) => void }) {
   const q = useQuery({ queryKey: keys.files(projectId, dir), queryFn: () => call("projects.listFiles", { projectId, dir }) });
   const [open, setOpen] = useState<Set<string>>(new Set());
-  if (q.isLoading) return <div style={{ paddingLeft: 12 + depth * 14 }} className="py-1"><Spinner className="h-3 w-3" /></div>;
+  if (q.isLoading) return <ListSkeleton rows={2} className="py-1" />;
   if (q.isError) return <div className="px-3 text-xs text-danger">{errorMessage(q.error)}</div>;
   return (
     <ul>
@@ -77,7 +78,7 @@ function FileViewer({ projectId, path }: { projectId: string; path: string }) {
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex h-8 shrink-0 items-center border-b border-border px-3 font-mono text-xs text-muted">{path}</div>
-      {q.isLoading && <Loading />}
+      {q.isLoading && <ListSkeleton rows={6} />}
       {q.isError && <div className="p-3"><ErrorBanner>{errorMessage(q.error)}</ErrorBanner></div>}
       {q.data?.binary && <div className="p-4 text-xs text-muted">Binärdatei, keine Vorschau.</div>}
       {q.data && !q.data.binary && (

@@ -105,11 +105,11 @@ export function SessionTabs() {
                 key={s.id}
                 data-session-tab={s.id}
                 className={cn(
-                  "group relative flex h-7 min-w-0 max-w-56 shrink-0 items-center rounded-md text-small transition-colors",
+                  "group relative flex h-7 min-w-0 max-w-56 shrink-0 animate-fade-in items-center rounded-md text-small transition-colors",
                   active ? "bg-surface-3 text-fg" : attention ? "bg-warning-soft text-fg hover:bg-surface-2" : "text-muted hover:bg-surface-2 hover:text-fg",
                 )}
               >
-                {active && <span aria-hidden className="absolute inset-x-2 bottom-0 h-0.5 rounded-full bg-accent" />}
+                {active && <span aria-hidden className="absolute inset-x-2 bottom-0 h-0.5 origin-center animate-fade-in rounded-full bg-accent" />}
                 <button
                   role="tab"
                   aria-selected={active}
@@ -118,7 +118,7 @@ export function SessionTabs() {
                   onClick={() => openProject(s.projectId, s.id)}
                   onKeyDown={(e) => onTabKey(e, i)}
                   title={`${s.projectName}: ${title}\n${statusText(s)}${s.live ? "" : ". Kein laufender Claude-Prozess"}\nStrg+Tab wechselt zur nächsten Session.`}
-                  className={cn("flex h-full min-w-0 cursor-default items-center gap-2 rounded-md pl-2.5 outline-none focus-visible:ring-2 focus-visible:ring-accent", closable ? "pr-1" : "pr-2.5")}
+                  className={cn("flex h-full min-w-0 cursor-default items-center gap-2 rounded-md pl-2.5 transition-transform duration-75 focus-visible:outline-offset-[-2px] active:scale-[0.97]", closable ? "pr-1" : "pr-2.5")}
                 >
                   <span aria-hidden className={cn("h-1.5 w-1.5 shrink-0 rounded-full", dotClass(s))} />
                   <span className={cn("truncate", !s.live && "italic")}>{title}</span>

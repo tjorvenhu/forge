@@ -1,4 +1,4 @@
-import type { BackgroundTask, ContextUsage, SessionStatus } from "@forge/protocol";
+import type { BackgroundTask, ContextUsage, SessionStatus, SubagentProgress } from "@forge/protocol";
 import type { ApprovalDecision, ApprovalRequest, RuntimeSession } from "../claude/runtime.js";
 import type { Normalizer } from "../claude/normalize.js";
 import type { ProfileConfig } from "../policy/profiles.js";
@@ -31,6 +31,8 @@ export interface LiveSession {
   remoteTurn: { sawMessage: boolean } | null;
   /** still running background tasks, keyed by task id; ends with the process */
   background: Map<string, BackgroundTask>;
+  /** subagents of the current turn with their latest progress, keyed by task id */
+  subagents: Map<string, SubagentProgress>;
   /** context window usage after the last turn */
   context: ContextUsage | null;
 }

@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import * as D from "@radix-ui/react-dialog";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { DIALOG_MOTION, OVERLAY_MOTION } from "@/lib/motion";
 
 interface DialogProps {
   open: boolean;
@@ -19,10 +20,11 @@ export function Dialog({ open, onOpenChange, title, description, children, foote
   return (
     <D.Root open={open} onOpenChange={onOpenChange}>
       <D.Portal>
-        <D.Overlay className="fixed inset-0 z-40 bg-overlay" />
+        <D.Overlay className={cn("fixed inset-0 z-40 bg-overlay", OVERLAY_MOTION)} />
         <D.Content
           className={cn(
             "fixed left-1/2 top-1/2 z-50 flex max-h-[85vh] w-130 max-w-[92vw] -translate-x-1/2 -translate-y-1/2 flex-col rounded-xl border border-border bg-surface shadow-2xl",
+            DIALOG_MOTION,
             className,
           )}
         >

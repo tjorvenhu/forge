@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import { ForgeError, type Attachment, type EffortLevel, type Session } from "@forge/protocol";
-import type { ClaudeRuntime, OutgoingMessage, RuntimeSession, SessionSink } from "../claude/runtime.js";
+import { fallbackFor, type ClaudeRuntime, type OutgoingMessage, type RuntimeSession, type SessionSink, type SessionTool } from "../claude/runtime.js";
 import { Normalizer } from "../claude/normalize.js";
 import { locateClaude, sessionEnv } from "../claude/environment.js";
 import type { SessionRecord } from "../persistence/db.js";
@@ -33,6 +33,8 @@ export interface LifecycleParts {
   approvals: ApprovalGate;
   stream: SessionStream;
   catalog: RuntimeCatalog;
+  /** FORGE tools and start context for a session's CLI */
+  sessionTools?: (rec: SessionRecord) => { tools: SessionTool[]; context: string } | null;
 }
 
 /** Starting, resuming, stopping and ending the CLI process of a session. */
@@ -45,6 +47,7 @@ export class SessionLifecycle {
   private readonly approvals: ApprovalGate;
   private readonly stream: SessionStream;
   private readonly catalog: RuntimeCatalog;
+  private readonly sessionTools: LifecycleParts["sessionTools"];
 
   constructor(
     private readonly core: SessionCore,
@@ -58,6 +61,7 @@ export class SessionLifecycle {
     this.approvals = parts.approvals;
     this.stream = parts.stream;
     this.catalog = parts.catalog;
+    this.sessionTools = parts.sessionTools;
   }
 
   /** Runs `job` as the one start/resume of the session; others wait for it in resume(). */
@@ -169,10 +173,18 @@ export class SessionLifecycle {
       seenUuids: new Set(this.core.db.listUserMessageUuids(rec.id)),
       remoteTurn: null,
       background: new Map(),
+      subagents: new Map(),
       context: null,
     };
     this.core.live.set(rec.id, live);
     const sink = this.sinkFor(rec.id, live);
+    let extra: { tools: SessionTool[]; context: string } | null;
+    try {
+      extra = this.sessionTools?.(rec) ?? null;
+    } catch {
+      // Without FORGE tools the session still works as a plain Claude Code session.
+      extra = null;
+    }
     try {
       live.rt = this.runtime.startSession(
         {
@@ -186,6 +198,9 @@ export class SessionLifecycle {
           env: sessionEnv(stripApiKey),
           claudePath,
           firstMessage: first,
+          fallbackModel: fallbackFor(rec.model),
+          tools: extra?.tools,
+          context: extra?.context ?? null,
         },
         sink,
       );

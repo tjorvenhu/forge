@@ -3,6 +3,7 @@ import * as C from "@radix-ui/react-checkbox";
 import * as T from "@radix-ui/react-tooltip";
 import { AlertTriangle, Check, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { POPPER_MOTION } from "@/lib/motion";
 
 type Tone = "neutral" | "accent" | "success" | "warning" | "danger";
 
@@ -84,7 +85,7 @@ export function Tooltip({ content, children }: { content: ReactNode; children: R
     <T.Root delayDuration={400}>
       <T.Trigger asChild>{children}</T.Trigger>
       <T.Portal>
-        <T.Content sideOffset={6} className="z-50 max-w-xs rounded-md border border-border bg-surface-3 px-2 py-1 text-xs text-fg shadow-lg">
+        <T.Content sideOffset={6} className={cn("z-50 max-w-xs rounded-md border border-border bg-surface-3 px-2 py-1 text-xs text-fg shadow-lg", POPPER_MOTION)}>
           {content}
         </T.Content>
       </T.Portal>

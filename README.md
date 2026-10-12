@@ -105,15 +105,20 @@ Umgebungsvariablen für Sonderfälle: `FORGE_NODE` (Pfad zu node), `FORGE_SIDECA
 - **Terminal:** eingebettete Terminals im Projektordner.
 - **Git & GitHub:** Push/Pull mit Schutzregeln, Pull Requests mit KI-Beschreibung und Status, neues Projekt direkt als GitHub-Repo.
 - **Projekt-Tags mit Verhalten:** plan-first, auto-test, auto-commit, auto-push, review-required, no-network, sandbox-only.
-- **Parallele Agenten:** Tab „Agenten“ neben „Chat“: Sessions in eigenen Git-Worktrees des offenen Projekts, dazu die eigenen Subagenten.
+- **Parallele Agenten:** Tab „Agenten“ neben „Chat“: Sessions in eigenen Git-Worktrees des offenen Projekts, dazu die eigenen Subagenten. Claude kann in jeder Session selbst Agenten starten, verfolgen und anschreiben (FORGE-Werkzeuge `start_agent`, `agent_status`, `message_agent`; höchstens 4 je Session, Agenten starten keine weiteren) und dich mit `notify` benachrichtigen, dringend auch per Anruf.
+- **Subagenten und Hintergrund-Aufgaben:** Laufende Subagenten zeigen unter dem Chat eine Zeile Fortschritt (etwa alle 30 Sekunden) und lassen sich in den Hintergrund schicken (wie Strg+B). Hintergrund-Aufgaben lassen sich einzeln stoppen; Stopp beendet nur den Durchlauf.
+- **Verzweigen:** An jeder eigenen Nachricht „Ab hier verzweigen“: neue Session mit dem Verlauf bis davor, die Nachricht steht zum Ändern im Eingabefeld, das Original bleibt. Auf Wunsch werden die Dateien mit zurückgesetzt.
 - **Erweiterungen:** MCP-Server, Skills, Subagenten und Hooks verwalten.
 - **Wiedereinstieg:** KI-Zusammenfassung einer Session.
+- **PR-Texte** kommen als strukturierte Antwort (JSON-Schema), Opus fällt bei Überlastung automatisch auf Sonnet zurück.
 - **Rückfragen und Pläne:** Fragt Claude nach (AskUserQuestion), erscheinen die Optionen als Karte im Chat. Pläne aus dem Plan-Modus lassen sich annehmen oder mit Feedback zurückgeben.
 - **Kontextanzeige:** Belegung des Kontextfensters am Composer, Komprimieren per Knopf (/compact).
 - **Befehlspalette (Strg+K):** Projekte, Sessions, Aktionen und Volltextsuche über alle Verläufe.
-- **Telefon (SIP):** FORGE meldet sich mit deinen SIP-Zugangsdaten an deiner Telefonanlage an. Ruf an und frag nach dem Stand oder steuere FORGE: Sessions, Freigaben, Remote Control, Git und Dev-Server. Steuern geht nach der PIN über die Tastatur und wird sofort ausgeführt. FORGE ruft dich an, wenn eine Session fertig ist, eine Entscheidung braucht oder ein Fehler auftritt. Sprache über OpenAI, das Gespräch führt Claude über dein Abo. Ein- und ausschalten oben rechts, Einrichtung unter Einstellungen → Telefon.
+- **Telefon (SIP, optional):** Einschalten unter Einstellungen → Allgemein → Telefon-Funktion; ausgeschaltet sieht man davon nichts. FORGE meldet sich mit deinen SIP-Zugangsdaten als eigene Nebenstelle an deiner Telefonanlage an. Ruf die Zentrale an und rede frei: Stand abfragen, Sessions anschreiben oder starten, parallele Agenten im eigenen Worktree starten, Freigaben, Remote Control, Git und Dev-Server. Gesprächspartner ist Gemini 3.8 Live (hört und spricht selbst, man kann jederzeit dazwischenreden) oder wahlweise Claude über dein Abo mit Sprache von Gemini oder OpenAI. Steuern geht nach der PIN über die Tastatur und wird sofort ausgeführt. FORGE ruft dich an, wenn eine Session fertig ist, eine Entscheidung braucht oder ein Fehler auftritt.
+- **Tischtelefon (Yealink, optional):** Pro laufender Session eine Taste mit Namen und farbiger LED (arbeitet, wartet, neu, bereit), Status auf dem Display, Freigaben als Menü. Abheben ruft FORGE an, eine Session-Taste startet ein Gespräch über genau diese Session. Einrichtung per Auto-Provisioning von FORGE. Ersetzt das Skript klaus_telefon.
 - **Dev-Server:** Startbefehl pro Projekt (oder erkannt aus package.json), Adresse als Link, Ausgabe im unteren Panel, letzte Zeilen per Knopf an Claude.
 - **Töne:** Signal, wenn Claude fertig ist, eine Freigabe braucht oder ein Fehler auftritt (abschaltbar).
+- **Updates:** Jeder Push auf `main` baut über GitHub Actions einen Installer und veröffentlicht ihn als Release (`v0.1.<Nummer>`). FORGE sucht beim Start und alle 30 Minuten danach, zeigt „FORGE x.y.z ist da“ in der Seitenleiste und installiert mit einem Klick: Installer laden, Prüfsumme prüfen, still installieren, neu starten. Läuft über die GitHub-Anmeldung in FORGE, also auch mit privatem Repository (Zugriff nötig). Abschaltbar unter Einstellungen → Allgemein.
 - **Diagnose:** CLI-Version, Anmeldestatus, API-Key-Override, git, gh, Capability-Matrix.
 - **Persistenz:** SQLite für Projekte, Sessions, Events, Freigaben, Einstellungen. Beim Start öffnet FORGE das zuletzt genutzte Projekt.
 
@@ -129,14 +134,15 @@ Letzter Lauf (Details in [docs/TESTING.md](docs/TESTING.md)): Lint und Typecheck
 
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): Prozesse, Module, Statusmaschine
 - [docs/SECURITY.md](docs/SECURITY.md): Permission- und Sicherheitskonzept
-- [docs/adr/](docs/adr): Architekturentscheidungen
+- [docs/adr/](docs/adr): Architekturentscheidungen (Telefon: 0010, Gemini Live und Tischtelefon: 0011, flüssige Oberfläche und Agent SDK: 0012)
 - [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md): mitgelieferte Software
 - [docs/TASKS.md](docs/TASKS.md): Taskliste
 - [HANDOFF.md](HANDOFF.md): aktueller Stand, bekannte Fehler, nächste Schritte
 
 ## Bekannte Lücken
 
-- Telefon: nur SIP über UDP mit G.711, kein TLS/SRTP. Mit einer echten Anlage noch nicht getestet, nur gegen eine Test-Anlage im Testlauf.
+- Telefon: nur SIP über UDP mit G.711, kein TLS/SRTP. Mit einer echten Anlage noch nicht getestet, nur gegen eine Test-Anlage im Testlauf. Gemini Live ist gegen den echten Dienst geprüft, aber noch nicht über eine echte Telefonleitung.
+- Tischtelefon: nur gegen Fakes getestet, noch nicht am echten T53W.
 - Remote Control funktioniert nur, solange FORGE geöffnet ist. Die genutzte SDK-Funktion ist nicht offiziell dokumentiert.
 - Claude Code selbst wird nicht mitgeliefert, sondern bei Bedarf aus der App installiert (offizieller Installer).
 

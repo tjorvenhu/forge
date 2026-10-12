@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Phone, PhoneCall, PhoneOff, PhoneOutgoing, Power, RotateCw, Settings, ShieldCheck } from "lucide-react";
 import type { PhoneSetupIncomplete, PhoneState } from "@forge/protocol";
-import { call, keys, usePhoneConfig, usePhoneState } from "@/lib/queries";
+import { call, keys, usePhoneConfig, usePhoneState, useSettings } from "@/lib/queries";
 import { errorMessage, RpcCallError } from "@/lib/rpc";
 import { cn } from "@/lib/utils";
 import { useUi } from "@/stores/ui";
@@ -21,8 +21,9 @@ function Duration({ since }: { since: string }) {
   return <span className="tabular-nums">{`${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`}</span>;
 }
 
-/** Phone line on/off and the running call, top right in every view. */
+/** Phone line on/off and the running call, top right in every view. Hidden unless the phone feature is switched on. */
 export function PhoneButton() {
+  const feature = useSettings().data?.phoneFeature;
   const state = usePhoneState().data;
   const config = usePhoneConfig().data;
   const qc = useQueryClient();
@@ -40,7 +41,8 @@ export function PhoneButton() {
   const disable = () => run(() => call("phone.setEnabled", { enabled: false }), "Telefon nicht ausgeschaltet");
   const openSettings = () => useUi.getState().setView("settings");
 
-  if (!state) return null;
+  // A call that is still running shows even if the feature was just hidden.
+  if (!state || (!feature && !state.call)) return null;
 
   if (state.call) {
     const c = state.call;
@@ -76,7 +78,7 @@ export function PhoneButton() {
   const dot = state.registration === "registered" ? "bg-success" : state.registration === "failed" ? "bg-danger" : "bg-warning animate-soft-pulse";
   const label =
     state.registration === "registered"
-      ? `Telefon an${config?.notifyNumber ? `, ruft ${config.notifyNumber} an` : ""}`
+      ? `Telefon an${config?.notifyNumber ? `, ruft ${config.notifyNumber} an` : ""}${state.desk?.reachable === false ? ". Tischtelefon nicht erreichbar" : ""}`
       : state.registration === "failed"
         ? `Telefon: ${state.message ?? "Anmeldung fehlgeschlagen"}`
         : "Telefon meldet sich an der Anlage an …";

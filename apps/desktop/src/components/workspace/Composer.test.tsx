@@ -50,6 +50,7 @@ const session: Session = {
   lastError: null,
   live: true,
   background: [],
+  subagents: [],
   context: null,
   autoContinueAt: null,
 };

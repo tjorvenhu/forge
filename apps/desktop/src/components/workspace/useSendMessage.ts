@@ -6,6 +6,8 @@ import { errorMessage } from "@/lib/rpc";
 import { useUi } from "@/stores/ui";
 import { toast } from "@/stores/toast";
 import { NO_OPTIONS, useDrafts, type PendingFile } from "@/stores/drafts";
+import { usePendingMessages } from "@/stores/pending-messages";
+import { useSessionEvents } from "@/stores/session-events";
 import { isClearCommand } from "./SlashCommandMenu";
 
 const PROFILE_MODE: Record<Project["profile"], PermissionMode> = { safe: "default", balanced: "acceptEdits", autonomous: "bypassPermissions" };
@@ -23,29 +25,34 @@ export function useComposerOptions(project: Project, session: Session | null, dr
   const effort = session ? session.effort : (options.effort ?? project.defaultEffort ?? settings.data?.defaultEffort ?? null);
   const isPlan = session ? session.permissionMode === "plan" : planOnly;
 
-  const update = async (run: () => Promise<Session>, errorTitle: string) => {
+  /** Shows the change right away (`optimistic`), sends it, and goes back if the session refused it. */
+  const update = async (optimistic: Partial<Session>, run: () => Promise<Session>, errorTitle: string) => {
+    const key = keys.session(session!.id);
+    const before = qc.getQueryData<Session>(key);
+    if (before) qc.setQueryData(key, { ...before, ...optimistic });
     try {
       const s = await run();
       qc.setQueryData(keys.session(s.id), s);
     } catch (e) {
+      if (before) qc.setQueryData(key, before);
       toast.error(errorTitle, errorMessage(e));
     }
   };
 
   const changeModel = async (next: string | null) => {
     if (!session) return useDrafts.getState().setOptions(draftKey, { model: next });
-    if (next) await update(() => call("sessions.setModel", { sessionId: session.id, model: next }), "Modell nicht gewechselt");
+    if (next) await update({ model: next }, () => call("sessions.setModel", { sessionId: session.id, model: next }), "Modell nicht gewechselt");
   };
 
   const changeEffort = async (next: EffortLevel | null) => {
     if (!session) return useDrafts.getState().setOptions(draftKey, { effort: next });
-    await update(() => call("sessions.setEffort", { sessionId: session.id, effort: next }), "Effort nicht gewechselt");
+    await update({ effort: next }, () => call("sessions.setEffort", { sessionId: session.id, effort: next }), "Effort nicht gewechselt");
   };
 
   const togglePlan = async () => {
     if (!session) return useDrafts.getState().setOptions(draftKey, { planOnly: !planOnly });
     const mode: PermissionMode = isPlan ? PROFILE_MODE[session.profile] : "plan";
-    await update(() => call("sessions.setPermissionMode", { sessionId: session.id, mode }), "Modus nicht gewechselt");
+    await update({ permissionMode: mode }, () => call("sessions.setPermissionMode", { sessionId: session.id, mode }), "Modus nicht gewechselt");
   };
 
   return { model, effort, planOnly, isPlan, changeModel, changeEffort, togglePlan };
@@ -77,6 +84,17 @@ export function useSendMessage({
     if (!prompt || sending) return false;
     setSending(true);
     const attachments = files.map((f) => f.attachment);
+    // Shown in the chat at once and the composer empties; the real message replaces it when it arrives.
+    // Slash commands are not echoed as messages, so they get no placeholder.
+    const pendingKey = session?.id ?? draftKey;
+    const pendingId = prompt.startsWith("/")
+      ? null
+      : usePendingMessages.getState().add(pendingKey, {
+          text: prompt,
+          files: files.map((f) => f.name),
+          afterSeq: session ? (useSessionEvents.getState().buffers[session.id]?.lastSeq ?? 0) : 0,
+        });
+    if ((useDrafts.getState().drafts[draftKey]?.text ?? "") === text) useDrafts.getState().setText(draftKey, "");
     try {
       if (!session) {
         const s = await call("sessions.start", { projectId: project.id, prompt, model: options.model, effort: options.effort, planOnly: options.planOnly, resumeClaudeSessionId, attachments });
@@ -84,6 +102,7 @@ export function useSendMessage({
         void qc.invalidateQueries({ queryKey: keys.sessions(project.id) });
         // The next new session starts from the project defaults again.
         useDrafts.getState().setOptions(draftKey, { planOnly: undefined, model: undefined, effort: undefined });
+        usePendingMessages.getState().move(draftKey, s.id);
         useUi.getState().setActiveSession(project.id, s.id);
       } else {
         const s = await call("sessions.send", { sessionId: session.id, text: prompt, attachments });
@@ -92,11 +111,12 @@ export function useSendMessage({
       // Only drop what was sent: with sending allowed mid-turn the user may already be typing the next message.
       const sentIds = new Set(files.map((f) => f.id));
       files.forEach((f) => f.preview && URL.revokeObjectURL(f.preview));
-      const drafts = useDrafts.getState();
-      drafts.updateFiles(draftKey, (cur) => cur.filter((f) => !sentIds.has(f.id)));
-      if ((drafts.drafts[draftKey]?.text ?? "") === text) drafts.setText(draftKey, "");
+      useDrafts.getState().updateFiles(draftKey, (cur) => cur.filter((f) => !sentIds.has(f.id)));
       return true;
     } catch (e) {
+      if (pendingId !== null) usePendingMessages.getState().remove(pendingKey, pendingId);
+      // The text comes back, unless the user started typing something new meanwhile.
+      if (!(useDrafts.getState().drafts[draftKey]?.text ?? "")) useDrafts.getState().setText(draftKey, text);
       toast.error("Nachricht nicht gesendet", errorMessage(e));
       return false;
     } finally {
@@ -127,10 +147,16 @@ export async function compactSession(sessionId: string) {
   }
 }
 
+/** "Claude stoppt …" shows on the click; the sidecar's status follows. */
 export async function stopSession(sessionId: string) {
+  const key = keys.session(sessionId);
+  const before = queryClient.getQueryData<Session>(key);
+  if (before && (before.status === "running" || before.status === "waiting_approval" || before.status === "starting")) queryClient.setQueryData(key, { ...before, status: "stopping" as const });
   try {
     await call("sessions.stop", { sessionId });
   } catch (e) {
+    const now = queryClient.getQueryData<Session>(key);
+    if (before && now?.status === "stopping") queryClient.setQueryData(key, before);
     toast.error("Stop fehlgeschlagen", errorMessage(e));
   }
 }

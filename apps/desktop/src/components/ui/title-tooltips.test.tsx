@@ -31,6 +31,30 @@ describe("TitleTooltips", () => {
     expect(button.getAttribute("title")).toBe("Ton anhören");
   });
 
+  it("shows the next tooltip at once when the pointer moves straight on, and waits again after a click", () => {
+    render(
+      <>
+        <TitleTooltips />
+        <button title="Eins">a</button>
+        <button title="Zwei">b</button>
+      </>,
+    );
+    const [one, two] = screen.getAllByRole("button");
+    fireEvent.pointerOver(one!);
+    act(() => vi.advanceTimersByTime(450));
+    expect(screen.getByRole("tooltip").textContent).toBe("Eins");
+    fireEvent.pointerOut(one!, { relatedTarget: two });
+    fireEvent.pointerOver(two!);
+    act(() => vi.advanceTimersByTime(10));
+    expect(screen.getByRole("tooltip").textContent).toBe("Zwei");
+
+    fireEvent.pointerDown(two!);
+    fireEvent.pointerOut(two!, { relatedTarget: one });
+    fireEvent.pointerOver(one!);
+    act(() => vi.advanceTimersByTime(10));
+    expect(screen.queryByRole("tooltip")).toBeNull();
+  });
+
   it("keeps the accessible name of an icon-only button while the title is removed", () => {
     render(
       <>

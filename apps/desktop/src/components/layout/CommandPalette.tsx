@@ -25,6 +25,7 @@ import type { ProfileId, ResultOf, SearchHit } from "@forge/protocol";
 import { call, keys, useProjects, useSearch } from "@/lib/queries";
 import { errorMessage } from "@/lib/rpc";
 import { cn, relativeTime } from "@/lib/utils";
+import { OVERLAY_MOTION } from "@/lib/motion";
 import { useUi } from "@/stores/ui";
 import { NAV } from "./nav";
 import { toast } from "@/stores/toast";
@@ -78,13 +79,17 @@ export function CommandPalette() {
   return (
     <D.Root open={open} onOpenChange={setOpen}>
       <D.Portal>
-        <D.Overlay className="fixed inset-0 z-40 bg-overlay" />
+        <D.Overlay className={cn("fixed inset-0 z-40 bg-overlay", OVERLAY_MOTION)} />
         <D.Content
-          className="fixed left-1/2 top-[12vh] z-50 flex max-h-[70vh] w-160 max-w-[92vw] -translate-x-1/2 flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-2xl"
+          className={cn(
+            "fixed left-1/2 top-[12vh] z-50 flex max-h-[70vh] w-160 max-w-[92vw] -translate-x-1/2 flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-2xl",
+            "data-[state=open]:animate-palette-in data-[state=closed]:animate-fade-out",
+          )}
           aria-describedby={undefined}
         >
           <D.Title className="sr-only">Befehlspalette</D.Title>
-          {open && <PaletteBody onClose={() => setOpen(false)} />}
+          {/* Content is mounted only while open or closing; the body stays for the exit animation. */}
+          <PaletteBody onClose={() => setOpen(false)} />
         </D.Content>
       </D.Portal>
     </D.Root>

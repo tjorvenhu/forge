@@ -1,5 +1,6 @@
 import { beep, SAMPLE_RATE } from "./audio.js";
 import type { PinResult } from "./pin-guard.js";
+import { PIN_TEXT, PinPad } from "./pin-pad.js";
 import type { RtpSession } from "./rtp.js";
 import type { SipCall } from "./sip-ua.js";
 import { Vad } from "./vad.js";
@@ -12,6 +13,18 @@ export interface Conversation {
   /** stops the reply Claude is writing; onTurnDone still follows for the turn */
   interrupt(): void;
   close(): void;
+}
+
+/** One conversation over an established call: Claude with speech services, or Gemini Live. */
+export interface CallHandler {
+  readonly unlocked: boolean;
+  /** outgoing calls: get the first words ready while it rings */
+  prepare(): void;
+  /** the call is up and media flows */
+  begin(): void;
+  /** a note from FORGE for the conversation partner, in brackets */
+  note(text: string): void;
+  dispose(): void;
 }
 
 export interface ConversationCallbacks {
@@ -37,7 +50,6 @@ export interface CallControllerDeps {
   timing?: { speakTimeoutMs?: number; transcribeTimeoutMs?: number; turnEndMs?: number; turnEndUnfinishedMs?: number };
 }
 
-const MAX_PIN_TRIES = 3;
 const IDLE_HANGUP_MS = 90_000;
 const MAX_CALL_MS = 30 * 60_000;
 const MAX_VOICE_ERRORS = 3;
@@ -65,8 +77,10 @@ const INTERRUPT_SETTLE_MS = 5_000;
  * Digits from the keypad unlock steering (PIN + #); that does not go through the language model,
  * so nothing Claude reads or hears can unlock on its own.
  */
-export class CallController {
-  unlocked = false;
+export class CallController implements CallHandler {
+  get unlocked(): boolean {
+    return this.pinPad.unlocked;
+  }
   private readonly vad = new Vad();
   private conversation: Conversation | null = null;
   /** Claude is writing a reply */
@@ -92,11 +106,7 @@ export class CallController {
   private heard: string[] = [];
   private lastUtteranceAt = 0;
   private turnEndTimer: ReturnType<typeof setTimeout> | null = null;
-  private pin = "";
-  private pinTries = 0;
-  /** no more PIN attempts in this call: limit reached or locked */
-  private pinClosed = false;
-  private pinChecking = false;
+  private readonly pinPad: PinPad;
   private voiceErrors = 0;
   private hangupPending = false;
   /** FORGE is saying goodbye; set once and never cleared */
@@ -113,6 +123,18 @@ export class CallController {
     private readonly rtp: RtpSession,
     private readonly d: CallControllerDeps,
   ) {
+    this.pinPad = new PinPad({
+      checkPin: d.checkPin,
+      accepting: () => !this.ended && !this.closing,
+      onUnlocked: () => {
+        this.d.onUnlock();
+        this.rtp.play(beep());
+        this.tell(PIN_TEXT.unlockedNote);
+      },
+      onLocked: () => this.speak(PIN_TEXT.locked),
+      onWrong: (final) => (final ? this.farewell(PIN_TEXT.final) : this.speak(PIN_TEXT.wrong)),
+      log: (m) => this.d.log(m),
+    });
     // Before the call is up, audio is ringback or an announcement of the network, not the caller.
     this.rtp.on("audio", (frame) => {
       if (this.begun) this.vad.push(frame);
@@ -410,53 +432,12 @@ export class CallController {
   private onDigit(digit: string) {
     if (this.ended || !this.begun) return;
     this.touch();
-    if (!this.d.checkPin || this.unlocked || this.pinClosed || this.closing || this.pinChecking) return;
-    if (digit === "*") {
-      this.pin = "";
-      return;
-    }
-    if (digit !== "#") {
-      if (this.pin.length < 16) this.pin += digit;
-      return;
-    }
-    const entered = this.pin;
-    this.pin = "";
-    this.pinChecking = true;
-    void this.d
-      .checkPin(entered)
-      .catch((e: unknown) => {
-        this.d.log(`PIN-Prüfung: ${e instanceof Error ? e.message : String(e)}`);
-        return "wrong" as const;
-      })
-      .then((result) => {
-        this.pinChecking = false;
-        this.onPinResult(result);
-      });
+    this.pinPad.digit(digit);
   }
 
-  private onPinResult(result: PinResult) {
-    // A goodbye may have started while the PIN was checked; a late correct PIN must not unlock it.
-    if (this.ended || this.closing || this.pinClosed) return;
-    if (result === "ok") {
-      this.unlocked = true;
-      this.d.onUnlock();
-      this.rtp.play(beep());
-      this.tell("[FORGE: PIN richtig, Steuern ist frei. Sag nur „Freigeschaltet.“ Wollte der Anrufer vorher schon etwas Gesperrtes, erledige es jetzt.]");
-      return;
-    }
-    if (result === "locked") {
-      this.pinClosed = true;
-      this.d.log("PIN-Eingabe gesperrt (zu viele Fehlversuche)");
-      this.speak("Die PIN-Eingabe ist nach zu vielen Fehlversuchen vorübergehend gesperrt. Steuern geht in diesem Gespräch nicht.");
-      return;
-    }
-    if (++this.pinTries >= MAX_PIN_TRIES) {
-      this.pinClosed = true;
-      this.d.log("PIN dreimal falsch, Anruf beendet");
-      this.farewell("Die PIN war mehrmals falsch. Ich lege auf.");
-      return;
-    }
-    this.speak("Die PIN ist falsch. Bitte noch einmal eingeben und mit Raute bestätigen.");
+  /** A note from FORGE for the conversation partner (e.g. a key pressed on the desk phone). */
+  note(text: string) {
+    if (this.begun) this.tell(text);
   }
 
   dispose() {

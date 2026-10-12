@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { useVirtualizer } from "@tanstack/react-virtual";
-import { History, MessageSquarePlus, RotateCcw, Terminal } from "lucide-react";
+import { useVirtualizer, type VirtualItem } from "@tanstack/react-virtual";
+import { ArrowDown, History, MessageSquarePlus, RotateCcw, Terminal } from "lucide-react";
 import type { ExternalSession, Project, Session, SessionEvent } from "@forge/protocol";
 import { useOlderHistory, useSession, useSessionHistory, useSessions } from "@/lib/queries";
 import { isWorking } from "@/lib/working";
@@ -9,8 +9,12 @@ import { draftKey } from "@/stores/drafts";
 import { toast } from "@/stores/toast";
 import { splitActive, useUi } from "@/stores/ui";
 import { Button } from "@/components/ui/button";
-import { EmptyState, ErrorBanner, Loading } from "@/components/ui/misc";
-import { appendStreaming, buildEventItems, itemIndexForSeq, lastUserPrompt, reuseStableItems, rowSpacing, startsAnswer, type ChatItem, type RowSpacing } from "./chat-items";
+import { EmptyState, ErrorBanner } from "@/components/ui/misc";
+import { ChatSkeleton } from "@/components/ui/skeleton";
+import { Arrivals } from "@/lib/arrivals";
+import { usePending, usePendingMessages } from "@/stores/pending-messages";
+import { PendingMessages } from "./PendingMessages";
+import { appendStreaming, IncrementalItems, itemIndexForSeq, lastUserPrompt, reuseStableItems, rowSpacing, startsAnswer, type ChatItem, type RowSpacing } from "./chat-items";
 import { Composer } from "./Composer";
 import { SessionBar } from "./SessionBar";
 import { ItemView } from "./ChatItemView";
@@ -29,6 +33,19 @@ const NO_STREAMING: Record<string, string> = {};
 const OLDER_BAR_HEIGHT = 44;
 /** "tight" must stay pt-1.5: the guide line of subagent calls reaches up exactly that far. */
 const ROW_SPACING: Record<RowSpacing, string> = { first: "pt-5", turn: "pt-8", block: "pt-3.5", tight: "pt-1.5" };
+
+/**
+ * Where each thread was scrolled to and how tall its rows were, so switching sessions or tabs comes
+ * back to the same place without rows jumping from estimated to measured height.
+ */
+const threadViews = new Map<string, { offset: number; pinned: boolean; measurements: VirtualItem[] }>();
+const MAX_THREAD_VIEWS = 30;
+
+function rememberView(sessionId: string, view: { offset: number; pinned: boolean; measurements: VirtualItem[] }) {
+  threadViews.delete(sessionId);
+  threadViews.set(sessionId, view);
+  if (threadViews.size > MAX_THREAD_VIEWS) threadViews.delete(threadViews.keys().next().value!);
+}
 
 const toastNotFound = () => toast.error("Eintrag nicht gefunden", "Der Eintrag ist im Verlauf dieser Session nicht vorhanden.");
 
@@ -69,10 +86,14 @@ export function ChatPanel({ project, workingInPanel = false }: { project: Projec
 }
 
 function NewSessionPane({ project, external }: { project: Project; external: ExternalSession | null }) {
+  // The first message of a session that is being started shows right away.
+  const pending = usePending(draftKey(project.id, null, external?.claudeSessionId));
   return (
     <>
-      <div className="min-h-0 flex-1 overflow-y-auto">
-        {external ? (
+      <div className="min-h-0 flex-1 animate-view-in overflow-y-auto">
+        {pending.length ? (
+          <PendingMessages items={pending} />
+        ) : external ? (
           <EmptyState icon={<Terminal className="h-9 w-9" />} title="Session aus dem Terminal fortsetzen">
             „{external.summary}“, zuletzt {relativeTime(external.lastModified)}
             {external.gitBranch ? ` auf ${external.gitBranch}` : ""}. Schreibe eine Nachricht, um sie in FORGE weiterzuführen. Der bisherige Verlauf wird übernommen.
@@ -96,7 +117,8 @@ function SessionThread({ sessionId, session, project, workingInPanel }: { sessio
   const streaming = buffer?.streaming ?? NO_STREAMING;
   // Deltas only change `streaming`; the event items (and their identity) stay as they are.
   const previous = useRef<ChatItem[]>([]);
-  const eventItems = useMemo(() => (previous.current = reuseStableItems(previous.current, buildEventItems(events))), [events]);
+  const [builder] = useState(() => new IncrementalItems());
+  const eventItems = useMemo(() => (previous.current = reuseStableItems(previous.current, builder.build(events))), [builder, events]);
   const items = useMemo(() => appendStreaming(eventItems, streaming), [eventItems, streaming]);
   const retryPrompt = useMemo(() => lastUserPrompt(events), [events]);
   const working = isWorking(session?.status);
@@ -106,8 +128,20 @@ function SessionThread({ sessionId, session, project, workingInPanel }: { sessio
   const onRetry = retryPrompt && !working ? retryLast : undefined;
   const clearRetry = useCallback(() => setRetryText(null), []);
 
+  // Sent but not yet echoed by the sidecar; dropped as soon as the real message is in the buffer.
+  const pending = usePending(sessionId);
+  useEffect(() => usePendingMessages.getState().settle(sessionId, events), [sessionId, events]);
+
+  // Rows that arrive while the thread is open slide in once; loaded history does not.
+  const [arrivals] = useState(() => new Arrivals());
+  if (buffer?.loaded && !arrivals.isPrimed) arrivals.prime(items.map((it) => it.key));
+
   const scrollRef = useRef<HTMLDivElement>(null);
-  const pinned = useRef(true);
+  const contentRef = useRef<HTMLDivElement>(null);
+  /** "new": content grew while scrolled up; "end": far from the end. Shows the jump button. */
+  const [jump, setJump] = useState<"new" | "end" | null>(null);
+  const [saved] = useState(() => threadViews.get(sessionId));
+  const pinned = useRef(saved?.pinned ?? true);
   const virtualizer = useVirtualizer({
     count: items.length,
     getScrollElement: () => scrollRef.current,
@@ -115,7 +149,17 @@ function SessionThread({ sessionId, session, project, workingInPanel }: { sessio
     overscan: 8,
     getItemKey: (i) => items[i]!.key,
     paddingStart: buffer?.hasOlder ? OLDER_BAR_HEIGHT : 0,
+    initialMeasurementsCache: saved?.measurements,
+    initialOffset: saved && !saved.pinned ? saved.offset : undefined,
   });
+  // Leaving the thread: keep position and row heights for the next visit.
+  useEffect(
+    () => () => {
+      const el = scrollRef.current;
+      if (el) rememberView(sessionId, { offset: el.scrollTop, pinned: pinned.current, measurements: virtualizer.measurementsCache });
+    },
+    [sessionId, virtualizer],
+  );
 
   // Older rows land above the viewport: keep the row that was at the top in the same place.
   const anchor = useRef<ScrollAnchor | null>(null);
@@ -168,14 +212,26 @@ function SessionThread({ sessionId, session, project, workingInPanel }: { sessio
   }, [highlight]);
 
   // Follow new content only while pinned, and only when the content actually grew. Scrolling
-  // on every render fought the user: the virtualizer re-renders during a scroll before onScroll runs.
-  const lastHeight = useRef(0);
+  // on every render fought the user (the virtualizer re-renders during a scroll before onScroll
+  // runs), and reading scrollHeight on every streamed token forced a layout each time. A
+  // ResizeObserver reports growth once per frame instead.
+  const loaded = !!buffer?.loaded;
   useLayoutEffect(() => {
     const el = scrollRef.current;
-    if (!el) return;
-    if (pinned.current && el.scrollHeight > lastHeight.current) el.scrollTop = el.scrollHeight;
-    lastHeight.current = el.scrollHeight;
-  });
+    const content = contentRef.current;
+    if (!el || !content) return;
+    let lastHeight = 0;
+    const follow = () => {
+      const h = content.offsetHeight;
+      if (pinned.current && h > lastHeight) el.scrollTop = el.scrollHeight;
+      else if (!pinned.current && lastHeight > 0 && h > lastHeight) setJump("new");
+      lastHeight = h;
+    };
+    follow();
+    const ro = new ResizeObserver(follow);
+    ro.observe(content);
+    return () => ro.disconnect();
+  }, [loaded]);
 
   if (!buffer?.loaded) {
     if (error) {
@@ -196,15 +252,20 @@ function SessionThread({ sessionId, session, project, workingInPanel }: { sessio
         </div>
       );
     }
-    return (
-      <div className="flex flex-1 items-center justify-center">
-        <Loading />
-      </div>
-    );
+    return <ChatSkeleton />;
   }
+
+  const jumpToEnd = () => {
+    const el = scrollRef.current;
+    if (!el) return;
+    pinned.current = true;
+    setJump(null);
+    el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+  };
 
   return (
     <>
+      <div className="relative flex min-h-0 flex-1 animate-view-in flex-col">
       <div
         ref={scrollRef}
         className="min-h-0 flex-1 overflow-y-auto"
@@ -213,29 +274,51 @@ function SessionThread({ sessionId, session, project, workingInPanel }: { sessio
         }}
         onScroll={(e) => {
           const el = e.currentTarget;
-          pinned.current = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
+          const fromEnd = el.scrollHeight - el.scrollTop - el.clientHeight;
+          pinned.current = fromEnd < 40;
+          if (pinned.current) setJump(null);
+          else if (fromEnd > el.clientHeight) setJump((j) => j ?? "end");
         }}
       >
-        <div className="relative mx-auto w-full max-w-5xl" style={{ height: virtualizer.getTotalSize() + 24 }}>
-          {hasOlder && (
-            <div className="absolute inset-x-0 top-0 flex items-end justify-center" style={{ height: OLDER_BAR_HEIGHT }}>
-              <Button size="sm" variant="outline" loading={loadingOlder} onClick={() => void loadOlder()}>
-                <History className="h-3.5 w-3.5" /> Ältere Einträge laden
-              </Button>
-            </div>
-          )}
-          {virtualizer.getVirtualItems().map((v) => (
-            <div key={v.key} data-index={v.index} ref={virtualizer.measureElement} className={cn("absolute left-0 right-0 px-6", ROW_SPACING[rowSpacing(items[v.index - 1], items[v.index]!)])} style={{ transform: `translateY(${v.start}px)` }}>
-              <div className={cn("rounded-md transition-shadow duration-500", highlight === items[v.index]!.key && "ring-2 ring-accent/60 ring-offset-4 ring-offset-bg")}>
-                <LeadMarker.Provider value={startsAnswer(items[v.index - 1], items[v.index]!) ? CLAUDE_LEAD : null}>
-                  <ItemView item={items[v.index]!} sessionId={sessionId} live={!!session?.live} projectDir={session?.cwd ?? project.path} onRetry={onRetry} />
-                </LeadMarker.Provider>
+        <div ref={contentRef}>
+          <div className="relative mx-auto w-full max-w-5xl" style={{ height: virtualizer.getTotalSize() + 24 }}>
+            {hasOlder && (
+              <div className="absolute inset-x-0 top-0 flex items-end justify-center" style={{ height: OLDER_BAR_HEIGHT }}>
+                <Button size="sm" variant="outline" loading={loadingOlder} onClick={() => void loadOlder()}>
+                  <History className="h-3.5 w-3.5" /> Ältere Einträge laden
+                </Button>
               </div>
-            </div>
-          ))}
+            )}
+            {virtualizer.getVirtualItems().map((v) => (
+              <div key={v.key} data-index={v.index} ref={virtualizer.measureElement} className={cn("absolute left-0 right-0 px-6", ROW_SPACING[rowSpacing(items[v.index - 1], items[v.index]!)])} style={{ transform: `translateY(${v.start}px)` }}>
+                <div
+                  className={cn(
+                    "rounded-md transition-shadow duration-500",
+                    highlight === items[v.index]!.key && "ring-2 ring-accent/60 ring-offset-4 ring-offset-bg",
+                    arrivals.isNew(String(v.key)) && "animate-slide-up-in",
+                  )}
+                >
+                  <LeadMarker.Provider value={startsAnswer(items[v.index - 1], items[v.index]!) ? CLAUDE_LEAD : null}>
+                    <ItemView item={items[v.index]!} sessionId={sessionId} live={!!session?.live} projectDir={session?.cwd ?? project.path} onRetry={onRetry} />
+                  </LeadMarker.Provider>
+                </div>
+              </div>
+            ))}
+          </div>
+          {pending.length > 0 && <PendingMessages items={pending} />}
+          {startedAt && !workingInPanel && <WorkingIndicator startedAt={startedAt} subagents={session?.subagents} sessionId={sessionId} />}
+          {!!session?.background.length && <BackgroundIndicator tasks={session.background} sessionId={sessionId} />}
         </div>
-        {startedAt && !workingInPanel && <WorkingIndicator startedAt={startedAt} />}
-        {!!session?.background.length && <BackgroundIndicator tasks={session.background} />}
+      </div>
+      {jump && (
+        <button
+          type="button"
+          onClick={jumpToEnd}
+          className="absolute bottom-3 left-1/2 z-10 flex -translate-x-1/2 animate-rise-in items-center gap-1.5 rounded-full border border-border bg-surface-3 px-3 py-1 text-small text-fg shadow-lg transition-[background-color,transform] duration-120 hover:bg-border-strong active:scale-[0.97]"
+        >
+          <ArrowDown className="h-3.5 w-3.5" /> {jump === "new" ? "Neue Nachrichten" : "Zum Ende"}
+        </button>
+      )}
       </div>
       <Composer project={project} session={session} prefill={retryText} onPrefillConsumed={clearRetry} />
     </>

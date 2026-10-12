@@ -10,6 +10,7 @@ import type { McpService } from "../config/mcp.js";
 import type { WorktreeService } from "../automation/worktrees.js";
 import type { DevServerService } from "../devserver/dev-server.js";
 import type { PhoneService } from "../phone/phone-service.js";
+import type { AppUpdateService } from "../update/app-update.js";
 import * as cfg from "../config/claude-config.js";
 import { removalInfo, removeProject, removeWorktree } from "../projects/removal.js";
 import os from "node:os";
@@ -26,6 +27,7 @@ export interface Services {
   worktrees: WorktreeService;
   devServers: DevServerService;
   phone: PhoneService;
+  updates: AppUpdateService;
   notifyProject: (projectId: string) => void;
 }
 
@@ -121,10 +123,12 @@ export function createHandlers(s: Services): Handlers {
     "sessions.summarize": ({ sessionId }) => s.sessions.summarize(sessionId),
 
     "settings.get": () => s.db.getSettings(),
-    "settings.update": (patch) => {
+    "settings.update": async (patch) => {
       diagCache = null;
       const next = s.db.updateSettings(patch);
       if (patch.autoContinueAfterLimit !== undefined) s.sessions.settingsChanged();
+      // Hiding the phone feature also switches the line and the desk phone off.
+      if (patch.phoneFeature === false) await s.phone.setEnabled(false);
       return next;
     },
 
@@ -161,6 +165,9 @@ export function createHandlers(s: Services): Handlers {
     "sessions.listLive": () => s.sessions.listLive(),
     "sessions.delete": ({ sessionId, deleteTranscript }) => s.sessions.delete(sessionId, deleteTranscript),
     "sessions.get": ({ sessionId }) => s.sessions.get(sessionId),
+    "sessions.stopTask": ({ sessionId, taskId }) => s.sessions.stopTask(sessionId, taskId),
+    "sessions.toBackground": ({ sessionId, toolUseId }) => s.sessions.toBackground(sessionId, toolUseId),
+    "sessions.fork": ({ sessionId, beforeSeq, rewindFiles }) => s.sessions.fork(sessionId, { beforeSeq, rewindFiles }),
     "sessions.events": ({ sessionId, afterSeq, beforeSeq }) => s.sessions.events(sessionId, afterSeq, beforeSeq),
     "sessions.start": (p) => s.sessions.start(p),
     "sessions.send": ({ sessionId, text, attachments }) => s.sessions.send(sessionId, text, attachments),
@@ -183,12 +190,17 @@ export function createHandlers(s: Services): Handlers {
     "devserver.stop": ({ projectId }) => s.devServers.stop(projectId),
     "devserver.output": ({ projectId }) => ({ text: s.devServers.output(projectId) }),
 
+    "app.updateState": () => s.updates.get(),
+    "app.checkUpdate": () => s.updates.check(),
+    "app.downloadUpdate": () => s.updates.download(),
+
     "phone.config": () => s.phone.config(),
     "phone.saveConfig": (patch) => s.phone.saveConfig(patch),
     "phone.state": () => s.phone.state(),
     "phone.setEnabled": ({ enabled }) => s.phone.setEnabled(enabled),
     "phone.testCall": () => s.phone.testCall(),
     "phone.hangup": () => s.phone.hangup(),
+    "phone.deskTest": () => s.phone.deskTest(),
     "phone.calls": ({ limit }) => s.phone.calls(limit),
 
     "git.status": ({ projectId }) => s.git.status(projectDir(projectId)),

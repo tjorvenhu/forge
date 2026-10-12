@@ -34,6 +34,7 @@ const session = (autoContinueAt: string | null): Session => ({
   lastError: null,
   live: true,
   background: [],
+  subagents: [],
   context: null,
   autoContinueAt,
 });

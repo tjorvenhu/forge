@@ -5,7 +5,9 @@ import { toast } from "@/stores/toast";
 import { Button } from "@/components/ui/button";
 import { useUi } from "@/stores/ui";
 import { capitalize, cn, relativeTime } from "@/lib/utils";
+import { useArrivals } from "@/lib/arrivals";
 import { Logo } from "./Logo";
+import { AppUpdateCard } from "./AppUpdate";
 import { NAV } from "./nav";
 import { ProjectIcon } from "@/components/projects/ProjectIcon";
 
@@ -19,6 +21,8 @@ export function Sidebar() {
   const list = projects.data ?? [];
   const favorites = list.filter((p) => p.favorite);
   const shown = favorites.length ? favorites : list.slice(0, 4);
+  // Projects added while FORGE runs slide in; the list on start does not.
+  const isNew = useArrivals(projects.data?.map((p) => p.id));
 
   return (
     <aside className="flex w-64 shrink-0 select-none flex-col border-r border-border bg-sidebar">
@@ -41,8 +45,9 @@ export function Sidebar() {
               onClick={() => setView(n.view)}
               aria-current={active ? "page" : undefined}
               className={cn(
-                "flex h-10 items-center gap-3 rounded-lg px-3 text-ui transition-colors",
-                active ? "bg-accent-soft font-medium text-fg" : "text-muted hover:bg-surface-2 hover:text-fg",
+                // Same weight active or not: a bolder label would make the text jump.
+                "flex h-10 items-center gap-3 rounded-lg px-3 text-ui transition-[color,background-color,transform] duration-120 active:scale-[0.98]",
+                active ? "bg-accent-soft text-fg" : "text-muted hover:bg-surface-2 hover:text-fg",
               )}
             >
               <span className={active ? "text-accent" : ""}>
@@ -72,7 +77,8 @@ export function Sidebar() {
               key={p.id}
               onClick={() => openProject(p.id)}
               className={cn(
-                "flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-left transition-colors",
+                "flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-left transition-[background-color,transform] duration-120 active:scale-[0.99]",
+                isNew(p.id) && "animate-slide-up-in",
                 view === "workspace" && activeProjectId === p.id ? "bg-surface-3" : "hover:bg-surface-2",
               )}
             >
@@ -122,6 +128,8 @@ function ClaudeStatusCard() {
   }
   const windows = usage.data?.available ? usage.data.windows.slice(0, 3) : [];
   return (
+    <>
+    <AppUpdateCard />
     <div className="m-3 flex flex-col gap-2.5 rounded-xl border border-border bg-surface px-3.5 py-3 hover:border-border-strong">
       <button onClick={() => setView("settings")} className="flex flex-col gap-2 text-left" title="Claude-Code-Status, Nutzung und Diagnose">
         <div className="flex w-full items-center gap-2.5">
@@ -144,6 +152,7 @@ function ClaudeStatusCard() {
       </button>
       <ClaudeUpdateButton />
     </div>
+    </>
   );
 }
 

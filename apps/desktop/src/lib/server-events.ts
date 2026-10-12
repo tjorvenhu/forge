@@ -1,5 +1,5 @@
 import type { QueryClient } from "@tanstack/react-query";
-import type { ResultOf, ServerEvent } from "@forge/protocol";
+import type { ResultOf, ServerEvent, Session } from "@forge/protocol";
 import { useSessionEvents } from "@/stores/session-events";
 import { useDevOutput } from "@/stores/dev-output";
 import { useUi } from "@/stores/ui";
@@ -40,6 +40,25 @@ export function createGitRefresher(qc: QueryClient, delayMs = GIT_REFRESH_DELAY_
 
 type GitRefresher = ReturnType<typeof createGitRefresher>;
 
+/**
+ * Puts a changed session into the lists that are on screen instead of refetching them: each refetch
+ * of the project's list also scans the Claude transcripts on disk, and approvals change the status
+ * twice in a row. A session the list does not know yet (just started) still triggers a refetch.
+ */
+export function patchSessionLists(qc: QueryClient, s: Session) {
+  const list = qc.getQueryData<ResultOf<"sessions.list">>(keys.sessions(s.projectId));
+  if (list && list.sessions.some((x) => x.id === s.id)) {
+    const sessions = list.sessions.map((x) => (x.id === s.id ? s : x)).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+    qc.setQueryData(keys.sessions(s.projectId), { ...list, sessions });
+  } else void qc.invalidateQueries({ queryKey: keys.sessions(s.projectId) });
+
+  const live = qc.getQueryData<ResultOf<"sessions.listLive">>(keys.liveSessions);
+  const known = live?.find((x) => x.id === s.id);
+  if (!live || (s.live && !known)) void qc.invalidateQueries({ queryKey: keys.liveSessions });
+  else if (!s.live && known) qc.setQueryData(keys.liveSessions, live.filter((x) => x.id !== s.id));
+  else if (known) qc.setQueryData(keys.liveSessions, live.map((x) => (x.id === s.id ? { ...s, projectName: x.projectName } : x)));
+}
+
 /** Routes one sidecar push event into the query cache and the stores. */
 export function routeServerEvent(qc: QueryClient, git: GitRefresher, e: ServerEvent) {
   switch (e.event) {
@@ -60,9 +79,9 @@ export function routeServerEvent(qc: QueryClient, git: GitRefresher, e: ServerEv
     }
     case "session.updated":
       qc.setQueryData(keys.session(e.payload.id), e.payload);
-      void qc.invalidateQueries({ queryKey: keys.sessions(e.payload.projectId) });
+      patchSessionLists(qc, e.payload);
+      // Only the Sessions view shows these; inactive queries are just marked stale.
       void qc.invalidateQueries({ queryKey: ["allSessions"] });
-      void qc.invalidateQueries({ queryKey: keys.liveSessions });
       if (e.payload.status === "idle" || e.payload.status === "stopped") {
         git.schedule(e.payload.projectId);
         void qc.invalidateQueries({ queryKey: keys.projects });
@@ -103,6 +122,9 @@ export function routeServerEvent(qc: QueryClient, git: GitRefresher, e: ServerEv
       break;
     case "devserver.output":
       useDevOutput.getState().append(e.payload.projectId, e.payload.text);
+      break;
+    case "update.updated":
+      qc.setQueryData(keys.appUpdate, e.payload);
       break;
     case "phone.updated": {
       const prev = qc.getQueryData<ResultOf<"phone.state">>(keys.phoneState);

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { ArrowUp, ListTodo, Paperclip, Square } from "lucide-react";
 import type { EffortLevel, Project, Session } from "@forge/protocol";
 import { useRuntimeInfo, useSettings } from "@/lib/queries";
@@ -16,7 +16,8 @@ import { CLEAR_COMMANDS, isClearCommand, SlashCommandMenu, useSlashCommands } fr
 import { useAttachments } from "./useAttachments";
 import { compactSession, stopSession, useComposerOptions, useSendMessage } from "./useSendMessage";
 
-export function Composer({
+/** Memoized: the chat re-renders while text streams in, the composer has nothing to do with that. */
+export const Composer = memo(function Composer({
   project,
   session,
   resumeClaudeSessionId,
@@ -68,8 +69,12 @@ export function Composer({
   }, [text]);
 
   const clearTyped = isClearCommand(text);
+  /** counts sends; the arrow animation restarts with each */
+  const [sentTick, setSentTick] = useState(0);
   const submit = () => {
-    if (!waiting || clearTyped) void send(text, files);
+    if (waiting && !clearTyped) return;
+    setSentTick((n) => n + 1);
+    void send(text, files);
   };
   const stop = () => {
     if (session) void stopSession(session.id);
@@ -100,12 +105,12 @@ export function Composer({
       <SlashCommandMenu matches={matches} index={cmdIndex} onPick={pickCommand} />
       <div
         className={cn(
-          "relative rounded-2xl border bg-surface shadow-lg shadow-black/20 transition-colors",
-          attachments.dragging ? "border-accent bg-accent-soft" : working ? "border-accent/40" : "border-border focus-within:border-accent",
+          "relative rounded-2xl border bg-surface shadow-lg shadow-black/20 transition-[border-color,background-color,transform] duration-150 ease-snappy",
+          attachments.dragging ? "scale-[1.01] border-accent bg-accent-soft" : working ? "border-accent/40" : "border-border focus-within:border-accent",
         )}
       >
         {attachments.dragging && (
-          <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-xl text-body text-accent">Dateien hier ablegen</div>
+          <div className="pointer-events-none absolute inset-0 z-10 flex animate-fade-in items-center justify-center rounded-xl text-body text-accent">Dateien hier ablegen</div>
         )}
         <AttachmentList files={files} onRemove={attachments.remove} />
         <textarea
@@ -220,16 +225,16 @@ export function Composer({
               variant="primary"
               className="h-9 w-9 rounded-lg"
               onClick={submit}
-              disabled={(!text.trim() && !files.length) || (waiting && !clearTyped)}
-              loading={sending}
+              // The message shows in the chat at once ("wird gesendet"), so no spinner here: the arrow flies off.
+              disabled={(!text.trim() && !files.length) || (waiting && !clearTyped) || sending}
               aria-label={working ? "Dazwischen senden" : "Senden"}
               title={working ? "Dazwischen senden: Claude übernimmt die Nachricht beim nächsten Schritt" : undefined}
             >
-              {!sending && <ArrowUp className="h-4 w-4" />}
+              <ArrowUp key={sentTick} className={cn("h-4 w-4", sentTick > 0 && "animate-send")} />
             </Button>
           )}
         </div>
       </div>
     </div>
   );
-}
+});

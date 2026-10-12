@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { AlertTriangle, RotateCw } from "lucide-react";
 import { isTauri, rpc } from "@/lib/rpc";
 import { useUi } from "@/stores/ui";
@@ -13,12 +13,25 @@ import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/misc";
 import { HomeView } from "@/views/HomeView";
 import { ProjectsView } from "@/views/ProjectsView";
-import { SessionsView } from "@/views/SessionsView";
-import { SettingsView } from "@/views/SettingsView";
 import { WorkspaceView } from "@/views/WorkspaceView";
-import { GitHubView } from "@/views/GitHubView";
-import { ExtensionsView } from "@/views/ExtensionsView";
 import { useGlobalShortcuts } from "@/lib/shortcuts";
+
+// Views that are not needed at start (they bring CodeMirror and more) load on first use, or
+// in idle time right after the start, so the first switch does not wait either.
+const loadSessions = () => import("@/views/SessionsView");
+const loadSettings = () => import("@/views/SettingsView");
+const loadGitHub = () => import("@/views/GitHubView");
+const loadExtensions = () => import("@/views/ExtensionsView");
+const SessionsView = lazy(() => loadSessions().then((m) => ({ default: m.SessionsView })));
+const SettingsView = lazy(() => loadSettings().then((m) => ({ default: m.SettingsView })));
+const GitHubView = lazy(() => loadGitHub().then((m) => ({ default: m.GitHubView })));
+const ExtensionsView = lazy(() => loadExtensions().then((m) => ({ default: m.ExtensionsView })));
+
+function preloadViews() {
+  const run = () => void Promise.all([loadSessions(), loadSettings(), loadGitHub(), loadExtensions()]).catch(() => {});
+  if (typeof requestIdleCallback === "function") requestIdleCallback(run, { timeout: 5000 });
+  else setTimeout(run, 2000);
+}
 
 type Boot = { state: "starting" } | { state: "up" } | { state: "down"; detail?: string } | { state: "no-tauri" };
 
@@ -27,7 +40,10 @@ export function App() {
 
   useEffect(() => {
     if (!isTauri()) return;
-    const off = rpc.onStatus((up, detail) => setBoot(up ? { state: "up" } : { state: "down", detail }));
+    const off = rpc.onStatus((up, detail) => {
+      setBoot(up ? { state: "up" } : { state: "down", detail });
+      if (up) preloadViews();
+    });
     rpc.start().catch((e: unknown) => setBoot({ state: "down", detail: String(e) }));
     return off;
   }, []);
@@ -82,13 +98,24 @@ function Shell() {
         </ErrorBoundary>
         <main className="flex min-w-0 flex-1 flex-col">
           <ErrorBoundary resetKey={`${view}:${activeProjectId}`}>
-            {view === "home" && <HomeView />}
-            {view === "projects" && <ProjectsView />}
-            {view === "sessions" && <SessionsView />}
-            {view === "settings" && <SettingsView />}
-            {view === "workspace" && <WorkspaceView />}
-            {view === "github" && <GitHubView />}
-            {view === "mcp" && <ExtensionsView />}
+            <Suspense
+              fallback={
+                <div className="flex flex-1 items-center justify-center">
+                  <Spinner />
+                </div>
+              }
+            >
+              {/* Keyed per view: each switch fades the new view in (enter only, nothing waits for an exit). */}
+              <div key={view} className="flex min-h-0 min-w-0 flex-1 animate-view-in flex-col">
+                {view === "home" && <HomeView />}
+                {view === "projects" && <ProjectsView />}
+                {view === "sessions" && <SessionsView />}
+                {view === "settings" && <SettingsView />}
+                {view === "workspace" && <WorkspaceView />}
+                {view === "github" && <GitHubView />}
+                {view === "mcp" && <ExtensionsView />}
+              </div>
+            </Suspense>
           </ErrorBoundary>
         </main>
       </div>

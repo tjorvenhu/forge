@@ -82,6 +82,9 @@ describe("session event store", () => {
     st.apply({ seq: 3, sessionId: "x", ts: "t", body: { type: "user.message", text: "live" } });
     st.apply({ seq: 0, sessionId: "x", ts: "t", body: { type: "assistant.delta", messageId: "m", index: 0, text: "Hal" } });
     st.apply({ seq: 0, sessionId: "x", ts: "t", body: { type: "assistant.delta", messageId: "m", index: 0, text: "lo" } });
+    // Deltas are written once per frame, not per token.
+    expect(useSessionEvents.getState().buffers.x?.streaming["m:0"]).toBeUndefined();
+    st.flushDeltas();
     expect(useSessionEvents.getState().buffers.x?.streaming["m:0"]).toBe("Hallo");
     st.setHistory("x", [
       { seq: 1, sessionId: "x", ts: "t", body: { type: "user.message", text: "a" } },
@@ -93,6 +96,19 @@ describe("session event store", () => {
     const b = useSessionEvents.getState().buffers.x!;
     expect(b.events.map((e) => e.seq)).toEqual([1, 2, 3, 4]);
     expect(b.streaming).toEqual({});
+  });
+
+  it("writes waiting deltas before the next event, so the final text is not overwritten by them", () => {
+    const st = useSessionEvents.getState();
+    st.setHistory("y", []);
+    st.apply({ seq: 0, sessionId: "y", ts: "t", body: { type: "assistant.delta", messageId: "m", index: 0, text: "Hal" } });
+    st.apply({ seq: 1, sessionId: "y", ts: "t", body: { type: "assistant.text", messageId: "m", index: 0, text: "Hallo" } });
+    st.flushDeltas();
+    expect(useSessionEvents.getState().buffers.y!.streaming).toEqual({});
+    st.apply({ seq: 0, sessionId: "y", ts: "t", body: { type: "assistant.delta", messageId: "n", index: 0, text: "x" } });
+    st.markAllStale();
+    st.flushDeltas();
+    expect(useSessionEvents.getState().buffers.y!.streaming).toEqual({});
   });
 });
 

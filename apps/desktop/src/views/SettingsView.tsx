@@ -17,6 +17,7 @@ import { ClaudeSetupCard } from "@/components/settings/ClaudeSetupCard";
 import { MemoryEditor } from "@/components/settings/MemoryEditor";
 import { effortOptions, fromChoice, modelOptions, toChoice } from "@/components/settings/model-options";
 import { PhoneSettings } from "@/components/settings/PhoneSettings";
+import { AppUpdateSettings } from "@/components/layout/AppUpdate";
 import { capitalize, cn } from "@/lib/utils";
 
 export function SettingsView() {
@@ -76,6 +77,13 @@ export function SettingsView() {
                   </Button>
                 </div>
               </Field>
+              <AppUpdateSettings />
+              <ToggleRow checked={s.updateChecks} onChange={(v) => void save({ updateChecks: v })} label="Automatisch nach Updates suchen">
+                Beim Start und alle 30 Minuten in den GitHub-Releases von FORGE. Braucht die GitHub-Anmeldung in FORGE mit Zugriff auf das Repository.
+              </ToggleRow>
+              <ToggleRow checked={s.phoneFeature} onChange={(v) => void save({ phoneFeature: v })} label="Telefon-Funktion">
+                FORGE anrufen, Sessions und Agenten per Sprache steuern, Rückrufe, Tischtelefon. Ausgeschaltet verschwinden Telefon-Knopf und Einstellungen, das Telefon geht aus.
+              </ToggleRow>
               <ToggleRow checked={s.enterToSend} onChange={(v) => void save({ enterToSend: v })} label="Enter sendet, Umschalt+Enter macht eine neue Zeile">
                 Ausgeschaltet: Strg+Enter sendet, Enter macht eine neue Zeile.
               </ToggleRow>
@@ -109,11 +117,13 @@ export function SettingsView() {
             </div>
           </Card>
 
-          <div className="xl:col-span-2" id="telefon">
-            <Card title="Telefon">
-              <PhoneSettings />
-            </Card>
-          </div>
+          {s.phoneFeature && (
+            <div className="xl:col-span-2" id="telefon">
+              <Card title="Telefon">
+                <PhoneSettings />
+              </Card>
+            </div>
+          )}
 
           <Card title="Sicherheit">
             <div className="flex items-start gap-3">
@@ -139,7 +149,9 @@ export function SettingsView() {
           <Card title="Datenschutz">
             <ul className="list-disc space-y-1 pl-5 text-body text-muted">
               <li>Keine Telemetrie durch FORGE. Projektdaten bleiben lokal.</li>
-              <li>Ausnahme Telefon: Ist es eingeschaltet, gehen Gesprächsaudio und vorgelesene Texte zur Spracherkennung und Sprachausgabe an OpenAI.</li>
+              {s.phoneFeature && (
+                <li>Ausnahme Telefon: Ist es eingeschaltet, geht Gesprächsaudio an Google (Gemini) oder OpenAI, je nach Einstellung unter Telefon.</li>
+              )}
               <li>Tool-Ein- und Ausgaben werden vor dem Speichern auf bekannte Secret-Muster geprüft und maskiert.</li>
               <li>FORGE liest keine Claude-Zugangsdaten. Die Anmeldung erledigt die Claude-CLI selbst.</li>
             </ul>

@@ -1,9 +1,25 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { Terminal, type IDisposable } from "@xterm/xterm";
-import { FitAddon } from "@xterm/addon-fit";
-import "@xterm/xterm/css/xterm.css";
+import type { IDisposable, Terminal } from "@xterm/xterm";
+import type { FitAddon } from "@xterm/addon-fit";
 import { useTerminals, type TerminalProgram } from "@/stores/terminals";
+
+/** xterm is loaded with the first terminal, not with the app: most sessions never open one. */
+let xterm: { Terminal: typeof Terminal; FitAddon: typeof FitAddon } | null = null;
+let loadingXterm: Promise<void> | null = null;
+
+export function loadTerminalModule(): Promise<void> {
+  loadingXterm ??= Promise.all([import("@xterm/xterm"), import("@xterm/addon-fit"), import("@xterm/xterm/css/xterm.css")]).then(
+    ([x, f]) => {
+      xterm = { Terminal: x.Terminal, FitAddon: f.FitAddon };
+    },
+    (e: unknown) => {
+      loadingXterm = null;
+      throw e;
+    },
+  );
+  return loadingXterm;
+}
 
 export interface TerminalSpec {
   cwd: string;
@@ -124,7 +140,8 @@ async function startProcess(entry: Entry, spec: TerminalSpec) {
 }
 
 function createEntry(): Entry {
-  const term = new Terminal({
+  if (!xterm) throw new Error("loadTerminalModule() first");
+  const term = new xterm.Terminal({
     fontFamily: getComputedStyle(document.documentElement).getPropertyValue("--font-mono"),
     fontSize: 12.5,
     cursorBlink: true,
@@ -132,7 +149,7 @@ function createEntry(): Entry {
     allowProposedApi: false,
     scrollback: 5000,
   });
-  const fit = new FitAddon();
+  const fit = new xterm.FitAddon();
   term.loadAddon(fit);
   const el = document.createElement("div");
   el.className = "h-full w-full px-2 py-1";
@@ -145,7 +162,7 @@ function createEntry(): Entry {
 
 /**
  * Shows the terminal of `key` inside `host`, creating it and its process on first use. The returned
- * function only detaches it; the process keeps running until closeTerminal.
+ * function only detaches it; the process keeps running until closeTerminal. Needs loadTerminalModule.
  */
 export function attachTerminal(key: string, host: HTMLElement, spec: TerminalSpec): () => void {
   let entry = entries.get(key);

@@ -1,4 +1,5 @@
 import { ForgeError } from "@forge/protocol";
+import { z } from "zod";
 import type { ClaudeRuntime } from "../claude/runtime.js";
 import { locateClaude, sessionEnv } from "../claude/environment.js";
 import type { Db } from "../persistence/db.js";
@@ -9,6 +10,14 @@ import type { ProjectManager } from "../projects/project-manager.js";
 
 /** Small, fast model: commit messages need speed more than depth. */
 export const ASSIST_MODEL = "haiku";
+
+const PrDraft = z.object({ title: z.string(), body: z.string() });
+const PR_SCHEMA = {
+  type: "object",
+  properties: { title: { type: "string", description: "PR-Titel, eine Zeile" }, body: { type: "string", description: "PR-Beschreibung in Markdown" } },
+  required: ["title", "body"],
+  additionalProperties: false,
+};
 
 /** One-shot Claude calls that write text for the user: commit messages, PR texts, session summaries and titles. */
 export class ClaudeAssist {
@@ -97,24 +106,23 @@ export class ClaudeAssist {
     const base = await this.git.defaultBranch(project.path);
     const { commits, diff } = await this.git.rangeSummary(project.path, base);
     if (!commits.length) throw new ForgeError("VALIDATION", `Keine Commits gegenüber ${base}. Erst committen.`);
-    const prompt = [
+    const facts = [`Branch: ${head} -> ${base}`, "Commits:", ...commits.map((c) => `- ${c}`), "", "Diff (gekürzt):", redactText(diff)];
+    const task = [
       "Schreibe Titel und Beschreibung für einen GitHub Pull Request.",
-      "Format exakt:",
-      "TITEL: <eine Zeile, höchstens 72 Zeichen>",
-      "BESCHREIBUNG:",
-      "<Markdown: kurze Zusammenfassung, dann Abschnitt '## Änderungen' mit Stichpunkten, dann '## Test' mit dem, was geprüft werden sollte>",
+      "Titel: eine Zeile, höchstens 72 Zeichen.",
+      "Beschreibung: Markdown, kurze Zusammenfassung, dann Abschnitt '## Änderungen' mit Stichpunkten, dann '## Test' mit dem, was geprüft werden sollte.",
       "Nur beschreiben, was in Commits und Diff steht. Nichts erfinden. Sprache: wie die Commits.",
-      "",
-      `Branch: ${head} -> ${base}`,
-      "Commits:",
-      ...commits.map((c) => `- ${c}`),
-      "",
-      "Diff (gekürzt):",
-      redactText(diff),
-    ].join("\n");
-    const raw = await this.runtime.complete(prompt, { cwd: project.path, env, claudePath, model: ASSIST_MODEL });
-    const title = /TITEL:\s*(.+)/.exec(raw)?.[1]?.trim() ?? commits[0]!;
-    const body = raw.split(/BESCHREIBUNG:\s*/)[1]?.trim() ?? raw.trim();
-    return { title: title.slice(0, 256), body, base, head };
+    ];
+    const opts = { cwd: project.path, env, claudePath, model: ASSIST_MODEL };
+    // Structured output first, so nothing has to be parsed out of free text; the text format stays as fallback.
+    try {
+      const out = PrDraft.parse(await this.runtime.completeJson([...task, "", ...facts].join("\n"), PR_SCHEMA, opts));
+      return { title: out.title.trim().slice(0, 256) || commits[0]!, body: out.body.trim(), base, head };
+    } catch {
+      const raw = await this.runtime.complete([...task, "Format exakt:", "TITEL: <Titel>", "BESCHREIBUNG:", "<Beschreibung>", "", ...facts].join("\n"), opts);
+      const title = /TITEL:\s*(.+)/.exec(raw)?.[1]?.trim() ?? commits[0]!;
+      const body = raw.split(/BESCHREIBUNG:\s*/)[1]?.trim() ?? raw.trim();
+      return { title: title.slice(0, 256), body, base, head };
+    }
   }
 }

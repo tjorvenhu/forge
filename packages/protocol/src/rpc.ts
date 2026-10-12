@@ -10,6 +10,8 @@ import {
   DevServerState,
   SearchHit,
   PhoneConfig,
+  PhoneEngine,
+  AppUpdateState,
   PhoneState,
   PhoneCallRecord,
   ConfigDoc,
@@ -218,8 +220,21 @@ export const methods = {
     result: z.object({ deleted: z.boolean(), transcriptDeleted: z.boolean() }),
   },
   "sessions.get": { params: sessionRef, result: Session },
+  /** stops one background task or subagent; the turn and other tasks go on */
+  "sessions.stopTask": { params: sessionRef.extend({ taskId: z.string().min(1) }), result: z.object({ ok: z.boolean() }) },
+  /** moves running foreground work (a subagent or command, or all with no toolUseId) into the background, like Ctrl+B */
+  "sessions.toBackground": { params: sessionRef.extend({ toolUseId: z.string().optional() }), result: z.object({ moved: z.boolean() }) },
+  /**
+   * A branch of the conversation: a new session with the history before the prompt with seq
+   * `beforeSeq` (the whole history without it). `session` is null when the branch starts before the
+   * first prompt; `prompt` is the text to edit and send again.
+   */
+  "sessions.fork": {
+    params: sessionRef.extend({ beforeSeq: z.number().int().optional(), rewindFiles: z.boolean().default(false) }),
+    result: z.object({ session: Session.nullable(), prompt: z.string().nullable(), filesChanged: z.array(z.string()).nullable() }),
+  },
   "sessions.events": {
-    /** the newest events (at most 20,000) after afterSeq; older ones page by passing the first seq as beforeSeq */
+    /** the newest events (at most 2,000) after afterSeq; older ones page by passing the first seq as beforeSeq */
     params: sessionRef.extend({ afterSeq: z.number().int().optional(), beforeSeq: z.number().int().optional() }),
     result: z.array(SessionEvent),
   },
@@ -270,6 +285,12 @@ export const methods = {
   "devserver.stop": { params: projectRef, result: DevServerState },
   "devserver.output": { params: projectRef, result: z.object({ text: z.string() }) },
 
+  "app.updateState": { params: empty, result: AppUpdateState },
+  /** looks for a newer release now */
+  "app.checkUpdate": { params: empty, result: AppUpdateState },
+  /** downloads and checks the installer of the newest release; installing is a command of the desktop shell */
+  "app.downloadUpdate": { params: empty, result: AppUpdateState },
+
   "phone.config": { params: empty, result: PhoneConfig },
   "phone.saveConfig": {
     params: z.object({
@@ -286,6 +307,30 @@ export const methods = {
       notifyNumber: z.string().max(40).nullable().optional(),
       notifyOn: z.object({ done: z.boolean(), approval: z.boolean(), error: z.boolean() }).optional(),
       requirePin: z.boolean().optional(),
+      engine: PhoneEngine.optional(),
+      liveModel: z.string().max(80).optional(),
+      geminiVoice: z.string().max(40).optional(),
+      speechProvider: z.enum(["openai", "gemini"]).optional(),
+      geminiSttModel: z.string().max(80).optional(),
+      geminiTtsModel: z.string().max(80).optional(),
+      desk: z
+        .object({
+          enabled: z.boolean(),
+          phoneIp: z.string().max(64),
+          httpPort: z.number().int().min(1024).max(65535),
+          webUser: z.string().max(100),
+          sessionKeys: z.array(z.number().int().min(1).max(30)).max(10),
+          clearKeys: z.array(z.number().int().min(1).max(30)).max(30),
+          leds: z.boolean(),
+          hotline: z.boolean(),
+          display: z.enum(["lines", "statusline", "off"]),
+        })
+        .partial()
+        .optional(),
+      /** new Gemini API key; empty string removes it */
+      geminiKey: z.string().max(400).optional(),
+      /** new web password of the desk phone; empty string removes it */
+      deskPassword: z.string().max(200).optional(),
       /** new SIP password; empty string removes it */
       password: z.string().max(200).optional(),
       /** new OpenAI API key; empty string removes it */
@@ -299,6 +344,8 @@ export const methods = {
   "phone.setEnabled": { params: z.object({ enabled: z.boolean() }), result: PhoneState },
   "phone.testCall": { params: empty, result: PhoneState },
   "phone.hangup": { params: empty, result: PhoneState },
+  /** shows a test message on the desk phone and refreshes keys and LEDs */
+  "phone.deskTest": { params: empty, result: PhoneState },
   "phone.calls": { params: z.object({ limit: z.number().int().min(1).max(100).default(20) }), result: z.array(PhoneCallRecord) },
 
   "git.status": { params: projectRef, result: GitStatus },
@@ -380,6 +427,7 @@ export type ServerEvent =
   | { event: "devserver.updated"; payload: DevServerState }
   | { event: "devserver.output"; payload: { projectId: string; text: string } }
   | { event: "phone.updated"; payload: PhoneState }
+  | { event: "update.updated"; payload: AppUpdateState }
   | { event: "sidecar.ready"; payload: { version: string } }
   | { event: "log"; payload: { level: "info" | "warn" | "error"; message: string } };
 

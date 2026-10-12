@@ -10,7 +10,7 @@ import { useUi, type WorkspaceTab } from "@/stores/ui";
 import { toast } from "@/stores/toast";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu } from "@/components/ui/dropdown";
-import { Badge, EmptyState, ErrorBanner, Loading } from "@/components/ui/misc";
+import { Badge, EmptyState, ErrorBanner } from "@/components/ui/misc";
 import { TabBar } from "@/components/ui/tabs";
 import { ProjectIcon } from "@/components/projects/ProjectIcon";
 import { PROFILE_IDS, PROFILE_INFO, ProfileBadge } from "@/components/projects/ProfileBadge";
@@ -29,6 +29,7 @@ import { DevServerMenu } from "@/components/workspace/DevServer";
 import { PhoneButton } from "@/components/layout/PhoneButton";
 import { HeaderDivider } from "@/components/layout/Page";
 import { SearchField } from "@/components/layout/SearchField";
+import { ChatSkeleton } from "@/components/ui/skeleton";
 
 export function WorkspaceView() {
   const projectId = useUi((s) => s.activeProjectId);
@@ -49,7 +50,7 @@ export function WorkspaceView() {
   }, [projectId, qc]);
 
   if (!projectId) return <EmptyState title="Kein Projekt geöffnet">Wähle links ein Projekt oder füge eines hinzu.</EmptyState>;
-  if (project.isLoading) return <Loading className="py-12" />;
+  if (project.isLoading) return <ChatSkeleton />;
   if (project.isError || !project.data)
     return (
       <div className="p-6">
@@ -125,7 +126,7 @@ function Workspace({ projectId }: { projectId: string }) {
               <PanelRight className="h-4 w-4" />
             </Button>
           </div>
-          <div className="min-h-0 flex-1">
+          <div key={workspaceTab} className="min-h-0 flex-1 animate-view-in">
             {workspaceTab === "chat" &&
               (project.exists ? <ChatPanel project={project} workingInPanel={showRight} /> : <EmptyState title="Chat nicht verfügbar">Der Projektordner fehlt.</EmptyState>)}
             {workspaceTab === "agents" && <AgentsTab project={project} />}
@@ -147,7 +148,7 @@ function RightPanel({ projectId }: { projectId: string }) {
   const project = useProject(projectId).data!;
   const [tab, setTab] = useState<RightTab>("files");
   return (
-    <aside className="flex w-100 shrink-0 flex-col border-l border-border bg-sidebar xl:w-110">
+    <aside className="flex w-100 shrink-0 animate-panel-in flex-col border-l border-border bg-sidebar xl:w-110">
       <div className="flex h-12 shrink-0 items-center border-b border-border px-3">
         <TabBar<RightTab>
           size="lg"
@@ -160,7 +161,7 @@ function RightPanel({ projectId }: { projectId: string }) {
           ]}
         />
       </div>
-      <div className="min-h-0 flex-1">
+      <div key={tab} className="min-h-0 flex-1 animate-view-in">
         {tab === "files" ? <FileTree project={project} /> : tab === "git" ? <GitPanel project={project} compact /> : <ActivityFeed projectId={projectId} projectDir={project.path} />}
       </div>
       <WorkingCard project={project} />
@@ -174,23 +175,31 @@ function WorkspaceHeader({ projectId }: { projectId: string }) {
 
   const sandboxOnly = project.tags.includes("sandbox-only");
 
+  /** Shows a project change at once; the refetch afterwards brings the stored state, also after an error. */
+  const optimistic = (patch: Partial<typeof project>) => qc.setQueryData(keys.project(projectId), (p: typeof project | undefined) => (p ? { ...p, ...patch } : p));
+
   const setProfile = async (profile: ProfileId) => {
+    optimistic({ profile });
     try {
       await call("projects.update", { projectId, profile });
       await qc.invalidateQueries({ queryKey: keys.project(projectId) });
       void qc.invalidateQueries({ queryKey: keys.projects });
       toast.success(`Profil ${PROFILE_INFO[profile].label}`, "Gilt sofort, auch für laufende Sessions.");
     } catch (e) {
+      void qc.invalidateQueries({ queryKey: keys.project(projectId) });
       toast.error("Profil nicht geändert", errorMessage(e));
     }
   };
 
   const toggleFavorite = async () => {
+    const favorite = !project.favorite;
+    optimistic({ favorite });
     try {
-      await call("projects.update", { projectId, favorite: !project.favorite });
+      await call("projects.update", { projectId, favorite });
       await qc.invalidateQueries({ queryKey: keys.project(projectId) });
       void qc.invalidateQueries({ queryKey: keys.projects });
     } catch (e) {
+      void qc.invalidateQueries({ queryKey: keys.project(projectId) });
       toast.error("Nicht gespeichert", errorMessage(e));
     }
   };

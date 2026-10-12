@@ -64,6 +64,7 @@ function liveSession(rt: Partial<RuntimeSession> = {}): LiveSession {
     seenUuids: new Set(),
     remoteTurn: null,
     background: new Map(),
+    subagents: new Map(),
     context: null,
   };
   core.live.set(SID, live);

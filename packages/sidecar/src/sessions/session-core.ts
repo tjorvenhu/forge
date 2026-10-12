@@ -21,6 +21,7 @@ export class SessionCore {
       ...r,
       live: !!live,
       background: live ? [...live.background.values()] : [],
+      subagents: live ? [...live.subagents.values()] : [],
       context: live?.context ?? null,
       autoContinueAt: this.db.getAutoContinue(r.id)?.dueAt ?? null,
     };

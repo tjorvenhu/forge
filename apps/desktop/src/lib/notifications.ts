@@ -10,6 +10,8 @@ export type NotifyKind = "done" | "approval" | "error";
 /** Which session events get a sound and a notification; null for all others. */
 export function notifyKind(body: SessionEvent["body"]): NotifyKind | null {
   if (body.type === "approval.request") return "approval";
+  // Claude asked for the user (tool notify): sounds like a decision that waits.
+  if (body.type === "notify") return "approval";
   if (body.type === "error") return "error";
   if (body.type === "turn.result") {
     if (isInterrupted(body)) return null;
@@ -60,6 +62,10 @@ export async function notifySession(qc: QueryClient, ev: SessionEvent, kind: Not
   const b = ev.body;
   const detail =
     b.type === "approval.request" ? (b.title ?? b.toolName) : b.type === "error" ? b.message : b.type === "turn.result" && b.isError ? (b.text ?? b.subtype) : null;
+  if (b.type === "notify") {
+    toast.notify({ tone: b.urgent ? "warning" : "info", title: b.urgent ? "Claude braucht dich" : "Claude meldet sich", body: [where, b.message].filter(Boolean).join("\n"), action, duration: b.urgent ? 20_000 : 10_000 });
+    return;
+  }
   if (kind === "approval") {
     const tool = b.type === "approval.request" ? b.toolName : "";
     const title = tool === "AskUserQuestion" ? "Rückfrage von Claude" : tool === "ExitPlanMode" ? "Plan zur Freigabe" : "Freigabe nötig";

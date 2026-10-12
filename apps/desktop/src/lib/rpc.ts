@@ -31,7 +31,10 @@ class RpcClient {
   async start() {
     if (this.started) return;
     this.started = true;
-    await listen<string>("sidecar://message", (e) => this.onLine(e.payload));
+    // Lines come in batches: what piled up while the webview was busy arrives in one event.
+    await listen<string[]>("sidecar://messages", (e) => {
+      for (const line of e.payload) this.onLine(line);
+    });
     await listen<{ code: number | null; stderr: string }>("sidecar://exit", (e) => {
       this.setUp(false, e.payload.stderr);
       for (const [, p] of this.pending) {

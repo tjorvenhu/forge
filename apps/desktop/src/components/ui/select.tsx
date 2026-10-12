@@ -2,6 +2,7 @@ import { useRef } from "react";
 import * as S from "@radix-ui/react-select";
 import { Check, ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { POPPER_MOTION } from "@/lib/motion";
 
 export interface SelectOption<T extends string> {
   value: T;
@@ -54,7 +55,7 @@ export function Select<T extends string>({ value, onChange, options, placeholder
         </S.Icon>
       </S.Trigger>
       <S.Portal>
-        <S.Content position="popper" sideOffset={4} className="z-50 max-h-80 min-w-[var(--radix-select-trigger-width)] overflow-hidden rounded-lg border border-border bg-surface-2 shadow-xl">
+        <S.Content position="popper" sideOffset={4} className={cn("z-50 max-h-80 min-w-[var(--radix-select-trigger-width)] overflow-hidden rounded-lg border border-border bg-surface-2 shadow-xl", POPPER_MOTION)}>
           <S.Viewport className="p-1">
             {options.map((o) => (
               <S.Item

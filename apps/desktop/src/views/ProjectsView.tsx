@@ -4,11 +4,12 @@ import type { ProjectWithStatus } from "@forge/protocol";
 import { useProjects } from "@/lib/queries";
 import { Page } from "@/components/layout/Page";
 import { Input } from "@/components/ui/input";
-import { EmptyState, ErrorBanner, Loading } from "@/components/ui/misc";
+import { EmptyState, ErrorBanner } from "@/components/ui/misc";
 import { Select } from "@/components/ui/select";
 import { AddProjectActions } from "@/components/projects/AddProjectActions";
 import { ProjectCard } from "@/components/projects/ProjectCard";
 import { RemoveProjectDialog } from "@/components/projects/RemoveProjectDialog";
+import { ListSkeleton } from "@/components/ui/skeleton";
 
 type Filter = "all" | "favorites" | "dirty" | "missing";
 
@@ -53,7 +54,7 @@ export function ProjectsView() {
           ]}
         />
       </div>
-      {projects.isLoading && <Loading />}
+      {projects.isLoading && <ListSkeleton rows={6} />}
       {projects.isError && <ErrorBanner>Projekte konnten nicht geladen werden.</ErrorBanner>}
       {projects.isSuccess && items.length === 0 && (
         <EmptyState title={projects.data.length ? "Keine Treffer" : "Noch keine Projekte"}>

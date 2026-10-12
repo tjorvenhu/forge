@@ -828,7 +828,7 @@ function describeFailure(status: number, reason: string): string {
 }
 
 /** The local IP the OS would use to reach the PBX (no packet is sent). */
-async function localIpTowards(ip: string, port: number): Promise<string> {
+export async function localIpTowards(ip: string, port: number): Promise<string> {
   const s = createSocket("udp4");
   try {
     await new Promise<void>((resolve, reject) => {

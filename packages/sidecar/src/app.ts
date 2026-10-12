@@ -8,6 +8,7 @@ import { McpService } from "./config/mcp.js";
 import { WorktreeService } from "./automation/worktrees.js";
 import { DevServerService } from "./devserver/dev-server.js";
 import { PhoneService } from "./phone/phone-service.js";
+import { AppUpdateService } from "./update/app-update.js";
 import { SecretStore } from "./phone/secrets.js";
 import { locateClaude, sessionEnv } from "./claude/environment.js";
 import { Db } from "./persistence/db.js";
@@ -58,6 +59,7 @@ export function createApp(opts: { dataDir: string; write: Writer; log?: (m: stri
     sessions,
     devServers,
     git,
+    worktrees,
     secrets: new SecretStore(path.join(opts.dataDir, "secrets")),
     emit,
     claude: () => {
@@ -67,7 +69,15 @@ export function createApp(opts: { dataDir: string; write: Writer; log?: (m: stri
     log: (m) => opts.log?.(m),
   });
   void phone.init();
+  const updates = new AppUpdateService({
+    emit: (payload) => emit({ event: "update.updated", payload }),
+    enabled: () => db.getSettings().updateChecks,
+    log: (m) => opts.log?.(m),
+  });
+  // Only in the desktop app (the shell passes its version); tests and the CLI do not look for updates.
+  if (process.env.FORGE_APP_VERSION) updates.start();
   const handlers = createHandlers({
+    updates,
     mcp,
     worktrees,
     devServers,
@@ -93,6 +103,7 @@ export function createApp(opts: { dataDir: string; write: Writer; log?: (m: stri
       await Promise.race([Promise.allSettled([sessions.drain(), Promise.resolve().then(() => phone?.shutdown())]), limit]);
       clearTimeout(timer);
       sessions.shutdown();
+      updates.stop();
       devServers.shutdown();
       github.shutdown();
       claudeSetup.shutdown();

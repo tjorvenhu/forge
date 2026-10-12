@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from "react";
-import { ChevronRight, GitCommitHorizontal, Hourglass, Shrink, SkipForward, Undo2, Upload, Gauge } from "lucide-react";
+import { Collapse } from "@/components/ui/collapse";
+import { BellRing, ChevronRight, GitCommitHorizontal, Hourglass, Shrink, SkipForward, Undo2, Upload, Gauge } from "lucide-react";
 import { clockTime, cn } from "@/lib/utils";
 import type { NoticeIcon } from "./chat-items";
 import { ChatRow, Guide, HoverTime } from "./ChatRow";
@@ -24,6 +25,7 @@ const ICONS: Record<NoticeIcon, ReactNode> = {
   compact: <Shrink className={EVENT_ICON} />,
   background: <Hourglass className={EVENT_ICON} />,
   limit: <Gauge className={EVENT_ICON} />,
+  notify: <BellRing className={EVENT_ICON} />,
 };
 
 export function noticeIcon(icon: NoticeIcon): ReactNode {
@@ -81,7 +83,11 @@ export function EventCard({
         {action && <div className="-my-1 shrink-0">{action}</div>}
         <HoverTime time={clockTime(ts)} />
       </div>
-      {expandable && open && <Guide className="mt-1.5">{children}</Guide>}
+      {expandable && (
+        <Collapse open={open}>
+          <Guide className="mt-1.5">{children}</Guide>
+        </Collapse>
+      )}
     </ChatRow>
   );
 }

@@ -1,6 +1,6 @@
 //! Owns the Node sidecar process. The webview never gets a socket or shell:
 //! it can only send protocol lines through `sidecar_send`, and receives
-//! stdout lines as `sidecar://message` events.
+//! stdout lines as `sidecar://messages` events (a batch of lines each).
 
 use std::io::{BufRead, BufReader, Read, Write};
 use std::os::windows::process::CommandExt;
@@ -20,6 +20,9 @@ use crate::job;
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
 const STDERR_TAIL_BYTES: usize = 8 * 1024;
+/// Most lines per event. While text streams, lines arrive faster than events can be delivered;
+/// sending what has piled up in one event saves the webview one task per token.
+const MAX_BATCH: usize = 256;
 /// How long the sidecar gets to stop its Claude processes and dev servers on its own. Must stay
 /// above SHUTDOWN_LIMIT_MS in packages/sidecar/src/app.ts (5 s) plus time to end the processes.
 const SHUTDOWN_GRACE: Duration = Duration::from_secs(7);
@@ -118,6 +121,8 @@ impl Sidecar {
         if let Some(r) = &runtime {
             cmd.env("FORGE_RUNTIME_DIR", r);
         }
+        // The sidecar compares this with the GitHub releases (updates).
+        cmd.env("FORGE_APP_VERSION", app.package_info().version.to_string());
         cmd.arg("--no-warnings")
             .arg(&script)
             .stdin(Stdio::piped())
@@ -181,15 +186,36 @@ impl Sidecar {
         let gen_ref = self.generation.clone();
         let tail_ref = self.stderr_tail.clone();
         thread::spawn(move || {
+            // The reader only reads; a second thread emits. When emitting falls behind, the lines that
+            // piled up go out together. A single line is sent at once, nothing waits for a batch.
+            let (lines_tx, lines_rx) = mpsc::channel::<String>();
+            let app_emit = app_out.clone();
+            let emitter = thread::spawn(move || {
+                while let Ok(first) = lines_rx.recv() {
+                    let mut batch = vec![first];
+                    while batch.len() < MAX_BATCH {
+                        match lines_rx.try_recv() {
+                            Ok(l) => batch.push(l),
+                            Err(_) => break,
+                        }
+                    }
+                    let _ = app_emit.emit("sidecar://messages", batch);
+                }
+            });
             let reader = BufReader::new(stdout);
             for line in reader.lines() {
                 match line {
                     Ok(l) => {
-                        let _ = app_out.emit("sidecar://message", l);
+                        if lines_tx.send(l).is_err() {
+                            break;
+                        }
                     }
                     Err(_) => break,
                 }
             }
+            // Every line is delivered before the exit is reported.
+            drop(lines_tx);
+            let _ = emitter.join();
             // stdout closed: the process is gone or going. Only report if this is still the current one.
             if gen_ref.load(Ordering::SeqCst) != gen {
                 return;

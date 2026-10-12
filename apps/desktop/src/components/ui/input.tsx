@@ -2,7 +2,7 @@ import { forwardRef, type InputHTMLAttributes, type TextareaHTMLAttributes } fro
 import { cn } from "@/lib/utils";
 
 const base =
-  "w-full rounded-md border border-border bg-surface-2 px-2.5 text-body text-fg placeholder:text-subtle focus:border-accent focus:outline-none disabled:opacity-50";
+  "w-full rounded-md border border-border bg-surface-2 px-2.5 text-body text-fg transition-[border-color] duration-120 placeholder:text-subtle focus:border-accent focus:outline-none disabled:opacity-50";
 
 export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputElement>>(({ className, ...props }, ref) => (
   <input ref={ref} className={cn(base, "h-8", className)} {...props} />

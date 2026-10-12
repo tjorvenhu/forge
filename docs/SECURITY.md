@@ -2,7 +2,7 @@
 
 ## Grundsätze
 
-1. **Keine lokale Schnittstelle für die UI.** UI und Sidecar sprechen über stdin/stdout. Es gibt keinen localhost-Port. Einzige Ausnahme im Netz ist das Telefon (Phase 5): SIP und RTP über UDP auf der Schnittstelle zur Anlage, nur Pakete von der Anlage (siehe Abschnitt Telefon).
+1. **Keine lokale Schnittstelle für die UI.** UI und Sidecar sprechen über stdin/stdout. Es gibt keinen localhost-Port. Einzige Ausnahme im Netz ist das Telefon (Phase 5): SIP und RTP über UDP auf der Schnittstelle zur Anlage, nur Pakete von der Anlage, und beim eingebundenen Tischtelefon ein HTTP-Port, der nur dem Telefon antwortet (siehe Abschnitt Telefon).
 2. **Webview mit minimalen Rechten.** Tauri-Capabilities: `core:default`, `dialog:allow-open`, `opener:allow-open-url` für `https://` sowie `http://localhost:*` und `http://127.0.0.1:*` (Dev-Server). Kein Shell-, FS- oder HTTP-Plugin. CSP ohne externe Quellen (nur GitHub-Avatare als Bilder). `freezePrototype` ist aus, weil Editor- und Terminal-Bibliotheken beim Laden Prototyp-Methoden setzen; es werden keine fremden Inhalte geladen.
 3. **Kein Shell-Interpolieren.** Alle Prozesse (`git`, `gh`, `claude`) starten mit `spawn(cmd, args[], {shell:false})` und explizitem `cwd`.
 4. **Validierung an der Grenze.** Jede RPC-Anfrage wird im Sidecar mit Zod geprüft. Pfade werden kanonisiert, auch über Symlinks und Junctions hinweg (`projects.readFile`, `projects.listFiles`); Datei- und Git-Operationen außerhalb des Projektordners werden abgelehnt. Git bekommt Pfade als literale Pathspecs (`GIT_LITERAL_PATHSPECS=1`), Zeichen wie `[` oder `*` im Dateinamen wählen also keine weiteren Dateien aus. `FORGE_NODE` und `FORGE_SIDECAR` wirken nur in Debug-Builds; `term_open` akzeptiert nur ein vorhandenes Verzeichnis und eine Datei namens `claude`, `claude.exe` oder `claude.cmd`.
@@ -160,10 +160,22 @@ E-Mail-Adresse oder Org-Daten der Claude-Anmeldung.
   laufen wie immer mit Profil, Freigaben und Sperrliste des Projekts. Push auf `main`/`master` geht am Telefon nur,
   wenn der Anrufer es ausdrücklich verlangt (Parameter `allow_protected`); am Rechner braucht es das Eintippen des
   Branch-Namens.
-- **Geheimnisse:** SIP-Passwort und OpenAI-Key liegen unter `<Datenordner>/secrets`, mit DPAPI für das
+- **Geheimnisse:** SIP-Passwort, OpenAI- und Gemini-Key und das Web-Passwort des Tischtelefons liegen unter `<Datenordner>/secrets`, mit DPAPI für das
   Windows-Benutzerkonto verschlüsselt (PowerShell, Übergabe per stdin). Die UI sieht nur, ob sie gesetzt sind.
-- **Datenfluss:** Gesprächsaudio der Anrufer geht zur Transkription an OpenAI, die Antworttexte zur Sprachausgabe.
-  Das Gespräch selbst führt Claude (Haiku) über das Claude-Code-Abo. Transkripte stehen lokal im Anrufprotokoll.
+- **Datenfluss:** Mit Gemini Live (Standard) geht das Gesprächsaudio an Google; Gemini bekommt dazu die Ergebnisse
+  der FORGE-Werkzeuge (Session-Titel, Kurzfassungen, offene Freigaben), markiert als Daten. Mit Claude als
+  Gesprächspartner führt Claude (Haiku) das Gespräch über das Abo; Audio geht zur Erkennung und die Antworttexte zur
+  Sprachausgabe an OpenAI oder Google, je nach Einstellung. Transkripte stehen lokal im Anrufprotokoll.
+- **Gemini als Gesprächspartner (ADR 0011):** dieselben Werkzeuge und Grenzen wie für Claude. Aufrufe kommen als
+  JSON und werden vor der Ausführung geprüft; unbekannte Werkzeuge und ungültige Angaben gehen als Fehlertext zurück.
+  Die PIN läuft auch hier nur über die Tastatur. Session-Text bekommt Gemini als markierte Daten mit demselben Verbot
+  im System-Prompt; das Restrisiko „keine zweite Hürde nach der PIN“ gilt genauso.
+- **Tischtelefon (ADR 0011):** FORGE öffnet einen HTTP-Port (Standard 8766) nur auf der Schnittstelle zum Telefon.
+  Er antwortet nur der eingetragenen IP des Telefons, und jede URL enthält ein zufälliges Token (96 Bit), das nur in
+  der Provisioning-Datei steht. Über diesen Weg gehen Tastendrücke (Session wählen, FORGE anrufen) und Antworten auf
+  Freigabe-Menüs; Freigaben am Tischtelefon brauchen keine PIN, wie Freigaben am Rechner. Wer im LAN die IP des
+  Telefons übernimmt und das Token kennt, kann Freigaben erteilen. Die Provisioning-Datei enthält keine Passwörter.
+  Für LEDs und Display meldet sich FORGE mit dem Web-Login am Telefon an (Basic oder Digest, unverschlüsselt im LAN).
 - **Restrisiken:** SIP über UDP und RTP sind unverschlüsselt (kein TLS, kein SRTP). Im eigenen Netz oder über ein
   VPN zur Anlage betreiben. Die Windows-Firewall fragt beim ersten Anruf nach Zugriff für Node.js. Wer im Netz die
   Absenderadresse der Anlage fälschen kann, kommt an der Adressprüfung vorbei; dagegen hilft nur TLS. Audio nimmt

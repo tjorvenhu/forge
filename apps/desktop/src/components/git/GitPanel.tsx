@@ -8,9 +8,10 @@ import { cn } from "@/lib/utils";
 import { toast } from "@/stores/toast";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/input";
-import { Badge, Checkbox, EmptyState, ErrorBanner, Tooltip, Loading } from "@/components/ui/misc";
+import { Badge, Checkbox, EmptyState, ErrorBanner, Tooltip } from "@/components/ui/misc";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { DiffView } from "./DiffView";
+import { ListSkeleton } from "@/components/ui/skeleton";
 
 const KIND: Record<FileStatus["kind"], { letter: string; tone: string; label: string }> = {
   modified: { letter: "M", tone: "text-warning", label: "geändert" },
@@ -43,7 +44,7 @@ export function GitPanel({ project, compact = false }: { project: Project; compa
   }, [files]);
 
   if (!project.exists) return <EmptyState title="Projektordner fehlt">Der Ordner {project.path} existiert nicht mehr.</EmptyState>;
-  if (status.isLoading) return <Loading />;
+  if (status.isLoading) return <ListSkeleton rows={6} />;
   if (status.isError) {
     const notRepo = status.error instanceof RpcCallError && status.error.code === "GIT_NOT_REPO";
     return notRepo ? (

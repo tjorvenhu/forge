@@ -20,6 +20,7 @@ import { ProjectManager } from "../src/projects/project-manager.js";
 import type { SessionService } from "../src/sessions/session-service.js";
 import type { DevServerService } from "../src/devserver/dev-server.js";
 import { tempDir } from "./helpers.js";
+import type { WorktreeService } from "../src/automation/worktrees.js";
 
 const md5 = (s: string) => createHash("md5").update(s).digest("hex");
 const tone = (ms: number, amp = 9000) => Int16Array.from({ length: (ms / 1000) * 8000 }, (_, i) => Math.round(Math.sin((2 * Math.PI * 300 * i) / 8000) * amp));
@@ -359,6 +360,8 @@ describe("PhoneService end to end with a test PBX", () => {
   const steered: string[] = [];
   let remoteOn = false;
   let projectId = "";
+  let worktreesCreated: string[] = [];
+  let startedIn: string[] = [];
   let sessionList: Array<{ id: string; projectId: string; title: string; status: string; live: boolean; updatedAt: string; projectName: string }>;
   let secrets: SlowSecrets;
   let failConversation: boolean;
@@ -385,6 +388,8 @@ describe("PhoneService end to end with a test PBX", () => {
     failConversation = false;
     rtps = [];
     logs = [];
+    worktreesCreated = [];
+    startedIn = [];
     sessionList = [{ id: "s1", projectId, title: "Warenkorb", status: "idle", live: true, updatedAt: new Date().toISOString(), projectName: "shop" }];
     const sessions = {
       get: (id: string) => {
@@ -394,6 +399,12 @@ describe("PhoneService end to end with a test PBX", () => {
       },
       listLive: () => sessionList.filter((s) => s.live),
       listAll: () => sessionList,
+      start: async (o: { projectId: string; prompt: string }) => {
+        const s = { id: `s${sessionList.length + 1}`, projectId: o.projectId, title: o.prompt, status: "starting", live: true, updatedAt: new Date().toISOString(), projectName: "x" };
+        sessionList.push(s);
+        startedIn.push(o.projectId);
+        return s;
+      },
       send: async (id: string, text: string) => {
         sent.push([id, text]);
         return sessionList[0];
@@ -420,6 +431,14 @@ describe("PhoneService end to end with a test PBX", () => {
       sessions,
       devServers: {} as DevServerService,
       git: new GitEngine(),
+      worktrees: {
+        create: async (parent: { id: string; name: string; path: string }, branch: string) => {
+          worktreesCreated.push(`${parent.name}:${branch}`);
+          const dir = path.join(t.dir, "shop-agent");
+          mkdirSync(dir, { recursive: true });
+          return projects.import(dir, parent.id);
+        },
+      } as unknown as WorktreeService,
       secrets,
       emit: (e) => events.push(e),
       claude: () => ({ path: "claude", env: {}, cwd: t.dir }),
@@ -458,6 +477,7 @@ describe("PhoneService end to end with a test PBX", () => {
       port: pbx.port,
       username: "forge",
       password: pbx.password,
+      engine: "claude",
       openAiKey: "sk-test",
       pin: "4711",
       allowedCallers: ["+49 30 1112233"],
@@ -690,6 +710,13 @@ describe("PhoneService end to end with a test PBX", () => {
     // The test project is no git repository: the error reaches Claude as text.
     expect(await conv.tools.git("shop", "status")).toMatch(/^Fehler: Kein Git-Repository/);
     expect(await conv.tools.git("nirgends", "push")).toMatch(/^Fehler: Kein Projekt/);
+    // A parallel agent gets its own worktree; the session runs there, not in the project itself.
+    expect(await conv.tools.startSession("shop", "Baue den CSV-Export", { agent: true })).toMatch(/^Agent S\d im Projekt shop gestartet, in einem eigenen Worktree/);
+    expect(worktreesCreated).toEqual([expect.stringMatching(/^shop:agent\/baue-den-csv-export-[a-z0-9]{1,4}$/)]);
+    expect(startedIn).toHaveLength(1);
+    expect(startedIn[0]).not.toBe(projectId);
+    expect(await conv.tools.startSession("shop", "Nur kurz prüfen")).toMatch(/^Neue Session S\d im Projekt shop gestartet/);
+    expect(startedIn[1]).toBe(projectId);
     await byeFromPbx("c-steer", inv, ok);
   }, 30_000);
 

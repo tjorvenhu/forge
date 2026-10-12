@@ -47,7 +47,7 @@ export function RadioGroup<T extends string>({ value, onChange, options, classNa
             tabIndex={checked || (!options.some((x) => x.value === value) && i === enabled[0]) ? 0 : -1}
             onClick={() => onChange(o.value)}
             onKeyDown={(e) => onKeyDown(e, i)}
-            className="flex items-center gap-2 rounded-md text-body text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-50"
+            className="flex items-center gap-2 rounded-md text-body text-fg disabled:opacity-50"
           >
             <span
               className={cn(

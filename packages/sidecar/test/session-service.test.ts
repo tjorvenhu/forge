@@ -58,6 +58,13 @@ class FakeRuntime implements ClaudeRuntime {
     if (this.completeResult instanceof Error) throw this.completeResult;
     return this.completeResult;
   }
+  /** structured answers; an Error like a CLI without structured output */
+  completeJsonResult: unknown = new Error("no structured output in tests");
+  async completeJson(prompt: string) {
+    this.completions.push(prompt);
+    if (this.completeJsonResult instanceof Error) throw this.completeJsonResult;
+    return this.completeJsonResult;
+  }
   /** what generateTitle of a running session answers; null like a CLI without the call */
   generatedTitle: string | null | Error | Promise<string | null> = null;
   titleRequests: string[] = [];
@@ -72,8 +79,17 @@ class FakeRuntime implements ClaudeRuntime {
     if (!this.usage) throw new Error("no usage in tests");
     return this.usage;
   }
+  /** transcript entries for sessionHistory (only uuid matters for branching) */
+  history: Array<{ uuid: string }> = [];
   async sessionHistory() {
-    return [];
+    return this.history;
+  }
+  forks: Array<{ claudeSessionId: string; upTo: string | null; title: string }> = [];
+  stoppedTasks: string[] = [];
+  backgrounded: string[] = [];
+  async forkTranscript(claudeSessionId: string, _dir: string, upTo: string | null, title: string) {
+    this.forks.push({ claudeSessionId, upTo, title });
+    return `fork-${this.forks.length}`;
   }
   deletedTranscripts: string[] = [];
   async deleteTranscript(id: string) {
@@ -93,6 +109,13 @@ class FakeRuntime implements ClaudeRuntime {
       },
       rewindFiles: async () => ({ canRewind: true, error: null, filesChanged: ["a.txt"], insertions: 1, deletions: 0 }),
       supportedCommands: async () => [],
+      stopTask: async (taskId) => {
+        this.stoppedTasks.push(taskId);
+      },
+      toBackground: async (toolUseId) => {
+        this.backgrounded.push(toolUseId ?? "*");
+        return true;
+      },
       interrupt: async () => {
         this.interrupted++;
         sink.onMessage({ type: "result", subtype: "error_during_execution", is_error: true, errors: ["interrupted"] });
@@ -173,6 +196,94 @@ describe("SessionService", () => {
     expect(types).toEqual(expect.arrayContaining(["user.message", "session.init", "tool.use", "tool.result", "assistant.text", "turn.result"]));
     expect(types).not.toContain("assistant.delta");
     expect(emitted.some((e) => e.event === "session.event" && e.payload.body.type === "assistant.delta")).toBe(true);
+  });
+
+  it("branches the conversation before a prompt: new session with the history before it, original untouched", async () => {
+    const s = await svc.start({ projectId, prompt: "Lies a.txt" });
+    rt.replay();
+    await svc.send(s.id, "Jetzt b.txt");
+    rt.replay(rt.sinks.length - 1);
+    const prompts = db.listEvents(s.id).filter((e) => e.body.type === "user.message");
+    const second = prompts[1]!;
+    const secondUuid = second.body.type === "user.message" ? second.body.uuid! : "";
+    rt.history = [{ uuid: "x1" }, { uuid: "x2" }, { uuid: secondUuid }, { uuid: "x4" }];
+    const before = db.listEvents(s.id).length;
+
+    const r = await svc.fork(s.id, { beforeSeq: second.seq, rewindFiles: true });
+    expect(r.prompt).toBe("Jetzt b.txt");
+    expect(r.filesChanged).toEqual(["a.txt"]);
+    expect(rt.forks).toEqual([{ claudeSessionId: "d69118dc-ef0c-4925-9945-3091ab75cb15", upTo: "x2", title: "Lies a.txt (Zweig)" }]);
+    expect(r.session).toMatchObject({ claudeSessionId: "fork-1", status: "stopped", projectId, title: "Lies a.txt (Zweig)" });
+    const copied = db.listEvents(r.session!.id);
+    expect(copied.every((e) => e.seq < second.seq)).toBe(true);
+    expect(copied.length).toBe(db.listEvents(s.id).filter((e) => e.seq < second.seq).length);
+    // The original keeps everything (plus the record of the rewound files).
+    expect(db.listEvents(s.id).length).toBe(before + 1);
+
+    // Before the first prompt there is no history: a fresh start, no fork.
+    const first = prompts[0]!;
+    rt.history = [{ uuid: first.body.type === "user.message" ? first.body.uuid! : "" }];
+    expect(await svc.fork(s.id, { beforeSeq: first.seq })).toEqual({ session: null, prompt: "Lies a.txt", filesChanged: null });
+    await expect(svc.fork(s.id, { beforeSeq: 9999 })).rejects.toThrow(/nicht verzweigen/);
+  });
+
+  it("gives sessions FORGE tools: start parallel agents in worktrees, follow them, notify the user", async () => {
+    const repo = projects.get(projectId).path;
+    await initRepo(repo);
+    writeFileSync(path.join(repo, "a.txt"), "a");
+    await git(repo, "add", ".");
+    await git(repo, "commit", "-m", "init");
+    const s = await svc.start({ projectId, prompt: "Plane den Export" });
+    const tools = rt.started[0]!.tools!;
+    expect(tools.map((t) => [t.name, t.autoAllow])).toEqual([
+      ["start_agent", false],
+      ["agent_status", true],
+      ["message_agent", false],
+      ["notify", true],
+    ]);
+    expect(rt.started[0]!.context).toMatch(/start_agent/);
+    const tool = (name: string) => tools.find((t) => t.name === name)!;
+
+    expect(await tool("agent_status").run({})).toBe("Diese Session hat keine Agenten gestartet.");
+    const out = await tool("start_agent").run({ task: "Baue den CSV-Export in src/export.ts", name: "csv export" });
+    expect(out).toMatch(/^Agent [0-9a-f]{8} gestartet, Branch agent\/csv-export-[a-z0-9]+/);
+    const child = rt.started[1]!;
+    expect(child.cwd).toContain(".forge-worktrees");
+    expect(child.firstMessage?.text).toBe("Baue den CSV-Export in src/export.ts");
+    // Agents get no start_agent: one level, no chains.
+    expect(child.tools!.map((t) => t.name)).toEqual(["notify"]);
+    expect(child.context).toMatch(/paralleler Agent/);
+
+    const status = await tool("agent_status").run({});
+    expect(status).toMatch(/arbeitet/);
+    const agentId = /^([0-9a-f]{8})/.exec(status)![1]!;
+    rt.replay(1);
+    expect(await tool("message_agent").run({ agent: agentId, text: "Auch JSON bitte" })).toBe(`An Agent ${agentId} gesendet.`);
+    expect(rt.sent.at(-1)).toBe("Auch JSON bitte");
+    await expect(tool("message_agent").run({ agent: "zzzz", text: "x" })).rejects.toThrow(/Keinen Agenten/);
+
+    expect(await tool("notify").run({ message: "Export fertig, bitte prüfen", urgent: true })).toMatch(/dringend/);
+    expect(db.listEvents(s.id).at(-1)?.body).toEqual({ type: "notify", message: "Export fertig, bitte prüfen", urgent: true });
+  });
+
+  it("tracks subagent progress, stops single tasks and moves work into the background", async () => {
+    const s = await svc.start({ projectId, prompt: "Analysiere das Projekt" });
+    const sink = rt.sinks[0]!;
+    sink.onMessage({ type: "system", subtype: "task_started", task_id: "k1", tool_use_id: "tu1", description: "Auth prüfen", subagent_type: "general-purpose", task_type: "local_agent" });
+    // A shell command in the foreground is no subagent.
+    sink.onMessage({ type: "system", subtype: "task_started", task_id: "k2", description: "npm test", task_type: "local_bash" });
+    expect(svc.get(s.id).subagents).toMatchObject([{ taskId: "k1", toolUseId: "tu1", description: "Auth prüfen", agentType: "general-purpose", summary: null }]);
+    sink.onMessage({ type: "system", subtype: "task_progress", task_id: "k1", description: "Auth prüfen", usage: { total_tokens: 10, tool_uses: 3, duration_ms: 1 }, last_tool_name: "Grep", summary: "Liest die Login-Routen" });
+    expect(svc.get(s.id).subagents[0]).toMatchObject({ summary: "Liest die Login-Routen", lastTool: "Grep", toolUses: 3 });
+    sink.onMessage({ type: "system", subtype: "background_tasks_changed", tasks: [{ task_id: "b1", task_type: "local_bash", description: "dev server" }] });
+    sink.onMessage({ type: "system", subtype: "task_progress", task_id: "b1", description: "dev server", usage: { total_tokens: 0, tool_uses: 0, duration_ms: 1 }, summary: "läuft auf Port 5173" });
+    expect(svc.get(s.id).background).toMatchObject([{ taskId: "b1", summary: "läuft auf Port 5173" }]);
+    await svc.stopTask(s.id, "b1");
+    await svc.toBackground(s.id, "tu1");
+    expect(rt.stoppedTasks).toEqual(["b1"]);
+    expect(rt.backgrounded).toEqual(["tu1"]);
+    sink.onMessage({ type: "system", subtype: "task_notification", task_id: "k1", status: "completed" });
+    expect(svc.get(s.id).subagents).toEqual([]);
   });
 
   it("uses the Safe profile for real: default mode and disabled network tools", async () => {

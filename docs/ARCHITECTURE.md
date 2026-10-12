@@ -79,7 +79,7 @@ setzt er offene Sessions auf `interrupted`.
 Jede Session speichert `cwd` beim Start. Resume nutzt immer dieses `cwd`, auch wenn das Projekt
 verschoben wurde. Events werden mit `seq`, Zeitstempel, Typ und Session-ID in SQLite abgelegt;
 Token-Deltas werden nur live gesendet, nie gespeichert. `sessions.events` liefert die neuesten
-20.000 Events in aufsteigender Reihenfolge, ältere über den Parameter `beforeSeq`. Einmal-Aufrufe
+2.000 Events in aufsteigender Reihenfolge, ältere über den Parameter `beforeSeq`. Einmal-Aufrufe
 der CLI (Prüfung, Befehlsliste, Commit-Nachricht, Usage) brechen nach 45 Sekunden ab.
 
 ### Nutzungslimit und automatisches Weitermachen

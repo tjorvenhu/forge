@@ -8,7 +8,10 @@ import { errorMessage } from "./rpc";
 
 export const queryClient = new QueryClient({
   defaultOptions: {
-    queries: { retry: 1, staleTime: 5_000, refetchOnWindowFocus: true },
+    // Most data changes through events from the sidecar; refetching everything on each Alt+Tab
+    // kept the sidecar busy (git status for every project, transcript scans) while text streamed.
+    // Data that changes outside FORGE (git, terminal sessions) opts back in below.
+    queries: { retry: 1, staleTime: 30_000, refetchOnWindowFocus: false },
     mutations: { retry: 0 },
   },
 });
@@ -41,6 +44,7 @@ export const keys = {
   phoneState: ["phoneState"] as const,
   phoneConfig: ["phoneConfig"] as const,
   phoneCalls: ["phoneCalls"] as const,
+  appUpdate: ["appUpdate"] as const,
   remote: ["remote"] as const,
   search: (q: string) => ["search", q] as const,
 };
@@ -49,7 +53,8 @@ export function call<M extends MethodName>(method: M, params: ParamsOf<M>): Prom
   return rpc.call(method, params);
 }
 
-export const useProjects = () => useQuery({ queryKey: keys.projects, queryFn: () => call("projects.list", {}) });
+/** Branches and changes can move outside FORGE; after a minute away the list refreshes on focus. */
+export const useProjects = () => useQuery({ queryKey: keys.projects, queryFn: () => call("projects.list", {}), staleTime: 60_000, refetchOnWindowFocus: true });
 
 export const useProject = (id: string | null) =>
   useQuery({ queryKey: keys.project(id ?? ""), queryFn: () => call("projects.get", { projectId: id! }), enabled: !!id });
@@ -100,7 +105,13 @@ export const useGitStatus = (projectId: string | null, enabled = true) =>
     queryFn: () => call("git.status", { projectId: projectId! }),
     enabled: !!projectId && enabled,
     retry: false,
+    // Files are edited in other programs too: check again when FORGE gets the focus back.
+    staleTime: 5_000,
+    refetchOnWindowFocus: true,
   });
+
+/** FORGE updates; changes arrive as update.updated. */
+export const useAppUpdate = () => useQuery({ queryKey: keys.appUpdate, queryFn: () => call("app.updateState", {}), staleTime: Infinity });
 
 export const usePhoneState = () => useQuery({ queryKey: keys.phoneState, queryFn: () => call("phone.state", {}), staleTime: Infinity });
 export const usePhoneConfig = () => useQuery({ queryKey: keys.phoneConfig, queryFn: () => call("phone.config", {}), staleTime: Infinity });
@@ -120,8 +131,15 @@ export const useSearch = (query: string, limit = 50) => {
   });
 };
 
+/** Also lists sessions started in a terminal; those appear after a minute away on focus. */
 export const useSessions = (projectId: string | null) =>
-  useQuery({ queryKey: keys.sessions(projectId ?? ""), queryFn: () => call("sessions.list", { projectId: projectId! }), enabled: !!projectId });
+  useQuery({
+    queryKey: keys.sessions(projectId ?? ""),
+    queryFn: () => call("sessions.list", { projectId: projectId! }),
+    enabled: !!projectId,
+    staleTime: 60_000,
+    refetchOnWindowFocus: true,
+  });
 
 /** Sessions with a running Claude process, across projects; refreshed on every session.updated. */
 export const useLiveSessions = () => useQuery({ queryKey: keys.liveSessions, queryFn: () => call("sessions.listLive", {}), staleTime: Infinity });

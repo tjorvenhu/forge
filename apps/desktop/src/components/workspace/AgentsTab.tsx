@@ -12,8 +12,9 @@ import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Dialog } from "@/components/ui/dialog";
 import { Field, Input, Textarea } from "@/components/ui/input";
-import { Badge, Checkbox, EmptyState, ErrorBanner, Loading, SectionTitle } from "@/components/ui/misc";
+import { Badge, Checkbox, EmptyState, ErrorBanner, SectionTitle } from "@/components/ui/misc";
 import { SessionStatusBadge } from "./SessionStatusBadge";
+import { ListSkeleton } from "@/components/ui/skeleton";
 
 /**
  * Parallel agents of the open project: each runs in its own git worktree (separate folder and
@@ -82,7 +83,7 @@ export function AgentsTab({ project }: { project: ProjectWithStatus }) {
             )}
           </p>
           {blocker && <p className="mb-3 text-xs text-warning">{blocker}</p>}
-          {projects.isLoading && <Loading />}
+          {projects.isLoading && <ListSkeleton rows={3} />}
           {projects.isError && <ErrorBanner title="Worktrees nicht geladen">{errorMessage(projects.error)}</ErrorBanner>}
           {projects.isSuccess && worktrees.length === 0 && (
             <EmptyState icon={<Users className="h-9 w-9" />} title="Noch keine parallelen Agenten">
@@ -183,7 +184,7 @@ function Subagents({ projectId }: { projectId: string }) {
         </button>
         .
       </p>
-      {docs.isLoading && <Loading />}
+      {docs.isLoading && <ListSkeleton rows={3} />}
       {docs.isError && <ErrorBanner title="Subagenten nicht geladen">{errorMessage(docs.error)}</ErrorBanner>}
       {docs.data?.length === 0 && <p className="text-xs text-subtle">Noch keine eigenen Subagenten.</p>}
       <div className="grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-2">

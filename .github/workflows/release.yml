@@ -1,0 +1,82 @@
+# Builds the Windows installer on every push to main and publishes it as a GitHub release.
+# Installed FORGE apps find it (Settings → Updates) and install it with one click.
+# Version: 0.1.<run number>, so every release is newer than the one before.
+name: Release
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - "**/*.md"
+      - "docs/**"
+      - "*.png"
+      - "*.docx"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: apps/desktop/src-tauri
+
+      - name: Cache bundled runtime downloads
+        uses: actions/cache@v4
+        with:
+          path: .runtime-cache
+          key: runtime-${{ hashFiles('scripts/prepare-runtime.mjs') }}
+
+      - name: Version
+        id: version
+        shell: pwsh
+        run: |
+          $version = "0.1.${{ github.run_number }}"
+          $conf = "apps/desktop/src-tauri/tauri.conf.json"
+          (Get-Content $conf -Raw) -replace '"version":\s*"[^"]*"', "`"version`": `"$version`"" | Set-Content $conf -NoNewline -Encoding utf8
+          "version=$version" >> $env:GITHUB_OUTPUT
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Lint and types
+        run: |
+          pnpm lint
+          pnpm typecheck
+
+      - name: Build installer
+        run: pnpm build
+
+      - name: Publish release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $version = "${{ steps.version.outputs.version }}"
+          $tag = "v$version"
+          $exe = Get-ChildItem apps/desktop/src-tauri/target/release/bundle/nsis/*-setup.exe | Select-Object -First 1
+          $prev = git describe --tags --abbrev=0 2>$null
+          $range = if ($prev) { "$prev..HEAD" } else { "HEAD~20..HEAD" }
+          $notes = (git log $range --no-merges --format="- %s") -join "`n"
+          if (-not $notes) { $notes = "- Wartung" }
+          gh release create $tag $exe.FullName --title "FORGE $version" --notes $notes --target $env:GITHUB_SHA

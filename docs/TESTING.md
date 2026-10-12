@@ -1,16 +1,19 @@
 # Tests und Ergebnisse
 
-Letzter vollständiger Lauf: 2026-10-11, Windows 11 Pro 26200, Node 24.14, Claude Code 2.1.296 (Max-Login).
+Letzter vollständiger Lauf: 2026-10-12, Windows 11 Pro 26200, Node 24.11, Claude Code mit Max-Login (E2E mit Haiku).
 
 | Suite | Befehl | Ergebnis |
 |---|---|---|
 | Lint | `pnpm lint` | ohne Befund |
 | Typecheck (protocol, sidecar, desktop) | `pnpm typecheck` | ohne Fehler |
-| Sidecar Unit/Integration | `pnpm --filter @forge/sidecar test` | 150 / 150 bestanden |
-| Desktop Unit/Komponenten | `pnpm --filter @forge/desktop test` | 21 / 21 bestanden |
-| E2E mit echter Claude-Session | `pnpm test:e2e` | 17 / 17 bestanden (mit System-Werkzeugen) |
+| Sidecar Unit/Integration | `pnpm --filter @forge/sidecar test` | 386 / 388 bestanden; die 2 Fehler treten auch ohne die Änderungen vom 2026-10-12 auf (gelöschte Datei unter Windows kurz noch sichtbar, siehe HANDOFF) |
+| Desktop Unit/Komponenten | `pnpm --filter @forge/desktop test` | 139 / 139 bestanden |
+| E2E mit echter Claude-Session | `pnpm test:e2e` (unter PowerShell 5.1: Build und `npx vitest run test/e2e` einzeln) | 17 / 17 bestanden |
 | Release-App ohne Node/Git/gh im PATH | manuell | Sidecar läuft aus `runtime/node`, Diagnose zeigt „mitgeliefert“ |
 | Rust-Hülle | `cargo build` | ohne Warnungen |
+| Gemini Live und Gemini-Sprache gegen den echten Dienst | `scripts/gemini-live-smoke.ts`, `scripts/gemini-voice-smoke.ts` | bestanden (2026-10-12) |
+| Strukturierte Antwort mit der echten CLI | `scripts/structured-smoke.ts` | bestanden (Haiku, 4 s) |
+| Rust-Hülle mit gebündelten Zeilen | `cargo build` | ohne Fehler |
 
 ## Was die Suites abdecken
 
@@ -35,6 +38,8 @@ Letzter vollständiger Lauf: 2026-10-11, Windows 11 Pro 26200, Node 24.14, Claud
 - `search-devserver.test.ts`: Volltextsuche (Präfix, Groß-/Kleinschreibung, Umlaute, FTS-Syntax wirkungslos, Treffer verschwinden mit der Session); Dev-Server-Erkennung (inkl. `npm run dev`), Adress-Erkennung aus typischer Ausgabe, Start/Stopp mit echtem Prozess, Absturz mit Exit-Code.
 
 - `phone-units.test.ts`: SIP-Parser (Kurzformen, Fortsetzungszeilen, Header-Listen), Antworten, Digest gegen das RFC-2617-Beispiel, SDP, G.711 gegen Referenzwerte, Downsampling ohne Aliasing, WAV, Sprachpausen-Erkennung (auch höhere Schwelle während FORGE spricht), RTP mit Takt, Stille und DTMF, Nummernvergleich, vorlesbarer Text, DPAPI-Ablage mit Sonderzeichen.
+- `phone-live.test.ts` (ADR 0011): Werkzeug-Schemas für Gemini und Prüfung der Argumente, Gemini-Live-Client mit Fake-WebSocket (Setup, 8↔16/24 kHz, Function Calls, goAway mit Resumption, abgelehnter Key), Gesprächsablauf mit Gemini (Begrüßung, Audio vor dem Abnehmen, Werkzeuge, zurückgezogene Aufrufe, Unterbrechen, Auflegen, PIN, Ausfall), Gemini-Sprache per SSE, Tischtelefon (Provisioning, LEDs, Digest am Telefon, Token- und IP-Prüfung, Taste startet Anruf, Freigabe-Menü, Taste im Gespräch).
+- Gegen echte Dienste (braucht `GEMINI_API_KEY`): `pnpm --filter @forge/sidecar exec tsx scripts/gemini-live-smoke.ts` (Verbindung, Function Call, deutsche Antwort mit Sprache) und `scripts/gemini-voice-smoke.ts` (Sprachausgabe und Wiedererkennung).
 - `phone-call.test.ts`: Test-Anlage über echtes UDP: Registrierung mit Digest und NAT-Erkennung, falsches Passwort, Wählen nur mit Ziffern und CANCEL beim Klingeln; PhoneService Ende zu Ende: fremde Nummer abgewiesen, erlaubter Anruf mit Begrüßung, Audio in beide Richtungen, Erkennung bis zu Claude, gesperrtes Steuern, falsche und richtige PIN per DTMF, Auflegen durch die Gegenstelle, Protokoll mit Transkript; Rückruf nach fertiger Session mit Proxy-Auth, Sprache erst nach dem Abnehmen, PCMU, Auflegen durch FORGE.
 
 **Desktop**

@@ -2,8 +2,8 @@ import { create } from "zustand";
 import type { SessionEvent } from "@forge/protocol";
 import { useCardStore } from "./card-state";
 
-/** Page size of sessions.events; mirrors EVENT_PAGE_LIMIT in the sidecar. */
-export const EVENT_PAGE_SIZE = 20_000;
+/** Page size of sessions.events; mirrors HISTORY_PAGE_LIMIT in the sidecar. */
+export const EVENT_PAGE_SIZE = 2_000;
 
 /**
  * Whether persisted events older than this page exist. A short page is the whole rest of the log;
@@ -38,13 +38,35 @@ interface SessionEventsState {
   setHistory: (sessionId: string, events: SessionEvent[]) => void;
   /** a page loaded with beforeSeq = the oldest seq in the buffer; ignored while the buffer is not loaded */
   prependOlder: (sessionId: string, events: SessionEvent[]) => void;
+  /** text deltas are collected and written once per frame (`flushDeltas`); every other event first writes them */
   apply: (ev: SessionEvent) => void;
+  flushDeltas: () => void;
   /** forgets one session, e.g. after it was deleted */
   drop: (sessionId: string) => void;
   /** keeps the buffers in `keep` and at most `max` of the others, most recently used first */
   evict: (keep: ReadonlySet<string>, max: number) => void;
   /** after a sidecar restart: events may have been missed, so every buffer reloads its history */
   markAllStale: () => void;
+}
+
+/**
+ * Text deltas waiting for the next frame, per session and `${messageId}:${index}`. Writing each token
+ * on its own re-rendered the chat dozens of times per frame; one write per frame is enough to see.
+ */
+let pendingDeltas = new Map<string, Map<string, string>>();
+let flushHandle: number | null = null;
+
+const nextFrame: (cb: () => void) => number =
+  typeof requestAnimationFrame === "function" ? (cb) => requestAnimationFrame(cb) : (cb) => setTimeout(cb, 16) as unknown as number;
+const cancelFrame = (h: number) => (typeof cancelAnimationFrame === "function" ? cancelAnimationFrame(h) : clearTimeout(h));
+
+function clearPendingDeltas(sessionId?: string) {
+  if (sessionId === undefined) pendingDeltas = new Map();
+  else pendingDeltas.delete(sessionId);
+  if (!pendingDeltas.size && flushHandle !== null) {
+    cancelFrame(flushHandle);
+    flushHandle = null;
+  }
 }
 
 const empty = (): SessionBuffer => ({ loaded: false, events: [], lastSeq: 0, hasOlder: false, streaming: {}, usedAt: Date.now() });
@@ -87,16 +109,23 @@ export const useSessionEvents = create<SessionEventsState>((set, get) => ({
         },
       };
     }),
-  apply: (ev) =>
+  apply: (ev) => {
+    const b = ev.body;
+    if (b.type === "assistant.delta") {
+      const key = `${b.messageId}:${b.index}`;
+      const forSession = pendingDeltas.get(ev.sessionId) ?? new Map<string, string>();
+      forSession.set(key, (forSession.get(key) ?? "") + b.text);
+      pendingDeltas.set(ev.sessionId, forSession);
+      flushHandle ??= nextFrame(() => {
+        flushHandle = null;
+        get().flushDeltas();
+      });
+      return;
+    }
+    // Deltas that came before this event belong before it (the final text replaces them).
+    if (pendingDeltas.has(ev.sessionId)) get().flushDeltas();
     set((s) => {
       const cur = s.buffers[ev.sessionId] ?? empty();
-      const b = ev.body;
-      if (b.type === "assistant.delta") {
-        const key = `${b.messageId}:${b.index}`;
-        return {
-          buffers: { ...s.buffers, [ev.sessionId]: { ...cur, streaming: { ...cur.streaming, [key]: (cur.streaming[key] ?? "") + b.text } } },
-        };
-      }
       if (ev.seq <= cur.lastSeq) return s;
       let streaming = cur.streaming;
       if (b.type === "assistant.text") {
@@ -110,8 +139,25 @@ export const useSessionEvents = create<SessionEventsState>((set, get) => ({
       return {
         buffers: { ...s.buffers, [ev.sessionId]: { ...cur, events: [...cur.events, ev], lastSeq: ev.seq, streaming, usedAt: Date.now() } },
       };
-    }),
+    });
+  },
+  flushDeltas: () => {
+    if (!pendingDeltas.size) return;
+    const batch = pendingDeltas;
+    clearPendingDeltas();
+    set((s) => {
+      const buffers = { ...s.buffers };
+      for (const [sessionId, texts] of batch) {
+        const cur = buffers[sessionId] ?? empty();
+        const streaming = { ...cur.streaming };
+        for (const [key, text] of texts) streaming[key] = (streaming[key] ?? "") + text;
+        buffers[sessionId] = { ...cur, streaming };
+      }
+      return { buffers };
+    });
+  },
   drop: (sessionId) => {
+    clearPendingDeltas(sessionId);
     useCardStore.getState().dropSession(sessionId);
     set((s) => {
       if (!(sessionId in s.buffers)) return s;
@@ -126,10 +172,12 @@ export const useSessionEvents = create<SessionEventsState>((set, get) => ({
       .sort(([, a], [, b]) => b.usedAt - a.usedAt);
     for (const [id] of others.slice(max)) get().drop(id);
   },
-  markAllStale: () =>
+  markAllStale: () => {
+    clearPendingDeltas();
     set((s) => ({
       buffers: Object.fromEntries(Object.entries(s.buffers).map(([id, b]) => [id, { ...b, loaded: false, streaming: {} }])),
-    })),
+    }));
+  },
 }));
 
 /**
