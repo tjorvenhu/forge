@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { readdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";
-import { DevToolsConfig, ForgeError, type TestDbConfig } from "@forge/protocol";
+import { DevToolsConfig, ForgeError, TestDbConfig } from "@forge/protocol";
 import type { Db } from "../persistence/db.js";
 import type { ProjectManager } from "../projects/project-manager.js";
 
@@ -56,6 +56,15 @@ export function connectionUrl(db: TestDbConfig): string {
   return `postgresql://forge:${encodeURIComponent(db.password)}@127.0.0.1:${db.port}/${db.name}`;
 }
 
+function record(v: unknown): Record<string, unknown> {
+  return v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
+}
+
+function valid<T>(schema: { safeParse: (v: unknown) => { success: boolean; data?: T } }, value: unknown, fallback: () => T): T {
+  const r = schema.safeParse(value);
+  return r.success ? (r.data as T) : fallback();
+}
+
 /**
  * Test environment and test database settings per project. Worktrees (agents) use the settings of
  * their project: one test database per project, not one per agent.
@@ -73,19 +82,28 @@ export class DevToolsService {
 
   get(projectId: string): DevToolsConfig {
     const owner = this.owner(projectId);
-    const stored = DevToolsConfig.safeParse(this.db.getDevTools(owner));
+    let raw: unknown = null;
+    try {
+      raw = this.db.getDevTools(owner);
+    } catch {
+      /* unreadable row: start over */
+    }
+    const stored = DevToolsConfig.safeParse(raw);
     if (stored.success) return stored.data;
-    // First use (or an unreadable row): port and password are fixed now, so the URL stays the same.
-    const project = this.projects.get(owner);
+    // First use, or a row with a broken field: valid fields stay (the password matches the existing
+    // database, the test environment is the user's), only the rest is filled in.
+    const old = record(raw);
+    const oldDb = record(old.database);
+    const db = TestDbConfig.shape;
     const config: DevToolsConfig = {
-      env: "",
-      useEnv: true,
+      env: valid(DevToolsConfig.shape.env, old.env, () => ""),
+      useEnv: valid(DevToolsConfig.shape.useEnv, old.useEnv, () => true),
       database: {
-        port: this.freePort(owner),
-        name: dbNameFor(project.name),
-        password: randomBytes(12).toString("hex"),
-        withDevServer: false,
-        envVar: "DATABASE_URL",
+        port: valid(db.port, oldDb.port, () => this.freePort(owner)),
+        name: valid(db.name, oldDb.name, () => dbNameFor(this.projects.get(owner).name)),
+        password: valid(db.password, oldDb.password, () => randomBytes(12).toString("hex")),
+        withDevServer: valid(db.withDevServer, oldDb.withDevServer, () => false),
+        envVar: "envVar" in oldDb ? valid(db.envVar, oldDb.envVar, () => "DATABASE_URL") : "DATABASE_URL",
       },
     };
     this.db.setDevTools(owner, config);

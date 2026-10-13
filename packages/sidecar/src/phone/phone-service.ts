@@ -1,6 +1,8 @@
 import { randomBytes, randomUUID } from "node:crypto";
 import {
   ForgeError,
+  SEARCH_MARK_END,
+  SEARCH_MARK_START,
   type DeskPhoneConfig,
   type PhoneCallInfo,
   type PhoneCallRecord,
@@ -16,9 +18,14 @@ import type { ProjectManager } from "../projects/project-manager.js";
 import type { SessionService } from "../sessions/session-service.js";
 import type { DevServerService } from "../devserver/dev-server.js";
 import type { TestDbService } from "../devtools/test-db.js";
+import type { DevToolsService } from "../devtools/dev-tools.js";
 import type { KnowledgeStore } from "../knowledge/knowledge.js";
+import type { GitHubService } from "../github/github.js";
+import { removeWorktree } from "../projects/removal.js";
 import { slugify, type WorktreeService } from "../automation/worktrees.js";
 import { isArtifactPath, isSensitiveFile, type GitEngine } from "../git/git.js";
+import { startIntegrationSession } from "../git/integration-prompt.js";
+import { ZodError } from "zod";
 import { CallController, type CallControllerDeps, type CallHandler, type Conversation, type ConversationCallbacks } from "./call-controller.js";
 import { DeskPhone } from "./desk-phone.js";
 import { DEFAULT_LIVE_MODEL, GeminiLive, type LiveConversation, type LiveHandlers } from "./gemini-live.js";
@@ -31,7 +38,7 @@ import { RtpSession } from "./rtp.js";
 import { answerDirection, buildSdp, chooseCodec, parseSdp, PT_PCMA } from "./sdp.js";
 import type { SecretStore } from "./secrets.js";
 import { localIpTowards, SipUserAgent, type SipAccount, type SipCall } from "./sip-ua.js";
-import { geminiFunctionDeclarations, phoneSystemPrompt } from "./tools.js";
+import { geminiFunctionDeclarations, phoneSystemPrompt, type CallSettingsPatch } from "./tools.js";
 import { DEFAULT_STT_MODEL, DEFAULT_TTS_MODEL, DEFAULT_VOICE, OpenAiVoice, type VoiceProvider } from "./voice.js";
 
 const SECRET_PASSWORD = "sip-password";
@@ -154,7 +161,11 @@ export interface PhoneDeps {
   sessions: SessionService;
   devServers: DevServerService;
   testDb?: TestDbService;
+  /** test environment and test database settings; without it dev_settings is not available */
+  devTools?: Pick<DevToolsService, "get" | "update">;
   knowledge?: KnowledgeStore;
+  /** pull requests; without it pull_request is not available */
+  github?: Pick<GitHubService, "prForBranch" | "createPr">;
   git: GitEngine;
   worktrees: WorktreeService;
   secrets: SecretStore;
@@ -883,6 +894,8 @@ export class PhoneService {
     if (b.type === "turn.result" && !b.isError) this.desk.markUnheard(sessionId);
     else if (b.type === "user.message") this.desk.markHeard(sessionId);
     else if (b.type === "approval.request" || b.type === "approval.resolved") this.desk.refresh();
+    // The user is on the line already: he hears it in this call, no matter which number FORGE would dial.
+    if (b.type === "notify" && b.urgent && this.noteUrgent(sessionId, b.message)) return;
     if (!this.cfg.notifyNumber) return;
     let kind: NotifyKind | null = null;
     if (b.type === "turn.result") {
@@ -891,8 +904,16 @@ export class PhoneService {
     } else if (b.type === "approval.request") kind = "approval";
     else if (b.type === "error") kind = "error";
     else if (b.type === "notify" && b.urgent) kind = "notify";
+    if (!kind || !this.wantsCall(kind)) return;
+    this.scheduleNotify(sessionId, kind, b, this.d.timing?.notifyDelayMs ?? NOTIFY_DELAY_MS[kind]);
+  }
+
+  private wantsCall(kind: NotifyKind): boolean {
     // An urgent notify means Claude needs the user: it follows the setting for decisions.
-    if (!kind || !this.cfg.notifyOn[kind === "notify" ? "approval" : kind]) return;
+    return this.cfg.notifyOn[kind === "notify" ? "approval" : kind];
+  }
+
+  private scheduleNotify(sessionId: string, kind: NotifyKind, body: SessionEventBody, delayMs: number) {
     const key = `${sessionId}:${kind}`;
     const prev = this.notifyTimers.get(key);
     if (prev) clearTimeout(prev);
@@ -900,14 +921,50 @@ export class PhoneService {
       key,
       setTimeout(() => {
         this.notifyTimers.delete(key);
-        void this.notify(sessionId, kind!, b).catch((err: unknown) => this.d.log(`Telefon: Anruf nicht möglich: ${errorText(err)}`));
-      }, this.d.timing?.notifyDelayMs ?? NOTIFY_DELAY_MS[kind]),
+        void this.notify(sessionId, kind, body).catch((err: unknown) => this.d.log(`Telefon: Anruf nicht möglich: ${errorText(err)}`));
+      }, delayMs),
     );
   }
 
+  /**
+   * An urgent notify while the user is in a call: the conversation partner passes it on. Before the
+   * PIN only that a session needs him; title and message can be confidential. False when no call is
+   * talking.
+   */
+  private noteUrgent(sessionId: string, message: string): boolean {
+    const a = this.active;
+    if (!a?.answered || !a.controller) return false;
+    let title: string;
+    try {
+      title = this.d.sessions.get(sessionId).title ?? "ohne Titel";
+    } catch {
+      return false;
+    }
+    const open = !this.cfg.requirePin || a.info.unlocked;
+    a.controller.note(
+      open
+        ? `[FORGE: Claude Code in der Session ${this.refFor(a, sessionId)} ${asData(title)} meldet sich dringend und lässt ausrichten: ${excerptData(message, 500)} Sag es dem Anrufer bei der nächsten Gelegenheit in einem Satz.]`
+        : "[FORGE: Eine Session meldet sich dringend. Sag dem Anrufer bei der nächsten Gelegenheit in einem Satz, dass eine Session ihn dringend braucht. Einzelheiten gibt es erst nach der PIN.]",
+    );
+    this.d.log("Telefon: dringende Meldung ins laufende Gespräch gegeben");
+    return true;
+  }
+
   private async notify(sessionId: string, kind: NotifyKind, body: SessionEventBody) {
-    if (this.busy || this.registration !== "registered" || !this.cfg.notifyNumber) return;
-    if (Date.now() - this.lastNotifyAt < (this.d.timing?.notifyCooldownMs ?? NOTIFY_COOLDOWN_MS)) return;
+    // Switched off in the meantime (also on the phone, with call_settings).
+    if (!this.cfg.notifyNumber || !this.wantsCall(kind)) return;
+    if (body.type === "notify" && this.noteUrgent(sessionId, body.message)) return;
+    if (this.busy || this.registration !== "registered") {
+      this.d.log(`Telefon: kein Anruf (${kind}), ${this.busy ? "die Leitung ist belegt" : "nicht an der Anlage angemeldet"}`);
+      return;
+    }
+    const wait = (this.d.timing?.notifyCooldownMs ?? NOTIFY_COOLDOWN_MS) - (Date.now() - this.lastNotifyAt);
+    if (wait > 0) {
+      // Two calls in a row would be too much; this one comes when the pause is over, if it still matters then.
+      this.d.log(`Telefon: Anruf (${kind}) verschoben, der letzte ist keine Minute her; neuer Versuch in ${Math.ceil(wait / 1000)} s`);
+      this.scheduleNotify(sessionId, kind, body, wait);
+      return;
+    }
     // The user is at FORGE and sees it there; a call would only interrupt.
     if (this.d.userPresent?.()) {
       this.d.log(`Telefon: kein Rückruf (${kind}), FORGE ist im Vordergrund`);
@@ -979,16 +1036,47 @@ export class PhoneService {
       }
       return hits[0]!;
     };
+    /**
+     * A project by name. Worktrees (agents) are named "<project> · <branch>"; one only counts when the
+     * caller names its branch part, so "shop" means the project and not every agent of it.
+     */
     const findProject = (name: string) => {
       const q = name.trim().toLowerCase();
       const all = this.d.projects.all().filter((p) => p.exists);
-      if (!q) throw new Error(`Welches Projekt? Vorhanden: ${all.map((x) => x.name).join(", ")}.`);
+      const roots = all.filter((p) => !p.parentId);
+      // Before the PIN no project names: like session titles they can be confidential.
+      const known = () => (locked() ? "" : ` Vorhanden: ${roots.map((x) => x.name).join(", ")}.`);
+      if (!q) throw new Error(`Welches Projekt?${known()}`);
       const exact = all.filter((x) => x.name.toLowerCase() === q);
-      const hits = exact.length ? exact : all.filter((x) => x.name.toLowerCase().includes(q));
+      if (exact.length === 1) return exact[0]!;
+      const words = (s: string) => s.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+      const namesBranch = (wt: (typeof all)[number]) => {
+        const parent = words(all.find((p) => p.id === wt.parentId)?.name ?? "");
+        const asked = parent && words(q).startsWith(parent) ? words(q).slice(parent.length).trim() : words(q);
+        const own = words(wt.name);
+        const branch = parent && own.startsWith(parent) ? own.slice(parent.length).trim() : own;
+        return !!asked && branch.includes(asked);
+      };
+      const hits = exact.length ? exact : [...roots.filter((x) => x.name.toLowerCase().includes(q)), ...all.filter((x) => x.parentId && namesBranch(x))];
       if (hits.length === 1) return hits[0]!;
-      if (hits.length > 1) throw new Error(`Mehrere Projekte passen zu „${name}“: ${hits.map((x) => x.name).join(", ")}.`);
-      throw new Error(`Kein Projekt „${name}“. Vorhanden: ${all.map((x) => x.name).join(", ")}.`);
+      const preferred = hits.filter((x) => !x.parentId);
+      if (preferred.length === 1) return preferred[0]!;
+      if (hits.length > 1) throw new Error(`Mehrere Projekte passen zu „${name}“${locked() ? "." : `: ${hits.map((x) => x.name).join(", ")}.`}`);
+      throw new Error(`Kein Projekt „${name}“.${known()}`);
     };
+    /** The project of a session (also an agent's worktree) when one is named, else the project by name. */
+    const target = (projectName: string, o?: { session?: string }) => {
+      if (!o?.session?.trim()) return findProject(projectName);
+      const s = resolve(o.session);
+      const p = this.d.projects.get(s.projectId);
+      if (!p.exists) throw new Error(`Den Ordner von ${refFor(s.id)} gibt es nicht mehr.`);
+      return p;
+    };
+    const minutesSince = (iso: string) => {
+      const m = Math.round((Date.now() - Date.parse(iso)) / 60_000);
+      return m < 1 ? "seit eben" : m === 1 ? "seit einer Minute" : `seit ${m} Minuten`;
+    };
+    const tail = (text: string, lines: number) => text.split(/\r?\n/).filter((l) => l.trim()).slice(-lines).join("\n");
     /** Runs a tool; errors become text for Claude. Steering tools (`steer`) need the PIN. */
     const run = async (steer: boolean, fn: () => Promise<string>): Promise<string> => {
       const l = steer ? locked() : null;
@@ -1000,6 +1088,7 @@ export class PhoneService {
       }
     };
     const projectChanged = (projectId: string) => this.d.emit({ event: "project.updated", payload: { projectId } });
+    const removal = { projects: this.d.projects, sessions, worktrees: this.d.worktrees, devServers: this.d.devServers };
     const statusText = (s: { status: string; live: boolean }) =>
       s.status === "running" || s.status === "starting"
         ? "arbeitet gerade"
@@ -1034,16 +1123,24 @@ export class PhoneService {
             .filter(Boolean)
             .join("\n");
         }),
-      details: (ref) =>
+      details: (ref, o) =>
         run(true, async () => {
           const s = resolve(ref);
           const project = this.d.projects.get(s.projectId);
           const last = lastAnswer(db, s.id);
           const setup = [s.model ? `Modell ${s.model}` : "", s.permissionMode ? `Modus ${s.permissionMode}` : ""].filter(Boolean).join(", ");
+          const kind = (taskType: string) => (/bash|shell/i.test(taskType) ? "Befehl" : /agent/i.test(taskType) ? "Subagent" : taskType);
+          const tasks = [
+            ...s.subagents.map((t) => `Subagent ${asData(t.description)}, ${minutesSince(t.startedAt)}${t.summary ? `, zuletzt: ${excerptData(t.summary, 200)}` : ""}`),
+            ...s.background.map((t) => `Im Hintergrund: ${kind(t.taskType)} ${asData(t.description)}, ${minutesSince(t.startedAt)}${t.summary ? `, zuletzt: ${excerptData(t.summary, 200)}` : ""}`),
+          ];
+          const summary = o?.summary ? (await sessions.summarize(s.id)).summary : "";
           return [
             `${refFor(s.id)}: ${asData(s.title ?? "ohne Titel")} im Projekt ${project.name}, ${statusText(s)}.${setup ? ` ${setup}.` : ""}`,
+            summary ? `Zusammenfassung des Verlaufs: ${excerptData(summary, 2000)}` : "",
             `Letztes Ergebnis: ${last ? excerptData(last, 1500) : "noch keins"}`,
             s.status === "waiting_approval" ? `Offen: ${pendingText(db, s.id)}` : "",
+            tasks.length ? `Laufende Aufgaben:\n${tasks.join("\n")}` : "",
           ]
             .filter(Boolean)
             .join("\n");
@@ -1060,21 +1157,31 @@ export class PhoneService {
           const found = findProject(projectName);
           if (!prompt.trim()) return "Fehler: Der Auftrag ist leer.";
           const model = o?.model?.trim() || undefined;
+          const effort = o?.effort;
           if (!o?.agent) {
-            const s = await sessions.start({ projectId: found.id, prompt, model, planOnly: o?.planOnly });
+            const s = await sessions.start({ projectId: found.id, prompt, model, effort, planOnly: o?.planOnly });
             a.focus = s.id;
             return `Neue Session ${refFor(s.id)} im Projekt ${found.name} gestartet.`;
           }
-          // A parallel agent: own worktree and branch next to the project (as in the Agents tab).
+          // A parallel agent: own worktree and branch next to the project (as in the Agents tab), from
+          // where the named project or worktree stands.
           const root = found.parentId ? this.d.projects.get(found.parentId) : found;
           const branch = `agent/${slugify(prompt, 32)}-${Date.now().toString(36).slice(-4)}`;
-          const wt = await this.d.worktrees.create(this.d.projects.requireExisting(root.id), branch);
+          const wt = await this.d.worktrees.create(this.d.projects.requireExisting(root.id), branch, { fromDir: found.path });
           projectChanged(wt.id);
-          const s = await sessions.start({ projectId: wt.id, prompt, model, planOnly: o?.planOnly });
+          let s;
+          try {
+            s = await sessions.start({ projectId: wt.id, prompt, model, effort, planOnly: o?.planOnly });
+          } catch (e) {
+            // Nothing was done in it yet: an empty worktree and branch would only be left to clean up by hand.
+            await removeWorktree(wt.id, true, removal, { deleteBranch: true }).catch((err: unknown) => this.d.log(`Telefon: Worktree ${wt.name} nicht entfernt: ${errorText(err)}`));
+            projectChanged(root.id);
+            throw e;
+          }
           a.focus = s.id;
           return `Agent ${refFor(s.id)} im Projekt ${root.name} gestartet, in einem eigenen Worktree auf eigenem Branch.`;
         }),
-      respond: (ref, decision, answers, feedback) =>
+      respond: (ref, decision, answers, feedback, scope) =>
         run(true, async () => {
           const s = resolve(ref);
           const r = refFor(s.id);
@@ -1091,12 +1198,16 @@ export class PhoneService {
               if (exact) mapped![exact] = v;
             });
           }
-          sessions.respondApproval(s.id, req.requestId, decision, "once", feedback, mapped);
-          return decision === "allow" ? `Erledigt, ${r} arbeitet weiter.` : `Abgelehnt, ${r} bekommt die Rückmeldung.`;
+          // Questions and plans are answered once; only a tool approval can hold for the whole session.
+          const forSession = scope === "session" && decision === "allow" && req.toolName !== "AskUserQuestion" && req.toolName !== "ExitPlanMode";
+          sessions.respondApproval(s.id, req.requestId, decision, forSession ? "session" : "once", feedback, mapped);
+          if (decision !== "allow") return `Abgelehnt, ${r} bekommt die Rückmeldung.`;
+          return forSession ? `Erledigt, ${req.toolName} ist für den Rest von ${r} erlaubt.` : `Erledigt, ${r} arbeitet weiter.`;
         }),
       stop: (ref) =>
         run(true, async () => {
           const s = resolve(ref);
+          if (!["starting", "running", "waiting_approval", "stopping"].includes(s.status)) return `${refFor(s.id)} arbeitet gerade nicht, da lief nichts zum Stoppen.`;
           await sessions.stop(s.id);
           return `${refFor(s.id)} gestoppt.`;
         }),
@@ -1132,6 +1243,40 @@ export class PhoneService {
           sessions.cancelAutoContinue(s.id);
           return `Automatisches Weitermachen von ${refFor(s.id)} abgebrochen.`;
         }),
+      backgroundTask: (ref, action, task) =>
+        run(true, async () => {
+          const s = resolve(ref);
+          const r = refFor(s.id);
+          const all = [
+            ...s.background.map((t) => ({ taskId: t.taskId, toolUseId: t.toolUseId, description: t.description, background: true, command: /bash|shell/i.test(t.taskType) })),
+            ...s.subagents.map((t) => ({ taskId: t.taskId, toolUseId: t.toolUseId, description: t.description, background: false, command: false })),
+          ];
+          const names = (list: typeof all) => list.map((t) => asData(t.description)).join(", ");
+          const find = () => {
+            if (!all.length) throw new Error(`${r} hat gerade keine Hintergrund-Aufgaben und keine Subagenten.`);
+            const q = (task ?? "").trim().toLowerCase();
+            if (!q && all.length === 1) return all[0]!;
+            if (!q) throw new Error(`Welche Aufgabe? Laufend: ${names(all)}.`);
+            const hits = all.filter((t) => t.taskId.toLowerCase() === q || t.description.toLowerCase().includes(q));
+            if (hits.length === 1) return hits[0]!;
+            throw new Error(hits.length ? `Mehrere Aufgaben passen: ${names(hits)}.` : `Keine Aufgabe „${task}“ bei ${r}. Laufend: ${names(all)}.`);
+          };
+          if (action === "to_background") {
+            const t = task?.trim() ? find() : null;
+            if (t?.background) return `${asData(t.description)} läuft schon im Hintergrund.`;
+            const { moved } = await sessions.toBackground(s.id, t?.toolUseId ?? undefined);
+            return moved ? `In den Hintergrund verschoben, ${r} arbeitet weiter.` : `Bei ${r} lief nichts im Vordergrund, das sich verschieben ließ.`;
+          }
+          const t = find();
+          if (action === "stop") {
+            await sessions.stopTask(s.id, t.taskId);
+            return `${asData(t.description)} gestoppt, der Rest von ${r} läuft weiter.`;
+          }
+          if (!t.command) return `Eine Ausgabe gibt es nur für Befehle im Hintergrund. Was ${asData(t.description)} macht, steht in details.`;
+          const out = await sessions.taskOutput(s.id, t.taskId);
+          if (!out.output.trim()) return `${asData(t.description)} hat noch nichts ausgegeben.`;
+          return `Letzte Ausgabe von ${asData(t.description)}: ${excerptData(tail(out.output, 30), 3000)}`;
+        }),
       alwaysOnTop: (action) =>
         run(action !== "status", async () => {
           if (action !== "status") {
@@ -1155,29 +1300,41 @@ export class PhoneService {
             .filter(Boolean)
             .join(" ");
         }),
-      devServer: (projectName, action) =>
+      devServer: (projectName, action, o) =>
         run(true, async () => {
-          const p = findProject(projectName);
-          if (action === "stop") {
-            await this.d.devServers.stop(p.id);
-            return `Dev-Server von ${p.name} gestoppt.`;
+          const p = target(projectName, o);
+          const dev = this.d.devServers;
+          if (action === "output") {
+            const out = dev.output(p.id);
+            return out.trim() ? `Letzte Ausgabe des Dev-Servers von ${p.name}: ${excerptData(tail(out, 30), 3000)}` : `Der Dev-Server von ${p.name} hat noch nichts ausgegeben.`;
           }
-          const st = action === "start" ? await this.d.devServers.start(p.id) : await this.d.devServers.state(p.id);
-          if (st.status === "running") return `Dev-Server von ${p.name} läuft.`;
+          if (action === "stop" || action === "restart") await dev.stop(p.id);
+          if (action === "stop") return `Dev-Server von ${p.name} gestoppt.`;
+          const st = action === "status" ? await dev.state(p.id) : await dev.start(p.id);
+          if (st.status === "running") return `Dev-Server von ${p.name} ${action === "restart" ? "neu gestartet" : "läuft"}.`;
           const why = st.error ?? (st.exitCode !== null ? `Exit-Code ${st.exitCode}` : "");
-          if (action === "start") return `Fehler: Der Dev-Server von ${p.name} ist nicht gestartet.${why ? ` ${why}` : ""}`;
-          return st.status === "stopped" ? `Dev-Server von ${p.name} läuft nicht.` : `Dev-Server von ${p.name} ist beendet.${why ? ` ${why}` : ""}`;
+          const hint = " Was er ausgegeben hat, liefert dev_server mit output.";
+          if (action !== "status") return `Fehler: Der Dev-Server von ${p.name} ist nicht gestartet.${why ? ` ${why}.` : ""}${hint}`;
+          return st.status === "stopped" ? `Dev-Server von ${p.name} läuft nicht.` : `Dev-Server von ${p.name} ist beendet.${why ? ` ${why}.` : ""}${hint}`;
         }),
-      testDatabase: (projectName, action) =>
-        run(action !== "status", async () => {
-          const p = findProject(projectName);
+      testDatabase: (projectName, action, o) =>
+        // A session named before the PIN would give its title away in errors.
+        run(action !== "status" || !!o?.session?.trim(), async () => {
+          const p = target(projectName, o);
           const db = this.d.testDb;
           if (!db) return "Fehler: Die Test-Datenbank ist hier nicht verfügbar.";
           if (action === "status") {
             const st = db.state(p.id);
             if (st.status === "running") return `Die Test-Datenbank von ${p.name} läuft.`;
+            if (st.status === "installing") return `PostgreSQL für die Test-Datenbank wird gerade heruntergeladen${st.progress !== null ? `, ${Math.round(st.progress * 100)} Prozent` : ""}.`;
+            if (st.status === "starting") return `Die Test-Datenbank von ${p.name} startet gerade.`;
+            if (st.status === "stopping") return `Die Test-Datenbank von ${p.name} wird gerade gestoppt.`;
             if (st.status === "failed") return `Die Test-Datenbank von ${p.name} ist nicht gestartet: ${st.error ?? "unbekannter Fehler"}`;
             return st.initialized ? `Die Test-Datenbank von ${p.name} ist gestoppt.` : `${p.name} hat noch keine Test-Datenbank. Der erste Start legt sie an.`;
+          }
+          if (action === "log") {
+            const log = db.log(p.id);
+            return log.trim() ? `Letzte Zeilen aus dem Protokoll der Test-Datenbank von ${p.name}: ${excerptData(tail(log, 20), 2500)}` : `Das Protokoll der Test-Datenbank von ${p.name} ist leer.`;
           }
           if (action === "stop") {
             await db.stop(p.id);
@@ -1189,14 +1346,53 @@ export class PhoneService {
             if (wasRunning) await db.start(p.id);
             return `Test-Datenbank von ${p.name} geleert${wasRunning ? " und wieder gestartet" : ""}.`;
           }
+          if (action === "restart") {
+            await db.stop(p.id);
+            await db.start(p.id);
+            return `Test-Datenbank von ${p.name} neu gestartet.`;
+          }
           await db.start(p.id);
           return `Test-Datenbank von ${p.name} läuft.`;
         }),
-      knowledge: (projectName, query, id) =>
-        run(false, async () => {
+      devSettings: (projectName, patch, o) =>
+        run(true, async () => {
+          const p = target(projectName, o);
+          const tools = this.d.devTools;
+          if (!tools) return "Fehler: Die Dev-Werkzeuge sind hier nicht verfügbar.";
+          const database = {
+            ...(patch.withDevServer !== undefined ? { withDevServer: patch.withDevServer } : {}),
+            ...(patch.port !== undefined ? { port: patch.port } : {}),
+            ...(patch.name?.trim() ? { name: patch.name.trim() } : {}),
+            ...(patch.envVar !== undefined ? { envVar: patch.envVar.trim() || null } : {}),
+          };
+          const changed = patch.useEnv !== undefined || Object.keys(database).length > 0;
+          let cfg;
+          try {
+            cfg = changed ? tools.update(p.id, { useEnv: patch.useEnv, database }) : tools.get(p.id);
+          } catch (e) {
+            if (e instanceof ZodError) throw new Error(e.issues.map((i) => i.message).join("; "));
+            throw e;
+          }
+          const d = cfg.database;
+          const text = [
+            `Test-Umgebung ${cfg.useEnv ? "geht an Dev-Server und Tests" : "ist aus"}.`,
+            `Test-Datenbank auf Port ${d.port}, Name ${d.name}, ${d.withDevServer ? "startet mit dem Dev-Server" : "startet nicht mit dem Dev-Server"}, Verbindungs-URL ${d.envVar ? `in ${d.envVar}` : "wird nicht übergeben"}.`,
+          ].join(" ");
+          if (!changed) return `${p.name}: ${text}`;
+          const restart = (patch.port !== undefined || !!patch.name?.trim()) && this.d.testDb?.isRunning(p.id) ? " Port und Name gelten ab dem nächsten Start der Datenbank." : "";
+          // Agents share their project's settings and test database.
+          return `Gespeichert${p.parentId ? " für das ganze Projekt samt Agenten" : ""}. ${text}${restart}`;
+        }),
+      knowledge: (projectName, query, id, remove) =>
+        run(true, async () => {
           const p = findProject(projectName);
           const store = this.d.knowledge;
           if (!store) return "Fehler: Das Projektwissen ist hier nicht verfügbar.";
+          if (remove) {
+            const key = id?.trim();
+            if (!key) return "Fehler: Zum Löschen brauche ich die Kennung des Eintrags (id).";
+            return (await store.delete(p.id, key)) ? `Eintrag ${key} aus dem Projektwissen von ${p.name} gelöscht.` : `Fehler: Im Projektwissen von ${p.name} gibt es keinen Eintrag ${key}.`;
+          }
           if (id?.trim()) {
             const e = await store.read(p.id, id.trim());
             return asData(`${e.title}. ${e.summary}\n${e.content.slice(0, 4000)}`);
@@ -1224,7 +1420,7 @@ export class PhoneService {
         }),
       git: (projectName, action, o) =>
         run(true, async () => {
-          const p = findProject(projectName);
+          const p = target(projectName, o);
           const git = this.d.git;
           if (action === "status") {
             const { summary: s } = await git.status(p.path);
@@ -1232,6 +1428,29 @@ export class PhoneService {
             const parts = [`Branch ${s.branch ?? "keiner (detached)"}`, s.changedCount ? `${s.changedCount} geänderte Dateien` : "keine Änderungen", ...sync, s.conflicted ? "es gibt Konflikte" : ""];
             return `${p.name}: ${parts.filter(Boolean).join(", ")}.`;
           }
+          if (action === "log") {
+            const commits = await git.log(p.path, 5);
+            if (!commits.length) return `${p.name} hat noch keine Commits.`;
+            const when = (iso: string) => new Date(iso).toLocaleString("de-DE", { dateStyle: "short", timeStyle: "short" });
+            return `Letzte Commits in ${p.name}:\n${commits.map((c) => `${asData(`${c.subject} (${c.author})`)} am ${when(c.date)}`).join("\n")}`;
+          }
+          if (action === "checkout") {
+            const branch = o?.branch?.trim();
+            if (!branch) return "Fehler: Auf welchen Branch? Bitte branch angeben.";
+            const busy = sessions.listAll().some((x) => x.projectId === p.id && x.live && (x.status === "running" || x.status === "waiting_approval"));
+            if (busy) return `Fehler: In ${p.name} arbeitet gerade eine Session. Erst stoppen, dann Branch wechseln.`;
+            await git.checkout(p.path, branch, o?.create === true);
+            projectChanged(p.id);
+            return `${p.name} ist jetzt auf Branch ${branch}${o?.create ? ", neu angelegt" : ""}.`;
+          }
+          /** origin's commits did not go in automatically: Claude takes over, as in the Git tab */
+          const handOver = async (e: unknown, push: boolean) => {
+            const s = await startIntegrationSession(sessions, p.id, e, push);
+            if (!s) throw e;
+            projectChanged(p.id);
+            a.focus = s.id;
+            return `Die neuen Commits vom Server ließen sich nicht automatisch mit den eigenen zusammenführen. Claude führt sie in der neuen Session ${refFor(s.id)} zusammen${push ? " und pusht danach" : ""}.`;
+          };
           if (action === "commit") {
             const st = await git.status(p.path);
             // Secrets and build output are never committed from the phone; the caller hears what was left out.
@@ -1244,25 +1463,112 @@ export class PhoneService {
             return `Committet in ${p.name}: ${asData(message.split("\n")[0]!)}${skipped.length ? ` Ausgelassen: ${skipped.join(", ")}.` : ""}`;
           }
           if (action === "push") {
-            const r = await git.push(p.path, o?.allowProtected === true);
+            let r: Awaited<ReturnType<GitEngine["push"]>>;
+            try {
+              r = await git.push(p.path, o?.allowProtected === true);
+            } catch (e) {
+              return handOver(e, true);
+            }
             projectChanged(p.id);
-            return `Branch ${r.branch} von ${p.name} gepusht.`;
+            const took = r.integrated ? ` Vorher ${r.integrated.remoteCommits} neue Commits vom Server übernommen.` : "";
+            return `Branch ${r.branch} von ${p.name} gepusht.${took}`;
           }
-          await git.pull(p.path);
+          let r: Awaited<ReturnType<GitEngine["pull"]>>;
+          try {
+            r = await git.pull(p.path);
+          } catch (e) {
+            return handOver(e, false);
+          }
           projectChanged(p.id);
-          return `${p.name} ist auf dem neuesten Stand.`;
+          return `${p.name}: ${r.output}`;
+        }),
+      pullRequest: (projectName, action, o) =>
+        run(true, async () => {
+          const p = target(projectName, o);
+          const gh = this.d.github;
+          if (!gh) return "Fehler: GitHub ist hier nicht verfügbar.";
+          const git = this.d.git;
+          const head = await git.currentBranch(p.path);
+          if (!head) return `Fehler: In ${p.name} ist kein Branch ausgecheckt.`;
+          const pr = await gh.prForBranch(p.path);
+          if (action === "status") {
+            if (!pr) return `Für den Branch ${head} gibt es keinen Pull Request.`;
+            const state = pr.state === "OPEN" ? (pr.draft ? "offen, als Entwurf" : "offen") : pr.state === "MERGED" ? "gemergt" : pr.state === "CLOSED" ? "geschlossen" : pr.state;
+            const c = pr.checks;
+            const checks = !c.total
+              ? "keine CI-Checks"
+              : c.failed
+                ? `${c.failed} von ${c.total} Checks fehlgeschlagen`
+                : c.pending
+                  ? `${c.pending} von ${c.total} Checks laufen noch`
+                  : `alle ${c.total} Checks grün`;
+            const review =
+              pr.reviewDecision === "APPROVED" ? ", im Review freigegeben" : pr.reviewDecision === "CHANGES_REQUESTED" ? ", im Review wurden Änderungen verlangt" : pr.reviewDecision === "REVIEW_REQUIRED" ? ", Review steht aus" : "";
+            return `Pull Request ${pr.number} ${asData(pr.title)} von ${pr.head} nach ${pr.base}: ${state}, ${checks}${review}.`;
+          }
+          if (pr?.state === "OPEN") return `Für den Branch ${head} gibt es schon den offenen Pull Request ${pr.number} ${asData(pr.title)}.`;
+          const base = await git.defaultBranch(p.path);
+          if (head === base) return `Fehler: ${p.name} ist auf ${base}. Ein Pull Request braucht einen eigenen Branch.`;
+          const draft = await sessions.suggestPullRequest(p.id);
+          // The PR needs the branch on GitHub; pushing a feature branch is always allowed.
+          await git.push(p.path, false);
+          await gh.createPr(p.path, { title: draft.title, body: draft.body, base: draft.base, head: draft.head, draft: o?.draft === true });
+          projectChanged(p.id);
+          return `Pull Request ${asData(draft.title)} von ${draft.head} nach ${draft.base} angelegt${o?.draft ? ", als Entwurf" : ""}.`;
+        }),
+      removeAgent: (projectName, o) =>
+        run(true, async () => {
+          const p = target(projectName, o);
+          if (!p.parentId) return `Fehler: ${p.name} ist kein Agent-Worktree. Projekte lassen sich nur in FORGE entfernen.`;
+          const r = await removeWorktree(p.id, o?.force === true, removal, { deleteBranch: o?.deleteBranch === true });
+          projectChanged(p.parentId);
+          const branch = r.deletedBranch
+            ? ` Branch ${r.deletedBranch} gelöscht.`
+            : r.branchError
+              ? ` Der Branch ließ sich nicht löschen: ${r.branchError}`
+              : " Der Branch mit seinen Commits bleibt.";
+          return `Worktree ${p.name} entfernt, seine Session ist beendet.${branch}`;
         }),
       projects: () =>
         run(true, async () => {
           const all = this.d.projects.all().filter((p) => p.exists);
           if (!all.length) return "Es gibt keine Projekte.";
           const live = sessions.listLive();
-          return all
-            .map((p) => {
+          const lines = await Promise.all(
+            all.map(async (p) => {
               const n = live.filter((s) => s.projectId === p.id).length;
-              return `${p.name}${n ? `, ${n} aktive ${n === 1 ? "Session" : "Sessions"}` : ""}`;
-            })
-            .join("\n");
+              const branch = await this.d.git.currentBranch(p.path).catch(() => null);
+              const dev = await this.d.devServers.state(p.id).then(
+                (st) => st.status === "running",
+                () => false,
+              );
+              return [p.name, branch ? `Branch ${branch}` : "", dev ? "Dev-Server läuft" : "", n ? `${n} aktive ${n === 1 ? "Session" : "Sessions"}` : ""].filter(Boolean).join(", ");
+            }),
+          );
+          return lines.join("\n");
+        }),
+      search: (query) =>
+        run(true, async () => {
+          if (!query.trim()) return "Fehler: Wonach soll ich suchen?";
+          const lines: string[] = [];
+          const seen = new Set<string>();
+          // One line per session, its best hit first.
+          for (const h of db.searchEvents(query, 30)) {
+            if (seen.has(h.sessionId) || lines.length >= 5) continue;
+            seen.add(h.sessionId);
+            const snippet = h.snippet.split(SEARCH_MARK_START).join("").split(SEARCH_MARK_END).join("");
+            lines.push(`${refFor(h.sessionId)} ${asData(h.sessionTitle ?? "ohne Titel")} im Projekt ${h.projectName}: ${excerptData(snippet, 300)}`);
+          }
+          return lines.length ? lines.join("\n") : "Dazu steht in keiner Session etwas.";
+        }),
+      callSettings: (patch) =>
+        run(Object.values(patch).some((v) => v !== undefined), async () => {
+          const changes = Object.fromEntries(Object.entries(patch).filter(([, v]) => v !== undefined)) as CallSettingsPatch;
+          if (Object.keys(changes).length) await this.saveConfig({ notifyOn: { ...this.cfg.notifyOn, ...changes } });
+          if (!this.cfg.notifyNumber) return "FORGE ruft von sich aus nicht an: In den Einstellungen ist keine Nummer dafür eingetragen.";
+          const on = this.cfg.notifyOn;
+          const list = [on.done ? "wenn eine Session fertig ist" : "", on.approval ? "wenn eine Entscheidung nötig ist oder Claude dringend etwas meldet" : "", on.error ? "bei Fehlern" : ""].filter(Boolean);
+          return list.length ? `FORGE ruft an: ${list.join(", ")}.` : "FORGE ruft von sich aus nicht mehr an.";
         }),
       callBack: (minutes, about) =>
         run(false, async () => {

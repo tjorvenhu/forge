@@ -8,6 +8,7 @@ import { call, keys } from "./queries";
 import { rpc } from "./rpc";
 import { playSound } from "./sounds";
 import { notifyAutoContinue, notifyKind, notifySession, shouldNotify } from "./notifications";
+import { isChatWindow } from "./chat-windows";
 
 const GIT_REFRESH_DELAY_MS = 400;
 const EVICT_INTERVAL_MS = 60_000;
@@ -59,7 +60,10 @@ export function patchSessionLists(qc: QueryClient, s: Session) {
   else if (known) qc.setQueryData(keys.liveSessions, live.map((x) => (x.id === s.id ? { ...s, projectName: x.projectName } : x)));
 }
 
-/** Routes one sidecar push event into the query cache and the stores. */
+/**
+ * Routes one sidecar push event into the query cache and the stores. Every window routes the same
+ * events; toasts only show in the main window, otherwise each one would pop up once per window.
+ */
 export function routeServerEvent(qc: QueryClient, git: GitRefresher, e: ServerEvent) {
   switch (e.event) {
     case "session.event": {
@@ -105,6 +109,7 @@ export function routeServerEvent(qc: QueryClient, git: GitRefresher, e: ServerEv
         void qc.invalidateQueries({ queryKey: keys.runtimeInfo });
         void qc.invalidateQueries({ queryKey: keys.claudeUpdate });
       }
+      if (isChatWindow()) break;
       if (e.payload.task === "update" && e.payload.phase === "done") {
         toast.success("Claude Code aktualisiert", `${e.payload.message ?? ""} Offene Sessions nutzen die neue Version nach einem Neustart.`.trim());
       } else if (e.payload.task === "update" && e.payload.phase === "error") {
@@ -138,6 +143,7 @@ export function routeServerEvent(qc: QueryClient, git: GitRefresher, e: ServerEv
       break;
     case "runtime.models": {
       void qc.invalidateQueries({ queryKey: keys.runtimeInfo });
+      if (isChatWindow()) break;
       const names = e.payload.added.map((m) => m.displayName);
       if (names.length === 1) toast.info("Neues Modell verfügbar", `${names[0]} lässt sich jetzt im Composer und in den Einstellungen auswählen.`);
       else if (names.length > 1) toast.info("Neue Modelle verfügbar", `${names.join(", ")} lassen sich jetzt im Composer und in den Einstellungen auswählen.`);

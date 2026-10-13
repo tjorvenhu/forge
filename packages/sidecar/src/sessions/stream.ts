@@ -110,6 +110,15 @@ export class SessionStream {
     const s = (v: unknown) => (typeof v === "string" && v ? v : null);
     let changed = false;
     if (m.subtype === "task_started") {
+      const toolUseId = s(m.tool_use_id);
+      if (toolUseId) {
+        live.taskToolUse.set(taskId, toolUseId);
+        const bg = live.background.get(taskId);
+        if (bg && bg.toolUseId !== toolUseId) {
+          live.background.set(taskId, { ...bg, toolUseId });
+          this.core.publish(this.core.db.getSession(id));
+        }
+      }
       // Backgrounded work is listed by background_tasks_changed; foreground subagents only here.
       const isAgent = m.task_type === "local_agent" || typeof m.subagent_type === "string";
       if (m.is_backgrounded === true || !isAgent) return;
@@ -139,6 +148,7 @@ export class SessionStream {
         changed = true;
       }
     } else {
+      live.taskToolUse.delete(taskId);
       changed = live.subagents.delete(taskId);
     }
     if (changed) this.core.publish(this.core.db.getSession(id));
@@ -154,6 +164,7 @@ export class SessionStream {
         taskId,
         description: typeof t.description === "string" && t.description ? t.description : "Hintergrundaufgabe",
         taskType: typeof t.task_type === "string" ? t.task_type : "unknown",
+        toolUseId: live.taskToolUse.get(taskId) ?? null,
         startedAt: live.background.get(taskId)?.startedAt ?? new Date().toISOString(),
         summary: live.background.get(taskId)?.summary ?? null,
       });

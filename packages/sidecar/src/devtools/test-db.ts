@@ -24,6 +24,8 @@ export const POSTGRES = {
 export const DB_USER = "forge";
 const START_TIMEOUT_S = 60;
 const LOG_TAIL = 64_000;
+/** How often state() asks pg_ctl whether a server marked running still runs. */
+const ALIVE_CHECK_MS = 15_000;
 
 type Status = TestDbState["status"];
 
@@ -36,6 +38,8 @@ interface Instance {
   running: { port: number; name: string } | null;
   /** start, stop and reset of one project run one after another */
   queue: Promise<unknown>;
+  /** last time a running server was confirmed alive */
+  checkedAt: number;
 }
 
 export interface TestDbDeps {
@@ -45,6 +49,8 @@ export interface TestDbDeps {
   log?: (m: string) => void;
   /** test hook: where the binaries come from */
   binDir?: string;
+  /** test hook: download limits */
+  download?: { url?: string; connectMs?: number; stallMs?: number };
 }
 
 function tarExe(): string {
@@ -68,6 +74,9 @@ export function failureReason(log: string): string | null {
 export class TestDbService {
   private readonly instances = new Map<string, Instance>();
   private installing: Promise<void> | null = null;
+  /** progress callbacks of every project waiting for the shared download */
+  private readonly installWatchers = new Set<(p: number) => void>();
+  private closed = false;
   private readonly binDir: string;
 
   constructor(private readonly d: TestDbDeps) {
@@ -77,7 +86,7 @@ export class TestDbService {
   private instance(owner: string): Instance {
     let i = this.instances.get(owner);
     if (!i) {
-      i = { status: "stopped", progress: null, error: null, startedAt: null, running: null, queue: Promise.resolve() };
+      i = { status: "stopped", progress: null, error: null, startedAt: null, running: null, queue: Promise.resolve(), checkedAt: 0 };
       this.instances.set(owner, i);
     }
     return i;
@@ -100,6 +109,7 @@ export class TestDbService {
     const owner = this.d.devTools.owner(projectId);
     const i = this.instance(owner);
     const cfg = this.d.devTools.get(owner).database;
+    if (i.status === "running" && Date.now() - i.checkedAt > ALIVE_CHECK_MS) this.checkAlive(owner);
     return {
       projectId: owner,
       status: i.status,
@@ -144,11 +154,35 @@ export class TestDbService {
     return next;
   }
 
+  /** A server can end without FORGE (crash, killed by hand): the status follows it. */
+  private checkAlive(owner: string) {
+    const i = this.instance(owner);
+    i.checkedAt = Date.now();
+    void this.enqueue(owner, async () => {
+      if (i.status !== "running") return;
+      if (await this.serverAlive(this.folder(owner).data)) {
+        i.checkedAt = Date.now();
+        return;
+      }
+      this.d.log?.(`Test-Datenbank läuft nicht mehr: Projekt ${owner}`);
+      this.set(owner, { status: "stopped", running: null, startedAt: null });
+    }).catch(() => {});
+  }
+
   start(projectId: string): Promise<TestDbState> {
     const owner = this.d.devTools.owner(projectId);
     return this.enqueue(owner, async () => {
       const i = this.instance(owner);
-      if (i.status === "running") return this.state(owner);
+      if (this.closed) throw new ForgeError("INTERNAL", "FORGE wird beendet.");
+      const f = this.folder(owner);
+      if (i.status === "running") {
+        if (await this.serverAlive(f.data)) {
+          i.checkedAt = Date.now();
+          return this.state(owner);
+        }
+        this.d.log?.(`Test-Datenbank läuft nicht mehr, starte neu: Projekt ${owner}`);
+        this.set(owner, { status: "stopped", running: null, startedAt: null });
+      }
       try {
         if (!this.installed) {
           this.set(owner, { status: "installing", progress: 0, error: null });
@@ -158,10 +192,9 @@ export class TestDbService {
         }
         this.set(owner, { status: "starting", progress: null, error: null });
         const cfg = this.d.devTools.get(owner).database;
-        const f = this.folder(owner);
         // A server left behind by a crashed sidecar still holds the data folder: take it over.
         if (await this.serverAlive(f.data)) {
-          this.set(owner, { status: "running", startedAt: new Date().toISOString(), running: { port: cfg.port, name: cfg.name } });
+          this.set(owner, { status: "running", startedAt: new Date().toISOString(), running: { port: cfg.port, name: cfg.name }, checkedAt: Date.now() });
           return this.state(owner);
         }
         if (!existsSync(path.join(f.data, "PG_VERSION"))) await this.initCluster(f, cfg.password);
@@ -173,7 +206,7 @@ export class TestDbService {
           const reason = failureReason(this.log(owner)) ?? (r.stderr.trim() || r.stdout.trim() || `pg_ctl beendet mit Code ${r.code ?? "?"}`);
           throw new Error(/could not bind|address already in use|Adresse wird bereits/i.test(reason) ? `Port ${cfg.port} ist belegt. Wähle einen anderen Port.` : reason);
         }
-        this.set(owner, { status: "running", startedAt: new Date().toISOString(), running: { port: cfg.port, name: cfg.name } });
+        this.set(owner, { status: "running", startedAt: new Date().toISOString(), running: { port: cfg.port, name: cfg.name }, checkedAt: Date.now() });
         this.d.log?.(`Test-Datenbank gestartet: Projekt ${owner}, Port ${cfg.port}`);
         return this.state(owner);
       } catch (e) {
@@ -187,26 +220,34 @@ export class TestDbService {
   stop(projectId: string): Promise<TestDbState> {
     const owner = this.d.devTools.owner(projectId);
     return this.enqueue(owner, async () => {
-      const f = this.folder(owner);
-      if (!existsSync(path.join(f.data, "PG_VERSION")) || !this.installed) {
-        this.set(owner, { status: "stopped", running: null, startedAt: null });
-        return this.state(owner);
-      }
-      this.set(owner, { status: "stopping", error: null });
-      await run(this.bin("pg_ctl"), ["stop", "-D", f.data, "-m", "fast", "-w", "-t", "30"], { timeoutMs: 45_000 });
-      if (await this.serverAlive(f.data)) {
-        await run(this.bin("pg_ctl"), ["stop", "-D", f.data, "-m", "immediate", "-w", "-t", "15"], { timeoutMs: 25_000 });
-      }
-      this.set(owner, { status: "stopped", running: null, startedAt: null });
+      await this.stopNow(owner);
       return this.state(owner);
     });
   }
 
-  /** Stops the server and deletes its data; the next start creates an empty database. */
-  async reset(projectId: string): Promise<TestDbState> {
+  /** Only inside a queued job. */
+  private async stopNow(owner: string) {
+    const f = this.folder(owner);
+    if (!existsSync(path.join(f.data, "PG_VERSION")) || !this.installed) {
+      this.set(owner, { status: "stopped", running: null, startedAt: null });
+      return;
+    }
+    this.set(owner, { status: "stopping", error: null });
+    await run(this.bin("pg_ctl"), ["stop", "-D", f.data, "-m", "fast", "-w", "-t", "30"], { timeoutMs: 45_000 });
+    if (await this.serverAlive(f.data)) {
+      await run(this.bin("pg_ctl"), ["stop", "-D", f.data, "-m", "immediate", "-w", "-t", "15"], { timeoutMs: 25_000 });
+    }
+    this.set(owner, { status: "stopped", running: null, startedAt: null });
+  }
+
+  /**
+   * Stops the server and deletes its data; the next start creates an empty database. One job, so no
+   * start can slip in between stop and delete.
+   */
+  reset(projectId: string): Promise<TestDbState> {
     const owner = this.d.devTools.owner(projectId);
-    await this.stop(owner);
     return this.enqueue(owner, async () => {
+      await this.stopNow(owner);
       await rm(this.folder(owner).base, { recursive: true, force: true });
       this.set(owner, { status: "stopped", error: null, startedAt: null, running: null });
       return this.state(owner);
@@ -217,13 +258,32 @@ export class TestDbService {
   async forget(projectId: string) {
     const owner = projectId;
     if (!existsSync(this.folder(owner).base)) return;
-    await this.stop(owner).catch(() => null);
-    await rm(this.folder(owner).base, { recursive: true, force: true }).catch(() => {});
+    await this.enqueue(owner, async () => {
+      await this.stopNow(owner).catch(() => {});
+      await rm(this.folder(owner).base, { recursive: true, force: true }).catch(() => {});
+    });
     this.instances.delete(owner);
   }
 
-  /** On exit: every running server goes down cleanly (fast shutdown, no recovery on the next start). */
+  /**
+   * On exit, started while the sessions drain: the desktop shell ends the sidecar after a few
+   * seconds, and pg_ctl's fast shutdown spares the next start a recovery.
+   */
+  async stopAll() {
+    this.closed = true;
+    await Promise.allSettled(
+      [...this.instances].map(async ([owner, i]) => {
+        if (i.status !== "running" && i.status !== "starting") return;
+        const data = this.folder(owner).data;
+        await run(this.bin("pg_ctl"), ["stop", "-D", data, "-m", "fast", "-w", "-t", "4"], { timeoutMs: 5_000 });
+        if (!(await this.serverAlive(data))) Object.assign(i, { status: "stopped", running: null, startedAt: null });
+      }),
+    );
+  }
+
+  /** Last resort on exit for servers stopAll did not get down in time. */
   shutdown() {
+    this.closed = true;
     for (const [owner, i] of this.instances) {
       if (i.status !== "running" && i.status !== "starting") continue;
       spawnSync(this.bin("pg_ctl"), ["stop", "-D", this.folder(owner).data, "-m", "fast", "-w", "-t", "10"], { windowsHide: true, stdio: "ignore", timeout: 12_000 });
@@ -281,9 +341,12 @@ export class TestDbService {
   }
 
   /** Downloads and unpacks the binaries once; parallel starts of several projects share one download. */
-  private install(progress: (p: number) => void): Promise<void> {
-    this.installing ??= this.download(progress).finally(() => (this.installing = null));
-    return this.installing;
+  private install(onProgress: (p: number) => void): Promise<void> {
+    this.installWatchers.add(onProgress);
+    this.installing ??= this.download((p) => {
+      for (const w of this.installWatchers) w(p);
+    }).finally(() => (this.installing = null));
+    return this.installing.finally(() => this.installWatchers.delete(onProgress));
   }
 
   private async download(progress: (p: number) => void) {
@@ -292,20 +355,46 @@ export class TestDbService {
     await mkdir(parent, { recursive: true });
     const tgz = path.join(parent, `postgres-${POSTGRES.build}.tgz`);
     const tmp = path.join(parent, `extract-${process.pid}`);
+    const connectMs = this.d.download?.connectMs ?? 30_000;
+    const stallMs = this.d.download?.stallMs ?? 30_000;
+    const abort = new AbortController();
+    let watchdog: ReturnType<typeof setTimeout> | undefined;
     try {
       this.d.log?.(`Test-Datenbank: lade PostgreSQL ${POSTGRES.version}`);
-      const res = await fetch(POSTGRES.url);
+      // Without limits a dead connection would hold the queue of every waiting project forever.
+      watchdog = setTimeout(() => abort.abort(new Error("Der Server für den PostgreSQL-Download antwortet nicht. Prüf die Internetverbindung.")), connectMs);
+      let res: Response;
+      try {
+        res = await fetch(this.d.download?.url ?? POSTGRES.url, { signal: abort.signal });
+      } catch (e) {
+        throw abort.signal.aborted ? (abort.signal.reason as Error) : new Error(`Download von PostgreSQL fehlgeschlagen: ${e instanceof Error ? e.message : String(e)}`);
+      }
+      clearTimeout(watchdog);
       if (!res.ok || !res.body) throw new Error(`Download von PostgreSQL fehlgeschlagen (HTTP ${res.status}).`);
       const total = Number(res.headers.get("content-length")) || POSTGRES.size;
       const hash = createHash("sha512");
       let got = 0;
       const body = Readable.fromWeb(res.body as Parameters<typeof Readable.fromWeb>[0]);
+      const stalled = () => {
+        const err = new Error(`Download von PostgreSQL abgebrochen: seit ${Math.round(stallMs / 1000)} Sekunden keine Daten.`);
+        abort.abort(err);
+        body.destroy(err);
+      };
+      watchdog = setTimeout(stalled, stallMs);
       body.on("data", (chunk: Buffer) => {
+        clearTimeout(watchdog);
+        watchdog = setTimeout(stalled, stallMs);
         hash.update(chunk);
         got += chunk.length;
         progress(Math.min(0.99, got / total));
       });
-      await pipeline(body, createWriteStream(tgz));
+      try {
+        await pipeline(body, createWriteStream(tgz));
+      } catch (e) {
+        throw abort.signal.aborted ? (abort.signal.reason as Error) : e;
+      } finally {
+        clearTimeout(watchdog);
+      }
       if (`sha512-${hash.digest("base64")}` !== POSTGRES.integrity) throw new Error("Prüfsumme von PostgreSQL stimmt nicht. Download verworfen.");
       await rm(tmp, { recursive: true, force: true });
       await mkdir(tmp, { recursive: true });
@@ -317,6 +406,7 @@ export class TestDbService {
       await rename(native, root);
       progress(1);
     } finally {
+      clearTimeout(watchdog);
       await rm(tgz, { force: true }).catch(() => {});
       await rm(tmp, { recursive: true, force: true }).catch(() => {});
       await this.dropOldBuilds(parent).catch(() => {});

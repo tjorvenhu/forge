@@ -245,6 +245,11 @@ export const methods = {
   "sessions.get": { params: sessionRef, result: Session },
   /** stops one background task or subagent; the turn and other tasks go on */
   "sessions.stopTask": { params: sessionRef.extend({ taskId: z.string().min(1) }), result: z.object({ ok: z.boolean() }) },
+  /** the end (last 8 KiB) of what a background command printed so far */
+  "sessions.taskOutput": {
+    params: sessionRef.extend({ taskId: z.string().min(1) }),
+    result: z.object({ output: z.string(), totalBytes: z.number(), truncated: z.boolean() }),
+  },
   /** moves running foreground work (a subagent or command, or all with no toolUseId) into the background, like Ctrl+B */
   "sessions.toBackground": { params: sessionRef.extend({ toolUseId: z.string().optional() }), result: z.object({ moved: z.boolean() }) },
   /**
@@ -350,8 +355,11 @@ export const methods = {
   "knowledge.delete": { params: projectRef.extend({ id }), result: z.object({ ok: z.boolean() }) },
 
   "app.updateState": { params: empty, result: AppUpdateState },
-  /** whether the FORGE window is active, and whether the user just used it (keys, mouse); FORGE does not call while they are there */
-  "app.presence": { params: z.object({ focused: z.boolean(), active: z.boolean() }), result: z.object({}) },
+  /**
+   * whether a FORGE window is active, and whether the user just used it (keys, mouse); FORGE does not call while they are there.
+   * window: label of the reporting window (main or a chat window), so several windows do not overwrite each other's focus.
+   */
+  "app.presence": { params: z.object({ focused: z.boolean(), active: z.boolean(), window: z.string().min(1).max(120).default("main") }), result: z.object({}) },
   /** looks for a newer release now */
   "app.checkUpdate": { params: empty, result: AppUpdateState },
   /** downloads and checks the installer of the newest release; installing is a command of the desktop shell */

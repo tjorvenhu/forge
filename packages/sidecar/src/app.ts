@@ -179,7 +179,8 @@ export function createApp(opts: { dataDir: string; write: Writer; log?: (m: stri
       let timer: ReturnType<typeof setTimeout> | undefined;
       const limit = new Promise<void>((r) => (timer = setTimeout(r, limitMs)));
       // The phone hangs up and unregisters; tests and auto-commits of finished turns get a chance to land.
-      await Promise.race([Promise.allSettled([sessions.drain(), Promise.resolve().then(() => phone?.shutdown())]), limit]);
+      // The test databases go down meanwhile: after the drain there is no time left before the shell ends us.
+      await Promise.race([Promise.allSettled([sessions.drain(), Promise.resolve().then(() => phone?.shutdown()), testDb.stopAll()]), limit]);
       clearTimeout(timer);
       sessions.shutdown();
       updates.stop();

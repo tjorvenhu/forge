@@ -376,6 +376,13 @@ export class SessionService {
     return { ok: true };
   }
 
+  /** What a background command printed so far (its last 8 KiB). */
+  async taskOutput(sessionId: string, taskId: string) {
+    const live = this.core.live.get(sessionId);
+    if (!live) throw new ForgeError("SESSION_NOT_FOUND", "Session ist nicht aktiv.");
+    return live.rt.taskOutput(taskId);
+  }
+
   /** Moves running foreground work into the background, so the turn goes on (Ctrl+B in the terminal). */
   async toBackground(sessionId: string, toolUseId?: string) {
     const live = this.core.live.get(sessionId);

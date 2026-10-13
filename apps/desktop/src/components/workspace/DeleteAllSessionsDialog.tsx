@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
+import { closeChatWindows } from "@/lib/chat-windows";
 import { call, keys } from "@/lib/queries";
 import { errorMessage } from "@/lib/rpc";
 import { useUi } from "@/stores/ui";
@@ -34,6 +35,7 @@ export function DeleteAllSessionsDialog({ open, liveCount, onClose }: { open: bo
           throw e;
         }
         const deleted = new Set(result.deleted);
+        closeChatWindows(deleted);
         const ui = useUi.getState();
         for (const [projectId, sessionId] of Object.entries(ui.activeSession)) {
           if (sessionId && deleted.has(sessionId)) ui.setActiveSession(projectId, null);

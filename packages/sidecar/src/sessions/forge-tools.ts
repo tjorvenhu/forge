@@ -1,3 +1,4 @@
+import path from "node:path";
 import type { ServerEvent, Session, SessionEventBody } from "@forge/protocol";
 import { z } from "zod";
 import { slugify, type WorktreeService } from "../automation/worktrees.js";
@@ -70,6 +71,7 @@ export interface ForgeToolDeps {
 /** Knowledge and dev tools of the session's project, with the lines of start context that explain them. */
 export function projectTools(rec: SessionRecord, p: ProjectToolDeps): { tools: SessionTool[]; context: string[] } {
   const projectId = rec.projectId;
+  const inWorktree = p.knowledge.owner(projectId) !== projectId;
   const knowledgeSearch: SessionTool = {
     name: "knowledge_search",
     description: "Durchsucht das Projektwissen (Titel, Tags, Zusammenfassung, Text). Liefert Kennung, Titel, Zusammenfassung und eine Textstelle je Treffer.",
@@ -117,7 +119,9 @@ export function projectTools(rec: SessionRecord, p: ProjectToolDeps): { tools: S
       }
       const tags = Array.isArray(a.tags) ? a.tags.filter((t): t is string => typeof t === "string") : id ? (await p.knowledge.read(projectId, id)).tags : [];
       const e = await p.knowledge.save(projectId, { id, title, summary: String(a.summary), tags, content: String(a.content) });
-      return `${id ? "Aktualisiert" : "Gespeichert"}: ${e.id} (${KNOWLEDGE_DIR.replace(/\\/g, "/")}/${e.id}.md).`;
+      // A worktree has no knowledge folder of its own; a relative path would point into the wrong checkout.
+      const file = inWorktree ? path.join(p.knowledge.dir(projectId), `${e.id}.md`) : `${KNOWLEDGE_DIR.replace(/\\/g, "/")}/${e.id}.md`;
+      return `${id ? "Aktualisiert" : "Gespeichert"}: ${e.id} (${file}).`;
     },
   };
   const knowledgeDelete: SessionTool = {
@@ -150,14 +154,18 @@ export function projectTools(rec: SessionRecord, p: ProjectToolDeps): { tools: S
   const { lines, total } = p.knowledge.index(projectId);
   const context = [
     "Projektwissen (FORGE): Gesammeltes Wissen zu diesem Projekt liegt in .forge/knowledge (Markdown, im Git).",
+    inWorktree
+      ? `Du arbeitest in einem Worktree. Das Projektwissen liegt im Ordner des Hauptprojekts: ${p.knowledge.dir(projectId)}. Eine Kopie in deinem Worktree ist nicht maßgeblich.`
+      : "",
     lines.length
-      ? `Index (${total} Einträge${total > lines.length ? `, die ${lines.length} neuesten; den Rest findet knowledge_search` : ""}):\n${lines.join("\n")}`
-      : "Noch keine Einträge.",
+      ? `Index beim Start dieser Session (${total} Einträge${total > lines.length ? `, die ${lines.length} neuesten` : ""}; Neueres findet knowledge_search):\n${lines.join("\n")}`
+      : "Beim Start dieser Session gab es noch keine Einträge. Lege die ersten an, sobald du etwas Passendes herausfindest.",
     "- Bevor du in einem Bereich arbeitest, zu dem es einen passenden Eintrag gibt, lies ihn mit mcp__forge__knowledge_read. Bei Fragen zu Abläufen, Entscheidungen oder Stolperfallen suche zuerst mit knowledge_search.",
     "- Speichere mit knowledge_save, was künftigen Sessions Zeit spart und nicht offensichtlich im Code oder in CLAUDE.md steht: Entscheidungen mit Begründung, Stolperfallen und ihre Lösung, Abläufe (Setup, Tests, Deploy), Eigenheiten externer Dienste. Speichere, sobald du so etwas herausgefunden hast, nicht erst am Ende.",
     "- Keine Geheimnisse (Passwörter, Tokens, Keys), kein Sitzungsprotokoll, nichts Kurzlebiges. Ein Thema pro Eintrag; bestehende Einträge aktualisieren statt neue anzulegen, Veraltetes korrigieren oder mit knowledge_delete löschen.",
+    "- Ändere das Projektwissen nur mit den knowledge_*-Werkzeugen, nicht mit Read, Edit oder Write auf die Dateien.",
     "Dev-Umgebung (FORGE): mcp__forge__dev_environment zeigt Dev-Server (Adresse, letzte Ausgabe) und die lokale PostgreSQL-Testdatenbank (Verbindungs-URL). Nutze für Tests, Migrationen und Experimente mit Daten diese Testdatenbank, nie eine Produktionsdatenbank. dev_control startet, stoppt oder leert sie und startet den Dev-Server neu.",
-  ];
+  ].filter(Boolean);
   return { tools: [knowledgeSearch, knowledgeRead, knowledgeSave, knowledgeDelete, devEnvironment, devControl], context };
 }
 
@@ -190,8 +198,9 @@ export function forgeSessionTools(rec: SessionRecord, d: ForgeToolDeps): { tools
   let own: { tools: SessionTool[]; context: string[] } = { tools: [], context: [] };
   try {
     if (d.project && project.exists) own = projectTools(rec, d.project);
-  } catch {
-    // Without knowledge and dev tools the session still gets the other FORGE tools.
+  } catch (e) {
+    // Without knowledge and dev tools the session still gets the other FORGE tools; the timeline says why.
+    d.record(sessionId, { type: "status", status: "starting", detail: `Projektwissen und Dev-Werkzeuge nicht verfügbar: ${e instanceof Error ? e.message : String(e)}` });
   }
 
   const notify: SessionTool = {
@@ -233,7 +242,7 @@ export function forgeSessionTools(rec: SessionRecord, d: ForgeToolDeps): { tools
   const startAgent: SessionTool = {
     name: "start_agent",
     description:
-      "Startet einen parallelen Agenten (eigene Claude-Code-Session) in einem neuen Git-Worktree auf eigenem Branch. Für unabhängige Teilaufgaben, die gleichzeitig laufen können. Der Agent sieht diesen Chat nicht: Der Auftrag muss für sich allein verständlich sein.",
+      "Startet einen parallelen Agenten (eigene Claude-Code-Session) in einem neuen Git-Worktree auf eigenem Branch. Für unabhängige Teilaufgaben, die gleichzeitig laufen können. Der Agent sieht diesen Chat nicht: Der Auftrag muss für sich allein verständlich sein. Sein Branch beginnt beim letzten Commit deines aktuellen Branches: Nicht committete Änderungen sieht er nicht, committe sie vorher, wenn er sie braucht.",
     shape: {
       task: z.string().min(10).describe("Vollständiger Auftrag mit allem nötigen Kontext"),
       name: z.string().max(40).optional().describe("Kurzer Name für den Branch, z. B. csv-export"),
@@ -245,7 +254,8 @@ export function forgeSessionTools(rec: SessionRecord, d: ForgeToolDeps): { tools
       const root = project.parentId ? d.projects.get(project.parentId) : project;
       const task = String(a.task);
       const branch = `agent/${slugify(typeof a.name === "string" && a.name.trim() ? a.name : task, 32)}-${Date.now().toString(36).slice(-4)}`;
-      const wt = await d.worktrees.create(d.projects.requireExisting(root.id), branch);
+      // From where this session stands (its branch, or its own worktree), not from the main checkout.
+      const wt = await d.worktrees.create(d.projects.requireExisting(root.id), branch, { fromDir: d.projects.requireExisting(project.id).path });
       d.emit({ event: "project.updated", payload: { projectId: wt.id } });
       d.agents.reserve(wt.id, sessionId);
       let child: Session;
@@ -253,6 +263,9 @@ export function forgeSessionTools(rec: SessionRecord, d: ForgeToolDeps): { tools
         child = await d.start({ projectId: wt.id, prompt: task });
       } catch (e) {
         d.agents.release(wt.id);
+        // Nothing was done in it yet: an empty worktree and branch would only be left to clean up by hand.
+        await d.worktrees.remove(wt, true, { deleteBranch: true }).catch(() => null);
+        d.emit({ event: "project.updated", payload: { projectId: root.id } });
         throw e;
       }
       d.agents.adopt(child.id, wt.id);
@@ -263,26 +276,33 @@ export function forgeSessionTools(rec: SessionRecord, d: ForgeToolDeps): { tools
   const agentStatus: SessionTool = {
     name: "agent_status",
     description: "Stand der Agenten, die diese Session gestartet hat: Status, Branch und ihre letzte Antwort.",
-    shape: { agent: z.string().optional().describe("Kürzel eines Agenten; leer für alle") },
+    shape: { agent: z.string().min(1).optional().describe("Kürzel eines Agenten; weglassen für alle") },
     autoAllow: true,
     run: async (a) => {
       const ids = typeof a.agent === "string" && a.agent.trim() ? [resolveChild(a.agent)] : d.agents.children(sessionId);
       if (!ids.length) return "Diese Session hat keine Agenten gestartet.";
-      return ids
-        .map((id) => {
+      const lines = await Promise.all(
+        ids.map(async (id) => {
           const s = d.db.getSession(id);
           if (!s) return `${short(id)}: gelöscht`;
+          const branch = await d.worktrees.branchOf(s.cwd);
           const last = lastAnswer(d.db, id);
-          return [`${short(id)} (${s.title ?? "ohne Titel"}): ${STATUS[s.status] ?? s.status}, Ordner ${s.cwd}`, last ? `  Letzte Antwort: ${excerpt(last, 800)}` : ""].filter(Boolean).join("\n");
-        })
-        .join("\n");
+          return [
+            `${short(id)} (${s.title ?? "ohne Titel"}): ${STATUS[s.status] ?? s.status}, Branch ${branch ?? "unbekannt"}, Ordner ${s.cwd}`,
+            last ? `  Letzte Antwort: ${excerpt(last, 800)}` : "",
+          ]
+            .filter(Boolean)
+            .join("\n");
+        }),
+      );
+      return lines.join("\n");
     },
   };
 
   const messageAgent: SessionTool = {
     name: "message_agent",
     description: "Schickt einem Agenten dieser Session eine weitere Anweisung; er arbeitet dann weiter.",
-    shape: { agent: z.string().describe("Kürzel des Agenten"), text: z.string().min(1).describe("Anweisung, vollständig ausformuliert") },
+    shape: { agent: z.string().min(1).describe("Kürzel des Agenten"), text: z.string().min(1).describe("Anweisung, vollständig ausformuliert") },
     autoAllow: false,
     run: async (a) => {
       const id = resolveChild(String(a.agent));
@@ -295,7 +315,7 @@ export function forgeSessionTools(rec: SessionRecord, d: ForgeToolDeps): { tools
     tools: [startAgent, agentStatus, messageAgent, notify, ...own.tools],
     context: [
       "Du läufst in FORGE, einer Desktop-Oberfläche für Claude Code. Neben deinen Werkzeugen gibt es FORGE-Werkzeuge (mcp__forge__…):",
-      "- start_agent: startet einen parallelen Agenten in einem eigenen Git-Worktree auf eigenem Branch. Nur für Teilaufgaben, die wirklich unabhängig und gleichzeitig laufen können; der Auftrag muss für sich allein verständlich sein.",
+      "- start_agent: startet einen parallelen Agenten in einem eigenen Git-Worktree auf eigenem Branch. Nur für Teilaufgaben, die wirklich unabhängig und gleichzeitig laufen können; der Auftrag muss für sich allein verständlich sein. Der Agent startet beim letzten Commit deines Branches und sieht nur committete Stände.",
       "- agent_status und message_agent: Agenten verfolgen und anleiten. Ihre Arbeit liegt auf ihren Branches; zusammenführen erst nach Rücksprache mit dem Nutzer.",
       "- notify: den Nutzer aktiv benachrichtigen. urgent=true nur, wenn er sofort gebraucht wird (kann sein Telefon klingeln lassen).",
       ...own.context,

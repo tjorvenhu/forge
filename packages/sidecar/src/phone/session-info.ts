@@ -18,7 +18,7 @@ export function lastAnswer(db: Db, sessionId: string): string {
   for (let i = events.length - 1; i >= 0; i--) {
     const b = events[i]!.body;
     if (b.type === "turn.result" && b.text && !b.isError) return b.text;
-    if (b.type === "assistant.text" && b.text.trim()) return b.text;
+    if (b.type === "assistant.text" && !b.parentToolUseId && b.text.trim()) return b.text;
   }
   return "";
 }

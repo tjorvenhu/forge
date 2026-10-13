@@ -4,13 +4,16 @@ import type { ServerEvent, Session, SessionEvent } from "@forge/protocol";
 import { useSessionEvents } from "@/stores/session-events";
 import type * as NotificationsNs from "./notifications";
 import { useUi } from "@/stores/ui";
+import { useToasts } from "@/stores/toast";
 import { keys } from "./queries";
 import { createGitRefresher, evictSessionBuffers, startServerEvents } from "./server-events";
 
 type NotificationsModule = typeof NotificationsNs;
 
+let inChatWindow = false;
 vi.mock("./sounds", () => ({ playSound: vi.fn() }));
 vi.mock("./notifications", async (orig) => ({ ...(await orig<NotificationsModule>()), notifySession: vi.fn(async () => {}) }));
+vi.mock("./chat-windows", () => ({ isChatWindow: () => inChatWindow }));
 
 function fakeSource() {
   const listeners = new Set<(e: ServerEvent) => void>();
@@ -43,6 +46,8 @@ let stop: (() => void) | null = null;
 beforeEach(() => {
   qc = new QueryClient();
   useSessionEvents.setState({ buffers: {} });
+  useToasts.setState({ toasts: [] });
+  inChatWindow = false;
 });
 afterEach(() => {
   stop?.();
@@ -105,6 +110,23 @@ describe("server event routing", () => {
 
     expect(invalidate).toHaveBeenCalledWith();
     expect(useSessionEvents.getState().buffers.s1).toMatchObject({ loaded: false, streaming: {} });
+  });
+
+  it("shows toasts in the main window only", () => {
+    const models = { event: "runtime.models", payload: { added: [{ displayName: "Opus" }] } } as ServerEvent;
+    const update = { event: "claude.setup", payload: { task: "update", phase: "error", message: null } } as ServerEvent;
+    const f = fakeSource();
+    stop = startServerEvents(qc, f.source);
+
+    inChatWindow = true;
+    f.emit(models);
+    f.emit(update);
+    expect(useToasts.getState().toasts).toEqual([]);
+
+    inChatWindow = false;
+    f.emit(models);
+    f.emit(update);
+    expect(useToasts.getState().toasts.map((t) => t.title)).toEqual(["Neues Modell verfügbar", "Update fehlgeschlagen"]);
   });
 });
 

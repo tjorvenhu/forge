@@ -21,6 +21,8 @@ interface Running {
   pending: string;
   flushTimer: ReturnType<typeof setTimeout> | null;
   stopping: boolean;
+  /** waiting for prepare (test database, possibly its first download); no process yet */
+  preparing: boolean;
   /** resolves once the process has exited and its output is read */
   finished: Promise<void>;
 }
@@ -83,7 +85,9 @@ export class DevServerService {
   start(projectId: string): Promise<DevServerState> {
     const pending = this.starting.get(projectId);
     if (pending) return pending;
-    const p = this.doStart(projectId).finally(() => this.starting.delete(projectId));
+    const p: Promise<DevServerState> = this.doStart(projectId).finally(() => {
+      if (this.starting.get(projectId) === p) this.starting.delete(projectId);
+    });
     this.starting.set(projectId, p);
     return p;
   }
@@ -104,6 +108,7 @@ export class DevServerService {
       pending: "",
       flushTimer: null,
       stopping: false,
+      preparing: false,
       finished: new Promise<void>((resolve) => (markFinished = resolve)),
     };
     this.servers.set(projectId, r);
@@ -111,10 +116,18 @@ export class DevServerService {
     if (this.prepare) {
       // Shown as starting while the test database comes up (its first start downloads PostgreSQL).
       this.emitState(r);
+      r.preparing = true;
       try {
         prep = await this.prepare(projectId);
       } catch (e) {
         prep = { env: {}, notes: [`Test-Umgebung nicht gesetzt: ${e instanceof Error ? e.message : String(e)}`] };
+      } finally {
+        r.preparing = false;
+      }
+      // Stopped while waiting: the test database keeps starting on its own, the dev server does not.
+      if (r.stopping || this.servers.get(projectId) !== r) {
+        markFinished();
+        return this.state(projectId);
       }
     }
     for (const note of prep.notes) this.append(r, `[FORGE] ${note}\n`);
@@ -159,6 +172,14 @@ export class DevServerService {
   }
 
   async stop(projectId: string): Promise<DevServerState> {
+    const preparing = this.servers.get(projectId);
+    if (preparing?.preparing && !preparing.stopping) {
+      // Not waiting for prepare: a first PostgreSQL download can take minutes.
+      preparing.stopping = true;
+      this.starting.delete(projectId);
+      this.update(preparing, { status: "stopped" });
+      return this.state(projectId);
+    }
     await this.starting.get(projectId)?.catch(() => null);
     const r = this.servers.get(projectId);
     if (r?.child && r.state.status === "running") {
@@ -183,7 +204,7 @@ export class DevServerService {
       if (r.child && r.state.status === "running") {
         r.stopping = true;
         killTree(r.child, { sync: true });
-      }
+      } else if (r.preparing) r.stopping = true;
     }
   }
 

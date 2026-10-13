@@ -36,10 +36,15 @@ export const INFO_COMMANDS: InfoCommand[] = [
   { name: "mcp", title: "MCP-Server", description: "MCP-Server und ihren Verbindungsstatus anzeigen.", Body: McpBody },
 ];
 
-/** The info command typed as the whole input ("/usage"), or null. */
-export function infoCommand(text: string): InfoCommand | null {
+/**
+ * The info command typed as the whole input ("/usage"), or null. `custom`: the name of a user or
+ * project command of the same name the user picked; it goes to Claude instead.
+ */
+export function infoCommand(text: string, custom?: string | null): InfoCommand | null {
   const m = /^\/(\w+)$/.exec(text.trim());
-  return (m && INFO_COMMANDS.find((c) => c.name === m[1]!.toLowerCase())) || null;
+  const name = m?.[1]!.toLowerCase();
+  if (!name || name === custom?.toLowerCase()) return null;
+  return INFO_COMMANDS.find((c) => c.name === name) ?? null;
 }
 
 /** Opens over the chat and blurs it; closing hands the focus back to the composer (Radix does that). */

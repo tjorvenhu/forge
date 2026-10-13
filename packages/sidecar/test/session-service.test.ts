@@ -112,6 +112,7 @@ class FakeRuntime implements ClaudeRuntime {
       stopTask: async (taskId) => {
         this.stoppedTasks.push(taskId);
       },
+      taskOutput: async (taskId) => ({ output: `Ausgabe von ${taskId}`, totalBytes: 14, truncated: false }),
       toBackground: async (toolUseId) => {
         this.backgrounded.push(toolUseId ?? "*");
         return true;
@@ -295,6 +296,19 @@ describe("SessionService", () => {
     expect(rt.backgrounded).toEqual(["tu1"]);
     sink.onMessage({ type: "system", subtype: "task_notification", task_id: "k1", status: "completed" });
     expect(svc.get(s.id).subagents).toEqual([]);
+  });
+
+  it("names the tool call of a background task, also when the list comes before task_started, and reads its output", async () => {
+    const s = await svc.start({ projectId, prompt: "Baue im Hintergrund" });
+    const sink = rt.sinks[0]!;
+    sink.onMessage({ type: "system", subtype: "background_tasks_changed", tasks: [{ task_id: "b1", task_type: "local_bash", description: "build" }] });
+    expect(svc.get(s.id).background).toMatchObject([{ taskId: "b1", toolUseId: null }]);
+    sink.onMessage({ type: "system", subtype: "task_started", task_id: "b1", tool_use_id: "tb1", description: "build", task_type: "local_bash", is_backgrounded: true });
+    expect(svc.get(s.id).background).toMatchObject([{ taskId: "b1", toolUseId: "tb1" }]);
+    sink.onMessage({ type: "system", subtype: "task_started", task_id: "a1", tool_use_id: "ta1", description: "Recherche", task_type: "local_agent", is_backgrounded: true });
+    sink.onMessage({ type: "system", subtype: "background_tasks_changed", tasks: [{ task_id: "b1", task_type: "local_bash", description: "build" }, { task_id: "a1", task_type: "local_agent", description: "Recherche" }] });
+    expect(svc.get(s.id).background).toMatchObject([{ taskId: "b1", toolUseId: "tb1" }, { taskId: "a1", toolUseId: "ta1" }]);
+    expect(await svc.taskOutput(s.id, "b1")).toEqual({ output: "Ausgabe von b1", totalBytes: 14, truncated: false });
   });
 
   it("uses the Safe profile for real: default mode and disabled network tools", async () => {

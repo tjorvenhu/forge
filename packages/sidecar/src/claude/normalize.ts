@@ -157,11 +157,12 @@ export class Normalizer {
     const content = Array.isArray(msg.content) ? msg.content : [];
     for (const b of content) {
       const block = (b ?? {}) as Record<string, unknown>;
-      if (block.type === "text" && typeof block.text === "string" && !parent) {
+      if (block.type === "text" && typeof block.text === "string") {
         const n = this.finalTextCount.get(id) ?? 0;
         this.finalTextCount.set(id, n + 1);
         const index = this.streamedTextIdx.get(id)?.[n] ?? n;
-        out.push({ type: "assistant.text", messageId: id, index, text: block.text });
+        // Subagent texts belong to the thread of their Agent call, not to the main chat.
+        out.push({ type: "assistant.text", messageId: id, index, text: block.text, ...(parent ? { parentToolUseId: parent } : {}) });
       } else if (block.type === "tool_use") {
         const { input, truncated } = truncateInput((block.input && typeof block.input === "object" ? block.input : {}) as Record<string, unknown>);
         out.push({

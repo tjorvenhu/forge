@@ -11,6 +11,7 @@ import {
   Globe,
   ListChecks,
   MessageCircleQuestion,
+  MessagesSquare,
   Search,
   ShieldAlert,
   ShieldQuestion,
@@ -23,6 +24,7 @@ import { call } from "@/lib/queries";
 import { errorMessage } from "@/lib/rpc";
 import { cn } from "@/lib/utils";
 import { toast } from "@/stores/toast";
+import { useUi } from "@/stores/ui";
 import { cardKey, useCardState } from "@/stores/card-state";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -155,6 +157,7 @@ export function ToolCard({ item, sessionId, sessionLive, projectDir }: { item: T
         </Guide>
       </Collapse>
       {preview && <Guide className="mt-1">{preview}</Guide>}
+      <TaskLink item={item} sessionId={sessionId} title={summary} />
       {approval &&
         (approval.resolved ? (
           <Guide className="mt-1">
@@ -166,6 +169,36 @@ export function ToolCard({ item, sessionId, sessionLive, projectDir }: { item: T
           </div>
         ))}
     </ChatRow>
+  );
+}
+
+/** Task id in the CLI's answer to a command started in the background ("... with ID: b2kzcbhw6"). */
+const BACKGROUND_ID_RE = /in background with ID:\s*([A-Za-z0-9_-]+)/;
+
+/** Opens the own history of a subagent, or the output of a command that runs in the background. */
+function TaskLink({ item, sessionId, title }: { item: ToolItem; sessionId: string; title: string }) {
+  const openTask = useUi((s) => s.openTask);
+  const { use, result } = item;
+  if (use.name === "Agent" || use.name === "Task")
+    return (
+      <Guide className="mt-1">
+        <button type="button" className="flex items-center gap-1.5 text-small text-accent hover:underline" onClick={() => openTask({ kind: "agent", sessionId, toolUseId: use.toolUseId, title: title || "Subagent" })}>
+          <MessagesSquare className="h-3.5 w-3.5" /> Verlauf des Subagenten
+        </button>
+      </Guide>
+    );
+  const taskId = use.input.run_in_background === true && result && !result.isError ? BACKGROUND_ID_RE.exec(result.content.text)?.[1] : undefined;
+  if (!taskId) return null;
+  return (
+    <Guide className="mt-1">
+      <button
+        type="button"
+        className="flex items-center gap-1.5 text-small text-accent hover:underline"
+        onClick={() => openTask({ kind: "shell", sessionId, taskId, toolUseId: use.toolUseId, title: title || "Befehl im Hintergrund" })}
+      >
+        <SquareTerminal className="h-3.5 w-3.5" /> Ausgabe ansehen
+      </button>
+    </Guide>
   );
 }
 

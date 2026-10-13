@@ -12,7 +12,7 @@ import { Kbd, Tooltip } from "@/components/ui/misc";
 import { ContextMeter } from "./ContextMeter";
 import { RateLimitBadge } from "./RateLimitBadge";
 import { AttachmentList } from "./AttachmentList";
-import { CLEAR_COMMANDS, isClearCommand, SlashCommandMenu, useSlashCommands } from "./SlashCommandMenu";
+import { CLEAR_COMMANDS, isClearCommand, SlashCommandMenu, useSlashCommands, type Command } from "./SlashCommandMenu";
 import { InfoCommandDialog, infoCommand, INFO_COMMANDS, type InfoCommand } from "./InfoCommandDialog";
 import { useAttachments } from "./useAttachments";
 import { DictationButton } from "./DictationButton";
@@ -21,8 +21,8 @@ import { compactSession, stopSession, useComposerOptions, useSendMessage } from 
 
 /** Words of the trade the speech service should expect; the project adds its name and stack. */
 const DICTATION_TERMS = ["FORGE", "Claude", "Claude Code", "Commit", "Branch", "Pull Request", "Merge", "Deploy", "Worktree", "TypeScript", "JavaScript", "React", "Next.js", "Node", "pnpm", "API", "Endpoint", "Komponente", "Refactoring", "Bug", "Diff", "Session"];
-/** Space held this long is dictation; a typed space is up again well before. */
-const HOLD_MS = 200;
+/** Space held this long is dictation; a typed space is up again well before, also when typing slowly. */
+const HOLD_MS = 380;
 
 /** Puts dictated text in place of the selection, with a space to its neighbours; `caret` lands after it. */
 export function insertSpoken(cur: string, from: number, to: number, spoken: string): { text: string; caret: number } {
@@ -31,6 +31,36 @@ export function insertSpoken(cur: string, from: number, to: number, spoken: stri
   const lead = before && !/\s$/.test(before) ? " " : "";
   const trail = after && !/^\s/.test(after) ? " " : "";
   return { text: before + lead + spoken + trail + after, caret: (before + lead + spoken).length };
+}
+
+/**
+ * Where `segment`, written at `from` into `written`, stands in `cur` after the user typed before or
+ * after it; -1 when the edit touched the segment itself.
+ */
+export function findLive(written: string, from: number, segment: string, cur: string): number {
+  if (cur === written) return from;
+  let head = 0;
+  while (head < written.length && head < cur.length && written[head] === cur[head]) head++;
+  if (head >= from + segment.length) return from;
+  let tail = 0;
+  while (tail < written.length - head && tail < cur.length - head && written[written.length - 1 - tail] === cur[cur.length - 1 - tail]) tail++;
+  if (written.length - tail > from) return -1;
+  const at = from + cur.length - written.length;
+  return at >= 0 && cur.slice(at, at + segment.length) === segment ? at : -1;
+}
+
+interface LiveAnchor {
+  /** the text around the cursor at the first word */
+  before: string;
+  after: string;
+  /** what the field held after the last update; null before the first */
+  written: string | null;
+  /** the live words with the spaces put around them, at `before.length` in `written` */
+  segment: string;
+  /** where the cursor was put after the last update; null while not set (field not focused, frame pending) */
+  caret: number | null;
+  /** the cursor left the live words (click, arrow keys): they stay as they are until the end */
+  detached: boolean;
 }
 
 /** Memoized: the chat re-renders while text streams in, the composer has nothing to do with that. */
@@ -65,8 +95,15 @@ export const Composer = memo(function Composer({
 
   const matches = useSlashCommands(project.id, text);
   useEffect(() => setCmdIndex(0), [text]);
-  const pickCommand = (name: string) => {
-    setText(`/${name} `);
+  /** a user or project command picked from the menu that is named like an info dialog; it goes to Claude */
+  const [custom, setCustom] = useState<string | null>(null);
+  const customTyped = custom !== null && text.trim().split(/\s/)[0]?.toLowerCase() === `/${custom.toLowerCase()}`;
+  useEffect(() => {
+    if (custom !== null && !customTyped) setCustom(null);
+  }, [custom, customTyped]);
+  const pickCommand = (c: Command) => {
+    setText(`/${c.name} `);
+    setCustom(c.custom ? c.name : null);
     ref.current?.focus();
   };
 
@@ -87,10 +124,12 @@ export const Composer = memo(function Composer({
 
   /**
    * Like Claude Code, the words appear in the field while they are spoken and get corrected in place.
-   * `anchor` is the text around the cursor at the first word; `written` is what the field held after
-   * the last update. Once the user types meanwhile, the field is left alone until the end.
+   * Once the user types or moves the cursor meanwhile, the field is left alone until the end; the
+   * finished text then replaces the live words where they stand.
    */
-  const anchor = useRef<{ before: string; after: string; written: string | null } | null>(null);
+  const anchor = useRef<LiveAnchor | null>(null);
+  /** what a hold took back: the field with the typed space, restored when the hold brings no text */
+  const holdSpace = useRef<{ text: string; start: number; end: number; without: string } | null>(null);
   const draftText = useCallback(() => useDrafts.getState().drafts[key]?.text ?? "", [key]);
   const writeSpoken = useCallback(
     (spoken: string, focus: boolean) => {
@@ -98,20 +137,35 @@ export const Composer = memo(function Composer({
       if (!a) return;
       const { text: next, caret } = insertSpoken(a.before + a.after, a.before.length, a.before.length, spoken);
       a.written = next;
+      a.segment = next.slice(a.before.length, next.length - a.after.length);
+      a.caret = null;
       setText(next);
       requestAnimationFrame(() => {
+        if (a.detached) return;
         if (focus) ref.current?.focus();
-        if (document.activeElement === ref.current) ref.current?.setSelectionRange(caret, caret);
+        if (document.activeElement !== ref.current) return;
+        ref.current?.setSelectionRange(caret, caret);
+        a.caret = caret;
       });
     },
     [setText],
   );
-  const ownsField = useCallback(() => !!anchor.current && (anchor.current.written === null || anchor.current.written === draftText()), [draftText]);
+  const ownsField = useCallback(() => {
+    const a = anchor.current;
+    if (!a || a.detached) return false;
+    if (a.written !== null && a.written !== draftText()) return false;
+    const el = ref.current;
+    // The cursor is no longer where the last update put it: the user works elsewhere in the text now.
+    if (a.caret !== null && el && document.activeElement === el && (el.selectionStart !== a.caret || el.selectionEnd !== a.caret)) a.detached = true;
+    return !a.detached;
+  }, [draftText]);
 
-  /** The finished text replaces the live one; if the user typed meanwhile, it goes where the cursor is. */
+  /** The finished text replaces the live words; without any, it goes where the cursor is. */
   const insertDictation = useCallback(
     (spoken: string) => {
-      if (ownsField()) {
+      holdSpace.current = null;
+      const a = anchor.current;
+      if (a && ownsField()) {
         writeSpoken(spoken, true);
         anchor.current = null;
         return;
@@ -119,7 +173,9 @@ export const Composer = memo(function Composer({
       anchor.current = null;
       const el = ref.current;
       const cur = draftText();
-      const { text: next, caret } = insertSpoken(cur, el ? el.selectionStart : cur.length, el ? el.selectionEnd : cur.length, spoken);
+      const at = a?.written != null ? findLive(a.written, a.before.length, a.segment, cur) : -1;
+      const [from, to] = a && at >= 0 ? [at, at + a.segment.length] : el ? [el.selectionStart, el.selectionEnd] : [cur.length, cur.length];
+      const { text: next, caret } = insertSpoken(cur, from, to, spoken);
       setText(next);
       requestAnimationFrame(() => {
         ref.current?.focus();
@@ -132,18 +188,33 @@ export const Composer = memo(function Composer({
   const keyterms = useMemo(() => [...DICTATION_TERMS, project.name, ...project.technologies], [project.name, project.technologies]);
   const dictation = useDictation(insertDictation, keyterms);
 
+  const lastState = useRef(dictation.state);
   useEffect(() => {
+    const was = lastState.current;
+    lastState.current = dictation.state;
     if (dictation.state === "idle") {
       // Ended without a result (discarded or nothing recognized): the live words go again.
-      if (anchor.current?.written != null && ownsField()) setText(anchor.current.before + anchor.current.after);
+      const a = anchor.current;
       anchor.current = null;
+      if (a?.written != null) {
+        const cur = draftText();
+        const at = findLive(a.written, a.before.length, a.segment, cur);
+        if (at >= 0) setText(cur.slice(0, at) + cur.slice(at + a.segment.length));
+      }
+      // A hold that brought no text gives back the space it took.
+      const h = holdSpace.current;
+      holdSpace.current = null;
+      if (h && was !== "idle" && draftText() === h.without) {
+        setText(h.text);
+        requestAnimationFrame(() => ref.current?.setSelectionRange(h.start, h.end));
+      }
       return;
     }
     if (!dictation.live) return;
     if (!anchor.current) {
       const el = ref.current;
       const cur = draftText();
-      anchor.current = { before: cur.slice(0, el ? el.selectionStart : cur.length), after: cur.slice(el ? el.selectionEnd : cur.length), written: null };
+      anchor.current = { before: cur.slice(0, el ? el.selectionStart : cur.length), after: cur.slice(el ? el.selectionEnd : cur.length), written: null, segment: "", caret: null, detached: false };
     }
     if (ownsField()) writeSpoken(dictation.live, false);
   }, [dictation.live, dictation.state, draftText, ownsField, setText, writeSpoken]);
@@ -177,6 +248,9 @@ export const Composer = memo(function Composer({
     cancelHoldTimer();
     const before = spaceDown.current;
     if (!before || holding.current) return;
+    const el = ref.current;
+    const typed = draftText();
+    holdSpace.current = { text: typed, start: el?.selectionStart ?? typed.length, end: el?.selectionEnd ?? typed.length, without: before.text };
     setText(before.text);
     requestAnimationFrame(() => ref.current?.setSelectionRange(before.start, before.end));
     holding.current = true;
@@ -207,12 +281,15 @@ export const Composer = memo(function Composer({
   };
 
   const clearTyped = isClearCommand(text);
-  const localTyped = clearTyped || !!infoCommand(text);
+  const typedInfo = infoCommand(text, customTyped ? custom : null);
+  const localTyped = clearTyped || !!typedInfo;
+  // The field still holds live words or waits for the finished text; sent now, the rest would land in an empty draft.
+  const dictating = dictation.state !== "idle";
   /** counts sends; the arrow animation restarts with each */
   const [sentTick, setSentTick] = useState(0);
   const submit = () => {
-    const cmd = infoCommand(text);
-    if (cmd) return openInfo(cmd);
+    if (dictating) return;
+    if (typedInfo) return openInfo(typedInfo);
     if (waiting && !clearTyped) return;
     setSentTick((n) => n + 1);
     void send(text, files);
@@ -319,12 +396,12 @@ export const Composer = memo(function Composer({
               }
               if (e.key === "Tab" || (e.key === "Enter" && !e.shiftKey)) {
                 e.preventDefault();
-                const name = matches[cmdIndex]!.name;
+                const picked = matches[cmdIndex]!;
                 // Like the terminal: Enter on /clear or /usage runs it right away, Tab only completes.
-                const info = INFO_COMMANDS.find((c) => c.name === name);
+                const info = !picked.custom && INFO_COMMANDS.find((c) => c.name === picked.name);
                 if (e.key === "Enter" && info) openInfo(info);
-                else if (e.key === "Enter" && CLEAR_COMMANDS.includes(name)) void send(`/${name}`, []);
-                else pickCommand(name);
+                else if (e.key === "Enter" && CLEAR_COMMANDS.includes(picked.name) && !dictating) void send(`/${picked.name}`, []);
+                else pickCommand(picked);
                 return;
               }
               if (e.key === "Escape") {
@@ -410,7 +487,7 @@ export const Composer = memo(function Composer({
               className="h-9 w-9 rounded-lg"
               onClick={submit}
               // The message shows in the chat at once ("wird gesendet"), so no spinner here: the arrow flies off.
-              disabled={(!text.trim() && !files.length) || (waiting && !localTyped) || sending}
+              disabled={(!text.trim() && !files.length) || (waiting && !localTyped) || sending || dictating}
               aria-label={working ? "Dazwischen senden" : "Senden"}
               title={working ? "Dazwischen senden: Claude übernimmt die Nachricht beim nächsten Schritt" : undefined}
             >

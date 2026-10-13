@@ -281,3 +281,40 @@ describe("startsAnswer", () => {
     expect(startsAnswer(text, user)).toBe(false);
   });
 });
+
+describe("subagent threads", () => {
+  const events = () => {
+    seq = 0;
+    return [
+      ev({ type: "user.message", text: "Prüfe Auth" }),
+      ev({ type: "tool.use", toolUseId: "agent1", name: "Agent", input: { description: "Auth prüfen", prompt: "Lies die Login-Routen" }, parentToolUseId: null }),
+      ev({ type: "assistant.text", messageId: "sub1", index: 0, text: "Ich lese die Routen.", parentToolUseId: "agent1" }),
+      ev({ type: "tool.use", toolUseId: "g1", name: "Grep", input: { pattern: "login" }, parentToolUseId: "agent1" }),
+      ev({ type: "tool.result", toolUseId: "g1", isError: false, content: { text: "routes.ts", truncated: false } }),
+      ev({ type: "approval.request", requestId: "r1", toolUseId: "b1", toolName: "Bash", input: { command: "pnpm test" }, title: null, description: null, reason: null, allowSessionScope: true, outsideProject: false }),
+      ev({ type: "tool.use", toolUseId: "b1", name: "Bash", input: { command: "pnpm test" }, parentToolUseId: "agent1" }),
+      ev({ type: "approval.request", requestId: "r2", toolUseId: "b1", toolName: "Bash", input: { command: "pnpm test" }, title: null, description: null, reason: null, allowSessionScope: true, outsideProject: false }),
+      ev({ type: "approval.resolved", requestId: "r2", decision: "allow", scope: "once", source: "user", message: null }),
+      ev({ type: "tool.result", toolUseId: "agent1", isError: false, content: { text: "Auth ist sauber.", truncated: false } }),
+      ev({ type: "assistant.text", messageId: "m2", index: 0, text: "Der Subagent ist fertig." }),
+    ];
+  };
+
+  it("keeps the subagent's steps out of the main chat but shows its approvals there", () => {
+    const items = buildEventItems(events());
+    expect(items.map((i) => i.kind)).toEqual(["user", "tool", "approval", "approval", "assistant"]);
+    const agent = items[1];
+    expect(agent?.kind === "tool" && agent.result?.content.text).toBe("Auth ist sauber.");
+    const approval = items[3];
+    expect(approval?.kind === "approval" && approval.resolved?.decision).toBe("allow");
+  });
+
+  it("builds the subagent's own thread from its text, calls, results and approvals", () => {
+    const items = buildEventItems(events(), "agent1");
+    expect(items.map((i) => i.kind)).toEqual(["assistant", "tool", "tool"]);
+    const grep = items[1];
+    expect(grep?.kind === "tool" && grep.result?.content.text).toBe("routes.ts");
+    const bash = items[2];
+    expect(bash?.kind === "tool" && bash.approval?.resolved?.decision).toBe("allow");
+  });
+});

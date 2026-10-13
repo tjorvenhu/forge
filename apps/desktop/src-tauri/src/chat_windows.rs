@@ -24,6 +24,11 @@ const MAX_ID: usize = 100;
 const MAX_TITLE: usize = 200;
 /// Same bound as a prompt in the protocol.
 const MAX_DRAFT: usize = 200_000;
+/// Same bound as the composer.
+const MAX_FILES: usize = 10;
+/// All attachments of a draft together (pasted images travel as base64).
+const MAX_FILES_BYTES: usize = 16 * 1024 * 1024;
+const MAX_FILE_NAME: usize = 260;
 
 #[derive(Default)]
 pub struct ChatWindows {
@@ -41,6 +46,19 @@ pub struct ChatTarget {
     session_id: Option<String>,
     #[serde(default)]
     draft: Option<String>,
+    /// Attachments of the draft; they move with it, so none stay behind as an old copy.
+    #[serde(default)]
+    files: Vec<DraftFile>,
+}
+
+/// An attachment as the composer holds it; the shell only passes it on and bounds its size.
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DraftFile {
+    name: String,
+    #[serde(default)]
+    is_image: bool,
+    attachment: serde_json::Value,
 }
 
 /// Top-left corner of a new chat window in logical screen pixels (where a dragged tab was dropped).
@@ -58,6 +76,13 @@ impl ChatTarget {
         }
         if self.draft.as_ref().is_some_and(|d| d.len() > MAX_DRAFT) {
             return Err("Entwurf zu groß".into());
+        }
+        if self.files.len() > MAX_FILES || self.files.iter().any(|f| f.name.len() > MAX_FILE_NAME || !f.attachment.is_object()) {
+            return Err("Ungültige Anhänge".into());
+        }
+        let bytes: usize = self.files.iter().map(|f| f.attachment.to_string().len()).sum();
+        if bytes > MAX_FILES_BYTES {
+            return Err("Anhänge zu groß für ein eigenes Fenster".into());
         }
         Ok(())
     }
@@ -103,21 +128,25 @@ fn follow_cursor<R: Runtime>(app: &AppHandle<R>, w: WebviewWindow<R>) {
         }
         let _ = w.show();
         let _ = w.set_focus();
-        if left_button_down() {
+        if primary_button_down() {
             let _ = w.start_dragging();
         }
     });
 }
 
+/// Whether the primary mouse button (the one that drags) is held right now.
 #[cfg(windows)]
-fn left_button_down() -> bool {
-    use windows_sys::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_LBUTTON};
-    // High bit: the button is down right now (physical button, like the drag that started it).
-    unsafe { (GetAsyncKeyState(VK_LBUTTON as i32) as u16 & 0x8000) != 0 }
+fn primary_button_down() -> bool {
+    use windows_sys::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_LBUTTON, VK_RBUTTON};
+    use windows_sys::Win32::UI::WindowsAndMessaging::{GetSystemMetrics, SM_SWAPBUTTON};
+    // GetAsyncKeyState reads physical buttons; with swapped buttons the primary one is the right.
+    let key = if unsafe { GetSystemMetrics(SM_SWAPBUTTON) } != 0 { VK_RBUTTON } else { VK_LBUTTON };
+    // High bit: the button is down right now.
+    unsafe { (GetAsyncKeyState(key as i32) as u16 & 0x8000) != 0 }
 }
 
 #[cfg(not(windows))]
-fn left_button_down() -> bool {
+fn primary_button_down() -> bool {
     false
 }
 
@@ -143,9 +172,10 @@ impl ChatWindows {
 }
 
 /// Shows the session in its own window, or brings the window that already shows it to the front.
+/// True when a new window took the draft; an existing window keeps its own.
 /// Async: building a webview from a synchronous command deadlocks on Windows (WebView2).
 #[tauri::command]
-pub async fn open_chat_window(app: AppHandle, target: ChatTarget, title: String, position: Option<WindowPosition>, drag: Option<bool>) -> Result<(), String> {
+pub async fn open_chat_window(app: AppHandle, target: ChatTarget, title: String, position: Option<WindowPosition>, drag: Option<bool>) -> Result<bool, String> {
     let drag = drag.unwrap_or(false);
     target.validate()?;
     let session_id = target.session_id.clone().ok_or("Ungültige Session")?;
@@ -173,7 +203,7 @@ pub async fn open_chat_window(app: AppHandle, target: ChatTarget, title: String,
             if let Some(w) = app.get_webview_window(&existing) {
                 bring_to_front(&w);
             }
-            return Ok(());
+            return Ok(false);
         }
     };
     config.label = label.clone();
@@ -197,13 +227,15 @@ pub async fn open_chat_window(app: AppHandle, target: ChatTarget, title: String,
         .and_then(|b| b.initialization_script(script).build());
     match built {
         Ok(w) => {
+            // The setting may have changed while the webview was built; set_always_on_top only reaches existing windows.
+            let _ = w.set_always_on_top(state.on_top.load(Ordering::Relaxed));
             state.notify(&app);
             if cursor.is_some() {
                 follow_cursor(&app, w);
             } else {
                 let _ = w.set_focus();
             }
-            Ok(())
+            Ok(true)
         }
         Err(e) => {
             state.shown.lock().unwrap().remove(&label);
@@ -221,12 +253,14 @@ pub fn window_title(session_title: &str) -> String {
     }
 }
 
-/// Closes the chat window of a session; the main window shows the chat again.
+/// Closes the chat window of a session (deleted, or it did not answer a recall); the main window
+/// shows the chat again. Destroyed, not closed: a close would ask the webview first, which hands its
+/// draft back (a deleted session must not come back) or never answers when it hangs.
 #[tauri::command]
 pub fn close_chat_window(app: AppHandle, session_id: String) {
     let label = label_of(&app.state::<ChatWindows>().shown.lock().unwrap(), &session_id);
     if let Some(w) = label.and_then(|l| app.get_webview_window(&l)) {
-        let _ = w.close();
+        let _ = w.destroy();
     }
 }
 
@@ -284,7 +318,7 @@ pub fn open_session<R: Runtime>(app: &AppHandle<R>, project_id: &str, session_id
         return;
     }
     let Some(main) = app.get_webview_window(MAIN) else { return };
-    let target = ChatTarget { project_id: project_id.to_owned(), session_id: Some(session_id.to_owned()), draft: None };
+    let target = ChatTarget { project_id: project_id.to_owned(), session_id: Some(session_id.to_owned()), draft: None, files: Vec::new() };
     if target.validate().is_ok() {
         let _ = app.emit_to(MAIN, OPEN_SESSION, target);
     }
@@ -302,7 +336,19 @@ pub async fn reattach_chat_window(app: AppHandle, window: WebviewWindow, target:
     let main = app.get_webview_window(MAIN).ok_or("Hauptfenster fehlt")?;
     app.emit_to(MAIN, REATTACH, target).map_err(|e| e.to_string())?;
     bring_to_front(&main);
-    window.close().map_err(|e| e.to_string())
+    // Not close(): the window would hand its (now empty) draft back a second time on the way out.
+    window.destroy().map_err(|e| e.to_string())
+}
+
+/// Protocol line for the sidecar: a closed chat window no longer has the focus. The webview is
+/// gone and cannot report its blur itself.
+pub fn unfocused_line(label: &str) -> String {
+    serde_json::json!({
+        "id": "shell-presence",
+        "method": "app.presence",
+        "params": { "window": label, "focused": false, "active": false },
+    })
+    .to_string()
 }
 
 #[cfg(test)]
@@ -336,10 +382,37 @@ mod tests {
 
     #[test]
     fn target_validation() {
-        let t = |p: &str, s: Option<&str>| ChatTarget { project_id: p.into(), session_id: s.map(Into::into), draft: None };
+        let t = |p: &str, s: Option<&str>| ChatTarget { project_id: p.into(), session_id: s.map(Into::into), draft: None, files: Vec::new() };
         assert!(t("p", Some("s")).validate().is_ok());
         assert!(t("p", None).validate().is_ok());
         assert!(t("", Some("s")).validate().is_err());
         assert!(t("p", Some("")).validate().is_err());
+    }
+
+    #[test]
+    fn draft_files_are_bounded() {
+        let file = |attachment: serde_json::Value| DraftFile { name: "a.png".into(), is_image: true, attachment };
+        let t = |files: Vec<DraftFile>| ChatTarget { project_id: "p".into(), session_id: Some("s".into()), draft: None, files };
+        let small = serde_json::json!({ "kind": "path", "path": "C:/a.png" });
+        assert!(t(vec![file(small.clone())]).validate().is_ok());
+        assert!(t(vec![file(serde_json::json!("C:/a.png"))]).validate().is_err());
+        assert!(t((0..=MAX_FILES).map(|_| file(small.clone())).collect()).validate().is_err());
+        let big = serde_json::json!({ "kind": "data", "name": "a.png", "mediaType": "image/png", "base64": "A".repeat(MAX_FILES_BYTES) });
+        assert!(t(vec![file(big)]).validate().is_err());
+    }
+
+    #[test]
+    fn target_reads_files_from_the_webview() {
+        let t: ChatTarget = serde_json::from_str(r#"{"projectId":"p","sessionId":"s","files":[{"name":"a","isImage":false,"attachment":{"kind":"path","path":"a"}}]}"#).unwrap();
+        assert_eq!(t.files.len(), 1);
+        let old: ChatTarget = serde_json::from_str(r#"{"projectId":"p","sessionId":null}"#).unwrap();
+        assert!(old.files.is_empty());
+    }
+
+    #[test]
+    fn unfocused_line_is_a_presence_request() {
+        let v: serde_json::Value = serde_json::from_str(&unfocused_line("chat-a")).unwrap();
+        assert_eq!(v["method"], "app.presence");
+        assert_eq!(v["params"], serde_json::json!({ "window": "chat-a", "focused": false, "active": false }));
     }
 }

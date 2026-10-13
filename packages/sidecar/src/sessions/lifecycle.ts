@@ -174,6 +174,7 @@ export class SessionLifecycle {
       remoteTurn: null,
       background: new Map(),
       subagents: new Map(),
+      taskToolUse: new Map(),
       context: null,
     };
     this.core.live.set(rec.id, live);
@@ -181,9 +182,10 @@ export class SessionLifecycle {
     let extra: { tools: SessionTool[]; context: string } | null;
     try {
       extra = this.sessionTools?.(rec) ?? null;
-    } catch {
-      // Without FORGE tools the session still works as a plain Claude Code session.
+    } catch (e) {
+      // Without FORGE tools the session still works as a plain Claude Code session; the timeline says why.
       extra = null;
+      this.core.record(rec.id, { type: "status", status: "starting", detail: `FORGE-Werkzeuge nicht verfügbar: ${e instanceof Error ? e.message : String(e)}` });
     }
     try {
       live.rt = this.runtime.startSession(

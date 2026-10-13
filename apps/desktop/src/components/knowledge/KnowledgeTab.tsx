@@ -1,9 +1,9 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, BookOpen, Eye, Pencil, Plus, Search, Trash2 } from "lucide-react";
 import type { KnowledgeEntry, KnowledgeSummary, Project } from "@forge/protocol";
 import { call, keys, useKnowledge } from "@/lib/queries";
-import { errorMessage } from "@/lib/rpc";
+import { errorMessage, RpcCallError } from "@/lib/rpc";
 import { cn, relativeTime } from "@/lib/utils";
 import { toast } from "@/stores/toast";
 import { Button } from "@/components/ui/button";
@@ -40,8 +40,23 @@ export function KnowledgeTab({ project }: { project: Project }) {
   const list = useKnowledge(owner);
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<string | null>(null);
+  const [dirty, setDirty] = useState(false);
+  /** entry the user wants to switch to while the open one has unsaved changes */
+  const [leaveTo, setLeaveTo] = useState<string | null>(null);
   const entries = useMemo(() => filterKnowledge(list.data ?? [], query), [list.data, query]);
-  const current = selected === NEW ? NEW : (list.data?.find((e) => e.id === selected)?.id ?? entries[0]?.id ?? null);
+  // An edited entry stays open even when the search hides it or someone deletes it meanwhile.
+  const pinned = selected !== null && (selected === NEW || dirty || !!list.data?.some((e) => e.id === selected));
+  const current = pinned ? selected : (entries[0]?.id ?? null);
+
+  useEffect(() => {
+    if (dirty && current && selected !== current) setSelected(current);
+  }, [dirty, current, selected]);
+
+  const select = (id: string) => {
+    if (id === current) return;
+    if (dirty) setLeaveTo(id);
+    else setSelected(id);
+  };
 
   return (
     <div className="flex h-full min-h-0">
@@ -51,7 +66,7 @@ export function KnowledgeTab({ project }: { project: Project }) {
             <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-subtle" />
             <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Wissen durchsuchen" className="pl-8" aria-label="Wissen durchsuchen" />
           </div>
-          <Button size="icon" variant="primary" onClick={() => setSelected(NEW)} aria-label="Neuer Eintrag" title="Neuer Eintrag">
+          <Button size="icon" variant="primary" onClick={() => select(NEW)} aria-label="Neuer Eintrag" title="Neuer Eintrag">
             <Plus className="h-4 w-4" />
           </Button>
         </div>
@@ -71,7 +86,7 @@ export function KnowledgeTab({ project }: { project: Project }) {
               {entries.map((e) => (
                 <li key={e.id}>
                   <button
-                    onClick={() => setSelected(e.id)}
+                    onClick={() => select(e.id)}
                     aria-current={current === e.id ? "true" : undefined}
                     className={cn(
                       "w-full rounded-lg px-3 py-2 text-left transition-colors duration-120",
@@ -100,14 +115,21 @@ export function KnowledgeTab({ project }: { project: Project }) {
 
       <section className="min-w-0 flex-1">
         {current ? (
-          <EntryEditor key={current} owner={owner} id={current === NEW ? null : current} onSaved={(id) => setSelected(id)} onDeleted={() => setSelected(null)} />
+          <EntryEditor
+            key={current}
+            owner={owner}
+            id={current === NEW ? null : current}
+            onDirtyChange={setDirty}
+            onSaved={(id) => setSelected(id)}
+            onDeleted={() => setSelected(null)}
+          />
         ) : (
           !list.isLoading && (
             <EmptyState
               icon={<BookOpen className="h-8 w-8" />}
               title="Noch kein Projektwissen"
               action={
-                <Button variant="primary" onClick={() => setSelected(NEW)}>
+                <Button variant="primary" onClick={() => select(NEW)}>
                   <Plus className="h-3.5 w-3.5" /> Ersten Eintrag anlegen
                 </Button>
               }
@@ -118,6 +140,19 @@ export function KnowledgeTab({ project }: { project: Project }) {
           )
         )}
       </section>
+
+      <ConfirmDialog
+        open={leaveTo !== null}
+        onOpenChange={(open) => !open && setLeaveTo(null)}
+        title="Änderungen verwerfen?"
+        description="Der offene Eintrag hat ungespeicherte Änderungen. Beim Wechsel gehen sie verloren."
+        confirmLabel="Verwerfen"
+        danger
+        onConfirm={() => {
+          setDirty(false);
+          setSelected(leaveTo);
+        }}
+      />
     </div>
   );
 }
@@ -135,7 +170,19 @@ function toForm(e: KnowledgeEntry | null): Form {
   return e ? { title: e.title, summary: e.summary, tags: e.tags.join(", "), content: e.content, base: e.updatedAt } : { title: "", summary: "", tags: "", content: "", base: null };
 }
 
-function EntryEditor({ owner, id, onSaved, onDeleted }: { owner: string; id: string | null; onSaved: (id: string) => void; onDeleted: () => void }) {
+function EntryEditor({
+  owner,
+  id,
+  onDirtyChange,
+  onSaved,
+  onDeleted,
+}: {
+  owner: string;
+  id: string | null;
+  onDirtyChange: (dirty: boolean) => void;
+  onSaved: (id: string) => void;
+  onDeleted: () => void;
+}) {
   const qc = useQueryClient();
   const entry = useQuery({ queryKey: keys.knowledgeEntry(owner, id ?? ""), queryFn: () => call("knowledge.read", { projectId: owner, id: id! }), enabled: !!id });
   const [form, setForm] = useState<Form | null>(id ? null : toForm(null));
@@ -145,7 +192,12 @@ function EntryEditor({ owner, id, onSaved, onDeleted }: { owner: string; id: str
 
   const shown = form ?? toForm(entry.data ?? null);
   const dirty = form !== null;
-  const changedMeanwhile = !!id && dirty && !!entry.data && form.base !== entry.data.updatedAt;
+  /** the open entry was deleted outside this editor, e.g. by Claude */
+  const gone = !!id && entry.error instanceof RpcCallError && entry.error.code === "NOT_FOUND";
+  const changedMeanwhile = !!id && !gone && dirty && !!entry.data && form.base !== entry.data.updatedAt;
+  const unsaved = id ? dirty : !!form && !!(form.title.trim() || form.summary.trim() || form.tags.trim() || form.content.trim());
+  useEffect(() => onDirtyChange(unsaved), [unsaved, onDirtyChange]);
+  useEffect(() => () => onDirtyChange(false), [onDirtyChange]);
   const edit = (patch: Partial<Form>) => {
     setForm({ ...shown, ...patch });
     setPreview(false);
@@ -156,12 +208,12 @@ function EntryEditor({ owner, id, onSaved, onDeleted }: { owner: string; id: str
     if (!form.title.trim()) return toast.error("Titel fehlt", "Jeder Eintrag braucht einen Titel.");
     setSaving(true);
     try {
-      const saved = await call("knowledge.save", { projectId: owner, id, title: form.title, summary: form.summary, tags: parseTags(form.tags), content: form.content });
+      const saved = await call("knowledge.save", { projectId: owner, id: gone ? null : id, title: form.title, summary: form.summary, tags: parseTags(form.tags), content: form.content });
       qc.setQueryData(keys.knowledgeEntry(owner, saved.id), saved);
       void qc.invalidateQueries({ queryKey: keys.knowledge(owner) });
       setForm(null);
       toast.saved();
-      if (!id) onSaved(saved.id);
+      if (!id || gone) onSaved(saved.id);
     } catch (e) {
       toast.error("Nicht gespeichert", errorMessage(e));
     } finally {
@@ -170,7 +222,7 @@ function EntryEditor({ owner, id, onSaved, onDeleted }: { owner: string; id: str
   };
 
   if (id && entry.isLoading) return <Loading />;
-  if (id && entry.isError) {
+  if (id && entry.isError && !(gone && dirty)) {
     return (
       <div className="p-6">
         <ErrorBanner>{errorMessage(entry.error)}</ErrorBanner>
@@ -186,7 +238,7 @@ function EntryEditor({ owner, id, onSaved, onDeleted }: { owner: string; id: str
         <Button size="sm" variant="ghost" onClick={() => setPreview(!preview)} aria-pressed={preview}>
           {preview ? <Pencil className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />} {preview ? "Bearbeiten" : "Vorschau"}
         </Button>
-        {id && (
+        {id && !gone && (
           <Button size="sm" variant="danger-ghost" onClick={() => setDeleting(true)} aria-label="Eintrag löschen">
             <Trash2 className="h-3.5 w-3.5" />
           </Button>
@@ -206,6 +258,15 @@ function EntryEditor({ owner, id, onSaved, onDeleted }: { owner: string; id: str
           <Button size="sm" onClick={() => setForm(null)}>
             Neu laden
           </Button>
+        </div>
+      )}
+      {gone && (
+        <div role="alert" className="flex items-center gap-3 rounded-lg border border-warning/30 bg-warning-soft px-3 py-2 text-body">
+          <AlertTriangle className="h-4 w-4 shrink-0 text-warning" />
+          <div className="min-w-0 flex-1">
+            <div className="font-medium">Der Eintrag wurde inzwischen gelöscht, zum Beispiel von Claude.</div>
+            <div className="text-xs text-muted">Deine Änderungen sind noch da. Speichern legt den Eintrag neu an.</div>
+          </div>
         </div>
       )}
 

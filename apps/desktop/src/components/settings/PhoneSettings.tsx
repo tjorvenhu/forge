@@ -145,9 +145,21 @@ export function PhoneSettings() {
     latest.current = draft;
   }, [draft]);
 
-  /** Saves the draft when it changed; `report`: also say why an invalid one was not saved. */
+  /** a save is on its way */
+  const saving = useRef(false);
+  /** asked for while a save was on its way; runs after it (with `report` if any of the calls wanted it) */
+  const queued = useRef<boolean | null>(null);
+
+  /**
+   * Saves the draft when it changed; `report`: also say why an invalid one was not saved. One save at a
+   * time: a slow older answer must not land after a newer change and count as the last save.
+   */
   const persist = useCallback(
-    async (report: boolean) => {
+    async function run(report: boolean): Promise<void> {
+      if (saving.current) {
+        queued.current = !!queued.current || report;
+        return;
+      }
       const d = latest.current;
       if (!d) return;
       if (report && d.pin.length > 0 && d.pin.length < 4) toast.error("PIN nicht gespeichert", "Die PIN braucht 4 bis 8 Ziffern.");
@@ -157,6 +169,7 @@ export function PhoneSettings() {
         return;
       }
       if (r.key === lastSaved.current && !r.secrets) return;
+      saving.current = true;
       try {
         const next = await call("phone.saveConfig", r.patch);
         lastSaved.current = r.key;
@@ -165,6 +178,11 @@ export function PhoneSettings() {
         toast.saved();
       } catch (e) {
         toast.error("Nicht gespeichert", errorMessage(e));
+      } finally {
+        saving.current = false;
+        const again = queued.current;
+        queued.current = null;
+        if (again !== null) void run(again);
       }
     },
     [qc],
@@ -189,11 +207,11 @@ export function PhoneSettings() {
       timer.current = null;
     }
   }, [draft, schedule]);
-  // Leaving the settings with a change still pending saves it.
+  // Leaving the settings saves what is still pending, also a text field that never lost its focus.
+  // persist() sends nothing when the draft equals the last save.
   useEffect(
     () => () => {
-      if (!timer.current) return;
-      clearTimeout(timer.current);
+      if (timer.current) clearTimeout(timer.current);
       timer.current = null;
       void persist(false);
     },

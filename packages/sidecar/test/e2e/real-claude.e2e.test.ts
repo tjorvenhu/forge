@@ -250,6 +250,74 @@ describe.skipIf(!enabled)("E2E: sidecar with real Claude Code", () => {
     console.log("[e2e] commands", cmds.length, cmds.slice(0, 8).map((x) => x.name).join(", "));
   }, 60_000);
 
+  it("gives Claude the FORGE context with the knowledge index, and Claude saves knowledge", async () => {
+    await c.request("knowledge.save", {
+      projectId,
+      id: null,
+      title: "Deploy mit Coolify",
+      summary: "Codewort ZEBRA-17: wie das Projekt ausgeliefert wird",
+      tags: ["deploy"],
+      content: "# Deploy\n\nCoolify baut das Dockerfile.",
+    });
+    const before = c.events.length;
+    const s = await c.request("sessions.start", {
+      projectId,
+      model: MODEL,
+      prompt:
+        "1. Save one knowledge entry with mcp__forge__knowledge_save: title 'Testlauf E2E', summary 'Notiz aus dem E2E-Test', content 'Der E2E-Test lief.'. " +
+        "2. Reply with the code word (format WORD-NUMBER) from the project knowledge index in your context, or NONE if there is no such index. " +
+        "Do not use any other tool: no knowledge_search, no knowledge_read, no file or shell tools.",
+    });
+    const result = await c.waitTurn(s.id, before);
+    expect(result).toMatchObject({ isError: false });
+    const tools = c.events
+      .slice(before)
+      .flatMap((e) => (e.event === "session.event" && e.payload.sessionId === s.id && e.payload.body.type === "tool.use" ? [e.payload.body.name] : []));
+    // Only a code word seen without looking it up proves the context reached Claude. ToolSearch only
+    // loads the schemas of the deferred MCP tools.
+    expect(tools.filter((t) => t !== "ToolSearch")).toEqual(["mcp__forge__knowledge_save"]);
+    if (result?.type === "turn.result") expect(result.text ?? "").toMatch(/ZEBRA-17/);
+    const list = await c.request("knowledge.list", { projectId });
+    expect(list.map((e) => e.title)).toContain("Testlauf E2E");
+    expect(existsSync(path.join(projectPath, ".forge", "knowledge", "deploy-mit-coolify.md"))).toBe(true);
+    await c.request("sessions.close", { sessionId: s.id });
+  }, 240_000);
+
+  it("files a subagent's text under its Agent call and reads a background command's output", async () => {
+    // Balanced would stop at the Bash approval.
+    await c.request("projects.update", { projectId, profile: "autonomous" });
+    const before = c.events.length;
+    const s = await c.request("sessions.start", {
+      projectId,
+      model: MODEL,
+      prompt:
+        "1. Use the Agent tool once (subagent_type general-purpose, description 'Echo test') with the prompt: 'Reply with exactly the text SUBAGENT-OK and nothing else. Use no tools.' " +
+        "2. Then start this shell command with the Bash tool and run_in_background true: node -e \"console.log('BG-START'); setTimeout(() => console.log('BG-END'), 8000)\" " +
+        "3. Reply DONE without waiting for the command.",
+    });
+    await c.waitTurn(s.id, before, 240_000);
+    const bodies = c.events
+      .slice(before)
+      .flatMap((e) => (e.event === "session.event" && e.payload.sessionId === s.id ? [e.payload.body] : [])) as SessionEventBody[];
+    const agent = bodies.find((b) => b.type === "tool.use" && (b.name === "Agent" || b.name === "Task"));
+    expect(agent).toBeTruthy();
+    const agentId = agent?.type === "tool.use" ? agent.toolUseId : "";
+    const inner = bodies.filter((b) => b.type === "assistant.text" && b.parentToolUseId === agentId);
+    expect(inner.map((b) => (b.type === "assistant.text" ? b.text : "")).join(" ")).toMatch(/SUBAGENT-OK/);
+
+    const bg = (await c.request("sessions.get", { sessionId: s.id })).background.find((t) => t.taskType === "local_bash");
+    expect(bg?.toolUseId).toBeTruthy();
+    let out = { output: "", totalBytes: 0, truncated: false };
+    for (let i = 0; i < 20 && !out.output.includes("BG-START"); i++) {
+      out = await c.request("sessions.taskOutput", { sessionId: s.id, taskId: bg!.taskId });
+      if (!out.output.includes("BG-START")) await new Promise((r) => setTimeout(r, 500));
+    }
+    expect(out.output).toMatch(/BG-START/);
+    await c.request("sessions.stopTask", { sessionId: s.id, taskId: bg!.taskId });
+    await c.request("sessions.close", { sessionId: s.id });
+    await c.request("projects.update", { projectId, profile: "balanced" });
+  }, 300_000);
+
   it("stops a running turn and keeps the session usable", async () => {
     const before = c.events.length;
     const s = await c.request("sessions.start", {
@@ -375,6 +443,12 @@ describe.skipIf(!enabled)("E2E: sidecar with real Claude Code", () => {
         projects: async () => (calls.push("projects"), "shop"),
         usage: async () => (calls.push("usage"), "Fünf Stunden: 20 Prozent."),
         callBack: async (minutes: number) => (calls.push(`callBack:${minutes}`), "Rückruf vereinbart für 18:55 Uhr."),
+        backgroundTask: async () => (calls.push("task"), "Keine Aufgaben."),
+        devSettings: async () => (calls.push("devSettings"), "Gespeichert."),
+        pullRequest: async () => (calls.push("pr"), "Kein Pull Request."),
+        removeAgent: async () => (calls.push("removeAgent"), "Entfernt."),
+        search: async () => (calls.push("search"), "Nichts gefunden."),
+        callSettings: async () => (calls.push("callSettings"), "FORGE ruft an."),
       },
       onSentence: (s) => sentences.push(s),
       onTurnDone: () => turns++,

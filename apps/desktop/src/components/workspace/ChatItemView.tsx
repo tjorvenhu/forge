@@ -35,18 +35,8 @@ export const ItemView = memo(function ItemView({ item, sessionId, live, projectD
       return <UserMessage item={item} sessionId={sessionId} />;
     case "assistant":
       return <AssistantMessage item={item} />;
-    case "tool": {
-      const card = <ToolCard item={item} sessionId={sessionId} sessionLive={live} projectDir={projectDir} />;
-      if (!item.use.parentToolUseId) return card;
-      // Calls of a subagent hang under its line. Rows are separate list entries, so the guide line
-      // also reaches up over the gap to the previous row.
-      return (
-        <div className="relative pl-9">
-          <span aria-hidden className="absolute -top-1.5 bottom-0 left-6.5 w-px bg-border" />
-          {card}
-        </div>
-      );
-    }
+    case "tool":
+      return <ToolCard item={item} sessionId={sessionId} sessionLive={live} projectDir={projectDir} />;
     case "approval":
       if (item.req.toolName === "AskUserQuestion" || item.req.toolName === "ExitPlanMode") {
         // The approval came without a preceding tool event; show the same card as usual.

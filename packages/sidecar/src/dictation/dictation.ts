@@ -21,6 +21,12 @@ const FINISH_LIMIT_MS = 5_000;
 const KEYTERMS_MAX = 1024;
 /** tokens this close to expiry are refreshed by Claude Code first */
 const TOKEN_MARGIN_MS = 60_000;
+/** a refresh that did not help is not tried again on every start; each try starts a Claude Code process */
+const REFRESH_RETRY_MS = 5 * 60_000;
+/** A recording without audio for this long has lost its window (crash, reload); it is dropped. */
+const IDLE_MS = 30_000;
+/** No dictation runs this long; a stream still open then was forgotten. */
+const MAX_RECORDING_MS = 15 * 60_000;
 export const SAMPLE_RATE = 16_000;
 
 /** What the service answers; other message types are ignored like Claude Code does. */
@@ -51,6 +57,9 @@ export interface DictationDeps {
   credentialsFile?: string;
   connect?: (url: string, headers: Record<string, string>) => VoiceSocket;
   now?: () => number;
+  /** tests shorten the limits of a recording */
+  idleMs?: number;
+  maxRecordingMs?: number;
 }
 
 interface Stream {
@@ -65,6 +74,10 @@ interface Stream {
   /** resolves the running stop() */
   finish: (() => void) | null;
   lastMessageAt: number;
+  /** drops the stream when no audio comes; every block restarts it */
+  idle: ReturnType<typeof setTimeout>;
+  /** drops the stream after the longest recording */
+  limit: ReturnType<typeof setTimeout>;
 }
 
 const OPEN = 1;
@@ -93,6 +106,8 @@ interface Spare {
 export class DictationService {
   private streams = new Map<string, Stream>();
   private spare: Spare | null = null;
+  /** when a refresh of the login last failed to bring a valid token */
+  private refreshFailedAt = -Infinity;
 
   constructor(private readonly d: DictationDeps) {}
 
@@ -108,7 +123,8 @@ export class DictationService {
       return;
     }
     this.dropSpare();
-    const spare: Spare = { key, conn: this.open(opts), expiry: setTimeout(() => this.dropSpare(), SPARE_MS) };
+    // Focus or a typed space is no reason to start Claude Code for a login refresh; the recording does that.
+    const spare: Spare = { key, conn: this.open(opts, false), expiry: setTimeout(() => this.dropSpare(), SPARE_MS) };
     this.spare = spare;
     const forget = () => {
       if (this.spare === spare) this.dropSpare();
@@ -134,14 +150,25 @@ export class DictationService {
     }
     this.dropSpare();
     if (!conn) {
-      conn = await this.open(opts);
+      conn = await this.open(opts, true);
       await conn.opened;
     }
 
     conn.onLost = null;
     const { socket } = conn;
     const id = randomUUID();
-    const s: Stream = { socket, finals: [], pending: "", keepalive: conn.keepalive, closing: false, error: null, finish: null, lastMessageAt: this.now() };
+    const s: Stream = {
+      socket,
+      finals: [],
+      pending: "",
+      keepalive: conn.keepalive,
+      closing: false,
+      error: null,
+      finish: null,
+      lastMessageAt: this.now(),
+      idle: setTimeout(() => this.drop(id), this.d.idleMs ?? IDLE_MS),
+      limit: setTimeout(() => this.drop(id), this.d.maxRecordingMs ?? MAX_RECORDING_MS),
+    };
     this.streams.set(id, s);
 
     socket.onmessage = (e) => this.onMessage(id, s, e.data);
@@ -160,6 +187,7 @@ export class DictationService {
   audio(id: string, pcmBase64: string) {
     const s = this.require(id);
     if (s.closing || s.socket.readyState !== OPEN) return;
+    s.idle.refresh();
     s.socket.send(Buffer.from(pcmBase64, "base64"));
   }
 
@@ -246,6 +274,8 @@ export class DictationService {
     if (!s) return;
     this.streams.delete(id);
     if (s.keepalive) clearInterval(s.keepalive);
+    clearTimeout(s.idle);
+    clearTimeout(s.limit);
     s.closing = true;
     s.finish?.();
     s.socket.onopen = s.socket.onmessage = s.socket.onerror = s.socket.onclose = null;
@@ -256,8 +286,8 @@ export class DictationService {
     }
   }
 
-  private async open(opts: { language: string; keyterms: string[] }): Promise<Conn> {
-    const token = await this.token();
+  private async open(opts: { language: string; keyterms: string[] }, refresh: boolean): Promise<Conn> {
+    const token = await this.token(refresh);
     const version = (await this.d.cliVersion()) ?? "unknown";
     const query = new URLSearchParams({
       encoding: "linear16",
@@ -318,8 +348,11 @@ export class DictationService {
     s.conn.then(closeConn, () => {});
   }
 
-  /** The OAuth token of the Claude login; an expired one is refreshed by Claude Code first. */
-  private async token(): Promise<string> {
+  /**
+   * The OAuth token of the Claude login; with `refresh`, an expiring one is refreshed by Claude Code
+   * first. Without, an expiring token fails: the recording then refreshes it.
+   */
+  private async token(refresh: boolean): Promise<string> {
     const read = async () => {
       try {
         const file = this.d.credentialsFile ?? path.join(claudeHome(), ".credentials.json");
@@ -331,8 +364,12 @@ export class DictationService {
     };
     let c = await read();
     if (c && c.expiresAt - this.now() < TOKEN_MARGIN_MS) {
-      await this.d.refreshLogin().catch(() => {});
-      c = await read();
+      if (!refresh) throw new ForgeError("CLAUDE_NOT_LOGGED_IN", "Die Claude-Anmeldung läuft ab und wird erst bei der Aufnahme erneuert.");
+      if (this.now() - this.refreshFailedAt >= REFRESH_RETRY_MS) {
+        await this.d.refreshLogin().catch(() => {});
+        c = await read();
+        if (!c || c.expiresAt - this.now() < TOKEN_MARGIN_MS) this.refreshFailedAt = this.now();
+      }
     }
     if (!c) throw new ForgeError("CLAUDE_NOT_LOGGED_IN", "Die Spracheingabe braucht die Anmeldung bei Claude (Pro oder Max).");
     if (c.expiresAt - this.now() < 0) throw new ForgeError("CLAUDE_NOT_LOGGED_IN", "Die Claude-Anmeldung ist abgelaufen. Unter Einstellungen, Claude Code neu anmelden.");

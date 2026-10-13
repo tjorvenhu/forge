@@ -166,7 +166,7 @@ function GeneralSection({ s, save }: { s: Settings; save: Save }) {
         />
         <SwitchRow
           label="Windows-Benachrichtigungen"
-          description="Meldung von Windows, wenn Claude fertig ist, eine Freigabe oder Antwort braucht oder ein Fehler auftritt. Erscheint auch, wenn FORGE im Hintergrund ist. Ein Klick darauf öffnet die Session."
+          description="Meldung von Windows, wenn Claude fertig ist, eine Freigabe oder Antwort braucht oder ein Fehler auftritt. Erscheint auch, wenn FORGE im Hintergrund ist. Ein Klick auf die eingeblendete Meldung öffnet die Session."
           checked={s.desktopNotifications}
           onChange={(v) => void save({ desktopNotifications: v })}
         />

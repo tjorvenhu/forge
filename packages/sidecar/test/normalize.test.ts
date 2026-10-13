@@ -105,14 +105,19 @@ describe("Normalizer robustness", () => {
     expect(((input.edits as Array<{ new_string: string }>)[0]!.new_string).length).toBeLessThan(150);
   });
 
-  it("skips subagent text but keeps subagent tool uses", () => {
+  it("marks subagent text and tool uses with the Agent call they belong to", () => {
     const n = new Normalizer();
     const out = n.normalize({
       type: "assistant",
       parent_tool_use_id: "parent1",
       message: { id: "m1", content: [{ type: "text", text: "inner" }, { type: "tool_use", id: "t2", name: "Grep", input: {} }] },
     });
-    expect(out).toEqual([{ type: "tool.use", toolUseId: "t2", name: "Grep", input: {}, parentToolUseId: "parent1" }]);
+    expect(out).toEqual([
+      { type: "assistant.text", messageId: "m1", index: 0, text: "inner", parentToolUseId: "parent1" },
+      { type: "tool.use", toolUseId: "t2", name: "Grep", input: {}, parentToolUseId: "parent1" },
+    ]);
+    // Their deltas never stream into the main chat.
+    expect(n.normalize({ type: "stream_event", parent_tool_use_id: "parent1", event: { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "x" } } })).toEqual([]);
   });
 
   it("reports error results", () => {

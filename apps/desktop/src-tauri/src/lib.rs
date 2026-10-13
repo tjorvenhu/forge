@@ -121,6 +121,7 @@ pub fn run() {
                     app.exit(0);
                 } else if window.label().starts_with(chat_windows::PREFIX) {
                     app.state::<ChatWindows>().forget(app, window.label());
+                    let _ = app.state::<Sidecar>().send(&chat_windows::unfocused_line(window.label()));
                 }
             }
         })

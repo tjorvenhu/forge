@@ -114,6 +114,26 @@ describe("OpenSessions", () => {
     expect(screen.getByRole("tab", { name: /^Titel w1/ }).getAttribute("aria-selected")).toBe("true");
   });
 
+  it("lists a new session without a message while it is open and drops it when you leave", async () => {
+    live = [tab(session("a1", "app", "2026-10-11T10:01:00Z"))];
+    useUi.setState({ activeSession: { app: null } });
+    setup();
+    await screen.findByRole("tablist", { name: "Sessions" });
+    const group = document.querySelector<HTMLElement>('[data-project-group="app"]')!;
+    expect(within(group).getByText("Neue Session")).toBeTruthy();
+    // The new session is not a tab yet: Ctrl+Tab and the arrow keys only walk real sessions.
+    expect(tabNames()).toEqual(["Titel a1"]);
+
+    fireEvent.click(screen.getByRole("tab", { name: /^Titel a1/ }));
+    expect(screen.queryByText("Neue Session")).toBeNull();
+  });
+
+  it("shows the new session also in a project without running sessions", async () => {
+    useUi.setState({ activeSession: { app: null } });
+    setup();
+    expect(await screen.findByText("Neue Session")).toBeTruthy();
+  });
+
   it("selects no tab outside the workspace", async () => {
     live = [tab(session("a1", "app", "2026-10-11T10:01:00Z"))];
     useUi.setState({ view: "home", activeSession: { app: "a1" } });

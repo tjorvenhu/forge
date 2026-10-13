@@ -4,9 +4,11 @@ import { useQuery, useQueryClient, type QueryClient } from "@tanstack/react-quer
 import {
   ArrowDown,
   ArrowUp,
+  BookOpen,
   Bot,
   CornerDownLeft,
   FileText,
+  FlaskConical,
   FolderPlus,
   GitBranch,
   History,
@@ -148,7 +150,9 @@ function PaletteBody({ onClose }: { onClose: () => void }) {
       act("tab-agents", "Agenten öffnen", <Bot className="h-4 w-4" />, () => ui.setWorkspaceTab("agents"), { hint: "Strg+2", keywords: "parallel worktree subagenten" });
       act("tab-git", "Git öffnen", <GitBranch className="h-4 w-4" />, () => ui.setWorkspaceTab("git"), { hint: "Strg+3", keywords: "commit diff änderungen" });
       act("tab-files", "Dateien öffnen", <FileText className="h-4 w-4" />, () => ui.setWorkspaceTab("files"), { hint: "Strg+4" });
-      act("tab-settings", "Projekt-Einstellungen", <Settings2 className="h-4 w-4" />, () => ui.setWorkspaceTab("settings"), { hint: "Strg+5", keywords: "claude.md tags testbefehl" });
+      act("tab-devtools", "Dev-Tools öffnen", <FlaskConical className="h-4 w-4" />, () => ui.setWorkspaceTab("devtools"), { hint: "Strg+5", keywords: "testdatenbank umgebung env" });
+      act("tab-knowledge", "Wissen öffnen", <BookOpen className="h-4 w-4" />, () => ui.setWorkspaceTab("knowledge"), { hint: "Strg+6", keywords: "notizen wissensbasis" });
+      act("tab-settings", "Projekt-Einstellungen", <Settings2 className="h-4 w-4" />, () => ui.setWorkspaceTab("settings"), { hint: "Strg+7", keywords: "claude.md tags testbefehl" });
       act("terminal", "Terminal öffnen", <SquareTerminal className="h-4 w-4" />, () => ui.openTerminal(project.id, "shell"), { keywords: "shell konsole" });
       act("bottom", "Unteres Panel ein- oder ausblenden", <PanelBottom className="h-4 w-4" />, () => ui.toggleBottomPanel(), { hint: "Strg+J" });
       act("right", "Seitenleiste ein- oder ausblenden", <PanelRight className="h-4 w-4" />, () => ui.toggleRightPanel(), { hint: "Strg+Umschalt+E" });

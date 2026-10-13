@@ -1,4 +1,25 @@
-import type { GitIntegrationConflict } from "@forge/protocol";
+import { ForgeError, type GitIntegrationConflict, type Session } from "@forge/protocol";
+
+/** `details.integration` of a GIT_CONFLICT from push or pull; null for every other error. */
+export function integrationConflict(e: unknown): GitIntegrationConflict | null {
+  if (!(e instanceof ForgeError) || e.code !== "GIT_CONFLICT") return null;
+  return (e.details as { integration?: GitIntegrationConflict } | undefined)?.integration ?? null;
+}
+
+/**
+ * Origin's commits did not go in automatically: Claude takes over in a new session of the project.
+ * Null when `e` is no such conflict; the caller then reports `e` as it is.
+ */
+export async function startIntegrationSession(
+  sessions: { start(p: { projectId: string; prompt: string }): Promise<Session> },
+  projectId: string,
+  e: unknown,
+  push: boolean,
+): Promise<Session | null> {
+  const integration = integrationConflict(e);
+  if (!integration) return null;
+  return sessions.start({ projectId, prompt: integrationPrompt(integration, push) });
+}
 
 /** Task for the Claude session that takes over origin's commits after FORGE could not do it automatically. */
 export function integrationPrompt(c: GitIntegrationConflict, push: boolean): string {

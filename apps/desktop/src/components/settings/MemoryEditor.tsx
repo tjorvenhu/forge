@@ -43,8 +43,9 @@ export function MemoryEditor({ projectId, scopes, height = "h-105" }: { projectI
 
   const text = draft ?? doc.data?.content ?? "";
 
-  const save = useCallback(async () => {
-    if (!current || draft === null || externalChange || saving) return;
+  /** true once the draft is in the file */
+  const save = useCallback(async (): Promise<boolean> => {
+    if (!current || draft === null || externalChange || saving) return false;
     setSaving(true);
     try {
       const written = await call("config.memoryWrite", { projectId, scope: current.scope, content: draft, expectedMtimeMs: expectedVersion });
@@ -53,9 +54,11 @@ export function MemoryEditor({ projectId, scopes, height = "h-105" }: { projectI
       if (doc.data) qc.setQueryData(["memoryDoc", projectId ?? "global", current.scope], { ...doc.data, content: draft, mtimeMs: written.mtimeMs });
       toast.saved();
       void qc.invalidateQueries({ queryKey: ["memory", projectId ?? "global"] });
+      return true;
     } catch (e) {
       toast.error("Nicht gespeichert", errorMessage(e));
       if (e instanceof RpcCallError && e.code === "CONFLICT") void doc.refetch();
+      return false;
     } finally {
       setSaving(false);
     }
@@ -93,9 +96,12 @@ export function MemoryEditor({ projectId, scopes, height = "h-105" }: { projectI
             <button
               key={f.scope}
               onClick={async () => {
-                if (dirty) await save();
+                // Switching away from an unsaved draft would lose it.
+                if (dirty && !(await save())) return;
                 setScope(f.scope);
               }}
+              disabled={f.scope !== current.scope && dirty && (externalChange || saving)}
+              title={f.scope !== current.scope && dirty && externalChange ? "Erst die Änderung von außen klären" : undefined}
               className={cn(
                 "rounded-md border px-2.5 py-1 text-xs disabled:opacity-40",
                 f.scope === current.scope ? "border-accent bg-accent-soft text-fg" : "border-border text-muted hover:text-fg",

@@ -12,6 +12,8 @@ const PREWARM_EVERY_MS = 15_000;
 export type DictationState = "idle" | "starting" | "recording" | "transcribing";
 
 interface Recording {
+  /** the start() it came from; an older one never resets the state of a newer one */
+  gen: number;
   stream: MediaStream;
   ctx: AudioContext;
   proc: ScriptProcessorNode;
@@ -24,6 +26,15 @@ interface Recording {
   cancelled: boolean;
 }
 
+/** A start() still waiting for the microphone. */
+interface Starting {
+  gen: number;
+  /** stop or cancel asked for meanwhile (space released early, Esc); done once the microphone runs */
+  early: "stop" | "cancel" | null;
+  /** resolves once this start has its recording or gave up */
+  done: Promise<void>;
+}
+
 /**
  * Dictation for the composer over Claude's speech service (the one of /voice in the terminal): the
  * microphone streams to the sidecar, `live` is what was understood so far (the service still corrects
@@ -34,8 +45,9 @@ export function useDictation(onText: (text: string) => void, keyterms: string[])
   const [seconds, setSeconds] = useState(0);
   const [live, setLive] = useState("");
   const rec = useRef<Recording | null>(null);
-  /** stop or cancel asked for while the microphone was still starting (space released early); done once it runs */
-  const early = useRef<"stop" | "cancel" | null>(null);
+  const starting = useRef<Starting | null>(null);
+  /** counts starts */
+  const gen = useRef(0);
   const mounted = useRef(true);
   const deliver = useRef(onText);
   const terms = useRef(keyterms);
@@ -67,7 +79,7 @@ export function useDictation(onText: (text: string) => void, keyterms: string[])
   const stop = useCallback(async () => {
     const r = teardown();
     if (!r) {
-      early.current = "stop";
+      if (starting.current && !starting.current.early) starting.current.early = "stop";
       return;
     }
     setState("transcribing");
@@ -77,20 +89,22 @@ export function useDictation(onText: (text: string) => void, keyterms: string[])
       if (!id) throw new Error("Keine Verbindung zum Sprachdienst von Claude.");
       for (const pcm of r.queue.splice(0)) void call("voice.audio", { id, pcm }).catch(() => {});
       const { text } = await call("voice.stop", { id });
-      if (!mounted.current) return;
+      // The composer may be gone by now (other session opened); it still puts the text into its draft.
       if (text) deliver.current(text);
-      else toast.info("Nichts erkannt", "In der Aufnahme war keine Sprache zu hören.");
+      else if (mounted.current) toast.info("Nichts erkannt", "In der Aufnahme war keine Sprache zu hören.");
     } catch (e) {
       toast.error("Spracheingabe fehlgeschlagen", errorMessage(e));
     } finally {
-      setState("idle");
-      setLive("");
+      if (gen.current === r.gen) {
+        setState("idle");
+        setLive("");
+      }
     }
   }, [teardown]);
 
   const cancel = useCallback(() => {
     const r = teardown();
-    if (!r) early.current = "cancel";
+    if (!r && starting.current) starting.current.early = "cancel";
     if (r) r.cancelled = true;
     if (r?.id) void call("voice.cancel", { id: r.id }).catch(() => {});
     setState("idle");
@@ -107,7 +121,17 @@ export function useDictation(onText: (text: string) => void, keyterms: string[])
 
   const start = useCallback(async () => {
     if (rec.current) return;
-    early.current = null;
+    const prev = starting.current;
+    // Only a start the user discarded (Esc, then space again) may be overtaken, and it lets go of the microphone first.
+    if (prev && prev.early !== "cancel") return;
+    let settle!: () => void;
+    const me: Starting = { gen: ++gen.current, early: null, done: new Promise<void>((r) => (settle = r)) };
+    starting.current = me;
+    const leave = () => {
+      settle();
+      if (starting.current === me) starting.current = null;
+    };
+    const latest = () => gen.current === me.gen;
     // The recording uses up the prewarmed connection.
     warmedAt.current = 0;
     setState("starting");
@@ -116,26 +140,31 @@ export function useDictation(onText: (text: string) => void, keyterms: string[])
     // The connection opens while the microphone starts; the first words are queued, not lost.
     const opening = call("voice.start", { language: "de", keyterms: terms.current });
     opening.catch(() => {});
+    const dropOpening = () => void opening.then(({ id }) => call("voice.cancel", { id })).catch(() => {});
+    let stream: MediaStream | null = null;
+    let ctx: AudioContext | null = null;
     let r: Recording | null = null;
     try {
+      if (prev) await prev.done;
       // Raw voice like Claude Code records it: Chromium's noise suppression and echo cancellation cut
       // word starts and quiet syllables, which the recognizer then guesses wrong.
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: false, noiseSuppression: false, autoGainControl: true } });
+      if (mounted.current && me.early !== "cancel")
+        stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: false, noiseSuppression: false, autoGainControl: true } });
       // Windows may take a moment to grant the microphone; the composer can be gone by then.
-      if (!mounted.current || early.current === "cancel") {
-        stream.getTracks().forEach((t) => t.stop());
-        void opening.then(({ id }) => call("voice.cancel", { id })).catch(() => {});
-        if (mounted.current) setState("idle");
+      if (!stream || !mounted.current || me.early === "cancel") {
+        stream?.getTracks().forEach((t) => t.stop());
+        dropOpening();
+        if (mounted.current && latest()) setState("idle");
         return;
       }
-      const ctx = new AudioContext({ sampleRate: RATE });
-      const source = ctx.createMediaStreamSource(stream);
+      const mic = stream;
+      const audio = new AudioContext({ sampleRate: RATE });
+      ctx = audio;
+      const source = audio.createMediaStreamSource(mic);
       // ScriptProcessor instead of an AudioWorklet: the CSP allows no worklet from a blob. 128 ms blocks
       // keep the live text close to the voice; smaller ones crackle when the UI is busy.
-      const proc = ctx.createScriptProcessor(BLOCK, 1, 1);
-      const rr: Recording = { stream, ctx, proc, id: null, queue: [], samples: 0, ready: opening.then((o) => o.id, () => null), cancelled: false };
-      r = rr;
-      rec.current = rr;
+      const proc = audio.createScriptProcessor(BLOCK, 1, 1);
+      const rr: Recording = { gen: me.gen, stream: mic, ctx: audio, proc, id: null, queue: [], samples: 0, ready: opening.then((o) => o.id, () => null), cancelled: false };
       proc.onaudioprocess = (e) => {
         const pcm = toBase64(toInt16(e.inputBuffer.getChannelData(0)));
         rr.samples += e.inputBuffer.length;
@@ -145,9 +174,12 @@ export function useDictation(onText: (text: string) => void, keyterms: string[])
       };
       source.connect(proc);
       // Without a connection to the output the processor gets no audio; it writes silence there.
-      proc.connect(ctx.destination);
+      proc.connect(audio.destination);
+      r = rr;
+      rec.current = rr;
       setState("recording");
-      if (early.current === "stop") void stop();
+      leave();
+      if (me.early === "stop") void stop();
 
       const { id } = await opening;
       if (rr.cancelled) {
@@ -159,9 +191,15 @@ export function useDictation(onText: (text: string) => void, keyterms: string[])
     } catch (e) {
       // Stopped meanwhile: stop() reports the failed connection itself.
       if (r && rec.current !== r) return;
-      teardown();
-      setState("idle");
-      void opening.then(({ id }) => call("voice.cancel", { id })).catch(() => {});
+      if (r) teardown();
+      else {
+        // Failed between microphone and audio graph: nothing else holds them.
+        stream?.getTracks().forEach((t) => t.stop());
+        void ctx?.close().catch(() => {});
+      }
+      if (latest()) setState("idle");
+      dropOpening();
+      if (me.early === "cancel" || !mounted.current) return;
       const denied = e instanceof DOMException && (e.name === "NotAllowedError" || e.name === "SecurityError");
       const missing = e instanceof DOMException && e.name === "NotFoundError";
       if (denied || missing)
@@ -170,6 +208,8 @@ export function useDictation(onText: (text: string) => void, keyterms: string[])
           denied ? "Zugriff verweigert. In Windows unter Einstellungen, Datenschutz und Sicherheit, Mikrofon den Zugriff für Desktop-Apps erlauben." : "Kein Mikrofon gefunden.",
         );
       else toast.error("Spracheingabe nicht gestartet", errorMessage(e));
+    } finally {
+      leave();
     }
   }, [teardown, stop]);
 

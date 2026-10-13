@@ -22,6 +22,7 @@ import { SessionBar } from "./SessionBar";
 import { ChatSurface } from "./chat-surface";
 import { ItemView } from "./ChatItemView";
 import { BackgroundIndicator, WorkingIndicator } from "./WorkingIndicator";
+import { TaskThreadDialog } from "./TaskThread";
 import { turnStartedAt } from "./working";
 import { anchoredScrollTop, captureAnchor, type ScrollAnchor } from "./scroll-anchor";
 import { FollowState } from "./follow";
@@ -37,7 +38,6 @@ const NO_EVENTS: SessionEvent[] = [];
 const NO_STREAMING: Record<string, string> = {};
 /** room above the first row for the "load older" button */
 const OLDER_BAR_HEIGHT = 44;
-/** "tight" must stay pt-1.5: the guide line of subagent calls reaches up exactly that far. */
 const ROW_SPACING: Record<RowSpacing, string> = { first: "pt-5", turn: "pt-8", block: "pt-3.5", tight: "pt-1.5" };
 
 /**
@@ -73,7 +73,8 @@ export function ChatPanel({ project, workingInPanel = false, detached = false }:
     if (didAutoSelect.current === project.id || !sessions.data) return;
     didAutoSelect.current = project.id;
     const state = useUi.getState().activeSession;
-    if (!(project.id in state) && sessions.data.sessions[0]) setActive(project.id, sessions.data.sessions[0].id);
+    // Without any session the chat starts a new one, so the sidebar lists it as such.
+    if (!(project.id in state)) setActive(project.id, sessions.data.sessions[0]?.id ?? null);
   }, [project.id, sessions.data, setActive]);
 
   return (
@@ -360,6 +361,7 @@ function SessionThread({ sessionId, session, project, workingInPanel }: { sessio
       )}
       </div>
       <Composer project={project} session={session} prefill={retryText} onPrefillConsumed={clearRetry} />
+      <TaskThreadDialog sessionId={sessionId} projectDir={session?.cwd ?? project.path} />
     </>
   );
 }

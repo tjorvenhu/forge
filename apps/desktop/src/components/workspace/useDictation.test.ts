@@ -154,6 +154,87 @@ describe("useDictation", () => {
     expect(result.current.state).toBe("idle");
   });
 
+  it("lets go of a microphone discarded while starting before the next recording takes one", async () => {
+    let n = 0;
+    callMock.mockImplementation(async (method: string) => (method === "voice.start" ? { id: `v${++n}` } : {}));
+    const first = { stop: vi.fn() };
+    const second = { stop: vi.fn() };
+    let grant!: () => void;
+    const getUserMedia = vi
+      .fn()
+      .mockImplementationOnce(() => new Promise((r) => (grant = () => r({ getTracks: () => [first] }))))
+      .mockImplementationOnce(async () => ({ getTracks: () => [second] }));
+    Object.defineProperty(navigator, "mediaDevices", { configurable: true, value: { getUserMedia } });
+    const { result } = renderHook(() => useDictation(vi.fn(), []));
+
+    // Esc while Windows still asks for the microphone, then space again at once.
+    let firstStart!: Promise<void>;
+    let secondStart!: Promise<void>;
+    act(() => {
+      firstStart = result.current.start();
+    });
+    act(() => result.current.cancel());
+    expect(result.current.state).toBe("idle");
+    act(() => {
+      secondStart = result.current.start();
+    });
+    expect(result.current.state).toBe("starting");
+    expect(getUserMedia).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      grant();
+      await firstStart;
+      await secondStart;
+    });
+    expect(first.stop).toHaveBeenCalled();
+    expect(second.stop).not.toHaveBeenCalled();
+    expect(result.current.state).toBe("recording");
+    await waitFor(() => expect(calls("voice.cancel")).toEqual([{ id: "v1" }]));
+
+    // A start while one is under way is the same recording.
+    await act(() => result.current.start());
+    expect(getUserMedia).toHaveBeenCalledTimes(2);
+  });
+
+  it("hands over the finished text even when the composer is gone meanwhile", async () => {
+    let finish!: (r: { text: string }) => void;
+    callMock.mockImplementation(async (method: string) => {
+      if (method === "voice.start") return { id: "v1" };
+      if (method === "voice.stop") return new Promise((r) => (finish = r));
+      return {};
+    });
+    const onText = vi.fn();
+    const { result, unmount } = renderHook(() => useDictation(onText, []));
+    await act(() => result.current.start());
+    let stopped!: Promise<void>;
+    act(() => {
+      stopped = result.current.stop();
+    });
+    await waitFor(() => expect(calls("voice.stop")).toHaveLength(1));
+    unmount();
+    await act(async () => {
+      finish({ text: "Spät, aber da." });
+      await stopped;
+    });
+    expect(onText).toHaveBeenCalledWith("Spät, aber da.");
+  });
+
+  it("stops the microphone when the audio graph cannot be built", async () => {
+    callMock.mockResolvedValue({ id: "v1" });
+    class Broken extends FakeAudioContext {
+      override createScriptProcessor(): never {
+        throw new DOMException("no device", "NotSupportedError");
+      }
+    }
+    vi.stubGlobal("AudioContext", Broken);
+    const { result } = renderHook(() => useDictation(vi.fn(), []));
+    await act(() => result.current.start());
+    expect(result.current.state).toBe("idle");
+    expect(track.stop).toHaveBeenCalled();
+    expect(FakeAudioContext.last!.closed).toBe(true);
+    expect(useToasts.getState().toasts.at(-1)).toMatchObject({ title: "Spracheingabe nicht gestartet" });
+  });
+
   it("explains a refused microphone and a failed connection", async () => {
     callMock.mockResolvedValue({ id: "v1" });
     Object.defineProperty(navigator, "mediaDevices", { configurable: true, value: { getUserMedia: vi.fn(async () => Promise.reject(new DOMException("denied", "NotAllowedError"))) } });

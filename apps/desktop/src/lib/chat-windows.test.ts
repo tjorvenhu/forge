@@ -1,32 +1,44 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { QueryClient } from "@tanstack/react-query";
 import type { ServerEvent, SessionEvent } from "@forge/protocol";
-import { useDrafts } from "@/stores/drafts";
+import { useDrafts, type PendingFile } from "@/stores/drafts";
 import { useSessionEvents } from "@/stores/session-events";
 import { useUi } from "@/stores/ui";
 import type * as NotificationsNs from "./notifications";
-import { applyReattach, parseChatWindowTarget, prepareChatWindowUi } from "./chat-windows";
+import { applyReattach, closeChatWindows, openChatWindow, parseChatWindowTarget, prepareChatWindowUi, recallChatWindow, useChatWindows } from "./chat-windows";
 import { startChatWindowEvents } from "./chat-window-events";
 
 type NotificationsModule = typeof NotificationsNs;
 
 const playSound = vi.fn();
 const notifySession = vi.fn(async () => {});
+const invoke = vi.fn<(cmd: string, args?: unknown) => Promise<unknown>>();
 vi.mock("./sounds", () => ({ playSound: () => playSound() }));
 vi.mock("./notifications", async (orig) => ({ ...(await orig<NotificationsModule>()), notifySession: () => notifySession() }));
+vi.mock("@tauri-apps/api/core", () => ({ invoke: (cmd: string, args?: unknown) => invoke(cmd, args) }));
+vi.mock("@tauri-apps/api/event", () => ({ emit: async () => {}, emitTo: async () => {}, listen: async () => () => {} }));
 
 beforeEach(() => {
   useUi.setState({ view: "home", activeProjectId: null, activeSession: {} });
   useDrafts.setState({ drafts: {} });
   useSessionEvents.setState({ buffers: {} });
+  useChatWindows.setState({ sessions: [] });
   playSound.mockClear();
   notifySession.mockClear();
+  invoke.mockReset();
 });
+afterEach(() => {
+  vi.useRealTimers();
+});
+
+const pathFile: PendingFile = { id: "f1", name: "plan.md", attachment: { kind: "path", path: "C:/plan.md" }, preview: null, isImage: false };
+const imageWire = { name: "bild.png", isImage: true, attachment: { kind: "data" as const, name: "bild.png", mediaType: "image/png", base64: "QUJD" } };
 
 describe("chat window target", () => {
   it("accepts what the shell hands over and rejects anything else", () => {
-    expect(parseChatWindowTarget({ projectId: "p", sessionId: "s", draft: "hi" })).toEqual({ projectId: "p", sessionId: "s", draft: "hi" });
-    expect(parseChatWindowTarget({ projectId: "p", sessionId: null })).toEqual({ projectId: "p", sessionId: null, draft: null });
+    expect(parseChatWindowTarget({ projectId: "p", sessionId: "s", draft: "hi" })).toEqual({ projectId: "p", sessionId: "s", draft: "hi", files: [] });
+    expect(parseChatWindowTarget({ projectId: "p", sessionId: null })).toEqual({ projectId: "p", sessionId: null, draft: null, files: [] });
+    expect(parseChatWindowTarget({ projectId: "p", sessionId: "s", files: [imageWire, { name: "x", attachment: { kind: "path" } }, "y"] })?.files).toEqual([imageWire]);
     expect(parseChatWindowTarget({ projectId: "", sessionId: "s" })).toBeNull();
     expect(parseChatWindowTarget({ sessionId: "s" })).toBeNull();
     expect(parseChatWindowTarget(undefined)).toBeNull();
@@ -49,6 +61,71 @@ describe("chat window target", () => {
     expect(useUi.getState().activeSession.p).toBe("s");
     // Sent from the chat window meanwhile: the old text must not come back.
     expect(useDrafts.getState().drafts.s?.text).toBe("");
+  });
+
+  it("brings the attachments along both ways, and old ones do not come back", () => {
+    prepareChatWindowUi({ projectId: "p", sessionId: "s", files: [imageWire] });
+    expect(useDrafts.getState().drafts.s?.files).toMatchObject([{ name: "bild.png", isImage: true, preview: "data:image/png;base64,QUJD" }]);
+
+    useDrafts.getState().updateFiles("s", () => [pathFile]);
+    applyReattach({ projectId: "p", sessionId: "s", draft: null, files: [] });
+    expect(useDrafts.getState().drafts.s?.files).toEqual([]);
+  });
+});
+
+describe("detaching a chat", () => {
+  it("hands text and attachments to the new window and keeps no copy", async () => {
+    useDrafts.getState().setText("s", "halb fertig");
+    useDrafts.getState().updateFiles("s", () => [pathFile]);
+    invoke.mockImplementation(async () => {
+      // Taken before the window opens, not after.
+      expect(useDrafts.getState().drafts.s).toMatchObject({ text: "", files: [] });
+      return true;
+    });
+    await openChatWindow("p", "s", "Titel");
+    expect(invoke).toHaveBeenCalledWith("open_chat_window", expect.objectContaining({
+      target: { projectId: "p", sessionId: "s", draft: "halb fertig", files: [{ name: "plan.md", isImage: false, attachment: pathFile.attachment }] },
+    }));
+    expect(useDrafts.getState().drafts.s).toMatchObject({ text: "", files: [] });
+  });
+
+  it("keeps the draft when the window does not open or already existed", async () => {
+    useDrafts.getState().setText("s", "halb fertig");
+    useDrafts.getState().updateFiles("s", () => [pathFile]);
+    invoke.mockRejectedValueOnce(new Error("kaputt"));
+    await openChatWindow("p", "s", "Titel");
+    expect(useDrafts.getState().drafts.s).toMatchObject({ text: "halb fertig", files: [pathFile] });
+
+    invoke.mockResolvedValueOnce(false);
+    await openChatWindow("p", "s", "Titel");
+    expect(useDrafts.getState().drafts.s).toMatchObject({ text: "halb fertig", files: [pathFile] });
+  });
+
+  it("does not close a window opened again after a recall", () => {
+    vi.useFakeTimers();
+    useChatWindows.setState({ sessions: ["s"] });
+    recallChatWindow("s");
+    // The window answered; the user detached the chat again right away.
+    useChatWindows.setState({ sessions: [] });
+    useChatWindows.setState({ sessions: ["s"] });
+    vi.advanceTimersByTime(5_000);
+    expect(invoke).not.toHaveBeenCalledWith("close_chat_window", expect.anything());
+  });
+
+  it("closes a window that does not answer a recall", () => {
+    vi.useFakeTimers();
+    invoke.mockResolvedValue(undefined);
+    useChatWindows.setState({ sessions: ["s"] });
+    recallChatWindow("s");
+    vi.advanceTimersByTime(5_000);
+    expect(invoke).toHaveBeenCalledWith("close_chat_window", { sessionId: "s" });
+  });
+
+  it("closes the windows of deleted sessions only", () => {
+    invoke.mockResolvedValue(undefined);
+    useChatWindows.setState({ sessions: ["a", "b"] });
+    closeChatWindows(new Set(["b", "c"]));
+    expect(invoke.mock.calls).toEqual([["close_chat_window", { sessionId: "b" }]]);
   });
 });
 

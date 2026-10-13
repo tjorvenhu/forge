@@ -70,7 +70,7 @@ export class ClaudeAssist {
     for (const e of this.db.listEvents(sessionId)) {
       const b = e.body;
       if (b.type === "user.message") lines.push(`NUTZER: ${b.text}`);
-      else if (b.type === "assistant.text") lines.push(`CLAUDE: ${b.text}`);
+      else if (b.type === "assistant.text") lines.push(`${b.parentToolUseId ? "SUBAGENT" : "CLAUDE"}: ${b.text}`);
       else if (b.type === "tool.use") lines.push(`TOOL ${b.name}: ${JSON.stringify(b.input).slice(0, 200)}`);
       else if (b.type === "turn.result") lines.push(`ERGEBNIS: ${b.isError ? "Fehler" : "fertig"}`);
       else if (b.type === "automation" && b.action === "commit" && b.ok) lines.push(`COMMIT: ${b.message}`);

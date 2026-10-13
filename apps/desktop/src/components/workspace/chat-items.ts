@@ -109,11 +109,18 @@ export function reuseStableItems(prev: readonly ChatItem[], next: ChatItem[]): C
 /**
  * The fold behind the chat items, event by event. Kept as state so new events at the end only cost
  * their own work instead of a pass over the whole history.
+ *
+ * `thread` picks whose events become items: null is the main chat, a tool use id the subagent working
+ * for that Agent/Task call. A subagent's approvals also show in the main chat, so it never waits
+ * unnoticed.
  */
-function itemFolder() {
+function itemFolder(thread: string | null = null) {
   const items: ChatItem[] = [];
   const toolIdx = new Map<string, number>();
-  const approvalIdx = new Map<string, { item: number; inTool: boolean }>();  const textIdx = new Map<string, number>();
+  /** tool use id -> the Agent call whose subagent made it (null: main chat), for all threads */
+  const threadOf = new Map<string, string | null>();
+  const approvalIdx = new Map<string, { item: number; inTool: boolean }>();
+  const textIdx = new Map<string, number>();
   let lastTodo: number | null = null;
   /** the "limit reached" notice of the current turn; replaced by the plan card when one follows */
   let limitNotice: number | null = null;
@@ -124,6 +131,15 @@ function itemFolder() {
   return {
     add(ev: SessionEvent) {
       const b = ev.body;
+      if (b.type === "tool.use") threadOf.set(b.toolUseId, b.parentToolUseId ?? null);
+      // A resolution only touches an approval this thread registered.
+      if (b.type !== "approval.resolved" && eventThread(b, threadOf) !== thread) {
+        if (thread === null && b.type === "approval.request") {
+          approvalIdx.set(b.requestId, { item: items.length, inTool: false });
+          items.push({ kind: "approval", key: `p${b.requestId}`, ts: ev.ts, req: b, resolved: null });
+        }
+        return;
+      }
       switch (b.type) {
         case "user.message":
           // Older FORGE versions stored Claude Code's own notifications as prompts; the background task card covers them.
@@ -308,9 +324,25 @@ function itemFolder() {
   };
 }
 
-/** Chat items of the persisted events only, without live deltas. */
-export function buildEventItems(events: SessionEvent[]): ChatItem[] {
-  const f = itemFolder();
+/** Thread of an event: the Agent/Task call whose subagent produced it, null for the main chat. */
+function eventThread(b: SessionEventBody, threadOf: ReadonlyMap<string, string | null>): string | null {
+  switch (b.type) {
+    case "tool.use":
+    case "assistant.text":
+      return b.parentToolUseId ?? null;
+    case "tool.result":
+    case "approval.request":
+      return threadOf.get(b.toolUseId) ?? null;
+    case "policy.blocked":
+      return b.toolUseId ? (threadOf.get(b.toolUseId) ?? null) : null;
+    default:
+      return null;
+  }
+}
+
+/** Chat items of the persisted events only, without live deltas; `thread` as in itemFolder. */
+export function buildEventItems(events: SessionEvent[], thread: string | null = null): ChatItem[] {
+  const f = itemFolder(thread);
   for (const ev of events) f.add(ev);
   return f.result();
 }
@@ -320,15 +352,19 @@ export function buildEventItems(events: SessionEvent[]): ChatItem[] {
  * events it has seen and starts over when the start changed (older pages, reload).
  */
 export class IncrementalItems {
-  private f = itemFolder();
+  private f: ReturnType<typeof itemFolder>;
   private count = 0;
   private firstSeq: number | null = null;
   private lastSeq: number | null = null;
 
+  constructor(private readonly thread: string | null = null) {
+    this.f = itemFolder(thread);
+  }
+
   build(events: readonly SessionEvent[]): ChatItem[] {
     const continues = this.count > 0 && events.length >= this.count && events[0]?.seq === this.firstSeq && events[this.count - 1]?.seq === this.lastSeq;
     if (!continues) {
-      this.f = itemFolder();
+      this.f = itemFolder(this.thread);
       this.count = 0;
     }
     for (let i = this.count; i < events.length; i++) this.f.add(events[i]!);

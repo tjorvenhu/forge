@@ -35,7 +35,11 @@ export interface StartOptions {
   firstMessage: OutgoingMessage | null;
   /** FORGE tools for this session (MCP server "forge", tool names mcp__forge__<name>) */
   tools?: SessionTool[];
-  /** added to Claude's context when the session starts or resumes (SessionStart hook) */
+  /**
+   * Appended to Claude Code's system prompt. Not a SessionStart hook: the SDK never calls SessionStart
+   * callbacks passed in `hooks` (checked with SDK 0.3.296). The CLI records the prompt on the first
+   * request, so a resumed session keeps the text of its start until the next compaction.
+   */
   context?: string | null;
   /** model the CLI switches to when the main one is overloaded (must differ from it) */
   fallbackModel?: string | null;
@@ -109,6 +113,8 @@ export interface RuntimeSession {
   interrupt(): Promise<void>;
   /** stops one background task or subagent */
   stopTask(taskId: string): Promise<void>;
+  /** the end (last 8 KiB) of what a background shell task printed; only shell and Monitor tasks have one */
+  taskOutput(taskId: string): Promise<{ output: string; totalBytes: number; truncated: boolean }>;
   /** moves running foreground work into the background (one tool call, or all); false when nothing matched */
   toBackground(toolUseId?: string): Promise<boolean>;
   /** ends the session and its CLI process */
@@ -168,6 +174,11 @@ interface RemoteControlQuery {
 interface SessionTitleQuery {
   generateSessionTitle?: (description: string, opts?: { persist?: boolean }) => Promise<unknown>;
   renameSession?: (title: string, sessionId?: string) => Promise<void>;
+}
+
+/** Not in the SDK typings (0.3.x); the CLI's get_task_output control request. Checked at runtime before use. */
+interface TaskOutputQuery {
+  getTaskOutput?: (taskId: string) => Promise<{ output?: unknown; total_bytes?: unknown; truncated?: unknown } | undefined>;
 }
 
 /** Experimental in SDK 0.3.x and announced to be renamed; checked at runtime before use. */
@@ -334,10 +345,8 @@ export class AgentSdkRuntime implements ClaudeRuntime {
         settingSources: ["user", "project", "local"],
         pathToClaudeCodeExecutable: opts.claudePath,
         canUseTool,
-        hooks: {
-          PreToolUse: [{ hooks: [guard] }],
-          ...(opts.context ? { SessionStart: [{ hooks: [startContext(opts.context)] }] } : {}),
-        },
+        ...(opts.context ? { systemPrompt: { type: "preset", preset: "claude_code", append: opts.context } } : {}),
+        hooks: { PreToolUse: [{ hooks: [guard] }] },
         ...(opts.tools?.length
           ? {
               mcpServers: { [FORGE_MCP]: forgeServer(opts.tools) },
@@ -377,6 +386,16 @@ export class AgentSdkRuntime implements ClaudeRuntime {
         await q.interrupt();
       },
       stopTask: (taskId) => q.stopTask(taskId),
+      taskOutput: async (taskId) => {
+        const tq = q as unknown as TaskOutputQuery;
+        if (typeof tq.getTaskOutput !== "function") throw new Error("Diese Claude-Code-Version liefert keine Ausgabe von Hintergrundaufgaben.");
+        const r = await tq.getTaskOutput.call(q, taskId);
+        return {
+          output: typeof r?.output === "string" ? r.output : "",
+          totalBytes: typeof r?.total_bytes === "number" ? r.total_bytes : 0,
+          truncated: r?.truncated === true,
+        };
+      },
       toBackground: (toolUseId) => q.backgroundTasks(toolUseId),
       close: () => {
         if (closed) return;
@@ -572,10 +591,6 @@ function forgeServer(tools: SessionTool[]) {
 }
 
 /** SessionStart hook: tells Claude what FORGE offers in this session. */
-function startContext(text: string): HookCallback {
-  return async (input) => (input.hook_event_name === "SessionStart" ? { hookSpecificOutput: { hookEventName: "SessionStart", additionalContext: text } } : {});
-}
-
 function toCommand(c: { name: string; description: string; argumentHint?: string }): SlashCommand {
   return { name: c.name, description: c.description ?? "", argumentHint: c.argumentHint ?? "" };
 }

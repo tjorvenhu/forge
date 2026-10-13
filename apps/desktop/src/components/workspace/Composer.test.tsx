@@ -194,7 +194,7 @@ describe("dictation", () => {
     fireEvent.change(box, { target: { value: "Bitte " } });
     expect(callMock).toHaveBeenCalledWith("voice.prewarm", { language: "de", keyterms: expect.arrayContaining(["FORGE", "Kundenportal", "Next.js"]) });
     expect(callMock).not.toHaveBeenCalledWith("voice.start", expect.anything());
-    await act(() => wait(250));
+    await act(() => wait(450));
     await waitFor(() => expect(callMock).toHaveBeenCalledWith("voice.start", { language: "de", keyterms: expect.arrayContaining(["FORGE", "Kundenportal", "Next.js"]) }));
     expect(useDrafts.getState().drafts[draftKey("p1", null)]?.text).toBe("Bitte");
   });
@@ -224,17 +224,7 @@ describe("dictation", () => {
         if (method === "voice.stop") return { text: "die Tests ausführen." };
         return { models: [] };
       });
-      const proc = { onaudioprocess: null, connect: vi.fn(), disconnect: vi.fn() };
-      vi.stubGlobal(
-        "AudioContext",
-        class {
-          destination = {};
-          createMediaStreamSource = () => ({ connect: vi.fn() });
-          createScriptProcessor = () => proc;
-          close = async () => {};
-        },
-      );
-      Object.defineProperty(navigator, "mediaDevices", { configurable: true, value: { getUserMedia: vi.fn(async () => ({ getTracks: () => [{ stop: vi.fn() }] })) } });
+      stubMicrophone();
     });
     afterEach(() => vi.unstubAllGlobals());
 
@@ -270,15 +260,92 @@ describe("dictation", () => {
       expect(draft()).toBe("Bitte");
     });
 
-    it("stops writing once the user types and puts the result at the cursor", async () => {
+    it("stops writing once the user types and puts the result in place of its live words", async () => {
       const box = await record("");
       heard("die");
       fireEvent.change(box, { target: { value: "Hallo die" } });
       heard("die Tests");
       expect(draft()).toBe("Hallo die");
+      // The cursor elsewhere does not matter: the words were spoken where they stand.
       box.setSelectionRange(0, 0);
       await act(async () => fireEvent.click(screen.getByRole("button", { name: "Aufnahme beenden" })));
-      await waitFor(() => expect(draft()).toBe("die Tests ausführen. Hallo die"));
+      await waitFor(() => expect(draft()).toBe("Hallo die Tests ausführen."));
+    });
+
+    it("leaves the cursor alone and stops writing once the user moves it", async () => {
+      const box = await record("Bitte");
+      box.focus();
+      heard("die");
+      await act(() => wait(40));
+      expect(box.selectionStart).toBe(9);
+      box.setSelectionRange(0, 0);
+      heard("die Tests");
+      expect(draft()).toBe("Bitte die");
+      expect(box.selectionStart).toBe(0);
+      await act(async () => fireEvent.click(screen.getByRole("button", { name: "Aufnahme beenden" })));
+      await waitFor(() => expect(draft()).toBe("Bitte die Tests ausführen."));
+    });
+
+    it("sends nothing while the dictation runs", async () => {
+      const box = await record("Bitte");
+      heard("die");
+      fireEvent.keyDown(box, { key: "Enter" });
+      expect((screen.getByRole("button", { name: "Senden" }) as HTMLButtonElement).disabled).toBe(true);
+      expect(callMock.mock.calls.some(([m]) => String(m).startsWith("sessions."))).toBe(false);
+      expect(draft()).toBe("Bitte die");
+    });
+  });
+
+  describe("hold", () => {
+    const key = draftKey("p1", null);
+    const draft = () => useDrafts.getState().drafts[key]?.text;
+
+    function answers(text: string) {
+      callMock.mockImplementation(async (method: string) => {
+        if (method === "settings.get") return { enterToSend: true };
+        if (method === "voice.start") return { id: "v1" };
+        if (method === "voice.stop") return { text };
+        return { models: [] };
+      });
+    }
+    beforeEach(() => stubMicrophone());
+    afterEach(() => vi.unstubAllGlobals());
+
+    async function hold(start: string) {
+      useDrafts.getState().setText(key, start);
+      setup(<Composer project={project("p1")} session={null} />);
+      const box = screen.getByRole("textbox", { name: "Nachricht an Claude" }) as HTMLTextAreaElement;
+      box.focus();
+      box.setSelectionRange(start.length, start.length);
+      fireEvent.keyDown(box, { key: " " });
+      fireEvent.change(box, { target: { value: start + " " } });
+      fireEvent.keyDown(box, { key: " ", repeat: true });
+      await screen.findByRole("button", { name: "Aufnahme beenden" });
+      expect(draft()).toBe(start);
+      return box;
+    }
+
+    it("gives the space back when nothing was recognized", async () => {
+      answers("");
+      const box = await hold("Bitte");
+      await act(async () => fireEvent.keyUp(box, { key: " " }));
+      await waitFor(() => expect(draft()).toBe("Bitte "));
+    });
+
+    it("gives the space back when the hold is discarded", async () => {
+      answers("egal");
+      const box = await hold("Bitte");
+      fireEvent.keyDown(box, { key: " ", repeat: true });
+      fireEvent.keyDown(box, { key: "Escape" });
+      await waitFor(() => expect(draft()).toBe("Bitte "));
+      expect(callMock).not.toHaveBeenCalledWith("voice.stop", expect.anything());
+    });
+
+    it("puts the text in without the space when something was said", async () => {
+      answers("die Tests.");
+      const box = await hold("Bitte");
+      await act(async () => fireEvent.keyUp(box, { key: " " }));
+      await waitFor(() => expect(draft()).toBe("Bitte die Tests."));
     });
   });
 
@@ -286,6 +353,16 @@ describe("dictation", () => {
     setup(<Composer project={project("p1")} session={null} />);
     const box = screen.getByRole("textbox", { name: "Nachricht an Claude" });
     fireEvent.keyDown(box, { key: " " });
+    fireEvent.keyUp(box, { key: " " });
+    await act(() => wait(450));
+    expect(callMock).not.toHaveBeenCalledWith("voice.start", expect.anything());
+  });
+
+  it("takes a slow typed space for a space, not for a hold", async () => {
+    setup(<Composer project={project("p1")} session={null} />);
+    const box = screen.getByRole("textbox", { name: "Nachricht an Claude" });
+    fireEvent.keyDown(box, { key: " " });
+    await act(() => wait(250));
     fireEvent.keyUp(box, { key: " " });
     await act(() => wait(250));
     expect(callMock).not.toHaveBeenCalledWith("voice.start", expect.anything());
@@ -296,10 +373,24 @@ describe("dictation", () => {
     const box = screen.getByRole("textbox", { name: "Nachricht an Claude" });
     fireEvent.keyDown(box, { key: " " });
     fireEvent.keyDown(box, { key: "d" });
-    await act(() => wait(250));
+    await act(() => wait(450));
     expect(callMock).not.toHaveBeenCalledWith("voice.start", expect.anything());
   });
 });
+
+function stubMicrophone() {
+  const proc = { onaudioprocess: null, connect: vi.fn(), disconnect: vi.fn() };
+  vi.stubGlobal(
+    "AudioContext",
+    class {
+      destination = {};
+      createMediaStreamSource = () => ({ connect: vi.fn() });
+      createScriptProcessor = () => proc;
+      close = async () => {};
+    },
+  );
+  Object.defineProperty(navigator, "mediaDevices", { configurable: true, value: { getUserMedia: vi.fn(async () => ({ getTracks: () => [{ stop: vi.fn() }] })) } });
+}
 
 const wait = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
@@ -323,6 +414,21 @@ describe("info commands", () => {
   it("knows its commands only as the whole input", async () => {
     const { infoCommand } = await import("./InfoCommandDialog");
     expect(["/usage", " /CONTEXT ", "/status", "/mcp"].map((t) => infoCommand(t)?.name)).toEqual(["usage", "context", "status", "mcp"]);
-    expect(["/usage bitte", "usage", "/usages"].map(infoCommand)).toEqual([null, null, null]);
+    expect(["/usage bitte", "usage", "/usages"].map((t) => infoCommand(t))).toEqual([null, null, null]);
+    // A user's own /status picked from the menu goes to Claude.
+    expect(infoCommand("/status", "status")).toBeNull();
+    expect(infoCommand("/usage", "status")?.name).toBe("usage");
+  });
+
+  it("replaces only Claude Code's own commands, a user's command of the same name stays", async () => {
+    const { cliCommands } = await import("./SlashCommandMenu");
+    const cmd = (name: string, builtin?: boolean) => ({ name, description: name, argumentHint: "", ...(builtin ? { builtin } : {}) });
+    expect(cliCommands([cmd("status", true), cmd("context", true), cmd("compact", true), cmd("mcp"), cmd("clear"), cmd("review")])).toEqual([
+      cmd("compact", true),
+      { ...cmd("mcp"), custom: true },
+      cmd("review"),
+    ]);
+    // A list without the mark cannot tell them apart: FORGE's dialogs win as before.
+    expect(cliCommands([cmd("status"), cmd("review")]).map((c) => c.name)).toEqual(["review"]);
   });
 });

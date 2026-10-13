@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import type { Session } from "@forge/protocol";
+import { closeChatWindows } from "@/lib/chat-windows";
 import { call, keys } from "@/lib/queries";
 import { errorMessage } from "@/lib/rpc";
 import { useUi } from "@/stores/ui";
@@ -30,6 +31,7 @@ export function DeleteSessionDialog({ session, onClose }: { session: SessionRef 
         if (!s) return;
         try {
           await call("sessions.delete", { sessionId: s.id, deleteTranscript: withTranscript });
+          closeChatWindows([s.id]);
           const ui = useUi.getState();
           if (ui.activeSession[s.projectId] === s.id) ui.setActiveSession(s.projectId, null);
           useDrafts.getState().clear(s.id);

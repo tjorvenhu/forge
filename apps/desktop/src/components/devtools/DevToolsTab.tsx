@@ -348,11 +348,16 @@ function TestEnvCard({ owner, config, update }: { owner: string; config: DevTool
   // Saves shortly after the last key; leaving the tab saves what is still pending.
   const latest = useRef({ draft, saved: config.env });
   latest.current = { draft, saved: config.env };
+  // Only the text that was sent is cleared: keys typed while saving stay in the draft.
+  const saveDraft = useCallback(
+    (sent: string) => void update({ env: sent }).then((ok) => ok && setDraft((d) => (d === sent ? null : d))),
+    [update],
+  );
   useEffect(() => {
     if (draft === null || draft === config.env) return;
-    const t = setTimeout(() => void update({ env: draft }).then((ok) => ok && setDraft(null)), AUTOSAVE_MS);
+    const t = setTimeout(() => saveDraft(draft), AUTOSAVE_MS);
     return () => clearTimeout(t);
-  }, [draft, config.env, update]);
+  }, [draft, config.env, saveDraft]);
   useEffect(
     () => () => {
       const { draft: d, saved } = latest.current;
@@ -401,7 +406,7 @@ function TestEnvCard({ owner, config, update }: { owner: string; config: DevTool
             onChange={setDraft}
             language="text"
             ariaLabel="Test-Umgebung im .env-Format"
-            onSave={() => draft !== null && void update({ env: draft }).then((ok) => ok && setDraft(null))}
+            onSave={() => draft !== null && saveDraft(draft)}
           />
         </div>
         <p className="text-caption text-subtle">Beispiel: API_URL=http://localhost:4000. Next.js, Vite und dotenv lassen diese Werte vor gleichnamigen Einträgen aus .env-Dateien des Projekts gelten.</p>

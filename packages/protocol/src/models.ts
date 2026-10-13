@@ -94,6 +94,8 @@ export const BackgroundTask = z.object({
   taskId: z.string(),
   description: z.string(),
   taskType: z.string(),
+  /** the tool call that started the task (Agent/Task or Bash); a subagent's events carry it as parentToolUseId */
+  toolUseId: z.string().nullable(),
   /** when FORGE first saw the task */
   startedAt: z.string(),
   /** one-line progress (subagents: written by the model about every 30 s) */
@@ -219,7 +221,14 @@ export const SessionEventBody = z.discriminatedUnion("type", [
     text: z.string(),
   }),
   z.object({ type: z.literal("assistant.thinking"), messageId: z.string() }),
-  z.object({ type: z.literal("assistant.text"), messageId: z.string(), index: z.number().int(), text: z.string() }),
+  z.object({
+    type: z.literal("assistant.text"),
+    messageId: z.string(),
+    index: z.number().int(),
+    text: z.string(),
+    /** set for the text of a subagent: the Agent/Task call it works for */
+    parentToolUseId: z.string().nullable().optional(),
+  }),
   z.object({
     type: z.literal("tool.use"),
     toolUseId: z.string(),

@@ -37,20 +37,25 @@ class FakeSocket implements VoiceSocket {
   }
 }
 
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
 let dir: string;
 let credentials: string;
 let sockets: FakeSocket[];
 let events: ServerEvent[];
 let refreshed: number;
 
-function service(opts: { open?: boolean } = {}) {
+function service(opts: { open?: boolean; refreshFails?: boolean; idleMs?: number; maxRecordingMs?: number } = {}) {
   return new DictationService({
     emit: (e) => events.push(e),
     cliVersion: async () => "2.1.296",
     refreshLogin: async () => {
       refreshed++;
+      if (opts.refreshFails) throw new Error("claude exited with 1");
       writeFileSync(credentials, JSON.stringify({ claudeAiOauth: { accessToken: "fresh-token", expiresAt: Date.now() + 3_600_000 } }));
     },
+    idleMs: opts.idleMs,
+    maxRecordingMs: opts.maxRecordingMs,
     credentialsFile: credentials,
     connect: (url, headers) => {
       const s = new FakeSocket(url, headers);
@@ -114,6 +119,44 @@ describe("dictation over Claude's speech service", () => {
     await service().start({ language: "de", keyterms: [] });
     expect(refreshed).toBe(1);
     expect(sockets[0]!.headers.Authorization).toBe("Bearer fresh-token");
+  });
+
+  it("refreshes the login only for a recording, not ahead of one, and does not retry a failed refresh at once", async () => {
+    writeFileSync(credentials, JSON.stringify({ claudeAiOauth: { accessToken: "old", expiresAt: Date.now() + 10_000 } }));
+    const svc = service({ refreshFails: true });
+    svc.prewarm({ language: "de", keyterms: [] });
+    await sleep(20);
+    expect(refreshed).toBe(0);
+    expect(sockets).toHaveLength(0);
+
+    // The token still works for a few seconds; the failed refresh is not repeated on the next start.
+    await svc.start({ language: "de", keyterms: [] });
+    await svc.start({ language: "de", keyterms: [] });
+    expect(refreshed).toBe(1);
+    expect(sockets.map((s) => s.headers.Authorization)).toEqual(["Bearer old", "Bearer old"]);
+    svc.shutdown();
+  });
+
+  it("drops a recording that gets no audio or runs too long", async () => {
+    const svc = service({ idleMs: 60 });
+    const { id } = await svc.start({ language: "de", keyterms: [] });
+    for (let i = 0; i < 5; i++) {
+      await sleep(25);
+      svc.audio(id, "AAAA");
+    }
+    // Audio kept it going past the idle time; without any it goes.
+    await sleep(120);
+    expect(() => svc.audio(id, "AAAA")).toThrow(/schon beendet/);
+    expect(sockets[0]!.closed).toBe(true);
+
+    const long = service({ idleMs: 1_000, maxRecordingMs: 80 });
+    const second = await long.start({ language: "de", keyterms: [] });
+    for (let i = 0; i < 6; i++) {
+      await sleep(25);
+      if (i < 2) long.audio(second.id, "AAAA");
+    }
+    expect(() => long.audio(second.id, "AAAA")).toThrow(/schon beendet/);
+    expect(sockets[1]!.closed).toBe(true);
   });
 
   it("explains a missing login and a refused connection", async () => {

@@ -1,6 +1,6 @@
 import { useEffect, useRef, type KeyboardEvent } from "react";
 import { createPortal } from "react-dom";
-import { AppWindow, Hourglass, Plus, SquareArrowOutUpRight, X } from "lucide-react";
+import { AppWindow, Hourglass, MessageSquarePlus, Plus, SquareArrowOutUpRight, X } from "lucide-react";
 import { openChatWindow, useChatWindows } from "@/lib/chat-windows";
 import { call, useLiveSessions, useProjects, useSession } from "@/lib/queries";
 import { errorMessage } from "@/lib/rpc";
@@ -44,6 +44,8 @@ export function OpenSessions() {
   const openId = useUi(openSessionId);
   const activeProjectId = useUi((s) => (s.view === "workspace" ? s.activeProjectId : null));
   const openProject = useUi((s) => s.openProject);
+  // A new session without a message yet: listed while it is open, gone once you leave it.
+  const newSessionProject = useUi((s) => (s.view === "workspace" && s.activeProjectId && s.activeSession[s.activeProjectId] === null ? s.activeProjectId : null));
   const openSession = useSession(openId);
   const inChatWindows = useChatWindows((s) => s.sessions);
   const listRef = useRef<HTMLDivElement>(null);
@@ -90,9 +92,10 @@ export function OpenSessions() {
     <div ref={listRef} role="tablist" aria-orientation="vertical" aria-label="Sessions" className="flex flex-col gap-2">
       {groups.map((g) => {
         const projectActive = g.projectId === activeProjectId;
+        const showNew = g.projectId === newSessionProject;
         return (
           <div key={g.projectId} data-project-group={g.projectId} className="flex flex-col">
-            <div className={cn("group/project flex items-center rounded-lg", projectActive && !activeId ? "bg-surface-3" : "hover:bg-surface-2")}>
+            <div className={cn("group/project flex items-center rounded-lg", projectActive && !activeId && !showNew ? "bg-surface-3" : "hover:bg-surface-2")}>
               <button
                 onClick={() => openProject(g.projectId)}
                 title={`${g.projectName} öffnen`}
@@ -110,7 +113,7 @@ export function OpenSessions() {
                 <Plus className="h-3.5 w-3.5" />
               </button>
             </div>
-            {g.tabs.length > 0 && (
+            {(g.tabs.length > 0 || showNew) && (
               <div className="ml-[18px] flex flex-col gap-0.5 border-l border-border pl-2 pt-0.5">
                 {g.tabs.map((s) => {
                   const i = index++;
@@ -175,6 +178,14 @@ export function OpenSessions() {
                     </div>
                   );
                 })}
+                {showNew && (
+                  <div data-new-session className="flex h-8 min-w-0 animate-fade-in items-center rounded-lg bg-surface-3 text-body text-fg">
+                    <span aria-current="page" className="flex h-full min-w-0 flex-1 items-center gap-2 pl-2 pr-1" title="Neue Session. Sie bleibt hier, sobald du die erste Nachricht schickst.">
+                      <MessageSquarePlus aria-hidden className="h-3 w-3 shrink-0 text-subtle" />
+                      <span className="truncate italic">Neue Session</span>
+                    </span>
+                  </div>
+                )}
               </div>
             )}
           </div>

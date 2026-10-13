@@ -40,16 +40,26 @@ export class WorktreeService {
     private readonly projects: ProjectManager,
   ) {}
 
-  async create(parent: Project, branch: string): Promise<Project> {
+  /**
+   * `fromDir`: a new branch starts at the HEAD of this working tree (the project or one of its
+   * worktrees) instead of the parent's HEAD, so an agent continues from where its starter stands.
+   */
+  async create(parent: Project, branch: string, opts: { fromDir?: string } = {}): Promise<Project> {
     if (!(await this.git.isRepo(parent.path))) throw new ForgeError("GIT_NOT_REPO", "Worktrees brauchen ein Git-Repository.");
     if (!(await this.git.hasCommits(parent.path))) throw new ForgeError("GIT_FAILED", "Das Repository braucht mindestens einen Commit.");
     const check = await this.git.exec(parent.path, ["check-ref-format", "--branch", branch]);
     if (check.code !== 0 || branch.startsWith("-")) throw new ForgeError("VALIDATION", `Ungültiger Branch-Name: ${branch}`);
+    const exists = (await this.git.exec(parent.path, ["rev-parse", "--verify", "-q", `refs/heads/${branch}`])).code === 0;
+    const start: string[] = [];
+    if (!exists && opts.fromDir) {
+      const head = await this.git.exec(opts.fromDir, ["rev-parse", "--verify", "-q", "HEAD"]);
+      if (head.code !== 0 || !head.stdout.trim()) throw new ForgeError("GIT_FAILED", "Der Ausgangsstand hat noch keinen Commit.");
+      start.push(head.stdout.trim());
+    }
     const root = path.join(path.dirname(parent.path), ".forge-worktrees", path.basename(parent.path));
     await mkdir(root, { recursive: true });
     const dir = freeDir(path.join(root, slugify(branch.replace(/\//g, "-"), 60)));
-    const exists = (await this.git.exec(parent.path, ["rev-parse", "--verify", "-q", `refs/heads/${branch}`])).code === 0;
-    const r = await this.git.exec(parent.path, exists ? ["worktree", "add", dir, branch] : ["worktree", "add", "-b", branch, dir], undefined, 120_000);
+    const r = await this.git.exec(parent.path, exists ? ["worktree", "add", dir, branch] : ["worktree", "add", "-b", branch, dir, ...start], undefined, 120_000);
     if (r.code !== 0) throw new ForgeError("GIT_FAILED", (r.stderr || r.stdout).trim() || "Worktree konnte nicht angelegt werden");
     let project: Project;
     try {
@@ -59,8 +69,21 @@ export class WorktreeService {
       await this.git.exec(parent.path, ["worktree", "remove", "--force", dir], undefined, 60_000).catch(() => null);
       throw e;
     }
-    this.projects.update(project.id, { name: `${parent.name} · ${branch}`, profile: parent.profile, tags: parent.tags, testCommand: parent.testCommand, devCommand: parent.devCommand });
+    this.projects.update(project.id, {
+      name: `${parent.name} · ${branch}`,
+      profile: parent.profile,
+      tags: parent.tags,
+      testCommand: parent.testCommand,
+      devCommand: parent.devCommand,
+      defaultModel: parent.defaultModel,
+      defaultEffort: parent.defaultEffort,
+    });
     return this.projects.get(project.id);
+  }
+
+  /** Checked-out branch of a working tree; null when detached or unreadable. */
+  branchOf(dir: string): Promise<string | null> {
+    return this.git.currentBranch(dir).catch(() => null);
   }
 
   /** Main working tree of `dir` if `dir` is the root of a linked worktree, else null. */

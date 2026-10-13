@@ -1,9 +1,11 @@
-import { memo, useEffect, useState } from "react";
+import { memo, useEffect, useState, type ReactNode } from "react";
 import { ArrowDownToLine, Bot, Hourglass, Square } from "lucide-react";
 import type { BackgroundTask, SubagentProgress } from "@forge/protocol";
 import { call } from "@/lib/queries";
 import { errorMessage } from "@/lib/rpc";
 import { toast } from "@/stores/toast";
+import { useUi, type TaskView } from "@/stores/ui";
+import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Kbd, Tooltip } from "@/components/ui/misc";
 import { ChatRow } from "./ChatRow";
@@ -17,6 +19,29 @@ function useNow() {
     return () => clearInterval(t);
   }, []);
   return now;
+}
+
+/** What opens when a background task is clicked: a subagent's history or a command's output. */
+function taskViewOf(t: BackgroundTask, sessionId: string | undefined): TaskView | null {
+  if (!sessionId) return null;
+  if (t.taskType === "local_agent") return t.toolUseId ? { kind: "agent", sessionId, toolUseId: t.toolUseId, title: t.description } : null;
+  return { kind: "shell", sessionId, taskId: t.taskId, toolUseId: t.toolUseId, title: t.description };
+}
+
+/** Name of a task; a button that opens its own history when there is one. */
+function TaskTitle({ task, className, children }: { task: TaskView | null; className?: string; children: ReactNode }) {
+  const openTask = useUi((s) => s.openTask);
+  if (!task) return <span className={cn("min-w-0 truncate", className)}>{children}</span>;
+  return (
+    <button
+      type="button"
+      className={cn("min-w-0 truncate text-left underline-offset-2 hover:underline", className)}
+      title={task.kind === "agent" ? "Verlauf des Subagenten öffnen" : "Ausgabe ansehen"}
+      onClick={() => openTask(task)}
+    >
+      {children}
+    </button>
+  );
 }
 
 /** Commands and subagents Claude left running in the background; each can be stopped on its own. */
@@ -42,9 +67,9 @@ export const BackgroundIndicator = memo(function BackgroundIndicator({ tasks, se
       {tasks.map((t) => (
         <ChatRow key={t.taskId} marker={<Hourglass className="animate-soft-pulse h-3.5 w-3.5 text-accent" />}>
           <div className="group/task flex min-w-0 items-baseline gap-2">
-            <span className="min-w-0 truncate text-fg" title={t.description}>
+            <TaskTitle task={taskViewOf(t, sessionId)} className="text-fg">
               Im Hintergrund: {t.description}
-            </span>
+            </TaskTitle>
             {t.summary && (
               <span className="min-w-0 truncate text-muted" title={t.summary}>
                 · {t.summary}
@@ -109,9 +134,9 @@ export const WorkingIndicator = memo(function WorkingIndicator({ startedAt, suba
       {subagents.map((a) => (
         <ChatRow key={a.taskId} marker={<Bot className="h-3.5 w-3.5 text-accent" />}>
           <div className="group/agent flex min-w-0 items-baseline gap-2">
-            <span className="min-w-0 truncate text-fg" title={a.description}>
+            <TaskTitle task={sessionId && a.toolUseId ? { kind: "agent", sessionId, toolUseId: a.toolUseId, title: a.description } : null} className="text-fg">
               {a.description}
-            </span>
+            </TaskTitle>
             <span className="min-w-0 truncate text-muted" title={a.summary ?? undefined}>
               {a.summary ?? (a.lastTool ? `nutzt ${a.lastTool}` : "startet …")}
             </span>

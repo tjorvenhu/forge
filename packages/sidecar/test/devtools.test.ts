@@ -1,12 +1,12 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Db } from "../src/persistence/db.js";
 import { GitEngine } from "../src/git/git.js";
 import { ProjectManager } from "../src/projects/project-manager.js";
 import { connectionUrl, dbNameFor, DevToolsService, FIRST_DB_PORT, parseDotenv } from "../src/devtools/dev-tools.js";
 import { DevEnvironment } from "../src/devtools/environment.js";
-import { failureReason, TestDbService } from "../src/devtools/test-db.js";
+import { failureReason, POSTGRES, TestDbService } from "../src/devtools/test-db.js";
 import { DevServerService } from "../src/devserver/dev-server.js";
 import { KnowledgeStore, parseEntry, rank, serializeEntry, slugifyId, titleOverlap } from "../src/knowledge/knowledge.js";
 import { projectTools } from "../src/sessions/forge-tools.js";
@@ -181,6 +181,85 @@ describe("services", () => {
     expect(await save.run({ title: "Migrationen mit Prisma", summary: "Doppelt", content: "y" })).toMatch(/Nicht gespeichert.*prisma-migrationen/);
     expect(await save.run({ id: "prisma-migrationen", title: "Prisma Migrationen", summary: "Neu", content: "Neuer Text" })).toMatch(/^Aktualisiert/);
     expect((await store.read(projectId, "prisma-migrationen")).tags).toEqual(["db", "prisma"]);
+  });
+
+  it("keeps the valid parts of a stored configuration with a broken field", () => {
+    const tools = new DevToolsService(db, projects);
+    db.setDevTools(projectId, { env: "A=1", useEnv: false, database: { port: 54400, name: "Kaputt Name!", password: "geheim", withDevServer: true, envVar: null } });
+    expect(tools.get(projectId)).toEqual({ env: "A=1", useEnv: false, database: { port: 54400, name: "web", password: "geheim", withDevServer: true, envVar: null } });
+    expect(db.getDevTools(projectId)).toMatchObject({ database: { name: "web", password: "geheim" } });
+
+    db.setDevTools(otherId, { env: 42, database: { port: "x" } });
+    const fresh = tools.get(otherId);
+    expect(fresh).toMatchObject({ env: "", useEnv: true, database: { name: "api", withDevServer: false, envVar: "DATABASE_URL" } });
+    expect(fresh.database.port).not.toBe(54400);
+    expect(fresh.database.password).toMatch(/^[0-9a-f]{24}$/);
+  });
+
+  const whereExe = path.join(process.env.SystemRoot ?? "C:\\Windows", "System32", "where.exe");
+  it.skipIf(!existsSync(whereExe))("stops and deletes in one job on reset, so a start cannot slip in between", async () => {
+    // where.exe stands in for the binaries: it rejects PostgreSQL's arguments at once, which is enough here.
+    const bin = path.join(t.dir, "fake-pg");
+    mkdirSync(bin, { recursive: true });
+    for (const n of ["pg_ctl", "postgres", "initdb"]) copyFileSync(whereExe, path.join(bin, `${n}.exe`));
+    const tools = new DevToolsService(db, projects);
+    const states: string[] = [];
+    const testDb = new TestDbService({ dataDir: t.dir, devTools: tools, emit: (s) => states.push(s.status), binDir: bin });
+    const data = path.join(t.dir, "testdb", projectId, "data");
+    mkdirSync(data, { recursive: true });
+    writeFileSync(path.join(data, "PG_VERSION"), "17");
+
+    const reset = testDb.reset(projectId);
+    const start = testDb.start(projectId).catch((e: Error) => e);
+    await reset;
+    expect(await start).toBeInstanceOf(Error);
+    expect(states.indexOf("starting")).toBeGreaterThan(states.lastIndexOf("stopped"));
+    expect(existsSync(path.join(data, "PG_VERSION"))).toBe(false);
+
+    await testDb.forget(projectId);
+    expect(existsSync(path.join(t.dir, "testdb", projectId))).toBe(false);
+  });
+
+  it("gives up on a PostgreSQL download that does not answer or stalls and frees the queue", async () => {
+    const tools = new DevToolsService(db, projects);
+    const progress = new Map<string, number[]>();
+    const testDb = new TestDbService({
+      dataDir: t.dir,
+      devTools: tools,
+      emit: (s) => {
+        if (s.status === "installing" && s.progress) progress.set(s.projectId, [...(progress.get(s.projectId) ?? []), s.progress]);
+      },
+      binDir: path.join(t.dir, "pg", POSTGRES.build, "bin"),
+      download: { url: "http://127.0.0.1:9/pg.tgz", connectMs: 100, stallMs: 200 },
+    });
+    try {
+      // fetch that never answers but honors the abort signal, like a dead connection
+      vi.stubGlobal("fetch", async (_url: unknown, init?: RequestInit) => new Promise<Response>((_, reject) => init?.signal?.addEventListener("abort", () => reject(new Error("aborted")))));
+      await expect(testDb.start(projectId)).rejects.toThrow(/antwortet nicht/);
+      expect(testDb.state(projectId)).toMatchObject({ status: "failed", progress: null });
+      expect(testDb.state(projectId).error).toMatch(/antwortet nicht/);
+
+      // Body that sends 60 % and then nothing more; two projects start at once and share the download.
+      vi.stubGlobal("fetch", async () => {
+        const body = new ReadableStream<Uint8Array>({
+          start(c) {
+            c.enqueue(new Uint8Array(600));
+          },
+        });
+        return new Response(body, { status: 200, headers: { "content-length": "1000" } });
+      });
+      const started = Date.now();
+      const both = await Promise.allSettled([testDb.start(projectId), testDb.start(otherId)]);
+      expect(Date.now() - started).toBeLessThan(5000);
+      for (const r of both) expect(r.status === "rejected" && String(r.reason)).toMatch(/keine Daten/);
+      expect(progress.get(projectId)).toContain(0.6);
+      expect(progress.get(otherId)).toContain(0.6);
+
+      // The queue is free again.
+      expect((await testDb.stop(projectId)).status).toBe("stopped");
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it("explains a failed start from the PostgreSQL log", () => {

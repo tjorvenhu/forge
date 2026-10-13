@@ -16,6 +16,14 @@ export function splitActive(active: string | null | undefined): { sessionId: str
   return { sessionId: active, externalId: null };
 }
 
+/**
+ * A task with its own history: a subagent (its events carry the Agent call as parentToolUseId) or a
+ * background command (its output is read from the CLI by task id).
+ */
+export type TaskView =
+  | { kind: "agent"; sessionId: string; toolUseId: string; title: string }
+  | { kind: "shell"; sessionId: string; taskId: string; toolUseId: string | null; title: string };
+
 interface UiState {
   view: View;
   activeProjectId: string | null;
@@ -41,6 +49,9 @@ interface UiState {
   /** message to scroll to once its session is shown (from search) */
   focusEvent: { sessionId: string; seq: number } | null;
   setFocusEvent: (f: { sessionId: string; seq: number } | null) => void;
+  /** subagent or background command whose own history is shown over the chat */
+  taskView: TaskView | null;
+  openTask: (t: TaskView | null) => void;
   /** file shown in the Dateien tab, per project */
   selectedFile: Record<string, string | null>;
   selectFile: (projectId: string, path: string | null) => void;
@@ -97,6 +108,7 @@ export const useUi = create<UiState>((set, get) => ({
   panelRequest: null,
   paletteOpen: false,
   focusEvent: null,
+  taskView: null,
   selectedFile: {},
   ...loadPrefs(),
   openTerminal: (projectId, program, label) => set({ terminalRequest: { projectId, program, label }, bottomPanelOpen: true }),
@@ -107,6 +119,7 @@ export const useUi = create<UiState>((set, get) => ({
   clearPanelRequest: () => set({ panelRequest: null }),
   setPaletteOpen: (paletteOpen) => set({ paletteOpen }),
   setFocusEvent: (focusEvent) => set({ focusEvent }),
+  openTask: (taskView) => set({ taskView }),
   selectFile: (projectId, path) => set((s) => ({ selectedFile: { ...s.selectedFile, [projectId]: path } })),
   openFile: (projectId, path) => {
     set((s) => ({ selectedFile: { ...s.selectedFile, [projectId]: path }, workspaceTab: "files", toolbarOpen: true }));

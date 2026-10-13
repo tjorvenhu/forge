@@ -1,5 +1,5 @@
-import { ForgeError, type GitIntegrationConflict, type MethodName, type ParsedParamsOf, type ResultOf, type Settings } from "@forge/protocol";
-import { integrationPrompt } from "../git/integration-prompt.js";
+import { ForgeError, type MethodName, type ParsedParamsOf, type ResultOf, type Settings } from "@forge/protocol";
+import { startIntegrationSession } from "../git/integration-prompt.js";
 import { collectDiagnostics } from "../claude/diagnostics.js";
 import type { Db } from "../persistence/db.js";
 import type { GitEngine } from "../git/git.js";
@@ -56,12 +56,10 @@ export function createHandlers(s: Services): Handlers {
 
   const projectDir = (projectId: string) => s.projects.requireExisting(projectId).path;
   const dirOf = (projectId: string | undefined) => (projectId ? projectDir(projectId) : null);
-  /** Origin's commits did not go in automatically: Claude takes over in a new session of the project. */
   const resolveInSession = async (projectId: string, e: unknown, push: boolean) => {
-    const integration = e instanceof ForgeError && e.code === "GIT_CONFLICT" ? (e.details as { integration?: GitIntegrationConflict } | undefined)?.integration : undefined;
-    if (!integration) return null;
-    s.notifyProject(projectId);
-    return s.sessions.start({ projectId, prompt: integrationPrompt(integration, push) });
+    const session = await startIntegrationSession(s.sessions, projectId, e, push);
+    if (session) s.notifyProject(projectId);
+    return session;
   };
   const gitChanged = async (projectId: string) => {
     s.notifyProject(projectId);
@@ -194,6 +192,7 @@ export function createHandlers(s: Services): Handlers {
     "sessions.deleteAll": ({ deleteTranscript }) => s.sessions.deleteAll(deleteTranscript),
     "sessions.get": ({ sessionId }) => s.sessions.get(sessionId),
     "sessions.stopTask": ({ sessionId, taskId }) => s.sessions.stopTask(sessionId, taskId),
+    "sessions.taskOutput": ({ sessionId, taskId }) => s.sessions.taskOutput(sessionId, taskId),
     "sessions.toBackground": ({ sessionId, toolUseId }) => s.sessions.toBackground(sessionId, toolUseId),
     "sessions.fork": ({ sessionId, beforeSeq, rewindFiles }) => s.sessions.fork(sessionId, { beforeSeq, rewindFiles }),
     "sessions.events": ({ sessionId, afterSeq, beforeSeq }) => s.sessions.events(sessionId, afterSeq, beforeSeq),
@@ -236,8 +235,8 @@ export function createHandlers(s: Services): Handlers {
     "knowledge.delete": async ({ projectId, id }) => ({ ok: await s.knowledge.delete(projectId, id) }),
 
     "app.updateState": () => s.updates.get(),
-    "app.presence": ({ focused, active }) => {
-      s.presence.report(focused, active);
+    "app.presence": ({ focused, active, window }) => {
+      s.presence.report(window, focused, active);
       return {};
     },
     "app.checkUpdate": () => s.updates.check(),

@@ -33,6 +33,8 @@ export interface LiveSession {
   background: Map<string, BackgroundTask>;
   /** subagents of the current turn with their latest progress, keyed by task id */
   subagents: Map<string, SubagentProgress>;
+  /** task id -> the tool call that started it, from task_started (background_tasks_changed does not name it) */
+  taskToolUse: Map<string, string>;
   /** context window usage after the last turn */
   context: ContextUsage | null;
 }

@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -188,9 +189,34 @@ export class KnowledgeStore {
     return path.join(this.projects.requireExisting(this.owner(projectId)).path, KNOWLEDGE_DIR);
   }
 
-  private file(projectId: string, id: string): string {
+  /**
+   * File names by entry id. Files created by hand with another name ("Deploy.md", "db_setup.md") get
+   * an id derived from the name and keep their file name; ids of FORGE's own files win.
+   */
+  private files(dir: string): Map<string, string> {
+    const out = new Map<string, string>();
+    if (!existsSync(dir)) return out;
+    const names = readdirSync(dir)
+      .filter((n) => n.toLowerCase().endsWith(".md"))
+      .sort();
+    for (const n of names) if (ID_RE.test(n.slice(0, -3))) out.set(n.slice(0, -3), n);
+    for (const n of names) {
+      const stem = n.slice(0, -3);
+      if (ID_RE.test(stem)) continue;
+      const base = slugifyId(stem);
+      let id = base;
+      for (let k = 2; out.has(id); k++) id = `${base}-${k}`;
+      out.set(id, n);
+    }
+    return out;
+  }
+
+  /** Path of an existing entry, null if there is none. Only names read from the folder are used. */
+  private locate(projectId: string, id: string): string | null {
     if (!ID_RE.test(id)) throw new ForgeError("VALIDATION", `Ungültige Kennung „${id}“.`);
-    return path.join(this.dir(projectId), `${id}.md`);
+    const dir = this.dir(projectId);
+    const name = this.files(dir).get(id);
+    return name ? path.join(dir, name) : null;
   }
 
   /** Synchronous, for the session start context; the files are small and few. */
@@ -201,12 +227,8 @@ export class KnowledgeStore {
     } catch {
       return [];
     }
-    if (!existsSync(dir)) return [];
     const out: KnowledgeEntry[] = [];
-    for (const name of readdirSync(dir)) {
-      if (!name.endsWith(".md")) continue;
-      const id = name.slice(0, -3);
-      if (!ID_RE.test(id)) continue;
+    for (const [id, name] of this.files(dir)) {
       try {
         const full = path.join(dir, name);
         out.push(parseEntry(id, readFileSync(full, "utf8"), statMtime(full)));
@@ -222,7 +244,8 @@ export class KnowledgeStore {
   }
 
   async read(projectId: string, id: string): Promise<KnowledgeEntry> {
-    const full = this.file(projectId, id);
+    const full = this.locate(projectId, id);
+    if (!full) throw new ForgeError("NOT_FOUND", `Kein Eintrag „${id}“.`);
     let text: string;
     try {
       text = await readFile(full, "utf8");
@@ -244,34 +267,48 @@ export class KnowledgeStore {
   async save(projectId: string, input: KnowledgeInput): Promise<KnowledgeEntry> {
     const dir = this.dir(projectId);
     await mkdir(dir, { recursive: true });
-    let id = input.id;
-    if (id) {
-      if (!existsSync(this.file(projectId, id))) throw new ForgeError("NOT_FOUND", `Kein Eintrag „${id}“.`);
-    } else {
-      const base = slugifyId(input.title);
-      id = base;
-      for (let n = 2; existsSync(path.join(dir, `${id}.md`)); n++) id = `${base}-${n}`;
-    }
-    const entry: KnowledgeEntry = {
-      id,
+    const fields = {
       title: input.title.trim(),
       summary: input.summary.trim(),
       tags: [...new Set(input.tags.map((t) => t.trim().toLowerCase()).filter(Boolean))],
       updatedAt: new Date().toISOString(),
       content: input.content,
     };
-    const full = this.file(projectId, id);
-    // Write and rename: an editor or Claude reading at the same moment never sees half a file.
-    const tmp = `${full}.${process.pid}.tmp`;
-    await writeFile(tmp, serializeEntry(entry), "utf8");
-    await rename(tmp, full);
-    this.emit(this.owner(projectId));
-    return entry;
+    const text = serializeEntry(fields);
+    if (input.id) {
+      const full = this.locate(projectId, input.id);
+      if (!full) throw new ForgeError("NOT_FOUND", `Kein Eintrag „${input.id}“.`);
+      // Write and rename: an editor or Claude reading at the same moment never sees half a file.
+      const tmp = `${full}.${process.pid}-${randomBytes(4).toString("hex")}.tmp`;
+      try {
+        await writeFile(tmp, text, "utf8");
+        await rename(tmp, full);
+      } finally {
+        await rm(tmp, { force: true }).catch(() => {});
+      }
+      this.emit(this.owner(projectId));
+      return { id: input.id, ...fields };
+    }
+    // Claude in several sessions may save the same title at once: "wx" claims the name or fails.
+    const taken = this.files(dir);
+    const base = slugifyId(input.title);
+    for (let n = 1; ; n++) {
+      const id = n === 1 ? base : `${base}-${n}`;
+      if (taken.has(id)) continue;
+      try {
+        await writeFile(path.join(dir, `${id}.md`), text, { encoding: "utf8", flag: "wx" });
+      } catch (e) {
+        if ((e as NodeJS.ErrnoException).code === "EEXIST") continue;
+        throw e;
+      }
+      this.emit(this.owner(projectId));
+      return { id, ...fields };
+    }
   }
 
   async delete(projectId: string, id: string): Promise<boolean> {
-    const full = this.file(projectId, id);
-    if (!existsSync(full)) return false;
+    const full = this.locate(projectId, id);
+    if (!full || !existsSync(full)) return false;
     await rm(full, { force: true });
     this.emit(this.owner(projectId));
     return true;
