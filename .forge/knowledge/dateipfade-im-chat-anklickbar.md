@@ -1,25 +1,29 @@
 ---
 title: "Dateipfade im Chat anklickbar"
-summary: "Wie Pfade in Chat-Nachrichten zu Links werden, die die Datei im Dateien-Reiter an der Zeile öffnen (auch aus geteilter Ansicht und Chat-Fenstern), und was man beim Ändern der Erkennung beachten muss."
-tags: ["chat","markdown","dateien","chat-fenster","ui"]
-updated: "2026-10-13T17:11:34.887Z"
+summary: "Wie Pfade in Chat-Nachrichten, Werkzeug-Karten und Aktivität zu Links werden: Projektdateien öffnen im Dateien-Reiter an der Zeile, Ordner und Dateien außerhalb im Explorer; was man beim Ändern der Erkennung beachten muss."
+tags: ["chat","markdown","dateien","explorer","chat-fenster","ui"]
+updated: "2026-10-13T17:21:27.378Z"
 ---
 
-Eingebaut 2026-10-13 auf Wunsch des Nutzers ("wie bei Claude Code").
+Eingebaut 2026-10-13 auf Wunsch des Nutzers ("wie bei Claude Code"), am selben Tag auf Werkzeug-Karten, Ausgaben und Ordner erweitert.
 
 ## Erkennung (components/workspace/file-links.tsx)
-- Fließtext: `remarkFileLinks` (Remark-Plugin in `Markdown.tsx`) macht Pfade mit mindestens einem Ordner und Dateiendung zu Links mit Schema `forge-file:`. Bloße Dateinamen im Fließtext bewusst nicht (Node.js, Next.js ...). Hosts wie github.com/... und Zahlen (1.5/2.0) sind ausgeschlossen.
-- Inline-Code: ganzer Inhalt ein Pfad oder ein bloßer Dateiname mit bekannter Endung (`FILE_EXTENSIONS`, damit `useUi.getState` Code bleibt). Codeblöcke nie (Kontext `InCodeBlock`).
-- Markdown-Links mit relativem Ziel (`[x](src/a.ts)`) ebenfalls.
-- Zeilen: `:12`, `:12:5`, `#L12`.
-- react-markdown filtert unbekannte Schemata: `urlTransform` in `Markdown.tsx` lässt `forge-file:` durch. Wer das Schema ändert, muss das mitziehen.
+- Fließtext und Klartext: `findFileRefs` erkennt Pfade mit Ordner und Dateiendung (`src/a.ts:12`) sowie absolute Windows-Ordner (`C:\x\y`, Git-Bash `/c/x/y`, wird zu `C:/x/y`). Bloße Dateinamen im Fließtext bewusst nicht (Node.js, Next.js ...). Hosts (github.com/...) und Zahlen (1.5/2.0) ausgeschlossen; der Satzpunkt nach einem Ordner gehört nicht dazu.
+- Inline-Code und Markdown-Link-Ziele: `parseFileRef` auf den ganzen Text; dort auch Pfade mit Leerzeichen (`C:\Program Files\Git`) und bloße Dateinamen mit bekannter Endung (`FILE_EXTENSIONS`). Codeblöcke nie (Kontext `InCodeBlock` in `Markdown.tsx`).
+- Fließtext läuft über das Remark-Plugin `remarkFileLinks` mit Link-Schema `forge-file:`; `urlTransform` in `Markdown.tsx` muss das Schema durchlassen (react-markdown filtert sonst).
+- `FileRef.isFile` = hat Dateiendung.
 
-## Öffnen
-- Nur mit `FileLinkContext` (gesetzt in `ChatPanel`: Projekt, Projektordner, Bereich der geteilten Ansicht); sonst bleibt der Pfad Text (Wissen, Dialoge).
-- `openFileRef`: absolute Pfade nur innerhalb des Projektordners; Existenz wird per `projects.readFile` geprüft (gleicher Query-Key wie der Dateien-Reiter, also gecacht), sonst Toast "Datei nicht gefunden". Bloße Namen über `crawlFiles` (Cache-Key wie die Palette, `["paletteFiles", projectId]`), mehrere Treffer = Toast.
-- Im Nebenbereich der geteilten Ansicht erst `promoteSplitPane`, dann `openFile`.
-- `useUi.openFile(projectId, path, line)` setzt `fileJump` ({ ..., n }); `FilesTab` gibt `line`/`jumpKey` an `CodeView`, das die Zeile markiert und mittig scrollt.
-- Chat-Fenster (eigene Webviews, eigener Store): `openFileInMain` in `lib/chat-windows.ts` schickt das Event `chat-windows://open-file` an das Hauptfenster und ruft den Tauri-Befehl `show_main_window` (src-tauri/src/chat_windows.rs). Neue Rust-Befehle wirken erst nach Neubau der App.
+## Wohin ein Klick geht (`destination`)
+- Projektdatei (isFile, im Projektordner oder relativ, `FileLinkContext` vorhanden) → Dateien-Reiter: `openFileRef` prüft per `projects.readFile` (retry: false, sonst 1 s Verzögerung durch das globale retry: 1); fehlt sie, Suche per `crawlFiles` nach einer Projektdatei, deren Pfad so endet (Claude schreibt oft relativ zu einem Unterordner, z. B. src-tauri/Cargo.toml). Bloße Namen ebenso über `crawlFiles`. Mehrere Treffer oder keiner = Toast.
+- Sonst absoluter Pfad → Explorer über den Tauri-Befehl `show_in_explorer` (src-tauri/src/lib.rs): Ordner werden geöffnet, Dateien nur im Ordner markiert, nie mit ihrem Programm gestartet (ein .exe-Pfad im Chat darf nichts ausführen). Der Befehl läuft in Rust, damit das Fenster keine breiten opener-Rechte braucht. Geht auch ohne `FileLinkContext`.
+- Im Nebenbereich der geteilten Ansicht vorher `promoteSplitPane`. In Chat-Fenstern (eigener Store) `openFileInMain` (Event `chat-windows://open-file` + Befehl `show_main_window`).
+- `useUi.openFile(projectId, path, line)` setzt `fileJump`; `CodeView` markiert die Zeile und scrollt sie in die Mitte.
 
-## Nicht verlinkt
-Kopfzeilen der Werkzeug-Karten (Read/Edit): sind selbst Buttons zum Aufklappen, ein Link darin wäre verschachtelt.
+## Wo Pfade verlinkt sind
+- Markdown im Chat (`ChatPanel` setzt `FileLinkContext`).
+- Werkzeug-Karten (`ToolCard.tsx`): Kopfzeile über `ToolTarget` (Read/Write/Edit: die Datei, Read an `offset`; Bash/Grep/Glob: Pfade im Befehl). Die Kopfzeile ist ein `div` mit unterlegtem, absolut positioniertem Aufklapp-Button; Links liegen mit `relative z-10` darüber (kein Link im Button). Ausgabe-Vorschau, Details und Freigabe-Block über `LinkedText`.
+- Aktivität (`ActivityFeed`) mit eigenem `FileLinkContext` (Hauptbereich).
+- Stil außerhalb von Markdown: Klasse `.file-link` in `styles.css`.
+
+## Hinweise
+- Rust-Befehle (`show_in_explorer`, `show_main_window`) brauchen einen Neubau; `pnpm dev` (tauri dev) baut bei Änderungen in src-tauri selbst neu.

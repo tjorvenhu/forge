@@ -530,3 +530,15 @@ body {
 .chat-surface:has(> .chat-dialog-overlay) > :not(.chat-dialog-overlay, [role="dialog"]) {
   filter: blur(6px);
 }
+
+/* A file path in tool output or a tool card (outside markdown, which styles its links itself). */
+.file-link {
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, currentColor 35%, transparent);
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+.file-link:hover {
+  color: var(--color-accent);
+  text-decoration-color: currentColor;
+}

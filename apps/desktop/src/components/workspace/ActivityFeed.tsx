@@ -10,6 +10,7 @@ import { TOOL_LABELS, toolSummary } from "./chat-items";
 import { toolIcon } from "./ToolCard";
 import { forgeIcon } from "./ForgeToolCard";
 import { forgeToolName, forgeToolView } from "./forge-tool";
+import { FileLinkContext, LinkedText, type FileLinkTarget } from "./file-links";
 
 /**
  * True while the chat still picks the project's session or loads the active session's history; an
@@ -30,6 +31,7 @@ export function ActivityFeed({ projectId, projectDir }: { projectId: string; pro
   const sessionId = useUi((s) => s.activeSession[projectId] ?? null);
   const events = useSessionEvents((s) => (sessionId ? s.buffers[sessionId]?.events : undefined));
   const loading = useHistoryLoading(projectId);
+  const fileLinks = useMemo<FileLinkTarget>(() => ({ projectId, root: projectDir, pane: null }), [projectId, projectDir]);
   const rows = useMemo(() => {
     const out: Array<{ key: string; icon: React.ReactNode; title: string; detail: string; ts: string; tone?: string }> = [];
     // Newest first, and only as far back as the list shows: no pass over the whole history per event.
@@ -76,19 +78,22 @@ export function ActivityFeed({ projectId, projectDir }: { projectId: string; pro
       </EmptyState>
     );
   return (
-    <ul className="h-full divide-y divide-border overflow-y-auto">
-      {rows.map((r) => (
-        <li key={r.key} className="flex items-start gap-2.5 px-3 py-2">
-          <span className={r.tone ?? "text-muted"}>{r.icon}</span>
-          <div className="min-w-0 flex-1">
-            <div className="text-body">{r.title}</div>
-            <div className="truncate font-mono text-caption text-subtle" title={r.detail}>
-              {r.detail}
+    // The feed belongs to the main area's project: paths in it open in its Files tab.
+    <FileLinkContext.Provider value={fileLinks}>
+      <ul className="h-full divide-y divide-border overflow-y-auto">
+        {rows.map((r) => (
+          <li key={r.key} className="flex items-start gap-2.5 px-3 py-2">
+            <span className={r.tone ?? "text-muted"}>{r.icon}</span>
+            <div className="min-w-0 flex-1">
+              <div className="text-body">{r.title}</div>
+              <div className="truncate font-mono text-caption text-subtle" title={r.detail}>
+                <LinkedText text={r.detail} />
+              </div>
             </div>
-          </div>
-          <span className="shrink-0 text-caption text-subtle">{relativeTime(r.ts)}</span>
-        </li>
-      ))}
-    </ul>
+            <span className="shrink-0 text-caption text-subtle">{relativeTime(r.ts)}</span>
+          </li>
+        ))}
+      </ul>
+    </FileLinkContext.Provider>
   );
 }

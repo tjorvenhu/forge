@@ -1,6 +1,7 @@
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { isPermissionGranted, requestPermission, sendNotification } from "@tauri-apps/plugin-notification";
 import { openUrl } from "@tauri-apps/plugin-opener";
+import { invoke } from "@tauri-apps/api/core";
 
 export async function pickFolder(title: string, defaultPath?: string | null): Promise<string | null> {
   const r = await open({ directory: true, multiple: false, title, defaultPath: defaultPath ?? undefined });
@@ -48,4 +49,9 @@ export interface NotifyTarget {
 export async function desktopNotify(title: string, body: string, open?: NotifyTarget) {
   notifyAllowed ??= (async () => (await isPermissionGranted()) || (await requestPermission()) === "granted")().catch(() => false);
   if (await notifyAllowed) sendNotification({ title, body, extra: open ? { projectId: open.projectId, sessionId: open.sessionId } : undefined });
+}
+
+/** Shows a path in Explorer: a folder opens, a file is selected in its folder; nothing is started (see show_in_explorer). */
+export async function showInExplorer(path: string) {
+  await invoke("show_in_explorer", { path });
 }

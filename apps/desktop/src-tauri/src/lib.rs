@@ -32,6 +32,25 @@ fn sidecar_status(state: tauri::State<'_, Sidecar>) -> bool {
     state.is_running()
 }
 
+/// A path clicked in a chat, shown in Explorer: a folder opens, a file is only selected in its folder.
+/// Never handed to its default program, so a path in a message cannot start anything. Async: the
+/// disk check can wait on a slow or network drive.
+#[tauri::command]
+async fn show_in_explorer(app: tauri::AppHandle, path: String) -> Result<(), String> {
+    use tauri_plugin_opener::OpenerExt;
+    let p = std::path::PathBuf::from(&path);
+    if path.len() > 4096 || !p.is_absolute() {
+        return Err("Kein gültiger Pfad".into());
+    }
+    if p.is_dir() {
+        app.opener().open_path(path, None::<&str>).map_err(|e| e.to_string())
+    } else if p.exists() {
+        app.opener().reveal_item_in_dir(&p).map_err(|e| e.to_string())
+    } else {
+        Err("Pfad nicht gefunden".into())
+    }
+}
+
 /// Shutdown waits up to the grace period, so the restart runs off the main thread.
 #[tauri::command]
 async fn sidecar_restart(app: tauri::AppHandle) -> Result<(), String> {
@@ -102,6 +121,7 @@ pub fn run() {
             sidecar_status,
             sidecar_restart,
             install_update,
+            show_in_explorer,
             term_open,
             term_write,
             term_resize,

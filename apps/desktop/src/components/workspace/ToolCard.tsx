@@ -34,6 +34,7 @@ import { ForgeToolCard } from "./ForgeToolCard";
 import { forgeToolName, forgeToolView } from "./forge-tool";
 import { ChatRow, Dot, Guide } from "./ChatRow";
 import { cachedEditDiff, cleanToolOutput, countLines, diffStats, inputJson, splitPreview, type DiffLine } from "./tool-view";
+import { FileLink, LinkedText } from "./file-links";
 
 type ToolItem = Extract<ChatItem, { kind: "tool" }>;
 type ApprovalItem = Extract<ChatItem, { kind: "approval" }>;
@@ -158,15 +159,22 @@ export function ToolCard({ item, sessionId, sessionLive, projectDir }: { item: T
 
   return (
     <ChatRow className="text-body" marker={<StateDot state={state} />}>
-      <button
-        type="button"
-        className="group/tool flex w-full min-w-0 items-baseline gap-2 text-left transition-opacity duration-75 active:opacity-70"
-        onClick={() => setOpen(!open)}
-        aria-expanded={open}
-        title={label ? `${label}: Details ${open ? "ausblenden" : "anzeigen"}` : `Details ${open ? "ausblenden" : "anzeigen"}`}
-      >
+      {/* The whole row toggles the details: the button lies under it; file paths in the row sit above it and open the file. */}
+      <div className="group/tool relative flex w-full min-w-0 items-baseline gap-2 text-left transition-opacity duration-75 has-[>button:active]:opacity-70">
+        <button
+          type="button"
+          className="absolute inset-0 rounded-sm"
+          onClick={() => setOpen(!open)}
+          aria-expanded={open}
+          aria-label={`${toolDisplayName(use.name)}${summary ? ` ${summary}` : ""}`}
+          title={label ? `${label}: Details ${open ? "ausblenden" : "anzeigen"}` : `Details ${open ? "ausblenden" : "anzeigen"}`}
+        />
         <span className="shrink-0 font-semibold text-fg">{toolDisplayName(use.name)}</span>
-        {summary && <span className="min-w-0 truncate font-mono text-small text-muted">{summary}</span>}
+        {summary && (
+          <span className="min-w-0 truncate font-mono text-small text-muted">
+            <ToolTarget name={use.name} input={use.input} summary={summary} />
+          </span>
+        )}
         {use.name === "Read" && result && !result.isError && <span className="shrink-0 text-small text-subtle">({lineCount(countLines(result.content.text))})</span>}
         {stats && (stats.add > 0 || stats.del > 0) && (
           <span className="shrink-0 font-mono text-caption-lg">
@@ -178,11 +186,11 @@ export function ToolCard({ item, sessionId, sessionLive, projectDir }: { item: T
         <ChevronRight
           aria-hidden
           className={cn(
-            "ml-auto h-3.5 w-3.5 shrink-0 self-center text-subtle transition group-hover/tool:opacity-100 group-focus-visible/tool:opacity-100",
+            "ml-auto h-3.5 w-3.5 shrink-0 self-center text-subtle transition group-hover/tool:opacity-100 group-has-[>button:focus-visible]/tool:opacity-100",
             open ? "rotate-90 opacity-100" : "opacity-0",
           )}
         />
-      </button>
+      </div>
       {blockedNote}
       <Collapse open={open}>
         <Guide className="mt-1.5 space-y-2 pb-1">{details}</Guide>
@@ -224,6 +232,24 @@ function TaskLink({ item, sessionId, title }: { item: ToolItem; sessionId: strin
   );
 }
 
+const FILE_TOOLS = new Set(["Read", "Write", "Edit", "MultiEdit", "NotebookEdit"]);
+/** Above the row's toggle button, so a click opens the file instead of the details. */
+const ABOVE_ROW = "relative z-10";
+
+/** The summary of a tool call with its paths as links: the file of Read/Write/Edit (Read at its offset), paths in a command or pattern. */
+function ToolTarget({ name, input, summary }: { name: string; input: Record<string, unknown>; summary: string }) {
+  const raw = FILE_TOOLS.has(name) ? (typeof input.file_path === "string" ? input.file_path : typeof input.notebook_path === "string" ? input.notebook_path : null) : null;
+  if (raw) {
+    const line = name === "Read" && typeof input.offset === "number" && input.offset > 0 ? input.offset : null;
+    return (
+      <FileLink fileRef={{ path: raw.replace(/\\/g, "/"), line, bare: false, isFile: true }} className={ABOVE_ROW}>
+        {summary}
+      </FileLink>
+    );
+  }
+  return <LinkedText text={summary} linkClassName={ABOVE_ROW} />;
+}
+
 /** Tools whose output says something on its own; a Read's file content or a todo confirmation does not. */
 function showsOutput(name: string): boolean {
   return name !== "Read" && name !== "TodoWrite" && name !== "Edit" && name !== "MultiEdit" && name !== "Write" && name !== "NotebookEdit";
@@ -246,7 +272,9 @@ function OutputPreview({ text, error, expanded, onToggle, empty }: { text: strin
   const { lines, hidden, cut } = splitPreview(text, expanded ? Infinity : OUTPUT_PREVIEW_LINES);
   return (
     <div>
-      <pre className={cn("whitespace-pre-wrap font-mono text-small leading-relaxed wrap-anywhere", error ? "text-danger" : "text-muted", expanded && "max-h-96 overflow-y-auto")}>{lines.join("\n")}</pre>
+      <pre className={cn("whitespace-pre-wrap font-mono text-small leading-relaxed wrap-anywhere", error ? "text-danger" : "text-muted", expanded && "max-h-96 overflow-y-auto")}>
+        <LinkedText text={lines.join("\n")} />
+      </pre>
       {(expanded || hidden > 0 || cut) && <MoreToggle expanded={expanded} hidden={hidden} onToggle={onToggle} />}
     </div>
   );
@@ -288,7 +316,9 @@ function Pre({ label, text, truncated, error }: { label: string; text: string; t
   return (
     <div>
       <div className="mb-1 text-caption font-medium uppercase tracking-wide text-subtle">{label}</div>
-      <pre className={cn("max-h-72 overflow-auto whitespace-pre-wrap break-all rounded-md bg-surface p-2 font-mono text-caption-lg", error ? "text-danger" : "text-muted")}>{text}</pre>
+      <pre className={cn("max-h-72 overflow-auto whitespace-pre-wrap break-all rounded-md bg-surface p-2 font-mono text-caption-lg", error ? "text-danger" : "text-muted")}>
+        <LinkedText text={text} />
+      </pre>
       {truncated && <div className="mt-1 text-caption text-subtle">Gekürzt auf 20.000 Zeichen.</div>}
     </div>
   );
@@ -348,7 +378,7 @@ export function ApprovalBlock({ req, resolved, sessionId, projectDir }: { req: A
           {req.description && <div className="text-xs text-muted">{req.description}</div>}
           {req.outsideProject && <div className="mt-1 text-xs font-medium text-danger">Achtung: Schreibzugriff außerhalb des Projektordners.</div>}
           <pre className="mt-1.5 max-h-40 overflow-auto whitespace-pre-wrap break-all rounded bg-bg/60 p-2 font-mono text-caption-lg text-fg/90">
-            {toolSummary(req.toolName, req.input, projectDir) || JSON.stringify(req.input, null, 2)}
+            <LinkedText text={toolSummary(req.toolName, req.input, projectDir) || JSON.stringify(req.input, null, 2)} />
           </pre>
         </div>
       </div>
