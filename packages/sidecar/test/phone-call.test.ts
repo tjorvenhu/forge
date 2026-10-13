@@ -3,11 +3,11 @@ import { createSocket, type Socket } from "node:dgram";
 import { mkdirSync } from "node:fs";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { PhoneState, ServerEvent } from "@forge/protocol";
+import { ForgeError, type BackgroundTask, type PhoneState, type ServerEvent, type SubagentProgress } from "@forge/protocol";
 import { encodeG711, FRAME_SAMPLES, rms, decodeG711 } from "../src/phone/audio.js";
 import type { ConversationCallbacks } from "../src/phone/call-controller.js";
 import type { PhoneToolset } from "../src/phone/phone-agent.js";
-import { PhoneService } from "../src/phone/phone-service.js";
+import { PhoneService, type PhoneDeps } from "../src/phone/phone-service.js";
 import { buildSdp } from "../src/phone/sdp.js";
 import { SecretStore } from "../src/phone/secrets.js";
 import { getHeader, getHeaders, parseNameAddr, parseSip, responseTo, serializeSip, type SipMessage } from "../src/phone/sip-message.js";
@@ -23,6 +23,25 @@ import { tempDir } from "./helpers.js";
 import type { WorktreeService } from "../src/automation/worktrees.js";
 import type { TestDbService } from "../src/devtools/test-db.js";
 import { KnowledgeStore } from "../src/knowledge/knowledge.js";
+
+interface FakeSession {
+  id: string;
+  projectId: string;
+  title: string;
+  status: string;
+  live: boolean;
+  updatedAt: string;
+  projectName: string;
+  background: BackgroundTask[];
+  subagents: SubagentProgress[];
+}
+
+const fakeSession = (o: Omit<FakeSession, "updatedAt" | "background" | "subagents"> & Partial<FakeSession>): FakeSession => ({
+  updatedAt: new Date().toISOString(),
+  background: [],
+  subagents: [],
+  ...o,
+});
 
 const md5 = (s: string) => createHash("md5").update(s).digest("hex");
 const tone = (ms: number, amp = 9000) => Int16Array.from({ length: (ms / 1000) * 8000 }, (_, i) => Math.round(Math.sin((2 * Math.PI * 300 * i) / 8000) * amp));
@@ -366,21 +385,34 @@ describe("PhoneService end to end with a test PBX", () => {
   let remoteOn = false;
   let projectId = "";
   let worktreesCreated: string[] = [];
+  /** fromDir of each created worktree */
+  let createdFrom: string[] = [];
+  let removedWorktrees: string[] = [];
   let startedIn: string[] = [];
-  let sessionList: Array<{ id: string; projectId: string; title: string; status: string; live: boolean; updatedAt: string; projectName: string }>;
+  let lastStart: { projectId: string; prompt: string; effort?: string } | null;
+  let failStart: boolean;
+  let sessionList: FakeSession[];
   let secrets: SlowSecrets;
   let failConversation: boolean;
   let rtps: RtpSession[];
   let logs: string[];
   let present: boolean;
   let testDbRunning: boolean;
+  let testDbStatus: string | null;
   let testDbCalls: string[];
+  let taskCalls: string[];
+  let approvals: string[];
+  let prsCreated: string[];
+  let projects: ProjectManager;
+  let gitEngine: GitEngine;
+  let timing: NonNullable<PhoneDeps["timing"]>;
 
   beforeEach(async () => {
     t = tempDir();
     mkdirSync(path.join(t.dir, "shop"), { recursive: true });
     db = new Db(path.join(t.dir, "forge.db"));
-    const projects = new ProjectManager(db, new GitEngine(), () => "balanced");
+    projects = new ProjectManager(db, new GitEngine(), () => "balanced");
+    gitEngine = new GitEngine();
     projectId = (await projects.import(path.join(t.dir, "shop"))).id;
     pbx = new FakePbx();
     await pbx.start();
@@ -398,8 +430,16 @@ describe("PhoneService end to end with a test PBX", () => {
     logs = [];
     present = false;
     worktreesCreated = [];
+    createdFrom = [];
+    removedWorktrees = [];
     startedIn = [];
-    sessionList = [{ id: "s1", projectId, title: "Warenkorb", status: "idle", live: true, updatedAt: new Date().toISOString(), projectName: "shop" }];
+    lastStart = null;
+    failStart = false;
+    taskCalls = [];
+    approvals = [];
+    prsCreated = [];
+    testDbStatus = null;
+    sessionList = [fakeSession({ id: "s1", projectId, title: "Warenkorb", status: "idle", live: true, projectName: "shop" })];
     const sessions = {
       get: (id: string) => {
         const s = sessionList.find((x) => x.id === id);
@@ -408,12 +448,22 @@ describe("PhoneService end to end with a test PBX", () => {
       },
       listLive: () => sessionList.filter((s) => s.live),
       listAll: () => sessionList,
-      start: async (o: { projectId: string; prompt: string }) => {
-        const s = { id: `s${sessionList.length + 1}`, projectId: o.projectId, title: o.prompt, status: "starting", live: true, updatedAt: new Date().toISOString(), projectName: "x" };
+      start: async (o: { projectId: string; prompt: string; effort?: string }) => {
+        if (failStart) throw new Error("Claude startet nicht");
+        const s = fakeSession({ id: `s${sessionList.length + 1}`, projectId: o.projectId, title: o.prompt, status: "starting", live: true, projectName: "x" });
         sessionList.push(s);
         startedIn.push(o.projectId);
+        lastStart = o;
         return s;
       },
+      stop: async (id: string) => steered.push(`stop:${id}`),
+      stopTask: async (id: string, taskId: string) => (taskCalls.push(`stop:${id}:${taskId}`), { ok: true }),
+      taskOutput: async () => ({ output: "> vitest run\n\nnpm ERR! Test fehlgeschlagen\n", totalBytes: 40, truncated: false }),
+      toBackground: async (id: string, toolUseId?: string) => (taskCalls.push(`bg:${id}:${toolUseId ?? "alle"}`), { moved: true }),
+      respondApproval: (id: string, requestId: string, decision: string, scope: string) => approvals.push(`${id}:${requestId}:${decision}:${scope}`),
+      closeProject: async (ids: string[]) => steered.push(`closeProject:${ids.join(",")}`),
+      summarize: async () => ({ summary: "Export gebaut, Tests offen.", model: "haiku" }),
+      suggestPullRequest: async () => ({ title: "CSV-Export", body: "Neu: CSV-Export", base: "main", head: "agent/csv" }),
       send: async (id: string, text: string) => {
         sent.push([id, text]);
         return sessionList[0];
@@ -436,26 +486,49 @@ describe("PhoneService end to end with a test PBX", () => {
     };
     testDbRunning = false;
     testDbCalls = [];
+    timing = { notifyDelayMs: 50, notifyCooldownMs: 0, pinLimits: { perCaller: 2, baseDelayMs: 0 }, callbackTickMs: 100 };
+    let devConfig = { env: "", useEnv: true, database: { port: 54330, name: "shop", password: "x", withDevServer: false, envVar: "DATABASE_URL" as string | null } };
     svc = new PhoneService({
       db,
       projects,
       sessions,
-      devServers: {} as DevServerService,
+      devServers: {
+        state: async (id: string) => ({ projectId: id, status: id === projectId ? "running" : "stopped", exitCode: null, error: null }),
+        output: (id: string) => `Server ${id}\nError: Port 3000 belegt\n`,
+        forget: async (id: string) => steered.push(`forget:${id}`),
+      } as unknown as DevServerService,
       testDb: {
-        state: () => ({ status: testDbRunning ? "running" : "stopped", initialized: true, error: null }),
+        state: () => ({ status: testDbStatus ?? (testDbRunning ? "running" : "stopped"), initialized: true, error: null, progress: 0.4 }),
         isRunning: () => testDbRunning,
         start: async (id: string) => (testDbCalls.push(`start:${id}`), (testDbRunning = true)),
         stop: async (id: string) => (testDbCalls.push(`stop:${id}`), (testDbRunning = false)),
         reset: async (id: string) => (testDbCalls.push(`reset:${id}`), (testDbRunning = false)),
+        log: () => "LOG: Start\nFATAL: Port 54330 ist belegt\n",
       } as unknown as TestDbService,
+      devTools: {
+        get: () => devConfig,
+        update: (_id: string, patch: { useEnv?: boolean; database?: Partial<typeof devConfig.database> }) =>
+          (devConfig = { ...devConfig, useEnv: patch.useEnv ?? devConfig.useEnv, database: { ...devConfig.database, ...patch.database } }),
+      } as unknown as NonNullable<PhoneDeps["devTools"]>,
+      github: {
+        prForBranch: async () => null,
+        createPr: async (_dir: string, p: { title: string; base: string; head: string; draft: boolean }) => (prsCreated.push(`${p.head}->${p.base}:${p.title}:${p.draft}`), "https://github.com/x/y/pull/7"),
+      },
       knowledge: new KnowledgeStore(projects, () => {}),
-      git: new GitEngine(),
+      git: gitEngine,
       worktrees: {
-        create: async (parent: { id: string; name: string; path: string }, branch: string) => {
+        create: async (parent: { id: string; name: string; path: string }, branch: string, opts?: { fromDir?: string }) => {
           worktreesCreated.push(`${parent.name}:${branch}`);
-          const dir = path.join(t.dir, "shop-agent");
+          createdFrom.push(opts?.fromDir ?? "");
+          const dir = path.join(t.dir, `shop-agent-${worktreesCreated.length}`);
           mkdirSync(dir, { recursive: true });
           return projects.import(dir, parent.id);
+        },
+        assertRemovable: async () => {},
+        remove: async (wt: { id: string; name: string }, force: boolean, opts?: { deleteBranch?: boolean }) => {
+          removedWorktrees.push(`${wt.name}:${force}:${opts?.deleteBranch === true}`);
+          projects.remove(wt.id);
+          return { deletedBranch: opts?.deleteBranch ? "agent/x" : null, branchError: null };
         },
       } as unknown as WorktreeService,
       secrets,
@@ -463,7 +536,7 @@ describe("PhoneService end to end with a test PBX", () => {
       claude: () => ({ path: "claude", env: {}, cwd: t.dir }),
       log: (m) => logs.push(m),
       userPresent: () => present,
-      timing: { notifyDelayMs: 50, notifyCooldownMs: 0, pinLimits: { perCaller: 2, baseDelayMs: 0 }, callbackTickMs: 100 },
+      timing,
       factories: {
         voice: () => voice,
         rtp: (ip) => {
@@ -792,10 +865,12 @@ describe("PhoneService end to end with a test PBX", () => {
     expect(await conv.tools.testDatabase("shop", "status")).toBe("Die Test-Datenbank von shop ist gestoppt.");
     expect(await conv.tools.testDatabase("shop", "start")).toMatch(/^Gesperrt/);
     expect(await conv.tools.rememberNote("shop", "Deploy", "Läuft über Coolify")).toMatch(/^Gesperrt/);
-    expect(await conv.tools.knowledge("shop", "deploy")).toBe("shop hat noch kein Projektwissen.");
+    // Knowledge can be as confidential as session results: only after the PIN.
+    expect(await conv.tools.knowledge("shop", "deploy")).toMatch(/^Gesperrt/);
     await sleep(200);
     await phoneEnd.digits("4711#");
     await until(() => svc.state().call?.unlocked, 5000, "unlocked");
+    expect(await conv.tools.knowledge("shop", "deploy")).toBe("shop hat noch kein Projektwissen.");
 
     expect(await conv.tools.testDatabase("shop", "start")).toBe("Test-Datenbank von shop läuft.");
     expect(await conv.tools.testDatabase("shop", "reset")).toBe("Test-Datenbank von shop geleert und wieder gestartet.");
@@ -815,8 +890,8 @@ describe("PhoneService end to end with a test PBX", () => {
   it("finds sessions only by a known short name or a unique title", async () => {
     await svc.saveConfig({ requirePin: false });
     sessionList.push(
-      { id: "s2", projectId, title: "Warenkorb Export", status: "idle", live: true, updatedAt: new Date().toISOString(), projectName: "shop" },
-      { id: "s3", projectId, title: "Login", status: "idle", live: true, updatedAt: new Date().toISOString(), projectName: "shop" },
+      fakeSession({ id: "s2", projectId, title: "Warenkorb Export", status: "idle", live: true, projectName: "shop" }),
+      fakeSession({ id: "s3", projectId, title: "Login", status: "idle", live: true, projectName: "shop" }),
     );
     await svc.setEnabled(true);
     await until(() => svc.state().registration === "registered", 5000, "registered");

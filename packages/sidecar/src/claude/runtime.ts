@@ -591,6 +591,6 @@ function forgeServer(tools: SessionTool[]) {
 }
 
 /** SessionStart hook: tells Claude what FORGE offers in this session. */
-function toCommand(c: { name: string; description: string; argumentHint?: string }): SlashCommand {
-  return { name: c.name, description: c.description ?? "", argumentHint: c.argumentHint ?? "" };
+function toCommand(c: { name: string; description: string; argumentHint?: string; builtin?: boolean }): SlashCommand {
+  return { name: c.name, description: c.description ?? "", argumentHint: c.argumentHint ?? "", ...(c.builtin === true ? { builtin: true } : {}) };
 }

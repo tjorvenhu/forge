@@ -106,6 +106,38 @@ describe("phone settings save by themselves", () => {
     expect(saves()).toHaveLength(2);
   });
 
+  it("saves one change after the other, so a slow older answer cannot undo a newer change", async () => {
+    const plain = callMock.getMockImplementation()!;
+    let release!: () => void;
+    const slow = new Promise<void>((r) => (release = r));
+    callMock.mockImplementation(async (method: string, params: Record<string, unknown>) => {
+      if (method === "phone.saveConfig" && saves().length === 1) await slow;
+      return plain(method, params);
+    });
+    setup();
+    fireEvent.click(await screen.findByRole("checkbox", { name: "PIN zum Steuern verlangen" }));
+    await waitFor(() => expect(saves()).toHaveLength(1));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Bei Fehlern" }));
+    await act(() => new Promise((r) => setTimeout(r, 400)));
+    // The second change waits for the first save.
+    expect(saves()).toHaveLength(1);
+    await act(async () => release());
+    await waitFor(() => expect(saves()).toHaveLength(2));
+    expect(saves()[1]).toMatchObject({ requirePin: false, notifyOn: { done: true, approval: true, error: false } });
+    await act(() => new Promise((r) => setTimeout(r, 400)));
+    expect(saves()).toHaveLength(2);
+  });
+
+  it("saves a text field still being typed in when the settings close", async () => {
+    const view = setup();
+    const server = await screen.findByPlaceholderText(/pbx.example.de/);
+    server.focus();
+    fireEvent.change(server, { target: { value: "10.0.0.5" } });
+    view.unmount();
+    await waitFor(() => expect(saves()).toHaveLength(1));
+    expect(saves()[0]).toMatchObject({ server: "10.0.0.5" });
+  });
+
   it("says why an invalid value was not saved", async () => {
     setup();
     const port = await screen.findByDisplayValue("5060");

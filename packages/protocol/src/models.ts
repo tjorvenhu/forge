@@ -642,7 +642,13 @@ export type Attachment = z.infer<typeof Attachment>;
 export const AttachmentMeta = z.object({ name: z.string(), mediaType: z.string(), size: z.number() });
 export type AttachmentMeta = z.infer<typeof AttachmentMeta>;
 
-export const SlashCommand = z.object({ name: z.string(), description: z.string(), argumentHint: z.string() });
+export const SlashCommand = z.object({
+  name: z.string(),
+  description: z.string(),
+  argumentHint: z.string(),
+  /** Claude Code's own command; absent for commands of the user, the project, a plugin or an MCP server */
+  builtin: z.boolean().optional(),
+});
 export type SlashCommand = z.infer<typeof SlashCommand>;
 
 export const RewindResult = z.object({

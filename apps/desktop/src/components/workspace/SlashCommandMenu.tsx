@@ -5,8 +5,7 @@ import { call } from "@/lib/queries";
 import { cn } from "@/lib/utils";
 import { INFO_COMMANDS } from "./InfoCommandDialog";
 
-/** `builtin`: Claude Code's own command; absent for one of the user, the project, a plugin or an MCP server. */
-type CliCommand = ResultOf<"system.commands">[number] & { builtin?: boolean };
+type CliCommand = ResultOf<"system.commands">[number];
 export type Command = ResultOf<"system.commands">[number] & {
   /** a command of the user or project named like one FORGE shows as a dialog; it goes to Claude */
   custom?: boolean;

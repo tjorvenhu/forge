@@ -47,6 +47,12 @@ function toolset(calls: string[] = []): PhoneToolset {
     projects: rec("projects"),
     usage: rec("usage"),
     callBack: rec("callBack"),
+    backgroundTask: rec("backgroundTask"),
+    devSettings: rec("devSettings"),
+    pullRequest: rec("pullRequest"),
+    removeAgent: rec("removeAgent"),
+    search: rec("search"),
+    callSettings: rec("callSettings"),
   };
 }
 
@@ -71,7 +77,23 @@ describe("phone tools for Gemini", () => {
     expect(await runPhoneTool("start_session", { project: "shop", prompt: "Baue X", agent: true }, t, ctx)).toBe("startSession ok");
     expect(calls.at(-1)).toBe(`startSession:["shop","Baue X",{"agent":true}]`);
     await runPhoneTool("respond", { session: "S1", decision: "allow", answers: [{ question: "Welche DB?", answer: "SQLite" }] }, t, ctx);
-    expect(calls.at(-1)).toBe(`respond:["S1","allow",{"Welche DB?":"SQLite"},null]`);
+    expect(calls.at(-1)).toBe(`respond:["S1","allow",{"Welche DB?":"SQLite"},null,"once"]`);
+    await runPhoneTool("respond", { session: "S1", decision: "allow", for_session: true }, t, ctx);
+    expect(calls.at(-1)).toBe(`respond:["S1","allow",null,null,"session"]`);
+    // Project tools take a session instead of a project.
+    await runPhoneTool("git", { session: "S2", action: "pull" }, t, ctx);
+    expect(calls.at(-1)).toBe(`git:["","pull",{"session":"S2"}]`);
+    await runPhoneTool("test_database", { project: "shop", action: "restart" }, t, ctx);
+    expect(calls.at(-1)).toBe(`testDatabase:["shop","restart",{}]`);
+    await runPhoneTool("background_task", { session: "S1", action: "to_background" }, t, ctx);
+    expect(calls.at(-1)).toBe(`backgroundTask:["S1","to_background",null]`);
+    await runPhoneTool("dev_settings", { project: "shop", port: 54400, env_var: "" }, t, ctx);
+    expect(calls.at(-1)).toBe(`devSettings:["shop",{"port":54400,"envVar":""},{}]`);
+    await runPhoneTool("call_settings", { done: false }, t, ctx);
+    expect(calls.at(-1)).toBe(`callSettings:[{"done":false}]`);
+    expect(await runPhoneTool("dev_settings", { project: "shop", port: 80 }, t, ctx)).toMatch(/^Fehler: ungültige Angaben für dev_settings/);
+    await runPhoneTool("start_session", { project: "shop", prompt: "Baue Y", effort: "high" }, t, ctx);
+    expect(calls.at(-1)).toBe(`startSession:["shop","Baue Y",{"effort":"high"}]`);
     expect(await runPhoneTool("respond", { session: "S1", decision: "vielleicht" }, t, ctx)).toMatch(/^Fehler: ungültige Angaben für respond/);
     expect(await runPhoneTool("rm_rf", {}, t, ctx)).toMatch(/gibt es nicht/);
     expect(await runPhoneTool("hang_up", {}, t, ctx)).toMatch(/beendet/);
