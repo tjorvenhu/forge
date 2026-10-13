@@ -633,6 +633,27 @@ describe("turn automation via project tags", () => {
     expect(svc.remoteState()).toEqual({ enabled: false, sessions: [] });
   });
 
+  it("keeps the echoes of slash commands out of the timeline, also without Remote Control", async () => {
+    const s = await svc.start({ projectId, prompt: "Lies a.txt" });
+    const sink = rt.sinks[0]!;
+    sink.onMessage({ type: "result", subtype: "success", is_error: false, result: "ok", usage: {} });
+    await svc.send(s.id, "/compact");
+    const own = rt.sentUuids.at(-1)!;
+    // Order as Claude Code 2.1.296 sends it: the output first, with a uuid of its own, then the command's echo.
+    sink.onMessage({ type: "user", isReplay: true, uuid: "aaaaaaaa-bbbb-4ccc-8ddd-000000000010", message: { role: "user", content: "<local-command-stdout>Compacted </local-command-stdout>" } });
+    sink.onMessage({ type: "user", isReplay: true, uuid: own, message: { role: "user", content: "<command-name>/compact</command-name>\n            <command-message>compact</command-message>\n            <command-args></command-args>" } });
+    sink.onMessage({ type: "result", subtype: "success", is_error: false, result: "", num_turns: 0, usage: {} });
+    // a command typed in the Claude app shows as the command, not as its markup
+    sink.onMessage({ type: "user", isReplay: true, uuid: "aaaaaaaa-bbbb-4ccc-8ddd-000000000011", message: { role: "user", content: "<command-name>/model</command-name>\n<command-message>model</command-message>\n<command-args>opus</command-args>" } });
+
+    const users = db.listEvents(s.id).flatMap((e) => (e.body.type === "user.message" ? [e.body] : []));
+    expect(users.map((u) => [u.text, u.source ?? "forge"])).toEqual([
+      ["Lies a.txt", "forge"],
+      ["/compact", "forge"],
+      ["/model opus", "remote"],
+    ]);
+  });
+
   it("starts with the project's effort and changes it live", async () => {
     db.updateSettings({ defaultEffort: "medium" });
     expect((await svc.start({ projectId, prompt: "a" })).effort).toBe("medium");

@@ -16,4 +16,11 @@ describe("fromHuman", () => {
     expect(fromHuman(user([{ type: "text", text: "<system-reminder>x</system-reminder>" }]))).toBe(false);
     expect(fromHuman(user("Nachricht", { kind: "peer", from: "other" }))).toBe(false);
   });
+
+  it("skips the output of local commands", () => {
+    // Recorded with Claude Code 2.1.296: sent after /compact with a fresh uuid and no origin.
+    expect(fromHuman(user("<local-command-stdout>Compacted </local-command-stdout>"))).toBe(false);
+    expect(fromHuman(user("<local-command-stderr>Fehler</local-command-stderr>", { kind: "human" }))).toBe(false);
+    expect(fromHuman(user("<local-command-caveat>Caveat</local-command-caveat>"))).toBe(false);
+  });
 });

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { SessionEvent, SessionEventBody } from "@forge/protocol";
-import { appendStreaming, buildChatItems, buildEventItems, itemIndexForSeq, lastUserPrompt, reuseStableItems, rowSpacing, toolDisplayName, toolSummary } from "./chat-items";
+import { appendStreaming, buildChatItems, buildEventItems, isSlashCommand, itemIndexForSeq, lastUserPrompt, reuseStableItems, rowSpacing, toolDisplayName, toolSummary } from "./chat-items";
 import { useSessionEvents } from "@/stores/session-events";
 
 let seq = 0;
@@ -266,6 +266,26 @@ describe("notifications stored as prompts", () => {
     seq = 0;
     const items = buildEventItems([ev({ type: "user.message", text: "Was bedeutet <task-notification> im Log?" })]);
     expect(items).toMatchObject([{ kind: "user" }]);
+  });
+
+  it("hides the output of /compact that earlier versions stored as a message from the Claude app", () => {
+    seq = 0;
+    const events = [
+      ev({ type: "user.message", text: "/compact" }),
+      ev({ type: "context.compacted", trigger: "manual", preTokens: 44_000, postTokens: 4_000 }),
+      ev({ type: "user.message", text: "<local-command-stdout>Compacted </local-command-stdout>", source: "remote" }),
+    ];
+    expect(buildEventItems(events).map((i) => i.kind)).toEqual(["user", "notice"]);
+  });
+});
+
+describe("isSlashCommand", () => {
+  it("tells commands from paths and prose", () => {
+    expect(isSlashCommand("/compact")).toBe(true);
+    expect(isSlashCommand(" /model opus ")).toBe(true);
+    expect(isSlashCommand("/frontend-design:review src")).toBe(true);
+    expect(isSlashCommand("/home/x geht nicht")).toBe(false);
+    expect(isSlashCommand("Bitte /compact ausführen")).toBe(false);
   });
 });
 

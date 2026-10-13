@@ -20,6 +20,7 @@ import { DictationButton } from "./DictationButton";
 import { useDictation } from "./useDictation";
 import { compactSession, stopSession, useComposerOptions, useSendMessage } from "./useSendMessage";
 import { composerInputId, useChatSlot } from "./chat-slot";
+import { hasUltrathink, withUltrathink } from "./ultrathink";
 
 /** Words of the trade the speech service should expect; the project adds its name and stack. */
 const DICTATION_TERMS = ["FORGE", "Claude", "Claude Code", "Commit", "Branch", "Pull Request", "Merge", "Deploy", "Worktree", "TypeScript", "JavaScript", "React", "Next.js", "Node", "pnpm", "API", "Endpoint", "Komponente", "Refactoring", "Bug", "Diff", "Session"];
@@ -118,11 +119,19 @@ export const Composer = memo(function Composer({
     }
   }, [prefill, onPrefillConsumed, setText]);
 
+  /**
+   * A textarea cannot color a single word. With "ultrathink" in the text its own letters turn transparent
+   * and a copy behind it, laid out the same way, shows the text with the colored word.
+   */
+  const mirror = useRef<HTMLDivElement>(null);
+  const ultrathink = hasUltrathink(text);
+
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
     el.style.height = "auto";
     el.style.height = Math.min(el.scrollHeight, 260) + "px";
+    if (mirror.current) mirror.current.scrollTop = el.scrollTop;
   }, [text]);
 
   /**
@@ -354,12 +363,22 @@ export const Composer = memo(function Composer({
             {dictation.live}
           </div>
         )}
+        <div className="relative">
+        {ultrathink && (
+          <div ref={mirror} aria-hidden className="pointer-events-none absolute inset-0 overflow-y-auto whitespace-pre-wrap break-words px-5 pt-4 text-ui text-fg">
+            {withUltrathink(text)}
+            {"​"}
+          </div>
+        )}
         <textarea
           id={composerInputId(slot)}
           data-composer
           ref={ref}
           value={text}
           onChange={(e) => setText(e.target.value)}
+          onScroll={(e) => {
+            if (mirror.current) mirror.current.scrollTop = e.currentTarget.scrollTop;
+          }}
           onPaste={(e) => {
             const pasted = Array.from(e.clipboardData.files);
             if (pasted.length) {
@@ -370,7 +389,10 @@ export const Composer = memo(function Composer({
           placeholder={placeholder}
           aria-label="Nachricht an Claude"
           rows={2}
-          className="block max-h-65 w-full resize-none bg-transparent px-5 pt-4 text-ui text-fg placeholder:text-subtle focus:outline-none focus-visible:outline-none"
+          className={cn(
+            "relative block max-h-65 w-full resize-none bg-transparent px-5 pt-4 text-ui placeholder:text-subtle focus:outline-none focus-visible:outline-none",
+            ultrathink ? "text-transparent caret-fg" : "text-fg",
+          )}
           onKeyUp={(e) => {
             if (e.key !== " ") return;
             if (holding.current) e.preventDefault();
@@ -428,6 +450,7 @@ export const Composer = memo(function Composer({
             }
           }}
         />
+        </div>
         <div className="flex items-center gap-2 px-4 pb-3.5 pt-2">
           <Tooltip content="Bilder, PDFs oder Textdateien anhängen (auch per Einfügen oder Hineinziehen)">
             <Button size="icon-sm" variant="ghost" onClick={() => void attachments.pick()} aria-label="Dateien anhängen" disabled={attachments.full}>

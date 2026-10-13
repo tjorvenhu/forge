@@ -519,6 +519,35 @@ body {
   pointer-events: none;
 }
 
+/* "ultrathink" in a prompt: the colors of the dictation ring, running through the word like in Claude Code. */
+@keyframes forge-ultrathink {
+  to {
+    background-position: 200% 0;
+  }
+}
+.ultrathink-text {
+  background: linear-gradient(
+      90deg,
+      var(--color-danger),
+      var(--color-warning),
+      var(--color-success),
+      var(--color-graph-blue),
+      var(--color-graph-purple),
+      var(--color-graph-pink),
+      var(--color-danger)
+    )
+    0 0 / 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: forge-ultrathink 4s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .ultrathink-text {
+    animation: none;
+  }
+}
+
 /*
  * Dialogs over the chat (/usage, /context …) blur the chat itself. A backdrop-filter on the overlay
  * missed the rows of the virtual list: they sit on their own compositor layers (transform).

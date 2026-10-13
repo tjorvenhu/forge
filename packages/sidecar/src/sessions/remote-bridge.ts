@@ -208,20 +208,39 @@ function remoteName(projectName: string, title: string): string {
 
 /**
  * Claude Code also puts messages of its own into the conversation as user messages, above all a
- * `<task-notification>` when a background command finished. Only messages a person wrote are shown as
- * theirs. Older CLI versions send no origin; their notifications are recognised by the text.
+ * `<task-notification>` when a background command finished, and the output of a local command
+ * (`<local-command-stdout>Compacted</local-command-stdout>` after /compact, with a fresh uuid and no
+ * origin). Only messages a person wrote are shown as theirs. Older CLI versions send no origin; their
+ * notifications are recognised by the text.
  */
 export function fromHuman(m: Record<string, unknown>): boolean {
+  if (/^\s*<(task-notification|system-reminder|local-command-(stdout|stderr|caveat))>/.test(firstText(m) ?? "")) return false;
   const origin = m.origin as { kind?: unknown } | undefined;
-  if (origin && typeof origin.kind === "string") return origin.kind === "human";
+  return !origin || typeof origin.kind !== "string" || origin.kind === "human";
+}
+
+function firstText(m: Record<string, unknown>): string | null {
   const content = (m.message as Record<string, unknown> | undefined)?.content;
-  const first = typeof content === "string" ? content : Array.isArray(content) ? (content as Array<Record<string, unknown> | null>).find((b) => b?.type === "text")?.text : null;
-  return !(typeof first === "string" && /^\s*<(task-notification|system-reminder)>/.test(first));
+  if (typeof content === "string") return content;
+  const text = Array.isArray(content) ? (content as Array<Record<string, unknown> | null>).find((b) => b?.type === "text")?.text : null;
+  return typeof text === "string" ? text : null;
+}
+
+/** A slash command reaches the transcript as `<command-name>/x</command-name>…<command-args>y</command-args>`. */
+function slashCommandText(text: string): string | null {
+  const name = /^\s*<command-name>([^<]*)<\/command-name>/.exec(text)?.[1]?.trim();
+  if (!name) return null;
+  const args = /<command-args>([\s\S]*?)<\/command-args>/.exec(text)?.[1]?.trim();
+  return `${name.startsWith("/") ? name : `/${name}`}${args ? ` ${args}` : ""}`;
 }
 
 /** Text and images of a message typed in the Claude app; null for tool results and empty content. */
 function remoteUserContent(content: unknown): RemoteUserContent | null {
-  if (typeof content === "string") return content.trim() ? { text: content, images: [] } : null;
+  if (typeof content === "string") {
+    const command = slashCommandText(content);
+    if (command) return { text: command, images: [] };
+    return content.trim() ? { text: content, images: [] } : null;
+  }
   if (!Array.isArray(content)) return null;
   const texts: string[] = [];
   const images: RemoteUserContent["images"] = [];

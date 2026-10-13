@@ -392,9 +392,14 @@ function formatK(n: number): string {
   return n >= 1000 ? `${Math.round(n / 1000)}k` : String(n);
 }
 
-const INJECTED_PREFIXES = ["<task-notification>", "<system-reminder>"];
+const INJECTED_PREFIXES = ["<task-notification>", "<system-reminder>", "<local-command-stdout>", "<local-command-stderr>", "<local-command-caveat>"];
 
-/** Text Claude Code injects as a user turn (task notifications, reminders), not something the user typed. */
+/** A slash command like "/compact" or "/model opus"; "/home/x geht nicht" is a path, not a command. */
+export function isSlashCommand(text: string): boolean {
+  return /^\/[\w:.-]+(\s|$)/.test(text.trim());
+}
+
+/** Text Claude Code injects as a user turn (task notifications, reminders, output of local commands), not something the user typed. */
 export function isInjectedUserText(text: string): boolean {
   const t = text.trimStart();
   return INJECTED_PREFIXES.some((p) => t.startsWith(p));

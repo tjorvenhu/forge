@@ -157,12 +157,13 @@ function ResultLine({ body, onRetry }: { body: Extract<ChatItem, { kind: "result
           <span className="text-success">Fertig</span>
         )}
         {body.durationMs !== null && <Part>{formatDuration(body.durationMs)}</Part>}
-        {body.numTurns !== null && (
+        {/* A local command (/compact, /cost) reports 0 steps and 0 tokens; that only adds noise. */}
+        {!!body.numTurns && (
           <Part>
             {body.numTurns} {body.numTurns === 1 ? "Schritt" : "Schritte"}
           </Part>
         )}
-        {(body.inputTokens !== null || body.outputTokens !== null) && (
+        {(!!body.inputTokens || !!body.outputTokens) && (
           <Part title="Laut Claude Code gemeldete Tokens dieses Durchlaufs (ohne Cache-Lesezugriffe)">
             Tokens: {formatTokens(body.inputTokens)} rein, {formatTokens(body.outputTokens)} raus
           </Part>

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { FileText, GitBranch, ImageIcon, Smartphone, TimerReset, Undo2 } from "lucide-react";
+import { FileText, GitBranch, ImageIcon, Smartphone, SquareSlash, TimerReset, Undo2 } from "lucide-react";
 import type { RewindResult } from "@forge/protocol";
 import { useQueryClient } from "@tanstack/react-query";
 import { call, keys, useGitHubAccount, useSession } from "@/lib/queries";
@@ -10,8 +10,9 @@ import { toast } from "@/stores/toast";
 import { Button } from "@/components/ui/button";
 import { ToggleRow, Tooltip } from "@/components/ui/misc";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import type { ChatItem } from "./chat-items";
+import { isSlashCommand, type ChatItem } from "./chat-items";
 import { ChatRow, HoverTime } from "./ChatRow";
+import { withUltrathink } from "./ultrathink";
 import { useChatSlot } from "./chat-slot";
 
 /** A prompt of the user, with rewinding the files to the state before it and branching the conversation there. */
@@ -60,12 +61,13 @@ export function UserMessage({ item, sessionId }: { item: Extract<ChatItem, { kin
   // Images show as name chips: loading them back from the transcript was slow or failed.
   const chips = item.attachments;
   const hasMeta = chips.length > 0 || item.remote || item.auto;
+  if (!chips.length && isSlashCommand(item.text)) return <CommandMessage item={item} />;
   return (
     <div className="group -mx-3 rounded-md bg-surface-2 px-3 py-2.5">
       <ChatRow className="text-ui leading-[1.65]" marker={<UserAvatar />}>
         <div className="flex min-w-0 items-start gap-3">
           <div className="min-w-0 flex-1">
-            <div className="whitespace-pre-wrap break-words">{item.text}</div>
+            <div className="whitespace-pre-wrap break-words">{withUltrathink(item.text)}</div>
             {hasMeta && (
               <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-caption leading-normal text-subtle">
                 {chips.map((a, i) => (
@@ -165,6 +167,25 @@ export function UserMessage({ item, sessionId }: { item: Extract<ChatItem, { kin
         </ul>
       </ConfirmDialog>
     </div>
+  );
+}
+
+/** A slash command runs in Claude Code instead of going to Claude: one slim line like in the terminal, no bubble. */
+function CommandMessage({ item }: { item: Extract<ChatItem, { kind: "user" }> }) {
+  return (
+    <ChatRow className="group text-body" marker={<SquareSlash className="h-3.5 w-3.5 text-subtle" />}>
+      <div className="flex min-w-0 items-baseline gap-2">
+        <span className="min-w-0 flex-1 truncate font-mono text-muted" title={item.text}>
+          {item.text.trim()}
+        </span>
+        {item.remote && (
+          <span className="flex shrink-0 items-center gap-1 text-caption text-subtle" title="In der Claude-App geschrieben">
+            <Smartphone className="h-3 w-3" /> App
+          </span>
+        )}
+        <HoverTime time={clockTime(item.ts)} />
+      </div>
+    </ChatRow>
   );
 }
 
