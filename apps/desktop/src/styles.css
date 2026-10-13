@@ -305,6 +305,14 @@ body {
   overflow: hidden;
 }
 
+/*
+ * Chat thread: text scrolled under the header fades out a little instead of being cut off. Only
+ * once scrolled (ChatPanel sets data-scrolled), so the first message of a thread stays fully visible.
+ */
+.chat-fade-top[data-scrolled] {
+  mask-image: linear-gradient(to bottom, rgb(0 0 0 / 0.4), rgb(0 0 0) 32px);
+}
+
 /* Prose of Claude's answers, plans and summaries. Sizes in em so the block follows its font size. */
 .markdown {
   line-height: 1.65;

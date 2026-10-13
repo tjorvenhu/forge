@@ -303,7 +303,7 @@ function SessionThread({ sessionId, session, project, workingInPanel }: { sessio
       <div className="relative flex min-h-0 flex-1 animate-view-in flex-col">
       <div
         ref={scrollRef}
-        className="min-h-0 flex-1 overflow-y-auto"
+        className="chat-fade-top min-h-0 flex-1 overflow-y-auto"
         onWheel={(e) => follow.wheel(e.deltaY, performance.now())}
         onKeyDown={(e) => {
           if (SCROLL_KEYS.has(e.key)) follow.userInput(performance.now());
@@ -315,6 +315,8 @@ function SessionThread({ sessionId, session, project, workingInPanel }: { sessio
         }}
         onScroll={(e) => {
           const el = e.currentTarget;
+          // Set directly: a state update here would re-render the thread on every scroll frame.
+          el.toggleAttribute("data-scrolled", el.scrollTop > 0);
           const hint = follow.scrolled(el.scrollTop, el.scrollHeight, el.clientHeight, performance.now());
           if (hint === "pinned") setJump(null);
           else if (hint === "far") setJump((j) => j ?? "end");
