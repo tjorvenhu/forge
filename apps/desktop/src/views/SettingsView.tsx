@@ -44,7 +44,7 @@ import { cn, planLabel } from "@/lib/utils";
 
 type Save = (patch: Partial<Settings>) => Promise<void>;
 
-const SECTIONS: ReadonlyArray<SettingsSectionDef<SettingsSection>> = [
+export const SECTIONS: ReadonlyArray<SettingsSectionDef<SettingsSection>> = [
   { id: "general", label: "Allgemein", hint: "Modell, Profil, GitHub, Bedienung", Icon: SlidersHorizontal },
   { id: "claude", label: "Claude Code", hint: "Installation, Anmeldung, Limits", Icon: SquareTerminal },
   { id: "policy", label: "Sperrliste", hint: "Was FORGE immer blockiert", Icon: ShieldBan },

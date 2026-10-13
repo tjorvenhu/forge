@@ -10,7 +10,7 @@ import { usePendingMessages } from "@/stores/pending-messages";
 import { useSessionEvents } from "@/stores/session-events";
 import { isClearCommand } from "./SlashCommandMenu";
 
-const PROFILE_MODE: Record<Project["profile"], PermissionMode> = { safe: "default", balanced: "acceptEdits", autonomous: "bypassPermissions" };
+export const PROFILE_MODE: Record<Project["profile"], PermissionMode> = { safe: "default", balanced: "acceptEdits", autonomous: "bypassPermissions" };
 
 /**
  * Model, effort and plan mode for the composer. A running session changes them over RPC; for a session

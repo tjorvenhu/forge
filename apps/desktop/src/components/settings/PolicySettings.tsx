@@ -3,7 +3,7 @@ import { DEFAULT_DISABLED_POLICY_RULES, type PolicyRuleId, type Settings } from 
 import { Button } from "@/components/ui/button";
 import { Group, SwitchRow } from "./layout";
 
-const RULE_GROUPS: ReadonlyArray<{ title: string; description: string; rules: ReadonlyArray<{ id: PolicyRuleId; label: string; info: string }> }> = [
+export const RULE_GROUPS: ReadonlyArray<{ title: string; description: string; rules: ReadonlyArray<{ id: PolicyRuleId; label: string; info: string }> }> = [
   {
     title: "Git",
     description: "Befehle, die Verlauf auf dem Remote oder nicht committete Arbeit unwiderruflich ändern.",

@@ -22,7 +22,7 @@ import { effortOptions, fromChoice, modelOptions, toChoice } from "@/components/
  * Tags with behaviour in FORGE (sessions, turn automation, policy), in the order they are shown.
  * rootOnly: the main project decides for its agents, so agent worktrees do not show the switch.
  */
-const TAG_INFO: ReadonlyArray<{ tag: string; label: string; info: string; rootOnly?: boolean }> = [
+export const TAG_INFO: ReadonlyArray<{ tag: string; label: string; info: string; rootOnly?: boolean }> = [
   { tag: "plan-first", label: "Erst planen", info: "Neue Sessions starten im Plan-Modus." },
   { tag: "auto-test", label: "Automatisch testen", info: "Nach jedem Durchlauf läuft der Testbefehl, das Ergebnis steht im Chat." },
   { tag: "auto-commit", label: "Automatisch committen", info: "Nach einem Durchlauf mit grünen Tests werden nur die dabei geänderten Dateien committet (KI-Nachricht)." },
@@ -45,7 +45,7 @@ export function tagLabel(tag: string): string {
 }
 const SANDBOX_INFO = TAG_INFO.find((t) => t.tag === "sandbox-only")!.info;
 
-const SECTIONS: ReadonlyArray<SettingsSectionDef<ProjectSettingsSection>> = [
+export const SECTIONS: ReadonlyArray<SettingsSectionDef<ProjectSettingsSection>> = [
   { id: "general", label: "Allgemein", hint: "Name, Modell, Testbefehl", Icon: SlidersHorizontal },
   { id: "permissions", label: "Berechtigungen", hint: "Was Claude ohne Rückfrage darf", Icon: ShieldCheck },
   { id: "automation", label: "Automatik", hint: "Planen, testen, committen, Tags", Icon: Workflow },

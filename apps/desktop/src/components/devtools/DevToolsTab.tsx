@@ -73,7 +73,7 @@ export function DevToolsTab({ project }: { project: Project }) {
   );
 }
 
-const SECTIONS: ReadonlyArray<SettingsSectionDef<DevToolsSection>> = [
+export const SECTIONS: ReadonlyArray<SettingsSectionDef<DevToolsSection>> = [
   { id: "server", label: "Dev-Server", hint: "Startbefehl und Ausgabe", Icon: Server },
   // Both belong to the dev server: it gets the variables and the database URL when it starts.
   { id: "env", label: "Test-.env", hint: "Variablen für Dev-Server und Tests", Icon: FileKey, parent: "server" },

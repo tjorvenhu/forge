@@ -248,7 +248,7 @@ function PublishDialog({ open, onOpenChange, project, onDone }: { open: boolean;
   );
 }
 
-function CreatePrDialog({ open, onOpenChange, project, onDone }: { open: boolean; onOpenChange: (o: boolean) => void; project: Project; onDone: () => void }) {
+export function CreatePrDialog({ open, onOpenChange, project, onDone }: { open: boolean; onOpenChange: (o: boolean) => void; project: Project; onDone: () => void }) {
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
   const [base, setBase] = useState("main");

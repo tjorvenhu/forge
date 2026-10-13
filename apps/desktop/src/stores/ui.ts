@@ -1,12 +1,23 @@
 import { create } from "zustand";
 
 export type View = "home" | "projects" | "sessions" | "mcp" | "settings" | "workspace";
-export type WorkspaceTab = "chat" | "agents" | "git" | "files" | "devtools" | "knowledge" | "settings";
 export type NewProjectMode = "import" | "create" | "clone";
 export type BottomTab = "output" | "dev";
-export type SettingsSection = "general" | "claude" | "policy" | "phone" | "backup" | "rules" | "about";
-export type DevToolsSection = "server" | "database" | "env";
-export type ProjectSettingsSection = "general" | "permissions" | "automation" | "rules" | "remove";
+
+// Lists rather than plain unions: the command palette needs an entry for every value (palette-actions.test.tsx).
+/** In the order of the tab bar. */
+export const WORKSPACE_TABS = ["chat", "agents", "git", "files", "devtools", "knowledge", "settings"] as const;
+export type WorkspaceTab = (typeof WORKSPACE_TABS)[number];
+export const SETTINGS_SECTIONS = ["general", "claude", "policy", "phone", "backup", "rules", "about"] as const;
+export type SettingsSection = (typeof SETTINGS_SECTIONS)[number];
+export const DEV_TOOLS_SECTIONS = ["server", "database", "env"] as const;
+export type DevToolsSection = (typeof DEV_TOOLS_SECTIONS)[number];
+export const PROJECT_SETTINGS_SECTIONS = ["general", "permissions", "automation", "rules", "remove"] as const;
+export type ProjectSettingsSection = (typeof PROJECT_SETTINGS_SECTIONS)[number];
+export const EXTENSIONS_TABS = ["mcp", "skills", "hooks"] as const;
+export type ExtensionsTab = (typeof EXTENSIONS_TABS)[number];
+export const SKILLS_TABS = ["marketplace", "own"] as const;
+export type SkillsTab = (typeof SKILLS_TABS)[number];
 
 /** activeSession values starting with this prefix point at a terminal session not yet adopted by FORGE */
 export const EXTERNAL_PREFIX = "ext:";
@@ -76,6 +87,12 @@ interface UiState {
   settingsSection: SettingsSection;
   /** opens the settings at one section */
   openSettings: (section: SettingsSection) => void;
+  extensionsTab: ExtensionsTab;
+  setExtensionsTab: (tab: ExtensionsTab) => void;
+  skillsTab: SkillsTab;
+  setSkillsTab: (tab: SkillsTab) => void;
+  /** opens the Erweiterungen view at one tab (for Skills also at one sub-tab) */
+  openExtensions: (tab: ExtensionsTab, skillsTab?: SkillsTab) => void;
   openProject: (projectId: string, sessionId?: string | null) => void;
   closeProject: () => void;
   setActiveSession: (projectId: string, sessionId: string | null) => void;
@@ -173,6 +190,11 @@ export const useUi = create<UiState>((set, get) => ({
   setView: (view) => set({ view }),
   settingsSection: "general",
   openSettings: (settingsSection) => set({ view: "settings", settingsSection }),
+  extensionsTab: "mcp",
+  setExtensionsTab: (extensionsTab) => set({ extensionsTab }),
+  skillsTab: "marketplace",
+  setSkillsTab: (skillsTab) => set({ skillsTab }),
+  openExtensions: (extensionsTab, skillsTab) => set((s) => ({ view: "mcp", extensionsTab, skillsTab: skillsTab ?? s.skillsTab })),
   openProject: (projectId, sessionId) => {
     set((s) => ({
       view: "workspace",

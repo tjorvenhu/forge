@@ -209,7 +209,7 @@ function Subagents({ projectId }: { projectId: string }) {
 
 const BRANCH_PREFIX = "agent/";
 
-function NewAgentDialog({ open, onOpenChange, root }: { open: boolean; onOpenChange: (o: boolean) => void; root: ProjectWithStatus }) {
+export function NewAgentDialog({ open, onOpenChange, root }: { open: boolean; onOpenChange: (o: boolean) => void; root: ProjectWithStatus }) {
   const openProject = useUi((s) => s.openProject);
   const qc = useQueryClient();
   const [branch, setBranch] = useState(BRANCH_PREFIX);

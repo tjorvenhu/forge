@@ -66,13 +66,12 @@ export function WorkspaceView() {
 
 function Workspace({ projectId }: { projectId: string }) {
   const project = useProject(projectId).data!;
-  const { workspaceTab, setWorkspaceTab, toolbarOpen, rightPanelOpen, bottomPanelOpen } = useUi(
+  const { workspaceTab, setWorkspaceTab, toolbarOpen, rightPanelOpen } = useUi(
     useShallow((s) => ({
       workspaceTab: s.workspaceTab,
       toolbarOpen: s.toolbarOpen,
       setWorkspaceTab: s.setWorkspaceTab,
       rightPanelOpen: s.rightPanelOpen,
-      bottomPanelOpen: s.bottomPanelOpen,
     })),
   );
   const narrow = useNarrow();
