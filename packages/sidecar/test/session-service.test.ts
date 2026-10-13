@@ -325,6 +325,14 @@ describe("SessionService", () => {
     expect((await git(own.path, "log", "-1", "--format=%s")).trim()).toBe("CSV-Export");
     expect(existsSync(child.cwd)).toBe(false);
 
+    // Agents the session did not start (Agents tab, phone) show up and can be finished by branch.
+    const foreign = await new WorktreeService(new GitEngine(), projects).create(projects.get(projectId), "agent/fremd");
+    expect(await tool("agent_status").run({})).toMatch(/Weitere Agenten dieses Projekts \(finish_agent mit dem Branch\):\n- agent\/fremd: ohne Session/);
+    expect(await tool("finish_agent").run({ agent: "fremd", action: "discard" })).toBe("Agent verworfen, Branch agent/fremd gelöscht.");
+    expect(existsSync(foreign.path)).toBe(false);
+    expect(projects.all().some((p) => p.id === foreign.id)).toBe(false);
+    await expect(tool("finish_agent").run({ agent: "gibtsnicht", action: "discard" })).rejects.toThrow("In diesem Projekt gibt es keine Agenten.");
+
     rt.startSession = () => {
       throw new Error("kaputt");
     };

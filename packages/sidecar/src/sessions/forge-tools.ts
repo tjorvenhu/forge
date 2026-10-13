@@ -1,5 +1,5 @@
 import path from "node:path";
-import type { ServerEvent, Session, SessionEventBody } from "@forge/protocol";
+import type { Project, ServerEvent, Session, SessionEventBody } from "@forge/protocol";
 import { z } from "zod";
 import { slugify, type WorktreeService } from "../automation/worktrees.js";
 import type { AgentFinisher } from "../automation/agent-finish.js";
@@ -241,6 +241,34 @@ export function forgeSessionTools(rec: SessionRecord, d: ForgeToolDeps): { tools
     return hit;
   };
 
+  /** Agent worktrees of this project the session did not start: from the Agents tab, the phone or other sessions. */
+  const otherAgents = () => {
+    const rootId = project.parentId ?? project.id;
+    const mine = new Set(d.agents.children(sessionId).map((c) => d.db.getSession(c)?.projectId));
+    return d.projects.all().filter((p) => p.parentId === rootId && p.id !== project.id && !mine.has(p.id));
+  };
+  /** The branch, or from the name FORGE gave the worktree ("Projekt · branch") when the folder is gone. */
+  const branchLabel = async (p: Project) => (p.exists ? await d.worktrees.branchOf(p.path) : null) ?? (p.name.includes(" · ") ? p.name.slice(p.name.indexOf(" · ") + 3) : p.name);
+
+  /** Worktree project of an agent: own agents by their short id, the others by branch (with or without "agent/"). */
+  const resolveAgentProject = async (ref: string): Promise<string> => {
+    const q = ref.trim().toLowerCase();
+    const child = d.agents.children(sessionId).find((c) => c.startsWith(q) || short(c) === q);
+    if (child) {
+      const s = d.db.getSession(child);
+      const wt = s && d.projects.all().find((p) => p.id === s.projectId);
+      if (!wt?.parentId) throw new Error(`Agent ${short(child)} hat keinen Worktree mehr, er ist schon abgeschlossen.`);
+      return wt.id;
+    }
+    const others = otherAgents();
+    for (const p of others) {
+      const branch = (await branchLabel(p)).toLowerCase();
+      if (branch === q || branch === `agent/${q}`) return p.id;
+    }
+    const known = [...d.agents.children(sessionId).map(short), ...(await Promise.all(others.map(branchLabel)))];
+    throw new Error(known.length ? `Keinen Agenten „${ref}“ gefunden. Vorhanden: ${known.join(", ")}.` : "In diesem Projekt gibt es keine Agenten.");
+  };
+
   const startAgent: SessionTool = {
     name: "start_agent",
     description:
@@ -277,12 +305,22 @@ export function forgeSessionTools(rec: SessionRecord, d: ForgeToolDeps): { tools
 
   const agentStatus: SessionTool = {
     name: "agent_status",
-    description: "Stand der Agenten, die diese Session gestartet hat: Status, Branch und ihre letzte Antwort.",
+    description:
+      "Stand der Agenten, die diese Session gestartet hat: Status, Branch und ihre letzte Antwort. Ohne agent auch die übrigen Agenten des Projekts (aus dem Agenten-Reiter, vom Telefon oder aus anderen Sessions).",
     shape: { agent: z.string().min(1).optional().describe("Kürzel eines Agenten; weglassen für alle") },
     autoAllow: true,
     run: async (a) => {
-      const ids = typeof a.agent === "string" && a.agent.trim() ? [resolveChild(a.agent)] : d.agents.children(sessionId);
-      if (!ids.length) return "Diese Session hat keine Agenten gestartet.";
+      const one = typeof a.agent === "string" && a.agent.trim();
+      const ids = one ? [resolveChild(one)] : d.agents.children(sessionId);
+      const others = one ? [] : otherAgents();
+      const otherLines = await Promise.all(
+        others.map(async (p) => {
+          const s = d.db.listSessions(p.id)[0];
+          return `- ${await branchLabel(p)}: ${s ? (STATUS[s.status] ?? s.status) : "ohne Session"}, Ordner ${p.path}${p.exists ? "" : " (fehlt)"}`;
+        }),
+      );
+      const otherBlock = otherLines.length ? `Weitere Agenten dieses Projekts (finish_agent mit dem Branch):\n${otherLines.join("\n")}` : "";
+      if (!ids.length) return ["Diese Session hat keine Agenten gestartet.", otherBlock].filter(Boolean).join("\n");
       const lines = await Promise.all(
         ids.map(async (id) => {
           const s = d.db.getSession(id);
@@ -297,7 +335,7 @@ export function forgeSessionTools(rec: SessionRecord, d: ForgeToolDeps): { tools
             .join("\n");
         }),
       );
-      return lines.join("\n");
+      return [...lines, otherBlock].filter(Boolean).join("\n");
     },
   };
 
@@ -318,17 +356,15 @@ export function forgeSessionTools(rec: SessionRecord, d: ForgeToolDeps): { tools
     ? {
         name: "finish_agent",
         description:
-          "Schließt einen fertigen Agenten ab. merge: übernimmt seinen Branch in den Branch, von dem er abgezweigt ist (Rebase, dann Fast-Forward), und löscht danach Worktree und Branch. discard: löscht Worktree und Branch ohne Übernahme. Nur nach Rücksprache mit dem Nutzer. Bei Konflikten im Rebase löst der Agent sie selbst; danach erneut merge.",
-        shape: { agent: z.string().min(1).describe("Kürzel des Agenten"), action: z.enum(["merge", "discard"]) },
+          "Schließt einen Agenten dieses Projekts ab, auch einen, den diese Session nicht gestartet hat. merge: übernimmt seinen Branch in den Branch, von dem er abgezweigt ist (Rebase, dann Fast-Forward). discard: verwirft seine Arbeit. Danach sind seine Session beendet und Worktree-Ordner, FORGE-Eintrag und Branch gelöscht. Nur nach Rücksprache mit dem Nutzer. Bei Konflikten im Rebase löst der Agent sie selbst; danach erneut merge.",
+        shape: {
+          agent: z.string().min(1).describe("Kürzel eines eigenen Agenten oder Branch eines anderen Agenten des Projekts (wie agent_status sie nennt)"),
+          action: z.enum(["merge", "discard"]),
+        },
         autoAllow: false,
         run: async (a) => {
-          const id = resolveChild(String(a.agent));
-          const s = d.db.getSession(id);
-          if (!s) return `Agent ${short(id)} ist gelöscht.`;
-          const wt = d.projects.all().find((p) => p.id === s.projectId);
-          if (!wt?.parentId) return `Agent ${short(id)} hat keinen Worktree mehr, er ist schon abgeschlossen.`;
-          const r = await finisher.finish(wt.id, a.action === "discard" ? "discard" : "merge");
-          return r.message;
+          const projectId = await resolveAgentProject(String(a.agent));
+          return (await finisher.finish(projectId, a.action === "discard" ? "discard" : "merge")).message;
         },
       }
     : null;
@@ -340,7 +376,7 @@ export function forgeSessionTools(rec: SessionRecord, d: ForgeToolDeps): { tools
       "- start_agent: startet einen parallelen Agenten in einem eigenen Git-Worktree auf eigenem Branch. Nur für Teilaufgaben, die wirklich unabhängig und gleichzeitig laufen können; der Auftrag muss für sich allein verständlich sein. Der Agent startet beim letzten Commit deines Branches und sieht nur committete Stände.",
       "- agent_status und message_agent: Agenten verfolgen und anleiten. Ihre Arbeit liegt auf ihren Branches.",
       finisher
-        ? "- finish_agent: einen fertigen Agenten zusammenführen (merge) oder verwerfen (discard); danach sind Worktree und Branch weg. Nur nach Rücksprache mit dem Nutzer. FORGE zeigt dem Nutzer fertige Agenten auch selbst zur Entscheidung an."
+        ? "- finish_agent: einen Agenten des Projekts zusammenführen (merge) oder verwerfen (discard), auch einen fremden; danach sind Session, Worktree, FORGE-Eintrag und Branch weg. Nur nach Rücksprache mit dem Nutzer. FORGE zeigt dem Nutzer fertige Agenten auch selbst zur Entscheidung an."
         : "",
       "- notify: den Nutzer aktiv benachrichtigen. urgent=true nur, wenn er sofort gebraucht wird (kann sein Telefon klingeln lassen).",
       ...own.context,
