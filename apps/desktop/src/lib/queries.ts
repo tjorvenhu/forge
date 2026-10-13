@@ -42,6 +42,10 @@ export const keys = {
   file: (id: string, path: string) => ["file", id, path] as const,
   claudeMd: (id: string) => ["claudeMd", id] as const,
   devServer: (id: string) => ["devServer", id] as const,
+  devTools: (id: string) => ["devTools", id] as const,
+  testDb: (id: string) => ["testDb", id] as const,
+  knowledge: (id: string) => ["knowledge", id] as const,
+  knowledgeEntry: (id: string, entryId: string) => ["knowledge", id, entryId] as const,
   phoneState: ["phoneState"] as const,
   phoneConfig: ["phoneConfig"] as const,
   phoneCalls: ["phoneCalls"] as const,
@@ -135,6 +139,15 @@ export const usePhoneConfig = () => useQuery({ queryKey: keys.phoneConfig, query
 
 export const useDevServer = (projectId: string) =>
   useQuery({ queryKey: keys.devServer(projectId), queryFn: () => call("devserver.state", { projectId }), staleTime: 30_000 });
+
+/** Dev tools and test database are per project; worktrees use their project's (pass the owner id). */
+export const useDevTools = (ownerId: string) => useQuery({ queryKey: keys.devTools(ownerId), queryFn: () => call("devtools.get", { projectId: ownerId }), staleTime: Infinity });
+
+/** Changes arrive as testdb.updated. */
+export const useTestDb = (ownerId: string) => useQuery({ queryKey: keys.testDb(ownerId), queryFn: () => call("testdb.state", { projectId: ownerId }), staleTime: Infinity });
+
+/** Entries of the project's knowledge; Claude's changes arrive as knowledge.updated. */
+export const useKnowledge = (ownerId: string) => useQuery({ queryKey: keys.knowledge(ownerId), queryFn: () => call("knowledge.list", { projectId: ownerId }), staleTime: 60_000, refetchOnWindowFocus: true });
 
 /** Full-text search over prompts and answers; runs from three characters on. */
 export const useSearch = (query: string, limit = 50) => {

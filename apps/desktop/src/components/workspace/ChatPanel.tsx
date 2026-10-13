@@ -13,7 +13,9 @@ import { EmptyState, ErrorBanner } from "@/components/ui/misc";
 import { ChatSkeleton } from "@/components/ui/skeleton";
 import { Arrivals } from "@/lib/arrivals";
 import { usePending, usePendingMessages } from "@/stores/pending-messages";
+import { useInChatWindow } from "@/lib/chat-windows";
 import { PendingMessages } from "./PendingMessages";
+import { InChatWindowPane } from "./InChatWindowPane";
 import { appendStreaming, IncrementalItems, itemIndexForSeq, lastUserPrompt, reuseStableItems, rowSpacing, startsAnswer, type ChatItem, type RowSpacing } from "./chat-items";
 import { Composer } from "./Composer";
 import { SessionBar } from "./SessionBar";
@@ -53,7 +55,8 @@ function rememberView(sessionId: string, view: { offset: number; pinned: boolean
 
 const toastNotFound = () => toast.error("Eintrag nicht gefunden", "Der Eintrag ist im Verlauf dieser Session nicht vorhanden.");
 
-export function ChatPanel({ project, workingInPanel = false }: { project: Project; workingInPanel?: boolean }) {
+/** `detached`: rendered as the only content of a chat window. */
+export function ChatPanel({ project, workingInPanel = false, detached = false }: { project: Project; workingInPanel?: boolean; detached?: boolean }) {
   const active = useUi((s) => s.activeSession[project.id] ?? null);
   const setActive = useUi((s) => s.setActiveSession);
   const sessions = useSessions(project.id);
@@ -61,6 +64,8 @@ export function ChatPanel({ project, workingInPanel = false }: { project: Projec
   const external = externalId ? (sessions.data?.external.find((e) => e.claudeSessionId === externalId) ?? null) : null;
   const session = useSession(sessionId);
   const [surface, setSurface] = useState<HTMLDivElement | null>(null);
+  // Shown in a chat window: one live composer per session, so this window only points there.
+  const elsewhere = useInChatWindow(sessionId) && !detached;
 
   // First open of a project: pick the most recent session instead of an empty chat.
   const didAutoSelect = useRef<string | null>(null);
@@ -81,8 +86,12 @@ export function ChatPanel({ project, workingInPanel = false }: { project: Projec
         sessions={sessions.data?.sessions ?? []}
         externals={sessions.data?.external ?? []}
         onSelect={(id) => setActive(project.id, id)}
+        detached={detached}
+        inChatWindow={elsewhere}
       />
-      {sessionId ? (
+      {sessionId && elsewhere ? (
+        <InChatWindowPane project={project} sessionId={sessionId} title={session.data?.title ?? null} />
+      ) : sessionId ? (
         <SessionThread key={sessionId} sessionId={sessionId} session={session.data ?? null} project={project} workingInPanel={workingInPanel} />
       ) : (
         <NewSessionPane project={project} external={external} />

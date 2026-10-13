@@ -1,10 +1,12 @@
+mod chat_windows;
 mod job;
 mod sidecar;
 mod terminal;
 mod update;
 
+use chat_windows::ChatWindows;
 use sidecar::Sidecar;
-use tauri::{Manager, RunEvent};
+use tauri::{Manager, RunEvent, WindowEvent};
 use terminal::{OpenRequest, Terminals};
 
 /// Upper bound for one protocol line from the UI (prompts are capped at 200k chars in the protocol).
@@ -93,7 +95,33 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .manage(Sidecar::default())
         .manage(Terminals::default())
-        .invoke_handler(tauri::generate_handler![sidecar_send, sidecar_status, sidecar_restart, install_update, term_open, term_write, term_resize, term_close])
+        .manage(ChatWindows::default())
+        .invoke_handler(tauri::generate_handler![
+            sidecar_send,
+            sidecar_status,
+            sidecar_restart,
+            install_update,
+            term_open,
+            term_write,
+            term_resize,
+            term_close,
+            chat_windows::open_chat_window,
+            chat_windows::close_chat_window,
+            chat_windows::chat_windows,
+            chat_windows::update_chat_window,
+            chat_windows::reattach_chat_window
+        ])
+        .on_window_event(|window, event| {
+            if let WindowEvent::Destroyed = event {
+                let app = window.app_handle();
+                // Chat windows belong to the main window: closing it quits FORGE as before.
+                if window.label() == chat_windows::MAIN {
+                    app.exit(0);
+                } else if window.label().starts_with(chat_windows::PREFIX) {
+                    app.state::<ChatWindows>().forget(app, window.label());
+                }
+            }
+        })
         .setup(|app| {
             let handle = app.handle().clone();
             if let Err(e) = app.state::<Sidecar>().start(&handle) {

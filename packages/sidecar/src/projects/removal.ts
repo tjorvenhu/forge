@@ -8,6 +8,7 @@ import { githubRepoFromRemote, type GitHubService } from "../github/github.js";
 import type { SessionService } from "../sessions/session-service.js";
 import type { WorktreeService } from "../automation/worktrees.js";
 import type { DevServerService } from "../devserver/dev-server.js";
+import type { TestDbService } from "../devtools/test-db.js";
 import { isInside, pathKey, sensitivePaths } from "../util/paths.js";
 import type { ProjectManager } from "./project-manager.js";
 
@@ -18,6 +19,7 @@ export interface RemovalDeps {
   sessions: SessionService;
   worktrees: WorktreeService;
   devServers: Pick<DevServerService, "forget">;
+  testDb?: Pick<TestDbService, "forget">;
   dataDir: string;
 }
 
@@ -162,6 +164,8 @@ export async function removeProject(projectId: string, opts: { deleteFolder: boo
   const affected = [project.id, ...children.map((c) => c.id)];
   await d.sessions.closeProject(affected);
   for (const id of affected) await d.devServers.forget(id);
+  // Worktrees share their project's test database; it goes only with the project itself.
+  if (!project.parentId) await d.testDb?.forget(project.id);
 
   let githubDeleted = false;
   if (opts.deleteGitHubRepo && info.githubRepo) {

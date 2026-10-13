@@ -15,6 +15,18 @@ const CHECK_INTERVAL_MS = 30 * 60_000;
 const INSTALLER = /-setup\.exe$/i;
 /** small update: exe and sidecar only, for one runtime (key in the name) */
 const PATCH = /_update_(.+)\.zip$/i;
+/**
+ * Most releases whose changes the update dialog lists. Local builds are 0.1.0 and would otherwise get
+ * every release ever made. Below the 100 of the first page of the releases list, so that page is enough.
+ */
+export const MAX_CHANGE_RELEASES = 20;
+// Limits for the changelog prompt. The compare API sends at most 250 commits without paging; one
+// release per push keeps MAX_CHANGE_RELEASES well below that.
+const MAX_NOTES_PER_RELEASE = 2_000;
+const MAX_NOTES = 12_000;
+const MAX_COMMITS = 150;
+
+const bare = (tag: string) => tag.replace(/^v/i, "");
 
 /**
  * Key of the installed runtime (bundled node, git, gh), as written by scripts/prepare-runtime.mjs.
@@ -41,8 +53,7 @@ export function pickRelease(
   current: string,
   runtimeKey: string | null,
 ): { newest: Release; release: Release; asset: { name: string; size?: number; digest?: string | null }; kind: "patch" | "full" } | null {
-  const newer = releases.filter((r) => r.tag_name && !r.draft && !r.prerelease && compareVersions(r.tag_name, current) > 0);
-  newer.sort((a, b) => compareVersions(b.tag_name!, a.tag_name!));
+  const newer = newerReleases(releases, current);
   const newest = newer[0];
   if (!newest) return null;
   const patch = runtimeKey ? (newest.assets ?? []).find((a) => a.name && PATCH.exec(a.name)?.[1] === runtimeKey) : undefined;
@@ -52,6 +63,52 @@ export function pickRelease(
     if (full?.name) return { newest, release: rel, asset: { ...full, name: full.name }, kind: "full" };
   }
   return null;
+}
+
+/** Published releases newer than `current`, newest first. */
+function newerReleases(releases: Release[], current: string): Release[] {
+  const newer = releases.filter((r) => r.tag_name && !r.draft && !r.prerelease && compareVersions(r.tag_name, current) > 0);
+  return newer.sort((a, b) => compareVersions(b.tag_name!, a.tag_name!));
+}
+
+/** The releases an update brings, for its changelog. */
+export interface ChangeRange {
+  /** every release after `since` up to the offered one, newest first */
+  releases: Release[];
+  /** version the changes are listed from (not included) */
+  since: string;
+  /** tag of `since`, base of the commit comparison */
+  sinceTag: string;
+  /** true when releases between the installed version and `since` are left out */
+  capped: boolean;
+}
+
+/**
+ * All releases after the installed version up to the newest, not just the newest. With more than
+ * `max` of them (an old or local build) only the newest `max`, starting after the release before them.
+ */
+export function changeRange(releases: Release[], current: string, max = MAX_CHANGE_RELEASES): ChangeRange | null {
+  const newer = newerReleases(releases, current);
+  if (!newer.length) return null;
+  const listed = newer.slice(0, max);
+  const before = newer[max];
+  if (before) return { releases: listed, since: bare(before.tag_name!), sinceTag: before.tag_name!, capped: true };
+  const installed = releases.find((r) => r.tag_name && compareVersions(r.tag_name, current) === 0);
+  return { releases: listed, since: current, sinceTag: installed?.tag_name ?? `v${current}`, capped: false };
+}
+
+/** Release notes of a range for the update dialog: one release as is, several under a heading each. */
+export function rangeNotes(range: ChangeRange): string {
+  const notes = range.releases.map((r) => ({ version: bare(r.tag_name!), text: (r.body ?? "").trim() })).filter((n) => n.text);
+  if (range.releases.length === 1) return notes[0]?.text ?? "";
+  return notes.map((n) => `### ${n.version}\n${n.text}`).join("\n\n");
+}
+
+/** Shortens at a line end, so no list item is cut in half. */
+function clip(text: string, max: number): string {
+  if (text.length <= max) return text;
+  const cut = text.lastIndexOf("\n", max);
+  return `${text.slice(0, cut > 0 ? cut : max)}\n(gekürzt)`;
 }
 
 /** Where installers are downloaded; the desktop shell runs installers from this folder only. */
@@ -109,20 +166,44 @@ export interface UpdateDeps {
   chainFile?: string;
 }
 
-/** Prompt for the changelog: the user's view, short, only what notes and commits say. */
-export function changelogPrompt(version: string, current: string, notes: string, commits: string[]): string {
+/**
+ * Prompt for the changelog: the user's view, short, only what notes and commits say. Covers every
+ * release of the range, not just the newest; notes and commits are capped to keep the prompt small.
+ */
+export function changelogPrompt(current: string, range: ChangeRange, commits: string[], commitsOmitted = 0): string {
+  const version = bare(range.releases[0]!.tag_name!);
+  const count = range.releases.length;
+  const sections: string[] = [];
+  let size = 0;
+  for (const r of range.releases) {
+    const section = `Version ${bare(r.tag_name!)}:\n${clip((r.body ?? "").trim(), MAX_NOTES_PER_RELEASE) || "(keine)"}`;
+    if (sections.length && size + section.length > MAX_NOTES) break;
+    sections.push(section);
+    size += section.length;
+  }
+  const notesOmitted = count - sections.length;
+  const scope =
+    count === 1
+      ? `Schreibe für Nutzer von FORGE (Desktop-App für Claude Code), was sich mit Version ${version} gegenüber ${current} ändert.`
+      : `Schreibe für Nutzer von FORGE (Desktop-App für Claude Code), was sich mit dem Update von ${current} auf ${version} ändert. ` +
+        `Das umfasst alle ${count} Versionen nach ${range.since} bis einschließlich ${version}, nicht nur die neueste.`;
   return [
-    `Schreibe für Nutzer von FORGE (Desktop-App für Claude Code), was sich mit Version ${version} gegenüber ${current} ändert.`,
+    scope,
+    ...(range.capped
+      ? [`Die installierte Version ${current} ist älter. Unten stehen nur die letzten ${count} Versionen nach ${range.since}, ältere Änderungen fehlen. Behaupte keine Vollständigkeit.`]
+      : []),
     "Regeln:",
-    "- Deutsch, Markdown-Liste mit höchstens 8 Punkten, jeder Punkt ein kurzer, konkreter Satz.",
+    `- Deutsch, Markdown-Liste mit höchstens ${count === 1 ? 8 : 12} Punkten, jeder Punkt ein kurzer, konkreter Satz.`,
     "- Aus Sicht der Nutzer: was sie jetzt tun können oder was besser läuft. Tests, Build und interne Umbauten weglassen.",
+    "- Bei mehreren Versionen das Gesamtergebnis: Wichtigstes zuerst, Zwischenstände und später wieder Zurückgenommenes weglassen.",
     "- Nur, was in den Notizen oder Commits steht. Nichts erfinden.",
-    "- Keine Einleitung, keine Überschrift, keine Gedanken- oder Halbgeviertstriche, keine Emoji.",
+    "- Keine Einleitung, keine Überschrift, keine Versionsnummern, keine Gedanken- oder Halbgeviertstriche, keine Emoji.",
     "",
-    "Release-Notizen:",
-    notes.trim() || "(keine)",
+    "Release-Notizen (neueste zuerst):",
+    ...sections,
+    ...(notesOmitted ? [`(Notizen der ${notesOmitted} ältesten Versionen aus Platzgründen weggelassen)`] : []),
     "",
-    "Commits:",
+    `Commits seit ${range.since}${commitsOmitted ? ` (nur die neuesten ${commits.length}, ${commitsOmitted} ältere weggelassen)` : ""}:`,
     commits.length ? commits.map((c) => `- ${c}`).join("\n") : "(nicht verfügbar)",
   ].join("\n");
 }
@@ -137,6 +218,8 @@ export class AppUpdateService {
   private timer: ReturnType<typeof setTimeout> | null = null;
   /** what download() fetches: the offered version, or the full installer that goes first */
   private asset: { tag: string; name: string; digest: string | null } | null = null;
+  /** releases the offered version brings, for the changelog */
+  private range: ChangeRange | null = null;
   private readonly chainFile: string;
   private busy: Promise<AppUpdateState> | null = null;
   private changelogs = new Map<string, { state: AppChangelog; done: Promise<void> }>();
@@ -213,12 +296,15 @@ export class AppUpdateService {
           }
           throw new Error(err.trim().split("\n").at(-1) || "GitHub hat die Anfrage abgelehnt.");
         }
-        const list = JSON.parse(r.stdout) as Release[];
+        const parsed = JSON.parse(r.stdout) as Release[];
+        const list = Array.isArray(parsed) ? parsed : [];
         const checkedAt = new Date().toISOString();
-        const pick = pickRelease(Array.isArray(list) ? list : [], this.state.currentVersion, (this.d.runtimeKey ?? installedRuntimeKey)());
+        const pick = pickRelease(list, this.state.currentVersion, (this.d.runtimeKey ?? installedRuntimeKey)());
+        const range = changeRange(list, this.state.currentVersion);
         const chained = this.takeChain(pick);
-        if (!pick) {
+        if (!pick || !range) {
           this.asset = null;
+          this.range = null;
           this.set({ phase: "uptodate", latest: null, installerPath: null, autoInstall: false, checkedAt });
           return this.state;
         }
@@ -226,18 +312,19 @@ export class AppUpdateService {
         const tag = newest.tag_name!;
         const sameRelease = this.state.latest?.tag === tag;
         this.asset = { tag: rel.tag_name!, name: asset.name, digest: asset.digest ?? null };
-        const version = (t: string) => t.replace(/^v/i, "");
+        this.range = range;
         this.set({
           phase: sameRelease && keep ? "ready" : "available",
           installerPath: sameRelease ? keep : null,
           latest: {
-            version: version(tag),
+            version: bare(tag),
             tag,
-            notes: (newest.body ?? "").trim(),
+            notes: rangeNotes(range),
+            since: range.since,
             publishedAt: newest.published_at ?? null,
             size: asset.size ?? null,
             kind,
-            via: rel === newest ? null : version(rel.tag_name!),
+            via: rel === newest ? null : bare(rel.tag_name!),
           },
           autoInstall: chained,
           checkedAt,
@@ -262,12 +349,13 @@ export class AppUpdateService {
    */
   changelog(): AppChangelog | null {
     const latest = this.state.latest;
-    if (!latest) return null;
+    const range = this.range;
+    if (!latest || !range) return null;
     let entry = this.changelogs.get(latest.tag);
     if (!entry) {
       entry = { state: { tag: latest.tag, status: "writing", text: null, commits: [], unavailable: null, message: null }, done: Promise.resolve() };
       const e = entry;
-      e.done = this.writeChangelog(e, latest.version, latest.notes).then((final) => {
+      e.done = this.writeChangelog(e, range).then((final) => {
         e.state = final;
       });
       this.changelogs.set(latest.tag, entry);
@@ -285,17 +373,18 @@ export class AppUpdateService {
     return entry.state;
   }
 
-  private async writeChangelog(entry: { state: AppChangelog }, version: string, notes: string): Promise<AppChangelog> {
+  private async writeChangelog(entry: { state: AppChangelog }, range: ChangeRange): Promise<AppChangelog> {
     const tag = entry.state.tag;
     const t0 = Date.now();
     const ready = this.d.claudeReady?.() ?? Promise.resolve("no-claude" as const);
-    const commits = await this.commitsUpTo(tag);
+    const all = await this.commitsSince(range.sinceTag, tag);
+    const commits = all.slice(-MAX_COMMITS);
     entry.state = { ...entry.state, commits };
     const base = { ...entry.state, text: null, message: null };
     try {
       const r = await ready;
       if (r !== "ok" || !this.d.writeChangelog) return { ...base, status: "unavailable", unavailable: r === "ok" ? "no-claude" : r };
-      const text = (await this.d.writeChangelog(changelogPrompt(version, this.state.currentVersion, notes, commits))).trim();
+      const text = (await this.d.writeChangelog(changelogPrompt(this.state.currentVersion, range, commits, all.length - commits.length))).trim();
       if (!text) throw new Error("Claude hat keinen Text geliefert.");
       this.d.log(`Update: Changelog für ${tag} in ${Date.now() - t0} ms geschrieben`);
       return { ...base, status: "ready", text, unavailable: null };
@@ -306,11 +395,11 @@ export class AppUpdateService {
     }
   }
 
-  /** First lines of the commits between the installed version and the release; empty when the tag of the installed version is unknown. */
-  private async commitsUpTo(tag: string): Promise<string[]> {
-    const r = await this.gh(["api", `repos/${UPDATE_REPO}/compare/v${this.state.currentVersion}...${tag}`, "--jq", '.commits[].commit.message | split("\\n")[0]'], 10_000).catch(() => null);
+  /** First lines of the commits between two tags, oldest first; empty when the base tag is unknown (a local build). */
+  private async commitsSince(base: string, tag: string): Promise<string[]> {
+    const r = await this.gh(["api", `repos/${UPDATE_REPO}/compare/${base}...${tag}`, "--jq", '.commits[].commit.message | split("\\n")[0]'], 10_000).catch(() => null);
     if (!r || r.code !== 0) return [];
-    return r.stdout.split(/\r?\n/).map((l) => l.trim()).filter(Boolean).slice(-60);
+    return r.stdout.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
   }
 
   /**

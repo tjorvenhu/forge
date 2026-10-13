@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useShallow } from "zustand/react/shallow";
-import { Activity, Bot, FolderTree, GitCompare, AlertTriangle, ChevronDown, FileText, GitBranch, MessageSquare, PanelBottom, PanelRight, Settings2, Star } from "lucide-react";
+import { Activity, Bot, FolderTree, GitCompare, AlertTriangle, BookOpen, ChevronDown, FileText, FlaskConical, GitBranch, MessageSquare, PanelBottom, PanelRight, Settings2, Star } from "lucide-react";
 import type { ProfileId } from "@forge/protocol";
 import { call, keys, useProject } from "@/lib/queries";
 import { errorMessage, RpcCallError } from "@/lib/rpc";
@@ -25,11 +25,13 @@ import { FileTree } from "@/components/workspace/FileTree";
 import { WorkingCard } from "@/components/workspace/WorkingCard";
 import { BottomPanel } from "@/components/workspace/BottomPanel";
 import { RemoteControlButton } from "@/components/workspace/RemoteControl";
-import { DevServerMenu } from "@/components/workspace/DevServer";
+import { DevToolsTab } from "@/components/devtools/DevToolsTab";
+import { KnowledgeTab } from "@/components/knowledge/KnowledgeTab";
 import { PhoneButton } from "@/components/layout/PhoneButton";
 import { HeaderDivider } from "@/components/layout/Page";
 import { SearchField } from "@/components/layout/SearchField";
 import { ChatSkeleton } from "@/components/ui/skeleton";
+import { DevToolsBadge } from "@/components/devtools/DevToolsBadge";
 
 export function WorkspaceView() {
   const projectId = useUi((s) => s.activeProjectId);
@@ -106,11 +108,12 @@ function Workspace({ projectId }: { projectId: string }) {
                 { value: "agents", label: "Agenten", icon: <Bot className="h-4 w-4" /> },
                 { value: "git", label: "Git", icon: <GitBranch className="h-4 w-4" />, badge: project.git?.changedCount ? <Badge tone="warning">{project.git.changedCount}</Badge> : undefined },
                 { value: "files", label: "Dateien", icon: <FileText className="h-4 w-4" /> },
+                { value: "devtools", label: "Dev-Tools", icon: <FlaskConical className="h-4 w-4" />, badge: <DevToolsBadge project={project} /> },
+                { value: "knowledge", label: "Wissen", icon: <BookOpen className="h-4 w-4" /> },
                 { value: "settings", label: "Einstellungen", icon: <Settings2 className="h-4 w-4" /> },
               ]}
             />
             <div className="flex-1" />
-            {project.exists && <DevServerMenu project={project} />}
             <Button size="icon-sm" variant="ghost" onClick={() => toggleBottomPanel()} aria-pressed={bottomPanelOpen} title="Terminal, Dev-Server und Claude-Ausgabe (Strg+J)" className={cn(bottomPanelOpen && "text-accent")}>
               <PanelBottom className="h-4 w-4" />
             </Button>
@@ -132,6 +135,10 @@ function Workspace({ projectId }: { projectId: string }) {
             {workspaceTab === "agents" && <AgentsTab project={project} />}
             {workspaceTab === "git" && <GitCenter project={project} />}
             {workspaceTab === "files" && <FilesTab project={project} />}
+            {workspaceTab === "devtools" &&
+              (project.exists ? <DevToolsTab project={project} /> : <EmptyState title="Dev-Tools nicht verfügbar">Der Projektordner fehlt.</EmptyState>)}
+            {workspaceTab === "knowledge" &&
+              (project.exists ? <KnowledgeTab project={project} /> : <EmptyState title="Wissen nicht verfügbar">Der Projektordner fehlt.</EmptyState>)}
             {workspaceTab === "settings" && <ProjectSettingsTab project={project} />}
           </div>
           <BottomPanel project={project} />

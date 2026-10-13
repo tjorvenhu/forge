@@ -1,5 +1,6 @@
 import { useEffect, useRef, type KeyboardEvent } from "react";
-import { Hourglass, X } from "lucide-react";
+import { AppWindow, Hourglass, SquareArrowOutUpRight, X } from "lucide-react";
+import { openChatWindow, useChatWindows } from "@/lib/chat-windows";
 import { call, useLiveSessions, useProjects, useSession } from "@/lib/queries";
 import { errorMessage } from "@/lib/rpc";
 import { flatTabs, groupTabs, openSessionId, openSessionTab, type TabSession } from "@/lib/session-tabs";
@@ -36,6 +37,7 @@ export function SessionTabs() {
   const activeProjectId = useUi((s) => (s.view === "workspace" ? s.activeProjectId : null));
   const openProject = useUi((s) => s.openProject);
   const openSession = useSession(openId);
+  const inChatWindows = useChatWindows((s) => s.sessions);
   const listRef = useRef<HTMLDivElement>(null);
 
   const groups = groupTabs(live.data ?? [], openSessionTab(openSession.data, projects.data));
@@ -93,6 +95,9 @@ export function SessionTabs() {
             const active = i === activeIndex;
             const attention = s.status === "waiting_approval";
             const closable = s.live && !isBusy(s.status) && s.background.length === 0;
+            const inWindow = inChatWindows.includes(s.id);
+            // Only on the open tab: a hidden button on every tab would widen the whole strip.
+            const detachable = active && !inWindow;
             const title = s.title ?? "Ohne Titel";
             return (
               <div
@@ -111,11 +116,12 @@ export function SessionTabs() {
                   tabIndex={i === focusIndex ? 0 : -1}
                   onClick={() => openProject(s.projectId, s.id)}
                   onKeyDown={(e) => onTabKey(e, i)}
-                  title={`${s.projectName}: ${title}\n${statusText(s)}${s.live ? "" : ". Kein laufender Claude-Prozess"}\nStrg+Tab wechselt zur nächsten Session.`}
-                  className={cn("flex h-full min-w-0 cursor-default items-center gap-2 rounded-lg pl-3 transition-transform duration-75 focus-visible:outline-offset-[-2px] active:scale-[0.97]", closable ? "pr-1.5" : "pr-3")}
+                  title={`${s.projectName}: ${title}\n${statusText(s)}${s.live ? "" : ". Kein laufender Claude-Prozess"}${inWindow ? "\nIn eigenem Fenster geöffnet" : ""}\nStrg+Tab wechselt zur nächsten Session.`}
+                  className={cn("flex h-full min-w-0 cursor-default items-center gap-2 rounded-lg pl-3 transition-transform duration-75 focus-visible:outline-offset-[-2px] active:scale-[0.97]", closable || detachable ? "pr-1.5" : "pr-3")}
                 >
                   <span aria-hidden className={cn("h-1.5 w-1.5 shrink-0 rounded-full", dotClass(s))} />
                   <span className={cn("truncate", !s.live && "italic")}>{title}</span>
+                  {inWindow && <AppWindow aria-hidden className="h-3 w-3 shrink-0 text-subtle" />}
                   {s.background.length > 0 && (
                     <span aria-hidden className="flex shrink-0 items-center gap-0.5 text-caption tabular-nums text-subtle">
                       <Hourglass className="h-3 w-3" />
@@ -123,6 +129,18 @@ export function SessionTabs() {
                     </span>
                   )}
                 </button>
+                {detachable && (
+                  <Button
+                    size="icon-sm"
+                    variant="ghost"
+                    className={cn("h-5 w-5 rounded-md text-subtle hover:bg-surface-2 hover:text-fg", !closable && "mr-1")}
+                    aria-label={`${title} in eigenem Fenster öffnen`}
+                    title="In eigenem Fenster öffnen"
+                    onClick={() => void openChatWindow(s.projectId, s.id, s.title)}
+                  >
+                    <SquareArrowOutUpRight className="h-3 w-3" />
+                  </Button>
+                )}
                 {closable && (
                   <Button
                     size="icon-sm"

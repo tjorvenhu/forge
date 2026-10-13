@@ -1,6 +1,7 @@
 import { useState } from "react";
-import { ChevronDown, History, Hourglass, MessageSquarePlus, Power, ShieldAlert, Terminal, Trash2 } from "lucide-react";
+import { ChevronDown, History, Hourglass, MessageSquarePlus, Power, ShieldAlert, SquareArrowOutDownLeft, SquareArrowOutUpRight, Terminal, Trash2 } from "lucide-react";
 import type { ExternalSession, Project, Session } from "@forge/protocol";
+import { openChatWindow, reattachChatWindow } from "@/lib/chat-windows";
 import { call } from "@/lib/queries";
 import { errorMessage } from "@/lib/rpc";
 import { cn, relativeTime } from "@/lib/utils";
@@ -9,6 +10,7 @@ import { toast } from "@/stores/toast";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu } from "@/components/ui/dropdown";
 import { Badge, Tooltip } from "@/components/ui/misc";
+import { ProjectIcon } from "@/components/projects/ProjectIcon";
 import { SessionStatusBadge } from "./SessionStatusBadge";
 import { SummaryButton } from "./SummaryButton";
 import { DeleteSessionDialog } from "./DeleteSessionDialog";
@@ -21,6 +23,8 @@ export function SessionBar({
   sessions,
   externals,
   onSelect,
+  detached = false,
+  inChatWindow = false,
 }: {
   project: Project;
   session: Session | null;
@@ -28,38 +32,50 @@ export function SessionBar({
   sessions: Session[];
   externals: ExternalSession[];
   onSelect: (id: string | null) => void;
+  /** the bar of a chat window: project and title instead of the session picker */
+  detached?: boolean;
+  /** the session is shown in a chat window (bar of the main window) */
+  inChatWindow?: boolean;
 }) {
   const title = session?.title ?? (external ? external.summary : "Neue Session");
   // Captured when the dialog opens: the shown session may change behind it (Strg+Tab, a notification).
   const [deleting, setDeleting] = useState<Session | null>(null);
   return (
     <div className="flex h-11 shrink-0 items-center gap-2 border-b border-border px-4">
-      <DropdownMenu
-        align="start"
-        header={sessions.length || externals.length ? "Sessions in diesem Projekt" : "Noch keine Sessions"}
-        trigger={
-          <button className="flex min-w-0 max-w-105 items-center gap-1.5 rounded-md px-2 py-1 text-body hover:bg-surface-3" aria-label="Session wählen">
-            <History className="h-3.5 w-3.5 shrink-0 text-muted" />
-            <span className="truncate">{title}</span>
-            <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted" />
-          </button>
-        }
-        items={[
-          { label: "Neue Session", icon: <MessageSquarePlus className="h-3.5 w-3.5" />, onSelect: () => onSelect(null), hint: "Strg+N" },
-          ...sessions.slice(0, 30).map((s) => ({
-            label: s.title ?? "Ohne Titel",
-            hint: relativeTime(s.updatedAt),
-            icon: <span className={cn("h-1.5 w-1.5 rounded-full", s.live ? "bg-accent" : "bg-subtle")} />,
-            onSelect: () => onSelect(s.id),
-          })),
-          ...externals.slice(0, 15).map((e) => ({
-            label: e.summary,
-            hint: "Terminal",
-            icon: <Terminal className="h-3.5 w-3.5 text-muted" />,
-            onSelect: () => onSelect(EXTERNAL_PREFIX + e.claudeSessionId),
-          })),
-        ]}
-      />
+      {detached ? (
+        <div className="flex min-w-0 items-center gap-2 text-body">
+          <ProjectIcon name={project.name} size={20} className="rounded-md" />
+          <span className="max-w-40 shrink-0 truncate text-muted">{project.name}</span>
+          <span className="truncate">{title}</span>
+        </div>
+      ) : (
+        <DropdownMenu
+          align="start"
+          header={sessions.length || externals.length ? "Sessions in diesem Projekt" : "Noch keine Sessions"}
+          trigger={
+            <button className="flex min-w-0 max-w-105 items-center gap-1.5 rounded-md px-2 py-1 text-body hover:bg-surface-3" aria-label="Session wählen">
+              <History className="h-3.5 w-3.5 shrink-0 text-muted" />
+              <span className="truncate">{title}</span>
+              <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted" />
+            </button>
+          }
+          items={[
+            { label: "Neue Session", icon: <MessageSquarePlus className="h-3.5 w-3.5" />, onSelect: () => onSelect(null), hint: "Strg+N" },
+            ...sessions.slice(0, 30).map((s) => ({
+              label: s.title ?? "Ohne Titel",
+              hint: relativeTime(s.updatedAt),
+              icon: <span className={cn("h-1.5 w-1.5 rounded-full", s.live ? "bg-accent" : "bg-subtle")} />,
+              onSelect: () => onSelect(s.id),
+            })),
+            ...externals.slice(0, 15).map((e) => ({
+              label: e.summary,
+              hint: "Terminal",
+              icon: <Terminal className="h-3.5 w-3.5 text-muted" />,
+              onSelect: () => onSelect(EXTERNAL_PREFIX + e.claudeSessionId),
+            })),
+          ]}
+        />
+      )}
       {session && <SessionStatusBadge status={session.status} live={session.live} autoContinueAt={session.autoContinueAt} />}
       {!!session?.background.length && (
         <Tooltip content={session.background.map((t) => t.description).join(", ")}>
@@ -102,17 +118,32 @@ export function SessionBar({
           <Power className="h-3.5 w-3.5" /> Beenden
         </Button>
       )}
-      {session && (
-        <Tooltip content="Session löschen">
-          <Button size="icon-sm" variant="ghost" aria-label="Session löschen" className="hover:text-danger" onClick={() => setDeleting(session)}>
-            <Trash2 className="h-3.5 w-3.5" />
+      {detached ? (
+        <Button size="sm" variant="ghost" onClick={() => void reattachChatWindow()} title="Ins Hauptfenster zurückholen. Schließt dieses Fenster.">
+          <SquareArrowOutDownLeft className="h-3.5 w-3.5" /> Zurückholen
+        </Button>
+      ) : (
+        <>
+          {session && !inChatWindow && (
+            <Tooltip content="In eigenem Fenster öffnen">
+              <Button size="icon-sm" variant="ghost" aria-label="In eigenem Fenster öffnen" onClick={() => void openChatWindow(project.id, session.id, session.title)}>
+                <SquareArrowOutUpRight className="h-3.5 w-3.5" />
+              </Button>
+            </Tooltip>
+          )}
+          {session && (
+            <Tooltip content="Session löschen">
+              <Button size="icon-sm" variant="ghost" aria-label="Session löschen" className="hover:text-danger" onClick={() => setDeleting(session)}>
+                <Trash2 className="h-3.5 w-3.5" />
+              </Button>
+            </Tooltip>
+          )}
+          <Button size="sm" variant="ghost" onClick={() => onSelect(null)} title="Neue Session (Strg+N)">
+            <MessageSquarePlus className="h-3.5 w-3.5" /> Neu
           </Button>
-        </Tooltip>
+          <DeleteSessionDialog session={deleting} onClose={() => setDeleting(null)} />
+        </>
       )}
-      <Button size="sm" variant="ghost" onClick={() => onSelect(null)} title="Neue Session (Strg+N)">
-        <MessageSquarePlus className="h-3.5 w-3.5" /> Neu
-      </Button>
-      <DeleteSessionDialog session={deleting} onClose={() => setDeleting(null)} />
     </div>
   );
 }

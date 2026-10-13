@@ -123,6 +123,13 @@ export function routeServerEvent(qc: QueryClient, git: GitRefresher, e: ServerEv
     case "devserver.output":
       useDevOutput.getState().append(e.payload.projectId, e.payload.text);
       break;
+    case "testdb.updated":
+      qc.setQueryData(keys.testDb(e.payload.projectId), e.payload);
+      break;
+    case "knowledge.updated":
+      // List and open entries; an entry Claude just rewrote shows its new text.
+      void qc.invalidateQueries({ queryKey: keys.knowledge(e.payload.projectId) });
+      break;
     case "update.updated":
       qc.setQueryData(keys.appUpdate, e.payload);
       break;

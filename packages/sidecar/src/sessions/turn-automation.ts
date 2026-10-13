@@ -12,6 +12,8 @@ export interface AutomationHost {
   record(sessionId: string, body: SessionEventBody): void;
   emit(e: ServerEvent): void;
   suggestCommitMessage(projectId: string, paths: string[]): Promise<{ message: string }>;
+  /** test environment and test database URL of the project (dev tools) */
+  testEnv?(projectId: string): Record<string, string>;
 }
 
 /** A turn FORGE holds back while the previous turn's tests and auto-commit run. */
@@ -131,7 +133,7 @@ export class TurnAutomation {
     const baseline = this.baseline.get(sessionId) ?? new Set<string>();
     const tags = new Set(project.tags);
     if (!tags.has("auto-commit")) {
-      await this.runTests(sessionId, project.testCommand, tags, cwd);
+      await this.runTests(sessionId, project.id, project.testCommand, tags, cwd);
       return;
     }
     let status;
@@ -144,7 +146,7 @@ export class TurnAutomation {
       .filter((f) => !baseline.has(f.path) && f.kind !== "conflicted" && !isSensitiveFile(f.path) && !isArtifactPath(f.path))
       .map((f) => f.path);
     const before = await this.hashFiles(cwd, files);
-    const testsOk = await this.runTests(sessionId, project.testCommand, tags, cwd);
+    const testsOk = await this.runTests(sessionId, project.id, project.testCommand, tags, cwd);
 
     if (tags.has("review-required")) {
       this.host.record(sessionId, { type: "automation", action: "skip", ok: true, message: "Auto-Commit übersprungen: review-required verlangt eine Prüfung im Git-Bereich.", hash: null, files: [] });
@@ -191,10 +193,16 @@ export class TurnAutomation {
   }
 
   /** Runs the project's test command when auto-test is set; true when green or not configured. */
-  private async runTests(sessionId: string, testCommand: string | null, tags: Set<string>, cwd: string): Promise<boolean> {
+  private async runTests(sessionId: string, projectId: string, testCommand: string | null, tags: Set<string>, cwd: string): Promise<boolean> {
     if (!tags.has("auto-test") || !testCommand) return true;
     this.host.record(sessionId, { type: "status", status: "idle", detail: `Tests laufen: ${testCommand}` });
-    const r = await runUserCommand(testCommand, cwd, sessionEnv(this.db.getSettings().stripApiKey));
+    let testEnv: Record<string, string> = {};
+    try {
+      testEnv = this.host.testEnv?.(projectId) ?? {};
+    } catch {
+      /* tests run without the test environment */
+    }
+    const r = await runUserCommand(testCommand, cwd, { ...sessionEnv(this.db.getSettings().stripApiKey), ...testEnv });
     const ok = r.exitCode === 0 && !r.timedOut;
     this.host.record(sessionId, { type: "check.result", command: testCommand, ok, exitCode: r.exitCode, durationMs: r.durationMs, output: r.output });
     return ok;

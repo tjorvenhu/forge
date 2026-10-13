@@ -6,16 +6,23 @@ import { App } from "./App";
 import { queryClient } from "./lib/queries";
 import { startServerEvents } from "./lib/server-events";
 import { startPresenceReporting } from "./lib/presence";
+import { chatWindowTarget, prepareChatWindowUi, startChatWindowTracking } from "./lib/chat-windows";
+import { startChatWindowEvents } from "./lib/chat-window-events";
 import "./styles.css";
 
-startServerEvents(queryClient);
+const chatWindow = chatWindowTarget();
+if (chatWindow) {
+  prepareChatWindowUi(chatWindow);
+  startChatWindowEvents(queryClient);
+} else startServerEvents(queryClient);
 startPresenceReporting();
+void startChatWindowTracking().catch(() => {});
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
-        <App />
+        <App chatWindow={chatWindow} />
       </TooltipProvider>
     </QueryClientProvider>
   </StrictMode>,

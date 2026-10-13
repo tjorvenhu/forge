@@ -17,6 +17,9 @@ import { HomeView } from "@/views/HomeView";
 import { ProjectsView } from "@/views/ProjectsView";
 import { WorkspaceView } from "@/views/WorkspaceView";
 import { useGlobalShortcuts } from "@/lib/shortcuts";
+import { useWindowEffect } from "@/lib/window-effect";
+import type { ChatWindowTarget } from "@/lib/chat-windows";
+import { ChatWindowShell } from "@/views/ChatWindowView";
 
 // Views that are not needed at start (they bring CodeMirror and more) load on first use, or
 // in idle time right after the start, so the first switch does not wait either.
@@ -35,18 +38,19 @@ function preloadViews() {
 
 type Boot = { state: "starting" } | { state: "up" } | { state: "down"; detail?: string } | { state: "no-tauri" };
 
-export function App() {
+export function App({ chatWindow = null }: { chatWindow?: ChatWindowTarget | null }) {
   const [boot, setBoot] = useState<Boot>(() => (isTauri() ? { state: "starting" } : { state: "no-tauri" }));
+  const isChat = chatWindow !== null;
 
   useEffect(() => {
     if (!isTauri()) return;
     const off = rpc.onStatus((up, detail) => {
       setBoot(up ? { state: "up" } : { state: "down", detail });
-      if (up) preloadViews();
+      if (up && !isChat) preloadViews();
     });
-    rpc.start().catch((e: unknown) => setBoot({ state: "down", detail: String(e) }));
+    rpc.start({ manageSidecar: !isChat }).catch((e: unknown) => setBoot({ state: "down", detail: String(e) }));
     return off;
-  }, []);
+  }, [isChat]);
 
   if (boot.state === "no-tauri") {
     return (
@@ -75,18 +79,25 @@ export function App() {
         <AlertTriangle className="h-6 w-6 text-danger" />
         <div className="text-sm font-medium">Der FORGE-Hintergrunddienst läuft nicht.</div>
         {boot.detail && <pre className="max-h-48 max-w-2xl overflow-auto rounded-md bg-surface p-3 font-mono text-xs text-muted">{boot.detail}</pre>}
-        <div className="max-w-md text-center text-body text-muted">Voraussetzung ist Node.js ab Version 22.13 im PATH.</div>
-        <Button variant="primary" onClick={() => void rpc.restart()}>
-          <RotateCw className="h-3.5 w-3.5" /> Neu starten
-        </Button>
+        {isChat ? (
+          <div className="max-w-md text-center text-body text-muted">Starte ihn im FORGE-Hauptfenster neu. Dieses Fenster verbindet sich danach von selbst.</div>
+        ) : (
+          <>
+            <div className="max-w-md text-center text-body text-muted">Voraussetzung ist Node.js ab Version 22.13 im PATH.</div>
+            <Button variant="primary" onClick={() => void rpc.restart()}>
+              <RotateCw className="h-3.5 w-3.5" /> Neu starten
+            </Button>
+          </>
+        )}
       </Centered>
     );
   }
-  return <Shell />;
+  return chatWindow ? <ChatWindowShell target={chatWindow} /> : <Shell />;
 }
 
 function Shell() {
   useGlobalShortcuts();
+  useWindowEffect();
   const view = useUi((s) => s.view);
   const activeProjectId = useUi((s) => s.activeProjectId);
   return (

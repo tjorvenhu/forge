@@ -1,7 +1,7 @@
 import { create } from "zustand";
 
 export type View = "home" | "projects" | "sessions" | "mcp" | "settings" | "workspace";
-export type WorkspaceTab = "chat" | "agents" | "git" | "files" | "settings";
+export type WorkspaceTab = "chat" | "agents" | "git" | "files" | "devtools" | "knowledge" | "settings";
 export type NewProjectMode = "import" | "create" | "clone";
 export type BottomTab = "output" | "dev";
 export type SettingsSection = "general" | "claude" | "policy" | "phone" | "backup" | "rules" | "about";

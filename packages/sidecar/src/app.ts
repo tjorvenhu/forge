@@ -8,6 +8,10 @@ import { McpService } from "./config/mcp.js";
 import { PluginService } from "./config/plugins.js";
 import { WorktreeService } from "./automation/worktrees.js";
 import { DevServerService } from "./devserver/dev-server.js";
+import { DevToolsService } from "./devtools/dev-tools.js";
+import { TestDbService } from "./devtools/test-db.js";
+import { DevEnvironment } from "./devtools/environment.js";
+import { KnowledgeStore } from "./knowledge/knowledge.js";
 import { PhoneService } from "./phone/phone-service.js";
 import { DictationService } from "./dictation/dictation.js";
 import { Presence } from "./util/presence.js";
@@ -67,7 +71,12 @@ export function createApp(opts: { dataDir: string; write: Writer; log?: (m: stri
     () => sessionEnv(db.getSettings().stripApiKey),
   );
   const worktrees = new WorktreeService(git, projects);
-  const devServers = new DevServerService(projects, () => sessionEnv(db.getSettings().stripApiKey), emit);
+  const devTools = new DevToolsService(db, projects);
+  const testDb = new TestDbService({ dataDir: opts.dataDir, devTools, emit: (payload) => emit({ event: "testdb.updated", payload }), log: (m) => opts.log?.(m) });
+  const devEnv: DevEnvironment = new DevEnvironment(devTools, testDb, () => devServers);
+  const devServers = new DevServerService(projects, () => sessionEnv(db.getSettings().stripApiKey), emit, (projectId) => devEnv.devServerPrep(projectId));
+  const knowledge = new KnowledgeStore(projects, (projectId) => emit({ event: "knowledge.updated", payload: { projectId } }));
+  sessions.useProjectTools({ knowledge, dev: devEnv });
   const presence = new Presence();
   const secrets = new SecretStore(path.join(opts.dataDir, "secrets"));
   phone = new PhoneService({
@@ -75,6 +84,8 @@ export function createApp(opts: { dataDir: string; write: Writer; log?: (m: stri
     projects,
     sessions,
     devServers,
+    testDb,
+    knowledge,
     git,
     worktrees,
     secrets,
@@ -145,6 +156,9 @@ export function createApp(opts: { dataDir: string; write: Writer; log?: (m: stri
     plugins,
     worktrees,
     devServers,
+    devTools,
+    testDb,
+    knowledge,
     phone,
     github,
     claudeSetup,
@@ -169,6 +183,7 @@ export function createApp(opts: { dataDir: string; write: Writer; log?: (m: stri
       sessions.shutdown();
       updates.stop();
       devServers.shutdown();
+      testDb.shutdown();
       github.shutdown();
       claudeSetup.shutdown();
       dictation.shutdown();

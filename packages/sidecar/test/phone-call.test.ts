@@ -21,6 +21,8 @@ import type { SessionService } from "../src/sessions/session-service.js";
 import type { DevServerService } from "../src/devserver/dev-server.js";
 import { tempDir } from "./helpers.js";
 import type { WorktreeService } from "../src/automation/worktrees.js";
+import type { TestDbService } from "../src/devtools/test-db.js";
+import { KnowledgeStore } from "../src/knowledge/knowledge.js";
 
 const md5 = (s: string) => createHash("md5").update(s).digest("hex");
 const tone = (ms: number, amp = 9000) => Int16Array.from({ length: (ms / 1000) * 8000 }, (_, i) => Math.round(Math.sin((2 * Math.PI * 300 * i) / 8000) * amp));
@@ -371,6 +373,8 @@ describe("PhoneService end to end with a test PBX", () => {
   let rtps: RtpSession[];
   let logs: string[];
   let present: boolean;
+  let testDbRunning: boolean;
+  let testDbCalls: string[];
 
   beforeEach(async () => {
     t = tempDir();
@@ -430,11 +434,21 @@ describe("PhoneService end to end with a test PBX", () => {
         yield tone(200, 6000);
       },
     };
+    testDbRunning = false;
+    testDbCalls = [];
     svc = new PhoneService({
       db,
       projects,
       sessions,
       devServers: {} as DevServerService,
+      testDb: {
+        state: () => ({ status: testDbRunning ? "running" : "stopped", initialized: true, error: null }),
+        isRunning: () => testDbRunning,
+        start: async (id: string) => (testDbCalls.push(`start:${id}`), (testDbRunning = true)),
+        stop: async (id: string) => (testDbCalls.push(`stop:${id}`), (testDbRunning = false)),
+        reset: async (id: string) => (testDbCalls.push(`reset:${id}`), (testDbRunning = false)),
+      } as unknown as TestDbService,
+      knowledge: new KnowledgeStore(projects, () => {}),
       git: new GitEngine(),
       worktrees: {
         create: async (parent: { id: string; name: string; path: string }, branch: string) => {
@@ -764,6 +778,34 @@ describe("PhoneService end to end with a test PBX", () => {
     expect(await conv.tools.startSession("shop", "Nur kurz prüfen")).toMatch(/^Neue Session S\d im Projekt shop gestartet/);
     expect(startedIn[1]).toBe(projectId);
     await byeFromPbx("c-steer", inv, ok);
+  }, 30_000);
+
+  it("runs the test database behind the PIN and keeps notes in the project knowledge", async () => {
+    await svc.setEnabled(true);
+    await until(() => svc.state().registration === "registered", 5000, "registered");
+    const { inv, ok } = await answeredCall("c-dev");
+    const conv = await until(() => convs[0], 5000, "conversation");
+    expect(await conv.tools.testDatabase("shop", "status")).toBe("Die Test-Datenbank von shop ist gestoppt.");
+    expect(await conv.tools.testDatabase("shop", "start")).toMatch(/^Gesperrt/);
+    expect(await conv.tools.rememberNote("shop", "Deploy", "Läuft über Coolify")).toMatch(/^Gesperrt/);
+    expect(await conv.tools.knowledge("shop", "deploy")).toBe("shop hat noch kein Projektwissen.");
+    await sleep(200);
+    await phoneEnd.digits("4711#");
+    await until(() => svc.state().call?.unlocked, 5000, "unlocked");
+
+    expect(await conv.tools.testDatabase("shop", "start")).toBe("Test-Datenbank von shop läuft.");
+    expect(await conv.tools.testDatabase("shop", "reset")).toBe("Test-Datenbank von shop geleert und wieder gestartet.");
+    expect(testDbCalls).toEqual([`start:${projectId}`, `reset:${projectId}`, `start:${projectId}`]);
+
+    expect(await conv.tools.rememberNote("shop", "Deploy auf Coolify", "Env-Variablen setzt Coolify, nicht die Datei.")).toBe("Notiz „Deploy auf Coolify“ im Projektwissen von shop abgelegt.");
+    expect(await conv.tools.rememberNote("shop", "Coolify Deploy", "Traefik macht die Kompression.")).toBe("Notiz bei „Deploy auf Coolify“ ergänzt.");
+    const found = await conv.tools.knowledge("shop", "kompression");
+    expect(found).toContain("deploy-auf-coolify: Deploy auf Coolify");
+    expect(found.startsWith("<<<SESSION-DATEN>>>")).toBe(true);
+    const full = await conv.tools.knowledge("shop", "", "deploy-auf-coolify");
+    expect(full).toContain("Env-Variablen setzt Coolify");
+    expect(full).toContain("Traefik macht die Kompression.");
+    await byeFromPbx("c-dev", inv, ok);
   }, 30_000);
 
   it("finds sessions only by a known short name or a unique title", async () => {

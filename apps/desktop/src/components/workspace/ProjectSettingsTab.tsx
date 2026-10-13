@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { FileText, ShieldAlert, ShieldCheck, SlidersHorizontal, Trash2, Workflow, X } from "lucide-react";
 import type { ProfileId, Project, EffortLevel } from "@forge/protocol";
-import { call, keys, useDevServer, useRuntimeInfo, useSettings } from "@/lib/queries";
+import { call, keys, useRuntimeInfo, useSettings } from "@/lib/queries";
 import { modelLabel } from "@/lib/models";
 import { errorMessage } from "@/lib/rpc";
 import { cn } from "@/lib/utils";
@@ -33,7 +33,7 @@ const SANDBOX_INFO = TAG_INFO.find((t) => t.tag === "sandbox-only")!.info;
 type Section = "general" | "permissions" | "automation" | "rules" | "remove";
 
 const SECTIONS: ReadonlyArray<SettingsSectionDef<Section>> = [
-  { id: "general", label: "Allgemein", hint: "Name, Modell, Befehle", Icon: SlidersHorizontal },
+  { id: "general", label: "Allgemein", hint: "Name, Modell, Testbefehl", Icon: SlidersHorizontal },
   { id: "permissions", label: "Berechtigungen", hint: "Was Claude ohne Rückfrage darf", Icon: ShieldCheck },
   { id: "automation", label: "Automatik", hint: "Planen, testen, committen, Tags", Icon: Workflow },
   { id: "rules", label: "Regeln für Claude", hint: "CLAUDE.md des Projekts", Icon: FileText },
@@ -94,7 +94,6 @@ type SectionProps = { project: Project; update: (patch: Patch) => Promise<void> 
 function GeneralSection({ project, update }: SectionProps) {
   const settings = useSettings();
   const runtime = useRuntimeInfo();
-  const devServer = useDevServer(project.id);
   return (
     <>
       <Group title="Projekt" description="Gilt für neue Sessions in diesem Projekt. Pro Session lässt sich alles im Chat umstellen.">
@@ -128,16 +127,9 @@ function GeneralSection({ project, update }: SectionProps) {
         </Row>
       </Group>
 
-      <Group title="Befehle" description="Laufen in einer Shell im Projektordner.">
-        <Row label="Testbefehl" description="Für „Automatisch testen“ unter Automatik." stacked>
+      <Group title="Befehle" description="Laufen in einer Shell im Projektordner. Den Dev-Server richtest du im Tab Dev-Tools ein.">
+        <Row label="Testbefehl" description="Für „Automatisch testen“ unter Automatik. Bekommt die Test-Umgebung aus Dev-Tools." stacked>
           <CommandInput value={project.testCommand} placeholder="z. B. pnpm test" onSave={(v) => void update({ testCommand: v })} />
-        </Row>
-        <Row label="Dev-Server" description="Startet über den Knopf im Projektkopf. Leer lassen, um den erkannten Befehl aus package.json zu nutzen." stacked>
-          <CommandInput
-            value={project.devCommand}
-            placeholder={devServer.data?.effectiveCommand && !project.devCommand ? `Erkannt: ${devServer.data.effectiveCommand}` : "z. B. pnpm dev"}
-            onSave={(v) => void update({ devCommand: v })}
-          />
         </Row>
       </Group>
     </>

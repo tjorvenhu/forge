@@ -9,6 +9,11 @@ const MAX_LOG_CHARS = 200_000;
 /** Output is batched so a chatty dev server does not flood the UI with events. */
 const FLUSH_MS = 120;
 
+export interface DevServerPrep {
+  env: Record<string, string>;
+  notes: string[];
+}
+
 interface Running {
   child: ChildProcess | null;
   state: DevServerState;
@@ -53,6 +58,8 @@ export class DevServerService {
     private readonly projects: ProjectManager,
     private readonly env: () => Record<string, string>,
     private readonly emit: (e: { event: "devserver.updated"; payload: DevServerState } | { event: "devserver.output"; payload: { projectId: string; text: string } }) => void,
+    /** test environment and test database for the start; `notes` go into the output */
+    private readonly prepare?: (projectId: string) => Promise<DevServerPrep>,
   ) {}
 
   private async effectiveCommand(projectId: string): Promise<string | null> {
@@ -100,11 +107,22 @@ export class DevServerService {
       finished: new Promise<void>((resolve) => (markFinished = resolve)),
     };
     this.servers.set(projectId, r);
+    let prep: DevServerPrep = { env: {}, notes: [] };
+    if (this.prepare) {
+      // Shown as starting while the test database comes up (its first start downloads PostgreSQL).
+      this.emitState(r);
+      try {
+        prep = await this.prepare(projectId);
+      } catch (e) {
+        prep = { env: {}, notes: [`Test-Umgebung nicht gesetzt: ${e instanceof Error ? e.message : String(e)}`] };
+      }
+    }
+    for (const note of prep.notes) this.append(r, `[FORGE] ${note}\n`);
     this.append(r, `$ ${command}\n`);
     // BROWSER=none: dev servers like Create React App would otherwise open a browser on their own.
     const child = spawn(command, {
       cwd: project.path,
-      env: { ...this.env(), BROWSER: "none" },
+      env: { ...this.env(), ...prep.env, BROWSER: "none" },
       shell: true,
       windowsHide: true,
       stdio: ["ignore", "pipe", "pipe"],

@@ -8,6 +8,11 @@ import {
   CommitInfo,
   ContextUsage,
   DevServerState,
+  DevToolsConfig,
+  KnowledgeEntry,
+  KnowledgeSummary,
+  TestDbConfig,
+  TestDbState,
   SearchHit,
   PhoneConfig,
   PhoneEngine,
@@ -307,6 +312,42 @@ export const methods = {
   "devserver.stop": { params: projectRef, result: DevServerState },
   "devserver.output": { params: projectRef, result: z.object({ text: z.string() }) },
 
+  "devtools.get": { params: projectRef, result: DevToolsConfig },
+  "devtools.update": {
+    params: projectRef.extend({
+      env: DevToolsConfig.shape.env.optional(),
+      useEnv: z.boolean().optional(),
+      database: TestDbConfig.omit({ password: true }).partial().optional(),
+    }),
+    result: DevToolsConfig,
+  },
+  /** .env files in the project root, to take over into the test environment */
+  "devtools.envFiles": { params: projectRef, result: z.array(z.string()) },
+  "devtools.readEnvFile": { params: projectRef.extend({ name: z.string().min(1).max(200) }), result: z.object({ text: z.string() }) },
+
+  "testdb.state": { params: projectRef, result: TestDbState },
+  /** downloads PostgreSQL on first use, creates the database if needed and starts it */
+  "testdb.start": { params: projectRef, result: TestDbState },
+  "testdb.stop": { params: projectRef, result: TestDbState },
+  /** deletes all data: the next start begins with an empty database */
+  "testdb.reset": { params: projectRef, result: TestDbState },
+  "testdb.log": { params: projectRef, result: z.object({ text: z.string() }) },
+
+  "knowledge.list": { params: projectRef, result: z.array(KnowledgeSummary) },
+  "knowledge.read": { params: projectRef.extend({ id }), result: KnowledgeEntry },
+  "knowledge.save": {
+    params: projectRef.extend({
+      /** null creates a new entry */
+      id: id.nullable(),
+      title: z.string().trim().min(1).max(120),
+      summary: z.string().trim().max(300),
+      tags: z.array(z.string().trim().min(1).max(40)).max(12),
+      content: z.string().max(50_000),
+    }),
+    result: KnowledgeEntry,
+  },
+  "knowledge.delete": { params: projectRef.extend({ id }), result: z.object({ ok: z.boolean() }) },
+
   "app.updateState": { params: empty, result: AppUpdateState },
   /** whether the FORGE window is active, and whether the user just used it (keys, mouse); FORGE does not call while they are there */
   "app.presence": { params: z.object({ focused: z.boolean(), active: z.boolean() }), result: z.object({}) },
@@ -496,6 +537,9 @@ export type ServerEvent =
   | { event: "ratelimit.updated"; payload: RateLimitState }
   | { event: "devserver.updated"; payload: DevServerState }
   | { event: "devserver.output"; payload: { projectId: string; text: string } }
+  | { event: "testdb.updated"; payload: TestDbState }
+  /** an entry of the project's knowledge was saved or deleted (also by Claude) */
+  | { event: "knowledge.updated"; payload: { projectId: string } }
   | { event: "phone.updated"; payload: PhoneState }
   | { event: "update.updated"; payload: AppUpdateState }
   | { event: "sidecar.ready"; payload: { version: string } }

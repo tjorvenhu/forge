@@ -405,6 +405,8 @@ export const Settings = z.object({
   desktopNotifications: z.boolean(),
   /** blocklist rules the user switched off; every other rule applies */
   disabledPolicyRules: z.array(PolicyRuleId),
+  /** Windows backdrop behind the slightly translucent window; none keeps it opaque */
+  windowEffect: z.enum(["mica", "acrylic", "none"]),
 });
 export type Settings = z.infer<typeof Settings>;
 
@@ -726,6 +728,69 @@ export const DevServerState = z.object({
 });
 export type DevServerState = z.infer<typeof DevServerState>;
 
+export const TestDbConfig = z.object({
+  port: z.number().int().min(1024).max(65535),
+  /** database created on first start */
+  name: z
+    .string()
+    .min(1)
+    .max(63)
+    .regex(/^[a-z_][a-z0-9_]*$/, "Datenbankname: Kleinbuchstaben, Ziffern und Unterstriche"),
+  /** generated once per project; the server only listens on 127.0.0.1 */
+  password: z.string(),
+  /** start the database with the dev server */
+  withDevServer: z.boolean(),
+  /** variable that carries the connection URL to the dev server and the test command; null passes none */
+  envVar: z
+    .string()
+    .max(100)
+    .regex(/^[A-Za-z_][A-Za-z0-9_]*$/, "Variablenname: Buchstaben, Ziffern und Unterstriche")
+    .nullable(),
+});
+export type TestDbConfig = z.infer<typeof TestDbConfig>;
+
+/** Dev tools of a project. Kept in FORGE's database, never written into the project folder. */
+export const DevToolsConfig = z.object({
+  /** test environment in .env format */
+  env: z.string().max(100_000),
+  /** pass the test environment to the dev server and the test command */
+  useEnv: z.boolean(),
+  database: TestDbConfig,
+});
+export type DevToolsConfig = z.infer<typeof DevToolsConfig>;
+
+/** Local PostgreSQL of a project, run by FORGE from binaries it downloads once. */
+export const TestDbState = z.object({
+  projectId: z.string(),
+  status: z.enum(["stopped", "installing", "starting", "running", "stopping", "failed"]),
+  /** download progress 0-1 while installing */
+  progress: z.number().nullable(),
+  /** PostgreSQL version FORGE uses */
+  version: z.string(),
+  /** binaries are downloaded */
+  installed: z.boolean(),
+  /** the project's data folder exists */
+  initialized: z.boolean(),
+  url: z.string(),
+  startedAt: z.string().nullable(),
+  error: z.string().nullable(),
+});
+export type TestDbState = z.infer<typeof TestDbState>;
+
+/** One entry of a project's knowledge (`.forge/knowledge/<id>.md`). */
+export const KnowledgeSummary = z.object({
+  id: z.string(),
+  title: z.string(),
+  /** one line, shown in the index Claude gets at session start */
+  summary: z.string(),
+  tags: z.array(z.string()),
+  updatedAt: z.string(),
+});
+export type KnowledgeSummary = z.infer<typeof KnowledgeSummary>;
+
+export const KnowledgeEntry = KnowledgeSummary.extend({ content: z.string() });
+export type KnowledgeEntry = z.infer<typeof KnowledgeEntry>;
+
 
 /**
  * FORGE updates from the GitHub releases of the repository. The installer is fetched with the gh
@@ -738,7 +803,13 @@ export const AppUpdateState = z.object({
     .object({
       version: z.string(),
       tag: z.string(),
+      /** release notes of every version after `since` up to `version`, newest first */
       notes: z.string(),
+      /**
+       * Version the changes are listed from (not included): the installed one, or when that is too old
+       * (local builds are 0.1.0), the release before the oldest one listed.
+       */
+      since: z.string(),
       publishedAt: z.string().nullable(),
       size: z.number().nullable(),
       /** patch: only exe and sidecar (a few MB); full: installer with the bundled runtime */

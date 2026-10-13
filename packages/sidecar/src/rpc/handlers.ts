@@ -11,6 +11,9 @@ import type { McpService } from "../config/mcp.js";
 import type { PluginService } from "../config/plugins.js";
 import type { WorktreeService } from "../automation/worktrees.js";
 import type { DevServerService } from "../devserver/dev-server.js";
+import type { DevToolsService } from "../devtools/dev-tools.js";
+import type { TestDbService } from "../devtools/test-db.js";
+import type { KnowledgeStore } from "../knowledge/knowledge.js";
 import type { PhoneService } from "../phone/phone-service.js";
 import type { DictationService } from "../dictation/dictation.js";
 import type { Presence } from "../util/presence.js";
@@ -32,6 +35,9 @@ export interface Services {
   plugins: PluginService;
   worktrees: WorktreeService;
   devServers: DevServerService;
+  devTools: DevToolsService;
+  testDb: TestDbService;
+  knowledge: KnowledgeStore;
   phone: PhoneService;
   dictation: DictationService;
   presence: Presence;
@@ -209,6 +215,22 @@ export function createHandlers(s: Services): Handlers {
     "devserver.start": ({ projectId }) => s.devServers.start(projectId),
     "devserver.stop": ({ projectId }) => s.devServers.stop(projectId),
     "devserver.output": ({ projectId }) => ({ text: s.devServers.output(projectId) }),
+
+    "devtools.get": ({ projectId }) => s.devTools.get(projectId),
+    "devtools.update": ({ projectId, ...patch }) => s.devTools.update(projectId, patch),
+    "devtools.envFiles": ({ projectId }) => s.devTools.envFiles(projectId),
+    "devtools.readEnvFile": async ({ projectId, name }) => ({ text: await s.devTools.readEnvFile(projectId, name) }),
+
+    "testdb.state": ({ projectId }) => s.testDb.state(projectId),
+    "testdb.start": ({ projectId }) => s.testDb.start(projectId),
+    "testdb.stop": ({ projectId }) => s.testDb.stop(projectId),
+    "testdb.reset": ({ projectId }) => s.testDb.reset(projectId),
+    "testdb.log": ({ projectId }) => ({ text: s.testDb.log(projectId) }),
+
+    "knowledge.list": ({ projectId }) => s.knowledge.list(projectId),
+    "knowledge.read": ({ projectId, id }) => s.knowledge.read(projectId, id),
+    "knowledge.save": ({ projectId, ...input }) => s.knowledge.save(projectId, input),
+    "knowledge.delete": async ({ projectId, id }) => ({ ok: await s.knowledge.delete(projectId, id) }),
 
     "app.updateState": () => s.updates.get(),
     "app.presence": ({ focused, active }) => {

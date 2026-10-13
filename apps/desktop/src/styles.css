@@ -242,6 +242,19 @@ body {
 }
 
 /*
+ * Translucent window (Einstellungen, Allgemein): Windows draws Mica or Acrylic behind the webview,
+ * the base layers let a little of it through. Cards, menus and dialogs keep their opaque surfaces.
+ * Set by lib/window-effect.ts only where Windows supports the effect (Windows 11).
+ */
+html[data-window-effect] {
+  --color-bg: #14171dd6;
+  --color-sidebar: #1a1e25bd;
+}
+html[data-window-effect] body {
+  background: transparent;
+}
+
+/*
  * One focus style for everything (outline, not ring), in the base layer so utilities like
  * focus-visible:outline-none can override it. It settles in from a wider offset.
  */

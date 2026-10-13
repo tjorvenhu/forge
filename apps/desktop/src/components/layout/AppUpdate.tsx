@@ -64,8 +64,14 @@ export function AppUpdateCard() {
         </div>
       </div>
       {s.latest.notes && (
-        <Tooltip content={<div className="max-w-80 whitespace-pre-wrap text-xs">{s.latest.notes.slice(0, 1200)}</div>}>
-          <div className="line-clamp-2 cursor-default text-caption text-muted">{s.latest.notes.replace(/^[-*]\s*/gm, "").split("\n").filter(Boolean).join(" · ")}</div>
+        <Tooltip content={<div className="max-w-80 whitespace-pre-wrap text-xs">{s.latest.notes.replace(/^#+\s*/gm, "").slice(0, 1200)}</div>}>
+          <div className="line-clamp-2 cursor-default text-caption text-muted">
+            {s.latest.notes
+              .split("\n")
+              .filter((l) => l.trim() && !l.startsWith("#"))
+              .map((l) => l.replace(/^[-*]\s*/, ""))
+              .join(" · ")}
+          </div>
         </Tooltip>
       )}
       {s.installable ? (
@@ -133,8 +139,11 @@ export function AppUpdateDialog() {
         <Logo height={30} />
         <div className="min-w-0">
           <div className="mb-2 flex items-center gap-1.5 text-xs font-medium text-muted">
-            <Sparkles className="h-3.5 w-3.5 text-accent" /> Was ist neu
+            <Sparkles className="h-3.5 w-3.5 text-accent" /> Änderungen seit {s.latest.since}
           </div>
+          {s.latest.since !== s.currentVersion && (
+            <div className="-mt-1 mb-2 text-caption text-subtle">Installiert ist {s.currentVersion}. Ältere Änderungen sind hier nicht aufgeführt.</div>
+          )}
           <Changelog
             tag={tag}
             notes={s.latest.notes}

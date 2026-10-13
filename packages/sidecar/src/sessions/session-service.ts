@@ -24,7 +24,7 @@ import { AutoContinue } from "./auto-continue.js";
 import { ClaudeAssist } from "./claude-assist.js";
 import { SessionLifecycle, type StartParams } from "./lifecycle.js";
 import { BUSY } from "./live-session.js";
-import { AgentRegistry, forgeSessionTools } from "./forge-tools.js";
+import { AgentRegistry, forgeSessionTools, type ProjectToolDeps } from "./forge-tools.js";
 import { WorktreeService } from "../automation/worktrees.js";
 import { PermissionModes } from "./permission-mode.js";
 import { RateLimitTracker } from "./rate-limit.js";
@@ -54,6 +54,8 @@ export class SessionService {
   private readonly limits: RateLimitTracker;
   private readonly titles: TitleRefresh;
   private readonly agents: AgentRegistry;
+  /** knowledge and dev tools; set by app.ts once those services exist */
+  private projectDeps: ProjectToolDeps | null = null;
 
   constructor(
     private readonly db: Db,
@@ -75,6 +77,7 @@ export class SessionService {
       record,
       emit,
       suggestCommitMessage: (projectId, paths) => this.assist.suggestCommitMessage(projectId, paths),
+      testEnv: (projectId) => this.projectDeps?.dev.testCommandEnv(projectId) ?? {},
     });
     this.remote = new RemoteBridge(db, projects, runtime, {
       live: (id) => core.live.get(id),
@@ -140,8 +143,14 @@ export class SessionService {
           send: (id, text) => this.send(id, text),
           record,
           emit,
+          project: this.projectDeps,
         }),
     });
+  }
+
+  /** Knowledge and dev tools for sessions started from now on. */
+  useProjectTools(deps: ProjectToolDeps) {
+    this.projectDeps = deps;
   }
 
   // ---------- queries

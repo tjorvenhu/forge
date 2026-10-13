@@ -6,6 +6,8 @@ import type { Db, SessionRecord } from "../persistence/db.js";
 import type { ProjectManager } from "../projects/project-manager.js";
 import { lastAnswer } from "../phone/session-info.js";
 import type { StartParams } from "./lifecycle.js";
+import { KNOWLEDGE_DIR, type KnowledgeStore } from "../knowledge/knowledge.js";
+import type { DevAction, DevEnvironment, DevTarget } from "../devtools/environment.js";
 
 /** Agents one session may have running at the same time. */
 export const MAX_AGENTS = 4;
@@ -47,6 +49,12 @@ export class AgentRegistry {
   }
 }
 
+/** Project services the FORGE tools reach; wired after the session service (see app.ts). */
+export interface ProjectToolDeps {
+  knowledge: KnowledgeStore;
+  dev: DevEnvironment;
+}
+
 export interface ForgeToolDeps {
   db: Db;
   projects: ProjectManager;
@@ -56,6 +64,101 @@ export interface ForgeToolDeps {
   send(sessionId: string, text: string): Promise<unknown>;
   record(sessionId: string, body: SessionEventBody): void;
   emit(e: ServerEvent): void;
+  project?: ProjectToolDeps | null;
+}
+
+/** Knowledge and dev tools of the session's project, with the lines of start context that explain them. */
+export function projectTools(rec: SessionRecord, p: ProjectToolDeps): { tools: SessionTool[]; context: string[] } {
+  const projectId = rec.projectId;
+  const knowledgeSearch: SessionTool = {
+    name: "knowledge_search",
+    description: "Durchsucht das Projektwissen (Titel, Tags, Zusammenfassung, Text). Liefert Kennung, Titel, Zusammenfassung und eine Textstelle je Treffer.",
+    shape: {
+      query: z.string().min(1).max(200).describe("Suchwörter, z. B. 'migration prisma' oder 'deploy coolify'"),
+      limit: z.number().int().min(1).max(20).optional(),
+    },
+    autoAllow: true,
+    run: async (a) => {
+      const hits = p.knowledge.search(projectId, String(a.query), typeof a.limit === "number" ? a.limit : 8);
+      if (!hits.length) return "Keine Treffer im Projektwissen.";
+      return hits.map((h) => `${h.id}: ${h.title}${h.tags.length ? ` [${h.tags.join(", ")}]` : ""}\n  ${h.summary}\n  ${h.snippet}`).join("\n");
+    },
+  };
+  const knowledgeRead: SessionTool = {
+    name: "knowledge_read",
+    description: "Liest einen Eintrag des Projektwissens vollständig.",
+    shape: { id: z.string().min(1).max(80).describe("Kennung aus dem Index oder knowledge_search") },
+    autoAllow: true,
+    run: async (a) => {
+      const e = await p.knowledge.read(projectId, String(a.id));
+      return `# ${e.title}\nZusammenfassung: ${e.summary}\nTags: ${e.tags.join(", ") || "keine"}\nStand: ${e.updatedAt.slice(0, 10)}\n\n${e.content}`;
+    },
+  };
+  const knowledgeSave: SessionTool = {
+    name: "knowledge_save",
+    description:
+      "Legt einen Eintrag im Projektwissen an oder aktualisiert ihn (mit id). Für dauerhaft nützliches Wissen, das nicht offensichtlich im Code steht. Ein Eintrag pro Thema; bestehende Einträge ergänzen statt Duplikate anlegen.",
+    shape: {
+      id: z.string().max(80).optional().describe("Kennung eines bestehenden Eintrags zum Aktualisieren; leer legt einen neuen an"),
+      title: z.string().min(3).max(120).describe("Kurzer, eindeutiger Titel, z. B. 'Datenbank-Migrationen mit Prisma'"),
+      summary: z.string().min(5).max(300).describe("Ein Satz: worum es geht und wann man den Eintrag braucht"),
+      tags: z.array(z.string().max(40)).max(8).optional().describe("Stichwörter in Kleinbuchstaben"),
+      content: z.string().min(1).max(50_000).describe("Inhalt in Markdown: konkret, mit Dateipfaden, Befehlen und Begründungen. Beim Aktualisieren der vollständige neue Text"),
+      force: z.boolean().optional().describe("true legt trotz eines ähnlichen Eintrags einen neuen an"),
+    },
+    autoAllow: true,
+    run: async (a) => {
+      const id = typeof a.id === "string" && a.id.trim() ? a.id.trim() : null;
+      const title = String(a.title);
+      if (!id && a.force !== true) {
+        const near = p.knowledge.similar(projectId, title);
+        if (near.length)
+          return `Nicht gespeichert: Es gibt schon ähnliche Einträge: ${near.map((n) => `${n.id} (${n.title})`).join(", ")}. Lies sie mit knowledge_read und aktualisiere den passenden mit id, oder setze force=true, wenn es wirklich ein anderes Thema ist.`;
+      }
+      const tags = Array.isArray(a.tags) ? a.tags.filter((t): t is string => typeof t === "string") : id ? (await p.knowledge.read(projectId, id)).tags : [];
+      const e = await p.knowledge.save(projectId, { id, title, summary: String(a.summary), tags, content: String(a.content) });
+      return `${id ? "Aktualisiert" : "Gespeichert"}: ${e.id} (${KNOWLEDGE_DIR.replace(/\\/g, "/")}/${e.id}.md).`;
+    },
+  };
+  const knowledgeDelete: SessionTool = {
+    name: "knowledge_delete",
+    description: "Löscht einen veralteten oder falschen Eintrag des Projektwissens.",
+    shape: { id: z.string().min(1).max(80) },
+    autoAllow: false,
+    run: async (a) => ((await p.knowledge.delete(projectId, String(a.id))) ? `Gelöscht: ${String(a.id)}` : `Kein Eintrag ${String(a.id)}.`),
+  };
+  const devEnvironment: SessionTool = {
+    name: "dev_environment",
+    description:
+      "Stand von Dev-Server und Test-Datenbank des Projekts: Status, Adresse, Verbindungs-URL der lokalen PostgreSQL-Testdatenbank, Namen der Test-Umgebungsvariablen und die letzten Zeilen der Dev-Server-Ausgabe.",
+    shape: {},
+    autoAllow: true,
+    run: () => p.dev.describe(projectId),
+  };
+  const devControl: SessionTool = {
+    name: "dev_control",
+    description:
+      "Startet, stoppt oder startet Dev-Server bzw. Test-Datenbank neu. reset (nur Datenbank) löscht alle Daten der Test-Datenbank. Der Dev-Server bekommt die Test-Umgebung und, solange sie läuft, die URL der Test-Datenbank.",
+    shape: {
+      target: z.enum(["dev-server", "database"]),
+      action: z.enum(["start", "stop", "restart", "reset"]),
+    },
+    autoAllow: false,
+    run: (a) => p.dev.control(projectId, a.target as DevTarget, a.action as DevAction),
+  };
+
+  const { lines, total } = p.knowledge.index(projectId);
+  const context = [
+    "Projektwissen (FORGE): Gesammeltes Wissen zu diesem Projekt liegt in .forge/knowledge (Markdown, im Git).",
+    lines.length
+      ? `Index (${total} Einträge${total > lines.length ? `, die ${lines.length} neuesten; den Rest findet knowledge_search` : ""}):\n${lines.join("\n")}`
+      : "Noch keine Einträge.",
+    "- Bevor du in einem Bereich arbeitest, zu dem es einen passenden Eintrag gibt, lies ihn mit mcp__forge__knowledge_read. Bei Fragen zu Abläufen, Entscheidungen oder Stolperfallen suche zuerst mit knowledge_search.",
+    "- Speichere mit knowledge_save, was künftigen Sessions Zeit spart und nicht offensichtlich im Code oder in CLAUDE.md steht: Entscheidungen mit Begründung, Stolperfallen und ihre Lösung, Abläufe (Setup, Tests, Deploy), Eigenheiten externer Dienste. Speichere, sobald du so etwas herausgefunden hast, nicht erst am Ende.",
+    "- Keine Geheimnisse (Passwörter, Tokens, Keys), kein Sitzungsprotokoll, nichts Kurzlebiges. Ein Thema pro Eintrag; bestehende Einträge aktualisieren statt neue anzulegen, Veraltetes korrigieren oder mit knowledge_delete löschen.",
+    "Dev-Umgebung (FORGE): mcp__forge__dev_environment zeigt Dev-Server (Adresse, letzte Ausgabe) und die lokale PostgreSQL-Testdatenbank (Verbindungs-URL). Nutze für Tests, Migrationen und Experimente mit Daten diese Testdatenbank, nie eine Produktionsdatenbank. dev_control startet, stoppt oder leert sie und startet den Dev-Server neu.",
+  ];
+  return { tools: [knowledgeSearch, knowledgeRead, knowledgeSave, knowledgeDelete, devEnvironment, devControl], context };
 }
 
 const short = (id: string) => id.slice(0, 8);
@@ -84,6 +187,12 @@ export function forgeSessionTools(rec: SessionRecord, d: ForgeToolDeps): { tools
   const sessionId = rec.id;
   const parent = d.agents.parent(rec);
   const project = d.projects.get(rec.projectId);
+  let own: { tools: SessionTool[]; context: string[] } = { tools: [], context: [] };
+  try {
+    if (d.project && project.exists) own = projectTools(rec, d.project);
+  } catch {
+    // Without knowledge and dev tools the session still gets the other FORGE tools.
+  }
 
   const notify: SessionTool = {
     name: "notify",
@@ -102,12 +211,13 @@ export function forgeSessionTools(rec: SessionRecord, d: ForgeToolDeps): { tools
 
   if (parent) {
     return {
-      tools: [notify],
+      tools: [notify, ...own.tools],
       context: [
         "Du läufst in FORGE, einer Desktop-Oberfläche für Claude Code, als paralleler Agent: Eine andere FORGE-Session hat dich gestartet.",
         `Du arbeitest im Git-Worktree ${rec.cwd} auf einem eigenen Branch. Ändere nur Dateien in diesem Ordner.`,
         "Wenn du fertig bist: committe deine Arbeit auf deinem Branch und fasse am Ende in wenigen Sätzen zusammen, was du gemacht hast und was offen ist. Die startende Session liest diese Zusammenfassung.",
         "Mit mcp__forge__notify kannst du den Nutzer benachrichtigen. Weitere Agenten kannst du nicht starten.",
+        ...own.context,
       ].join("\n"),
     };
   }
@@ -182,12 +292,13 @@ export function forgeSessionTools(rec: SessionRecord, d: ForgeToolDeps): { tools
   };
 
   return {
-    tools: [startAgent, agentStatus, messageAgent, notify],
+    tools: [startAgent, agentStatus, messageAgent, notify, ...own.tools],
     context: [
       "Du läufst in FORGE, einer Desktop-Oberfläche für Claude Code. Neben deinen Werkzeugen gibt es FORGE-Werkzeuge (mcp__forge__…):",
       "- start_agent: startet einen parallelen Agenten in einem eigenen Git-Worktree auf eigenem Branch. Nur für Teilaufgaben, die wirklich unabhängig und gleichzeitig laufen können; der Auftrag muss für sich allein verständlich sein.",
       "- agent_status und message_agent: Agenten verfolgen und anleiten. Ihre Arbeit liegt auf ihren Branches; zusammenführen erst nach Rücksprache mit dem Nutzer.",
       "- notify: den Nutzer aktiv benachrichtigen. urgent=true nur, wenn er sofort gebraucht wird (kann sein Telefon klingeln lassen).",
+      ...own.context,
     ].join("\n"),
   };
 }

@@ -15,6 +15,8 @@ import type { Db } from "../persistence/db.js";
 import type { ProjectManager } from "../projects/project-manager.js";
 import type { SessionService } from "../sessions/session-service.js";
 import type { DevServerService } from "../devserver/dev-server.js";
+import type { TestDbService } from "../devtools/test-db.js";
+import type { KnowledgeStore } from "../knowledge/knowledge.js";
 import { slugify, type WorktreeService } from "../automation/worktrees.js";
 import { isArtifactPath, isSensitiveFile, type GitEngine } from "../git/git.js";
 import { CallController, type CallControllerDeps, type CallHandler, type Conversation, type ConversationCallbacks } from "./call-controller.js";
@@ -151,6 +153,8 @@ export interface PhoneDeps {
   projects: ProjectManager;
   sessions: SessionService;
   devServers: DevServerService;
+  testDb?: TestDbService;
+  knowledge?: KnowledgeStore;
   git: GitEngine;
   worktrees: WorktreeService;
   secrets: SecretStore;
@@ -1154,6 +1158,60 @@ export class PhoneService {
           const why = st.error ?? (st.exitCode !== null ? `Exit-Code ${st.exitCode}` : "");
           if (action === "start") return `Fehler: Der Dev-Server von ${p.name} ist nicht gestartet.${why ? ` ${why}` : ""}`;
           return st.status === "stopped" ? `Dev-Server von ${p.name} läuft nicht.` : `Dev-Server von ${p.name} ist beendet.${why ? ` ${why}` : ""}`;
+        }),
+      testDatabase: (projectName, action) =>
+        run(action !== "status", async () => {
+          const p = findProject(projectName);
+          const db = this.d.testDb;
+          if (!db) return "Fehler: Die Test-Datenbank ist hier nicht verfügbar.";
+          if (action === "status") {
+            const st = db.state(p.id);
+            if (st.status === "running") return `Die Test-Datenbank von ${p.name} läuft.`;
+            if (st.status === "failed") return `Die Test-Datenbank von ${p.name} ist nicht gestartet: ${st.error ?? "unbekannter Fehler"}`;
+            return st.initialized ? `Die Test-Datenbank von ${p.name} ist gestoppt.` : `${p.name} hat noch keine Test-Datenbank. Der erste Start legt sie an.`;
+          }
+          if (action === "stop") {
+            await db.stop(p.id);
+            return `Test-Datenbank von ${p.name} gestoppt.`;
+          }
+          if (action === "reset") {
+            const wasRunning = db.isRunning(p.id);
+            await db.reset(p.id);
+            if (wasRunning) await db.start(p.id);
+            return `Test-Datenbank von ${p.name} geleert${wasRunning ? " und wieder gestartet" : ""}.`;
+          }
+          await db.start(p.id);
+          return `Test-Datenbank von ${p.name} läuft.`;
+        }),
+      knowledge: (projectName, query, id) =>
+        run(false, async () => {
+          const p = findProject(projectName);
+          const store = this.d.knowledge;
+          if (!store) return "Fehler: Das Projektwissen ist hier nicht verfügbar.";
+          if (id?.trim()) {
+            const e = await store.read(p.id, id.trim());
+            return asData(`${e.title}. ${e.summary}\n${e.content.slice(0, 4000)}`);
+          }
+          const hits = store.search(p.id, query, 5);
+          if (!hits.length) return store.list(p.id).length ? `Im Projektwissen von ${p.name} steht dazu nichts.` : `${p.name} hat noch kein Projektwissen.`;
+          return asData(hits.map((h) => `${h.id}: ${h.title}. ${h.summary} ${h.snippet}`).join("\n"));
+        }),
+      rememberNote: (projectName, title, text) =>
+        run(true, async () => {
+          const p = findProject(projectName);
+          const store = this.d.knowledge;
+          if (!store) return "Fehler: Das Projektwissen ist hier nicht verfügbar.";
+          const note = text.trim();
+          if (!note) return "Fehler: Die Notiz ist leer.";
+          const stamp = new Date().toLocaleDateString("de-DE");
+          const near = store.similar(p.id, title)[0];
+          if (near) {
+            const e = await store.read(p.id, near.id);
+            await store.save(p.id, { id: e.id, title: e.title, summary: e.summary, tags: e.tags, content: `${e.content.trimEnd()}\n\nNotiz vom Telefon (${stamp}): ${note}\n` });
+            return `Notiz bei „${e.title}“ ergänzt.`;
+          }
+          const e = await store.save(p.id, { id: null, title: title.trim() || "Notiz", summary: note.length > 160 ? `${note.slice(0, 157)}...` : note, tags: ["telefon"], content: `Notiz vom Telefon (${stamp}): ${note}\n` });
+          return `Notiz „${e.title}“ im Projektwissen von ${p.name} abgelegt.`;
         }),
       git: (projectName, action, o) =>
         run(true, async () => {

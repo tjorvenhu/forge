@@ -19,8 +19,21 @@
         "minWidth": 1100,
         "minHeight": 700,
         "theme": "Dark",
-        "backgroundColor": "#14171d",
+        "transparent": true,
+        "windowEffects": { "effects": ["mica"] },
         "center": true
+      },
+      {
+        "label": "chat",
+        "create": false,
+        "title": "FORGE",
+        "width": 760,
+        "height": 900,
+        "minWidth": 520,
+        "minHeight": 500,
+        "theme": "Dark",
+        "transparent": true,
+        "windowEffects": { "effects": ["mica"] }
       }
     ],
     "security": {

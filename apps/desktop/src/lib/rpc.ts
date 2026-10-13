@@ -20,7 +20,18 @@ export const isTauri = () => typeof window !== "undefined" && "__TAURI_INTERNALS
 
 const LONG_METHODS = new Set<MethodName>(["projects.clone", "system.diagnostics", "system.runtimeInfo"]);
 
-class RpcClient {
+/**
+ * Every window gets all sidecar responses (the shell broadcasts them). The random prefix keeps one
+ * window from resolving a call of another window that happens to use the same counter value.
+ */
+export function requestIdPrefix(): string {
+  const bytes = new Uint8Array(6);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+export class RpcClient {
+  private readonly idPrefix = requestIdPrefix();
   private nextId = 1;
   private pending = new Map<string, Pending>();
   private listeners = new Set<Listener>();
@@ -28,7 +39,11 @@ class RpcClient {
   private started = false;
   up = false;
 
-  async start() {
+  /**
+   * `manageSidecar: false` for chat windows: only the main window starts the sidecar; a chat window
+   * waits for it (`sidecar.ready`) instead of restarting it under the main window.
+   */
+  async start({ manageSidecar = true }: { manageSidecar?: boolean } = {}) {
     if (this.started) return;
     this.started = true;
     // Lines come in batches: what piled up while the webview was busy arrives in one event.
@@ -45,7 +60,8 @@ class RpcClient {
     });
     const running = await invoke<boolean>("sidecar_status");
     if (running) this.setUp(true);
-    else await this.restart();
+    else if (manageSidecar) await this.restart();
+    else this.setUp(false);
   }
 
   async restart() {
@@ -89,7 +105,7 @@ class RpcClient {
   }
 
   call<M extends MethodName>(method: M, params: ParamsOf<M>): Promise<ResultOf<M>> {
-    const id = String(this.nextId++);
+    const id = `${this.idPrefix}-${this.nextId++}`;
     const timeoutMs = LONG_METHODS.has(method) ? 20 * 60_000 : 120_000;
     return new Promise<ResultOf<M>>((resolve, reject) => {
       const timer = setTimeout(() => {

@@ -185,6 +185,14 @@ export const MIGRATIONS: string[] = [
       DELETE FROM events_fts WHERE rowid = old.rowid;
     END;
   `,
+  // Dev tools per project (test environment, test database). The test environment may hold secrets,
+  // so it stays here and never goes into the project folder.
+  `
+  CREATE TABLE dev_tools (
+    project_id TEXT PRIMARY KEY REFERENCES projects(id) ON DELETE CASCADE,
+    config TEXT NOT NULL
+  );
+  `,
 ];
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -201,6 +209,7 @@ export const DEFAULT_SETTINGS: Settings = {
   updateChecks: true,
   desktopNotifications: true,
   disabledPolicyRules: [...DEFAULT_DISABLED_POLICY_RULES],
+  windowEffect: "mica",
 };
 
 interface ProjectRow {
@@ -478,6 +487,26 @@ export class Db {
   /** parent_id has no foreign key: worktrees of a removed project become standalone projects. */
   detachChildProjects(parentId: string) {
     this.sql.prepare("UPDATE projects SET parent_id = NULL WHERE parent_id = ?").run(parentId);
+  }
+
+  // ---- dev tools
+
+  /** Stored dev tools config as JSON; null when the project has none yet. */
+  getDevTools(projectId: string): unknown {
+    const r = this.sql.prepare("SELECT config FROM dev_tools WHERE project_id = ?").get(projectId) as { config: string } | undefined;
+    return r ? (JSON.parse(r.config) as unknown) : null;
+  }
+
+  setDevTools(projectId: string, config: unknown) {
+    this.sql
+      .prepare("INSERT INTO dev_tools(project_id, config) VALUES(?, ?) ON CONFLICT(project_id) DO UPDATE SET config = excluded.config")
+      .run(projectId, JSON.stringify(config));
+  }
+
+  /** Test database ports taken by other projects. */
+  devToolsPorts(exceptProjectId: string): number[] {
+    const rows = this.sql.prepare("SELECT json_extract(config, '$.database.port') AS port FROM dev_tools WHERE project_id <> ?").all(exceptProjectId) as Array<{ port: number | null }>;
+    return rows.map((r) => r.port).filter((p): p is number => typeof p === "number");
   }
 
   // ---- sessions

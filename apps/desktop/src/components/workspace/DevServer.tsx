@@ -1,23 +1,21 @@
 import { useEffect, useLayoutEffect, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { ExternalLink, Play, RotateCw, ScrollText, SendHorizontal, Settings2, Square } from "lucide-react";
+import { ExternalLink, Play, RotateCw, SendHorizontal, Square } from "lucide-react";
 import type { DevServerState, Project } from "@forge/protocol";
 import { call, keys, useDevServer } from "@/lib/queries";
 import { errorMessage } from "@/lib/rpc";
 import { openExternal } from "@/lib/native";
-import { cn } from "@/lib/utils";
 import { useUi } from "@/stores/ui";
 import { toast } from "@/stores/toast";
 import { activeDraftKey, useDrafts } from "@/stores/drafts";
 import { useDevOutput } from "@/stores/dev-output";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/misc";
-import { DropdownMenu, type MenuItem } from "@/components/ui/dropdown";
 
 /** Lines of dev server output handed to Claude; enough for a stack trace, small enough for the prompt. */
 const LINES_FOR_CLAUDE = 80;
 
-function useDevActions(projectId: string) {
+export function useDevActions(projectId: string) {
   const qc = useQueryClient();
   const run = async (method: "devserver.start" | "devserver.stop", errorTitle: string) => {
     try {
@@ -36,51 +34,8 @@ function useDevActions(projectId: string) {
   };
 }
 
-function hostOf(url: string): string {
+export function hostOf(url: string): string {
   return url.replace(/^https?:\/\//, "").replace(/\/$/, "");
-}
-
-/**
- * Dev server in the workspace tab row: a compact button colored by its state (green running, amber starting,
- * red crashed, gray off); start, stop, browser and
- * output live in its menu, so the header stays free.
- */
-export function DevServerMenu({ project }: { project: Project }) {
-  const state = useDevServer(project.id).data;
-  const { start, stop } = useDevActions(project.id);
-  if (!state) return null;
-  const running = state.status === "running";
-  const crashed = (state.status === "exited" && state.exitCode !== 0 && state.exitCode !== null) || state.status === "failed";
-  const tone = running
-    ? state.url
-      ? "bg-success-soft text-success hover:bg-success-soft hover:text-success"
-      : "bg-warning-soft text-warning hover:bg-warning-soft hover:text-warning"
-    : crashed
-      ? "bg-danger-soft text-danger hover:bg-danger-soft hover:text-danger"
-      : "";
-  const status = running ? (state.url ? `läuft auf ${hostOf(state.url)}` : "startet …") : crashed ? "unerwartet beendet" : "aus";
-  const items: MenuItem[] = [
-    running
-      ? { label: "Dev-Server stoppen", icon: <Square className="h-3.5 w-3.5" />, onSelect: () => void stop(), danger: true }
-      : state.effectiveCommand
-        ? { label: crashed ? "Neu starten" : "Dev-Server starten", icon: <Play className="h-3.5 w-3.5" />, onSelect: () => void start(), hint: state.effectiveCommand }
-        : { label: "Startbefehl einstellen", icon: <Settings2 className="h-3.5 w-3.5" />, onSelect: () => useUi.getState().setWorkspaceTab("settings") },
-    ...(running && state.url ? [{ label: "Im Browser öffnen", icon: <ExternalLink className="h-3.5 w-3.5" />, onSelect: () => void openExternal(state.url!), hint: hostOf(state.url) }] : []),
-    { label: "Ausgabe anzeigen", icon: <ScrollText className="h-3.5 w-3.5" />, onSelect: () => useUi.getState().openPanelTab(project.id, "dev") },
-  ];
-  return (
-    <DropdownMenu
-      align="end"
-      header={`Dev-Server: ${status}`}
-      trigger={
-        <Button size="sm" variant="ghost" aria-label={`Dev-Server, ${status}`} title={`Dev-Server: ${status}`} className={cn("gap-1.5", tone)}>
-          <Play className={cn("h-3.5 w-3.5", running && !state.url && "animate-soft-pulse")} />
-          <span className="hidden xl:inline">Dev-Server</span>
-        </Button>
-      }
-      items={items}
-    />
-  );
 }
 
 function statusBadge(state: DevServerState) {
@@ -96,7 +51,7 @@ function statusBadge(state: DevServerState) {
   }
 }
 
-/** Output of the dev server in the bottom panel, with a shortcut to hand the last lines to Claude. */
+/** Output of the dev server (bottom panel and Dev-Tools tab), with a shortcut to hand the last lines to Claude. */
 export function DevServerPanel({ project }: { project: Project }) {
   const state = useDevServer(project.id).data;
   const text = useDevOutput((s) => s.text[project.id]);
@@ -169,7 +124,7 @@ export function DevServerPanel({ project }: { project: Project }) {
         }}
         className="min-h-0 flex-1 overflow-auto whitespace-pre-wrap break-all px-3 py-2 font-mono text-caption-lg leading-[1.45] text-muted"
       >
-        {text || (state.effectiveCommand ? `Noch keine Ausgabe. Starten führt „${state.effectiveCommand}“ im Projektordner aus.` : "Kein Startbefehl erkannt. Trage ihn in den Projekt-Einstellungen unter Dev-Server-Befehl ein.")}
+        {text || (state.effectiveCommand ? `Noch keine Ausgabe. Starten führt „${state.effectiveCommand}“ im Projektordner aus.` : "Kein Startbefehl erkannt. Trag ihn im Tab Dev-Tools ein.")}
       </pre>
     </div>
   );

@@ -46,7 +46,7 @@ const base = EditorView.theme({
 export interface CodeEditorProps {
   value: string;
   onChange: (v: string) => void;
-  language: "markdown" | "json";
+  language: "markdown" | "json" | "text";
   onSave?: () => void;
   readOnly?: boolean;
   ariaLabel: string;
@@ -60,7 +60,7 @@ export function CodeEditor({ value, onChange, language, onSave, readOnly, ariaLa
   onSaveRef.current = onSave;
   const extensions = useMemo(
     () => [
-      language === "markdown" ? markdown({ base: markdownLanguage }) : json(),
+      language === "markdown" ? markdown({ base: markdownLanguage }) : language === "json" ? json() : [],
       EditorView.lineWrapping,
       base,
       EditorView.contentAttributes.of({ "aria-label": ariaLabel }),

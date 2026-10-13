@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import type { AppUpdateState } from "@forge/protocol";
-import { AppUpdateService, compareVersions, installedRuntimeKey, pickRelease, UPDATE_REPO, type Release } from "../src/update/app-update.js";
+import { AppUpdateService, changeRange, compareVersions, installedRuntimeKey, MAX_CHANGE_RELEASES, pickRelease, UPDATE_REPO, type Release } from "../src/update/app-update.js";
 
 const INSTALLER = Buffer.from("MZ fake installer");
 const DIGEST = `sha256:${createHash("sha256").update(INSTALLER).digest("hex")}`;
@@ -63,7 +63,7 @@ describe("app updates", () => {
     const { svc, calls } = service(() => ({ code: 0, stdout: release("v0.1.7") }));
     const checked = await svc.check();
     expect(calls[0]).toEqual(["api", `repos/${UPDATE_REPO}/releases?per_page=100`]);
-    expect(checked).toMatchObject({ phase: "available", autoInstall: false, latest: { version: "0.1.7", tag: "v0.1.7", notes: "- feat: Update-Funktion", kind: "full", via: null } });
+    expect(checked).toMatchObject({ phase: "available", autoInstall: false, latest: { version: "0.1.7", tag: "v0.1.7", notes: "- feat: Update-Funktion", since: "0.1.0", kind: "full", via: null } });
     const ready = await svc.download();
     expect(ready.phase).toBe("ready");
     expect(readFileSync(ready.installerPath!)).toEqual(INSTALLER);
@@ -124,6 +124,101 @@ describe("app updates", () => {
     expect(prompts[0]).toContain("- feat: Update-Funktion");
     expect(svc.changelog()?.status).toBe("ready");
     expect(prompts).toHaveLength(1);
+  });
+
+  it("lists every release since the installed version, at most the newest MAX_CHANGE_RELEASES", () => {
+    const list = [rel("v0.1.15"), rel("v0.1.13"), rel("v0.1.14"), rel("v0.1.12"), { ...rel("v0.1.16"), draft: true }];
+    const range = changeRange(list, "0.1.12")!;
+    expect(range.releases.map((r) => r.tag_name)).toEqual(["v0.1.15", "v0.1.14", "v0.1.13"]);
+    expect(range).toMatchObject({ since: "0.1.12", sinceTag: "v0.1.12", capped: false });
+    expect(changeRange(list, "0.1.15")).toBeNull();
+
+    // A local build (0.1.0) would get every release ever made: only the newest ones, from the release before them.
+    const many = Array.from({ length: MAX_CHANGE_RELEASES + 10 }, (_, i) => rel(`v0.1.${i + 1}`));
+    const capped = changeRange(many, "0.1.0")!;
+    expect(capped.releases).toHaveLength(MAX_CHANGE_RELEASES);
+    expect(capped.releases[0]!.tag_name).toBe(`v0.1.${MAX_CHANGE_RELEASES + 10}`);
+    expect(capped).toMatchObject({ since: "0.1.10", sinceTag: "v0.1.10", capped: true });
+  });
+
+  it("writes the changelog over all releases between the installed and the offered version", async () => {
+    const prompts: string[] = [];
+    const calls: string[][] = [];
+    const list = [
+      { ...rel("v0.1.15", [`FORGE_0.1.15_update_${KEY}.zip`]), body: "- feat: Diktat live" },
+      { ...rel("v0.1.14", [`FORGE_0.1.14_update_${KEY}.zip`]), body: "- feat: Session-Tabs" },
+      { ...rel("v0.1.13", [`FORGE_0.1.13_update_${KEY}.zip`]), body: "- fix: Push auf geschützten Branches" },
+      { ...rel("v0.1.12"), body: "- feat: schon installiert" },
+    ];
+    const svc = new AppUpdateService({
+      emit: () => {},
+      enabled: () => true,
+      log: () => {},
+      currentVersion: "0.1.12",
+      installable: true,
+      runtimeKey: () => KEY,
+      chainFile: chainFile(),
+      gh: async (args) => {
+        calls.push(args);
+        return args[1]?.includes("/compare/")
+          ? { code: 0, stdout: "feat: Session-Tabs\nfix: Push\nfeat: Diktat live\n", stderr: "" }
+          : { code: 0, stdout: JSON.stringify(list), stderr: "" };
+      },
+      claudeReady: async () => "ok",
+      writeChangelog: async (prompt) => {
+        prompts.push(prompt);
+        return "- Diktat schreibt live";
+      },
+    });
+    const s = await svc.check();
+    expect(s.latest).toMatchObject({ version: "0.1.15", since: "0.1.12", kind: "patch" });
+    expect(s.latest!.notes).toBe("### 0.1.15\n- feat: Diktat live\n\n### 0.1.14\n- feat: Session-Tabs\n\n### 0.1.13\n- fix: Push auf geschützten Branches");
+    expect(await svc.changelogDone()).toMatchObject({ status: "ready", commits: ["feat: Session-Tabs", "fix: Push", "feat: Diktat live"] });
+    expect(calls.find((a) => a[1]?.includes("/compare/"))?.[1]).toBe(`repos/${UPDATE_REPO}/compare/v0.1.12...v0.1.15`);
+    const prompt = prompts[0]!;
+    expect(prompt).toContain("alle 3 Versionen nach 0.1.12 bis einschließlich 0.1.15");
+    for (const line of ["Version 0.1.15:\n- feat: Diktat live", "Version 0.1.14:\n- feat: Session-Tabs", "Version 0.1.13:\n- fix: Push auf geschützten Branches", "- fix: Push"]) expect(prompt).toContain(line);
+    expect(prompt).not.toContain("schon installiert");
+    expect(prompt).not.toContain("ältere Änderungen fehlen");
+  });
+
+  it("caps the changelog input of a local build and says so", async () => {
+    const prompts: string[] = [];
+    const calls: string[][] = [];
+    const big = Array.from({ length: 80 }, (_, i) => `- feat: Änderung Nummer ${i} mit etwas mehr Text`).join("\n");
+    const list = Array.from({ length: MAX_CHANGE_RELEASES + 15 }, (_, i) => ({ ...rel(`v0.1.${i + 1}`), body: big }));
+    const commits = Array.from({ length: 400 }, (_, i) => `feat: Commit ${i}`).join("\n");
+    const svc = new AppUpdateService({
+      emit: () => {},
+      enabled: () => true,
+      log: () => {},
+      currentVersion: "0.1.0",
+      installable: true,
+      runtimeKey: () => null,
+      chainFile: chainFile(),
+      gh: async (args) => {
+        calls.push(args);
+        return { code: 0, stdout: args[1]?.includes("/compare/") ? commits : JSON.stringify(list), stderr: "" };
+      },
+      claudeReady: async () => "ok",
+      writeChangelog: async (prompt) => {
+        prompts.push(prompt);
+        return "- Vieles";
+      },
+    });
+    const s = await svc.check();
+    expect(s.latest).toMatchObject({ version: "0.1.35", since: "0.1.15" });
+    const log = await svc.changelogDone();
+    expect(log!.commits).toHaveLength(150);
+    expect(log!.commits.at(-1)).toBe("feat: Commit 399");
+    expect(calls.find((a) => a[1]?.includes("/compare/"))?.[1]).toBe(`repos/${UPDATE_REPO}/compare/v0.1.15...v0.1.35`);
+    const prompt = prompts[0]!;
+    expect(prompt).toContain(`nur die letzten ${MAX_CHANGE_RELEASES} Versionen nach 0.1.15, ältere Änderungen fehlen`);
+    expect(prompt).toContain("Version 0.1.35:");
+    expect(prompt).toContain("(gekürzt)");
+    expect(prompt).toMatch(/Notizen der \d+ ältesten Versionen aus Platzgründen weggelassen/);
+    expect(prompt).toContain("nur die neuesten 150, 250 ältere weggelassen");
+    expect(prompt.length).toBeLessThan(25_000);
   });
 
   it("takes the small update for the installed runtime, else the newest full installer", () => {
