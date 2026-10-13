@@ -31,7 +31,7 @@ export function ProjectCard({ p, agents = [], onRemove }: { p: ProjectWithStatus
   return (
     <div className={cn("group flex flex-col rounded-xl border border-border bg-surface transition-colors hover:border-border-strong", !p.exists && "opacity-70")}>
       <button className="flex items-center gap-3 px-4 pb-2.5 pt-4 text-left" onClick={() => openProject(p.id)} aria-label={`${p.name} öffnen`} title={`${p.name}\n${p.path}`}>
-        <ProjectIcon name={p.name} size={32} />
+        <ProjectIcon id={p.parentId ?? p.id} name={p.name} size={32} />
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5">
             <span className="truncate text-sm font-semibold">{p.name}</span>

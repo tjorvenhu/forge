@@ -179,7 +179,7 @@ function PaletteBody({ onClose }: { onClose: () => void }) {
         label: p.name,
         keywords: `${p.path} ${p.technologies.join(" ")} ${p.tags.join(" ")}`,
         hint: p.git?.branch ?? undefined,
-        icon: <ProjectIcon name={p.name} size={18} />,
+        icon: <ProjectIcon id={p.parentId ?? p.id} name={p.name} size={18} />,
         run: () => ui.openProject(p.id),
       });
     }

@@ -127,7 +127,7 @@ export function OpenSessions() {
                 title={`${g.projectName} öffnen`}
                 className={cn("flex min-w-0 flex-1 items-center gap-2.5 px-2 py-1.5 text-left text-ui", projectActive ? "text-fg" : "text-muted hover:text-fg")}
               >
-                <ProjectIcon name={g.projectName} size={22} className="rounded-md" />
+                <ProjectIcon id={g.projectId} name={g.projectName} size={22} className="rounded-md" />
                 <span className="truncate">{g.projectName}</span>
                 {collapsed && g.tabs.length > 0 && (
                   <span className="flex shrink-0 items-center gap-1.5 text-caption tabular-nums text-subtle" aria-label={`${g.tabs.length} ${g.tabs.length === 1 ? "Session" : "Sessions"} ausgeblendet`}>

@@ -273,7 +273,7 @@ function WorkspaceHeader({ projectId }: { projectId: string }) {
 
   return (
     <header className="flex h-12 shrink-0 items-center gap-3 border-b border-border px-5">
-      <ProjectIcon name={project.name} size={26} />
+      <ProjectIcon id={project.parentId ?? project.id} name={project.name} size={26} />
       {/* Only the name gives way in a narrow window; the star sits outside it, so it cannot slide over the tags. */}
       <h1 className="-mr-1.5 min-w-0 truncate text-title-sm font-semibold" title={`${project.name}\n${shortPath(project.path, 4)}`}>
         {project.name}

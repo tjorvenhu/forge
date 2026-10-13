@@ -44,7 +44,7 @@ export function SessionBar({
     <div className="flex h-11 shrink-0 items-center gap-2 border-b border-border px-4">
       {detached ? (
         <div className="flex min-w-0 items-center gap-2 text-body">
-          <ProjectIcon name={project.name} size={20} className="rounded-md" />
+          <ProjectIcon id={project.parentId ?? project.id} name={project.name} size={20} className="rounded-md" />
           <span className="max-w-40 shrink-0 truncate text-muted">{project.name}</span>
           <span className="truncate">{title}</span>
         </div>

@@ -34,6 +34,19 @@
   --color-graph-blue: #4f9cf0;
   --color-graph-pink: #e0679f;
   --color-graph-purple: #a78bfa;
+  /* project icon tiles; each project gets one, derived from its id (ProjectIcon) */
+  --color-tile-orange: #f97316;
+  --color-tile-amber: #f0a830;
+  --color-tile-lime: #9acd32;
+  --color-tile-green: #3fb97a;
+  --color-tile-teal: #2cbfae;
+  --color-tile-cyan: #22b8d6;
+  --color-tile-sky: #4fb3f6;
+  --color-tile-blue: #4f86f0;
+  --color-tile-indigo: #8b8ff8;
+  --color-tile-violet: #a78bfa;
+  --color-tile-fuchsia: #d77ef0;
+  --color-tile-pink: #e0679f;
   /* backdrop behind dialogs and the command palette */
   --color-overlay: #0a0c1099;
 
