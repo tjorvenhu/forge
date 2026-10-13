@@ -3,7 +3,7 @@ import { MAX_PANES, paneCapacity, paneRows } from "./split-view";
 
 describe("paneCapacity", () => {
   it("fits two above two on a full HD window", () => {
-    expect(paneCapacity(1600, 850)).toBe(4);
+    expect(paneCapacity(1600, 950)).toBe(4);
   });
 
   it("keeps a small window to the main chat", () => {
@@ -18,7 +18,7 @@ describe("paneCapacity", () => {
 
 describe("paneRows", () => {
   it("puts two chats side by side on a wide area", () => {
-    expect(paneRows(2, 1600, 850)).toEqual([2]);
+    expect(paneRows(2, 1600, 950)).toEqual([2]);
   });
 
   it("stacks two chats when the area is tall and narrow", () => {
@@ -26,7 +26,7 @@ describe("paneRows", () => {
   });
 
   it("arranges four chats two above two", () => {
-    expect(paneRows(4, 1600, 850)).toEqual([2, 2]);
+    expect(paneRows(4, 1600, 950)).toEqual([2, 2]);
     expect(paneRows(4, 2250, 1200)).toEqual([2, 2]);
   });
 
@@ -40,6 +40,6 @@ describe("paneRows", () => {
 
   it("keeps every chat at its minimum size when a grid allows it", () => {
     // Four in a row would be taller, but each chat narrower than the minimum.
-    expect(paneRows(4, 1500, 800)).toEqual([2, 2]);
+    expect(paneRows(4, 1500, 900)).toEqual([2, 2]);
   });
 });

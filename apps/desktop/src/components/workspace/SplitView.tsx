@@ -1,25 +1,25 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
 import { useShallow } from "zustand/react/shallow";
-import { EyeOff, FolderX, LayoutGrid, MessageSquarePlus, X } from "lucide-react";
-import type { Project } from "@forge/protocol";
-import { useLiveSessions, useProject, useSessions } from "@/lib/queries";
+import { EyeOff, FolderX, LayoutGrid } from "lucide-react";
+import { useLiveSessions, useProject } from "@/lib/queries";
 import { errorMessage, RpcCallError } from "@/lib/rpc";
 import { paneCapacity, paneRows } from "@/lib/split-view";
 import { cn, relativeTime } from "@/lib/utils";
 import { useUi, type SplitPane } from "@/stores/ui";
 import { Button } from "@/components/ui/button";
-import { EmptyState, ErrorBanner, Tooltip } from "@/components/ui/misc";
+import { EmptyState, ErrorBanner } from "@/components/ui/misc";
 import { ListSkeleton, Skeleton } from "@/components/ui/skeleton";
 import { ProjectIcon } from "@/components/projects/ProjectIcon";
 import { ChatPanel, ChatPanelSkeleton } from "./ChatPanel";
 import { sessionStatusLabel } from "./SessionStatusBadge";
+import { PaneActions, useProjectChoices, WorkspaceHeader } from "./WorkspaceHeader";
 import { SplitLayoutContext, type SplitLayout } from "./chat-slot";
 
 type Shown = { projectId: string | null; active: string | null };
 
 const sameChat = (a: Shown, b: Shown) => !!a.active && a.projectId === b.projectId && a.active === b.active;
 
-/** Panes that show something else than the main chat and the panes before them. */
+/** Panes that show something else than the main area and the panes before them. */
 export function distinctPanes(panes: readonly SplitPane[], main: Shown): SplitPane[] {
   const out: SplitPane[] = [];
   for (const p of panes) if (!sameChat(p, main) && !out.some((o) => sameChat(o, p))) out.push(p);
@@ -47,33 +47,32 @@ const lcm = (a: number, b: number): number => {
 };
 
 /**
- * The chat of the workspace, split into several chats when asked: the main chat first, then the further
- * panes, in a grid as large as the area allows (e.g. two above two). Panes that do not fit stay in the
- * list and come back once the window is large enough again.
+ * The workspace, split into several areas when asked: the main area (`children`, the open project with
+ * its tabs and panels) first, then further areas with a project and chat each, in a grid as large as the
+ * window allows (e.g. two above two). Areas that do not fit stay in the list and come back once the
+ * window is large enough again.
  */
-export function SplitChat({ project, workingInPanel }: { project: Project; workingInPanel: boolean }) {
+export function SplitWorkspace({ projectId, children }: { projectId: string; children: ReactNode }) {
   const gridRef = useRef<HTMLDivElement>(null);
   const size = useSize(gridRef);
   const panes = useUi((s) => s.splitPanes);
-  const main = useUi(useShallow((s) => ({ projectId: project.id, active: s.activeSession[project.id] ?? null })));
+  const main = useUi(useShallow((s) => ({ projectId, active: s.activeSession[projectId] ?? null })));
   const distinct = useMemo(() => distinctPanes(panes, main), [panes, main]);
   const capacity = size ? paneCapacity(size.width, size.height) : 1;
   const visible = distinct.slice(0, Math.max(0, capacity - 1));
   const hidden = distinct.slice(visible.length);
   const rows = size ? paneRows(1 + visible.length, size.width, size.height) : [1];
-  const layout = useMemo<SplitLayout>(() => ({ shown: 1 + visible.length, capacity }), [visible.length, capacity]);
+  // One grid track per smallest share, so rows with fewer areas split the same width evenly.
+  const cols = rows.reduce(lcm, 1);
+  const spans = rows.flatMap((count) => Array.from({ length: count }, () => cols / count));
+  const mainWidth = size ? Math.floor((size.width * spans[0]!) / cols) : null;
+  const layout = useMemo<SplitLayout>(() => ({ shown: 1 + visible.length, capacity, mainWidth }), [visible.length, capacity, mainWidth]);
   const room = Math.max(0, capacity - 1 - distinct.length);
   const setRoom = useUi((s) => s.setSplitRoom);
   useEffect(() => setRoom(room), [room, setRoom]);
   useEffect(() => () => setRoom(0), [setRoom]);
 
-  // One grid track per smallest share, so rows with fewer chats split the same width evenly.
-  const cols = rows.reduce(lcm, 1);
-  const cells: { key: string; node: ReactNode }[] = [
-    { key: "main", node: <ChatPanel project={project} workingInPanel={workingInPanel} /> },
-    ...visible.map((p) => ({ key: p.id, node: <PaneChat pane={p} mainProject={project} /> })),
-  ];
-  const spans = rows.flatMap((count) => Array.from({ length: count }, () => cols / count));
+  const cells: { key: string; node: ReactNode }[] = [{ key: "main", node: children }, ...visible.map((p) => ({ key: p.id, node: <PaneArea pane={p} /> }))];
 
   return (
     <SplitLayoutContext.Provider value={layout}>
@@ -85,8 +84,8 @@ export function SplitChat({ project, workingInPanel }: { project: Project; worki
           style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`, gridTemplateRows: `repeat(${rows.length}, minmax(0, 1fr))` }}
         >
           {cells.map((c, i) => (
-            // Keyed by pane, so a chat keeps its state when the grid rearranges around it.
-            <div key={c.key} className="min-h-0 min-w-0 overflow-hidden bg-bg" style={{ gridColumn: `span ${spans[i] ?? cols}` }}>
+            // Keyed by area, so it keeps its state when the grid rearranges around it. A container, so headers fit their area.
+            <div key={c.key} className="@container min-h-0 min-w-0 overflow-hidden bg-bg" style={{ gridColumn: `span ${spans[i] ?? cols}` }}>
               {c.node}
             </div>
           ))}
@@ -96,13 +95,13 @@ export function SplitChat({ project, workingInPanel }: { project: Project; worki
   );
 }
 
-/** Chats that do not fit at the current window size; they come back by themselves when it grows. */
+/** Areas that do not fit at the current window size; they come back by themselves when it grows. */
 function HiddenPanes({ panes }: { panes: SplitPane[] }) {
   const close = useUi((s) => s.closeSplitPane);
   const text =
     panes.length === 1
-      ? "Ein weiterer Chat ist ausgeblendet, das Fenster ist zu klein. Mit mehr Platz erscheint er wieder."
-      : `${panes.length} weitere Chats sind ausgeblendet, das Fenster ist zu klein. Mit mehr Platz erscheinen sie wieder.`;
+      ? "Ein weiterer Bereich ist ausgeblendet, das Fenster ist zu klein. Mit mehr Platz erscheint er wieder."
+      : `${panes.length} weitere Bereiche sind ausgeblendet, das Fenster ist zu klein. Mit mehr Platz erscheinen sie wieder.`;
   return (
     <div role="status" className="flex h-9 shrink-0 animate-fade-in items-center gap-2 border-b border-border bg-surface px-4 text-caption-lg text-muted">
       <EyeOff className="h-3.5 w-3.5 shrink-0" />
@@ -116,21 +115,22 @@ function HiddenPanes({ panes }: { panes: SplitPane[] }) {
   );
 }
 
-function PaneChat({ pane, mainProject }: { pane: SplitPane; mainProject: Project }) {
-  if (!pane.projectId) return <PanePicker pane={pane} mainProject={mainProject} />;
-  return <PaneProject pane={pane} projectId={pane.projectId} />;
+function PaneArea({ pane }: { pane: SplitPane }) {
+  if (!pane.projectId) return <PanePicker pane={pane} />;
+  return <PaneProject key={pane.projectId} pane={pane} projectId={pane.projectId} />;
 }
 
+/** A further area: the project's header and one of its chats. */
 function PaneProject({ pane, projectId }: { pane: SplitPane; projectId: string }) {
   const project = useProject(projectId);
   const close = useUi((s) => s.closeSplitPane);
   const missing = project.error instanceof RpcCallError && project.error.code === "NOT_FOUND";
   useEffect(() => {
-    // The project was removed meanwhile: its pane goes with it.
+    // The project was removed meanwhile: its area goes with it.
     if (missing) close(pane.id);
   }, [missing, close, pane.id]);
 
-  if (project.isLoading) return <ChatPanelSkeleton />;
+  if (project.isLoading) return <PaneSkeleton />;
   if (!project.data) {
     return (
       <PaneMessage pane={pane}>
@@ -140,108 +140,102 @@ function PaneProject({ pane, projectId }: { pane: SplitPane; projectId: string }
       </PaneMessage>
     );
   }
-  if (!project.data.exists) {
-    return (
-      <PaneMessage pane={pane}>
-        <EmptyState icon={<FolderX className="h-9 w-9" />} title="Chat nicht verfügbar">
-          Der Projektordner von {project.data.name} fehlt.
-        </EmptyState>
-      </PaneMessage>
-    );
-  }
-  return <ChatPanel project={project.data} pane={pane} />;
-}
-
-/** A pane without a chat (error, missing folder): the bar keeps the way to close it. */
-function PaneMessage({ pane, children }: { pane: SplitPane; children: ReactNode }) {
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <PaneBar pane={pane} title="Chat" />
+      <WorkspaceHeader projectId={projectId} pane={pane} />
+      <div className="min-h-0 flex-1">
+        {project.data.exists ? (
+          <ChatPanel project={project.data} pane={pane} />
+        ) : (
+          <EmptyState icon={<FolderX className="h-9 w-9" />} title="Chat nicht verfügbar">
+            Der Projektordner von {project.data.name} fehlt.
+          </EmptyState>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** Header and chat of an area at their final sizes, while its project loads. */
+function PaneSkeleton() {
+  return (
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="flex h-12 shrink-0 items-center gap-3 border-b border-border px-5" aria-hidden>
+        <Skeleton className="h-6.5 w-6.5 rounded-lg" />
+        <Skeleton className="h-4 w-36" />
+        <div className="flex-1" />
+        <Skeleton className="h-6 w-24" />
+        <Skeleton className="h-7 w-7" />
+        <Skeleton className="h-7 w-7" />
+      </div>
+      <div className="min-h-0 flex-1">
+        <ChatPanelSkeleton />
+      </div>
+    </div>
+  );
+}
+
+/** An area without a project (picker, error): a bar with the way to close it. */
+function PaneMessage({ pane, title = "Bereich", children }: { pane: SplitPane; title?: string; children: ReactNode }) {
+  return (
+    <div className="flex h-full min-h-0 flex-col">
+      <header className="flex h-12 shrink-0 items-center gap-3 border-b border-border px-5">
+        <LayoutGrid className="h-4 w-4 shrink-0 text-muted" />
+        <h1 className="min-w-0 flex-1 truncate text-title-sm font-semibold">{title}</h1>
+        <PaneActions pane={pane} />
+      </header>
       <div className="min-h-0 flex-1 overflow-y-auto">{children}</div>
     </div>
   );
 }
 
-function PaneBar({ pane, title }: { pane: SplitPane; title: string }) {
-  const close = useUi((s) => s.closeSplitPane);
-  return (
-    <div className="flex h-11 shrink-0 items-center gap-2 border-b border-border px-4">
-      <LayoutGrid className="h-3.5 w-3.5 shrink-0 text-muted" />
-      <span className="min-w-0 flex-1 truncate text-body">{title}</span>
-      <Tooltip content="Bereich schließen">
-        <Button size="icon-sm" variant="ghost" aria-label="Bereich schließen" onClick={() => close(pane.id)}>
-          <X className="h-3.5 w-3.5" />
-        </Button>
-      </Tooltip>
-    </div>
-  );
-}
-
-/** Sessions on screen in the workspace (main chat and panes), as "projectId\nactive" keys. */
-function useShownKeys(): ReadonlySet<string> {
-  const key = useUi((s) => {
-    const shown = s.splitPanes.filter((p) => p.projectId && p.active).map((p) => `${p.projectId}\n${p.active}`);
-    if (s.activeProjectId && s.activeSession[s.activeProjectId]) shown.push(`${s.activeProjectId}\n${s.activeSession[s.activeProjectId]}`);
-    return shown.sort().join("\t");
-  });
-  return useMemo(() => new Set(key ? key.split("\t") : []), [key]);
-}
-
-/** A new pane: running sessions of all projects and the recent ones of the open project, not yet on screen. */
-function PanePicker({ pane, mainProject }: { pane: SplitPane; mainProject: Project }) {
+/** A new area: running sessions of all projects not yet on screen, and every project. */
+function PanePicker({ pane }: { pane: SplitPane }) {
   const live = useLiveSessions();
-  const recent = useSessions(mainProject.id);
+  const { projects, loading: projectsLoading } = useProjectChoices();
   const setPane = useUi((s) => s.setSplitPane);
-  const shown = useShownKeys();
-  const free = (projectId: string, id: string) => !shown.has(`${projectId}\n${id}`);
-  const running = (live.data ?? []).filter((s) => free(s.projectId, s.id));
-  const liveIds = new Set((live.data ?? []).map((s) => s.id));
-  const earlier = (recent.data?.sessions ?? []).filter((s) => !liveIds.has(s.id) && free(s.projectId, s.id)).slice(0, 8);
-  const loading = live.isPending || recent.isPending;
+  const shown = useUi(useShallow((s) => [...(s.activeProjectId ? [s.activeSession[s.activeProjectId] ?? null] : []), ...s.splitPanes.map((p) => p.active)]));
+  const running = (live.data ?? []).filter((s) => !shown.includes(s.id));
+  const loading = live.isPending || projectsLoading;
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
-      <PaneBar pane={pane} title="Chat wählen" />
-      <div className="min-h-0 flex-1 animate-view-in overflow-y-auto px-4 py-4">
-        <div className="mx-auto flex max-w-xl flex-col gap-5">
-          <Button variant="outline" className="justify-start gap-2" onClick={() => setPane(pane.id, mainProject.id, null)}>
-            <MessageSquarePlus className="h-4 w-4" />
-            <span className="truncate">Neue Session in {mainProject.name}</span>
-          </Button>
-          {loading ? (
-            <PickerSkeleton />
-          ) : (
-            <>
-              {running.length > 0 && (
-                <PickerSection title="Laufende Sessions">
-                  {running.map((s) => (
-                    <PickerRow
-                      key={s.id}
-                      projectId={s.projectId}
-                      projectName={s.projectName}
-                      title={s.title}
-                      hint={sessionStatusLabel(s.status, s.live, s.autoContinueAt)}
-                      live
-                      onPick={() => setPane(pane.id, s.projectId, s.id)}
-                    />
-                  ))}
-                </PickerSection>
-              )}
-              {earlier.length > 0 && (
-                <PickerSection title={`Zuletzt in ${mainProject.name}`}>
-                  {earlier.map((s) => (
-                    <PickerRow key={s.id} projectId={mainProject.parentId ?? mainProject.id} projectName={mainProject.name} title={s.title} hint={relativeTime(s.updatedAt)} onPick={() => setPane(pane.id, s.projectId, s.id)} />
-                  ))}
-                </PickerSection>
-              )}
-              {!running.length && !earlier.length && (
-                <p className="text-center text-body text-muted">Alle Sessions sind schon auf dem Bildschirm. Starte hier eine neue.</p>
-              )}
-            </>
-          )}
-        </div>
+    <PaneMessage pane={pane} title="Projekt oder Session wählen">
+      <div className="mx-auto flex max-w-xl animate-view-in flex-col gap-5 px-4 py-4">
+        {loading ? (
+          <PickerSkeleton />
+        ) : (
+          <>
+            {running.length > 0 && (
+              <PickerSection title="Laufende Sessions">
+                {running.map((s) => (
+                  <PickerRow
+                    key={s.id}
+                    iconId={s.projectId}
+                    iconName={s.projectName}
+                    label={s.title ?? "Ohne Titel"}
+                    hint={`${s.projectName}, ${sessionStatusLabel(s.status, s.live, s.autoContinueAt)}`}
+                    onPick={() => setPane(pane.id, s.projectId, s.id)}
+                  />
+                ))}
+              </PickerSection>
+            )}
+            <PickerSection title="Projekte">
+              {projects.map((p) => (
+                <PickerRow
+                  key={p.id}
+                  iconId={p.id}
+                  iconName={p.name}
+                  label={p.name}
+                  hint={p.favorite ? "Favorit" : p.lastOpenedAt ? relativeTime(p.lastOpenedAt) : ""}
+                  onPick={() => setPane(pane.id, p.id)}
+                />
+              ))}
+              {!projects.length && <p className="px-2 text-body text-muted">Noch keine Projekte.</p>}
+            </PickerSection>
+          </>
+        )}
       </div>
-    </div>
+    </PaneMessage>
   );
 }
 
@@ -254,24 +248,24 @@ function PickerSection({ title, children }: { title: string; children: ReactNode
   );
 }
 
-function PickerRow({ projectId, projectName, title, hint, live = false, onPick }: { projectId: string; projectName: string; title: string | null; hint: string; live?: boolean; onPick: () => void }) {
+function PickerRow({ iconId, iconName, label, hint, onPick }: { iconId: string; iconName: string; label: string; hint: string; onPick: () => void }) {
   return (
     <button type="button" onClick={onPick} className="flex h-9 min-w-0 items-center gap-2.5 rounded-lg px-2 text-left text-body text-muted transition-colors duration-120 hover:bg-surface-2 hover:text-fg">
-      <ProjectIcon id={projectId} name={projectName} size={18} className="rounded-md" />
-      <span className={cn("min-w-0 flex-1 truncate", !live && "italic")}>{title ?? "Ohne Titel"}</span>
-      <span className="shrink-0 truncate text-caption text-subtle">{live ? `${projectName}, ${hint}` : hint}</span>
+      <ProjectIcon id={iconId} name={iconName} size={18} className="rounded-md" />
+      <span className="min-w-0 flex-1 truncate">{label}</span>
+      <span className="max-w-[45%] shrink-0 truncate text-caption text-subtle">{hint}</span>
     </button>
   );
 }
 
-/** Two short sections of rows, at the sizes of PickerRow. */
+/** Two sections of rows, at the sizes of PickerRow. */
 function PickerSkeleton() {
   return (
     <div className="flex flex-col gap-5">
-      {[3, 4].map((rows) => (
+      {[3, 6].map((rows) => (
         <div key={rows} className="flex flex-col gap-1">
           <Skeleton className="mx-2 mb-1 h-3 w-28" />
-          <ListSkeleton rows={rows} className="gap-0 p-0 [&>div]:h-9 [&>div]:px-2" label="Lädt Sessions" />
+          <ListSkeleton rows={rows} className="gap-0 p-0 [&>div]:h-9 [&>div]:px-2" label="Lädt Projekte und Sessions" />
         </div>
       ))}
     </div>

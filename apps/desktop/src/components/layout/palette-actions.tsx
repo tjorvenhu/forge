@@ -400,17 +400,15 @@ export function buildActions(ctx: ActionContext): PaletteEntry[] {
     act("terminal", "Terminal öffnen", icon(SquareTerminal), () => ui.openTerminal(project.id, "shell"), { keywords: "shell konsole" });
     act("bottom", "Unteres Panel ein- oder ausblenden", icon(PanelBottom), () => ui.toggleBottomPanel(), { hint: "Strg+J" });
     act("right", "Seitenleiste ein- oder ausblenden", icon(PanelRight), () => ui.toggleRightPanel(), { hint: "Strg+Umschalt+E" });
-    // Away from the chat the split view is not measured; it shows the new chat if it fits.
-    if (ui.workspaceTab !== "chat" || ui.splitRoom > 0) {
-      act("split-add", "Chat daneben öffnen", icon(Columns2), () => {
-        ui.setWorkspaceTab("chat");
-        ui.addSplitPane();
-      }, { keywords: "geteilte ansicht split mehrere sessions nebeneinander raster bereich" });
+    if (ui.splitRoom > 0) {
+      act("split-add", "Ansicht teilen: weiteren Bereich öffnen", icon(Columns2), () => ui.addSplitPane(), {
+        keywords: "geteilte ansicht split mehrere sessions projekte nebeneinander raster bereich chat daneben",
+      });
     }
     if (ui.splitPanes.length) {
       act("split-close", "Geteilte Ansicht schließen", icon(Columns2), () => ui.closeSplitPanes(), {
-        hint: ui.splitPanes.length === 1 ? "1 weiterer Chat" : `${ui.splitPanes.length} weitere Chats`,
-        keywords: "split mehrere sessions bereiche schließen einzeln",
+        hint: ui.splitPanes.length === 1 ? "1 weiterer Bereich" : `${ui.splitPanes.length} weitere Bereiche`,
+        keywords: "split mehrere sessions projekte bereiche schließen einzeln",
       });
     }
     for (const p of PROFILE_IDS) {

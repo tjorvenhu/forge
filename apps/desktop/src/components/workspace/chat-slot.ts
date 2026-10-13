@@ -17,12 +17,14 @@ export const ChatSlotContext = createContext<ChatSlot>(MAIN_SLOT);
 
 export const useChatSlot = () => useContext(ChatSlotContext);
 
-/** The split view around the chats of the workspace; null in a chat window. */
+/** The split view of the workspace; null in a chat window. */
 export interface SplitLayout {
-  /** chats on screen, the main one included */
+  /** areas on screen, the main one included */
   shown: number;
-  /** how many chats the area holds at its current size */
+  /** how many areas the view holds at its current size */
   capacity: number;
+  /** width of the main area; null until measured */
+  mainWidth: number | null;
 }
 
 export const SplitLayoutContext = createContext<SplitLayout | null>(null);

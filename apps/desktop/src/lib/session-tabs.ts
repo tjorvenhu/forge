@@ -48,11 +48,11 @@ export function openSessionId(ui: { view: string; activeProjectId: string | null
   return splitActive(ui.activeSession[ui.activeProjectId]).sessionId;
 }
 
-/** Every FORGE session on screen in the workspace chat: the open one and those of the split view's further chats. */
-export function shownSessionIds(ui: Parameters<typeof openSessionId>[0] & { workspaceTab: string; splitPanes: readonly { active: string | null }[] }): string[] {
+/** Every FORGE session on screen in the workspace: the open one and those of the split view's further areas. */
+export function shownSessionIds(ui: Parameters<typeof openSessionId>[0] & { splitPanes: readonly { active: string | null }[] }): string[] {
   if (ui.view !== "workspace") return [];
   const open = openSessionId(ui);
-  const panes = ui.workspaceTab === "chat" ? ui.splitPanes.flatMap((p) => (splitActive(p.active).sessionId ? [p.active!] : [])) : [];
+  const panes = ui.splitPanes.flatMap((p) => (splitActive(p.active).sessionId ? [p.active!] : []));
   return open ? [open, ...panes] : panes;
 }
 

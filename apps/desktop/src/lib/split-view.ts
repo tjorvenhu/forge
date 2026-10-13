@@ -1,11 +1,11 @@
-/** More chats than this do not stay readable even on a large screen. */
+/** More areas than this do not stay readable even on a large screen. */
 export const MAX_PANES = 6;
-/** Below this a chat's composer and tool cards no longer fit. */
+/** Below this an area's header, composer and tool cards no longer fit (header 48px, chat 380px). */
 export const MIN_PANE_WIDTH = 560;
-export const MIN_PANE_HEIGHT = 380;
+export const MIN_PANE_HEIGHT = 430;
 /** The shape a chat reads best in; the grid that keeps every chat closest to it wins. */
 const COMFORT_WIDTH = 600;
-const COMFORT_HEIGHT = 480;
+const COMFORT_HEIGHT = 530;
 
 /** How many chats fit into an area of this size, at least the main chat. */
 export function paneCapacity(width: number, height: number): number {

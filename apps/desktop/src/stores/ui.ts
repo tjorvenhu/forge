@@ -36,13 +36,15 @@ export function splitActive(active: string | null | undefined): { sessionId: str
 }
 
 /**
- * A further chat of the split view, next to the main one (the workspace chat of the open project).
- * Without a project it shows a session picker; `active` is an activeSession value of that project.
+ * A further area of the split view, next to the main workspace: a project of its own with one of its
+ * chats. Without a project it shows a picker; `active` is an activeSession value of that project.
  */
 export interface SplitPane {
   id: string;
   projectId: string | null;
   active: string | null;
+  /** the project was opened without a session: the pane picks its latest one not on screen yet */
+  pick?: boolean;
 }
 
 /** The chat each pane shows, main chat first; a session is shown in one pane at most. */
@@ -61,7 +63,16 @@ function swapIntoMain(s: UiState, next: Pick<UiState, "activeProjectId" | "activ
   if (i < 0) return s.splitPanes;
   const before = mainChat(s);
   if (!before || (before.projectId === main.projectId && before.active === main.active)) return s.splitPanes.filter((_, n) => n !== i);
-  return s.splitPanes.map((p, n) => (n === i ? { ...p, ...before } : p));
+  return s.splitPanes.map((p, n) => (n === i ? { id: p.id, ...before } : p));
+}
+
+/** Sessions on screen in the workspace: the main chat's and those of the split panes. */
+export function shownSessions(s: Pick<UiState, "activeProjectId" | "activeSession" | "splitPanes">): Set<string> {
+  const shown = new Set<string>();
+  const main = mainChat(s);
+  if (main?.active) shown.add(main.active);
+  for (const p of s.splitPanes) if (p.active) shown.add(p.active);
+  return shown;
 }
 
 function isShown(s: UiState, projectId: string, active: string | null, except?: string): boolean {
@@ -71,6 +82,11 @@ function isShown(s: UiState, projectId: string, active: string | null, except?: 
   return s.splitPanes.some((p) => p.id !== except && p.projectId === projectId && p.active === active);
 }
 
+function paneFor(id: string, projectId: string | null, active: string | null | undefined): SplitPane {
+  if (!projectId) return { id, projectId: null, active: null };
+  return active === undefined ? { id, projectId, active: null, pick: true } : { id, projectId, active };
+}
+
 function parsePanes(raw: unknown): SplitPane[] {
   if (!Array.isArray(raw)) return [];
   return raw.flatMap((p: unknown) => {
@@ -78,7 +94,8 @@ function parsePanes(raw: unknown): SplitPane[] {
     const r = p as Record<string, unknown>;
     if (typeof r.id !== "string") return [];
     const projectId = typeof r.projectId === "string" ? r.projectId : null;
-    return [{ id: r.id, projectId, active: projectId && typeof r.active === "string" ? r.active : null }];
+    const active = projectId && typeof r.active === "string" ? r.active : null;
+    return [{ id: r.id, projectId, active, ...(projectId && !active && r.pick === true ? { pick: true } : {}) }];
   });
 }
 
@@ -156,19 +173,22 @@ interface UiState {
   /** projects whose sessions the sidebar tree hides */
   collapsedGroups: string[];
   toggleGroup: (projectId: string, collapsed?: boolean) => void;
-  /** further chats of the split view, in their order on screen after the main chat */
+  /** further areas of the split view, in their order on screen after the main area */
   splitPanes: SplitPane[];
-  /** adds a chat to the split view; without a project it starts with a session picker. A session already shown is not added twice. */
+  /**
+   * Adds an area to the split view; without a project it starts with a picker, without `active` it picks the
+   * project's latest session. A session already shown is not added twice.
+   */
   addSplitPane: (projectId?: string | null, active?: string | null) => void;
-  /** shows another session (or the picker, without a project) in a split pane */
-  setSplitPane: (id: string, projectId: string | null, active: string | null) => void;
+  /** shows another project or session in a split pane (the picker without a project, the latest session without `active`) */
+  setSplitPane: (id: string, projectId: string | null, active?: string | null) => void;
   closeSplitPane: (id: string) => void;
   closeSplitPanes: () => void;
   /** swaps a split pane with the main chat, so header, side panel and tabs belong to its session */
   promoteSplitPane: (id: string) => void;
   /** deleted sessions leave every chat that shows them */
   forgetSessions: (ids: Iterable<string>) => void;
-  /** further chats the split view on screen has room for right now; 0 while it is not shown */
+  /** further areas the split view has room for right now; 0 while it is not shown */
   splitRoom: number;
   setSplitRoom: (room: number) => void;
 }
@@ -285,16 +305,16 @@ export const useUi = create<UiState>((set, get) => ({
     });
     if (get().splitPanes !== before) savePrefs(get());
   },
-  addSplitPane: (projectId = null, active = null) => {
+  addSplitPane: (projectId = null, active) => {
     const s = get();
-    if (projectId && isShown(s, projectId, active)) return;
-    set({ splitPanes: [...s.splitPanes, { id: crypto.randomUUID(), projectId, active: projectId ? active : null }] });
+    if (projectId && isShown(s, projectId, active ?? null)) return;
+    set({ splitPanes: [...s.splitPanes, paneFor(crypto.randomUUID(), projectId, active)] });
     savePrefs(get());
   },
   setSplitPane: (id, projectId, active) => {
     const s = get();
-    if (projectId && isShown(s, projectId, active, id)) return;
-    set({ splitPanes: s.splitPanes.map((p) => (p.id === id ? { ...p, projectId, active: projectId ? active : null } : p)) });
+    if (projectId && isShown(s, projectId, active ?? null, id)) return;
+    set({ splitPanes: s.splitPanes.map((p) => (p.id === id ? paneFor(id, projectId, active) : p)) });
     savePrefs(get());
   },
   closeSplitPane: (id) => {
@@ -315,7 +335,7 @@ export const useUi = create<UiState>((set, get) => ({
         activeProjectId: pane.projectId,
         workspaceTab: "chat",
         activeSession: { ...s.activeSession, [pane.projectId]: pane.active },
-        splitPanes: before ? s.splitPanes.map((p) => (p.id === id ? { ...p, ...before } : p)) : s.splitPanes.filter((p) => p.id !== id),
+        splitPanes: before ? s.splitPanes.map((p) => (p.id === id ? { id, ...before } : p)) : s.splitPanes.filter((p) => p.id !== id),
       };
     });
     savePrefs(get());

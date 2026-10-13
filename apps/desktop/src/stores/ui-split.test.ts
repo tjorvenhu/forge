@@ -21,6 +21,19 @@ describe("split view", () => {
     ]);
   });
 
+  it("opens another project in a pane and lets it pick its latest session, unless one is given", () => {
+    const ui = useUi.getState();
+    ui.addSplitPane("p2");
+    const id = useUi.getState().splitPanes[0]!.id;
+    expect(useUi.getState().splitPanes[0]).toEqual({ id, projectId: "p2", active: null, pick: true });
+    ui.setSplitPane(id, "p2", "s2");
+    expect(useUi.getState().splitPanes[0]).toEqual({ id, projectId: "p2", active: "s2" });
+    ui.setSplitPane(id, "p3", null);
+    expect(useUi.getState().splitPanes[0]).toEqual({ id, projectId: "p3", active: null });
+    ui.setSplitPane(id, null);
+    expect(useUi.getState().splitPanes[0]).toEqual({ id, projectId: null, active: null });
+  });
+
   it("does not pick a session for a pane that another chat shows", () => {
     const ui = useUi.getState();
     ui.addSplitPane("p2", "s2");

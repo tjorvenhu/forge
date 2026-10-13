@@ -151,8 +151,11 @@ export function OpenSessions() {
           <div key={g.projectId} data-project-group={g.projectId} className="flex flex-col">
             <div className={cn("group/project flex items-center rounded-lg", projectActive && !activeId && !showNew ? "bg-surface-3" : "hover:bg-surface-2")}>
               <button
-                onClick={() => openProject(g.projectId)}
-                title={`${g.projectName} öffnen`}
+                onClick={(e) => {
+                  if (e.shiftKey && splitRoom > 0 && !projectActive) addSplitPane(g.projectId);
+                  else openProject(g.projectId);
+                }}
+                title={`${g.projectName} öffnen${splitRoom > 0 && !projectActive ? "\nUmschalt+Klick öffnet es daneben." : ""}`}
                 className={cn("flex min-w-0 flex-1 items-center gap-2.5 px-2 py-1.5 text-left text-ui", projectActive ? "text-fg" : "text-muted hover:text-fg")}
               >
                 <ProjectIcon id={g.projectId} name={g.projectName} size={22} className="rounded-md" />
