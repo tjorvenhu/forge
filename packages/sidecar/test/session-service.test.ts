@@ -21,7 +21,10 @@ import {
 } from "../src/sessions/auto-continue.js";
 import { TITLE_DEBOUNCE_MS, TITLE_MIN_INTERVAL_MS, TITLE_TIMEOUT_MS, isTitleWorthy } from "../src/sessions/titles.js";
 import { git, initRepo, tempDir } from "./helpers.js";
-import { writeFileSync } from "node:fs";
+import { existsSync, writeFileSync } from "node:fs";
+import { WorktreeService } from "../src/automation/worktrees.js";
+import { KnowledgeStore } from "../src/knowledge/knowledge.js";
+import type { DevEnvironment } from "../src/devtools/environment.js";
 
 const fixture = readFileSync(path.join(import.meta.dirname, "fixtures", "stream-read-tool.jsonl"), "utf8")
   .trim()
@@ -277,6 +280,56 @@ describe("SessionService", () => {
     expect(await resumed.tools!.find((t) => t.name === "agent_status")!.run({})).toMatch(new RegExp(`^${agentId}`));
     // Real git worktrees plus a restart: slow on Windows while the other test files run alongside.
   }, 20_000);
+
+  it("branches agents from where the starting session stands and removes the worktree again when the start fails", async () => {
+    const repo = projects.get(projectId).path;
+    await initRepo(repo);
+    writeFileSync(path.join(repo, "a.txt"), "a");
+    await git(repo, "add", ".");
+    await git(repo, "commit", "-m", "init");
+    // The session works in a worktree of its own with a commit the main checkout does not have.
+    const own = await new WorktreeService(new GitEngine(), projects).create(projects.get(projectId), "feature/eigen");
+    writeFileSync(path.join(own.path, "eigen.txt"), "nur hier");
+    await git(own.path, "add", ".");
+    await git(own.path, "commit", "-m", "eigen");
+    svc.useProjectTools({ knowledge: new KnowledgeStore(projects, () => {}), dev: {} as DevEnvironment });
+    await svc.start({ projectId: own.id, prompt: "Plane" });
+    const first = rt.started[0]!;
+    // Knowledge of a worktree lives in the main project's folder.
+    expect(first.context).toContain(`Das Projektwissen liegt im Ordner des Hauptprojekts: ${path.join(repo, ".forge", "knowledge")}`);
+    const tool = (name: string) => first.tools!.find((t) => t.name === name)!;
+    expect(await tool("knowledge_save").run({ title: "Deploy mit Coolify", summary: "Wie wir deployen", content: "Coolify" })).toBe(
+      `Gespeichert: deploy-mit-coolify (${path.join(repo, ".forge", "knowledge", "deploy-mit-coolify.md")}).`,
+    );
+
+    expect(await tool("start_agent").run({ task: "Baue den CSV-Export in src/export.ts", name: "csv" })).toMatch(/^Agent [0-9a-f]{8} gestartet, Branch agent\/csv-/);
+    const child = rt.started[1]!;
+    expect(existsSync(path.join(child.cwd, "eigen.txt"))).toBe(true);
+    expect(await tool("agent_status").run({})).toMatch(/arbeitet, Branch agent\/csv-[a-z0-9]+, Ordner/);
+    expect(tool("message_agent").shape.agent!.safeParse("").success).toBe(false);
+
+    rt.startSession = () => {
+      throw new Error("kaputt");
+    };
+    await expect(tool("start_agent").run({ task: "Baue den JSON-Export in src/json.ts", name: "json" })).rejects.toThrow(/kaputt/);
+    expect(projects.all().filter((p) => p.name.includes("agent/json"))).toEqual([]);
+    expect(await git(repo, "branch", "--list", "agent/json-*")).toBe("");
+    expect(await git(repo, "worktree", "list")).not.toContain("agent-json");
+  }, 30_000);
+
+  it("records why a session got no knowledge and dev tools", async () => {
+    svc.useProjectTools({
+      knowledge: {
+        owner: () => {
+          throw new Error("Index kaputt");
+        },
+      } as unknown as KnowledgeStore,
+      dev: {} as DevEnvironment,
+    });
+    const s = await svc.start({ projectId, prompt: "x" });
+    expect(rt.started[0]!.tools!.map((t) => t.name)).toContain("notify");
+    expect(db.listEvents(s.id).map((e) => e.body)).toContainEqual({ type: "status", status: "starting", detail: "Projektwissen und Dev-Werkzeuge nicht verfügbar: Index kaputt" });
+  });
 
   it("tracks subagent progress, stops single tasks and moves work into the background", async () => {
     const s = await svc.start({ projectId, prompt: "Analysiere das Projekt" });

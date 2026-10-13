@@ -48,7 +48,8 @@ describe("worktrees", () => {
     await worktrees.remove(wt, true);
     expect(existsSync(wt.path)).toBe(false);
     expect(await git(repo, "branch", "--list", "feature/parallel")).toContain("feature/parallel");
-  });
+    // Eight git calls; under the full suite on Windows that passes the 5 s default.
+  }, 20_000);
 
   it("also deletes the worktree's branch on request, even with unmerged commits", async () => {
     const parent = await projects.import(repo);
@@ -60,6 +61,21 @@ describe("worktrees", () => {
     expect(r).toEqual({ deletedBranch: "agent/versuch", branchError: null });
     expect(existsSync(wt.path)).toBe(false);
     expect(await git(repo, "branch", "--list", "agent/versuch")).toBe("");
+  });
+
+  it("starts a new branch where another working tree stands and takes over the project defaults", async () => {
+    const parent = projects.update((await projects.import(repo)).id, { defaultModel: "opus", defaultEffort: "high" });
+    const first = await worktrees.create(parent, "feature/basis");
+    writeFileSync(path.join(first.path, "basis.txt"), "nur auf feature/basis\n");
+    await git(first.path, "add", ".");
+    await git(first.path, "commit", "-m", "Basis");
+    const wt = await worktrees.create(parent, "agent/weiter", { fromDir: first.path });
+    expect(existsSync(path.join(wt.path, "basis.txt"))).toBe(true);
+    expect(wt).toMatchObject({ defaultModel: "opus", defaultEffort: "high" });
+    expect(await worktrees.branchOf(wt.path)).toBe("agent/weiter");
+    // Without fromDir the parent's HEAD, as before.
+    const plain = await worktrees.create(parent, "agent/neu");
+    expect(existsSync(path.join(plain.path, "basis.txt"))).toBe(false);
   });
 
   it("numbers colliding folders from a fixed base", () => {

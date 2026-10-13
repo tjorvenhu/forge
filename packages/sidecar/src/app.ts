@@ -88,6 +88,8 @@ export function createApp(opts: { dataDir: string; write: Writer; log?: (m: stri
     knowledge,
     git,
     worktrees,
+    github,
+    devTools,
     secrets,
     emit,
     claude: () => {

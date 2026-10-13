@@ -1370,7 +1370,7 @@ export class PhoneService {
           try {
             cfg = changed ? tools.update(p.id, { useEnv: patch.useEnv, database }) : tools.get(p.id);
           } catch (e) {
-            if (e instanceof ZodError) throw new Error(e.issues.map((i) => i.message).join("; "));
+            if (e instanceof ZodError) throw new Error(e.issues.map((i) => i.message).join("; "), { cause: e });
             throw e;
           }
           const d = cfg.database;

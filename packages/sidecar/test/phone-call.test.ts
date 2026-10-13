@@ -884,6 +884,28 @@ describe("PhoneService end to end with a test PBX", () => {
     const full = await conv.tools.knowledge("shop", "", "deploy-auf-coolify");
     expect(full).toContain("Env-Variablen setzt Coolify");
     expect(full).toContain("Traefik macht die Kompression.");
+    expect(await conv.tools.knowledge("shop", "", undefined, true)).toMatch(/^Fehler: Zum Löschen brauche ich die Kennung/);
+    expect(await conv.tools.knowledge("shop", "", "deploy-auf-coolify", true)).toBe("Eintrag deploy-auf-coolify aus dem Projektwissen von shop gelöscht.");
+    expect(await conv.tools.knowledge("shop", "kompression")).toBe("shop hat noch kein Projektwissen.");
+
+    testDbCalls = [];
+    expect(await conv.tools.testDatabase("shop", "restart")).toBe("Test-Datenbank von shop neu gestartet.");
+    expect(testDbCalls).toEqual([`stop:${projectId}`, `start:${projectId}`]);
+    expect(await conv.tools.testDatabase("shop", "log")).toContain("FATAL: Port 54330 ist belegt");
+    testDbStatus = "installing";
+    expect(await conv.tools.testDatabase("shop", "status")).toBe("PostgreSQL für die Test-Datenbank wird gerade heruntergeladen, 40 Prozent.");
+    testDbStatus = "starting";
+    expect(await conv.tools.testDatabase("shop", "status")).toBe("Die Test-Datenbank von shop startet gerade.");
+    testDbStatus = "stopping";
+    expect(await conv.tools.testDatabase("shop", "status")).toBe("Die Test-Datenbank von shop wird gerade gestoppt.");
+
+    expect(await conv.tools.devSettings("shop", {})).toBe(
+      "shop: Test-Umgebung geht an Dev-Server und Tests. Test-Datenbank auf Port 54330, Name shop, startet nicht mit dem Dev-Server, Verbindungs-URL in DATABASE_URL.",
+    );
+    expect(await conv.tools.devSettings("shop", { useEnv: false, withDevServer: true, envVar: "" })).toBe(
+      "Gespeichert. Test-Umgebung ist aus. Test-Datenbank auf Port 54330, Name shop, startet mit dem Dev-Server, Verbindungs-URL wird nicht übergeben.",
+    );
+    expect(await conv.tools.devServer("shop", "output")).toContain("Error: Port 3000 belegt");
     await byeFromPbx("c-dev", inv, ok);
   }, 30_000);
 
@@ -905,6 +927,228 @@ describe("PhoneService end to end with a test PBX", () => {
     expect(await conv.tools.details("waren")).toMatch(/^Fehler: Mehrere Sessions passen/);
     expect(await conv.tools.details("login")).toContain("Login");
     await byeFromPbx("c-refs", inv, ok);
+  }, 30_000);
+
+  /** An agent worktree of shop, named like WorktreeService names it. */
+  async function agentWorktree() {
+    const dir = path.join(t.dir, "shop-wt");
+    mkdirSync(dir, { recursive: true });
+    const wt = await projects.import(dir, projectId);
+    return projects.update(wt.id, { name: "shop · agent/csv-export-ab12" });
+  }
+
+  it("prefers a project over its agents and names no projects before the PIN", async () => {
+    const wt = await agentWorktree();
+    await svc.setEnabled(true);
+    await until(() => svc.state().registration === "registered", 5000, "registered");
+    const { inv, ok } = await answeredCall("c-find");
+    const conv = await until(() => convs[0], 5000, "conversation");
+    expect(await conv.tools.testDatabase("nirgends", "status")).toBe("Fehler: Kein Projekt „nirgends“.");
+    expect(await conv.tools.testDatabase("sho", "status")).toBe("Die Test-Datenbank von shop ist gestoppt.");
+    // An agent only when its branch part is named.
+    expect(await conv.tools.testDatabase("shop csv export", "status")).toBe(`Die Test-Datenbank von ${wt.name} ist gestoppt.`);
+    expect(await conv.tools.testDatabase("export", "status")).toBe(`Die Test-Datenbank von ${wt.name} ist gestoppt.`);
+    // A session named before the PIN could give its title away.
+    expect(await conv.tools.testDatabase("", "status", { session: "S1" })).toMatch(/^Gesperrt/);
+    await sleep(200);
+    await phoneEnd.digits("4711#");
+    await until(() => svc.state().call?.unlocked, 5000, "unlocked");
+    expect(await conv.tools.testDatabase("nirgends", "status")).toBe("Fehler: Kein Projekt „nirgends“. Vorhanden: shop.");
+    await byeFromPbx("c-find", inv, ok);
+  }, 30_000);
+
+  it("follows background tasks, answers for the whole session and says when nothing ran", async () => {
+    await svc.saveConfig({ requirePin: false });
+    const fiveMinutesAgo = new Date(Date.now() - 5 * 60_000).toISOString();
+    sessionList[0] = fakeSession({
+      id: "s1",
+      projectId,
+      title: "Warenkorb",
+      status: "running",
+      live: true,
+      projectName: "shop",
+      subagents: [{ taskId: "k1", toolUseId: "tu1", description: "Auth prüfen", agentType: null, summary: "Liest die Login-Routen", lastTool: null, toolUses: 2, startedAt: fiveMinutesAgo }],
+      background: [{ taskId: "b1", description: "npm test", taskType: "local_bash", toolUseId: "tb1", startedAt: new Date().toISOString(), summary: null }],
+    });
+    const now = new Date().toISOString();
+    db.insertSession({ id: "s1", projectId, claudeSessionId: null, cwd: t.dir, title: "Warenkorb", model: null, effort: null, profile: "balanced", permissionMode: "default", status: "running", apiKeySource: null, createdAt: now, updatedAt: now, lastError: null });
+    await svc.setEnabled(true);
+    await until(() => svc.state().registration === "registered", 5000, "registered");
+    const { inv, ok } = await answeredCall("c-tasks");
+    const conv = await until(() => convs[0], 5000, "conversation");
+    await conv.tools.status();
+
+    const details = await conv.tools.details("S1");
+    expect(details).toContain("Laufende Aufgaben:");
+    expect(details).toContain("Subagent <<<SESSION-DATEN>>>Auth prüfen<<<ENDE SESSION-DATEN>>>, seit 5 Minuten, zuletzt: <<<SESSION-DATEN>>>Liest die Login-Routen");
+    expect(details).toContain("Im Hintergrund: Befehl <<<SESSION-DATEN>>>npm test<<<ENDE SESSION-DATEN>>>, seit eben");
+    expect(await conv.tools.details("S1", { summary: true })).toContain("Zusammenfassung des Verlaufs: <<<SESSION-DATEN>>>Export gebaut, Tests offen.");
+
+    expect(await conv.tools.backgroundTask("S1", "output", "npm")).toContain("npm ERR! Test fehlgeschlagen");
+    expect(await conv.tools.backgroundTask("S1", "output", "auth")).toMatch(/nur für Befehle im Hintergrund/);
+    expect(await conv.tools.backgroundTask("S1", "stop")).toMatch(/^Fehler: Welche Aufgabe/);
+    expect(await conv.tools.backgroundTask("S1", "stop", "npm test")).toBe("<<<SESSION-DATEN>>>npm test<<<ENDE SESSION-DATEN>>> gestoppt, der Rest von S1 läuft weiter.");
+    expect(await conv.tools.backgroundTask("S1", "to_background", "auth")).toBe("In den Hintergrund verschoben, S1 arbeitet weiter.");
+    expect(await conv.tools.backgroundTask("S1", "to_background", "npm")).toMatch(/läuft schon im Hintergrund/);
+    expect(taskCalls).toEqual(["stop:s1:b1", "bg:s1:tu1"]);
+
+    db.appendEvent("s1", {
+      type: "approval.request",
+      requestId: "r1",
+      toolUseId: "tu9",
+      toolName: "Bash",
+      input: { command: "pnpm test" },
+      title: null,
+      description: null,
+      reason: null,
+      allowSessionScope: true,
+      outsideProject: false,
+    });
+    expect(await conv.tools.respond("S1", "allow", undefined, undefined, "session")).toBe("Erledigt, Bash ist für den Rest von S1 erlaubt.");
+    expect(approvals).toEqual(["s1:r1:allow:session"]);
+
+    expect(await conv.tools.stop("S1")).toBe("S1 gestoppt.");
+    sessionList[0]!.status = "idle";
+    expect(await conv.tools.stop("S1")).toBe("S1 arbeitet gerade nicht, da lief nichts zum Stoppen.");
+    expect(steered).toEqual(["stop:s1"]);
+
+    db.appendEvent("s1", { type: "assistant.text", messageId: "m1", index: 0, text: "Der Stripe-Webhook liegt in api/stripe.ts." });
+    expect(await conv.tools.search("stripe webhook")).toMatch(/^S1 <<<SESSION-DATEN>>>Warenkorb<<<ENDE SESSION-DATEN>>> im Projekt shop: <<<SESSION-DATEN>>>.*Stripe-Webhook/);
+    expect(await conv.tools.search("zitronenfalter")).toBe("Dazu steht in keiner Session etwas.");
+    await byeFromPbx("c-tasks", inv, ok);
+  }, 30_000);
+
+  it("starts agents from where the named worktree stands and cleans up after a failed start", async () => {
+    await svc.saveConfig({ requirePin: false });
+    const wt = await agentWorktree();
+    await svc.setEnabled(true);
+    await until(() => svc.state().registration === "registered", 5000, "registered");
+    const { inv, ok } = await answeredCall("c-agent");
+    const conv = await until(() => convs[0], 5000, "conversation");
+    expect(await conv.tools.startSession("shop csv export", "Baue den JSON-Export", { agent: true, effort: "high" })).toMatch(/^Agent S\d im Projekt shop gestartet/);
+    expect(worktreesCreated).toEqual([expect.stringMatching(/^shop:agent\/baue-den-json-export-/)]);
+    expect(createdFrom).toEqual([wt.path]);
+    expect(lastStart).toMatchObject({ effort: "high" });
+
+    failStart = true;
+    expect(await conv.tools.startSession("shop", "Noch ein Export", { agent: true })).toBe("Fehler: Claude startet nicht");
+    expect(createdFrom[1]).toBe(projects.get(projectId).path);
+    // Removed with force and together with its branch.
+    expect(removedWorktrees).toEqual([expect.stringMatching(/:true:true$/)]);
+    expect(projects.all().filter((p) => p.parentId === projectId)).toHaveLength(2);
+    await byeFromPbx("c-agent", inv, ok);
+  }, 30_000);
+
+  it("pulls and pushes, hands conflicts to a Claude session and works on an agent's worktree by session", async () => {
+    await svc.saveConfig({ requirePin: false });
+    const wt = await agentWorktree();
+    sessionList.push(fakeSession({ id: "s9", projectId: wt.id, title: "CSV", status: "idle", live: true, projectName: wt.name }));
+    await svc.setEnabled(true);
+    await until(() => svc.state().registration === "registered", 5000, "registered");
+    const { inv, ok } = await answeredCall("c-git");
+    const conv = await until(() => convs[0], 5000, "conversation");
+
+    gitEngine.pull = async () => ({ output: "3 neue Commits übernommen.", integrated: { mode: "fast-forward", remoteCommits: 3, localCommits: 0 } });
+    expect(await conv.tools.git("shop", "pull")).toBe("shop: 3 neue Commits übernommen.");
+    gitEngine.push = async () => ({ branch: "main", output: "", integrated: { mode: "rebase", remoteCommits: 2, localCommits: 1 } });
+    expect(await conv.tools.git("shop", "push", { allowProtected: true })).toBe("Branch main von shop gepusht. Vorher 2 neue Commits vom Server übernommen.");
+    gitEngine.push = async () => {
+      throw new ForgeError("GIT_CONFLICT", "Konflikt", { integration: { branch: "main", remoteCommits: 2, localCommits: 1, files: ["src/a.ts"] } });
+    };
+    expect(await conv.tools.git("shop", "push", { allowProtected: true })).toMatch(
+      /^Die neuen Commits vom Server ließen sich nicht automatisch mit den eigenen zusammenführen\. Claude führt sie in der neuen Session S\d zusammen und pusht danach\.$/,
+    );
+    expect(lastStart).toMatchObject({ projectId, prompt: expect.stringContaining("Ich wollte main pushen.") });
+    gitEngine.push = async () => {
+      throw new ForgeError("GIT_FAILED", "Kein Remote origin.");
+    };
+    expect(await conv.tools.git("shop", "push")).toBe("Fehler: Kein Remote origin.");
+
+    // By session: the agent's worktree, not the project.
+    expect(await conv.tools.devServer("", "output", { session: "CSV" })).toContain(`Server ${wt.id}`);
+    gitEngine.log = async () => [{ hash: "h", shortHash: "h", author: "Tjorven", authorEmail: "t@x", avatarUrl: null, date: "2026-10-13T10:00:00Z", subject: "CSV-Export", parents: [], refs: [] }];
+    expect(await conv.tools.git("", "log", { session: "CSV" })).toContain(`Letzte Commits in ${wt.name}:\n<<<SESSION-DATEN>>>CSV-Export (Tjorven)<<<ENDE SESSION-DATEN>>> am`);
+
+    // Pull request of the agent's branch, then clean the agent up.
+    gitEngine.currentBranch = async () => "agent/csv";
+    gitEngine.defaultBranch = async () => "main";
+    gitEngine.push = async () => ({ branch: "agent/csv", output: "", integrated: null });
+    expect(await conv.tools.pullRequest("", "status", { session: "CSV" })).toBe("Für den Branch agent/csv gibt es keinen Pull Request.");
+    expect(await conv.tools.pullRequest("", "create", { session: "CSV", draft: true })).toBe(
+      "Pull Request <<<SESSION-DATEN>>>CSV-Export<<<ENDE SESSION-DATEN>>> von agent/csv nach main angelegt, als Entwurf.",
+    );
+    expect(prsCreated).toEqual(["agent/csv->main:CSV-Export:true"]);
+    expect(await conv.tools.removeAgent("shop")).toBe("Fehler: shop ist kein Agent-Worktree. Projekte lassen sich nur in FORGE entfernen.");
+    expect(await conv.tools.removeAgent("", { session: "CSV", deleteBranch: true })).toBe(`Worktree ${wt.name} entfernt, seine Session ist beendet. Branch agent/x gelöscht.`);
+    expect(steered).toEqual([`closeProject:${wt.id}`, `forget:${wt.id}`]);
+    expect(projects.all().some((p) => p.id === wt.id)).toBe(false);
+
+    // s1 and the session that merges the conflict.
+    expect(await conv.tools.projects()).toBe("shop, Branch agent/csv, Dev-Server läuft, 2 aktive Sessions");
+    await byeFromPbx("c-git", inv, ok);
+  }, 30_000);
+
+  it("changes when FORGE calls, behind the PIN", async () => {
+    await svc.setEnabled(true);
+    await until(() => svc.state().registration === "registered", 5000, "registered");
+    const { inv, ok } = await answeredCall("c-calls");
+    const conv = await until(() => convs[0], 5000, "conversation");
+    expect(await conv.tools.callSettings({})).toBe("FORGE ruft an: wenn eine Session fertig ist, wenn eine Entscheidung nötig ist oder Claude dringend etwas meldet, bei Fehlern.");
+    expect(await conv.tools.callSettings({ done: false })).toMatch(/^Gesperrt/);
+    await sleep(200);
+    await phoneEnd.digits("4711#");
+    await until(() => svc.state().call?.unlocked, 5000, "unlocked");
+    expect(await conv.tools.callSettings({ done: false, error: false })).toBe("FORGE ruft an: wenn eine Entscheidung nötig ist oder Claude dringend etwas meldet.");
+    expect(svc.config().notifyOn).toEqual({ done: false, approval: true, error: false });
+    expect(await conv.tools.callSettings({ approval: false })).toBe("FORGE ruft von sich aus nicht mehr an.");
+    await byeFromPbx("c-calls", inv, ok);
+  }, 30_000);
+
+  it("passes an urgent notify into the running call, without details before the PIN", async () => {
+    await svc.setEnabled(true);
+    await until(() => svc.state().registration === "registered", 5000, "registered");
+    const { inv, ok } = await answeredCall("c-urgent");
+    const conv = await until(() => convs[0], 5000, "conversation");
+    const urgent = (message: string) =>
+      svc.onServerEvent({ event: "session.event", payload: { seq: 1, sessionId: "s1", ts: new Date().toISOString(), body: { type: "notify", message, urgent: true } } });
+    urgent("Die Migration braucht deine Freigabe");
+    await until(() => conv.said.some((s) => s.includes("Eine Session meldet sich dringend")), 5000, "note before PIN");
+    expect(conv.said.join("\n")).not.toContain("Migration");
+    await sleep(200);
+    await phoneEnd.digits("4711#");
+    await until(() => svc.state().call?.unlocked, 5000, "unlocked");
+    urgent("Die Migration braucht deine Freigabe");
+    await until(() => conv.said.some((s) => s.includes("meldet sich dringend und lässt ausrichten") && s.includes("Die Migration braucht deine Freigabe")), 5000, "note after PIN");
+    // No second call while the user is on the line.
+    await sleep(200);
+    expect(pbx.inbox.some((r) => r.msg.method === "INVITE")).toBe(false);
+    await byeFromPbx("c-urgent", inv, ok);
+  }, 30_000);
+
+  it("calls again after the pause instead of dropping a notification", async () => {
+    timing.notifyCooldownMs = 1500;
+    await svc.setEnabled(true);
+    await until(() => svc.state().registration === "registered", 5000, "registered");
+    const done = (text: string) =>
+      svc.onServerEvent({
+        event: "session.event",
+        payload: {
+          seq: 1,
+          sessionId: "s1",
+          ts: new Date().toISOString(),
+          body: { type: "turn.result", subtype: "success", isError: false, durationMs: 1, numTurns: 1, inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, text },
+        },
+      });
+    done("Erster Teil fertig.");
+    const first = await pbx.next((m) => m.method === "INVITE");
+    pbx.send(responseTo(first.msg, 486, "Busy Here", "callee"), first.port);
+    await until(() => svc.state().call === null, 5000, "first call ended");
+    done("Zweiter Teil fertig.");
+    await until(() => logs.some((l) => l.includes("Anruf (done) verschoben")), 3000, "postponed");
+    const second = await pbx.next((m) => m.method === "INVITE" && getHeader(m, "call-id") !== getHeader(first.msg, "call-id"), 5000);
+    expect(convs.at(-1)!.said[0]).toContain("Zweiter Teil fertig.");
+    pbx.send(responseTo(second.msg, 486, "Busy Here", "callee"), second.port);
+    await until(() => svc.state().call === null, 5000, "second call ended");
   }, 30_000);
 
   it("keeps PIN failures across calls and locks the number", async () => {
