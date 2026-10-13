@@ -2,18 +2,20 @@
 title: "Parallele Agenten abschließen (Zusammenführen/Verwerfen)"
 summary: "Wie FORGE fertige Agenten-Worktrees zusammenführt oder verwirft, wo der Ursprung gespeichert ist und wann das Modal erscheint."
 tags: ["agenten","worktree","git","merge"]
-updated: "2026-10-13T09:25:11.815Z"
+updated: "2026-10-13T09:36:23.498Z"
 ---
 
-Kern: `packages/sidecar/src/automation/agent-finish.ts` (`AgentFinisher`), RPC `agents.review` / `agents.finish`, MCP-Werkzeug `finish_agent` (nur für startende Sessions, autoAllow false), Telefon-Werkzeug `finish_agent`.
+Kern: `packages/sidecar/src/automation/agent-finish.ts` (`AgentFinisher`), RPC `agents.review` / `agents.finish`, MCP-Werkzeug `finish_agent` (autoAllow false), Telefon-Werkzeug `finish_agent`.
+
+`finish_agent` in Sessions erreicht alle Agenten des Projekts: eigene über ihr Kürzel, fremde (Agenten-Reiter, Telefon, andere Sessions) über ihren Branch, mit oder ohne `agent/`. `agent_status` ohne Argument listet die fremden mit. Die eigene Worktree-Session kann sich nicht selbst abschließen. Neue Werkzeuge bekommt eine Session erst nach ihrem (Neu-)Start, also nach einem FORGE-Neustart mit neuem Build.
 
 ## Ablauf Zusammenführen
 1. Nicht committete Änderungen im Worktree werden committet ("Restliche Änderungen von <branch>").
 2. Hat der Ziel-Branch neue Commits: `git rebase refs/heads/<ziel>` im Worktree. Bei Konflikt: `rebase --abort`, der Agent bekommt per `sessions.send` einen Auftrag zum Auflösen (ohne Session: neue Session im Worktree). Ergebnis `outcome: "conflict"`, Worktree bleibt.
 3. Im Zielordner `git merge --ff-only refs/heads/<branch>`. Absichtlich ohne autostash: Überschneidet sich die Arbeit mit nicht committeten Dateien dort, bricht git sicher ab (CONFLICT-Meldung).
-4. `removeWorktree(..., { deleteBranch: true })`: Session beendet, Ordner und Branch weg.
+4. `removeWorktree(..., { deleteBranch: true })`: Session beendet, Ordner, FORGE-Eintrag und Branch weg.
 
-Verwerfen = `removeWorktree(force, deleteBranch)`.
+Verwerfen = `removeWorktree(force, deleteBranch nur wenn ein Branch ermittelbar ist)`. So räumt es auch halb entfernte Agenten auf (Branch schon gelöscht, Ordner ohne `.git`).
 
 ## Wohin die Arbeit zurückgeht
 `WorktreeService.create` speichert beim Anlegen eines neuen Branches in der Repo-Config `branch.<name>.forgeOriginDir` (Ordner, von dem abgezweigt wurde, also fromDir oder Hauptprojekt) und `branch.<name>.forgeOriginBranch`. `git branch -D` entfernt diese Sektion mit. Fehlt der Eintrag (ältere Agenten) oder ist der Ordner weg: Hauptprojekt und dessen aktueller Branch. Ist im Zielordner inzwischen ein anderer Branch als forgeOriginBranch ausgecheckt, wird das Zusammenführen blockiert (mergeBlocker), statt in den falschen Branch zu mergen.
