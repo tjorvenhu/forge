@@ -68,6 +68,9 @@ export function TabBar<V extends string>({
     measure();
     const ro = new ResizeObserver(measure);
     ro.observe(el);
+    // With fit the bar keeps the width of its row, so a tab that grows later (the web font loads, a badge
+    // appears) does not resize it, and the indicator would stay under the old position.
+    for (const tab of Array.from(el.querySelectorAll('[role="tab"]'))) ro.observe(tab);
     return () => ro.disconnect();
   }, [value, tabs, inset, fit, compact]);
 
