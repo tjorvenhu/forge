@@ -1,15 +1,16 @@
 import { useEffect, useRef, type KeyboardEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { AppWindow, Bot, ChevronDown, Columns2, Hourglass, MessageSquarePlus, Plus, SquareArrowOutUpRight, X } from "lucide-react";
+import { useQueries } from "@tanstack/react-query";
+import { AppWindow, Bot, ChevronDown, Columns2, Hourglass, LayoutGrid, MessageSquarePlus, Plus, SquareArrowOutUpRight, X } from "lucide-react";
 import { openChatWindow, useChatWindows } from "@/lib/chat-windows";
-import { call, useLiveSessions, useProjects, useSession } from "@/lib/queries";
+import { call, keys, useLiveSessions, useProjects, useSession } from "@/lib/queries";
 import { errorMessage } from "@/lib/rpc";
 import { flatTabs, groupOf, groupTabs, openSessionId, openSessionTab, type TabGroup, type TabSession } from "@/lib/session-tabs";
 import { agentLabel } from "@/lib/project-tree";
 import { useTabTearOff } from "@/lib/tab-drag";
 import { isBusy, isWorking } from "@/lib/working";
 import { cn } from "@/lib/utils";
-import { useUi } from "@/stores/ui";
+import { splitActive, useUi, type SplitPane } from "@/stores/ui";
 import { toast } from "@/stores/toast";
 import { ProjectIcon } from "@/components/projects/ProjectIcon";
 import { Skeleton, SkeletonRegion } from "@/components/ui/skeleton";
@@ -65,10 +66,59 @@ function OpenSessionsSkeleton() {
   );
 }
 
-/** Groups of the tree: every project with a running session, plus the project open in the workspace. */
-export function openGroups(groups: TabGroup[], active: { id: string; name: string } | null): TabGroup[] {
-  if (!active || groups.some((g) => g.projectId === active.id)) return groups;
-  return [...groups, { projectId: active.id, projectName: active.name, tabs: [] }];
+/** Groups of the tree: every project with a running session, plus the projects open in the workspace (main area and split panes). */
+export function openGroups(groups: TabGroup[], open: { id: string; name: string } | null | readonly ({ id: string; name: string } | null)[]): TabGroup[] {
+  const out = [...groups];
+  for (const p of Array.isArray(open) ? open : [open]) {
+    if (p && !out.some((g) => g.projectId === p.id)) out.push({ projectId: p.id, projectName: p.name, tabs: [] });
+  }
+  return out;
+}
+
+const NO_PANES: readonly SplitPane[] = [];
+
+/**
+ * The split view as an entry above the open projects: marked while it is on screen, a click brings it
+ * back from any other view, the cross closes the further areas.
+ */
+export function SplitViewEntry() {
+  const panes = useUi((s) => (s.activeProjectId ? s.splitPanes.length : 0));
+  const onScreen = useUi((s) => s.view === "workspace");
+  const setView = useUi((s) => s.setView);
+  const closeAll = useUi((s) => s.closeSplitPanes);
+  if (!panes) return null;
+  const areas = panes + 1;
+  return (
+    <div
+      className={cn(
+        "group/split mb-2 flex items-center rounded-lg border border-accent/30 transition-colors duration-120",
+        onScreen ? "bg-accent-soft text-fg" : "text-muted hover:bg-surface-2 hover:text-fg",
+      )}
+    >
+      <button
+        onClick={() => setView("workspace")}
+        aria-current={onScreen ? "page" : undefined}
+        title={onScreen ? `Geteilte Ansicht mit ${areas} Bereichen` : `Zurück zur geteilten Ansicht (${areas} Bereiche)`}
+        className="flex min-w-0 flex-1 items-center gap-2.5 px-2 py-1.5 text-left text-ui"
+      >
+        <span className="flex h-5.5 w-5.5 shrink-0 items-center justify-center rounded-md bg-accent/15 text-accent">
+          <LayoutGrid className="h-3.5 w-3.5" />
+        </span>
+        <span className="truncate">Geteilte Ansicht</span>
+        <span className="ml-auto shrink-0 text-caption tabular-nums text-subtle" aria-label={`${areas} Bereiche`}>
+          {areas}
+        </span>
+      </button>
+      <button
+        onClick={() => closeAll()}
+        aria-label="Teilung aufheben"
+        title="Teilung aufheben. Die Sessions laufen weiter."
+        className="mr-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-subtle opacity-0 hover:bg-surface-3 hover:text-fg focus-visible:opacity-100 group-hover/split:opacity-100"
+      >
+        <X className="h-3.5 w-3.5" />
+      </button>
+    </div>
+  );
 }
 
 /**
@@ -91,11 +141,26 @@ export function OpenSessions() {
   const inPanes = useUi((s) => s.splitPanes.flatMap((p) => (p.active ? [p.active] : [])).join(" "));
   const splitRoom = useUi((s) => s.splitRoom);
   const addSplitPane = useUi((s) => s.addSplitPane);
+  const promoteSplitPane = useUi((s) => s.promoteSplitPane);
+  // The split view's further areas, while it is on screen: their sessions and projects are listed like the main chat's.
+  const panes = useUi((s) => (s.view === "workspace" ? s.splitPanes : NO_PANES));
+  const paneSessionIds = panes.flatMap((p) => splitActive(p.active).sessionId ?? []);
+  const paneSessions = useQueries({
+    queries: paneSessionIds.map((id) => ({ queryKey: keys.session(id), queryFn: () => call("sessions.get", { sessionId: id }) })),
+  });
   const listRef = useRef<HTMLDivElement>(null);
 
   const activeGroup = activeProjectId ? groupOf(activeProjectId, projects.data) : null;
-  const newSessionGroup = newSessionProject ? (groupOf(newSessionProject, projects.data)?.id ?? newSessionProject) : null;
-  const groups = openGroups(groupTabs(live.data ?? [], openSessionTab(openSession.data, projects.data), projects.data), activeGroup && { id: activeGroup.id, name: activeGroup.name });
+  const paneGroups = panes.flatMap((p) => (p.projectId ? [groupOf(p.projectId, projects.data)] : []));
+  // New sessions without a message yet: the main chat's, and those of split panes (not while a pane still picks its session).
+  const newRows = [
+    ...(newSessionProject ? [{ key: "main", projectId: newSessionProject, pane: null }] : []),
+    ...panes.flatMap((p) => (p.projectId && !p.active && !p.pick ? [{ key: p.id, projectId: p.projectId, pane: p.id }] : [])),
+  ].map((r) => ({ ...r, groupId: groupOf(r.projectId, projects.data)?.id ?? r.projectId }));
+  const groups = openGroups(
+    groupTabs(live.data ?? [], [openSessionTab(openSession.data, projects.data), ...paneSessions.map((q) => openSessionTab(q.data, projects.data))], projects.data),
+    [activeGroup, ...paneGroups].map((p) => p && { id: p.id, name: p.name }),
+  );
   const agentOf = (projectId: string, groupId: string) => (projectId === groupId ? null : (projects.data?.find((p) => p.id === projectId) ?? null));
   const collapsedGroups = useUi((s) => s.collapsedGroups);
   const toggleGroup = useUi((s) => s.toggleGroup);
@@ -142,9 +207,10 @@ export function OpenSessions() {
       {groups.map((g) => {
         const projectActive = g.projectId === activeGroup?.id;
         const collapsed = isCollapsed(g);
-        const showNew = g.projectId === newSessionGroup && !collapsed;
-        const newAgent = showNew && newSessionProject ? agentOf(newSessionProject, g.projectId) : null;
-        const hasRows = g.tabs.length > 0 || g.projectId === newSessionGroup;
+        const groupNew = newRows.filter((r) => r.groupId === g.projectId);
+        const news = collapsed ? [] : groupNew;
+        const showNew = news.some((r) => !r.pane);
+        const hasRows = g.tabs.length > 0 || groupNew.length > 0;
         // Collapsed, the project row still says whether one of its sessions waits or works.
         const lead = collapsed ? (g.tabs.find((s) => s.status === "waiting_approval") ?? g.tabs.find((s) => s.status === "error") ?? g.tabs.find((s) => isWorking(s.status) || s.background.length > 0)) : undefined;
         return (
@@ -206,7 +272,7 @@ export function OpenSessions() {
                   const agent = agentOf(s.projectId, g.projectId);
                   const where = agent ? `Agent ${agentLabel(agent)} in ${g.projectName}` : s.projectName;
                   return (
-                    <Branch key={s.id} last={n === g.tabs.length - 1 && !showNew}>
+                    <Branch key={s.id} last={n === g.tabs.length - 1 && !news.length}>
                       <div
                         data-session-tab={s.id}
                         className={cn(
@@ -234,7 +300,7 @@ export function OpenSessions() {
                           {agent && <Bot aria-hidden className="h-3.5 w-3.5 shrink-0 text-accent" />}
                           <span className={cn("truncate", !s.live && "italic")}>{title}</span>
                           {inWindow && <AppWindow aria-hidden className="h-3 w-3 shrink-0 text-subtle" />}
-                          {inPane && <Columns2 aria-hidden className="h-3 w-3 shrink-0 text-subtle" />}
+                          {inPane && <Columns2 aria-hidden className="h-3 w-3 shrink-0 text-accent" />}
                           {s.background.length > 0 && (
                             <span aria-hidden className="flex shrink-0 items-center gap-0.5 text-caption tabular-nums text-subtle">
                               <Hourglass className="h-3 w-3" />
@@ -276,17 +342,40 @@ export function OpenSessions() {
                     </Branch>
                   );
                 })}
-                {showNew && (
-                  <Branch last>
-                    <div data-new-session className="flex h-8 min-w-0 animate-fade-in items-center rounded-lg bg-surface-3 text-body text-fg">
-                      <span aria-current="page" className="flex h-full min-w-0 flex-1 items-center gap-2 pl-2 pr-1" title="Neue Session. Sie bleibt hier, sobald du die erste Nachricht schickst.">
-                        <MessageSquarePlus aria-hidden className="h-3 w-3 shrink-0 text-subtle" />
-                        {newAgent && <Bot aria-hidden className="h-3.5 w-3.5 shrink-0 text-accent" />}
-                        <span className="truncate italic">{newAgent ? `Neue Session im Agenten ${agentLabel(newAgent)}` : "Neue Session"}</span>
-                      </span>
-                    </div>
-                  </Branch>
-                )}
+                {news.map((r, n) => {
+                  const pane = r.pane;
+                  const newAgent = agentOf(r.projectId, g.projectId);
+                  const label = newAgent ? `Neue Session im Agenten ${agentLabel(newAgent)}` : "Neue Session";
+                  const icons = (
+                    <>
+                      <MessageSquarePlus aria-hidden className="h-3 w-3 shrink-0 text-subtle" />
+                      {newAgent && <Bot aria-hidden className="h-3.5 w-3.5 shrink-0 text-accent" />}
+                    </>
+                  );
+                  return (
+                    <Branch key={r.key} last={n === news.length - 1}>
+                      {pane ? (
+                        <button
+                          data-pane-new-session
+                          onClick={() => promoteSplitPane(pane)}
+                          title={`${label} in der geteilten Ansicht. Klicken macht sie zum Hauptchat.`}
+                          className="flex h-8 w-full min-w-0 animate-fade-in items-center gap-2 rounded-lg pl-2 pr-1 text-left text-body text-muted transition-colors duration-120 hover:bg-surface-2 hover:text-fg"
+                        >
+                          {icons}
+                          <span className="truncate italic">{label}</span>
+                          <Columns2 aria-hidden className="h-3 w-3 shrink-0 text-accent" />
+                        </button>
+                      ) : (
+                        <div data-new-session className="flex h-8 min-w-0 animate-fade-in items-center rounded-lg bg-surface-3 text-body text-fg">
+                          <span aria-current="page" className="flex h-full min-w-0 flex-1 items-center gap-2 pl-2 pr-1" title="Neue Session. Sie bleibt hier, sobald du die erste Nachricht schickst.">
+                            {icons}
+                            <span className="truncate italic">{label}</span>
+                          </span>
+                        </div>
+                      )}
+                    </Branch>
+                  );
+                })}
               </div>
             )}
           </div>

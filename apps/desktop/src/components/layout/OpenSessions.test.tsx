@@ -11,7 +11,7 @@ type RpcModule = typeof RpcModuleNs;
 const callMock = vi.fn();
 vi.mock("@/lib/rpc", async (orig) => ({ ...(await orig<RpcModule>()), rpc: { call: (...a: unknown[]) => callMock(...a), subscribe: () => () => {} } }));
 
-const { OpenSessions } = await import("./OpenSessions");
+const { OpenSessions, SplitViewEntry } = await import("./OpenSessions");
 
 // Asserted: fields the strip does not read may be added to Session without touching this test.
 function session(id: string, projectId: string, createdAt: string, over: Partial<Session> = {}): Session {
@@ -59,7 +59,7 @@ beforeEach(() => {
   callMock.mockReset();
   live = [];
   stored = [];
-  useUi.setState({ view: "workspace", activeProjectId: "app", activeSession: {}, workspaceTab: "git", collapsedGroups: [] });
+  useUi.setState({ view: "workspace", activeProjectId: "app", activeSession: {}, workspaceTab: "git", collapsedGroups: [], splitPanes: [] });
   callMock.mockImplementation(async (method: string, params: { sessionId?: string }) => {
     if (method === "sessions.listLive") return live;
     if (method === "projects.list") return Object.entries(names).map(([id, name]) => ({ id, name }));
@@ -247,5 +247,47 @@ describe("OpenSessions tree", () => {
     const web = document.querySelector<HTMLElement>('[data-project-group="web"]')!;
     expect(within(web).getByRole("button", { name: "Web" }).getAttribute("title")).toBe("Web öffnen");
     expect(within(web).getAllByRole("tab").map((t) => t.getAttribute("aria-label")!.split(",")[0])).toEqual(["Titel w1"]);
+  });
+
+  it("lists the split view's areas: their sessions without a process, their projects and new sessions", async () => {
+    stored = [session("a1", "app", "2026-10-11T10:01:00Z"), session("w1", "web", "2026-10-11T10:02:00Z", { live: false })];
+    live = [tab(stored[0]!)];
+    useUi.setState({
+      activeSession: { app: "a1" },
+      splitPanes: [
+        { id: "p1", projectId: "web", active: "w1" },
+        { id: "p2", projectId: "web", active: null },
+        { id: "p3", projectId: "app", active: null },
+      ],
+    });
+    setup();
+    await screen.findByRole("tab", { name: /^Titel w1/ });
+    expect(tabNames()).toEqual(["Titel a1", "Titel w1"]);
+    const web = document.querySelector<HTMLElement>('[data-project-group="web"]')!;
+    expect(web.querySelectorAll("[data-pane-new-session]")).toHaveLength(1);
+    const app = document.querySelector<HTMLElement>('[data-project-group="app"]')!;
+    const paneNew = app.querySelector<HTMLElement>("[data-pane-new-session]")!;
+
+    fireEvent.click(paneNew);
+    const ui = useUi.getState();
+    expect(ui.activeSession.app).toBeNull();
+    expect(ui.splitPanes.find((p) => p.id === "p3")).toMatchObject({ projectId: "app", active: "a1" });
+  });
+});
+
+describe("SplitViewEntry", () => {
+  it("shows the split view with its area count and goes back to it from another view", () => {
+    useUi.setState({ view: "settings", splitPanes: [{ id: "p1", projectId: "web", active: null }] });
+    render(<SplitViewEntry />);
+    const entry = screen.getByRole("button", { name: /Geteilte Ansicht/ });
+    expect(entry.getAttribute("aria-current")).toBeNull();
+    expect(screen.getByLabelText("2 Bereiche")).toBeTruthy();
+    fireEvent.click(entry);
+    expect(useUi.getState().view).toBe("workspace");
+    expect(screen.getByRole("button", { name: /Geteilte Ansicht/ }).getAttribute("aria-current")).toBe("page");
+
+    fireEvent.click(screen.getByRole("button", { name: "Teilung aufheben" }));
+    expect(useUi.getState().splitPanes).toEqual([]);
+    expect(screen.queryByRole("button", { name: /Geteilte Ansicht/ })).toBeNull();
   });
 });

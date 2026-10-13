@@ -20,11 +20,12 @@ export function groupOf(projectId: string, projects: readonly TabProject[] | und
 
 /**
  * Session tabs grouped per project. The order only changes when tabs come or go, never with a
- * status change: groups by their oldest session, sessions oldest first. The open session without a
- * running process goes last in its group, so it can disappear again without moving other tabs.
+ * status change: groups by their oldest session, sessions oldest first. Open sessions without a
+ * running process (the main chat's, those of the split view's further areas) go last in their group,
+ * so they can disappear again without moving other tabs.
  * Sessions of an agent's worktree go into the group of its main project (`projects` tells which).
  */
-export function groupTabs(live: TabSession[], open: TabSession | null = null, projects?: readonly TabProject[]): TabGroup[] {
+export function groupTabs(live: TabSession[], open: TabSession | null | readonly (TabSession | null)[] = null, projects?: readonly TabProject[]): TabGroup[] {
   const groups = new Map<string, TabGroup>();
   const add = (s: TabSession) => {
     const root = groupOf(s.projectId, projects);
@@ -34,7 +35,12 @@ export function groupTabs(live: TabSession[], open: TabSession | null = null, pr
     g.tabs.push(s);
   };
   [...live].sort((a, b) => a.createdAt.localeCompare(b.createdAt)).forEach(add);
-  if (open && !live.some((s) => s.id === open.id)) add(open);
+  const seen = new Set(live.map((s) => s.id));
+  for (const s of Array.isArray(open) ? open : [open]) {
+    if (!s || seen.has(s.id)) continue;
+    seen.add(s.id);
+    add(s);
+  }
   return [...groups.values()];
 }
 

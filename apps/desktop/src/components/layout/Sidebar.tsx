@@ -10,7 +10,7 @@ import { Logo } from "./Logo";
 import { AppUpdateCard } from "./AppUpdate";
 import { splitProjects } from "@/lib/project-tree";
 import { NAV } from "./nav";
-import { OpenSessions } from "./OpenSessions";
+import { OpenSessions, SplitViewEntry } from "./OpenSessions";
 import { SearchField } from "./SearchField";
 import { ErrorBoundary } from "./ErrorBoundary";
 import { TokenRate } from "./TokenRate";
@@ -25,7 +25,8 @@ export function Sidebar() {
   // Agents (worktrees) belong to their project and are not counted on their own.
   const list = splitProjects(projects.data ?? []).roots;
   const activeProjectId = useUi((s) => s.activeProjectId);
-  const hasOpen = liveCount > 0 || (view === "workspace" && activeProjectId !== null);
+  const hasSplit = useUi((s) => s.splitPanes.length > 0);
+  const hasOpen = liveCount > 0 || (activeProjectId !== null && (view === "workspace" || hasSplit));
   const counts: Partial<Record<View, { n: number; label: string }>> = {
     projects: { n: list.length, label: list.length === 1 ? "1 Projekt" : `${list.length} Projekte` },
     sessions: { n: liveCount, label: liveCount === 1 ? "1 offene Session" : `${liveCount} offene Sessions` },
@@ -80,6 +81,7 @@ export function Sidebar() {
           </Button>
         </div>
         <ErrorBoundary>
+          <SplitViewEntry />
           <OpenSessions />
         </ErrorBoundary>
         {/* While these load, OpenSessions shows its skeleton in place of the hint. */}

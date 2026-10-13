@@ -44,7 +44,7 @@ export function Select<T extends string>({ value, onChange, options, placeholder
         ref={trigger}
         aria-label={rest["aria-label"]}
         className={cn(
-          "inline-flex items-center justify-between gap-2 rounded-md border border-border bg-surface-2 px-2.5 text-body text-fg hover:border-border-strong focus:outline-none focus-visible:border-accent disabled:opacity-50",
+          "inline-flex items-center justify-between gap-2 whitespace-nowrap rounded-md border border-border bg-surface-2 px-2.5 text-body text-fg hover:border-border-strong focus:outline-none focus-visible:border-accent disabled:opacity-50",
           size === "sm" ? "h-7 text-xs" : "h-8",
           className,
         )}

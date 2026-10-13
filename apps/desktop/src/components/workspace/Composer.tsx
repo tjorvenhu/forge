@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
-import { ArrowUp, ListTodo, Paperclip, Square } from "lucide-react";
+import { ArrowUp, ListTodo, Paperclip, SlidersHorizontal, Square } from "lucide-react";
 import type { EffortLevel, Project, Session } from "@forge/protocol";
 import { useRuntimeInfo, useSettings } from "@/lib/queries";
 import { EFFORT_LEVELS, findModel, modelLabel } from "@/lib/models";
@@ -7,6 +7,7 @@ import { isWorking } from "@/lib/working";
 import { cn } from "@/lib/utils";
 import { draftKey, useDrafts } from "@/stores/drafts";
 import { Button } from "@/components/ui/button";
+import { DropdownMenu } from "@/components/ui/dropdown";
 import { Select } from "@/components/ui/select";
 import { Kbd, Tooltip } from "@/components/ui/misc";
 import { ContextMeter } from "./ContextMeter";
@@ -328,7 +329,8 @@ export const Composer = memo(function Composer({
         : "Nachricht an Claude, / für Befehle, Dateien hineinziehen oder einfügen";
 
   return (
-    <div className="relative w-full shrink-0 px-6 pb-5 pt-2">
+    // A container of its own: the bottom row drops what is not needed by the composer's width (split view, side panel), not the window's.
+    <div className="@container/composer relative w-full shrink-0 px-6 pb-5 pt-2">
       <SlashCommandMenu matches={matches} index={cmdIndex} onPick={pickCommand} />
       <InfoCommandDialog command={info} project={project} session={session} onClose={() => setInfo(null)} />
       <div
@@ -439,15 +441,17 @@ export const Composer = memo(function Composer({
               variant={options.isPlan ? "secondary" : "outline"}
               onClick={() => void options.togglePlan()}
               aria-pressed={options.isPlan}
-              className={cn("h-8 rounded-lg px-3", options.isPlan && "border-accent/40 text-accent")}
+              aria-label="Planen"
+              className={cn("h-8 shrink-0 rounded-lg px-2.5 @2xl/composer:px-3", options.isPlan && "border-accent/40 text-accent")}
             >
-              <ListTodo className="h-3.5 w-3.5" /> Planen
+              <ListTodo className="h-3.5 w-3.5" />
+              <span className="hidden @2xl/composer:inline">Planen</span>
             </Button>
           </Tooltip>
-          <div className="flex-1" />
+          <div className="min-w-0 flex-1" />
           <RateLimitBadge autoContinueAt={session?.autoContinueAt ?? null} />
           {session?.context && <ContextMeter usage={session.context} onCompact={() => void compactSession(session.id)} disabled={working || waiting || sending} />}
-          <span className="hidden whitespace-nowrap text-caption text-subtle 2xl:inline">
+          <span className="hidden shrink-0 whitespace-nowrap text-caption text-subtle @5xl/composer:inline">
             {enterToSend ? (
               <>
                 <Kbd>Enter</Kbd> senden · <Kbd>Umschalt+Enter</Kbd> Zeile
@@ -464,7 +468,7 @@ export const Composer = memo(function Composer({
               value={options.effort ?? "__default"}
               onChange={(v) => void options.changeEffort(v === "__default" ? null : (v as EffortLevel))}
               options={[{ value: "__default", label: "Effort: Standard" }, ...effortLevels.map((l) => ({ value: l, label: `Effort: ${l}` }))]}
-              className="w-36"
+              className="hidden w-36 shrink-0 @4xl/composer:inline-flex"
               aria-label="Effort"
               disabled={working}
             />
@@ -474,12 +478,37 @@ export const Composer = memo(function Composer({
             value={modelValue}
             onChange={(v) => void options.changeModel(v === "__default" ? null : v)}
             options={modelOptions}
-            className="w-40"
+            className="hidden w-40 shrink-0 @xl/composer:inline-flex"
             aria-label="Modell"
             disabled={working}
           />
+          {/* Narrow: Effort (and below that the model) move into one menu instead of squeezing the row. */}
+          <div className="shrink-0 @4xl/composer:hidden">
+            <DropdownMenu
+              header="Modell und Effort"
+              trigger={
+                <Button size="icon-sm" variant="ghost" aria-label="Modell und Effort" title="Modell und Effort" disabled={working}>
+                  <SlidersHorizontal className="h-3.5 w-3.5" />
+                </Button>
+              }
+              items={[
+                ...modelOptions.map((o) => ({
+                  label: o.label,
+                  hint: o.value === modelValue ? "aktiv" : undefined,
+                  onSelect: () => void options.changeModel(o.value === "__default" ? null : o.value),
+                })),
+                ...(showEffort
+                  ? [{ value: "__default", label: "Effort: Standard" }, ...effortLevels.map((l) => ({ value: l, label: `Effort: ${l}` }))].map((o) => ({
+                      label: o.label,
+                      hint: o.value === (options.effort ?? "__default") ? "aktiv" : undefined,
+                      onSelect: () => void options.changeEffort(o.value === "__default" ? null : (o.value as EffortLevel)),
+                    }))
+                  : []),
+              ]}
+            />
+          </div>
           {working && (
-            <Button size="icon" variant="danger" className="h-9 w-9 rounded-lg" onClick={stop} aria-label="Stoppen (Esc)" title="Stoppen (Esc)" disabled={session?.status === "stopping"}>
+            <Button size="icon" variant="danger" className="h-9 w-9 shrink-0 rounded-lg" onClick={stop} aria-label="Stoppen (Esc)" title="Stoppen (Esc)" disabled={session?.status === "stopping"}>
               <Square className="h-3.5 w-3.5 fill-current" />
             </Button>
           )}
@@ -487,7 +516,7 @@ export const Composer = memo(function Composer({
             <Button
               size="icon"
               variant="primary"
-              className="h-9 w-9 rounded-lg"
+              className="h-9 w-9 shrink-0 rounded-lg"
               onClick={submit}
               // The message shows in the chat at once ("wird gesendet"), so no spinner here: the arrow flies off.
               disabled={(!text.trim() && !files.length) || (waiting && !localTyped) || sending || dictating}

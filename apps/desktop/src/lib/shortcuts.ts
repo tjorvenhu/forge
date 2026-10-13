@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import type { ResultOf } from "@forge/protocol";
 import { useUi, workspaceTabsFor } from "@/stores/ui";
 import { keys, queryClient } from "@/lib/queries";
-import { flatTabs, groupTabs, openSessionId, openSessionTab } from "@/lib/session-tabs";
+import { flatTabs, groupTabs, openSessionId, openSessionTab, shownSessionIds } from "@/lib/session-tabs";
 
 /** An open dialog owns the keyboard: switching sessions behind it would change what it acts on. */
 function dialogOpen(): boolean {
@@ -31,7 +31,8 @@ export function handleGlobalShortcut(e: KeyboardEvent) {
   if (k === "tab") {
     const openId = openSessionId(ui);
     const projects = queryClient.getQueryData<ResultOf<"projects.list">>(keys.projects);
-    const open = openId ? openSessionTab(queryClient.getQueryData<ResultOf<"sessions.get">>(keys.session(openId)), projects) : null;
+    // Like the sidebar: also the sessions of the split view's further areas without a running process.
+    const open = shownSessionIds(ui).map((id) => openSessionTab(queryClient.getQueryData<ResultOf<"sessions.get">>(keys.session(id)), projects));
     const tabs = flatTabs(groupTabs(queryClient.getQueryData<ResultOf<"sessions.listLive">>(keys.liveSessions) ?? [], open, projects));
     const current = tabs.findIndex((s) => s.id === openId);
     if (!tabs.length || (tabs.length === 1 && current === 0)) return;

@@ -21,7 +21,7 @@ export function ContextMeter({ usage, onCompact, disabled }: { usage: ContextUsa
   const tone = contextTone(pct);
   const used = usage.categories.filter((c) => c.kind === "used").sort((a, b) => b.tokens - a.tokens);
   return (
-    <div className="flex items-center gap-1">
+    <div className="flex shrink-0 items-center gap-1">
       <Tooltip
         content={
           <div className="space-y-1 py-0.5">
@@ -45,7 +45,7 @@ export function ContextMeter({ usage, onCompact, disabled }: { usage: ContextUsa
               style={{ width: `${Math.min(100, pct)}%` }}
             />
           </div>
-          <span className={cn("tabular-nums", tone === "danger" ? "text-danger" : tone === "warn" ? "text-warning" : "")}>{pct} %</span>
+          <span className={cn("whitespace-nowrap tabular-nums", tone === "danger" ? "text-danger" : tone === "warn" ? "text-warning" : "")}>{pct} %</span>
         </div>
       </Tooltip>
       <Tooltip content="Verlauf zusammenfassen, um Platz im Kontext zu schaffen (/compact)">
