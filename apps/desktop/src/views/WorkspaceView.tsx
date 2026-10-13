@@ -31,7 +31,6 @@ import { KnowledgeTab } from "@/components/knowledge/KnowledgeTab";
 import { PhoneButton } from "@/components/layout/PhoneButton";
 import { AlwaysOnTopButton } from "@/components/layout/AlwaysOnTopButton";
 import { HeaderDivider } from "@/components/layout/Page";
-import { SearchField } from "@/components/layout/SearchField";
 import { ChatSkeleton } from "@/components/ui/skeleton";
 import { Collapse } from "@/components/ui/collapse";
 import { DevToolsBadge } from "@/components/devtools/DevToolsBadge";
@@ -310,7 +309,6 @@ function WorkspaceHeader({ projectId }: { projectId: string }) {
         </Button>
       )}
       <LayoutToggles />
-      <SearchField />
       <RemoteControlButton project={project} />
       <AlwaysOnTopButton />
 

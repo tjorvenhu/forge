@@ -10,6 +10,7 @@ import { AppUpdateCard } from "./AppUpdate";
 import { splitProjects } from "@/lib/project-tree";
 import { NAV } from "./nav";
 import { OpenSessions } from "./OpenSessions";
+import { SearchField } from "./SearchField";
 import { ErrorBoundary } from "./ErrorBoundary";
 
 export function Sidebar() {
@@ -35,7 +36,11 @@ export function Sidebar() {
 
       <div className="mx-4 border-t border-border" />
 
-      <nav className="flex flex-col gap-1 px-3 pt-3" aria-label="Hauptnavigation">
+      <div className="px-3 pt-3">
+        <SearchField />
+      </div>
+
+      <nav className="flex flex-col gap-1 px-3 pt-2" aria-label="Hauptnavigation">
         {NAV.map((n) => {
           const active = view === n.view || (n.view === "projects" && view === "workspace");
           const count = counts[n.view];
