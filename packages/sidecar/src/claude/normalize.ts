@@ -83,7 +83,7 @@ export class Normalizer {
       const taskId = str(m.task_id) ?? "";
       const description = str(m.description) ?? "Hintergrundaufgabe";
       this.backgroundTasks.set(taskId, description);
-      return [{ type: "background.task", taskId, description, state: "started", summary: null }];
+      return [{ type: "background.task", taskId, description, state: "started", summary: null, toolUseId: str(m.tool_use_id) }];
     }
     if (m.subtype === "task_notification") {
       const taskId = str(m.task_id) ?? "";
@@ -92,7 +92,7 @@ export class Normalizer {
       this.backgroundTasks.delete(taskId);
       const status = str(m.status);
       const state = status === "completed" ? "completed" : status === "failed" ? "failed" : "stopped";
-      return [{ type: "background.task", taskId, description, state, summary: str(m.summary) }];
+      return [{ type: "background.task", taskId, description, state, summary: str(m.summary), toolUseId: str(m.tool_use_id) }];
     }
     if (m.subtype === "compact_boundary") {
       const meta = (m.compact_metadata ?? {}) as Record<string, unknown>;

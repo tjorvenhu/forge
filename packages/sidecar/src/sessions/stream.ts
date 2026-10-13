@@ -55,7 +55,8 @@ export class SessionStream {
     }
     if (m.type === "system" && (m.subtype === "task_started" || m.subtype === "task_progress" || m.subtype === "task_notification")) this.trackTask(id, live, m);
     // A finished background task makes the CLI start a turn on its own, without a user message.
-    const turnOutput = m.type === "assistant" || (m.type === "stream_event" && (m.event as Record<string, unknown> | undefined)?.type === "message_start");
+    // A subagent in the background goes on talking after its starter's turn ended; that is not a turn.
+    const turnOutput = !m.parent_tool_use_id && (m.type === "assistant" || (m.type === "stream_event" && (m.event as Record<string, unknown> | undefined)?.type === "message_start"));
     if (turnOutput && this.core.db.getSession(id)?.status === "idle") this.turns.markRunning(id, live);
     for (const body of live.normalizer.normalize(msg)) {
       this.core.record(id, body);

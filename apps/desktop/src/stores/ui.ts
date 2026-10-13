@@ -68,11 +68,14 @@ interface UiState {
   toggleRightPanel: (open?: boolean) => void;
   toggleBottomPanel: (open?: boolean) => void;
   setNewProject: (m: NewProjectMode | null) => void;
+  /** projects whose sessions the sidebar tree hides */
+  collapsedGroups: string[];
+  toggleGroup: (projectId: string, collapsed?: boolean) => void;
 }
 
 const PREFS_KEY = "forge.ui";
 
-type Prefs = Pick<UiState, "activeProjectId" | "toolbarOpen">;
+type Prefs = Pick<UiState, "activeProjectId" | "toolbarOpen" | "collapsedGroups">;
 
 /** Reopens the last project on start. Side and bottom panel always start closed and open only on request. */
 function loadPrefs(): Partial<UiState> {
@@ -80,6 +83,7 @@ function loadPrefs(): Partial<UiState> {
     const p = JSON.parse(localStorage.getItem(PREFS_KEY) ?? "{}") as Partial<Prefs>;
     return {
       ...(typeof p.toolbarOpen === "boolean" ? { toolbarOpen: p.toolbarOpen } : {}),
+      ...(Array.isArray(p.collapsedGroups) ? { collapsedGroups: p.collapsedGroups.filter((g): g is string => typeof g === "string") } : {}),
       ...(typeof p.activeProjectId === "string" ? { activeProjectId: p.activeProjectId, view: "workspace" as const } : {}),
     };
   } catch {
@@ -89,7 +93,7 @@ function loadPrefs(): Partial<UiState> {
 
 function savePrefs(s: Prefs) {
   try {
-    localStorage.setItem(PREFS_KEY, JSON.stringify({ activeProjectId: s.activeProjectId, toolbarOpen: s.toolbarOpen }));
+    localStorage.setItem(PREFS_KEY, JSON.stringify({ activeProjectId: s.activeProjectId, toolbarOpen: s.toolbarOpen, collapsedGroups: s.collapsedGroups }));
   } catch {
     /* preferences are optional */
   }
@@ -110,7 +114,15 @@ export const useUi = create<UiState>((set, get) => ({
   focusEvent: null,
   taskView: null,
   selectedFile: {},
+  collapsedGroups: [],
   ...loadPrefs(),
+  toggleGroup: (projectId, collapsed) => {
+    set((s) => {
+      const next = collapsed ?? !s.collapsedGroups.includes(projectId);
+      return { collapsedGroups: next ? [...new Set([...s.collapsedGroups, projectId])] : s.collapsedGroups.filter((g) => g !== projectId) };
+    });
+    savePrefs(get());
+  },
   openTerminal: (projectId, program, label) => set({ terminalRequest: { projectId, program, label }, bottomPanelOpen: true }),
   clearTerminalRequest: () => set({ terminalRequest: null }),
   openPanelTab: (projectId, tab) => {

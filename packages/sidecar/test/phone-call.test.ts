@@ -986,7 +986,8 @@ describe("PhoneService end to end with a test PBX", () => {
     expect(await conv.tools.details("S1", { summary: true })).toContain("Zusammenfassung des Verlaufs: <<<SESSION-DATEN>>>Export gebaut, Tests offen.");
 
     expect(await conv.tools.backgroundTask("S1", "output", "npm")).toContain("npm ERR! Test fehlgeschlagen");
-    expect(await conv.tools.backgroundTask("S1", "output", "auth")).toMatch(/nur für Befehle im Hintergrund/);
+    // A subagent has no command output: its latest progress line instead.
+    expect(await conv.tools.backgroundTask("S1", "output", "auth")).toBe("<<<SESSION-DATEN>>>Auth prüfen<<<ENDE SESSION-DATEN>>> zuletzt: <<<SESSION-DATEN>>>Liest die Login-Routen<<<ENDE SESSION-DATEN>>>");
     expect(await conv.tools.backgroundTask("S1", "stop")).toMatch(/^Fehler: Welche Aufgabe/);
     expect(await conv.tools.backgroundTask("S1", "stop", "npm test")).toBe("<<<SESSION-DATEN>>>npm test<<<ENDE SESSION-DATEN>>> gestoppt, der Rest von S1 läuft weiter.");
     expect(await conv.tools.backgroundTask("S1", "to_background", "auth")).toBe("In den Hintergrund verschoben, S1 arbeitet weiter.");

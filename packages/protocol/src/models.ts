@@ -292,7 +292,10 @@ export const SessionEventBody = z.discriminatedUnion("type", [
     taskId: z.string(),
     description: z.string(),
     state: z.enum(["started", "completed", "failed", "stopped"]),
+    /** at the end: what the task reports, for a subagent its final answer */
     summary: z.string().nullable(),
+    /** the tool call that started it; missing in events of older FORGE versions */
+    toolUseId: z.string().nullable().optional(),
   }),
   z.object({
     type: z.literal("turn.result"),

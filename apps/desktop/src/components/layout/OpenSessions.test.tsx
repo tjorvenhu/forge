@@ -59,7 +59,7 @@ beforeEach(() => {
   callMock.mockReset();
   live = [];
   stored = [];
-  useUi.setState({ view: "workspace", activeProjectId: "app", activeSession: {}, workspaceTab: "git" });
+  useUi.setState({ view: "workspace", activeProjectId: "app", activeSession: {}, workspaceTab: "git", collapsedGroups: [] });
   callMock.mockImplementation(async (method: string, params: { sessionId?: string }) => {
     if (method === "sessions.listLive") return live;
     if (method === "projects.list") return Object.entries(names).map(([id, name]) => ({ id, name }));
@@ -126,6 +126,26 @@ describe("OpenSessions", () => {
 
     fireEvent.click(screen.getByRole("tab", { name: /^Titel a1/ }));
     expect(screen.queryByText("Neue Session")).toBeNull();
+  });
+
+  it("collapses a project: its sessions leave the tree and the arrow keys, waiting ones still show", async () => {
+    live = [
+      tab(session("a1", "app", "2026-10-11T10:01:00Z", { status: "waiting_approval" })),
+      tab(session("a2", "app", "2026-10-11T10:02:00Z")),
+      tab(session("w1", "web", "2026-10-11T10:03:00Z")),
+    ];
+    useUi.setState({ activeSession: { app: "a2" } });
+    setup();
+    await screen.findByRole("tablist", { name: "Sessions" });
+    fireEvent.click(screen.getByRole("button", { name: "Sessions von App ausblenden" }));
+    expect(tabNames()).toEqual(["Titel w1"]);
+    expect(useUi.getState().collapsedGroups).toEqual(["app"]);
+    const group = document.querySelector<HTMLElement>('[data-project-group="app"]')!;
+    expect(within(group).getByLabelText("2 Sessions ausgeblendet").querySelector(".bg-warning")).toBeTruthy();
+    // The new-session button opens the project up again.
+    fireEvent.click(screen.getByRole("button", { name: "Neue Session in App" }));
+    expect(useUi.getState().collapsedGroups).toEqual([]);
+    expect(tabNames()).toEqual(["Titel a1", "Titel a2", "Titel w1"]);
   });
 
   it("shows the new session also in a project without running sessions", async () => {

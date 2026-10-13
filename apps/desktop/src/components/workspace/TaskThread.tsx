@@ -105,7 +105,7 @@ function AgentThread({ task, projectDir }: { task: Extract<TaskView, { kind: "ag
       {result && (
         <Section label={result.isError ? "Fehler" : "Ergebnis"}>
           <div className={result.isError ? "text-body text-danger" : "text-body"}>
-            <Markdown text={result.content.text || "(leer)"} />
+            <Markdown text={result.text || "(leer)"} />
           </div>
         </Section>
       )}
@@ -114,14 +114,31 @@ function AgentThread({ task, projectDir }: { task: Extract<TaskView, { kind: "ag
   );
 }
 
-function agentCall(events: readonly SessionEvent[], toolUseId: string): { use: Body<"tool.use"> | null; result: Body<"tool.result"> | null } {
+interface AgentResult {
+  isError: boolean;
+  text: string;
+}
+
+/**
+ * The Agent call and its outcome. A subagent in the background answers its call at once with a
+ * launch notice; its real answer comes with the end of the background task.
+ */
+export function agentCall(events: readonly SessionEvent[], toolUseId: string): { use: Body<"tool.use"> | null; result: AgentResult | null } {
   let use: Body<"tool.use"> | null = null;
-  let result: Body<"tool.result"> | null = null;
+  let direct: Body<"tool.result"> | null = null;
+  let finished: Body<"background.task"> | null = null;
   for (const e of events) {
-    if (e.body.type === "tool.use" && e.body.toolUseId === toolUseId) use = e.body;
-    else if (e.body.type === "tool.result" && e.body.toolUseId === toolUseId) result = e.body;
+    const b = e.body;
+    if (b.type === "tool.use" && b.toolUseId === toolUseId) use = b;
+    else if (b.type === "tool.result" && b.toolUseId === toolUseId) direct = b;
+    else if (b.type === "background.task" && b.toolUseId === toolUseId && b.state !== "started") finished = b;
   }
-  return { use, result };
+  // The call itself may sit on an older page that is not loaded; the launch notice tells it too.
+  const background = use?.input.run_in_background === true || !!direct?.content.text.startsWith("Async agent launched");
+  if (background && !direct?.isError) {
+    return { use, result: finished ? { isError: finished.state === "failed", text: finished.summary ?? (finished.state === "stopped" ? "Gestoppt." : "") } : null };
+  }
+  return { use, result: direct && { isError: direct.isError, text: direct.content.text } };
 }
 
 function ShellOutput({ task }: { task: Extract<TaskView, { kind: "shell" }> }) {

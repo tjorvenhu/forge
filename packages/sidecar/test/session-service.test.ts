@@ -389,6 +389,24 @@ describe("SessionService", () => {
     expect(await svc.taskOutput(s.id, "b1")).toEqual({ output: "Ausgabe von b1", totalBytes: 14, truncated: false });
   });
 
+  it("keeps the session idle while a background subagent works on, and records its answer with its tool call", async () => {
+    const s = await svc.start({ projectId, prompt: "Recherchiere im Hintergrund" });
+    const sink = rt.sinks[0]!;
+    sink.onMessage({ type: "system", subtype: "task_started", task_id: "a1", tool_use_id: "ta1", description: "Recherche", task_type: "local_agent", is_backgrounded: true });
+    sink.onMessage({ type: "result", subtype: "success", is_error: false, result: "ok", usage: {} });
+    await svc.drain();
+    expect(svc.get(s.id).status).toBe("idle");
+    // The subagent's steps come after the turn ended.
+    sink.onMessage({ type: "stream_event", parent_tool_use_id: "ta1", event: { type: "message_start", message: { id: "m-sub" } } });
+    sink.onMessage({ type: "assistant", parent_tool_use_id: "ta1", message: { id: "m-sub", content: [{ type: "tool_use", id: "tr1", name: "Read", input: { file_path: "a.txt" } }] } });
+    expect(svc.get(s.id).status).toBe("idle");
+    sink.onMessage({ type: "system", subtype: "task_notification", task_id: "a1", tool_use_id: "ta1", status: "completed", summary: "Drei Routen gefunden.", output_file: "x" });
+    expect(db.listEvents(s.id).map((e) => e.body)).toContainEqual({ type: "background.task", taskId: "a1", description: "Recherche", state: "completed", summary: "Drei Routen gefunden.", toolUseId: "ta1" });
+    // The CLI's own turn about the finished task is a turn again.
+    sink.onMessage({ type: "assistant", message: { id: "m-main", content: [{ type: "text", text: "Fertig." }] } });
+    expect(svc.get(s.id).status).toBe("running");
+  });
+
   it("uses the Safe profile for real: default mode and disabled network tools", async () => {
     projects.update(projectId, { profile: "safe" });
     await svc.start({ projectId, prompt: "x" });

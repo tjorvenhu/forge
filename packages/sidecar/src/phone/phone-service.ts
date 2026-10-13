@@ -1252,8 +1252,8 @@ export class PhoneService {
           const s = resolve(ref);
           const r = refFor(s.id);
           const all = [
-            ...s.background.map((t) => ({ taskId: t.taskId, toolUseId: t.toolUseId, description: t.description, background: true, command: /bash|shell/i.test(t.taskType) })),
-            ...s.subagents.map((t) => ({ taskId: t.taskId, toolUseId: t.toolUseId, description: t.description, background: false, command: false })),
+            ...s.background.map((t) => ({ taskId: t.taskId, toolUseId: t.toolUseId, description: t.description, background: true, command: /bash|shell/i.test(t.taskType), summary: t.summary })),
+            ...s.subagents.map((t) => ({ taskId: t.taskId, toolUseId: t.toolUseId, description: t.description, background: false, command: false, summary: t.summary })),
           ];
           const names = (list: typeof all) => list.map((t) => asData(t.description)).join(", ");
           const find = () => {
@@ -1276,7 +1276,8 @@ export class PhoneService {
             await sessions.stopTask(s.id, t.taskId);
             return `${asData(t.description)} gestoppt, der Rest von ${r} läuft weiter.`;
           }
-          if (!t.command) return `Eine Ausgabe gibt es nur für Befehle im Hintergrund. Was ${asData(t.description)} macht, steht in details.`;
+          // Subagents have no command output; their progress line is what they are doing now.
+          if (!t.command) return t.summary ? `${asData(t.description)} zuletzt: ${excerptData(t.summary, 500)}` : `${asData(t.description)} hat noch keinen Zwischenstand gemeldet.`;
           const out = await sessions.taskOutput(s.id, t.taskId);
           if (!out.output.trim()) return `${asData(t.description)} hat noch nichts ausgegeben.`;
           return `Letzte Ausgabe von ${asData(t.description)}: ${excerptData(tail(out.output, 30), 3000)}`;
