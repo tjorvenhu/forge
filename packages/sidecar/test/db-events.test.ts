@@ -14,7 +14,7 @@ beforeEach(() => {
   db = new Db(path.join(t.dir, "forge.db"));
   const now = new Date().toISOString();
   db.insertProject(
-    { id: "p1", name: "p", path: t.dir, favorite: false, tags: [], technologies: [], profile: "balanced", defaultModel: null, defaultEffort: null, createdAt: now, lastOpenedAt: null, testCommand: null, devCommand: null, parentId: null },
+    { id: "p1", name: "p", path: t.dir, favorite: false, tags: [], technologies: [], profile: "balanced", defaultModel: null, defaultEffort: null, createdAt: now, lastOpenedAt: null, testCommand: null, devCommand: null, parentId: null, gitEnabled: true },
     t.dir.toLowerCase(),
   );
   db.insertSession({ id: sid, projectId: "p1", claudeSessionId: null, cwd: t.dir, title: null, model: null, effort: null, profile: "balanced", permissionMode: "default", status: "idle", apiKeySource: null, createdAt: now, updatedAt: now, lastError: null });

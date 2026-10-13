@@ -1,44 +1,81 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import { useTokenRate } from "@/stores/token-rate";
+import { BASELINE_POINTS, createSparkline, sparklineActive, sparklineIdle, sparklinePoints, stepSparkline } from "./token-sparkline";
 
-/** seconds of history in the sparkline */
-const HISTORY = 30;
+/** Without motion the line moves in whole seconds, like the rate itself arrives. */
+const REDUCED_TICK_MS = 1000;
 
-/** Last HISTORY seconds of the rate, one value per second, oldest first. */
-function useHistory(): number[] {
-  const [history, setHistory] = useState<number[]>(() => Array<number>(HISTORY).fill(0));
+/**
+ * Draws the sparkline straight into the polyline once per frame, without rendering React, and
+ * sleeps once everything is back at zero. Returns the ref for the polyline and whether there is
+ * output to show.
+ */
+function useSparkline() {
+  const line = useRef<SVGPolylineElement>(null);
+  const [active, setActive] = useState(false);
   useEffect(() => {
-    const t = setInterval(() => setHistory((h) => [...h.slice(1), useTokenRate.getState().perSecond]), 1000);
-    return () => clearInterval(t);
-  }, []);
-  return history;
-}
+    const reducedMotion = typeof window.matchMedia === "function" ? window.matchMedia("(prefers-reduced-motion: reduce)") : null;
+    const spark = createSparkline(performance.now());
+    let cancel: (() => void) | null = null;
 
-function Sparkline({ values }: { values: number[] }) {
-  const max = Math.max(...values, 1);
-  const step = 100 / (values.length - 1);
-  const points = values.map((v, i) => `${(i * step).toFixed(1)},${(20 - (v / max) * 18 - 1).toFixed(1)}`).join(" ");
-  return (
-    <svg viewBox="0 0 100 20" preserveAspectRatio="none" className="h-4 w-full text-accent" aria-hidden>
-      <polyline points={points} fill="none" stroke="currentColor" strokeWidth="1.5" vectorEffect="non-scaling-stroke" strokeLinejoin="round" />
-    </svg>
-  );
+    const frame = () => {
+      cancel = null;
+      const now = performance.now();
+      const target = useTokenRate.getState().perSecond;
+      const reduced = reducedMotion?.matches ?? false;
+      stepSparkline(spark, target, now, reduced);
+      line.current?.setAttribute("points", sparklinePoints(spark, now));
+      setActive(sparklineActive(spark, target));
+      if (!sparklineIdle(spark, target)) schedule(reduced);
+    };
+    const schedule = (reduced: boolean) => {
+      if (cancel) return;
+      if (reduced || typeof requestAnimationFrame !== "function") {
+        const t = setTimeout(frame, REDUCED_TICK_MS);
+        cancel = () => clearTimeout(t);
+      } else {
+        const id = requestAnimationFrame(frame);
+        cancel = () => cancelAnimationFrame(id);
+      }
+    };
+
+    const unsubscribe = useTokenRate.subscribe(() => {
+      if (!(reducedMotion?.matches ?? false)) return schedule(false);
+      cancel?.();
+      frame();
+    });
+    frame();
+    return () => {
+      unsubscribe();
+      cancel?.();
+    };
+  }, []);
+  return { line, active };
 }
 
 /** Output tokens per second of everything FORGE runs with Claude: sessions, subagents, agents, phone. */
 export function TokenRate() {
   const perSecond = useTokenRate((s) => s.perSecond);
-  const history = useHistory();
-  const active = perSecond > 0 || history.some((v) => v > 0);
+  const { line, active } = useSparkline();
   return (
     <div className="w-full" title="Ausgegebene Tokens pro Sekunde, über alle Sessions, Subagenten, Agenten und das Telefon">
       <div className="mb-0.5 flex justify-between text-caption">
         <span className="text-muted">Ausgabe</span>
         <span className={cn("tabular-nums", perSecond > 0 ? "text-fg" : "text-subtle")}>{perSecond.toLocaleString("de-DE")} Token/s</span>
       </div>
-      <div className={cn("transition-opacity duration-300", active ? "opacity-100" : "opacity-30")}>
-        <Sparkline values={history} />
+      <div className={cn("transition-opacity duration-300", active || perSecond > 0 ? "opacity-100" : "opacity-30")}>
+        <svg viewBox="0 0 100 20" preserveAspectRatio="none" className="h-4 w-full text-accent" aria-hidden>
+          <polyline
+            ref={line}
+            points={BASELINE_POINTS}
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.5"
+            vectorEffect="non-scaling-stroke"
+            strokeLinejoin="round"
+          />
+        </svg>
       </div>
     </div>
   );

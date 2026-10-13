@@ -67,7 +67,7 @@ import { setAlwaysOnTop } from "@/lib/window-options";
 import { useActivity } from "@/stores/activity";
 import { draftKey, useDrafts } from "@/stores/drafts";
 import { toast } from "@/stores/toast";
-import { DEV_TOOLS_SECTIONS, PROJECT_SETTINGS_SECTIONS, SETTINGS_SECTIONS, SKILLS_TABS, EXTENSIONS_TABS, WORKSPACE_TABS, useUi, type SettingsSection, type WorkspaceTab } from "@/stores/ui";
+import { DEV_TOOLS_SECTIONS, PROJECT_SETTINGS_SECTIONS, SETTINGS_SECTIONS, SKILLS_TABS, EXTENSIONS_TABS, workspaceTabsFor, useUi, type SettingsSection, type WorkspaceTab } from "@/stores/ui";
 import { PROFILE_IDS, PROFILE_INFO } from "@/components/projects/ProfileBadge";
 import { RULE_GROUPS } from "@/components/settings/PolicySettings";
 import { SECTIONS as DEV_TOOLS_SECTION_DEFS } from "@/components/devtools/DevToolsTab";
@@ -188,7 +188,7 @@ async function saveSetting(qc: QueryClient, patch: Partial<Settings>, success: s
   }
 }
 
-async function updateProject(qc: QueryClient, projectId: string, patch: { profile?: ProfileId; tags?: string[] }, success: string, body?: string) {
+async function updateProject(qc: QueryClient, projectId: string, patch: { profile?: ProfileId; tags?: string[]; gitEnabled?: boolean }, success: string, body?: string) {
   try {
     await call("projects.update", { projectId, ...patch });
     await qc.invalidateQueries({ queryKey: keys.project(projectId) });
@@ -317,7 +317,7 @@ export function buildActions(ctx: ActionContext): PaletteEntry[] {
     }
 
     // Without a query only the first entries show: tabs before the rarer session actions.
-    WORKSPACE_TABS.forEach((t, i) => {
+    workspaceTabsFor(project).forEach((t, i) => {
       const def = TAB_ENTRIES[t];
       act(`tab-${t}`, def.label, icon(def.Icon), () => ui.setWorkspaceTab(t), { hint: `Strg+${i + 1}`, keywords: def.keywords });
     });
@@ -406,8 +406,14 @@ export function buildActions(ctx: ActionContext): PaletteEntry[] {
       const def = byId(PROJECT_SECTION_DEFS, id);
       setting(`project-settings-${id}`, `Projekt-Einstellungen: ${def.label}`, icon(def.Icon), () => ui.openProjectSettings(id), { hint: def.hint, keywords: project.name });
     }
+    if (!project.parentId) {
+      const on = project.gitEnabled;
+      setting("project-git", on ? "Git für dieses Projekt ausschalten" : "Git für dieses Projekt einschalten", icon(on ? ToggleRight : ToggleLeft), () => {
+        void updateProject(qc, project.id, { gitEnabled: !on }, on ? "Git ausgeschaltet" : "Git eingeschaltet", on ? "Agenten und Git-Bereiche sind ausgeblendet. Claude verwendet kein Git." : project.name);
+      }, { keywords: "versionsverwaltung ohne git agenten repository", hint: project.name });
+    }
     for (const t of TAG_INFO) {
-      if (t.rootOnly && project.parentId) continue;
+      if ((t.rootOnly && project.parentId) || (t.git && !project.gitEnabled)) continue;
       const on = project.tags.includes(t.tag);
       setting(`tag-${t.tag}`, `${t.label}: ${on ? "ausschalten" : "einschalten"}`, icon(on ? ToggleRight : ToggleLeft), () => {
         void updateProject(qc, project.id, { tags: on ? project.tags.filter((x) => x !== t.tag) : [...project.tags, t.tag] }, `${t.label} ${on ? "ausgeschaltet" : "eingeschaltet"}`, project.name);

@@ -18,7 +18,8 @@ const ID_RE = /^[\w.-]{1,120}$/;
 const CLAUDE_DIRS = ["agents", "commands", "skills", "rules", "output-styles"];
 const CLAUDE_FILES = ["CLAUDE.md", "settings.json"];
 
-const ProjectEntry = Project.omit({ exists: true });
+// Backups from before projects without git lack gitEnabled; those projects all used git.
+const ProjectEntry = Project.omit({ exists: true }).extend({ gitEnabled: z.boolean().default(true) });
 
 const BackupData = z.object({
   format: z.literal("forge-backup"),

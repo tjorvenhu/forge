@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { FolderOpen, FolderPlus, GitBranch } from "lucide-react";
+import { FolderOpen, FolderPlus, FolderX, GitBranch } from "lucide-react";
 import { call, keys, useGitHubAccount, useSettings } from "@/lib/queries";
 import { errorMessage, RpcCallError } from "@/lib/rpc";
 import { pickFolder } from "@/lib/native";
+import { cn } from "@/lib/utils";
 import { useUi, type NewProjectMode } from "@/stores/ui";
 import { toast } from "@/stores/toast";
 import { Dialog } from "@/components/ui/dialog";
@@ -12,6 +13,7 @@ import { Field, Input } from "@/components/ui/input";
 import { Checkbox, ErrorBanner } from "@/components/ui/misc";
 import { Skeleton, SkeletonRegion } from "@/components/ui/skeleton";
 import { RadioGroup } from "@/components/ui/radio-group";
+import { Collapse } from "@/components/ui/collapse";
 import { TabBar } from "@/components/ui/tabs";
 import { GitHubRepoPicker } from "@/components/github/GitHubPanel";
 
@@ -25,7 +27,7 @@ export function NewProjectDialog() {
   const [path, setPath] = useState("");
   const [name, setName] = useState("");
   const [parent, setParent] = useState("");
-  const [gitInit, setGitInit] = useState(true);
+  const [withGit, setWithGit] = useState(true);
   const [onGitHub, setOnGitHub] = useState(false);
   const [ghPrivate, setGhPrivate] = useState(true);
   const github = useGitHubAccount();
@@ -50,6 +52,7 @@ export function NewProjectDialog() {
     setName("");
     setUrl("");
     setDirName("");
+    setWithGit(true);
   };
 
   const submit = async () => {
@@ -59,13 +62,13 @@ export function NewProjectDialog() {
     try {
       let project;
       if (mode === "create") {
-        const r = await call("projects.create", { name, parentDir: parent, gitInit, github: onGitHub ? { private: ghPrivate } : null });
+        const r = await call("projects.create", { name, parentDir: parent, gitInit: withGit, gitEnabled: withGit, github: withGit && onGitHub ? { private: ghPrivate } : null });
         project = r.project;
         if (r.github?.url) toast.success("Projekt angelegt und auf GitHub veröffentlicht", r.github.url);
         else if (r.github?.error) toast.error("Projekt angelegt, GitHub-Repository fehlgeschlagen", r.github.error);
         else toast.success("Projekt angelegt", project.path);
       } else {
-        project = mode === "import" ? await call("projects.import", { path }) : await call("projects.clone", { url, parentDir: parent, dirName: dirName || undefined });
+        project = mode === "import" ? await call("projects.import", { path, gitEnabled: withGit }) : await call("projects.clone", { url, parentDir: parent, dirName: dirName || undefined });
         toast.success(mode === "import" ? "Projekt importiert" : "Repository geklont", project.path);
       }
       await qc.invalidateQueries({ queryKey: keys.projects });
@@ -122,6 +125,7 @@ export function NewProjectDialog() {
             <FolderInput value={path} onChange={setPath} title="Projektordner wählen" />
           </Field>
         )}
+        {mode === "import" && <GitChoice value={withGit} onChange={setWithGit} importing />}
 
         {mode === "create" && (
           <>
@@ -132,40 +136,39 @@ export function NewProjectDialog() {
               <FolderInput value={parent} onChange={setParent} title="Übergeordneten Ordner wählen" />
             </Field>
             <p className="-mt-1 text-xs text-subtle">FORGE legt nur den Ordner an. Struktur, README und Konfiguration erstellt Claude in der ersten Session.</p>
-            <label className="flex items-center gap-2 text-body">
-              <Checkbox checked={gitInit || onGitHub} onChange={setGitInit} disabled={onGitHub} label="Git initialisieren" />
-              Git initialisieren
-            </label>
-            <div className="rounded-lg border border-border p-3">
-              <label className="flex items-center gap-2 text-body">
-                <Checkbox checked={onGitHub} onChange={setOnGitHub} disabled={!github.data} label="Repository auf GitHub anlegen" />
-                Repository auf GitHub anlegen
-              </label>
-              {github.isPending ? (
-                <SkeletonRegion label="Lädt GitHub-Status" className="mt-1.5 flex h-4 items-center pl-6">
-                  <Skeleton className="h-2.5 w-3/4" />
-                </SkeletonRegion>
-              ) : github.data ? (
-                onGitHub && (
-                  <div className="mt-2.5 flex items-center gap-4 pl-6 text-body">
-                    <RadioGroup
-                      aria-label="Sichtbarkeit des Repositorys"
-                      value={ghPrivate ? "private" : "public"}
-                      onChange={(v) => setGhPrivate(v === "private")}
-                      options={[
-                        { value: "private", label: "Privat" },
-                        { value: "public", label: "Öffentlich" },
-                      ]}
-                    />
-                    <span className="text-xs text-subtle">als {github.data.login}/{name.trim().replace(/\s+/g, "-") || "…"}</span>
-                  </div>
-                )
-              ) : (
-                <p className="mt-1.5 pl-6 text-xs text-subtle">
-                  Dafür zuerst unter <SettingsLink onClick={close} /> bei GitHub anmelden.
-                </p>
-              )}
-            </div>
+            <GitChoice value={withGit} onChange={setWithGit} />
+            <Collapse open={withGit}>
+              <div className="rounded-lg border border-border p-3">
+                <label className="flex items-center gap-2 text-body">
+                  <Checkbox checked={onGitHub} onChange={setOnGitHub} disabled={!github.data} label="Repository auf GitHub anlegen" />
+                  Repository auf GitHub anlegen
+                </label>
+                {github.isPending ? (
+                  <SkeletonRegion label="Lädt GitHub-Status" className="mt-1.5 flex h-4 items-center pl-6">
+                    <Skeleton className="h-2.5 w-3/4" />
+                  </SkeletonRegion>
+                ) : github.data ? (
+                  onGitHub && (
+                    <div className="mt-2.5 flex items-center gap-4 pl-6 text-body">
+                      <RadioGroup
+                        aria-label="Sichtbarkeit des Repositorys"
+                        value={ghPrivate ? "private" : "public"}
+                        onChange={(v) => setGhPrivate(v === "private")}
+                        options={[
+                          { value: "private", label: "Privat" },
+                          { value: "public", label: "Öffentlich" },
+                        ]}
+                      />
+                      <span className="text-xs text-subtle">als {github.data.login}/{name.trim().replace(/\s+/g, "-") || "…"}</span>
+                    </div>
+                  )
+                ) : (
+                  <p className="mt-1.5 pl-6 text-xs text-subtle">
+                    Dafür zuerst unter <SettingsLink onClick={close} /> bei GitHub anmelden.
+                  </p>
+                )}
+              </div>
+            </Collapse>
           </>
         )}
 
@@ -238,6 +241,50 @@ export function NewProjectDialog() {
         )}
       </div>
     </Dialog>
+  );
+}
+
+/** Mit or ohne Git; without git FORGE hides Agenten and Git and tells Claude not to use git. */
+function GitChoice({ value, onChange, importing = false }: { value: boolean; onChange: (v: boolean) => void; importing?: boolean }) {
+  const options = [
+    {
+      on: true,
+      label: "Mit Git",
+      Icon: GitBranch,
+      hint: importing ? "Git-Bereich, Agenten und Commits. Ohne Repository legst du es später im Bereich Git an." : "Legt ein Git-Repository an. Mit Git-Bereich, Agenten und Commits.",
+    },
+    {
+      on: false,
+      label: "Ohne Git",
+      Icon: FolderX,
+      hint: importing ? "Keine Git-Bereiche, keine Agenten, Claude verwendet kein Git. Ein vorhandener .git-Ordner bleibt unberührt." : "Nur der Ordner. Keine Git-Bereiche, keine Agenten, Claude verwendet kein Git.",
+    },
+  ];
+  return (
+    <div role="radiogroup" aria-label="Versionsverwaltung" className="grid grid-cols-2 gap-2">
+      {options.map((o) => {
+        const active = o.on === value;
+        return (
+          <button
+            key={o.label}
+            type="button"
+            role="radio"
+            aria-checked={active}
+            onClick={() => onChange(o.on)}
+            className={cn(
+              "flex items-start gap-2.5 rounded-lg border px-3 py-2.5 text-left transition-colors duration-120",
+              active ? "border-accent bg-accent-soft" : "border-border hover:border-border-strong hover:bg-surface-2",
+            )}
+          >
+            <o.Icon className={cn("mt-0.5 h-4 w-4 shrink-0", active ? "text-accent" : "text-muted")} />
+            <span className="flex-1">
+              <span className="block text-body font-medium">{o.label}</span>
+              <span className="block text-xs text-muted">{o.hint}</span>
+            </span>
+          </button>
+        );
+      })}
+    </div>
   );
 }
 

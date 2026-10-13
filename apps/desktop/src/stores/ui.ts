@@ -8,6 +8,12 @@ export type BottomTab = "output" | "dev";
 /** In the order of the tab bar. */
 export const WORKSPACE_TABS = ["chat", "agents", "git", "files", "devtools", "knowledge", "settings"] as const;
 export type WorkspaceTab = (typeof WORKSPACE_TABS)[number];
+/** Tabs that need git; a project set up without git does not show them. */
+const GIT_WORKSPACE_TABS: ReadonlySet<WorkspaceTab> = new Set(["agents", "git"]);
+/** The tabs a project shows, in the order of the tab bar. */
+export function workspaceTabsFor(project: { gitEnabled: boolean } | null | undefined): WorkspaceTab[] {
+  return WORKSPACE_TABS.filter((t) => project?.gitEnabled !== false || !GIT_WORKSPACE_TABS.has(t));
+}
 export const SETTINGS_SECTIONS = ["general", "claude", "policy", "phone", "backup", "rules", "about"] as const;
 export type SettingsSection = (typeof SETTINGS_SECTIONS)[number];
 export const DEV_TOOLS_SECTIONS = ["server", "database", "env"] as const;

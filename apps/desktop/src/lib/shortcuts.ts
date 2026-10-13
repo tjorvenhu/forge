@@ -1,11 +1,8 @@
 import { useEffect } from "react";
 import type { ResultOf } from "@forge/protocol";
-import { useUi, type WorkspaceTab } from "@/stores/ui";
+import { useUi, workspaceTabsFor } from "@/stores/ui";
 import { keys, queryClient } from "@/lib/queries";
 import { flatTabs, groupTabs, openSessionId, openSessionTab } from "@/lib/session-tabs";
-
-/** In the order of the tab bar. */
-const TABS: WorkspaceTab[] = ["chat", "agents", "git", "files", "devtools", "knowledge", "settings"];
 
 /** An open dialog owns the keyboard: switching sessions behind it would change what it acts on. */
 function dialogOpen(): boolean {
@@ -42,8 +39,12 @@ export function handleGlobalShortcut(e: KeyboardEvent) {
     const from = current < 0 ? (e.shiftKey ? 0 : -1) : current;
     const next = tabs[(from + (e.shiftKey ? -1 : 1) + tabs.length) % tabs.length]!;
     ui.openProject(next.projectId, next.id);
-  } else if (!e.shiftKey && k >= "1" && k <= String(TABS.length) && ui.view === "workspace") {
-    ui.setWorkspaceTab(TABS[Number(k) - 1]!);
+  } else if (!e.shiftKey && k >= "1" && k <= "9" && ui.view === "workspace") {
+    // Numbered like the visible tab bar: without git, Agenten and Git are missing.
+    const project = ui.activeProjectId ? queryClient.getQueryData<ResultOf<"projects.get">>(keys.project(ui.activeProjectId)) : null;
+    const tab = workspaceTabsFor(project)[Number(k) - 1];
+    if (!tab) return;
+    ui.setWorkspaceTab(tab);
     e.preventDefault();
   } else if (!e.shiftKey && k === "j") {
     ui.toggleBottomPanel();

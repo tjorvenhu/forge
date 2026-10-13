@@ -235,6 +235,28 @@ describe("SessionService", () => {
     await expect(svc.fork(s.id, { beforeSeq: 9999 })).rejects.toThrow(/nicht verzweigen/);
   });
 
+  it("tells sessions in a project without git not to use git and gives them no agents", async () => {
+    projects.update(projectId, { gitEnabled: false });
+    const s = await svc.start({ projectId, prompt: "Baue die Startseite" });
+    expect(rt.started[0]!.tools!.map((t) => t.name)).toEqual(["notify"]);
+    expect(rt.started[0]!.context).toMatch(/ohne Git/);
+    expect(rt.started[0]!.context).toMatch(/keine git-Befehle/);
+    expect(rt.started[0]!.context).not.toMatch(/start_agent:/);
+
+    // Switching git on while the session runs: Claude hears it with the next message, once.
+    projects.update(projectId, { gitEnabled: true });
+    svc.projectGitChanged(projectId, true);
+    success(rt.sinks[0]!);
+    await svc.drain();
+    await svc.send(s.id, "weiter");
+    expect(rt.sentNotes).toHaveLength(1);
+    expect(rt.sentNotes[0]).toMatch(/^\[FORGE-Hinweis.*Git für dieses Projekt in FORGE wieder eingeschaltet/);
+    success(rt.sinks[0]!);
+    await svc.drain();
+    await svc.send(s.id, "noch was");
+    expect(rt.sentNotes).toHaveLength(1);
+  });
+
   it("gives sessions FORGE tools: start parallel agents in worktrees, follow them, notify the user", async () => {
     const repo = projects.get(projectId).path;
     await initRepo(repo);

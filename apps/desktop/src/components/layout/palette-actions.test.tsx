@@ -22,6 +22,7 @@ const project = {
   name: "Forge",
   path: "C:/forge",
   parentId: null,
+  gitEnabled: true,
   exists: true,
   profile: "balanced",
   tags: [],
@@ -95,9 +96,19 @@ describe("command palette covers all of FORGE", () => {
   });
 
   it("offers the actions of the open project and session", () => {
-    for (const id of ["session-delete", "session-summary", "session-fork", "session-close", "session-mode", "session-model-opus", "git-commit", "git-push", "git-pull", "git-fetch", "git-pr", "git-new-branch", "agent-new", "remote", "phone", "phone-test", "backup", "update-check", "testdb-start", "dev-start"]) {
+    for (const id of ["session-delete", "session-summary", "session-fork", "session-close", "session-mode", "session-model-opus", "git-commit", "git-push", "git-pull", "git-fetch", "git-pr", "git-new-branch", "agent-new", "remote", "phone", "phone-test", "backup", "update-check", "testdb-start", "dev-start", "project-git"]) {
       expect(ids, id).toContain(id);
     }
+  });
+
+  it("leaves out Agenten, Git and git-only tags in a project without git and numbers the tabs as shown", () => {
+    const noGit = { ...project, gitEnabled: false, git: null } as ProjectWithStatus;
+    const list = buildActions({ ...fullContext(), project: noGit, root: noGit });
+    const got = new Set(list.map((e) => e.id));
+    for (const id of ["tab-agents", "tab-git", "tag-auto-commit", "tag-auto-push", "tag-auto-merge", "tag-review-required", "git-commit", "agent-new"]) expect(got, id).not.toContain(id);
+    expect(got).toContain("tag-auto-test");
+    expect(list.find((e) => e.id === "tab-files")?.hint).toBe("Strg+2");
+    expect(list.find((e) => e.id === "project-git")?.label).toBe("Git für dieses Projekt einschalten");
   });
 
   it("gives every entry its own id", () => {

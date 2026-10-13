@@ -21,19 +21,21 @@ import { effortOptions, fromChoice, modelOptions, toChoice } from "@/components/
 /**
  * Tags with behaviour in FORGE (sessions, turn automation, policy), in the order they are shown.
  * rootOnly: the main project decides for its agents, so agent worktrees do not show the switch.
+ * git: only works with git (GIT_TAGS), hidden in a project set up without git.
  */
-export const TAG_INFO: ReadonlyArray<{ tag: string; label: string; info: string; rootOnly?: boolean }> = [
+export const TAG_INFO: ReadonlyArray<{ tag: string; label: string; info: string; rootOnly?: boolean; git?: boolean }> = [
   { tag: "plan-first", label: "Erst planen", info: "Neue Sessions starten im Plan-Modus." },
   { tag: "auto-test", label: "Automatisch testen", info: "Nach jedem Durchlauf läuft der Testbefehl, das Ergebnis steht im Chat." },
-  { tag: "auto-commit", label: "Automatisch committen", info: "Nach einem Durchlauf mit grünen Tests werden nur die dabei geänderten Dateien committet (KI-Nachricht)." },
-  { tag: "auto-push", label: "Automatisch pushen", info: "Nach Auto-Commit wird gepusht, nie auf main/master und nie mit Force." },
+  { tag: "auto-commit", label: "Automatisch committen", info: "Nach einem Durchlauf mit grünen Tests werden nur die dabei geänderten Dateien committet (KI-Nachricht).", git: true },
+  { tag: "auto-push", label: "Automatisch pushen", info: "Nach Auto-Commit wird gepusht, nie auf main/master und nie mit Force.", git: true },
   {
     tag: "auto-merge",
     label: "Agenten automatisch zusammenführen",
     info: "Endet der Durchlauf eines Agenten ohne Fehler (und mit grünen Tests bei Automatisch testen), übernimmt FORGE seinen Branch in den Branch, von dem er gestartet ist, meist main. Worktree und Branch werden danach gelöscht. Bei Konflikten löst der Agent sie selbst. Was nicht klappt, legt FORGE dir zur Entscheidung vor.",
     rootOnly: true,
+    git: true,
   },
-  { tag: "review-required", label: "Commits nur nach Prüfung", info: "Kein Auto-Commit: Commits nur nach Prüfung im Git-Bereich." },
+  { tag: "review-required", label: "Commits nur nach Prüfung", info: "Kein Auto-Commit: Commits nur nach Prüfung im Git-Bereich.", git: true },
   { tag: "no-network", label: "Ohne Internet", info: "Claude bekommt keine Web-Tools (WebFetch, WebSearch)." },
   { tag: "sandbox-only", label: "Autonomous sperren", info: "Autonomous ist in diesem Projekt gesperrt." },
 ];
@@ -46,7 +48,7 @@ export function tagLabel(tag: string): string {
 const SANDBOX_INFO = TAG_INFO.find((t) => t.tag === "sandbox-only")!.info;
 
 export const SECTIONS: ReadonlyArray<SettingsSectionDef<ProjectSettingsSection>> = [
-  { id: "general", label: "Allgemein", hint: "Name, Modell, Testbefehl", Icon: SlidersHorizontal },
+  { id: "general", label: "Allgemein", hint: "Name, Modell, Git, Testbefehl", Icon: SlidersHorizontal },
   { id: "permissions", label: "Berechtigungen", hint: "Was Claude ohne Rückfrage darf", Icon: ShieldCheck },
   { id: "automation", label: "Automatik", hint: "Planen, testen, committen, Tags", Icon: Workflow },
   { id: "rules", label: "Regeln für Claude", hint: "CLAUDE.md des Projekts", Icon: FileText },
@@ -61,6 +63,7 @@ type Patch = {
   name?: string;
   testCommand?: string | null;
   devCommand?: string | null;
+  gitEnabled?: boolean;
 };
 
 export function ProjectSettingsTab({ project }: { project: Project }) {
@@ -141,6 +144,21 @@ function GeneralSection({ project, update }: SectionProps) {
         </Row>
       </Group>
 
+      {!project.parentId && (
+        <Group title="Versionsverwaltung">
+          <SwitchRow
+            label="Mit Git arbeiten"
+            description={
+              project.gitEnabled
+                ? "Ausgeschaltet blendet FORGE die Bereiche Agenten und Git aus, und Claude verwendet in diesem Projekt kein Git. Automatisch committen, pushen und zusammenführen gehen dann aus. Ein vorhandener .git-Ordner bleibt unverändert."
+                : "Das Projekt arbeitet ohne Git: keine Agenten, kein Git-Bereich, und Claude führt keine git-Befehle aus. Eingeschaltet legst du das Repository im Bereich Git an, falls noch keines da ist."
+            }
+            checked={project.gitEnabled}
+            onChange={(on) => void update({ gitEnabled: on })}
+          />
+        </Group>
+      )}
+
       <Group title="Befehle" description="Laufen in einer Shell im Projektordner. Den Dev-Server richtest du im Tab Dev-Tools ein.">
         <Row label="Testbefehl" description="Für „Automatisch testen“ unter Automatik. Bekommt die Variablen der Test-.env aus Dev-Tools." stacked>
           <CommandInput value={project.testCommand} placeholder="z. B. pnpm test" onSave={(v) => void update({ testCommand: v })} />
@@ -218,7 +236,7 @@ function AutomationSection({ project, update }: SectionProps) {
   return (
     <>
       <Group title="Automatik" description="Was FORGE in diesem Projekt selbst erledigt. Gespeichert als Tags des Projekts.">
-        {TAG_INFO.filter((t) => !(t.rootOnly && project.parentId)).map((t) => (
+        {TAG_INFO.filter((t) => !(t.rootOnly && project.parentId) && !(t.git && !project.gitEnabled)).map((t) => (
           <SwitchRow
             key={t.tag}
             label={t.label}

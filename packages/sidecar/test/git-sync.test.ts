@@ -106,7 +106,7 @@ describe("git.push and git.pull handlers", SLOW, () => {
     const started: Array<{ projectId: string; prompt: string }> = [];
     const h = createHandlers({
       git: engine,
-      projects: { requireExisting: () => ({ path: mine }) },
+      projects: { requireExisting: () => ({ path: mine }), requireGit: () => ({ path: mine }) },
       sessions: {
         start: async (p: { projectId: string; prompt: string }) => {
           started.push(p);

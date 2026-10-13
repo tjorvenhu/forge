@@ -66,6 +66,38 @@ describe("ProjectManager", () => {
     await expectCode(pm.create({ name: "CON", parentDir: t.dir, gitInit: false }), "VALIDATION");
   });
 
+  it("sets a project up without git: no repository, no git status, git actions refused", async () => {
+    const p = await pm.create({ name: "ohne-git", parentDir: t.dir, gitInit: true, gitEnabled: false });
+    expect(p.gitEnabled).toBe(false);
+    expect(existsSync(path.join(p.path, ".git"))).toBe(false);
+    expect((await pm.withStatus(p)).git).toBeNull();
+    expect(() => pm.requireGit(p.id)).toThrow(expect.objectContaining({ code: "GIT_DISABLED" }));
+
+    // An existing repository imported without git keeps its .git folder, but FORGE leaves it alone.
+    const repo = path.join(t.dir, "repo");
+    mkdirSync(repo);
+    await initRepo(repo);
+    const imported = await pm.import(repo, null, false);
+    expect((await pm.withStatus(imported)).git).toBeNull();
+    expect(pm.get(imported.id).gitEnabled).toBe(false);
+  });
+
+  it("drops git-only automation tags while git is off and refuses it for worktrees and projects with agents", async () => {
+    const dir = path.join(t.dir, "app");
+    mkdirSync(dir);
+    const p = await pm.import(dir);
+    pm.update(p.id, { tags: ["auto-commit", "auto-push", "auto-merge", "review-required", "auto-test", "kunde"] });
+    expect(pm.update(p.id, { gitEnabled: false }).tags).toEqual(["auto-test", "kunde"]);
+    expect(pm.update(p.id, { tags: ["auto-commit", "plan-first"] }).tags).toEqual(["plan-first"]);
+    expect(pm.update(p.id, { gitEnabled: true }).gitEnabled).toBe(true);
+
+    const wtDir = path.join(t.dir, "app-wt");
+    mkdirSync(wtDir);
+    const wt = await pm.import(wtDir, p.id);
+    expect(() => pm.update(wt.id, { gitEnabled: false })).toThrow(/Agent-Worktree/);
+    expect(() => pm.update(p.id, { gitEnabled: false })).toThrow(/Agenten abschließen/);
+  });
+
   it("marks deleted project folders and blocks file access", async () => {
     const dir = path.join(t.dir, "gone");
     mkdirSync(dir);

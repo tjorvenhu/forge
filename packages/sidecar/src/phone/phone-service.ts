@@ -1,6 +1,7 @@
 import { randomBytes, randomUUID } from "node:crypto";
 import {
   ForgeError,
+  GIT_TAGS,
   SEARCH_MARK_END,
   SEARCH_MARK_START,
   type BackupPart,
@@ -1225,7 +1226,10 @@ export class PhoneService {
         `Denkaufwand ${p.defaultEffort ?? "wie global eingestellt"}`,
         p.testCommand ? `Testbefehl ${asData(p.testCommand)}` : "kein Testbefehl",
         p.devCommand ? `Dev-Befehl ${asData(p.devCommand)}` : "Dev-Befehl wird erkannt",
+        p.gitEnabled ? "mit Git" : "ohne Git",
       ].join(", ");
+    /** Git, pull requests and agents are refused for a project set up without git. */
+    const gitOff = (p: Project) => `Fehler: ${p.name} ist ohne Git eingerichtet. Git lässt sich mit dem Werkzeug project, action settings, git true einschalten.`;
     /** the user's prompts in a session, oldest first, as far as they can be branched or rewound to */
     const prompts = async (sessionId: string) =>
       (await call("sessions.events", { sessionId })).flatMap((e) => (e.body.type === "user.message" && e.body.uuid ? [{ seq: e.seq, uuid: e.body.uuid, text: e.body.text }] : []));
@@ -1326,6 +1330,7 @@ export class PhoneService {
           if (!prompt.trim()) return "Fehler: Der Auftrag ist leer.";
           const model = o?.model?.trim() || undefined;
           const effort = o?.effort;
+          if (o?.agent && !found.gitEnabled) return `${gitOff(found)} Ohne Git gibt es keine parallelen Agenten, nur eine normale Session.`;
           if (!o?.agent) {
             const s = await sessions.start({ projectId: found.id, prompt, model, effort, planOnly: o?.planOnly });
             a.focus = s.id;
@@ -1589,6 +1594,7 @@ export class PhoneService {
           const on = (tags: string[]) => (Object.keys(AUTOMATION_TAGS) as AutomationTag[]).filter((t) => tags.includes(t)).map((t) => AUTOMATION_TAGS[t]);
           const state = (tags: string[]) => (on(tags).length ? `An: ${on(tags).join(", ")}.` : "Keine Automatik an.");
           if (!patch.tag) return `${p.name}: ${state(p.tags)}`;
+          if (patch.on && !p.gitEnabled && GIT_TAGS.includes(patch.tag)) return `${gitOff(p)} ${AUTOMATION_TAGS[patch.tag]} braucht Git.`;
           if (patch.on === undefined) return `${p.name}: ${AUTOMATION_TAGS[patch.tag]} ist ${p.tags.includes(patch.tag) ? "an" : "aus"}.`;
           const tags = patch.on ? [...new Set([...p.tags, patch.tag])] : p.tags.filter((t) => t !== patch.tag);
           const next = this.d.projects.update(p.id, { tags });
@@ -1648,6 +1654,7 @@ export class PhoneService {
             return id.name || id.email ? `Commits laufen unter ${id.name ?? "ohne Namen"}, ${id.email ?? "ohne E-Mail"}.` : "Es ist keine Git-Identität eingerichtet.";
           }
           const p = target(projectName, o);
+          if (!p.gitEnabled) return gitOff(p);
           const git = this.d.git;
           if (action === "fetch") {
             const { summary: s } = await call("git.fetch", { projectId: p.id });
@@ -1765,6 +1772,7 @@ export class PhoneService {
       pullRequest: (projectName, action, o) =>
         run(true, async () => {
           const p = target(projectName, o);
+          if (!p.gitEnabled) return gitOff(p);
           const gh = this.d.github;
           if (!gh) return "Fehler: GitHub ist hier nicht verfügbar.";
           const git = this.d.git;
@@ -1842,12 +1850,12 @@ export class PhoneService {
           const lines = await Promise.all(
             all.map(async (p) => {
               const n = live.filter((s) => s.projectId === p.id).length;
-              const branch = await this.d.git.currentBranch(p.path).catch(() => null);
+              const branch = p.gitEnabled ? await this.d.git.currentBranch(p.path).catch(() => null) : null;
               const dev = await this.d.devServers.state(p.id).then(
                 (st) => st.status === "running",
                 () => false,
               );
-              return [p.name, branch ? `Branch ${branch}` : "", dev ? "Dev-Server läuft" : "", n ? `${n} aktive ${n === 1 ? "Session" : "Sessions"}` : ""].filter(Boolean).join(", ");
+              return [p.name, branch ? `Branch ${branch}` : p.gitEnabled ? "" : "ohne Git", dev ? "Dev-Server läuft" : "", n ? `${n} aktive ${n === 1 ? "Session" : "Sessions"}` : ""].filter(Boolean).join(", ");
             }),
           );
           return lines.join("\n");
@@ -1862,21 +1870,21 @@ export class PhoneService {
           if (action === "create") {
             const name = o?.name?.trim();
             if (!name) return "Fehler: Wie soll das Projekt heißen?";
-            const r = await call("projects.create", { name, parentDir: await parentDir(), gitInit: o?.gitInit !== false, github: o?.github ? { private: o.github === "private" } : null });
+            const r = await call("projects.create", { name, parentDir: await parentDir(), gitInit: o?.git !== false, gitEnabled: o?.git !== false, github: o?.github && o.git !== false ? { private: o.github === "private" } : null });
             projectChanged(r.project.id);
             const gh = !r.github
               ? ""
               : r.github.url
                 ? ` Das ${o?.github === "public" ? "öffentliche" : "private"} GitHub-Repository ist angelegt.`
                 : ` Das GitHub-Repository ließ sich nicht anlegen: ${r.github.error ?? "unbekannter Fehler"}`;
-            return `Projekt ${r.project.name} angelegt.${gh}`;
+            return `Projekt ${r.project.name} ${r.project.gitEnabled ? "" : "ohne Git "}angelegt.${gh}`;
           }
           if (action === "import") {
             const dir = o?.path?.trim();
             if (!dir) return "Fehler: Welcher Ordner? Bitte den Pfad nennen.";
-            const p = await call("projects.import", { path: dir });
+            const p = await call("projects.import", { path: dir, gitEnabled: o?.git !== false });
             projectChanged(p.id);
-            return `Projekt ${p.name} aufgenommen.`;
+            return `Projekt ${p.name} ${p.gitEnabled ? "" : "ohne Git "}aufgenommen.`;
           }
           if (action === "clone") {
             const raw = o?.url?.trim();
@@ -1922,6 +1930,7 @@ export class PhoneService {
             ...(o?.defaultEffort ? { defaultEffort: o.defaultEffort === "default" ? null : o.defaultEffort } : {}),
             ...(o?.testCommand !== undefined ? { testCommand: o.testCommand.trim() || null } : {}),
             ...(o?.devCommand !== undefined ? { devCommand: o.devCommand.trim() || null } : {}),
+            ...(o?.git !== undefined ? { gitEnabled: o.git } : {}),
           };
           if (!Object.keys(patch).length) return `${p.name}: ${projectText(p)}.`;
           const next = await call("projects.update", { projectId: p.id, ...patch });

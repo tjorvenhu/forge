@@ -179,12 +179,14 @@ export const methods = {
 
   "projects.list": { params: empty, result: z.array(ProjectWithStatus) },
   "projects.get": { params: projectRef, result: ProjectWithStatus },
-  "projects.import": { params: z.object({ path: z.string().min(1).max(4096) }), result: Project },
+  "projects.import": { params: z.object({ path: z.string().min(1).max(4096), gitEnabled: z.boolean().default(true) }), result: Project },
   "projects.create": {
     params: z.object({
       name: z.string().min(1).max(100),
       parentDir: z.string().min(1).max(4096),
       gitInit: z.boolean(),
+      /** false: project without git; gitInit and github are ignored */
+      gitEnabled: z.boolean().default(true),
       /** create a GitHub repository for the new project (requires GitHub login) */
       github: z.object({ private: z.boolean() }).nullable().default(null),
     }),
@@ -208,6 +210,7 @@ export const methods = {
       defaultEffort: EffortLevel.nullable().optional(),
       testCommand: z.string().max(500).nullable().optional(),
       devCommand: z.string().max(500).nullable().optional(),
+      gitEnabled: z.boolean().optional(),
     }),
     result: Project,
   },

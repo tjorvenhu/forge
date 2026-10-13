@@ -483,6 +483,16 @@ export class SessionService {
     return this.modes.applyProjectProfile(projectId);
   }
 
+  /** Running sessions of the project hear with their next message that git was switched on or off. */
+  projectGitChanged(projectId: string, enabled: boolean) {
+    const text = enabled
+      ? "Der Nutzer hat Git für dieses Projekt in FORGE wieder eingeschaltet. git-Befehle sind wieder erlaubt. Parallele Agenten (start_agent) gibt es erst in einer neuen Session."
+      : "Der Nutzer hat Git für dieses Projekt in FORGE ausgeschaltet. Führe ab jetzt keine git-Befehle mehr aus (kein git init, status, add, commit, branch, checkout, push), lege kein Repository an und schlage keine Commits, Branches oder Pull Requests vor. Starte keine parallelen Agenten (start_agent).";
+    for (const id of this.core.live.keys()) {
+      if (this.db.getSession(id)?.projectId === projectId) this.automation.hint(id, text);
+    }
+  }
+
   // ---------- approvals
 
   respondApproval(sessionId: string, requestId: string, decision: "allow" | "deny", scope: "once" | "session", message?: string, answers?: Record<string, string>) {

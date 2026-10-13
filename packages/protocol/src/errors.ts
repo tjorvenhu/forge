@@ -16,6 +16,8 @@ export const ErrorCode = z.enum([
   "GIT_NOT_REPO",
   "GIT_FAILED",
   "GIT_CONFLICT",
+  /** the project is set to work without git */
+  "GIT_DISABLED",
   "POLICY_DENIED",
   "INTERNAL",
 ]);

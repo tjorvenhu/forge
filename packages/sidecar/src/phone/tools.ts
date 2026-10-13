@@ -88,7 +88,8 @@ export interface ProjectOptions extends TargetOptions {
   path?: string;
   /** clone: Git URL or name of a GitHub repository of the account */
   url?: string;
-  gitInit?: boolean;
+  /** create and import: false sets the project up without git; settings: switches git on or off */
+  git?: boolean;
   /** create: also a GitHub repository */
   github?: "private" | "public";
   deleteFolder?: boolean;
@@ -645,7 +646,7 @@ export const PHONE_TOOLS: readonly PhoneToolSpec[] = [
   {
     name: "project",
     description:
-      "Projekte verwalten. info: Profil, Standardmodell, Denkaufwand, Test- und Dev-Befehl, Favorit. create: neues Projekt name anlegen (in path oder im Projektordner aus den Einstellungen), auf Wunsch gleich mit GitHub-Repository. import: vorhandenen Ordner path aufnehmen. clone: Repository url klonen, auch per Name eines GitHub-Repositorys des Kontos. remove: Projekt aus FORGE entfernen; Ordner und GitHub-Repository nur mit delete_folder oder delete_github_repo. rename: neuer name. favorite: als Favorit markieren oder nicht. settings: Profil, Standardmodell, Denkaufwand, Test- und Dev-Befehl setzen; nur angeben, was sich ändern soll.",
+      "Projekte verwalten. info: Profil, Standardmodell, Denkaufwand, Test- und Dev-Befehl, Favorit, ob mit Git. create: neues Projekt name anlegen (in path oder im Projektordner aus den Einstellungen), auf Wunsch gleich mit GitHub-Repository oder ganz ohne Git. import: vorhandenen Ordner path aufnehmen, mit oder ohne Git. clone: Repository url klonen, auch per Name eines GitHub-Repositorys des Kontos. remove: Projekt aus FORGE entfernen; Ordner und GitHub-Repository nur mit delete_folder oder delete_github_repo. rename: neuer name. favorite: als Favorit markieren oder nicht. settings: Profil, Standardmodell, Denkaufwand, Test- und Dev-Befehl setzen und Git ein- oder ausschalten; nur angeben, was sich ändern soll.",
     params: {
       action: { type: "string", enum: PROJECT_ACTIONS },
       project: { type: "string", optional: true, description: "Projektname oder Teil davon; nicht bei create, import und clone" },
@@ -653,7 +654,11 @@ export const PHONE_TOOLS: readonly PhoneToolSpec[] = [
       name: { type: "string", optional: true, description: "create: Name des neuen Projekts; rename: neuer Name; clone: Ordnername" },
       path: { type: "string", optional: true, description: "import: der Ordner; create und clone: Ordner, in dem das Projekt angelegt wird, nur wenn der Anrufer einen nennt" },
       url: { type: "string", optional: true, description: "clone: Git-URL oder Name eines GitHub-Repositorys" },
-      git_init: { type: "boolean", optional: true, description: "create: false legt kein Git-Repository an" },
+      git: {
+        type: "boolean",
+        optional: true,
+        description: "create und import: false richtet das Projekt ganz ohne Git ein (keine Git-Bereiche, keine Agenten, Claude nutzt kein Git); settings: true schaltet Git ein, false aus",
+      },
       github: { type: "string", optional: true, enum: ["private", "public"], description: "create: auch ein GitHub-Repository anlegen, privat oder öffentlich" },
       delete_folder: { type: "boolean", optional: true, description: "remove: true löscht auch den Ordner; nur wenn der Anrufer das ausdrücklich will" },
       delete_github_repo: { type: "boolean", optional: true, description: "remove: true löscht auch das GitHub-Repository; nur wenn der Anrufer das ausdrücklich will" },
@@ -670,7 +675,7 @@ export const PHONE_TOOLS: readonly PhoneToolSpec[] = [
         name: opt(a.name),
         path: opt(a.path),
         url: opt(a.url),
-        gitInit: optBool(a.git_init),
+        git: optBool(a.git),
         github: a.github === "private" || a.github === "public" ? a.github : undefined,
         deleteFolder: optBool(a.delete_folder),
         deleteGitHubRepo: optBool(a.delete_github_repo),

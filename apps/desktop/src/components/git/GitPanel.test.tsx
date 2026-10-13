@@ -35,6 +35,7 @@ const project: Project = {
   testCommand: null,
   devCommand: null,
   parentId: null,
+  gitEnabled: true,
   exists: true,
 };
 

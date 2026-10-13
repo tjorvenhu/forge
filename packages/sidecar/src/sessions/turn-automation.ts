@@ -42,6 +42,8 @@ export class TurnAutomation {
    * reports them as someone else's work; the next message it gets tells it they came from FORGE.
    */
   private notes = new Map<string, string[]>();
+  /** Project changes a running session must know about (git switched on or off), for its next message. */
+  private hints = new Map<string, string>();
 
   constructor(
     private readonly db: Db,
@@ -98,10 +100,23 @@ export class TurnAutomation {
     this.turnSeq.delete(sessionId);
     this.held.delete(sessionId);
     this.notes.delete(sessionId);
+    this.hints.delete(sessionId);
   }
 
-  /** The notes about commits and pushes since Claude's last message, once; null when there are none. */
+  /** Replaces an earlier hint of the session: only the latest project state counts. */
+  hint(sessionId: string, text: string) {
+    this.hints.set(sessionId, text);
+  }
+
+  /** The project hint and the notes about commits and pushes since Claude's last message, once; null when there are none. */
   takeNote(sessionId: string): string | null {
+    const hint = this.hints.get(sessionId);
+    this.hints.delete(sessionId);
+    const commits = this.commitNote(sessionId);
+    return hint || commits ? [hint ? `[FORGE-Hinweis, nicht vom Nutzer geschrieben] ${hint}` : "", commits ?? ""].filter(Boolean).join("\n\n") : null;
+  }
+
+  private commitNote(sessionId: string): string | null {
     const list = this.notes.get(sessionId);
     this.notes.delete(sessionId);
     if (!list?.length) return null;
@@ -134,7 +149,7 @@ export class TurnAutomation {
   schedule(sessionId: string) {
     const rec = this.db.getSession(sessionId);
     const project = rec ? this.projects.get(rec.projectId) : null;
-    const holds = !!project && (project.tags.includes("auto-commit") || (project.tags.includes("auto-test") && !!project.testCommand));
+    const holds = !!project && ((project.gitEnabled && project.tags.includes("auto-commit")) || (project.tags.includes("auto-test") && !!project.testCommand));
     let testsOk = true;
     const p = this.afterTurn(sessionId)
       .then(
@@ -173,7 +188,7 @@ export class TurnAutomation {
     const seq = this.turnSeq.get(sessionId) ?? 0;
     const baseline = this.baseline.get(sessionId) ?? new Set<string>();
     const tags = new Set(project.tags);
-    if (!tags.has("auto-commit")) return this.runTests(sessionId, project.id, project.testCommand, tags, cwd);
+    if (!project.gitEnabled || !tags.has("auto-commit")) return this.runTests(sessionId, project.id, project.testCommand, tags, cwd);
     let status;
     try {
       status = await this.git.status(cwd);

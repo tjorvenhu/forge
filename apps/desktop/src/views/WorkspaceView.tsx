@@ -6,13 +6,13 @@ import type { ProfileId } from "@forge/protocol";
 import { call, keys, useProject } from "@/lib/queries";
 import { errorMessage, RpcCallError } from "@/lib/rpc";
 import { cn, shortPath } from "@/lib/utils";
-import { useUi, type WorkspaceTab } from "@/stores/ui";
+import { useUi, workspaceTabsFor, type WorkspaceTab } from "@/stores/ui";
 import { useAgentReview } from "@/stores/agent-review";
 import { toast } from "@/stores/toast";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu } from "@/components/ui/dropdown";
 import { Badge, EmptyState, ErrorBanner } from "@/components/ui/misc";
-import { TabBar } from "@/components/ui/tabs";
+import { TabBar, type TabDef } from "@/components/ui/tabs";
 import { ProjectIcon } from "@/components/projects/ProjectIcon";
 import { PROFILE_IDS, PROFILE_INFO, ProfileBadge } from "@/components/projects/ProfileBadge";
 import { ChatPanel, ChatPanelSkeleton } from "@/components/workspace/ChatPanel";
@@ -66,14 +66,15 @@ export function WorkspaceView() {
 
 function Workspace({ projectId }: { projectId: string }) {
   const project = useProject(projectId).data!;
-  const { workspaceTab, setWorkspaceTab, toolbarOpen, rightPanelOpen } = useUi(
+  const { setWorkspaceTab, toolbarOpen, rightPanelOpen } = useUi(
     useShallow((s) => ({
-      workspaceTab: s.workspaceTab,
       toolbarOpen: s.toolbarOpen,
       setWorkspaceTab: s.setWorkspaceTab,
       rightPanelOpen: s.rightPanelOpen,
     })),
   );
+  const visibleTabs = workspaceTabsFor(project);
+  const workspaceTab = useWorkspaceTab(project);
   const narrow = useNarrow();
   const showRight = rightPanelOpen && !narrow && workspaceTab === "chat";
 
@@ -98,15 +99,17 @@ function Workspace({ projectId }: { projectId: string }) {
                 fit
                 value={workspaceTab}
                 onChange={setWorkspaceTab}
-                tabs={[
-                  { value: "chat", label: "Chat", icon: <MessageSquare className="h-4 w-4" /> },
-                  { value: "agents", label: "Agenten", icon: <Bot className="h-4 w-4" /> },
-                  { value: "git", label: "Git", icon: <GitBranch className="h-4 w-4" />, badge: project.git?.changedCount ? <Badge tone="warning">{project.git.changedCount}</Badge> : undefined },
-                  { value: "files", label: "Dateien", icon: <FileText className="h-4 w-4" /> },
-                  { value: "devtools", label: "Dev-Tools", icon: <FlaskConical className="h-4 w-4" />, badge: <DevToolsBadge project={project} /> },
-                  { value: "knowledge", label: "Wissen", icon: <BookOpen className="h-4 w-4" /> },
-                  { value: "settings", label: "Einstellungen", icon: <Settings2 className="h-4 w-4" /> },
-                ]}
+                tabs={(
+                  [
+                    { value: "chat", label: "Chat", icon: <MessageSquare className="h-4 w-4" /> },
+                    { value: "agents", label: "Agenten", icon: <Bot className="h-4 w-4" /> },
+                    { value: "git", label: "Git", icon: <GitBranch className="h-4 w-4" />, badge: project.git?.changedCount ? <Badge tone="warning">{project.git.changedCount}</Badge> : undefined },
+                    { value: "files", label: "Dateien", icon: <FileText className="h-4 w-4" /> },
+                    { value: "devtools", label: "Dev-Tools", icon: <FlaskConical className="h-4 w-4" />, badge: <DevToolsBadge project={project} /> },
+                    { value: "knowledge", label: "Wissen", icon: <BookOpen className="h-4 w-4" /> },
+                    { value: "settings", label: "Einstellungen", icon: <Settings2 className="h-4 w-4" /> },
+                  ] satisfies TabDef<WorkspaceTab>[]
+                ).filter((t) => visibleTabs.includes(t.value))}
               />
             </div>
           </Collapse>
@@ -179,7 +182,8 @@ type RightTab = "files" | "git" | "activity";
 
 function RightPanel({ projectId }: { projectId: string }) {
   const project = useProject(projectId).data!;
-  const [tab, setTab] = useState<RightTab>("files");
+  const [chosen, setTab] = useState<RightTab>("files");
+  const tab = chosen === "git" && !project.gitEnabled ? "files" : chosen;
   return (
     <aside className="flex w-100 shrink-0 animate-panel-in flex-col border-l border-border bg-sidebar xl:w-110">
       <div className="flex h-12 shrink-0 items-center border-b border-border px-3">
@@ -190,7 +194,9 @@ function RightPanel({ projectId }: { projectId: string }) {
           onChange={setTab}
           tabs={[
             { value: "files", label: "Dateien", icon: <FolderTree className="h-4 w-4" /> },
-            { value: "git", label: "Änderungen", icon: <GitCompare className="h-4 w-4" />, badge: project.git?.changedCount ? <Badge tone="warning">{project.git.changedCount}</Badge> : undefined },
+            ...(project.gitEnabled
+              ? [{ value: "git" as const, label: "Änderungen", icon: <GitCompare className="h-4 w-4" />, badge: project.git?.changedCount ? <Badge tone="warning">{project.git.changedCount}</Badge> : undefined }]
+              : []),
             { value: "activity", label: "Aktivität", icon: <Activity className="h-4 w-4" /> },
           ]}
         />
@@ -201,6 +207,12 @@ function RightPanel({ projectId }: { projectId: string }) {
       <WorkingCard project={project} />
     </aside>
   );
+}
+
+/** The tab is stored for the whole app, not per project: a project without git shows the chat instead of Agenten or Git. */
+function useWorkspaceTab(project: { gitEnabled: boolean }): WorkspaceTab {
+  const stored = useUi((s) => s.workspaceTab);
+  return workspaceTabsFor(project).includes(stored) ? stored : "chat";
 }
 
 /** Below this window width the right sidebar does not fit next to the chat. */
@@ -218,12 +230,12 @@ function useNarrow() {
  * The three layout switches side by side: tab row (Chat, Agenten, Git ...) like a ribbon, by default
  * the chat fills the view; bottom panel; right sidebar.
  */
-function LayoutToggles() {
-  const { toolbarOpen, toggleToolbar, workspaceTab, rightPanelOpen, toggleRightPanel, bottomPanelOpen, toggleBottomPanel } = useUi(
+function LayoutToggles({ project }: { project: { gitEnabled: boolean } }) {
+  const workspaceTab = useWorkspaceTab(project);
+  const { toolbarOpen, toggleToolbar, rightPanelOpen, toggleRightPanel, bottomPanelOpen, toggleBottomPanel } = useUi(
     useShallow((s) => ({
       toolbarOpen: s.toolbarOpen,
       toggleToolbar: s.toggleToolbar,
-      workspaceTab: s.workspaceTab,
       rightPanelOpen: s.rightPanelOpen,
       toggleRightPanel: s.toggleRightPanel,
       bottomPanelOpen: s.bottomPanelOpen,
@@ -240,7 +252,7 @@ function LayoutToggles() {
         onClick={() => toggleToolbar()}
         aria-pressed={toolbarOpen}
         aria-label="Werkzeugleiste"
-        title={`Werkzeugleiste ${toolbarOpen ? "ausblenden" : "einblenden"}\nReiter oben im Projekt:\n- Chat, Agenten, Git, Dateien\n- Dev-Tools, Wissen, Einstellungen${toolbarOpen ? "\n\nAusblenden führt zurück zum Chat." : ""}`}
+        title={`Werkzeugleiste ${toolbarOpen ? "ausblenden" : "einblenden"}\nReiter oben im Projekt:\n- ${project.gitEnabled ? "Chat, Agenten, Git, Dateien" : "Chat, Dateien"}\n- Dev-Tools, Wissen, Einstellungen${toolbarOpen ? "\n\nAusblenden führt zurück zum Chat." : ""}`}
         className={cn(toolbarOpen && "text-accent")}
       >
         <Wrench className="h-4 w-4" />
@@ -268,7 +280,7 @@ function LayoutToggles() {
             ? "Seitenleiste\nDas Fenster ist zu schmal dafür."
             : workspaceTab !== "chat"
               ? "Seitenleiste\nGibt es nur im Chat."
-              : `Seitenleiste ${showRight ? "ausblenden" : "einblenden"} (Strg+Umschalt+E)\n- Dateien\n- Änderungen\n- Aktivität`
+              : `Seitenleiste ${showRight ? "ausblenden" : "einblenden"} (Strg+Umschalt+E)\n- Dateien${project.gitEnabled ? "\n- Änderungen" : ""}\n- Aktivität`
         }
         className={cn(showRight && "text-accent")}
       >
@@ -352,7 +364,7 @@ function WorkspaceHeader({ projectId }: { projectId: string }) {
           <span className="hidden xl:inline">Agent abschließen</span>
         </Button>
       )}
-      <LayoutToggles />
+      <LayoutToggles project={project} />
       <RemoteControlButton project={project} />
 
       <DropdownMenu

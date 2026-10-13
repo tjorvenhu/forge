@@ -34,6 +34,9 @@ export const ProjectTag = z
   .max(40)
   .regex(/^[a-z0-9][a-z0-9-]*$/, "Tags: Kleinbuchstaben, Ziffern und Bindestriche");
 
+/** Automation tags that only work with git; a project without git drops them. */
+export const GIT_TAGS: readonly string[] = ["auto-commit", "auto-push", "auto-merge", "review-required"];
+
 export const GitSummary = z.object({
   isRepo: z.boolean(),
   branch: z.string().nullable(),
@@ -68,6 +71,8 @@ export const Project = z.object({
   devCommand: z.string().nullable(),
   /** set for git worktrees: the project they belong to */
   parentId: z.string().nullable(),
+  /** false: the project works without git; FORGE hides git and agents and tells Claude not to use git */
+  gitEnabled: z.boolean(),
   /** false when the folder no longer exists on disk */
   exists: z.boolean(),
 });

@@ -64,6 +64,8 @@ export function createHandlers(s: Services): Handlers {
   let diagCache: ResultOf<"system.diagnostics"> | null = null;
 
   const projectDir = (projectId: string) => s.projects.requireExisting(projectId).path;
+  /** Folder of a project that works with git; projects set to work without git refuse every git action. */
+  const gitDir = (projectId: string) => s.projects.requireGit(projectId).path;
   const dirOf = (projectId: string | undefined) => (projectId ? projectDir(projectId) : null);
   const resolveInSession = async (projectId: string, e: unknown, push: boolean) => {
     const session = await startIntegrationSession(s.sessions, projectId, e, push);
@@ -72,7 +74,7 @@ export function createHandlers(s: Services): Handlers {
   };
   const gitChanged = async (projectId: string) => {
     s.notifyProject(projectId);
-    return s.git.status(projectDir(projectId));
+    return s.git.status(gitDir(projectId));
   };
 
   return {
@@ -114,7 +116,7 @@ export function createHandlers(s: Services): Handlers {
     },
     "github.repos": () => s.github.repos(),
     "github.publish": async ({ projectId, private: isPrivate, name }) => {
-      const p = s.projects.requireExisting(projectId);
+      const p = s.projects.requireGit(projectId);
       if (!(await s.git.isRepo(p.path))) await s.git.init(p.path);
       if (await s.git.remoteUrl(p.path)) throw new ForgeError("CONFLICT", "Das Projekt hat bereits ein Remote origin.");
       if (!(await s.git.hasCommits(p.path))) await s.git.initialCommit(p.path, "chore: Projekt angelegt");
@@ -150,7 +152,7 @@ export function createHandlers(s: Services): Handlers {
     "plugins.uninstall": ({ id }) => s.plugins.uninstall(id),
     "plugins.setEnabled": ({ id, enabled }) => s.plugins.setEnabled(id, enabled),
 
-    "worktrees.create": ({ projectId, branch }) => s.worktrees.create(s.projects.requireExisting(projectId), branch),
+    "worktrees.create": ({ projectId, branch }) => s.worktrees.create(s.projects.requireGit(projectId), branch),
     "worktrees.remove": async ({ projectId, force, deleteBranch }) => {
       const r = await removeWorktree(projectId, force, s, { deleteBranch });
       return { ok: true, ...r };
@@ -170,10 +172,10 @@ export function createHandlers(s: Services): Handlers {
 
     "projects.list": () => s.projects.list(),
     "projects.get": async ({ projectId }) => s.projects.withStatus(s.projects.get(projectId)),
-    "projects.import": ({ path }) => s.projects.import(path),
+    "projects.import": ({ path, gitEnabled }) => s.projects.import(path, null, gitEnabled),
     "projects.create": async ({ github, ...p }) => {
       const project = await s.projects.create({ ...p, gitInit: p.gitInit || !!github });
-      if (!github) return { project, github: null };
+      if (!github || !project.gitEnabled) return { project, github: null };
       try {
         if (!(await s.git.hasCommits(project.path))) await s.git.initialCommit(project.path, "chore: Projekt angelegt");
         const url = await s.github.createRepo(project.path, project.name, github.private);
@@ -184,9 +186,10 @@ export function createHandlers(s: Services): Handlers {
     },
     "projects.clone": ({ url, parentDir, dirName }) => s.projects.clone(url, parentDir, dirName),
     "projects.update": async ({ projectId, ...patch }) => {
-      const before = s.projects.get(projectId).profile;
+      const before = s.projects.get(projectId);
       const project = s.projects.update(projectId, patch);
-      if (project.profile !== before) await s.sessions.applyProjectProfile(projectId);
+      if (project.profile !== before.profile) await s.sessions.applyProjectProfile(projectId);
+      if (project.gitEnabled !== before.gitEnabled) s.sessions.projectGitChanged(projectId, project.gitEnabled);
       return project;
     },
     "projects.removalInfo": ({ projectId }) => removalInfo(projectId, s),
@@ -287,24 +290,24 @@ export function createHandlers(s: Services): Handlers {
       return {};
     },
 
-    "git.status": ({ projectId }) => s.git.status(projectDir(projectId)),
-    "git.diff": ({ projectId, path, staged }) => s.git.diff(projectDir(projectId), path, staged),
+    "git.status": ({ projectId }) => s.git.status(gitDir(projectId)),
+    "git.diff": ({ projectId, path, staged }) => s.git.diff(gitDir(projectId), path, staged),
     "git.stage": async ({ projectId, paths }) => {
-      await s.git.stage(projectDir(projectId), paths);
+      await s.git.stage(gitDir(projectId), paths);
       return gitChanged(projectId);
     },
     "git.unstage": async ({ projectId, paths }) => {
-      await s.git.unstage(projectDir(projectId), paths);
+      await s.git.unstage(gitDir(projectId), paths);
       return gitChanged(projectId);
     },
     "git.commit": async ({ projectId, message, paths, allowSensitive }) => {
-      const r = await s.git.commit(projectDir(projectId), message, paths, allowSensitive);
+      const r = await s.git.commit(gitDir(projectId), message, paths, allowSensitive);
       s.notifyProject(projectId);
       return r;
     },
-    "git.log": ({ projectId, limit }) => s.git.log(projectDir(projectId), limit),
+    "git.log": ({ projectId, limit }) => s.git.log(gitDir(projectId), limit),
     "git.authorAvatars": async ({ projectId, limit }) => {
-      const dir = projectDir(projectId);
+      const dir = gitDir(projectId);
       return s.github.authorAvatars(await s.git.remoteUrl(dir), await s.git.log(dir, limit));
     },
     "git.restoreTo": async ({ projectId, commit }) => {
@@ -312,28 +315,31 @@ export function createHandlers(s: Services): Handlers {
         .listAll()
         .some((x) => x.projectId === projectId && x.live && (x.status === "running" || x.status === "waiting_approval"));
       if (busy) throw new ForgeError("SESSION_BUSY", "Eine aktive Session arbeitet gerade in diesem Projekt. Erst stoppen, dann wiederherstellen.");
-      const r = await s.git.restoreTo(projectDir(projectId), commit);
+      const r = await s.git.restoreTo(gitDir(projectId), commit);
       s.notifyProject(projectId);
       return r;
     },
-    "git.branches": ({ projectId }) => s.git.branches(projectDir(projectId)),
+    "git.branches": ({ projectId }) => s.git.branches(gitDir(projectId)),
     "git.deleteBranch": async ({ projectId, branch, force }) => {
-      await s.git.deleteBranch(projectDir(projectId), branch, force);
+      await s.git.deleteBranch(gitDir(projectId), branch, force);
       s.notifyProject(projectId);
-      return s.git.branches(projectDir(projectId));
+      return s.git.branches(gitDir(projectId));
     },
     "git.checkout": async ({ projectId, branch, create }) => {
       const busy = s.sessions
         .listAll()
         .some((x) => x.projectId === projectId && x.live && (x.status === "running" || x.status === "waiting_approval"));
       if (busy) throw new ForgeError("SESSION_BUSY", "Eine aktive Session arbeitet gerade in diesem Projekt. Erst stoppen, dann Branch wechseln.");
-      await s.git.checkout(projectDir(projectId), branch, create);
+      await s.git.checkout(gitDir(projectId), branch, create);
       return gitChanged(projectId);
     },
-    "git.suggestCommitMessage": ({ projectId, paths }) => s.sessions.suggestCommitMessage(projectId, paths),
+    "git.suggestCommitMessage": ({ projectId, paths }) => {
+      s.projects.requireGit(projectId);
+      return s.sessions.suggestCommitMessage(projectId, paths);
+    },
     "git.push": async ({ projectId, allowProtected }) => {
       try {
-        const r = await s.git.push(projectDir(projectId), allowProtected);
+        const r = await s.git.push(gitDir(projectId), allowProtected);
         s.notifyProject(projectId);
         return { branch: r.branch, integrated: r.integrated, session: null };
       } catch (e) {
@@ -344,7 +350,7 @@ export function createHandlers(s: Services): Handlers {
     },
     "git.pull": async ({ projectId }) => {
       try {
-        const r = await s.git.pull(projectDir(projectId));
+        const r = await s.git.pull(gitDir(projectId));
         s.notifyProject(projectId);
         return { ...r, session: null };
       } catch (e) {
@@ -354,13 +360,16 @@ export function createHandlers(s: Services): Handlers {
       }
     },
     "git.fetch": async ({ projectId }) => {
-      await s.git.fetch(projectDir(projectId));
+      await s.git.fetch(gitDir(projectId));
       return gitChanged(projectId);
     },
-    "github.pr": ({ projectId }) => s.github.prForBranch(projectDir(projectId)),
-    "github.suggestPr": ({ projectId }) => s.sessions.suggestPullRequest(projectId),
+    "github.pr": ({ projectId }) => s.github.prForBranch(gitDir(projectId)),
+    "github.suggestPr": ({ projectId }) => {
+      s.projects.requireGit(projectId);
+      return s.sessions.suggestPullRequest(projectId);
+    },
     "github.createPr": async ({ projectId, title, body, base, draft }) => {
-      const dir = projectDir(projectId);
+      const dir = gitDir(projectId);
       const head = await s.git.currentBranch(dir);
       if (!head) throw new ForgeError("GIT_FAILED", "Kein Branch ausgecheckt.");
       if (head === base) throw new ForgeError("VALIDATION", "Ziel- und Quell-Branch sind gleich. Lege zuerst einen Feature-Branch an.");
@@ -371,7 +380,7 @@ export function createHandlers(s: Services): Handlers {
       return { url };
     },
     "git.init": async ({ projectId }) => {
-      await s.git.init(projectDir(projectId));
+      await s.git.init(gitDir(projectId));
       return gitChanged(projectId);
     },
   };

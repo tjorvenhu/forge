@@ -36,6 +36,7 @@ function project(id: string, over: Partial<ProjectWithStatus> = {}): ProjectWith
     testCommand: null,
     devCommand: null,
     parentId: null,
+    gitEnabled: true,
     exists: true,
     git: git("main"),
     lastSession: null,

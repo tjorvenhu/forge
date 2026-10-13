@@ -111,7 +111,7 @@ export async function removalInfo(projectId: string, d: RemovalDeps): Promise<Pr
   const project = d.projects.get(projectId);
   const folderExists = existsSync(project.path);
   let githubRepo: string | null = null;
-  if (folderExists && !project.parentId) {
+  if (folderExists && !project.parentId && project.gitEnabled) {
     try {
       githubRepo = githubRepoFromRemote(await d.git.remoteUrl(project.path));
     } catch {

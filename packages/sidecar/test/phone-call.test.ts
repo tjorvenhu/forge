@@ -1167,7 +1167,10 @@ describe("PhoneService end to end with a test PBX", () => {
     const repo = (fullName: string) => ({ fullName, description: null, private: true, updatedAt: "", cloneUrl: `https://github.com/${fullName}.git` });
     rpcResults = {
       "settings.get": () => db.getSettings(),
-      "projects.create": (p: { name: string }) => ({ project: { id: "p-new", name: p.name }, github: { url: "https://github.com/me/blog", error: null } }),
+      "projects.create": (p: { name: string; gitEnabled: boolean; github: unknown }) => ({
+        project: { id: "p-new", name: p.name, gitEnabled: p.gitEnabled },
+        github: p.github ? { url: "https://github.com/me/blog", error: null } : null,
+      }),
       "github.repos": () => [repo("me/shop-api"), repo("me/blog")],
       "projects.clone": () => ({ id: "p-clone", name: "shop-api" }),
       "projects.update": ({ projectId: id, ...patch }: { projectId: string }) => projects.update(id, patch),
@@ -1182,7 +1185,9 @@ describe("PhoneService end to end with a test PBX", () => {
     const callOf = (method: string) => rpcCalls.filter(([m]) => m === method).at(-1)?.[1];
 
     expect(await conv.tools.project("", "create", { name: "blog", github: "private" })).toBe("Projekt blog angelegt. Das private GitHub-Repository ist angelegt.");
-    expect(callOf("projects.create")).toEqual({ name: "blog", parentDir: t.dir, gitInit: true, github: { private: true } });
+    expect(callOf("projects.create")).toEqual({ name: "blog", parentDir: t.dir, gitInit: true, gitEnabled: true, github: { private: true } });
+    expect(await conv.tools.project("", "create", { name: "notizen", git: false, github: "private" })).toBe("Projekt notizen ohne Git angelegt.");
+    expect(callOf("projects.create")).toEqual({ name: "notizen", parentDir: t.dir, gitInit: false, gitEnabled: false, github: null });
     expect(events).toContainEqual({ event: "project.updated", payload: { projectId: "p-new" } });
     // A spoken repository name is looked up among the account's repositories.
     expect(await conv.tools.project("", "clone", { url: "shop api" })).toBe("shop-api geklont und als Projekt aufgenommen.");
@@ -1191,11 +1196,14 @@ describe("PhoneService end to end with a test PBX", () => {
     expect(await conv.tools.project("", "import", {})).toBe("Fehler: Welcher Ordner? Bitte den Pfad nennen.");
 
     expect(await conv.tools.project("shop", "settings", { testCommand: "pnpm test", defaultEffort: "high" })).toBe(
-      "Gespeichert für shop: Profil balanced, Standardmodell wie global eingestellt, Denkaufwand high, Testbefehl <<<SESSION-DATEN>>>pnpm test<<<ENDE SESSION-DATEN>>>, Dev-Befehl wird erkannt.",
+      "Gespeichert für shop: Profil balanced, Standardmodell wie global eingestellt, Denkaufwand high, Testbefehl <<<SESSION-DATEN>>>pnpm test<<<ENDE SESSION-DATEN>>>, Dev-Befehl wird erkannt, mit Git.",
     );
     expect(projects.get(projectId)).toMatchObject({ testCommand: "pnpm test", defaultEffort: "high" });
     expect(await conv.tools.project("shop", "favorite", {})).toBe("shop ist jetzt ein Favorit.");
     expect(await conv.tools.project("shop", "info")).toMatch(/^shop, Favorit: Profil balanced, /);
+    expect(await conv.tools.project("shop", "settings", { git: false })).toMatch(/, ohne Git\.$/);
+    expect(await conv.tools.git("shop", "status")).toMatch(/^Fehler: shop ist ohne Git eingerichtet\./);
+    expect(await conv.tools.project("shop", "settings", { git: true })).toMatch(/, mit Git\.$/);
 
     const listing = await conv.tools.files("shop", "list");
     expect(listing).toContain("Ordner: src.");

@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { constants, existsSync } from "node:fs";
 import { access, mkdir, open, readdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";
-import { ForgeError, type Project, type ProjectWithStatus } from "@forge/protocol";
+import { ForgeError, GIT_TAGS, type Project, type ProjectWithStatus } from "@forge/protocol";
 import type { Db, ProjectRecord } from "../persistence/db.js";
 import { repoNameFromUrl, validateCloneUrl, type GitEngine } from "../git/git.js";
 import { canonicalize, isInside, pathKey, validateDirName } from "../util/paths.js";
@@ -13,6 +13,8 @@ export interface CreateProjectInput {
   name: string;
   parentDir: string;
   gitInit: boolean;
+  /** false: project without git (no git init, no git areas) */
+  gitEnabled?: boolean;
 }
 
 const MAX_FILE_BYTES = 512 * 1024;
@@ -50,6 +52,13 @@ export class ProjectManager {
     return this.withExists(p);
   }
 
+  /** Same as requireExisting() but fails for a project set to work without git. */
+  requireGit(id: string): Project {
+    const p = this.requireExisting(id);
+    if (!p.gitEnabled) throw new ForgeError("GIT_DISABLED", `${p.name} ist ohne Git eingerichtet. Git lässt sich in den Projekt-Einstellungen einschalten.`);
+    return p;
+  }
+
   /** Same as get() but fails if the folder vanished. */
   requireExisting(id: string): Project {
     const p = this.get(id);
@@ -58,7 +67,7 @@ export class ProjectManager {
   }
 
   async withStatus(p: Project): Promise<ProjectWithStatus> {
-    const git = p.exists ? await this.git.summary(p.path).catch(() => null) : null;
+    const git = p.exists && p.gitEnabled ? await this.git.summary(p.path).catch(() => null) : null;
     const s = this.db.latestSession(p.id);
     return {
       ...p,
@@ -94,7 +103,7 @@ export class ProjectManager {
     return canonical;
   }
 
-  async import(rawPath: string, parentId: string | null = null): Promise<Project> {
+  async import(rawPath: string, parentId: string | null = null, gitEnabled = true): Promise<Project> {
     const canonical = await this.assertAccessibleDir(rawPath);
     const key = pathKey(canonical);
     const dup = this.db.findProjectByKey(key);
@@ -114,6 +123,7 @@ export class ProjectManager {
       testCommand: await detectTestCommand(canonical),
       devCommand: null,
       parentId,
+      gitEnabled,
     };
     this.db.insertProject(rec, key);
     return this.withExists(rec);
@@ -129,8 +139,9 @@ export class ProjectManager {
 
     // Only an empty folder (plus git): the project structure is Claude's job, not a template's.
     await mkdir(target);
-    if (input.gitInit) await this.git.init(target);
-    return this.import(target);
+    const gitEnabled = input.gitEnabled !== false;
+    if (gitEnabled && input.gitInit) await this.git.init(target);
+    return this.import(target, null, gitEnabled);
   }
 
   async clone(url: string, parentDir: string, dirName?: string): Promise<Project> {
@@ -146,13 +157,27 @@ export class ProjectManager {
     return this.import(target);
   }
 
-  update(id: string, patch: Partial<Pick<ProjectRecord, "name" | "favorite" | "tags" | "profile" | "defaultModel" | "defaultEffort" | "testCommand" | "devCommand">>): Project {
+  update(
+    id: string,
+    patch: Partial<Pick<ProjectRecord, "name" | "favorite" | "tags" | "profile" | "defaultModel" | "defaultEffort" | "testCommand" | "devCommand" | "gitEnabled">>,
+  ): Project {
     const cur = this.get(id);
+    if (patch.gitEnabled === false && cur.gitEnabled) {
+      if (cur.parentId) throw new ForgeError("CONFLICT", "Ein Agent-Worktree arbeitet immer mit Git.");
+      if (this.db.listProjects().some((p) => p.parentId === id)) {
+        throw new ForgeError("CONFLICT", "Das Projekt hat noch Agenten. Erst die Agenten abschließen, dann Git ausschalten.");
+      }
+    }
     const sandboxOnly = (patch.tags ?? cur.tags).includes(SANDBOX_ONLY_TAG);
     if (patch.profile === "autonomous" && sandboxOnly) {
       throw new ForgeError("POLICY_DENIED", "Das Tag sandbox-only verbietet Autonomous in diesem Projekt.");
     }
     const next: Partial<ProjectRecord> = { ...patch };
+    // Without git, auto-commit, auto-push, auto-merge and review-required have nothing to act on.
+    if (!(patch.gitEnabled ?? cur.gitEnabled)) {
+      const tags = (patch.tags ?? cur.tags).filter((t) => !GIT_TAGS.includes(t));
+      if (patch.tags || tags.length !== cur.tags.length) next.tags = tags;
+    }
     // Setting sandbox-only on an autonomous project falls back to Balanced instead of failing.
     if (sandboxOnly && !patch.profile && cur.profile === "autonomous") next.profile = "balanced";
     this.db.updateProject(id, next);

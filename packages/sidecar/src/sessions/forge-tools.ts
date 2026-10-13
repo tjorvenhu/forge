@@ -221,6 +221,20 @@ export function forgeSessionTools(rec: SessionRecord, d: ForgeToolDeps): { tools
     },
   };
 
+  // Agents need worktrees and branches, so a project without git gets neither them nor git hints.
+  if (!project.gitEnabled && !parent) {
+    return {
+      tools: [notify, ...own.tools],
+      context: [
+        "Du läufst in FORGE, einer Desktop-Oberfläche für Claude Code. Neben deinen Werkzeugen gibt es FORGE-Werkzeuge (mcp__forge__…).",
+        `Dieses Projekt arbeitet bewusst ohne Git: Der Nutzer hat Git für ${rec.cwd} in FORGE ausgeschaltet. Führe keine git-Befehle aus (kein git init, status, add, commit, branch, checkout, push), lege kein Repository an und schlage keine Commits, Branches oder Pull Requests vor. Auch ein vorhandener .git-Ordner bleibt unberührt. Änderungen landen nur als Dateien im Ordner; wenn etwas rückgängig gemacht werden muss, geht das nur über die Dateien selbst.`,
+        "Parallele Agenten (start_agent) gibt es deshalb hier nicht.",
+        "- notify: den Nutzer aktiv benachrichtigen. urgent=true nur, wenn er sofort gebraucht wird (kann sein Telefon klingeln lassen).",
+        ...own.context,
+      ].join("\n"),
+    };
+  }
+
   const autoMerge = autoMergeOn(d.projects, project);
   // A turn that ends with a question in the text would be merged before anyone answers it.
   const autoMergeLine =

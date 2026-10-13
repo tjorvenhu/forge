@@ -200,6 +200,10 @@ export const MIGRATIONS: string[] = [
   WHERE key = 'disabledPolicyRules'
     AND NOT EXISTS (SELECT 1 FROM json_each(settings.value) WHERE json_each.value = 'git-branch-delete');
   `,
+  // Projects without git: no git areas, no agents, and Claude is told not to use git.
+  `
+  ALTER TABLE projects ADD COLUMN git_enabled INTEGER NOT NULL DEFAULT 1;
+  `,
 ];
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -235,6 +239,7 @@ interface ProjectRow {
   test_command: string | null;
   dev_command: string | null;
   parent_id: string | null;
+  git_enabled: number;
 }
 
 interface SessionRow {
@@ -310,6 +315,7 @@ function toProject(r: ProjectRow): ProjectRecord {
     testCommand: r.test_command,
     devCommand: r.dev_command,
     parentId: r.parent_id,
+    gitEnabled: r.git_enabled !== 0,
   };
 }
 
@@ -446,8 +452,8 @@ export class Db {
   insertProject(p: ProjectRecord, pathKey: string) {
     this.sql
       .prepare(
-        `INSERT INTO projects(id, name, path, path_key, favorite, tags, technologies, profile, default_model, default_effort, created_at, last_opened_at, test_command, dev_command, parent_id)
-         VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO projects(id, name, path, path_key, favorite, tags, technologies, profile, default_model, default_effort, created_at, last_opened_at, test_command, dev_command, parent_id, git_enabled)
+         VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         p.id,
@@ -465,6 +471,7 @@ export class Db {
         p.testCommand,
         p.devCommand,
         p.parentId,
+        p.gitEnabled ? 1 : 0,
       );
   }
 
@@ -480,6 +487,7 @@ export class Db {
     if (patch.lastOpenedAt !== undefined) cols.last_opened_at = patch.lastOpenedAt;
     if (patch.testCommand !== undefined) cols.test_command = patch.testCommand;
     if (patch.devCommand !== undefined) cols.dev_command = patch.devCommand;
+    if (patch.gitEnabled !== undefined) cols.git_enabled = patch.gitEnabled ? 1 : 0;
     const keys = Object.keys(cols);
     if (!keys.length) return;
     this.sql

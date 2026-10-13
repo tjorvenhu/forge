@@ -94,7 +94,7 @@ function GitLine({ p }: { p: ProjectWithStatus }) {
         <AlertTriangle className="h-3 w-3" /> Ordner fehlt
       </div>
     );
-  if (!p.git) return <div className="text-caption text-subtle">kein Git</div>;
+  if (!p.git) return <div className="text-caption text-subtle">{p.gitEnabled ? "kein Git" : "ohne Git"}</div>;
   const g = p.git;
   const state = g.conflicted ? "Konflikt" : g.changedCount > 0 ? `${g.changedCount} geändert` : "sauber";
   const remote = g.remoteUrl ? (g.remoteUrl.includes("github.com") ? "GitHub" : g.remoteUrl) : "kein Remote";
