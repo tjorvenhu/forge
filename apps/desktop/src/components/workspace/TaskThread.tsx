@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { History } from "lucide-react";
 import type { SessionEvent, SessionEventBody } from "@forge/protocol";
@@ -7,10 +7,12 @@ import { errorMessage } from "@/lib/rpc";
 import { useUi, type TaskView } from "@/stores/ui";
 import { Dialog } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Loading } from "@/components/ui/misc";
+import { Skeleton } from "@/components/ui/skeleton";
 import { IncrementalItems } from "./chat-items";
 import { ItemView } from "./ChatItemView";
 import { Markdown } from "./Markdown";
+import { FollowScroll } from "./FollowScroll";
+import { TaskWorking } from "./WorkingIndicator";
 
 const NO_EVENTS: SessionEvent[] = [];
 /** how often a running background command's output is read again */
@@ -33,31 +35,19 @@ export function TaskThreadDialog({ sessionId, projectDir }: { sessionId: string;
       title={task?.title ?? ""}
       description={task?.kind === "shell" ? "Ausgabe des Befehls im Hintergrund" : "Verlauf des Subagenten"}
       className="h-[80vh] w-225"
+      bodyClassName="flex flex-col overflow-hidden p-0"
     >
       {task?.kind === "agent" ? (
-        <AgentThread key={task.toolUseId} task={task} projectDir={projectDir} />
+        <FollowScroll key={task.toolUseId} className="px-5 py-4">
+          <AgentThread task={task} projectDir={projectDir} />
+        </FollowScroll>
       ) : task?.kind === "shell" ? (
-        <ShellOutput key={task.taskId} task={task} />
+        <FollowScroll key={task.taskId} className="px-5 py-4">
+          <ShellOutput task={task} />
+        </FollowScroll>
       ) : null}
     </Dialog>
   );
-}
-
-/** Keeps the end in view while new rows arrive, unless the user scrolled up. */
-function useStickToEnd(dep: unknown) {
-  const end = useRef<HTMLDivElement>(null);
-  const atEnd = useRef(true);
-  useEffect(() => {
-    const el = end.current;
-    if (!el) return;
-    const io = new IntersectionObserver(([e]) => (atEnd.current = !!e?.isIntersecting));
-    io.observe(el);
-    return () => io.disconnect();
-  }, []);
-  useEffect(() => {
-    if (atEnd.current) end.current?.scrollIntoView({ block: "end" });
-  }, [dep]);
-  return end;
 }
 
 function AgentThread({ task, projectDir }: { task: Extract<TaskView, { kind: "agent" }>; projectDir: string }) {
@@ -68,12 +58,12 @@ function AgentThread({ task, projectDir }: { task: Extract<TaskView, { kind: "ag
   const items = useMemo(() => builder.build(events), [builder, events]);
   const { use, result } = useMemo(() => agentCall(events, task.toolUseId), [events, task.toolUseId]);
   const { hasOlder, loading, loadOlder } = useOlderHistory(task.sessionId);
-  const progress = session?.subagents.find((a) => a.toolUseId === task.toolUseId)?.summary ?? session?.background.find((b) => b.toolUseId === task.toolUseId)?.summary ?? null;
+  const live = session?.subagents.find((a) => a.toolUseId === task.toolUseId) ?? session?.background.find((b) => b.toolUseId === task.toolUseId) ?? null;
+  const [openedAt] = useState(() => new Date().toISOString());
   const running = !result && !!session?.live;
-  const end = useStickToEnd(items.length + (result ? 1 : 0));
   const prompt = typeof use?.input.prompt === "string" ? use.input.prompt : null;
 
-  if (!buffer?.loaded) return <Loading />;
+  if (!buffer?.loaded) return <AgentThreadSkeleton />;
   return (
     <div className="space-y-4">
       {hasOlder && !use && (
@@ -91,16 +81,19 @@ function AgentThread({ task, projectDir }: { task: Extract<TaskView, { kind: "ag
         </Section>
       )}
       <Section label="Schritte">
-        {items.length ? (
+        {items.length > 0 && (
           <div className="space-y-2">
             {items.map((item) => (
               <ItemView key={item.key} item={item} sessionId={task.sessionId} live={!!session?.live} projectDir={projectDir} />
             ))}
           </div>
-        ) : (
-          <p className="text-body text-subtle">{running ? "Der Subagent startet." : "Für diesen Subagenten sind keine Schritte gespeichert."}</p>
         )}
-        {running && <p className="mt-3 animate-soft-pulse text-small text-accent">{progress ?? "Arbeitet …"}</p>}
+        {!items.length && !running && <p className="text-body text-subtle">Für diesen Subagenten sind keine Schritte gespeichert.</p>}
+        {running && (
+          <div className={items.length ? "mt-3" : undefined}>
+            <TaskWorking startedAt={live?.startedAt ?? openedAt} progress={live?.summary} />
+          </div>
+        )}
       </Section>
       {result && (
         <Section label={result.isError ? "Fehler" : "Ergebnis"}>
@@ -109,7 +102,49 @@ function AgentThread({ task, projectDir }: { task: Extract<TaskView, { kind: "ag
           </div>
         </Section>
       )}
-      <div ref={end} />
+    </div>
+  );
+}
+
+/** Same layout as the thread: the task, then steps as chat rows. */
+function AgentThreadSkeleton() {
+  return (
+    <div className="space-y-4" role="status" aria-label="Lädt">
+      <SectionSkeleton>
+        <Skeleton className="h-3 w-[80%]" />
+        <Skeleton className="h-3 w-[55%]" />
+      </SectionSkeleton>
+      <SectionSkeleton>
+        {[60, 45, 70, 35].map((w, i) => (
+          <div key={i} className="flex items-center gap-2.5">
+            <Skeleton className="h-3.5 w-3.5 shrink-0 rounded-sm" />
+            <Skeleton className="h-3" style={{ width: `${w}%` }} />
+          </div>
+        ))}
+      </SectionSkeleton>
+    </div>
+  );
+}
+
+/** Lines of command output in the mono font. */
+function ShellOutputSkeleton() {
+  return (
+    <div className="space-y-2" role="status" aria-label="Lädt">
+      <Skeleton className="h-3 w-48" />
+      <div className="space-y-1.5">
+        {[75, 60, 85, 40, 65, 50].map((w, i) => (
+          <Skeleton key={i} className="h-3" style={{ width: `${w}%` }} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function SectionSkeleton({ children }: { children: ReactNode }) {
+  return (
+    <div>
+      <Skeleton className="mb-2.5 h-2.5 w-16" />
+      <div className="space-y-2">{children}</div>
     </div>
   );
 }
@@ -143,7 +178,8 @@ export function agentCall(events: readonly SessionEvent[], toolUseId: string): {
 
 function ShellOutput({ task }: { task: Extract<TaskView, { kind: "shell" }> }) {
   const session = useSession(task.sessionId).data ?? null;
-  const running = !!session?.background.some((b) => b.taskId === task.taskId);
+  const background = session?.background.find((b) => b.taskId === task.taskId) ?? null;
+  const running = !!background;
   const live = !!session?.live;
   const out = useQuery({
     queryKey: ["taskOutput", task.sessionId, task.taskId],
@@ -157,17 +193,19 @@ function ShellOutput({ task }: { task: Extract<TaskView, { kind: "shell" }> }) {
   useEffect(() => {
     if (!running && live) void refetch();
   }, [running, live, refetch]);
-  const end = useStickToEnd(out.data?.totalBytes);
 
+  if (!session) return <ShellOutputSkeleton />;
   if (!live) return <p className="text-body text-subtle">Die Session ist beendet. Die Ausgabe eines Befehls gibt es nur, solange die Session läuft.</p>;
   if (out.error) return <p className="text-body text-danger">Ausgabe nicht lesbar: {errorMessage(out.error)}</p>;
-  if (!out.data) return <Loading />;
+  if (!out.data) return <ShellOutputSkeleton />;
   return (
     <div className="space-y-2">
-      <p className="text-small text-subtle">
-        {running ? "Läuft noch, die Ausgabe wird laufend gelesen." : "Beendet."}
-        {out.data.truncated && ` Zu sehen sind die letzten 8 KB von ${Math.round(out.data.totalBytes / 1024)} KB.`}
-      </p>
+      {(!running || out.data.truncated) && (
+        <p className="text-small text-subtle">
+          {!running && "Beendet."}
+          {out.data.truncated && ` Zu sehen sind die letzten 8 KB von ${Math.round(out.data.totalBytes / 1024)} KB.`}
+        </p>
+      )}
       {out.data.output ? (
         <pre className="whitespace-pre-wrap font-mono text-small leading-relaxed text-muted wrap-anywhere">{out.data.output}</pre>
       ) : (
@@ -177,7 +215,11 @@ function ShellOutput({ task }: { task: Extract<TaskView, { kind: "shell" }> }) {
             : "Der Befehl hat nichts ausgegeben."}
         </p>
       )}
-      <div ref={end} />
+      {background && (
+        <div className="pt-1">
+          <TaskWorking startedAt={background.startedAt} />
+        </div>
+      )}
     </div>
   );
 }

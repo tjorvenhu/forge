@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useVirtualizer, type VirtualItem } from "@tanstack/react-virtual";
-import { ArrowDown, History, MessageSquarePlus, RotateCcw, Terminal } from "lucide-react";
+import { History, MessageSquarePlus, RotateCcw, Terminal } from "lucide-react";
 import type { ExternalSession, Project, Session, SessionEvent } from "@forge/protocol";
 import { useOlderHistory, useSession, useSessionHistory, useSessions } from "@/lib/queries";
 import { isWorking } from "@/lib/working";
@@ -25,9 +25,8 @@ import { BackgroundIndicator, WorkingIndicator } from "./WorkingIndicator";
 import { TaskThreadDialog } from "./TaskThread";
 import { turnStartedAt } from "./working";
 import { anchoredScrollTop, captureAnchor, type ScrollAnchor } from "./scroll-anchor";
-import { FollowState } from "./follow";
-
-const SCROLL_KEYS = new Set(["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End", " "]);
+import { FollowState, SCROLL_KEYS } from "./follow";
+import { JumpToEnd, useDragRelease, type JumpKind } from "./FollowScroll";
 import { LeadMarker } from "./ChatRow";
 import { ClaudeMark } from "./ClaudeMark";
 
@@ -156,7 +155,7 @@ function SessionThread({ sessionId, session, project, workingInPanel }: { sessio
   const scrollRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   /** "new": content grew while scrolled up; "end": far from the end. Shows the jump button. */
-  const [jump, setJump] = useState<"new" | "end" | null>(null);
+  const [jump, setJump] = useState<JumpKind | null>(null);
   const [saved] = useState(() => threadViews.get(sessionId));
   const [follow] = useState(() => new FollowState(saved?.pinned ?? true));
   const virtualizer = useVirtualizer({
@@ -234,18 +233,7 @@ function SessionThread({ sessionId, session, project, workingInPanel }: { sessio
   // ResizeObserver reports growth once per frame instead. The thread itself is observed too: when
   // the composer grows (approval or plan card), the visible area shrinks and the end moves out of view.
   const loaded = !!buffer?.loaded;
-  useEffect(() => {
-    // The scrollbar can be released outside the thread, even outside the window.
-    const release = () => follow.setDragging(false);
-    window.addEventListener("pointerup", release);
-    window.addEventListener("pointercancel", release);
-    window.addEventListener("blur", release);
-    return () => {
-      window.removeEventListener("pointerup", release);
-      window.removeEventListener("pointercancel", release);
-      window.removeEventListener("blur", release);
-    };
-  }, [follow]);
+  useDragRelease(follow);
   useLayoutEffect(() => {
     const el = scrollRef.current;
     const content = contentRef.current;
@@ -352,15 +340,7 @@ function SessionThread({ sessionId, session, project, workingInPanel }: { sessio
           {!!session?.background.length && <BackgroundIndicator tasks={session.background} sessionId={sessionId} />}
         </div>
       </div>
-      {jump && (
-        <button
-          type="button"
-          onClick={jumpToEnd}
-          className="absolute bottom-3 left-1/2 z-10 flex -translate-x-1/2 animate-rise-in items-center gap-1.5 rounded-full border border-border bg-surface-3 px-3 py-1 text-small text-fg shadow-lg transition-[background-color,transform] duration-120 hover:bg-border-strong active:scale-[0.97]"
-        >
-          <ArrowDown className="h-3.5 w-3.5" /> {jump === "new" ? "Neue Nachrichten" : "Zum Ende"}
-        </button>
-      )}
+      {jump && <JumpToEnd kind={jump} onClick={jumpToEnd} />}
       </div>
       <Composer project={project} session={session} prefill={retryText} onPrefillConsumed={clearRetry} />
       <TaskThreadDialog sessionId={sessionId} projectDir={session?.cwd ?? project.path} />

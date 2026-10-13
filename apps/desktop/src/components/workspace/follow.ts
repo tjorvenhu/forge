@@ -2,6 +2,8 @@
 export const PIN_DISTANCE = 40;
 /** Scroll events this long after a wheel, key or touch input count as the user's. WebView2 animates wheel scrolling. */
 const USER_WINDOW_MS = 400;
+/** keys that scroll a focused scroll area */
+export const SCROLL_KEYS = new Set(["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End", " "]);
 
 export type FollowHint = "pinned" | "far" | null;
 

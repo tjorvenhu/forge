@@ -100,6 +100,34 @@ export const BackgroundIndicator = memo(function BackgroundIndicator({ tasks, se
   );
 });
 
+/** Claude's turning mark and a working phrase that changes now and then; `children` follow the phrase. */
+export function WorkingLine({ startedAt, now, children }: { startedAt: string; now: number; children?: ReactNode }) {
+  return (
+    <ChatRow
+      marker={
+        <span className="flex motion-safe:animate-spin-slow">
+          <ClaudeMark size={13} />
+        </span>
+      }
+    >
+      <span className="font-medium text-claude">{pickPhrase(startedAt, now - new Date(startedAt).getTime())} …</span> {children}
+    </ChatRow>
+  );
+}
+
+/** A subagent or background command at work, in the window with its own history or output. */
+export function TaskWorking({ startedAt, progress }: { startedAt: string; progress?: string | null }) {
+  const now = useNow();
+  return (
+    <div className="text-small">
+      <WorkingLine startedAt={startedAt} now={now}>
+        {progress && <span className="text-muted">{progress} </span>}
+        <span className="tabular-nums text-subtle">({formatElapsed(now - new Date(startedAt).getTime())})</span>
+      </WorkingLine>
+    </div>
+  );
+}
+
 /**
  * Activity line under the chat while a turn runs, like the spinner line of the Claude Code shell.
  * Subagents of the turn are listed below it with their latest progress; each can be sent to the
@@ -119,18 +147,11 @@ export const WorkingIndicator = memo(function WorkingIndicator({ startedAt, suba
   };
   return (
     <div className="px-6 pb-4 pt-1 text-small">
-      <ChatRow
-        marker={
-          <span className="flex motion-safe:animate-spin-slow">
-            <ClaudeMark size={13} />
-          </span>
-        }
-      >
-        <span className="font-medium text-claude">{pickPhrase(startedAt, elapsed)} …</span>{" "}
+      <WorkingLine startedAt={startedAt} now={now}>
         <span className="tabular-nums text-subtle">
           ({formatElapsed(elapsed)} · <Kbd>Esc</Kbd> zum Unterbrechen)
         </span>
-      </ChatRow>
+      </WorkingLine>
       {subagents.map((a) => (
         <ChatRow key={a.taskId} marker={<Bot className="h-3.5 w-3.5 text-accent" />}>
           <div className="group/agent flex min-w-0 items-baseline gap-2">

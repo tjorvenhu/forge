@@ -13,13 +13,15 @@ interface DialogProps {
   children?: ReactNode;
   footer?: ReactNode;
   className?: string;
+  /** extra classes for the body, e.g. to let the content scroll on its own */
+  bodyClassName?: string;
   /** extra classes for the backdrop, e.g. a blur behind dialogs that ask for a decision */
   overlayClassName?: string;
   /** Shows backdrop and dialog over this element (it needs `position: relative`) instead of the whole window. */
   container?: HTMLElement | null;
 }
 
-export function Dialog({ open, onOpenChange, title, description, children, footer, className, overlayClassName, container }: DialogProps) {
+export function Dialog({ open, onOpenChange, title, description, children, footer, className, bodyClassName, overlayClassName, container }: DialogProps) {
   const hasBody = children !== undefined && children !== null && children !== false;
   const local = !!container;
   return (
@@ -47,7 +49,7 @@ export function Dialog({ open, onOpenChange, title, description, children, foote
               <X className="h-4 w-4" />
             </D.Close>
           </div>
-          {hasBody && <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">{children}</div>}
+          {hasBody && <div className={cn("min-h-0 flex-1 overflow-y-auto px-5 py-4", bodyClassName)}>{children}</div>}
           {footer && <div className="flex justify-end gap-2 border-t border-border px-5 py-3">{footer}</div>}
         </D.Content>
       </D.Portal>
