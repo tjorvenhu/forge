@@ -1,12 +1,18 @@
 ---
 title: "FORGE-Policy-Sperren in Sessions"
-summary: "Was die FORGE-Policy einer Claude-Session hier verbietet (Branch löschen, Schreiben außerhalb des Projekts) und wie man damit umgeht."
+summary: "Welche FORGE-Policy-Regeln Claude-Sessions hier blockieren, welche standardmäßig aus sind und wie Standardänderungen bei Updates migriert werden."
 tags: ["policy","git","stolperfalle"]
-updated: "2026-10-13T09:25:16.414Z"
+updated: "2026-10-13T09:28:45.137Z"
 ---
 
-In Sessions dieses Projekts blockieren FORGE-Hooks (PreToolUse):
-- `git branch -D` / Branch löschen: "FORGE-Policy (git-branch-delete)". Agenten-Branches daher über FORGE aufräumen: Modal "Agent fertig" bzw. Agenten-Reiter (Abschließen/Entfernen), Telefon `finish_agent`/`remove_agent` oder MCP `finish_agent` (braucht Freigabe des Nutzers). Diese laufen im Sidecar, nicht als Bash-Befehl.
-- Edit/Write außerhalb des Projektordners (Autonomous-Profil): "write-outside-project". Hilfsskripte deshalb im Projekt anlegen und danach löschen, nicht in %TEMP%.
+Regeln: `PolicyRuleId` in `packages/protocol/src/models.ts`, Prüfung in `packages/sidecar/src/policy/guard.ts`, Schalter unter Einstellungen (`PolicySettings.tsx`). Sie greifen per PreToolUse-Hook, auch im Autonomous-Profil.
 
-Zusätzlich: In Bash-Heredocs gehen Backslashes verloren (`\n`, `\``). Code-Änderungen mit mehrzeiligen Strings lieber mit Edit/Write machen.
+Standardmäßig aus (`DEFAULT_DISABLED_POLICY_RULES`): `git-push-protected` und `git-branch-delete`. Branch-Löschen ist aus, damit Claude die Branches fertiger Agenten löschen kann.
+
+Einen Standard ändern: Regel in `DEFAULT_DISABLED_POLICY_RULES` aufnehmen und zusätzlich eine Migration in `MIGRATIONS` (`packages/sidecar/src/persistence/db.ts`) anhängen, die die Regel per `json_insert` einmalig in die gespeicherte Liste `disabledPolicyRules` schreibt. Ohne Migration behalten bestehende Installationen ihre alte Liste. Wer die Regel danach wieder einschaltet, behält das. Test-Muster: `packages/sidecar/test/db-settings.test.ts`.
+
+Weiter aktiv: Schreiben außerhalb des Projektordners (`write-outside-project`). Hilfsskripte deshalb im Projekt anlegen und danach löschen, nicht in %TEMP%.
+
+Stolperfalle: In Bash-Heredocs gehen Backslashes verloren (`\n`, `\``). Code mit mehrzeiligen Strings lieber mit Edit/Write ändern.
+
+Windows: Ein Worktree-Ordner lässt sich nicht löschen, solange eine Claude-Session darin läuft ("Permission denied"). Agenten deshalb über FORGE entfernen (Agenten-Reiter, Modal, Telefon, `finish_agent`). Das beendet die Session vorher.

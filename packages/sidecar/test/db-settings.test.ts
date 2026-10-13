@@ -19,17 +19,17 @@ afterEach(() => t.cleanup());
  * Stores the list as an install before the update had it, then runs the update's migration on it.
  * Later migrations are not idempotent, so only this one runs again.
  */
-function reopenFromBeforeUpdate(stored: PolicyRuleId[]) {
+function reopenFromBeforeUpdate(stored: PolicyRuleId[], rule: PolicyRuleId = "git-push-protected") {
   const db = new Db(file);
   db.updateSettings({ disabledPolicyRules: stored });
-  db.sql.exec(MIGRATIONS.find((m) => m.includes("'git-push-protected'"))!);
+  db.sql.exec(MIGRATIONS.find((m) => m.includes(`'${rule}'`))!);
   return db;
 }
 
 describe("push to main/master", () => {
   it("is allowed by default on a new install", () => {
     const db = new Db(file);
-    expect(db.getSettings().disabledPolicyRules).toEqual(["git-push-protected"]);
+    expect(db.getSettings().disabledPolicyRules).toEqual(["git-push-protected", "git-branch-delete"]);
     db.close();
   });
 
@@ -52,6 +52,23 @@ describe("push to main/master", () => {
     db.close();
     db = new Db(file);
     expect(db.getSettings().disabledPolicyRules).toEqual([]);
+    db.close();
+  });
+});
+
+describe("deleting local branches", () => {
+  it("gets switched off once on update and keeps the other choices", () => {
+    const db = reopenFromBeforeUpdate(["git-push-protected", "git-reset-hard"], "git-branch-delete");
+    expect(db.getSettings().disabledPolicyRules).toEqual(["git-push-protected", "git-reset-hard", "git-branch-delete"]);
+    db.close();
+  });
+
+  it("stays on when switched on again after the update", () => {
+    let db = reopenFromBeforeUpdate(["git-push-protected"], "git-branch-delete");
+    db.updateSettings({ disabledPolicyRules: ["git-push-protected"] });
+    db.close();
+    db = new Db(file);
+    expect(db.getSettings().disabledPolicyRules).toEqual(["git-push-protected"]);
     db.close();
   });
 });

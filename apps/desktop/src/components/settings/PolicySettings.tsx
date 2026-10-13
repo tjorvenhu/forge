@@ -13,7 +13,7 @@ const RULE_GROUPS: ReadonlyArray<{ title: string; description: string; rules: Re
       { id: "git-push-delete", label: "Remote-Branches löschen", info: "git push --delete und git push origin :branch." },
       { id: "git-push-mirror", label: "Push mit --mirror oder --prune", info: "Beide löschen Branches auf dem Remote, die es lokal nicht gibt." },
       { id: "git-reset-hard", label: "git reset --hard", info: "Verwirft nicht committete Änderungen ohne Rückweg." },
-      { id: "git-branch-delete", label: "Lokale Branches löschen", info: "git branch -d, -D und --delete. Im Git-Bereich kannst du Branches weiterhin selbst löschen." },
+      { id: "git-branch-delete", label: "Lokale Branches löschen", info: "git branch -d, -D und --delete. Standardmäßig aus, damit Claude die Branches fertiger Agenten löschen kann." },
       { id: "git-clean-force", label: "git clean -f", info: "Löscht nicht versionierte Dateien endgültig." },
     ],
   },

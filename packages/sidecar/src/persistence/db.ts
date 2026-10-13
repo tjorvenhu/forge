@@ -193,6 +193,13 @@ export const MIGRATIONS: string[] = [
     config TEXT NOT NULL
   );
   `,
+  // Deleting local branches is allowed by default now, so Claude can remove the branches of finished
+  // agents. Like the push rule above: switched off once, switching it back on afterwards sticks.
+  `
+  UPDATE settings SET value = json_insert(value, '$[#]', 'git-branch-delete')
+  WHERE key = 'disabledPolicyRules'
+    AND NOT EXISTS (SELECT 1 FROM json_each(settings.value) WHERE json_each.value = 'git-branch-delete');
+  `,
 ];
 
 export const DEFAULT_SETTINGS: Settings = {

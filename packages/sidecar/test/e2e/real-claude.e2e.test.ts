@@ -135,6 +135,8 @@ describe.skipIf(!enabled)("E2E: sidecar with real Claude Code", () => {
 
   it("Autonomous (bypassPermissions) still enforces the FORGE guard via PreToolUse hook", async () => {
     await git(projectPath, "branch", "keep-me");
+    // Deleting branches is allowed by default; switched on here so there is a rule to enforce.
+    await c.request("settings.update", { disabledPolicyRules: ["git-push-protected"] });
     await c.request("projects.update", { projectId, profile: "autonomous" });
     const before = c.events.length;
     const s = await c.request("sessions.start", {
@@ -153,6 +155,7 @@ describe.skipIf(!enabled)("E2E: sidecar with real Claude Code", () => {
     expect(await git(projectPath, "branch", "--list", "keep-me")).toContain("keep-me");
     await c.request("sessions.close", { sessionId: s.id });
     await c.request("projects.update", { projectId, profile: "balanced" });
+    await c.request("settings.update", { disabledPolicyRules: ["git-push-protected", "git-branch-delete"] });
   }, 240_000);
 
   it("switches a running session from Balanced to Autonomous without a restart", async () => {

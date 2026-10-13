@@ -19,8 +19,11 @@ export const PolicyRuleId = z.enum([
 ]);
 export type PolicyRuleId = z.infer<typeof PolicyRuleId>;
 
-/** Rules that are off unless the user switches them on; pushing to main/master is allowed by default. */
-export const DEFAULT_DISABLED_POLICY_RULES: readonly PolicyRuleId[] = ["git-push-protected"];
+/**
+ * Rules that are off unless the user switches them on: pushing to main/master, and deleting local
+ * branches (Claude cleans up the branches of finished agents).
+ */
+export const DEFAULT_DISABLED_POLICY_RULES: readonly PolicyRuleId[] = ["git-push-protected", "git-branch-delete"];
 
 export const PermissionMode = z.enum(["default", "acceptEdits", "plan", "bypassPermissions"]);
 export type PermissionMode = z.infer<typeof PermissionMode>;
