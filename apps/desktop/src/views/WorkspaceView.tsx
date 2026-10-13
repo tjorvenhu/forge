@@ -310,7 +310,6 @@ function WorkspaceHeader({ projectId }: { projectId: string }) {
       )}
       <LayoutToggles />
       <RemoteControlButton project={project} />
-      <AlwaysOnTopButton />
 
       <DropdownMenu
         header="Berechtigungsprofil"
@@ -332,7 +331,9 @@ function WorkspaceHeader({ projectId }: { projectId: string }) {
           onSelect: () => void setProfile(p),
         }))}
       />
+      {/* App-wide switches, apart from the project's own controls. */}
       <HeaderDivider />
+      <AlwaysOnTopButton />
       <PhoneButton />
     </header>
   );

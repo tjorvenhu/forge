@@ -30,13 +30,11 @@ export function Sidebar() {
 
   return (
     <aside className="flex w-64 shrink-0 select-none flex-col border-r border-border bg-sidebar">
-      <div className="flex items-center px-5 pb-5 pt-5">
+      <div className="flex items-center px-5 pb-4 pt-5">
         <Logo height={44} />
       </div>
 
-      <div className="mx-4 border-t border-border" />
-
-      <div className="px-3 pt-3">
+      <div className="px-3">
         <SearchField />
       </div>
 
