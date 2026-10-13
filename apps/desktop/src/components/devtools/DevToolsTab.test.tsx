@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { TooltipProvider } from "@radix-ui/react-tooltip";
 import type { Project } from "@forge/protocol";
 import type * as RpcModuleNs from "@/lib/rpc";
 
@@ -31,7 +32,9 @@ const project = { id: "app", name: "App", path: "C:\\code\\app", parentId: null,
 function show() {
   render(
     <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
-      <DevToolsTab project={project} />
+      <TooltipProvider>
+        <DevToolsTab project={project} />
+      </TooltipProvider>
     </QueryClientProvider>,
   );
 }
