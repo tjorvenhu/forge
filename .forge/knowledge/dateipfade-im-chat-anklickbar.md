@@ -2,7 +2,7 @@
 title: "Dateipfade im Chat anklickbar"
 summary: "Wie Pfade in Chat-Nachrichten, Werkzeug-Karten und Aktivität zu Links werden: Projektdateien öffnen im Dateien-Reiter an der Zeile, Ordner und Dateien außerhalb im Explorer; was man beim Ändern der Erkennung beachten muss."
 tags: ["chat","markdown","dateien","explorer","chat-fenster","ui"]
-updated: "2026-10-13T17:21:27.378Z"
+updated: "2026-10-13T18:34:30.078Z"
 ---
 
 Eingebaut 2026-10-13 auf Wunsch des Nutzers ("wie bei Claude Code"), am selben Tag auf Werkzeug-Karten, Ausgaben und Ordner erweitert.
@@ -24,6 +24,12 @@ Eingebaut 2026-10-13 auf Wunsch des Nutzers ("wie bei Claude Code"), am selben T
 - Werkzeug-Karten (`ToolCard.tsx`): Kopfzeile über `ToolTarget` (Read/Write/Edit: die Datei, Read an `offset`; Bash/Grep/Glob: Pfade im Befehl). Die Kopfzeile ist ein `div` mit unterlegtem, absolut positioniertem Aufklapp-Button; Links liegen mit `relative z-10` darüber (kein Link im Button). Ausgabe-Vorschau, Details und Freigabe-Block über `LinkedText`.
 - Aktivität (`ActivityFeed`) mit eigenem `FileLinkContext` (Hauptbereich).
 - Stil außerhalb von Markdown: Klasse `.file-link` in `styles.css`.
+
+## Explorer-Knöpfe außerhalb des Chats
+- `revealPath(abs)` und `revealInProject(root, rel)` (file-links.tsx, Fehler als Toast) sind der gemeinsame Weg in den Explorer.
+- Dateien-Reiter: Knopf in der Pfadzeile der geöffneten Datei (`FilesTab` → `FileViewer`). Rechte Spalte (`FileTree`): Knopf im Kopf öffnet den Projektordner.
+- Befehlspalette: `explorer-project` (Projektordner) und `explorer-file` (die im Dateien-Reiter gewählte Datei, `selectedFile`).
+- Telefon: bewusst nicht angebunden, weil der Explorer ein Tauri-Befehl im Desktop-Fenster ist und das Telefon nur Sidecar-RPC aufruft.
 
 ## Hinweise
 - Rust-Befehle (`show_in_explorer`, `show_main_window`) brauchen einen Neubau; `pnpm dev` (tauri dev) baut bei Änderungen in src-tauri selbst neu.

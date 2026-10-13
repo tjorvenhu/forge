@@ -14,6 +14,7 @@ import {
   FileText,
   FlaskConical,
   FolderDown,
+  FolderOpen,
   FolderPlus,
   Gauge,
   GitBranch,
@@ -78,6 +79,7 @@ import { SECTIONS as DEV_TOOLS_SECTION_DEFS } from "@/components/devtools/DevToo
 import { integratedText } from "@/components/git/Sync";
 import { SECTIONS as PROJECT_SECTION_DEFS, TAG_INFO } from "@/components/workspace/ProjectSettingsTab";
 import { compactSession, PROFILE_MODE, stopSession } from "@/components/workspace/useSendMessage";
+import { revealInProject } from "@/components/workspace/file-links";
 import { SECTIONS as SETTINGS_SECTION_DEFS } from "@/views/SettingsView";
 import { EXTENSION_TAB_DEFS, SKILLS_TAB_DEFS } from "@/views/ExtensionsView";
 import { NAV } from "./nav";
@@ -397,6 +399,11 @@ export function buildActions(ctx: ActionContext): PaletteEntry[] {
       act("agent-new", "Parallelen Agenten starten", icon(Bot), () => ctx.openDialog({ kind: "new-agent", root: r }), { keywords: "worktree branch agent" });
     }
 
+    if (project.exists) {
+      act("explorer-project", "Projektordner im Explorer öffnen", icon(FolderOpen), () => void revealInProject(project.path, ""), { keywords: "explorer ordner dateien windows" });
+      const file = ui.selectedFile[project.id];
+      if (file) act("explorer-file", "Datei im Explorer zeigen", icon(FolderOpen), () => void revealInProject(project.path, file), { keywords: "explorer ordner windows", hint: file });
+    }
     act("terminal", "Terminal öffnen", icon(SquareTerminal), () => ui.openTerminal(project.id, "shell"), { keywords: "shell konsole" });
     act("bottom", "Unteres Panel ein- oder ausblenden", icon(PanelBottom), () => ui.toggleBottomPanel(), { hint: "Strg+J" });
     act("right", "Seitenleiste ein- oder ausblenden", icon(PanelRight), () => ui.toggleRightPanel(), { hint: "Strg+Umschalt+E" });

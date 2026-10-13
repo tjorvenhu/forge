@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { QueryClient } from "@tanstack/react-query";
 import { PolicyRuleId, Settings, type ProjectWithStatus, type Session } from "@forge/protocol";
-import { DEV_TOOLS_SECTIONS, EXTENSIONS_TABS, PROJECT_SETTINGS_SECTIONS, SETTINGS_SECTIONS, SKILLS_TABS, WORKSPACE_TABS } from "@/stores/ui";
+import { DEV_TOOLS_SECTIONS, EXTENSIONS_TABS, PROJECT_SETTINGS_SECTIONS, SETTINGS_SECTIONS, SKILLS_TABS, WORKSPACE_TABS, useUi } from "@/stores/ui";
 import { TAG_INFO } from "@/components/workspace/ProjectSettingsTab";
 import { buildActions, UNLISTED_SETTINGS, type ActionContext } from "./palette-actions";
 import { crawlFiles } from "./palette-sources";
@@ -112,6 +112,14 @@ describe("command palette covers all of FORGE", () => {
     expect(got).toContain("tag-auto-test");
     expect(list.find((e) => e.id === "tab-files")?.hint).toBe("Strg+2");
     expect(list.find((e) => e.id === "project-git")?.label).toBe("Git für dieses Projekt einschalten");
+  });
+
+  it("shows the project folder and the open file in Explorer", () => {
+    expect(ids).toContain("explorer-project");
+    expect(ids).not.toContain("explorer-file");
+    useUi.getState().selectFile(project.id, "src/main.ts");
+    const list = buildActions(fullContext());
+    expect(list.find((e) => e.id === "explorer-file")?.hint).toBe("src/main.ts");
   });
 
   it("gives every entry its own id", () => {

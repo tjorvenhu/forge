@@ -113,12 +113,18 @@ function destination(ref: FileRef, target: FileLinkTarget | null): "files" | "ex
   return isAbsolute(ref.path) ? "explorer" : null;
 }
 
-async function revealPath(path: string) {
+/** Shows an absolute path in Explorer; a failure ends up as a toast. */
+export async function revealPath(path: string) {
   try {
     await showInExplorer(path.replace(/\//g, "\\"));
   } catch (e) {
     toast.error("Nicht geöffnet", `${path}: ${errorMessage(e)}`);
   }
+}
+
+/** Shows a file or folder of the project (path relative to its root, "" for the root itself) in Explorer. */
+export function revealInProject(root: string, path: string) {
+  return revealPath(path ? `${root.replace(/[\\/]+$/, "")}/${path}` : root);
 }
 
 /** Scheme of the links remarkFileLinks puts in for paths in running text. */

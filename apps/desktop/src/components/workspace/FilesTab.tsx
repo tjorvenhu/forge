@@ -1,14 +1,16 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { ChevronRight, Folder } from "lucide-react";
+import { ChevronRight, Folder, FolderOpen } from "lucide-react";
 import type { Project } from "@forge/protocol";
 import { call, keys } from "@/lib/queries";
 import { errorMessage } from "@/lib/rpc";
 import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
 import { CodeView, CodeViewSkeleton } from "@/components/ui/code-view";
 import { EmptyState, ErrorBanner } from "@/components/ui/misc";
 import { useUi } from "@/stores/ui";
 import { fileIcon } from "./FileTree";
+import { revealInProject } from "./file-links";
 import { Skeleton, SkeletonRegion } from "@/components/ui/skeleton";
 
 /** Read-only project browser. Editing happens through Claude or your editor. */
@@ -21,7 +23,7 @@ export function FilesTab({ project }: { project: Project }) {
       <div className="min-h-0 overflow-y-auto border-r border-border py-2">
         <Dir projectId={project.id} dir="" depth={0} selected={file} onSelect={setFile} />
       </div>
-      <div className="min-h-0">{file ? <FileViewer projectId={project.id} path={file} /> : <EmptyState title="Datei auswählen">Links eine Datei anklicken.</EmptyState>}</div>
+      <div className="min-h-0">{file ? <FileViewer project={project} path={file} /> : <EmptyState title="Datei auswählen">Links eine Datei anklicken.</EmptyState>}</div>
     </div>
   );
 }
@@ -85,12 +87,18 @@ function FileIconFor({ name }: { name: string }) {
   return <Icon className={cn("h-3.5 w-3.5 shrink-0", tone)} />;
 }
 
-function FileViewer({ projectId, path }: { projectId: string; path: string }) {
+function FileViewer({ project, path }: { project: Project; path: string }) {
+  const projectId = project.id;
   const q = useQuery({ queryKey: keys.file(projectId, path), queryFn: () => call("projects.readFile", { projectId, path }) });
   const jump = useUi((s) => (s.fileJump?.projectId === projectId && s.fileJump.path === path ? s.fileJump : null));
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="flex h-8 shrink-0 items-center border-b border-border px-3 font-mono text-xs text-muted">{path}</div>
+      <div className="flex h-8 shrink-0 items-center gap-2 border-b border-border pl-3 pr-1">
+        <span className="min-w-0 flex-1 truncate font-mono text-xs text-muted">{path}</span>
+        <Button size="icon-sm" variant="ghost" onClick={() => void revealInProject(project.path, path)} aria-label="Im Explorer zeigen" title="Im Explorer zeigen">
+          <FolderOpen className="h-3.5 w-3.5" />
+        </Button>
+      </div>
       {q.isLoading && (
         <div className="min-h-0 flex-1">
           <CodeViewSkeleton />

@@ -24,8 +24,10 @@ import { call, keys, useGitStatus } from "@/lib/queries";
 import { errorMessage } from "@/lib/rpc";
 import { cn } from "@/lib/utils";
 import { useUi } from "@/stores/ui";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Collapse } from "@/components/ui/collapse";
+import { revealInProject } from "./file-links";
 
 type Icon = ComponentType<{ className?: string }>;
 
@@ -81,6 +83,9 @@ export function FileTree({ project }: { project: Project }) {
         <FolderTree className="h-4 w-4 text-muted" />
         <span className="min-w-0 flex-1 truncate text-ui font-medium">{project.name}</span>
         {!!git.data?.files.length && <span className="text-caption text-subtle">{git.data.files.length} geändert</span>}
+        <Button size="icon-sm" variant="ghost" className="-mr-2" onClick={() => void revealInProject(project.path, "")} aria-label="Projektordner im Explorer öffnen" title="Projektordner im Explorer öffnen">
+          <FolderOpen className="h-3.5 w-3.5" />
+        </Button>
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3">
         <Level project={project} dir="" depth={0} status={status} />
