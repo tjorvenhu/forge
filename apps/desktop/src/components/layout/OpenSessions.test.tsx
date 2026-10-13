@@ -59,7 +59,7 @@ beforeEach(() => {
   callMock.mockReset();
   live = [];
   stored = [];
-  useUi.setState({ view: "workspace", activeProjectId: "app", activeSession: {}, workspaceTab: "git", collapsedGroups: [], splitPanes: [] });
+  useUi.setState({ view: "workspace", activeProjectId: "app", activeSession: {}, workspaceTab: "git", collapsedGroups: [], splitPanes: [], splitStash: null });
   callMock.mockImplementation(async (method: string, params: { sessionId?: string }) => {
     if (method === "sessions.listLive") return live;
     if (method === "projects.list") return Object.entries(names).map(([id, name]) => ({ id, name }));
@@ -267,11 +267,19 @@ describe("OpenSessions tree", () => {
     expect(web.querySelectorAll("[data-pane-new-session]")).toHaveLength(1);
     const app = document.querySelector<HTMLElement>('[data-project-group="app"]')!;
     const paneNew = app.querySelector<HTMLElement>("[data-pane-new-session]")!;
+    const before = useUi.getState().splitPanes;
 
+    // Clicking what the split view shows changes nothing about it.
     fireEvent.click(paneNew);
+    fireEvent.click(screen.getByRole("tab", { name: /^Titel w1/ }));
     const ui = useUi.getState();
-    expect(ui.activeSession.app).toBeNull();
-    expect(ui.splitPanes.find((p) => p.id === "p3")).toMatchObject({ projectId: "app", active: "a1" });
+    expect(ui.activeSession.app).toBe("a1");
+    expect(ui.splitPanes).toBe(before);
+
+    // A session not on screen opens alone; the split view waits in the sidebar.
+    useUi.getState().openProject("app", "a9");
+    expect(useUi.getState().splitPanes).toEqual([]);
+    expect(useUi.getState().splitStash?.panes).toBe(before);
   });
 });
 

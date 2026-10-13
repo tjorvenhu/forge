@@ -47,6 +47,31 @@ export interface SplitPane {
   pick?: boolean;
 }
 
+export interface SplitStash {
+  main: { projectId: string; active: string | null } | null;
+  panes: SplitPane[];
+}
+
+/** Id of the main area in drag and drop between areas; split panes go by their own id. */
+export const MAIN_AREA = "main";
+
+/** Whether two areas can swap places: the main area needs a project, so a picker cannot take its place. */
+export function canSwapAreas(panes: readonly SplitPane[], a: string, b: string): boolean {
+  if (a === b) return false;
+  const pane = (id: string) => panes.find((p) => p.id === id);
+  if (a === MAIN_AREA) return !!pane(b)?.projectId;
+  if (b === MAIN_AREA) return !!pane(a)?.projectId;
+  return !!pane(a) && !!pane(b);
+}
+
+/** Whether a chat the sidebar (or a notification, the palette ...) opens is already on screen in the split view. */
+function onScreen(s: UiState, projectId: string, sessionId: string | null | undefined): boolean {
+  const main = mainChat(s);
+  if (sessionId === undefined) return main?.projectId === projectId || s.splitPanes.some((p) => p.projectId === projectId);
+  if (sessionId === null) return (main?.projectId === projectId && main.active === null) || s.splitPanes.some((p) => p.projectId === projectId && !p.active && !p.pick);
+  return (main?.projectId === projectId && main.active === sessionId) || s.splitPanes.some((p) => p.projectId === projectId && p.active === sessionId);
+}
+
 /** The chat each pane shows, main chat first; a session is shown in one pane at most. */
 function mainChat(s: Pick<UiState, "activeProjectId" | "activeSession">): { projectId: string; active: string | null } | null {
   return s.activeProjectId ? { projectId: s.activeProjectId, active: s.activeSession[s.activeProjectId] ?? null } : null;
@@ -97,6 +122,16 @@ function parsePanes(raw: unknown): SplitPane[] {
     const active = projectId && typeof r.active === "string" ? r.active : null;
     return [{ id: r.id, projectId, active, ...(projectId && !active && r.pick === true ? { pick: true } : {}) }];
   });
+}
+
+function parseStash(raw: unknown): SplitStash | null {
+  if (!raw || typeof raw !== "object") return null;
+  const r = raw as Record<string, unknown>;
+  const panes = parsePanes(r.panes);
+  if (!panes.length) return null;
+  const m = r.main as Record<string, unknown> | null | undefined;
+  const main = m && typeof m.projectId === "string" ? { projectId: m.projectId, active: typeof m.active === "string" ? m.active : null } : null;
+  return { main, panes };
 }
 
 /**
@@ -186,6 +221,15 @@ interface UiState {
   closeSplitPanes: () => void;
   /** swaps a split pane with the main chat, so header, side panel and tabs belong to its session */
   promoteSplitPane: (id: string) => void;
+  /**
+   * The split view closed by opening a chat that was not on screen: kept, so the sidebar can bring it
+   * back. Opening a chat already on screen leaves the split view as it is.
+   */
+  splitStash: SplitStash | null;
+  /** brings the split view back as it was when another chat closed it */
+  restoreSplit: () => void;
+  /** swaps two areas of the split view by drag and drop; "main" is the main area */
+  swapSplitAreas: (a: string, b: string) => void;
   /** deleted sessions leave every chat that shows them */
   forgetSessions: (ids: Iterable<string>) => void;
   /** further areas the split view has room for right now; 0 while it is not shown */
@@ -195,7 +239,7 @@ interface UiState {
 
 const PREFS_KEY = "forge.ui";
 
-type Prefs = Pick<UiState, "activeProjectId" | "toolbarOpen" | "collapsedGroups" | "splitPanes">;
+type Prefs = Pick<UiState, "activeProjectId" | "toolbarOpen" | "collapsedGroups" | "splitPanes" | "splitStash">;
 
 /** Reopens the last project on start. Side and bottom panel always start closed and open only on request. */
 function loadPrefs(): Partial<UiState> {
@@ -206,6 +250,7 @@ function loadPrefs(): Partial<UiState> {
       ...(Array.isArray(p.collapsedGroups) ? { collapsedGroups: p.collapsedGroups.filter((g): g is string => typeof g === "string") } : {}),
       ...(typeof p.activeProjectId === "string" ? { activeProjectId: p.activeProjectId, view: "workspace" as const } : {}),
       splitPanes: parsePanes(p.splitPanes),
+      splitStash: parseStash(p.splitStash),
     };
   } catch {
     return {};
@@ -214,7 +259,7 @@ function loadPrefs(): Partial<UiState> {
 
 function savePrefs(s: Prefs) {
   try {
-    localStorage.setItem(PREFS_KEY, JSON.stringify({ activeProjectId: s.activeProjectId, toolbarOpen: s.toolbarOpen, collapsedGroups: s.collapsedGroups, splitPanes: s.splitPanes }));
+    localStorage.setItem(PREFS_KEY, JSON.stringify({ activeProjectId: s.activeProjectId, toolbarOpen: s.toolbarOpen, collapsedGroups: s.collapsedGroups, splitPanes: s.splitPanes, splitStash: s.splitStash }));
   } catch {
     /* preferences are optional */
   }
@@ -240,6 +285,7 @@ export const useUi = create<UiState>((set, get) => ({
   projectSettingsSection: "general",
   collapsedGroups: [],
   splitPanes: [],
+  splitStash: null,
   splitRoom: 0,
   ...loadPrefs(),
   toggleGroup: (projectId, collapsed) => {
@@ -289,7 +335,12 @@ export const useUi = create<UiState>((set, get) => ({
   openProject: (projectId, sessionId) => {
     set((s) => {
       const activeSession = sessionId !== undefined ? { ...s.activeSession, [projectId]: sessionId } : s.activeSession;
-      return { view: "workspace", activeProjectId: projectId, workspaceTab: "chat", activeSession, splitPanes: swapIntoMain(s, { activeProjectId: projectId, activeSession }) };
+      const open = { view: "workspace" as const, activeProjectId: projectId, workspaceTab: "chat" as const, activeSession };
+      if (!s.splitPanes.length) return open;
+      // Already in one of the areas: the split view stays as it is.
+      if (onScreen(s, projectId, sessionId)) return { view: "workspace" };
+      // Another chat opens alone; the split view is kept for the sidebar to bring back.
+      return { ...open, splitPanes: [], splitStash: { main: mainChat(s), panes: s.splitPanes } };
     });
     savePrefs(get());
   },
@@ -308,7 +359,8 @@ export const useUi = create<UiState>((set, get) => ({
   addSplitPane: (projectId = null, active) => {
     const s = get();
     if (projectId && isShown(s, projectId, active ?? null)) return;
-    set({ splitPanes: [...s.splitPanes, paneFor(crypto.randomUUID(), projectId, active)] });
+    // A new split view replaces one closed earlier.
+    set({ splitPanes: [...s.splitPanes, paneFor(crypto.randomUUID(), projectId, active)], splitStash: null });
     savePrefs(get());
   },
   setSplitPane: (id, projectId, active) => {
@@ -322,7 +374,33 @@ export const useUi = create<UiState>((set, get) => ({
     savePrefs(get());
   },
   closeSplitPanes: () => {
-    set({ splitPanes: [] });
+    set({ splitPanes: [], splitStash: null });
+    savePrefs(get());
+  },
+  restoreSplit: () => {
+    set((s) => {
+      if (s.splitPanes.length) return { view: "workspace" };
+      if (!s.splitStash) return {};
+      const main = s.splitStash.main;
+      return {
+        view: "workspace",
+        workspaceTab: "chat",
+        splitPanes: s.splitStash.panes,
+        splitStash: null,
+        ...(main ? { activeProjectId: main.projectId, activeSession: { ...s.activeSession, [main.projectId]: main.active } } : {}),
+      };
+    });
+    savePrefs(get());
+  },
+  swapSplitAreas: (a, b) => {
+    const s = get();
+    if (!canSwapAreas(s.splitPanes, a, b)) return;
+    if (a === MAIN_AREA || b === MAIN_AREA) return get().promoteSplitPane(a === MAIN_AREA ? b : a);
+    const i = s.splitPanes.findIndex((p) => p.id === a);
+    const j = s.splitPanes.findIndex((p) => p.id === b);
+    const panes = [...s.splitPanes];
+    [panes[i], panes[j]] = [panes[j]!, panes[i]!];
+    set({ splitPanes: panes });
     savePrefs(get());
   },
   promoteSplitPane: (id) => {
@@ -346,6 +424,10 @@ export const useUi = create<UiState>((set, get) => ({
     set((s) => ({
       activeSession: Object.fromEntries(Object.entries(s.activeSession).map(([p, a]) => [p, a && gone.has(a) ? null : a])),
       splitPanes: s.splitPanes.map((p) => (p.active && gone.has(p.active) ? { ...p, active: null } : p)),
+      splitStash: s.splitStash && {
+        main: s.splitStash.main && { ...s.splitStash.main, active: s.splitStash.main.active && gone.has(s.splitStash.main.active) ? null : s.splitStash.main.active },
+        panes: s.splitStash.panes.map((p) => (p.active && gone.has(p.active) ? { ...p, active: null } : p)),
+      },
     }));
     savePrefs(get());
   },

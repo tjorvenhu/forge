@@ -3,6 +3,7 @@ import type { ResultOf } from "@forge/protocol";
 import { useUi, workspaceTabsFor } from "@/stores/ui";
 import { keys, queryClient } from "@/lib/queries";
 import { flatTabs, groupTabs, openSessionId, openSessionTab, shownSessionIds } from "@/lib/session-tabs";
+import { openChat } from "@/components/workspace/chat-slot";
 
 /** An open dialog owns the keyboard: switching sessions behind it would change what it acts on. */
 function dialogOpen(): boolean {
@@ -34,12 +35,15 @@ export function handleGlobalShortcut(e: KeyboardEvent) {
     // Like the sidebar: also the sessions of the split view's further areas without a running process.
     const open = shownSessionIds(ui).map((id) => openSessionTab(queryClient.getQueryData<ResultOf<"sessions.get">>(keys.session(id)), projects));
     const tabs = flatTabs(groupTabs(queryClient.getQueryData<ResultOf<"sessions.listLive">>(keys.liveSessions) ?? [], open, projects));
-    const current = tabs.findIndex((s) => s.id === openId);
+    // In the split view the area with the cursor counts as the current one; the walk moves the cursor between areas.
+    const paneId = document.activeElement?.closest<HTMLElement>("[data-split-pane]")?.dataset.splitPane;
+    const focusedId = (paneId && ui.splitPanes.find((p) => p.id === paneId)?.active) || openId;
+    const current = tabs.findIndex((s) => s.id === focusedId);
     if (!tabs.length || (tabs.length === 1 && current === 0)) return;
     e.preventDefault();
     const from = current < 0 ? (e.shiftKey ? 0 : -1) : current;
     const next = tabs[(from + (e.shiftKey ? -1 : 1) + tabs.length) % tabs.length]!;
-    ui.openProject(next.projectId, next.id);
+    openChat(next.projectId, next.id);
   } else if (!e.shiftKey && k >= "1" && k <= "9" && ui.view === "workspace") {
     // Numbered like the visible tab bar: without git, Agenten and Git are missing.
     const project = ui.activeProjectId ? queryClient.getQueryData<ResultOf<"projects.get">>(keys.project(ui.activeProjectId)) : null;

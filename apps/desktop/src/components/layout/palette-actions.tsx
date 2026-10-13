@@ -410,6 +410,12 @@ export function buildActions(ctx: ActionContext): PaletteEntry[] {
         hint: ui.splitPanes.length === 1 ? "1 weiterer Bereich" : `${ui.splitPanes.length} weitere Bereiche`,
         keywords: "split mehrere sessions projekte bereiche schließen einzeln",
       });
+    } else if (ui.splitStash) {
+      const n = ui.splitStash.panes.length + 1;
+      act("split-restore", "Geteilte Ansicht wieder öffnen", icon(Columns2), () => ui.restoreSplit(), {
+        hint: `${n} Bereiche`,
+        keywords: "split mehrere sessions projekte bereiche zurück wiederherstellen raster",
+      });
     }
     for (const p of PROFILE_IDS) {
       if (p === project.profile || (p === "autonomous" && project.tags.includes("sandbox-only"))) continue;

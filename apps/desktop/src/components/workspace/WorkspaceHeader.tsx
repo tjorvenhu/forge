@@ -1,13 +1,13 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useShallow } from "zustand/react/shallow";
-import { AlertTriangle, Bot, ChevronDown, Columns2, FolderTree, GitMerge, LayoutGrid, Maximize2, SquareTerminal, Star, Tag, Wrench, X } from "lucide-react";
+import { AlertTriangle, Bot, ChevronDown, Columns2, FolderTree, GitMerge, GripHorizontal, LayoutGrid, Maximize2, SquareTerminal, Star, Tag, Wrench, X } from "lucide-react";
 import type { ProfileId } from "@forge/protocol";
 import { call, keys, useProject, useProjects } from "@/lib/queries";
 import { errorMessage } from "@/lib/rpc";
 import { agentLabel } from "@/lib/project-tree";
 import { cn, shortPath } from "@/lib/utils";
-import { useUi, workspaceTabsFor, type SplitPane, type WorkspaceTab } from "@/stores/ui";
+import { MAIN_AREA, useUi, workspaceTabsFor, type SplitPane, type WorkspaceTab } from "@/stores/ui";
 import { useAgentReview } from "@/stores/agent-review";
 import { toast } from "@/stores/toast";
 import { Button } from "@/components/ui/button";
@@ -128,6 +128,23 @@ function SplitButton() {
   );
 }
 
+/** The grip in the middle of an area's header: drag it onto another area to swap the two. Only in the split view. */
+export function AreaGrip({ area }: { area: string }) {
+  const split = useSplitLayout();
+  if (!split || split.shown < 2) return null;
+  return (
+    <button
+      type="button"
+      aria-label="Bereich verschieben"
+      title={"Bereich verschieben\nAuf einen anderen Bereich ziehen, um die beiden zu tauschen."}
+      onPointerDown={(e) => split.startAreaDrag(area, e)}
+      className="absolute left-1/2 top-0 z-10 flex h-3.5 w-12 -translate-x-1/2 cursor-grab items-center justify-center rounded-b-md text-subtle transition-colors duration-120 hover:bg-surface-3 hover:text-fg active:cursor-grabbing"
+    >
+      <GripHorizontal className="h-3.5 w-3.5" />
+    </button>
+  );
+}
+
 /** Whether the view is split right now; then the switches sit in SplitControlBar instead of the main header. */
 export function useSplitActive() {
   return (useSplitLayout()?.shown ?? 1) > 1;
@@ -219,7 +236,8 @@ export function WorkspaceHeader({ projectId, pane }: { projectId: string; pane?:
   );
 
   return (
-    <header className="flex h-12 shrink-0 items-center gap-3 border-b border-border px-5">
+    <header className="relative flex h-12 shrink-0 items-center gap-3 border-b border-border px-5">
+      <AreaGrip area={pane ? pane.id : MAIN_AREA} />
       <ProjectIcon id={project.parentId ?? project.id} name={project.name} size={26} />
       {/* Only the name gives way in a narrow window; the star sits outside it, so it cannot slide over the tags. */}
       {pane ? <ProjectSwitch pane={pane} current={projectId}>{name}</ProjectSwitch> : name}

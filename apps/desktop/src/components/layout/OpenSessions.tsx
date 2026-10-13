@@ -15,6 +15,7 @@ import { toast } from "@/stores/toast";
 import { ProjectIcon } from "@/components/projects/ProjectIcon";
 import { Skeleton, SkeletonRegion } from "@/components/ui/skeleton";
 import { sessionStatusLabel } from "@/components/workspace/SessionStatusBadge";
+import { focusComposer, openChat } from "@/components/workspace/chat-slot";
 
 function dotClass(s: TabSession): string {
   if (s.status === "waiting_approval") return "animate-soft-pulse bg-warning";
@@ -78,14 +79,16 @@ export function openGroups(groups: TabGroup[], open: { id: string; name: string 
 const NO_PANES: readonly SplitPane[] = [];
 
 /**
- * The split view as an entry above the open projects: marked while it is on screen, a click brings it
- * back from any other view, the cross closes the further areas.
+ * The split view as an entry above the open projects: marked while it is on screen. A click brings it
+ * back from any other view, also after opening a single chat closed it; the cross closes it for good.
  */
 export function SplitViewEntry() {
-  const panes = useUi((s) => (s.activeProjectId ? s.splitPanes.length : 0));
-  const onScreen = useUi((s) => s.view === "workspace");
-  const setView = useUi((s) => s.setView);
+  const open = useUi((s) => (s.activeProjectId ? s.splitPanes.length : 0));
+  const stashed = useUi((s) => s.splitStash?.panes.length ?? 0);
+  const onScreen = useUi((s) => s.view === "workspace" && open > 0);
+  const restore = useUi((s) => s.restoreSplit);
   const closeAll = useUi((s) => s.closeSplitPanes);
+  const panes = open || stashed;
   if (!panes) return null;
   const areas = panes + 1;
   return (
@@ -96,9 +99,9 @@ export function SplitViewEntry() {
       )}
     >
       <button
-        onClick={() => setView("workspace")}
+        onClick={() => restore()}
         aria-current={onScreen ? "page" : undefined}
-        title={onScreen ? `Geteilte Ansicht mit ${areas} Bereichen` : `Zurück zur geteilten Ansicht (${areas} Bereiche)`}
+        title={onScreen ? `Geteilte Ansicht mit ${areas} Bereichen` : `Geteilte Ansicht wieder öffnen (${areas} Bereiche)`}
         className="flex min-w-0 flex-1 items-center gap-2.5 px-2 py-1.5 text-left text-ui"
       >
         <span className="flex h-5.5 w-5.5 shrink-0 items-center justify-center rounded-md bg-accent/15 text-accent">
@@ -141,7 +144,6 @@ export function OpenSessions() {
   const inPanes = useUi((s) => s.splitPanes.flatMap((p) => (p.active ? [p.active] : [])).join(" "));
   const splitRoom = useUi((s) => s.splitRoom);
   const addSplitPane = useUi((s) => s.addSplitPane);
-  const promoteSplitPane = useUi((s) => s.promoteSplitPane);
   // The split view's further areas, while it is on screen: their sessions and projects are listed like the main chat's.
   const panes = useUi((s) => (s.view === "workspace" ? s.splitPanes : NO_PANES));
   const paneSessionIds = panes.flatMap((p) => splitActive(p.active).sessionId ?? []);
@@ -191,7 +193,7 @@ export function OpenSessions() {
     const s = tabs[i]!;
     if (e.key === "Enter" || e.key === " ") {
       e.preventDefault();
-      openProject(s.projectId, s.id);
+      openChat(s.projectId, s.id);
       return;
     }
     const step = e.key === "ArrowDown" || e.key === "ArrowRight" ? 1 : e.key === "ArrowUp" || e.key === "ArrowLeft" ? -1 : 0;
@@ -278,7 +280,7 @@ export function OpenSessions() {
                         className={cn(
                           "group flex h-8 min-w-0 animate-fade-in items-center rounded-lg text-body transition-[color,background-color,opacity] duration-120",
                           drag?.id === s.id && "opacity-50",
-                          active ? "bg-surface-3 text-fg" : attention ? "bg-warning-soft text-fg hover:bg-surface-2" : "text-muted hover:bg-surface-2 hover:text-fg",
+                          active ? "bg-surface-3 text-fg" : attention ? "bg-warning-soft text-fg hover:bg-surface-2" : inPane ? "bg-surface-2 text-fg hover:bg-surface-3" : "text-muted hover:bg-surface-2 hover:text-fg",
                         )}
                       >
                         <button
@@ -289,11 +291,11 @@ export function OpenSessions() {
                           onClick={(e) => {
                             if (consumeClick()) return;
                             if (e.shiftKey && canSplit) addSplitPane(s.projectId, s.id);
-                            else openProject(s.projectId, s.id);
+                            else openChat(s.projectId, s.id);
                           }}
                           onKeyDown={(e) => onTabKey(e, i)}
                           {...dragHandlers(s.id, title)}
-                          title={`${title}${agent ? `\nParalleler Agent auf Branch ${agent.git?.branch ?? agentLabel(agent)}` : ""}\n${statusText(s)}${s.live ? "" : ". Kein laufender Claude-Prozess"}${inWindow ? "\nIn eigenem Fenster geöffnet" : ""}${inPane ? "\nDaneben geöffnet. Klicken macht sie zum Hauptchat." : ""}\nHerausziehen öffnet ein eigenes Fenster.${canSplit ? "\nUmschalt+Klick öffnet sie daneben." : ""}`}
+                          title={`${title}${agent ? `\nParalleler Agent auf Branch ${agent.git?.branch ?? agentLabel(agent)}` : ""}\n${statusText(s)}${s.live ? "" : ". Kein laufender Claude-Prozess"}${inWindow ? "\nIn eigenem Fenster geöffnet" : ""}${inPane ? "\nIn der geteilten Ansicht geöffnet" : ""}\nHerausziehen öffnet ein eigenes Fenster.${canSplit ? "\nUmschalt+Klick öffnet sie daneben." : ""}`}
                           className="flex h-full min-w-0 flex-1 cursor-default items-center gap-2 rounded-lg pl-2 pr-1 text-left focus-visible:outline-offset-[-2px]"
                         >
                           <span aria-hidden className={cn("h-1.5 w-1.5 shrink-0 rounded-full", dotClass(s))} />
@@ -357,8 +359,8 @@ export function OpenSessions() {
                       {pane ? (
                         <button
                           data-pane-new-session
-                          onClick={() => promoteSplitPane(pane)}
-                          title={`${label} in der geteilten Ansicht. Klicken macht sie zum Hauptchat.`}
+                          onClick={() => focusComposer({ pane })}
+                          title={`${label} in der geteilten Ansicht`}
                           className="flex h-8 w-full min-w-0 animate-fade-in items-center gap-2 rounded-lg pl-2 pr-1 text-left text-body text-muted transition-colors duration-120 hover:bg-surface-2 hover:text-fg"
                         >
                           {icons}

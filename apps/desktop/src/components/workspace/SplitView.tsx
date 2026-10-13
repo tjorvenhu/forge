@@ -1,18 +1,19 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode, type RefObject } from "react";
+import { createPortal } from "react-dom";
 import { useShallow } from "zustand/react/shallow";
-import { EyeOff, FolderX, LayoutGrid } from "lucide-react";
+import { EyeOff, FolderX, GripHorizontal, LayoutGrid } from "lucide-react";
 import { useLiveSessions, useProject } from "@/lib/queries";
 import { errorMessage, RpcCallError } from "@/lib/rpc";
 import { paneCapacity, paneRows, SPLIT_BAR_HEIGHT } from "@/lib/split-view";
 import { cn, relativeTime } from "@/lib/utils";
-import { useUi, type SplitPane } from "@/stores/ui";
+import { canSwapAreas, MAIN_AREA, useUi, type SplitPane } from "@/stores/ui";
 import { Button } from "@/components/ui/button";
 import { EmptyState, ErrorBanner } from "@/components/ui/misc";
 import { ListSkeleton, Skeleton } from "@/components/ui/skeleton";
 import { ProjectIcon } from "@/components/projects/ProjectIcon";
 import { ChatPanel, ChatPanelSkeleton } from "./ChatPanel";
 import { sessionStatusLabel } from "./SessionStatusBadge";
-import { PaneActions, SplitControlBar, useProjectChoices, WorkspaceHeader } from "./WorkspaceHeader";
+import { AreaGrip, PaneActions, SplitControlBar, useProjectChoices, WorkspaceHeader } from "./WorkspaceHeader";
 import { SplitLayoutContext, type SplitLayout } from "./chat-slot";
 
 type Shown = { projectId: string | null; active: string | null };
@@ -67,13 +68,14 @@ export function SplitWorkspace({ projectId, children }: { projectId: string; chi
   const cols = rows.reduce(lcm, 1);
   const spans = rows.flatMap((count) => Array.from({ length: count }, () => cols / count));
   const mainWidth = size ? Math.floor((size.width * spans[0]!) / cols) : null;
-  const layout = useMemo<SplitLayout>(() => ({ shown: 1 + visible.length, capacity, mainWidth }), [visible.length, capacity, mainWidth]);
+  const { drag, startAreaDrag } = useAreaDrag();
+  const layout = useMemo<SplitLayout>(() => ({ shown: 1 + visible.length, capacity, mainWidth, startAreaDrag }), [visible.length, capacity, mainWidth, startAreaDrag]);
   const room = Math.max(0, capacity - 1 - distinct.length);
   const setRoom = useUi((s) => s.setSplitRoom);
   useEffect(() => setRoom(room), [room, setRoom]);
   useEffect(() => () => setRoom(0), [setRoom]);
 
-  const cells: { key: string; node: ReactNode }[] = [{ key: "main", node: children }, ...visible.map((p) => ({ key: p.id, node: <PaneArea pane={p} /> }))];
+  const cells: { key: string; node: ReactNode }[] = [{ key: MAIN_AREA, node: children }, ...visible.map((p) => ({ key: p.id, node: <PaneArea pane={p} /> }))];
 
   return (
     <SplitLayoutContext.Provider value={layout}>
@@ -86,14 +88,79 @@ export function SplitWorkspace({ projectId, children }: { projectId: string; chi
         >
           {cells.map((c, i) => (
             // Keyed by area, so it keeps its state when the grid rearranges around it. A container, so headers fit their area.
-            <div key={c.key} className="@container min-h-0 min-w-0 overflow-hidden bg-bg" style={{ gridColumn: `span ${spans[i] ?? cols}` }}>
+            <div key={c.key} data-split-area={c.key} className="@container relative min-h-0 min-w-0 overflow-hidden bg-bg" style={{ gridColumn: `span ${spans[i] ?? cols}` }}>
               {c.node}
+              {drag?.moved && drag.from === c.key && <div aria-hidden className="pointer-events-none absolute inset-0 z-30 bg-bg/60" />}
+              {drag?.over === c.key && (
+                <div aria-hidden className="pointer-events-none absolute inset-0 z-30 flex animate-fade-in items-center justify-center border-2 border-accent bg-accent/10">
+                  <span className="rounded-lg bg-surface-3 px-3 py-1.5 text-body text-fg shadow-lg">Hierher verschieben</span>
+                </div>
+              )}
             </div>
           ))}
         </div>
       </div>
+      {drag?.moved &&
+        createPortal(
+          <div aria-hidden style={{ left: drag.x + 12, top: drag.y + 8 }} className="pointer-events-none fixed z-50 flex items-center gap-2 rounded-lg border border-border bg-surface-2 px-3 py-1.5 text-body text-muted shadow-lg">
+            <GripHorizontal className="h-3.5 w-3.5 shrink-0" />
+            Bereich verschieben
+          </div>,
+          document.body,
+        )}
     </SplitLayoutContext.Provider>
   );
+}
+
+interface AreaDrag {
+  from: string;
+  over: string | null;
+  x: number;
+  y: number;
+  moved: boolean;
+}
+
+/**
+ * Moving areas by their grip: with the pointer, not HTML drag and drop, which the desktop window keeps
+ * for files. Dropped on another area, the two swap places; a picker cannot take the main area's place.
+ */
+function useAreaDrag() {
+  const [drag, setDrag] = useState<AreaDrag | null>(null);
+  const startAreaDrag = useCallback((from: string, e: ReactPointerEvent) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    const start = { x: e.clientX, y: e.clientY };
+    let moved = false;
+    const target = (x: number, y: number) => {
+      const area = document.elementFromPoint(x, y)?.closest<HTMLElement>("[data-split-area]")?.dataset.splitArea ?? null;
+      return area && canSwapAreas(useUi.getState().splitPanes, from, area) ? area : null;
+    };
+    const onMove = (ev: PointerEvent) => {
+      if (!moved && Math.hypot(ev.clientX - start.x, ev.clientY - start.y) < 5) return;
+      moved = true;
+      document.body.style.cursor = "grabbing";
+      setDrag({ from, over: target(ev.clientX, ev.clientY), x: ev.clientX, y: ev.clientY, moved });
+    };
+    const finish = (ev: PointerEvent | null) => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onCancel);
+      window.removeEventListener("keydown", onKey);
+      document.body.style.cursor = "";
+      setDrag(null);
+      const over = ev && moved ? target(ev.clientX, ev.clientY) : null;
+      if (over) useUi.getState().swapSplitAreas(from, over);
+    };
+    const onUp = (ev: PointerEvent) => finish(ev);
+    const onCancel = () => finish(null);
+    const onKey = (ev: KeyboardEvent) => ev.key === "Escape" && finish(null);
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onCancel);
+    window.addEventListener("keydown", onKey);
+    setDrag({ from, over: null, x: e.clientX, y: e.clientY, moved: false });
+  }, []);
+  return { drag, startAreaDrag };
 }
 
 /** Areas that do not fit at the current window size; they come back by themselves when it grows. */
@@ -180,7 +247,8 @@ function PaneSkeleton() {
 function PaneMessage({ pane, title = "Bereich", children }: { pane: SplitPane; title?: string; children: ReactNode }) {
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <header className="flex h-12 shrink-0 items-center gap-3 border-b border-border px-5">
+      <header className="relative flex h-12 shrink-0 items-center gap-3 border-b border-border px-5">
+        <AreaGrip area={pane.id} />
         <LayoutGrid className="h-4 w-4 shrink-0 text-muted" />
         <h1 className="min-w-0 flex-1 truncate text-title-sm font-semibold">{title}</h1>
         <PaneActions pane={pane} />

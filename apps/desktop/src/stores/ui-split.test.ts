@@ -3,7 +3,7 @@ import { useUi } from "./ui";
 
 beforeEach(() => {
   localStorage.clear();
-  useUi.setState({ view: "workspace", activeProjectId: "p1", activeSession: { p1: "s1" }, workspaceTab: "chat", splitPanes: [] });
+  useUi.setState({ view: "workspace", activeProjectId: "p1", activeSession: { p1: "s1" }, workspaceTab: "chat", splitPanes: [], splitStash: null });
 });
 
 const panes = () => useUi.getState().splitPanes.map(({ projectId, active }) => ({ projectId, active }));
@@ -46,18 +46,67 @@ describe("split view", () => {
     expect(panes()[1]).toEqual({ projectId: "p1", active: "s3" });
   });
 
-  it("swaps places when the main chat opens a session a pane shows", () => {
+  it("leaves the split view as it is when opening a chat already on screen", () => {
     const ui = useUi.getState();
     ui.addSplitPane("p2", "s2");
+    ui.setView("settings");
     ui.openProject("p2", "s2");
-    expect(useUi.getState()).toMatchObject({ activeProjectId: "p2", activeSession: { p1: "s1", p2: "s2" } });
-    expect(panes()).toEqual([{ projectId: "p1", active: "s1" }]);
-    ui.setActiveSession("p2", null);
-    ui.addSplitPane("p2", "s4");
-    ui.setActiveSession("p2", "s4");
+    expect(useUi.getState()).toMatchObject({ view: "workspace", activeProjectId: "p1", activeSession: { p1: "s1" }, splitStash: null });
+    expect(panes()).toEqual([{ projectId: "p2", active: "s2" }]);
+    ui.openProject("p1");
+    expect(panes()).toEqual([{ projectId: "p2", active: "s2" }]);
+  });
+
+  it("closes the split view when another chat opens and brings it back from the sidebar", () => {
+    const ui = useUi.getState();
+    ui.addSplitPane("p2", "s2");
+    ui.openProject("p3", "s3");
+    expect(useUi.getState()).toMatchObject({ activeProjectId: "p3", activeSession: { p3: "s3" } });
+    expect(panes()).toEqual([]);
+    expect(useUi.getState().splitStash).toMatchObject({ main: { projectId: "p1", active: "s1" }, panes: [{ projectId: "p2", active: "s2" }] });
+
+    ui.restoreSplit();
+    expect(useUi.getState()).toMatchObject({ activeProjectId: "p1", activeSession: { p1: "s1" }, splitStash: null });
+    expect(panes()).toEqual([{ projectId: "p2", active: "s2" }]);
+
+    // A new split view replaces the kept one.
+    ui.openProject("p3", null);
+    ui.addSplitPane("p4", "s4");
+    expect(useUi.getState().splitStash).toBeNull();
+    expect(panes()).toEqual([{ projectId: "p4", active: "s4" }]);
+  });
+
+  it("swaps two areas by drag and drop; a picker cannot take the main area's place", () => {
+    const ui = useUi.getState();
+    ui.addSplitPane("p2", "s2");
+    ui.addSplitPane("p3", "s3");
+    ui.addSplitPane();
+    const [a, b, picker] = useUi.getState().splitPanes.map((p) => p.id) as [string, string, string];
+    ui.swapSplitAreas(a, b);
     expect(panes()).toEqual([
+      { projectId: "p3", active: "s3" },
+      { projectId: "p2", active: "s2" },
+      { projectId: null, active: null },
+    ]);
+    ui.swapSplitAreas("main", picker);
+    expect(useUi.getState().activeProjectId).toBe("p1");
+    ui.swapSplitAreas("main", a);
+    expect(useUi.getState()).toMatchObject({ activeProjectId: "p2", activeSession: { p2: "s2" } });
+    expect(panes()).toEqual([
+      { projectId: "p3", active: "s3" },
       { projectId: "p1", active: "s1" },
-      { projectId: "p2", active: null },
+      { projectId: null, active: null },
+    ]);
+  });
+
+  it("swaps places when the main chat switches to a session a pane shows", () => {
+    const ui = useUi.getState();
+    ui.addSplitPane("p2", "s2");
+    ui.addSplitPane("p1", "s4");
+    ui.setActiveSession("p1", "s4");
+    expect(panes()).toEqual([
+      { projectId: "p2", active: "s2" },
+      { projectId: "p1", active: "s1" },
     ]);
   });
 

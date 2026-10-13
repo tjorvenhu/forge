@@ -1,4 +1,4 @@
-import { createContext, useContext } from "react";
+import { createContext, useContext, type PointerEvent as ReactPointerEvent } from "react";
 import { useUi } from "@/stores/ui";
 
 /**
@@ -25,6 +25,8 @@ export interface SplitLayout {
   capacity: number;
   /** width of the main area; null until measured */
   mainWidth: number | null;
+  /** starts moving an area by its grip ("main" or a pane id); dropped on another area, the two swap places */
+  startAreaDrag: (area: string, e: ReactPointerEvent) => void;
 }
 
 export const SplitLayoutContext = createContext<SplitLayout | null>(null);
@@ -34,7 +36,20 @@ export const useSplitLayout = () => useContext(SplitLayoutContext);
 /** Id of the composer field; only the main chat has it, keyboard shortcuts and "Neue Session" focus that one. */
 export const composerInputId = (slot: ChatSlot) => (slot.pane ? undefined : "composer-input");
 
-export function focusComposer(slot: ChatSlot) {
+export function focusComposer(slot: Pick<ChatSlot, "pane">) {
   const el = slot.pane ? document.querySelector<HTMLElement>(`[data-split-pane="${slot.pane}"] [data-composer]`) : document.getElementById("composer-input");
   el?.focus();
+}
+
+/**
+ * Opens a chat like the sidebar does (`openProject`) and puts the cursor into the area that shows it. Already
+ * on screen in the split view, nothing moves; otherwise the chat opens alone.
+ */
+export function openChat(projectId: string, sessionId?: string | null) {
+  const ui = useUi.getState();
+  ui.openProject(projectId, sessionId);
+  const panes = useUi.getState().splitPanes;
+  if (!panes.length) return;
+  const pane = sessionId ? panes.find((p) => p.projectId === projectId && p.active === sessionId) : undefined;
+  requestAnimationFrame(() => focusComposer({ pane: pane?.id ?? null }));
 }
