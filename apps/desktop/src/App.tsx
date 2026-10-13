@@ -12,6 +12,7 @@ import { AppUpdateDialog } from "@/components/layout/AppUpdate";
 import { Logo } from "@/components/layout/Logo";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/misc";
+import { Skeleton, SkeletonRegion } from "@/components/ui/skeleton";
 import { HomeView } from "@/views/HomeView";
 import { ProjectsView } from "@/views/ProjectsView";
 import { WorkspaceView } from "@/views/WorkspaceView";
@@ -108,13 +109,7 @@ function Shell() {
         </ErrorBoundary>
         <main className="flex min-w-0 flex-1 flex-col">
           <ErrorBoundary resetKey={`${view}:${activeProjectId}`}>
-            <Suspense
-              fallback={
-                <div className="flex flex-1 items-center justify-center">
-                  <Spinner />
-                </div>
-              }
-            >
+            <Suspense fallback={<PageSkeleton />}>
               {/* Keyed per view: each switch fades the new view in (enter only, nothing waits for an exit). */}
               <div key={view} className="flex min-h-0 min-w-0 flex-1 animate-view-in flex-col">
                 {view === "home" && <HomeView />}
@@ -135,6 +130,30 @@ function Shell() {
       <Toaster />
       <TitleTooltips />
     </div>
+  );
+}
+
+/** Stand-in for a lazy view in the frame of `Page`: header with title and subtitle, then content. */
+function PageSkeleton() {
+  return (
+    <SkeletonRegion label="Ansicht lädt" className="flex min-h-0 flex-1 flex-col">
+      <div className="flex min-h-16 items-center border-b border-border px-6 py-3">
+        <div className="flex flex-col gap-2">
+          <Skeleton className="h-5 w-44" />
+          <Skeleton className="h-3 w-80" />
+        </div>
+      </div>
+      <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-hidden px-6 py-5">
+        <Skeleton className="h-9 w-72 rounded-lg" />
+        {[0, 1, 2].map((i) => (
+          <div key={i} className="flex flex-col gap-2 rounded-xl border border-border bg-surface p-4">
+            <Skeleton className="h-3.5 w-48" />
+            <Skeleton className="h-2.5 w-3/4" />
+            <Skeleton className="h-2.5 w-1/2" />
+          </div>
+        ))}
+      </div>
+    </SkeletonRegion>
   );
 }
 

@@ -27,7 +27,8 @@ import { useUi, type SettingsSection } from "@/stores/ui";
 import { Page } from "@/components/layout/Page";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Badge, ErrorBanner, Loading } from "@/components/ui/misc";
+import { Badge, ErrorBanner } from "@/components/ui/misc";
+import { FormSkeleton, Skeleton, SkeletonRegion } from "@/components/ui/skeleton";
 import { Select } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Group, Row, SettingsLayout, SwitchRow, type SettingsSectionDef } from "@/components/settings/layout";
@@ -77,7 +78,7 @@ export function SettingsView() {
     <Page title="Einstellungen" subtitle="Änderungen gelten sofort. Ein Backup davon legt FORGE bei jedem Start an.">
       <SettingsLayout sections={SECTIONS} current={current.id} onSelect={openSettings} label="Bereiche der Einstellungen">
         {!s ? (
-          <Loading />
+          <FormSkeleton groups={2} label="Lädt Einstellungen" />
         ) : current.id === "general" ? (
           <GeneralSection s={s} save={save} />
         ) : current.id === "claude" ? (
@@ -333,7 +334,7 @@ function DiagnosticsPanel() {
         </Button>
       }
     >
-      {diag.isLoading && <Loading label="Diagnose läuft …" />}
+      {diag.isLoading && <DiagnosticsSkeleton />}
       {diag.isError && (
         <div className="p-4">
           <ErrorBanner>{errorMessage(diag.error)}</ErrorBanner>
@@ -383,6 +384,38 @@ function DiagnosticsPanel() {
         </>
       )}
     </Group>
+  );
+}
+
+/** Same rows and boxes as the loaded diagnostics: eight info rows, then the capability list. */
+function DiagnosticsSkeleton() {
+  return (
+    <SkeletonRegion label="Diagnose lädt" className="divide-y divide-border">
+      <div className="flex flex-col gap-1.5 px-4 py-3.5">
+        {[45, 30, 70, 40, 35, 50, 30, 45].map((w, i) => (
+          <div key={i} className="flex h-5 items-center gap-3">
+            <div className="w-40 shrink-0">
+              <Skeleton className="h-3 w-28" />
+            </div>
+            <Skeleton className="h-3" style={{ width: `${w}%` }} />
+          </div>
+        ))}
+      </div>
+      <div className="px-4 py-3.5">
+        <Skeleton className="mb-2 h-3 w-64" />
+        <div className="divide-y divide-border rounded-lg border border-border">
+          {[55, 40, 65, 35, 50].map((w, i) => (
+            <div key={i} className="flex h-8 items-center gap-2 px-3">
+              <Skeleton className="h-3.5 w-3.5 shrink-0 rounded-full" />
+              <div className="w-44 shrink-0">
+                <Skeleton className="h-3 w-32" />
+              </div>
+              <Skeleton className="h-2.5" style={{ width: `${w}%` }} />
+            </div>
+          ))}
+        </div>
+      </div>
+    </SkeletonRegion>
   );
 }
 
