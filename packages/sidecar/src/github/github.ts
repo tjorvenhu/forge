@@ -1,4 +1,7 @@
 import { spawn, type ChildProcess } from "node:child_process";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import { ForgeError, type GitHubAccount, type GitHubLoginState, type GitHubOrg, type GitHubRepo, type PullRequest } from "@forge/protocol";
 import { run } from "../util/proc.js";
 import { resolveTool } from "../util/tools.js";
@@ -177,6 +180,70 @@ export class GitHubService {
     throw new ForgeError("GIT_FAILED", out.split("\n").slice(-2).join(" ") || "Repository konnte nicht gelöscht werden");
   }
 
+  /** Visibility of a repository; null when it does not exist (or the account cannot see it). */
+  async repoInfo(fullName: string): Promise<{ private: boolean } | null> {
+    const r = await this.gh_(["api", `repos/${checkFullName(fullName)}`]);
+    if (r.code !== 0) {
+      if (isNotFound(r)) return null;
+      throw new ForgeError("INTERNAL", ghError(r, "Repository konnte nicht abgefragt werden"));
+    }
+    return { private: (JSON.parse(r.stdout) as { private?: boolean }).private !== false };
+  }
+
+  /** Creates an empty private repository in the signed-in account. */
+  async createPrivateRepo(name: string, description: string): Promise<void> {
+    const r = await this.gh_(["repo", "create", toRepoName(name), "--private", "--description", description], 60_000);
+    if (r.code !== 0) throw new ForgeError("GIT_FAILED", ghError(r, "Repository konnte nicht erstellt werden"));
+  }
+
+  /** A text file of a repository's default branch with its blob sha; null when it (or any commit) does not exist. */
+  async readRepoFile(fullName: string, file: string, ref?: string): Promise<{ sha: string; text: string } | null> {
+    if (ref && !/^[0-9a-f]{7,64}$/.test(ref)) throw new ForgeError("VALIDATION", "Ungültiger Commit.");
+    const endpoint = `repos/${checkFullName(fullName)}/contents/${file}${ref ? `?ref=${ref}` : ""}`;
+    const meta = await this.gh_(["api", endpoint], 60_000);
+    if (meta.code !== 0) {
+      // An empty repository answers 404 as well.
+      if (isNotFound(meta)) return null;
+      throw new ForgeError("INTERNAL", ghError(meta, "Datei konnte nicht gelesen werden"));
+    }
+    const j = JSON.parse(meta.stdout) as { sha: string; content?: string; encoding?: string };
+    if (j.encoding === "base64" && j.content) return { sha: j.sha, text: Buffer.from(j.content, "base64").toString("utf8") };
+    // Files above 1 MB come without content in the JSON answer.
+    const raw = await this.gh_(["api", "-H", "Accept: application/vnd.github.raw+json", endpoint], 120_000);
+    if (raw.code !== 0) throw new ForgeError("INTERNAL", ghError(raw, "Datei konnte nicht gelesen werden"));
+    return { sha: j.sha, text: raw.stdout };
+  }
+
+  /** Commits that changed a file, newest first; empty for an empty repository. */
+  async repoFileHistory(fullName: string, file: string, limit = 50): Promise<Array<{ sha: string; date: string; message: string }>> {
+    const r = await this.gh_(["api", `repos/${checkFullName(fullName)}/commits?path=${encodeURIComponent(file)}&per_page=${limit}`], 60_000);
+    if (r.code !== 0) {
+      if (isNotFound(r) || /HTTP 409/.test(r.stdout + r.stderr)) return [];
+      throw new ForgeError("INTERNAL", ghError(r, "Versionen konnten nicht geladen werden"));
+    }
+    const list = JSON.parse(r.stdout) as Array<{ sha: string; commit: { message: string; committer?: { date?: string }; author?: { date?: string } } }>;
+    return list.map((c) => ({ sha: c.sha, date: c.commit.committer?.date ?? c.commit.author?.date ?? "", message: c.commit.message }));
+  }
+
+  /**
+   * Writes a text file as one commit. `sha` is the blob that was read (null for a new file); when
+   * the file changed in the meantime GitHub refuses and this throws CONFLICT.
+   */
+  async writeRepoFile(fullName: string, file: string, text: string, sha: string | null, message: string): Promise<void> {
+    const dir = await mkdtemp(path.join(os.tmpdir(), "forge-gh-"));
+    try {
+      // The body goes through a file: the content is far longer than a Windows command line.
+      const body = path.join(dir, "body.json");
+      await writeFile(body, JSON.stringify({ message, content: Buffer.from(text, "utf8").toString("base64"), ...(sha ? { sha } : {}) }), "utf8");
+      const r = await this.gh_(["api", "-X", "PUT", `repos/${checkFullName(fullName)}/contents/${file}`, "--input", body], 120_000);
+      if (r.code === 0) return;
+      if (/HTTP 409|HTTP 422/.test(r.stdout + r.stderr)) throw new ForgeError("CONFLICT", "Die Datei wurde inzwischen geändert.");
+      throw new ForgeError("GIT_FAILED", ghError(r, "Datei konnte nicht gespeichert werden"));
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  }
+
   /** Pull request of the current branch, or null if there is none. */
   async prForBranch(cwd: string): Promise<PullRequest | null> {
     const r = await run(this.gh(), ["pr", "view", "--json", "number,title,state,url,isDraft,reviewDecision,baseRefName,headRefName,statusCheckRollup"], {
@@ -284,6 +351,19 @@ export function githubRepoFromRemote(remote: string | null): string | null {
   if (!remote) return null;
   const m = /^(?:https:\/\/(?:[^@/]+@)?github\.com\/|git@github\.com:|ssh:\/\/git@github\.com\/)([A-Za-z0-9._-]+)\/([A-Za-z0-9._-]+?)(?:\.git)?\/?$/.exec(remote.trim());
   return m ? `${m[1]}/${m[2]}` : null;
+}
+
+function checkFullName(fullName: string): string {
+  if (!/^[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/.test(fullName)) throw new ForgeError("VALIDATION", `Ungültiger Repository-Name: ${fullName}`);
+  return fullName;
+}
+
+function isNotFound(r: { stdout: string; stderr: string }): boolean {
+  return /HTTP 404|Not Found/i.test(r.stdout + r.stderr);
+}
+
+function ghError(r: { stdout: string; stderr: string }, fallback: string): string {
+  return (r.stderr || r.stdout).trim().split("\n").slice(-2).join(" ") || fallback;
 }
 
 /** GitHub repository names: letters, digits, dot, dash, underscore. */

@@ -52,6 +52,10 @@ export const keys = {
   appUpdate: ["appUpdate"] as const,
   appChangelog: (tag: string) => ["appChangelog", tag] as const,
   backups: ["backups"] as const,
+  sync: ["sync"] as const,
+  syncProbe: ["syncProbe"] as const,
+  syncVersions: ["syncVersions"] as const,
+  gitIdentity: ["gitIdentity"] as const,
   remote: ["remote"] as const,
   agentReview: (id: string) => ["agentReview", id] as const,
   search: (q: string) => ["search", q] as const,
@@ -138,6 +142,18 @@ export const useAppChangelog = (tag: string | null) =>
   });
 
 export const useBackups = () => useQuery({ queryKey: keys.backups, queryFn: () => call("backup.list", {}), staleTime: 30_000 });
+
+export const useGitIdentity = (enabled = true) => useQuery({ queryKey: keys.gitIdentity, queryFn: () => call("git.identity", {}), enabled, staleTime: 60_000 });
+
+/** Comes along with every change as sync.updated. */
+export const useSyncStatus = () => useQuery({ queryKey: keys.sync, queryFn: () => call("sync.status", {}), staleTime: Infinity });
+
+export const useSyncVersions = (enabled: boolean) =>
+  useQuery({ queryKey: keys.syncVersions, queryFn: () => call("sync.versions", {}), enabled, staleTime: 60_000, retry: false });
+
+/** What the sync repository of the GitHub account holds; only while a dialog asks whether to sync. */
+export const useSyncProbe = (enabled: boolean) =>
+  useQuery({ queryKey: keys.syncProbe, queryFn: () => call("sync.probe", {}), enabled, staleTime: 60_000, retry: false });
 
 export const usePhoneState = () => useQuery({ queryKey: keys.phoneState, queryFn: () => call("phone.state", {}), staleTime: Infinity });
 export const usePhoneConfig = () => useQuery({ queryKey: keys.phoneConfig, queryFn: () => call("phone.config", {}), staleTime: Infinity });

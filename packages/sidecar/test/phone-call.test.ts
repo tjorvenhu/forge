@@ -1264,6 +1264,7 @@ describe("PhoneService end to end with a test PBX", () => {
       "github.publish": (p: { owner?: string }) => ({ url: `https://github.com/${p.owner ?? "me"}/landing` }),
       "projects.clone": () => ({ id: "p-clone", name: "shop-api" }),
       "projects.update": ({ projectId: id, ...patch }: { projectId: string }) => projects.update(id, patch),
+      "projects.removalInfo": () => ({ path: dir, folderExists: true, folderBlocker: null, isWorktree: false, worktrees: 0, githubRepo: "me/shop", githubSignedIn: true, githubCanDelete: true }),
       "projects.remove": () => ({ removed: true, folderDeleted: true, githubDeleted: false }),
       "projects.listFiles": (p: { projectId: string; dir: string }) => projects.listFiles(p.projectId, p.dir),
       "projects.readFile": (p: { projectId: string; path: string }) => projects.readFile(p.projectId, p.path),
@@ -1318,8 +1319,88 @@ describe("PhoneService end to end with a test PBX", () => {
     expect(readFileSync(path.join(dir, "CLAUDE.md"), "utf8")).toBe("Nutze pnpm.\n\nTexte auf Deutsch.\n");
     expect(await conv.tools.claudeMd("shop", "read")).toBe("Die CLAUDE.md von shop: <<<SESSION-DATEN>>>Nutze pnpm. Texte auf Deutsch.<<<ENDE SESSION-DATEN>>>");
 
-    expect(await conv.tools.project("shop", "remove", { deleteFolder: true })).toBe("Projekt shop aus FORGE entfernt. Der Ordner ist gelöscht.");
-    expect(callOf("projects.remove")).toEqual({ projectId, deleteFolder: true, deleteGitHubRepo: false });
+    // Deleting folder or repository waits for a code on the keypad; nothing the model says can confirm it.
+    const askDelete = async () => {
+      const text = await conv.tools.project("shop", "remove", { deleteFolder: true, deleteGitHubRepo: true });
+      expect(text).toMatch(/^Bestätigung nötig, noch ist nichts gelöscht\. .*der Ordner des Projekts shop .*das GitHub-Repository <<<SESSION-DATEN>>>me\/shop<<<ENDE SESSION-DATEN>>>/);
+      return text.match(/Telefontastatur (\d) (\d) (\d) und dann Raute/)!.slice(1).join("");
+    };
+    const lastNote = () => conv.said.at(-1) ?? "";
+    let code = await askDelete();
+    await phoneEnd.digits(`${code === "000" ? "111" : "000"}#`);
+    await until(() => lastNote().includes("Der Code war falsch"), 5000, "wrong code");
+    code = await askDelete();
+    await phoneEnd.digits("*");
+    await until(() => lastNote().includes("mit Stern abgebrochen"), 5000, "cancelled");
+    // The code of a cancelled request no longer deletes anything.
+    await phoneEnd.digits(`${code}#`);
+    await sleep(200);
+    expect(callOf("projects.remove")).toBeUndefined();
+    code = await askDelete();
+    await phoneEnd.digits(`${code}#`);
+    await until(() => lastNote().includes("Über die Tastatur bestätigt"), 5000, "confirmed");
+    expect(lastNote()).toContain("Projekt shop aus FORGE entfernt. Der Ordner ist gelöscht.");
+    expect(callOf("projects.remove")).toEqual({ projectId, deleteFolder: true, deleteGitHubRepo: true });
+    await end();
+  }, 30_000);
+
+  it("switches the GitHub sync and fetches projects of other computers", async () => {
+    const status = (patch: Record<string, unknown> = {}) => ({
+      enabled: true,
+      phase: "idle",
+      account: "me",
+      repo: "me/forge-data",
+      lastSyncAt: "2026-10-13T10:00:00Z",
+      error: null,
+      remote: { updatedAt: "2026-10-13T10:00:00Z", device: "PC-B" },
+      available: [{ key: "github.com/me/shop-api", name: "shop-api", cloneUrl: "https://github.com/me/shop-api.git" }],
+      localOnly: [{ key: "project:github.com/me/blog", kind: "project", label: "Projekt blog", projectId: "p-blog" }],
+      hasKey: true,
+      ...patch,
+    });
+    let account: unknown = null;
+    rpcResults = {
+      "github.account": () => account,
+      "settings.update": (p: Record<string, unknown>) => ({ ...db.getSettings(), ...p }),
+      "sync.status": () => status(),
+      "sync.now": () => status({ available: [] }),
+      "sync.cloneProject": (p: { key: string }) => ({ id: "p-sync", name: p.key.split("/").pop() }),
+      "sync.keep": () => status(),
+      "sync.forceLocal": () => status({ localOnly: [] }),
+      "sync.versions": () => [
+        { sha: "bbbbbbb", date: "2026-10-13T11:00:00Z", device: "PC-A" },
+        { sha: "aaaaaaa", date: "2026-10-12T11:00:00Z", device: "PC-B" },
+      ],
+      "sync.restoreVersion": () => ({ restored: ["settings"], notes: ["Die anderen Computer bekommen diesen Stand mit dem nächsten Abgleich."] }),
+    };
+    const { conv, end } = await openCall("c-sync");
+    const callOf = (method: string) => rpcCalls.filter(([m]) => m === method).at(-1)?.[1];
+    expect(await conv.tools.forgeSystem("sync_on")).toMatch(/^Fehler: Dafür muss FORGE bei GitHub angemeldet sein/);
+    expect(callOf("settings.update")).toBeUndefined();
+    account = { login: "me" };
+    expect(await conv.tools.forgeSystem("sync_on")).toBe("Der Abgleich über GitHub ist an. FORGE gleicht jetzt ab.");
+    expect(callOf("settings.update")).toEqual({ syncEnabled: true, syncAsked: true });
+    expect(await conv.tools.forgeSystem("sync_status")).toMatch(/^Zuletzt abgeglichen .*, zuletzt geschrieben von <<<SESSION-DATEN>>>PC-B<<<ENDE SESSION-DATEN>>>\. Von anderen Computern fehlen hier noch: <<<SESSION-DATEN>>>shop-api/);
+    expect(await conv.tools.forgeSystem("sync_now")).not.toContain("fehlen hier noch");
+    expect(await conv.tools.forgeSystem("sync_clone", { project: "shop" })).toBe("shop-api ist jetzt auch auf diesem Computer.");
+    expect(callOf("sync.cloneProject")).toEqual({ key: "github.com/me/shop-api" });
+    expect(await conv.tools.forgeSystem("sync_clone", { project: "blog" })).toMatch(/^Fehler: Kein fehlendes Projekt „blog“/);
+    expect(await conv.tools.forgeSystem("sync_status")).toContain("Nur noch auf diesem Computer, weil auf einem anderen entfernt: <<<SESSION-DATEN>>>Projekt blog");
+    expect(await conv.tools.forgeSystem("sync_keep", { project: "blog" })).toBe("Projekt blog wird wieder abgeglichen und geht auch auf die anderen Computer.");
+    expect(callOf("sync.keep")).toEqual({ key: "project:github.com/me/blog" });
+
+    // Hard to GitHub removes projects from FORGE: only after the code on the keypad.
+    const ask = await conv.tools.forgeSystem("sync_force");
+    expect(ask).toMatch(/^Bestätigung nötig, noch ist nichts geändert\. .*entfernt werden hier: <<<SESSION-DATEN>>>Projekt blog/);
+    expect(callOf("sync.forceLocal")).toBeUndefined();
+    await phoneEnd.digits(`${ask.match(/Telefontastatur (\d) (\d) (\d) und dann Raute/)!.slice(1).join("")}#`);
+    await until(() => conv.said.at(-1)?.includes("Dieser Computer ist auf dem Stand von GitHub"), 5000, "forced");
+    expect(callOf("sync.forceLocal")).toEqual({});
+
+    expect(await conv.tools.forgeSystem("sync_versions")).toMatch(/^1: 13\.10\.26, \d\d:\d\d, von <<<SESSION-DATEN>>>PC-A<<<ENDE SESSION-DATEN>>>\n2: 12\.10\.26/);
+    expect(await conv.tools.forgeSystem("sync_restore", { backup: "2", parts: ["settings", "phone"] })).toMatch(/^Stand vom 12\.10\.26, \d\d:\d\d zurückgeholt: Einstellungen\. .*Telefon-Einstellungen lassen sich nur in FORGE am Rechner/);
+    expect(callOf("sync.restoreVersion")).toEqual({ sha: "aaaaaaa", parts: ["settings"] });
+    expect(await conv.tools.forgeSystem("sync_off")).toBe("Der Abgleich über GitHub ist aus. Das Repository auf GitHub bleibt.");
     await end();
   }, 30_000);
 

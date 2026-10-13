@@ -9,13 +9,13 @@ import { claudeJsonPath, pathKey } from "../util/paths.js";
 
 /** Backups kept in the data folder; older ones are deleted. */
 export const MAX_BACKUPS = 40;
-const MAX_FILE_BYTES = 512 * 1024;
+export const MAX_FILE_BYTES = 512 * 1024;
 const MAX_CLAUDE_BYTES = 20 * 1024 * 1024;
-const TEXT_FILE = /\.(md|txt|json|ya?ml|toml|py|js|mjs|cjs|ts|sh|ps1|bat|cmd)$/i;
+export const TEXT_FILE = /\.(md|txt|json|ya?ml|toml|py|js|mjs|cjs|ts|sh|ps1|bat|cmd)$/i;
 const ID_RE = /^[\w.-]{1,120}$/;
 
 /** Folders under ~/.claude that hold configuration the user wrote (not caches, transcripts or credentials). */
-const CLAUDE_DIRS = ["agents", "commands", "skills", "rules", "output-styles"];
+export const CLAUDE_DIRS = ["agents", "commands", "skills", "rules", "output-styles"];
 const CLAUDE_FILES = ["CLAUDE.md", "settings.json"];
 
 // Backups from before projects without git lack gitEnabled; those projects all used git.

@@ -45,6 +45,8 @@ export interface CallControllerDeps {
   opening: string | null;
   onTranscript(role: "caller" | "forge", text: string): void;
   onUnlock(): void;
+  /** a keypad digit FORGE wants itself (confirming a deletion); true keeps it from the PIN pad */
+  onDigit?(digit: string): boolean;
   log(message: string): void;
   /** shorter limits in tests */
   timing?: { speakTimeoutMs?: number; transcribeTimeoutMs?: number; turnEndMs?: number; turnEndUnfinishedMs?: number };
@@ -432,6 +434,7 @@ export class CallController implements CallHandler {
   private onDigit(digit: string) {
     if (this.ended || !this.begun) return;
     this.touch();
+    if (this.d.onDigit?.(digit)) return;
     this.pinPad.digit(digit);
   }
 

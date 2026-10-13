@@ -9,6 +9,7 @@ import {
   FolderOpen,
   Info,
   Phone,
+  RefreshCcw,
   RefreshCw,
   ShieldAlert,
   ShieldBan,
@@ -38,6 +39,7 @@ import { MemoryEditor } from "@/components/settings/MemoryEditor";
 import { effortOptions, fromChoice, modelOptions, toChoice } from "@/components/settings/model-options";
 import { PhoneSettings } from "@/components/settings/PhoneSettings";
 import { BackupSettings } from "@/components/settings/BackupSettings";
+import { SyncSettings } from "@/components/settings/SyncSettings";
 import { PolicySettings } from "@/components/settings/PolicySettings";
 import { GitHubSettings } from "@/components/settings/GitHubSettings";
 import { AppUpdateSettings } from "@/components/layout/AppUpdate";
@@ -50,6 +52,7 @@ export const SECTIONS: ReadonlyArray<SettingsSectionDef<SettingsSection>> = [
   { id: "claude", label: "Claude Code", hint: "Installation, Anmeldung, Limits", Icon: SquareTerminal },
   { id: "policy", label: "Sperrliste", hint: "Was FORGE immer blockiert", Icon: ShieldBan },
   { id: "phone", label: "Telefon", hint: "Anrufe, Sprache, Tischtelefon", Icon: Phone },
+  { id: "sync", label: "Synchronisierung", hint: "Daten über GitHub auf allen PCs", Icon: RefreshCcw },
   { id: "backup", label: "Backup", hint: "Sichern und zurücksetzen", Icon: ArchiveRestore },
   { id: "rules", label: "Globale Regeln", hint: "CLAUDE.md für alle Projekte", Icon: FileText },
   { id: "about", label: "Über FORGE", hint: "Updates, Datenschutz, Diagnose", Icon: Info },
@@ -87,6 +90,8 @@ export function SettingsView() {
           <PolicySettings s={s} save={save} />
         ) : current.id === "phone" ? (
           <PhoneSection />
+        ) : current.id === "sync" ? (
+          <SyncSettings s={s} save={save} />
         ) : current.id === "backup" ? (
           <Group
             title="Backup"
@@ -199,7 +204,7 @@ function GeneralSection({ s, save }: { s: Settings; save: Save }) {
 
 const SOUND_LABEL = { done: "Fertig", approval: "Freigabe", error: "Fehler" } as const;
 
-function ModelSetting({ value, onChange }: { value: string | null; onChange: (v: string | null) => void }) {
+export function ModelSetting({ value, onChange }: { value: string | null; onChange: (v: string | null) => void }) {
   const info = useRuntimeInfo();
   const models = info.data?.models ?? [];
   const hint = info.isLoading ? "Modellliste wird von Claude Code gelesen …" : models.length ? "Mit welchem Modell eine neue Session startet." : "Modellliste nicht verfügbar.";

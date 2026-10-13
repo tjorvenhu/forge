@@ -20,6 +20,7 @@ import type { DictationService } from "../dictation/dictation.js";
 import type { Presence } from "../util/presence.js";
 import type { AppUpdateService } from "../update/app-update.js";
 import type { BackupService } from "../backup/backup.js";
+import type { SyncService } from "../sync/sync.js";
 import * as cfg from "../config/claude-config.js";
 import { removalInfo, removeProject, removeWorktree } from "../projects/removal.js";
 import os from "node:os";
@@ -45,6 +46,7 @@ export interface Services {
   presence: Presence;
   updates: AppUpdateService;
   backups: BackupService;
+  sync: SyncService;
   notifyProject: (projectId: string) => void;
   /** every window takes the new settings, not only the one that saved them */
   notifySettings: (settings: Settings) => void;
@@ -168,6 +170,7 @@ export function createHandlers(s: Services): Handlers {
       const next = s.db.updateSettings(patch);
       if (patch.autoContinueAfterLimit !== undefined) s.sessions.settingsChanged();
       s.notifySettings(next);
+      if (patch.syncEnabled !== undefined) s.sync.enabledChanged();
       return next;
     },
 
@@ -269,6 +272,17 @@ export function createHandlers(s: Services): Handlers {
       diagCache = null;
       return r;
     },
+
+    "sync.status": () => s.sync.status(),
+    "sync.now": () => s.sync.now(),
+    "sync.probe": () => s.sync.probe(),
+    "sync.cloneProject": ({ key }) => s.sync.cloneProject(key),
+    "sync.setPassphrase": ({ passphrase }) => s.sync.setPassphrase(passphrase),
+    "sync.resetRemote": ({ passphrase }) => s.sync.resetRemote(passphrase),
+    "sync.forceLocal": ({ key }) => s.sync.forceLocal(key),
+    "sync.keep": ({ key }) => s.sync.keep(key),
+    "sync.versions": () => s.sync.versions(),
+    "sync.restoreVersion": ({ sha, parts }) => s.sync.restoreVersion(sha, parts),
 
     "phone.config": () => s.phone.config(),
     "phone.saveConfig": (patch) => s.phone.saveConfig(patch),

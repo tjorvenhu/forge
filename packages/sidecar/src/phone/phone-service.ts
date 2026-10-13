@@ -1,10 +1,10 @@
-import { randomBytes, randomUUID } from "node:crypto";
+import { randomBytes, randomInt, randomUUID } from "node:crypto";
 import {
   ForgeError,
   GIT_TAGS,
   SEARCH_MARK_END,
   SEARCH_MARK_START,
-  type BackupPart,
+  BackupPart,
   type DeskPhoneConfig,
   type MethodName,
   type ParamsOf,
@@ -232,7 +232,23 @@ interface ActiveCall {
   failure: string | null;
   /** o= line of our SDP; a new answer in the same call needs the same session and a higher version */
   sdp: { session: string; version: number };
+  /** an irreversible deletion waiting for the caller to type its code on the keypad */
+  confirm: PendingConfirm | null;
 }
+
+/**
+ * Deleting a folder or a GitHub repository runs only after the caller typed a code on the keypad.
+ * The model can misunderstand ("delete the remote branch" -> the repository) or be talked into it;
+ * keypad digits never go through it.
+ */
+interface PendingConfirm {
+  code: string;
+  entered: string;
+  expiresAt: number;
+  run(): Promise<string>;
+}
+
+const CONFIRM_TTL_MS = 2 * 60_000;
 
 /**
  * A phone number in one canonical form, so different notations compare equal: "+49 30 1234567",
@@ -492,6 +508,33 @@ export class PhoneService {
 
   private persist() {
     this.d.db.setPhoneSettings(this.cfg as unknown as Record<string, unknown>);
+  }
+
+  /**
+   * The settings other computers get through the sync. Whether the line and the desk phone run stays
+   * with each computer (two registrations would ring both), as do the desk token, PIN failures and
+   * agreed callbacks (they would ring twice). Null before anything was set up.
+   */
+  syncConfig(): Record<string, unknown> | null {
+    const raw = this.d.db.getPhoneSettings();
+    if (!Object.keys(raw).length) return null;
+    const { enabled: _enabled, deskToken: _token, pinGuard: _guard, callbacks: _callbacks, desk, ...rest } = this.cfg;
+    const { enabled: _deskEnabled, ...deskRest } = desk;
+    return { ...rest, desk: deskRest };
+  }
+
+  /** Takes over settings from the sync, keeps the parts of this computer and reconnects. Refuses during a call. */
+  async applySyncConfig(synced: Record<string, unknown>) {
+    if (this.busy) throw new Error("FORGE telefoniert gerade; die Telefon-Einstellungen kommen beim nächsten Abgleich.");
+    const cur = this.cfg;
+    const desk = { ...cur.desk, ...((synced.desk as Partial<StoredDesk> | undefined) ?? {}), enabled: cur.desk.enabled };
+    this.d.db.setPhoneSettings({ ...cur, ...synced, desk, enabled: cur.enabled, deskToken: cur.deskToken, pinGuard: cur.pinGuard, callbacks: cur.callbacks });
+    await this.reload();
+  }
+
+  /** Secrets read again after the sync changed them; reconnects like a restore. */
+  async secretsChanged() {
+    if (!this.busy) await this.reload();
   }
 
   private get busy(): boolean {
@@ -853,7 +896,7 @@ export class PhoneService {
    */
   private attach(call: PhoneCall, rec: PhoneCallRecord, reason: string | null, refs: Map<string, string>, sdpSession: string, focus: string | null): ActiveCall {
     const info: PhoneCallInfo = { id: rec.id, direction: call.direction, number: call.remoteNumber, state: "ringing", startedAt: rec.startedAt, unlocked: false, reason };
-    const a: ActiveCall = { call, controller: null, focus, rtp: null, info, record: rec, refs, answered: false, failure: null, sdp: { session: sdpSession, version: 1 } };
+    const a: ActiveCall = { call, controller: null, focus, rtp: null, info, record: rec, refs, answered: false, failure: null, sdp: { session: sdpSession, version: 1 }, confirm: null };
     call.on("answered", () => {
       a.answered = true;
       // With several numbers ringing, only now is it known which one took the call.
@@ -929,6 +972,7 @@ export class PhoneService {
         a.info.unlocked = true;
         this.emitState();
       },
+      onDigit: (digit: string) => this.confirmDigit(a, digit),
       log: (m: string) => {
         rec.detail = m;
         this.d.log(`Telefon: ${m}`);
@@ -1147,6 +1191,37 @@ export class PhoneService {
         void this.notify(sessionId, kind, body).catch((err: unknown) => this.d.log(`Telefon: Anruf nicht möglich: ${errorText(err)}`));
       }, delayMs),
     );
+  }
+
+  /** Keypad digits for a pending deletion: the code and #, * cancels. False when none is pending. */
+  private confirmDigit(a: ActiveCall, digit: string): boolean {
+    const c = a.confirm;
+    if (!c) return false;
+    if (Date.now() > c.expiresAt) {
+      a.confirm = null;
+      return false;
+    }
+    if (digit === "*") {
+      a.confirm = null;
+      a.controller?.note("[FORGE: Der Anrufer hat mit Stern abgebrochen. Nichts ist gelöscht. Sag ihm das in einem Satz.]");
+      return true;
+    }
+    if (digit !== "#") {
+      if (c.entered.length < 8) c.entered += digit;
+      return true;
+    }
+    a.confirm = null;
+    if (c.entered !== c.code) {
+      this.d.log("Telefon: Löschen nicht bestätigt (falscher Code)");
+      a.controller?.note("[FORGE: Der Code war falsch. Nichts ist gelöscht. Sag ihm das in einem Satz; will er es noch, ruf das Werkzeug neu auf, dann gibt es einen neuen Code.]");
+      return true;
+    }
+    this.d.log("Telefon: Löschen über die Tastatur bestätigt");
+    void c
+      .run()
+      .catch((e: unknown) => `Fehler: ${errorText(e)}`)
+      .then((result) => a.controller?.note(`[FORGE: Über die Tastatur bestätigt. Ergebnis: ${result} Sag ihm das in einem Satz.]`));
+    return true;
   }
 
   /**
@@ -2019,11 +2094,27 @@ export class PhoneService {
           if (action === "info") return `${p.name}${p.favorite ? ", Favorit" : ""}${p.parentId ? ", Agent-Worktree" : ""}: ${projectText(p)}.`;
           if (action === "remove") {
             if (p.parentId) return `Fehler: ${p.name} ist ein Agent-Worktree. Den räumt remove_agent auf.`;
-            const r = await call("projects.remove", { projectId: p.id, deleteFolder: o?.deleteFolder === true, deleteGitHubRepo: o?.deleteGitHubRepo === true });
-            projectChanged(p.id);
-            return [`Projekt ${p.name} aus FORGE entfernt.`, r.folderDeleted ? "Der Ordner ist gelöscht." : "Der Ordner bleibt.", r.githubDeleted ? "Das GitHub-Repository ist gelöscht." : ""]
+            const deleteFolder = o?.deleteFolder === true;
+            const deleteGitHubRepo = o?.deleteGitHubRepo === true;
+            const remove = async () => {
+              const r = await call("projects.remove", { projectId: p.id, deleteFolder, deleteGitHubRepo });
+              projectChanged(p.id);
+              return [`Projekt ${p.name} aus FORGE entfernt.`, r.folderDeleted ? "Der Ordner ist gelöscht." : "Der Ordner bleibt.", r.githubDeleted ? "Das GitHub-Repository ist gelöscht." : ""]
+                .filter(Boolean)
+                .join(" ");
+            };
+            if (!deleteFolder && !deleteGitHubRepo) return remove();
+            const info = await call("projects.removalInfo", { projectId: p.id });
+            if (deleteGitHubRepo && !info.githubRepo) return `Fehler: ${p.name} hat kein GitHub-Repository.`;
+            if (deleteGitHubRepo && !info.githubSignedIn) return "Fehler: FORGE ist nicht bei GitHub angemeldet.";
+            if (deleteGitHubRepo && !info.githubCanDelete) return "Fehler: GitHub verlangt dafür die Berechtigung delete_repo. Die lässt sich nur am Computer beim Entfernen des Projekts erteilen.";
+            if (deleteFolder && info.folderBlocker) return `Fehler: ${info.folderBlocker}`;
+            const what = [deleteFolder && `der Ordner des Projekts ${p.name} mit allen Dateien`, deleteGitHubRepo && `das GitHub-Repository ${asData(info.githubRepo ?? "")} mit Code, Issues und Pull Requests`]
               .filter(Boolean)
-              .join(" ");
+              .join(" und ");
+            const code = String(randomInt(0, 1000)).padStart(3, "0");
+            a.confirm = { code, entered: "", expiresAt: Date.now() + CONFIRM_TTL_MS, run: remove };
+            return `Bestätigung nötig, noch ist nichts gelöscht. Sag dem Anrufer, dass ${what} endgültig gelöscht würde und sich das nicht rückgängig machen lässt. Zum Bestätigen tippt er auf der Telefontastatur ${code.split("").join(" ")} und dann Raute, Stern bricht ab. Ein Ja im Gespräch reicht nicht, ruf das Werkzeug dafür nicht noch einmal auf. FORGE meldet sich, sobald er getippt hat.`;
           }
           if (action === "rename") {
             const name = o?.name?.trim();
@@ -2326,6 +2417,85 @@ export class PhoneService {
           if (action === "backup_create") {
             const b = await call("backup.create", {});
             return `Backup angelegt: ${b.parts.map((x) => x.label).join(", ")}.`;
+          }
+          if (action === "sync_on" || action === "sync_off") {
+            const on = action === "sync_on";
+            if (on && !(await call("github.account", {}))) return "Fehler: Dafür muss FORGE bei GitHub angemeldet sein. Die Anmeldung geht nur am Rechner.";
+            await call("settings.update", { syncEnabled: on, syncAsked: true });
+            return on ? "Der Abgleich über GitHub ist an. FORGE gleicht jetzt ab." : "Der Abgleich über GitHub ist aus. Das Repository auf GitHub bleibt.";
+          }
+          if (action === "sync_status" || action === "sync_now") {
+            const st = action === "sync_now" ? await call("sync.now", {}) : await call("sync.status", {});
+            if (st.phase === "off") return "Der Abgleich über GitHub ist aus.";
+            if (st.phase === "no-github") return "Der Abgleich ist an, aber FORGE ist nicht bei GitHub angemeldet.";
+            if (st.phase === "needs-passphrase") return `Der Abgleich wartet auf das Sync-Passwort. Das lässt sich nur in FORGE am Rechner eingeben.${st.error ? ` ${st.error}` : ""}`;
+            const when = st.phase === "syncing" ? "FORGE gleicht gerade ab" : st.phase === "error" ? `Der letzte Abgleich ist fehlgeschlagen: ${st.error ?? "unbekannter Fehler"}` : st.lastSyncAt ? `Zuletzt abgeglichen ${dateTime(st.lastSyncAt)}` : "Noch nicht abgeglichen";
+            const facts = [
+              st.remote ? `${when}, zuletzt geschrieben von ${asData(st.remote.device)}` : when,
+              st.available.length ? `Von anderen Computern fehlen hier noch: ${st.available.map((p) => asData(p.name)).join(", ")}` : "",
+              st.localOnly.length ? `Nur noch auf diesem Computer, weil auf einem anderen entfernt: ${st.localOnly.map((x) => asData(x.label)).join(", ")}` : "",
+            ].filter(Boolean);
+            return `${facts.join(". ")}.`;
+          }
+          if (action === "sync_clone") {
+            const st = await call("sync.status", {});
+            const want = o?.project?.trim();
+            if (!want) return "Fehler: Welches Projekt?";
+            const hit = pickOne(st.available, want.toLowerCase(), (p) => [p.name.toLowerCase(), p.key], { none: "Kein fehlendes Projekt", many: "Fehlende Projekte" });
+            const p = await call("sync.cloneProject", { key: hit.key });
+            projectChanged(p.id);
+            return `${p.name} ist jetzt auch auf diesem Computer.`;
+          }
+          const localOnlyItem = async () => {
+            const st = await call("sync.status", {});
+            return pickOne(st.localOnly, o!.project!.trim().toLowerCase(), (x) => [x.label.toLowerCase(), x.key], { none: "Nichts, das nur hier ist, heißt", many: "Einträge" });
+          };
+          if (action === "sync_keep") {
+            if (!o?.project?.trim()) return "Fehler: Was soll wieder abgeglichen werden?";
+            const item = await localOnlyItem();
+            await call("sync.keep", { key: item.key });
+            return `${item.label} wird wieder abgeglichen und geht auch auf die anderen Computer.`;
+          }
+          if (action === "sync_force") {
+            const item = o?.project?.trim() ? await localOnlyItem() : null;
+            const st = await call("sync.status", {});
+            if (!st.enabled) return "Fehler: Der Abgleich über GitHub ist aus.";
+            const removes = item ? [item] : st.localOnly;
+            const what = item
+              ? `${item.label} wird auf den Stand von GitHub gesetzt, also hier entfernt${item.kind === "project" ? " (nur aus FORGE, der Ordner bleibt, die Session-Historie in FORGE ist weg)" : ""}`
+              : `Dieser Computer wird hart auf den Stand von GitHub gesetzt${removes.length ? `, entfernt werden hier: ${removes.map((x) => asData(x.label)).join(", ")} (Projekte nur aus FORGE, ihre Ordner bleiben)` : ""}`;
+            // Removing from FORGE takes the session history with it: confirmed on the keypad, like deleting.
+            const code = String(randomInt(0, 1000)).padStart(3, "0");
+            a.confirm = {
+              code,
+              entered: "",
+              expiresAt: Date.now() + CONFIRM_TTL_MS,
+              run: async () => {
+                await call("sync.forceLocal", { key: item?.key });
+                return item ? `${item.label} ist auf dem Stand von GitHub.` : "Dieser Computer ist auf dem Stand von GitHub. Der Stand davor ist als Backup gesichert.";
+              },
+            };
+            return `Bestätigung nötig, noch ist nichts geändert. Sag dem Anrufer: ${what}. Vorher legt FORGE ein Backup an. Zum Bestätigen tippt er auf der Telefontastatur ${code.split("").join(" ")} und dann Raute, Stern bricht ab. Ein Ja im Gespräch reicht nicht, ruf das Werkzeug dafür nicht noch einmal auf. FORGE meldet sich, sobald er getippt hat.`;
+          }
+          if (action === "sync_versions" || action === "sync_restore") {
+            const versions = await call("sync.versions", {});
+            if (action === "sync_versions") {
+              if (!versions.length) return "Auf GitHub liegt noch kein Stand.";
+              return versions
+                .slice(0, 5)
+                .map((v, i) => `${i + 1}: ${dateTime(v.date)}${v.device ? `, von ${asData(v.device)}` : ""}`)
+                .join("\n");
+            }
+            const nr = o?.backup?.trim();
+            if (!nr) return "Fehler: Welcher Stand? Die Nummer aus sync_versions.";
+            const v = /^\d+$/.test(nr) ? versions[Number(nr) - 1] : versions.find((x) => x.sha.startsWith(nr));
+            if (!v) return `Fehler: Stand ${nr} gibt es nicht.`;
+            // The phone settings reconnect the line and would end this call.
+            const parts = (o?.parts ?? BackupPart.options).filter((x) => x !== "phone");
+            const phone = o?.parts?.includes("phone") ? " Telefon-Einstellungen lassen sich nur in FORGE am Rechner zurückholen, sonst endet dieses Gespräch." : "";
+            if (!parts.length) return `Fehler: Nichts zum Zurückholen.${phone}`;
+            const r = await call("sync.restoreVersion", { sha: v.sha, parts });
+            return `Stand vom ${dateTime(v.date)} zurückgeholt: ${r.restored.map((x) => BACKUP_PARTS[x]).join(", ")}. Der Stand davor ist als Backup gesichert. ${r.notes.join(" ")}${phone}`;
           }
           const list = await backups();
           if (action === "backup_list") {

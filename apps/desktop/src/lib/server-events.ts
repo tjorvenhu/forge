@@ -110,6 +110,7 @@ export function routeServerEvent(qc: QueryClient, git: GitRefresher, e: ServerEv
         void qc.invalidateQueries({ queryKey: keys.githubRepos });
         void qc.invalidateQueries({ queryKey: keys.githubOrgs });
         void qc.invalidateQueries({ queryKey: keys.diagnostics });
+        void qc.invalidateQueries({ queryKey: keys.syncProbe });
       }
       break;
     case "claude.setup":
@@ -170,6 +171,13 @@ export function routeServerEvent(qc: QueryClient, git: GitRefresher, e: ServerEv
       const prev = qc.getQueryData<ResultOf<"phone.state">>(keys.phoneState);
       qc.setQueryData(keys.phoneState, e.payload);
       if (prev?.call && !e.payload.call) void qc.invalidateQueries({ queryKey: keys.phoneCalls });
+      break;
+    }
+    case "sync.updated": {
+      const prev = qc.getQueryData<ResultOf<"sync.status">>(keys.sync);
+      qc.setQueryData(keys.sync, e.payload);
+      // A finished sync may have written a new state to GitHub.
+      if (prev?.lastSyncAt !== e.payload.lastSyncAt) void qc.invalidateQueries({ queryKey: keys.syncVersions });
       break;
     }
     case "agent.autoMerge":

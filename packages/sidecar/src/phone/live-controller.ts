@@ -18,6 +18,8 @@ export interface LiveControllerDeps {
   opening: string | null;
   onTranscript(role: "caller" | "forge", text: string): void;
   onUnlock(): void;
+  /** a keypad digit FORGE wants itself (confirming a deletion); true keeps it from the PIN pad */
+  onDigit?(digit: string): boolean;
   log(message: string): void;
   timing?: { idleMs?: number; maxCallMs?: number; hangupGraceMs?: number };
 }
@@ -243,6 +245,7 @@ export class LiveCallController implements CallHandler {
   private onDigit(digit: string) {
     if (this.ended || !this.begun) return;
     this.touch();
+    if (this.d.onDigit?.(digit)) return;
     this.pinPad.digit(digit);
   }
 

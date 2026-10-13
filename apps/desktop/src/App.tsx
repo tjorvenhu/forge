@@ -9,6 +9,8 @@ import { ErrorBoundary } from "@/components/layout/ErrorBoundary";
 import { NewProjectDialog } from "@/components/projects/NewProjectDialog";
 import { CommandPalette } from "@/components/layout/CommandPalette";
 import { AppUpdateDialog } from "@/components/layout/AppUpdate";
+import { SetupWizard } from "@/components/setup/SetupWizard";
+import { SyncPrompt } from "@/components/setup/SyncPrompt";
 import { Logo } from "@/components/layout/Logo";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/misc";
@@ -128,6 +130,8 @@ function Shell() {
       <NewProjectDialog />
       <CommandPalette />
       <AppUpdateDialog />
+      <SetupWizard />
+      <SyncPrompt />
       <AgentReviewDialog />
       <Toaster />
       <TitleTooltips />

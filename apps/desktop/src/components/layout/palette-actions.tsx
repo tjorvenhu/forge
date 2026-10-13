@@ -36,6 +36,7 @@ import {
   PinOff,
   Play,
   Power,
+  RefreshCcw,
   RefreshCw,
   Settings2,
   Shield,
@@ -46,6 +47,7 @@ import {
   ToggleLeft,
   ToggleRight,
   Trash2,
+  Wand2,
   type LucideIcon,
 } from "lucide-react";
 import type {
@@ -130,6 +132,8 @@ type BooleanSetting = { [K in keyof Settings]: Settings[K] extends boolean ? K :
 /** Boolean settings the palette leaves out on purpose, with the reason. */
 export const UNLISTED_SETTINGS = {
   debugLogs: "hat keinen Schalter in den Einstellungen und wird nirgends ausgewertet",
+  setupDone: "merkt sich, dass der Einrichtungsassistent durch ist; den Assistenten öffnet die Aktion „Einrichtungsassistent öffnen“",
+  syncAsked: "merkt sich, dass die Frage nach der Synchronisierung beantwortet ist",
 } as const satisfies Partial<Record<BooleanSetting, string>>;
 
 const SETTING_TOGGLES: Record<Exclude<BooleanSetting, keyof typeof UNLISTED_SETTINGS>, { label: string; section: SettingsSection; keywords?: string }> = {
@@ -140,6 +144,7 @@ const SETTING_TOGGLES: Record<Exclude<BooleanSetting, keyof typeof UNLISTED_SETT
   autoContinueAfterLimit: { label: "Nach Nutzungslimit weitermachen", section: "claude", keywords: "auto weitermachen limit reset" },
   stripApiKey: { label: "ANTHROPIC_API_KEY ausblenden", section: "claude", keywords: "api key abo" },
   updateChecks: { label: "Automatisch nach Updates suchen", section: "about", keywords: "update release version" },
+  syncEnabled: { label: "Synchronisierung über GitHub", section: "sync", keywords: "sync abgleich andere pc rechner repository forge-data cloud" },
 };
 
 /** Single options of the settings that are no switch; the entry opens their section. */
@@ -153,6 +158,11 @@ const SETTING_OPTIONS: ReadonlyArray<{ id: string; label: string; section: Setti
   { id: "claude-path", label: "Pfad zur Claude-CLI", section: "claude", keywords: "executable programm" },
   { id: "phone-setup", label: "Telefon einrichten", section: "phone", keywords: "anruf sip gemini openai stimme tischtelefon" },
   { id: "phone-numbers", label: "Telefonnummern: wen FORGE anruft, wer anrufen darf", section: "phone", keywords: "nummer handy rufnummer erlaubte anrufer benachrichtigung einschalten ausschalten" },
+  { id: "sync-projects", label: "Projekte von anderen PCs holen", section: "sync", keywords: "sync klonen abgleich rechner" },
+  { id: "sync-passphrase", label: "Sync-Passwort eingeben oder neu festlegen", section: "sync", keywords: "verschlüsselung schlüssel passwort vergessen github" },
+  { id: "sync-local-only", label: "Nur lokal: auf anderen PCs Entferntes", section: "sync", keywords: "out of sync nicht synchronisiert gelöscht anderer pc" },
+  { id: "sync-force", label: "Diesen PC hart auf den Stand von GitHub setzen", section: "sync", keywords: "sync zurücksetzen überschreiben neuester stand" },
+  { id: "sync-versions", label: "Versionen auf GitHub zurückholen", section: "backup", keywords: "sync verlauf commit wiederherstellen backup" },
   { id: "backup-restore", label: "Backup herunterladen oder zurücksetzen", section: "backup", keywords: "sichern wiederherstellen export" },
   { id: "global-rules", label: "Globale Regeln bearbeiten", section: "rules", keywords: "claude.md memory anweisungen" },
   { id: "updates", label: "Updates und Version", section: "about", keywords: "version release" },
@@ -272,6 +282,15 @@ async function checkForUpdate(qc: QueryClient) {
     else if (next.phase === "available" || next.phase === "ready") toast.info("Update verfügbar", `Version ${next.latest?.version ?? ""}`);
   } catch (e) {
     toast.error("Prüfung fehlgeschlagen", errorMessage(e));
+  }
+}
+
+async function syncNow(qc: QueryClient) {
+  try {
+    qc.setQueryData(keys.sync, await call("sync.now", {}));
+    toast.success("Synchronisiert");
+  } catch (e) {
+    toast.error("Synchronisieren fehlgeschlagen", errorMessage(e));
   }
 }
 
@@ -474,6 +493,8 @@ export function buildActions(ctx: ActionContext): PaletteEntry[] {
   }
 
   act("backup", "Backup anlegen", icon(Archive), () => void createBackup(qc), { keywords: "sichern sicherung" });
+  if (settings?.syncEnabled) act("sync-now", "Jetzt über GitHub abgleichen", icon(RefreshCcw), () => void syncNow(qc), { keywords: "sync synchronisieren andere pc" });
+  act("setup-wizard", "Einrichtungsassistent öffnen", icon(Wand2), () => ui.setSetupWizard(true), { keywords: "einrichten erster start setup onboarding" });
   act("update-check", "Nach Updates suchen", icon(RefreshCw), () => void checkForUpdate(qc), { keywords: "version release aktualisieren" });
   const update = qc.getQueryData<AppUpdateState>(keys.appUpdate);
   if (update?.latest && update.installable && ["available", "downloading", "ready"].includes(update.phase)) {
@@ -507,7 +528,7 @@ export function buildActions(ctx: ActionContext): PaletteEntry[] {
     const run =
       key === "alwaysOnTop"
         ? () => void setAlwaysOnTop(qc, !on)
-        : () => void saveSetting(qc, { [key]: !on }, `${def.label} ${on ? "ausgeschaltet" : "eingeschaltet"}`);
+        : () => void saveSetting(qc, key === "syncEnabled" ? { syncEnabled: !on, syncAsked: true } : { [key]: !on }, `${def.label} ${on ? "ausgeschaltet" : "eingeschaltet"}`);
     const ic = key === "alwaysOnTop" ? icon(on ? PinOff : Pin) : icon(on ? ToggleRight : ToggleLeft);
     setting(`setting-${key}`, `${def.label}: ${on ? "ausschalten" : "einschalten"}`, ic, run, { hint: section, keywords: `schalter einstellung ${def.keywords ?? ""}` });
   }

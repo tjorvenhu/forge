@@ -435,6 +435,12 @@ export const Settings = z.object({
   alwaysOnTop: z.boolean(),
   /** blocklist rules the user switched off; every other rule applies */
   disabledPolicyRules: z.array(PolicyRuleId),
+  /** the setup assistant of the first start is done (or was skipped); installations from before it count as done */
+  setupDone: z.boolean(),
+  /** FORGE's data (no secrets) is kept in a private GitHub repository of the signed-in account */
+  syncEnabled: z.boolean(),
+  /** the user was asked once whether to sync over GitHub */
+  syncAsked: z.boolean(),
 });
 export type Settings = z.infer<typeof Settings>;
 
@@ -955,6 +961,71 @@ export const BackupInfo = z.object({
   parts: z.array(z.object({ part: BackupPart, label: z.string() })),
 });
 export type BackupInfo = z.infer<typeof BackupInfo>;
+
+/** A project in the sync repository that is not on this computer yet. */
+export const SyncAvailableProject = z.object({
+  key: z.string(),
+  name: z.string(),
+  /** https clone URL; null for projects without a remote, which cannot be fetched */
+  cloneUrl: z.string().nullable(),
+});
+export type SyncAvailableProject = z.infer<typeof SyncAvailableProject>;
+
+/**
+ * Something this computer still has that the sync repository no longer holds (removed on another
+ * computer). It stays here and is not synced until the user decides.
+ */
+export const SyncLocalOnly = z.object({
+  /** item key, e.g. "project:github.com/me/shop" */
+  key: z.string(),
+  kind: z.enum(["project", "claude", "mcp", "secret", "phone", "devtools", "setting", "git"]),
+  label: z.string(),
+  /** for projects: the project here */
+  projectId: z.string().nullable(),
+});
+export type SyncLocalOnly = z.infer<typeof SyncLocalOnly>;
+
+/** One state of the sync repository (a commit of its file). */
+export const SyncVersion = z.object({ sha: z.string(), date: z.string(), device: z.string().nullable() });
+export type SyncVersion = z.infer<typeof SyncVersion>;
+
+/**
+ * Sync of FORGE's data over a private GitHub repository, encrypted with a key from the sync
+ * password. off: switched off; no-github: nobody signed in with GitHub; needs-passphrase: the sync
+ * password is missing on this computer or no longer fits (changed on another one); idle: in sync
+ * (or waiting for the next run); syncing: running; error: the last run failed (message in `error`).
+ */
+export const SyncStatus = z.object({
+  enabled: z.boolean(),
+  phase: z.enum(["off", "no-github", "needs-passphrase", "idle", "syncing", "error"]),
+  /** GitHub login the data belongs to */
+  account: z.string().nullable(),
+  /** "owner/forge-data" */
+  repo: z.string().nullable(),
+  lastSyncAt: z.string().nullable(),
+  error: z.string().nullable(),
+  /** who wrote the repository last */
+  remote: z.object({ updatedAt: z.string(), device: z.string() }).nullable(),
+  available: z.array(SyncAvailableProject),
+  localOnly: z.array(SyncLocalOnly),
+  /** a sync password is stored on this computer */
+  hasKey: z.boolean(),
+});
+export type SyncStatus = z.infer<typeof SyncStatus>;
+
+/** What the sync repository of the signed-in account holds, before syncing is switched on. */
+export const SyncProbe = z.object({
+  account: z.string().nullable(),
+  repo: z.string().nullable(),
+  /** the repository exists and holds FORGE data; then the sync password of that data is needed */
+  found: z.boolean(),
+  updatedAt: z.string().nullable(),
+  device: z.string().nullable(),
+  /** counts only when the password stored here opens the data */
+  projects: z.number().nullable(),
+  settings: z.number().nullable(),
+});
+export type SyncProbe = z.infer<typeof SyncProbe>;
 
 /** OpenAI voices for speech output on the phone; the first one is the default. */
 export const PHONE_VOICES = ["marin", "cedar", "alloy", "ash", "ballad", "coral", "echo", "fable", "nova", "onyx", "sage", "shimmer", "verse"] as const;

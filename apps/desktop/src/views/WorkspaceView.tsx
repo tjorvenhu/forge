@@ -25,6 +25,7 @@ import { HeaderDivider } from "@/components/layout/Page";
 import { ListSkeleton, Skeleton } from "@/components/ui/skeleton";
 import { Collapse } from "@/components/ui/collapse";
 import { DevToolsBadge } from "@/components/devtools/DevToolsBadge";
+import { LocalOnlyBanner } from "@/components/settings/SyncLocalOnly";
 
 export function WorkspaceView() {
   const projectId = useUi((s) => s.activeProjectId);
@@ -88,6 +89,7 @@ function Workspace({ projectId }: { projectId: string }) {
           </ErrorBanner>
         </div>
       )}
+      <LocalOnlyBanner projectId={projectId} />
 
       <div className="flex min-h-0 flex-1">
         <div className="flex min-w-0 flex-1 flex-col">

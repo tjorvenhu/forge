@@ -24,6 +24,11 @@ import { locateClaude, sessionEnv } from "./claude/environment.js";
 import { readAuth } from "./claude/diagnostics.js";
 import { ASSIST_MODEL } from "./sessions/claude-assist.js";
 import { BackupService } from "./backup/backup.js";
+import { SyncService } from "./sync/sync.js";
+import { SyncKey } from "./sync/crypto.js";
+
+/** The key from the sync password, in the secret store (DPAPI) next to the phone's secrets. */
+const SYNC_KEY_SECRET = "sync-key";
 import { Db } from "./persistence/db.js";
 import { ProjectManager } from "./projects/project-manager.js";
 import { createHandlers, invokeHandler, type Handlers } from "./rpc/handlers.js";
@@ -50,10 +55,12 @@ export function createApp(opts: { dataDir: string; write: Writer; log?: (m: stri
   let server: RpcServer | null = null;
   let phone: PhoneService | null = null;
   let jobs: JobWatcher | null = null;
+  let sync: SyncService | null = null;
   const emit = (e: ServerEvent) => {
     server?.emit(e);
     phone?.onServerEvent(e);
     jobs?.onServerEvent(e);
+    sync?.onServerEvent(e);
   };
   const runtime = opts.runtime ?? new AgentSdkRuntime();
   const sessions = new SessionService(db, projects, git, runtime, emit);
@@ -146,7 +153,11 @@ export function createApp(opts: { dataDir: string; write: Writer; log?: (m: stri
     db,
     appVersion: process.env.FORGE_APP_VERSION ?? "dev",
     git,
-    secrets,
+    // The sync key belongs to the sync password, not to the phone settings of a backup.
+    secrets: {
+      encrypted: () => Object.fromEntries(Object.entries(secrets.encrypted()).filter(([n]) => n !== SYNC_KEY_SECRET)),
+      restoreEncrypted: (files) => secrets.restoreEncrypted(files, [SYNC_KEY_SECRET]),
+    },
     log: (m) => opts.log?.(m),
     afterRestore: async (parts) => {
       if (parts.includes("settings")) sessions.settingsChanged();
@@ -154,12 +165,67 @@ export function createApp(opts: { dataDir: string; write: Writer; log?: (m: stri
       for (const p of db.listProjects()) emit({ event: "project.updated", payload: { projectId: p.id } });
     },
   });
+  const viaHandlers = () => {
+    if (!handlers) throw new Error("FORGE startet noch.");
+    return handlers;
+  };
+  sync = new SyncService({
+    stateFile: path.join(opts.dataDir, "sync", "state.json"),
+    appVersion: process.env.FORGE_APP_VERSION ?? "dev",
+    remote: github,
+    settings: () => db.getSettings(),
+    // Through the handlers: every window gets the change, profiles and git switches take effect.
+    updateSettings: (patch) => invokeHandler(viaHandlers(), "settings.update", patch),
+    projects: () => projects.all(),
+    remoteUrl: (dir) => git.remoteUrl(dir),
+    identity: () => git.identity(),
+    setIdentity: (name, email) => git.setIdentity(name, email),
+    updateProject: async (projectId, patch) => {
+      const p = await invokeHandler(viaHandlers(), "projects.update", { projectId, ...patch });
+      notifyProject(projectId);
+      return p;
+    },
+    cloneProject: async (url, parentDir) => {
+      const p = await projects.clone(url, parentDir);
+      notifyProject(p.id);
+      return p;
+    },
+    removeProject: async (projectId) => {
+      await invokeHandler(viaHandlers(), "projects.remove", { projectId, deleteFolder: false, deleteGitHubRepo: false });
+      notifyProject(projectId);
+    },
+    devTools: { get: (projectId) => db.getDevTools(projectId), set: (projectId, value) => db.setDevTools(projectId, value) },
+    phone: {
+      config: () => phone!.syncConfig(),
+      apply: (config) => phone!.applySyncConfig(config),
+      secretsChanged: () => phone!.secretsChanged(),
+    },
+    secrets: {
+      names: () => Object.keys(secrets.encrypted()).filter((n) => n !== SYNC_KEY_SECRET),
+      get: (name) => secrets.get(name),
+      set: (name, value) => secrets.set(name, value),
+    },
+    key: {
+      get: async () => {
+        const raw = await secrets.get(SYNC_KEY_SECRET);
+        const parsed = raw ? SyncKey.safeParse(JSON.parse(raw)) : null;
+        return parsed?.success ? parsed.data : null;
+      },
+      set: (key) => secrets.set(SYNC_KEY_SECRET, key ? JSON.stringify(key) : null),
+    },
+    safetyBackup: async () => {
+      await backups.create("before-restore");
+    },
+    emit: (payload) => emit({ event: "sync.updated", payload }),
+    log: (m) => opts.log?.(m),
+  });
   // Only in the desktop app (the shell passes its version); tests and the CLI do not look for updates,
-  // write no start backups and install nothing.
+  // write no start backups, do not sync and install nothing.
   // Sessions open at the last restart for an update come back; a second step of the update goes first.
   sessions.resumeAfterUpdate(() => updates.holdsResume());
   if (process.env.FORGE_APP_VERSION) {
     updates.start();
+    sync.start();
     void backups.createOnStart().catch((e: unknown) => opts.log?.(`Backup beim Start fehlgeschlagen: ${e instanceof Error ? e.message : String(e)}`));
     // A fresh installation without Claude Code fetches it right away (official installer); a configured path is left alone.
     const settings = db.getSettings();
@@ -177,6 +243,7 @@ export function createApp(opts: { dataDir: string; write: Writer; log?: (m: stri
     dictation,
     presence,
     backups,
+    sync,
     updates,
     mcp,
     plugins,
@@ -212,6 +279,7 @@ export function createApp(opts: { dataDir: string; write: Writer; log?: (m: stri
       sessions.shutdown();
       tokenMeter.stop();
       updates.stop();
+      sync?.stop();
       devServers.shutdown();
       testDb.shutdown();
       github.shutdown();

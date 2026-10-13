@@ -214,6 +214,14 @@ export const MIGRATIONS: string[] = [
     marked_at TEXT NOT NULL
   );
   `,
+  // The setup assistant is for installations that were never used; one that already has projects,
+  // sessions or settings counts as set up. A new database is still empty here.
+  `
+  INSERT INTO settings(key, value)
+  SELECT 'setupDone', 'true'
+  WHERE EXISTS (SELECT 1 FROM projects) OR EXISTS (SELECT 1 FROM sessions) OR EXISTS (SELECT 1 FROM settings WHERE key <> 'knownModels')
+  ON CONFLICT(key) DO NOTHING;
+  `,
 ];
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -231,6 +239,9 @@ export const DEFAULT_SETTINGS: Settings = {
   desktopNotifications: true,
   alwaysOnTop: false,
   disabledPolicyRules: [...DEFAULT_DISABLED_POLICY_RULES],
+  setupDone: false,
+  syncEnabled: false,
+  syncAsked: false,
 };
 
 interface ProjectRow {

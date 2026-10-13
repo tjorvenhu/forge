@@ -49,10 +49,10 @@ export class SecretStore {
     return out;
   }
 
-  /** Puts encrypted files from a backup back; secrets missing from it are removed. */
-  restoreEncrypted(files: Record<string, string>) {
+  /** Puts encrypted files from a backup back; secrets missing from it are removed, except `keep`. */
+  restoreEncrypted(files: Record<string, string>, keep: string[] = []) {
     mkdirSync(this.dir, { recursive: true });
-    for (const name of Object.keys(this.encrypted())) if (!(name in files)) rmSync(this.file(name), { force: true });
+    for (const name of Object.keys(this.encrypted())) if (!(name in files) && !keep.includes(name)) rmSync(this.file(name), { force: true });
     for (const [name, blob] of Object.entries(files)) if (/^[\w-]{1,64}$/.test(name)) writeFileSync(this.file(name), blob);
     this.cache.clear();
   }

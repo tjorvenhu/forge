@@ -59,6 +59,9 @@ import {
   SessionEvent,
   Settings,
   SlashCommand,
+  SyncProbe,
+  SyncStatus,
+  SyncVersion,
   TextDoc,
 } from "./models.js";
 
@@ -406,6 +409,37 @@ export const methods = {
     result: z.object({ restored: z.array(BackupPart), safety: BackupInfo, notes: z.array(z.string()) }),
   },
 
+  /** switched on and off with the setting syncEnabled */
+  "sync.status": { params: empty, result: SyncStatus },
+  /** syncs right away (pull, merge, push); fails when sync is off or nobody is signed in with GitHub */
+  "sync.now": { params: empty, result: SyncStatus },
+  /** looks into the sync repository without changing anything, e.g. before switching sync on */
+  "sync.probe": { params: empty, result: SyncProbe },
+  /** clones a project from the sync repository into the folder for new projects and takes over its settings */
+  "sync.cloneProject": { params: z.object({ key: z.string().min(1).max(500) }), result: Project },
+  /**
+   * The sync password of this computer. With data on GitHub it must open it; otherwise it becomes the
+   * password of the repository. Only a key derived from it is stored, DPAPI-encrypted.
+   */
+  "sync.setPassphrase": { params: z.object({ passphrase: z.string().min(1).max(500) }), result: SyncStatus },
+  /** overwrites the sync repository with this computer's data under a new password (forgotten password, fresh start) */
+  "sync.resetRemote": { params: z.object({ passphrase: z.string().min(1).max(500) }), result: SyncStatus },
+  /**
+   * Sets this computer hard to the state on GitHub: every synced value is taken over, what was removed
+   * on another computer is removed here too (projects only from FORGE, their folders stay). With `key`
+   * only that item. Saves a backup first.
+   */
+  "sync.forceLocal": { params: z.object({ key: z.string().min(1).max(600).optional() }), result: SyncStatus },
+  /** syncs an item again that another computer removed: it goes back into the repository */
+  "sync.keep": { params: z.object({ key: z.string().min(1).max(600) }), result: SyncStatus },
+  /** states of the sync repository, newest first */
+  "sync.versions": { params: empty, result: z.array(SyncVersion) },
+  /** takes the chosen parts back from an older state on GitHub; saves a backup first, the other computers get it with the next sync */
+  "sync.restoreVersion": {
+    params: z.object({ sha: z.string().regex(/^[0-9a-f]{7,64}$/), parts: z.array(BackupPart).min(1) }),
+    result: z.object({ restored: z.array(BackupPart), notes: z.array(z.string()) }),
+  },
+
   "phone.config": { params: empty, result: PhoneConfig },
   "phone.saveConfig": {
     params: z.object({
@@ -584,6 +618,7 @@ export type ServerEvent =
    */
   | { event: "agent.autoMerge"; payload: { rootId: string; worktreeId: string; branch: string | null; outcome: "merged" | "conflict" | "skipped" | "waiting"; message: string } }
   | { event: "phone.updated"; payload: PhoneState }
+  | { event: "sync.updated"; payload: SyncStatus }
   | { event: "update.updated"; payload: AppUpdateState }
   /** the main window installs the offered update (asked for on the phone) */
   | { event: "update.install"; payload: Record<string, never> }

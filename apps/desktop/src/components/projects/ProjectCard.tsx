@@ -13,6 +13,7 @@ import { ProjectIcon } from "./ProjectIcon";
 import { PROFILE_INFO } from "./ProfileBadge";
 import { tagLabel } from "@/components/workspace/ProjectSettingsTab";
 import { agentBusy, agentLabel } from "@/lib/project-tree";
+import { LocalOnlyBadge } from "@/components/settings/SyncLocalOnly";
 
 export function ProjectCard({ p, agents = [], onRemove }: { p: ProjectWithStatus; agents?: ProjectWithStatus[]; onRemove: (p: ProjectWithStatus) => void }) {
   const openProject = useUi((s) => s.openProject);
@@ -36,6 +37,7 @@ export function ProjectCard({ p, agents = [], onRemove }: { p: ProjectWithStatus
           <div className="flex items-center gap-1.5">
             <span className="truncate text-sm font-semibold">{p.name}</span>
             {p.favorite && <Star className="h-3.5 w-3.5 shrink-0 fill-warning text-warning" aria-label="Favorit" />}
+            <LocalOnlyBadge projectId={p.id} />
           </div>
           <GitLine p={p} />
         </div>

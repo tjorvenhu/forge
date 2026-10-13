@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { ArchiveRestore, Download, FileUp, History, Save } from "lucide-react";
-import type { BackupInfo, BackupPart } from "@forge/protocol";
-import { call, keys, useBackups } from "@/lib/queries";
+import { BackupPart, type BackupInfo, type SyncVersion } from "@forge/protocol";
+import { call, keys, useBackups, useSettings, useSyncStatus, useSyncVersions } from "@/lib/queries";
 import { errorMessage } from "@/lib/rpc";
 import { pickBackupFile, pickSaveFile } from "@/lib/native";
 import { relativeTime } from "@/lib/utils";
@@ -160,8 +160,101 @@ export function BackupSettings() {
         )}
       </div>
 
+      <GitHubVersions />
+
       {restore && <RestoreDialog key={restore.info.id ?? restore.path} target={restore} onClose={() => setRestore(null)} />}
     </div>
+  );
+}
+
+/** With the sync on, every state on GitHub is a version to go back to, across computers. */
+function GitHubVersions() {
+  const settings = useSettings().data;
+  const status = useSyncStatus().data;
+  const on = !!settings?.syncEnabled && !!status?.hasKey;
+  const versions = useSyncVersions(on);
+  const [restore, setRestore] = useState<SyncVersion | null>(null);
+  if (!on) return null;
+  const list = versions.data ?? [];
+  return (
+    <div>
+      <LabelWithInfo
+        info="Jeder Abgleich über GitHub ist ein Commit im Repository forge-data. Ein früherer Stand gilt nach dem Zurückholen auch für deine anderen PCs. Das Telefon, die Hooks und alles andere, was nur hier liegt, bleibt in den lokalen Backups oben."
+        className="mb-2 flex"
+      >
+        <h3 className="text-body font-medium">Versionen auf GitHub</h3>
+      </LabelWithInfo>
+      {versions.isLoading && (
+        <SkeletonRegion label="Lädt Versionen auf GitHub" className="divide-y divide-border overflow-hidden rounded-lg border border-border">
+          {[0, 1, 2].map((i) => (
+            <div key={i} className="flex items-center gap-3 px-3.5 py-2.5">
+              <div className="flex h-5 min-w-0 flex-1 items-center gap-2">
+                <Skeleton className="h-3 w-36" />
+                <Skeleton className="h-2.5 w-16" />
+                <Skeleton className="h-5 w-20 rounded" />
+              </div>
+              <Skeleton className="h-7 w-28" />
+            </div>
+          ))}
+        </SkeletonRegion>
+      )}
+      {versions.isError && <ErrorBanner>{errorMessage(versions.error)}</ErrorBanner>}
+      {versions.data && !list.length && <p className="text-xs text-muted">Noch kein Stand auf GitHub.</p>}
+      {list.length > 0 && (
+        <div className="divide-y divide-border overflow-hidden rounded-lg border border-border">
+          {list.slice(0, 20).map((v, i) => (
+            <div key={v.sha} className="flex items-center gap-3 px-3.5 py-2.5 transition-colors duration-120 hover:bg-surface-2">
+              <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2 text-body">
+                <span className="tabular-nums">{formatBackupDate(v.date)}</span>
+                <span className="text-caption text-subtle">{relativeTime(v.date)}</span>
+                {v.device && <Badge tone="neutral">{v.device}</Badge>}
+                {i === 0 && <Badge tone="success">aktuell</Badge>}
+              </div>
+              <Button size="sm" variant="outline" disabled={i === 0} onClick={() => setRestore(v)}>
+                <ArchiveRestore className="h-3.5 w-3.5" /> Zurückholen
+              </Button>
+            </div>
+          ))}
+        </div>
+      )}
+      {restore && <VersionRestoreDialog key={restore.sha} version={restore} onClose={() => setRestore(null)} />}
+    </div>
+  );
+}
+
+function VersionRestoreDialog({ version, onClose }: { version: SyncVersion; onClose: () => void }) {
+  const qc = useQueryClient();
+  const all = BackupPart.options;
+  const [parts, setParts] = useState<BackupPart[]>(all.filter((p) => p !== "phone"));
+  const toggle = (p: BackupPart, on: boolean) => setParts((cur) => (on ? [...cur, p] : cur.filter((x) => x !== p)));
+  return (
+    <ConfirmDialog
+      open
+      onOpenChange={(o) => !o && onClose()}
+      title={`Stand vom ${formatBackupDate(version.date)} zurückholen`}
+      description="Vorher sichert FORGE den aktuellen Stand lokal. Deine anderen PCs bekommen den zurückgeholten Stand mit dem nächsten Abgleich."
+      confirmLabel="Zurückholen"
+      confirmDisabled={!parts.length}
+      onConfirm={async () => {
+        try {
+          const r = await call("sync.restoreVersion", { sha: version.sha, parts });
+          await qc.invalidateQueries();
+          toast.success("Stand zurückgeholt", [`Zurückgesetzt: ${r.restored.map((p) => PART_LABEL[p]).join(", ") || "nichts"}.`, ...r.notes].join(" "));
+        } catch (e) {
+          toast.error("Nicht zurückgeholt", errorMessage(e));
+          throw e;
+        }
+      }}
+    >
+      <div className="flex flex-col gap-3">
+        <div className="text-xs font-medium text-muted">Was soll zurückgeholt werden?</div>
+        {all.map((p) => (
+          <ToggleRow key={p} checked={parts.includes(p)} onChange={(v) => toggle(p, v)} label={PART_LABEL[p]}>
+            {p === "projects" ? "Einstellungen und Dev-Tools der Projekte. Projekte, die hier fehlen, lassen sich unter Synchronisierung holen." : PART_HINT[p]}
+          </ToggleRow>
+        ))}
+      </div>
+    </ConfirmDialog>
   );
 }
 

@@ -14,7 +14,7 @@ const GIT_WORKSPACE_TABS: ReadonlySet<WorkspaceTab> = new Set(["agents", "git"])
 export function workspaceTabsFor(project: { gitEnabled: boolean } | null | undefined): WorkspaceTab[] {
   return WORKSPACE_TABS.filter((t) => project?.gitEnabled !== false || !GIT_WORKSPACE_TABS.has(t));
 }
-export const SETTINGS_SECTIONS = ["general", "claude", "policy", "phone", "backup", "rules", "about"] as const;
+export const SETTINGS_SECTIONS = ["general", "claude", "policy", "phone", "sync", "backup", "rules", "about"] as const;
 export type SettingsSection = (typeof SETTINGS_SECTIONS)[number];
 export const DEV_TOOLS_SECTIONS = ["server", "database", "env"] as const;
 export type DevToolsSection = (typeof DEV_TOOLS_SECTIONS)[number];
@@ -154,6 +154,9 @@ interface UiState {
   rightPanelOpen: boolean;
   bottomPanelOpen: boolean;
   newProject: NewProjectMode | null;
+  /** the setup assistant, opened again by hand (it opens on its own until the first setup is done) */
+  setupWizard: boolean;
+  setSetupWizard: (open: boolean) => void;
   /** asks the bottom panel of a project to open a terminal tab */
   terminalRequest: { projectId: string; program: "shell" | "claude"; label?: string } | null;
   openTerminal: (projectId: string, program: "shell" | "claude", label?: string) => void;
@@ -276,6 +279,7 @@ export const useUi = create<UiState>((set, get) => ({
   rightPanelOpen: false,
   bottomPanelOpen: false,
   newProject: null,
+  setupWizard: false,
   terminalRequest: null,
   panelRequest: null,
   paletteOpen: false,
@@ -458,4 +462,5 @@ export const useUi = create<UiState>((set, get) => ({
     set((s) => ({ bottomPanelOpen: open ?? !s.bottomPanelOpen }));
   },
   setNewProject: (newProject) => set({ newProject }),
+  setSetupWizard: (setupWizard) => set({ setupWizard }),
 }));
