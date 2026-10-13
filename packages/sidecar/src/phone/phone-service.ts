@@ -23,6 +23,7 @@ import type { KnowledgeStore } from "../knowledge/knowledge.js";
 import type { GitHubService } from "../github/github.js";
 import { removeWorktree } from "../projects/removal.js";
 import { slugify, type WorktreeService } from "../automation/worktrees.js";
+import type { AgentFinisher } from "../automation/agent-finish.js";
 import { isArtifactPath, isSensitiveFile, type GitEngine } from "../git/git.js";
 import { startIntegrationSession } from "../git/integration-prompt.js";
 import { ZodError } from "zod";
@@ -168,6 +169,8 @@ export interface PhoneDeps {
   github?: Pick<GitHubService, "prForBranch" | "createPr">;
   git: GitEngine;
   worktrees: WorktreeService;
+  /** merges or discards agents; without it finish_agent is not available */
+  agentFinish?: Pick<AgentFinisher, "finish">;
   secrets: SecretStore;
   emit(e: ServerEvent): void;
   claude(): { path: string | null; env: Record<string, string>; cwd: string };
@@ -1528,6 +1531,14 @@ export class PhoneService {
               ? ` Der Branch ließ sich nicht löschen: ${r.branchError}`
               : " Der Branch mit seinen Commits bleibt.";
           return `Worktree ${p.name} entfernt, seine Session ist beendet.${branch}`;
+        }),
+      finishAgent: (projectName, action, o) =>
+        run(true, async () => {
+          const finisher = this.d.agentFinish;
+          if (!finisher) return "Fehler: Agenten abschließen ist hier nicht verfügbar.";
+          const p = target(projectName, o);
+          if (!p.parentId) return `Fehler: ${p.name} ist kein Agent-Worktree.`;
+          return (await finisher.finish(p.id, action)).message;
         }),
       projects: () =>
         run(true, async () => {

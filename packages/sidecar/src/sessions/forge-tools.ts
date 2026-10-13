@@ -2,6 +2,7 @@ import path from "node:path";
 import type { ServerEvent, Session, SessionEventBody } from "@forge/protocol";
 import { z } from "zod";
 import { slugify, type WorktreeService } from "../automation/worktrees.js";
+import type { AgentFinisher } from "../automation/agent-finish.js";
 import type { SessionTool } from "../claude/runtime.js";
 import type { Db, SessionRecord } from "../persistence/db.js";
 import type { ProjectManager } from "../projects/project-manager.js";
@@ -66,6 +67,7 @@ export interface ForgeToolDeps {
   record(sessionId: string, body: SessionEventBody): void;
   emit(e: ServerEvent): void;
   project?: ProjectToolDeps | null;
+  finisher?: AgentFinisher | null;
 }
 
 /** Knowledge and dev tools of the session's project, with the lines of start context that explain them. */
@@ -311,14 +313,39 @@ export function forgeSessionTools(rec: SessionRecord, d: ForgeToolDeps): { tools
     },
   };
 
+  const finisher = d.finisher;
+  const finishAgent: SessionTool | null = finisher
+    ? {
+        name: "finish_agent",
+        description:
+          "Schließt einen fertigen Agenten ab. merge: übernimmt seinen Branch in den Branch, von dem er abgezweigt ist (Rebase, dann Fast-Forward), und löscht danach Worktree und Branch. discard: löscht Worktree und Branch ohne Übernahme. Nur nach Rücksprache mit dem Nutzer. Bei Konflikten im Rebase löst der Agent sie selbst; danach erneut merge.",
+        shape: { agent: z.string().min(1).describe("Kürzel des Agenten"), action: z.enum(["merge", "discard"]) },
+        autoAllow: false,
+        run: async (a) => {
+          const id = resolveChild(String(a.agent));
+          const s = d.db.getSession(id);
+          if (!s) return `Agent ${short(id)} ist gelöscht.`;
+          const wt = d.projects.all().find((p) => p.id === s.projectId);
+          if (!wt?.parentId) return `Agent ${short(id)} hat keinen Worktree mehr, er ist schon abgeschlossen.`;
+          const r = await finisher.finish(wt.id, a.action === "discard" ? "discard" : "merge");
+          return r.message;
+        },
+      }
+    : null;
+
   return {
-    tools: [startAgent, agentStatus, messageAgent, notify, ...own.tools],
+    tools: [startAgent, agentStatus, messageAgent, ...(finishAgent ? [finishAgent] : []), notify, ...own.tools],
     context: [
       "Du läufst in FORGE, einer Desktop-Oberfläche für Claude Code. Neben deinen Werkzeugen gibt es FORGE-Werkzeuge (mcp__forge__…):",
       "- start_agent: startet einen parallelen Agenten in einem eigenen Git-Worktree auf eigenem Branch. Nur für Teilaufgaben, die wirklich unabhängig und gleichzeitig laufen können; der Auftrag muss für sich allein verständlich sein. Der Agent startet beim letzten Commit deines Branches und sieht nur committete Stände.",
-      "- agent_status und message_agent: Agenten verfolgen und anleiten. Ihre Arbeit liegt auf ihren Branches; zusammenführen erst nach Rücksprache mit dem Nutzer.",
+      "- agent_status und message_agent: Agenten verfolgen und anleiten. Ihre Arbeit liegt auf ihren Branches.",
+      finisher
+        ? "- finish_agent: einen fertigen Agenten zusammenführen (merge) oder verwerfen (discard); danach sind Worktree und Branch weg. Nur nach Rücksprache mit dem Nutzer. FORGE zeigt dem Nutzer fertige Agenten auch selbst zur Entscheidung an."
+        : "",
       "- notify: den Nutzer aktiv benachrichtigen. urgent=true nur, wenn er sofort gebraucht wird (kann sein Telefon klingeln lassen).",
       ...own.context,
-    ].join("\n"),
+    ]
+      .filter(Boolean)
+      .join("\n"),
   };
 }

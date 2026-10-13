@@ -510,6 +510,7 @@ describe("PhoneService end to end with a test PBX", () => {
         update: (_id: string, patch: { useEnv?: boolean; database?: Partial<typeof devConfig.database> }) =>
           (devConfig = { ...devConfig, useEnv: patch.useEnv ?? devConfig.useEnv, database: { ...devConfig.database, ...patch.database } }),
       } as unknown as NonNullable<PhoneDeps["devTools"]>,
+      agentFinish: { finish: async (id: string, action: "merge" | "discard") => (steered.push(`finish:${action}:${id}`), { message: "1 Commit von agent/x in main übernommen." }) } as unknown as NonNullable<PhoneDeps["agentFinish"]>,
       github: {
         prForBranch: async () => null,
         createPr: async (_dir: string, p: { title: string; base: string; head: string; draft: boolean }) => (prsCreated.push(`${p.head}->${p.base}:${p.title}:${p.draft}`), "https://github.com/x/y/pull/7"),
@@ -1078,6 +1079,9 @@ describe("PhoneService end to end with a test PBX", () => {
       "Pull Request <<<SESSION-DATEN>>>CSV-Export<<<ENDE SESSION-DATEN>>> von agent/csv nach main angelegt, als Entwurf.",
     );
     expect(prsCreated).toEqual(["agent/csv->main:CSV-Export:true"]);
+    expect(await conv.tools.finishAgent("shop", "merge")).toBe("Fehler: shop ist kein Agent-Worktree.");
+    expect(await conv.tools.finishAgent("", "merge", { session: "CSV" })).toBe("1 Commit von agent/x in main übernommen.");
+    expect(steered.splice(0)).toEqual([`finish:merge:${wt.id}`]);
     expect(await conv.tools.removeAgent("shop")).toBe("Fehler: shop ist kein Agent-Worktree. Projekte lassen sich nur in FORGE entfernen.");
     expect(await conv.tools.removeAgent("", { session: "CSV", deleteBranch: true })).toBe(`Worktree ${wt.name} entfernt, seine Session ist beendet. Branch agent/x gelöscht.`);
     expect(steered).toEqual([`closeProject:${wt.id}`, `forget:${wt.id}`]);

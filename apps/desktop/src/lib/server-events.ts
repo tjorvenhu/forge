@@ -9,6 +9,7 @@ import { rpc } from "./rpc";
 import { playSound } from "./sounds";
 import { notifyAutoContinue, notifyKind, notifySession, shouldNotify } from "./notifications";
 import { isChatWindow } from "./chat-windows";
+import { agentTurnEnded } from "./agent-review";
 
 const GIT_REFRESH_DELAY_MS = 400;
 const EVICT_INTERVAL_MS = 60_000;
@@ -75,6 +76,7 @@ export function routeServerEvent(qc: QueryClient, git: GitRefresher, e: ServerEv
         void notifySession(qc, e.payload, kind);
       }
       if (t === "auto_continue") void notifyAutoContinue(qc, e.payload);
+      if (t === "turn.result" && !isChatWindow()) agentTurnEnded(qc, e.payload);
       if (t === "tool.result" || t === "turn.result") {
         const s = qc.getQueryData<ResultOf<"sessions.get">>(keys.session(e.payload.sessionId));
         if (s) git.schedule(s.projectId);

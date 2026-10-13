@@ -7,6 +7,7 @@ import { ClaudeSetupService } from "./claude/setup.js";
 import { McpService } from "./config/mcp.js";
 import { PluginService } from "./config/plugins.js";
 import { WorktreeService } from "./automation/worktrees.js";
+import { AgentFinisher } from "./automation/agent-finish.js";
 import { DevServerService } from "./devserver/dev-server.js";
 import { DevToolsService } from "./devtools/dev-tools.js";
 import { TestDbService } from "./devtools/test-db.js";
@@ -77,6 +78,9 @@ export function createApp(opts: { dataDir: string; write: Writer; log?: (m: stri
   const devServers = new DevServerService(projects, () => sessionEnv(db.getSettings().stripApiKey), emit, (projectId) => devEnv.devServerPrep(projectId));
   const knowledge = new KnowledgeStore(projects, (projectId) => emit({ event: "knowledge.updated", payload: { projectId } }));
   sessions.useProjectTools({ knowledge, dev: devEnv });
+  const notifyProject = (projectId: string) => emit({ event: "project.updated", payload: { projectId } });
+  const agentFinish = new AgentFinisher({ db, git, projects, sessions, worktrees, devServers, notifyProject });
+  sessions.useAgentFinisher(agentFinish);
   const presence = new Presence();
   const secrets = new SecretStore(path.join(opts.dataDir, "secrets"));
   phone = new PhoneService({
@@ -88,6 +92,7 @@ export function createApp(opts: { dataDir: string; write: Writer; log?: (m: stri
     knowledge,
     git,
     worktrees,
+    agentFinish,
     github,
     devTools,
     secrets,
@@ -157,6 +162,7 @@ export function createApp(opts: { dataDir: string; write: Writer; log?: (m: stri
     mcp,
     plugins,
     worktrees,
+    agentFinish,
     devServers,
     devTools,
     testDb,
@@ -169,7 +175,7 @@ export function createApp(opts: { dataDir: string; write: Writer; log?: (m: stri
     projects,
     sessions,
     dataDir: opts.dataDir,
-    notifyProject: (projectId) => emit({ event: "project.updated", payload: { projectId } }),
+    notifyProject,
     notifySettings: (settings) => emit({ event: "settings.updated", payload: settings }),
   });
   server = new RpcServer(handlers, opts.write, opts.log);

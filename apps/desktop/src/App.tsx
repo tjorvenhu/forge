@@ -19,6 +19,7 @@ import { useGlobalShortcuts } from "@/lib/shortcuts";
 import { useAlwaysOnTop } from "@/lib/window-options";
 import type { ChatWindowTarget } from "@/lib/chat-windows";
 import { ChatWindowShell } from "@/views/ChatWindowView";
+import { AgentReviewDialog } from "@/components/workspace/AgentReviewDialog";
 
 // Views that are not needed at start (they bring CodeMirror and more) load on first use, or
 // in idle time right after the start, so the first switch does not wait either.
@@ -130,6 +131,7 @@ function Shell() {
       <NewProjectDialog />
       <CommandPalette />
       <AppUpdateDialog />
+      <AgentReviewDialog />
       <Toaster />
       <TitleTooltips />
     </div>

@@ -1,12 +1,13 @@
 import { useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useShallow } from "zustand/react/shallow";
-import { Activity, Bot, FolderTree, GitCompare, AlertTriangle, BookOpen, ChevronDown, FileText, FlaskConical, PanelTop, GitBranch, MessageSquare, PanelBottom, PanelRight, Settings2, Star } from "lucide-react";
+import { Activity, Bot, FolderTree, GitCompare, GitMerge, AlertTriangle, BookOpen, ChevronDown, FileText, FlaskConical, PanelTop, GitBranch, MessageSquare, PanelBottom, PanelRight, Settings2, Star } from "lucide-react";
 import type { ProfileId } from "@forge/protocol";
 import { call, keys, useProject } from "@/lib/queries";
 import { errorMessage, RpcCallError } from "@/lib/rpc";
 import { cn, shortPath } from "@/lib/utils";
 import { useUi, type WorkspaceTab } from "@/stores/ui";
+import { useAgentReview } from "@/stores/agent-review";
 import { toast } from "@/stores/toast";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu } from "@/components/ui/dropdown";
@@ -256,6 +257,12 @@ function WorkspaceHeader({ projectId }: { projectId: string }) {
 
       <div className="flex-1" />
 
+      {project.parentId && (
+        <Button size="sm" variant="outline" className="shrink-0 gap-1.5" onClick={() => useAgentReview.getState().request(projectId)} title="Arbeit dieses Agenten zusammenführen oder verwerfen">
+          <GitMerge className="h-4 w-4" />
+          <span className="hidden xl:inline">Agent abschließen</span>
+        </Button>
+      )}
       <ToolbarToggle />
       <SearchField />
       <RemoteControlButton project={project} />

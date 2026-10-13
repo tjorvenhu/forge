@@ -199,6 +199,27 @@ describe("OpenSessions tree", () => {
     expect(useUi.getState().workspaceTab).toBe("chat");
   });
 
+  it("lists an agent's sessions under its main project, marked as agent", async () => {
+    const projectList = [
+      { id: "app", name: "App", parentId: null },
+      { id: "wt", name: "App · agent/csv-4y6f", parentId: "app", git: { branch: "agent/csv-4y6f" } },
+    ];
+    const base = callMock.getMockImplementation()!;
+    callMock.mockImplementation(async (method: string, params: unknown) => (method === "projects.list" ? projectList : base(method, params)));
+    live = [tab(session("a1", "app", "2026-10-11T10:01:00Z")), { ...session("g1", "wt", "2026-10-11T10:02:00Z", { status: "running" }), projectName: "App · agent/csv-4y6f" }];
+    useUi.setState({ activeProjectId: "wt", activeSession: { wt: "g1" } });
+    setup();
+    const agentTab = await screen.findByRole("tab", { name: /^Titel g1, Agent csv-4y6f in App/ });
+    await vi.waitFor(() => expect(document.querySelectorAll("[data-project-group]")).toHaveLength(1));
+    const group = document.querySelector<HTMLElement>('[data-project-group="app"]')!;
+    expect(within(group).getAllByRole("tab").map((t) => t.getAttribute("aria-label")!.split(",")[0])).toEqual(["Titel a1", "Titel g1"]);
+    expect(agentTab.getAttribute("aria-selected")).toBe("true");
+    expect(agentTab.getAttribute("title")).toContain("Paralleler Agent auf Branch agent/csv-4y6f");
+    // A click opens the agent's own worktree, not the main project.
+    fireEvent.click(agentTab);
+    expect(useUi.getState().activeProjectId).toBe("wt");
+  });
+
   it("lists the sessions under their project", async () => {
     live = [tab(session("w1", "web", "2026-10-11T10:02:00Z")), tab(session("a1", "app", "2026-10-11T10:01:00Z"))];
     setup();

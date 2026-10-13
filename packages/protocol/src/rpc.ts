@@ -1,6 +1,8 @@
 import { z } from "zod";
 import { RpcErrorSchema } from "./errors.js";
 import {
+  AgentFinishResult,
+  AgentReview,
   Attachment,
   BranchInfo,
   ClaudeSetupState,
@@ -166,6 +168,10 @@ export const methods = {
     params: projectRef.extend({ force: z.boolean().default(false), deleteBranch: z.boolean().default(false) }),
     result: z.object({ ok: z.boolean(), deletedBranch: z.string().nullable(), branchError: z.string().nullable() }),
   },
+  /** what a parallel agent did, for the decision to merge or discard its branch */
+  "agents.review": { params: projectRef, result: AgentReview },
+  /** merge: rebase the agent's branch onto its target and fast-forward it, then remove worktree and branch; discard: remove both unmerged */
+  "agents.finish": { params: projectRef.extend({ action: z.enum(["merge", "discard"]) }), result: AgentFinishResult },
   "sessions.summarize": { params: sessionRef, result: z.object({ summary: z.string(), model: z.string() }) },
 
   "settings.get": { params: empty, result: Settings },

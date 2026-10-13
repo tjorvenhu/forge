@@ -9,16 +9,28 @@ export interface TabGroup {
   tabs: TabSession[];
 }
 
+export type TabProject = { id: string; name: string; parentId?: string | null };
+
+/** The project a project's sessions are listed under: an agent's worktree belongs to its main project. */
+export function groupOf(projectId: string, projects: readonly TabProject[] | undefined): TabProject | null {
+  const p = projects?.find((x) => x.id === projectId);
+  const root = p?.parentId ? projects?.find((x) => x.id === p.parentId) : null;
+  return root ?? p ?? null;
+}
+
 /**
  * Session tabs grouped per project. The order only changes when tabs come or go, never with a
  * status change: groups by their oldest session, sessions oldest first. The open session without a
  * running process goes last in its group, so it can disappear again without moving other tabs.
+ * Sessions of an agent's worktree go into the group of its main project (`projects` tells which).
  */
-export function groupTabs(live: TabSession[], open: TabSession | null = null): TabGroup[] {
+export function groupTabs(live: TabSession[], open: TabSession | null = null, projects?: readonly TabProject[]): TabGroup[] {
   const groups = new Map<string, TabGroup>();
   const add = (s: TabSession) => {
-    let g = groups.get(s.projectId);
-    if (!g) groups.set(s.projectId, (g = { projectId: s.projectId, projectName: s.projectName, tabs: [] }));
+    const root = groupOf(s.projectId, projects);
+    const id = root?.id ?? s.projectId;
+    let g = groups.get(id);
+    if (!g) groups.set(id, (g = { projectId: id, projectName: root?.name ?? s.projectName, tabs: [] }));
     g.tabs.push(s);
   };
   [...live].sort((a, b) => a.createdAt.localeCompare(b.createdAt)).forEach(add);

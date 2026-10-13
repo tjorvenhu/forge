@@ -1,0 +1,48 @@
+import { beforeEach, describe, expect, it } from "vitest";
+import { QueryClient } from "@tanstack/react-query";
+import type { SessionEvent } from "@forge/protocol";
+import { useAgentReview } from "@/stores/agent-review";
+import { useUi } from "@/stores/ui";
+import { agentTurnEnded } from "./agent-review";
+import { keys } from "./queries";
+
+const turn = (sessionId: string, over: Record<string, unknown> = {}) =>
+  ({ sessionId, seq: 1, ts: "2026-10-13T10:00:00Z", body: { type: "turn.result", isError: false, subtype: "success", text: "Fertig.", ...over } }) as unknown as SessionEvent;
+
+function cache() {
+  const qc = new QueryClient();
+  qc.setQueryData(keys.projects, [
+    { id: "app", parentId: null },
+    { id: "wt", parentId: "app" },
+  ]);
+  qc.setQueryData(keys.liveSessions, [
+    { id: "main-s", projectId: "app", background: [] },
+    { id: "agent-s", projectId: "wt", background: [] },
+    { id: "busy-s", projectId: "wt", background: [{ id: "t1" }] },
+  ]);
+  return qc;
+}
+
+describe("agentTurnEnded", () => {
+  beforeEach(() => {
+    useAgentReview.setState({ queue: [] });
+    useUi.setState({ view: "workspace", activeProjectId: "app", activeSession: { app: "main-s" } });
+  });
+
+  it("asks about an agent whose turn ended, once", () => {
+    const qc = cache();
+    agentTurnEnded(qc, turn("agent-s"));
+    agentTurnEnded(qc, turn("agent-s"));
+    expect(useAgentReview.getState().queue).toEqual(["wt"]);
+  });
+
+  it("leaves plain sessions, failed turns, background work and the open chat alone", () => {
+    const qc = cache();
+    agentTurnEnded(qc, turn("main-s"));
+    agentTurnEnded(qc, turn("agent-s", { isError: true, subtype: "error_during_execution" }));
+    agentTurnEnded(qc, turn("busy-s"));
+    useUi.setState({ activeProjectId: "wt", activeSession: { wt: "agent-s" } });
+    agentTurnEnded(qc, turn("agent-s"));
+    expect(useAgentReview.getState().queue).toEqual([]);
+  });
+});

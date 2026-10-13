@@ -26,6 +26,7 @@ import { SessionLifecycle, type StartParams } from "./lifecycle.js";
 import { BUSY } from "./live-session.js";
 import { AgentRegistry, forgeSessionTools, type ProjectToolDeps } from "./forge-tools.js";
 import { WorktreeService } from "../automation/worktrees.js";
+import type { AgentFinisher } from "../automation/agent-finish.js";
 import { PermissionModes } from "./permission-mode.js";
 import { RateLimitTracker } from "./rate-limit.js";
 import { RemoteBridge } from "./remote-bridge.js";
@@ -56,6 +57,8 @@ export class SessionService {
   private readonly agents: AgentRegistry;
   /** knowledge and dev tools; set by app.ts once those services exist */
   private projectDeps: ProjectToolDeps | null = null;
+  /** merges or discards agents; set by app.ts, it needs this service itself */
+  private agentFinisher: AgentFinisher | null = null;
 
   constructor(
     private readonly db: Db,
@@ -144,6 +147,7 @@ export class SessionService {
           record,
           emit,
           project: this.projectDeps,
+          finisher: this.agentFinisher,
         }),
     });
   }
@@ -151,6 +155,11 @@ export class SessionService {
   /** Knowledge and dev tools for sessions started from now on. */
   useProjectTools(deps: ProjectToolDeps) {
     this.projectDeps = deps;
+  }
+
+  /** finish_agent for sessions started from now on. */
+  useAgentFinisher(finisher: AgentFinisher) {
+    this.agentFinisher = finisher;
   }
 
   // ---------- queries

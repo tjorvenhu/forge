@@ -23,6 +23,7 @@ import { TITLE_DEBOUNCE_MS, TITLE_MIN_INTERVAL_MS, TITLE_TIMEOUT_MS, isTitleWort
 import { git, initRepo, tempDir } from "./helpers.js";
 import { existsSync, writeFileSync } from "node:fs";
 import { WorktreeService } from "../src/automation/worktrees.js";
+import { AgentFinisher } from "../src/automation/agent-finish.js";
 import { KnowledgeStore } from "../src/knowledge/knowledge.js";
 import type { DevEnvironment } from "../src/devtools/environment.js";
 
@@ -293,6 +294,9 @@ describe("SessionService", () => {
     await git(own.path, "add", ".");
     await git(own.path, "commit", "-m", "eigen");
     svc.useProjectTools({ knowledge: new KnowledgeStore(projects, () => {}), dev: {} as DevEnvironment });
+    svc.useAgentFinisher(
+      new AgentFinisher({ db, git: new GitEngine(), projects, sessions: svc, worktrees: new WorktreeService(new GitEngine(), projects), devServers: { forget: async () => {} }, notifyProject: () => {} }),
+    );
     await svc.start({ projectId: own.id, prompt: "Plane" });
     const first = rt.started[0]!;
     // Knowledge of a worktree lives in the main project's folder.
@@ -307,6 +311,19 @@ describe("SessionService", () => {
     expect(existsSync(path.join(child.cwd, "eigen.txt"))).toBe(true);
     expect(await tool("agent_status").run({})).toMatch(/arbeitet, Branch agent\/csv-[a-z0-9]+, Ordner/);
     expect(tool("message_agent").shape.agent!.safeParse("").success).toBe(false);
+    // The agent's commit goes back into the worktree the session works in.
+    expect(first.tools!.map((t) => [t.name, t.autoAllow])).toContainEqual(["finish_agent", false]);
+    expect(first.context).toMatch(/finish_agent/);
+    // Agents themselves cannot finish other agents.
+    expect(child.tools!.map((t) => t.name)).not.toContain("finish_agent");
+    writeFileSync(path.join(child.cwd, "export.ts"), "export {};\n");
+    await git(child.cwd, "add", ".");
+    await git(child.cwd, "commit", "-m", "CSV-Export");
+    rt.replay(1);
+    const agentId = /^([0-9a-f]{8})/.exec(await tool("agent_status").run({}))![1]!;
+    expect(await tool("finish_agent").run({ agent: agentId, action: "merge" })).toMatch(/^1 Commit von agent\/csv-[a-z0-9]+ in feature\/eigen übernommen/);
+    expect((await git(own.path, "log", "-1", "--format=%s")).trim()).toBe("CSV-Export");
+    expect(existsSync(child.cwd)).toBe(false);
 
     rt.startSession = () => {
       throw new Error("kaputt");

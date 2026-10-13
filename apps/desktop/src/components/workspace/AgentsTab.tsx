@@ -1,12 +1,13 @@
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Bot, GitBranch, Plus, Trash2, Users } from "lucide-react";
+import { Bot, GitBranch, GitMerge, Plus, Trash2, Users } from "lucide-react";
 import type { Project, ProjectWithStatus, SessionStatus } from "@forge/protocol";
 import { call, keys, useProjects } from "@/lib/queries";
 import { errorMessage, RpcCallError } from "@/lib/rpc";
 import { closeProjectTerminals } from "@/lib/terminal-registry";
 import { relativeTime } from "@/lib/utils";
 import { useUi } from "@/stores/ui";
+import { useAgentReview } from "@/stores/agent-review";
 import { toast } from "@/stores/toast";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -72,7 +73,7 @@ export function AgentsTab({ project }: { project: ProjectWithStatus }) {
             Parallele Agenten
           </SectionTitle>
           <p className="mb-3 text-xs text-muted">
-            Jeder Agent arbeitet in einem eigenen Worktree{root ? ` von ${root.name}` : ""}: eigener Ordner, eigener Branch. Am Ende führst du die Branches per Pull Request zusammen. Nichts wird automatisch gemergt.
+            Jeder Agent arbeitet in einem eigenen Worktree{root ? ` von ${root.name}` : ""}: eigener Ordner, eigener Branch. Ist ein Agent fertig, fragt FORGE, ob seine Arbeit in den Branch zurückgeht, von dem er abgezweigt ist, oder verworfen wird. Danach sind Worktree und Branch gelöscht.
             {project.parentId && root && (
               <>
                 {" "}
@@ -120,6 +121,9 @@ export function AgentsTab({ project }: { project: ProjectWithStatus }) {
                   <div className="mt-1 flex gap-2">
                     <Button size="sm" variant="primary" onClick={() => openProject(w.id)} disabled={current} title={current ? "Dieser Worktree ist gerade geöffnet" : undefined}>
                       {current ? "Geöffnet" : "Öffnen"}
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={() => useAgentReview.getState().request(w.id)} disabled={!w.exists} title="Zusammenführen oder verwerfen">
+                      <GitMerge className="h-3.5 w-3.5" /> Abschließen
                     </Button>
                     <div className="flex-1" />
                     <Button

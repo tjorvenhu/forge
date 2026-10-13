@@ -241,21 +241,20 @@ function DiffPreview({ lines, expanded, onToggle, truncated }: { lines: DiffLine
   const hidden = lines.length - shown.length;
   return (
     <div>
-      <div className={cn("overflow-x-auto rounded-sm font-mono text-small leading-relaxed", expanded && "max-h-[32rem] overflow-y-auto")}>
-        <div className="w-max min-w-full">
-          {shown.map((l, i) =>
-            l.kind === "gap" ? (
-              <div key={i} className="my-1 border-t border-dashed border-border" />
-            ) : (
-              <div key={i} className={cn("flex whitespace-pre", DIFF_ROW[l.kind].row)}>
-                <span aria-hidden className={cn("w-5 shrink-0 select-none text-center", DIFF_ROW[l.kind].mark)}>
-                  {DIFF_ROW[l.kind].sign}
-                </span>
-                <span className={cn("pr-4", l.kind === "ctx" ? "text-muted" : "text-fg")}>{l.text || " "}</span>
-              </div>
-            ),
-          )}
-        </div>
+      {/* Long lines wrap: a horizontal scrollbar in a chat card hides the end of the line. */}
+      <div className={cn("rounded-sm font-mono text-small leading-relaxed", expanded && "max-h-[32rem] overflow-y-auto")}>
+        {shown.map((l, i) =>
+          l.kind === "gap" ? (
+            <div key={i} className="my-1 border-t border-dashed border-border" />
+          ) : (
+            <div key={i} className={cn("flex", DIFF_ROW[l.kind].row)}>
+              <span aria-hidden className={cn("w-5 shrink-0 select-none text-center", DIFF_ROW[l.kind].mark)}>
+                {DIFF_ROW[l.kind].sign}
+              </span>
+              <span className={cn("min-w-0 flex-1 whitespace-pre-wrap pr-4 wrap-anywhere", l.kind === "ctx" ? "text-muted" : "text-fg")}>{l.text || " "}</span>
+            </div>
+          ),
+        )}
       </div>
       {(expanded ? lines.length > DIFF_PREVIEW_LINES : hidden > 0) && <MoreToggle expanded={expanded} hidden={hidden} onToggle={onToggle} />}
       {truncated && (expanded || hidden === 0) && <div className="mt-0.5 text-caption text-subtle">Inhalt gekürzt gespeichert.</div>}

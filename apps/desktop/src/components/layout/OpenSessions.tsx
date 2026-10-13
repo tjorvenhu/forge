@@ -1,10 +1,11 @@
 import { useEffect, useRef, type KeyboardEvent } from "react";
 import { createPortal } from "react-dom";
-import { AppWindow, Hourglass, MessageSquarePlus, Plus, SquareArrowOutUpRight, X } from "lucide-react";
+import { AppWindow, Bot, Hourglass, MessageSquarePlus, Plus, SquareArrowOutUpRight, X } from "lucide-react";
 import { openChatWindow, useChatWindows } from "@/lib/chat-windows";
 import { call, useLiveSessions, useProjects, useSession } from "@/lib/queries";
 import { errorMessage } from "@/lib/rpc";
-import { flatTabs, groupTabs, openSessionId, openSessionTab, type TabGroup, type TabSession } from "@/lib/session-tabs";
+import { flatTabs, groupOf, groupTabs, openSessionId, openSessionTab, type TabGroup, type TabSession } from "@/lib/session-tabs";
+import { agentLabel } from "@/lib/project-tree";
 import { useTabTearOff } from "@/lib/tab-drag";
 import { isBusy, isWorking } from "@/lib/working";
 import { cn } from "@/lib/utils";
@@ -35,8 +36,9 @@ export function openGroups(groups: TabGroup[], active: { id: string; name: strin
 
 /**
  * Open projects in the sidebar as a tree, each with its sessions below: every session with a running
- * Claude process, plus the session open in the chat. A session dragged out of the tree becomes its own
- * window, like a browser tab. Ctrl+Tab walks the sessions in this order.
+ * Claude process, plus the session open in the chat. Sessions of parallel agents sit under their main
+ * project, marked as agent. A session dragged out of the tree becomes its own window, like a browser
+ * tab. Ctrl+Tab walks the sessions in this order.
  */
 export function OpenSessions() {
   const live = useLiveSessions();
@@ -50,9 +52,10 @@ export function OpenSessions() {
   const inChatWindows = useChatWindows((s) => s.sessions);
   const listRef = useRef<HTMLDivElement>(null);
 
-  const activeProject = projects.data?.find((p) => p.id === activeProjectId) ?? null;
-  // A worktree (agent) shows under its own name; its sessions belong to it, not to the main project.
-  const groups = openGroups(groupTabs(live.data ?? [], openSessionTab(openSession.data, projects.data)), activeProject && { id: activeProject.id, name: activeProject.name });
+  const activeGroup = activeProjectId ? groupOf(activeProjectId, projects.data) : null;
+  const newSessionGroup = newSessionProject ? (groupOf(newSessionProject, projects.data)?.id ?? newSessionProject) : null;
+  const groups = openGroups(groupTabs(live.data ?? [], openSessionTab(openSession.data, projects.data), projects.data), activeGroup && { id: activeGroup.id, name: activeGroup.name });
+  const agentOf = (projectId: string, groupId: string) => (projectId === groupId ? null : (projects.data?.find((p) => p.id === projectId) ?? null));
   const tabs = flatTabs(groups);
   const activeIndex = tabs.findIndex((s) => s.id === openId);
   const activeId = activeIndex >= 0 ? openId : null;
@@ -91,8 +94,9 @@ export function OpenSessions() {
   return (
     <div ref={listRef} role="tablist" aria-orientation="vertical" aria-label="Sessions" className="flex flex-col gap-2">
       {groups.map((g) => {
-        const projectActive = g.projectId === activeProjectId;
-        const showNew = g.projectId === newSessionProject;
+        const projectActive = g.projectId === activeGroup?.id;
+        const showNew = g.projectId === newSessionGroup;
+        const newAgent = showNew && newSessionProject ? agentOf(newSessionProject, g.projectId) : null;
         return (
           <div key={g.projectId} data-project-group={g.projectId} className="flex flex-col">
             <div className={cn("group/project flex items-center rounded-lg", projectActive && !activeId && !showNew ? "bg-surface-3" : "hover:bg-surface-2")}>
@@ -122,6 +126,8 @@ export function OpenSessions() {
                   const closable = s.live && !isBusy(s.status) && s.background.length === 0;
                   const inWindow = inChatWindows.includes(s.id);
                   const title = s.title ?? "Ohne Titel";
+                  const agent = agentOf(s.projectId, g.projectId);
+                  const where = agent ? `Agent ${agentLabel(agent)} in ${g.projectName}` : s.projectName;
                   return (
                     <div
                       key={s.id}
@@ -135,17 +141,18 @@ export function OpenSessions() {
                       <button
                         role="tab"
                         aria-selected={active}
-                        aria-label={`${title}, ${s.projectName}, ${statusText(s)}`}
+                        aria-label={`${title}, ${where}, ${statusText(s)}`}
                         tabIndex={i === focusIndex ? 0 : -1}
                         onClick={() => {
                           if (!consumeClick()) openProject(s.projectId, s.id);
                         }}
                         onKeyDown={(e) => onTabKey(e, i)}
                         {...dragHandlers(s.id, title)}
-                        title={`${title}\n${statusText(s)}${s.live ? "" : ". Kein laufender Claude-Prozess"}${inWindow ? "\nIn eigenem Fenster geöffnet" : ""}\nHerausziehen öffnet ein eigenes Fenster.`}
+                        title={`${title}${agent ? `\nParalleler Agent auf Branch ${agent.git?.branch ?? agentLabel(agent)}` : ""}\n${statusText(s)}${s.live ? "" : ". Kein laufender Claude-Prozess"}${inWindow ? "\nIn eigenem Fenster geöffnet" : ""}\nHerausziehen öffnet ein eigenes Fenster.`}
                         className="flex h-full min-w-0 flex-1 cursor-default items-center gap-2 rounded-lg pl-2 pr-1 text-left focus-visible:outline-offset-[-2px]"
                       >
                         <span aria-hidden className={cn("h-1.5 w-1.5 shrink-0 rounded-full", dotClass(s))} />
+                        {agent && <Bot aria-hidden className="h-3.5 w-3.5 shrink-0 text-accent" />}
                         <span className={cn("truncate", !s.live && "italic")}>{title}</span>
                         {inWindow && <AppWindow aria-hidden className="h-3 w-3 shrink-0 text-subtle" />}
                         {s.background.length > 0 && (
@@ -182,7 +189,8 @@ export function OpenSessions() {
                   <div data-new-session className="flex h-8 min-w-0 animate-fade-in items-center rounded-lg bg-surface-3 text-body text-fg">
                     <span aria-current="page" className="flex h-full min-w-0 flex-1 items-center gap-2 pl-2 pr-1" title="Neue Session. Sie bleibt hier, sobald du die erste Nachricht schickst.">
                       <MessageSquarePlus aria-hidden className="h-3 w-3 shrink-0 text-subtle" />
-                      <span className="truncate italic">Neue Session</span>
+                      {newAgent && <Bot aria-hidden className="h-3.5 w-3.5 shrink-0 text-accent" />}
+                      <span className="truncate italic">{newAgent ? `Neue Session im Agenten ${agentLabel(newAgent)}` : "Neue Session"}</span>
                     </span>
                   </div>
                 )}

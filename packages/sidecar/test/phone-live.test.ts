@@ -51,6 +51,7 @@ function toolset(calls: string[] = []): PhoneToolset {
     devSettings: rec("devSettings"),
     pullRequest: rec("pullRequest"),
     removeAgent: rec("removeAgent"),
+    finishAgent: rec("finishAgent"),
     search: rec("search"),
     callSettings: rec("callSettings"),
   };

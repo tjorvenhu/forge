@@ -33,10 +33,9 @@ export function handleGlobalShortcut(e: KeyboardEvent) {
   if (dialogOpen()) return;
   if (k === "tab") {
     const openId = openSessionId(ui);
-    const open = openId
-      ? openSessionTab(queryClient.getQueryData<ResultOf<"sessions.get">>(keys.session(openId)), queryClient.getQueryData<ResultOf<"projects.list">>(keys.projects))
-      : null;
-    const tabs = flatTabs(groupTabs(queryClient.getQueryData<ResultOf<"sessions.listLive">>(keys.liveSessions) ?? [], open));
+    const projects = queryClient.getQueryData<ResultOf<"projects.list">>(keys.projects);
+    const open = openId ? openSessionTab(queryClient.getQueryData<ResultOf<"sessions.get">>(keys.session(openId)), projects) : null;
+    const tabs = flatTabs(groupTabs(queryClient.getQueryData<ResultOf<"sessions.listLive">>(keys.liveSessions) ?? [], open, projects));
     const current = tabs.findIndex((s) => s.id === openId);
     if (!tabs.length || (tabs.length === 1 && current === 0)) return;
     e.preventDefault();

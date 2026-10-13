@@ -61,6 +61,7 @@ export class WorktreeService {
     const dir = freeDir(path.join(root, slugify(branch.replace(/\//g, "-"), 60)));
     const r = await this.git.exec(parent.path, exists ? ["worktree", "add", dir, branch] : ["worktree", "add", "-b", branch, dir, ...start], undefined, 120_000);
     if (r.code !== 0) throw new ForgeError("GIT_FAILED", (r.stderr || r.stdout).trim() || "Worktree konnte nicht angelegt werden");
+    if (!exists) await this.rememberOrigin(parent.path, branch, opts.fromDir ?? parent.path);
     let project: Project;
     try {
       project = await this.projects.import(dir, parent.id);
@@ -79,6 +80,25 @@ export class WorktreeService {
       defaultEffort: parent.defaultEffort,
     });
     return this.projects.get(project.id);
+  }
+
+  /**
+   * Stored in the repository config under the branch, so it survives restarts and goes away with
+   * `git branch -D`. Without it (older agents) the work goes back to the parent project.
+   */
+  private async rememberOrigin(repo: string, branch: string, fromDir: string) {
+    const base = await this.git.currentBranch(fromDir).catch(() => null);
+    await this.git.exec(repo, ["config", `branch.${branch}.forgeOriginDir`, fromDir]);
+    if (base) await this.git.exec(repo, ["config", `branch.${branch}.forgeOriginBranch`, base]);
+  }
+
+  /** Working tree and branch a worktree's branch started from; null parts are unknown. */
+  async origin(worktree: Project, branch: string): Promise<{ dir: string | null; branch: string | null }> {
+    const read = async (key: string) => {
+      const r = await this.git.exec(worktree.path, ["config", "--get", `branch.${branch}.${key}`]).catch(() => null);
+      return r?.code === 0 && r.stdout.trim() ? r.stdout.trim() : null;
+    };
+    return { dir: await read("forgeOriginDir"), branch: await read("forgeOriginBranch") };
   }
 
   /** Checked-out branch of a working tree; null when detached or unreadable. */

@@ -10,6 +10,7 @@ import type { ClaudeSetupService } from "../claude/setup.js";
 import type { McpService } from "../config/mcp.js";
 import type { PluginService } from "../config/plugins.js";
 import type { WorktreeService } from "../automation/worktrees.js";
+import type { AgentFinisher } from "../automation/agent-finish.js";
 import type { DevServerService } from "../devserver/dev-server.js";
 import type { DevToolsService } from "../devtools/dev-tools.js";
 import type { TestDbService } from "../devtools/test-db.js";
@@ -34,6 +35,7 @@ export interface Services {
   mcp: McpService;
   plugins: PluginService;
   worktrees: WorktreeService;
+  agentFinish: AgentFinisher;
   devServers: DevServerService;
   devTools: DevToolsService;
   testDb: TestDbService;
@@ -146,6 +148,8 @@ export function createHandlers(s: Services): Handlers {
       const r = await removeWorktree(projectId, force, s, { deleteBranch });
       return { ok: true, ...r };
     },
+    "agents.review": ({ projectId }) => s.agentFinish.review(projectId),
+    "agents.finish": ({ projectId, action }) => s.agentFinish.finish(projectId, action),
     "sessions.summarize": ({ sessionId }) => s.sessions.summarize(sessionId),
 
     "settings.get": () => s.db.getSettings(),

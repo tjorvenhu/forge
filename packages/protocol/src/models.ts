@@ -615,6 +615,50 @@ export interface GitIntegrationConflict {
   stash?: boolean;
 }
 
+/** What a parallel agent did on its branch, for the decision to merge or discard it. */
+export const AgentReview = z.object({
+  /** the agent's worktree project */
+  projectId: z.string(),
+  rootId: z.string(),
+  rootName: z.string(),
+  branch: z.string().nullable(),
+  /** branch the agent's work goes into: the one it started from, checked out in `targetPath` */
+  targetBranch: z.string().nullable(),
+  targetPath: z.string(),
+  /** the latest session in the worktree */
+  sessionId: z.string().nullable(),
+  sessionTitle: z.string().nullable(),
+  sessionStatus: z.string().nullable(),
+  /** the agent's last answer, its closing summary */
+  summary: z.string(),
+  busy: z.boolean(),
+  /** commits on the agent's branch that the target branch does not have, newest first (at most 20) */
+  commits: z.array(z.object({ hash: z.string(), subject: z.string() })),
+  ahead: z.number().int(),
+  /** commits on the target branch since the agent started; they are rebased under the agent's work */
+  behind: z.number().int(),
+  filesChanged: z.number().int(),
+  /** uncommitted changes in the worktree; merging commits them first */
+  uncommitted: z.number().int(),
+  /** why a merge cannot run right now; discarding works anyway */
+  mergeBlocker: z.string().nullable(),
+});
+export type AgentReview = z.infer<typeof AgentReview>;
+
+export const AgentFinishResult = z.object({
+  action: z.enum(["merge", "discard"]),
+  /** conflict: the rebase hit conflicts, the agent resolves them (sessionId) and the worktree stays */
+  outcome: z.enum(["merged", "discarded", "conflict"]),
+  branch: z.string().nullable(),
+  targetBranch: z.string().nullable(),
+  commits: z.number().int(),
+  files: z.array(z.string()),
+  sessionId: z.string().nullable(),
+  branchError: z.string().nullable(),
+  message: z.string(),
+});
+export type AgentFinishResult = z.infer<typeof AgentFinishResult>;
+
 /** A plugin from a Claude Code marketplace; plugins bring skills (and sometimes agents, hooks, MCP servers). */
 export const MarketplacePlugin = z.object({
   /** name@marketplace */
