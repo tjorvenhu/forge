@@ -59,7 +59,7 @@ export function DevServerControls({ project }: { project: Project }) {
   const { start, stop } = useDevActions(project.id);
   if (query.isLoading)
     return (
-      <SkeletonRegion label="Dev-Server lädt" className="flex shrink-0 items-center gap-2">
+      <SkeletonRegion label="Lädt Dev-Server" className="flex shrink-0 items-center gap-2">
         <Skeleton className="h-5 w-14 rounded" />
         <Skeleton className="h-7 w-22" />
       </SkeletonRegion>
@@ -190,7 +190,7 @@ export function DevServerPanel({ project, controls = true }: { project: Project;
 /** Log lines at the pre's padding and line height. */
 function OutputSkeleton() {
   return (
-    <SkeletonRegion label="Ausgabe lädt" className="flex min-h-0 flex-1 flex-col overflow-hidden px-3 py-2">
+    <SkeletonRegion label="Lädt Ausgabe" className="flex min-h-0 flex-1 flex-col overflow-hidden px-3 py-2">
       {[55, 70, 40, 62, 30].map((w) => (
         <div key={w} className="flex h-[1.45em] items-center text-caption-lg">
           <Skeleton className="h-2.5 rounded-sm" style={{ width: `${w}%` }} />

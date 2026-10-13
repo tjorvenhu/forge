@@ -127,7 +127,7 @@ function UsageBody() {
   useEffect(() => void qc.invalidateQueries({ queryKey: keys.usage }), [qc]);
   if (!usage.data)
     return (
-      <SkeletonRegion label="Nutzung lädt" className="space-y-4">
+      <SkeletonRegion label="Lädt Nutzung" className="space-y-4">
         <Skeleton className="h-3 w-24" />
         <MeterSkeleton />
         <MeterSkeleton />
@@ -164,7 +164,7 @@ function ContextBody({ session, onClose }: InfoProps) {
   if (!session) return <div className="text-body text-muted">Noch keine Session. Die Belegung zeigt sich nach der ersten Antwort.</div>;
   if (ctx.isLoading)
     return (
-      <SkeletonRegion label="Kontext lädt" className="space-y-4">
+      <SkeletonRegion label="Lädt Kontext" className="space-y-4">
         <MeterSkeleton />
         <div className="divide-y divide-border">
           {[45, 35, 55, 30, 40].map((w) => (
@@ -226,7 +226,7 @@ function StatusBody({ project, session }: InfoProps) {
   const modelLabel = useModelLabel();
   if (!diag.data)
     return (
-      <SkeletonRegion label="Status lädt" className="grid grid-cols-[max-content_1fr] gap-x-6 gap-y-2">
+      <SkeletonRegion label="Lädt Status" className="grid grid-cols-[max-content_1fr] gap-x-6 gap-y-2">
         {Array.from({ length: session ? 10 : 6 }, (_, i) => (
           <div key={i} className="contents">
             <div className="flex h-5 items-center">
@@ -260,7 +260,7 @@ function StatusBody({ project, session }: InfoProps) {
   rows.push([
     "MCP-Server",
     runtime.isLoading ? (
-      <SkeletonRegion label="MCP-Server lädt" className="flex h-5 items-center">
+      <SkeletonRegion label="Lädt MCP-Server" className="flex h-5 items-center">
         <Skeleton className="h-3 w-32" />
       </SkeletonRegion>
     ) : mcp.length ? (
@@ -284,7 +284,7 @@ function McpBody() {
   const runtime = useRuntimeInfo();
   if (runtime.isLoading)
     return (
-      <SkeletonRegion label="MCP-Server lädt" className="divide-y divide-border">
+      <SkeletonRegion label="Lädt MCP-Server" className="divide-y divide-border">
         {[40, 28, 52].map((w) => (
           <div key={w} className="flex h-9 items-center justify-between gap-3">
             <Skeleton className="h-3" style={{ width: `${w}%` }} />

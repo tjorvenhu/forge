@@ -33,7 +33,7 @@ export function GitHubAccountCard() {
 
   if (account.isLoading)
     return (
-      <SkeletonRegion label="GitHub-Konto lädt" className="flex items-center gap-3">
+      <SkeletonRegion label="Lädt GitHub-Konto" className="flex items-center gap-3">
         <Skeleton className="h-10 w-10 shrink-0 rounded-full" />
         <div className="flex min-w-0 flex-1 flex-col gap-1.5">
           <Skeleton className="h-3.5 w-36" />

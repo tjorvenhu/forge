@@ -95,7 +95,7 @@ function RemoteDialog({
     >
       <div className="flex flex-col gap-4">
         {loading ? (
-          <SkeletonRegion label="Status lädt" className="flex items-center gap-3 rounded-lg border border-border px-3 py-2.5">
+          <SkeletonRegion label="Lädt Status" className="flex items-center gap-3 rounded-lg border border-border px-3 py-2.5">
             <div className="min-w-0 flex-1">
               <div className="flex h-5 items-center">
                 <Skeleton className="h-3.5 w-24" />
@@ -205,7 +205,7 @@ function SessionLink({ session }: { session: RemoteSession }) {
           />
         )}
         {shownQr !== qr && (
-          <SkeletonRegion label="QR-Code lädt" className="absolute inset-0">
+          <SkeletonRegion label="Lädt QR-Code" className="absolute inset-0">
             <Skeleton className="h-full w-full rounded-lg" />
           </SkeletonRegion>
         )}

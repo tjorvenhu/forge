@@ -43,7 +43,7 @@ export function ClaudeSetupCard() {
 
   if (!d)
     return (
-      <SkeletonRegion label="Claude-Status lädt" className="flex h-5 items-center gap-2">
+      <SkeletonRegion label="Lädt Claude-Status" className="flex h-5 items-center gap-2">
         <Skeleton className="h-4 w-4 rounded-full" />
         <Skeleton className="h-3 w-64" />
         <Skeleton className="h-4 w-12 rounded-full" />

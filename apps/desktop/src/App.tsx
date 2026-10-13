@@ -136,7 +136,7 @@ function Shell() {
 /** Stand-in for a lazy view in the frame of `Page`: header with title and subtitle, then content. */
 function PageSkeleton() {
   return (
-    <SkeletonRegion label="Ansicht lädt" className="flex min-h-0 flex-1 flex-col">
+    <SkeletonRegion label="Lädt Ansicht" className="flex min-h-0 flex-1 flex-col">
       <div className="flex min-h-16 items-center border-b border-border px-6 py-3">
         <div className="flex flex-col gap-2">
           <Skeleton className="h-5 w-44" />

@@ -76,7 +76,7 @@ function Heading({ r }: { r: AgentReview }) {
 function HeadingSkeleton() {
   const bar = "block animate-shimmer rounded-md bg-surface-2";
   return (
-    <span className="flex h-5 items-center gap-1.5" role="status" aria-label="Agent lädt">
+    <span className="flex h-5 items-center gap-1.5" role="status" aria-label="Lädt Agent">
       <span className={cn(bar, "h-3.5 w-3.5 rounded-sm")} aria-hidden />
       <span className={cn(bar, "h-3 w-40")} aria-hidden />
       <span className={cn(bar, "h-3 w-48")} aria-hidden />
@@ -86,7 +86,7 @@ function HeadingSkeleton() {
 
 function DetailsSkeleton() {
   return (
-    <SkeletonRegion label="Details lädt" className="flex flex-col gap-4">
+    <SkeletonRegion label="Lädt Details" className="flex flex-col gap-4">
       <section>
         <Skeleton className="mb-1.5 h-2.5 w-28" />
         <div className="rounded-lg border border-border bg-surface-2 px-3 py-2">

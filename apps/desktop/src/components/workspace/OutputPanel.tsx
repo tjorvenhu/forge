@@ -35,7 +35,7 @@ export function OutputPanel({ projectId, embedded = false }: { projectId: string
         </button>
       </div>
       {loading ? (
-        <SkeletonRegion label="Ausgabe lädt" className="min-h-0 flex-1 overflow-hidden">
+        <SkeletonRegion label="Lädt Ausgabe" className="min-h-0 flex-1 overflow-hidden">
           {[60, 35, 75, 45, 55, 30, 68, 40].map((w, i) => (
             <div key={i} className="flex h-4.5 items-center gap-3 px-3">
               <Skeleton className="h-2.5 w-12 shrink-0 rounded-sm" />

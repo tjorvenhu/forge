@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import type { ResultOf } from "@forge/protocol";
 import { call } from "@/lib/queries";
 import { cn } from "@/lib/utils";
+import { Skeleton, SkeletonRegion } from "@/components/ui/skeleton";
 import { INFO_COMMANDS } from "./InfoCommandDialog";
 
 type CliCommand = ResultOf<"system.commands">[number];
@@ -38,8 +39,13 @@ export function isClearCommand(text: string): boolean {
   return !!m && CLEAR_COMMANDS.includes(m[1]!.toLowerCase());
 }
 
+const MAX_MATCHES = 8;
+
+/** `loading`: the commands of Claude Code and the user are still on their way and land below the built-in ones. */
+export type SlashMatches = Command[] & { loading?: boolean };
+
 /** Slash commands matching the composer text while it is a single "/word". */
-export function useSlashCommands(projectId: string, text: string): Command[] {
+export function useSlashCommands(projectId: string, text: string): SlashMatches {
   const slashMode = /^\/[^\s]*$/.test(text);
   const commands = useQuery({
     queryKey: ["commands", projectId],
@@ -47,15 +53,18 @@ export function useSlashCommands(projectId: string, text: string): Command[] {
     enabled: slashMode,
     staleTime: 5 * 60_000,
   });
+  const loading = slashMode && commands.isLoading;
   return useMemo(() => {
     if (!slashMode) return [];
     const q = text.slice(1).toLowerCase();
-    return [...BUILT_IN, ...cliCommands(commands.data ?? [])].filter((c) => c.name.toLowerCase().includes(q)).slice(0, 8);
-  }, [slashMode, text, commands.data]);
+    const list = [...BUILT_IN, ...cliCommands(commands.data ?? [])].filter((c) => c.name.toLowerCase().includes(q)).slice(0, MAX_MATCHES);
+    return Object.assign(list, { loading });
+  }, [slashMode, text, commands.data, loading]);
 }
 
-export function SlashCommandMenu({ matches, index, onPick }: { matches: Command[]; index: number; onPick: (command: Command) => void }) {
-  if (!matches.length) return null;
+export function SlashCommandMenu({ matches, index, onPick }: { matches: SlashMatches; index: number; onPick: (command: Command) => void }) {
+  const pending = matches.loading ? Math.min(2, MAX_MATCHES - matches.length) : 0;
+  if (!matches.length && !pending) return null;
   return (
     <div className="absolute bottom-full left-6 right-6 z-20 mb-1 animate-rise-in overflow-hidden rounded-lg border border-border bg-surface-2 shadow-xl" role="listbox" aria-label="Slash-Commands">
       {matches.map((c, i) => (
@@ -75,6 +84,16 @@ export function SlashCommandMenu({ matches, index, onPick }: { matches: Command[
           <span className="min-w-0 truncate text-xs text-muted">{c.description}</span>
         </button>
       ))}
+      {pending > 0 && (
+        <SkeletonRegion label="Lädt eigene Befehle">
+          {Array.from({ length: pending }, (_, i) => (
+            <div key={i} className="box-content flex h-[1.5em] items-center gap-3 px-3 py-1.5 text-small-lg">
+              <Skeleton className="h-3 w-20 shrink-0 rounded-sm bg-surface-3" />
+              <Skeleton className="h-2.5 rounded-sm bg-surface-3" style={{ width: `${40 - i * 12}%` }} />
+            </div>
+          ))}
+        </SkeletonRegion>
+      )}
     </div>
   );
 }

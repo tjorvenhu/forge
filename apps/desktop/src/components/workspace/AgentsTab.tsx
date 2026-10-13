@@ -15,7 +15,7 @@ import { Dialog } from "@/components/ui/dialog";
 import { Field, Input, Textarea } from "@/components/ui/input";
 import { Badge, Checkbox, EmptyState, ErrorBanner, SectionTitle } from "@/components/ui/misc";
 import { SessionStatusBadge } from "./SessionStatusBadge";
-import { ListSkeleton } from "@/components/ui/skeleton";
+import { Skeleton, SkeletonRegion } from "@/components/ui/skeleton";
 
 /**
  * Parallel agents of the open project: each runs in its own git worktree (separate folder and
@@ -34,7 +34,17 @@ export function AgentsTab({ project }: { project: ProjectWithStatus }) {
   const rootId = project.parentId ?? project.id;
   const root = project.parentId ? all.find((p) => p.id === rootId) : project;
   const worktrees = all.filter((p) => p.parentId === rootId);
-  const blocker = !root ? "Das Hauptprojekt dieses Worktrees ist nicht mehr in FORGE." : !root.exists ? "Der Projektordner fehlt." : !root.git ? "Parallele Agenten brauchen ein Git-Repository." : null;
+  // A worktree finds its main project only in the project list; until that is there, nothing is missing yet.
+  const findingRoot = !!project.parentId && projects.isLoading;
+  const blocker = findingRoot
+    ? null
+    : !root
+      ? "Das Hauptprojekt dieses Worktrees ist nicht mehr in FORGE."
+      : !root.exists
+        ? "Der Projektordner fehlt."
+        : !root.git
+          ? "Parallele Agenten brauchen ein Git-Repository."
+          : null;
 
   const remove = async () => {
     if (!removing) return;
@@ -65,7 +75,7 @@ export function AgentsTab({ project }: { project: ProjectWithStatus }) {
         <section>
           <SectionTitle
             action={
-              <Button size="sm" variant="primary" onClick={() => setCreating(true)} disabled={!!blocker} title={blocker ?? undefined}>
+              <Button size="sm" variant="primary" onClick={() => setCreating(true)} disabled={!!blocker || findingRoot} title={blocker ?? undefined}>
                 <Plus className="h-3.5 w-3.5" /> Paralleler Agent
               </Button>
             }
@@ -84,7 +94,7 @@ export function AgentsTab({ project }: { project: ProjectWithStatus }) {
             )}
           </p>
           {blocker && <p className="mb-3 text-xs text-warning">{blocker}</p>}
-          {projects.isLoading && <ListSkeleton rows={3} />}
+          {projects.isLoading && <WorktreeGridSkeleton />}
           {projects.isError && <ErrorBanner title="Worktrees nicht geladen">{errorMessage(projects.error)}</ErrorBanner>}
           {projects.isSuccess && worktrees.length === 0 && (
             <EmptyState icon={<Users className="h-9 w-9" />} title="Noch keine parallelen Agenten">
@@ -188,7 +198,7 @@ function Subagents({ projectId }: { projectId: string }) {
         </button>
         .
       </p>
-      {docs.isLoading && <ListSkeleton rows={3} />}
+      {docs.isLoading && <SubagentGridSkeleton />}
       {docs.isError && <ErrorBanner title="Subagenten nicht geladen">{errorMessage(docs.error)}</ErrorBanner>}
       {docs.data?.length === 0 && <p className="text-xs text-subtle">Noch keine eigenen Subagenten.</p>}
       <div className="grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-2">
@@ -204,6 +214,61 @@ function Subagents({ projectId }: { projectId: string }) {
         ))}
       </div>
     </section>
+  );
+}
+
+/** Worktree cards as AgentsTab renders them: branch row, session row, buttons. */
+function WorktreeGridSkeleton() {
+  return (
+    <SkeletonRegion label="Lädt Worktrees" className="grid grid-cols-[repeat(auto-fill,minmax(320px,1fr))] gap-3">
+      {[45, 60].map((w) => (
+        <div key={w} className="flex flex-col gap-2 rounded-xl border border-border bg-surface p-4">
+          <div className="flex h-5 items-center gap-2">
+            <Skeleton className="h-4 w-4 shrink-0 rounded-sm" />
+            <Skeleton className="h-3" style={{ width: `${w}%` }} />
+            <div className="flex-1" />
+            <Skeleton className="h-5 w-16 rounded" />
+          </div>
+          <div className="flex h-5 items-center gap-2">
+            <Skeleton className="h-5 w-16 rounded" />
+            <Skeleton className="h-2.5 flex-1" />
+            <Skeleton className="h-2.5 w-12" />
+          </div>
+          <div className="mt-1 flex gap-2">
+            <Skeleton className="h-7 w-16" />
+            <Skeleton className="h-7 w-28" />
+            <div className="flex-1" />
+            <Skeleton className="h-7 w-24" />
+          </div>
+        </div>
+      ))}
+    </SkeletonRegion>
+  );
+}
+
+/** Subagent cards: name row with scope badge, then a two-line description. */
+function SubagentGridSkeleton() {
+  return (
+    <SkeletonRegion label="Lädt Subagenten" className="grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-2">
+      {[50, 35, 60].map((w) => (
+        <div key={w} className="rounded-lg border border-border bg-surface p-3">
+          <div className="flex h-5 items-center gap-2">
+            <Skeleton className="h-4 w-4 shrink-0 rounded-sm" />
+            <Skeleton className="h-3" style={{ width: `${w}%` }} />
+            <div className="flex-1" />
+            <Skeleton className="h-5 w-12 rounded" />
+          </div>
+          <div className="mt-1 flex flex-col">
+            <div className="flex h-4 items-center">
+              <Skeleton className="h-2.5 w-[90%]" />
+            </div>
+            <div className="flex h-4 items-center">
+              <Skeleton className="h-2.5 w-3/5" />
+            </div>
+          </div>
+        </div>
+      ))}
+    </SkeletonRegion>
   );
 }
 

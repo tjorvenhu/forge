@@ -390,7 +390,7 @@ function DiagnosticsPanel() {
 /** Same rows and boxes as the loaded diagnostics: eight info rows, then the capability list. */
 function DiagnosticsSkeleton() {
   return (
-    <SkeletonRegion label="Diagnose lädt" className="divide-y divide-border">
+    <SkeletonRegion label="Lädt Diagnose" className="divide-y divide-border">
       <div className="flex flex-col gap-1.5 px-4 py-3.5">
         {[45, 30, 70, 40, 35, 50, 30, 45].map((w, i) => (
           <div key={i} className="flex h-5 items-center gap-3">

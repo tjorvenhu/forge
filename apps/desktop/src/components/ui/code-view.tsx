@@ -6,7 +6,7 @@ import { CodeSkeleton, Skeleton } from "./skeleton";
 const Impl = lazy(() => import("./code-view-impl").then((m) => ({ default: m.CodeView })));
 
 /** The file preview while the file or CodeMirror loads, with the same status bar as CodeView. */
-export function CodeViewSkeleton({ label = "Vorschau lädt" }: { label?: string }) {
+export function CodeViewSkeleton({ label = "Lädt Vorschau" }: { label?: string }) {
   return (
     <div className="flex h-full min-h-0 flex-col">
       <CodeSkeleton label={label} lines={24} className="min-h-0 flex-1" />

@@ -229,7 +229,7 @@ export function AppUpdateSettings() {
   };
   if (update.isPending)
     return (
-      <SkeletonRegion label="Update-Status lädt" className="flex items-center gap-3">
+      <SkeletonRegion label="Lädt Update-Status" className="flex items-center gap-3">
         <div className="flex min-w-0 flex-1 flex-col gap-1.5 py-0.5">
           <Skeleton className="h-3.5 w-28" />
           <Skeleton className="h-2.5 w-48" />

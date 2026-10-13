@@ -455,7 +455,7 @@ function SectionTitleSkeleton() {
 /** The phone form in its resting layout: status bar, SIP and partner columns, desk phone toggle. */
 function PhoneSettingsSkeleton() {
   return (
-    <SkeletonRegion label="Telefon-Einstellungen lädt" className="flex flex-col gap-5">
+    <SkeletonRegion label="Lädt Telefon-Einstellungen" className="flex flex-col gap-5">
       <div className="flex items-center gap-3 rounded-lg border border-border bg-surface-2 px-3 py-2.5">
         <Skeleton className="h-5 w-20 rounded bg-surface-3" />
         <Skeleton className="h-3 flex-1 bg-surface-3" />
@@ -501,7 +501,7 @@ function PhoneSettingsSkeleton() {
 
 function CallLogSkeleton() {
   return (
-    <SkeletonRegion label="Anrufliste lädt">
+    <SkeletonRegion label="Lädt Anrufliste">
       <SectionTitleSkeleton />
       <div className="divide-y divide-border rounded-lg border border-border">
         {[0, 1, 2].map((i) => (

@@ -109,7 +109,7 @@ export function SkillMarketplace() {
       </div>
 
       {catalog.isLoading && (
-        <SkeletonRegion label="Marketplace lädt" className="divide-y divide-border rounded-lg border border-border">
+        <SkeletonRegion label="Lädt Marketplace" className="divide-y divide-border rounded-lg border border-border">
           {[25, 35, 20, 30, 40, 25].map((w, i) => (
             <div key={i} className="flex items-start gap-3 px-3 py-2.5">
               <div className="flex min-w-0 flex-1 flex-col gap-1.5">

@@ -32,7 +32,7 @@ export function SummaryButton({ sessionId, title, size = "sm" }: { sessionId: st
       <Dialog open={open} onOpenChange={setOpen} title="Wo war ich?" description={title ?? undefined}>
         {m.isPending && (
           <>
-            <SkeletonRegion label="Zusammenfassung lädt" className="flex flex-col gap-4 py-1">
+            <SkeletonRegion label="Lädt Zusammenfassung" className="flex flex-col gap-4 py-1">
               <Skeleton className="h-3.5 w-40" />
               {[[92, 85, 88, 45], [80, 90, 35]].map((paragraph, p) => (
                 <div key={p} className="flex flex-col gap-2">

@@ -134,7 +134,7 @@ function ClaudeStatusCard() {
           <div className="min-w-0 flex-1">
             <div className="text-body">Claude Code</div>
             {diag.isPending ? (
-              <SkeletonRegion label="Claude-Status lädt" className="flex h-4 items-center">
+              <SkeletonRegion label="Lädt Claude-Status" className="flex h-4 items-center">
                 <Skeleton className="h-2.5 w-24" />
               </SkeletonRegion>
             ) : (
@@ -147,7 +147,7 @@ function ClaudeStatusCard() {
           <span className="text-caption text-subtle">{d?.claude.version?.split(" ")[0] ?? ""}</span>
         </div>
         {usage.isPending ? (
-          <SkeletonRegion label="Nutzung lädt" className="flex w-full flex-col gap-1.5">
+          <SkeletonRegion label="Lädt Nutzung" className="flex w-full flex-col gap-1.5">
             {[0, 1].map((i) => (
               <div key={i}>
                 <div className="mb-0.5 flex h-4 items-center justify-between">

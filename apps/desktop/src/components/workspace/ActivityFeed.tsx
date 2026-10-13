@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import { Activity, ShieldAlert, ShieldQuestion } from "lucide-react";
 import { useSessionEvents } from "@/stores/session-events";
 import { splitActive, useUi } from "@/stores/ui";
-import { useSessions } from "@/lib/queries";
+import { useSessionHistory, useSessions } from "@/lib/queries";
 import { relativeTime } from "@/lib/utils";
 import { EmptyState } from "@/components/ui/misc";
 import { Skeleton, SkeletonRegion } from "@/components/ui/skeleton";
@@ -20,8 +20,9 @@ function useHistoryLoading(projectId: string) {
   const sessionsLoading = useSessions(projectId).isLoading;
   const picking = useUi((s) => !(projectId in s.activeSession)) && sessionsLoading;
   const { sessionId } = splitActive(useUi((s) => s.activeSession[projectId]));
-  const loaded = useSessionEvents((s) => (sessionId ? !!s.buffers[sessionId]?.loaded : true));
-  return picking || !loaded;
+  // The chat shows a failed load; the feed then falls back to its empty state instead of waiting forever.
+  const { buffer, error } = useSessionHistory(sessionId);
+  return picking || (!!sessionId && !buffer?.loaded && !error);
 }
 
 /** Tool activity of the active session, newest first. Derived from real events only. */
@@ -55,7 +56,7 @@ export function ActivityFeed({ projectId, projectDir }: { projectId: string; pro
 
   if (loading)
     return (
-      <SkeletonRegion label="Aktivität lädt" className="h-full divide-y divide-border overflow-hidden">
+      <SkeletonRegion label="Lädt Aktivität" className="h-full divide-y divide-border overflow-hidden">
         {[55, 40, 65, 35, 50, 45].map((w) => (
           <div key={w} className="flex items-start gap-2.5 px-3 py-2">
             <Skeleton className="mt-0.5 h-3.5 w-3.5 shrink-0 rounded-sm" />

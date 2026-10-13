@@ -42,7 +42,7 @@ export function TerminalView({ tab }: { tab: TerminalTab }) {
 /** Prompt lines at xterm's padding and font size, so the terminal fades in where they stood. */
 function TerminalSkeleton() {
   return (
-    <SkeletonRegion label="Terminal lädt" className="absolute inset-0 flex flex-col gap-1.5 px-2 py-1.5">
+    <SkeletonRegion label="Lädt Terminal" className="absolute inset-0 flex flex-col gap-1.5 px-2 py-1.5">
       {[38, 62, 24, 50].map((w, i) => (
         <div key={i} className="flex h-3 items-center gap-2">
           <Skeleton className="h-2.5 w-3 shrink-0 rounded-sm" />

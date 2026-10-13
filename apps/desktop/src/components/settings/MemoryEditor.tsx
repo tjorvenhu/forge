@@ -87,7 +87,7 @@ export function MemoryEditor({ projectId, scopes, height = "h-105" }: { projectI
 
   if (list.isLoading)
     return (
-      <SkeletonRegion label="CLAUDE.md lädt" className="flex flex-col gap-2">
+      <SkeletonRegion label="Lädt CLAUDE.md" className="flex flex-col gap-2">
         <div className="flex items-center gap-1.5">
           {scopes.length > 1 && scopes.map((s) => <Skeleton key={s} className="h-6.5 w-20" />)}
           <div className="flex-1" />

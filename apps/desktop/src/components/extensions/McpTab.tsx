@@ -39,7 +39,7 @@ export function McpTab({ projectId }: { projectId?: string }) {
       </SectionTitle>
       <p className="mb-3 text-xs text-muted">Verwaltet über die offiziellen Befehle von Claude Code. Der Status wird beim Prüfen live abgefragt.</p>
       {list.isLoading && (
-        <SkeletonRegion label="Lädt MCP Server" className="divide-y divide-border rounded-lg border border-border">
+        <SkeletonRegion label="Lädt MCP-Server" className="divide-y divide-border rounded-lg border border-border">
           {[30, 45, 25].map((w, i) => (
             <div key={i} className="flex items-center gap-3 px-3 py-2">
               <Skeleton className="h-4 w-4 shrink-0 rounded-sm" />
