@@ -30,6 +30,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { TOOL_LABELS, toolDisplayName, toolSummary, type ChatItem, type TodoEntry } from "./chat-items";
 import { PlanCard, QuestionCard } from "./InteractiveCards";
+import { ForgeToolCard } from "./ForgeToolCard";
+import { forgeToolName, forgeToolView } from "./forge-tool";
 import { ChatRow, Dot, Guide } from "./ChatRow";
 import { cachedEditDiff, cleanToolOutput, countLines, diffStats, inputJson, splitPreview, type DiffLine } from "./tool-view";
 
@@ -103,6 +105,47 @@ export function ToolCard({ item, sessionId, sessionLive, projectDir }: { item: T
       </ChatRow>
     );
 
+  const blockedNote = blocked && (
+    <Guide className="mt-1">
+      <div className="flex items-start gap-1.5 text-small text-danger">
+        <ShieldAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+        <span className="min-w-0 break-words">
+          Von der FORGE-Policy blockiert: {blocked.message} <span className="font-mono text-subtle">({blocked.rule})</span>
+        </span>
+      </div>
+    </Guide>
+  );
+  const approvalNote =
+    approval &&
+    (approval.resolved ? (
+      <Guide className="mt-1">
+        <ApprovalBlock req={approval.req} resolved={approval.resolved} sessionId={sessionId} projectDir={projectDir} />
+      </Guide>
+    ) : (
+      <div className="mt-2">
+        <ApprovalBlock req={approval.req} resolved={null} sessionId={sessionId} projectDir={projectDir} />
+      </div>
+    ));
+  const details = (
+    <>
+      <Pre label="Eingabe" text={inputJson(use.input)} />
+      {result && <Pre label={result.isError ? "Fehler" : "Ergebnis"} text={result.content.text || "(leer)"} truncated={result.content.truncated} error={result.isError} />}
+    </>
+  );
+
+  const forgeTool = forgeToolName(use.name);
+  if (forgeTool) {
+    const view = forgeToolView(forgeTool, use.input, result ? { text: result.content.text, isError: result.isError } : null);
+    if (view.hidden && !blocked && !approval) return null;
+    const tone = state === "error" || state === "blocked" || state === "denied" ? "danger" : state === "waiting" ? "warning" : view.tone;
+    return (
+      <ForgeToolCard sessionId={sessionId} itemKey={item.key} view={view} tone={tone} stateLabel={STATE_DOT[state].label} pending={state === "running" || state === "waiting"} details={details}>
+        {blockedNote}
+        {approvalNote}
+      </ForgeToolCard>
+    );
+  }
+
   const diff = result?.isError ? null : cachedEditDiff(use.name, use.input);
   const stats = diff ? diffStats(diff) : null;
   const summary = toolSummary(use.name, use.input, projectDir);
@@ -140,34 +183,13 @@ export function ToolCard({ item, sessionId, sessionLive, projectDir }: { item: T
           )}
         />
       </button>
-      {blocked && (
-        <Guide className="mt-1">
-          <div className="flex items-start gap-1.5 text-small text-danger">
-            <ShieldAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-            <span className="min-w-0 break-words">
-              Von der FORGE-Policy blockiert: {blocked.message} <span className="font-mono text-subtle">({blocked.rule})</span>
-            </span>
-          </div>
-        </Guide>
-      )}
+      {blockedNote}
       <Collapse open={open}>
-        <Guide className="mt-1.5 space-y-2 pb-1">
-          <Pre label="Eingabe" text={inputJson(use.input)} />
-          {result && <Pre label={result.isError ? "Fehler" : "Ergebnis"} text={result.content.text || "(leer)"} truncated={result.content.truncated} error={result.isError} />}
-        </Guide>
+        <Guide className="mt-1.5 space-y-2 pb-1">{details}</Guide>
       </Collapse>
       {preview && <Guide className="mt-1">{preview}</Guide>}
       <TaskLink item={item} sessionId={sessionId} title={summary} />
-      {approval &&
-        (approval.resolved ? (
-          <Guide className="mt-1">
-            <ApprovalBlock req={approval.req} resolved={approval.resolved} sessionId={sessionId} projectDir={projectDir} />
-          </Guide>
-        ) : (
-          <div className="mt-2">
-            <ApprovalBlock req={approval.req} resolved={null} sessionId={sessionId} projectDir={projectDir} />
-          </div>
-        ))}
+      {approvalNote}
     </ChatRow>
   );
 }

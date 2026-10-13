@@ -6,6 +6,8 @@ import { relativeTime } from "@/lib/utils";
 import { EmptyState } from "@/components/ui/misc";
 import { TOOL_LABELS, toolSummary } from "./chat-items";
 import { toolIcon } from "./ToolCard";
+import { forgeIcon } from "./ForgeToolCard";
+import { forgeToolName, forgeToolView } from "./forge-tool";
 
 /** Tool activity of the active session, newest first. Derived from real events only. */
 export function ActivityFeed({ projectId, projectDir }: { projectId: string; projectDir: string }) {
@@ -15,11 +17,19 @@ export function ActivityFeed({ projectId, projectDir }: { projectId: string; pro
     const out: Array<{ key: string; icon: React.ReactNode; title: string; detail: string; ts: string; tone?: string }> = [];
     // Newest first, and only as far back as the list shows: no pass over the whole history per event.
     const list = events ?? [];
+    // Going backwards, a call's result comes before the call.
+    const results = new Map<string, { text: string; isError: boolean }>();
     for (let i = list.length - 1; i >= 0 && out.length < 200; i--) {
       const e = list[i]!;
       const b = e.body;
-      if (b.type === "tool.use") out.push({ key: `t${e.seq}`, icon: toolIcon(b.name), title: TOOL_LABELS[b.name] ?? b.name, detail: toolSummary(b.name, b.input, projectDir), ts: e.ts });
-      else if (b.type === "approval.request")
+      if (b.type === "tool.result") results.set(b.toolUseId, { text: b.content.text, isError: b.isError });
+      else if (b.type === "tool.use") {
+        const forge = forgeToolName(b.name);
+        const view = forge ? forgeToolView(forge, b.input, results.get(b.toolUseId) ?? null) : null;
+        if (view)
+          out.push({ key: `t${e.seq}`, icon: forgeIcon(view.icon, "h-3.5 w-3.5"), title: view.title, detail: view.ref ?? "", ts: e.ts, tone: view.tone === "danger" ? "text-danger" : view.tone === "warning" ? "text-warning" : "text-accent" });
+        else out.push({ key: `t${e.seq}`, icon: toolIcon(b.name), title: TOOL_LABELS[b.name] ?? b.name, detail: toolSummary(b.name, b.input, projectDir), ts: e.ts });
+      } else if (b.type === "approval.request")
         out.push({ key: `a${e.seq}`, icon: <ShieldQuestion className="h-3.5 w-3.5" />, title: "Freigabe angefragt", detail: b.toolName, ts: e.ts, tone: "text-warning" });
       else if (b.type === "policy.blocked")
         out.push({ key: `b${e.seq}`, icon: <ShieldAlert className="h-3.5 w-3.5" />, title: "Von Policy blockiert", detail: b.message, ts: e.ts, tone: "text-danger" });

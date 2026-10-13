@@ -6,6 +6,7 @@ import { call, keys, useKnowledge } from "@/lib/queries";
 import { errorMessage, RpcCallError } from "@/lib/rpc";
 import { cn, relativeTime } from "@/lib/utils";
 import { toast } from "@/stores/toast";
+import { useUi } from "@/stores/ui";
 import { Button } from "@/components/ui/button";
 import { CodeEditor } from "@/components/ui/code-editor";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -57,6 +58,16 @@ export function KnowledgeTab({ project }: { project: Project }) {
     if (dirty) setLeaveTo(id);
     else setSelected(id);
   };
+
+  const request = useUi((s) => s.knowledgeRequest);
+  useEffect(() => {
+    if (!request) return;
+    useUi.getState().clearKnowledgeRequest();
+    // A search could hide the requested entry.
+    setQuery("");
+    select(request);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only a new request counts
+  }, [request]);
 
   return (
     <div className="flex h-full min-h-0">

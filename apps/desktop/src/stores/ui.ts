@@ -57,6 +57,11 @@ interface UiState {
   selectFile: (projectId: string, path: string | null) => void;
   /** shows a file in the Dateien tab (from the file explorer) */
   openFile: (projectId: string, path: string) => void;
+  /** knowledge entry the Wissen tab should select once it is shown (from a card in the chat) */
+  knowledgeRequest: string | null;
+  /** switches to the Wissen tab, with one entry selected */
+  openKnowledge: (id: string | null) => void;
+  clearKnowledgeRequest: () => void;
   setView: (v: View) => void;
   settingsSection: SettingsSection;
   /** opens the settings at one section */
@@ -114,6 +119,7 @@ export const useUi = create<UiState>((set, get) => ({
   focusEvent: null,
   taskView: null,
   selectedFile: {},
+  knowledgeRequest: null,
   collapsedGroups: [],
   ...loadPrefs(),
   toggleGroup: (projectId, collapsed) => {
@@ -137,6 +143,11 @@ export const useUi = create<UiState>((set, get) => ({
     set((s) => ({ selectedFile: { ...s.selectedFile, [projectId]: path }, workspaceTab: "files", toolbarOpen: true }));
     savePrefs(get());
   },
+  openKnowledge: (id) => {
+    set({ knowledgeRequest: id, workspaceTab: "knowledge", toolbarOpen: true });
+    savePrefs(get());
+  },
+  clearKnowledgeRequest: () => set({ knowledgeRequest: null }),
   setView: (view) => set({ view }),
   settingsSection: "general",
   openSettings: (settingsSection) => set({ view: "settings", settingsSection }),

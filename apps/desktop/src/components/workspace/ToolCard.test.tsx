@@ -12,6 +12,7 @@ const callMock = vi.fn();
 vi.mock("@/lib/rpc", async (orig) => ({ ...(await orig<RpcModule>()), rpc: { call: (...a: unknown[]) => callMock(...a), subscribe: () => () => {} } }));
 
 const { ToolCard } = await import("./ToolCard");
+const { useUi } = await import("@/stores/ui");
 
 let n = 0;
 function tool(name: string, input: Record<string, unknown>, result: { text: string; isError?: boolean } | null, extra: Partial<ToolItem> = {}): ToolItem {
@@ -84,5 +85,43 @@ describe("ToolCard", () => {
     expect(screen.getByText("Mache B")).toBeTruthy();
     expect(screen.getByRole("img", { name: "erledigt" })).toBeTruthy();
     expect(screen.getByRole("img", { name: "offen" })).toBeTruthy();
+  });
+});
+
+describe("FORGE tools in the chat", () => {
+  it("shows a saved knowledge entry as a highlighted card that opens the entry", () => {
+    show(
+      tool("mcp__forge__knowledge_save", { title: "Deploy mit Coolify", summary: "s", content: "c" }, { text: "Gespeichert: deploy-mit-coolify (.forge/knowledge/deploy-mit-coolify.md)." }),
+    );
+    expect(screen.getByText("Im Projektwissen gespeichert")).toBeTruthy();
+    expect(screen.getByText("Deploy mit Coolify")).toBeTruthy();
+    expect(screen.getByText("FORGE")).toBeTruthy();
+    expect(screen.queryByText(/mcp__forge|forge: knowledge_save/)).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Eintrag öffnen" }));
+    expect(useUi.getState().workspaceTab).toBe("knowledge");
+    expect(useUi.getState().knowledgeRequest).toBe("deploy-mit-coolify");
+  });
+
+  it("names refusals and failures instead of reporting success", () => {
+    show(tool("mcp__forge__knowledge_save", { title: "Deploy" }, { text: "Nicht gespeichert: Es gibt schon ähnliche Einträge: deploy (Deploy)." }));
+    expect(screen.getByText("Nicht gespeichert: ähnlicher Eintrag vorhanden")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Projektwissen öffnen" })).toBeTruthy();
+    cleanup();
+    show(tool("mcp__forge__start_agent", { task: "Baue den CSV-Export" }, { text: "Fehler: Es laufen schon 5 Agenten dieser Session (höchstens 5)." }));
+    expect(screen.getByText("Agent nicht gestartet")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Agenten ansehen" })).toBeNull();
+  });
+
+  it("shows running calls, leaves notifications to their own card and keeps lookups quiet", () => {
+    show(tool("mcp__forge__start_agent", { task: "Baue den CSV-Export", name: "csv-export" }, null), true);
+    expect(screen.getByText("Startet parallelen Agenten")).toBeTruthy();
+    expect(screen.getByRole("img", { name: "läuft" })).toBeTruthy();
+    cleanup();
+    show(tool("mcp__forge__notify", { message: "Fertig" }, { text: "Der Nutzer wurde benachrichtigt." }));
+    expect(screen.queryByText("Fertig")).toBeNull();
+    cleanup();
+    show(tool("mcp__forge__knowledge_search", { query: "deploy" }, { text: "Keine Treffer im Projektwissen." }));
+    expect(screen.getByText("Projektwissen durchsucht, keine Treffer")).toBeTruthy();
+    expect(screen.queryByText("FORGE")).toBeNull();
   });
 });
