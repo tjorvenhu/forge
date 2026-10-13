@@ -374,6 +374,16 @@ export const methods = {
   "app.checkUpdate": { params: empty, result: AppUpdateState },
   /** downloads and checks the installer of the newest release; installing is a command of the desktop shell */
   "app.downloadUpdate": { params: empty, result: AppUpdateState },
+  /**
+   * The desktop shell ends FORGE for an update next: the open sessions are noted and continue after the
+   * restart, those that were working with a message to Claude. cancel: the installation did not start.
+   */
+  "app.prepareInstall": {
+    params: z.object({ cancel: z.boolean().default(false) }),
+    result: z.object({ sessions: z.number().int(), working: z.number().int() }),
+  },
+  /** asks the main window to install the offered update (event update.install); for the phone */
+  "app.installUpdate": { params: empty, result: AppUpdateState },
   /** state of Claude's summary of the offered release; starts it and returns at once (poll while "writing") */
   "app.changelog": { params: empty, result: AppChangelog.nullable() },
 
@@ -571,6 +581,8 @@ export type ServerEvent =
   | { event: "agent.autoMerge"; payload: { rootId: string; worktreeId: string; branch: string | null; outcome: "merged" | "conflict" | "skipped"; message: string } }
   | { event: "phone.updated"; payload: PhoneState }
   | { event: "update.updated"; payload: AppUpdateState }
+  /** the main window installs the offered update (asked for on the phone) */
+  | { event: "update.install"; payload: Record<string, never> }
   | { event: "sidecar.ready"; payload: { version: string } }
   /** dictation: the text of a running recording so far (finished utterances plus the current one) */
   | { event: "voice.transcript"; payload: { id: string; text: string } }

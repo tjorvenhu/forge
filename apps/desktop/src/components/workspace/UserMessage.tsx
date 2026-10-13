@@ -79,7 +79,7 @@ export function UserMessage({ item, sessionId }: { item: Extract<ChatItem, { kin
                   </span>
                 )}
                 {item.auto && (
-                  <span className="flex items-center gap-1" title="Von FORGE gesendet, nachdem das Nutzungslimit zurückgesetzt war">
+                  <span className="flex items-center gap-1" title="Von FORGE gesendet, zum Beispiel nach dem Nutzungslimit oder einem Update">
                     <TimerReset className="h-3 w-3" /> Automatisch
                   </span>
                 )}

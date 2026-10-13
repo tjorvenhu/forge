@@ -3,7 +3,7 @@ import { limitLabel, limitTime } from "@/lib/rate-limit";
 
 type Body<T extends SessionEventBody["type"]> = Extract<SessionEventBody, { type: T }>;
 
-export type NoticeIcon = "commit" | "push" | "merge" | "skip" | "rewind" | "compact" | "background" | "limit" | "notify";
+export type NoticeIcon = "commit" | "push" | "merge" | "skip" | "rewind" | "compact" | "background" | "limit" | "notify" | "update";
 
 export interface TodoEntry {
   content: string;
@@ -293,6 +293,14 @@ function itemFolder(thread: string | null = null) {
             tone,
             card: { title, ref: null, detail: b.state === "started" ? `${b.description} · Claude meldet sich, wenn sie fertig ist` : b.description, icon: "background" },
           });
+          break;
+        }
+        case "app.updated": {
+          const versions = b.from && b.to && b.from !== b.to ? `${b.from} → ${b.to} · ` : "";
+          const detail = `${versions}Claude macht dort weiter, wo der Neustart unterbrochen hat`;
+          // Same version: the update did not go through and the old FORGE came back.
+          const title = b.from !== b.to ? "FORGE aktualisiert" : "FORGE neu gestartet";
+          items.push({ kind: "notice", key: `n${ev.seq}`, ts: ev.ts, text: `${title}: ${detail}`, tone: "info", card: { title, ref: null, detail, icon: "update" } });
           break;
         }
         case "status":

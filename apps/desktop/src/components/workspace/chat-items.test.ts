@@ -226,6 +226,20 @@ describe("usage limit in the chat", () => {
   });
 });
 
+describe("restart for an update", () => {
+  it("says which version FORGE moved to before the automatic message", () => {
+    seq = 0;
+    const items = buildEventItems([
+      ev({ type: "app.updated", from: "0.1.40", to: "0.1.41" }),
+      ev({ type: "user.message", text: "FORGE wurde gerade aktualisiert …", source: "auto" }),
+      ev({ type: "app.updated", from: "0.1.41", to: "0.1.41" }),
+    ]);
+    expect(items[0]).toMatchObject({ kind: "notice", card: { title: "FORGE aktualisiert", detail: "0.1.40 → 0.1.41 · Claude macht dort weiter, wo der Neustart unterbrochen hat", icon: "update" } });
+    expect(items[1]).toMatchObject({ kind: "user", auto: true });
+    expect(items[2]).toMatchObject({ card: { title: "FORGE neu gestartet", detail: "Claude macht dort weiter, wo der Neustart unterbrochen hat" } });
+  });
+});
+
 describe("notifications stored as prompts", () => {
   it("hides task notifications and reminders that older versions stored as user messages", () => {
     seq = 0;

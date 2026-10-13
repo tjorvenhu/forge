@@ -26,7 +26,7 @@ function chainFile() {
   return path.join(mkdtempSync(path.join(os.tmpdir(), "forge-chain-")), "chain.json");
 }
 
-function service(answer: (args: string[]) => { code: number; stdout?: string; stderr?: string }, version = "0.1.0", opts: { runtimeKey?: string | null; chainFile?: string } = {}) {
+function service(answer: (args: string[]) => { code: number; stdout?: string; stderr?: string }, version = "0.1.0", opts: { runtimeKey?: string | null; chainFile?: string; requestInstall?: () => void } = {}) {
   const calls: string[][] = [];
   const states: AppUpdateState[] = [];
   const svc = new AppUpdateService({
@@ -37,6 +37,7 @@ function service(answer: (args: string[]) => { code: number; stdout?: string; st
     installable: true,
     runtimeKey: () => (opts.runtimeKey === undefined ? KEY : opts.runtimeKey),
     chainFile: opts.chainFile ?? chainFile(),
+    requestInstall: opts.requestInstall,
     gh: async (args) => {
       calls.push(args);
       if (args[0] === "release" && args[1] === "download") {
@@ -258,10 +259,32 @@ describe("app updates", () => {
 
     // After the full installer: 0.1.9 with the new runtime finds the small update and installs it without asking.
     const after = service(() => ({ code: 0, stdout: list }), "0.1.9", { chainFile: chain });
+    after.svc.start();
+    after.svc.stop();
+    // The sessions of the restart wait for the second step instead of being stopped by it again.
+    expect(after.svc.holdsResume()).toBe(true);
     expect(await after.svc.check()).toMatchObject({ autoInstall: true, latest: { version: "0.1.15", kind: "patch", via: null } });
+    expect(after.svc.holdsResume()).toBe(true);
     expect(existsSync(chain)).toBe(false);
     // Only once: the next check asks again.
     expect((await after.svc.check()).autoInstall).toBe(false);
+    expect(after.svc.holdsResume()).toBe(false);
+  });
+
+  it("holds no sessions back without a two-step update", async () => {
+    const { svc } = service(() => ({ code: 0, stdout: release("v0.1.7") }));
+    svc.start();
+    svc.stop();
+    expect(svc.holdsResume()).toBe(false);
+  });
+
+  it("asks the main window to install an offered update (for the phone)", async () => {
+    let asked = 0;
+    const { svc } = service(() => ({ code: 0, stdout: release("v0.1.7") }), "0.1.0", { requestInstall: () => asked++ });
+    expect(() => svc.requestInstall()).toThrow(/kein Update bereit/);
+    await svc.check();
+    expect(svc.requestInstall().latest?.version).toBe("0.1.7");
+    expect(asked).toBe(1);
   });
 
   it("downloads the small update and checks it like an installer", async () => {

@@ -53,6 +53,36 @@ beim Beenden von FORGE mit beenden.
 GitHub-Prüfsumme; wer dort Releases anlegen kann, kann auch den Code ändern. Code-Signing (SmartScreen) fehlt
 weiterhin.
 
+## Nachtrag 2026-10-13: Sessions überstehen das Update
+
+Ziel: Ein Update soll laufende Claude-Sessions nicht schließen und nicht anhalten.
+
+**Warum die Claude-Prozesse nicht durchlaufen:** Jede Session ist ein CLI-Prozess, der über stdio am Sidecar hängt.
+Freigaben (`canUseTool`), die Sperrliste (PreToolUse-Hook) und die FORGE-Werkzeuge (In-Process-MCP-Server) laufen
+im Sidecar. Ein neuer Sidecar kann diese Pipes und Callbacks nicht übernehmen; ein dauerhafter Session-Prozess
+außerhalb des Updates müsste genau diesen Code enthalten und wäre selbst wieder zu aktualisieren. Deshalb:
+anhalten, merken, nach dem Neustart fortsetzen. Der Verlauf liegt im Transkript der CLI, `resume` setzt dort an.
+
+**Ablauf:** Das Hauptfenster ruft vor `install_update` `app.prepareInstall` auf. Beim Beenden schreibt der Sidecar
+dann nach dem Drain (Auto-Commits und Tests fertiger Durchläufe) jede Session mit laufendem CLI-Prozess in
+`update_resume`, mit `working`, wenn ein Durchlauf, eine Hintergrundaufgabe oder ein Subagent lief. Gilt nur
+zwei Minuten nach `prepareInstall`; scheitert `install_update`, nimmt `prepareInstall { cancel: true }` es zurück.
+Der neue Sidecar öffnet die Sessions 3 s nach dem Start wieder: ruhende ohne Prompt (Tab und Status sind wieder da),
+arbeitende mit einer automatischen Nachricht (`source: "auto"`) und davor dem Ereignis `app.updated` (Karte
+„FORGE aktualisiert“ mit beiden Versionen). Marken älter als 30 Minuten verfallen: FORGE kam dann nicht direkt
+aus dem Update zurück. Unterbrochene Befehle laufen nicht weiter, die Nachricht sagt Claude, sie neu zu starten.
+Offene Chat-Fenster merkt sich das Hauptfenster (`localStorage`) und öffnet sie nach dem Start wieder.
+
+**Zwei Schritte:** Liegt beim Start die Ketten-Datei, kann gleich der zweite Schritt folgen. Die Sessions warten
+dann (`holdsResume`, höchstens 5 Minuten), bis klar ist, ob er installiert wird; sonst würden sie anlaufen und
+sofort wieder angehalten. Startet er, bleiben die Marken für den nächsten Start stehen.
+
+**Telefon:** `forge_system update_install` (RPC `app.installUpdate`) bittet das Hauptfenster per Ereignis
+`update.install`, zu installieren; das Gespräch endet mit dem Neustart. Befehlspalette: „FORGE … installieren“.
+
+Nicht abgedeckt: Terminals im unteren Panel und Dev-Server starten nach dem Update nicht von selbst neu; ein laufender
+Anruf endet.
+
 ## Tests
 
 `app-update.test.ts`: Versionsvergleich, Update gefunden, Download mit Prüfsumme, falsche Prüfsumme, aktuell,

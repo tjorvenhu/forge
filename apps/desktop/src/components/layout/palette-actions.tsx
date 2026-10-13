@@ -4,6 +4,7 @@ import {
   Archive,
   ArrowDown,
   ArrowUp,
+  ArrowUpCircle,
   BookOpen,
   Bot,
   CloudDownload,
@@ -46,6 +47,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import type {
+  AppUpdateState,
   DevServerState,
   EffortLevel,
   ModelInfo,
@@ -60,6 +62,7 @@ import type {
   Settings,
   TestDbState,
 } from "@forge/protocol";
+import { installUpdate } from "@/lib/app-install";
 import { call, keys } from "@/lib/queries";
 import { EFFORT_LEVELS, modelLabel } from "@/lib/models";
 import { errorMessage, RpcCallError } from "@/lib/rpc";
@@ -447,6 +450,10 @@ export function buildActions(ctx: ActionContext): PaletteEntry[] {
 
   act("backup", "Backup anlegen", icon(Archive), () => void createBackup(qc), { keywords: "sichern sicherung" });
   act("update-check", "Nach Updates suchen", icon(RefreshCw), () => void checkForUpdate(qc), { keywords: "version release aktualisieren" });
+  const update = qc.getQueryData<AppUpdateState>(keys.appUpdate);
+  if (update?.latest && update.installable && ["available", "downloading", "ready"].includes(update.phase)) {
+    act("update-install", `FORGE ${update.latest.version} installieren`, icon(ArrowUpCircle), () => void installUpdate(qc), { keywords: "update aktualisieren neustart version" });
+  }
   for (const n of NAV) act(`nav-${n.view}`, `Gehe zu ${n.label}`, icon(n.Icon), () => ui.setView(n.view));
 
   for (const id of EXTENSIONS_TABS) {

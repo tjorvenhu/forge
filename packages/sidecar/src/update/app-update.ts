@@ -1,9 +1,9 @@
 import { createHash } from "node:crypto";
-import { createReadStream, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { createReadStream, existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { mkdir, readdir, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import type { AppChangelog, AppUpdateState } from "@forge/protocol";
+import { ForgeError, type AppChangelog, type AppUpdateState } from "@forge/protocol";
 import { run } from "../util/proc.js";
 import { resolveTool } from "../util/tools.js";
 
@@ -164,7 +164,12 @@ export interface UpdateDeps {
   runtimeKey?: () => string | null;
   /** remembers across the restart which version a two-step update is heading for; tests pass their own */
   chainFile?: string;
+  /** asks the main window to install the offered update (the desktop shell runs installers) */
+  requestInstall?: () => void;
 }
+
+/** Phases in which an update is offered and can be installed. */
+const OFFERED: ReadonlyArray<AppUpdateState["phase"]> = ["available", "downloading", "ready"];
 
 /**
  * Prompt for the changelog: the user's view, short, only what notes and commits say. Covers every
@@ -223,9 +228,14 @@ export class AppUpdateService {
   private readonly chainFile: string;
   private busy: Promise<AppUpdateState> | null = null;
   private changelogs = new Map<string, { state: AppChangelog; done: Promise<void> }>();
+  /** a two-step update was under way at the start: its second step may follow right away */
+  private readonly chainAtStart: boolean;
+  private started = false;
+  private checked = false;
 
   constructor(private readonly d: UpdateDeps) {
     this.chainFile = d.chainFile ?? defaultChainFile();
+    this.chainAtStart = existsSync(this.chainFile);
     this.state = {
       currentVersion: d.currentVersion ?? process.env.FORGE_APP_VERSION ?? "0.0.0-dev",
       phase: "idle",
@@ -241,6 +251,7 @@ export class AppUpdateService {
 
   /** First check shortly after the start, then every 30 minutes (when enabled in the settings). */
   start() {
+    this.started = true;
     const tick = (delay: number) => {
       this.timer = setTimeout(() => {
         if (this.d.enabled() && this.state.phase !== "downloading" && this.state.phase !== "ready") void this.check().catch(() => {});
@@ -257,6 +268,25 @@ export class AppUpdateService {
   }
 
   get(): AppUpdateState {
+    return this.state;
+  }
+
+  /**
+   * True while the second step of a two-step update may still install itself after this start. The
+   * sessions noted at the restart wait for it, so they do not start working only to be stopped again.
+   */
+  holdsResume(): boolean {
+    if (!this.chainAtStart || !this.started || !this.d.enabled()) return false;
+    if (!this.checked) return true;
+    return this.state.autoInstall && OFFERED.includes(this.state.phase);
+  }
+
+  /** Asks the main window to install the offered update; the phone has no other way to. */
+  requestInstall(): AppUpdateState {
+    if (!this.state.installable) throw new ForgeError("VALIDATION", "Updates lassen sich nur in der installierten App einspielen.");
+    if (!this.state.latest || !OFFERED.includes(this.state.phase)) throw new ForgeError("VALIDATION", "Es liegt kein Update bereit. Erst nach Updates suchen.");
+    if (!this.d.requestInstall) throw new ForgeError("VALIDATION", "Installieren geht hier nicht.");
+    this.d.requestInstall();
     return this.state;
   }
 
@@ -338,6 +368,8 @@ export class AppUpdateService {
       } catch (e) {
         this.set({ phase: "error", message: e instanceof Error ? e.message : String(e), checkedAt: new Date().toISOString() });
         return this.state;
+      } finally {
+        this.checked = true;
       }
     });
   }

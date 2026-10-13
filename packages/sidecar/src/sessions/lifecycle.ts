@@ -332,12 +332,12 @@ export class SessionLifecycle {
    * Ends all CLI processes. The sessions become "interrupted" like after a crash, so they show up as
    * resumable after the next start. Open approvals are denied while the DB is still open.
    */
-  shutdown() {
+  shutdown(reason = "FORGE wird beendet") {
     const entries = [...this.core.live];
     this.core.live.clear();
     for (const [id, l] of entries) {
       l.closing = true;
-      denyPending(l, "FORGE wird beendet");
+      denyPending(l, reason);
       try {
         l.rt.close();
       } catch {

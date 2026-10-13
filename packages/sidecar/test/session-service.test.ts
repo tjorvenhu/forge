@@ -20,6 +20,7 @@ import {
   resetFromText,
 } from "../src/sessions/auto-continue.js";
 import { TITLE_DEBOUNCE_MS, TITLE_MIN_INTERVAL_MS, TITLE_TIMEOUT_MS, isTitleWorthy } from "../src/sessions/titles.js";
+import { HOLD_RETRY_MS, MARK_MAX_AGE_MS, RESUME_DELAY_MS, UPDATE_CONTINUE_PROMPT } from "../src/sessions/update-resume.js";
 import { git, initRepo, tempDir } from "./helpers.js";
 import { existsSync, writeFileSync } from "node:fs";
 import { WorktreeService } from "../src/automation/worktrees.js";
@@ -1560,5 +1561,120 @@ describe("reset time from limit messages", () => {
     expect(isUsageLimitText("Claude AI usage limit reached|1791661200")).toBe(true);
     expect(isUsageLimitText("API Error: 529 Overloaded")).toBe(false);
     expect(isUsageLimitText(null)).toBe(false);
+  });
+});
+
+describe("sessions go on after a restart for an update", () => {
+  const START = Date.parse("2026-10-13T12:00:00.000Z");
+  let clock: number;
+  let before: SessionService;
+  let after: SessionService | null;
+
+  beforeEach(() => {
+    clock = START;
+    before = new SessionService(db, projects, new GitEngine(), rt, (e) => emitted.push(e), () => clock);
+    after = null;
+  });
+  afterEach(async () => {
+    vi.useRealTimers();
+    for (const s of [before, after]) {
+      if (!s) continue;
+      await s.drain();
+      s.shutdown();
+    }
+  });
+
+  /** One session in the middle of a turn, one waiting for the next prompt, one already closed. */
+  async function openSessions() {
+    const working = await before.start({ projectId, prompt: "Lies a.txt" });
+    rt.replay();
+    await before.send(working.id, "Bau das Feature");
+    const idle = await before.start({ projectId, prompt: "Lies b.txt" });
+    rt.replay();
+    const closed = await before.start({ projectId, prompt: "Lies c.txt" });
+    rt.replay();
+    before.close(closed.id);
+    return { working, idle, closed };
+  }
+
+  /** The new FORGE after the restart: same database, timers driven by the test. */
+  async function restart(holds?: () => boolean) {
+    vi.useFakeTimers({ toFake: ["setTimeout", "setInterval"] });
+    after = new SessionService(db, projects, new GitEngine(), rt, (e) => emitted.push(e), () => clock);
+    after.resumeAfterUpdate(holds);
+    await vi.advanceTimersByTimeAsync(RESUME_DELAY_MS);
+    await after.drain();
+    return after;
+  }
+  const version = process.env.FORGE_APP_VERSION ?? null;
+
+  it("opens the open sessions again and lets the working one continue with an automatic message", async () => {
+    const { working, idle, closed } = await openSessions();
+    expect(before.prepareUpdateRestart(true)).toEqual({ sessions: 2, working: 1 });
+    before.shutdown();
+    expect(db.getSession(working.id)?.status).toBe("interrupted");
+    const started = rt.started.length;
+
+    const svc2 = await restart();
+    const resumed = rt.started.slice(started);
+    expect(resumed).toHaveLength(2);
+    expect(resumed.find((o) => o.firstMessage)).toMatchObject({ resume: "d69118dc-ef0c-4925-9945-3091ab75cb15", firstMessage: expect.objectContaining({ text: UPDATE_CONTINUE_PROMPT }) });
+    expect(resumed.filter((o) => !o.firstMessage)).toHaveLength(1);
+    expect(svc2.get(working.id)).toMatchObject({ live: true, status: "running" });
+    expect(svc2.get(idle.id)).toMatchObject({ live: true, status: "idle" });
+    expect(svc2.get(closed.id).live).toBe(false);
+    const events = db.listEvents(working.id).map((e) => e.body);
+    expect(events).toContainEqual({ type: "app.updated", from: version, to: version });
+    expect(events.find((b) => b.type === "user.message" && b.text === UPDATE_CONTINUE_PROMPT)).toMatchObject({ source: "auto" });
+    expect(db.listEvents(idle.id).some((e) => e.body.type === "app.updated")).toBe(false);
+    expect(db.listResumeMarks()).toEqual([]);
+  });
+
+  it("leaves the sessions closed after an ordinary exit or a cancelled installation", async () => {
+    await openSessions();
+    before.prepareUpdateRestart(true);
+    before.prepareUpdateRestart(false);
+    before.shutdown();
+    const started = rt.started.length;
+    await restart();
+    expect(rt.started.length).toBe(started);
+  });
+
+  it("drops marks of a restart that came much later, and skips sessions the user went on with", async () => {
+    const { working, idle } = await openSessions();
+    before.prepareUpdateRestart(true);
+    before.shutdown();
+    db.sql.prepare("UPDATE update_resume SET marked_at = ? WHERE session_id = ?").run(new Date(START - MARK_MAX_AGE_MS - 1000).toISOString(), idle.id);
+    vi.useFakeTimers({ toFake: ["setTimeout", "setInterval"] });
+    after = new SessionService(db, projects, new GitEngine(), rt, (e) => emitted.push(e), () => clock);
+    after.resumeAfterUpdate();
+    await after.send(working.id, "Lass das, mach lieber Tests");
+    const started = rt.started.length;
+    await vi.advanceTimersByTimeAsync(RESUME_DELAY_MS);
+    await after.drain();
+    expect(rt.started.length).toBe(started);
+    expect(rt.sent).not.toContain(UPDATE_CONTINUE_PROMPT);
+    expect(after.get(idle.id).live).toBe(false);
+  });
+
+  it("waits while the second step of an update may follow, and keeps the marks when it does", async () => {
+    const { working } = await openSessions();
+    before.prepareUpdateRestart(true);
+    before.shutdown();
+    const holding = true;
+    const started = rt.started.length;
+    const svc2 = await restart(() => holding);
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(rt.started.length).toBe(started);
+    // The second step starts: nothing opens, the marks wait for the next start.
+    expect(svc2.prepareUpdateRestart(true)).toEqual({ sessions: 2, working: 1 });
+    await vi.advanceTimersByTimeAsync(10_000);
+    await svc2.drain();
+    expect(rt.started.length).toBe(started);
+    // It did not start after all: the sessions open now.
+    svc2.prepareUpdateRestart(false);
+    await vi.advanceTimersByTimeAsync(HOLD_RETRY_MS);
+    await svc2.drain();
+    expect(svc2.get(working.id)).toMatchObject({ live: true, status: "running" });
   });
 });

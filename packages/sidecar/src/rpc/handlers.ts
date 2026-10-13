@@ -255,6 +255,8 @@ export function createHandlers(s: Services): Handlers {
     },
     "app.checkUpdate": () => s.updates.check(),
     "app.downloadUpdate": () => s.updates.download(),
+    "app.prepareInstall": ({ cancel }) => s.sessions.prepareUpdateRestart(!cancel),
+    "app.installUpdate": () => s.updates.requestInstall(),
     "app.changelog": () => s.updates.changelog(),
 
     "backup.list": () => s.backups.list(),

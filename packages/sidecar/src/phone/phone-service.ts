@@ -1334,7 +1334,7 @@ export class PhoneService {
       if (!st.latest || st.phase === "uptodate" || st.phase === "idle") return `FORGE ist aktuell, Version ${st.currentVersion}.`;
       const state =
         st.phase === "ready"
-          ? " Es ist heruntergeladen und geprüft. Installieren geht nur in FORGE am Rechner, FORGE startet dabei neu."
+          ? " Es ist heruntergeladen und geprüft. Beim Installieren startet FORGE neu; laufende Sessions machen danach von selbst weiter."
           : st.phase === "downloading"
             ? " Es wird gerade heruntergeladen."
             : "";
@@ -2263,6 +2263,10 @@ export class PhoneService {
           }
           if (action === "update_check") return updateText(await call("app.checkUpdate", {}));
           if (action === "update_download") return updateText(await call("app.downloadUpdate", {}));
+          if (action === "update_install") {
+            const st = await call("app.installUpdate", {});
+            return `FORGE${st.latest ? ` ${st.latest.version}` : ""} wird jetzt installiert und startet neu, dieses Gespräch endet dabei. Offene Sessions gehen danach weiter, laufende machen von selbst dort weiter, wo sie waren.`;
+          }
           if (action === "changelog") {
             const c = await call("app.changelog", {});
             if (!c) return "Gerade wird keine neue Version angeboten.";

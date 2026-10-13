@@ -19,7 +19,7 @@ import { AutoContinueCard } from "./AutoContinueCard";
 const STREAM_RENDER_MS = 50;
 
 /** Notices of what FORGE did itself; they get the highlighted box like the FORGE tool cards. */
-const FORGE_NOTICES = new Set<NoticeIcon>(["commit", "push", "merge", "skip", "notify"]);
+const FORGE_NOTICES = new Set<NoticeIcon>(["commit", "push", "merge", "skip", "notify", "update"]);
 
 const NOTICE_TONE ={ info: "text-muted", warning: "text-warning", danger: "text-danger", success: "text-success" } as const;
 

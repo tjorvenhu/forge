@@ -1470,6 +1470,16 @@ describe("PhoneService end to end with a test PBX", () => {
       "settings.update": (patch: Partial<Settings>) => db.updateSettings(patch),
       "backup.list": () => [backup("b-old", "2026-10-01T08:00:00Z", "start"), backup("b-new", "2026-10-12T08:00:00Z", "manual")],
       "backup.restore": (p: { parts: string[] }) => ({ restored: p.parts, safety: backup("b-safe", "2026-10-13T08:00:00Z", "before-restore"), notes: [] }),
+      "app.installUpdate": () => ({
+        currentVersion: "1.2.0",
+        phase: "ready",
+        latest: { version: "1.3.0", tag: "v1.3.0", notes: "", since: "1.2.0", publishedAt: null, size: null, kind: "patch", via: null },
+        autoInstall: false,
+        installerPath: "C:/tmp/forge-update/v1.3.0/x.zip",
+        installable: true,
+        checkedAt: null,
+        message: null,
+      }),
       "app.checkUpdate": () => ({
         currentVersion: "1.2.0",
         phase: "available",
@@ -1512,6 +1522,8 @@ describe("PhoneService end to end with a test PBX", () => {
     expect(await conv.tools.forgeSettings({})).toContain("Töne aus, Desktop-Benachrichtigungen");
 
     expect(await conv.tools.forgeSystem("update_check")).toBe("FORGE 1.3.0 ist verfügbar, installiert ist 1.2.0.");
+    expect(await conv.tools.forgeSystem("update_install")).toMatch(/^FORGE 1\.3\.0 wird jetzt installiert und startet neu, dieses Gespräch endet dabei\. Offene Sessions gehen danach weiter/);
+    expect(rpcCalls.at(-1)?.[0]).toBe("app.installUpdate");
     expect(await conv.tools.forgeSystem("claude_update")).toBe("Claude Code wird installiert. Ob es geklappt hat, sagt claude_check.");
     expect(rpcCalls.at(-1)?.[0]).toBe("claude.install");
 

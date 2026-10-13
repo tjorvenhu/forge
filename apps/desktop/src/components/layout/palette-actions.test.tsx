@@ -7,6 +7,7 @@ import { buildActions, UNLISTED_SETTINGS, type ActionContext } from "./palette-a
 import { crawlFiles } from "./palette-sources";
 import { rank } from "./CommandPalette";
 import { NAV } from "./nav";
+import { keys } from "@/lib/queries";
 
 const settingKeys = Object.keys(Settings.shape) as Array<keyof typeof Settings.shape>;
 const booleanSettings = settingKeys.filter((k) => Settings.shape[k].def.type === "boolean");
@@ -34,8 +35,10 @@ const session = { id: "s1", projectId: "p1", title: "Test", model: null, effort:
 
 /** Everything switched on that can show entries, so every area of FORGE has to appear. */
 function fullContext(): ActionContext {
+  const qc = new QueryClient();
+  qc.setQueryData(keys.appUpdate, { currentVersion: "0.1.1", phase: "ready", latest: { version: "0.1.2", tag: "v0.1.2", notes: "", since: "0.1.1", publishedAt: null, size: null, kind: "patch", via: null }, autoInstall: false, installerPath: "C:/tmp/u.zip", installable: true, checkedAt: null, message: null });
   return {
-    qc: new QueryClient(),
+    qc,
     project,
     root: project,
     session,
@@ -96,7 +99,7 @@ describe("command palette covers all of FORGE", () => {
   });
 
   it("offers the actions of the open project and session", () => {
-    for (const id of ["session-delete", "session-summary", "session-fork", "session-close", "session-mode", "session-model-opus", "git-commit", "git-push", "git-pull", "git-fetch", "git-pr", "git-new-branch", "agent-new", "remote", "phone", "phone-test", "backup", "update-check", "testdb-start", "dev-start", "project-git"]) {
+    for (const id of ["session-delete", "session-summary", "session-fork", "session-close", "session-mode", "session-model-opus", "git-commit", "git-push", "git-pull", "git-fetch", "git-pr", "git-new-branch", "agent-new", "remote", "phone", "phone-test", "backup", "update-check", "update-install", "testdb-start", "dev-start", "project-git"]) {
       expect(ids, id).toContain(id);
     }
   });

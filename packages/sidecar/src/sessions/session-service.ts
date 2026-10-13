@@ -37,6 +37,7 @@ import { SessionStream } from "./stream.js";
 import { TitleRefresh } from "./titles.js";
 import { TurnAutomation } from "./turn-automation.js";
 import { TurnDispatch } from "./turns.js";
+import { UpdateResume } from "./update-resume.js";
 
 /** Entry point for everything session related; wires the session modules and keeps the public API in one place. */
 /** how long a scan of terminal transcripts is reused */
@@ -53,6 +54,7 @@ export class SessionService {
   private readonly approvals: ApprovalGate;
   private readonly lifecycle: SessionLifecycle;
   private readonly autoContinue: AutoContinue;
+  private readonly updateResume: UpdateResume;
   private readonly limits: RateLimitTracker;
   private readonly titles: TitleRefresh;
   private readonly agents: AgentRegistry;
@@ -117,6 +119,19 @@ export class SessionService {
         isBusy: (id) => [...BUSY, "stopping"].includes(db.getSession(id)?.status ?? "stopped"),
         send: (id, text) => this.lifecycle.resume(id, text, [], "auto"),
         track: (p) => this.automation.track(p),
+      },
+      now,
+    );
+    this.updateResume = new UpdateResume(
+      db,
+      {
+        live: () =>
+          [...core.live].map(([id, l]) => ({ id, working: l.turnActive || l.background.size > 0 || l.subagents.size > 0 })),
+        isLive: (id) => core.live.has(id),
+        record,
+        resume: (id, prompt) => this.lifecycle.resume(id, prompt, [], prompt === null ? undefined : "auto"),
+        track: (p) => this.automation.track(p),
+        version: process.env.FORGE_APP_VERSION ?? null,
       },
       now,
     );
@@ -354,9 +369,23 @@ export class SessionService {
   }
 
   shutdown() {
+    const forUpdate = this.updateResume.noteShutdown();
+    this.updateResume.stop();
     this.autoContinue.stop();
     this.titles.shutdown();
-    this.lifecycle.shutdown();
+    this.lifecycle.shutdown(forUpdate ? "FORGE wird aktualisiert" : undefined);
+  }
+
+  // ---------- restart for an update
+
+  /** The desktop shell ends FORGE for an update next (or, with false, does not after all). */
+  prepareUpdateRestart(on: boolean) {
+    return this.updateResume.prepare(on);
+  }
+
+  /** Opens the sessions noted at the restart for an update; `holds` keeps them back while another step follows. */
+  resumeAfterUpdate(holds?: () => boolean) {
+    this.updateResume.start(holds);
   }
 
   /** Waits for post-turn work (tests, auto-commit) and other background work; used on shutdown and in tests. */

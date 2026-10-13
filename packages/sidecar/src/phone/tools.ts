@@ -181,6 +181,7 @@ export const SYSTEM_ACTIONS = [
   "diagnostics",
   "update_check",
   "update_download",
+  "update_install",
   "changelog",
   "claude_check",
   "claude_update",
@@ -817,7 +818,7 @@ export const PHONE_TOOLS: readonly PhoneToolSpec[] = [
   {
     name: "forge_system",
     description:
-      "FORGE selbst. diagnostics: ob Claude Code, Anmeldung, Git und GitHub-CLI in Ordnung sind. update_check: nach einer neuen FORGE-Version suchen. update_download: sie herunterladen; installieren geht nur am Rechner. changelog: was die neue Version bringt. claude_check: ob es ein Update von Claude Code gibt. claude_update: Claude Code aktualisieren (oder installieren, wenn es fehlt). backup_list: die letzten Backups. backup_create: Backup anlegen. backup_restore: ein Backup wiederherstellen; vorher sichert FORGE den jetzigen Stand. Nur wenn der Anrufer das ausdrücklich will.",
+      "FORGE selbst. diagnostics: ob Claude Code, Anmeldung, Git und GitHub-CLI in Ordnung sind. update_check: nach einer neuen FORGE-Version suchen. update_download: sie herunterladen. update_install: sie installieren; FORGE startet dabei neu und das Gespräch endet, offene Sessions machen danach von selbst weiter. Nur wenn der Anrufer das ausdrücklich will, und vorher sagen, dass das Gespräch endet. changelog: was die neue Version bringt. claude_check: ob es ein Update von Claude Code gibt. claude_update: Claude Code aktualisieren (oder installieren, wenn es fehlt). backup_list: die letzten Backups. backup_create: Backup anlegen. backup_restore: ein Backup wiederherstellen; vorher sichert FORGE den jetzigen Stand. Nur wenn der Anrufer das ausdrücklich will.",
     params: {
       action: { type: "string", enum: SYSTEM_ACTIONS },
       backup: { type: "string", optional: true, description: "bei backup_restore: Nummer aus backup_list (1 = neuestes)" },

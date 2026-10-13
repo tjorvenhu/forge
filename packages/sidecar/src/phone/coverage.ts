@@ -112,6 +112,7 @@ export const PHONE_TOOL_FOR: Partial<Record<MethodName, string>> = {
   "app.updateState": "forge_system",
   "app.checkUpdate": "forge_system",
   "app.downloadUpdate": "forge_system",
+  "app.installUpdate": "forge_system",
   "app.changelog": "forge_system",
 
   "backup.list": "forge_system",
@@ -155,6 +156,7 @@ export const NOT_ON_PHONE: Partial<Record<MethodName, string>> = {
   "projects.touch": "Merkt nur die letzte Nutzung für die Sortierung in der Seitenleiste.",
   "sessions.events": "Roher Verlauf für die Chat-Ansicht; am Telefon fassen details und search ihn zusammen.",
   "sessions.images": "Bilder einer Nachricht lassen sich nicht vorlesen.",
+  "app.prepareInstall": "Interner Schritt der Installation im Hauptfenster; am Telefon startet forge_system update_install die ganze Installation.",
   "app.presence": "Meldet, ob der Nutzer gerade am Rechner ist; das Telefon ist genau der andere Fall.",
   "backup.export": "Schreibt ein Backup in eine Datei, die der Nutzer im Dateidialog wählt.",
   "backup.inspect": "Liest eine Backup-Datei aus dem Dateidialog für die Vorschau vor dem Wiederherstellen.",

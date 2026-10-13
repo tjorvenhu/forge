@@ -204,6 +204,16 @@ export const MIGRATIONS: string[] = [
   `
   ALTER TABLE projects ADD COLUMN git_enabled INTEGER NOT NULL DEFAULT 1;
   `,
+  // Sessions that were open when FORGE ended for an update; the next start opens them again and lets
+  // the working ones continue. from_version: the version that wrote the row.
+  `
+  CREATE TABLE update_resume (
+    session_id TEXT PRIMARY KEY REFERENCES sessions(id) ON DELETE CASCADE,
+    working INTEGER NOT NULL,
+    from_version TEXT,
+    marked_at TEXT NOT NULL
+  );
+  `,
 ];
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -283,6 +293,14 @@ interface AutoContinueRow {
   after_seq: number;
   attempts: number;
   probes: number;
+}
+
+export interface ResumeMark {
+  sessionId: string;
+  /** a turn, a background task or a subagent was running */
+  working: boolean;
+  fromVersion: string | null;
+  markedAt: string;
 }
 
 function toAutoContinue(r: AutoContinueRow): AutoContinueRecord {
@@ -659,6 +677,33 @@ export class Db {
         )
         .run(now()).changes,
     );
+  }
+
+  // ---- sessions to open again after a restart for an update
+
+  /** A session marked twice (two-step update) stays working if it was working once. */
+  markForResume(sessionId: string, working: boolean, fromVersion: string | null, at: string) {
+    this.stmt(
+      `INSERT INTO update_resume(session_id, working, from_version, marked_at) VALUES(?, ?, ?, ?)
+       ON CONFLICT(session_id) DO UPDATE SET working = max(working, excluded.working), marked_at = excluded.marked_at`,
+    ).run(sessionId, working ? 1 : 0, fromVersion, at);
+  }
+
+  /** Marks of a restart that did not happen yet (the second step of an update) count from `at` on. */
+  touchResumeMarks(at: string) {
+    this.stmt("UPDATE update_resume SET marked_at = ?").run(at);
+  }
+
+  listResumeMarks(): ResumeMark[] {
+    const rows = this.stmt("SELECT * FROM update_resume ORDER BY marked_at").all() as unknown as Array<{ session_id: string; working: number; from_version: string | null; marked_at: string }>;
+    return rows.map((r) => ({ sessionId: r.session_id, working: r.working === 1, fromVersion: r.from_version, markedAt: r.marked_at }));
+  }
+
+  /** Reads and removes all marks, so a failing resume is never tried again on the next start. */
+  takeResumeMarks(): ResumeMark[] {
+    const marks = this.listResumeMarks();
+    this.stmt("DELETE FROM update_resume").run();
+    return marks;
   }
 
   // ---- automatic continuation after a usage limit

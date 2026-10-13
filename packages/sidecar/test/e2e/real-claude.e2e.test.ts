@@ -517,6 +517,35 @@ describe.skipIf(!enabled)("E2E: sidecar with real Claude Code", () => {
     if (result?.type === "turn.result") expect(result.text ?? "").toMatch(/hello\.txt/);
     expect((await c.request("sessions.get", { sessionId })).cwd.toLowerCase()).toBe(projectPath.toLowerCase());
   }, 240_000);
+
+  it("keeps a working session going through a restart for an update", async () => {
+    await c.request("projects.update", { projectId, profile: "autonomous" });
+    const before = c.events.length;
+    const s = await c.request("sessions.start", {
+      projectId,
+      model: MODEL,
+      prompt:
+        "Do these two steps in order. Step 1: run the shell command `ping -n 20 127.0.0.1` and wait for it to finish. " +
+        "Step 2: create the file after-update.txt containing the word done. Do not skip step 1.",
+    });
+    // Restart while the command runs: the turn is cut off in the middle of a tool call.
+    await c.waitFor(
+      (e) => c.events.indexOf(e) >= before && e.event === "session.event" && e.payload.sessionId === s.id && e.payload.body.type === "tool.use",
+      120_000,
+      "tool call",
+    );
+    expect(await c.request("app.prepareInstall", { cancel: false })).toMatchObject({ working: 1 });
+    await c.close();
+
+    c = new SidecarClient(dataDir);
+    await c.waitFor((e) => e.event === "sidecar.ready", 15_000, "ready");
+    const result = await c.waitTurn(s.id, 0, 240_000);
+    expect(result).toMatchObject({ isError: false });
+    const events = (await c.request("sessions.events", { sessionId: s.id })).map((e) => e.body);
+    expect(events.some((b) => b.type === "app.updated")).toBe(true);
+    expect(events.some((b) => b.type === "user.message" && b.source === "auto")).toBe(true);
+    expect(existsSync(path.join(projectPath, "after-update.txt"))).toBe(true);
+  }, 420_000);
 });
 
 /** Minimal uncompressed-filter PNG with one solid color, for the attachment test. */

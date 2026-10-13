@@ -22,7 +22,7 @@ Letzter vollständiger Lauf: 2026-10-12, Windows 11 Pro 26200, Node 24.11, Claud
 - `policy.test.ts`: Sperrliste (Force-Push, Push auf main, reset --hard, Branch löschen, rm -rf /, sensible Pfade), Profile, sandbox-only sperrt Autonomous, Redaction.
 - `project-git.test.ts`: Import/Kanonisierung/Dubletten (auch Groß-/Kleinschreibung unter Windows), Persistenz über DB-Neustart, Projekt anlegen mit Vorlagen, fehlender Ordner, echte Git-Repos: Diff, Commit nur der ausgewählten Dateien, Secret-Stopp, Konflikt-Stopp, erster Commit.
 - `normalize.test.ts`: Normalizer gegen eine aufgezeichnete echte `stream-json`-Ausgabe (Fixture), Robustheit gegen kaputte/unbekannte Events.
-- `session-service.test.ts`: Session-Lebenszyklus mit simulierter Runtime: Profil-Modi, Freigaben + Audit, Sperrliste, Stop, Absturz und Resume, Fehlerdarstellung, Redaction.
+- `session-service.test.ts`: Session-Lebenszyklus mit simulierter Runtime: Profil-Modi, Freigaben + Audit, Sperrliste, Stop, Absturz und Resume, Fehlerdarstellung, Redaction; Sessions über einen Update-Neustart (wieder geöffnet, arbeitende mit automatischer Nachricht, abgebrochene Installation, alte Marken, zweiter Update-Schritt).
 - `usage-commit.test.ts`: Umwandlung der Usage-Daten, Prompt und Bereinigung der KI-Commit-Nachricht.
 - `setup-tools.test.ts`: Auslesen der Login-URL aus der echten CLI-Ausgabe, Vorrang der mitgelieferten Werkzeuge, PATH für Sessions.
 
@@ -72,7 +72,8 @@ Letzter vollständiger Lauf: 2026-10-12, Windows 11 Pro 26200, Node 24.11, Claud
 
 15. Telefon: Claude (Haiku) nutzt das Werkzeug status, antwortet in höchstens drei kurzen deutschen Sätzen ohne Markdown, schaltet Remote Control auf Zuruf ohne Rückfrage ein und legt bei „Tschüss“ selbst auf
 
-(Weitere E2E-Fälle seit Phase 2: Profilwechsel im Lauf, Hintergrundaufgaben.)
+(Weitere E2E-Fälle seit Phase 2: Profilwechsel im Lauf, Hintergrundaufgaben; Neustart für ein Update mitten in einem
+Tool-Aufruf, die Session macht danach von selbst weiter und legt die Datei aus Schritt 2 an.)
 
 Nicht getestet: echte Telefonanlage und echte OpenAI-Sprachdienste (keine Zugangsdaten im Testlauf).
 

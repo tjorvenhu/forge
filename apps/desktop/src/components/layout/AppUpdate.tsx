@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
 import { useQueryClient } from "@tanstack/react-query";
-import { ArrowUpCircle, Download, RefreshCw, Sparkles } from "lucide-react";
+import { ArrowUpCircle, Download, RefreshCw, Sparkles, Workflow } from "lucide-react";
 import type { AppUpdateState } from "@forge/protocol";
-import { call, keys, useAppChangelog, useAppUpdate } from "@/lib/queries";
+import { installUpdate, isWorkingSession, sessionsNote, useInstall } from "@/lib/app-install";
+import { call, keys, useAppChangelog, useAppUpdate, useLiveSessions } from "@/lib/queries";
 import { errorMessage } from "@/lib/rpc";
-import { relativeTime } from "@/lib/utils";
+import { cn, relativeTime } from "@/lib/utils";
 import { toast } from "@/stores/toast";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
@@ -23,32 +23,29 @@ function sizeLabel(latest: NonNullable<AppUpdateState["latest"]>): string {
 }
 
 /** Downloads the installer if needed, then lets the desktop shell run it; FORGE restarts on its own. */
-function useInstall() {
+function useInstallAction() {
   const qc = useQueryClient();
-  const [installing, setInstalling] = useState(false);
-  const install = async () => {
-    setInstalling(true);
-    try {
-      let s = qc.getQueryData<AppUpdateState>(keys.appUpdate);
-      if (s?.phase !== "ready") {
-        s = await call("app.downloadUpdate", {});
-        qc.setQueryData(keys.appUpdate, s);
-      }
-      if (s.phase !== "ready" || !s.installerPath) throw new Error(s.message ?? "Der Installer ist nicht bereit.");
-      toast.info("Update wird installiert", "FORGE schließt sich kurz und startet danach von selbst neu.");
-      await invoke("install_update", { path: s.installerPath });
-    } catch (e) {
-      toast.error("Update nicht installiert", errorMessage(e));
-      setInstalling(false);
-    }
-  };
-  return { install, installing };
+  const installing = useInstall((s) => s.installing);
+  return { install: () => installUpdate(qc), installing };
+}
+
+/** What the restart means for the open sessions; nothing without any. */
+function RestartNote({ className }: { className?: string }) {
+  const live = useLiveSessions().data ?? [];
+  const note = sessionsNote(live.length, live.filter(isWorkingSession).length);
+  if (!note) return null;
+  return (
+    <div className={cn("flex items-start gap-2 text-caption text-muted", className)}>
+      <Workflow className="mt-px h-3.5 w-3.5 shrink-0 text-accent" />
+      <span>{note}</span>
+    </div>
+  );
 }
 
 /** "Update available" above the Claude Code card in the sidebar; nothing when FORGE is up to date. */
 export function AppUpdateCard() {
   const s = useAppUpdate().data;
-  const { install, installing } = useInstall();
+  const { install, installing } = useInstallAction();
   if (!s?.latest || !["available", "downloading", "ready"].includes(s.phase)) return null;
   const busy = installing || s.phase === "downloading";
   return (
@@ -74,6 +71,7 @@ export function AppUpdateCard() {
           </div>
         </Tooltip>
       )}
+      {s.installable && <RestartNote />}
       {s.installable ? (
         <Button size="sm" variant="primary" className="w-full" loading={busy} onClick={() => void install()}>
           {busy ? (s.phase === "downloading" ? "Wird geladen …" : "Wird installiert …") : (
@@ -98,7 +96,7 @@ const OFFERED = ["available", "downloading", "ready"];
 export function AppUpdateDialog() {
   const s = useAppUpdate().data;
   const [dismissed, setDismissed] = useState<string | null>(null);
-  const { install, installing } = useInstall();
+  const { install, installing } = useInstallAction();
   // Second step of an update the user started before the restart: no second click.
   const autoStarted = useRef(false);
   const autoInstall = !!s?.autoInstall && s.installable && OFFERED.includes(s.phase);
@@ -153,6 +151,7 @@ export function AppUpdateDialog() {
             }}
           />
         </div>
+        {s.installable && <RestartNote className="rounded-md border border-border bg-surface-2 px-3 py-2" />}
       </div>
     </Dialog>
   );
@@ -213,7 +212,7 @@ export function AppUpdateSettings() {
   const s = update.data;
   const qc = useQueryClient();
   const [checking, setChecking] = useState(false);
-  const { install, installing } = useInstall();
+  const { install, installing } = useInstallAction();
   const check = async () => {
     setChecking(true);
     try {

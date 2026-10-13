@@ -127,6 +127,7 @@ export function createApp(opts: { dataDir: string; write: Writer; log?: (m: stri
   };
   const updates = new AppUpdateService({
     emit: (payload) => emit({ event: "update.updated", payload }),
+    requestInstall: () => emit({ event: "update.install", payload: {} }),
     enabled: () => db.getSettings().updateChecks,
     log: (m) => opts.log?.(m),
     claudeReady: async () => {
@@ -155,6 +156,8 @@ export function createApp(opts: { dataDir: string; write: Writer; log?: (m: stri
   });
   // Only in the desktop app (the shell passes its version); tests and the CLI do not look for updates,
   // write no start backups and install nothing.
+  // Sessions open at the last restart for an update come back; a second step of the update goes first.
+  sessions.resumeAfterUpdate(() => updates.holdsResume());
   if (process.env.FORGE_APP_VERSION) {
     updates.start();
     void backups.createOnStart().catch((e: unknown) => opts.log?.(`Backup beim Start fehlgeschlagen: ${e instanceof Error ? e.message : String(e)}`));
