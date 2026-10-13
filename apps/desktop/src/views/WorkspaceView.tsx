@@ -273,20 +273,20 @@ function WorkspaceHeader({ projectId }: { projectId: string }) {
   return (
     <header className="flex h-12 shrink-0 items-center gap-3 border-b border-border px-5">
       <ProjectIcon name={project.name} size={26} />
-      <div className="flex min-w-0 items-center gap-1.5" title={shortPath(project.path, 4)}>
-        {/* min-w-0: without it the name keeps its full width and the star slides over what follows. */}
-        <h1 className="min-w-0 truncate text-title-sm font-semibold">{project.name}</h1>
-        <Button
-          size="icon-sm"
-          variant="ghost"
-          onClick={() => void toggleFavorite()}
-          className="hover:text-warning"
-          aria-label={project.favorite ? "Aus Favoriten entfernen" : "Zu Favoriten"}
-          title={project.favorite ? "Aus Favoriten entfernen" : "Zu Favoriten hinzufügen"}
-        >
-          <Star className={cn("h-4 w-4", project.favorite && "fill-warning text-warning")} />
-        </Button>
-      </div>
+      {/* Only the name gives way in a narrow window; the star sits outside it, so it cannot slide over the tags. */}
+      <h1 className="-mr-1.5 min-w-0 truncate text-title-sm font-semibold" title={`${project.name}\n${shortPath(project.path, 4)}`}>
+        {project.name}
+      </h1>
+      <Button
+        size="icon-sm"
+        variant="ghost"
+        onClick={() => void toggleFavorite()}
+        className="hover:text-warning"
+        aria-label={project.favorite ? "Aus Favoriten entfernen" : "Zu Favoriten"}
+        title={project.favorite ? "Aus Favoriten entfernen" : "Zu Favoriten hinzufügen"}
+      >
+        <Star className={cn("h-4 w-4", project.favorite && "fill-warning text-warning")} />
+      </Button>
 
       {project.tags.length > 0 && (
         <button
