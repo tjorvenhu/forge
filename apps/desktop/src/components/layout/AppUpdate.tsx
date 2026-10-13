@@ -48,40 +48,24 @@ export function AppUpdateCard() {
   const { install, installing } = useInstallAction();
   if (!s?.latest || !["available", "downloading", "ready"].includes(s.phase)) return null;
   const busy = installing || s.phase === "downloading";
+  const details = (
+    <div className="flex max-w-64 flex-col gap-1.5 text-xs">
+      <span>
+        Installiert: {s.currentVersion} · {sizeLabel(s.latest)}
+      </span>
+      {s.installable ? <RestartNote /> : <span>Nur in der installierten App, nicht im Entwicklungsmodus.</span>}
+    </div>
+  );
   return (
-    <div className="mx-3 mt-3 flex flex-col gap-2 rounded-xl border border-accent/40 bg-accent-soft px-3.5 py-3 animate-slide-up-in">
-      <div className="flex items-start gap-2.5">
-        <ArrowUpCircle className="mt-0.5 h-4 w-4 shrink-0 text-accent" />
-        <div className="min-w-0 flex-1">
-          <div className="text-body font-medium">FORGE {s.latest.version} ist da</div>
-          <div className="text-caption text-muted">
-            Installiert: {s.currentVersion} · {sizeLabel(s.latest)}
-            {s.latest.publishedAt ? ` · veröffentlicht ${relativeTime(s.latest.publishedAt)}` : ""}
-          </div>
-        </div>
-      </div>
-      {s.latest.notes && (
-        <Tooltip content={<div className="max-w-80 whitespace-pre-wrap text-xs">{s.latest.notes.replace(/^#+\s*/gm, "").slice(0, 1200)}</div>}>
-          <div className="line-clamp-2 cursor-default text-caption text-muted">
-            {s.latest.notes
-              .split("\n")
-              .filter((l) => l.trim() && !l.startsWith("#"))
-              .map((l) => l.replace(/^[-*]\s*/, ""))
-              .join(" · ")}
-          </div>
-        </Tooltip>
-      )}
-      {s.installable && <RestartNote />}
-      {s.installable ? (
-        <Button size="sm" variant="primary" className="w-full" loading={busy} onClick={() => void install()}>
-          {busy ? (s.phase === "downloading" ? "Wird geladen …" : "Wird installiert …") : (
-            <>
-              <Download className="h-3.5 w-3.5" /> Jetzt aktualisieren
-            </>
-          )}
+    <div className="mx-3 mt-3 flex h-9 items-center gap-2 rounded-lg border border-accent/40 bg-accent-soft pl-2.5 pr-1 animate-slide-up-in">
+      <ArrowUpCircle className="h-3.5 w-3.5 shrink-0 text-accent" />
+      <Tooltip content={details}>
+        <span className="min-w-0 flex-1 cursor-default truncate text-caption">Update auf {s.latest.version} verfügbar</span>
+      </Tooltip>
+      {s.installable && (
+        <Button size="sm" variant="primary" className="h-6 px-2" loading={busy} onClick={() => void install()}>
+          {busy ? (s.phase === "downloading" ? "Lädt …" : "Installiert …") : "Installieren"}
         </Button>
-      ) : (
-        <div className="text-caption text-subtle">Nur in der installierten App, nicht im Entwicklungsmodus.</div>
       )}
     </div>
   );
