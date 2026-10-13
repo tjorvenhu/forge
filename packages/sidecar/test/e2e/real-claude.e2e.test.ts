@@ -296,13 +296,16 @@ describe.skipIf(!enabled)("E2E: sidecar with real Claude Code", () => {
         "3. Reply DONE without waiting for the command.",
     });
     await c.waitTurn(s.id, before, 240_000);
-    const bodies = c.events
-      .slice(before)
-      .flatMap((e) => (e.event === "session.event" && e.payload.sessionId === s.id ? [e.payload.body] : [])) as SessionEventBody[];
-    const agent = bodies.find((b) => b.type === "tool.use" && (b.name === "Agent" || b.name === "Task"));
+    const bodiesNow = () =>
+      c.events.slice(before).flatMap((e) => (e.event === "session.event" && e.payload.sessionId === s.id ? [e.payload.body] : [])) as SessionEventBody[];
+    const agent = bodiesNow().find((b) => b.type === "tool.use" && (b.name === "Agent" || b.name === "Task"));
     expect(agent).toBeTruthy();
     const agentId = agent?.type === "tool.use" ? agent.toolUseId : "";
-    const inner = bodies.filter((b) => b.type === "assistant.text" && b.parentToolUseId === agentId);
+    // Claude may start the subagent in the background; its text can come after the first turn ends.
+    const said = () => bodiesNow().some((b) => b.type === "assistant.text" && b.parentToolUseId === agentId && /SUBAGENT-OK/.test(b.text));
+    for (let i = 0; i < 120 && !said(); i++) await new Promise((r) => setTimeout(r, 500));
+    const inner = bodiesNow().filter((b) => b.type === "assistant.text" && b.parentToolUseId === agentId);
+    if (!inner.length) console.log("[e2e] subagent events", JSON.stringify(bodiesNow().filter((b) => b.type !== "assistant.delta").map((b) => b.type + ("parentToolUseId" in b ? `:${b.parentToolUseId}` : ""))));
     expect(inner.map((b) => (b.type === "assistant.text" ? b.text : "")).join(" ")).toMatch(/SUBAGENT-OK/);
 
     const bg = (await c.request("sessions.get", { sessionId: s.id })).background.find((t) => t.taskType === "local_bash");
