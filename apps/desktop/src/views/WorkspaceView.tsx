@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useShallow } from "zustand/react/shallow";
-import { Activity, Bot, FolderTree, GitCompare, GitMerge, AlertTriangle, BookOpen, ChevronDown, FileText, FlaskConical, PanelTop, GitBranch, MessageSquare, PanelBottom, PanelRight, Settings2, Star, Tag } from "lucide-react";
+import { Activity, Bot, FolderTree, GitCompare, GitMerge, AlertTriangle, BookOpen, ChevronDown, FileText, FlaskConical, GitBranch, MessageSquare, Settings2, SquareTerminal, Star, Tag, Wrench } from "lucide-react";
 import type { ProfileId } from "@forge/protocol";
 import { call, keys, useProject } from "@/lib/queries";
 import { errorMessage, RpcCallError } from "@/lib/rpc";
@@ -196,10 +196,10 @@ function LayoutToggles() {
         onClick={() => toggleToolbar()}
         aria-pressed={toolbarOpen}
         aria-label="Werkzeugleiste"
-        title={toolbarOpen ? "Werkzeugleiste ausblenden (zurück zum Chat)" : "Werkzeugleiste einblenden: Agenten, Git, Dateien, Dev-Tools, Wissen, Einstellungen"}
+        title={`Werkzeugleiste ${toolbarOpen ? "ausblenden" : "einblenden"}\nReiter oben im Projekt:\n- Chat, Agenten, Git, Dateien\n- Dev-Tools, Wissen, Einstellungen${toolbarOpen ? "\n\nAusblenden führt zurück zum Chat." : ""}`}
         className={cn(toolbarOpen && "text-accent")}
       >
-        <PanelTop className="h-4 w-4" />
+        <Wrench className="h-4 w-4" />
       </Button>
       <Button
         size="icon-sm"
@@ -207,10 +207,10 @@ function LayoutToggles() {
         onClick={() => toggleBottomPanel()}
         aria-pressed={bottomPanelOpen}
         aria-label="Untere Leiste"
-        title="Terminal, Dev-Server und Claude-Ausgabe (Strg+J)"
+        title={`Untere Leiste ${bottomPanelOpen ? "ausblenden" : "einblenden"} (Strg+J)\n- Terminal\n- Dev-Server\n- Claude-Ausgabe`}
         className={cn(bottomPanelOpen && "text-accent")}
       >
-        <PanelBottom className="h-4 w-4" />
+        <SquareTerminal className="h-4 w-4" />
       </Button>
       <Button
         size="icon-sm"
@@ -219,10 +219,16 @@ function LayoutToggles() {
         aria-pressed={showRight}
         aria-label="Rechte Seitenleiste"
         disabled={narrow || workspaceTab !== "chat"}
-        title={narrow ? "Fenster zu schmal für die Seitenleiste" : workspaceTab !== "chat" ? "Seitenleiste gibt es nur im Chat" : "Seitenleiste mit Dateien und Änderungen (Strg+Umschalt+E)"}
+        title={
+          narrow
+            ? "Seitenleiste\nDas Fenster ist zu schmal dafür."
+            : workspaceTab !== "chat"
+              ? "Seitenleiste\nGibt es nur im Chat."
+              : `Seitenleiste ${showRight ? "ausblenden" : "einblenden"} (Strg+Umschalt+E)\n- Dateien\n- Änderungen\n- Aktivität`
+        }
         className={cn(showRight && "text-accent")}
       >
-        <PanelRight className="h-4 w-4" />
+        <FolderTree className="h-4 w-4" />
       </Button>
     </div>
   );
@@ -268,8 +274,16 @@ function WorkspaceHeader({ projectId }: { projectId: string }) {
     <header className="flex h-12 shrink-0 items-center gap-3 border-b border-border px-5">
       <ProjectIcon name={project.name} size={26} />
       <div className="flex min-w-0 items-center gap-1.5" title={shortPath(project.path, 4)}>
-        <h1 className="truncate text-title-sm font-semibold">{project.name}</h1>
-        <Button size="icon-sm" variant="ghost" onClick={() => void toggleFavorite()} className="hover:text-warning" aria-label={project.favorite ? "Aus Favoriten entfernen" : "Zu Favoriten"}>
+        {/* min-w-0: without it the name keeps its full width and the star slides over what follows. */}
+        <h1 className="min-w-0 truncate text-title-sm font-semibold">{project.name}</h1>
+        <Button
+          size="icon-sm"
+          variant="ghost"
+          onClick={() => void toggleFavorite()}
+          className="hover:text-warning"
+          aria-label={project.favorite ? "Aus Favoriten entfernen" : "Zu Favoriten"}
+          title={project.favorite ? "Aus Favoriten entfernen" : "Zu Favoriten hinzufügen"}
+        >
           <Star className={cn("h-4 w-4", project.favorite && "fill-warning text-warning")} />
         </Button>
       </div>
@@ -278,7 +292,7 @@ function WorkspaceHeader({ projectId }: { projectId: string }) {
         <button
           type="button"
           onClick={() => openProjectSettings("automation")}
-          title={`Aktive Tags:\n${project.tags.map(tagLabel).join("\n")}\n\nKlicken, um sie unter Automatik einzustellen`}
+          title={`Aktive Tags\n${project.tags.map((t) => `- ${tagLabel(t)}`).join("\n")}\n\nKlicken, um sie unter Automatik einzustellen.`}
           className="flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-caption-lg text-muted transition-colors duration-120 hover:bg-surface-3 hover:text-fg"
         >
           <Tag className="h-3.5 w-3.5" />

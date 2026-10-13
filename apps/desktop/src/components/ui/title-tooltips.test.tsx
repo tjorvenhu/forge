@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { TitleTooltips } from "./title-tooltips";
+import { TipText, TitleTooltips } from "./title-tooltips";
 
 describe("TitleTooltips", () => {
   beforeEach(() => vi.useFakeTimers());
@@ -93,5 +93,25 @@ describe("TitleTooltips", () => {
     fireEvent.pointerDown(button);
     expect(screen.queryByRole("tooltip")).toBeNull();
     expect(button.getAttribute("title")).toBe("Neu");
+  });
+});
+
+describe("TipText", () => {
+  afterEach(cleanup);
+
+  it("turns a heading, list items and a shortcut into structure", () => {
+    const { container } = render(<TipText text={"Untere Leiste einblenden (Strg+J)\n- Terminal\n- Dev-Server\n\nKlicken zum Öffnen."} />);
+    expect(screen.getByText("Untere Leiste einblenden").className).toContain("min-w-0");
+    expect(screen.getByText("Untere Leiste einblenden").parentElement!.className).toContain("font-medium");
+    expect(container.querySelector("kbd")!.textContent).toBe("Strg+J");
+    expect(screen.getByText("Terminal").previousElementSibling!.textContent).toBe("-");
+    expect(screen.getByText("Klicken zum Öffnen.").parentElement!.className).toContain("text-muted");
+  });
+
+  it("keeps a single line plain", () => {
+    const { container } = render(<TipText text="Ton anhören" />);
+    expect(container.textContent).toBe("Ton anhören");
+    expect(container.querySelector(".font-medium")).toBeNull();
+    expect(container.querySelector("kbd")).toBeNull();
   });
 });

@@ -7,6 +7,7 @@ import { useUi } from "@/stores/ui";
 import { errorMessage } from "@/lib/rpc";
 import { openExternal } from "@/lib/native";
 import { toast } from "@/stores/toast";
+import { useActivity } from "@/stores/activity";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { Field, Input, Textarea } from "@/components/ui/input";
@@ -44,7 +45,7 @@ export function SyncActions({ project }: { project: Project }) {
   const run = async (label: string, fn: () => Promise<SyncResult | unknown>, success: string) => {
     setBusy(label);
     try {
-      const r = (await fn()) as Partial<SyncResult> | undefined;
+      const r = (await useActivity.getState().track(project.id, label, fn)) as Partial<SyncResult> | undefined;
       refresh();
       if (r?.session) {
         // Conflicts with origin: Claude resolves them in a new session and asks when it is unclear.

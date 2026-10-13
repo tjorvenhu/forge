@@ -142,7 +142,7 @@ function GeneralSection({ project, update }: SectionProps) {
       </Group>
 
       <Group title="Befehle" description="Laufen in einer Shell im Projektordner. Den Dev-Server richtest du im Tab Dev-Tools ein.">
-        <Row label="Testbefehl" description="Für „Automatisch testen“ unter Automatik. Bekommt die Test-Umgebung aus Dev-Tools." stacked>
+        <Row label="Testbefehl" description="Für „Automatisch testen“ unter Automatik. Bekommt die Variablen der Test-.env aus Dev-Tools." stacked>
           <CommandInput value={project.testCommand} placeholder="z. B. pnpm test" onSave={(v) => void update({ testCommand: v })} />
         </Row>
       </Group>

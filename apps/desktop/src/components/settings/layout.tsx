@@ -8,6 +8,8 @@ export interface SettingsSectionDef<Id extends string> {
   label: string;
   hint: string;
   Icon: LucideIcon;
+  /** shown as a branch under this section, like in a file tree */
+  parent?: Id;
 }
 
 /** Settings page frame: section menu on the left, the chosen section on the right. Shared by the app and the project settings. */
@@ -27,26 +29,32 @@ export function SettingsLayout<Id extends string>({
   return (
     <div className="mx-auto flex max-w-6xl gap-8">
       <nav className="sticky top-0 flex w-56 shrink-0 flex-col gap-1 self-start" aria-label={label}>
-        {sections.map((x) => {
-          const active = x.id === current;
-          return (
-            <button
-              key={x.id}
-              onClick={() => onSelect(x.id)}
-              aria-current={active ? "page" : undefined}
-              className={cn(
-                "flex items-start gap-3 rounded-lg px-3 py-2.5 text-left transition-[color,background-color,transform] duration-120 active:scale-[0.98]",
-                active ? "bg-accent-soft text-fg" : "text-muted hover:bg-surface-2 hover:text-fg",
-              )}
-            >
-              <x.Icon className={cn("mt-0.5 h-4 w-4 shrink-0", active && "text-accent")} />
-              <span className="min-w-0">
-                <span className="block text-body-lg">{x.label}</span>
-                <span className="block truncate text-caption text-subtle">{x.hint}</span>
-              </span>
-            </button>
-          );
-        })}
+        {sections
+          .filter((x) => !x.parent)
+          .map((x) => {
+            const children = sections.filter((c) => c.parent === x.id);
+            return (
+              <div key={x.id} className="flex flex-col gap-1">
+                <SectionButton section={x} active={x.id === current} onSelect={onSelect} />
+                {children.length > 0 && (
+                  // Tree lines from the parent's icon (20px in): a bend to each child, the trunk runs on to the next one.
+                  <div className="ml-5 flex flex-col gap-1">
+                    {children.map((c, i) => (
+                      <div
+                        key={c.id}
+                        className={cn(
+                          "relative pl-4 before:absolute before:left-0 before:-top-1 before:h-[calc(50%+0.25rem)] before:w-3 before:rounded-bl-md before:border-b before:border-l before:border-border-strong",
+                          i < children.length - 1 && "after:absolute after:-bottom-1 after:left-0 after:top-1/2 after:border-l after:border-border-strong",
+                        )}
+                      >
+                        <SectionButton section={c} active={c.id === current} onSelect={onSelect} />
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
       </nav>
 
       {/* Keyed per section: each switch fades the new section in. */}
@@ -54,6 +62,25 @@ export function SettingsLayout<Id extends string>({
         {children}
       </div>
     </div>
+  );
+}
+
+function SectionButton<Id extends string>({ section: x, active, onSelect }: { section: SettingsSectionDef<Id>; active: boolean; onSelect: (id: Id) => void }) {
+  return (
+    <button
+      onClick={() => onSelect(x.id)}
+      aria-current={active ? "page" : undefined}
+      className={cn(
+        "flex w-full items-start gap-3 rounded-lg px-3 py-2.5 text-left transition-[color,background-color,transform] duration-120 active:scale-[0.98]",
+        active ? "bg-accent-soft text-fg" : "text-muted hover:bg-surface-2 hover:text-fg",
+      )}
+    >
+      <x.Icon className={cn("mt-0.5 h-4 w-4 shrink-0", active && "text-accent")} />
+      <span className="min-w-0">
+        <span className="block text-body-lg">{x.label}</span>
+        <span className="block truncate text-caption text-subtle">{x.hint}</span>
+      </span>
+    </button>
   );
 }
 

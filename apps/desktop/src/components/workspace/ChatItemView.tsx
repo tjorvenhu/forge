@@ -4,7 +4,7 @@ import { clockTime, cn, formatDuration, formatTokens } from "@/lib/utils";
 import { useThrottledValue } from "@/lib/timing-hooks";
 import { isInterrupted } from "@/lib/working";
 import { Button } from "@/components/ui/button";
-import type { ChatItem } from "./chat-items";
+import type { ChatItem, NoticeIcon } from "./chat-items";
 import { Markdown, StreamingMarkdown } from "./Markdown";
 import { ApprovalBlock, ToolCard } from "./ToolCard";
 import { EVENT_ICON, EventCard, noticeIcon } from "./EventCard";
@@ -18,7 +18,10 @@ import { AutoContinueCard } from "./AutoContinueCard";
  */
 const STREAM_RENDER_MS = 50;
 
-const NOTICE_TONE = { info: "text-muted", warning: "text-warning", danger: "text-danger", success: "text-success" } as const;
+/** Notices of what FORGE did itself; they get the highlighted box like the FORGE tool cards. */
+const FORGE_NOTICES = new Set<NoticeIcon>(["commit", "push", "merge", "skip", "notify"]);
+
+const NOTICE_TONE ={ info: "text-muted", warning: "text-warning", danger: "text-danger", success: "text-success" } as const;
 
 interface ItemViewProps {
   item: ChatItem;
@@ -87,7 +90,17 @@ export const ItemView = memo(function ItemView({ item, sessionId, live, projectD
       );
     case "notice":
       if (item.card)
-        return <EventCard icon={noticeIcon(item.card.icon)} tone={item.tone} title={item.card.title} refText={item.card.ref} detail={item.card.detail} ts={item.ts} />;
+        return (
+          <EventCard
+            icon={noticeIcon(item.card.icon)}
+            tone={item.tone}
+            title={item.card.title}
+            refText={item.card.ref}
+            detail={item.card.detail}
+            ts={item.ts}
+            highlight={FORGE_NOTICES.has(item.card.icon)}
+          />
+        );
       return (
         <ChatRow className={cn("text-body", NOTICE_TONE[item.tone])} marker={<Info className={EVENT_ICON} />}>
           <span className="break-words">{item.text}</span>

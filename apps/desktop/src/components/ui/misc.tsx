@@ -4,6 +4,7 @@ import * as T from "@radix-ui/react-tooltip";
 import { AlertTriangle, Check, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { POPPER_MOTION } from "@/lib/motion";
+import { TipText } from "./title-tooltips";
 
 type Tone = "neutral" | "accent" | "success" | "warning" | "danger";
 
@@ -95,8 +96,8 @@ export function Tooltip({
     <T.Root delayDuration={400} open={open} onOpenChange={onOpenChange}>
       <T.Trigger asChild>{children}</T.Trigger>
       <T.Portal>
-        <T.Content sideOffset={6} className={cn("z-50 max-w-xs rounded-md border border-border bg-surface-3 px-2 py-1 text-xs text-fg shadow-lg", POPPER_MOTION)}>
-          {content}
+        <T.Content sideOffset={6} className={cn("z-50 max-w-xs rounded-md border border-border bg-surface-3 px-2.5 py-1.5 text-xs text-fg shadow-lg", POPPER_MOTION)}>
+          {typeof content === "string" ? <TipText text={content} /> : content}
         </T.Content>
       </T.Portal>
     </T.Root>

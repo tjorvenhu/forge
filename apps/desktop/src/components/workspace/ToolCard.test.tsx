@@ -13,6 +13,7 @@ vi.mock("@/lib/rpc", async (orig) => ({ ...(await orig<RpcModule>()), rpc: { cal
 
 const { ToolCard } = await import("./ToolCard");
 const { useUi } = await import("@/stores/ui");
+const { ItemView } = await import("./ChatItemView");
 
 let n = 0;
 function tool(name: string, input: Record<string, unknown>, result: { text: string; isError?: boolean } | null, extra: Partial<ToolItem> = {}): ToolItem {
@@ -85,6 +86,26 @@ describe("ToolCard", () => {
     expect(screen.getByText("Mache B")).toBeTruthy();
     expect(screen.getByRole("img", { name: "erledigt" })).toBeTruthy();
     expect(screen.getByRole("img", { name: "offen" })).toBeTruthy();
+  });
+});
+
+describe("FORGE notices in the chat", () => {
+  it("highlights an auto-commit like the FORGE tool cards, other notices stay plain", () => {
+    const notice = (icon: "commit" | "compact", title: string): ChatItem => ({
+      kind: "notice",
+      key: `n-${icon}`,
+      ts: "2026-10-11T10:00:00.000Z",
+      text: title,
+      tone: "success",
+      card: { title, ref: icon === "commit" ? "6398370" : null, detail: "2 Datei(en)", icon },
+    });
+    const { container } = render(<ItemView item={notice("commit", "Auto-Commit")} sessionId="s1" live={false} projectDir="C:\p1" />);
+    expect(screen.getByText("FORGE")).toBeTruthy();
+    expect(container.querySelector(".bg-accent-soft")).toBeTruthy();
+    cleanup();
+    const plain = render(<ItemView item={notice("compact", "Kontext komprimiert")} sessionId="s1" live={false} projectDir="C:\p1" />);
+    expect(screen.queryByText("FORGE")).toBeNull();
+    expect(plain.container.querySelector(".bg-accent-soft")).toBeNull();
   });
 });
 

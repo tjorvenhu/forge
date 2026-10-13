@@ -4,6 +4,7 @@ import { BellRing, ChevronRight, GitCommitHorizontal, GitMerge, Hourglass, Shrin
 import { clockTime, cn } from "@/lib/utils";
 import type { NoticeIcon } from "./chat-items";
 import { ChatRow, Guide, HoverTime } from "./ChatRow";
+import { FORGE_ICON_TONE, FORGE_MARKER_OFFSET, ForgeHighlight, ForgeLabel, type ForgeTone } from "./forge-highlight";
 
 type Tone = "info" | "warning" | "success" | "danger";
 
@@ -13,6 +14,9 @@ const TONE: Record<Tone, string> = {
   warning: "text-warning",
   danger: "text-danger",
 };
+
+/** Done is FORGE orange like the other FORGE cards; only problems keep their own colour. */
+const HIGHLIGHT_TONE: Record<Tone, ForgeTone> = { info: "accent", success: "accent", warning: "warning", danger: "danger" };
 
 /** Size of the gutter icons of event rows. */
 export const EVENT_ICON = "h-3.5 w-3.5";
@@ -47,6 +51,7 @@ export function EventCard({
   children,
   defaultOpen = false,
   action,
+  highlight = false,
 }: {
   icon: ReactNode;
   tone: Tone;
@@ -58,6 +63,8 @@ export function EventCard({
   defaultOpen?: boolean;
   /** a button shown after the text, e.g. to cancel what the card announces */
   action?: ReactNode;
+  /** something FORGE did itself (auto-commit, push, notification): the box of the FORGE tool cards */
+  highlight?: boolean;
 }) {
   const [open, setOpen] = useState(defaultOpen);
   const expandable = !!children;
@@ -68,8 +75,9 @@ export function EventCard({
       {detail && <span className="ml-2 text-muted">{detail}</span>}
     </span>
   );
-  return (
-    <ChatRow className="group text-body" marker={<span className={TONE[tone]}>{icon}</span>}>
+  const forgeTone = HIGHLIGHT_TONE[tone];
+  const content = (
+    <>
       <div className="flex min-w-0 items-baseline gap-2">
         {expandable ? (
           <button type="button" className="group/ev flex min-w-0 flex-1 items-start gap-1.5 text-left" onClick={() => setOpen(!open)} aria-expanded={open}>
@@ -81,6 +89,7 @@ export function EventCard({
         ) : (
           <div className="min-w-0 flex-1 break-words">{text}</div>
         )}
+        {highlight && <ForgeLabel />}
         {action && <div className="-my-1 shrink-0">{action}</div>}
         <HoverTime time={clockTime(ts)} />
       </div>
@@ -89,6 +98,15 @@ export function EventCard({
           <Guide className="mt-1.5">{children}</Guide>
         </Collapse>
       )}
+    </>
+  );
+  return (
+    <ChatRow
+      className="group text-body"
+      markerClassName={highlight ? FORGE_MARKER_OFFSET : undefined}
+      marker={<span className={highlight ? FORGE_ICON_TONE[forgeTone] : TONE[tone]}>{icon}</span>}
+    >
+      {highlight ? <ForgeHighlight tone={forgeTone}>{content}</ForgeHighlight> : content}
     </ChatRow>
   );
 }

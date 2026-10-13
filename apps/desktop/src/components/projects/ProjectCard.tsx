@@ -1,20 +1,22 @@
+import type { ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, Bot, GitBranch, Globe, MoreHorizontal, Star, Trash2 } from "lucide-react";
+import { AlertTriangle, Bot, Code2, GitBranch, MoreHorizontal, Shield, ShieldAlert, ShieldCheck, Star, Tag, Trash2 } from "lucide-react";
 import type { ProjectWithStatus } from "@forge/protocol";
 import { call, keys } from "@/lib/queries";
 import { errorMessage } from "@/lib/rpc";
-import { relativeTime, shortPath, cn } from "@/lib/utils";
+import { relativeTime, cn } from "@/lib/utils";
 import { useUi } from "@/stores/ui";
 import { toast } from "@/stores/toast";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/misc";
 import { DropdownMenu } from "@/components/ui/dropdown";
 import { ProjectIcon } from "./ProjectIcon";
-import { ProfileBadge } from "./ProfileBadge";
+import { PROFILE_INFO } from "./ProfileBadge";
+import { tagLabel } from "@/components/workspace/ProjectSettingsTab";
 import { agentBusy, agentLabel } from "@/lib/project-tree";
 
 export function ProjectCard({ p, agents = [], onRemove }: { p: ProjectWithStatus; agents?: ProjectWithStatus[]; onRemove: (p: ProjectWithStatus) => void }) {
   const openProject = useUi((s) => s.openProject);
+  const openProjectSettings = useUi((s) => s.openProjectSettings);
   const qc = useQueryClient();
 
   const toggleFavorite = async () => {
@@ -28,52 +30,39 @@ export function ProjectCard({ p, agents = [], onRemove }: { p: ProjectWithStatus
 
   return (
     <div className={cn("group flex flex-col rounded-xl border border-border bg-surface transition-colors hover:border-border-strong", !p.exists && "opacity-70")}>
-      <button className="flex items-start gap-3 p-4 text-left" onClick={() => openProject(p.id)} aria-label={`${p.name} öffnen`}>
-        <ProjectIcon name={p.name} size={36} />
+      <button className="flex items-center gap-3 px-4 pb-2.5 pt-4 text-left" onClick={() => openProject(p.id)} aria-label={`${p.name} öffnen`} title={`${p.name}\n${p.path}`}>
+        <ProjectIcon name={p.name} size={32} />
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5">
             <span className="truncate text-sm font-semibold">{p.name}</span>
             {p.favorite && <Star className="h-3.5 w-3.5 shrink-0 fill-warning text-warning" aria-label="Favorit" />}
           </div>
-          <div className="truncate font-mono text-caption text-subtle" title={p.path}>
-            {shortPath(p.path)}
-          </div>
+          <GitLine p={p} />
         </div>
+        <ProfileIcon profile={p.profile} />
       </button>
 
-      <div className="flex flex-wrap items-center gap-1.5 px-4 pb-3">
-        {!p.exists ? (
-          <Badge tone="danger">
-            <AlertTriangle className="h-3 w-3" /> Ordner fehlt
-          </Badge>
-        ) : p.git ? (
-          <>
-            <Badge tone="neutral">
-              <GitBranch className="h-3 w-3" /> {p.git.branch ?? "ohne Branch"}
-            </Badge>
-            {p.git.conflicted ? (
-              <Badge tone="danger">Konflikt</Badge>
-            ) : p.git.changedCount > 0 ? (
-              <Badge tone="warning">{p.git.changedCount} geändert</Badge>
-            ) : (
-              <Badge tone="success">sauber</Badge>
-            )}
-            {p.git.remoteUrl && (
-              <span title={p.git.remoteUrl}>
-                <Badge tone="neutral">
-                  <Globe className="h-3 w-3" /> {p.git.remoteUrl.includes("github.com") ? "GitHub" : "origin"}
-                </Badge>
-              </span>
-            )}
-          </>
-        ) : (
-          <Badge tone="neutral">kein Git</Badge>
-        )}
-        <ProfileBadge profile={p.profile} />
-        {p.technologies.slice(0, 3).map((t) => (
-          <Badge key={t}>{t}</Badge>
-        ))}
-      </div>
+      {(p.technologies.length > 0 || p.tags.length > 0) && (
+        <div className="flex flex-wrap items-center gap-1.5 px-4 pb-3">
+          {p.technologies.length > 0 && (
+            <Summary icon={<Code2 className="h-3 w-3" />} title={`Technologien\n${p.technologies.map((t) => `- ${t}`).join("\n")}`}>
+              {p.technologies.length === 1 ? p.technologies[0] : `${p.technologies[0]} +${p.technologies.length - 1}`}
+            </Summary>
+          )}
+          {p.tags.length > 0 && (
+            <Summary
+              icon={<Tag className="h-3 w-3" />}
+              title={`Aktive Tags\n${p.tags.map((t) => `- ${tagLabel(t)}`).join("\n")}\n\nKlicken, um sie unter Automatik einzustellen.`}
+              onClick={() => {
+                openProject(p.id);
+                openProjectSettings("automation");
+              }}
+            >
+              {p.tags.length === 1 ? "1 Tag" : `${p.tags.length} Tags`}
+            </Summary>
+          )}
+        </div>
+      )}
 
       {agents.length > 0 && <AgentList agents={agents} />}
 
@@ -94,6 +83,63 @@ export function ProjectCard({ p, agents = [], onRemove }: { p: ProjectWithStatus
         />
       </div>
     </div>
+  );
+}
+
+/** Branch and state in one line; remote and counts in the tooltip. */
+function GitLine({ p }: { p: ProjectWithStatus }) {
+  if (!p.exists)
+    return (
+      <div className="flex items-center gap-1 text-caption text-danger">
+        <AlertTriangle className="h-3 w-3" /> Ordner fehlt
+      </div>
+    );
+  if (!p.git) return <div className="text-caption text-subtle">kein Git</div>;
+  const g = p.git;
+  const state = g.conflicted ? "Konflikt" : g.changedCount > 0 ? `${g.changedCount} geändert` : "sauber";
+  const remote = g.remoteUrl ? (g.remoteUrl.includes("github.com") ? "GitHub" : g.remoteUrl) : "kein Remote";
+  return (
+    <div
+      className="flex min-w-0 items-center gap-1.5 text-caption text-muted"
+      title={`Git\n- Branch ${g.branch ?? "ohne Branch"}\n- ${g.conflicted ? "Konflikt beim Zusammenführen" : g.changedCount > 0 ? `${g.changedCount} ${g.changedCount === 1 ? "Datei" : "Dateien"} geändert` : "Keine offenen Änderungen"}\n- Remote: ${remote}${g.ahead || g.behind ? `\n- ${g.ahead} voraus, ${g.behind} zurück` : ""}`}
+    >
+      <span className={cn("h-1.5 w-1.5 shrink-0 rounded-full", g.conflicted ? "bg-danger" : g.changedCount > 0 ? "bg-warning" : "bg-success")} aria-hidden />
+      <GitBranch className="h-3 w-3 shrink-0" />
+      <span className="truncate font-mono">{g.branch ?? "ohne Branch"}</span>
+      <span className={cn("shrink-0", g.conflicted ? "text-danger" : g.changedCount > 0 ? "text-warning" : "text-subtle")}>· {state}</span>
+    </div>
+  );
+}
+
+const PROFILE_ICON = {
+  safe: { Icon: ShieldCheck, tone: "text-success" },
+  balanced: { Icon: Shield, tone: "text-warning" },
+  autonomous: { Icon: ShieldAlert, tone: "text-danger" },
+} as const;
+
+/** The permission profile as a coloured shield; name and meaning in the tooltip. */
+function ProfileIcon({ profile }: { profile: ProjectWithStatus["profile"] }) {
+  const { Icon, tone } = PROFILE_ICON[profile];
+  return (
+    <span className={cn("shrink-0 self-start", tone)} title={`Profil: ${PROFILE_INFO[profile].label}\n${PROFILE_INFO[profile].description}`}>
+      <Icon className="h-4 w-4" aria-label={`Profil ${PROFILE_INFO[profile].label}`} />
+    </span>
+  );
+}
+
+/** Several facts bundled into one chip; the full list in its tooltip. */
+function Summary({ icon, title, children, onClick }: { icon: ReactNode; title: string; children: ReactNode; onClick?: () => void }) {
+  const cls = "inline-flex h-5 shrink-0 items-center gap-1 whitespace-nowrap rounded border border-border bg-surface-2 px-1.5 text-caption font-medium text-muted";
+  return onClick ? (
+    <button type="button" className={cn(cls, "transition-colors duration-120 hover:border-border-strong hover:text-fg")} title={title} onClick={onClick}>
+      {icon}
+      {children}
+    </button>
+  ) : (
+    <span className={cls} title={title}>
+      {icon}
+      {children}
+    </span>
   );
 }
 

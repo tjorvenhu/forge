@@ -8,6 +8,7 @@ import { useUi } from "@/stores/ui";
 import { ChatRow, Guide } from "./ChatRow";
 import { EVENT_ICON } from "./EventCard";
 import { forgeTargetLabel, type ForgeTarget, type ForgeToolIcon, type ForgeToolView } from "./forge-tool";
+import { FORGE_ICON_TONE, FORGE_MARKER_OFFSET, ForgeHighlight, ForgeLabel, type ForgeTone } from "./forge-highlight";
 
 const ICONS: Record<ForgeToolIcon, LucideIcon> = {
   knowledge: BookOpen,
@@ -26,14 +27,6 @@ export function forgeIcon(icon: ForgeToolIcon, className = EVENT_ICON) {
   return <Icon className={className} />;
 }
 
-export type ForgeTone = ForgeToolView["tone"];
-
-const ICON_TONE: Record<ForgeTone, string> = { accent: "text-accent", warning: "text-warning", danger: "text-danger" };
-const CARD_TONE: Record<ForgeTone, string> = {
-  accent: "border-accent/30 bg-accent-soft",
-  warning: "border-warning/40 bg-warning-soft",
-  danger: "border-danger/40 bg-danger-soft",
-};
 
 /**
  * A call of a FORGE tool: what FORGE did (saved to the knowledge, started an agent …) in words, with
@@ -87,7 +80,7 @@ export function ForgeToolCard({
             )}
           />
         </button>
-        {view.prominent && <span className="shrink-0 text-caption font-medium uppercase tracking-wide text-subtle">FORGE</span>}
+        {view.prominent && <ForgeLabel />}
         {view.target && !pending && (
           <Button size="sm" variant="ghost" className="-my-1 h-6 px-2" onClick={() => go(view.target!)}>
             {forgeTargetLabel(view.target)}
@@ -103,15 +96,14 @@ export function ForgeToolCard({
   return (
     <ChatRow
       className="text-body"
-      // The card has 8px padding and a border above its first line.
-      markerClassName={view.prominent ? "mt-2.25" : undefined}
+      markerClassName={view.prominent ? FORGE_MARKER_OFFSET : undefined}
       marker={
-        <span role="img" aria-label={stateLabel} className={cn("flex", ICON_TONE[tone], pending && "animate-soft-pulse")}>
+        <span role="img" aria-label={stateLabel} className={cn("flex", FORGE_ICON_TONE[tone], pending && "animate-soft-pulse")}>
           {forgeIcon(view.icon)}
         </span>
       }
     >
-      {view.prominent ? <div className={cn("rounded-md border px-3 py-2", CARD_TONE[tone])}>{body}</div> : body}
+      {view.prominent ? <ForgeHighlight tone={tone}>{body}</ForgeHighlight> : body}
       {children}
     </ChatRow>
   );

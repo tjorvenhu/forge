@@ -75,8 +75,9 @@ export function DevToolsTab({ project }: { project: Project }) {
 
 const SECTIONS: ReadonlyArray<SettingsSectionDef<DevToolsSection>> = [
   { id: "server", label: "Dev-Server", hint: "Startbefehl und Ausgabe", Icon: Server },
-  { id: "database", label: "Test-Datenbank", hint: "PostgreSQL für Tests", Icon: Database },
-  { id: "env", label: "Test-Umgebung", hint: ".env für Dev-Server und Tests", Icon: FileKey },
+  // Both belong to the dev server: it gets the variables and the database URL when it starts.
+  { id: "env", label: "Test-.env", hint: "Variablen für Dev-Server und Tests", Icon: FileKey, parent: "server" },
+  { id: "database", label: "Test-Datenbank", hint: "Lokales PostgreSQL für Tests", Icon: Database, parent: "server" },
 ];
 
 function DevServerCard({ project }: { project: Project }) {
@@ -93,7 +94,7 @@ function DevServerCard({ project }: { project: Project }) {
     }
   };
   return (
-    <Group title="Dev-Server" description="Läuft im Projektordner. Bekommt die Test-Umgebung und, solange sie läuft, die Verbindung zur Test-Datenbank.">
+    <Group title="Dev-Server" description="Läuft im Projektordner. Bekommt die Variablen aus der Test-.env und, solange sie läuft, die Verbindung zur Test-Datenbank.">
       <Row label="Startbefehl" description="Leer lassen, um den erkannten Befehl aus package.json zu nutzen." stacked>
         <Input
           key={project.devCommand ?? ""}
@@ -386,9 +387,9 @@ function TestEnvCard({ owner, config, update }: { owner: string; config: DevTool
 
   return (
     <Group
-      title="Test-Umgebung"
+      title="Test-.env"
       description="Variablen im .env-Format für Dev-Server und Tests. Sie bleiben in FORGE und landen nie im Projektordner oder im Git. Claude sieht nur die Namen."
-      action={<Switch checked={config.useEnv} onChange={(useEnv) => void update({ useEnv })} label="Test-Umgebung verwenden" />}
+      action={<Switch checked={config.useEnv} onChange={(useEnv) => void update({ useEnv })} label="Test-.env verwenden" />}
     >
       <div className="flex flex-col gap-2 px-4 py-3.5">
         <div className="flex items-center gap-2">
@@ -412,7 +413,7 @@ function TestEnvCard({ owner, config, update }: { owner: string; config: DevTool
             value={text}
             onChange={setDraft}
             language="text"
-            ariaLabel="Test-Umgebung im .env-Format"
+            ariaLabel="Test-.env"
             onSave={() => draft !== null && saveDraft(draft)}
           />
         </div>

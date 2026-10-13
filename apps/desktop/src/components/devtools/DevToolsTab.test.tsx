@@ -43,9 +43,9 @@ describe("DevToolsTab", () => {
     act(() => useUi.getState().setDevToolsSection("server"));
     show();
     const nav = screen.getByRole("navigation", { name: "Bereiche der Dev-Tools" });
-    expect(nav.textContent).toContain("Dev-Server");
-    expect(nav.textContent).toContain("Test-Datenbank");
-    expect(nav.textContent).toContain("Test-Umgebung");
+    // Dev-Server first, its .env and database as branches below it, the .env above the database.
+    const labels = [...nav.querySelectorAll("button")].map((b) => b.querySelector("span span")?.textContent);
+    expect(labels).toEqual(["Dev-Server", "Test-.env", "Test-Datenbank"]);
     expect(screen.getByText("Ausgabe des Dev-Servers")).toBeTruthy();
     expect(screen.queryByLabelText("Port der Test-Datenbank")).toBeNull();
 
@@ -53,7 +53,7 @@ describe("DevToolsTab", () => {
     expect(await screen.findByLabelText("Port der Test-Datenbank")).toBeTruthy();
     expect(screen.queryByText("Ausgabe des Dev-Servers")).toBeNull();
 
-    fireEvent.click(screen.getByRole("button", { name: /Test-Umgebung/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Test-\.env/ }));
     expect(await screen.findByText(/1 Variable: API_URL/)).toBeTruthy();
     expect(screen.queryByLabelText("Port der Test-Datenbank")).toBeNull();
   });

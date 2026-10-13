@@ -117,10 +117,47 @@ export function TitleTooltips() {
       ref={ref}
       role="tooltip"
       style={{ left: pos?.left ?? 0, top: pos?.top ?? 0, visibility: pos ? "visible" : "hidden" }}
-      className={cn("pointer-events-none fixed z-[100] max-w-xs whitespace-pre-line break-words rounded-md border border-border bg-surface-3 px-2 py-1 text-xs text-fg shadow-lg", pos && !tip.warm && "animate-fade-in")}
+      className={cn("pointer-events-none fixed z-[100] max-w-xs break-words rounded-md border border-border bg-surface-3 px-2.5 py-1.5 text-xs text-fg shadow-lg", pos && !tip.warm && "animate-fade-in")}
     >
-      {tip.text}
+      <TipText text={tip.text} />
     </div>,
     document.body,
+  );
+}
+
+/** A keyboard shortcut at the end of a line: "Untere Leiste (Strg+J)". */
+const SHORTCUT_RE = /\s*\(((?:Strg|Ctrl|Alt|Umschalt|Shift)\+[^)]+|F\d{1,2})\)$/;
+
+/**
+ * Tooltip text with a little structure, written as plain text in `title`: with several lines the
+ * first is the heading, lines starting with "- " are list items, a shortcut in brackets at the end of
+ * a line becomes a key. One line stays one plain line.
+ */
+export function TipText({ text }: { text: string }) {
+  const lines = text.split("\n").map((l) => l.trim());
+  const heading = lines.filter(Boolean).length > 1;
+  return (
+    <div className="flex flex-col gap-0.5">
+      {lines.map((line, i) => {
+        if (!line) return <div key={i} aria-hidden className="h-1" />;
+        const item = /^[-•]\s+(.*)$/.exec(line);
+        if (item)
+          return (
+            <div key={i} className="flex gap-1.5 text-fg/90">
+              <span aria-hidden className="font-medium text-accent">
+                -
+              </span>
+              <span className="min-w-0">{item[1]}</span>
+            </div>
+          );
+        const key = SHORTCUT_RE.exec(line);
+        return (
+          <div key={i} className={cn("flex items-baseline justify-between gap-3", i === 0 ? (heading ? "font-medium text-fg" : "text-fg") : "text-muted")}>
+            <span className="min-w-0">{key ? line.slice(0, key.index) : line}</span>
+            {key && <kbd className="shrink-0 rounded border border-accent/30 bg-accent-soft px-1 font-mono text-caption text-accent">{key[1]}</kbd>}
+          </div>
+        );
+      })}
+    </div>
   );
 }
