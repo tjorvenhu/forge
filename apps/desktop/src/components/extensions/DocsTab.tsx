@@ -8,7 +8,8 @@ import { cn } from "@/lib/utils";
 import { toast } from "@/stores/toast";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import { Badge, EmptyState, ErrorBanner, Loading, SectionTitle } from "@/components/ui/misc";
+import { Badge, EmptyState, ErrorBanner, SectionTitle } from "@/components/ui/misc";
+import { Skeleton, SkeletonRegion } from "@/components/ui/skeleton";
 import { CreateDocDialog } from "./CreateDocDialog";
 import { DocEditor } from "./DocEditor";
 
@@ -41,7 +42,19 @@ export function DocsTab({ kind, projectId }: { kind: ConfigDocKind; projectId?: 
         >
           {plural}
         </SectionTitle>
-        {docs.isLoading && <Loading />}
+        {docs.isLoading && (
+          <SkeletonRegion label={`Lädt ${plural}`} className="flex flex-col gap-0.5">
+            {[60, 45, 70, 50].map((w, i) => (
+              <div key={i} className="flex flex-col gap-1 px-2 py-1.5">
+                <div className="flex h-5 items-center gap-1.5">
+                  <Skeleton className="h-3" style={{ width: `${w}%` }} />
+                  <Skeleton className="h-5 w-12 rounded" />
+                </div>
+                <Skeleton className="h-2.5 w-4/5" />
+              </div>
+            ))}
+          </SkeletonRegion>
+        )}
         {docs.isError && <ErrorBanner title={`${plural} nicht geladen`}>{errorMessage(docs.error)}</ErrorBanner>}
         {docs.data?.length === 0 && <p className="px-1 text-xs text-muted">Noch keine eigenen {plural}.</p>}
         <ul className="flex flex-col gap-0.5">

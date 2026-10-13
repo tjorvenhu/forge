@@ -5,12 +5,13 @@ import type { AgentReview } from "@forge/protocol";
 import { call, keys } from "@/lib/queries";
 import { errorMessage, RpcCallError } from "@/lib/rpc";
 import { closeProjectTerminals } from "@/lib/terminal-registry";
+import { cn } from "@/lib/utils";
 import { useAgentReview } from "@/stores/agent-review";
 import { useUi } from "@/stores/ui";
 import { toast } from "@/stores/toast";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
-import { Loading } from "@/components/ui/misc";
+import { Skeleton, SkeletonRegion } from "@/components/ui/skeleton";
 import { Markdown } from "./Markdown";
 
 const SHOWN_COMMITS = 5;
@@ -44,11 +45,11 @@ export function AgentReviewDialog() {
       open
       onOpenChange={(o) => !o && done(projectId)}
       title="Agent fertig"
-      description={review.data ? <Heading r={review.data} /> : undefined}
+      description={review.data ? <Heading r={review.data} /> : review.isLoading ? <HeadingSkeleton /> : undefined}
       className="w-160"
-      footer={review.data ? <Actions key={projectId} r={review.data} onDone={() => done(projectId)} /> : undefined}
+      footer={review.data ? <Actions key={projectId} r={review.data} onDone={() => done(projectId)} /> : review.isLoading ? <ActionsSkeleton /> : undefined}
     >
-      {review.isLoading && <Loading />}
+      {review.isLoading && <DetailsSkeleton />}
       {review.isError && !gone && <p className="text-body text-danger">{errorMessage(review.error)}</p>}
       {review.data && <Details r={review.data} />}
     </Dialog>
@@ -68,6 +69,59 @@ function Heading({ r }: { r: AgentReview }) {
         </>
       )}
     </span>
+  );
+}
+
+/** Spans, because the dialog renders the description inside a <p>. */
+function HeadingSkeleton() {
+  const bar = "block animate-shimmer rounded-md bg-surface-2";
+  return (
+    <span className="flex h-5 items-center gap-1.5" role="status" aria-label="Agent lädt">
+      <span className={cn(bar, "h-3.5 w-3.5 rounded-sm")} aria-hidden />
+      <span className={cn(bar, "h-3 w-40")} aria-hidden />
+      <span className={cn(bar, "h-3 w-48")} aria-hidden />
+    </span>
+  );
+}
+
+function DetailsSkeleton() {
+  return (
+    <SkeletonRegion label="Details lädt" className="flex flex-col gap-4">
+      <section>
+        <Skeleton className="mb-1.5 h-2.5 w-28" />
+        <div className="rounded-lg border border-border bg-surface-2 px-3 py-2">
+          <div className="flex flex-col gap-2 py-1">
+            {[90, 80, 85, 40].map((w, i) => (
+              <Skeleton key={i} className="h-3 rounded-sm" style={{ width: `${w}%` }} />
+            ))}
+          </div>
+        </div>
+      </section>
+      <section>
+        <Skeleton className="mb-1.5 h-2.5 w-20" />
+        <Skeleton className="h-3 w-3/4" />
+        <div className="mt-2 flex flex-col gap-1">
+          {[60, 45, 52].map((w) => (
+            <div key={w} className="flex h-5 items-center gap-2">
+              <Skeleton className="h-3.5 w-3.5 shrink-0 rounded-sm" />
+              <Skeleton className="h-2.5 w-12 shrink-0" />
+              <Skeleton className="h-3" style={{ width: `${w}%` }} />
+            </div>
+          ))}
+        </div>
+      </section>
+    </SkeletonRegion>
+  );
+}
+
+function ActionsSkeleton() {
+  return (
+    <div className="flex w-full items-center gap-2" aria-hidden>
+      <Skeleton className="mr-auto h-8 w-28" />
+      <Skeleton className="h-8 w-20" />
+      <Skeleton className="h-8 w-28" />
+      <Skeleton className="h-8 w-36" />
+    </div>
   );
 }
 

@@ -8,7 +8,8 @@ import { cn, relativeTime } from "@/lib/utils";
 import { toast } from "@/stores/toast";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Textarea } from "@/components/ui/input";
-import { Badge, ErrorBanner, Loading, SectionTitle, ToggleRow } from "@/components/ui/misc";
+import { Badge, ErrorBanner, SectionTitle, ToggleRow } from "@/components/ui/misc";
+import { Skeleton, SkeletonRegion } from "@/components/ui/skeleton";
 import { Select } from "@/components/ui/select";
 import { PhoneStatusBadge } from "@/components/layout/PhoneButton";
 
@@ -222,7 +223,7 @@ export function PhoneSettings() {
   };
 
   if (config.isError) return <ErrorBanner>{errorMessage(config.error)}</ErrorBanner>;
-  if (!config.data || !draft) return <Loading />;
+  if (!config.data || !draft) return <PhoneSettingsSkeleton />;
   const c = config.data;
   const up = (patch: Partial<Draft>) => setDraft({ ...draft, ...patch });
   const upDesk = (patch: Partial<Draft["desk"]>) => setDraft({ ...draft, desk: { ...draft.desk, ...patch } });
@@ -434,6 +435,89 @@ export function PhoneSettings() {
   );
 }
 
+function FieldSkeleton({ className }: { className?: string }) {
+  return (
+    <div className={className}>
+      <Skeleton className="mb-1.5 h-3 w-24" />
+      <Skeleton className="h-8 w-full" />
+    </div>
+  );
+}
+
+function SectionTitleSkeleton() {
+  return (
+    <div className="mb-2 flex h-4 items-center">
+      <Skeleton className="h-2.5 w-48" />
+    </div>
+  );
+}
+
+/** The phone form in its resting layout: status bar, SIP and partner columns, desk phone toggle. */
+function PhoneSettingsSkeleton() {
+  return (
+    <SkeletonRegion label="Telefon-Einstellungen lädt" className="flex flex-col gap-5">
+      <div className="flex items-center gap-3 rounded-lg border border-border bg-surface-2 px-3 py-2.5">
+        <Skeleton className="h-5 w-20 rounded bg-surface-3" />
+        <Skeleton className="h-3 flex-1 bg-surface-3" />
+        <Skeleton className="h-7 w-28 bg-surface-3" />
+      </div>
+      <div className="grid gap-5 xl:grid-cols-2">
+        <div className="flex flex-col gap-4">
+          <SectionTitleSkeleton />
+          <div className="grid grid-cols-[1fr_96px] gap-3">
+            <FieldSkeleton />
+            <FieldSkeleton />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <FieldSkeleton />
+            <FieldSkeleton />
+          </div>
+          <FieldSkeleton />
+          <Skeleton className="h-3 w-20" />
+        </div>
+        <div className="flex flex-col gap-4">
+          <SectionTitleSkeleton />
+          <FieldSkeleton />
+          <FieldSkeleton />
+          <FieldSkeleton />
+        </div>
+      </div>
+      <div className="flex flex-col gap-4 border-t border-border pt-4">
+        <div className="flex items-center gap-2">
+          <Skeleton className="h-4 w-4" />
+          <Skeleton className="h-2.5 w-40" />
+        </div>
+        <div className="flex items-start gap-2.5">
+          <Skeleton className="mt-0.5 h-4 w-4 rounded" />
+          <div className="flex flex-1 flex-col gap-1.5">
+            <Skeleton className="h-3 w-44" />
+            <Skeleton className="h-2.5 w-4/5" />
+          </div>
+        </div>
+      </div>
+    </SkeletonRegion>
+  );
+}
+
+function CallLogSkeleton() {
+  return (
+    <SkeletonRegion label="Anrufliste lädt">
+      <SectionTitleSkeleton />
+      <div className="divide-y divide-border rounded-lg border border-border">
+        {[0, 1, 2].map((i) => (
+          <div key={i} className="flex h-9 items-center gap-2.5 px-3">
+            <Skeleton className="h-3.5 w-3.5 rounded-sm" />
+            <Skeleton className="h-3 w-28" />
+            <Skeleton className="h-3 w-16" />
+            <Skeleton className="h-2.5 flex-1" />
+            <Skeleton className="h-2.5 w-14" />
+          </div>
+        ))}
+      </div>
+    </SkeletonRegion>
+  );
+}
+
 function DeskSettings({
   draft,
   config,
@@ -562,6 +646,7 @@ function DeskSettings({
 function CallLog() {
   const calls = useQuery({ queryKey: keys.phoneCalls, queryFn: () => call("phone.calls", { limit: 20 }) });
   const [open, setOpen] = useState<string | null>(null);
+  if (calls.isPending) return <CallLogSkeleton />;
   if (!calls.data?.length) return null;
   return (
     <div>

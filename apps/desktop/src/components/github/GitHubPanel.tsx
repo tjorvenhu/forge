@@ -9,7 +9,8 @@ import { toast } from "@/stores/toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import { Badge, ErrorBanner, Loading } from "@/components/ui/misc";
+import { Badge, ErrorBanner } from "@/components/ui/misc";
+import { Skeleton, SkeletonRegion } from "@/components/ui/skeleton";
 import { DeviceCode } from "./DeviceCode";
 
 /** Sign in with GitHub inside FORGE (device flow via the shipped GitHub CLI). */
@@ -30,7 +31,18 @@ export function GitHubAccountCard() {
     }
   };
 
-  if (account.isLoading) return <Loading />;
+  if (account.isLoading)
+    return (
+      <SkeletonRegion label="GitHub-Konto lädt" className="flex items-center gap-3">
+        <Skeleton className="h-10 w-10 shrink-0 rounded-full" />
+        <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+          <Skeleton className="h-3.5 w-36" />
+          <Skeleton className="h-2.5 w-24" />
+        </div>
+        <Skeleton className="h-7 w-20" />
+        <Skeleton className="h-7 w-24" />
+      </SkeletonRegion>
+    );
 
   if (account.data) {
     const a = account.data;
@@ -133,7 +145,16 @@ export function GitHubRepoPicker({ value, onPick }: { value: string; onPick: (cl
         <Search className="pointer-events-none absolute left-2.5 top-2 h-4 w-4 text-subtle" />
         <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder={`Repositories von ${account.data.login} durchsuchen`} className="pl-8" aria-label="Repositories durchsuchen" autoFocus />
       </div>
-      {repos.isLoading && <Loading label="Repositories werden geladen …" />}
+      {repos.isLoading && (
+        <SkeletonRegion label="Lädt Repositories" className="max-h-64 divide-y divide-border overflow-hidden rounded-lg border border-border">
+          {[55, 40, 65, 35, 50].map((w, i) => (
+            <div key={i} className="flex flex-col gap-1.5 px-3 py-2.5">
+              <Skeleton className="h-3" style={{ width: `${w}%` }} />
+              <Skeleton className="h-2.5" style={{ width: `${w + 15}%` }} />
+            </div>
+          ))}
+        </SkeletonRegion>
+      )}
       {repos.isError && <ErrorBanner>{errorMessage(repos.error)}</ErrorBanner>}
       <div role="listbox" aria-label="Deine Repositories" className={cn("max-h-64 divide-y divide-border overflow-y-auto rounded-lg border border-border", !repos.isSuccess && "hidden")}>
         {filtered.map((r) => {

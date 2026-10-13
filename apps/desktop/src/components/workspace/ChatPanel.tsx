@@ -10,7 +10,7 @@ import { toast } from "@/stores/toast";
 import { splitActive, useUi } from "@/stores/ui";
 import { Button } from "@/components/ui/button";
 import { EmptyState, ErrorBanner } from "@/components/ui/misc";
-import { ChatSkeleton } from "@/components/ui/skeleton";
+import { ChatColumnSkeleton, Skeleton } from "@/components/ui/skeleton";
 import { Arrivals } from "@/lib/arrivals";
 import { usePending, usePendingMessages } from "@/stores/pending-messages";
 import { useInChatWindow } from "@/lib/chat-windows";
@@ -65,6 +65,8 @@ export function ChatPanel({ project, workingInPanel = false, detached = false }:
   const [surface, setSurface] = useState<HTMLDivElement | null>(null);
   // Shown in a chat window: one live composer per session, so this window only points there.
   const elsewhere = useInChatWindow(sessionId) && !detached;
+  // Until the auto-pick below has run, "Neue Session" would flash before the last session opens.
+  const settled = useUi((s) => project.id in s.activeSession) || sessions.isError;
 
   // First open of a project: pick the most recent session instead of an empty chat.
   const didAutoSelect = useRef<string | null>(null);
@@ -75,6 +77,8 @@ export function ChatPanel({ project, workingInPanel = false, detached = false }:
     // Without any session the chat starts a new one, so the sidebar lists it as such.
     if (!(project.id in state)) setActive(project.id, sessions.data.sessions[0]?.id ?? null);
   }, [project.id, sessions.data, setActive]);
+
+  if (!settled) return <ChatPanelSkeleton detached={detached} />;
 
   return (
     <div ref={setSurface} className="chat-surface relative flex h-full min-h-0 flex-col">
@@ -97,6 +101,29 @@ export function ChatPanel({ project, workingInPanel = false, detached = false }:
         <NewSessionPane project={project} external={external} />
       )}
       </ChatSurface.Provider>
+    </div>
+  );
+}
+
+/** Session bar, thread and composer in their final sizes, for while the project or its session choice loads. */
+export function ChatPanelSkeleton({ detached = false }: { detached?: boolean }) {
+  return (
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="flex h-11 shrink-0 items-center gap-2 border-b border-border px-4" aria-hidden>
+        {detached ? (
+          <>
+            <Skeleton className="h-5 w-5" />
+            <Skeleton className="h-3 w-24" />
+            <Skeleton className="h-3 w-40" />
+          </>
+        ) : (
+          <div className="flex items-center gap-1.5 px-2 py-1">
+            <Skeleton className="h-3.5 w-3.5 rounded-sm" />
+            <Skeleton className="h-3 w-44" />
+          </div>
+        )}
+      </div>
+      <ChatColumnSkeleton />
     </div>
   );
 }
@@ -275,7 +302,7 @@ function SessionThread({ sessionId, session, project, workingInPanel }: { sessio
         </div>
       );
     }
-    return <ChatSkeleton />;
+    return <ChatColumnSkeleton />;
   }
 
   const jumpToEnd = () => {

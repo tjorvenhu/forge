@@ -9,7 +9,8 @@ import { useUi } from "@/stores/ui";
 import { toast } from "@/stores/toast";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import { Checkbox, ErrorBanner, Loading } from "@/components/ui/misc";
+import { Checkbox, ErrorBanner } from "@/components/ui/misc";
+import { Skeleton, SkeletonRegion } from "@/components/ui/skeleton";
 import { DeviceCode } from "@/components/github/DeviceCode";
 import { useAutoOpenGitHub } from "@/components/github/GitHubPanel";
 
@@ -70,7 +71,21 @@ export function RemoveProjectDialog({ project, onClose }: { project: Pick<Projec
     >
       {project && (
         <div className="flex flex-col gap-3">
-          {info.isLoading && <Loading />}
+          {info.isLoading && (
+            <SkeletonRegion label="Lädt Projektinfos" className="flex flex-col gap-3">
+              {[36, 44].map((w) => (
+                <div key={w} className="rounded-lg border border-border p-3">
+                  <div className="flex h-5 items-center gap-2">
+                    <Skeleton className="h-4 w-4 rounded" />
+                    <Skeleton className="h-3" style={{ width: `${w}%` }} />
+                  </div>
+                  <div className="mt-1.5 flex h-4 items-center pl-6">
+                    <Skeleton className="h-2.5 w-3/4" />
+                  </div>
+                </div>
+              ))}
+            </SkeletonRegion>
+          )}
           {info.isError && <ErrorBanner>{errorMessage(info.error)}</ErrorBanner>}
           {i && (
             <>

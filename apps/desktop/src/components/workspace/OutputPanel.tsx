@@ -1,18 +1,26 @@
 import { useRef } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { X } from "lucide-react";
-import { useSessionEvents } from "@/stores/session-events";
-import { useUi } from "@/stores/ui";
+import { useSessionHistory, useSessions } from "@/lib/queries";
+import { splitActive, useUi } from "@/stores/ui";
 import { cn } from "@/lib/utils";
+import { Skeleton, SkeletonRegion } from "@/components/ui/skeleton";
 import type { SessionEvent } from "@forge/protocol";
 
 const NO_EVENTS: SessionEvent[] = [];
 
 /** Raw, persisted event log of the active session (the "Claude-Ausgabe" panel). */
 export function OutputPanel({ projectId, embedded = false }: { projectId: string; embedded?: boolean }) {
-  const sessionId = useUi((s) => s.activeSession[projectId] ?? null);
+  const active = useUi((s) => s.activeSession[projectId] ?? null);
+  // Until the session list is there, the chat has not picked the project's last session yet.
+  const sessionsLoading = useSessions(projectId).isLoading;
+  const picking = useUi((s) => !(projectId in s.activeSession)) && sessionsLoading;
   const toggle = useUi((s) => s.toggleBottomPanel);
-  const events = useSessionEvents((s) => (sessionId ? s.buffers[sessionId]?.events : undefined)) ?? NO_EVENTS;
+  // The panel is open on every tab, also when no chat has loaded this history yet.
+  const { sessionId } = splitActive(active);
+  const { buffer, error } = useSessionHistory(sessionId);
+  const events = buffer?.events ?? NO_EVENTS;
+  const loading = picking || (!!sessionId && !buffer?.loaded && !error);
   const scrollRef = useRef<HTMLDivElement>(null);
   const v = useVirtualizer({ count: events.length, getScrollElement: () => scrollRef.current, estimateSize: () => 18, overscan: 20 });
 
@@ -26,7 +34,18 @@ export function OutputPanel({ projectId, embedded = false }: { projectId: string
           <X className="h-3.5 w-3.5" />
         </button>
       </div>
-      {!sessionId ? (
+      {loading ? (
+        <SkeletonRegion label="Ausgabe lädt" className="min-h-0 flex-1 overflow-hidden">
+          {[60, 35, 75, 45, 55, 30, 68, 40].map((w, i) => (
+            <div key={i} className="flex h-4.5 items-center gap-3 px-3">
+              <Skeleton className="h-2.5 w-12 shrink-0 rounded-sm" />
+              <Skeleton className="h-2.5 w-6 shrink-0 rounded-sm" />
+              <Skeleton className="h-2.5 w-24 shrink-0 rounded-sm" />
+              <Skeleton className="h-2.5 rounded-sm" style={{ width: `${w}%` }} />
+            </div>
+          ))}
+        </SkeletonRegion>
+      ) : !active ? (
         <div className="p-3 text-xs text-subtle">Keine Session ausgewählt.</div>
       ) : (
         <div ref={scrollRef} className="min-h-0 flex-1 overflow-auto font-mono text-caption leading-4.5">

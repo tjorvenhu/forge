@@ -5,7 +5,8 @@ import { call, keys, useDiagnostics, useRuntimeInfo, useUsage } from "@/lib/quer
 import { useModelLabel } from "@/lib/models";
 import { cn, formatTokens, planLabel, relativeTime } from "@/lib/utils";
 import { Dialog } from "@/components/ui/dialog";
-import { Badge, Loading } from "@/components/ui/misc";
+import { Badge } from "@/components/ui/misc";
+import { Skeleton, SkeletonRegion } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { ProfileBadge } from "@/components/projects/ProfileBadge";
 import { contextTone } from "./ContextMeter";
@@ -89,6 +90,19 @@ function Meter({ label, value, detail, toneOf }: { label: string; value: number;
   );
 }
 
+function MeterSkeleton({ detail = true }: { detail?: boolean }) {
+  return (
+    <div>
+      <div className="mb-1 flex h-5 items-center justify-between gap-3">
+        <Skeleton className="h-3 w-32" />
+        <Skeleton className="h-3 w-20" />
+      </div>
+      <Skeleton className="h-2 rounded-full" />
+      {detail && <Skeleton className="mt-1.5 h-2.5 w-3/5" />}
+    </div>
+  );
+}
+
 function Rows({ rows }: { rows: Array<[string, ReactNode]> }) {
   return (
     <dl className="grid grid-cols-[max-content_1fr] gap-x-6 gap-y-2 text-body">
@@ -111,7 +125,15 @@ function UsageBody() {
   const diag = useDiagnostics();
   // Opening the dialog is a request for the current numbers, not the ones from up to 5 minutes ago.
   useEffect(() => void qc.invalidateQueries({ queryKey: keys.usage }), [qc]);
-  if (!usage.data) return <Loading />;
+  if (!usage.data)
+    return (
+      <SkeletonRegion label="Nutzung lädt" className="space-y-4">
+        <Skeleton className="h-3 w-24" />
+        <MeterSkeleton />
+        <MeterSkeleton />
+        <Skeleton className="h-2.5 w-28" />
+      </SkeletonRegion>
+    );
   const plan = diag.data ? planLabel(diag.data.auth) : null;
   if (!usage.data.available)
     return <div className="text-body text-muted">{usage.data.error ?? "Claude Code meldet keine Nutzungsdaten. Sie gibt es nur mit einem Claude-Abo (Pro oder Max)."}</div>;
@@ -140,7 +162,21 @@ const KIND_LABEL: Record<ContextUsage["categories"][number]["kind"], string> = {
 function ContextBody({ session, onClose }: InfoProps) {
   const ctx = useContextUsage(session);
   if (!session) return <div className="text-body text-muted">Noch keine Session. Die Belegung zeigt sich nach der ersten Antwort.</div>;
-  if (ctx.isLoading) return <Loading />;
+  if (ctx.isLoading)
+    return (
+      <SkeletonRegion label="Kontext lädt" className="space-y-4">
+        <MeterSkeleton />
+        <div className="divide-y divide-border">
+          {[45, 35, 55, 30, 40].map((w) => (
+            <div key={w} className="flex h-8 items-center gap-4">
+              <Skeleton className="h-3" style={{ width: `${w}%` }} />
+              <Skeleton className="ml-auto h-2.5 w-14" />
+              <Skeleton className="h-3 w-12" />
+            </div>
+          ))}
+        </div>
+      </SkeletonRegion>
+    );
   const usage = ctx.data;
   if (!usage) return <div className="text-body text-muted">Claude Code hat für diese Session noch keine Belegung gemeldet.</div>;
   const order = { used: 0, deferred: 1, buffer: 2, free: 3 } as const;
@@ -188,7 +224,21 @@ function StatusBody({ project, session }: InfoProps) {
   const diag = useDiagnostics();
   const runtime = useRuntimeInfo();
   const modelLabel = useModelLabel();
-  if (!diag.data) return <Loading />;
+  if (!diag.data)
+    return (
+      <SkeletonRegion label="Status lädt" className="grid grid-cols-[max-content_1fr] gap-x-6 gap-y-2">
+        {Array.from({ length: session ? 10 : 6 }, (_, i) => (
+          <div key={i} className="contents">
+            <div className="flex h-5 items-center">
+              <Skeleton className="h-3" style={{ width: 56 + ((i * 23) % 40) }} />
+            </div>
+            <div className="flex h-5 items-center">
+              <Skeleton className="h-3" style={{ width: `${30 + ((i * 37) % 45)}%` }} />
+            </div>
+          </div>
+        ))}
+      </SkeletonRegion>
+    );
   const d = diag.data;
   const login = !d.auth.loggedIn ? "Nicht angemeldet" : (planLabel(d.auth) ?? d.auth.authMethod ?? "Angemeldet");
   const mcp = runtime.data?.mcpServers ?? [];
@@ -207,7 +257,18 @@ function StatusBody({ project, session }: InfoProps) {
       ["Session-ID", <span className="font-mono text-small">{session.claudeSessionId ?? "noch keine"}</span>],
     );
   }
-  rows.push(["MCP-Server", mcp.length ? `${mcp.filter((s) => s.status === "connected").length} von ${mcp.length} verbunden` : "keine gemeldet"]);
+  rows.push([
+    "MCP-Server",
+    runtime.isLoading ? (
+      <SkeletonRegion label="MCP-Server lädt" className="flex h-5 items-center">
+        <Skeleton className="h-3 w-32" />
+      </SkeletonRegion>
+    ) : mcp.length ? (
+      `${mcp.filter((s) => s.status === "connected").length} von ${mcp.length} verbunden`
+    ) : (
+      "keine gemeldet"
+    ),
+  ]);
   return <Rows rows={rows} />;
 }
 
@@ -221,7 +282,17 @@ const MCP_STATUS: Record<string, { label: string; tone: "success" | "warning" | 
 
 function McpBody() {
   const runtime = useRuntimeInfo();
-  if (runtime.isLoading) return <Loading />;
+  if (runtime.isLoading)
+    return (
+      <SkeletonRegion label="MCP-Server lädt" className="divide-y divide-border">
+        {[40, 28, 52].map((w) => (
+          <div key={w} className="flex h-9 items-center justify-between gap-3">
+            <Skeleton className="h-3" style={{ width: `${w}%` }} />
+            <Skeleton className="h-5 w-20 rounded" />
+          </div>
+        ))}
+      </SkeletonRegion>
+    );
   const servers = runtime.data?.mcpServers ?? [];
   if (!servers.length) return <div className="text-body text-muted">Keine MCP-Server gemeldet. Die Liste füllt sich, sobald eine Session gestartet ist.</div>;
   return (

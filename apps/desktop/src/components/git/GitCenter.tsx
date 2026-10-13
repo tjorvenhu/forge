@@ -11,7 +11,7 @@ import { Dialog } from "@/components/ui/dialog";
 import { DropdownMenu } from "@/components/ui/dropdown";
 import { Field, Input } from "@/components/ui/input";
 import { Badge, EmptyState, ErrorBanner } from "@/components/ui/misc";
-import { ListSkeleton } from "@/components/ui/skeleton";
+import { ListSkeleton, Skeleton, SkeletonRegion } from "@/components/ui/skeleton";
 import { GitPanel } from "./GitPanel";
 import { DiffView } from "./DiffView";
 import { CommitGraph, RefBadges } from "./CommitGraph";
@@ -248,7 +248,12 @@ function Pane({
 function BranchMenu({ project, branches, onNew }: { project: Project; branches: Array<{ name: string; current: boolean }>; onNew: () => void }) {
   const status = useGitStatus(project.id, project.exists);
   const summary = status.data?.summary;
-  if (!summary) return null;
+  if (!summary)
+    return status.isLoading ? (
+      <SkeletonRegion label="Lädt Branch" className="shrink-0">
+        <Skeleton className="h-6 w-28" />
+      </SkeletonRegion>
+    ) : null;
   return (
     <DropdownMenu
       header="Branch wechseln"

@@ -9,7 +9,8 @@ import { toast } from "@/stores/toast";
 import { Button } from "@/components/ui/button";
 import { CodeEditor } from "@/components/ui/code-editor";
 import { ExternalChangeBanner, useFileDraft } from "@/components/ui/file-draft";
-import { ErrorBanner, Loading } from "@/components/ui/misc";
+import { ErrorBanner } from "@/components/ui/misc";
+import { EditorSkeleton, Skeleton, SkeletonRegion } from "@/components/ui/skeleton";
 import { Markdown } from "@/components/workspace/Markdown";
 
 const AUTOSAVE_MS = 1000;
@@ -84,7 +85,20 @@ export function MemoryEditor({ projectId, scopes, height = "h-105" }: { projectI
     [],
   );
 
-  if (list.isLoading) return <Loading />;
+  if (list.isLoading)
+    return (
+      <SkeletonRegion label="CLAUDE.md lädt" className="flex flex-col gap-2">
+        <div className="flex items-center gap-1.5">
+          {scopes.length > 1 && scopes.map((s) => <Skeleton key={s} className="h-6.5 w-20" />)}
+          <div className="flex-1" />
+          <Skeleton className="h-7 w-24" />
+        </div>
+        <div className="flex h-4 items-center">
+          <Skeleton className="h-2.5 w-72 rounded-sm" />
+        </div>
+        <EditorSkeleton className={height} />
+      </SkeletonRegion>
+    );
   if (list.isError) return <ErrorBanner>{errorMessage(list.error)}</ErrorBanner>;
   if (!current) return null;
 
@@ -120,7 +134,7 @@ export function MemoryEditor({ projectId, scopes, height = "h-105" }: { projectI
       <div className="truncate font-mono text-caption text-subtle" title={current.path}>{current.path}</div>
       {externalChange && <ExternalChangeBanner onReload={reload} onKeep={keepEditing} />}
       {doc.isLoading ? (
-        <Loading />
+        <EditorSkeleton className={height} />
       ) : !current.exists && draft === null ? (
         <div className={cn("flex flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-border", height)}>
           <p className="text-body text-muted">Diese Datei gibt es noch nicht.</p>

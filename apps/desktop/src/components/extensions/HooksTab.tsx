@@ -7,7 +7,8 @@ import { toast } from "@/stores/toast";
 import { Button } from "@/components/ui/button";
 import { CodeEditor } from "@/components/ui/code-editor";
 import { ExternalChangeBanner, useFileDraft } from "@/components/ui/file-draft";
-import { ErrorBanner, Loading, SectionTitle } from "@/components/ui/misc";
+import { ErrorBanner, SectionTitle } from "@/components/ui/misc";
+import { EditorSkeleton, Skeleton } from "@/components/ui/skeleton";
 import { Select } from "@/components/ui/select";
 
 export function HooksTab({ projectId }: { projectId?: string }) {
@@ -52,7 +53,13 @@ export function HooksTab({ projectId }: { projectId?: string }) {
               : []),
           ]}
         />
-        <span className="min-w-0 flex-1 truncate font-mono text-caption text-subtle">{q.data?.path}</span>
+        {q.isLoading ? (
+          <div className="min-w-0 flex-1">
+            <Skeleton className="h-2.5 w-64 max-w-full rounded-sm" />
+          </div>
+        ) : (
+          <span className="min-w-0 flex-1 truncate font-mono text-caption text-subtle">{q.data?.path}</span>
+        )}
         <Button size="sm" variant="primary" onClick={() => void save()} disabled={!dirty || externalChange} loading={saving}>
           <Save className="h-3.5 w-3.5" /> Speichern
         </Button>
@@ -64,7 +71,7 @@ export function HooksTab({ projectId }: { projectId?: string }) {
       )}
       {q.isError && <ErrorBanner>{errorMessage(q.error)}</ErrorBanner>}
       {q.isLoading ? (
-        <Loading />
+        <EditorSkeleton className="h-105" />
       ) : (
         <div className="h-105">
           <CodeEditor value={draft ?? q.data?.hooks ?? "{}"} onChange={setDraft} language="json" onSave={() => void save()} ariaLabel="Hooks (JSON)" />

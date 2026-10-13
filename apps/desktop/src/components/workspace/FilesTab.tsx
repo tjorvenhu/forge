@@ -5,11 +5,11 @@ import type { Project } from "@forge/protocol";
 import { call, keys } from "@/lib/queries";
 import { errorMessage } from "@/lib/rpc";
 import { cn } from "@/lib/utils";
-import { CodeView } from "@/components/ui/code-view";
+import { CodeView, CodeViewSkeleton } from "@/components/ui/code-view";
 import { EmptyState, ErrorBanner } from "@/components/ui/misc";
 import { useUi } from "@/stores/ui";
 import { fileIcon } from "./FileTree";
-import { ListSkeleton } from "@/components/ui/skeleton";
+import { Skeleton, SkeletonRegion } from "@/components/ui/skeleton";
 
 /** Read-only project browser. Editing happens through Claude or your editor. */
 export function FilesTab({ project }: { project: Project }) {
@@ -29,7 +29,18 @@ export function FilesTab({ project }: { project: Project }) {
 function Dir({ projectId, dir, depth, selected, onSelect }: { projectId: string; dir: string; depth: number; selected: string | null; onSelect: (p: string) => void }) {
   const q = useQuery({ queryKey: keys.files(projectId, dir), queryFn: () => call("projects.listFiles", { projectId, dir }) });
   const [open, setOpen] = useState<Set<string>>(new Set());
-  if (q.isLoading) return <ListSkeleton rows={2} className="py-1" />;
+  if (q.isLoading)
+    return (
+      <SkeletonRegion className="flex flex-col py-0.5">
+        {[55, 40, 48].map((w) => (
+          <div key={w} className="flex h-5.5 items-center gap-1.5 pr-2" style={{ paddingLeft: 10 + depth * 14 }}>
+            <span className="w-3 shrink-0" />
+            <Skeleton className="h-3.5 w-3.5 shrink-0 rounded-sm" />
+            <Skeleton className="h-3 rounded-sm" style={{ width: `${w}%` }} />
+          </div>
+        ))}
+      </SkeletonRegion>
+    );
   if (q.isError) return <div className="px-3 text-xs text-danger">{errorMessage(q.error)}</div>;
   return (
     <ul>
@@ -79,7 +90,11 @@ function FileViewer({ projectId, path }: { projectId: string; path: string }) {
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex h-8 shrink-0 items-center border-b border-border px-3 font-mono text-xs text-muted">{path}</div>
-      {q.isLoading && <ListSkeleton rows={6} />}
+      {q.isLoading && (
+        <div className="min-h-0 flex-1">
+          <CodeViewSkeleton />
+        </div>
+      )}
       {q.isError && <div className="p-3"><ErrorBanner>{errorMessage(q.error)}</ErrorBanner></div>}
       {q.data?.binary && <div className="p-4 text-xs text-muted">Binärdatei, keine Vorschau.</div>}
       {q.data && !q.data.binary && (

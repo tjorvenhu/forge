@@ -11,7 +11,8 @@ import { useActivity } from "@/stores/activity";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { Field, Input, Textarea } from "@/components/ui/input";
-import { Badge, Checkbox, Spinner } from "@/components/ui/misc";
+import { Badge, Checkbox } from "@/components/ui/misc";
+import { Skeleton, SkeletonRegion } from "@/components/ui/skeleton";
 
 function useRefreshGit(projectId: string) {
   const qc = useQueryClient();
@@ -63,7 +64,14 @@ export function SyncActions({ project }: { project: Project }) {
     }
   };
 
-  if (!summary) return null;
+  if (!summary)
+    return status.isLoading ? (
+      <SkeletonRegion label="Lädt Abgleich" className="flex items-center gap-0.5">
+        <Skeleton className="h-6 w-6" />
+        <Skeleton className="h-6 w-6.5" />
+        <Skeleton className="h-6 w-6.5" />
+      </SkeletonRegion>
+    ) : null;
 
   return (
     <>
@@ -139,6 +147,14 @@ export function PullRequestBar({ project }: { project: Project }) {
   });
   const [creatingPr, setCreatingPr] = useState(false);
 
+  // Until status and account are known the bar may still appear; its height is kept so the graph does not jump.
+  if (status.isLoading || (onGitHub && account.isLoading))
+    return (
+      <SkeletonRegion label="Lädt Pull Request" className="flex h-8 shrink-0 items-center gap-2 border-b border-border px-3">
+        <Skeleton className="h-3.5 w-3.5 shrink-0 rounded-sm" />
+        <PrStatusSkeleton />
+      </SkeletonRegion>
+    );
   if (!summary || !onGitHub || !account.data) return null;
   const onMain = summary.branch === "main" || summary.branch === "master";
 
@@ -146,7 +162,9 @@ export function PullRequestBar({ project }: { project: Project }) {
     <div className="flex h-8 shrink-0 items-center gap-2 border-b border-border px-3 text-small-lg">
       <GitPullRequest className="h-3.5 w-3.5 shrink-0 text-muted" />
       {pr.isLoading ? (
-        <Spinner className="h-3.5 w-3.5" />
+        <SkeletonRegion label="Lädt Pull Request" className="flex min-w-0 flex-1 items-center gap-2">
+          <PrStatusSkeleton />
+        </SkeletonRegion>
       ) : pr.isError ? (
         <>
           <span className="min-w-0 flex-1 truncate text-danger" title={errorMessage(pr.error)}>
@@ -195,6 +213,19 @@ export function PullRequestBar({ project }: { project: Project }) {
       )}
       <CreatePrDialog open={creatingPr} onOpenChange={setCreatingPr} project={project} onDone={refresh} />
     </div>
+  );
+}
+
+/** Title, state badge and open button of a pull request, as placeholders. */
+function PrStatusSkeleton() {
+  return (
+    <>
+      <div className="flex min-w-0 flex-1 items-center">
+        <Skeleton className="h-3 w-1/2 rounded-sm" />
+      </div>
+      <Skeleton className="h-5 w-12 shrink-0 rounded" />
+      <Skeleton className="h-6 w-6 shrink-0" />
+    </>
   );
 }
 

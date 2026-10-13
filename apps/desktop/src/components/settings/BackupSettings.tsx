@@ -9,7 +9,8 @@ import { relativeTime } from "@/lib/utils";
 import { toast } from "@/stores/toast";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import { Badge, EmptyState, ErrorBanner, Loading, ToggleRow } from "@/components/ui/misc";
+import { Badge, EmptyState, ErrorBanner, ToggleRow } from "@/components/ui/misc";
+import { Skeleton, SkeletonRegion } from "@/components/ui/skeleton";
 
 const REASON: Record<BackupInfo["reason"], string> = {
   start: "Beim Start",
@@ -112,7 +113,26 @@ export function BackupSettings() {
           <h3 className="shrink-0 text-body font-medium">Gespeicherte Backups</h3>
           <span className="text-right text-xs text-subtle">Beim Start sichert FORGE automatisch, wenn sich seit dem letzten Backup etwas geändert hat. Die letzten 40 bleiben.</span>
         </div>
-        {backups.isLoading && <Loading />}
+        {backups.isLoading && (
+          <SkeletonRegion label="Lädt Backups" className="divide-y divide-border overflow-hidden rounded-lg border border-border">
+            {[0, 1, 2].map((i) => (
+              <div key={i} className="flex items-center gap-3 px-3.5 py-2.5">
+                <div className="flex min-w-0 flex-1 flex-col gap-1">
+                  <div className="flex h-5 items-center gap-2">
+                    <Skeleton className="h-3 w-36" />
+                    <Skeleton className="h-2.5 w-16" />
+                    <Skeleton className="h-5 w-20 rounded" />
+                  </div>
+                  <div className="flex h-4 items-center">
+                    <Skeleton className="h-2.5 w-3/5" />
+                  </div>
+                </div>
+                <Skeleton className="h-7 w-7" />
+                <Skeleton className="h-7 w-28" />
+              </div>
+            ))}
+          </SkeletonRegion>
+        )}
         {backups.isError && <ErrorBanner>{errorMessage(backups.error)}</ErrorBanner>}
         {backups.data && !list.length && (
           <div className="rounded-lg border border-dashed border-border">

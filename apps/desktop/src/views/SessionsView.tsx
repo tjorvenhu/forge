@@ -19,7 +19,7 @@ import { Select } from "@/components/ui/select";
 import { SessionStatusBadge } from "@/components/workspace/SessionStatusBadge";
 import { ProfileBadge } from "@/components/projects/ProfileBadge";
 import { openSearchHit, SearchHitRow } from "@/components/search/SearchHits";
-import { ListSkeleton } from "@/components/ui/skeleton";
+import { Skeleton, SkeletonRegion } from "@/components/ui/skeleton";
 
 const STATUS = [
   { value: "all", label: "Alle Status" },
@@ -72,8 +72,9 @@ export function SessionsView() {
       </div>
       {searching && (
         <section className="mb-6">
-          <SectionTitle action={hits.isFetching ? <Spinner className="h-3.5 w-3.5" /> : undefined}>Treffer in Verläufen</SectionTitle>
+          <SectionTitle action={hits.isFetching && !hits.isLoading ? <Spinner className="h-3.5 w-3.5" /> : undefined}>Treffer in Verläufen</SectionTitle>
           {hits.isError && <ErrorBanner>Suche fehlgeschlagen.</ErrorBanner>}
+          {hits.isLoading && <HitsSkeleton />}
           {hits.data && hits.data.length === 0 && <div className="text-body text-muted">Kein Prompt und keine Antwort enthält diese Wörter.</div>}
           {!!hits.data?.length && (
             <div className="rounded-xl border border-border bg-surface p-1">
@@ -85,7 +86,7 @@ export function SessionsView() {
         </section>
       )}
       {searching && <SectionTitle>Sessions</SectionTitle>}
-      {sessions.isLoading && <ListSkeleton rows={8} />}
+      {sessions.isLoading && <SessionsTableSkeleton />}
       {sessions.isError && <ErrorBanner>Sessions konnten nicht geladen werden.</ErrorBanner>}
       {sessions.isSuccess && sessions.data.length === 0 && query && <div className="text-body text-muted">Kein Titel, Projekt und keine Session-ID passt.</div>}
       {sessions.isSuccess && sessions.data.length === 0 && !query && (
@@ -96,19 +97,7 @@ export function SessionsView() {
       {!!sessions.data?.length && (
         <div className="overflow-hidden rounded-xl border border-border">
           <table className="w-full text-body">
-            <thead className="bg-surface-2 text-left text-xs text-muted">
-              <tr>
-                <th className="px-4 py-2 font-medium">Session</th>
-                <th className="px-4 py-2 font-medium">Projekt</th>
-                <th className="px-4 py-2 font-medium">Status</th>
-                <th className="px-4 py-2 font-medium">Profil</th>
-                <th className="px-4 py-2 font-medium">Modell</th>
-                <th className="px-4 py-2 font-medium">Aktualisiert</th>
-                <th className="w-px px-2 py-2">
-                  <span className="sr-only">Aktionen</span>
-                </th>
-              </tr>
-            </thead>
+            <SessionsTableHead />
             <tbody className="divide-y divide-border">
               {sessions.data.map((s) => (
                 <tr key={s.id} className="cursor-pointer bg-surface hover:bg-surface-2" onClick={() => openProject(s.projectId, s.id)}>
@@ -157,5 +146,80 @@ export function SessionsView() {
       <DeleteSessionDialog session={deleting} onClose={() => setDeleting(null)} />
       <DeleteAllSessionsDialog open={deletingAll} liveCount={openCount} onClose={() => setDeletingAll(false)} />
     </Page>
+  );
+}
+
+function SessionsTableHead() {
+  return (
+    <thead className="bg-surface-2 text-left text-xs text-muted">
+      <tr>
+        <th className="px-4 py-2 font-medium">Session</th>
+        <th className="px-4 py-2 font-medium">Projekt</th>
+        <th className="px-4 py-2 font-medium">Status</th>
+        <th className="px-4 py-2 font-medium">Profil</th>
+        <th className="px-4 py-2 font-medium">Modell</th>
+        <th className="px-4 py-2 font-medium">Aktualisiert</th>
+        <th className="w-px px-2 py-2">
+          <span className="sr-only">Aktionen</span>
+        </th>
+      </tr>
+    </thead>
+  );
+}
+
+/** The sessions table with its real header; fixed widths, since percentages collapse in an auto-sized table. */
+function SessionsTableSkeleton({ rows = 8 }: { rows?: number }) {
+  const line = (widths: string[], r: number, h = "h-3") => <Skeleton className={`${h} rounded-sm ${widths[r % widths.length]}`} />;
+  return (
+    <SkeletonRegion label="Lädt Sessions" className="overflow-hidden rounded-xl border border-border">
+      <table className="w-full text-body">
+        <SessionsTableHead />
+        <tbody className="divide-y divide-border">
+          {Array.from({ length: rows }, (_, r) => (
+            <tr key={r} className="bg-surface">
+              <td className="px-4 py-2">
+                <div className="flex h-5 items-center">{line(["w-56", "w-40", "w-48", "w-32"], r)}</div>
+                <div className="flex h-4 items-center">{line(["w-36", "w-44"], r, "h-2")}</div>
+              </td>
+              <td className="px-4 py-2">{line(["w-20", "w-28", "w-24"], r)}</td>
+              <td className="px-4 py-2">
+                <Skeleton className="h-5 w-16 rounded" />
+              </td>
+              <td className="px-4 py-2">
+                <Skeleton className="h-5 w-20 rounded" />
+              </td>
+              <td className="px-4 py-2">{line(["w-16", "w-20"], r)}</td>
+              <td className="px-4 py-2">{line(["w-24", "w-20", "w-16"], r)}</td>
+              <td className="px-2 py-1">
+                <div className="flex justify-end">
+                  <Skeleton className="h-7 w-7" />
+                </div>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </SkeletonRegion>
+  );
+}
+
+/** Full-text hits while the transcripts are searched, in the box the hits will fill. */
+function HitsSkeleton() {
+  return (
+    <SkeletonRegion label="Lädt Treffer" className="rounded-xl border border-border bg-surface p-1">
+      {[0, 1, 2].map((i) => (
+        <div key={i} className="flex items-start gap-2.5 px-2.5 py-2">
+          <Skeleton className="mt-0.5 h-5 w-5 shrink-0 rounded" />
+          <div className="min-w-0 flex-1">
+            <div className="flex h-5 items-center">
+              <Skeleton className="h-3 rounded-sm" style={{ width: `${70 + ((i * 13) % 25)}%` }} />
+            </div>
+            <div className="mt-0.5 flex h-4 items-center">
+              <Skeleton className="h-2.5 w-2/5 rounded-sm" />
+            </div>
+          </div>
+        </div>
+      ))}
+    </SkeletonRegion>
   );
 }

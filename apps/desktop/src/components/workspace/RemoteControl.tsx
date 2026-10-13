@@ -11,6 +11,7 @@ import { toast } from "@/stores/toast";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { ErrorBanner, Spinner } from "@/components/ui/misc";
+import { Skeleton, SkeletonRegion } from "@/components/ui/skeleton";
 
 /** Header button + dialog to continue all running FORGE sessions in the Claude app (Remote Control is global). */
 export function RemoteControlButton({ project }: { project: Project }) {
@@ -40,14 +41,26 @@ export function RemoteControlButton({ project }: { project: Project }) {
         <span className="hidden lg:inline">Remote</span>
         {dot && <span className={cn("absolute right-1 top-1 h-1.5 w-1.5 rounded-full", dot)} />}
       </button>
-      <RemoteDialog open={open} onOpenChange={setOpen} project={project} state={state.data ?? null} />
+      <RemoteDialog open={open} onOpenChange={setOpen} project={project} state={state.data ?? null} loading={state.isLoading} />
     </>
   );
 }
 
 const STATE_LABEL: Record<RemoteSession["state"], string> = { connected: "Verbunden", connecting: "Wird verbunden", error: "Fehler" };
 
-function RemoteDialog({ open, onOpenChange, project, state }: { open: boolean; onOpenChange: (o: boolean) => void; project: Project; state: RemoteState | null }) {
+function RemoteDialog({
+  open,
+  onOpenChange,
+  project,
+  state,
+  loading,
+}: {
+  open: boolean;
+  onOpenChange: (o: boolean) => void;
+  project: Project;
+  state: RemoteState | null;
+  loading: boolean;
+}) {
   const qc = useQueryClient();
   const activeSession = useUi((s) => s.activeSession[project.id] ?? null);
   const [busy, setBusy] = useState(false);
@@ -81,27 +94,41 @@ function RemoteDialog({ open, onOpenChange, project, state }: { open: boolean; o
       description="Jede laufende FORGE-Session erscheint als eigener Eintrag in der Claude-App und auf claude.ai, aus allen Projekten. Nachrichten erscheinen auf beiden Seiten."
     >
       <div className="flex flex-col gap-4">
-        <div className="flex items-center gap-3 rounded-lg border border-border px-3 py-2.5">
-          <div className="min-w-0 flex-1">
-            <div className="text-body font-medium">{enabled ? "Eingeschaltet" : "Aus"}</div>
-            <div className="text-xs text-muted">
-              {!enabled
-                ? "Gilt für alle laufenden Sessions in FORGE"
-                : sessions.length
-                  ? `${connectedCount} von ${sessions.length} Session${sessions.length === 1 ? "" : "s"} verbunden`
-                  : "Keine laufende Session"}
+        {loading ? (
+          <SkeletonRegion label="Status lädt" className="flex items-center gap-3 rounded-lg border border-border px-3 py-2.5">
+            <div className="min-w-0 flex-1">
+              <div className="flex h-5 items-center">
+                <Skeleton className="h-3.5 w-24" />
+              </div>
+              <div className="flex h-4 items-center">
+                <Skeleton className="h-2.5 w-56" />
+              </div>
             </div>
+            <Skeleton className="h-8 w-28" />
+          </SkeletonRegion>
+        ) : (
+          <div className="flex items-center gap-3 rounded-lg border border-border px-3 py-2.5">
+            <div className="min-w-0 flex-1">
+              <div className="text-body font-medium">{enabled ? "Eingeschaltet" : "Aus"}</div>
+              <div className="text-xs text-muted">
+                {!enabled
+                  ? "Gilt für alle laufenden Sessions in FORGE"
+                  : sessions.length
+                    ? `${connectedCount} von ${sessions.length} Session${sessions.length === 1 ? "" : "s"} verbunden`
+                    : "Keine laufende Session"}
+              </div>
+            </div>
+            {enabled ? (
+              <Button variant="outline" onClick={() => void act(false)} loading={busy}>
+                Ausschalten
+              </Button>
+            ) : (
+              <Button variant="primary" onClick={() => void act(true)} loading={busy}>
+                Einschalten
+              </Button>
+            )}
           </div>
-          {enabled ? (
-            <Button variant="outline" onClick={() => void act(false)} loading={busy}>
-              Ausschalten
-            </Button>
-          ) : (
-            <Button variant="primary" onClick={() => void act(true)} loading={busy}>
-              Einschalten
-            </Button>
-          )}
-        </div>
+        )}
 
         {enabled && !sessions.length && (
           <p className="rounded-lg border border-dashed border-border px-3 py-2.5 text-body text-muted">
@@ -145,6 +172,7 @@ function StateDot({ state }: { state: RemoteSession["state"] }) {
 
 function SessionLink({ session }: { session: RemoteSession }) {
   const [qr, setQr] = useState<string | null>(null);
+  const [shownQr, setShownQr] = useState<string | null>(null);
 
   useEffect(() => {
     if (!session.url) return setQr(null);
@@ -165,7 +193,23 @@ function SessionLink({ session }: { session: RemoteSession }) {
   }
   return (
     <div className="flex items-start gap-4">
-      {qr && <img src={qr} alt="QR-Code für die Claude-App" width={140} height={140} className="shrink-0 rounded-lg border border-border" />}
+      <div className="relative h-35 w-35 shrink-0">
+        {qr && (
+          <img
+            src={qr}
+            alt="QR-Code für die Claude-App"
+            width={140}
+            height={140}
+            onLoad={() => setShownQr(qr)}
+            className={cn("rounded-lg border border-border", shownQr !== qr && "invisible")}
+          />
+        )}
+        {shownQr !== qr && (
+          <SkeletonRegion label="QR-Code lädt" className="absolute inset-0">
+            <Skeleton className="h-full w-full rounded-lg" />
+          </SkeletonRegion>
+        )}
+      </div>
       <div className="flex min-w-0 flex-col gap-2 text-body">
         <div className="truncate font-medium" title={session.name}>
           {session.name}

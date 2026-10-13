@@ -3,6 +3,7 @@ import { call, useClaudeSetup, useClaudeUpdate, useDiagnostics, useLiveSessions,
 import { errorMessage } from "@/lib/rpc";
 import { toast } from "@/stores/toast";
 import { Button } from "@/components/ui/button";
+import { Skeleton, SkeletonRegion } from "@/components/ui/skeleton";
 import { useUi, type View } from "@/stores/ui";
 import { cn, planLabel, relativeTime } from "@/lib/utils";
 import { Logo } from "./Logo";
@@ -18,7 +19,8 @@ export function Sidebar() {
   const setView = useUi((s) => s.setView);
   const setNewProject = useUi((s) => s.setNewProject);
   const projects = useProjects();
-  const liveCount = useLiveSessions().data?.length ?? 0;
+  const live = useLiveSessions();
+  const liveCount = live.data?.length ?? 0;
   // Agents (worktrees) belong to their project and are not counted on their own.
   const list = splitProjects(projects.data ?? []).roots;
   const activeProjectId = useUi((s) => s.activeProjectId);
@@ -79,7 +81,8 @@ export function Sidebar() {
         <ErrorBoundary>
           <OpenSessions />
         </ErrorBoundary>
-        {!hasOpen && (
+        {/* While these load, OpenSessions shows its skeleton in place of the hint. */}
+        {!hasOpen && !live.isPending && !projects.isPending && (
           <>
             <p className="px-3 pb-2 text-small text-subtle">Kein Projekt geöffnet. Wähle eins auf der Startseite oder unter Projekte.</p>
             <Button
@@ -104,8 +107,8 @@ function ClaudeStatusCard() {
   const usage = useUsage();
   const openSettings = useUi((s) => s.openSettings);
   const d = diag.data;
-  let tone = "bg-subtle";
-  let line = "Prüfe Status …";
+  let tone = "bg-danger";
+  let line = "Status unbekannt";
   if (d) {
     if (!d.claude.found && setup?.task === "install" && setup.phase === "running") {
       tone = "bg-warning animate-soft-pulse";
@@ -120,9 +123,6 @@ function ClaudeStatusCard() {
       tone = d.apiKeyEnvPresent && !d.apiKeyStripped ? "bg-warning" : "bg-success";
       line = planLabel(d.auth) ?? d.auth.authMethod ?? "angemeldet";
     }
-  } else if (diag.isError) {
-    tone = "bg-danger";
-    line = "Status unbekannt";
   }
   const windows = usage.data?.available ? usage.data.windows.slice(0, 3) : [];
   return (
@@ -133,19 +133,39 @@ function ClaudeStatusCard() {
         <div className="flex w-full items-center gap-2.5">
           <div className="min-w-0 flex-1">
             <div className="text-body">Claude Code</div>
-            <div className="flex items-center gap-1.5 text-caption text-muted">
-              <span className={cn("h-1.5 w-1.5 rounded-full", tone)} />
-              {line}
-            </div>
+            {diag.isPending ? (
+              <SkeletonRegion label="Claude-Status lädt" className="flex h-4 items-center">
+                <Skeleton className="h-2.5 w-24" />
+              </SkeletonRegion>
+            ) : (
+              <div className="flex items-center gap-1.5 text-caption text-muted">
+                <span className={cn("h-1.5 w-1.5 rounded-full", tone)} />
+                {line}
+              </div>
+            )}
           </div>
           <span className="text-caption text-subtle">{d?.claude.version?.split(" ")[0] ?? ""}</span>
         </div>
-        {windows.length > 0 && (
-          <div className="flex w-full flex-col gap-1.5" aria-label="Nutzung des Abos">
-            {windows.map((w) => (
-              <UsageBar key={w.key} label={w.label} value={w.utilization} resetsAt={w.resetsAt} />
+        {usage.isPending ? (
+          <SkeletonRegion label="Nutzung lädt" className="flex w-full flex-col gap-1.5">
+            {[0, 1].map((i) => (
+              <div key={i}>
+                <div className="mb-0.5 flex h-4 items-center justify-between">
+                  <Skeleton className="h-2.5 w-16" />
+                  <Skeleton className="h-2.5 w-8" />
+                </div>
+                <Skeleton className="h-1 rounded-full" />
+              </div>
             ))}
-          </div>
+          </SkeletonRegion>
+        ) : (
+          windows.length > 0 && (
+            <div className="flex w-full flex-col gap-1.5" aria-label="Nutzung des Abos">
+              {windows.map((w) => (
+                <UsageBar key={w.key} label={w.label} value={w.utilization} resetsAt={w.resetsAt} />
+              ))}
+            </div>
+          )
         )}
       </button>
       <ClaudeUpdateButton />

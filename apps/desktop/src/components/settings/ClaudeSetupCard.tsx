@@ -9,7 +9,8 @@ import { planLabel } from "@/lib/utils";
 import { toast } from "@/stores/toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Badge, ErrorBanner, Loading } from "@/components/ui/misc";
+import { Badge, ErrorBanner } from "@/components/ui/misc";
+import { Skeleton, SkeletonRegion } from "@/components/ui/skeleton";
 
 // Opens the sign-in page once per login attempt. Module-level so remounts and StrictMode do not open it again.
 let openedUrl: string | null = null;
@@ -40,7 +41,14 @@ export function ClaudeSetupCard() {
     }
   };
 
-  if (!d) return <Loading />;
+  if (!d)
+    return (
+      <SkeletonRegion label="Claude-Status lädt" className="flex h-5 items-center gap-2">
+        <Skeleton className="h-4 w-4 rounded-full" />
+        <Skeleton className="h-3 w-64" />
+        <Skeleton className="h-4 w-12 rounded-full" />
+      </SkeletonRegion>
+    );
 
   const log = s?.log.length ? (
     <pre className="max-h-40 w-full overflow-auto rounded-md bg-bg p-2 font-mono text-caption text-muted">{s.log.slice(-12).join("\n")}</pre>

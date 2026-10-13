@@ -15,7 +15,7 @@ import { Badge, EmptyState, ErrorBanner } from "@/components/ui/misc";
 import { TabBar } from "@/components/ui/tabs";
 import { ProjectIcon } from "@/components/projects/ProjectIcon";
 import { PROFILE_IDS, PROFILE_INFO, ProfileBadge } from "@/components/projects/ProfileBadge";
-import { ChatPanel } from "@/components/workspace/ChatPanel";
+import { ChatPanel, ChatPanelSkeleton } from "@/components/workspace/ChatPanel";
 import { GitPanel } from "@/components/git/GitPanel";
 import { GitCenter } from "@/components/git/GitCenter";
 import { FilesTab } from "@/components/workspace/FilesTab";
@@ -31,7 +31,7 @@ import { KnowledgeTab } from "@/components/knowledge/KnowledgeTab";
 import { PhoneButton } from "@/components/layout/PhoneButton";
 import { AlwaysOnTopButton } from "@/components/layout/AlwaysOnTopButton";
 import { HeaderDivider } from "@/components/layout/Page";
-import { ChatSkeleton } from "@/components/ui/skeleton";
+import { ListSkeleton, Skeleton } from "@/components/ui/skeleton";
 import { Collapse } from "@/components/ui/collapse";
 import { DevToolsBadge } from "@/components/devtools/DevToolsBadge";
 
@@ -54,7 +54,7 @@ export function WorkspaceView() {
   }, [projectId, qc]);
 
   if (!projectId) return <EmptyState title="Kein Projekt geöffnet">Wähle links ein Projekt oder füge eines hinzu.</EmptyState>;
-  if (project.isLoading) return <ChatSkeleton />;
+  if (project.isLoading) return <WorkspaceSkeleton />;
   if (project.isError || !project.data)
     return (
       <div className="p-6">
@@ -125,6 +125,51 @@ function Workspace({ projectId }: { projectId: string }) {
           <BottomPanel project={project} />
         </div>
         {showRight && <RightPanel projectId={projectId} />}
+      </div>
+    </div>
+  );
+}
+
+/** Header, tab row, content and side panel at the heights of Workspace, so nothing moves when the project arrives. */
+function WorkspaceSkeleton() {
+  const { workspaceTab, toolbarOpen, rightPanelOpen } = useUi(useShallow((s) => ({ workspaceTab: s.workspaceTab, toolbarOpen: s.toolbarOpen, rightPanelOpen: s.rightPanelOpen })));
+  const narrow = useNarrow();
+  const showRight = rightPanelOpen && !narrow && workspaceTab === "chat";
+  const tab = (w: number) => (
+    <div key={w} className="flex h-12 items-center gap-2 px-3.5">
+      <Skeleton className="h-4 w-4 rounded-sm" />
+      <Skeleton className="h-3" style={{ width: w }} />
+    </div>
+  );
+  return (
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="flex h-12 shrink-0 items-center gap-3 border-b border-border px-5">
+        <Skeleton className="h-6.5 w-6.5 rounded-lg" />
+        <Skeleton className="h-4 w-40" />
+        <Skeleton className="h-7 w-7" />
+        <div className="flex-1" />
+        <div className="flex items-center gap-0.5">
+          <Skeleton className="h-7 w-7" />
+          <Skeleton className="h-7 w-7" />
+          <Skeleton className="h-7 w-7" />
+        </div>
+        <Skeleton className="h-7 w-7" />
+        <Skeleton className="h-6 w-24" />
+        <HeaderDivider />
+        <Skeleton className="h-7 w-7" />
+        <Skeleton className="h-7 w-7" />
+      </div>
+      <div className="flex min-h-0 flex-1">
+        <div className="flex min-w-0 flex-1 flex-col">
+          {toolbarOpen && <div className="flex h-12 shrink-0 items-center gap-1 overflow-hidden border-b border-border px-4">{[32, 56, 24, 48, 56, 44, 84].map(tab)}</div>}
+          <div className="min-h-0 flex-1">{workspaceTab === "chat" ? <ChatPanelSkeleton /> : <ListSkeleton rows={8} className="p-5" />}</div>
+        </div>
+        {showRight && (
+          <div className="flex w-100 shrink-0 flex-col border-l border-border bg-sidebar xl:w-110">
+            <div className="flex h-12 shrink-0 items-center border-b border-border px-3">{[52, 76, 60].map(tab)}</div>
+            <ListSkeleton rows={8} className="px-4" />
+          </div>
+        )}
       </div>
     </div>
   );

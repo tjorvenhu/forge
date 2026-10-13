@@ -13,7 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Badge, EmptyState, ErrorBanner, SectionTitle, Spinner } from "@/components/ui/misc";
 import { SessionStatusBadge } from "@/components/workspace/SessionStatusBadge";
 import { SummaryButton } from "@/components/workspace/SummaryButton";
-import { ListSkeleton } from "@/components/ui/skeleton";
+import { Skeleton, SkeletonRegion } from "@/components/ui/skeleton";
 
 type LiveSession = ResultOf<"sessions.listLive">[number];
 type Tone = "accent" | "warning" | "success" | "danger";
@@ -34,7 +34,12 @@ export function HomeView() {
   return (
     <Page title="Start" subtitle="Was gerade läuft und was auf dich wartet">
       <ApiKeyWarning />
-      {projects.isLoading && <ListSkeleton rows={4} />}
+      {projects.isLoading && (
+        <SkeletonRegion label="Lädt Startseite" className="flex flex-col gap-8">
+          <StatusGroupSkeleton rows={2} />
+          <StatusGroupSkeleton title="Zuletzt bearbeitet" rows={3} lead="badge" />
+        </SkeletonRegion>
+      )}
       {projects.isError && <ErrorBanner>Projekte konnten nicht geladen werden.</ErrorBanner>}
       {none && (
         <EmptyState
@@ -69,11 +74,15 @@ function RunningNow() {
   const openProject = useUi((s) => s.openProject);
   const openDevTools = useUi((s) => s.openDevTools);
   const label = useModelLabel();
-  const phone = usePhoneState().data;
-  const live = useLiveSessions().data ?? [];
+  const phoneQuery = usePhoneState();
+  const liveQuery = useLiveSessions();
+  const appUpdateQuery = useAppUpdate();
+  const setupQuery = useClaudeSetup();
+  const phone = phoneQuery.data;
+  const live = liveQuery.data ?? [];
   const ops = useActivity((s) => s.ops);
-  const appUpdate = useAppUpdate().data;
-  const setup = useClaudeSetup().data;
+  const appUpdate = appUpdateQuery.data;
+  const setup = setupQuery.data;
   const existing = projects.filter((p) => p.exists);
   const devServers = useQueries({
     queries: existing.map((p) => ({ queryKey: keys.devServer(p.id), queryFn: () => call("devserver.state", { projectId: p.id }), staleTime: 30_000 })),
@@ -111,6 +120,13 @@ function RunningNow() {
   );
 
   const empty = !call_ && !waiting.length && !working.length && !ops.length && !servers.length && !dbs.length && !updating;
+  const loading = [phoneQuery, liveQuery, appUpdateQuery, setupQuery, ...devServers, ...testDbs].some((q) => q.isLoading);
+  if (empty && loading)
+    return (
+      <SkeletonRegion label="Lädt laufende Vorgänge">
+        <StatusGroupSkeleton rows={2} />
+      </SkeletonRegion>
+    );
   if (empty)
     return (
       <div className="rounded-xl border border-border bg-surface">
@@ -232,12 +248,50 @@ function StatusRow({ icon, tone, pulse, title, detail, badge, action }: { icon: 
   );
 }
 
+/** A StatusGroup in its loaded size; `lead` is the status icon of running things or the badge of resumable sessions. */
+function StatusGroupSkeleton({ title, rows, lead = "icon" }: { title?: string; rows: number; lead?: "icon" | "badge" }) {
+  return (
+    <section>
+      {title ? (
+        <SectionTitle>{title}</SectionTitle>
+      ) : (
+        <div className="mb-2 flex h-4 items-center">
+          <Skeleton className="h-2.5 w-28 rounded-sm" />
+        </div>
+      )}
+      <div className="divide-y divide-border rounded-xl border border-border bg-surface">
+        {Array.from({ length: rows }, (_, i) => (
+          <div key={i} className="flex items-center gap-3 px-4 py-2.5">
+            {lead === "icon" ? <Skeleton className="h-4 w-4 shrink-0 rounded-sm" /> : <Skeleton className="h-5 w-16 shrink-0 rounded" />}
+            <div className="min-w-0 flex-1">
+              <div className="flex h-5 items-center">
+                <Skeleton className="h-3 rounded-sm" style={{ width: `${40 + ((i * 23) % 30)}%` }} />
+              </div>
+              <div className="flex h-4 items-center">
+                <Skeleton className="h-2.5 rounded-sm" style={{ width: `${25 + ((i * 17) % 20)}%` }} />
+              </div>
+            </div>
+            {lead === "badge" && <Skeleton className="h-7 w-7 shrink-0" />}
+            <Skeleton className="h-7 w-20 shrink-0" />
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 /** Sessions to pick up again: the latest ones that do not run right now. */
 function ResumeSection() {
   const label = useModelLabel();
   const openProject = useUi((s) => s.openProject);
   const sessions = useQuery({ queryKey: keys.allSessions("", "all"), queryFn: () => call("sessions.listAll", {}) });
   const items = (sessions.data ?? []).filter((s) => !WORKING.has(s.status) && s.status !== "waiting_approval").slice(0, 5);
+  if (sessions.isLoading)
+    return (
+      <SkeletonRegion label="Lädt zuletzt bearbeitete Sessions">
+        <StatusGroupSkeleton title="Zuletzt bearbeitet" rows={3} lead="badge" />
+      </SkeletonRegion>
+    );
   if (!items.length) return null;
   return (
     <section>

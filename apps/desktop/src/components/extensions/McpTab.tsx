@@ -8,7 +8,8 @@ import { toast } from "@/stores/toast";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Field } from "@/components/ui/input";
-import { Badge, EmptyState, ErrorBanner, Loading, SectionTitle } from "@/components/ui/misc";
+import { Badge, EmptyState, ErrorBanner, SectionTitle } from "@/components/ui/misc";
+import { Skeleton, SkeletonRegion } from "@/components/ui/skeleton";
 import { Select } from "@/components/ui/select";
 import { AddMcpDialog } from "./AddMcpDialog";
 import { MCP_STATUS, MCP_STATUS_TONE, mcpScopeOptions, mcpStatusText, type McpScope } from "./mcp";
@@ -37,7 +38,21 @@ export function McpTab({ projectId }: { projectId?: string }) {
         MCP Server
       </SectionTitle>
       <p className="mb-3 text-xs text-muted">Verwaltet über die offiziellen Befehle von Claude Code. Der Status wird beim Prüfen live abgefragt.</p>
-      {list.isLoading && <Loading label="Server werden geprüft …" />}
+      {list.isLoading && (
+        <SkeletonRegion label="Lädt MCP Server" className="divide-y divide-border rounded-lg border border-border">
+          {[30, 45, 25].map((w, i) => (
+            <div key={i} className="flex items-center gap-3 px-3 py-2">
+              <Skeleton className="h-4 w-4 shrink-0 rounded-sm" />
+              <div className="flex min-w-0 flex-1 flex-col gap-1.5 py-0.5">
+                <Skeleton className="h-3" style={{ width: `${w}%` }} />
+                <Skeleton className="h-2.5" style={{ width: `${w + 30}%` }} />
+              </div>
+              <Skeleton className="h-5 w-16 rounded" />
+              <Skeleton className="h-7 w-7" />
+            </div>
+          ))}
+        </SkeletonRegion>
+      )}
       {list.isError && <ErrorBanner>{errorMessage(list.error)}</ErrorBanner>}
       {list.data?.length === 0 && <EmptyState icon={<Server className="h-8 w-8" />} title="Keine MCP Server konfiguriert" />}
       <div className={cn("divide-y divide-border rounded-lg border border-border", !list.data?.length && "hidden")}>

@@ -11,8 +11,8 @@ import { Button } from "@/components/ui/button";
 import { CodeEditor } from "@/components/ui/code-editor";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Field, Input } from "@/components/ui/input";
-import { Badge, EmptyState, ErrorBanner, Loading } from "@/components/ui/misc";
-import { ListSkeleton } from "@/components/ui/skeleton";
+import { Badge, EmptyState, ErrorBanner } from "@/components/ui/misc";
+import { Skeleton, SkeletonRegion } from "@/components/ui/skeleton";
 import { Markdown } from "@/components/workspace/Markdown";
 
 /** Entry ids never contain a colon, so this cannot clash with one. */
@@ -83,7 +83,7 @@ export function KnowledgeTab({ project }: { project: Project }) {
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto p-2">
           {list.isLoading ? (
-            <ListSkeleton rows={4} />
+            <EntryListSkeleton />
           ) : list.isError ? (
             <div className="p-2">
               <ErrorBanner>{errorMessage(list.error)}</ErrorBanner>
@@ -134,21 +134,21 @@ export function KnowledgeTab({ project }: { project: Project }) {
             onSaved={(id) => setSelected(id)}
             onDeleted={() => setSelected(null)}
           />
+        ) : list.isLoading ? (
+          <EntrySkeleton />
         ) : (
-          !list.isLoading && (
-            <EmptyState
-              icon={<BookOpen className="h-8 w-8" />}
-              title="Noch kein Projektwissen"
-              action={
-                <Button variant="primary" onClick={() => select(NEW)}>
-                  <Plus className="h-3.5 w-3.5" /> Ersten Eintrag anlegen
-                </Button>
-              }
-            >
-              Claude legt hier selbst ab, was es über das Projekt herausfindet: Entscheidungen, Stolperfallen, Abläufe wie Setup, Tests und Deploy. Jede neue Session bekommt den Index
-              und liest bei Bedarf nach.
-            </EmptyState>
-          )
+          <EmptyState
+            icon={<BookOpen className="h-8 w-8" />}
+            title="Noch kein Projektwissen"
+            action={
+              <Button variant="primary" onClick={() => select(NEW)}>
+                <Plus className="h-3.5 w-3.5" /> Ersten Eintrag anlegen
+              </Button>
+            }
+          >
+            Claude legt hier selbst ab, was es über das Projekt herausfindet: Entscheidungen, Stolperfallen, Abläufe wie Setup, Tests und Deploy. Jede neue Session bekommt den Index
+            und liest bei Bedarf nach.
+          </EmptyState>
         )}
       </section>
 
@@ -165,6 +165,62 @@ export function KnowledgeTab({ project }: { project: Project }) {
         }}
       />
     </div>
+  );
+}
+
+/** Entries of the list while it loads: title, summary, tags and date like the real buttons. */
+function EntryListSkeleton() {
+  return (
+    <SkeletonRegion label="Lädt Einträge" className="flex flex-col gap-0.5">
+      {[0, 1, 2, 3].map((i) => (
+        <div key={i} className="px-3 py-2">
+          <div className="flex h-5 items-center">
+            <Skeleton className="h-3.5 rounded-sm" style={{ width: `${45 + ((i * 19) % 35)}%` }} />
+          </div>
+          <div className="flex h-4 items-center">
+            <Skeleton className="h-2.5 w-[90%] rounded-sm" />
+          </div>
+          <div className="flex h-4 items-center">
+            <Skeleton className="h-2.5 rounded-sm" style={{ width: `${30 + ((i * 23) % 40)}%` }} />
+          </div>
+          <div className="mt-1 flex items-center gap-1">
+            <Skeleton className="h-5 w-14 rounded" />
+            <Skeleton className="h-5 w-12 rounded" />
+            <Skeleton className="ml-0.5 h-2.5 w-16 rounded-sm" />
+          </div>
+        </div>
+      ))}
+    </SkeletonRegion>
+  );
+}
+
+/** An entry in the preview it opens with: header with its buttons, summary, tags and the text box. */
+function EntrySkeleton() {
+  return (
+    <SkeletonRegion label="Lädt Eintrag" className="flex h-full flex-col gap-3 overflow-hidden px-6 py-5">
+      <div className="flex items-center gap-2">
+        <div className="flex h-7 min-w-0 flex-1 items-center">
+          <Skeleton className="h-4 w-1/3" />
+        </div>
+        <Skeleton className="h-2.5 w-24 rounded-sm" />
+        <Skeleton className="h-7 w-24" />
+        <Skeleton className="h-7 w-9" />
+        <Skeleton className="h-7 w-22" />
+      </div>
+      <div className="flex flex-col gap-3">
+        <div className="flex h-5 items-center">
+          <Skeleton className="h-3 w-3/5 rounded-sm" />
+        </div>
+        <div className="flex gap-1">
+          <Skeleton className="h-5 w-16 rounded" />
+          <Skeleton className="h-5 w-12 rounded" />
+          <Skeleton className="h-5 w-14 rounded" />
+        </div>
+        <div className="flex flex-col gap-2.5 rounded-lg border border-border bg-surface p-4">
+          {[85, 92, 70, 0, 88, 76, 40].map((w, i) => (w ? <Skeleton key={i} className="h-3 rounded-sm" style={{ width: `${w}%` }} /> : <div key={i} className="h-1" />))}
+        </div>
+      </div>
+    </SkeletonRegion>
   );
 }
 
@@ -232,7 +288,7 @@ function EntryEditor({
     }
   };
 
-  if (id && entry.isLoading) return <Loading />;
+  if (id && entry.isLoading) return <EntrySkeleton />;
   if (id && entry.isError && !(gone && dirty)) {
     return (
       <div className="p-6">

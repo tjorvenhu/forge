@@ -1,18 +1,34 @@
 import { useMemo } from "react";
 import { Activity, ShieldAlert, ShieldQuestion } from "lucide-react";
 import { useSessionEvents } from "@/stores/session-events";
-import { useUi } from "@/stores/ui";
+import { splitActive, useUi } from "@/stores/ui";
+import { useSessions } from "@/lib/queries";
 import { relativeTime } from "@/lib/utils";
 import { EmptyState } from "@/components/ui/misc";
+import { Skeleton, SkeletonRegion } from "@/components/ui/skeleton";
 import { TOOL_LABELS, toolSummary } from "./chat-items";
 import { toolIcon } from "./ToolCard";
 import { forgeIcon } from "./ForgeToolCard";
 import { forgeToolName, forgeToolView } from "./forge-tool";
 
+/**
+ * True while the chat still picks the project's session or loads the active session's history; an
+ * empty list then means "not there yet", not "nothing happened". The feed sits next to the chat,
+ * which does both.
+ */
+function useHistoryLoading(projectId: string) {
+  const sessionsLoading = useSessions(projectId).isLoading;
+  const picking = useUi((s) => !(projectId in s.activeSession)) && sessionsLoading;
+  const { sessionId } = splitActive(useUi((s) => s.activeSession[projectId]));
+  const loaded = useSessionEvents((s) => (sessionId ? !!s.buffers[sessionId]?.loaded : true));
+  return picking || !loaded;
+}
+
 /** Tool activity of the active session, newest first. Derived from real events only. */
 export function ActivityFeed({ projectId, projectDir }: { projectId: string; projectDir: string }) {
   const sessionId = useUi((s) => s.activeSession[projectId] ?? null);
   const events = useSessionEvents((s) => (sessionId ? s.buffers[sessionId]?.events : undefined));
+  const loading = useHistoryLoading(projectId);
   const rows = useMemo(() => {
     const out: Array<{ key: string; icon: React.ReactNode; title: string; detail: string; ts: string; tone?: string }> = [];
     // Newest first, and only as far back as the list shows: no pass over the whole history per event.
@@ -37,6 +53,21 @@ export function ActivityFeed({ projectId, projectDir }: { projectId: string; pro
     return out;
   }, [events, projectDir]);
 
+  if (loading)
+    return (
+      <SkeletonRegion label="Aktivität lädt" className="h-full divide-y divide-border overflow-hidden">
+        {[55, 40, 65, 35, 50, 45].map((w) => (
+          <div key={w} className="flex items-start gap-2.5 px-3 py-2">
+            <Skeleton className="mt-0.5 h-3.5 w-3.5 shrink-0 rounded-sm" />
+            <div className="flex min-w-0 flex-1 flex-col gap-1.5 py-0.5">
+              <Skeleton className="h-3 w-28" />
+              <Skeleton className="h-2.5" style={{ width: `${w}%` }} />
+            </div>
+            <Skeleton className="mt-0.5 h-2.5 w-10 shrink-0" />
+          </div>
+        ))}
+      </SkeletonRegion>
+    );
   if (!sessionId || !rows.length)
     return (
       <EmptyState icon={<Activity className="h-8 w-8" />} title="Noch keine Aktivität">

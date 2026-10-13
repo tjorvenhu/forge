@@ -6,7 +6,7 @@ import { call, keys } from "@/lib/queries";
 import { errorMessage } from "@/lib/rpc";
 import { cn } from "@/lib/utils";
 import { ErrorBanner } from "@/components/ui/misc";
-import { ListSkeleton } from "@/components/ui/skeleton";
+import { CodeSkeleton } from "@/components/ui/skeleton";
 
 export function DiffView({ projectId, path, staged, onClose }: { projectId: string; path: string; staged: boolean; onClose?: () => void }) {
   const diff = useQuery({ queryKey: keys.diff(projectId, path, staged), queryFn: () => call("git.diff", { projectId, path, staged }) });
@@ -31,7 +31,7 @@ export function DiffView({ projectId, path, staged, onClose }: { projectId: stri
           </button>
         )}
       </div>
-      {diff.isLoading && <ListSkeleton rows={8} />}
+      {diff.isLoading && <CodeSkeleton lines={16} label="Lädt Diff" />}
       {diff.isError && (
         <div className="p-3">
           <ErrorBanner>{errorMessage(diff.error)}</ErrorBanner>

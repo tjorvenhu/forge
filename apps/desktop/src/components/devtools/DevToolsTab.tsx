@@ -11,7 +11,8 @@ import { CodeEditor } from "@/components/ui/code-editor";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { DropdownMenu } from "@/components/ui/dropdown";
 import { Input } from "@/components/ui/input";
-import { Badge, ErrorBanner, Loading } from "@/components/ui/misc";
+import { Badge, ErrorBanner } from "@/components/ui/misc";
+import { EditorSkeleton, Skeleton, SkeletonRegion } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { Group, Row, SettingsLayout, SwitchRow, type SettingsSectionDef } from "@/components/settings/layout";
 import { DevServerControls, DevServerPanel } from "@/components/workspace/DevServer";
@@ -60,7 +61,11 @@ export function DevToolsTab({ project }: { project: Project }) {
         {section === "server" ? (
           <DevServerCard project={project} />
         ) : config.isLoading ? (
-          <Loading />
+          section === "database" ? (
+            <TestDbSkeleton owner={owner} isWorktree={!!project.parentId} />
+          ) : (
+            <TestEnvSkeleton />
+          )
         ) : config.isError || !config.data ? (
           <ErrorBanner>{errorMessage(config.error)}</ErrorBanner>
         ) : section === "database" ? (
@@ -136,6 +141,96 @@ function dbBadge(state: TestDbState | undefined) {
   }
 }
 
+function dbDescription(version: string | undefined, isWorktree: boolean) {
+  return `PostgreSQL ${version ?? "17"} nur für dieses Projekt, erreichbar nur auf diesem Rechner. Die Daten bleiben bis zum Zurücksetzen erhalten.${isWorktree ? " Agenten nutzen die Datenbank ihres Projekts." : ""}`;
+}
+
+function DbBadgeSkeleton() {
+  return (
+    <SkeletonRegion label="Lädt Status">
+      <Skeleton className="h-5 w-16 rounded" />
+    </SkeletonRegion>
+  );
+}
+
+/** Start and reset buttons while the state is unknown, so no "gestoppt" and no start button show too early. */
+function DbActionsSkeleton() {
+  return (
+    <SkeletonRegion label="Lädt Steuerung der Test-Datenbank" className="flex items-center gap-2">
+      <Skeleton className="h-7 w-22" />
+      <div className="flex-1" />
+      <Skeleton className="h-7 w-30" />
+    </SkeletonRegion>
+  );
+}
+
+/** A settings row with a placeholder for its control (input width or a switch). */
+function RowSkeleton({ control }: { control: string }) {
+  return (
+    <div className="flex items-center justify-between gap-6 px-4 py-3.5">
+      <div className="flex min-w-0 flex-1 flex-col">
+        <div className="flex h-5 items-center">
+          <Skeleton className="h-3 w-28 rounded-sm" />
+        </div>
+        <div className="mt-0.5 flex h-4 items-center">
+          <Skeleton className="h-2.5 w-3/5 rounded-sm" />
+        </div>
+      </div>
+      <Skeleton className={control} />
+    </div>
+  );
+}
+
+/** The test database card while the dev tools config loads: real header, placeholders for buttons, URL and settings. */
+function TestDbSkeleton({ owner, isWorktree }: { owner: string; isWorktree: boolean }) {
+  const version = useTestDb(owner).data?.version;
+  return (
+    <Group title="Test-Datenbank" description={dbDescription(version, isWorktree)} action={<Skeleton className="h-5 w-16 rounded" />}>
+      <SkeletonRegion label="Lädt Test-Datenbank" className="divide-y divide-border">
+        <div className="flex flex-col gap-3 px-4 py-3.5">
+          <div className="flex items-center gap-2">
+            <Skeleton className="h-7 w-22" />
+            <div className="flex-1" />
+            <Skeleton className="h-7 w-30" />
+          </div>
+          <div className="flex items-center gap-2">
+            <Skeleton className="h-4 w-4 shrink-0 rounded-sm" />
+            <Skeleton className="h-8 min-w-0 flex-1" />
+            <Skeleton className="h-7 w-7 shrink-0" />
+          </div>
+        </div>
+        <RowSkeleton control="h-8 w-28" />
+        <RowSkeleton control="h-8 w-44" />
+        <RowSkeleton control="h-8 w-44" />
+        <RowSkeleton control="h-5 w-9 rounded-full" />
+        <div className="flex h-9 items-center px-4">
+          <Skeleton className="h-2.5 w-20 rounded-sm" />
+        </div>
+      </SkeletonRegion>
+    </Group>
+  );
+}
+
+const ENV_DESCRIPTION = "Variablen im .env-Format für Dev-Server und Tests. Sie bleiben in FORGE und landen nie im Projektordner oder im Git. Claude sieht nur die Namen.";
+const ENV_HINT = "Beispiel: API_URL=http://localhost:4000. Next.js, Vite und dotenv lassen diese Werte vor gleichnamigen Einträgen aus .env-Dateien des Projekts gelten.";
+
+/** The test .env card while the dev tools config loads; the editor box has its final height. */
+function TestEnvSkeleton() {
+  return (
+    <Group title="Test-.env" description={ENV_DESCRIPTION} action={<Skeleton className="h-5 w-9 rounded-full" />}>
+      <div className="flex flex-col gap-2 px-4 py-3.5">
+        <div className="flex h-4 items-center">
+          <Skeleton className="h-2.5 w-2/5 rounded-sm" />
+        </div>
+        <div className="h-64">
+          <EditorSkeleton className="rounded-lg" label="Lädt Test-.env" />
+        </div>
+        <p className="text-caption text-subtle">{ENV_HINT}</p>
+      </div>
+    </Group>
+  );
+}
+
 function TestDbCard({
   owner,
   config,
@@ -148,7 +243,8 @@ function TestDbCard({
   isWorktree: boolean;
 }) {
   const qc = useQueryClient();
-  const state = useTestDb(owner).data;
+  const stateQuery = useTestDb(owner);
+  const state = stateQuery.data;
   const [busy, setBusy] = useState(false);
   const [resetting, setResetting] = useState(false);
   const [logOpen, setLogOpen] = useState(false);
@@ -179,32 +275,32 @@ function TestDbCard({
   };
 
   return (
-    <Group
-      title="Test-Datenbank"
-      description={`PostgreSQL ${state?.version ?? "17"} nur für dieses Projekt, erreichbar nur auf diesem Rechner. Die Daten bleiben bis zum Zurücksetzen erhalten.${isWorktree ? " Agenten nutzen die Datenbank ihres Projekts." : ""}`}
-      action={dbBadge(state)}
-    >
+    <Group title="Test-Datenbank" description={dbDescription(state?.version, isWorktree)} action={stateQuery.isLoading ? <DbBadgeSkeleton /> : dbBadge(state)}>
       <div className="flex flex-col gap-3 px-4 py-3.5">
-        <div className="flex flex-wrap items-center gap-2">
-          {running ? (
-            <>
-              <Button size="sm" onClick={() => void act("testdb.stop", "Test-Datenbank nicht gestoppt")} disabled={working}>
-                <Square className="h-3 w-3 fill-current" /> Stoppen
+        {stateQuery.isLoading ? (
+          <DbActionsSkeleton />
+        ) : (
+          <div className="flex flex-wrap items-center gap-2">
+            {running ? (
+              <>
+                <Button size="sm" onClick={() => void act("testdb.stop", "Test-Datenbank nicht gestoppt")} disabled={working}>
+                  <Square className="h-3 w-3 fill-current" /> Stoppen
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => void restart()} disabled={working}>
+                  <RotateCw className="h-3.5 w-3.5" /> Neu starten
+                </Button>
+              </>
+            ) : (
+              <Button size="sm" variant="primary" onClick={() => void act("testdb.start", "Test-Datenbank nicht gestartet")} loading={working} disabled={working}>
+                <Play className="h-3.5 w-3.5" /> Starten
               </Button>
-              <Button size="sm" variant="ghost" onClick={() => void restart()} disabled={working}>
-                <RotateCw className="h-3.5 w-3.5" /> Neu starten
-              </Button>
-            </>
-          ) : (
-            <Button size="sm" variant="primary" onClick={() => void act("testdb.start", "Test-Datenbank nicht gestartet")} loading={working} disabled={working}>
-              <Play className="h-3.5 w-3.5" /> Starten
+            )}
+            <div className="flex-1" />
+            <Button size="sm" variant="danger-ghost" onClick={() => setResetting(true)} disabled={working || !state?.initialized}>
+              <RotateCcw className="h-3.5 w-3.5" /> Zurücksetzen …
             </Button>
-          )}
-          <div className="flex-1" />
-          <Button size="sm" variant="danger-ghost" onClick={() => setResetting(true)} disabled={working || !state?.initialized}>
-            <RotateCcw className="h-3.5 w-3.5" /> Zurücksetzen …
-          </Button>
-        </div>
+          </div>
+        )}
 
         {state?.status === "installing" && (
           <div className="flex flex-col gap-1.5" role="status">
@@ -339,14 +435,24 @@ function ConnectionUrl({ url }: { url: string }) {
 }
 
 function DbLog({ owner, state }: { owner: string; state: TestDbState | undefined }) {
-  const log = useQuery({ queryKey: [...keys.testDb(owner), "log", state?.status], queryFn: () => call("testdb.log", { projectId: owner }), staleTime: 0 });
+  const log = useQuery({ queryKey: [...keys.testDb(owner), "log", state?.status], queryFn: () => call("testdb.log", { projectId: owner }), staleTime: 0, placeholderData: (prev) => prev });
   const ref = useRef<HTMLPreElement>(null);
   useEffect(() => {
     if (ref.current) ref.current.scrollTop = ref.current.scrollHeight;
   }, [log.data]);
+  if (log.isLoading)
+    return (
+      <SkeletonRegion label="Lädt Protokoll" className="mt-2 flex flex-col gap-1.5 rounded-md border border-border bg-bg px-3 py-2">
+        {[80, 65, 90, 45].map((w, i) => (
+          <div key={i} className="flex h-3.5 items-center">
+            <Skeleton className="h-2.5 rounded-sm" style={{ width: `${w}%` }} />
+          </div>
+        ))}
+      </SkeletonRegion>
+    );
   return (
     <pre ref={ref} className="mt-2 max-h-56 overflow-auto whitespace-pre-wrap break-all rounded-md border border-border bg-bg px-3 py-2 font-mono text-caption leading-[1.45] text-muted">
-      {log.isLoading ? "Lädt …" : log.data?.text.trim() || "Noch kein Protokoll. Es entsteht beim ersten Start."}
+      {log.data?.text.trim() || "Noch kein Protokoll. Es entsteht beim ersten Start."}
     </pre>
   );
 }
@@ -392,7 +498,7 @@ function TestEnvCard({ owner, config, update }: { owner: string; config: DevTool
   return (
     <Group
       title="Test-.env"
-      description="Variablen im .env-Format für Dev-Server und Tests. Sie bleiben in FORGE und landen nie im Projektordner oder im Git. Claude sieht nur die Namen."
+      description={ENV_DESCRIPTION}
       action={<Switch checked={config.useEnv} onChange={(useEnv) => void update({ useEnv })} label="Test-.env verwenden" />}
     >
       <div className="flex flex-col gap-2 px-4 py-3.5">
@@ -421,7 +527,7 @@ function TestEnvCard({ owner, config, update }: { owner: string; config: DevTool
             onSave={() => draft !== null && saveDraft(draft)}
           />
         </div>
-        <p className="text-caption text-subtle">Beispiel: API_URL=http://localhost:4000. Next.js, Vite und dotenv lassen diese Werte vor gleichnamigen Einträgen aus .env-Dateien des Projekts gelten.</p>
+        <p className="text-caption text-subtle">{ENV_HINT}</p>
       </div>
     </Group>
   );

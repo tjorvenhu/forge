@@ -12,6 +12,7 @@ import { cn } from "@/lib/utils";
 import { useUi } from "@/stores/ui";
 import { toast } from "@/stores/toast";
 import { ProjectIcon } from "@/components/projects/ProjectIcon";
+import { Skeleton, SkeletonRegion } from "@/components/ui/skeleton";
 import { sessionStatusLabel } from "@/components/workspace/SessionStatusBadge";
 
 function dotClass(s: TabSession): string {
@@ -39,6 +40,28 @@ function Branch({ last = false, children }: { last?: boolean; children: ReactNod
       {!last && <span aria-hidden className="pointer-events-none absolute -top-0.5 bottom-0 left-0 w-px bg-border" />}
       {children}
     </div>
+  );
+}
+
+/** One project row with two sessions under it, in the sizes of the real tree. */
+function OpenSessionsSkeleton() {
+  return (
+    <SkeletonRegion label="Lädt Sessions" className="flex flex-col">
+      <div className="flex items-center gap-2.5 px-2 py-1.5">
+        <Skeleton className="h-5.5 w-5.5 shrink-0" />
+        <Skeleton className="h-3 w-28" />
+      </div>
+      <div className="ml-[18px] flex flex-col gap-0.5 pt-0.5">
+        {[60, 45].map((w, n) => (
+          <Branch key={w} last={n === 1}>
+            <div className="flex h-8 items-center gap-2 pl-2">
+              <Skeleton className="h-1.5 w-1.5 shrink-0 rounded-full" />
+              <Skeleton className="h-2.5" style={{ width: `${w}%` }} />
+            </div>
+          </Branch>
+        ))}
+      </div>
+    </SkeletonRegion>
   );
 }
 
@@ -89,6 +112,7 @@ export function OpenSessions() {
     el?.scrollIntoView?.({ block: "nearest" });
   }, [activeId]);
 
+  if (live.isPending || projects.isPending) return <OpenSessionsSkeleton />;
   if (!groups.length) return null;
 
   // Roving tabindex: one entry in the tab order, arrow keys move between sessions.

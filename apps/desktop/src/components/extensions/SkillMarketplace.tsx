@@ -9,7 +9,8 @@ import { toast } from "@/stores/toast";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Input } from "@/components/ui/input";
-import { Badge, EmptyState, ErrorBanner, Loading } from "@/components/ui/misc";
+import { Badge, EmptyState, ErrorBanner } from "@/components/ui/misc";
+import { Skeleton, SkeletonRegion } from "@/components/ui/skeleton";
 import { Select } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 
@@ -107,7 +108,23 @@ export function SkillMarketplace() {
         />
       </div>
 
-      {catalog.isLoading && <Loading label="Marketplace wird geladen …" />}
+      {catalog.isLoading && (
+        <SkeletonRegion label="Marketplace lädt" className="divide-y divide-border rounded-lg border border-border">
+          {[25, 35, 20, 30, 40, 25].map((w, i) => (
+            <div key={i} className="flex items-start gap-3 px-3 py-2.5">
+              <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+                <div className="flex h-5 items-center gap-1.5">
+                  <Skeleton className="h-3" style={{ width: `${w}%` }} />
+                  <Skeleton className="h-5 w-24 rounded" />
+                  <Skeleton className="h-2.5 w-24" />
+                </div>
+                <Skeleton className="h-2.5" style={{ width: `${w + 45}%` }} />
+              </div>
+              <Skeleton className="h-7 w-28 shrink-0" />
+            </div>
+          ))}
+        </SkeletonRegion>
+      )}
       {catalog.isError && <ErrorBanner title="Marketplace nicht geladen">{errorMessage(catalog.error)}</ErrorBanner>}
       {list && matches.length === 0 && (
         <EmptyState icon={<PackageSearch className="h-8 w-8" />} title={show === "installed" && !query ? "Noch keine Plugins installiert" : "Keine Treffer"} />

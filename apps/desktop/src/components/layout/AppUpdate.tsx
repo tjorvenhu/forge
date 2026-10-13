@@ -10,7 +10,7 @@ import { toast } from "@/stores/toast";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { Spinner, Tooltip } from "@/components/ui/misc";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Skeleton, SkeletonRegion } from "@/components/ui/skeleton";
 import { Markdown } from "@/components/workspace/Markdown";
 import { useUi } from "@/stores/ui";
 import { Logo } from "./Logo";
@@ -209,7 +209,8 @@ function Changelog({ tag, notes, onSetup }: { tag: string; notes: string; onSetu
 
 /** Version, last check and "check now" for the settings. */
 export function AppUpdateSettings() {
-  const s = useAppUpdate().data;
+  const update = useAppUpdate();
+  const s = update.data;
   const qc = useQueryClient();
   const [checking, setChecking] = useState(false);
   const { install, installing } = useInstall();
@@ -226,6 +227,16 @@ export function AppUpdateSettings() {
       setChecking(false);
     }
   };
+  if (update.isPending)
+    return (
+      <SkeletonRegion label="Update-Status lädt" className="flex items-center gap-3">
+        <div className="flex min-w-0 flex-1 flex-col gap-1.5 py-0.5">
+          <Skeleton className="h-3.5 w-28" />
+          <Skeleton className="h-2.5 w-48" />
+        </div>
+        <Skeleton className="h-7 w-28" />
+      </SkeletonRegion>
+    );
   if (!s) return null;
   const status =
     s.phase === "available" || s.phase === "ready"

@@ -7,8 +7,7 @@ import { ErrorBoundary } from "@/components/layout/ErrorBoundary";
 import { Toaster } from "@/components/layout/Toaster";
 import { TitleTooltips } from "@/components/ui/title-tooltips";
 import { EmptyState, ErrorBanner } from "@/components/ui/misc";
-import { ChatSkeleton } from "@/components/ui/skeleton";
-import { ChatPanel } from "@/components/workspace/ChatPanel";
+import { ChatPanel, ChatPanelSkeleton } from "@/components/workspace/ChatPanel";
 
 /**
  * A chat window: one session chat of one project, without sidebar, tabs and workspace. The app-wide
@@ -19,7 +18,7 @@ export function ChatWindowShell({ target }: { target: ChatWindowTarget }) {
   const project = useProject(target.projectId);
 
   let content;
-  if (project.isLoading) content = <ChatSkeleton />;
+  if (project.isLoading) content = <ChatPanelSkeleton detached />;
   else if (project.isError || !project.data)
     content = (
       <div className="p-6">

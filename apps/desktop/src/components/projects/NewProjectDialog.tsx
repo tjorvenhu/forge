@@ -10,6 +10,7 @@ import { Dialog } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Field, Input } from "@/components/ui/input";
 import { Checkbox, ErrorBanner } from "@/components/ui/misc";
+import { Skeleton, SkeletonRegion } from "@/components/ui/skeleton";
 import { RadioGroup } from "@/components/ui/radio-group";
 import { TabBar } from "@/components/ui/tabs";
 import { GitHubRepoPicker } from "@/components/github/GitHubPanel";
@@ -140,7 +141,11 @@ export function NewProjectDialog() {
                 <Checkbox checked={onGitHub} onChange={setOnGitHub} disabled={!github.data} label="Repository auf GitHub anlegen" />
                 Repository auf GitHub anlegen
               </label>
-              {github.data ? (
+              {github.isPending ? (
+                <SkeletonRegion label="Lädt GitHub-Status" className="mt-1.5 flex h-4 items-center pl-6">
+                  <Skeleton className="h-2.5 w-3/4" />
+                </SkeletonRegion>
+              ) : github.data ? (
                 onGitHub && (
                   <div className="mt-2.5 flex items-center gap-4 pl-6 text-body">
                     <RadioGroup
@@ -166,11 +171,28 @@ export function NewProjectDialog() {
 
         {mode === "clone" && (
           <>
-            {github.data && (
-              <div>
-                <span className="mb-1.5 block text-xs font-medium text-muted">Deine Repositories</span>
-                <GitHubRepoPicker value={url} onPick={setUrl} />
-              </div>
+            {github.isPending ? (
+              <SkeletonRegion label="Lädt GitHub-Status" className="flex flex-col gap-2">
+                <div className="flex h-4 items-center">
+                  <Skeleton className="h-2.5 w-28" />
+                </div>
+                <Skeleton className="h-8 w-full" />
+                <div className="divide-y divide-border rounded-lg border border-border">
+                  {[45, 60, 35].map((w) => (
+                    <div key={w} className="flex flex-col gap-1.5 px-3 py-2.5">
+                      <Skeleton className="h-3" style={{ width: `${w}%` }} />
+                      <Skeleton className="h-2.5" style={{ width: `${w + 20}%` }} />
+                    </div>
+                  ))}
+                </div>
+              </SkeletonRegion>
+            ) : (
+              github.data && (
+                <div>
+                  <span className="mb-1.5 block text-xs font-medium text-muted">Deine Repositories</span>
+                  <GitHubRepoPicker value={url} onPick={setUrl} />
+                </div>
+              )
             )}
             <div>
               <Field
@@ -179,7 +201,7 @@ export function NewProjectDialog() {
               >
                 <Input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://github.com/organisation/repo.git" autoFocus={!github.data} />
               </Field>
-              {!github.data && (
+              {!github.data && !github.isPending && (
                 <p className="mt-1 text-xs text-subtle">
                   Nach dem GitHub-Login unter <SettingsLink onClick={close} /> stehen hier deine Repositories zur Auswahl.
                 </p>

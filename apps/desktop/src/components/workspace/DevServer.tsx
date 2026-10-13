@@ -11,6 +11,7 @@ import { activeDraftKey, useDrafts } from "@/stores/drafts";
 import { useDevOutput } from "@/stores/dev-output";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/misc";
+import { Skeleton, SkeletonRegion } from "@/components/ui/skeleton";
 
 /** Lines of dev server output handed to Claude; enough for a stack trace, small enough for the prompt. */
 const LINES_FOR_CLAUDE = 80;
@@ -53,8 +54,16 @@ function statusBadge(state: DevServerState) {
 
 /** Status and start/stop/restart as prominent buttons, for the header of the Dev-Tools card. */
 export function DevServerControls({ project }: { project: Project }) {
-  const state = useDevServer(project.id).data;
+  const query = useDevServer(project.id);
+  const state = query.data;
   const { start, stop } = useDevActions(project.id);
+  if (query.isLoading)
+    return (
+      <SkeletonRegion label="Dev-Server lädt" className="flex shrink-0 items-center gap-2">
+        <Skeleton className="h-5 w-14 rounded" />
+        <Skeleton className="h-7 w-22" />
+      </SkeletonRegion>
+    );
   if (!state) return null;
   return (
     <div className="flex shrink-0 items-center gap-2">
@@ -82,7 +91,8 @@ export function DevServerControls({ project }: { project: Project }) {
  * `controls={false}` leaves status and start/stop to {@link DevServerControls} elsewhere.
  */
 export function DevServerPanel({ project, controls = true }: { project: Project; controls?: boolean }) {
-  const state = useDevServer(project.id).data;
+  const query = useDevServer(project.id);
+  const state = query.data;
   const text = useDevOutput((s) => s.text[project.id]);
   const { start, stop } = useDevActions(project.id);
   const scrollRef = useRef<HTMLPreElement>(null);
@@ -114,6 +124,19 @@ export function DevServerPanel({ project, controls = true }: { project: Project;
     toast.info("In die Nachricht übernommen", "Schreib dazu, was Claude prüfen soll, und sende sie ab.");
   };
 
+  if (query.isLoading)
+    return (
+      <div className="flex h-full flex-col">
+        <div className="flex h-8 shrink-0 items-center gap-2 border-b border-border px-3" aria-hidden>
+          {controls && <Skeleton className="h-5 w-14 rounded" />}
+          <Skeleton className="h-2.5 w-32" />
+          <div className="flex-1" />
+          <Skeleton className="h-6 w-20" />
+          {controls && <Skeleton className="h-6 w-20" />}
+        </div>
+        <OutputSkeleton />
+      </div>
+    );
   if (!state) return null;
   const running = state.status === "running";
   return (
@@ -146,16 +169,33 @@ export function DevServerPanel({ project, controls = true }: { project: Project;
             </Button>
           ))}
       </div>
-      <pre
-        ref={scrollRef}
-        onScroll={(e) => {
-          const el = e.currentTarget;
-          pinned.current = el.scrollHeight - el.scrollTop - el.clientHeight < 30;
-        }}
-        className="min-h-0 flex-1 overflow-auto whitespace-pre-wrap break-all px-3 py-2 font-mono text-caption-lg leading-[1.45] text-muted"
-      >
-        {text || (state.effectiveCommand ? `Noch keine Ausgabe. Starten führt „${state.effectiveCommand}“ im Projektordner aus.` : "Kein Startbefehl erkannt. Trag ihn im Tab Dev-Tools ein.")}
-      </pre>
+      {text === undefined ? (
+        <OutputSkeleton />
+      ) : (
+        <pre
+          ref={scrollRef}
+          onScroll={(e) => {
+            const el = e.currentTarget;
+            pinned.current = el.scrollHeight - el.scrollTop - el.clientHeight < 30;
+          }}
+          className="min-h-0 flex-1 overflow-auto whitespace-pre-wrap break-all px-3 py-2 font-mono text-caption-lg leading-[1.45] text-muted"
+        >
+          {text || (state.effectiveCommand ? `Noch keine Ausgabe. Starten führt „${state.effectiveCommand}“ im Projektordner aus.` : "Kein Startbefehl erkannt. Trag ihn im Tab Dev-Tools ein.")}
+        </pre>
+      )}
     </div>
+  );
+}
+
+/** Log lines at the pre's padding and line height. */
+function OutputSkeleton() {
+  return (
+    <SkeletonRegion label="Ausgabe lädt" className="flex min-h-0 flex-1 flex-col overflow-hidden px-3 py-2">
+      {[55, 70, 40, 62, 30].map((w) => (
+        <div key={w} className="flex h-[1.45em] items-center text-caption-lg">
+          <Skeleton className="h-2.5 rounded-sm" style={{ width: `${w}%` }} />
+        </div>
+      ))}
+    </SkeletonRegion>
   );
 }

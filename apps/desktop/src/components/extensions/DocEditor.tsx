@@ -8,7 +8,8 @@ import { toast } from "@/stores/toast";
 import { Button } from "@/components/ui/button";
 import { CodeEditor } from "@/components/ui/code-editor";
 import { ExternalChangeBanner, useFileDraft } from "@/components/ui/file-draft";
-import { ErrorBanner, Loading } from "@/components/ui/misc";
+import { ErrorBanner } from "@/components/ui/misc";
+import { EditorSkeleton } from "@/components/ui/skeleton";
 
 export function DocEditor({ doc, projectId, onDelete }: { doc: ConfigDoc; projectId?: string; onDelete: () => void }) {
   const q = useQuery({
@@ -31,7 +32,6 @@ export function DocEditor({ doc, projectId, onDelete }: { doc: ConfigDoc; projec
       setSaving(false);
     }
   }, [draft, externalChange, doc, projectId, expectedVersion, q]);
-  if (q.isLoading) return <Loading />;
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-center gap-2">
@@ -44,7 +44,9 @@ export function DocEditor({ doc, projectId, onDelete }: { doc: ConfigDoc; projec
         </Button>
       </div>
       {externalChange && <ExternalChangeBanner onReload={reload} onKeep={keepEditing} />}
-      {q.isError ? (
+      {q.isLoading ? (
+        <EditorSkeleton className="h-115" />
+      ) : q.isError ? (
         <ErrorBanner title="Datei nicht lesbar">{errorMessage(q.error)}</ErrorBanner>
       ) : (
         <div className="h-115">
