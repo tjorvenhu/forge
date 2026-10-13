@@ -38,8 +38,8 @@ der Rechteprüfung laufen. Blockiert werden u. a.:
 Unter Einstellungen → Sperrliste lässt sich jede Regel einzeln ausschalten (Setting `disabledPolicyRules`, gilt global
 für alle Projekte und Profile ab dem nächsten Tool-Aufruf). Standard: alle Regeln an außer `git-push-protected`
 (Push auf `main`/`master` ist erlaubt; Force-Push, `--mirror`/`--prune` und Löschen entfernter Branches bleiben
-gesperrt). Bestehende Installationen bekommen diese Regel beim Update einmalig ausgeschaltet (DB-Migration);
-wer sie danach wieder einschaltet, behält das. Nicht abschaltbar sind die
+gesperrt) und `git-branch-delete` (lokale Branches fertiger Agenten löschen). Bestehende Installationen bekommen
+diese Regeln beim Update einmalig ausgeschaltet (DB-Migration); wer sie danach wieder einschaltet, behält das. Nicht abschaltbar sind die
 Profil-Regeln (`profile-tool`, `permission-mode`) und `guard-error`.
 
 Jede Blockade wird als `policy.blocked`-Event angezeigt und in `approvals` auditiert. Schlägt die Prüfung selbst

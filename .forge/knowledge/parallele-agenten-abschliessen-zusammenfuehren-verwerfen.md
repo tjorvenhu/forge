@@ -2,7 +2,7 @@
 title: "Parallele Agenten abschließen (Zusammenführen/Verwerfen)"
 summary: "Wie FORGE fertige Agenten-Worktrees zusammenführt oder verwirft (von Hand oder per auto-merge), wo der Ursprung gespeichert ist und wann das Modal erscheint."
 tags: ["agenten","worktree","git","merge","auto-merge"]
-updated: "2026-10-13T10:00:08.300Z"
+updated: "2026-10-13T11:44:01.420Z"
 ---
 
 Kern: `packages/sidecar/src/automation/agent-finish.ts` (`AgentFinisher`), RPC `agents.review` / `agents.finish`, MCP-Werkzeug `finish_agent` (autoAllow false), Telefon-Werkzeug `finish_agent`.
@@ -18,6 +18,8 @@ Agenten brauchen ein Git-Repository mit mindestens einem Commit (`WorktreeServic
 4. `removeWorktree(..., { deleteBranch: true })`: Session beendet, Ordner, FORGE-Eintrag und Branch weg.
 
 Verwerfen = `removeWorktree(force, deleteBranch nur wenn ein Branch ermittelbar ist)`. So räumt es auch halb entfernte Agenten auf (Branch schon gelöscht, Ordner ohne `.git`).
+
+Windows: Ein Worktree-Ordner lässt sich nicht löschen, solange eine Claude-Session darin läuft ("Permission denied"). Agenten deshalb über FORGE entfernen (Agenten-Reiter, Modal, Telefon, `finish_agent`), nicht per `git worktree remove` oder `rm`. FORGE beendet die Session vorher.
 
 ## Automatisch zusammenführen (Tag auto-merge)
 `packages/sidecar/src/automation/agent-auto-merge.ts` (`AgentAutoMerge`), gebaut in `SessionService.useAgentFinisher`. Auslöser: `TurnAutomation.schedule` ruft nach der Nach-Durchlauf-Arbeit (Tests, Auto-Commit) `host.turnDone(sessionId, testsOk)`, aber nur, wenn keine zurückgehaltene Nachricht nachfolgt.
