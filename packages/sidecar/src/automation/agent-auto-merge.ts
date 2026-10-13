@@ -1,3 +1,5 @@
+import { existsSync } from "node:fs";
+import path from "node:path";
 import type { Project, ServerEvent, SessionEventBody } from "@forge/protocol";
 import type { Db } from "../persistence/db.js";
 import type { ProjectManager } from "../projects/project-manager.js";
@@ -55,6 +57,12 @@ export class AgentAutoMerge {
   private async run(sessionId: string, worktree: Project, testsOk: boolean) {
     // Read before the merge: afterwards the agent's session and worktree are gone.
     const parentId = this.d.parentOf(sessionId);
+    if (!existsSync(path.join(worktree.path, ".git"))) {
+      // Remains of an agent whose merge went through but whose folder would not go (git already
+      // forgot it): there is nothing left to merge, only the folder and the entry to clear away.
+      await this.d.finisher.finish(worktree.id, "discard").catch(() => null);
+      return;
+    }
     const review = await this.d.finisher.review(worktree.id);
     // A new turn started meanwhile; its end tries again.
     if (review.busy) return;

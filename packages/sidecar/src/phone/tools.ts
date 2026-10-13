@@ -463,7 +463,7 @@ export const PHONE_TOOLS: readonly PhoneToolSpec[] = [
   },
   {
     name: "usage",
-    description: "Nutzung des Claude-Abos: wie viel von den Limits verbraucht ist und wann sie zurückgesetzt werden.",
+    description: "Nutzung des Claude-Abos: wie viel von den Limits verbraucht ist, wann sie zurückgesetzt werden und wie viele Tokens pro Sekunde Claude gerade ausgibt.",
     params: {},
     run: (t) => t.usage(),
   },

@@ -13,6 +13,7 @@ import { NAV } from "./nav";
 import { OpenSessions } from "./OpenSessions";
 import { SearchField } from "./SearchField";
 import { ErrorBoundary } from "./ErrorBoundary";
+import { TokenRate } from "./TokenRate";
 
 export function Sidebar() {
   const view = useUi((s) => s.view);
@@ -167,6 +168,7 @@ function ClaudeStatusCard() {
             </div>
           )
         )}
+        <TokenRate />
       </button>
       <ClaudeUpdateButton />
     </div>

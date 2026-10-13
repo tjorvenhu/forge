@@ -14,6 +14,8 @@ import { TestDbService } from "./devtools/test-db.js";
 import { DevEnvironment } from "./devtools/environment.js";
 import { KnowledgeStore } from "./knowledge/knowledge.js";
 import { PhoneService } from "./phone/phone-service.js";
+import { JobWatcher } from "./sessions/job-done.js";
+import { tokenMeter } from "./claude/token-meter.js";
 import { DictationService } from "./dictation/dictation.js";
 import { Presence } from "./util/presence.js";
 import { AppUpdateService } from "./update/app-update.js";
@@ -47,12 +49,21 @@ export function createApp(opts: { dataDir: string; write: Writer; log?: (m: stri
   const projects = new ProjectManager(db, git, () => db.getSettings().defaultProfile);
   let server: RpcServer | null = null;
   let phone: PhoneService | null = null;
+  let jobs: JobWatcher | null = null;
   const emit = (e: ServerEvent) => {
     server?.emit(e);
     phone?.onServerEvent(e);
+    jobs?.onServerEvent(e);
   };
   const runtime = opts.runtime ?? new AgentSdkRuntime();
   const sessions = new SessionService(db, projects, git, runtime, emit);
+  tokenMeter.onRate((perSecond) => emit({ event: "tokens.rate", payload: { perSecond } }));
+  jobs = new JobWatcher({
+    session: (id) => (db.getSession(id) ? sessions.get(id) : null),
+    parent: (id) => db.getSessionParent(id),
+    children: (id) => db.listSessionChildren(id),
+    emit,
+  });
   sessions.startBackgroundChecks();
   const github = new GitHubService((payload) => emit({ event: "github.login", payload }));
   const claudeSetup = new ClaudeSetupService(
@@ -191,6 +202,7 @@ export function createApp(opts: { dataDir: string; write: Writer; log?: (m: stri
       await Promise.race([Promise.allSettled([sessions.drain(), Promise.resolve().then(() => phone?.shutdown()), testDb.stopAll()]), limit]);
       clearTimeout(timer);
       sessions.shutdown();
+      tokenMeter.stop();
       updates.stop();
       devServers.shutdown();
       testDb.shutdown();

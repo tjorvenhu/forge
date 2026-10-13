@@ -544,6 +544,8 @@ export type RpcResponse = z.infer<typeof RpcResponse>;
 export type ServerEvent =
   | { event: "session.event"; payload: SessionEvent }
   | { event: "session.updated"; payload: Session }
+  /** a whole job of the session is done: its turn, its background tasks and the agents it started */
+  | { event: "session.done"; payload: { sessionId: string } }
   | { event: "project.updated"; payload: { projectId: string } }
   | { event: "github.login"; payload: GitHubLoginState }
   | { event: "claude.setup"; payload: ClaudeSetupState }
@@ -551,6 +553,8 @@ export type ServerEvent =
   /** settings changed (in any window or over the phone) */
   | { event: "settings.updated"; payload: Settings }
   | { event: "ratelimit.updated"; payload: RateLimitState }
+  /** output tokens per second of all Claude processes together (sessions, subagents, agents, phone); sent while it changes */
+  | { event: "tokens.rate"; payload: { perSecond: number } }
   | { event: "devserver.updated"; payload: DevServerState }
   | { event: "devserver.output"; payload: { projectId: string; text: string } }
   | { event: "testdb.updated"; payload: TestDbState }

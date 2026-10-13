@@ -6,9 +6,9 @@ const turn = (isError: boolean, subtype: string, text: string | null): SessionEv
   ({ type: "turn.result", subtype, isError, text, durationMs: 1, numTurns: 1, inputTokens: null, outputTokens: null, cacheReadTokens: null }) as SessionEventBody;
 
 describe("notifyKind", () => {
-  it("announces approvals, errors and finished turns, but not stopped ones", () => {
+  it("announces approvals and errors, but neither stopped turns nor finished ones (session.done does that)", () => {
     expect(notifyKind({ type: "error", message: "kaputt", retryable: false } as SessionEventBody)).toBe("error");
-    expect(notifyKind(turn(false, "success", "ok"))).toBe("done");
+    expect(notifyKind(turn(false, "success", "ok"))).toBeNull();
     expect(notifyKind(turn(true, "error_max_turns", "Limit"))).toBe("error");
     expect(notifyKind(turn(true, "error_during_execution", "Request interrupted by user"))).toBeNull();
     expect(notifyKind({ type: "user.message", text: "hi" })).toBeNull();

@@ -2,12 +2,13 @@ import type { QueryClient } from "@tanstack/react-query";
 import type { ResultOf, ServerEvent, Session } from "@forge/protocol";
 import { useSessionEvents } from "@/stores/session-events";
 import { useDevOutput } from "@/stores/dev-output";
+import { useTokenRate } from "@/stores/token-rate";
 import { useUi } from "@/stores/ui";
 import { toast } from "@/stores/toast";
 import { call, keys } from "./queries";
 import { rpc } from "./rpc";
 import { playSound } from "./sounds";
-import { notifyAutoContinue, notifyKind, notifySession, shouldNotify } from "./notifications";
+import { notifyAutoContinue, notifyDone, notifyKind, notifySession, shouldNotify } from "./notifications";
 import { isChatWindow } from "./chat-windows";
 import { agentAutoMerged, agentTurnEnded } from "./agent-review";
 
@@ -83,6 +84,12 @@ export function routeServerEvent(qc: QueryClient, git: GitRefresher, e: ServerEv
       }
       break;
     }
+    case "session.done":
+      if (shouldNotify(e.payload.sessionId, "done")) {
+        if (qc.getQueryData<ResultOf<"settings.get">>(keys.settings)?.sounds !== false) playSound("done");
+        void notifyDone(qc, e.payload.sessionId);
+      }
+      break;
     case "session.updated":
       qc.setQueryData(keys.session(e.payload.id), e.payload);
       patchSessionLists(qc, e.payload);
@@ -126,6 +133,9 @@ export function routeServerEvent(qc: QueryClient, git: GitRefresher, e: ServerEv
       break;
     case "ratelimit.updated":
       qc.setQueryData(keys.rateLimit, e.payload);
+      break;
+    case "tokens.rate":
+      useTokenRate.getState().set(e.payload.perSecond);
       break;
     case "devserver.updated":
       qc.setQueryData(keys.devServer(e.payload.projectId), e.payload);

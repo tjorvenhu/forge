@@ -1,5 +1,6 @@
 import { createSdkMcpServer, query, tool, type Query, type SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
 import { AsyncQueue } from "../claude/async-queue.js";
+import { meterKey, tokenMeter } from "../claude/token-meter.js";
 import { PHONE_TOOLS, phoneSystemPrompt, zodShape, type PhoneToolset } from "./tools.js";
 
 export { asData, type PhoneToolset, type SessionSettingsPatch } from "./tools.js";
@@ -83,8 +84,10 @@ export class PhoneAgent {
   }
 
   private async pump() {
+    const meter = meterKey("phone");
     try {
       for await (const m of this.q) {
+        tokenMeter.observe(meter, m);
         const msg = m as Record<string, unknown>;
         if (msg.type === "stream_event" && !msg.parent_tool_use_id) {
           const ev = (msg.event ?? {}) as Record<string, unknown>;
@@ -98,6 +101,8 @@ export class PhoneAgent {
       }
     } catch (e) {
       if (!this.closed) this.o.onError(e instanceof Error ? e.message : String(e));
+    } finally {
+      tokenMeter.forget(meter);
     }
   }
 

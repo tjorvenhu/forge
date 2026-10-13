@@ -41,6 +41,7 @@ import type { SecretStore } from "./secrets.js";
 import { localIpTowards, SipUserAgent, type SipAccount, type SipCall } from "./sip-ua.js";
 import { AUTOMATION_TAGS, geminiFunctionDeclarations, phoneSystemPrompt, type AutomationTag, type CallSettingsPatch } from "./tools.js";
 import { AUTO_MERGE_TAG } from "../automation/agent-auto-merge.js";
+import { tokenMeter } from "../claude/token-meter.js";
 import { DEFAULT_STT_MODEL, DEFAULT_TTS_MODEL, DEFAULT_VOICE, OpenAiVoice, type VoiceProvider } from "./voice.js";
 
 const SECRET_PASSWORD = "sip-password";
@@ -261,6 +262,8 @@ export class PhoneService {
   /** connection settings changed during a call; applied when it ends */
   private pendingReconnect = false;
   private notifyTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  /** last successful turn per session: its answer is what the "done" call tells */
+  private readonly lastTurn = new Map<string, SessionEventBody>();
   private callbackTicker: ReturnType<typeof setInterval> | null = null;
   private lastNotifyAt = 0;
   private readonly f: PhoneFactories;
@@ -892,10 +895,18 @@ export class PhoneService {
   onServerEvent(e: ServerEvent) {
     if (!this.cfg.enabled) return;
     if (e.event === "session.updated") this.desk.refresh();
+    // "Fertig" only for the whole job: a turn that leaves background tasks or agents running is a step.
+    if (e.event === "session.done" && this.cfg.notifyNumber && this.wantsCall("done")) {
+      const id = e.payload.sessionId;
+      this.scheduleNotify(id, "done", this.lastTurn.get(id) ?? null, this.d.timing?.notifyDelayMs ?? NOTIFY_DELAY_MS.done);
+    }
     if (e.event !== "session.event") return;
     const b = e.payload.body;
     const sessionId = e.payload.sessionId;
-    if (b.type === "turn.result" && !b.isError) this.desk.markUnheard(sessionId);
+    if (b.type === "turn.result" && !b.isError) {
+      this.desk.markUnheard(sessionId);
+      this.lastTurn.set(sessionId, b);
+    }
     else if (b.type === "user.message") this.desk.markHeard(sessionId);
     else if (b.type === "approval.request" || b.type === "approval.resolved") this.desk.refresh();
     // The user is on the line already: he hears it in this call, no matter which number FORGE would dial.
@@ -904,7 +915,7 @@ export class PhoneService {
     let kind: NotifyKind | null = null;
     if (b.type === "turn.result") {
       const interrupted = b.isError && /interrupt|abort/i.test(`${b.subtype} ${b.text ?? ""}`);
-      if (!interrupted) kind = b.isError ? "error" : "done";
+      if (b.isError && !interrupted) kind = "error";
     } else if (b.type === "approval.request") kind = "approval";
     else if (b.type === "error") kind = "error";
     else if (b.type === "notify" && b.urgent) kind = "notify";
@@ -917,7 +928,7 @@ export class PhoneService {
     return this.cfg.notifyOn[kind === "notify" ? "approval" : kind];
   }
 
-  private scheduleNotify(sessionId: string, kind: NotifyKind, body: SessionEventBody, delayMs: number) {
+  private scheduleNotify(sessionId: string, kind: NotifyKind, body: SessionEventBody | null, delayMs: number) {
     const key = `${sessionId}:${kind}`;
     const prev = this.notifyTimers.get(key);
     if (prev) clearTimeout(prev);
@@ -954,10 +965,10 @@ export class PhoneService {
     return true;
   }
 
-  private async notify(sessionId: string, kind: NotifyKind, body: SessionEventBody) {
+  private async notify(sessionId: string, kind: NotifyKind, body: SessionEventBody | null) {
     // Switched off in the meantime (also on the phone, with call_settings).
     if (!this.cfg.notifyNumber || !this.wantsCall(kind)) return;
-    if (body.type === "notify" && this.noteUrgent(sessionId, body.message)) return;
+    if (body?.type === "notify" && this.noteUrgent(sessionId, body.message)) return;
     if (this.busy || this.registration !== "registered") {
       this.d.log(`Telefon: kein Anruf (${kind}), ${this.busy ? "die Leitung ist belegt" : "nicht an der Anlage angemeldet"}`);
       return;
@@ -986,10 +997,10 @@ export class PhoneService {
     const project = this.d.projects.get(session.projectId);
     const refs = new Map([["S1", sessionId]]);
     const title = session.title ?? "ohne Titel";
-    const result = body.type === "turn.result" ? (body.text ?? lastAnswer(this.d.db, sessionId)) : lastAnswer(this.d.db, sessionId);
-    const failure = body.type === "turn.result" ? (body.text ?? body.subtype) : body.type === "error" ? body.message : "";
+    const result = body?.type === "turn.result" ? (body.text ?? lastAnswer(this.d.db, sessionId)) : lastAnswer(this.d.db, sessionId);
+    const failure = body?.type === "turn.result" ? (body.text ?? body.subtype) : body?.type === "error" ? body.message : "";
     const what =
-      body.type === "notify"
+      body?.type === "notify"
         ? `Claude Code in der Session S1 ${asData(title)} im Projekt ${project.name} möchte dich erreichen und lässt ausrichten: ${excerptData(body.message, 500)}`
         : kind === "done"
         ? `Die Session S1 ${asData(title)} im Projekt ${project.name} ist fertig. Letztes Ergebnis von Claude Code: ${excerptData(result, 1500)}`
@@ -1613,9 +1624,11 @@ export class PhoneService {
           const u = await sessions.planUsage(false);
           const limit = sessions.rateLimit();
           const reached = limit.status === "reached" ? `Limit erreicht${limit.resetsAt ? `, wieder frei ${spokenTime(limit.resetsAt)}` : ""}.` : "";
-          if (!u.available || !u.windows.length) return reached || `Nutzung nicht verfügbar${u.error ? `: ${u.error}` : ""}.`;
+          const perSecond = Math.round(tokenMeter.rate());
+          const rate = perSecond ? `Gerade ${perSecond} Tokens pro Sekunde über alle Sessions und Agenten.` : "Gerade gibt Claude keine Tokens aus.";
+          if (!u.available || !u.windows.length) return [reached || `Nutzung nicht verfügbar${u.error ? `: ${u.error}` : ""}.`, rate].join("\n");
           const windows = u.windows.map((w) => `${w.label}: ${Math.round(w.utilization)} Prozent${w.resetsAt ? `, zurückgesetzt ${spokenTime(w.resetsAt)}` : ""}`);
-          return [reached, ...windows].filter(Boolean).join("\n");
+          return [reached, ...windows, rate].filter(Boolean).join("\n");
         }),
     };
   }

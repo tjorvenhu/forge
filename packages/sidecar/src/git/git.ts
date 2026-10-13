@@ -43,7 +43,8 @@ export class GitEngine {
   }
 
   async exec(cwd: string, args: string[], input?: string, timeoutMs = 60_000): Promise<RunResult> {
-    const r = await run(this.gitBin, ["-c", "core.quotepath=false", "-c", "color.ui=false", ...args], {
+    // core.longpaths: Git for Windows otherwise fails on paths over 260 characters (deep node_modules).
+    const r = await run(this.gitBin, ["-c", "core.quotepath=false", "-c", "color.ui=false", "-c", "core.longpaths=true", ...args], {
       cwd,
       env: this.env(),
       input,

@@ -30,8 +30,8 @@ export function forgeIcon(icon: ForgeToolIcon, className = EVENT_ICON) {
 
 /**
  * A call of a FORGE tool: what FORGE did (saved to the knowledge, started an agent …) in words, with
- * its own icon and a way to the place where the result lives. Changes get a highlighted card, lookups
- * a quiet line; input and output stay one click away.
+ * its own icon and a way to the place where the result lives, in the highlighted FORGE card; input
+ * and output stay one click away.
  */
 export function ForgeToolCard({
   sessionId,
@@ -80,7 +80,7 @@ export function ForgeToolCard({
             )}
           />
         </button>
-        {view.prominent && <ForgeLabel />}
+        <ForgeLabel />
         {view.target && !pending && (
           <Button size="sm" variant="ghost" className="-my-1 h-6 px-2" onClick={() => go(view.target!)}>
             {forgeTargetLabel(view.target)}
@@ -96,14 +96,14 @@ export function ForgeToolCard({
   return (
     <ChatRow
       className="text-body"
-      markerClassName={view.prominent ? FORGE_MARKER_OFFSET : undefined}
+      markerClassName={FORGE_MARKER_OFFSET}
       marker={
         <span role="img" aria-label={stateLabel} className={cn("flex", FORGE_ICON_TONE[tone], pending && "animate-soft-pulse")}>
           {forgeIcon(view.icon)}
         </span>
       }
     >
-      {view.prominent ? <ForgeHighlight tone={tone}>{body}</ForgeHighlight> : body}
+      <ForgeHighlight tone={tone}>{body}</ForgeHighlight>
       {children}
     </ChatRow>
   );

@@ -12,8 +12,6 @@ export interface ForgeToolView {
   ref: string | null;
   icon: ForgeToolIcon;
   tone: "accent" | "warning" | "danger";
-  /** changed something (saved, started, deleted) and gets the highlighted card; lookups stay a quiet line */
-  prominent: boolean;
   target: ForgeTarget | null;
   /** shown elsewhere already: a notification has its own card */
   hidden: boolean;
@@ -46,7 +44,6 @@ export function forgeToolView(tool: string, input: Record<string, unknown>, resu
     ref: v.ref,
     icon: v.icon,
     tone: failed ? "danger" : (v.tone ?? "accent"),
-    prominent: v.prominent || failed,
     target: failed ? null : v.target,
     hidden: v.hidden ?? false,
   });
@@ -61,7 +58,6 @@ export function forgeToolView(tool: string, input: Record<string, unknown>, resu
         ref: str(input, "title"),
         icon: "knowledge",
         tone: refused ? "warning" : "accent",
-        prominent: true,
         target: refused ? { kind: "knowledge", id: null } : { kind: "knowledge", id: savedId ?? str(input, "id") },
       });
     }
@@ -71,7 +67,6 @@ export function forgeToolView(tool: string, input: Record<string, unknown>, resu
         failedTitle: "Eintrag im Projektwissen nicht lesbar",
         ref: str(input, "id"),
         icon: "knowledge",
-        prominent: false,
         target: { kind: "knowledge", id: str(input, "id") },
       });
     case "knowledge_search":
@@ -80,7 +75,6 @@ export function forgeToolView(tool: string, input: Record<string, unknown>, resu
         failedTitle: "Suche im Projektwissen fehlgeschlagen",
         ref: str(input, "query"),
         icon: "knowledge",
-        prominent: false,
         target: { kind: "knowledge", id: null },
       });
     case "knowledge_delete": {
@@ -91,7 +85,6 @@ export function forgeToolView(tool: string, input: Record<string, unknown>, resu
         ref: str(input, "id"),
         icon: "knowledge",
         tone: missing ? "warning" : "accent",
-        prominent: true,
         target: { kind: "knowledge", id: null },
       });
     }
@@ -101,7 +94,6 @@ export function forgeToolView(tool: string, input: Record<string, unknown>, resu
         failedTitle: "Dev-Umgebung nicht abrufbar",
         ref: null,
         icon: "dev",
-        prominent: false,
         target: { kind: "devtools", section: "server" },
       });
     case "dev_control": {
@@ -112,7 +104,6 @@ export function forgeToolView(tool: string, input: Record<string, unknown>, resu
         failedTitle: `${target} nicht ${action}`,
         ref: null,
         icon: "dev",
-        prominent: true,
         target: { kind: "devtools", section: input.target === "database" ? "database" : "server" },
       });
     }
@@ -124,7 +115,6 @@ export function forgeToolView(tool: string, input: Record<string, unknown>, resu
         ref: str(input, "message"),
         icon: "notify",
         tone: urgent ? "warning" : "accent",
-        prominent: true,
         target: null,
         hidden: done,
       });
@@ -135,7 +125,6 @@ export function forgeToolView(tool: string, input: Record<string, unknown>, resu
         failedTitle: "Agent nicht gestartet",
         ref: /Branch (\S+?),/.exec(text)?.[1] ?? str(input, "name"),
         icon: "agentStart",
-        prominent: true,
         target: { kind: "agents" },
       });
     case "agent_status":
@@ -144,7 +133,6 @@ export function forgeToolView(tool: string, input: Record<string, unknown>, resu
         failedTitle: "Stand der Agenten nicht abrufbar",
         ref: str(input, "agent"),
         icon: "agentStatus",
-        prominent: false,
         target: { kind: "agents" },
       });
     case "message_agent":
@@ -153,7 +141,6 @@ export function forgeToolView(tool: string, input: Record<string, unknown>, resu
         failedTitle: "Anweisung an Agent nicht gesendet",
         ref: str(input, "agent"),
         icon: "agentMessage",
-        prominent: true,
         target: { kind: "agents" },
       });
     case "finish_agent": {
@@ -163,12 +150,11 @@ export function forgeToolView(tool: string, input: Record<string, unknown>, resu
         failedTitle: discard ? "Agent nicht verworfen" : "Agent nicht zusammengeführt",
         ref: str(input, "agent"),
         icon: discard ? "agentDiscard" : "agentMerge",
-        prominent: true,
         target: { kind: "agents" },
       });
     }
     default:
-      return view({ title: `FORGE: ${tool}`, failedTitle: `FORGE: ${tool} fehlgeschlagen`, ref: null, icon: "forge", prominent: false, target: null });
+      return view({ title: `FORGE: ${tool}`, failedTitle: `FORGE: ${tool} fehlgeschlagen`, ref: null, icon: "forge", target: null });
   }
 }
 

@@ -27,13 +27,20 @@ export function agentTurnEnded(qc: QueryClient, ev: SessionEvent) {
   useAgentReview.getState().request(project.id);
 }
 
-/** Result of an auto-merge; what FORGE could not merge on its own goes into the dialog. */
+/**
+ * Result of an auto-merge. With auto-merge on, no dialog opens by itself: what FORGE could not merge
+ * is a notice whose button opens the dialog.
+ */
 export function agentAutoMerged(e: ServerEventPayload<"agent.autoMerge">) {
   const title = e.branch ?? "Agent";
   if (e.outcome === "merged") toast.success(`${title} zusammengeführt`, e.message.replace(/^Automatisch zusammengeführt:\s*/, ""));
   else if (e.outcome === "conflict") toast.notify({ tone: "warning", title: `${title}: Konflikte`, body: e.message });
   else {
-    toast.notify({ tone: "warning", title: `${title} nicht zusammengeführt`, body: e.message.replace(/^Nicht automatisch zusammengeführt:\s*/, "") });
-    useAgentReview.getState().request(e.worktreeId);
+    toast.notify({
+      tone: "warning",
+      title: `${title} nicht zusammengeführt`,
+      body: e.message.replace(/^Nicht automatisch zusammengeführt:\s*/, ""),
+      action: { label: "Ansehen", onClick: () => useAgentReview.getState().request(e.worktreeId) },
+    });
   }
 }

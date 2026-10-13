@@ -181,6 +181,17 @@ export class WorktreeService {
         const r = await this.git.exec(cwd, ["worktree", "remove", ...(force ? ["--force"] : []), dir], undefined, 60_000);
         if (r.code === 0) return;
         last = (r.stderr || r.stdout).trim();
+        // Paths beyond 260 characters (node_modules of the worktree) stop git on Windows, Node
+        // deletes them; `worktree prune` afterwards drops git's entry for the folder.
+        if (LONG_PATH.test(last)) {
+          try {
+            await rm(dir, { recursive: true, force: true, maxRetries: 2, retryDelay: 100 });
+            return;
+          } catch (e) {
+            last = e instanceof Error ? e.message : String(e);
+            continue;
+          }
+        }
         if (!FOLDER_IN_USE.test(last)) throw new ForgeError("GIT_FAILED", last || "Worktree konnte nicht entfernt werden");
       } else {
         // An earlier attempt got as far as deleting the .git file: git no longer sees a worktree
@@ -202,5 +213,6 @@ export class WorktreeService {
 
 /** git and Node messages for a folder that another process still holds open. */
 const FOLDER_IN_USE = /permission denied|resource busy|directory not empty|used by another process|EPERM|EBUSY|ENOTEMPTY|EACCES/i;
+const LONG_PATH = /filename too long|path too long|ENAMETOOLONG/i;
 const REMOVE_ATTEMPTS = 6;
 const REMOVE_RETRY_MS = 300;

@@ -2,7 +2,7 @@
 title: "FORGE-Werkzeuge im Chat: Karten hängen an den Ergebnistexten"
 summary: "Die Chat-Karten für mcp__forge__-Aufrufe werten die Ergebnistexte der Werkzeuge aus; wer Texte in forge-tools.ts ändert oder ein neues FORGE-Werkzeug anlegt, muss forge-tool.ts mitziehen."
 tags: ["chat","forge-tools","ui","stolperfalle"]
-updated: "2026-10-13T10:56:36.163Z"
+updated: "2026-10-13T12:55:16.956Z"
 ---
 
 ## Worum es geht
@@ -11,6 +11,10 @@ Aufrufe von FORGE-Werkzeugen (`mcp__forge__…`) zeigt der Chat nicht als Rohnam
 Titel, Bezug und Sprung-Knopf (`apps/desktop/src/components/workspace/ForgeToolCard.tsx`). Was angezeigt wird,
 entscheidet `forgeToolView` in `apps/desktop/src/components/workspace/forge-tool.ts`. Der Aktivitäts-Verlauf
 (`ActivityFeed.tsx`) nutzt dieselbe Funktion.
+
+Jeder FORGE-Aufruf bekommt den hervorgehobenen Rahmen (`ForgeHighlight`) mit FORGE-Label, auch reine Abfragen wie
+`agent_status`, `knowledge_search` oder `dev_environment` (Wunsch des Nutzers, 2026-10-13). Die frühere
+Unterscheidung `prominent` (Änderungen mit Rahmen, Abfragen als schlichte Zeile) gibt es nicht mehr.
 
 ## Stolperfalle: Kopplung an die Ergebnistexte
 
@@ -31,8 +35,8 @@ statt einer Ablehnung. Die Tests dazu stehen in `ToolCard.test.tsx` („FORGE to
 ## Neues FORGE-Werkzeug
 
 Ein neues Werkzeug in `forge-tools.ts` erscheint ohne eigenen `case` in `forgeToolView` nur als „FORGE: <name>“ mit
-Amboss-Icon. Für eine richtige Karte braucht es dort: Titel (läuft / fertig / fehlgeschlagen), Bezug, Icon,
-`prominent` (ändert es etwas?) und ggf. ein Sprungziel (`knowledge`, `agents`, `devtools`).
+Amboss-Icon. Für eine richtige Karte braucht es dort: Titel (läuft / fertig / fehlgeschlagen), Bezug, Icon und ggf.
+ein Sprungziel (`knowledge`, `agents`, `devtools`).
 
 ## Weitere Entscheidungen
 

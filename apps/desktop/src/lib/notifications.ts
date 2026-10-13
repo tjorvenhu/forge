@@ -6,16 +6,16 @@ import { isInterrupted } from "./working";
 
 export type NotifyKind = "done" | "approval" | "error";
 
-/** Which session events get a sound and a notification; null for all others. */
-export function notifyKind(body: SessionEvent["body"]): NotifyKind | null {
+/**
+ * Which session events get a sound and a notification; null for all others. A successful turn is
+ * not one of them: "done" comes with session.done, once background tasks and agents are through too.
+ */
+export function notifyKind(body: SessionEvent["body"]): Exclude<NotifyKind, "done"> | null {
   if (body.type === "approval.request") return "approval";
   // Claude asked for the user (tool notify): sounds like a decision that waits.
   if (body.type === "notify") return "approval";
   if (body.type === "error") return "error";
-  if (body.type === "turn.result") {
-    if (isInterrupted(body)) return null;
-    return body.isError ? "error" : "done";
-  }
+  if (body.type === "turn.result" && body.isError && !isInterrupted(body)) return "error";
   return null;
 }
 
@@ -61,11 +61,17 @@ export async function notifyAutoContinue(qc: QueryClient, ev: SessionEvent) {
   else notify(qc, "Nicht automatisch fortgesetzt", [ctx.where, b.message], ctx.open);
 }
 
-/** Windows notification for a finished turn, a needed decision or an error. */
-export async function notifySession(qc: QueryClient, ev: SessionEvent, kind: NotifyKind) {
+/** Windows notification for a finished job: the turn, its background tasks and the agents it started. */
+export async function notifyDone(qc: QueryClient, sessionId: string) {
+  const ctx = await sessionContext(qc, sessionId);
+  if (ctx) notify(qc, "Claude ist fertig", [ctx.where], ctx.open);
+}
+
+/** Windows notification for a needed decision or an error. */
+export async function notifySession(qc: QueryClient, ev: SessionEvent, kind: Exclude<NotifyKind, "done">) {
   const ctx = await sessionContext(qc, ev.sessionId);
   if (!ctx) return;
-  const { session, where, open } = ctx;
+  const { where, open } = ctx;
   const b = ev.body;
   const detail =
     b.type === "approval.request" ? (b.title ?? b.toolName) : b.type === "error" ? b.message : b.type === "turn.result" && b.isError ? (b.text ?? b.subtype) : null;
@@ -78,12 +84,5 @@ export async function notifySession(qc: QueryClient, ev: SessionEvent, kind: Not
     const title = tool === "AskUserQuestion" ? "Rückfrage von Claude" : tool === "ExitPlanMode" ? "Plan zur Freigabe" : "Freigabe nötig";
     const text = tool === "AskUserQuestion" || tool === "ExitPlanMode" ? null : detail;
     notify(qc, title, [where, text], open);
-  } else if (kind === "error") notify(qc, "Fehler in der Session", [where, detail?.slice(0, 300)], open);
-  else {
-    // The session cache is updated synchronously by session.updated; the live list is refetched later.
-    const background = (qc.getQueryData<ResultOf<"sessions.get">>(["session", ev.sessionId]) ?? session).background;
-    if (background.length) {
-      notify(qc, "Durchlauf beendet, Aufgabe läuft weiter", [where, `Im Hintergrund: ${background.map((t) => t.description).join(", ")}. Claude meldet sich, wenn sie fertig ist.`], open);
-    } else notify(qc, "Claude ist fertig", [where], open);
-  }
+  } else notify(qc, "Fehler in der Session", [where, detail?.slice(0, 300)], open);
 }

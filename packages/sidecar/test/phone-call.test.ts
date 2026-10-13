@@ -663,6 +663,7 @@ describe("PhoneService end to end with a test PBX", () => {
         body: { type: "turn.result", subtype: "success", isError: false, durationMs: 1, numTurns: 1, inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, text: "Alle 42 Tests sind grün." },
       },
     });
+    svc.onServerEvent({ event: "session.done", payload: { sessionId: "s1" } });
     const first = await pbx.next((m) => m.method === "INVITE");
     expect(first.msg.uri).toBe("sip:0172999@127.0.0.1");
     const challenge = responseTo(first.msg, 407, "Proxy Authentication Required", "pbx");
@@ -711,6 +712,7 @@ describe("PhoneService end to end with a test PBX", () => {
         body: { type: "turn.result", subtype: "success", isError: false, durationMs: 1, numTurns: 1, inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, text: "Fertig." },
       },
     });
+    svc.onServerEvent({ event: "session.done", payload: { sessionId: "s1" } });
     await until(() => logs.some((l) => l.includes("kein Rückruf (done), FORGE ist im Vordergrund")), 3000, "skipped");
     expect(svc.state().call).toBeNull();
     expect(svc.calls(5).filter((c) => c.direction === "out")).toEqual([]);
@@ -1134,7 +1136,7 @@ describe("PhoneService end to end with a test PBX", () => {
     timing.notifyCooldownMs = 1500;
     await svc.setEnabled(true);
     await until(() => svc.state().registration === "registered", 5000, "registered");
-    const done = (text: string) =>
+    const done = (text: string) => {
       svc.onServerEvent({
         event: "session.event",
         payload: {
@@ -1144,6 +1146,8 @@ describe("PhoneService end to end with a test PBX", () => {
           body: { type: "turn.result", subtype: "success", isError: false, durationMs: 1, numTurns: 1, inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, text },
         },
       });
+      svc.onServerEvent({ event: "session.done", payload: { sessionId: "s1" } });
+    };
     done("Erster Teil fertig.");
     const first = await pbx.next((m) => m.method === "INVITE");
     pbx.send(responseTo(first.msg, 486, "Busy Here", "callee"), first.port);

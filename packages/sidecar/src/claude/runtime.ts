@@ -21,6 +21,7 @@ import type { z } from "zod";
 import type { ContentBlock } from "./attachments.js";
 import { toPlanUsage } from "./usage.js";
 import { AsyncQueue } from "./async-queue.js";
+import { meterKey, tokenMeter } from "./token-meter.js";
 
 export interface StartOptions {
   cwd: string;
@@ -360,12 +361,18 @@ export class AgentSdkRuntime implements ClaudeRuntime {
     });
 
     let closed = false;
+    const meter = meterKey("session");
     void (async () => {
       try {
-        for await (const msg of q) sink.onMessage(msg);
+        for await (const msg of q) {
+          tokenMeter.observe(meter, msg);
+          sink.onMessage(msg);
+        }
         sink.onEnd(null);
       } catch (e) {
         sink.onEnd(closed ? null : e instanceof Error ? e : new Error(String(e)));
+      } finally {
+        tokenMeter.forget(meter);
       }
     })();
 
@@ -492,9 +499,11 @@ export class AgentSdkRuntime implements ClaudeRuntime {
         abortController: ac,
       },
     });
+    const meter = meterKey("complete");
     const work = (async () => {
       let text = "";
       for await (const m of q) {
+        tokenMeter.observe(meter, m);
         if (m.type === "result") {
           if (m.subtype !== "success") throw new Error(`Claude konnte keine Antwort erzeugen (${m.subtype})`);
           text = m.result;
@@ -523,9 +532,11 @@ export class AgentSdkRuntime implements ClaudeRuntime {
         abortController: ac,
       },
     });
+    const meter = meterKey("complete");
     const work = (async () => {
       let out: unknown;
       for await (const m of q) {
+        tokenMeter.observe(meter, m);
         if (m.type === "result") {
           if (m.subtype !== "success") throw new Error(`Claude konnte keine Antwort erzeugen (${m.subtype})`);
           out = m.structured_output;

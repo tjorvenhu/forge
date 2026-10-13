@@ -133,7 +133,7 @@ describe("FORGE tools in the chat", () => {
     expect(screen.queryByRole("button", { name: "Agenten ansehen" })).toBeNull();
   });
 
-  it("shows running calls, leaves notifications to their own card and keeps lookups quiet", () => {
+  it("shows running calls, leaves notifications to their own card and highlights lookups like every FORGE call", () => {
     show(tool("mcp__forge__start_agent", { task: "Baue den CSV-Export", name: "csv-export" }, null), true);
     expect(screen.getByText("Startet parallelen Agenten")).toBeTruthy();
     expect(screen.getByRole("img", { name: "läuft" })).toBeTruthy();
@@ -143,6 +143,6 @@ describe("FORGE tools in the chat", () => {
     cleanup();
     show(tool("mcp__forge__knowledge_search", { query: "deploy" }, { text: "Keine Treffer im Projektwissen." }));
     expect(screen.getByText("Projektwissen durchsucht, keine Treffer")).toBeTruthy();
-    expect(screen.queryByText("FORGE")).toBeNull();
+    expect(screen.getByText("FORGE")).toBeTruthy();
   });
 });

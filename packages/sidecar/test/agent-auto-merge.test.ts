@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { Project, ServerEvent, SessionEventBody } from "@forge/protocol";
@@ -99,6 +99,17 @@ describe("AgentAutoMerge", () => {
     expect(events).toEqual([]);
     expect(existsSync(wt.path)).toBe(true);
   }, 20_000);
+
+  it("clears away the remains of a merged agent whose folder would not go, without asking", async () => {
+    const wt = await agent("agent/rest");
+    // As after "Filename too long": git forgot the worktree, its files and FORGE's entry are still there.
+    rmSync(path.join(wt.path, ".git"));
+    await git(repo, "worktree", "prune");
+    await auto.turnDone("s-agent/rest", true);
+    expect(events).toEqual([]);
+    expect(existsSync(wt.path)).toBe(false);
+    expect(projects.all().some((p) => p.id === wt.id)).toBe(false);
+  }, 30_000);
 
   it("leaves the agent to the user when its tests failed", async () => {
     const wt = await agent("agent/rot");

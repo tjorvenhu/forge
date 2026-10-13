@@ -182,7 +182,18 @@ export class AgentFinisher {
       }
       throw new ForgeError("GIT_FAILED", msg || `${branch} ließ sich nicht in ${targetBranch} übernehmen.`);
     }
-    const r = await removeWorktree(projectId, false, this.d, { deleteBranch: true });
+    const taken = `${commits === 1 ? "1 Commit" : `${commits} Commits`} von ${branch} in ${targetBranch} übernommen`;
+    let removed: { branchError: string | null };
+    try {
+      removed = await removeWorktree(projectId, false, this.d, { deleteBranch: true });
+    } catch (e) {
+      // The work is in: a folder that would not go is no failed merge. The branch is merged, so it
+      // can go; the folder's remains are cleaned up by the next auto-merge round or "Verwerfen".
+      await git.exec(dir, ["branch", "-d", branch]).catch(() => null);
+      this.changed(l);
+      const why = e instanceof Error ? e.message : String(e);
+      return { action: "merge", outcome: "merged", branch, targetBranch, commits, files: [], sessionId: null, branchError: null, message: `${taken}. Der Worktree-Ordner ließ sich aber nicht löschen: ${why}` };
+    }
     this.changed(l);
     return {
       action: "merge",
@@ -192,8 +203,8 @@ export class AgentFinisher {
       commits,
       files: [],
       sessionId: null,
-      branchError: r.branchError,
-      message: `${commits === 1 ? "1 Commit" : `${commits} Commits`} von ${branch} in ${targetBranch} übernommen, Worktree und Branch gelöscht.${r.branchError ? ` Der Branch blieb aber: ${r.branchError}` : ""}`,
+      branchError: removed.branchError,
+      message: `${taken}, Worktree und Branch gelöscht.${removed.branchError ? ` Der Branch blieb aber: ${removed.branchError}` : ""}`,
     };
   }
 

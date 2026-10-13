@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { QueryClient } from "@tanstack/react-query";
 import type { SessionEvent } from "@forge/protocol";
 import { useAgentReview } from "@/stores/agent-review";
+import { useToasts } from "@/stores/toast";
 import { useUi } from "@/stores/ui";
 import { agentAutoMerged, agentTurnEnded } from "./agent-review";
 import { keys } from "./queries";
@@ -46,7 +47,7 @@ describe("agentTurnEnded", () => {
     expect(useAgentReview.getState().queue).toEqual([]);
   });
 
-  it("leaves agents of auto-merge projects to the sidecar and asks only when it could not merge", () => {
+  it("never opens the dialog by itself with auto-merge: a skipped merge is a notice whose button opens it", () => {
     const qc = cache();
     qc.setQueryData(keys.projects, [
       { id: "app", parentId: null, tags: ["auto-merge"] },
@@ -57,6 +58,10 @@ describe("agentTurnEnded", () => {
     agentAutoMerged({ rootId: "app", worktreeId: "wt", branch: "agent/x", outcome: "conflict", message: "Konflikte" });
     expect(useAgentReview.getState().queue).toEqual([]);
     agentAutoMerged({ rootId: "app", worktreeId: "wt", branch: "agent/x", outcome: "skipped", message: "Nicht automatisch zusammengeführt: Tests rot" });
+    expect(useAgentReview.getState().queue).toEqual([]);
+    const notice = useToasts.getState().toasts.find((t) => t.title === "agent/x nicht zusammengeführt");
+    expect(notice?.body).toBe("Tests rot");
+    notice?.action?.onClick();
     expect(useAgentReview.getState().queue).toEqual(["wt"]);
   });
 });
