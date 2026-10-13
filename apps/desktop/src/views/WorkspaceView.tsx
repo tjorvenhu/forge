@@ -101,9 +101,10 @@ function Workspace({ projectId }: { projectId: string }) {
       <div className="flex min-h-0 flex-1">
         <div className="flex min-w-0 flex-1 flex-col">
           <Collapse open={toolbarOpen}>
-            <div className="flex h-12 shrink-0 items-center border-b border-border px-4">
+            <div className="flex h-12 shrink-0 items-center gap-1 border-b border-border px-4">
               <TabBar<WorkspaceTab>
                 size="lg"
+                fit
                 value={workspaceTab}
                 onChange={setWorkspaceTab}
                 tabs={[
@@ -116,7 +117,6 @@ function Workspace({ projectId }: { projectId: string }) {
                   { value: "settings", label: "Einstellungen", icon: <Settings2 className="h-4 w-4" /> },
                 ]}
               />
-              <div className="flex-1" />
               <Button size="icon-sm" variant="ghost" onClick={() => toggleBottomPanel()} aria-pressed={bottomPanelOpen} title="Terminal, Dev-Server und Claude-Ausgabe (Strg+J)" className={cn(bottomPanelOpen && "text-accent")}>
                 <PanelBottom className="h-4 w-4" />
               </Button>
@@ -163,6 +163,7 @@ function RightPanel({ projectId }: { projectId: string }) {
       <div className="flex h-12 shrink-0 items-center border-b border-border px-3">
         <TabBar<RightTab>
           size="lg"
+          fit
           value={tab}
           onChange={setTab}
           tabs={[

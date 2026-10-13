@@ -85,15 +85,23 @@ fn label_of(map: &HashMap<String, Option<String>>, session_id: &str) -> Option<S
 const GRAB_X: f64 = 160.0;
 const GRAB_Y: f64 = 16.0;
 
-/// Places the window exactly under the cursor (the config position is only logical, mixed DPI shifts
-/// it) and hands the still running drag to Windows, like dragging the title bar: the window moves with
-/// the mouse until the button is released. Without a held button that move loop would never end.
-fn follow_cursor<R: Runtime>(w: &WebviewWindow<R>, cursor: PhysicalPosition<f64>) {
-    let scale = w.scale_factor().unwrap_or(1.0);
-    let _ = w.set_position(PhysicalPosition::new((cursor.x - GRAB_X * scale).round() as i32, (cursor.y - GRAB_Y * scale).round() as i32));
-    if left_button_down() {
-        let _ = w.start_dragging();
-    }
+/// Places the hidden window under the cursor, shows it and hands the still running drag to Windows,
+/// like dragging the title bar: the window moves with the mouse until the button is released.
+/// Runs on the main thread and reads the cursor there: building the webview takes a few hundred ms,
+/// a cursor read before that is stale, and the window would keep the distance the mouse travelled
+/// meanwhile as a fixed offset for the whole drag. Without a held button the move loop would never end.
+fn follow_cursor<R: Runtime>(app: &AppHandle<R>, w: WebviewWindow<R>) {
+    let _ = app.run_on_main_thread(move || {
+        if let Ok(c) = w.cursor_position() {
+            let scale = w.monitor_from_point(c.x, c.y).ok().flatten().map_or_else(|| w.scale_factor().unwrap_or(1.0), |m| m.scale_factor());
+            let _ = w.set_position(PhysicalPosition::new((c.x - GRAB_X * scale).round() as i32, (c.y - GRAB_Y * scale).round() as i32));
+        }
+        let _ = w.show();
+        let _ = w.set_focus();
+        if left_button_down() {
+            let _ = w.start_dragging();
+        }
+    });
 }
 
 #[cfg(windows)]
@@ -172,6 +180,8 @@ pub async fn open_chat_window(app: AppHandle, target: ChatTarget, title: String,
         config.x = Some(c.x / scale - GRAB_X);
         config.y = Some(c.y / scale - GRAB_Y);
         config.center = false;
+        // Shown by follow_cursor once it sits under the cursor, not first at the stale spot.
+        config.visible = false;
     } else if let Some(p) = position.filter(|p| p.x.is_finite() && p.y.is_finite()) {
         config.x = Some(p.x);
         config.y = Some(p.y);
@@ -181,10 +191,11 @@ pub async fn open_chat_window(app: AppHandle, target: ChatTarget, title: String,
         .and_then(|b| b.initialization_script(script).build());
     match built {
         Ok(w) => {
-            let _ = w.set_focus();
             state.notify(&app);
-            if let Some(c) = cursor {
-                follow_cursor(&w, c);
+            if cursor.is_some() {
+                follow_cursor(&app, w);
+            } else {
+                let _ = w.set_focus();
             }
             Ok(())
         }
