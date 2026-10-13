@@ -1,4 +1,5 @@
 # Projektregeln
 
-- Die Telefon-Funktion von FORGE soll alle Funktionen in Forge steuern können, wenn also neue Features hinzugefügt werden, sollen diese auch direkt für das Telefon-Feature umgesetzt werden.
+- Telefon-Funktion: Die Telefon-Funktion von FORGE soll sämtliche Funktionen der Anwendung steuern und bedienen können. Werden neue Features implementiert, müssen diese automatisch auch in die Telefon-Funktion integriert werden. Ziel ist es, dass sämtliche Funktionen von FORGE jederzeit vollständig über das Telefon-Feature nutzbar sind, ohne dass dafür nachträglich separate Anpassungen erforderlich sind.
+- Suchfunktion: Die Suchfunktion soll ebenfalls sämtliche Funktionen und Bereiche von FORGE abdecken. Neue Features müssen automatisch in die Suche integriert werden, sodass alle verfügbaren Funktionen, Einstellungen, Projekte und Aktionen zentral gefunden und direkt aufgerufen bzw. ausgeführt werden können.
 - Verwende bei allen Komponenten und Funktionen, die Ladezeiten haben, Skeleton-Loader als Platzhalter. Diese sollen während des Ladevorgangs angezeigt werden und sich optisch an der späteren Darstellung der Inhalte orientieren. Sobald die Daten vollständig geladen sind, sollen die Skeletons durch die tatsächlichen Inhalte ersetzt werden. Achte dabei auf ein einheitliches, modernes Design und darauf, Layout-Verschiebungen zu vermeiden.
