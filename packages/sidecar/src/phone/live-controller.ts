@@ -1,4 +1,4 @@
-import { beep } from "./audio.js";
+import { beep, SAMPLE_RATE } from "./audio.js";
 import type { CallHandler } from "./call-controller.js";
 import type { FunctionCall, LiveConversation, LiveHandlers } from "./gemini-live.js";
 import type { PinResult } from "./pin-guard.js";
@@ -6,6 +6,7 @@ import { PIN_TEXT, PinPad } from "./pin-pad.js";
 import type { RtpSession } from "./rtp.js";
 import type { SipCall } from "./sip-ua.js";
 import { runPhoneTool, type PhoneToolset } from "./tools.js";
+import { NoiseGate } from "./vad.js";
 
 export interface LiveControllerDeps {
   createLive(handlers: LiveHandlers): LiveConversation;
@@ -25,11 +26,16 @@ const IDLE_HANGUP_MS = 90_000;
 const MAX_CALL_MS = 30 * 60_000;
 /** after hang_up or a goodbye: hang up at the latest after this, even if the model keeps talking */
 const HANGUP_GRACE_MS = 8_000;
+/** speech collected before playback (re)starts, so a slow moment in the stream does not break it up */
+const PREBUFFER_MS = 200;
+/** FORGE's voice can still come back as echo this long after playback ended */
+const ECHO_TAIL_MS = 300;
 
 /**
  * One phone conversation with Gemini Live: the caller's audio goes straight to Gemini, which hears,
  * decides on its own when the caller is done, speaks and calls FORGE tools. Barge-in is Gemini's
- * own: when it reports an interruption, queued speech is dropped at once.
+ * own: when it reports an interruption, queued speech is dropped at once. A noise gate in front of
+ * Gemini keeps background noise and echo from counting as the caller talking.
  *
  * The PIN goes over the keypad as with Claude; Gemini only learns that steering is now allowed.
  */
@@ -46,6 +52,11 @@ export class LiveCallController implements CallHandler {
   private forgeText = "";
   /** tool calls the model withdrew; their results are not sent */
   private cancelled = new Set<string>();
+  private readonly gate = new NoiseGate();
+  private echoTailMs = 0;
+  /** model speech waiting for the prebuffer to fill */
+  private buffered: Int16Array[] = [];
+  private bufferedSamples = 0;
   private idleTimer: ReturnType<typeof setTimeout> | null = null;
   private maxTimer: ReturnType<typeof setTimeout> | null = null;
   private graceTimer: ReturnType<typeof setTimeout> | null = null;
@@ -67,9 +78,7 @@ export class LiveCallController implements CallHandler {
       onWrong: (final) => (final ? this.farewell(PIN_TEXT.final) : this.note(`[FORGE: Sag dem Anrufer genau das: „${PIN_TEXT.wrong}“]`)),
       log: (m) => this.d.log(m),
     });
-    this.rtp.on("audio", (frame) => {
-      if (this.begun && !this.ended) this.live?.sendAudio(frame);
-    });
+    this.rtp.on("audio", (frame) => this.onCallerAudio(frame));
     this.rtp.on("dtmf", (digit) => this.onDigit(digit));
     this.call.on("dtmf", (digit) => this.onDigit(digit));
     this.rtp.on("drained", () => this.maybeHangup());
@@ -113,17 +122,19 @@ export class LiveCallController implements CallHandler {
         if (this.ended) return;
         if (this.held) this.held.push(pcm);
         else {
-          this.rtp.play(pcm);
+          this.output(pcm);
           this.touch();
         }
       },
       onInterrupted: () => {
         // Speech of the old turn that is still queued no longer fits.
         if (this.held) this.held = [];
+        this.dropBuffered();
         this.rtp.clearPlayback();
         this.flushForge();
       },
       onTurnComplete: () => {
+        this.releaseBuffered();
         this.rtp.flush();
         this.flushCaller();
         this.flushForge();
@@ -144,6 +155,35 @@ export class LiveCallController implements CallHandler {
       onError: (m) => this.fatal(m),
       log: (m) => this.d.log(m),
     };
+  }
+
+  private onCallerAudio(frame: Int16Array) {
+    if (!this.begun || this.ended) return;
+    if (this.rtp.playing || this.bufferedSamples) this.echoTailMs = ECHO_TAIL_MS;
+    else this.echoTailMs = Math.max(0, this.echoTailMs - frame.length / 8);
+    this.gate.outputActive = this.echoTailMs > 0;
+    for (const f of this.gate.push(frame)) this.live?.sendAudio(f);
+  }
+
+  /** Gemini's audio can arrive slower than real time for a moment; playing on would stutter. */
+  private output(pcm: Int16Array) {
+    if (this.rtp.playing) {
+      this.rtp.play(pcm);
+      return;
+    }
+    this.buffered.push(pcm);
+    this.bufferedSamples += pcm.length;
+    if (this.bufferedSamples >= (PREBUFFER_MS / 1000) * SAMPLE_RATE) this.releaseBuffered();
+  }
+
+  private releaseBuffered() {
+    for (const pcm of this.buffered) this.rtp.play(pcm);
+    this.dropBuffered();
+  }
+
+  private dropBuffered() {
+    this.buffered = [];
+    this.bufferedSamples = 0;
   }
 
   private async runTools(calls: FunctionCall[]) {
@@ -182,7 +222,7 @@ export class LiveCallController implements CallHandler {
   }
 
   private maybeHangup() {
-    if (!this.hangupPending || this.ended || this.rtp.playing) return;
+    if (!this.hangupPending || this.ended || this.rtp.playing || this.bufferedSamples) return;
     this.hangupPending = false;
     // A little room so the last syllable is not cut off on the line.
     setTimeout(() => void this.call.hangup("FORGE hat aufgelegt"), 400);
@@ -193,6 +233,7 @@ export class LiveCallController implements CallHandler {
     if (this.ended) return;
     this.d.log(message);
     this.closing = true;
+    this.dropBuffered();
     this.rtp.clearPlayback();
     this.rtp.play(beep(400, 440));
     this.rtp.flush();

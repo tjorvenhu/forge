@@ -7,6 +7,9 @@ export const DEFAULT_LIVE_MODEL = "gemini-3.8-live";
 const INPUT_RATE = 16_000;
 /** Caller audio is sent in pieces of this length (fewer, larger messages than one per RTP frame). */
 const SEND_CHUNK_MS = 60;
+/** Gemini's activity detection: speech this long before it counts, silence this long ends the turn. */
+const SPEECH_PREFIX_MS = 300;
+const SPEECH_END_SILENCE_MS = 700;
 const SETUP_TIMEOUT_MS = 15_000;
 const MAX_RECONNECTS = 3;
 
@@ -208,6 +211,14 @@ export class GeminiLive implements LiveConversation {
       },
       systemInstruction: { parts: [{ text: this.o.systemInstruction }] },
       tools: this.o.functionDeclarations.length ? [{ functionDeclarations: this.o.functionDeclarations }] : [],
+      // A phone line carries noise and echo: speech must last a while before it counts and interrupts.
+      realtimeInputConfig: {
+        automaticActivityDetection: {
+          startOfSpeechSensitivity: "START_SENSITIVITY_LOW",
+          prefixPaddingMs: SPEECH_PREFIX_MS,
+          silenceDurationMs: SPEECH_END_SILENCE_MS,
+        },
+      },
       inputAudioTranscription: {},
       outputAudioTranscription: {},
       contextWindowCompression: { slidingWindow: {} },

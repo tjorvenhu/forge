@@ -9,6 +9,7 @@ import type { RtpSession } from "../src/phone/rtp.js";
 import type { ApprovalRequest } from "../src/phone/session-info.js";
 import type { SipCall } from "../src/phone/sip-ua.js";
 import { geminiFunctionDeclarations, runPhoneTool, type PhoneToolset } from "../src/phone/tools.js";
+import { NoiseGate } from "../src/phone/vad.js";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -175,6 +176,7 @@ describe("Gemini Live client", () => {
     expect(setup.model).toBe("models/gemini-3.8-live");
     expect(JSON.stringify(setup.generationConfig)).toContain('"voiceName":"Kore"');
     expect((setup.tools as Array<{ functionDeclarations: unknown[] }>)[0]!.functionDeclarations.length).toBeGreaterThan(10);
+    expect(JSON.stringify(setup.realtimeInputConfig)).toContain('"startOfSpeechSensitivity":"START_SENSITIVITY_LOW"');
     ws.serve({ setupComplete: {} });
     await connected;
     // Text queued before the connection was ready goes out now.
@@ -253,6 +255,30 @@ describe("Gemini Live client", () => {
     await expect(live.connect()).rejects.toThrow(/API-Key ungültig/);
   });
 
+  it("gates noise and echo, passes clear speech with its first syllable", () => {
+    const frame = (level: number) => new Int16Array(160).fill(level);
+    const audible = (out: Int16Array[]) => out.filter((f) => f.some((s) => s !== 0)).length;
+    const gate = new NoiseGate();
+    for (let i = 0; i < 50; i++) expect(audible(gate.push(frame(150)))).toBe(0);
+    // A knock: two loud frames are not speech.
+    expect(audible([...gate.push(frame(3000)), ...gate.push(frame(3000)), ...gate.push(frame(150))])).toBe(0);
+    // While FORGE talks, its echo and a short noise stay out.
+    gate.outputActive = true;
+    for (let i = 0; i < 10; i++) expect(audible(gate.push(frame(3000)))).toBe(0);
+    gate.push(frame(150));
+    // Talking over FORGE opens the gate; the frames held back go out first.
+    let sent = 0;
+    for (let i = 0; i < 12; i++) sent += audible(gate.push(frame(3000)));
+    expect(sent).toBeGreaterThanOrEqual(12);
+    expect(gate.passing).toBe(true);
+    // Pauses between words pass, a long quiet closes the gate.
+    gate.outputActive = false;
+    for (let i = 0; i < 10; i++) expect(audible(gate.push(frame(150)))).toBe(1);
+    for (let i = 0; i < 30; i++) gate.push(frame(150));
+    expect(gate.passing).toBe(false);
+    expect(audible(gate.push(frame(150)))).toBe(0);
+  });
+
   it("upsamples 8 kHz smoothly across chunks", () => {
     const up = new Upsampler();
     expect([...up.push(Int16Array.from([100, 200]))]).toEqual([50, 100, 150, 200]);
@@ -295,12 +321,15 @@ class FakeRtp extends EventEmitter {
 class FakeLive implements LiveConversation {
   texts: string[] = [];
   audioIn = 0;
+  /** samples that were not silence */
+  audibleIn = 0;
   responses: Array<{ id: string; name: string; result: string }> = [];
   closed = false;
   constructor(readonly h: LiveHandlers) {}
   async connect() {}
   sendAudio(pcm: Int16Array) {
     this.audioIn += pcm.length;
+    this.audibleIn += pcm.filter((v) => v !== 0).length;
   }
   sendText(text: string) {
     this.texts.push(text);
@@ -364,6 +393,36 @@ describe("call with Gemini Live", () => {
     s.live().h.onToolCall([{ id: "c", name: "status", args: {} }]);
     await sleep(20);
     expect(s.live().responses).toHaveLength(2);
+    s.ctl.dispose();
+  });
+
+  it("collects speech before playing it, so the line does not run dry", async () => {
+    const s = liveSetup();
+    s.ctl.begin();
+    s.live().h.onAudio(new Int16Array(800));
+    expect(s.rtp.played).toBe(0);
+    s.live().h.onAudio(new Int16Array(800));
+    expect(s.rtp.played).toBe(1600);
+    s.live().h.onAudio(new Int16Array(400));
+    s.live().h.onTurnComplete();
+    expect(s.rtp.played).toBe(2000);
+    s.live().h.onAudio(new Int16Array(400));
+    s.live().h.onInterrupted();
+    s.live().h.onTurnComplete();
+    expect(s.rtp.played).toBe(2000);
+    s.ctl.dispose();
+  });
+
+  it("keeps noise and echo on the line from Gemini while FORGE talks", async () => {
+    const s = liveSetup();
+    s.ctl.begin();
+    const loud = () => new Int16Array(160).fill(3000);
+    s.rtp.playing = true;
+    for (let i = 0; i < 8; i++) s.rtp.emit("audio", loud());
+    expect(s.live().audioIn).toBe(8 * 160);
+    expect(s.live().audibleIn).toBe(0);
+    for (let i = 0; i < 12; i++) s.rtp.emit("audio", loud());
+    expect(s.live().audibleIn).toBeGreaterThan(0);
     s.ctl.dispose();
   });
 

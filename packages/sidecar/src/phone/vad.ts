@@ -114,6 +114,72 @@ export class Vad extends EventEmitter<VadEvents> {
   }
 }
 
+export interface NoiseGateOptions {
+  /** absolute minimum level that counts as speech */
+  minLevel: number;
+  /** frames (20 ms) above the threshold before the gate opens */
+  openFrames: number;
+  /** the same while FORGE talks: echo, a cough or a door must not cut FORGE off */
+  bargeInFrames: number;
+  /** quiet after speech before the gate closes; pauses between words stay in */
+  holdMs: number;
+}
+
+const GATE_DEFAULTS: NoiseGateOptions = { minLevel: 450, openFrames: 3, bargeInFrames: 12, holdMs: 600 };
+
+/**
+ * Noise gate in front of Gemini Live, with the thresholds of the Vad above. Gemini's own activity
+ * detection hears everything on the line, so background noise and the echo of FORGE's voice counted
+ * as the caller talking and broke off its speech. Closed, the gate passes digital silence of the same
+ * length; once the caller clearly speaks it opens and first passes the frames held back, so the
+ * first syllable is not lost.
+ */
+export class NoiseGate {
+  private readonly o: NoiseGateOptions;
+  private floor = 200;
+  private above = 0;
+  private open = false;
+  private quietMs = 0;
+  private preroll: Int16Array[] = [];
+  /** set while FORGE plays audio (and shortly after, for the echo tail) */
+  outputActive = false;
+
+  constructor(options: Partial<NoiseGateOptions> = {}) {
+    this.o = { ...GATE_DEFAULTS, ...options };
+  }
+
+  /** the caller is talking right now */
+  get passing(): boolean {
+    return this.open;
+  }
+
+  /** One frame in, the frames to send out. */
+  push(frame: Int16Array): Int16Array[] {
+    const level = rms(frame);
+    const base = Math.max(this.o.minLevel, this.floor * 3);
+    if (this.open) {
+      this.quietMs = level > base ? 0 : this.quietMs + frame.length / 8;
+      if (this.quietMs >= this.o.holdMs) {
+        this.open = false;
+        this.above = 0;
+      }
+      return [frame];
+    }
+    const loud = level > base * (this.outputActive ? 2.5 : 1);
+    const rate = loud ? 0.005 : 0.05;
+    this.floor = this.floor * (1 - rate) + Math.min(level, this.floor * 4) * rate;
+    this.preroll.push(frame);
+    if (this.preroll.length > PREROLL_FRAMES) this.preroll.shift();
+    this.above = loud ? this.above + 1 : 0;
+    if (this.above < (this.outputActive ? this.o.bargeInFrames : this.o.openFrames)) return [new Int16Array(frame.length)];
+    this.open = true;
+    this.quietMs = 0;
+    const out = this.preroll;
+    this.preroll = [];
+    return out;
+  }
+}
+
 /** 8 samples per ms at 8 kHz */
 function durationMs(frames: Int16Array[]): number {
   return frames.reduce((n, f) => n + f.length, 0) / 8;

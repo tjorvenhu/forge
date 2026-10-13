@@ -66,6 +66,15 @@ der im Standby stehen bliebe). Gerufen wird die Nummer des Gesprächs, wenn sie 
 Beim Rückruf bekommt der Gesprächspartner den Wunsch als markierte Daten und prüft frisch mit den Werkzeugen. Belegte
 Leitung oder fehlende Anmeldung: neuer Versuch beim nächsten Takt, nach 15 Minuten verfällt der Termin.
 
+**Rauschen und Echo** (Nachtrag 2026-10-13): Am echten Telefon brach Gemini mitten im Satz ab und setzte neu an,
+weil seine Sprach-Erkennung Hintergrundgeräusche und das Echo der eigenen Stimme als Anrufer wertete. Drei
+Gegenmaßnahmen: (1) `realtimeInputConfig.automaticActivityDetection` mit `START_SENSITIVITY_LOW`, 300 ms
+`prefixPaddingMs`, 700 ms `silenceDurationMs`. (2) Ein Noise Gate vor Gemini (`NoiseGate` in `phone/vad.ts`, gleiche
+Schwellen wie die VAD im Claude-Ablauf): geschlossen geht digitale Stille gleicher Länge hinaus; es öffnet nach 60 ms
+klarer Sprache, solange FORGE spricht (und 300 ms danach, Echo) erst nach 240 ms mit 2,5-facher Schwelle. Beim Öffnen
+gehen die zurückgehaltenen Frames zuerst hinaus, die erste Silbe bleibt erhalten. (3) 200 ms Vorpuffer vor jedem
+(Neu-)Start der Wiedergabe, damit ein kurzes Stocken im Datenstrom nicht als Stottern hörbar wird.
+
 ## Verworfen
 
 - Konfiguration über GitHub (ein Repository pro Nutzer) für mehrere Nutzer: FORGE ist pro Windows-Konto getrennt
