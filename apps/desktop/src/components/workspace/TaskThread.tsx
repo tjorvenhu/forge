@@ -151,7 +151,15 @@ function ShellOutput({ task }: { task: Extract<TaskView, { kind: "shell" }> }) {
         {running ? "Läuft noch, die Ausgabe wird laufend gelesen." : "Beendet."}
         {out.data.truncated && ` Zu sehen sind die letzten 8 KB von ${Math.round(out.data.totalBytes / 1024)} KB.`}
       </p>
-      <pre className="whitespace-pre-wrap font-mono text-small leading-relaxed text-muted wrap-anywhere">{out.data.output || "(noch keine Ausgabe)"}</pre>
+      {out.data.output ? (
+        <pre className="whitespace-pre-wrap font-mono text-small leading-relaxed text-muted wrap-anywhere">{out.data.output}</pre>
+      ) : (
+        <p className="text-body text-subtle">
+          {running
+            ? "Der Befehl hat noch nichts ausgegeben. Läuft seine Ausgabe durch eine Pipe wie | grep oder | head, kommt sie oft erst, wenn er fertig ist."
+            : "Der Befehl hat nichts ausgegeben."}
+        </p>
+      )}
       <div ref={end} />
     </div>
   );
