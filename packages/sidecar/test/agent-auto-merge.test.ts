@@ -22,6 +22,7 @@ describe("AgentAutoMerge", () => {
   let records: Array<{ sessionId: string; body: SessionEventBody }>;
   let events: ServerEvent[];
   let background: boolean;
+  let live: Array<{ id: string; cwd: string; status: string }>;
   const engine = new GitEngine();
 
   const commitFile = async (dir: string, file: string, content: string, message: string) => {
@@ -58,7 +59,9 @@ describe("AgentAutoMerge", () => {
     records = [];
     events = [];
     background = false;
+    live = [];
     const sessions = {
+      listLive: () => live,
       closeProject: async () => {},
       start: async () => ({ id: "s-neu" }),
       send: async (id: string) => ({ id }),
@@ -75,6 +78,7 @@ describe("AgentAutoMerge", () => {
     });
   });
   afterEach(() => {
+    auto.dispose();
     db.close();
     t.cleanup();
   });
@@ -110,6 +114,39 @@ describe("AgentAutoMerge", () => {
     expect(existsSync(wt.path)).toBe(false);
     expect(projects.all().some((p) => p.id === wt.id)).toBe(false);
   }, 30_000);
+
+  it("lets an agent wait while the main session works on the same files and merges it when that turn ends", async () => {
+    const lines = (change: Record<number, string> = {}) => Array.from({ length: 12 }, (_, i) => change[i + 1] ?? `Zeile ${i + 1}`).join("\n") + "\n";
+    await commitFile(repo, "notes.md", lines(), "Notizen");
+    const wt = await worktrees.create(parent, "agent/notes", { fromDir: repo });
+    await commitFile(wt.path, "notes.md", lines({ 1: "Agent" }), "Agent: Notizen");
+    session("s-agent/notes", wt.id, wt.path);
+    db.setSessionParent("s-agent/notes", "main");
+    // The main session is mid-turn and has the same file open, uncommitted.
+    writeFileSync(path.join(repo, "notes.md"), lines({ 11: "Hauptsession" }));
+    live = [{ id: "main", cwd: repo, status: "running" }];
+
+    await auto.turnDone("s-agent/notes", true);
+    expect(outcomes()).toEqual(["waiting"]);
+    expect(auto.waitingAgents()).toEqual([wt.id]);
+    expect(events[0]).toMatchObject({ payload: { message: expect.stringMatching(/^Wartet aufs Zusammenführen: In main arbeitet gerade eine Session.*FORGE führt den Agenten selbst zusammen/) } });
+    expect(records.map((r) => [r.sessionId, r.body.type === "automation" ? r.body.action : ""])).toEqual([
+      ["s-agent/notes", "wait"],
+      ["main", "wait"],
+    ]);
+    // Asked again while it still waits: no second notice.
+    await auto.retryWaiting();
+    expect(outcomes()).toEqual(["waiting"]);
+    expect(existsSync(wt.path)).toBe(true);
+
+    // The main session's turn is over: its end tries again, and now it fits.
+    live = [{ id: "main", cwd: repo, status: "idle" }];
+    await auto.turnDone("main", true);
+    expect(outcomes()).toEqual(["waiting", "merged"]);
+    expect(auto.waitingAgents()).toEqual([]);
+    expect((await git(repo, "log", "-1", "--format=%s")).trim()).toBe("Agent: Notizen");
+    expect(existsSync(wt.path)).toBe(false);
+  }, 40_000);
 
   it("leaves the agent to the user when its tests failed", async () => {
     const wt = await agent("agent/rot");

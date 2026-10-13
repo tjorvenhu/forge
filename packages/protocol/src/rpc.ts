@@ -578,7 +578,7 @@ export type ServerEvent =
    * auto-merge of a finished agent. skipped: FORGE could not merge on its own, the user decides
    * (the dialog for `worktreeId`); conflict: the agent resolves them, the next turn end tries again
    */
-  | { event: "agent.autoMerge"; payload: { rootId: string; worktreeId: string; branch: string | null; outcome: "merged" | "conflict" | "skipped"; message: string } }
+  | { event: "agent.autoMerge"; payload: { rootId: string; worktreeId: string; branch: string | null; outcome: "merged" | "conflict" | "skipped" | "waiting"; message: string } }
   | { event: "phone.updated"; payload: PhoneState }
   | { event: "update.updated"; payload: AppUpdateState }
   /** the main window installs the offered update (asked for on the phone) */

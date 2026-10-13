@@ -21,6 +21,8 @@ describe("AgentFinisher", () => {
   let started: Array<{ projectId: string; prompt: string }>;
   let closed: string[][];
   let notified: string[];
+  /** live sessions as SessionService.listLive reports them */
+  let live: Array<{ id: string; cwd: string; status: string }>;
   const engine = new GitEngine();
 
   const commitFile = async (dir: string, file: string, content: string, message: string) => {
@@ -42,7 +44,9 @@ describe("AgentFinisher", () => {
     started = [];
     closed = [];
     notified = [];
+    live = [];
     const sessions = {
+      listLive: () => live,
       closeProject: async (ids: string[]) => void closed.push(ids),
       start: async (p: { projectId: string; prompt: string }) => (started.push(p), { id: "s-konflikt" }),
       send: async () => ({ id: "s-send" }),
@@ -135,12 +139,60 @@ describe("AgentFinisher", () => {
     expect((await git(repo, "log", "-1", "--format=%s")).trim()).toBe("init");
   }, 30_000);
 
-  it("stops a merge that would overwrite uncommitted changes in the project", async () => {
+  const lines = (n: number, change: Record<number, string> = {}) => Array.from({ length: n }, (_, i) => change[i + 1] ?? `Zeile ${i + 1}`).join("\n") + "\n";
+  /** git checks files out with CRLF on Windows */
+  const read = (file: string) => readFileSync(path.join(repo, file), "utf8").replace(/\r\n/g, "\n");
+  const stashes = async () => (await git(repo, "stash", "list")).trim();
+
+  it("carries uncommitted changes in the project over the merge when they touch other lines of the agent's files", async () => {
+    await commitFile(repo, "notes.md", lines(12), "Notizen");
+    const wt = await worktrees.create(parent, "agent/notes", { fromDir: repo });
+    await commitFile(wt.path, "notes.md", lines(12, { 1: "Agent oben" }), "Agent: Notizen");
+    // The main session's work in progress: the same file, other lines, not committed.
+    writeFileSync(path.join(repo, "notes.md"), lines(12, { 11: "Hauptsession unten" }));
+
+    const r = await finisher.finish(wt.id, "merge");
+    expect(r.outcome).toBe("merged");
+    expect((await git(repo, "log", "-1", "--format=%s")).trim()).toBe("Agent: Notizen");
+    // Both are there; the main session's lines are still uncommitted, nothing left in the stash.
+    expect(read("notes.md")).toBe(lines(12, { 1: "Agent oben", 11: "Hauptsession unten" }));
+    expect((await git(repo, "status", "--porcelain")).trim()).toBe("M notes.md");
+    expect(await stashes()).toBe("");
+    expect(existsSync(wt.path)).toBe(false);
+  }, 30_000);
+
+  it("waits without touching anything when the uncommitted changes hit the same lines", async () => {
     const wt = await worktrees.create(parent, "agent/readme2", { fromDir: repo });
     await commitFile(wt.path, "README.md", "# Agent\n", "README");
     writeFileSync(path.join(repo, "README.md"), "# lokal\n");
-    await expect(finisher.finish(wt.id, "merge")).rejects.toMatchObject({ code: "CONFLICT", message: expect.stringMatching(/nicht committete Änderungen/) });
+    const r = await finisher.finish(wt.id, "merge");
+    expect(r).toMatchObject({ outcome: "waiting", files: ["README.md"], message: expect.stringMatching(/^Noch nicht zusammengeführt: .*dieselben Stellen in README\.md/) });
     expect(readFileSync(path.join(repo, "README.md"), "utf8").trim()).toBe("# lokal");
+    expect((await git(repo, "log", "-1", "--format=%s")).trim()).toBe("init");
+    expect(await stashes()).toBe("");
     expect(existsSync(wt.path)).toBe(true);
-  }, 20_000);
+
+    // Once the project committed its work, the next try rebases the agent; the clash goes back to it.
+    await git(repo, "commit", "-am", "lokal");
+    expect((await finisher.finish(wt.id, "merge")).outcome).toBe("conflict");
+  }, 30_000);
+
+  it("waits while a session works in the project, also when the changes would fit, and for new files of the same name", async () => {
+    await commitFile(repo, "notes.md", lines(12), "Notizen");
+    const wt = await worktrees.create(parent, "agent/busy", { fromDir: repo });
+    await commitFile(wt.path, "notes.md", lines(12, { 1: "Agent" }), "Agent: Notizen");
+    await commitFile(wt.path, "neu.ts", "export const a = 1;\n", "Agent: neu");
+    writeFileSync(path.join(repo, "notes.md"), lines(12, { 11: "Hauptsession" }));
+    live = [{ id: "main", cwd: repo, status: "running" }];
+    expect(await finisher.finish(wt.id, "merge")).toMatchObject({ outcome: "waiting", message: expect.stringMatching(/arbeitet gerade eine Session/) });
+
+    live = [{ id: "main", cwd: repo, status: "idle" }];
+    writeFileSync(path.join(repo, "neu.ts"), "export const b = 2;\n");
+    expect(await finisher.finish(wt.id, "merge")).toMatchObject({ outcome: "waiting", message: expect.stringMatching(/neue, nicht committete Dateien, die der Agent ebenfalls angelegt hat: neu\.ts/) });
+    expect(read("notes.md")).toBe(lines(12, { 11: "Hauptsession" }));
+
+    rmSync(path.join(repo, "neu.ts"));
+    expect((await finisher.finish(wt.id, "merge")).outcome).toBe("merged");
+    expect(read("notes.md")).toBe(lines(12, { 1: "Agent", 11: "Hauptsession" }));
+  }, 30_000);
 });

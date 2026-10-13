@@ -231,7 +231,7 @@ function itemFolder(thread: string | null = null) {
                   ? `Auto-Push: ${b.message}`
                   : b.message,
             // A merge that is not ok hit conflicts the agent now resolves: a warning, not a failure.
-            tone: b.action === "merge" ? (b.ok ? "success" : "warning") : !b.ok ? "danger" : b.action === "skip" ? "warning" : "success",
+            tone: b.action === "merge" ? (b.ok ? "success" : "warning") : b.action === "wait" ? "info" : !b.ok ? "danger" : b.action === "skip" ? "warning" : "success",
             card:
               b.action === "commit"
                 ? { title: b.ok ? "Auto-Commit" : "Auto-Commit fehlgeschlagen", ref: b.ok ? (b.hash?.slice(0, 7) ?? null) : null, detail: b.ok ? `${b.message} · ${b.files.length} Datei(en)` : b.message, icon: "commit" }
@@ -239,7 +239,9 @@ function itemFolder(thread: string | null = null) {
                   ? { title: b.ok ? "Auto-Push" : "Auto-Push fehlgeschlagen", ref: null, detail: b.message, icon: "push" }
                   : b.action === "merge"
                     ? { title: b.ok ? "Agent zusammengeführt" : "Konflikte beim Zusammenführen", ref: null, detail: b.message.replace(/^Automatisch zusammengeführt:\s*/, ""), icon: "merge" }
-                    : { title: "Automatik übersprungen", ref: null, detail: b.message.replace(/^(Auto-(Commit|Push) übersprungen|Nicht automatisch zusammengeführt):\s*/, ""), icon: "skip" },
+                    : b.action === "wait"
+                      ? { title: "Wartet aufs Zusammenführen", ref: null, detail: b.message.replace(/^Wartet aufs Zusammenführen:\s*/, ""), icon: "merge" }
+                      : { title: "Automatik übersprungen", ref: null, detail: b.message.replace(/^(Auto-(Commit|Push) übersprungen|Nicht automatisch zusammengeführt):\s*/, ""), icon: "skip" },
           });
           break;
         case "files.rewound":

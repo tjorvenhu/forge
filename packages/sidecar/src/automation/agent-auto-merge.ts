@@ -9,6 +9,8 @@ import type { AgentFinisher } from "./agent-finish.js";
 export const AUTO_MERGE_TAG = "auto-merge";
 /** Conflict hand-backs per agent before FORGE leaves the decision to the user. */
 export const MAX_CONFLICT_ROUNDS = 3;
+/** Agents waiting for the project are tried again this often, besides at the end of every turn. */
+export const WAITING_RETRY_MS = 2 * 60_000;
 
 export interface AgentAutoMergeDeps {
   db: Db;
@@ -22,7 +24,7 @@ export interface AgentAutoMergeDeps {
   hasBackground(sessionId: string): boolean;
 }
 
-type Outcome = "merged" | "conflict" | "skipped";
+type Outcome = "merged" | "conflict" | "skipped" | "waiting";
 
 /** Whether finished agents of this project are merged automatically. The main project decides: worktrees only copied its tags when they started. */
 export function autoMergeOn(projects: ProjectManager, project: Project): boolean {
@@ -38,20 +40,65 @@ export class AgentAutoMerge {
   /** worktree project -> conflicts handed back to its agent so far */
   private readonly conflicts = new Map<string, number>();
   private readonly running = new Set<string>();
+  /** worktree project -> agent session: finished agents whose work the project cannot take yet */
+  private readonly waiting = new Map<string, string>();
+  private retryTimer: ReturnType<typeof setInterval> | null = null;
 
   constructor(private readonly d: AgentAutoMergeDeps) {}
 
   async turnDone(sessionId: string, testsOk: boolean): Promise<void> {
     const rec = this.d.db.getSession(sessionId);
-    const worktree = rec ? this.d.projects.all().find((p) => p.id === rec.projectId) : null;
-    if (!worktree?.parentId || !autoMergeOn(this.d.projects, worktree)) return;
-    if (this.running.has(worktree.id) || this.d.hasBackground(sessionId)) return;
+    const project = rec ? this.d.projects.all().find((p) => p.id === rec.projectId) : null;
+    // Any turn that ends (its auto-commit done) may have made room for a waiting agent.
+    await this.retryWaiting(sessionId);
+    if (!project?.parentId || !autoMergeOn(this.d.projects, project)) return;
+    if (this.d.hasBackground(sessionId)) return;
+    await this.attempt(sessionId, project, testsOk);
+  }
+
+  /** Agents of this list are still waiting for the project; for the UI and tests. */
+  waitingAgents(): string[] {
+    return [...this.waiting.keys()];
+  }
+
+  private async attempt(sessionId: string, worktree: Project, testsOk: boolean) {
+    if (this.running.has(worktree.id)) return;
     this.running.add(worktree.id);
     try {
       await this.run(sessionId, worktree, testsOk);
     } finally {
       this.running.delete(worktree.id);
     }
+  }
+
+  /** Tries the waiting agents again; `except`: the session whose own turn is handled right after. */
+  async retryWaiting(except: string | null = null): Promise<void> {
+    for (const [worktreeId, sessionId] of [...this.waiting]) {
+      const worktree = this.d.projects.all().find((p) => p.id === worktreeId);
+      // Merged or thrown away by hand meanwhile, or auto-merge switched off.
+      if (!worktree || !autoMergeOn(this.d.projects, worktree)) {
+        this.waiting.delete(worktreeId);
+        continue;
+      }
+      if (sessionId === except || this.d.hasBackground(sessionId)) continue;
+      await this.attempt(sessionId, worktree, true);
+    }
+    this.syncTimer();
+  }
+
+  private syncTimer() {
+    if (this.waiting.size && !this.retryTimer) {
+      this.retryTimer = setInterval(() => void this.retryWaiting().catch(() => null), WAITING_RETRY_MS);
+      this.retryTimer.unref?.();
+    } else if (!this.waiting.size && this.retryTimer) {
+      clearInterval(this.retryTimer);
+      this.retryTimer = null;
+    }
+  }
+
+  dispose() {
+    if (this.retryTimer) clearInterval(this.retryTimer);
+    this.retryTimer = null;
   }
 
   private async run(sessionId: string, worktree: Project, testsOk: boolean) {
@@ -66,7 +113,10 @@ export class AgentAutoMerge {
     const review = await this.d.finisher.review(worktree.id);
     // A new turn started meanwhile; its end tries again.
     if (review.busy) return;
-    const skip = (reason: string) => this.report(sessionId, parentId, worktree, review.branch, "skipped", `Nicht automatisch zusammengeführt: ${reason}`);
+    const skip = (reason: string) => {
+      this.settle(worktree.id);
+      this.report(sessionId, parentId, worktree, review.branch, "skipped", `Nicht automatisch zusammengeführt: ${reason}`);
+    };
     if (!testsOk) return skip("Die Tests sind fehlgeschlagen.");
     if (review.mergeBlocker) return skip(review.mergeBlocker);
     const rounds = this.conflicts.get(worktree.id) ?? 0;
@@ -78,6 +128,18 @@ export class AgentAutoMerge {
     } catch (e) {
       return skip(e instanceof Error ? e.message : String(e));
     }
+    if (r.outcome === "waiting") {
+      // Said once; the retries stay quiet until it goes through.
+      const told = this.waiting.has(worktree.id);
+      this.waiting.set(worktree.id, sessionId);
+      this.syncTimer();
+      if (!told) {
+        const why = r.message.replace(/^Noch nicht zusammengeführt:\s*/, "");
+        this.report(sessionId, parentId, worktree, r.branch, "waiting", `Wartet aufs Zusammenführen: ${why} FORGE führt den Agenten selbst zusammen, sobald es passt: nach dem nächsten Durchlauf im Projekt (samt Auto-Commit), sonst beim nächsten Versuch in ein paar Minuten.`);
+      }
+      return;
+    }
+    this.settle(worktree.id);
     if (r.outcome === "conflict") {
       this.conflicts.set(worktree.id, rounds + 1);
       return this.report(sessionId, parentId, worktree, r.branch, "conflict", r.message);
@@ -86,9 +148,15 @@ export class AgentAutoMerge {
     this.report(null, parentId, worktree, r.branch, "merged", `Automatisch zusammengeführt: ${r.message}`);
   }
 
+  private settle(worktreeId: string) {
+    this.waiting.delete(worktreeId);
+    this.syncTimer();
+  }
+
   /** In the agent's chat (gone after a merge), in the chat of the session that started it, and to the UI. */
   private report(sessionId: string | null, parentId: string | null, worktree: Project, branch: string | null, outcome: Outcome, message: string) {
-    const body: SessionEventBody = { type: "automation", action: outcome === "skipped" ? "skip" : "merge", ok: outcome !== "conflict", message, hash: null, files: [] };
+    const action = outcome === "skipped" ? "skip" : outcome === "waiting" ? "wait" : "merge";
+    const body: SessionEventBody = { type: "automation", action, ok: outcome !== "conflict", message, hash: null, files: [] };
     for (const id of new Set([sessionId, parentId])) if (id && this.d.db.getSession(id)) this.d.record(id, body);
     this.d.emit({ event: "agent.autoMerge", payload: { rootId: worktree.parentId!, worktreeId: worktree.id, branch, outcome, message } });
   }

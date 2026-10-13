@@ -153,6 +153,13 @@ describe("search focus and compaction", () => {
     expect((items[0] as { text: string }).text).toMatch(/^Kontext automatisch komprimiert: vorher 170k, nachher 12k Tokens\./);
   });
 
+  it("shows an agent waiting for the project as a calm notice, not as a skipped automation", () => {
+    seq = 0;
+    const message = "Wartet aufs Zusammenführen: In main arbeitet gerade eine Session. FORGE führt den Agenten selbst zusammen, sobald es passt.";
+    const items = buildChatItems([ev({ type: "automation", action: "wait", ok: true, message, hash: null, files: [] })], {});
+    expect(items[0]).toMatchObject({ kind: "notice", tone: "info", card: { title: "Wartet aufs Zusammenführen", icon: "merge", detail: expect.stringMatching(/^In main arbeitet/) } });
+  });
+
   it("summarises questions and plans in cards and the activity feed", () => {
     expect(toolSummary("AskUserQuestion", { questions: [{ question: "Welche Datenbank?" }] })).toBe("Welche Datenbank?");
     expect(toolSummary("ExitPlanMode", { plan: "x" })).toBe("Plan zur Freigabe");

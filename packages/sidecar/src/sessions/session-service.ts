@@ -373,6 +373,7 @@ export class SessionService {
     this.updateResume.stop();
     this.autoContinue.stop();
     this.titles.shutdown();
+    this.agentAutoMerge?.dispose();
     this.lifecycle.shutdown(forUpdate ? "FORGE wird aktualisiert" : undefined);
   }
 

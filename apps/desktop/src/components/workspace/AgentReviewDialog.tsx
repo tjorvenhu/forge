@@ -193,6 +193,11 @@ function Actions({ r, onDone }: { r: AgentReview; onDone: () => void }) {
         });
         return;
       }
+      if (res.outcome === "waiting") {
+        // Nothing changed: the project's open work and the agent's overlap. With auto-merge FORGE tries again by itself.
+        toast.notify({ tone: "warning", title: "Noch nicht zusammengeführt", body: `${res.message.replace(/^Noch nicht zusammengeführt:\s*/, "")} Committe die Änderungen im Projekt oder warte, bis die Session dort fertig ist.`, duration: 15_000 });
+        return;
+      }
       const ui = useUi.getState();
       if (ui.view === "workspace" && ui.activeProjectId === r.projectId) openProject(r.rootId);
       toast.success(res.outcome === "merged" ? "Agent zusammengeführt" : "Agent verworfen", res.message);

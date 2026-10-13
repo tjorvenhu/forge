@@ -211,7 +211,8 @@ export const SessionEventBody = z.discriminatedUnion("type", [
   }),
   z.object({
     type: z.literal("automation"),
-    action: z.enum(["commit", "push", "merge", "skip"]),
+    /** wait: a finished agent waits until the project is ready to take its work */
+    action: z.enum(["commit", "push", "merge", "skip", "wait"]),
     ok: z.boolean(),
     message: z.string(),
     hash: z.string().nullable(),
@@ -665,8 +666,12 @@ export type AgentReview = z.infer<typeof AgentReview>;
 
 export const AgentFinishResult = z.object({
   action: z.enum(["merge", "discard"]),
-  /** conflict: the rebase hit conflicts, the agent resolves them (sessionId) and the worktree stays */
-  outcome: z.enum(["merged", "discarded", "conflict"]),
+  /**
+   * conflict: the rebase hit conflicts, the agent resolves them (sessionId) and the worktree stays.
+   * waiting: uncommitted work in the project overlaps with the agent and cannot be carried over now;
+   * the worktree stays, nothing changed.
+   */
+  outcome: z.enum(["merged", "discarded", "conflict", "waiting"]),
   branch: z.string().nullable(),
   targetBranch: z.string().nullable(),
   commits: z.number().int(),

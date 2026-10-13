@@ -174,13 +174,10 @@ export class AgentFinisher {
     }
 
     const commits = await this.count(dir, `refs/heads/${targetBranch}..refs/heads/${branch}`);
-    const ff = await git.exec(dir, ["merge", "--ff-only", `refs/heads/${branch}`], undefined, 120_000);
-    if (ff.code !== 0) {
-      const msg = (ff.stderr || ff.stdout).trim();
-      if (/would be overwritten|overwritten by merge/i.test(msg)) {
-        throw new ForgeError("CONFLICT", `Im Projekt gibt es nicht committete Änderungen an Dateien, die auch der Agent geändert hat. Committe oder verwirf sie dort zuerst. (${msg})`);
-      }
-      throw new ForgeError("GIT_FAILED", msg || `${branch} ließ sich nicht in ${targetBranch} übernehmen.`);
+    const waiting = await this.fastForward(dir, branch, targetBranch);
+    if (waiting) {
+      this.changed(l);
+      return { action: "merge", outcome: "waiting", branch, targetBranch, commits: 0, files: waiting.files, sessionId: null, branchError: null, message: waiting.message };
     }
     const taken = `${commits === 1 ? "1 Commit" : `${commits} Commits`} von ${branch} in ${targetBranch} übernommen`;
     let removed: { branchError: string | null };
@@ -206,6 +203,62 @@ export class AgentFinisher {
       branchError: removed.branchError,
       message: `${taken}, Worktree und Branch gelöscht.${removed.branchError ? ` Der Branch blieb aber: ${removed.branchError}` : ""}`,
     };
+  }
+
+  /**
+   * Moves the target branch forward to the agent's branch. Uncommitted work in the target folder that
+   * touches the same files stops a plain fast-forward; FORGE then puts it aside, moves forward and puts
+   * it back, but only when nobody works there right now and a dry run shows it goes back cleanly.
+   * Otherwise nothing changes and the result says why the agent has to wait.
+   */
+  private async fastForward(dir: string, branch: string, targetBranch: string): Promise<{ message: string; files: string[] } | null> {
+    const git = this.d.git;
+    const own = `refs/heads/${branch}`;
+    const tryFf = () => git.exec(dir, ["merge", "--ff-only", own], undefined, 120_000);
+    const ff = await tryFf();
+    if (ff.code === 0) return null;
+    const msg = (ff.stderr || ff.stdout).trim();
+    if (!/would be overwritten|overwritten by merge|untracked working tree files/i.test(msg)) {
+      throw new ForgeError("GIT_FAILED", msg || `${branch} ließ sich nicht in ${targetBranch} übernehmen.`);
+    }
+    const lines = (out: string) => out.split("\n").map((f) => f.trim()).filter(Boolean);
+    const theirs = new Set(lines((await git.exec(dir, ["diff", "--name-only", "HEAD", own])).stdout));
+    const dirty = (await git.status(dir)).files.map((f) => f.path).filter((f) => theirs.has(f));
+    const wait = (why: string) => ({ message: `Noch nicht zusammengeführt: ${why}`, files: dirty });
+
+    if (this.busyIn(dir)) return wait(`In ${targetBranch} arbeitet gerade eine Session, und es gibt dort nicht committete Änderungen an Dateien, die auch der Agent geändert hat (${dirty.join(", ") || "siehe git status"}).`);
+    // A new, uncommitted file under a name the agent also created: no way to tell which one should win.
+    const untracked = lines((await git.exec(dir, ["ls-files", "--others", "--exclude-standard"])).stdout).filter((f) => theirs.has(f));
+    if (untracked.length) return wait(`Im Projekt liegen neue, nicht committete Dateien, die der Agent ebenfalls angelegt hat: ${untracked.join(", ")}.`);
+
+    const stash = (await git.exec(dir, ["stash", "create"])).stdout.trim();
+    if (!stash) throw new ForgeError("GIT_FAILED", msg);
+    // Dry run of "put back after the fast-forward": base HEAD, one side the agent, the other the open work.
+    const check = await git.exec(dir, ["merge-tree", "--write-tree", "--name-only", "--no-messages", "--merge-base=HEAD", own, stash]);
+    if (check.code !== 0 && check.code !== 1) throw new ForgeError("GIT_FAILED", (check.stderr || check.stdout).trim() || "Probelauf des Zusammenführens fehlgeschlagen.");
+    if (check.code === 1) {
+      const clashes = [...new Set(lines(check.stdout).slice(1))];
+      return wait(`Die nicht committeten Änderungen im Projekt und die Arbeit des Agenten betreffen dieselben Stellen${clashes.length ? ` in ${clashes.join(", ")}` : ""}.`);
+    }
+
+    const pushed = await git.exec(dir, ["stash", "push", "-m", `FORGE: beiseitegelegt beim Zusammenführen von ${branch}`]);
+    if (pushed.code !== 0) throw new ForgeError("GIT_FAILED", (pushed.stderr || pushed.stdout).trim() || "Offene Änderungen ließen sich nicht beiseitelegen.");
+    const moved = await tryFf();
+    const popped = await git.exec(dir, ["stash", "pop"]);
+    if (popped.code !== 0) {
+      throw new ForgeError(
+        "GIT_FAILED",
+        `Die offenen Änderungen im Projekt ließen sich nicht vollständig zurücklegen; sie liegen weiter im Stash (git stash list). ${(popped.stderr || popped.stdout).trim()}`,
+      );
+    }
+    if (moved.code !== 0) throw new ForgeError("GIT_FAILED", (moved.stderr || moved.stdout).trim() || `${branch} ließ sich nicht in ${targetBranch} übernehmen.`);
+    return null;
+  }
+
+  /** A session is working in this folder right now: its files must not be put aside under it. */
+  private busyIn(dir: string): boolean {
+    const key = pathKey(dir);
+    return this.d.sessions.listLive().some((s) => BUSY.has(s.status) && pathKey(s.cwd) === key);
   }
 
   /** The agent knows its own changes best; without a session one starts in the worktree. */

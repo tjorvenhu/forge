@@ -35,6 +35,7 @@ export function agentAutoMerged(e: ServerEventPayload<"agent.autoMerge">) {
   const title = e.branch ?? "Agent";
   if (e.outcome === "merged") toast.success(`${title} zusammengeführt`, e.message.replace(/^Automatisch zusammengeführt:\s*/, ""));
   else if (e.outcome === "conflict") toast.notify({ tone: "warning", title: `${title}: Konflikte`, body: e.message });
+  else if (e.outcome === "waiting") toast.notify({ tone: "info", title: `${title} wartet aufs Zusammenführen`, body: e.message.replace(/^Wartet aufs Zusammenführen:\s*/, "") });
   else {
     toast.notify({
       tone: "warning",
