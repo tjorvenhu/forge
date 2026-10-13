@@ -146,6 +146,7 @@ const SETTING_OPTIONS: ReadonlyArray<{ id: string; label: string; section: Setti
   { id: "claude-setup", label: "Claude Code installieren und anmelden", section: "claude", keywords: "login abo update version" },
   { id: "claude-path", label: "Pfad zur Claude-CLI", section: "claude", keywords: "executable programm" },
   { id: "phone-setup", label: "Telefon einrichten", section: "phone", keywords: "anruf sip gemini openai stimme tischtelefon" },
+  { id: "phone-numbers", label: "Telefonnummern: wen FORGE anruft, wer anrufen darf", section: "phone", keywords: "nummer handy rufnummer erlaubte anrufer benachrichtigung einschalten ausschalten" },
   { id: "backup-restore", label: "Backup herunterladen oder zurücksetzen", section: "backup", keywords: "sichern wiederherstellen export" },
   { id: "global-rules", label: "Globale Regeln bearbeiten", section: "rules", keywords: "claude.md memory anweisungen" },
   { id: "updates", label: "Updates und Version", section: "about", keywords: "version release" },

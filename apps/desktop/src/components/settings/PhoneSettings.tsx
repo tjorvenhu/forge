@@ -7,11 +7,12 @@ import { errorMessage } from "@/lib/rpc";
 import { cn, relativeTime } from "@/lib/utils";
 import { toast } from "@/stores/toast";
 import { Button } from "@/components/ui/button";
-import { Field, Input, Textarea } from "@/components/ui/input";
+import { Field, Input } from "@/components/ui/input";
 import { Badge, ErrorBanner, SectionTitle, ToggleRow } from "@/components/ui/misc";
 import { Skeleton, SkeletonRegion } from "@/components/ui/skeleton";
 import { Select } from "@/components/ui/select";
 import { PhoneStatusBadge } from "@/components/layout/PhoneButton";
+import { PhoneNumberList } from "./PhoneNumberList";
 
 const DEFAULT_PORT = "5060";
 
@@ -24,7 +25,6 @@ type Draft = Omit<PhoneConfig, "enabled" | "hasPassword" | "hasOpenAiKey" | "has
   openAiKey: string;
   geminiKey: string;
   pin: string;
-  callers: string;
   desk: Omit<PhoneConfig["desk"], "hasWebPassword" | "provisioningUrl" | "httpPort" | "sessionKeys" | "clearKeys"> & {
     httpPort: string;
     sessionKeys: string;
@@ -42,7 +42,6 @@ function toDraft(c: PhoneConfig): Draft {
     openAiKey: "",
     geminiKey: "",
     pin: "",
-    callers: c.allowedCallers.join("\n"),
     desk: { ...desk, httpPort: String(desk.httpPort), sessionKeys: desk.sessionKeys.join(", "), clearKeys: desk.clearKeys.join(", "), password: "" },
   };
 }
@@ -88,8 +87,9 @@ function toPatch(d: Draft): { patch: ParamsOf<"phone.saveConfig">; key: string; 
     voice: d.voice,
     sttModel: d.sttModel,
     ttsModel: d.ttsModel,
-    allowedCallers: d.callers.split(/[\n,;]+/).map((x) => x.trim()).filter(Boolean),
-    notifyNumber: d.notifyNumber?.trim() || null,
+    // A row just added has no number yet: nothing to save until one is typed.
+    allowedCallers: d.allowedCallers.filter((n) => n.number.trim()),
+    notifyNumbers: d.notifyNumbers.filter((n) => n.number.trim()),
     notifyOn: d.notifyOn,
     requirePin: d.requirePin,
     desk: { ...desk, httpPort: deskPort, sessionKeys, clearKeys },
@@ -282,7 +282,7 @@ export function PhoneSettings() {
                 ? "Ruf FORGE an und steuere Sessions per Sprache. Trag dafür unten die Zugangsdaten deiner Telefonanlage ein und schalte das Telefon ein."
                 : "Ein- und ausschalten auch über das Telefon-Symbol oben rechts."}
         </span>
-        {state?.registration === "registered" && c.notifyNumber && (
+        {state?.registration === "registered" && c.notifyNumbers.some((n) => n.enabled) && (
           <Button size="sm" onClick={() => void call("phone.testCall", {}).then((s) => qc.setQueryData(keys.phoneState, s)).catch((e: unknown) => toast.error("Testanruf fehlgeschlagen", errorMessage(e)))}>
             <PhoneOutgoing className="h-3.5 w-3.5" /> Testanruf
           </Button>
@@ -391,15 +391,22 @@ export function PhoneSettings() {
             )}
           </Field>
           <SectionTitle>Wer darf anrufen, wann ruft FORGE an</SectionTitle>
-          <Field label="Erlaubte Anrufer" hint="Eine Nummer pro Zeile. Andere Anrufe weist FORGE ab. Ist die Liste leer, nimmt FORGE keine Anrufe an.">
-            <Textarea value={draft.callers} onChange={(e) => up({ callers: e.target.value })} rows={3} className="font-mono text-xs" placeholder="+49 170 1234567" />
-          </Field>
-          <Field
-            label="FORGE ruft diese Nummer an"
-            hint="Nicht, solange du in FORGE arbeitest: Ist das Fenster aktiv und du hast es in den letzten 5 Minuten benutzt, bleibt das Telefon still."
-          >
-            <Input value={draft.notifyNumber ?? ""} onChange={(e) => up({ notifyNumber: e.target.value })} className="font-mono text-xs" placeholder="z. B. Handy oder Nebenstelle" />
-          </Field>
+          <PhoneNumberList
+            label="Erlaubte Anrufer"
+            hint="Andere Anrufe weist FORGE ab, ausgeschaltete Nummern auch. Ohne eingeschaltete Nummer nimmt FORGE keine Anrufe an."
+            entries={draft.allowedCallers}
+            onChange={(allowedCallers) => up({ allowedCallers })}
+            addLabel="Nummer hinzufügen"
+            empty="Keine Nummer eingetragen. FORGE nimmt keine Anrufe an."
+          />
+          <PhoneNumberList
+            label="FORGE ruft diese Nummern an"
+            hint="Alle eingeschalteten Nummern klingeln gleichzeitig. Wer zuerst abnimmt, hat das Gespräch, bei den anderen bricht FORGE den Anruf sofort ab. Nicht, solange du in FORGE arbeitest: Ist das Fenster aktiv und du hast es in den letzten 5 Minuten benutzt, bleibt das Telefon still."
+            entries={draft.notifyNumbers}
+            onChange={(notifyNumbers) => up({ notifyNumbers })}
+            addLabel="Nummer hinzufügen"
+            empty="Keine Nummer eingetragen. FORGE ruft nicht von sich aus an."
+          />
           <div className="flex flex-col gap-2">
             {(
               [

@@ -204,11 +204,16 @@ export const AUTOMATION_TAGS = {
 export type AutomationTag = keyof typeof AUTOMATION_TAGS;
 const AUTOMATION_TAG_IDS = Object.keys(AUTOMATION_TAGS) as AutomationTag[];
 
-/** when FORGE calls on its own (setting notifyOn) */
+export const NUMBER_ACTIONS = ["on", "off", "add", "remove"] as const;
+export type NumberAction = (typeof NUMBER_ACTIONS)[number];
+
+/** when FORGE calls on its own (setting notifyOn), and the numbers it calls or lets in */
 export interface CallSettingsPatch {
   done?: boolean;
   approval?: boolean;
   error?: boolean;
+  /** one entry of a number list: switch on or off, add, remove */
+  numbers?: { action: NumberAction; list: "notify" | "allowed"; number: string; label?: string };
 }
 
 /** What the conversation partner may do on the phone. Implemented by the phone service, which also checks the PIN. */
@@ -844,13 +849,25 @@ export const PHONE_TOOLS: readonly PhoneToolSpec[] = [
   {
     name: "call_settings",
     description:
-      "Wann FORGE von sich aus anruft: wenn eine Session fertig ist (done), wenn sie eine Entscheidung braucht oder Claude dringend meldet (approval), bei Fehlern (error). Nur angeben, was sich ändern soll; ohne Angaben sagt es den Stand. Alle drei false: keine Anrufe mehr.",
+      "Wann und wen FORGE von sich aus anruft: wenn eine Session fertig ist (done), wenn sie eine Entscheidung braucht oder Claude dringend meldet (approval), bei Fehlern (error). Alle drei false: keine Anrufe mehr. FORGE ruft alle eingeschalteten Nummern gleichzeitig an, wer zuerst abnimmt, hat das Gespräch. Mit number_action eine Nummer der Liste list ein- oder ausschalten (on, off), neu eintragen (add, mit label als Bezeichnung) oder löschen (remove); list notify sind die Nummern, die FORGE anruft, allowed die, die FORGE anrufen dürfen. number ist die Nummer oder ihre Bezeichnung wie Handy. Nur angeben, was sich ändern soll; ohne Angaben sagt es den Stand.",
     params: {
       done: { type: "boolean", optional: true },
       approval: { type: "boolean", optional: true },
       error: { type: "boolean", optional: true },
+      number_action: { type: "string", optional: true, enum: NUMBER_ACTIONS },
+      list: { type: "string", optional: true, enum: ["notify", "allowed"], description: "notify: Nummern, die FORGE anruft (Standard); allowed: Nummern, die FORGE anrufen dürfen" },
+      number: { type: "string", optional: true, description: "Telefonnummer oder Bezeichnung eines Eintrags, z. B. Handy" },
+      label: { type: "string", optional: true, description: "nur bei add: Bezeichnung der neuen Nummer, z. B. Büro" },
     },
-    run: (t, a) => t.callSettings({ done: optBool(a.done), approval: optBool(a.approval), error: optBool(a.error) }),
+    run: (t, a) => {
+      const action = NUMBER_ACTIONS.find((x) => x === a.number_action);
+      return t.callSettings({
+        done: optBool(a.done),
+        approval: optBool(a.approval),
+        error: optBool(a.error),
+        numbers: action ? { action, list: a.list === "allowed" ? "allowed" : "notify", number: str(a.number), label: opt(a.label) } : undefined,
+      });
+    },
   },
   {
     name: "call_back",

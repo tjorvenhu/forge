@@ -2,7 +2,7 @@ import { beep, SAMPLE_RATE } from "./audio.js";
 import type { PinResult } from "./pin-guard.js";
 import { PIN_TEXT, PinPad } from "./pin-pad.js";
 import type { RtpSession } from "./rtp.js";
-import type { SipCall } from "./sip-ua.js";
+import type { PhoneCall } from "./sip-ua.js";
 import { Vad } from "./vad.js";
 import { SPEAK_TIMEOUT_MS, TRANSCRIBE_TIMEOUT_MS, type VoiceProvider } from "./voice.js";
 
@@ -119,7 +119,7 @@ export class CallController implements CallHandler {
   private held: string[] | null = null;
 
   constructor(
-    private readonly call: SipCall,
+    private readonly call: PhoneCall,
     private readonly rtp: RtpSession,
     private readonly d: CallControllerDeps,
   ) {

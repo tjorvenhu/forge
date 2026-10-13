@@ -47,6 +47,8 @@ const fakeSession = (o: Omit<FakeSession, "updatedAt" | "background" | "subagent
 
 const md5 = (s: string) => createHash("md5").update(s).digest("hex");
 const tone = (ms: number, amp = 9000) => Int16Array.from({ length: (ms / 1000) * 8000 }, (_, i) => Math.round(Math.sin((2 * Math.PI * 300 * i) / 8000) * amp));
+/** A number entry of the phone settings, switched on unless said otherwise. */
+const num = (number: string, enabled = true, label = "") => ({ id: number, number, label, enabled });
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 async function until<T>(fn: () => T | undefined | null | false, ms = 8000, label = "condition"): Promise<T> {
@@ -590,8 +592,8 @@ describe("PhoneService end to end with a test PBX", () => {
       engine: "claude",
       openAiKey: "sk-test",
       pin: "4711",
-      allowedCallers: ["+49 30 1112233"],
-      notifyNumber: "0172 999",
+      allowedCallers: [num("+49 30 1112233")],
+      notifyNumbers: [num("0172 999")],
     });
   }, 30_000);
 
@@ -606,7 +608,7 @@ describe("PhoneService end to end with a test PBX", () => {
   const lastState = () => [...events].reverse().find((e) => e.event === "phone.updated")?.payload as PhoneState | undefined;
 
   it("rejects numbers that are not allowed, talks with allowed callers and unlocks steering with the PIN", async () => {
-    expect(svc.config()).toMatchObject({ hasPassword: true, hasOpenAiKey: true, hasPin: true, allowedCallers: ["+49 30 1112233"] });
+    expect(svc.config()).toMatchObject({ hasPassword: true, hasOpenAiKey: true, hasPin: true, allowedCallers: [{ number: "+49 30 1112233", enabled: true }] });
     await svc.setEnabled(true);
     await until(() => svc.state().registration === "registered", 5000, "registered");
 
@@ -713,6 +715,72 @@ describe("PhoneService end to end with a test PBX", () => {
     pbx.send(responseTo(bye.msg, 200, "OK"), bye.port);
     await until(() => svc.state().call === null, 3000, "ended");
     expect(svc.calls(5)[0]).toMatchObject({ direction: "out", number: "0172 999", result: "answered", reason: "Session fertig: Warenkorb" });
+  }, 40_000);
+
+  it("turns numbers stored before the number lists into switched-on entries", async () => {
+    const { notifyNumbers: _n, ...stored } = db.getPhoneSettings() as Record<string, unknown>;
+    db.setPhoneSettings({ ...stored, notifyNumber: "0172 999", allowedCallers: ["+49 30 1112233", "0151 2"] });
+    await svc.reload();
+    const c = svc.config();
+    expect(c.notifyNumbers).toEqual([{ id: expect.any(String), number: "0172 999", label: "", enabled: true }]);
+    expect(c.allowedCallers.map((n) => [n.number, n.enabled])).toEqual([
+      ["+49 30 1112233", true],
+      ["0151 2", true],
+    ]);
+    expect(c).not.toHaveProperty("notifyNumber");
+    // Saving keeps the new shape only.
+    await svc.saveConfig({ notifyNumbers: [...c.notifyNumbers, num("  ", true), num("0160 3", false, " Büro ")] });
+    expect(db.getPhoneSettings()).not.toHaveProperty("notifyNumber");
+    expect(svc.config().notifyNumbers.map((n) => [n.number, n.label, n.enabled])).toEqual([
+      ["0172 999", "", true],
+      ["0160 3", "Büro", false],
+    ]);
+  });
+
+  it("rings all switched-on numbers at once, cancels the others when one answers and rejects switched-off callers", async () => {
+    await svc.saveConfig({ notifyNumbers: [num("0172 999"), num("0151 555", true, "Büro"), num("0160 000", false)], allowedCallers: [num("+49 30 1112233", false)] });
+    await svc.setEnabled(true);
+    await until(() => svc.state().registration === "registered", 5000, "registered");
+
+    // A switched-off caller is not allowed in.
+    pbx.send(invite(pbx, "0301112233", "c-off", phoneEnd.port), pbx.uaContact.port);
+    await pbx.next((m) => m.status === 403 && getHeader(m, "call-id") === "c-off");
+
+    await svc.testCall();
+    const legs = [await pbx.next((m) => m.method === "INVITE"), await pbx.next((m) => m.method === "INVITE")];
+    expect(legs.map((l) => l.msg.uri).sort()).toEqual(["sip:0151555@127.0.0.1", "sip:0172999@127.0.0.1"]);
+    // Both offer the same audio port: whoever answers talks on it.
+    expect(new Set(legs.map((l) => /m=audio (\d+)/.exec(l.msg.body)![1])).size).toBe(1);
+    for (const l of legs) pbx.send(responseTo(l.msg, 180, "Ringing", "callee"), l.port);
+    await sleep(200);
+    expect(svc.state().call).toMatchObject({ direction: "out", state: "ringing", number: "0172 999, 0151 555" });
+
+    const office = legs.find((l) => l.msg.uri!.includes("0151555"))!;
+    const mobile = legs.find((l) => l !== office)!;
+    const answer = responseTo(office.msg, 200, "OK", "office");
+    answer.headers.push(["contact", `<sip:0151555@127.0.0.1:${pbx.port}>`], ["content-type", "application/sdp"]);
+    answer.body = buildSdp({ ip: "127.0.0.1", port: phoneEnd.port, sessionId: "6", version: 1, codec: 0 });
+    pbx.send(answer, office.port);
+    await pbx.next((m) => m.method === "ACK" && getHeader(m, "call-id") === getHeader(office.msg, "call-id"));
+    // The other number stops ringing right away.
+    const cancel = await pbx.next((m) => m.method === "CANCEL");
+    expect(getHeader(cancel.msg, "call-id")).toBe(getHeader(mobile.msg, "call-id"));
+    pbx.send(responseTo(cancel.msg, 200, "OK", "callee"), cancel.port);
+    pbx.send(responseTo(mobile.msg, 487, "Request Terminated", "callee"), mobile.port);
+
+    await until(() => svc.state().call?.state === "active", 5000, "active");
+    expect(svc.state().call?.number).toBe("0151 555");
+    // Audio goes to the address of the answering number.
+    expect((rtps.at(-1) as unknown as { remote: { port: number } }).remote.port).toBe(phoneEnd.port);
+
+    await svc.hangup();
+    const bye = await pbx.next((m) => m.method === "BYE");
+    expect(getHeader(bye.msg, "call-id")).toBe(getHeader(office.msg, "call-id"));
+    pbx.send(responseTo(bye.msg, 200, "OK"), bye.port);
+    await until(() => svc.state().call === null, 3000, "ended");
+    expect(svc.calls(5)[0]).toMatchObject({ direction: "out", number: "0151 555", result: "answered", reason: "Testanruf" });
+    // The switched-off number never rang.
+    expect(pbx.inbox.some((r) => r.msg.method === "INVITE" && r.msg.uri!.includes("0160000"))).toBe(false);
   }, 40_000);
 
   it("does not call while the user works in the FORGE window", async () => {
@@ -1121,9 +1189,27 @@ describe("PhoneService end to end with a test PBX", () => {
     await sleep(200);
     await phoneEnd.digits("4711#");
     await until(() => svc.state().call?.unlocked, 5000, "unlocked");
-    expect(await conv.tools.callSettings({ done: false, error: false })).toBe("FORGE ruft an: wenn eine Entscheidung nötig ist oder Claude dringend etwas meldet.");
+    // After the PIN the numbers are named too.
+    expect(await conv.tools.callSettings({ done: false, error: false })).toBe(
+      "FORGE ruft an: wenn eine Entscheidung nötig ist oder Claude dringend etwas meldet. Angerufen wird: <<<SESSION-DATEN>>>0172 999<<<ENDE SESSION-DATEN>>>. Anrufen dürfen: <<<SESSION-DATEN>>>+49 30 1112233<<<ENDE SESSION-DATEN>>>.",
+    );
     expect(svc.config().notifyOn).toEqual({ done: false, approval: true, error: false });
-    expect(await conv.tools.callSettings({ approval: false })).toBe("FORGE ruft von sich aus nicht mehr an.");
+
+    // Numbers by phone: add, switch off by their name, remove.
+    const add = await conv.tools.callSettings({ numbers: { action: "add", list: "notify", number: "0151 555", label: "Büro" } });
+    expect(add).toMatch(/^<<<SESSION-DATEN>>>Büro \(0151 555\)<<<ENDE SESSION-DATEN>>> ist eingetragen und eingeschaltet\. FORGE ruft an: .* Es klingelt bei 2 Nummern gleichzeitig/);
+    expect(await conv.tools.callSettings({ numbers: { action: "off", list: "notify", number: "büro" } })).toMatch(/ist jetzt ausgeschaltet\..*Büro 0151 555 \(aus\)/);
+    expect(svc.config().notifyNumbers.map((n) => [n.number, n.label, n.enabled])).toEqual([
+      ["0172 999", "", true],
+      ["0151 555", "Büro", false],
+    ]);
+    expect(await conv.tools.callSettings({ numbers: { action: "off", list: "allowed", number: "030 1112233" } })).toContain("ist jetzt ausgeschaltet");
+    expect(svc.config().allowedCallers[0]!.enabled).toBe(false);
+    expect(await conv.tools.callSettings({ numbers: { action: "remove", list: "notify", number: "0151555" } })).toMatch(/ist gelöscht\./);
+    expect(svc.config().notifyNumbers).toHaveLength(1);
+    expect(await conv.tools.callSettings({ numbers: { action: "on", list: "notify", number: "Garage" } })).toMatch(/^Fehler: Keine Nummer „Garage“ in der Liste\./);
+
+    expect(await conv.tools.callSettings({ approval: false })).toMatch(/^FORGE ruft von sich aus nicht mehr an\./);
     await byeFromPbx("c-calls", inv, ok);
   }, 30_000);
 

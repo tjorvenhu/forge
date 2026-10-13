@@ -64,6 +64,15 @@ export interface CallEvents {
   dtmf: [string];
 }
 
+/** What FORGE needs of a call: a SipCall, or several outgoing ones ringing at once (ForkedCall). */
+export interface PhoneCall extends EventEmitter<CallEvents> {
+  readonly direction: "in" | "out";
+  readonly remoteNumber: string;
+  readonly state: "ringing" | "active" | "ended";
+  onOffer: ((sdp: string) => string | null) | null;
+  hangup(reason?: string): Promise<void>;
+}
+
 /** One call (dialog). Created by the user agent; FORGE answers, rejects or hangs up through it. */
 export class SipCall extends EventEmitter<CallEvents> {
   state: "ringing" | "active" | "ended" = "ringing";

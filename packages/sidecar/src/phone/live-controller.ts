@@ -4,7 +4,7 @@ import type { FunctionCall, LiveConversation, LiveHandlers } from "./gemini-live
 import type { PinResult } from "./pin-guard.js";
 import { PIN_TEXT, PinPad } from "./pin-pad.js";
 import type { RtpSession } from "./rtp.js";
-import type { SipCall } from "./sip-ua.js";
+import type { PhoneCall } from "./sip-ua.js";
 import { runPhoneTool, type PhoneToolset } from "./tools.js";
 import { NoiseGate } from "./vad.js";
 
@@ -62,7 +62,7 @@ export class LiveCallController implements CallHandler {
   private graceTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(
-    private readonly call: SipCall,
+    private readonly call: PhoneCall,
     private readonly rtp: RtpSession,
     private readonly d: LiveControllerDeps,
   ) {

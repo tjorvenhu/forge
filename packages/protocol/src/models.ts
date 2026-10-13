@@ -972,6 +972,16 @@ export const DeskPhoneConfig = z.object({
 });
 export type DeskPhoneConfig = z.infer<typeof DeskPhoneConfig>;
 
+/** A phone number FORGE calls or accepts calls from; switched off it stays in the list but does not count. */
+export const PhoneNumberEntry = z.object({
+  id: z.string().min(1).max(64),
+  number: z.string().max(40),
+  /** e.g. "Handy" or "Büro"; may be empty */
+  label: z.string().max(40),
+  enabled: z.boolean(),
+});
+export type PhoneNumberEntry = z.infer<typeof PhoneNumberEntry>;
+
 /** Settings of the phone connection (SIP). Secrets are never sent to the UI, only whether they are set. */
 export const PhoneConfig = z.object({
   engine: PhoneEngine,
@@ -1001,10 +1011,10 @@ export const PhoneConfig = z.object({
   sttModel: z.string(),
   /** OpenAI model for speech output */
   ttsModel: z.string(),
-  /** numbers that may call FORGE; empty means nobody */
-  allowedCallers: z.array(z.string()),
-  /** number FORGE calls for notifications */
-  notifyNumber: z.string().nullable(),
+  /** numbers that may call FORGE; none switched on means nobody */
+  allowedCallers: z.array(PhoneNumberEntry),
+  /** numbers FORGE calls for notifications, all switched-on ones at once; the first to answer takes the call */
+  notifyNumbers: z.array(PhoneNumberEntry),
   notifyOn: z.object({ done: z.boolean(), approval: z.boolean(), error: z.boolean() }),
   /** steering actions (send, start, approve, stop) need the PIN via keypad */
   requirePin: z.boolean(),

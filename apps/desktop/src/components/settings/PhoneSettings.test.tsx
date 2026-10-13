@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { TooltipProvider } from "@radix-ui/react-tooltip";
 import type { PhoneConfig } from "@forge/protocol";
@@ -30,7 +30,7 @@ const config: PhoneConfig = {
   sttModel: "s",
   ttsModel: "t",
   allowedCallers: [],
-  notifyNumber: "0172 999",
+  notifyNumbers: [{ id: "n1", number: "0172 999", label: "Handy", enabled: true }],
   notifyOn: { done: true, approval: true, error: true },
   requirePin: true,
   enabled: false,
@@ -136,6 +136,44 @@ describe("phone settings save by themselves", () => {
     view.unmount();
     await waitFor(() => expect(saves()).toHaveLength(1));
     expect(saves()[0]).toMatchObject({ server: "10.0.0.5" });
+  });
+
+  it("keeps numbers as single entries: add one, switch one off, delete one", async () => {
+    setup();
+    const calls = await screen.findByRole("group", { name: "FORGE ruft diese Nummern an" });
+    expect(within(calls).getByDisplayValue("0172 999")).toBeTruthy();
+
+    // A new row without a number is not saved; its number is saved when the field is left.
+    fireEvent.click(within(calls).getByRole("button", { name: /Nummer hinzufügen/ }));
+    const fresh = within(calls).getByRole("textbox", { name: "Nummer von neue Nummer" });
+    await waitFor(() => expect(document.activeElement).toBe(fresh));
+    await act(() => new Promise((r) => setTimeout(r, 400)));
+    expect(saves()).toEqual([]);
+    fireEvent.change(fresh, { target: { value: "030 2" } });
+    fireEvent.blur(fresh);
+    await waitFor(() => expect(saves()).toHaveLength(1));
+    expect(saves()[0]!.notifyNumbers).toEqual([
+      { id: "n1", number: "0172 999", label: "Handy", enabled: true },
+      { id: expect.any(String), number: "030 2", label: "", enabled: true },
+    ]);
+
+    // Switched off right away, without a text field.
+    // A click moves the focus out of the text field, as in the app.
+    const off = within(calls).getByRole("switch", { name: "Handy ausschalten" });
+    off.focus();
+    fireEvent.click(off);
+    await waitFor(() => expect(saves()).toHaveLength(2));
+    expect((saves()[1]!.notifyNumbers as Array<{ enabled: boolean }>).map((n) => n.enabled)).toEqual([false, true]);
+
+    const del = within(calls).getByRole("button", { name: "030 2 löschen" });
+    del.focus();
+    fireEvent.click(del);
+    await waitFor(() => expect(saves()).toHaveLength(3));
+    expect(saves()[2]!.notifyNumbers).toEqual([{ id: "n1", number: "0172 999", label: "Handy", enabled: false }]);
+
+    // Allowed callers are entries just the same.
+    const allowed = screen.getByRole("group", { name: "Erlaubte Anrufer" });
+    expect(within(allowed).getByText(/FORGE nimmt keine Anrufe an/)).toBeTruthy();
   });
 
   it("says why an invalid value was not saved", async () => {

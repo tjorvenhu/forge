@@ -35,6 +35,8 @@ export class RtpSession extends EventEmitter<RtpEvents> {
   private latched = false;
   /** source IPs audio may come from: the SDP address and the PBX */
   private allowed = new Set<string>();
+  /** until then only the exact SDP address may latch (see configure) */
+  private exactUntil = 0;
   private sending = true;
   port = 0;
 
@@ -68,9 +70,14 @@ export class RtpSession extends EventEmitter<RtpEvents> {
     return { ip: this.localIp, port: this.port };
   }
 
-  /** `peers`: further addresses audio may come from (the PBX itself when it relays media). */
-  configure(remote: { ip: string; port: number }, pt: number, dtmfPt: number | null, peers: string[] = []) {
+  /**
+   * `peers`: further addresses audio may come from (the PBX itself when it relays media).
+   * `exactMs`: for that long only the exact SDP address may latch. Several numbers ring on one port,
+   * and the PBX may still send early media of a cancelled one from another port for a moment.
+   */
+  configure(remote: { ip: string; port: number }, pt: number, dtmfPt: number | null, peers: string[] = [], exactMs = 0) {
     this.remote = remote;
+    this.exactUntil = exactMs ? Date.now() + exactMs : 0;
     this.pt = pt;
     this.dtmfPt = dtmfPt;
     this.allowed = new Set([remote.ip, ...peers]);
@@ -177,6 +184,7 @@ export class RtpSession extends EventEmitter<RtpEvents> {
     } else {
       // Symmetric RTP: behind NAT the port can differ from the SDP, the address must not.
       if (!this.allowed.has(ip)) return;
+      if ((ip !== this.remote.ip || port !== this.remote.port) && Date.now() < this.exactUntil) return;
       this.remote = { ip, port };
       this.latched = true;
     }

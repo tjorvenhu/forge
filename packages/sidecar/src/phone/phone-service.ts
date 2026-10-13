@@ -11,6 +11,7 @@ import {
   type PhoneCallInfo,
   type PhoneCallRecord,
   type PhoneConfig,
+  type PhoneNumberEntry,
   type PhoneEngine,
   type PhoneSetupIncomplete,
   type PhoneState,
@@ -45,7 +46,8 @@ import { DEFAULT_PIN_LIMITS, hashPin, PinGuard, verifyPin, type PinGuardState, t
 import { RtpSession } from "./rtp.js";
 import { answerDirection, buildSdp, chooseCodec, parseSdp, PT_PCMA } from "./sdp.js";
 import type { SecretStore } from "./secrets.js";
-import { localIpTowards, SipUserAgent, type SipAccount, type SipCall } from "./sip-ua.js";
+import { localIpTowards, SipUserAgent, type PhoneCall, type SipAccount, type SipCall } from "./sip-ua.js";
+import { ForkedCall } from "./forked-call.js";
 import {
   AUTOMATION_TAGS,
   geminiFunctionDeclarations,
@@ -101,8 +103,8 @@ interface StoredConfig {
   voice: string;
   sttModel: string;
   ttsModel: string;
-  allowedCallers: string[];
-  notifyNumber: string | null;
+  allowedCallers: PhoneNumberEntry[];
+  notifyNumbers: PhoneNumberEntry[];
   notifyOn: { done: boolean; approval: boolean; error: boolean };
   requirePin: boolean;
   enabled: boolean;
@@ -158,7 +160,7 @@ const DEFAULTS: StoredConfig = {
   sttModel: DEFAULT_STT_MODEL,
   ttsModel: DEFAULT_TTS_MODEL,
   allowedCallers: [],
-  notifyNumber: null,
+  notifyNumbers: [],
   notifyOn: { done: true, approval: true, error: true },
   requirePin: true,
   enabled: false,
@@ -215,7 +217,7 @@ export interface PhoneDeps {
 type Speech = { engine: "claude"; voice: VoiceProvider } | { engine: "gemini-live"; apiKey: string };
 
 interface ActiveCall {
-  call: SipCall;
+  call: PhoneCall;
   /** null while the call is being set up */
   controller: CallHandler | null;
   /** the session this call is about (callback, key on the desk phone); shown on the desk phone */
@@ -251,6 +253,49 @@ export function normalizeNumber(raw: string, countryCode = DEFAULT_COUNTRY_CODE)
 export function sameNumber(a: string, b: string, countryCode = DEFAULT_COUNTRY_CODE): boolean {
   const x = normalizeNumber(a, countryCode);
   return x !== "" && x === normalizeNumber(b, countryCode);
+}
+
+/** The numbers of a list that count: switched on and not empty. */
+export function activeNumbers(list: PhoneNumberEntry[]): string[] {
+  return list.filter((n) => n.enabled && n.number.trim()).map((n) => n.number.trim());
+}
+
+/** Several numbers ring on one RTP port; this long only the answering one may send audio (early media of the others). */
+const FORKED_EXACT_LATCH_MS = 400;
+
+/** "Angerufen wird: Handy 0172 1, Büro 030 2 (aus)." for call_settings. */
+function numberListing(what: string, list: PhoneNumberEntry[]): string {
+  if (!list.length) return `${what}: keine Nummer eingetragen.`;
+  const one = (n: PhoneNumberEntry) => [n.label, n.number].filter(Boolean).join(" ") + (n.enabled ? "" : " (aus)");
+  return `${what}: ${asData(list.map(one).join(", "))}.`;
+}
+
+type LegacyNumbers = { notifyNumber?: string | null; allowedCallers?: Array<string | PhoneNumberEntry>; notifyNumbers?: PhoneNumberEntry[] };
+
+/** Stored settings with defaults; settings from before the number lists become entries that are switched on. */
+function loadConfig(raw: Partial<StoredConfig>): StoredConfig {
+  const { notifyNumber, allowedCallers, notifyNumbers, ...stored } = raw as Partial<StoredConfig> & LegacyNumbers;
+  const entry = (n: string | PhoneNumberEntry): PhoneNumberEntry => (typeof n === "string" ? { id: randomUUID(), number: n, label: "", enabled: true } : n);
+  return {
+    ...DEFAULTS,
+    ...stored,
+    desk: { ...DEFAULT_DESK, ...stored.desk },
+    allowedCallers: (allowedCallers ?? []).map(entry),
+    notifyNumbers: notifyNumbers ?? (notifyNumber?.trim() ? [entry(notifyNumber.trim())] : []),
+  };
+}
+
+/** Trimmed, without empty numbers, every id once. */
+function cleanNumbers(list: PhoneNumberEntry[]): PhoneNumberEntry[] {
+  const ids = new Set<string>();
+  return list
+    .map((n) => ({ ...n, number: n.number.trim(), label: n.label.trim() }))
+    .filter((n) => n.number)
+    .map((n) => {
+      const id = ids.has(n.id) ? randomUUID() : n.id;
+      ids.add(id);
+      return { ...n, id };
+    });
 }
 
 /** A reset time as it is said on the phone: "um 14:30" today, else with the weekday. */
@@ -381,8 +426,7 @@ export class PhoneService {
   private readonly desk: DeskPhone;
 
   constructor(private readonly d: PhoneDeps) {
-    const stored = d.db.getPhoneSettings() as Partial<StoredConfig>;
-    this.cfg = { ...DEFAULTS, ...stored, desk: { ...DEFAULT_DESK, ...stored.desk } };
+    this.cfg = loadConfig(d.db.getPhoneSettings() as Partial<StoredConfig>);
     const claude = () => d.claude();
     this.f = {
       ua: (a) => new SipUserAgent(a),
@@ -430,8 +474,7 @@ export class PhoneService {
   async reload() {
     await this.disconnect();
     await this.desk.stop();
-    const stored = this.d.db.getPhoneSettings() as Partial<StoredConfig>;
-    this.cfg = { ...DEFAULTS, ...stored, desk: { ...DEFAULT_DESK, ...stored.desk } };
+    this.cfg = loadConfig(this.d.db.getPhoneSettings() as Partial<StoredConfig>);
     this.emitState();
     await this.init();
   }
@@ -473,8 +516,8 @@ export class PhoneService {
     const deskBefore = JSON.stringify(this.cfg.desk);
     const next: StoredConfig = { ...this.cfg };
     for (const [k, v] of Object.entries(rest)) if (v !== undefined) (next as unknown as Record<string, unknown>)[k] = typeof v === "string" ? v.trim() : v;
-    next.allowedCallers = next.allowedCallers.map((n) => n.trim()).filter(Boolean);
-    if (next.notifyNumber !== null && !next.notifyNumber.trim()) next.notifyNumber = null;
+    next.allowedCallers = cleanNumbers(next.allowedCallers);
+    next.notifyNumbers = cleanNumbers(next.notifyNumbers);
     if (desk) {
       next.desk = { ...next.desk };
       for (const [k, v] of Object.entries(desk)) if (v !== undefined) (next.desk as unknown as Record<string, unknown>)[k] = typeof v === "string" ? v.trim() : v;
@@ -719,7 +762,7 @@ export class PhoneService {
     const list = this.cfg.callbacks ?? [];
     // Too late to be of use (FORGE was off, line busy the whole time): dropped.
     const expired = list.filter((c) => now - Date.parse(c.dueAt) > CALLBACK_GRACE_MS);
-    for (const c of expired) this.d.log(`Telefon: Rückruf an ${c.number} verfallen (${c.about})`);
+    for (const c of expired) this.d.log(`Telefon: Rückruf an ${c.number || "die Benachrichtigungsnummern"} verfallen (${c.about})`);
     const live = list.filter((c) => !expired.includes(c));
     if (expired.length) this.saveCallbacks(live);
     const due = live.find((c) => Date.parse(c.dueAt) <= now);
@@ -728,7 +771,7 @@ export class PhoneService {
     const asked = new Date(due.createdAt).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" });
     try {
       await this.dial(
-        due.number,
+        due.number ? [due.number] : this.notifyTargets(),
         `Rückruf wie verabredet: ${due.about}`,
         `[FORGE: Du rufst den Nutzer wie verabredet zurück. Um ${asked} hat er darum gebeten und wollte dann wissen: ${asData(due.about)} Prüfe das jetzt mit den Werkzeugen, nicht aus der Erinnerung. Er hat gerade abgenommen. Sag „Hallo, hier ist FORGE, wie verabredet.“ und dann in ein bis zwei Sätzen das Ergebnis. Dann warte, was er sagt.]`,
         new Map(),
@@ -736,7 +779,7 @@ export class PhoneService {
       );
     } catch (e) {
       // Not reached this time (e.g. line busy a moment ago): try again on a later tick.
-      this.d.log(`Telefon: Rückruf an ${due.number} nicht möglich: ${errorText(e)}`);
+      this.d.log(`Telefon: Rückruf an ${due.number || "die Benachrichtigungsnummern"} nicht möglich: ${errorText(e)}`);
       this.saveCallbacks([...(this.cfg.callbacks ?? []), due]);
     }
   }
@@ -751,9 +794,10 @@ export class PhoneService {
   }
 
   async testCall(): Promise<PhoneState> {
-    if (!this.cfg.notifyNumber) throw new ForgeError("VALIDATION", "Bitte zuerst in den Einstellungen unter Telefon die Nummer eintragen, die FORGE anrufen soll.");
+    const numbers = activeNumbers(this.cfg.notifyNumbers);
+    if (!numbers.length) throw new ForgeError("VALIDATION", "Bitte zuerst in den Einstellungen unter Telefon mindestens eine Nummer eintragen und einschalten, die FORGE anrufen soll.");
     await this.dial(
-      this.cfg.notifyNumber,
+      numbers,
       "Testanruf",
       "[FORGE: Testanruf aus den Einstellungen. Der Nutzer hat gerade abgenommen. Sag nur „Hallo, hier ist FORGE. Die Verbindung steht.“ und warte, ob er etwas will.]",
       new Map(),
@@ -796,10 +840,15 @@ export class PhoneService {
    * Takes the line for a call before anything is awaited, so a second call gets "busy" and an early
    * end (CANCEL while FORGE is still preparing) frees the line and closes what was opened so far.
    */
-  private attach(call: SipCall, rec: PhoneCallRecord, reason: string | null, refs: Map<string, string>, sdpSession: string, focus: string | null): ActiveCall {
+  private attach(call: PhoneCall, rec: PhoneCallRecord, reason: string | null, refs: Map<string, string>, sdpSession: string, focus: string | null): ActiveCall {
     const info: PhoneCallInfo = { id: rec.id, direction: call.direction, number: call.remoteNumber, state: "ringing", startedAt: rec.startedAt, unlocked: false, reason };
     const a: ActiveCall = { call, controller: null, focus, rtp: null, info, record: rec, refs, answered: false, failure: null, sdp: { session: sdpSession, version: 1 } };
-    call.on("answered", () => (a.answered = true));
+    call.on("answered", () => {
+      a.answered = true;
+      // With several numbers ringing, only now is it known which one took the call.
+      info.number = call.remoteNumber;
+      rec.number = call.remoteNumber;
+    });
     call.on("ended", (why) => {
       if (this.active === a) this.active = null;
       a.controller?.dispose();
@@ -832,7 +881,6 @@ export class PhoneService {
 
   private createController(a: ActiveCall, speech: Speech, opening: string | null): CallHandler {
     const pinHash = this.cfg.pinHash;
-    const caller = normalizeNumber(a.call.remoteNumber) || "unbekannt";
     const live = speech.engine === "gemini-live";
     const incoming = a.call.direction === "in";
     let picked = "";
@@ -862,7 +910,8 @@ export class PhoneService {
       .join("\n");
     const rec = a.record;
     const common = {
-      checkPin: this.cfg.requirePin && pinHash ? (pin: string) => this.pinGuard.check(caller, () => verifyPin(pin, pinHash)) : null,
+      // Read at entry: on a call to several numbers the answering one is known only then.
+      checkPin: this.cfg.requirePin && pinHash ? (pin: string) => this.pinGuard.check(normalizeNumber(a.call.remoteNumber) || "unbekannt", () => verifyPin(pin, pinHash)) : null,
       opening,
       onTranscript: (role: "caller" | "forge", text: string) => rec.transcript.push({ role, text, ts: new Date().toISOString() }),
       onUnlock: () => {
@@ -909,7 +958,7 @@ export class PhoneService {
     };
     if (this.busy) return reject(486, "Busy Here", "FORGE telefoniert bereits.");
     if (this.ua !== ua) return reject(503, "Service Unavailable", "Telefon wird gerade neu verbunden.");
-    if (!this.cfg.allowedCallers.some((n) => sameNumber(n, call.remoteNumber))) {
+    if (!activeNumbers(this.cfg.allowedCallers).some((n) => sameNumber(n, call.remoteNumber))) {
       this.d.log(`Telefon: Anruf von ${call.remoteNumber || "unbekannt"} abgewiesen (nicht freigegeben)`);
       return reject(403, "Forbidden", "Nummer ist nicht freigegeben.");
     }
@@ -946,9 +995,13 @@ export class PhoneService {
     }
   }
 
-  /** Calls the user (notifications and test call); the first words are prepared while it rings. */
-  private async dial(number: string, reason: string, opening: string, refs: Map<string, string>, focus: string | null) {
+  /**
+   * Calls the user (notifications, test call, callbacks); the first words are prepared while it rings.
+   * Several numbers ring at once; the first to answer takes the call, the others are cancelled.
+   */
+  private async dial(numbers: string[], reason: string, opening: string, refs: Map<string, string>, focus: string | null) {
     if (this.busy) throw new ForgeError("SESSION_BUSY", "FORGE telefoniert bereits.");
+    if (!numbers.length) throw new ForgeError("VALIDATION", "Keine Nummer zum Anrufen eingeschaltet.");
     const ua = this.ua;
     if (!ua || this.registration !== "registered") throw new ForgeError("VALIDATION", "Das Telefon ist nicht an der Anlage angemeldet.");
     this.dialing = true;
@@ -961,8 +1014,10 @@ export class PhoneService {
       await rtp.open();
       if (this.ua !== ua) throw new Error("Das Telefon wurde inzwischen ausgeschaltet.");
       const session = String(Date.now());
-      const call = ua.call(number, buildSdp({ ip: ua.localIp, port: rtp.port, sessionId: session, version: 1 }));
-      a = this.attach(call, this.newRecord("out", number, reason), reason, refs, session, focus);
+      const offer = buildSdp({ ip: ua.localIp, port: rtp.port, sessionId: session, version: 1 });
+      const forked = numbers.length > 1;
+      const call: PhoneCall = forked ? new ForkedCall(numbers.map((n) => ua.call(n, offer))) : ua.call(numbers[0]!, offer);
+      a = this.attach(call, this.newRecord("out", call.remoteNumber, reason), reason, refs, session, focus);
       if (focus) this.desk.select(focus);
       a.rtp = rtp;
       rtp = null;
@@ -971,7 +1026,7 @@ export class PhoneService {
       call.on("answered", (body) => {
         const offer = parseSdp(body);
         if (offer && active.rtp) {
-          active.rtp.configure({ ip: offer.ip, port: offer.port }, chooseCodec(offer) ?? PT_PCMA, offer.dtmfPt, [ua.serverIp]);
+          active.rtp.configure({ ip: offer.ip, port: offer.port }, chooseCodec(offer) ?? PT_PCMA, offer.dtmfPt, [ua.serverIp], forked ? FORKED_EXACT_LATCH_MS : 0);
           active.rtp.setDirection(answerDirection(offer.direction));
         }
         if (this.active === active) {
@@ -1006,7 +1061,7 @@ export class PhoneService {
     if (!this.cfg.enabled) return;
     if (e.event === "session.updated") this.desk.refresh();
     // "Fertig" only for the whole job: a turn that leaves background tasks or agents running is a step.
-    if (e.event === "session.done" && this.cfg.notifyNumber && this.wantsCall("done")) {
+    if (e.event === "session.done" && this.notifyTargets().length && this.wantsCall("done")) {
       const id = e.payload.sessionId;
       this.scheduleNotify(id, "done", this.lastTurn.get(id) ?? null, this.d.timing?.notifyDelayMs ?? NOTIFY_DELAY_MS.done);
     }
@@ -1021,7 +1076,7 @@ export class PhoneService {
     else if (b.type === "approval.request" || b.type === "approval.resolved") this.desk.refresh();
     // The user is on the line already: he hears it in this call, no matter which number FORGE would dial.
     if (b.type === "notify" && b.urgent && this.noteUrgent(sessionId, b.message)) return;
-    if (!this.cfg.notifyNumber) return;
+    if (!this.notifyTargets().length) return;
     let kind: NotifyKind | null = null;
     if (b.type === "turn.result") {
       const interrupted = b.isError && /interrupt|abort/i.test(`${b.subtype} ${b.text ?? ""}`);
@@ -1031,6 +1086,38 @@ export class PhoneService {
     else if (b.type === "notify" && b.urgent) kind = "notify";
     if (!kind || !this.wantsCall(kind)) return;
     this.scheduleNotify(sessionId, kind, b, this.d.timing?.notifyDelayMs ?? NOTIFY_DELAY_MS[kind]);
+  }
+
+  /** Switches one entry of a number list on or off, adds or removes it (call_settings); returns what changed. */
+  private async changeNumber(c: NonNullable<CallSettingsPatch["numbers"]>): Promise<string> {
+    const key = c.list === "allowed" ? "allowedCallers" : "notifyNumbers";
+    const entries = this.cfg[key];
+    const q = c.number.trim();
+    if (!q) throw new Error("Welche Nummer? Bitte die Nummer oder ihre Bezeichnung nennen.");
+    const found = entries.filter((n) => sameNumber(n.number, q) || (n.label && n.label.toLowerCase() === q.toLowerCase()));
+    const name = (n: PhoneNumberEntry) => asData(n.label ? `${n.label} (${n.number})` : n.number);
+    if (c.action === "add") {
+      if (!normalizeNumber(q)) throw new Error("Das ist keine Telefonnummer.");
+      const hit = found[0];
+      const next = hit ? entries.map((n) => (n === hit ? { ...n, enabled: true } : n)) : [...entries, { id: randomUUID(), number: q, label: c.label?.trim() ?? "", enabled: true }];
+      await this.saveConfig({ [key]: next });
+      return hit ? `${name(hit)} stand schon in der Liste und ist jetzt eingeschaltet. ` : `${name(next.at(-1)!)} ist eingetragen und eingeschaltet. `;
+    }
+    if (!found.length) throw new Error(`Keine Nummer „${q}“ in der Liste. ${numberListing("Vorhanden", entries)}`);
+    if (found.length > 1) throw new Error(`Mehrere Einträge passen zu „${q}“: ${found.map(name).join(", ")}. Bitte die Nummer nennen.`);
+    const hit = found[0]!;
+    if (c.action === "remove") {
+      await this.saveConfig({ [key]: entries.filter((n) => n !== hit) });
+      return `${name(hit)} ist gelöscht. `;
+    }
+    const on = c.action === "on";
+    await this.saveConfig({ [key]: entries.map((n) => (n === hit ? { ...n, enabled: on } : n)) });
+    return `${name(hit)} ist jetzt ${on ? "eingeschaltet" : "ausgeschaltet"}. `;
+  }
+
+  /** The switched-on numbers FORGE calls; all of them ring at once. */
+  private notifyTargets(): string[] {
+    return activeNumbers(this.cfg.notifyNumbers);
   }
 
   private wantsCall(kind: NotifyKind): boolean {
@@ -1077,7 +1164,7 @@ export class PhoneService {
 
   private async notify(sessionId: string, kind: NotifyKind, body: SessionEventBody | null) {
     // Switched off in the meantime (also on the phone, with call_settings).
-    if (!this.cfg.notifyNumber || !this.wantsCall(kind)) return;
+    if (!this.notifyTargets().length || !this.wantsCall(kind)) return;
     if (body?.type === "notify" && this.noteUrgent(sessionId, body.message)) return;
     if (this.busy || this.registration !== "registered") {
       this.d.log(`Telefon: kein Anruf (${kind}), ${this.busy ? "die Leitung ist belegt" : "nicht an der Anlage angemeldet"}`);
@@ -1120,7 +1207,7 @@ export class PhoneService {
     const reason = kind === "notify" ? `Claude meldet sich: ${title}` : kind === "done" ? `Session fertig: ${title}` : kind === "approval" ? `Entscheidung nötig: ${title}` : `Fehler: ${title}`;
     this.lastNotifyAt = Date.now();
     await this.dial(
-      this.cfg.notifyNumber,
+      this.notifyTargets(),
       reason,
       `[FORGE: Du rufst den Nutzer an. ${what} Er hat gerade abgenommen. Sag „Hallo, hier ist FORGE.“ und in einem Satz, worum es geht, ohne Einzelheiten. Wartet etwas auf seine Entscheidung, sag in einem kurzen Satz, was zur Wahl steht. Dann warte, was er sagt.]`,
       refs,
@@ -2245,22 +2332,28 @@ export class PhoneService {
         }),
       callSettings: (patch) =>
         run(Object.values(patch).some((v) => v !== undefined), async () => {
-          const changes = Object.fromEntries(Object.entries(patch).filter(([, v]) => v !== undefined)) as CallSettingsPatch;
+          const { numbers, ...times } = patch;
+          const changes = Object.fromEntries(Object.entries(times).filter(([, v]) => v !== undefined)) as CallSettingsPatch;
           if (Object.keys(changes).length) await this.saveConfig({ notifyOn: { ...this.cfg.notifyOn, ...changes } });
-          if (!this.cfg.notifyNumber) return "FORGE ruft von sich aus nicht an: In den Einstellungen ist keine Nummer dafür eingetragen.";
+          const changed = numbers ? await this.changeNumber(numbers) : "";
+          const targets = this.notifyTargets();
+          // The numbers themselves only after the PIN: they are personal.
+          const lists = locked() ? "" : ` ${numberListing("Angerufen wird", this.cfg.notifyNumbers)} ${numberListing("Anrufen dürfen", this.cfg.allowedCallers)}`;
+          if (!targets.length) return `${changed}FORGE ruft von sich aus nicht an: In den Einstellungen ist keine Nummer dafür eingetragen und eingeschaltet.${lists}`;
           const on = this.cfg.notifyOn;
           const list = [on.done ? "wenn eine Session fertig ist" : "", on.approval ? "wenn eine Entscheidung nötig ist oder Claude dringend etwas meldet" : "", on.error ? "bei Fehlern" : ""].filter(Boolean);
-          return list.length ? `FORGE ruft an: ${list.join(", ")}.` : "FORGE ruft von sich aus nicht mehr an.";
+          const where = targets.length > 1 ? ` Es klingelt bei ${targets.length} Nummern gleichzeitig, wer zuerst abnimmt, hat das Gespräch.` : "";
+          return `${changed}${list.length ? `FORGE ruft an: ${list.join(", ")}.${where}` : "FORGE ruft von sich aus nicht mehr an."}${lists}`;
         }),
       callBack: (minutes, about) =>
         run(false, async () => {
           if (!about.trim()) return "Fehler: Was soll ich beim Rückruf sagen?";
           // Back to the number of this call; only numbers FORGE may talk to anyway.
           const number = a.call.remoteNumber;
-          const known = this.cfg.allowedCallers.some((n) => sameNumber(n, number)) || (this.cfg.notifyNumber && sameNumber(this.cfg.notifyNumber, number));
-          const target = known ? number : this.cfg.notifyNumber;
-          if (!target) return "Fehler: Für diese Nummer kann ich keinen Rückruf vereinbaren.";
-          const due = this.scheduleCallback(target, minutes, about);
+          const known = [...activeNumbers(this.cfg.allowedCallers), ...this.notifyTargets()].some((n) => sameNumber(n, number));
+          // Otherwise the numbers for notifications ring, stored as "".
+          if (!known && !this.notifyTargets().length) return "Fehler: Für diese Nummer kann ich keinen Rückruf vereinbaren.";
+          const due = this.scheduleCallback(known ? number : "", minutes, about);
           return `Rückruf vereinbart für ${due.toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })} Uhr.`;
         }),
       usage: () =>
@@ -2279,6 +2372,6 @@ export class PhoneService {
 }
 
 /** Read through a function: TypeScript keeps a narrowed `call.state` across awaits, the call does not. */
-function ended(call: SipCall): boolean {
+function ended(call: PhoneCall): boolean {
   return call.state === "ended";
 }

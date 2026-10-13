@@ -73,10 +73,11 @@ export function PhoneButton() {
     );
   }
 
+  const calls = (config?.notifyNumbers ?? []).filter((n) => n.enabled).map((n) => n.label || n.number);
   const tone = state.registration === "registered" ? "text-success" : state.registration === "failed" ? "text-danger" : "text-warning animate-soft-pulse";
   const label =
     state.registration === "registered"
-      ? `Telefon an${config?.notifyNumber ? `, ruft ${config.notifyNumber} an` : ""}${state.desk?.reachable === false ? ". Tischtelefon nicht erreichbar" : ""}`
+      ? `Telefon an${calls.length ? `, ruft ${calls.join(" und ")} an` : ""}${state.desk?.reachable === false ? ". Tischtelefon nicht erreichbar" : ""}`
       : state.registration === "failed"
         ? `Telefon: ${state.message ?? "Anmeldung fehlgeschlagen"}`
         : "Telefon meldet sich an der Anlage an …";
@@ -89,7 +90,7 @@ export function PhoneButton() {
         </Button>
       }
       items={[
-        ...(state.registration === "registered" && config?.notifyNumber
+        ...(state.registration === "registered" && calls.length
           ? [{ label: "Testanruf", icon: <PhoneOutgoing className="h-3.5 w-3.5" />, onSelect: () => void run(() => call("phone.testCall", {}), "Testanruf fehlgeschlagen") }]
           : []),
         ...(state.registration === "failed" ? [{ label: "Erneut verbinden", icon: <RotateCw className="h-3.5 w-3.5" />, onSelect: () => void enable() }] : []),
