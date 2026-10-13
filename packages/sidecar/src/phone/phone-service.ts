@@ -1132,6 +1132,15 @@ export class PhoneService {
           sessions.cancelAutoContinue(s.id);
           return `Automatisches Weitermachen von ${refFor(s.id)} abgebrochen.`;
         }),
+      alwaysOnTop: (action) =>
+        run(action !== "status", async () => {
+          if (action !== "status") {
+            const next = this.d.db.updateSettings({ alwaysOnTop: action === "on" });
+            // The main window applies it to every FORGE window.
+            this.d.emit({ event: "settings.updated", payload: next });
+          }
+          return this.d.db.getSettings().alwaysOnTop ? "FORGE bleibt im Vordergrund." : "FORGE bleibt nicht im Vordergrund.";
+        }),
       remote: (action) =>
         run(action !== "status", async () => {
           const st = action === "on" ? await sessions.remoteStart() : action === "off" ? await sessions.remoteStop() : sessions.remoteState();

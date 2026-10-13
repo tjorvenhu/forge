@@ -20,6 +20,8 @@ export interface ChatWindowTarget {
 
 const CHANGED = "chat-windows://changed";
 const REATTACH = "chat-windows://reattach";
+/** Shell to the main window: open this session (its Windows notification was clicked). */
+const OPEN_SESSION = "chat-windows://open-session";
 /** Main window to a chat window: come back, and bring the draft along. */
 const RECALL = "chat-windows://recall";
 /** A chat window that does not answer a recall (hung webview) is closed after this. */
@@ -123,6 +125,10 @@ export async function startChatWindowTracking() {
     await listen<unknown>(REATTACH, (e) => {
       const t = parseChatWindowTarget(e.payload);
       if (t) applyReattach(t);
+    });
+    await listen<unknown>(OPEN_SESSION, (e) => {
+      const t = parseChatWindowTarget(e.payload);
+      if (t?.sessionId) useUi.getState().openProject(t.projectId, t.sessionId);
     });
   }
   useChatWindows.setState({ sessions: await invoke<string[]>("chat_windows") });

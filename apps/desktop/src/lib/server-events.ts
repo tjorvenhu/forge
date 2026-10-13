@@ -114,6 +114,9 @@ export function routeServerEvent(qc: QueryClient, git: GitRefresher, e: ServerEv
     case "remote.updated":
       qc.setQueryData(keys.remote, e.payload);
       break;
+    case "settings.updated":
+      qc.setQueryData(keys.settings, e.payload);
+      break;
     case "ratelimit.updated":
       qc.setQueryData(keys.rateLimit, e.payload);
       break;

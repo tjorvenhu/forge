@@ -168,6 +168,7 @@ export function createApp(opts: { dataDir: string; write: Writer; log?: (m: stri
     sessions,
     dataDir: opts.dataDir,
     notifyProject: (projectId) => emit({ event: "project.updated", payload: { projectId } }),
+    notifySettings: (settings) => emit({ event: "settings.updated", payload: settings }),
   });
   server = new RpcServer(handlers, opts.write, opts.log);
   return {

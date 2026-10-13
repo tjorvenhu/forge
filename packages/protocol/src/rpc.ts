@@ -534,6 +534,8 @@ export type ServerEvent =
   | { event: "github.login"; payload: GitHubLoginState }
   | { event: "claude.setup"; payload: ClaudeSetupState }
   | { event: "remote.updated"; payload: RemoteState }
+  /** settings changed (in any window or over the phone) */
+  | { event: "settings.updated"; payload: Settings }
   | { event: "ratelimit.updated"; payload: RateLimitState }
   | { event: "devserver.updated"; payload: DevServerState }
   | { event: "devserver.output"; payload: { projectId: string; text: string } }

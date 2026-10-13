@@ -13,6 +13,8 @@ import {
   MessageSquarePlus,
   PanelBottom,
   PanelRight,
+  Pin,
+  PinOff,
   Play,
   Search,
   Settings2,
@@ -22,7 +24,8 @@ import {
   SquareTerminal,
 } from "lucide-react";
 import type { ProfileId, ResultOf, SearchHit } from "@forge/protocol";
-import { call, keys, useProjects, useSearch } from "@/lib/queries";
+import { call, keys, useProjects, useSearch, useSettings } from "@/lib/queries";
+import { setAlwaysOnTop } from "@/lib/window-options";
 import { errorMessage } from "@/lib/rpc";
 import { cn, relativeTime } from "@/lib/utils";
 import { OVERLAY_MOTION } from "@/lib/motion";
@@ -108,6 +111,7 @@ function PaletteBody({ onClose }: { onClose: () => void }) {
   const projects = useProjects();
   const sessions = useQuery({ queryKey: keys.allSessions("", "all"), queryFn: () => call("sessions.listAll", {}), staleTime: 10_000 });
   const hits = useSearch(query, 8);
+  const onTop = useSettings().data?.alwaysOnTop ?? false;
   const projectId = view === "workspace" ? activeProjectId : null;
   const project = projects.data?.find((p) => p.id === projectId) ?? null;
   const devServer = useQuery({ queryKey: keys.devServer(projectId ?? ""), queryFn: () => call("devserver.state", { projectId: projectId! }), enabled: !!projectId });
@@ -155,6 +159,13 @@ function PaletteBody({ onClose }: { onClose: () => void }) {
     }
     act("add-project", "Projekt hinzufügen", <FolderPlus className="h-4 w-4" />, () => ui.setNewProject("import"), { hint: "Strg+O", keywords: "importieren ordner" });
     act("create-project", "Neues Projekt anlegen", <FolderPlus className="h-4 w-4" />, () => ui.setNewProject("create"));
+    act(
+      "on-top",
+      onTop ? "Nicht mehr im Vordergrund bleiben" : "Im Vordergrund bleiben",
+      onTop ? <PinOff className="h-4 w-4" /> : <Pin className="h-4 w-4" />,
+      () => void setAlwaysOnTop(qc, !onTop),
+      { keywords: "fenster immer oben anheften always on top" },
+    );
     for (const n of NAV) act(`nav-${n.view}`, `Gehe zu ${n.label}`, <n.Icon className="h-4 w-4" />, () => ui.setView(n.view));
 
     for (const p of projects.data ?? []) {
@@ -180,7 +191,7 @@ function PaletteBody({ onClose }: { onClose: () => void }) {
       });
     }
     return list;
-  }, [project, projects.data, sessions.data, devServer.data, activeSession, qc]);
+  }, [project, projects.data, sessions.data, devServer.data, activeSession, onTop, qc]);
 
   const shown = useMemo(() => {
     const words = fold(query).split(/\s+/).filter(Boolean);

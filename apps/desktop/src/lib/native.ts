@@ -38,8 +38,14 @@ export function remoteToWebUrl(remote: string | null): string | null {
 
 let notifyAllowed: Promise<boolean> | null = null;
 
+/** The session a notification is about; the shell opens it when the notification is clicked. */
+export interface NotifyTarget {
+  projectId: string;
+  sessionId: string;
+}
+
 /** Windows notification in the action center. Asks for permission once; Windows usually grants it without asking. */
-export async function desktopNotify(title: string, body: string) {
+export async function desktopNotify(title: string, body: string, open?: NotifyTarget) {
   notifyAllowed ??= (async () => (await isPermissionGranted()) || (await requestPermission()) === "granted")().catch(() => false);
-  if (await notifyAllowed) sendNotification({ title, body });
+  if (await notifyAllowed) sendNotification({ title, body, extra: open ? { projectId: open.projectId, sessionId: open.sessionId } : undefined });
 }

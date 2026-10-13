@@ -1,4 +1,4 @@
-import { ForgeError, type GitIntegrationConflict, type MethodName, type ParsedParamsOf, type ResultOf } from "@forge/protocol";
+import { ForgeError, type GitIntegrationConflict, type MethodName, type ParsedParamsOf, type ResultOf, type Settings } from "@forge/protocol";
 import { integrationPrompt } from "../git/integration-prompt.js";
 import { collectDiagnostics } from "../claude/diagnostics.js";
 import type { Db } from "../persistence/db.js";
@@ -44,6 +44,8 @@ export interface Services {
   updates: AppUpdateService;
   backups: BackupService;
   notifyProject: (projectId: string) => void;
+  /** every window takes the new settings, not only the one that saved them */
+  notifySettings: (settings: Settings) => void;
 }
 
 type Handler<M extends MethodName> = (params: ParsedParamsOf<M>) => Promise<ResultOf<M>> | ResultOf<M>;
@@ -153,6 +155,7 @@ export function createHandlers(s: Services): Handlers {
       diagCache = null;
       const next = s.db.updateSettings(patch);
       if (patch.autoContinueAfterLimit !== undefined) s.sessions.settingsChanged();
+      s.notifySettings(next);
       return next;
     },
 

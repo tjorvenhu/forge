@@ -403,6 +403,8 @@ export const Settings = z.object({
   updateChecks: z.boolean(),
   /** Windows notifications when Claude is done, needs a decision or fails */
   desktopNotifications: z.boolean(),
+  /** main window and chat windows stay above other apps */
+  alwaysOnTop: z.boolean(),
   /** blocklist rules the user switched off; every other rule applies */
   disabledPolicyRules: z.array(PolicyRuleId),
 });

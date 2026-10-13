@@ -166,9 +166,15 @@ function GeneralSection({ s, save }: { s: Settings; save: Save }) {
         />
         <SwitchRow
           label="Windows-Benachrichtigungen"
-          description="Meldung von Windows, wenn Claude fertig ist, eine Freigabe oder Antwort braucht oder ein Fehler auftritt. Erscheint auch, wenn FORGE im Hintergrund ist."
+          description="Meldung von Windows, wenn Claude fertig ist, eine Freigabe oder Antwort braucht oder ein Fehler auftritt. Erscheint auch, wenn FORGE im Hintergrund ist. Ein Klick darauf öffnet die Session."
           checked={s.desktopNotifications}
           onChange={(v) => void save({ desktopNotifications: v })}
+        />
+        <SwitchRow
+          label="Im Vordergrund bleiben"
+          description="FORGE und seine Chat-Fenster bleiben über anderen Programmen. Auch über die Befehlspalette (Strg+K) und per Telefon umschaltbar."
+          checked={s.alwaysOnTop}
+          onChange={(v) => void save({ alwaysOnTop: v })}
         />
         <Row label="Töne" description="Signal, wenn Claude fertig ist, eine Freigabe braucht oder ein Fehler auftritt.">
           <div className="flex items-center gap-1">

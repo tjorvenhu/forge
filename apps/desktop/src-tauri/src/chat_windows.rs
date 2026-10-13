@@ -3,6 +3,7 @@
 //! was opened after the others.
 
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 
 use serde::{Deserialize, Serialize};
@@ -16,6 +17,8 @@ const TEMPLATE: &str = "chat";
 const CHANGED: &str = "chat-windows://changed";
 /// Sent to the main window: show this chat again.
 const REATTACH: &str = "chat-windows://reattach";
+/// Sent to the main window: open this session (a click on its Windows notification).
+const OPEN_SESSION: &str = "chat-windows://open-session";
 
 const MAX_ID: usize = 100;
 const MAX_TITLE: usize = 200;
@@ -26,6 +29,8 @@ const MAX_DRAFT: usize = 200_000;
 pub struct ChatWindows {
     /// window label -> session shown there; None while the window shows a new session not started yet
     shown: Mutex<HashMap<String, Option<String>>>,
+    /// Setting "Im Vordergrund bleiben": holds for the main window and every chat window.
+    on_top: AtomicBool,
 }
 
 /// What a chat window shows; handed to its webview before the page loads, and back to the main window.
@@ -173,6 +178,7 @@ pub async fn open_chat_window(app: AppHandle, target: ChatTarget, title: String,
     };
     config.label = label.clone();
     config.title = window_title(&title);
+    config.always_on_top = state.on_top.load(Ordering::Relaxed);
     let cursor = if drag { app.cursor_position().ok() } else { None };
     if let Some(c) = cursor {
         // Torn-off tab: the window appears with its title bar under the cursor.
@@ -251,6 +257,38 @@ pub fn update_chat_window(app: AppHandle, window: WebviewWindow, session_id: Opt
         state.notify(&app);
     }
     window.set_title(&window_title(&title)).map_err(|e| e.to_string())
+}
+
+/// Keeps every FORGE window above other apps, or lets them go; chat windows opened later follow.
+#[tauri::command]
+pub fn set_always_on_top(app: AppHandle, on: bool) {
+    app.state::<ChatWindows>().on_top.store(on, Ordering::Relaxed);
+    for w in app.webview_windows().values() {
+        let _ = w.set_always_on_top(on);
+    }
+}
+
+/// A click on a Windows notification that names no session.
+pub fn show_main<R: Runtime>(app: &AppHandle<R>) {
+    if let Some(main) = app.get_webview_window(MAIN) {
+        bring_to_front(&main);
+    }
+}
+
+/// A click on the Windows notification of a session: the window that shows it comes to the front,
+/// its chat window if it has one, otherwise the main window with that session open.
+pub fn open_session<R: Runtime>(app: &AppHandle<R>, project_id: &str, session_id: &str) {
+    let label = label_of(&app.state::<ChatWindows>().shown.lock().unwrap(), session_id);
+    if let Some(w) = label.and_then(|l| app.get_webview_window(&l)) {
+        bring_to_front(&w);
+        return;
+    }
+    let Some(main) = app.get_webview_window(MAIN) else { return };
+    let target = ChatTarget { project_id: project_id.to_owned(), session_id: Some(session_id.to_owned()), draft: None };
+    if target.validate().is_ok() {
+        let _ = app.emit_to(MAIN, OPEN_SESSION, target);
+    }
+    bring_to_front(&main);
 }
 
 /// Called by a chat window: the main window shows that chat again and comes to the front, the

@@ -762,6 +762,10 @@ describe("PhoneService end to end with a test PBX", () => {
     await until(() => svc.state().call?.unlocked, 5000, "unlocked");
     expect(await conv.tools.remote("on")).toBe("Remote Control ist an, 1 Session ist mit der Claude-App verbunden.");
     expect(remoteOn).toBe(true);
+    expect(await conv.tools.alwaysOnTop("on")).toBe("FORGE bleibt im Vordergrund.");
+    expect(db.getSettings().alwaysOnTop).toBe(true);
+    expect(events).toContainEqual({ event: "settings.updated", payload: expect.objectContaining({ alwaysOnTop: true }) });
+    expect(await conv.tools.alwaysOnTop("off")).toBe("FORGE bleibt nicht im Vordergrund.");
     await conv.tools.status();
     expect(await conv.tools.sessionSettings("S1", { permissionMode: "acceptEdits" })).toBe("S1: Modus acceptEdits gesetzt.");
     expect(await conv.tools.sessionSettings("S1", {})).toMatch(/^Fehler/);

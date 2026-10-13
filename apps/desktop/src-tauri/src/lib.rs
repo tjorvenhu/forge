@@ -7,6 +7,7 @@ mod update;
 use chat_windows::ChatWindows;
 use sidecar::Sidecar;
 use tauri::{Manager, RunEvent, WindowEvent};
+use tauri_plugin_notification::NotificationExt;
 use terminal::{OpenRequest, Terminals};
 
 /// Upper bound for one protocol line from the UI (prompts are capped at 200k chars in the protocol).
@@ -109,7 +110,8 @@ pub fn run() {
             chat_windows::close_chat_window,
             chat_windows::chat_windows,
             chat_windows::update_chat_window,
-            chat_windows::reattach_chat_window
+            chat_windows::reattach_chat_window,
+            chat_windows::set_always_on_top
         ])
         .on_window_event(|window, event| {
             if let WindowEvent::Destroyed = event {
@@ -124,6 +126,22 @@ pub fn run() {
         })
         .setup(|app| {
             let handle = app.handle().clone();
+            // Without a handler the plugin does not even watch for clicks on its notifications.
+            let on_click = handle.clone();
+            let _ = app.notification().on_action(move |performed| {
+                if performed.action_id() != "tap" {
+                    return;
+                }
+                let extra = performed.notification().map(|n| n.extra());
+                let field = |key: &str| extra.and_then(|e| e.get(key)).and_then(|v| v.as_str()).map(str::to_owned);
+                let (project, session) = (field("projectId"), field("sessionId"));
+                let app = on_click.clone();
+                // The handler runs on a notification thread; windows are moved on the main thread.
+                let _ = on_click.run_on_main_thread(move || match (project, session) {
+                    (Some(p), Some(s)) => chat_windows::open_session(&app, &p, &s),
+                    _ => chat_windows::show_main(&app),
+                });
+            });
             if let Err(e) = app.state::<Sidecar>().start(&handle) {
                 eprintln!("[forge] sidecar start failed: {e}");
             }

@@ -208,6 +208,7 @@ export const DEFAULT_SETTINGS: Settings = {
   autoContinueAfterLimit: true,
   updateChecks: true,
   desktopNotifications: true,
+  alwaysOnTop: false,
   disabledPolicyRules: [...DEFAULT_DISABLED_POLICY_RULES],
 };
 

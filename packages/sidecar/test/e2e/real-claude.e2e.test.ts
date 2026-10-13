@@ -366,6 +366,7 @@ describe.skipIf(!enabled)("E2E: sidecar with real Claude Code", () => {
         sessionSettings: async () => (calls.push("settings"), "Gesetzt."),
         cancelAutoContinue: async () => (calls.push("cancel"), "Abgebrochen."),
         remote: async (action) => (calls.push(`remote:${action}`), action === "on" ? "Remote Control ist an, 1 Session ist mit der Claude-App verbunden." : "Remote Control ist aus."),
+        alwaysOnTop: async (action) => (calls.push(`alwaysOnTop:${action}`), action === "on" ? "FORGE bleibt im Vordergrund." : "FORGE bleibt nicht im Vordergrund."),
         devServer: async () => (calls.push("dev"), "Läuft."),
         testDatabase: async () => (calls.push("testdb"), "Läuft."),
         knowledge: async () => (calls.push("knowledge"), "Nichts gefunden."),
