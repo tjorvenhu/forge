@@ -98,6 +98,18 @@ describe("Composer", () => {
     await waitFor(() => expect(useDrafts.getState().drafts.s1?.text).toBe(""));
   });
 
+  it("lays out the colored copy for ultrathink exactly like the field", () => {
+    useDrafts.getState().setText("s1", "geht ultrathink");
+    const { container } = setup(<Composer project={project("p1")} session={session} />);
+    const field = screen.getByLabelText("Nachricht an Claude");
+    const copy = container.querySelector(".ultrathink-text")!.parentElement!;
+    // Field and copy must keep the same font size, or the caret drifts away from the letters.
+    expect(field.className).toMatch(/\btext-ui\b/);
+    expect(field.className).toMatch(/\btext-transparent\b/);
+    expect(copy.className).toMatch(/\btext-ui\b/);
+    expect(copy.textContent).toBe("geht ultrathink​");
+  });
+
   it("keeps what was typed while the message was on its way", async () => {
     let finish: (s: Session) => void = () => {};
     callMock.mockImplementation((method: string) => {

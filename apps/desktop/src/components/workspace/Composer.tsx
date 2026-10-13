@@ -389,10 +389,9 @@ export const Composer = memo(function Composer({
           placeholder={placeholder}
           aria-label="Nachricht an Claude"
           rows={2}
-          className={cn(
-            "relative block max-h-65 w-full resize-none bg-transparent px-5 pt-4 text-ui placeholder:text-subtle focus:outline-none focus-visible:outline-none",
-            ultrathink ? "text-transparent caret-fg" : "text-fg",
-          )}
+          // Not through cn: tailwind-merge takes text-ui for a color and drops it next to text-fg, the text would
+          // shrink to 13px and no longer line up with the copy behind it.
+          className={`relative block max-h-65 w-full resize-none bg-transparent px-5 pt-4 text-ui placeholder:text-subtle focus:outline-none focus-visible:outline-none ${ultrathink ? "text-transparent caret-fg" : "text-fg"}`}
           onKeyUp={(e) => {
             if (e.key !== " ") return;
             if (holding.current) e.preventDefault();
