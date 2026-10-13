@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { Project } from "@forge/protocol";
@@ -100,6 +100,18 @@ describe("AgentFinisher", () => {
     expect(existsSync(wt.path)).toBe(false);
     expect(await git(repo, "branch", "--list", "agent/weg")).toBe("");
     expect((await git(repo, "log", "--format=%s")).trim()).toBe("init");
+  }, 20_000);
+
+  it("discards a half removed agent: branch gone, folder without .git", async () => {
+    const wt = await worktrees.create(parent, "agent/rest", { fromDir: repo });
+    rmSync(path.join(wt.path, ".git"));
+    await git(repo, "worktree", "prune");
+    await git(repo, "branch", "-D", "agent/rest");
+    const r = await finisher.finish(wt.id, "discard");
+    expect(r).toMatchObject({ outcome: "discarded", branch: null, branchError: null, message: "Agent verworfen." });
+    expect(closed).toEqual([[wt.id]]);
+    expect(existsSync(wt.path)).toBe(false);
+    expect(projects.all().map((p) => p.id)).toEqual([parent.id]);
   }, 20_000);
 
   it("refuses to merge into another branch than the one the agent started from", async () => {

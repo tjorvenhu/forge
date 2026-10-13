@@ -121,7 +121,8 @@ export class AgentFinisher {
 
   private async discard(projectId: string): Promise<AgentFinishResult> {
     const l = await this.locate(projectId);
-    const r = await removeWorktree(projectId, true, this.d, { deleteBranch: true });
+    // No branch to find (folder half gone, branch already deleted): only session, folder and entry go.
+    const r = await removeWorktree(projectId, true, this.d, { deleteBranch: !!l.branch });
     this.changed(l);
     return {
       action: "discard",
