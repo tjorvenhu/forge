@@ -1,3 +1,4 @@
 # Projektregeln
 
 - Die Telefon-Funktion von FORGE soll alle Funktionen in Forge steuern können, wenn also neue Features hinzugefügt werden, sollen diese auch direkt für das Telefon-Feature umgesetzt werden.
+- Verwende bei allen Komponenten und Funktionen, die Ladezeiten haben, Skeleton-Loader als Platzhalter. Diese sollen während des Ladevorgangs angezeigt werden und sich optisch an der späteren Darstellung der Inhalte orientieren. Sobald die Daten vollständig geladen sind, sollen die Skeletons durch die tatsächlichen Inhalte ersetzt werden. Achte dabei auf ein einheitliches, modernes Design und darauf, Layout-Verschiebungen zu vermeiden.

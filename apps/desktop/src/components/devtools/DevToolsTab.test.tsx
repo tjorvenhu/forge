@@ -21,7 +21,7 @@ const callMock = vi.fn(async (method: string) => {
   }
 });
 vi.mock("@/lib/rpc", async (orig) => ({ ...(await orig<RpcModule>()), rpc: { call: (...a: [string]) => callMock(...a), subscribe: () => () => {} } }));
-vi.mock("@/components/workspace/DevServer", () => ({ DevServerPanel: () => <div>Ausgabe des Dev-Servers</div> }));
+vi.mock("@/components/workspace/DevServer", () => ({ DevServerPanel: () => <div>Ausgabe des Dev-Servers</div>, DevServerControls: () => null }));
 
 const { DevToolsTab } = await import("./DevToolsTab");
 const { useUi } = await import("@/stores/ui");

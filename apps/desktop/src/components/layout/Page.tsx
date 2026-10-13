@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { AlwaysOnTopButton } from "./AlwaysOnTopButton";
 import { PhoneButton } from "./PhoneButton";
 import { SearchField } from "./SearchField";
 
@@ -19,6 +20,7 @@ export function Page({ title, subtitle, actions, children }: { title: string; su
           {actions}
           {actions && <HeaderDivider />}
           <SearchField />
+          <AlwaysOnTopButton />
           <PhoneButton />
         </div>
       </header>

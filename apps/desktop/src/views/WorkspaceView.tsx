@@ -29,6 +29,7 @@ import { RemoteControlButton } from "@/components/workspace/RemoteControl";
 import { DevToolsTab } from "@/components/devtools/DevToolsTab";
 import { KnowledgeTab } from "@/components/knowledge/KnowledgeTab";
 import { PhoneButton } from "@/components/layout/PhoneButton";
+import { AlwaysOnTopButton } from "@/components/layout/AlwaysOnTopButton";
 import { HeaderDivider } from "@/components/layout/Page";
 import { SearchField } from "@/components/layout/SearchField";
 import { ChatSkeleton } from "@/components/ui/skeleton";
@@ -311,6 +312,7 @@ function WorkspaceHeader({ projectId }: { projectId: string }) {
       <LayoutToggles />
       <SearchField />
       <RemoteControlButton project={project} />
+      <AlwaysOnTopButton />
 
       <DropdownMenu
         header="Berechtigungsprofil"

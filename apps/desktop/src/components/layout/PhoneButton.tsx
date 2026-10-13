@@ -73,7 +73,7 @@ export function PhoneButton() {
     );
   }
 
-  const dot = state.registration === "registered" ? "bg-success" : state.registration === "failed" ? "bg-danger" : "bg-warning animate-soft-pulse";
+  const tone = state.registration === "registered" ? "text-success" : state.registration === "failed" ? "text-danger" : "text-warning animate-soft-pulse";
   const label =
     state.registration === "registered"
       ? `Telefon an${config?.notifyNumber ? `, ruft ${config.notifyNumber} an` : ""}${state.desk?.reachable === false ? ". Tischtelefon nicht erreichbar" : ""}`
@@ -84,9 +84,8 @@ export function PhoneButton() {
     <DropdownMenu
       header={label}
       trigger={
-        <Button size="icon" variant="ghost" className="relative h-9 w-9 rounded-lg" aria-label={label} title={label}>
-          <Phone className={cn("h-4 w-4", state.registration === "registered" && "text-success")} />
-          <span className={cn("absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full", dot)} />
+        <Button size="icon" variant="ghost" className="h-9 w-9 rounded-lg" aria-label={label} title={label}>
+          <Phone className={cn("h-4 w-4", tone)} />
         </Button>
       }
       items={[

@@ -51,8 +51,37 @@ function statusBadge(state: DevServerState) {
   }
 }
 
-/** Output of the dev server (bottom panel and Dev-Tools tab), with a shortcut to hand the last lines to Claude. */
-export function DevServerPanel({ project }: { project: Project }) {
+/** Status and start/stop/restart as prominent buttons, for the header of the Dev-Tools card. */
+export function DevServerControls({ project }: { project: Project }) {
+  const state = useDevServer(project.id).data;
+  const { start, stop } = useDevActions(project.id);
+  if (!state) return null;
+  return (
+    <div className="flex shrink-0 items-center gap-2">
+      {statusBadge(state)}
+      {state.status === "running" ? (
+        <>
+          <Button size="sm" variant="ghost" onClick={() => void stop().then(start)} title="Dev-Server neu starten">
+            <RotateCw className="h-3.5 w-3.5" /> Neu starten
+          </Button>
+          <Button size="sm" onClick={() => void stop()}>
+            <Square className="h-3 w-3 fill-current" /> Stoppen
+          </Button>
+        </>
+      ) : (
+        <Button size="sm" variant="primary" onClick={() => void start()} disabled={!state.effectiveCommand}>
+          <Play className="h-3.5 w-3.5" /> Starten
+        </Button>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Output of the dev server (bottom panel and Dev-Tools tab), with a shortcut to hand the last lines to Claude.
+ * `controls={false}` leaves status and start/stop to {@link DevServerControls} elsewhere.
+ */
+export function DevServerPanel({ project, controls = true }: { project: Project; controls?: boolean }) {
   const state = useDevServer(project.id).data;
   const text = useDevOutput((s) => s.text[project.id]);
   const { start, stop } = useDevActions(project.id);
@@ -90,7 +119,7 @@ export function DevServerPanel({ project }: { project: Project }) {
   return (
     <div className="flex h-full flex-col">
       <div className="flex h-8 shrink-0 items-center gap-2 border-b border-border px-3 text-xs">
-        {statusBadge(state)}
+        {controls && statusBadge(state)}
         <span className="min-w-0 truncate font-mono text-subtle">{state.command ?? state.effectiveCommand ?? "Kein Startbefehl"}</span>
         {running && state.url && (
           <button onClick={() => void openExternal(state.url!)} className="flex items-center gap-1 font-mono text-accent hover:underline">
@@ -101,20 +130,21 @@ export function DevServerPanel({ project }: { project: Project }) {
         <Button size="sm" variant="ghost" onClick={sendToClaude} disabled={!text?.trim()} title="Die letzten Zeilen als Nachricht an Claude vorbereiten">
           <SendHorizontal className="h-3.5 w-3.5" /> An Claude
         </Button>
-        {running ? (
-          <>
-            <Button size="sm" variant="ghost" onClick={() => void stop().then(start)} title="Dev-Server neu starten">
-              <RotateCw className="h-3.5 w-3.5" /> Neu starten
+        {controls &&
+          (running ? (
+            <>
+              <Button size="sm" variant="ghost" onClick={() => void stop().then(start)} title="Dev-Server neu starten">
+                <RotateCw className="h-3.5 w-3.5" /> Neu starten
+              </Button>
+              <Button size="sm" variant="ghost" onClick={() => void stop()} className="hover:text-danger">
+                <Square className="h-3 w-3 fill-current" /> Stoppen
+              </Button>
+            </>
+          ) : (
+            <Button size="sm" variant="ghost" onClick={() => void start()} disabled={!state.effectiveCommand}>
+              <Play className="h-3.5 w-3.5" /> Starten
             </Button>
-            <Button size="sm" variant="ghost" onClick={() => void stop()} className="hover:text-danger">
-              <Square className="h-3 w-3 fill-current" /> Stoppen
-            </Button>
-          </>
-        ) : (
-          <Button size="sm" variant="ghost" onClick={() => void start()} disabled={!state.effectiveCommand}>
-            <Play className="h-3.5 w-3.5" /> Starten
-          </Button>
-        )}
+          ))}
       </div>
       <pre
         ref={scrollRef}

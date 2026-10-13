@@ -14,7 +14,7 @@ import { Input } from "@/components/ui/input";
 import { Badge, ErrorBanner, Loading } from "@/components/ui/misc";
 import { Switch } from "@/components/ui/switch";
 import { Group, Row, SettingsLayout, SwitchRow, type SettingsSectionDef } from "@/components/settings/layout";
-import { DevServerPanel } from "@/components/workspace/DevServer";
+import { DevServerControls, DevServerPanel } from "@/components/workspace/DevServer";
 
 const AUTOSAVE_MS = 800;
 const ENV_KEY_RE = /^[^\S\n]*(?:export[^\S\n]+)?([A-Za-z_][A-Za-z0-9_.-]*)[^\S\n]*=/gm;
@@ -94,7 +94,11 @@ function DevServerCard({ project }: { project: Project }) {
     }
   };
   return (
-    <Group title="Dev-Server" description="Läuft im Projektordner. Bekommt die Variablen aus der Test-.env und, solange sie läuft, die Verbindung zur Test-Datenbank.">
+    <Group
+      title="Dev-Server"
+      description="Läuft im Projektordner. Bekommt die Variablen aus der Test-.env und, solange sie läuft, die Verbindung zur Test-Datenbank."
+      action={<DevServerControls project={project} />}
+    >
       <Row label="Startbefehl" description="Leer lassen, um den erkannten Befehl aus package.json zu nutzen." stacked>
         <Input
           key={project.devCommand ?? ""}
@@ -109,7 +113,7 @@ function DevServerCard({ project }: { project: Project }) {
         />
       </Row>
       <div className="h-[28rem] xl:h-[34rem]">
-        <DevServerPanel project={project} />
+        <DevServerPanel project={project} controls={false} />
       </div>
     </Group>
   );
