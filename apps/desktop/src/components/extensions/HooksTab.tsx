@@ -7,7 +7,7 @@ import { toast } from "@/stores/toast";
 import { Button } from "@/components/ui/button";
 import { CodeEditor } from "@/components/ui/code-editor";
 import { ExternalChangeBanner, useFileDraft } from "@/components/ui/file-draft";
-import { ErrorBanner, SectionTitle } from "@/components/ui/misc";
+import { ErrorBanner, LabelWithInfo, SectionTitle } from "@/components/ui/misc";
 import { EditorSkeleton, Skeleton } from "@/components/ui/skeleton";
 import { Select } from "@/components/ui/select";
 
@@ -32,11 +32,11 @@ export function HooksTab({ projectId }: { projectId?: string }) {
   }, [draft, externalChange, scope, projectId, expectedVersion, q]);
   return (
     <section className="rounded-xl border border-border bg-surface p-4">
-      <SectionTitle>Hooks</SectionTitle>
-      <p className="mb-3 text-xs text-muted">
-        Befehle, die Claude Code bei Ereignissen ausführt (z. B. Lint nach jeder Dateiänderung). FORGE ändert nur den Schlüssel „hooks“ in der gewählten settings.json und
-        prüft die Struktur vor dem Speichern.
-      </p>
+      <SectionTitle>
+        <LabelWithInfo info="Befehle, die Claude Code bei Ereignissen ausführt (z. B. Lint nach jeder Dateiänderung). FORGE ändert nur den Schlüssel „hooks“ in der gewählten settings.json und prüft die Struktur vor dem Speichern.">
+          Hooks
+        </LabelWithInfo>
+      </SectionTitle>
       <div className="mb-2 flex items-center gap-2">
         <Select
           value={scope}

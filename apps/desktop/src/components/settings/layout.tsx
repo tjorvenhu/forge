@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { LabelWithInfo } from "@/components/ui/misc";
 import { Switch } from "@/components/ui/switch";
 
 export interface SettingsSectionDef<Id extends string> {
@@ -88,11 +89,10 @@ function SectionButton<Id extends string>({ section: x, active, onSelect }: { se
 export function Group({ title, description, action, danger, children }: { title: string; description?: ReactNode; action?: ReactNode; danger?: boolean; children: ReactNode }) {
   return (
     <section className={cn("overflow-hidden rounded-xl border bg-surface", danger ? "border-danger/30" : "border-border")}>
-      <header className="flex items-start justify-between gap-4 border-b border-border px-4 py-3">
-        <div className="min-w-0">
+      <header className="flex items-center justify-between gap-4 border-b border-border px-4 py-3">
+        <LabelWithInfo info={description}>
           <h2 className="text-ui font-semibold">{title}</h2>
-          {description && <p className="mt-0.5 text-xs text-muted">{description}</p>}
-        </div>
+        </LabelWithInfo>
         {action}
       </header>
       <div className="divide-y divide-border">{children}</div>
@@ -104,10 +104,9 @@ export function Group({ title, description, action, danger, children }: { title:
 export function Row({ label, description, children, stacked }: { label: ReactNode; description?: ReactNode; children: ReactNode; stacked?: boolean }) {
   return (
     <div className={cn("px-4 py-3.5", stacked ? "flex flex-col gap-2.5" : "flex items-center justify-between gap-6")}>
-      <div className="min-w-0 flex-1">
-        <div className="text-body font-medium">{label}</div>
-        {description && <div className="mt-0.5 text-xs text-muted">{description}</div>}
-      </div>
+      <LabelWithInfo info={description} className="flex-1">
+        <span className="text-body font-medium">{label}</span>
+      </LabelWithInfo>
       {children}
     </div>
   );

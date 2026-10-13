@@ -11,7 +11,7 @@ import { CodeEditor } from "@/components/ui/code-editor";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { DropdownMenu } from "@/components/ui/dropdown";
 import { Input } from "@/components/ui/input";
-import { Badge, ErrorBanner } from "@/components/ui/misc";
+import { Badge, ErrorBanner, InfoTip } from "@/components/ui/misc";
 import { EditorSkeleton, Skeleton, SkeletonRegion } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { Group, Row, SettingsLayout, SwitchRow, type SettingsSectionDef } from "@/components/settings/layout";
@@ -211,8 +211,12 @@ function TestDbSkeleton({ owner, isWorktree }: { owner: string; isWorktree: bool
   );
 }
 
-const ENV_DESCRIPTION = "Variablen im .env-Format für Dev-Server und Tests. Sie bleiben in FORGE und landen nie im Projektordner oder im Git. Claude sieht nur die Namen.";
-const ENV_HINT = "Beispiel: API_URL=http://localhost:4000. Next.js, Vite und dotenv lassen diese Werte vor gleichnamigen Einträgen aus .env-Dateien des Projekts gelten.";
+const ENV_DESCRIPTION = (
+  <div className="flex flex-col gap-1.5">
+    <p>Variablen im .env-Format für Dev-Server und Tests. Sie bleiben in FORGE und landen nie im Projektordner oder im Git. Claude sieht nur die Namen.</p>
+    <p>Beispiel: API_URL=http://localhost:4000. Next.js, Vite und dotenv lassen diese Werte vor gleichnamigen Einträgen aus .env-Dateien des Projekts gelten.</p>
+  </div>
+);
 
 /** The test .env card while the dev tools config loads; the editor box has its final height. */
 function TestEnvSkeleton() {
@@ -225,7 +229,6 @@ function TestEnvSkeleton() {
         <div className="h-64">
           <EditorSkeleton className="rounded-lg" label="Lädt Test-.env" />
         </div>
-        <p className="text-caption text-subtle">{ENV_HINT}</p>
       </div>
     </Group>
   );
@@ -291,9 +294,14 @@ function TestDbCard({
                 </Button>
               </>
             ) : (
-              <Button size="sm" variant="primary" onClick={() => void act("testdb.start", "Test-Datenbank nicht gestartet")} loading={working} disabled={working}>
-                <Play className="h-3.5 w-3.5" /> Starten
-              </Button>
+              <>
+                <Button size="sm" variant="primary" onClick={() => void act("testdb.start", "Test-Datenbank nicht gestartet")} loading={working} disabled={working}>
+                  <Play className="h-3.5 w-3.5" /> Starten
+                </Button>
+                {state && !state.installed && state.status === "stopped" && (
+                  <InfoTip>Beim ersten Start lädt FORGE PostgreSQL einmalig herunter (rund 38 MB) und prüft die Prüfsumme. Docker ist nicht nötig.</InfoTip>
+                )}
+              </>
             )}
             <div className="flex-1" />
             <Button size="sm" variant="danger-ghost" onClick={() => setResetting(true)} disabled={working || !state?.initialized}>
@@ -309,9 +317,6 @@ function TestDbCard({
               <div className="h-full rounded-full bg-accent transition-[width] duration-200" style={{ width: `${Math.round((state.progress ?? 0) * 100)}%` }} />
             </div>
           </div>
-        )}
-        {state && !state.installed && state.status === "stopped" && (
-          <p className="text-xs text-muted">Beim ersten Start lädt FORGE PostgreSQL einmalig herunter (rund 38 MB) und prüft die Prüfsumme. Docker ist nicht nötig.</p>
         )}
         {state?.error && <ErrorBanner title="Start fehlgeschlagen">{state.error}</ErrorBanner>}
 
@@ -527,7 +532,6 @@ function TestEnvCard({ owner, config, update }: { owner: string; config: DevTool
             onSave={() => draft !== null && saveDraft(draft)}
           />
         </div>
-        <p className="text-caption text-subtle">{ENV_HINT}</p>
       </div>
     </Group>
   );

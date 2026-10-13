@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import * as C from "@radix-ui/react-checkbox";
 import * as T from "@radix-ui/react-tooltip";
-import { AlertTriangle, Check, Loader2 } from "lucide-react";
+import { AlertTriangle, Check, Info, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { POPPER_MOTION } from "@/lib/motion";
 import { TipText } from "./title-tooltips";
@@ -53,7 +53,7 @@ export function Checkbox({ checked, onChange, label, disabled }: { checked: bool
   );
 }
 
-/** Checkbox with a label and an optional hint line below it; the whole row is clickable. */
+/** Checkbox with a label and an optional explanation behind an info icon; the whole row is clickable. */
 export function ToggleRow({
   checked,
   onChange,
@@ -65,7 +65,7 @@ export function ToggleRow({
   onChange: (v: boolean) => void;
   label: string;
   disabled?: boolean;
-  /** hint below the label */
+  /** explanation behind an info icon after the label */
   children?: ReactNode;
 }) {
   return (
@@ -73,10 +73,9 @@ export function ToggleRow({
       <span className="mt-0.5">
         <Checkbox checked={checked} onChange={onChange} label={label} disabled={disabled} />
       </span>
-      <span>
-        <span className="block text-body">{label}</span>
-        {children && <span className="block text-xs text-muted">{children}</span>}
-      </span>
+      <LabelWithInfo info={children}>
+        <span className="text-body">{label}</span>
+      </LabelWithInfo>
     </label>
   );
 }
@@ -86,14 +85,16 @@ export function Tooltip({
   children,
   open,
   onOpenChange,
+  delay = 400,
 }: {
   content: ReactNode;
   children: ReactNode;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
+  delay?: number;
 }) {
   return (
-    <T.Root delayDuration={400} open={open} onOpenChange={onOpenChange}>
+    <T.Root delayDuration={delay} open={open} onOpenChange={onOpenChange}>
       <T.Trigger asChild>{children}</T.Trigger>
       <T.Portal>
         <T.Content sideOffset={6} className={cn("z-50 max-w-xs rounded-md border border-border bg-surface-3 px-2.5 py-1.5 text-xs text-fg shadow-lg", POPPER_MOTION)}>
@@ -101,6 +102,34 @@ export function Tooltip({
         </T.Content>
       </T.Portal>
     </T.Root>
+  );
+}
+
+/** Small "i" after a label: the explanation shows on hover or keyboard focus instead of taking up lines. */
+export function InfoTip({ children }: { children: ReactNode }) {
+  return (
+    <Tooltip content={children} delay={100}>
+      <button
+        type="button"
+        aria-label="Info"
+        // Keeps the tip open on click (Radix skips its close handler) and, inside a <label>, the checkbox or field untouched.
+        onClick={(e) => e.preventDefault()}
+        onPointerDown={(e) => e.preventDefault()}
+        className="inline-flex h-4 w-4 shrink-0 cursor-help items-center justify-center rounded-full text-subtle transition-colors duration-120 hover:text-fg focus-visible:text-fg focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
+      >
+        <Info className="h-3.5 w-3.5" />
+      </button>
+    </Tooltip>
+  );
+}
+
+/** A label followed by an InfoTip with its explanation; without one just the label. */
+export function LabelWithInfo({ info, children, className }: { info?: ReactNode; children: ReactNode; className?: string }) {
+  return (
+    <span className={cn("inline-flex min-w-0 items-center gap-1.5", className)}>
+      {children}
+      {info ? <InfoTip>{info}</InfoTip> : null}
+    </span>
   );
 }
 

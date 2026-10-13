@@ -4,6 +4,7 @@ import type { PhoneNumberEntry } from "@forge/protocol";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { LabelWithInfo } from "@/components/ui/misc";
 import { Switch } from "@/components/ui/switch";
 
 /**
@@ -43,7 +44,9 @@ export function PhoneNumberList({
 
   return (
     <div role="group" aria-label={label} className="flex flex-col gap-1.5">
-      <span className="text-xs font-medium text-muted">{label}</span>
+      <LabelWithInfo info={hint} className="h-4">
+        <span className="text-xs font-medium text-muted">{label}</span>
+      </LabelWithInfo>
       <div className="flex flex-col divide-y divide-border rounded-lg border border-border">
         {entries.length === 0 ? (
           <p className="px-3 py-2.5 text-xs text-subtle">{empty}</p>
@@ -82,8 +85,7 @@ export function PhoneNumberList({
           })
         )}
       </div>
-      <div className="flex items-start justify-between gap-3">
-        {hint ? <p className="text-xs text-subtle">{hint}</p> : <span />}
+      <div className="flex justify-end">
         <Button size="sm" variant="ghost" className="shrink-0" onClick={add}>
           <Plus className="h-3.5 w-3.5" /> {addLabel}
         </Button>

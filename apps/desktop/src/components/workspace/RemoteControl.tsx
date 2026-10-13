@@ -10,7 +10,7 @@ import { useUi } from "@/stores/ui";
 import { toast } from "@/stores/toast";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
-import { ErrorBanner, Spinner } from "@/components/ui/misc";
+import { ErrorBanner, LabelWithInfo, Spinner } from "@/components/ui/misc";
 import { Skeleton, SkeletonRegion } from "@/components/ui/skeleton";
 
 /** Header button + dialog to continue all running FORGE sessions in the Claude app (Remote Control is global). */
@@ -109,7 +109,12 @@ function RemoteDialog({
         ) : (
           <div className="flex items-center gap-3 rounded-lg border border-border px-3 py-2.5">
             <div className="min-w-0 flex-1">
-              <div className="text-body font-medium">{enabled ? "Eingeschaltet" : "Aus"}</div>
+              <LabelWithInfo
+                info="Sessions ohne laufenden Prozess erscheinen, sobald du sie fortsetzt. Eine beendete Session verschwindet aus der Liste. Ausschalten trennt alle Sessions, in FORGE laufen sie weiter. Freigaben und Sperrliste von FORGE gelten auch für Nachrichten aus der App. FORGE muss dafür geöffnet bleiben."
+                className="flex h-5"
+              >
+                <span className="text-body font-medium">{enabled ? "Eingeschaltet" : "Aus"}</span>
+              </LabelWithInfo>
               <div className="text-xs text-muted">
                 {!enabled
                   ? "Gilt für alle laufenden Sessions in FORGE"
@@ -156,11 +161,6 @@ function RemoteDialog({
         )}
 
         {enabled && current && <SessionLink session={current} />}
-
-        <p className="text-xs text-subtle">
-          Sessions ohne laufenden Prozess erscheinen, sobald du sie fortsetzt. Eine beendete Session verschwindet aus der Liste. Ausschalten trennt alle Sessions, in FORGE laufen sie
-          weiter. Freigaben und Sperrliste von FORGE gelten auch für Nachrichten aus der App. FORGE muss dafür geöffnet bleiben.
-        </p>
       </div>
     </Dialog>
   );

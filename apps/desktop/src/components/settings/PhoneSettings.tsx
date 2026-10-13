@@ -8,7 +8,7 @@ import { cn, relativeTime } from "@/lib/utils";
 import { toast } from "@/stores/toast";
 import { Button } from "@/components/ui/button";
 import { Field, Input } from "@/components/ui/input";
-import { Badge, ErrorBanner, SectionTitle, ToggleRow } from "@/components/ui/misc";
+import { Badge, ErrorBanner, LabelWithInfo, SectionTitle, ToggleRow } from "@/components/ui/misc";
 import { Skeleton, SkeletonRegion } from "@/components/ui/skeleton";
 import { Select } from "@/components/ui/select";
 import { PhoneStatusBadge } from "@/components/layout/PhoneButton";
@@ -294,7 +294,21 @@ export function PhoneSettings() {
 
       <div className="grid gap-5 xl:grid-cols-2">
         <div className="flex flex-col gap-4">
-          <SectionTitle>Anmeldung an der Telefonanlage (SIP)</SectionTitle>
+          <SectionTitle>
+            <LabelWithInfo
+              info={
+                <div className="flex flex-col gap-1.5">
+                  <p>
+                    FORGE meldet sich über UDP an. Audio läuft unverschlüsselt als G.711 (PCMA/PCMU). TLS und SRTP werden noch nicht unterstützt. Beim ersten Anruf fragt die
+                    Windows-Firewall, ob Node.js Verbindungen annehmen darf. Erlaube mindestens private Netzwerke, sonst kommt im Gespräch kein Ton an.
+                  </p>
+                  <p>Passwörter und API-Keys speichert FORGE verschlüsselt für dein Windows-Konto. Änderungen speichert FORGE selbst, Textfelder beim Verlassen des Felds.</p>
+                </div>
+              }
+            >
+              Anmeldung an der Telefonanlage (SIP)
+            </LabelWithInfo>
+          </SectionTitle>
           <div className="grid grid-cols-[1fr_96px] gap-3">
             <Field label="Server">
               <Input value={draft.server} onChange={(e) => up({ server: e.target.value })} placeholder="z. B. pbx.example.de oder 192.168.1.10" className="font-mono text-xs" />
@@ -348,14 +362,14 @@ export function PhoneSettings() {
               </Field>
             </div>
           )}
-          <p className="text-xs text-subtle">
-            FORGE meldet sich über UDP an. Audio läuft unverschlüsselt als G.711 (PCMA/PCMU). TLS und SRTP werden noch nicht unterstützt. Beim ersten Anruf
-            fragt die Windows-Firewall, ob Node.js Verbindungen annehmen darf. Erlaube mindestens private Netzwerke, sonst kommt im Gespräch kein Ton an.
-          </p>
         </div>
 
         <div className="flex flex-col gap-4">
-          <SectionTitle>Gesprächspartner</SectionTitle>
+          <SectionTitle>
+            <LabelWithInfo info={`Bei eingeschaltetem Telefon geht Gesprächsaudio an ${live ? "Google (Gemini Live)" : draft.speechProvider === "gemini" ? "Google (Gemini)" : "OpenAI"}.`}>
+              Gesprächspartner
+            </LabelWithInfo>
+          </SectionTitle>
           <Field label="Wer spricht mit dir">
             <Select<PhoneEngine> value={draft.engine} onChange={(v) => up({ engine: v })} options={ENGINES} className="w-full" />
           </Field>
@@ -430,13 +444,6 @@ export function PhoneSettings() {
 
       <DeskSettings draft={draft} config={c} state={state} up={upDesk} secret={secret} />
 
-      <div className="border-t border-border pt-4">
-        <p className="text-xs text-subtle">
-          Bei eingeschaltetem Telefon geht Gesprächsaudio an {live ? "Google (Gemini Live)" : draft.speechProvider === "gemini" ? "Google (Gemini)" : "OpenAI"}. Passwörter und
-          API-Keys speichert FORGE verschlüsselt für dein Windows-Konto. Änderungen speichert FORGE selbst, Textfelder beim Verlassen des Felds.
-        </p>
-      </div>
-
       <CallLog />
     </div>
   );
@@ -494,12 +501,9 @@ function PhoneSettingsSkeleton() {
           <Skeleton className="h-4 w-4" />
           <Skeleton className="h-2.5 w-40" />
         </div>
-        <div className="flex items-start gap-2.5">
-          <Skeleton className="mt-0.5 h-4 w-4 rounded" />
-          <div className="flex flex-1 flex-col gap-1.5">
-            <Skeleton className="h-3 w-44" />
-            <Skeleton className="h-2.5 w-4/5" />
-          </div>
+        <div className="flex items-center gap-2.5">
+          <Skeleton className="h-4 w-4 rounded" />
+          <Skeleton className="h-3 w-44" />
         </div>
       </div>
     </SkeletonRegion>
@@ -633,7 +637,7 @@ function DeskSettings({
             </Field>
           </div>
           <div className="xl:col-span-2">
-            <Field label="Im Telefon eintragen: Einstellungen → Auto Provision → Server URL, dann „Autoprovision Now“">
+            <Field label="Adresse für Auto Provision" hint="Im Telefon eintragen: Einstellungen → Auto Provision → Server URL, dann „Autoprovision Now“.">
               <div className="flex gap-2">
                 <Input value={url ?? "erscheint nach dem Speichern bei eingeschaltetem Telefon"} readOnly className="font-mono text-xs" />
                 {url && (

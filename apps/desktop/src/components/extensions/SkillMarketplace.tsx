@@ -9,7 +9,7 @@ import { toast } from "@/stores/toast";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Input } from "@/components/ui/input";
-import { Badge, EmptyState, ErrorBanner } from "@/components/ui/misc";
+import { Badge, EmptyState, ErrorBanner, LabelWithInfo } from "@/components/ui/misc";
 import { Skeleton, SkeletonRegion } from "@/components/ui/skeleton";
 import { Select } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
@@ -74,11 +74,10 @@ export function SkillMarketplace() {
 
   return (
     <section className="rounded-xl border border-border bg-surface p-4">
-      <div className="mb-3 flex items-start justify-between gap-4">
-        <p className="text-xs text-muted">
-          Plugins aus den Marketplaces von Claude Code bringen Skills mit, manche auch Agenten, Hooks oder MCP Server. Sie gelten global. Hooks und MCP Server führen Befehle auf deinem
-          Rechner aus: installiere nur, was du kennst.
-        </p>
+      <div className="mb-3 flex items-center justify-between gap-4">
+        <LabelWithInfo info="Plugins bringen Skills mit, manche auch Agenten, Hooks oder MCP Server. Sie gelten global. Hooks und MCP Server führen Befehle auf deinem Rechner aus.">
+          <span className="text-xs text-muted">Plugins aus den Marketplaces von Claude Code. Installiere nur, was du kennst.</span>
+        </LabelWithInfo>
         <Button size="sm" variant="ghost" onClick={() => void refresh()} loading={refreshing} disabled={catalog.isLoading}>
           <RefreshCw className="h-3.5 w-3.5" /> Aktualisieren
         </Button>

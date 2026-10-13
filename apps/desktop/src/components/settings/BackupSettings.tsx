@@ -9,7 +9,7 @@ import { relativeTime } from "@/lib/utils";
 import { toast } from "@/stores/toast";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import { Badge, EmptyState, ErrorBanner, ToggleRow } from "@/components/ui/misc";
+import { Badge, EmptyState, ErrorBanner, InfoTip, LabelWithInfo, ToggleRow } from "@/components/ui/misc";
 import { Skeleton, SkeletonRegion } from "@/components/ui/skeleton";
 
 const REASON: Record<BackupInfo["reason"], string> = {
@@ -87,12 +87,7 @@ export function BackupSettings() {
   const list = backups.data ?? [];
   return (
     <div className="flex flex-col gap-5">
-      <p className="text-body text-muted">
-        Ein Backup enthält deine Einstellungen, die Projektliste, das Telefon, die Claude-Code-Konfiguration und deinen Git-Namen. Nicht enthalten sind Chatverläufe,
-        Projektdateien und die Anmeldungen bei Claude und GitHub.
-      </p>
-
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <Button variant="primary" onClick={() => void create()} loading={creating}>
           <Save className="h-3.5 w-3.5" /> Jetzt sichern
         </Button>
@@ -102,17 +97,16 @@ export function BackupSettings() {
         <Button variant="outline" onClick={() => void importFile()}>
           <FileUp className="h-3.5 w-3.5" /> Aus Datei wiederherstellen
         </Button>
+        <InfoTip>
+          Die Datei enthält deine Konfiguration im Klartext, auch API-Keys, die in MCP-Servern oder Hooks stehen. Bewahre sie auf wie ein Passwort. Die Zugangsdaten des Telefons
+          bleiben verschlüsselt und funktionieren nur unter deinem Windows-Konto.
+        </InfoTip>
       </div>
-      <p className="-mt-3 text-xs text-subtle">
-        Die Datei enthält deine Konfiguration im Klartext, auch API-Keys, die in MCP-Servern oder Hooks stehen. Bewahre sie auf wie ein Passwort. Die Zugangsdaten des
-        Telefons bleiben verschlüsselt und funktionieren nur unter deinem Windows-Konto.
-      </p>
 
       <div>
-        <div className="mb-2 flex items-baseline justify-between gap-3">
-          <h3 className="shrink-0 text-body font-medium">Gespeicherte Backups</h3>
-          <span className="text-right text-xs text-subtle">Beim Start sichert FORGE automatisch, wenn sich seit dem letzten Backup etwas geändert hat. Die letzten 40 bleiben.</span>
-        </div>
+        <LabelWithInfo info="Beim Start sichert FORGE automatisch, wenn sich seit dem letzten Backup etwas geändert hat. Die letzten 40 bleiben." className="mb-2 flex">
+          <h3 className="text-body font-medium">Gespeicherte Backups</h3>
+        </LabelWithInfo>
         {backups.isLoading && (
           <SkeletonRegion label="Lädt Backups" className="divide-y divide-border overflow-hidden rounded-lg border border-border">
             {[0, 1, 2].map((i) => (

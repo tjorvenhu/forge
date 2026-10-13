@@ -88,7 +88,10 @@ export function SettingsView() {
         ) : current.id === "phone" ? (
           <PhoneSection />
         ) : current.id === "backup" ? (
-          <Group title="Backup" description="Einstellungen sichern, als Datei herunterladen und auf einen früheren Stand zurücksetzen.">
+          <Group
+            title="Backup"
+            description="Ein Backup enthält deine Einstellungen, die Projektliste, das Telefon, die Claude-Code-Konfiguration und deinen Git-Namen. Nicht enthalten sind Chatverläufe, Projektdateien und die Anmeldungen bei Claude und GitHub."
+          >
             <div className="p-4">
               <BackupSettings />
             </div>
