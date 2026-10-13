@@ -38,7 +38,7 @@ const NO_STREAMING: Record<string, string> = {};
 /** room above the first row for the "load older" button */
 const OLDER_BAR_HEIGHT = 44;
 /** "tight" must stay pt-1.5: the guide line of subagent calls reaches up exactly that far. */
-const ROW_SPACING: Record<RowSpacing, string> = { first: "pt-5", turn: "pt-8", block: "pt-3.5", tight: "pt-3" };
+const ROW_SPACING: Record<RowSpacing, string> = { first: "pt-5", turn: "pt-8", block: "pt-3.5", tight: "pt-1.5" };
 
 /**
  * Where each thread was scrolled to and how tall its rows were, so switching sessions or tabs comes

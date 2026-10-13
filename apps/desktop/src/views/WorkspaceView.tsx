@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useShallow } from "zustand/react/shallow";
-import { Activity, Bot, FolderTree, GitCompare, AlertTriangle, BookOpen, ChevronDown, FileText, FlaskConical, GitBranch, MessageSquare, PanelBottom, PanelRight, Settings2, Star } from "lucide-react";
+import { Activity, Bot, FolderTree, GitCompare, AlertTriangle, BookOpen, ChevronDown, FileText, FlaskConical, PanelTop, GitBranch, MessageSquare, PanelBottom, PanelRight, Settings2, Star } from "lucide-react";
 import type { ProfileId } from "@forge/protocol";
 import { call, keys, useProject } from "@/lib/queries";
 import { errorMessage, RpcCallError } from "@/lib/rpc";
@@ -31,6 +31,7 @@ import { PhoneButton } from "@/components/layout/PhoneButton";
 import { HeaderDivider } from "@/components/layout/Page";
 import { SearchField } from "@/components/layout/SearchField";
 import { ChatSkeleton } from "@/components/ui/skeleton";
+import { Collapse } from "@/components/ui/collapse";
 import { DevToolsBadge } from "@/components/devtools/DevToolsBadge";
 
 export function WorkspaceView() {
@@ -64,9 +65,10 @@ export function WorkspaceView() {
 
 function Workspace({ projectId }: { projectId: string }) {
   const project = useProject(projectId).data!;
-  const { workspaceTab, setWorkspaceTab, rightPanelOpen, toggleRightPanel, bottomPanelOpen, toggleBottomPanel } = useUi(
+  const { workspaceTab, setWorkspaceTab, toolbarOpen, rightPanelOpen, toggleRightPanel, bottomPanelOpen, toggleBottomPanel } = useUi(
     useShallow((s) => ({
       workspaceTab: s.workspaceTab,
+      toolbarOpen: s.toolbarOpen,
       setWorkspaceTab: s.setWorkspaceTab,
       rightPanelOpen: s.rightPanelOpen,
       toggleRightPanel: s.toggleRightPanel,
@@ -98,37 +100,39 @@ function Workspace({ projectId }: { projectId: string }) {
 
       <div className="flex min-h-0 flex-1">
         <div className="flex min-w-0 flex-1 flex-col">
-          <div className="flex h-12 shrink-0 items-center border-b border-border px-4">
-            <TabBar<WorkspaceTab>
-              size="lg"
-              value={workspaceTab}
-              onChange={setWorkspaceTab}
-              tabs={[
-                { value: "chat", label: "Chat", icon: <MessageSquare className="h-4 w-4" /> },
-                { value: "agents", label: "Agenten", icon: <Bot className="h-4 w-4" /> },
-                { value: "git", label: "Git", icon: <GitBranch className="h-4 w-4" />, badge: project.git?.changedCount ? <Badge tone="warning">{project.git.changedCount}</Badge> : undefined },
-                { value: "files", label: "Dateien", icon: <FileText className="h-4 w-4" /> },
-                { value: "devtools", label: "Dev-Tools", icon: <FlaskConical className="h-4 w-4" />, badge: <DevToolsBadge project={project} /> },
-                { value: "knowledge", label: "Wissen", icon: <BookOpen className="h-4 w-4" /> },
-                { value: "settings", label: "Einstellungen", icon: <Settings2 className="h-4 w-4" /> },
-              ]}
-            />
-            <div className="flex-1" />
-            <Button size="icon-sm" variant="ghost" onClick={() => toggleBottomPanel()} aria-pressed={bottomPanelOpen} title="Terminal, Dev-Server und Claude-Ausgabe (Strg+J)" className={cn(bottomPanelOpen && "text-accent")}>
-              <PanelBottom className="h-4 w-4" />
-            </Button>
-            <Button
-              size="icon-sm"
-              variant="ghost"
-              onClick={() => toggleRightPanel()}
-              aria-pressed={showRight}
-              disabled={narrow || workspaceTab !== "chat"}
-              title={narrow ? "Fenster zu schmal für die Seitenleiste" : "Seitenleiste mit Dateien und Änderungen (Strg+Umschalt+E)"}
-              className={cn(showRight && "text-accent")}
-            >
-              <PanelRight className="h-4 w-4" />
-            </Button>
-          </div>
+          <Collapse open={toolbarOpen}>
+            <div className="flex h-12 shrink-0 items-center border-b border-border px-4">
+              <TabBar<WorkspaceTab>
+                size="lg"
+                value={workspaceTab}
+                onChange={setWorkspaceTab}
+                tabs={[
+                  { value: "chat", label: "Chat", icon: <MessageSquare className="h-4 w-4" /> },
+                  { value: "agents", label: "Agenten", icon: <Bot className="h-4 w-4" /> },
+                  { value: "git", label: "Git", icon: <GitBranch className="h-4 w-4" />, badge: project.git?.changedCount ? <Badge tone="warning">{project.git.changedCount}</Badge> : undefined },
+                  { value: "files", label: "Dateien", icon: <FileText className="h-4 w-4" /> },
+                  { value: "devtools", label: "Dev-Tools", icon: <FlaskConical className="h-4 w-4" />, badge: <DevToolsBadge project={project} /> },
+                  { value: "knowledge", label: "Wissen", icon: <BookOpen className="h-4 w-4" /> },
+                  { value: "settings", label: "Einstellungen", icon: <Settings2 className="h-4 w-4" /> },
+                ]}
+              />
+              <div className="flex-1" />
+              <Button size="icon-sm" variant="ghost" onClick={() => toggleBottomPanel()} aria-pressed={bottomPanelOpen} title="Terminal, Dev-Server und Claude-Ausgabe (Strg+J)" className={cn(bottomPanelOpen && "text-accent")}>
+                <PanelBottom className="h-4 w-4" />
+              </Button>
+              <Button
+                size="icon-sm"
+                variant="ghost"
+                onClick={() => toggleRightPanel()}
+                aria-pressed={showRight}
+                disabled={narrow || workspaceTab !== "chat"}
+                title={narrow ? "Fenster zu schmal für die Seitenleiste" : "Seitenleiste mit Dateien und Änderungen (Strg+Umschalt+E)"}
+                className={cn(showRight && "text-accent")}
+              >
+                <PanelRight className="h-4 w-4" />
+              </Button>
+            </div>
+          </Collapse>
           <div key={workspaceTab} className="min-h-0 flex-1 animate-view-in">
             {workspaceTab === "chat" &&
               (project.exists ? <ChatPanel project={project} workingInPanel={showRight} /> : <EmptyState title="Chat nicht verfügbar">Der Projektordner fehlt.</EmptyState>)}
@@ -173,6 +177,25 @@ function RightPanel({ projectId }: { projectId: string }) {
       </div>
       <WorkingCard project={project} />
     </aside>
+  );
+}
+
+/** Shows or hides the tab row (Chat, Agenten, Git ...), like a ribbon: by default the chat fills the view. */
+function ToolbarToggle() {
+  const open = useUi((s) => s.toolbarOpen);
+  const toggle = useUi((s) => s.toggleToolbar);
+  return (
+    <Button
+      size="sm"
+      variant="ghost"
+      onClick={() => toggle()}
+      aria-pressed={open}
+      title={open ? "Werkzeugleiste ausblenden (zurück zum Chat)" : "Werkzeugleiste einblenden: Agenten, Git, Dateien, Dev-Tools, Wissen, Einstellungen"}
+      className={cn("shrink-0 gap-1.5", open && "text-accent")}
+    >
+      <PanelTop className="h-4 w-4" />
+      <span className="hidden xl:inline">Werkzeuge</span>
+    </Button>
   );
 }
 
@@ -232,6 +255,7 @@ function WorkspaceHeader({ projectId }: { projectId: string }) {
 
       <div className="flex-1" />
 
+      <ToolbarToggle />
       <SearchField />
       <RemoteControlButton project={project} />
 

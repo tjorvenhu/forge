@@ -11,7 +11,7 @@ type RpcModule = typeof RpcModuleNs;
 const callMock = vi.fn();
 vi.mock("@/lib/rpc", async (orig) => ({ ...(await orig<RpcModule>()), rpc: { call: (...a: unknown[]) => callMock(...a), subscribe: () => () => {} } }));
 
-const { SessionTabs } = await import("./SessionTabs");
+const { OpenSessions } = await import("./OpenSessions");
 
 // Asserted: fields the strip does not read may be added to Session without touching this test.
 function session(id: string, projectId: string, createdAt: string, over: Partial<Session> = {}): Session {
@@ -47,7 +47,7 @@ function setup() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(
     <QueryClientProvider client={qc}>
-      <SessionTabs />
+      <OpenSessions />
     </QueryClientProvider>,
   );
 }
@@ -73,8 +73,9 @@ beforeEach(() => {
   });
 });
 
-describe("SessionTabs", () => {
-  it("renders nothing without live sessions and without an open session", async () => {
+describe("OpenSessions", () => {
+  it("renders nothing without live sessions and without an open project", async () => {
+    useUi.setState({ view: "home" });
     setup();
     await vi.waitFor(() => expect(callMock).toHaveBeenCalledWith("sessions.listLive", {}));
     expect(screen.queryByRole("tablist")).toBeNull();
@@ -160,5 +161,30 @@ describe("SessionTabs", () => {
     fireEvent.keyDown(first, { key: "End" });
     fireEvent.keyDown(document.activeElement!, { key: "Enter" });
     expect(useUi.getState().activeSession.web).toBe("w1");
+  });
+});
+
+describe("OpenSessions tree", () => {
+  it("shows the open project without sessions and starts a new session from it", async () => {
+    setup();
+    const group = await vi.waitFor(() => {
+      const g = document.querySelector<HTMLElement>('[data-project-group="app"]');
+      if (!g) throw new Error("no group yet");
+      return g;
+    });
+    expect(within(group).queryAllByRole("tab")).toHaveLength(0);
+    useUi.setState({ activeSession: { app: "a1" } });
+    fireEvent.click(within(group).getByRole("button", { name: "Neue Session in App" }));
+    expect(useUi.getState().activeSession.app).toBeNull();
+    expect(useUi.getState().workspaceTab).toBe("chat");
+  });
+
+  it("lists the sessions under their project", async () => {
+    live = [tab(session("w1", "web", "2026-10-11T10:02:00Z")), tab(session("a1", "app", "2026-10-11T10:01:00Z"))];
+    setup();
+    await screen.findByRole("tab", { name: /^Titel w1/ });
+    const web = document.querySelector<HTMLElement>('[data-project-group="web"]')!;
+    expect(within(web).getByRole("button", { name: "Web" }).getAttribute("title")).toBe("Web öffnen");
+    expect(within(web).getAllByRole("tab").map((t) => t.getAttribute("aria-label")!.split(",")[0])).toEqual(["Titel w1"]);
   });
 });

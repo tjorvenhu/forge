@@ -15,7 +15,7 @@ function dialogOpen(): boolean {
 /**
  * App-wide shortcuts. Ctrl+K command palette, Ctrl+1..7 workspace tabs, Ctrl+J bottom panel,
  * Ctrl+Shift+E right panel, Ctrl+N new session, Ctrl+O add project,
- * Ctrl+Tab / Ctrl+Shift+Tab next / previous session tab, in the order of the tab strip.
+ * Ctrl+Tab / Ctrl+Shift+Tab next / previous open session, in the order of the sidebar tree.
  */
 export function handleGlobalShortcut(e: KeyboardEvent) {
   if (!(e.ctrlKey || e.metaKey) || e.altKey || e.defaultPrevented) return;

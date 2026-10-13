@@ -4,7 +4,6 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { SessionEventBody } from "@forge/protocol";
 import type * as RpcModuleNs from "@/lib/rpc";
 import type { ChatItem } from "./chat-items";
-import { useUi } from "@/stores/ui";
 
 type RpcModule = typeof RpcModuleNs;
 type ToolItem = Extract<ChatItem, { kind: "tool" }>;
@@ -34,13 +33,10 @@ function show(item: ToolItem, live = false) {
 afterEach(cleanup);
 
 describe("ToolCard", () => {
-  it("shows a command as a card with title, duration, the command and the first lines of the output", () => {
-    show(tool("Bash", { command: "pnpm test" }, { text: "1\n2\n3\n4\n5\n6" }, { doneTs: "2026-10-11T10:00:12.000Z" }));
-    expect(screen.getByText("Bash-Befehl ausgeführt")).toBeTruthy();
-    expect(screen.getByText("12 s")).toBeTruthy();
+  it("shows the call as one line with status and the first lines of the output", () => {
+    show(tool("Bash", { command: "pnpm test" }, { text: "1\n2\n3\n4\n5\n6" }));
+    expect(screen.getByText("Bash")).toBeTruthy();
     expect(screen.getByText("pnpm test")).toBeTruthy();
-    expect(screen.getByRole("button", { name: /Befehl kopieren/ })).toBeTruthy();
-    expect(screen.getByText("(gekürzt)")).toBeTruthy();
     expect(screen.getByRole("img", { name: "erfolgreich" })).toBeTruthy();
     expect(screen.getByText("1 2 3 4", { normalizer: (s) => s.replace(/\s+/g, " ").trim() })).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "+2 Zeilen" }));
@@ -50,20 +46,13 @@ describe("ToolCard", () => {
 
   it("counts the lines of a Read instead of showing the file", () => {
     show(tool("Read", { file_path: "C:\\p1\\README.md" }, { text: "     1\t# Titel\n     2\tText\n     3\tMehr" }));
-    expect(screen.getByText("Datei gelesen")).toBeTruthy();
     expect(screen.getByText("README.md")).toBeTruthy();
     expect(screen.getByText("(3 Zeilen)")).toBeTruthy();
     expect(screen.queryByText(/Titel/)).toBeNull();
-    useUi.setState({ activeProjectId: "p1", workspaceTab: "chat" });
-    fireEvent.click(screen.getByRole("button", { name: /In Datei anzeigen/ }));
-    expect(useUi.getState().workspaceTab).toBe("files");
-    expect(useUi.getState().selectedFile.p1).toBe("README.md");
   });
 
   it("shows an edit as a compact diff with its counts", () => {
     show(tool("Edit", { file_path: "src/app.ts", old_string: "const a = 1;", new_string: "const a = 2;" }, { text: "ok" }));
-    expect(screen.getByText("Code geändert")).toBeTruthy();
-    expect(screen.getByRole("button", { name: /Diff anzeigen/ })).toBeTruthy();
     expect(screen.getByText("+1")).toBeTruthy();
     expect(screen.getByText("-1")).toBeTruthy();
     expect(screen.getByText("const a = 1;")).toBeTruthy();
@@ -73,14 +62,12 @@ describe("ToolCard", () => {
   it("marks errors, running calls and opens the details on click", () => {
     show(tool("Bash", { command: "exit 1" }, { text: "kaputt", isError: true }));
     expect(screen.getByRole("img", { name: "Fehler" })).toBeTruthy();
-    expect(screen.getByText("Bash-Befehl fehlgeschlagen")).toBeTruthy();
     expect(screen.getByText("kaputt")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Details anzeigen" }));
+    fireEvent.click(screen.getByRole("button", { expanded: false, name: /Bash/ }));
     expect(screen.getByText("Eingabe")).toBeTruthy();
     cleanup();
     show(tool("Grep", { pattern: "foo" }, null), true);
     expect(screen.getByRole("img", { name: "läuft" })).toBeTruthy();
-    expect(screen.getByText("Durchsucht Code")).toBeTruthy();
   });
 
   it("renders an active todo list as a checklist", () => {

@@ -1,11 +1,9 @@
 import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 
-/** Movement before a press on a tab counts as dragging (and no longer as a click). */
+/** Movement before a press on an entry counts as dragging (and no longer as a click). */
 export const DRAG_START_PX = 6;
-/** Distance from the tab strip at which a dragged tab tears off into its own window. */
+/** Distance from the list at which a dragged entry tears off into its own window. */
 export const TEAR_OFF_PX = 40;
-/** Where the new window's top-left corner lands relative to the pointer: the cursor ends up on its title bar. */
-export const WINDOW_GRAB = { x: 120, y: 16 };
 
 export interface Box {
   top: number;
@@ -19,17 +17,12 @@ export function movedEnough(dx: number, dy: number): boolean {
 }
 
 /**
- * Like a browser: a tab tears off once the pointer is clearly above or below the strip, or outside
- * the window. Sideways inside the strip it stays a tab.
+ * Like a browser tab: an entry tears off once the pointer is clearly outside the list it came from,
+ * or outside the window.
  */
-export function isTornOff(strip: Box, x: number, y: number, viewport: { width: number; height: number }): boolean {
+export function isTornOff(list: Box, x: number, y: number, viewport: { width: number; height: number }): boolean {
   if (x < 0 || y < 0 || x > viewport.width || y > viewport.height) return true;
-  return y < strip.top - TEAR_OFF_PX || y > strip.bottom + TEAR_OFF_PX;
-}
-
-/** Top-left corner of the new window for a drop at this screen position. */
-export function windowPositionFor(screenX: number, screenY: number): { x: number; y: number } {
-  return { x: Math.max(0, Math.round(screenX - WINDOW_GRAB.x)), y: Math.max(0, Math.round(screenY - WINDOW_GRAB.y)) };
+  return x < list.left - TEAR_OFF_PX || x > list.right + TEAR_OFF_PX || y < list.top - TEAR_OFF_PX || y > list.bottom + TEAR_OFF_PX;
 }
 
 export interface TabDrag {
@@ -37,7 +30,6 @@ export interface TabDrag {
   label: string;
   x: number;
   y: number;
-  tornOff: boolean;
 }
 
 interface Pending {
@@ -50,11 +42,11 @@ interface Pending {
 }
 
 /**
- * Drag a tab out of a strip into its own window. Pointer capture keeps the moves coming while the
- * pointer is outside the window. `onTearOff` gets the screen position for the new window; a press
- * that turned into a drag does not count as a click afterwards (`consumeClick`).
+ * Drag an entry out of a list into its own window, like a browser tab: the moment it leaves the
+ * list, `onTearOff` runs while the mouse button is still down, and the shell lets the new window
+ * follow the cursor (chat_windows.rs). A press that turned into a drag is no click (`consumeClick`).
  */
-export function useTabTearOff(stripRef: React.RefObject<HTMLElement | null>, onTearOff: (id: string, position: { x: number; y: number }) => void) {
+export function useTabTearOff(listRef: React.RefObject<HTMLElement | null>, onTearOff: (id: string) => void) {
   const [drag, setDrag] = useState<TabDrag | null>(null);
   const pending = useRef<Pending | null>(null);
   const swallowClick = useRef(false);
@@ -85,30 +77,26 @@ export function useTabTearOff(stripRef: React.RefObject<HTMLElement | null>, onT
       if (!p.dragging) {
         if (!movedEnough(e.clientX - p.startX, e.clientY - p.startY)) return;
         p.dragging = true;
-        // Keeps the moves coming outside the strip and outside the window.
+        swallowClick.current = true;
         e.currentTarget.setPointerCapture?.(e.pointerId);
       }
-      const rect = stripRef.current?.getBoundingClientRect();
-      const tornOff = !!rect && isTornOff(rect, e.clientX, e.clientY, { width: window.innerWidth, height: window.innerHeight });
-      setDrag({ id: p.id, label: p.label, x: e.clientX, y: e.clientY, tornOff });
+      const rect = listRef.current?.getBoundingClientRect();
+      if (rect && isTornOff(rect, e.clientX, e.clientY, { width: window.innerWidth, height: window.innerHeight })) {
+        // The webview lets go of the mouse; the new window takes the rest of the drag.
+        e.currentTarget.releasePointerCapture?.(e.pointerId);
+        reset();
+        onTearOff(p.id);
+        return;
+      }
+      setDrag({ id: p.id, label: p.label, x: e.clientX, y: e.clientY });
     },
     onPointerUp: (e: ReactPointerEvent<HTMLElement>) => {
       const p = pending.current;
       if (!p || p.pointerId !== e.pointerId) return;
-      if (p.dragging) {
-        swallowClick.current = true;
-        e.currentTarget.releasePointerCapture?.(e.pointerId);
-        const rect = stripRef.current?.getBoundingClientRect();
-        if (rect && isTornOff(rect, e.clientX, e.clientY, { width: window.innerWidth, height: window.innerHeight })) {
-          onTearOff(p.id, windowPositionFor(e.screenX, e.screenY));
-        }
-      }
+      if (p.dragging) e.currentTarget.releasePointerCapture?.(e.pointerId);
       reset();
     },
     onPointerCancel: reset,
-    onLostPointerCapture: () => {
-      if (pending.current?.dragging) reset();
-    },
   });
 
   /** True once for the click that follows a drag; the caller skips it. */

@@ -27,8 +27,6 @@ export type ChatItem =
       superseded: boolean;
       /** event numbers of the call and its result, so a search hit lands on this card */
       seqs?: number[];
-      /** when the result arrived; with `ts` the duration shown on the card */
-      doneTs?: string;
     }
   | { kind: "approval"; key: string; ts: string; req: Body<"approval.request">; resolved: Body<"approval.resolved"> | null }  | { kind: "blocked"; key: string; ts: string; body: Body<"policy.blocked"> }
   | { kind: "result"; key: string; ts: string; body: Body<"turn.result"> }
@@ -162,7 +160,7 @@ function itemFolder() {
         case "tool.result": {
           const i = toolIdx.get(b.toolUseId);
           const it = i !== undefined ? items[i] : undefined;
-          if (it?.kind === "tool") items[i!] = { ...it, result: b, doneTs: ev.ts, seqs: [...(it.seqs ?? []), ev.seq] };
+          if (it?.kind === "tool") items[i!] = { ...it, result: b, seqs: [...(it.seqs ?? []), ev.seq] };
           break;
         }
         case "approval.request": {

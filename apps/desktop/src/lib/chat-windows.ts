@@ -52,11 +52,12 @@ export function useInChatWindow(sessionId: string | null): boolean {
 }
 
 /** Opens the session in its own window, or brings its window to the front. The draft moves along. */
-export async function openChatWindow(projectId: string, sessionId: string, title: string | null, position: { x: number; y: number } | null = null) {
+export async function openChatWindow(projectId: string, sessionId: string, title: string | null, opts: { drag?: boolean } = {}) {
   const key = draftKey(projectId, sessionId);
   const draft = useDrafts.getState().drafts[key]?.text || null;
   try {
-    await invoke("open_chat_window", { target: { projectId, sessionId, draft }, title: title ?? "Ohne Titel", position });
+    // drag: torn off by dragging; the window opens under the cursor and follows it until the button is released.
+    await invoke("open_chat_window", { target: { projectId, sessionId, draft }, title: title ?? "Ohne Titel", position: null, drag: opts.drag === true });
     // The window owns the draft from now on; it comes back with "Zurückholen".
     if (draft) useDrafts.getState().setText(key, "");
   } catch (e) {

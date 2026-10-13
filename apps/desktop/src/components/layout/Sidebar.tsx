@@ -5,27 +5,23 @@ import { toast } from "@/stores/toast";
 import { Button } from "@/components/ui/button";
 import { useUi, type View } from "@/stores/ui";
 import { cn, planLabel, relativeTime } from "@/lib/utils";
-import { useArrivals } from "@/lib/arrivals";
 import { Logo } from "./Logo";
 import { AppUpdateCard } from "./AppUpdate";
 import { splitProjects } from "@/lib/project-tree";
 import { NAV } from "./nav";
-import { ProjectIcon } from "@/components/projects/ProjectIcon";
+import { OpenSessions } from "./OpenSessions";
+import { ErrorBoundary } from "./ErrorBoundary";
 
 export function Sidebar() {
   const view = useUi((s) => s.view);
   const setView = useUi((s) => s.setView);
-  const activeProjectId = useUi((s) => s.activeProjectId);
-  const openProject = useUi((s) => s.openProject);
   const setNewProject = useUi((s) => s.setNewProject);
   const projects = useProjects();
   const liveCount = useLiveSessions().data?.length ?? 0;
-  // Agents (worktrees) belong to their project and are not counted or listed on their own.
+  // Agents (worktrees) belong to their project and are not counted on their own.
   const list = splitProjects(projects.data ?? []).roots;
-  const favorites = list.filter((p) => p.favorite);
-  const shown = favorites.length ? favorites : list.slice(0, 4);
-  // Projects added while FORGE runs slide in; the list on start does not.
-  const isNew = useArrivals(projects.data?.map((p) => p.id));
+  const activeProjectId = useUi((s) => s.activeProjectId);
+  const hasOpen = liveCount > 0 || (view === "workspace" && activeProjectId !== null);
   const counts: Partial<Record<View, { n: number; label: string }>> = {
     projects: { n: list.length, label: list.length === 1 ? "1 Projekt" : `${list.length} Projekte` },
     sessions: { n: liveCount, label: liveCount === 1 ? "1 offene Session" : `${liveCount} offene Sessions` },
@@ -72,37 +68,26 @@ export function Sidebar() {
 
       <div className="min-h-0 flex-1 overflow-y-auto px-3 pt-3">
         <div className="flex items-center justify-between px-3 pb-2">
-          <span className="text-body text-muted">{favorites.length ? "Favoriten" : "Zuletzt"}</span>
+          <span className="text-body text-muted">Geöffnet</span>
           <Button size="icon-sm" variant="ghost" onClick={() => setNewProject("import")} className="h-6 w-6 text-subtle hover:bg-surface-2" aria-label="Projekt hinzufügen" title="Projekt hinzufügen">
             <Plus className="h-4 w-4" />
           </Button>
         </div>
-        <div className="flex flex-col gap-1">
-          {shown.map((p) => (
-            <button
-              key={p.id}
-              onClick={() => openProject(p.id)}
-              className={cn(
-                "flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-left transition-[background-color,transform] duration-120 active:scale-[0.99]",
-                isNew(p.id) && "animate-slide-up-in",
-                view === "workspace" && activeProjectId === p.id ? "bg-surface-3" : "hover:bg-surface-2",
-              )}
+        <ErrorBoundary>
+          <OpenSessions />
+        </ErrorBoundary>
+        {!hasOpen && (
+          <>
+            <p className="px-3 pb-2 text-small text-subtle">Kein Projekt geöffnet. Wähle eins auf der Startseite oder unter Projekte.</p>
+            <Button
+              variant="outline"
+              onClick={() => setNewProject("import")}
+              className="h-11 w-full justify-start gap-2.5 rounded-lg border-dashed px-3 text-body-lg font-normal text-muted hover:border-border-strong hover:bg-transparent hover:text-fg"
             >
-              <ProjectIcon name={p.name} size={34} />
-              <div className="min-w-0 flex-1">
-                <div className="truncate text-ui">{p.name}</div>
-                <div className="truncate text-small text-subtle">{p.technologies.slice(0, 2).join(" · ") || "Projekt"}</div>
-              </div>
-            </button>
-          ))}
-        </div>
-        <Button
-          variant="outline"
-          onClick={() => setNewProject("import")}
-          className="mt-2 h-11 w-full justify-start gap-2.5 rounded-lg border-dashed px-3 text-body-lg font-normal text-muted hover:border-border-strong hover:bg-transparent hover:text-fg"
-        >
-          <Plus className="h-4 w-4" /> Projekt hinzufügen
-        </Button>
+              <Plus className="h-4 w-4" /> Projekt hinzufügen
+            </Button>
+          </>
+        )}
       </div>
 
       <ClaudeStatusCard />

@@ -1,12 +1,10 @@
-import { useState, type ReactNode } from "react";
+import type { ReactNode } from "react";
 import { Collapse } from "@/components/ui/collapse";
 import {
   Bot,
   Check,
   ChevronRight,
   ClipboardList,
-  Copy,
-  ExternalLink,
   FileText,
   FilePen,
   FilePlus,
@@ -23,14 +21,12 @@ import {
 import { useMutation } from "@tanstack/react-query";
 import { call } from "@/lib/queries";
 import { errorMessage } from "@/lib/rpc";
-import { cn, formatDuration } from "@/lib/utils";
-import { isChatWindow } from "@/lib/chat-windows";
-import { useUi } from "@/stores/ui";
+import { cn } from "@/lib/utils";
 import { toast } from "@/stores/toast";
 import { cardKey, useCardState } from "@/stores/card-state";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { relativeToProject, TOOL_LABELS, toolDisplayName, toolSummary, type ChatItem, type TodoEntry } from "./chat-items";
+import { TOOL_LABELS, toolDisplayName, toolSummary, type ChatItem, type TodoEntry } from "./chat-items";
 import { PlanCard, QuestionCard } from "./InteractiveCards";
 import { ChatRow, Dot, Guide } from "./ChatRow";
 import { cachedEditDiff, cleanToolOutput, countLines, diffStats, inputJson, splitPreview, type DiffLine } from "./tool-view";
@@ -89,101 +85,10 @@ function toolState(item: ToolItem, sessionLive: boolean): ToolState {
   return sessionLive ? "running" : "unknown";
 }
 
-type CardTone = "edit" | "command" | "read" | "agent" | "plain";
-
-const TONE_ICON: Record<CardTone, string> = {
-  edit: "bg-success-soft text-success",
-  command: "bg-accent text-accent-fg",
-  read: "bg-success-soft text-success",
-  agent: "bg-claude-soft text-claude",
-  plain: "bg-surface-3 text-muted",
-};
-
-function cardTone(name: string): CardTone {
-  if (name === "Edit" || name === "MultiEdit" || name === "Write" || name === "NotebookEdit") return "edit";
-  if (name === "Bash" || name === "PowerShell") return "command";
-  if (name === "Read") return "read";
-  if (name === "Task" || name === "Agent") return "agent";
-  return "plain";
-}
-
-/** Card title in plain words: what happened, or what is happening while the tool runs. */
-export function toolCardTitle(name: string, state: ToolState): string {
-  if (state === "waiting") return "Wartet auf Freigabe";
-  if (state === "blocked") return "Von FORGE blockiert";
-  if (state === "denied") return "Abgelehnt";
-  const running = state === "running";
-  const failed = state === "error";
-  switch (name) {
-    case "Edit":
-    case "MultiEdit":
-    case "NotebookEdit":
-      return failed ? "Änderung fehlgeschlagen" : running ? "Ändert Code" : "Code geändert";
-    case "Write":
-      return failed ? "Datei nicht erstellt" : running ? "Erstellt Datei" : "Datei erstellt";
-    case "Bash":
-      return failed ? "Bash-Befehl fehlgeschlagen" : running ? "Bash-Befehl läuft" : "Bash-Befehl ausgeführt";
-    case "PowerShell":
-      return failed ? "PowerShell-Befehl fehlgeschlagen" : running ? "PowerShell-Befehl läuft" : "PowerShell-Befehl ausgeführt";
-    case "Read":
-      return failed ? "Datei nicht gelesen" : running ? "Liest Datei" : "Datei gelesen";
-    case "Grep":
-      return running ? "Durchsucht Code" : "Code durchsucht";
-    case "Glob":
-      return running ? "Sucht Dateien" : "Dateien gesucht";
-    case "WebFetch":
-      return running ? "Ruft Webseite ab" : "Webseite abgerufen";
-    case "WebSearch":
-      return running ? "Sucht im Web" : "Im Web gesucht";
-    case "Task":
-    case "Agent":
-      return running ? "Subagent arbeitet" : "Subagent fertig";
-    case "TodoWrite":
-      return "Aufgaben aktualisiert";
-    default:
-      return failed ? `${TOOL_LABELS[name] ?? toolDisplayName(name)} fehlgeschlagen` : (TOOL_LABELS[name] ?? toolDisplayName(name));
-  }
-}
-
-function seconds(from: string, to: string | undefined): string | null {
-  if (!to) return null;
-  const ms = Date.parse(to) - Date.parse(from);
-  if (!Number.isFinite(ms) || ms < 0) return null;
-  return ms < 1000 ? "<1s" : formatDuration(ms);
-}
-
-function CopyButton({ text, label }: { text: string; label: string }) {
-  const [copied, setCopied] = useState(false);
-  return (
-    <Button
-      size="sm"
-      variant="outline"
-      className="h-7 shrink-0 gap-1.5 bg-surface text-caption-lg"
-      onClick={(e) => {
-        e.stopPropagation();
-        navigator.clipboard.writeText(text).then(
-          () => {
-            setCopied(true);
-            setTimeout(() => setCopied(false), 1500);
-          },
-          () => toast.error("Nicht kopiert", "Die Zwischenablage ist nicht erreichbar."),
-        );
-      }}
-    >
-      {copied ? <Check className="h-3.5 w-3.5 text-success" /> : <Copy className="h-3.5 w-3.5" />} {copied ? "Kopiert" : label}
-    </Button>
-  );
-}
-
-/**
- * A tool call as a card: icon, what happened in plain words, duration and the matching action on
- * the right; below it the change, the command with its output, or nothing for a plain read.
- * The chevron shows the raw input and result.
- */
+/** A tool call as one line (status dot, name, argument), with a short preview of its output or change below. */
 export function ToolCard({ item, sessionId, sessionLive, projectDir }: { item: ToolItem; sessionId: string; sessionLive: boolean; projectDir: string }) {
   const [open, setOpen] = useCardState(cardKey(sessionId, item.key, "open"), false);
   const [more, setMore] = useCardState(cardKey(sessionId, item.key, "more"), false);
-  const [outputOpen, setOutputOpen] = useCardState(cardKey(sessionId, item.key, "output"), true);
   const { use, result, approval, blocked } = item;
   const state = toolState(item, sessionLive);
 
@@ -196,137 +101,71 @@ export function ToolCard({ item, sessionId, sessionLive, projectDir }: { item: T
       </ChatRow>
     );
 
-  const tone = cardTone(use.name);
-  const failed = state === "error" || state === "blocked" || state === "denied";
   const diff = result?.isError ? null : cachedEditDiff(use.name, use.input);
   const stats = diff ? diffStats(diff) : null;
   const summary = toolSummary(use.name, use.input, projectDir);
-  const duration = seconds(item.ts, item.doneTs);
-  const isCommand = tone === "command";
-  const command = isCommand && typeof use.input.command === "string" ? use.input.command : null;
-  const filePath = typeof use.input.file_path === "string" ? use.input.file_path : null;
-  const relPath = filePath ? relativeToProject(filePath, projectDir) : null;
-  // Only files inside the project open in the Dateien tab; a chat window has no such tab.
-  const canShowFile = !!relPath && relPath !== filePath && !isChatWindow();
-  const output = result && (result.isError || showsOutput(use.name)) ? cleanToolOutput(result.content.text) : null;
-  const outputSplit = output ? splitPreview(output, OUTPUT_PREVIEW_LINES) : null;
-  const outputCut = !!outputSplit && (outputSplit.hidden > 0 || outputSplit.cut);
-
-  const showFile = () => {
-    const projectId = useUi.getState().activeProjectId;
-    if (projectId && relPath) useUi.getState().openFile(projectId, relPath);
-  };
-
-  const action = diff?.length ? (
-    <Button size="sm" variant="outline" className="h-7 shrink-0 gap-1 bg-surface text-caption-lg" onClick={() => setMore(!more)} aria-expanded={more}>
-      {more ? "Diff einklappen" : "Diff anzeigen"} <ChevronRight className={cn("h-3.5 w-3.5 transition-transform", more && "rotate-90")} />
-    </Button>
-  ) : use.name === "Read" && canShowFile ? (
-    <Button size="sm" variant="outline" className="h-7 shrink-0 gap-1.5 bg-surface text-caption-lg" onClick={showFile}>
-      In Datei anzeigen <ExternalLink className="h-3.5 w-3.5" />
-    </Button>
+  const label = TOOL_LABELS[use.name];
+  const preview = open ? null : diff?.length ? (
+    <DiffPreview lines={diff} expanded={more} onToggle={() => setMore(!more)} truncated={!!use.inputTruncated} />
+  ) : result && (result.isError || showsOutput(use.name)) ? (
+    <OutputPreview text={cleanToolOutput(result.content.text)} error={result.isError} expanded={more} onToggle={() => setMore(!more)} empty={result.isError ? "Fehler ohne Meldung" : "(keine Ausgabe)"} />
   ) : null;
 
   return (
-    <div
-      className={cn(
-        "rounded-xl border px-4 py-3 text-body",
-        failed ? "border-danger/30 bg-danger-soft" : tone === "edit" && diff?.length ? "border-success/25 bg-success/5" : "border-border bg-surface",
-      )}
-    >
-      <div className="flex min-w-0 items-center gap-3">
-        <span
-          className={cn("flex h-8 w-8 shrink-0 items-center justify-center rounded-lg [&>svg]:h-4 [&>svg]:w-4", failed ? "bg-danger-soft text-danger" : TONE_ICON[tone], state === "running" && "animate-soft-pulse")}
-          role="img"
-          aria-label={STATE_DOT[state].label}
-        >
-          {toolIcon(use.name)}
-        </span>
-        <div className="flex min-w-0 flex-1 items-baseline gap-2.5">
-          <span className={cn("shrink-0 font-semibold", failed ? "text-danger" : "text-fg")}>{toolCardTitle(use.name, state)}</span>
-          {duration && <span className="shrink-0 text-small tabular-nums text-subtle">{duration}</span>}
-          {!isCommand && summary && (
-            <span className="min-w-0 truncate font-mono text-small text-muted" title={summary}>
-              {summary}
-            </span>
-          )}
-          {use.name === "Read" && result && !result.isError && <span className="shrink-0 text-small text-subtle">({lineCount(countLines(result.content.text))})</span>}
-          {stats && (stats.add > 0 || stats.del > 0) && (
-            <span className="shrink-0 font-mono text-caption-lg">
-              {stats.add > 0 && <span className="text-success">+{stats.add}</span>}
-              {stats.add > 0 && stats.del > 0 && " "}
-              {stats.del > 0 && <span className="text-danger">-{stats.del}</span>}
-            </span>
-          )}
-        </div>
-        {action}
-        {!command && (
-          <Button size="icon-sm" variant="ghost" onClick={() => setOpen(!open)} aria-expanded={open} aria-label={`Details ${open ? "ausblenden" : "anzeigen"}`} title={`Eingabe und Ergebnis ${open ? "ausblenden" : "anzeigen"}`}>
-            <ChevronRight className={cn("h-3.5 w-3.5 transition-transform", open && "rotate-90")} />
-          </Button>
-        )}
-      </div>
-
-      {command !== null && (
-        <div className="mt-3 flex min-w-0 items-center gap-2 rounded-lg border border-border bg-bg py-1.5 pl-3 pr-1.5">
-          <code className="min-w-0 flex-1 truncate font-mono text-small text-fg" title={command}>
-            {command}
-          </code>
-          <CopyButton text={command} label="Befehl kopieren" />
-          <Button size="icon-sm" variant="ghost" onClick={() => setOpen(!open)} aria-expanded={open} aria-label={`Details ${open ? "ausblenden" : "anzeigen"}`} title={`Eingabe und Ergebnis ${open ? "ausblenden" : "anzeigen"}`}>
-            <ChevronRight className={cn("h-3.5 w-3.5 transition-transform", open && "rotate-90")} />
-          </Button>
-        </div>
-      )}
-
-      {blocked && (
-        <div className="mt-2 flex items-start gap-1.5 text-small text-danger">
-          <ShieldAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-          <span className="min-w-0 break-words">
-            {blocked.message} <span className="font-mono text-subtle">({blocked.rule})</span>
+    <ChatRow className="text-body" marker={<StateDot state={state} />}>
+      <button
+        type="button"
+        className="group/tool flex w-full min-w-0 items-baseline gap-2 text-left transition-opacity duration-75 active:opacity-70"
+        onClick={() => setOpen(!open)}
+        aria-expanded={open}
+        title={label ? `${label}: Details ${open ? "ausblenden" : "anzeigen"}` : `Details ${open ? "ausblenden" : "anzeigen"}`}
+      >
+        <span className="shrink-0 font-semibold text-fg">{toolDisplayName(use.name)}</span>
+        {summary && <span className="min-w-0 truncate font-mono text-small text-muted">{summary}</span>}
+        {use.name === "Read" && result && !result.isError && <span className="shrink-0 text-small text-subtle">({lineCount(countLines(result.content.text))})</span>}
+        {stats && (stats.add > 0 || stats.del > 0) && (
+          <span className="shrink-0 font-mono text-caption-lg">
+            {stats.add > 0 && <span className="text-success">+{stats.add}</span>}
+            {stats.add > 0 && stats.del > 0 && " "}
+            {stats.del > 0 && <span className="text-danger">-{stats.del}</span>}
           </span>
-        </div>
+        )}
+        <ChevronRight
+          aria-hidden
+          className={cn(
+            "ml-auto h-3.5 w-3.5 shrink-0 self-center text-subtle transition group-hover/tool:opacity-100 group-focus-visible/tool:opacity-100",
+            open ? "rotate-90 opacity-100" : "opacity-0",
+          )}
+        />
+      </button>
+      {blocked && (
+        <Guide className="mt-1">
+          <div className="flex items-start gap-1.5 text-small text-danger">
+            <ShieldAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+            <span className="min-w-0 break-words">
+              Von der FORGE-Policy blockiert: {blocked.message} <span className="font-mono text-subtle">({blocked.rule})</span>
+            </span>
+          </div>
+        </Guide>
       )}
-
-      {!open && diff?.length ? (
-        <div className="mt-3 rounded-lg border border-border bg-bg px-2 py-1.5">
-          <DiffPreview lines={diff} expanded={more} onToggle={() => setMore(!more)} truncated={!!use.inputTruncated} />
-        </div>
-      ) : null}
-
-      {!open && output !== null && (
-        <div className="mt-2 overflow-hidden rounded-lg border border-border bg-bg">
-          <button
-            type="button"
-            onClick={() => setOutputOpen(!outputOpen)}
-            aria-expanded={outputOpen}
-            className="flex w-full items-center gap-1.5 px-3 py-1.5 text-left text-small text-muted hover:text-fg"
-          >
-            <ChevronRight className={cn("h-3.5 w-3.5 transition-transform", outputOpen && "rotate-90")} />
-            {result?.isError ? "Fehlermeldung" : "Ausgabe"}
-            {outputCut && !more && <span className="text-subtle">(gekürzt)</span>}
-          </button>
-          <Collapse open={outputOpen}>
-            <div className="border-t border-border px-3 py-2">
-              <OutputPreview text={output} error={!!result?.isError} expanded={more} onToggle={() => setMore(!more)} empty={result?.isError ? "Fehler ohne Meldung" : "(keine Ausgabe)"} />
-            </div>
-          </Collapse>
-        </div>
-      )}
-
       <Collapse open={open}>
-        <div className="mt-3 space-y-2">
+        <Guide className="mt-1.5 space-y-2 pb-1">
           <Pre label="Eingabe" text={inputJson(use.input)} />
           {result && <Pre label={result.isError ? "Fehler" : "Ergebnis"} text={result.content.text || "(leer)"} truncated={result.content.truncated} error={result.isError} />}
-        </div>
+        </Guide>
       </Collapse>
-
-      {approval && (
-        <div className="mt-3">
-          <ApprovalBlock req={approval.req} resolved={approval.resolved} sessionId={sessionId} projectDir={projectDir} />
-        </div>
-      )}
-    </div>
+      {preview && <Guide className="mt-1">{preview}</Guide>}
+      {approval &&
+        (approval.resolved ? (
+          <Guide className="mt-1">
+            <ApprovalBlock req={approval.req} resolved={approval.resolved} sessionId={sessionId} projectDir={projectDir} />
+          </Guide>
+        ) : (
+          <div className="mt-2">
+            <ApprovalBlock req={approval.req} resolved={null} sessionId={sessionId} projectDir={projectDir} />
+          </div>
+        ))}
+    </ChatRow>
   );
 }
 

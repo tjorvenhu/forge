@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, Emitter, Manager, Runtime, WebviewWindow, WebviewWindowBuilder};
+use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, Runtime, WebviewWindow, WebviewWindowBuilder};
 
 pub const MAIN: &str = "main";
 pub const PREFIX: &str = "chat-";
@@ -81,6 +81,33 @@ fn label_of(map: &HashMap<String, Option<String>>, session_id: &str) -> Option<S
     map.iter().find(|(_, s)| s.as_deref() == Some(session_id)).map(|(l, _)| l.clone())
 }
 
+/// Where the cursor grabs a torn-off window, in logical pixels from its top-left corner: on the title bar.
+const GRAB_X: f64 = 160.0;
+const GRAB_Y: f64 = 16.0;
+
+/// Places the window exactly under the cursor (the config position is only logical, mixed DPI shifts
+/// it) and hands the still running drag to Windows, like dragging the title bar: the window moves with
+/// the mouse until the button is released. Without a held button that move loop would never end.
+fn follow_cursor<R: Runtime>(w: &WebviewWindow<R>, cursor: PhysicalPosition<f64>) {
+    let scale = w.scale_factor().unwrap_or(1.0);
+    let _ = w.set_position(PhysicalPosition::new((cursor.x - GRAB_X * scale).round() as i32, (cursor.y - GRAB_Y * scale).round() as i32));
+    if left_button_down() {
+        let _ = w.start_dragging();
+    }
+}
+
+#[cfg(windows)]
+fn left_button_down() -> bool {
+    use windows_sys::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_LBUTTON};
+    // High bit: the button is down right now (physical button, like the drag that started it).
+    unsafe { (GetAsyncKeyState(VK_LBUTTON as i32) as u16 & 0x8000) != 0 }
+}
+
+#[cfg(not(windows))]
+fn left_button_down() -> bool {
+    false
+}
+
 fn bring_to_front<R: Runtime>(w: &WebviewWindow<R>) {
     let _ = w.unminimize();
     let _ = w.show();
@@ -105,7 +132,8 @@ impl ChatWindows {
 /// Shows the session in its own window, or brings the window that already shows it to the front.
 /// Async: building a webview from a synchronous command deadlocks on Windows (WebView2).
 #[tauri::command]
-pub async fn open_chat_window(app: AppHandle, target: ChatTarget, title: String, position: Option<WindowPosition>) -> Result<(), String> {
+pub async fn open_chat_window(app: AppHandle, target: ChatTarget, title: String, position: Option<WindowPosition>, drag: Option<bool>) -> Result<(), String> {
+    let drag = drag.unwrap_or(false);
     target.validate()?;
     let session_id = target.session_id.clone().ok_or("Ungültige Session")?;
     let base = label_for(&session_id).ok_or("Ungültige Session")?;
@@ -137,8 +165,14 @@ pub async fn open_chat_window(app: AppHandle, target: ChatTarget, title: String,
     };
     config.label = label.clone();
     config.title = window_title(&title);
-    if let Some(p) = position.filter(|p| p.x.is_finite() && p.y.is_finite()) {
-        // A tab dragged out of the strip: the new window opens where it was dropped.
+    let cursor = if drag { app.cursor_position().ok() } else { None };
+    if let Some(c) = cursor {
+        // Torn-off tab: the window appears with its title bar under the cursor.
+        let scale = app.monitor_from_point(c.x, c.y).ok().flatten().map_or(1.0, |m| m.scale_factor());
+        config.x = Some(c.x / scale - GRAB_X);
+        config.y = Some(c.y / scale - GRAB_Y);
+        config.center = false;
+    } else if let Some(p) = position.filter(|p| p.x.is_finite() && p.y.is_finite()) {
         config.x = Some(p.x);
         config.y = Some(p.y);
         config.center = false;
@@ -149,6 +183,9 @@ pub async fn open_chat_window(app: AppHandle, target: ChatTarget, title: String,
         Ok(w) => {
             let _ = w.set_focus();
             state.notify(&app);
+            if let Some(c) = cursor {
+                follow_cursor(&w, c);
+            }
             Ok(())
         }
         Err(e) => {

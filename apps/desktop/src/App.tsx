@@ -3,7 +3,6 @@ import { AlertTriangle, RotateCw } from "lucide-react";
 import { isTauri, rpc } from "@/lib/rpc";
 import { useUi } from "@/stores/ui";
 import { Sidebar } from "@/components/layout/Sidebar";
-import { SessionTabs } from "@/components/layout/SessionTabs";
 import { Toaster } from "@/components/layout/Toaster";
 import { TitleTooltips } from "@/components/ui/title-tooltips";
 import { ErrorBoundary } from "@/components/layout/ErrorBoundary";
@@ -100,9 +99,6 @@ function Shell() {
   const activeProjectId = useUi((s) => s.activeProjectId);
   return (
     <div className="flex h-full min-w-0 flex-col">
-      <ErrorBoundary>
-        <SessionTabs />
-      </ErrorBoundary>
       <div className="flex min-h-0 min-w-0 flex-1">
         <ErrorBoundary>
           <Sidebar />

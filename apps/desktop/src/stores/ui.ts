@@ -22,6 +22,9 @@ interface UiState {
   /** selected session per project; null means "new session" */
   activeSession: Record<string, string | null>;
   workspaceTab: WorkspaceTab;
+  /** tab row of the workspace (Chat, Agenten, Git ...); hidden by default, the chat fills the view */
+  toolbarOpen: boolean;
+  toggleToolbar: (open?: boolean) => void;
   rightPanelOpen: boolean;
   bottomPanelOpen: boolean;
   newProject: NewProjectMode | null;
@@ -58,13 +61,14 @@ interface UiState {
 
 const PREFS_KEY = "forge.ui";
 
-type Prefs = Pick<UiState, "activeProjectId">;
+type Prefs = Pick<UiState, "activeProjectId" | "toolbarOpen">;
 
 /** Reopens the last project on start. Side and bottom panel always start closed and open only on request. */
 function loadPrefs(): Partial<UiState> {
   try {
     const p = JSON.parse(localStorage.getItem(PREFS_KEY) ?? "{}") as Partial<Prefs>;
     return {
+      ...(typeof p.toolbarOpen === "boolean" ? { toolbarOpen: p.toolbarOpen } : {}),
       ...(typeof p.activeProjectId === "string" ? { activeProjectId: p.activeProjectId, view: "workspace" as const } : {}),
     };
   } catch {
@@ -74,7 +78,7 @@ function loadPrefs(): Partial<UiState> {
 
 function savePrefs(s: Prefs) {
   try {
-    localStorage.setItem(PREFS_KEY, JSON.stringify({ activeProjectId: s.activeProjectId }));
+    localStorage.setItem(PREFS_KEY, JSON.stringify({ activeProjectId: s.activeProjectId, toolbarOpen: s.toolbarOpen }));
   } catch {
     /* preferences are optional */
   }
@@ -85,6 +89,7 @@ export const useUi = create<UiState>((set, get) => ({
   activeProjectId: null,
   activeSession: {},
   workspaceTab: "chat",
+  toolbarOpen: false,
   rightPanelOpen: false,
   bottomPanelOpen: false,
   newProject: null,
@@ -103,7 +108,10 @@ export const useUi = create<UiState>((set, get) => ({
   setPaletteOpen: (paletteOpen) => set({ paletteOpen }),
   setFocusEvent: (focusEvent) => set({ focusEvent }),
   selectFile: (projectId, path) => set((s) => ({ selectedFile: { ...s.selectedFile, [projectId]: path } })),
-  openFile: (projectId, path) => set((s) => ({ selectedFile: { ...s.selectedFile, [projectId]: path }, workspaceTab: "files" })),
+  openFile: (projectId, path) => {
+    set((s) => ({ selectedFile: { ...s.selectedFile, [projectId]: path }, workspaceTab: "files", toolbarOpen: true }));
+    savePrefs(get());
+  },
   setView: (view) => set({ view }),
   settingsSection: "general",
   openSettings: (settingsSection) => set({ view: "settings", settingsSection }),
@@ -121,7 +129,18 @@ export const useUi = create<UiState>((set, get) => ({
     savePrefs(get());
   },
   setActiveSession: (projectId, sessionId) => set((s) => ({ activeSession: { ...s.activeSession, [projectId]: sessionId } })),
-  setWorkspaceTab: (workspaceTab) => set({ workspaceTab }),
+  // Another area than the chat shows the tab row, so it is clear where one is and how to get back.
+  setWorkspaceTab: (workspaceTab) => {
+    set((s) => ({ workspaceTab, toolbarOpen: s.toolbarOpen || workspaceTab !== "chat" }));
+    savePrefs(get());
+  },
+  toggleToolbar: (open) => {
+    set((s) => {
+      const toolbarOpen = open ?? !s.toolbarOpen;
+      return toolbarOpen ? { toolbarOpen } : { toolbarOpen, workspaceTab: "chat" };
+    });
+    savePrefs(get());
+  },
   toggleRightPanel: (open) => {
     set((s) => ({ rightPanelOpen: open ?? !s.rightPanelOpen }));
   },
