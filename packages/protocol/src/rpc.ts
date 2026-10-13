@@ -62,6 +62,7 @@ const projectRef = z.object({ projectId: id });
 const sessionRef = z.object({ sessionId: id });
 const relPaths = z.array(z.string().min(1).max(4096)).min(1).max(2000);
 const empty = z.object({}).strict();
+const voiceConnection = z.object({ language: z.string().min(2).max(12).default("de"), keyterms: z.array(z.string().max(100)).max(200).default([]) });
 const pluginId = z.string().regex(/^[A-Za-z0-9._-]{1,128}@[A-Za-z0-9._-]{1,128}$/);
 
 /**
@@ -433,12 +434,11 @@ export const methods = {
   /**
    * Dictation in the composer over Claude's speech service (the one of /voice in the terminal).
    * start opens the stream, audio sends 16-bit mono samples at 16 kHz (base64), stop returns the text.
-   * While recording, "voice.transcript" events carry the text so far.
+   * While recording, "voice.transcript" events carry the text so far. prewarm opens the connection
+   * ahead of a recording with the same language and keyterms, so start does not wait for it.
    */
-  "voice.start": {
-    params: z.object({ language: z.string().min(2).max(12).default("de"), keyterms: z.array(z.string().max(100)).max(200).default([]) }),
-    result: z.object({ id: z.string() }),
-  },
+  "voice.prewarm": { params: voiceConnection, result: z.object({}) },
+  "voice.start": { params: voiceConnection, result: z.object({ id: z.string() }) },
   "voice.audio": { params: z.object({ id: z.string(), pcm: z.string().min(1).max(400_000) }), result: z.object({}) },
   "voice.stop": { params: z.object({ id: z.string() }), result: z.object({ text: z.string() }) },
   "voice.cancel": { params: z.object({ id: z.string() }), result: z.object({}) },

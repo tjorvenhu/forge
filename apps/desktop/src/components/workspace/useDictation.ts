@@ -6,6 +6,8 @@ import { toast } from "@/stores/toast";
 /** What Claude's speech service expects; Chromium resamples the microphone to it. */
 const RATE = 16_000;
 const BLOCK = 2048;
+/** The sidecar keeps a prewarmed connection for a minute and extends it on every prewarm. */
+const PREWARM_EVERY_MS = 15_000;
 
 export type DictationState = "idle" | "starting" | "recording" | "transcribing";
 
@@ -95,9 +97,19 @@ export function useDictation(onText: (text: string) => void, keyterms: string[])
     setLive("");
   }, [teardown]);
 
+  /** A recording is likely (composer focused, space down): the connection opens now, not at the first word. */
+  const warmedAt = useRef(0);
+  const prewarm = useCallback(() => {
+    if (rec.current || Date.now() - warmedAt.current < PREWARM_EVERY_MS) return;
+    warmedAt.current = Date.now();
+    void call("voice.prewarm", { language: "de", keyterms: terms.current }).catch(() => {});
+  }, []);
+
   const start = useCallback(async () => {
     if (rec.current) return;
     early.current = null;
+    // The recording uses up the prewarmed connection.
+    warmedAt.current = 0;
     setState("starting");
     setSeconds(0);
     setLive("");
@@ -171,7 +183,7 @@ export function useDictation(onText: (text: string) => void, keyterms: string[])
     };
   }, [teardown]);
 
-  return { state, seconds, live, start, stop, cancel };
+  return { state, seconds, live, start, stop, cancel, prewarm };
 }
 
 function toInt16(block: Float32Array): Int16Array {

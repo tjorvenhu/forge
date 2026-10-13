@@ -21,6 +21,8 @@ import { compactSession, stopSession, useComposerOptions, useSendMessage } from 
 
 /** Words of the trade the speech service should expect; the project adds its name and stack. */
 const DICTATION_TERMS = ["FORGE", "Claude", "Claude Code", "Commit", "Branch", "Pull Request", "Merge", "Deploy", "Worktree", "TypeScript", "JavaScript", "React", "Next.js", "Node", "pnpm", "API", "Endpoint", "Komponente", "Refactoring", "Bug", "Diff", "Session"];
+/** Space held this long is dictation; a typed space is up again well before. */
+const HOLD_MS = 200;
 
 /** Puts dictated text in place of the selection, with a space to its neighbours; `caret` lands after it. */
 export function insertSpoken(cur: string, from: number, to: number, spoken: string): { text: string; caret: number } {
@@ -151,33 +153,52 @@ export const Composer = memo(function Composer({
   };
 
   /**
-   * Hold space to dictate, like Claude Code: the first press types a space as usual. Only when the key
-   * repeats is it a hold; the space is taken back and the recording runs until the key comes up.
+   * Hold space to dictate, like Claude Code: the first press types a space as usual. Held for
+   * HOLD_MS with no other key in between, it is a hold: the space is taken back and the recording
+   * runs until the key comes up. Waiting for the key repeat instead costs half a second or more.
    */
   const spaceDown = useRef<{ text: string; start: number; end: number } | null>(null);
+  const holdTimer = useRef<number | undefined>(undefined);
   const holding = useRef(false);
   const [held, setHeld] = useState(false);
+  const cancelHoldTimer = () => {
+    window.clearTimeout(holdTimer.current);
+    holdTimer.current = undefined;
+  };
   const releaseHold = () => {
+    cancelHoldTimer();
+    spaceDown.current = null;
     if (!holding.current) return;
     holding.current = false;
     setHeld(false);
     void dictation.stop();
   };
-  const onSpaceDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (!e.repeat) {
-      spaceDown.current = dictation.state === "idle" ? { text, start: e.currentTarget.selectionStart, end: e.currentTarget.selectionEnd } : null;
-      return;
-    }
-    if (holding.current) return e.preventDefault();
+  const beginHold = () => {
+    cancelHoldTimer();
     const before = spaceDown.current;
-    if (!before || dictation.state !== "idle") return;
-    e.preventDefault();
+    if (!before || holding.current) return;
     setText(before.text);
     requestAnimationFrame(() => ref.current?.setSelectionRange(before.start, before.end));
     holding.current = true;
     setHeld(true);
     void dictation.start();
   };
+  const onSpaceDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (!e.repeat) {
+      cancelHoldTimer();
+      spaceDown.current = dictation.state === "idle" ? { text, start: e.currentTarget.selectionStart, end: e.currentTarget.selectionEnd } : null;
+      if (spaceDown.current) {
+        dictation.prewarm();
+        holdTimer.current = window.setTimeout(beginHold, HOLD_MS);
+      }
+      return;
+    }
+    if (holding.current) return e.preventDefault();
+    if (!spaceDown.current || dictation.state !== "idle") return;
+    e.preventDefault();
+    beginHold();
+  };
+  useEffect(() => () => window.clearTimeout(holdTimer.current), []);
 
   const [info, setInfo] = useState<InfoCommand | null>(null);
   const openInfo = (cmd: InfoCommand) => {
@@ -270,16 +291,19 @@ export const Composer = memo(function Composer({
           className="block max-h-65 w-full resize-none bg-transparent px-5 pt-4 text-ui text-fg placeholder:text-subtle focus:outline-none focus-visible:outline-none"
           onKeyUp={(e) => {
             if (e.key !== " ") return;
-            spaceDown.current = null;
-            if (holding.current) {
-              e.preventDefault();
-              releaseHold();
-            }
+            if (holding.current) e.preventDefault();
+            releaseHold();
           }}
+          onFocus={dictation.prewarm}
           // Focus gone while holding: the key-up never arrives here, so the recording ends now.
           onBlur={releaseHold}
           onKeyDown={(e) => {
             if (e.key === " " && !e.ctrlKey && !e.altKey && !e.metaKey && !e.shiftKey && !e.nativeEvent.isComposing) return onSpaceDown(e);
+            // Another key while space is down: fast typing, not a hold.
+            if (!holding.current && spaceDown.current) {
+              cancelHoldTimer();
+              spaceDown.current = null;
+            }
             if (e.key === "Escape" && (dictation.state === "recording" || dictation.state === "starting")) {
               e.preventDefault();
               holding.current = false;
@@ -328,7 +352,7 @@ export const Composer = memo(function Composer({
               <Paperclip className="h-3.5 w-3.5" />
             </Button>
           </Tooltip>
-          <DictationButton state={dictation.state} seconds={dictation.seconds} onToggle={toggleDictation} />
+          <DictationButton state={dictation.state} seconds={dictation.seconds} onToggle={toggleDictation} onPrepare={dictation.prewarm} />
           <Tooltip content={options.isPlan ? "Plan-Modus: Claude plant nur und ändert nichts" : "Nur planen (Plan-Modus)"}>
             <Button
               size="sm"

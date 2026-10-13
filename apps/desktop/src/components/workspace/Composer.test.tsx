@@ -189,13 +189,27 @@ describe("dictation", () => {
     useDrafts.getState().setText(draftKey("p1", null), "Bitte");
     setup(<Composer project={{ ...project("p1"), name: "Kundenportal", technologies: ["Next.js"] }} session={null} />);
     const box = screen.getByRole("textbox", { name: "Nachricht an Claude" });
-    // The first press types its space like any key; only the repeat of a held key starts the recording.
+    // The first press types its space like any key and opens the connection ahead; held on, it records.
     fireEvent.keyDown(box, { key: " " });
     fireEvent.change(box, { target: { value: "Bitte " } });
+    expect(callMock).toHaveBeenCalledWith("voice.prewarm", { language: "de", keyterms: expect.arrayContaining(["FORGE", "Kundenportal", "Next.js"]) });
     expect(callMock).not.toHaveBeenCalledWith("voice.start", expect.anything());
-    fireEvent.keyDown(box, { key: " ", repeat: true });
+    await act(() => wait(250));
     await waitFor(() => expect(callMock).toHaveBeenCalledWith("voice.start", { language: "de", keyterms: expect.arrayContaining(["FORGE", "Kundenportal", "Next.js"]) }));
     expect(useDrafts.getState().drafts[draftKey("p1", null)]?.text).toBe("Bitte");
+  });
+
+  it("starts at once on the key repeat, before the hold time", async () => {
+    callMock.mockImplementation(async (method: string) => {
+      if (method === "settings.get") return { enterToSend: true };
+      if (method === "voice.start") return { id: "v1" };
+      return { models: [] };
+    });
+    setup(<Composer project={project("p1")} session={null} />);
+    const box = screen.getByRole("textbox", { name: "Nachricht an Claude" });
+    fireEvent.keyDown(box, { key: " " });
+    fireEvent.keyDown(box, { key: " ", repeat: true });
+    await waitFor(() => expect(callMock).toHaveBeenCalledWith("voice.start", expect.anything()));
   });
 
   describe("live text", () => {
@@ -273,9 +287,21 @@ describe("dictation", () => {
     const box = screen.getByRole("textbox", { name: "Nachricht an Claude" });
     fireEvent.keyDown(box, { key: " " });
     fireEvent.keyUp(box, { key: " " });
+    await act(() => wait(250));
+    expect(callMock).not.toHaveBeenCalledWith("voice.start", expect.anything());
+  });
+
+  it("does not record when another key follows while space is still down (fast typing)", async () => {
+    setup(<Composer project={project("p1")} session={null} />);
+    const box = screen.getByRole("textbox", { name: "Nachricht an Claude" });
+    fireEvent.keyDown(box, { key: " " });
+    fireEvent.keyDown(box, { key: "d" });
+    await act(() => wait(250));
     expect(callMock).not.toHaveBeenCalledWith("voice.start", expect.anything());
   });
 });
+
+const wait = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 describe("info commands", () => {
   it("opens /usage as a dialog over the chat instead of sending it", async () => {

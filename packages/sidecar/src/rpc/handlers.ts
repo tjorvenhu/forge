@@ -259,6 +259,10 @@ export function createHandlers(s: Services): Handlers {
     "phone.hangup": () => s.phone.hangup(),
     "phone.deskTest": () => s.phone.deskTest(),
     "phone.calls": ({ limit }) => s.phone.calls(limit),
+    "voice.prewarm": (p) => {
+      s.dictation.prewarm(p);
+      return {};
+    },
     "voice.start": (p) => s.dictation.start(p),
     "voice.audio": ({ id, pcm }) => {
       s.dictation.audio(id, pcm);

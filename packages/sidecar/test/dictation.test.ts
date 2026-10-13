@@ -137,6 +137,44 @@ describe("dictation over Claude's speech service", () => {
     await expect(svc.stop(id)).rejects.toThrow(/Spracherkennung: audio format/);
   });
 
+  it("asks for live text while the user speaks, not only at pauses", async () => {
+    await service().start({ language: "de", keyterms: [] });
+    expect(new URL(sockets[0]!.url).searchParams.get("forward_interims")).toBe("typed");
+  });
+
+  it("takes a prewarmed connection for the next recording with the same words", async () => {
+    const svc = service();
+    svc.prewarm({ language: "de", keyterms: ["FORGE"] });
+    svc.prewarm({ language: "de", keyterms: ["FORGE"] });
+    while (sockets[0]?.readyState !== 1) await new Promise((r) => setTimeout(r, 1));
+    const { id } = await svc.start({ language: "de", keyterms: ["FORGE"] });
+    expect(sockets).toHaveLength(1);
+    sockets[0]!.say({ type: "TranscriptInterim", data: "Hallo" });
+    expect(events.at(-1)).toEqual({ event: "voice.transcript", payload: { id, text: "Hallo" } });
+    expect(await svc.stop(id)).toEqual({ text: "Hallo" });
+
+    // Used up: the next recording connects again.
+    await svc.start({ language: "de", keyterms: ["FORGE"] });
+    expect(sockets).toHaveLength(2);
+    svc.shutdown();
+  });
+
+  it("drops a prewarmed connection the service closed or that does not fit", async () => {
+    const svc = service();
+    svc.prewarm({ language: "de", keyterms: [] });
+    while (sockets[0]?.readyState !== 1) await new Promise((r) => setTimeout(r, 1));
+    sockets[0]!.onclose?.({ code: 1011, reason: "idle" });
+    await svc.start({ language: "de", keyterms: [] });
+    expect(sockets).toHaveLength(2);
+
+    svc.prewarm({ language: "de", keyterms: [] });
+    while (!sockets[2]) await new Promise((r) => setTimeout(r, 1));
+    await svc.start({ language: "en", keyterms: [] });
+    expect(sockets).toHaveLength(4);
+    expect(sockets[2]!.closed).toBe(true);
+    svc.shutdown();
+  });
+
   it("builds the hint header like Claude Code: ASCII, no commas inside, at most 1 KB", () => {
     expect(keytermHeader(["Next.js", "Größe", "a,b", "Next.js", "  "])).toBe("Next.js,Gre,a b");
     expect(keytermHeader(Array.from({ length: 300 }, (_, i) => `term${i}`)).length).toBeLessThanOrEqual(1024);

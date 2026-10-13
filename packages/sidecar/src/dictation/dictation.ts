@@ -68,56 +68,81 @@ interface Stream {
 }
 
 const OPEN = 1;
+/** A connection opened ahead of a recording waits this long for it; every prewarm extends the wait. */
+const SPARE_MS = 60_000;
+
+/** A connection to the service, before a recording takes it. */
+interface Conn {
+  key: string;
+  socket: VoiceSocket;
+  /** resolves once the socket is open; rejects with the reason it did not open */
+  opened: Promise<void>;
+  keepalive: ReturnType<typeof setInterval> | null;
+  /** closed by the service or by FORGE before a recording took it */
+  dead: boolean;
+  /** the service closed it while it waited */
+  onLost: (() => void) | null;
+}
+
+interface Spare {
+  key: string;
+  conn: Promise<Conn>;
+  expiry: ReturnType<typeof setTimeout>;
+}
 
 export class DictationService {
   private streams = new Map<string, Stream>();
+  private spare: Spare | null = null;
 
   constructor(private readonly d: DictationDeps) {}
 
-  /** Opens the connection; audio can follow as soon as this resolves. */
-  async start(opts: { language: string; keyterms: string[] }): Promise<{ id: string }> {
-    const token = await this.token();
-    const version = (await this.d.cliVersion()) ?? "unknown";
-    const query = new URLSearchParams({
-      encoding: "linear16",
-      sample_rate: String(SAMPLE_RATE),
-      channels: "1",
-      endpointing_ms: "300",
-      utterance_end_ms: "1000",
-      language: opts.language,
-      use_conversation_engine: "true",
-    });
-    const headers: Record<string, string> = {
-      Authorization: `Bearer ${token}`,
-      // FORGE talks to Claude Code through the Agent SDK and says so.
-      "User-Agent": `claude-cli/${version} (external, sdk-ts, client-app/forge)`,
-      "x-app": "cli",
-      "anthropic-client-platform": "claude_code_sdk",
+  /**
+   * Opens a connection ahead of a recording (composer focused, space pressed), so a recording does
+   * not wait for the login check and the TLS handshake and the first words show at once.
+   */
+  prewarm(opts: { language: string; keyterms: string[] }) {
+    const key = connKey(opts);
+    if (this.spare?.key === key) {
+      clearTimeout(this.spare.expiry);
+      this.spare.expiry = setTimeout(() => this.dropSpare(), SPARE_MS);
+      return;
+    }
+    this.dropSpare();
+    const spare: Spare = { key, conn: this.open(opts), expiry: setTimeout(() => this.dropSpare(), SPARE_MS) };
+    this.spare = spare;
+    const forget = () => {
+      if (this.spare === spare) this.dropSpare();
     };
-    const keyterms = keytermHeader(opts.keyterms);
-    if (keyterms) headers["x-config-keyterms"] = keyterms;
+    spare.conn.then((c) => (c.onLost = forget), forget);
+    spare.conn.then((c) => c.opened).catch(forget);
+  }
 
-    const socket = (this.d.connect ?? defaultConnect)(`${ENDPOINT}?${query.toString()}`, headers);
+  /** Opens the connection (or takes the prewarmed one); audio can follow as soon as this resolves. */
+  async start(opts: { language: string; keyterms: string[] }): Promise<{ id: string }> {
+    let conn: Conn | null = null;
+    const warm = this.spare?.key === connKey(opts) ? this.spare.conn : null;
+    if (warm) {
+      clearTimeout(this.spare!.expiry);
+      this.spare = null;
+      try {
+        conn = await warm;
+        await conn.opened;
+        if (conn.dead) conn = null;
+      } catch {
+        conn = null;
+      }
+    }
+    this.dropSpare();
+    if (!conn) {
+      conn = await this.open(opts);
+      await conn.opened;
+    }
+
+    conn.onLost = null;
+    const { socket } = conn;
     const id = randomUUID();
-    const s: Stream = { socket, finals: [], pending: "", keepalive: null, closing: false, error: null, finish: null, lastMessageAt: this.now() };
+    const s: Stream = { socket, finals: [], pending: "", keepalive: conn.keepalive, closing: false, error: null, finish: null, lastMessageAt: this.now() };
     this.streams.set(id, s);
-
-    await new Promise<void>((resolve, reject) => {
-      const timer = setTimeout(() => fail("Der Sprachdienst von Claude antwortet nicht."), CONNECT_TIMEOUT_MS);
-      const fail = (message: string) => {
-        clearTimeout(timer);
-        this.drop(id);
-        reject(new ForgeError("CLAUDE_RUNTIME", message));
-      };
-      socket.onopen = () => {
-        clearTimeout(timer);
-        socket.send(KEEPALIVE);
-        s.keepalive = setInterval(() => socket.readyState === OPEN && socket.send(KEEPALIVE), KEEPALIVE_MS);
-        resolve();
-      };
-      socket.onerror = () => fail("Keine Verbindung zum Sprachdienst von Claude. Netzwerk prüfen, sonst hat sich der Dienst mit einem Claude-Code-Update geändert.");
-      socket.onclose = (e) => fail(e.code === 1008 || e.code === 4001 || e.code === 4003 ? "Der Sprachdienst lehnt die Claude-Anmeldung ab." : `Sprachdienst getrennt (Code ${e.code}).`);
-    });
 
     socket.onmessage = (e) => this.onMessage(id, s, e.data);
     socket.onerror = () => {
@@ -170,6 +195,7 @@ export class DictationService {
   }
 
   shutdown() {
+    this.dropSpare();
     for (const id of [...this.streams.keys()]) this.drop(id);
   }
 
@@ -230,6 +256,68 @@ export class DictationService {
     }
   }
 
+  private async open(opts: { language: string; keyterms: string[] }): Promise<Conn> {
+    const token = await this.token();
+    const version = (await this.d.cliVersion()) ?? "unknown";
+    const query = new URLSearchParams({
+      encoding: "linear16",
+      sample_rate: String(SAMPLE_RATE),
+      channels: "1",
+      endpointing_ms: "300",
+      utterance_end_ms: "1000",
+      language: opts.language,
+      use_conversation_engine: "true",
+      // Without it the service sends text only at pauses and at the end, not while the user speaks.
+      forward_interims: "typed",
+    });
+    const headers: Record<string, string> = {
+      Authorization: `Bearer ${token}`,
+      // FORGE talks to Claude Code through the Agent SDK and says so.
+      "User-Agent": `claude-cli/${version} (external, sdk-ts, client-app/forge)`,
+      "x-app": "cli",
+      "anthropic-client-platform": "claude_code_sdk",
+    };
+    const keyterms = keytermHeader(opts.keyterms);
+    if (keyterms) headers["x-config-keyterms"] = keyterms;
+
+    const socket = (this.d.connect ?? defaultConnect)(`${ENDPOINT}?${query.toString()}`, headers);
+    const conn: Conn = { key: connKey(opts), socket, opened: Promise.resolve(), keepalive: null, dead: false, onLost: null };
+    conn.opened = new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(() => fail("Der Sprachdienst von Claude antwortet nicht."), CONNECT_TIMEOUT_MS);
+      const fail = (message: string) => {
+        clearTimeout(timer);
+        closeConn(conn);
+        reject(new ForgeError("CLAUDE_RUNTIME", message));
+      };
+      socket.onopen = () => {
+        clearTimeout(timer);
+        socket.send(KEEPALIVE);
+        conn.keepalive = setInterval(() => socket.readyState === OPEN && socket.send(KEEPALIVE), KEEPALIVE_MS);
+        // Until a recording takes it over, a connection the service closes is just gone.
+        const lost = () => {
+          closeConn(conn);
+          conn.onLost?.();
+        };
+        socket.onerror = lost;
+        socket.onclose = lost;
+        resolve();
+      };
+      socket.onerror = () => fail("Keine Verbindung zum Sprachdienst von Claude. Netzwerk prüfen, sonst hat sich der Dienst mit einem Claude-Code-Update geändert.");
+      socket.onclose = (e) => fail(e.code === 1008 || e.code === 4001 || e.code === 4003 ? "Der Sprachdienst lehnt die Claude-Anmeldung ab." : `Sprachdienst getrennt (Code ${e.code}).`);
+    });
+    // A prewarmed connection may fail without anyone waiting for it.
+    conn.opened.catch(() => {});
+    return conn;
+  }
+
+  private dropSpare() {
+    const s = this.spare;
+    if (!s) return;
+    this.spare = null;
+    clearTimeout(s.expiry);
+    s.conn.then(closeConn, () => {});
+  }
+
   /** The OAuth token of the Claude login; an expired one is refreshed by Claude Code first. */
   private async token(): Promise<string> {
     const read = async () => {
@@ -278,4 +366,20 @@ export function keytermHeader(terms: string[]): string {
     size += add;
   }
   return out.join(",");
+}
+
+/** Connections differ only in language and hint words; a spare one fits a recording with the same. */
+function connKey(opts: { language: string; keyterms: string[] }): string {
+  return `${opts.language}\n${keytermHeader(opts.keyterms)}`;
+}
+
+function closeConn(c: Conn) {
+  c.dead = true;
+  if (c.keepalive) clearInterval(c.keepalive);
+  c.socket.onopen = c.socket.onmessage = c.socket.onerror = c.socket.onclose = null;
+  try {
+    c.socket.close();
+  } catch {
+    /* already closed */
+  }
 }

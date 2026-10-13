@@ -6,7 +6,7 @@ import type { DictationState } from "./useDictation";
 const clock = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 
 /** Microphone in the composer: starts dictation, shows the running time while recording, stops it. */
-export function DictationButton({ state, seconds, onToggle }: { state: DictationState; seconds: number; onToggle: () => void }) {
+export function DictationButton({ state, seconds, onToggle, onPrepare }: { state: DictationState; seconds: number; onToggle: () => void; onPrepare?: () => void }) {
   if (state === "recording")
     return (
       <Tooltip content="Aufnahme beenden und Text einfügen. Esc verwirft sie.">
@@ -24,7 +24,7 @@ export function DictationButton({ state, seconds, onToggle }: { state: Dictation
     );
   return (
     <Tooltip content="Diktieren: Leertaste im Eingabefeld gedrückt halten oder hier klicken. Die Spracheingabe von Claude schreibt mit, der Text landet im Eingabefeld.">
-      <Button size="icon-sm" variant="ghost" onClick={onToggle} aria-label="Diktieren" loading={state === "starting"}>
+      <Button size="icon-sm" variant="ghost" onClick={onToggle} onPointerEnter={onPrepare} aria-label="Diktieren" loading={state === "starting"}>
         <Mic className="h-3.5 w-3.5" />
       </Button>
     </Tooltip>
