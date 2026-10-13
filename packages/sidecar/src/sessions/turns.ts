@@ -66,6 +66,15 @@ export class TurnDispatch {
     return { msg: { text, blocks, uuid: randomUUID() }, meta, ...(source ? { source } : {}) };
   }
 
+  /**
+   * Adds what auto-commit and auto-push did since Claude's last message, as a block before the text.
+   * Taken at delivery, after the post-turn work is done; the timeline keeps showing only the user's text.
+   */
+  withNote(sessionId: string, msg: OutgoingMessage): OutgoingMessage {
+    const note = this.automation.takeNote(sessionId);
+    return note ? { ...msg, blocks: [{ type: "text", text: note }, ...msg.blocks] } : msg;
+  }
+
   record(sessionId: string, t: BuiltTurn) {
     this.core.live.get(sessionId)?.seenUuids.add(t.msg.uuid);
     this.core.record(sessionId, { type: "user.message", text: t.msg.text, uuid: t.msg.uuid, ...(t.meta.length ? { attachments: t.meta } : {}), ...(t.source ? { source: t.source } : {}) });
@@ -93,7 +102,7 @@ export class TurnDispatch {
       this.hold(sessionId, live, turn.msg);
     } else {
       // While a turn runs the CLI queues the message and folds it in after the current tool step.
-      live.rt.sendMessage(turn.msg);
+      live.rt.sendMessage(this.withNote(sessionId, turn.msg));
       this.markRunning(sessionId, live);
     }
     return this.core.get(sessionId);
@@ -115,7 +124,7 @@ export class TurnDispatch {
       this.core.record(id, { type: "error", message: "Nachricht nicht gesendet: Session beendet.", retryable: true });
       return;
     }
-    live.rt.sendMessage(msg);
+    live.rt.sendMessage(this.withNote(id, msg));
     this.markRunning(id, live);
     // clears the "waiting for tests" detail
     this.core.setStatus(id, "running");

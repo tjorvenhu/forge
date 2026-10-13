@@ -150,7 +150,7 @@ export class SessionLifecycle {
       if (first) this.turns.record(sessionId, first);
       db.updateSession(sessionId, { status: "starting", lastError: null, permissionMode });
       // The session keeps its original cwd even if the project moved; path assignment stays stable.
-      const live = this.attach({ ...rec, permissionMode, profile: profile.id }, profile, claudePath, settings.stripApiKey, claudeSessionId, hold ? null : (first?.msg ?? null));
+      const live = this.attach({ ...rec, permissionMode, profile: profile.id }, profile, claudePath, settings.stripApiKey, claudeSessionId, hold || !first ? null : this.turns.withNote(sessionId, first.msg));
       if (first && hold) this.turns.hold(sessionId, live, first.msg);
     });
     return this.core.get(sessionId);

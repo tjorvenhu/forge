@@ -227,6 +227,10 @@ export function forgeSessionTools(rec: SessionRecord, d: ForgeToolDeps): { tools
     project.parentId && autoMerge
       ? "In diesem Projekt führt FORGE deinen Branch automatisch zusammen, sobald ein Durchlauf ohne Fehler endet. Rückfragen deshalb nur mit AskUserQuestion stellen, nie als Frage am Ende deiner Antwort. Beende einen Durchlauf erst, wenn die Arbeit fertig ist."
       : "";
+  // Tags can change during the session; the note with the next message says what FORGE actually did.
+  const autoCommitLine = project.tags.includes("auto-commit")
+    ? `In diesem Projekt committet FORGE nach jedem erfolgreichen Durchlauf selbst die darin geänderten Dateien (Tag auto-commit${project.tags.includes("auto-push") ? ", danach Push außer auf main/master (auto-push)" : ""}). Mit deiner nächsten Nachricht nennt dir FORGE diese Commits. Soll committet oder gepusht werden, ist das meist schon passiert: prüfe mit git status und git log, committe nur, was noch offen ist, und push dann.`
+    : "";
 
   if (parent) {
     return {
@@ -236,6 +240,7 @@ export function forgeSessionTools(rec: SessionRecord, d: ForgeToolDeps): { tools
         `Du arbeitest im Git-Worktree ${rec.cwd} auf einem eigenen Branch. Ändere nur Dateien in diesem Ordner.`,
         "Wenn du fertig bist: committe deine Arbeit auf deinem Branch und fasse am Ende in wenigen Sätzen zusammen, was du gemacht hast und was offen ist. Die startende Session liest diese Zusammenfassung.",
         autoMergeLine,
+        autoCommitLine,
         "Mit mcp__forge__notify kannst du den Nutzer benachrichtigen. Weitere Agenten kannst du nicht starten.",
         ...own.context,
       ]
@@ -394,6 +399,7 @@ export function forgeSessionTools(rec: SessionRecord, d: ForgeToolDeps): { tools
           }`
         : "",
       autoMergeLine,
+      autoCommitLine,
       "- notify: den Nutzer aktiv benachrichtigen. urgent=true nur, wenn er sofort gebraucht wird (kann sein Telefon klingeln lassen).",
       ...own.context,
     ]

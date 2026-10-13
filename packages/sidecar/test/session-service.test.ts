@@ -41,6 +41,8 @@ class FakeRuntime implements ClaudeRuntime {
   closed = 0;
   sent: string[] = [];
   sentUuids: string[] = [];
+  /** text blocks sent before the message text (FORGE notes) */
+  sentNotes: string[] = [];
   /** session = index of the started CLI process */
   remoteCalls: Array<{ enabled: boolean; name: string; session: number }> = [];
   efforts: Array<string | null> = [];
@@ -110,6 +112,7 @@ class FakeRuntime implements ClaudeRuntime {
       sendMessage: (m) => {
         this.sent.push(m.text);
         this.sentUuids.push(m.uuid);
+        for (const b of m.blocks) if (b.type === "text") this.sentNotes.push(b.text);
       },
       rewindFiles: async () => ({ canRewind: true, error: null, filesChanged: ["a.txt"], insertions: 1, deletions: 0 }),
       supportedCommands: async () => [],
@@ -1073,6 +1076,20 @@ describe("turn automation holds the next turn", () => {
     expect(rt.sent).toEqual(["weiter"]);
     const bodies = db.listEvents(s.id).map((e) => e.body);
     expect(bodies.find((b) => b.type === "automation")).toMatchObject({ action: "commit", ok: true, files: ["neu.txt"] });
+    // Claude learns that the commit came from FORGE; the timeline shows only the user's text.
+    expect(rt.sentNotes).toHaveLength(1);
+    expect(rt.sentNotes[0]).toMatch(/^\[FORGE-Hinweis/);
+    expect(rt.sentNotes[0]).toContain("„feat: neue Datei“ mit 1 Datei(en): neu.txt");
+    expect(rt.sentNotes[0]).toMatch(/Commit [0-9a-f]{7} /);
+    expect(userTexts(s.id)).toContain("weiter");
+    expect(userTexts(s.id).some((t) => t.includes("FORGE-Hinweis"))).toBe(false);
+    // Told once: the next message goes without it.
+    success(rt.sinks[0]!);
+    await svc.drain();
+    await svc.send(s.id, "und jetzt pushen");
+    await svc.drain();
+    expect(rt.sent.at(-1)).toBe("und jetzt pushen");
+    expect(rt.sentNotes).toHaveLength(1);
   });
 
   it("drops a held message when the user stops", async () => {

@@ -37,6 +37,11 @@ export class TurnAutomation {
   private running = new Map<string, Promise<void>>();
   private held = new Map<string, HeldTurn[]>();
   private background = new Set<Promise<unknown>>();
+  /**
+   * What the post-turn work did, for Claude. Without it Claude finds commits it did not make and
+   * reports them as someone else's work; the next message it gets tells it they came from FORGE.
+   */
+  private notes = new Map<string, string[]>();
 
   constructor(
     private readonly db: Db,
@@ -92,6 +97,34 @@ export class TurnAutomation {
     this.baseline.delete(sessionId);
     this.turnSeq.delete(sessionId);
     this.held.delete(sessionId);
+    this.notes.delete(sessionId);
+  }
+
+  /** The notes about commits and pushes since Claude's last message, once; null when there are none. */
+  takeNote(sessionId: string): string | null {
+    const list = this.notes.get(sessionId);
+    this.notes.delete(sessionId);
+    if (!list?.length) return null;
+    return [
+      "[FORGE-Hinweis, nicht vom Nutzer geschrieben] Nach deinem letzten Durchlauf hat FORGE selbst gearbeitet (Projekt-Tags auto-commit/auto-push):",
+      ...list.map((l) => `- ${l}`),
+      "Diese Commits und Pushes stammen von FORGE, nicht von jemand anderem. Soll committet oder gepusht werden, prüfe mit git status und git log, was noch offen ist, committe nur das und push dann. Erwähne die FORGE-Commits nicht als Überraschung.",
+    ].join("\n");
+  }
+
+  private report(sessionId: string, body: Extract<SessionEventBody, { type: "automation" }>) {
+    this.host.record(sessionId, body);
+    const line =
+      body.action === "commit"
+        ? body.ok
+          ? `Commit ${body.hash?.slice(0, 7) ?? ""} „${body.message}“ mit ${body.files.length} Datei(en): ${body.files.slice(0, 8).join(", ")}${body.files.length > 8 ? ", …" : ""}`
+          : `Auto-Commit fehlgeschlagen: ${body.message}. Die Änderungen sind nicht committet.`
+        : body.action === "push"
+          ? `${body.message} (automatischer Push)`
+          : body.message;
+    const list = this.notes.get(sessionId) ?? [];
+    list.push(line);
+    this.notes.set(sessionId, list);
   }
 
   /**
@@ -154,25 +187,25 @@ export class TurnAutomation {
     const testsOk = await this.runTests(sessionId, project.id, project.testCommand, tags, cwd);
 
     if (tags.has("review-required")) {
-      this.host.record(sessionId, { type: "automation", action: "skip", ok: true, message: "Auto-Commit übersprungen: review-required verlangt eine Prüfung im Git-Bereich.", hash: null, files: [] });
+      this.report(sessionId, { type: "automation", action: "skip", ok: true, message: "Auto-Commit übersprungen: review-required verlangt eine Prüfung im Git-Bereich.", hash: null, files: [] });
       return testsOk;
     }
     if (!testsOk) {
-      this.host.record(sessionId, { type: "automation", action: "skip", ok: false, message: "Auto-Commit übersprungen: Tests sind fehlgeschlagen.", hash: null, files: [] });
+      this.report(sessionId, { type: "automation", action: "skip", ok: false, message: "Auto-Commit übersprungen: Tests sind fehlgeschlagen.", hash: null, files: [] });
       return false;
     }
     if (!files.length) return true;
     // A turn from the Claude app or a background task may have started meanwhile; it bypasses the hold.
     const after = await this.hashFiles(cwd, files);
     if ((this.turnSeq.get(sessionId) ?? 0) !== seq || files.some((f) => before.get(f) !== after.get(f))) {
-      this.host.record(sessionId, { type: "automation", action: "skip", ok: true, message: "Auto-Commit übersprungen: Dateien haben sich nach dem Durchlauf weiter geändert. Bitte im Git-Bereich prüfen.", hash: null, files: [] });
+      this.report(sessionId, { type: "automation", action: "skip", ok: true, message: "Auto-Commit übersprungen: Dateien haben sich nach dem Durchlauf weiter geändert. Bitte im Git-Bereich prüfen.", hash: null, files: [] });
       return true;
     }
     let message: string;
     try {
       message = (await this.host.suggestCommitMessage(project.id, files)).message;
     } catch (e) {
-      this.host.record(sessionId, { type: "automation", action: "commit", ok: false, message: e instanceof Error ? e.message : String(e), hash: null, files });
+      this.report(sessionId, { type: "automation", action: "commit", ok: false, message: e instanceof Error ? e.message : String(e), hash: null, files });
       return true;
     }
     await this.commitAndPush(sessionId, project, cwd, files, message, status.summary.branch);
@@ -183,18 +216,18 @@ export class TurnAutomation {
   private async commitAndPush(sessionId: string, project: Project, cwd: string, files: string[], message: string, branch: string | null) {
     try {
       const r = await this.git.commit(cwd, message, files, false);
-      this.host.record(sessionId, { type: "automation", action: "commit", ok: true, message: r.summary, hash: r.hash, files });
+      this.report(sessionId, { type: "automation", action: "commit", ok: true, message: r.summary, hash: r.hash, files });
       this.host.emit({ event: "project.updated", payload: { projectId: project.id } });
       if (project.tags.includes("auto-push")) {
         if (!branch || branch === "main" || branch === "master") {
-          this.host.record(sessionId, { type: "automation", action: "skip", ok: true, message: `Auto-Push übersprungen: ${branch ?? "ohne Branch"} ist geschützt.`, hash: null, files: [] });
+          this.report(sessionId, { type: "automation", action: "skip", ok: true, message: `Auto-Push übersprungen: ${branch ?? "ohne Branch"} ist geschützt.`, hash: null, files: [] });
         } else {
           await this.git.push(cwd, false);
-          this.host.record(sessionId, { type: "automation", action: "push", ok: true, message: `Gepusht: ${branch}`, hash: r.hash, files: [] });
+          this.report(sessionId, { type: "automation", action: "push", ok: true, message: `Gepusht: ${branch}`, hash: r.hash, files: [] });
         }
       }
     } catch (e) {
-      this.host.record(sessionId, { type: "automation", action: "commit", ok: false, message: e instanceof Error ? e.message : String(e), hash: null, files });
+      this.report(sessionId, { type: "automation", action: "commit", ok: false, message: e instanceof Error ? e.message : String(e), hash: null, files });
     }
   }
 
