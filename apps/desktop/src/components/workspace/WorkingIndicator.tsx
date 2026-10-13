@@ -38,7 +38,7 @@ export const BackgroundIndicator = memo(function BackgroundIndicator({ tasks, se
     }
   };
   return (
-    <div className="mx-auto flex max-w-5xl flex-col gap-0.5 px-6 pb-4 text-small">
+    <div className="flex flex-col gap-0.5 px-6 pb-4 text-small">
       {tasks.map((t) => (
         <ChatRow key={t.taskId} marker={<Hourglass className="animate-soft-pulse h-3.5 w-3.5 text-accent" />}>
           <div className="group/task flex min-w-0 items-baseline gap-2">
@@ -93,7 +93,7 @@ export const WorkingIndicator = memo(function WorkingIndicator({ startedAt, suba
     }
   };
   return (
-    <div className="mx-auto max-w-5xl px-6 pb-4 pt-1 text-small">
+    <div className="px-6 pb-4 pt-1 text-small">
       <ChatRow
         marker={
           <span className="flex motion-safe:animate-spin-slow">

@@ -405,8 +405,6 @@ export const Settings = z.object({
   desktopNotifications: z.boolean(),
   /** blocklist rules the user switched off; every other rule applies */
   disabledPolicyRules: z.array(PolicyRuleId),
-  /** Windows backdrop behind the slightly translucent window; none keeps it opaque */
-  windowEffect: z.enum(["mica", "acrylic", "none"]),
 });
 export type Settings = z.infer<typeof Settings>;
 

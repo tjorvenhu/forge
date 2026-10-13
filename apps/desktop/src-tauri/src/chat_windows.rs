@@ -38,6 +38,13 @@ pub struct ChatTarget {
     draft: Option<String>,
 }
 
+/// Top-left corner of a new chat window in logical screen pixels (where a dragged tab was dropped).
+#[derive(Clone, Copy, Deserialize)]
+pub struct WindowPosition {
+    x: f64,
+    y: f64,
+}
+
 impl ChatTarget {
     fn validate(&self) -> Result<(), String> {
         let id_ok = |s: &str| !s.is_empty() && s.len() <= MAX_ID;
@@ -98,7 +105,7 @@ impl ChatWindows {
 /// Shows the session in its own window, or brings the window that already shows it to the front.
 /// Async: building a webview from a synchronous command deadlocks on Windows (WebView2).
 #[tauri::command]
-pub async fn open_chat_window(app: AppHandle, target: ChatTarget, title: String) -> Result<(), String> {
+pub async fn open_chat_window(app: AppHandle, target: ChatTarget, title: String, position: Option<WindowPosition>) -> Result<(), String> {
     target.validate()?;
     let session_id = target.session_id.clone().ok_or("Ungültige Session")?;
     let base = label_for(&session_id).ok_or("Ungültige Session")?;
@@ -130,6 +137,12 @@ pub async fn open_chat_window(app: AppHandle, target: ChatTarget, title: String)
     };
     config.label = label.clone();
     config.title = window_title(&title);
+    if let Some(p) = position.filter(|p| p.x.is_finite() && p.y.is_finite()) {
+        // A tab dragged out of the strip: the new window opens where it was dropped.
+        config.x = Some(p.x);
+        config.y = Some(p.y);
+        config.center = false;
+    }
     let built = WebviewWindowBuilder::from_config(&app, &config)
         .and_then(|b| b.initialization_script(script).build());
     match built {

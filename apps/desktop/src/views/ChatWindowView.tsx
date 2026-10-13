@@ -2,7 +2,6 @@ import { useEffect } from "react";
 import { useProject, useSession } from "@/lib/queries";
 import { errorMessage } from "@/lib/rpc";
 import { reportChatWindow, type ChatWindowTarget } from "@/lib/chat-windows";
-import { useWindowEffect } from "@/lib/window-effect";
 import { splitActive, useUi } from "@/stores/ui";
 import { ErrorBoundary } from "@/components/layout/ErrorBoundary";
 import { Toaster } from "@/components/layout/Toaster";
@@ -16,7 +15,6 @@ import { ChatPanel } from "@/components/workspace/ChatPanel";
  * shortcuts stay with the main window; the composer keeps its own.
  */
 export function ChatWindowShell({ target }: { target: ChatWindowTarget }) {
-  useWindowEffect();
   useReportShownSession(target.projectId);
   const project = useProject(target.projectId);
 

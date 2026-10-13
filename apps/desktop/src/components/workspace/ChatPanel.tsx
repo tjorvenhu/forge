@@ -38,7 +38,7 @@ const NO_STREAMING: Record<string, string> = {};
 /** room above the first row for the "load older" button */
 const OLDER_BAR_HEIGHT = 44;
 /** "tight" must stay pt-1.5: the guide line of subagent calls reaches up exactly that far. */
-const ROW_SPACING: Record<RowSpacing, string> = { first: "pt-5", turn: "pt-8", block: "pt-3.5", tight: "pt-1.5" };
+const ROW_SPACING: Record<RowSpacing, string> = { first: "pt-5", turn: "pt-8", block: "pt-3.5", tight: "pt-3" };
 
 /**
  * Where each thread was scrolled to and how tall its rows were, so switching sessions or tabs comes
@@ -320,7 +320,7 @@ function SessionThread({ sessionId, session, project, workingInPanel }: { sessio
         }}
       >
         <div ref={contentRef}>
-          <div className="relative mx-auto w-full max-w-5xl" style={{ height: virtualizer.getTotalSize() + 24 }}>
+          <div className="relative w-full" style={{ height: virtualizer.getTotalSize() + 24 }}>
             {hasOlder && (
               <div className="absolute inset-x-0 top-0 flex items-end justify-center" style={{ height: OLDER_BAR_HEIGHT }}>
                 <Button size="sm" variant="outline" loading={loadingOlder} onClick={() => void loadOlder()}>

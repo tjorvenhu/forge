@@ -1,10 +1,12 @@
 import { useEffect, useRef, type KeyboardEvent } from "react";
+import { createPortal } from "react-dom";
 import { AppWindow, Hourglass, SquareArrowOutUpRight, X } from "lucide-react";
 import { openChatWindow, useChatWindows } from "@/lib/chat-windows";
 import { call, useLiveSessions, useProjects, useSession } from "@/lib/queries";
 import { errorMessage } from "@/lib/rpc";
 import { flatTabs, groupTabs, openSessionId, openSessionTab, type TabSession } from "@/lib/session-tabs";
 import { isBusy, isWorking } from "@/lib/working";
+import { useTabTearOff } from "@/lib/tab-drag";
 import { cn } from "@/lib/utils";
 import { useUi } from "@/stores/ui";
 import { toast } from "@/stores/toast";
@@ -50,6 +52,11 @@ export function SessionTabs() {
     const el = [...(listRef.current?.querySelectorAll<HTMLElement>("[data-session-tab]") ?? [])].find((t) => t.dataset.sessionTab === activeId);
     el?.scrollIntoView?.({ block: "nearest", inline: "nearest" });
   }, [activeId]);
+
+  const { drag, handlers: dragHandlers, consumeClick } = useTabTearOff(listRef, (id, position) => {
+    const s = tabs.find((t) => t.id === id);
+    if (s) void openChatWindow(s.projectId, s.id, s.title, position);
+  });
 
   if (!tabs.length) return null;
 
@@ -106,6 +113,7 @@ export function SessionTabs() {
                 className={cn(
                   // Same weight active or not, like the sidebar: a bolder title would make the strip jump.
                   "group flex h-8 min-w-0 max-w-60 shrink-0 animate-fade-in items-center rounded-lg text-body transition-[color,background-color] duration-120",
+                  drag?.id === s.id && "opacity-50",
                   active ? "bg-surface-3 text-fg" : attention ? "bg-warning-soft text-fg hover:bg-surface-2" : "text-muted hover:bg-surface-2 hover:text-fg",
                 )}
               >
@@ -114,9 +122,12 @@ export function SessionTabs() {
                   aria-selected={active}
                   aria-label={`${title}, ${s.projectName}, ${statusText(s)}`}
                   tabIndex={i === focusIndex ? 0 : -1}
-                  onClick={() => openProject(s.projectId, s.id)}
+                  onClick={() => {
+                    if (!consumeClick()) openProject(s.projectId, s.id);
+                  }}
                   onKeyDown={(e) => onTabKey(e, i)}
-                  title={`${s.projectName}: ${title}\n${statusText(s)}${s.live ? "" : ". Kein laufender Claude-Prozess"}${inWindow ? "\nIn eigenem Fenster geöffnet" : ""}\nStrg+Tab wechselt zur nächsten Session.`}
+                  {...dragHandlers(s.id, title)}
+                  title={`${s.projectName}: ${title}\n${statusText(s)}${s.live ? "" : ". Kein laufender Claude-Prozess"}${inWindow ? "\nIn eigenem Fenster geöffnet" : ""}\nStrg+Tab wechselt zur nächsten Session. Herausziehen öffnet ein eigenes Fenster.`}
                   className={cn("flex h-full min-w-0 cursor-default items-center gap-2 rounded-lg pl-3 transition-transform duration-75 focus-visible:outline-offset-[-2px] active:scale-[0.97]", closable || detachable ? "pr-1.5" : "pr-3")}
                 >
                   <span aria-hidden className={cn("h-1.5 w-1.5 shrink-0 rounded-full", dotClass(s))} />
@@ -158,6 +169,21 @@ export function SessionTabs() {
           })}
         </div>
       ))}
+      {drag &&
+        createPortal(
+          <div
+            aria-hidden
+            style={{ left: drag.x + 12, top: drag.y + 8 }}
+            className={cn(
+              "pointer-events-none fixed z-50 flex max-w-80 items-center gap-2 rounded-lg border px-3 py-1.5 text-body shadow-lg",
+              drag.tornOff ? "border-accent bg-surface-3 text-fg" : "border-border bg-surface-2 text-muted",
+            )}
+          >
+            <SquareArrowOutUpRight className={cn("h-3.5 w-3.5 shrink-0", drag.tornOff && "text-accent")} />
+            <span className="truncate">{drag.tornOff ? `Loslassen: „${drag.label}“ in eigenem Fenster` : drag.label}</span>
+          </div>,
+          document.body,
+        )}
     </div>
   );
 }

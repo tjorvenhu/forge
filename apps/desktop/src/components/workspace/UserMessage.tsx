@@ -67,7 +67,7 @@ export function UserMessage({ item, sessionId }: { item: Extract<ChatItem, { kin
     <div className="group -mx-3 rounded-md bg-surface-2 px-3 py-2.5">
       <ChatRow className="text-ui leading-[1.65]" marker={<UserAvatar />}>
         <div className="flex min-w-0 items-start gap-3">
-          <div className="min-w-0 max-w-[90ch] flex-1">
+          <div className="min-w-0 flex-1">
             <div className="whitespace-pre-wrap break-words">{item.text}</div>
             {showImages && <MessageImages images={images.data} names={imageNames} />}
             {hasMeta && (

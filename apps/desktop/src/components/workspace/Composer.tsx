@@ -228,7 +228,7 @@ export const Composer = memo(function Composer({
         : "Nachricht an Claude, / für Befehle, Dateien hineinziehen oder einfügen";
 
   return (
-    <div className="relative mx-auto w-full max-w-5xl shrink-0 px-6 pb-5 pt-2">
+    <div className="relative w-full shrink-0 px-6 pb-5 pt-2">
       <SlashCommandMenu matches={matches} index={cmdIndex} onPick={pickCommand} />
       <InfoCommandDialog command={info} project={project} session={session} onClose={() => setInfo(null)} />
       <div

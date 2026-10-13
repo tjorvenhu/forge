@@ -158,19 +158,6 @@ function GeneralSection({ s, save }: { s: Settings; save: Save }) {
       <GitHubSettings />
 
       <Group title="Bedienung">
-        <Row label="Fensterhintergrund" description="Leicht durchscheinendes Fenster. Mica nimmt die Farbe des Hintergrundbilds auf, Acryl zeigt unscharf, was hinter dem Fenster liegt. Nur unter Windows 11.">
-          <Select
-            value={s.windowEffect}
-            onChange={(v) => void save({ windowEffect: v })}
-            className="w-64"
-            aria-label="Fensterhintergrund"
-            options={[
-              { value: "mica", label: "Mica", description: "Dezent, ruhig beim Verschieben" },
-              { value: "acrylic", label: "Acryl", description: "Stärker durchscheinend" },
-              { value: "none", label: "Deckend", description: "Ohne Transparenz" },
-            ]}
-          />
-        </Row>
         <SwitchRow
           label="Enter sendet"
           description={s.enterToSend ? "Umschalt+Enter macht eine neue Zeile." : "Strg+Enter sendet, Enter macht eine neue Zeile."}

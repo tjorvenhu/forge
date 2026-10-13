@@ -19,8 +19,7 @@
         "minWidth": 1100,
         "minHeight": 700,
         "theme": "Dark",
-        "transparent": true,
-        "windowEffects": { "effects": ["mica"] },
+        "backgroundColor": "#14171d",
         "center": true
       },
       {
@@ -32,8 +31,7 @@
         "minWidth": 520,
         "minHeight": 500,
         "theme": "Dark",
-        "transparent": true,
-        "windowEffects": { "effects": ["mica"] }
+        "backgroundColor": "#14171d"
       }
     ],
     "security": {

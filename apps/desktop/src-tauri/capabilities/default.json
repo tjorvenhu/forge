@@ -5,7 +5,6 @@
   "windows": ["main", "chat-*"],
   "permissions": [
     "core:default",
-    "core:window:allow-set-effects",
     "dialog:allow-open",
     "dialog:allow-save",
     "notification:allow-is-permission-granted",
