@@ -9,7 +9,7 @@ import { Badge, EmptyState, ErrorBanner } from "@/components/ui/misc";
 import { TabBar, type TabDef } from "@/components/ui/tabs";
 import { ChatPanel, ChatPanelSkeleton } from "@/components/workspace/ChatPanel";
 import { SplitWorkspace } from "@/components/workspace/SplitView";
-import { useNarrow, useWorkspaceTab, WorkspaceHeader } from "@/components/workspace/WorkspaceHeader";
+import { useNarrow, useSplitActive, useWorkspaceTab, WorkspaceHeader } from "@/components/workspace/WorkspaceHeader";
 import { GitPanel } from "@/components/git/GitPanel";
 import { GitCenter } from "@/components/git/GitCenter";
 import { FilesTab } from "@/components/workspace/FilesTab";
@@ -136,6 +136,7 @@ function Workspace({ projectId }: { projectId: string }) {
 function WorkspaceSkeleton() {
   const { workspaceTab, toolbarOpen, rightPanelOpen } = useUi(useShallow((s) => ({ workspaceTab: s.workspaceTab, toolbarOpen: s.toolbarOpen, rightPanelOpen: s.rightPanelOpen })));
   const narrow = useNarrow();
+  const split = useSplitActive();
   const showRight = rightPanelOpen && !narrow && workspaceTab === "chat";
   const tab = (w: number) => (
     <div key={w} className="flex h-12 items-center gap-2 px-3.5">
@@ -150,16 +151,22 @@ function WorkspaceSkeleton() {
         <Skeleton className="h-4 w-40" />
         <Skeleton className="h-7 w-7" />
         <div className="flex-1" />
-        <div className="flex items-center gap-0.5">
-          <Skeleton className="h-7 w-7" />
-          <Skeleton className="h-7 w-7" />
-          <Skeleton className="h-7 w-7" />
-        </div>
-        <Skeleton className="h-7 w-7" />
+        {!split && (
+          <div className="flex items-center gap-0.5">
+            <Skeleton className="h-7 w-7" />
+            <Skeleton className="h-7 w-7" />
+            <Skeleton className="h-7 w-7" />
+          </div>
+        )}
+        {!split && <Skeleton className="h-7 w-7" />}
         <Skeleton className="h-6 w-24" />
-        <HeaderDivider />
-        <Skeleton className="h-7 w-7" />
-        <Skeleton className="h-7 w-7" />
+        {!split && (
+          <>
+            <HeaderDivider />
+            <Skeleton className="h-7 w-7" />
+            <Skeleton className="h-7 w-7" />
+          </>
+        )}
       </div>
       <div className="flex min-h-0 flex-1">
         <div className="flex min-w-0 flex-1 flex-col">

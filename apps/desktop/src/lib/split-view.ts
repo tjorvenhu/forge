@@ -3,6 +3,11 @@ export const MAX_PANES = 6;
 /** Below this an area's header, composer and tool cards no longer fit (header 48px, chat 380px). */
 export const MIN_PANE_WIDTH = 560;
 export const MIN_PANE_HEIGHT = 430;
+/**
+ * The control bar above a split view (h-12). Always taken off the measured height, also before the
+ * split: otherwise the bar appearing could shrink the room below the second area and flip back and forth.
+ */
+export const SPLIT_BAR_HEIGHT = 48;
 /** The shape a chat reads best in; the grid that keeps every chat closest to it wins. */
 const COMFORT_WIDTH = 600;
 const COMFORT_HEIGHT = 530;

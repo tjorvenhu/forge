@@ -3,7 +3,7 @@ import { useShallow } from "zustand/react/shallow";
 import { EyeOff, FolderX, LayoutGrid } from "lucide-react";
 import { useLiveSessions, useProject } from "@/lib/queries";
 import { errorMessage, RpcCallError } from "@/lib/rpc";
-import { paneCapacity, paneRows } from "@/lib/split-view";
+import { paneCapacity, paneRows, SPLIT_BAR_HEIGHT } from "@/lib/split-view";
 import { cn, relativeTime } from "@/lib/utils";
 import { useUi, type SplitPane } from "@/stores/ui";
 import { Button } from "@/components/ui/button";
@@ -12,7 +12,7 @@ import { ListSkeleton, Skeleton } from "@/components/ui/skeleton";
 import { ProjectIcon } from "@/components/projects/ProjectIcon";
 import { ChatPanel, ChatPanelSkeleton } from "./ChatPanel";
 import { sessionStatusLabel } from "./SessionStatusBadge";
-import { PaneActions, useProjectChoices, WorkspaceHeader } from "./WorkspaceHeader";
+import { PaneActions, SplitControlBar, useProjectChoices, WorkspaceHeader } from "./WorkspaceHeader";
 import { SplitLayoutContext, type SplitLayout } from "./chat-slot";
 
 type Shown = { projectId: string | null; active: string | null };
@@ -53,8 +53,9 @@ const lcm = (a: number, b: number): number => {
  * window is large enough again.
  */
 export function SplitWorkspace({ projectId, children }: { projectId: string; children: ReactNode }) {
-  const gridRef = useRef<HTMLDivElement>(null);
-  const size = useSize(gridRef);
+  const areaRef = useRef<HTMLDivElement>(null);
+  const area = useSize(areaRef);
+  const size = area && { width: area.width, height: area.height - SPLIT_BAR_HEIGHT };
   const panes = useUi((s) => s.splitPanes);
   const main = useUi(useShallow((s) => ({ projectId, active: s.activeSession[projectId] ?? null })));
   const distinct = useMemo(() => distinctPanes(panes, main), [panes, main]);
@@ -76,10 +77,10 @@ export function SplitWorkspace({ projectId, children }: { projectId: string; chi
 
   return (
     <SplitLayoutContext.Provider value={layout}>
-      <div className="flex h-full min-h-0 flex-col">
+      <div ref={areaRef} className="flex h-full min-h-0 flex-col">
+        {cells.length > 1 && <SplitControlBar projectId={projectId} />}
         {hidden.length > 0 && <HiddenPanes panes={hidden} />}
         <div
-          ref={gridRef}
           className={cn("grid min-h-0 flex-1", cells.length > 1 && "gap-px bg-border")}
           style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`, gridTemplateRows: `repeat(${rows.length}, minmax(0, 1fr))` }}
         >

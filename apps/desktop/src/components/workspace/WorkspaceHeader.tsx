@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useShallow } from "zustand/react/shallow";
-import { AlertTriangle, Bot, ChevronDown, Columns2, FolderTree, GitMerge, Maximize2, SquareTerminal, Star, Tag, Wrench, X } from "lucide-react";
+import { AlertTriangle, Bot, ChevronDown, Columns2, FolderTree, GitMerge, LayoutGrid, Maximize2, SquareTerminal, Star, Tag, Wrench, X } from "lucide-react";
 import type { ProfileId } from "@forge/protocol";
 import { call, keys, useProject, useProjects } from "@/lib/queries";
 import { errorMessage } from "@/lib/rpc";
@@ -12,7 +12,8 @@ import { useAgentReview } from "@/stores/agent-review";
 import { toast } from "@/stores/toast";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu } from "@/components/ui/dropdown";
-import { Tooltip } from "@/components/ui/misc";
+import { Badge, Tooltip } from "@/components/ui/misc";
+import { Skeleton } from "@/components/ui/skeleton";
 import { ProjectIcon } from "@/components/projects/ProjectIcon";
 import { PROFILE_IDS, PROFILE_INFO, ProfileBadge } from "@/components/projects/ProfileBadge";
 import { tagLabel } from "@/components/workspace/ProjectSettingsTab";
@@ -127,15 +128,58 @@ function SplitButton() {
   );
 }
 
+/** Whether the view is split right now; then the switches sit in SplitControlBar instead of the main header. */
+export function useSplitActive() {
+  return (useSplitLayout()?.shown ?? 1) > 1;
+}
+
+/**
+ * Bar across the whole split view, above the areas: the layout switches of the main area and the
+ * app-wide buttons, so they stay in reach however narrow the areas get.
+ */
+export function SplitControlBar({ projectId }: { projectId: string }) {
+  const project = useProject(projectId).data;
+  const shown = useSplitLayout()?.shown ?? 1;
+  const closeAll = useUi((s) => s.closeSplitPanes);
+  return (
+    <div className="flex h-12 shrink-0 animate-fade-in items-center gap-3 border-b border-border px-5">
+      <LayoutGrid className="h-4 w-4 shrink-0 text-muted" />
+      <span className="min-w-0 truncate text-body font-medium">Geteilte Ansicht</span>
+      <span className="hidden shrink-0 text-caption-lg text-subtle md:inline">{shown} Bereiche</span>
+      <Button size="sm" variant="ghost" className="shrink-0" onClick={() => closeAll()} title="Alle weiteren Bereiche schließen. Ihre Sessions laufen weiter.">
+        Teilung aufheben
+      </Button>
+      <div className="flex-1" />
+      {project ? (
+        <>
+          <LayoutToggles project={project} />
+          <RemoteControlButton project={project} />
+        </>
+      ) : (
+        <div className="flex items-center gap-0.5" aria-hidden>
+          {[0, 1, 2, 3, 4].map((i) => (
+            <Skeleton key={i} className="h-7 w-7" />
+          ))}
+        </div>
+      )}
+      <HeaderDivider />
+      <AlwaysOnTopButton />
+      <PhoneButton />
+    </div>
+  );
+}
+
 /**
  * Head of a project area: icon, name, favourite, tags, permission profile. The main area also carries
- * the layout switches and the app-wide buttons; a split pane instead a project switch, "Zum Hauptbereich"
- * and close.
+ * the layout switches and the app-wide buttons (in the split view the SplitControlBar does); a split
+ * pane instead a project switch, "Zum Hauptbereich" and close.
  */
 export function WorkspaceHeader({ projectId, pane }: { projectId: string; pane?: SplitPane }) {
   const project = useProject(projectId).data!;
   const qc = useQueryClient();
   const openProjectSettings = useUi((s) => s.openProjectSettings);
+  const split = useSplitActive();
+  const controls = !pane && !split;
 
   const sandboxOnly = project.tags.includes("sandbox-only");
 
@@ -206,6 +250,14 @@ export function WorkspaceHeader({ projectId, pane }: { projectId: string; pane?:
         </button>
       )}
 
+      {!pane && split && (
+        <Tooltip content="Werkzeugleiste, Seitenleisten und Reiter in der Leiste oben gehören zu diesem Bereich.">
+          <span className="hidden shrink-0 @2xl:inline-flex">
+            <Badge tone="accent">Hauptbereich</Badge>
+          </span>
+        </Tooltip>
+      )}
+
       <div className="flex-1" />
 
       {project.parentId && (
@@ -214,8 +266,8 @@ export function WorkspaceHeader({ projectId, pane }: { projectId: string; pane?:
           <span className="hidden @5xl:inline">Agent abschließen</span>
         </Button>
       )}
-      {!pane && <LayoutToggles project={project} />}
-      {!pane && <RemoteControlButton project={project} />}
+      {controls && <LayoutToggles project={project} />}
+      {controls && <RemoteControlButton project={project} />}
 
       <DropdownMenu
         header="Berechtigungsprofil"
@@ -237,15 +289,20 @@ export function WorkspaceHeader({ projectId, pane }: { projectId: string; pane?:
           onSelect: () => void setProfile(p),
         }))}
       />
-      <HeaderDivider />
       {pane ? (
-        <PaneActions pane={pane} />
-      ) : (
-        // App-wide switches, apart from the project's own controls.
         <>
-          <AlwaysOnTopButton />
-          <PhoneButton />
+          <HeaderDivider />
+          <PaneActions pane={pane} />
         </>
+      ) : (
+        controls && (
+          // App-wide switches, apart from the project's own controls.
+          <>
+            <HeaderDivider />
+            <AlwaysOnTopButton />
+            <PhoneButton />
+          </>
+        )
       )}
     </header>
   );
