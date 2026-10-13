@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, ChevronDown, ChevronRight, Copy, Database, FileInput, Play, RotateCcw, RotateCw, Square } from "lucide-react";
+import { Check, ChevronDown, ChevronRight, Copy, Database, FileInput, FileKey, Play, RotateCcw, RotateCw, Server, Square } from "lucide-react";
 import type { DevToolsConfig, Project, TestDbState } from "@forge/protocol";
 import { call, keys, useDevServer, useDevTools, useTestDb } from "@/lib/queries";
 import { errorMessage } from "@/lib/rpc";
 import { toast } from "@/stores/toast";
+import { useUi, type DevToolsSection } from "@/stores/ui";
 import { Button } from "@/components/ui/button";
 import { CodeEditor } from "@/components/ui/code-editor";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -12,7 +13,7 @@ import { DropdownMenu } from "@/components/ui/dropdown";
 import { Input } from "@/components/ui/input";
 import { Badge, ErrorBanner, Loading } from "@/components/ui/misc";
 import { Switch } from "@/components/ui/switch";
-import { Group, Row, SwitchRow } from "@/components/settings/layout";
+import { Group, Row, SettingsLayout, SwitchRow, type SettingsSectionDef } from "@/components/settings/layout";
 import { DevServerPanel } from "@/components/workspace/DevServer";
 
 const AUTOSAVE_MS = 800;
@@ -26,14 +27,16 @@ export function envKeys(text: string): string[] {
 type DbPatch = Partial<Omit<DevToolsConfig["database"], "password">>;
 
 /**
- * Dev tools of a project: dev server with its start command and output, a local PostgreSQL for
- * tests and a test environment (.env) for both. Worktrees share test database and environment with
- * their project; the dev server is their own.
+ * Dev tools of a project, in sections like the settings: dev server with its start command and
+ * output, a local PostgreSQL for tests and a test environment (.env) for both. Worktrees share test
+ * database and environment with their project; the dev server is their own.
  */
 export function DevToolsTab({ project }: { project: Project }) {
   const owner = project.parentId ?? project.id;
   const config = useDevTools(owner);
   const qc = useQueryClient();
+  const section = useUi((s) => s.devToolsSection);
+  const setSection = useUi((s) => s.setDevToolsSection);
 
   const update = useCallback(
     async (patch: { env?: string; useEnv?: boolean; database?: DbPatch }, quiet = false) => {
@@ -53,24 +56,28 @@ export function DevToolsTab({ project }: { project: Project }) {
 
   return (
     <div className="h-full overflow-y-auto px-6 py-5">
-      <div className="mx-auto grid max-w-7xl gap-5 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
-        <DevServerCard project={project} />
-        <div className="flex min-w-0 flex-col gap-5">
-          {config.isLoading ? (
-            <Loading />
-          ) : config.isError || !config.data ? (
-            <ErrorBanner>{errorMessage(config.error)}</ErrorBanner>
-          ) : (
-            <>
-              <TestDbCard owner={owner} config={config.data} update={update} isWorktree={!!project.parentId} />
-              <TestEnvCard owner={owner} config={config.data} update={update} />
-            </>
-          )}
-        </div>
-      </div>
+      <SettingsLayout sections={SECTIONS} current={section} onSelect={setSection} label="Bereiche der Dev-Tools">
+        {section === "server" ? (
+          <DevServerCard project={project} />
+        ) : config.isLoading ? (
+          <Loading />
+        ) : config.isError || !config.data ? (
+          <ErrorBanner>{errorMessage(config.error)}</ErrorBanner>
+        ) : section === "database" ? (
+          <TestDbCard owner={owner} config={config.data} update={update} isWorktree={!!project.parentId} />
+        ) : (
+          <TestEnvCard owner={owner} config={config.data} update={update} />
+        )}
+      </SettingsLayout>
     </div>
   );
 }
+
+const SECTIONS: ReadonlyArray<SettingsSectionDef<DevToolsSection>> = [
+  { id: "server", label: "Dev-Server", hint: "Startbefehl und Ausgabe", Icon: Server },
+  { id: "database", label: "Test-Datenbank", hint: "PostgreSQL für Tests", Icon: Database },
+  { id: "env", label: "Test-Umgebung", hint: ".env für Dev-Server und Tests", Icon: FileKey },
+];
 
 function DevServerCard({ project }: { project: Project }) {
   const qc = useQueryClient();

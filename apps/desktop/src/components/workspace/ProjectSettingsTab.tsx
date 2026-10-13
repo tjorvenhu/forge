@@ -7,6 +7,7 @@ import { modelLabel } from "@/lib/models";
 import { errorMessage } from "@/lib/rpc";
 import { cn } from "@/lib/utils";
 import { toast } from "@/stores/toast";
+import { useUi, type ProjectSettingsSection } from "@/stores/ui";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/misc";
@@ -37,11 +38,14 @@ const TAG_INFO: ReadonlyArray<{ tag: string; label: string; info: string; rootOn
   { tag: "sandbox-only", label: "Autonomous sperren", info: "Autonomous ist in diesem Projekt gesperrt." },
 ];
 const KNOWN_TAGS = new Set(TAG_INFO.map((t) => t.tag));
+
+/** Name of a tag as the Automatik section shows it; own tags keep their name. */
+export function tagLabel(tag: string): string {
+  return TAG_INFO.find((t) => t.tag === tag)?.label ?? tag;
+}
 const SANDBOX_INFO = TAG_INFO.find((t) => t.tag === "sandbox-only")!.info;
 
-type Section = "general" | "permissions" | "automation" | "rules" | "remove";
-
-const SECTIONS: ReadonlyArray<SettingsSectionDef<Section>> = [
+const SECTIONS: ReadonlyArray<SettingsSectionDef<ProjectSettingsSection>> = [
   { id: "general", label: "Allgemein", hint: "Name, Modell, Testbefehl", Icon: SlidersHorizontal },
   { id: "permissions", label: "Berechtigungen", hint: "Was Claude ohne Rückfrage darf", Icon: ShieldCheck },
   { id: "automation", label: "Automatik", hint: "Planen, testen, committen, Tags", Icon: Workflow },
@@ -61,7 +65,8 @@ type Patch = {
 
 export function ProjectSettingsTab({ project }: { project: Project }) {
   const qc = useQueryClient();
-  const [section, setSection] = useState<Section>("general");
+  const section = useUi((s) => s.projectSettingsSection);
+  const setSection = useUi((s) => s.setProjectSettingsSection);
 
   const update = async (patch: Patch) => {
     try {

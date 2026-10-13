@@ -1,9 +1,10 @@
 /** What a call of a FORGE tool (mcp__forge__…) means, for its own card in the chat. */
+import type { DevToolsSection } from "@/stores/ui";
 
 export type ForgeToolIcon = "knowledge" | "dev" | "notify" | "agentStart" | "agentStatus" | "agentMessage" | "agentMerge" | "agentDiscard" | "forge";
 
 /** Where the card's button leads: an entry of the knowledge (or the list), the agents, the dev tools. */
-export type ForgeTarget = { kind: "knowledge"; id: string | null } | { kind: "agents" } | { kind: "devtools" };
+export type ForgeTarget = { kind: "knowledge"; id: string | null } | { kind: "agents" } | { kind: "devtools"; section: DevToolsSection };
 
 export interface ForgeToolView {
   title: string;
@@ -101,7 +102,7 @@ export function forgeToolView(tool: string, input: Record<string, unknown>, resu
         ref: null,
         icon: "dev",
         prominent: false,
-        target: { kind: "devtools" },
+        target: { kind: "devtools", section: "server" },
       });
     case "dev_control": {
       const target = DEV_TARGET[str(input, "target") ?? ""] ?? "Dev-Umgebung";
@@ -112,7 +113,7 @@ export function forgeToolView(tool: string, input: Record<string, unknown>, resu
         ref: null,
         icon: "dev",
         prominent: true,
-        target: { kind: "devtools" },
+        target: { kind: "devtools", section: input.target === "database" ? "database" : "server" },
       });
     }
     case "notify": {

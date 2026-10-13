@@ -5,6 +5,8 @@ export type WorkspaceTab = "chat" | "agents" | "git" | "files" | "devtools" | "k
 export type NewProjectMode = "import" | "create" | "clone";
 export type BottomTab = "output" | "dev";
 export type SettingsSection = "general" | "claude" | "policy" | "phone" | "backup" | "rules" | "about";
+export type DevToolsSection = "server" | "database" | "env";
+export type ProjectSettingsSection = "general" | "permissions" | "automation" | "rules" | "remove";
 
 /** activeSession values starting with this prefix point at a terminal session not yet adopted by FORGE */
 export const EXTERNAL_PREFIX = "ext:";
@@ -62,6 +64,14 @@ interface UiState {
   /** switches to the Wissen tab, with one entry selected */
   openKnowledge: (id: string | null) => void;
   clearKnowledgeRequest: () => void;
+  devToolsSection: DevToolsSection;
+  setDevToolsSection: (section: DevToolsSection) => void;
+  /** switches to the Dev-Tools tab at one section */
+  openDevTools: (section: DevToolsSection) => void;
+  projectSettingsSection: ProjectSettingsSection;
+  setProjectSettingsSection: (section: ProjectSettingsSection) => void;
+  /** switches to the project's Einstellungen tab at one section */
+  openProjectSettings: (section: ProjectSettingsSection) => void;
   setView: (v: View) => void;
   settingsSection: SettingsSection;
   /** opens the settings at one section */
@@ -120,6 +130,8 @@ export const useUi = create<UiState>((set, get) => ({
   taskView: null,
   selectedFile: {},
   knowledgeRequest: null,
+  devToolsSection: "server",
+  projectSettingsSection: "general",
   collapsedGroups: [],
   ...loadPrefs(),
   toggleGroup: (projectId, collapsed) => {
@@ -148,6 +160,16 @@ export const useUi = create<UiState>((set, get) => ({
     savePrefs(get());
   },
   clearKnowledgeRequest: () => set({ knowledgeRequest: null }),
+  setDevToolsSection: (devToolsSection) => set({ devToolsSection }),
+  setProjectSettingsSection: (projectSettingsSection) => set({ projectSettingsSection }),
+  openProjectSettings: (projectSettingsSection) => {
+    set({ projectSettingsSection, workspaceTab: "settings", toolbarOpen: true });
+    savePrefs(get());
+  },
+  openDevTools: (devToolsSection) => {
+    set({ devToolsSection, workspaceTab: "devtools", toolbarOpen: true });
+    savePrefs(get());
+  },
   setView: (view) => set({ view }),
   settingsSection: "general",
   openSettings: (settingsSection) => set({ view: "settings", settingsSection }),

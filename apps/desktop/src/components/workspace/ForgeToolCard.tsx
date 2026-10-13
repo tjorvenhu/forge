@@ -63,8 +63,9 @@ export function ForgeToolCard({
 }) {
   const [open, setOpen] = useCardState(cardKey(sessionId, itemKey, "open"), false);
   const openKnowledge = useUi((s) => s.openKnowledge);
+  const openDevTools = useUi((s) => s.openDevTools);
   const setWorkspaceTab = useUi((s) => s.setWorkspaceTab);
-  const go = (t: ForgeTarget) => (t.kind === "knowledge" ? openKnowledge(t.id) : setWorkspaceTab(t.kind));
+  const go = (t: ForgeTarget) => (t.kind === "knowledge" ? openKnowledge(t.id) : t.kind === "devtools" ? openDevTools(t.section) : setWorkspaceTab(t.kind));
 
   const body = (
     <>

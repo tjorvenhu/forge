@@ -176,10 +176,18 @@ function ClaudeUpdateButton() {
   );
 }
 
+/** Tooltip of a usage bar; the stored reset time can already lie in the past until the next update. */
+export function resetText(resetsAt: string, now = Date.now()): string {
+  const at = new Date(resetsAt).toLocaleString("de-DE", { weekday: "short", hour: "2-digit", minute: "2-digit" });
+  const when = relativeTime(resetsAt, now);
+  if (new Date(resetsAt).getTime() <= now) return `Wurde ${when} zurückgesetzt (${at})`;
+  return `Wird ${when === "gerade eben" ? "gleich" : when} zurückgesetzt (${at})`;
+}
+
 function UsageBar({ label, value, resetsAt }: { label: string; value: number; resetsAt: string | null }) {
   const tone = value >= 95 ? "bg-danger" : value >= 80 ? "bg-warning" : "bg-accent";
   const width = Math.min(100, Math.max(0, value));
-  const reset = resetsAt ? `Zurückgesetzt ${relativeTime(resetsAt)} (${new Date(resetsAt).toLocaleString("de-DE", { weekday: "short", hour: "2-digit", minute: "2-digit" })})` : undefined;
+  const reset = resetsAt ? resetText(resetsAt) : undefined;
   return (
     <div title={reset}>
       <div className="mb-0.5 flex justify-between text-caption">

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useShallow } from "zustand/react/shallow";
-import { Activity, Bot, FolderTree, GitCompare, GitMerge, AlertTriangle, BookOpen, ChevronDown, FileText, FlaskConical, PanelTop, GitBranch, MessageSquare, PanelBottom, PanelRight, Settings2, Star } from "lucide-react";
+import { Activity, Bot, FolderTree, GitCompare, GitMerge, AlertTriangle, BookOpen, ChevronDown, FileText, FlaskConical, PanelTop, GitBranch, MessageSquare, PanelBottom, PanelRight, Settings2, Star, Tag } from "lucide-react";
 import type { ProfileId } from "@forge/protocol";
 import { call, keys, useProject } from "@/lib/queries";
 import { errorMessage, RpcCallError } from "@/lib/rpc";
@@ -19,7 +19,7 @@ import { ChatPanel } from "@/components/workspace/ChatPanel";
 import { GitPanel } from "@/components/git/GitPanel";
 import { GitCenter } from "@/components/git/GitCenter";
 import { FilesTab } from "@/components/workspace/FilesTab";
-import { ProjectSettingsTab } from "@/components/workspace/ProjectSettingsTab";
+import { ProjectSettingsTab, tagLabel } from "@/components/workspace/ProjectSettingsTab";
 import { AgentsTab } from "@/components/workspace/AgentsTab";
 import { ActivityFeed } from "@/components/workspace/ActivityFeed";
 import { FileTree } from "@/components/workspace/FileTree";
@@ -66,25 +66,16 @@ export function WorkspaceView() {
 
 function Workspace({ projectId }: { projectId: string }) {
   const project = useProject(projectId).data!;
-  const { workspaceTab, setWorkspaceTab, toolbarOpen, rightPanelOpen, toggleRightPanel, bottomPanelOpen, toggleBottomPanel } = useUi(
+  const { workspaceTab, setWorkspaceTab, toolbarOpen, rightPanelOpen, bottomPanelOpen } = useUi(
     useShallow((s) => ({
       workspaceTab: s.workspaceTab,
       toolbarOpen: s.toolbarOpen,
       setWorkspaceTab: s.setWorkspaceTab,
       rightPanelOpen: s.rightPanelOpen,
-      toggleRightPanel: s.toggleRightPanel,
       bottomPanelOpen: s.bottomPanelOpen,
-      toggleBottomPanel: s.toggleBottomPanel,
     })),
   );
-  const [narrow, setNarrow] = useState(() => window.innerWidth < 1280);
-
-  useEffect(() => {
-    const onResize = () => setNarrow(window.innerWidth < 1280);
-    window.addEventListener("resize", onResize);
-    return () => window.removeEventListener("resize", onResize);
-  }, []);
-
+  const narrow = useNarrow();
   const showRight = rightPanelOpen && !narrow && workspaceTab === "chat";
 
   return (
@@ -118,20 +109,6 @@ function Workspace({ projectId }: { projectId: string }) {
                   { value: "settings", label: "Einstellungen", icon: <Settings2 className="h-4 w-4" /> },
                 ]}
               />
-              <Button size="icon-sm" variant="ghost" onClick={() => toggleBottomPanel()} aria-pressed={bottomPanelOpen} title="Terminal, Dev-Server und Claude-Ausgabe (Strg+J)" className={cn(bottomPanelOpen && "text-accent")}>
-                <PanelBottom className="h-4 w-4" />
-              </Button>
-              <Button
-                size="icon-sm"
-                variant="ghost"
-                onClick={() => toggleRightPanel()}
-                aria-pressed={showRight}
-                disabled={narrow || workspaceTab !== "chat"}
-                title={narrow ? "Fenster zu schmal für die Seitenleiste" : "Seitenleiste mit Dateien und Änderungen (Strg+Umschalt+E)"}
-                className={cn(showRight && "text-accent")}
-              >
-                <PanelRight className="h-4 w-4" />
-              </Button>
             </div>
           </Collapse>
           <div key={workspaceTab} className="min-h-0 flex-1 animate-view-in">
@@ -182,28 +159,79 @@ function RightPanel({ projectId }: { projectId: string }) {
   );
 }
 
-/** Shows or hides the tab row (Chat, Agenten, Git ...), like a ribbon: by default the chat fills the view. */
-function ToolbarToggle() {
-  const open = useUi((s) => s.toolbarOpen);
-  const toggle = useUi((s) => s.toggleToolbar);
+/** Below this window width the right sidebar does not fit next to the chat. */
+function useNarrow() {
+  const [narrow, setNarrow] = useState(() => window.innerWidth < 1280);
+  useEffect(() => {
+    const onResize = () => setNarrow(window.innerWidth < 1280);
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+  return narrow;
+}
+
+/**
+ * The three layout switches side by side: tab row (Chat, Agenten, Git ...) like a ribbon, by default
+ * the chat fills the view; bottom panel; right sidebar.
+ */
+function LayoutToggles() {
+  const { toolbarOpen, toggleToolbar, workspaceTab, rightPanelOpen, toggleRightPanel, bottomPanelOpen, toggleBottomPanel } = useUi(
+    useShallow((s) => ({
+      toolbarOpen: s.toolbarOpen,
+      toggleToolbar: s.toggleToolbar,
+      workspaceTab: s.workspaceTab,
+      rightPanelOpen: s.rightPanelOpen,
+      toggleRightPanel: s.toggleRightPanel,
+      bottomPanelOpen: s.bottomPanelOpen,
+      toggleBottomPanel: s.toggleBottomPanel,
+    })),
+  );
+  const narrow = useNarrow();
+  const showRight = rightPanelOpen && !narrow && workspaceTab === "chat";
   return (
-    <Button
-      size="sm"
-      variant="ghost"
-      onClick={() => toggle()}
-      aria-pressed={open}
-      title={open ? "Werkzeugleiste ausblenden (zurück zum Chat)" : "Werkzeugleiste einblenden: Agenten, Git, Dateien, Dev-Tools, Wissen, Einstellungen"}
-      className={cn("shrink-0 gap-1.5", open && "text-accent")}
-    >
-      <PanelTop className="h-4 w-4" />
-      <span className="hidden xl:inline">Werkzeuge</span>
-    </Button>
+    <div className="flex shrink-0 items-center gap-0.5">
+      <Button
+        size="icon-sm"
+        variant="ghost"
+        onClick={() => toggleToolbar()}
+        aria-pressed={toolbarOpen}
+        aria-label="Werkzeugleiste"
+        title={toolbarOpen ? "Werkzeugleiste ausblenden (zurück zum Chat)" : "Werkzeugleiste einblenden: Agenten, Git, Dateien, Dev-Tools, Wissen, Einstellungen"}
+        className={cn(toolbarOpen && "text-accent")}
+      >
+        <PanelTop className="h-4 w-4" />
+      </Button>
+      <Button
+        size="icon-sm"
+        variant="ghost"
+        onClick={() => toggleBottomPanel()}
+        aria-pressed={bottomPanelOpen}
+        aria-label="Untere Leiste"
+        title="Terminal, Dev-Server und Claude-Ausgabe (Strg+J)"
+        className={cn(bottomPanelOpen && "text-accent")}
+      >
+        <PanelBottom className="h-4 w-4" />
+      </Button>
+      <Button
+        size="icon-sm"
+        variant="ghost"
+        onClick={() => toggleRightPanel()}
+        aria-pressed={showRight}
+        aria-label="Rechte Seitenleiste"
+        disabled={narrow || workspaceTab !== "chat"}
+        title={narrow ? "Fenster zu schmal für die Seitenleiste" : workspaceTab !== "chat" ? "Seitenleiste gibt es nur im Chat" : "Seitenleiste mit Dateien und Änderungen (Strg+Umschalt+E)"}
+        className={cn(showRight && "text-accent")}
+      >
+        <PanelRight className="h-4 w-4" />
+      </Button>
+    </div>
   );
 }
 
 function WorkspaceHeader({ projectId }: { projectId: string }) {
   const project = useProject(projectId).data!;
   const qc = useQueryClient();
+  const openProjectSettings = useUi((s) => s.openProjectSettings);
 
   const sandboxOnly = project.tags.includes("sandbox-only");
 
@@ -247,12 +275,15 @@ function WorkspaceHeader({ projectId }: { projectId: string }) {
       </div>
 
       {project.tags.length > 0 && (
-        <div className="hidden min-w-0 items-center gap-1.5 overflow-hidden xl:flex" title={project.tags.join(", ")}>
-          {project.tags.slice(0, 4).map((t) => (
-            <Badge key={t}>{t}</Badge>
-          ))}
-          {project.tags.length > 4 && <span className="text-caption text-subtle">+{project.tags.length - 4}</span>}
-        </div>
+        <button
+          type="button"
+          onClick={() => openProjectSettings("automation")}
+          title={`Aktive Tags:\n${project.tags.map(tagLabel).join("\n")}\n\nKlicken, um sie unter Automatik einzustellen`}
+          className="flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-caption-lg text-muted transition-colors duration-120 hover:bg-surface-3 hover:text-fg"
+        >
+          <Tag className="h-3.5 w-3.5" />
+          {project.tags.length === 1 ? "1 Tag" : `${project.tags.length} Tags`}
+        </button>
       )}
 
       <div className="flex-1" />
@@ -263,7 +294,7 @@ function WorkspaceHeader({ projectId }: { projectId: string }) {
           <span className="hidden xl:inline">Agent abschließen</span>
         </Button>
       )}
-      <ToolbarToggle />
+      <LayoutToggles />
       <SearchField />
       <RemoteControlButton project={project} />
 
