@@ -3,7 +3,7 @@ import { QueryClient } from "@tanstack/react-query";
 import type { SessionEvent } from "@forge/protocol";
 import { useAgentReview } from "@/stores/agent-review";
 import { useUi } from "@/stores/ui";
-import { agentTurnEnded } from "./agent-review";
+import { agentAutoMerged, agentTurnEnded } from "./agent-review";
 import { keys } from "./queries";
 
 const turn = (sessionId: string, over: Record<string, unknown> = {}) =>
@@ -12,8 +12,8 @@ const turn = (sessionId: string, over: Record<string, unknown> = {}) =>
 function cache() {
   const qc = new QueryClient();
   qc.setQueryData(keys.projects, [
-    { id: "app", parentId: null },
-    { id: "wt", parentId: "app" },
+    { id: "app", parentId: null, tags: [] },
+    { id: "wt", parentId: "app", tags: [] },
   ]);
   qc.setQueryData(keys.liveSessions, [
     { id: "main-s", projectId: "app", background: [] },
@@ -44,5 +44,19 @@ describe("agentTurnEnded", () => {
     useUi.setState({ activeProjectId: "wt", activeSession: { wt: "agent-s" } });
     agentTurnEnded(qc, turn("agent-s"));
     expect(useAgentReview.getState().queue).toEqual([]);
+  });
+
+  it("leaves agents of auto-merge projects to the sidecar and asks only when it could not merge", () => {
+    const qc = cache();
+    qc.setQueryData(keys.projects, [
+      { id: "app", parentId: null, tags: ["auto-merge"] },
+      { id: "wt", parentId: "app", tags: [] },
+    ]);
+    agentTurnEnded(qc, turn("agent-s"));
+    agentAutoMerged({ rootId: "app", worktreeId: "wt", branch: "agent/x", outcome: "merged", message: "Automatisch zusammengeführt: 1 Commit" });
+    agentAutoMerged({ rootId: "app", worktreeId: "wt", branch: "agent/x", outcome: "conflict", message: "Konflikte" });
+    expect(useAgentReview.getState().queue).toEqual([]);
+    agentAutoMerged({ rootId: "app", worktreeId: "wt", branch: "agent/x", outcome: "skipped", message: "Nicht automatisch zusammengeführt: Tests rot" });
+    expect(useAgentReview.getState().queue).toEqual(["wt"]);
   });
 });

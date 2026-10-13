@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from "react";
 import { Collapse } from "@/components/ui/collapse";
-import { BellRing, ChevronRight, GitCommitHorizontal, Hourglass, Shrink, SkipForward, Undo2, Upload, Gauge } from "lucide-react";
+import { BellRing, ChevronRight, GitCommitHorizontal, GitMerge, Hourglass, Shrink, SkipForward, Undo2, Upload, Gauge } from "lucide-react";
 import { clockTime, cn } from "@/lib/utils";
 import type { NoticeIcon } from "./chat-items";
 import { ChatRow, Guide, HoverTime } from "./ChatRow";
@@ -20,6 +20,7 @@ export const EVENT_ICON = "h-3.5 w-3.5";
 const ICONS: Record<NoticeIcon, ReactNode> = {
   commit: <GitCommitHorizontal className={EVENT_ICON} />,
   push: <Upload className={EVENT_ICON} />,
+  merge: <GitMerge className={EVENT_ICON} />,
   skip: <SkipForward className={EVENT_ICON} />,
   rewind: <Undo2 className={EVENT_ICON} />,
   compact: <Shrink className={EVENT_ICON} />,

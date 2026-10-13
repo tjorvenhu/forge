@@ -451,6 +451,7 @@ describe.skipIf(!enabled)("E2E: sidecar with real Claude Code", () => {
         callBack: async (minutes: number) => (calls.push(`callBack:${minutes}`), "Rückruf vereinbart für 18:55 Uhr."),
         backgroundTask: async () => (calls.push("task"), "Keine Aufgaben."),
         devSettings: async () => (calls.push("devSettings"), "Gespeichert."),
+        projectAutomation: async () => (calls.push("projectAutomation"), "Automatisch testen ist an."),
         pullRequest: async () => (calls.push("pr"), "Kein Pull Request."),
         removeAgent: async () => (calls.push("removeAgent"), "Entfernt."),
         finishAgent: async () => (calls.push("finishAgent"), "Übernommen."),

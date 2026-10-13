@@ -27,6 +27,7 @@ import { BUSY } from "./live-session.js";
 import { AgentRegistry, forgeSessionTools, type ProjectToolDeps } from "./forge-tools.js";
 import { WorktreeService } from "../automation/worktrees.js";
 import type { AgentFinisher } from "../automation/agent-finish.js";
+import { AgentAutoMerge } from "../automation/agent-auto-merge.js";
 import { PermissionModes } from "./permission-mode.js";
 import { RateLimitTracker } from "./rate-limit.js";
 import { RemoteBridge } from "./remote-bridge.js";
@@ -59,6 +60,8 @@ export class SessionService {
   private projectDeps: ProjectToolDeps | null = null;
   /** merges or discards agents; set by app.ts, it needs this service itself */
   private agentFinisher: AgentFinisher | null = null;
+  /** merges finished agents in projects with auto-merge; built with the finisher */
+  private agentAutoMerge: AgentAutoMerge | null = null;
 
   constructor(
     private readonly db: Db,
@@ -81,6 +84,7 @@ export class SessionService {
       emit,
       suggestCommitMessage: (projectId, paths) => this.assist.suggestCommitMessage(projectId, paths),
       testEnv: (projectId) => this.projectDeps?.dev.testCommandEnv(projectId) ?? {},
+      turnDone: async (id, testsOk) => this.agentAutoMerge?.turnDone(id, testsOk),
     });
     this.remote = new RemoteBridge(db, projects, runtime, {
       live: (id) => core.live.get(id),
@@ -157,9 +161,22 @@ export class SessionService {
     this.projectDeps = deps;
   }
 
-  /** finish_agent for sessions started from now on. */
+  /** finish_agent for sessions started from now on, and auto-merge of finished agents. */
   useAgentFinisher(finisher: AgentFinisher) {
     this.agentFinisher = finisher;
+    const core = this.core;
+    this.agentAutoMerge = new AgentAutoMerge({
+      db: this.db,
+      projects: this.projects,
+      finisher,
+      record: core.record.bind(core),
+      emit: core.emit,
+      parentOf: (id) => {
+        const rec = this.db.getSession(id);
+        return rec ? this.agents.parent(rec) : null;
+      },
+      hasBackground: (id) => (core.live.get(id)?.background.size ?? 0) > 0,
+    });
   }
 
   // ---------- queries

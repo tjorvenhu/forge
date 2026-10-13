@@ -17,12 +17,21 @@ import { MemoryEditor } from "@/components/settings/MemoryEditor";
 import { Group, Row, SettingsLayout, SwitchRow, type SettingsSectionDef } from "@/components/settings/layout";
 import { effortOptions, fromChoice, modelOptions, toChoice } from "@/components/settings/model-options";
 
-/** Tags with behaviour in FORGE (sessions, turn automation, policy), in the order they are shown. */
-const TAG_INFO: ReadonlyArray<{ tag: string; label: string; info: string }> = [
+/**
+ * Tags with behaviour in FORGE (sessions, turn automation, policy), in the order they are shown.
+ * rootOnly: the main project decides for its agents, so agent worktrees do not show the switch.
+ */
+const TAG_INFO: ReadonlyArray<{ tag: string; label: string; info: string; rootOnly?: boolean }> = [
   { tag: "plan-first", label: "Erst planen", info: "Neue Sessions starten im Plan-Modus." },
   { tag: "auto-test", label: "Automatisch testen", info: "Nach jedem Durchlauf läuft der Testbefehl, das Ergebnis steht im Chat." },
   { tag: "auto-commit", label: "Automatisch committen", info: "Nach einem Durchlauf mit grünen Tests werden nur die dabei geänderten Dateien committet (KI-Nachricht)." },
   { tag: "auto-push", label: "Automatisch pushen", info: "Nach Auto-Commit wird gepusht, nie auf main/master und nie mit Force." },
+  {
+    tag: "auto-merge",
+    label: "Agenten automatisch zusammenführen",
+    info: "Endet der Durchlauf eines Agenten ohne Fehler (und mit grünen Tests bei Automatisch testen), übernimmt FORGE seinen Branch in den Branch, von dem er gestartet ist, meist main. Worktree und Branch werden danach gelöscht. Bei Konflikten löst der Agent sie selbst. Was nicht klappt, legt FORGE dir zur Entscheidung vor.",
+    rootOnly: true,
+  },
   { tag: "review-required", label: "Commits nur nach Prüfung", info: "Kein Auto-Commit: Commits nur nach Prüfung im Git-Bereich." },
   { tag: "no-network", label: "Ohne Internet", info: "Claude bekommt keine Web-Tools (WebFetch, WebSearch)." },
   { tag: "sandbox-only", label: "Autonomous sperren", info: "Autonomous ist in diesem Projekt gesperrt." },
@@ -204,7 +213,7 @@ function AutomationSection({ project, update }: SectionProps) {
   return (
     <>
       <Group title="Automatik" description="Was FORGE in diesem Projekt selbst erledigt. Gespeichert als Tags des Projekts.">
-        {TAG_INFO.map((t) => (
+        {TAG_INFO.filter((t) => !(t.rootOnly && project.parentId)).map((t) => (
           <SwitchRow
             key={t.tag}
             label={t.label}

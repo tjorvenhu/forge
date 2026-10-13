@@ -526,6 +526,32 @@ describe("turn automation via project tags", () => {
     expect(bodies.find((b) => b.type === "automation")).toMatchObject({ action: "skip", ok: false });
   });
 
+  it("merges an agent after its turn when the main project has auto-merge, not after failed tests", async () => {
+    const repo = projects.get(projectId).path;
+    await initRepo(repo);
+    await git(repo, "commit", "-m", "init", "--allow-empty");
+    const engine = new GitEngine();
+    const worktrees = new WorktreeService(engine, projects);
+    svc.useAgentFinisher(new AgentFinisher({ db, git: engine, projects, sessions: svc, worktrees, devServers: { forget: async () => {} }, notifyProject: () => {} }));
+    projects.update(projectId, { tags: ["auto-merge", "auto-test"], testCommand: "node -e \"process.exit(3)\"" });
+    const wt = await worktrees.create(projects.get(projectId), "agent/auto");
+    const s = await svc.start({ projectId: wt.id, prompt: "Baue X" });
+    expect(rt.started[0]!.context).toContain("Rückfragen deshalb nur mit AskUserQuestion");
+    writeFileSync(path.join(wt.path, "x.ts"), "export {};\n");
+    rt.sinks[0]!.onMessage({ type: "result", subtype: "success", is_error: false, result: "ok", usage: {} });
+    await svc.drain();
+    expect(db.listEvents(s.id).map((e) => e.body)).toContainEqual(expect.objectContaining({ type: "automation", action: "skip", message: expect.stringContaining("Tests") }));
+    expect(existsSync(wt.path)).toBe(true);
+
+    projects.update(projectId, { testCommand: "node -e \"process.exit(0)\"" });
+    projects.update(wt.id, { testCommand: "node -e \"process.exit(0)\"" });
+    rt.sinks[0]!.onMessage({ type: "result", subtype: "success", is_error: false, result: "ok", usage: {} });
+    await svc.drain();
+    expect(emitted.filter((e) => e.event === "agent.autoMerge").map((e) => (e.event === "agent.autoMerge" ? e.payload.outcome : null))).toEqual(["skipped", "merged"]);
+    expect((await git(repo, "log", "-1", "--format=%s")).trim()).toBe("Restliche Änderungen von agent/auto");
+    expect(existsSync(wt.path)).toBe(false);
+  }, 30_000);
+
   it("connects open sessions to the Claude app and shows messages typed there", async () => {
     const s = await svc.start({ projectId, prompt: "Lies a.txt" });
     rt.replay();

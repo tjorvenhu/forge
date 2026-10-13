@@ -556,6 +556,11 @@ export type ServerEvent =
   | { event: "testdb.updated"; payload: TestDbState }
   /** an entry of the project's knowledge was saved or deleted (also by Claude) */
   | { event: "knowledge.updated"; payload: { projectId: string } }
+  /**
+   * auto-merge of a finished agent. skipped: FORGE could not merge on its own, the user decides
+   * (the dialog for `worktreeId`); conflict: the agent resolves them, the next turn end tries again
+   */
+  | { event: "agent.autoMerge"; payload: { rootId: string; worktreeId: string; branch: string | null; outcome: "merged" | "conflict" | "skipped"; message: string } }
   | { event: "phone.updated"; payload: PhoneState }
   | { event: "update.updated"; payload: AppUpdateState }
   | { event: "sidecar.ready"; payload: { version: string } }

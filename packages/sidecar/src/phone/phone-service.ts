@@ -39,7 +39,8 @@ import { RtpSession } from "./rtp.js";
 import { answerDirection, buildSdp, chooseCodec, parseSdp, PT_PCMA } from "./sdp.js";
 import type { SecretStore } from "./secrets.js";
 import { localIpTowards, SipUserAgent, type SipAccount, type SipCall } from "./sip-ua.js";
-import { geminiFunctionDeclarations, phoneSystemPrompt, type CallSettingsPatch } from "./tools.js";
+import { AUTOMATION_TAGS, geminiFunctionDeclarations, phoneSystemPrompt, type AutomationTag, type CallSettingsPatch } from "./tools.js";
+import { AUTO_MERGE_TAG } from "../automation/agent-auto-merge.js";
 import { DEFAULT_STT_MODEL, DEFAULT_TTS_MODEL, DEFAULT_VOICE, OpenAiVoice, type VoiceProvider } from "./voice.js";
 
 const SECRET_PASSWORD = "sip-password";
@@ -1385,6 +1386,20 @@ export class PhoneService {
           const restart = (patch.port !== undefined || !!patch.name?.trim()) && this.d.testDb?.isRunning(p.id) ? " Port und Name gelten ab dem nächsten Start der Datenbank." : "";
           // Agents share their project's settings and test database.
           return `Gespeichert${p.parentId ? " für das ganze Projekt samt Agenten" : ""}. ${text}${restart}`;
+        }),
+      projectAutomation: (projectName, patch, o) =>
+        run(true, async () => {
+          const named = target(projectName, o);
+          // auto-merge is read from the main project; on a worktree the switch would do nothing.
+          const p = patch.tag === AUTO_MERGE_TAG && named.parentId ? this.d.projects.get(named.parentId) : named;
+          const on = (tags: string[]) => (Object.keys(AUTOMATION_TAGS) as AutomationTag[]).filter((t) => tags.includes(t)).map((t) => AUTOMATION_TAGS[t]);
+          const state = (tags: string[]) => (on(tags).length ? `An: ${on(tags).join(", ")}.` : "Keine Automatik an.");
+          if (!patch.tag) return `${p.name}: ${state(p.tags)}`;
+          if (patch.on === undefined) return `${p.name}: ${AUTOMATION_TAGS[patch.tag]} ist ${p.tags.includes(patch.tag) ? "an" : "aus"}.`;
+          const tags = patch.on ? [...new Set([...p.tags, patch.tag])] : p.tags.filter((t) => t !== patch.tag);
+          const next = this.d.projects.update(p.id, { tags });
+          projectChanged(p.id);
+          return `${AUTOMATION_TAGS[patch.tag]} ist für ${p.name} ${patch.on ? "an" : "aus"}. ${state(next.tags)}`;
         }),
       knowledge: (projectName, query, id, remove) =>
         run(true, async () => {

@@ -14,6 +14,8 @@ export interface AutomationHost {
   suggestCommitMessage(projectId: string, paths: string[]): Promise<{ message: string }>;
   /** test environment and test database URL of the project (dev tools) */
   testEnv?(projectId: string): Record<string, string>;
+  /** the post-turn work is done and no held turn follows; testsOk is false when auto-test failed */
+  turnDone?(sessionId: string, testsOk: boolean): Promise<void>;
 }
 
 /** A turn FORGE holds back while the previous turn's tests and auto-commit run. */
@@ -100,13 +102,18 @@ export class TurnAutomation {
     const rec = this.db.getSession(sessionId);
     const project = rec ? this.projects.get(rec.projectId) : null;
     const holds = !!project && (project.tags.includes("auto-commit") || (project.tags.includes("auto-test") && !!project.testCommand));
+    let testsOk = true;
     const p = this.afterTurn(sessionId)
-      .catch(() => {})
+      .then(
+        (ok) => void (testsOk = ok),
+        () => {},
+      )
       .finally(() => {
         if (this.running.get(sessionId) === p) this.running.delete(sessionId);
         const list = this.held.get(sessionId) ?? [];
         this.held.delete(sessionId);
         for (const t of list) t.deliver();
+        if (!list.length && this.host.turnDone) this.track(this.host.turnDone(sessionId, testsOk));
       });
     if (holds) this.running.set(sessionId, p);
     this.track(p);
@@ -124,23 +131,21 @@ export class TurnAutomation {
     return out;
   }
 
-  private async afterTurn(sessionId: string) {
+  /** false only when auto-test ran and failed */
+  private async afterTurn(sessionId: string): Promise<boolean> {
     const rec = this.db.getSession(sessionId);
-    if (!rec) return;
+    if (!rec) return true;
     const project = this.projects.get(rec.projectId);
     const cwd = rec.cwd;
     const seq = this.turnSeq.get(sessionId) ?? 0;
     const baseline = this.baseline.get(sessionId) ?? new Set<string>();
     const tags = new Set(project.tags);
-    if (!tags.has("auto-commit")) {
-      await this.runTests(sessionId, project.id, project.testCommand, tags, cwd);
-      return;
-    }
+    if (!tags.has("auto-commit")) return this.runTests(sessionId, project.id, project.testCommand, tags, cwd);
     let status;
     try {
       status = await this.git.status(cwd);
     } catch {
-      return; // not a git repository: nothing to commit
+      return true; // not a git repository: nothing to commit
     }
     const files = status.files
       .filter((f) => !baseline.has(f.path) && f.kind !== "conflicted" && !isSensitiveFile(f.path) && !isArtifactPath(f.path))
@@ -150,27 +155,28 @@ export class TurnAutomation {
 
     if (tags.has("review-required")) {
       this.host.record(sessionId, { type: "automation", action: "skip", ok: true, message: "Auto-Commit übersprungen: review-required verlangt eine Prüfung im Git-Bereich.", hash: null, files: [] });
-      return;
+      return testsOk;
     }
     if (!testsOk) {
       this.host.record(sessionId, { type: "automation", action: "skip", ok: false, message: "Auto-Commit übersprungen: Tests sind fehlgeschlagen.", hash: null, files: [] });
-      return;
+      return false;
     }
-    if (!files.length) return;
+    if (!files.length) return true;
     // A turn from the Claude app or a background task may have started meanwhile; it bypasses the hold.
     const after = await this.hashFiles(cwd, files);
     if ((this.turnSeq.get(sessionId) ?? 0) !== seq || files.some((f) => before.get(f) !== after.get(f))) {
       this.host.record(sessionId, { type: "automation", action: "skip", ok: true, message: "Auto-Commit übersprungen: Dateien haben sich nach dem Durchlauf weiter geändert. Bitte im Git-Bereich prüfen.", hash: null, files: [] });
-      return;
+      return true;
     }
     let message: string;
     try {
       message = (await this.host.suggestCommitMessage(project.id, files)).message;
     } catch (e) {
       this.host.record(sessionId, { type: "automation", action: "commit", ok: false, message: e instanceof Error ? e.message : String(e), hash: null, files });
-      return;
+      return true;
     }
     await this.commitAndPush(sessionId, project, cwd, files, message, status.summary.branch);
+    return true;
   }
 
   /** Commits the files and pushes when the project has auto-push. Sensitive files were filtered out before. */

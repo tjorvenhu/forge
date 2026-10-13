@@ -206,7 +206,7 @@ export const SessionEventBody = z.discriminatedUnion("type", [
   }),
   z.object({
     type: z.literal("automation"),
-    action: z.enum(["commit", "push", "skip"]),
+    action: z.enum(["commit", "push", "merge", "skip"]),
     ok: z.boolean(),
     message: z.string(),
     hash: z.string().nullable(),

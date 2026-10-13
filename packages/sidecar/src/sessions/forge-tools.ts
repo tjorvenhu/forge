@@ -3,6 +3,7 @@ import type { Project, ServerEvent, Session, SessionEventBody } from "@forge/pro
 import { z } from "zod";
 import { slugify, type WorktreeService } from "../automation/worktrees.js";
 import type { AgentFinisher } from "../automation/agent-finish.js";
+import { autoMergeOn } from "../automation/agent-auto-merge.js";
 import type { SessionTool } from "../claude/runtime.js";
 import type { Db, SessionRecord } from "../persistence/db.js";
 import type { ProjectManager } from "../projects/project-manager.js";
@@ -220,6 +221,13 @@ export function forgeSessionTools(rec: SessionRecord, d: ForgeToolDeps): { tools
     },
   };
 
+  const autoMerge = autoMergeOn(d.projects, project);
+  // A turn that ends with a question in the text would be merged before anyone answers it.
+  const autoMergeLine =
+    project.parentId && autoMerge
+      ? "In diesem Projekt führt FORGE deinen Branch automatisch zusammen, sobald ein Durchlauf ohne Fehler endet. Rückfragen deshalb nur mit AskUserQuestion stellen, nie als Frage am Ende deiner Antwort. Beende einen Durchlauf erst, wenn die Arbeit fertig ist."
+      : "";
+
   if (parent) {
     return {
       tools: [notify, ...own.tools],
@@ -227,9 +235,12 @@ export function forgeSessionTools(rec: SessionRecord, d: ForgeToolDeps): { tools
         "Du läufst in FORGE, einer Desktop-Oberfläche für Claude Code, als paralleler Agent: Eine andere FORGE-Session hat dich gestartet.",
         `Du arbeitest im Git-Worktree ${rec.cwd} auf einem eigenen Branch. Ändere nur Dateien in diesem Ordner.`,
         "Wenn du fertig bist: committe deine Arbeit auf deinem Branch und fasse am Ende in wenigen Sätzen zusammen, was du gemacht hast und was offen ist. Die startende Session liest diese Zusammenfassung.",
+        autoMergeLine,
         "Mit mcp__forge__notify kannst du den Nutzer benachrichtigen. Weitere Agenten kannst du nicht starten.",
         ...own.context,
-      ].join("\n"),
+      ]
+        .filter(Boolean)
+        .join("\n"),
     };
   }
 
@@ -376,8 +387,13 @@ export function forgeSessionTools(rec: SessionRecord, d: ForgeToolDeps): { tools
       "- start_agent: startet einen parallelen Agenten in einem eigenen Git-Worktree auf eigenem Branch. Nur für Teilaufgaben, die wirklich unabhängig und gleichzeitig laufen können; der Auftrag muss für sich allein verständlich sein. Der Agent startet beim letzten Commit deines Branches und sieht nur committete Stände.",
       "- agent_status und message_agent: Agenten verfolgen und anleiten. Ihre Arbeit liegt auf ihren Branches.",
       finisher
-        ? "- finish_agent: einen Agenten des Projekts zusammenführen (merge) oder verwerfen (discard), auch einen fremden; danach sind Session, Worktree, FORGE-Eintrag und Branch weg. Nur nach Rücksprache mit dem Nutzer. FORGE zeigt dem Nutzer fertige Agenten auch selbst zur Entscheidung an."
+        ? `- finish_agent: einen Agenten des Projekts zusammenführen (merge) oder verwerfen (discard), auch einen fremden; danach sind Session, Worktree, FORGE-Eintrag und Branch weg. Nur nach Rücksprache mit dem Nutzer. ${
+            autoMerge
+              ? "In diesem Projekt führt FORGE fertige Agenten automatisch zusammen (auto-merge), sobald ihr Durchlauf ohne Fehler endet. Was dabei nicht klappt, legt FORGE dem Nutzer vor."
+              : "FORGE zeigt dem Nutzer fertige Agenten auch selbst zur Entscheidung an."
+          }`
         : "",
+      autoMergeLine,
       "- notify: den Nutzer aktiv benachrichtigen. urgent=true nur, wenn er sofort gebraucht wird (kann sein Telefon klingeln lassen).",
       ...own.context,
     ]

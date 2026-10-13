@@ -3,7 +3,7 @@ import { limitLabel, limitTime } from "@/lib/rate-limit";
 
 type Body<T extends SessionEventBody["type"]> = Extract<SessionEventBody, { type: T }>;
 
-export type NoticeIcon = "commit" | "push" | "skip" | "rewind" | "compact" | "background" | "limit" | "notify";
+export type NoticeIcon = "commit" | "push" | "merge" | "skip" | "rewind" | "compact" | "background" | "limit" | "notify";
 
 export interface TodoEntry {
   content: string;
@@ -230,13 +230,16 @@ function itemFolder(thread: string | null = null) {
                 : b.action === "push" && b.ok
                   ? `Auto-Push: ${b.message}`
                   : b.message,
-            tone: !b.ok ? "danger" : b.action === "skip" ? "warning" : "success",
+            // A merge that is not ok hit conflicts the agent now resolves: a warning, not a failure.
+            tone: b.action === "merge" ? (b.ok ? "success" : "warning") : !b.ok ? "danger" : b.action === "skip" ? "warning" : "success",
             card:
               b.action === "commit"
                 ? { title: b.ok ? "Auto-Commit" : "Auto-Commit fehlgeschlagen", ref: b.ok ? (b.hash?.slice(0, 7) ?? null) : null, detail: b.ok ? `${b.message} · ${b.files.length} Datei(en)` : b.message, icon: "commit" }
                 : b.action === "push"
                   ? { title: b.ok ? "Auto-Push" : "Auto-Push fehlgeschlagen", ref: null, detail: b.message, icon: "push" }
-                  : { title: "Automatik übersprungen", ref: null, detail: b.message.replace(/^Auto-(Commit|Push) übersprungen:\s*/, ""), icon: "skip" },
+                  : b.action === "merge"
+                    ? { title: b.ok ? "Agent zusammengeführt" : "Konflikte beim Zusammenführen", ref: null, detail: b.message.replace(/^Automatisch zusammengeführt:\s*/, ""), icon: "merge" }
+                    : { title: "Automatik übersprungen", ref: null, detail: b.message.replace(/^(Auto-(Commit|Push) übersprungen|Nicht automatisch zusammengeführt):\s*/, ""), icon: "skip" },
           });
           break;
         case "files.rewound":

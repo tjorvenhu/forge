@@ -32,7 +32,7 @@ export function freeDir(base: string, exists: (p: string) => boolean = existsSyn
 
 /**
  * Parallel agents work in git worktrees: a sibling folder with its own branch, registered as a
- * FORGE project linked to its parent. Nothing is merged automatically.
+ * FORGE project linked to its parent. Merging back is AgentFinisher's job (by hand or with the auto-merge tag).
  */
 export class WorktreeService {
   constructor(

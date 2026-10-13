@@ -49,6 +49,7 @@ function toolset(calls: string[] = []): PhoneToolset {
     callBack: rec("callBack"),
     backgroundTask: rec("backgroundTask"),
     devSettings: rec("devSettings"),
+    projectAutomation: rec("projectAutomation"),
     pullRequest: rec("pullRequest"),
     removeAgent: rec("removeAgent"),
     finishAgent: rec("finishAgent"),
@@ -90,6 +91,8 @@ describe("phone tools for Gemini", () => {
     expect(calls.at(-1)).toBe(`backgroundTask:["S1","to_background",null]`);
     await runPhoneTool("dev_settings", { project: "shop", port: 54400, env_var: "" }, t, ctx);
     expect(calls.at(-1)).toBe(`devSettings:["shop",{"port":54400,"envVar":""},{}]`);
+    await runPhoneTool("project_automation", { session: "S2", tag: "auto-merge", on: true }, t, ctx);
+    expect(calls.at(-1)).toBe(`projectAutomation:["",{"tag":"auto-merge","on":true},{"session":"S2"}]`);
     await runPhoneTool("call_settings", { done: false }, t, ctx);
     expect(calls.at(-1)).toBe(`callSettings:[{"done":false}]`);
     expect(await runPhoneTool("dev_settings", { project: "shop", port: 80 }, t, ctx)).toMatch(/^Fehler: ungültige Angaben für dev_settings/);

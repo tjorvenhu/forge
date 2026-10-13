@@ -9,7 +9,7 @@ import { rpc } from "./rpc";
 import { playSound } from "./sounds";
 import { notifyAutoContinue, notifyKind, notifySession, shouldNotify } from "./notifications";
 import { isChatWindow } from "./chat-windows";
-import { agentTurnEnded } from "./agent-review";
+import { agentAutoMerged, agentTurnEnded } from "./agent-review";
 
 const GIT_REFRESH_DELAY_MS = 400;
 const EVICT_INTERVAL_MS = 60_000;
@@ -157,6 +157,9 @@ export function routeServerEvent(qc: QueryClient, git: GitRefresher, e: ServerEv
       if (prev?.call && !e.payload.call) void qc.invalidateQueries({ queryKey: keys.phoneCalls });
       break;
     }
+    case "agent.autoMerge":
+      if (!isChatWindow()) agentAutoMerged(e.payload);
+      break;
     case "project.updated":
       void qc.invalidateQueries({ queryKey: keys.git(e.payload.projectId) });
       void qc.invalidateQueries({ queryKey: ["diff", e.payload.projectId] });
