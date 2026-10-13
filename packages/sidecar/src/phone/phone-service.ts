@@ -335,6 +335,17 @@ function pickOne<T>(items: T[], query: string, keys: (x: T) => string[], what: {
   throw new Error(q ? `${what.none} „${query}“.${known}` : `Welche? Bitte den Namen nennen.${known}`);
 }
 
+/** A spoken GitHub organisation ("vanturis") against the account's organisations; nothing spoken or the account itself: the personal account. */
+async function resolveOwner(call: PhoneRpc, spoken: string | undefined): Promise<string | null> {
+  const plain = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "");
+  const q = plain(spoken ?? "");
+  if (!q) return null;
+  const acc = await call("github.account", {});
+  if (acc && plain(acc.login) === q) return null;
+  const orgs = await call("github.orgs", {});
+  return pickOne(orgs, q, (o) => [o.login, plain(o.login)], { none: "Keine GitHub-Organisation", many: "GitHub-Organisationen" }).login;
+}
+
 const ENV_LINE = /^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=/;
 
 function envNames(text: string): string[] {
@@ -1727,7 +1738,10 @@ export class PhoneService {
         run(true, async () => {
           if (action === "account") {
             const acc = await call("github.account", {});
-            return acc ? `FORGE ist bei GitHub als ${acc.login} angemeldet${acc.name ? `, ${acc.name}` : ""}.` : "FORGE ist nicht bei GitHub angemeldet. Anmelden geht nur in FORGE am Rechner über den Browser.";
+            if (!acc) return "FORGE ist nicht bei GitHub angemeldet. Anmelden geht nur in FORGE am Rechner über den Browser.";
+            const orgs = await call("github.orgs", {}).catch(() => []);
+            const inOrgs = orgs.length ? ` Organisationen: ${asData(orgs.map((o) => o.login).join(", "))}.` : "";
+            return `FORGE ist bei GitHub als ${acc.login} angemeldet${acc.name ? `, ${acc.name}` : ""}.${inOrgs}`;
           }
           if (action === "identity") {
             const name = o?.name?.trim();
@@ -1794,8 +1808,9 @@ export class PhoneService {
           }
           if (action === "publish") {
             const isPrivate = o?.private !== false;
-            await call("github.publish", { projectId: p.id, private: isPrivate, name: o?.name?.trim() || undefined });
-            return `${p.name} ist als ${isPrivate ? "privates" : "öffentliches"} Repository auf GitHub veröffentlicht.`;
+            const owner = await resolveOwner(call, o?.owner);
+            await call("github.publish", { projectId: p.id, private: isPrivate, name: o?.name?.trim() || undefined, owner: owner ?? undefined });
+            return `${p.name} ist als ${isPrivate ? "privates" : "öffentliches"} Repository auf GitHub veröffentlicht${owner ? `, in der Organisation ${owner}` : ""}.`;
           }
           if (action === "status") {
             const { summary: s } = await git.status(p.path);
@@ -1957,21 +1972,33 @@ export class PhoneService {
           if (action === "create") {
             const name = o?.name?.trim();
             if (!name) return "Fehler: Wie soll das Projekt heißen?";
-            const r = await call("projects.create", { name, parentDir: await parentDir(), gitInit: o?.git !== false, gitEnabled: o?.git !== false, github: o?.github && o.git !== false ? { private: o.github === "private" } : null });
+            const withGitHub = !!o?.github && o.git !== false;
+            const owner = withGitHub ? await resolveOwner(call, o?.owner) : null;
+            const r = await call("projects.create", { name, parentDir: await parentDir(), gitInit: o?.git !== false, gitEnabled: o?.git !== false, github: withGitHub ? { private: o?.github === "private", owner } : null });
             projectChanged(r.project.id);
             const gh = !r.github
               ? ""
               : r.github.url
-                ? ` Das ${o?.github === "public" ? "öffentliche" : "private"} GitHub-Repository ist angelegt.`
+                ? ` Das ${o?.github === "public" ? "öffentliche" : "private"} GitHub-Repository ist angelegt${owner ? `, in der Organisation ${owner}` : ""}.`
                 : ` Das GitHub-Repository ließ sich nicht anlegen: ${r.github.error ?? "unbekannter Fehler"}`;
             return `Projekt ${r.project.name} ${r.project.gitEnabled ? "" : "ohne Git "}angelegt.${gh}`;
           }
           if (action === "import") {
             const dir = o?.path?.trim();
             if (!dir) return "Fehler: Welcher Ordner? Bitte den Pfad nennen.";
+            const withGitHub = !!o?.github && o.git !== false;
+            const owner = withGitHub ? await resolveOwner(call, o?.owner) : null;
             const p = await call("projects.import", { path: dir, gitEnabled: o?.git !== false });
             projectChanged(p.id);
-            return `Projekt ${p.name} ${p.gitEnabled ? "" : "ohne Git "}aufgenommen.`;
+            const done = `Projekt ${p.name} ${p.gitEnabled ? "" : "ohne Git "}aufgenommen.`;
+            if (!withGitHub) return done;
+            try {
+              await call("github.publish", { projectId: p.id, private: o?.github === "private", owner: owner ?? undefined });
+              projectChanged(p.id);
+              return `${done} Das ${o?.github === "public" ? "öffentliche" : "private"} GitHub-Repository ist angelegt${owner ? `, in der Organisation ${owner}` : ""}.`;
+            } catch (e) {
+              return `${done} Das GitHub-Repository ließ sich nicht anlegen: ${e instanceof Error ? e.message : String(e)}`;
+            }
           }
           if (action === "clone") {
             const raw = o?.url?.trim();

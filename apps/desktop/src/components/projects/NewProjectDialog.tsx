@@ -10,12 +10,13 @@ import { toast } from "@/stores/toast";
 import { Dialog } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Field, Input } from "@/components/ui/input";
-import { Checkbox, ErrorBanner } from "@/components/ui/misc";
+import { Checkbox, ErrorBanner, InfoTip } from "@/components/ui/misc";
 import { Skeleton, SkeletonRegion } from "@/components/ui/skeleton";
 import { RadioGroup } from "@/components/ui/radio-group";
 import { Collapse } from "@/components/ui/collapse";
 import { TabBar } from "@/components/ui/tabs";
 import { GitHubRepoPicker } from "@/components/github/GitHubPanel";
+import { GitHubOwnerSelect, repoNameOf } from "@/components/github/GitHubOwnerSelect";
 
 export function NewProjectDialog() {
   const mode = useUi((s) => s.newProject);
@@ -30,6 +31,8 @@ export function NewProjectDialog() {
   const [withGit, setWithGit] = useState(true);
   const [onGitHub, setOnGitHub] = useState(false);
   const [ghPrivate, setGhPrivate] = useState(true);
+  /** "" is the personal account, otherwise an organisation */
+  const [ghOwner, setGhOwner] = useState("");
   const github = useGitHubAccount();
   const [url, setUrl] = useState("");
   const [dirName, setDirName] = useState("");
@@ -61,15 +64,27 @@ export function NewProjectDialog() {
     setDuplicateId(null);
     try {
       let project;
+      const toGitHub = withGit && onGitHub && !!github.data;
       if (mode === "create") {
-        const r = await call("projects.create", { name, parentDir: parent, gitInit: withGit, gitEnabled: withGit, github: withGit && onGitHub ? { private: ghPrivate } : null });
+        const r = await call("projects.create", { name, parentDir: parent, gitInit: withGit, gitEnabled: withGit, github: toGitHub ? { private: ghPrivate, owner: ghOwner || null } : null });
         project = r.project;
         if (r.github?.url) toast.success("Projekt angelegt und auf GitHub veröffentlicht", r.github.url);
         else if (r.github?.error) toast.error("Projekt angelegt, GitHub-Repository fehlgeschlagen", r.github.error);
         else toast.success("Projekt angelegt", project.path);
+      } else if (mode === "import") {
+        project = await call("projects.import", { path, gitEnabled: withGit });
+        if (toGitHub) {
+          // The import stands even if GitHub refuses (e.g. the folder already has an origin).
+          try {
+            const r = await call("github.publish", { projectId: project.id, private: ghPrivate, owner: ghOwner || undefined });
+            toast.success("Projekt importiert und auf GitHub veröffentlicht", r.url);
+          } catch (e) {
+            toast.error("Projekt importiert, GitHub-Repository fehlgeschlagen", errorMessage(e));
+          }
+        } else toast.success("Projekt importiert", project.path);
       } else {
-        project = mode === "import" ? await call("projects.import", { path, gitEnabled: withGit }) : await call("projects.clone", { url, parentDir: parent, dirName: dirName || undefined });
-        toast.success(mode === "import" ? "Projekt importiert" : "Repository geklont", project.path);
+        project = await call("projects.clone", { url, parentDir: parent, dirName: dirName || undefined });
+        toast.success("Repository geklont", project.path);
       }
       await qc.invalidateQueries({ queryKey: keys.projects });
       setBusy(false);
@@ -84,6 +99,8 @@ export function NewProjectDialog() {
       }
     }
   };
+
+  const gitHubChoice = { enabled: onGitHub, onEnabled: setOnGitHub, isPrivate: ghPrivate, onPrivate: setGhPrivate, owner: ghOwner, onOwner: setGhOwner, onSettings: close };
 
   const canSubmit = mode === "import" ? !!path : mode === "create" ? !!name.trim() && !!parent : !!url.trim() && !!parent;
 
@@ -126,6 +143,11 @@ export function NewProjectDialog() {
           </Field>
         )}
         {mode === "import" && <GitChoice value={withGit} onChange={setWithGit} importing />}
+        {mode === "import" && (
+          <Collapse open={withGit}>
+            <GitHubRepoChoice {...gitHubChoice} repoName={path ? repoNameOf(path.split(/[\\/]/).filter(Boolean).pop() ?? "") : ""} importing />
+          </Collapse>
+        )}
 
         {mode === "create" && (
           <>
@@ -138,36 +160,7 @@ export function NewProjectDialog() {
             <p className="-mt-1 text-xs text-subtle">FORGE legt nur den Ordner an. Struktur, README und Konfiguration erstellt Claude in der ersten Session.</p>
             <GitChoice value={withGit} onChange={setWithGit} />
             <Collapse open={withGit}>
-              <div className="rounded-lg border border-border p-3">
-                <label className="flex items-center gap-2 text-body">
-                  <Checkbox checked={onGitHub} onChange={setOnGitHub} disabled={!github.data} label="Repository auf GitHub anlegen" />
-                  Repository auf GitHub anlegen
-                </label>
-                {github.isPending ? (
-                  <SkeletonRegion label="Lädt GitHub-Status" className="mt-1.5 flex h-4 items-center pl-6">
-                    <Skeleton className="h-2.5 w-3/4" />
-                  </SkeletonRegion>
-                ) : github.data ? (
-                  onGitHub && (
-                    <div className="mt-2.5 flex items-center gap-4 pl-6 text-body">
-                      <RadioGroup
-                        aria-label="Sichtbarkeit des Repositorys"
-                        value={ghPrivate ? "private" : "public"}
-                        onChange={(v) => setGhPrivate(v === "private")}
-                        options={[
-                          { value: "private", label: "Privat" },
-                          { value: "public", label: "Öffentlich" },
-                        ]}
-                      />
-                      <span className="text-xs text-subtle">als {github.data.login}/{name.trim().replace(/\s+/g, "-") || "…"}</span>
-                    </div>
-                  )
-                ) : (
-                  <p className="mt-1.5 pl-6 text-xs text-subtle">
-                    Dafür zuerst unter <SettingsLink onClick={close} /> bei GitHub anmelden.
-                  </p>
-                )}
-              </div>
+              <GitHubRepoChoice {...gitHubChoice} repoName={name.trim() ? repoNameOf(name) : ""} />
             </Collapse>
           </>
         )}
@@ -284,6 +277,73 @@ function GitChoice({ value, onChange, importing = false }: { value: boolean; onC
           </button>
         );
       })}
+    </div>
+  );
+}
+
+/** Also create a repository on GitHub: in the personal account or an organisation, private or public. */
+function GitHubRepoChoice({
+  enabled,
+  onEnabled,
+  isPrivate,
+  onPrivate,
+  owner,
+  onOwner,
+  repoName,
+  importing = false,
+  onSettings,
+}: {
+  enabled: boolean;
+  onEnabled: (v: boolean) => void;
+  isPrivate: boolean;
+  onPrivate: (v: boolean) => void;
+  owner: string;
+  onOwner: (v: string) => void;
+  repoName: string;
+  importing?: boolean;
+  onSettings: () => void;
+}) {
+  const github = useGitHubAccount();
+  return (
+    <div className="rounded-lg border border-border p-3">
+      <div className="flex items-center gap-2 text-body">
+        <label className="flex items-center gap-2">
+          <Checkbox checked={enabled} onChange={onEnabled} disabled={!github.data} label="Repository auf GitHub anlegen" />
+          Repository auf GitHub anlegen
+        </label>
+        {importing && (
+          <InfoTip>FORGE legt das Repository an, verbindet es als origin und pusht den aktuellen Stand. Hat der Ordner schon ein Remote origin, bleibt es dabei und FORGE legt kein Repository an.</InfoTip>
+        )}
+      </div>
+      {github.isPending ? (
+        <SkeletonRegion label="Lädt GitHub-Status" className="mt-1.5 flex h-4 items-center pl-6">
+          <Skeleton className="h-2.5 w-3/4" />
+        </SkeletonRegion>
+      ) : github.data ? (
+        enabled && (
+          <div className="mt-2.5 flex flex-col gap-2 pl-6">
+            <div className="flex items-center gap-4">
+              <GitHubOwnerSelect value={owner} onChange={onOwner} className="min-w-0 flex-1" />
+              <RadioGroup
+                aria-label="Sichtbarkeit des Repositorys"
+                value={isPrivate ? "private" : "public"}
+                onChange={(v) => onPrivate(v === "private")}
+                options={[
+                  { value: "private", label: "Privat" },
+                  { value: "public", label: "Öffentlich" },
+                ]}
+              />
+            </div>
+            <span className="truncate text-xs text-subtle">
+              als {owner || github.data.login}/{repoName || "…"}
+            </span>
+          </div>
+        )
+      ) : (
+        <p className="mt-1.5 pl-6 text-xs text-subtle">
+          Dafür zuerst unter <SettingsLink onClick={onSettings} /> bei GitHub anmelden.
+        </p>
+      )}
     </div>
   );
 }

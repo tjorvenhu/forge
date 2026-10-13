@@ -33,6 +33,8 @@ import {
   FileDiff,
   GitHubAccount,
   GitHubLoginState,
+  GitHubOrg,
+  GitHubOwner,
   GitHubRepo,
   GitIntegrated,
   GitStatus,
@@ -97,8 +99,10 @@ export const methods = {
   "github.cancelLogin": { params: empty, result: GitHubLoginState },
   "github.logout": { params: empty, result: z.object({ ok: z.boolean() }) },
   "github.repos": { params: empty, result: z.array(GitHubRepo) },
+  "github.orgs": { params: empty, result: z.array(GitHubOrg) },
   "github.publish": {
-    params: projectRef.extend({ private: z.boolean(), name: z.string().min(1).max(100).optional() }),
+    /** owner: an organisation of the account; without it the personal account */
+    params: projectRef.extend({ private: z.boolean(), name: z.string().min(1).max(100).optional(), owner: GitHubOwner.optional() }),
     result: z.object({ url: z.string() }),
   },
   "git.identity": { params: empty, result: z.object({ name: z.string().nullable(), email: z.string().nullable() }) },
@@ -189,7 +193,7 @@ export const methods = {
       /** false: project without git; gitInit and github are ignored */
       gitEnabled: z.boolean().default(true),
       /** create a GitHub repository for the new project (requires GitHub login) */
-      github: z.object({ private: z.boolean() }).nullable().default(null),
+      github: z.object({ private: z.boolean(), owner: GitHubOwner.nullable().default(null) }).nullable().default(null),
     }),
     result: z.object({ project: Project, github: z.object({ url: z.string().nullable(), error: z.string().nullable() }).nullable() }),
   },

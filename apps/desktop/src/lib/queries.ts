@@ -35,6 +35,7 @@ export const keys = {
   githubAccount: ["githubAccount"] as const,
   githubLogin: ["githubLogin"] as const,
   githubRepos: ["githubRepos"] as const,
+  githubOrgs: ["githubOrgs"] as const,
   claudeSetup: ["claudeSetup"] as const,
   claudeUpdate: ["claudeUpdate"] as const,
   files: (id: string, dir: string) => ["files", id, dir] as const,
@@ -73,6 +74,10 @@ export const useDiagnostics = () =>
 
 export const useGitHubAccount = () =>
   useQuery({ queryKey: keys.githubAccount, queryFn: () => call("github.account", {}), staleTime: 5 * 60_000, retry: false });
+
+/** Organisations of the signed-in account, as owners for new repositories. */
+export const useGitHubOrgs = (enabled = true) =>
+  useQuery({ queryKey: keys.githubOrgs, queryFn: () => call("github.orgs", {}), enabled, staleTime: 5 * 60_000, retry: false });
 
 export const useGitHubLogin = () => useQuery({ queryKey: keys.githubLogin, queryFn: () => call("github.loginState", {}), staleTime: Infinity });
 

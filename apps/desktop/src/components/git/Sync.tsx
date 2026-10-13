@@ -13,6 +13,7 @@ import { Dialog } from "@/components/ui/dialog";
 import { Field, Input, Textarea } from "@/components/ui/input";
 import { Badge, Checkbox } from "@/components/ui/misc";
 import { Skeleton, SkeletonRegion } from "@/components/ui/skeleton";
+import { GitHubOwnerSelect } from "@/components/github/GitHubOwnerSelect";
 
 function useRefreshGit(projectId: string) {
   const qc = useQueryClient();
@@ -232,13 +233,15 @@ function PrStatusSkeleton() {
 function PublishDialog({ open, onOpenChange, project, onDone }: { open: boolean; onOpenChange: (o: boolean) => void; project: Project; onDone: () => void }) {
   const [name, setName] = useState(project.name.replace(/\s+/g, "-"));
   const [isPrivate, setPrivate] = useState(true);
+  /** "" is the personal account */
+  const [owner, setOwner] = useState("");
   const [busy, setBusy] = useState(false);
   return (
     <Dialog
       open={open}
       onOpenChange={onOpenChange}
       title="Auf GitHub veröffentlichen"
-      description="Legt ein Repository in deinem GitHub-Konto an, verbindet es als origin und pusht den aktuellen Branch."
+      description="Legt ein Repository in deinem GitHub-Konto oder einer Organisation an, verbindet es als origin und pusht den aktuellen Branch."
       footer={
         <>
           <Button variant="ghost" onClick={() => onOpenChange(false)}>
@@ -251,7 +254,7 @@ function PublishDialog({ open, onOpenChange, project, onDone }: { open: boolean;
             onClick={async () => {
               setBusy(true);
               try {
-                const r = await call("github.publish", { projectId: project.id, private: isPrivate, name });
+                const r = await call("github.publish", { projectId: project.id, private: isPrivate, name, owner: owner || undefined });
                 toast.success("Veröffentlicht", r.url);
                 onDone();
                 onOpenChange(false);
@@ -268,6 +271,9 @@ function PublishDialog({ open, onOpenChange, project, onDone }: { open: boolean;
       }
     >
       <div className="flex flex-col gap-3">
+        <Field label="Anlegen in">
+          <GitHubOwnerSelect value={owner} onChange={setOwner} />
+        </Field>
         <Field label="Repository-Name">
           <Input value={name} onChange={(e) => setName(e.target.value)} />
         </Field>

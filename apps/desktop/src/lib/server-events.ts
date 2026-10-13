@@ -108,6 +108,7 @@ export function routeServerEvent(qc: QueryClient, git: GitRefresher, e: ServerEv
       if (e.payload.phase === "done") {
         void qc.invalidateQueries({ queryKey: keys.githubAccount });
         void qc.invalidateQueries({ queryKey: keys.githubRepos });
+        void qc.invalidateQueries({ queryKey: keys.githubOrgs });
         void qc.invalidateQueries({ queryKey: keys.diagnostics });
       }
       break;

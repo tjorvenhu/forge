@@ -1,5 +1,5 @@
 import { spawn, type ChildProcess } from "node:child_process";
-import { ForgeError, type GitHubAccount, type GitHubLoginState, type GitHubRepo, type PullRequest } from "@forge/protocol";
+import { ForgeError, type GitHubAccount, type GitHubLoginState, type GitHubOrg, type GitHubRepo, type PullRequest } from "@forge/protocol";
 import { run } from "../util/proc.js";
 import { resolveTool } from "../util/tools.js";
 import { authorsQuery, avatarKey, commitsToResolve, parseAuthorsResponse } from "./avatars.js";
@@ -143,12 +143,20 @@ export class GitHubService {
     return list.map((x) => ({ fullName: x.nameWithOwner, description: x.description || null, private: x.isPrivate, updatedAt: x.updatedAt, cloneUrl: `${x.url}.git` }));
   }
 
+  /** Organisations of the signed-in account (needs the read:org scope, which `gh auth login` asks for). */
+  async orgs(): Promise<GitHubOrg[]> {
+    const r = await this.gh_(["api", "user/orgs?per_page=100"], 60_000);
+    if (r.code !== 0) throw new ForgeError("INTERNAL", (r.stderr || r.stdout).trim() || "Organisationen konnten nicht geladen werden");
+    const list = JSON.parse(r.stdout) as Array<{ login: string; avatar_url?: string | null }>;
+    return list.map((o) => ({ login: o.login, avatarUrl: o.avatar_url ?? null })).sort((a, b) => a.login.localeCompare(b.login));
+  }
+
   /**
    * Creates a GitHub repository for a local repo, adds it as origin and pushes the current branch.
-   * Uses the signed-in account; never force-pushes.
+   * In the signed-in account, or in one of its organisations with `owner`; never force-pushes.
    */
-  async createRepo(dir: string, name: string, isPrivate: boolean): Promise<string> {
-    const repoName = toRepoName(name);
+  async createRepo(dir: string, name: string, isPrivate: boolean, owner: string | null = null): Promise<string> {
+    const repoName = owner ? `${owner}/${toRepoName(name)}` : toRepoName(name);
     const r = await run(this.gh(), ["repo", "create", repoName, isPrivate ? "--private" : "--public", "--source", dir, "--remote", "origin", "--push"], {
       cwd: dir,
       env: this.env(),

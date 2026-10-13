@@ -57,6 +57,8 @@ export interface GitOptions extends TargetOptions {
   path?: string;
   /** publish: private repository (default true) */
   private?: boolean;
+  /** publish: GitHub organisation instead of the personal account, as spoken */
+  owner?: string;
   /** publish: repository name; identity: the author name */
   name?: string;
   /** identity: the author email */
@@ -90,8 +92,10 @@ export interface ProjectOptions extends TargetOptions {
   url?: string;
   /** create and import: false sets the project up without git; settings: switches git on or off */
   git?: boolean;
-  /** create: also a GitHub repository */
+  /** create and import: also a GitHub repository */
   github?: "private" | "public";
+  /** create and import with github: GitHub organisation instead of the personal account, as spoken */
+  owner?: string;
   deleteFolder?: boolean;
   deleteGitHubRepo?: boolean;
   favorite?: boolean;
@@ -573,7 +577,7 @@ export const PHONE_TOOLS: readonly PhoneToolSpec[] = [
   {
     name: "git",
     description:
-      "Git in einem Projekt oder einer Session (bei Agenten ihr Worktree). status: Branch und Änderungen. log: die letzten Commits. diff: was sich in einer Datei geändert hat (path). commit: alle Änderungen committen (ohne message schreibt FORGE die Nachricht). push: aktuellen Branch pushen, neue Commits vom Server werden vorher übernommen. pull: neue Commits vom Server holen, eigene Commits kommen per Rebase obendrauf. fetch: nur nachsehen, was es auf dem Server Neues gibt. branches: lokale Branches. checkout: auf branch wechseln. delete_branch: lokalen branch löschen. restore: Dateien auf den Stand eines Commits zurücksetzen, als nicht committete Änderungen; offene Arbeit wird vorher beiseitegelegt. init: Git-Repository anlegen. publish: Projekt als neues Repository auf GitHub veröffentlichen. account: mit welchem GitHub-Konto FORGE angemeldet ist. identity: Name und E-Mail für Commits sagen oder mit name und email setzen. Lassen sich die Stände nicht automatisch zusammenführen, startet FORGE eine Session, in der Claude das erledigt.",
+      "Git in einem Projekt oder einer Session (bei Agenten ihr Worktree). status: Branch und Änderungen. log: die letzten Commits. diff: was sich in einer Datei geändert hat (path). commit: alle Änderungen committen (ohne message schreibt FORGE die Nachricht). push: aktuellen Branch pushen, neue Commits vom Server werden vorher übernommen. pull: neue Commits vom Server holen, eigene Commits kommen per Rebase obendrauf. fetch: nur nachsehen, was es auf dem Server Neues gibt. branches: lokale Branches. checkout: auf branch wechseln. delete_branch: lokalen branch löschen. restore: Dateien auf den Stand eines Commits zurücksetzen, als nicht committete Änderungen; offene Arbeit wird vorher beiseitegelegt. init: Git-Repository anlegen. publish: Projekt als neues Repository auf GitHub veröffentlichen, auf Wunsch in einer Organisation (owner). account: mit welchem GitHub-Konto FORGE angemeldet ist und in welchen Organisationen es Repositorys anlegen kann. identity: Name und E-Mail für Commits sagen oder mit name und email setzen. Lassen sich die Stände nicht automatisch zusammenführen, startet FORGE eine Session, in der Claude das erledigt.",
     params: {
       project: targetProject,
       session: targetSession,
@@ -586,6 +590,7 @@ export const PHONE_TOOLS: readonly PhoneToolSpec[] = [
       commit: { type: "string", optional: true, description: "nur bei restore: Hash, Position im Log (1 = neuester Commit) oder Worte aus der Commit-Nachricht" },
       path: { type: "string", optional: true, description: "nur bei diff: Dateiname oder Teil davon" },
       private: { type: "boolean", optional: true, description: "nur bei publish: false veröffentlicht öffentlich, sonst privat" },
+      owner: { type: "string", optional: true, description: "nur bei publish: GitHub-Organisation, in der das Repository entsteht; ohne: persönliches Konto" },
       name: { type: "string", optional: true, description: "bei publish: Name des Repositorys; bei identity: Name für Commits" },
       email: { type: "string", optional: true, description: "nur bei identity: E-Mail für Commits" },
     },
@@ -600,6 +605,7 @@ export const PHONE_TOOLS: readonly PhoneToolSpec[] = [
         commit: opt(a.commit),
         path: opt(a.path),
         private: optBool(a.private),
+        owner: opt(a.owner),
         name: opt(a.name),
         email: opt(a.email),
       }),
@@ -652,7 +658,7 @@ export const PHONE_TOOLS: readonly PhoneToolSpec[] = [
   {
     name: "project",
     description:
-      "Projekte verwalten. info: Profil, Standardmodell, Denkaufwand, Test- und Dev-Befehl, Favorit, ob mit Git. create: neues Projekt name anlegen (in path oder im Projektordner aus den Einstellungen), auf Wunsch gleich mit GitHub-Repository oder ganz ohne Git. import: vorhandenen Ordner path aufnehmen, mit oder ohne Git. clone: Repository url klonen, auch per Name eines GitHub-Repositorys des Kontos. remove: Projekt aus FORGE entfernen; Ordner und GitHub-Repository nur mit delete_folder oder delete_github_repo. rename: neuer name. favorite: als Favorit markieren oder nicht. settings: Profil, Standardmodell, Denkaufwand, Test- und Dev-Befehl setzen und Git ein- oder ausschalten; nur angeben, was sich ändern soll.",
+      "Projekte verwalten. info: Profil, Standardmodell, Denkaufwand, Test- und Dev-Befehl, Favorit, ob mit Git. create: neues Projekt name anlegen (in path oder im Projektordner aus den Einstellungen), auf Wunsch gleich mit GitHub-Repository (auch in einer Organisation) oder ganz ohne Git. import: vorhandenen Ordner path aufnehmen, mit oder ohne Git, auf Wunsch gleich mit GitHub-Repository. clone: Repository url klonen, auch per Name eines GitHub-Repositorys des Kontos. remove: Projekt aus FORGE entfernen; Ordner und GitHub-Repository nur mit delete_folder oder delete_github_repo. rename: neuer name. favorite: als Favorit markieren oder nicht. settings: Profil, Standardmodell, Denkaufwand, Test- und Dev-Befehl setzen und Git ein- oder ausschalten; nur angeben, was sich ändern soll.",
     params: {
       action: { type: "string", enum: PROJECT_ACTIONS },
       project: { type: "string", optional: true, description: "Projektname oder Teil davon; nicht bei create, import und clone" },
@@ -665,7 +671,8 @@ export const PHONE_TOOLS: readonly PhoneToolSpec[] = [
         optional: true,
         description: "create und import: false richtet das Projekt ganz ohne Git ein (keine Git-Bereiche, keine Agenten, Claude nutzt kein Git); settings: true schaltet Git ein, false aus",
       },
-      github: { type: "string", optional: true, enum: ["private", "public"], description: "create: auch ein GitHub-Repository anlegen, privat oder öffentlich" },
+      github: { type: "string", optional: true, enum: ["private", "public"], description: "create und import: auch ein GitHub-Repository anlegen, privat oder öffentlich" },
+      owner: { type: "string", optional: true, description: "create und import mit github: GitHub-Organisation, in der das Repository entsteht; ohne: persönliches Konto" },
       delete_folder: { type: "boolean", optional: true, description: "remove: true löscht auch den Ordner; nur wenn der Anrufer das ausdrücklich will" },
       delete_github_repo: { type: "boolean", optional: true, description: "remove: true löscht auch das GitHub-Repository; nur wenn der Anrufer das ausdrücklich will" },
       favorite: { type: "boolean", optional: true, description: "favorite: true markiert, false nimmt die Markierung weg" },
@@ -683,6 +690,7 @@ export const PHONE_TOOLS: readonly PhoneToolSpec[] = [
         url: opt(a.url),
         git: optBool(a.git),
         github: a.github === "private" || a.github === "public" ? a.github : undefined,
+        owner: opt(a.owner),
         deleteFolder: optBool(a.delete_folder),
         deleteGitHubRepo: optBool(a.delete_github_repo),
         favorite: optBool(a.favorite),

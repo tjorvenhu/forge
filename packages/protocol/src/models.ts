@@ -559,6 +559,16 @@ export const GitHubRepo = z.object({
 });
 export type GitHubRepo = z.infer<typeof GitHubRepo>;
 
+/** A GitHub organisation the signed-in account belongs to; new repositories can go there instead of the personal account. */
+export const GitHubOrg = z.object({
+  login: z.string(),
+  avatarUrl: z.string().nullable(),
+});
+export type GitHubOrg = z.infer<typeof GitHubOrg>;
+
+/** Account or organisation a new repository is created in, as GitHub writes its name. */
+export const GitHubOwner = z.string().regex(/^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$/, "Ungültiger GitHub-Kontoname");
+
 export const ClaudeUpdateInfo = z.object({
   installed: z.string().nullable(),
   latest: z.string().nullable(),

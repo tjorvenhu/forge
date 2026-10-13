@@ -1258,6 +1258,10 @@ describe("PhoneService end to end with a test PBX", () => {
         github: p.github ? { url: "https://github.com/me/blog", error: null } : null,
       }),
       "github.repos": () => [repo("me/shop-api"), repo("me/blog")],
+      "github.account": () => ({ login: "me", id: 1, name: null, avatarUrl: null, profileUrl: "https://github.com/me" }),
+      "github.orgs": () => [{ login: "vanturis", avatarUrl: null }, { login: "acme-labs", avatarUrl: null }],
+      "projects.import": (p: { path: string; gitEnabled: boolean }) => ({ id: "p-imp", name: path.basename(p.path), gitEnabled: p.gitEnabled }),
+      "github.publish": (p: { owner?: string }) => ({ url: `https://github.com/${p.owner ?? "me"}/landing` }),
       "projects.clone": () => ({ id: "p-clone", name: "shop-api" }),
       "projects.update": ({ projectId: id, ...patch }: { projectId: string }) => projects.update(id, patch),
       "projects.remove": () => ({ removed: true, folderDeleted: true, githubDeleted: false }),
@@ -1271,7 +1275,19 @@ describe("PhoneService end to end with a test PBX", () => {
     const callOf = (method: string) => rpcCalls.filter(([m]) => m === method).at(-1)?.[1];
 
     expect(await conv.tools.project("", "create", { name: "blog", github: "private" })).toBe("Projekt blog angelegt. Das private GitHub-Repository ist angelegt.");
-    expect(callOf("projects.create")).toEqual({ name: "blog", parentDir: t.dir, gitInit: true, gitEnabled: true, github: { private: true } });
+    expect(callOf("projects.create")).toEqual({ name: "blog", parentDir: t.dir, gitInit: true, gitEnabled: true, github: { private: true, owner: null } });
+    // A spoken organisation is matched against the account's organisations; the account itself means the personal one.
+    expect(await conv.tools.project("", "create", { name: "crm", github: "public", owner: "Vanturis" })).toBe(
+      "Projekt crm angelegt. Das öffentliche GitHub-Repository ist angelegt, in der Organisation vanturis.",
+    );
+    expect(callOf("projects.create")).toMatchObject({ github: { private: false, owner: "vanturis" } });
+    await conv.tools.project("", "create", { name: "privat", github: "private", owner: "me" });
+    expect(callOf("projects.create")).toMatchObject({ github: { private: true, owner: null } });
+    expect(await conv.tools.project("", "create", { name: "x", github: "private", owner: "gibtsnicht" })).toMatch(/^Fehler: Keine GitHub-Organisation „gibtsnicht“. Vorhanden: /);
+    expect(await conv.tools.project("", "import", { path: path.join(t.dir, "landing"), github: "private", owner: "acme" })).toBe(
+      "Projekt landing aufgenommen. Das private GitHub-Repository ist angelegt, in der Organisation acme-labs.",
+    );
+    expect(callOf("github.publish")).toEqual({ projectId: "p-imp", private: true, owner: "acme-labs" });
     expect(await conv.tools.project("", "create", { name: "notizen", git: false, github: "private" })).toBe("Projekt notizen ohne Git angelegt.");
     expect(callOf("projects.create")).toEqual({ name: "notizen", parentDir: t.dir, gitInit: false, gitEnabled: false, github: null });
     expect(events).toContainEqual({ event: "project.updated", payload: { projectId: "p-new" } });

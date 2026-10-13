@@ -115,12 +115,13 @@ export function createHandlers(s: Services): Handlers {
       return { ok: true };
     },
     "github.repos": () => s.github.repos(),
-    "github.publish": async ({ projectId, private: isPrivate, name }) => {
+    "github.orgs": () => s.github.orgs(),
+    "github.publish": async ({ projectId, private: isPrivate, name, owner }) => {
       const p = s.projects.requireGit(projectId);
       if (!(await s.git.isRepo(p.path))) await s.git.init(p.path);
       if (await s.git.remoteUrl(p.path)) throw new ForgeError("CONFLICT", "Das Projekt hat bereits ein Remote origin.");
       if (!(await s.git.hasCommits(p.path))) await s.git.initialCommit(p.path, "chore: Projekt angelegt");
-      const url = await s.github.createRepo(p.path, name ?? p.name, isPrivate);
+      const url = await s.github.createRepo(p.path, name ?? p.name, isPrivate, owner ?? null);
       s.notifyProject(projectId);
       return { url };
     },
@@ -178,7 +179,7 @@ export function createHandlers(s: Services): Handlers {
       if (!github || !project.gitEnabled) return { project, github: null };
       try {
         if (!(await s.git.hasCommits(project.path))) await s.git.initialCommit(project.path, "chore: Projekt angelegt");
-        const url = await s.github.createRepo(project.path, project.name, github.private);
+        const url = await s.github.createRepo(project.path, project.name, github.private, github.owner);
         return { project, github: { url, error: null } };
       } catch (e) {
         return { project, github: { url: null, error: e instanceof Error ? e.message : String(e) } };

@@ -75,6 +75,7 @@ export function GitHubAccountCard() {
               await call("github.logout", {});
               await qc.invalidateQueries({ queryKey: keys.githubAccount });
               qc.removeQueries({ queryKey: keys.githubRepos });
+              qc.removeQueries({ queryKey: keys.githubOrgs });
             } catch (e) {
               toast.error("Abmelden fehlgeschlagen", errorMessage(e));
               throw e;

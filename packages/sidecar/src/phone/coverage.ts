@@ -22,6 +22,7 @@ export const PHONE_TOOL_FOR: Partial<Record<MethodName, string>> = {
 
   "github.account": "git",
   "github.repos": "project",
+  "github.orgs": "git",
   "github.publish": "git",
   "git.identity": "git",
   "git.setIdentity": "git",
