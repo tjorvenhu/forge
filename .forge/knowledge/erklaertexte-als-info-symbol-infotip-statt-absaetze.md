@@ -1,26 +1,30 @@
 ---
-title: "Erklärtexte als Info-Symbol (InfoTip) statt Absätze"
-summary: "Konvention: Erklärungen zu Einstellungen und Bereichen stehen hinter einem kleinen i mit Tooltip, nicht als Fließtext. Wichtig für jede neue Einstellung, jedes Formularfeld und jeden Abschnitt."
+title: "Erklärtexte: kurze sichtbar, lange als Info-Symbol (InfoTip)"
+summary: "Konvention: kurze Erklärungen zu Einstellungen stehen als graue Zeile unter dem Label, nur lange wandern hinter ein kleines i mit Tooltip. Wichtig für jede neue Einstellung, jedes Formularfeld und jeden Abschnitt."
 tags: ["ui","tooltip","einstellungen","konvention"]
-updated: "2026-10-13T15:36:24.600Z"
+updated: "2026-10-13T18:30:08.361Z"
 ---
 
-Der Nutzer will keine langen Erklärtexte in der UI. Erklärungen gehören hinter ein kleines Info-Symbol (lucide `Info`), das beim Drüberfahren oder per Tastaturfokus einen Tooltip zeigt.
+Der Nutzer will keine langen Erklärtexte in der UI, aber auch keine Seiten, auf denen nur noch Labels mit i stehen (wirkt leer). Regel: **kurze Erklärungen sichtbar, lange hinter ein Info-Symbol** (lucide `Info`, Tooltip bei Hover oder Tastaturfokus).
 
-## Bausteine (apps/desktop/src/components/ui/misc.tsx)
-- `InfoTip`: das i allein, Inhalt als children (String oder JSX, z. B. zwei `<p>` in `flex flex-col gap-1.5`). Kurze Verzögerung (100 ms). Klick lässt den Tooltip offen und löst in einem `<label>` nichts aus (preventDefault auf click und pointerdown).
-- `LabelWithInfo info={...}`: Label plus i dahinter; ohne `info` nur das Label.
-- Braucht einen `TooltipProvider` (in main.tsx vorhanden). Tests, die Komponenten mit Beschreibungen rendern, müssen in `<TooltipProvider>` wrappen, sonst Fehler "Tooltip must be used within TooltipProvider".
+Grenze: `SHORT_INFO_MAX = 120` Zeichen Text (apps/desktop/src/components/ui/misc.tsx). Gezählt wird der reine Text, auch aus JSX (`textOf` läuft durch children).
 
-## Automatisch als i dargestellt
-- `Group description`, `Row description`, `SwitchRow description` (components/settings/layout.tsx; auch Dev-Tools nutzen diese)
-- `Field hint` (components/ui/input.tsx), `PhoneNumberList hint`, `ToggleRow` children
+## Bausteine (components/ui/misc.tsx)
+- `InfoTip`: das i allein, Inhalt als children. Kurze Verzögerung (100 ms). Klick lässt den Tooltip offen und löst in einem `<label>` nichts aus.
+- `LabelWithInfo info={...}`: Label plus i, immer als i (für bewusst gesetzte lange Texte).
+- `LabelWithDescription description={...}`: entscheidet automatisch: kurz als `text-xs text-muted`-Zeile unter dem Label, lang als i.
+- `isShortInfo(node)`: die Entscheidung allein, z. B. wenn der kurze Text an anderer Stelle stehen soll (Field: unter dem Eingabefeld).
+- Braucht einen `TooltipProvider` (in main.tsx vorhanden). Tests mit Beschreibungen in `<TooltipProvider>` wrappen.
+
+## Automatisch nach Länge
+- `Group description`, `Row description`, `SwitchRow description` (components/settings/layout.tsx; auch Dev-Tools)
+- `Field hint` (components/ui/input.tsx, kurz unter dem Feld), `PhoneNumberList hint` (kurz unter der Liste), `ToggleRow` children
 - Neue Einstellungen also einfach mit `description`/`hint` anlegen, nicht als eigener `<p className="text-xs text-muted">`.
-- Bei `SectionTitle` den Inhalt in `LabelWithInfo` packen.
+- Freie Stellen mit langem Text (Hooks, Marketplace, Backup, Remote Control, Telefon-SIP) nutzen `LabelWithInfo`/`InfoTip` direkt.
 
-## Bleibt sichtbar
-- Warnungen (z. B. Autonomous-Profil, ausgeschaltete Sperrlisten-Regeln), Fehler, Statuszeilen
-- Beschreibungen in Bestätigungsdialogen (ConfirmDialog, Dialog description), Leerzustände (EmptyState)
-- Beschreibungen von Auswahl-Optionen (Select-Optionen, Profil-Karten), weil sie die Wahl unterscheiden
+## Bleibt immer sichtbar
+- Warnungen, Fehler, Statuszeilen
+- Beschreibungen in Bestätigungsdialogen, Leerzustände (EmptyState)
+- Beschreibungen von Auswahl-Optionen (Select-Optionen, Profil-Karten)
 
 Test: src/components/ui/info-tip.test.tsx.

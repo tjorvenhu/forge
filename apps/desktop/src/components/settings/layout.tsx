@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { LabelWithInfo } from "@/components/ui/misc";
+import { LabelWithDescription } from "@/components/ui/misc";
 import { Switch } from "@/components/ui/switch";
 
 export interface SettingsSectionDef<Id extends string> {
@@ -90,9 +90,9 @@ export function Group({ title, description, action, danger, children }: { title:
   return (
     <section className={cn("overflow-hidden rounded-xl border bg-surface", danger ? "border-danger/30" : "border-border")}>
       <header className="flex items-center justify-between gap-4 border-b border-border px-4 py-3">
-        <LabelWithInfo info={description}>
+        <LabelWithDescription description={description}>
           <h2 className="text-ui font-semibold">{title}</h2>
-        </LabelWithInfo>
+        </LabelWithDescription>
         {action}
       </header>
       <div className="divide-y divide-border">{children}</div>
@@ -104,9 +104,9 @@ export function Group({ title, description, action, danger, children }: { title:
 export function Row({ label, description, children, stacked }: { label: ReactNode; description?: ReactNode; children: ReactNode; stacked?: boolean }) {
   return (
     <div className={cn("px-4 py-3.5", stacked ? "flex flex-col gap-2.5" : "flex items-center justify-between gap-6")}>
-      <LabelWithInfo info={description} className="flex-1">
+      <LabelWithDescription description={description} className="flex-1">
         <span className="text-body font-medium">{label}</span>
-      </LabelWithInfo>
+      </LabelWithDescription>
       {children}
     </div>
   );

@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { isValidElement, type ReactNode } from "react";
 import * as C from "@radix-ui/react-checkbox";
 import * as T from "@radix-ui/react-tooltip";
 import { AlertTriangle, Check, Info, Loader2 } from "lucide-react";
@@ -53,7 +53,7 @@ export function Checkbox({ checked, onChange, label, disabled }: { checked: bool
   );
 }
 
-/** Checkbox with a label and an optional explanation behind an info icon; the whole row is clickable. */
+/** Checkbox with a label and an optional explanation (below it, or behind an info icon when long); the whole row is clickable. */
 export function ToggleRow({
   checked,
   onChange,
@@ -65,7 +65,7 @@ export function ToggleRow({
   onChange: (v: boolean) => void;
   label: string;
   disabled?: boolean;
-  /** explanation behind an info icon after the label */
+  /** explanation of the option, see LabelWithDescription */
   children?: ReactNode;
 }) {
   return (
@@ -73,9 +73,9 @@ export function ToggleRow({
       <span className="mt-0.5">
         <Checkbox checked={checked} onChange={onChange} label={label} disabled={disabled} />
       </span>
-      <LabelWithInfo info={children}>
+      <LabelWithDescription description={children}>
         <span className="text-body">{label}</span>
-      </LabelWithInfo>
+      </LabelWithDescription>
     </label>
   );
 }
@@ -129,6 +129,38 @@ export function LabelWithInfo({ info, children, className }: { info?: ReactNode;
     <span className={cn("inline-flex min-w-0 items-center gap-1.5", className)}>
       {children}
       {info ? <InfoTip>{info}</InfoTip> : null}
+    </span>
+  );
+}
+
+/** Up to this many characters an explanation stays visible; a single i per row would leave short sections looking empty. */
+const SHORT_INFO_MAX = 120;
+
+function textOf(node: ReactNode): string {
+  if (typeof node === "string" || typeof node === "number") return String(node);
+  if (Array.isArray(node)) return node.map(textOf).join("");
+  if (isValidElement<{ children?: ReactNode }>(node)) return textOf(node.props.children);
+  return "";
+}
+
+/** Whether an explanation is short enough to show as a line of text instead of behind an InfoTip. */
+export function isShortInfo(info: ReactNode): boolean {
+  return textOf(info).length <= SHORT_INFO_MAX;
+}
+
+/** A label with its explanation: a short one as a muted line below, a long one behind an InfoTip. */
+export function LabelWithDescription({ description, children, className }: { description?: ReactNode; children: ReactNode; className?: string }) {
+  if (!description || !isShortInfo(description)) {
+    return (
+      <LabelWithInfo info={description} className={className}>
+        {children}
+      </LabelWithInfo>
+    );
+  }
+  return (
+    <span className={cn("flex min-w-0 flex-col gap-0.5", className)}>
+      {children}
+      <span className="text-xs text-muted">{description}</span>
     </span>
   );
 }

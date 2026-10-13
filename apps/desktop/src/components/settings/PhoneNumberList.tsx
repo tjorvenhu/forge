@@ -4,7 +4,7 @@ import type { PhoneNumberEntry } from "@forge/protocol";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { LabelWithInfo } from "@/components/ui/misc";
+import { isShortInfo, LabelWithInfo } from "@/components/ui/misc";
 import { Switch } from "@/components/ui/switch";
 
 /**
@@ -44,7 +44,7 @@ export function PhoneNumberList({
 
   return (
     <div role="group" aria-label={label} className="flex flex-col gap-1.5">
-      <LabelWithInfo info={hint} className="h-4">
+      <LabelWithInfo info={hint && !isShortInfo(hint) ? hint : undefined} className="h-4">
         <span className="text-xs font-medium text-muted">{label}</span>
       </LabelWithInfo>
       <div className="flex flex-col divide-y divide-border rounded-lg border border-border">
@@ -85,7 +85,8 @@ export function PhoneNumberList({
           })
         )}
       </div>
-      <div className="flex justify-end">
+      <div className="flex items-start justify-between gap-3">
+        {hint && isShortInfo(hint) ? <p className="text-xs text-subtle">{hint}</p> : <span />}
         <Button size="sm" variant="ghost" className="shrink-0" onClick={add}>
           <Plus className="h-3.5 w-3.5" /> {addLabel}
         </Button>
