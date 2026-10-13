@@ -1,6 +1,6 @@
 /** What a call of a FORGE tool (mcp__forge__…) means, for its own card in the chat. */
 
-export type ForgeToolIcon = "knowledgeSave" | "knowledgeRead" | "knowledgeSearch" | "knowledgeDelete" | "dev" | "notify" | "agentStart" | "agentStatus" | "agentMessage" | "agentMerge" | "agentDiscard" | "forge";
+export type ForgeToolIcon = "knowledge" | "dev" | "notify" | "agentStart" | "agentStatus" | "agentMessage" | "agentMerge" | "agentDiscard" | "forge";
 
 /** Where the card's button leads: an entry of the knowledge (or the list), the agents, the dev tools. */
 export type ForgeTarget = { kind: "knowledge"; id: string | null } | { kind: "agents" } | { kind: "devtools" };
@@ -58,7 +58,7 @@ export function forgeToolView(tool: string, input: Record<string, unknown>, resu
         title: !result ? "Speichert im Projektwissen" : refused ? "Nicht gespeichert: ähnlicher Eintrag vorhanden" : text.startsWith("Aktualisiert") ? "Projektwissen aktualisiert" : "Im Projektwissen gespeichert",
         failedTitle: "Speichern im Projektwissen fehlgeschlagen",
         ref: str(input, "title"),
-        icon: "knowledgeSave",
+        icon: "knowledge",
         tone: refused ? "warning" : "accent",
         prominent: true,
         target: refused ? { kind: "knowledge", id: null } : { kind: "knowledge", id: savedId ?? str(input, "id") },
@@ -69,7 +69,7 @@ export function forgeToolView(tool: string, input: Record<string, unknown>, resu
         title: result ? "Im Projektwissen gelesen" : "Liest im Projektwissen",
         failedTitle: "Eintrag im Projektwissen nicht lesbar",
         ref: str(input, "id"),
-        icon: "knowledgeRead",
+        icon: "knowledge",
         prominent: false,
         target: { kind: "knowledge", id: str(input, "id") },
       });
@@ -78,7 +78,7 @@ export function forgeToolView(tool: string, input: Record<string, unknown>, resu
         title: !result ? "Durchsucht das Projektwissen" : text.startsWith("Keine Treffer") ? "Projektwissen durchsucht, keine Treffer" : "Projektwissen durchsucht",
         failedTitle: "Suche im Projektwissen fehlgeschlagen",
         ref: str(input, "query"),
-        icon: "knowledgeSearch",
+        icon: "knowledge",
         prominent: false,
         target: { kind: "knowledge", id: null },
       });
@@ -88,7 +88,7 @@ export function forgeToolView(tool: string, input: Record<string, unknown>, resu
         title: !result ? "Löscht Eintrag im Projektwissen" : missing ? "Eintrag im Projektwissen nicht gefunden" : "Eintrag im Projektwissen gelöscht",
         failedTitle: "Löschen im Projektwissen fehlgeschlagen",
         ref: str(input, "id"),
-        icon: "knowledgeDelete",
+        icon: "knowledge",
         tone: missing ? "warning" : "accent",
         prominent: true,
         target: { kind: "knowledge", id: null },

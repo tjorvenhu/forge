@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Activity, Anvil, BellRing, BookmarkPlus, BookOpen, BookSearch, BookX, ChevronRight, GitBranchPlus, GitMerge, Send, ServerCog, Trash2, type LucideIcon } from "lucide-react";
+import { Activity, Anvil, BellRing, BookOpen, ChevronRight, GitBranchPlus, GitMerge, Send, ServerCog, Trash2, type LucideIcon } from "lucide-react";
 import { Collapse } from "@/components/ui/collapse";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -10,10 +10,7 @@ import { EVENT_ICON } from "./EventCard";
 import { forgeTargetLabel, type ForgeTarget, type ForgeToolIcon, type ForgeToolView } from "./forge-tool";
 
 const ICONS: Record<ForgeToolIcon, LucideIcon> = {
-  knowledgeSave: BookmarkPlus,
-  knowledgeRead: BookOpen,
-  knowledgeSearch: BookSearch,
-  knowledgeDelete: BookX,
+  knowledge: BookOpen,
   dev: ServerCog,
   notify: BellRing,
   agentStart: GitBranchPlus,
@@ -33,9 +30,9 @@ export type ForgeTone = ForgeToolView["tone"];
 
 const ICON_TONE: Record<ForgeTone, string> = { accent: "text-accent", warning: "text-warning", danger: "text-danger" };
 const CARD_TONE: Record<ForgeTone, string> = {
-  accent: "border-accent/30 border-l-accent bg-accent-soft",
-  warning: "border-warning/40 border-l-warning bg-warning-soft",
-  danger: "border-danger/40 border-l-danger bg-danger-soft",
+  accent: "border-accent/30 bg-accent-soft",
+  warning: "border-warning/40 bg-warning-soft",
+  danger: "border-danger/40 bg-danger-soft",
 };
 
 /**
@@ -113,7 +110,7 @@ export function ForgeToolCard({
         </span>
       }
     >
-      {view.prominent ? <div className={cn("rounded-md border border-l-2 px-3 py-2", CARD_TONE[tone])}>{body}</div> : body}
+      {view.prominent ? <div className={cn("rounded-md border px-3 py-2", CARD_TONE[tone])}>{body}</div> : body}
       {children}
     </ChatRow>
   );
