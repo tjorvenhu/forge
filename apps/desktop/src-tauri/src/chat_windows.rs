@@ -309,6 +309,12 @@ pub fn show_main<R: Runtime>(app: &AppHandle<R>) {
     }
 }
 
+/// Called by a chat window that opens something in the main window (a file path in its chat).
+#[tauri::command]
+pub fn show_main_window(app: AppHandle) {
+    show_main(&app);
+}
+
 /// A click on the Windows notification of a session: the window that shows it comes to the front,
 /// its chat window if it has one, otherwise the main window with that session open.
 pub fn open_session<R: Runtime>(app: &AppHandle<R>, project_id: &str, session_id: &str) {

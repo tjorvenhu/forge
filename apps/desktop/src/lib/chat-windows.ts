@@ -35,6 +35,31 @@ const REATTACH = "chat-windows://reattach";
 const OPEN_SESSION = "chat-windows://open-session";
 /** Main window to a chat window: come back, and bring the draft along. */
 const RECALL = "chat-windows://recall";
+/** Chat window to the main window: show this file of the project (a path clicked in its chat). */
+const OPEN_FILE = "chat-windows://open-file";
+
+interface FileTarget {
+  projectId: string;
+  path: string;
+  line: number | null;
+}
+
+function parseFileTarget(raw: unknown): FileTarget | null {
+  if (!raw || typeof raw !== "object") return null;
+  const r = raw as Record<string, unknown>;
+  if (typeof r.projectId !== "string" || typeof r.path !== "string" || !r.path) return null;
+  return { projectId: r.projectId, path: r.path, line: typeof r.line === "number" && r.line > 0 ? r.line : null };
+}
+
+/** Chat window: the main window opens the file in its Files tab and comes to the front; a chat window has no Files tab. */
+export async function openFileInMain(projectId: string, path: string, line: number | null) {
+  try {
+    await emitTo(MAIN, OPEN_FILE, { projectId, path, line } satisfies FileTarget);
+    await invoke("show_main_window");
+  } catch (e) {
+    toast.error("Datei nicht geöffnet", errorMessage(e));
+  }
+}
 /** A chat window that does not answer a recall (hung webview) is closed after this. */
 const RECALL_FALLBACK_MS = 1500;
 
@@ -237,6 +262,13 @@ export async function startChatWindowTracking() {
     await listen<unknown>(OPEN_SESSION, (e) => {
       const t = parseChatWindowTarget(e.payload);
       if (t?.sessionId) useUi.getState().openProject(t.projectId, t.sessionId);
+    });
+    await listen<unknown>(OPEN_FILE, (e) => {
+      const t = parseFileTarget(e.payload);
+      if (!t) return;
+      const ui = useUi.getState();
+      if (ui.view !== "workspace" || ui.activeProjectId !== t.projectId) ui.openProject(t.projectId);
+      useUi.getState().openFile(t.projectId, t.path, t.line);
     });
   }
   useChatWindows.setState({ sessions: await invoke<string[]>("chat_windows") });

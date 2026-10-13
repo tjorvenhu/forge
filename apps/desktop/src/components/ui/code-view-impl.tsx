@@ -69,10 +69,20 @@ export interface CodeViewProps {
   content: string;
   /** Shown in the status bar when the sidecar cut the file off. */
   truncated?: boolean;
+  /** 1-based line to show in the middle and mark; `jumpKey` changes to jump there again */
+  line?: number;
+  jumpKey?: number;
 }
 
 /** Read-only file preview with syntax highlighting picked from the file name. */
-export function CodeView({ path, content, truncated }: CodeViewProps) {
+export function CodeView({ path, content, truncated, line, jumpKey }: CodeViewProps) {
+  const [view, setView] = useState<EditorView | null>(null);
+  useEffect(() => {
+    if (!view || !line) return;
+    const doc = view.state.doc;
+    const at = doc.line(Math.min(Math.max(1, line), doc.lines));
+    view.dispatch({ selection: { anchor: at.from, head: at.to }, effects: EditorView.scrollIntoView(at.from, { y: "center" }) });
+  }, [view, line, jumpKey, content]);
   const desc = useMemo(() => languageFor(path), [path]);
   const isMarkdown = desc?.name === "Markdown";
   // Grammars load on first use; CodeMirror caches them on the description afterwards.
@@ -103,6 +113,7 @@ export function CodeView({ path, content, truncated }: CodeViewProps) {
         theme={vscodeTheme}
         extensions={extensions}
         readOnly
+        onCreateEditor={setView}
         height="100%"
         className="min-h-0 flex-1 overflow-hidden"
         basicSetup={{ lineNumbers: true, foldGutter: true, highlightActiveLine: true, highlightActiveLineGutter: true, autocompletion: false }}

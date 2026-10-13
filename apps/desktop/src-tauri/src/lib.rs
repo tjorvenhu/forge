@@ -111,7 +111,8 @@ pub fn run() {
             chat_windows::chat_windows,
             chat_windows::update_chat_window,
             chat_windows::reattach_chat_window,
-            chat_windows::set_always_on_top
+            chat_windows::set_always_on_top,
+            chat_windows::show_main_window
         ])
         .on_window_event(|window, event| {
             if let WindowEvent::Destroyed = event {

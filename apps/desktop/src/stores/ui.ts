@@ -173,8 +173,10 @@ interface UiState {
   /** file shown in the Dateien tab, per project */
   selectedFile: Record<string, string | null>;
   selectFile: (projectId: string, path: string | null) => void;
-  /** shows a file in the Dateien tab (from the file explorer) */
-  openFile: (projectId: string, path: string) => void;
+  /** shows a file in the Dateien tab (file explorer, palette, a path in the chat), at a line if given */
+  openFile: (projectId: string, path: string, line?: number | null) => void;
+  /** the line the Dateien tab scrolls to; `n` counts requests, so the same line twice scrolls again */
+  fileJump: { projectId: string; path: string; line: number; n: number } | null;
   /** knowledge entry the Wissen tab should select once it is shown (from a card in the chat) */
   knowledgeRequest: string | null;
   /** switches to the Wissen tab, with one entry selected */
@@ -280,6 +282,7 @@ export const useUi = create<UiState>((set, get) => ({
   focusEvent: null,
   taskView: null,
   selectedFile: {},
+  fileJump: null,
   knowledgeRequest: null,
   devToolsSection: "server",
   projectSettingsSection: "general",
@@ -305,8 +308,13 @@ export const useUi = create<UiState>((set, get) => ({
   setFocusEvent: (focusEvent) => set({ focusEvent }),
   openTask: (taskView) => set({ taskView }),
   selectFile: (projectId, path) => set((s) => ({ selectedFile: { ...s.selectedFile, [projectId]: path } })),
-  openFile: (projectId, path) => {
-    set((s) => ({ selectedFile: { ...s.selectedFile, [projectId]: path }, workspaceTab: "files", toolbarOpen: true }));
+  openFile: (projectId, path, line) => {
+    set((s) => ({
+      selectedFile: { ...s.selectedFile, [projectId]: path },
+      workspaceTab: "files",
+      toolbarOpen: true,
+      fileJump: line ? { projectId, path, line, n: (s.fileJump?.n ?? 0) + 1 } : null,
+    }));
     savePrefs(get());
   },
   openKnowledge: (id) => {

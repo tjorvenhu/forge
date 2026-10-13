@@ -21,6 +21,7 @@ import { Composer } from "./Composer";
 import { SessionBar } from "./SessionBar";
 import { ChatSurface } from "./chat-surface";
 import { ChatSlotContext, MAIN_SLOT, useChatSlot, type ChatSlot } from "./chat-slot";
+import { FileLinkContext, type FileLinkTarget } from "./file-links";
 import { ItemView } from "./ChatItemView";
 import { BackgroundIndicator, WorkingIndicator } from "./WorkingIndicator";
 import { TaskThreadDialog } from "./TaskThread";
@@ -65,6 +66,7 @@ export function ChatPanel({ project, workingInPanel = false, detached = false, p
   const setSplitPane = useUi((s) => s.setSplitPane);
   const paneId = pane?.id ?? null;
   const slot = useMemo<ChatSlot>(() => (paneId ? { pane: paneId, select: (projectId, id) => setSplitPane(paneId, projectId, id) } : MAIN_SLOT), [paneId, setSplitPane]);
+  const fileLinks = useMemo<FileLinkTarget>(() => ({ projectId: project.id, root: project.path, pane: paneId }), [project.id, project.path, paneId]);
   const sessions = useSessions(project.id);
   const { sessionId, externalId } = splitActive(active);
   const external = externalId ? (sessions.data?.external.find((e) => e.claudeSessionId === externalId) ?? null) : null;
@@ -98,6 +100,7 @@ export function ChatPanel({ project, workingInPanel = false, detached = false, p
   return (
     <div ref={setSurface} data-split-pane={paneId ?? undefined} className="chat-surface relative flex h-full min-h-0 flex-col">
       <ChatSlotContext.Provider value={slot}>
+      <FileLinkContext.Provider value={fileLinks}>
       <ChatSurface.Provider value={surface}>
       <SessionBar
         project={project}
@@ -119,6 +122,7 @@ export function ChatPanel({ project, workingInPanel = false, detached = false, p
         <NewSessionPane project={project} external={external} />
       )}
       </ChatSurface.Provider>
+      </FileLinkContext.Provider>
       </ChatSlotContext.Provider>
     </div>
   );

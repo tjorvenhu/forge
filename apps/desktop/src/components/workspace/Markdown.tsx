@@ -1,13 +1,17 @@
-import { memo, useEffect, useRef, useState, type ReactNode } from "react";
-import ReactMarkdown from "react-markdown";
+import { createContext, memo, useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import ReactMarkdown, { defaultUrlTransform } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Check, Copy } from "lucide-react";
 import { openExternal } from "@/lib/native";
 import { toast } from "@/stores/toast";
+import { FILE_LINK_SCHEME, FileLink, parseFileRef, remarkFileLinks } from "./file-links";
 
-const PLUGINS = [remarkGfm];
+const PLUGINS = [remarkGfm, remarkFileLinks];
 
-/** Renders assistant markdown. Raw HTML is not rendered; links open in the system browser. */
+/** The default filter drops unknown schemes; the file links of remarkFileLinks have to pass. */
+const urlTransform = (url: string) => (url.startsWith(FILE_LINK_SCHEME) ? url : defaultUrlTransform(url));
+
+/** Renders assistant markdown. Raw HTML is not rendered; links open in the system browser, file paths in the Files tab (inside a chat). */
 export const Markdown = memo(function Markdown({ text }: { text: string }) {
   return (
     <div className="markdown break-words text-ui">
@@ -19,7 +23,7 @@ export const Markdown = memo(function Markdown({ text }: { text: string }) {
 /** The parsed elements without a wrapper; memoized, so an unchanged block is not parsed again. */
 const MarkdownBody = memo(function MarkdownBody({ text }: { text: string }) {
   return (
-    <ReactMarkdown remarkPlugins={PLUGINS} components={COMPONENTS}>
+    <ReactMarkdown remarkPlugins={PLUGINS} components={COMPONENTS} urlTransform={urlTransform}>
       {text}
     </ReactMarkdown>
   );
@@ -64,6 +68,13 @@ export function splitMarkdownBlocks(text: string): string[] {
 }
 
 function Link({ href, children }: { href?: string; children?: ReactNode }) {
+  // A path in running text (see remarkFileLinks), or a markdown link to a file instead of a web address.
+  if (href?.startsWith(FILE_LINK_SCHEME)) {
+    const ref = parseFileRef(decodeURIComponent(href.slice(FILE_LINK_SCHEME.length)));
+    return ref ? <FileLink fileRef={ref}>{children}</FileLink> : <>{children}</>;
+  }
+  const fileRef = href && !/^[a-z][a-z0-9+.-]*:\/\//i.test(href) && !/^(?:mailto|tel):/i.test(href) ? parseFileRef(safeDecode(href)) : null;
+  if (fileRef) return <FileLink fileRef={fileRef}>{children}</FileLink>;
   return (
     <a
       href={href}
@@ -75,6 +86,25 @@ function Link({ href, children }: { href?: string; children?: ReactNode }) {
       {children}
     </a>
   );
+}
+
+function safeDecode(s: string): string {
+  try {
+    return decodeURIComponent(s);
+  } catch {
+    return s;
+  }
+}
+
+/** Set inside a code block: its code is not checked for paths. */
+const InCodeBlock = createContext(false);
+
+/** Inline code; a file path in it (`src/app.ts:12`, `package.json`) becomes a link to the file. */
+function InlineCode({ children, className }: { children?: ReactNode; className?: string }) {
+  const inBlock = useContext(InCodeBlock);
+  const ref = !inBlock && typeof children === "string" ? parseFileRef(children) : null;
+  const code = <code className={className}>{children}</code>;
+  return ref ? <FileLink fileRef={ref}>{code}</FileLink> : code;
 }
 
 function CodeBlock({ children }: { children?: ReactNode }) {
@@ -92,7 +122,9 @@ function CodeBlock({ children }: { children?: ReactNode }) {
     );
   return (
     <div className="code-block group/code">
-      <pre ref={ref}>{children}</pre>
+      <pre ref={ref}>
+        <InCodeBlock.Provider value={true}>{children}</InCodeBlock.Provider>
+      </pre>
       <button
         type="button"
         onClick={() => void copy()}
@@ -107,4 +139,4 @@ function CodeBlock({ children }: { children?: ReactNode }) {
 }
 
 // Module-level so the code block keeps its state (copied) while streaming text re-renders the markdown.
-const COMPONENTS = { a: Link, pre: CodeBlock };
+const COMPONENTS = { a: Link, pre: CodeBlock, code: InlineCode };

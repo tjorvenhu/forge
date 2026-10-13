@@ -87,6 +87,7 @@ function FileIconFor({ name }: { name: string }) {
 
 function FileViewer({ projectId, path }: { projectId: string; path: string }) {
   const q = useQuery({ queryKey: keys.file(projectId, path), queryFn: () => call("projects.readFile", { projectId, path }) });
+  const jump = useUi((s) => (s.fileJump?.projectId === projectId && s.fileJump.path === path ? s.fileJump : null));
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex h-8 shrink-0 items-center border-b border-border px-3 font-mono text-xs text-muted">{path}</div>
@@ -99,7 +100,7 @@ function FileViewer({ projectId, path }: { projectId: string; path: string }) {
       {q.data?.binary && <div className="p-4 text-xs text-muted">Binärdatei, keine Vorschau.</div>}
       {q.data && !q.data.binary && (
         <div className="min-h-0 flex-1">
-          <CodeView path={path} content={q.data.content} truncated={q.data.truncated} />
+          <CodeView path={path} content={q.data.content} truncated={q.data.truncated} line={jump?.line} jumpKey={jump?.n} />
         </div>
       )}
     </div>
