@@ -36,15 +36,28 @@ empfiehlt `gpt-transcribe` mit neuem Sprachparameter). Zeitlimits 20 s (Erkennun
 Äußerungen werden der Reihe nach erkannt.
 
 **Gesprächspartner:** Claude Haiku über das Claude-Code-Abo (Agent SDK), eigener System-Prompt für gesprochene
-Sprache, keine eingebauten Werkzeuge (`tools: []`), nur FORGE-Werkzeuge über `createSdkMcpServer`: status, details,
-send_message, start_session, respond, stop_session, close_session, session_settings, cancel_auto_continue,
-remote_control, dev_server, git, projects, usage, hang_up. Text wird satzweise vorgelesen, sobald ein Satz fertig
+Sprache, keine eingebauten Werkzeuge (`tools: []`), nur FORGE-Werkzeuge über `createSdkMcpServer` (Liste in
+`phone/tools.ts`, `PHONE_TOOLS`; siehe Nachtrag 2026-10-13). Text wird satzweise vorgelesen, sobald ein Satz fertig
 ist. Sessions heißen im Gespräch S1, S2 (Zuordnung pro Anruf). Steuernde Werkzeuge laufen nach der PIN sofort.
 Session-Texte gehen markiert als Daten an Claude, nicht als Anweisung. Der Prompt verlangt ein bis zwei Sätze,
 keine Einleitung, keine Zeitangaben oder Kürzel ohne Not.
 
 Nachtrag 2026-10-11: Die Bestätigung per Taste 1 ist entfernt. Im Gespräch war sie zu umständlich; der Nutzer will
 FORGE am Telefon vollständig und direkt steuern (auch Remote Control, Git, Einstellungen einer Session).
+
+Nachtrag 2026-10-13: Projektregel „Das Telefon kann alles, was FORGE kann“. `phone/coverage.ts` ordnet jede
+RPC-Methode aus `protocol/src/rpc.ts` einem Telefon-Werkzeug zu (`PHONE_TOOL_FOR`) oder führt sie mit Grund als
+Ausnahme (`NOT_ON_PHONE`: Browser-Anmeldungen, Diktat, Dateidialoge, reine Anzeige-Methoden, Telefon-Einrichtung).
+`test/phone-coverage.test.ts` schlägt fehl, sobald eine Methode in keiner Liste steht oder ein genanntes Werkzeug
+fehlt. Neu dazu: `project` (anlegen, importieren, klonen, entfernen, umbenennen, Favorit, Profil, Standardmodell,
+Test- und Dev-Befehl), `files`, `claude_md`, `sessions` (Liste aller Sessions, löschen, verzweigen, zurückspulen),
+`extensions` (MCP, Skills, Subagenten, Commands, Hooks lesen, Plugins), `forge_settings`, `forge_system` (Diagnose,
+Updates von FORGE und Claude Code, Backups); `git` kann zusätzlich fetch, branches, delete_branch, diff, restore,
+init, publish, account, identity; `finish_agent` hat review; `dev_settings` setzt Variablen der Test-Umgebung und
+nennt nur ihre Namen. Wenige Werkzeuge mit `action` statt vieler einzelner, weil Gemini Live lange Werkzeuglisten
+schlecht verträgt. Die neuen Werkzeuge rufen die RPC-Handler über `invokeHandler` (`rpc/handlers.ts`) auf, mit
+denselben Prüfungen und Nebenwirkungen wie die Oberfläche. Alle brauchen die PIN; Telefon-Einstellungen lassen sich
+am Telefon nicht aus einem Backup wiederherstellen, weil das die Leitung neu verbindet und das Gespräch beendet.
 
 **Ablauf eines Anrufs** (`call-controller.ts`): Energie-VAD mit adaptivem Rauschpegel und Vorlauf; während FORGE
 spricht, gilt eine höhere Schwelle (Echo) und Sprache muss 240 ms anhalten, bevor sie FORGE unterbricht.

@@ -26,7 +26,7 @@ import { ASSIST_MODEL } from "./sessions/claude-assist.js";
 import { BackupService } from "./backup/backup.js";
 import { Db } from "./persistence/db.js";
 import { ProjectManager } from "./projects/project-manager.js";
-import { createHandlers } from "./rpc/handlers.js";
+import { createHandlers, invokeHandler, type Handlers } from "./rpc/handlers.js";
 import { RpcServer, type Writer } from "./rpc/server.js";
 import { SessionService } from "./sessions/session-service.js";
 
@@ -94,7 +94,12 @@ export function createApp(opts: { dataDir: string; write: Writer; log?: (m: stri
   sessions.useAgentFinisher(agentFinish);
   const presence = new Presence();
   const secrets = new SecretStore(path.join(opts.dataDir, "secrets"));
+  let handlers: Handlers | null = null;
   phone = new PhoneService({
+    rpc: (method, params) => {
+      if (!handlers) throw new Error("FORGE startet noch.");
+      return invokeHandler(handlers, method, params);
+    },
     db,
     projects,
     sessions,
@@ -165,7 +170,7 @@ export function createApp(opts: { dataDir: string; write: Writer; log?: (m: stri
     cliVersion: () => claudeSetup.installedVersion(),
     refreshLogin: () => sessions.refreshClaudeLogin(),
   });
-  const handlers = createHandlers({
+  handlers = createHandlers({
     dictation,
     presence,
     backups,

@@ -3,15 +3,21 @@ import {
   ForgeError,
   SEARCH_MARK_END,
   SEARCH_MARK_START,
+  type BackupPart,
   type DeskPhoneConfig,
+  type MethodName,
+  type ParamsOf,
   type PhoneCallInfo,
   type PhoneCallRecord,
   type PhoneConfig,
   type PhoneEngine,
   type PhoneSetupIncomplete,
   type PhoneState,
+  type Project,
+  type ResultOf,
   type ServerEvent,
   type SessionEventBody,
+  type Settings,
 } from "@forge/protocol";
 import type { Db } from "../persistence/db.js";
 import type { ProjectManager } from "../projects/project-manager.js";
@@ -39,7 +45,15 @@ import { RtpSession } from "./rtp.js";
 import { answerDirection, buildSdp, chooseCodec, parseSdp, PT_PCMA } from "./sdp.js";
 import type { SecretStore } from "./secrets.js";
 import { localIpTowards, SipUserAgent, type SipAccount, type SipCall } from "./sip-ua.js";
-import { AUTOMATION_TAGS, geminiFunctionDeclarations, phoneSystemPrompt, type AutomationTag, type CallSettingsPatch } from "./tools.js";
+import {
+  AUTOMATION_TAGS,
+  geminiFunctionDeclarations,
+  phoneSystemPrompt,
+  POLICY_RULE_LABELS,
+  type AutomationTag,
+  type CallSettingsPatch,
+  type ForgeSettingsPatch,
+} from "./tools.js";
 import { AUTO_MERGE_TAG } from "../automation/agent-auto-merge.js";
 import { tokenMeter } from "../claude/token-meter.js";
 import { DEFAULT_STT_MODEL, DEFAULT_TTS_MODEL, DEFAULT_VOICE, OpenAiVoice, type VoiceProvider } from "./voice.js";
@@ -58,6 +72,9 @@ const GREETING = "Hallo, hier ist FORGE. Was kann ich für dich tun?";
 /** numbers in national notation (030 ...) belong to this country */
 export const DEFAULT_COUNTRY_CODE = "49";
 const SHUTDOWN_TIMEOUT_MS = 4000;
+
+/** A FORGE RPC method as the UI calls it: same checks, defaults and side effects as in the app. */
+export type PhoneRpc = <M extends MethodName>(method: M, params: ParamsOf<M>) => Promise<ResultOf<M>>;
 
 /** notify: Claude asked for the user with the tool notify (urgent) */
 type NotifyKind = "done" | "approval" | "error" | "notify";
@@ -165,7 +182,7 @@ export interface PhoneDeps {
   devServers: DevServerService;
   testDb?: TestDbService;
   /** test environment and test database settings; without it dev_settings is not available */
-  devTools?: Pick<DevToolsService, "get" | "update">;
+  devTools?: Pick<DevToolsService, "get" | "update" | "envFiles" | "readEnvFile">;
   knowledge?: KnowledgeStore;
   /** pull requests; without it pull_request is not available */
   github?: Pick<GitHubService, "prForBranch" | "createPr">;
@@ -174,6 +191,8 @@ export interface PhoneDeps {
   /** merges or discards agents; without it finish_agent is not available */
   agentFinish?: Pick<AgentFinisher, "finish">;
   secrets: SecretStore;
+  /** the rest of FORGE (projects, settings, extensions, backups, updates ...); without it those tools are not available */
+  rpc?: PhoneRpc;
   emit(e: ServerEvent): void;
   claude(): { path: string | null; env: Record<string, string>; cwd: string };
   log(message: string): void;
@@ -243,6 +262,96 @@ function spokenTime(iso: string): string {
 
 function errorText(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
+}
+
+function dateTime(iso: string): string {
+  return new Date(iso).toLocaleString("de-DE", { dateStyle: "short", timeStyle: "short" });
+}
+
+/** "" and "default" clear a setting, so it falls back to the global one */
+function clearable(v: string): string | null {
+  const t = v.trim();
+  return !t || t.toLowerCase() === "default" ? null : t;
+}
+
+/**
+ * One match by exact value, else by a part of it; several or none is an error naming the candidates.
+ * `what`: e.g. { none: "Kein Skill", many: "Skills" }; the first key is the name that is said.
+ */
+function pickOne<T>(items: T[], query: string, keys: (x: T) => string[], what: { none: string; many: string }): T {
+  const q = query.trim().toLowerCase();
+  const exact = items.filter((x) => keys(x).some((k) => k.toLowerCase() === q));
+  const hits = exact.length ? exact : items.filter((x) => keys(x).some((k) => k.toLowerCase().includes(q)));
+  if (q && hits.length === 1) return hits[0]!;
+  const names = (xs: T[]) => xs.slice(0, 6).map((x) => keys(x)[0]).join(", ");
+  if (q && hits.length > 1) throw new Error(`Mehrere ${what.many} passen zu „${query}“: ${asData(names(hits))}.`);
+  const known = items.length ? ` Vorhanden: ${asData(names(items))}${items.length > 6 ? " und weitere" : ""}.` : "";
+  throw new Error(q ? `${what.none} „${query}“.${known}` : `Welche? Bitte den Namen nennen.${known}`);
+}
+
+const ENV_LINE = /^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=/;
+
+function envNames(text: string): string[] {
+  return text.split(/\r?\n/).flatMap((l) => {
+    const m = ENV_LINE.exec(l);
+    return m ? [m[1]!] : [];
+  });
+}
+
+/** Sets a variable in .env text: replaces its line or appends one. */
+function setEnvLine(text: string, name: string, line: string): string {
+  const lines = text.split(/\r?\n/);
+  const i = lines.findIndex((l) => ENV_LINE.exec(l)?.[1] === name);
+  if (i >= 0) lines[i] = line;
+  else {
+    while (lines.length && !lines.at(-1)!.trim()) lines.pop();
+    lines.push(line);
+  }
+  return `${lines.join("\n")}\n`;
+}
+
+function removeEnvLine(text: string, name: string): string {
+  return text
+    .split(/\r?\n/)
+    .filter((l) => ENV_LINE.exec(l)?.[1] !== name)
+    .join("\n");
+}
+
+const BACKUP_PARTS: Record<BackupPart, string> = { settings: "Einstellungen", projects: "Projekte", phone: "Telefon", claude: "Claude-Konfiguration", git: "Git-Identität" };
+const BACKUP_REASONS = { start: "beim Start", manual: "von Hand", "before-restore": "vor einer Wiederherstellung", import: "importiert" } as const;
+
+/** A global setting as said on the phone. */
+function settingText(s: Settings, key: keyof ForgeSettingsPatch | "alwaysOnTop"): string {
+  const on = (v: boolean) => (v ? "an" : "aus");
+  switch (key) {
+    case "defaultModel":
+      return `Standardmodell ${s.defaultModel ?? "von Claude Code"}`;
+    case "defaultEffort":
+      return `Denkaufwand ${s.defaultEffort ?? "von Claude Code"}`;
+    case "defaultProfile":
+      return `Profil neuer Projekte ${s.defaultProfile}`;
+    case "defaultProjectDir":
+      return s.defaultProjectDir ? `neue Projekte kommen nach ${asData(s.defaultProjectDir)}` : "kein Ordner für neue Projekte";
+    case "sounds":
+      return `Töne ${on(s.sounds)}`;
+    case "desktopNotifications":
+      return `Desktop-Benachrichtigungen ${on(s.desktopNotifications)}`;
+    case "enterToSend":
+      return s.enterToSend ? "Enter sendet" : "Enter macht eine neue Zeile";
+    case "autoContinueAfterLimit":
+      return `automatisch weitermachen nach einem Limit ${on(s.autoContinueAfterLimit)}`;
+    case "updateChecks":
+      return `Update-Prüfung ${on(s.updateChecks)}`;
+    case "debugLogs":
+      return `Debug-Logs ${on(s.debugLogs)}`;
+    case "stripApiKey":
+      return s.stripApiKey ? "ein API-Key aus der Umgebung geht nicht an Claude Code" : "ein API-Key aus der Umgebung geht an Claude Code";
+    case "alwaysOnTop":
+      return `im Vordergrund bleiben ${on(s.alwaysOnTop)}`;
+    case "policyRule":
+    case "policyRuleOn":
+      return s.disabledPolicyRules.length ? `Sperrliste: aus sind ${s.disabledPolicyRules.map((r) => POLICY_RULE_LABELS[r]).join(", ")}` : "Sperrliste: alle Regeln an";
+  }
 }
 
 /**
@@ -1103,6 +1212,43 @@ export class PhoneService {
       }
     };
     const projectChanged = (projectId: string) => this.d.emit({ event: "project.updated", payload: { projectId } });
+    const call: PhoneRpc = (method, params) => {
+      if (!this.d.rpc) throw new Error("Das ist hier nicht verfügbar.");
+      return this.d.rpc(method, params);
+    };
+    /** a project when one or a session is named, else null (global) */
+    const optionalTarget = (projectName: string | undefined, o?: { session?: string }) => (projectName?.trim() || o?.session?.trim() ? target(projectName ?? "", o) : null);
+    const projectText = (p: Project) =>
+      [
+        `Profil ${p.profile}`,
+        `Standardmodell ${p.defaultModel ?? "wie global eingestellt"}`,
+        `Denkaufwand ${p.defaultEffort ?? "wie global eingestellt"}`,
+        p.testCommand ? `Testbefehl ${asData(p.testCommand)}` : "kein Testbefehl",
+        p.devCommand ? `Dev-Befehl ${asData(p.devCommand)}` : "Dev-Befehl wird erkannt",
+      ].join(", ");
+    /** the user's prompts in a session, oldest first, as far as they can be branched or rewound to */
+    const prompts = async (sessionId: string) =>
+      (await call("sessions.events", { sessionId })).flatMap((e) => (e.body.type === "user.message" && e.body.uuid ? [{ seq: e.seq, uuid: e.body.uuid, text: e.body.text }] : []));
+    const promptBack = async (sessionId: string, n: number) => {
+      const list = await prompts(sessionId);
+      const hit = list[list.length - n];
+      if (!hit) throw new Error(list.length ? `${refFor(sessionId)} hat nur ${list.length} Nachrichten vom Anrufer.` : `${refFor(sessionId)} hat noch keine Nachricht vom Anrufer.`);
+      return hit;
+    };
+    const backups = async () => (await call("backup.list", {})).sort((x, y) => y.createdAt.localeCompare(x.createdAt));
+    const updateText = (st: ResultOf<"app.updateState">) => {
+      if (!st.installable) return `Das ist eine Entwicklungsversion von FORGE (${st.currentVersion}), sie bekommt keine Updates.`;
+      if (st.phase === "error") return `Fehler: ${st.message ?? "Die Update-Prüfung ist fehlgeschlagen."}`;
+      if (st.phase === "checking") return "Die Suche nach Updates läuft noch. Frag gleich noch einmal.";
+      if (!st.latest || st.phase === "uptodate" || st.phase === "idle") return `FORGE ist aktuell, Version ${st.currentVersion}.`;
+      const state =
+        st.phase === "ready"
+          ? " Es ist heruntergeladen und geprüft. Installieren geht nur in FORGE am Rechner, FORGE startet dabei neu."
+          : st.phase === "downloading"
+            ? " Es wird gerade heruntergeladen."
+            : "";
+      return `FORGE ${st.latest.version} ist verfügbar, installiert ist ${st.currentVersion}.${state}`;
+    };
     const removal = { projects: this.d.projects, sessions, worktrees: this.d.worktrees, devServers: this.d.devServers };
     const statusText = (s: { status: string; live: boolean }) =>
       s.status === "running" || s.status === "starting"
@@ -1150,8 +1296,15 @@ export class PhoneService {
             ...s.background.map((t) => `Im Hintergrund: ${kind(t.taskType)} ${asData(t.description)}, ${minutesSince(t.startedAt)}${t.summary ? `, zuletzt: ${excerptData(t.summary, 200)}` : ""}`),
           ];
           const summary = o?.summary ? (await sessions.summarize(s.id)).summary : "";
+          let context = "";
+          try {
+            const c = await sessions.contextUsage(s.id);
+            if (c) context = ` Kontext zu ${Math.round(c.percentage)} Prozent voll.`;
+          } catch {
+            // Only a measurement; details work without it.
+          }
           return [
-            `${refFor(s.id)}: ${asData(s.title ?? "ohne Titel")} im Projekt ${project.name}, ${statusText(s)}.${setup ? ` ${setup}.` : ""}`,
+            `${refFor(s.id)}: ${asData(s.title ?? "ohne Titel")} im Projekt ${project.name}, ${statusText(s)}.${setup ? ` ${setup}.` : ""}${context}`,
             summary ? `Zusammenfassung des Verlaufs: ${excerptData(summary, 2000)}` : "",
             `Letztes Ergebnis: ${last ? excerptData(last, 1500) : "noch keins"}`,
             s.status === "waiting_approval" ? `Offen: ${pendingText(db, s.id)}` : "",
@@ -1381,19 +1534,48 @@ export class PhoneService {
             ...(patch.name?.trim() ? { name: patch.name.trim() } : {}),
             ...(patch.envVar !== undefined ? { envVar: patch.envVar.trim() || null } : {}),
           };
-          const changed = patch.useEnv !== undefined || Object.keys(database).length > 0;
+          let env: string | undefined;
+          if (patch.envSet?.trim() || patch.envRemove?.trim() || patch.envFromFile?.trim()) {
+            env = tools.get(p.id).env;
+            const fromFile = patch.envFromFile?.trim();
+            if (fromFile) {
+              const files = await tools.envFiles(p.id);
+              const file = pickOne(files, fromFile, (f) => [f, f.replace(/^\.env\.?/, "")], { none: "Keine .env-Datei", many: ".env-Dateien" });
+              for (const line of (await tools.readEnvFile(p.id, file)).split(/\r?\n/)) {
+                const name = ENV_LINE.exec(line)?.[1];
+                if (name) env = setEnvLine(env, name, line.trim());
+              }
+            }
+            const set = patch.envSet?.trim();
+            if (set) {
+              const m = /^(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=(.*)$/s.exec(set);
+              if (!m) return "Fehler: Die Variable bitte als NAME=Wert angeben.";
+              env = setEnvLine(env, m[1]!, `${m[1]}=${m[2]!.trim()}`);
+            }
+            const remove = patch.envRemove?.trim();
+            if (remove) {
+              if (!envNames(env).includes(remove)) return `Fehler: ${remove} steht nicht in der Test-Umgebung.`;
+              env = removeEnvLine(env, remove);
+            }
+          }
+          const changed = patch.useEnv !== undefined || Object.keys(database).length > 0 || env !== undefined;
           let cfg;
           try {
-            cfg = changed ? tools.update(p.id, { useEnv: patch.useEnv, database }) : tools.get(p.id);
+            cfg = changed ? tools.update(p.id, { useEnv: patch.useEnv, database, ...(env !== undefined ? { env } : {}) }) : tools.get(p.id);
           } catch (e) {
             if (e instanceof ZodError) throw new Error(e.issues.map((i) => i.message).join("; "), { cause: e });
             throw e;
           }
           const d = cfg.database;
+          // Names only: values are often keys and passwords.
+          const vars = envNames(cfg.env);
           const text = [
             `Test-Umgebung ${cfg.useEnv ? "geht an Dev-Server und Tests" : "ist aus"}.`,
+            vars.length ? `Variablen: ${asData(vars.join(", "))}.` : "",
             `Test-Datenbank auf Port ${d.port}, Name ${d.name}, ${d.withDevServer ? "startet mit dem Dev-Server" : "startet nicht mit dem Dev-Server"}, Verbindungs-URL ${d.envVar ? `in ${d.envVar}` : "wird nicht übergeben"}.`,
-          ].join(" ");
+          ]
+            .filter(Boolean)
+            .join(" ");
           if (!changed) return `${p.name}: ${text}`;
           const restart = (patch.port !== undefined || !!patch.name?.trim()) && this.d.testDb?.isRunning(p.id) ? " Port und Name gelten ab dem nächsten Start der Datenbank." : "";
           // Agents share their project's settings and test database.
@@ -1450,8 +1632,77 @@ export class PhoneService {
         }),
       git: (projectName, action, o) =>
         run(true, async () => {
+          if (action === "account") {
+            const acc = await call("github.account", {});
+            return acc ? `FORGE ist bei GitHub als ${acc.login} angemeldet${acc.name ? `, ${acc.name}` : ""}.` : "FORGE ist nicht bei GitHub angemeldet. Anmelden geht nur in FORGE am Rechner über den Browser.";
+          }
+          if (action === "identity") {
+            const name = o?.name?.trim();
+            const email = o?.email?.trim();
+            if (name || email) {
+              if (!name || !email) return "Fehler: Für die Git-Identität brauche ich Name und E-Mail.";
+              const id = await call("git.setIdentity", { name, email });
+              return `Commits laufen jetzt unter ${id.name}, ${id.email}.`;
+            }
+            const id = await call("git.identity", {});
+            return id.name || id.email ? `Commits laufen unter ${id.name ?? "ohne Namen"}, ${id.email ?? "ohne E-Mail"}.` : "Es ist keine Git-Identität eingerichtet.";
+          }
           const p = target(projectName, o);
           const git = this.d.git;
+          if (action === "fetch") {
+            const { summary: s } = await call("git.fetch", { projectId: p.id });
+            return s.behind ? `${p.name}: ${s.behind} neue Commits auf dem Server, noch nicht übernommen.` : `${p.name}: Auf dem Server gibt es nichts Neues.`;
+          }
+          if (action === "branches") {
+            const list = await call("git.branches", { projectId: p.id });
+            if (!list.length) return `${p.name} hat noch keine Branches.`;
+            const current = list.find((b) => b.current)?.name;
+            const others = list.filter((b) => !b.current).map((b) => b.name);
+            const rest = others.length ? ` Weitere: ${asData(others.slice(0, 15).join(", "))}${others.length > 15 ? ` und ${others.length - 15} mehr` : ""}.` : "";
+            return `${p.name}: ${list.length} ${list.length === 1 ? "Branch" : "Branches"}${current ? `, aktuell ${current}` : ""}.${rest}`;
+          }
+          if (action === "delete_branch") {
+            const branch = o?.branch?.trim();
+            if (!branch) return "Fehler: Welcher Branch? Bitte branch angeben.";
+            await call("git.deleteBranch", { projectId: p.id, branch, force: o?.force === true });
+            return `Branch ${branch} in ${p.name} gelöscht.`;
+          }
+          if (action === "diff") {
+            const st = await call("git.status", { projectId: p.id });
+            if (!st.files.length) return `${p.name} hat keine Änderungen.`;
+            if (!o?.path?.trim()) {
+              const names = st.files.slice(0, 15).map((f) => f.path);
+              return `Geändert in ${p.name}: ${asData(names.join(", "))}${st.files.length > 15 ? ` und ${st.files.length - 15} weitere` : ""}. Welche Datei?`;
+            }
+            const f = pickOne(st.files, o.path.replace(/\\/g, "/"), (x) => [x.path], { none: "Keine geänderte Datei", many: "geänderte Dateien" });
+            if (f.kind === "untracked") return `${asData(f.path)} ist neu und noch nicht im Git.`;
+            const d = await call("git.diff", { projectId: p.id, path: f.path, staged: f.staged && !f.unstaged });
+            if (d.binary) return `${asData(f.path)} ist eine Binärdatei.`;
+            const lines = d.lines.filter((l) => l.kind === "add" || l.kind === "del").map((l) => `${l.kind === "add" ? "neu" : "weg"}: ${l.text}`);
+            return `${asData(f.path)}: ${d.additions} ${d.additions === 1 ? "Zeile" : "Zeilen"} hinzu, ${d.deletions} entfernt.${lines.length ? ` ${excerptData(lines.slice(0, 60).join("\n"), 3000)}` : ""}`;
+          }
+          if (action === "restore") {
+            const ref = o?.commit?.trim();
+            if (!ref) return "Fehler: Auf welchen Commit? Hash, Nummer aus dem Log oder Worte aus der Commit-Nachricht.";
+            let hash = ref;
+            if (/^\d{1,2}$/.test(ref) || !/^[0-9a-f]{7,40}$/i.test(ref)) {
+              const commits = await call("git.log", { projectId: p.id, limit: 30 });
+              const c = /^\d{1,2}$/.test(ref) ? commits[Number(ref) - 1] : pickOne(commits, ref, (x) => [x.subject, x.shortHash], { none: "Kein Commit", many: "Commits" });
+              if (!c) return `Fehler: ${p.name} hat keinen ${ref}. Commit.`;
+              hash = c.hash;
+            }
+            const r = await call("git.restoreTo", { projectId: p.id, commit: hash });
+            return `Dateien von ${p.name} auf den Stand von ${asData(r.subject)} gesetzt, ${r.changed} Dateien geändert und noch nicht committet.${r.stashed ? " Die offene Arbeit von vorher liegt im Stash." : ""}`;
+          }
+          if (action === "init") {
+            await call("git.init", { projectId: p.id });
+            return `${p.name} ist jetzt ein Git-Repository.`;
+          }
+          if (action === "publish") {
+            const isPrivate = o?.private !== false;
+            await call("github.publish", { projectId: p.id, private: isPrivate, name: o?.name?.trim() || undefined });
+            return `${p.name} ist als ${isPrivate ? "privates" : "öffentliches"} Repository auf GitHub veröffentlicht.`;
+          }
           if (action === "status") {
             const { summary: s } = await git.status(p.path);
             const sync = [s.ahead ? `${s.ahead} Commits nicht gepusht` : "", s.behind ? `${s.behind} Commits auf dem Server neuer` : ""].filter(Boolean);
@@ -1461,8 +1712,7 @@ export class PhoneService {
           if (action === "log") {
             const commits = await git.log(p.path, 5);
             if (!commits.length) return `${p.name} hat noch keine Commits.`;
-            const when = (iso: string) => new Date(iso).toLocaleString("de-DE", { dateStyle: "short", timeStyle: "short" });
-            return `Letzte Commits in ${p.name}:\n${commits.map((c) => `${asData(`${c.subject} (${c.author})`)} am ${when(c.date)}`).join("\n")}`;
+            return `Letzte Commits in ${p.name}:\n${commits.map((c) => `${asData(`${c.subject} (${c.author})`)} am ${dateTime(c.date)}`).join("\n")}`;
           }
           if (action === "checkout") {
             const branch = o?.branch?.trim();
@@ -1549,7 +1799,7 @@ export class PhoneService {
       removeAgent: (projectName, o) =>
         run(true, async () => {
           const p = target(projectName, o);
-          if (!p.parentId) return `Fehler: ${p.name} ist kein Agent-Worktree. Projekte lassen sich nur in FORGE entfernen.`;
+          if (!p.parentId) return `Fehler: ${p.name} ist kein Agent-Worktree. Projekte entfernt das Werkzeug project mit remove.`;
           const r = await removeWorktree(p.id, o?.force === true, removal, { deleteBranch: o?.deleteBranch === true });
           projectChanged(p.parentId);
           const branch = r.deletedBranch
@@ -1561,10 +1811,27 @@ export class PhoneService {
         }),
       finishAgent: (projectName, action, o) =>
         run(true, async () => {
-          const finisher = this.d.agentFinish;
-          if (!finisher) return "Fehler: Agenten abschließen ist hier nicht verfügbar.";
           const p = target(projectName, o);
           if (!p.parentId) return `Fehler: ${p.name} ist kein Agent-Worktree.`;
+          if (action === "review") {
+            const r = await call("agents.review", { projectId: p.id });
+            const facts = [
+              `${r.ahead} ${r.ahead === 1 ? "Commit" : "Commits"} auf ${r.branch ?? "seinem Branch"}, ${r.filesChanged} ${r.filesChanged === 1 ? "Datei" : "Dateien"} geändert`,
+              r.uncommitted ? `${r.uncommitted} nicht committete Änderungen, die beim Zusammenführen mit committet werden` : "",
+              r.behind ? `${r.targetBranch ?? "das Ziel"} ist seitdem ${r.behind} Commits weiter` : "",
+              r.busy ? "er arbeitet noch" : "",
+            ].filter(Boolean);
+            return [
+              `Agent ${p.name}: ${facts.join(", ")}.`,
+              r.commits.length ? `Letzte Commits: ${asData(r.commits.slice(0, 3).map((c) => c.subject).join("; "))}` : "",
+              r.summary.trim() ? `Seine Zusammenfassung: ${excerptData(r.summary, 1500)}` : "",
+              r.mergeBlocker ? `Zusammenführen geht gerade nicht: ${r.mergeBlocker}` : `Zusammenführen nach ${r.targetBranch ?? "seinem Ausgangs-Branch"} ist möglich.`,
+            ]
+              .filter(Boolean)
+              .join("\n");
+          }
+          const finisher = this.d.agentFinish;
+          if (!finisher) return "Fehler: Agenten abschließen ist hier nicht verfügbar.";
           return (await finisher.finish(p.id, action)).message;
         }),
       projects: () =>
@@ -1584,6 +1851,374 @@ export class PhoneService {
             }),
           );
           return lines.join("\n");
+        }),
+      project: (projectName, action, o) =>
+        run(true, async () => {
+          const parentDir = async () => {
+            const dir = o?.path?.trim() || (await call("settings.get", {})).defaultProjectDir;
+            if (!dir) throw new Error("In welchem Ordner? In den Einstellungen ist kein Ordner für neue Projekte eingetragen.");
+            return dir;
+          };
+          if (action === "create") {
+            const name = o?.name?.trim();
+            if (!name) return "Fehler: Wie soll das Projekt heißen?";
+            const r = await call("projects.create", { name, parentDir: await parentDir(), gitInit: o?.gitInit !== false, github: o?.github ? { private: o.github === "private" } : null });
+            projectChanged(r.project.id);
+            const gh = !r.github
+              ? ""
+              : r.github.url
+                ? ` Das ${o?.github === "public" ? "öffentliche" : "private"} GitHub-Repository ist angelegt.`
+                : ` Das GitHub-Repository ließ sich nicht anlegen: ${r.github.error ?? "unbekannter Fehler"}`;
+            return `Projekt ${r.project.name} angelegt.${gh}`;
+          }
+          if (action === "import") {
+            const dir = o?.path?.trim();
+            if (!dir) return "Fehler: Welcher Ordner? Bitte den Pfad nennen.";
+            const p = await call("projects.import", { path: dir });
+            projectChanged(p.id);
+            return `Projekt ${p.name} aufgenommen.`;
+          }
+          if (action === "clone") {
+            const raw = o?.url?.trim();
+            if (!raw) return "Fehler: Welches Repository?";
+            let url = raw;
+            if (!/:\/\/|@|\.git$/i.test(raw)) {
+              // A spoken name ("shop api") against the repositories of the GitHub account.
+              const plain = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "");
+              const repos = await call("github.repos", {});
+              const repo = pickOne(repos, plain(raw), (r) => [r.fullName, plain(r.fullName.split("/").pop() ?? ""), plain(r.fullName)], { none: "Kein GitHub-Repository", many: "GitHub-Repositorys" });
+              url = repo.cloneUrl;
+            }
+            const p = await call("projects.clone", { url, parentDir: await parentDir(), dirName: o?.name?.trim() || undefined });
+            projectChanged(p.id);
+            return `${p.name} geklont und als Projekt aufgenommen.`;
+          }
+          const p = target(projectName, o);
+          if (action === "info") return `${p.name}${p.favorite ? ", Favorit" : ""}${p.parentId ? ", Agent-Worktree" : ""}: ${projectText(p)}.`;
+          if (action === "remove") {
+            if (p.parentId) return `Fehler: ${p.name} ist ein Agent-Worktree. Den räumt remove_agent auf.`;
+            const r = await call("projects.remove", { projectId: p.id, deleteFolder: o?.deleteFolder === true, deleteGitHubRepo: o?.deleteGitHubRepo === true });
+            projectChanged(p.id);
+            return [`Projekt ${p.name} aus FORGE entfernt.`, r.folderDeleted ? "Der Ordner ist gelöscht." : "Der Ordner bleibt.", r.githubDeleted ? "Das GitHub-Repository ist gelöscht." : ""]
+              .filter(Boolean)
+              .join(" ");
+          }
+          if (action === "rename") {
+            const name = o?.name?.trim();
+            if (!name) return "Fehler: Wie soll das Projekt heißen?";
+            const next = await call("projects.update", { projectId: p.id, name });
+            projectChanged(p.id);
+            return `${p.name} heißt jetzt ${next.name}.`;
+          }
+          if (action === "favorite") {
+            const favorite = o?.favorite !== false;
+            await call("projects.update", { projectId: p.id, favorite });
+            projectChanged(p.id);
+            return favorite ? `${p.name} ist jetzt ein Favorit.` : `${p.name} ist kein Favorit mehr.`;
+          }
+          const patch = {
+            ...(o?.profile ? { profile: o.profile } : {}),
+            ...(o?.defaultModel !== undefined ? { defaultModel: clearable(o.defaultModel) } : {}),
+            ...(o?.defaultEffort ? { defaultEffort: o.defaultEffort === "default" ? null : o.defaultEffort } : {}),
+            ...(o?.testCommand !== undefined ? { testCommand: o.testCommand.trim() || null } : {}),
+            ...(o?.devCommand !== undefined ? { devCommand: o.devCommand.trim() || null } : {}),
+          };
+          if (!Object.keys(patch).length) return `${p.name}: ${projectText(p)}.`;
+          const next = await call("projects.update", { projectId: p.id, ...patch });
+          projectChanged(p.id);
+          return `Gespeichert für ${next.name}: ${projectText(next)}.`;
+        }),
+      files: (projectName, action, o) =>
+        run(true, async () => {
+          const p = target(projectName, o);
+          const rel = (o?.path ?? "").trim().replace(/\\/g, "/").replace(/^\.?\/+/, "");
+          if (action === "read") {
+            if (!rel) return "Fehler: Welche Datei?";
+            const f = await call("projects.readFile", { projectId: p.id, path: rel });
+            if (f.binary) return `${asData(rel)} ist keine Textdatei.`;
+            if (!f.content.trim()) return `${asData(rel)} ist leer.`;
+            return `${asData(rel)}${f.truncated ? ", nur der Anfang" : ""}: ${excerptData(f.content, 4000)}`;
+          }
+          const entries = await call("projects.listFiles", { projectId: p.id, dir: rel });
+          if (!entries.length) return rel ? `Der Ordner ${asData(rel)} ist leer.` : `${p.name} ist leer.`;
+          const list = (xs: string[]) => `${xs.slice(0, 40).join(", ")}${xs.length > 40 ? ` und ${xs.length - 40} weitere` : ""}`;
+          const dirs = entries.filter((e) => e.isDir).map((e) => e.name);
+          const files = entries.filter((e) => !e.isDir).map((e) => e.name);
+          return asData([dirs.length ? `Ordner: ${list(dirs)}.` : "", files.length ? `Dateien: ${list(files)}.` : ""].filter(Boolean).join(" "));
+        }),
+      claudeMd: (projectName, action, o) =>
+        run(true, async () => {
+          const p = optionalTarget(projectName, o);
+          if (action === "list") {
+            const files = await call("config.memoryList", { projectId: p?.id });
+            return files.map((f) => `${f.label}: ${f.exists ? "vorhanden" : "fehlt"}`).join("\n");
+          }
+          const scope = o?.scope ?? (p ? "project" : "global");
+          if (scope !== "global" && !p) return "Fehler: Für welches Projekt?";
+          const projectId = scope === "global" ? undefined : p?.id;
+          const where = scope === "global" ? "Die globale CLAUDE.md" : scope === "local" ? `Die persönliche CLAUDE.local.md von ${p!.name}` : `Die CLAUDE.md von ${p!.name}`;
+          const doc = await call("config.memoryRead", { projectId, scope });
+          if (action === "read") return doc.content.trim() ? `${where}: ${excerptData(doc.content, 4000)}` : `${where} ist leer oder fehlt.`;
+          const text = o?.text?.trim();
+          if (!text) return "Fehler: Was soll ergänzt werden?";
+          const content = doc.content.trim() ? `${doc.content.trimEnd()}\n\n${text}\n` : `${text}\n`;
+          await call("config.memoryWrite", { projectId, scope, content, expectedMtimeMs: doc.mtimeMs });
+          return `${where} ist ergänzt.`;
+        }),
+      sessions: (action, o) =>
+        run(true, async () => {
+          if (action === "list") {
+            const p = o?.project?.trim() ? findProject(o.project) : null;
+            const query = o?.query?.trim().toLowerCase();
+            let external = 0;
+            let list: Array<{ id: string; title: string | null; status: string; live: boolean; updatedAt: string; projectName: string }>;
+            if (p) {
+              const r = await call("sessions.list", { projectId: p.id });
+              external = r.external.length;
+              list = r.sessions
+                .filter((s) => (!query || (s.title ?? "").toLowerCase().includes(query)) && (!o?.status || s.status === o.status))
+                .map((s) => ({ ...s, projectName: p.name }));
+            } else list = await call("sessions.listAll", { query: query || undefined, status: o?.status });
+            list = [...list].sort((x, y) => y.updatedAt.localeCompare(x.updatedAt));
+            const outside = external ? ` Außerdem ${external} Sessions aus dem Terminal, die FORGE nicht steuert.` : "";
+            if (!list.length) return `Keine passende Session.${outside}`;
+            const lines = list.slice(0, 10).map((s) => `${refFor(s.id)}: ${asData(s.title ?? "ohne Titel")}${p ? "" : ` im Projekt ${s.projectName}`}, ${statusText(s)}, zuletzt ${dateTime(s.updatedAt)}`);
+            return `${list.length > 10 ? `${list.length} Sessions, die 10 neuesten:\n` : ""}${lines.join("\n")}${outside}`;
+          }
+          if (action === "delete_all") {
+            const r = await call("sessions.deleteAll", { deleteTranscript: o?.keepTranscript !== true });
+            a.focus = null;
+            return r.failed ? `${r.deleted.length} Sessions gelöscht, ${r.failed} nicht${r.error ? `: ${r.error}` : "."}` : `Alle ${r.deleted.length} Sessions gelöscht.`;
+          }
+          const s = resolve(o?.session ?? "");
+          const r = refFor(s.id);
+          if (action === "delete") {
+            const res = await call("sessions.delete", { sessionId: s.id, deleteTranscript: o?.keepTranscript !== true });
+            if (a.focus === s.id) a.focus = null;
+            return res.deleted ? `${r} gelöscht${res.transcriptDeleted ? ", auch ihr Verlauf bei Claude Code" : ""}.` : `Fehler: ${r} ließ sich nicht löschen.`;
+          }
+          if (action === "rewind") {
+            const prompt = await promptBack(s.id, o?.messagesBack ?? 1);
+            const res = await call("sessions.rewind", { sessionId: s.id, messageUuid: prompt.uuid, dryRun: false });
+            if (!res.canRewind) return `Fehler: ${r} lässt sich nicht zurückspulen${res.error ? `: ${res.error}` : "."}`;
+            if (!res.filesChanged.length) return `Seit dieser Nachricht hat ${r} keine Dateien geändert, es gab nichts zurückzusetzen.`;
+            return `Dateien von ${r} auf den Stand vor der Nachricht ${excerptData(prompt.text, 120)} zurückgesetzt, ${res.filesChanged.length} ${res.filesChanged.length === 1 ? "Datei" : "Dateien"} geändert. Der Verlauf bleibt.`;
+          }
+          const before = o?.messagesBack ? await promptBack(s.id, o.messagesBack) : null;
+          const res = await call("sessions.fork", { sessionId: s.id, beforeSeq: before?.seq, rewindFiles: o?.rewindFiles === true });
+          const files = res.filesChanged?.length ? ` ${res.filesChanged.length} Dateien sind auf den Stand davor zurückgesetzt.` : "";
+          if (!res.session) return `Vor der ersten Nachricht gibt es nichts zu übernehmen, dafür einfach eine neue Session starten.${files}`;
+          a.focus = res.session.id;
+          const cut = before && res.prompt ? ` Die weggelassene Nachricht war: ${excerptData(res.prompt, 300)}` : "";
+          return `Neuer Zweig ${refFor(res.session.id)} von ${r} angelegt. Er wartet und läuft mit send_message weiter.${files}${cut}`;
+        }),
+      extensions: (kind, action, o) =>
+        run(true, async () => {
+          const p = optionalTarget(o?.project, o);
+          const projectId = p?.id;
+          const name = () => {
+            const n = o?.name?.trim();
+            if (!n) throw new Error("Welcher Name?");
+            return n;
+          };
+          const only = (actions: string) => `Fehler: Hier geht ${actions}.`;
+          if (kind === "mcp") {
+            if (action === "list") {
+              const list = await call("mcp.list", { projectId });
+              const state = { connected: "verbunden", failed: "Fehler", needs_auth: "braucht Anmeldung", unknown: "Zustand unbekannt" } as const;
+              return list.length ? `MCP-Server: ${asData(list.map((m) => `${m.name} ${state[m.status]}`).join(", "))}` : "Keine MCP-Server eingerichtet.";
+            }
+            if (action !== "add" && action !== "remove") return only("bei MCP-Servern list, add und remove");
+            const scope = o?.scope ?? (p ? "local" : "user");
+            if (scope !== "user" && !p) return "Fehler: Für welches Projekt?";
+            const where = scope === "user" ? "global" : scope === "project" ? `im Projekt ${p!.name}` : `nur lokal in ${p!.name}`;
+            if (action === "add") {
+              const serverTarget = o?.target?.trim();
+              if (!serverTarget) return "Fehler: Welcher Befehl oder welche URL?";
+              const transport = o?.transport ?? (/^https?:\/\//i.test(serverTarget) ? "http" : "stdio");
+              const args = o?.args?.trim() ? o.args.trim().split(/\s+/) : [];
+              const r = await call("mcp.add", { projectId, name: name(), scope, transport, target: serverTarget, args, env: {} });
+              return r.ok ? `MCP-Server ${name()} ${where} hinzugefügt.` : `Fehler: ${excerptData(r.output, 400)}`;
+            }
+            const r = await call("mcp.remove", { projectId, name: name(), scope });
+            return r.ok ? `MCP-Server ${name()} ${where} entfernt.` : `Fehler: ${excerptData(r.output, 400)}`;
+          }
+          if (kind === "skill" || kind === "agent") {
+            const [one, many] = kind === "skill" ? ["Skill", "Skills"] : ["Subagent", "Subagenten"];
+            const docs = await call("config.docs", { kind, projectId });
+            if (action === "list") {
+              if (!docs.length) return `Keine ${many}.`;
+              return `${many}: ${asData(docs.map((d) => `${d.name}${d.scope === "project" ? " (Projekt)" : ""}${d.description ? `: ${d.description.slice(0, 160)}` : ""}`).join("\n"))}`;
+            }
+            if (action === "add") {
+              const scope = o?.scope === "user" || !p ? "user" : "project";
+              const docName = slugify(name(), 64);
+              if (!docName) return "Fehler: Der Name braucht Buchstaben oder Ziffern.";
+              await call("config.docCreate", { kind, scope, name: docName, description: o?.description?.trim() ?? "", projectId });
+              return `${one} ${docName} ${scope === "project" ? `im Projekt ${p!.name}` : "global"} angelegt.`;
+            }
+            if (action !== "read" && action !== "remove") return only(`bei ${many} list, read, add und remove`);
+            const doc = pickOne(docs, name(), (d) => [d.name, d.name.replace(/-/g, " ")], { none: `Kein ${one}`, many });
+            if (action === "read") {
+              const d = await call("config.docRead", { kind, scope: doc.scope, name: doc.name, projectId });
+              return `${one} ${doc.name}: ${excerptData(d.content, 3000)}`;
+            }
+            await call("config.docDelete", { kind, scope: doc.scope, name: doc.name, projectId });
+            return `${one} ${doc.name} gelöscht.`;
+          }
+          if (kind === "command") {
+            if (action !== "list") return only("bei Commands nur list; ausführen lassen sie sich mit send_message an eine Session");
+            const own = (await call("system.commands", { projectId })).filter((c) => !c.builtin);
+            return own.length ? `Eigene Slash-Befehle: ${asData(own.map((c) => `${c.name}${c.description ? `: ${c.description.slice(0, 120)}` : ""}`).join("\n"))}` : "Keine eigenen Slash-Befehle.";
+          }
+          if (kind === "hook") {
+            if (action !== "list" && action !== "read") return only("bei Hooks nur list und read; ändern lassen sie sich in FORGE");
+            const scope = o?.scope ?? (p ? "project" : "user");
+            if (scope !== "user" && !p) return "Fehler: Für welches Projekt?";
+            const r = await call("config.hooksRead", { scope, projectId });
+            let events: Record<string, unknown> = {};
+            try {
+              const parsed: unknown = JSON.parse(r.hooks || "{}");
+              if (parsed && typeof parsed === "object") events = parsed as Record<string, unknown>;
+            } catch {
+              // Shown as text below.
+            }
+            const names = Object.entries(events).map(([e, v]) => `${e} (${Array.isArray(v) ? v.length : 1})`);
+            if (!names.length && !r.hooks.trim().replace(/^\{\s*\}$/, "")) return `Keine Hooks ${scope === "user" ? "global" : `in ${p!.name}`}.`;
+            return `Hooks ${scope === "user" ? "global" : `in ${p!.name}`}: ${asData(names.join(", "))}${action === "read" ? ` Inhalt: ${excerptData(r.hooks, 2000)}` : ""}`;
+          }
+          const catalog = await call("plugins.catalog", {});
+          const pluginState = (x: (typeof catalog)[number]) => (!x.installed ? "nicht installiert" : x.enabled === false ? "installiert, aus" : "installiert");
+          if (action === "list" || action === "read") {
+            const q = (o?.query ?? o?.name ?? "").trim().toLowerCase();
+            if (q) {
+              const hits = catalog.filter((x) => `${x.name} ${x.description}`.toLowerCase().includes(q)).slice(0, 8);
+              return hits.length ? asData(hits.map((x) => `${x.name}, ${pluginState(x)}: ${x.description.slice(0, 160)}`).join("\n")) : `Kein Plugin zu „${q}“ im Katalog.`;
+            }
+            const installed = catalog.filter((x) => x.installed);
+            return installed.length ? `Plugins: ${asData(installed.map((x) => `${x.name}${x.enabled === false ? " (aus)" : ""}`).join(", "))}` : "Keine Plugins installiert.";
+          }
+          const plugin = pickOne(catalog, name(), (x) => [x.name, x.id], { none: "Kein Plugin", many: "Plugins" });
+          if (action === "add") {
+            if (plugin.installed) return `Plugin ${plugin.name} ist schon installiert.`;
+            await call("plugins.install", { id: plugin.id });
+            return `Plugin ${plugin.name} installiert.`;
+          }
+          if (!plugin.installed) return `Fehler: Plugin ${plugin.name} ist nicht installiert.`;
+          if (action === "remove") {
+            await call("plugins.uninstall", { id: plugin.id });
+            return `Plugin ${plugin.name} deinstalliert.`;
+          }
+          await call("plugins.setEnabled", { id: plugin.id, enabled: action === "enable" });
+          return `Plugin ${plugin.name} ist ${action === "enable" ? "an" : "aus"}.`;
+        }),
+      forgeSettings: (patch) =>
+        run(true, async () => {
+          const cur = await call("settings.get", {});
+          const update: Partial<Settings> = {};
+          const changed: Array<keyof ForgeSettingsPatch> = [];
+          const flags = ["sounds", "desktopNotifications", "enterToSend", "autoContinueAfterLimit", "updateChecks", "debugLogs", "stripApiKey"] as const;
+          for (const k of flags) {
+            const v = patch[k];
+            if (v === undefined) continue;
+            update[k] = v;
+            changed.push(k);
+          }
+          if (patch.defaultModel !== undefined) {
+            update.defaultModel = clearable(patch.defaultModel);
+            changed.push("defaultModel");
+          }
+          if (patch.defaultEffort) {
+            update.defaultEffort = patch.defaultEffort === "default" ? null : patch.defaultEffort;
+            changed.push("defaultEffort");
+          }
+          if (patch.defaultProfile) {
+            update.defaultProfile = patch.defaultProfile;
+            changed.push("defaultProfile");
+          }
+          if (patch.defaultProjectDir !== undefined) {
+            update.defaultProjectDir = patch.defaultProjectDir.trim() || null;
+            changed.push("defaultProjectDir");
+          }
+          const rule = patch.policyRule;
+          if (rule && patch.policyRuleOn === undefined && !changed.length) return `Die Regel ${POLICY_RULE_LABELS[rule]} ist ${cur.disabledPolicyRules.includes(rule) ? "aus" : "an"}.`;
+          if (rule && patch.policyRuleOn !== undefined) {
+            const off = cur.disabledPolicyRules.filter((r) => r !== rule);
+            update.disabledPolicyRules = patch.policyRuleOn ? off : [...off, rule];
+            changed.push("policyRule");
+          }
+          if (!changed.length) return `${(["defaultModel", "defaultEffort", "defaultProfile", "defaultProjectDir", ...flags, "alwaysOnTop", "policyRule"] as const).map((k) => settingText(cur, k)).join(", ")}.`;
+          const next = await call("settings.update", update);
+          return `Gespeichert: ${changed.map((k) => settingText(next, k)).join(", ")}.`;
+        }),
+      forgeSystem: (action, o) =>
+        run(true, async () => {
+          if (action === "diagnostics") {
+            const d = await call("system.diagnostics", { refresh: true });
+            const facts = [
+              d.claude.found ? `Claude Code${d.claude.version ? ` ${d.claude.version}` : ""} ist da` : `Claude Code fehlt${d.claude.error ? `: ${d.claude.error}` : ""}`,
+              !d.auth.checked ? "" : d.auth.loggedIn ? `angemeldet${d.auth.subscriptionType ? ` mit Abo ${d.auth.subscriptionType}` : ""}` : `nicht angemeldet${d.auth.error ? `: ${d.auth.error}` : ""}`,
+              d.apiKeyEnvPresent ? (d.apiKeyStripped ? "ein API-Key in der Umgebung wird ausgeblendet" : "ein API-Key in der Umgebung geht an Claude Code") : "",
+              d.git.found ? `Git${d.git.version ? ` ${d.git.version}` : ""} ist da` : "Git fehlt",
+              d.gh.found ? (d.gh.authenticated === false ? "die GitHub-CLI ist nicht angemeldet" : "die GitHub-CLI ist da") : "die GitHub-CLI fehlt",
+            ].filter(Boolean);
+            const missing = d.capabilities.filter((c) => c.state === "unavailable").map((c) => c.label);
+            return `${facts.join(", ")}.${missing.length ? ` Nicht verfügbar: ${missing.join(", ")}.` : ""}`;
+          }
+          if (action === "update_check") return updateText(await call("app.checkUpdate", {}));
+          if (action === "update_download") return updateText(await call("app.downloadUpdate", {}));
+          if (action === "changelog") {
+            const c = await call("app.changelog", {});
+            if (!c) return "Gerade wird keine neue Version angeboten.";
+            if (c.status === "writing") return "Claude fasst die Neuerungen gerade zusammen. Frag in ein paar Sekunden noch einmal.";
+            if (c.status === "ready" && c.text) return `Neu in ${c.tag}: ${excerptData(c.text, 3000)}`;
+            const notes = (await call("app.updateState", {})).latest?.notes;
+            if (notes?.trim()) return `Neu in ${c.tag} laut Release-Notes: ${excerptData(notes, 3000)}`;
+            if (c.commits.length) return `Änderungen in ${c.tag}: ${excerptData(c.commits.slice(0, 15).join("\n"), 3000)}`;
+            return `Fehler: ${c.message ?? "Für diese Version gibt es keine Beschreibung."}`;
+          }
+          if (action === "claude_check") {
+            const st = await call("claude.setupState", {});
+            if (st.phase === "running" && st.task !== "login") return st.task === "install" ? "Claude Code wird gerade installiert." : "Claude Code wird gerade aktualisiert.";
+            const last = st.task === "update" || st.task === "install" ? (st.phase === "error" ? ` Der letzte Versuch ist fehlgeschlagen: ${st.message ?? "unbekannter Fehler"}` : "") : "";
+            const u = await call("claude.checkUpdate", {});
+            if (!u.installed) return `Claude Code ist nicht installiert.${last}`;
+            if (u.error) return `Installiert ist Claude Code ${u.installed}. Die neueste Version ließ sich nicht abfragen: ${u.error}${last}`;
+            return `${u.available ? `Claude Code ${u.latest} ist verfügbar, installiert ist ${u.installed}.` : `Claude Code ist aktuell, Version ${u.installed}.`}${last}`;
+          }
+          if (action === "claude_update") {
+            try {
+              await call("claude.update", {});
+            } catch (e) {
+              if (!(e instanceof ForgeError && e.code === "CLAUDE_NOT_INSTALLED")) throw e;
+              await call("claude.install", {});
+              return "Claude Code wird installiert. Ob es geklappt hat, sagt claude_check.";
+            }
+            return "Claude Code wird aktualisiert. Laufende Sessions nutzen die neue Version erst nach einem Neustart.";
+          }
+          if (action === "backup_create") {
+            const b = await call("backup.create", {});
+            return `Backup angelegt: ${b.parts.map((x) => x.label).join(", ")}.`;
+          }
+          const list = await backups();
+          if (action === "backup_list") {
+            if (!list.length) return "Es gibt noch keine Backups.";
+            return list
+              .slice(0, 5)
+              .map((b, i) => `${i + 1}: ${dateTime(b.createdAt)}, ${BACKUP_REASONS[b.reason]}, FORGE ${b.appVersion}`)
+              .join("\n");
+          }
+          const key = o?.backup?.trim();
+          if (!key) return "Fehler: Welches Backup? Die Nummer aus backup_list.";
+          const b = /^\d+$/.test(key) ? list[Number(key) - 1] : list.find((x) => x.id === key);
+          if (!b?.id) return `Fehler: Backup ${key} gibt es nicht.`;
+          const inside = b.parts.map((x) => x.part);
+          // Restoring the phone settings reconnects the line and would end this call.
+          const parts = (o?.parts ?? inside).filter((x) => x !== "phone" && inside.includes(x));
+          const phone = o?.parts?.includes("phone") ? " Telefon-Einstellungen lassen sich nur in FORGE am Rechner wiederherstellen, sonst endet dieses Gespräch." : "";
+          if (!parts.length) return `Fehler: Davon ist in diesem Backup nichts enthalten.${phone}`;
+          const r = await call("backup.restore", { id: b.id, parts });
+          return `Backup vom ${dateTime(b.createdAt)} wiederhergestellt: ${r.restored.map((x) => BACKUP_PARTS[x]).join(", ")}. Der Stand davor ist als Backup gesichert.${r.notes.length ? ` ${r.notes.join(" ")}` : ""}${phone}`;
         }),
       search: (query) =>
         run(true, async () => {

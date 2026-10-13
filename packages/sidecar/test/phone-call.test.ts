@@ -1,13 +1,15 @@
 import { createHash } from "node:crypto";
 import { createSocket, type Socket } from "node:dgram";
-import { mkdirSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { ForgeError, type BackgroundTask, type PhoneState, type ServerEvent, type SubagentProgress } from "@forge/protocol";
+import { ForgeError, type BackgroundTask, type MemoryScope, type PhoneState, type ServerEvent, type Settings, type SubagentProgress } from "@forge/protocol";
+import * as cfg from "../src/config/claude-config.js";
 import { encodeG711, FRAME_SAMPLES, rms, decodeG711 } from "../src/phone/audio.js";
 import type { ConversationCallbacks } from "../src/phone/call-controller.js";
 import type { PhoneToolset } from "../src/phone/phone-agent.js";
-import { PhoneService, type PhoneDeps } from "../src/phone/phone-service.js";
+import { PhoneService, type PhoneDeps, type PhoneRpc } from "../src/phone/phone-service.js";
+import { PHONE_TOOLS, runPhoneTool, type ParamSpec } from "../src/phone/tools.js";
 import { buildSdp } from "../src/phone/sdp.js";
 import { SecretStore } from "../src/phone/secrets.js";
 import { getHeader, getHeaders, parseNameAddr, parseSip, responseTo, serializeSip, type SipMessage } from "../src/phone/sip-message.js";
@@ -406,6 +408,10 @@ describe("PhoneService end to end with a test PBX", () => {
   let projects: ProjectManager;
   let gitEngine: GitEngine;
   let timing: NonNullable<PhoneDeps["timing"]>;
+  /** FORGE's RPC methods the phone calls: method -> fake result; calls are recorded */
+  let rpcResults: Record<string, (params: never) => unknown>;
+  let rpcCalls: Array<[string, unknown]>;
+  let devConfig: { env: string; useEnv: boolean; database: { port: number; name: string; password: string; withDevServer: boolean; envVar: string | null } };
 
   beforeEach(async () => {
     t = tempDir();
@@ -487,8 +493,16 @@ describe("PhoneService end to end with a test PBX", () => {
     testDbRunning = false;
     testDbCalls = [];
     timing = { notifyDelayMs: 50, notifyCooldownMs: 0, pinLimits: { perCaller: 2, baseDelayMs: 0 }, callbackTickMs: 100 };
-    let devConfig = { env: "", useEnv: true, database: { port: 54330, name: "shop", password: "x", withDevServer: false, envVar: "DATABASE_URL" as string | null } };
+    devConfig = { env: "", useEnv: true, database: { port: 54330, name: "shop", password: "x", withDevServer: false, envVar: "DATABASE_URL" } };
+    rpcResults = {};
+    rpcCalls = [];
     svc = new PhoneService({
+      rpc: (async (method: string, params: never) => {
+        rpcCalls.push([method, params]);
+        const fn = rpcResults[method];
+        if (!fn) throw new Error(`${method} ist im Test nicht vorgesehen`);
+        return fn(params);
+      }) as PhoneRpc,
       db,
       projects,
       sessions,
@@ -507,8 +521,10 @@ describe("PhoneService end to end with a test PBX", () => {
       } as unknown as TestDbService,
       devTools: {
         get: () => devConfig,
-        update: (_id: string, patch: { useEnv?: boolean; database?: Partial<typeof devConfig.database> }) =>
-          (devConfig = { ...devConfig, useEnv: patch.useEnv ?? devConfig.useEnv, database: { ...devConfig.database, ...patch.database } }),
+        update: (_id: string, patch: { env?: string; useEnv?: boolean; database?: Partial<typeof devConfig.database> }) =>
+          (devConfig = { ...devConfig, env: patch.env ?? devConfig.env, useEnv: patch.useEnv ?? devConfig.useEnv, database: { ...devConfig.database, ...patch.database } }),
+        envFiles: async () => [".env", ".env.local"],
+        readEnvFile: async (_id: string, name: string) => (name === ".env.local" ? "# lokal\nSTRIPE_KEY=sk_live_geheim\nexport PORT=3000\n" : "X=1\n"),
       } as unknown as NonNullable<PhoneDeps["devTools"]>,
       agentFinish: { finish: async (id: string, action: "merge" | "discard") => (steered.push(`finish:${action}:${id}`), { message: "1 Commit von agent/x in main übernommen." }) } as unknown as NonNullable<PhoneDeps["agentFinish"]>,
       github: {
@@ -1085,7 +1101,7 @@ describe("PhoneService end to end with a test PBX", () => {
     expect(await conv.tools.finishAgent("shop", "merge")).toBe("Fehler: shop ist kein Agent-Worktree.");
     expect(await conv.tools.finishAgent("", "merge", { session: "CSV" })).toBe("1 Commit von agent/x in main übernommen.");
     expect(steered.splice(0)).toEqual([`finish:merge:${wt.id}`]);
-    expect(await conv.tools.removeAgent("shop")).toBe("Fehler: shop ist kein Agent-Worktree. Projekte lassen sich nur in FORGE entfernen.");
+    expect(await conv.tools.removeAgent("shop")).toBe("Fehler: shop ist kein Agent-Worktree. Projekte entfernt das Werkzeug project mit remove.");
     expect(await conv.tools.removeAgent("", { session: "CSV", deleteBranch: true })).toBe(`Worktree ${wt.name} entfernt, seine Session ist beendet. Branch agent/x gelöscht.`);
     expect(steered).toEqual([`closeProject:${wt.id}`, `forget:${wt.id}`]);
     expect(projects.all().some((p) => p.id === wt.id)).toBe(false);
@@ -1109,6 +1125,313 @@ describe("PhoneService end to end with a test PBX", () => {
     expect(svc.config().notifyOn).toEqual({ done: false, approval: true, error: false });
     expect(await conv.tools.callSettings({ approval: false })).toBe("FORGE ruft von sich aus nicht mehr an.");
     await byeFromPbx("c-calls", inv, ok);
+  }, 30_000);
+
+  /** Arguments that pass the schema of a tool: every required parameter with a plain value. */
+  const sampleArgs = (params: Record<string, ParamSpec>) =>
+    Object.fromEntries(
+      Object.entries(params)
+        .filter(([, p]) => !p.optional)
+        .map(([k, p]) => [k, p.type === "string" ? (p.enum?.[0] ?? "x") : p.type === "boolean" ? false : p.type === "number" ? (p.min ?? 1) : []]),
+    );
+
+  /** An answered incoming call without PIN; returns its conversation and how to end it. */
+  async function openCall(callId: string) {
+    await svc.saveConfig({ requirePin: false });
+    await svc.setEnabled(true);
+    await until(() => svc.state().registration === "registered", 5000, "registered");
+    const { inv, ok } = await answeredCall(callId);
+    const conv = await until(() => convs[0], 5000, "conversation");
+    return { conv, end: () => byeFromPbx(callId, inv, ok) };
+  }
+
+  it("locks every tool that reads or steers until the PIN, new tools included", async () => {
+    await svc.setEnabled(true);
+    await until(() => svc.state().registration === "registered", 5000, "registered");
+    const { inv, ok } = await answeredCall("c-locked");
+    const conv = await until(() => convs[0], 5000, "conversation");
+    // Counts without titles, plan usage, agreeing a callback and hanging up work before the PIN.
+    const open = new Set(["status", "usage", "call_settings", "call_back", "hang_up"]);
+    for (const spec of PHONE_TOOLS.filter((x) => !open.has(x.name))) {
+      expect(`${spec.name}: ${await runPhoneTool(spec.name, sampleArgs(spec.params), conv.tools, { hangup: () => {} })}`).toMatch(new RegExp(`^${spec.name}: Gesperrt`));
+    }
+    expect(rpcCalls).toEqual([]);
+    await byeFromPbx("c-locked", inv, ok);
+  }, 30_000);
+
+  it("creates, clones and configures projects, reads their files and extends their CLAUDE.md", async () => {
+    const dir = projects.get(projectId).path;
+    mkdirSync(path.join(dir, "src"), { recursive: true });
+    writeFileSync(path.join(dir, "package.json"), '{ "name": "shop" }');
+    db.updateSettings({ defaultProjectDir: t.dir });
+    const repo = (fullName: string) => ({ fullName, description: null, private: true, updatedAt: "", cloneUrl: `https://github.com/${fullName}.git` });
+    rpcResults = {
+      "settings.get": () => db.getSettings(),
+      "projects.create": (p: { name: string }) => ({ project: { id: "p-new", name: p.name }, github: { url: "https://github.com/me/blog", error: null } }),
+      "github.repos": () => [repo("me/shop-api"), repo("me/blog")],
+      "projects.clone": () => ({ id: "p-clone", name: "shop-api" }),
+      "projects.update": ({ projectId: id, ...patch }: { projectId: string }) => projects.update(id, patch),
+      "projects.remove": () => ({ removed: true, folderDeleted: true, githubDeleted: false }),
+      "projects.listFiles": (p: { projectId: string; dir: string }) => projects.listFiles(p.projectId, p.dir),
+      "projects.readFile": (p: { projectId: string; path: string }) => projects.readFile(p.projectId, p.path),
+      "config.memoryRead": (p: { projectId: string; scope: MemoryScope }) => cfg.readMemory(p.scope, projects.get(p.projectId).path),
+      "config.memoryWrite": (p: { projectId: string; scope: MemoryScope; content: string; expectedMtimeMs: number | null }) =>
+        cfg.writeMemory(p.scope, projects.get(p.projectId).path, p.content, p.expectedMtimeMs),
+    };
+    const { conv, end } = await openCall("c-projects");
+    const callOf = (method: string) => rpcCalls.filter(([m]) => m === method).at(-1)?.[1];
+
+    expect(await conv.tools.project("", "create", { name: "blog", github: "private" })).toBe("Projekt blog angelegt. Das private GitHub-Repository ist angelegt.");
+    expect(callOf("projects.create")).toEqual({ name: "blog", parentDir: t.dir, gitInit: true, github: { private: true } });
+    expect(events).toContainEqual({ event: "project.updated", payload: { projectId: "p-new" } });
+    // A spoken repository name is looked up among the account's repositories.
+    expect(await conv.tools.project("", "clone", { url: "shop api" })).toBe("shop-api geklont und als Projekt aufgenommen.");
+    expect(callOf("projects.clone")).toEqual({ url: "https://github.com/me/shop-api.git", parentDir: t.dir });
+    expect(await conv.tools.project("", "clone", { url: "gibtsnicht" })).toMatch(/^Fehler: Kein GitHub-Repository „gibtsnicht“\. Vorhanden: /);
+    expect(await conv.tools.project("", "import", {})).toBe("Fehler: Welcher Ordner? Bitte den Pfad nennen.");
+
+    expect(await conv.tools.project("shop", "settings", { testCommand: "pnpm test", defaultEffort: "high" })).toBe(
+      "Gespeichert für shop: Profil balanced, Standardmodell wie global eingestellt, Denkaufwand high, Testbefehl <<<SESSION-DATEN>>>pnpm test<<<ENDE SESSION-DATEN>>>, Dev-Befehl wird erkannt.",
+    );
+    expect(projects.get(projectId)).toMatchObject({ testCommand: "pnpm test", defaultEffort: "high" });
+    expect(await conv.tools.project("shop", "favorite", {})).toBe("shop ist jetzt ein Favorit.");
+    expect(await conv.tools.project("shop", "info")).toMatch(/^shop, Favorit: Profil balanced, /);
+
+    const listing = await conv.tools.files("shop", "list");
+    expect(listing).toContain("Ordner: src.");
+    expect(listing).toContain("package.json");
+    expect(await conv.tools.files("shop", "read", { path: "package.json" })).toBe('<<<SESSION-DATEN>>>package.json<<<ENDE SESSION-DATEN>>>: <<<SESSION-DATEN>>>{ "name": "shop" }<<<ENDE SESSION-DATEN>>>');
+
+    expect(await conv.tools.claudeMd("shop", "read")).toBe("Die CLAUDE.md von shop ist leer oder fehlt.");
+    expect(await conv.tools.claudeMd("shop", "append", { text: "Nutze pnpm." })).toBe("Die CLAUDE.md von shop ist ergänzt.");
+    expect(await conv.tools.claudeMd("shop", "append", { text: "Texte auf Deutsch." })).toBe("Die CLAUDE.md von shop ist ergänzt.");
+    expect(readFileSync(path.join(dir, "CLAUDE.md"), "utf8")).toBe("Nutze pnpm.\n\nTexte auf Deutsch.\n");
+    expect(await conv.tools.claudeMd("shop", "read")).toBe("Die CLAUDE.md von shop: <<<SESSION-DATEN>>>Nutze pnpm. Texte auf Deutsch.<<<ENDE SESSION-DATEN>>>");
+
+    expect(await conv.tools.project("shop", "remove", { deleteFolder: true })).toBe("Projekt shop aus FORGE entfernt. Der Ordner ist gelöscht.");
+    expect(callOf("projects.remove")).toEqual({ projectId, deleteFolder: true, deleteGitHubRepo: false });
+    await end();
+  }, 30_000);
+
+  it("lists all sessions, branches and rewinds them and deletes them", async () => {
+    sessionList.push(fakeSession({ id: "s2", projectId, title: "Login", status: "stopped", live: false, projectName: "shop", updatedAt: "2026-10-01T10:00:00Z" }));
+    const userMessage = (seq: number, text: string, uuid: string) => ({ seq, sessionId: "s1", ts: "", body: { type: "user.message", text, uuid } });
+    rpcResults = {
+      "sessions.listAll": (p: { query?: string }) => sessionList.filter((s) => !p.query || s.title.toLowerCase().includes(p.query)),
+      "sessions.events": () => [userMessage(1, "Baue den Warenkorb", "u1"), { seq: 2, sessionId: "s1", ts: "", body: { type: "assistant.text", text: "Fertig." } }, userMessage(5, "Füge Tests hinzu", "u2")],
+      "sessions.rewind": () => ({ canRewind: true, error: null, filesChanged: ["src/cart.ts", "src/cart.test.ts"], insertions: 3, deletions: 40 }),
+      "sessions.fork": () => ({
+        session: fakeSession({ id: "s7", projectId, title: "Warenkorb (Zweig)", status: "stopped", live: false, projectName: "shop" }),
+        prompt: "Baue den Warenkorb",
+        filesChanged: null,
+      }),
+      "sessions.delete": (p: { deleteTranscript: boolean }) => ({ deleted: true, transcriptDeleted: p.deleteTranscript }),
+      "sessions.deleteAll": () => ({ deleted: ["s1", "s2"], failed: 0, error: null }),
+    };
+    const { conv, end } = await openCall("c-sessions");
+    const list = await conv.tools.sessions("list");
+    expect(list).toMatch(/^S1: <<<SESSION-DATEN>>>Warenkorb<<<ENDE SESSION-DATEN>>> im Projekt shop, fertig, wartet auf Anweisungen, zuletzt /);
+    expect(list).toContain("\nS2: <<<SESSION-DATEN>>>Login<<<ENDE SESSION-DATEN>>> im Projekt shop, beendet, zuletzt 01.10.26");
+    expect(await conv.tools.sessions("list", { query: "Login" })).toMatch(/^S2: /);
+
+    expect(await conv.tools.sessions("rewind", { session: "S1" })).toBe(
+      "Dateien von S1 auf den Stand vor der Nachricht <<<SESSION-DATEN>>>Füge Tests hinzu<<<ENDE SESSION-DATEN>>> zurückgesetzt, 2 Dateien geändert. Der Verlauf bleibt.",
+    );
+    expect(rpcCalls.at(-1)).toEqual(["sessions.rewind", { sessionId: "s1", messageUuid: "u2", dryRun: false }]);
+    expect(await conv.tools.sessions("rewind", { session: "S1", messagesBack: 3 })).toBe("Fehler: S1 hat nur 2 Nachrichten vom Anrufer.");
+    expect(await conv.tools.sessions("fork", { session: "S1", messagesBack: 2 })).toBe(
+      "Neuer Zweig S3 von S1 angelegt. Er wartet und läuft mit send_message weiter. Die weggelassene Nachricht war: <<<SESSION-DATEN>>>Baue den Warenkorb<<<ENDE SESSION-DATEN>>>",
+    );
+    expect(rpcCalls.at(-1)).toEqual(["sessions.fork", { sessionId: "s1", beforeSeq: 1, rewindFiles: false }]);
+
+    expect(await conv.tools.sessions("delete", { session: "S2", keepTranscript: true })).toBe("S2 gelöscht.");
+    expect(rpcCalls.at(-1)).toEqual(["sessions.delete", { sessionId: "s2", deleteTranscript: false }]);
+    expect(await conv.tools.sessions("delete", {})).toMatch(/^Fehler: Welche Session/);
+    expect(await conv.tools.sessions("delete_all")).toBe("Alle 2 Sessions gelöscht.");
+    expect(rpcCalls.at(-1)).toEqual(["sessions.deleteAll", { deleteTranscript: true }]);
+    await end();
+  }, 30_000);
+
+  it("lists, deletes and diffs in Git, restores a commit, publishes, sets the identity, reviews agents and edits the test environment", async () => {
+    const wt = await agentWorktree();
+    const commit = (hash: string, subject: string) => ({ hash, shortHash: hash.slice(0, 7), author: "T", authorEmail: "t@x", avatarUrl: null, date: "2026-10-13T10:00:00Z", subject, parents: [], refs: [] });
+    const file = (p: string) => ({ path: p, origPath: null, index: " ", worktree: "M", kind: "modified", staged: false, unstaged: true });
+    rpcResults = {
+      "git.branches": () => [
+        { name: "main", current: true, upstream: "origin/main" },
+        { name: "feature/login", current: false, upstream: null },
+      ],
+      "git.deleteBranch": () => [],
+      "git.status": () => ({ summary: {}, files: [file("src/cart.ts"), file("README.md")] }),
+      "git.diff": () => ({
+        path: "src/cart.ts",
+        binary: false,
+        additions: 1,
+        deletions: 1,
+        truncated: false,
+        lines: [
+          { kind: "hunk", text: "@@ -1 +1 @@", oldNo: null, newNo: null },
+          { kind: "del", text: "const total = 0;", oldNo: 1, newNo: null },
+          { kind: "add", text: "const total = sum(items);", oldNo: null, newNo: 1 },
+        ],
+      }),
+      "git.log": () => [commit("aaaaaaa1111", "Tests ergänzt"), commit("bbbbbbb2222", "Login gebaut")],
+      "git.restoreTo": (p: { commit: string }) => ({ commit: p.commit, subject: p.commit.startsWith("b") ? "Login gebaut" : "Tests ergänzt", stashed: true, changed: 4 }),
+      "github.publish": () => ({ url: "https://github.com/me/shop" }),
+      "github.account": () => null,
+      "git.setIdentity": (p: { name: string; email: string }) => p,
+      "agents.review": () => ({
+        projectId: wt.id,
+        rootId: projectId,
+        rootName: "shop",
+        branch: "agent/csv-export-ab12",
+        targetBranch: "main",
+        targetPath: "",
+        sessionId: null,
+        sessionTitle: null,
+        sessionStatus: null,
+        summary: "CSV-Export mit Tests gebaut.",
+        busy: false,
+        commits: [{ hash: "c1", subject: "CSV-Export" }],
+        ahead: 1,
+        behind: 2,
+        filesChanged: 3,
+        uncommitted: 0,
+        mergeBlocker: null,
+      }),
+    };
+    const { conv, end } = await openCall("c-git2");
+    expect(await conv.tools.git("shop", "branches")).toBe("shop: 2 Branches, aktuell main. Weitere: <<<SESSION-DATEN>>>feature/login<<<ENDE SESSION-DATEN>>>.");
+    expect(await conv.tools.git("shop", "delete_branch", { branch: "feature/login", force: true })).toBe("Branch feature/login in shop gelöscht.");
+    expect(rpcCalls.at(-1)).toEqual(["git.deleteBranch", { projectId, branch: "feature/login", force: true }]);
+    expect(await conv.tools.git("shop", "diff")).toBe("Geändert in shop: <<<SESSION-DATEN>>>src/cart.ts, README.md<<<ENDE SESSION-DATEN>>>. Welche Datei?");
+    expect(await conv.tools.git("shop", "diff", { path: "cart" })).toBe(
+      "<<<SESSION-DATEN>>>src/cart.ts<<<ENDE SESSION-DATEN>>>: 1 Zeile hinzu, 1 entfernt. <<<SESSION-DATEN>>>weg: const total = 0; neu: const total = sum(items);<<<ENDE SESSION-DATEN>>>",
+    );
+    expect(await conv.tools.git("shop", "restore", { commit: "login" })).toBe(
+      "Dateien von shop auf den Stand von <<<SESSION-DATEN>>>Login gebaut<<<ENDE SESSION-DATEN>>> gesetzt, 4 Dateien geändert und noch nicht committet. Die offene Arbeit von vorher liegt im Stash.",
+    );
+    expect(rpcCalls.at(-1)).toEqual(["git.restoreTo", { projectId, commit: "bbbbbbb2222" }]);
+    await conv.tools.git("shop", "restore", { commit: "1" });
+    expect(rpcCalls.at(-1)).toEqual(["git.restoreTo", { projectId, commit: "aaaaaaa1111" }]);
+    expect(await conv.tools.git("shop", "publish", { private: false })).toBe("shop ist als öffentliches Repository auf GitHub veröffentlicht.");
+    expect(rpcCalls.at(-1)).toEqual(["github.publish", { projectId, private: false }]);
+    expect(await conv.tools.git("", "account")).toBe("FORGE ist nicht bei GitHub angemeldet. Anmelden geht nur in FORGE am Rechner über den Browser.");
+    expect(await conv.tools.git("", "identity", { name: "Tjorven" })).toBe("Fehler: Für die Git-Identität brauche ich Name und E-Mail.");
+    expect(await conv.tools.git("", "identity", { name: "Tjorven", email: "t@example.org" })).toBe("Commits laufen jetzt unter Tjorven, t@example.org.");
+
+    expect(await conv.tools.finishAgent("shop csv export", "review")).toBe(
+      [
+        `Agent ${wt.name}: 1 Commit auf agent/csv-export-ab12, 3 Dateien geändert, main ist seitdem 2 Commits weiter.`,
+        "Letzte Commits: <<<SESSION-DATEN>>>CSV-Export<<<ENDE SESSION-DATEN>>>",
+        "Seine Zusammenfassung: <<<SESSION-DATEN>>>CSV-Export mit Tests gebaut.<<<ENDE SESSION-DATEN>>>",
+        "Zusammenführen nach main ist möglich.",
+      ].join("\n"),
+    );
+
+    // Variables are named, their values never said.
+    expect(await conv.tools.devSettings("shop", { envSet: "API_URL=https://api.example.org" })).toContain("Variablen: <<<SESSION-DATEN>>>API_URL<<<ENDE SESSION-DATEN>>>.");
+    const fromFile = await conv.tools.devSettings("shop", { envFromFile: "local" });
+    expect(fromFile).toContain("Variablen: <<<SESSION-DATEN>>>API_URL, STRIPE_KEY, PORT<<<ENDE SESSION-DATEN>>>.");
+    expect(fromFile).not.toContain("sk_live");
+    expect(devConfig.env).toBe("API_URL=https://api.example.org\nSTRIPE_KEY=sk_live_geheim\nexport PORT=3000\n");
+    expect(await conv.tools.devSettings("shop", { envRemove: "STRIPE_KEY" })).toContain("Variablen: <<<SESSION-DATEN>>>API_URL, PORT<<<ENDE SESSION-DATEN>>>.");
+    expect(await conv.tools.devSettings("shop", { envRemove: "NOPE" })).toBe("Fehler: NOPE steht nicht in der Test-Umgebung.");
+    expect(await conv.tools.devSettings("shop", { envSet: "kaputt" })).toBe("Fehler: Die Variable bitte als NAME=Wert angeben.");
+    expect(await conv.tools.devSettings("shop", { envFromFile: "prod" })).toMatch(/^Fehler: Keine \.env-Datei „prod“\. Vorhanden: /);
+    await end();
+  }, 30_000);
+
+  it("manages extensions, global settings, updates and backups", async () => {
+    const backup = (id: string, createdAt: string, reason: string) => ({
+      id,
+      createdAt,
+      reason,
+      appVersion: "1.2.0",
+      size: 1,
+      parts: [
+        { part: "settings", label: "Einstellungen" },
+        { part: "phone", label: "Telefon" },
+        { part: "projects", label: "3 Projekte" },
+      ],
+    });
+    rpcResults = {
+      "mcp.list": () => [{ name: "context7", target: "npx", status: "connected", statusText: "" }],
+      "mcp.add": () => ({ ok: true, output: "" }),
+      "config.docs": () => [{ kind: "skill", scope: "user", name: "code-review", description: "Prüft Diffs", path: "" }],
+      "config.docCreate": () => ({ path: "", mtimeMs: 1 }),
+      "config.docRead": () => ({ path: "", content: "---\nname: code-review\n---\nPrüfe jeden Diff.", mtimeMs: 1 }),
+      "config.hooksRead": () => ({ path: "", hooks: JSON.stringify({ PreToolUse: [{ matcher: "Bash", hooks: [] }], Stop: [{ hooks: [] }] }), mtimeMs: 1 }),
+      "system.commands": () => [
+        { name: "deploy", description: "Deployt", argumentHint: "" },
+        { name: "clear", description: "Leert den Verlauf", argumentHint: "", builtin: true },
+      ],
+      "plugins.catalog": () => [
+        { id: "lint@official", name: "lint", description: "Lint-Regeln", marketplace: "official", installCount: 3, installed: true, enabled: false },
+        { id: "docs@official", name: "docs", description: "Doku", marketplace: "official", installCount: 1, installed: false, enabled: null },
+      ],
+      "plugins.setEnabled": () => [],
+      "plugins.install": () => [],
+      "settings.get": () => db.getSettings(),
+      "settings.update": (patch: Partial<Settings>) => db.updateSettings(patch),
+      "backup.list": () => [backup("b-old", "2026-10-01T08:00:00Z", "start"), backup("b-new", "2026-10-12T08:00:00Z", "manual")],
+      "backup.restore": (p: { parts: string[] }) => ({ restored: p.parts, safety: backup("b-safe", "2026-10-13T08:00:00Z", "before-restore"), notes: [] }),
+      "app.checkUpdate": () => ({
+        currentVersion: "1.2.0",
+        phase: "available",
+        latest: { version: "1.3.0", tag: "v1.3.0", notes: "", since: "1.2.0", publishedAt: null, size: null, kind: "patch", via: null },
+        autoInstall: false,
+        installerPath: null,
+        installable: true,
+        checkedAt: null,
+        message: null,
+      }),
+      "claude.update": () => {
+        throw new ForgeError("CLAUDE_NOT_INSTALLED", "Claude Code ist nicht installiert.");
+      },
+      "claude.install": () => ({ task: "install", phase: "running", url: null, log: [], message: null }),
+    };
+    const { conv, end } = await openCall("c-ext");
+    expect(await conv.tools.extensions("mcp", "list")).toBe("MCP-Server: <<<SESSION-DATEN>>>context7 verbunden<<<ENDE SESSION-DATEN>>>");
+    expect(await conv.tools.extensions("mcp", "add", { name: "linear", target: "https://mcp.linear.app/sse" })).toBe("MCP-Server linear global hinzugefügt.");
+    expect(rpcCalls.at(-1)).toEqual(["mcp.add", { name: "linear", scope: "user", transport: "http", target: "https://mcp.linear.app/sse", args: [], env: {} }]);
+    expect(await conv.tools.extensions("mcp", "add", { name: "db", scope: "project" })).toBe("Fehler: Für welches Projekt?");
+    expect(await conv.tools.extensions("skill", "add", { project: "shop", name: "Release Notes", description: "Schreibt Release-Notes" })).toBe("Skill release-notes im Projekt shop angelegt.");
+    expect(rpcCalls.at(-1)).toEqual(["config.docCreate", { kind: "skill", scope: "project", name: "release-notes", description: "Schreibt Release-Notes", projectId }]);
+    expect(await conv.tools.extensions("skill", "read", { name: "code review" })).toBe("Skill code-review: <<<SESSION-DATEN>>>--- name: code-review --- Prüfe jeden Diff.<<<ENDE SESSION-DATEN>>>");
+    expect(await conv.tools.extensions("skill", "remove", { name: "nix" })).toBe("Fehler: Kein Skill „nix“. Vorhanden: <<<SESSION-DATEN>>>code-review<<<ENDE SESSION-DATEN>>>.");
+    expect(await conv.tools.extensions("hook", "list")).toBe("Hooks global: <<<SESSION-DATEN>>>PreToolUse (1), Stop (1)<<<ENDE SESSION-DATEN>>>");
+    expect(await conv.tools.extensions("hook", "add")).toBe("Fehler: Hier geht bei Hooks nur list und read; ändern lassen sie sich in FORGE.");
+    expect(await conv.tools.extensions("command", "list")).toBe("Eigene Slash-Befehle: <<<SESSION-DATEN>>>deploy: Deployt<<<ENDE SESSION-DATEN>>>");
+    expect(await conv.tools.extensions("plugin", "list")).toBe("Plugins: <<<SESSION-DATEN>>>lint (aus)<<<ENDE SESSION-DATEN>>>");
+    expect(await conv.tools.extensions("plugin", "enable", { name: "lint" })).toBe("Plugin lint ist an.");
+    expect(rpcCalls.at(-1)).toEqual(["plugins.setEnabled", { id: "lint@official", enabled: true }]);
+    expect(await conv.tools.extensions("plugin", "add", { name: "docs" })).toBe("Plugin docs installiert.");
+    expect(await conv.tools.extensions("plugin", "remove", { name: "docs" })).toBe("Fehler: Plugin docs ist nicht installiert.");
+
+    expect(await conv.tools.forgeSettings({ sounds: false, defaultEffort: "high" })).toBe("Gespeichert: Töne aus, Denkaufwand high.");
+    expect(db.getSettings()).toMatchObject({ sounds: false, defaultEffort: "high" });
+    expect(await conv.tools.forgeSettings({ policyRule: "git-reset-hard", policyRuleOn: false })).toMatch(/^Gespeichert: Sperrliste: aus sind .*git reset hard\.$/);
+    expect(db.getSettings().disabledPolicyRules).toContain("git-reset-hard");
+    expect(await conv.tools.forgeSettings({ policyRule: "git-reset-hard" })).toBe("Die Regel git reset hard ist aus.");
+    expect(await conv.tools.forgeSettings({ policyRule: "git-reset-hard", policyRuleOn: true })).not.toContain("git reset hard");
+    expect(await conv.tools.forgeSettings({})).toContain("Töne aus, Desktop-Benachrichtigungen");
+
+    expect(await conv.tools.forgeSystem("update_check")).toBe("FORGE 1.3.0 ist verfügbar, installiert ist 1.2.0.");
+    expect(await conv.tools.forgeSystem("claude_update")).toBe("Claude Code wird installiert. Ob es geklappt hat, sagt claude_check.");
+    expect(rpcCalls.at(-1)?.[0]).toBe("claude.install");
+
+    expect(await conv.tools.forgeSystem("backup_list")).toMatch(/^1: 12\.10\.26, \d\d:\d\d, von Hand, FORGE 1\.2\.0\n2: 01\.10\.26, \d\d:\d\d, beim Start, FORGE 1\.2\.0$/);
+    // The phone settings stay: restoring them would end this call.
+    expect(await conv.tools.forgeSystem("backup_restore", { backup: "1", parts: ["settings", "phone"] })).toMatch(
+      /^Backup vom 12\.10\.26, \d\d:\d\d wiederhergestellt: Einstellungen\. Der Stand davor ist als Backup gesichert\. Telefon-Einstellungen lassen sich nur in FORGE/,
+    );
+    expect(rpcCalls.at(-1)).toEqual(["backup.restore", { id: "b-new", parts: ["settings"] }]);
+    // Parts as the model passes them: a comma list; parts the backup lacks are left out.
+    await runPhoneTool("forge_system", { action: "backup_restore", backup: "2", parts: "Projects, git" }, conv.tools, { hangup: () => {} });
+    expect(rpcCalls.at(-1)).toEqual(["backup.restore", { id: "b-old", parts: ["projects"] }]);
+    expect(await conv.tools.forgeSystem("backup_restore", {})).toBe("Fehler: Welches Backup? Die Nummer aus backup_list.");
+    await end();
   }, 30_000);
 
   it("passes an urgent notify into the running call, without details before the PIN", async () => {

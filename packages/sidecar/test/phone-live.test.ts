@@ -56,6 +56,13 @@ function toolset(calls: string[] = []): PhoneToolset {
     finishAgent: rec("finishAgent"),
     search: rec("search"),
     callSettings: rec("callSettings"),
+    project: rec("project"),
+    files: rec("files"),
+    claudeMd: rec("claudeMd"),
+    sessions: rec("sessions"),
+    extensions: rec("extensions"),
+    forgeSettings: rec("forgeSettings"),
+    forgeSystem: rec("forgeSystem"),
   };
 }
 

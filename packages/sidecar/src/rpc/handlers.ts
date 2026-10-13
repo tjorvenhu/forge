@@ -1,4 +1,4 @@
-import { ForgeError, type MethodName, type ParsedParamsOf, type ResultOf, type Settings } from "@forge/protocol";
+import { ForgeError, methods, type MethodName, type ParamsOf, type ParsedParamsOf, type ResultOf, type Settings } from "@forge/protocol";
 import { startIntegrationSession } from "../git/integration-prompt.js";
 import { collectDiagnostics } from "../claude/diagnostics.js";
 import type { Db } from "../persistence/db.js";
@@ -52,6 +52,13 @@ export interface Services {
 
 type Handler<M extends MethodName> = (params: ParsedParamsOf<M>) => Promise<ResultOf<M>> | ResultOf<M>;
 export type Handlers = { [M in MethodName]: Handler<M> };
+
+/** Calls a handler from inside the sidecar (the phone) the way the RPC server does: params checked and defaulted first. */
+export async function invokeHandler<M extends MethodName>(handlers: Handlers, method: M, params: ParamsOf<M>): Promise<ResultOf<M>> {
+  const parsed = methods[method].params.safeParse(params);
+  if (!parsed.success) throw new ForgeError("VALIDATION", `Ungültige Angaben: ${parsed.error.issues.map((i) => `${i.path.join(".") || "Eingabe"} ${i.message}`).join("; ")}`);
+  return (handlers[method] as Handler<M>)(parsed.data as ParsedParamsOf<M>);
+}
 
 export function createHandlers(s: Services): Handlers {
   let diagCache: ResultOf<"system.diagnostics"> | null = null;
