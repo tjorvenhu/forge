@@ -36,6 +36,53 @@ export function splitActive(active: string | null | undefined): { sessionId: str
 }
 
 /**
+ * A further chat of the split view, next to the main one (the workspace chat of the open project).
+ * Without a project it shows a session picker; `active` is an activeSession value of that project.
+ */
+export interface SplitPane {
+  id: string;
+  projectId: string | null;
+  active: string | null;
+}
+
+/** The chat each pane shows, main chat first; a session is shown in one pane at most. */
+function mainChat(s: Pick<UiState, "activeProjectId" | "activeSession">): { projectId: string; active: string | null } | null {
+  return s.activeProjectId ? { projectId: s.activeProjectId, active: s.activeSession[s.activeProjectId] ?? null } : null;
+}
+
+/**
+ * The main chat switches to a session a split pane already shows (sidebar, Strg+Tab, a notification):
+ * the two swap places, so the session is not shown twice and the former main chat stays on screen.
+ */
+function swapIntoMain(s: UiState, next: Pick<UiState, "activeProjectId" | "activeSession">): SplitPane[] {
+  const main = mainChat(next);
+  if (!main?.active) return s.splitPanes;
+  const i = s.splitPanes.findIndex((p) => p.projectId === main.projectId && p.active === main.active);
+  if (i < 0) return s.splitPanes;
+  const before = mainChat(s);
+  if (!before || (before.projectId === main.projectId && before.active === main.active)) return s.splitPanes.filter((_, n) => n !== i);
+  return s.splitPanes.map((p, n) => (n === i ? { ...p, ...before } : p));
+}
+
+function isShown(s: UiState, projectId: string, active: string | null, except?: string): boolean {
+  if (!active) return false;
+  const main = mainChat(s);
+  if (main?.projectId === projectId && main.active === active) return true;
+  return s.splitPanes.some((p) => p.id !== except && p.projectId === projectId && p.active === active);
+}
+
+function parsePanes(raw: unknown): SplitPane[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.flatMap((p: unknown) => {
+    if (!p || typeof p !== "object") return [];
+    const r = p as Record<string, unknown>;
+    if (typeof r.id !== "string") return [];
+    const projectId = typeof r.projectId === "string" ? r.projectId : null;
+    return [{ id: r.id, projectId, active: projectId && typeof r.active === "string" ? r.active : null }];
+  });
+}
+
+/**
  * A task with its own history: a subagent (its events carry the Agent call as parentToolUseId) or a
  * background command (its output is read from the CLI by task id).
  */
@@ -109,11 +156,26 @@ interface UiState {
   /** projects whose sessions the sidebar tree hides */
   collapsedGroups: string[];
   toggleGroup: (projectId: string, collapsed?: boolean) => void;
+  /** further chats of the split view, in their order on screen after the main chat */
+  splitPanes: SplitPane[];
+  /** adds a chat to the split view; without a project it starts with a session picker. A session already shown is not added twice. */
+  addSplitPane: (projectId?: string | null, active?: string | null) => void;
+  /** shows another session (or the picker, without a project) in a split pane */
+  setSplitPane: (id: string, projectId: string | null, active: string | null) => void;
+  closeSplitPane: (id: string) => void;
+  closeSplitPanes: () => void;
+  /** swaps a split pane with the main chat, so header, side panel and tabs belong to its session */
+  promoteSplitPane: (id: string) => void;
+  /** deleted sessions leave every chat that shows them */
+  forgetSessions: (ids: Iterable<string>) => void;
+  /** further chats the split view on screen has room for right now; 0 while it is not shown */
+  splitRoom: number;
+  setSplitRoom: (room: number) => void;
 }
 
 const PREFS_KEY = "forge.ui";
 
-type Prefs = Pick<UiState, "activeProjectId" | "toolbarOpen" | "collapsedGroups">;
+type Prefs = Pick<UiState, "activeProjectId" | "toolbarOpen" | "collapsedGroups" | "splitPanes">;
 
 /** Reopens the last project on start. Side and bottom panel always start closed and open only on request. */
 function loadPrefs(): Partial<UiState> {
@@ -123,6 +185,7 @@ function loadPrefs(): Partial<UiState> {
       ...(typeof p.toolbarOpen === "boolean" ? { toolbarOpen: p.toolbarOpen } : {}),
       ...(Array.isArray(p.collapsedGroups) ? { collapsedGroups: p.collapsedGroups.filter((g): g is string => typeof g === "string") } : {}),
       ...(typeof p.activeProjectId === "string" ? { activeProjectId: p.activeProjectId, view: "workspace" as const } : {}),
+      splitPanes: parsePanes(p.splitPanes),
     };
   } catch {
     return {};
@@ -131,7 +194,7 @@ function loadPrefs(): Partial<UiState> {
 
 function savePrefs(s: Prefs) {
   try {
-    localStorage.setItem(PREFS_KEY, JSON.stringify({ activeProjectId: s.activeProjectId, toolbarOpen: s.toolbarOpen, collapsedGroups: s.collapsedGroups }));
+    localStorage.setItem(PREFS_KEY, JSON.stringify({ activeProjectId: s.activeProjectId, toolbarOpen: s.toolbarOpen, collapsedGroups: s.collapsedGroups, splitPanes: s.splitPanes }));
   } catch {
     /* preferences are optional */
   }
@@ -156,6 +219,8 @@ export const useUi = create<UiState>((set, get) => ({
   devToolsSection: "server",
   projectSettingsSection: "general",
   collapsedGroups: [],
+  splitPanes: [],
+  splitRoom: 0,
   ...loadPrefs(),
   toggleGroup: (projectId, collapsed) => {
     set((s) => {
@@ -202,19 +267,68 @@ export const useUi = create<UiState>((set, get) => ({
   setSkillsTab: (skillsTab) => set({ skillsTab }),
   openExtensions: (extensionsTab, skillsTab) => set((s) => ({ view: "mcp", extensionsTab, skillsTab: skillsTab ?? s.skillsTab })),
   openProject: (projectId, sessionId) => {
-    set((s) => ({
-      view: "workspace",
-      activeProjectId: projectId,
-      workspaceTab: "chat",
-      activeSession: sessionId !== undefined ? { ...s.activeSession, [projectId]: sessionId } : s.activeSession,
-    }));
+    set((s) => {
+      const activeSession = sessionId !== undefined ? { ...s.activeSession, [projectId]: sessionId } : s.activeSession;
+      return { view: "workspace", activeProjectId: projectId, workspaceTab: "chat", activeSession, splitPanes: swapIntoMain(s, { activeProjectId: projectId, activeSession }) };
+    });
     savePrefs(get());
   },
   closeProject: () => {
     set({ view: "home", activeProjectId: null });
     savePrefs(get());
   },
-  setActiveSession: (projectId, sessionId) => set((s) => ({ activeSession: { ...s.activeSession, [projectId]: sessionId } })),
+  setActiveSession: (projectId, sessionId) => {
+    const before = get().splitPanes;
+    set((s) => {
+      const activeSession = { ...s.activeSession, [projectId]: sessionId };
+      return { activeSession, splitPanes: swapIntoMain(s, { activeProjectId: s.activeProjectId, activeSession }) };
+    });
+    if (get().splitPanes !== before) savePrefs(get());
+  },
+  addSplitPane: (projectId = null, active = null) => {
+    const s = get();
+    if (projectId && isShown(s, projectId, active)) return;
+    set({ splitPanes: [...s.splitPanes, { id: crypto.randomUUID(), projectId, active: projectId ? active : null }] });
+    savePrefs(get());
+  },
+  setSplitPane: (id, projectId, active) => {
+    const s = get();
+    if (projectId && isShown(s, projectId, active, id)) return;
+    set({ splitPanes: s.splitPanes.map((p) => (p.id === id ? { ...p, projectId, active: projectId ? active : null } : p)) });
+    savePrefs(get());
+  },
+  closeSplitPane: (id) => {
+    set((s) => ({ splitPanes: s.splitPanes.filter((p) => p.id !== id) }));
+    savePrefs(get());
+  },
+  closeSplitPanes: () => {
+    set({ splitPanes: [] });
+    savePrefs(get());
+  },
+  promoteSplitPane: (id) => {
+    set((s) => {
+      const pane = s.splitPanes.find((p) => p.id === id);
+      if (!pane?.projectId) return {};
+      const before = mainChat(s);
+      return {
+        view: "workspace",
+        activeProjectId: pane.projectId,
+        workspaceTab: "chat",
+        activeSession: { ...s.activeSession, [pane.projectId]: pane.active },
+        splitPanes: before ? s.splitPanes.map((p) => (p.id === id ? { ...p, ...before } : p)) : s.splitPanes.filter((p) => p.id !== id),
+      };
+    });
+    savePrefs(get());
+  },
+  setSplitRoom: (splitRoom) => set({ splitRoom }),
+  forgetSessions: (ids) => {
+    const gone = new Set(ids);
+    set((s) => ({
+      activeSession: Object.fromEntries(Object.entries(s.activeSession).map(([p, a]) => [p, a && gone.has(a) ? null : a])),
+      splitPanes: s.splitPanes.map((p) => (p.active && gone.has(p.active) ? { ...p, active: null } : p)),
+    }));
+    savePrefs(get());
+  },
   // Another area than the chat shows the tab row, so it is clear where one is and how to get back.
   setWorkspaceTab: (workspaceTab) => {
     set((s) => ({ workspaceTab, toolbarOpen: s.toolbarOpen || workspaceTab !== "chat" }));

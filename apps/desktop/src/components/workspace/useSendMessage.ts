@@ -3,12 +3,12 @@ import { useQueryClient } from "@tanstack/react-query";
 import type { EffortLevel, PermissionMode, Project, Session } from "@forge/protocol";
 import { call, keys, queryClient, useSettings } from "@/lib/queries";
 import { errorMessage } from "@/lib/rpc";
-import { useUi } from "@/stores/ui";
 import { toast } from "@/stores/toast";
 import { NO_OPTIONS, useDrafts, type PendingFile } from "@/stores/drafts";
 import { usePendingMessages } from "@/stores/pending-messages";
 import { useSessionEvents } from "@/stores/session-events";
 import { isClearCommand } from "./SlashCommandMenu";
+import { focusComposer, MAIN_SLOT, type ChatSlot } from "./chat-slot";
 
 export const PROFILE_MODE: Record<Project["profile"], PermissionMode> = { safe: "default", balanced: "acceptEdits", autonomous: "bypassPermissions" };
 
@@ -65,19 +65,22 @@ export function useSendMessage({
   draftKey,
   resumeClaudeSessionId,
   options,
+  slot = MAIN_SLOT,
 }: {
   project: Project;
   session: Session | null;
   draftKey: string;
   resumeClaudeSessionId?: string;
   options: { model: string | null; effort: EffortLevel | null; planOnly: boolean };
+  /** the chat the composer sits in; a started session opens there */
+  slot?: ChatSlot;
 }) {
   const qc = useQueryClient();
   const [sending, setSending] = useState(false);
 
   const send = async (text: string, files: PendingFile[]): Promise<boolean> => {
     if (isClearCommand(text)) {
-      clearConversation(project.id, session, draftKey);
+      clearConversation(project.id, session, draftKey, slot);
       return true;
     }
     const prompt = text.trim() || (files.length ? "Siehe Anhang." : "");
@@ -103,7 +106,7 @@ export function useSendMessage({
         // The next new session starts from the project defaults again.
         useDrafts.getState().setOptions(draftKey, { planOnly: undefined, model: undefined, effort: undefined });
         usePendingMessages.getState().move(draftKey, s.id);
-        useUi.getState().setActiveSession(project.id, s.id);
+        slot.select(project.id, s.id);
       } else {
         const s = await call("sessions.send", { sessionId: session.id, text: prompt, attachments });
         qc.setQueryData(keys.session(s.id), s);
@@ -131,11 +134,11 @@ export function useSendMessage({
  * /clear like in the terminal: the chat starts over as a new, empty session. The previous session stays in
  * the list and can be continued; an idle Claude process is ended, a working one keeps running.
  */
-export function clearConversation(projectId: string, session: Session | null, draftKey: string) {
+export function clearConversation(projectId: string, session: Session | null, draftKey: string, slot: ChatSlot = MAIN_SLOT) {
   useDrafts.getState().setText(draftKey, "");
-  useUi.getState().setActiveSession(projectId, null);
+  slot.select(projectId, null);
   // The new chat mounts a fresh composer, so the focus of the old one is gone.
-  requestAnimationFrame(() => document.getElementById("composer-input")?.focus());
+  requestAnimationFrame(() => focusComposer(slot));
   if (session?.live && (session.status === "idle" || session.status === "error")) {
     void call("sessions.close", { sessionId: session.id }).catch((e: unknown) => toast.error("Claude-Prozess nicht beendet", errorMessage(e)));
   }

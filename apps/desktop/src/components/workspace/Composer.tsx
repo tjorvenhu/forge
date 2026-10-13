@@ -18,6 +18,7 @@ import { useAttachments } from "./useAttachments";
 import { DictationButton } from "./DictationButton";
 import { useDictation } from "./useDictation";
 import { compactSession, stopSession, useComposerOptions, useSendMessage } from "./useSendMessage";
+import { composerInputId, useChatSlot } from "./chat-slot";
 
 /** Words of the trade the speech service should expect; the project adds its name and stack. */
 const DICTATION_TERMS = ["FORGE", "Claude", "Claude Code", "Commit", "Branch", "Pull Request", "Merge", "Deploy", "Worktree", "TypeScript", "JavaScript", "React", "Next.js", "Node", "pnpm", "API", "Endpoint", "Komponente", "Refactoring", "Bug", "Diff", "Session"];
@@ -77,13 +78,14 @@ export const Composer = memo(function Composer({
   prefill?: string | null;
   onPrefillConsumed?: () => void;
 }) {
-  const key = draftKey(project.id, session?.id ?? null, resumeClaudeSessionId);
+  const slot = useChatSlot();
+  const key = draftKey(project.id, session?.id ?? null, resumeClaudeSessionId, slot.pane);
   const text = useDrafts((s) => s.drafts[key]?.text ?? "");
   const setText = useCallback((t: string) => useDrafts.getState().setText(key, t), [key]);
   const attachments = useAttachments(key);
   const { files } = attachments;
   const options = useComposerOptions(project, session, key);
-  const { send, sending } = useSendMessage({ project, session, draftKey: key, resumeClaudeSessionId, options });
+  const { send, sending } = useSendMessage({ project, session, draftKey: key, resumeClaudeSessionId, options, slot });
   const [cmdIndex, setCmdIndex] = useState(0);
   const ref = useRef<HTMLTextAreaElement>(null);
   const settings = useSettings();
@@ -351,7 +353,8 @@ export const Composer = memo(function Composer({
           </div>
         )}
         <textarea
-          id="composer-input"
+          id={composerInputId(slot)}
+          data-composer
           ref={ref}
           value={text}
           onChange={(e) => setText(e.target.value)}

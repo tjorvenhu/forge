@@ -48,6 +48,14 @@ export function openSessionId(ui: { view: string; activeProjectId: string | null
   return splitActive(ui.activeSession[ui.activeProjectId]).sessionId;
 }
 
+/** Every FORGE session on screen in the workspace chat: the open one and those of the split view's further chats. */
+export function shownSessionIds(ui: Parameters<typeof openSessionId>[0] & { workspaceTab: string; splitPanes: readonly { active: string | null }[] }): string[] {
+  if (ui.view !== "workspace") return [];
+  const open = openSessionId(ui);
+  const panes = ui.workspaceTab === "chat" ? ui.splitPanes.flatMap((p) => (splitActive(p.active).sessionId ? [p.active!] : [])) : [];
+  return open ? [open, ...panes] : panes;
+}
+
 /** The open session as a tab, also without a running process. Needs its project for the group label. */
 export function openSessionTab(session: Session | null | undefined, projects: { id: string; name: string }[] | undefined): TabSession | null {
   const project = session && projects?.find((p) => p.id === session.projectId);

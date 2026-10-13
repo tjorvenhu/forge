@@ -15,7 +15,8 @@ import { Badge, EmptyState, ErrorBanner } from "@/components/ui/misc";
 import { TabBar, type TabDef } from "@/components/ui/tabs";
 import { ProjectIcon } from "@/components/projects/ProjectIcon";
 import { PROFILE_IDS, PROFILE_INFO, ProfileBadge } from "@/components/projects/ProfileBadge";
-import { ChatPanel, ChatPanelSkeleton } from "@/components/workspace/ChatPanel";
+import { ChatPanelSkeleton } from "@/components/workspace/ChatPanel";
+import { SplitChat } from "@/components/workspace/SplitView";
 import { GitPanel } from "@/components/git/GitPanel";
 import { GitCenter } from "@/components/git/GitCenter";
 import { FilesTab } from "@/components/workspace/FilesTab";
@@ -115,7 +116,7 @@ function Workspace({ projectId }: { projectId: string }) {
           </Collapse>
           <div key={workspaceTab} className="min-h-0 flex-1 animate-view-in">
             {workspaceTab === "chat" &&
-              (project.exists ? <ChatPanel project={project} workingInPanel={showRight} /> : <EmptyState title="Chat nicht verfügbar">Der Projektordner fehlt.</EmptyState>)}
+              (project.exists ? <SplitChat project={project} workingInPanel={showRight} /> : <EmptyState title="Chat nicht verfügbar">Der Projektordner fehlt.</EmptyState>)}
             {workspaceTab === "agents" && <AgentsTab project={project} />}
             {workspaceTab === "git" && <GitCenter project={project} />}
             {workspaceTab === "files" && <FilesTab project={project} />}

@@ -190,6 +190,7 @@ export function evictSessionBuffers(qc: QueryClient, max = MAX_IDLE_BUFFERS) {
   const keep = new Set<string>();
   for (const s of qc.getQueryData<ResultOf<"sessions.listLive">>(keys.liveSessions) ?? []) keep.add(s.id);
   for (const id of Object.values(useUi.getState().activeSession)) if (id) keep.add(id);
+  for (const p of useUi.getState().splitPanes) if (p.active) keep.add(p.active);
   useSessionEvents.getState().evict(keep, max);
 }
 

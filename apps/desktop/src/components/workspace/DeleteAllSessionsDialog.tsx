@@ -36,10 +36,7 @@ export function DeleteAllSessionsDialog({ open, liveCount, onClose }: { open: bo
         }
         const deleted = new Set(result.deleted);
         closeChatWindows(deleted);
-        const ui = useUi.getState();
-        for (const [projectId, sessionId] of Object.entries(ui.activeSession)) {
-          if (sessionId && deleted.has(sessionId)) ui.setActiveSession(projectId, null);
-        }
+        useUi.getState().forgetSessions(deleted);
         for (const id of deleted) {
           useDrafts.getState().clear(id);
           useSessionEvents.getState().drop(id);

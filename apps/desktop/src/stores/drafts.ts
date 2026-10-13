@@ -34,9 +34,12 @@ interface DraftState {
 
 const EMPTY: Draft = { text: "", files: [], options: {} };
 
-/** Draft key of the composer: the session id, or the project plus the terminal session to adopt. */
-export function draftKey(projectId: string, sessionId: string | null, resumeClaudeSessionId?: string): string {
-  return sessionId ?? `new:${projectId}:${resumeClaudeSessionId ?? ""}`;
+/**
+ * Draft key of the composer: the session id, or the project plus the terminal session to adopt. A new
+ * session in a split pane (`pane`) has its own draft, apart from one in the main chat of the same project.
+ */
+export function draftKey(projectId: string, sessionId: string | null, resumeClaudeSessionId?: string, pane?: string | null): string {
+  return sessionId ?? `new:${projectId}:${resumeClaudeSessionId ?? ""}${pane ? `:${pane}` : ""}`;
 }
 
 /** Draft key of whatever the chat of a project currently shows (activeSession value of the UI store). */

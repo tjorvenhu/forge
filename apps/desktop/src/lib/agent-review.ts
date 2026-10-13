@@ -4,7 +4,7 @@ import { useAgentReview } from "@/stores/agent-review";
 import { toast } from "@/stores/toast";
 import { useUi } from "@/stores/ui";
 import { keys } from "./queries";
-import { openSessionId } from "./session-tabs";
+import { shownSessionIds } from "./session-tabs";
 import { isInterrupted } from "./working";
 
 /**
@@ -23,7 +23,7 @@ export function agentTurnEnded(qc: QueryClient, ev: SessionEvent) {
   const project = projects?.find((p) => p.id === session.projectId);
   if (!project?.parentId) return;
   if (projects?.find((p) => p.id === project.parentId)?.tags.includes("auto-merge")) return;
-  if (openSessionId(useUi.getState()) === session.id) return;
+  if (shownSessionIds(useUi.getState()).includes(session.id)) return;
   useAgentReview.getState().request(project.id);
 }
 

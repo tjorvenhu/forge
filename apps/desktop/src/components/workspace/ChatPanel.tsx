@@ -7,7 +7,7 @@ import { isWorking } from "@/lib/working";
 import { cn, relativeTime } from "@/lib/utils";
 import { draftKey } from "@/stores/drafts";
 import { toast } from "@/stores/toast";
-import { splitActive, useUi } from "@/stores/ui";
+import { splitActive, useUi, type SplitPane } from "@/stores/ui";
 import { Button } from "@/components/ui/button";
 import { EmptyState, ErrorBanner } from "@/components/ui/misc";
 import { ChatColumnSkeleton, Skeleton } from "@/components/ui/skeleton";
@@ -20,6 +20,7 @@ import { appendStreaming, IncrementalItems, itemIndexForSeq, lastUserPrompt, reu
 import { Composer } from "./Composer";
 import { SessionBar } from "./SessionBar";
 import { ChatSurface } from "./chat-surface";
+import { ChatSlotContext, MAIN_SLOT, useChatSlot, type ChatSlot } from "./chat-slot";
 import { ItemView } from "./ChatItemView";
 import { BackgroundIndicator, WorkingIndicator } from "./WorkingIndicator";
 import { TaskThreadDialog } from "./TaskThread";
@@ -54,10 +55,17 @@ function rememberView(sessionId: string, view: { offset: number; pinned: boolean
 
 const toastNotFound = () => toast.error("Eintrag nicht gefunden", "Der Eintrag ist im Verlauf dieser Session nicht vorhanden.");
 
-/** `detached`: rendered as the only content of a chat window. */
-export function ChatPanel({ project, workingInPanel = false, detached = false }: { project: Project; workingInPanel?: boolean; detached?: boolean }) {
-  const active = useUi((s) => s.activeSession[project.id] ?? null);
+/**
+ * `detached`: rendered as the only content of a chat window. `pane`: a further chat of the split view,
+ * with its own session; without it the panel shows the session the workspace has open for the project.
+ */
+export function ChatPanel({ project, workingInPanel = false, detached = false, pane }: { project: Project; workingInPanel?: boolean; detached?: boolean; pane?: SplitPane }) {
+  const mainActive = useUi((s) => s.activeSession[project.id] ?? null);
+  const active = pane ? pane.active : mainActive;
   const setActive = useUi((s) => s.setActiveSession);
+  const setSplitPane = useUi((s) => s.setSplitPane);
+  const paneId = pane?.id ?? null;
+  const slot = useMemo<ChatSlot>(() => (paneId ? { pane: paneId, select: (projectId, id) => setSplitPane(paneId, projectId, id) } : MAIN_SLOT), [paneId, setSplitPane]);
   const sessions = useSessions(project.id);
   const { sessionId, externalId } = splitActive(active);
   const external = externalId ? (sessions.data?.external.find((e) => e.claudeSessionId === externalId) ?? null) : null;
@@ -66,22 +74,25 @@ export function ChatPanel({ project, workingInPanel = false, detached = false }:
   // Shown in a chat window: one live composer per session, so this window only points there.
   const elsewhere = useInChatWindow(sessionId) && !detached;
   // Until the auto-pick below has run, "Neue Session" would flash before the last session opens.
-  const settled = useUi((s) => project.id in s.activeSession) || sessions.isError;
+  const settled = useUi((s) => project.id in s.activeSession) || sessions.isError || !!pane;
+  const shownElsewhere = useShownElsewhere(project.id, active);
 
-  // First open of a project: pick the most recent session instead of an empty chat.
+  // First open of a project: pick the most recent session instead of an empty chat. One that a split pane shows already stays there.
   const didAutoSelect = useRef<string | null>(null);
   useEffect(() => {
-    if (didAutoSelect.current === project.id || !sessions.data) return;
+    if (pane || didAutoSelect.current === project.id || !sessions.data) return;
     didAutoSelect.current = project.id;
-    const state = useUi.getState().activeSession;
+    const state = useUi.getState();
+    const inPanes = new Set(state.splitPanes.map((p) => p.active));
     // Without any session the chat starts a new one, so the sidebar lists it as such.
-    if (!(project.id in state)) setActive(project.id, sessions.data.sessions[0]?.id ?? null);
-  }, [project.id, sessions.data, setActive]);
+    if (!(project.id in state.activeSession)) setActive(project.id, sessions.data.sessions.find((s) => !inPanes.has(s.id))?.id ?? null);
+  }, [pane, project.id, sessions.data, setActive]);
 
   if (!settled) return <ChatPanelSkeleton detached={detached} />;
 
   return (
-    <div ref={setSurface} className="chat-surface relative flex h-full min-h-0 flex-col">
+    <div ref={setSurface} data-split-pane={paneId ?? undefined} className="chat-surface relative flex h-full min-h-0 flex-col">
+      <ChatSlotContext.Provider value={slot}>
       <ChatSurface.Provider value={surface}>
       <SessionBar
         project={project}
@@ -89,9 +100,11 @@ export function ChatPanel({ project, workingInPanel = false, detached = false }:
         external={external}
         sessions={sessions.data?.sessions ?? []}
         externals={sessions.data?.external ?? []}
-        onSelect={(id) => setActive(project.id, id)}
+        onSelect={(id) => slot.select(project.id, id)}
         detached={detached}
         inChatWindow={elsewhere}
+        pane={pane}
+        shownElsewhere={shownElsewhere}
       />
       {sessionId && elsewhere ? (
         <InChatWindowPane project={project} sessionId={sessionId} title={session.data?.title ?? null} />
@@ -101,6 +114,7 @@ export function ChatPanel({ project, workingInPanel = false, detached = false }:
         <NewSessionPane project={project} external={external} />
       )}
       </ChatSurface.Provider>
+      </ChatSlotContext.Provider>
     </div>
   );
 }
@@ -128,9 +142,21 @@ export function ChatPanelSkeleton({ detached = false }: { detached?: boolean }) 
   );
 }
 
+/** Sessions of a project that another chat of the split view shows; their entries in the session picker are disabled. */
+function useShownElsewhere(projectId: string, active: string | null): ReadonlySet<string> {
+  const key = useUi((s) => {
+    const shown = s.splitPanes.filter((p) => p.projectId === projectId && p.active).map((p) => p.active!);
+    if (s.activeProjectId === projectId && s.activeSession[projectId]) shown.push(s.activeSession[projectId]!);
+    return shown.filter((id) => id !== active).sort().join("\n");
+  });
+  return useMemo(() => new Set(key ? key.split("\n") : []), [key]);
+}
+
 function NewSessionPane({ project, external }: { project: Project; external: ExternalSession | null }) {
+  const slot = useChatSlot();
+  const key = draftKey(project.id, null, external?.claudeSessionId, slot.pane);
   // The first message of a session that is being started shows right away.
-  const pending = usePending(draftKey(project.id, null, external?.claudeSessionId));
+  const pending = usePending(key);
   return (
     <>
       <div className="min-h-0 flex-1 animate-view-in overflow-y-auto">
@@ -149,7 +175,7 @@ function NewSessionPane({ project, external }: { project: Project; external: Ext
         )}
       </div>
       {/* Keyed per project and terminal session: local composer state must not carry over to another project. */}
-      <Composer key={draftKey(project.id, null, external?.claudeSessionId)} project={project} session={null} resumeClaudeSessionId={external?.claudeSessionId} />
+      <Composer key={key} project={project} session={null} resumeClaudeSessionId={external?.claudeSessionId} />
     </>
   );
 }

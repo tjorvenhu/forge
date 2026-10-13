@@ -1,6 +1,6 @@
 import { useEffect, useRef, type KeyboardEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { AppWindow, Bot, ChevronDown, Hourglass, MessageSquarePlus, Plus, SquareArrowOutUpRight, X } from "lucide-react";
+import { AppWindow, Bot, ChevronDown, Columns2, Hourglass, MessageSquarePlus, Plus, SquareArrowOutUpRight, X } from "lucide-react";
 import { openChatWindow, useChatWindows } from "@/lib/chat-windows";
 import { call, useLiveSessions, useProjects, useSession } from "@/lib/queries";
 import { errorMessage } from "@/lib/rpc";
@@ -87,6 +87,10 @@ export function OpenSessions() {
   const newSessionProject = useUi((s) => (s.view === "workspace" && s.activeProjectId && s.activeSession[s.activeProjectId] === null ? s.activeProjectId : null));
   const openSession = useSession(openId);
   const inChatWindows = useChatWindows((s) => s.sessions);
+  // Further chats of the split view: their sessions are on screen too, and there may be room for one more.
+  const inPanes = useUi((s) => s.splitPanes.flatMap((p) => (p.active ? [p.active] : [])).join(" "));
+  const splitRoom = useUi((s) => s.splitRoom);
+  const addSplitPane = useUi((s) => s.addSplitPane);
   const listRef = useRef<HTMLDivElement>(null);
 
   const activeGroup = activeProjectId ? groupOf(activeProjectId, projects.data) : null;
@@ -193,6 +197,8 @@ export function OpenSessions() {
                   const attention = s.status === "waiting_approval";
                   const closable = s.live && !isBusy(s.status) && s.background.length === 0;
                   const inWindow = inChatWindows.includes(s.id);
+                  const inPane = inPanes.split(" ").includes(s.id);
+                  const canSplit = splitRoom > 0 && !active && !inPane && !inWindow;
                   const title = s.title ?? "Ohne Titel";
                   const agent = agentOf(s.projectId, g.projectId);
                   const where = agent ? `Agent ${agentLabel(agent)} in ${g.projectName}` : s.projectName;
@@ -211,18 +217,21 @@ export function OpenSessions() {
                           aria-selected={active}
                           aria-label={`${title}, ${where}, ${statusText(s)}`}
                           tabIndex={i === focusIndex ? 0 : -1}
-                          onClick={() => {
-                            if (!consumeClick()) openProject(s.projectId, s.id);
+                          onClick={(e) => {
+                            if (consumeClick()) return;
+                            if (e.shiftKey && canSplit) addSplitPane(s.projectId, s.id);
+                            else openProject(s.projectId, s.id);
                           }}
                           onKeyDown={(e) => onTabKey(e, i)}
                           {...dragHandlers(s.id, title)}
-                          title={`${title}${agent ? `\nParalleler Agent auf Branch ${agent.git?.branch ?? agentLabel(agent)}` : ""}\n${statusText(s)}${s.live ? "" : ". Kein laufender Claude-Prozess"}${inWindow ? "\nIn eigenem Fenster geöffnet" : ""}\nHerausziehen öffnet ein eigenes Fenster.`}
+                          title={`${title}${agent ? `\nParalleler Agent auf Branch ${agent.git?.branch ?? agentLabel(agent)}` : ""}\n${statusText(s)}${s.live ? "" : ". Kein laufender Claude-Prozess"}${inWindow ? "\nIn eigenem Fenster geöffnet" : ""}${inPane ? "\nDaneben geöffnet. Klicken macht sie zum Hauptchat." : ""}\nHerausziehen öffnet ein eigenes Fenster.${canSplit ? "\nUmschalt+Klick öffnet sie daneben." : ""}`}
                           className="flex h-full min-w-0 flex-1 cursor-default items-center gap-2 rounded-lg pl-2 pr-1 text-left focus-visible:outline-offset-[-2px]"
                         >
                           <span aria-hidden className={cn("h-1.5 w-1.5 shrink-0 rounded-full", dotClass(s))} />
                           {agent && <Bot aria-hidden className="h-3.5 w-3.5 shrink-0 text-accent" />}
                           <span className={cn("truncate", !s.live && "italic")}>{title}</span>
                           {inWindow && <AppWindow aria-hidden className="h-3 w-3 shrink-0 text-subtle" />}
+                          {inPane && <Columns2 aria-hidden className="h-3 w-3 shrink-0 text-subtle" />}
                           {s.background.length > 0 && (
                             <span aria-hidden className="flex shrink-0 items-center gap-0.5 text-caption tabular-nums text-subtle">
                               <Hourglass className="h-3 w-3" />
@@ -230,6 +239,16 @@ export function OpenSessions() {
                             </span>
                           )}
                         </button>
+                        {canSplit && (
+                          <button
+                            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-subtle opacity-0 hover:bg-surface-3 hover:text-fg focus-visible:opacity-100 group-hover:opacity-100"
+                            aria-label={`${title} daneben öffnen`}
+                            title="Daneben öffnen"
+                            onClick={() => addSplitPane(s.projectId, s.id)}
+                          >
+                            <Columns2 className="h-3 w-3" />
+                          </button>
+                        )}
                         {!inWindow && (
                           <button
                             className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-subtle opacity-0 hover:bg-surface-3 hover:text-fg focus-visible:opacity-100 group-hover:opacity-100"

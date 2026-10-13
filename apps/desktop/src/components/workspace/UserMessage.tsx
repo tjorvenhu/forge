@@ -4,7 +4,6 @@ import type { RewindResult } from "@forge/protocol";
 import { useQueryClient } from "@tanstack/react-query";
 import { call, keys, useGitHubAccount, useSession } from "@/lib/queries";
 import { draftKey, useDrafts } from "@/stores/drafts";
-import { useUi } from "@/stores/ui";
 import { errorMessage } from "@/lib/rpc";
 import { clockTime, cn } from "@/lib/utils";
 import { toast } from "@/stores/toast";
@@ -13,6 +12,7 @@ import { ToggleRow, Tooltip } from "@/components/ui/misc";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import type { ChatItem } from "./chat-items";
 import { ChatRow, HoverTime } from "./ChatRow";
+import { useChatSlot } from "./chat-slot";
 
 /** A prompt of the user, with rewinding the files to the state before it and branching the conversation there. */
 export function UserMessage({ item, sessionId }: { item: Extract<ChatItem, { kind: "user" }>; sessionId: string }) {
@@ -20,6 +20,7 @@ export function UserMessage({ item, sessionId }: { item: Extract<ChatItem, { kin
   const [forkOpen, setForkOpen] = useState(false);
   const [forkFiles, setForkFiles] = useState(false);
   const projectId = useSession(sessionId).data?.projectId ?? null;
+  const slot = useChatSlot();
   const qc = useQueryClient();
   const fork = async () => {
     if (!projectId) return;
@@ -29,8 +30,8 @@ export function UserMessage({ item, sessionId }: { item: Extract<ChatItem, { kin
       if (r.session) qc.setQueryData(keys.session(r.session.id), r.session);
       void qc.invalidateQueries({ queryKey: keys.sessions(projectId) });
       // The prompt waits in the composer of the branch, to be changed and sent again.
-      useDrafts.getState().setText(draftKey(projectId, target), r.prompt ?? "");
-      useUi.getState().setActiveSession(projectId, target);
+      useDrafts.getState().setText(draftKey(projectId, target, undefined, slot.pane), r.prompt ?? "");
+      slot.select(projectId, target);
       toast.success(
         r.session ? "Zweig erstellt" : "Neu begonnen",
         [r.session ? "Der Verlauf bis vor dieser Nachricht ist übernommen, das Original bleibt." : "Vor der ersten Nachricht gibt es keinen Verlauf: neue Session.", r.filesChanged ? `${r.filesChanged.length} Datei(en) zurückgesetzt.` : ""]

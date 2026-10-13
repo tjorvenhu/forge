@@ -32,8 +32,7 @@ export function DeleteSessionDialog({ session, onClose }: { session: SessionRef 
         try {
           await call("sessions.delete", { sessionId: s.id, deleteTranscript: withTranscript });
           closeChatWindows([s.id]);
-          const ui = useUi.getState();
-          if (ui.activeSession[s.projectId] === s.id) ui.setActiveSession(s.projectId, null);
+          useUi.getState().forgetSessions([s.id]);
           useDrafts.getState().clear(s.id);
           useSessionEvents.getState().drop(s.id);
           qc.removeQueries({ queryKey: keys.session(s.id) });
