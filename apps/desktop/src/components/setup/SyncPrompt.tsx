@@ -37,12 +37,14 @@ function Prompt({ s, onLater }: { s: Settings; onLater: () => void }) {
   const answer = async (syncEnabled: boolean) => {
     setBusy(true);
     try {
-      if (syncEnabled) await enableSync(passphrase);
-      else qc.setQueryData(keys.settings, await call("settings.update", { syncEnabled: false, syncAsked: true }));
-      if (syncEnabled) {
-        toast.success("Synchronisierung ist an", "Ein- und ausschalten unter Einstellungen, GitHub.");
-        openSettings("github");
+      if (!syncEnabled) {
+        qc.setQueryData(keys.settings, await call("settings.update", { syncEnabled: false, syncAsked: true }));
+        return;
       }
+      const firstSync = await enableSync(passphrase);
+      if (firstSync) toast.info("Synchronisierung ist an", `Der erste Abgleich ist fehlgeschlagen: ${firstSync} FORGE versucht es gleich wieder.`);
+      else toast.success("Synchronisierung ist an", "Ein- und ausschalten unter Einstellungen, GitHub.");
+      openSettings("github");
     } catch (e) {
       toast.error("Nicht gespeichert", errorMessage(e));
     } finally {

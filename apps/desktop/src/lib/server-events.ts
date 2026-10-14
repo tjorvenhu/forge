@@ -177,8 +177,13 @@ export function routeServerEvent(qc: QueryClient, git: GitRefresher, e: ServerEv
     case "sync.updated": {
       const prev = qc.getQueryData<ResultOf<"sync.status">>(keys.sync);
       qc.setQueryData(keys.sync, e.payload);
-      // A finished sync may have written a new state to GitHub.
-      if (prev?.lastSyncAt !== e.payload.lastSyncAt) void qc.invalidateQueries({ queryKey: keys.syncVersions });
+      if (prev?.lastSyncAt !== e.payload.lastSyncAt) {
+        // A finished sync may have written a new state to GitHub, and taken over data from another
+        // computer. Forms that keep a cached copy (phone, dev tools) would otherwise save the old one back.
+        for (const queryKey of [keys.syncVersions, keys.phoneConfig, keys.gitIdentity, ["devTools"], ["memory"], ["docs"], ["hooks"], ["mcp"]]) {
+          void qc.invalidateQueries({ queryKey });
+        }
+      }
       break;
     }
     case "agent.autoMerge":

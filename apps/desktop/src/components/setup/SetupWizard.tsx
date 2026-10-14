@@ -49,11 +49,21 @@ function Wizard({ s }: { s: Settings }) {
   const needsPassphrase = useNeedsPassphrase();
   const enableSync = useEnableSync();
   const [identity, setIdentity] = useState<{ name: string; email: string } | null>(null);
+  /** what the form was filled with; only a change against it is saved */
+  const [filledFrom, setFilledFrom] = useState<{ name: string; email: string } | null>(null);
   const git = useGitIdentity(step >= 3);
   useAutoOpenGitHub();
   useEffect(() => {
-    if (git.data && !identity) setIdentity({ name: git.data.name ?? "", email: git.data.email ?? "" });
-  }, [git.data, identity]);
+    if (identity) return;
+    // Not from a cache that a sync may have outdated: only the fresh answer fills the form.
+    if (git.data && !git.isFetching) {
+      const v = { name: git.data.name ?? "", email: git.data.email ?? "" };
+      setIdentity(v);
+      setFilledFrom(v);
+    } else if (git.isError) setIdentity({ name: "", email: "" });
+  }, [git.data, git.isFetching, git.isError, identity]);
+  // The probe decides whether syncing is preselected; going on before it answered would decide it as "no".
+  const probing = step === 2 && !!account.data && probe.isLoading && chosenSync === null;
 
   const save = async (patch: Partial<Settings>) => {
     qc.setQueryData(keys.settings, await call("settings.update", patch));
@@ -61,7 +71,8 @@ function Wizard({ s }: { s: Settings }) {
 
   const finish = async (then?: () => void) => {
     try {
-      await save({ setupDone: true });
+      // The sync was offered here; the question on a later start would ask it again right away.
+      await save({ setupDone: true, syncAsked: true });
       setSetupWizard(false);
       then?.();
     } catch (e) {
@@ -76,13 +87,15 @@ function Wizard({ s }: { s: Settings }) {
       if (step === 2 && account.data) {
         if (sync) {
           if (needsPassphrase && !passphrase) throw new Error("Gib zuerst das Sync-Passwort ein.");
-          await enableSync(passphrase);
+          const firstSync = await enableSync(passphrase);
+          // Switched on all the same; the next sync tries again, the assistant goes on.
+          if (firstSync) toast.info("Synchronisierung ist an", `Der erste Abgleich ist fehlgeschlagen: ${firstSync} FORGE versucht es gleich wieder.`);
         } else await save({ syncEnabled: false, syncAsked: true });
       }
-      if (step === 3 && identity && git.data) {
+      if (step === 3 && identity && filledFrom) {
         const name = identity.name.trim();
         const email = identity.email.trim();
-        if (name && email && (name !== git.data.name || email !== git.data.email)) qc.setQueryData(keys.gitIdentity, await call("git.setIdentity", { name, email }));
+        if (name && email && (name !== filledFrom.name || email !== filledFrom.email)) qc.setQueryData(keys.gitIdentity, await call("git.setIdentity", { name, email }));
       }
       setStep((x) => Math.min(x + 1, STEPS.length - 1));
     } catch (e) {
@@ -124,7 +137,7 @@ function Wizard({ s }: { s: Settings }) {
               </Button>
             </>
           ) : (
-            <Button variant="primary" loading={busy} onClick={() => void next()}>
+            <Button variant="primary" loading={busy} disabled={probing} onClick={() => void next()}>
               {step === 0 ? "Los" : "Weiter"} <ArrowRight className="h-3.5 w-3.5" />
             </Button>
           )}
@@ -157,7 +170,7 @@ function Wizard({ s }: { s: Settings }) {
         </div>
       )}
 
-      {step === 3 && <BasicsStep s={s} save={save} identity={identity} setIdentity={setIdentity} loadingIdentity={git.isLoading} />}
+      {step === 3 && <BasicsStep s={s} save={save} identity={identity} setIdentity={setIdentity} loadingIdentity={!identity} gitMissing={git.isError} />}
 
       {step === 4 && <DoneStep s={s} />}
     </Dialog>
@@ -193,12 +206,15 @@ function BasicsStep({
   identity,
   setIdentity,
   loadingIdentity,
+  gitMissing,
 }: {
   s: Settings;
   save: (patch: Partial<Settings>) => Promise<void>;
   identity: { name: string; email: string } | null;
   setIdentity: (v: { name: string; email: string }) => void;
   loadingIdentity: boolean;
+  /** git could not be asked (not installed): there is no identity to set yet */
+  gitMissing: boolean;
 }) {
   const models = useRuntimeInfo().data?.models ?? [];
   const saveNow = (patch: Partial<Settings>) => void save(patch).catch((e: unknown) => toast.error("Einstellung nicht gespeichert", errorMessage(e)));
@@ -238,7 +254,9 @@ function BasicsStep({
         <Select value={toChoice(s.defaultEffort)} onChange={(v) => saveNow({ defaultEffort: fromChoice<EffortLevel>(v) })} options={effortOptions("Claude-Code-Standard")} aria-label="Denkaufwand" />
       </Field>
       <div />
-      {loadingIdentity || !identity ? (
+      {gitMissing ? (
+        <p className="col-span-2 text-xs text-warning">Git ist auf diesem PC nicht erreichbar. Name und E-Mail für Commits legst du später unter Einstellungen, GitHub fest.</p>
+      ) : loadingIdentity || !identity ? (
         <SkeletonRegion label="Lädt Git-Name und E-Mail" className="col-span-2 grid grid-cols-2 gap-4">
           {[0, 1].map((i) => (
             <div key={i} className="flex flex-col gap-1.5">

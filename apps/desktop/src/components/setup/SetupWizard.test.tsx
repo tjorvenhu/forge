@@ -131,7 +131,7 @@ describe("setup assistant", () => {
 
     expect(await screen.findByText("shop")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: /Fertig/ }));
-    await waitFor(() => expect(calls("settings.update")).toContainEqual({ setupDone: true }));
+    await waitFor(() => expect(calls("settings.update")).toContainEqual({ setupDone: true, syncAsked: true }));
     await waitFor(() => expect(screen.queryByText("FORGE einrichten")).toBeNull());
     // Answered in the assistant: no second question.
     expect(screen.queryByText("FORGE-Daten über GitHub synchronisieren?")).toBeNull();
@@ -141,8 +141,11 @@ describe("setup assistant", () => {
     account = null;
     setup();
     fireEvent.click(await screen.findByRole("button", { name: /Überspringen/ }));
-    await waitFor(() => expect(calls("settings.update")).toEqual([{ setupDone: true }]));
+    await waitFor(() => expect(calls("settings.update")).toEqual([{ setupDone: true, syncAsked: true }]));
     expect(calls("sync.now")).toEqual([]);
+    // Skipped is answered: the question for older installations does not follow right after.
+    await waitFor(() => expect(screen.queryByText("FORGE einrichten")).toBeNull());
+    expect(screen.queryByText("FORGE-Daten über GitHub synchronisieren?")).toBeNull();
   });
 
   it("stays away from installations that were used before and asks them once about syncing", async () => {

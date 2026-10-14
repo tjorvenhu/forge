@@ -1,6 +1,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { CloudDownload } from "lucide-react";
 import { call, keys, useGitHubAccount, useSyncProbe, useSyncStatus } from "@/lib/queries";
+import { errorMessage } from "@/lib/rpc";
 import { relativeTime } from "@/lib/utils";
 import { InfoTip } from "@/components/ui/misc";
 import { Skeleton, SkeletonRegion } from "@/components/ui/skeleton";
@@ -15,14 +16,21 @@ export function useNeedsPassphrase(): boolean {
 
 /**
  * Switches sync on: stores the password first (it must open data that is already on GitHub), then
- * the setting, then waits for the first sync so what came from GitHub is there.
+ * the setting, then waits for the first sync so what came from GitHub is there. Throws when the
+ * password or the setting failed; a failed first sync is no failure of switching on and comes back
+ * as its message (null when it worked).
  */
 export function useEnableSync() {
   const qc = useQueryClient();
-  return async (passphrase: string | null) => {
+  return async (passphrase: string | null): Promise<string | null> => {
     if (passphrase) qc.setQueryData(keys.sync, await call("sync.setPassphrase", { passphrase }));
     qc.setQueryData(keys.settings, await call("settings.update", { syncEnabled: true, syncAsked: true }));
-    qc.setQueryData(keys.sync, await call("sync.now", {}));
+    try {
+      qc.setQueryData(keys.sync, await call("sync.now", {}));
+      return null;
+    } catch (e) {
+      return errorMessage(e);
+    }
   };
 }
 

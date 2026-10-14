@@ -51,18 +51,26 @@ export function LocalOnlyBadge({ projectId }: { projectId: string }) {
   const item = useLocalOnlyProject(projectId);
   const openSettings = useUi((u) => u.openSettings);
   if (!item) return null;
+  const open = (e: { stopPropagation(): void; preventDefault(): void }) => {
+    e.stopPropagation();
+    e.preventDefault();
+    openSettings("github");
+  };
+  // A span: the card around it is a button already, and buttons must not nest.
   return (
-    <button
-      type="button"
+    <span
+      role="button"
+      tabIndex={0}
+      aria-label="Nur auf diesem PC"
       className="shrink-0 text-warning"
       title={`Nur auf diesem PC\n${LOCAL_ONLY_HINT}\n\nKlicken, um unter Einstellungen, GitHub zu entscheiden.`}
-      onClick={(e) => {
-        e.stopPropagation();
-        openSettings("github");
+      onClick={open}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") open(e);
       }}
     >
-      <CloudOff className="h-3.5 w-3.5" aria-label="Nur auf diesem PC" />
-    </button>
+      <CloudOff className="h-3.5 w-3.5" />
+    </span>
   );
 }
 

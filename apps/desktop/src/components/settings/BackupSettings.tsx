@@ -177,15 +177,15 @@ function GitHubBackupStatus() {
   const ok = on && st.phase === "idle" && !!st.lastSyncAt && !st.pending;
   const text = !on
     ? settings.syncEnabled
-      ? "Die Synchronisierung wartet auf das Sync-Passwort. Bis dahin liegen Backups nur auf diesem PC."
-      : "Backups liegen nur auf diesem PC. Mit der GitHub-Synchronisierung liegt jeder Stand zusätzlich verschlüsselt auf GitHub, mit allen früheren Versionen."
+      ? "Die Synchronisierung wartet auf das Sync-Passwort. Bis dahin ist nichts davon auf GitHub."
+      : "Die Backups unten liegen nur auf diesem PC. Mit der GitHub-Synchronisierung liegen Einstellungen, Projekte, Telefon und Claude-Konfiguration zusätzlich verschlüsselt auf GitHub, mit allen früheren Ständen."
     : st.phase === "error"
       ? `Der letzte Abgleich mit GitHub ist fehlgeschlagen: ${st.error ?? "unbekannter Fehler"}`
       : st.phase === "syncing" || st.pending
-        ? "Änderungen werden gerade auf GitHub gesichert."
+        ? "Änderungen gehen gerade zu GitHub."
         : st.lastSyncAt
-          ? `Auch auf GitHub gesichert, zuletzt ${relativeTime(st.lastSyncAt)}. Der Stand dort ist aktuell.`
-          : "Noch nicht auf GitHub gesichert.";
+          ? `Einstellungen und Projekte liegen auch auf GitHub, zuletzt abgeglichen ${relativeTime(st.lastSyncAt)}, der Stand dort ist aktuell. Die Backups unten bleiben auf diesem PC.`
+          : "Noch nichts auf GitHub abgeglichen.";
   const Icon = !on ? CloudOff : st.phase === "error" ? CloudAlert : ok ? CloudCheck : CloudUpload;
   return (
     <div className={cn("flex items-center gap-3 rounded-lg border px-3.5 py-2.5", ok ? "border-graph-blue/30 bg-graph-blue/10" : st.phase === "error" && on ? "border-danger/30 bg-danger-soft" : "border-border bg-surface-2")}>

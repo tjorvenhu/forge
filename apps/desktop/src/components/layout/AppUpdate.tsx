@@ -3,7 +3,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { ArrowUpCircle, Download, RefreshCw, Sparkles, Workflow } from "lucide-react";
 import type { AppUpdateState } from "@forge/protocol";
 import { installUpdate, isWorkingSession, sessionsNote, useInstall } from "@/lib/app-install";
-import { call, keys, useAppChangelog, useAppUpdate, useLiveSessions } from "@/lib/queries";
+import { call, keys, useAppChangelog, useAppUpdate, useLiveSessions, useSettings } from "@/lib/queries";
 import { errorMessage } from "@/lib/rpc";
 import { cn, relativeTime } from "@/lib/utils";
 import { toast } from "@/stores/toast";
@@ -79,6 +79,9 @@ const OFFERED = ["available", "downloading", "ready"];
  */
 export function AppUpdateDialog() {
   const s = useAppUpdate().data;
+  const settings = useSettings().data;
+  const reopened = useUi((u) => u.setupWizard);
+  const setupOpen = settings?.setupDone === false || reopened;
   const [dismissed, setDismissed] = useState<string | null>(null);
   const { install, installing } = useInstallAction();
   // Second step of an update the user started before the restart: no second click.
@@ -91,7 +94,8 @@ export function AppUpdateDialog() {
   }, [autoInstall, install]);
   const openSettings = useUi((u) => u.openSettings);
   const tag = s?.latest && OFFERED.includes(s.phase) ? s.latest.tag : null;
-  if (!s?.latest || !tag || dismissed === tag) return null;
+  // Not on top of the setup assistant; the offer comes once it is done. An install already asked for still runs.
+  if (!s?.latest || !tag || dismissed === tag || (setupOpen && !autoInstall)) return null;
   const busy = installing || s.phase === "downloading";
   return (
     <Dialog
