@@ -1,10 +1,10 @@
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { GitEngine } from "../src/git/git.js";
 import { Db } from "../src/persistence/db.js";
 import { ProjectManager } from "../src/projects/project-manager.js";
-import { freeDir, slugify, WorktreeService } from "../src/automation/worktrees.js";
+import { freeDir, slugify, WorktreeService, worktreeRoot } from "../src/automation/worktrees.js";
 import { git, initRepo, tempDir } from "./helpers.js";
 
 describe("worktrees", () => {
@@ -77,6 +77,61 @@ describe("worktrees", () => {
     const plain = await worktrees.create(parent, "agent/neu");
     expect(existsSync(path.join(plain.path, "basis.txt"))).toBe(false);
   });
+
+  it("deletes only a branch FORGE made for this worktree", async () => {
+    const parent = await projects.import(repo);
+    await git(repo, "branch", "feature/vorher");
+    const existing = await worktrees.create(parent, "feature/vorher");
+    expect(await worktrees.branchOwner(existing, "feature/vorher")).toBeNull();
+    const r = await worktrees.remove(existing, true, { deleteBranch: true });
+    expect(r).toEqual({ deletedBranch: null, branchError: expect.stringMatching(/feature\/vorher hat nicht FORGE/) });
+    expect(await git(repo, "branch", "--list", "feature/vorher")).toContain("feature/vorher");
+
+    // A branch FORGE made for an earlier agent, now opened again: no longer this worktree's own.
+    const first = await worktrees.create(parent, "agent/erst");
+    expect(await worktrees.branchOwner(first, "agent/erst")).toBe("worktree");
+    await worktrees.remove(first, true);
+    const again = await worktrees.create(parent, "agent/erst");
+    expect(await worktrees.branchOwner(again, "agent/erst")).toBe("forge");
+  }, 30_000);
+
+  it("does not take the branch of an enclosing repository for a folder without .git", async () => {
+    await git(t.dir, "init", "-b", "aussen");
+    const parent = await projects.import(repo);
+    const wt = await worktrees.create(parent, "agent/rest");
+    rmSync(path.join(wt.path, ".git"));
+    await git(repo, "worktree", "prune");
+    expect(await engine.currentBranch(wt.path)).toBe("aussen");
+    expect(await worktrees.branchOf(wt.path)).toBeNull();
+    const r = await worktrees.remove(wt, false, { deleteBranch: true });
+    expect(r.branchError).toMatch(/nicht mehr zu ermitteln/);
+    expect(existsSync(wt.path)).toBe(false);
+    expect(await git(repo, "branch", "--list", "agent/rest")).toContain("agent/rest");
+  }, 30_000);
+
+  it("puts the worktree of a subfolder project beside the repository and registers the same subfolder", async () => {
+    const sub = path.join(repo, "packages", "web");
+    mkdirSync(sub, { recursive: true });
+    writeFileSync(path.join(sub, "page.ts"), "export {};\n");
+    await git(repo, "add", ".");
+    await git(repo, "commit", "-m", "web");
+    const parent = await projects.import(sub);
+    const wt = await worktrees.create(parent, "agent/web");
+    const root = worktreeRoot(wt.path);
+    const repoDir = path.dirname(path.dirname(parent.path));
+    expect(root).toBe(path.join(path.dirname(repoDir), ".forge-worktrees", "app", "agent-web"));
+    expect(wt.path).toBe(path.join(root, "packages", "web"));
+    expect(existsSync(path.join(wt.path, "page.ts"))).toBe(true);
+    expect(await worktrees.branchOf(wt.path)).toBe("agent/web");
+    expect((await git(repo, "status", "--porcelain")).trim()).toBe("");
+
+    // Uncommitted work beside the project counts as well, and the whole checkout goes.
+    writeFileSync(path.join(root, "README.md"), "geändert\n");
+    await expect(worktrees.remove(wt, false)).rejects.toThrow(/nicht committete/);
+    expect(await worktrees.remove(wt, true, { deleteBranch: true })).toEqual({ deletedBranch: "agent/web", branchError: null });
+    expect(existsSync(root)).toBe(false);
+    expect(await git(repo, "worktree", "list")).not.toContain("agent-web");
+  }, 30_000);
 
   it("numbers colliding folders from a fixed base", () => {
     const taken = new Set(["/x/a", "/x/a-2", "/x/a-3"]);

@@ -115,6 +115,20 @@ describe("AgentAutoMerge", () => {
     expect(projects.all().some((p) => p.id === wt.id)).toBe(false);
   }, 30_000);
 
+  it("merges the agent of a subfolder project instead of taking it for remains", async () => {
+    const sub = path.join(repo, "packages", "web");
+    mkdirSync(sub, { recursive: true });
+    await commitFile(sub, "page.ts", "export {};\n", "Web");
+    const web = projects.update((await projects.import(sub)).id, { tags: [AUTO_MERGE_TAG] });
+    const wt = await worktrees.create(web, "agent/web", { fromDir: sub });
+    await commitFile(wt.path, "neu.ts", "export {};\n", "Arbeit im Unterordner");
+    session("s-web", wt.id, wt.path);
+    await auto.turnDone("s-web", true);
+    expect(outcomes()).toEqual(["merged"]);
+    expect((await git(repo, "log", "-1", "--format=%s")).trim()).toBe("Arbeit im Unterordner");
+    expect(existsSync(path.join(sub, "neu.ts"))).toBe(true);
+  }, 30_000);
+
   it("lets an agent wait while the main session works on the same files and merges it when that turn ends", async () => {
     const lines = (change: Record<number, string> = {}) => Array.from({ length: 12 }, (_, i) => change[i + 1] ?? `Zeile ${i + 1}`).join("\n") + "\n";
     await commitFile(repo, "notes.md", lines(), "Notizen");
