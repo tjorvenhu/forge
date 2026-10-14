@@ -1,5 +1,6 @@
 import type { BackgroundTask } from "@forge/protocol";
 import type { AutoContinue } from "./auto-continue.js";
+import type { ContextRecovery } from "./context-recovery.js";
 import { pruneSeenUuids, type LiveSession } from "./live-session.js";
 import type { PermissionModes } from "./permission-mode.js";
 import type { RateLimitTracker } from "./rate-limit.js";
@@ -17,6 +18,7 @@ export interface StreamParts {
   catalog: RuntimeCatalog;
   autoContinue: AutoContinue;
   limits: RateLimitTracker;
+  recovery: ContextRecovery;
 }
 
 /** Turns the CLI's message stream into timeline events and session state (status, context, background tasks). */
@@ -28,6 +30,7 @@ export class SessionStream {
   private readonly catalog: RuntimeCatalog;
   private readonly autoContinue: AutoContinue;
   private readonly limits: RateLimitTracker;
+  private readonly recovery: ContextRecovery;
 
   constructor(
     private readonly core: SessionCore,
@@ -40,6 +43,7 @@ export class SessionStream {
     this.catalog = parts.catalog;
     this.autoContinue = parts.autoContinue;
     this.limits = parts.limits;
+    this.recovery = parts.recovery;
   }
 
   handle(id: string, live: LiveSession, msg: unknown) {
@@ -85,6 +89,7 @@ export class SessionStream {
         this.core.setStatus(id, "idle", wasInterrupt ? "Gestoppt" : null, { lastError: failed ? (body.text ?? body.subtype) : null });
         if (!wasInterrupt && !body.isError) this.automation.schedule(id);
         this.autoContinue.onTurnResult(id, body, wasInterrupt);
+        this.recovery.onTurnResult(id, body, wasInterrupt);
       }
     }
   }

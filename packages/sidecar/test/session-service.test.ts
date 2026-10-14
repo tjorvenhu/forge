@@ -9,6 +9,7 @@ import { GitEngine } from "../src/git/git.js";
 import { Db } from "../src/persistence/db.js";
 import { ProjectManager } from "../src/projects/project-manager.js";
 import { SessionService } from "../src/sessions/session-service.js";
+import { UploadStore } from "../src/claude/uploads.js";
 import {
   AUTO_CONTINUE_PROMPT,
   CHECK_INTERVAL_MS,
@@ -186,7 +187,7 @@ beforeEach(async () => {
   projects = new ProjectManager(db, git, () => "balanced");
   rt = new FakeRuntime();
   emitted = [];
-  svc = new SessionService(db, projects, git, rt, (e) => emitted.push(e));
+  svc = new SessionService(db, projects, git, rt, (e) => emitted.push(e), Date.now, new UploadStore(path.join(t.dir, "uploads")));
   projectId = (await projects.import(path.join(t.dir, "proj"))).id;
 });
 afterEach(async () => {
@@ -1773,5 +1774,55 @@ describe("sessions go on after a restart for an update", () => {
     await vi.advanceTimersByTimeAsync(HOLD_RETRY_MS);
     await svc2.drain();
     expect(svc2.get(working.id)).toMatchObject({ live: true, status: "running" });
+  });
+});
+
+describe("messages too large for one turn", () => {
+  const tooLong = (sink: SessionSink) => sink.onMessage({ type: "result", subtype: "success", is_error: true, result: "Prompt is too long" });
+  const errors = (id: string) => db.listEvents(id).flatMap((e) => (e.body.type === "error" ? [e.body.message] : []));
+
+  it("compacts a full context and sends the failed message again, once", async () => {
+    const s = await svc.start({ projectId, prompt: "erste Aufgabe" });
+    success(rt.sinks[0]!);
+    await svc.drain();
+    await svc.send(s.id, "große Aufgabe");
+    tooLong(rt.sinks[0]!);
+    await svc.drain();
+    expect(rt.sent).toEqual(["große Aufgabe", "/compact"]);
+    expect(svc.get(s.id).status).toBe("running");
+    success(rt.sinks[0]!);
+    await svc.drain();
+    expect(rt.sent).toEqual(["große Aufgabe", "/compact", "große Aufgabe"]);
+    expect(rt.sentNotes.some((n) => n.includes("mit /compact zusammengefasst"))).toBe(true);
+    const last = db.listEvents(s.id).flatMap((e) => (e.body.type === "user.message" ? [e.body] : [])).at(-1);
+    expect(last).toMatchObject({ text: "große Aufgabe", source: "auto" });
+    // Still too long: reported instead of compacting again.
+    tooLong(rt.sinks[0]!);
+    await svc.drain();
+    expect(rt.sent.filter((t) => t === "/compact")).toHaveLength(1);
+    expect(errors(s.id).at(-1)).toMatch(/auch nach dem Zusammenfassen nicht/);
+    expect(svc.get(s.id).status).toBe("idle");
+  });
+
+  it("leaves other failed turns alone", async () => {
+    const s = await svc.start({ projectId, prompt: "x" });
+    rt.sinks[0]!.onMessage({ type: "result", subtype: "error_during_execution", is_error: true, errors: ["API Error: 500"] });
+    await svc.drain();
+    expect(rt.sent).toEqual([]);
+    expect(errors(s.id)).toEqual([]);
+  });
+
+  it("hands a very long text to Claude as a file with its start and end", async () => {
+    const long = "Bitte prüfen:\n" + "A".repeat(60_000) + "MITTE" + "B".repeat(60_000) + "\nWas ist kaputt?";
+    const s = await svc.start({ projectId, prompt: long });
+    const sent = rt.started[0]!.firstMessage!.text;
+    expect(sent.length).toBeLessThan(42_000);
+    expect(sent.startsWith("Bitte prüfen:")).toBe(true);
+    expect(sent.endsWith("Was ist kaputt?")).toBe(true);
+    expect(sent).not.toContain("MITTE");
+    const file = /steht in (.+?)\. Lies/.exec(sent)![1]!;
+    expect(file.startsWith(path.join(t.dir, "uploads"))).toBe(true);
+    expect(readFileSync(file, "utf8")).toBe(long);
+    expect(userTexts(s.id)[0]).toBe(sent);
   });
 });

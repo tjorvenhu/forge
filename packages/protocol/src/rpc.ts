@@ -63,6 +63,8 @@ import {
   SyncStatus,
   SyncVersion,
   TextDoc,
+  MAX_PROMPT_CHARS,
+  UPLOAD_CHUNK_CHARS,
 } from "./models.js";
 
 const id = z.string().min(1).max(100);
@@ -283,6 +285,20 @@ export const methods = {
     params: sessionRef.extend({ afterSeq: z.number().int().optional(), beforeSeq: z.number().int().optional() }),
     result: z.array(SessionEvent),
   },
+  /**
+   * A file pasted into the composer, uploaded in chunks so no protocol line gets large. The last chunk
+   * returns the path of the stored file; from then on it is attached like a file from disk.
+   */
+  "attachments.upload": {
+    params: z.object({
+      uploadId: z.uuid(),
+      name: z.string().min(1).max(260),
+      index: z.number().int().min(0),
+      chunk: z.string().max(UPLOAD_CHUNK_CHARS),
+      last: z.boolean(),
+    }),
+    result: z.object({ path: z.string().nullable() }),
+  },
   /** the images of a sent user message, read back from the Claude Code transcript */
   "sessions.images": {
     params: sessionRef.extend({ seq: z.number().int() }),
@@ -290,7 +306,7 @@ export const methods = {
   },
   "sessions.start": {
     params: projectRef.extend({
-      prompt: z.string().min(1).max(200_000),
+      prompt: z.string().min(1).max(MAX_PROMPT_CHARS),
       model: z.string().max(100).nullable().optional(),
       effort: EffortLevel.nullable().optional(),
       planOnly: z.boolean().optional(),
@@ -299,11 +315,11 @@ export const methods = {
     }),
     result: Session,
   },
-  "sessions.send": { params: sessionRef.extend({ text: z.string().min(1).max(200_000), attachments: z.array(Attachment).max(10).default([]) }), result: Session },
+  "sessions.send": { params: sessionRef.extend({ text: z.string().min(1).max(MAX_PROMPT_CHARS), attachments: z.array(Attachment).max(10).default([]) }), result: Session },
   "sessions.rewind": { params: sessionRef.extend({ messageUuid: z.string().max(100), dryRun: z.boolean().default(false) }), result: RewindResult },
   "system.commands": { params: z.object({ projectId: id.optional() }), result: z.array(SlashCommand) },
   "sessions.resume": {
-    params: sessionRef.extend({ prompt: z.string().min(1).max(200_000), attachments: z.array(Attachment).max(10).default([]) }),
+    params: sessionRef.extend({ prompt: z.string().min(1).max(MAX_PROMPT_CHARS), attachments: z.array(Attachment).max(10).default([]) }),
     result: Session,
   },
   "sessions.stop": { params: sessionRef, result: Session },

@@ -711,6 +711,16 @@ export const MarketplacePlugin = z.object({
 });
 export type MarketplacePlugin = z.infer<typeof MarketplacePlugin>;
 
+/**
+ * Longest message text the protocol takes. The sidecar hands a text that does not fit into one turn to
+ * Claude as a file, so this only bounds the size of one protocol line (at most 6 MB of UTF-8).
+ */
+export const MAX_PROMPT_CHARS = 2_000_000;
+/** base64 characters per attachments.upload call; a multiple of 4, so every chunk decodes on its own */
+export const UPLOAD_CHUNK_CHARS = 1_048_576;
+/** largest file attachments.upload takes */
+export const MAX_UPLOAD_BYTES = 100 * 1024 * 1024;
+
 export const Attachment = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("path"), path: z.string().min(1).max(4096) }),
   z.object({

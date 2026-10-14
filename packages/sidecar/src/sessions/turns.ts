@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { ForgeError, type Attachment, type Session } from "@forge/protocol";
-import { buildAttachmentBlocks } from "../claude/attachments.js";
+import { buildAttachmentBlocks, fitMessageText, type Spill } from "../claude/attachments.js";
 import type { OutgoingMessage } from "../claude/runtime.js";
 import { BUSY, endLive, REMOTE_PLACEHOLDER_TITLE, titleFrom, type LiveSession } from "./live-session.js";
 import type { RemoteBridge } from "./remote-bridge.js";
@@ -12,6 +12,8 @@ export interface TurnHost {
   resume(sessionId: string, text: string, attachments: Attachment[], source?: MessageSource): Promise<Session>;
   /** a message from FORGE (composer, phone) or an automatic one reached the timeline */
   userMessage(sessionId: string, text: string, source?: MessageSource): void;
+  /** stores what is too large for a message (long texts, big attachments) for Claude to read */
+  spill: Spill;
 }
 
 /** "auto": FORGE continues after a usage limit; the timeline marks the message as automatic. */
@@ -29,6 +31,9 @@ export interface BuiltTurn {
  * until the previous turn's tests and auto-commit are done.
  */
 export class TurnDispatch {
+  /** messages recorded since the session's last turn result: what a failed turn was asked to do */
+  private readonly sinceResult = new Map<string, BuiltTurn[]>();
+
   constructor(
     private readonly core: SessionCore,
     private readonly automation: TurnAutomation,
@@ -59,8 +64,10 @@ export class TurnDispatch {
     const rec = this.core.db.getSession(sessionId);
     // A message sent mid-turn joins the running turn; its baseline must stay the one from the turn start.
     if (rec && newTurn) await this.automation.captureBaseline(sessionId, rec.cwd);
-    const { blocks, meta } = attachments.length ? await buildAttachmentBlocks(attachments) : { blocks: [], meta: [] };
-    return { msg: { text, blocks, uuid: randomUUID() }, meta, ...(source ? { source } : {}) };
+    const { blocks, meta } = attachments.length ? await buildAttachmentBlocks(attachments, this.host.spill) : { blocks: [], meta: [] };
+    // The timeline shows what Claude got: a shortened text names the file with the full one.
+    const fitted = await fitMessageText(text, this.host.spill);
+    return { msg: { text: fitted, blocks, uuid: randomUUID() }, meta, ...(source ? { source } : {}) };
   }
 
   /**
@@ -75,8 +82,16 @@ export class TurnDispatch {
   record(sessionId: string, t: BuiltTurn) {
     this.core.live.get(sessionId)?.seenUuids.add(t.msg.uuid);
     this.core.record(sessionId, { type: "user.message", text: t.msg.text, uuid: t.msg.uuid, ...(t.meta.length ? { attachments: t.meta } : {}), ...(t.source ? { source: t.source } : {}) });
+    this.sinceResult.set(sessionId, [...(this.sinceResult.get(sessionId) ?? []), t]);
     this.titleFromFirstMessage(sessionId, t.msg.text);
     this.host.userMessage(sessionId, t.msg.text, t.source);
+  }
+
+  /** The messages of the turn that just ended; forgotten with it, so their attachments are not kept. */
+  takeTurnMessages(sessionId: string): BuiltTurn[] {
+    const sent = this.sinceResult.get(sessionId) ?? [];
+    this.sinceResult.delete(sessionId);
+    return sent;
   }
 
   async send(sessionId: string, text: string, attachments: Attachment[] = [], source?: MessageSource): Promise<Session> {
@@ -91,6 +106,19 @@ export class TurnDispatch {
     if (live.pending.size > 0) throw new ForgeError("SESSION_BUSY", "Erst die offene Freigabeanfrage beantworten.");
     const status = this.core.db.getSession(sessionId)?.status;
     const turn = await this.build(sessionId, text, attachments, !this.automation.isBusy(sessionId) && !(status && BUSY.includes(status)), source);
+    return this.deliver(sessionId, live, turn);
+  }
+
+  /** Sends an already built turn again (after compacting a full context) into the running process. */
+  async resend(sessionId: string, turn: BuiltTurn): Promise<Session> {
+    const live = this.core.live.get(sessionId);
+    if (!live || live.closing) throw new ForgeError("SESSION_BUSY", "Die Session wurde beendet, bevor die Nachricht erneut gesendet werden konnte.");
+    const rec = this.core.db.getSession(sessionId);
+    if (rec && !this.automation.isBusy(sessionId) && !BUSY.includes(rec.status)) await this.automation.captureBaseline(sessionId, rec.cwd);
+    return this.deliver(sessionId, live, turn);
+  }
+
+  private deliver(sessionId: string, live: LiveSession, turn: BuiltTurn): Session {
     // Re-checked after the await: nothing is recorded for a message that cannot be delivered.
     if (this.core.live.get(sessionId) !== live || live.closing) throw new ForgeError("SESSION_BUSY", "Die Session wurde beendet, bevor die Nachricht gesendet werden konnte. Bitte erneut senden.");
     if (live.pending.size > 0) throw new ForgeError("SESSION_BUSY", "Erst die offene Freigabeanfrage beantworten.");

@@ -98,6 +98,26 @@ describe("Composer", () => {
     await waitFor(() => expect(useDrafts.getState().drafts.s1?.text).toBe(""));
   });
 
+  it("uploads a pasted image, shows a placeholder meanwhile and sends it by path once it is there", async () => {
+    let uploaded: (r: { path: string }) => void = () => {};
+    const base = callMock.getMockImplementation()!;
+    callMock.mockImplementation((method: string, params: unknown) => (method === "attachments.upload" ? new Promise((r) => (uploaded = r)) : base(method, params)));
+    // jsdom has no object URLs.
+    Object.assign(URL, { createObjectURL: () => "blob:vorschau", revokeObjectURL: () => {} });
+    useDrafts.getState().setText("s1", "Was siehst du?");
+    setup(<Composer project={project("p1")} session={session} />);
+    const png = new File([new Uint8Array([0x89, 0x50, 0x4e, 0x47])], "bild.png", { type: "image/png" });
+    await act(async () => fireEvent.paste(screen.getByLabelText("Nachricht an Claude"), { clipboardData: { files: [png] } }));
+    expect(screen.getByRole("status", { name: "Lädt bild.png" })).toBeTruthy();
+    await waitFor(() => expect(callMock).toHaveBeenCalledWith("attachments.upload", expect.objectContaining({ name: "bild.png", index: 0, last: true })));
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Senden" })));
+    expect(callMock).not.toHaveBeenCalledWith("sessions.send", expect.anything());
+    await act(async () => uploaded({ path: "C:\\uploads\\u1\\bild.png" }));
+    await waitFor(() =>
+      expect(callMock).toHaveBeenCalledWith("sessions.send", { sessionId: "s1", text: "Was siehst du?", attachments: [{ kind: "path", path: "C:\\uploads\\u1\\bild.png" }] }),
+    );
+  });
+
   it("lays out the colored copy for ultrathink exactly like the field", () => {
     useDrafts.getState().setText("s1", "geht ultrathink");
     const { container } = setup(<Composer project={project("p1")} session={session} />);

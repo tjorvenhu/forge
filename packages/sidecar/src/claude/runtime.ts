@@ -218,9 +218,12 @@ export function withStderr(e: unknown, tail: string): Error {
 export class AgentSdkRuntime implements ClaudeRuntime {
   readonly id = "agent-sdk";
   private readonly oneShotTimeoutMs: number;
+  private readonly readDirs: string[];
 
-  constructor(opts: { oneShotTimeoutMs?: number } = {}) {
+  /** readDirs: folders every session may read without asking (files FORGE hands to Claude by path) */
+  constructor(opts: { oneShotTimeoutMs?: number; readDirs?: string[] } = {}) {
     this.oneShotTimeoutMs = opts.oneShotTimeoutMs ?? ONE_SHOT_TIMEOUT_MS;
+    this.readDirs = opts.readDirs ?? [];
   }
 
   /**
@@ -371,6 +374,8 @@ export class AgentSdkRuntime implements ClaudeRuntime {
         allowDangerouslySkipPermissions: true,
         resume: opts.resume ?? undefined,
         disallowedTools: opts.disallowedTools,
+        // Writes there still go through FORGE's guard for paths outside the project.
+        ...(this.readDirs.length ? { additionalDirectories: this.readDirs } : {}),
         includePartialMessages: true,
         enableFileCheckpointing: true,
         // Subagents report a one-line progress about every 30 s (task_progress.summary).

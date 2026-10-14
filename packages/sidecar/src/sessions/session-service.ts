@@ -1,4 +1,6 @@
 import { randomUUID } from "node:crypto";
+import os from "node:os";
+import path from "node:path";
 import type {
   Attachment,
   ContextUsage,
@@ -16,6 +18,8 @@ import type {
 import { ForgeError } from "@forge/protocol";
 import { transcriptImages } from "../claude/attachments.js";
 import type { ClaudeRuntime } from "../claude/runtime.js";
+import { UploadStore } from "../claude/uploads.js";
+import { ContextRecovery } from "./context-recovery.js";
 import { HISTORY_PAGE_LIMIT, type Db } from "../persistence/db.js";
 import type { GitEngine } from "../git/git.js";
 import type { ProjectManager } from "../projects/project-manager.js";
@@ -73,6 +77,8 @@ export class SessionService {
     emit: (e: ServerEvent) => void,
     /** wall clock; tests move it to simulate waiting and sleep */
     now: () => number = Date.now,
+    /** where long texts and large attachments go for Claude to read; app.ts puts it into the data folder */
+    uploads: UploadStore = new UploadStore(path.join(os.tmpdir(), "forge-uploads")),
   ) {
     const core = (this.core = new SessionCore(db, emit));
     const worktrees = new WorktreeService(git, projects);
@@ -103,6 +109,7 @@ export class SessionService {
     this.turns = new TurnDispatch(core, this.automation, this.remote, {
       resume: (id, text, attachments, source) => this.lifecycle.resume(id, text, attachments, source),
       userMessage: (id, text, source) => this.titles.note(id, text, source),
+      spill: (name, data) => uploads.write(name, data),
     });
     this.modes = new PermissionModes(core, projects, { reopen: (id) => this.lifecycle.resume(id, null) });
     this.approvals = new ApprovalGate(core, git, {
@@ -151,6 +158,7 @@ export class SessionService {
       catalog: this.catalog,
       autoContinue: this.autoContinue,
       limits: this.limits,
+      recovery: new ContextRecovery(core, this.turns, (p) => this.automation.track(p)),
     });
     this.lifecycle = new SessionLifecycle(core, projects, runtime, {
       automation: this.automation,

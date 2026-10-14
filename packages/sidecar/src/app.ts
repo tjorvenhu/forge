@@ -1,6 +1,7 @@
 import path from "node:path";
 import type { ServerEvent } from "@forge/protocol";
 import { AgentSdkRuntime, type ClaudeRuntime } from "./claude/runtime.js";
+import { UploadStore } from "./claude/uploads.js";
 import { GitEngine } from "./git/git.js";
 import { GitHubService } from "./github/github.js";
 import { ClaudeSetupService } from "./claude/setup.js";
@@ -62,8 +63,9 @@ export function createApp(opts: { dataDir: string; write: Writer; log?: (m: stri
     jobs?.onServerEvent(e);
     sync?.onServerEvent(e);
   };
-  const runtime = opts.runtime ?? new AgentSdkRuntime();
-  const sessions = new SessionService(db, projects, git, runtime, emit);
+  const uploads = new UploadStore(path.join(opts.dataDir, "uploads"));
+  const runtime = opts.runtime ?? new AgentSdkRuntime({ readDirs: [uploads.dir] });
+  const sessions = new SessionService(db, projects, git, runtime, emit, Date.now, uploads);
   tokenMeter.onRate((perSecond) => emit({ event: "tokens.rate", payload: { perSecond } }));
   jobs = new JobWatcher({
     session: (id) => (db.getSession(id) ? sessions.get(id) : null),
@@ -266,6 +268,7 @@ export function createApp(opts: { dataDir: string; write: Writer; log?: (m: stri
     git,
     projects,
     sessions,
+    uploads,
     dataDir: opts.dataDir,
     notifyProject,
     notifySettings: (settings) => emit({ event: "settings.updated", payload: settings }),
