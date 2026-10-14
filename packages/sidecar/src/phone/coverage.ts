@@ -165,6 +165,7 @@ export const NOT_ON_PHONE: Partial<Record<MethodName, string>> = {
   "projects.touch": "Merkt nur die letzte Nutzung für die Sortierung in der Seitenleiste.",
   "sessions.events": "Roher Verlauf für die Chat-Ansicht; am Telefon fassen details und search ihn zusammen.",
   "sessions.images": "Bilder einer Nachricht lassen sich nicht vorlesen.",
+  "attachments.upload": "Lädt eingefügte Dateien aus dem Eingabefeld hoch; am Telefon gibt es keine Dateien zum Anhängen.",
   "app.prepareInstall": "Interner Schritt der Installation im Hauptfenster; am Telefon startet forge_system update_install die ganze Installation.",
   "app.presence": "Meldet, ob der Nutzer gerade am Rechner ist; das Telefon ist genau der andere Fall.",
   "backup.export": "Schreibt ein Backup in eine Datei, die der Nutzer im Dateidialog wählt.",

@@ -304,7 +304,7 @@ export const Composer = memo(function Composer({
     if (typedInfo) return openInfo(typedInfo);
     if (waiting && !clearTyped) return;
     setSentTick((n) => n + 1);
-    void send(text, files);
+    void attachments.settled().then((ready) => send(text, ready));
   };
   const stop = () => {
     if (session) void stopSession(session.id);
@@ -357,7 +357,7 @@ export const Composer = memo(function Composer({
         {attachments.dragging && (
           <div className="pointer-events-none absolute inset-0 z-10 flex animate-fade-in items-center justify-center rounded-xl text-body text-accent">Dateien hier ablegen</div>
         )}
-        <AttachmentList files={files} onRemove={attachments.remove} />
+        <AttachmentList files={files} preparing={attachments.preparing} onRemove={attachments.remove} />
         {dictation.state !== "idle" && dictation.live && (
           <div className="animate-fade-in border-b border-border px-5 py-2.5 text-ui text-muted" aria-live="polite">
             {dictation.live}

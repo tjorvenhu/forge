@@ -22,11 +22,11 @@ const OPEN_SESSION: &str = "chat-windows://open-session";
 
 const MAX_ID: usize = 100;
 const MAX_TITLE: usize = 200;
-/// Same bound as a prompt in the protocol.
-const MAX_DRAFT: usize = 200_000;
+/// A prompt of the protocol's maximum length (2M UTF-16 units) in UTF-8 bytes.
+const MAX_DRAFT: usize = 6_000_000;
 /// Same bound as the composer.
 const MAX_FILES: usize = 10;
-/// All attachments of a draft together (pasted images travel as base64).
+/// All attachments of a draft together. Pasted files are uploaded and held as paths; data attachments travel as base64.
 const MAX_FILES_BYTES: usize = 16 * 1024 * 1024;
 const MAX_FILE_NAME: usize = 260;
 

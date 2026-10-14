@@ -5,6 +5,7 @@ import type { Db } from "../persistence/db.js";
 import type { GitEngine } from "../git/git.js";
 import type { ProjectManager } from "../projects/project-manager.js";
 import type { SessionService } from "../sessions/session-service.js";
+import type { UploadStore } from "../claude/uploads.js";
 import type { GitHubService } from "../github/github.js";
 import type { ClaudeSetupService } from "../claude/setup.js";
 import type { McpService } from "../config/mcp.js";
@@ -30,6 +31,7 @@ export interface Services {
   git: GitEngine;
   projects: ProjectManager;
   sessions: SessionService;
+  uploads: UploadStore;
   dataDir: string;
   github: GitHubService;
   claudeSetup: ClaudeSetupService;
@@ -214,6 +216,7 @@ export function createHandlers(s: Services): Handlers {
     "sessions.toBackground": ({ sessionId, toolUseId }) => s.sessions.toBackground(sessionId, toolUseId),
     "sessions.fork": ({ sessionId, beforeSeq, rewindFiles }) => s.sessions.fork(sessionId, { beforeSeq, rewindFiles }),
     "sessions.events": ({ sessionId, afterSeq, beforeSeq }) => s.sessions.events(sessionId, afterSeq, beforeSeq),
+    "attachments.upload": (p) => s.uploads.put(p),
     "sessions.images": ({ sessionId, seq }) => s.sessions.images(sessionId, seq),
     "sessions.start": (p) => s.sessions.start(p),
     "sessions.send": ({ sessionId, text, attachments }) => s.sessions.send(sessionId, text, attachments),

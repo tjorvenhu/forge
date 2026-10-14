@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import type { EffortLevel, PermissionMode, Project, Session } from "@forge/protocol";
+import { MAX_PROMPT_CHARS, type EffortLevel, type PermissionMode, type Project, type Session } from "@forge/protocol";
 import { call, keys, queryClient, useSettings } from "@/lib/queries";
+import { uploadFile } from "@/lib/attachments";
 import { errorMessage } from "@/lib/rpc";
 import { toast } from "@/stores/toast";
 import { NO_OPTIONS, useDrafts, type PendingFile } from "@/stores/drafts";
@@ -83,10 +84,21 @@ export function useSendMessage({
       clearConversation(project.id, session, draftKey, slot);
       return true;
     }
-    const prompt = text.trim() || (files.length ? "Siehe Anhang." : "");
+    let prompt = text.trim() || (files.length ? "Siehe Anhang." : "");
     if (!prompt || sending) return false;
     setSending(true);
     const attachments = files.map((f) => f.attachment);
+    if (prompt.length > MAX_PROMPT_CHARS) {
+      // Beyond what one protocol line takes: the text goes as a file, Claude reads it from there.
+      try {
+        attachments.push({ kind: "path", path: await uploadFile(new Blob([prompt], { type: "text/plain" }), "nachricht.txt") });
+        prompt = "Meine Nachricht ist zu lang für das Eingabefeld, sie steht vollständig in der angehängten Datei nachricht.txt.";
+      } catch (e) {
+        setSending(false);
+        toast.error("Nachricht nicht gesendet", errorMessage(e));
+        return false;
+      }
+    }
     // Shown in the chat at once and the composer empties; the real message replaces it when it arrives.
     // Slash commands are not echoed as messages, so they get no placeholder.
     const pendingKey = session?.id ?? draftKey;

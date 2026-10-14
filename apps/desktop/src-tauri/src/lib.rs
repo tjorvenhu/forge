@@ -10,8 +10,9 @@ use tauri::{Manager, RunEvent, WindowEvent};
 use tauri_plugin_notification::NotificationExt;
 use terminal::{OpenRequest, Terminals};
 
-/// Upper bound for one protocol line from the UI (prompts are capped at 200k chars in the protocol).
-const MAX_LINE_BYTES: usize = 4 * 1024 * 1024;
+/// Upper bound for one protocol line from the UI. Prompts are capped at 2M chars in the protocol (at
+/// most 6 MB of UTF-8, more with JSON escapes); pasted files travel in chunks of 1 MB (attachments.upload).
+const MAX_LINE_BYTES: usize = 16 * 1024 * 1024;
 
 // Commands without `async` run on the main thread. The ones below only queue data or do short
 // system calls; everything that can wait on a process or a pipe runs elsewhere.
