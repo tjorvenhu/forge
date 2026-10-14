@@ -12,7 +12,7 @@ export interface TodoEntry {
 }
 
 export type ChatItem =
-  | { kind: "user"; key: string; seq: number; text: string; ts: string; uuid: string | null; attachments: Array<{ name: string; mediaType: string; size: number }>; remote: boolean; auto: boolean }
+  | { kind: "user"; key: string; seq: number; text: string; ts: string; uuid: string | null; attachments: Array<{ name: string; mediaType: string; size: number }>; remote: boolean; auto: boolean; claude: boolean }
   | { kind: "assistant"; key: string; seq: number | null; text: string; streaming: boolean; ts: string | null }
   | {
       kind: "tool";
@@ -149,7 +149,7 @@ function itemFolder(thread: string | null = null) {
             openPlan = null;
           }
           limitNotice = null;
-          items.push({ kind: "user", key: `u${ev.seq}`, seq: ev.seq, text: b.text, ts: ev.ts, uuid: b.uuid ?? null, attachments: b.attachments ?? [], remote: b.source === "remote", auto: b.source === "auto" });
+          items.push({ kind: "user", key: `u${ev.seq}`, seq: ev.seq, text: b.text, ts: ev.ts, uuid: b.uuid ?? null, attachments: b.attachments ?? [], remote: b.source === "remote", auto: b.source === "auto", claude: b.source === "claude" });
           break;
         case "assistant.text": {
           const key = `${b.messageId}:${b.index}`;

@@ -16,8 +16,8 @@ export interface TurnHost {
   spill: Spill;
 }
 
-/** "auto": FORGE continues after a usage limit; the timeline marks the message as automatic. */
-export type MessageSource = "auto";
+/** "auto": sent by FORGE itself; "claude": sent by Claude from another session. The timeline marks both as not typed by the user. */
+export type MessageSource = "auto" | "claude";
 
 /** A user turn built for sending; recorded in the timeline only right before it is handed to the CLI. */
 export interface BuiltTurn {

@@ -297,6 +297,13 @@ describe("SessionService", () => {
     rt.replay(1);
     expect(await tool("message_agent").run({ agent: agentId, text: "Auch JSON bitte" })).toBe(`An Agent ${agentId} gesendet.`);
     expect(rt.sent.at(-1)).toBe("Auch JSON bitte");
+    // The agent's chat shows both as sent by Claude, not as typed by the user.
+    const childId = svc.listAll().find((x) => x.cwd === child.cwd)!.id;
+    const prompts = db.listEvents(childId).flatMap((e) => (e.body.type === "user.message" ? [e.body] : []));
+    expect(prompts.map((b) => [b.text, b.source])).toEqual([
+      ["Baue den CSV-Export in src/export.ts", "claude"],
+      ["Auch JSON bitte", "claude"],
+    ]);
     await expect(tool("message_agent").run({ agent: "zzzz", text: "x" })).rejects.toThrow(/Keinen Agenten/);
 
     expect(await tool("notify").run({ message: "Export fertig, bitte prüfen", urgent: true })).toMatch(/dringend/);

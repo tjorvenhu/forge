@@ -7,6 +7,12 @@ let seq = 0;
 const ev = (body: SessionEventBody, s = ++seq): SessionEvent => ({ seq: s, sessionId: "s1", ts: "2026-10-10T12:00:00.000Z", body });
 
 describe("buildChatItems", () => {
+  it("marks a message Claude sent from another session", () => {
+    seq = 0;
+    const items = buildChatItems([ev({ type: "user.message", text: "Baue den CSV-Export", source: "claude" })], {});
+    expect(items[0]).toMatchObject({ kind: "user", claude: true, auto: false });
+  });
+
   it("groups tool use, approval and result into one card and keeps message order", () => {
     seq = 0;
     const events = [
@@ -31,6 +37,7 @@ describe("buildChatItems", () => {
     ];
     const items = buildChatItems(events, {});
     expect(items.map((i) => i.kind)).toEqual(["user", "assistant", "tool", "result"]);
+    expect(items[0]).toMatchObject({ claude: false, auto: false, remote: false });
     const tool = items[2];
     expect(tool?.kind).toBe("tool");
     if (tool?.kind === "tool") {

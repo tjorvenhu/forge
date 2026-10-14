@@ -198,8 +198,11 @@ export const SessionEventBody = z.discriminatedUnion("type", [
     /** id passed to Claude Code; needed to rewind files to this point */
     uuid: z.string().optional(),
     attachments: z.array(z.object({ name: z.string(), mediaType: z.string(), size: z.number() })).optional(),
-    /** "remote": typed in the Claude app (Remote Control); "auto": sent by FORGE (usage limit reset, restart for an update) */
-    source: z.enum(["forge", "remote", "auto"]).optional(),
+    /**
+     * "remote": typed in the Claude app (Remote Control); "auto": sent by FORGE (usage limit reset, restart
+     * for an update, merge conflicts); "claude": sent by Claude from another session (start_agent, message_agent)
+     */
+    source: z.enum(["forge", "remote", "auto", "claude"]).optional(),
   }),
   z.object({
     type: z.literal("check.result"),

@@ -24,6 +24,7 @@ export interface StartParams {
   planOnly?: boolean;
   resumeClaudeSessionId?: string;
   attachments?: Attachment[];
+  source?: MessageSource;
 }
 
 export interface LifecycleParts {
@@ -111,7 +112,7 @@ export class SessionLifecycle {
       const others = [...this.core.live.entries()].filter(([id, l]) => l.projectDir === project.path && BUSY.includes(db.getSession(id)?.status ?? "stopped")).length;
       let first: BuiltTurn | null;
       try {
-        first = params.prompt ? await this.turns.build(rec.id, params.prompt, params.attachments ?? [], true) : null;
+        first = params.prompt ? await this.turns.build(rec.id, params.prompt, params.attachments ?? [], true, params.source) : null;
       } catch (e) {
         db.updateSession(rec.id, { status: "error", lastError: e instanceof Error ? e.message : String(e) });
         throw e;

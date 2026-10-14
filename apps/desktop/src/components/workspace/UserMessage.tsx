@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { FileText, GitBranch, ImageIcon, Smartphone, SquareSlash, TimerReset, Undo2 } from "lucide-react";
+import { Bot, FileText, GitBranch, ImageIcon, Smartphone, SquareSlash, TimerReset, Undo2, type LucideIcon } from "lucide-react";
 import type { RewindResult } from "@forge/protocol";
 import { useQueryClient } from "@tanstack/react-query";
 import { call, keys, useGitHubAccount, useSession } from "@/lib/queries";
@@ -60,13 +60,20 @@ export function UserMessage({ item, sessionId }: { item: Extract<ChatItem, { kin
   };
   // Images show as name chips: loading them back from the transcript was slow or failed.
   const chips = item.attachments;
-  const hasMeta = chips.length > 0 || item.remote || item.auto;
+  const hasMeta = chips.length > 0 || item.remote;
+  const sender = item.claude ? SENDERS.claude : item.auto ? SENDERS.auto : null;
   if (!chips.length && isSlashCommand(item.text)) return <CommandMessage item={item} />;
   return (
-    <div className="group -mx-3 rounded-md bg-surface-2 px-3 py-2.5">
-      <ChatRow className="text-ui leading-[1.65]" marker={<UserAvatar />}>
+    <div className={cn("group -mx-3 rounded-md px-3 py-2.5", sender ? "border border-dashed border-accent/40 bg-accent-soft" : "bg-surface-2")}>
+      <ChatRow className="text-ui leading-[1.65]" marker={sender ? <SenderAvatar sender={sender} /> : <UserAvatar />}>
         <div className="flex min-w-0 items-start gap-3">
           <div className="min-w-0 flex-1">
+            {sender && (
+              <div className="mb-1 flex flex-wrap items-baseline gap-x-2 text-caption leading-normal">
+                <span className="font-medium uppercase tracking-wide text-accent">{sender.label}</span>
+                <span className="text-subtle">{sender.detail}</span>
+              </div>
+            )}
             <div className="whitespace-pre-wrap break-words">{withUltrathink(item.text)}</div>
             {hasMeta && (
               <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-caption leading-normal text-subtle">
@@ -79,11 +86,6 @@ export function UserMessage({ item, sessionId }: { item: Extract<ChatItem, { kin
                 {item.remote && (
                   <span className="flex items-center gap-1" title="In der Claude-App geschrieben">
                     <Smartphone className="h-3 w-3" /> App
-                  </span>
-                )}
-                {item.auto && (
-                  <span className="flex items-center gap-1" title="Von FORGE gesendet, zum Beispiel nach dem Nutzungslimit oder einem Update">
-                    <TimerReset className="h-3 w-3" /> Automatisch
                   </span>
                 )}
               </div>
@@ -186,6 +188,23 @@ function CommandMessage({ item }: { item: Extract<ChatItem, { kind: "user" }> })
         <HoverTime time={clockTime(item.ts)} />
       </div>
     </ChatRow>
+  );
+}
+
+type Sender = { label: string; detail: string; icon: LucideIcon };
+
+/** Messages in the user's place that nobody typed: they must not look like the user's own. */
+const SENDERS = {
+  claude: { label: "Von Claude", detail: "Auftrag aus einer anderen Session, nicht von dir geschrieben", icon: Bot },
+  auto: { label: "Von FORGE", detail: "Automatisch gesendet, nicht von dir geschrieben", icon: TimerReset },
+} satisfies Record<string, Sender>;
+
+function SenderAvatar({ sender }: { sender: Sender }) {
+  const Icon = sender.icon;
+  return (
+    <span aria-label={sender.label} role="img" className="flex h-5.5 w-5.5 shrink-0 items-center justify-center rounded-full border border-accent/40 bg-surface text-accent">
+      <Icon className="h-3.5 w-3.5" />
+    </span>
   );
 }
 
