@@ -1,8 +1,10 @@
+import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import { mkdir, rm } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import { ForgeError, type Project } from "@forge/protocol";
-import type { GitEngine } from "../git/git.js";
+import { isArtifactPath, isSensitiveFile, type GitEngine } from "../git/git.js";
 import type { ProjectManager } from "../projects/project-manager.js";
 import { pathKey } from "../util/paths.js";
 
@@ -59,7 +61,7 @@ export class WorktreeService {
    * `fromDir`: a new branch starts at the HEAD of this working tree (the project or one of its
    * worktrees) instead of the parent's HEAD, so an agent continues from where its starter stands.
    */
-  async create(parent: Project, branch: string, opts: { fromDir?: string } = {}): Promise<Project> {
+  async create(parent: Project, branch: string, opts: { fromDir?: string; withChanges?: boolean } = {}): Promise<Project> {
     if (!(await this.git.isRepo(parent.path))) throw new ForgeError("GIT_NOT_REPO", "Worktrees brauchen ein Git-Repository.");
     if (!(await this.git.hasCommits(parent.path))) throw new ForgeError("GIT_FAILED", "Das Repository braucht mindestens einen Commit.");
     const check = await this.git.exec(parent.path, ["check-ref-format", "--branch", branch]);
@@ -69,7 +71,7 @@ export class WorktreeService {
     if (!exists && opts.fromDir) {
       const head = await this.git.exec(opts.fromDir, ["rev-parse", "--verify", "-q", "HEAD"]);
       if (head.code !== 0 || !head.stdout.trim()) throw new ForgeError("GIT_FAILED", "Der Ausgangsstand hat noch keinen Commit.");
-      start.push(head.stdout.trim());
+      start.push(opts.withChanges ? ((await this.snapshot(opts.fromDir, head.stdout.trim())) ?? head.stdout.trim()) : head.stdout.trim());
     }
     // A project in a subfolder of a larger repository: the checkout goes beside that repository, not
     // into its working tree, and the project is the same subfolder of the checkout.
@@ -113,6 +115,42 @@ export class WorktreeService {
     const base = await this.git.currentBranch(fromDir).catch(() => null);
     await this.git.exec(repo, ["config", `branch.${branch}.forgeOriginDir`, fromDir]);
     if (base) await this.git.exec(repo, ["config", `branch.${branch}.forgeOriginBranch`, base]);
+  }
+
+  /** Files of the working tree that differ from its HEAD, untracked ones included. */
+  async uncommitted(dir: string): Promise<number> {
+    const r = await this.git.exec(dir, ["status", "--porcelain", "-z", "--untracked-files=normal"]);
+    return r.code === 0 ? r.stdout.split("\0").filter((l) => /^[ MADRCU?!]{2} /.test(l)).length : 0;
+  }
+
+  /**
+   * A commit on top of `head` with the working tree of `dir` as it is, untracked files included, or
+   * null when nothing is uncommitted. Built in a temporary index: the working tree, its index and its
+   * branch stay untouched. Secrets and build output stay out, as in a reviewed commit.
+   */
+  async snapshot(dir: string, head: string): Promise<string | null> {
+    const index = path.join(os.tmpdir(), `forge-index-${randomUUID()}`);
+    const env = { GIT_INDEX_FILE: index };
+    const top = (await this.git.exec(dir, ["rev-parse", "--show-toplevel"])).stdout.trim() || dir;
+    const git = async (args: string[]) => {
+      const r = await this.git.exec(top, args, undefined, 120_000, env);
+      if (r.code !== 0) throw new ForgeError("GIT_FAILED", `Nicht committeter Stand nicht übernommen: ${(r.stderr || r.stdout).trim() || `git ${args[0]} fehlgeschlagen`}`);
+      return r.stdout;
+    };
+    try {
+      await git(["read-tree", head]);
+      await git(["add", "-A", "."]);
+      const added = (await git(["diff", "--cached", "--name-only", "--diff-filter=A", "-z", head])).split("\0").filter(Boolean);
+      const skip = added.filter((f) => isSensitiveFile(f) || isArtifactPath(f));
+      if (skip.length) await git(["rm", "--cached", "-q", "--", ...skip]);
+      const tree = (await git(["write-tree"])).trim();
+      const base = (await git(["rev-parse", `${head}^{tree}`])).trim();
+      if (tree === base) return null;
+      const branch = await this.git.currentBranch(dir).catch(() => null);
+      return (await git(["commit-tree", tree, "-p", head, "-m", `FORGE: nicht committeter Stand${branch ? ` von ${branch}` : ""} für den Agenten`])).trim();
+    } finally {
+      await rm(index, { force: true }).catch(() => null);
+    }
   }
 
   /** Working tree and branch a worktree's branch started from; null parts are unknown. */

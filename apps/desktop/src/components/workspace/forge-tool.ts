@@ -1,7 +1,7 @@
 /** What a call of a FORGE tool (mcp__forge__…) means, for its own card in the chat. */
 import type { DevToolsSection } from "@/stores/ui";
 
-export type ForgeToolIcon = "knowledge" | "dev" | "notify" | "agentStart" | "agentStatus" | "agentMessage" | "agentMerge" | "agentDiscard" | "forge";
+export type ForgeToolIcon = "knowledge" | "dev" | "notify" | "agentStart" | "agentStatus" | "agentMessage" | "agentMerge" | "agentDiscard" | "usage" | "forge";
 
 /** Where the card's button leads: an entry of the knowledge (or the list), the agents, the dev tools. */
 export type ForgeTarget = { kind: "knowledge"; id: string | null } | { kind: "agents" } | { kind: "devtools"; section: DevToolsSection };
@@ -151,6 +151,17 @@ export function forgeToolView(tool: string, input: Record<string, unknown>, resu
         ref: str(input, "agent"),
         icon: discard ? "agentDiscard" : "agentMerge",
         target: { kind: "agents" },
+      });
+    }
+    case "usage_status": {
+      const reached = done && text.startsWith("Limit erreicht");
+      return view({
+        title: !result ? "Fragt die Abo-Nutzung ab" : reached ? "Abo-Nutzung abgefragt, Limit erreicht" : "Abo-Nutzung abgefragt",
+        failedTitle: "Abo-Nutzung nicht abrufbar",
+        ref: /^5 Stunden: (\d+ %)/m.exec(text)?.[1] ?? null,
+        icon: "usage",
+        tone: reached ? "warning" : "accent",
+        target: null,
       });
     }
     default:

@@ -1550,7 +1550,7 @@ export class PhoneService {
           // where the named project or worktree stands.
           const root = found.parentId ? this.d.projects.get(found.parentId) : found;
           const branch = `agent/${slugify(prompt, 32)}-${Date.now().toString(36).slice(-4)}`;
-          const wt = await this.d.worktrees.create(this.d.projects.requireExisting(root.id), branch, { fromDir: found.path });
+          const wt = await this.d.worktrees.create(this.d.projects.requireExisting(root.id), branch, { fromDir: found.path, withChanges: o?.withChanges === true });
           projectChanged(wt.id);
           let s;
           try {

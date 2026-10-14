@@ -42,11 +42,11 @@ export class GitEngine {
     return { ...process.env, GIT_TERMINAL_PROMPT: "0", GIT_OPTIONAL_LOCKS: "0", GIT_LITERAL_PATHSPECS: "1", LC_ALL: "C" };
   }
 
-  async exec(cwd: string, args: string[], input?: string, timeoutMs = 60_000): Promise<RunResult> {
+  async exec(cwd: string, args: string[], input?: string, timeoutMs = 60_000, env?: Record<string, string>): Promise<RunResult> {
     // core.longpaths: Git for Windows otherwise fails on paths over 260 characters (deep node_modules).
     const r = await run(this.gitBin, ["-c", "core.quotepath=false", "-c", "color.ui=false", "-c", "core.longpaths=true", ...args], {
       cwd,
-      env: this.env(),
+      env: env ? { ...this.env(), ...env } : this.env(),
       input,
       timeoutMs,
     });

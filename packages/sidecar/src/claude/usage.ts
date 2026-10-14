@@ -1,4 +1,4 @@
-import type { PlanUsage, UsageWindow } from "@forge/protocol";
+import type { PlanUsage, RateLimitState, UsageWindow } from "@forge/protocol";
 
 interface RawWindow {
   utilization?: number | null;
@@ -36,6 +36,23 @@ export function toPlanUsage(raw: unknown): PlanUsage {
     fetchedAt: new Date().toISOString(),
     error: null,
   };
+}
+
+/** Usage as plain lines for Claude (FORGE tool usage_status). */
+export function describeUsage(usage: PlanUsage, limit: RateLimitState, now = Date.now()): string {
+  const u = settleUsage(usage, now);
+  const at = (iso: string) => {
+    const d = new Date(iso);
+    const time = d.toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" });
+    return d.toDateString() === new Date(now).toDateString() ? `heute ${time}` : `${d.toLocaleDateString("de-DE", { weekday: "short", day: "2-digit", month: "2-digit" })} ${time}`;
+  };
+  const lines: string[] = [];
+  if (limit.status === "reached") lines.push(`Limit erreicht${limit.resetsAt ? `, wieder frei ${at(limit.resetsAt)}` : ""}. Neue Durchläufe scheitern bis dahin.`);
+  else if (limit.status === "warning") lines.push(`Limit fast erreicht${limit.utilization !== null ? ` (${Math.round(limit.utilization)} %)` : ""}${limit.resetsAt ? `, Reset ${at(limit.resetsAt)}` : ""}.`);
+  if (!u.available || !u.windows.length) lines.push(`Nutzung nicht verfügbar${u.error ? `: ${u.error}` : ""}.`);
+  for (const w of u.windows) lines.push(`${w.label}: ${w.utilization} % genutzt${w.resetsAt ? `, Reset ${at(w.resetsAt)}` : ""}`);
+  if (u.subscriptionType) lines.push(`Abo: ${u.subscriptionType}`);
+  return lines.join("\n");
 }
 
 function clamp(n: number) {

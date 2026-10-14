@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Activity, Anvil, BellRing, BookOpen, ChevronRight, GitBranchPlus, GitMerge, Send, ServerCog, Trash2, type LucideIcon } from "lucide-react";
+import { Activity, Anvil, BellRing, BookOpen, ChevronRight, Gauge, GitBranchPlus, GitMerge, Send, ServerCog, Trash2, type LucideIcon } from "lucide-react";
 import { Collapse } from "@/components/ui/collapse";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -19,6 +19,7 @@ const ICONS: Record<ForgeToolIcon, LucideIcon> = {
   agentMessage: Send,
   agentMerge: GitMerge,
   agentDiscard: Trash2,
+  usage: Gauge,
   forge: Anvil,
 };
 

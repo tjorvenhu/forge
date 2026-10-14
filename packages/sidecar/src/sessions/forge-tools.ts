@@ -69,6 +69,8 @@ export interface ForgeToolDeps {
   emit(e: ServerEvent): void;
   project?: ProjectToolDeps | null;
   finisher?: AgentFinisher | null;
+  /** Plan usage as text for usage_status. */
+  usage?: (() => Promise<string>) | null;
 }
 
 /** Knowledge and dev tools of the session's project, with the lines of start context that explain them. */
@@ -221,17 +223,34 @@ export function forgeSessionTools(rec: SessionRecord, d: ForgeToolDeps): { tools
     },
   };
 
+  const usage = d.usage;
+  const usageStatus: SessionTool | null = usage
+    ? {
+        name: "usage_status",
+        description:
+          "Nutzung des Claude-Abos des Nutzers: 5-Stunden- und Wochenfenster in Prozent mit Reset-Zeit, und ob ein Limit erreicht ist. Vor großem Aufwand prüfen (mehrere Agenten, lange Läufe), damit die Arbeit nicht am Limit abbricht.",
+        shape: {},
+        autoAllow: true,
+        run: () => usage(),
+      }
+    : null;
+  const common = [notify, ...(usageStatus ? [usageStatus] : [])];
+  const usageLine = usageStatus ? "- usage_status: Abo-Nutzung und Limits; vor großem Aufwand (mehrere Agenten, lange Läufe) prüfen." : "";
+
   // Agents need worktrees and branches, so a project without git gets neither them nor git hints.
   if (!project.gitEnabled && !parent) {
     return {
-      tools: [notify, ...own.tools],
+      tools: [...common, ...own.tools],
       context: [
         "Du läufst in FORGE, einer Desktop-Oberfläche für Claude Code. Neben deinen Werkzeugen gibt es FORGE-Werkzeuge (mcp__forge__…).",
         `Dieses Projekt arbeitet bewusst ohne Git: Der Nutzer hat Git für ${rec.cwd} in FORGE ausgeschaltet. Führe keine git-Befehle aus (kein git init, status, add, commit, branch, checkout, push), lege kein Repository an und schlage keine Commits, Branches oder Pull Requests vor. Auch ein vorhandener .git-Ordner bleibt unberührt. Änderungen landen nur als Dateien im Ordner; wenn etwas rückgängig gemacht werden muss, geht das nur über die Dateien selbst.`,
         "Parallele Agenten (start_agent) gibt es deshalb hier nicht.",
         "- notify: den Nutzer aktiv benachrichtigen. urgent=true nur, wenn er sofort gebraucht wird (kann sein Telefon klingeln lassen).",
+        usageLine,
         ...own.context,
-      ].join("\n"),
+      ]
+        .filter(Boolean)
+        .join("\n"),
     };
   }
 
@@ -248,7 +267,7 @@ export function forgeSessionTools(rec: SessionRecord, d: ForgeToolDeps): { tools
 
   if (parent) {
     return {
-      tools: [notify, ...own.tools],
+      tools: [...common, ...own.tools],
       context: [
         "Du läufst in FORGE, einer Desktop-Oberfläche für Claude Code, als paralleler Agent: Eine andere FORGE-Session hat dich gestartet.",
         `Du arbeitest im Git-Worktree ${rec.cwd} auf einem eigenen Branch. Ändere nur Dateien in diesem Ordner.`,
@@ -302,10 +321,11 @@ export function forgeSessionTools(rec: SessionRecord, d: ForgeToolDeps): { tools
   const startAgent: SessionTool = {
     name: "start_agent",
     description:
-      "Startet einen parallelen Agenten (eigene Claude-Code-Session) in einem neuen Git-Worktree auf eigenem Branch. Für unabhängige Teilaufgaben, die gleichzeitig laufen können. Der Agent sieht diesen Chat nicht: Der Auftrag muss für sich allein verständlich sein. Sein Branch beginnt beim letzten Commit deines aktuellen Branches: Nicht committete Änderungen sieht er nicht, committe sie vorher, wenn er sie braucht.",
+      "Startet einen parallelen Agenten (eigene Claude-Code-Session) in einem neuen Git-Worktree auf eigenem Branch. Für unabhängige Teilaufgaben, die gleichzeitig laufen können. Der Agent sieht diesen Chat nicht: Der Auftrag muss für sich allein verständlich sein. Sein Branch beginnt beim letzten Commit deines aktuellen Branches. Nicht committete Änderungen sieht er nur mit with_changes=true: Dann beginnt sein Branch mit einem Commit dieses Stands (ohne .env, Schlüssel und Build-Ausgaben); dein Ordner bleibt unverändert.",
     shape: {
       task: z.string().min(10).describe("Vollständiger Auftrag mit allem nötigen Kontext"),
       name: z.string().max(40).optional().describe("Kurzer Name für den Branch, z. B. csv-export"),
+      with_changes: z.boolean().optional().describe("true: der Agent bekommt auch den nicht committeten Stand deines Ordners"),
     },
     autoAllow: false,
     run: async (a) => {
@@ -314,8 +334,11 @@ export function forgeSessionTools(rec: SessionRecord, d: ForgeToolDeps): { tools
       const root = project.parentId ? d.projects.get(project.parentId) : project;
       const task = String(a.task);
       const branch = `agent/${slugify(typeof a.name === "string" && a.name.trim() ? a.name : task, 32)}-${Date.now().toString(36).slice(-4)}`;
+      const fromDir = d.projects.requireExisting(project.id).path;
+      const withChanges = a.with_changes === true;
+      const open = withChanges ? 0 : await d.worktrees.uncommitted(fromDir).catch(() => 0);
       // From where this session stands (its branch, or its own worktree), not from the main checkout.
-      const wt = await d.worktrees.create(d.projects.requireExisting(root.id), branch, { fromDir: d.projects.requireExisting(project.id).path });
+      const wt = await d.worktrees.create(d.projects.requireExisting(root.id), branch, { fromDir, withChanges });
       d.emit({ event: "project.updated", payload: { projectId: wt.id } });
       d.agents.reserve(wt.id, sessionId);
       let child: Session;
@@ -329,7 +352,12 @@ export function forgeSessionTools(rec: SessionRecord, d: ForgeToolDeps): { tools
         throw e;
       }
       d.agents.adopt(child.id, wt.id);
-      return `Agent ${short(child.id)} gestartet, Branch ${branch}, Ordner ${wt.path}. Er arbeitet unabhängig; den Stand gibt agent_status. Seine Änderungen liegen nur auf seinem Branch.`;
+      const note = withChanges
+        ? " Er hat deinen nicht committeten Stand als ersten Commit seines Branches."
+        : open
+          ? ` Hinweis: ${open} ${open === 1 ? "Datei ist" : "Dateien sind"} bei dir nicht committet, die sieht er nicht (with_changes=true hätte sie mitgegeben).`
+          : "";
+      return `Agent ${short(child.id)} gestartet, Branch ${branch}, Ordner ${wt.path}. Er arbeitet unabhängig; den Stand gibt agent_status. Seine Änderungen liegen nur auf seinem Branch.${note}`;
     },
   };
 
@@ -400,10 +428,10 @@ export function forgeSessionTools(rec: SessionRecord, d: ForgeToolDeps): { tools
     : null;
 
   return {
-    tools: [startAgent, agentStatus, messageAgent, ...(finishAgent ? [finishAgent] : []), notify, ...own.tools],
+    tools: [startAgent, agentStatus, messageAgent, ...(finishAgent ? [finishAgent] : []), ...common, ...own.tools],
     context: [
       "Du läufst in FORGE, einer Desktop-Oberfläche für Claude Code. Neben deinen Werkzeugen gibt es FORGE-Werkzeuge (mcp__forge__…):",
-      "- start_agent: startet einen parallelen Agenten in einem eigenen Git-Worktree auf eigenem Branch. Nur für Teilaufgaben, die wirklich unabhängig und gleichzeitig laufen können; der Auftrag muss für sich allein verständlich sein. Der Agent startet beim letzten Commit deines Branches und sieht nur committete Stände.",
+      "- start_agent: startet einen parallelen Agenten in einem eigenen Git-Worktree auf eigenem Branch. Nur für Teilaufgaben, die wirklich unabhängig und gleichzeitig laufen können; der Auftrag muss für sich allein verständlich sein. Der Agent startet beim letzten Commit deines Branches; deinen nicht committeten Stand bekommt er nur mit with_changes=true.",
       "- agent_status und message_agent: Agenten verfolgen und anleiten. Ihre Arbeit liegt auf ihren Branches.",
       finisher
         ? `- finish_agent: einen Agenten des Projekts zusammenführen (merge) oder verwerfen (discard), auch einen fremden; danach sind Session, Worktree, FORGE-Eintrag und Branch weg. Nur nach Rücksprache mit dem Nutzer. ${
@@ -415,6 +443,7 @@ export function forgeSessionTools(rec: SessionRecord, d: ForgeToolDeps): { tools
       autoMergeLine,
       autoCommitLine,
       "- notify: den Nutzer aktiv benachrichtigen. urgent=true nur, wenn er sofort gebraucht wird (kann sein Telefon klingeln lassen).",
+      usageLine,
       ...own.context,
     ]
       .filter(Boolean)

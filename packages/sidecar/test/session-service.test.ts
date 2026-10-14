@@ -273,7 +273,7 @@ describe("SessionService", () => {
   it("tells sessions in a project without git not to use git and gives them no agents", async () => {
     projects.update(projectId, { gitEnabled: false });
     const s = await svc.start({ projectId, prompt: "Baue die Startseite" });
-    expect(rt.started[0]!.tools!.map((t) => t.name)).toEqual(["notify"]);
+    expect(rt.started[0]!.tools!.map((t) => t.name)).toEqual(["notify", "usage_status"]);
     expect(rt.started[0]!.context).toMatch(/ohne Git/);
     expect(rt.started[0]!.context).toMatch(/keine git-Befehle/);
     expect(rt.started[0]!.context).not.toMatch(/start_agent:/);
@@ -305,6 +305,7 @@ describe("SessionService", () => {
       ["agent_status", true],
       ["message_agent", false],
       ["notify", true],
+      ["usage_status", true],
     ]);
     expect(rt.started[0]!.context).toMatch(/start_agent/);
     const tool = (name: string) => tools.find((t) => t.name === name)!;
@@ -316,7 +317,7 @@ describe("SessionService", () => {
     expect(child.cwd).toContain(".forge-worktrees");
     expect(child.firstMessage?.text).toBe("Baue den CSV-Export in src/export.ts");
     // Agents get no start_agent: one level, no chains.
-    expect(child.tools!.map((t) => t.name)).toEqual(["notify"]);
+    expect(child.tools!.map((t) => t.name)).toEqual(["notify", "usage_status"]);
     expect(child.context).toMatch(/paralleler Agent/);
 
     const status = await tool("agent_status").run({});
@@ -329,6 +330,9 @@ describe("SessionService", () => {
 
     expect(await tool("notify").run({ message: "Export fertig, bitte prüfen", urgent: true })).toMatch(/dringend/);
     expect(db.listEvents(s.id).at(-1)?.body).toEqual({ type: "notify", message: "Export fertig, bitte prüfen", urgent: true });
+
+    rt.usage = { available: true, subscriptionType: "max", windows: [{ key: "five_hour", label: "5 Stunden", utilization: 42, resetsAt: null }], fetchedAt: new Date().toISOString(), error: null };
+    expect(await tool("usage_status").run({})).toBe("5 Stunden: 42 % genutzt\nAbo: max");
 
     // After a restart the agent still belongs to its session.
     rt.replay(0);

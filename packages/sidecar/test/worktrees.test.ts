@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { GitEngine } from "../src/git/git.js";
@@ -77,6 +77,33 @@ describe("worktrees", () => {
     const plain = await worktrees.create(parent, "agent/neu");
     expect(existsSync(path.join(plain.path, "basis.txt"))).toBe(false);
   });
+
+  it("hands the uncommitted state to a new branch without touching the starter's folder", async () => {
+    const parent = await projects.import(repo);
+    writeFileSync(path.join(repo, "README.md"), "# app geändert\n");
+    writeFileSync(path.join(repo, "neu.txt"), "neu\n");
+    writeFileSync(path.join(repo, ".env"), "SECRET=1\n");
+    await git(repo, "add", "neu.txt");
+    expect(await worktrees.uncommitted(repo)).toBe(3);
+    const before = await git(repo, "status", "--porcelain");
+
+    const wt = await worktrees.create(parent, "agent/mit-stand", { fromDir: repo, withChanges: true });
+    expect(readFileSync(path.join(wt.path, "README.md"), "utf8").trim()).toBe("# app geändert");
+    expect(existsSync(path.join(wt.path, "neu.txt"))).toBe(true);
+    expect(existsSync(path.join(wt.path, ".env"))).toBe(false);
+    expect(await git(wt.path, "log", "-1", "--format=%s")).toMatch(/^FORGE: nicht committeter Stand von main/);
+    expect(await worktrees.uncommitted(wt.path)).toBe(0);
+    expect(await git(repo, "status", "--porcelain")).toBe(before);
+    expect(await git(repo, "log", "--format=%s")).toBe("init\n");
+
+    // Nothing uncommitted: the branch starts at HEAD, no empty commit.
+    await git(repo, "add", "-A");
+    await git(repo, "reset", "-q", "--", ".env");
+    await git(repo, "commit", "-m", "zwei");
+    rmSync(path.join(repo, ".env"));
+    const clean = await worktrees.create(parent, "agent/sauber", { fromDir: repo, withChanges: true });
+    expect(await git(clean.path, "log", "-1", "--format=%s")).toBe("zwei\n");
+  }, 20_000);
 
   it("deletes only a branch FORGE made for this worktree", async () => {
     const parent = await projects.import(repo);

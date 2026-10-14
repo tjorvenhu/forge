@@ -13,6 +13,8 @@ export interface StartSessionOptions {
   planOnly?: boolean;
   /** run as a parallel agent in its own git worktree and branch */
   agent?: boolean;
+  /** an agent also gets the uncommitted state of the project it starts from */
+  withChanges?: boolean;
 }
 
 /** Project tools may name a session instead of a project; then the session's project (also an agent's worktree) is meant. */
@@ -412,7 +414,12 @@ export const PHONE_TOOLS: readonly PhoneToolSpec[] = [
         type: "boolean",
         optional: true,
         description:
-          "true, wenn die Aufgabe parallel als eigener Agent laufen soll (eigener Worktree und Branch ab dem letzten Commit des genannten Projekts oder Worktrees; nicht committete Änderungen sieht der Agent nicht)",
+          "true, wenn die Aufgabe parallel als eigener Agent laufen soll (eigener Worktree und Branch ab dem letzten Commit des genannten Projekts oder Worktrees)",
+      },
+      with_changes: {
+        type: "boolean",
+        optional: true,
+        description: "nur mit agent: true, wenn der Agent auch den noch nicht committeten Stand des Projekts bekommen soll",
       },
     },
     run: (t, a) =>
@@ -421,6 +428,7 @@ export const PHONE_TOOLS: readonly PhoneToolSpec[] = [
         effort: opt(a.effort) as EffortLevel | undefined,
         planOnly: optBool(a.plan_only),
         agent: optBool(a.agent),
+        withChanges: optBool(a.with_changes),
       }),
   },
   {

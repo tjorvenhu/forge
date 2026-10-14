@@ -398,12 +398,13 @@ function SessionThread({ sessionId, session, project, workingInPanel }: { sessio
             ))}
           </div>
           {pending.length > 0 && <PendingMessages items={pending} />}
-          {startedAt && !workingInPanel && <WorkingIndicator startedAt={startedAt} subagents={session?.subagents} sessionId={sessionId} />}
           {!!session?.background.length && <BackgroundIndicator tasks={session.background} sessionId={sessionId} />}
         </div>
       </div>
       {jump && <JumpToEnd kind={jump} onClick={jumpToEnd} />}
       </div>
+      {/* Outside the scroll area: the line stays right above the composer, however short the chat is. */}
+      {startedAt && !workingInPanel && <WorkingIndicator startedAt={startedAt} subagents={session?.subagents} sessionId={sessionId} />}
       <Composer project={project} session={session} prefill={retryText} onPrefillConsumed={clearRetry} />
       <TaskThreadDialog sessionId={sessionId} projectDir={session?.cwd ?? project.path} />
     </>

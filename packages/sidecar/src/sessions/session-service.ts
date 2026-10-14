@@ -19,6 +19,7 @@ import { ForgeError } from "@forge/protocol";
 import { transcriptImages } from "../claude/attachments.js";
 import type { ClaudeRuntime } from "../claude/runtime.js";
 import { UploadStore } from "../claude/uploads.js";
+import { describeUsage } from "../claude/usage.js";
 import { ContextRecovery } from "./context-recovery.js";
 import { HISTORY_PAGE_LIMIT, type Db } from "../persistence/db.js";
 import type { GitEngine } from "../git/git.js";
@@ -183,6 +184,7 @@ export class SessionService {
           emit,
           project: this.projectDeps,
           finisher: this.agentFinisher,
+          usage: async () => describeUsage(await this.catalog.planUsage(false), this.limits.state()),
         }),
     });
   }

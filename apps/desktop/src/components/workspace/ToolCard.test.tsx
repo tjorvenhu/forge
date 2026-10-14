@@ -144,5 +144,9 @@ describe("FORGE tools in the chat", () => {
     show(tool("mcp__forge__knowledge_search", { query: "deploy" }, { text: "Keine Treffer im Projektwissen." }));
     expect(screen.getByText("Projektwissen durchsucht, keine Treffer")).toBeTruthy();
     expect(screen.getByText("FORGE")).toBeTruthy();
+    cleanup();
+    show(tool("mcp__forge__usage_status", {}, { text: "Limit erreicht, wieder frei heute 19:10. Neue Durchläufe scheitern bis dahin.\n5 Stunden: 100 % genutzt, Reset heute 19:10" }));
+    expect(screen.getByText("Abo-Nutzung abgefragt, Limit erreicht")).toBeTruthy();
+    expect(screen.getByText("100 %")).toBeTruthy();
   });
 });

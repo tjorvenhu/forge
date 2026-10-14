@@ -106,7 +106,7 @@ export function WorkingLine({ startedAt, now, children }: { startedAt: string; n
     <ChatRow
       marker={
         <span className="flex motion-safe:animate-spin-slow">
-          <ClaudeMark size={13} />
+          <ClaudeMark size={18} />
         </span>
       }
     >
@@ -146,7 +146,7 @@ export const WorkingIndicator = memo(function WorkingIndicator({ startedAt, suba
     }
   };
   return (
-    <div className="px-6 pb-4 pt-1 text-small">
+    <div className="max-h-40 shrink-0 overflow-y-auto px-6 pt-2 text-small">
       <WorkingLine startedAt={startedAt} now={now}>
         <span className="tabular-nums text-subtle">
           ({formatElapsed(elapsed)} · <Kbd>Esc</Kbd> zum Unterbrechen)
