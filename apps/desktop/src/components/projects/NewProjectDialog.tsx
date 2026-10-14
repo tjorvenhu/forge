@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { FolderOpen, FolderPlus, FolderX, GitBranch } from "lucide-react";
 import { call, keys, useGitHubAccount, useSettings } from "@/lib/queries";
@@ -44,9 +44,22 @@ export function NewProjectDialog() {
     if (mode) {
       setError(null);
       setDuplicateId(null);
-      if (!parent && settings.data?.defaultProjectDir) setParent(settings.data.defaultProjectDir);
     }
-  }, [mode, parent, settings.data?.defaultProjectDir]);
+  }, [mode]);
+
+  const open = mode !== null;
+  const defaultDir = settings.data?.defaultProjectDir;
+  /** the default folder went in once for this opening; a field the user empties stays empty */
+  const prefilled = useRef(false);
+  useEffect(() => {
+    if (!open) {
+      prefilled.current = false;
+      return;
+    }
+    if (prefilled.current || !defaultDir) return;
+    prefilled.current = true;
+    setParent((p) => p || defaultDir);
+  }, [open, defaultDir]);
 
   const close = () => {
     if (busy) return;
@@ -56,6 +69,9 @@ export function NewProjectDialog() {
     setUrl("");
     setDirName("");
     setWithGit(true);
+    setOnGitHub(false);
+    setGhPrivate(true);
+    setGhOwner("");
   };
 
   const submit = async () => {

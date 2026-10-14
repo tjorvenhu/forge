@@ -7,6 +7,7 @@ import { useUi } from "@/stores/ui";
 import { useToasts } from "@/stores/toast";
 import { keys } from "./queries";
 import { createGitRefresher, evictSessionBuffers, startServerEvents } from "./server-events";
+import { playSound } from "./sounds";
 
 type NotificationsModule = typeof NotificationsNs;
 
@@ -127,6 +128,30 @@ describe("server event routing", () => {
     f.emit(models);
     f.emit(update);
     expect(useToasts.getState().toasts.map((t) => t.title)).toEqual(["Neues Modell verfügbar", "Update fehlgeschlagen"]);
+  });
+
+  it("signals a finished session from the main window only", () => {
+    vi.mocked(playSound).mockClear();
+    const f = fakeSource();
+    stop = startServerEvents(qc, f.source);
+    inChatWindow = true;
+    f.emit({ event: "session.done", payload: { sessionId: "done-1" } } as ServerEvent);
+    expect(playSound).not.toHaveBeenCalled();
+    inChatWindow = false;
+    f.emit({ event: "session.done", payload: { sessionId: "done-1" } } as ServerEvent);
+    expect(playSound).toHaveBeenCalledWith("done");
+  });
+
+  it("reloads the dev tools of a changed project, for a worktree those of its project", () => {
+    const f = fakeSource();
+    stop = startServerEvents(qc, f.source);
+    qc.setQueryData(keys.projects, [{ id: "wt", parentId: "p1" }]);
+    const invalidate = vi.spyOn(qc, "invalidateQueries");
+    f.emit({ event: "project.updated", payload: { projectId: "p2" } });
+    f.emit({ event: "project.updated", payload: { projectId: "wt" } });
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: keys.devTools("p2") });
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: keys.devTools("p1") });
+    expect(invalidate).not.toHaveBeenCalledWith({ queryKey: keys.devTools("wt") });
   });
 });
 

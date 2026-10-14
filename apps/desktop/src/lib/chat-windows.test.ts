@@ -7,6 +7,7 @@ import { useUi } from "@/stores/ui";
 import type * as NotificationsNs from "./notifications";
 import { applyReattach, closeChatWindows, openChatWindow, parseChatWindowTarget, prepareChatWindowUi, recallChatWindow, useChatWindows } from "./chat-windows";
 import { startChatWindowEvents } from "./chat-window-events";
+import { keys } from "./queries";
 
 type NotificationsModule = typeof NotificationsNs;
 
@@ -70,6 +71,15 @@ describe("chat window target", () => {
     useDrafts.getState().updateFiles("s", () => [pathFile]);
     applyReattach({ projectId: "p", sessionId: "s", draft: null, files: [] });
     expect(useDrafts.getState().drafts.s?.files).toEqual([]);
+  });
+
+  it("does not open a project that is gone, e.g. a finished agent", () => {
+    const qc = new QueryClient();
+    qc.setQueryData(keys.projects, [{ id: "app" }]);
+    applyReattach({ projectId: "wt", sessionId: "s", draft: "Rest" }, qc);
+    expect(useUi.getState()).toMatchObject({ view: "home", activeProjectId: null });
+    applyReattach({ projectId: "app", sessionId: "s", draft: null }, qc);
+    expect(useUi.getState()).toMatchObject({ view: "workspace", activeProjectId: "app" });
   });
 });
 

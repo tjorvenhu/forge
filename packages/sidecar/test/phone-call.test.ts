@@ -986,12 +986,16 @@ describe("PhoneService end to end with a test PBX", () => {
     testDbStatus = "stopping";
     expect(await conv.tools.testDatabase("shop", "status")).toBe("Die Test-Datenbank von shop wird gerade gestoppt.");
 
+    events = [];
     expect(await conv.tools.devSettings("shop", {})).toBe(
       "shop: Test-Umgebung geht an Dev-Server und Tests. Test-Datenbank auf Port 54330, Name shop, startet nicht mit dem Dev-Server, Verbindungs-URL in DATABASE_URL.",
     );
+    expect(events).not.toContainEqual({ event: "project.updated", payload: { projectId } });
     expect(await conv.tools.devSettings("shop", { useEnv: false, withDevServer: true, envVar: "" })).toBe(
       "Gespeichert. Test-Umgebung ist aus. Test-Datenbank auf Port 54330, Name shop, startet mit dem Dev-Server, Verbindungs-URL wird nicht übergeben.",
     );
+    // The UI reloads the dev tools on this event.
+    expect(events).toContainEqual({ event: "project.updated", payload: { projectId } });
     expect(await conv.tools.devServer("shop", "output")).toContain("Error: Port 3000 belegt");
     await byeFromPbx("c-dev", inv, ok);
   }, 30_000);

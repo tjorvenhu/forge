@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { TooltipProvider } from "@radix-ui/react-tooltip";
 import type * as RpcModuleNs from "@/lib/rpc";
@@ -78,5 +78,28 @@ describe("NewProjectDialog", () => {
     fireEvent.click(screen.getByRole("button", { name: "Anlegen" }));
     await waitFor(() => expect(calls("projects.create")).toHaveLength(1));
     expect(calls("projects.create")[0]).toMatchObject({ name: "crm", github: { private: true, owner: null } });
+  });
+
+  it("fills in the default folder when it opens and leaves a cleared field empty", async () => {
+    useUi.setState({ newProject: "create" });
+    setup();
+    const folder = screen.getByPlaceholderText<HTMLInputElement>("C:\\Users\\…\\Projekte");
+    await waitFor(() => expect(folder.value).toBe("C:\\code"));
+    fireEvent.change(folder, { target: { value: "" } });
+    await new Promise((r) => setTimeout(r, 20));
+    expect(folder.value).toBe("");
+  });
+
+  it("forgets the GitHub choice when closed, so a later import does not publish publicly", async () => {
+    useUi.setState({ newProject: "create" });
+    setup();
+    fireEvent.click(await gitHubCheckbox());
+    fireEvent.click(await screen.findByRole("radio", { name: "Öffentlich" }));
+    fireEvent.click(screen.getByRole("button", { name: "Abbrechen" }));
+    act(() => useUi.setState({ newProject: "import" }));
+    const box = await gitHubCheckbox();
+    expect(box.getAttribute("aria-checked")).toBe("false");
+    fireEvent.click(box);
+    expect((await screen.findByRole("radio", { name: "Privat" })).getAttribute("aria-checked")).toBe("true");
   });
 });

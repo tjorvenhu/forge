@@ -65,6 +65,18 @@ beforeEach(() => {
 });
 afterEach(cleanup);
 
+describe("phone on and off", () => {
+  it("follows the phone state, which the header button and the phone switch too", async () => {
+    const plain = callMock.getMockImplementation()!;
+    callMock.mockImplementation(async (method: string, params: Record<string, unknown>) =>
+      method === "phone.state" ? { enabled: true, registration: "registering", message: null, call: null } : plain(method, params),
+    );
+    setup();
+    fireEvent.click(await screen.findByRole("button", { name: "Ausschalten" }));
+    await waitFor(() => expect(callMock).toHaveBeenCalledWith("phone.setEnabled", { enabled: false }));
+  });
+});
+
 describe("phone settings save by themselves", () => {
   it("has no save button and saves a switch at once", async () => {
     setup();

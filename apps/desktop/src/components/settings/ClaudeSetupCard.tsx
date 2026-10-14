@@ -20,12 +20,16 @@ export function ClaudeSetupCard() {
   const diag = useDiagnostics();
   const setup = useClaudeSetup();
   const qc = useQueryClient();
-  const [code, setCode] = useState("");
   const s = setup.data;
   const d = diag.data;
   const running = s?.phase === "running" || s?.phase === "waiting_code";
 
   const url = s?.phase === "waiting_code" ? s.url : null;
+  // The typed code belongs to one login attempt; a cancel or a new sign-in page starts empty.
+  const [typed, setTyped] = useState<{ url: string | null; code: string }>({ url: null, code: "" });
+  const code = typed.url === url ? typed.code : "";
+  const setCode = (next: string) => setTyped({ url, code: next });
+  const [submitting, setSubmitting] = useState(false);
   useEffect(() => {
     if (url && openedUrl !== url) {
       openedUrl = url;
@@ -87,12 +91,17 @@ export function ClaudeSetupCard() {
               <Button
                 variant="primary"
                 disabled={!code.trim()}
+                loading={submitting}
                 onClick={async () => {
+                  if (submitting) return;
+                  setSubmitting(true);
                   try {
                     qc.setQueryData(keys.claudeSetup, await call("claude.submitLoginCode", { code }));
                     setCode("");
                   } catch (e) {
                     toast.error("Code nicht übermittelt", errorMessage(e));
+                  } finally {
+                    setSubmitting(false);
                   }
                 }}
               >
@@ -103,7 +112,14 @@ export function ClaudeSetupCard() {
               <Button size="sm" variant="ghost" onClick={() => s.url && void openExternal(s.url)}>
                 <ExternalLink className="h-3.5 w-3.5" /> Anmeldeseite erneut öffnen
               </Button>
-              <Button size="sm" variant="ghost" onClick={() => void act("claude.cancelSetup")}>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => {
+                  setCode("");
+                  void act("claude.cancelSetup");
+                }}
+              >
                 Abbrechen
               </Button>
             </div>

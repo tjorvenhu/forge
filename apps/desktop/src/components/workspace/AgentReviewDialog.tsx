@@ -4,6 +4,7 @@ import { Bot, GitBranch, GitMerge, Trash2 } from "lucide-react";
 import type { AgentReview } from "@forge/protocol";
 import { call, keys } from "@/lib/queries";
 import { errorMessage, RpcCallError } from "@/lib/rpc";
+import { chatWindowsOfProject, closeChatWindows } from "@/lib/chat-windows";
 import { closeProjectTerminals } from "@/lib/terminal-registry";
 import { cn } from "@/lib/utils";
 import { useAgentReview } from "@/stores/agent-review";
@@ -176,7 +177,10 @@ function Actions({ r, onDone }: { r: AgentReview; onDone: () => void }) {
     try {
       // A terminal open in the worktree folder keeps Windows from deleting it.
       closeProjectTerminals([r.projectId]);
+      const windows = await chatWindowsOfProject(qc, r.projectId);
       const res = await call("agents.finish", { projectId: r.projectId, action });
+      // Conflict and waiting keep the worktree, and its chats stay open.
+      if (res.outcome !== "conflict" && res.outcome !== "waiting") closeChatWindows(windows);
       void qc.invalidateQueries({ queryKey: keys.projects });
       void qc.invalidateQueries({ queryKey: keys.git(r.rootId) });
       void qc.invalidateQueries({ queryKey: keys.log(r.rootId) });

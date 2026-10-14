@@ -12,9 +12,12 @@ const callMock = vi.fn();
 const closeTerminalsMock = vi.fn();
 vi.mock("@/lib/rpc", async (orig) => ({ ...(await orig<RpcModule>()), rpc: { call: (...a: unknown[]) => callMock(...a), subscribe: () => () => {} } }));
 vi.mock("@/lib/terminal-registry", () => ({ closeProjectTerminals: (ids: string[]) => closeTerminalsMock(ids) }));
+const invokeMock = vi.fn<(cmd: string, args?: unknown) => Promise<unknown>>(async () => {});
+vi.mock("@tauri-apps/api/core", () => ({ invoke: (cmd: string, args?: unknown) => invokeMock(cmd, args) }));
 
 const { RpcCallError } = await import("@/lib/rpc");
 const { AgentsTab } = await import("./AgentsTab");
+const { useChatWindows } = await import("@/lib/chat-windows");
 
 function git(branch: string, changedCount = 0): GitSummary {
   return { isRepo: true, branch, detached: false, ahead: 0, behind: 0, upstream: null, changedCount, conflicted: false, remoteUrl: null };
@@ -68,6 +71,8 @@ afterEach(cleanup);
 beforeEach(() => {
   callMock.mockReset();
   closeTerminalsMock.mockReset();
+  invokeMock.mockClear();
+  useChatWindows.setState({ sessions: [] });
   useToasts.setState({ toasts: [] });
   useUi.setState({ view: "workspace", activeProjectId: "app", workspaceTab: "agents" });
   callMock.mockImplementation(async (method: string) => {
@@ -106,6 +111,24 @@ describe("AgentsTab", () => {
     expect(callMock).toHaveBeenCalledWith("worktrees.remove", { projectId: "wt-login", force: false, deleteBranch: false });
     expect(useUi.getState().activeProjectId).toBe("app");
     expect(useToasts.getState().toasts.at(-1)).toMatchObject({ tone: "success", title: "Worktree entfernt" });
+  });
+
+  it("closes the chat windows of the worktree's sessions once it is removed", async () => {
+    useChatWindows.setState({ sessions: ["s-wt", "s-app"] });
+    callMock.mockImplementation(async (method: string, params: { sessionId?: string }) => {
+      if (method === "projects.list") return [app, login, dirty];
+      if (method === "config.docs") return [];
+      if (method === "sessions.get") return { id: params.sessionId, projectId: params.sessionId === "s-wt" ? "wt-login" : "app" };
+      if (method === "worktrees.remove") return { ok: true, deletedBranch: null, branchError: null };
+      throw new Error("unexpected " + method);
+    });
+    setup(app);
+    await openRemoval("agent/login");
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Entfernen" }));
+    });
+    expect(callMock).toHaveBeenCalledWith("worktrees.remove", expect.anything());
+    expect(invokeMock.mock.calls.filter(([cmd]) => cmd === "close_chat_window")).toEqual([["close_chat_window", { sessionId: "s-wt" }]]);
   });
 
   it("deletes the branch too when the box is ticked", async () => {

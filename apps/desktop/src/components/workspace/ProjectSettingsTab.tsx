@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { FileText, ShieldAlert, ShieldCheck, SlidersHorizontal, Trash2, Workflow, X } from "lucide-react";
 import type { ProfileId, Project, EffortLevel } from "@forge/protocol";
@@ -79,6 +79,8 @@ export function ProjectSettingsTab({ project }: { project: Project }) {
       if (patch.devCommand !== undefined) void qc.invalidateQueries({ queryKey: keys.devServer(project.id) });
       toast.saved();
     } catch (e) {
+      // Brings back the stored state after an optimistic change (tags).
+      void qc.invalidateQueries({ queryKey: keys.project(project.id) });
       toast.error("Nicht gespeichert", errorMessage(e));
     }
   };
@@ -224,7 +226,28 @@ function PermissionsSection({ project, update }: SectionProps) {
 
 function AutomationSection({ project, update }: SectionProps) {
   const [draft, setDraft] = useState("");
-  const setTag = (tag: string, on: boolean) => void update({ tags: on ? [...project.tags, tag] : project.tags.filter((x) => x !== tag) });
+  const qc = useQueryClient();
+  /** the list the last click asked for, while saves are under way; a refetch in between may still show an older one */
+  const intended = useRef<string[] | null>(null);
+  const saving = useRef(0);
+  /**
+   * Builds on the last click, not on this render, and shows the result at once: quick switches in a
+   * row would otherwise each start from the same list and drop or double a tag.
+   */
+  const setTag = (tag: string, on: boolean) => {
+    const key = keys.project(project.id);
+    void qc.cancelQueries({ queryKey: key });
+    const tags = new Set(intended.current ?? qc.getQueryData<Project>(key)?.tags ?? project.tags);
+    if (on) tags.add(tag);
+    else tags.delete(tag);
+    const next = [...tags];
+    intended.current = next;
+    saving.current++;
+    qc.setQueryData(key, (p: Project | undefined) => (p ? { ...p, tags: next } : p));
+    void update({ tags: next }).finally(() => {
+      if (--saving.current === 0) intended.current = null;
+    });
+  };
   const own = project.tags.filter((t) => !KNOWN_TAGS.has(t));
   const addOwn = () => {
     const tag = draft.trim().toLowerCase();

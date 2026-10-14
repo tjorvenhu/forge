@@ -1,5 +1,8 @@
+import { useRef } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { RotateCcw, ShieldAlert } from "lucide-react";
 import { DEFAULT_DISABLED_POLICY_RULES, type PolicyRuleId, type Settings } from "@forge/protocol";
+import { keys } from "@/lib/queries";
 import { Button } from "@/components/ui/button";
 import { Group, SwitchRow } from "./layout";
 
@@ -45,8 +48,17 @@ export const RULE_GROUPS: ReadonlyArray<{ title: string; description: string; ru
 
 /** The blocklist rules as switches: on means FORGE blocks it. Stored as the list of switched-off rules. */
 export function PolicySettings({ s, save }: { s: Settings; save: (patch: Partial<Settings>) => Promise<void> }) {
+  const qc = useQueryClient();
   const off = new Set(s.disabledPolicyRules);
-  const set = (id: PolicyRuleId, active: boolean) => void save({ disabledPolicyRules: active ? s.disabledPolicyRules.filter((r) => r !== id) : [...s.disabledPolicyRules, id] });
+  // The list is saved whole: one switch at a time, each built on what the last save returned,
+  // otherwise two quick clicks both start from the same rendered list and undo each other.
+  const queue = useRef(Promise.resolve());
+  const set = (id: PolicyRuleId, active: boolean) => {
+    queue.current = queue.current.then(() => {
+      const rest = (qc.getQueryData<Settings>(keys.settings) ?? s).disabledPolicyRules.filter((r) => r !== id);
+      return save({ disabledPolicyRules: active ? rest : [...rest, id] });
+    });
+  };
   // Only rules switched off beyond the default are worth a warning.
   const extraOff = s.disabledPolicyRules.filter((r) => !DEFAULT_DISABLED_POLICY_RULES.includes(r)).length;
 

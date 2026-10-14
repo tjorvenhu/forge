@@ -4,6 +4,7 @@ import { Bot, GitBranch, GitMerge, Plus, Trash2, Users } from "lucide-react";
 import type { Project, ProjectWithStatus, SessionStatus } from "@forge/protocol";
 import { call, keys, useProjects } from "@/lib/queries";
 import { errorMessage, RpcCallError } from "@/lib/rpc";
+import { chatWindowsOfProject, closeChatWindows } from "@/lib/chat-windows";
 import { closeProjectTerminals } from "@/lib/terminal-registry";
 import { relativeTime } from "@/lib/utils";
 import { useUi } from "@/stores/ui";
@@ -50,7 +51,9 @@ export function AgentsTab({ project }: { project: ProjectWithStatus }) {
     if (!removing) return;
     try {
       closeProjectTerminals([removing.id]);
+      const windows = await chatWindowsOfProject(qc, removing.id);
       const r = await call("worktrees.remove", { projectId: removing.id, force, deleteBranch });
+      closeChatWindows(windows);
       const ui = useUi.getState();
       if (ui.activeProjectId === removing.id) {
         if (root) ui.openProject(root.id);

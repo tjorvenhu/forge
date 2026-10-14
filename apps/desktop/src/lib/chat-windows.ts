@@ -2,10 +2,12 @@ import { create } from "zustand";
 import { invoke } from "@tauri-apps/api/core";
 import { emit, emitTo, listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { Attachment } from "@forge/protocol";
+import type { QueryClient } from "@tanstack/react-query";
+import { Attachment, type ResultOf } from "@forge/protocol";
 import { draftKey, useDrafts, type PendingFile } from "@/stores/drafts";
 import { splitActive, useUi } from "@/stores/ui";
 import { toast } from "@/stores/toast";
+import { call, keys, queryClient } from "./queries";
 import { errorMessage, isTauri } from "./rpc";
 
 /**
@@ -187,6 +189,17 @@ export function closeChatWindows(sessionIds: Iterable<string>) {
   for (const id of sessionIds) if (open.includes(id)) void invoke("close_chat_window", { sessionId: id }).catch(() => {});
 }
 
+/**
+ * Main window: the open chat windows that show a session of this project. Asked before the project
+ * goes away (a worktree), since its sessions cannot be looked up afterwards.
+ */
+export async function chatWindowsOfProject(qc: QueryClient, projectId: string): Promise<string[]> {
+  const projectOf = async (sessionId: string) =>
+    (qc.getQueryData<ResultOf<"sessions.get">>(keys.session(sessionId)) ?? (await call("sessions.get", { sessionId }).catch(() => null)))?.projectId;
+  const found = await Promise.all(useChatWindows.getState().sessions.map(async (id) => ((await projectOf(id)) === projectId ? id : null)));
+  return found.filter((id): id is string => id !== null);
+}
+
 /** Chat window: what goes back to the main window, taken out of this window's draft. */
 function handBack(t: ChatWindowTarget): { key: string; draft: MovingDraft; target: ChatWindowTarget } {
   const { sessionId } = splitActive(useUi.getState().activeSession[t.projectId]);
@@ -228,7 +241,10 @@ export function prepareChatWindowUi(t: ChatWindowTarget) {
 }
 
 /** Applies a chat that came back from its window to the main window. */
-export function applyReattach(t: ChatWindowTarget) {
+export function applyReattach(t: ChatWindowTarget, qc: QueryClient = queryClient) {
+  // The project went away meanwhile (a finished agent): nothing to come back to.
+  const projects = qc.getQueryData<ResultOf<"projects.list">>(keys.projects);
+  if (projects && !projects.some((p) => p.id === t.projectId)) return;
   useUi.getState().openProject(t.projectId, t.sessionId);
   const key = draftKey(t.projectId, t.sessionId);
   // Also when empty: the text may have been sent from the chat window meanwhile.

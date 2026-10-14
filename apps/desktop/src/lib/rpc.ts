@@ -18,7 +18,7 @@ type Listener = (e: ServerEvent) => void;
 
 export const isTauri = () => typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 
-const LONG_METHODS = new Set<MethodName>(["projects.clone", "system.diagnostics", "system.runtimeInfo"]);
+const LONG_METHODS = new Set<MethodName>(["projects.clone", "system.diagnostics", "system.runtimeInfo", "app.downloadUpdate"]);
 
 /**
  * Every window gets all sidecar responses (the shell broadcasts them). The random prefix keeps one
