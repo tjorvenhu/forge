@@ -105,6 +105,7 @@ export class AgentAutoMerge {
   private async run(sessionId: string, worktree: Project, testsOk: boolean) {
     // Read before the merge: afterwards the agent's session and worktree are gone.
     const parentId = this.d.parentOf(sessionId);
+    const sessionIds = this.d.db.listSessions(worktree.id).map((s) => s.id);
     if (!existsSync(path.join(worktreeRoot(worktree.path), ".git"))) {
       // Remains of an agent whose merge went through but whose folder would not go (git already
       // forgot it): there is nothing left to merge, only the folder and the entry to clear away.
@@ -146,7 +147,7 @@ export class AgentAutoMerge {
       return this.report(sessionId, parentId, worktree, r.branch, "conflict", r.message);
     }
     this.conflicts.delete(worktree.id);
-    this.report(null, parentId, worktree, r.branch, "merged", `Automatisch zusammengeführt: ${r.message}`);
+    this.report(null, parentId, worktree, r.branch, "merged", `Automatisch zusammengeführt: ${r.message}`, sessionIds);
   }
 
   private settle(worktreeId: string) {
@@ -155,10 +156,10 @@ export class AgentAutoMerge {
   }
 
   /** In the agent's chat (gone after a merge), in the chat of the session that started it, and to the UI. */
-  private report(sessionId: string | null, parentId: string | null, worktree: Project, branch: string | null, outcome: Outcome, message: string) {
+  private report(sessionId: string | null, parentId: string | null, worktree: Project, branch: string | null, outcome: Outcome, message: string, sessionIds: string[] = []) {
     const action = outcome === "skipped" ? "skip" : outcome === "waiting" ? "wait" : "merge";
     const body: SessionEventBody = { type: "automation", action, ok: outcome !== "conflict", message, hash: null, files: [] };
     for (const id of new Set([sessionId, parentId])) if (id && this.d.db.getSession(id)) this.d.record(id, body);
-    this.d.emit({ event: "agent.autoMerge", payload: { rootId: worktree.parentId!, worktreeId: worktree.id, branch, outcome, message } });
+    this.d.emit({ event: "agent.autoMerge", payload: { rootId: worktree.parentId!, worktreeId: worktree.id, branch, outcome, message, sessionIds } });
   }
 }

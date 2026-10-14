@@ -2,7 +2,7 @@
 title: "Parallele Agenten abschließen (Zusammenführen/Verwerfen)"
 summary: "Wie FORGE fertige Agenten-Worktrees zusammenführt oder verwirft, welche Branches es dabei löscht, was bei offenen Änderungen passiert, wo der Ursprung gespeichert ist und was bei langen Windows-Pfaden und Subagenten-Worktrees zu beachten ist."
 tags: ["agenten","worktree","git","merge","auto-merge","windows"]
-updated: "2026-10-14T15:50:17.225Z"
+updated: "2026-10-14T16:09:36.671Z"
 ---
 
 Kern: `packages/sidecar/src/automation/agent-finish.ts` (`AgentFinisher`), RPC `agents.review` / `agents.finish`, MCP-Werkzeug `finish_agent` (autoAllow false), Telefon-Werkzeug `finish_agent` (discard dort nur nach Tastatur-Code).
@@ -36,7 +36,7 @@ Agenten-Worktrees haben eigenes `node_modules` (pnpm) mit Pfaden über 260 Zeich
 `git worktree remove` lässt unter Windows trotz Exit 0 manchmal Ordner mit nur noch pnpm-`node_modules` (Junctions) stehen. `deleteFolder` löscht einen noch vorhandenen Ordner danach mit Node `rm`. Alte Reste ohne `.git` und ohne Dateien außerhalb von `node_modules` können gefahrlos weg.
 
 ## Claude-Code-Subagenten unter .claude/worktrees
-`<projekt>/.claude/worktrees/agent-<hex>` (Branches `worktree-agent-<hex>`) sind Worktrees von Claude-Code-Subagenten (Agent-Werkzeug mit isolation worktree), nicht von FORGE. Solange `git worktree list` sie als `locked` zeigt, arbeitet dort ein Subagent; Claude Code räumt sie selbst auf. Nicht von Hand löschen. Im FORGE-Repo stehen sie in `.gitignore`. Git meldet solche eingebetteten Repositorys als untracked Eintrag mit `/` am Ende; `parseStatusV2` lässt diese weg, sonst scheiterte Auto-Commit mit EISDIR (Datei lesen auf einem Ordner) und `git add` würde einen kaputten Gitlink einbetten.
+`<projekt>/.claude/worktrees/agent-<hex>` (Branches `worktree-agent-<hex>`) sind Worktrees von Claude-Code-Subagenten (Agent-Werkzeug mit isolation worktree), nicht von FORGE. Solange `git worktree list` sie als `locked` zeigt, arbeitet dort ein Subagent. Claude Code räumt sie nur selbst weg, wenn der Subagent nichts geändert hat; mit Änderungen bleiben Worktree und Branch auch nach dem Merge liegen. Aufräumen, wenn nicht locked, sauber (`git status --porcelain` leer) und gemergt (`git merge-base --is-ancestor <branch> main`): `git -c core.longpaths=true worktree remove <dir>`, `git branch -d <branch>`; bleibt der Ordner („Directory not empty“, pnpm-node_modules), mit Node `fs.rmSync(dir, {recursive:true, force:true})` löschen (folgt Junctions nicht). Im FORGE-Repo stehen sie in `.gitignore`. Git meldet solche eingebetteten Repositorys als untracked Eintrag mit `/` am Ende; `parseStatusV2` lässt diese weg, sonst scheiterte Auto-Commit mit EISDIR (Datei lesen auf einem Ordner) und `git add` würde einen kaputten Gitlink einbetten.
 
 ## Automatisch zusammenführen (Tag auto-merge)
 `packages/sidecar/src/automation/agent-auto-merge.ts` (`AgentAutoMerge`). Auslöser: `TurnAutomation.schedule` ruft nach Tests/Auto-Commit `host.turnDone(sessionId, testsOk)`, aber nur, wenn keine zurückgehaltene Nachricht nachfolgt.
@@ -45,6 +45,7 @@ Agenten-Worktrees haben eigenes `node_modules` (pnpm) mit Pfaden über 260 Zeich
 - Warten: Liefert der Finisher `waiting`, merkt sich AgentAutoMerge den Agenten (nur im Speicher) und versucht es am Ende jedes Durchlaufs und alle 2 Minuten erneut.
 - Konflikte gehen höchstens 3 mal an den Agenten zurück.
 - Mit auto-merge öffnet der Desktop nie von selbst ein Modal: `skipped` wird ein Toast mit Knopf „Ansehen“.
+- Das Event `agent.autoMerge` trägt `sessionIds` (Sessions des Worktrees, vor dem Merge gelesen, nur bei `merged` gefüllt). `agentAutoMerged` im Desktop schließt damit die Chat-Fenster des Agenten; nach dem Merge ließe sich die Session nicht mehr nachschlagen.
 - Agenten bekommen im Start-Kontext den Hinweis, Rückfragen nur per AskUserQuestion zu stellen.
 
 ## Wohin die Arbeit zurückgeht

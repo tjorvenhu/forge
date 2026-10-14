@@ -47,7 +47,7 @@ export class ClaudeAssist {
     const diffs = [];
     for (const f of files) {
       if (skipped.includes(f.path)) continue;
-      diffs.push(await this.git.diff(project.path, f.path, f.staged && !f.unstaged));
+      diffs.push(await this.git.diff(project.path, f.path, f.staged && !f.unstaged, status));
     }
     const recent = (await this.git.log(project.path, 15)).map((c) => c.subject);
     const model = ASSIST_MODEL;

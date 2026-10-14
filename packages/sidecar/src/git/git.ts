@@ -117,9 +117,10 @@ export class GitEngine {
     }
   }
 
-  async diff(cwd: string, file: string, staged: boolean): Promise<FileDiff> {
+  /** `known`: a status the caller just read, saves three git processes per file when diffing many. */
+  async diff(cwd: string, file: string, staged: boolean, known?: GitStatus): Promise<FileDiff> {
     this.assertRelative(cwd, file);
-    const st = await this.status(cwd);
+    const st = known ?? (await this.status(cwd));
     const entry = st.files.find((f) => f.path === file);
     if (entry?.kind === "untracked") {
       const abs = path.join(cwd, file);

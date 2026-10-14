@@ -18,10 +18,24 @@ const EVICT_INTERVAL_MS = 60_000;
 /** Session buffers kept besides the live and the shown ones. */
 const MAX_IDLE_BUFFERS = 12;
 
+/** Tools that never change files: their results need no git refresh (each one costs a git status). */
+const READ_ONLY_TOOLS = new Set(["Read", "Grep", "Glob", "LS", "WebFetch", "WebSearch", "TodoWrite", "ToolSearch", "AskUserQuestion", "BashOutput", "TaskOutput"]);
+
 /** Debounced git refresh, one timer per project so a burst in project B does not swallow A's refresh. */
 export function createGitRefresher(qc: QueryClient, delayMs = GIT_REFRESH_DELAY_MS) {
   const timers = new Map<string, ReturnType<typeof setTimeout>>();
+  const readOnlyCalls = new Set<string>();
   return {
+    toolStarted(toolUseId: string, name: string) {
+      if (!READ_ONLY_TOOLS.has(name)) return;
+      // Calls whose result never came (session stopped) would pile up otherwise.
+      if (readOnlyCalls.size > 500) readOnlyCalls.clear();
+      readOnlyCalls.add(toolUseId);
+    },
+    /** false for a read-only tool: nothing to refresh */
+    toolChangesFiles(toolUseId: string) {
+      return !readOnlyCalls.delete(toolUseId);
+    },
     schedule(projectId: string) {
       const prev = timers.get(projectId);
       if (prev) clearTimeout(prev);
@@ -43,6 +57,21 @@ export function createGitRefresher(qc: QueryClient, delayMs = GIT_REFRESH_DELAY_
 }
 
 type GitRefresher = ReturnType<typeof createGitRefresher>;
+
+/**
+ * Reloads one project and puts it into the project list. Refetching the whole list would run a git
+ * status in every project after each turn.
+ */
+export async function refreshProjectInList(qc: QueryClient, projectId: string) {
+  try {
+    const p = await qc.fetchQuery({ queryKey: keys.project(projectId), queryFn: () => call("projects.get", { projectId }), staleTime: 0 });
+    const list = qc.getQueryData<ResultOf<"projects.list">>(keys.projects);
+    if (list?.some((x) => x.id === p.id)) qc.setQueryData(keys.projects, list.map((x) => (x.id === p.id ? p : x)));
+    else void qc.invalidateQueries({ queryKey: keys.projects });
+  } catch {
+    void qc.invalidateQueries({ queryKey: keys.projects });
+  }
+}
 
 /**
  * Puts a changed session into the lists that are on screen instead of refetching them: each refetch
@@ -79,7 +108,8 @@ export function routeServerEvent(qc: QueryClient, git: GitRefresher, e: ServerEv
       }
       if (t === "auto_continue") void notifyAutoContinue(qc, e.payload);
       if (t === "turn.result" && !isChatWindow()) agentTurnEnded(qc, e.payload);
-      if (t === "tool.result" || t === "turn.result") {
+      if (e.payload.body.type === "tool.use") git.toolStarted(e.payload.body.toolUseId, e.payload.body.name);
+      if ((e.payload.body.type === "tool.result" && git.toolChangesFiles(e.payload.body.toolUseId)) || t === "turn.result") {
         const s = qc.getQueryData<ResultOf<"sessions.get">>(keys.session(e.payload.sessionId));
         if (s) git.schedule(s.projectId);
       }
@@ -99,8 +129,7 @@ export function routeServerEvent(qc: QueryClient, git: GitRefresher, e: ServerEv
       void qc.invalidateQueries({ queryKey: ["allSessions"] });
       if (e.payload.status === "idle" || e.payload.status === "stopped") {
         git.schedule(e.payload.projectId);
-        void qc.invalidateQueries({ queryKey: keys.projects });
-        void qc.invalidateQueries({ queryKey: keys.project(e.payload.projectId) });
+        void refreshProjectInList(qc, e.payload.projectId);
         void qc.invalidateQueries({ queryKey: keys.usage });
       }
       break;

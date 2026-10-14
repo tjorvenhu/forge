@@ -636,7 +636,8 @@ export type ServerEvent =
    * auto-merge of a finished agent. skipped: FORGE could not merge on its own, the user decides
    * (the dialog for `worktreeId`); conflict: the agent resolves them, the next turn end tries again
    */
-  | { event: "agent.autoMerge"; payload: { rootId: string; worktreeId: string; branch: string | null; outcome: "merged" | "conflict" | "skipped" | "waiting"; message: string } }
+  /** `sessionIds`: sessions of the worktree, read before the merge removed them (their chat windows close) */
+  | { event: "agent.autoMerge"; payload: { rootId: string; worktreeId: string; branch: string | null; outcome: "merged" | "conflict" | "skipped" | "waiting"; message: string; sessionIds: string[] } }
   | { event: "phone.updated"; payload: PhoneState }
   | { event: "sync.updated"; payload: SyncStatus }
   | { event: "update.updated"; payload: AppUpdateState }

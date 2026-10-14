@@ -1,11 +1,15 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { QueryClient } from "@tanstack/react-query";
 import type { SessionEvent } from "@forge/protocol";
 import { useAgentReview } from "@/stores/agent-review";
 import { useToasts } from "@/stores/toast";
 import { useUi } from "@/stores/ui";
 import { agentAutoMerged, agentTurnEnded } from "./agent-review";
+import { useChatWindows } from "./chat-windows";
 import { keys } from "./queries";
+
+const invoke = vi.hoisted(() => vi.fn(async (_cmd: string, _args?: unknown) => undefined));
+vi.mock("@tauri-apps/api/core", () => ({ invoke: (cmd: string, args?: unknown) => invoke(cmd, args) }));
 
 const turn = (sessionId: string, over: Record<string, unknown> = {}) =>
   ({ sessionId, seq: 1, ts: "2026-10-13T10:00:00Z", body: { type: "turn.result", isError: false, subtype: "success", text: "Fertig.", ...over } }) as unknown as SessionEvent;
@@ -54,14 +58,24 @@ describe("agentTurnEnded", () => {
       { id: "wt", parentId: "app", tags: [] },
     ]);
     agentTurnEnded(qc, turn("agent-s"));
-    agentAutoMerged({ rootId: "app", worktreeId: "wt", branch: "agent/x", outcome: "merged", message: "Automatisch zusammengeführt: 1 Commit" });
-    agentAutoMerged({ rootId: "app", worktreeId: "wt", branch: "agent/x", outcome: "conflict", message: "Konflikte" });
+    agentAutoMerged({ rootId: "app", worktreeId: "wt", branch: "agent/x", outcome: "merged", message: "Automatisch zusammengeführt: 1 Commit", sessionIds: ["agent-s"] });
+    agentAutoMerged({ rootId: "app", worktreeId: "wt", branch: "agent/x", outcome: "conflict", message: "Konflikte", sessionIds: ["agent-s"] });
     expect(useAgentReview.getState().queue).toEqual([]);
-    agentAutoMerged({ rootId: "app", worktreeId: "wt", branch: "agent/x", outcome: "skipped", message: "Nicht automatisch zusammengeführt: Tests rot" });
+    agentAutoMerged({ rootId: "app", worktreeId: "wt", branch: "agent/x", outcome: "skipped", message: "Nicht automatisch zusammengeführt: Tests rot", sessionIds: ["agent-s"] });
     expect(useAgentReview.getState().queue).toEqual([]);
     const notice = useToasts.getState().toasts.find((t) => t.title === "agent/x nicht zusammengeführt");
     expect(notice?.body).toBe("Tests rot");
     notice?.action?.onClick();
     expect(useAgentReview.getState().queue).toEqual(["wt"]);
+  });
+
+  it("closes the chat windows of an agent merged automatically, and only then", () => {
+    invoke.mockClear();
+    useChatWindows.setState({ sessions: ["agent-s", "main-s"] });
+    agentAutoMerged({ rootId: "app", worktreeId: "wt", branch: "agent/x", outcome: "waiting", message: "Wartet", sessionIds: ["agent-s"] });
+    expect(invoke).not.toHaveBeenCalled();
+    agentAutoMerged({ rootId: "app", worktreeId: "wt", branch: "agent/x", outcome: "merged", message: "1 Commit", sessionIds: ["agent-s"] });
+    expect(invoke).toHaveBeenCalledWith("close_chat_window", { sessionId: "agent-s" });
+    expect(invoke).toHaveBeenCalledTimes(1);
   });
 });

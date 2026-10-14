@@ -14,7 +14,7 @@ type NotificationsModule = typeof NotificationsNs;
 let inChatWindow = false;
 vi.mock("./sounds", () => ({ playSound: vi.fn() }));
 vi.mock("./notifications", async (orig) => ({ ...(await orig<NotificationsModule>()), notifySession: vi.fn(async () => {}) }));
-vi.mock("./chat-windows", () => ({ isChatWindow: () => inChatWindow }));
+vi.mock("./chat-windows", () => ({ isChatWindow: () => inChatWindow, closeChatWindows: vi.fn() }));
 
 function fakeSource() {
   const listeners = new Set<(e: ServerEvent) => void>();
@@ -168,6 +168,15 @@ describe("git refresher", () => {
     vi.advanceTimersByTime(100);
     expect(invalidate).toHaveBeenCalledWith({ queryKey: keys.git("p1") });
     expect(invalidate.mock.calls.filter(([f]) => JSON.stringify(f) === JSON.stringify({ queryKey: keys.git("p1") }))).toHaveLength(1);
+  });
+
+  it("tells read-only tools apart from tools that may change files", () => {
+    const git = createGitRefresher(qc, 400);
+    git.toolStarted("r1", "Read");
+    git.toolStarted("e1", "Edit");
+    expect(git.toolChangesFiles("r1")).toBe(false);
+    expect(git.toolChangesFiles("e1")).toBe(true);
+    expect(git.toolChangesFiles("unknown")).toBe(true);
   });
 });
 
