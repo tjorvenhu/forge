@@ -80,7 +80,7 @@ export class SessionService {
     const record = core.record.bind(core);
     this.limits = new RateLimitTracker(emit, now);
     this.assist = new ClaudeAssist(db, projects, git, runtime);
-    this.catalog = new RuntimeCatalog(core, projects, runtime);
+    this.catalog = new RuntimeCatalog(core, projects, runtime, now);
     this.automation = new TurnAutomation(db, projects, git, {
       record,
       emit,

@@ -2,6 +2,7 @@ import type { SDKControlInitializeResponse } from "@anthropic-ai/claude-agent-sd
 import type { PlanUsage, RuntimeInfo, SlashCommand } from "@forge/protocol";
 import type { ClaudeRuntime } from "../claude/runtime.js";
 import { locateClaude, sessionEnv } from "../claude/environment.js";
+import { resetSince, settleUsage } from "../claude/usage.js";
 import type { ProjectManager } from "../projects/project-manager.js";
 import type { SessionCore } from "./session-core.js";
 
@@ -28,6 +29,8 @@ export class RuntimeCatalog {
     private readonly core: SessionCore,
     private readonly projects: ProjectManager,
     private readonly runtime: ClaudeRuntime,
+    /** clock for the plan usage cache and passed reset times */
+    private readonly now: () => number = Date.now,
   ) {}
 
   capabilities() {
@@ -83,17 +86,23 @@ export class RuntimeCatalog {
     }
   }
 
-  /** Plan usage, cached for a minute so frequent UI refreshes do not spawn a CLI each time. */
+  /**
+   * Plan usage, cached for a minute so frequent UI refreshes do not spawn a CLI each time. A window
+   * that reset after the cached reading makes it stale, so the next call reads the new window.
+   */
   async planUsage(refresh: boolean): Promise<PlanUsage> {
-    if (!refresh && this.usageCache && Date.now() - this.usageCache.at < 60_000) return this.usageCache.value;
+    const cache = this.usageCache;
+    const now = this.now();
+    if (!refresh && cache && now - cache.at < 60_000 && !resetSince(cache.value, cache.at, now)) return settleUsage(cache.value, now);
     const settings = this.core.db.getSettings();
     const claudePath = locateClaude(settings.claudePath);
     const unavailable = (error: string): PlanUsage => ({ available: false, subscriptionType: null, windows: [], fetchedAt: new Date().toISOString(), error });
     if (!claudePath) return unavailable("Claude Code nicht gefunden");
     try {
       const value = await this.runtime.planUsage({ cwd: process.cwd(), env: sessionEnv(settings.stripApiKey), claudePath });
-      this.usageCache = { at: Date.now(), value };
-      return value;
+      const at = this.now();
+      this.usageCache = { at, value };
+      return settleUsage(value, at);
     } catch (e) {
       return unavailable(e instanceof Error ? e.message.slice(0, 300) : String(e));
     }

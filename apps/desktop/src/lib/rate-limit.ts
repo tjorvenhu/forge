@@ -37,3 +37,26 @@ export function activeRateLimit(state: RateLimitState | undefined, now = Date.no
   const window = state.limitType ? future.find((w) => w.key === state.limitType) : future.sort((a, b) => b.utilization - a.utilization)[0];
   return window ? { ...state, resetsAt: window.resetsAt } : state;
 }
+
+/** How often the plan usage is read without a reason. */
+export const USAGE_INTERVAL_MS = 5 * 60_000;
+/** Read this long after a window's reset, so Claude Code already reports the new window. */
+const RESET_MARGIN_MS = 10_000;
+
+/** Wait until the next read of the plan usage: the regular interval, or shortly after the next reset. */
+export function usageRefetchIn(usage: PlanUsage | undefined, now = Date.now()): number {
+  const resets = (usage?.windows ?? []).flatMap((w) => (w.resetsAt ? [Date.parse(w.resetsAt)] : [])).filter((t) => t > now);
+  if (!resets.length) return USAGE_INTERVAL_MS;
+  return Math.min(USAGE_INTERVAL_MS, Math.min(...resets) - now + RESET_MARGIN_MS);
+}
+
+/**
+ * True when the shown usage is out of date: a window reset after it was read, or the regular read was
+ * missed while the window was hidden (the interval only runs while FORGE is visible).
+ */
+export function usageOutdated(usage: PlanUsage | undefined, now = Date.now()): boolean {
+  if (!usage) return false;
+  const fetchedAt = Date.parse(usage.fetchedAt);
+  if (now - fetchedAt >= USAGE_INTERVAL_MS) return true;
+  return usage.windows.some((w) => w.resetsAt !== null && Date.parse(w.resetsAt) > fetchedAt && Date.parse(w.resetsAt) <= now);
+}
