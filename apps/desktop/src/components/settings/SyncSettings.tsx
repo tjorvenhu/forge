@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { CloudDownload, ExternalLink, KeyRound, RefreshCw, RotateCcw, Upload } from "lucide-react";
 import type { Settings, SyncStatus } from "@forge/protocol";
-import { call, keys, useDiagnostics, useGitHubAccount, useSyncProbe, useSyncStatus } from "@/lib/queries";
+import { call, keys, useGitHubAccount, useSyncProbe, useSyncStatus } from "@/lib/queries";
 import { errorMessage } from "@/lib/rpc";
 import { openExternal } from "@/lib/native";
 import { relativeTime } from "@/lib/utils";
@@ -12,7 +12,6 @@ import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Badge, ErrorBanner } from "@/components/ui/misc";
 import { KeyValueSkeleton } from "@/components/ui/skeleton";
-import { GitHubAccountCard, useAutoOpenGitHub } from "@/components/github/GitHubPanel";
 import { Group, Row, SwitchRow } from "./layout";
 import { LocalOnlyList } from "./SyncLocalOnly";
 import { SyncPassphraseFields } from "./SyncPassphrase";
@@ -25,22 +24,17 @@ export const SYNC_EXCLUDED =
 export function SyncSettings({ s, save }: { s: Settings; save: (patch: Partial<Settings>) => Promise<void> }) {
   const account = useGitHubAccount();
   const status = useSyncStatus();
-  const gh = useDiagnostics().data?.gh;
-  useAutoOpenGitHub();
   const st = status.data;
   const signedIn = !!account.data;
   return (
     <>
       <Group
-        title="Synchronisierung über GitHub"
+        title="Synchronisierung"
         description="FORGE legt dafür in deinem GitHub-Konto das private Repository forge-data an. Meldest du dich auf einem anderen PC mit demselben Konto an, hat FORGE dort dieselben Daten."
       >
-        <div className="p-4">
-          {gh && !gh.found ? <p className="text-body text-danger">Die GitHub-Anbindung fehlt in dieser Installation. Bitte FORGE neu installieren.</p> : <GitHubAccountCard />}
-        </div>
         <SwitchRow
           label="Daten über GitHub synchronisieren"
-          description={signedIn ? SYNC_INCLUDED : "Dafür musst du oben bei GitHub angemeldet sein."}
+          description={signedIn ? SYNC_INCLUDED : "Dafür musst du oben unter Konto bei GitHub angemeldet sein."}
           checked={s.syncEnabled}
           disabled={!signedIn && !s.syncEnabled}
           onChange={(v) => void save({ syncEnabled: v, syncAsked: true })}
@@ -77,7 +71,7 @@ export function SyncSettings({ s, save }: { s: Settings; save: (patch: Partial<S
         <div className="flex flex-col gap-2 px-4 py-3.5 text-body text-muted">
           <p>{SYNC_INCLUDED}</p>
           <p>{SYNC_EXCLUDED}</p>
-          <p>Jeder Abgleich ist ein Commit. Frühere Stände holst du unter Backup zurück. Ausschalten lässt das Repository auf GitHub stehen.</p>
+          <p>Jeder Abgleich ist ein Commit. Frühere Stände holst du unten unter Versionen auf GitHub zurück. Ausschalten lässt das Repository auf GitHub stehen.</p>
         </div>
       </Group>
 

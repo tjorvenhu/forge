@@ -9,7 +9,7 @@ import {
   FolderOpen,
   Info,
   Phone,
-  RefreshCcw,
+  Cloud,
   RefreshCw,
   ShieldAlert,
   ShieldBan,
@@ -40,6 +40,7 @@ import { effortOptions, fromChoice, modelOptions, toChoice } from "@/components/
 import { PhoneSettings } from "@/components/settings/PhoneSettings";
 import { BackupSettings } from "@/components/settings/BackupSettings";
 import { SyncSettings } from "@/components/settings/SyncSettings";
+import { GitHubVersions } from "@/components/settings/BackupSettings";
 import { PolicySettings } from "@/components/settings/PolicySettings";
 import { GitHubSettings } from "@/components/settings/GitHubSettings";
 import { AppUpdateSettings } from "@/components/layout/AppUpdate";
@@ -48,11 +49,11 @@ import { cn, planLabel } from "@/lib/utils";
 type Save = (patch: Partial<Settings>) => Promise<void>;
 
 export const SECTIONS: ReadonlyArray<SettingsSectionDef<SettingsSection>> = [
-  { id: "general", label: "Allgemein", hint: "Modell, Profil, GitHub, Bedienung", Icon: SlidersHorizontal },
+  { id: "general", label: "Allgemein", hint: "Modell, Profil, Bedienung", Icon: SlidersHorizontal },
   { id: "claude", label: "Claude Code", hint: "Installation, Anmeldung, Limits", Icon: SquareTerminal },
   { id: "policy", label: "Sperrliste", hint: "Was FORGE immer blockiert", Icon: ShieldBan },
   { id: "phone", label: "Telefon", hint: "Anrufe, Sprache, Tischtelefon", Icon: Phone },
-  { id: "sync", label: "Synchronisierung", hint: "Daten über GitHub auf allen PCs", Icon: RefreshCcw },
+  { id: "github", label: "GitHub", hint: "Konto, Synchronisierung, Versionen", Icon: Cloud },
   { id: "backup", label: "Backup", hint: "Sichern und zurücksetzen", Icon: ArchiveRestore },
   { id: "rules", label: "Globale Regeln", hint: "CLAUDE.md für alle Projekte", Icon: FileText },
   { id: "about", label: "Über FORGE", hint: "Updates, Datenschutz, Diagnose", Icon: Info },
@@ -90,8 +91,8 @@ export function SettingsView() {
           <PolicySettings s={s} save={save} />
         ) : current.id === "phone" ? (
           <PhoneSection />
-        ) : current.id === "sync" ? (
-          <SyncSettings s={s} save={save} />
+        ) : current.id === "github" ? (
+          <GitHubSection s={s} save={save} />
         ) : current.id === "backup" ? (
           <Group
             title="Backup"
@@ -164,7 +165,6 @@ function GeneralSection({ s, save }: { s: Settings; save: Save }) {
         </Row>
       </Group>
 
-      <GitHubSettings />
 
       <Group title="Bedienung">
         <SwitchRow
@@ -267,6 +267,23 @@ function ClaudePathInput({ value, onSave }: { value: string | null; onSave: (v: 
       className="font-mono text-xs"
       aria-label="Pfad zur Claude-CLI"
     />
+  );
+}
+
+/** Everything with GitHub in one place: the account, the sync and the states it left on GitHub. */
+function GitHubSection({ s, save }: { s: Settings; save: Save }) {
+  return (
+    <>
+      <GitHubSettings />
+      <SyncSettings s={s} save={save} />
+      {s.syncEnabled && (
+        <Group title="Versionen auf GitHub" description="Jeder Abgleich ist ein Commit. Ein früherer Stand gilt nach dem Zurückholen auch für deine anderen PCs.">
+          <div className="p-4">
+            <GitHubVersions />
+          </div>
+        </Group>
+      )}
+    </>
   );
 }
 

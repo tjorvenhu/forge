@@ -1,11 +1,12 @@
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { ArchiveRestore, Download, FileUp, History, Save } from "lucide-react";
+import { ArchiveRestore, CloudAlert, CloudCheck, CloudOff, CloudUpload, Download, FileUp, History, Save } from "lucide-react";
 import { BackupPart, type BackupInfo, type SyncVersion } from "@forge/protocol";
 import { call, keys, useBackups, useSettings, useSyncStatus, useSyncVersions } from "@/lib/queries";
 import { errorMessage } from "@/lib/rpc";
 import { pickBackupFile, pickSaveFile } from "@/lib/native";
-import { relativeTime } from "@/lib/utils";
+import { cn, relativeTime } from "@/lib/utils";
+import { useUi } from "@/stores/ui";
 import { toast } from "@/stores/toast";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -87,6 +88,7 @@ export function BackupSettings() {
   const list = backups.data ?? [];
   return (
     <div className="flex flex-col gap-5">
+      <GitHubBackupStatus />
       <div className="flex flex-wrap items-center gap-2">
         <Button variant="primary" onClick={() => void create()} loading={creating}>
           <Save className="h-3.5 w-3.5" /> Jetzt sichern
@@ -160,30 +162,53 @@ export function BackupSettings() {
         )}
       </div>
 
-      <GitHubVersions />
-
       {restore && <RestoreDialog key={restore.info.id ?? restore.path} target={restore} onClose={() => setRestore(null)} />}
     </div>
   );
 }
 
+/** Whether the backups also land on GitHub: with the sync on, every sync is a state there. */
+function GitHubBackupStatus() {
+  const settings = useSettings().data;
+  const st = useSyncStatus().data;
+  const openSettings = useUi((u) => u.openSettings);
+  if (!settings || !st) return null;
+  const on = settings.syncEnabled && st.hasKey && st.phase !== "needs-passphrase";
+  const ok = on && st.phase === "idle" && !!st.lastSyncAt && !st.pending;
+  const text = !on
+    ? settings.syncEnabled
+      ? "Die Synchronisierung wartet auf das Sync-Passwort. Bis dahin liegen Backups nur auf diesem PC."
+      : "Backups liegen nur auf diesem PC. Mit der GitHub-Synchronisierung liegt jeder Stand zusätzlich verschlüsselt auf GitHub, mit allen früheren Versionen."
+    : st.phase === "error"
+      ? `Der letzte Abgleich mit GitHub ist fehlgeschlagen: ${st.error ?? "unbekannter Fehler"}`
+      : st.phase === "syncing" || st.pending
+        ? "Änderungen werden gerade auf GitHub gesichert."
+        : st.lastSyncAt
+          ? `Auch auf GitHub gesichert, zuletzt ${relativeTime(st.lastSyncAt)}. Der Stand dort ist aktuell.`
+          : "Noch nicht auf GitHub gesichert.";
+  const Icon = !on ? CloudOff : st.phase === "error" ? CloudAlert : ok ? CloudCheck : CloudUpload;
+  return (
+    <div className={cn("flex items-center gap-3 rounded-lg border px-3.5 py-2.5", ok ? "border-graph-blue/30 bg-graph-blue/10" : st.phase === "error" && on ? "border-danger/30 bg-danger-soft" : "border-border bg-surface-2")}>
+      <Icon className={cn("h-4 w-4 shrink-0", ok || (on && st.phase !== "error") ? "text-graph-blue" : on ? "text-danger" : "text-subtle")} />
+      <p className="min-w-0 flex-1 text-body">{text}</p>
+      <Button size="sm" variant="ghost" onClick={() => openSettings("github")}>
+        {on ? "Versionen auf GitHub" : "Einrichten"}
+      </Button>
+    </div>
+  );
+}
+
 /** With the sync on, every state on GitHub is a version to go back to, across computers. */
-function GitHubVersions() {
+export function GitHubVersions() {
   const settings = useSettings().data;
   const status = useSyncStatus().data;
   const on = !!settings?.syncEnabled && !!status?.hasKey;
   const versions = useSyncVersions(on);
   const [restore, setRestore] = useState<SyncVersion | null>(null);
-  if (!on) return null;
+  if (!on) return <p className="text-xs text-muted">Sichtbar, sobald das Sync-Passwort auf diesem PC eingegeben ist.</p>;
   const list = versions.data ?? [];
   return (
     <div>
-      <LabelWithInfo
-        info="Jeder Abgleich über GitHub ist ein Commit im Repository forge-data. Ein früherer Stand gilt nach dem Zurückholen auch für deine anderen PCs. Das Telefon, die Hooks und alles andere, was nur hier liegt, bleibt in den lokalen Backups oben."
-        className="mb-2 flex"
-      >
-        <h3 className="text-body font-medium">Versionen auf GitHub</h3>
-      </LabelWithInfo>
       {versions.isLoading && (
         <SkeletonRegion label="Lädt Versionen auf GitHub" className="divide-y divide-border overflow-hidden rounded-lg border border-border">
           {[0, 1, 2].map((i) => (
@@ -250,7 +275,7 @@ function VersionRestoreDialog({ version, onClose }: { version: SyncVersion; onCl
         <div className="text-xs font-medium text-muted">Was soll zurückgeholt werden?</div>
         {all.map((p) => (
           <ToggleRow key={p} checked={parts.includes(p)} onChange={(v) => toggle(p, v)} label={PART_LABEL[p]}>
-            {p === "projects" ? "Einstellungen und Dev-Tools der Projekte. Projekte, die hier fehlen, lassen sich unter Synchronisierung holen." : PART_HINT[p]}
+            {p === "projects" ? "Einstellungen und Dev-Tools der Projekte. Projekte, die hier fehlen, lassen sich unter Einstellungen, GitHub holen." : PART_HINT[p]}
           </ToggleRow>
         ))}
       </div>

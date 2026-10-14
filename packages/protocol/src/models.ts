@@ -1010,6 +1010,8 @@ export const SyncStatus = z.object({
   localOnly: z.array(SyncLocalOnly),
   /** a sync password is stored on this computer */
   hasKey: z.boolean(),
+  /** something changed here and goes up with the next sync (a few seconds later) */
+  pending: z.boolean(),
 });
 export type SyncStatus = z.infer<typeof SyncStatus>;
 

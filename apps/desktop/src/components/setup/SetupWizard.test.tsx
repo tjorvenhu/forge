@@ -27,6 +27,7 @@ const status: SyncStatus = {
   available: [{ key: "github.com/me/shop", name: "shop", cloneUrl: "https://github.com/me/shop.git" }],
   localOnly: [],
   hasKey: false,
+  pending: false,
 };
 const calls = (method: string) => callMock.mock.calls.filter(([m]) => m === method).map(([, p]) => p as Record<string, unknown>);
 

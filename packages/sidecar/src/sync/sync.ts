@@ -31,6 +31,8 @@ const DEBOUNCE_MS = 10_000;
 /** picks up what other computers pushed while FORGE runs */
 const INTERVAL_MS = 10 * 60_000;
 const MAX_ATTEMPTS = 3;
+/** look at what changed this long after an event; several events in a row are looked at once */
+const CHECK_MS = 1_500;
 const CLAUDE_FILES = ["CLAUDE.md", "settings.json"];
 
 /**
@@ -278,6 +280,8 @@ export class SyncService {
   private account: string | null | undefined;
   private available: SyncAvailableProject[] = [];
   private localOnlyInfo: SyncLocalOnly[] = [];
+  private pending = false;
+  private checkTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(private readonly d: SyncDeps) {
     this.state = this.loadState();
@@ -314,14 +318,43 @@ export class SyncService {
   stop() {
     if (this.interval) clearInterval(this.interval);
     if (this.timer) clearTimeout(this.timer);
+    if (this.checkTimer) clearTimeout(this.checkTimer);
     this.interval = null;
     this.timer = null;
+    this.checkTimer = null;
   }
 
   onServerEvent(e: ServerEvent) {
     if (this.applying || !this.enabled()) return;
-    if (e.event === "settings.updated" || e.event === "project.updated") this.schedule(DEBOUNCE_MS, false);
+    if (e.event === "settings.updated" || e.event === "project.updated") this.scheduleCheck();
     if (e.event === "github.login" && e.payload.phase === "done") this.schedule(0, true);
+  }
+
+  /**
+   * Shortly after a change: whether anything synced changed here at all (many project events are
+   * only git). If so it shows as pending and the sync follows a little later, one commit for a burst.
+   */
+  private scheduleCheck() {
+    if (this.checkTimer) clearTimeout(this.checkTimer);
+    this.checkTimer = setTimeout(() => {
+      this.checkTimer = null;
+      void this.localChanged().then((changed) => {
+        if (changed !== this.pending) {
+          this.pending = changed;
+          this.emitStatus();
+        }
+        if (changed) this.schedule(DEBOUNCE_MS, true);
+      });
+    }, CHECK_MS);
+    this.checkTimer.unref?.();
+  }
+
+  private async localChanged(): Promise<boolean> {
+    const st = this.state;
+    if (!st?.base || this.needsKey) return false;
+    const local = await this.snapshot(st.localOnly).catch(() => null);
+    if (!local) return false;
+    return !sameItems(mergeItems(st.base, local.items, st.base, (k) => st.localKeys.includes(k)).result, st.base);
   }
 
   /** The setting syncEnabled changed. */
@@ -355,6 +388,7 @@ export class SyncService {
       available: enabled ? this.available : [],
       localOnly: enabled ? this.localOnlyInfo : [],
       hasKey: !!this.key,
+      pending: enabled && this.pending,
     };
   }
 
@@ -544,7 +578,7 @@ export class SyncService {
       }
       const failed = await this.applyRemote(apply, local.projects);
       const notes = ["Die anderen Computer bekommen diesen Stand mit dem nächsten Abgleich."];
-      if (missingProjects) notes.push(`${missingProjects === 1 ? "1 Projekt" : `${missingProjects} Projekte`} aus diesem Stand ${missingProjects === 1 ? "liegt" : "liegen"} nicht auf diesem Computer und ${missingProjects === 1 ? "lässt" : "lassen"} sich unter Synchronisierung holen.`);
+      if (missingProjects) notes.push(`${missingProjects === 1 ? "1 Projekt" : `${missingProjects} Projekte`} aus diesem Stand ${missingProjects === 1 ? "liegt" : "liegen"} nicht auf diesem Computer und ${missingProjects === 1 ? "lässt" : "lassen"} sich unter Einstellungen, GitHub holen.`);
       if (failed.size) notes.push(`${failed.size === 1 ? "Ein Eintrag ließ" : `${failed.size} Einträge ließen`} sich nicht übernehmen, Einzelheiten stehen im Protokoll.`);
       this.d.log(`Synchronisierung: Stand ${sha.slice(0, 7)} wiederhergestellt (${[...restored].join(", ")})`);
       return { restored: [...restored], notes };
@@ -667,12 +701,9 @@ export class SyncService {
   /** `force`: ask GitHub even when nothing changed here (start, interval, by hand). */
   private async syncOnce(force: boolean) {
     if (!this.enabled()) return this.emitStatus();
-    if (!force && this.state?.base && this.phase !== "error" && !this.needsKey) {
-      const st = this.state;
-      const local = await this.snapshot(st.localOnly);
-      const { result } = mergeItems(st.base, local.items, st.base, (k) => st.localKeys.includes(k));
-      if (sameItems(result, st.base!)) return;
-    }
+    if (!force && this.state?.base && this.phase !== "error" && !this.needsKey && !(await this.localChanged())) return;
+    // Changes from here on count for the next run.
+    this.pending = false;
     this.phase = "syncing";
     this.emitStatus();
     try {

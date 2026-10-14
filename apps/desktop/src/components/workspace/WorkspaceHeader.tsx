@@ -20,6 +20,7 @@ import { tagLabel } from "@/components/workspace/ProjectSettingsTab";
 import { RemoteControlButton } from "@/components/workspace/RemoteControl";
 import { PhoneButton } from "@/components/layout/PhoneButton";
 import { AlwaysOnTopButton } from "@/components/layout/AlwaysOnTopButton";
+import { SyncButton } from "@/components/layout/SyncButton";
 import { HeaderDivider } from "@/components/layout/Page";
 import { useSplitLayout } from "./chat-slot";
 
@@ -180,6 +181,7 @@ export function SplitControlBar({ projectId }: { projectId: string }) {
         </div>
       )}
       <HeaderDivider />
+      <SyncButton />
       <AlwaysOnTopButton />
       <PhoneButton />
     </div>
@@ -317,6 +319,7 @@ export function WorkspaceHeader({ projectId, pane }: { projectId: string; pane?:
           // App-wide switches, apart from the project's own controls.
           <>
             <HeaderDivider />
+            <SyncButton />
             <AlwaysOnTopButton />
             <PhoneButton />
           </>

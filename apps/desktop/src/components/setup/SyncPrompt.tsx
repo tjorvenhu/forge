@@ -40,8 +40,8 @@ function Prompt({ s, onLater }: { s: Settings; onLater: () => void }) {
       if (syncEnabled) await enableSync(passphrase);
       else qc.setQueryData(keys.settings, await call("settings.update", { syncEnabled: false, syncAsked: true }));
       if (syncEnabled) {
-        toast.success("Synchronisierung ist an", "Ein- und ausschalten unter Einstellungen, Synchronisierung.");
-        openSettings("sync");
+        toast.success("Synchronisierung ist an", "Ein- und ausschalten unter Einstellungen, GitHub.");
+        openSettings("github");
       }
     } catch (e) {
       toast.error("Nicht gespeichert", errorMessage(e));

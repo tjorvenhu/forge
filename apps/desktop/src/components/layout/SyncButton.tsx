@@ -1,0 +1,72 @@
+import type { ReactNode } from "react";
+import { Cloud, CloudAlert, CloudCheck, CloudUpload, type LucideIcon } from "lucide-react";
+import type { SyncStatus } from "@forge/protocol";
+import { useSettings, useSyncStatus } from "@/lib/queries";
+import { cn, relativeTime } from "@/lib/utils";
+import { useUi } from "@/stores/ui";
+import { Button } from "@/components/ui/button";
+import { Tooltip } from "@/components/ui/misc";
+import { formatBackupDate } from "@/components/settings/BackupSettings";
+
+type Tone = "ok" | "busy" | "warn" | "bad";
+
+/** What the cloud says at a glance: icon, colour and the headline of the tooltip. */
+export function syncLook(st: SyncStatus): { Icon: LucideIcon; tone: Tone; title: string } {
+  if (st.phase === "syncing") return { Icon: CloudUpload, tone: "busy", title: "Wird gerade abgeglichen" };
+  if (st.phase === "error") return { Icon: CloudAlert, tone: "bad", title: "Abgleich fehlgeschlagen" };
+  if (st.phase === "needs-passphrase") return { Icon: CloudAlert, tone: "warn", title: "Sync-Passwort nötig" };
+  if (st.phase === "no-github") return { Icon: CloudAlert, tone: "warn", title: "Nicht bei GitHub angemeldet" };
+  if (st.pending) return { Icon: CloudUpload, tone: "busy", title: "Änderungen werden gleich hochgeladen" };
+  if (!st.lastSyncAt) return { Icon: Cloud, tone: "busy", title: "Noch nicht abgeglichen" };
+  return { Icon: CloudCheck, tone: "ok", title: "Alles aktuell" };
+}
+
+const DOT: Record<Tone, string> = { ok: "bg-success", busy: "animate-soft-pulse bg-graph-blue", warn: "bg-warning", bad: "bg-danger" };
+
+/**
+ * Header cloud while the GitHub sync is on, next to the pin and the phone. Blue while all is well,
+ * with a warning or error colour otherwise; the tooltip tells when it last synced and what waits.
+ */
+export function SyncButton() {
+  const enabled = useSettings().data?.syncEnabled;
+  const st = useSyncStatus().data;
+  const openSettings = useUi((u) => u.openSettings);
+  if (!enabled || !st?.enabled) return null;
+  const { Icon, tone, title } = syncLook(st);
+  return (
+    <Tooltip content={<SyncTip st={st} title={title} tone={tone} />} delay={150}>
+      <Button size="icon" variant="ghost" onClick={() => openSettings("github")} aria-label={`GitHub-Synchronisierung: ${title}`} className="relative h-9 w-9 rounded-lg">
+        <Icon className={cn("h-4 w-4", tone === "bad" ? "text-danger" : tone === "warn" ? "text-warning" : "text-graph-blue", st.phase === "syncing" && "animate-soft-pulse")} />
+      </Button>
+    </Tooltip>
+  );
+}
+
+function SyncTip({ st, title, tone }: { st: SyncStatus; title: string; tone: Tone }) {
+  const rows: Array<[string, ReactNode]> = [];
+  if (st.lastSyncAt) rows.push(["Zuletzt abgeglichen", `${relativeTime(st.lastSyncAt)}, ${formatBackupDate(st.lastSyncAt)}`]);
+  if (st.remote) rows.push(["Zuletzt geschrieben von", `${st.remote.device}, ${relativeTime(st.remote.updatedAt)}`]);
+  if (st.repo) rows.push(["Repository", <span className="font-mono">{st.repo}</span>]);
+  if (st.localOnly.length) rows.push(["Nur auf diesem PC", `${st.localOnly.length} ${st.localOnly.length === 1 ? "Eintrag" : "Einträge"}`]);
+  if (st.available.length) rows.push(["Von anderen PCs", `${st.available.length} ${st.available.length === 1 ? "Projekt" : "Projekte"} zum Holen`]);
+  return (
+    <div className="flex w-64 flex-col gap-2 py-0.5">
+      <div className="flex items-center gap-2">
+        <span className={cn("h-2 w-2 shrink-0 rounded-full", DOT[tone])} aria-hidden />
+        <span className="text-body font-semibold">{title}</span>
+      </div>
+      {(st.phase === "error" || st.phase === "needs-passphrase") && st.error && <p className="text-xs text-muted">{st.error}</p>}
+      {rows.length > 0 && (
+        <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
+          {rows.map(([k, v]) => (
+            <div key={k} className="contents">
+              <dt className="text-subtle">{k}</dt>
+              <dd className="min-w-0 truncate text-right text-fg">{v}</dd>
+            </div>
+          ))}
+        </dl>
+      )}
+      <p className="border-t border-border pt-1.5 text-caption text-subtle">Verschlüsselt über GitHub. Klicken für die Einstellungen.</p>
+    </div>
+  );
+}
