@@ -54,28 +54,60 @@ function useSparkline() {
   return { line, active };
 }
 
-/** Output tokens per second of everything FORGE runs with Claude: sessions, subagents, agents, phone. */
+/** A pause between two answers stays on screen; only a longer quiet hides the output. */
+const HIDE_AFTER_MS = 2000;
+/** Slower than the default .collapsible, so the card grows calmly instead of popping. */
+const REVEAL_MS = 320;
+
+/** Whether tokens flow now or did less than HIDE_AFTER_MS ago. */
+export function useTokensFlowing(perSecond: number): boolean {
+  const [shown, setShown] = useState(perSecond > 0);
+  useEffect(() => {
+    if (perSecond > 0) {
+      setShown(true);
+      return;
+    }
+    const t = setTimeout(() => setShown(false), HIDE_AFTER_MS);
+    return () => clearTimeout(t);
+  }, [perSecond]);
+  return shown;
+}
+
+/**
+ * Output tokens per second of everything FORGE runs with Claude: sessions, subagents, agents, phone.
+ * Only shown while tokens flow. It stays mounted while hidden, so the sparkline keeps its history.
+ * The -mt-2 cancels the gap-2 of the status card while closed; the pt-2 inside brings it back when open.
+ */
 export function TokenRate() {
   const perSecond = useTokenRate((s) => s.perSecond);
+  const shown = useTokensFlowing(perSecond);
   const { line, active } = useSparkline();
   return (
-    <div className="w-full" title="Ausgegebene Tokens pro Sekunde, über alle Sessions, Subagenten, Agenten und das Telefon">
-      <div className="mb-0.5 flex justify-between text-caption">
-        <span className="text-muted">Ausgabe</span>
-        <span className={cn("tabular-nums", perSecond > 0 ? "text-fg" : "text-subtle")}>{perSecond.toLocaleString("de-DE")} Token/s</span>
-      </div>
-      <div className={cn("transition-opacity duration-300", active || perSecond > 0 ? "opacity-100" : "opacity-30")}>
-        <svg viewBox="0 0 100 20" preserveAspectRatio="none" className="h-4 w-full text-accent" aria-hidden>
-          <polyline
-            ref={line}
-            points={BASELINE_POINTS}
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.5"
-            vectorEffect="non-scaling-stroke"
-            strokeLinejoin="round"
-          />
-        </svg>
+    <div className="collapsible -mt-2 w-full" data-open={shown} style={{ transitionDuration: `${REVEAL_MS}ms` }} aria-hidden={!shown}>
+      <div>
+        <div
+          className={cn("pt-2 transition-transform ease-snappy", shown ? "translate-y-0" : "translate-y-1.5")}
+          style={{ transitionDuration: `${REVEAL_MS}ms` }}
+          title="Ausgegebene Tokens pro Sekunde, über alle Sessions, Subagenten, Agenten und das Telefon"
+        >
+          <div className="mb-0.5 flex justify-between text-caption">
+            <span className="text-muted">Ausgabe</span>
+            <span className={cn("tabular-nums transition-colors duration-300", perSecond > 0 ? "text-fg" : "text-subtle")}>{perSecond.toLocaleString("de-DE")} Token/s</span>
+          </div>
+          <div className={cn("transition-opacity duration-300", active || perSecond > 0 ? "opacity-100" : "opacity-30")}>
+            <svg viewBox="0 0 100 20" preserveAspectRatio="none" className="h-4 w-full text-accent" aria-hidden>
+              <polyline
+                ref={line}
+                points={BASELINE_POINTS}
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                vectorEffect="non-scaling-stroke"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </div>
+        </div>
       </div>
     </div>
   );

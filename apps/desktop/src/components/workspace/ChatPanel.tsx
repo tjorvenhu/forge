@@ -60,7 +60,7 @@ const toastNotFound = () => toast.error("Eintrag nicht gefunden", "Der Eintrag i
  * `detached`: rendered as the only content of a chat window. `pane`: the chat of a further area of the split view,
  * with its own session; without it the panel shows the session the workspace has open for the project.
  */
-export function ChatPanel({ project, workingInPanel = false, detached = false, pane }: { project: Project; workingInPanel?: boolean; detached?: boolean; pane?: SplitPane }) {
+export function ChatPanel({ project, detached = false, pane }: { project: Project; detached?: boolean; pane?: SplitPane }) {
   const mainActive = useUi((s) => s.activeSession[project.id] ?? null);
   const active = pane ? pane.active : mainActive;
   const setSplitPane = useUi((s) => s.setSplitPane);
@@ -117,7 +117,7 @@ export function ChatPanel({ project, workingInPanel = false, detached = false, p
       {sessionId && elsewhere ? (
         <InChatWindowPane project={project} sessionId={sessionId} title={session.data?.title ?? null} />
       ) : sessionId ? (
-        <SessionThread key={sessionId} sessionId={sessionId} session={session.data ?? null} project={project} workingInPanel={workingInPanel} />
+        <SessionThread key={sessionId} sessionId={sessionId} session={session.data ?? null} project={project} />
       ) : (
         <NewSessionPane project={project} external={external} />
       )}
@@ -189,7 +189,7 @@ function NewSessionPane({ project, external }: { project: Project; external: Ext
   );
 }
 
-function SessionThread({ sessionId, session, project, workingInPanel }: { sessionId: string; session: Session | null; project: Project; workingInPanel: boolean }) {
+function SessionThread({ sessionId, session, project }: { sessionId: string; session: Session | null; project: Project }) {
   const { buffer, error, retry } = useSessionHistory(sessionId);
   const events = buffer?.events ?? NO_EVENTS;
   const streaming = buffer?.streaming ?? NO_STREAMING;
@@ -404,7 +404,7 @@ function SessionThread({ sessionId, session, project, workingInPanel }: { sessio
       {jump && <JumpToEnd kind={jump} onClick={jumpToEnd} />}
       </div>
       {/* Outside the scroll area: the line stays right above the composer, however short the chat is. */}
-      {startedAt && !workingInPanel && <WorkingIndicator startedAt={startedAt} subagents={session?.subagents} sessionId={sessionId} />}
+      {startedAt && <WorkingIndicator startedAt={startedAt} subagents={session?.subagents} sessionId={sessionId} />}
       <Composer project={project} session={session} prefill={retryText} onPrefillConsumed={clearRetry} />
       <TaskThreadDialog sessionId={sessionId} projectDir={session?.cwd ?? project.path} />
     </>

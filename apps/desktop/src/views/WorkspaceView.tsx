@@ -17,7 +17,6 @@ import { ProjectSettingsTab } from "@/components/workspace/ProjectSettingsTab";
 import { AgentsTab } from "@/components/workspace/AgentsTab";
 import { ActivityFeed } from "@/components/workspace/ActivityFeed";
 import { FileTree } from "@/components/workspace/FileTree";
-import { WorkingCard } from "@/components/workspace/WorkingCard";
 import { BottomPanel } from "@/components/workspace/BottomPanel";
 import { DevToolsTab } from "@/components/devtools/DevToolsTab";
 import { KnowledgeTab } from "@/components/knowledge/KnowledgeTab";
@@ -116,7 +115,7 @@ function Workspace({ projectId }: { projectId: string }) {
           </Collapse>
           <div key={workspaceTab} className="min-h-0 flex-1 animate-view-in">
             {workspaceTab === "chat" &&
-              (project.exists ? <ChatPanel project={project} workingInPanel={showRight} /> : <EmptyState title="Chat nicht verfügbar">Der Projektordner fehlt.</EmptyState>)}
+              (project.exists ? <ChatPanel project={project} /> : <EmptyState title="Chat nicht verfügbar">Der Projektordner fehlt.</EmptyState>)}
             {workspaceTab === "agents" && <AgentsTab project={project} />}
             {workspaceTab === "git" && <GitCenter project={project} />}
             {workspaceTab === "files" && <FilesTab project={project} />}
@@ -212,7 +211,6 @@ function RightPanel({ projectId }: { projectId: string }) {
       <div key={tab} className="min-h-0 flex-1 animate-view-in">
         {tab === "files" ? <FileTree project={project} /> : tab === "git" ? <GitPanel project={project} compact /> : <ActivityFeed projectId={projectId} projectDir={project.path} />}
       </div>
-      <WorkingCard project={project} />
     </aside>
   );
 }
