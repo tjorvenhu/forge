@@ -2,13 +2,10 @@ import { randomUUID } from "node:crypto";
 import { ForgeError, type Attachment, type Session } from "@forge/protocol";
 import { buildAttachmentBlocks } from "../claude/attachments.js";
 import type { OutgoingMessage } from "../claude/runtime.js";
-import { BUSY, REMOTE_PLACEHOLDER_TITLE, titleFrom, type LiveSession } from "./live-session.js";
+import { BUSY, endLive, REMOTE_PLACEHOLDER_TITLE, titleFrom, type LiveSession } from "./live-session.js";
 import type { RemoteBridge } from "./remote-bridge.js";
 import type { SessionCore } from "./session-core.js";
 import type { TurnAutomation } from "./turn-automation.js";
-
-/** How long send() waits for a closing process to end before it starts a new one. */
-const CLOSE_WAIT_MS = 5_000;
 
 export interface TurnHost {
   /** no process runs for the session: start one with the message */
@@ -86,7 +83,7 @@ export class TurnDispatch {
     let live = this.core.live.get(sessionId);
     if (live?.closing) {
       // close() was called but the process has not ended yet: its input queue no longer takes messages.
-      await Promise.race([live.ended, new Promise((r) => setTimeout(r, CLOSE_WAIT_MS))]);
+      await endLive(live);
       live = this.core.live.get(sessionId);
       if (live?.closing) throw new ForgeError("SESSION_BUSY", "Die Session wird gerade beendet. Bitte gleich erneut senden.");
     }

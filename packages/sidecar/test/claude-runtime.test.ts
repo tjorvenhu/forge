@@ -37,7 +37,7 @@ vi.mock("@anthropic-ai/claude-agent-sdk", () => ({
   getSessionMessages: vi.fn(),
 }));
 
-const { AgentSdkRuntime, REMOTE_UNAVAILABLE, USAGE_UNAVAILABLE, REPLAY_FLAG } = await import("../src/claude/runtime.js");
+const { AgentSdkRuntime, REMOTE_UNAVAILABLE, USAGE_UNAVAILABLE, REPLAY_FLAG, withStderr } = await import("../src/claude/runtime.js");
 
 const opts = { cwd: process.cwd(), env: {}, claudePath: "claude" };
 const last = () => sdk.calls.at(-1)!;
@@ -102,6 +102,24 @@ describe("session hooks", () => {
   it("let the call through only when the check passes", async () => {
     start(sink({}));
     expect(await hookOf()(preToolUse as never, "t1", { signal: new AbortController().signal })).toEqual({});
+  });
+
+  it("spawns the CLI itself so a hung close can kill the process", async () => {
+    const rs = start(sink({}));
+    const spawnCli = last().options.spawnClaudeCodeProcess!;
+    const child = spawnCli({ command: process.execPath, args: ["-e", "setInterval(() => {}, 1000)"], env: { ...process.env }, signal: new AbortController().signal });
+    const exited = new Promise((r) => child.once("exit", r));
+    rs.kill();
+    await exited;
+    expect(child.exitCode !== null || child.signalCode != null).toBe(true);
+  });
+
+  it("adds the end of stderr to the SDK's exit error", () => {
+    expect(withStderr(new Error("Claude Code process exited with code 1"), "Not logged in · Please run /login\n").message).toBe(
+      "Claude Code process exited with code 1\nNot logged in · Please run /login",
+    );
+    expect(withStderr(new Error("x"), "").message).toBe("x");
+    expect(withStderr(new Error("x: boom"), "boom").message).toBe("x: boom");
   });
 
   it("deny an approval whose handling throws", async () => {

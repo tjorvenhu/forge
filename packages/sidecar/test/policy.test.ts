@@ -100,6 +100,99 @@ describe("guard: shell rules (all profiles)", () => {
   it("applies to the PowerShell tool too", () => {
     expect(checkToolUse("PowerShell", { command: "git push --force" }, ctx)?.rule).toBe("git-force-push");
   });
+
+  it("applies to every tool that runs a shell command, like Monitor", () => {
+    expect(checkToolUse("Monitor", { description: "x", timeout_ms: 1000, command: "rm -rf ~" }, ctx)?.rule).toBe("rm-root");
+    expect(checkToolUse("Monitor", { description: "x", timeout_ms: 1000, command: "git push --force" }, ctx)?.rule).toBe("git-force-push");
+    expect(checkToolUse("Monitor", { description: "x", timeout_ms: 1000, command: "tail -f log.txt" }, ctx)).toBeNull();
+    expect(checkToolUse("Monitor", { description: "x", timeout_ms: 1000, ws: { url: "ws://localhost:1" } }, ctx)).toBeNull();
+    expect(checkToolUse("WebFetch", { url: "https://example.com", prompt: "rm -rf /" }, ctx)).toBeNull();
+  });
+
+  const encoded = (script: string) => Buffer.from(script, "utf16le").toString("base64");
+
+  it.each([
+    ['cmd /c "rd /s /q C:\\"', "rm-root-win"],
+    ['cmd //c "rd /s /q C:\\"', "rm-root-win"],
+    ['cmd.exe /s /c "del /s /q %USERPROFILE%"', "rm-root-win"],
+    ["powershell -Command 'Remove-Item -Recurse -Force $env:USERPROFILE'", "rm-root-win"],
+    ['pwsh -c "Remove-Item -Recurse -Force C:\\"', "rm-root-win"],
+    ['pwsh -NoProfile -c "cmd /c \'rd /s /q C:\\\'"', "rm-root-win"],
+    ["bash -c 'rm -rf ~'", "rm-root"],
+    ['sh -lc "cd /tmp && rm -rf $HOME"', "rm-root"],
+    ["eval 'rm -rf /'", "rm-root"],
+    ["bash -c 'cat ~/.netrc'", "sensitive-path"],
+    [`powershell -EncodedCommand ${encoded("Remove-Item -Recurse -Force $env:USERPROFILE")}`, "rm-root-win"],
+    [`pwsh -enc ${encoded("git push --force")}`, "git-force-push"],
+    [`powershell -e ${encoded("Get-Content ~/.ssh/id_rsa")}`, "sensitive-path"],
+  ])("checks the command inside a wrapper: %s", (cmd, rule) => {
+    expect(bash(cmd)).toBe(rule);
+  });
+
+  it.each(["bash -c 'rm -rf ./dist'", 'cmd /c "rd /s /q build"', "powershell -Command 'Get-ChildItem'", `pwsh -enc ${encoded("Get-ChildItem")}`, "bash -c \"echo 'rm -rf /'\"", "bash scripts/build.sh"])(
+    "allows harmless wrapped commands: %s",
+    (cmd) => {
+      expect(bash(cmd)).toBeNull();
+    },
+  );
+
+  it("checks a push inside a wrapper against the protected branch", () => {
+    expect(bash("bash -c 'git push'", { ...ctx, currentBranch: "main" })).toBe("git-push-protected");
+  });
+
+  const fwd = home.replace(/\\/g, "/");
+  const gitBash = fwd.replace(/^([A-Za-z]):/, (_, d: string) => `/${d.toLowerCase()}`);
+
+  it.each([
+    [`rm -rf ${home}`, "rm-root"],
+    [`rm -rf "${fwd.toUpperCase()}/"`, "rm-root"],
+    [`rm -rf ${gitBash}`, "rm-root"],
+    [`rm -rf /mnt${gitBash}`, "rm-root"],
+    ["rm -rf /c/Users/someone", "rm-root"],
+    ["rm -rf $USERPROFILE", "rm-root"],
+    ["rm -rf ${USERPROFILE}/*", "rm-root"],
+    [`Remove-Item -Recurse -Force "${home}"`, "rm-root-win"],
+    ["rd /s /q C:\\Users", "rm-root-win"],
+    ["cat /c/Users/x/.netrc", "sensitive-path"],
+    [`cat ${gitBash}/.npmrc`, "sensitive-path"],
+    ["cat $USERPROFILE/.npmrc", "sensitive-path"],
+    [`type ${fwd.toLowerCase()}/.docker/config.json`, "sensitive-path"],
+  ])("recognises the home folder as a path: %s", (cmd, rule) => {
+    expect(bash(cmd)).toBe(rule);
+  });
+
+  it.each([`rm -rf ${path.join(projectDir, "dist")}`, `rm -rf ${gitBash}/Projects/demo/dist`, "rm -rf /c/Users/x/tmp", `cat ${gitBash}/Projects/demo/.npmrc`])(
+    "allows paths below the home folder: %s",
+    (cmd) => {
+      expect(bash(cmd)).toBeNull();
+    },
+  );
+
+  it.each([
+    ["Git push --force", "git-force-push"],
+    ["GIT push -f", "git-force-push"],
+    ["git push --forc", "git-force-push"],
+    ["git push --force-w", "git-force-push"],
+    ["git push -fu origin feature/x", "git-force-push"],
+    ["git push --mirr", "git-push-mirror"],
+    ["git push origin --pru", "git-push-mirror"],
+    ["git push origin --del x", "git-push-delete"],
+    ["git push origin --delete=x", "git-push-delete"],
+    ["git reset --har", "git-reset-hard"],
+    ["Git Reset --HARD", "git-reset-hard"],
+    ["git branch --del old", "git-branch-delete"],
+    ["git branch -df old", "git-branch-delete"],
+    ["git clean --forc -d", "git-clean-force"],
+  ])("blocks case variants and abbreviated options: %s", (cmd, rule) => {
+    expect(bash(cmd)).toBe(rule);
+  });
+
+  it.each(["git push --follow-tags origin feature/x", "git push --dry-run origin feature/x", "git push --porcelain origin feature/x", "git push --progress origin feature/x", "git reset --soft HEAD~1", "git branch --list"])(
+    "allows other options with the same first letters: %s",
+    (cmd) => {
+      expect(bash(cmd)).toBeNull();
+    },
+  );
 });
 
 describe("guard: file tools", () => {

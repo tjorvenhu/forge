@@ -64,6 +64,33 @@ export function closeLive(live: LiveSession) {
   live.rt.close();
 }
 
+/** On Windows the SDK ends a closed CLI only after about 7 s (stdin end, 2 s grace, 5 s until SIGKILL). */
+export const CLOSE_WAIT_MS = 10_000;
+/** After the tree was killed its end is reported within moments. */
+const KILL_WAIT_MS = 2_000;
+
+/** True once the process has ended, false if that took longer than `ms`. */
+export async function endedWithin(live: LiveSession, ms: number): Promise<boolean> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([live.ended.then(() => true), new Promise<boolean>((r) => (timer = setTimeout(() => r(false), ms)))]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** Closes the process and waits for its end; one that does not end in time is killed with its tree. True when it ended. */
+export async function endLive(live: LiveSession): Promise<boolean> {
+  if (!live.closing) closeLive(live);
+  if (await endedWithin(live, CLOSE_WAIT_MS)) return true;
+  try {
+    live.rt.kill();
+  } catch {
+    /* already gone */
+  }
+  return endedWithin(live, KILL_WAIT_MS);
+}
+
 export function titleFrom(prompt: string): string {
   const first = prompt.trim().split(/\r?\n/)[0] ?? "";
   return first.length > 80 ? first.slice(0, 77) + "…" : first;
