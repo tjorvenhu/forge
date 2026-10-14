@@ -10,9 +10,15 @@ import { stripBom } from "../devtools/dev-tools.js";
 export const KNOWLEDGE_DIR = path.join(".forge", "knowledge");
 
 const ID_RE = /^[a-z0-9][a-z0-9-]{0,79}$/;
-/** Index lines Claude gets at session start; the rest is found with knowledge_search. */
-const INDEX_MAX_ENTRIES = 60;
-const INDEX_MAX_CHARS = 6000;
+/**
+ * Index Claude gets at session start. With summaries while everything fits; otherwise one short line
+ * (id, title, tags) per entry, so every entry stays visible. Entries beyond the budget need knowledge_search.
+ */
+const INDEX_MAX_CHARS = 8000;
+/** Share of an entry's weighted words found in another from which both likely cover the same topic. */
+export const OVERLAP_MIN = 0.55;
+/** Entries longer than this cost noticeable context on every read and get a hint to trim them. */
+export const LONG_ENTRY_CHARS = 8000;
 
 export interface KnowledgeInput {
   id: string | null;
@@ -26,6 +32,15 @@ export interface KnowledgeHit extends KnowledgeSummary {
   score: number;
   snippet: string;
 }
+
+export interface KnowledgeOverlap {
+  /** the entry that is largely contained in `b` */
+  a: string;
+  b: string;
+  score: number;
+}
+
+type Comparable = Pick<KnowledgeEntry, "title" | "summary" | "tags" | "content">;
 
 export function slugifyId(title: string): string {
   const s = title
@@ -156,6 +171,68 @@ export function rank(entries: KnowledgeEntry[], query: string): KnowledgeHit[] {
   return hits.sort((a, b) => b.score - a.score);
 }
 
+const STOP_WORDS = new Set(
+  (
+    "aber alle als also auch auf aus bei beim bis da damit dann das dass dem den der des die dies diese diesem diesen dieser doch dort " +
+    "durch ein eine einem einen einer eines es für gibt hat hier ihr im in ist jetzt kann kein keine man mit muss nach nicht noch nur " +
+    "ob oder ohne schon sich sie sind so über um und uns vom von vor war was weil wenn wer wie wird wo zu zum zur and the for with from that this not are"
+  ).split(" "),
+);
+
+/** tf-idf weights per entry; the smoothed idf keeps shared words meaningful in small stores. */
+function weights(entries: Comparable[]): Array<Map<string, number>> {
+  const counts = entries.map((e) => {
+    const m = new Map<string, number>();
+    for (const t of tokens(`${e.title} ${e.title} ${e.tags.join(" ")} ${e.summary} ${e.content}`))
+      if (t.length > 2 && !STOP_WORDS.has(t)) m.set(t, (m.get(t) ?? 0) + 1);
+    return m;
+  });
+  const df = new Map<string, number>();
+  for (const c of counts) for (const t of c.keys()) df.set(t, (df.get(t) ?? 0) + 1);
+  return counts.map((c) => {
+    const w = new Map<string, number>();
+    for (const [t, n] of c) w.set(t, (1 + Math.log(n)) * Math.log(1 + entries.length / df.get(t)!));
+    return w;
+  });
+}
+
+/**
+ * Share of a's weight whose words also occur in b. Asymmetric on purpose: a short note on a topic
+ * that a long entry already covers scores high, two long entries that merely share vocabulary do not.
+ */
+function containment(a: Map<string, number>, b: Map<string, number>): number {
+  let inB = 0;
+  let total = 0;
+  for (const [t, w] of a) {
+    total += w;
+    if (b.has(t)) inB += w;
+  }
+  return total ? inB / total : 0;
+}
+
+/** Pairs of entries that likely cover the same topic, the strongest first. */
+export function overlaps(entries: KnowledgeEntry[], min = OVERLAP_MIN): KnowledgeOverlap[] {
+  const w = weights(entries);
+  const out: KnowledgeOverlap[] = [];
+  for (let i = 0; i < entries.length; i++)
+    for (let j = i + 1; j < entries.length; j++) {
+      const [s, l] = entries[i]!.content.length <= entries[j]!.content.length ? [i, j] : [j, i];
+      const score = containment(w[s]!, w[l]!);
+      if (score >= min) out.push({ a: entries[s]!.id, b: entries[l]!.id, score });
+    }
+  return out.sort((x, y) => y.score - x.score);
+}
+
+/** Existing entries that already cover most of `text`, the strongest first. */
+export function covering(entries: KnowledgeEntry[], text: Comparable, min = OVERLAP_MIN): Array<KnowledgeEntry & { score: number }> {
+  const w = weights([...entries, text]);
+  const own = w[entries.length]!;
+  return entries
+    .map((e, i) => ({ ...e, score: containment(own, w[i]!) }))
+    .filter((e) => e.score >= min)
+    .sort((x, y) => y.score - x.score);
+}
+
 function snippet(content: string, words: string[]): string {
   const flat = content.replace(/\s+/g, " ").trim();
   const lower = flat.toLowerCase();
@@ -264,6 +341,42 @@ export class KnowledgeStore {
     return this.list(projectId).filter((e) => e.id !== exceptId && titleOverlap(e.title, title) >= 0.75);
   }
 
+  /** Entries whose text already covers most of this one: candidates to merge with. */
+  covering(projectId: string, text: Comparable, exceptIds: string[] = []): KnowledgeSummary[] {
+    const others = this.entriesSync(projectId).filter((e) => !exceptIds.includes(e.id));
+    return covering(others, text).map(({ content: _content, score: _score, ...rest }) => rest);
+  }
+
+  /** What to tidy up: entries that overlap and entries that grew long. */
+  cleanup(projectId: string): { overlaps: KnowledgeOverlap[]; long: Array<{ id: string; chars: number }> } {
+    const entries = this.entriesSync(projectId);
+    return {
+      overlaps: overlaps(entries),
+      long: entries
+        .filter((e) => e.content.length > LONG_ENTRY_CHARS)
+        .map((e) => ({ id: e.id, chars: e.content.length }))
+        .sort((a, b) => b.chars - a.chars),
+    };
+  }
+
+  /** Tags in use, the most frequent first; offered to Claude so entries share one vocabulary. */
+  tags(projectId: string): string[] {
+    const n = new Map<string, number>();
+    for (const e of this.list(projectId)) for (const t of e.tags) n.set(t, (n.get(t) ?? 0) + 1);
+    return [...n].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).map(([t]) => t);
+  }
+
+  /** Writes the merged text into the first entry and deletes the others. All must exist beforehand. */
+  async merge(projectId: string, ids: string[], input: Omit<KnowledgeInput, "id">): Promise<{ entry: KnowledgeEntry; removed: string[] }> {
+    const unique = [...new Set(ids)];
+    if (unique.length < 2) throw new ForgeError("VALIDATION", "Zum Zusammenführen braucht es mindestens zwei verschiedene Einträge.");
+    for (const id of unique) if (!this.locate(projectId, id)) throw new ForgeError("NOT_FOUND", `Kein Eintrag „${id}“.`);
+    const [target, ...rest] = unique as [string, ...string[]];
+    const entry = await this.save(projectId, { ...input, id: target });
+    for (const id of rest) await this.delete(projectId, id);
+    return { entry, removed: rest };
+  }
+
   async save(projectId: string, input: KnowledgeInput): Promise<KnowledgeEntry> {
     const dir = this.dir(projectId);
     await mkdir(dir, { recursive: true });
@@ -315,17 +428,20 @@ export class KnowledgeStore {
   }
 
   /** Index for Claude's start context; empty when the project has no knowledge yet. */
-  index(projectId: string): { lines: string[]; total: number } {
+  index(projectId: string): { lines: string[]; total: number; summaries: boolean } {
     const entries = this.list(projectId);
+    const tags = (e: KnowledgeSummary) => (e.tags.length ? ` [${e.tags.join(", ")}]` : "");
+    const full = entries.map((e) => `- ${e.id}: ${e.title}${e.summary ? `. ${e.summary}` : ""}${tags(e)}`);
+    if (full.reduce((n, l) => n + l.length + 1, 0) <= INDEX_MAX_CHARS) return { lines: full, total: entries.length, summaries: true };
     const lines: string[] = [];
     let chars = 0;
-    for (const e of entries.slice(0, INDEX_MAX_ENTRIES)) {
-      const line = `- ${e.id}: ${e.title}${e.summary ? `. ${e.summary}` : ""}${e.tags.length ? ` [${e.tags.join(", ")}]` : ""}`;
+    for (const e of entries) {
+      const line = `- ${e.id}: ${e.title}${tags(e)}`;
       if (chars + line.length > INDEX_MAX_CHARS) break;
       lines.push(line);
       chars += line.length + 1;
     }
-    return { lines, total: entries.length };
+    return { lines, total: entries.length, summaries: false };
   }
 }
 

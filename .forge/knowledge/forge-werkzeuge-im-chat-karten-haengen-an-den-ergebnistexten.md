@@ -2,8 +2,10 @@
 title: "FORGE-Werkzeuge im Chat: Karten hängen an den Ergebnistexten"
 summary: "Die Chat-Karten für mcp__forge__-Aufrufe werten die Ergebnistexte der Werkzeuge aus; wer Texte in forge-tools.ts ändert oder ein neues FORGE-Werkzeug anlegt, muss forge-tool.ts mitziehen."
 tags: ["chat","forge-tools","ui","stolperfalle"]
-updated: "2026-10-14T18:06:52.305Z"
+updated: "2026-10-14T18:50:46.135Z"
 ---
+
+# FORGE-Werkzeuge im Chat: Karten hängen an den Ergebnistexten
 
 ## Worum es geht
 
@@ -25,7 +27,9 @@ Vorschau `packages/sidecar/src/preview/preview.ts`) zurückgeben:
 |---|---|---|
 | alle | beginnt mit `Fehler:` (auch ohne `isError`) | rote Karte, Titel „… fehlgeschlagen / nicht …“, kein Sprung-Knopf |
 | `knowledge_save` | `Gespeichert: <id> (…)` / `Aktualisiert: <id> (…)` | Titel und Kennung für „Eintrag öffnen“ |
+| `knowledge_save` | enthält `Überschneidet sich stark mit` | gelbe Karte „…, überschneidet sich mit anderem Eintrag“ |
 | `knowledge_save` | beginnt mit `Nicht gespeichert` | gelbe Karte „ähnlicher Eintrag vorhanden“ |
+| `knowledge_merge` | `Zusammengeführt: <id> (…)` | Kennung für „Eintrag öffnen“ |
 | `knowledge_search` | beginnt mit `Keine Treffer` | Titel „…, keine Treffer“ |
 | `knowledge_delete` | beginnt mit `Kein Eintrag` | gelbe Karte „nicht gefunden“ |
 | `start_agent` | enthält `Branch <name>,` | Branch als Bezug |

@@ -76,16 +76,26 @@ export function forgeToolView(tool: string, input: Record<string, unknown>, resu
   switch (tool) {
     case "knowledge_save": {
       const refused = done && /^Nicht gespeichert/.test(text);
+      const overlapping = done && text.includes("Überschneidet sich stark mit");
       const savedId = /^(?:Gespeichert|Aktualisiert): (\S+)/.exec(text)?.[1] ?? null;
+      const saved = text.startsWith("Aktualisiert") ? "Projektwissen aktualisiert" : "Im Projektwissen gespeichert";
       return view({
-        title: !result ? "Speichert im Projektwissen" : refused ? "Nicht gespeichert: ähnlicher Eintrag vorhanden" : text.startsWith("Aktualisiert") ? "Projektwissen aktualisiert" : "Im Projektwissen gespeichert",
+        title: !result ? "Speichert im Projektwissen" : refused ? "Nicht gespeichert: ähnlicher Eintrag vorhanden" : overlapping ? `${saved}, überschneidet sich mit anderem Eintrag` : saved,
         failedTitle: "Speichern im Projektwissen fehlgeschlagen",
         ref: str(input, "title"),
         icon: "knowledge",
-        tone: refused ? "warning" : "accent",
+        tone: refused || overlapping ? "warning" : "accent",
         target: refused ? { kind: "knowledge", id: null } : { kind: "knowledge", id: savedId ?? str(input, "id") },
       });
     }
+    case "knowledge_merge":
+      return view({
+        title: result ? "Einträge im Projektwissen zusammengeführt" : "Führt Einträge im Projektwissen zusammen",
+        failedTitle: "Zusammenführen im Projektwissen fehlgeschlagen",
+        ref: str(input, "title"),
+        icon: "knowledge",
+        target: { kind: "knowledge", id: /^Zusammengeführt: (\S+)/.exec(text)?.[1] ?? null },
+      });
     case "knowledge_read":
       return view({
         title: result ? "Im Projektwissen gelesen" : "Liest im Projektwissen",

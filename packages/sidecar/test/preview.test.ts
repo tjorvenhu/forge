@@ -134,7 +134,7 @@ describe("preview helpers", () => {
 });
 
 describe("preview tools in a session", () => {
-  const knowledge = { owner: (id: string) => id, index: () => ({ lines: [], total: 0 }), dir: () => "" } as unknown as KnowledgeStore;
+  const knowledge = { owner: (id: string) => id, index: () => ({ lines: [], total: 0, summaries: true }), tags: () => [], dir: () => "" } as unknown as KnowledgeStore;
   const rec = { id: "s1", projectId: "p1", cwd: "C:\\p" } as Parameters<typeof projectTools>[0];
 
   it("are offered with the preview service and explained in the context", () => {

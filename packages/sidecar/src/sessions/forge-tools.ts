@@ -103,16 +103,36 @@ export function projectTools(rec: SessionRecord, p: ProjectToolDeps): { tools: S
       return `# ${e.title}\nZusammenfassung: ${e.summary}\nTags: ${e.tags.join(", ") || "keine"}\nStand: ${e.updatedAt.slice(0, 10)}\n\n${e.content}`;
     },
   };
+  const knownTags = p.knowledge.tags(projectId).slice(0, 30);
+  // A worktree has no knowledge folder of its own; a relative path would point into the wrong checkout.
+  const fileOf = (id: string) => (inWorktree ? path.join(p.knowledge.dir(projectId), `${id}.md`) : `${KNOWLEDGE_DIR.replace(/\\/g, "/")}/${id}.md`);
+  const entryFields = {
+    title: z
+      .string()
+      .min(3)
+      .max(120)
+      .describe("Kurzer, eindeutiger Titel mit den Begriffen, unter denen man ihn sucht, z. B. 'Rechtsklick-Menü (ContextMenuHost, addContextItems)'. Steht so im Index jeder Session"),
+    summary: z.string().min(5).max(300).describe("Ein kurzer Satz: worum es geht und wann man den Eintrag braucht"),
+    tags: z
+      .array(z.string().max(40))
+      .max(8)
+      .optional()
+      .describe(`2 bis 5 Stichwörter in Kleinbuchstaben: Bereich und Art (z. B. stolperfalle, konvention). ${knownTags.length ? `Vorhandene wiederverwenden: ${knownTags.join(", ")}` : ""}`.trim()),
+    content: z.string().min(1).max(50_000).describe("Inhalt in Markdown: konkret, mit Dateipfaden, Befehlen und Begründungen. Beim Aktualisieren der vollständige neue Text"),
+  };
+  const overlapHint = (text: { title: string; summary: string; tags: string[]; content: string }, except: string[]) => {
+    const near = p.knowledge.covering(projectId, text, except).slice(0, 3);
+    return near.length
+      ? ` Überschneidet sich stark mit: ${near.map((n) => `${n.id} (${n.title})`).join(", ")}. Ist es dasselbe Thema, führe die Einträge mit knowledge_merge zusammen.`
+      : "";
+  };
   const knowledgeSave: SessionTool = {
     name: "knowledge_save",
     description:
       "Legt einen Eintrag im Projektwissen an oder aktualisiert ihn (mit id). Für dauerhaft nützliches Wissen, das nicht offensichtlich im Code steht. Ein Eintrag pro Thema; bestehende Einträge ergänzen statt Duplikate anlegen.",
     shape: {
       id: z.string().max(80).optional().describe("Kennung eines bestehenden Eintrags zum Aktualisieren; leer legt einen neuen an"),
-      title: z.string().min(3).max(120).describe("Kurzer, eindeutiger Titel, z. B. 'Datenbank-Migrationen mit Prisma'"),
-      summary: z.string().min(5).max(300).describe("Ein Satz: worum es geht und wann man den Eintrag braucht"),
-      tags: z.array(z.string().max(40)).max(8).optional().describe("Stichwörter in Kleinbuchstaben"),
-      content: z.string().min(1).max(50_000).describe("Inhalt in Markdown: konkret, mit Dateipfaden, Befehlen und Begründungen. Beim Aktualisieren der vollständige neue Text"),
+      ...entryFields,
       force: z.boolean().optional().describe("true legt trotz eines ähnlichen Eintrags einen neuen an"),
     },
     autoAllow: true,
@@ -126,9 +146,25 @@ export function projectTools(rec: SessionRecord, p: ProjectToolDeps): { tools: S
       }
       const tags = Array.isArray(a.tags) ? a.tags.filter((t): t is string => typeof t === "string") : id ? (await p.knowledge.read(projectId, id)).tags : [];
       const e = await p.knowledge.save(projectId, { id, title, summary: String(a.summary), tags, content: String(a.content) });
-      // A worktree has no knowledge folder of its own; a relative path would point into the wrong checkout.
-      const file = inWorktree ? path.join(p.knowledge.dir(projectId), `${e.id}.md`) : `${KNOWLEDGE_DIR.replace(/\\/g, "/")}/${e.id}.md`;
-      return `${id ? "Aktualisiert" : "Gespeichert"}: ${e.id} (${file}).`;
+      return `${id ? "Aktualisiert" : "Gespeichert"}: ${e.id} (${fileOf(e.id)}).${overlapHint(e, [e.id])}`;
+    },
+  };
+  const knowledgeMerge: SessionTool = {
+    name: "knowledge_merge",
+    description:
+      "Führt Einträge des Projektwissens, die dasselbe Thema behandeln, zu einem zusammen: der erste behält seine Kennung und bekommt den neuen Text, die übrigen werden gelöscht. Lies vorher alle mit knowledge_read; content muss das Wissen aller Einträge enthalten, Doppeltes und Veraltetes fällt weg.",
+    shape: {
+      ids: z.array(z.string().min(1).max(80)).min(2).max(6).describe("Kennungen der Einträge; der erste bleibt bestehen"),
+      ...entryFields,
+    },
+    autoAllow: true,
+    run: async (a) => {
+      const ids = (a.ids as unknown[]).map((x) => String(x).trim());
+      const tags = Array.isArray(a.tags)
+        ? a.tags.filter((t): t is string => typeof t === "string")
+        : [...new Set((await Promise.all(ids.map((id) => p.knowledge.read(projectId, id)))).flatMap((e) => e.tags))].slice(0, 8);
+      const { entry, removed } = await p.knowledge.merge(projectId, ids, { title: String(a.title), summary: String(a.summary), tags, content: String(a.content) });
+      return `Zusammengeführt: ${entry.id} (${fileOf(entry.id)}). Gelöscht: ${removed.join(", ")}.`;
     },
   };
   const knowledgeDelete: SessionTool = {
@@ -160,25 +196,38 @@ export function projectTools(rec: SessionRecord, p: ProjectToolDeps): { tools: S
 
   const preview = p.preview ? previewTools(projectId, p.preview) : [];
 
-  const { lines, total } = p.knowledge.index(projectId);
+  const { lines, total, summaries } = p.knowledge.index(projectId);
+  const cleanup = lines.length ? p.knowledge.cleanup(projectId) : { overlaps: [], long: [] };
   const context = [
     "Projektwissen (FORGE): Gesammeltes Wissen zu diesem Projekt liegt in .forge/knowledge (Markdown, im Git).",
     inWorktree
       ? `Du arbeitest in einem Worktree. Das Projektwissen liegt im Ordner des Hauptprojekts: ${p.knowledge.dir(projectId)}. Eine Kopie in deinem Worktree ist nicht maßgeblich.`
       : "",
     lines.length
-      ? `Index beim Start dieser Session (${total} Einträge${total > lines.length ? `, die ${lines.length} neuesten` : ""}; Neueres findet knowledge_search):\n${lines.join("\n")}`
+      ? `Index beim Start dieser Session (${total} Einträge${total > lines.length ? `, die ${lines.length} neuesten` : ""}, ${summaries ? "Kennung: Titel. Zusammenfassung [Tags]" : "Kennung: Titel [Tags]; Zusammenfassungen liefert knowledge_search"}; Neueres findet knowledge_search):\n${lines.join("\n")}`
       : "Beim Start dieser Session gab es noch keine Einträge. Lege die ersten an, sobald du etwas Passendes herausfindest.",
     "- Bevor du in einem Bereich arbeitest, zu dem es einen passenden Eintrag gibt, lies ihn mit mcp__forge__knowledge_read. Bei Fragen zu Abläufen, Entscheidungen oder Stolperfallen suche zuerst mit knowledge_search.",
     "- Speichere mit knowledge_save, was künftigen Sessions Zeit spart und nicht offensichtlich im Code oder in CLAUDE.md steht: Entscheidungen mit Begründung, Stolperfallen und ihre Lösung, Abläufe (Setup, Tests, Deploy), Eigenheiten externer Dienste. Speichere, sobald du so etwas herausgefunden hast, nicht erst am Ende.",
-    "- Keine Geheimnisse (Passwörter, Tokens, Keys), kein Sitzungsprotokoll, nichts Kurzlebiges. Ein Thema pro Eintrag; bestehende Einträge aktualisieren statt neue anzulegen, Veraltetes korrigieren oder mit knowledge_delete löschen.",
+    "- Keine Geheimnisse (Passwörter, Tokens, Keys), kein Sitzungsprotokoll, nichts Kurzlebiges. Ein Thema pro Eintrag; bestehende Einträge aktualisieren statt neue anzulegen, Veraltetes korrigieren oder mit knowledge_delete löschen. Titel und Tags sind das, was andere Sessions im Index sehen: Titel mit Suchbegriffen, vorhandene Tags wiederverwenden.",
+    cleanup.overlaps.length
+      ? `- Aufräumen: Diese Einträge überschneiden sich wahrscheinlich: ${cleanup.overlaps
+          .slice(0, 3)
+          .map((o) => `${o.a} + ${o.b}`)
+          .join("; ")}. Arbeitest du ohnehin in dem Bereich, lies sie und führe sie mit knowledge_merge zusammen, wenn es dasselbe Thema ist.`
+      : "",
+    cleanup.long.length
+      ? `- Sehr lange Einträge: ${cleanup.long
+          .slice(0, 3)
+          .map((l) => `${l.id} (${Math.round(l.chars / 1000)} KB)`)
+          .join(", ")}. Aktualisierst du einen davon, kürze ihn auf das, was nicht im Code steht.`
+      : "",
     "- Ändere das Projektwissen nur mit den knowledge_*-Werkzeugen, nicht mit Read, Edit oder Write auf die Dateien.",
     "Dev-Umgebung (FORGE): mcp__forge__dev_environment zeigt Dev-Server (Adresse, letzte Ausgabe) und die lokale PostgreSQL-Testdatenbank (Verbindungs-URL). Nutze für Tests, Migrationen und Experimente mit Daten diese Testdatenbank, nie eine Produktionsdatenbank. dev_control startet, stoppt oder leert sie und startet den Dev-Server neu.",
     preview.length
       ? "Vorschau (FORGE): preview_screenshot zeigt dir die laufende Web-App als Bild (Standard: Adresse des Dev-Servers, path für Unterseiten), preview_console liefert Konsolenmeldungen, Ausnahmen und fehlgeschlagene Anfragen, preview_interact klickt, tippt und wartet auf der Seite. Nur Adressen auf diesem Rechner. Prüfe UI-Änderungen damit selbst, bevor du sie als fertig meldest."
       : "",
   ].filter(Boolean);
-  return { tools: [knowledgeSearch, knowledgeRead, knowledgeSave, knowledgeDelete, devEnvironment, devControl, ...preview], context };
+  return { tools: [knowledgeSearch, knowledgeRead, knowledgeSave, knowledgeMerge, knowledgeDelete, devEnvironment, devControl, ...preview], context };
 }
 
 const previewTarget = {

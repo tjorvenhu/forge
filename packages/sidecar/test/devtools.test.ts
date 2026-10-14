@@ -8,7 +8,7 @@ import { connectionUrl, dbNameFor, DevToolsService, FIRST_DB_PORT, parseDotenv }
 import { DevEnvironment } from "../src/devtools/environment.js";
 import { failureReason, POSTGRES, TestDbService } from "../src/devtools/test-db.js";
 import { DevServerService } from "../src/devserver/dev-server.js";
-import { KnowledgeStore, parseEntry, rank, serializeEntry, slugifyId, titleOverlap } from "../src/knowledge/knowledge.js";
+import { covering, KnowledgeStore, overlaps, parseEntry, rank, serializeEntry, slugifyId, titleOverlap } from "../src/knowledge/knowledge.js";
 import { projectTools } from "../src/sessions/forge-tools.js";
 import { tempDir } from "./helpers.js";
 
@@ -83,6 +83,24 @@ describe("knowledge format and ranking", () => {
     );
     expect(hits.map((h) => h.id)).toEqual(["title", "body"]);
     expect(hits[1]!.snippet).toContain("prisma");
+  });
+
+  it("finds entries that cover the same topic, not those that merely share words", () => {
+    const e = (id: string, title: string, tags: string[], content: string) => ({ id, title, summary: "", tags, updatedAt: "", content });
+    const menu = e(
+      "kontextmenue",
+      "Rechtsklick-Menü (ContextMenuHost, addContextItems)",
+      ["ui", "kontextmenue"],
+      "FORGE zeigt statt des Browser-Menüs ein eigenes Kontextmenü. ContextMenuHost sitzt einmal in der App. Listen und Karten melden ihre Einträge mit addContextItems an; Trenner und Untermenüs gehen über die Gruppe.",
+    );
+    const deploy = e("deploy", "Deploy auf Coolify", ["deploy", "docker"], "Coolify baut das Dockerfile, Traefik komprimiert. Umgebungsvariablen stehen in Coolify, nicht in Dateien im Repo.");
+    const tests = e("tests", "Tests im Gesamtlauf", ["tests", "ui"], "Vitest läuft pro Paket. Lange Tests bekommen eigene Zeitlimits, sonst scheitern sie im Gesamtlauf.");
+    const note = e("notiz", "Kontextmenü erweitern", ["ui", "kontextmenue"], "Neue Listen melden ihre Einträge mit addContextItems an, ContextMenuHost zeigt sie statt des Browser-Menüs.");
+
+    expect(overlaps([menu, deploy, tests, note]).map((o) => [o.a, o.b])).toEqual([["notiz", "kontextmenue"]]);
+    expect(covering([menu, deploy, tests], note).map((c) => c.id)).toEqual(["kontextmenue"]);
+    expect(covering([menu, deploy, tests], { ...deploy, title: "Coolify", content: "Traefik komprimiert, Coolify baut das Dockerfile." }).map((c) => c.id)).toEqual(["deploy"]);
+    expect(covering([menu, deploy], tests)).toEqual([]);
   });
 });
 
@@ -169,7 +187,7 @@ describe("services", () => {
     await store.delete(projectId, second.id);
 
     expect(store.search(projectId, "migrate")[0]?.id).toBe("prisma-migrationen");
-    expect(store.index(projectId)).toEqual({ lines: ["- prisma-migrationen: Prisma Migrationen. Wie Migrationen laufen [db, prisma]"], total: 1 });
+    expect(store.index(projectId)).toEqual({ lines: ["- prisma-migrationen: Prisma Migrationen. Wie Migrationen laufen [db, prisma]"], total: 1, summaries: true });
     await expect(store.read(projectId, "../../secret")).rejects.toThrow(/Ungültige Kennung/);
 
     const { tools, context } = projectTools(

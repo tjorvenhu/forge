@@ -123,6 +123,22 @@ describe("FORGE tools in the chat", () => {
     expect(useUi.getState().knowledgeRequest).toBe("deploy-mit-coolify");
   });
 
+  it("warns about an overlapping entry and opens the result of a merge", () => {
+    show(
+      tool(
+        "mcp__forge__knowledge_save",
+        { title: "Deploy mit Docker" },
+        { text: "Gespeichert: deploy-mit-docker (.forge/knowledge/deploy-mit-docker.md). Überschneidet sich stark mit: deploy (Deploy). Ist es dasselbe Thema, führe die Einträge mit knowledge_merge zusammen." },
+      ),
+    );
+    expect(screen.getByText("Im Projektwissen gespeichert, überschneidet sich mit anderem Eintrag")).toBeTruthy();
+    cleanup();
+    show(tool("mcp__forge__knowledge_merge", { ids: ["deploy", "deploy-mit-docker"], title: "Deploy" }, { text: "Zusammengeführt: deploy (.forge/knowledge/deploy.md). Gelöscht: deploy-mit-docker." }));
+    expect(screen.getByText("Einträge im Projektwissen zusammengeführt")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Eintrag öffnen" }));
+    expect(useUi.getState().knowledgeRequest).toBe("deploy");
+  });
+
   it("names refusals and failures instead of reporting success", () => {
     show(tool("mcp__forge__knowledge_save", { title: "Deploy" }, { text: "Nicht gespeichert: Es gibt schon ähnliche Einträge: deploy (Deploy)." }));
     expect(screen.getByText("Nicht gespeichert: ähnlicher Eintrag vorhanden")).toBeTruthy();
