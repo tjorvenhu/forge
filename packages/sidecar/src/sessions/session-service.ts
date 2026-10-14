@@ -32,6 +32,7 @@ import { AgentRegistry, forgeSessionTools, type ProjectToolDeps } from "./forge-
 import { WorktreeService } from "../automation/worktrees.js";
 import type { AgentFinisher } from "../automation/agent-finish.js";
 import { AgentAutoMerge } from "../automation/agent-auto-merge.js";
+import { pruneSubagentWorktrees } from "../automation/subagent-worktrees.js";
 import { PermissionModes } from "./permission-mode.js";
 import { RateLimitTracker } from "./rate-limit.js";
 import { RemoteBridge } from "./remote-bridge.js";
@@ -92,7 +93,10 @@ export class SessionService {
       emit,
       suggestCommitMessage: (projectId, paths) => this.assist.suggestCommitMessage(projectId, paths),
       testEnv: (projectId) => this.projectDeps?.dev.testCommandEnv(projectId) ?? {},
-      turnDone: async (id, testsOk) => this.agentAutoMerge?.turnDone(id, testsOk),
+      turnDone: async (id, testsOk) => {
+        await this.agentAutoMerge?.turnDone(id, testsOk);
+        await this.pruneSubagents(git, id);
+      },
     });
     this.remote = new RemoteBridge(db, projects, runtime, {
       live: (id) => core.live.get(id),
@@ -186,6 +190,23 @@ export class SessionService {
   /** Knowledge and dev tools for sessions started from now on. */
   useProjectTools(deps: ProjectToolDeps) {
     this.projectDeps = deps;
+  }
+
+  private readonly pruning = new Set<string>();
+
+  /** After a turn in a main project: Claude Code subagent worktrees whose work is merged go away. */
+  private async pruneSubagents(git: GitEngine, sessionId: string) {
+    const rec = this.db.getSession(sessionId);
+    const project = rec ? this.projects.all().find((p) => p.id === rec.projectId) : null;
+    if (!project?.exists || !project.gitEnabled || project.parentId || this.pruning.has(project.id)) return;
+    this.pruning.add(project.id);
+    try {
+      await pruneSubagentWorktrees(git, project.path);
+    } catch {
+      // Tidying up only; the next turn tries again.
+    } finally {
+      this.pruning.delete(project.id);
+    }
   }
 
   /** finish_agent for sessions started from now on, and auto-merge of finished agents. */

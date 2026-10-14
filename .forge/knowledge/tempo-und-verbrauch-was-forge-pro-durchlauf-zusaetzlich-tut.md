@@ -1,8 +1,8 @@
 ---
 title: "Tempo und Verbrauch: was FORGE pro Durchlauf zusätzlich tut"
-summary: "Wo FORGE neben Claude selbst Zeit und Abo-Nutzung kostet (Auto-Commit, Git-Status, Refreshs, Haiku-Aufrufe) und was bereits optimiert ist; wichtig bei Beschwerden über Langsamkeit oder hohen Verbrauch."
-tags: ["performance","git","auto-commit","usage","sidecar","desktop"]
-updated: "2026-10-14T16:09:07.847Z"
+summary: "Wo FORGE neben Claude selbst Zeit und Abo-Nutzung kostet (Auto-Commit, Git-Status, Refreshs, Haiku-Aufrufe), was bereits optimiert ist und wie Subagenten-Worktrees aufgeräumt werden; wichtig bei Beschwerden über Langsamkeit, hohen Verbrauch oder liegengebliebene Worktrees."
+tags: ["performance","git","auto-commit","usage","sidecar","desktop","worktree"]
+updated: "2026-10-14T16:25:15.315Z"
 ---
 
 Stand: 2026-10-14. Analyse per Code-Lesen, nicht gemessen.
@@ -25,5 +25,7 @@ Gleiches Modell/Effort wie im Terminal (Einstellung defaultModel/defaultEffort),
 ## Verbrauch (Abo)
 Hauptsächlich die Opus-Sessions selbst. Zusätzlich: `agentProgressSummaries: true` (CLI fasst laufende Subagenten ca. alle 30 s zusammen), FORGE-Agenten (volle neue Session), Auto-Continue nach Limit-Reset und Kontext-Recovery (/compact) mit vollem Kontext, Haiku-Commit-Nachricht pro Durchlauf (Diff bis 30k Zeichen), Titel (max. 1/min). planUsage/probe/commands starten claude.exe ohne Modellaufruf: CPU, kein Verbrauch.
 
-## Worktrees unter .claude/worktrees
-Kommen vom Agent-Werkzeug von Claude Code (isolation worktree), FORGE fordert das nirgends an. Siehe [[parallele-agenten-abschliessen-zusammenfuehren-verwerfen]].
+## Subagenten-Worktrees (.claude/worktrees/agent-*)
+Kommen vom Agent-Werkzeug von Claude Code (isolation worktree), FORGE fordert das nirgends an. Claude Code selbst entfernt sie sofort nur, wenn der Subagent nichts geändert hat. Mit Änderungen bleiben Worktree und Branch `worktree-agent-<hex>` stehen, auch nachdem die Haupt-Session den Branch gemergt hat. Claude Code räumt sie erst in seinem Retention-Sweep weg (`cleanupStaleAgentWorktrees` in claude.exe, Teil des Aufräumlaufs alter Transkripte): nur älter als `cleanupPeriodDays` (Standard 30 Tage), sauber, nicht gelockt und HEAD auf einem Remote. Im Terminal genauso, nur fällt es dort weniger auf.
+
+FORGE räumt deshalb selbst auf: `automation/subagent-worktrees.ts` `pruneSubagentWorktrees`, aufgerufen in `SessionService` über `turnDone` nach jedem Durchlauf in einem Hauptprojekt (nicht in FORGE-Agenten-Worktrees). Entfernt nur Worktrees, die nicht gelockt (laufender Subagent), sauber und in den aktuellen Branch gemergt sind, samt Branch (`branch -d`). Ohne `.claude/worktrees` (im Projekt oder darüber bis zur Repo-Wurzel) startet es keinen Git-Prozess. Das ist auch wichtig für Tests: ein Git-Prozess nach Durchlaufende hielte sonst unter Windows den Temp-Ordner fest (EPERM beim Aufräumen in session-service.test.ts). Siehe [[parallele-agenten-abschliessen-zusammenfuehren-verwerfen]].
