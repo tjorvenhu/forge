@@ -40,6 +40,7 @@ class FakeRuntime implements ClaudeRuntime {
   sinks: SessionSink[] = [];
   interrupted = 0;
   closed = 0;
+  killed = 0;
   sent: string[] = [];
   sentUuids: string[] = [];
   /** text blocks sent before the message text (FORGE notes) */
@@ -132,6 +133,10 @@ class FakeRuntime implements ClaudeRuntime {
       close: () => {
         this.closed++;
         if (!this.deferEnd) sink.onEnd(null);
+      },
+      kill: () => {
+        this.killed++;
+        sink.onEnd(null);
       },
       setModel: async () => {},
       setPermissionMode: async (mode) => {
@@ -738,6 +743,46 @@ describe("turn automation via project tags", () => {
     expect(rt.deletedTranscripts).toHaveLength(1);
   });
 
+  it("waits for a slow process on delete like the SDK on Windows, and kills the tree only when it hangs", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      const slow = await svc.start({ projectId, prompt: "a" });
+      rt.deferEnd = true;
+      const deleting = svc.delete(slow.id, false);
+      // The SDK sends SIGKILL after about 7 s; that end must still count.
+      await vi.advanceTimersByTimeAsync(7_500);
+      rt.sinks[0]!.onEnd(null);
+      await expect(deleting).resolves.toMatchObject({ deleted: true });
+      expect(rt.killed).toBe(0);
+
+      const stuck = await svc.start({ projectId, prompt: "b" });
+      const deleting2 = svc.delete(stuck.id, false);
+      await vi.advanceTimersByTimeAsync(10_000);
+      await expect(deleting2).resolves.toMatchObject({ deleted: true });
+      expect(rt.killed).toBe(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("ends the processes of a project before it returns, killing hung ones", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      const s = await svc.start({ projectId, prompt: "a" });
+      rt.deferEnd = true;
+      let done = false;
+      const closing = svc.closeProject([projectId]).then(() => (done = true));
+      await vi.advanceTimersByTimeAsync(9_000);
+      expect(done).toBe(false);
+      await vi.advanceTimersByTimeAsync(1_000);
+      await closing;
+      expect(rt.killed).toBe(1);
+      expect(svc.get(s.id).live).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("deletes all sessions at once, live ones included", async () => {
     const a = await svc.start({ projectId, prompt: "a" });
     rt.replay();
@@ -827,11 +872,29 @@ describe("turn automation via project tags", () => {
     expect(svc.get(a.id)).toMatchObject({ profile: "autonomous", permissionMode: "bypassPermissions" });
     expect(svc.get(b.id)).toMatchObject({ profile: "autonomous", permissionMode: "plan" });
 
-    // Safe disables web tools; the running process got its tool list at start, so the hook enforces it.
+    // Safe disables web tools; until the old process has ended, the hook enforces it.
+    rt.replay(0);
+    rt.replay(1);
     projects.update(projectId, { profile: "safe" });
+    const oldSink = rt.sinks[0]!;
     await svc.applyProjectProfile(projectId);
     expect(svc.get(a.id).permissionMode).toBe("default");
-    expect((await rt.sinks[0]!.preToolUse("WebFetch", { url: "https://example.com" }, "t1"))?.rule).toBe("profile-tool");
+    expect((await oldSink.preToolUse("WebFetch", { url: "https://example.com" }, "t1"))?.rule).toBe("profile-tool");
+    // Safe has no "allow for this session": both processes were restarted so earlier approvals are gone.
+    expect(rt.closed).toBe(2);
+    expect(rt.started).toHaveLength(4);
+    expect(rt.started.slice(2).map((o) => o.permissionMode).sort()).toEqual(["default", "plan"]);
+    expect(rt.started[2]!.disallowedTools).toContain("WebFetch");
+    expect(svc.get(a.id)).toMatchObject({ live: true, profile: "safe" });
+  });
+
+  it("blocks web tools as soon as the project gets the no-network tag", async () => {
+    await svc.start({ projectId, prompt: "a" });
+    expect(await rt.sinks[0]!.preToolUse("WebFetch", { url: "https://example.com" }, "t1")).toBeNull();
+    projects.update(projectId, { tags: ["no-network"] });
+    expect((await rt.sinks[0]!.preToolUse("WebFetch", { url: "https://example.com" }, "t2"))?.rule).toBe("no-network");
+    await svc.start({ projectId, prompt: "b" });
+    expect(rt.started[1]!.disallowedTools).toEqual(expect.arrayContaining(["WebFetch", "WebSearch"]));
   });
 });
 
@@ -1222,6 +1285,19 @@ describe("automatic continuation after a usage limit", () => {
     expect(autoEvents(s.id).at(-1)).toMatchObject({ state: "resumed", scheduledFor: DUE, attempt: 1 });
     expect(db.listEvents(s.id).find((e) => e.body.type === "user.message" && e.body.text === AUTO_CONTINUE_PROMPT)?.body).toMatchObject({ source: "auto" });
     expect(svc2.get(s.id)).toMatchObject({ autoContinueAt: null, status: "running" });
+  });
+
+  it("keeps the continuation marked as automatic when it has to wait for a closing process", async () => {
+    const s = await limited();
+    rt.deferEnd = true;
+    svc2.close(s.id);
+    clock = Date.parse(DUE) + 5000;
+    const checking = svc2.checkAutoContinue();
+    await new Promise((r) => setTimeout(r, 20));
+    rt.sinks.at(-1)!.onEnd(null);
+    await checking;
+    expect(rt.started.at(-1)).toMatchObject({ firstMessage: expect.objectContaining({ text: AUTO_CONTINUE_PROMPT }) });
+    expect(db.listEvents(s.id).find((e) => e.body.type === "user.message" && e.body.text === AUTO_CONTINUE_PROMPT)?.body).toMatchObject({ source: "auto" });
   });
 
   it("resumes the session first when its process is gone", async () => {

@@ -39,6 +39,21 @@ export const PROFILES: Record<ProfileId, ProfileConfig> = {
 };
 
 export const SANDBOX_ONLY_TAG = "sandbox-only";
+export const NO_NETWORK_TAG = "no-network";
+const NETWORK_TOOLS = ["WebFetch", "WebSearch"];
+
+/** Tools the profile and the project's tags forbid; the no-network tag turns web tools off regardless of profile. */
+export function blockedTools(cfg: ProfileConfig, tags: readonly string[]): string[] {
+  return [...new Set([...cfg.disallowedTools, ...(tags.includes(NO_NETWORK_TAG) ? NETWORK_TOOLS : [])])];
+}
+
+/**
+ * "Allow for this session" lives inside the CLI process and cannot be taken back there. A switch to a
+ * profile without that scope therefore needs a new process, or the old approvals keep working.
+ */
+export function revokesSessionApprovals(next: ProfileConfig, prev: ProfileConfig): boolean {
+  return prev.allowSessionScope && !next.allowSessionScope;
+}
 
 /**
  * Resolves the effective profile for a session start. The sandbox-only tag is

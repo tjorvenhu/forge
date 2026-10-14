@@ -1,3 +1,4 @@
+import { spawn, type ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import {
   createSdkMcpServer,
@@ -15,6 +16,8 @@ import {
   type Query,
   type SDKControlInitializeResponse,
   type SDKUserMessage,
+  type SpawnedProcess,
+  type SpawnOptions,
 } from "@anthropic-ai/claude-agent-sdk";
 import type { Capability, ContextUsage, EffortLevel, ExternalSession, PermissionMode, PlanUsage, RewindResult, SlashCommand } from "@forge/protocol";
 import type { z } from "zod";
@@ -22,6 +25,7 @@ import type { ContentBlock } from "./attachments.js";
 import { toPlanUsage } from "./usage.js";
 import { AsyncQueue } from "./async-queue.js";
 import { meterKey, tokenMeter } from "./token-meter.js";
+import { killTree, PIPE_GRACE_MS } from "../util/proc.js";
 
 export interface StartOptions {
   cwd: string;
@@ -120,6 +124,8 @@ export interface RuntimeSession {
   toBackground(toolUseId?: string): Promise<boolean>;
   /** ends the session and its CLI process */
   close(): void;
+  /** ends the CLI process and everything it started right away; for a close() that does not finish */
+  kill(): void;
   setModel(model: string): Promise<void>;
   setPermissionMode(mode: PermissionMode): Promise<void>;
   /** null returns to the model's default effort */
@@ -197,6 +203,16 @@ const ONE_SHOT_TIMEOUT_MS = 45_000;
 function userMessage(m: OutgoingMessage): SDKUserMessage {
   const content = m.blocks.length ? [...m.blocks, { type: "text", text: m.text }] : m.text;
   return { type: "user", message: { role: "user", content }, parent_tool_use_id: null, session_id: "", uuid: m.uuid } as SDKUserMessage;
+}
+
+/** What a session keeps of the CLI's stderr for the error message when the process fails. */
+const STDERR_TAIL_CHARS = 4000;
+
+/** The SDK's exit error ("exited with code 1") with the end of stderr, which usually says why. */
+export function withStderr(e: unknown, tail: string): Error {
+  const err = e instanceof Error ? e : new Error(String(e));
+  const t = tail.trim();
+  return !t || err.message.includes(t) ? err : new Error(`${err.message}\n${t}`);
 }
 
 export class AgentSdkRuntime implements ClaudeRuntime {
@@ -323,11 +339,29 @@ export class AgentSdkRuntime implements ClaudeRuntime {
       };
     };
 
+    // Spawned here instead of by the SDK so a close that hangs can end the whole process tree. The SDK
+    // reads stderr only from its own spawn, so the tail for error messages is kept here.
+    let child: ChildProcess | null = null;
+    let stderrTail = "";
+    let stderrClosed: Promise<void> = Promise.resolve();
+    const spawnClaude = (o: SpawnOptions): SpawnedProcess => {
+      const c = spawn(o.command, o.args, { cwd: o.cwd, env: o.env, signal: o.signal, stdio: ["pipe", "pipe", "pipe"], windowsHide: true });
+      c.stderr.setEncoding("utf8");
+      c.stderr.on("data", (d: string) => {
+        stderrTail = (stderrTail + d).slice(-STDERR_TAIL_CHARS);
+      });
+      c.stderr.on("error", () => {});
+      stderrClosed = new Promise((r) => c.stderr.once("close", () => r()));
+      child = c;
+      return c;
+    };
+
     const q: Query = query({
       prompt: input,
       options: {
         cwd: opts.cwd,
         env: opts.env,
+        spawnClaudeCodeProcess: spawnClaude,
         model: opts.model ?? undefined,
         ...(opts.fallbackModel ? { fallbackModel: opts.fallbackModel } : {}),
         ...(opts.effort ? { effort: opts.effort } : {}),
@@ -370,7 +404,13 @@ export class AgentSdkRuntime implements ClaudeRuntime {
         }
         sink.onEnd(null);
       } catch (e) {
-        sink.onEnd(closed ? null : e instanceof Error ? e : new Error(String(e)));
+        if (closed) {
+          sink.onEnd(null);
+        } else {
+          // stderr may still be arriving after the exit that ended the stream
+          await Promise.race([stderrClosed, new Promise((r) => setTimeout(r, PIPE_GRACE_MS))]);
+          sink.onEnd(withStderr(e, stderrTail));
+        }
       } finally {
         tokenMeter.forget(meter);
       }
@@ -409,6 +449,9 @@ export class AgentSdkRuntime implements ClaudeRuntime {
         closed = true;
         input.end();
         q.close();
+      },
+      kill: () => {
+        if (child) killTree(child);
       },
       setModel: (model) => q.setModel(model),
       setPermissionMode: (mode) => q.setPermissionMode(mode),

@@ -1,16 +1,22 @@
 import { ForgeError, PermissionMode } from "@forge/protocol";
-import { PROFILES, resolveProfile } from "../policy/profiles.js";
+import { PROFILES, resolveProfile, revokesSessionApprovals, type ProfileConfig } from "../policy/profiles.js";
 import type { ProjectManager } from "../projects/project-manager.js";
-import { closeLive, describeRuntimeError } from "./live-session.js";
+import { closeLive, describeRuntimeError, endLive, type LiveSession } from "./live-session.js";
 import type { SessionCore } from "./session-core.js";
 
 const MODE_RANK: Record<PermissionMode, number> = { plan: 0, default: 1, acceptEdits: 2, bypassPermissions: 3 };
+
+export interface PermissionModeHost {
+  /** starts a new CLI process for the session, without a message */
+  reopen(sessionId: string): Promise<unknown>;
+}
 
 /** Permission mode and profile of sessions; the mode never goes above what the profile allows. */
 export class PermissionModes {
   constructor(
     private readonly core: SessionCore,
     private readonly projects: ProjectManager,
+    private readonly host: PermissionModeHost,
   ) {}
 
   /**
@@ -64,22 +70,56 @@ export class PermissionModes {
   /**
    * Applies the project's current profile to its open sessions: permission mode, approval scope and
    * write confinement take effect right away, also in the middle of a turn. Plan mode stays on.
+   * A profile without "allow for this session" restarts the process, which drops approvals it granted.
    */
   async applyProjectProfile(projectId: string) {
     const project = this.projects.get(projectId);
     const profile = resolveProfile(project.profile, project.tags);
-    for (const [id, live] of this.core.live) {
+    const restarts: Promise<void>[] = [];
+    for (const [id, live] of [...this.core.live]) {
       const rec = this.core.db.getSession(id);
       if (rec?.projectId !== projectId) continue;
+      const prev = live.profile;
       const mode = rec.permissionMode === "plan" ? "plan" : profile.permissionMode;
-      try {
-        await live.rt.setPermissionMode(mode);
-      } catch {
-        // The process is ending (closed or crashed); it picks up the project profile when resumed.
-        continue;
-      }
+      // Set before the await: a mode report arriving meanwhile is checked against the new profile.
       live.profile = profile;
       this.core.publish(this.core.db.updateSession(id, { profile: profile.id, permissionMode: mode }));
+      if (live.closing) continue;
+      if (revokesSessionApprovals(profile, prev)) {
+        restarts.push(this.restart(id, live, profile, mode));
+        continue;
+      }
+      try {
+        await live.rt.setPermissionMode(mode);
+      } catch (e) {
+        // A process that keeps the old mode must not keep working; resumed, it starts with the new profile.
+        if (this.core.live.get(id) !== live || live.closing) continue;
+        this.core.record(id, { type: "error", message: `Profil ließ sich nicht übernehmen, Session beendet: ${describeRuntimeError(e)}`, retryable: true });
+        closeLive(live);
+      }
+    }
+    await Promise.all(restarts);
+  }
+
+  private async restart(id: string, live: LiveSession, profile: ProfileConfig, mode: PermissionMode) {
+    const interrupted = live.turnActive;
+    try {
+      // the old process may still run a tool until it ends; it does so with the stricter mode
+      await live.rt.setPermissionMode(mode);
+    } catch {
+      /* it is ended right below either way */
+    }
+    this.core.record(id, {
+      type: "status",
+      status: "starting",
+      detail: `Profil ${profile.label}: Session neu gestartet, Freigaben für die ganze Session gelten nicht mehr.${interrupted ? " Der laufende Durchlauf wurde dabei beendet." : ""}`,
+    });
+    // A process that does not end stays closed; the next message starts the new one.
+    if (!(await endLive(live))) return;
+    try {
+      await this.host.reopen(id);
+    } catch (e) {
+      this.core.record(id, { type: "error", message: `Session nach dem Profilwechsel nicht neu gestartet: ${describeRuntimeError(e)}`, retryable: true });
     }
   }
 }

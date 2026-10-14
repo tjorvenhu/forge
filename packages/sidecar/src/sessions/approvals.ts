@@ -5,6 +5,7 @@ import type { ApprovalDecision, ApprovalRequest } from "../claude/runtime.js";
 import { truncateInput } from "../claude/normalize.js";
 import type { GitEngine } from "../git/git.js";
 import { checkToolUse, claudePlansDir, needsBranch, writesOutsideProject, type GuardViolation } from "../policy/guard.js";
+import { blockedTools, NO_NETWORK_TAG } from "../policy/profiles.js";
 import { redact } from "../policy/redact.js";
 import type { LiveSession } from "./live-session.js";
 import type { SessionCore } from "./session-core.js";
@@ -21,6 +22,8 @@ export interface ApprovalHost {
   abortReason(sessionId: string): string;
   /** an accepted plan moved the session out of plan mode */
   syncPermissionMode(sessionId: string, mode: PermissionMode): void;
+  /** current tags of the session's project */
+  projectTags(sessionId: string): readonly string[];
 }
 
 /** Denies every open prompt of a process (stop, end, shutdown). */
@@ -44,18 +47,17 @@ export class ApprovalGate {
     // Decide first; logging comes after and must never turn a deny into an allow.
     let v: GuardViolation | null;
     try {
-      // disallowedTools is fixed at process start; a later switch to a stricter profile is enforced here.
-      v = live.profile.disallowedTools.includes(toolName)
-        ? { rule: "profile-tool", message: `Das Profil ${live.profile.label} erlaubt ${toolName} nicht.` }
-        : checkToolUse(toolName, input, {
-            projectDir: live.projectDir,
-            confineWritesToProject: live.profile.confineWritesToProject,
-            // only a push needs the branch; looking it up on every tool call would spawn git each time
-            currentBranch: needsBranch(toolName, input) ? await this.currentBranch(live.projectDir) : null,
-            home: os.homedir(),
-            extraWriteDirs: [claudePlansDir()],
-            disabledRules: new Set(this.core.db.getSettings().disabledPolicyRules),
-          });
+      v =
+        this.blockedTool(id, live, toolName) ??
+        checkToolUse(toolName, input, {
+          projectDir: live.projectDir,
+          confineWritesToProject: live.profile.confineWritesToProject,
+          // only a push needs the branch; looking it up on every tool call would spawn git each time
+          currentBranch: needsBranch(toolName, input) ? await this.currentBranch(live.projectDir) : null,
+          home: os.homedir(),
+          extraWriteDirs: [claudePlansDir()],
+          disabledRules: new Set(this.core.db.getSettings().disabledPolicyRules),
+        });
     } catch {
       v = GUARD_ERROR;
     }
@@ -162,6 +164,13 @@ export class ApprovalGate {
     }
     p.resolve({ behavior: "allow", scope });
     return { ok: true };
+  }
+
+  /** disallowedTools is fixed at process start; a later stricter profile or a new no-network tag is enforced here. */
+  private blockedTool(id: string, live: LiveSession, toolName: string): GuardViolation | null {
+    if (live.profile.disallowedTools.includes(toolName)) return { rule: "profile-tool", message: `Das Profil ${live.profile.label} erlaubt ${toolName} nicht.` };
+    if (blockedTools(live.profile, this.host.projectTags(id)).includes(toolName)) return { rule: "no-network", message: `Das Projekt-Tag ${NO_NETWORK_TAG} erlaubt ${toolName} nicht.` };
+    return null;
   }
 
   private async currentBranch(dir: string): Promise<string | null> {

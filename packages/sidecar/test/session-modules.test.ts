@@ -53,7 +53,7 @@ afterEach(() => {
 
 function liveSession(rt: Partial<RuntimeSession> = {}): LiveSession {
   const live: LiveSession = {
-    rt: { close: () => {}, setPermissionMode: async () => {}, ...rt } as RuntimeSession,
+    rt: { close: () => {}, kill: () => {}, setPermissionMode: async () => {}, ...rt } as RuntimeSession,
     normalizer: new Normalizer(),
     pending: new Map(),
     profile: PROFILES.balanced,
@@ -86,7 +86,8 @@ const request = (requestId: string): ApprovalRequest => ({
 });
 
 describe("ApprovalGate", () => {
-  const host = { abortReason: () => "Abgebrochen", syncPermissionMode: () => {} };
+  let tags: string[] = [];
+  const host = { abortReason: () => "Abgebrochen", syncPermissionMode: () => {}, projectTags: () => tags };
 
   it("looks up the branch only for a push", async () => {
     const exec = vi.fn(async () => ({ code: 0, stdout: "feature\n", stderr: "" }));
@@ -123,13 +124,80 @@ describe("ApprovalGate", () => {
     ]);
     expect(db.getSession(SID)?.status).toBe("running");
   });
+
+  it("checks the no-network tag on every call, not only at process start", async () => {
+    const gate = new ApprovalGate(core, {} as GitEngine, host);
+    const live = liveSession();
+    tags = [];
+    expect(await gate.guard(SID, live, "WebFetch", { url: "https://example.com" }, "t1")).toBeNull();
+    tags = ["no-network"];
+    expect((await gate.guard(SID, live, "WebFetch", { url: "https://example.com" }, "t2"))?.rule).toBe("no-network");
+    expect((await gate.guard(SID, live, "WebSearch", { query: "x" }, "t3"))?.rule).toBe("no-network");
+    expect(await gate.guard(SID, live, "Read", { file_path: "a.txt" }, "t4")).toBeNull();
+    tags = [];
+  });
 });
 
 describe("PermissionModes", () => {
+  const projectWith = (profile: string) => ({ get: () => ({ profile, tags: [] }) }) as unknown as ProjectManager;
+
+  it("checks mode reports during a profile switch against the new profile", async () => {
+    let release = () => {};
+    const modes: string[] = [];
+    const live = liveSession({
+      setPermissionMode: (m) => {
+        modes.push(m);
+        return new Promise<void>((r) => (release = r));
+      },
+    });
+    const pm = new PermissionModes(core, projectWith("autonomous"), { reopen: async () => {} });
+    const applying = pm.applyProjectProfile(db.getSession(SID)!.projectId);
+    // Claude Code reports the new mode before setPermissionMode resolved.
+    pm.sync(SID, "bypassPermissions");
+    release();
+    await applying;
+    expect(live.profile.id).toBe("autonomous");
+    expect(modes).toEqual(["bypassPermissions"]);
+    expect(db.getSession(SID)).toMatchObject({ profile: "autonomous", permissionMode: "bypassPermissions" });
+    expect(db.listEvents(SID).map((e) => e.body.type)).not.toContain("policy.blocked");
+  });
+
+  it("ends the process when the new profile's mode cannot be set", async () => {
+    const close = vi.fn();
+    const live = liveSession({ close, setPermissionMode: async () => Promise.reject(new Error("gone")) });
+    live.profile = PROFILES.autonomous;
+    await new PermissionModes(core, projectWith("balanced"), { reopen: async () => {} }).applyProjectProfile(db.getSession(SID)!.projectId);
+    expect(close).toHaveBeenCalledTimes(1);
+    expect(live.closing).toBe(true);
+    expect(live.profile.id).toBe("balanced");
+    expect(db.listEvents(SID).at(-1)?.body).toMatchObject({ type: "error", message: expect.stringMatching(/Profil ließ sich nicht übernehmen/) });
+  });
+
+  it("restarts the process when the new profile has no session-wide approvals", async () => {
+    const close = vi.fn();
+    const reopen = vi.fn(async () => {});
+    const live = liveSession({ close });
+    await new PermissionModes(core, projectWith("safe"), { reopen }).applyProjectProfile(db.getSession(SID)!.projectId);
+    expect(close).toHaveBeenCalledTimes(1);
+    expect(reopen).toHaveBeenCalledWith(SID);
+    expect(live.profile.id).toBe("safe");
+    expect(db.getSession(SID)).toMatchObject({ profile: "safe", permissionMode: "default" });
+    expect(db.listEvents(SID).find((e) => e.body.type === "status")?.body).toMatchObject({ detail: expect.stringMatching(/neu gestartet/) });
+  });
+
+  it("does not restart for a switch that keeps session-wide approvals", async () => {
+    const close = vi.fn();
+    const reopen = vi.fn(async () => {});
+    liveSession({ close });
+    await new PermissionModes(core, projectWith("autonomous"), { reopen }).applyProjectProfile(db.getSession(SID)!.projectId);
+    expect(close).not.toHaveBeenCalled();
+    expect(reopen).not.toHaveBeenCalled();
+  });
+
   it("ends a process whose mode above the profile cannot be reset", async () => {
     const close = vi.fn();
     const live = liveSession({ close, setPermissionMode: async () => Promise.reject(new Error("gone")) });
-    new PermissionModes(core, {} as ProjectManager).sync(SID, "bypassPermissions");
+    new PermissionModes(core, {} as ProjectManager, { reopen: async () => {} }).sync(SID, "bypassPermissions");
     await vi.waitFor(() => expect(close).toHaveBeenCalledTimes(1));
     expect(live.closing).toBe(true);
     expect(db.getSession(SID)?.permissionMode).toBe("acceptEdits");

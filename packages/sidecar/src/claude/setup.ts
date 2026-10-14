@@ -61,6 +61,16 @@ export class ClaudeSetupService {
     if (lines.length) this.set({ log: [...this.state.log, ...lines].slice(-80) });
   }
 
+  /**
+   * The child ended: true if it is still the current step. cancel() lets the next step start before the
+   * cancelled child has closed, so its late events must not overwrite the new step's state.
+   */
+  private release(child: ChildProcess): boolean {
+    if (this.proc !== child) return false;
+    this.proc = null;
+    return true;
+  }
+
   private ensureIdle() {
     if (this.proc) throw new ForgeError("CONFLICT", "Es läuft bereits ein Einrichtungsschritt.");
   }
@@ -73,11 +83,11 @@ export class ClaudeSetupService {
     child.stdout?.on("data", (d: Buffer) => this.appendLog(d.toString()));
     child.stderr?.on("data", (d: Buffer) => this.appendLog(d.toString()));
     child.on("error", (e) => {
-      this.proc = null;
+      if (!this.release(child)) return;
       this.set({ phase: "error", message: e.message });
     });
     child.on("close", (code) => {
-      this.proc = null;
+      if (!this.release(child)) return;
       const found = locateClaude(this.settings().claudePath);
       if (code === 0 && found) this.set({ phase: "done", message: `Installiert: ${found}` });
       else this.set({ phase: "error", message: code === 0 ? "Installer beendet, aber Claude Code wurde nicht gefunden." : `Installer beendet mit Code ${code}` });
@@ -112,16 +122,18 @@ export class ClaudeSetupService {
     child.stdout?.on("data", (d: Buffer) => this.appendLog(d.toString()));
     child.stderr?.on("data", (d: Buffer) => this.appendLog(d.toString()));
     child.on("error", (e) => {
-      this.proc = null;
+      if (!this.release(child)) return;
       this.set({ phase: "error", message: e.message });
     });
     child.on("close", (code) => {
-      this.proc = null;
+      if (!this.release(child)) return;
       if (code !== 0) {
         this.set({ phase: "error", message: this.state.log.at(-1) ?? `Update beendet mit Code ${code}` });
         return;
       }
       void run(claude, ["--version"], { env: sessionEnv(s.stripApiKey), timeoutMs: 20_000 }).then((r) => {
+        // another step started meanwhile and owns the state now
+        if (this.proc) return;
         const v = parseVersion(r.stdout);
         this.set({ phase: "done", message: v ? `Claude Code ${v} ist installiert.` : "Update abgeschlossen." });
       });
@@ -149,11 +161,11 @@ export class ClaudeSetupService {
     child.stderr?.on("data", onData);
     child.stdin?.on("error", () => {});
     child.on("error", (e) => {
-      this.proc = null;
+      if (!this.release(child)) return;
       this.set({ phase: "error", message: e.message });
     });
     child.on("close", (code) => {
-      this.proc = null;
+      if (!this.release(child)) return;
       if (this.state.phase === "cancelled") return;
       this.set(code === 0 ? { phase: "done", url: null, message: "Angemeldet" } : { phase: "error", message: `Anmeldung beendet mit Code ${code}` });
     });

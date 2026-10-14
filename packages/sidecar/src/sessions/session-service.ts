@@ -101,13 +101,17 @@ export class SessionService {
     });
     this.titles = new TitleRefresh(core, runtime, this.assist, this.remote, now);
     this.turns = new TurnDispatch(core, this.automation, this.remote, {
-      resume: (id, text, attachments) => this.lifecycle.resume(id, text, attachments),
+      resume: (id, text, attachments, source) => this.lifecycle.resume(id, text, attachments, source),
       userMessage: (id, text, source) => this.titles.note(id, text, source),
     });
-    this.modes = new PermissionModes(core, projects);
+    this.modes = new PermissionModes(core, projects, { reopen: (id) => this.lifecycle.resume(id, null) });
     this.approvals = new ApprovalGate(core, git, {
       abortReason: (id) => this.remote.abortReason(id),
       syncPermissionMode: (id, mode) => this.modes.sync(id, mode),
+      projectTags: (id) => {
+        const rec = db.getSession(id);
+        return (rec && db.getProject(rec.projectId)?.tags) ?? [];
+      },
     });
     this.autoContinue = new AutoContinue(
       db,
@@ -358,7 +362,7 @@ export class SessionService {
     return this.lifecycle.delete(sessionId, deleteTranscript);
   }
 
-  /** Deletes every session. In parallel, because each live one may wait up to 5 s for its process to end. */
+  /** Deletes every session. In parallel, because each live one may wait about 10 s for its process to end. */
   async deleteAll(deleteTranscript: boolean) {
     const ids = this.db.listSessionIds();
     const results = await Promise.allSettled(ids.map((id) => this.delete(id, deleteTranscript)));

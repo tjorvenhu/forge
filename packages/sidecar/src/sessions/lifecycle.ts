@@ -5,10 +5,10 @@ import { fallbackFor, type ClaudeRuntime, type OutgoingMessage, type RuntimeSess
 import { Normalizer } from "../claude/normalize.js";
 import { locateClaude, sessionEnv } from "../claude/environment.js";
 import type { SessionRecord } from "../persistence/db.js";
-import { effectivePermissionMode, resolveProfile, type ProfileConfig } from "../policy/profiles.js";
+import { blockedTools, effectivePermissionMode, resolveProfile, type ProfileConfig } from "../policy/profiles.js";
 import type { ProjectManager } from "../projects/project-manager.js";
 import { denyPending, type ApprovalGate } from "./approvals.js";
-import { BUSY, closeLive, describeRuntimeError, REMOTE_PLACEHOLDER_TITLE, titleFrom, type LiveSession } from "./live-session.js";
+import { BUSY, closeLive, describeRuntimeError, endLive, REMOTE_PLACEHOLDER_TITLE, titleFrom, type LiveSession } from "./live-session.js";
 import type { RemoteBridge } from "./remote-bridge.js";
 import type { RuntimeCatalog } from "./runtime-catalog.js";
 import type { SessionCore } from "./session-core.js";
@@ -195,8 +195,7 @@ export class SessionLifecycle {
           effort: rec.effort,
           permissionMode: rec.permissionMode,
           resume,
-          // no-network tag: web tools off regardless of profile
-          disallowedTools: [...new Set([...profile.disallowedTools, ...(this.projects.get(rec.projectId).tags.includes("no-network") ? ["WebFetch", "WebSearch"] : [])])],
+          disallowedTools: blockedTools(profile, this.projects.get(rec.projectId).tags),
           env: sessionEnv(stripApiKey),
           claudePath,
           firstMessage: first,
@@ -288,13 +287,10 @@ export class SessionLifecycle {
   /** Ends all open sessions of the given projects and waits until their CLI processes are gone. */
   async closeProject(projectIds: string[]) {
     const ids = new Set(projectIds);
-    const open = () => [...this.core.live.keys()].filter((id) => ids.has(this.core.db.getSession(id)?.projectId ?? ""));
-    for (const id of open()) {
-      const l = this.core.live.get(id);
-      this.remote.drop(id);
-      if (l) closeLive(l);
-    }
-    for (let i = 0; i < 50 && open().length; i++) await new Promise((r) => setTimeout(r, 100));
+    const open = [...this.core.live].filter(([id]) => ids.has(this.core.db.getSession(id)?.projectId ?? ""));
+    for (const [id] of open) this.remote.drop(id);
+    // A worktree must not be removed while a claude.exe still works in it.
+    await Promise.all(open.map(([, l]) => endLive(l)));
   }
 
   /**
@@ -308,8 +304,7 @@ export class SessionLifecycle {
     const live = this.core.live.get(sessionId);
     if (live) {
       this.remote.drop(sessionId);
-      closeLive(live);
-      for (let i = 0; i < 50 && this.core.live.has(sessionId); i++) await new Promise((r) => setTimeout(r, 100));
+      await endLive(live);
       // Deleting the row while the process still reports would break its event writes.
       if (this.core.live.has(sessionId)) throw new ForgeError("SESSION_BUSY", "Die Session ließ sich nicht beenden. Bitte erneut versuchen.");
     }

@@ -30,43 +30,55 @@ const PROTECTED_BRANCHES = new Set(["main", "master"]);
 
 // Segments are separated by shell control operators so one command can't hide behind another.
 const SEP = String.raw`[^;&|\n]*`;
-const GIT_PUSH = String.raw`\bgit\b${SEP}\bpush\b${SEP}`;
+// git.exe is found case-insensitively on Windows, so `Git push` is the same command.
+const GIT = String.raw`\bgit\b`;
+const GIT_PUSH = String.raw`${GIT}${SEP}\bpush\b${SEP}`;
+const ANY_PUSH = new RegExp(String.raw`${GIT}${SEP}\bpush\b`, "i");
+
+/**
+ * `--name` or any abbreviation of it: git accepts unique prefixes of long options (`--forc`, `--del`).
+ * Prefixes that are ambiguous for git fail there anyway, so matching them costs nothing.
+ */
+function longOption(name: string): string {
+  const prefixes = Array.from({ length: name.length }, (_, i) => name.slice(0, name.length - i));
+  return String.raw`(?<![\w-])--(?:${prefixes.join("|")})(?![\w-])`;
+}
 
 const GIT_RULES: Array<{ rule: PolicyRuleId; re: RegExp; message: string }> = [
   {
     rule: "git-force-push",
-    re: new RegExp(String.raw`${GIT_PUSH}(\s--force\b|\s--force-with-lease\b|\s-[a-zA-Z]*f\b|\s["']?\+[^\s]+)`),
+    re: new RegExp(String.raw`${GIT_PUSH}(${longOption("force")}|${longOption("force-with-lease")}|\s-[a-z]*f[a-z]*\b|\s["']?\+[^\s]+)`, "i"),
     message: "Force-Push ist in FORGE gesperrt.",
   },
   {
     rule: "git-push-mirror",
     // --mirror and --prune delete remote refs that do not exist locally.
-    re: new RegExp(String.raw`${GIT_PUSH}\s--(mirror|prune)\b`),
+    re: new RegExp(String.raw`${GIT_PUSH}(${longOption("mirror")}|${longOption("prune")})`, "i"),
     message: "git push --mirror/--prune ist in FORGE gesperrt.",
   },
   {
     rule: "git-push-protected",
-    re: new RegExp(String.raw`${GIT_PUSH}(?:\s|:)["']?(?:refs/heads/)?(main|master)["']?(?=$|[\s;&|])`),
+    re: new RegExp(String.raw`${GIT_PUSH}(?:\s|:)["']?(?:refs/heads/)?(main|master)["']?(?=$|[\s;&|])`, "i"),
     message: "Push auf main/master ist in FORGE gesperrt.",
   },
   {
     rule: "git-push-delete",
-    re: new RegExp(String.raw`${GIT_PUSH}(\s--delete\b|\s-d\b|\s["']?:[^\s]+)`),
+    re: new RegExp(String.raw`${GIT_PUSH}(${longOption("delete")}|\s-[a-z]*d[a-z]*\b|\s["']?:[^\s]+)`, "i"),
     message: "Remote-Branches löschen ist in FORGE gesperrt.",
   },
   {
     rule: "git-reset-hard",
-    re: new RegExp(String.raw`\bgit\b${SEP}\breset\b${SEP}--hard\b`),
+    re: new RegExp(String.raw`${GIT}${SEP}\breset\b${SEP}${longOption("hard")}`, "i"),
     message: "git reset --hard ist in FORGE gesperrt.",
   },
   {
     rule: "git-branch-delete",
-    re: new RegExp(String.raw`\bgit\b${SEP}\bbranch\b${SEP}(\s-[a-zA-Z]*[dD]\b|\s--delete\b)`),
+    re: new RegExp(String.raw`${GIT}${SEP}\bbranch\b${SEP}(\s-[a-z]*d[a-z]*\b|${longOption("delete")})`, "i"),
     message: "Branches löschen ist in FORGE gesperrt.",
   },
   {
     rule: "git-clean-force",
-    re: new RegExp(String.raw`\bgit\b${SEP}\bclean\b${SEP}\s-[a-zA-Z]*f`),
+    re: new RegExp(String.raw`${GIT}${SEP}\bclean\b${SEP}(\s-[a-z]*f|${longOption("force")})`, "i"),
     message: "git clean -f ist in FORGE gesperrt.",
   },
 ];
@@ -76,18 +88,43 @@ const FORMAT_DISK = /\b(format(\.com)?\s+[A-Za-z]:|mkfs(\.\w+)?\s|Format-Volume\
 const UNIX_DELETE = new Set(["rm"]);
 const WIN_DELETE = new Set(["remove-item", "ri", "rd", "rmdir", "del", "erase"]);
 
+const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const ANY_SEP = String.raw`[\\/]+`;
+
+/**
+ * The home folder as a shell writes it: variables of cmd, PowerShell and Bash, the literal path in
+ * either slash style and its Git Bash, WSL and Cygwin forms. Other users' folders count as well.
+ */
+function homeSource(home: string): string {
+  const forms = [
+    String.raw`~|\$HOME|\$\{HOME\}|\$USERPROFILE|\$\{USERPROFILE\}|\$env:(?:USERPROFILE|HOME)|\$\{env:(?:USERPROFILE|HOME)\}|%USERPROFILE%|%HOMEDRIVE%%HOMEPATH%`,
+    String.raw`[A-Za-z]:${ANY_SEP}Users${ANY_SEP}[^\\/\s"']+`,
+    String.raw`(?:/mnt|/cygdrive)?/[A-Za-z]/Users/[^\\/\s"']+`,
+  ];
+  const parts = home.split(/[\\/]+/).filter(Boolean);
+  const drive = /^([A-Za-z]):$/.exec(parts[0] ?? "")?.[1];
+  const rest = parts.slice(drive ? 1 : 0).map(escapeRe).join(ANY_SEP);
+  if (drive) forms.push(`${drive}:${ANY_SEP}${rest}`, `(?:/mnt|/cygdrive)?/${drive}${ANY_SEP}${rest}`);
+  else if (rest) forms.push(`${ANY_SEP}${rest}`);
+  return forms.join("|");
+}
+
 /**
  * Filesystem root, a drive root or the home folder, as a shell argument after quotes are removed and a
  * trailing separator or wildcard is cut off: /, /*, ~, ~/, $HOME, ${HOME}, C:\, C:/*, /c/ (Git Bash),
- * /mnt/c, $env:USERPROFILE\*.
+ * /mnt/c, $env:USERPROFILE\*, C:\Users\name, /c/Users/name.
  */
-const ROOT_TARGET =
-  /^(|~|\$HOME|\$\{HOME\}|\$env:(USERPROFILE|HOME|HOMEDRIVE|SystemDrive)|\$\{env:(USERPROFILE|HOME)\}|%(USERPROFILE|HOMEDRIVE|SystemDrive)%|[A-Za-z]:|\/[A-Za-z]|\/mnt\/[A-Za-z]|\/cygdrive\/[A-Za-z])$/i;
+function rootTargetPattern(home: string): RegExp {
+  return new RegExp(
+    String.raw`^(|${homeSource(home)}|\$env:(HOMEDRIVE|SystemDrive)|%(HOMEDRIVE|SystemDrive)%|[A-Za-z]:|\/[A-Za-z]|\/mnt\/[A-Za-z]|\/cygdrive\/[A-Za-z]|[A-Za-z]:${ANY_SEP}Users|(?:/mnt|/cygdrive)?/[A-Za-z]/Users)$`,
+    "i",
+  );
+}
 
-function isRootTarget(arg: string): boolean {
+function isRootTarget(arg: string, root: RegExp): boolean {
   if (!arg) return false;
   const trimmed = arg.replace(/([\\/]+\.?)*([\\/]+\*(\.\*)?)?$/, "").replace(/[\\/]+$/, "");
-  return ROOT_TARGET.test(trimmed);
+  return root.test(trimmed);
 }
 
 /** Splits a command line into words per control-operator segment; quotes are removed, not interpreted. */
@@ -98,11 +135,81 @@ function shellSegments(command: string): string[][] {
     .filter((words) => words.length > 0);
 }
 
+/** Like shellSegments, but a quoted string stays one word and control operators inside it do not split. */
+function quotedSegments(command: string): string[][] {
+  const segments: string[][] = [];
+  let words: string[] = [];
+  let word: string | null = null;
+  let quote = "";
+  const endWord = () => {
+    if (word !== null) words.push(word);
+    word = null;
+  };
+  const endSegment = () => {
+    endWord();
+    if (words.length) segments.push(words);
+    words = [];
+  };
+  for (const ch of command) {
+    if (quote) {
+      if (ch === quote) quote = "";
+      else word = (word ?? "") + ch;
+    } else if (ch === '"' || ch === "'") {
+      quote = ch;
+      word ??= "";
+    } else if (/[;&|\n()`]/.test(ch)) endSegment();
+    else if (/\s/.test(ch)) endWord();
+    else word = (word ?? "") + ch;
+  }
+  endSegment();
+  return segments;
+}
+
+const programName = (word: string) => (word.split(/[\\/]/).pop() ?? "").toLowerCase().replace(/\.exe$/, "");
+
+/** Programs that run their arguments as a command line of their own. */
+const WRAPPERS = new Set(["cmd", "powershell", "pwsh", "bash", "sh", "zsh", "dash", "ksh", "wsl", "eval", "iex", "invoke-expression"]);
+
+/** PowerShell's -EncodedCommand and the abbreviations it accepts (-e, -ec, -enc, ...). */
+function isEncodedFlag(word: string): boolean {
+  const name = /^(?:--?|\/)([a-z]+)$/i.exec(word)?.[1]?.toLowerCase() ?? "";
+  return name === "e" || name === "ec" || (name.length >= 2 && "encodedcommand".startsWith(name));
+}
+
+/**
+ * Command lines a wrapper runs: `cmd /c "..."`, `bash -c '...'`, `powershell -Command ...` and the
+ * base64 (UTF-16LE) of `-EncodedCommand`. The rest of the segment after the first wrapper is taken as
+ * one command line; the switches in front of the payload (`/c`, `-c`) match no rule.
+ */
+function wrappedCommands(command: string): string[] {
+  const out: string[] = [];
+  for (const words of quotedSegments(command)) {
+    const i = words.findIndex((w) => WRAPPERS.has(programName(w)));
+    if (i === -1) continue;
+    const rest = words.slice(i + 1);
+    out.push(rest.join(" "));
+    rest.forEach((w, j) => {
+      const next = rest[j + 1];
+      if (next && isEncodedFlag(w)) out.push(Buffer.from(next, "base64").toString("utf16le"));
+    });
+  }
+  return out;
+}
+
+/** Wrappers nest rarely more than twice; the limit keeps a crafted command from recursing forever. */
+const MAX_NESTING = 6;
+
+/** The command line and every command line nested in it through wrappers. */
+function commandLines(command: string, depth = 0): string[] {
+  if (depth >= MAX_NESTING) return [command];
+  return [command, ...wrappedCommands(command).flatMap((c) => commandLines(c, depth + 1))];
+}
+
 /** First recursive delete of a root/home target in the command: "unix", "win" or null. */
-function rootDelete(command: string): "unix" | "win" | null {
+function rootDelete(command: string, root: RegExp): "unix" | "win" | null {
   for (const words of shellSegments(command)) {
     for (let i = 0; i < words.length; i++) {
-      const name = (words[i]!.split(/[\\/]/).pop() ?? "").toLowerCase().replace(/\.exe$/, "");
+      const name = programName(words[i]!);
       const unix = UNIX_DELETE.has(name);
       if (!unix && !WIN_DELETE.has(name)) continue;
       let recursive = false;
@@ -126,7 +233,7 @@ function rootDelete(command: string): "unix" | "win" | null {
         }
       }
       // Windows deletes of a drive or home root are refused even without a recursive switch.
-      if ((recursive || !unix) && targets.some(isRootTarget)) return unix ? "unix" : "win";
+      if ((recursive || !unix) && targets.some((t) => isRootTarget(t, root))) return unix ? "unix" : "win";
     }
   }
   return null;
@@ -139,8 +246,7 @@ const SENSITIVE_SEGMENTS =
 const HOME_SECRET_FILE = String.raw`[\\/]+(\.npmrc|\.netrc|\.pgpass|\.docker[\\/]+config\.json|\.config[\\/]+gh)(?=[\\/\s"']|$)`;
 
 function homeSecretPattern(home: string): RegExp {
-  const literal = home.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/\\\\/g, String.raw`[\\/]+`);
-  return new RegExp(String.raw`(~|\$HOME|\$\{HOME\}|\$env:(USERPROFILE|HOME)|%USERPROFILE%|${literal})["']?${HOME_SECRET_FILE}`, "i");
+  return new RegExp(String.raw`(${homeSource(home)})["']?${HOME_SECRET_FILE}`, "i");
 }
 
 function pathFields(input: Record<string, unknown>): string[] {
@@ -233,25 +339,40 @@ function searchViolation(toolName: string, input: Record<string, unknown>, ctx: 
  * Hard rules that apply to every profile, including bypassPermissions.
  * Returns the first violation or null.
  */
+function shellViolation(command: string, ctx: GuardContext, home: string, on: (rule: PolicyRuleId) => boolean): GuardViolation | null {
+  const root = rootTargetPattern(home);
+  const secret = homeSecretPattern(home);
+  for (const line of commandLines(command)) {
+    for (const r of GIT_RULES) {
+      if (on(r.rule) && r.re.test(line)) return { rule: r.rule, message: r.message };
+    }
+    const del = on("rm-root") ? rootDelete(line, root) : null;
+    if (del === "unix") return { rule: "rm-root", message: "Rekursives Löschen von Wurzel- oder Home-Verzeichnis ist gesperrt." };
+    if (del === "win") return { rule: "rm-root-win", message: "Löschen von Laufwerks- oder Home-Wurzel ist gesperrt." };
+    if (on("format-disk") && FORMAT_DISK.test(line)) return { rule: "format-disk", message: "Datenträger formatieren ist gesperrt." };
+    if (on("sensitive-path") && (SENSITIVE_SEGMENTS.test(line) || secret.test(line))) {
+      return { rule: "sensitive-path", message: "Zugriff auf Zugangsdaten-Ordner (z. B. ~/.ssh) ist gesperrt." };
+    }
+    if (on("git-push-protected") && ctx.currentBranch && PROTECTED_BRANCHES.has(ctx.currentBranch) && ANY_PUSH.test(line)) {
+      return { rule: "git-push-protected", message: `Push vom geschützten Branch ${ctx.currentBranch} ist gesperrt.` };
+    }
+  }
+  return null;
+}
+
+/** The shell command of a tool call. Not only Bash and PowerShell run one: Monitor does too, and so may tools added later. */
+function shellCommand(toolName: string, input: Record<string, unknown>): string | null {
+  if (typeof input.command === "string") return input.command;
+  return SHELL_TOOLS.has(toolName) ? "" : null;
+}
+
 export function checkToolUse(toolName: string, input: Record<string, unknown>, ctx: GuardContext): GuardViolation | null {
   const home = ctx.home ?? os.homedir();
   const on = (rule: PolicyRuleId) => !ctx.disabledRules?.has(rule);
-  if (SHELL_TOOLS.has(toolName)) {
-    const command = typeof input.command === "string" ? input.command : "";
-    for (const r of GIT_RULES) {
-      if (on(r.rule) && r.re.test(command)) return { rule: r.rule, message: r.message };
-    }
-    const del = on("rm-root") ? rootDelete(command) : null;
-    if (del === "unix") return { rule: "rm-root", message: "Rekursives Löschen von Wurzel- oder Home-Verzeichnis ist gesperrt." };
-    if (del === "win") return { rule: "rm-root-win", message: "Löschen von Laufwerks- oder Home-Wurzel ist gesperrt." };
-    if (on("format-disk") && FORMAT_DISK.test(command)) return { rule: "format-disk", message: "Datenträger formatieren ist gesperrt." };
-    if (on("sensitive-path") && (SENSITIVE_SEGMENTS.test(command) || homeSecretPattern(home).test(command))) {
-      return { rule: "sensitive-path", message: "Zugriff auf Zugangsdaten-Ordner (z. B. ~/.ssh) ist gesperrt." };
-    }
-    if (on("git-push-protected") && ctx.currentBranch && PROTECTED_BRANCHES.has(ctx.currentBranch) && new RegExp(String.raw`\bgit\b${SEP}\bpush\b`).test(command)) {
-      return { rule: "git-push-protected", message: `Push vom geschützten Branch ${ctx.currentBranch} ist gesperrt.` };
-    }
-    return null;
+  const command = shellCommand(toolName, input);
+  if (command !== null) {
+    const v = shellViolation(command, ctx, home, on);
+    if (v || SHELL_TOOLS.has(toolName)) return v;
   }
 
   if (FILE_TOOLS.has(toolName)) {
@@ -274,5 +395,6 @@ export function checkToolUse(toolName: string, input: Record<string, unknown>, c
 
 /** True if the shell command's push needs the current branch (the only check that runs git). */
 export function needsBranch(toolName: string, input: Record<string, unknown>): boolean {
-  return SHELL_TOOLS.has(toolName) && typeof input.command === "string" && new RegExp(String.raw`\bgit\b${SEP}\bpush\b`).test(input.command);
+  const command = shellCommand(toolName, input);
+  return !!command && commandLines(command).some((line) => ANY_PUSH.test(line));
 }
