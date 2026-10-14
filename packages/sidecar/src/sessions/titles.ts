@@ -16,7 +16,7 @@ const PROMPT_CHARS = 300;
 const MIN_PROMPT_CHARS = 12;
 const TITLE_MAX = 80;
 
-export type TitleMessageSource = "forge" | "remote" | "auto" | "claude";
+export type TitleMessageSource = "forge" | "remote" | "auto";
 
 /** Words of replies that say nothing about the work ("ok", "ja, mach weiter", "danke, passt so"). */
 const FILLER = new Set(

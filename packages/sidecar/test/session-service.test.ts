@@ -242,6 +242,34 @@ describe("SessionService", () => {
     await expect(svc.fork(s.id, { beforeSeq: 9999 })).rejects.toThrow(/nicht verzweigen/);
   });
 
+  it("edits a prompt: stops the running turn and resumes the conversation before it with the new text", async () => {
+    const s = await svc.start({ projectId, prompt: "Lies a.txt" });
+    rt.replay();
+    const claudeId = svc.get(s.id).claudeSessionId;
+    await svc.send(s.id, "Jetzt b.txt");
+    const prompts = db.listEvents(s.id).filter((e) => e.body.type === "user.message");
+    const [first, second] = [prompts[0]!, prompts[1]!];
+    const uuidOf = (e: (typeof prompts)[number]) => (e.body.type === "user.message" ? e.body.uuid! : "");
+    rt.history = [{ uuid: uuidOf(first) }, { uuid: "a1" }, { uuid: uuidOf(second) }];
+
+    const edited = await svc.edit(s.id, second.seq, "Jetzt c.txt");
+    expect(rt.interrupted).toBe(1);
+    expect(rt.started).toHaveLength(2);
+    expect(rt.started[1]).toMatchObject({ resume: claudeId, resumeAt: "a1", firstMessage: expect.objectContaining({ text: "Jetzt c.txt" }) });
+    expect(edited.status).toBe("running");
+    const tail = db.listEvents(s.id).filter((e) => e.seq > second.seq).map((e) => e.body);
+    const at = tail.findIndex((b) => b.type === "message.edited");
+    expect(tail[at]).toEqual({ type: "message.edited", fromSeq: second.seq });
+    expect(tail.slice(at + 1).find((b) => b.type === "user.message")).toMatchObject({ text: "Jetzt c.txt" });
+
+    // The very first prompt edited: nothing before it, the conversation starts over.
+    rt.replay();
+    await svc.edit(s.id, first.seq, "Lies z.txt");
+    expect(rt.started[2]).toMatchObject({ resume: null, firstMessage: expect.objectContaining({ text: "Lies z.txt" }) });
+
+    await expect(svc.edit(s.id, 9999, "x")).rejects.toThrow(/nicht bearbeiten/);
+  });
+
   it("tells sessions in a project without git not to use git and gives them no agents", async () => {
     projects.update(projectId, { gitEnabled: false });
     const s = await svc.start({ projectId, prompt: "Baue die Startseite" });
@@ -297,13 +325,6 @@ describe("SessionService", () => {
     rt.replay(1);
     expect(await tool("message_agent").run({ agent: agentId, text: "Auch JSON bitte" })).toBe(`An Agent ${agentId} gesendet.`);
     expect(rt.sent.at(-1)).toBe("Auch JSON bitte");
-    // The agent's chat shows both as sent by Claude, not as typed by the user.
-    const childId = svc.listAll().find((x) => x.cwd === child.cwd)!.id;
-    const prompts = db.listEvents(childId).flatMap((e) => (e.body.type === "user.message" ? [e.body] : []));
-    expect(prompts.map((b) => [b.text, b.source])).toEqual([
-      ["Baue den CSV-Export in src/export.ts", "claude"],
-      ["Auch JSON bitte", "claude"],
-    ]);
     await expect(tool("message_agent").run({ agent: "zzzz", text: "x" })).rejects.toThrow(/Keinen Agenten/);
 
     expect(await tool("notify").run({ message: "Export fertig, bitte prüfen", urgent: true })).toMatch(/dringend/);

@@ -107,7 +107,7 @@ export interface ProjectOptions extends TargetOptions {
   devCommand?: string;
 }
 
-export const SESSIONS_ACTIONS = ["list", "delete", "delete_all", "fork", "rewind"] as const;
+export const SESSIONS_ACTIONS = ["list", "delete", "delete_all", "fork", "rewind", "edit"] as const;
 export type SessionsAction = (typeof SESSIONS_ACTIONS)[number];
 
 export interface SessionsOptions {
@@ -118,10 +118,12 @@ export interface SessionsOptions {
   status?: SessionStatus;
   /** delete: keep Claude Code's transcript */
   keepTranscript?: boolean;
-  /** fork and rewind: which message of the user, counted from the end (1 = the last one) */
+  /** fork, rewind and edit: which message of the user, counted from the end (1 = the last one) */
   messagesBack?: number;
   /** fork: files back to the state before that message as well */
   rewindFiles?: boolean;
+  /** edit: the new text of the message */
+  text?: string;
 }
 
 export const FILES_ACTIONS = ["list", "read"] as const;
@@ -744,10 +746,10 @@ export const PHONE_TOOLS: readonly PhoneToolSpec[] = [
   {
     name: "sessions",
     description:
-      "Alle Sessions, auch ältere und geschlossene. list: auflisten, auf Wunsch nach project, Suchwörtern (query) oder status gefiltert; die Kürzel gelten danach für die anderen Werkzeuge. delete: eine Session löschen. delete_all: alle Sessions löschen. fork: Verlauf in eine neue Session abzweigen, ganz oder bis vor eine Nachricht (messages_back). rewind: Dateien auf den Stand vor einer Nachricht des Anrufers zurücksetzen; der Verlauf bleibt.",
+      "Alle Sessions, auch ältere und geschlossene. list: auflisten, auf Wunsch nach project, Suchwörtern (query) oder status gefiltert; die Kürzel gelten danach für die anderen Werkzeuge. delete: eine Session löschen. delete_all: alle Sessions löschen. fork: Verlauf in eine neue Session abzweigen, ganz oder bis vor eine Nachricht (messages_back). rewind: Dateien auf den Stand vor einer Nachricht des Anrufers zurücksetzen; der Verlauf bleibt. edit: eine Nachricht des Anrufers durch text ersetzen; ein laufender Durchlauf bricht ab und Claude macht mit dem neuen Text weiter, als hätte es die alte Nachricht nie gegeben.",
     params: {
       action: { type: "string", enum: SESSIONS_ACTIONS },
-      session: { type: "string", optional: true, description: "bei delete, fork und rewind: Kürzel wie S1 oder ein Teil des Titels" },
+      session: { type: "string", optional: true, description: "bei delete, fork, rewind und edit: Kürzel wie S1 oder ein Teil des Titels" },
       project: { type: "string", optional: true, description: "bei list: nur Sessions dieses Projekts" },
       query: { type: "string", optional: true, description: "bei list: Wörter aus dem Titel" },
       status: { type: "string", optional: true, enum: SessionStatus.options, description: "bei list: nur Sessions in diesem Zustand" },
@@ -757,9 +759,10 @@ export const PHONE_TOOLS: readonly PhoneToolSpec[] = [
         optional: true,
         min: 1,
         max: 200,
-        description: "bei fork und rewind: welche Nachricht des Anrufers, vom Ende gezählt (1 = die letzte); fork ohne Angabe übernimmt den ganzen Verlauf",
+        description: "bei fork, rewind und edit: welche Nachricht des Anrufers, vom Ende gezählt (1 = die letzte); fork ohne Angabe übernimmt den ganzen Verlauf",
       },
       rewind_files: { type: "boolean", optional: true, description: "bei fork: true setzt auch die Dateien auf den Stand vor dieser Nachricht zurück" },
+      text: { type: "string", optional: true, description: "bei edit: der neue, vollständige Text der Nachricht" },
     },
     run: (t, a) =>
       t.sessions(pick(a.action, SESSIONS_ACTIONS, "list"), {
@@ -770,6 +773,7 @@ export const PHONE_TOOLS: readonly PhoneToolSpec[] = [
         keepTranscript: optBool(a.keep_transcript),
         messagesBack: optNum(a.messages_back),
         rewindFiles: optBool(a.rewind_files),
+        text: opt(a.text),
       }),
   },
   {

@@ -34,6 +34,8 @@ export interface StartOptions {
   permissionMode: PermissionMode;
   /** Claude session id to resume; null starts a fresh conversation */
   resume: string | null;
+  /** with resume: the conversation goes on after this transcript entry; everything later is dropped */
+  resumeAt?: string | null;
   disallowedTools: string[];
   env: Record<string, string>;
   claudePath: string;
@@ -373,6 +375,7 @@ export class AgentSdkRuntime implements ClaudeRuntime {
         // CLI refuses setPermissionMode("bypassPermissions"). The active mode is still set explicitly.
         allowDangerouslySkipPermissions: true,
         resume: opts.resume ?? undefined,
+        ...(opts.resume && opts.resumeAt ? { resumeSessionAt: opts.resumeAt } : {}),
         disallowedTools: opts.disallowedTools,
         // Writes there still go through FORGE's guard for paths outside the project.
         ...(this.readDirs.length ? { additionalDirectories: this.readDirs } : {}),

@@ -1431,8 +1431,18 @@ export class PhoneService {
     /** Git, pull requests and agents are refused for a project set up without git. */
     const gitOff = (p: Project) => `Fehler: ${p.name} ist ohne Git eingerichtet. Git lässt sich mit dem Werkzeug project, action settings, git true einschalten.`;
     /** the user's prompts in a session, oldest first, as far as they can be branched or rewound to */
-    const prompts = async (sessionId: string) =>
-      (await call("sessions.events", { sessionId })).flatMap((e) => (e.body.type === "user.message" && e.body.uuid ? [{ seq: e.seq, uuid: e.body.uuid, text: e.body.text }] : []));
+    const prompts = async (sessionId: string) => {
+      let list: Array<{ seq: number; uuid: string; text: string }> = [];
+      for (const { seq, body } of await call("sessions.events", { sessionId })) {
+        if (body.type === "user.message" && body.uuid) list.push({ seq, uuid: body.uuid, text: body.text });
+        // An edited prompt and what followed it are no longer part of the conversation.
+        else if (body.type === "message.edited") {
+          const from = body.fromSeq;
+          list = list.filter((p) => p.seq < from);
+        }
+      }
+      return list;
+    };
     const promptBack = async (sessionId: string, n: number) => {
       const list = await prompts(sessionId);
       const hit = list[list.length - n];
@@ -2268,6 +2278,13 @@ export class PhoneService {
             if (!res.canRewind) return `Fehler: ${r} lässt sich nicht zurückspulen${res.error ? `: ${res.error}` : "."}`;
             if (!res.filesChanged.length) return `Seit dieser Nachricht hat ${r} keine Dateien geändert, es gab nichts zurückzusetzen.`;
             return `Dateien von ${r} auf den Stand vor der Nachricht ${excerptData(prompt.text, 120)} zurückgesetzt, ${res.filesChanged.length} ${res.filesChanged.length === 1 ? "Datei" : "Dateien"} geändert. Der Verlauf bleibt.`;
+          }
+          if (action === "edit") {
+            const text = o?.text?.trim();
+            if (!text) return "Fehler: Wie soll die Nachricht neu lauten?";
+            const prompt = await promptBack(s.id, o?.messagesBack ?? 1);
+            await call("sessions.edit", { sessionId: s.id, seq: prompt.seq, text });
+            return `Die Nachricht ${excerptData(prompt.text, 120)} in ${r} ist ersetzt. Claude macht mit dem neuen Text weiter; die Dateien sind unverändert.`;
           }
           const before = o?.messagesBack ? await promptBack(s.id, o.messagesBack) : null;
           const res = await call("sessions.fork", { sessionId: s.id, beforeSeq: before?.seq, rewindFiles: o?.rewindFiles === true });

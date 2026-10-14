@@ -1,16 +1,31 @@
 import { describe, expect, it } from "vitest";
 import type { SessionEvent, SessionEventBody } from "@forge/protocol";
-import { appendStreaming, buildChatItems, buildEventItems, isSlashCommand, itemIndexForSeq, lastUserPrompt, reuseStableItems, rowSpacing, toolDisplayName, toolSummary } from "./chat-items";
+import { appendStreaming, buildChatItems, buildEventItems, IncrementalItems, isSlashCommand, itemIndexForSeq, lastUserPrompt, reuseStableItems, rowSpacing, toolDisplayName, toolSummary } from "./chat-items";
 import { useSessionEvents } from "@/stores/session-events";
 
 let seq = 0;
 const ev = (body: SessionEventBody, s = ++seq): SessionEvent => ({ seq: s, sessionId: "s1", ts: "2026-10-10T12:00:00.000Z", body });
 
 describe("buildChatItems", () => {
-  it("marks a message Claude sent from another session", () => {
+  it("hides an edited prompt and everything after it; the new prompt is marked as edited", () => {
     seq = 0;
-    const items = buildChatItems([ev({ type: "user.message", text: "Baue den CSV-Export", source: "claude" })], {});
-    expect(items[0]).toMatchObject({ kind: "user", claude: true, auto: false });
+    const events = [
+      ev({ type: "user.message", text: "Erste", uuid: "u1" }),
+      ev({ type: "assistant.text", messageId: "m1", index: 0, text: "Antwort 1" }),
+      ev({ type: "user.message", text: "Zweite", uuid: "u2" }),
+      ev({ type: "tool.use", toolUseId: "t1", name: "Bash", input: { command: "ls" }, parentToolUseId: null }),
+      ev({ type: "assistant.text", messageId: "m2", index: 0, text: "Antwort 2" }),
+    ];
+    const edit = [ev({ type: "message.edited", fromSeq: 3 }), ev({ type: "user.message", text: "Zweite, neu", uuid: "u3" }), ev({ type: "tool.result", toolUseId: "t1", isError: false, content: { text: "late", truncated: false } })];
+    const all = [...events, ...edit];
+    const items = buildEventItems(all);
+    expect(items.map((i) => (i.kind === "user" || i.kind === "assistant" ? i.text : i.kind))).toEqual(["Erste", "Antwort 1", "Zweite, neu"]);
+    expect(items[2]).toMatchObject({ kind: "user", edited: true });
+    expect(items[0]).toMatchObject({ edited: false });
+    // Live: the same result when the edit arrives after the earlier events were folded.
+    const inc = new IncrementalItems();
+    inc.build(events);
+    expect(inc.build(all)).toEqual(items);
   });
 
   it("groups tool use, approval and result into one card and keeps message order", () => {
@@ -37,7 +52,6 @@ describe("buildChatItems", () => {
     ];
     const items = buildChatItems(events, {});
     expect(items.map((i) => i.kind)).toEqual(["user", "assistant", "tool", "result"]);
-    expect(items[0]).toMatchObject({ claude: false, auto: false, remote: false });
     const tool = items[2];
     expect(tool?.kind).toBe("tool");
     if (tool?.kind === "tool") {

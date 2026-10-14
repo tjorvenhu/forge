@@ -222,6 +222,7 @@ export function createHandlers(s: Services): Handlers {
     "sessions.send": ({ sessionId, text, attachments }) => s.sessions.send(sessionId, text, attachments),
     "sessions.resume": ({ sessionId, prompt, attachments }) => s.sessions.resume(sessionId, prompt, attachments),
     "sessions.rewind": ({ sessionId, messageUuid, dryRun }) => s.sessions.rewind(sessionId, messageUuid, dryRun),
+    "sessions.edit": ({ sessionId, seq, text }) => s.sessions.edit(sessionId, seq, text),
     "system.commands": ({ projectId }) => s.sessions.commands(projectId),
     "sessions.stop": ({ sessionId }) => s.sessions.stop(sessionId),
     "sessions.cancelAutoContinue": ({ sessionId }) => s.sessions.cancelAutoContinue(sessionId),

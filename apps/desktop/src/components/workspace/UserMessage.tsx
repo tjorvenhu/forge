@@ -1,9 +1,11 @@
 import { useState } from "react";
-import { Bot, FileText, GitBranch, ImageIcon, Smartphone, SquareSlash, TimerReset, Undo2, type LucideIcon } from "lucide-react";
+import { FileText, GitBranch, ImageIcon, Pencil, Smartphone, SquareSlash, TimerReset, Undo2 } from "lucide-react";
 import type { RewindResult } from "@forge/protocol";
 import { useQueryClient } from "@tanstack/react-query";
-import { call, keys, useGitHubAccount, useSession } from "@/lib/queries";
+import { call, keys, useGitHubAccount, useSession, useSettings } from "@/lib/queries";
 import { draftKey, useDrafts } from "@/stores/drafts";
+import { useMessageEdit } from "@/stores/message-edit";
+import { Textarea } from "@/components/ui/input";
 import { errorMessage } from "@/lib/rpc";
 import { clockTime, cn } from "@/lib/utils";
 import { toast } from "@/stores/toast";
@@ -58,23 +60,19 @@ export function UserMessage({ item, sessionId }: { item: Extract<ChatItem, { kin
       setLoading(false);
     }
   };
+  const editing = useMessageEdit((s) => s.target?.sessionId === sessionId && s.target.seq === item.seq);
+  const canEdit = !!item.uuid && !item.auto;
   // Images show as name chips: loading them back from the transcript was slow or failed.
   const chips = item.attachments;
-  const hasMeta = chips.length > 0 || item.remote;
-  const sender = item.claude ? SENDERS.claude : item.auto ? SENDERS.auto : null;
-  if (!chips.length && isSlashCommand(item.text)) return <CommandMessage item={item} />;
+  const hasMeta = chips.length > 0 || item.auto || item.edited;
+  if (!chips.length && isSlashCommand(item.text) && !editing) return <CommandMessage item={item} />;
   return (
-    <div className={cn("group -mx-3 rounded-md px-3 py-2.5", sender ? "border border-dashed border-accent/40 bg-accent-soft" : "bg-surface-2")}>
-      <ChatRow className="text-ui leading-[1.65]" marker={sender ? <SenderAvatar sender={sender} /> : <UserAvatar />}>
+    <div className={cn("group -mx-3 rounded-md px-3 py-2.5", item.remote ? "border border-accent/30 bg-accent-soft" : "bg-surface-2")}>
+      <ChatRow className="text-ui leading-[1.65]" marker={item.remote ? <PhoneAvatar /> : <UserAvatar />}>
         <div className="flex min-w-0 items-start gap-3">
           <div className="min-w-0 flex-1">
-            {sender && (
-              <div className="mb-1 flex flex-wrap items-baseline gap-x-2 text-caption leading-normal">
-                <span className="font-medium uppercase tracking-wide text-accent">{sender.label}</span>
-                <span className="text-subtle">{sender.detail}</span>
-              </div>
-            )}
-            <div className="whitespace-pre-wrap break-words">{withUltrathink(item.text)}</div>
+            {item.remote && <RemoteLabel />}
+            {editing ? <MessageEditor item={item} sessionId={sessionId} /> : <div className="whitespace-pre-wrap break-words">{withUltrathink(item.text)}</div>}
             {hasMeta && (
               <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-caption leading-normal text-subtle">
                 {chips.map((a, i) => (
@@ -83,9 +81,14 @@ export function UserMessage({ item, sessionId }: { item: Extract<ChatItem, { kin
                     {a.name}
                   </span>
                 ))}
-                {item.remote && (
-                  <span className="flex items-center gap-1" title="In der Claude-App geschrieben">
-                    <Smartphone className="h-3 w-3" /> App
+                {item.auto && (
+                  <span className="flex items-center gap-1" title="Von FORGE gesendet, zum Beispiel nach dem Nutzungslimit oder einem Update">
+                    <TimerReset className="h-3 w-3" /> Automatisch
+                  </span>
+                )}
+                {item.edited && (
+                  <span className="flex items-center gap-1" title="Ersetzt eine frühere Fassung; Claude kennt nur diese">
+                    <Pencil className="h-3 w-3" /> bearbeitet
                   </span>
                 )}
               </div>
@@ -93,6 +96,19 @@ export function UserMessage({ item, sessionId }: { item: Extract<ChatItem, { kin
           </div>
           <div className="ml-auto flex h-[1lh] shrink-0 items-center gap-1">
             <HoverTime time={clockTime(item.ts)} />
+            {canEdit && !editing && (
+              <Tooltip content="Bearbeiten: Claude macht mit dem neuen Text weiter, ein laufender Durchlauf bricht ab">
+                <Button
+                  size="icon-sm"
+                  variant="ghost"
+                  className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
+                  onClick={() => useMessageEdit.getState().start(sessionId, item.seq)}
+                  aria-label="Nachricht bearbeiten"
+                >
+                  <Pencil className="h-3.5 w-3.5" />
+                </Button>
+              </Tooltip>
+            )}
             {item.uuid && (
               <Tooltip content="Ab hier verzweigen: neuer Versuch mit dieser Nachricht, das Original bleibt">
                 <Button
@@ -181,8 +197,8 @@ function CommandMessage({ item }: { item: Extract<ChatItem, { kind: "user" }> })
           {item.text.trim()}
         </span>
         {item.remote && (
-          <span className="flex shrink-0 items-center gap-1 text-caption text-subtle" title="In der Claude-App geschrieben">
-            <Smartphone className="h-3 w-3" /> App
+          <span className="flex shrink-0 items-center gap-1 rounded-sm bg-accent/15 px-1.5 py-0.5 text-caption font-medium text-accent" title="Auf dem Handy in der Claude-App geschrieben">
+            <Smartphone className="h-3 w-3" /> Vom Handy
           </span>
         )}
         <HoverTime time={clockTime(item.ts)} />
@@ -191,19 +207,86 @@ function CommandMessage({ item }: { item: Extract<ChatItem, { kind: "user" }> })
   );
 }
 
-type Sender = { label: string; detail: string; icon: LucideIcon };
-
-/** Messages in the user's place that nobody typed: they must not look like the user's own. */
-const SENDERS = {
-  claude: { label: "Von Claude", detail: "Auftrag aus einer anderen Session, nicht von dir geschrieben", icon: Bot },
-  auto: { label: "Von FORGE", detail: "Automatisch gesendet, nicht von dir geschrieben", icon: TimerReset },
-} satisfies Record<string, Sender>;
-
-function SenderAvatar({ sender }: { sender: Sender }) {
-  const Icon = sender.icon;
+/** Edits a sent prompt in place; sending stops a running turn and lets Claude go on with the new text. */
+function MessageEditor({ item, sessionId }: { item: Extract<ChatItem, { kind: "user" }>; sessionId: string }) {
+  const [text, setText] = useState(item.text);
+  const [busy, setBusy] = useState(false);
+  const qc = useQueryClient();
+  const status = useSession(sessionId).data?.status;
+  const enterToSend = useSettings().data?.enterToSend ?? true;
+  const stop = useMessageEdit((s) => s.stop);
+  const running = status === "starting" || status === "running" || status === "waiting_approval";
+  const save = async () => {
+    const next = text.trim();
+    if (!next || busy) return;
+    if (next === item.text.trim()) return stop();
+    setBusy(true);
+    try {
+      qc.setQueryData(keys.session(sessionId), await call("sessions.edit", { sessionId, seq: item.seq, text: next }));
+      stop();
+    } catch (e) {
+      toast.error("Nicht bearbeitet", errorMessage(e));
+      setBusy(false);
+    }
+  };
   return (
-    <span aria-label={sender.label} role="img" className="flex h-5.5 w-5.5 shrink-0 items-center justify-center rounded-full border border-accent/40 bg-surface text-accent">
-      <Icon className="h-3.5 w-3.5" />
+    <div>
+      <Textarea
+        autoFocus
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        onFocus={(e) => e.currentTarget.setSelectionRange(e.currentTarget.value.length, e.currentTarget.value.length)}
+        rows={Math.min(12, Math.max(2, text.split("\n").length))}
+        className="text-ui leading-[1.65]"
+        aria-label="Nachricht bearbeiten"
+        onKeyDown={(e) => {
+          if (e.key === "Escape") {
+            e.preventDefault();
+            stop();
+          }
+          if (e.key !== "Enter" || e.nativeEvent.isComposing) return;
+          if (enterToSend ? !e.shiftKey && !e.ctrlKey : e.ctrlKey || e.metaKey) {
+            e.preventDefault();
+            void save();
+          }
+        }}
+      />
+      <div className="mt-2 flex items-center gap-2">
+        <span className="min-w-0 flex-1 text-caption leading-normal text-subtle">
+          {running ? "Der laufende Durchlauf bricht ab. " : ""}Claude macht mit dem neuen Text weiter, alles danach fällt weg. Dateien bleiben unverändert.
+          {item.attachments.length ? " Anhänge werden nicht erneut gesendet." : ""}
+        </span>
+        <Button size="sm" variant="ghost" onClick={stop} disabled={busy}>
+          Abbrechen
+        </Button>
+        <Button size="sm" variant="primary" onClick={() => void save()} loading={busy} disabled={!text.trim()}>
+          Senden
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+/** Above a prompt typed on the phone in the Claude app (Remote Control). */
+function RemoteLabel() {
+  return (
+    <div className="mb-1 flex items-center gap-1.5 text-caption leading-normal">
+      <span className="inline-flex items-center gap-1 rounded-sm bg-accent/15 px-1.5 py-0.5 font-medium text-accent">
+        <Smartphone className="h-3 w-3" /> Vom Handy
+      </span>
+      <span className="text-subtle">in der Claude-App geschrieben</span>
+    </div>
+  );
+}
+
+/** Your avatar with a phone badge, for prompts from the Claude app. */
+function PhoneAvatar() {
+  return (
+    <span className="relative flex shrink-0">
+      <UserAvatar />
+      <span aria-label="Vom Handy" role="img" className="absolute -bottom-1 -right-1 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-accent text-accent-fg ring-2 ring-bg">
+        <Smartphone className="h-2.5 w-2.5" />
+      </span>
     </span>
   );
 }

@@ -72,6 +72,7 @@ export const PHONE_TOOL_FOR: Partial<Record<MethodName, string>> = {
   "sessions.deleteAll": "sessions",
   "sessions.fork": "sessions",
   "sessions.rewind": "sessions",
+  "sessions.edit": "sessions",
   "sessions.get": "details",
   "sessions.contextUsage": "details",
   "sessions.stopTask": "background_task",

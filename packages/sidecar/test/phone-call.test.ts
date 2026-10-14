@@ -1441,6 +1441,7 @@ describe("PhoneService end to end with a test PBX", () => {
       }),
       "sessions.delete": (p: { deleteTranscript: boolean }) => ({ deleted: true, transcriptDeleted: p.deleteTranscript }),
       "sessions.deleteAll": () => ({ deleted: ["s1", "s2"], failed: 0, error: null }),
+      "sessions.edit": () => fakeSession({ id: "s1", projectId, title: "Warenkorb", status: "running", live: true, projectName: "shop" }),
     };
     const { conv, end } = await openCall("c-sessions");
     const list = await conv.tools.sessions("list");
@@ -1457,6 +1458,12 @@ describe("PhoneService end to end with a test PBX", () => {
       "Neuer Zweig S3 von S1 angelegt. Er wartet und läuft mit send_message weiter. Die weggelassene Nachricht war: <<<SESSION-DATEN>>>Baue den Warenkorb<<<ENDE SESSION-DATEN>>>",
     );
     expect(rpcCalls.at(-1)).toEqual(["sessions.fork", { sessionId: "s1", beforeSeq: 1, rewindFiles: false }]);
+
+    expect(await conv.tools.sessions("edit", { session: "S1" })).toBe("Fehler: Wie soll die Nachricht neu lauten?");
+    expect(await conv.tools.sessions("edit", { session: "S1", text: "Füge Tests für den Rabatt hinzu" })).toBe(
+      "Die Nachricht <<<SESSION-DATEN>>>Füge Tests hinzu<<<ENDE SESSION-DATEN>>> in S1 ist ersetzt. Claude macht mit dem neuen Text weiter; die Dateien sind unverändert.",
+    );
+    expect(rpcCalls.at(-1)).toEqual(["sessions.edit", { sessionId: "s1", seq: 5, text: "Füge Tests für den Rabatt hinzu" }]);
 
     expect(await keypad(conv, await conv.tools.sessions("delete", { session: "S2", keepTranscript: true }))).toContain("S2 gelöscht.");
     expect(rpcCalls.at(-1)).toEqual(["sessions.delete", { sessionId: "s2", deleteTranscript: false }]);

@@ -24,7 +24,6 @@ export interface StartParams {
   planOnly?: boolean;
   resumeClaudeSessionId?: string;
   attachments?: Attachment[];
-  source?: MessageSource;
 }
 
 export interface LifecycleParts {
@@ -112,7 +111,7 @@ export class SessionLifecycle {
       const others = [...this.core.live.entries()].filter(([id, l]) => l.projectDir === project.path && BUSY.includes(db.getSession(id)?.status ?? "stopped")).length;
       let first: BuiltTurn | null;
       try {
-        first = params.prompt ? await this.turns.build(rec.id, params.prompt, params.attachments ?? [], true, params.source) : null;
+        first = params.prompt ? await this.turns.build(rec.id, params.prompt, params.attachments ?? [], true) : null;
       } catch (e) {
         db.updateSession(rec.id, { status: "error", lastError: e instanceof Error ? e.message : String(e) });
         throw e;
@@ -157,7 +156,47 @@ export class SessionLifecycle {
     return this.core.get(sessionId);
   }
 
-  private attach(rec: SessionRecord, profile: ProfileConfig, claudePath: string, stripApiKey: boolean, resume: string | null, first: OutgoingMessage | null): LiveSession {
+  /**
+   * Goes on from an earlier point with a new prompt (an edited message): the process ends, a new one
+   * resumes the transcript up to `resumeAt` and gets the prompt. Without `resumeAt` the conversation
+   * starts over. `beforePrompt` runs right before the prompt reaches the timeline.
+   */
+  async restartAt(sessionId: string, resumeAt: string | null, prompt: string, beforePrompt: () => void): Promise<Session> {
+    for (let p = this.attaching.get(sessionId); p; p = this.attaching.get(sessionId)) await p.catch(() => {});
+    const { db } = this.core;
+    const rec = db.getSession(sessionId);
+    if (!rec) throw new ForgeError("SESSION_NOT_FOUND", "Session nicht gefunden.");
+    if (!existsSync(rec.cwd)) throw new ForgeError("PATH_NOT_ACCESSIBLE", `Arbeitsverzeichnis existiert nicht mehr: ${rec.cwd}`);
+    const live = this.core.live.get(sessionId);
+    if (live) {
+      this.remote.drop(sessionId);
+      this.automation.dropHeld(sessionId, "Nachricht bearbeitet");
+      // The interrupt ends the turn cleanly and the transcript is written; the process need not take its 7 s to close.
+      if (live.turnActive) await this.stop(sessionId);
+      await endLive(live, 1_500);
+      if (this.core.live.has(sessionId)) throw new ForgeError("SESSION_BUSY", "Die Session ließ sich nicht beenden. Bitte erneut versuchen.");
+    }
+    const project = this.projects.requireExisting(rec.projectId);
+    const settings = db.getSettings();
+    const profile = resolveProfile(project.profile, project.tags);
+    const claudePath = locateClaude(settings.claudePath);
+    if (!claudePath) throw new ForgeError("CLAUDE_NOT_INSTALLED", "Claude Code CLI wurde nicht gefunden.");
+    const permissionMode = rec.permissionMode === "plan" ? "plan" : profile.permissionMode;
+    const resume = resumeAt ? rec.claudeSessionId : null;
+    await this.exclusive(sessionId, async () => {
+      beforePrompt();
+      const hold = this.automation.isBusy(sessionId);
+      const first = await this.turns.build(sessionId, prompt, [], !hold);
+      this.turns.record(sessionId, first);
+      db.updateSession(sessionId, { status: "starting", lastError: null, permissionMode, ...(resume ? {} : { claudeSessionId: null }) });
+      const next = { ...rec, claudeSessionId: resume, permissionMode, profile: profile.id };
+      const started = this.attach(next, profile, claudePath, settings.stripApiKey, resume, hold ? null : this.turns.withNote(sessionId, first.msg), resume ? resumeAt : null);
+      if (hold) this.turns.hold(sessionId, started, first.msg);
+    });
+    return this.core.get(sessionId);
+  }
+
+  private attach(rec: SessionRecord, profile: ProfileConfig, claudePath: string, stripApiKey: boolean, resume: string | null, first: OutgoingMessage | null, resumeAt: string | null = null): LiveSession {
     let markEnded = () => {};
     const ended = new Promise<void>((r) => (markEnded = r));
     const live: LiveSession = {
@@ -196,6 +235,7 @@ export class SessionLifecycle {
           effort: rec.effort,
           permissionMode: rec.permissionMode,
           resume,
+          resumeAt,
           disallowedTools: blockedTools(profile, this.projects.get(rec.projectId).tags),
           env: sessionEnv(stripApiKey),
           claudePath,

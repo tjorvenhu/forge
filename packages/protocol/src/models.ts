@@ -198,11 +198,8 @@ export const SessionEventBody = z.discriminatedUnion("type", [
     /** id passed to Claude Code; needed to rewind files to this point */
     uuid: z.string().optional(),
     attachments: z.array(z.object({ name: z.string(), mediaType: z.string(), size: z.number() })).optional(),
-    /**
-     * "remote": typed in the Claude app (Remote Control); "auto": sent by FORGE (usage limit reset, restart
-     * for an update, merge conflicts); "claude": sent by Claude from another session (start_agent, message_agent)
-     */
-    source: z.enum(["forge", "remote", "auto", "claude"]).optional(),
+    /** "remote": typed in the Claude app (Remote Control); "auto": sent by FORGE (usage limit reset, restart for an update) */
+    source: z.enum(["forge", "remote", "auto"]).optional(),
   }),
   z.object({
     type: z.literal("check.result"),
@@ -225,6 +222,11 @@ export const SessionEventBody = z.discriminatedUnion("type", [
     type: z.literal("files.rewound"),
     toMessageUuid: z.string(),
     filesChanged: z.array(z.string()),
+  }),
+  /** the user edited the prompt with seq `fromSeq`: everything from it up to here is gone from Claude's conversation */
+  z.object({
+    type: z.literal("message.edited"),
+    fromSeq: z.number().int(),
   }),
   z.object({
     type: z.literal("assistant.delta"),

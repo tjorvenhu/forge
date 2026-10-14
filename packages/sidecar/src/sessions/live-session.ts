@@ -79,10 +79,10 @@ export async function endedWithin(live: LiveSession, ms: number): Promise<boolea
   }
 }
 
-/** Closes the process and waits for its end; one that does not end in time is killed with its tree. True when it ended. */
-export async function endLive(live: LiveSession): Promise<boolean> {
+/** Closes the process and waits for its end; one that does not end within `graceMs` is killed with its tree. True when it ended. */
+export async function endLive(live: LiveSession, graceMs = CLOSE_WAIT_MS): Promise<boolean> {
   if (!live.closing) closeLive(live);
-  if (await endedWithin(live, CLOSE_WAIT_MS)) return true;
+  if (await endedWithin(live, graceMs)) return true;
   try {
     live.rt.kill();
   } catch {

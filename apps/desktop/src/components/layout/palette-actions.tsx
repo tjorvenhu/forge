@@ -29,6 +29,7 @@ import {
   NotebookText,
   PanelBottom,
   PanelRight,
+  Pencil,
   Phone,
   PhoneOff,
   PhoneOutgoing,
@@ -73,6 +74,7 @@ import { errorMessage, RpcCallError } from "@/lib/rpc";
 import { setAlwaysOnTop } from "@/lib/window-options";
 import { useActivity } from "@/stores/activity";
 import { draftKey, useDrafts } from "@/stores/drafts";
+import { lastEditablePrompt, useMessageEdit } from "@/stores/message-edit";
 import { toast } from "@/stores/toast";
 import { DEV_TOOLS_SECTIONS, PROJECT_SETTINGS_SECTIONS, SETTINGS_SECTIONS, SKILLS_TABS, EXTENSIONS_TABS, workspaceTabsFor, useUi, type SettingsSection, type WorkspaceTab } from "@/stores/ui";
 import { PROFILE_IDS, PROFILE_INFO } from "@/components/projects/ProfileBadge";
@@ -357,6 +359,12 @@ export function buildActions(ctx: ActionContext): PaletteEntry[] {
       }
       act("session-summary", "Session zusammenfassen", icon(NotebookText), () => ctx.openDialog({ kind: "summary", session: s }), { keywords: "wo war ich wiedereinstieg" });
       act("session-fork", "Session verzweigen", icon(GitFork), () => void forkSession(qc, s), { keywords: "fork kopie zweig" });
+      const lastPrompt = lastEditablePrompt(s.id);
+      if (lastPrompt !== null) {
+        act("session-edit-last", "Letzte Nachricht bearbeiten", icon(Pencil), () => useMessageEdit.getState().start(s.id, lastPrompt), {
+          keywords: "ändern korrigieren neu senden prompt",
+        });
+      }
       act("session-delete", "Session löschen", icon(Trash2), () => ctx.openDialog({ kind: "delete-session", session: s }), { keywords: "entfernen" });
       for (const m of ctx.models) {
         if (m.value === "default" || m.value === s.model) continue;

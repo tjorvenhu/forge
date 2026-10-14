@@ -41,7 +41,7 @@ import { SessionCore } from "./session-core.js";
 import { SessionStream } from "./stream.js";
 import { TitleRefresh } from "./titles.js";
 import { TurnAutomation } from "./turn-automation.js";
-import { TurnDispatch, type MessageSource } from "./turns.js";
+import { TurnDispatch } from "./turns.js";
 import { UpdateResume } from "./update-resume.js";
 
 /** Entry point for everything session related; wires the session modules and keeps the public API in one place. */
@@ -177,8 +177,8 @@ export class SessionService {
           projects,
           worktrees,
           agents: this.agents,
-          start: (p) => this.start({ ...p, source: "claude" }),
-          send: (id, text) => this.send(id, text, [], "claude"),
+          start: (p) => this.start(p),
+          send: (id, text) => this.send(id, text),
           record,
           emit,
           project: this.projectDeps,
@@ -339,8 +339,8 @@ export class SessionService {
     return this.lifecycle.resume(sessionId, prompt, attachments);
   }
 
-  send(sessionId: string, text: string, attachments: Attachment[] = [], source?: MessageSource): Promise<Session> {
-    return this.turns.send(sessionId, text, attachments, source);
+  send(sessionId: string, text: string, attachments: Attachment[] = []): Promise<Session> {
+    return this.turns.send(sessionId, text, attachments);
   }
 
   stop(sessionId: string): Promise<Session> {
@@ -518,6 +518,28 @@ export class SessionService {
     this.db.copyEvents(sessionId, branch.id, opts.beforeSeq);
     this.core.publish(branch);
     return { session: this.get(branch.id), prompt, filesChanged };
+  }
+
+  /**
+   * An edited prompt: a running turn stops, Claude's conversation goes back to before the prompt and
+   * goes on with `text` in the same session. The timeline keeps the old part; the chat hides it.
+   */
+  async edit(sessionId: string, seq: number, text: string): Promise<Session> {
+    const rec = this.db.getSession(sessionId);
+    if (!rec) throw new ForgeError("SESSION_NOT_FOUND", "Session nicht gefunden.");
+    const ev = this.db.getEvent(sessionId, seq);
+    if (ev?.body.type !== "user.message" || ev.body.source === "auto") throw new ForgeError("VALIDATION", "Diese Nachricht lässt sich nicht bearbeiten.");
+    if (!text.trim()) throw new ForgeError("VALIDATION", "Die Nachricht ist leer.");
+    /** the transcript entry before the prompt; null: the prompt was the first, the conversation starts over */
+    let resumeAt: string | null = null;
+    if (rec.claudeSessionId) {
+      const uuid = ev.body.uuid;
+      const messages = (await this.runtime.sessionHistory(rec.claudeSessionId, rec.cwd)) as Array<{ uuid?: unknown }>;
+      const i = uuid ? messages.findIndex((m) => m.uuid === uuid) : -1;
+      if (i < 0) throw new ForgeError("VALIDATION", "Die Nachricht steht nicht mehr im Verlauf von Claude Code (zum Beispiel nach /clear oder einer Komprimierung).");
+      resumeAt = i > 0 ? String(messages[i - 1]!.uuid) : null;
+    }
+    return this.lifecycle.restartAt(sessionId, resumeAt, text, () => this.core.record(sessionId, { type: "message.edited", fromSeq: seq }));
   }
 
   // ---------- settings of a session

@@ -317,6 +317,11 @@ export const methods = {
   },
   "sessions.send": { params: sessionRef.extend({ text: z.string().min(1).max(MAX_PROMPT_CHARS), attachments: z.array(Attachment).max(10).default([]) }), result: Session },
   "sessions.rewind": { params: sessionRef.extend({ messageUuid: z.string().max(100), dryRun: z.boolean().default(false) }), result: RewindResult },
+  /**
+   * Replaces the prompt with seq `seq` by `text`: a running turn stops, Claude's conversation goes back
+   * to before that prompt and continues with the new text. Files stay as they are.
+   */
+  "sessions.edit": { params: sessionRef.extend({ seq: z.number().int(), text: z.string().min(1).max(MAX_PROMPT_CHARS) }), result: Session },
   "system.commands": { params: z.object({ projectId: id.optional() }), result: z.array(SlashCommand) },
   "sessions.resume": {
     params: sessionRef.extend({ prompt: z.string().min(1).max(MAX_PROMPT_CHARS), attachments: z.array(Attachment).max(10).default([]) }),
