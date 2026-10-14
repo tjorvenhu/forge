@@ -103,8 +103,9 @@ export function Group({ title, description, action, danger, children }: { title:
 /** One setting: what it is and what it does on the left, the control on the right (or below with `stacked`). */
 export function Row({ label, description, children, stacked }: { label: ReactNode; description?: ReactNode; children: ReactNode; stacked?: boolean }) {
   return (
-    <div className={cn("px-4 py-3.5", stacked ? "flex flex-col gap-2.5" : "flex items-center justify-between gap-6")}>
-      <LabelWithDescription description={description} className="flex-1">
+    <div className={cn("px-4 py-3.5", stacked ? "flex flex-col gap-2.5" : "flex flex-wrap items-center justify-between gap-x-6 gap-y-2.5")}>
+      {/* A wide control moves below the label instead of squeezing the description into a narrow column. */}
+      <LabelWithDescription description={description} className="flex-[1_1_14rem]">
         <span className="text-body font-medium">{label}</span>
       </LabelWithDescription>
       {children}
