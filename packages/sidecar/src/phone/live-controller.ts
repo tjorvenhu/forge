@@ -81,8 +81,8 @@ export class LiveCallController implements CallHandler {
       log: (m) => this.d.log(m),
     });
     this.rtp.on("audio", (frame) => this.onCallerAudio(frame));
-    this.rtp.on("dtmf", (digit) => this.onDigit(digit));
-    this.call.on("dtmf", (digit) => this.onDigit(digit));
+    this.rtp.on("dtmf", (digit) => this.onDigit(digit, "rtp"));
+    this.call.on("dtmf", (digit) => this.onDigit(digit, "info"));
     this.rtp.on("drained", () => this.maybeHangup());
     this.call.on("ended", () => this.dispose());
   }
@@ -201,6 +201,10 @@ export class LiveCallController implements CallHandler {
     const results = await Promise.all(calls.map(async (c) => ({ id: c.id, name: c.name, result: await runPhoneTool(c.name, c.args, this.d.tools, ctx) })));
     if (this.ended) return;
     this.live?.sendToolResponses(results.filter((r) => !this.cancelled.has(r.id)));
+    // Withdrawn while it ran (the caller interrupted): it ran anyway, and the model must not believe otherwise.
+    for (const r of results.filter((x) => this.cancelled.has(x.id))) {
+      this.note(`[FORGE: Das zurückgezogene Werkzeug ${r.name} war schon gelaufen. Ergebnis: ${r.result} Sag das dem Anrufer kurz, falls es etwas geändert hat.]`);
+    }
   }
 
   /** A note from FORGE for Gemini, in brackets. */
@@ -242,8 +246,13 @@ export class LiveCallController implements CallHandler {
     setTimeout(() => void this.call.hangup("Gemini Live nicht verfügbar"), 700);
   }
 
-  private onDigit(digit: string) {
+  /** Some phones send each key both as RTP event and as SIP INFO; the first source that sends one counts. */
+  private dtmfSource: "rtp" | "info" | null = null;
+
+  private onDigit(digit: string, source: "rtp" | "info") {
     if (this.ended || !this.begun) return;
+    if (this.dtmfSource && this.dtmfSource !== source) return;
+    this.dtmfSource = source;
     this.touch();
     if (this.d.onDigit?.(digit)) return;
     this.pinPad.digit(digit);

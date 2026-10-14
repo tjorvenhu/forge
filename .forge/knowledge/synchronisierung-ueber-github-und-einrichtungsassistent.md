@@ -2,7 +2,7 @@
 title: "Synchronisierung über GitHub und Einrichtungsassistent"
 summary: "Verschlüsselter Abgleich fast aller FORGE-Daten über das private Repo forge-data (Sync-Passwort, Drei-Wege, nur lokal, hart zurücksetzen, Versionen als Backup) und wann Assistent und Sync-Frage kommen. Wichtig bei neuen Einstellungen, Geheimnissen oder Projektfeldern."
 tags: ["sync","github","verschluesselung","backup","einstellungen","einrichtung","stolperfalle"]
-updated: "2026-10-14T05:26:47.820Z"
+updated: "2026-10-14T15:15:01.103Z"
 ---
 
 ## Aufbau (Stand 2026-10-14)
@@ -32,11 +32,12 @@ updated: "2026-10-14T05:26:47.820Z"
 - `sync.forceLocal()` ohne key: ganzer PC hart auf GitHub-Stand. Werte von GitHub überschreiben lokale; entfernt wird, was `localOnly` ist oder in `base` stand und auf GitHub fehlt. Neu hier Angelegtes bleibt und geht danach hoch. Legt vorher ein lokales Backup an. Am Telefon nur nach Tastatur-Code (wie Löschen).
 - Nicht übernommene Items (Fehler, Telefon im Gespräch): in `base` bleibt der lokale Wert, damit der nächste Abgleich es erneut versucht und nicht den alten Wert hochschiebt.
 - Auslöser: Start (3 s), alle 10 min, GitHub-Anmeldung fertig, von Hand. Nach `settings.updated`/`project.updated` prüft `scheduleCheck()` nach 1,5 s, ob sich Synchronisiertes geändert hat (`localChanged()`; viele Projekt-Events sind nur Git). Nur dann `status.pending = true` und Abgleich 10 s später.
+- **Push nur bei Änderung:** Start, Intervall und „Jetzt abgleichen“ lesen nur (`account`, `repoInfo`, `readRepoFile`). Ein Commit entsteht nur, wenn `merged.result` vom entschlüsselten Repo-Stand abweicht (`sameItems` mit `stable()`, Schlüsselreihenfolge egal); der Chiffretext selbst wird nie verglichen (zufälliger IV). Wer neue synchronisierte Daten einführt, darf darin nichts haben, das sich von selbst ändert (Zeitstempel, Zähler, Laufzeitstatus wie `pinGuard`), sonst entsteht bei jedem Lauf ein Commit bzw. Pingpong zwischen PCs. Tests: „only writes when something changed“ und „does not write back and forth once two computers agree“ in `sync.test.ts`.
 - Ein Lauf zur Zeit; `exclusive()` für setPassphrase/resetRemote/forceLocal/keep/restoreVersion.
 
 ## Backups und Versionen
 - Lokale Backups bleiben unverändert (Telefon-Geheimnisse dort DPAPI-verschlüsselt, unabhängig von GitHub).
-- Jeder Abgleich ist ein Commit. `sync.versions` = Commits von `forge-sync.json`, `sync.restoreVersion(sha, parts)` holt Teile (BackupPart -> Item-Arten, `PART_KINDS`) eines älteren Stands zurück, nach lokalem Sicherheits-Backup. Danach weichen sie von `base` ab und gehen mit dem nächsten Abgleich an alle PCs. Ältere Stände mit einem früheren Sync-Passwort lassen sich nicht öffnen.
+- Jeder Abgleich mit Änderung ist ein Commit. `sync.versions` = Commits von `forge-sync.json`, `sync.restoreVersion(sha, parts)` holt Teile (BackupPart -> Item-Arten, `PART_KINDS`) eines älteren Stands zurück, nach lokalem Sicherheits-Backup. Danach weichen sie von `base` ab und gehen mit dem nächsten Abgleich an alle PCs. Ältere Stände mit einem früheren Sync-Passwort lassen sich nicht öffnen.
 
 ## Oberfläche
 - Einstellungen → **GitHub** (Section-Id `github`, `GitHubSection` in `views/SettingsView.tsx`): Konto (`GitHubSettings`), Synchronisierung mit Sync-Passwort, „Nur auf diesem PC“, Projekte von anderen PCs, Hart abgleichen (`SyncSettings.tsx`), Versionen auf GitHub (`GitHubVersions` aus `BackupSettings.tsx`). Alles Neue mit GitHub-Bezug gehört in diesen Reiter.
@@ -48,4 +49,4 @@ updated: "2026-10-14T05:26:47.820Z"
 - `components/setup/SetupWizard.tsx`: öffnet sich, solange `settings.setupDone` false ist (oder `ui.setupWizard`, Palette „Einrichtungsassistent öffnen“). Schritte: Willkommen, Claude Code, GitHub + Sync (`SyncOffer` mit Sync-Passwort; vorausgewählt, wenn `sync.probe` Daten findet; `useEnableSync`: erst `sync.setPassphrase`, dann `syncEnabled`, dann `sync.now`), Grundlagen, Fertig.
 - Migration in `db.ts`: Datenbanken mit Projekten, Sessions oder Einstellungen (außer `knownModels`) bekommen `setupDone = true`.
 - `components/setup/SyncPrompt.tsx`: einmal für eingerichtete Installationen mit `syncAsked = false`.
-- Tests: `packages/sidecar/test/sync.test.ts` (zwei simulierte PCs, `FakeGitHub` mit Commits, `kdfN: 1024` für schnelle Schlüssel), `apps/desktop/src/components/setup/SetupWizard.test.tsx`, `components/settings/SyncLocalOnly.test.tsx`, `components/layout/SyncButton.test.tsx`.
+- Tests: `packages/sidecar/test/sync.test.ts` (zwei simulierte PCs, `FakeGitHub` mit Commits und `writes`-Zähler, `kdfN: 1024` für schnelle Schlüssel), `apps/desktop/src/components/setup/SetupWizard.test.tsx`, `components/settings/SyncLocalOnly.test.tsx`, `components/layout/SyncButton.test.tsx`.

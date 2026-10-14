@@ -237,7 +237,12 @@ export function createHandlers(s: Services): Handlers {
     "devserver.output": ({ projectId }) => ({ text: s.devServers.output(projectId) }),
 
     "devtools.get": ({ projectId }) => s.devTools.get(projectId),
-    "devtools.update": ({ projectId, ...patch }) => s.devTools.update(projectId, patch),
+    "devtools.update": ({ projectId, ...patch }) => {
+      const next = s.devTools.update(projectId, patch);
+      // Other windows, the phone and the sync change it too; the open tab must not keep an old text.
+      s.notifyProject(projectId);
+      return next;
+    },
     "devtools.envFiles": ({ projectId }) => s.devTools.envFiles(projectId),
     "devtools.readEnvFile": async ({ projectId, name }) => ({ text: await s.devTools.readEnvFile(projectId, name) }),
 
@@ -279,7 +284,7 @@ export function createHandlers(s: Services): Handlers {
     "sync.cloneProject": ({ key }) => s.sync.cloneProject(key),
     "sync.setPassphrase": ({ passphrase }) => s.sync.setPassphrase(passphrase),
     "sync.resetRemote": ({ passphrase }) => s.sync.resetRemote(passphrase),
-    "sync.forceLocal": ({ key }) => s.sync.forceLocal(key),
+    "sync.forceLocal": ({ key, expectRemove }) => s.sync.forceLocal(key, expectRemove),
     "sync.keep": ({ key }) => s.sync.keep(key),
     "sync.versions": () => s.sync.versions(),
     "sync.restoreVersion": ({ sha, parts }) => s.sync.restoreVersion(sha, parts),

@@ -12,6 +12,8 @@ apps/desktop/src-tauri/gen/schemas/
 
 # lokale Claude-Overrides nie committen
 .claude/settings.local.json
+# Worktrees paralleler Claude-Code-Agenten (eigene Repositorys)
+.claude/worktrees/
 
 # Test-Artefakte
 packages/sidecar/.e2e-tmp/

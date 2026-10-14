@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { ForgeError, type Project, type Settings, type SyncStatus } from "@forge/protocol";
 import { DEFAULT_SETTINGS, Db, MIGRATIONS } from "../src/persistence/db.js";
 import { open, seal, type SyncKey } from "../src/sync/crypto.js";
-import { mergeItems, projectKey, SyncService, type SyncRemote } from "../src/sync/sync.js";
+import { mergeItems, projectKey, SyncService, type SyncDeps, type SyncRemote } from "../src/sync/sync.js";
 import { tempDir } from "./helpers.js";
 
 const cleanups: Array<() => void> = [];
@@ -72,6 +72,11 @@ class FakeGitHub implements SyncRemote {
   }
 }
 
+/** A stored dev tools row as DevToolsService writes it. */
+function tools(env: string, db: { port?: number; password?: string } = {}) {
+  return { env, useEnv: true, database: { port: db.port ?? 54330, name: "shop", password: db.password ?? "pw-a", withDevServer: false, envVar: "DATABASE_URL" as string | null } };
+}
+
 function project(dir: string, patch: Partial<Project> = {}): Project {
   return {
     id: `p-${path.basename(dir)}`,
@@ -117,6 +122,10 @@ function computer(gh: FakeGitHub, device: string) {
     backups: 0,
     statuses: [] as SyncStatus[],
     svc: null as unknown as SyncService,
+    /** FORGE started again: a new service on the same data folder */
+    restart: () => {
+      c.svc = new SyncService(deps);
+    },
     add(name: string, remote: string | null, patch: Partial<Project> = {}) {
       const p = project(path.join(t.dir, name), patch);
       c.projects.push(p);
@@ -124,7 +133,7 @@ function computer(gh: FakeGitHub, device: string) {
       return p;
     },
   };
-  c.svc = new SyncService({
+  const deps: SyncDeps = {
     stateFile: path.join(t.dir, "data", "sync", "state.json"),
     appVersion: "test",
     remote: gh,
@@ -157,7 +166,14 @@ function computer(gh: FakeGitHub, device: string) {
       c.removed.push(id);
       c.projects = c.projects.filter((p) => p.id !== id);
     },
-    devTools: { get: (id) => c.devTools.get(id) ?? null, set: (id, v) => void c.devTools.set(id, v) },
+    devTools: {
+      get: (id) => c.devTools.get(id) ?? null,
+      // Like DevToolsService.update: port and password of this computer stay.
+      update: (id, patch) => {
+        const cur = (c.devTools.get(id) as ReturnType<typeof tools> | undefined) ?? tools("", { port: 54400, password: `pw-${device}` });
+        c.devTools.set(id, { ...cur, env: patch.env, useEnv: patch.useEnv, database: { ...cur.database, ...patch.database } });
+      },
+    },
     phone: {
       config: () => c.phone,
       apply: async (cfg) => {
@@ -182,7 +198,8 @@ function computer(gh: FakeGitHub, device: string) {
     },
     emit: (s) => c.statuses.push(s),
     log: () => {},
-  });
+  };
+  c.svc = new SyncService(deps);
   return c;
 }
 
@@ -237,7 +254,7 @@ describe("encrypted sync over a private GitHub repository", () => {
       c.settings.claudePath = "C:\\claude.exe";
       c.identity = { name: "Tjorven", email: "t@example.com" };
       c.add("shop", "https://github.com/me/shop.git", { favorite: true, testCommand: "pnpm test" });
-      c.devTools.set("p-shop", { env: "STRIPE_KEY=sk_test_geheim", useEnv: true });
+      c.devTools.set("p-shop", tools("STRIPE_KEY=sk_test_geheim"));
       c.phone = { server: "pbx.local", username: "30", pinHash: "salt:hash" };
       c.secrets.set("sip-password", "sip-geheim-123");
       writeFileSync(path.join(c.claudeDir, "CLAUDE.md"), "Antworte auf Deutsch.");
@@ -272,7 +289,7 @@ describe("encrypted sync over a private GitHub repository", () => {
       c.settings.defaultProfile = "safe";
       c.add("shop", "https://github.com/me/shop.git", { favorite: true });
       c.add("notizen", null);
-      c.devTools.set("p-shop", { env: "A=1", useEnv: true });
+      c.devTools.set("p-shop", tools("A=1", { port: 54331, password: "pw-a" }));
       c.phone = { server: "pbx.local" };
       c.secrets.set("gemini-key", "AIza-geheim");
       writeFileSync(path.join(c.claudeDir, "settings.json"), '{"hooks":{}}');
@@ -300,7 +317,8 @@ describe("encrypted sync over a private GitHub repository", () => {
     // Fetching it clones into the folder for new projects and takes over its settings and dev tools.
     const p = await b.svc.cloneProject("github.com/me/shop");
     expect(p).toMatchObject({ name: "shop", favorite: true, path: path.join(ownDir!, "shop") });
-    expect(b.devTools.get(p.id)).toEqual({ env: "A=1", useEnv: true });
+    // Port and password belong to the database on this computer.
+    expect(b.devTools.get(p.id)).toEqual(tools("A=1", { port: 54400, password: "pw-PC-B" }));
     await b.svc.now();
     expect(b.svc.status().available.map((x) => x.key)).toEqual(["folder:notizen"]);
     expect(Object.keys(gh.items(a.key!)).filter((k) => k.startsWith("mcp:")).sort()).toEqual(["mcp:db", "mcp:local"]);
@@ -489,6 +507,124 @@ describe("encrypted sync over a private GitHub repository", () => {
     const writes = gh.writes;
     expect(await a.svc.probe()).toMatchObject({ found: true, device: "PC-A", projects: 1 });
     expect(gh.writes).toBe(writes);
+  });
+});
+
+describe("sync edge cases", () => {
+  it("keeps the secrets in the state file sealed and still knows the base after a restart", async () => {
+    const gh = new FakeGitHub();
+    const a = await joined(gh, "PC-A", (c) => {
+      c.secrets.set("sip-password", "sip-geheim-123");
+      c.add("shop", "https://github.com/me/shop.git");
+    });
+    const stateText = readFileSync(path.join(a.dir, "data", "sync", "state.json"), "utf8");
+    expect(stateText).not.toContain("sip-geheim-123");
+    expect(stateText).not.toContain("github.com/me/shop\":{");
+    a.restart();
+    const writes = gh.writes;
+    await a.svc.now();
+    // Same base as before: nothing to push, no first sync again.
+    expect(gh.writes).toBe(writes);
+    expect(a.svc.status().localOnly).toEqual([]);
+  });
+
+  it("keeps port and password of the test database on each computer", async () => {
+    const gh = new FakeGitHub();
+    const a = await joined(gh, "PC-A", (c) => {
+      c.add("shop", "https://github.com/me/shop.git");
+      c.devTools.set("p-shop", tools("A=1", { port: 54330, password: "pw-a" }));
+    });
+    const b = await joined(gh, "PC-B", (c) => {
+      c.add("shop", "https://github.com/me/shop.git");
+      c.devTools.set("p-shop", tools("", { port: 54333, password: "pw-b" }));
+    });
+    expect(b.devTools.get("p-shop")).toEqual(tools("A=1", { port: 54333, password: "pw-b" }));
+    expect(JSON.stringify(gh.items(a.key!))).not.toContain("pw-a");
+  });
+
+  it("stops instead of overwriting a .claude.json it cannot read", async () => {
+    const gh = new FakeGitHub();
+    const a = await joined(gh, "PC-A");
+    gh.craft(a.key!, (items) => (items["mcp:db"] = { command: "db-mcp" }));
+    writeFileSync(a.claudeJson, '{"mcpServers": {"local": ');
+    await expect(a.svc.now()).rejects.toThrow(/kein gültiges JSON/);
+    expect(readFileSync(a.claudeJson, "utf8")).toBe('{"mcpServers": {"local": ');
+    // A BOM from an editor is fine.
+    writeFileSync(a.claudeJson, `\uFEFF${JSON.stringify({ mcpServers: { local: { command: "x" } }, keep: 1 })}`);
+    await a.svc.now();
+    expect(JSON.parse(readFileSync(a.claudeJson, "utf8").replace(/^\uFEFF/, ""))).toEqual({ mcpServers: { local: { command: "x" }, db: { command: "db-mcp" } }, keep: 1 });
+  });
+
+  it("does not delete what a newer FORGE wrote and this one does not know", async () => {
+    const gh = new FakeGitHub();
+    const a = await joined(gh, "PC-A");
+    gh.craft(a.key!, (items) => {
+      items["setting:somethingNew"] = 42;
+      items["setting:defaultProfile"] = "superfast";
+      items["future:thing"] = { x: 1 };
+    });
+    a.settings.sounds = false;
+    await a.svc.now();
+    await a.svc.now();
+    expect(gh.items(a.key!)).toMatchObject({ "setting:somethingNew": 42, "setting:defaultProfile": "superfast", "future:thing": { x: 1 }, "setting:sounds": false });
+    expect(a.settings.defaultProfile).toBe("autonomous");
+    expect(a.svc.status().localOnly).toEqual([]);
+  });
+
+  it("does not list a project as only local that was never here", async () => {
+    const gh = new FakeGitHub();
+    const a = await joined(gh, "PC-A", (c) => c.add("blog", "https://github.com/me/blog.git"));
+    const b = await joined(gh, "PC-B");
+    expect(b.svc.status().available.map((x) => x.key)).toEqual(["github.com/me/blog"]);
+    a.projects = [];
+    await a.svc.now();
+    await b.svc.now();
+    expect(b.svc.status()).toMatchObject({ localOnly: [], available: [] });
+  });
+
+  it("treats an unreachable project folder as unchanged, not as removed", async () => {
+    const gh = new FakeGitHub();
+    const a = await joined(gh, "PC-A", (c) => c.add("shop", "https://github.com/me/shop.git"));
+    a.projects[0]!.exists = false;
+    a.settings.sounds = false;
+    await a.svc.now();
+    expect(gh.items(a.key!)).toHaveProperty(["project:github.com/me/shop"]);
+    expect(Object.keys(gh.items(a.key!)).filter((k) => k.startsWith("project:"))).toEqual(["project:github.com/me/shop"]);
+  });
+
+  it("refuses the hard reset when what would be removed changed since the question", async () => {
+    const gh = new FakeGitHub();
+    const a = await joined(gh, "PC-A", (c) => {
+      c.add("shop", "https://github.com/me/shop.git");
+      c.add("blog", "https://github.com/me/blog.git");
+    });
+    const b = await joined(gh, "PC-B", (c) => {
+      c.add("shop", "https://github.com/me/shop.git");
+      c.add("blog", "https://github.com/me/blog.git");
+    });
+    a.projects = a.projects.filter((p) => p.name !== "shop");
+    await a.svc.now();
+    await b.svc.now();
+    const told = b.svc.status().localOnly.map((x) => x.key);
+    a.projects = [];
+    await a.svc.now();
+    await expect(b.svc.forceLocal(undefined, told)).rejects.toThrow(/geändert/);
+    expect(b.removed).toEqual([]);
+    await b.svc.now();
+    await b.svc.forceLocal(undefined, b.svc.status().localOnly.map((x) => x.key));
+    expect(b.removed.sort()).toEqual(["p-blog", "p-shop"]);
+  });
+
+  it("runs a sync of its own when one is asked for during a hard reset", async () => {
+    const gh = new FakeGitHub();
+    const a = await joined(gh, "PC-A");
+    let forced = false;
+    const force = a.svc.forceLocal().then(() => (forced = true));
+    const st = await a.svc.now();
+    // now() waited for the reset and then synced itself, instead of handing back the reset's outcome.
+    expect(forced).toBe(true);
+    expect(st.phase).toBe("idle");
+    await force;
   });
 });
 

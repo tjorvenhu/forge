@@ -71,6 +71,10 @@ export function parseStatusV2(out: string): ParsedStatus {
         unstaged: true,
       });
     } else if (type === "?") {
+      // A trailing slash even with -uall: another repository inside this one (an agent's worktree
+      // under .claude/worktrees, a cloned dependency). Not a file to diff or commit; `git add`
+      // would only embed it as a broken gitlink.
+      if (f.endsWith("/")) continue;
       res.files.push({
         path: f.slice(2),
         origPath: null,

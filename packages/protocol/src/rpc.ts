@@ -429,7 +429,11 @@ export const methods = {
    * on another computer is removed here too (projects only from FORGE, their folders stay). With `key`
    * only that item. Saves a backup first.
    */
-  "sync.forceLocal": { params: z.object({ key: z.string().min(1).max(600).optional() }), result: SyncStatus },
+  "sync.forceLocal": {
+    /** expectRemove: what the user was told would be removed here; when that changed meanwhile, nothing happens */
+    params: z.object({ key: z.string().min(1).max(600).optional(), expectRemove: z.array(z.string().max(600)).max(2000).optional() }),
+    result: SyncStatus,
+  },
   /** syncs an item again that another computer removed: it goes back into the repository */
   "sync.keep": { params: z.object({ key: z.string().min(1).max(600) }), result: SyncStatus },
   /** states of the sync repository, newest first */

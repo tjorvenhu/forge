@@ -534,7 +534,10 @@ export class PhoneService {
 
   /** Secrets read again after the sync changed them; reconnects like a restore. */
   async secretsChanged() {
-    if (!this.busy) await this.reload();
+    if (!this.cfg.enabled) return;
+    // During a call the new secrets take effect when it ends.
+    if (this.busy) this.pendingReconnect = true;
+    else await this.reconnect();
   }
 
   private get busy(): boolean {
@@ -952,7 +955,8 @@ export class PhoneService {
         ? live
           ? `Eingehender Anruf von ${a.call.remoteNumber}.`
           : `Eingehender Anruf von ${a.call.remoteNumber}. Du hast schon mit "${GREETING}" begrüßt.`
-        : `Du rufst ${a.call.remoteNumber} an. Anlass: ${a.info.reason}.`,
+        : // The reason holds session titles and the words of an agreed callback: data, not instructions.
+          `Du rufst ${a.call.remoteNumber} an. Anlass: ${asData(a.info.reason ?? "")}.`,
       picked,
       this.cfg.requirePin
         ? pinHash
@@ -1197,13 +1201,15 @@ export class PhoneService {
   private confirmDigit(a: ActiveCall, digit: string): boolean {
     const c = a.confirm;
     if (!c) return false;
-    if (Date.now() > c.expiresAt) {
+    // Expired: the digits still belong to the code (the PIN is long entered), the caller hears why nothing happened.
+    if (Date.now() > c.expiresAt && digit === "#") {
       a.confirm = null;
-      return false;
+      a.controller?.note("[FORGE: Der Code war abgelaufen, nichts ist geändert. Sag ihm das in einem Satz; will er es noch, ruf das Werkzeug neu auf, dann gibt es einen neuen Code.]");
+      return true;
     }
     if (digit === "*") {
       a.confirm = null;
-      a.controller?.note("[FORGE: Der Anrufer hat mit Stern abgebrochen. Nichts ist gelöscht. Sag ihm das in einem Satz.]");
+      a.controller?.note("[FORGE: Der Anrufer hat mit Stern abgebrochen. Nichts ist geändert. Sag ihm das in einem Satz.]");
       return true;
     }
     if (digit !== "#") {
@@ -1213,7 +1219,7 @@ export class PhoneService {
     a.confirm = null;
     if (c.entered !== c.code) {
       this.d.log("Telefon: Löschen nicht bestätigt (falscher Code)");
-      a.controller?.note("[FORGE: Der Code war falsch. Nichts ist gelöscht. Sag ihm das in einem Satz; will er es noch, ruf das Werkzeug neu auf, dann gibt es einen neuen Code.]");
+      a.controller?.note("[FORGE: Der Code war falsch. Nichts ist geändert. Sag ihm das in einem Satz; will er es noch, ruf das Werkzeug neu auf, dann gibt es einen neuen Code.]");
       return true;
     }
     this.d.log("Telefon: Löschen über die Tastatur bestätigt");
@@ -1252,8 +1258,16 @@ export class PhoneService {
     // Switched off in the meantime (also on the phone, with call_settings).
     if (!this.notifyTargets().length || !this.wantsCall(kind)) return;
     if (body?.type === "notify" && this.noteUrgent(sessionId, body.message)) return;
-    if (this.busy || this.registration !== "registered") {
-      this.d.log(`Telefon: kein Anruf (${kind}), ${this.busy ? "die Leitung ist belegt" : "nicht an der Anlage angemeldet"}`);
+    if (this.busy) {
+      // Another call (often the one for a session that finished a moment earlier): this one follows
+      // after it, if it still matters then.
+      const retry = this.d.timing?.notifyCooldownMs ?? NOTIFY_COOLDOWN_MS;
+      this.d.log(`Telefon: Anruf (${kind}) verschoben, die Leitung ist belegt; neuer Versuch in ${Math.ceil(retry / 1000)} s`);
+      this.scheduleNotify(sessionId, kind, body, retry);
+      return;
+    }
+    if (this.registration !== "registered") {
+      this.d.log(`Telefon: kein Anruf (${kind}), nicht an der Anlage angemeldet`);
       return;
     }
     const wait = (this.d.timing?.notifyCooldownMs ?? NOTIFY_COOLDOWN_MS) - (Date.now() - this.lastNotifyAt);
@@ -1384,6 +1398,19 @@ export class PhoneService {
       } catch (e) {
         return `Fehler: ${errorText(e)}`;
       }
+    };
+    /**
+     * Irreversible actions (deleting folders, repositories, sessions, branches with commits, removing
+     * from FORGE) run only after the caller typed a code on the keypad; see PendingConfirm. `what` is
+     * what the model tells the caller. A pending code is never replaced silently.
+     */
+    const askKeypad = (what: string, act: () => Promise<string>, nothingYet = "noch ist nichts gelöscht"): string => {
+      if (a.confirm && Date.now() <= a.confirm.expiresAt) {
+        return "Fehler: Es wartet noch eine Bestätigung über die Tastatur. Der Anrufer tippt erst den Code oder bricht mit Stern ab, dann geht das Nächste.";
+      }
+      const code = String(randomInt(0, 1000)).padStart(3, "0");
+      a.confirm = { code, entered: "", expiresAt: Date.now() + CONFIRM_TTL_MS, run: act };
+      return `Bestätigung nötig, ${nothingYet}. Sag dem Anrufer: ${what}. Zum Bestätigen tippt er auf der Telefontastatur ${code.split("").join(" ")} und dann Raute, Stern bricht ab. Ein Ja im Gespräch reicht nicht, ruf das Werkzeug dafür nicht noch einmal auf. FORGE meldet sich, sobald er getippt hat.`;
     };
     const projectChanged = (projectId: string) => this.d.emit({ event: "project.updated", payload: { projectId } });
     const call: PhoneRpc = (method, params) => {
@@ -1847,8 +1874,13 @@ export class PhoneService {
           if (action === "delete_branch") {
             const branch = o?.branch?.trim();
             if (!branch) return "Fehler: Welcher Branch? Bitte branch angeben.";
-            await call("git.deleteBranch", { projectId: p.id, branch, force: o?.force === true });
-            return `Branch ${branch} in ${p.name} gelöscht.`;
+            const del = async () => {
+              await call("git.deleteBranch", { projectId: p.id, branch, force: o?.force === true });
+              return `Branch ${branch} in ${p.name} gelöscht.`;
+            };
+            // Without force git refuses a branch whose commits are nowhere else; with force they are gone.
+            if (o?.force !== true) return await del();
+            return askKeypad(`Der Branch ${asData(branch)} in ${p.name} wird gelöscht, auch wenn er Commits hat, die in keinem anderen Branch sind`, del);
           }
           if (action === "diff") {
             const st = await call("git.status", { projectId: p.id });
@@ -1859,6 +1891,7 @@ export class PhoneService {
             }
             const f = pickOne(st.files, o.path.replace(/\\/g, "/"), (x) => [x.path], { none: "Keine geänderte Datei", many: "geänderte Dateien" });
             if (f.kind === "untracked") return `${asData(f.path)} ist neu und noch nicht im Git.`;
+            if (isSensitiveFile(f.path)) return `${asData(f.path)} ist geändert. Die Datei enthält Zugangsdaten, ihr Inhalt wird am Telefon nicht vorgelesen.`;
             const d = await call("git.diff", { projectId: p.id, path: f.path, staged: f.staged && !f.unstaged });
             if (d.binary) return `${asData(f.path)} ist eine Binärdatei.`;
             const lines = d.lines.filter((l) => l.kind === "add" || l.kind === "del").map((l) => `${l.kind === "add" ? "neu" : "weg"}: ${l.text}`);
@@ -1985,14 +2018,20 @@ export class PhoneService {
         run(true, async () => {
           const p = target(projectName, o);
           if (!p.parentId) return `Fehler: ${p.name} ist kein Agent-Worktree. Projekte entfernt das Werkzeug project mit remove.`;
-          const r = await removeWorktree(p.id, o?.force === true, removal, { deleteBranch: o?.deleteBranch === true });
-          projectChanged(p.parentId);
-          const branch = r.deletedBranch
-            ? ` Branch ${r.deletedBranch} gelöscht.`
-            : r.branchError
-              ? ` Der Branch ließ sich nicht löschen: ${r.branchError}`
-              : " Der Branch mit seinen Commits bleibt.";
-          return `Worktree ${p.name} entfernt, seine Session ist beendet.${branch}`;
+          const parentId = p.parentId;
+          const removeIt = async () => {
+            const r = await removeWorktree(p.id, o?.force === true, removal, { deleteBranch: o?.deleteBranch === true });
+            projectChanged(parentId);
+            const branch = r.deletedBranch
+              ? ` Branch ${r.deletedBranch} gelöscht.`
+              : r.branchError
+                ? ` Der Branch ließ sich nicht löschen: ${r.branchError}`
+                : " Der Branch mit seinen Commits bleibt.";
+            return `Worktree ${p.name} entfernt, seine Session ist beendet.${branch}`;
+          };
+          if (o?.force !== true && o?.deleteBranch !== true) return await removeIt();
+          const lost = [o?.force === true && "nicht committete Änderungen darin", o?.deleteBranch === true && "sein Branch mit den Commits"].filter(Boolean).join(" und ");
+          return askKeypad(`Der Agent ${p.name} wird aufgeräumt, dabei gehen ${lost} verloren`, removeIt);
         }),
       finishAgent: (projectName, action, o) =>
         run(true, async () => {
@@ -2017,7 +2056,9 @@ export class PhoneService {
           }
           const finisher = this.d.agentFinish;
           if (!finisher) return "Fehler: Agenten abschließen ist hier nicht verfügbar.";
-          return (await finisher.finish(p.id, action)).message;
+          const finish = async () => (await finisher.finish(p.id, action)).message;
+          if (action === "merge") return await finish();
+          return askKeypad(`Die Arbeit des Agenten ${p.name} wird verworfen, sein Worktree und sein Branch mit allen Commits werden gelöscht`, finish);
         }),
       projects: () =>
         run(true, async () => {
@@ -2103,7 +2144,8 @@ export class PhoneService {
                 .filter(Boolean)
                 .join(" ");
             };
-            if (!deleteFolder && !deleteGitHubRepo) return remove();
+            // Even without folder or repository: the session history in FORGE goes with it.
+            if (!deleteFolder && !deleteGitHubRepo) return askKeypad(`Das Projekt ${p.name} wird aus FORGE entfernt, mit seiner Session-Historie in FORGE. Ordner und GitHub-Repository bleiben`, remove);
             const info = await call("projects.removalInfo", { projectId: p.id });
             if (deleteGitHubRepo && !info.githubRepo) return `Fehler: ${p.name} hat kein GitHub-Repository.`;
             if (deleteGitHubRepo && !info.githubSignedIn) return "Fehler: FORGE ist nicht bei GitHub angemeldet.";
@@ -2112,9 +2154,7 @@ export class PhoneService {
             const what = [deleteFolder && `der Ordner des Projekts ${p.name} mit allen Dateien`, deleteGitHubRepo && `das GitHub-Repository ${asData(info.githubRepo ?? "")} mit Code, Issues und Pull Requests`]
               .filter(Boolean)
               .join(" und ");
-            const code = String(randomInt(0, 1000)).padStart(3, "0");
-            a.confirm = { code, entered: "", expiresAt: Date.now() + CONFIRM_TTL_MS, run: remove };
-            return `Bestätigung nötig, noch ist nichts gelöscht. Sag dem Anrufer, dass ${what} endgültig gelöscht würde und sich das nicht rückgängig machen lässt. Zum Bestätigen tippt er auf der Telefontastatur ${code.split("").join(" ")} und dann Raute, Stern bricht ab. Ein Ja im Gespräch reicht nicht, ruf das Werkzeug dafür nicht noch einmal auf. FORGE meldet sich, sobald er getippt hat.`;
+            return askKeypad(`${what} würde endgültig gelöscht, das lässt sich nicht rückgängig machen`, remove);
           }
           if (action === "rename") {
             const name = o?.name?.trim();
@@ -2148,6 +2188,8 @@ export class PhoneService {
           const rel = (o?.path ?? "").trim().replace(/\\/g, "/").replace(/^\.?\/+/, "");
           if (action === "read") {
             if (!rel) return "Fehler: Welche Datei?";
+            // Keys would go to the speech service and be read out, like the values of dev_settings.
+            if (isSensitiveFile(rel)) return `Fehler: ${asData(rel)} enthält Zugangsdaten und wird am Telefon nicht vorgelesen.`;
             const f = await call("projects.readFile", { projectId: p.id, path: rel });
             if (f.binary) return `${asData(rel)} ist keine Textdatei.`;
             if (!f.content.trim()) return `${asData(rel)} ist leer.`;
@@ -2199,17 +2241,24 @@ export class PhoneService {
             const lines = list.slice(0, 10).map((s) => `${refFor(s.id)}: ${asData(s.title ?? "ohne Titel")}${p ? "" : ` im Projekt ${s.projectName}`}, ${statusText(s)}, zuletzt ${dateTime(s.updatedAt)}`);
             return `${list.length > 10 ? `${list.length} Sessions, die 10 neuesten:\n` : ""}${lines.join("\n")}${outside}`;
           }
+          const transcripts = o?.keepTranscript === true ? "Die Verläufe bei Claude Code bleiben" : "Auch die Verläufe bei Claude Code werden gelöscht";
           if (action === "delete_all") {
-            const r = await call("sessions.deleteAll", { deleteTranscript: o?.keepTranscript !== true });
-            a.focus = null;
-            return r.failed ? `${r.deleted.length} Sessions gelöscht, ${r.failed} nicht${r.error ? `: ${r.error}` : "."}` : `Alle ${r.deleted.length} Sessions gelöscht.`;
+            const all = await call("sessions.listAll", {});
+            if (!all.length) return "Es gibt keine Sessions.";
+            return askKeypad(`Alle ${all.length} Sessions werden gelöscht. ${transcripts}`, async () => {
+              const r = await call("sessions.deleteAll", { deleteTranscript: o?.keepTranscript !== true });
+              a.focus = null;
+              return r.failed ? `${r.deleted.length} Sessions gelöscht, ${r.failed} nicht${r.error ? `: ${r.error}` : "."}` : `Alle ${r.deleted.length} Sessions gelöscht.`;
+            });
           }
           const s = resolve(o?.session ?? "");
           const r = refFor(s.id);
           if (action === "delete") {
-            const res = await call("sessions.delete", { sessionId: s.id, deleteTranscript: o?.keepTranscript !== true });
-            if (a.focus === s.id) a.focus = null;
-            return res.deleted ? `${r} gelöscht${res.transcriptDeleted ? ", auch ihr Verlauf bei Claude Code" : ""}.` : `Fehler: ${r} ließ sich nicht löschen.`;
+            return askKeypad(`Die Session ${r} ${asData(s.title ?? "ohne Titel")} wird gelöscht. ${transcripts}`, async () => {
+              const res = await call("sessions.delete", { sessionId: s.id, deleteTranscript: o?.keepTranscript !== true });
+              if (a.focus === s.id) a.focus = null;
+              return res.deleted ? `${r} gelöscht${res.transcriptDeleted ? ", auch ihr Verlauf bei Claude Code" : ""}.` : `Fehler: ${r} ließ sich nicht löschen.`;
+            });
           }
           if (action === "rewind") {
             const prompt = await promptBack(s.id, o?.messagesBack ?? 1);
@@ -2464,18 +2513,18 @@ export class PhoneService {
             const what = item
               ? `${item.label} wird auf den Stand von GitHub gesetzt, also hier entfernt${item.kind === "project" ? " (nur aus FORGE, der Ordner bleibt, die Session-Historie in FORGE ist weg)" : ""}`
               : `Dieser Computer wird hart auf den Stand von GitHub gesetzt${removes.length ? `, entfernt werden hier: ${removes.map((x) => asData(x.label)).join(", ")} (Projekte nur aus FORGE, ihre Ordner bleiben)` : ""}`;
+            // The projects named now are the ones removed; if that changed until the code, nothing happens.
+            const expectRemove = item ? undefined : removes.filter((x) => x.kind === "project").map((x) => x.key);
             // Removing from FORGE takes the session history with it: confirmed on the keypad, like deleting.
-            const code = String(randomInt(0, 1000)).padStart(3, "0");
-            a.confirm = {
-              code,
-              entered: "",
-              expiresAt: Date.now() + CONFIRM_TTL_MS,
-              run: async () => {
-                await call("sync.forceLocal", { key: item?.key });
-                return item ? `${item.label} ist auf dem Stand von GitHub.` : "Dieser Computer ist auf dem Stand von GitHub. Der Stand davor ist als Backup gesichert.";
+            return askKeypad(
+              `${what}. Vorher legt FORGE ein Backup an`,
+              async () => {
+                await call("sync.forceLocal", { key: item?.key, expectRemove });
+                const later = " Telefon-Einstellungen von GitHub übernimmt FORGE erst nach diesem Gespräch.";
+                return item ? `${item.label} ist auf dem Stand von GitHub.` : `Dieser Computer ist auf dem Stand von GitHub. Der Stand davor ist als Backup gesichert.${later}`;
               },
-            };
-            return `Bestätigung nötig, noch ist nichts geändert. Sag dem Anrufer: ${what}. Vorher legt FORGE ein Backup an. Zum Bestätigen tippt er auf der Telefontastatur ${code.split("").join(" ")} und dann Raute, Stern bricht ab. Ein Ja im Gespräch reicht nicht, ruf das Werkzeug dafür nicht noch einmal auf. FORGE meldet sich, sobald er getippt hat.`;
+              "noch ist nichts geändert",
+            );
           }
           if (action === "sync_versions" || action === "sync_restore") {
             const versions = await call("sync.versions", {});

@@ -1170,7 +1170,11 @@ describe("PhoneService end to end with a test PBX", () => {
     expect(await conv.tools.finishAgent("", "merge", { session: "CSV" })).toBe("1 Commit von agent/x in main übernommen.");
     expect(steered.splice(0)).toEqual([`finish:merge:${wt.id}`]);
     expect(await conv.tools.removeAgent("shop")).toBe("Fehler: shop ist kein Agent-Worktree. Projekte entfernt das Werkzeug project mit remove.");
-    expect(await conv.tools.removeAgent("", { session: "CSV", deleteBranch: true })).toBe(`Worktree ${wt.name} entfernt, seine Session ist beendet. Branch agent/x gelöscht.`);
+    // Losing the branch with its commits: only after the code on the keypad.
+    const ask = await conv.tools.removeAgent("", { session: "CSV", deleteBranch: true });
+    expect(ask).toContain("sein Branch mit den Commits");
+    expect(removedWorktrees).toEqual([]);
+    expect(await keypad(conv, ask)).toContain(`Worktree ${wt.name} entfernt, seine Session ist beendet. Branch agent/x gelöscht.`);
     expect(steered).toEqual([`closeProject:${wt.id}`, `forget:${wt.id}`]);
     expect(projects.all().some((p) => p.id === wt.id)).toBe(false);
 
@@ -1222,6 +1226,15 @@ describe("PhoneService end to end with a test PBX", () => {
     );
 
   /** An answered incoming call without PIN; returns its conversation and how to end it. */
+  /** Types the code an irreversible tool asked for; resolves with FORGE's note about the result. */
+  async function keypad(conv: { said: string[] }, ask: string) {
+    expect(ask).toMatch(/^Bestätigung nötig/);
+    const code = ask.match(/Telefontastatur (\d) (\d) (\d) und dann Raute/)!.slice(1).join("");
+    const before = conv.said.length;
+    await phoneEnd.digits(`${code}#`);
+    return until(() => conv.said.slice(before).find((s) => s.includes("Über die Tastatur bestätigt")), 5000, "keypad");
+  }
+
   async function openCall(callId: string) {
     await svc.saveConfig({ requirePin: false });
     await svc.setEnabled(true);
@@ -1319,6 +1332,11 @@ describe("PhoneService end to end with a test PBX", () => {
     expect(readFileSync(path.join(dir, "CLAUDE.md"), "utf8")).toBe("Nutze pnpm.\n\nTexte auf Deutsch.\n");
     expect(await conv.tools.claudeMd("shop", "read")).toBe("Die CLAUDE.md von shop: <<<SESSION-DATEN>>>Nutze pnpm. Texte auf Deutsch.<<<ENDE SESSION-DATEN>>>");
 
+    expect(await conv.tools.files("shop", "read", { path: ".env" })).toMatch(/^Fehler: .*Zugangsdaten/);
+    // Removing it only from FORGE takes the session history: that waits for the code too.
+    expect(await conv.tools.project("shop", "remove")).toMatch(/^Bestätigung nötig, noch ist nichts gelöscht\. Sag dem Anrufer: Das Projekt shop wird aus FORGE entfernt/);
+    await phoneEnd.digits("*");
+    await until(() => conv.said.at(-1)?.includes("mit Stern abgebrochen"), 5000, "cancelled");
     // Deleting folder or repository waits for a code on the keypad; nothing the model says can confirm it.
     const askDelete = async () => {
       const text = await conv.tools.project("shop", "remove", { deleteFolder: true, deleteGitHubRepo: true });
@@ -1395,7 +1413,8 @@ describe("PhoneService end to end with a test PBX", () => {
     expect(callOf("sync.forceLocal")).toBeUndefined();
     await phoneEnd.digits(`${ask.match(/Telefontastatur (\d) (\d) (\d) und dann Raute/)!.slice(1).join("")}#`);
     await until(() => conv.said.at(-1)?.includes("Dieser Computer ist auf dem Stand von GitHub"), 5000, "forced");
-    expect(callOf("sync.forceLocal")).toEqual({});
+    // Only what the caller was told is removed; if that changed until the code, nothing happens.
+    expect(callOf("sync.forceLocal")).toEqual({ key: undefined, expectRemove: ["project:github.com/me/blog"] });
 
     expect(await conv.tools.forgeSystem("sync_versions")).toMatch(/^1: 13\.10\.26, \d\d:\d\d, von <<<SESSION-DATEN>>>PC-A<<<ENDE SESSION-DATEN>>>\n2: 12\.10\.26/);
     expect(await conv.tools.forgeSystem("sync_restore", { backup: "2", parts: ["settings", "phone"] })).toMatch(/^Stand vom 12\.10\.26, \d\d:\d\d zurückgeholt: Einstellungen\. .*Telefon-Einstellungen lassen sich nur in FORGE am Rechner/);
@@ -1435,10 +1454,14 @@ describe("PhoneService end to end with a test PBX", () => {
     );
     expect(rpcCalls.at(-1)).toEqual(["sessions.fork", { sessionId: "s1", beforeSeq: 1, rewindFiles: false }]);
 
-    expect(await conv.tools.sessions("delete", { session: "S2", keepTranscript: true })).toBe("S2 gelöscht.");
+    expect(await keypad(conv, await conv.tools.sessions("delete", { session: "S2", keepTranscript: true }))).toContain("S2 gelöscht.");
     expect(rpcCalls.at(-1)).toEqual(["sessions.delete", { sessionId: "s2", deleteTranscript: false }]);
     expect(await conv.tools.sessions("delete", {})).toMatch(/^Fehler: Welche Session/);
-    expect(await conv.tools.sessions("delete_all")).toBe("Alle 2 Sessions gelöscht.");
+    const all = await conv.tools.sessions("delete_all");
+    expect(all).toMatch(/Alle \d+ Sessions werden gelöscht\. Auch die Verläufe bei Claude Code werden gelöscht/);
+    // A second irreversible request does not replace the pending code.
+    expect(await conv.tools.sessions("delete", { session: "S1" })).toMatch(/^Fehler: Es wartet noch eine Bestätigung/);
+    expect(await keypad(conv, all)).toContain("Alle 2 Sessions gelöscht.");
     expect(rpcCalls.at(-1)).toEqual(["sessions.deleteAll", { deleteTranscript: true }]);
     await end();
   }, 30_000);
@@ -1493,7 +1516,7 @@ describe("PhoneService end to end with a test PBX", () => {
     };
     const { conv, end } = await openCall("c-git2");
     expect(await conv.tools.git("shop", "branches")).toBe("shop: 2 Branches, aktuell main. Weitere: <<<SESSION-DATEN>>>feature/login<<<ENDE SESSION-DATEN>>>.");
-    expect(await conv.tools.git("shop", "delete_branch", { branch: "feature/login", force: true })).toBe("Branch feature/login in shop gelöscht.");
+    expect(await keypad(conv, await conv.tools.git("shop", "delete_branch", { branch: "feature/login", force: true }))).toContain("Branch feature/login in shop gelöscht.");
     expect(rpcCalls.at(-1)).toEqual(["git.deleteBranch", { projectId, branch: "feature/login", force: true }]);
     expect(await conv.tools.git("shop", "diff")).toBe("Geändert in shop: <<<SESSION-DATEN>>>src/cart.ts, README.md<<<ENDE SESSION-DATEN>>>. Welche Datei?");
     expect(await conv.tools.git("shop", "diff", { path: "cart" })).toBe(

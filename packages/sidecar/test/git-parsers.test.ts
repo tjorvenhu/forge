@@ -15,6 +15,8 @@ describe("parseStatusV2", () => {
       "src/old name.ts",
       "u UU N... 100644 100644 100644 100644 f1 f2 f3 conflict.txt",
       "? notes/todo.md",
+      // a repository inside this one (an agent worktree): not a file, never listed
+      "? .claude/worktrees/agent-x/",
       "",
     ].join("\0");
     const s = parseStatusV2(out);

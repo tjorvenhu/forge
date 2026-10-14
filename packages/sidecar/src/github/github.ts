@@ -237,7 +237,9 @@ export class GitHubService {
       await writeFile(body, JSON.stringify({ message, content: Buffer.from(text, "utf8").toString("base64"), ...(sha ? { sha } : {}) }), "utf8");
       const r = await this.gh_(["api", "-X", "PUT", `repos/${checkFullName(fullName)}/contents/${file}`, "--input", body], 120_000);
       if (r.code === 0) return;
-      if (/HTTP 409|HTTP 422/.test(r.stdout + r.stderr)) throw new ForgeError("CONFLICT", "Die Datei wurde inzwischen geändert.");
+      // 422 also covers real validation errors (content too large); only the missing or old sha is a conflict.
+      const out = r.stdout + r.stderr;
+      if (/HTTP 409/.test(out) || (/HTTP 422/.test(out) && /\bsha\b/i.test(out))) throw new ForgeError("CONFLICT", "Die Datei wurde inzwischen geändert.");
       throw new ForgeError("GIT_FAILED", ghError(r, "Datei konnte nicht gespeichert werden"));
     } finally {
       await rm(dir, { recursive: true, force: true });

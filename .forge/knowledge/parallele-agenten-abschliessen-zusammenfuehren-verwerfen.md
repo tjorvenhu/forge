@@ -1,8 +1,8 @@
 ---
 title: "Parallele Agenten abschließen (Zusammenführen/Verwerfen)"
-summary: "Wie FORGE fertige Agenten-Worktrees zusammenführt oder verwirft (von Hand oder per auto-merge), was bei nicht committeten Änderungen im Projekt passiert (mitnehmen oder warten), wo der Ursprung gespeichert ist, wann das Modal erscheint und was bei zu langen Windows-Pfaden passiert."
+summary: "Wie FORGE fertige Agenten-Worktrees zusammenführt oder verwirft (von Hand oder per auto-merge), was bei offenen Änderungen im Projekt passiert, wo der Ursprung gespeichert ist, wann das Modal erscheint und was bei langen Windows-Pfaden und node_modules-Resten passiert."
 tags: ["agenten","worktree","git","merge","auto-merge","windows"]
-updated: "2026-10-13T14:49:54.329Z"
+updated: "2026-10-14T15:25:06.095Z"
 ---
 
 Kern: `packages/sidecar/src/automation/agent-finish.ts` (`AgentFinisher`), RPC `agents.review` / `agents.finish`, MCP-Werkzeug `finish_agent` (autoAllow false), Telefon-Werkzeug `finish_agent`.
@@ -32,6 +32,11 @@ Abhilfe (2026-10-13):
 - `WorktreeService.deleteFolder` löscht bei „Filename too long“ mit Node `rm` (kann lange Pfade), danach `worktree prune`.
 - `AgentAutoMerge.run`: Hat der Worktree-Ordner keine `.git` mehr, sind es Reste eines schon abgeschlossenen Agenten; sie werden still per discard aufgeräumt.
 Reste von Hand aufräumen: prüfen mit `git log --oneline main..<branch>` (0 Commits = alles in main), dann `finish_agent` discard und `git branch -d <branch>`.
+
+## Stolperfalle: leere node_modules-Gerippe nach erfolgreichem Entfernen
+Auch mit `core.longpaths` meldet `git worktree remove` unter Windows Exit 0, lässt aber Ordner `apps/`, `packages/`, `node_modules/` stehen, die nur noch pnpm-`node_modules` (Junctions) enthalten, ohne `.git`. git und FORGE kennen sie nicht mehr, deshalb tauchen sie in keiner Liste auf und sammeln sich unter `.forge-worktrees/<projekt>/`. Seit 2026-10-14 löscht `WorktreeService.deleteFolder` nach Exit 0 einen noch vorhandenen Ordner mit Node `rm`. Alte Reste: Ordner ohne `.git` und ohne Dateien außerhalb von `node_modules` (`find <dir> -type f -not -path '*/node_modules/*' | wc -l` = 0) können gefahrlos mit `rm -rf` weg.
+
+Nicht verwechseln mit `<projekt>/.claude/worktrees/agent-<hex>` (Branches `worktree-agent-<hex>`): Das sind Worktrees von Claude-Code-Subagenten (Agent-Werkzeug mit isolation worktree), nicht von FORGE. Solange `git worktree list` sie als `locked` zeigt (Sperrgrund „claude agent … (pid N)“) arbeitet dort gerade ein Subagent; Claude Code räumt sie selbst auf. Nicht von Hand löschen.
 
 ## Automatisch zusammenführen (Tag auto-merge)
 `packages/sidecar/src/automation/agent-auto-merge.ts` (`AgentAutoMerge`), gebaut in `SessionService.useAgentFinisher`, `dispose()` in `SessionService.shutdown`. Auslöser: `TurnAutomation.schedule` ruft nach der Nach-Durchlauf-Arbeit (Tests, Auto-Commit) `host.turnDone(sessionId, testsOk)`, aber nur, wenn keine zurückgehaltene Nachricht nachfolgt.

@@ -1,13 +1,15 @@
 import { readFileSync } from "node:fs";
-import { mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, rm, stat } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { z } from "zod";
 import {
+  DevToolsConfig,
   EffortLevel,
   ForgeError,
   ProfileId,
   Settings,
+  TestDbConfig,
   type BackupPart,
   type Project,
   type ServerEvent,
@@ -33,6 +35,10 @@ const INTERVAL_MS = 10 * 60_000;
 const MAX_ATTEMPTS = 3;
 /** look at what changed this long after an event; several events in a row are looked at once */
 const CHECK_MS = 1_500;
+/** a look at what changed here without an event (phone, secrets, Claude files, MCP servers) */
+const LOCAL_CHECK_MS = 60_000;
+/** remotes of project folders rarely change; checks between syncs reuse them */
+const REMOTE_CACHE_MS = 5 * 60_000;
 const CLAUDE_FILES = ["CLAUDE.md", "settings.json"];
 
 /**
@@ -56,6 +62,16 @@ const ProjectItem = z.object({
 });
 type ProjectItem = z.infer<typeof ProjectItem>;
 const GitItem = z.object({ name: z.string().min(1), email: z.string().min(1) });
+/**
+ * The dev tools of a project without the test database's port and password: those belong to the
+ * database cluster on each computer (the password was set at initdb, ports must not collide here).
+ */
+const DevToolsItem = z.object({
+  env: DevToolsConfig.shape.env,
+  useEnv: DevToolsConfig.shape.useEnv,
+  database: TestDbConfig.pick({ name: true, withDevServer: true, envVar: true }),
+});
+export type DevToolsItem = z.infer<typeof DevToolsItem>;
 
 /**
  * The file in the repository: who wrote it in clear, everything else encrypted. The items are flat:
@@ -92,18 +108,35 @@ const SECRET_LABELS: Record<string, string> = {
 };
 
 /** Kept in the data folder of this computer, never in the repository. */
-const SyncState = z.object({
-  login: z.string(),
+interface SyncState {
+  login: string;
   /** the items as of the last sync: what both sides agreed on */
-  base: z.record(z.string(), z.unknown()).nullable(),
+  base: Items | null;
   /** items that were on this computer at the last sync; one missing now was removed here */
-  localKeys: z.array(z.string()),
+  localKeys: string[];
   /** removed on another computer but kept here; no longer synced from this one */
+  localOnly: string[];
+  lastSyncAt: string | null;
+  remote: { updatedAt: string; device: string } | null;
+  /** project id -> its item key, to recognise a project whose folder is unreachable for a while */
+  projectKeys: Record<string, string>;
+}
+
+/**
+ * On disk the base is sealed with the sync key: it holds the secrets in clear (SIP password, API
+ * keys), which must not lie unprotected in the data folder.
+ */
+const StoredState = z.object({
+  login: z.string(),
+  baseBox: SealedBox.nullable().optional(),
+  /** written unencrypted by the first version; read once, then saved sealed */
+  base: z.record(z.string(), z.unknown()).nullable().optional(),
+  localKeys: z.array(z.string()),
   localOnly: z.array(z.string()),
   lastSyncAt: z.string().nullable(),
   remote: z.object({ updatedAt: z.string(), device: z.string() }).nullable(),
+  projectKeys: z.record(z.string(), z.string()).default({}),
 });
-type SyncState = z.infer<typeof SyncState>;
 
 export interface SyncRemote {
   account(): Promise<{ login: string } | null>;
@@ -130,7 +163,8 @@ export interface SyncDeps {
   removeProject(id: string): Promise<void>;
   identity(): Promise<{ name: string | null; email: string | null }>;
   setIdentity(name: string, email: string): Promise<void>;
-  devTools: { get(projectId: string): unknown; set(projectId: string, value: unknown): void };
+  /** `get`: the stored row or null; `update` checks it and keeps port and password of this computer */
+  devTools: { get(projectId: string): unknown; update(projectId: string, patch: DevToolsItem): void };
   phone: { config(): Record<string, unknown> | null; apply(config: Record<string, unknown>): Promise<void>; secretsChanged(): Promise<void> };
   secrets: { names(): string[]; get(name: string): Promise<string | null>; set(name: string, value: string | null): Promise<void> };
   /** the key from the sync password, kept encrypted for this Windows user */
@@ -265,15 +299,21 @@ function errorText(e: unknown): string {
  */
 export class SyncService {
   private state: SyncState | null;
+  /** the base as stored on disk, opened once the sync key is there */
+  private sealedBase: SealedBox | null = null;
   private key: SyncKey | null | undefined;
   private needsKey = false;
   private keyProblem: string | null = null;
   private running: Promise<unknown> | null = null;
+  /** an exclusive operation (password, hard reset, restore) holds the service */
+  private exclusiveRun: Promise<unknown> | null = null;
   private again = false;
   private pendingForce = false;
-  private applying = false;
+  /** applies from GitHub in progress; their own events are no local changes */
+  private applying = 0;
   private timer: ReturnType<typeof setTimeout> | null = null;
   private interval: ReturnType<typeof setInterval> | null = null;
+  private checkInterval: ReturnType<typeof setInterval> | null = null;
   private phase: "idle" | "syncing" | "error" = "idle";
   private error: string | null = null;
   /** null: not signed in with GitHub at the last run; undefined: not checked yet */
@@ -282,11 +322,12 @@ export class SyncService {
   private localOnlyInfo: SyncLocalOnly[] = [];
   private pending = false;
   private checkTimer: ReturnType<typeof setTimeout> | null = null;
+  /** remotes of project folders; a check every minute should not start a git process per project */
+  private remoteCache = new Map<string, { url: string | null; at: number }>();
 
   constructor(private readonly d: SyncDeps) {
     this.state = this.loadState();
     this.account = this.state?.login;
-    if (this.state?.base) this.available = this.availableFrom(this.state.base, this.state.localKeys);
   }
 
   private get claudeDir() {
@@ -305,27 +346,34 @@ export class SyncService {
     return this.d.settings().syncEnabled;
   }
 
-  /** Sync on start and every few minutes while switched on. */
+  /** Sync on start and every few minutes while switched on; a quick local look every minute. */
   start() {
     this.interval ??= setInterval(() => {
       if (this.enabled()) void this.run(true);
     }, INTERVAL_MS);
     this.interval.unref?.();
-    void this.loadKey().then(() => this.emitStatus());
+    // Phone, secrets, Claude files, MCP servers and the git identity change without an event.
+    this.checkInterval ??= setInterval(() => {
+      if (this.enabled() && !this.checkTimer) this.scheduleCheck();
+    }, LOCAL_CHECK_MS);
+    this.checkInterval.unref?.();
+    void this.loadKey()
+      .then(() => this.ensureBase())
+      .then(() => this.emitStatus());
     if (this.enabled()) this.schedule(3_000, true);
   }
 
   stop() {
-    if (this.interval) clearInterval(this.interval);
-    if (this.timer) clearTimeout(this.timer);
-    if (this.checkTimer) clearTimeout(this.checkTimer);
+    for (const t of [this.interval, this.checkInterval]) if (t) clearInterval(t);
+    for (const t of [this.timer, this.checkTimer]) if (t) clearTimeout(t);
     this.interval = null;
+    this.checkInterval = null;
     this.timer = null;
     this.checkTimer = null;
   }
 
   onServerEvent(e: ServerEvent) {
-    if (this.applying || !this.enabled()) return;
+    if (this.applying > 0 || !this.enabled()) return;
     if (e.event === "settings.updated" || e.event === "project.updated") this.scheduleCheck();
     if (e.event === "github.login" && e.payload.phase === "done") this.schedule(0, true);
   }
@@ -350,11 +398,14 @@ export class SyncService {
   }
 
   private async localChanged(): Promise<boolean> {
+    if (this.needsKey || this.running) return false;
+    await this.ensureBase();
     const st = this.state;
-    if (!st?.base || this.needsKey) return false;
+    if (!st?.base) return false;
     const local = await this.snapshot(st.localOnly).catch(() => null);
     if (!local) return false;
-    return !sameItems(mergeItems(st.base, local.items, st.base, (k) => st.localKeys.includes(k)).result, st.base);
+    const base = st.base;
+    return !sameItems(mergeItems(base, local.items, base, (k) => st.localKeys.includes(k) && !local.unknown.has(k)).result, base);
   }
 
   /** The setting syncEnabled changed. */
@@ -446,8 +497,12 @@ export class SyncService {
       } else {
         key = await deriveKey(passphrase, newKdf(this.d.kdfN));
       }
+      await this.ensureBase();
       // A new password on another computer started the repository anew: what was agreed before no longer counts.
-      if (this.state && this.key && this.key.kdf.salt !== key.kdf.salt) this.state = { ...this.state, base: null, localKeys: [] };
+      if (this.state && (!this.key || this.key.kdf.salt !== key.kdf.salt)) {
+        this.state = { ...this.state, base: null, localKeys: [] };
+        this.sealedBase = null;
+      }
       await this.d.key.set(key);
       this.key = key;
       this.needsKey = false;
@@ -462,14 +517,17 @@ export class SyncService {
     await this.exclusive(async () => {
       const { acc, repo } = await this.repo();
       const key = await deriveKey(passphrase, newKdf(this.d.kdfN));
-      const local = await this.snapshot([]);
+      const local = await this.snapshot([], { fresh: true });
+      if (local.unknown.size) throw new ForgeError("CONFLICT", `Einiges auf diesem PC ist gerade nicht lesbar (${[...local.unknown].join(", ")}). Ohne das würde GitHub es verlieren. Bitte später noch einmal.`);
       const file = await this.d.remote.readRepoFile(repo, SYNC_FILE);
       await this.write(repo, local.items, key, file?.sha ?? null, `FORGE-Daten von ${this.device}, neu angefangen`);
       await this.d.key.set(key);
       this.key = key;
       this.needsKey = false;
       this.keyProblem = null;
-      await this.saveState({ login: acc.login, base: local.items, localKeys: Object.keys(local.items), localOnly: [], lastSyncAt: new Date().toISOString(), remote: { updatedAt: new Date().toISOString(), device: this.device } });
+      this.sealedBase = null;
+      const now = new Date().toISOString();
+      await this.saveState({ login: acc.login, base: local.items, localKeys: Object.keys(local.items), localOnly: [], lastSyncAt: now, remote: { updatedAt: now, device: this.device }, projectKeys: local.projectKeys });
       this.available = [];
       this.localOnlyInfo = [];
       this.phase = "idle";
@@ -483,28 +541,36 @@ export class SyncService {
   /**
    * Sets this computer hard to the state on GitHub, or only the item `key`. Values come from GitHub,
    * what GitHub no longer has is removed here (projects only from FORGE). What was added here and
-   * not synced yet stays and goes up with the next sync.
+   * not synced yet stays and goes up with the next sync. `expectRemove`: the projects the user was
+   * told would be removed; when that no longer holds, nothing happens.
    */
-  async forceLocal(key?: string): Promise<SyncStatus> {
+  async forceLocal(key?: string, expectRemove?: string[]): Promise<SyncStatus> {
     if (!this.enabled()) throw new ForgeError("VALIDATION", "Die Synchronisierung über GitHub ist aus.");
     await this.exclusive(async () => {
       const { acc, repo } = await this.repo();
       const sk = await this.requireKey();
+      await this.ensureBase();
       const file = await this.d.remote.readRepoFile(repo, SYNC_FILE);
       if (!file) throw new ForgeError("NOT_FOUND", "Auf GitHub liegt noch kein Stand.");
       const doc = parseDoc(file.text);
       const remote = this.decode(doc, sk);
-      const state: SyncState = this.state?.login === acc.login ? this.state : { login: acc.login, base: null, localKeys: [], localOnly: [], lastSyncAt: null, remote: null };
-      await this.d.safetyBackup();
-      const local = await this.snapshot([]);
+      const state = this.state?.login === acc.login ? this.state : emptyState(acc.login);
+      const local = await this.snapshot([], { fresh: true });
       const targets = key ? withSiblings(key) : [...new Set([...Object.keys(remote), ...Object.keys(local.items)])];
       const apply: Items = {};
       const remove: string[] = [];
       for (const k of targets) {
+        if (local.unknown.has(k)) continue;
         if (k in remote) {
           if (!same(local.items[k], remote[k])) apply[k] = remote[k];
         } else if (k in local.items && (key || state.localOnly.includes(k) || state.base?.[k] !== undefined)) remove.push(k);
       }
+      // Projects are what the user was told about: removing one from FORGE takes its session history.
+      const projectsRemoved = remove.filter((k) => k.startsWith("project:")).sort();
+      if (expectRemove && stable(projectsRemoved) !== stable([...expectRemove].sort())) {
+        throw new ForgeError("CONFLICT", "Seit der Rückfrage hat sich geändert, was hier entfernt würde. Bitte noch einmal anfragen.");
+      }
+      await this.d.safetyBackup();
       const failed = await this.applyRemote(apply, local.projects);
       for (const k of remove) {
         try {
@@ -514,15 +580,16 @@ export class SyncService {
           this.d.log(`Synchronisierung: ${k} nicht entfernt: ${errorText(e)}`);
         }
       }
-      const after = await this.snapshot([]);
+      const after = await this.snapshot([], { fresh: true });
       const base = { ...remote };
       for (const k of failed) {
         if (k in after.items) base[k] = after.items[k];
         else delete base[k];
       }
       const localOnly = key ? state.localOnly.filter((k) => !targets.includes(k)) : [];
-      await this.saveState({ ...state, base, localKeys: Object.keys(after.items).filter((k) => !localOnly.includes(k)), localOnly, remote: { updatedAt: doc.updatedAt, device: doc.device } });
-      this.available = this.availableFrom(base, this.state!.localKeys);
+      const localKeys = [...Object.keys(after.items), ...[...after.unknown].filter((k) => state.localKeys.includes(k))].filter((k) => !localOnly.includes(k));
+      await this.saveState({ ...state, base, localKeys, localOnly, remote: { updatedAt: doc.updatedAt, device: doc.device }, projectKeys: { ...state.projectKeys, ...after.projectKeys } });
+      this.available = this.availableFrom(base, localKeys);
       this.localOnlyInfo = this.describe(localOnly, after.projects);
       this.d.log(`Synchronisierung: ${key ? key : "dieser Computer"} auf den Stand von GitHub gesetzt`);
     });
@@ -534,6 +601,7 @@ export class SyncService {
   async keep(key: string): Promise<SyncStatus> {
     if (!this.state?.localOnly.includes(key)) throw new ForgeError("NOT_FOUND", "Das ist nicht nur auf diesem Computer.");
     await this.exclusive(async () => {
+      await this.ensureBase();
       const drop = withSiblings(key);
       await this.saveState({ ...this.state!, localOnly: this.state!.localOnly.filter((k) => !drop.includes(k)) });
       this.localOnlyInfo = this.localOnlyInfo.filter((x) => !drop.includes(x.key));
@@ -564,7 +632,7 @@ export class SyncService {
         throw new ForgeError("VALIDATION", "Dieser Stand ist mit einem früheren Sync-Passwort verschlüsselt und lässt sich hier nicht öffnen.");
       }
       await this.d.safetyBackup();
-      const local = await this.snapshot([]);
+      const local = await this.snapshot([], { fresh: true });
       const kinds = new Set(parts.flatMap((p) => PART_KINDS[p]));
       const apply: Items = {};
       const restored = new Set<BackupPart>();
@@ -589,6 +657,7 @@ export class SyncService {
 
   /** Clones a project another computer synced into the folder for new projects and takes over its settings. */
   async cloneProject(key: string): Promise<Project> {
+    await this.ensureBase();
     const raw = this.state?.base?.[`project:${key}`];
     const item = ProjectItem.safeParse(raw);
     if (!item.success) throw new ForgeError("NOT_FOUND", "Das Projekt steht nicht im Sync-Repository.");
@@ -597,14 +666,14 @@ export class SyncService {
     if (!dir) throw new ForgeError("VALIDATION", "Lege zuerst in den Einstellungen einen Ordner für neue Projekte fest.");
     const cloned = await this.d.cloneProject(item.data.cloneUrl, dir);
     const { cloneUrl: _url, ...patch } = item.data;
-    this.applying = true;
+    this.applying++;
     let project: Project;
     try {
       project = await this.d.updateProject(cloned.id, patch);
-      const tools = this.state?.base?.[`devtools:${key}`];
-      if (tools) this.d.devTools.set(project.id, tools);
+      const tools = DevToolsItem.safeParse(this.state?.base?.[`devtools:${key}`]);
+      if (tools.success) this.d.devTools.update(project.id, tools.data);
     } finally {
-      this.applying = false;
+      this.applying--;
     }
     this.available = this.available.filter((p) => p.key !== key);
     this.emitStatus();
@@ -630,6 +699,21 @@ export class SyncService {
     const k = await this.loadKey();
     if (!k) throw new ForgeError("VALIDATION", "Gib zuerst das Sync-Passwort ein.");
     return k;
+  }
+
+  /** Opens the base from disk once the key is known; a base that does not open is dropped (first sync again). */
+  private async ensureBase() {
+    if (!this.sealedBase || !this.state) return;
+    const key = await this.loadKey();
+    if (!key) return;
+    const box = this.sealedBase;
+    this.sealedBase = null;
+    try {
+      this.state = { ...this.state, base: z.record(z.string(), z.unknown()).parse(JSON.parse(open(key, box))) };
+    } catch {
+      this.state = { ...this.state, base: null, localKeys: [] };
+    }
+    if (this.state.base) this.available = this.availableFrom(this.state.base, this.state.localKeys);
   }
 
   private decode(doc: SyncDoc, key: SyncKey): Items {
@@ -663,6 +747,8 @@ export class SyncService {
 
   /** One run at a time; a request during a run gets one more run afterwards. */
   private run(force: boolean): Promise<unknown> {
+    // Waiting for a password change, hard reset or restore, then a real run of its own.
+    if (this.exclusiveRun) return this.exclusiveRun.catch(() => {}).then(() => this.run(force));
     if (this.running) {
       this.again = true;
       this.pendingForce ||= force;
@@ -682,26 +768,23 @@ export class SyncService {
     return this.running;
   }
 
-  /** Runs `fn` while no sync runs; a sync asked for meanwhile follows afterwards. */
+  /** Runs `fn` while no sync runs; syncs asked for meanwhile follow afterwards. */
   private async exclusive<T>(fn: () => Promise<T>): Promise<T> {
-    while (this.running) await this.running.catch(() => {});
+    while (this.running || this.exclusiveRun) await (this.exclusiveRun ?? this.running)!.catch(() => {});
     const p = fn();
-    this.running = p;
+    this.exclusiveRun = p;
     try {
       return await p;
     } finally {
-      this.running = null;
-      if (this.again) {
-        this.again = false;
-        void this.run(this.pendingForce);
-      }
+      this.exclusiveRun = null;
     }
   }
 
   /** `force`: ask GitHub even when nothing changed here (start, interval, by hand). */
   private async syncOnce(force: boolean) {
     if (!this.enabled()) return this.emitStatus();
-    if (!force && this.state?.base && this.phase !== "error" && !this.needsKey && !(await this.localChanged())) return;
+    if (force) this.remoteCache.clear();
+    if (!force && this.state && this.phase !== "error" && !this.needsKey && !(await this.localChanged())) return;
     // Changes from here on count for the next run.
     this.pending = false;
     this.phase = "syncing";
@@ -723,7 +806,8 @@ export class SyncService {
         this.phase = "idle";
         return;
       }
-      let state: SyncState = this.state?.login === acc.login ? this.state : { login: acc.login, base: null, localKeys: [], localOnly: [], lastSyncAt: null, remote: null };
+      await this.ensureBase();
+      let state: SyncState = this.state?.login === acc.login ? this.state : emptyState(acc.login);
       for (let attempt = 1; ; attempt++) {
         const file = await this.d.remote.readRepoFile(repo, SYNC_FILE);
         const remoteDoc = file ? parseDoc(file.text) : null;
@@ -742,11 +826,12 @@ export class SyncService {
         this.needsKey = false;
         this.keyProblem = null;
         const local = await this.snapshot(state.localOnly);
-        const merged = mergeItems(state.base, local.items, remoteItems, (k) => state.localKeys.includes(k));
+        const merged = mergeItems(state.base, local.items, remoteItems, (k) => state.localKeys.includes(k) && !local.unknown.has(k));
         const failed = await this.applyRemote(merged.apply, local.projects);
         const localOnly = new Set(state.localOnly);
         for (const k of Object.keys(merged.apply)) localOnly.delete(k);
-        for (const k of merged.removed) localOnly.add(k);
+        // Only what is here: an item another computer removed and this one never had needs no decision.
+        for (const k of merged.removed) if (k in local.items) localOnly.add(k);
         let doc = remoteDoc;
         if (!remoteItems || !sameItems(merged.result, remoteItems)) {
           try {
@@ -760,13 +845,18 @@ export class SyncService {
             throw e;
           }
         }
-        // Not taken over here (e.g. the phone was in a call): the next sync tries again.
+        // Not taken over here (the phone was in a call, a value this version does not know): the
+        // base keeps what is here, so the next sync tries again instead of pushing the old value up.
         const base = { ...merged.result };
         for (const k of failed) {
           if (k in local.items) base[k] = local.items[k];
           else delete base[k];
         }
-        const here = new Set([...Object.keys(local.items), ...Object.keys(merged.apply).filter((k) => !failed.has(k) && this.isLocalAfterApply(k, local.projects))]);
+        const here = new Set([
+          ...Object.keys(local.items),
+          ...[...local.unknown].filter((k) => state.localKeys.includes(k)),
+          ...Object.keys(merged.apply).filter((k) => !failed.has(k) && this.isLocalAfterApply(k, local.projects)),
+        ]);
         for (const k of localOnly) here.delete(k);
         state = {
           login: acc.login,
@@ -775,6 +865,7 @@ export class SyncService {
           localOnly: [...localOnly],
           lastSyncAt: new Date().toISOString(),
           remote: doc ? { updatedAt: doc.updatedAt, device: doc.device } : null,
+          projectKeys: { ...state.projectKeys, ...local.projectKeys },
         };
         await this.saveState(state);
         this.available = this.availableFrom(base, state.localKeys);
@@ -809,21 +900,49 @@ export class SyncService {
     }
   }
 
-  /** Everything this computer would sync; `projects` holds every project here, also the ones kept out. */
-  private async snapshot(localOnly: string[]): Promise<{ items: Items; projects: Map<string, Project> }> {
+  private async remoteOf(dir: string, fresh: boolean): Promise<string | null> {
+    const hit = this.remoteCache.get(dir);
+    if (!fresh && hit && Date.now() - hit.at < REMOTE_CACHE_MS) return hit.url;
+    const url = await this.d.remoteUrl(dir).catch(() => null);
+    this.remoteCache.set(dir, { url, at: Date.now() });
+    return url;
+  }
+
+  /**
+   * Everything this computer would sync. `projects` holds every project here, also the ones kept
+   * out. `unknown`: items that could not be read just now (folder unreachable, a secret DPAPI did not
+   * open, a file over the size limit); they count as unchanged, never as removed.
+   */
+  private async snapshot(localOnly: string[], opts: { fresh?: boolean } = {}) {
     const items: Items = {};
+    const unknown = new Set<string>();
+    const projectKeys: Record<string, string> = {};
     const s = this.d.settings();
     for (const k of SYNCED_SETTINGS) items[`setting:${k}`] = s[k];
-    const git = await this.d.identity().catch(() => ({ name: null, email: null }));
-    if (git.name && git.email) items["git:identity"] = { name: git.name, email: git.email };
+    try {
+      const git = await this.d.identity();
+      if (git.name && git.email) items["git:identity"] = { name: git.name, email: git.email };
+    } catch {
+      unknown.add("git:identity");
+    }
     const projects = new Map<string, Project>();
     for (const p of this.d.projects()) {
       if (p.parentId) continue;
-      const remote = await this.d.remoteUrl(p.path).catch(() => null);
+      if (!p.exists) {
+        // Drive unplugged or folder moved: its last key stays as it was.
+        const known = this.state?.projectKeys[p.id];
+        if (known) {
+          unknown.add(known);
+          unknown.add(`devtools:${known.slice("project:".length)}`);
+        }
+        continue;
+      }
+      const remote = await this.remoteOf(p.path, opts.fresh === true);
       const { key, cloneUrl } = projectKey(p.path, remote);
       const id = `project:${key}`;
       if (projects.has(id)) continue;
       projects.set(id, p);
+      projectKeys[p.id] = id;
       const item: ProjectItem = {
         name: p.name,
         cloneUrl,
@@ -837,29 +956,49 @@ export class SyncService {
         gitEnabled: p.gitEnabled,
       };
       items[id] = item;
-      const tools = this.d.devTools.get(p.id);
-      if (tools) items[`devtools:${key}`] = tools;
+      try {
+        const raw = this.d.devTools.get(p.id);
+        if (raw) {
+          const tools = DevToolsConfig.safeParse(raw);
+          if (!tools.success) unknown.add(`devtools:${key}`);
+          else items[`devtools:${key}`] = { env: tools.data.env, useEnv: tools.data.useEnv, database: { name: tools.data.database.name, withDevServer: tools.data.database.withDevServer, envVar: tools.data.database.envVar } } satisfies DevToolsItem;
+        }
+      } catch {
+        unknown.add(`devtools:${key}`);
+      }
     }
     const phone = this.d.phone.config();
     if (phone) items["phone:config"] = phone;
     for (const name of this.d.secrets.names()) {
-      const v = await this.d.secrets.get(name).catch(() => null);
-      if (v) items[`secret:${name}`] = v;
+      try {
+        const v = await this.d.secrets.get(name);
+        if (v) items[`secret:${name}`] = v;
+      } catch {
+        unknown.add(`secret:${name}`);
+      }
     }
-    for (const [rel, text] of Object.entries(await this.readClaudeFiles())) items[`claude:${rel}`] = text;
+    const claude = await this.readClaudeFiles();
+    for (const [rel, text] of Object.entries(claude.files)) items[`claude:${rel}`] = text;
+    for (const rel of claude.skipped) unknown.add(`claude:${rel}`);
     for (const [name, cfg] of Object.entries(await this.readMcpServers())) items[`mcp:${name}`] = cfg;
     for (const k of localOnly) delete items[k];
-    return { items, projects };
+    return { items, projects, unknown, projectKeys };
   }
 
-  private async readClaudeFiles(): Promise<Record<string, string>> {
-    const out: Record<string, string> = {};
+  private async readClaudeFiles(): Promise<{ files: Record<string, string>; skipped: string[] }> {
+    const files: Record<string, string> = {};
+    const skipped: string[] = [];
     let total = 0;
     const add = async (rel: string) => {
       const full = path.join(this.claudeDir, rel);
       const s = await stat(full).catch(() => null);
-      if (!s?.isFile() || s.size > MAX_FILE_BYTES || total + s.size > MAX_CLAUDE_BYTES) return;
-      out[rel.split(path.sep).join("/")] = await readFile(full, "utf8");
+      if (!s?.isFile()) return;
+      const name = rel.split(path.sep).join("/");
+      if (s.size > MAX_FILE_BYTES || total + s.size > MAX_CLAUDE_BYTES) {
+        skipped.push(name);
+        return;
+      }
+      files[name] = await readFile(full, "utf8");
       total += s.size;
     };
     for (const f of CLAUDE_FILES) await add(f);
@@ -870,15 +1009,28 @@ export class SyncService {
         await add(path.relative(this.claudeDir, path.join(e.parentPath, e.name)));
       }
     }
-    return out;
+    return { files, skipped };
   }
 
+  /**
+   * `~/.claude.json` belongs to Claude Code and holds much more than MCP servers. Only a missing file
+   * counts as empty; one that is locked or half written stops the sync instead of being overwritten.
+   */
   private async readClaudeJson(): Promise<Record<string, unknown>> {
+    let text: string;
     try {
-      return JSON.parse(await readFile(this.claudeJson, "utf8")) as Record<string, unknown>;
-    } catch {
-      return {};
+      text = await readFile(this.claudeJson, "utf8");
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code === "ENOENT") return {};
+      throw new Error(`${this.claudeJson} ist gerade nicht lesbar: ${errorText(e)}`, { cause: e });
     }
+    try {
+      const j = JSON.parse(text.replace(/^\uFEFF/, "")) as unknown;
+      if (j && typeof j === "object" && !Array.isArray(j)) return j as Record<string, unknown>;
+    } catch {
+      // handled below
+    }
+    throw new Error(`${this.claudeJson} ist kein gültiges JSON.`);
   }
 
   private async readMcpServers(): Promise<Record<string, unknown>> {
@@ -886,58 +1038,61 @@ export class SyncService {
     return servers && typeof servers === "object" ? (servers as Record<string, unknown>) : {};
   }
 
-  /** Takes over what changed elsewhere; returns the items that could not be taken over. */
+  /**
+   * Takes over what changed elsewhere; returns the items that could not be taken over, also those
+   * this version cannot use (a setting it does not know, a value it does not understand).
+   */
   private async applyRemote(apply: Items, projects: Map<string, Project>): Promise<Set<string>> {
     const failed = new Set<string>();
     const settings: Record<string, unknown> = {};
     const mcp: Record<string, unknown> = {};
     let phone: Record<string, unknown> | null = null;
     let secretsChanged = false;
-    this.applying = true;
+    this.applying++;
     try {
       for (const [k, v] of Object.entries(apply)) {
         const { kind, id } = split(k);
         try {
           if (kind === "setting") {
-            if ((SYNCED_SETTINGS as string[]).includes(id)) settings[id] = v;
+            const field = (SYNCED_SETTINGS as string[]).includes(id) ? Settings.shape[id as keyof Settings] : undefined;
+            if (!field?.safeParse(v).success) throw new Error("unbekannte Einstellung oder ungültiger Wert");
+            settings[id] = v;
           } else if (kind === "git") {
-            const g = GitItem.safeParse(v);
-            if (g.success) await this.d.setIdentity(g.data.name, g.data.email);
+            const g = GitItem.parse(v);
+            await this.d.setIdentity(g.name, g.email);
           } else if (kind === "project") {
+            const item = ProjectItem.parse(v);
             const p = projects.get(k);
-            const item = ProjectItem.safeParse(v);
-            if (p && item.success) {
-              const { cloneUrl: _url, ...patch } = item.data;
+            if (p) {
+              const { cloneUrl: _url, ...patch } = item;
               await this.d.updateProject(p.id, patch);
             }
           } else if (kind === "devtools") {
+            const item = DevToolsItem.parse(v);
             const p = projects.get(`project:${id}`);
-            if (p && v && typeof v === "object") this.d.devTools.set(p.id, v);
+            if (p) this.d.devTools.update(p.id, item);
           } else if (kind === "phone") {
-            if (v && typeof v === "object") phone = v as Record<string, unknown>;
+            if (!v || typeof v !== "object") throw new Error("ungültige Telefon-Einstellungen");
+            phone = v as Record<string, unknown>;
           } else if (kind === "secret") {
-            if (typeof v === "string" && /^[\w-]{1,64}$/.test(id)) {
-              await this.d.secrets.set(id, v);
-              secretsChanged = true;
-            }
+            if (typeof v !== "string" || !/^[\w-]{1,64}$/.test(id)) throw new Error("ungültiges Geheimnis");
+            await this.d.secrets.set(id, v);
+            secretsChanged = true;
           } else if (kind === "claude") {
-            if (typeof v === "string") await this.writeClaudeFile(id, v);
+            if (typeof v !== "string") throw new Error("ungültige Datei");
+            await this.writeClaudeFile(id, v);
           } else if (kind === "mcp") {
-            if (v && typeof v === "object") mcp[id] = v;
-          }
+            if (!v || typeof v !== "object") throw new Error("ungültiger MCP-Server");
+            mcp[id] = v;
+          } else throw new Error("unbekannte Art");
         } catch (e) {
           failed.add(k);
           this.d.log(`Synchronisierung: ${k} nicht übernommen: ${errorText(e)}`);
         }
       }
-      const patch = Settings.partial().safeParse(settings);
-      const settingKeys = Object.keys(settings).map((k) => `setting:${k}`);
-      if (!patch.success) {
-        settingKeys.forEach((k) => failed.add(k));
-        this.d.log("Synchronisierung: Einstellungen aus dem Repository sind ungültig und wurden nicht übernommen");
-      } else if (Object.keys(patch.data).length) {
-        await this.d.updateSettings(patch.data).catch((e: unknown) => {
-          settingKeys.forEach((k) => failed.add(k));
+      if (Object.keys(settings).length) {
+        await this.d.updateSettings(settings as Partial<Settings>).catch((e: unknown) => {
+          Object.keys(settings).forEach((k) => failed.add(`setting:${k}`));
           this.d.log(`Synchronisierung: Einstellungen nicht übernommen: ${errorText(e)}`);
         });
       }
@@ -955,7 +1110,7 @@ export class SyncService {
         });
       } else if (secretsChanged) await this.d.phone.secretsChanged().catch(() => {});
     } finally {
-      this.applying = false;
+      this.applying--;
     }
     return failed;
   }
@@ -1042,16 +1197,27 @@ export class SyncService {
 
   private loadState(): SyncState | null {
     try {
-      const parsed = SyncState.safeParse(JSON.parse(readFileSync(this.d.stateFile, "utf8")));
-      return parsed.success ? parsed.data : null;
+      const parsed = StoredState.safeParse(JSON.parse(readFileSync(this.d.stateFile, "utf8")));
+      if (!parsed.success) return null;
+      const { baseBox, base, ...rest } = parsed.data;
+      this.sealedBase = baseBox ?? null;
+      return { ...rest, base: baseBox ? null : (base ?? null) };
     } catch {
       return null;
     }
   }
 
+  /** Atomic: a crash while writing must not lose the base and the list of what is only here. */
   private async saveState(state: SyncState) {
     this.state = state;
+    const { base, ...rest } = state;
+    const key = this.key;
+    const stored: z.input<typeof StoredState> = { ...rest, baseBox: base && key ? seal(key, JSON.stringify(base)) : null };
     await mkdir(path.dirname(this.d.stateFile), { recursive: true });
-    await writeFile(this.d.stateFile, JSON.stringify(state), "utf8");
+    await writeAtomic(this.d.stateFile, JSON.stringify(stored));
   }
+}
+
+function emptyState(login: string): SyncState {
+  return { login, base: null, localKeys: [], localOnly: [], lastSyncAt: null, remote: null, projectKeys: {} };
 }

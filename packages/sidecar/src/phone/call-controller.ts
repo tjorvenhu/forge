@@ -141,8 +141,8 @@ export class CallController implements CallHandler {
     this.rtp.on("audio", (frame) => {
       if (this.begun) this.vad.push(frame);
     });
-    this.rtp.on("dtmf", (digit) => this.onDigit(digit));
-    this.call.on("dtmf", (digit) => this.onDigit(digit));
+    this.rtp.on("dtmf", (digit) => this.onDigit(digit, "rtp"));
+    this.call.on("dtmf", (digit) => this.onDigit(digit, "info"));
     this.rtp.on("drained", () => this.onDrained());
     this.vad.on("speechStart", () => this.onSpeechStart());
     this.vad.on("utterance", (pcm) => this.onUtterance(pcm));
@@ -431,8 +431,13 @@ export class CallController implements CallHandler {
 
   // ---------- keypad: PIN
 
-  private onDigit(digit: string) {
+  /** Some phones send each key both as RTP event and as SIP INFO; the first source that sends one counts. */
+  private dtmfSource: "rtp" | "info" | null = null;
+
+  private onDigit(digit: string, source: "rtp" | "info") {
     if (this.ended || !this.begun) return;
+    if (this.dtmfSource && this.dtmfSource !== source) return;
+    this.dtmfSource = source;
     this.touch();
     if (this.d.onDigit?.(digit)) return;
     this.pinPad.digit(digit);

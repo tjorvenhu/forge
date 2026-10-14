@@ -194,7 +194,13 @@ export function createApp(opts: { dataDir: string; write: Writer; log?: (m: stri
       await invokeHandler(viaHandlers(), "projects.remove", { projectId, deleteFolder: false, deleteGitHubRepo: false });
       notifyProject(projectId);
     },
-    devTools: { get: (projectId) => db.getDevTools(projectId), set: (projectId, value) => db.setDevTools(projectId, value) },
+    devTools: {
+      get: (projectId) => db.getDevTools(projectId),
+      update: (projectId, patch) => {
+        devTools.update(projectId, patch);
+        notifyProject(projectId);
+      },
+    },
     phone: {
       config: () => phone!.syncConfig(),
       apply: (config) => phone!.applySyncConfig(config),

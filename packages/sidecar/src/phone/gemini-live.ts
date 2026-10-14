@@ -332,7 +332,13 @@ export class GeminiLive implements LiveConversation {
   }
 
   sendToolResponses(responses: Array<{ id: string; name: string; result: string }>) {
-    if (!responses.length) return;
+    if (!responses.length || this.closed) return;
+    // Reconnecting: the new connection does not know the call ids. The model still has to learn that
+    // the tool ran, or it calls it again (a push twice).
+    if (!this.ready) {
+      for (const r of responses) this.pendingText.push(`[FORGE: Das Werkzeug ${r.name} ist gelaufen, die Verbindung war kurz weg. Ergebnis: ${r.result}]`);
+      return;
+    }
     this.send({ toolResponse: { functionResponses: responses.map((r) => ({ id: r.id, name: r.name, response: { result: r.result } })) } });
   }
 
