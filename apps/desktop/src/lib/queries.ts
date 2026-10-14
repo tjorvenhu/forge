@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { QueryClient, useMutation, useQuery } from "@tanstack/react-query";
 import type { MethodName, ParamsOf, ResultOf } from "@forge/protocol";
 import { rpc } from "./rpc";
+import { usageOutdated, usageRefetchIn } from "./rate-limit";
 import { loadOlderPages, useSessionEvents } from "@/stores/session-events";
 import { toast } from "@/stores/toast";
 import { errorMessage } from "./rpc";
@@ -98,14 +99,14 @@ export const useClaudeUpdate = () =>
     retry: false,
   });
 
-/** Plan usage; refreshed every 5 minutes and after each finished turn. */
+/** Plan usage; refreshed every 5 minutes, after each finished turn and right after a window resets. */
 export const useUsage = () =>
   useQuery({
     queryKey: keys.usage,
     queryFn: () => call("system.usage", {}),
     staleTime: 60_000,
-    refetchInterval: 5 * 60_000,
-    refetchOnWindowFocus: false,
+    refetchInterval: (q) => usageRefetchIn(q.state.data),
+    refetchOnWindowFocus: (q) => usageOutdated(q.state.data) && "always",
   });
 
 /** Latest plan rate limit of the account; changes arrive as ratelimit.updated. */

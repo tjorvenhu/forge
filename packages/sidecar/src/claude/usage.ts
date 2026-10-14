@@ -41,3 +41,21 @@ export function toPlanUsage(raw: unknown): PlanUsage {
 function clamp(n: number) {
   return Math.max(0, Math.min(100, Math.round(n)));
 }
+
+/**
+ * A window whose reset time has passed starts again at 0 %. Cached numbers are from before the reset,
+ * and Claude Code may still report the old window for a moment after it.
+ */
+export function settleUsage(usage: PlanUsage, now = Date.now()): PlanUsage {
+  if (!usage.windows.some((w) => isOver(w, now) && w.utilization > 0)) return usage;
+  return { ...usage, windows: usage.windows.map((w) => (isOver(w, now) ? { ...w, utilization: 0 } : w)) };
+}
+
+/** True when a window of this usage reset after `since` and by `now`: the numbers are from before it. */
+export function resetSince(usage: PlanUsage, since: number, now = Date.now()): boolean {
+  return usage.windows.some((w) => w.resetsAt !== null && Date.parse(w.resetsAt) > since && isOver(w, now));
+}
+
+function isOver(w: UsageWindow, now: number) {
+  return w.resetsAt !== null && Date.parse(w.resetsAt) <= now;
+}

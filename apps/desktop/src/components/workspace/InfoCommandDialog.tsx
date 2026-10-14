@@ -117,7 +117,7 @@ function Rows({ rows }: { rows: Array<[string, ReactNode]> }) {
 }
 
 const resetText = (iso: string | null) =>
-  iso ? `Wird ${relativeTime(iso)} zurückgesetzt (${new Date(iso).toLocaleString("de-DE", { weekday: "short", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })})` : undefined;
+  iso ? `${Date.parse(iso) <= Date.now() ? "Wurde" : "Wird"} ${relativeTime(iso)} zurückgesetzt (${new Date(iso).toLocaleString("de-DE", { weekday: "short", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })})` : undefined;
 
 function UsageBody() {
   const qc = useQueryClient();
