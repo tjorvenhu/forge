@@ -79,6 +79,34 @@ describe("TitleTooltips", () => {
     expect(text.hasAttribute("aria-label")).toBe(false);
   });
 
+  it("mutes the title of an enclosing element so only one tooltip shows", () => {
+    render(
+      <>
+        <TitleTooltips />
+        <button title="Außen">
+          <span>Text</span>
+          <span title="Innen">Bild</span>
+        </button>
+      </>,
+    );
+    const outer = screen.getByRole("button");
+    const inner = screen.getByText("Bild");
+    fireEvent.pointerOver(inner);
+    expect(outer.hasAttribute("title")).toBe(false);
+    act(() => vi.advanceTimersByTime(450));
+    expect(screen.getByRole("tooltip").textContent).toBe("Innen");
+
+    fireEvent.pointerOut(inner, { relatedTarget: screen.getByText("Text") });
+    fireEvent.pointerOver(screen.getByText("Text"));
+    expect(inner.getAttribute("title")).toBe("Innen");
+    expect(outer.hasAttribute("title")).toBe(false);
+    act(() => vi.advanceTimersByTime(10));
+    expect(screen.getByRole("tooltip").textContent).toBe("Außen");
+
+    fireEvent.pointerOut(outer, { relatedTarget: document.body });
+    expect(outer.getAttribute("title")).toBe("Außen");
+  });
+
   it("hides on click and keeps the title when React changed it meanwhile", () => {
     render(
       <>

@@ -27,18 +27,25 @@ export function TitleTooltips() {
 
   useEffect(() => {
     let target: HTMLElement | null = null;
+    /** ancestors with their own title: muted too, else the browser shows theirs natively next to ours */
+    let muted: HTMLElement[] = [];
     let timer: number | undefined;
     let showing = false;
     let warmUntil = 0;
+
+    const unmute = (el: HTMLElement) => {
+      if (el.dataset.forgeTitle === undefined) return;
+      if (!el.hasAttribute("title")) el.setAttribute("title", el.dataset.forgeTitle);
+      delete el.dataset.forgeTitle;
+    };
 
     const restore = () => {
       window.clearTimeout(timer);
       if (showing) warmUntil = Date.now() + WARM_MS;
       showing = false;
-      if (target?.dataset.forgeTitle !== undefined) {
-        if (!target.hasAttribute("title")) target.setAttribute("title", target.dataset.forgeTitle);
-        delete target.dataset.forgeTitle;
-      }
+      if (target) unmute(target);
+      muted.forEach(unmute);
+      muted = [];
       if (target?.dataset.forgeAriaLabel !== undefined) {
         target.removeAttribute("aria-label");
         delete target.dataset.forgeAriaLabel;
@@ -48,9 +55,11 @@ export function TitleTooltips() {
     };
 
     const onOver = (e: PointerEvent) => {
-      const el = (e.target as Element | null)?.closest?.<HTMLElement>("[title], [data-forge-title]") ?? null;
+      let el = (e.target as Element | null)?.closest?.<HTMLElement>("[title], [data-forge-title]") ?? null;
       if (el === target) return;
       restore();
+      // el may be a muted ancestor of the previous target; its title is only back after restore().
+      el = (e.target as Element | null)?.closest?.<HTMLElement>("[title]") ?? null;
       const text = el?.getAttribute("title")?.trim();
       if (!el || !text) return;
       target = el;
@@ -61,6 +70,11 @@ export function TitleTooltips() {
       }
       el.dataset.forgeTitle = el.getAttribute("title") ?? "";
       el.removeAttribute("title");
+      for (let p = el.parentElement?.closest<HTMLElement>("[title]"); p; p = p.parentElement?.closest<HTMLElement>("[title]")) {
+        p.dataset.forgeTitle = p.getAttribute("title") ?? "";
+        p.removeAttribute("title");
+        muted.push(p);
+      }
       const warm = Date.now() < warmUntil;
       timer = window.setTimeout(
         () => {
