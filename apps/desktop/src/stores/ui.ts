@@ -9,6 +9,8 @@ export type BottomTab = "output" | "dev";
 /** In the order of the tab bar. */
 export const WORKSPACE_TABS = ["chat", "agents", "git", "files", "devtools", "knowledge", "settings"] as const;
 export type WorkspaceTab = (typeof WORKSPACE_TABS)[number];
+/** knowledgeRequest that opens the merge dialog instead of an entry; entry ids never contain a colon */
+export const KNOWLEDGE_MERGE_REQUEST = ":merge";
 /** Tabs that need git; a project set up without git does not show them. */
 const GIT_WORKSPACE_TABS: ReadonlySet<WorkspaceTab> = new Set(["agents", "git"]);
 /** The tabs a project shows, in the order of the tab bar. */

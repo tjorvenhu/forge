@@ -260,6 +260,10 @@ export function createHandlers(s: Services): Handlers {
     "knowledge.read": ({ projectId, id }) => s.knowledge.read(projectId, id),
     "knowledge.save": ({ projectId, ...input }) => s.knowledge.save(projectId, input),
     "knowledge.delete": async ({ projectId, id }) => ({ ok: await s.knowledge.delete(projectId, id) }),
+    "knowledge.cleanup": ({ projectId }) => s.knowledge.cleanup(projectId),
+    "knowledge.mergeDraft": async ({ projectId, ids }) =>
+      s.sessions.draftKnowledgeMerge(s.knowledge.owner(projectId), await Promise.all([...new Set(ids)].map((id) => s.knowledge.read(projectId, id)))),
+    "knowledge.merge": ({ projectId, ids, ...input }) => s.knowledge.merge(projectId, ids, input),
 
     "app.updateState": () => s.updates.get(),
     "app.presence": ({ focused, active, window }) => {

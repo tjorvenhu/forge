@@ -6,6 +6,8 @@ import { GitEngine } from "../src/git/git.js";
 import { ProjectManager } from "../src/projects/project-manager.js";
 import { KNOWLEDGE_DIR, KnowledgeStore } from "../src/knowledge/knowledge.js";
 import { projectTools } from "../src/sessions/forge-tools.js";
+import { ClaudeAssist, MERGE_MODEL } from "../src/sessions/claude-assist.js";
+import type { ClaudeRuntime } from "../src/claude/runtime.js";
 import type { DevEnvironment } from "../src/devtools/environment.js";
 import { tempDir } from "./helpers.js";
 
@@ -14,13 +16,14 @@ describe("KnowledgeStore files", () => {
   let db: Db;
   let projectId: string;
   let store: KnowledgeStore;
+  let projects: ProjectManager;
   let dir: string;
 
   beforeEach(async () => {
     t = tempDir();
     mkdirSync(path.join(t.dir, "web"), { recursive: true });
     db = new Db(path.join(t.dir, "forge.db"));
-    const projects = new ProjectManager(db, new GitEngine(), () => "balanced");
+    projects = new ProjectManager(db, new GitEngine(), () => "balanced");
     projectId = (await projects.import(path.join(t.dir, "web"))).id;
     store = new KnowledgeStore(projects, () => {});
     dir = path.join(t.dir, "web", KNOWLEDGE_DIR);
@@ -99,5 +102,30 @@ describe("KnowledgeStore files", () => {
     expect((await store.read(projectId, "rechtsklick-menue-contextmenuhost")).tags).toEqual(["ui"]);
     await expect(merge.run({ ids: ["deploy-auf-coolify", "fehlt"], title: "Deploy", summary: "Wie wir ausliefern", content: "x" })).rejects.toThrow(/Kein Eintrag „fehlt“/);
     expect(store.list(projectId)).toHaveLength(2);
+  });
+
+  it("lets Claude draft the merged text from the full entries and cleans up its answer", async () => {
+    await store.save(projectId, { id: null, title: "Deploy auf Coolify", summary: "Wie wir ausliefern", tags: ["deploy"], content: "Coolify baut das Dockerfile." });
+    await store.save(projectId, { id: null, title: "Traefik", summary: "Proxy", tags: ["deploy", "proxy"], content: "Traefik komprimiert, nicht Next." });
+    const prompts: string[] = [];
+    let answer: unknown = { title: " Deploy (Coolify, Traefik) ", summary: "Wie wir ausliefern.", tags: ["Deploy", "proxy", "deploy"], content: "# Deploy\n\nCoolify baut, Traefik komprimiert." };
+    const runtime = {
+      completeJson: async (prompt: string, _schema: unknown, opts: { model: string }) => {
+        prompts.push(`${opts.model}:${prompt}`);
+        return answer;
+      },
+    } as unknown as ClaudeRuntime;
+    db.updateSettings({ claudePath: process.execPath });
+    const assist = new ClaudeAssist(db, projects, new GitEngine(), runtime);
+    const entries = await Promise.all(["deploy-auf-coolify", "traefik"].map((id) => store.read(projectId, id)));
+
+    expect(await assist.mergeKnowledge(projectId, entries)).toEqual({ title: "Deploy (Coolify, Traefik)", summary: "Wie wir ausliefern.", tags: ["deploy", "proxy"], content: "# Deploy\n\nCoolify baut, Traefik komprimiert.", model: MERGE_MODEL });
+    expect(prompts[0]).toMatch(/^sonnet:Führe diese Einträge/);
+    expect(prompts[0]).toContain("=== Eintrag traefik");
+    expect(prompts[0]).toContain("Traefik komprimiert, nicht Next.");
+
+    answer = { title: "x", summary: "", tags: [], content: " " };
+    await expect(assist.mergeKnowledge(projectId, entries)).rejects.toThrow(/keinen zusammengeführten Eintrag/);
+    await expect(assist.mergeKnowledge(projectId, entries.slice(0, 1))).rejects.toThrow(/mindestens zwei/);
   });
 });

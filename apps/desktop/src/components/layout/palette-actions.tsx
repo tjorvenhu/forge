@@ -51,6 +51,7 @@ import {
   Trash2,
   Wand2,
   type LucideIcon,
+  Combine,
 } from "lucide-react";
 import type {
   AppUpdateState,
@@ -78,7 +79,7 @@ import { useActivity } from "@/stores/activity";
 import { draftKey, useDrafts } from "@/stores/drafts";
 import { lastEditablePrompt, useMessageEdit } from "@/stores/message-edit";
 import { toast } from "@/stores/toast";
-import { DEV_TOOLS_SECTIONS, PROJECT_SETTINGS_SECTIONS, SETTINGS_SECTIONS, SKILLS_TABS, EXTENSIONS_TABS, workspaceTabsFor, useUi, type SettingsSection, type WorkspaceTab } from "@/stores/ui";
+import { DEV_TOOLS_SECTIONS, KNOWLEDGE_MERGE_REQUEST, PROJECT_SETTINGS_SECTIONS, SETTINGS_SECTIONS, SKILLS_TABS, EXTENSIONS_TABS, workspaceTabsFor, useUi, type SettingsSection, type WorkspaceTab } from "@/stores/ui";
 import { PROFILE_IDS, PROFILE_INFO } from "@/components/projects/ProfileBadge";
 import { RULE_GROUPS } from "@/components/settings/PolicySettings";
 import { idleCloseLabel } from "@/components/settings/idle-close";
@@ -429,6 +430,10 @@ export function buildActions(ctx: ActionContext): PaletteEntry[] {
       const r = root;
       act("agent-new", "Parallelen Agenten starten", icon(Bot), () => ctx.openDialog({ kind: "new-agent", root: r }), { keywords: "worktree branch agent" });
     }
+
+    act("knowledge-merge", "Projektwissen: Einträge zusammenführen", icon(Combine), () => ui.openKnowledge(KNOWLEDGE_MERGE_REQUEST), {
+      keywords: "wissen aufräumen überschneidungen doppelt merge",
+    });
 
     if (project.exists) {
       act("explorer-project", "Projektordner im Explorer öffnen", icon(FolderOpen), () => void revealInProject(project.path, ""), { keywords: "explorer ordner dateien windows" });

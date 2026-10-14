@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, BookOpen, Eye, Pencil, Plus, Search, Trash2 } from "lucide-react";
-import type { KnowledgeEntry, KnowledgeSummary, Project } from "@forge/protocol";
+import { AlertTriangle, BookOpen, Combine, Eye, Pencil, Plus, Search, Trash2 } from "lucide-react";
+import type { KnowledgeEntry, Project } from "@forge/protocol";
 import { call, keys, useKnowledge } from "@/lib/queries";
 import { errorMessage, RpcCallError } from "@/lib/rpc";
 import { cn, relativeTime } from "@/lib/utils";
 import { toast } from "@/stores/toast";
-import { useUi } from "@/stores/ui";
+import { KNOWLEDGE_MERGE_REQUEST, useUi } from "@/stores/ui";
 import { Button } from "@/components/ui/button";
 import { CodeEditor } from "@/components/ui/code-editor";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -14,23 +14,11 @@ import { Field, Input } from "@/components/ui/input";
 import { Badge, EmptyState, ErrorBanner } from "@/components/ui/misc";
 import { Skeleton, SkeletonRegion } from "@/components/ui/skeleton";
 import { Markdown } from "@/components/workspace/Markdown";
+import { filterKnowledge, parseTags, suggestedMerge } from "./knowledge-text";
+import { MergeDialog } from "./MergeDialog";
 
 /** Entry ids never contain a colon, so this cannot clash with one. */
 const NEW = ":new";
-
-/** Entries whose title, summary or tags contain every word of the query. */
-export function filterKnowledge(entries: KnowledgeSummary[], query: string): KnowledgeSummary[] {
-  const words = query.toLowerCase().split(/\s+/).filter(Boolean);
-  if (!words.length) return entries;
-  return entries.filter((e) => {
-    const hay = `${e.title} ${e.summary} ${e.tags.join(" ")}`.toLowerCase();
-    return words.every((w) => hay.includes(w));
-  });
-}
-
-export function parseTags(text: string): string[] {
-  return [...new Set(text.split(/[,\s]+/).map((t) => t.trim().toLowerCase()).filter(Boolean))].slice(0, 12);
-}
 
 /**
  * Knowledge of the project in `.forge/knowledge`: Claude writes and reads it through FORGE tools,
@@ -45,6 +33,10 @@ export function KnowledgeTab({ project }: { project: Project }) {
   /** entry the user wants to switch to while the open one has unsaved changes */
   const [leaveTo, setLeaveTo] = useState<string | null>(null);
   const entries = useMemo(() => filterKnowledge(list.data ?? [], query), [list.data, query]);
+  const cleanup = useKnowledgeCleanup(owner);
+  /** ids preselected in the merge dialog; null while it is closed */
+  const [merging, setMerging] = useState<string[] | null>(null);
+  const overlapCount = cleanup.data?.overlaps.length ?? 0;
   // An edited entry stays open even when the search hides it or someone deletes it meanwhile.
   const pinned = selected !== null && (selected === NEW || dirty || !!list.data?.some((e) => e.id === selected));
   const current = pinned ? selected : (entries[0]?.id ?? null);
@@ -63,6 +55,10 @@ export function KnowledgeTab({ project }: { project: Project }) {
   useEffect(() => {
     if (!request) return;
     useUi.getState().clearKnowledgeRequest();
+    if (request === KNOWLEDGE_MERGE_REQUEST) {
+      setMerging(suggestedMerge(cleanup.data, null));
+      return;
+    }
     // A search could hide the requested entry.
     setQuery("");
     select(request);
@@ -77,6 +73,22 @@ export function KnowledgeTab({ project }: { project: Project }) {
             <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-subtle" />
             <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Wissen durchsuchen" className="pl-8" aria-label="Wissen durchsuchen" />
           </div>
+          <Button
+            size="icon"
+            variant="ghost"
+            onClick={() => setMerging(suggestedMerge(cleanup.data, null))}
+            disabled={(list.data?.length ?? 0) < 2}
+            aria-label="Einträge zusammenführen"
+            title={overlapCount ? `Einträge zusammenführen: ${overlapCount === 1 ? "1 Überschneidung" : `${overlapCount} Überschneidungen`} gefunden` : "Einträge zusammenführen"}
+            className="relative"
+          >
+            <Combine className="h-4 w-4" />
+            {overlapCount > 0 && (
+              <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-warning px-1 text-caption font-semibold leading-none text-accent-fg">
+                {overlapCount}
+              </span>
+            )}
+          </Button>
           <Button size="icon" variant="primary" onClick={() => select(NEW)} aria-label="Neuer Eintrag" title="Neuer Eintrag">
             <Plus className="h-4 w-4" />
           </Button>
@@ -133,6 +145,7 @@ export function KnowledgeTab({ project }: { project: Project }) {
             onDirtyChange={setDirty}
             onSaved={(id) => setSelected(id)}
             onDeleted={() => setSelected(null)}
+            onMerge={(list.data?.length ?? 0) >= 2 ? () => setMerging(suggestedMerge(cleanup.data, current === NEW ? null : current)) : undefined}
           />
         ) : list.isLoading ? (
           <EntrySkeleton />
@@ -164,8 +177,13 @@ export function KnowledgeTab({ project }: { project: Project }) {
           setSelected(leaveTo);
         }}
       />
+      <MergeDialog owner={owner} entries={list.data ?? []} cleanup={cleanup.data} initial={merging} onClose={() => setMerging(null)} onMerged={(id) => select(id)} />
     </div>
   );
+}
+
+function useKnowledgeCleanup(owner: string) {
+  return useQuery({ queryKey: keys.knowledgeCleanup(owner), queryFn: () => call("knowledge.cleanup", { projectId: owner }), staleTime: 60_000 });
 }
 
 /** Entries of the list while it loads: title, summary, tags and date like the real buttons. */
@@ -204,6 +222,7 @@ function EntrySkeleton() {
         </div>
         <Skeleton className="h-2.5 w-24 rounded-sm" />
         <Skeleton className="h-7 w-24" />
+        <Skeleton className="h-7 w-32" />
         <Skeleton className="h-7 w-9" />
         <Skeleton className="h-7 w-22" />
       </div>
@@ -243,12 +262,15 @@ function EntryEditor({
   onDirtyChange,
   onSaved,
   onDeleted,
+  onMerge,
 }: {
   owner: string;
   id: string | null;
   onDirtyChange: (dirty: boolean) => void;
   onSaved: (id: string) => void;
   onDeleted: () => void;
+  /** opens the merge dialog with this entry; missing while there is nothing to merge with */
+  onMerge?: () => void;
 }) {
   const qc = useQueryClient();
   const entry = useQuery({ queryKey: keys.knowledgeEntry(owner, id ?? ""), queryFn: () => call("knowledge.read", { projectId: owner, id: id! }), enabled: !!id });
@@ -305,6 +327,11 @@ function EntryEditor({
         <Button size="sm" variant="ghost" onClick={() => setPreview(!preview)} aria-pressed={preview}>
           {preview ? <Pencil className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />} {preview ? "Bearbeiten" : "Vorschau"}
         </Button>
+        {id && !gone && onMerge && (
+          <Button size="sm" variant="ghost" onClick={onMerge}>
+            <Combine className="h-3.5 w-3.5" /> Zusammenführen
+          </Button>
+        )}
         {id && !gone && (
           <Button size="sm" variant="danger-ghost" onClick={() => setDeleting(true)} aria-label="Eintrag löschen">
             <Trash2 className="h-3.5 w-3.5" />

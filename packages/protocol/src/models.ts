@@ -912,6 +912,24 @@ export type KnowledgeSummary = z.infer<typeof KnowledgeSummary>;
 export const KnowledgeEntry = KnowledgeSummary.extend({ content: z.string() });
 export type KnowledgeEntry = z.infer<typeof KnowledgeEntry>;
 
+/** What to tidy up in a project's knowledge: entries covering the same topic and very long entries. */
+export const KnowledgeCleanup = z.object({
+  /** `a` is largely contained in `b`; score 0-1, strongest first */
+  overlaps: z.array(z.object({ a: z.string(), b: z.string(), score: z.number() })),
+  long: z.array(z.object({ id: z.string(), chars: z.number() })),
+});
+export type KnowledgeCleanup = z.infer<typeof KnowledgeCleanup>;
+
+/** Merged text Claude suggests for several entries; nothing is saved until knowledge.merge. */
+export const KnowledgeMergeDraft = z.object({
+  title: z.string(),
+  summary: z.string(),
+  tags: z.array(z.string()),
+  content: z.string(),
+  model: z.string(),
+});
+export type KnowledgeMergeDraft = z.infer<typeof KnowledgeMergeDraft>;
+
 
 /**
  * FORGE updates from the GitHub releases of the repository. The installer is fetched with the gh

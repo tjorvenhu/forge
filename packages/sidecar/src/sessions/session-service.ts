@@ -6,6 +6,7 @@ import type {
   ContextUsage,
   EffortLevel,
   ExternalSession,
+  KnowledgeEntry,
   PermissionMode,
   PlanUsage,
   RateLimitState,
@@ -343,6 +344,10 @@ export class SessionService {
 
   suggestPullRequest(projectId: string) {
     return this.assist.suggestPullRequest(projectId);
+  }
+
+  draftKnowledgeMerge(projectId: string, entries: KnowledgeEntry[]) {
+    return this.assist.mergeKnowledge(projectId, entries);
   }
 
   // ---------- lifecycle

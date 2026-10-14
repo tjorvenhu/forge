@@ -1,4 +1,5 @@
-import { ForgeError } from "@forge/protocol";
+import { ForgeError, type KnowledgeEntry } from "@forge/protocol";
+import { buildMergePrompt, MERGE_SCHEMA } from "../knowledge/knowledge.js";
 import { z } from "zod";
 import type { ClaudeRuntime } from "../claude/runtime.js";
 import { locateClaude, sessionEnv } from "../claude/environment.js";
@@ -11,6 +12,10 @@ import type { ProjectManager } from "../projects/project-manager.js";
 /** Small, fast model: commit messages need speed more than depth. */
 export const ASSIST_MODEL = "haiku";
 
+/** Merging knowledge must not lose anything; that is worth a stronger model than for commit messages. */
+export const MERGE_MODEL = "sonnet";
+
+const MergeDraft = z.object({ title: z.string(), summary: z.string(), tags: z.array(z.string()), content: z.string() });
 const PrDraft = z.object({ title: z.string(), body: z.string() });
 const PR_SCHEMA = {
   type: "object",
@@ -95,6 +100,24 @@ export class ClaudeAssist {
     if (!rec) throw new ForgeError("SESSION_NOT_FOUND", "Session nicht gefunden.");
     const { claudePath, env } = this.claude();
     return this.runtime.complete(prompt, { cwd: rec.cwd, env, claudePath, model: ASSIST_MODEL });
+  }
+
+  /** Merged text for knowledge entries on one topic; the caller shows or saves it. */
+  async mergeKnowledge(projectId: string, entries: KnowledgeEntry[]) {
+    if (entries.length < 2) throw new ForgeError("VALIDATION", "Zum Zusammenführen braucht es mindestens zwei verschiedene Einträge.");
+    const project = this.projects.requireExisting(projectId);
+    const { claudePath, env } = this.claude();
+    const model = MERGE_MODEL;
+    const raw = await this.runtime.completeJson(buildMergePrompt(entries), MERGE_SCHEMA, { cwd: project.path, env, claudePath, model });
+    const out = MergeDraft.safeParse(raw);
+    if (!out.success || !out.data.content.trim()) throw new ForgeError("CLAUDE_RUNTIME", "Claude hat keinen zusammengeführten Eintrag geliefert.");
+    return {
+      title: out.data.title.trim().slice(0, 120) || entries[0]!.title,
+      summary: out.data.summary.trim().slice(0, 300),
+      tags: [...new Set(out.data.tags.map((t) => t.trim().toLowerCase()).filter(Boolean))].slice(0, 8),
+      content: out.data.content.trim(),
+      model,
+    };
   }
 
   /** Drafts PR title and body from the branch's commits and diff against the default branch. */

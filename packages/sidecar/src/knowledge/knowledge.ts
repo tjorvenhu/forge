@@ -233,6 +233,42 @@ export function covering(entries: KnowledgeEntry[], text: Comparable, min = OVER
     .sort((x, y) => y.score - x.score);
 }
 
+export const MERGE_SCHEMA = {
+  type: "object",
+  properties: {
+    title: { type: "string", description: "kurzer Titel mit den Suchbegriffen, höchstens 100 Zeichen" },
+    summary: { type: "string", description: "ein Satz, höchstens 250 Zeichen" },
+    tags: { type: "array", items: { type: "string" }, description: "2 bis 6 Stichwörter in Kleinbuchstaben" },
+    content: { type: "string", description: "der zusammengeführte Eintrag in Markdown" },
+  },
+  required: ["title", "summary", "tags", "content"],
+  additionalProperties: false,
+};
+
+/** Task for the one-shot call that merges entries; the entries go in completely, so nothing is lost on the way. */
+export function buildMergePrompt(entries: KnowledgeEntry[]): string {
+  return [
+    "Führe diese Einträge aus dem Projektwissen eines Softwareprojekts zu einem einzigen Eintrag zusammen.",
+    "- Erhalte alles Wissen: Dateipfade, Befehle, Begründungen, Stolperfallen, Daten. Lass nur Doppeltes weg.",
+    "- Widersprechen sich Einträge, gilt der mit dem neueren Stand.",
+    "- Nichts erfinden, nichts hinzufügen, was nicht in den Einträgen steht.",
+    "- Titel: kurz, mit den Begriffen, unter denen man ihn sucht (Code-Namen gern in Klammern).",
+    "- Zusammenfassung: ein Satz, worum es geht und wann man den Eintrag braucht.",
+    "- Tags: 2 bis 6, aus denen der Einträge.",
+    "- Inhalt: Markdown, beginnt mit '# <Titel>', danach Abschnitte mit '##'. Sprache wie in den Einträgen.",
+    "",
+    ...entries.flatMap((e) => [
+      `=== Eintrag ${e.id} (Stand ${e.updatedAt.slice(0, 10)}) ===`,
+      `Titel: ${e.title}`,
+      `Zusammenfassung: ${e.summary}`,
+      `Tags: ${e.tags.join(", ")}`,
+      "",
+      e.content.trim(),
+      "",
+    ]),
+  ].join("\n");
+}
+
 function snippet(content: string, words: string[]): string {
   const flat = content.replace(/\s+/g, " ").trim();
   const lower = flat.toLowerCase();

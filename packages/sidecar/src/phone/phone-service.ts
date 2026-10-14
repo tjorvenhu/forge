@@ -1820,11 +1820,30 @@ export class PhoneService {
           projectChanged(p.id);
           return `${AUTOMATION_TAGS[patch.tag]} ist für ${p.name} ${patch.on ? "an" : "aus"}. ${state(next.tags)}`;
         }),
-      knowledge: (projectName, query, id, remove) =>
+      knowledge: (projectName, query, id, remove, o) =>
         run(true, async () => {
           const p = findProject(projectName);
           const store = this.d.knowledge;
           if (!store) return "Fehler: Das Projektwissen ist hier nicht verfügbar.";
+          if (o?.merge?.length) {
+            const ids = [...new Set(o.merge)];
+            if (ids.length < 2) return "Fehler: Zum Zusammenführen brauche ich mindestens zwei Kennungen.";
+            const draft = await call("knowledge.mergeDraft", { projectId: p.id, ids });
+            const { entry, removed } = await call("knowledge.merge", { projectId: p.id, ids, title: draft.title, summary: draft.summary, tags: draft.tags, content: draft.content });
+            return `Zusammengeführt in ${entry.id}: ${asData(entry.title)}. Gelöscht: ${removed.join(", ")}. Den Text hat Claude (${draft.model}) geschrieben; alte Fassungen liegen im Git.`;
+          }
+          if (o?.cleanup) {
+            const { overlaps, long } = await call("knowledge.cleanup", { projectId: p.id });
+            if (!overlaps.length && !long.length) return `Im Projektwissen von ${p.name} überschneidet sich nichts, und kein Eintrag ist sehr lang.`;
+            const title = new Map(store.list(p.id).map((e) => [e.id, e.title]));
+            const name = (k: string) => `${k} (${title.get(k) ?? k})`;
+            return asData(
+              [
+                ...overlaps.slice(0, 5).map((x) => `Überschneidung ${Math.round(x.score * 100)} %: ${name(x.a)} und ${name(x.b)}`),
+                ...long.slice(0, 5).map((l) => `Sehr lang (${Math.round(l.chars / 1000)} KB): ${name(l.id)}`),
+              ].join("\n"),
+            );
+          }
           if (remove) {
             const key = id?.trim();
             if (!key) return "Fehler: Zum Löschen brauche ich die Kennung des Eintrags (id).";

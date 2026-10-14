@@ -47,6 +47,8 @@ export const keys = {
   testDb: (id: string) => ["testDb", id] as const,
   knowledge: (id: string) => ["knowledge", id] as const,
   knowledgeEntry: (id: string, entryId: string) => ["knowledge", id, entryId] as const,
+  /** colon: entry ids never contain one, so this cannot clash with an entry */
+  knowledgeCleanup: (id: string) => ["knowledge", id, ":cleanup"] as const,
   phoneState: ["phoneState"] as const,
   phoneConfig: ["phoneConfig"] as const,
   phoneCalls: ["phoneCalls"] as const,

@@ -975,6 +975,16 @@ describe("PhoneService end to end with a test PBX", () => {
     expect(await conv.tools.knowledge("shop", "", "deploy-auf-coolify", true)).toBe("Eintrag deploy-auf-coolify aus dem Projektwissen von shop gelöscht.");
     expect(await conv.tools.knowledge("shop", "kompression")).toBe("shop hat noch kein Projektwissen.");
 
+    rpcResults["knowledge.cleanup"] = () => ({ overlaps: [{ a: "traefik", b: "deploy", score: 0.71 }], long: [{ id: "sync", chars: 9200 }] });
+    const tidy = await conv.tools.knowledge("shop", "", undefined, undefined, { cleanup: true });
+    expect(tidy).toContain("Überschneidung 71 %: traefik (traefik) und deploy (deploy)");
+    expect(tidy).toContain("Sehr lang (9 KB): sync (sync)");
+    expect(await conv.tools.knowledge("shop", "", undefined, undefined, { merge: ["deploy", "deploy"] })).toMatch(/^Fehler: Zum Zusammenführen brauche ich mindestens zwei/);
+    rpcResults["knowledge.mergeDraft"] = () => ({ title: "Deploy", summary: "Wie wir ausliefern", tags: ["deploy"], content: "# Deploy", model: "sonnet" });
+    rpcResults["knowledge.merge"] = () => ({ entry: { id: "deploy", title: "Deploy", summary: "Wie wir ausliefern", tags: ["deploy"], updatedAt: "", content: "# Deploy" }, removed: ["traefik"] });
+    expect(await conv.tools.knowledge("shop", "", undefined, undefined, { merge: ["deploy", "traefik"] })).toMatch(/^Zusammengeführt in deploy: .*Deploy.*\. Gelöscht: traefik\. Den Text hat Claude \(sonnet\) geschrieben/);
+    expect(rpcCalls.filter(([m]) => m === "knowledge.merge").at(-1)?.[1]).toEqual({ projectId, ids: ["deploy", "traefik"], title: "Deploy", summary: "Wie wir ausliefern", tags: ["deploy"], content: "# Deploy" });
+
     testDbCalls = [];
     expect(await conv.tools.testDatabase("shop", "restart")).toBe("Test-Datenbank von shop neu gestartet.");
     expect(testDbCalls).toEqual([`stop:${projectId}`, `start:${projectId}`]);

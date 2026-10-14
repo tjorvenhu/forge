@@ -11,7 +11,9 @@ import {
   ContextUsage,
   DevServerState,
   DevToolsConfig,
+  KnowledgeCleanup,
   KnowledgeEntry,
+  KnowledgeMergeDraft,
   KnowledgeSummary,
   TestDbConfig,
   TestDbState,
@@ -68,6 +70,13 @@ import {
 } from "./models.js";
 
 const id = z.string().min(1).max(100);
+const knowledgeFields = {
+  title: z.string().trim().min(1).max(120),
+  summary: z.string().trim().max(300),
+  tags: z.array(z.string().trim().min(1).max(40)).max(12),
+  content: z.string().max(50_000),
+};
+const knowledgeIds = z.array(id).min(2).max(6);
 const projectRef = z.object({ projectId: id });
 const sessionRef = z.object({ sessionId: id });
 const relPaths = z.array(z.string().min(1).max(4096)).min(1).max(2000);
@@ -383,14 +392,20 @@ export const methods = {
     params: projectRef.extend({
       /** null creates a new entry */
       id: id.nullable(),
-      title: z.string().trim().min(1).max(120),
-      summary: z.string().trim().max(300),
-      tags: z.array(z.string().trim().min(1).max(40)).max(12),
-      content: z.string().max(50_000),
+      ...knowledgeFields,
     }),
     result: KnowledgeEntry,
   },
   "knowledge.delete": { params: projectRef.extend({ id }), result: z.object({ ok: z.boolean() }) },
+  /** entries that likely cover the same topic, and very long ones */
+  "knowledge.cleanup": { params: projectRef, result: KnowledgeCleanup },
+  /** one-shot Claude call that writes the merged text; saves nothing */
+  "knowledge.mergeDraft": { params: projectRef.extend({ ids: knowledgeIds }), result: KnowledgeMergeDraft },
+  /** writes the text into the first entry and deletes the others */
+  "knowledge.merge": {
+    params: projectRef.extend({ ids: knowledgeIds, ...knowledgeFields }),
+    result: z.object({ entry: KnowledgeEntry, removed: z.array(z.string()) }),
+  },
 
   "app.updateState": { params: empty, result: AppUpdateState },
   /**
