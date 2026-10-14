@@ -1,5 +1,6 @@
 import { Download, Plus } from "lucide-react";
-import { call, useClaudeSetup, useClaudeUpdate, useDiagnostics, useLiveSessions, useProjects, useUsage } from "@/lib/queries";
+import { call, useClaudeSetup, useClaudeUpdate, useDiagnostics, useGitHubAccount, useLiveSessions, useProjects, useUsage } from "@/lib/queries";
+import { AuthorAvatar } from "@/components/git/AuthorAvatar";
 import { errorMessage } from "@/lib/rpc";
 import { toast } from "@/stores/toast";
 import { Button } from "@/components/ui/button";
@@ -147,7 +148,7 @@ function ClaudeStatusCard() {
               </div>
             )}
           </div>
-          <span className="text-caption text-subtle">{d?.claude.version?.split(" ")[0] ?? ""}</span>
+          <GitHubAvatar />
         </div>
         {usage.isPending ? (
           <SkeletonRegion label="Lädt Nutzung" className="flex w-full flex-col gap-1.5">
@@ -175,6 +176,19 @@ function ClaudeStatusCard() {
       <ClaudeUpdateButton />
     </div>
     </>
+  );
+}
+
+/** Picture of the signed-in GitHub account; nothing without a login. */
+function GitHubAvatar() {
+  const account = useGitHubAccount();
+  if (account.isPending) return <Skeleton className="h-6 w-6 shrink-0 rounded-full" />;
+  const a = account.data;
+  if (!a) return null;
+  return (
+    <span title={`Bei GitHub angemeldet als @${a.login}`}>
+      <AuthorAvatar name={a.name ?? a.login} url={a.avatarUrl} className="h-6 w-6" />
+    </span>
   );
 }
 
