@@ -179,7 +179,11 @@ export class WorktreeService {
       if (existsSync(path.join(dir, ".git"))) {
         if (!cwd) throw new ForgeError("GIT_FAILED", `Das Repository zu diesem Worktree wurde nicht gefunden: ${dir}`);
         const r = await this.git.exec(cwd, ["worktree", "remove", ...(force ? ["--force"] : []), dir], undefined, 60_000);
-        if (r.code === 0) return;
+        if (r.code === 0) {
+          // On Windows git can report success and still leave node_modules (pnpm junctions) behind.
+          if (existsSync(dir)) await rm(dir, { recursive: true, force: true, maxRetries: 2, retryDelay: 100 }).catch(() => undefined);
+          return;
+        }
         last = (r.stderr || r.stdout).trim();
         // Paths beyond 260 characters (node_modules of the worktree) stop git on Windows, Node
         // deletes them; `worktree prune` afterwards drops git's entry for the folder.
