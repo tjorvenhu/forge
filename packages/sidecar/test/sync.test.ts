@@ -424,6 +424,33 @@ describe("encrypted sync over a private GitHub repository", () => {
     expect(gh.writes).toBe(1);
   });
 
+  it("does not write back and forth once two computers agree", async () => {
+    const gh = new FakeGitHub();
+    const a = await joined(gh, "PC-A", (c) => {
+      c.add("shop", "https://github.com/me/shop.git");
+      c.devTools.set("p-shop", { env: "A=1", useEnv: true });
+      c.phone = { number: "+491", desk: { host: "x" } };
+      c.secrets.set("sip-password", "geheim");
+      c.identity = { name: "A", email: "a@example.com" };
+      writeFileSync(path.join(c.claudeDir, "CLAUDE.md"), "regeln\r\n");
+      writeFileSync(c.claudeJson, JSON.stringify({ mcpServers: { db: { command: "db" } } }));
+    });
+    const b = await joined(gh, "PC-B", (c) => c.add("shop", "https://github.com/me/shop.git"));
+    await a.svc.now();
+    const writes = gh.writes;
+    for (let i = 0; i < 3; i++) {
+      await b.svc.now();
+      await a.svc.now();
+    }
+    expect(gh.writes).toBe(writes);
+
+    b.settings.sounds = false;
+    await b.svc.now();
+    await a.svc.now();
+    await b.svc.now();
+    expect(gh.writes).toBe(writes + 1);
+  });
+
   it("refuses a public repository and needs a GitHub login", async () => {
     const gh = new FakeGitHub();
     gh.repos.set("me/forge-data", { private: false, commits: [] });
