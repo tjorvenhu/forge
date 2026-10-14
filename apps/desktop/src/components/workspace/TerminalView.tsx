@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { attachTerminal, loadTerminalModule } from "@/lib/terminal-registry";
+import { attachTerminal, loadTerminalModule, terminalMenu } from "@/lib/terminal-registry";
+import { contextItems } from "@/lib/context-menu";
 import type { TerminalTab } from "@/stores/terminals";
 import { Skeleton, SkeletonRegion } from "@/components/ui/skeleton";
 
@@ -32,8 +33,9 @@ export function TerminalView({ tab }: { tab: TerminalTab }) {
 
   if (failed) return <div className="p-3 text-small text-danger">Terminal konnte nicht geladen werden: {failed}</div>;
   return (
-    <div className="relative h-full w-full">
-      <div ref={host} className="h-full w-full" />
+    // Only the terminal's own entries: the general field entries would act on xterm's hidden input.
+    <div className="relative h-full w-full" data-context-plain>
+      <div ref={host} className="h-full w-full" onContextMenu={contextItems(() => terminalMenu(key))} />
       {!ready && <TerminalSkeleton />}
     </div>
   );

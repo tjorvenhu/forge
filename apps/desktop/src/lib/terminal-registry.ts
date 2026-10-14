@@ -2,7 +2,12 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import type { IDisposable, Terminal } from "@xterm/xterm";
 import type { FitAddon } from "@xterm/addon-fit";
+import { createElement } from "react";
+import { ClipboardPaste, Copy, Eraser, TextSelect } from "lucide-react";
 import { useTerminals, type TerminalProgram } from "@/stores/terminals";
+import { toast } from "@/stores/toast";
+import { copyText } from "@/lib/context-menu";
+import type { MenuItem } from "@/components/ui/dropdown";
 
 /** xterm is loaded with the first terminal, not with the app: most sessions never open one. */
 let xterm: { Terminal: typeof Terminal; FitAddon: typeof FitAddon } | null = null;
@@ -192,6 +197,42 @@ export function attachTerminal(key: string, host: HTMLElement, spec: TerminalSpe
     ro.disconnect();
     if (e.el.parentElement === host) host.removeChild(e.el);
   };
+}
+
+/** Right-click entries of a terminal tab: copy and paste go through xterm, so the shell gets the text as typed. */
+export function terminalMenu(key: string): MenuItem[] {
+  const entry = entries.get(key);
+  if (!entry) return [];
+  const { term } = entry;
+  const selected = term.getSelection();
+  const icon = "h-3.5 w-3.5";
+  return [
+    { label: "Kopieren", icon: createElement(Copy, { className: icon }), hint: "Strg+Umschalt+C", disabled: !selected, onSelect: () => copyText(selected) },
+    {
+      label: "Einfügen",
+      icon: createElement(ClipboardPaste, { className: icon }),
+      hint: "Strg+V",
+      disabled: entry.id === null,
+      onSelect: () => {
+        navigator.clipboard.readText().then(
+          (text) => {
+            term.paste(text);
+            term.focus();
+          },
+          () => toast.error("Einfügen nicht möglich", "Die Zwischenablage ist nicht lesbar. Mit Strg+V einfügen."),
+        );
+      },
+    },
+    { label: "Alles auswählen", icon: createElement(TextSelect, { className: icon }), onSelect: () => term.selectAll() },
+    {
+      label: "Ausgabe leeren",
+      icon: createElement(Eraser, { className: icon }),
+      onSelect: () => {
+        term.clear();
+        term.focus();
+      },
+    },
+  ];
 }
 
 /** Ends the process of a terminal tab and frees its terminal. */

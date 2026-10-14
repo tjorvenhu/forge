@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Cloud } from "lucide-react";
+import { RefreshCw } from "lucide-react";
 import type { SyncStatus } from "@forge/protocol";
 import { useSettings, useSyncStatus } from "@/lib/queries";
 import { cn, relativeTime } from "@/lib/utils";
@@ -10,7 +10,7 @@ import { formatBackupDate } from "@/components/settings/BackupSettings";
 
 type Tone = "ok" | "busy" | "warn" | "bad";
 
-/** What the cloud says at a glance: colour of cloud and dot, and the headline of the tooltip. */
+/** What the sync symbol says at a glance: colour of symbol and dot, and the headline of the tooltip. */
 export function syncLook(st: SyncStatus): { tone: Tone; title: string } {
   if (st.phase === "syncing") return { tone: "busy", title: "Wird gerade abgeglichen" };
   if (st.phase === "error") return { tone: "bad", title: "Abgleich fehlgeschlagen" };
@@ -22,17 +22,12 @@ export function syncLook(st: SyncStatus): { tone: Tone; title: string } {
 }
 
 const DOT: Record<Tone, string> = { ok: "bg-success", busy: "animate-soft-pulse bg-graph-blue", warn: "bg-warning", bad: "bg-danger" };
-const CLOUD: Record<Tone, string> = {
-  ok: "fill-graph-blue/15 text-graph-blue",
-  busy: "fill-graph-blue/15 text-graph-blue",
-  warn: "fill-warning/15 text-warning",
-  bad: "fill-danger/15 text-danger",
-};
+const ICON: Record<Tone, string> = { ok: "text-muted", busy: "text-graph-blue", warn: "text-warning", bad: "text-danger" };
 
 /**
- * Header cloud while the GitHub sync is on, next to the pin and the phone: a tinted cloud with a
- * status dot (green, pulsing blue while it syncs, yellow or red when something needs attention);
- * the tooltip tells when it last synced and what waits.
+ * Header sync symbol while the GitHub sync is on, next to the pin and the phone: two arrows in a
+ * circle that turn while FORGE syncs, with a status dot (green, pulsing blue while it syncs, yellow or
+ * red when something needs attention); the tooltip tells when it last synced and what waits.
  */
 export function SyncButton() {
   const enabled = useSettings().data?.syncEnabled;
@@ -43,7 +38,7 @@ export function SyncButton() {
   return (
     <Tooltip content={<SyncTip st={st} title={title} tone={tone} />} delay={150}>
       <Button size="icon" variant="ghost" onClick={() => openSettings("github")} aria-label={`GitHub-Synchronisierung: ${title}`} className="relative h-9 w-9 rounded-lg">
-        <Cloud className={cn("h-4.5 w-4.5", CLOUD[tone])} strokeWidth={1.75} />
+        <RefreshCw className={cn("h-4 w-4", ICON[tone], st.phase === "syncing" && "animate-spin [animation-duration:1.6s]")} strokeWidth={2} />
         <span className={cn("absolute bottom-2 right-1.5 h-2 w-2 rounded-full ring-2 ring-bg", DOT[tone])} aria-hidden />
       </Button>
     </Tooltip>

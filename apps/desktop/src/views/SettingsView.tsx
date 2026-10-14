@@ -19,7 +19,7 @@ import {
   XCircle,
 } from "lucide-react";
 import type { Diagnostics, ProfileId, Settings, ToolCheck, EffortLevel } from "@forge/protocol";
-import { call, keys, useDiagnostics, usePhoneState, useRuntimeInfo, useSettings } from "@/lib/queries";
+import { call, keys, useDiagnostics, useRuntimeInfo, useSettings } from "@/lib/queries";
 import { errorMessage } from "@/lib/rpc";
 import { pickFolder } from "@/lib/native";
 import { playSound } from "@/lib/sounds";
@@ -287,22 +287,9 @@ function GitHubSection({ s, save }: { s: Settings; save: Save }) {
   );
 }
 
+/** The phone settings come as their own cards, one per topic. */
 function PhoneSection() {
-  const state = usePhoneState().data;
-  return (
-    <Group
-      title="Telefon"
-      description={
-        state?.enabled
-          ? "Das Telefon ist eingeschaltet. Ausschalten beendet die Anmeldung an der Anlage und das Tischtelefon."
-          : "Ruf FORGE an, frag nach dem Stand, gib Freigaben und starte Agenten per Sprache. Ausgeschaltet nimmt FORGE keine Anrufe an und ruft nicht zurück."
-      }
-    >
-      <div className="p-4">
-        <PhoneSettings />
-      </div>
-    </Group>
-  );
+  return <PhoneSettings />;
 }
 
 function AboutSection({ s, save }: { s: Settings; save: Save }) {

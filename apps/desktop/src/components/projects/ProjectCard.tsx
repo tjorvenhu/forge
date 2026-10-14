@@ -1,8 +1,10 @@
 import type { ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, Bot, Code2, GitBranch, MoreHorizontal, Shield, ShieldAlert, ShieldCheck, Star, Tag, Trash2 } from "lucide-react";
+import { AlertTriangle, Bot, Code2, Copy, FolderOpen, FolderSearch, GitBranch, MessageSquarePlus, MoreHorizontal, Settings2, Shield, ShieldAlert, ShieldCheck, Star, Tag, Trash2 } from "lucide-react";
 import type { ProjectWithStatus } from "@forge/protocol";
 import { call, keys } from "@/lib/queries";
+import { contextItems, copyText } from "@/lib/context-menu";
+import { revealPath } from "@/components/workspace/file-links";
 import { errorMessage } from "@/lib/rpc";
 import { relativeTime, cn } from "@/lib/utils";
 import { useUi } from "@/stores/ui";
@@ -30,7 +32,25 @@ export function ProjectCard({ p, agents = [], onRemove }: { p: ProjectWithStatus
   };
 
   return (
-    <div className={cn("group flex flex-col rounded-xl border border-border bg-surface transition-colors hover:border-border-strong", !p.exists && "opacity-70")}>
+    <div
+      className={cn("group flex flex-col rounded-xl border border-border bg-surface transition-colors hover:border-border-strong", !p.exists && "opacity-70")}
+      onContextMenu={contextItems(() => [
+        { label: "Öffnen", icon: <FolderOpen className="h-3.5 w-3.5" />, onSelect: () => openProject(p.id) },
+        { label: "Neue Session", icon: <MessageSquarePlus className="h-3.5 w-3.5" />, onSelect: () => openProject(p.id, null) },
+        { label: p.favorite ? "Aus Favoriten entfernen" : "Zu Favoriten", icon: <Star className="h-3.5 w-3.5" />, onSelect: () => void toggleFavorite() },
+        {
+          label: "Projekteinstellungen",
+          icon: <Settings2 className="h-3.5 w-3.5" />,
+          onSelect: () => {
+            openProject(p.id);
+            openProjectSettings("general");
+          },
+        },
+        ...(p.exists ? [{ label: "Im Explorer zeigen", icon: <FolderSearch className="h-3.5 w-3.5" />, onSelect: () => void revealPath(p.path) }] : []),
+        { label: "Pfad kopieren", icon: <Copy className="h-3.5 w-3.5" />, onSelect: () => copyText(p.path) },
+        { label: "Entfernen oder löschen", icon: <Trash2 className="h-3.5 w-3.5" />, danger: true, onSelect: () => onRemove(p) },
+      ])}
+    >
       <button className="flex items-center gap-3 px-4 pb-2.5 pt-4 text-left" onClick={() => openProject(p.id)} aria-label={`${p.name} öffnen`} title={`${p.name}\n${p.path}`}>
         <ProjectIcon id={p.parentId ?? p.id} name={p.name} size={32} />
         <div className="min-w-0 flex-1">

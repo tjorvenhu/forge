@@ -8,11 +8,12 @@ import { cn, relativeTime } from "@/lib/utils";
 import { toast } from "@/stores/toast";
 import { Button } from "@/components/ui/button";
 import { Field, Input } from "@/components/ui/input";
-import { Badge, ErrorBanner, LabelWithInfo, SectionTitle, ToggleRow } from "@/components/ui/misc";
+import { Badge, ErrorBanner, LabelWithInfo, ToggleRow } from "@/components/ui/misc";
 import { Skeleton, SkeletonRegion } from "@/components/ui/skeleton";
 import { Select } from "@/components/ui/select";
 import { PhoneStatusBadge } from "@/components/layout/PhoneButton";
 import { PhoneNumberList } from "./PhoneNumberList";
+import { Group } from "./layout";
 
 const DEFAULT_PORT = "5060";
 
@@ -130,6 +131,7 @@ export function PhoneSettings() {
   const qc = useQueryClient();
   const [draft, setDraft] = useState<Draft | null>(null);
   const [advanced, setAdvanced] = useState(false);
+  const [models, setModels] = useState(false);
   const latest = useRef<Draft | null>(null);
   /** the non-secret part of the last save; equal drafts are not sent again */
   const lastSaved = useRef<string | null>(null);
@@ -272,45 +274,55 @@ export function PhoneSettings() {
   );
 
   return (
-    <div onBlur={onFieldBlur} className="flex flex-col gap-5">
-      <div className="flex flex-wrap items-center gap-3 rounded-lg border border-border bg-surface-2 px-3 py-2.5">
-        {state && <PhoneStatusBadge state={state} />}
-        <span className="min-w-0 flex-1 text-body text-muted">
-          {state?.registration === "failed" && state.message
-            ? state.message
-            : state?.registration === "registered"
-              ? `Angemeldet als ${c.username} an ${c.server}.`
-              : !c.server
-                ? "Ruf FORGE an und steuere Sessions per Sprache. Trag dafür unten die Zugangsdaten deiner Telefonanlage ein und schalte das Telefon ein."
-                : "Ein- und ausschalten auch über das Telefon-Symbol oben rechts."}
-        </span>
-        {state?.registration === "registered" && c.notifyNumbers.some((n) => n.enabled) && (
-          <Button size="sm" onClick={() => void call("phone.testCall", {}).then((s) => qc.setQueryData(keys.phoneState, s)).catch((e: unknown) => toast.error("Testanruf fehlgeschlagen", errorMessage(e)))}>
-            <PhoneOutgoing className="h-3.5 w-3.5" /> Testanruf
+    <div onBlur={onFieldBlur} className="flex flex-col gap-6">
+      <Group
+        title="Telefon"
+        description={
+          enabled
+            ? "Das Telefon ist eingeschaltet. Ausschalten beendet die Anmeldung an der Anlage und das Tischtelefon."
+            : "Ruf FORGE an, frag nach dem Stand, gib Freigaben und starte Agenten per Sprache. Ausgeschaltet nimmt FORGE keine Anrufe an und ruft nicht zurück."
+        }
+      >
+        <div className="flex flex-wrap items-center gap-3 px-4 py-3">
+          {state && <PhoneStatusBadge state={state} />}
+          <span className="min-w-0 flex-1 text-body text-muted">
+            {state?.registration === "failed" && state.message
+              ? state.message
+              : state?.registration === "registered"
+                ? `Angemeldet als ${c.username} an ${c.server}.`
+                : !c.server
+                  ? "Trag unten die Zugangsdaten deiner Telefonanlage ein und schalte das Telefon ein."
+                  : "Ein- und ausschalten auch über das Telefon-Symbol oben rechts."}
+          </span>
+          {state?.registration === "registered" && c.notifyNumbers.some((n) => n.enabled) && (
+            <Button size="sm" onClick={() => void call("phone.testCall", {}).then((s) => qc.setQueryData(keys.phoneState, s)).catch((e: unknown) => toast.error("Testanruf fehlgeschlagen", errorMessage(e)))}>
+              <PhoneOutgoing className="h-3.5 w-3.5" /> Testanruf
+            </Button>
+          )}
+          <Button size="sm" variant={enabled ? "outline" : "primary"} onClick={() => void toggle(!enabled)}>
+            <Power className="h-3.5 w-3.5" /> {enabled ? "Ausschalten" : "Einschalten"}
           </Button>
-        )}
-        <Button size="sm" variant={enabled ? "outline" : "primary"} onClick={() => void toggle(!enabled)}>
-          <Power className="h-3.5 w-3.5" /> {enabled ? "Ausschalten" : "Einschalten"}
-        </Button>
-      </div>
+        </div>
+      </Group>
 
-      <div className="grid gap-5 xl:grid-cols-2">
-        <div className="flex flex-col gap-4">
-          <SectionTitle>
-            <LabelWithInfo
-              info={
-                <div className="flex flex-col gap-1.5">
-                  <p>
-                    FORGE meldet sich über UDP an. Audio läuft unverschlüsselt als G.711 (PCMA/PCMU). TLS und SRTP werden noch nicht unterstützt. Beim ersten Anruf fragt die
-                    Windows-Firewall, ob Node.js Verbindungen annehmen darf. Erlaube mindestens private Netzwerke, sonst kommt im Gespräch kein Ton an.
-                  </p>
-                  <p>Passwörter und API-Keys speichert FORGE verschlüsselt für dein Windows-Konto. Änderungen speichert FORGE selbst, Textfelder beim Verlassen des Felds.</p>
-                </div>
-              }
-            >
-              Anmeldung an der Telefonanlage (SIP)
-            </LabelWithInfo>
-          </SectionTitle>
+      <Group
+        title={
+          <LabelWithInfo
+            info={
+              <div className="flex flex-col gap-1.5">
+                <p>
+                  FORGE meldet sich über UDP an. Audio läuft unverschlüsselt als G.711 (PCMA/PCMU). TLS und SRTP werden noch nicht unterstützt. Beim ersten Anruf fragt die
+                  Windows-Firewall, ob Node.js Verbindungen annehmen darf. Erlaube mindestens private Netzwerke, sonst kommt im Gespräch kein Ton an.
+                </p>
+                <p>Passwörter und API-Keys speichert FORGE verschlüsselt für dein Windows-Konto. Änderungen speichert FORGE selbst, Textfelder beim Verlassen des Felds.</p>
+              </div>
+            }
+          >
+            Anmeldung an der Telefonanlage (SIP)
+          </LabelWithInfo>
+        }
+      >
+        <div className="flex flex-col gap-4 p-4">
           <div className="grid grid-cols-[1fr_96px] gap-3">
             <Field label="Server">
               <Input value={draft.server} onChange={(e) => up({ server: e.target.value })} placeholder="z. B. pbx.example.de oder 192.168.1.10" className="font-mono text-xs" />
@@ -335,9 +347,7 @@ export function PhoneSettings() {
             </Field>
           </div>
           {secret("Passwort", c.hasPassword, draft.password, (v) => up({ password: v }), "password")}
-          <button className="flex items-center gap-1 self-start text-xs text-muted hover:text-fg" onClick={() => setAdvanced(!advanced)} aria-expanded={advanced}>
-            <ChevronRight className={cn("h-3.5 w-3.5 transition-transform", advanced && "rotate-90")} /> Erweitert
-          </button>
+          <AdvancedToggle open={advanced} onToggle={() => setAdvanced(!advanced)} />
           {advanced && (
             <div className="grid grid-cols-2 gap-3">
               <Field label="Anmeldename (falls abweichend)">
@@ -346,6 +356,58 @@ export function PhoneSettings() {
               <Field label="SIP-Domain (falls abweichend)">
                 <Input value={draft.domain ?? ""} onChange={(e) => up({ domain: e.target.value })} placeholder={draft.server} className="font-mono text-xs" />
               </Field>
+            </div>
+          )}
+        </div>
+      </Group>
+
+      <Group
+        title={
+          <LabelWithInfo info={`Bei eingeschaltetem Telefon geht Gesprächsaudio an ${live ? "Google (Gemini Live)" : draft.speechProvider === "gemini" ? "Google (Gemini)" : "OpenAI"}.`}>
+            Gesprächspartner
+          </LabelWithInfo>
+        }
+      >
+        <div className="flex flex-col gap-4 p-4">
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Wer spricht mit dir">
+              <Select<PhoneEngine> value={draft.engine} onChange={(v) => up({ engine: v })} options={ENGINES} className="w-full" />
+            </Field>
+            <Field label="Stimme">
+              {needsGemini ? (
+                <Select value={draft.geminiVoice} onChange={(v) => up({ geminiVoice: v })} options={PHONE_GEMINI_VOICES.map((v) => ({ value: v, label: v }))} className="w-full" />
+              ) : (
+                <Select value={draft.voice} onChange={(v) => up({ voice: v })} options={PHONE_VOICES.map((v) => ({ value: v, label: v }))} className="w-full" />
+              )}
+            </Field>
+            {!live && (
+              <Field label="Hören und Sprechen über">
+                <Select<"openai" | "gemini">
+                  value={draft.speechProvider}
+                  onChange={(v) => up({ speechProvider: v })}
+                  options={[
+                    { value: "gemini", label: "Gemini" },
+                    { value: "openai", label: "OpenAI" },
+                  ]}
+                  className="w-full"
+                />
+              </Field>
+            )}
+          </div>
+          {needsGemini &&
+            secret(
+              "Gemini-API-Key",
+              c.hasGeminiKey,
+              draft.geminiKey,
+              (v) => up({ geminiKey: v }),
+              "geminiKey",
+              live ? "Für Gemini Live. Abgerechnet über dein Google-AI-Konto, nicht über das Claude-Abo." : "Für Spracherkennung und Sprachausgabe. Das Gespräch selbst führt Claude über dein Abo.",
+            )}
+          {needsOpenAi &&
+            secret("OpenAI-API-Key", c.hasOpenAiKey, draft.openAiKey, (v) => up({ openAiKey: v }), "openAiKey", "Für Spracherkennung und Sprachausgabe. Das Gespräch selbst führt Claude über dein Abo.")}
+          <AdvancedToggle label="Modelle" open={models} onToggle={() => setModels(!models)} />
+          {models && (
+            <div className="grid grid-cols-2 gap-3">
               <Field label="Modell Gemini Live">
                 <Input value={draft.liveModel} onChange={(e) => up({ liveModel: e.target.value })} className="font-mono text-xs" />
               </Field>
@@ -365,48 +427,10 @@ export function PhoneSettings() {
             </div>
           )}
         </div>
+      </Group>
 
-        <div className="flex flex-col gap-4">
-          <SectionTitle>
-            <LabelWithInfo info={`Bei eingeschaltetem Telefon geht Gesprächsaudio an ${live ? "Google (Gemini Live)" : draft.speechProvider === "gemini" ? "Google (Gemini)" : "OpenAI"}.`}>
-              Gesprächspartner
-            </LabelWithInfo>
-          </SectionTitle>
-          <Field label="Wer spricht mit dir">
-            <Select<PhoneEngine> value={draft.engine} onChange={(v) => up({ engine: v })} options={ENGINES} className="w-full" />
-          </Field>
-          {!live && (
-            <Field label="Hören und Sprechen über">
-              <Select<"openai" | "gemini">
-                value={draft.speechProvider}
-                onChange={(v) => up({ speechProvider: v })}
-                options={[
-                  { value: "gemini", label: "Gemini" },
-                  { value: "openai", label: "OpenAI" },
-                ]}
-                className="w-full"
-              />
-            </Field>
-          )}
-          {needsGemini &&
-            secret(
-              "Gemini-API-Key",
-              c.hasGeminiKey,
-              draft.geminiKey,
-              (v) => up({ geminiKey: v }),
-              "geminiKey",
-              live ? "Für Gemini Live. Abgerechnet über dein Google-AI-Konto, nicht über das Claude-Abo." : "Für Spracherkennung und Sprachausgabe. Das Gespräch selbst führt Claude über dein Abo.",
-            )}
-          {needsOpenAi &&
-            secret("OpenAI-API-Key", c.hasOpenAiKey, draft.openAiKey, (v) => up({ openAiKey: v }), "openAiKey", "Für Spracherkennung und Sprachausgabe. Das Gespräch selbst führt Claude über dein Abo.")}
-          <Field label="Stimme">
-            {needsGemini ? (
-              <Select value={draft.geminiVoice} onChange={(v) => up({ geminiVoice: v })} options={PHONE_GEMINI_VOICES.map((v) => ({ value: v, label: v }))} className="w-full" />
-            ) : (
-              <Select value={draft.voice} onChange={(v) => up({ voice: v })} options={PHONE_VOICES.map((v) => ({ value: v, label: v }))} className="w-full" />
-            )}
-          </Field>
-          <SectionTitle>Wer darf anrufen, wann ruft FORGE an</SectionTitle>
+      <Group title="Wer darf anrufen, wann ruft FORGE an">
+        <div className="p-4">
           <PhoneNumberList
             label="Erlaubte Anrufer"
             hint="Andere Anrufe weist FORGE ab, ausgeschaltete Nummern auch. Ohne eingeschaltete Nummer nimmt FORGE keine Anrufe an."
@@ -415,6 +439,8 @@ export function PhoneSettings() {
             addLabel="Nummer hinzufügen"
             empty="Keine Nummer eingetragen. FORGE nimmt keine Anrufe an."
           />
+        </div>
+        <div className="flex flex-col gap-4 p-4">
           <PhoneNumberList
             label="FORGE ruft diese Nummern an"
             hint="Alle eingeschalteten Nummern klingeln gleichzeitig. Wer zuerst abnimmt, hat das Gespräch, bei den anderen bricht FORGE den Anruf sofort ab. Nicht, solange du in FORGE arbeitest: Ist das Fenster aktiv und du hast es in den letzten 5 Minuten benutzt, bleibt das Telefon still."
@@ -436,18 +462,33 @@ export function PhoneSettings() {
               </ToggleRow>
             ))}
           </div>
-          <SectionTitle>Steuern am Telefon</SectionTitle>
-          {secret("PIN", c.hasPin, draft.pin, (v) => up({ pin: v.replace(/\D/g, "").slice(0, 8) }), "pin", "4 bis 8 Ziffern. Im Gespräch über die Telefontastatur eingeben und mit # bestätigen.", "numeric")}
+        </div>
+      </Group>
+
+      <Group title="Steuern am Telefon">
+        <div className="flex flex-col gap-4 p-4">
+          <div className="max-w-sm">
+            {secret("PIN", c.hasPin, draft.pin, (v) => up({ pin: v.replace(/\D/g, "").slice(0, 8) }), "pin", "4 bis 8 Ziffern. Im Gespräch über die Telefontastatur eingeben und mit # bestätigen.", "numeric")}
+          </div>
           <ToggleRow checked={draft.requirePin} onChange={(v) => up({ requirePin: v })} label="PIN zum Steuern verlangen">
             Empfohlen. Ohne PIN darf jeder mit einer erlaubten Nummer Sessions starten, Anweisungen schicken und Freigaben erteilen. Anrufernummern lassen sich fälschen.
           </ToggleRow>
         </div>
-      </div>
+      </Group>
 
       <DeskSettings draft={draft} config={c} state={state} up={upDesk} secret={secret} />
 
       <CallLog />
     </div>
+  );
+}
+
+/** Shows and hides the rarely needed fields of a card. */
+function AdvancedToggle({ open, onToggle, label = "Erweitert" }: { open: boolean; onToggle: () => void; label?: string }) {
+  return (
+    <button className="flex items-center gap-1 self-start text-xs text-muted hover:text-fg" onClick={onToggle} aria-expanded={open}>
+      <ChevronRight className={cn("h-3.5 w-3.5 transition-transform", open && "rotate-90")} /> {label}
+    </button>
   );
 }
 
@@ -460,54 +501,47 @@ function FieldSkeleton({ className }: { className?: string }) {
   );
 }
 
-function SectionTitleSkeleton() {
+/** A settings card while loading: header with its title, then the body. */
+function CardSkeleton({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <div className="mb-2 flex h-4 items-center">
-      <Skeleton className="h-2.5 w-48" />
+    <div className="overflow-hidden rounded-xl border border-border bg-surface">
+      <div className="flex h-12 items-center border-b border-border px-4">
+        <Skeleton className="h-3 rounded-sm" style={{ width: `${title.length * 0.45}rem` }} />
+      </div>
+      <div className="flex flex-col gap-4 p-4">{children}</div>
     </div>
   );
 }
 
-/** The phone form in its resting layout: status bar, SIP and partner columns, desk phone toggle. */
+/** The phone settings in their resting layout: status, SIP and partner cards. */
 function PhoneSettingsSkeleton() {
   return (
-    <SkeletonRegion label="Lädt Telefon-Einstellungen" className="flex flex-col gap-5">
-      <div className="flex items-center gap-3 rounded-lg border border-border bg-surface-2 px-3 py-2.5">
-        <Skeleton className="h-5 w-20 rounded bg-surface-3" />
-        <Skeleton className="h-3 flex-1 bg-surface-3" />
-        <Skeleton className="h-7 w-28 bg-surface-3" />
-      </div>
-      <div className="grid gap-5 xl:grid-cols-2">
-        <div className="flex flex-col gap-4">
-          <SectionTitleSkeleton />
-          <div className="grid grid-cols-[1fr_96px] gap-3">
-            <FieldSkeleton />
-            <FieldSkeleton />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <FieldSkeleton />
-            <FieldSkeleton />
-          </div>
-          <FieldSkeleton />
-          <Skeleton className="h-3 w-20" />
+    <SkeletonRegion label="Lädt Telefon-Einstellungen" className="flex flex-col gap-6">
+      <CardSkeleton title="Telefon">
+        <div className="flex items-center gap-3">
+          <Skeleton className="h-5 w-20 rounded" />
+          <Skeleton className="h-3 flex-1" />
+          <Skeleton className="h-7 w-28" />
         </div>
-        <div className="flex flex-col gap-4">
-          <SectionTitleSkeleton />
-          <FieldSkeleton />
+      </CardSkeleton>
+      <CardSkeleton title="Anmeldung an der Telefonanlage (SIP)">
+        <div className="grid grid-cols-[1fr_96px] gap-3">
           <FieldSkeleton />
           <FieldSkeleton />
         </div>
-      </div>
-      <div className="flex flex-col gap-4 border-t border-border pt-4">
-        <div className="flex items-center gap-2">
-          <Skeleton className="h-4 w-4" />
-          <Skeleton className="h-2.5 w-40" />
+        <div className="grid grid-cols-2 gap-3">
+          <FieldSkeleton />
+          <FieldSkeleton />
         </div>
-        <div className="flex items-center gap-2.5">
-          <Skeleton className="h-4 w-4 rounded" />
-          <Skeleton className="h-3 w-44" />
+        <FieldSkeleton />
+      </CardSkeleton>
+      <CardSkeleton title="Gesprächspartner">
+        <div className="grid grid-cols-2 gap-3">
+          <FieldSkeleton />
+          <FieldSkeleton />
         </div>
-      </div>
+        <FieldSkeleton />
+      </CardSkeleton>
     </SkeletonRegion>
   );
 }
@@ -515,10 +549,9 @@ function PhoneSettingsSkeleton() {
 function CallLogSkeleton() {
   return (
     <SkeletonRegion label="Lädt Anrufliste">
-      <SectionTitleSkeleton />
-      <div className="divide-y divide-border rounded-lg border border-border">
+      <CardSkeleton title="Letzte Anrufe">
         {[0, 1, 2].map((i) => (
-          <div key={i} className="flex h-9 items-center gap-2.5 px-3">
+          <div key={i} className="flex h-5 items-center gap-2.5">
             <Skeleton className="h-3.5 w-3.5 rounded-sm" />
             <Skeleton className="h-3 w-28" />
             <Skeleton className="h-3 w-16" />
@@ -526,7 +559,7 @@ function CallLogSkeleton() {
             <Skeleton className="h-2.5 w-14" />
           </div>
         ))}
-      </div>
+      </CardSkeleton>
     </SkeletonRegion>
   );
 }
@@ -562,29 +595,34 @@ function DeskSettings({
   const desk = state?.desk;
 
   return (
-    <div className="flex flex-col gap-4 border-t border-border pt-4">
-      <div className="flex items-center gap-2">
-        <MonitorSmartphone className="h-4 w-4 text-muted" />
-        <SectionTitle>Tischtelefon (Yealink)</SectionTitle>
-        {desk && (
-          <Badge tone={desk.reachable === true ? "success" : desk.reachable === false ? "danger" : "neutral"}>
-            {desk.reachable === true ? "verbunden" : desk.reachable === false ? "nicht erreichbar" : "wartet"}
-          </Badge>
-        )}
-        <span className="flex-1" />
-        {desk && (
+    <Group
+      title={
+        <span className="flex items-center gap-2">
+          <MonitorSmartphone className="h-4 w-4 text-muted" /> Tischtelefon (Yealink)
+          {desk && (
+            <Badge tone={desk.reachable === true ? "success" : desk.reachable === false ? "danger" : "neutral"}>
+              {desk.reachable === true ? "verbunden" : desk.reachable === false ? "nicht erreichbar" : "wartet"}
+            </Badge>
+          )}
+        </span>
+      }
+      action={
+        desk && (
           <Button size="sm" onClick={test}>
             Test
           </Button>
-        )}
+        )
+      }
+    >
+      <div className="flex flex-col gap-3 p-4">
+        <ToggleRow checked={d.enabled} onChange={(v) => up({ enabled: v })} label="Tischtelefon einbinden">
+          Pro laufender Session eine Taste mit Namen und farbiger LED, Status auf dem Display, Freigaben als Menü. Abheben ruft FORGE an. Getestet mit Yealink T53W.
+        </ToggleRow>
+        {desk?.message && <p className="text-xs text-danger">{desk.message}</p>}
       </div>
-      <ToggleRow checked={d.enabled} onChange={(v) => up({ enabled: v })} label="Tischtelefon einbinden">
-        Pro laufender Session eine Taste mit Namen und farbiger LED, Status auf dem Display, Freigaben als Menü. Abheben ruft FORGE an. Getestet mit Yealink T53W.
-      </ToggleRow>
-      {desk?.message && <p className="text-xs text-danger">{desk.message}</p>}
       {d.enabled && (
-        <div className="grid gap-5 xl:grid-cols-2">
-          <div className="flex flex-col gap-3">
+        <>
+          <div className="flex flex-col gap-4 p-4">
             <div className="grid grid-cols-[1fr_96px] gap-3">
               <Field label="IP des Telefons" hint="Am Telefon unter Menü → Status.">
                 <Input value={d.phoneIp} onChange={(e) => up({ phoneIp: e.target.value })} placeholder="192.168.0.50" className="font-mono text-xs" />
@@ -605,40 +643,6 @@ function DeskSettings({
               </Field>
               {secret("Web-Login Passwort", config.desk.hasWebPassword, d.password, (v) => up({ password: v }), "deskPassword")}
             </div>
-            <Field label="Session-Tasten" hint="Leitungstasten für Sessions, in dieser Reihenfolge (S1 auf der ersten). Andere Tasten lässt FORGE in Ruhe.">
-              <Input value={d.sessionKeys} onChange={(e) => up({ sessionKeys: e.target.value })} aria-invalid={parseKeys(d.sessionKeys) === null || undefined} className="font-mono text-xs" />
-            </Field>
-            <Field label="Tasten leeren" hint="Diese Tasten stellt FORGE auf „nicht belegt“, z. B. 5, 6, 7, 8 (Senden, Nochmal, Löschen, Stopp aus klaus_telefon).">
-              <Input
-                value={d.clearKeys}
-                onChange={(e) => up({ clearKeys: e.target.value })}
-                aria-invalid={parseKeys(d.clearKeys, 30) === null || undefined}
-                placeholder="keine"
-                className="font-mono text-xs"
-              />
-            </Field>
-          </div>
-          <div className="flex flex-col gap-3">
-            <ToggleRow checked={d.hotline} onChange={(v) => up({ hotline: v })} label="Abheben ruft FORGE an">
-              Nach einer Sekunde wählt das Telefon die FORGE-Nebenstelle ({draft.username || "noch nicht eingetragen"}). Sofort eine Nummer tippen = normal telefonieren.
-            </ToggleRow>
-            <ToggleRow checked={d.leds} onChange={(v) => up({ leds: v })} label="LEDs der Session-Tasten steuern">
-              Orange blinkt: arbeitet. Rot blinkt schnell: wartet auf dich. Grün blinkt: neues Ergebnis. Grün: bereit.
-            </ToggleRow>
-            <Field label="Status auf dem Display">
-              <Select<"lines" | "statusline" | "off">
-                value={d.display}
-                onChange={(v) => up({ display: v })}
-                options={[
-                  { value: "lines", label: "Mehrere Zeilen", description: "Gewählte Session, Stand, offene Frage oder Kurzfassung" },
-                  { value: "statusline", label: "Eine Zeile", description: "Kompakt, für Modelle mit nur einer Statuszeile" },
-                  { value: "off", label: "Aus", description: "Nur Tasten und LEDs" },
-                ]}
-                className="w-full"
-              />
-            </Field>
-          </div>
-          <div className="xl:col-span-2">
             <Field label="Adresse für Auto Provision" hint="Im Telefon eintragen: Einstellungen → Auto Provision → Server URL, dann „Autoprovision Now“.">
               <div className="flex gap-2">
                 <Input value={url ?? "erscheint nach dem Speichern bei eingeschaltetem Telefon"} readOnly className="font-mono text-xs" />
@@ -650,9 +654,45 @@ function DeskSettings({
               </div>
             </Field>
           </div>
-        </div>
+          <div className="flex flex-col gap-4 p-4">
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Session-Tasten" hint="Leitungstasten für Sessions, in dieser Reihenfolge (S1 auf der ersten). Andere Tasten lässt FORGE in Ruhe.">
+                <Input value={d.sessionKeys} onChange={(e) => up({ sessionKeys: e.target.value })} aria-invalid={parseKeys(d.sessionKeys) === null || undefined} className="font-mono text-xs" />
+              </Field>
+              <Field label="Tasten leeren" hint="Diese Tasten stellt FORGE auf „nicht belegt“, z. B. 5, 6, 7, 8 (Senden, Nochmal, Löschen, Stopp aus klaus_telefon).">
+                <Input
+                  value={d.clearKeys}
+                  onChange={(e) => up({ clearKeys: e.target.value })}
+                  aria-invalid={parseKeys(d.clearKeys, 30) === null || undefined}
+                  placeholder="keine"
+                  className="font-mono text-xs"
+                />
+              </Field>
+            </div>
+            <div className="max-w-sm">
+              <Field label="Status auf dem Display">
+                <Select<"lines" | "statusline" | "off">
+                  value={d.display}
+                  onChange={(v) => up({ display: v })}
+                  options={[
+                    { value: "lines", label: "Mehrere Zeilen", description: "Gewählte Session, Stand, offene Frage oder Kurzfassung" },
+                    { value: "statusline", label: "Eine Zeile", description: "Kompakt, für Modelle mit nur einer Statuszeile" },
+                    { value: "off", label: "Aus", description: "Nur Tasten und LEDs" },
+                  ]}
+                  className="w-full"
+                />
+              </Field>
+            </div>
+            <ToggleRow checked={d.hotline} onChange={(v) => up({ hotline: v })} label="Abheben ruft FORGE an">
+              Nach einer Sekunde wählt das Telefon die FORGE-Nebenstelle ({draft.username || "noch nicht eingetragen"}). Sofort eine Nummer tippen = normal telefonieren.
+            </ToggleRow>
+            <ToggleRow checked={d.leds} onChange={(v) => up({ leds: v })} label="LEDs der Session-Tasten steuern">
+              Orange blinkt: arbeitet. Rot blinkt schnell: wartet auf dich. Grün blinkt: neues Ergebnis. Grün: bereit.
+            </ToggleRow>
+          </div>
+        </>
       )}
-    </div>
+    </Group>
   );
 }
 
@@ -662,12 +702,10 @@ function CallLog() {
   if (calls.isPending) return <CallLogSkeleton />;
   if (!calls.data?.length) return null;
   return (
-    <div>
-      <SectionTitle>Letzte Anrufe</SectionTitle>
-      <div className="divide-y divide-border rounded-lg border border-border">
-        {calls.data.map((c) => (
+    <Group title="Letzte Anrufe">
+      {calls.data.map((c) => (
           <div key={c.id}>
-            <button className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-body hover:bg-surface-2" onClick={() => setOpen(open === c.id ? null : c.id)} aria-expanded={open === c.id}>
+            <button className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-body hover:bg-surface-2" onClick={() => setOpen(open === c.id ? null : c.id)} aria-expanded={open === c.id}>
               {c.direction === "in" ? <PhoneIncoming className="h-3.5 w-3.5 text-muted" /> : <PhoneOutgoing className="h-3.5 w-3.5 text-muted" />}
               <span className="font-mono text-xs">{c.number || "unbekannt"}</span>
               <span className={cn("text-xs", c.result === "answered" ? "text-success" : c.result === "missed" ? "text-warning" : "text-danger")}>
@@ -677,7 +715,7 @@ function CallLog() {
               <span className="text-caption text-subtle">{relativeTime(c.startedAt)}</span>
             </button>
             {open === c.id && (
-              <div className="space-y-1 bg-surface-2 px-3 py-2 text-xs">
+              <div className="space-y-1 bg-surface-2 px-4 py-2 text-xs">
                 {c.detail && <div className="text-muted">Ende: {c.detail}</div>}
                 {c.transcript.length === 0 && <div className="text-subtle">Kein Gesprächsverlauf.</div>}
                 {c.transcript.map((t, i) => (
@@ -690,7 +728,6 @@ function CallLog() {
             )}
           </div>
         ))}
-      </div>
-    </div>
+    </Group>
   );
 }

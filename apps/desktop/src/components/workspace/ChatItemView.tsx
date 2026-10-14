@@ -1,5 +1,6 @@
 import { memo, type ReactNode } from "react";
-import { AlertTriangle, CheckCircle2, Info, RotateCcw, ShieldAlert, XCircle } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Copy, Info, RotateCcw, ShieldAlert, XCircle } from "lucide-react";
+import { contextItems, copyText } from "@/lib/context-menu";
 import { clockTime, cn, formatDuration, formatTokens } from "@/lib/utils";
 import { useThrottledValue } from "@/lib/timing-hooks";
 import { isInterrupted } from "@/lib/working";
@@ -117,7 +118,7 @@ function AssistantMessage({ item }: { item: Extract<ChatItem, { kind: "assistant
   const text = useThrottledValue(item.text, item.streaming ? STREAM_RENDER_MS : 0);
   return (
     <ChatRow className="group relative text-ui leading-[1.65]" marker={<Dot className="bg-fg" />}>
-      <div>
+      <div onContextMenu={contextItems(() => (item.streaming ? [] : [{ label: "Antwort kopieren", icon: <Copy className="h-3.5 w-3.5" />, hint: "Markdown", onSelect: () => copyText(item.text) }]))}>
         {item.streaming ? <StreamingMarkdown text={text} /> : <Markdown text={text} />}
         {item.streaming && <span className="animate-soft-pulse mt-1 inline-block h-3.5 w-1.5 bg-muted" aria-label="schreibt" />}
       </div>

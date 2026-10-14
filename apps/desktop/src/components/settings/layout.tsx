@@ -86,7 +86,7 @@ function SectionButton<Id extends string>({ section: x, active, onSelect }: { se
 }
 
 /** A titled card of settings rows. */
-export function Group({ title, description, action, danger, children }: { title: string; description?: ReactNode; action?: ReactNode; danger?: boolean; children: ReactNode }) {
+export function Group({ title, description, action, danger, children }: { title: ReactNode; description?: ReactNode; action?: ReactNode; danger?: boolean; children: ReactNode }) {
   return (
     <section className={cn("overflow-hidden rounded-xl border bg-surface", danger ? "border-danger/30" : "border-border")}>
       <header className="flex items-center justify-between gap-4 border-b border-border px-4 py-3">
@@ -104,8 +104,9 @@ export function Group({ title, description, action, danger, children }: { title:
 export function Row({ label, description, children, stacked }: { label: ReactNode; description?: ReactNode; children: ReactNode; stacked?: boolean }) {
   return (
     <div className={cn("px-4 py-3.5", stacked ? "flex flex-col gap-2.5" : "flex flex-wrap items-center justify-between gap-x-6 gap-y-2.5")}>
-      {/* A wide control moves below the label instead of squeezing the description into a narrow column. */}
-      <LabelWithDescription description={description} className="flex-[1_1_14rem]">
+      {/* A wide control moves below the label instead of squeezing the description into a narrow column.
+          Stacked, the basis would be a height of 14rem: empty space above the control. */}
+      <LabelWithDescription description={description} className={stacked ? undefined : "flex-[1_1_14rem]"}>
         <span className="text-body font-medium">{label}</span>
       </LabelWithDescription>
       {children}

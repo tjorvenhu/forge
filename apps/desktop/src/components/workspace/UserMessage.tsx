@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { FileText, GitBranch, ImageIcon, Pencil, Smartphone, SquareSlash, TimerReset, Undo2 } from "lucide-react";
+import { Copy, FileText, GitBranch, ImageIcon, Pencil, Smartphone, SquareSlash, TimerReset, Undo2 } from "lucide-react";
+import { contextItems, copyText } from "@/lib/context-menu";
 import type { RewindResult } from "@forge/protocol";
 import { useQueryClient } from "@tanstack/react-query";
 import { call, keys, useGitHubAccount, useSession, useSettings } from "@/lib/queries";
@@ -67,7 +68,23 @@ export function UserMessage({ item, sessionId }: { item: Extract<ChatItem, { kin
   const hasMeta = chips.length > 0 || item.auto || item.edited;
   if (!chips.length && isSlashCommand(item.text) && !editing) return <CommandMessage item={item} />;
   return (
-    <div className={cn("group -mx-3 rounded-md px-3 py-2.5", item.remote ? "border border-accent/30 bg-accent-soft" : "bg-surface-2")}>
+    <div
+      className={cn("group -mx-3 rounded-md px-3 py-2.5", item.remote ? "border border-accent/30 bg-accent-soft" : "bg-surface-2")}
+      onContextMenu={contextItems(() =>
+        editing
+          ? []
+          : [
+              { label: "Nachricht kopieren", icon: <Copy className="h-3.5 w-3.5" />, onSelect: () => copyText(item.text) },
+              ...(canEdit ? [{ label: "Bearbeiten", icon: <Pencil className="h-3.5 w-3.5" />, onSelect: () => useMessageEdit.getState().start(sessionId, item.seq) }] : []),
+              ...(item.uuid
+                ? [
+                    { label: "Ab hier verzweigen", icon: <GitBranch className="h-3.5 w-3.5" />, onSelect: () => setForkOpen(true) },
+                    { label: "Dateien auf diesen Stand zurücksetzen", icon: <Undo2 className="h-3.5 w-3.5" />, onSelect: () => void check() },
+                  ]
+                : []),
+            ],
+      )}
+    >
       <ChatRow className="text-ui leading-[1.65]" marker={item.remote ? <PhoneAvatar /> : <UserAvatar />}>
         <div className="flex min-w-0 items-start gap-3">
           <div className="min-w-0 flex-1">

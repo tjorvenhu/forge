@@ -1,5 +1,7 @@
 import { createContext, useContext, type ReactNode } from "react";
+import { Copy, FileText, FolderOpen } from "lucide-react";
 import { call, keys, queryClient } from "@/lib/queries";
+import { contextItems, copyText } from "@/lib/context-menu";
 import { toast } from "@/stores/toast";
 import { useUi } from "@/stores/ui";
 import { cn } from "@/lib/utils";
@@ -250,6 +252,15 @@ export function FileLink({ fileRef, children, className }: { fileRef: FileRef; c
         if (to === "files" && target) void openFileRef(target, fileRef);
         else void revealPath(fileRef.path);
       }}
+      onContextMenu={contextItems(() => {
+        const inProject = to === "files" && target ? projectPath(fileRef, target.root) : null;
+        const absolute = isAbsolute(fileRef.path) ? fileRef.path : target && inProject !== null ? `${target.root.replace(/[\\/]+$/, "")}/${inProject}` : null;
+        return [
+          ...(to === "files" && target ? [{ label: "Im Dateien-Reiter öffnen", icon: <FileText className="h-3.5 w-3.5" />, onSelect: () => void openFileRef(target, fileRef) }] : []),
+          ...(absolute ? [{ label: "Im Explorer zeigen", icon: <FolderOpen className="h-3.5 w-3.5" />, onSelect: () => void revealPath(absolute) }] : []),
+          { label: "Pfad kopieren", icon: <Copy className="h-3.5 w-3.5" />, onSelect: () => copyText(fileRef.path) },
+        ];
+      })}
     >
       {children}
     </a>

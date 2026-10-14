@@ -1,8 +1,9 @@
 import { useEffect, useRef, type KeyboardEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { useQueries } from "@tanstack/react-query";
-import { AppWindow, Bot, ChevronDown, Columns2, Hourglass, LayoutGrid, MessageSquarePlus, Plus, SquareArrowOutUpRight, X } from "lucide-react";
+import { AppWindow, Bot, ChevronDown, Columns2, FolderOpen, Hourglass, LayoutGrid, MessageSquare, MessageSquarePlus, Plus, SquareArrowOutUpRight, X } from "lucide-react";
 import { openChatWindow, useChatWindows } from "@/lib/chat-windows";
+import { contextItems } from "@/lib/context-menu";
 import { call, keys, useLiveSessions, useProjects, useSession } from "@/lib/queries";
 import { errorMessage } from "@/lib/rpc";
 import { flatTabs, groupOf, groupTabs, openSessionId, openSessionTab, type TabGroup, type TabSession } from "@/lib/session-tabs";
@@ -77,6 +78,7 @@ export function openGroups(groups: TabGroup[], open: { id: string; name: string 
 }
 
 const NO_PANES: readonly SplitPane[] = [];
+const MENU_ICON = "h-3.5 w-3.5";
 
 /**
  * The split view as an entry above the open projects: marked while it is on screen. A click brings it
@@ -217,7 +219,22 @@ export function OpenSessions() {
         const lead = collapsed ? (g.tabs.find((s) => s.status === "waiting_approval") ?? g.tabs.find((s) => s.status === "error") ?? g.tabs.find((s) => isWorking(s.status) || s.background.length > 0)) : undefined;
         return (
           <div key={g.projectId} data-project-group={g.projectId} className="flex flex-col">
-            <div className={cn("group/project flex items-center rounded-lg", projectActive && !activeId && !showNew ? "bg-surface-3" : "hover:bg-surface-2")}>
+            <div
+              className={cn("group/project flex items-center rounded-lg", projectActive && !activeId && !showNew ? "bg-surface-3" : "hover:bg-surface-2")}
+              onContextMenu={contextItems(() => [
+                { label: "Projekt öffnen", icon: <FolderOpen className={MENU_ICON} />, onSelect: () => openProject(g.projectId) },
+                ...(splitRoom > 0 && !projectActive ? [{ label: "Daneben öffnen", icon: <Columns2 className={MENU_ICON} />, onSelect: () => addSplitPane(g.projectId) }] : []),
+                {
+                  label: "Neue Session",
+                  icon: <MessageSquarePlus className={MENU_ICON} />,
+                  onSelect: () => {
+                    toggleGroup(g.projectId, false);
+                    openProject(g.projectId, null);
+                  },
+                },
+                ...(hasRows ? [{ label: collapsed ? "Sessions einblenden" : "Sessions ausblenden", icon: <ChevronDown className={MENU_ICON} />, onSelect: () => toggleGroup(g.projectId) }] : []),
+              ])}
+            >
               <button
                 onClick={(e) => {
                   if (e.shiftKey && splitRoom > 0 && !projectActive) addSplitPane(g.projectId);
@@ -277,6 +294,21 @@ export function OpenSessions() {
                     <Branch key={s.id} last={n === g.tabs.length - 1 && !news.length}>
                       <div
                         data-session-tab={s.id}
+                        onContextMenu={contextItems(() => [
+                          { label: "Öffnen", icon: <MessageSquare className={MENU_ICON} />, onSelect: () => openChat(s.projectId, s.id) },
+                          ...(canSplit ? [{ label: "Daneben öffnen", icon: <Columns2 className={MENU_ICON} />, onSelect: () => addSplitPane(s.projectId, s.id) }] : []),
+                          ...(!inWindow ? [{ label: "In eigenem Fenster öffnen", icon: <SquareArrowOutUpRight className={MENU_ICON} />, onSelect: () => void openChatWindow(s.projectId, s.id, s.title) }] : []),
+                          ...(closable
+                            ? [
+                                {
+                                  label: "Claude-Prozess beenden",
+                                  icon: <X className={MENU_ICON} />,
+                                  hint: "bleibt fortsetzbar",
+                                  onSelect: () => void call("sessions.close", { sessionId: s.id }).catch((err: unknown) => toast.error("Beenden fehlgeschlagen", errorMessage(err))),
+                                },
+                              ]
+                            : []),
+                        ])}
                         className={cn(
                           "group flex h-8 min-w-0 animate-fade-in items-center rounded-lg text-body transition-[color,background-color,opacity] duration-120",
                           drag?.id === s.id && "opacity-50",
