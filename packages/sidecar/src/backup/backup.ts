@@ -17,6 +17,16 @@ const ID_RE = /^[\w.-]{1,120}$/;
 /** Folders under ~/.claude that hold configuration the user wrote (not caches, transcripts or credentials). */
 export const CLAUDE_DIRS = ["agents", "commands", "skills", "rules", "output-styles"];
 const CLAUDE_FILES = ["CLAUDE.md", "settings.json"];
+/** Settings that came after the first backups; a backup without them leaves them alone. */
+const KEEP_UNLESS_IN_BACKUP = ["setupDone", "syncEnabled", "syncAsked"];
+
+/** Path relative to the Claude folder that a snapshot would take (see readClaudeFiles). */
+function isClaudeConfigFile(rel: string): boolean {
+  const parts = rel.split(/[\\/]/);
+  if (parts.some((p) => p === ".." || p === "") || path.isAbsolute(rel)) return false;
+  if (parts.length === 1) return CLAUDE_FILES.includes(parts[0]!);
+  return CLAUDE_DIRS.includes(parts[0]!) && TEXT_FILE.test(parts[parts.length - 1]!);
+}
 
 // Backups from before projects without git lack gitEnabled; those projects all used git.
 const ProjectEntry = Project.omit({ exists: true }).extend({ gitEnabled: z.boolean().default(true) });
@@ -236,13 +246,18 @@ export class BackupService {
     const file = source.id ? this.file(source.id) : source.path;
     if (!file) throw new ForgeError("VALIDATION", "Kein Backup angegeben.");
     const { data } = await this.readFileData(file);
+    const want = new Set(parts);
+    // Read before anything changes: a .claude.json FORGE cannot read stops the restore as a whole.
+    const claudeJson = want.has("claude") && data.claude.mcpServers ? await this.readClaudeJson() : null;
     const safety = await this.create("before-restore");
     const notes: string[] = [];
     const restored: BackupPart[] = [];
-    const want = new Set(parts);
 
     if (want.has("settings")) {
-      this.d.db.replaceRawSettings(data.settings, ["phone"]);
+      // Older backups lack these; without them the setup assistant would come back.
+      const keep = ["phone", ...KEEP_UNLESS_IN_BACKUP.filter((k) => !(k in data.settings))];
+      const skipped = this.d.db.replaceRawSettings(data.settings, keep);
+      if (skipped.length) notes.push(`${skipped.length === 1 ? "Eine Einstellung war" : `${skipped.length} Einstellungen waren`} im Backup beschädigt und ${skipped.length === 1 ? "blieb" : "blieben"} unverändert: ${skipped.join(", ")}.`);
       restored.push("settings");
     }
     if (want.has("projects")) {
@@ -257,7 +272,7 @@ export class BackupService {
       restored.push("phone");
     }
     if (want.has("claude")) {
-      await this.restoreClaude(data);
+      await this.restoreClaude(data, claudeJson);
       notes.push("Laufende Sessions übernehmen geänderte Claude-Code-Einstellungen erst nach einem Neustart der Session.");
       restored.push("claude");
     }
@@ -288,24 +303,43 @@ export class BackupService {
     return missing;
   }
 
-  private async restoreClaude(data: BackupData) {
+  /**
+   * The current ~/.claude.json, or {} if there is none yet. Anything else that cannot be read stops
+   * the restore: writing it back with only the MCP servers would lose the rest of Claude's settings.
+   */
+  private async readClaudeJson(): Promise<Record<string, unknown>> {
+    let text: string;
+    try {
+      text = await readFile(this.claudeJson, "utf8");
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code === "ENOENT") return {};
+      throw new ForgeError("PATH_NOT_ACCESSIBLE", `${this.claudeJson} ließ sich nicht lesen, das Backup wurde nicht wiederhergestellt. (${e instanceof Error ? e.message : String(e)})`);
+    }
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(text.replace(/^\uFEFF/, ""));
+    } catch {
+      parsed = null;
+    }
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      throw new ForgeError("VALIDATION", `${this.claudeJson} ist kein gültiges JSON. Das Backup wurde nicht wiederhergestellt, damit die Datei nicht überschrieben wird. Repariere oder lösche sie und versuche es noch einmal.`);
+    }
+    return parsed as Record<string, unknown>;
+  }
+
+  private async restoreClaude(data: BackupData, claudeJson: Record<string, unknown> | null) {
     const root = path.resolve(this.claudeDir);
     for (const [rel, content] of Object.entries(data.claude.files)) {
       const target = path.resolve(root, rel);
-      // Only files inside the Claude folder: a crafted backup must not write elsewhere.
-      if (path.relative(root, target).startsWith("..") || path.isAbsolute(path.relative(root, target))) continue;
+      // Only what a snapshot takes: a crafted backup must not write credentials, transcripts or
+      // plugin code, or anywhere outside the Claude folder.
+      if (!isClaudeConfigFile(path.relative(root, target))) continue;
       await mkdir(path.dirname(target), { recursive: true });
       await writeAtomic(target, content);
     }
-    if (data.claude.mcpServers) {
-      let current: Record<string, unknown> = {};
-      try {
-        current = JSON.parse(await readFile(this.claudeJson, "utf8")) as Record<string, unknown>;
-      } catch {
-        // no .claude.json yet
-      }
-      const servers = { ...((current.mcpServers as Record<string, unknown> | undefined) ?? {}), ...data.claude.mcpServers };
-      await writeAtomic(this.claudeJson, JSON.stringify({ ...current, mcpServers: servers }, null, 2));
+    if (data.claude.mcpServers && claudeJson) {
+      const current = claudeJson.mcpServers && typeof claudeJson.mcpServers === "object" ? (claudeJson.mcpServers as Record<string, unknown>) : {};
+      await writeAtomic(this.claudeJson, JSON.stringify({ ...claudeJson, mcpServers: { ...current, ...data.claude.mcpServers } }, null, 2));
     }
   }
 }

@@ -30,14 +30,15 @@ export interface McpAddInput {
   env: Record<string, string>;
 }
 
-/** Builds the argument list for `claude mcp add`; never goes through a shell. */
+/**
+ * Builds the argument list for `claude mcp add`; never goes through a shell. `-e` takes any number
+ * of values, so the name comes first and `--` ends the values before command or URL.
+ */
 export function mcpAddArgs(i: McpAddInput): string[] {
-  const args = ["mcp", "add", "--scope", i.scope];
+  const args = ["mcp", "add", i.name, "--scope", i.scope];
   if (i.transport !== "stdio") args.push("--transport", i.transport);
-  for (const [k, v] of Object.entries(i.env)) args.push("--env", `${k}=${v}`);
-  args.push(i.name);
-  if (i.transport === "stdio") args.push("--", i.target, ...i.args);
-  else args.push(i.target);
+  for (const [k, v] of Object.entries(i.env)) args.push("-e", `${k}=${v}`);
+  args.push("--", i.target, ...(i.transport === "stdio" ? i.args : []));
   return args;
 }
 

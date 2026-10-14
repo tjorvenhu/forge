@@ -30,6 +30,21 @@ export function freeDir(base: string, exists: (p: string) => boolean = existsSyn
   }
 }
 
+const WORKTREES_DIR = ".forge-worktrees";
+
+/**
+ * Folder git checked a FORGE worktree out to. The worktree of a project in a subfolder of a larger
+ * repository (monorepo) is registered at the same subfolder of that checkout.
+ */
+export function worktreeRoot(dir: string): string {
+  const parts = path.resolve(dir).split(path.sep);
+  const i = parts.lastIndexOf(WORKTREES_DIR);
+  return i >= 0 && parts.length > i + 3 ? parts.slice(0, i + 3).join(path.sep) : dir;
+}
+
+/** Who made a worktree's branch: FORGE for exactly this worktree, FORGE for an older agent (no record of the folder), or someone else. */
+export type BranchOwner = "worktree" | "forge" | null;
+
 /**
  * Parallel agents work in git worktrees: a sibling folder with its own branch, registered as a
  * FORGE project linked to its parent. Merging back is AgentFinisher's job (by hand or with the auto-merge tag).
@@ -56,20 +71,28 @@ export class WorktreeService {
       if (head.code !== 0 || !head.stdout.trim()) throw new ForgeError("GIT_FAILED", "Der Ausgangsstand hat noch keinen Commit.");
       start.push(head.stdout.trim());
     }
-    const root = path.join(path.dirname(parent.path), ".forge-worktrees", path.basename(parent.path));
+    // A project in a subfolder of a larger repository: the checkout goes beside that repository, not
+    // into its working tree, and the project is the same subfolder of the checkout.
+    const loc = await this.git.exec(parent.path, ["rev-parse", "--show-toplevel", "--show-prefix"]);
+    const [top = "", prefix = ""] = loc.code === 0 ? loc.stdout.split("\n").map((l) => l.trim()) : [];
+    const repoDir = top && prefix ? path.resolve(top) : parent.path;
+    const root = path.join(path.dirname(repoDir), WORKTREES_DIR, path.basename(repoDir));
     await mkdir(root, { recursive: true });
     const dir = freeDir(path.join(root, slugify(branch.replace(/\//g, "-"), 60)));
     const r = await this.git.exec(parent.path, exists ? ["worktree", "add", dir, branch] : ["worktree", "add", "-b", branch, dir, ...start], undefined, 120_000);
     if (r.code !== 0) throw new ForgeError("GIT_FAILED", (r.stderr || r.stdout).trim() || "Worktree konnte nicht angelegt werden");
     if (!exists) await this.rememberOrigin(parent.path, branch, opts.fromDir ?? parent.path);
+    // The branch was there before: it is not FORGE's, whatever an earlier agent on it left behind.
+    else await this.git.exec(parent.path, ["config", "--unset", `branch.${branch}.forgeWorktree`]);
     let project: Project;
     try {
-      project = await this.projects.import(dir, parent.id);
+      project = await this.projects.import(top && prefix ? path.join(dir, prefix) : dir, parent.id);
     } catch (e) {
       // The branch stays (it may hold commits already); only the folder FORGE just created goes.
       await this.git.exec(parent.path, ["worktree", "remove", "--force", dir], undefined, 60_000).catch(() => null);
       throw e;
     }
+    if (!exists) await this.git.exec(parent.path, ["config", `branch.${branch}.forgeWorktree`, worktreeRoot(project.path)]);
     this.projects.update(project.id, {
       name: `${parent.name} · ${branch}`,
       profile: parent.profile,
@@ -101,9 +124,27 @@ export class WorktreeService {
     return { dir: await read("forgeOriginDir"), branch: await read("forgeOriginBranch") };
   }
 
-  /** Checked-out branch of a working tree; null when detached or unreadable. */
-  branchOf(dir: string): Promise<string | null> {
+  /**
+   * Checked-out branch of a worktree folder; null when detached or unreadable. Without its `.git`
+   * the folder is only leftover files, and git would answer for a repository further up instead.
+   */
+  async branchOf(dir: string): Promise<string | null> {
+    if (!existsSync(path.join(worktreeRoot(dir), ".git"))) return null;
     return this.git.currentBranch(dir).catch(() => null);
+  }
+
+  /**
+   * Whether FORGE made `branch` for this worktree. Only such a branch may go unmerged with the
+   * worktree: a branch that existed before or that the agent switched to belongs to someone else.
+   */
+  async branchOwner(worktree: Project, branch: string, cwd = worktree.path): Promise<BranchOwner> {
+    const read = async (key: string) => {
+      const r = await this.git.exec(cwd, ["config", "--get", `branch.${branch}.${key}`]).catch(() => null);
+      return r?.code === 0 ? r.stdout.trim() : null;
+    };
+    const made = await read("forgeWorktree");
+    if (made !== null) return made && pathKey(made) === pathKey(worktreeRoot(worktree.path)) ? "worktree" : null;
+    return (await read("forgeOriginDir")) ? "forge" : null;
   }
 
   /** Main working tree of `dir` if `dir` is the root of a linked worktree, else null. */
@@ -124,7 +165,7 @@ export class WorktreeService {
   private async controlDir(worktree: Project): Promise<string | null> {
     const parent = this.projects.all().find((p) => p.id === worktree.parentId);
     if (parent?.exists) return parent.path;
-    return this.mainWorkingTree(worktree.path);
+    return this.mainWorkingTree(worktreeRoot(worktree.path));
   }
 
   /**
@@ -142,29 +183,36 @@ export class WorktreeService {
   /** Throws CONFLICT if the worktree has uncommitted changes and the removal is not forced. */
   async assertRemovable(worktree: Project, force: boolean) {
     if (!worktree.parentId) throw new ForgeError("VALIDATION", "Das ist kein Worktree-Projekt.");
-    if (force || !existsSync(path.join(worktree.path, ".git"))) return;
-    const st = await this.git.status(worktree.path);
+    const root = worktreeRoot(worktree.path);
+    if (force || !existsSync(path.join(root, ".git"))) return;
+    // The whole checkout: with a monorepo project the agent may also have changed files beside it.
+    const st = await this.git.status(root);
     if (st.files.length) throw new ForgeError("CONFLICT", `Der Worktree hat ${st.files.length} nicht committete Änderungen.`, { dirty: st.files.length });
   }
 
   /**
-   * Removes the worktree folder; the branch and its commits stay in the repository. Processes
-   * running inside the folder (sessions, dev server) must be ended first: Windows refuses to delete
-   * a folder that is the current directory of a process.
+   * Removes the worktree folder; the branch and its commits stay in the repository. With
+   * `deleteBranch` a branch FORGE made for this worktree goes too, merged or not; a branch of an
+   * older agent only when merged, anyone else's stays. Processes running inside the folder
+   * (sessions, dev server) must be ended first: Windows refuses to delete a folder that is the
+   * current directory of a process.
    */
   async remove(worktree: Project, force: boolean, opts: { deleteBranch?: boolean } = {}): Promise<{ deletedBranch: string | null; branchError: string | null }> {
     await this.assertRemovable(worktree, force);
     const cwd = await this.controlDir(worktree);
-    const branch = opts.deleteBranch && existsSync(worktree.path) ? await this.git.currentBranch(worktree.path).catch(() => null) : null;
-    if (existsSync(worktree.path)) await this.deleteFolder(worktree.path, cwd, force);
+    const root = worktreeRoot(worktree.path);
+    const branch = opts.deleteBranch ? await this.branchOf(worktree.path) : null;
+    const owner = branch && cwd ? await this.branchOwner(worktree, branch, cwd) : null;
+    if (existsSync(root)) await this.deleteFolder(root, cwd, force);
     if (cwd) await this.git.exec(cwd, ["worktree", "prune"]);
     this.projects.remove(worktree.id);
     if (!opts.deleteBranch) return { deletedBranch: null, branchError: null };
     // The worktree is gone at this point; a failed branch deletion is reported, not thrown, so the
     // caller does not show the removal as failed.
     if (!branch || !cwd) return { deletedBranch: null, branchError: "Der Branch des Worktrees war nicht mehr zu ermitteln." };
+    if (!owner) return { deletedBranch: null, branchError: foreignBranch(branch) };
     try {
-      await this.git.deleteBranch(cwd, branch, true);
+      await this.git.deleteBranch(cwd, branch, owner === "worktree");
       return { deletedBranch: branch, branchError: null };
     } catch (e) {
       return { deletedBranch: null, branchError: e instanceof Error ? e.message : String(e) };
@@ -213,6 +261,10 @@ export class WorktreeService {
       `Der Worktree-Ordner wird noch von einem anderen Programm benutzt, etwa einem Terminal, Editor oder Explorer-Fenster. Schließe es und versuche es noch einmal. (${last})`,
     );
   }
+}
+
+export function foreignBranch(branch: string): string {
+  return `Den Branch ${branch} hat nicht FORGE für diesen Agenten angelegt, er bleibt erhalten.`;
 }
 
 /** git and Node messages for a folder that another process still holds open. */

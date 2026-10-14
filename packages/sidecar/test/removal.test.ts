@@ -121,6 +121,24 @@ describe("removeProject", () => {
     expect(deps.projects.all()).toEqual([]);
   });
 
+  it("keeps the test database while deleting the GitHub repository fails, drops it once the removal went through", async () => {
+    const dir = await repoWithCommit("withdb", "https://github.com/me/withdb.git");
+    const p = await deps.projects.import(dir);
+    const dropped: string[] = [];
+    let fail = true;
+    deps.testDb = { forget: async (id: string) => void dropped.push(id) };
+    deps.github.deleteRepo = async () => {
+      if (fail) throw new Error("GitHub antwortet nicht");
+    };
+    await expect(removeProject(p.id, { deleteFolder: true, deleteGitHubRepo: true }, deps)).rejects.toThrow(/GitHub antwortet nicht/);
+    expect(dropped).toEqual([]);
+    expect(deps.projects.all().map((x) => x.id)).toEqual([p.id]);
+
+    fail = false;
+    await removeProject(p.id, { deleteFolder: true, deleteGitHubRepo: true }, deps);
+    expect(dropped).toEqual([p.id]);
+  });
+
   it("deletes the GitHub repository and the folder including read-only git objects", async () => {
     const dir = await repoWithCommit("gone", "git@github.com:me/gone.git");
     const p = await deps.projects.import(dir);

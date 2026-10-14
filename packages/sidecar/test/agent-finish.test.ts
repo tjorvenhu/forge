@@ -3,7 +3,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { Project } from "@forge/protocol";
 import { AgentFinisher } from "../src/automation/agent-finish.js";
-import { WorktreeService } from "../src/automation/worktrees.js";
+import { WorktreeService, worktreeRoot } from "../src/automation/worktrees.js";
 import { GitEngine } from "../src/git/git.js";
 import { Db } from "../src/persistence/db.js";
 import { ProjectManager } from "../src/projects/project-manager.js";
@@ -195,4 +195,65 @@ describe("AgentFinisher", () => {
     expect((await finisher.finish(wt.id, "merge")).outcome).toBe("merged");
     expect(read("notes.md")).toBe(lines(12, { 1: "Agent", 11: "Hauptsession" }));
   }, 30_000);
+
+  it("keeps a branch on discard that existed before the agent or that the agent switched to", async () => {
+    await git(repo, "branch", "feature/kunde");
+    const onExisting = await worktrees.create(parent, "feature/kunde");
+    await commitFile(onExisting.path, "kunde.txt", "x\n", "Kundenarbeit");
+    const r = await finisher.finish(onExisting.id, "discard");
+    expect(r).toMatchObject({ outcome: "discarded", branch: "feature/kunde", branchError: null, message: expect.stringMatching(/feature\/kunde hat nicht FORGE .* bleibt erhalten/) });
+    expect(existsSync(onExisting.path)).toBe(false);
+    expect((await git(repo, "log", "-1", "--format=%s", "feature/kunde")).trim()).toBe("Kundenarbeit");
+
+    const switched = await worktrees.create(parent, "agent/wechsel", { fromDir: repo });
+    await git(switched.path, "checkout", "feature/kunde");
+    await finisher.finish(switched.id, "discard");
+    expect((await git(repo, "log", "-1", "--format=%s", "feature/kunde")).trim()).toBe("Kundenarbeit");
+  }, 30_000);
+
+  it("merges an existing branch but keeps its name afterwards", async () => {
+    await git(repo, "branch", "feature/alt");
+    const wt = await worktrees.create(parent, "feature/alt");
+    await commitFile(wt.path, "alt.txt", "x\n", "Alt");
+    const r = await finisher.finish(wt.id, "merge");
+    expect(r).toMatchObject({ outcome: "merged", branchError: null, message: expect.stringMatching(/Worktree gelöscht\. Den Branch feature\/alt hat nicht FORGE/) });
+    expect((await git(repo, "log", "-1", "--format=%s")).trim()).toBe("Alt");
+    expect(await git(repo, "branch", "--list", "feature/alt")).toContain("feature/alt");
+  }, 30_000);
+
+  it("deletes the branch of an older agent (no folder recorded) on discard only when it is merged", async () => {
+    const wt = await worktrees.create(parent, "agent/aelter", { fromDir: repo });
+    await git(repo, "config", "--unset", "branch.agent/aelter.forgeWorktree");
+    await commitFile(wt.path, "idee.txt", "x\n", "Idee");
+    const r = await finisher.finish(wt.id, "discard");
+    expect(r.branchError).toMatch(/Commits, die in keinem anderen Branch sind/);
+    expect(await git(repo, "branch", "--list", "agent/aelter")).toContain("agent/aelter");
+  }, 30_000);
+
+  describe("project in a subfolder of the repository", () => {
+    let sub: string;
+    let subProject: Project;
+    beforeEach(async () => {
+      sub = path.join(repo, "packages", "web");
+      mkdirSync(sub, { recursive: true });
+      await commitFile(sub, "page.ts", "export {};\n", "Web");
+      subProject = await projects.import(sub);
+    });
+
+    it("waits for a new file of the same name, with paths relative to the project", async () => {
+      const wt = await worktrees.create(subProject, "agent/sub-neu", { fromDir: sub });
+      expect(wt.path).toBe(path.join(worktreeRoot(wt.path), "packages", "web"));
+      await commitFile(wt.path, "neu.ts", "export const a = 1;\n", "Agent: neu");
+      writeFileSync(path.join(sub, "neu.ts"), "export const b = 2;\n");
+      expect(await finisher.finish(wt.id, "merge")).toMatchObject({ outcome: "waiting", message: expect.stringMatching(/die der Agent ebenfalls angelegt hat: neu\.ts/) });
+
+      rmSync(path.join(sub, "neu.ts"));
+      writeFileSync(path.join(wt.path, "..", "..", "daneben.txt"), "neben dem Projekt\n");
+      const r = await finisher.finish(wt.id, "merge");
+      expect(r).toMatchObject({ outcome: "merged", commits: 2 });
+      expect(existsSync(path.join(repo, "daneben.txt"))).toBe(true);
+      expect(existsSync(worktreeRoot(wt.path))).toBe(false);
+      expect(await git(repo, "branch", "--list", "agent/sub-neu")).toBe("");
+    }, 30_000);
+  });
 });

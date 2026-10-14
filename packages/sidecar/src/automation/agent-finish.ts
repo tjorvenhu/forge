@@ -4,6 +4,7 @@ import type { GitEngine } from "../git/git.js";
 import type { Db, SessionRecord } from "../persistence/db.js";
 import { lastAnswer } from "../phone/session-info.js";
 import { removeWorktree, type RemovalDeps } from "../projects/removal.js";
+import { foreignBranch, worktreeRoot } from "./worktrees.js";
 import { pathKey } from "../util/paths.js";
 
 const BUSY = new Set(["starting", "running", "waiting_approval", "stopping"]);
@@ -79,7 +80,7 @@ export class AgentFinisher {
       behind = await this.count(worktree.path, `${own}..${target}`);
       const diff = await this.d.git.exec(worktree.path, ["diff", "--name-only", `${target}...${own}`]);
       filesChanged = diff.stdout.split("\n").filter((f) => f.trim()).length;
-      uncommitted = (await this.d.git.status(worktree.path)).files.length;
+      uncommitted = (await this.d.git.status(worktreeRoot(worktree.path))).files.length;
     }
     return {
       projectId: worktree.id,
@@ -122,7 +123,9 @@ export class AgentFinisher {
   private async discard(projectId: string): Promise<AgentFinishResult> {
     const l = await this.locate(projectId);
     // No branch to find (folder half gone, branch already deleted): only session, folder and entry go.
-    const r = await removeWorktree(projectId, true, this.d, { deleteBranch: !!l.branch });
+    // A branch that was there before the agent, or one it switched to, is not thrown away with it.
+    const own = l.branch ? await this.d.worktrees.branchOwner(l.worktree, l.branch) : null;
+    const r = await removeWorktree(projectId, true, this.d, { deleteBranch: !!own });
     this.changed(l);
     return {
       action: "discard",
@@ -133,7 +136,11 @@ export class AgentFinisher {
       files: [],
       sessionId: null,
       branchError: r.branchError,
-      message: r.branchError ? `Agent verworfen, aber der Branch blieb: ${r.branchError}` : `Agent verworfen${l.branch ? `, Branch ${l.branch} gelöscht` : ""}.`,
+      message: r.branchError
+        ? `Agent verworfen, aber der Branch blieb: ${r.branchError}`
+        : l.branch && !own
+          ? `Agent verworfen. ${foreignBranch(l.branch)}`
+          : `Agent verworfen${l.branch ? `, Branch ${l.branch} gelöscht` : ""}.`,
     };
   }
 
@@ -148,8 +155,10 @@ export class AgentFinisher {
     const git = this.d.git;
 
     if (review.uncommitted) {
-      const files = (await git.status(wt)).files.map((f) => f.path);
-      await git.commit(wt, `Restliche Änderungen von ${branch}`, files, false);
+      // From the top of the checkout: in a monorepo project the agent may have changed files beside it too.
+      const top = worktreeRoot(wt);
+      const files = (await git.status(top)).files.map((f) => f.path);
+      await git.commit(top, `Restliche Änderungen von ${branch}`, files, false);
     }
 
     if (review.behind) {
@@ -180,13 +189,15 @@ export class AgentFinisher {
       return { action: "merge", outcome: "waiting", branch, targetBranch, commits: 0, files: waiting.files, sessionId: null, branchError: null, message: waiting.message };
     }
     const taken = `${commits === 1 ? "1 Commit" : `${commits} Commits`} von ${branch} in ${targetBranch} übernommen`;
-    let removed: { branchError: string | null };
+    // A branch that existed before the agent keeps its name after the merge; only FORGE's own goes.
+    const own = await this.d.worktrees.branchOwner(l.worktree, branch);
+    let removed: { deletedBranch: string | null; branchError: string | null };
     try {
-      removed = await removeWorktree(projectId, false, this.d, { deleteBranch: true });
+      removed = await removeWorktree(projectId, false, this.d, { deleteBranch: !!own });
     } catch (e) {
       // The work is in: a folder that would not go is no failed merge. The branch is merged, so it
       // can go; the folder's remains are cleaned up by the next auto-merge round or "Verwerfen".
-      await git.exec(dir, ["branch", "-d", branch]).catch(() => null);
+      if (own) await git.exec(dir, ["branch", "-d", branch]).catch(() => null);
       this.changed(l);
       const why = e instanceof Error ? e.message : String(e);
       return { action: "merge", outcome: "merged", branch, targetBranch, commits, files: [], sessionId: null, branchError: null, message: `${taken}. Der Worktree-Ordner ließ sich aber nicht löschen: ${why}` };
@@ -201,7 +212,9 @@ export class AgentFinisher {
       files: [],
       sessionId: null,
       branchError: removed.branchError,
-      message: `${taken}, Worktree und Branch gelöscht.${removed.branchError ? ` Der Branch blieb aber: ${removed.branchError}` : ""}`,
+      message: removed.deletedBranch
+        ? `${taken}, Worktree und Branch gelöscht.`
+        : `${taken}, Worktree gelöscht. ${removed.branchError ? `Der Branch blieb aber: ${removed.branchError}` : foreignBranch(branch)}`,
     };
   }
 
@@ -222,7 +235,9 @@ export class AgentFinisher {
       throw new ForgeError("GIT_FAILED", msg || `${branch} ließ sich nicht in ${targetBranch} übernehmen.`);
     }
     const lines = (out: string) => out.split("\n").map((f) => f.trim()).filter(Boolean);
-    const theirs = new Set(lines((await git.exec(dir, ["diff", "--name-only", "HEAD", own])).stdout));
+    // --relative: paths below `dir` as status and ls-files give them, also for a project in a
+    // subfolder of the repository.
+    const theirs = new Set(lines((await git.exec(dir, ["diff", "--name-only", "--relative", "HEAD", own])).stdout));
     const dirty = (await git.status(dir)).files.map((f) => f.path).filter((f) => theirs.has(f));
     const wait = (why: string) => ({ message: `Noch nicht zusammengeführt: ${why}`, files: dirty });
 

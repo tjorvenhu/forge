@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import type { BackupPart } from "@forge/protocol";
@@ -143,5 +143,82 @@ describe("backups", () => {
     writeFileSync(file, JSON.stringify(data));
     await svc.restore({ path: file }, ["claude"]);
     expect(readdirSync(path.dirname(claudeDir))).not.toContain("escaped.txt");
+  });
+
+  /** Exports the current state, lets `edit` change the file and returns its path. */
+  const craft = async (s: ReturnType<typeof setup>, edit: (data: { settings: Record<string, string>; claude: { files: Record<string, string>; mcpServers: Record<string, unknown> | null } }) => void) => {
+    const file = path.join(s.t.dir, "crafted.json");
+    await s.svc.exportTo(file);
+    const data = JSON.parse(readFileSync(file, "utf8")) as Parameters<typeof edit>[0];
+    edit(data);
+    writeFileSync(file, JSON.stringify(data));
+    return file;
+  };
+
+  it("writes only the Claude files a backup takes, not credentials, transcripts or plugin code", async () => {
+    const s = setup();
+    writeFileSync(path.join(s.claudeDir, ".credentials.json"), "echt");
+    const file = await craft(s, (d) => {
+      Object.assign(d.claude.files, {
+        ".credentials.json": "gefälscht",
+        "agents/../.credentials.json": "gefälscht",
+        "projects/p/verlauf.jsonl": "x",
+        "plugins/cache/p/index.js": "x",
+        "agents/tool.exe": "x",
+        "skills/pdf/SKILL.md": "Skill",
+        "settings.json": "{}",
+      });
+    });
+    await s.svc.restore({ path: file }, ["claude"]);
+    expect(readFileSync(path.join(s.claudeDir, ".credentials.json"), "utf8")).toBe("echt");
+    expect(existsSync(path.join(s.claudeDir, "projects"))).toBe(false);
+    expect(existsSync(path.join(s.claudeDir, "plugins"))).toBe(false);
+    expect(existsSync(path.join(s.claudeDir, "agents", "tool.exe"))).toBe(false);
+    expect(readFileSync(path.join(s.claudeDir, "skills", "pdf", "SKILL.md"), "utf8")).toBe("Skill");
+    expect(readFileSync(path.join(s.claudeDir, "settings.json"), "utf8")).toBe("{}");
+  });
+
+  it("merges MCP servers into a .claude.json with BOM, creates a missing one and stops on one it cannot read", async () => {
+    const s = setup();
+    const file = await craft(s, (d) => {
+      d.claude.mcpServers = { docs: { command: "docs-mcp" } };
+    });
+    writeFileSync(s.claudeJson, "\uFEFF" + JSON.stringify({ numStartups: 4, oauthAccount: { id: "a" } }));
+    await s.svc.restore({ path: file }, ["claude"]);
+    expect(JSON.parse(readFileSync(s.claudeJson, "utf8"))).toEqual({ numStartups: 4, oauthAccount: { id: "a" }, mcpServers: { docs: { command: "docs-mcp" } } });
+
+    rmSync(s.claudeJson);
+    await s.svc.restore({ path: file }, ["claude"]);
+    expect(JSON.parse(readFileSync(s.claudeJson, "utf8"))).toEqual({ mcpServers: { docs: { command: "docs-mcp" } } });
+
+    writeFileSync(s.claudeJson, '{"numStartups": 4, "oauthAccount": ');
+    s.db.updateSettings({ sounds: false });
+    await expect(s.svc.restore({ path: file }, ["settings", "claude"])).rejects.toThrow(/kein gültiges JSON\. Das Backup wurde nicht wiederhergestellt/);
+    expect(readFileSync(s.claudeJson, "utf8")).toBe('{"numStartups": 4, "oauthAccount": ');
+    // Nothing else was set back either.
+    expect(s.db.getSettings().sounds).toBe(false);
+  });
+
+  it("keeps settings an older backup does not know and skips values that are no JSON", async () => {
+    const s = setup();
+    s.db.updateSettings({ sounds: false });
+    const file = await craft(s, (d) => {
+      delete d.settings.setupDone;
+      delete d.settings.syncEnabled;
+      delete d.settings.syncAsked;
+      d.settings.defaultModel = "kein json";
+    });
+    s.db.updateSettings({ sounds: true, setupDone: true, syncEnabled: true, syncAsked: true, defaultModel: "opus" });
+    const r = await s.svc.restore({ path: file }, ["settings"]);
+    expect(s.db.getSettings()).toMatchObject({ sounds: false, setupDone: true, syncEnabled: true, syncAsked: true, defaultModel: "opus" });
+    expect(r.notes.join(" ")).toMatch(/beschädigt .*defaultModel/);
+
+    // A backup that has them sets them back like any other setting.
+    const withThem = await craft(s, (d) => {
+      d.settings.setupDone = "false";
+    });
+    s.db.updateSettings({ setupDone: true });
+    await s.svc.restore({ path: withThem }, ["settings"]);
+    expect(s.db.getSettings().setupDone).toBe(false);
   });
 });

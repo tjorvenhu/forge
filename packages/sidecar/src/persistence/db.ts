@@ -443,20 +443,35 @@ export class Db {
     return Object.fromEntries(rows.map((r) => [r.key, r.value]));
   }
 
-  /** Replaces the stored settings with the given ones; `keep` stays as it is. */
-  replaceRawSettings(values: Record<string, string>, keep: string[] = []) {
+  /**
+   * Replaces the stored settings with the given ones; `keep` stays as it is, and so does every key
+   * whose new value is no JSON (getSettings would fail on it). Returns the keys skipped for that.
+   */
+  replaceRawSettings(values: Record<string, string>, keep: string[] = []): string[] {
+    const invalid = Object.entries(values)
+      .filter(([, v]) => {
+        try {
+          JSON.parse(v);
+          return false;
+        } catch {
+          return true;
+        }
+      })
+      .map(([k]) => k);
+    const stays = new Set([...keep, ...invalid]);
     this.sql.exec("BEGIN");
     try {
-      const keys = Object.keys(this.rawSettings()).filter((k) => !keep.includes(k));
+      const keys = Object.keys(this.rawSettings()).filter((k) => !stays.has(k));
       const del = this.sql.prepare("DELETE FROM settings WHERE key = ?");
       for (const k of keys) del.run(k);
       const ins = this.sql.prepare("INSERT INTO settings(key, value) VALUES(?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value");
-      for (const [k, v] of Object.entries(values)) if (!keep.includes(k)) ins.run(k, v);
+      for (const [k, v] of Object.entries(values)) if (!stays.has(k)) ins.run(k, v);
       this.sql.exec("COMMIT");
     } catch (e) {
       this.sql.exec("ROLLBACK");
       throw e;
     }
+    return invalid;
   }
 
   // ---- projects

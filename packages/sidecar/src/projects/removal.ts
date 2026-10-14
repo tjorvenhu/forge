@@ -151,7 +151,7 @@ export async function removeWorktree(
 
 /**
  * Removes a project from FORGE and, if asked, its GitHub repository and local folder. Order matters:
- * GitHub first (most likely to fail, nothing is lost then), then the folder, then the entry.
+ * GitHub first (most likely to fail, nothing is lost then), then the folder, then test database and entry.
  * Without deleteFolder, worktrees of the project stay as standalone projects.
  */
 export async function removeProject(projectId: string, opts: { deleteFolder: boolean; deleteGitHubRepo: boolean }, d: RemovalDeps) {
@@ -164,8 +164,6 @@ export async function removeProject(projectId: string, opts: { deleteFolder: boo
   const affected = [project.id, ...children.map((c) => c.id)];
   await d.sessions.closeProject(affected);
   for (const id of affected) await d.devServers.forget(id);
-  // Worktrees share their project's test database; it goes only with the project itself.
-  if (!project.parentId) await d.testDb?.forget(project.id);
 
   let githubDeleted = false;
   if (opts.deleteGitHubRepo && info.githubRepo) {
@@ -190,6 +188,9 @@ export async function removeProject(projectId: string, opts: { deleteFolder: boo
     folderDeleted = true;
   }
 
+  // Worktrees share their project's test database; it goes only with the project itself, and only
+  // once nothing above failed: the project then stays, and so does its data.
+  if (!project.parentId) await d.testDb?.forget(project.id);
   if (d.projects.all().some((p) => p.id === project.id)) d.projects.remove(project.id);
   return { removed: true, folderDeleted, githubDeleted };
 }

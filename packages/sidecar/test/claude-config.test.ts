@@ -150,29 +150,49 @@ describe("mcp", () => {
     ]);
   });
 
-  it("builds add arguments without a shell", () => {
-    expect(mcpAddArgs({ name: "ctx", scope: "user", transport: "stdio", target: "npx", args: ["-y", "pkg"], env: { TOKEN: "x" } })).toEqual([
-      "mcp",
-      "add",
-      "--scope",
-      "user",
-      "--env",
-      "TOKEN=x",
-      "ctx",
-      "--",
-      "npx",
-      "-y",
-      "pkg",
-    ]);
-    expect(mcpAddArgs({ name: "remote", scope: "project", transport: "http", target: "https://x.example/mcp", args: [], env: {} })).toEqual([
-      "mcp",
-      "add",
-      "--scope",
-      "project",
-      "--transport",
-      "http",
-      "remote",
-      "https://x.example/mcp",
-    ]);
+  /**
+   * Reads arguments the way the claude CLI (commander) does: `-e/--env` takes values until the next
+   * option, `--` ends all options, the rest are <name> <commandOrUrl> [args...].
+   */
+  const parseAdd = (argv: string[]) => {
+    const opts: Record<string, string[]> = {};
+    const positional: string[] = [];
+    let variadic: string | null = null;
+    for (let i = 2; i < argv.length; i++) {
+      const a = argv[i]!;
+      if (a === "--") {
+        positional.push(...argv.slice(i + 1));
+        break;
+      }
+      if (a.startsWith("-")) {
+        const key = { "-e": "env", "--env": "env", "-s": "scope", "--scope": "scope", "-t": "transport", "--transport": "transport" }[a] ?? a;
+        if (key === "env") variadic = key;
+        else {
+          variadic = null;
+          opts[key] = [argv[++i]!];
+          continue;
+        }
+        opts[key] ??= [];
+        continue;
+      }
+      if (variadic) opts[variadic]!.push(a);
+      else positional.push(a);
+    }
+    const [name, target, ...args] = positional;
+    return { name, target, args, env: opts.env ?? [], scope: opts.scope?.[0], transport: opts.transport?.[0] };
+  };
+
+  it("builds add arguments the claude CLI reads back as meant, without a shell", () => {
+    const stdio = mcpAddArgs({ name: "ctx", scope: "user", transport: "stdio", target: "npx", args: ["-y", "pkg"], env: { TOKEN: "x", OTHER: "y" } });
+    expect(stdio).toEqual(["mcp", "add", "ctx", "--scope", "user", "-e", "TOKEN=x", "-e", "OTHER=y", "--", "npx", "-y", "pkg"]);
+    expect(parseAdd(stdio)).toEqual({ name: "ctx", target: "npx", args: ["-y", "pkg"], env: ["TOKEN=x", "OTHER=y"], scope: "user", transport: undefined });
+
+    const http = mcpAddArgs({ name: "remote", scope: "project", transport: "http", target: "https://x.example/mcp", args: [], env: { KEY: "1" } });
+    expect(parseAdd(http)).toEqual({ name: "remote", target: "https://x.example/mcp", args: [], env: ["KEY=1"], scope: "project", transport: "http" });
+    expect(parseAdd(mcpAddArgs({ name: "remote", scope: "local", transport: "sse", target: "https://x.example/sse", args: [], env: {} }))).toMatchObject({
+      name: "remote",
+      target: "https://x.example/sse",
+      env: [],
+    });
   });
 });
