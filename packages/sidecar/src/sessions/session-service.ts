@@ -16,7 +16,7 @@ import type {
   SlashCommand,
 } from "@forge/protocol";
 import { ForgeError, IDLE_CLOSED_DETAIL } from "@forge/protocol";
-import { transcriptImages } from "../claude/attachments.js";
+import { transcriptImages, transcriptToolImages } from "../claude/attachments.js";
 import type { ClaudeRuntime } from "../claude/runtime.js";
 import { UploadStore } from "../claude/uploads.js";
 import { describeUsage } from "../claude/usage.js";
@@ -494,9 +494,16 @@ export class SessionService {
     const rec = this.db.getSession(sessionId);
     if (!rec) throw new ForgeError("SESSION_NOT_FOUND", "Session nicht gefunden.");
     const ev = this.db.getEvent(sessionId, seq);
-    if (ev?.body.type !== "user.message" || !ev.body.uuid) throw new ForgeError("VALIDATION", "Keine Nachricht mit Anhängen.");
+    const body = ev?.body;
+    if (body?.type === "tool.result" && body.toolUseId) {
+      if (!rec.claudeSessionId) throw new ForgeError("NOT_FOUND", "Bild noch nicht im Verlauf.");
+      const images = transcriptToolImages(await this.runtime.sessionHistory(rec.claudeSessionId, rec.cwd), body.toolUseId);
+      if (!images) throw new ForgeError("NOT_FOUND", "Bild nicht im Verlauf von Claude Code.");
+      return images;
+    }
+    if (body?.type !== "user.message" || !body.uuid) throw new ForgeError("VALIDATION", "Keine Nachricht mit Anhängen.");
     if (!rec.claudeSessionId) throw new ForgeError("NOT_FOUND", "Bild noch nicht im Verlauf.");
-    const images = transcriptImages(await this.runtime.sessionHistory(rec.claudeSessionId, rec.cwd), ev.body.uuid);
+    const images = transcriptImages(await this.runtime.sessionHistory(rec.claudeSessionId, rec.cwd), body.uuid);
     if (!images) throw new ForgeError("NOT_FOUND", "Bild nicht im Verlauf von Claude Code.");
     return images;
   }

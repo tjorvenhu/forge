@@ -149,4 +149,35 @@ describe("FORGE tools in the chat", () => {
     expect(screen.getByText("Abo-Nutzung abgefragt, Limit erreicht")).toBeTruthy();
     expect(screen.getByText("100 %")).toBeTruthy();
   });
+
+  it("shows the screenshot of the preview from the transcript, with a placeholder of its size while it loads", async () => {
+    let resolve: (v: unknown) => void = () => {};
+    callMock.mockImplementation(() => new Promise((r) => (resolve = r)));
+    const text = "Titel: Start\nAdresse: http://localhost:5173/\nHTTP-Status: 200\nKonsole: keine Meldungen\nScreenshot: 1280x800 JPEG\n[Bild]";
+    show(tool("mcp__forge__preview_screenshot", {}, { text }, { seqs: [7, 8] }));
+    expect(screen.getByText("Screenshot der Vorschau")).toBeTruthy();
+    expect(screen.getByText("http://localhost:5173/")).toBeTruthy();
+    expect(callMock).toHaveBeenCalledWith("sessions.images", { sessionId: "s1", seq: 8 });
+    expect((screen.getByRole("status", { name: "Lädt Screenshot" }) as HTMLElement).style.aspectRatio).toBe("1280 / 800");
+    resolve([{ mediaType: "image/jpeg", base64: "QUJD" }]);
+    expect(((await screen.findByAltText("Screenshot der Vorschau")) as HTMLImageElement).src).toBe("data:image/jpeg;base64,QUJD");
+    callMock.mockReset();
+  });
+
+  it("names console problems and a step that failed", () => {
+    show(tool("mcp__forge__preview_console", {}, { text: "Titel: Start\nAdresse: http://localhost:5173/\nZusammenfassung: 2 Fehler; 1 fehlgeschlagene Anfrage" }));
+    expect(screen.getByText("Konsole der Vorschau meldet Fehler")).toBeTruthy();
+    expect(screen.getByText("2 Fehler; 1 fehlgeschlagene Anfrage")).toBeTruthy();
+    cleanup();
+    const steps = [{ action: "click", selector: "#a" }, { action: "click", selector: "#b" }];
+    show(tool("mcp__forge__preview_interact", { steps }, { text: "Adresse: http://localhost:5173/\nSchritte:\n1. click #a: ok\n2. click #b: Fehler: weg\nAbgebrochen nach Schritt 2 von 2." }));
+    expect(screen.getByText("Schritt 2 von 2 in der Vorschau fehlgeschlagen")).toBeTruthy();
+    cleanup();
+    show(tool("mcp__forge__preview_interact", { steps }, null), true);
+    expect(screen.getByText("Führt 2 Schritte in der Vorschau aus")).toBeTruthy();
+    cleanup();
+    show(tool("mcp__forge__preview_screenshot", {}, { text: "Fehler: Für dieses Projekt läuft kein Dev-Server.", isError: true }));
+    expect(screen.getByText("Screenshot der Vorschau fehlgeschlagen")).toBeTruthy();
+    expect(screen.queryByRole("status", { name: "Lädt Screenshot" })).toBeNull();
+  });
 });

@@ -31,7 +31,8 @@ import { Input } from "@/components/ui/input";
 import { TOOL_LABELS, toolDisplayName, toolSummary, type ChatItem, type TodoEntry } from "./chat-items";
 import { PlanCard, QuestionCard } from "./InteractiveCards";
 import { ForgeToolCard } from "./ForgeToolCard";
-import { forgeToolName, forgeToolView } from "./forge-tool";
+import { forgeToolName, forgeToolView, previewShot } from "./forge-tool";
+import { PreviewShot } from "./PreviewShot";
 import { ChatRow, Dot, Guide } from "./ChatRow";
 import { cachedEditDiff, cleanToolOutput, countLines, diffStats, inputJson, splitPreview, type DiffLine } from "./tool-view";
 import { FileLink, LinkedText } from "./file-links";
@@ -139,8 +140,19 @@ export function ToolCard({ item, sessionId, sessionLive, projectDir }: { item: T
     const view = forgeToolView(forgeTool, use.input, result ? { text: result.content.text, isError: result.isError } : null);
     if (view.hidden && !blocked && !approval) return null;
     const tone = state === "error" || state === "blocked" || state === "denied" ? "danger" : state === "waiting" ? "warning" : view.tone;
+    const shot = result && !result.isError ? previewShot(forgeTool, result.content.text) : null;
+    const resultSeq = item.seqs?.at(-1);
     return (
-      <ForgeToolCard sessionId={sessionId} itemKey={item.key} view={view} tone={tone} stateLabel={STATE_DOT[state].label} pending={state === "running" || state === "waiting"} details={details}>
+      <ForgeToolCard
+        sessionId={sessionId}
+        itemKey={item.key}
+        view={view}
+        tone={tone}
+        stateLabel={STATE_DOT[state].label}
+        pending={state === "running" || state === "waiting"}
+        details={details}
+        preview={shot && resultSeq !== undefined ? <PreviewShot sessionId={sessionId} seq={resultSeq} size={shot} /> : null}
+      >
         {blockedNote}
         {approvalNote}
       </ForgeToolCard>

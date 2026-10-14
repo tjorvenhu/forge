@@ -13,6 +13,7 @@ import { DevServerService } from "./devserver/dev-server.js";
 import { DevToolsService } from "./devtools/dev-tools.js";
 import { TestDbService } from "./devtools/test-db.js";
 import { DevEnvironment } from "./devtools/environment.js";
+import { PreviewService } from "./preview/preview.js";
 import { KnowledgeStore } from "./knowledge/knowledge.js";
 import { PhoneService } from "./phone/phone-service.js";
 import { JobWatcher } from "./sessions/job-done.js";
@@ -97,7 +98,8 @@ export function createApp(opts: { dataDir: string; write: Writer; log?: (m: stri
   const devEnv: DevEnvironment = new DevEnvironment(devTools, testDb, () => devServers);
   const devServers = new DevServerService(projects, () => sessionEnv(db.getSettings().stripApiKey), emit, (projectId) => devEnv.devServerPrep(projectId));
   const knowledge = new KnowledgeStore(projects, (projectId) => emit({ event: "knowledge.updated", payload: { projectId } }));
-  sessions.useProjectTools({ knowledge, dev: devEnv });
+  const preview = new PreviewService({ devServer: (projectId) => devServers.state(projectId) });
+  sessions.useProjectTools({ knowledge, dev: devEnv, preview });
   const notifyProject = (projectId: string) => emit({ event: "project.updated", payload: { projectId } });
   const agentFinish = new AgentFinisher({ db, git, projects, sessions, worktrees, devServers, notifyProject });
   sessions.useAgentFinisher(agentFinish);
@@ -284,13 +286,14 @@ export function createApp(opts: { dataDir: string; write: Writer; log?: (m: stri
       const limit = new Promise<void>((r) => (timer = setTimeout(r, limitMs)));
       // The phone hangs up and unregisters; tests and auto-commits of finished turns get a chance to land.
       // The test databases go down meanwhile: after the drain there is no time left before the shell ends us.
-      await Promise.race([Promise.allSettled([sessions.drain(), Promise.resolve().then(() => phone?.shutdown()), testDb.stopAll()]), limit]);
+      await Promise.race([Promise.allSettled([sessions.drain(), Promise.resolve().then(() => phone?.shutdown()), testDb.stopAll(), preview.closeAll()]), limit]);
       clearTimeout(timer);
       sessions.shutdown();
       tokenMeter.stop();
       updates.stop();
       sync?.stop();
       devServers.shutdown();
+      preview.shutdown();
       testDb.shutdown();
       github.shutdown();
       claudeSetup.shutdown();

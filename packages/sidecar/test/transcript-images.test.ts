@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { transcriptImages } from "../src/claude/attachments.js";
+import { transcriptImages, transcriptToolImages } from "../src/claude/attachments.js";
 
 describe("transcriptImages", () => {
   const messages = [
@@ -29,5 +29,38 @@ describe("transcriptImages", () => {
   it("returns an empty list for a message without images and null for an unknown one", () => {
     expect(transcriptImages(messages, "a")).toEqual([]);
     expect(transcriptImages(messages, "zzz")).toBeNull();
+  });
+});
+
+describe("transcriptToolImages", () => {
+  const messages = [
+    { type: "assistant", uuid: "a", message: { content: [{ type: "tool_use", id: "tu1", name: "mcp__forge__preview_screenshot", input: {} }] } },
+    {
+      type: "user",
+      uuid: "b",
+      message: {
+        content: [
+          { type: "tool_result", tool_use_id: "tu0", content: "nur Text" },
+          {
+            type: "tool_result",
+            tool_use_id: "tu1",
+            content: [
+              { type: "text", text: "Titel: Start" },
+              { type: "image", source: { type: "base64", media_type: "image/jpeg", data: "JPG" } },
+              { type: "image", data: "PNG", mimeType: "image/png" },
+            ],
+          },
+        ],
+      },
+    },
+  ];
+
+  it("returns the images of one tool result", () => {
+    expect(transcriptToolImages(messages, "tu1")).toEqual([
+      { mediaType: "image/jpeg", base64: "JPG" },
+      { mediaType: "image/png", base64: "PNG" },
+    ]);
+    expect(transcriptToolImages(messages, "tu0")).toEqual([]);
+    expect(transcriptToolImages(messages, "tu9")).toBeNull();
   });
 });

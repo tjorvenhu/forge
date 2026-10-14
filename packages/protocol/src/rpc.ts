@@ -299,7 +299,7 @@ export const methods = {
     }),
     result: z.object({ path: z.string().nullable() }),
   },
-  /** the images of a sent user message, read back from the Claude Code transcript */
+  /** the images of a sent user message or of a tool result (seq of the tool.result), read back from the Claude Code transcript */
   "sessions.images": {
     params: sessionRef.extend({ seq: z.number().int() }),
     result: z.array(z.object({ mediaType: z.string(), base64: z.string() })),

@@ -1,5 +1,21 @@
 import type { ReactNode } from "react";
-import { Activity, Anvil, BellRing, BookOpen, ChevronRight, Gauge, GitBranchPlus, GitMerge, Send, ServerCog, Trash2, type LucideIcon } from "lucide-react";
+import {
+  Activity,
+  Anvil,
+  BellRing,
+  BookOpen,
+  Camera,
+  ChevronRight,
+  Gauge,
+  GitBranchPlus,
+  GitMerge,
+  MousePointerClick,
+  Send,
+  ServerCog,
+  SquareTerminal,
+  Trash2,
+  type LucideIcon,
+} from "lucide-react";
 import { Collapse } from "@/components/ui/collapse";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -20,6 +36,9 @@ const ICONS: Record<ForgeToolIcon, LucideIcon> = {
   agentMerge: GitMerge,
   agentDiscard: Trash2,
   usage: Gauge,
+  screenshot: Camera,
+  console: SquareTerminal,
+  interact: MousePointerClick,
   forge: Anvil,
 };
 
@@ -42,6 +61,7 @@ export function ForgeToolCard({
   stateLabel,
   pending,
   details,
+  preview,
   children,
 }: {
   sessionId: string;
@@ -52,6 +72,8 @@ export function ForgeToolCard({
   /** running or waiting for approval */
   pending: boolean;
   details: ReactNode;
+  /** always visible below the title, e.g. the screenshot of a preview tool */
+  preview?: ReactNode;
   /** policy block and approval, below the card */
   children?: ReactNode;
 }) {
@@ -88,6 +110,7 @@ export function ForgeToolCard({
           </Button>
         )}
       </div>
+      {preview}
       <Collapse open={open}>
         <Guide className="mt-1.5 space-y-2 pb-1">{details}</Guide>
       </Collapse>

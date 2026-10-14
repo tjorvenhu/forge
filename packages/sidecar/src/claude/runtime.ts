@@ -68,7 +68,13 @@ export interface SessionTool {
   shape: Record<string, z.ZodType>;
   /** allowed without asking (read-only or harmless); the others go through the normal approvals */
   autoAllow: boolean;
-  run(args: Record<string, unknown>): Promise<string>;
+  run(args: Record<string, unknown>): Promise<string | ToolOutput>;
+}
+
+/** A tool result with images (base64) after the text, e.g. a screenshot. */
+export interface ToolOutput {
+  text: string;
+  images?: Array<{ data: string; mimeType: string }>;
 }
 
 export const FORGE_MCP = "forge";
@@ -640,13 +646,14 @@ function forgeServer(tools: SessionTool[]) {
     version: "1.0.0",
     tools: tools.map((t) =>
       sdkTool(t.name, t.description, t.shape, async (args: Record<string, unknown>) => {
-        let text: string;
+        let out: string | ToolOutput;
         try {
-          text = await t.run(args);
+          out = await t.run(args);
         } catch (e) {
           return { content: [{ type: "text" as const, text: `Fehler: ${e instanceof Error ? e.message : String(e)}` }], isError: true };
         }
-        return { content: [{ type: "text" as const, text }] };
+        const { text, images = [] } = typeof out === "string" ? { text: out } : out;
+        return { content: [{ type: "text" as const, text }, ...images.map((i) => ({ type: "image" as const, data: i.data, mimeType: i.mimeType }))] };
       }),
     ),
   });

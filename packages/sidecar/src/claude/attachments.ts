@@ -151,12 +151,29 @@ export function transcriptImages(messages: unknown[], uuid: string): Array<{ med
   const m = (messages as Array<Record<string, unknown> | null>).find((x) => x?.uuid === uuid);
   if (!m) return null;
   const content = (m.message as Record<string, unknown> | undefined)?.content;
-  if (!Array.isArray(content)) return [];
+  return Array.isArray(content) ? imageBlocks(content) : [];
+}
+
+/** The images in the result of one tool call (e.g. a preview screenshot); null when the result is not in the transcript. */
+export function transcriptToolImages(messages: unknown[], toolUseId: string): Array<{ mediaType: string; base64: string }> | null {
+  for (const m of messages as Array<Record<string, unknown> | null>) {
+    const content = (m?.message as Record<string, unknown> | undefined)?.content;
+    if (!Array.isArray(content)) continue;
+    for (const b of content as Array<Record<string, unknown> | null>) {
+      if (b?.type === "tool_result" && b.tool_use_id === toolUseId) return Array.isArray(b.content) ? imageBlocks(b.content) : [];
+    }
+  }
+  return null;
+}
+
+function imageBlocks(content: unknown[]): Array<{ mediaType: string; base64: string }> {
   const images: Array<{ mediaType: string; base64: string }> = [];
   for (const b of content as Array<Record<string, unknown> | null>) {
     if (b?.type !== "image") continue;
     const src = (b.source ?? {}) as Record<string, unknown>;
     if (src.type === "base64" && typeof src.data === "string" && typeof src.media_type === "string") images.push({ mediaType: src.media_type, base64: src.data });
+    // MCP form, in case a result is stored the way the tool returned it
+    else if (typeof b.data === "string" && typeof b.mimeType === "string") images.push({ mediaType: b.mimeType, base64: b.data });
   }
   return images;
 }

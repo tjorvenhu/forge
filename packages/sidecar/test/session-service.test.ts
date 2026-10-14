@@ -322,7 +322,7 @@ describe("SessionService", () => {
     expect(child.tools!.map((t) => t.name)).toEqual(["notify", "usage_status"]);
     expect(child.context).toMatch(/paralleler Agent/);
 
-    const status = await tool("agent_status").run({});
+    const status = String(await tool("agent_status").run({}));
     expect(status).toMatch(/arbeitet/);
     const agentId = /^([0-9a-f]{8})/.exec(status)![1]!;
     rt.replay(1);
@@ -386,7 +386,7 @@ describe("SessionService", () => {
     await git(child.cwd, "add", ".");
     await git(child.cwd, "commit", "-m", "CSV-Export");
     rt.replay(1);
-    const agentId = /^([0-9a-f]{8})/.exec(await tool("agent_status").run({}))![1]!;
+    const agentId = /^([0-9a-f]{8})/.exec(String(await tool("agent_status").run({})))![1]!;
     expect(await tool("finish_agent").run({ agent: agentId, action: "merge" })).toMatch(/^1 Commit von agent\/csv-[a-z0-9]+ in feature\/eigen übernommen/);
     expect((await git(own.path, "log", "-1", "--format=%s")).trim()).toBe("CSV-Export");
     expect(existsSync(child.cwd)).toBe(false);

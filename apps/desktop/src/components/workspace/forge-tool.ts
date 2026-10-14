@@ -1,7 +1,20 @@
 /** What a call of a FORGE tool (mcp__forge__…) means, for its own card in the chat. */
 import type { DevToolsSection } from "@/stores/ui";
 
-export type ForgeToolIcon = "knowledge" | "dev" | "notify" | "agentStart" | "agentStatus" | "agentMessage" | "agentMerge" | "agentDiscard" | "usage" | "forge";
+export type ForgeToolIcon =
+  | "knowledge"
+  | "dev"
+  | "notify"
+  | "agentStart"
+  | "agentStatus"
+  | "agentMessage"
+  | "agentMerge"
+  | "agentDiscard"
+  | "usage"
+  | "screenshot"
+  | "console"
+  | "interact"
+  | "forge";
 
 /** Where the card's button leads: an entry of the knowledge (or the list), the agents, the dev tools. */
 export type ForgeTarget = { kind: "knowledge"; id: string | null } | { kind: "agents" } | { kind: "devtools"; section: DevToolsSection };
@@ -29,6 +42,18 @@ const DEV_ACTION: Record<string, string> = { start: "gestartet", stop: "gestoppt
 function str(input: Record<string, unknown>, key: string): string | null {
   const v = input[key];
   return typeof v === "string" && v.trim() ? v.trim() : null;
+}
+
+const line = (text: string, label: string) => new RegExp(`^${label}: (.+)$`, "m").exec(text)?.[1]?.trim() ?? null;
+/** what the preview reported as problems: console errors, exceptions, failed requests */
+const PROBLEMS = /Fehler|Ausnahme|fehlgeschlagene Anfrage/;
+const steps = (n: number) => (n === 1 ? "1 Schritt" : `${n} Schritte`);
+
+/** Size of the screenshot a preview tool returned ("Screenshot: 1280x800 JPEG"), null without one. */
+export function previewShot(tool: string, text: string): { width: number; height: number } | null {
+  if (tool !== "preview_screenshot" && tool !== "preview_interact") return null;
+  const m = /^Screenshot: (\d+)x(\d+)/m.exec(text);
+  return m ? { width: Number(m[1]), height: Number(m[2]) } : null;
 }
 
 /**
@@ -162,6 +187,45 @@ export function forgeToolView(tool: string, input: Record<string, unknown>, resu
         icon: "usage",
         tone: reached ? "warning" : "accent",
         target: null,
+      });
+    }
+    case "preview_screenshot": {
+      const problems = done && PROBLEMS.test(line(text, "Konsole") ?? "");
+      return view({
+        title: !result ? "Erstellt Screenshot der Vorschau" : problems ? "Screenshot der Vorschau, Konsole meldet Fehler" : "Screenshot der Vorschau",
+        failedTitle: "Screenshot der Vorschau fehlgeschlagen",
+        ref: line(text, "Adresse") ?? str(input, "url") ?? str(input, "path"),
+        icon: "screenshot",
+        tone: problems ? "warning" : "accent",
+        target: { kind: "devtools", section: "server" },
+      });
+    }
+    case "preview_console": {
+      const summary = line(text, "Zusammenfassung");
+      const problems = done && PROBLEMS.test(summary ?? "");
+      return view({
+        title: !result ? "Liest die Konsole der Vorschau" : problems ? "Konsole der Vorschau meldet Fehler" : "Konsole der Vorschau gelesen",
+        failedTitle: "Konsole der Vorschau nicht lesbar",
+        ref: summary ?? str(input, "url") ?? str(input, "path"),
+        icon: "console",
+        tone: problems ? "warning" : "accent",
+        target: { kind: "devtools", section: "server" },
+      });
+    }
+    case "preview_interact": {
+      const total = Array.isArray(input.steps) ? input.steps.length : 0;
+      const stopped = done ? /^Abgebrochen nach Schritt (\d+) von (\d+)/m.exec(text) : null;
+      return view({
+        title: !result
+          ? `Führt ${steps(total)} in der Vorschau aus`
+          : stopped
+            ? `Schritt ${stopped[1]} von ${stopped[2]} in der Vorschau fehlgeschlagen`
+            : `${steps(total)} in der Vorschau ausgeführt`,
+        failedTitle: "Schritte in der Vorschau nicht ausgeführt",
+        ref: line(text, "Adresse") ?? str(input, "url") ?? str(input, "path"),
+        icon: "interact",
+        tone: stopped ? "warning" : "accent",
+        target: { kind: "devtools", section: "server" },
       });
     }
     default:

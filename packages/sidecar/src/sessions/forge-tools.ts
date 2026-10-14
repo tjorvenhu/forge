@@ -11,6 +11,7 @@ import { lastAnswer } from "../phone/session-info.js";
 import type { StartParams } from "./lifecycle.js";
 import { KNOWLEDGE_DIR, type KnowledgeStore } from "../knowledge/knowledge.js";
 import type { DevAction, DevEnvironment, DevTarget } from "../devtools/environment.js";
+import { MAX_STEP_MS, type PreviewService, type PreviewStep } from "../preview/preview.js";
 
 /** Agents one session may have running at the same time. */
 export const MAX_AGENTS = 4;
@@ -56,6 +57,7 @@ export class AgentRegistry {
 export interface ProjectToolDeps {
   knowledge: KnowledgeStore;
   dev: DevEnvironment;
+  preview?: PreviewService | null;
 }
 
 export interface ForgeToolDeps {
@@ -156,6 +158,8 @@ export function projectTools(rec: SessionRecord, p: ProjectToolDeps): { tools: S
     run: (a) => p.dev.control(projectId, a.target as DevTarget, a.action as DevAction),
   };
 
+  const preview = p.preview ? previewTools(projectId, p.preview) : [];
+
   const { lines, total } = p.knowledge.index(projectId);
   const context = [
     "Projektwissen (FORGE): Gesammeltes Wissen zu diesem Projekt liegt in .forge/knowledge (Markdown, im Git).",
@@ -170,8 +174,77 @@ export function projectTools(rec: SessionRecord, p: ProjectToolDeps): { tools: S
     "- Keine Geheimnisse (Passwörter, Tokens, Keys), kein Sitzungsprotokoll, nichts Kurzlebiges. Ein Thema pro Eintrag; bestehende Einträge aktualisieren statt neue anzulegen, Veraltetes korrigieren oder mit knowledge_delete löschen.",
     "- Ändere das Projektwissen nur mit den knowledge_*-Werkzeugen, nicht mit Read, Edit oder Write auf die Dateien.",
     "Dev-Umgebung (FORGE): mcp__forge__dev_environment zeigt Dev-Server (Adresse, letzte Ausgabe) und die lokale PostgreSQL-Testdatenbank (Verbindungs-URL). Nutze für Tests, Migrationen und Experimente mit Daten diese Testdatenbank, nie eine Produktionsdatenbank. dev_control startet, stoppt oder leert sie und startet den Dev-Server neu.",
+    preview.length
+      ? "Vorschau (FORGE): preview_screenshot zeigt dir die laufende Web-App als Bild (Standard: Adresse des Dev-Servers, path für Unterseiten), preview_console liefert Konsolenmeldungen, Ausnahmen und fehlgeschlagene Anfragen, preview_interact klickt, tippt und wartet auf der Seite. Nur Adressen auf diesem Rechner. Prüfe UI-Änderungen damit selbst, bevor du sie als fertig meldest."
+      : "",
   ].filter(Boolean);
-  return { tools: [knowledgeSearch, knowledgeRead, knowledgeSave, knowledgeDelete, devEnvironment, devControl], context };
+  return { tools: [knowledgeSearch, knowledgeRead, knowledgeSave, knowledgeDelete, devEnvironment, devControl, ...preview], context };
+}
+
+const previewTarget = {
+  url: z.string().max(2000).optional().describe("Lokale Adresse, z. B. http://localhost:5173/login. Weglassen: Adresse des laufenden Dev-Servers"),
+  path: z.string().max(2000).optional().describe("Pfad relativ zur Adresse, z. B. /settings"),
+  width: z.number().int().min(320).max(2560).optional().describe("Breite des Fensters in Pixeln (Standard 1280)"),
+  height: z.number().int().min(240).max(2000).optional().describe("Höhe des Fensters in Pixeln (Standard 800)"),
+};
+
+const str = (v: unknown) => (typeof v === "string" ? v : null);
+const int = (v: unknown) => (typeof v === "number" ? v : null);
+
+/** Screenshot, console and simple input on the project's running web app (headless Edge or Chrome). */
+function previewTools(projectId: string, preview: PreviewService): SessionTool[] {
+  const target = (a: Record<string, unknown>) => ({ url: str(a.url), path: str(a.path), width: int(a.width), height: int(a.height) });
+  return [
+    {
+      name: "preview_screenshot",
+      description:
+        "Lädt die laufende Web-App des Projekts in einem unsichtbaren Browser und liefert einen Screenshot als Bild, dazu Titel, Adresse, HTTP-Status und eine Zählung der Konsolenmeldungen. Nur Adressen auf diesem Rechner (localhost, 127.0.0.1, ::1).",
+      shape: { ...previewTarget, fullPage: z.boolean().optional().describe("true: ganze Seite statt nur des sichtbaren Bereichs") },
+      autoAllow: true,
+      run: (a) => preview.screenshot(projectId, { ...target(a), fullPage: a.fullPage === true }),
+    },
+    {
+      name: "preview_console",
+      description:
+        "Konsolenmeldungen (error, warn, log), unbehandelte Ausnahmen und fehlgeschlagene Netzwerk-Anfragen (Status ab 400 oder abgebrochen) der Web-App. Ohne url und path die zuletzt geöffnete Seite, sonst wird sie geladen.",
+      shape: { ...previewTarget, reload: z.boolean().optional().describe("true: Seite neu laden statt die bisherigen Meldungen zu lesen") },
+      autoAllow: true,
+      run: (a) => preview.console(projectId, { ...target(a), reload: a.reload === true }),
+    },
+    {
+      name: "preview_interact",
+      description:
+        "Führt Schritte auf der Seite aus (ohne url und path auf der zuletzt geöffneten): click (CSS-Selektor), type (Selektor und Text; clear ersetzt den Inhalt), press (Taste wie Enter, Tab, Escape, ArrowDown, Control+a), wait (ms oder Selektor). Bricht beim ersten Fehler ab und liefert danach einen Screenshot.",
+      shape: {
+        ...previewTarget,
+        steps: z
+          .array(
+            z.object({
+              action: z.enum(["click", "type", "press", "wait"]),
+              selector: z.string().max(500).optional().describe("CSS-Selektor (click, type, wait)"),
+              text: z.string().max(5000).optional().describe("Text für type"),
+              clear: z.boolean().optional().describe("type: vorhandenen Inhalt ersetzen"),
+              key: z.string().max(40).optional().describe("Taste für press"),
+              ms: z.number().int().min(0).max(MAX_STEP_MS).optional().describe("wait: Wartezeit, mit selector das Zeitlimit"),
+            }),
+          )
+          .min(1)
+          .max(30),
+        stepTimeoutMs: z.number().int().min(100).max(MAX_STEP_MS).optional().describe("Zeitlimit je Schritt für das Finden eines Elements (Standard 5000)"),
+        screenshot: z.boolean().optional().describe("false: ohne Screenshot am Ende"),
+        fullPage: z.boolean().optional(),
+      },
+      autoAllow: false,
+      run: (a) =>
+        preview.interact(projectId, {
+          ...target(a),
+          steps: (Array.isArray(a.steps) ? a.steps : []) as PreviewStep[],
+          stepMs: int(a.stepTimeoutMs) ?? undefined,
+          screenshot: a.screenshot !== false,
+          fullPage: a.fullPage === true,
+        }),
+    },
+  ];
 }
 
 const short = (id: string) => id.slice(0, 8);
