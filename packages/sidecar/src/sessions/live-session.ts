@@ -20,6 +20,8 @@ export interface LiveSession {
   interrupting: boolean;
   /** set by close()/shutdown(); the process is ending, new messages must not go to it */
   closing: boolean;
+  /** status detail recorded when the process has ended (why it was closed) */
+  endDetail?: string;
   /** a CLI turn runs (started by a message, the Claude app or a finished background task) */
   turnActive: boolean;
   /** resolves when the process has ended (onEnd ran) */

@@ -413,6 +413,8 @@ function settingText(s: Settings, key: keyof ForgeSettingsPatch | "alwaysOnTop")
       return s.enterToSend ? "Enter sendet" : "Enter macht eine neue Zeile";
     case "autoContinueAfterLimit":
       return `automatisch weitermachen nach einem Limit ${on(s.autoContinueAfterLimit)}`;
+    case "idleCloseMinutes":
+      return s.idleCloseMinutes > 0 ? `untätige Claude-Prozesse schließen nach ${s.idleCloseMinutes} Minuten` : "untätige Claude-Prozesse bleiben offen";
     case "updateChecks":
       return `Update-Prüfung ${on(s.updateChecks)}`;
     case "debugLogs":
@@ -608,6 +610,11 @@ export class PhoneService {
   }
 
   // ---------- state
+
+  /** The session the running call is about, if any. */
+  callFocus(): string | null {
+    return this.active?.focus ?? null;
+  }
 
   state(): PhoneState {
     const desk = this.cfg.enabled && this.cfg.desk.enabled ? { reachable: this.desk.reachable, message: this.desk.message } : null;
@@ -2414,6 +2421,10 @@ export class PhoneService {
             update.defaultEffort = patch.defaultEffort === "default" ? null : patch.defaultEffort;
             changed.push("defaultEffort");
           }
+          if (patch.idleCloseMinutes !== undefined) {
+            update.idleCloseMinutes = Math.min(1440, Math.max(0, Math.round(patch.idleCloseMinutes)));
+            changed.push("idleCloseMinutes");
+          }
           if (patch.defaultProfile) {
             update.defaultProfile = patch.defaultProfile;
             changed.push("defaultProfile");
@@ -2429,7 +2440,7 @@ export class PhoneService {
             update.disabledPolicyRules = patch.policyRuleOn ? off : [...off, rule];
             changed.push("policyRule");
           }
-          if (!changed.length) return `${(["defaultModel", "defaultEffort", "defaultProfile", "defaultProjectDir", ...flags, "alwaysOnTop", "policyRule"] as const).map((k) => settingText(cur, k)).join(", ")}.`;
+          if (!changed.length) return `${(["defaultModel", "defaultEffort", "defaultProfile", "defaultProjectDir", ...flags, "idleCloseMinutes", "alwaysOnTop", "policyRule"] as const).map((k) => settingText(cur, k)).join(", ")}.`;
           const next = await call("settings.update", update);
           return `Gespeichert: ${changed.map((k) => settingText(next, k)).join(", ")}.`;
         }),

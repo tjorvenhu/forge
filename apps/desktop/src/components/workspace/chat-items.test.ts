@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { SessionEvent, SessionEventBody } from "@forge/protocol";
+import { IDLE_CLOSED_DETAIL, type SessionEvent, type SessionEventBody } from "@forge/protocol";
 import { appendStreaming, buildChatItems, buildEventItems, IncrementalItems, isSlashCommand, itemIndexForSeq, lastUserPrompt, reuseStableItems, rowSpacing, toolDisplayName, toolSummary } from "./chat-items";
 import { useSessionEvents } from "@/stores/session-events";
 
@@ -265,6 +265,18 @@ describe("restart for an update", () => {
     expect(items[0]).toMatchObject({ kind: "notice", card: { title: "FORGE aktualisiert", detail: "0.1.40 → 0.1.41 · Claude macht dort weiter, wo der Neustart unterbrochen hat", icon: "update" } });
     expect(items[1]).toMatchObject({ kind: "user", auto: true });
     expect(items[2]).toMatchObject({ card: { title: "FORGE neu gestartet", detail: "Claude macht dort weiter, wo der Neustart unterbrochen hat" } });
+  });
+});
+
+describe("process closed for being idle", () => {
+  it("shows a quiet note only for the idle close, not for every end of the process", () => {
+    seq = 0;
+    const items = buildEventItems([
+      ev({ type: "status", status: "stopped", detail: null }),
+      ev({ type: "status", status: "stopped", detail: IDLE_CLOSED_DETAIL }),
+    ]);
+    expect(items).toEqual([expect.objectContaining({ kind: "notice", tone: "info", text: IDLE_CLOSED_DETAIL })]);
+    expect(items[0]).not.toHaveProperty("card");
   });
 });
 

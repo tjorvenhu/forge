@@ -94,6 +94,18 @@ describe("command palette covers all of FORGE", () => {
     expect(missing("setting-", listed, ids), hint("Schalter in Settings (models.ts)", "SETTING_TOGGLES oder mit Begründung in UNLISTED_SETTINGS (palette-actions.tsx)")).toEqual([]);
   });
 
+  it("sets the idle time of Claude processes, without the current choice", () => {
+    expect(ids).toContain("option-idle-close");
+    const choices = buildActions({ ...fullContext(), settings: { ...settings, idleCloseMinutes: 60 } }).filter((e) => e.id.startsWith("idle-close-"));
+    expect(choices.map((e) => e.label)).toEqual([
+      "Untätige Sessions nicht mehr schließen",
+      "Untätige Sessions schließen nach 15 Minuten",
+      "Untätige Sessions schließen nach 30 Minuten",
+      "Untätige Sessions schließen nach 2 Stunden",
+      "Untätige Sessions schließen nach 4 Stunden",
+    ]);
+  });
+
   it("finds every blocklist rule", () => {
     expect(missing("policy-", PolicyRuleId.options, ids), hint("Regel der Sperrliste", "RULE_GROUPS (PolicySettings.tsx)")).toEqual([]);
   });

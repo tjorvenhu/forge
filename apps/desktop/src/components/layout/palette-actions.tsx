@@ -45,6 +45,7 @@ import {
   Shrink,
   Square,
   SquareTerminal,
+  Timer,
   ToggleLeft,
   ToggleRight,
   Trash2,
@@ -67,6 +68,7 @@ import type {
   Settings,
   TestDbState,
 } from "@forge/protocol";
+import { IDLE_CLOSE_CHOICES } from "@forge/protocol";
 import { installUpdate } from "@/lib/app-install";
 import { call, keys } from "@/lib/queries";
 import { EFFORT_LEVELS, modelLabel } from "@/lib/models";
@@ -79,6 +81,7 @@ import { toast } from "@/stores/toast";
 import { DEV_TOOLS_SECTIONS, PROJECT_SETTINGS_SECTIONS, SETTINGS_SECTIONS, SKILLS_TABS, EXTENSIONS_TABS, workspaceTabsFor, useUi, type SettingsSection, type WorkspaceTab } from "@/stores/ui";
 import { PROFILE_IDS, PROFILE_INFO } from "@/components/projects/ProfileBadge";
 import { RULE_GROUPS } from "@/components/settings/PolicySettings";
+import { idleCloseLabel } from "@/components/settings/idle-close";
 import { SECTIONS as DEV_TOOLS_SECTION_DEFS } from "@/components/devtools/DevToolsTab";
 import { integratedText } from "@/components/git/Sync";
 import { SECTIONS as PROJECT_SECTION_DEFS, TAG_INFO } from "@/components/workspace/ProjectSettingsTab";
@@ -158,6 +161,7 @@ const SETTING_OPTIONS: ReadonlyArray<{ id: string; label: string; section: Setti
   { id: "github", label: "GitHub-Anmeldung", section: "github", keywords: "konto login account" },
   { id: "claude-setup", label: "Claude Code installieren und anmelden", section: "claude", keywords: "login abo update version" },
   { id: "claude-path", label: "Pfad zur Claude-CLI", section: "claude", keywords: "executable programm" },
+  { id: "idle-close", label: "Untätige Sessions schließen nach", section: "claude", keywords: "claude-prozess beenden inaktiv leerlauf timeout automatisch schließen minuten stunden" },
   { id: "phone-setup", label: "Telefon einrichten", section: "phone", keywords: "anruf sip gemini openai stimme tischtelefon" },
   { id: "phone-numbers", label: "Telefonnummern: wen FORGE anruft, wer anrufen darf", section: "phone", keywords: "nummer handy rufnummer erlaubte anrufer benachrichtigung einschalten ausschalten" },
   { id: "sync-projects", label: "Projekte von anderen PCs holen", section: "github", keywords: "sync klonen abgleich rechner" },
@@ -355,7 +359,7 @@ export function buildActions(ctx: ActionContext): PaletteEntry[] {
       if (s.live && !SESSION_BUSY.has(s.status)) {
         act("session-close", "Claude-Prozess der Session beenden", icon(Power), () => {
           call("sessions.close", { sessionId: s.id }).catch((e: unknown) => toast.error("Beenden fehlgeschlagen", errorMessage(e)));
-        }, { keywords: "session schließen" });
+        }, { keywords: "session schließen prozess schließen stoppen bleibt fortsetzbar" });
       }
       act("session-summary", "Session zusammenfassen", icon(NotebookText), () => ctx.openDialog({ kind: "summary", session: s }), { keywords: "wo war ich wiedereinstieg" });
       act("session-fork", "Session verzweigen", icon(GitFork), () => void forkSession(qc, s), { keywords: "fork kopie zweig" });
@@ -539,6 +543,16 @@ export function buildActions(ctx: ActionContext): PaletteEntry[] {
         : () => void saveSetting(qc, key === "syncEnabled" ? { syncEnabled: !on, syncAsked: true } : { [key]: !on }, `${def.label} ${on ? "ausgeschaltet" : "eingeschaltet"}`);
     const ic = key === "alwaysOnTop" ? icon(on ? PinOff : Pin) : icon(on ? ToggleRight : ToggleLeft);
     setting(`setting-${key}`, `${def.label}: ${on ? "ausschalten" : "einschalten"}`, ic, run, { hint: section, keywords: `schalter einstellung ${def.keywords ?? ""}` });
+  }
+  if (settings) {
+    for (const m of IDLE_CLOSE_CHOICES) {
+      if (m === settings.idleCloseMinutes) continue;
+      const label = m > 0 ? `Untätige Sessions schließen nach ${idleCloseLabel(m)}` : "Untätige Sessions nicht mehr schließen";
+      setting(`idle-close-${m}`, label, icon(Timer), () => void saveSetting(qc, { idleCloseMinutes: m }, label), {
+        hint: `jetzt ${idleCloseLabel(settings.idleCloseMinutes)}`,
+        keywords: "claude-prozess beenden inaktiv leerlauf timeout automatisch schließen",
+      });
+    }
   }
   for (const group of RULE_GROUPS) {
     for (const rule of group.rules) {

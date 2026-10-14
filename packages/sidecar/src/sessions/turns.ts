@@ -33,6 +33,8 @@ export interface BuiltTurn {
 export class TurnDispatch {
   /** messages recorded since the session's last turn result: what a failed turn was asked to do */
   private readonly sinceResult = new Map<string, BuiltTurn[]>();
+  /** sends in progress per session */
+  private readonly sending = new Map<string, number>();
 
   constructor(
     private readonly core: SessionCore,
@@ -94,7 +96,24 @@ export class TurnDispatch {
     return sent;
   }
 
+  /** A message is on its way into the session (building, waiting for a closing process). */
+  isSending(sessionId: string): boolean {
+    return (this.sending.get(sessionId) ?? 0) > 0;
+  }
+
   async send(sessionId: string, text: string, attachments: Attachment[] = [], source?: MessageSource): Promise<Session> {
+    // Counted from the first synchronous step on, so the idle check never closes the process under a message.
+    this.sending.set(sessionId, (this.sending.get(sessionId) ?? 0) + 1);
+    try {
+      return await this.sendNow(sessionId, text, attachments, source);
+    } finally {
+      const n = (this.sending.get(sessionId) ?? 1) - 1;
+      if (n > 0) this.sending.set(sessionId, n);
+      else this.sending.delete(sessionId);
+    }
+  }
+
+  private async sendNow(sessionId: string, text: string, attachments: Attachment[], source?: MessageSource): Promise<Session> {
     let live = this.core.live.get(sessionId);
     if (live?.closing) {
       // close() was called but the process has not ended yet: its input queue no longer takes messages.

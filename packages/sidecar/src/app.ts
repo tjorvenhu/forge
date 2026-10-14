@@ -130,6 +130,7 @@ export function createApp(opts: { dataDir: string; write: Writer; log?: (m: stri
     userPresent: () => presence.isPresent(),
   });
   void phone.init();
+  sessions.useCallFocus(() => phone?.callFocus() ?? null);
   const claudeFor = () => {
     const settings = db.getSettings();
     return { path: locateClaude(settings.claudePath), env: sessionEnv(settings.stripApiKey) };

@@ -37,6 +37,7 @@ import { PROFILE_IDS, PROFILE_INFO } from "@/components/projects/ProfileBadge";
 import { ClaudeSetupCard } from "@/components/settings/ClaudeSetupCard";
 import { MemoryEditor } from "@/components/settings/MemoryEditor";
 import { effortOptions, fromChoice, modelOptions, toChoice } from "@/components/settings/model-options";
+import { idleCloseOptions } from "@/components/settings/idle-close";
 import { PhoneSettings } from "@/components/settings/PhoneSettings";
 import { BackupSettings } from "@/components/settings/BackupSettings";
 import { SyncSettings } from "@/components/settings/SyncSettings";
@@ -234,6 +235,15 @@ function ClaudeSection({ s, save }: { s: Settings; save: Save }) {
           checked={s.autoContinueAfterLimit}
           onChange={(v) => void save({ autoContinueAfterLimit: v })}
         />
+        <Row label="Untätige Sessions schließen nach" description="Beendet nur den Claude-Prozess. Die Session bleibt mit Verlauf erhalten und läuft mit der nächsten Nachricht weiter.">
+          <Select
+            value={String(s.idleCloseMinutes)}
+            onChange={(v) => void save({ idleCloseMinutes: Number(v) })}
+            className="w-64"
+            options={idleCloseOptions(s.idleCloseMinutes)}
+            aria-label="Untätige Sessions schließen nach"
+          />
+        </Row>
         <SwitchRow
           label="ANTHROPIC_API_KEY ausblenden"
           description="Empfohlen. Ein gesetzter API-Key ersetzt die Abo-Anmeldung und wird extra abgerechnet. FORGE zeigt den Wert nie an."

@@ -15,12 +15,13 @@ import type {
   Session,
   SlashCommand,
 } from "@forge/protocol";
-import { ForgeError } from "@forge/protocol";
+import { ForgeError, IDLE_CLOSED_DETAIL } from "@forge/protocol";
 import { transcriptImages } from "../claude/attachments.js";
 import type { ClaudeRuntime } from "../claude/runtime.js";
 import { UploadStore } from "../claude/uploads.js";
 import { describeUsage } from "../claude/usage.js";
 import { ContextRecovery } from "./context-recovery.js";
+import { IdleClose } from "./idle-close.js";
 import { HISTORY_PAGE_LIMIT, type Db } from "../persistence/db.js";
 import type { GitEngine } from "../git/git.js";
 import type { ProjectManager } from "../projects/project-manager.js";
@@ -64,6 +65,9 @@ export class SessionService {
   private readonly limits: RateLimitTracker;
   private readonly titles: TitleRefresh;
   private readonly agents: AgentRegistry;
+  private readonly idle: IdleClose;
+  /** the session a phone call is about; set by app.ts once the phone exists */
+  private callFocus: () => string | null = () => null;
   /** knowledge and dev tools; set by app.ts once those services exist */
   private projectDeps: ProjectToolDeps | null = null;
   /** merges or discards agents; set by app.ts, it needs this service itself */
@@ -152,7 +156,17 @@ export class SessionService {
       now,
     );
     // User messages arrive from FORGE, the phone and the Claude app; each one ends a pending plan.
+    this.idle = new IdleClose(
+      {
+        minutes: () => db.getSettings().idleCloseMinutes,
+        liveIds: () => [...core.live.keys()],
+        inUse: (id) => this.inUse(id),
+        close: (id) => this.lifecycle.close(id, IDLE_CLOSED_DETAIL),
+      },
+      now,
+    );
     core.onRecord = (id, body) => {
+      this.idle.touch(id);
       if (body.type === "user.message" && body.source !== "auto") this.autoContinue.userInput(id);
     };
     const stream = new SessionStream(core, {
@@ -363,9 +377,36 @@ export class SessionService {
     if (!this.db.getSettings().autoContinueAfterLimit) this.autoContinue.cancelAll("Automatisches Weitermachen ist in den Einstellungen ausgeschaltet.");
   }
 
-  /** Starts the periodic checks (due continuations, passed limit resets); the app calls this once. */
+  /** Starts the periodic checks (due continuations, passed limit resets, idle processes); the app calls this once. */
   startBackgroundChecks() {
     this.autoContinue.start(() => this.limits.tick());
+    this.idle.start();
+  }
+
+  /** Ends the processes of idle sessions now; the periodic check calls the same. Returns their ids. */
+  checkIdle(): string[] {
+    return this.idle.check();
+  }
+
+  /** The phone tells which session a running call is about; its process stays open meanwhile. */
+  useCallFocus(focus: () => string | null) {
+    this.callFocus = focus;
+  }
+
+  /** Something still needs the session's process, so the idle check leaves it open. */
+  private inUse(id: string): boolean {
+    const live = this.core.live.get(id);
+    if (!live || live.closing) return true;
+    if (live.turnActive || live.pending.size > 0 || live.background.size > 0 || live.subagents.size > 0) return true;
+    if ([...BUSY, "stopping"].includes(this.db.getSession(id)?.status ?? "stopped")) return true;
+    if (this.automation.isBusy(id) || this.lifecycle.isAttaching(id) || this.turns.isSending(id)) return true;
+    if (this.db.getAutoContinue(id)?.dueAt) return true;
+    if (this.callFocus() === id) return true;
+    // A session waits for the parallel agents it started; their results reach it as messages.
+    return this.db.listSessionChildren(id).some((c) => {
+      const child = this.core.live.get(c);
+      return !!child && (child.turnActive || child.background.size > 0 || BUSY.includes(this.db.getSession(c)?.status ?? "stopped"));
+    });
   }
 
   /** Runs due continuations now; the periodic check calls the same. */
@@ -407,6 +448,7 @@ export class SessionService {
     const forUpdate = this.updateResume.noteShutdown();
     this.updateResume.stop();
     this.autoContinue.stop();
+    this.idle.stop();
     this.titles.shutdown();
     this.agentAutoMerge?.dispose();
     this.lifecycle.shutdown(forUpdate ? "FORGE wird aktualisiert" : undefined);

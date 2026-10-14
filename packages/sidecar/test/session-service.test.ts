@@ -3,6 +3,8 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PlanUsage, ServerEvent, SessionEventBody } from "@forge/protocol";
+import { IDLE_CLOSED_DETAIL } from "@forge/protocol";
+import { IDLE_CHECK_MS } from "../src/sessions/idle-close.js";
 import type { ClaudeRuntime, RuntimeSession, SessionSink, StartOptions } from "../src/claude/runtime.js";
 import { AgentSdkRuntime, REMOTE_UNAVAILABLE } from "../src/claude/runtime.js";
 import { GitEngine } from "../src/git/git.js";
@@ -1856,5 +1858,156 @@ describe("messages too large for one turn", () => {
     expect(file.startsWith(path.join(t.dir, "uploads"))).toBe(true);
     expect(readFileSync(file, "utf8")).toBe(long);
     expect(userTexts(s.id)[0]).toBe(sent);
+  });
+});
+
+describe("closing idle sessions", () => {
+  const MIN = 60_000;
+  const CLAUDE_ID = "d69118dc-ef0c-4925-9945-3091ab75cb15";
+  let clock: number;
+  let svc2: SessionService;
+
+  beforeEach(() => {
+    clock = Date.parse("2026-10-14T08:00:00.000Z");
+    svc2 = new SessionService(db, projects, new GitEngine(), rt, (e) => emitted.push(e), () => clock);
+  });
+  afterEach(async () => {
+    await svc2.drain();
+    svc2.shutdown();
+  });
+
+  /** A session whose first turn is done; its process waits for the next message. */
+  async function idleSession() {
+    const s = await svc2.start({ projectId, prompt: "Lies a.txt" });
+    rt.replay();
+    await svc2.drain();
+    expect(svc2.get(s.id)).toMatchObject({ live: true, status: "idle" });
+    return s;
+  }
+  const lastStatus = (id: string) => db.listEvents(id).filter((e) => e.body.type === "status").at(-1)?.body;
+
+  it("ends only the process after the set time without activity; the session stays and resumes with the next message", async () => {
+    const s = await idleSession();
+    clock += 59 * MIN;
+    expect(svc2.checkIdle()).toEqual([]);
+    clock += MIN;
+    expect(svc2.checkIdle()).toEqual([s.id]);
+    expect(svc2.get(s.id)).toMatchObject({ live: false, status: "stopped", claudeSessionId: CLAUDE_ID });
+    expect(lastStatus(s.id)).toMatchObject({ status: "stopped", detail: IDLE_CLOSED_DETAIL });
+    expect(userTexts(s.id)).toEqual(["Lies a.txt"]);
+    expect(svc2.listLive()).toEqual([]);
+
+    await svc2.send(s.id, "weiter");
+    expect(rt.started).toHaveLength(2);
+    expect(rt.started[1]).toMatchObject({ resume: CLAUDE_ID, firstMessage: expect.objectContaining({ text: "weiter" }) });
+    expect(svc2.get(s.id)).toMatchObject({ live: true, status: "running" });
+  });
+
+  it("counts from the last activity and follows the setting, 0 never closes", async () => {
+    const s = await idleSession();
+    clock += 50 * MIN;
+    await svc2.send(s.id, "noch was");
+    success(rt.sinks[0]!);
+    clock += 50 * MIN;
+    expect(svc2.checkIdle()).toEqual([]);
+    db.updateSettings({ idleCloseMinutes: 0 });
+    clock += 24 * 60 * MIN;
+    expect(svc2.checkIdle()).toEqual([]);
+    db.updateSettings({ idleCloseMinutes: 15 });
+    expect(svc2.checkIdle()).toEqual([s.id]);
+  });
+
+  it("leaves processes open while something still needs them, and counts the time from when that is over", async () => {
+    const s = await idleSession();
+    const sink = rt.sinks[0]!;
+    const hours = () => (clock += 3 * 60 * MIN);
+
+    await svc2.send(s.id, "lange Arbeit");
+    hours();
+    expect(svc2.checkIdle()).toEqual([]);
+
+    const ac = new AbortController();
+    const approval = sink.onApproval({ requestId: "r1", toolUseId: "t1", toolName: "Bash", input: { command: "pnpm test" }, title: "Run pnpm test", description: null, reason: null, suppressAlwaysAllow: false }, ac.signal);
+    hours();
+    expect(svc2.checkIdle()).toEqual([]);
+    svc2.respondApproval(s.id, "r1", "allow", "once");
+    await approval;
+
+    const task = { task_id: "bg1", run_id: "r1", task_type: "local_bash", description: "Build" };
+    sink.onMessage({ type: "system", subtype: "background_tasks_changed", tasks: [task] });
+    sink.onMessage({ type: "system", subtype: "task_started", ...task, tool_use_id: "toolu_1", is_backgrounded: true });
+    success(sink);
+    expect(svc2.get(s.id)).toMatchObject({ status: "idle", background: [expect.objectContaining({ taskId: "bg1" })] });
+    hours();
+    expect(svc2.checkIdle()).toEqual([]);
+    sink.onMessage({ type: "system", subtype: "background_tasks_changed", tasks: [] });
+
+    db.setAutoContinue({ sessionId: s.id, dueAt: new Date(clock + 60 * MIN).toISOString(), resetsAt: null, afterSeq: db.lastEventSeq(s.id), attempts: 0, probes: 0 });
+    hours();
+    expect(svc2.checkIdle()).toEqual([]);
+    db.clearAutoContinue(s.id);
+
+    let focus: string | null = s.id;
+    svc2.useCallFocus(() => focus);
+    hours();
+    expect(svc2.checkIdle()).toEqual([]);
+    focus = null;
+
+    // The last check that found it in use starts the idle time anew.
+    clock += 59 * MIN;
+    expect(svc2.checkIdle()).toEqual([]);
+    clock += MIN;
+    expect(svc2.checkIdle()).toEqual([s.id]);
+  });
+
+  it("keeps a session open while a parallel agent it started still works", async () => {
+    const parent = await idleSession();
+    const agent = await svc2.start({ projectId, prompt: "Teilaufgabe" });
+    db.setSessionParent(agent.id, parent.id);
+    clock += 3 * 60 * MIN;
+    expect(svc2.checkIdle()).toEqual([]);
+    success(rt.sinks[1]!);
+    clock += 3 * 60 * MIN;
+    expect(svc2.checkIdle().sort()).toEqual([parent.id, agent.id].sort());
+  });
+
+  it("does not close under a message that is being sent at the moment of the check", async () => {
+    const s = await idleSession();
+    clock += 3 * 60 * MIN;
+    const sending = svc2.send(s.id, "genau jetzt");
+    expect(svc2.checkIdle()).toEqual([]);
+    await sending;
+    expect(rt.sent).toEqual(["genau jetzt"]);
+    expect(rt.started).toHaveLength(1);
+    expect(svc2.get(s.id)).toMatchObject({ live: true, status: "running" });
+  });
+
+  it("delivers a message that arrives while the process is closing by resuming afterwards", async () => {
+    const s = await idleSession();
+    rt.deferEnd = true;
+    clock += 3 * 60 * MIN;
+    expect(svc2.checkIdle()).toEqual([s.id]);
+    const sending = svc2.send(s.id, "danach");
+    await new Promise((r) => setTimeout(r, 20));
+    expect(rt.sent).toEqual([]);
+    rt.sinks[0]!.onEnd(null);
+    await sending;
+    expect(rt.started).toHaveLength(2);
+    expect(rt.started[1]).toMatchObject({ resume: CLAUDE_ID, firstMessage: expect.objectContaining({ text: "danach" }) });
+    expect(userTexts(s.id).filter((x) => x === "danach")).toHaveLength(1);
+    expect(svc2.checkIdle()).toEqual([]);
+  });
+
+  it("checks every minute once the background checks run", async () => {
+    const s = await idleSession();
+    vi.useFakeTimers({ toFake: ["setTimeout", "setInterval"] });
+    try {
+      svc2.startBackgroundChecks();
+      clock += 2 * 60 * MIN;
+      vi.advanceTimersByTime(IDLE_CHECK_MS);
+      expect(svc2.get(s.id).live).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

@@ -57,6 +57,7 @@ beforeEach(() => {
     debugLogs: false,
     defaultProjectDir: "C:\\Projekte",
     autoContinueAfterLimit: true,
+    idleCloseMinutes: 60,
     updateChecks: true,
     desktopNotifications: true,
     alwaysOnTop: false,

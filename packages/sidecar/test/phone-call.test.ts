@@ -1651,6 +1651,10 @@ describe("PhoneService end to end with a test PBX", () => {
     expect(await conv.tools.forgeSettings({ policyRule: "git-reset-hard" })).toBe("Die Regel git reset hard ist aus.");
     expect(await conv.tools.forgeSettings({ policyRule: "git-reset-hard", policyRuleOn: true })).not.toContain("git reset hard");
     expect(await conv.tools.forgeSettings({})).toContain("Töne aus, Desktop-Benachrichtigungen");
+    expect(await conv.tools.forgeSettings({})).toContain("untätige Claude-Prozesse schließen nach 60 Minuten");
+    expect(await conv.tools.forgeSettings({ idleCloseMinutes: 30 })).toBe("Gespeichert: untätige Claude-Prozesse schließen nach 30 Minuten.");
+    expect(await conv.tools.forgeSettings({ idleCloseMinutes: 0 })).toBe("Gespeichert: untätige Claude-Prozesse bleiben offen.");
+    expect(db.getSettings().idleCloseMinutes).toBe(0);
 
     expect(await conv.tools.forgeSystem("update_check")).toBe("FORGE 1.3.0 ist verfügbar, installiert ist 1.2.0.");
     expect(await conv.tools.forgeSystem("update_install")).toMatch(/^FORGE 1\.3\.0 wird jetzt installiert und startet neu, dieses Gespräch endet dabei\. Offene Sessions gehen danach weiter/);

@@ -432,6 +432,8 @@ export const Settings = z.object({
   defaultProjectDir: z.string().nullable(),
   /** continue a session on its own once a usage limit that stopped it has reset */
   autoContinueAfterLimit: z.boolean(),
+  /** minutes without activity after which FORGE ends the idle CLI process of a session; 0 never */
+  idleCloseMinutes: z.number().int().min(0).max(1440),
   /** look for new FORGE releases on GitHub (start and every 30 minutes) */
   updateChecks: z.boolean(),
   /** Windows notifications when Claude is done, needs a decision or fails */
@@ -448,6 +450,12 @@ export const Settings = z.object({
   syncAsked: z.boolean(),
 });
 export type Settings = z.infer<typeof Settings>;
+
+/** Choices for idleCloseMinutes in the settings; 0 is off. */
+export const IDLE_CLOSE_CHOICES = [0, 15, 30, 60, 120, 240] as const;
+
+/** Status detail when FORGE ended the CLI process of an idle session; the chat shows it as a quiet note. */
+export const IDLE_CLOSED_DETAIL = "Claude-Prozess wegen Untätigkeit beendet. Die nächste Nachricht setzt die Session fort.";
 
 /**
  * The latest plan rate limit Claude Code reported, for the whole account (not per session).

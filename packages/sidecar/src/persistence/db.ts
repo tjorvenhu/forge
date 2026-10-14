@@ -235,6 +235,7 @@ export const DEFAULT_SETTINGS: Settings = {
   debugLogs: false,
   defaultProjectDir: null,
   autoContinueAfterLimit: true,
+  idleCloseMinutes: 60,
   updateChecks: true,
   desktopNotifications: true,
   alwaysOnTop: false,

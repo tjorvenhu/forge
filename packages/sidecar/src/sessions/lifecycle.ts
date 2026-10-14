@@ -287,8 +287,13 @@ export class SessionLifecycle {
       this.core.record(id, { type: "error", message: msg, retryable: true });
       this.core.setStatus(id, "error", msg, { lastError: msg });
     } else {
-      this.core.setStatus(id, "stopped");
+      this.core.setStatus(id, "stopped", live.endDetail ?? null);
     }
+  }
+
+  /** A start or resume of the session is in flight. */
+  isAttaching(sessionId: string): boolean {
+    return this.attaching.has(sessionId);
   }
 
   async stop(sessionId: string): Promise<Session> {
@@ -319,9 +324,12 @@ export class SessionLifecycle {
     return this.core.get(sessionId);
   }
 
-  close(sessionId: string): Session {
+  close(sessionId: string, detail?: string): Session {
     const live = this.core.live.get(sessionId);
-    if (live) closeLive(live);
+    if (live && !live.closing) {
+      if (detail) live.endDetail = detail;
+      closeLive(live);
+    }
     return this.core.get(sessionId);
   }
 
