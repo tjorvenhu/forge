@@ -1,8 +1,12 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useUi } from "./ui";
+
+let inChatWindow = false;
+vi.mock("@/lib/chat-windows", () => ({ isChatWindow: () => inChatWindow }));
 
 beforeEach(() => {
   localStorage.clear();
+  inChatWindow = false;
   useUi.setState({ view: "workspace", activeProjectId: "p1", workspaceTab: "chat", toolbarOpen: false, selectedFile: {} });
 });
 
@@ -21,5 +25,13 @@ describe("workspace toolbar", () => {
     expect(JSON.parse(localStorage.getItem("forge.ui")!)).toMatchObject({ toolbarOpen: true });
     useUi.getState().toggleToolbar();
     expect(JSON.parse(localStorage.getItem("forge.ui")!)).toMatchObject({ toolbarOpen: false });
+  });
+
+  it("is not saved from a chat window, which would overwrite the main window's layout", () => {
+    useUi.getState().toggleToolbar(true);
+    inChatWindow = true;
+    useUi.getState().toggleToolbar(false);
+    useUi.getState().openProject("p2");
+    expect(JSON.parse(localStorage.getItem("forge.ui")!)).toMatchObject({ toolbarOpen: true, activeProjectId: "p1" });
   });
 });

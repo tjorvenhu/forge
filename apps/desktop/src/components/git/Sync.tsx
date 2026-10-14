@@ -44,7 +44,9 @@ export function SyncActions({ project }: { project: Project }) {
   const [busy, setBusy] = useState<string | null>(null);
   const [publishing, setPublishing] = useState(false);
 
+  // One at a time: a pull or push rebases, a second git command meanwhile fails on the lock or races it.
   const run = async (label: string, fn: () => Promise<SyncResult | unknown>, success: string) => {
+    if (busy) return;
     setBusy(label);
     try {
       const r = (await useActivity.getState().track(project.id, label, fn)) as Partial<SyncResult> | undefined;
@@ -95,6 +97,7 @@ export function SyncActions({ project }: { project: Project }) {
             className="h-6 w-6"
             onClick={() => void run("Abrufen", () => call("git.fetch", { projectId: project.id }), "Remote abgerufen")}
             loading={busy === "Abrufen"}
+            disabled={busy !== null}
             aria-label="Abrufen"
             title={`Abrufen (fetch)${summary.upstream ? ` von ${summary.upstream}` : ""}`}
           >
@@ -106,6 +109,7 @@ export function SyncActions({ project }: { project: Project }) {
             className="h-6 gap-1 px-1.5"
             onClick={() => void run("Pull", () => call("git.pull", { projectId: project.id }), "Aktualisiert")}
             loading={busy === "Pull"}
+            disabled={busy !== null}
             aria-label="Pull"
             title={summary.behind > 0 ? `Pull: ${summary.behind} neu auf dem Remote` : "Pull"}
           >
@@ -119,6 +123,7 @@ export function SyncActions({ project }: { project: Project }) {
             // A click on push is the consent, also for main; only automatic pushes stay off protected branches.
             onClick={() => void run("Push", () => call("git.push", { projectId: project.id, allowProtected: true }), "Gepusht")}
             loading={busy === "Push"}
+            disabled={busy !== null}
             aria-label="Push"
             title={`${summary.ahead > 0 ? `Push: ${summary.ahead} Commits zum Pushen` : "Push"}. Neue Commits vom Remote übernimmt FORGE vorher, bei Konflikten hilft Claude.`}
           >

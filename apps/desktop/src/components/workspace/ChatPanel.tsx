@@ -230,12 +230,11 @@ function SessionThread({ sessionId, session, project, workingInPanel }: { sessio
     initialMeasurementsCache: saved?.measurements,
     initialOffset: saved && !saved.pinned ? saved.offset : undefined,
   });
-  // Leaving the thread: keep position and row heights for the next visit.
+  // Leaving the thread: keep position and row heights for the next visit. The position comes from
+  // onScroll: React has already detached scrollRef when this cleanup runs on unmount.
+  const offset = useRef(saved && !saved.pinned ? saved.offset : 0);
   useEffect(
-    () => () => {
-      const el = scrollRef.current;
-      if (el) rememberView(sessionId, { offset: el.scrollTop, pinned: follow.pinned, measurements: virtualizer.measurementsCache });
-    },
+    () => () => rememberView(sessionId, { offset: offset.current, pinned: follow.pinned, measurements: virtualizer.measurementsCache }),
     [sessionId, virtualizer, follow],
   );
 
@@ -365,6 +364,7 @@ function SessionThread({ sessionId, session, project, workingInPanel }: { sessio
         }}
         onScroll={(e) => {
           const el = e.currentTarget;
+          offset.current = el.scrollTop;
           // Set directly: a state update here would re-render the thread on every scroll frame.
           el.toggleAttribute("data-scrolled", el.scrollTop > 0);
           const hint = follow.scrolled(el.scrollTop, el.scrollHeight, el.clientHeight, performance.now());

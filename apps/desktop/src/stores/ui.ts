@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { isChatWindow } from "@/lib/chat-windows";
 
 export type View = "home" | "projects" | "sessions" | "mcp" | "settings" | "workspace";
 export type NewProjectMode = "import" | "create" | "clone";
@@ -262,7 +263,9 @@ function loadPrefs(): Partial<UiState> {
   }
 }
 
+/** Only the main window saves: a chat window shows one chat and would overwrite the main window's layout. */
 function savePrefs(s: Prefs) {
+  if (isChatWindow()) return;
   try {
     localStorage.setItem(PREFS_KEY, JSON.stringify({ activeProjectId: s.activeProjectId, toolbarOpen: s.toolbarOpen, collapsedGroups: s.collapsedGroups, splitPanes: s.splitPanes, splitStash: s.splitStash }));
   } catch {

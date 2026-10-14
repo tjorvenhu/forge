@@ -399,14 +399,23 @@ function TestDbCard({
         confirmLabel="Zurücksetzen"
         danger
         onConfirm={async () => {
+          const wasRunning = running;
           try {
-            const wasRunning = running;
             qc.setQueryData(keys.testDb(owner), await call("testdb.reset", { projectId: owner }));
-            if (wasRunning) qc.setQueryData(keys.testDb(owner), await call("testdb.start", { projectId: owner }));
-            toast.success("Test-Datenbank zurückgesetzt", wasRunning ? "Sie läuft wieder, leer." : undefined);
           } catch (e) {
             toast.error("Nicht zurückgesetzt", errorMessage(e));
             throw e;
+          }
+          if (!wasRunning) {
+            toast.success("Test-Datenbank zurückgesetzt");
+            return;
+          }
+          // The reset is done; a failed start must not ask for another reset.
+          try {
+            qc.setQueryData(keys.testDb(owner), await call("testdb.start", { projectId: owner }));
+            toast.success("Test-Datenbank zurückgesetzt", "Sie läuft wieder, leer.");
+          } catch (e) {
+            toast.error("Zurückgesetzt, aber nicht wieder gestartet", errorMessage(e));
           }
         }}
       />

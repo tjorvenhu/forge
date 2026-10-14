@@ -1782,6 +1782,8 @@ export class PhoneService {
             .filter(Boolean)
             .join(" ");
           if (!changed) return `${p.name}: ${text}`;
+          // The settings belong to the project a worktree comes from; the UI keeps them under that id.
+          projectChanged(p.parentId ?? p.id);
           const restart = (patch.port !== undefined || !!patch.name?.trim()) && this.d.testDb?.isRunning(p.id) ? " Port und Name gelten ab dem nächsten Start der Datenbank." : "";
           // Agents share their project's settings and test database.
           return `Gespeichert${p.parentId ? " für das ganze Projekt samt Agenten" : ""}. ${text}${restart}`;

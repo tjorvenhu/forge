@@ -225,7 +225,9 @@ export function PhoneSettings() {
   if (config.isError) return <ErrorBanner>{errorMessage(config.error)}</ErrorBanner>;
   if (!config.data || !draft) return <PhoneSettingsSkeleton />;
   const c = config.data;
-  const up = (patch: Partial<Draft>) => setDraft({ ...draft, ...patch });
+  // The header button, the palette and the phone itself switch it too and only push the phone state.
+  const enabled = state?.enabled ?? c.enabled;
+  const up =(patch: Partial<Draft>) => setDraft({ ...draft, ...patch });
   const upDesk = (patch: Partial<Draft["desk"]>) => setDraft({ ...draft, desk: { ...draft.desk, ...patch } });
   const live = draft.engine === "gemini-live";
   const needsGemini = live || draft.speechProvider === "gemini";
@@ -287,8 +289,8 @@ export function PhoneSettings() {
             <PhoneOutgoing className="h-3.5 w-3.5" /> Testanruf
           </Button>
         )}
-        <Button size="sm" variant={c.enabled ? "outline" : "primary"} onClick={() => void toggle(!c.enabled)}>
-          <Power className="h-3.5 w-3.5" /> {c.enabled ? "Ausschalten" : "Einschalten"}
+        <Button size="sm" variant={enabled ? "outline" : "primary"} onClick={() => void toggle(!enabled)}>
+          <Power className="h-3.5 w-3.5" /> {enabled ? "Ausschalten" : "Einschalten"}
         </Button>
       </div>
 

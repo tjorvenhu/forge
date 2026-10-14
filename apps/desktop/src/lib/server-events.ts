@@ -86,7 +86,8 @@ export function routeServerEvent(qc: QueryClient, git: GitRefresher, e: ServerEv
       break;
     }
     case "session.done":
-      if (shouldNotify(e.payload.sessionId, "done")) {
+      // Chat windows get this event too; sound and notification come from the main window only.
+      if (!isChatWindow() && shouldNotify(e.payload.sessionId, "done")) {
         if (qc.getQueryData<ResultOf<"settings.get">>(keys.settings)?.sounds !== false) playSound("done");
         void notifyDone(qc, e.payload.sessionId);
       }
@@ -183,14 +184,19 @@ export function routeServerEvent(qc: QueryClient, git: GitRefresher, e: ServerEv
     case "agent.autoMerge":
       if (!isChatWindow()) agentAutoMerged(e.payload);
       break;
-    case "project.updated":
-      void qc.invalidateQueries({ queryKey: keys.git(e.payload.projectId) });
-      void qc.invalidateQueries({ queryKey: ["diff", e.payload.projectId] });
-      void qc.invalidateQueries({ queryKey: keys.log(e.payload.projectId) });
-      void qc.invalidateQueries({ queryKey: keys.branches(e.payload.projectId) });
+    case "project.updated": {
+      const id = e.payload.projectId;
+      void qc.invalidateQueries({ queryKey: keys.git(id) });
+      void qc.invalidateQueries({ queryKey: ["diff", id] });
+      void qc.invalidateQueries({ queryKey: keys.log(id) });
+      void qc.invalidateQueries({ queryKey: keys.branches(id) });
+      // Dev tools are kept under the project a worktree belongs to (DevToolsTab); the phone and the sync change them too.
+      const project = qc.getQueryData<ResultOf<"projects.get">>(keys.project(id)) ?? qc.getQueryData<ResultOf<"projects.list">>(keys.projects)?.find((p) => p.id === id);
+      void qc.invalidateQueries({ queryKey: keys.devTools(project?.parentId ?? id) });
       void qc.invalidateQueries({ queryKey: keys.projects });
-      void qc.invalidateQueries({ queryKey: keys.project(e.payload.projectId) });
+      void qc.invalidateQueries({ queryKey: keys.project(id) });
       break;
+    }
   }
 }
 
