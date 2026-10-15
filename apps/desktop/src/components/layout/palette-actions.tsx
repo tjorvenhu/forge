@@ -435,7 +435,7 @@ export function buildActions(ctx: ActionContext): PaletteEntry[] {
     }
 
     act("knowledge-merge", "Projektwissen: Einträge zusammenführen", icon(Combine), () => ui.openKnowledge(KNOWLEDGE_MERGE_REQUEST), {
-      keywords: "wissen aufräumen überschneidungen doppelt merge",
+      keywords: "wissen aufräumen überschneidungen doppelt merge automatisch claude",
     });
 
     if (project.exists) {

@@ -1,5 +1,5 @@
 import { ForgeError, type KnowledgeEntry } from "@forge/protocol";
-import { buildMergePrompt, MERGE_SCHEMA } from "../knowledge/knowledge.js";
+import { buildMergePlanPrompt, buildMergePrompt, cleanMergePlan, MERGE_PLAN_SCHEMA, MERGE_SCHEMA, type KnowledgeOverlap } from "../knowledge/knowledge.js";
 import { z } from "zod";
 import type { ClaudeRuntime } from "../claude/runtime.js";
 import { locateClaude, sessionEnv } from "../claude/environment.js";
@@ -16,7 +16,8 @@ export const ASSIST_MODEL = "haiku";
 export const MERGE_MODEL = "sonnet";
 
 const MergeDraft = z.object({ title: z.string(), summary: z.string(), tags: z.array(z.string()), content: z.string() });
-const PrDraft = z.object({ title: z.string(), body: z.string() });
+const MergePlan = z.object({ groups: z.array(z.object({ ids: z.array(z.string()), reason: z.string() })) });
+const PrDraft =z.object({ title: z.string(), body: z.string() });
 const PR_SCHEMA = {
   type: "object",
   properties: { title: { type: "string", description: "PR-Titel, eine Zeile" }, body: { type: "string", description: "PR-Beschreibung in Markdown" } },
@@ -118,6 +119,17 @@ export class ClaudeAssist {
       content: out.data.content.trim(),
       model,
     };
+  }
+
+  /** Which entries cover the same topic and should be merged; nothing is changed here. */
+  async planKnowledgeMerge(projectId: string, entries: KnowledgeEntry[], pairs: KnowledgeOverlap[]) {
+    const model = MERGE_MODEL;
+    if (entries.length < 2) return { groups: [], model };
+    const project = this.projects.requireExisting(projectId);
+    const { claudePath, env } = this.claude();
+    const out = MergePlan.safeParse(await this.runtime.completeJson(buildMergePlanPrompt(entries, pairs), MERGE_PLAN_SCHEMA, { cwd: project.path, env, claudePath, model }));
+    if (!out.success) throw new ForgeError("CLAUDE_RUNTIME", "Claude hat keinen Plan zum Zusammenführen geliefert.");
+    return { groups: cleanMergePlan(out.data.groups, entries), model };
   }
 
   /** Drafts PR title and body from the branch's commits and diff against the default branch. */

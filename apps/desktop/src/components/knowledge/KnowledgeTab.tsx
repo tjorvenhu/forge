@@ -15,6 +15,7 @@ import { Badge, EmptyState, ErrorBanner } from "@/components/ui/misc";
 import { Skeleton, SkeletonRegion } from "@/components/ui/skeleton";
 import { Markdown } from "@/components/workspace/Markdown";
 import { filterKnowledge, parseTags, suggestedMerge } from "./knowledge-text";
+import { AutoMergeDialog } from "./AutoMergeDialog";
 import { MergeDialog } from "./MergeDialog";
 
 /** Entry ids never contain a colon, so this cannot clash with one. */
@@ -36,6 +37,8 @@ export function KnowledgeTab({ project }: { project: Project }) {
   const cleanup = useKnowledgeCleanup(owner);
   /** ids preselected in the merge dialog; null while it is closed */
   const [merging, setMerging] = useState<string[] | null>(null);
+  /** Claude picks and merges on its own */
+  const [tidying, setTidying] = useState(false);
   const overlapCount = cleanup.data?.overlaps.length ?? 0;
   // An edited entry stays open even when the search hides it or someone deletes it meanwhile.
   const pinned = selected !== null && (selected === NEW || dirty || !!list.data?.some((e) => e.id === selected));
@@ -56,7 +59,7 @@ export function KnowledgeTab({ project }: { project: Project }) {
     if (!request) return;
     useUi.getState().clearKnowledgeRequest();
     if (request === KNOWLEDGE_MERGE_REQUEST) {
-      setMerging(suggestedMerge(cleanup.data, null));
+      setTidying(true);
       return;
     }
     // A search could hide the requested entry.
@@ -76,10 +79,14 @@ export function KnowledgeTab({ project }: { project: Project }) {
           <Button
             size="icon"
             variant="ghost"
-            onClick={() => setMerging(suggestedMerge(cleanup.data, null))}
+            onClick={() => setTidying(true)}
             disabled={(list.data?.length ?? 0) < 2}
             aria-label="Einträge zusammenführen"
-            title={overlapCount ? `Einträge zusammenführen: ${overlapCount === 1 ? "1 Überschneidung" : `${overlapCount} Überschneidungen`} gefunden` : "Einträge zusammenführen"}
+            title={
+              overlapCount
+                ? `Claude führt Einträge zum selben Thema zusammen: ${overlapCount === 1 ? "1 Überschneidung" : `${overlapCount} Überschneidungen`} gefunden`
+                : "Claude führt Einträge zum selben Thema zusammen"
+            }
             className="relative"
           >
             <Combine className="h-4 w-4" />
@@ -177,6 +184,7 @@ export function KnowledgeTab({ project }: { project: Project }) {
           setSelected(leaveTo);
         }}
       />
+      <AutoMergeDialog owner={owner} entries={list.data ?? []} open={tidying} onClose={() => setTidying(false)} onManual={() => setMerging(suggestedMerge(cleanup.data, null))} />
       <MergeDialog owner={owner} entries={list.data ?? []} cleanup={cleanup.data} initial={merging} onClose={() => setMerging(null)} onMerged={(id) => select(id)} />
     </div>
   );

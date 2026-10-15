@@ -936,6 +936,13 @@ export const KnowledgeMergeDraft = z.object({
 });
 export type KnowledgeMergeDraft = z.infer<typeof KnowledgeMergeDraft>;
 
+/** Groups of entries on one topic that Claude suggests merging; the first id of a group stays. */
+export const KnowledgeMergePlan = z.object({
+  groups: z.array(z.object({ ids: z.array(z.string()), reason: z.string() })),
+  model: z.string(),
+});
+export type KnowledgeMergePlan = z.infer<typeof KnowledgeMergePlan>;
+
 
 /**
  * FORGE updates from the GitHub releases of the repository. The installer is fetched with the gh

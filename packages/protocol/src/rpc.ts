@@ -14,6 +14,7 @@ import {
   KnowledgeCleanup,
   KnowledgeEntry,
   KnowledgeMergeDraft,
+  KnowledgeMergePlan,
   KnowledgeSummary,
   TestDbConfig,
   TestDbState,
@@ -403,6 +404,8 @@ export const methods = {
   "knowledge.cleanup": { params: projectRef, result: KnowledgeCleanup },
   /** one-shot Claude call that writes the merged text; saves nothing */
   "knowledge.mergeDraft": { params: projectRef.extend({ ids: knowledgeIds }), result: KnowledgeMergeDraft },
+  /** one-shot Claude call that picks the entries to merge; changes nothing */
+  "knowledge.mergePlan": { params: projectRef, result: KnowledgeMergePlan },
   /** writes the text into the first entry and deletes the others */
   "knowledge.merge": {
     params: projectRef.extend({ ids: knowledgeIds, ...knowledgeFields }),

@@ -68,6 +68,8 @@ const SECRET_DESK = "desk-password";
 export const DEFAULT_DESK_PORT = 8766;
 /** Claude on the phone: fast replies matter more than depth. */
 const PHONE_MODEL = "haiku";
+/** Groups merged at once when Claude tidies up the knowledge; each is its own Claude process. */
+const AUTO_MERGE_PARALLEL = 3;
 /** wait before calling, so a quick follow-up turn or an answer at the desk makes the call unnecessary */
 const NOTIFY_DELAY_MS = { done: 5_000, error: 5_000, approval: 15_000, notify: 2_000 };
 const NOTIFY_COOLDOWN_MS = 60_000;
@@ -1825,6 +1827,25 @@ export class PhoneService {
           const p = findProject(projectName);
           const store = this.d.knowledge;
           if (!store) return "Fehler: Das Projektwissen ist hier nicht verfügbar.";
+          if (o?.autoMerge) {
+            const plan = await call("knowledge.mergePlan", { projectId: p.id });
+            if (!plan.groups.length) return `Claude (${plan.model}) hat im Projektwissen von ${p.name} nichts gefunden, das sich zusammenführen lässt.`;
+            const queue = [...plan.groups];
+            const lines: string[] = [];
+            const worker = async () => {
+              for (let g = queue.shift(); g; g = queue.shift()) {
+                try {
+                  const draft = await call("knowledge.mergeDraft", { projectId: p.id, ids: g.ids });
+                  const { entry, removed } = await call("knowledge.merge", { projectId: p.id, ids: g.ids, title: draft.title, summary: draft.summary, tags: draft.tags, content: draft.content });
+                  lines.push(`Zusammengeführt in ${entry.id} (${entry.title}). Gelöscht: ${removed.join(", ")}.`);
+                } catch (e) {
+                  lines.push(`Nicht zusammengeführt: ${g.ids.join(", ")}. ${e instanceof Error ? e.message : String(e)}`);
+                }
+              }
+            };
+            await Promise.all(Array.from({ length: Math.min(AUTO_MERGE_PARALLEL, queue.length) }, worker));
+            return `Claude (${plan.model}) hat ${plan.groups.length === 1 ? "eine Gruppe" : `${plan.groups.length} Gruppen`} gefunden. Alte Fassungen liegen im Git.\n${asData(lines.join("\n"))}`;
+          }
           if (o?.merge?.length) {
             const ids = [...new Set(o.merge)];
             if (ids.length < 2) return "Fehler: Zum Zusammenführen brauche ich mindestens zwei Kennungen.";

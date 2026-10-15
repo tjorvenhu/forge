@@ -25,6 +25,7 @@ import { ContextRecovery } from "./context-recovery.js";
 import { IdleClose } from "./idle-close.js";
 import { HISTORY_PAGE_LIMIT, type Db } from "../persistence/db.js";
 import type { GitEngine } from "../git/git.js";
+import type { KnowledgeOverlap } from "../knowledge/knowledge.js";
 import type { ProjectManager } from "../projects/project-manager.js";
 import { ApprovalGate } from "./approvals.js";
 import { AutoContinue } from "./auto-continue.js";
@@ -348,6 +349,10 @@ export class SessionService {
 
   draftKnowledgeMerge(projectId: string, entries: KnowledgeEntry[]) {
     return this.assist.mergeKnowledge(projectId, entries);
+  }
+
+  planKnowledgeMerge(projectId: string, entries: KnowledgeEntry[], pairs: KnowledgeOverlap[]) {
+    return this.assist.planKnowledgeMerge(projectId, entries, pairs);
   }
 
   // ---------- lifecycle

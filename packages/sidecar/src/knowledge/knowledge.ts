@@ -269,6 +269,84 @@ export function buildMergePrompt(entries: KnowledgeEntry[]): string {
   ].join("\n");
 }
 
+export interface KnowledgeMergeGroup {
+  /** the first entry stays, the others go into it */
+  ids: string[];
+  reason: string;
+}
+
+/** At most this many entries per group, like knowledge.merge. */
+const MAX_GROUP = 6;
+
+export const MERGE_PLAN_SCHEMA = {
+  type: "object",
+  properties: {
+    groups: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          ids: { type: "array", items: { type: "string" }, description: "Kennungen der Einträge; der erste bleibt bestehen, die anderen gehen in ihm auf" },
+          reason: { type: "string", description: "ein kurzer Satz, warum diese Einträge dasselbe Thema behandeln" },
+        },
+        required: ["ids", "reason"],
+        additionalProperties: false,
+      },
+    },
+  },
+  required: ["groups"],
+  additionalProperties: false,
+};
+
+/**
+ * Task for the one-shot call that decides which entries to merge. Claude sees titles, summaries, tags,
+ * the outline and the length of every entry, not the full texts: the topic shows there, and the whole
+ * knowledge would cost many times the tokens. The full texts only go into the merge itself.
+ */
+export function buildMergePlanPrompt(entries: KnowledgeEntry[], pairs: KnowledgeOverlap[]): string {
+  return [
+    "Prüfe das Projektwissen eines Softwareprojekts: Welche Einträge behandeln dasselbe Thema und sollten zu einem Eintrag zusammengeführt werden?",
+    "- Nur Einträge, die wirklich dasselbe Thema behandeln oder sich inhaltlich doppeln. Derselbe Bereich (z. B. beide UI) oder gleiche Tags reichen nicht.",
+    `- Höchstens ${MAX_GROUP} Einträge pro Gruppe, jeder Eintrag in höchstens einer Gruppe.`,
+    `- Zusammen höchstens etwa ${LONG_ENTRY_CHARS} Zeichen (Summe der Längen), sonst wird der neue Eintrag zu lang.`,
+    "- Der erste Eintrag einer Gruppe bleibt bestehen: nimm den umfassendsten.",
+    "- Passt nichts zusammen, gib eine leere Liste zurück. Lieber eine Gruppe zu wenig als eine erzwungene.",
+    "",
+    ...(pairs.length
+      ? ["Ein lokaler Wortvergleich hält diese Paare für ähnlich (nur ein Hinweis, prüfe selbst):", ...pairs.slice(0, 20).map((p) => `- ${p.a} + ${p.b} (${Math.round(p.score * 100)} %)`), ""]
+      : []),
+    ...entries.flatMap((e) => {
+      const outline = e.content
+        .split("\n")
+        .filter((l) => /^#{2,3}\s/.test(l))
+        .map((l) => l.replace(/^#+\s*/, "").trim())
+        .slice(0, 15);
+      return [
+        `=== ${e.id} (${e.content.length} Zeichen) ===`,
+        `Titel: ${e.title}`,
+        `Zusammenfassung: ${e.summary}`,
+        `Tags: ${e.tags.join(", ")}`,
+        ...(outline.length ? [`Gliederung: ${outline.join(" | ")}`] : []),
+        "",
+      ];
+    }),
+  ].join("\n");
+}
+
+/** Keeps the groups that can be merged: known ids, each entry once, two to six per group. */
+export function cleanMergePlan(groups: KnowledgeMergeGroup[], entries: KnowledgeSummary[]): KnowledgeMergeGroup[] {
+  const known = new Set(entries.map((e) => e.id));
+  const used = new Set<string>();
+  const out: KnowledgeMergeGroup[] = [];
+  for (const g of groups) {
+    const ids = [...new Set(g.ids.map((id) => id.trim()))].filter((id) => known.has(id) && !used.has(id)).slice(0, MAX_GROUP);
+    if (ids.length < 2) continue;
+    for (const id of ids) used.add(id);
+    out.push({ ids, reason: g.reason.trim() });
+  }
+  return out;
+}
+
 function snippet(content: string, words: string[]): string {
   const flat = content.replace(/\s+/g, " ").trim();
   const lower = flat.toLowerCase();

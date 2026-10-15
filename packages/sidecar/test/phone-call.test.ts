@@ -985,6 +985,25 @@ describe("PhoneService end to end with a test PBX", () => {
     expect(await conv.tools.knowledge("shop", "", undefined, undefined, { merge: ["deploy", "traefik"] })).toMatch(/^Zusammengeführt in deploy: .*Deploy.*\. Gelöscht: traefik\. Den Text hat Claude \(sonnet\) geschrieben/);
     expect(rpcCalls.filter(([m]) => m === "knowledge.merge").at(-1)?.[1]).toEqual({ projectId, ids: ["deploy", "traefik"], title: "Deploy", summary: "Wie wir ausliefern", tags: ["deploy"], content: "# Deploy" });
 
+    rpcResults["knowledge.mergePlan"] = () => ({ groups: [], model: "sonnet" });
+    expect(await conv.tools.knowledge("shop", "", undefined, undefined, { autoMerge: true })).toBe("Claude (sonnet) hat im Projektwissen von shop nichts gefunden, das sich zusammenführen lässt.");
+    rpcResults["knowledge.mergePlan"] = () => ({
+      groups: [
+        { ids: ["deploy", "traefik"], reason: "Auslieferung" },
+        { ids: ["sync", "backup"], reason: "Sicherung" },
+      ],
+      model: "sonnet",
+    });
+    rpcResults["knowledge.mergeDraft"] = (params: { ids: string[] }) => {
+      if (params.ids[0] === "sync") throw new Error("Claude nicht erreichbar");
+      return { title: "Deploy", summary: "Wie wir ausliefern", tags: ["deploy"], content: "# Deploy", model: "sonnet" };
+    };
+    const auto = await conv.tools.knowledge("shop", "", undefined, undefined, { autoMerge: true });
+    expect(auto).toMatch(/^Claude \(sonnet\) hat 2 Gruppen gefunden\./);
+    expect(auto).toContain("Zusammengeführt in deploy (Deploy). Gelöscht: traefik.");
+    expect(auto).toContain("Nicht zusammengeführt: sync, backup. Claude nicht erreichbar");
+    expect(rpcCalls.filter(([m]) => m === "knowledge.merge").at(-1)?.[1]).toMatchObject({ projectId, ids: ["deploy", "traefik"] });
+
     testDbCalls = [];
     expect(await conv.tools.testDatabase("shop", "restart")).toBe("Test-Datenbank von shop neu gestartet.");
     expect(testDbCalls).toEqual([`stop:${projectId}`, `start:${projectId}`]);

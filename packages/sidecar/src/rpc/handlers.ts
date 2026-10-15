@@ -269,6 +269,10 @@ export function createHandlers(s: Services): Handlers {
     "knowledge.cleanup": ({ projectId }) => s.knowledge.cleanup(projectId),
     "knowledge.mergeDraft": async ({ projectId, ids }) =>
       s.sessions.draftKnowledgeMerge(s.knowledge.owner(projectId), await Promise.all([...new Set(ids)].map((id) => s.knowledge.read(projectId, id)))),
+    "knowledge.mergePlan": ({ projectId }) => {
+      const owner = s.knowledge.owner(projectId);
+      return s.sessions.planKnowledgeMerge(owner, s.knowledge.entriesSync(owner), s.knowledge.cleanup(owner).overlaps);
+    },
     "knowledge.merge": ({ projectId, ids, ...input }) => s.knowledge.merge(projectId, ids, input),
 
     "app.updateState": () => s.updates.get(),

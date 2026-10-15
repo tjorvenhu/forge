@@ -128,4 +128,41 @@ describe("KnowledgeStore files", () => {
     await expect(assist.mergeKnowledge(projectId, entries)).rejects.toThrow(/keinen zusammengeführten Eintrag/);
     await expect(assist.mergeKnowledge(projectId, entries.slice(0, 1))).rejects.toThrow(/mindestens zwei/);
   });
+
+  it("lets Claude pick the groups to merge from the outline and keeps only groups that can be merged", async () => {
+    await store.save(projectId, { id: null, title: "Deploy auf Coolify", summary: "Wie wir ausliefern", tags: ["deploy"], content: "# Deploy\n\n## Dockerfile\nCoolify baut.\n\n## Proxy\nTraefik." });
+    await store.save(projectId, { id: null, title: "Traefik", summary: "Proxy", tags: ["deploy"], content: "Traefik komprimiert, nicht Next." });
+    await store.save(projectId, { id: null, title: "Sync", summary: "Abgleich", tags: ["sync"], content: "Über GitHub." });
+    const prompts: string[] = [];
+    let answer: unknown = {
+      groups: [
+        { ids: ["deploy-auf-coolify", "traefik", "traefik", "fehlt"], reason: " Beide beschreiben die Auslieferung. " },
+        { ids: ["traefik", "sync"], reason: "Schon vergeben" },
+        { ids: ["sync"], reason: "Allein" },
+      ],
+    };
+    const runtime = {
+      completeJson: async (prompt: string, _schema: unknown, opts: { model: string }) => {
+        prompts.push(`${opts.model}:${prompt}`);
+        return answer;
+      },
+    } as unknown as ClaudeRuntime;
+    db.updateSettings({ claudePath: process.execPath });
+    const assist = new ClaudeAssist(db, projects, new GitEngine(), runtime);
+    const entries = store.entriesSync(projectId);
+
+    expect(await assist.planKnowledgeMerge(projectId, entries, [{ a: "traefik", b: "deploy-auf-coolify", score: 0.6 }])).toEqual({
+      groups: [{ ids: ["deploy-auf-coolify", "traefik"], reason: "Beide beschreiben die Auslieferung." }],
+      model: MERGE_MODEL,
+    });
+    expect(prompts[0]).toMatch(/^sonnet:Prüfe das Projektwissen/);
+    expect(prompts[0]).toContain("Gliederung: Dockerfile | Proxy");
+    expect(prompts[0]).toContain("- traefik + deploy-auf-coolify (60 %)");
+    expect(prompts[0]).not.toContain("Coolify baut.");
+
+    answer = { nichts: true };
+    await expect(assist.planKnowledgeMerge(projectId, entries, [])).rejects.toThrow(/keinen Plan/);
+    expect(await assist.planKnowledgeMerge(projectId, entries.slice(0, 1), [])).toEqual({ groups: [], model: MERGE_MODEL });
+    expect(prompts).toHaveLength(2);
+  });
 });

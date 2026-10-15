@@ -263,9 +263,10 @@ export interface PhoneToolset {
   projectAutomation(project: string, patch: { tag?: AutomationTag; on?: boolean }, o?: TargetOptions): Promise<string>;
   /**
    * searches the project's knowledge, reads one entry with `id`, or deletes it with `remove`; `cleanup` lists
-   * overlapping and very long entries, `merge` lets Claude merge entries on one topic into the first
+   * overlapping and very long entries, `merge` lets Claude merge entries on one topic into the first,
+   * `autoMerge` lets Claude find such groups itself and merge them all
    */
-  knowledge(project: string, query: string, id?: string, remove?: boolean, o?: { cleanup?: boolean; merge?: string[] }): Promise<string>;
+  knowledge(project: string, query: string, id?: string, remove?: boolean, o?: { cleanup?: boolean; merge?: string[]; autoMerge?: boolean }): Promise<string>;
   /** keeps a note in the project's knowledge; a note on a known topic is added to that entry */
   rememberNote(project: string, title: string, text: string): Promise<string>;
   git(project: string, action: GitAction, o?: GitOptions): Promise<string>;
@@ -581,7 +582,7 @@ export const PHONE_TOOLS: readonly PhoneToolSpec[] = [
   {
     name: "knowledge",
     description:
-      "Projektwissen: gesammelte Entscheidungen, Abläufe und Stolperfallen eines Projekts. Mit query suchen, mit id einen Eintrag vollständig lesen, mit id und delete = true einen veralteten Eintrag löschen. Mit cleanup = true nennen, welche Einträge sich überschneiden oder sehr lang sind; mit merge Einträge zum selben Thema von Claude zusammenführen lassen. Für Fragen wie „Wie deployen wir X?“ oder „Was war bei der Datenbank zu beachten?“.",
+      "Projektwissen: gesammelte Entscheidungen, Abläufe und Stolperfallen eines Projekts. Mit query suchen, mit id einen Eintrag vollständig lesen, mit id und delete = true einen veralteten Eintrag löschen. Mit cleanup = true nennen, welche Einträge sich überschneiden oder sehr lang sind; mit merge Einträge zum selben Thema von Claude zusammenführen lassen; mit auto_merge = true sucht Claude selbst, was zusammengehört, und führt alles zusammen. Für Fragen wie „Wie deployen wir X?“ oder „Was war bei der Datenbank zu beachten?“.",
     params: {
       project,
       query: { type: "string", description: "Suchwörter, z. B. deploy oder migration; leer bei cleanup und merge" },
@@ -589,10 +590,12 @@ export const PHONE_TOOLS: readonly PhoneToolSpec[] = [
       delete: { type: "boolean", optional: true, description: "true löscht den Eintrag mit id; nur wenn der Anrufer das ausdrücklich will" },
       cleanup: { type: "boolean", optional: true, description: "true nennt Einträge, die sich überschneiden, und sehr lange Einträge" },
       merge: { type: "string", optional: true, description: "Kennungen mit Komma getrennt, z. B. aus cleanup; der erste Eintrag bleibt, die anderen gehen in ihm auf. Nur wenn der Anrufer das will" },
+      auto_merge: { type: "boolean", optional: true, description: "true: Claude sucht selbst Einträge zum selben Thema und führt sie zusammen (dauert ein bis zwei Minuten). Nur wenn der Anrufer das will" },
     },
     run: (t, a) =>
       t.knowledge(str(a.project), str(a.query), opt(a.id), optBool(a.delete), {
         cleanup: optBool(a.cleanup),
+        autoMerge: optBool(a.auto_merge),
         merge: opt(a.merge)
           ?.split(/[,\s]+/)
           .map((x) => x.trim())
