@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "screenshot",
+  "description": "The overlay of the Print key: hears about new captures and calls FORGE's own screenshot commands, nothing else.",
+  "windows": ["screenshot"],
+  "permissions": ["core:event:default"]
+}

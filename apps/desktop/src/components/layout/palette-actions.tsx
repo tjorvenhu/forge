@@ -8,6 +8,7 @@ import {
   ArrowUpCircle,
   BookOpen,
   Bot,
+  Camera,
   CloudDownload,
   Columns2,
   Cpu,
@@ -78,6 +79,7 @@ import { call, keys } from "@/lib/queries";
 import { EFFORT_LEVELS, modelLabel } from "@/lib/models";
 import { errorMessage, RpcCallError } from "@/lib/rpc";
 import { setAlwaysOnTop } from "@/lib/window-options";
+import { takeScreenshot } from "@/lib/screenshot";
 import { useActivity } from "@/stores/activity";
 import { draftKey, useDrafts } from "@/stores/drafts";
 import { lastEditablePrompt, useMessageEdit } from "@/stores/message-edit";
@@ -149,6 +151,7 @@ const SETTING_TOGGLES: Record<Exclude<BooleanSetting, keyof typeof UNLISTED_SETT
   enterToSend: { label: "Enter sendet", section: "general", keywords: "senden zeilenumbruch tastatur" },
   desktopNotifications: { label: "Windows-Benachrichtigungen", section: "general", keywords: "desktop benachrichtigung meldung" },
   alwaysOnTop: { label: "Im Vordergrund bleiben", section: "general", keywords: "fenster immer oben anheften always on top" },
+  screenshotKey: { label: "Druck-Taste für Screenshots", section: "general", keywords: "screenshot bildschirmfoto snipping druck print taste" },
   sounds: { label: "Töne", section: "general", keywords: "sound signal klang" },
   autoContinueAfterLimit: { label: "Nach Nutzungslimit weitermachen", section: "claude", keywords: "auto weitermachen limit reset" },
   stripApiKey: { label: "ANTHROPIC_API_KEY ausblenden", section: "claude", keywords: "api key abo" },
@@ -512,6 +515,7 @@ export function buildActions(ctx: ActionContext): PaletteEntry[] {
     }
   }
 
+  act("screenshot", "Screenshot aufnehmen", icon(Camera), takeScreenshot, { hint: settings?.screenshotKey ? "Druck" : undefined, keywords: "bildschirmfoto snipping ausschneiden markieren bild" });
   act("backup", "Backup anlegen", icon(Archive), () => void createBackup(qc), { keywords: "sichern sicherung" });
   if (settings?.syncEnabled) act("sync-now", "Jetzt über GitHub abgleichen", icon(RefreshCcw), () => void syncNow(qc), { keywords: "sync synchronisieren andere pc" });
   act("setup-wizard", "Einrichtungsassistent öffnen", icon(Wand2), () => ui.setSetupWizard(true), { keywords: "einrichten erster start setup onboarding" });

@@ -1,10 +1,12 @@
 mod chat_windows;
 mod job;
+mod screenshot;
 mod sidecar;
 mod terminal;
 mod update;
 
 use chat_windows::ChatWindows;
+use screenshot::Screenshots;
 use sidecar::Sidecar;
 use tauri::{Manager, RunEvent, WindowEvent};
 use tauri_plugin_notification::NotificationExt;
@@ -117,6 +119,7 @@ pub fn run() {
         .manage(Sidecar::default())
         .manage(Terminals::default())
         .manage(ChatWindows::default())
+        .manage(Screenshots::default())
         .invoke_handler(tauri::generate_handler![
             sidecar_send,
             sidecar_status,
@@ -133,9 +136,24 @@ pub fn run() {
             chat_windows::update_chat_window,
             chat_windows::reattach_chat_window,
             chat_windows::set_always_on_top,
-            chat_windows::show_main_window
+            chat_windows::show_main_window,
+            screenshot::screenshot_set_enabled,
+            screenshot::screenshot_start,
+            screenshot::screenshot_frame,
+            screenshot::screenshot_image,
+            screenshot::screenshot_ready,
+            screenshot::screenshot_cancel,
+            screenshot::screenshot_take,
+            screenshot::screenshot_taken
         ])
         .on_window_event(|window, event| {
+            // A screenshot goes to the FORGE window the user worked in last.
+            if let WindowEvent::Focused(true) = event {
+                let label = window.label();
+                if label == chat_windows::MAIN || label.starts_with(chat_windows::PREFIX) {
+                    window.app_handle().state::<Screenshots>().focused(label);
+                }
+            }
             if let WindowEvent::Destroyed = event {
                 let app = window.app_handle();
                 // Chat windows belong to the main window: closing it quits FORGE as before.
@@ -165,6 +183,7 @@ pub fn run() {
                     _ => chat_windows::show_main(&app),
                 });
             });
+            screenshot::start(&handle);
             if let Err(e) = app.state::<Sidecar>().start(&handle) {
                 eprintln!("[forge] sidecar start failed: {e}");
             }

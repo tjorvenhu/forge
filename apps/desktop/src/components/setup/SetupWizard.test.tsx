@@ -61,6 +61,7 @@ beforeEach(() => {
     updateChecks: true,
     desktopNotifications: true,
     alwaysOnTop: false,
+    screenshotKey: true,
     disabledPolicyRules: [],
     setupDone: false,
     syncEnabled: false,

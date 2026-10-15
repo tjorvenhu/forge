@@ -423,6 +423,8 @@ function settingText(s: Settings, key: keyof ForgeSettingsPatch | "alwaysOnTop")
       return `Debug-Logs ${on(s.debugLogs)}`;
     case "stripApiKey":
       return s.stripApiKey ? "ein API-Key aus der Umgebung geht nicht an Claude Code" : "ein API-Key aus der Umgebung geht an Claude Code";
+    case "screenshotKey":
+      return s.screenshotKey ? "die Druck-Taste öffnet das Snipping-Tool von FORGE" : "die Druck-Taste bleibt bei Windows";
     case "alwaysOnTop":
       return `im Vordergrund bleiben ${on(s.alwaysOnTop)}`;
     case "policyRule":
@@ -2446,7 +2448,7 @@ export class PhoneService {
           const cur = await call("settings.get", {});
           const update: Partial<Settings> = {};
           const changed: Array<keyof ForgeSettingsPatch> = [];
-          const flags = ["sounds", "desktopNotifications", "enterToSend", "autoContinueAfterLimit", "updateChecks", "debugLogs", "stripApiKey"] as const;
+          const flags = ["sounds", "desktopNotifications", "enterToSend", "autoContinueAfterLimit", "updateChecks", "debugLogs", "stripApiKey", "screenshotKey"] as const;
           for (const k of flags) {
             const v = patch[k];
             if (v === undefined) continue;

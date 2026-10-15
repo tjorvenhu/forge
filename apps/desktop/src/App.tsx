@@ -22,6 +22,7 @@ import { ProjectsView } from "@/views/ProjectsView";
 import { WorkspaceView } from "@/views/WorkspaceView";
 import { useGlobalShortcuts } from "@/lib/shortcuts";
 import { useAlwaysOnTop } from "@/lib/window-options";
+import { useScreenshotKey } from "@/lib/screenshot";
 import { reopenChatWindows } from "@/lib/app-install";
 import type { ChatWindowTarget } from "@/lib/chat-windows";
 import { ChatWindowShell } from "@/views/ChatWindowView";
@@ -104,6 +105,7 @@ export function App({ chatWindow = null }: { chatWindow?: ChatWindowTarget | nul
 function Shell() {
   useGlobalShortcuts();
   useAlwaysOnTop();
+  useScreenshotKey();
   useEffect(() => void reopenChatWindows(), []);
   const view = useUi((s) => s.view);
   const activeProjectId = useUi((s) => s.activeProjectId);

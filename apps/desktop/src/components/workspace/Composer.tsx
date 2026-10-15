@@ -6,6 +6,7 @@ import { EFFORT_LEVELS, findModel, modelLabel } from "@/lib/models";
 import { isWorking } from "@/lib/working";
 import { cn } from "@/lib/utils";
 import { draftKey, useDrafts } from "@/stores/drafts";
+import { composerFocused, registerComposer } from "@/lib/screenshot";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu } from "@/components/ui/dropdown";
 import { Select } from "@/components/ui/select";
@@ -86,6 +87,7 @@ export const Composer = memo(function Composer({
   const setText = useCallback((t: string) => useDrafts.getState().setText(key, t), [key]);
   const attachments = useAttachments(key);
   const { files } = attachments;
+  useEffect(() => registerComposer(key, !slot.pane), [key, slot.pane]);
   const options = useComposerOptions(project, session, key);
   const { send, sending } = useSendMessage({ project, session, draftKey: key, resumeClaudeSessionId, options, slot });
   const [cmdIndex, setCmdIndex] = useState(0);
@@ -397,7 +399,10 @@ export const Composer = memo(function Composer({
             if (holding.current) e.preventDefault();
             releaseHold();
           }}
-          onFocus={dictation.prewarm}
+          onFocus={() => {
+            dictation.prewarm();
+            composerFocused(key);
+          }}
           // Focus gone while holding: the key-up never arrives here, so the recording ends now.
           onBlur={releaseHold}
           onKeyDown={(e) => {

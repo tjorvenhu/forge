@@ -17,6 +17,22 @@ export interface PreparingFile {
   isImage: boolean;
 }
 
+/** Name for a pasted file without one; the sidecar takes the type from the extension, so it matches the content. */
+export function pastedName(f: File, base = "einfuegung"): string {
+  return f.name || `${base}-${new Date().toISOString().slice(11, 19).replace(/:/g, "")}${PASTE_EXT[f.type] ?? ".txt"}`;
+}
+
+/**
+ * A pasted file uploaded to the sidecar, images first scaled down to what the API takes. The draft
+ * then holds only a path: no protocol line and no chat window move carries the content.
+ */
+export async function uploadPasted(f: File, name: string, id: string = crypto.randomUUID()): Promise<PendingFile> {
+  const isImage = f.type.startsWith("image/");
+  const { blob, name: stored } = isImage ? await prepareImage(f, name) : { blob: f, name };
+  const path = await uploadFile(blob, stored);
+  return { id, name: stored, attachment: { kind: "path", path }, preview: isImage ? URL.createObjectURL(blob) : null, isImage };
+}
+
 /** Attachments of one composer draft: file picker, native drag and drop and pasted files. */
 export function useAttachments(draftKey: string) {
   const files = useDrafts((s) => s.drafts[draftKey]?.files ?? NO_FILES);
@@ -43,22 +59,16 @@ export function useAttachments(draftKey: string) {
     [setFiles],
   );
 
-  /**
-   * Pasted files go to the sidecar right away, images first scaled down to what the API takes. The
-   * draft then holds only a path: no protocol line and no chat window move carries the content.
-   */
+  /** Pasted files go to the sidecar right away (uploadPasted). */
   const addBlob = async (f: File) => {
     const id = crypto.randomUUID();
-    // The sidecar takes the type from the extension, so a nameless paste gets one that matches its content.
-    const pastedName = f.name || `einfuegung-${new Date().toISOString().slice(11, 19).replace(/:/g, "")}${PASTE_EXT[f.type] ?? ".txt"}`;
-    const isImage = f.type.startsWith("image/");
-    setPreparing((p) => [...p, { id, name: pastedName, isImage }]);
+    const name = pastedName(f);
+    setPreparing((p) => [...p, { id, name, isImage: f.type.startsWith("image/") }]);
     try {
-      const { blob, name } = isImage ? await prepareImage(f, pastedName) : { blob: f, name: pastedName };
-      const path = await uploadFile(blob, name);
-      setFiles((cur) => [...cur, { id, name, attachment: { kind: "path", path }, preview: isImage ? URL.createObjectURL(blob) : null, isImage }]);
+      const file = await uploadPasted(f, name, id);
+      setFiles((cur) => [...cur, file]);
     } catch (e) {
-      toast.error("Anhang nicht hinzugefügt", `${pastedName}: ${errorMessage(e)}`);
+      toast.error("Anhang nicht hinzugefügt", `${name}: ${errorMessage(e)}`);
     } finally {
       setPreparing((p) => p.filter((x) => x.id !== id));
     }

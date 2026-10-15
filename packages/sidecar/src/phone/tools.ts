@@ -168,6 +168,8 @@ export interface ForgeSettingsPatch {
   updateChecks?: boolean;
   debugLogs?: boolean;
   stripApiKey?: boolean;
+  /** the Print key opens FORGE's snipping tool */
+  screenshotKey?: boolean;
   policyRule?: PolicyRuleId;
   policyRuleOn?: boolean;
 }
@@ -849,6 +851,7 @@ export const PHONE_TOOLS: readonly PhoneToolSpec[] = [
       update_checks: { type: "boolean", optional: true, description: "nach Updates von FORGE suchen" },
       debug_logs: { type: "boolean", optional: true, description: "ausführliche Protokolle" },
       strip_api_key: { type: "boolean", optional: true, description: "einen API-Key aus der Umgebung nicht an Claude Code geben, damit das Abo zählt" },
+      screenshot_key: { type: "boolean", optional: true, description: "die Druck-Taste öffnet das Snipping-Tool von FORGE statt dem von Windows" },
       policy_rule: { type: "string", optional: true, enum: PolicyRuleId.options, description: "Regel der Sperrliste" },
       policy_rule_on: { type: "boolean", optional: true, description: "true schaltet die Regel ein, false aus" },
     },
@@ -866,6 +869,7 @@ export const PHONE_TOOLS: readonly PhoneToolSpec[] = [
         updateChecks: optBool(a.update_checks),
         debugLogs: optBool(a.debug_logs),
         stripApiKey: optBool(a.strip_api_key),
+        screenshotKey: optBool(a.screenshot_key),
         policyRule: PolicyRuleId.options.find((x) => x === a.policy_rule),
         policyRuleOn: optBool(a.policy_rule_on),
       }),

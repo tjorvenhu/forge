@@ -297,7 +297,8 @@ pub fn update_chat_window(app: AppHandle, window: WebviewWindow, session_id: Opt
 #[tauri::command]
 pub fn set_always_on_top(app: AppHandle, on: bool) {
     app.state::<ChatWindows>().on_top.store(on, Ordering::Relaxed);
-    for w in app.webview_windows().values() {
+    // The screenshot overlay always covers everything.
+    for w in app.webview_windows().values().filter(|w| w.label() != crate::screenshot::OVERLAY) {
         let _ = w.set_always_on_top(on);
     }
 }

@@ -8,22 +8,38 @@ import { startServerEvents } from "./lib/server-events";
 import { startPresenceReporting } from "./lib/presence";
 import { chatWindowTarget, prepareChatWindowUi, startChatWindowTracking } from "./lib/chat-windows";
 import { startChatWindowEvents } from "./lib/chat-window-events";
+import { isScreenshotWindow, startScreenshotReceiver } from "./lib/screenshot";
+import { ScreenshotOverlay } from "./components/screenshot/ScreenshotOverlay";
 import "./styles.css";
 
-const chatWindow = chatWindowTarget();
-if (chatWindow) {
-  prepareChatWindowUi(chatWindow);
-  startChatWindowEvents(queryClient);
-} else startServerEvents(queryClient);
-startPresenceReporting();
-void startChatWindowTracking().catch(() => {});
+const root = createRoot(document.getElementById("root")!);
 
-createRoot(document.getElementById("root")!).render(
-  <StrictMode>
-    <QueryClientProvider client={queryClient}>
+if (isScreenshotWindow()) {
+  // The snipping overlay of the Print key: no sidecar, no presence, only the overlay.
+  root.render(
+    <StrictMode>
       <TooltipProvider>
-        <App chatWindow={chatWindow} />
+        <ScreenshotOverlay />
       </TooltipProvider>
-    </QueryClientProvider>
-  </StrictMode>,
-);
+    </StrictMode>,
+  );
+} else {
+  const chatWindow = chatWindowTarget();
+  if (chatWindow) {
+    prepareChatWindowUi(chatWindow);
+    startChatWindowEvents(queryClient);
+  } else startServerEvents(queryClient);
+  startPresenceReporting();
+  startScreenshotReceiver();
+  void startChatWindowTracking().catch(() => {});
+
+  root.render(
+    <StrictMode>
+      <QueryClientProvider client={queryClient}>
+        <TooltipProvider>
+          <App chatWindow={chatWindow} />
+        </TooltipProvider>
+      </QueryClientProvider>
+    </StrictMode>,
+  );
+}

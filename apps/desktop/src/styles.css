@@ -107,6 +107,17 @@
   /* the send arrow flies up and comes back */
   --animate-send: forge-send 320ms var(--ease-snappy);
   --animate-panel-up: forge-panel-up 200ms var(--ease-snappy) both;
+  /* snipping overlay: the picture flashes once when it is taken */
+  --animate-snip-flash: forge-snip-flash 240ms var(--ease-exit) both;
+
+  @keyframes forge-snip-flash {
+    from {
+      opacity: 0.55;
+    }
+    to {
+      opacity: 0;
+    }
+  }
 
   @keyframes forge-fade-in {
     from {

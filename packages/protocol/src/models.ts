@@ -440,6 +440,8 @@ export const Settings = z.object({
   desktopNotifications: z.boolean(),
   /** main window and chat windows stay above other apps */
   alwaysOnTop: z.boolean(),
+  /** while FORGE runs, the Print key opens FORGE's snipping tool instead of the one of Windows */
+  screenshotKey: z.boolean(),
   /** blocklist rules the user switched off; every other rule applies */
   disabledPolicyRules: z.array(PolicyRuleId),
   /** the setup assistant of the first start is done (or was skipped); installations from before it count as done */

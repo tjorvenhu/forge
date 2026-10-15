@@ -186,6 +186,12 @@ function GeneralSection({ s, save }: { s: Settings; save: Save }) {
           checked={s.alwaysOnTop}
           onChange={(v) => void save({ alwaysOnTop: v })}
         />
+        <SwitchRow
+          label="Druck-Taste für Screenshots"
+          description="Solange FORGE läuft, öffnet die Druck-Taste das Snipping-Tool von FORGE statt dem von Windows. Der Screenshot landet in der Zwischenablage und als Anhang im Chat, den du zuletzt benutzt hast. Alt+Druck und Win+Druck bleiben bei Windows."
+          checked={s.screenshotKey}
+          onChange={(v) => void save({ screenshotKey: v })}
+        />
         <Row label="Töne" description="Signal, wenn Claude fertig ist, eine Freigabe braucht oder ein Fehler auftritt.">
           <div className="flex items-center gap-1">
             {(["done", "approval", "error"] as const).map((k) => (

@@ -239,6 +239,7 @@ export const DEFAULT_SETTINGS: Settings = {
   updateChecks: true,
   desktopNotifications: true,
   alwaysOnTop: false,
+  screenshotKey: true,
   disabledPolicyRules: [...DEFAULT_DISABLED_POLICY_RULES],
   setupDone: false,
   syncEnabled: false,
