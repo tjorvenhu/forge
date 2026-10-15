@@ -537,6 +537,11 @@ mod hook {
     use std::sync::atomic::{AtomicBool, Ordering};
     use windows_sys::Win32::Foundation::{GetLastError, LPARAM, LRESULT, WPARAM};
     use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
+    use windows_sys::Win32::System::SystemInformation::GetTickCount;
+    use windows_sys::Win32::System::Threading::{
+        GetCurrentThread, SetThreadInformation, SetThreadPriority, ThreadPowerThrottling, THREAD_POWER_THROTTLING_CURRENT_VERSION, THREAD_POWER_THROTTLING_EXECUTION_SPEED,
+        THREAD_POWER_THROTTLING_STATE, THREAD_PRIORITY_TIME_CRITICAL,
+    };
     use windows_sys::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_ESCAPE, VK_LWIN, VK_RETURN, VK_RWIN, VK_SNAPSHOT};
     use windows_sys::Win32::UI::WindowsAndMessaging::{
         CallNextHookEx, GetMessageW, SetTimer, SetWindowsHookExW, UnhookWindowsHookEx, HC_ACTION, HHOOK, KBDLLHOOKSTRUCT, LLKHF_ALTDOWN, LLKHF_INJECTED, MSG, WH_KEYBOARD_LL,
@@ -544,9 +549,9 @@ mod hook {
     };
 
     /// Windows calls the newest low-level hook first. Screenshot tools started later (ShareX, Greenshot,
-    /// Lightshot) would be in front of FORGE; renewing the hook puts FORGE back in front, and also
+    /// Lightshot) would be in front of FORGE; renewing the hook every 2 s puts FORGE back in front, and also
     /// brings it back if Windows dropped it silently after a timeout.
-    const RENEW_MS: u32 = 5_000;
+    const RENEW_MS: u32 = 2_000;
 
     /// Print went down and its key up is still to come; some keyboards and remappers only send the key up.
     static PRINT_DOWN: AtomicBool = AtomicBool::new(false);
@@ -560,6 +565,17 @@ mod hook {
         std::thread::Builder::new()
             .name("forge-print-key".into())
             .spawn(|| unsafe {
+                // Windows waits only briefly for a low-level hook; an answer that comes too late lets
+                // the key through to other tools (ShareX) and gets the hook dropped. While FORGE starts
+                // or captures, a thread of normal priority was late. Never slowed down for saving energy either.
+                SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_TIME_CRITICAL);
+                let no_throttling = THREAD_POWER_THROTTLING_STATE { Version: THREAD_POWER_THROTTLING_CURRENT_VERSION, ControlMask: THREAD_POWER_THROTTLING_EXECUTION_SPEED, StateMask: 0 };
+                SetThreadInformation(
+                    GetCurrentThread(),
+                    ThreadPowerThrottling,
+                    (&no_throttling as *const THREAD_POWER_THROTTLING_STATE).cast(),
+                    std::mem::size_of::<THREAD_POWER_THROTTLING_STATE>() as u32,
+                );
                 let mut hook = set();
                 if hook.is_null() {
                     log(format!("Tastatur-Hook nicht gesetzt (Fehler {})", GetLastError()));
@@ -602,10 +618,9 @@ mod hook {
                 let alt = k.flags & LLKHF_ALTDOWN != 0;
                 let win = held(VK_LWIN) || held(VK_RWIN);
                 if down {
-                    log(format!(
-                        "Druck gedrückt: an={enabled} alt={alt} win={win} eingespeist={}",
-                        k.flags & LLKHF_INJECTED != 0
-                    ));
+                    // How long after the key press Windows called the hook; from about 300 ms on it had already given up.
+                    let late = GetTickCount().wrapping_sub(k.time);
+                    log(format!("Druck gedrückt: an={enabled} alt={alt} win={win} eingespeist={} verzögert={late}ms", k.flags & LLKHF_INJECTED != 0));
                 }
                 if enabled && !alt && !win {
                     // Once per press: on the key down, or on the key up when no key down came.
