@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { ArrowLeftRight, CheckCircle2, Download, ExternalLink, LogIn, LogOut } from "lucide-react";
+import { ArrowLeftRight, CheckCircle2, Download, ExternalLink, KeyRound, LogIn, LogOut } from "lucide-react";
 import type { MethodName } from "@forge/protocol";
 import { call, keys, useClaudeSetup, useDiagnostics } from "@/lib/queries";
 import { errorMessage } from "@/lib/rpc";
@@ -10,7 +10,7 @@ import { toast } from "@/stores/toast";
 import { useUi } from "@/stores/ui";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Badge, ErrorBanner } from "@/components/ui/misc";
+import { Badge, ErrorBanner, Spinner } from "@/components/ui/misc";
 import { Skeleton, SkeletonRegion } from "@/components/ui/skeleton";
 
 // Opens the sign-in page once per login attempt. Module-level so remounts and StrictMode do not open it again.
@@ -32,8 +32,8 @@ function useSetupAction() {
 }
 
 /**
- * Sign-in with the Claude account through `claude auth login`: opens the sign-in page and takes the
- * code it shows. Used in the setup card and in the dialog that opens when a session's login expired.
+ * Sign-in with the Claude account through `claude auth login`: opens the sign-in page, which returns
+ * to Claude Code on its own; pasting the code of the fallback page is offered too. Used in the setup card and in the dialog that opens when a session's login expired.
  */
 export function ClaudeLoginForm({ showError = true, onStart }: { showError?: boolean; onStart?: () => void }) {
   const s = useClaudeSetup().data;
@@ -47,6 +47,8 @@ export function ClaudeLoginForm({ showError = true, onStart }: { showError?: boo
   const code = typed.url === url ? typed.code : "";
   const setCode = (next: string) => setTyped({ url, code: next });
   const [submitting, setSubmitting] = useState(false);
+  // sign-in page (s.url) for which the user chose to paste a code instead
+  const [codeFor, setCodeFor] = useState<string | null>(null);
   useEffect(() => {
     if (url && openedUrl !== url) {
       openedUrl = url;
@@ -55,6 +57,47 @@ export function ClaudeLoginForm({ showError = true, onStart }: { showError?: boo
   }, [url]);
 
   if (s?.task === "login" && s.phase === "waiting_code") {
+    // With codeUrl the opened page returns to Claude Code on its own; the code is only the fallback.
+    const withCode = !s.codeUrl || codeFor === s.url;
+    const page = withCode ? (s.codeUrl ?? s.url) : s.url;
+    const cancel = (
+      <Button
+        size="sm"
+        variant="ghost"
+        onClick={() => {
+          setCode("");
+          void act("claude.cancelSetup");
+        }}
+      >
+        Abbrechen
+      </Button>
+    );
+    if (!withCode) {
+      return (
+        <div className="flex w-full flex-col items-start gap-2.5">
+          <div className="flex items-center gap-2 text-body">
+            <Spinner className="text-accent" /> Warte auf die Anmeldung im Browser …
+          </div>
+          <p className="text-xs text-muted">Melde dich auf der geöffneten Seite an. FORGE übernimmt die Anmeldung danach von selbst.</p>
+          <div className="flex flex-wrap gap-2">
+            <Button size="sm" variant="ghost" onClick={() => s.url && void openExternal(s.url)}>
+              <ExternalLink className="h-3.5 w-3.5" /> Anmeldeseite erneut öffnen
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => {
+                setCodeFor(s.url);
+                if (s.codeUrl) void openExternal(s.codeUrl);
+              }}
+            >
+              <KeyRound className="h-3.5 w-3.5" /> Mit Code anmelden
+            </Button>
+            {cancel}
+          </div>
+        </div>
+      );
+    }
     return (
       <div className="flex w-full flex-col items-start gap-2.5">
         <p className="text-xs text-muted">Melde dich im Browser an. Danach zeigt die Seite einen Code: hier einfügen und bestätigen.</p>
@@ -81,19 +124,10 @@ export function ClaudeLoginForm({ showError = true, onStart }: { showError?: boo
           </Button>
         </div>
         <div className="flex gap-2">
-          <Button size="sm" variant="ghost" onClick={() => s.url && void openExternal(s.url)}>
+          <Button size="sm" variant="ghost" onClick={() => page && void openExternal(page)}>
             <ExternalLink className="h-3.5 w-3.5" /> Anmeldeseite erneut öffnen
           </Button>
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={() => {
-              setCode("");
-              void act("claude.cancelSetup");
-            }}
-          >
-            Abbrechen
-          </Button>
+          {cancel}
         </div>
       </div>
     );

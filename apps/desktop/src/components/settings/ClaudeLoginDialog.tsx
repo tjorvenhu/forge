@@ -1,8 +1,8 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { ArrowLeftRight, CheckCircle2, LogIn, LogOut, Settings2 } from "lucide-react";
 import type { Diagnostics } from "@forge/protocol";
-import { call, keys, useClaudeSetup, useSettings } from "@/lib/queries";
+import { call, keys, useClaudeSetup, useDiagnostics, useSettings } from "@/lib/queries";
 import { errorMessage } from "@/lib/rpc";
 import { toast } from "@/stores/toast";
 import { useUi, type ClaudeLoginReason } from "@/stores/ui";
@@ -12,22 +12,28 @@ import { Dialog } from "@/components/ui/dialog";
 import type { MenuItem } from "@/components/ui/dropdown";
 import { ClaudeLoginForm } from "./ClaudeSetupCard";
 
-const TITLES: Record<ClaudeLoginReason, string> = {
+/** `required`: Claude Code is signed out, the dialog cannot be closed until the sign-in is done */
+type DialogReason = ClaudeLoginReason | "required";
+
+const TITLES: Record<DialogReason, string> = {
   expired: "Claude-Anmeldung abgelaufen",
   manual: "Bei Claude anmelden",
   switch: "Claude-Konto wechseln",
+  required: "Bei Claude anmelden",
 };
 
-const DESCRIPTIONS: Record<ClaudeLoginReason, string> = {
+const DESCRIPTIONS: Record<DialogReason, string> = {
   expired: "Claude Code hat die Anmeldung abgelehnt. Melde dich hier mit deinem Claude-Konto neu an.",
   manual: "Claude Code meldet sich mit deinem Claude-Konto an.",
   switch: "Melde dich im Browser mit dem anderen Konto an. Ist dort noch das bisherige angemeldet, wechsle es auf claude.ai zuerst.",
+  required: "Claude Code ist nicht angemeldet. FORGE braucht dein Claude-Konto, bevor es weitergeht.",
 };
 
-const DONE: Record<ClaudeLoginReason, string> = {
+const DONE: Record<DialogReason, string> = {
   expired: "Du bist wieder angemeldet. Schick die abgelehnte Nachricht einfach noch einmal.",
   manual: "Claude Code ist angemeldet.",
   switch: "Claude Code nutzt jetzt das neue Konto. Laufende Sessions wechseln spätestens nach einem Neustart.",
+  required: "Claude Code ist angemeldet.",
 };
 
 /** Entries of the Claude card in the sidebar (click and right click). */
@@ -51,44 +57,105 @@ export async function logoutClaude(qc: QueryClient) {
   void qc.invalidateQueries({ queryKey: keys.runtimeInfo });
 }
 
-/** Sign in to Claude without leaving the current view: after an expired login, to switch accounts or by hand. */
+/** Claude Code is installed but signed out: FORGE cannot be used until the user signs in. */
+export function useLoginRequired(): boolean {
+  const d = useDiagnostics().data;
+  return !!d?.claude.found && d.auth.checked && !d.auth.loggedIn;
+}
+
+/**
+ * Sign in to Claude without leaving the current view. Stays open while Claude Code is signed out;
+ * otherwise opened after an expired login, to switch accounts or by hand.
+ */
 export function ClaudeLoginDialog() {
   const req = useUi((s) => s.claudeLogin);
+  const close = useUi((s) => s.closeClaudeLogin);
   const settings = useSettings().data;
   const wizard = useUi((s) => s.setupWizard);
-  if (!req || !settings) return null;
-  // The setup assistant has its own sign-in step; switching accounts is asked for by hand, also there.
+  const required = useLoginRequired();
+  // The setup assistant has its own sign-in step.
+  const blocking = required && !!settings?.setupDone && !wizard;
+  // The required dialog replaces an asked-for one, which would otherwise come back after the sign-in.
+  useEffect(() => {
+    if (blocking && req) close();
+  }, [blocking, req, close]);
+  if (!settings) return null;
+  if (blocking) return <LoginDialog key="required" reason="required" />;
+  if (!req) return null;
+  // Switching accounts is asked for by hand, also over the setup assistant.
   if (req.reason !== "switch" && (!settings.setupDone || wizard)) return null;
   return <LoginDialog key={req.id} reason={req.reason} />;
 }
 
-function LoginDialog({ reason }: { reason: ClaudeLoginReason }) {
+/** Chat windows: the sign-in itself runs in the main window, so each window does not open the page again. */
+export function ClaudeLoginRequiredNotice() {
+  if (!useLoginRequired()) return null;
+  return (
+    <Dialog
+      open
+      onOpenChange={() => {}}
+      dismissable={false}
+      title="Claude Code ist abgemeldet"
+      description="Melde dich im FORGE-Hauptfenster an. Danach geht es hier weiter."
+      overlayClassName="backdrop-blur-sm"
+    />
+  );
+}
+
+function LoginDialog({ reason }: { reason: DialogReason }) {
   const close = useUi((s) => s.closeClaudeLogin);
   const s = useClaudeSetup().data;
   const qc = useQueryClient();
   const loggingIn = s?.task === "login" && (s.phase === "running" || s.phase === "waiting_code");
   // A login finished before this dialog opened is not this dialog's result; one still running is.
   const [started, setStarted] = useState(loggingIn);
+  const [checking, setChecking] = useState(false);
   const done = started && s?.task === "login" && s.phase === "done";
+  const required = reason === "required";
 
   const dismiss = () => {
+    if (required) return;
     if (loggingIn) void call("claude.cancelSetup", {}).then((st) => qc.setQueryData(keys.claudeSetup, st));
     close();
   };
 
+  // Required: the dialog goes away once the refreshed diagnostics show the sign-in; this asks again if it lags.
+  const recheck = async () => {
+    setChecking(true);
+    try {
+      qc.setQueryData(keys.diagnostics, await call("system.diagnostics", { refresh: true }));
+    } catch (e) {
+      toast.error("Anmeldung nicht geprüft", errorMessage(e));
+    } finally {
+      setChecking(false);
+    }
+  };
+
+  const footer = required ? (
+    done ? (
+      <Button variant="primary" loading={checking} onClick={() => void recheck()}>
+        Weiter
+      </Button>
+    ) : undefined
+  ) : done ? (
+    <Button variant="primary" onClick={close}>
+      Schließen
+    </Button>
+  ) : (
+    <Button variant="ghost" onClick={dismiss}>
+      Später
+    </Button>
+  );
+
   return (
-    <Dialog open onOpenChange={(o) => !o && dismiss()} title={TITLES[reason]} description={DESCRIPTIONS[reason]} overlayClassName="backdrop-blur-sm"
-      footer={
-        done ? (
-          <Button variant="primary" onClick={close}>
-            Schließen
-          </Button>
-        ) : (
-          <Button variant="ghost" onClick={dismiss}>
-            Später
-          </Button>
-        )
-      }
+    <Dialog
+      open
+      onOpenChange={(o) => !o && dismiss()}
+      dismissable={!required}
+      title={TITLES[reason]}
+      description={DESCRIPTIONS[reason]}
+      overlayClassName="backdrop-blur-sm"
+      footer={footer}
     >
       {done ? (
         <div className="flex items-start gap-2 text-body">
@@ -112,7 +179,7 @@ export function ClaudeLogoutDialog() {
       open={open}
       onOpenChange={setOpen}
       title="Von Claude abmelden?"
-      description="Claude Code meldet sich auf diesem Rechner ab. Sessions können erst nach einer neuen Anmeldung weiterarbeiten."
+      description="Claude Code meldet sich auf diesem Rechner ab. Bis du dich wieder anmeldest, lässt sich FORGE nicht nutzen."
       confirmLabel="Abmelden"
       danger
       onConfirm={async () => {

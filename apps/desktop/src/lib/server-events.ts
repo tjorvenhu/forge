@@ -145,7 +145,8 @@ export function routeServerEvent(qc: QueryClient, git: GitRefresher, e: ServerEv
       break;
     case "claude.setup":
       qc.setQueryData(keys.claudeSetup, e.payload);
-      if (e.payload.phase === "done") {
+      // idle without a task is only sent after a logout (also one from the phone or another window)
+      if (e.payload.phase === "done" || (e.payload.phase === "idle" && e.payload.task === null)) {
         void call("system.diagnostics", { refresh: true }).then((d) => qc.setQueryData(keys.diagnostics, d));
         void qc.invalidateQueries({ queryKey: keys.usage });
         void qc.invalidateQueries({ queryKey: keys.runtimeInfo });

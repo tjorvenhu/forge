@@ -52,10 +52,14 @@ export class RuntimeCatalog {
     this.noteInitialization(await this.runtime.probe({ cwd: process.cwd(), env: sessionEnv(settings.stripApiKey), claudePath }));
   }
 
-  /** After Claude Code was installed, updated or signed in: the next runtimeInfo reads the list again. */
+  /**
+   * After Claude Code was installed, updated, signed in or out: the next runtimeInfo reads the list
+   * again, and the usage of the old account (or of none) is not served for another minute.
+   */
   invalidate() {
     this.initAt = 0;
     this.commandCache.clear();
+    this.usageCache = null;
   }
 
   /**

@@ -1,31 +1,37 @@
 ---
-title: "Claude-Konto: abgelaufene Anmeldung, Anmelden, Abmelden, Konto wechseln (claude.authRequired, claude.logout)"
-summary: "Wie FORGE merkt, dass Claude Code die Anmeldung ablehnt, und wie Anmelde-Dialog, Abmelden und Kontowechsel (Seitenleiste, Rechtsklick, Palette, Telefon) aufgebaut sind; wichtig bei Änderungen an Login, Fehlertexten oder dem Session-Stream."
+title: "Claude-Konto: Anmeldung ohne Code, Pflicht-Anmeldung, Abmelden, Konto wechseln (claude.authRequired, claude.logout)"
+summary: "Wie FORGE Claude Code ohne Code-Eingabe anmeldet (BROWSER-Relay), ohne Anmeldung blockiert, abgelaufene Anmeldungen erkennt und Abmelden/Kontowechsel anbietet; wichtig bei Änderungen an Login, Fehlertexten, Session-Stream oder Nutzungsanzeige."
 tags: ["sessions","sidecar","ui","telefon","stolperfalle"]
-updated: "2026-10-15T06:07:49.981Z"
+updated: "2026-10-15T06:27:43.271Z"
 ---
 
-## Erkennung einer abgelaufenen Anmeldung (Sidecar)
+## Anmeldung ohne Code (BROWSER-Relay, `claude/setup.ts`)
+- `claude auth login --claudeai` baut zwei Adressen: eine mit `redirect_uri=http://localhost:<port>/callback` (der CLI-Prozess lauscht dort, die Anmeldung schließt sich von selbst ab, wie im Terminal) und eine mit `redirect_uri=https://platform.claude.com/oauth/code/callback` (zeigt einen Code zum Einfügen; steht in der Ausgabe „If the browser didn't open, visit: …“).
+- Die automatische Adresse gibt die CLI nur an das Programm in `BROWSER`. Früher setzte FORGE `BROWSER=none` und bekam nur die Code-Adresse.
+- Jetzt: `browserRelay()` legt pro Anmeldung `%TEMP%\forge-login-*\open.cmd` an (`>"…\url.txt" echo %*`), `BROWSER` zeigt darauf. Die CLI ruft es mit der Adresse in Anführungszeichen auf; FORGE pollt `url.txt` (150 ms, erst lesen, wenn die Zeile mit Zeilenumbruch endet), setzt `url` (automatisch) und `codeUrl` (Code-Seite als Ausweg). Ruft die CLI `BROWSER` nicht innerhalb von `BROWSER_WAIT_MS` (3 s) nach der Code-Adresse auf, ist `url` die Code-Adresse und `codeUrl` null. Ordner wird bei Ende/Abbruch gelöscht.
+- Geprüft am 2026-10-15 mit Claude Code 2.1.300: Aufruf kommt nach ~0,3 s, funktioniert auch mit Leerzeichen im Pfad.
+- UI (`ClaudeLoginForm` in `ClaudeSetupCard.tsx`): mit `codeUrl` „Warte auf die Anmeldung im Browser …“, Knöpfe „Anmeldeseite erneut öffnen“, „Mit Code anmelden“ (öffnet `codeUrl`, zeigt das Code-Feld; `claude.submitLoginCode` geht weiter an stdin), „Abbrechen“.
+
+## Pflicht-Anmeldung
+- `useLoginRequired()` (`ClaudeLoginDialog.tsx`): Claude Code gefunden, `auth.checked` und nicht `loggedIn`. Dann zeigt `ClaudeLoginDialog` (Hauptfenster) den Dialog „Bei Claude anmelden“ mit `dismissable={false}` (neue Option von `components/ui/dialog.tsx`: kein X, Escape und Klick daneben wirkungslos). Er verschwindet erst, wenn die Diagnose die Anmeldung zeigt (nach `claude.setup` done lädt `server-events.ts` sie neu; Knopf „Weiter“ prüft erneut, falls das hängt). Ein offener angefragter Dialog (`claudeLogin`) wird dabei geschlossen, sonst käme er nach der Anmeldung wieder.
+- Nicht über dem Einrichtungsassistenten (eigener Anmeldeschritt) und nicht, wenn Claude Code fehlt (dann ginge kein Pfad mehr einzustellen).
+- Chat-Fenster: `ClaudeLoginRequiredNotice` (nicht schließbar, „Melde dich im FORGE-Hauptfenster an“), damit nicht jedes Fenster die Anmeldeseite öffnet.
+- Nach einem Abmelden (auch vom Telefon) sendet der Sidecar `claude.setup` mit `task: null, phase: idle`; `server-events.ts` lädt daraufhin in allen Fenstern die Diagnose neu, der Pflicht-Dialog erscheint.
+
+## Abgelaufene Anmeldung erkennen (Sidecar)
 - `claude auth status` meldet auch bei abgelaufenem oder widerrufenem Token oft noch `loggedIn: true`. Verlässlich ist erst die Ablehnung in einer Session.
-- `sessions/stream.ts`: Eine Hauptagent-`assistant`-Nachricht mit `error: "authentication_failed"` (SDK-Typ `SDKAssistantMessageError`) markiert den Durchlauf. Beim `turn.result` geht `claude.authRequired` ({ sessionId }) raus, wenn markiert oder wenn `is_error` und der Text zu `isAuthFailure` passt. Höchstens ein Event pro Durchlauf, nicht nach einem Stop.
-- `sessions/lifecycle.ts` `onEnd`: Endet der Prozess mit einem Fehler, der zu `isAuthFailure` passt, ebenfalls `claude.authRequired`.
-- `isAuthFailure` (`sessions/live-session.ts`) ist dieselbe Regex, die `describeRuntimeError` für die deutsche Fehlermeldung nutzt.
+- `sessions/stream.ts`: Hauptagent-`assistant`-Nachricht mit `error: "authentication_failed"` markiert den Durchlauf; beim `turn.result` geht `claude.authRequired` raus (oder bei `is_error` und Text passend zu `isAuthFailure`). Höchstens einmal pro Durchlauf, nicht nach Stop. `lifecycle.ts` `onEnd` ebenso bei passendem Prozessfehler.
+- Desktop öffnet dann den schließbaren Dialog „Claude-Anmeldung abgelaufen“ und lädt die Diagnose neu; zeigt die `loggedIn: false`, übernimmt der Pflicht-Dialog.
 
-## Abmelden (Sidecar)
-- RPC `claude.logout` → `ClaudeSetupService.logout()` (`claude/setup.ts`): `claude auth logout`, nicht während einer laufenden Anmeldung/Installation (`ensureIdle`). Setzt den Setup-Zustand auf idle, damit ein altes `login done` nicht als aktueller Stand gilt. Der Handler leert `diagCache` und `invalidateRuntimeInfo()`.
-- Telefon: `forge_system` Aktion `claude_logout`, nur über `askKeypad` (neu anmelden geht nur am Rechner im Browser). `claude.login`/`submitLoginCode`/`cancelSetup` bleiben auf `NOT_ON_PHONE`.
+## Nutzung nach An-/Abmelden
+- `RuntimeCatalog.invalidate()` leert auch `usageCache` (sonst lieferte `system.usage` bis zu 60 s die Werte von vorher). Aufgerufen nach `claude.setup` done (`app.ts`) und in `claude.logout`.
 
-## Dialoge (Desktop, `components/settings/ClaudeLoginDialog.tsx`, in `App.tsx` Shell)
-- `ClaudeLoginDialog`: Gründe `expired` (Event), `manual`, `switch` (Konto wechseln) über `useUi.openClaudeLogin(reason)`. Nutzt `ClaudeLoginForm` aus `ClaudeSetupCard.tsx` (`claude auth login --claudeai`, URL öffnen, Code einfügen). `expired`/`manual` erscheinen nicht über dem Einrichtungsassistenten (der hat einen eigenen Anmeldeschritt), `switch` schon, weil die Einstellungskarte dort auch „Konto wechseln“ anbietet. Ein offener Dialog bleibt bestehen, wenn mehrere Sessions gleichzeitig scheitern. Schließen während einer laufenden Anmeldung ruft `claude.cancelSetup`. Ein `done` von einer früheren Anmeldung zählt nicht als Erfolg (`started`).
-- Kontowechsel meldet nicht vorher ab: `claude auth login` überschreibt die Zugangsdaten. Ist im Browser noch das alte claude.ai-Konto angemeldet, muss man es dort wechseln.
-- `ClaudeLogoutDialog`: `ConfirmDialog` über `useUi.setClaudeLogout(true)`, danach `logoutClaude(qc)` (Diagnose neu, Nutzung und runtimeInfo invalidiert).
-- `server-events.ts`: `claude.authRequired` lädt die Diagnose neu und öffnet den Dialog nur im Hauptfenster (Chat-Fenster würden sonst die Anmeldeseite mehrfach öffnen; `openedUrl` ist pro Fenster).
-
-## Einstiege
-- Seitenleiste unten links (`ClaudeStatusCard` in `Sidebar.tsx`): Klick öffnet ein Dropdown, Rechtsklick dasselbe als Kontextmenü; beide aus `claudeAccountItems(diag, openSettings)`: angemeldet „Konto wechseln“, „Abmelden“, „Claude-Einstellungen“; nicht angemeldet „Anmelden“. Früher öffnete der Klick direkt die Einstellungen.
-- Einstellungen > Claude Code (`ClaudeSetupCard`): Knöpfe „Konto wechseln“ und „Abmelden“.
-- Befehlspalette: `claude-login`, `claude-switch`, `claude-logout`. Startseite: Hinweis „nicht angemeldet“ mit Knopf „Anmelden“.
+## Abmelden und Konto wechseln
+- RPC `claude.logout` → `ClaudeSetupService.logout()`: `claude auth logout`, nicht während eines laufenden Schritts; setzt den Setup-Zustand auf idle. Handler leert `diagCache` und invalidiert den Katalog.
+- Telefon: `forge_system` Aktion `claude_logout`, nur über `askKeypad`. Anmelden bleibt `NOT_ON_PHONE` (Browser am Rechner).
+- Kontowechsel meldet nicht vorher ab (`claude auth login` überschreibt die Zugangsdaten). Ist im Browser noch das alte claude.ai-Konto angemeldet, muss man es dort wechseln.
+- Einstiege: Seitenleiste unten links (Klick = Dropdown, Rechtsklick = gleiche Einträge aus `claudeAccountItems`), Einstellungen > Claude Code, Befehlspalette (`claude-login`, `claude-switch`, `claude-logout`), Startseite.
 
 ## Offen
-- Stand 2026-10-15, nicht geprüft: ob ein laufender CLI-Prozess neue Zugangsdaten nach Anmeldung oder Kontowechsel selbst übernimmt. Die Texte sagen deshalb „Nachricht erneut senden“ bzw. „spätestens nach einem Neustart“.
-- Die Diagnose verwirft E-Mail und Organisation absichtlich (`readAuth`), deshalb zeigt das Menü nur das Abo, nicht das angemeldete Konto.
+- Nicht geprüft (Stand 2026-10-15): ob ein laufender CLI-Prozess neue Zugangsdaten nach Anmeldung oder Kontowechsel selbst übernimmt. Texte sagen „Nachricht erneut senden“ bzw. „spätestens nach einem Neustart“.
+- Die Diagnose verwirft E-Mail und Organisation absichtlich (`readAuth`), das Menü zeigt nur das Abo.

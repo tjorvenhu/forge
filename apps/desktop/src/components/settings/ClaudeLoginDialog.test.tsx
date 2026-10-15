@@ -41,11 +41,67 @@ beforeEach(() => {
     if (method === "claude.login") return (setupState = WAITING);
     if (method === "claude.submitLoginCode") return (setupState = { ...WAITING, phase: "running" });
     if (method === "claude.cancelSetup") return (setupState = { ...setupState, phase: "cancelled" });
+    if (method === "system.diagnostics" && diagnostics) return diagnostics;
     throw new Error(`unexpected ${method}`);
   });
+  diagnostics = null;
 });
 
 afterEach(cleanup);
+
+let diagnostics: Diagnostics | null = null;
+const signedIn = (loggedIn: boolean) => ({ claude: { found: true }, auth: { checked: true, loggedIn } }) as Diagnostics;
+const AUTO = "https://claude.com/cai/oauth/authorize?redirect_uri=http%3A%2F%2Flocalhost%3A5%2Fcallback";
+const MANUAL = "https://claude.com/cai/oauth/authorize?redirect_uri=https%3A%2F%2Fplatform.claude.com%2Foauth%2Fcode%2Fcallback";
+
+describe("sign-in without a code", () => {
+  it("waits for the browser and offers the code only as a fallback", async () => {
+    callMock.mockImplementation(async (method: string) => {
+      if (method === "settings.get") return { setupDone: true } as Settings;
+      if (method === "claude.setupState") return { ...WAITING, url: AUTO, codeUrl: MANUAL };
+      throw new Error(`unexpected ${method}`);
+    });
+    setup();
+    act(() => useUi.getState().openClaudeLogin("manual"));
+    expect(await screen.findByText(/Warte auf die Anmeldung im Browser/)).toBeTruthy();
+    await waitFor(() => expect(openExternal).toHaveBeenCalledWith(AUTO));
+    expect(screen.queryByPlaceholderText("Code von der Anmeldeseite")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /Mit Code anmelden/ }));
+    expect(openExternal).toHaveBeenLastCalledWith(MANUAL);
+    expect(screen.getByPlaceholderText("Code von der Anmeldeseite")).toBeTruthy();
+  });
+});
+
+describe("required sign-in", () => {
+  it("cannot be closed while Claude Code is signed out and goes away after the sign-in", async () => {
+    diagnostics = signedIn(false);
+    setup();
+    expect(await screen.findByText("Bei Claude anmelden")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Schließen" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Später" })).toBeNull();
+    fireEvent.keyDown(document.activeElement ?? document.body, { key: "Escape" });
+    expect(screen.getByText("Bei Claude anmelden")).toBeTruthy();
+    act(() => qc.setQueryData(keys.diagnostics, signedIn(true)));
+    await waitFor(() => expect(screen.queryByText("Bei Claude anmelden")).toBeNull());
+  });
+
+  it("replaces an asked-for dialog so it does not come back after the sign-in", async () => {
+    diagnostics = signedIn(false);
+    setup();
+    act(() => useUi.getState().openClaudeLogin("expired"));
+    await screen.findByText("Bei Claude anmelden");
+    await waitFor(() => expect(useUi.getState().claudeLogin).toBeNull());
+    expect(screen.queryByText("Claude-Anmeldung abgelaufen")).toBeNull();
+  });
+
+  it("leaves the first sign-in to the setup assistant", async () => {
+    diagnostics = signedIn(false);
+    setupDone = false;
+    setup();
+    await waitFor(() => expect(calls("system.diagnostics")).toHaveLength(1));
+    expect(screen.queryByText("Bei Claude anmelden")).toBeNull();
+  });
+});
 
 describe("ClaudeLoginDialog", () => {
   it("signs in again after an expired login and confirms it", async () => {

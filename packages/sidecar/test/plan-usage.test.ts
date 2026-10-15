@@ -65,6 +65,14 @@ describe("RuntimeCatalog.planUsage", () => {
     expect(calls).toBe(1);
   });
 
+  it("forgets the cached usage after a sign-in or sign-out", async () => {
+    answers.push(usage(at(30)), usage(at(30), 5));
+    await catalog.planUsage(false);
+    catalog.invalidate();
+    expect((await catalog.planUsage(false)).windows[0]?.utilization).toBe(5);
+    expect(calls).toBe(2);
+  });
+
   it("reads the usage again once a window of the cached reading has reset", async () => {
     answers.push(usage(at(0.5)), usage(at(5 * 60), 0));
     await catalog.planUsage(false);

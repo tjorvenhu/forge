@@ -601,7 +601,13 @@ export type ClaudeUpdateInfo = z.infer<typeof ClaudeUpdateInfo>;
 export const ClaudeSetupState = z.object({
   task: z.enum(["install", "login", "update"]).nullable(),
   phase: z.enum(["idle", "running", "waiting_code", "done", "error", "cancelled"]),
+  /** sign-in page FORGE opens */
   url: z.string().nullable(),
+  /**
+   * Set when `url` returns to Claude Code on its own (local callback, no code needed): the page that
+   * shows a code to paste instead, for when that return does not work.
+   */
+  codeUrl: z.string().nullable().optional(),
   log: z.array(z.string()),
   message: z.string().nullable(),
 });

@@ -9,6 +9,7 @@ import { ContextMenuHost } from "@/components/layout/ContextMenuHost";
 import { TitleTooltips } from "@/components/ui/title-tooltips";
 import { EmptyState, ErrorBanner } from "@/components/ui/misc";
 import { ChatPanel, ChatPanelSkeleton } from "@/components/workspace/ChatPanel";
+import { ClaudeLoginRequiredNotice } from "@/components/settings/ClaudeLoginDialog";
 
 /**
  * A chat window: one session chat of one project, without sidebar, tabs and workspace. The app-wide
@@ -38,6 +39,7 @@ export function ChatWindowShell({ target }: { target: ChatWindowTarget }) {
       <TitleTooltips />
       {/* No command palette in a chat window: the menu leaves out the search. */}
       <ContextMenuHost search={false} />
+      <ClaudeLoginRequiredNotice />
     </div>
   );
 }

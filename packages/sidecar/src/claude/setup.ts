@@ -1,4 +1,7 @@
 import { spawn, type ChildProcess } from "node:child_process";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { ForgeError, type ClaudeSetupState, type ClaudeUpdateInfo } from "@forge/protocol";
 import { run } from "../util/proc.js";
 import { locateClaude, sessionEnv } from "./environment.js";
@@ -19,9 +22,46 @@ export function findLoginUrl(output: string): string | null {
   return /(https:\/\/claude\.(?:com|ai)\/[^\s\u0007\u001b]*oauth[^\s\u0007\u001b]*)/.exec(stripAnsi(output))?.[1] ?? null;
 }
 
+/** How long to wait for Claude Code to call BROWSER before offering the page with the code. */
+export const BROWSER_WAIT_MS = 3_000;
+const BROWSER_POLL_MS = 150;
+
 /**
- * Installs Claude Code and signs in through the CLI itself. FORGE only relays the URL and the
- * code the user pastes; the CLI stores the credentials.
+ * A BROWSER program for `claude auth login` that writes the page Claude Code wants to open into a
+ * file instead of opening it. That page returns to the CLI's local callback (like in a terminal), so
+ * nobody has to paste a code; FORGE opens it itself. With BROWSER=none the CLI only prints the page
+ * that shows a code to paste.
+ */
+export function browserRelay(): { program: string; read: () => string | null; dispose: () => void } {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "forge-login-"));
+  const file = path.join(dir, "url.txt");
+  const program = path.join(dir, "open.cmd");
+  writeFileSync(program, `@echo off\r\n>"${file}" echo %*\r\n`);
+  return {
+    program,
+    read: () => {
+      try {
+        const raw = readFileSync(file, "utf8");
+        // echo ends with a line break: without it the file is still being written
+        if (!raw.endsWith("\n")) return null;
+        return findLoginUrl(raw.trim().replace(/^"|"$/g, ""));
+      } catch {
+        return null;
+      }
+    },
+    dispose: () => {
+      try {
+        rmSync(dir, { recursive: true, force: true });
+      } catch {
+        /* left in the temp folder */
+      }
+    },
+  };
+}
+
+/**
+ * Installs Claude Code and signs in through the CLI itself. FORGE only relays the sign-in page (and,
+ * as a fallback, the code the user pastes); the CLI stores the credentials.
  */
 export class ClaudeSetupService {
   private proc: ChildProcess | null = null;
@@ -146,28 +186,54 @@ export class ClaudeSetupService {
     const s = this.settings();
     const claude = locateClaude(s.claudePath);
     if (!claude) throw new ForgeError("CLAUDE_NOT_INSTALLED", "Claude Code ist nicht installiert.");
-    this.set({ task: "login", phase: "running", url: null, log: [], message: null });
-    const env = { ...sessionEnv(s.stripApiKey), BROWSER: "none" };
+    const relay = browserRelay();
+    this.set({ task: "login", phase: "running", url: null, codeUrl: null, log: [], message: null });
+    const env = { ...sessionEnv(s.stripApiKey), BROWSER: relay.program };
     const child = spawn(claude, ["auth", "login", "--claudeai"], { env, shell: false, windowsHide: true, stdio: ["pipe", "pipe", "pipe"] });
     this.proc = child;
     let output = "";
+    let codeUrl: string | null = null;
+    let fallback: ReturnType<typeof setTimeout> | undefined;
+    const current = () => this.proc === child && this.state.task === "login";
+    const show = (url: string, withCode: string | null) => {
+      if (!current() || this.state.url) return;
+      clearInterval(poll);
+      clearTimeout(fallback);
+      this.set({ phase: "waiting_code", url, codeUrl: withCode });
+    };
+    // Claude Code hands the page that returns to its local callback to BROWSER; with it no code is needed.
+    const poll = setInterval(() => {
+      const url = relay.read();
+      if (url) show(url, codeUrl);
+    }, BROWSER_POLL_MS);
     const onData = (d: Buffer) => {
       output += d.toString();
       this.appendLog(d.toString());
-      const url = findLoginUrl(output);
-      if (url && !this.state.url) this.set({ phase: "waiting_code", url });
+      if (codeUrl) return;
+      codeUrl = findLoginUrl(output);
+      if (!codeUrl) return;
+      if (this.state.url) this.set({ codeUrl });
+      // BROWSER was not called (or failed): the page with the code to paste is all there is.
+      else fallback = setTimeout(() => codeUrl && show(codeUrl, null), BROWSER_WAIT_MS);
+    };
+    const cleanup = () => {
+      clearInterval(poll);
+      clearTimeout(fallback);
+      relay.dispose();
     };
     child.stdout?.on("data", onData);
     child.stderr?.on("data", onData);
     child.stdin?.on("error", () => {});
     child.on("error", (e) => {
+      cleanup();
       if (!this.release(child)) return;
       this.set({ phase: "error", message: e.message });
     });
     child.on("close", (code) => {
+      cleanup();
       if (!this.release(child)) return;
       if (this.state.phase === "cancelled") return;
-      this.set(code === 0 ? { phase: "done", url: null, message: "Angemeldet" } : { phase: "error", message: `Anmeldung beendet mit Code ${code}` });
+      this.set(code === 0 ? { phase: "done", url: null, codeUrl: null, message: "Angemeldet" } : { phase: "error", message: `Anmeldung beendet mit Code ${code}` });
     });
     return this.state;
   }
