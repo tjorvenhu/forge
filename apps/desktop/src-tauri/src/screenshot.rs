@@ -17,8 +17,12 @@ use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, Webview
 pub const OVERLAY: &str = "screenshot";
 /// To the overlay: a new capture is ready (payload: FrameInfo).
 const FRAME: &str = "screenshot://frame";
-/// To the overlay: Esc was pressed (the hook catches it, the overlay may not have the keyboard focus).
-const ESCAPE: &str = "screenshot://escape";
+/// To the overlay: Esc or Enter was pressed (payload: the key). The hook catches them, because the
+/// overlay does not always get the keyboard focus from Windows.
+const KEY: &str = "screenshot://key";
+/// Log of the Print key in the app's log folder, to see on a user's machine which tool gets the key.
+const LOG_FILE: &str = "screenshot.log";
+const LOG_MAX_BYTES: u64 = 256 * 1024;
 /// To the FORGE window used last: a picture was taken (payload: Taken).
 const TAKEN: &str = "screenshot://taken";
 /// More are not worth hovering over; the list is in z-order, the front ones come first.
@@ -32,8 +36,9 @@ static TRIGGER: OnceLock<Sender<Trigger>> = OnceLock::new();
 
 enum Trigger {
     Capture,
-    Escape,
+    Key(&'static str),
     Prepare,
+    Log(String),
 }
 
 #[derive(Clone, Copy, Serialize, Deserialize, PartialEq, Debug)]
@@ -98,17 +103,23 @@ pub fn start(app: &AppHandle) {
         return;
     }
     let app = app.clone();
+    let log = app.path().app_log_dir().ok().map(|d| d.join(LOG_FILE));
     std::thread::Builder::new()
         .name("forge-screenshot".into())
         .spawn(move || {
+            let mut log = log.and_then(|p| open_log(&p));
             for t in rx {
                 let done = match t {
                     Trigger::Capture => capture(&app),
                     Trigger::Prepare => overlay(&app).map(|_| ()),
-                    Trigger::Escape => app.emit_to(OVERLAY, ESCAPE, ()).map_err(|e| e.to_string()),
+                    Trigger::Key(key) => app.emit_to(OVERLAY, KEY, key).map_err(|e| e.to_string()),
+                    Trigger::Log(line) => {
+                        write_log(&mut log, &line);
+                        Ok(())
+                    }
                 };
                 if let Err(e) = done {
-                    eprintln!("[forge] screenshot: {e}");
+                    write_log(&mut log, &format!("Fehler: {e}"));
                 }
             }
         })
@@ -119,6 +130,25 @@ pub fn start(app: &AppHandle) {
 fn trigger(t: Trigger) {
     if let Some(tx) = TRIGGER.get() {
         let _ = tx.send(t);
+    }
+}
+
+fn log(line: impl Into<String>) {
+    trigger(Trigger::Log(line.into()));
+}
+
+/// Appends to the log of the last runs; starts over once it grew past LOG_MAX_BYTES.
+fn open_log(path: &std::path::Path) -> Option<std::fs::File> {
+    std::fs::create_dir_all(path.parent()?).ok()?;
+    let fresh = std::fs::metadata(path).map(|m| m.len() > LOG_MAX_BYTES).unwrap_or(true);
+    std::fs::OpenOptions::new().create(true).append(!fresh).write(true).truncate(fresh).open(path).ok()
+}
+
+fn write_log(file: &mut Option<std::fs::File>, line: &str) {
+    use std::io::Write;
+    let secs = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
+    if let Some(f) = file {
+        let _ = writeln!(f, "{secs} {line}");
     }
 }
 
@@ -193,7 +223,9 @@ fn target(app: &AppHandle) -> String {
 
 #[tauri::command]
 pub fn screenshot_set_enabled(on: bool) {
-    ENABLED.store(on, Ordering::SeqCst);
+    if ENABLED.swap(on, Ordering::SeqCst) != on {
+        log(format!("Druck-Taste für FORGE: {}", if on { "an" } else { "aus" }));
+    }
     if on {
         trigger(Trigger::Prepare);
     }
@@ -229,7 +261,9 @@ pub fn screenshot_ready(app: AppHandle, id: u64) {
         let _ = w.show();
         // A window spanning monitors with different scaling can be resized by Windows once shown.
         place(&w, f.origin, f.width, f.height);
+        // The window and then its webview: an active window alone does not give the page the keys.
         let _ = w.set_focus();
+        let _ = w.as_ref().set_focus();
     }
 }
 
@@ -498,28 +532,58 @@ mod clip {
 
 #[cfg(windows)]
 mod hook {
-    use super::{trigger, Trigger, ENABLED, OVERLAY_OPEN};
+    use super::{log, trigger, Trigger, ENABLED, OVERLAY_OPEN};
     use std::ptr::null_mut;
-    use std::sync::atomic::Ordering;
-    use windows_sys::Win32::Foundation::{LPARAM, LRESULT, WPARAM};
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use windows_sys::Win32::Foundation::{GetLastError, LPARAM, LRESULT, WPARAM};
     use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
-    use windows_sys::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_ESCAPE, VK_LWIN, VK_RWIN, VK_SNAPSHOT};
+    use windows_sys::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_ESCAPE, VK_LWIN, VK_RETURN, VK_RWIN, VK_SNAPSHOT};
     use windows_sys::Win32::UI::WindowsAndMessaging::{
-        CallNextHookEx, GetMessageW, SetWindowsHookExW, HC_ACTION, KBDLLHOOKSTRUCT, LLKHF_ALTDOWN, LLKHF_INJECTED, MSG, WH_KEYBOARD_LL, WM_KEYDOWN, WM_SYSKEYDOWN,
+        CallNextHookEx, GetMessageW, SetTimer, SetWindowsHookExW, UnhookWindowsHookEx, HC_ACTION, HHOOK, KBDLLHOOKSTRUCT, LLKHF_ALTDOWN, LLKHF_INJECTED, MSG, WH_KEYBOARD_LL,
+        WM_KEYDOWN, WM_SYSKEYDOWN, WM_TIMER,
     };
+
+    /// Windows calls the newest low-level hook first. Screenshot tools started later (ShareX, Greenshot,
+    /// Lightshot) would be in front of FORGE; renewing the hook puts FORGE back in front, and also
+    /// brings it back if Windows dropped it silently after a timeout.
+    const RENEW_MS: u32 = 5_000;
+
+    /// Print went down and its key up is still to come; some keyboards and remappers only send the key up.
+    static PRINT_DOWN: AtomicBool = AtomicBool::new(false);
+
+    unsafe fn set() -> HHOOK {
+        SetWindowsHookExW(WH_KEYBOARD_LL, Some(on_key), GetModuleHandleW(null_mut()), 0)
+    }
 
     /// The hook lives on its own thread with a message loop; Windows calls it there for every key.
     pub fn install() {
         std::thread::Builder::new()
             .name("forge-print-key".into())
             .spawn(|| unsafe {
-                let hook = SetWindowsHookExW(WH_KEYBOARD_LL, Some(on_key), GetModuleHandleW(null_mut()), 0);
+                let mut hook = set();
                 if hook.is_null() {
-                    eprintln!("[forge] print key hook failed");
-                    return;
+                    log(format!("Tastatur-Hook nicht gesetzt (Fehler {})", GetLastError()));
+                } else {
+                    log("Tastatur-Hook gesetzt");
                 }
+                // Without a window the timer posts WM_TIMER to this thread's queue.
+                SetTimer(null_mut(), 0, RENEW_MS, None);
                 let mut msg: MSG = std::mem::zeroed();
-                while GetMessageW(&mut msg, null_mut(), 0, 0) > 0 {}
+                while GetMessageW(&mut msg, null_mut(), 0, 0) > 0 {
+                    if msg.message != WM_TIMER {
+                        continue;
+                    }
+                    let fresh = set();
+                    if fresh.is_null() {
+                        continue;
+                    }
+                    if hook.is_null() {
+                        log("Tastatur-Hook gesetzt");
+                    } else {
+                        UnhookWindowsHookEx(hook);
+                    }
+                    hook = fresh;
+                }
             })
             .ok();
     }
@@ -533,19 +597,38 @@ mod hook {
         if code == HC_ACTION as i32 {
             let k = &*(lparam as *const KBDLLHOOKSTRUCT);
             let down = wparam == WM_KEYDOWN as usize || wparam == WM_SYSKEYDOWN as usize;
-            let injected = k.flags & LLKHF_INJECTED != 0;
-            if k.vkCode == VK_SNAPSHOT as u32 && ENABLED.load(Ordering::SeqCst) && !injected && k.flags & LLKHF_ALTDOWN == 0 && !held(VK_LWIN) && !held(VK_RWIN) {
+            if k.vkCode == VK_SNAPSHOT as u32 {
+                let enabled = ENABLED.load(Ordering::SeqCst);
+                let alt = k.flags & LLKHF_ALTDOWN != 0;
+                let win = held(VK_LWIN) || held(VK_RWIN);
                 if down {
-                    trigger(Trigger::Capture);
+                    log(format!(
+                        "Druck gedrückt: an={enabled} alt={alt} win={win} eingespeist={}",
+                        k.flags & LLKHF_INJECTED != 0
+                    ));
                 }
-                // Key up is swallowed too: Windows opens its own snipping tool on it.
-                return 1;
+                if enabled && !alt && !win {
+                    // Once per press: on the key down, or on the key up when no key down came.
+                    // Down after up: a new press (repeats are skipped). Up without a down: the press.
+                    if !PRINT_DOWN.swap(down, Ordering::SeqCst) {
+                        trigger(Trigger::Capture);
+                    }
+                    // Key up is swallowed too: Windows and other tools act on it.
+                    return 1;
+                }
             }
-            if k.vkCode == VK_ESCAPE as u32 && OVERLAY_OPEN.load(Ordering::SeqCst) && !injected {
-                if down {
-                    trigger(Trigger::Escape);
+            if OVERLAY_OPEN.load(Ordering::SeqCst) {
+                let key = match k.vkCode as u16 {
+                    VK_ESCAPE => Some("Escape"),
+                    VK_RETURN => Some("Enter"),
+                    _ => None,
+                };
+                if let Some(key) = key {
+                    if down {
+                        trigger(Trigger::Key(key));
+                    }
+                    return 1;
                 }
-                return 1;
             }
         }
         CallNextHookEx(null_mut(), code, wparam, lparam)

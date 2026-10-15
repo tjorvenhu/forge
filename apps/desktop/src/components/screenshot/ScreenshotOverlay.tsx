@@ -28,7 +28,8 @@ import { bigEnough, boundsOf, clampRect, contains, HANDLES, monitorAt, moveWithi
 import { isVisible, MARK_COLORS, MARK_FONT, MarkShape, pixelate, resolveColor, type Mark, type Tool } from "./marks";
 
 const FRAME = "screenshot://frame";
-const ESCAPE = "screenshot://escape";
+/** Esc and Enter, caught by the shell's keyboard hook while the overlay is open (payload: the key). */
+const KEY = "screenshot://key";
 /** Mode, tool and colour of the last snip; the next one starts with them. */
 const PREFS_KEY = "forge.snip";
 
@@ -41,15 +42,16 @@ const MODES: Array<{ id: Mode; label: string; key: string; icon: ReactNode; hint
   { id: "screen", label: "Bildschirm", key: "B", icon: <Monitor className="h-4 w-4" />, hint: "Bildschirm anklicken" },
 ];
 
-const TOOLS: Array<{ id: Tool; label: string; key: string; icon: ReactNode }> = [
-  { id: "select", label: "Auswahl verschieben und anpassen", key: "V", icon: <MousePointer2 className="h-4 w-4" /> },
-  { id: "pen", label: "Stift", key: "P", icon: <Pen className="h-4 w-4" /> },
-  { id: "marker", label: "Textmarker", key: "M", icon: <Highlighter className="h-4 w-4" /> },
-  { id: "arrow", label: "Pfeil", key: "A", icon: <MoveUpRight className="h-4 w-4" /> },
-  { id: "box", label: "Rahmen", key: "R", icon: <Square className="h-4 w-4" /> },
-  { id: "text", label: "Text", key: "T", icon: <Type className="h-4 w-4" /> },
-  { id: "number", label: "Nummer", key: "N", icon: <Hash className="h-4 w-4" /> },
-  { id: "pixelate", label: "Verpixeln", key: "X", icon: <Grid3x3 className="h-4 w-4" /> },
+/** `label` stays visible under the icon, `tip` explains it on hover. */
+const TOOLS: Array<{ id: Tool; label: string; tip: string; key: string; icon: ReactNode }> = [
+  { id: "select", label: "Auswahl", tip: "Auswahl verschieben und an den Ecken anpassen", key: "V", icon: <MousePointer2 className="h-4 w-4" /> },
+  { id: "pen", label: "Stift", tip: "Frei zeichnen", key: "P", icon: <Pen className="h-4 w-4" /> },
+  { id: "marker", label: "Marker", tip: "Textmarker, durchscheinend", key: "M", icon: <Highlighter className="h-4 w-4" /> },
+  { id: "arrow", label: "Pfeil", tip: "Pfeil ziehen", key: "A", icon: <MoveUpRight className="h-4 w-4" /> },
+  { id: "box", label: "Rahmen", tip: "Rahmen aufziehen", key: "R", icon: <Square className="h-4 w-4" /> },
+  { id: "text", label: "Text", tip: "Klicken und schreiben, Enter setzt den Text", key: "T", icon: <Type className="h-4 w-4" /> },
+  { id: "number", label: "Nummer", tip: "Klicken setzt die nächste Nummer", key: "N", icon: <Hash className="h-4 w-4" /> },
+  { id: "pixelate", label: "Verpixeln", tip: "Bereich aufziehen, der unkenntlich wird", key: "X", icon: <Grid3x3 className="h-4 w-4" /> },
 ];
 
 /** Line widths and sizes in CSS pixels; marks store them in physical pixels. */
@@ -181,7 +183,13 @@ function Snipper({ shot }: { shot: Shot }) {
     // Shown only once the picture is on screen, so the user never sees a blank window.
     let raf = requestAnimationFrame(() => {
       raf = requestAnimationFrame(() => {
-        void invoke("screenshot_ready", { id: info.id }).catch(() => {});
+        void invoke("screenshot_ready", { id: info.id })
+          .then(() => {
+            // The shell activates the window; the page itself still has to take the keys.
+            window.focus();
+            root.current?.focus({ preventScroll: true });
+          })
+          .catch(() => {});
         setShown(true);
       });
     });
@@ -373,8 +381,14 @@ function Snipper({ shot }: { shot: Shot }) {
       const r = clampRect(resize(a.orig, a.handle, p.x - a.start.x, p.y - a.start.y), frame);
       if (r) setSnip({ rect: r });
     } else if (a.type === "draw") {
-      a.mark = extendMark(a.mark, p, a.from);
-      setDrawing(a.mark);
+      let m = extendMark(a.mark, p, a.from);
+      // Pixelated while it is dragged, so the user sees what will be hidden.
+      if (m.kind === "pixelate") {
+        const r = clampRect(m.rect, frame);
+        m = r ? { ...m, rect: r, image: pixelate(image, r) } : m;
+      }
+      a.mark = m;
+      setDrawing(m);
     }
   };
 
@@ -393,42 +407,52 @@ function Snipper({ shot }: { shot: Shot }) {
       if (bigEnough(r) && a.points.length > 2) select({ rect: r, path: a.points });
     } else if (a.type === "draw") {
       setDrawing(null);
-      let m = a.mark;
-      if (!isVisible(m, 4 * scale)) return;
-      if (m.kind === "pixelate") {
-        const r = clampRect(m.rect, frame);
-        if (!r) return;
-        m = { ...m, rect: r, image: pixelate(image, r) };
-      }
+      const m = a.mark;
+      if (!isVisible(m, 4 * scale) || (m.kind === "pixelate" && !m.image)) return;
       addMark(m);
     }
   };
 
-  // ---------- keys (Esc comes from the shell, which catches it even without focus)
+  // ---------- keys
 
-  const latest = useRef({ close, finish, undo, redoLast, commitText, text, snip, drawing });
-  latest.current = { close, finish, undo, redoLast, commitText, text, snip, drawing };
+  /** Esc: drop the text field or the running drag, else close. Enter: set the text, else send to FORGE. */
+  const special = (key: string) => {
+    if (key === "Enter") {
+      if (text) commitText();
+      else if (snip) void finish(true);
+      return;
+    }
+    if (key !== "Escape") return;
+    if (text) return setText(null);
+    if (act.current) {
+      act.current = null;
+      setDraft(null);
+      setDrawing(null);
+      setBusy(false);
+      return;
+    }
+    void close();
+  };
 
+  const latest = useRef({ finish, undo, redoLast, special, text, snip });
+  latest.current = { finish, undo, redoLast, special, text, snip };
+
+  // While the overlay is open the shell's hook catches Esc and Enter, whether or not the page has the focus.
   useEffect(() => {
-    const off = listen(ESCAPE, () => {
-      const l = latest.current;
-      if (l.text) return setText(null);
-      if (act.current) {
-        act.current = null;
-        setDraft(null);
-        setDrawing(null);
-        setBusy(false);
-        return;
-      }
-      void l.close();
-    });
+    const off = listen<string>(KEY, (e) => latest.current.special(e.payload));
     return () => void off.then((u) => u());
   }, []);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const l = latest.current;
-      if (l.text || e.repeat) return;
+      if (e.repeat) return;
+      // Only arrives here when the hook is not running.
+      if (e.key === "Escape" || (e.key === "Enter" && !l.text)) {
+        e.preventDefault();
+        return l.special(e.key);
+      }
+      if (l.text) return;
       const k = e.key.toLowerCase();
       if (e.ctrlKey && k === "z") {
         e.preventDefault();
@@ -440,9 +464,6 @@ function Snipper({ shot }: { shot: Shot }) {
       } else if (e.ctrlKey && k === "c" && l.snip) {
         e.preventDefault();
         void l.finish(false);
-      } else if (e.key === "Enter" && l.snip) {
-        e.preventDefault();
-        void l.finish(true);
       } else if (!e.ctrlKey && !e.altKey && !e.metaKey) {
         if (l.snip) {
           const t = TOOLS.find((x) => x.key.toLowerCase() === k);
@@ -479,7 +500,8 @@ function Snipper({ shot }: { shot: Shot }) {
   return (
     <div
       ref={root}
-      className="fixed inset-0 select-none overflow-hidden bg-black"
+      tabIndex={-1}
+      className="fixed inset-0 select-none overflow-hidden bg-black outline-none"
       style={{ cursor }}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
@@ -520,6 +542,12 @@ function Snipper({ shot }: { shot: Shot }) {
                 </g>
               ))}
               {drawing && <MarkShape mark={drawing} />}
+              {drawing?.kind === "pixelate" && (
+                <g fill="none" vectorEffect="non-scaling-stroke">
+                  <rect {...drawing.rect} stroke="black" strokeOpacity={0.5} strokeWidth={3} vectorEffect="non-scaling-stroke" />
+                  <rect {...drawing.rect} stroke="white" strokeWidth={1.5} strokeDasharray="6 4" vectorEffect="non-scaling-stroke" />
+                </g>
+              )}
             </g>
           </>
         )}
@@ -717,9 +745,35 @@ function Loupe({ image, at, scale, viewport }: { image: HTMLImageElement; at: Po
   );
 }
 
-function BarButton({ label, shortcut, active, disabled, onClick, children }: { label: string; shortcut?: string; active?: boolean; disabled?: boolean; onClick: () => void; children: ReactNode }) {
+/** Tooltips of a bar stay on the monitor it is on (the overlay spans all monitors, also gaps between them). */
+interface TipPlace {
+  side: "top" | "bottom";
+  boundary: Element | null;
+}
+
+/** Icon with its name underneath; the tooltip adds what it does and the key. */
+function BarButton({
+  label,
+  tip,
+  shortcut,
+  active,
+  disabled,
+  place,
+  onClick,
+  children,
+}: {
+  label: string;
+  tip?: string;
+  shortcut?: string;
+  active?: boolean;
+  disabled?: boolean;
+  place: TipPlace;
+  onClick: () => void;
+  children: ReactNode;
+}) {
+  const text = tip ?? label;
   return (
-    <Tooltip content={shortcut ? `${label} (${shortcut})` : label} delay={300}>
+    <Tooltip content={shortcut ? `${text} (${shortcut})` : text} delay={300} side={place.side} boundary={place.boundary}>
       <button
         type="button"
         onClick={onClick}
@@ -727,17 +781,23 @@ function BarButton({ label, shortcut, active, disabled, onClick, children }: { l
         aria-label={label}
         aria-pressed={active}
         className={cn(
-          "flex h-8 w-8 items-center justify-center rounded-lg transition-colors duration-120 disabled:opacity-35",
+          "flex h-12 min-w-13 flex-col items-center justify-center gap-1 rounded-lg px-1.5 transition-colors duration-120 disabled:opacity-35",
           active ? "bg-accent-soft text-accent" : "text-muted hover:bg-surface-3 hover:text-fg",
         )}
       >
         {children}
+        <span className="whitespace-nowrap text-2xs leading-none">{label}</span>
       </button>
     </Tooltip>
   );
 }
 
-const BAR = "flex items-center gap-1 rounded-xl border border-border bg-surface/95 p-1 shadow-2xl backdrop-blur-md";
+const BAR = "flex items-center gap-0.5 rounded-xl border border-border bg-surface/95 p-1 shadow-2xl backdrop-blur-md";
+
+/** An invisible box over one monitor, the area a bar's tooltips have to stay in. */
+function MonitorBox({ monitor, scale, onBox }: { monitor: Rect; scale: number; onBox: (el: HTMLDivElement | null) => void }) {
+  return <div ref={onBox} className="pointer-events-none absolute" style={{ left: monitor.x / scale, top: monitor.y / scale, width: monitor.width / scale, height: monitor.height / scale }} />;
+}
 
 function ModeBar({
   monitor,
@@ -760,32 +820,37 @@ function ModeBar({
   onClose: () => void;
   onHover: (over: boolean) => void;
 }) {
+  const [box, setBox] = useState<HTMLDivElement | null>(null);
   if (!shown) return null;
+  const place: TipPlace = { side: "bottom", boundary: box };
   return (
-    <div
-      className={cn("absolute flex -translate-x-1/2 flex-col items-center gap-2", closing ? "animate-fade-out" : "animate-palette-in")}
-      style={{ left: (monitor.x + monitor.width / 2) / scale, top: monitor.y / scale + 16 }}
-      onPointerDown={(e) => e.stopPropagation()}
-      onPointerEnter={() => onHover(true)}
-      onPointerLeave={() => onHover(false)}
-    >
-      <div className={BAR} style={{ cursor: "default" }}>
-        {MODES.map((m) => (
-          <BarButton key={m.id} label={m.label} shortcut={m.key} active={mode === m.id} onClick={() => onMode(m.id)}>
-            {m.icon}
+    <>
+      <MonitorBox monitor={monitor} scale={scale} onBox={setBox} />
+      <div
+        className={cn("absolute flex -translate-x-1/2 flex-col items-center gap-2", closing ? "animate-fade-out" : "animate-palette-in")}
+        style={{ left: (monitor.x + monitor.width / 2) / scale, top: monitor.y / scale + 16 }}
+        onPointerDown={(e) => e.stopPropagation()}
+        onPointerEnter={() => onHover(true)}
+        onPointerLeave={() => onHover(false)}
+      >
+        <div className={BAR} style={{ cursor: "default" }}>
+          {MODES.map((m) => (
+            <BarButton key={m.id} label={m.label} tip={m.hint} shortcut={m.key} active={mode === m.id} place={place} onClick={() => onMode(m.id)}>
+              {m.icon}
+            </BarButton>
+          ))}
+          <div className="mx-0.5 h-8 w-px bg-border" />
+          <BarButton label="Abbrechen" tip="Screenshot verwerfen" shortcut="Esc" place={place} onClick={onClose}>
+            <X className="h-4 w-4" />
           </BarButton>
-        ))}
-        <div className="mx-0.5 h-5 w-px bg-border" />
-        <BarButton label="Abbrechen" shortcut="Esc" onClick={onClose}>
-          <X className="h-4 w-4" />
-        </BarButton>
-      </div>
-      {hint && (
-        <div key={hint} className="animate-fade-in rounded-full bg-black/65 px-3 py-1 text-caption text-white/85">
-          {hint}, Esc bricht ab
         </div>
-      )}
-    </div>
+        {hint && (
+          <div key={hint} className="animate-fade-in rounded-full bg-black/65 px-3 py-1 text-caption text-white/85">
+            {hint}, Esc bricht ab
+          </div>
+        )}
+      </div>
+    </>
   );
 }
 
@@ -844,60 +909,69 @@ function EditBar({
   const cssRect = (r: Rect): Rect => ({ x: r.x / scale, y: r.y / scale, width: r.width / scale, height: r.height / scale });
   const spot = toolbarSpot(cssRect(snip.rect), size, cssRect(screen), GAP);
   const colors = tool !== "select" && tool !== "pixelate";
+  const [box, setBox] = useState<HTMLDivElement | null>(null);
+  const place: TipPlace = { side: spot.y >= (snip.rect.y + snip.rect.height) / scale ? "bottom" : "top", boundary: box };
   return (
-    <div
-      ref={ref}
-      className={cn("absolute flex flex-col items-center gap-1.5", closing ? "animate-fade-out" : "animate-pop-in")}
-      style={{ left: spot.x, top: spot.y, transition: moving ? "none" : "left 140ms var(--ease-snappy), top 140ms var(--ease-snappy)", cursor: "default" }}
-      onPointerDown={(e) => e.stopPropagation()}
-      onPointerEnter={() => onHover(true)}
-      onPointerLeave={() => onHover(false)}
-    >
-      <div className={BAR}>
-        {TOOLS.map((t) => (
-          <BarButton key={t.id} label={t.label} shortcut={t.key} active={tool === t.id} onClick={() => onTool(t.id)}>
-            {t.icon}
-          </BarButton>
-        ))}
-        <div className={cn("flex items-center gap-1 overflow-hidden transition-all duration-150", colors ? "max-w-64 px-1.5 py-1 opacity-100" : "max-w-0 px-0 opacity-0")}>
-          {MARK_COLORS.map((c) => (
-            <Tooltip key={c.token} content={c.label} delay={300}>
-              <button
-                type="button"
-                aria-label={`Farbe ${c.label}`}
-                aria-pressed={colorToken === c.token}
-                onClick={() => onColor(c.token)}
-                className={cn(
-                  "h-5 w-5 shrink-0 rounded-full border border-white/25 transition-transform duration-120",
-                  colorToken === c.token ? "scale-110 ring-2 ring-fg ring-offset-2 ring-offset-surface" : "hover:scale-110",
-                )}
-                style={{ background: resolveColor(c.token) }}
-              />
-            </Tooltip>
+    <>
+      <MonitorBox monitor={screen} scale={scale} onBox={setBox} />
+      <div
+        ref={ref}
+        className={cn("absolute flex flex-col items-center gap-1.5", closing ? "animate-fade-out" : "animate-pop-in")}
+        style={{ left: spot.x, top: spot.y, transition: moving ? "none" : "left 140ms var(--ease-snappy), top 140ms var(--ease-snappy)", cursor: "default" }}
+        onPointerDown={(e) => e.stopPropagation()}
+        onPointerEnter={() => onHover(true)}
+        onPointerLeave={() => onHover(false)}
+      >
+        <div className={BAR}>
+          {TOOLS.map((t) => (
+            <BarButton key={t.id} label={t.label} tip={t.tip} shortcut={t.key} active={tool === t.id} place={place} onClick={() => onTool(t.id)}>
+              {t.icon}
+            </BarButton>
           ))}
+          <div className={cn("flex items-center gap-1 overflow-hidden transition-all duration-150", colors ? "max-w-64 px-1.5 py-1 opacity-100" : "max-w-0 px-0 opacity-0")}>
+            {MARK_COLORS.map((c) => (
+              <Tooltip key={c.token} content={c.label} delay={300} side={place.side} boundary={box}>
+                <button
+                  type="button"
+                  aria-label={`Farbe ${c.label}`}
+                  aria-pressed={colorToken === c.token}
+                  onClick={() => onColor(c.token)}
+                  className={cn(
+                    "h-5 w-5 shrink-0 rounded-full border border-white/25 transition-transform duration-120",
+                    colorToken === c.token ? "scale-110 ring-2 ring-fg ring-offset-2 ring-offset-surface" : "hover:scale-110",
+                  )}
+                  style={{ background: resolveColor(c.token) }}
+                />
+              </Tooltip>
+            ))}
+          </div>
+          <div className="mx-0.5 h-8 w-px bg-border" />
+          <BarButton label="Rückgängig" shortcut="Strg+Z" disabled={!canUndo} place={place} onClick={onUndo}>
+            <Undo2 className="h-4 w-4" />
+          </BarButton>
+          <BarButton label="Wiederholen" shortcut="Strg+Y" disabled={!canRedo} place={place} onClick={onRedo}>
+            <Redo2 className="h-4 w-4" />
+          </BarButton>
+          <div className="mx-0.5 h-8 w-px bg-border" />
+          <BarButton label="Kopieren" tip="Nur in die Zwischenablage, nicht an FORGE" shortcut="Strg+C" place={place} onClick={onCopy}>
+            <Copy className="h-4 w-4" />
+          </BarButton>
+          <Tooltip content="In die Zwischenablage und als Anhang an FORGE (Enter)" delay={300} side={place.side} boundary={box}>
+            <button
+              type="button"
+              onClick={onDone}
+              className="ml-1 flex h-12 items-center gap-2 rounded-lg bg-accent px-4 text-body font-medium text-accent-fg transition-colors duration-120 hover:bg-accent-strong"
+            >
+              <Check className="h-4 w-4" />
+              <span className="flex flex-col items-start leading-tight">
+                An FORGE
+                <span className="text-2xs font-normal opacity-80">Enter</span>
+              </span>
+            </button>
+          </Tooltip>
         </div>
-        <div className="mx-0.5 h-5 w-px bg-border" />
-        <BarButton label="Rückgängig" shortcut="Strg+Z" disabled={!canUndo} onClick={onUndo}>
-          <Undo2 className="h-4 w-4" />
-        </BarButton>
-        <BarButton label="Wiederholen" shortcut="Strg+Y" disabled={!canRedo} onClick={onRedo}>
-          <Redo2 className="h-4 w-4" />
-        </BarButton>
-        <div className="mx-0.5 h-5 w-px bg-border" />
-        <BarButton label="Nur in die Zwischenablage" shortcut="Strg+C" onClick={onCopy}>
-          <Copy className="h-4 w-4" />
-        </BarButton>
-        <Tooltip content="In die Zwischenablage und an FORGE (Enter)" delay={300}>
-          <button
-            type="button"
-            onClick={onDone}
-            className="ml-0.5 flex h-8 items-center gap-1.5 rounded-lg bg-accent px-3 text-body font-medium text-accent-fg transition-colors duration-120 hover:bg-accent-strong"
-          >
-            <Check className="h-4 w-4" /> An FORGE
-          </button>
-        </Tooltip>
+        {error && <div className="animate-fade-in rounded-lg bg-danger px-3 py-1 text-caption text-white">{error}</div>}
       </div>
-      {error && <div className="animate-fade-in rounded-lg bg-danger px-3 py-1 text-caption text-white">{error}</div>}
-    </div>
+    </>
   );
 }

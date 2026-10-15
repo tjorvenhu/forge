@@ -86,18 +86,23 @@ export function Tooltip({
   open,
   onOpenChange,
   delay = 400,
+  side,
+  boundary,
 }: {
   content: ReactNode;
   children: ReactNode;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
   delay?: number;
+  side?: "top" | "bottom" | "left" | "right";
+  /** area the tooltip has to stay in; default is the window */
+  boundary?: Element | null;
 }) {
   return (
     <T.Root delayDuration={delay} open={open} onOpenChange={onOpenChange}>
       <T.Trigger asChild>{children}</T.Trigger>
       <T.Portal>
-        <T.Content sideOffset={6} className={cn("z-50 max-w-xs rounded-md border border-border bg-surface-3 px-2.5 py-1.5 text-xs text-fg shadow-lg", POPPER_MOTION)}>
+        <T.Content sideOffset={6} side={side} collisionBoundary={boundary ?? undefined} collisionPadding={boundary ? 8 : undefined} className={cn("z-50 max-w-xs rounded-md border border-border bg-surface-3 px-2.5 py-1.5 text-xs text-fg shadow-lg", POPPER_MOTION)}>
           {typeof content === "string" ? <TipText text={content} /> : content}
         </T.Content>
       </T.Portal>
