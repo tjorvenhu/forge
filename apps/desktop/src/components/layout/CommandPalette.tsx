@@ -13,11 +13,11 @@ import { buildActions, type PaletteDialog, type PaletteEntry, type PaletteGroup 
 import { usePaletteSources } from "./palette-sources";
 import { PaletteDialogs } from "./PaletteDialogs";
 
-const GROUP_ORDER: PaletteGroup[] = ["Aktionen", "Einstellungen", "Projekte", "Sessions", "Erweiterungen", "Wissen", "Dateien", "In Verläufen"];
+const GROUP_ORDER: PaletteGroup[] = ["Aktionen", "Einstellungen", "Projekte", "Sessions", "Erweiterungen", "Wissen", "Dateien", "Commits", "In Verläufen"];
 
 /** Rows per group; without a query only the most useful groups show. */
-const CAPS_TYPED: Record<PaletteGroup, number> = { Aktionen: 6, Einstellungen: 6, Projekte: 6, Sessions: 8, Erweiterungen: 5, Wissen: 5, Dateien: 8, "In Verläufen": 8 };
-const CAPS_EMPTY: Record<PaletteGroup, number> = { Aktionen: 6, Einstellungen: 0, Projekte: 5, Sessions: 5, Erweiterungen: 0, Wissen: 0, Dateien: 0, "In Verläufen": 0 };
+const CAPS_TYPED: Record<PaletteGroup, number> = { Aktionen: 6, Einstellungen: 6, Projekte: 6, Sessions: 8, Erweiterungen: 5, Wissen: 5, Dateien: 8, Commits: 5, "In Verläufen": 8 };
+const CAPS_EMPTY: Record<PaletteGroup, number> = { Aktionen: 6, Einstellungen: 0, Projekte: 5, Sessions: 5, Erweiterungen: 0, Wissen: 0, Dateien: 0, Commits: 0, "In Verläufen": 0 };
 
 /** Lowercase without accents, so "uberblick" finds "Überblick". */
 function fold(s: string): string {

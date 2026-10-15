@@ -34,8 +34,11 @@ export function integratedText(i: GitIntegrated | null): string | undefined {
 
 type SyncResult = { integrated: GitIntegrated | null; session: Session | null };
 
-/** Fetch, pull and push as icon buttons for a section header; "Veröffentlichen" without a remote. */
-export function SyncActions({ project }: { project: Project }) {
+/**
+ * Fetch, pull and push; "Veröffentlichen" without a remote. As icon buttons for a section header, or
+ * `labeled` as framed buttons with text for a toolbar.
+ */
+export function SyncActions({ project, labeled = false }: { project: Project; labeled?: boolean }) {
   const status = useGitStatus(project.id, project.exists);
   const account = useGitHubAccount();
   const refresh = useRefreshGit(project.id);
@@ -69,20 +72,20 @@ export function SyncActions({ project }: { project: Project }) {
 
   if (!summary)
     return status.isLoading ? (
-      <SkeletonRegion label="Lädt Abgleich" className="flex items-center gap-0.5">
-        <Skeleton className="h-6 w-6" />
-        <Skeleton className="h-6 w-6.5" />
-        <Skeleton className="h-6 w-6.5" />
+      <SkeletonRegion label="Lädt Abgleich" className={labeled ? "flex items-center gap-2" : "flex items-center gap-0.5"}>
+        <Skeleton className={labeled ? "h-8 w-22" : "h-6 w-6"} />
+        <Skeleton className={labeled ? "h-8 w-16" : "h-6 w-6.5"} />
+        <Skeleton className={labeled ? "h-8 w-16" : "h-6 w-6.5"} />
       </SkeletonRegion>
     ) : null;
+
+  const btn = labeled ? { size: "sm" as const, variant: "outline" as const, className: "h-8 gap-1.5 px-3" } : { size: "sm" as const, variant: "ghost" as const, className: "h-6 gap-1 px-1.5" };
 
   return (
     <>
       {!summary.remoteUrl ? (
         <Button
-          size="sm"
-          variant="ghost"
-          className="h-6 px-1.5"
+          {...btn}
           disabled={!account.data}
           onClick={() => setPublishing(true)}
           title={account.data ? "Auf GitHub veröffentlichen" : "Erst unter Einstellungen → Allgemein bei GitHub anmelden"}
@@ -92,9 +95,7 @@ export function SyncActions({ project }: { project: Project }) {
       ) : (
         <>
           <Button
-            size="icon-sm"
-            variant="ghost"
-            className="h-6 w-6"
+            {...(labeled ? btn : { size: "icon-sm" as const, variant: "ghost" as const, className: "h-6 w-6" })}
             onClick={() => void run("Abrufen", () => call("git.fetch", { projectId: project.id }), "Remote abgerufen")}
             loading={busy === "Abrufen"}
             disabled={busy !== null}
@@ -102,11 +103,10 @@ export function SyncActions({ project }: { project: Project }) {
             title={`Abrufen (fetch)${summary.upstream ? ` von ${summary.upstream}` : ""}`}
           >
             <CloudDownload className="h-3.5 w-3.5" />
+            {labeled && "Abrufen"}
           </Button>
           <Button
-            size="sm"
-            variant="ghost"
-            className="h-6 gap-1 px-1.5"
+            {...btn}
             onClick={() => void run("Pull", () => call("git.pull", { projectId: project.id }), "Aktualisiert")}
             loading={busy === "Pull"}
             disabled={busy !== null}
@@ -114,12 +114,11 @@ export function SyncActions({ project }: { project: Project }) {
             title={summary.behind > 0 ? `Pull: ${summary.behind} neu auf dem Remote` : "Pull"}
           >
             <ArrowDown className="h-3.5 w-3.5" />
+            {labeled && "Pull"}
             {summary.behind > 0 && <span className="text-warning">{summary.behind}</span>}
           </Button>
           <Button
-            size="sm"
-            variant="ghost"
-            className="h-6 gap-1 px-1.5"
+            {...btn}
             // A click on push is the consent, also for main; only automatic pushes stay off protected branches.
             onClick={() => void run("Push", () => call("git.push", { projectId: project.id, allowProtected: true }), "Gepusht")}
             loading={busy === "Push"}
@@ -128,6 +127,7 @@ export function SyncActions({ project }: { project: Project }) {
             title={`${summary.ahead > 0 ? `Push: ${summary.ahead} Commits zum Pushen` : "Push"}. Neue Commits vom Remote übernimmt FORGE vorher, bei Konflikten hilft Claude.`}
           >
             <ArrowUp className="h-3.5 w-3.5" />
+            {labeled && "Push"}
             {summary.ahead > 0 && <span className="text-fg">{summary.ahead}</span>}
           </Button>
         </>

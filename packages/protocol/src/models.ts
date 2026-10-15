@@ -413,6 +413,28 @@ export const CommitInfo = z.object({
 });
 export type CommitInfo = z.infer<typeof CommitInfo>;
 
+export const CommitFile = z.object({
+  path: z.string(),
+  /** old path of a renamed or copied file */
+  origPath: z.string().nullable(),
+  kind: z.enum(["added", "modified", "deleted", "renamed", "typechange"]),
+  additions: z.number().int(),
+  deletions: z.number().int(),
+  binary: z.boolean(),
+});
+export type CommitFile = z.infer<typeof CommitFile>;
+
+/** What a commit changed against its first parent, limited to the project folder. */
+export const CommitDetails = z.object({
+  hash: z.string(),
+  /** the message without its subject line */
+  body: z.string(),
+  files: z.array(CommitFile),
+  /** more files than listed */
+  truncated: z.boolean(),
+});
+export type CommitDetails = z.infer<typeof CommitDetails>;
+
 export const BranchInfo = z.object({
   name: z.string(),
   current: z.boolean(),

@@ -1,23 +1,49 @@
 import { useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { X } from "lucide-react";
+import { FileCode2, X } from "lucide-react";
 import { call, keys } from "@/lib/queries";
 import { errorMessage } from "@/lib/rpc";
 import { cn } from "@/lib/utils";
 import { ErrorBanner } from "@/components/ui/misc";
 import { CodeSkeleton } from "@/components/ui/skeleton";
 
-export function DiffView({ projectId, path, staged, onClose }: { projectId: string; path: string; staged: boolean; onClose?: () => void }) {
-  const diff = useQuery({ queryKey: keys.diff(projectId, path, staged), queryFn: () => call("git.diff", { projectId, path, staged }) });
+/**
+ * Diff of one file: the working tree (staged or not) or, with `commit`, what that commit changed in it.
+ * A commit never changes, so its diff is kept for good.
+ */
+export function DiffView({
+  projectId,
+  path,
+  staged = false,
+  commit,
+  origPath,
+  onClose,
+}: {
+  projectId: string;
+  path: string;
+  staged?: boolean;
+  commit?: string;
+  origPath?: string | null;
+  onClose?: () => void;
+}) {
+  const diff = useQuery({
+    queryKey: commit ? keys.commitDiff(projectId, commit, path) : keys.diff(projectId, path, staged),
+    queryFn: () =>
+      commit ? call("git.commitDiff", { projectId, commit, path, origPath: origPath ?? undefined }) : call("git.diff", { projectId, path, staged }),
+    staleTime: commit ? Infinity : undefined,
+  });
   const scrollRef = useRef<HTMLDivElement>(null);
   const lines = diff.data?.lines ?? [];
   const v = useVirtualizer({ count: lines.length, getScrollElement: () => scrollRef.current, estimateSize: () => 18, overscan: 30 });
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-border bg-bg">
-      <div className="flex h-8 shrink-0 items-center gap-2 border-b border-border bg-surface px-3 text-xs">
-        <span className="min-w-0 flex-1 truncate font-mono">{path}</span>
+      <div className="flex h-9 shrink-0 items-center gap-2 border-b border-border bg-surface px-3 text-xs">
+        <FileCode2 className="h-3.5 w-3.5 shrink-0 text-muted" />
+        <span className="min-w-0 flex-1 truncate font-mono" title={origPath ? `${origPath} → ${path}` : path}>
+          {path}
+        </span>
         {diff.data && (
           <>
             <span className="text-success">+{diff.data.additions}</span>

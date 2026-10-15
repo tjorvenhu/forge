@@ -7,6 +7,7 @@ import {
   BranchInfo,
   ClaudeSetupState,
   ClaudeUpdateInfo,
+  CommitDetails,
   CommitInfo,
   ContextUsage,
   DevServerState,
@@ -578,6 +579,16 @@ export const methods = {
   "git.authorAvatars": {
     params: projectRef.extend({ limit: z.number().int().min(1).max(500).default(50) }),
     result: z.record(z.string(), z.string().nullable()),
+  },
+  /** Message body and changed files of a commit, against its first parent. */
+  "git.commitFiles": {
+    params: projectRef.extend({ commit: z.string().regex(/^[0-9a-f]{7,40}$/i) }),
+    result: CommitDetails,
+  },
+  /** Diff of one file of a commit against its first parent; `origPath` for the old side of a rename. */
+  "git.commitDiff": {
+    params: projectRef.extend({ commit: z.string().regex(/^[0-9a-f]{7,40}$/i), path: z.string().min(1).max(4096), origPath: z.string().min(1).max(4096).optional() }),
+    result: FileDiff,
   },
   /** Files of the project back to the state of a commit, as uncommitted changes; open work is stashed first. */
   "git.restoreTo": {

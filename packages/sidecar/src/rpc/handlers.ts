@@ -346,6 +346,8 @@ export function createHandlers(s: Services): Handlers {
       return r;
     },
     "git.log": ({ projectId, limit }) => s.git.log(gitDir(projectId), limit),
+    "git.commitFiles": ({ projectId, commit }) => s.git.commitFiles(gitDir(projectId), commit),
+    "git.commitDiff": ({ projectId, commit, path, origPath }) => s.git.commitDiff(gitDir(projectId), commit, path, origPath),
     "git.authorAvatars": async ({ projectId, limit }) => {
       const dir = gitDir(projectId);
       return s.github.authorAvatars(await s.git.remoteUrl(dir), await s.git.log(dir, limit));

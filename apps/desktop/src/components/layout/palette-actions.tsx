@@ -97,7 +97,7 @@ import { SECTIONS as SETTINGS_SECTION_DEFS } from "@/views/SettingsView";
 import { EXTENSION_TAB_DEFS, SKILLS_TAB_DEFS } from "@/views/ExtensionsView";
 import { NAV } from "./nav";
 
-export type PaletteGroup = "Aktionen" | "Einstellungen" | "Projekte" | "Sessions" | "Erweiterungen" | "Wissen" | "Dateien" | "In Verläufen";
+export type PaletteGroup = "Aktionen" | "Einstellungen" | "Projekte" | "Sessions" | "Erweiterungen" | "Wissen" | "Dateien" | "Commits" | "In Verläufen";
 
 export interface PaletteEntry {
   id: string;

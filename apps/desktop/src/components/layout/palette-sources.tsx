@@ -1,12 +1,12 @@
 import { useMemo } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { BookOpen, Blocks, FileText, GitBranch, History, PackageSearch, PenLine, Server } from "lucide-react";
+import { BookOpen, Blocks, FileText, GitBranch, GitCommitHorizontal, History, PackageSearch, PenLine, Server } from "lucide-react";
 import type { ProjectWithStatus } from "@forge/protocol";
 import { call, keys, useProjects } from "@/lib/queries";
 import { relativeTime } from "@/lib/utils";
 import { useUi } from "@/stores/ui";
 import { ProjectIcon } from "@/components/projects/ProjectIcon";
-import { checkoutBranch } from "@/components/git/GitCenter";
+import { checkoutBranch, LOG_LIMIT } from "@/components/git/GitCenter";
 import type { PaletteEntry } from "./palette-actions";
 
 /** Folders the file search does not descend into: generated or installed, rarely what one looks for. */
@@ -40,7 +40,7 @@ export async function crawlFiles(list: (dir: string) => Promise<Array<FileItem &
 }
 
 /**
- * Entries loaded from the sidecar: projects, sessions, and once something is typed, branches,
+ * Entries loaded from the sidecar: projects, sessions, and once something is typed, branches, commits,
  * knowledge and files of the open project as well as MCP servers and skills. `loading` is true while
  * one of the sources the query needs has no data yet.
  */
@@ -56,6 +56,13 @@ export function usePaletteSources(query: string, project: ProjectWithStatus | nu
   const branches = useQuery({
     queryKey: keys.branches(project?.id ?? ""),
     queryFn: () => call("git.branches", { projectId: project!.id }),
+    enabled: typed && !!project?.git?.isRepo,
+    retry: false,
+  });
+  // Same key and limit as the Git tab, so a commit found here is in its history.
+  const commits = useQuery({
+    queryKey: keys.log(project?.id ?? ""),
+    queryFn: () => call("git.log", { projectId: project!.id, limit: LOG_LIMIT }),
     enabled: typed && !!project?.git?.isRepo,
     retry: false,
   });
@@ -124,6 +131,17 @@ export function usePaletteSources(query: string, project: ProjectWithStatus | nu
           },
         });
       }
+      for (const c of commits.data ?? []) {
+        list.push({
+          id: `commit-${c.hash}`,
+          group: "Commits",
+          label: c.subject,
+          keywords: `${c.shortHash} ${c.hash} ${c.author} ${c.refs.join(" ")} git commit`,
+          hint: `${c.shortHash} · ${relativeTime(c.date)}`,
+          icon: <GitCommitHorizontal className="h-4 w-4" />,
+          run: () => ui.openCommit(id, c.hash),
+        });
+      }
       for (const k of knowledge.data ?? []) {
         list.push({
           id: `knowledge-${k.id}`,
@@ -182,8 +200,8 @@ export function usePaletteSources(query: string, project: ProjectWithStatus | nu
       });
     }
     return list;
-  }, [projects.data, sessions.data, project, branches.data, knowledge.data, files.data, mcp.data, skills.data, plugins.data, qc]);
+  }, [projects.data, sessions.data, project, branches.data, commits.data, knowledge.data, files.data, mcp.data, skills.data, plugins.data, qc]);
 
-  const pending = [branches, knowledge, files, mcp, skills, plugins].some((q) => q.isLoading);
+  const pending = [branches, commits, knowledge, files, mcp, skills, plugins].some((q) => q.isLoading);
   return { entries, loading: typed && pending };
 }

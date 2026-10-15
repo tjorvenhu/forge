@@ -1958,16 +1958,39 @@ export class PhoneService {
             const lines = d.lines.filter((l) => l.kind === "add" || l.kind === "del").map((l) => `${l.kind === "add" ? "neu" : "weg"}: ${l.text}`);
             return `${asData(f.path)}: ${d.additions} ${d.additions === 1 ? "Zeile" : "Zeilen"} hinzu, ${d.deletions} entfernt.${lines.length ? ` ${excerptData(lines.slice(0, 60).join("\n"), 3000)}` : ""}`;
           }
+          /** hash, position in the log (1 = newest) or words of the subject; null when the log has no such position */
+          const commitHash = async (ref: string): Promise<string | null> => {
+            if (!/^\d{1,2}$/.test(ref) && /^[0-9a-f]{7,40}$/i.test(ref)) return ref;
+            const commits = await call("git.log", { projectId: p.id, limit: 30 });
+            const c = /^\d{1,2}$/.test(ref) ? commits[Number(ref) - 1] : pickOne(commits, ref, (x) => [x.subject, x.shortHash], { none: "Kein Commit", many: "Commits" });
+            return c?.hash ?? null;
+          };
+          if (action === "show") {
+            const ref = o?.commit?.trim() || "1";
+            const hash = await commitHash(ref);
+            if (!hash) return `Fehler: ${p.name} hat keinen ${ref}. Commit.`;
+            const d = await call("git.commitFiles", { projectId: p.id, commit: hash });
+            if (o?.path?.trim()) {
+              const f = pickOne(d.files, o.path.replace(/\\/g, "/"), (x) => [x.path], { none: "Keine Datei dieses Commits", many: "Dateien dieses Commits" });
+              if (isSensitiveFile(f.path)) return `${asData(f.path)} enthält Zugangsdaten, ihr Inhalt wird am Telefon nicht vorgelesen.`;
+              if (f.binary) return `${asData(f.path)} ist eine Binärdatei.`;
+              const diff = await call("git.commitDiff", { projectId: p.id, commit: hash, path: f.path, origPath: f.origPath ?? undefined });
+              const lines = diff.lines.filter((l) => l.kind === "add" || l.kind === "del").map((l) => `${l.kind === "add" ? "neu" : "weg"}: ${l.text}`);
+              return `${asData(f.path)} in diesem Commit: ${diff.additions} ${diff.additions === 1 ? "Zeile" : "Zeilen"} hinzu, ${diff.deletions} entfernt.${lines.length ? ` ${excerptData(lines.slice(0, 60).join("\n"), 3000)}` : ""}`;
+            }
+            if (!d.files.length) return `Der Commit ändert in ${p.name} keine Dateien.`;
+            const add = d.files.reduce((n, f) => n + f.additions, 0);
+            const del = d.files.reduce((n, f) => n + f.deletions, 0);
+            const names = d.files.slice(0, 15).map((f) => `${f.path} (+${f.additions} -${f.deletions})`);
+            const rest = d.files.length > 15 ? ` und ${d.files.length - 15} weitere` : "";
+            const body = d.body ? ` Beschreibung: ${excerptData(d.body, 1500)}` : "";
+            return `Der Commit ändert ${d.files.length} ${d.files.length === 1 ? "Datei" : "Dateien"}, ${add} Zeilen hinzu, ${del} entfernt: ${asData(names.join(", "))}${rest}.${body}`;
+          }
           if (action === "restore") {
             const ref = o?.commit?.trim();
             if (!ref) return "Fehler: Auf welchen Commit? Hash, Nummer aus dem Log oder Worte aus der Commit-Nachricht.";
-            let hash = ref;
-            if (/^\d{1,2}$/.test(ref) || !/^[0-9a-f]{7,40}$/i.test(ref)) {
-              const commits = await call("git.log", { projectId: p.id, limit: 30 });
-              const c = /^\d{1,2}$/.test(ref) ? commits[Number(ref) - 1] : pickOne(commits, ref, (x) => [x.subject, x.shortHash], { none: "Kein Commit", many: "Commits" });
-              if (!c) return `Fehler: ${p.name} hat keinen ${ref}. Commit.`;
-              hash = c.hash;
-            }
+            const hash = await commitHash(ref);
+            if (!hash) return `Fehler: ${p.name} hat keinen ${ref}. Commit.`;
             const r = await call("git.restoreTo", { projectId: p.id, commit: hash });
             return `Dateien von ${p.name} auf den Stand von ${asData(r.subject)} gesetzt, ${r.changed} Dateien geändert und noch nicht committet.${r.stashed ? " Die offene Arbeit von vorher liegt im Stash." : ""}`;
           }

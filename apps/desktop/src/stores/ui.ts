@@ -197,6 +197,11 @@ interface UiState {
   /** switches to the Wissen tab, with one entry selected */
   openKnowledge: (id: string | null) => void;
   clearKnowledgeRequest: () => void;
+  /** commit the Git tab should select once it is shown (from search) */
+  commitRequest: { projectId: string; hash: string } | null;
+  /** switches to the Git tab, with one commit selected */
+  openCommit: (projectId: string, hash: string) => void;
+  clearCommitRequest: () => void;
   devToolsSection: DevToolsSection;
   setDevToolsSection: (section: DevToolsSection) => void;
   /** switches to the Dev-Tools tab at one section */
@@ -304,6 +309,7 @@ export const useUi = create<UiState>((set, get) => ({
   selectedFile: {},
   fileJump: null,
   knowledgeRequest: null,
+  commitRequest: null,
   devToolsSection: "server",
   projectSettingsSection: "general",
   collapsedGroups: [],
@@ -342,6 +348,11 @@ export const useUi = create<UiState>((set, get) => ({
     savePrefs(get());
   },
   clearKnowledgeRequest: () => set({ knowledgeRequest: null }),
+  openCommit: (projectId, hash) => {
+    set({ commitRequest: { projectId, hash }, workspaceTab: "git", toolbarOpen: true });
+    savePrefs(get());
+  },
+  clearCommitRequest: () => set({ commitRequest: null }),
   setDevToolsSection: (devToolsSection) => set({ devToolsSection }),
   setProjectSettingsSection: (projectSettingsSection) => set({ projectSettingsSection }),
   openProjectSettings: (projectSettingsSection) => {

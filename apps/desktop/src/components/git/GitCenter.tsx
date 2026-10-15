@@ -1,193 +1,342 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type MouseEvent } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowDown, ArrowUp, Check, ChevronDown, ChevronRight, GitBranch, GitCommitHorizontal, GitCompareArrows, Plus, RefreshCw, RotateCcw, Trash2, X } from "lucide-react";
+import { ArrowDown, ArrowUp, Check, ChevronDown, Copy, GitBranch, GitCommitHorizontal, History, MoreHorizontal, Plus, RefreshCw, RotateCcw, Search, Tag, Trash2 } from "lucide-react";
 import type { CommitInfo, Project } from "@forge/protocol";
 import { call, keys, useGitStatus } from "@/lib/queries";
 import { errorMessage, RpcCallError } from "@/lib/rpc";
+import { addContextItems, contextItems, copyText } from "@/lib/context-menu";
 import { cn, relativeTime } from "@/lib/utils";
 import { toast } from "@/stores/toast";
+import { useUi } from "@/stores/ui";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
-import { DropdownMenu } from "@/components/ui/dropdown";
+import { DropdownMenu, type MenuItem } from "@/components/ui/dropdown";
 import { Field, Input } from "@/components/ui/input";
 import { Badge, EmptyState, ErrorBanner } from "@/components/ui/misc";
+import { Select } from "@/components/ui/select";
 import { ListSkeleton, Skeleton, SkeletonRegion } from "@/components/ui/skeleton";
+import { TabBar } from "@/components/ui/tabs";
 import { GitPanel } from "./GitPanel";
 import { DiffView } from "./DiffView";
-import { CommitGraph, RefBadges } from "./CommitGraph";
-import { AuthorAvatar } from "./AuthorAvatar";
+import { CommitGraph, CommitListSkeleton } from "./CommitGraph";
+import { CommitView, CommitViewSkeleton } from "./CommitView";
 import { PullRequestBar, SyncActions } from "./Sync";
 import { RestoreDialog } from "./RestoreDialog";
 import { DeleteBranchDialog } from "./DeleteBranchDialog";
+import { parseRefs } from "./graph-layout";
 
-/** Workspace tab, laid out like Source Control in VS Code: changes, graph and branches on the left, the diff or commit on the right. */
+type GitTab = "history" | "changes" | "branches" | "tags";
+
+/** The commits git.log loads for the tab; the palette asks for the same, so both share the data. */
+export const LOG_LIMIT = 200;
+
+/**
+ * Workspace tab: branch and sync on top, history, changes, branches and tags on the left, and on the
+ * right always a commit (the checked-out one until another is chosen) or the diff of a changed file.
+ */
 export function GitCenter({ project }: { project: Project }) {
-  const log = useQuery({ queryKey: keys.log(project.id), queryFn: () => call("git.log", { projectId: project.id, limit: 200 }), enabled: project.exists, retry: false });
+  const log = useQuery({ queryKey: keys.log(project.id), queryFn: () => call("git.log", { projectId: project.id, limit: LOG_LIMIT }), enabled: project.exists, retry: false });
   // Under the log key, so new commits also refresh the pictures. Asks GitHub, so the graph never waits for it.
   const avatars = useQuery({
     queryKey: [...keys.log(project.id), "avatars"],
-    queryFn: () => call("git.authorAvatars", { projectId: project.id, limit: 200 }),
+    queryFn: () => call("git.authorAvatars", { projectId: project.id, limit: LOG_LIMIT }),
     enabled: project.exists && !!log.data?.length,
     retry: false,
     placeholderData: (prev) => prev,
   });
   const branches = useQuery({ queryKey: keys.branches(project.id), queryFn: () => call("git.branches", { projectId: project.id }), enabled: project.exists, retry: false });
   const status = useGitStatus(project.id, project.exists);
-  const [open, setOpen] = useState({ changes: true, graph: true, branches: false });
+  const [tab, setTab] = useState<GitTab>("history");
   const [focusPath, setFocusPath] = useState<string | null>(null);
   const [selectedHash, setSelectedHash] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
+  const [author, setAuthor] = useState("all");
   const [newBranch, setNewBranch] = useState(false);
   const [restoring, setRestoring] = useState<CommitInfo | null>(null);
   const [deletingBranch, setDeletingBranch] = useState<string | null>(null);
 
+  // A commit chosen in the search.
+  const request = useUi((s) => s.commitRequest);
+  useEffect(() => {
+    if (!request || request.projectId !== project.id) return;
+    setSelectedHash(request.hash);
+    setFocusPath(null);
+    setTab("history");
+    useUi.getState().clearCommitRequest();
+  }, [request, project.id]);
+
   const files = status.data?.files ?? [];
   const focusFile = focusPath ? files.find((f) => f.path === focusPath) : undefined;
-  const selected = selectedHash ? log.data?.find((c) => c.hash === selectedHash) : undefined;
+  const commits = useMemo(() => log.data ?? [], [log.data]);
+  const head = commits[0];
+  // Never empty: without a choice (or once the chosen commit left the history) the checked-out one.
+  const selected = (selectedHash ? commits.find((c) => c.hash === selectedHash) : undefined) ?? head;
   const localBranches = useMemo(() => new Set(branches.data?.map((b) => b.name)), [branches.data]);
-  const toggle = (k: keyof typeof open) => setOpen((o) => ({ ...o, [k]: !o[k] }));
+  const authors = useMemo(() => [...new Set(commits.map((c) => c.author))].sort((a, b) => a.localeCompare(b, "de")), [commits]);
+  const q = query.trim().toLowerCase();
+  const filtering = !!q || author !== "all";
+  const shown = useMemo(
+    () =>
+      filtering
+        ? commits.filter(
+            (c) =>
+              (author === "all" || c.author === author) &&
+              (!q || c.subject.toLowerCase().includes(q) || c.hash.startsWith(q) || c.author.toLowerCase().includes(q) || c.refs.some((r) => r.toLowerCase().includes(q))),
+          )
+        : commits,
+    [commits, filtering, author, q],
+  );
+  const tags = useMemo(
+    () => commits.flatMap((c) => parseRefs(c.refs, localBranches).flatMap((r) => (r.kind === "tag" ? [{ name: r.name, commit: c }] : []))),
+    [commits, localBranches],
+  );
+
+  const select = (hash: string) => {
+    setSelectedHash(hash);
+    setFocusPath(null);
+  };
+  const refresh = () => {
+    void status.refetch();
+    void log.refetch();
+    void branches.refetch();
+  };
+  const commitMenu = (c: CommitInfo): MenuItem[] => {
+    const current = c.hash === head?.hash;
+    return [
+      { label: "Hash kopieren", icon: <Copy className="h-3.5 w-3.5" />, onSelect: () => copyText(c.hash) },
+      { label: "Nachricht kopieren", icon: <Copy className="h-3.5 w-3.5" />, onSelect: () => copyText(c.subject) },
+      ...(!current || files.length > 0
+        ? [{ label: current ? "Beiseitelegen" : "Wiederherstellen", icon: <RotateCcw className="h-3.5 w-3.5" />, onSelect: () => setRestoring(c) }]
+        : []),
+    ];
+  };
 
   // Without a repository only the "initialise" prompt of GitPanel makes sense. GitPanel keeps its place
   // in the tree: remounting it would refetch the failed status and flip this condition in a loop.
   const notRepo = status.error instanceof RpcCallError && status.error.code === "GIT_NOT_REPO";
 
   return (
-    <div className={cn("grid h-full min-h-0", notRepo ? "grid-cols-1" : "grid-cols-[minmax(340px,5fr)_minmax(0,7fr)]")}>
-      <div className={cn("flex min-h-0 flex-col", !notRepo && "border-r border-border bg-surface")}>
-        <div className={cn("flex h-9 shrink-0 items-center gap-2 border-b border-border pl-3 pr-2", notRepo && "hidden")}>
-          <span className="flex-1 truncate text-caption font-semibold uppercase tracking-wide text-muted">Quellcodeverwaltung</span>
+    <div className={cn("grid h-full min-h-0", notRepo ? "grid-cols-1" : "grid-cols-[minmax(380px,5fr)_minmax(0,7fr)]")}>
+      <div className={cn("flex min-h-0 flex-col", !notRepo && "border-r border-border")}>
+        <div className={cn("flex shrink-0 items-center gap-2 px-3 pt-3", notRepo && "hidden")}>
           <BranchMenu project={project} branches={branches.data ?? []} onNew={() => setNewBranch(true)} />
-          <Button
-            size="icon-sm"
-            variant="ghost"
-            className="h-6 w-6"
-            onClick={() => {
-              void status.refetch();
-              void log.refetch();
-              void branches.refetch();
-            }}
-            aria-label="Aktualisieren"
-            title="Aktualisieren"
-          >
-            <RefreshCw className={cn("h-3.5 w-3.5", (status.isFetching || log.isFetching) && "animate-spin")} />
-          </Button>
+          <span className="flex-1" />
+          <SyncActions project={project} labeled />
+          <DropdownMenu
+            items={[
+              { label: "Neuer Branch …", icon: <Plus className="h-3.5 w-3.5" />, onSelect: () => setNewBranch(true), disabled: !branches.data },
+              { label: "Aktualisieren", icon: <RefreshCw className="h-3.5 w-3.5" />, onSelect: refresh },
+            ]}
+            trigger={
+              <Button size="icon" variant="outline" aria-label="Weitere Git-Aktionen" title="Weitere Git-Aktionen">
+                {status.isFetching || log.isFetching ? <RefreshCw className="h-4 w-4 animate-spin" /> : <MoreHorizontal className="h-4 w-4" />}
+              </Button>
+            }
+          />
         </div>
 
-        <Pane
-          title="Änderungen"
-          count={files.length}
-          open={open.changes}
-          onToggle={() => toggle("changes")}
-          bare={notRepo}
-          className={notRepo ? "flex-1" : open.graph ? "max-h-[55%] shrink-0" : "flex-1"}
-        >
+        <div className={cn("shrink-0 border-b border-border px-2 pt-1", notRepo && "hidden")}>
+          <TabBar
+            value={tab}
+            onChange={(t) => {
+              setTab(t);
+              if (t !== "changes") setFocusPath(null);
+            }}
+            fit
+            tabs={[
+              { value: "history", label: "Verlauf", icon: <History className="h-3.5 w-3.5" /> },
+              {
+                value: "changes",
+                label: "Änderungen",
+                icon: <GitCommitHorizontal className="h-3.5 w-3.5" />,
+                badge: files.length ? <Badge tone="warning">{files.length}</Badge> : undefined,
+              },
+              { value: "branches", label: "Branches", icon: <GitBranch className="h-3.5 w-3.5" /> },
+              { value: "tags", label: "Tags", icon: <Tag className="h-3.5 w-3.5" /> },
+            ]}
+          />
+        </div>
+
+        {tab === "history" && !notRepo && (
+          <div className="flex min-h-0 flex-1 flex-col">
+            <PullRequestBar project={project} />
+            <div className="flex shrink-0 items-center gap-2 px-3 py-2.5">
+              <div className="relative min-w-0 flex-1">
+                <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-subtle" />
+                <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Commits durchsuchen" className="pl-8" aria-label="Commits durchsuchen" />
+              </div>
+              {authors.length > 1 && (
+                <Select
+                  value={author}
+                  onChange={setAuthor}
+                  aria-label="Nach Autor filtern"
+                  className="max-w-40"
+                  options={[{ value: "all", label: "Alle Autoren" }, ...authors.map((a) => ({ value: a, label: a }))]}
+                />
+              )}
+            </div>
+            <div className="min-h-0 flex-1 overflow-y-auto">
+              {log.isLoading && <CommitListSkeleton />}
+              {log.isError && (
+                <div className="p-3">
+                  <ErrorBanner title="Verlauf nicht geladen">{errorMessage(log.error)}</ErrorBanner>
+                </div>
+              )}
+              {log.data?.length === 0 && <p className="px-4 py-2 text-small text-subtle">Noch keine Commits.</p>}
+              {!!commits.length && filtering && !shown.length && <p className="px-4 py-2 text-small text-subtle">Kein Commit passt zur Suche.</p>}
+              {!!shown.length && (
+                <CommitGraph
+                  commits={shown}
+                  avatars={avatars.data}
+                  localBranches={localBranches}
+                  selected={focusFile ? null : (selected?.hash ?? null)}
+                  headHash={head?.hash ?? null}
+                  graph={!filtering}
+                  onSelect={select}
+                  onContextMenu={(e: MouseEvent, c) => addContextItems(e, commitMenu(c))}
+                />
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Always mounted (see notRepo), so a commit message survives switching tabs. */}
+        <div className={cn("min-h-0 flex-1 overflow-y-auto pt-2", !notRepo && tab !== "changes" && "hidden", notRepo && "pt-0")}>
           <GitPanel
             project={project}
             focusPath={focusPath}
             onFocus={(p) => {
               setFocusPath(p);
-              setSelectedHash(null);
             }}
           />
-        </Pane>
+        </div>
 
-        <Pane
-          title="Graph"
-          open={open.graph}
-          onToggle={() => toggle("graph")}
-          className={cn(open.graph && "flex-1", notRepo && "hidden")}
-          actions={<SyncActions project={project} />}
-        >
-          <PullRequestBar project={project} />
-          {log.isLoading && <ListSkeleton rows={8} />}
-          {log.isError && (
-            <div className="p-3">
-              <ErrorBanner title="Verlauf nicht geladen">{errorMessage(log.error)}</ErrorBanner>
+        {tab === "branches" && !notRepo && (
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            <div className="flex items-center gap-2 px-4 pb-1 pt-3">
+              <span className="flex-1 text-caption font-semibold uppercase tracking-wide text-subtle">Lokale Branches</span>
+              <Button size="sm" variant="ghost" className="h-7" onClick={() => setNewBranch(true)} disabled={!branches.data}>
+                <Plus className="h-3.5 w-3.5" /> Neuer Branch
+              </Button>
             </div>
-          )}
-          {log.data?.length === 0 && <p className="px-3 py-2 text-xs text-subtle">Noch keine Commits.</p>}
-          {!!log.data?.length && (
-            <CommitGraph
-              commits={log.data}
-              avatars={avatars.data}
-              localBranches={localBranches}
-              selected={selected?.hash ?? null}
-              onSelect={(h) => {
-                setSelectedHash(h);
-                setFocusPath(null);
-              }}
-            />
-          )}
-        </Pane>
+            {branches.isLoading && <ListSkeleton rows={4} label="Lädt Branches" />}
+            {branches.isError && (
+              <div className="p-3">
+                <ErrorBanner title="Branches nicht geladen">{errorMessage(branches.error)}</ErrorBanner>
+              </div>
+            )}
+            <ul className="px-2 pb-2">
+              {branches.data?.map((b) => {
+                const items: MenuItem[] = [
+                  ...(b.current ? [] : [{ label: "Wechseln", icon: <GitBranch className="h-3.5 w-3.5" />, onSelect: () => void checkout(project.id, b.name, false).catch(() => {}) }]),
+                  { label: "Name kopieren", icon: <Copy className="h-3.5 w-3.5" />, onSelect: () => copyText(b.name) },
+                  ...(b.current ? [] : [{ label: "Löschen …", icon: <Trash2 className="h-3.5 w-3.5" />, danger: true, onSelect: () => setDeletingBranch(b.name) }]),
+                ];
+                return (
+                  <li
+                    key={b.name}
+                    onContextMenu={contextItems(() => items)}
+                    className={cn("group flex h-10 items-center gap-2.5 rounded-md px-2.5", b.current ? "bg-accent-soft" : "hover:bg-surface-2")}
+                  >
+                    <GitBranch className={cn("h-4 w-4 shrink-0", b.current ? "text-accent" : "text-muted")} />
+                    <span className="flex min-w-0 flex-1 flex-col">
+                      <span className={cn("truncate text-body", b.current && "font-semibold")}>{b.name}</span>
+                      {b.upstream && <span className="truncate text-caption text-subtle">{b.upstream}</span>}
+                    </span>
+                    {b.current ? (
+                      <Badge tone="accent">aktuell</Badge>
+                    ) : (
+                      <span className="flex items-center opacity-0 group-hover:opacity-100 focus-within:opacity-100">
+                        <Button size="sm" variant="ghost" className="h-7 px-2" onClick={() => void checkout(project.id, b.name, false).catch(() => {})}>
+                          Wechseln
+                        </Button>
+                        <Button
+                          size="icon-sm"
+                          variant="ghost"
+                          className="hover:text-danger"
+                          onClick={() => setDeletingBranch(b.name)}
+                          aria-label={`Branch ${b.name} löschen`}
+                          title="Branch löschen"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </span>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        )}
 
-        <Pane
-          title="Branches"
-          count={branches.data?.length}
-          open={open.branches}
-          onToggle={() => toggle("branches")}
-          className={cn(open.branches && "max-h-[35%] shrink-0", notRepo && "hidden")}
-          actions={
-            <Button size="icon-sm" variant="ghost" className="h-6 w-6" onClick={() => setNewBranch(true)} disabled={!branches.data} aria-label="Neuer Branch" title="Neuer Branch">
-              <Plus className="h-3.5 w-3.5" />
-            </Button>
-          }
-        >
-          {branches.isLoading && <ListSkeleton rows={3} />}
-          {branches.isError && (
-            <div className="p-3">
-              <ErrorBanner title="Branches nicht geladen">{errorMessage(branches.error)}</ErrorBanner>
-            </div>
-          )}
-          <ul className="py-0.5">
-            {branches.data?.map((b) => (
-              <li key={b.name} className="group flex h-7 items-center gap-2 pl-4 pr-2 text-small-lg hover:bg-surface-2">
-                <GitBranch className={cn("h-3.5 w-3.5 shrink-0", b.current ? "text-accent" : "text-muted")} />
-                <span className={cn("min-w-0 truncate", b.current && "font-semibold")}>{b.name}</span>
-                {b.upstream && <span className="min-w-0 flex-1 truncate text-caption text-subtle">{b.upstream}</span>}
-                {!b.upstream && <span className="flex-1" />}
-                {b.current ? (
-                  <Badge tone="accent">aktuell</Badge>
-                ) : (
-                  <span className="flex items-center opacity-0 group-hover:opacity-100 focus-within:opacity-100">
-                    <Button size="sm" variant="ghost" className="h-6 px-1.5" onClick={() => void checkout(project.id, b.name, false).catch(() => {})}>
-                      Wechseln
-                    </Button>
-                    <Button
-                      size="icon-sm"
-                      variant="ghost"
-                      className="h-6 w-6 hover:text-danger"
-                      onClick={() => setDeletingBranch(b.name)}
-                      aria-label={`Branch ${b.name} löschen`}
-                      title="Branch löschen"
+        {tab === "tags" && !notRepo && (
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            {log.isLoading && <ListSkeleton rows={4} label="Lädt Tags" />}
+            {log.data && !tags.length && <p className="px-4 py-3 text-small text-subtle">Keine Tags in den letzten {LOG_LIMIT} Commits.</p>}
+            <ul className="px-2 py-2">
+              {tags.map((t) => {
+                const active = !focusFile && selected?.hash === t.commit.hash;
+                return (
+                  <li key={t.name}>
+                    <button
+                      onClick={() => select(t.commit.hash)}
+                      onContextMenu={contextItems(() => [
+                        { label: "Tag-Namen kopieren", icon: <Copy className="h-3.5 w-3.5" />, onSelect: () => copyText(t.name) },
+                        ...commitMenu(t.commit),
+                      ])}
+                      aria-current={active ? "true" : undefined}
+                      className={cn(
+                        "flex h-11 w-full items-center gap-2.5 rounded-md px-2.5 text-left",
+                        active ? "bg-accent-soft ring-1 ring-inset ring-accent/40" : "hover:bg-surface-2",
+                      )}
                     >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </Button>
-                  </span>
-                )}
-              </li>
-            ))}
-          </ul>
-        </Pane>
+                      <Tag className="h-4 w-4 shrink-0 text-muted" />
+                      <span className="flex min-w-0 flex-1 flex-col">
+                        <span className="truncate text-body font-medium">{t.name}</span>
+                        <span className="truncate text-caption text-subtle">
+                          {t.commit.subject} · {relativeTime(t.commit.date)}
+                        </span>
+                      </span>
+                      <span className="shrink-0 font-mono text-caption text-subtle">{t.commit.shortHash}</span>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        )}
       </div>
 
-      <div className={cn("flex min-h-0 flex-col p-3", notRepo && "hidden")}>
+      <div className={cn("flex min-h-0 min-w-0 flex-col p-4", notRepo && "hidden")}>
         {focusFile ? (
           <DiffView projectId={project.id} path={focusFile.path} staged={focusFile.staged && !focusFile.unstaged} onClose={() => setFocusPath(null)} />
         ) : selected ? (
-          <CommitDetails
+          <CommitView
+            projectId={project.id}
             commit={selected}
             avatarUrl={selected.avatarUrl ?? avatars.data?.[selected.authorEmail]}
-            current={selected.hash === log.data?.[0]?.hash}
+            current={selected.hash === head?.hash}
             openChanges={files.length}
             localBranches={localBranches}
-            known={(h) => !!log.data?.some((c) => c.hash === h)}
-            onSelect={setSelectedHash}
+            known={(h) => commits.some((c) => c.hash === h)}
+            onSelect={(h) => {
+              select(h);
+              setTab("history");
+            }}
             onRestore={() => setRestoring(selected)}
-            onClose={() => setSelectedHash(null)}
           />
+        ) : log.isLoading || status.isLoading ? (
+          <CommitViewSkeleton />
+        ) : log.isError ? (
+          <div className="flex flex-1 items-center justify-center">
+            <EmptyState icon={<GitCommitHorizontal className="h-10 w-10" />} title="Verlauf nicht geladen">
+              {errorMessage(log.error)}
+            </EmptyState>
+          </div>
         ) : (
           <div className="flex flex-1 items-center justify-center">
-            <EmptyState icon={<GitCompareArrows className="h-10 w-10" />} title="Nichts ausgewählt">
-              Eine Datei unter Änderungen zeigt ihren Diff. Ein Commit im Graph zeigt seine Daten und lässt sich wiederherstellen.
+            <EmptyState icon={<GitCommitHorizontal className="h-10 w-10" />} title="Noch keine Commits">
+              Unter Änderungen wählst du Dateien aus und erstellst den ersten Commit.
             </EmptyState>
           </div>
         )}
@@ -198,50 +347,11 @@ export function GitCenter({ project }: { project: Project }) {
       <RestoreDialog
         projectId={project.id}
         commit={restoring}
-        current={!!restoring && restoring.hash === log.data?.[0]?.hash}
+        current={!!restoring && restoring.hash === head?.hash}
         openChanges={files.length}
         onOpenChange={(o) => !o && setRestoring(null)}
       />
     </div>
-  );
-}
-
-/** A collapsible section of the Source Control column. `bare` hides the header (no repository yet). */
-function Pane({
-  title,
-  count,
-  open,
-  onToggle,
-  actions,
-  bare,
-  className,
-  children,
-}: {
-  title: string;
-  count?: number;
-  open: boolean;
-  onToggle: () => void;
-  actions?: ReactNode;
-  bare?: boolean;
-  className?: string;
-  children: ReactNode;
-}) {
-  return (
-    <section className={cn("flex min-h-0 flex-col border-b border-border last:border-b-0", className)}>
-      <header className={cn("flex h-7 shrink-0 items-center gap-1 pl-1 pr-2", bare && "hidden")}>
-        <button
-          onClick={onToggle}
-          aria-expanded={open}
-          className="flex h-full min-w-0 flex-1 items-center gap-1 text-left text-caption font-semibold uppercase tracking-wide text-muted hover:text-fg"
-        >
-          <ChevronRight className={cn("h-3.5 w-3.5 shrink-0 transition-transform duration-120", open && "rotate-90")} />
-          <span className="truncate">{title}</span>
-          {!!count && <span className="ml-1 rounded-full bg-surface-3 px-1.5 text-2xs font-medium normal-case tracking-normal text-fg">{count}</span>}
-        </button>
-        {open && <div className="flex items-center gap-0.5">{actions}</div>}
-      </header>
-      {(open || bare) && <div className="min-h-0 flex-1 overflow-y-auto">{children}</div>}
-    </section>
   );
 }
 
@@ -251,11 +361,12 @@ function BranchMenu({ project, branches, onNew }: { project: Project; branches: 
   if (!summary)
     return status.isLoading ? (
       <SkeletonRegion label="Lädt Branch" className="shrink-0">
-        <Skeleton className="h-6 w-28" />
+        <Skeleton className="h-8 w-32" />
       </SkeletonRegion>
     ) : null;
   return (
     <DropdownMenu
+      align="start"
       header="Branch wechseln"
       items={[
         ...branches.map((b) => ({
@@ -267,118 +378,25 @@ function BranchMenu({ project, branches, onNew }: { project: Project; branches: 
         { label: "Neuer Branch …", icon: <Plus className="h-3.5 w-3.5 text-muted" />, onSelect: onNew },
       ]}
       trigger={
-        <Button size="sm" variant="ghost" className="h-6 min-w-0 gap-1 px-1.5 text-small" title="Branch wechseln">
-          <GitBranch className="h-3.5 w-3.5" />
-          <span className="max-w-40 truncate">{summary.branch ?? "ohne Branch"}</span>
+        <Button size="sm" variant="outline" className="h-8 min-w-0 gap-1.5 px-2.5" title="Branch wechseln">
+          <GitBranch className="h-3.5 w-3.5 shrink-0 text-accent" />
+          <span className="max-w-40 truncate text-body font-semibold">{summary.branch ?? "ohne Branch"}</span>
           {summary.ahead > 0 && (
-            <span className="flex items-center text-fg">
+            <span className="flex items-center text-small text-fg">
               <ArrowUp className="h-3 w-3" />
               {summary.ahead}
             </span>
           )}
           {summary.behind > 0 && (
-            <span className="flex items-center text-warning">
+            <span className="flex items-center text-small text-warning">
               <ArrowDown className="h-3 w-3" />
               {summary.behind}
             </span>
           )}
-          <ChevronDown className="h-3 w-3" />
+          <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted" />
         </Button>
       }
     />
-  );
-}
-
-function CommitDetails({
-  commit,
-  avatarUrl,
-  current,
-  openChanges,
-  localBranches,
-  known,
-  onSelect,
-  onRestore,
-  onClose,
-}: {
-  commit: CommitInfo;
-  avatarUrl: string | null | undefined;
-  current: boolean;
-  openChanges: number;
-  localBranches: ReadonlySet<string>;
-  known: (hash: string) => boolean;
-  onSelect: (hash: string) => void;
-  onRestore: () => void;
-  onClose: () => void;
-}) {
-  return (
-    <div className="flex min-h-0 flex-col overflow-hidden rounded-lg border border-border bg-surface">
-      <div className="flex h-8 shrink-0 items-center gap-2 border-b border-border px-3 text-xs">
-        <GitCommitHorizontal className="h-3.5 w-3.5 text-muted" />
-        <span className="font-mono">{commit.shortHash}</span>
-        {current && <Badge tone="accent">aktuell</Badge>}
-        <span className="flex-1" />
-        <button onClick={onClose} className="rounded p-0.5 text-subtle hover:text-fg" aria-label="Commit schließen">
-          <X className="h-3.5 w-3.5" />
-        </button>
-      </div>
-      <div className="flex min-h-0 flex-col gap-4 overflow-y-auto p-4">
-        <h2 className="text-title-sm font-semibold">{commit.subject}</h2>
-        <dl className="grid grid-cols-[7rem_minmax(0,1fr)] gap-x-3 gap-y-1.5 text-body">
-          <dt className="text-muted">Autor</dt>
-          <dd className="flex min-w-0 items-center gap-2">
-            <AuthorAvatar name={commit.author} url={avatarUrl} className="h-5.5 w-5.5" />
-            <span className="truncate" title={commit.authorEmail}>
-              {commit.author}
-            </span>
-          </dd>
-          <dt className="text-muted">Datum</dt>
-          <dd>
-            {new Date(commit.date).toLocaleString("de-DE", { dateStyle: "medium", timeStyle: "short" })}
-            <span className="ml-2 text-subtle">{relativeTime(commit.date)}</span>
-          </dd>
-          <dt className="text-muted">Commit</dt>
-          <dd className="select-all break-all font-mono text-xs leading-5">{commit.hash}</dd>
-          {commit.parents.length > 0 && (
-            <>
-              <dt className="text-muted">{commit.parents.length > 1 ? "Eltern (Merge)" : "Vorgänger"}</dt>
-              <dd className="flex flex-wrap gap-2">
-                {commit.parents.map((p) => (
-                  <button
-                    key={p}
-                    onClick={() => onSelect(p)}
-                    disabled={!known(p)}
-                    className="font-mono text-xs text-accent hover:underline disabled:text-subtle disabled:no-underline"
-                    title={known(p) ? "Commit anzeigen" : "Nicht im geladenen Verlauf"}
-                  >
-                    {p.slice(0, 7)}
-                  </button>
-                ))}
-              </dd>
-            </>
-          )}
-          {commit.refs.length > 0 && (
-            <>
-              <dt className="text-muted">Branches</dt>
-              <dd>
-                <RefBadges refs={commit.refs} localBranches={localBranches} />
-              </dd>
-            </>
-          )}
-        </dl>
-        {(!current || openChanges > 0) && (
-          <div className="flex items-center gap-3 rounded-lg border border-border bg-surface-2 px-3 py-2.5">
-            <p className="min-w-0 flex-1 text-xs text-muted">
-              {current
-                ? "Legt die offenen Änderungen als Git-Stash beiseite. Der Commit selbst bleibt."
-                : "Holt alle Dateien auf diesen Stand zurück. Branch und Verlauf bleiben, das Ergebnis sind neue, nicht committete Änderungen."}
-            </p>
-            <Button size="sm" onClick={onRestore}>
-              <RotateCcw className="h-3.5 w-3.5" /> {current ? "Beiseitelegen" : "Wiederherstellen"}
-            </Button>
-          </div>
-        )}
-      </div>
-    </div>
   );
 }
 

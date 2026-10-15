@@ -1534,6 +1534,23 @@ describe("PhoneService end to end with a test PBX", () => {
       "github.publish": () => ({ url: "https://github.com/me/shop" }),
       "github.account": () => null,
       "git.setIdentity": (p: { name: string; email: string }) => p,
+      "git.commitFiles": (p: { commit: string }) => ({
+        hash: p.commit,
+        body: "Mit Warenkorb.",
+        truncated: false,
+        files: [
+          { path: "src/login.ts", origPath: null, kind: "added", additions: 12, deletions: 0, binary: false },
+          { path: ".env", origPath: null, kind: "modified", additions: 1, deletions: 1, binary: false },
+        ],
+      }),
+      "git.commitDiff": () => ({
+        path: "src/login.ts",
+        binary: false,
+        additions: 1,
+        deletions: 0,
+        truncated: false,
+        lines: [{ kind: "add", text: "export const login = true;", oldNo: null, newNo: 1 }],
+      }),
       "agents.review": () => ({
         projectId: wt.id,
         rootId: projectId,
@@ -1566,6 +1583,14 @@ describe("PhoneService end to end with a test PBX", () => {
       "Dateien von shop auf den Stand von <<<SESSION-DATEN>>>Login gebaut<<<ENDE SESSION-DATEN>>> gesetzt, 4 Dateien geändert und noch nicht committet. Die offene Arbeit von vorher liegt im Stash.",
     );
     expect(rpcCalls.at(-1)).toEqual(["git.restoreTo", { projectId, commit: "bbbbbbb2222" }]);
+    const shown = await conv.tools.git("shop", "show", { commit: "login" });
+    expect(shown).toContain("Der Commit ändert 2 Dateien, 13 Zeilen hinzu, 1 entfernt:");
+    expect(shown).toContain("src/login.ts (+12 -0)");
+    expect(shown).toContain("Mit Warenkorb.");
+    expect(rpcCalls.at(-1)).toEqual(["git.commitFiles", { projectId, commit: "bbbbbbb2222" }]);
+    expect(await conv.tools.git("shop", "show", { path: "login" })).toContain("export const login = true;");
+    expect(rpcCalls.at(-1)).toEqual(["git.commitDiff", { projectId, commit: "aaaaaaa1111", path: "src/login.ts" }]);
+    expect(await conv.tools.git("shop", "show", { path: ".env" })).toContain("enthält Zugangsdaten");
     await conv.tools.git("shop", "restore", { commit: "1" });
     expect(rpcCalls.at(-1)).toEqual(["git.restoreTo", { projectId, commit: "aaaaaaa1111" }]);
     expect(await conv.tools.git("shop", "publish", { private: false })).toBe("shop ist als öffentliches Repository auf GitHub veröffentlicht.");

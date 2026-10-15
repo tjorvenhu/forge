@@ -3,6 +3,7 @@ import path from "node:path";
 import {
   ForgeError,
   type BranchInfo,
+  type CommitDetails,
   type CommitInfo,
   type FileDiff,
   type GitIntegrated,
@@ -13,12 +14,15 @@ import {
 import { isInside } from "../util/paths.js";
 import { run, type RunResult } from "../util/proc.js";
 import { resolveTool } from "../util/tools.js";
-import { LOG_FORMAT, parseBranches, parseLog, parseStatusV2, parseUnifiedDiff, scopeToPrefix, summarize, untrackedDiff } from "./parsers.js";
+import { LOG_FORMAT, parseBranches, parseCommitFiles, parseLog, parseStatusV2, parseUnifiedDiff, scopeToPrefix, summarize, untrackedDiff } from "./parsers.js";
 
 const SENSITIVE_FILE =
   /(^|\/)(\.env(\..*)?|.*\.pem|.*\.key|id_(rsa|dsa|ecdsa|ed25519)(\.pub)?|.*\.p12|.*\.pfx|.*\.keystore|credentials(\..*)?\.json|secrets?\.(json|ya?ml|toml)|\.npmrc|\.pypirc|\.netrc)$/i;
 
 const PROTECTED = new Set(["main", "master"]);
+
+/** files listed for one commit; a commit of a whole node_modules folder would flood the list */
+const MAX_COMMIT_FILES = 2000;
 
 const ARTIFACT_PATH = /(^|\/)(node_modules|dist|build|target|\.next|out|coverage|__pycache__)\//;
 
@@ -221,6 +225,42 @@ export class GitEngine {
     const hasHead = (await this.exec(cwd, ["rev-parse", "--verify", "-q", "HEAD"])).code === 0;
     if (!hasHead) return [];
     return parseLog(await this.ok(cwd, ["log", "--topo-order", `-n${limit}`, `--format=${LOG_FORMAT}`]));
+  }
+
+  /**
+   * The commit and the side it is compared with: its first parent, or the empty tree for a root commit
+   * (merges are shown against the first parent, as git log --first-parent would).
+   */
+  private async commitRange(cwd: string, commit: string): Promise<[string, string]> {
+    if (!/^[0-9a-f]{7,40}$/i.test(commit)) throw new ForgeError("VALIDATION", "Ungültige Commit-Kennung.");
+    const resolved = await this.exec(cwd, ["rev-parse", "--verify", "-q", `${commit}^{commit}`]);
+    if (resolved.code !== 0) throw new ForgeError("NOT_FOUND", "Diesen Commit gibt es in diesem Repository nicht.");
+    const full = resolved.stdout.trim();
+    const parent = await this.exec(cwd, ["rev-parse", "--verify", "-q", `${full}^1`]);
+    if (parent.code === 0) return [parent.stdout.trim(), full];
+    return [(await this.ok(cwd, ["hash-object", "-t", "tree", "--stdin"], "")).trim(), full];
+  }
+
+  async commitFiles(cwd: string, commit: string): Promise<CommitDetails> {
+    const [base, full] = await this.commitRange(cwd, commit);
+    // --relative: paths below the project folder only, relative to it (see status for monorepos).
+    const range = ["-M", "--relative", "-z", base, full, "--", "."];
+    const [statusOut, numstatOut, body] = await Promise.all([
+      this.ok(cwd, ["diff", "--no-ext-diff", "--name-status", ...range]),
+      this.ok(cwd, ["diff", "--no-ext-diff", "--numstat", ...range]),
+      this.ok(cwd, ["log", "-1", "--format=%b", full]),
+    ]);
+    const all = parseCommitFiles(statusOut, numstatOut);
+    return { hash: full, body: body.trim(), files: all.slice(0, MAX_COMMIT_FILES), truncated: all.length > MAX_COMMIT_FILES };
+  }
+
+  async commitDiff(cwd: string, commit: string, file: string, origPath?: string): Promise<FileDiff> {
+    this.assertRelative(cwd, file);
+    if (origPath) this.assertRelative(cwd, origPath);
+    const [base, full] = await this.commitRange(cwd, commit);
+    const args = ["diff", "--no-ext-diff", "--no-color", "-M", "--relative", base, full, "--", file];
+    if (origPath) args.push(origPath);
+    return parseUnifiedDiff(file, await this.ok(cwd, args));
   }
 
   async branches(cwd: string): Promise<BranchInfo[]> {

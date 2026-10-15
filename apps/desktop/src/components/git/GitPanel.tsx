@@ -13,7 +13,7 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { DiffView } from "./DiffView";
 import { ListSkeleton } from "@/components/ui/skeleton";
 
-const KIND: Record<FileStatus["kind"], { letter: string; tone: string; label: string }> = {
+export const KIND: Record<FileStatus["kind"], { letter: string; tone: string; label: string }> = {
   modified: { letter: "M", tone: "text-warning", label: "geändert" },
   added: { letter: "A", tone: "text-success", label: "neu" },
   untracked: { letter: "U", tone: "text-success", label: "neu, nicht versioniert" },

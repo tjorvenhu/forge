@@ -142,6 +142,8 @@ export const PHONE_TOOL_FOR: Partial<Record<MethodName, string>> = {
   "git.diff": "git",
   "git.commit": "git",
   "git.log": "git",
+  "git.commitFiles": "git",
+  "git.commitDiff": "git",
   "git.restoreTo": "git",
   "git.branches": "git",
   "git.deleteBranch": "git",

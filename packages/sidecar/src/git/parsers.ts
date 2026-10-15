@@ -1,5 +1,5 @@
 import { posix } from "node:path";
-import type { BranchInfo, CommitInfo, DiffLine, FileDiff, FileStatus, GitSummary } from "@forge/protocol";
+import type { BranchInfo, CommitFile, CommitInfo, DiffLine, FileDiff, FileStatus, GitSummary } from "@forge/protocol";
 import { avatarFromEmail } from "../github/avatars.js";
 
 export interface ParsedStatus {
@@ -227,6 +227,42 @@ export function parseLog(out: string): CommitInfo[] {
         refs: refs.split(", ").filter(Boolean),
       };
     });
+}
+
+const COMMIT_KIND: Record<string, CommitFile["kind"]> = { A: "added", C: "added", D: "deleted", R: "renamed", T: "typechange" };
+
+/** Joins `git diff --name-status -z` and `git diff --numstat -z` of the same range into one list. */
+export function parseCommitFiles(nameStatus: string, numstat: string): CommitFile[] {
+  const counts = new Map<string, { additions: number; deletions: number; binary: boolean }>();
+  const nt = numstat.split("\0");
+  for (let i = 0; i < nt.length; i++) {
+    const m = /^(-|\d+)\t(-|\d+)\t(.*)$/s.exec(nt[i]!);
+    if (!m) continue;
+    // A rename has an empty path here, followed by the old and the new path.
+    let p = m[3]!;
+    if (!p) {
+      p = nt[i + 2] ?? "";
+      i += 2;
+    }
+    const binary = m[1] === "-";
+    counts.set(p, { additions: binary ? 0 : Number(m[1]), deletions: binary ? 0 : Number(m[2]), binary });
+  }
+
+  const files: CommitFile[] = [];
+  const st = nameStatus.split("\0");
+  for (let i = 0; i < st.length; i++) {
+    const code = st[i]!;
+    if (!code) continue;
+    const letter = code[0]!;
+    const twoPaths = letter === "R" || letter === "C";
+    const origPath = twoPaths ? (st[i + 1] ?? null) : null;
+    const p = st[i + (twoPaths ? 2 : 1)] ?? "";
+    i += twoPaths ? 2 : 1;
+    if (!p) continue;
+    const c = counts.get(p) ?? { additions: 0, deletions: 0, binary: false };
+    files.push({ path: p, origPath, kind: COMMIT_KIND[letter] ?? "modified", ...c });
+  }
+  return files;
 }
 
 /** Parses `git branch --format=%(HEAD)%00%(refname:short)%00%(upstream:short)`. */
