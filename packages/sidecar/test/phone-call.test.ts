@@ -1671,6 +1671,12 @@ describe("PhoneService end to end with a test PBX", () => {
     expect(rpcCalls.at(-1)?.[0]).toBe("app.installUpdate");
     expect(await conv.tools.forgeSystem("claude_update")).toBe("Claude Code wird installiert. Ob es geklappt hat, sagt claude_check.");
     expect(rpcCalls.at(-1)?.[0]).toBe("claude.install");
+    // Signing in again needs the browser at the computer: only after the keypad code.
+    rpcResults["claude.logout"] = () => ({ task: null, phase: "idle", url: null, log: [], message: null });
+    const logoutAsk = await conv.tools.forgeSystem("claude_logout");
+    expect(rpcCalls.some(([m]) => m === "claude.logout")).toBe(false);
+    expect(await keypad(conv, logoutAsk)).toContain("Claude Code ist abgemeldet.");
+    expect(rpcCalls.at(-1)?.[0]).toBe("claude.logout");
 
     expect(await conv.tools.forgeSystem("backup_list")).toMatch(/^1: 12\.10\.26, \d\d:\d\d, von Hand, FORGE 1\.2\.0\n2: 01\.10\.26, \d\d:\d\d, beim Start, FORGE 1\.2\.0$/);
     // The phone settings stay: restoring them would end this call.

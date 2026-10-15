@@ -2512,6 +2512,17 @@ export class PhoneService {
             }
             return "Claude Code wird aktualisiert. Laufende Sessions nutzen die neue Version erst nach einem Neustart.";
           }
+          if (action === "claude_logout") {
+            // Signing in again needs the browser at the computer, so the phone cannot undo this.
+            return askKeypad(
+              "Claude Code wird auf diesem Computer abgemeldet. Sessions brauchen danach eine neue Anmeldung, und die geht nur am Rechner",
+              async () => {
+                await call("claude.logout", {});
+                return "Claude Code ist abgemeldet. Neu anmelden geht in FORGE am Rechner.";
+              },
+              "noch ist nichts geändert",
+            );
+          }
           if (action === "backup_create") {
             const b = await call("backup.create", {});
             return `Backup angelegt: ${b.parts.map((x) => x.label).join(", ")}.`;

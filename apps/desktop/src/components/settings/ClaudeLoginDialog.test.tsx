@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import type { ClaudeSetupState, Settings } from "@forge/protocol";
+import type { ClaudeSetupState, Diagnostics, Settings } from "@forge/protocol";
 import type * as RpcModuleNs from "@/lib/rpc";
 
 const callMock = vi.fn();
@@ -9,7 +9,7 @@ vi.mock("@/lib/rpc", async (orig) => ({ ...(await orig<typeof RpcModuleNs>()), r
 const openExternal = vi.fn(async () => {});
 vi.mock("@/lib/native", () => ({ openExternal: (...a: unknown[]) => openExternal(...(a as [])) }));
 
-const { ClaudeLoginDialog } = await import("./ClaudeLoginDialog");
+const { ClaudeLoginDialog, ClaudeLogoutDialog, claudeAccountItems } = await import("./ClaudeLoginDialog");
 const { useUi } = await import("@/stores/ui");
 const { keys } = await import("@/lib/queries");
 
@@ -34,7 +34,7 @@ beforeEach(() => {
   openExternal.mockClear();
   setupState = IDLE;
   setupDone = true;
-  useUi.setState({ claudeLogin: null, setupWizard: false });
+  useUi.setState({ claudeLogin: null, claudeLogout: false, setupWizard: false });
   callMock.mockImplementation(async (method: string) => {
     if (method === "settings.get") return { setupDone } as Settings;
     if (method === "claude.setupState") return setupState;
@@ -83,11 +83,82 @@ describe("ClaudeLoginDialog", () => {
     expect(useUi.getState().claudeLogin).toBeNull();
   });
 
+  it("switches accounts, also over the setup assistant", async () => {
+    setupDone = false;
+    setup();
+    act(() => useUi.getState().openClaudeLogin("switch"));
+    expect(await screen.findByText("Claude-Konto wechseln")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /Mit Claude-Konto anmelden/ }));
+    await screen.findByPlaceholderText("Code von der Anmeldeseite");
+    act(() => qc.setQueryData(keys.claudeSetup, { ...WAITING, url: null, phase: "done", message: "Angemeldet" }));
+    expect(await screen.findByText(/nutzt jetzt das neue Konto/)).toBeTruthy();
+  });
+
   it("keeps out of the way of the setup assistant", async () => {
     setupDone = false;
     setup();
     act(() => useUi.getState().openClaudeLogin("expired"));
     await waitFor(() => expect(calls("settings.get")).toHaveLength(1));
     expect(screen.queryByText("Claude-Anmeldung abgelaufen")).toBeNull();
+  });
+});
+
+describe("ClaudeLogoutDialog", () => {
+  function renderLogout() {
+    qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    return render(
+      <QueryClientProvider client={qc}>
+        <ClaudeLogoutDialog />
+      </QueryClientProvider>,
+    );
+  }
+
+  it("signs out only after the confirmation and refreshes the sign-in state", async () => {
+    const loggedOut = { claude: { found: true }, auth: { loggedIn: false } };
+    callMock.mockImplementation(async (method: string) => {
+      if (method === "claude.logout") return IDLE;
+      if (method === "system.diagnostics") return loggedOut;
+      throw new Error(`unexpected ${method}`);
+    });
+    renderLogout();
+    act(() => useUi.getState().setClaudeLogout(true));
+    expect(await screen.findByText("Von Claude abmelden?")).toBeTruthy();
+    expect(calls("claude.logout")).toHaveLength(0);
+    fireEvent.click(screen.getByRole("button", { name: "Abmelden" }));
+    await waitFor(() => expect(useUi.getState().claudeLogout).toBe(false));
+    expect(calls("claude.logout")).toHaveLength(1);
+    expect(calls("system.diagnostics")).toEqual([{ refresh: true }]);
+    expect(qc.getQueryData(keys.diagnostics)).toBe(loggedOut);
+  });
+
+  it("stays open when the logout fails", async () => {
+    callMock.mockImplementation(async () => {
+      throw new Error("keychain locked");
+    });
+    renderLogout();
+    act(() => useUi.getState().setClaudeLogout(true));
+    fireEvent.click(await screen.findByRole("button", { name: "Abmelden" }));
+    await waitFor(() => expect(calls("claude.logout")).toHaveLength(1));
+    expect(useUi.getState().claudeLogout).toBe(true);
+  });
+});
+
+describe("claudeAccountItems", () => {
+  const diag = (found: boolean, loggedIn: boolean) => ({ claude: { found }, auth: { loggedIn } }) as Diagnostics;
+  const labels = (d: Diagnostics | undefined) => claudeAccountItems(d, () => {}).map((i) => i.label);
+
+  it("offers switching and signing out when signed in, otherwise signing in", () => {
+    expect(labels(diag(true, true))).toEqual(["Konto wechseln", "Abmelden", "Claude-Einstellungen"]);
+    expect(labels(diag(true, false))).toEqual(["Anmelden", "Claude-Einstellungen"]);
+    expect(labels(diag(false, false))).toEqual(["Claude-Einstellungen"]);
+    expect(labels(undefined)).toEqual(["Claude-Einstellungen"]);
+  });
+
+  it("opens the matching dialog", () => {
+    const [sw, out] = claudeAccountItems(diag(true, true), () => {});
+    act(() => sw!.onSelect());
+    expect(useUi.getState().claudeLogin?.reason).toBe("switch");
+    act(() => out!.onSelect());
+    expect(useUi.getState().claudeLogout).toBe(true);
   });
 });

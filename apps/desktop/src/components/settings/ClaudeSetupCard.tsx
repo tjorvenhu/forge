@@ -1,12 +1,13 @@
 import { useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { CheckCircle2, Download, ExternalLink, LogIn } from "lucide-react";
+import { ArrowLeftRight, CheckCircle2, Download, ExternalLink, LogIn, LogOut } from "lucide-react";
 import type { MethodName } from "@forge/protocol";
 import { call, keys, useClaudeSetup, useDiagnostics } from "@/lib/queries";
 import { errorMessage } from "@/lib/rpc";
 import { openExternal } from "@/lib/native";
 import { planLabel } from "@/lib/utils";
 import { toast } from "@/stores/toast";
+import { useUi } from "@/stores/ui";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge, ErrorBanner } from "@/components/ui/misc";
@@ -167,10 +168,18 @@ export function ClaudeSetupCard() {
   }
 
   return (
-    <div className="flex items-center gap-2 text-body">
+    <div className="flex flex-wrap items-center gap-2 text-body">
       <CheckCircle2 className="h-4 w-4 text-success" />
       Claude Code {d.claude.version?.split(" ")[0]} ist eingerichtet
       {d.auth.subscriptionType && <Badge tone="success">{planLabel(d.auth)}</Badge>}
+      <div className="ml-auto flex gap-1">
+        <Button size="sm" variant="ghost" onClick={() => useUi.getState().openClaudeLogin("switch")}>
+          <ArrowLeftRight className="h-3.5 w-3.5" /> Konto wechseln
+        </Button>
+        <Button size="sm" variant="ghost" onClick={() => useUi.getState().setClaudeLogout(true)}>
+          <LogOut className="h-3.5 w-3.5" /> Abmelden
+        </Button>
+      </div>
     </div>
   );
 }

@@ -12,7 +12,7 @@ import { CommandPalette } from "@/components/layout/CommandPalette";
 import { AppUpdateDialog } from "@/components/layout/AppUpdate";
 import { SetupWizard } from "@/components/setup/SetupWizard";
 import { SyncPrompt } from "@/components/setup/SyncPrompt";
-import { ClaudeLoginDialog } from "@/components/settings/ClaudeLoginDialog";
+import { ClaudeLoginDialog, ClaudeLogoutDialog } from "@/components/settings/ClaudeLoginDialog";
 import { Logo } from "@/components/layout/Logo";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/misc";
@@ -134,6 +134,7 @@ function Shell() {
       <AppUpdateDialog />
       <SetupWizard />
       <ClaudeLoginDialog />
+      <ClaudeLogoutDialog />
       <SyncPrompt />
       <AgentReviewDialog />
       <Toaster />

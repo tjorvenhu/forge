@@ -15,6 +15,7 @@ export const PHONE_TOOL_FOR: Partial<Record<MethodName, string>> = {
   "claude.install": "forge_system",
   "claude.checkUpdate": "forge_system",
   "claude.update": "forge_system",
+  "claude.logout": "forge_system",
 
   "remote.state": "remote_control",
   "remote.start": "remote_control",

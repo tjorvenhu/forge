@@ -172,6 +172,21 @@ export class ClaudeSetupService {
     return this.state;
   }
 
+  /** Signs Claude Code out on this computer (`claude auth logout` removes the stored credentials). */
+  async logout(): Promise<void> {
+    this.ensureIdle();
+    const s = this.settings();
+    const claude = locateClaude(s.claudePath);
+    if (!claude) throw new ForgeError("CLAUDE_NOT_INSTALLED", "Claude Code ist nicht installiert.");
+    const r = await run(claude, ["auth", "logout"], { env: sessionEnv(s.stripApiKey), timeoutMs: 20_000 });
+    if (r.spawnError || r.code !== 0) {
+      const why = r.spawnError?.message ?? stripAnsi(r.stderr || r.stdout).trim().slice(0, 300);
+      throw new ForgeError("INTERNAL", `Abmelden fehlgeschlagen${why ? `: ${why}` : "."}`);
+    }
+    // A finished login of the old account must not read as the current state.
+    this.set({ task: null, phase: "idle", url: null, log: [], message: null });
+  }
+
   submitCode(code: string): ClaudeSetupState {
     if (!this.proc || this.state.task !== "login") throw new ForgeError("NOT_FOUND", "Keine laufende Anmeldung.");
     this.proc.stdin?.write(code.trim() + "\n");

@@ -4,6 +4,7 @@ import { isChatWindow } from "@/lib/chat-windows";
 export type View = "home" | "projects" | "sessions" | "mcp" | "settings" | "workspace";
 export type NewProjectMode = "import" | "create" | "clone";
 export type BottomTab = "output" | "dev";
+export type ClaudeLoginReason = "expired" | "manual" | "switch";
 
 // Lists rather than plain unions: the command palette needs an entry for every value (palette-actions.test.tsx).
 /** In the order of the tab bar. */
@@ -160,11 +161,14 @@ interface UiState {
   /** the setup assistant, opened again by hand (it opens on its own until the first setup is done) */
   setupWizard: boolean;
   setSetupWizard: (open: boolean) => void;
-  /** dialog to sign in to Claude again; `expired`: a session was refused for the sign-in */
-  claudeLogin: { id: number; reason: "expired" | "manual" } | null;
+  /** dialog to sign in to Claude; `expired`: a session was refused for the sign-in, `switch`: another account */
+  claudeLogin: { id: number; reason: ClaudeLoginReason } | null;
   /** keeps a dialog that is already open, so several failing sessions do not restart it */
-  openClaudeLogin: (reason: "expired" | "manual") => void;
+  openClaudeLogin: (reason: ClaudeLoginReason) => void;
   closeClaudeLogin: () => void;
+  /** asks before signing Claude Code out */
+  claudeLogout: boolean;
+  setClaudeLogout: (open: boolean) => void;
   /** asks the bottom panel of a project to open a terminal tab */
   terminalRequest: { projectId: string; program: "shell" | "claude"; label?: string } | null;
   openTerminal: (projectId: string, program: "shell" | "claude", label?: string) => void;
@@ -291,6 +295,7 @@ export const useUi = create<UiState>((set, get) => ({
   newProject: null,
   setupWizard: false,
   claudeLogin: null,
+  claudeLogout: false,
   terminalRequest: null,
   panelRequest: null,
   paletteOpen: false,
@@ -476,4 +481,5 @@ export const useUi = create<UiState>((set, get) => ({
   setSetupWizard: (setupWizard) => set({ setupWizard }),
   openClaudeLogin: (reason) => set((s) => (s.claudeLogin ? {} : { claudeLogin: { id: Date.now(), reason } })),
   closeClaudeLogin: () => set({ claudeLogin: null }),
+  setClaudeLogout: (claudeLogout) => set({ claudeLogout }),
 }));

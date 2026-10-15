@@ -28,6 +28,9 @@ vi.mock("node:child_process", async (importOriginal) => {
 
 vi.mock("../src/claude/environment.js", () => ({ locateClaude: () => "C:\\claude.exe", sessionEnv: () => ({}) }));
 
+const runMock = vi.hoisted(() => vi.fn());
+vi.mock("../src/util/proc.js", () => ({ run: runMock }));
+
 const { ClaudeSetupService } = await import("../src/claude/setup.js");
 
 beforeEach(() => {
@@ -61,5 +64,28 @@ describe("Claude setup", () => {
     children[0]!.emit("close", 0);
     expect(setup.current()).toMatchObject({ task: "login", phase: "running" });
     expect(() => setup.install()).toThrow(/bereits/);
+  });
+
+  it("signs out through the CLI and forgets the finished login of the old account", async () => {
+    runMock.mockResolvedValue({ code: 0, stdout: "Successfully logged out", stderr: "", timedOut: false, spawnError: null });
+    const states: ClaudeSetupState[] = [];
+    const setup = new ClaudeSetupService((s) => states.push(s), () => ({ claudePath: null, stripApiKey: false }));
+    setup.login();
+    children[0]!.emit("close", 0);
+    expect(setup.current().phase).toBe("done");
+    await setup.logout();
+    expect(runMock).toHaveBeenCalledWith("C:\\claude.exe", ["auth", "logout"], expect.anything());
+    expect(setup.current()).toMatchObject({ task: null, phase: "idle" });
+    expect(states.at(-1)).toMatchObject({ task: null, phase: "idle" });
+  });
+
+  it("does not sign out while a login runs and reports a failing logout", async () => {
+    const setup = new ClaudeSetupService(() => {}, () => ({ claudePath: null, stripApiKey: false }));
+    setup.login();
+    await expect(setup.logout()).rejects.toThrow(/bereits/);
+    children[0]!.emit("close", 0);
+    runMock.mockResolvedValue({ code: 1, stdout: "", stderr: "keychain locked", timedOut: false, spawnError: null });
+    await expect(setup.logout()).rejects.toThrow("Abmelden fehlgeschlagen: keychain locked");
+    expect(setup.current().phase).toBe("done");
   });
 });

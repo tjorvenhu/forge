@@ -3,6 +3,7 @@ import type { QueryClient } from "@tanstack/react-query";
 import {
   Archive,
   ArrowDown,
+  ArrowLeftRight,
   ArrowUp,
   ArrowUpCircle,
   BookOpen,
@@ -24,6 +25,7 @@ import {
   GitPullRequest,
   ListChecks,
   LogIn,
+  LogOut,
   MessageSquare,
   MessageSquarePlus,
   MonitorSmartphone,
@@ -514,6 +516,8 @@ export function buildActions(ctx: ActionContext): PaletteEntry[] {
   if (settings?.syncEnabled) act("sync-now", "Jetzt über GitHub abgleichen", icon(RefreshCcw), () => void syncNow(qc), { keywords: "sync synchronisieren andere pc" });
   act("setup-wizard", "Einrichtungsassistent öffnen", icon(Wand2), () => ui.setSetupWizard(true), { keywords: "einrichten erster start setup onboarding" });
   act("claude-login", "Bei Claude anmelden", icon(LogIn), () => ui.openClaudeLogin("manual"), { keywords: "login anmeldung abgelaufen konto abo neu anmelden oauth" });
+  act("claude-switch", "Claude-Konto wechseln", icon(ArrowLeftRight), () => ui.openClaudeLogin("switch"), { keywords: "account konto wechseln anderes login" });
+  act("claude-logout", "Von Claude abmelden", icon(LogOut), () => ui.setClaudeLogout(true), { keywords: "logout abmelden konto account" });
   act("update-check", "Nach Updates suchen", icon(RefreshCw), () => void checkForUpdate(qc), { keywords: "version release aktualisieren" });
   const update = qc.getQueryData<AppUpdateState>(keys.appUpdate);
   if (update?.latest && update.installable && ["available", "downloading", "ready"].includes(update.phase)) {

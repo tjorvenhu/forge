@@ -5,6 +5,9 @@ import { errorMessage } from "@/lib/rpc";
 import { toast } from "@/stores/toast";
 import { Button } from "@/components/ui/button";
 import { Skeleton, SkeletonRegion } from "@/components/ui/skeleton";
+import { DropdownMenu } from "@/components/ui/dropdown";
+import { claudeAccountItems } from "@/components/settings/ClaudeLoginDialog";
+import { contextItems } from "@/lib/context-menu";
 import { useUi, type View } from "@/stores/ui";
 import { cn, planLabel, relativeTime } from "@/lib/utils";
 import { Logo } from "./Logo";
@@ -129,52 +132,56 @@ function ClaudeStatusCard() {
     }
   }
   const windows = usage.data?.available ? usage.data.windows.slice(0, 3) : [];
+  const items = () => claudeAccountItems(d, () => openSettings("claude"));
+  const summary = (
+    <button className="flex flex-col gap-2 text-left" title="Claude-Konto, Nutzung und Diagnose">
+      <div className="flex w-full items-center gap-2.5">
+        <div className="min-w-0 flex-1">
+          <div className="text-body">Claude Code</div>
+          {diag.isPending ? (
+            <SkeletonRegion label="Lädt Claude-Status" className="flex h-4 items-center">
+              <Skeleton className="h-2.5 w-24" />
+            </SkeletonRegion>
+          ) : (
+            <div className="flex items-center gap-1.5 text-caption text-muted">
+              <span className={cn("h-1.5 w-1.5 rounded-full", tone)} />
+              {line}
+            </div>
+          )}
+        </div>
+        <GitHubAvatar />
+      </div>
+      {usage.isPending ? (
+        <SkeletonRegion label="Lädt Nutzung" className="flex w-full flex-col gap-1.5">
+          {[0, 1].map((i) => (
+            <div key={i}>
+              <div className="mb-0.5 flex h-4 items-center justify-between">
+                <Skeleton className="h-2.5 w-16" />
+                <Skeleton className="h-2.5 w-8" />
+              </div>
+              <Skeleton className="h-1 rounded-full" />
+            </div>
+          ))}
+        </SkeletonRegion>
+      ) : (
+        windows.length > 0 && (
+          <div className="flex w-full flex-col gap-1.5" aria-label="Nutzung des Abos">
+            {windows.map((w) => (
+              <UsageBar key={w.key} label={w.label} value={w.utilization} resetsAt={w.resetsAt} />
+            ))}
+          </div>
+        )
+      )}
+      <TokenRate />
+    </button>
+  );
   return (
     <>
-    <AppUpdateCard />
-    <div className="m-3 flex flex-col gap-2.5 rounded-xl border border-border bg-surface px-3.5 py-3 hover:border-border-strong">
-      <button onClick={() => openSettings("claude")} className="flex flex-col gap-2 text-left" title="Claude-Code-Status, Nutzung und Diagnose">
-        <div className="flex w-full items-center gap-2.5">
-          <div className="min-w-0 flex-1">
-            <div className="text-body">Claude Code</div>
-            {diag.isPending ? (
-              <SkeletonRegion label="Lädt Claude-Status" className="flex h-4 items-center">
-                <Skeleton className="h-2.5 w-24" />
-              </SkeletonRegion>
-            ) : (
-              <div className="flex items-center gap-1.5 text-caption text-muted">
-                <span className={cn("h-1.5 w-1.5 rounded-full", tone)} />
-                {line}
-              </div>
-            )}
-          </div>
-          <GitHubAvatar />
-        </div>
-        {usage.isPending ? (
-          <SkeletonRegion label="Lädt Nutzung" className="flex w-full flex-col gap-1.5">
-            {[0, 1].map((i) => (
-              <div key={i}>
-                <div className="mb-0.5 flex h-4 items-center justify-between">
-                  <Skeleton className="h-2.5 w-16" />
-                  <Skeleton className="h-2.5 w-8" />
-                </div>
-                <Skeleton className="h-1 rounded-full" />
-              </div>
-            ))}
-          </SkeletonRegion>
-        ) : (
-          windows.length > 0 && (
-            <div className="flex w-full flex-col gap-1.5" aria-label="Nutzung des Abos">
-              {windows.map((w) => (
-                <UsageBar key={w.key} label={w.label} value={w.utilization} resetsAt={w.resetsAt} />
-              ))}
-            </div>
-          )
-        )}
-        <TokenRate />
-      </button>
-      <ClaudeUpdateButton />
-    </div>
+      <AppUpdateCard />
+      <div className="m-3 flex flex-col gap-2.5 rounded-xl border border-border bg-surface px-3.5 py-3 hover:border-border-strong" onContextMenu={contextItems(items)}>
+        <DropdownMenu align="start" header={d?.auth.loggedIn ? `Claude Code · ${line}` : "Claude Code"} items={items()} trigger={summary} />
+        <ClaudeUpdateButton />
+      </div>
     </>
   );
 }

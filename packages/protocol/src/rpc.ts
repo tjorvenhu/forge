@@ -102,6 +102,8 @@ export const methods = {
   "claude.update": { params: empty, result: ClaudeSetupState },
   "claude.submitLoginCode": { params: z.object({ code: z.string().min(1).max(2000) }), result: ClaudeSetupState },
   "claude.cancelSetup": { params: empty, result: ClaudeSetupState },
+  /** signs Claude Code out on this computer; sessions need a new sign-in afterwards */
+  "claude.logout": { params: empty, result: ClaudeSetupState },
 
   "remote.state": { params: empty, result: RemoteState },
   "remote.start": { params: empty, result: RemoteState },

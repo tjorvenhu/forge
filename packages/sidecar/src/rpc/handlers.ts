@@ -105,6 +105,12 @@ export function createHandlers(s: Services): Handlers {
     "claude.update": () => s.claudeSetup.update(),
     "claude.submitLoginCode": ({ code }) => s.claudeSetup.submitCode(code),
     "claude.cancelSetup": () => s.claudeSetup.cancel(),
+    "claude.logout": async () => {
+      await s.claudeSetup.logout();
+      diagCache = null;
+      s.sessions.invalidateRuntimeInfo();
+      return s.claudeSetup.current();
+    },
 
     "remote.state": () => s.sessions.remoteState(),
     "remote.start": () => s.sessions.remoteStart(),
