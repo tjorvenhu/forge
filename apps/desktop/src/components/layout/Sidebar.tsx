@@ -134,7 +134,8 @@ function ClaudeStatusCard() {
   const windows = usage.data?.available ? usage.data.windows.slice(0, 3) : [];
   const items = () => claudeAccountItems(d, () => openSettings("claude"));
   const summary = (
-    <button className="flex flex-col gap-2 text-left" title="Claude-Konto, Nutzung und Diagnose">
+    // The menu hands focus back to the button when it closes; the global focus outline would frame the card.
+    <button className="flex flex-col gap-2 text-left focus-visible:outline-none" title="Claude-Konto, Nutzung und Diagnose">
       <div className="flex w-full items-center gap-2.5">
         <div className="min-w-0 flex-1">
           <div className="text-body">Claude Code</div>
