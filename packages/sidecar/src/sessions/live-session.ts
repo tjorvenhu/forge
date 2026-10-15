@@ -98,9 +98,14 @@ export function titleFrom(prompt: string): string {
   return first.length > 80 ? first.slice(0, 77) + "…" : first;
 }
 
+/** Claude Code rejected the sign-in (never signed in, expired or revoked). */
+export function isAuthFailure(msg: string): boolean {
+  return /not logged in|please run \/login|invalid api key|authenticat|oauth token has expired|token has been revoked/i.test(msg);
+}
+
 export function describeRuntimeError(e: unknown): string {
   const msg = e instanceof Error ? e.message : String(e);
-  if (/not logged in|please run \/login|invalid api key|authentication/i.test(msg)) {
+  if (isAuthFailure(msg)) {
     return "Claude Code ist nicht angemeldet oder die Anmeldung ist ungültig. In den Einstellungen unter Claude Code mit „Mit Claude-Konto anmelden“ neu anmelden.";
   }
   if (new RegExp(`unknown option.*${REPLAY_FLAG}`, "i").test(msg)) {

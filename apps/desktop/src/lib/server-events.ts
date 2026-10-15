@@ -158,6 +158,11 @@ export function routeServerEvent(qc: QueryClient, git: GitRefresher, e: ServerEv
         toast.error("Update fehlgeschlagen", e.payload.message ?? undefined);
       }
       break;
+    case "claude.authRequired":
+      void call("system.diagnostics", { refresh: true }).then((d) => qc.setQueryData(keys.diagnostics, d));
+      // One dialog in the main window; each window would open the sign-in page on its own otherwise.
+      if (!isChatWindow()) useUi.getState().openClaudeLogin("expired");
+      break;
     case "remote.updated":
       qc.setQueryData(keys.remote, e.payload);
       break;

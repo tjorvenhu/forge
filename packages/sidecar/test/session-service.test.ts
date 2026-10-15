@@ -1001,6 +1001,23 @@ describe("concurrency and lifecycle", () => {
     expect(lastStatus).toMatchObject({ status: "idle", detail: null });
   });
 
+  it("asks to sign in again once per turn when the API refuses the login", async () => {
+    const authRequired = () => emitted.filter((e) => e.event === "claude.authRequired");
+    const s = await svc.start({ projectId, prompt: "x" });
+    rt.sinks[0]!.onMessage({ type: "assistant", error: "authentication_failed", message: { id: "m1", role: "assistant", content: [{ type: "text", text: "OAuth token has expired · Please run /login" }] } });
+    rt.sinks[0]!.onMessage({ type: "result", subtype: "success", is_error: true, result: "OAuth token has expired · Please run /login" });
+    expect(authRequired()).toEqual([{ event: "claude.authRequired", payload: { sessionId: s.id } }]);
+    await svc.send(s.id, "nochmal");
+    rt.sinks[0]!.onMessage({ type: "result", subtype: "error_during_execution", is_error: true, errors: ["kaputt"] });
+    expect(authRequired()).toHaveLength(1);
+  });
+
+  it("asks to sign in again when the process ends for a missing login", async () => {
+    const s = await svc.start({ projectId, prompt: "x" });
+    rt.sinks[0]!.onEnd(new Error("Invalid API key · Please run /login"));
+    expect(emitted).toContainEqual({ event: "claude.authRequired", payload: { sessionId: s.id } });
+  });
+
   it("marks open sessions as interrupted on shutdown so they can be resumed", async () => {
     const s = await svc.start({ projectId, prompt: "x" });
     svc.shutdown();

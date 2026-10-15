@@ -319,6 +319,15 @@ function ResumeSection() {
   );
 }
 
+function LoginButton() {
+  const openClaudeLogin = useUi((s) => s.openClaudeLogin);
+  return (
+    <Button size="sm" variant="primary" onClick={() => openClaudeLogin("manual")}>
+      Anmelden
+    </Button>
+  );
+}
+
 function SetupButton() {
   const openSettings = useUi((s) => s.openSettings);
   return (
@@ -352,7 +361,7 @@ function ApiKeyWarning() {
   if (notLoggedIn)
     return (
       <div className="mb-5">
-        <ErrorBanner title="Claude Code ist nicht angemeldet" action={<SetupButton />}>
+        <ErrorBanner title="Claude Code ist nicht angemeldet" action={<LoginButton />}>
           Melde dich mit deinem Claude-Konto an, um Sessions zu starten.
         </ErrorBanner>
       </div>

@@ -641,6 +641,8 @@ export type ServerEvent =
   | { event: "project.updated"; payload: { projectId: string } }
   | { event: "github.login"; payload: GitHubLoginState }
   | { event: "claude.setup"; payload: ClaudeSetupState }
+  /** Claude Code rejected the sign-in in a session (expired or revoked): the UI offers to sign in again */
+  | { event: "claude.authRequired"; payload: { sessionId: string } }
   | { event: "remote.updated"; payload: RemoteState }
   /** settings changed (in any window or over the phone) */
   | { event: "settings.updated"; payload: Settings }

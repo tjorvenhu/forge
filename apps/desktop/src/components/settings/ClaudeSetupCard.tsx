@@ -15,13 +15,29 @@ import { Skeleton, SkeletonRegion } from "@/components/ui/skeleton";
 // Opens the sign-in page once per login attempt. Module-level so remounts and StrictMode do not open it again.
 let openedUrl: string | null = null;
 
-/** Install Claude Code and sign in without a terminal. The CLI does the actual work. */
-export function ClaudeSetupCard() {
-  const diag = useDiagnostics();
-  const setup = useClaudeSetup();
+type SetupMethod = Extract<MethodName, "claude.install" | "claude.login" | "claude.cancelSetup">;
+
+function useSetupAction() {
   const qc = useQueryClient();
-  const s = setup.data;
-  const d = diag.data;
+  return async (method: SetupMethod) => {
+    try {
+      qc.setQueryData(keys.claudeSetup, await call(method, {}));
+      return true;
+    } catch (e) {
+      toast.error("Schritt fehlgeschlagen", errorMessage(e));
+      return false;
+    }
+  };
+}
+
+/**
+ * Sign-in with the Claude account through `claude auth login`: opens the sign-in page and takes the
+ * code it shows. Used in the setup card and in the dialog that opens when a session's login expired.
+ */
+export function ClaudeLoginForm({ showError = true, onStart }: { showError?: boolean; onStart?: () => void }) {
+  const s = useClaudeSetup().data;
+  const qc = useQueryClient();
+  const act = useSetupAction();
   const running = s?.phase === "running" || s?.phase === "waiting_code";
 
   const url = s?.phase === "waiting_code" ? s.url : null;
@@ -37,13 +53,75 @@ export function ClaudeSetupCard() {
     }
   }, [url]);
 
-  const act = async (method: Extract<MethodName, "claude.install" | "claude.login" | "claude.cancelSetup">) => {
-    try {
-      qc.setQueryData(keys.claudeSetup, await call(method, {}));
-    } catch (e) {
-      toast.error("Schritt fehlgeschlagen", errorMessage(e));
-    }
-  };
+  if (s?.task === "login" && s.phase === "waiting_code") {
+    return (
+      <div className="flex w-full flex-col items-start gap-2.5">
+        <p className="text-xs text-muted">Melde dich im Browser an. Danach zeigt die Seite einen Code: hier einfügen und bestätigen.</p>
+        <div className="flex w-full gap-2">
+          <Input value={code} onChange={(e) => setCode(e.target.value)} placeholder="Code von der Anmeldeseite" className="font-mono text-xs" autoFocus />
+          <Button
+            variant="primary"
+            disabled={!code.trim()}
+            loading={submitting}
+            onClick={async () => {
+              if (submitting) return;
+              setSubmitting(true);
+              try {
+                qc.setQueryData(keys.claudeSetup, await call("claude.submitLoginCode", { code }));
+                setCode("");
+              } catch (e) {
+                toast.error("Code nicht übermittelt", errorMessage(e));
+              } finally {
+                setSubmitting(false);
+              }
+            }}
+          >
+            Bestätigen
+          </Button>
+        </div>
+        <div className="flex gap-2">
+          <Button size="sm" variant="ghost" onClick={() => s.url && void openExternal(s.url)}>
+            <ExternalLink className="h-3.5 w-3.5" /> Anmeldeseite erneut öffnen
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => {
+              setCode("");
+              void act("claude.cancelSetup");
+            }}
+          >
+            Abbrechen
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex w-full flex-col items-start gap-2.5">
+      {showError && s?.task === "login" && s.phase === "error" && <ErrorBanner title="Anmeldung fehlgeschlagen">{s.message}</ErrorBanner>}
+      <Button
+        variant="primary"
+        onClick={async () => {
+          if (await act("claude.login")) onStart?.();
+        }}
+        loading={running}
+      >
+        <LogIn className="h-3.5 w-3.5" /> Mit Claude-Konto anmelden
+      </Button>
+    </div>
+  );
+}
+
+/** Install Claude Code and sign in without a terminal. The CLI does the actual work. */
+export function ClaudeSetupCard() {
+  const diag = useDiagnostics();
+  const setup = useClaudeSetup();
+  const act = useSetupAction();
+  const s = setup.data;
+  const d = diag.data;
+  const running = s?.phase === "running" || s?.phase === "waiting_code";
 
   if (!d)
     return (
@@ -83,55 +161,7 @@ export function ClaudeSetupCard() {
     return (
       <div className="flex flex-col items-start gap-2.5">
         <div className="text-body">Claude Code ist installiert, aber nicht angemeldet.</div>
-        {s?.task === "login" && s.phase === "waiting_code" ? (
-          <>
-            <p className="text-xs text-muted">Melde dich im Browser an. Danach zeigt die Seite einen Code: hier einfügen und bestätigen.</p>
-            <div className="flex w-full gap-2">
-              <Input value={code} onChange={(e) => setCode(e.target.value)} placeholder="Code von der Anmeldeseite" className="font-mono text-xs" autoFocus />
-              <Button
-                variant="primary"
-                disabled={!code.trim()}
-                loading={submitting}
-                onClick={async () => {
-                  if (submitting) return;
-                  setSubmitting(true);
-                  try {
-                    qc.setQueryData(keys.claudeSetup, await call("claude.submitLoginCode", { code }));
-                    setCode("");
-                  } catch (e) {
-                    toast.error("Code nicht übermittelt", errorMessage(e));
-                  } finally {
-                    setSubmitting(false);
-                  }
-                }}
-              >
-                Bestätigen
-              </Button>
-            </div>
-            <div className="flex gap-2">
-              <Button size="sm" variant="ghost" onClick={() => s.url && void openExternal(s.url)}>
-                <ExternalLink className="h-3.5 w-3.5" /> Anmeldeseite erneut öffnen
-              </Button>
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() => {
-                  setCode("");
-                  void act("claude.cancelSetup");
-                }}
-              >
-                Abbrechen
-              </Button>
-            </div>
-          </>
-        ) : (
-          <>
-            {s?.task === "login" && s.phase === "error" && <ErrorBanner title="Anmeldung fehlgeschlagen">{s.message}</ErrorBanner>}
-            <Button variant="primary" onClick={() => void act("claude.login")} loading={running}>
-              <LogIn className="h-3.5 w-3.5" /> Mit Claude-Konto anmelden
-            </Button>
-          </>
-        )}
+        <ClaudeLoginForm />
       </div>
     );
   }

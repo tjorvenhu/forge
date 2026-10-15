@@ -160,6 +160,11 @@ interface UiState {
   /** the setup assistant, opened again by hand (it opens on its own until the first setup is done) */
   setupWizard: boolean;
   setSetupWizard: (open: boolean) => void;
+  /** dialog to sign in to Claude again; `expired`: a session was refused for the sign-in */
+  claudeLogin: { id: number; reason: "expired" | "manual" } | null;
+  /** keeps a dialog that is already open, so several failing sessions do not restart it */
+  openClaudeLogin: (reason: "expired" | "manual") => void;
+  closeClaudeLogin: () => void;
   /** asks the bottom panel of a project to open a terminal tab */
   terminalRequest: { projectId: string; program: "shell" | "claude"; label?: string } | null;
   openTerminal: (projectId: string, program: "shell" | "claude", label?: string) => void;
@@ -285,6 +290,7 @@ export const useUi = create<UiState>((set, get) => ({
   bottomPanelOpen: false,
   newProject: null,
   setupWizard: false,
+  claudeLogin: null,
   terminalRequest: null,
   panelRequest: null,
   paletteOpen: false,
@@ -468,4 +474,6 @@ export const useUi = create<UiState>((set, get) => ({
   },
   setNewProject: (newProject) => set({ newProject }),
   setSetupWizard: (setupWizard) => set({ setupWizard }),
+  openClaudeLogin: (reason) => set((s) => (s.claudeLogin ? {} : { claudeLogin: { id: Date.now(), reason } })),
+  closeClaudeLogin: () => set({ claudeLogin: null }),
 }));

@@ -8,7 +8,7 @@ import type { SessionRecord } from "../persistence/db.js";
 import { blockedTools, effectivePermissionMode, resolveProfile, type ProfileConfig } from "../policy/profiles.js";
 import type { ProjectManager } from "../projects/project-manager.js";
 import { denyPending, type ApprovalGate } from "./approvals.js";
-import { BUSY, closeLive, describeRuntimeError, endLive, REMOTE_PLACEHOLDER_TITLE, titleFrom, type LiveSession } from "./live-session.js";
+import { BUSY, closeLive, describeRuntimeError, endLive, isAuthFailure, REMOTE_PLACEHOLDER_TITLE, titleFrom, type LiveSession } from "./live-session.js";
 import type { RemoteBridge } from "./remote-bridge.js";
 import type { RuntimeCatalog } from "./runtime-catalog.js";
 import type { SessionCore } from "./session-core.js";
@@ -286,6 +286,7 @@ export class SessionLifecycle {
       const msg = describeRuntimeError(error);
       this.core.record(id, { type: "error", message: msg, retryable: true });
       this.core.setStatus(id, "error", msg, { lastError: msg });
+      if (isAuthFailure(error.message)) this.core.emit({ event: "claude.authRequired", payload: { sessionId: id } });
     } else {
       this.core.setStatus(id, "stopped", live.endDetail ?? null);
     }

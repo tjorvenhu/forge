@@ -1,7 +1,7 @@
 import type { BackgroundTask } from "@forge/protocol";
 import type { AutoContinue } from "./auto-continue.js";
 import type { ContextRecovery } from "./context-recovery.js";
-import { pruneSeenUuids, type LiveSession } from "./live-session.js";
+import { isAuthFailure, pruneSeenUuids, type LiveSession } from "./live-session.js";
 import type { PermissionModes } from "./permission-mode.js";
 import type { RateLimitTracker } from "./rate-limit.js";
 import type { RemoteBridge } from "./remote-bridge.js";
@@ -31,6 +31,8 @@ export class SessionStream {
   private readonly autoContinue: AutoContinue;
   private readonly limits: RateLimitTracker;
   private readonly recovery: ContextRecovery;
+  /** sessions whose current turn got an answer the API refused for the sign-in */
+  private readonly authFailed = new WeakSet<LiveSession>();
 
   constructor(
     private readonly core: SessionCore,
@@ -62,6 +64,7 @@ export class SessionStream {
     // A subagent in the background goes on talking after its starter's turn ended; that is not a turn.
     const turnOutput = !m.parent_tool_use_id && (m.type === "assistant" || (m.type === "stream_event" && (m.event as Record<string, unknown> | undefined)?.type === "message_start"));
     if (turnOutput && this.core.db.getSession(id)?.status === "idle") this.turns.markRunning(id, live);
+    if (m.type === "assistant" && !m.parent_tool_use_id && m.error === "authentication_failed") this.authFailed.add(live);
     for (const body of live.normalizer.normalize(msg)) {
       this.core.record(id, body);
       if (body.type === "session.init") {
@@ -85,6 +88,8 @@ export class SessionStream {
         this.remote.endTurn(id, live);
         pruneSeenUuids(live.seenUuids);
         const failed = body.isError && !wasInterrupt;
+        const authFailed = this.authFailed.delete(live) || (body.isError && isAuthFailure(body.text ?? ""));
+        if (authFailed && !wasInterrupt) this.core.emit({ event: "claude.authRequired", payload: { sessionId: id } });
         live.subagents.clear();
         this.core.setStatus(id, "idle", wasInterrupt ? "Gestoppt" : null, { lastError: failed ? (body.text ?? body.subtype) : null });
         if (!wasInterrupt && !body.isError) this.automation.schedule(id);
