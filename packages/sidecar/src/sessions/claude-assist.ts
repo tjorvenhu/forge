@@ -1,5 +1,5 @@
-import { ForgeError, type KnowledgeEntry } from "@forge/protocol";
-import { buildMergePlanPrompt, buildMergePrompt, cleanMergePlan, MERGE_PLAN_SCHEMA, MERGE_SCHEMA, type KnowledgeOverlap } from "../knowledge/knowledge.js";
+import { ForgeError, type KnowledgeEntry, type KnowledgeMissingRef } from "@forge/protocol";
+import { buildFixPrompt, buildMergePlanPrompt, buildMergePrompt, cleanMergePlan, MERGE_PLAN_SCHEMA, MERGE_SCHEMA, type KnowledgeOverlap } from "../knowledge/knowledge.js";
 import { z } from "zod";
 import type { ClaudeRuntime } from "../claude/runtime.js";
 import { locateClaude, sessionEnv } from "../claude/environment.js";
@@ -116,6 +116,24 @@ export class ClaudeAssist {
       title: out.data.title.trim().slice(0, 120) || entries[0]!.title,
       summary: out.data.summary.trim().slice(0, 300),
       tags: [...new Set(out.data.tags.map((t) => t.trim().toLowerCase()).filter(Boolean))].slice(0, 8),
+      content: out.data.content.trim(),
+      model,
+    };
+  }
+
+  /** Corrected text for an entry whose references go nowhere; the caller shows or saves it. */
+  async fixKnowledge(projectId: string, ctx: { entry: KnowledgeEntry; missing: KnowledgeMissingRef[]; details: string }) {
+    const project = this.projects.requireExisting(projectId);
+    const { claudePath, env } = this.claude();
+    const model = MERGE_MODEL;
+    const raw = await this.runtime.completeJson(buildFixPrompt(ctx.entry, ctx.missing, ctx.details), MERGE_SCHEMA, { cwd: project.path, env, claudePath, model });
+    const out = MergeDraft.safeParse(raw);
+    if (!out.success || !out.data.content.trim()) throw new ForgeError("CLAUDE_RUNTIME", "Claude hat keinen korrigierten Eintrag geliefert.");
+    const tags = [...new Set(out.data.tags.map((t) => t.trim().toLowerCase()).filter(Boolean))].slice(0, 8);
+    return {
+      title: out.data.title.trim().slice(0, 120) || ctx.entry.title,
+      summary: out.data.summary.trim().slice(0, 300) || ctx.entry.summary,
+      tags: tags.length ? tags : ctx.entry.tags,
       content: out.data.content.trim(),
       model,
     };

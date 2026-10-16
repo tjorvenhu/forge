@@ -92,8 +92,21 @@ export function projectTools(rec: SessionRecord, p: ProjectToolDeps): { tools: S
     run: async (a) => {
       const hits = p.knowledge.search(projectId, String(a.query), typeof a.limit === "number" ? a.limit : 8);
       if (!hits.length) return "Keine Treffer im Projektwissen.";
-      return hits.map((h) => `${h.id}: ${h.title}${h.tags.length ? ` [${h.tags.join(", ")}]` : ""}\n  ${h.summary}\n  ${h.snippet}`).join("\n");
+      const gone = await missingRefs(hits.map((h) => h.id));
+      return hits
+        .map((h) => {
+          const refs = gone.get(h.id);
+          return `${h.id}: ${h.title}${h.tags.length ? ` [${h.tags.join(", ")}]` : ""}\n  ${h.summary}\n  ${h.snippet}${refs ? `\n  Veraltet, gibt es nicht mehr: ${refs}` : ""}`;
+        })
+        .join("\n");
     },
+  };
+  /** Missing refs per entry as a short list; a failed check must not break reading the knowledge. */
+  const missingRefs = async (ids: string[]): Promise<Map<string, string>> => {
+    const report = await p.knowledge.staleness(projectId, { ids }).catch(() => null);
+    const out = new Map<string, string>();
+    for (const e of report?.entries ?? []) if (e.missing.length) out.set(e.id, e.missing.map((m) => `\`${m.ref}\``).join(", "));
+    return out;
   };
   const knowledgeRead: SessionTool = {
     name: "knowledge_read",
@@ -102,7 +115,11 @@ export function projectTools(rec: SessionRecord, p: ProjectToolDeps): { tools: S
     autoAllow: true,
     run: async (a) => {
       const e = await p.knowledge.read(projectId, String(a.id));
-      return `# ${e.title}\nZusammenfassung: ${e.summary}\nTags: ${e.tags.join(", ") || "keine"}\nStand: ${e.updatedAt.slice(0, 10)}\n\n${e.content}`;
+      const refs = (await missingRefs([e.id])).get(e.id);
+      const stale = refs
+        ? `\nVeraltet: Diese Verweise gibt es im Projekt nicht mehr: ${refs}. Verlass dich an diesen Stellen nicht auf den Eintrag, prüfe den Code und korrigiere den Eintrag mit knowledge_save.`
+        : "";
+      return `# ${e.title}\nZusammenfassung: ${e.summary}\nTags: ${e.tags.join(", ") || "keine"}\nStand: ${e.updatedAt.slice(0, 10)}${stale}\n\n${e.content}`;
     },
   };
   const knownTags = p.knowledge.tags(projectId).slice(0, 30);

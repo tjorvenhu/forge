@@ -1869,6 +1869,29 @@ export class PhoneService {
             const { entry, removed } = await call("knowledge.merge", { projectId: p.id, ids, title: draft.title, summary: draft.summary, tags: draft.tags, content: draft.content });
             return `Zusammengeführt in ${entry.id}: ${asData(entry.title)}. Gelöscht: ${removed.join(", ")}. Den Text hat Claude (${draft.model}) geschrieben; alte Fassungen liegen im Git.`;
           }
+          if (o?.stale) {
+            const { entries } = await call("knowledge.checkRefs", { projectId: p.id, refresh: false });
+            const stale = entries.filter((e) => e.missing.length);
+            if (!stale.length) return `Im Projektwissen von ${p.name} verweist kein Eintrag auf Dateien oder Bezeichner, die es nicht mehr gibt.`;
+            const title = new Map(store.list(p.id).map((e) => [e.id, e.title]));
+            return `${stale.length === 1 ? "Ein Eintrag verweist" : `${stale.length} Einträge verweisen`} auf etwas, das es nicht mehr gibt:\n${asData(
+              stale
+                .slice(0, 8)
+                .map((e) => `${e.id} (${title.get(e.id) ?? e.id}): fehlt ${e.missing.slice(0, 4).map((m) => m.ref).join(", ")}${e.missing.length > 4 ? ` und ${e.missing.length - 4} weitere` : ""}`)
+                .join("\n"),
+            )}`;
+          }
+          if (o?.markChecked || o?.fix) {
+            const key = id?.trim();
+            if (!key) return "Fehler: Dafür brauche ich die Kennung des Eintrags (id).";
+            if (o.markChecked) {
+              const { verified } = await call("knowledge.markChecked", { projectId: p.id, id: key });
+              return verified.length ? `Eintrag ${key} ist als geprüft markiert. Diese Verweise meldet FORGE nicht mehr: ${asData(verified.join(", "))}.` : `Eintrag ${key} hat keine fehlenden Verweise.`;
+            }
+            const draft = await call("knowledge.fixDraft", { projectId: p.id, id: key });
+            const entry = await call("knowledge.save", { projectId: p.id, id: key, title: draft.title, summary: draft.summary, tags: draft.tags, content: draft.content });
+            return `Claude (${draft.model}) hat ${entry.id} korrigiert: ${asData(entry.title)}. Die alte Fassung liegt im Git.`;
+          }
           if (o?.cleanup) {
             const { overlaps, long } = await call("knowledge.cleanup", { projectId: p.id });
             if (!overlaps.length && !long.length) return `Im Projektwissen von ${p.name} überschneidet sich nichts, und kein Eintrag ist sehr lang.`;

@@ -1008,6 +1008,26 @@ describe("PhoneService end to end with a test PBX", () => {
     expect(auto).toContain("Nicht zusammengeführt: sync, backup. Claude nicht erreichbar");
     expect(rpcCalls.filter(([m]) => m === "knowledge.merge").at(-1)?.[1]).toMatchObject({ projectId, ids: ["deploy", "traefik"] });
 
+    rpcResults["knowledge.checkRefs"] = () => ({ git: true, entries: [{ id: "deploy", missing: [], checked: 3 }] });
+    expect(await conv.tools.knowledge("shop", "", undefined, undefined, { stale: true })).toBe("Im Projektwissen von shop verweist kein Eintrag auf Dateien oder Bezeichner, die es nicht mehr gibt.");
+    rpcResults["knowledge.checkRefs"] = () => ({
+      git: true,
+      entries: [
+        { id: "deploy", missing: [{ ref: "src/deploy.ts", kind: "path" }, { ref: "runDeploy", kind: "name", hint: "entfernt in abc123: Deploy neu" }], checked: 5 },
+        { id: "sync", missing: [], checked: 2 },
+      ],
+    });
+    const stale = await conv.tools.knowledge("shop", "", undefined, undefined, { stale: true });
+    expect(stale).toMatch(/^Ein Eintrag verweist auf etwas, das es nicht mehr gibt:/);
+    expect(stale).toContain("deploy (deploy): fehlt src/deploy.ts, runDeploy");
+    expect(await conv.tools.knowledge("shop", "", undefined, undefined, { markChecked: true })).toMatch(/^Fehler: Dafür brauche ich die Kennung/);
+    rpcResults["knowledge.markChecked"] = () => ({ verified: ["src/deploy.ts", "runDeploy"] });
+    expect(await conv.tools.knowledge("shop", "", "deploy", undefined, { markChecked: true })).toMatch(/^Eintrag deploy ist als geprüft markiert\. Diese Verweise meldet FORGE nicht mehr: .*src\/deploy\.ts, runDeploy/);
+    rpcResults["knowledge.fixDraft"] = () => ({ title: "Deploy", summary: "Wie wir ausliefern", tags: ["deploy"], content: "# Deploy\n\nNeu", model: "sonnet" });
+    rpcResults["knowledge.save"] = (params: { id: string; title: string }) => ({ id: params.id, title: params.title, summary: "", tags: [], updatedAt: "", content: "" });
+    expect(await conv.tools.knowledge("shop", "", "deploy", undefined, { fix: true })).toMatch(/^Claude \(sonnet\) hat deploy korrigiert: .*Deploy.*\. Die alte Fassung liegt im Git\./);
+    expect(rpcCalls.filter(([m]) => m === "knowledge.save").at(-1)?.[1]).toEqual({ projectId, id: "deploy", title: "Deploy", summary: "Wie wir ausliefern", tags: ["deploy"], content: "# Deploy\n\nNeu" });
+
     testDbCalls = [];
     expect(await conv.tools.testDatabase("shop", "restart")).toBe("Test-Datenbank von shop neu gestartet.");
     expect(testDbCalls).toEqual([`stop:${projectId}`, `start:${projectId}`]);

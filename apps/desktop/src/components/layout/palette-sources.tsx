@@ -1,10 +1,12 @@
 import { useMemo } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { BookOpen, Blocks, FileText, GitBranch, GitCommitHorizontal, History, PackageSearch, PenLine, Server } from "lucide-react";
+import { BookOpen, Blocks, CheckCheck, FileText, GitBranch, GitCommitHorizontal, History, PackageSearch, PenLine, Server, Sparkles } from "lucide-react";
 import type { ProjectWithStatus } from "@forge/protocol";
-import { call, keys, useProjects } from "@/lib/queries";
+import { call, keys, useKnowledgeStale, useProjects } from "@/lib/queries";
 import { relativeTime } from "@/lib/utils";
-import { useUi } from "@/stores/ui";
+import { knowledgeFixRequest, useUi } from "@/stores/ui";
+import { markKnowledgeChecked } from "@/components/knowledge/knowledge-actions";
+import { refsMissingLabel, staleById } from "@/components/knowledge/knowledge-text";
 import { ProjectIcon } from "@/components/projects/ProjectIcon";
 import { checkoutBranch, LOG_LIMIT } from "@/components/git/GitCenter";
 import type { PaletteEntry } from "./palette-actions";
@@ -49,6 +51,7 @@ export function usePaletteSources(query: string, project: ProjectWithStatus | nu
     enabled: typed && !!owner,
     staleTime: 60_000,
   });
+  const stale = useKnowledgeStale(owner ?? "", typed && !!knowledge.data?.length);
   const files = useQuery({ ...projectFilesQuery(project?.id ?? ""), enabled: typed && !!project?.exists });
   // Same keys as the Erweiterungen view, so both share what is loaded.
   const mcp = useQuery({ queryKey: ["mcp", extProjectId ?? "global"], queryFn: () => call("mcp.list", { projectId: extProjectId }), enabled: typed, staleTime: 60_000 });
@@ -114,6 +117,7 @@ export function usePaletteSources(query: string, project: ProjectWithStatus | nu
           run: () => ui.openCommit(id, c.hash),
         });
       }
+      const missing = staleById(stale.data);
       for (const k of knowledge.data ?? []) {
         list.push({
           id: `knowledge-${k.id}`,
@@ -123,6 +127,26 @@ export function usePaletteSources(query: string, project: ProjectWithStatus | nu
           hint: k.tags.slice(0, 3).join(", ") || undefined,
           icon: <BookOpen className="h-4 w-4" />,
           run: () => ui.openKnowledge(k.id),
+        });
+        const refs = missing.get(k.id);
+        if (!refs || !owner) continue;
+        list.push({
+          id: `knowledge-fix-${k.id}`,
+          group: "Wissen",
+          label: `Mit Claude prüfen: ${k.title}`,
+          keywords: `veraltet verweise korrigieren ${refs.map((r) => r.ref).join(" ")}`,
+          hint: refsMissingLabel(refs.length),
+          icon: <Sparkles className="h-4 w-4" />,
+          run: () => ui.openKnowledge(knowledgeFixRequest(k.id)),
+        });
+        list.push({
+          id: `knowledge-checked-${k.id}`,
+          group: "Wissen",
+          label: `Als geprüft markieren: ${k.title}`,
+          keywords: "veraltet verweise fehlalarm geprüft",
+          hint: refsMissingLabel(refs.length),
+          icon: <CheckCheck className="h-4 w-4" />,
+          run: () => void markKnowledgeChecked(qc, owner, k.id),
         });
       }
       for (const f of files.data ?? []) {
@@ -172,7 +196,7 @@ export function usePaletteSources(query: string, project: ProjectWithStatus | nu
       });
     }
     return list;
-  }, [projects.data, sessions.data, project, branches.data, commits.data, knowledge.data, files.data, mcp.data, skills.data, plugins.data, qc]);
+  }, [projects.data, sessions.data, project, branches.data, commits.data, knowledge.data, stale.data, owner, files.data, mcp.data, skills.data, plugins.data, qc]);
 
   const pending = [branches, commits, knowledge, files, mcp, skills, plugins].some((q) => q.isLoading);
   return { entries, loading: typed && pending };

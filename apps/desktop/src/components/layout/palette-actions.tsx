@@ -58,6 +58,7 @@ import {
   Wand2,
   type LucideIcon,
   Combine,
+  Link2Off,
 } from "lucide-react";
 import type {
   AppUpdateState,
@@ -87,7 +88,7 @@ import { useActivity } from "@/stores/activity";
 import { draftKey, useDrafts } from "@/stores/drafts";
 import { lastEditablePrompt, useMessageEdit } from "@/stores/message-edit";
 import { toast } from "@/stores/toast";
-import { DEV_TOOLS_SECTIONS, KNOWLEDGE_MERGE_REQUEST, PROJECT_SETTINGS_SECTIONS, SETTINGS_SECTIONS, SKILLS_TABS, EXTENSIONS_TABS, workspaceTabsFor, useUi, type SettingsSection, type WorkspaceTab } from "@/stores/ui";
+import { DEV_TOOLS_SECTIONS, KNOWLEDGE_MERGE_REQUEST, KNOWLEDGE_STALE_REQUEST, PROJECT_SETTINGS_SECTIONS, SETTINGS_SECTIONS, SKILLS_TABS, EXTENSIONS_TABS, workspaceTabsFor, useUi, type SettingsSection, type WorkspaceTab } from "@/stores/ui";
 import { PROFILE_IDS, PROFILE_INFO } from "@/components/projects/ProfileBadge";
 import { RULE_GROUPS } from "@/components/settings/PolicySettings";
 import { idleCloseLabel } from "@/components/settings/idle-close";
@@ -96,6 +97,7 @@ import { integratedText } from "@/components/git/Sync";
 import { SECTIONS as PROJECT_SECTION_DEFS, TAG_INFO } from "@/components/workspace/ProjectSettingsTab";
 import { compactSession, PROFILE_MODE, stopSession } from "@/components/workspace/useSendMessage";
 import { revealInProject } from "@/components/workspace/file-links";
+import { recheckKnowledgeRefs } from "@/components/knowledge/knowledge-actions";
 import { SECTIONS as SETTINGS_SECTION_DEFS } from "@/views/SettingsView";
 import { EXTENSION_TAB_DEFS, SKILLS_TAB_DEFS } from "@/views/ExtensionsView";
 import { NAV } from "./nav";
@@ -448,6 +450,12 @@ export function buildActions(ctx: ActionContext): PaletteEntry[] {
 
     act("knowledge-merge", "Projektwissen: Einträge zusammenführen", icon(Combine), () => ui.openKnowledge(KNOWLEDGE_MERGE_REQUEST), {
       keywords: "wissen aufräumen überschneidungen doppelt merge automatisch claude",
+    });
+    act("knowledge-stale", "Veraltetes Projektwissen anzeigen", icon(Link2Off), () => ui.openKnowledge(KNOWLEDGE_STALE_REQUEST), {
+      keywords: "wissen veraltet verweise fehlen dateien bezeichner kaputt alt prüfen",
+    });
+    act("knowledge-recheck", "Projektwissen: Verweise neu prüfen", icon(RefreshCw), () => void recheckKnowledgeRefs(qc, owner), {
+      keywords: "wissen veraltet verweise dateien bezeichner prüfen aktualisieren",
     });
 
     if (project.exists) {

@@ -15,6 +15,7 @@ import { TestDbService } from "./devtools/test-db.js";
 import { DevEnvironment } from "./devtools/environment.js";
 import { PreviewService } from "./preview/preview.js";
 import { KnowledgeStore } from "./knowledge/knowledge.js";
+import { RefChecker } from "./knowledge/staleness.js";
 import { PhoneService } from "./phone/phone-service.js";
 import { JobWatcher } from "./sessions/job-done.js";
 import { tokenMeter } from "./claude/token-meter.js";
@@ -97,7 +98,7 @@ export function createApp(opts: { dataDir: string; write: Writer; log?: (m: stri
   const testDb = new TestDbService({ dataDir: opts.dataDir, devTools, emit: (payload) => emit({ event: "testdb.updated", payload }), log: (m) => opts.log?.(m) });
   const devEnv: DevEnvironment = new DevEnvironment(devTools, testDb, () => devServers);
   const devServers = new DevServerService(projects, () => sessionEnv(db.getSettings().stripApiKey), emit, (projectId) => devEnv.devServerPrep(projectId));
-  const knowledge = new KnowledgeStore(projects, (projectId) => emit({ event: "knowledge.updated", payload: { projectId } }));
+  const knowledge = new KnowledgeStore(projects, (projectId) => emit({ event: "knowledge.updated", payload: { projectId } }), new RefChecker(git, path.join(opts.dataDir, "knowledge-refs.json")));
   const preview = new PreviewService({ devServer: (projectId) => devServers.state(projectId) });
   sessions.useProjectTools({ knowledge, dev: devEnv, preview });
   const uiCompare = sessions.useUiCompare({

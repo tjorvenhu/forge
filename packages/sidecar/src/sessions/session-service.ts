@@ -377,6 +377,10 @@ export class SessionService {
     return this.assist.planKnowledgeMerge(projectId, entries, pairs);
   }
 
+  draftKnowledgeFix(projectId: string, ctx: Parameters<ClaudeAssist["fixKnowledge"]>[1]) {
+    return this.assist.fixKnowledge(projectId, ctx);
+  }
+
   // ---------- lifecycle
 
   start(params: StartParams): Promise<Session> {

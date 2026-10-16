@@ -1020,6 +1020,24 @@ export const KnowledgeMergePlan = z.object({
 });
 export type KnowledgeMergePlan = z.infer<typeof KnowledgeMergePlan>;
 
+/** A file, folder or code name an entry mentions that the project no longer has. */
+export const KnowledgeMissingRef = z.object({
+  /** as written in the entry */
+  ref: z.string(),
+  kind: z.enum(["path", "name"]),
+  /** where it went, if known: files with the same name, or the commit that removed it */
+  hint: z.string().optional(),
+});
+export type KnowledgeMissingRef = z.infer<typeof KnowledgeMissingRef>;
+
+/** Which references of the knowledge entries go nowhere; entries marked as checked leave those refs out. */
+export const KnowledgeStaleReport = z.object({
+  entries: z.array(z.object({ id: z.string(), missing: z.array(KnowledgeMissingRef), checked: z.number() })),
+  /** false: the project is checked without git (plain file walk, no history) */
+  git: z.boolean(),
+});
+export type KnowledgeStaleReport = z.infer<typeof KnowledgeStaleReport>;
+
 
 /**
  * FORGE updates from the GitHub releases of the repository. The installer is fetched with the gh

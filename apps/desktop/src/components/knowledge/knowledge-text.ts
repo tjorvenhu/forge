@@ -1,4 +1,13 @@
-import type { KnowledgeCleanup, KnowledgeSummary } from "@forge/protocol";
+import type { KnowledgeCleanup, KnowledgeMissingRef, KnowledgeStaleReport, KnowledgeSummary } from "@forge/protocol";
+
+/** Missing references per entry id; entries without any are left out. */
+export function staleById(report: KnowledgeStaleReport | undefined): Map<string, KnowledgeMissingRef[]> {
+  return new Map((report?.entries ?? []).filter((e) => e.missing.length).map((e) => [e.id, e.missing]));
+}
+
+export function refsMissingLabel(n: number): string {
+  return n === 1 ? "1 Verweis fehlt" : `${n} Verweise fehlen`;
+}
 
 /** Entries whose title, summary or tags contain every word of the query. */
 export function filterKnowledge(entries: KnowledgeSummary[], query: string): KnowledgeSummary[] {

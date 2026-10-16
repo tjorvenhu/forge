@@ -12,6 +12,10 @@ export const WORKSPACE_TABS = ["chat", "agents", "git", "files", "devtools", "kn
 export type WorkspaceTab = (typeof WORKSPACE_TABS)[number];
 /** knowledgeRequest that opens the merge dialog instead of an entry; entry ids never contain a colon */
 export const KNOWLEDGE_MERGE_REQUEST = ":merge";
+/** knowledgeRequest that shows only entries whose references go nowhere */
+export const KNOWLEDGE_STALE_REQUEST = ":stale";
+/** knowledgeRequest that opens an entry and lets Claude correct its missing references */
+export const knowledgeFixRequest = (id: string) => `:fix:${id}`;
 /** Tabs that need git; a project set up without git does not show them. */
 const GIT_WORKSPACE_TABS: ReadonlySet<WorkspaceTab> = new Set(["agents", "git"]);
 /** The tabs a project shows, in the order of the tab bar. */

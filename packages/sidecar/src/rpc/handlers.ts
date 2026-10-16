@@ -282,6 +282,9 @@ export function createHandlers(s: Services): Handlers {
       return s.sessions.planKnowledgeMerge(owner, s.knowledge.entriesSync(owner), s.knowledge.cleanup(owner).overlaps);
     },
     "knowledge.merge": ({ projectId, ids, ...input }) => s.knowledge.merge(projectId, ids, input),
+    "knowledge.checkRefs": ({ projectId, id, refresh }) => s.knowledge.staleness(projectId, { ids: id ? [id] : undefined, refresh }),
+    "knowledge.markChecked": ({ projectId, id }) => s.knowledge.markChecked(projectId, id),
+    "knowledge.fixDraft": async ({ projectId, id }) => s.sessions.draftKnowledgeFix(s.knowledge.owner(projectId), await s.knowledge.fixContext(projectId, id)),
 
     "app.updateState": () => s.updates.get(),
     "app.presence": ({ focused, active, window }) => {

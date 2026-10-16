@@ -16,6 +16,7 @@ import {
   KnowledgeEntry,
   KnowledgeMergeDraft,
   KnowledgeMergePlan,
+  KnowledgeStaleReport,
   KnowledgeSummary,
   TestDbConfig,
   TestDbState,
@@ -433,6 +434,12 @@ export const methods = {
     params: projectRef.extend({ ids: knowledgeIds, ...knowledgeFields }),
     result: z.object({ entry: KnowledgeEntry, removed: z.array(z.string()) }),
   },
+  /** files, folders and code names the entries mention that no longer exist; cached per entry and project state */
+  "knowledge.checkRefs": { params: projectRef.extend({ id: id.optional(), refresh: z.boolean().default(false) }), result: KnowledgeStaleReport },
+  /** the missing refs of an entry were a false alarm: they are left out from now on */
+  "knowledge.markChecked": { params: projectRef.extend({ id }), result: z.object({ verified: z.array(z.string()) }) },
+  /** one-shot Claude call that corrects the missing refs of an entry; saves nothing (knowledge.save does) */
+  "knowledge.fixDraft": { params: projectRef.extend({ id }), result: KnowledgeMergeDraft },
 
   "app.updateState": { params: empty, result: AppUpdateState },
   /**

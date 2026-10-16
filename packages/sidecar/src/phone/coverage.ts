@@ -119,6 +119,9 @@ export const PHONE_TOOL_FOR: Partial<Record<MethodName, string>> = {
   "knowledge.mergeDraft": "knowledge",
   "knowledge.mergePlan": "knowledge",
   "knowledge.merge": "knowledge",
+  "knowledge.checkRefs": "knowledge",
+  "knowledge.markChecked": "knowledge",
+  "knowledge.fixDraft": "knowledge",
 
   "app.updateState": "forge_system",
   "app.checkUpdate": "forge_system",

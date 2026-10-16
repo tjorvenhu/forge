@@ -2,9 +2,11 @@ import { randomBytes } from "node:crypto";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { ForgeError, type KnowledgeEntry, type KnowledgeSummary } from "@forge/protocol";
+import { ForgeError, type KnowledgeEntry, type KnowledgeMissingRef, type KnowledgeStaleReport, type KnowledgeSummary } from "@forge/protocol";
 import type { ProjectManager } from "../projects/project-manager.js";
 import { stripBom } from "../devtools/dev-tools.js";
+import { GitEngine } from "../git/git.js";
+import { extractRefs, RefChecker } from "./staleness.js";
 
 /** Inside the project, so the knowledge travels with the repository and every clone and agent sees it. */
 export const KNOWLEDGE_DIR = path.join(".forge", "knowledge");
@@ -108,13 +110,26 @@ function firstLine(content: string): string {
   return line ? (line.length > 160 ? `${line.slice(0, 157)}...` : line) : "";
 }
 
-export function serializeEntry(e: Omit<KnowledgeEntry, "id">): string {
+/**
+ * References of an entry the user marked as fine although the check found them missing (front matter
+ * `verified`). Stored in the file, so the mark travels with the repository like the entry.
+ */
+export function parseVerified(text: string): string[] {
+  const m = /^---\n([\s\S]*?)\n---/.exec(stripBom(text).replace(/\r\n/g, "\n"));
+  const line = m?.[1]!.split("\n").find((l) => l.startsWith("verified:"));
+  if (!line) return [];
+  const v = fmValue(line.slice("verified:".length));
+  return Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
+}
+
+export function serializeEntry(e: Omit<KnowledgeEntry, "id">, verified: string[] = []): string {
   return [
     "---",
     `title: ${JSON.stringify(e.title)}`,
     `summary: ${JSON.stringify(e.summary)}`,
     `tags: ${JSON.stringify(e.tags)}`,
     `updated: ${JSON.stringify(e.updatedAt)}`,
+    ...(verified.length ? [`verified: ${JSON.stringify(verified)}`] : []),
     "---",
     "",
     e.content.replace(/\r\n/g, "\n").trimEnd(),
@@ -347,6 +362,34 @@ export function cleanMergePlan(groups: KnowledgeMergeGroup[], entries: Knowledge
   return out;
 }
 
+/**
+ * Task for the one-shot call that corrects an entry whose references go nowhere. Claude has no tools
+ * there, so the prompt carries what FORGE found out: hints and the diff of the commit that removed a name.
+ */
+export function buildFixPrompt(entry: KnowledgeEntry, missing: KnowledgeMissingRef[], details: string): string {
+  return [
+    "Dieser Eintrag aus dem Projektwissen eines Softwareprojekts verweist auf Dateien, Ordner oder Bezeichner, die es im Projekt nicht mehr gibt. Korrigiere ihn.",
+    "- Ersetze veraltete Verweise durch die aktuellen, wenn die Hinweise unten eindeutig zeigen, wohin etwas verschoben oder wie es umbenannt wurde.",
+    "- Ist nicht eindeutig, was an die Stelle getreten ist, entferne die Aussage oder kennzeichne sie knapp als veraltet. Nicht raten.",
+    "- Alles andere bleibt unverändert: Aufbau, Begründungen, Stolperfallen, Sprache und Ton.",
+    "- Nichts erfinden, nichts hinzufügen, was weder im Eintrag noch in den Hinweisen steht.",
+    "- Titel, Zusammenfassung und Tags nur anpassen, wenn sie selbst veraltete Namen enthalten.",
+    "- Inhalt: Markdown wie bisher, beginnt mit '# <Titel>'.",
+    "",
+    `Fehlende Verweise: ${missing.map((m) => `\`${m.ref}\``).join(", ")}`,
+    "",
+    "Hinweise aus dem Projekt:",
+    details || "(keine)",
+    "",
+    `=== Eintrag ${entry.id} (Stand ${entry.updatedAt.slice(0, 10)}) ===`,
+    `Titel: ${entry.title}`,
+    `Zusammenfassung: ${entry.summary}`,
+    `Tags: ${entry.tags.join(", ")}`,
+    "",
+    entry.content.trim(),
+  ].join("\n");
+}
+
 function snippet(content: string, words: string[]): string {
   const flat = content.replace(/\s+/g, " ").trim();
   const lower = flat.toLowerCase();
@@ -368,6 +411,7 @@ export class KnowledgeStore {
   constructor(
     private readonly projects: ProjectManager,
     private readonly emit: (projectId: string) => void,
+    private readonly refs = new RefChecker(new GitEngine()),
   ) {}
 
   /** Project whose folder holds the knowledge: the project itself or, for a worktree, its parent. */
@@ -501,21 +545,17 @@ export class KnowledgeStore {
       updatedAt: new Date().toISOString(),
       content: input.content,
     };
-    const text = serializeEntry(fields);
     if (input.id) {
       const full = this.locate(projectId, input.id);
       if (!full) throw new ForgeError("NOT_FOUND", `Kein Eintrag „${input.id}“.`);
-      // Write and rename: an editor or Claude reading at the same moment never sees half a file.
-      const tmp = `${full}.${process.pid}-${randomBytes(4).toString("hex")}.tmp`;
-      try {
-        await writeFile(tmp, text, "utf8");
-        await rename(tmp, full);
-      } finally {
-        await rm(tmp, { force: true }).catch(() => {});
-      }
+      // Marks for refs the new text no longer has would only hide a future alarm.
+      const refs = new Set(extractRefs(fields.content).map((r) => r.ref));
+      const verified = parseVerified(await readFile(full, "utf8").catch(() => "")).filter((r) => refs.has(r));
+      await writeAtomic(full, serializeEntry(fields, verified));
       this.emit(this.owner(projectId));
       return { id: input.id, ...fields };
     }
+    const text = serializeEntry(fields);
     // Claude in several sessions may save the same title at once: "wx" claims the name or fails.
     const taken = this.files(dir);
     const base = slugifyId(input.title);
@@ -541,6 +581,52 @@ export class KnowledgeStore {
     return true;
   }
 
+  /**
+   * References of the entries (all, or `ids`) that go nowhere in the project. Cached per entry text and
+   * project state (HEAD and working tree), so opening the knowledge again costs nothing.
+   */
+  async staleness(projectId: string, opts: { ids?: string[]; refresh?: boolean } = {}): Promise<KnowledgeStaleReport> {
+    const owner = this.owner(projectId);
+    const project = this.projects.requireExisting(owner);
+    const dir = this.dir(owner);
+    const inputs: Array<{ id: string; content: string; verified: string[] }> = [];
+    for (const [id, name] of this.files(dir)) {
+      if (opts.ids && !opts.ids.includes(id)) continue;
+      try {
+        const text = readFileSync(path.join(dir, name), "utf8");
+        inputs.push({ id, content: parseEntry(id, text, new Date(0)).content, verified: parseVerified(text) });
+      } catch {
+        /* unreadable file: skipped */
+      }
+    }
+    if (opts.ids?.length === 1 && !inputs.length) throw new ForgeError("NOT_FOUND", `Kein Eintrag „${opts.ids[0]}“.`);
+    const { git, results } = await this.refs.check(project.path, project.gitEnabled !== false, inputs, opts.refresh);
+    return { git, entries: inputs.map((i) => ({ id: i.id, ...(results.get(i.id) ?? { missing: [], checked: 0 }) })) };
+  }
+
+  /** The refs the check finds missing were a false alarm: they are left out from now on. The date stays. */
+  async markChecked(projectId: string, id: string): Promise<{ verified: string[] }> {
+    const full = this.locate(projectId, id);
+    if (!full) throw new ForgeError("NOT_FOUND", `Kein Eintrag „${id}“.`);
+    const missing = (await this.staleness(projectId, { ids: [id] })).entries[0]?.missing ?? [];
+    const text = await readFile(full, "utf8");
+    const before = parseVerified(text);
+    if (!missing.length) return { verified: before };
+    const verified = [...new Set([...before, ...missing.map((m) => m.ref)])];
+    await writeAtomic(full, serializeEntry(parseEntry(id, text, statMtime(full)), verified));
+    this.emit(this.owner(projectId));
+    return { verified };
+  }
+
+  /** Entry, its missing refs and what FORGE knows about them, for Claude's corrected draft. */
+  async fixContext(projectId: string, id: string): Promise<{ entry: KnowledgeEntry; missing: KnowledgeMissingRef[]; details: string }> {
+    const entry = await this.read(projectId, id);
+    const missing = (await this.staleness(projectId, { ids: [id] })).entries[0]?.missing ?? [];
+    if (!missing.length) throw new ForgeError("VALIDATION", "Alle Verweise des Eintrags gibt es im Projekt. Da ist nichts zu korrigieren.");
+    const project = this.projects.requireExisting(this.owner(projectId));
+    return { entry, missing, details: await this.refs.details(project.path, project.gitEnabled !== false, missing) };
+  }
+
   /** Index for Claude's start context; empty when the project has no knowledge yet. */
   index(projectId: string): { lines: string[]; total: number; summaries: boolean } {
     const entries = this.list(projectId);
@@ -556,6 +642,17 @@ export class KnowledgeStore {
       chars += line.length + 1;
     }
     return { lines, total: entries.length, summaries: false };
+  }
+}
+
+/** Write and rename: an editor or Claude reading at the same moment never sees half a file. */
+async function writeAtomic(full: string, text: string) {
+  const tmp = `${full}.${process.pid}-${randomBytes(4).toString("hex")}.tmp`;
+  try {
+    await writeFile(tmp, text, "utf8");
+    await rename(tmp, full);
+  } finally {
+    await rm(tmp, { force: true }).catch(() => {});
   }
 }
 

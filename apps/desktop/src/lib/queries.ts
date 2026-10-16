@@ -51,6 +51,7 @@ export const keys = {
   knowledgeEntry: (id: string, entryId: string) => ["knowledge", id, entryId] as const,
   /** colon: entry ids never contain one, so this cannot clash with an entry */
   knowledgeCleanup: (id: string) => ["knowledge", id, ":cleanup"] as const,
+  knowledgeStale: (id: string) => ["knowledge", id, ":stale"] as const,
   phoneState: ["phoneState"] as const,
   phoneConfig: ["phoneConfig"] as const,
   phoneCalls: ["phoneCalls"] as const,
@@ -192,6 +193,13 @@ export const useTestDb = (ownerId: string) => useQuery({ queryKey: keys.testDb(o
 
 /** Entries of the project's knowledge; Claude's changes arrive as knowledge.updated. */
 export const useKnowledge = (ownerId: string) => useQuery({ queryKey: keys.knowledge(ownerId), queryFn: () => call("knowledge.list", { projectId: ownerId }), staleTime: 60_000, refetchOnWindowFocus: true });
+
+/**
+ * References of the knowledge entries that go nowhere. The sidecar caches per entry and project state, so
+ * refetching after every knowledge.updated is cheap.
+ */
+export const useKnowledgeStale = (ownerId: string, enabled = true) =>
+  useQuery({ queryKey: keys.knowledgeStale(ownerId), queryFn: () => call("knowledge.checkRefs", { projectId: ownerId }), staleTime: 60_000, refetchOnWindowFocus: true, enabled: enabled && !!ownerId });
 
 /** Full-text search over prompts and answers; runs from three characters on. */
 export const useSearch = (query: string, limit = 50) => {

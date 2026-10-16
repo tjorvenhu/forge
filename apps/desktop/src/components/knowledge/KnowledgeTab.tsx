@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, BookOpen, Combine, Eye, Pencil, Plus, Search, Trash2 } from "lucide-react";
-import type { KnowledgeEntry, Project } from "@forge/protocol";
-import { call, keys, useKnowledge } from "@/lib/queries";
+import { AlertTriangle, BookOpen, CheckCheck, Combine, Eye, Link2Off, Pencil, Plus, RefreshCw, Search, Sparkles, Trash2 } from "lucide-react";
+import type { KnowledgeEntry, KnowledgeMissingRef, Project } from "@forge/protocol";
+import { contextItems } from "@/lib/context-menu";
+import { call, keys, useKnowledge, useKnowledgeStale } from "@/lib/queries";
 import { errorMessage, RpcCallError } from "@/lib/rpc";
 import { cn, relativeTime } from "@/lib/utils";
 import { toast } from "@/stores/toast";
-import { KNOWLEDGE_MERGE_REQUEST, useUi } from "@/stores/ui";
+import { KNOWLEDGE_MERGE_REQUEST, KNOWLEDGE_STALE_REQUEST, knowledgeFixRequest, useUi } from "@/stores/ui";
 import { Button } from "@/components/ui/button";
 import { CodeEditor } from "@/components/ui/code-editor";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -14,8 +15,10 @@ import { Field, Input } from "@/components/ui/input";
 import { Badge, EmptyState, ErrorBanner } from "@/components/ui/misc";
 import { Skeleton, SkeletonRegion } from "@/components/ui/skeleton";
 import { Markdown } from "@/components/workspace/Markdown";
-import { filterKnowledge, parseTags, suggestedMerge } from "./knowledge-text";
+import { filterKnowledge, parseTags, refsMissingLabel, staleById, suggestedMerge } from "./knowledge-text";
+import { markKnowledgeChecked, recheckKnowledgeRefs } from "./knowledge-actions";
 import { AutoMergeDialog } from "./AutoMergeDialog";
+import { FixDialog } from "./FixDialog";
 import { MergeDialog } from "./MergeDialog";
 
 /** Entry ids never contain a colon, so this cannot clash with one. */
@@ -33,8 +36,22 @@ export function KnowledgeTab({ project }: { project: Project }) {
   const [dirty, setDirty] = useState(false);
   /** entry the user wants to switch to while the open one has unsaved changes */
   const [leaveTo, setLeaveTo] = useState<string | null>(null);
-  const entries = useMemo(() => filterKnowledge(list.data ?? [], query), [list.data, query]);
+  const qc = useQueryClient();
+  const staleQuery = useKnowledgeStale(owner, (list.data?.length ?? 0) > 0);
+  const stale = useMemo(() => staleById(staleQuery.data), [staleQuery.data]);
+  /** only entries whose references go nowhere */
+  const [onlyStale, setOnlyStale] = useState(false);
+  const entries = useMemo(() => filterKnowledge(list.data ?? [], query).filter((e) => !onlyStale || stale.has(e.id)), [list.data, query, onlyStale, stale]);
   const cleanup = useKnowledgeCleanup(owner);
+  /** entry Claude corrects; null while the dialog is closed */
+  const [fixing, setFixing] = useState<string | null>(null);
+  /** entry whose references are being checked again ("" for all) */
+  const [rechecking, setRechecking] = useState<string | null>(null);
+  const recheck = async (id?: string) => {
+    setRechecking(id ?? "");
+    await recheckKnowledgeRefs(qc, owner, id);
+    setRechecking(null);
+  };
   /** ids preselected in the merge dialog; null while it is closed */
   const [merging, setMerging] = useState<string[] | null>(null);
   /** Claude picks and merges on its own */
@@ -64,7 +81,14 @@ export function KnowledgeTab({ project }: { project: Project }) {
     }
     // A search could hide the requested entry.
     setQuery("");
-    select(request);
+    if (request === KNOWLEDGE_STALE_REQUEST) {
+      setOnlyStale(true);
+      return;
+    }
+    const fix = request.startsWith(knowledgeFixRequest("")) ? request.slice(knowledgeFixRequest("").length) : null;
+    setOnlyStale(false);
+    select(fix ?? request);
+    if (fix) setFixing(fix);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only a new request counts
   }, [request]);
 
@@ -96,6 +120,22 @@ export function KnowledgeTab({ project }: { project: Project }) {
               </span>
             )}
           </Button>
+          <Button
+            size="icon"
+            variant="ghost"
+            onClick={() => setOnlyStale(!onlyStale)}
+            aria-pressed={onlyStale}
+            aria-label="Nur veraltete Einträge zeigen"
+            title={stale.size ? `${stale.size === 1 ? "1 Eintrag verweist" : `${stale.size} Einträge verweisen`} auf Dateien oder Bezeichner, die es nicht mehr gibt` : "Nur veraltete Einträge zeigen"}
+            className={cn("relative", onlyStale && "bg-accent-soft")}
+          >
+            <Link2Off className="h-4 w-4" />
+            {stale.size > 0 && (
+              <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-warning px-1 text-caption font-semibold leading-none text-accent-fg">
+                {stale.size}
+              </span>
+            )}
+          </Button>
           <Button size="icon" variant="primary" onClick={() => select(NEW)} aria-label="Neuer Eintrag" title="Neuer Eintrag">
             <Plus className="h-4 w-4" />
           </Button>
@@ -110,11 +150,31 @@ export function KnowledgeTab({ project }: { project: Project }) {
           ) : !list.data?.length ? (
             <p className="px-2 py-3 text-xs text-muted">Noch keine Einträge.</p>
           ) : !entries.length ? (
-            <p className="px-2 py-3 text-xs text-muted">Nichts gefunden.</p>
+            <p className="px-2 py-3 text-xs text-muted">{onlyStale && !query.trim() ? "Kein Eintrag verweist auf etwas, das es nicht mehr gibt." : "Nichts gefunden."}</p>
           ) : (
             <ul className="flex flex-col gap-0.5">
-              {entries.map((e) => (
-                <li key={e.id}>
+              {entries.map((e) => {
+                const missing = stale.get(e.id);
+                return (
+                <li
+                  key={e.id}
+                  onContextMenu={contextItems(() => [
+                    { label: "Verweise prüfen", icon: <RefreshCw className="h-3.5 w-3.5" />, onSelect: () => void recheck(e.id) },
+                    ...(missing
+                      ? [
+                          {
+                            label: "Mit Claude prüfen",
+                            icon: <Sparkles className="h-3.5 w-3.5" />,
+                            onSelect: () => {
+                              select(e.id);
+                              setFixing(e.id);
+                            },
+                          },
+                          { label: "Als geprüft markieren", icon: <CheckCheck className="h-3.5 w-3.5" />, onSelect: () => void markKnowledgeChecked(qc, owner, e.id) },
+                        ]
+                      : []),
+                  ])}
+                >
                   <button
                     onClick={() => select(e.id)}
                     aria-current={current === e.id ? "true" : undefined}
@@ -126,6 +186,13 @@ export function KnowledgeTab({ project }: { project: Project }) {
                     <div className="truncate text-body font-medium">{e.title}</div>
                     {e.summary && <div className="line-clamp-2 text-xs text-muted">{e.summary}</div>}
                     <div className="mt-1 flex flex-wrap items-center gap-1">
+                      {missing && (
+                        <span title={refsMissingLabel(missing.length)}>
+                          <Badge tone="warning">
+                            <Link2Off className="h-3 w-3" aria-hidden /> {missing.length}
+                          </Badge>
+                        </span>
+                      )}
                       {e.tags.slice(0, 4).map((t) => (
                         <Badge key={t}>{t}</Badge>
                       ))}
@@ -133,7 +200,8 @@ export function KnowledgeTab({ project }: { project: Project }) {
                     </div>
                   </button>
                 </li>
-              ))}
+                );
+              })}
             </ul>
           )}
         </div>
@@ -153,6 +221,17 @@ export function KnowledgeTab({ project }: { project: Project }) {
             onSaved={(id) => setSelected(id)}
             onDeleted={() => setSelected(null)}
             onMerge={(list.data?.length ?? 0) >= 2 ? () => setMerging(suggestedMerge(cleanup.data, current === NEW ? null : current)) : undefined}
+            refs={
+              current === NEW
+                ? undefined
+                : {
+                    missing: staleQuery.isPending ? null : (stale.get(current) ?? []),
+                    rechecking: rechecking === current || rechecking === "",
+                    onRecheck: () => void recheck(current),
+                    onFix: () => setFixing(current),
+                    onMarkChecked: () => void markKnowledgeChecked(qc, owner, current),
+                  }
+            }
           />
         ) : list.isLoading ? (
           <EntrySkeleton />
@@ -185,6 +264,7 @@ export function KnowledgeTab({ project }: { project: Project }) {
         }}
       />
       <AutoMergeDialog owner={owner} entries={list.data ?? []} open={tidying} onClose={() => setTidying(false)} onManual={() => setMerging(suggestedMerge(cleanup.data, null))} />
+      <FixDialog owner={owner} id={fixing} missing={fixing ? (stale.get(fixing) ?? []) : []} onClose={() => setFixing(null)} />
       <MergeDialog owner={owner} entries={list.data ?? []} cleanup={cleanup.data} initial={merging} onClose={() => setMerging(null)} onMerged={(id) => select(id)} />
     </div>
   );
@@ -251,6 +331,84 @@ function EntrySkeleton() {
   );
 }
 
+interface RefState {
+  /** null while the first check runs */
+  missing: KnowledgeMissingRef[] | null;
+  rechecking: boolean;
+  onRecheck: () => void;
+  onFix: () => void;
+  onMarkChecked: () => void;
+}
+
+/** Place in the header for the result of the reference check: a skeleton while it runs, a badge when refs are missing. */
+function RefStatus({ refs }: { refs: RefState }) {
+  if (refs.missing === null) {
+    return (
+      <SkeletonRegion label="Prüft Verweise" className="flex items-center">
+        <Skeleton className="h-5 w-10 rounded" />
+      </SkeletonRegion>
+    );
+  }
+  if (!refs.missing.length) return null;
+  return (
+    <span title={refsMissingLabel(refs.missing.length)}>
+      <Badge tone="warning">
+        <Link2Off className="h-3 w-3" aria-hidden /> {refs.missing.length}
+      </Badge>
+    </span>
+  );
+}
+
+/** Which references go nowhere, with the actions for them; the list turns into a skeleton while it is checked again. */
+function MissingRefs({ refs, missing }: { refs: RefState; missing: KnowledgeMissingRef[] }) {
+  return (
+    <div role="status" aria-label="Fehlende Verweise" className="flex flex-col gap-2 rounded-lg border border-warning/30 bg-warning-soft px-3 py-2 text-body">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+        <div className="flex min-w-56 flex-1 items-center gap-3">
+          <Link2Off className="h-4 w-4 shrink-0 text-warning" />
+          <div className="min-w-0">
+            <div className="font-medium">{refsMissingLabel(missing.length)} im Projekt.</div>
+            <div className="text-xs text-muted">Der Eintrag ist hier vermutlich veraltet. Claude sieht den Hinweis beim Lesen auch.</div>
+          </div>
+        </div>
+        <div className="ml-auto flex items-center gap-2">
+          <Button size="sm" variant="ghost" onClick={refs.onRecheck} disabled={refs.rechecking} aria-label="Verweise erneut prüfen" title="Erneut prüfen">
+            <RefreshCw className={cn("h-3.5 w-3.5", refs.rechecking && "animate-spin")} />
+          </Button>
+          <Button size="sm" onClick={refs.onMarkChecked} title="Die Verweise stimmen, FORGE soll sie nicht mehr melden">
+            <CheckCheck className="h-3.5 w-3.5" /> Als geprüft markieren
+          </Button>
+          <Button size="sm" variant="primary" onClick={refs.onFix}>
+            <Sparkles className="h-3.5 w-3.5" /> Mit Claude prüfen
+          </Button>
+        </div>
+      </div>
+      {refs.rechecking ? (
+        <SkeletonRegion label="Prüft Verweise" className="flex flex-col gap-1 pl-7">
+          {missing.map((m, i) => (
+            <div key={`${m.kind}:${m.ref}`} className="flex h-5 items-center gap-2">
+              <Skeleton className="h-4 rounded bg-surface-3" style={{ width: `${Math.min(40, 8 + m.ref.length)}ch` }} />
+              <Skeleton className="h-2.5 rounded-sm bg-surface-3" style={{ width: `${20 + ((i * 17) % 25)}%` }} />
+            </div>
+          ))}
+        </SkeletonRegion>
+      ) : (
+        <ul className="flex flex-col gap-1 pl-7">
+          {missing.map((m) => (
+            <li key={`${m.kind}:${m.ref}`} className="flex min-h-5 flex-wrap items-center gap-x-2 text-xs">
+              <code className="rounded bg-surface px-1.5 py-0.5 font-mono text-caption text-fg">{m.ref}</code>
+              <span className="text-muted">
+                {m.kind === "path" ? "Datei oder Ordner" : "Bezeichner"}
+                {m.hint ? `, ${m.hint}` : ""}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 interface Form {
   title: string;
   summary: string;
@@ -271,6 +429,7 @@ function EntryEditor({
   onSaved,
   onDeleted,
   onMerge,
+  refs,
 }: {
   owner: string;
   id: string | null;
@@ -279,6 +438,8 @@ function EntryEditor({
   onDeleted: () => void;
   /** opens the merge dialog with this entry; missing while there is nothing to merge with */
   onMerge?: () => void;
+  /** references of the entry that go nowhere; missing for a new entry */
+  refs?: RefState;
 }) {
   const qc = useQueryClient();
   const entry = useQuery({ queryKey: keys.knowledgeEntry(owner, id ?? ""), queryFn: () => call("knowledge.read", { projectId: owner, id: id! }), enabled: !!id });
@@ -331,6 +492,7 @@ function EntryEditor({
     <div className="flex h-full flex-col gap-3 overflow-y-auto px-6 py-5">
       <div className="flex items-center gap-2">
         <h2 className="min-w-0 flex-1 truncate text-title-sm font-semibold">{id ? shown.title || "Ohne Titel" : "Neuer Eintrag"}</h2>
+        {id && !gone && refs && <RefStatus refs={refs} />}
         {id && entry.data && <span className="text-caption text-subtle">geändert {relativeTime(entry.data.updatedAt)}</span>}
         <Button size="sm" variant="ghost" onClick={() => setPreview(!preview)} aria-pressed={preview}>
           {preview ? <Pencil className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />} {preview ? "Bearbeiten" : "Vorschau"}
@@ -362,6 +524,7 @@ function EntryEditor({
           </Button>
         </div>
       )}
+      {id && !gone && refs?.missing?.length ? <MissingRefs refs={refs} missing={refs.missing} /> : null}
       {gone && (
         <div role="alert" className="flex items-center gap-3 rounded-lg border border-warning/30 bg-warning-soft px-3 py-2 text-body">
           <AlertTriangle className="h-4 w-4 shrink-0 text-warning" />
