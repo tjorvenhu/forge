@@ -171,6 +171,7 @@ export const NOT_ON_PHONE: Partial<Record<MethodName, string>> = {
   "config.docWrite": "Eine Skill- oder Subagent-Datei als Ganzes umzuschreiben ist Editorarbeit; am Telefon legt extensions sie mit Beschreibung an, ausformulieren kann Claude in einer Session.",
   "config.hooksWrite": "Hooks sind JSON mit Shell-Befehlen; diktiert wäre das fehleranfällig und gefährlich. Am Telefon liest extensions sie nur.",
   "projects.touch": "Merkt nur die letzte Nutzung für die Sortierung in der Seitenleiste.",
+  "projects.inspectFolder": "Vorschau im Import-Dialog; beim Import per Telefon stellt FORGE Git für einen Ordner mit .git selbst ein und sagt es an.",
   "sessions.events": "Roher Verlauf für die Chat-Ansicht; am Telefon fassen details und search ihn zusammen.",
   "sessions.images": "Bilder einer Nachricht lassen sich nicht vorlesen.",
   "attachments.upload": "Lädt eingefügte Dateien aus dem Eingabefeld hoch; am Telefon gibt es keine Dateien zum Anhängen.",

@@ -107,7 +107,7 @@ describe("setup assistant", () => {
   it("walks through the first start, takes the data of another computer and offers its projects", async () => {
     setup();
     expect(await screen.findByText("FORGE einrichten")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: /Los/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Los" }));
     expect(await screen.findByText("Alles bereit.")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: /Weiter/ }));
 

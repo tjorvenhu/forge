@@ -185,6 +185,7 @@ export function createHandlers(s: Services): Handlers {
     "projects.list": () => s.projects.list(),
     "projects.get": async ({ projectId }) => s.projects.withStatus(s.projects.get(projectId)),
     "projects.import": ({ path, gitEnabled }) => s.projects.import(path, null, gitEnabled),
+    "projects.inspectFolder": ({ path }) => s.projects.inspectFolder(path),
     "projects.create": async ({ github, ...p }) => {
       const project = await s.projects.create({ ...p, gitInit: p.gitInit || !!github });
       if (!github || !project.gitEnabled) return { project, github: null };

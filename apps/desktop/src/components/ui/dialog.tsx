@@ -21,9 +21,11 @@ interface DialogProps {
   container?: HTMLElement | null;
   /** false: no close button, Escape and clicks outside do nothing; it closes only when `open` turns false */
   dismissable?: boolean;
+  /** Title and description only for screen readers; the children bring their own layout without body padding (the setup assistant). */
+  hideHeader?: boolean;
 }
 
-export function Dialog({ open, onOpenChange, title, description, children, footer, className, bodyClassName, overlayClassName, container, dismissable = true }: DialogProps) {
+export function Dialog({ open, onOpenChange, title, description, children, footer, className, bodyClassName, overlayClassName, container, dismissable = true, hideHeader = false }: DialogProps) {
   const keep = dismissable ? undefined : (e: Event) => e.preventDefault();
   const hasBody = children !== undefined && children !== null && children !== false;
   const local = !!container;
@@ -35,28 +37,39 @@ export function Dialog({ open, onOpenChange, title, description, children, foote
           onEscapeKeyDown={keep}
           onInteractOutside={keep}
           className={cn(
-            "fixed left-1/2 top-1/2 z-50 flex max-h-[85vh] w-130 max-w-[92vw] -translate-x-1/2 -translate-y-1/2 flex-col rounded-xl border border-border bg-surface shadow-2xl",
+            "fixed left-1/2 top-1/2 z-50 flex max-h-[85vh] w-130 max-w-[92vw] -translate-x-1/2 -translate-y-1/2 flex-col rounded-xl border border-border bg-surface shadow-2xl outline-none",
             local && "absolute max-h-[85%] max-w-[92%]",
+            hideHeader && "overflow-hidden",
             DIALOG_MOTION,
             className,
           )}
         >
-          <div className={cn("flex items-start justify-between gap-4 px-5 py-4", hasBody && "border-b border-border")}>
-            <div>
-              <D.Title className="text-title-sm font-semibold">{title}</D.Title>
-              {description ? (
-                <D.Description className="mt-1 text-body text-muted">{description}</D.Description>
-              ) : (
-                <D.Description className="sr-only">{title}</D.Description>
-              )}
-            </div>
-            {dismissable && (
-              <D.Close className="rounded-md p-1 text-muted hover:bg-surface-3 hover:text-fg" aria-label="Schließen">
-                <X className="h-4 w-4" />
-              </D.Close>
-            )}
-          </div>
-          {hasBody && <div className={cn("min-h-0 flex-1 overflow-y-auto px-5 py-4", bodyClassName)}>{children}</div>}
+          {hideHeader ? (
+            <>
+              <D.Title className="sr-only">{title}</D.Title>
+              <D.Description className="sr-only">{description ?? title}</D.Description>
+              {children}
+            </>
+          ) : (
+            <>
+              <div className={cn("flex items-start justify-between gap-4 px-5 py-4", hasBody && "border-b border-border")}>
+                <div>
+                  <D.Title className="text-title-sm font-semibold">{title}</D.Title>
+                  {description ? (
+                    <D.Description className="mt-1 text-body text-muted">{description}</D.Description>
+                  ) : (
+                    <D.Description className="sr-only">{title}</D.Description>
+                  )}
+                </div>
+                {dismissable && (
+                  <D.Close className="rounded-md p-1 text-muted hover:bg-surface-3 hover:text-fg" aria-label="Schließen">
+                    <X className="h-4 w-4" />
+                  </D.Close>
+                )}
+              </div>
+              {hasBody && <div className={cn("min-h-0 flex-1 overflow-y-auto px-5 py-4", bodyClassName)}>{children}</div>}
+            </>
+          )}
           {footer && <div className="flex justify-end gap-2 border-t border-border px-5 py-3">{footer}</div>}
         </D.Content>
       </D.Portal>

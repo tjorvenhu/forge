@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { FolderOpen, FolderPlus, FolderX, GitBranch } from "lucide-react";
-import { call, keys, useGitHubAccount, useSettings } from "@/lib/queries";
+import { call, keys, useFolderInspect, useGitHubAccount, useSettings } from "@/lib/queries";
+import { useDebouncedValue } from "@/lib/timing-hooks";
 import { errorMessage, RpcCallError } from "@/lib/rpc";
 import { pickFolder } from "@/lib/native";
 import { cn } from "@/lib/utils";
@@ -39,6 +40,13 @@ export function NewProjectDialog() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [duplicateId, setDuplicateId] = useState<string | null>(null);
+  const settledPath = useDebouncedValue(mode === "import" ? path.trim() : "", 250);
+  const inspected = useFolderInspect(settledPath);
+  // A folder with a .git is imported with git anyway (the sidecar enforces it); the choice shows that.
+  const hasGit = mode === "import" && settledPath === path.trim() && !!inspected.data?.hasGit;
+  useEffect(() => {
+    if (hasGit) setWithGit(true);
+  }, [hasGit]);
 
   useEffect(() => {
     if (mode) {
@@ -158,7 +166,7 @@ export function NewProjectDialog() {
             <FolderInput value={path} onChange={setPath} title="Projektordner wählen" />
           </Field>
         )}
-        {mode === "import" && <GitChoice value={withGit} onChange={setWithGit} importing />}
+        {mode === "import" && <GitChoice value={withGit} onChange={setWithGit} importing hasGit={hasGit} />}
         {mode === "import" && (
           <Collapse open={withGit}>
             <GitHubRepoChoice {...gitHubChoice} repoName={path ? repoNameOf(path.split(/[\\/]/).filter(Boolean).pop() ?? "") : ""} importing />
@@ -253,36 +261,49 @@ export function NewProjectDialog() {
   );
 }
 
-/** Mit or ohne Git; without git FORGE hides Agenten and Git and tells Claude not to use git. */
-function GitChoice({ value, onChange, importing = false }: { value: boolean; onChange: (v: boolean) => void; importing?: boolean }) {
+/**
+ * Mit or ohne Git; without git FORGE hides Agenten and Git and tells Claude not to use git.
+ * `hasGit`: the imported folder already is a repository, so "Ohne Git" is not offered.
+ */
+function GitChoice({ value, onChange, importing = false, hasGit = false }: { value: boolean; onChange: (v: boolean) => void; importing?: boolean; hasGit?: boolean }) {
   const options = [
     {
       on: true,
       label: "Mit Git",
       Icon: GitBranch,
-      hint: importing ? "Git-Bereich, Agenten und Commits. Ohne Repository legst du es später im Bereich Git an." : "Legt ein Git-Repository an. Mit Git-Bereich, Agenten und Commits.",
+      hint: hasGit
+        ? "Git-Bereich, Agenten und Commits für das vorhandene Repository."
+        : importing
+          ? "Git-Bereich, Agenten und Commits. Ohne Repository legst du es später im Bereich Git an."
+          : "Legt ein Git-Repository an. Mit Git-Bereich, Agenten und Commits.",
     },
     {
       on: false,
       label: "Ohne Git",
       Icon: FolderX,
-      hint: importing ? "Keine Git-Bereiche, keine Agenten, Claude verwendet kein Git. Ein vorhandener .git-Ordner bleibt unberührt." : "Nur der Ordner. Keine Git-Bereiche, keine Agenten, Claude verwendet kein Git.",
+      hint: hasGit
+        ? "Nicht möglich: Der Ordner ist schon ein Git-Repository."
+        : importing
+          ? "Keine Git-Bereiche, keine Agenten, Claude verwendet kein Git."
+          : "Nur der Ordner. Keine Git-Bereiche, keine Agenten, Claude verwendet kein Git.",
     },
   ];
   return (
     <div role="radiogroup" aria-label="Versionsverwaltung" className="grid grid-cols-2 gap-2">
       {options.map((o) => {
         const active = o.on === value;
+        const disabled = hasGit && !o.on;
         return (
           <button
             key={o.label}
             type="button"
             role="radio"
             aria-checked={active}
+            disabled={disabled}
             onClick={() => onChange(o.on)}
             className={cn(
-              "flex items-start gap-2.5 rounded-lg border px-3 py-2.5 text-left transition-colors duration-120",
-              active ? "border-accent bg-accent-soft" : "border-border hover:border-border-strong hover:bg-surface-2",
+              "flex items-start gap-2.5 rounded-lg border px-3 py-2.5 text-left transition-colors duration-120 disabled:cursor-not-allowed disabled:opacity-50",
+              active ? "border-accent bg-accent-soft" : "border-border enabled:hover:border-border-strong enabled:hover:bg-surface-2",
             )}
           >
             <o.Icon className={cn("mt-0.5 h-4 w-4 shrink-0", active ? "text-accent" : "text-muted")} />

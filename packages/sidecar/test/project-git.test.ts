@@ -73,13 +73,15 @@ describe("ProjectManager", () => {
     expect((await pm.withStatus(p)).git).toBeNull();
     expect(() => pm.requireGit(p.id)).toThrow(expect.objectContaining({ code: "GIT_DISABLED" }));
 
-    // An existing repository imported without git keeps its .git folder, but FORGE leaves it alone.
+    // A folder that already is a repository always comes in with git.
     const repo = path.join(t.dir, "repo");
     mkdirSync(repo);
     await initRepo(repo);
+    expect(await pm.inspectFolder(repo)).toEqual({ hasGit: true });
+    expect(await pm.inspectFolder(path.join(t.dir, "fehlt"))).toEqual({ hasGit: false });
     const imported = await pm.import(repo, null, false);
-    expect((await pm.withStatus(imported)).git).toBeNull();
-    expect(pm.get(imported.id).gitEnabled).toBe(false);
+    expect(imported.gitEnabled).toBe(true);
+    expect((await pm.withStatus(imported)).git?.isRepo).toBe(true);
   });
 
   it("drops git-only automation tags while git is off and refuses it for worktrees and projects with agents", async () => {

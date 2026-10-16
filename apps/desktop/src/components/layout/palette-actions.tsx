@@ -10,6 +10,7 @@ import {
   Bot,
   Camera,
   CloudDownload,
+  Download,
   Columns2,
   Cpu,
   Database,
@@ -59,6 +60,7 @@ import {
 } from "lucide-react";
 import type {
   AppUpdateState,
+  ClaudeUpdateInfo,
   DevServerState,
   EffortLevel,
   ModelInfo,
@@ -526,6 +528,16 @@ export function buildActions(ctx: ActionContext): PaletteEntry[] {
   const update = qc.getQueryData<AppUpdateState>(keys.appUpdate);
   if (update?.latest && update.installable && ["available", "downloading", "ready"].includes(update.phase)) {
     act("update-install", `FORGE ${update.latest.version} installieren`, icon(ArrowUpCircle), () => void installUpdate(qc), { keywords: "update aktualisieren neustart version" });
+  }
+  const claudeUpdate = qc.getQueryData<ClaudeUpdateInfo>(keys.claudeUpdate);
+  if (claudeUpdate?.available) {
+    act(
+      "claude-update",
+      `Claude-Code-Update auf ${claudeUpdate.latest}`,
+      icon(Download),
+      () => void call("claude.update", {}).catch((e: unknown) => toast.error("Update nicht gestartet", errorMessage(e))),
+      { keywords: "claude code aktualisieren version cli" },
+    );
   }
   for (const n of NAV) act(`nav-${n.view}`, `Gehe zu ${n.label}`, icon(n.Icon), () => ui.setView(n.view));
 

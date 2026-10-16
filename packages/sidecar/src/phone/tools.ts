@@ -711,7 +711,7 @@ export const PHONE_TOOLS: readonly PhoneToolSpec[] = [
       git: {
         type: "boolean",
         optional: true,
-        description: "create und import: false richtet das Projekt ganz ohne Git ein (keine Git-Bereiche, keine Agenten, Claude nutzt kein Git); settings: true schaltet Git ein, false aus",
+        description: "create und import: false richtet das Projekt ganz ohne Git ein (keine Git-Bereiche, keine Agenten, Claude nutzt kein Git), ein Ordner mit .git wird aber immer mit Git aufgenommen; settings: true schaltet Git ein, false aus",
       },
       github: { type: "string", optional: true, enum: ["private", "public"], description: "create und import: auch ein GitHub-Repository anlegen, privat oder öffentlich" },
       owner: { type: "string", optional: true, description: "create und import mit github: GitHub-Organisation, in der das Repository entsteht; ohne: persönliches Konto" },

@@ -202,7 +202,10 @@ export const methods = {
 
   "projects.list": { params: empty, result: z.array(ProjectWithStatus) },
   "projects.get": { params: projectRef, result: ProjectWithStatus },
+  /** gitEnabled is ignored for a folder that already has a .git: such a folder is always imported with git. */
   "projects.import": { params: z.object({ path: z.string().min(1).max(4096), gitEnabled: z.boolean().default(true) }), result: Project },
+  /** What the import dialog shows before importing; a missing or unreadable folder is no error, just no git. */
+  "projects.inspectFolder": { params: z.object({ path: z.string().min(1).max(4096) }), result: z.object({ hasGit: z.boolean() }) },
   "projects.create": {
     params: z.object({
       name: z.string().min(1).max(100),

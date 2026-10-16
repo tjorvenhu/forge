@@ -50,6 +50,7 @@ beforeEach(() => {
     if (method === "projects.create") return { project: { id: "p2", name: params.name, path: "C:\\code\\crm", gitEnabled: true }, github: { url: "https://github.com/me/crm", error: null } };
     if (method === "github.publish") return { url: "https://github.com/me/landing" };
     if (method === "projects.list") return [];
+    if (method === "projects.inspectFolder") return { hasGit: String(params.path).endsWith("repo") };
     throw new Error("unexpected " + method);
   });
 });
@@ -67,6 +68,19 @@ describe("NewProjectDialog", () => {
     fireEvent.click(screen.getByRole("button", { name: "Importieren" }));
     await waitFor(() => expect(calls("github.publish")).toEqual([{ projectId: "p1", private: true, owner: undefined }]));
     expect(calls("projects.import")).toEqual([{ path: "C:\\code\\Landing Page", gitEnabled: true }]);
+  });
+
+  it("imports a folder that already is a repository with git and greys out the choice without git", async () => {
+    useUi.setState({ newProject: "import" });
+    setup();
+    fireEvent.click(screen.getByRole("radio", { name: /Ohne Git/ }));
+    expect(screen.getByRole("radio", { name: /Ohne Git/ }).getAttribute("aria-checked")).toBe("true");
+    fireEvent.change(screen.getByPlaceholderText("C:\\Users\\…\\Projekte"), { target: { value: "C:\\code\\repo" } });
+    await waitFor(() => expect(screen.getByRole("radio", { name: /Mit Git/ }).getAttribute("aria-checked")).toBe("true"));
+    expect(screen.getByRole("radio", { name: /Ohne Git/ }).hasAttribute("disabled")).toBe(true);
+    expect(screen.getByText("Nicht möglich: Der Ordner ist schon ein Git-Repository.")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Importieren" }));
+    await waitFor(() => expect(calls("projects.import")).toEqual([{ path: "C:\\code\\repo", gitEnabled: true }]));
   });
 
   it("creates a project with its repository in the personal account by default", async () => {

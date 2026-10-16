@@ -2190,7 +2190,8 @@ export class PhoneService {
             const owner = withGitHub ? await resolveOwner(call, o?.owner) : null;
             const p = await call("projects.import", { path: dir, gitEnabled: o?.git !== false });
             projectChanged(p.id);
-            const done = `Projekt ${p.name} ${p.gitEnabled ? "" : "ohne Git "}aufgenommen.`;
+            const forcedGit = o?.git === false && p.gitEnabled ? " Der Ordner hat schon ein Git-Repository, deshalb mit Git." : "";
+            const done = `Projekt ${p.name} ${p.gitEnabled ? "" : "ohne Git "}aufgenommen.${forcedGit}`;
             if (!withGitHub) return done;
             try {
               await call("github.publish", { projectId: p.id, private: o?.github === "private", owner: owner ?? undefined });

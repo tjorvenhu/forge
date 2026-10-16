@@ -213,12 +213,12 @@ function ClaudeUpdateButton() {
       className="w-full"
       loading={updating}
       disabled={setup.data?.phase === "running"}
-      title={info ? `Installiert: ${info.installed ?? "unbekannt"}, verfügbar: ${info.latest} (Kanal ${info.channel})` : undefined}
+      title={info ? `Claude Code installiert: ${info.installed ?? "unbekannt"}, verfügbar: ${info.latest} (Kanal ${info.channel})` : undefined}
       onClick={() => call("claude.update", {}).catch((e: unknown) => toast.error("Update nicht gestartet", errorMessage(e)))}
     >
-      {updating ? "Wird aktualisiert …" : (
+      {updating ? "Claude Code wird aktualisiert …" : (
         <>
-          <Download className="h-3.5 w-3.5" /> Update auf {info?.latest}
+          <Download className="h-3.5 w-3.5" /> Claude-Code-Update auf {info?.latest}
         </>
       )}
     </Button>

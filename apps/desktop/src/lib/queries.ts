@@ -61,6 +61,7 @@ export const keys = {
   syncProbe: ["syncProbe"] as const,
   syncVersions: ["syncVersions"] as const,
   gitIdentity: ["gitIdentity"] as const,
+  inspectFolder: (path: string) => ["inspectFolder", path] as const,
   remote: ["remote"] as const,
   agentReview: (id: string) => ["agentReview", id] as const,
   search: (q: string) => ["search", q] as const,
@@ -75,6 +76,10 @@ export const useProjects = () => useQuery({ queryKey: keys.projects, queryFn: ()
 
 export const useProject = (id: string | null) =>
   useQuery({ queryKey: keys.project(id ?? ""), queryFn: () => call("projects.get", { projectId: id! }), enabled: !!id });
+
+/** Whether a folder picked for import already is a git repository; empty path: nothing asked. */
+export const useFolderInspect = (path: string) =>
+  useQuery({ queryKey: keys.inspectFolder(path), queryFn: () => call("projects.inspectFolder", { path }), enabled: !!path, staleTime: 5_000 });
 
 export const useSettings = () => useQuery({ queryKey: keys.settings, queryFn: () => call("settings.get", {}), staleTime: Infinity });
 

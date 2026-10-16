@@ -103,8 +103,19 @@ export class ProjectManager {
     return canonical;
   }
 
+  /** Whether the folder already is a repository (.git folder, or .git file of a worktree or submodule). */
+  async inspectFolder(rawPath: string): Promise<{ hasGit: boolean }> {
+    try {
+      return { hasGit: existsSync(path.join(await canonicalize(rawPath), ".git")) };
+    } catch {
+      return { hasGit: false };
+    }
+  }
+
+  /** A folder that already has a .git is always imported with git, whatever `gitEnabled` says. */
   async import(rawPath: string, parentId: string | null = null, gitEnabled = true): Promise<Project> {
     const canonical = await this.assertAccessibleDir(rawPath);
+    if (existsSync(path.join(canonical, ".git"))) gitEnabled = true;
     const key = pathKey(canonical);
     const dup = this.db.findProjectByKey(key);
     if (dup) throw new ForgeError("DUPLICATE_PROJECT", `Projekt ist bereits vorhanden: ${dup.name}`, { projectId: dup.id });
