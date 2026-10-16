@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { useMutation, useQuery, type UseMutationResult } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, type UseMutationResult } from "@tanstack/react-query";
 import {
   AlertTriangle,
   Bot,
@@ -44,6 +44,7 @@ import type { MenuItem } from "@/components/ui/dropdown";
 import { SessionStatusBadge } from "@/components/workspace/SessionStatusBadge";
 import { Markdown } from "@/components/workspace/Markdown";
 import { dayLabel, dayLong, dayOptions, localDay, shiftDay } from "@/components/report/report-days";
+import { UsageCharts, UsageHeadline, UsageSkeleton } from "@/components/report/usage-charts";
 
 const ICON = "h-3.5 w-3.5";
 const ALL = "all";
@@ -102,6 +103,8 @@ export function ReportView() {
     queryKey: keys.report(date, scopeId),
     queryFn: () => call("reports.daily", { date, projectId: scopeId ?? undefined }),
     refetchInterval: date === today ? 60_000 : false,
+    // Another day or project keeps the old report on screen, dimmed, until the new one is there.
+    placeholderData: keepPreviousData,
   });
   const summary = useMutation({ mutationFn: () => call("reports.dailySummary", { date, projectId: scopeId ?? undefined }) });
   const resetSummary = summary.reset;
@@ -111,6 +114,7 @@ export function ReportView() {
 
   const scopeName = scopeId ? (projects.data?.find((p) => p.id === scopeId)?.name ?? "Projekt") : null;
   const r = report.data;
+  const hasUsage = !!r && r.usage.days.some((d) => d.workMs > 0 || d.tokens > 0);
   const empty = r && !r.sessions.length && !r.agents.length && !r.commits.length && !r.open.length && !r.calls?.length;
 
   return (
@@ -163,7 +167,8 @@ export function ReportView() {
       {report.isLoading && <ReportSkeleton />}
       {report.isError && <ErrorBanner title="Bericht konnte nicht geladen werden">{errorMessage(report.error)}</ErrorBanner>}
       {r && (
-        <div className="flex flex-col gap-6">
+        <div className={`flex flex-col gap-6 transition-opacity ${report.isPlaceholderData ? "opacity-60" : ""}`} aria-busy={report.isPlaceholderData}>
+          {hasUsage && <UsageHeadline u={r.usage} />}
           <Stats r={r} />
           {r.gitErrors.map((e) => (
             <ErrorBanner key={e.projectName} title={`Commits von ${e.projectName} nicht lesbar`}>
@@ -171,6 +176,7 @@ export function ReportView() {
             </ErrorBanner>
           ))}
           {r.open.length > 0 && <OpenSection items={r.open} refetch={() => void report.refetch()} />}
+          {hasUsage && <UsageCharts u={r.usage} date={r.date} today={today} showProjects={!r.projectId} onPickDay={setDate} />}
           {empty ? (
             <EmptyState icon={<CalendarDays className="h-10 w-10" />} title={`${dayLabel(date, today)} ist nichts passiert`}>
               Keine Sessions, Agenten, Commits oder Anrufe{scopeName ? ` in ${scopeName}` : ""}.
@@ -456,6 +462,7 @@ function CallsSection({ items }: { items: DailyReportCall[] }) {
 function ReportSkeleton() {
   return (
     <SkeletonRegion label="Lädt Tagesbericht" className="flex flex-col gap-6">
+      <UsageSkeleton />
       <div className="grid grid-cols-[repeat(auto-fill,minmax(9rem,1fr))] gap-3">
         {[0, 1, 2, 3, 4].map((i) => (
           <div key={i} className="flex flex-col gap-2 rounded-xl border border-border bg-surface px-4 py-3">

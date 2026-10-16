@@ -31,6 +31,21 @@ const report = (date: string) => ({
   commits: date === today ? [{ projectId: "app", projectName: "App", hash: "abc1234def", shortHash: "abc1234", subject: "Login-Formular", author: "T", date: at, auto: true, agentBranch: null, sessionId: "s1" }] : [],
   open: date === today ? [{ kind: "question", sessionId: "s1", projectId: "app", projectName: "App", sessionTitle: "Login bauen", text: "Welches Format?", at, requestId: "r1" }] : [],
   calls: [],
+  usage: {
+    turns: date === today ? 3 : 0,
+    workMs: date === today ? 320 * 60_000 : 0,
+    agentWorkMs: date === today ? 60 * 60_000 : 0,
+    activeMs: date === today ? 200 * 60_000 : 0,
+    peakParallel: 3,
+    inputTokens: 1000,
+    outputTokens: 245_000,
+    cacheReadTokens: 3_000_000,
+    cacheWriteTokens: 0,
+    other: null,
+    hours: Array.from({ length: 24 }, (_, hour) => ({ hour, workMs: hour === 10 ? 42 * 60_000 : 0, tokens: 0, turns: hour === 10 ? 2 : 0 })),
+    projects: [],
+    days: [shiftDay(today, -1), today].map((d) => ({ date: d, workMs: 60 * 60_000, tokens: 1000 })),
+  },
   gitErrors: [],
   truncated: false,
 });
@@ -107,6 +122,21 @@ describe("daily report", () => {
     expect(await screen.findByText("Gestern ist nichts passiert")).toBeTruthy();
     expect(callMock).toHaveBeenCalledWith("reports.daily", { date: shiftDay(today, -1), projectId: undefined });
     expect(screen.getByRole("button", { name: "Zusammenfassen" }).hasAttribute("disabled")).toBe(true);
+  });
+
+  it("shows working time and tokens, and opens a day from the trend", async () => {
+    show();
+    expect(await screen.findByText("5 h 20 min")).toBeTruthy();
+    expect(screen.getByText("3 Mio.")).toBeTruthy();
+    expect(screen.getByText("92 % davon liest Claude bei jedem Schritt erneut aus dem Cache.")).toBeTruthy();
+    // The hour column carries its value for keyboard and screen readers, the tooltip follows focus.
+    fireEvent.focus(screen.getByLabelText(/^10:00 bis 11:00 · 2 Durchläufe/));
+    expect(screen.getByRole("tooltip").textContent).toContain("42 min");
+    fireEvent.click(screen.getByRole("button", { name: "Gestern: 1 h" }));
+    expect(await screen.findByText("Gestern ist nichts passiert")).toBeTruthy();
+    // Every chart has its table twin.
+    fireEvent.click(screen.getByRole("button", { name: "Über den Tag als Tabelle" }));
+    expect(screen.getByText("10:00 bis 11:00")).toBeTruthy();
   });
 
   it("writes a summary with Claude on request", async () => {

@@ -71,6 +71,21 @@ export function createApp(opts: { dataDir: string; write: Writer; log?: (m: stri
   const runtime = opts.runtime ?? new AgentSdkRuntime({ readDirs: [uploads.dir] });
   const sessions = new SessionService(db, projects, git, runtime, emit, Date.now, uploads);
   tokenMeter.onRate((perSecond) => emit({ event: "tokens.rate", payload: { perSecond } }));
+  // Session turns are recorded with their turn.result event; this catches the calls outside a session.
+  tokenMeter.onResult((kind, m) => {
+    if (kind !== "complete" && kind !== "phone") return;
+    const usage = (m.usage ?? {}) as Record<string, unknown>;
+    const n = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : 0);
+    db.recordClaudeUsage({
+      kind: kind === "phone" ? "phone" : "assist",
+      durationMs: n(m.duration_ms),
+      inputTokens: n(usage.input_tokens),
+      outputTokens: n(usage.output_tokens),
+      cacheReadTokens: n(usage.cache_read_input_tokens),
+      cacheWriteTokens: n(usage.cache_creation_input_tokens),
+      isError: m.is_error === true,
+    });
+  });
   jobs = new JobWatcher({
     session: (id) => (db.getSession(id) ? sessions.get(id) : null),
     parent: (id) => db.getSessionParent(id),

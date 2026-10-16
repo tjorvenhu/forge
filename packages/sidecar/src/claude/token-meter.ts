@@ -26,9 +26,16 @@ export class TokenMeter {
   private last = 0;
   private listener: ((perSecond: number) => void) | null = null;
 
+  private resultListener: ((kind: string, result: Msg) => void) | null = null;
+
   /** Called about every second with the rounded rate while it changes, last with 0. */
   onRate(listener: (perSecond: number) => void) {
     this.listener = listener;
+  }
+
+  /** Called with the result message of every query; `kind` is the prefix of its key (session, complete, phone). */
+  onResult(listener: (kind: string, result: Msg) => void) {
+    this.resultListener = listener;
   }
 
   /** `key` tells parallel processes apart; one key per SDK query. */
@@ -65,6 +72,7 @@ export class TokenMeter {
       return;
     }
     if (m.type === "result") {
+      this.resultListener?.(key.split("#")[0]!, m);
       // A one-shot without assistant messages: its result tells the whole output.
       const seen = [...this.counted.keys()].some((k) => k.startsWith(`${key}:`)) || [...this.partial].some((k) => k.startsWith(`${key}:`));
       if (!seen) this.add(num(((m.usage ?? {}) as Msg).output_tokens), now);

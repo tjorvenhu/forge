@@ -209,6 +209,7 @@ export class Normalizer {
       inputTokens: num(usage.input_tokens),
       outputTokens: num(usage.output_tokens),
       cacheReadTokens: num(usage.cache_read_input_tokens),
+      cacheWriteTokens: num(usage.cache_creation_input_tokens),
       text: str(m.result) ?? (errors || null),
     };
   }

@@ -269,6 +269,34 @@ export const MIGRATIONS: string[] = [
   );
   CREATE INDEX prompt_templates_project ON prompt_templates(project_id, sort_order);
   `,
+  // Tokens and working time of every Claude call, for the statistics of the daily report. Session events
+  // go with their session (an agent's after its merge); these rows stay. kind: session, assist (titles,
+  // commit messages, summaries), phone. ts: end of the call; started = ts - duration_ms.
+  `
+  CREATE TABLE claude_usage (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    session_id TEXT,
+    project_id TEXT,
+    root_id TEXT,
+    root_name TEXT,
+    duration_ms INTEGER NOT NULL DEFAULT 0,
+    input_tokens INTEGER NOT NULL DEFAULT 0,
+    output_tokens INTEGER NOT NULL DEFAULT 0,
+    cache_read_tokens INTEGER NOT NULL DEFAULT 0,
+    cache_write_tokens INTEGER NOT NULL DEFAULT 0,
+    is_error INTEGER NOT NULL DEFAULT 0
+  );
+  CREATE INDEX claude_usage_ts ON claude_usage(ts);
+  INSERT INTO claude_usage(ts, kind, session_id, project_id, root_id, root_name, duration_ms, input_tokens, output_tokens, cache_read_tokens, is_error)
+    SELECT e.ts, 'session', e.session_id, s.project_id, COALESCE(p.parent_id, s.project_id), COALESCE(r.name, p.name),
+           COALESCE(json_extract(e.body, '$.durationMs'), 0), COALESCE(json_extract(e.body, '$.inputTokens'), 0),
+           COALESCE(json_extract(e.body, '$.outputTokens'), 0), COALESCE(json_extract(e.body, '$.cacheReadTokens'), 0),
+           COALESCE(json_extract(e.body, '$.isError'), 0)
+    FROM events e JOIN sessions s ON s.id = e.session_id JOIN projects p ON p.id = s.project_id LEFT JOIN projects r ON r.id = p.parent_id
+    WHERE e.type = 'turn.result';
+  `,
 ];
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -365,6 +393,19 @@ export interface ResumeMark {
 }
 
 export type AgentOutcome = "merged" | "discarded" | "conflict" | "waiting" | "skipped";
+
+export interface ClaudeUsageRow {
+  ts: string;
+  kind: "session" | "assist" | "phone";
+  projectId: string | null;
+  rootId: string | null;
+  rootName: string | null;
+  durationMs: number;
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
+}
 
 export interface AgentLogEntry {
   worktreeId: string;
@@ -957,7 +998,43 @@ export class Db {
   appendEvent(sessionId: string, body: SessionEventBody): SessionEvent {
     const ev: SessionEvent = { seq: this.nextSeq(sessionId), sessionId, ts: now(), body };
     this.stmt("INSERT INTO events(session_id, seq, ts, type, body) VALUES(?, ?, ?, ?, ?)").run(sessionId, ev.seq, ev.ts, body.type, JSON.stringify(body));
+    if (body.type === "turn.result") {
+      this.stmt(
+        `INSERT INTO claude_usage(ts, kind, session_id, project_id, root_id, root_name, duration_ms, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, is_error)
+         SELECT ?, 'session', s.id, s.project_id, COALESCE(p.parent_id, s.project_id), COALESCE(r.name, p.name), ?, ?, ?, ?, ?, ?
+         FROM sessions s JOIN projects p ON p.id = s.project_id LEFT JOIN projects r ON r.id = p.parent_id WHERE s.id = ?`,
+      ).run(ev.ts, body.durationMs ?? 0, body.inputTokens ?? 0, body.outputTokens ?? 0, body.cacheReadTokens ?? 0, body.cacheWriteTokens ?? 0, body.isError ? 1 : 0, sessionId);
+    }
     return ev;
+  }
+
+  /** A Claude call outside a session (titles, commit messages, summaries, the phone). */
+  recordClaudeUsage(u: { kind: "assist" | "phone"; durationMs: number; inputTokens: number; outputTokens: number; cacheReadTokens: number; cacheWriteTokens: number; isError: boolean }) {
+    this.stmt(
+      `INSERT INTO claude_usage(ts, kind, duration_ms, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, is_error) VALUES(?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(now(), u.kind, u.durationMs, u.inputTokens, u.outputTokens, u.cacheReadTokens, u.cacheWriteTokens, u.isError ? 1 : 0);
+  }
+
+  /** Claude calls that ended in [from, to), oldest first; rootIds narrows to those projects (calls outside a session drop out). */
+  claudeUsageBetween(from: string, to: string, rootIds: ReadonlySet<string> | null): ClaudeUsageRow[] {
+    const rows = this.stmt(
+      `SELECT ts, kind, project_id, root_id, root_name, duration_ms, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens FROM claude_usage
+       WHERE ts >= ? AND ts < ? ORDER BY ts`,
+    ).all(from, to) as Array<{ ts: string; kind: string; project_id: string | null; root_id: string | null; root_name: string | null; duration_ms: number; input_tokens: number; output_tokens: number; cache_read_tokens: number; cache_write_tokens: number }>;
+    return rows
+      .filter((r) => !rootIds || (r.root_id !== null && rootIds.has(r.root_id)))
+      .map((r) => ({
+        ts: r.ts,
+        kind: r.kind as ClaudeUsageRow["kind"],
+        projectId: r.project_id,
+        rootId: r.root_id,
+        rootName: r.root_name,
+        durationMs: r.duration_ms,
+        inputTokens: r.input_tokens,
+        outputTokens: r.output_tokens,
+        cacheReadTokens: r.cache_read_tokens,
+        cacheWriteTokens: r.cache_write_tokens,
+      }));
   }
 
   /**

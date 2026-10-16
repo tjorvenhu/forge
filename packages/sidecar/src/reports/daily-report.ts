@@ -2,6 +2,8 @@ import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import {
   ForgeError,
+  formatDuration,
+  formatTokens,
   type DailyReport,
   type DailyReportAgent,
   type DailyReportCommit,
@@ -14,6 +16,7 @@ import type { AgentLogEntry, Db, SessionActivity } from "../persistence/db.js";
 import { questionTexts, requestSubject } from "../phone/session-info.js";
 import type { ProjectManager } from "../projects/project-manager.js";
 import { redactText } from "../policy/redact.js";
+import { TREND_DAYS, usageStats } from "./usage-stats.js";
 
 /** Sessions listed at most; a day with more is cut (truncated). */
 export const MAX_SESSIONS = 200;
@@ -167,6 +170,10 @@ export class DailyReportService {
     const calls = root
       ? null
       : db.listPhoneCallsBetween(from, to).map(({ transcript, ...c }) => ({ ...c, lines: transcript.length }));
+    const trend = Array.from({ length: TREND_DAYS }, (_, i) => dayRange(localDate(new Date(range.from.getFullYear(), range.from.getMonth(), range.from.getDate() - (TREND_DAYS - 1 - i))), now));
+    // A day earlier, for turns that started before midnight.
+    const usageFrom = new Date(trend[0]!.from.getTime() - 24 * 3600_000).toISOString();
+    const usage = usageStats(db.claudeUsageBetween(usageFrom, to, root ? new Set([root.id]) : null), range.from, range.to, trend, !root);
 
     return {
       date: range.date,
@@ -179,6 +186,7 @@ export class DailyReportService {
       commits,
       open,
       calls,
+      usage,
       gitErrors,
       truncated: truncatedSessions || truncatedCommits,
     };
@@ -452,6 +460,19 @@ export function reportText(r: DailyReport, o: ReportTextOptions = {}): string {
   const ref = (id: string) => (o.ref ? `${o.ref(id)} ` : "");
   const title = (t: string | null) => `„${t ?? "ohne Titel"}“`;
   const lines: string[] = [`Tagesbericht für ${dayLabel(r.date, now)}${r.projectName ? `, Projekt ${r.projectName} mit seinen Agenten` : ", alle Projekte"}.`];
+
+  const u = r.usage;
+  if (u.turns || u.workMs) {
+    const total = u.inputTokens + u.outputTokens + u.cacheReadTokens + u.cacheWriteTokens;
+    lines.push(
+      "",
+      `Claude hat ${formatDuration(u.workMs)} gearbeitet${u.agentWorkMs ? `, davon ${formatDuration(u.agentWorkMs)} in parallelen Agenten` : ""}, verteilt auf ${formatDuration(u.activeMs)} Uhrzeit${u.peakParallel > 1 ? `, bis zu ${u.peakParallel} gleichzeitig` : ""}.`,
+      `Tokens: ${formatTokens(total)} (${formatTokens(u.outputTokens)} Ausgabe, ${formatTokens(u.inputTokens + u.cacheWriteTokens)} Eingabe, ${formatTokens(u.cacheReadTokens)} aus dem Cache gelesen).`,
+    );
+    const top = u.projects.slice(0, 5).map((p) => `${p.name} ${formatDuration(p.workMs)}`);
+    if (!r.projectId && top.length > 1) lines.push(`Nach Projekt: ${top.join(", ")}.`);
+  }
+  if (u.other?.calls) lines.push(`Außerhalb von Sessions (Titel, Commit-Nachrichten, Telefon): ${u.other.calls} Aufrufe, ${formatTokens(u.other.inputTokens + u.other.outputTokens + u.other.cacheReadTokens + u.other.cacheWriteTokens)} Tokens.`);
 
   const turns = r.sessions.reduce((n, s) => n + s.turns, 0);
   lines.push("", `Sessions: ${r.sessions.length}${r.sessions.length ? `, ${turns} ${turns === 1 ? "Durchlauf" : "Durchläufe"}` : ""}`);

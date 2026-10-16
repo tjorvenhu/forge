@@ -24,6 +24,11 @@ export function dayLabel(day: string, today: string): string {
   return d.toLocaleDateString("de-DE", { weekday: "short", day: "2-digit", month: "2-digit", ...(d.getFullYear() !== parse(today).getFullYear() ? { year: "numeric" } : {}) });
 }
 
+/** Short for a chart axis, e.g. "14.10.". */
+export function shortDay(day: string): string {
+  return parse(day).toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit" });
+}
+
 /** The day written out for the page subtitle, e.g. "Donnerstag, 16. Oktober 2026". */
 export function dayLong(day: string): string {
   return parse(day).toLocaleDateString("de-DE", { weekday: "long", day: "numeric", month: "long", year: "numeric" });

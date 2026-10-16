@@ -317,6 +317,8 @@ export const SessionEventBody = z.discriminatedUnion("type", [
     inputTokens: z.number().nullable(),
     outputTokens: z.number().nullable(),
     cacheReadTokens: z.number().nullable(),
+    /** missing in events from before it was recorded */
+    cacheWriteTokens: z.number().nullable().optional(),
     text: z.string().nullable(),
   }),
   z.object({
@@ -1419,6 +1421,37 @@ export const DailyReportCall = PhoneCallRecord.omit({ transcript: true }).extend
 });
 export type DailyReportCall = z.infer<typeof DailyReportCall>;
 
+const UsageTokens = {
+  inputTokens: z.number(),
+  outputTokens: z.number(),
+  cacheReadTokens: z.number(),
+  cacheWriteTokens: z.number(),
+};
+
+/**
+ * Tokens and working time of Claude that day. Working time is the sum of the calls' durations (parallel
+ * calls count twice); activeMs is the clock time in which at least one ran.
+ */
+export const DailyReportUsage = z.object({
+  turns: z.number(),
+  workMs: z.number(),
+  /** of workMs: turns of parallel agents */
+  agentWorkMs: z.number(),
+  activeMs: z.number(),
+  /** most calls running at the same time */
+  peakParallel: z.number(),
+  ...UsageTokens,
+  /** calls outside sessions (titles, commit messages, summaries, phone); null for one project */
+  other: z.object({ calls: z.number(), workMs: z.number(), ...UsageTokens }).nullable(),
+  /** 24 local hours */
+  hours: z.array(z.object({ hour: z.number(), workMs: z.number(), tokens: z.number(), turns: z.number() })),
+  /** main projects, most working time first */
+  projects: z.array(z.object({ rootId: z.string(), name: z.string(), workMs: z.number(), tokens: z.number(), turns: z.number() })),
+  /** the 14 days up to and including this one, oldest first */
+  days: z.array(z.object({ date: ReportDate, workMs: z.number(), tokens: z.number() })),
+});
+export type DailyReportUsage = z.infer<typeof DailyReportUsage>;
+
 /** What happened on one day, over all projects or for one. Facts from the database and git, no Claude. */
 export const DailyReport = z.object({
   date: ReportDate,
@@ -1433,6 +1466,7 @@ export const DailyReport = z.object({
   open: z.array(DailyReportOpen),
   /** null for a report of one project: calls belong to no project */
   calls: z.array(DailyReportCall).nullable(),
+  usage: DailyReportUsage,
   /** projects whose commits could not be read */
   gitErrors: z.array(z.object({ projectName: z.string(), message: z.string() })),
   /** more sessions or commits than listed */

@@ -3,7 +3,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { Project, SessionStatus } from "@forge/protocol";
 import { GitEngine } from "../src/git/git.js";
-import { Db, type SessionRecord } from "../src/persistence/db.js";
+import { Db, MIGRATIONS, type SessionRecord } from "../src/persistence/db.js";
 import { ProjectManager } from "../src/projects/project-manager.js";
 import { DailyReportService, dayRange, headMovedSince, localDate, reportText } from "../src/reports/daily-report.js";
 import { git, initRepo, tempDir } from "./helpers.js";
@@ -161,6 +161,10 @@ describe("DailyReportService", () => {
     expect(r.open[0]!.requestId).toBe("r2");
     expect(r.calls).toEqual([expect.objectContaining({ id: "c1", lines: 1 })]);
     expect(r.truncated).toBe(false);
+    // Every turn.result is also a row of claude_usage: the agent's stays after its session is gone.
+    expect(r.usage).toMatchObject({ turns: 5, workMs: 5000, agentWorkMs: 1000 });
+    expect(r.usage.projects.map((p) => p.name).sort()).toEqual([app.name, other.name].sort());
+    expect(r.usage.days).toHaveLength(14);
 
     const text = reportText(r, { ref: (id) => (id === work.id ? "S1" : "S?") });
     expect(text).toMatch(/^Tagesbericht für heute, /);
@@ -169,7 +173,17 @@ describe("DailyReportService", () => {
     expect(text).toContain("agent/csv in app „CSV bauen“: zusammengeführt");
     expect(text).toContain("Rückfrage in S? „Frage“");
     expect(text).toContain("Telefonate: 1");
+    expect(text).toContain("Claude hat 5 s gearbeitet, davon 1 s in parallelen Agenten");
   }, 30_000);
+
+  it("takes the turns from before the update into claude_usage", () => {
+    const s = session(app.id, "Alt");
+    turn(s.id);
+    db.sql.exec("DROP TABLE claude_usage");
+    db.sql.exec(MIGRATIONS.find((m) => m.includes("CREATE TABLE claude_usage"))!);
+    const rows = db.claudeUsageBetween("", "￿", null);
+    expect(rows).toEqual([expect.objectContaining({ kind: "session", projectId: app.id, rootId: app.id, rootName: app.name, durationMs: 1000 })]);
+  });
 
   it("finds agent merges FORGE has no record of in the reflog", async () => {
     // Merged by a build before agent_log, or by hand: only git knows.
