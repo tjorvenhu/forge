@@ -79,6 +79,15 @@ describe("AgentFinisher", () => {
     expect(closed).toEqual([[wt.id]]);
     expect(projects.all().map((p) => p.id)).toEqual([parent.id]);
     expect(notified).toContain(parent.id);
+    // For the daily report: the agent outlives its worktree in agent_log, with the commits as main has them.
+    const log = db.agentLogBetween("", "￿");
+    expect(log).toHaveLength(1);
+    expect(log[0]).toMatchObject({ worktreeId: wt.id, rootId: parent.id, rootName: parent.name, branch: "agent/csv", outcome: "merged", startedAt: wt.createdAt });
+    const hashes = (await git(repo, "log", "-2", "--format=%H")).trim().split("\n");
+    expect(log[0]!.commits.map((c) => [c.hash, c.subject])).toEqual([
+      [hashes[0], "Restliche Änderungen von agent/csv"],
+      [hashes[1], "CSV-Export"],
+    ]);
   }, 30_000);
 
   it("hands rebase conflicts back to the agent and leaves everything in place", async () => {
@@ -104,6 +113,7 @@ describe("AgentFinisher", () => {
     expect(existsSync(wt.path)).toBe(false);
     expect(await git(repo, "branch", "--list", "agent/weg")).toBe("");
     expect((await git(repo, "log", "--format=%s")).trim()).toBe("init");
+    expect(db.agentLogBetween("", "￿").map((e) => [e.outcome, e.branch, e.commits.length])).toEqual([["discarded", "agent/weg", 0]]);
   }, 20_000);
 
   it("discards a half removed agent: branch gone, folder without .git", async () => {

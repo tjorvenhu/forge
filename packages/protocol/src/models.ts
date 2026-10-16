@@ -1304,3 +1304,118 @@ export const PhoneCallRecord = z.object({
   transcript: z.array(z.object({ role: z.enum(["caller", "forge"]), text: z.string(), ts: z.string() })),
 });
 export type PhoneCallRecord = z.infer<typeof PhoneCallRecord>;
+
+/** A day of the report, in local time. */
+export const ReportDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Datum: JJJJ-MM-TT");
+
+/** A session that worked on the report's day (it has events in the day). */
+export const DailyReportSession = z.object({
+  id: z.string(),
+  projectId: z.string(),
+  projectName: z.string(),
+  /** main project; for an agent's session the project its worktree belongs to */
+  rootId: z.string(),
+  title: z.string().nullable(),
+  /** current status, not the one at the end of the day */
+  status: SessionStatus,
+  /** turns that ended on the day */
+  turns: z.number().int(),
+  /** of them ended with an error */
+  errors: z.number().int(),
+  firstAt: z.string(),
+  lastAt: z.string(),
+  /** runs in an agent's worktree */
+  agent: z.boolean(),
+  lastError: z.string().nullable(),
+});
+export type DailyReportSession = z.infer<typeof DailyReportSession>;
+
+/**
+ * A parallel agent of the day. running: its session works; done: finished, not merged yet; waiting:
+ * auto-merge waits until the project can take the work; skipped: auto-merge left the decision to the
+ * user; conflict: the agent resolves rebase conflicts; merged and discarded: gone.
+ */
+export const DailyReportAgentState = z.enum(["running", "done", "waiting", "skipped", "conflict", "merged", "discarded"]);
+export type DailyReportAgentState = z.infer<typeof DailyReportAgentState>;
+
+export const DailyReportAgent = z.object({
+  /** worktree project; no longer exists after merged and discarded */
+  worktreeId: z.string(),
+  rootId: z.string(),
+  rootName: z.string(),
+  branch: z.string().nullable(),
+  /** title of the agent's session */
+  title: z.string().nullable(),
+  /** the agent's session while it exists */
+  sessionId: z.string().nullable(),
+  /** the session that started it with start_agent */
+  parentSessionId: z.string().nullable(),
+  startedAt: z.string().nullable(),
+  /** last change of its state */
+  at: z.string(),
+  state: DailyReportAgentState,
+  message: z.string().nullable(),
+  /** the worktree is still there */
+  exists: z.boolean(),
+});
+export type DailyReportAgent = z.infer<typeof DailyReportAgent>;
+
+export const DailyReportCommit = z.object({
+  projectId: z.string(),
+  projectName: z.string(),
+  hash: z.string(),
+  shortHash: z.string(),
+  subject: z.string(),
+  author: z.string(),
+  date: z.string(),
+  /** committed by FORGE after a turn (tag auto-commit) */
+  auto: z.boolean(),
+  /** came in with this agent's branch */
+  agentBranch: z.string().nullable(),
+  /** session whose turn led to it, while that session exists */
+  sessionId: z.string().nullable(),
+});
+export type DailyReportCommit = z.infer<typeof DailyReportCommit>;
+
+/** Open now (not at the end of the day): what waits for the user. */
+export const DailyReportOpen = z.object({
+  kind: z.enum(["question", "plan", "approval", "error", "autoContinue"]),
+  sessionId: z.string(),
+  projectId: z.string(),
+  projectName: z.string(),
+  sessionTitle: z.string().nullable(),
+  /** the questions, the plan's first line, the tool and its command, the error */
+  text: z.string(),
+  /** since when; for autoContinue the planned time */
+  at: z.string(),
+  /** approval and question: the request to answer */
+  requestId: z.string().nullable(),
+});
+export type DailyReportOpen = z.infer<typeof DailyReportOpen>;
+
+export const DailyReportCall = PhoneCallRecord.omit({ transcript: true }).extend({
+  /** lines of the transcript */
+  lines: z.number().int(),
+});
+export type DailyReportCall = z.infer<typeof DailyReportCall>;
+
+/** What happened on one day, over all projects or for one. Facts from the database and git, no Claude. */
+export const DailyReport = z.object({
+  date: ReportDate,
+  /** start and end of the day (ISO, end exclusive) */
+  from: z.string(),
+  to: z.string(),
+  projectId: z.string().nullable(),
+  projectName: z.string().nullable(),
+  sessions: z.array(DailyReportSession),
+  agents: z.array(DailyReportAgent),
+  commits: z.array(DailyReportCommit),
+  open: z.array(DailyReportOpen),
+  /** null for a report of one project: calls belong to no project */
+  calls: z.array(DailyReportCall).nullable(),
+  /** projects whose commits could not be read */
+  gitErrors: z.array(z.object({ projectName: z.string(), message: z.string() })),
+  /** more sessions or commits than listed */
+  truncated: z.boolean(),
+});
+export type DailyReport = z.infer<typeof DailyReport>;

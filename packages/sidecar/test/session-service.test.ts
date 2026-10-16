@@ -314,6 +314,22 @@ describe("SessionService", () => {
     expect(captures).toHaveLength(3);
   });
 
+  it("offers the daily report as a tool, for this project or all of them", async () => {
+    const asked: Array<[string | null, string | undefined]> = [];
+    svc.useDailyReport(async (id, date) => (asked.push([id, date]), "Tagesbericht für heute"));
+    projects.update(projectId, { gitEnabled: false });
+    await svc.start({ projectId, prompt: "Was war heute?" });
+    const tool = rt.started[0]!.tools!.find((t) => t.name === "daily_report")!;
+    expect(tool.autoAllow).toBe(true);
+    expect(rt.started[0]!.context).toMatch(/daily_report:/);
+    expect(await tool.run({})).toBe("Tagesbericht für heute");
+    await tool.run({ all_projects: true, date: "2026-10-15" });
+    expect(asked).toEqual([
+      [projectId, undefined],
+      [null, "2026-10-15"],
+    ]);
+  });
+
   it("tells sessions in a project without git not to use git and gives them no agents", async () => {
     projects.update(projectId, { gitEnabled: false });
     const s = await svc.start({ projectId, prompt: "Baue die Startseite" });

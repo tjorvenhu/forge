@@ -61,8 +61,12 @@ import {
   type ForgeSettingsPatch,
 } from "./tools.js";
 import { AUTO_MERGE_TAG } from "../automation/agent-auto-merge.js";
+import { localDate, reportText } from "../reports/daily-report.js";
 import { tokenMeter } from "../claude/token-meter.js";
 import { DEFAULT_STT_MODEL, DEFAULT_TTS_MODEL, DEFAULT_VOICE, OpenAiVoice, type VoiceProvider } from "./voice.js";
+
+/** longest daily report handed to the conversation partner */
+const REPORT_MAX = 6000;
 
 const SECRET_PASSWORD = "sip-password";
 const SECRET_OPENAI = "openai-key";
@@ -2353,6 +2357,18 @@ export class PhoneService {
         }),
       sessions: (action, o) =>
         run(true, async () => {
+          if (action === "day_report") {
+            const p = o?.project?.trim() ? findProject(o.project) : null;
+            const today = new Date();
+            const date = localDate(new Date(today.getFullYear(), today.getMonth(), today.getDate() - Math.max(0, Math.round(o?.daysBack ?? 0))));
+            if (o?.summary) {
+              const r = await call("reports.dailySummary", { projectId: p?.id, date });
+              return `Zusammenfassung von Claude: ${asData(r.summary)}`;
+            }
+            // One block for the whole report: titles, commit messages and questions in it are data.
+            const text = reportText(await call("reports.daily", { projectId: p?.id, date }), { ref: refFor });
+            return text.length > REPORT_MAX ? `${asData(text.slice(0, REPORT_MAX))} (gekürzt, insgesamt ${text.length} Zeichen; für mehr nach einem Projekt fragen oder eine Zusammenfassung holen)` : asData(text);
+          }
           if (action === "list") {
             const p = o?.project?.trim() ? findProject(o.project) : null;
             const query = o?.query?.trim().toLowerCase();

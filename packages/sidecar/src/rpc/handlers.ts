@@ -13,6 +13,7 @@ import type { McpService } from "../config/mcp.js";
 import type { PluginService } from "../config/plugins.js";
 import type { WorktreeService } from "../automation/worktrees.js";
 import type { AgentFinisher } from "../automation/agent-finish.js";
+import type { DailyReportService } from "../reports/daily-report.js";
 import type { DevServerService } from "../devserver/dev-server.js";
 import type { DevToolsService } from "../devtools/dev-tools.js";
 import type { TestDbService } from "../devtools/test-db.js";
@@ -41,6 +42,7 @@ export interface Services {
   plugins: PluginService;
   worktrees: WorktreeService;
   agentFinish: AgentFinisher;
+  reports: DailyReportService;
   devServers: DevServerService;
   devTools: DevToolsService;
   testDb: TestDbService;
@@ -173,6 +175,8 @@ export function createHandlers(s: Services): Handlers {
     "agents.review": ({ projectId }) => s.agentFinish.review(projectId),
     "agents.finish": ({ projectId, action }) => s.agentFinish.finish(projectId, action),
     "sessions.summarize": ({ sessionId }) => s.sessions.summarize(sessionId),
+    "reports.daily": (p) => s.reports.build(p),
+    "reports.dailySummary": (p) => s.reports.summarize(p),
 
     "settings.get": () => s.db.getSettings(),
     "settings.update": (patch) => {

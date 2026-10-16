@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { useQueries, useQuery } from "@tanstack/react-query";
-import { CheckCircle2, Database, Download, ExternalLink, FolderOpen, GitPullRequestArrow, Phone, Play, RotateCcw, Server, ShieldQuestion, Sparkles, SquareTerminal } from "lucide-react";
+import { CalendarDays, CheckCircle2, Database, Download, ExternalLink, FolderOpen, GitPullRequestArrow, Phone, Play, RotateCcw, Server, ShieldQuestion, Sparkles, SquareTerminal } from "lucide-react";
 import type { ResultOf } from "@forge/protocol";
 import { call, keys, useAppUpdate, useClaudeSetup, useDiagnostics, useLiveSessions, usePhoneState, useProjects } from "@/lib/queries";
 import { useModelLabel } from "@/lib/models";
@@ -29,10 +29,20 @@ const WORKING = new Set(["starting", "running", "stopping"]);
 export function HomeView() {
   const projects = useProjects();
   const setNewProject = useUi((s) => s.setNewProject);
+  const openReport = useUi((s) => s.openReport);
   const none = projects.isSuccess && projects.data.length === 0;
 
   return (
-    <Page title="Start" subtitle="Was gerade läuft und was auf dich wartet">
+    <Page
+      title="Start"
+      subtitle="Was gerade läuft und was auf dich wartet"
+      actions={
+        <Button variant="ghost" onClick={() => openReport(null)}>
+          <CalendarDays className="h-4 w-4" />
+          Tagesbericht
+        </Button>
+      }
+    >
       <ApiKeyWarning />
       {projects.isLoading && (
         <SkeletonRegion label="Lädt Startseite" className="flex flex-col gap-8">

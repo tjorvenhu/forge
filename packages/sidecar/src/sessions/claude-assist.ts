@@ -95,6 +95,12 @@ export class ClaudeAssist {
     return { summary: summary.trim(), model: ASSIST_MODEL };
   }
 
+  /** Summary of the daily report; the prompt carries the report's facts (see reports/daily-report.ts). */
+  async summarizeDailyReport(prompt: string, cwd: string): Promise<{ text: string; model: string }> {
+    const { claudePath, env } = this.claude();
+    return { text: await this.runtime.complete(prompt, { cwd, env, claudePath, model: ASSIST_MODEL }), model: ASSIST_MODEL };
+  }
+
   /** Raw session title for the prompt built by the title refresh; the caller cleans it up. */
   async sessionTitle(sessionId: string, prompt: string): Promise<string> {
     const rec = this.db.getSession(sessionId);

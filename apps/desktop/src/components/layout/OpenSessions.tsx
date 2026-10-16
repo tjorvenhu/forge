@@ -1,7 +1,7 @@
 import { useEffect, useRef, type KeyboardEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { useQueries } from "@tanstack/react-query";
-import { AppWindow, Bot, ChevronDown, Columns2, FolderOpen, Hourglass, LayoutGrid, MessageSquare, MessageSquarePlus, Plus, SquareArrowOutUpRight, X } from "lucide-react";
+import { AppWindow, Bot, CalendarDays, ChevronDown, Columns2, FolderOpen, Hourglass, LayoutGrid, MessageSquare, MessageSquarePlus, Plus, SquareArrowOutUpRight, X } from "lucide-react";
 import { openChatWindow, useChatWindows } from "@/lib/chat-windows";
 import { contextItems } from "@/lib/context-menu";
 import { call, keys, useLiveSessions, useProjects, useSession } from "@/lib/queries";
@@ -138,6 +138,7 @@ export function OpenSessions() {
   const openId = useUi(openSessionId);
   const activeProjectId = useUi((s) => (s.view === "workspace" ? s.activeProjectId : null));
   const openProject = useUi((s) => s.openProject);
+  const openReport = useUi((s) => s.openReport);
   // A new session without a message yet: listed while it is open, gone once you leave it.
   const newSessionProject = useUi((s) => (s.view === "workspace" && s.activeProjectId && s.activeSession[s.activeProjectId] === null ? s.activeProjectId : null));
   const openSession = useSession(openId);
@@ -232,6 +233,7 @@ export function OpenSessions() {
                     openProject(g.projectId, null);
                   },
                 },
+                { label: "Tagesbericht", icon: <CalendarDays className={MENU_ICON} />, onSelect: () => openReport(g.projectId) },
                 ...(hasRows ? [{ label: collapsed ? "Sessions einblenden" : "Sessions ausblenden", icon: <ChevronDown className={MENU_ICON} />, onSelect: () => toggleGroup(g.projectId) }] : []),
               ])}
             >

@@ -50,6 +50,8 @@ export const PHONE_TOOL_FOR: Partial<Record<MethodName, string>> = {
   "agents.review": "finish_agent",
   "agents.finish": "finish_agent",
   "sessions.summarize": "details",
+  "reports.daily": "sessions",
+  "reports.dailySummary": "sessions",
 
   "settings.get": "forge_settings",
   "settings.update": "forge_settings",

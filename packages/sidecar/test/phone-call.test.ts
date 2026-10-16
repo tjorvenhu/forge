@@ -18,6 +18,7 @@ import { RtpSession } from "../src/phone/rtp.js";
 import type { VoiceProvider } from "../src/phone/voice.js";
 import { Db } from "../src/persistence/db.js";
 import { GitEngine } from "../src/git/git.js";
+import { localDate } from "../src/reports/daily-report.js";
 import { ProjectManager } from "../src/projects/project-manager.js";
 import type { SessionService } from "../src/sessions/session-service.js";
 import type { DevServerService } from "../src/devserver/dev-server.js";
@@ -1563,6 +1564,38 @@ describe("PhoneService end to end with a test PBX", () => {
     expect(rpcCalls.at(-1)).toEqual(["uiCompare.retake", { sessionId: "s1", compareId: "x" }]);
     await end();
   }, 30_000);
+
+  it("reads the daily report as data, for a project or a past day, and Claude's summary of it", async () => {
+    const today = new Date();
+    const at = today.toISOString();
+    rpcResults = {
+      "reports.daily": () => ({
+        date: localDate(today),
+        from: at,
+        to: at,
+        projectId: null,
+        projectName: null,
+        sessions: [{ id: "s1", projectId, projectName: "shop", rootId: projectId, title: "Warenkorb", status: "idle", turns: 3, errors: 0, firstAt: at, lastAt: at, agent: false, lastError: null }],
+        agents: [],
+        commits: [],
+        open: [],
+        calls: [],
+        gitErrors: [],
+        truncated: false,
+      }),
+      "reports.dailySummary": () => ({ summary: "Der Warenkorb ist fertig.", model: "haiku" }),
+    };
+    const { conv, end } = await openCall("c-report");
+    const text = await conv.tools.sessions("day_report");
+    expect(text).toMatch(/^<<<SESSION-DATEN>>>Tagesbericht für heute, /);
+    expect(text).toContain("S1 „Warenkorb“ (shop): 3 Durchläufe");
+    expect(text).toMatch(/<<<ENDE SESSION-DATEN>>>$/);
+    expect(rpcCalls.at(-1)).toEqual(["reports.daily", { date: localDate(today) }]);
+    await conv.tools.sessions("day_report", { project: "shop", daysBack: 1 });
+    expect(rpcCalls.at(-1)).toEqual(["reports.daily", { projectId, date: localDate(new Date(today.getFullYear(), today.getMonth(), today.getDate() - 1)) }]);
+    expect(await conv.tools.sessions("day_report", { summary: true })).toBe("Zusammenfassung von Claude: <<<SESSION-DATEN>>>Der Warenkorb ist fertig.<<<ENDE SESSION-DATEN>>>");
+    await end();
+  });
 
   it("lists, deletes and diffs in Git, restores a commit, publishes, sets the identity, reviews agents and edits the test environment", async () => {
     const wt = await agentWorktree();

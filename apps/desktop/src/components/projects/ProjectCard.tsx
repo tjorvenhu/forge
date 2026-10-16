@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, Bot, Code2, Copy, FolderOpen, FolderSearch, GitBranch, MessageSquarePlus, MoreHorizontal, Settings2, Shield, ShieldAlert, ShieldCheck, Star, Tag, Trash2 } from "lucide-react";
+import { AlertTriangle, Bot, CalendarDays, Code2, Copy, FolderOpen, FolderSearch, GitBranch, MessageSquarePlus, MoreHorizontal, Settings2, Shield, ShieldAlert, ShieldCheck, Star, Tag, Trash2 } from "lucide-react";
 import type { ProjectWithStatus } from "@forge/protocol";
 import { call, keys } from "@/lib/queries";
 import { contextItems, copyText } from "@/lib/context-menu";
@@ -20,6 +20,7 @@ import { LocalOnlyBadge } from "@/components/settings/SyncLocalOnly";
 export function ProjectCard({ p, agents = [], onRemove }: { p: ProjectWithStatus; agents?: ProjectWithStatus[]; onRemove: (p: ProjectWithStatus) => void }) {
   const openProject = useUi((s) => s.openProject);
   const openProjectSettings = useUi((s) => s.openProjectSettings);
+  const openReport = useUi((s) => s.openReport);
   const qc = useQueryClient();
 
   const toggleFavorite = async () => {
@@ -37,6 +38,7 @@ export function ProjectCard({ p, agents = [], onRemove }: { p: ProjectWithStatus
       onContextMenu={contextItems(() => [
         { label: "Öffnen", icon: <FolderOpen className="h-3.5 w-3.5" />, onSelect: () => openProject(p.id) },
         { label: "Neue Session", icon: <MessageSquarePlus className="h-3.5 w-3.5" />, onSelect: () => openProject(p.id, null) },
+        { label: "Tagesbericht", icon: <CalendarDays className="h-3.5 w-3.5" />, onSelect: () => openReport(p.parentId ?? p.id) },
         { label: p.favorite ? "Aus Favoriten entfernen" : "Zu Favoriten", icon: <Star className="h-3.5 w-3.5" />, onSelect: () => void toggleFavorite() },
         {
           label: "Projekteinstellungen",
@@ -100,6 +102,7 @@ export function ProjectCard({ p, agents = [], onRemove }: { p: ProjectWithStatus
           }
           items={[
             { label: p.favorite ? "Aus Favoriten entfernen" : "Zu Favoriten", icon: <Star className="h-3.5 w-3.5" />, onSelect: () => void toggleFavorite() },
+            { label: "Tagesbericht", icon: <CalendarDays className="h-3.5 w-3.5" />, onSelect: () => openReport(p.parentId ?? p.id) },
             { label: "Entfernen oder löschen", icon: <Trash2 className="h-3.5 w-3.5" />, danger: true, onSelect: () => onRemove(p) },
           ]}
         />

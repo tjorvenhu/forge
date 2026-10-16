@@ -33,12 +33,14 @@ import { AgentReviewDialog } from "@/components/workspace/AgentReviewDialog";
 const loadSessions = () => import("@/views/SessionsView");
 const loadSettings = () => import("@/views/SettingsView");
 const loadExtensions = () => import("@/views/ExtensionsView");
+const loadReport = () => import("@/views/ReportView");
 const SessionsView = lazy(() => loadSessions().then((m) => ({ default: m.SessionsView })));
+const ReportView = lazy(() => loadReport().then((m) => ({ default: m.ReportView })));
 const SettingsView = lazy(() => loadSettings().then((m) => ({ default: m.SettingsView })));
 const ExtensionsView = lazy(() => loadExtensions().then((m) => ({ default: m.ExtensionsView })));
 
 function preloadViews() {
-  const run = () => void Promise.all([loadSessions(), loadSettings(), loadExtensions()]).catch(() => {});
+  const run = () => void Promise.all([loadSessions(), loadReport(), loadSettings(), loadExtensions()]).catch(() => {});
   if (typeof requestIdleCallback === "function") requestIdleCallback(run, { timeout: 5000 });
   else setTimeout(run, 2000);
 }
@@ -123,6 +125,7 @@ function Shell() {
                 {view === "home" && <HomeView />}
                 {view === "projects" && <ProjectsView />}
                 {view === "sessions" && <SessionsView />}
+                {view === "report" && <ReportView />}
                 {view === "settings" && <SettingsView />}
                 {view === "workspace" && <WorkspaceView />}
                 {view === "mcp" && <ExtensionsView />}

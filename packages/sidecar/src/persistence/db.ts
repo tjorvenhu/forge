@@ -233,6 +233,28 @@ export const MIGRATIONS: string[] = [
   );
   CREATE INDEX usage_samples_at ON usage_samples(at);
   `,
+  // What became of parallel agents (merged, discarded, waiting ...), for the daily report: after a
+  // merge their worktree project and sessions are gone. No foreign keys, the rows outlive both.
+  // commits: JSON [{ hash, subject, auto }] that a merge brought into the target branch.
+  `
+  CREATE TABLE agent_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    worktree_id TEXT NOT NULL,
+    root_id TEXT NOT NULL,
+    root_name TEXT NOT NULL,
+    branch TEXT,
+    title TEXT,
+    session_id TEXT,
+    parent_session_id TEXT,
+    started_at TEXT,
+    outcome TEXT NOT NULL,
+    message TEXT,
+    commits TEXT NOT NULL DEFAULT '[]',
+    ts TEXT NOT NULL
+  );
+  CREATE INDEX agent_log_ts ON agent_log(ts);
+  CREATE INDEX agent_log_worktree ON agent_log(worktree_id, id);
+  `,
 ];
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -326,6 +348,83 @@ export interface ResumeMark {
   working: boolean;
   fromVersion: string | null;
   markedAt: string;
+}
+
+export type AgentOutcome = "merged" | "discarded" | "conflict" | "waiting" | "skipped";
+
+export interface AgentLogEntry {
+  worktreeId: string;
+  rootId: string;
+  rootName: string;
+  branch: string | null;
+  title: string | null;
+  sessionId: string | null;
+  parentSessionId: string | null;
+  startedAt: string | null;
+  outcome: AgentOutcome;
+  message: string | null;
+  /** commits a merge brought into the target branch */
+  commits: Array<{ hash: string; subject: string; auto: boolean }>;
+  ts: string;
+}
+
+/** A session with events in a time range: how many turns ended in it and when it worked. */
+export interface SessionActivity {
+  session: SessionRecord;
+  projectName: string;
+  projectParentId: string | null;
+  turns: number;
+  errors: number;
+  firstAt: string;
+  lastAt: string;
+  /** auto-commits of FORGE after its turns in the range */
+  autoCommits: Array<{ hash: string; subject: string }>;
+}
+
+interface AgentLogRow {
+  worktree_id: string;
+  root_id: string;
+  root_name: string;
+  branch: string | null;
+  title: string | null;
+  session_id: string | null;
+  parent_session_id: string | null;
+  started_at: string | null;
+  outcome: string;
+  message: string | null;
+  commits: string;
+  ts: string;
+}
+
+function toAgentLog(r: AgentLogRow): AgentLogEntry {
+  return {
+    worktreeId: r.worktree_id,
+    rootId: r.root_id,
+    rootName: r.root_name,
+    branch: r.branch,
+    title: r.title,
+    sessionId: r.session_id,
+    parentSessionId: r.parent_session_id,
+    startedAt: r.started_at,
+    outcome: r.outcome as AgentOutcome,
+    message: r.message,
+    commits: JSON.parse(r.commits) as AgentLogEntry["commits"],
+    ts: r.ts,
+  };
+}
+
+function toPhoneCall(r: Record<string, string | null>): PhoneCallRecord {
+  return {
+    id: r.id!,
+    direction: r.direction as PhoneCallRecord["direction"],
+    number: r.number!,
+    reason: r.reason ?? null,
+    startedAt: r.started_at!,
+    endedAt: r.ended_at ?? null,
+    result: r.result as PhoneCallRecord["result"],
+    detail: r.detail ?? null,
+    transcript: JSON.parse(r.transcript ?? "[]") as PhoneCallRecord["transcript"],
+  };
 }
 
 function toAutoContinue(r: AutoContinueRow): AutoContinueRecord {
@@ -923,17 +1022,103 @@ export class Db {
 
   listPhoneCalls(limit: number): PhoneCallRecord[] {
     const rows = this.sql.prepare("SELECT * FROM phone_calls ORDER BY started_at DESC LIMIT ?").all(limit) as Array<Record<string, string | null>>;
-    return rows.map((r) => ({
-      id: r.id!,
-      direction: r.direction as PhoneCallRecord["direction"],
-      number: r.number!,
-      reason: r.reason ?? null,
-      startedAt: r.started_at!,
-      endedAt: r.ended_at ?? null,
-      result: r.result as PhoneCallRecord["result"],
-      detail: r.detail ?? null,
-      transcript: JSON.parse(r.transcript ?? "[]") as PhoneCallRecord["transcript"],
-    }));
+    return rows.map(toPhoneCall);
+  }
+
+  /** Calls that started in [from, to), newest first. */
+  listPhoneCallsBetween(from: string, to: string, limit = 200): PhoneCallRecord[] {
+    const rows = this.stmt("SELECT * FROM phone_calls WHERE started_at >= ? AND started_at < ? ORDER BY started_at DESC LIMIT ?").all(from, to, limit) as Array<Record<string, string | null>>;
+    return rows.map(toPhoneCall);
+  }
+
+  // ---- daily report
+
+  /**
+   * Sessions with events in [from, to), the one updated last first; `projectIds` narrows them. Every
+   * turn ends with a status change, which moves updated_at, so a session that worked in the range was
+   * updated in it or later: that narrows the candidates without an index on events.ts.
+   */
+  sessionActivity(from: string, to: string, projectIds: ReadonlySet<string> | null, limit: number): SessionActivity[] {
+    const rows = this.stmt(
+      `SELECT s.*, p.name AS project_name, p.parent_id AS project_parent FROM sessions s JOIN projects p ON p.id = s.project_id
+       WHERE s.updated_at >= ? AND s.created_at < ? ORDER BY s.updated_at DESC`,
+    ).all(from, to) as unknown as Array<SessionRow & { project_name: string; project_parent: string | null }>;
+    const agg = this.stmt(
+      `SELECT COUNT(*) AS n, COALESCE(SUM(type = 'turn.result'), 0) AS turns,
+              COALESCE(SUM(type = 'turn.result' AND json_extract(body, '$.isError') = 1), 0) AS errors, MIN(ts) AS first, MAX(ts) AS last
+       FROM events WHERE session_id = ? AND ts >= ? AND ts < ?`,
+    );
+    const out: SessionActivity[] = [];
+    for (const r of rows) {
+      if (projectIds && !projectIds.has(r.project_id)) continue;
+      const a = agg.get(r.id, from, to) as { n: number; turns: number; errors: number; first: string | null; last: string | null };
+      if (!a.n) continue;
+      out.push({
+        session: toSession(r),
+        projectName: r.project_name,
+        projectParentId: r.project_parent,
+        turns: a.turns,
+        errors: a.errors,
+        firstAt: a.first!,
+        lastAt: a.last!,
+        autoCommits: this.autoCommits(r.id, from, to),
+      });
+      if (out.length >= limit) break;
+    }
+    return out;
+  }
+
+  /** Commits FORGE made after the session's turns (tag auto-commit), oldest first. */
+  autoCommits(sessionId: string, from = "", to = "￿"): Array<{ hash: string; subject: string }> {
+    return this.stmt(
+      `SELECT json_extract(body, '$.hash') AS hash, json_extract(body, '$.message') AS subject FROM events
+       WHERE session_id = ? AND type = 'automation' AND ts >= ? AND ts < ?
+         AND json_extract(body, '$.action') = 'commit' AND json_extract(body, '$.ok') = 1 AND json_extract(body, '$.hash') IS NOT NULL
+       ORDER BY seq`,
+    ).all(sessionId, from, to) as Array<{ hash: string; subject: string }>;
+  }
+
+  /** Approval requests (questions and plans too) of the session's current turn that have no answer yet, oldest first. */
+  openApprovalRequests(sessionId: string): Array<{ ts: string; body: Extract<SessionEventBody, { type: "approval.request" }> }> {
+    const rows = this.stmt(
+      `SELECT e.ts, e.body FROM events e
+       WHERE e.session_id = ? AND e.type = 'approval.request'
+         AND e.seq > COALESCE((SELECT MAX(seq) FROM events WHERE session_id = ? AND type = 'user.message'), 0)
+         AND NOT EXISTS (SELECT 1 FROM events r WHERE r.session_id = e.session_id AND r.seq > e.seq AND r.type = 'approval.resolved'
+                           AND json_extract(r.body, '$.requestId') = json_extract(e.body, '$.requestId'))
+       ORDER BY e.seq`,
+    ).all(sessionId, sessionId) as Array<{ ts: string; body: string }>;
+    return rows.map((r) => ({ ts: r.ts, body: JSON.parse(r.body) as Extract<SessionEventBody, { type: "approval.request" }> }));
+  }
+
+  /**
+   * Notes what became of an agent. Waiting agents are tried again every few minutes and a skipped one
+   * again after each turn: the same outcome right after itself is no new row.
+   */
+  logAgent(e: Omit<AgentLogEntry, "ts"> & { ts?: string }) {
+    const last = this.stmt("SELECT outcome FROM agent_log WHERE worktree_id = ? ORDER BY id DESC LIMIT 1").get(e.worktreeId) as { outcome: string } | undefined;
+    if (last?.outcome === e.outcome && (e.outcome === "waiting" || e.outcome === "skipped")) return;
+    this.stmt(
+      `INSERT INTO agent_log(worktree_id, root_id, root_name, branch, title, session_id, parent_session_id, started_at, outcome, message, commits, ts)
+       VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(e.worktreeId, e.rootId, e.rootName, e.branch, e.title, e.sessionId, e.parentSessionId, e.startedAt, e.outcome, e.message, JSON.stringify(e.commits), e.ts ?? now());
+  }
+
+  /** Agent outcomes noted in [from, to), oldest first. */
+  agentLogBetween(from: string, to: string): AgentLogEntry[] {
+    const rows = this.stmt("SELECT * FROM agent_log WHERE ts >= ? AND ts < ? ORDER BY id").all(from, to) as unknown as AgentLogRow[];
+    return rows.map(toAgentLog);
+  }
+
+  /** The newest outcome noted for each of these worktrees. */
+  lastAgentLog(worktreeIds: string[]): Map<string, AgentLogEntry> {
+    const out = new Map<string, AgentLogEntry>();
+    const q = this.stmt("SELECT * FROM agent_log WHERE worktree_id = ? ORDER BY id DESC LIMIT 1");
+    for (const id of worktreeIds) {
+      const r = q.get(id) as AgentLogRow | undefined;
+      if (r) out.set(id, toAgentLog(r));
+    }
+    return out;
   }
 
   // ---- approvals audit

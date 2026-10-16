@@ -8,6 +8,7 @@ import {
   ArrowUpCircle,
   BookOpen,
   Bot,
+  CalendarDays,
   Camera,
   CloudDownload,
   Download,
@@ -457,6 +458,10 @@ export function buildActions(ctx: ActionContext): PaletteEntry[] {
     act("knowledge-recheck", "Projektwissen: Verweise neu prüfen", icon(RefreshCw), () => void recheckKnowledgeRefs(qc, owner), {
       keywords: "wissen veraltet verweise dateien bezeichner prüfen aktualisieren",
     });
+    act("report-project", "Tagesbericht für dieses Projekt", icon(CalendarDays), () => ui.openReport(root?.id ?? project.id), {
+      keywords: "heute passiert rückblick agenten commits zusammenfassung tag",
+      hint: root?.name ?? project.name,
+    });
 
     if (project.exists) {
       act("explorer-project", "Projektordner im Explorer öffnen", icon(FolderOpen), () => void revealInProject(project.path, ""), { keywords: "explorer ordner dateien windows" });
@@ -509,6 +514,7 @@ export function buildActions(ctx: ActionContext): PaletteEntry[] {
     }
   }
 
+  act("report", "Tagesbericht", icon(CalendarDays), () => ui.openReport(null), { keywords: "was ist heute passiert rückblick alle projekte agenten commits zusammenfassung tag gestern" });
   act("add-project", "Projekt hinzufügen", icon(FolderPlus), () => ui.setNewProject("import"), { hint: "Strg+O", keywords: "importieren ordner" });
   act("create-project", "Neues Projekt anlegen", icon(FolderPlus), () => ui.setNewProject("create"));
   act("clone-project", "Projekt von GitHub klonen", icon(FolderDown), () => ui.setNewProject("clone"), { keywords: "clone repository" });

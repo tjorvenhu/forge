@@ -75,7 +75,11 @@ export interface ForgeToolDeps {
   usage?: (() => Promise<string>) | null;
   /** A notice when the limit forecast runs full before the reset; added to start_agent, never blocks it. */
   limitWarning?: (() => Promise<string | null>) | null;
+  report?: DailyReportText | null;
 }
+
+/** The daily report as text: projectId null covers all projects; date JJJJ-MM-TT, today without it. */
+export type DailyReportText = (projectId: string | null, date?: string) => Promise<string>;
 
 /** Knowledge and dev tools of the session's project, with the lines of start context that explain them. */
 export function projectTools(rec: SessionRecord, p: ProjectToolDeps): { tools: SessionTool[]; context: string[] } {
@@ -375,8 +379,27 @@ export function forgeSessionTools(rec: SessionRecord, d: ForgeToolDeps): { tools
         run: () => usage(),
       }
     : null;
-  const common = [notify, ...(usageStatus ? [usageStatus] : [])];
-  const usageLine = usageStatus ? "- usage_status: Abo-Nutzung und Limits; vor großem Aufwand (mehrere Agenten, lange Läufe) prüfen." : "";
+  const report = d.report;
+  const dailyReport: SessionTool | null = report
+    ? {
+        name: "daily_report",
+        description:
+          "Tagesbericht von FORGE: Sessions mit Durchläufen, parallele Agenten (gestartet, zusammengeführt, verworfen, wartend), Commits (Auto-Commits markiert), was gerade offen ist (Rückfragen, Freigaben, Fehler, geplantes Weitermachen nach dem Nutzungslimit), bei allen Projekten auch Telefonate. Für Fragen wie „Was ist heute passiert?“ oder „Was haben die Agenten gestern geschafft?“.",
+        shape: {
+          date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().describe("Tag im Format JJJJ-MM-TT; weglassen für heute"),
+          all_projects: z.boolean().optional().describe("true: alle Projekte; sonst nur dieses Projekt mit seinen Agenten"),
+        },
+        autoAllow: true,
+        run: (a) => report(a.all_projects === true ? null : (project.parentId ?? project.id), typeof a.date === "string" ? a.date : undefined),
+      }
+    : null;
+  const common = [notify, ...(usageStatus ? [usageStatus] : []), ...(dailyReport ? [dailyReport] : [])];
+  const usageLine = [
+    usageStatus ? "- usage_status: Abo-Nutzung und Limits; vor großem Aufwand (mehrere Agenten, lange Läufe) prüfen." : "",
+    dailyReport ? "- daily_report: was an einem Tag passiert ist (Sessions, Agenten, Commits, Offenes); für Rückblicke und „Was ist heute passiert?“." : "",
+  ]
+    .filter(Boolean)
+    .join("\n");
 
   // Agents need worktrees and branches, so a project without git gets neither them nor git hints.
   if (!project.gitEnabled && !parent) {

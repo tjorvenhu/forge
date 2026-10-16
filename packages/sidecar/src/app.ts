@@ -9,6 +9,7 @@ import { McpService } from "./config/mcp.js";
 import { PluginService } from "./config/plugins.js";
 import { WorktreeService } from "./automation/worktrees.js";
 import { AgentFinisher } from "./automation/agent-finish.js";
+import { DailyReportService, reportText } from "./reports/daily-report.js";
 import { DevServerService } from "./devserver/dev-server.js";
 import { DevToolsService } from "./devtools/dev-tools.js";
 import { TestDbService } from "./devtools/test-db.js";
@@ -112,6 +113,14 @@ export function createApp(opts: { dataDir: string; write: Writer; log?: (m: stri
   const notifyProject = (projectId: string) => emit({ event: "project.updated", payload: { projectId } });
   const agentFinish = new AgentFinisher({ db, git, projects, sessions, worktrees, devServers, notifyProject });
   sessions.useAgentFinisher(agentFinish);
+  const reports = new DailyReportService({
+    db,
+    git,
+    projects,
+    dataDir: opts.dataDir,
+    summarize: (prompt, cwd) => sessions.summarizeDailyReport(prompt, cwd),
+  });
+  sessions.useDailyReport(async (projectId, date) => reportText(await reports.build({ projectId: projectId ?? undefined, date })));
   const presence = new Presence();
   const secrets = new SecretStore(path.join(opts.dataDir, "secrets"));
   let handlers: Handlers | null = null;
@@ -269,6 +278,7 @@ export function createApp(opts: { dataDir: string; write: Writer; log?: (m: stri
     plugins,
     worktrees,
     agentFinish,
+    reports,
     devServers,
     devTools,
     testDb,

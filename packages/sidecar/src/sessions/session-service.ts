@@ -32,7 +32,7 @@ import { AutoContinue } from "./auto-continue.js";
 import { ClaudeAssist } from "./claude-assist.js";
 import { SessionLifecycle, type StartParams } from "./lifecycle.js";
 import { BUSY } from "./live-session.js";
-import { AgentRegistry, forgeSessionTools, type ProjectToolDeps } from "./forge-tools.js";
+import { AgentRegistry, forgeSessionTools, type DailyReportText, type ProjectToolDeps } from "./forge-tools.js";
 import { WorktreeService } from "../automation/worktrees.js";
 import type { AgentFinisher } from "../automation/agent-finish.js";
 import { AgentAutoMerge } from "../automation/agent-auto-merge.js";
@@ -79,6 +79,8 @@ export class SessionService {
   private agentAutoMerge: AgentAutoMerge | null = null;
   /** before/after screenshots around turns that change UI files; set by app.ts once the preview exists */
   private uiCompare: UiCompareService | null = null;
+  /** the daily report as text for the tool daily_report; set by app.ts, the report needs this service */
+  private dailyReport: DailyReportText | null = null;
 
   constructor(
     private readonly db: Db,
@@ -207,6 +209,7 @@ export class SessionService {
           emit,
           project: this.projectDeps,
           finisher: this.agentFinisher,
+          report: this.dailyReport,
           usage: async () => describeUsage(await this.catalog.planUsage(false), this.limits.state()),
           limitWarning: async () => limitWarning(await this.catalog.planUsage(false)),
         }),
@@ -230,6 +233,11 @@ export class SessionService {
       track: (p) => this.automation.track(p),
     });
     return this.uiCompare;
+  }
+
+  /** The tool daily_report for sessions started from now on. */
+  useDailyReport(report: DailyReportText) {
+    this.dailyReport = report;
   }
 
   private readonly pruning = new Set<string>();
@@ -363,6 +371,10 @@ export class SessionService {
 
   summarize(sessionId: string) {
     return this.assist.summarize(sessionId);
+  }
+
+  summarizeDailyReport(prompt: string, cwd: string) {
+    return this.assist.summarizeDailyReport(prompt, cwd);
   }
 
   suggestPullRequest(projectId: string) {

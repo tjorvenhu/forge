@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { isChatWindow } from "@/lib/chat-windows";
 
-export type View = "home" | "projects" | "sessions" | "mcp" | "settings" | "workspace";
+export type View = "home" | "projects" | "sessions" | "report" | "mcp" | "settings" | "workspace";
 export type NewProjectMode = "import" | "create" | "clone";
 export type BottomTab = "output" | "dev";
 export type ClaudeLoginReason = "expired" | "manual" | "switch";
@@ -215,6 +215,10 @@ interface UiState {
   /** switches to the project's Einstellungen tab at one section */
   openProjectSettings: (section: ProjectSettingsSection) => void;
   setView: (v: View) => void;
+  /** project the daily report shows (with its agents); null: all projects */
+  reportProjectId: string | null;
+  /** opens the daily report, for one project or all */
+  openReport: (projectId: string | null) => void;
   settingsSection: SettingsSection;
   /** opens the settings at one section */
   openSettings: (section: SettingsSection) => void;
@@ -368,6 +372,8 @@ export const useUi = create<UiState>((set, get) => ({
     savePrefs(get());
   },
   setView: (view) => set({ view }),
+  reportProjectId: null,
+  openReport: (reportProjectId) => set({ view: "report", reportProjectId }),
   settingsSection: "general",
   openSettings: (settingsSection) => set({ view: "settings", settingsSection }),
   extensionsTab: "mcp",

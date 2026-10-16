@@ -117,7 +117,9 @@ export class AgentAutoMerge {
     if (review.busy) return;
     const skip = (reason: string) => {
       this.settle(worktree.id);
-      this.report(sessionId, parentId, worktree, review.branch, "skipped", `Nicht automatisch zusammengeführt: ${reason}`);
+      const message = `Nicht automatisch zusammengeführt: ${reason}`;
+      this.logSkipped(sessionId, parentId, worktree, review.branch, message);
+      this.report(sessionId, parentId, worktree, review.branch, "skipped", message);
     };
     if (!testsOk) return skip("Die Tests sind fehlgeschlagen.");
     if (review.mergeBlocker) return skip(review.mergeBlocker);
@@ -153,6 +155,27 @@ export class AgentAutoMerge {
   private settle(worktreeId: string) {
     this.waiting.delete(worktreeId);
     this.syncTimer();
+  }
+
+  /** For the daily report; merged, waiting and conflict the finisher notes itself. */
+  private logSkipped(sessionId: string, parentId: string | null, worktree: Project, branch: string | null, message: string) {
+    try {
+      this.d.db.logAgent({
+        worktreeId: worktree.id,
+        rootId: worktree.parentId!,
+        rootName: this.d.projects.all().find((p) => p.id === worktree.parentId)?.name ?? worktree.name,
+        branch,
+        title: this.d.db.getSession(sessionId)?.title ?? null,
+        sessionId,
+        parentSessionId: parentId,
+        startedAt: worktree.createdAt,
+        outcome: "skipped",
+        message,
+        commits: [],
+      });
+    } catch {
+      // Only the daily report misses it.
+    }
   }
 
   /** In the agent's chat (gone after a merge), in the chat of the session that started it, and to the UI. */

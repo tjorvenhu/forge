@@ -10,6 +10,8 @@ import {
   CommitDetails,
   CommitInfo,
   ContextUsage,
+  DailyReport,
+  ReportDate,
   DevServerState,
   DevToolsConfig,
   KnowledgeCleanup,
@@ -89,6 +91,8 @@ const relPaths = z.array(z.string().min(1).max(4096)).min(1).max(2000);
 const empty = z.object({}).strict();
 const voiceConnection = z.object({ language: z.string().min(2).max(12).default("de"), keyterms: z.array(z.string().max(100)).max(200).default([]) });
 const pluginId = z.string().regex(/^[A-Za-z0-9._-]{1,128}@[A-Za-z0-9._-]{1,128}$/);
+/** date: local day (JJJJ-MM-TT), today without it; projectId: one project with its agents, all without it */
+const dailyReportParams = z.object({ date: ReportDate.optional(), projectId: id.optional() });
 
 /**
  * Every RPC method: params are validated in the sidecar, results are typed for the UI.
@@ -200,6 +204,11 @@ export const methods = {
   /** merge: rebase the agent's branch onto its target and fast-forward it, then remove worktree and branch; discard: remove both unmerged */
   "agents.finish": { params: projectRef.extend({ action: z.enum(["merge", "discard"]) }), result: AgentFinishResult },
   "sessions.summarize": { params: sessionRef, result: z.object({ summary: z.string(), model: z.string() }) },
+
+  /** what happened on a day (default today), over all projects or for one with its agents */
+  "reports.daily": { params: dailyReportParams, result: DailyReport },
+  /** short summary of the same report by Claude (small model, one-shot) */
+  "reports.dailySummary": { params: dailyReportParams, result: z.object({ summary: z.string(), model: z.string() }) },
 
   "settings.get": { params: empty, result: Settings },
   "settings.update": { params: Settings.partial(), result: Settings },

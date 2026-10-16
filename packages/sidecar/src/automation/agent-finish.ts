@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { ForgeError, type AgentFinishResult, type AgentReview, type Project } from "@forge/protocol";
 import type { GitEngine } from "../git/git.js";
-import type { Db, SessionRecord } from "../persistence/db.js";
+import type { AgentLogEntry, Db, SessionRecord } from "../persistence/db.js";
 import { lastAnswer } from "../phone/session-info.js";
 import { removeWorktree, type RemovalDeps } from "../projects/removal.js";
 import { foreignBranch, worktreeRoot } from "./worktrees.js";
@@ -117,7 +117,53 @@ export class AgentFinisher {
   }
 
   async finish(projectId: string, action: "merge" | "discard"): Promise<AgentFinishResult> {
-    return action === "merge" ? this.merge(projectId) : this.discard(projectId);
+    // Read before: a merge or discard takes the worktree project and its sessions with it.
+    const before = this.snapshot(projectId);
+    const taken: AgentLogEntry["commits"] = [];
+    const r = action === "merge" ? await this.merge(projectId, taken) : await this.discard(projectId);
+    if (before) {
+      try {
+        this.d.db.logAgent({ ...before, branch: r.branch ?? before.branch, outcome: r.outcome, message: r.message, commits: r.outcome === "merged" ? taken : [] });
+      } catch {
+        // Only the daily report misses it; the agent itself is finished.
+      }
+    }
+    return r;
+  }
+
+  /** What the daily report keeps of an agent once its worktree and session are gone. */
+  private snapshot(projectId: string): Omit<AgentLogEntry, "outcome" | "message" | "commits" | "ts"> | null {
+    const all = this.d.projects.all();
+    const worktree = all.find((p) => p.id === projectId);
+    if (!worktree?.parentId) return null;
+    const session = this.d.db.listSessions(worktree.id)[0] ?? null;
+    return {
+      worktreeId: worktree.id,
+      rootId: worktree.parentId,
+      rootName: all.find((p) => p.id === worktree.parentId)?.name ?? worktree.name,
+      branch: null,
+      title: session?.title ?? null,
+      sessionId: session?.id ?? null,
+      parentSessionId: session ? this.d.db.getSessionParent(session.id) : null,
+      startedAt: worktree.createdAt,
+    };
+  }
+
+  /** The agent's commits the target branch is about to take, and which of them FORGE committed after a turn. */
+  private async incoming(l: Located, dir: string, branch: string, targetBranch: string): Promise<AgentLogEntry["commits"]> {
+    const log = await this.d.git.exec(dir, ["log", "-200", "--format=%H%x09%s", `refs/heads/${targetBranch}..refs/heads/${branch}`]);
+    if (log.code !== 0) return [];
+    // A rebase gives the commits new hashes; the subject still tells an auto-commit.
+    const auto = new Set(this.d.db.listSessions(l.worktree.id).flatMap((s) => this.d.db.autoCommits(s.id).map((c) => c.subject)));
+    return log.stdout
+      .split("\n")
+      .map((line) => line.replace(/\r$/, ""))
+      .filter(Boolean)
+      .map((line) => {
+        const tab = line.indexOf("\t");
+        const subject = line.slice(tab + 1);
+        return { hash: line.slice(0, tab), subject, auto: auto.has(subject) };
+      });
   }
 
   private async discard(projectId: string): Promise<AgentFinishResult> {
@@ -144,7 +190,7 @@ export class AgentFinisher {
     };
   }
 
-  private async merge(projectId: string): Promise<AgentFinishResult> {
+  private async merge(projectId: string, taken: AgentLogEntry["commits"]): Promise<AgentFinishResult> {
     const review = await this.review(projectId);
     if (review.mergeBlocker) throw new ForgeError("CONFLICT", review.mergeBlocker);
     const l = await this.locate(projectId);
@@ -183,12 +229,14 @@ export class AgentFinisher {
     }
 
     const commits = await this.count(dir, `refs/heads/${targetBranch}..refs/heads/${branch}`);
+    const incoming = await this.incoming(l, dir, branch, targetBranch);
     const waiting = await this.fastForward(dir, branch, targetBranch);
     if (waiting) {
       this.changed(l);
       return { action: "merge", outcome: "waiting", branch, targetBranch, commits: 0, files: waiting.files, sessionId: null, branchError: null, message: waiting.message };
     }
-    const taken = `${commits === 1 ? "1 Commit" : `${commits} Commits`} von ${branch} in ${targetBranch} übernommen`;
+    taken.push(...incoming);
+    const done = `${commits === 1 ? "1 Commit" : `${commits} Commits`} von ${branch} in ${targetBranch} übernommen`;
     // A branch that existed before the agent keeps its name after the merge; only FORGE's own goes.
     const own = await this.d.worktrees.branchOwner(l.worktree, branch);
     let removed: { deletedBranch: string | null; branchError: string | null };
@@ -200,7 +248,7 @@ export class AgentFinisher {
       if (own) await git.exec(dir, ["branch", "-d", branch]).catch(() => null);
       this.changed(l);
       const why = e instanceof Error ? e.message : String(e);
-      return { action: "merge", outcome: "merged", branch, targetBranch, commits, files: [], sessionId: null, branchError: null, message: `${taken}. Der Worktree-Ordner ließ sich aber nicht löschen: ${why}` };
+      return { action: "merge", outcome: "merged", branch, targetBranch, commits, files: [], sessionId: null, branchError: null, message: `${done}. Der Worktree-Ordner ließ sich aber nicht löschen: ${why}` };
     }
     this.changed(l);
     return {
@@ -213,8 +261,8 @@ export class AgentFinisher {
       sessionId: null,
       branchError: removed.branchError,
       message: removed.deletedBranch
-        ? `${taken}, Worktree und Branch gelöscht.`
-        : `${taken}, Worktree gelöscht. ${removed.branchError ? `Der Branch blieb aber: ${removed.branchError}` : foreignBranch(branch)}`,
+        ? `${done}, Worktree und Branch gelöscht.`
+        : `${done}, Worktree gelöscht. ${removed.branchError ? `Der Branch blieb aber: ${removed.branchError}` : foreignBranch(branch)}`,
     };
   }
 

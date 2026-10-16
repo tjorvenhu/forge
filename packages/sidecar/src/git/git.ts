@@ -228,6 +228,18 @@ export class GitEngine {
   }
 
   /**
+   * Commits of the checked-out branch committed in [since, until) (ISO), newest first, only those that
+   * touch the project folder: in a monorepo the other projects' commits stay out.
+   */
+  async logBetween(cwd: string, since: string, until: string, limit: number): Promise<CommitInfo[]> {
+    const hasHead = (await this.exec(cwd, ["rev-parse", "--verify", "-q", "HEAD"])).code === 0;
+    if (!hasHead) return [];
+    // git reads "YYYY-MM-DD HH:MM:SS +0000" reliably; ISO with milliseconds it may misread.
+    const gitDate = (iso: string) => `${iso.slice(0, 10)} ${iso.slice(11, 19)} +0000`;
+    return parseLog(await this.ok(cwd, ["log", `--since=${gitDate(since)}`, `--until=${gitDate(until)}`, `-n${limit}`, `--format=${LOG_FORMAT}`, "HEAD", "--", "."]));
+  }
+
+  /**
    * The commit and the side it is compared with: its first parent, or the empty tree for a root commit
    * (merges are shown against the first parent, as git log --first-parent would).
    */

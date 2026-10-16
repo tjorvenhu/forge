@@ -116,6 +116,8 @@ export function routeServerEvent(qc: QueryClient, git: GitRefresher, e: ServerEv
       break;
     }
     case "session.done":
+      // The daily report counts turns and commits; an open report refetches, others are only marked stale.
+      void qc.invalidateQueries({ queryKey: ["report"] });
       // Chat windows get this event too; sound and notification come from the main window only.
       if (!isChatWindow() && shouldNotify(e.payload.sessionId, "done")) {
         if (qc.getQueryData<ResultOf<"settings.get">>(keys.settings)?.sounds !== false) playSound("done");
@@ -227,6 +229,7 @@ export function routeServerEvent(qc: QueryClient, git: GitRefresher, e: ServerEv
       break;
     case "agent.autoMerge":
       if (!isChatWindow()) agentAutoMerged(e.payload);
+      void qc.invalidateQueries({ queryKey: ["report"] });
       break;
     case "project.updated": {
       const id = e.payload.projectId;
