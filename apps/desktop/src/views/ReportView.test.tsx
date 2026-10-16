@@ -42,7 +42,13 @@ const report = (date: string) => ({
     outputTokens: 245_000,
     cacheReadTokens: 3_000_000,
     cacheWriteTokens: 0,
-    other: null,
+    forge: {
+      calls: date === today ? 6 : 0,
+      workMs: 90_000,
+      tokens: 24_600,
+      cacheReadTokens: 0,
+      parts: date === today ? [{ purpose: "commit", calls: 5, workMs: 60_000, tokens: 20_000 }, { purpose: "auto", calls: 1, workMs: 30_000, tokens: 4600 }] : [],
+    },
     hours: Array.from({ length: 24 }, (_, hour) => ({ hour, workMs: hour === 10 ? 42 * 60_000 : 0, tokens: 0, turns: hour === 10 ? 2 : 0 })),
     projects: [],
     days: [shiftDay(today, -1), today].map((d) => ({ date: d, workMs: 60 * 60_000, tokens: 1000 })),
@@ -132,6 +138,10 @@ describe("daily report", () => {
     expect(screen.getByText("246 Tsd.")).toBeTruthy();
     expect(screen.getByText("3 Mio.")).toBeTruthy();
     expect(screen.getByText("Ø 150 Tsd. je Anfrage")).toBeTruthy();
+    // What FORGE caused itself, by purpose.
+    expect(screen.getByText("25 Tsd. neue Tokens, 10 % des Tages, 6 Aufrufe, 2 min")).toBeTruthy();
+    expect(screen.getByText("Commit-Nachrichten")).toBeTruthy();
+    expect(screen.getByText("Von FORGE gesendete Nachrichten")).toBeTruthy();
     // The hour column carries its value for keyboard and screen readers, the tooltip follows focus.
     fireEvent.focus(screen.getByLabelText(/^10:00 bis 11:00 · 2 Durchläufe/));
     expect(screen.getByRole("tooltip").textContent).toContain("42 min");

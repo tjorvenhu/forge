@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from "react";
 import { BarChart3, Copy, Table2 } from "lucide-react";
-import { formatDuration, formatTokens, type DailyReportUsage } from "@forge/protocol";
+import { FORGE_USAGE_LABEL, formatDuration, formatTokens, type DailyReportUsage } from "@forge/protocol";
 import { contextItems, copyText } from "@/lib/context-menu";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -222,13 +222,50 @@ export function UsageHeadline({ u }: { u: DailyReportUsage }) {
             Bei jeder Anfrage liest Claude den bisherigen Verlauf erneut aus dem Cache. Das steht rechts für sich und ist nicht in den neuen Tokens enthalten.
           </p>
         )}
-        {u.other && u.other.calls > 0 && (
+        {u.forge.calls > 0 && (
           <p className="mt-auto pt-2 text-caption text-subtle">
-            Dazu {u.other.calls} {u.other.calls === 1 ? "Aufruf" : "Aufrufe"} außerhalb von Sessions (Titel, Commit-Nachrichten, Telefon) mit {formatTokens(u.other.inputTokens + u.other.outputTokens + u.other.cacheWriteTokens)} neuen Tokens.
+            Davon durch FORGE selbst: {formatTokens(u.forge.tokens)}
+            {fresh ? ` (${Math.round((u.forge.tokens / fresh) * 100)} %)` : ""}, siehe unten.
           </p>
         )}
       </section>
     </div>
+  );
+}
+
+/**
+ * What FORGE itself had Claude do (commit messages, titles, phone, messages it sent into sessions ...),
+ * one bar per purpose by new tokens, with calls and time.
+ */
+function ForgeCard({ u }: { u: DailyReportUsage }) {
+  const f = u.forge;
+  const fresh = u.inputTokens + u.outputTokens + u.cacheWriteTokens;
+  const max = Math.max(1, ...f.parts.map((p) => p.tokens));
+  const share = fresh ? Math.round((f.tokens / fresh) * 100) : 0;
+  return (
+    <ChartCard
+      title="Durch FORGE"
+      sub={`${formatTokens(f.tokens)} neue Tokens, ${share} % des Tages, ${f.calls} ${f.calls === 1 ? "Aufruf" : "Aufrufe"}, ${formatDuration(f.workMs)}`}
+      rows={f.parts.map((p) => [FORGE_USAGE_LABEL[p.purpose], `${formatTokens(p.tokens)} neue Tokens, ${p.calls} ${p.calls === 1 ? "Aufruf" : "Aufrufe"}, ${formatDuration(p.workMs)}`])}
+    >
+      <ul className="flex flex-col gap-2.5">
+        {f.parts.map((p) => (
+          <li key={p.purpose} className="min-w-0">
+            <div className="mb-1 flex items-baseline gap-2 text-small">
+              <span className="min-w-0 flex-1 truncate text-fg">{FORGE_USAGE_LABEL[p.purpose]}</span>
+              <span className="shrink-0 tabular-nums text-fg">{formatTokens(p.tokens)}</span>
+              <span className="w-24 shrink-0 text-right tabular-nums text-subtle">
+                {p.calls} {p.calls === 1 ? "Aufruf" : "Aufrufe"}
+              </span>
+            </div>
+            <div className="h-2 w-full rounded-r-[4px] bg-surface-2">
+              <div className="h-full rounded-r-[4px] bg-accent-strong" style={{ width: `${Math.max(1, (p.tokens / max) * 100)}%` }} />
+            </div>
+          </li>
+        ))}
+      </ul>
+      {f.cacheReadTokens > 0 && <p className="mt-3 text-caption text-subtle">Dazu {formatTokens(f.cacheReadTokens)} Tokens Kontext aus dem Cache.</p>}
+    </ChartCard>
   );
 }
 
@@ -246,6 +283,7 @@ export function UsageCharts({ u, date, today, showProjects, onPickDay }: { u: Da
   const peak = busyHours.reduce<(typeof u.hours)[number] | null>((a, h) => (!a || h.workMs > a.workMs ? h : a), null);
   const projects = showProjects ? u.projects : [];
   const maxProject = Math.max(1, ...projects.map((p) => p.workMs));
+  const cards = 1 + (projects.length > 1 ? 1 : 0) + (u.forge.calls > 0 ? 1 : 0);
   const avg = u.days.slice(0, -1).filter((d) => d.workMs > 0);
   const avgMs = avg.length ? avg.reduce((n, d) => n + d.workMs, 0) / avg.length : 0;
   const avgTokens = avg.length ? avg.reduce((n, d) => n + d.tokens, 0) / avg.length : 0;
@@ -267,7 +305,7 @@ export function UsageCharts({ u, date, today, showProjects, onPickDay }: { u: Da
           }))}
         />
       </ChartCard>
-      <div className={cn("grid gap-3", projects.length > 1 && "lg:grid-cols-2")}>
+      <div className={cn("grid gap-3", cards > 1 && "lg:grid-cols-2")}>
         <ChartCard
           title="Letzte 14 Tage"
           sub={avgMs ? `Schnitt der Tage davor mit Arbeit: ${trendKind === "time" ? formatDuration(avgMs) : `${formatTokens(avgTokens)} neue Tokens`}. Klick öffnet den Tag.` : "Klick öffnet den Tag."}
@@ -322,6 +360,7 @@ export function UsageCharts({ u, date, today, showProjects, onPickDay }: { u: Da
             </ul>
           </ChartCard>
         )}
+        {u.forge.calls > 0 && <ForgeCard u={u} />}
       </div>
     </div>
   );
