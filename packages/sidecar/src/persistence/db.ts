@@ -1,6 +1,6 @@
 import { DatabaseSync, type StatementSync } from "node:sqlite";
 import type { UsageSample } from "../claude/usage-forecast.js";
-import { DEFAULT_DISABLED_POLICY_RULES, SEARCH_MARK_END, SEARCH_MARK_START, type ContextUsage, type EffortLevel, type PermissionMode, type ProfileId, type Project, type PhoneCallRecord, type PromptTemplate, type SearchHit, type Session, type SessionEvent, type SessionEventBody, type SessionStatus, type Settings } from "@forge/protocol";
+import { DEFAULT_DISABLED_POLICY_RULES, SEARCH_MARK_END, SEARCH_MARK_START, type ContextUsage, type EffortLevel, type ForgeUsagePurpose, type PermissionMode, type ProfileId, type Project, type PhoneCallRecord, type PromptTemplate, type SearchHit, type Session, type SessionEvent, type SessionEventBody, type SessionStatus, type Settings } from "@forge/protocol";
 
 export const MIGRATIONS: string[] = [
   `
@@ -304,6 +304,16 @@ export const MIGRATIONS: string[] = [
     WHERE e.session_id = claude_usage.session_id AND e.ts = claude_usage.ts AND e.type = 'turn.result' LIMIT 1), 0)
   WHERE kind = 'session';
   `,
+  // What FORGE caused (ForgeUsagePurpose); NULL: the user's own turn. A session turn is "auto" when the
+  // message that started it was sent by FORGE (source auto).
+  `
+  ALTER TABLE claude_usage ADD COLUMN purpose TEXT;
+  UPDATE claude_usage SET purpose = 'phone' WHERE kind = 'phone';
+  UPDATE claude_usage SET purpose = 'other' WHERE kind = 'assist';
+  UPDATE claude_usage SET purpose = 'auto' WHERE kind = 'session' AND (
+    SELECT json_extract(e.body, '$.source') FROM events e
+    WHERE e.session_id = claude_usage.session_id AND e.type = 'user.message' AND e.ts <= claude_usage.ts ORDER BY e.seq DESC LIMIT 1) = 'auto';
+  `,
 ];
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -404,6 +414,8 @@ export type AgentOutcome = "merged" | "discarded" | "conflict" | "waiting" | "sk
 export interface ClaudeUsageRow {
   ts: string;
   kind: "session" | "assist" | "phone";
+  /** what FORGE caused; null: the user's own turn */
+  purpose: ForgeUsagePurpose | null;
   projectId: string | null;
   rootId: string | null;
   rootName: string | null;
@@ -1009,8 +1021,10 @@ export class Db {
     this.stmt("INSERT INTO events(session_id, seq, ts, type, body) VALUES(?, ?, ?, ?, ?)").run(sessionId, ev.seq, ev.ts, body.type, JSON.stringify(body));
     if (body.type === "turn.result") {
       this.stmt(
-        `INSERT INTO claude_usage(ts, kind, session_id, project_id, root_id, root_name, duration_ms, api_calls, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, is_error)
-         SELECT ?, 'session', s.id, s.project_id, COALESCE(p.parent_id, s.project_id), COALESCE(r.name, p.name), ?, ?, ?, ?, ?, ?, ?
+        `INSERT INTO claude_usage(ts, kind, session_id, project_id, root_id, root_name, duration_ms, api_calls, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, is_error, purpose)
+         SELECT ?, 'session', s.id, s.project_id, COALESCE(p.parent_id, s.project_id), COALESCE(r.name, p.name), ?, ?, ?, ?, ?, ?, ?,
+           CASE (SELECT json_extract(e.body, '$.source') FROM events e WHERE e.session_id = s.id AND e.type = 'user.message' ORDER BY e.seq DESC LIMIT 1)
+             WHEN 'auto' THEN 'auto' END
          FROM sessions s JOIN projects p ON p.id = s.project_id LEFT JOIN projects r ON r.id = p.parent_id WHERE s.id = ?`,
       ).run(ev.ts, body.durationMs ?? 0, body.numTurns ?? 0, body.inputTokens ?? 0, body.outputTokens ?? 0, body.cacheReadTokens ?? 0, body.cacheWriteTokens ?? 0, body.isError ? 1 : 0, sessionId);
     }
@@ -1018,23 +1032,24 @@ export class Db {
   }
 
   /** A Claude call outside a session (titles, commit messages, summaries, the phone). */
-  recordClaudeUsage(u: { kind: "assist" | "phone"; durationMs: number; apiCalls: number; inputTokens: number; outputTokens: number; cacheReadTokens: number; cacheWriteTokens: number; isError: boolean }) {
+  recordClaudeUsage(u: { kind: "assist" | "phone"; purpose: ForgeUsagePurpose; durationMs: number; apiCalls: number; inputTokens: number; outputTokens: number; cacheReadTokens: number; cacheWriteTokens: number; isError: boolean }) {
     this.stmt(
-      `INSERT INTO claude_usage(ts, kind, duration_ms, api_calls, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, is_error) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    ).run(now(), u.kind, u.durationMs, u.apiCalls, u.inputTokens, u.outputTokens, u.cacheReadTokens, u.cacheWriteTokens, u.isError ? 1 : 0);
+      `INSERT INTO claude_usage(ts, kind, purpose, duration_ms, api_calls, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, is_error) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(now(), u.kind, u.purpose, u.durationMs, u.apiCalls, u.inputTokens, u.outputTokens, u.cacheReadTokens, u.cacheWriteTokens, u.isError ? 1 : 0);
   }
 
   /** Claude calls that ended in [from, to), oldest first; rootIds narrows to those projects (calls outside a session drop out). */
   claudeUsageBetween(from: string, to: string, rootIds: ReadonlySet<string> | null): ClaudeUsageRow[] {
     const rows = this.stmt(
-      `SELECT ts, kind, project_id, root_id, root_name, duration_ms, api_calls, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens FROM claude_usage
+      `SELECT ts, kind, purpose, project_id, root_id, root_name, duration_ms, api_calls, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens FROM claude_usage
        WHERE ts >= ? AND ts < ? ORDER BY ts`,
-    ).all(from, to) as Array<{ ts: string; kind: string; project_id: string | null; root_id: string | null; root_name: string | null; duration_ms: number; api_calls: number; input_tokens: number; output_tokens: number; cache_read_tokens: number; cache_write_tokens: number }>;
+    ).all(from, to) as Array<{ ts: string; kind: string; purpose: string | null; project_id: string | null; root_id: string | null; root_name: string | null; duration_ms: number; api_calls: number; input_tokens: number; output_tokens: number; cache_read_tokens: number; cache_write_tokens: number }>;
     return rows
       .filter((r) => !rootIds || (r.root_id !== null && rootIds.has(r.root_id)))
       .map((r) => ({
         ts: r.ts,
         kind: r.kind as ClaudeUsageRow["kind"],
+        purpose: r.purpose as ForgeUsagePurpose | null,
         projectId: r.project_id,
         rootId: r.root_id,
         rootName: r.root_name,

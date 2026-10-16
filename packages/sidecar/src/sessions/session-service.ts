@@ -46,7 +46,7 @@ import { SessionCore } from "./session-core.js";
 import { SessionStream } from "./stream.js";
 import { TitleRefresh } from "./titles.js";
 import { TurnAutomation } from "./turn-automation.js";
-import { TurnDispatch } from "./turns.js";
+import { TurnDispatch, type MessageSource } from "./turns.js";
 import { UpdateResume } from "./update-resume.js";
 
 /** Entry point for everything session related; wires the session modules and keeps the public API in one place. */
@@ -403,8 +403,8 @@ export class SessionService {
     return this.lifecycle.resume(sessionId, prompt, attachments);
   }
 
-  send(sessionId: string, text: string, attachments: Attachment[] = []): Promise<Session> {
-    return this.turns.send(sessionId, text, attachments);
+  send(sessionId: string, text: string, attachments: Attachment[] = [], source?: MessageSource): Promise<Session> {
+    return this.turns.send(sessionId, text, attachments, source);
   }
 
   stop(sessionId: string): Promise<Session> {

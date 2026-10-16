@@ -1421,6 +1421,13 @@ export const DailyReportCall = PhoneCallRecord.omit({ transcript: true }).extend
 });
 export type DailyReportCall = z.infer<typeof DailyReportCall>;
 
+/**
+ * What FORGE itself had Claude do: "auto" are session turns FORGE sent (continuing after the usage limit,
+ * restart after an update, compacting, conflicts of an agent), the rest one-shot calls and the phone.
+ */
+export const ForgeUsagePurpose = z.enum(["auto", "commit", "title", "summary", "report", "knowledge", "pr", "changelog", "phone", "other"]);
+export type ForgeUsagePurpose = z.infer<typeof ForgeUsagePurpose>;
+
 const UsageTokens = {
   inputTokens: z.number(),
   outputTokens: z.number(),
@@ -1444,8 +1451,17 @@ export const DailyReportUsage = z.object({
   /** most calls running at the same time */
   peakParallel: z.number(),
   ...UsageTokens,
-  /** calls outside sessions (titles, commit messages, summaries, phone); null for one project */
-  other: z.object({ calls: z.number(), workMs: z.number(), ...UsageTokens }).nullable(),
+  /**
+   * What FORGE itself caused, by purpose, most new tokens first. `tokens` are new ones, like everywhere.
+   * For one project only the turns FORGE sent there: the one-shot calls are not tied to a project.
+   */
+  forge: z.object({
+    calls: z.number(),
+    workMs: z.number(),
+    tokens: z.number(),
+    cacheReadTokens: z.number(),
+    parts: z.array(z.object({ purpose: ForgeUsagePurpose, calls: z.number(), workMs: z.number(), tokens: z.number() })),
+  }),
   /** 24 local hours */
   hours: z.array(z.object({ hour: z.number(), workMs: z.number(), tokens: z.number(), turns: z.number() })),
   /** main projects, most working time first */

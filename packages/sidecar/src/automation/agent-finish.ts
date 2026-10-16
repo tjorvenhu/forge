@@ -326,7 +326,7 @@ export class AgentFinisher {
 
   /** The agent knows its own changes best; without a session one starts in the worktree. */
   private async handBack(l: Located, prompt: string): Promise<string> {
-    if (l.session) return (await this.d.sessions.send(l.session.id, prompt)).id;
+    if (l.session) return (await this.d.sessions.send(l.session.id, prompt, [], "auto")).id;
     return (await this.d.sessions.start({ projectId: l.worktree.id, prompt })).id;
   }
 

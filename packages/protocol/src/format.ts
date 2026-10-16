@@ -1,3 +1,5 @@
+import type { ForgeUsagePurpose } from "./models.js";
+
 /** A working time for people: 45 s, 12 min, 5 h 20 min. */
 export function formatDuration(ms: number): string {
   const s = Math.round(ms / 1000);
@@ -18,3 +20,17 @@ export function formatTokens(n: number): string {
   if (n < 1_000_000_000) return `${de(n / 1_000_000)} Mio.`;
   return `${de(n / 1_000_000_000)} Mrd.`;
 }
+
+/** What FORGE had Claude do, for people. */
+export const FORGE_USAGE_LABEL: Record<ForgeUsagePurpose, string> = {
+  auto: "Von FORGE gesendete Nachrichten",
+  commit: "Commit-Nachrichten",
+  title: "Session-Titel",
+  summary: "Zusammenfassungen",
+  report: "Tagesbericht",
+  knowledge: "Projektwissen",
+  pr: "Pull Requests",
+  changelog: "Neuerungen",
+  phone: "Telefon",
+  other: "Sonstiges",
+};

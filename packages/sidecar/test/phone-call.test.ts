@@ -1580,7 +1580,7 @@ describe("PhoneService end to end with a test PBX", () => {
         commits: [],
         open: [],
         calls: [],
-        usage: { turns: 3, apiCalls: 12, workMs: 720_000, agentWorkMs: 0, activeMs: 720_000, peakParallel: 1, inputTokens: 0, outputTokens: 5000, cacheReadTokens: 0, cacheWriteTokens: 0, other: null, hours: [], projects: [], days: [] },
+        usage: { turns: 3, apiCalls: 12, workMs: 720_000, agentWorkMs: 0, activeMs: 720_000, peakParallel: 1, inputTokens: 0, outputTokens: 5000, cacheReadTokens: 0, cacheWriteTokens: 0, forge: { calls: 2, workMs: 4000, tokens: 900, cacheReadTokens: 0, parts: [{ purpose: "commit", calls: 2, workMs: 4000, tokens: 900 }] }, hours: [], projects: [], days: [] },
         gitErrors: [],
         truncated: false,
       }),
@@ -1590,6 +1590,7 @@ describe("PhoneService end to end with a test PBX", () => {
     const text = await conv.tools.sessions("day_report");
     expect(text).toMatch(/^<<<SESSION-DATEN>>>Tagesbericht für heute, /);
     expect(text).toContain("S1 „Warenkorb“ (shop): 3 Durchläufe");
+    expect(text).toContain("Durch FORGE selbst: 2 Aufrufe, 900 neue Tokens (18 % der neuen Tokens), 4 s. Davon: Commit-Nachrichten 900 Tokens.");
     expect(text).toMatch(/<<<ENDE SESSION-DATEN>>>$/);
     expect(rpcCalls.at(-1)).toEqual(["reports.daily", { date: localDate(today) }]);
     await conv.tools.sessions("day_report", { project: "shop", daysBack: 1 });

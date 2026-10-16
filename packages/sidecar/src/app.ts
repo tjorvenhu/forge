@@ -1,5 +1,5 @@
 import path from "node:path";
-import type { ServerEvent } from "@forge/protocol";
+import { ForgeUsagePurpose, type ServerEvent } from "@forge/protocol";
 import { AgentSdkRuntime, type ClaudeRuntime } from "./claude/runtime.js";
 import { UploadStore } from "./claude/uploads.js";
 import { GitEngine } from "./git/git.js";
@@ -73,11 +73,13 @@ export function createApp(opts: { dataDir: string; write: Writer; log?: (m: stri
   tokenMeter.onRate((perSecond) => emit({ event: "tokens.rate", payload: { perSecond } }));
   // Session turns are recorded with their turn.result event; this catches the calls outside a session.
   tokenMeter.onResult((kind, m) => {
-    if (kind !== "complete" && kind !== "phone") return;
+    const [base, purpose] = kind.split(":");
+    if (base !== "complete" && base !== "phone") return;
     const usage = (m.usage ?? {}) as Record<string, unknown>;
     const n = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : 0);
     db.recordClaudeUsage({
-      kind: kind === "phone" ? "phone" : "assist",
+      kind: base === "phone" ? "phone" : "assist",
+      purpose: base === "phone" ? "phone" : (ForgeUsagePurpose.safeParse(purpose).data ?? "other"),
       durationMs: n(m.duration_ms),
       apiCalls: n(m.num_turns),
       inputTokens: n(usage.input_tokens),
@@ -190,7 +192,7 @@ export function createApp(opts: { dataDir: string; write: Writer; log?: (m: stri
     writeChangelog: (prompt) => {
       const c = claudeFor();
       if (!c.path) throw new Error("Claude Code ist nicht installiert.");
-      return runtime.complete(prompt, { cwd: opts.dataDir, env: c.env, claudePath: c.path, model: ASSIST_MODEL });
+      return runtime.complete(prompt, { cwd: opts.dataDir, env: c.env, claudePath: c.path, model: ASSIST_MODEL, purpose: "changelog" });
     },
   });
   const backups = new BackupService({

@@ -19,13 +19,18 @@ import {
   type SpawnedProcess,
   type SpawnOptions,
 } from "@anthropic-ai/claude-agent-sdk";
-import type { Capability, ContextUsage, EffortLevel, ExternalSession, PermissionMode, PlanUsage, RewindResult, SlashCommand } from "@forge/protocol";
+import type { Capability, ContextUsage, EffortLevel, ExternalSession, ForgeUsagePurpose, PermissionMode, PlanUsage, RewindResult, SlashCommand } from "@forge/protocol";
 import type { z } from "zod";
 import type { ContentBlock } from "./attachments.js";
 import { toPlanUsage } from "./usage.js";
 import { AsyncQueue } from "./async-queue.js";
 import { meterKey, tokenMeter } from "./token-meter.js";
 import { killTree, PIPE_GRACE_MS } from "../util/proc.js";
+
+/** What FORGE asks Claude for outside a session; recorded with the call (claude_usage.purpose). */
+export type AssistPurpose = ForgeUsagePurpose;
+
+export type CompleteOptions = Pick<StartOptions, "cwd" | "env" | "claudePath"> & { model: string; purpose?: AssistPurpose };
 
 export interface StartOptions {
   cwd: string;
@@ -173,9 +178,9 @@ export interface ClaudeRuntime {
   /** slash commands and skills available in a project (custom + those the headless CLI supports) */
   commands(opts: Pick<StartOptions, "cwd" | "env" | "claudePath">): Promise<SlashCommand[]>;
   /** one-shot text completion without tools, e.g. commit messages */
-  complete(prompt: string, opts: Pick<StartOptions, "cwd" | "env" | "claudePath"> & { model: string }): Promise<string>;
+  complete(prompt: string, opts: CompleteOptions): Promise<string>;
   /** one-shot answer as JSON matching `schema` (structured output); the caller validates the shape */
-  completeJson(prompt: string, schema: Record<string, unknown>, opts: Pick<StartOptions, "cwd" | "env" | "claudePath"> & { model: string }): Promise<unknown>;
+  completeJson(prompt: string, schema: Record<string, unknown>, opts: CompleteOptions): Promise<unknown>;
   /** plan rate-limit windows; uses an experimental SDK call, so callers must tolerate failure */
   planUsage(opts: Pick<StartOptions, "cwd" | "env" | "claudePath">): Promise<PlanUsage>;
 }
@@ -540,7 +545,7 @@ export class AgentSdkRuntime implements ClaudeRuntime {
     return this.oneShot("Slash-Commands laden", q, ac, q.supportedCommands().then((list) => list.map(toCommand)), () => input.end());
   }
 
-  async complete(prompt: string, opts: Pick<StartOptions, "cwd" | "env" | "claudePath"> & { model: string }): Promise<string> {
+  async complete(prompt: string, opts: CompleteOptions): Promise<string> {
     const ac = new AbortController();
     const q = query({
       prompt,
@@ -556,7 +561,7 @@ export class AgentSdkRuntime implements ClaudeRuntime {
         abortController: ac,
       },
     });
-    const meter = meterKey("complete");
+    const meter = meterKey(`complete:${opts.purpose ?? "other"}`);
     const work = (async () => {
       let text = "";
       for await (const m of q) {
@@ -571,7 +576,7 @@ export class AgentSdkRuntime implements ClaudeRuntime {
     return this.oneShot("Antwort von Claude", q, ac, work);
   }
 
-  async completeJson(prompt: string, schema: Record<string, unknown>, opts: Pick<StartOptions, "cwd" | "env" | "claudePath"> & { model: string }): Promise<unknown> {
+  async completeJson(prompt: string, schema: Record<string, unknown>, opts: CompleteOptions): Promise<unknown> {
     const ac = new AbortController();
     const q = query({
       prompt,
@@ -589,7 +594,7 @@ export class AgentSdkRuntime implements ClaudeRuntime {
         abortController: ac,
       },
     });
-    const meter = meterKey("complete");
+    const meter = meterKey(`complete:${opts.purpose ?? "other"}`);
     const work = (async () => {
       let out: unknown;
       for await (const m of q) {

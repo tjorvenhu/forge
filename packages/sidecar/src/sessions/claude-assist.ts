@@ -57,7 +57,7 @@ export class ClaudeAssist {
     }
     const recent = (await this.git.log(project.path, 15)).map((c) => c.subject);
     const model = ASSIST_MODEL;
-    const raw = await this.runtime.complete(buildCommitPrompt(diffs, recent, skipped), { cwd: project.path, env, claudePath, model });
+    const raw = await this.runtime.complete(buildCommitPrompt(diffs, recent, skipped), { cwd: project.path, env, claudePath, model, purpose: "commit" });
     const message = cleanCommitMessage(raw);
     if (!message) throw new ForgeError("CLAUDE_RUNTIME", "Claude hat keine Commit-Nachricht geliefert.");
     return { message, model, skipped };
@@ -91,14 +91,14 @@ export class ClaudeAssist {
       "",
       transcript,
     ].join("\n");
-    const summary = await this.runtime.complete(prompt, { cwd: rec.cwd, env, claudePath, model: ASSIST_MODEL });
+    const summary = await this.runtime.complete(prompt, { cwd: rec.cwd, env, claudePath, model: ASSIST_MODEL, purpose: "summary" });
     return { summary: summary.trim(), model: ASSIST_MODEL };
   }
 
   /** Summary of the daily report; the prompt carries the report's facts (see reports/daily-report.ts). */
   async summarizeDailyReport(prompt: string, cwd: string): Promise<{ text: string; model: string }> {
     const { claudePath, env } = this.claude();
-    return { text: await this.runtime.complete(prompt, { cwd, env, claudePath, model: ASSIST_MODEL }), model: ASSIST_MODEL };
+    return { text: await this.runtime.complete(prompt, { cwd, env, claudePath, model: ASSIST_MODEL, purpose: "report" }), model: ASSIST_MODEL };
   }
 
   /** Raw session title for the prompt built by the title refresh; the caller cleans it up. */
@@ -106,7 +106,7 @@ export class ClaudeAssist {
     const rec = this.db.getSession(sessionId);
     if (!rec) throw new ForgeError("SESSION_NOT_FOUND", "Session nicht gefunden.");
     const { claudePath, env } = this.claude();
-    return this.runtime.complete(prompt, { cwd: rec.cwd, env, claudePath, model: ASSIST_MODEL });
+    return this.runtime.complete(prompt, { cwd: rec.cwd, env, claudePath, model: ASSIST_MODEL, purpose: "title" });
   }
 
   /** Merged text for knowledge entries on one topic; the caller shows or saves it. */
@@ -115,7 +115,7 @@ export class ClaudeAssist {
     const project = this.projects.requireExisting(projectId);
     const { claudePath, env } = this.claude();
     const model = MERGE_MODEL;
-    const raw = await this.runtime.completeJson(buildMergePrompt(entries), MERGE_SCHEMA, { cwd: project.path, env, claudePath, model });
+    const raw = await this.runtime.completeJson(buildMergePrompt(entries), MERGE_SCHEMA, { cwd: project.path, env, claudePath, model, purpose: "knowledge" });
     const out = MergeDraft.safeParse(raw);
     if (!out.success || !out.data.content.trim()) throw new ForgeError("CLAUDE_RUNTIME", "Claude hat keinen zusammengeführten Eintrag geliefert.");
     return {
@@ -132,7 +132,7 @@ export class ClaudeAssist {
     const project = this.projects.requireExisting(projectId);
     const { claudePath, env } = this.claude();
     const model = MERGE_MODEL;
-    const raw = await this.runtime.completeJson(buildFixPrompt(ctx.entry, ctx.missing, ctx.details), MERGE_SCHEMA, { cwd: project.path, env, claudePath, model });
+    const raw = await this.runtime.completeJson(buildFixPrompt(ctx.entry, ctx.missing, ctx.details), MERGE_SCHEMA, { cwd: project.path, env, claudePath, model, purpose: "knowledge" });
     const out = MergeDraft.safeParse(raw);
     if (!out.success || !out.data.content.trim()) throw new ForgeError("CLAUDE_RUNTIME", "Claude hat keinen korrigierten Eintrag geliefert.");
     const tags = [...new Set(out.data.tags.map((t) => t.trim().toLowerCase()).filter(Boolean))].slice(0, 8);
@@ -151,7 +151,7 @@ export class ClaudeAssist {
     if (entries.length < 2) return { groups: [], model };
     const project = this.projects.requireExisting(projectId);
     const { claudePath, env } = this.claude();
-    const out = MergePlan.safeParse(await this.runtime.completeJson(buildMergePlanPrompt(entries, pairs), MERGE_PLAN_SCHEMA, { cwd: project.path, env, claudePath, model }));
+    const out = MergePlan.safeParse(await this.runtime.completeJson(buildMergePlanPrompt(entries, pairs), MERGE_PLAN_SCHEMA, { cwd: project.path, env, claudePath, model, purpose: "knowledge" }));
     if (!out.success) throw new ForgeError("CLAUDE_RUNTIME", "Claude hat keinen Plan zum Zusammenführen geliefert.");
     return { groups: cleanMergePlan(out.data.groups, entries), model };
   }
@@ -172,7 +172,7 @@ export class ClaudeAssist {
       "Beschreibung: Markdown, kurze Zusammenfassung, dann Abschnitt '## Änderungen' mit Stichpunkten, dann '## Test' mit dem, was geprüft werden sollte.",
       "Nur beschreiben, was in Commits und Diff steht. Nichts erfinden. Sprache: wie die Commits.",
     ];
-    const opts = { cwd: project.path, env, claudePath, model: ASSIST_MODEL };
+    const opts = { cwd: project.path, env, claudePath, model: ASSIST_MODEL, purpose: "pr" as const };
     // Structured output first, so nothing has to be parsed out of free text; the text format stays as fallback.
     try {
       const out = PrDraft.parse(await this.runtime.completeJson([...task, "", ...facts].join("\n"), PR_SCHEMA, opts));

@@ -8,7 +8,7 @@ const at = (d: number, h: number, m = 0) => new Date(2026, 9, d, h, m).toISOStri
 const MIN = 60_000;
 
 function row(end: string, minutes: number, o: Partial<ClaudeUsageRow> = {}): ClaudeUsageRow {
-  return { ts: end, kind: "session", projectId: "app", rootId: "app", rootName: "app", durationMs: minutes * MIN, apiCalls: 2, inputTokens: 10, outputTokens: 100, cacheReadTokens: 1000, cacheWriteTokens: 0, ...o };
+  return { ts: end, kind: "session", purpose: null, projectId: "app", rootId: "app", rootName: "app", durationMs: minutes * MIN, apiCalls: 2, inputTokens: 10, outputTokens: 100, cacheReadTokens: 1000, cacheWriteTokens: 0, ...o };
 }
 
 describe("usageStats", () => {
@@ -21,11 +21,12 @@ describe("usageStats", () => {
       // an agent in parallel, 10:15 to 10:45
       row(at(16, 10, 45), 30, { projectId: "wt", rootId: "app" }),
       row(at(16, 14), 60, { rootId: "web", projectId: "web", rootName: "web" }),
-      row(at(16, 15), 1, { kind: "assist", projectId: null, rootId: null, rootName: null }),
+      row(at(16, 15), 1, { kind: "assist", purpose: "commit", projectId: null, rootId: null, rootName: null }),
     ];
     const u = usageStats(rows, today.from, today.to, trend, true);
-    expect(u).toMatchObject({ turns: 3, apiCalls: 6, workMs: 120 * MIN, agentWorkMs: 30 * MIN, activeMs: 105 * MIN, peakParallel: 2, outputTokens: 300, cacheReadTokens: 3000 });
-    expect(u.other).toMatchObject({ calls: 1, outputTokens: 100 });
+    // Tokens include FORGE's own calls; turns, time and parallelism are the sessions'.
+    expect(u).toMatchObject({ turns: 3, apiCalls: 8, workMs: 120 * MIN, agentWorkMs: 30 * MIN, activeMs: 105 * MIN, peakParallel: 2, outputTokens: 400, cacheReadTokens: 4000 });
+    expect(u.forge).toEqual({ calls: 1, workMs: MIN, tokens: 110, cacheReadTokens: 1000, parts: [{ purpose: "commit", calls: 1, workMs: MIN, tokens: 110 }] });
     expect(u.hours[10]).toMatchObject({ workMs: 60 * MIN, turns: 2, tokens: 220 });
     expect(u.hours[13]!.workMs).toBe(60 * MIN);
     expect(u.projects.map((p) => [p.name, p.workMs / MIN, p.turns])).toEqual([
@@ -44,7 +45,28 @@ describe("usageStats", () => {
       { date: "2026-10-16", workMs: 20 * MIN, tokens: 110 },
     ]);
     // A turn without a duration still counts with its tokens.
-    expect(usageStats([row(at(16, 9), 0)], today.from, today.to, trend, false)).toMatchObject({ turns: 1, workMs: 0, outputTokens: 100, other: null });
+    expect(usageStats([row(at(16, 9), 0)], today.from, today.to, trend, false)).toMatchObject({ turns: 1, workMs: 0, outputTokens: 100 });
+  });
+
+  it("tells what FORGE caused apart, by purpose; one project gets only the turns FORGE sent there", () => {
+    const rows = [
+      row(at(16, 9), 10),
+      row(at(16, 10), 5, { purpose: "auto", outputTokens: 1000 }),
+      row(at(16, 11), 1, { kind: "assist", purpose: "commit", projectId: null, rootId: null, rootName: null }),
+      row(at(16, 11, 5), 1, { kind: "assist", purpose: "commit", projectId: null, rootId: null, rootName: null }),
+      row(at(16, 12), 2, { kind: "phone", purpose: "phone", projectId: null, rootId: null, rootName: null, outputTokens: 400 }),
+    ];
+    const all = usageStats(rows, today.from, today.to, trend, true);
+    expect(all.forge.parts.map((p) => [p.purpose, p.calls, p.tokens])).toEqual([
+      ["auto", 1, 1010],
+      ["phone", 1, 410],
+      ["commit", 2, 220],
+    ]);
+    expect(all.forge).toMatchObject({ calls: 4, tokens: 1640, workMs: 9 * MIN });
+    expect(all.turns).toBe(2);
+    const one = usageStats(rows, today.from, today.to, trend, false);
+    expect(one.forge.parts.map((p) => p.purpose)).toEqual(["auto"]);
+    expect(one.outputTokens).toBe(1100);
   });
 
   it("formats durations and token counts for people", () => {

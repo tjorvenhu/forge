@@ -4,6 +4,7 @@ import {
   ForgeError,
   formatDuration,
   formatTokens,
+  FORGE_USAGE_LABEL,
   type DailyReport,
   type DailyReportAgent,
   type DailyReportCommit,
@@ -454,6 +455,8 @@ export interface ReportTextOptions {
   ref?: (sessionId: string) => string;
 }
 
+const fresh = (u: DailyReport["usage"]) => u.inputTokens + u.outputTokens + u.cacheWriteTokens;
+
 /** The report as plain text: for Claude in a session, the phone and the summary prompt. */
 export function reportText(r: DailyReport, o: ReportTextOptions = {}): string {
   const now = o.now ?? new Date();
@@ -463,17 +466,20 @@ export function reportText(r: DailyReport, o: ReportTextOptions = {}): string {
 
   const u = r.usage;
   if (u.turns || u.workMs) {
-    const fresh = u.inputTokens + u.outputTokens + u.cacheWriteTokens;
     const perRequest = u.apiCalls ? `, im Schnitt ${formatTokens(u.cacheReadTokens / u.apiCalls)} je Anfrage` : "";
     lines.push(
       "",
       `Claude hat ${formatDuration(u.workMs)} gearbeitet${u.agentWorkMs ? `, davon ${formatDuration(u.agentWorkMs)} in parallelen Agenten` : ""}, verteilt auf ${formatDuration(u.activeMs)} Uhrzeit${u.peakParallel > 1 ? `, bis zu ${u.peakParallel} gleichzeitig` : ""}${u.apiCalls ? `, ${u.apiCalls} Anfragen an Claude` : ""}.`,
-      `Neue Tokens: ${formatTokens(fresh)} (${formatTokens(u.outputTokens)} von Claude geschrieben, ${formatTokens(u.inputTokens + u.cacheWriteTokens)} neu gelesen). Dazu ${formatTokens(u.cacheReadTokens)} Tokens Kontext aus dem Cache: Claude liest bei jeder Anfrage den bisherigen Verlauf erneut${perRequest}.`,
+      `Neue Tokens: ${formatTokens(fresh(u))} (${formatTokens(u.outputTokens)} von Claude geschrieben, ${formatTokens(u.inputTokens + u.cacheWriteTokens)} neu gelesen). Dazu ${formatTokens(u.cacheReadTokens)} Tokens Kontext aus dem Cache: Claude liest bei jeder Anfrage den bisherigen Verlauf erneut${perRequest}.`,
     );
     const top = u.projects.slice(0, 5).map((p) => `${p.name} ${formatDuration(p.workMs)}`);
     if (!r.projectId && top.length > 1) lines.push(`Nach Projekt: ${top.join(", ")}.`);
   }
-  if (u.other?.calls) lines.push(`Außerhalb von Sessions (Titel, Commit-Nachrichten, Telefon): ${u.other.calls} Aufrufe, ${formatTokens(u.other.inputTokens + u.other.outputTokens + u.other.cacheReadTokens + u.other.cacheWriteTokens)} Tokens.`);
+  if (u.forge.calls) {
+    const share = fresh(u) ? ` (${Math.round((u.forge.tokens / fresh(u)) * 100)} % der neuen Tokens)` : "";
+    const parts = u.forge.parts.map((p) => `${FORGE_USAGE_LABEL[p.purpose]} ${formatTokens(p.tokens)} Tokens`).join(", ");
+    lines.push(`Durch FORGE selbst: ${u.forge.calls} ${u.forge.calls === 1 ? "Aufruf" : "Aufrufe"}, ${formatTokens(u.forge.tokens)} neue Tokens${share}, ${formatDuration(u.forge.workMs)}. Davon: ${parts}.`);
+  }
 
   const turns = r.sessions.reduce((n, s) => n + s.turns, 0);
   lines.push("", `Sessions: ${r.sessions.length}${r.sessions.length ? `, ${turns} ${turns === 1 ? "Durchlauf" : "Durchläufe"}` : ""}`);

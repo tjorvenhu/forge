@@ -165,6 +165,7 @@ describe("DailyReportService", () => {
     expect(r.usage).toMatchObject({ turns: 5, apiCalls: 5, workMs: 5000, agentWorkMs: 1000 });
     expect(r.usage.projects.map((p) => p.name).sort()).toEqual([app.name, other.name].sort());
     expect(r.usage.days).toHaveLength(14);
+    expect(r.usage.forge).toMatchObject({ calls: 0, parts: [] });
 
     const text = reportText(r, { ref: (id) => (id === work.id ? "S1" : "S?") });
     expect(text).toMatch(/^Tagesbericht für heute, /);
@@ -179,11 +180,18 @@ describe("DailyReportService", () => {
   it("takes the turns from before the update into claude_usage", () => {
     const s = session(app.id, "Alt");
     turn(s.id);
+    // FORGE continued it after the usage limit: that turn is FORGE's.
+    db.appendEvent(s.id, { type: "user.message", text: "Weiter", source: "auto" });
+    db.appendEvent(s.id, { type: "turn.result", subtype: "success", isError: false, durationMs: 2000, numTurns: 3, inputTokens: 1, outputTokens: 50, cacheReadTokens: 0, text: "ok" });
+    expect(db.claudeUsageBetween("", "￿", null).map((u) => u.purpose)).toEqual([null, "auto"]);
     db.sql.exec("DROP TABLE claude_usage");
     db.sql.exec(MIGRATIONS.find((m) => m.includes("CREATE TABLE claude_usage"))!);
     db.sql.exec(MIGRATIONS.find((m) => m.includes("ADD COLUMN api_calls"))!);
+    db.sql.exec(MIGRATIONS.find((m) => m.includes("ADD COLUMN purpose"))!);
     const rows = db.claudeUsageBetween("", "￿", null);
-    expect(rows).toEqual([expect.objectContaining({ kind: "session", projectId: app.id, rootId: app.id, rootName: app.name, durationMs: 1000, apiCalls: 1 })]);
+    expect(rows).toEqual([expect.objectContaining({ kind: "session", projectId: app.id, rootId: app.id, rootName: app.name, durationMs: 1000, apiCalls: 1, purpose: null }),
+      expect.objectContaining({ durationMs: 2000, apiCalls: 3, purpose: "auto" }),
+    ]);
   });
 
   it("finds agent merges FORGE has no record of in the reflog", async () => {

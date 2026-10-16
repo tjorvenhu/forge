@@ -1,4 +1,4 @@
-import type { DailyReportUsage } from "@forge/protocol";
+import type { DailyReportUsage, ForgeUsagePurpose } from "@forge/protocol";
 import type { ClaudeUsageRow } from "../persistence/db.js";
 
 /** Days in the trend of the report, the report's day included. */
@@ -22,7 +22,7 @@ const span = (r: ClaudeUsageRow) => {
  * the day (a turn over midnight counts on both days); tokens count on the day the call ended.
  * `days` are the local day starts of the trend, oldest first, the last one is `from`.
  */
-export function usageStats(rows: ClaudeUsageRow[], from: Date, to: Date, days: Array<{ date: string; from: Date; to: Date }>, withOther: boolean): DailyReportUsage {
+export function usageStats(rows: ClaudeUsageRow[], from: Date, to: Date, days: Array<{ date: string; from: Date; to: Date }>, withHelpers: boolean): DailyReportUsage {
   const f = from.getTime();
   const t = to.getTime();
   const ended = (r: ClaudeUsageRow) => {
@@ -30,7 +30,8 @@ export function usageStats(rows: ClaudeUsageRow[], from: Date, to: Date, days: A
     return end >= f && end < t;
   };
   const sessions = rows.filter((r) => r.kind === "session");
-  const other = rows.filter((r) => r.kind !== "session" && ended(r));
+  // FORGE's one-shot calls and the phone belong to no project: only in the report over all projects.
+  const helpers = withHelpers ? rows.filter((r) => r.kind !== "session" && ended(r)) : [];
   // A turn that started the evening before and ended today still worked today, and the other way round.
   const today = sessions.filter((r) => ended(r) || overlap(...span(r), f, t) > 0);
   const own = today.filter(ended);
@@ -82,27 +83,35 @@ export function usageStats(rows: ClaudeUsageRow[], from: Date, to: Date, days: A
   }
 
   const sum = (list: ClaudeUsageRow[], k: "inputTokens" | "outputTokens" | "cacheReadTokens" | "cacheWriteTokens") => list.reduce((n, r) => n + r[k], 0);
+  const counted = [...own, ...helpers];
+  const byForge = [...own.filter((r) => r.purpose), ...helpers];
+  const parts = new Map<ForgeUsagePurpose, DailyReportUsage["forge"]["parts"][number]>();
+  for (const r of byForge) {
+    const purpose = r.purpose ?? "other";
+    const p = parts.get(purpose) ?? { purpose, calls: 0, workMs: 0, tokens: 0 };
+    p.calls++;
+    p.workMs += r.durationMs;
+    p.tokens += tokensOf(r);
+    parts.set(purpose, p);
+  }
   return {
     turns: own.length,
-    apiCalls: own.reduce((n, r) => n + r.apiCalls, 0),
+    apiCalls: [...own, ...helpers].reduce((n, r) => n + r.apiCalls, 0),
     workMs,
     agentWorkMs,
     activeMs,
     peakParallel,
-    inputTokens: sum(own, "inputTokens"),
-    outputTokens: sum(own, "outputTokens"),
-    cacheReadTokens: sum(own, "cacheReadTokens"),
-    cacheWriteTokens: sum(own, "cacheWriteTokens"),
-    other: withOther
-      ? {
-          calls: other.length,
-          workMs: other.reduce((n, r) => n + r.durationMs, 0),
-          inputTokens: sum(other, "inputTokens"),
-          outputTokens: sum(other, "outputTokens"),
-          cacheReadTokens: sum(other, "cacheReadTokens"),
-          cacheWriteTokens: sum(other, "cacheWriteTokens"),
-        }
-      : null,
+    inputTokens: sum(counted, "inputTokens"),
+    outputTokens: sum(counted, "outputTokens"),
+    cacheReadTokens: sum(counted, "cacheReadTokens"),
+    cacheWriteTokens: sum(counted, "cacheWriteTokens"),
+    forge: {
+      calls: byForge.length,
+      workMs: byForge.reduce((n, r) => n + r.durationMs, 0),
+      tokens: byForge.reduce((n, r) => n + tokensOf(r), 0),
+      cacheReadTokens: sum(byForge, "cacheReadTokens"),
+      parts: [...parts.values()].sort((a, b) => b.tokens - a.tokens || b.workMs - a.workMs),
+    },
     hours,
     projects: [...projects.values()].filter((p) => p.workMs > 0 || p.tokens > 0).sort((a, b) => b.workMs - a.workMs || b.tokens - a.tokens),
     days: days.map((d) => {
