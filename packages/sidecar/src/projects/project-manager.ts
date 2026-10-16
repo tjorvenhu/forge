@@ -18,6 +18,14 @@ export interface CreateProjectInput {
 }
 
 const MAX_FILE_BYTES = 512 * 1024;
+/** Folders allFiles does not descend into: generated or installed, rarely what one looks for. */
+const SKIP_DIRS = new Set(["node_modules", "dist", "build", "out", "target", "coverage", "vendor", "__pycache__", ".git", ".next", ".turbo", ".venv", ".cache"]);
+/** Dot folders that hold project files worth finding. */
+const DOT_DIRS = new Set([".github", ".claude", ".forge", ".vscode"]);
+/** Worktrees of Claude Code subagents: copies of the project, every name would match twice. */
+const SKIP_PATHS = new Set([".claude/worktrees"]);
+const MAX_LISTED_FILES = 50_000;
+const MAX_LISTED_DIRS = 10_000;
 
 /** Real path of `p`, or of its nearest existing ancestor with the missing rest appended. */
 async function canonicalizeExisting(p: string): Promise<string> {
@@ -245,6 +253,37 @@ export class ProjectManager {
         }),
     );
     return out.sort((a, b) => (a.isDir === b.isDir ? a.name.localeCompare(b.name) : a.isDir ? -1 : 1));
+  }
+
+  /**
+   * Every file of the project in one call (file links in the chat, palette file search), breadth first,
+   * so shallow files come first when the cap is reached. Junctions and symlinks are not followed.
+   */
+  async allFiles(id: string) {
+    const p = this.requireExisting(id);
+    const root = await canonicalize(p.path).catch(() => p.path);
+    const files: Array<{ name: string; path: string }> = [];
+    let queue = [""];
+    let dirs = 0;
+    while (queue.length && files.length < MAX_LISTED_FILES && dirs < MAX_LISTED_DIRS) {
+      const level = queue.splice(0, MAX_LISTED_DIRS - dirs);
+      dirs += level.length;
+      const next: string[] = [];
+      for (let i = 0; i < level.length; i += 32) {
+        const listed = await Promise.all(
+          level.slice(i, i + 32).map(async (rel) => ({ rel, entries: await readdir(path.join(root, rel), { withFileTypes: true }).catch(() => []) })),
+        );
+        for (const { rel, entries } of listed) {
+          for (const e of entries) {
+            const child = rel ? `${rel}/${e.name}` : e.name;
+            if (e.isFile()) files.push({ name: e.name, path: child });
+            else if (e.isDirectory() && !SKIP_DIRS.has(e.name) && (!e.name.startsWith(".") || DOT_DIRS.has(e.name)) && !SKIP_PATHS.has(child)) next.push(child);
+          }
+        }
+      }
+      queue = queue.concat(next);
+    }
+    return { files: files.slice(0, MAX_LISTED_FILES), truncated: files.length > MAX_LISTED_FILES || queue.length > 0 };
   }
 
   async readFile(id: string, rel: string) {

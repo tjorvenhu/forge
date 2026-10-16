@@ -146,6 +146,29 @@ describe("ProjectManager", () => {
     await expect(pm.listFiles(p.id, "docs/x")).rejects.toThrow(/außerhalb/);
     expect((await pm.listFiles(p.id, "docs")).map((f) => f.path)).toEqual(["docs/x"]);
     await expect(pm.readFile(p.id, "docs/fehlt.txt")).rejects.toThrow(/ENOENT/);
+    expect((await pm.allFiles(p.id)).files).toEqual([]);
+  });
+
+  it("lists every file in one call, shallow first, without installed folders and subagent worktrees", async () => {
+    const dir = path.join(t.dir, "deep");
+    let deep = dir;
+    // deeper than the 150 folders the old crawl from the UI stopped at
+    for (let i = 0; i < 200; i++) mkdirSync(path.join(dir, `d${i}`), { recursive: true });
+    for (let i = 0; i < 12; i++) deep = path.join(deep, `n${i}`);
+    mkdirSync(deep, { recursive: true });
+    writeFileSync(path.join(deep, "datei.txt"), "x");
+    writeFileSync(path.join(dir, "README.md"), "x");
+    for (const d of ["node_modules/pkg", ".idea", ".github", ".claude/worktrees/agent-1", ".claude/agents"]) mkdirSync(path.join(dir, d), { recursive: true });
+    writeFileSync(path.join(dir, "node_modules/pkg/index.js"), "x");
+    writeFileSync(path.join(dir, ".idea/ws.xml"), "x");
+    writeFileSync(path.join(dir, ".github/ci.yml"), "x");
+    writeFileSync(path.join(dir, ".claude/worktrees/agent-1/README.md"), "x");
+    writeFileSync(path.join(dir, ".claude/agents/review.md"), "x");
+    const p = await pm.import(dir);
+    const { files, truncated } = await pm.allFiles(p.id);
+    expect(truncated).toBe(false);
+    expect(files[0]).toEqual({ name: "README.md", path: "README.md" });
+    expect(files.map((f) => f.path).sort()).toEqual([".claude/agents/review.md", ".github/ci.yml", "README.md", `${Array.from({ length: 12 }, (_, i) => `n${i}`).join("/")}/datei.txt`]);
   });
 });
 

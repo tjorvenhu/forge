@@ -1314,6 +1314,7 @@ describe("PhoneService end to end with a test PBX", () => {
       "projects.remove": () => ({ removed: true, folderDeleted: true, githubDeleted: false }),
       "projects.listFiles": (p: { projectId: string; dir: string }) => projects.listFiles(p.projectId, p.dir),
       "projects.readFile": (p: { projectId: string; path: string }) => projects.readFile(p.projectId, p.path),
+      "projects.allFiles": (p: { projectId: string }) => projects.allFiles(p.projectId),
       "config.memoryRead": (p: { projectId: string; scope: MemoryScope }) => cfg.readMemory(p.scope, projects.get(p.projectId).path),
       "config.memoryWrite": (p: { projectId: string; scope: MemoryScope; content: string; expectedMtimeMs: number | null }) =>
         cfg.writeMemory(p.scope, projects.get(p.projectId).path, p.content, p.expectedMtimeMs),
@@ -1357,6 +1358,8 @@ describe("PhoneService end to end with a test PBX", () => {
     const listing = await conv.tools.files("shop", "list");
     expect(listing).toContain("Ordner: src.");
     expect(listing).toContain("package.json");
+    expect(await conv.tools.files("shop", "find", { path: "Package.JSON" })).toBe("Gefunden: <<<SESSION-DATEN>>>package.json<<<ENDE SESSION-DATEN>>>.");
+    expect(await conv.tools.files("shop", "find", { path: "fehlt.ts" })).toBe("In shop gibt es keine Datei <<<SESSION-DATEN>>>fehlt.ts<<<ENDE SESSION-DATEN>>>.");
     expect(await conv.tools.files("shop", "read", { path: "package.json" })).toBe('<<<SESSION-DATEN>>>package.json<<<ENDE SESSION-DATEN>>>: <<<SESSION-DATEN>>>{ "name": "shop" }<<<ENDE SESSION-DATEN>>>');
 
     expect(await conv.tools.claudeMd("shop", "read")).toBe("Die CLAUDE.md von shop ist leer oder fehlt.");

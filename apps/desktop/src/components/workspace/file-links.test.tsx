@@ -56,24 +56,12 @@ describe("file links in the chat", () => {
   beforeEach(() => {
     queryClient.clear();
     callMock.mockReset();
-    callMock.mockImplementation(async (method: string, p: { path?: string; dir?: string }) => {
+    callMock.mockImplementation(async (method: string, p: { path?: string }) => {
       if (method === "projects.readFile") {
         if (!(p.path! in FILES)) throw new Error("not found");
         return { content: FILES[p.path!], binary: false, truncated: false };
       }
-      if (method === "projects.listFiles") {
-        const dir = p.dir ?? "";
-        const names = new Set<string>();
-        for (const f of Object.keys(FILES)) {
-          if (dir && !f.startsWith(dir + "/")) continue;
-          const rest = dir ? f.slice(dir.length + 1) : f;
-          names.add(rest.split("/")[0]!);
-        }
-        return [...names].map((n) => {
-          const path = dir ? `${dir}/${n}` : n;
-          return { name: n, path, isDir: !(path in FILES) };
-        });
-      }
+      if (method === "projects.allFiles") return { files: Object.keys(FILES).map((path) => ({ name: path.split("/").at(-1)!, path })), truncated: false };
       throw new Error("unexpected " + method);
     });
     useUi.setState({ view: "workspace", activeProjectId: "shop", workspaceTab: "chat", selectedFile: {}, fileJump: null, splitPanes: [] });
@@ -98,6 +86,12 @@ describe("file links in the chat", () => {
   it("finds a bare file name in inline code among the project's files", async () => {
     show("Die Version steht in `package.json`, der Code in `Button.tsx`.");
     fireEvent.click(screen.getByText("Button.tsx"));
+    await waitFor(() => expect(useUi.getState().selectedFile.shop).toBe("src/ui/Button.tsx"));
+  });
+
+  it("finds a bare file name written in other case", async () => {
+    show("Siehe `button.tsx`.");
+    fireEvent.click(screen.getByText("button.tsx"));
     await waitFor(() => expect(useUi.getState().selectedFile.shop).toBe("src/ui/Button.tsx"));
   });
 

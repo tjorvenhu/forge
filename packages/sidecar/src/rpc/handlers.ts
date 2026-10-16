@@ -210,6 +210,7 @@ export function createHandlers(s: Services): Handlers {
     "projects.touch": ({ projectId }) => s.projects.touch(projectId),
     "projects.readClaudeMd": ({ projectId }) => s.projects.readClaudeMd(projectId),
     "projects.listFiles": ({ projectId, dir }) => s.projects.listFiles(projectId, dir),
+    "projects.allFiles": ({ projectId }) => s.projects.allFiles(projectId),
     "projects.readFile": ({ projectId, path }) => s.projects.readFile(projectId, path),
 
     "sessions.list": ({ projectId }) => s.sessions.list(projectId),

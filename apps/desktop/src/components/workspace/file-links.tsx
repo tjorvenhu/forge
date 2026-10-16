@@ -1,11 +1,12 @@
 import { createContext, useContext, type ReactNode } from "react";
 import { Copy, FileText, FolderOpen } from "lucide-react";
+import { matchingFiles } from "@forge/protocol";
 import { call, keys, queryClient } from "@/lib/queries";
 import { contextItems, copyText } from "@/lib/context-menu";
 import { toast } from "@/stores/toast";
 import { useUi } from "@/stores/ui";
 import { cn } from "@/lib/utils";
-import { crawlFiles } from "@/components/layout/palette-sources";
+import { projectFilesQuery } from "@/components/layout/palette-sources";
 import { isChatWindow, openFileInMain } from "@/lib/chat-windows";
 import { showInExplorer } from "@/lib/native";
 import { errorMessage } from "@/lib/rpc";
@@ -170,13 +171,7 @@ export function remarkFileLinks() {
 export async function openFileRef(target: FileLinkTarget, ref: FileRef) {
   let path = projectPath(ref, target.root);
   if (path === null) return;
-  const projectFiles = () =>
-    queryClient.fetchQuery({
-      queryKey: ["paletteFiles", target.projectId],
-      queryFn: () => crawlFiles((dir) => call("projects.listFiles", { projectId: target.projectId, dir })),
-      staleTime: 60_000,
-      retry: false,
-    });
+  const projectFiles = () => queryClient.fetchQuery({ ...projectFilesQuery(target.projectId), retry: false });
   /** The one project file the name or path ending fits; otherwise says what went wrong. */
   const unique = (hits: Array<{ path: string }>, wanted: string) => {
     if (hits.length === 1) return hits[0]!.path;
@@ -186,14 +181,14 @@ export async function openFileRef(target: FileLinkTarget, ref: FileRef) {
   try {
     if (ref.bare) {
       const name = path;
-      path = unique((await projectFiles()).filter((f) => f.name === name), name);
+      path = unique(matchingFiles(await projectFiles(), name), name);
     } else {
       const p = path;
       try {
         await queryClient.fetchQuery({ queryKey: keys.file(target.projectId, p), queryFn: () => call("projects.readFile", { projectId: target.projectId, path: p }), retry: false });
       } catch {
         // Claude often writes paths from the folder it worked in (src-tauri/Cargo.toml for apps/desktop/src-tauri/...).
-        path = unique((await projectFiles()).filter((f) => f.path.endsWith(`/${p}`)), p);
+        path = unique(matchingFiles(await projectFiles(), p), p);
       }
     }
   } catch {

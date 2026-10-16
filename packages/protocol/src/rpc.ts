@@ -254,6 +254,10 @@ export const methods = {
     params: projectRef.extend({ dir: z.string().max(4096).default("") }),
     result: z.array(z.object({ name: z.string(), path: z.string(), isDir: z.boolean(), size: z.number() })),
   },
+  "projects.allFiles": {
+    params: projectRef,
+    result: z.object({ files: z.array(z.object({ name: z.string(), path: z.string() })), truncated: z.boolean() }),
+  },
   "projects.readFile": {
     params: projectRef.extend({ path: z.string().min(1).max(4096) }),
     result: z.object({ path: z.string(), content: z.string(), truncated: z.boolean(), binary: z.boolean() }),

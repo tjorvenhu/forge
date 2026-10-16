@@ -64,6 +64,7 @@ export const PHONE_TOOL_FOR: Partial<Record<MethodName, string>> = {
   "projects.remove": "project",
   "projects.readClaudeMd": "claude_md",
   "projects.listFiles": "files",
+  "projects.allFiles": "files",
   "projects.readFile": "files",
 
   "sessions.list": "sessions",

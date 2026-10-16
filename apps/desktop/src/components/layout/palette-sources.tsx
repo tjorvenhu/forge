@@ -9,35 +9,12 @@ import { ProjectIcon } from "@/components/projects/ProjectIcon";
 import { checkoutBranch, LOG_LIMIT } from "@/components/git/GitCenter";
 import type { PaletteEntry } from "./palette-actions";
 
-/** Folders the file search does not descend into: generated or installed, rarely what one looks for. */
-const SKIP_DIRS = new Set(["node_modules", "dist", "build", "out", "target", "coverage", "vendor", "__pycache__", ".git", ".next", ".turbo", ".venv", ".cache"]);
-/** Dot folders that hold project files worth finding. */
-const DOT_DIRS = new Set([".github", ".claude", ".forge", ".vscode"]);
-const MAX_DIR_CALLS = 150;
-const MAX_FILES = 3000;
-/** Folders listed at once; each is one call to the sidecar. */
-const BATCH = 8;
-
-type FileItem = { name: string; path: string };
-
-/** Files of a project, breadth first, so shallow files come first when a cap is reached. */
-export async function crawlFiles(list: (dir: string) => Promise<Array<FileItem & { isDir: boolean }>>): Promise<FileItem[]> {
-  const files: FileItem[] = [];
-  const queue = [""];
-  let calls = 0;
-  while (queue.length && calls < MAX_DIR_CALLS && files.length < MAX_FILES) {
-    const batch = queue.splice(0, Math.min(BATCH, MAX_DIR_CALLS - calls));
-    calls += batch.length;
-    const listed = await Promise.all(batch.map((dir) => list(dir).catch(() => [])));
-    for (const entries of listed) {
-      for (const e of entries) {
-        if (!e.isDir) files.push({ name: e.name, path: e.path });
-        else if (!SKIP_DIRS.has(e.name) && (!e.name.startsWith(".") || DOT_DIRS.has(e.name))) queue.push(e.path);
-      }
-    }
-  }
-  return files.slice(0, MAX_FILES);
-}
+/** All files of a project, shared by the palette and file links in the chat. */
+export const projectFilesQuery = (projectId: string) => ({
+  queryKey: ["paletteFiles", projectId],
+  queryFn: async () => (await call("projects.allFiles", { projectId })).files,
+  staleTime: 60_000,
+});
 
 /**
  * Entries loaded from the sidecar: projects, sessions, and once something is typed, branches, commits,
@@ -72,12 +49,7 @@ export function usePaletteSources(query: string, project: ProjectWithStatus | nu
     enabled: typed && !!owner,
     staleTime: 60_000,
   });
-  const files = useQuery({
-    queryKey: ["paletteFiles", project?.id ?? ""],
-    queryFn: () => crawlFiles((dir) => call("projects.listFiles", { projectId: project!.id, dir })),
-    enabled: typed && !!project?.exists,
-    staleTime: 60_000,
-  });
+  const files = useQuery({ ...projectFilesQuery(project?.id ?? ""), enabled: typed && !!project?.exists });
   // Same keys as the Erweiterungen view, so both share what is loaded.
   const mcp = useQuery({ queryKey: ["mcp", extProjectId ?? "global"], queryFn: () => call("mcp.list", { projectId: extProjectId }), enabled: typed, staleTime: 60_000 });
   const skills = useQuery({ queryKey: ["docs", "skill", extProjectId ?? "global"], queryFn: () => call("config.docs", { kind: "skill", projectId: extProjectId }), enabled: typed });

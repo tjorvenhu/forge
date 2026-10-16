@@ -4,7 +4,6 @@ import { PolicyRuleId, Settings, type ProjectWithStatus, type Session } from "@f
 import { DEV_TOOLS_SECTIONS, EXTENSIONS_TABS, PROJECT_SETTINGS_SECTIONS, SETTINGS_SECTIONS, SKILLS_TABS, WORKSPACE_TABS, useUi } from "@/stores/ui";
 import { TAG_INFO } from "@/components/workspace/ProjectSettingsTab";
 import { buildActions, UNLISTED_SETTINGS, type ActionContext } from "./palette-actions";
-import { crawlFiles } from "./palette-sources";
 import { rank } from "./CommandPalette";
 import { NAV } from "./nav";
 import { keys } from "@/lib/queries";
@@ -151,29 +150,5 @@ describe("palette ranking", () => {
     expect(rank("neuen branch anlegen", "neuen branch anlegen git", ["branch"])).toBe(1);
     expect(rank("dateien öffnen", "dateien öffnen explorer", ["explorer"])).toBe(3);
     expect(rank("töne", "töne", ["xyz"])).toBe(-1);
-  });
-});
-
-describe("file crawl", () => {
-  it("skips installed and generated folders and lists shallow files first", async () => {
-    const tree: Record<string, Array<{ name: string; path: string; isDir: boolean }>> = {
-      "": [
-        { name: "src", path: "src", isDir: true },
-        { name: "node_modules", path: "node_modules", isDir: true },
-        { name: ".github", path: ".github", isDir: true },
-        { name: ".idea", path: ".idea", isDir: true },
-        { name: "README.md", path: "README.md", isDir: false },
-      ],
-      src: [{ name: "main.ts", path: "src/main.ts", isDir: false }],
-      ".github": [{ name: "ci.yml", path: ".github/ci.yml", isDir: false }],
-    };
-    const seen: string[] = [];
-    const files = await crawlFiles(async (dir) => {
-      seen.push(dir);
-      return tree[dir] ?? [];
-    });
-    expect(files.map((f) => f.path)).toEqual(["README.md", "src/main.ts", ".github/ci.yml"]);
-    expect(seen).not.toContain("node_modules");
-    expect(seen).not.toContain(".idea");
   });
 });

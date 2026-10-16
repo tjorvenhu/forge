@@ -2,6 +2,7 @@ import { randomBytes, randomInt, randomUUID } from "node:crypto";
 import {
   ForgeError,
   GIT_TAGS,
+  matchingFiles,
   SEARCH_MARK_END,
   SEARCH_MARK_START,
   BackupPart,
@@ -2279,6 +2280,14 @@ export class PhoneService {
             if (f.binary) return `${asData(rel)} ist keine Textdatei.`;
             if (!f.content.trim()) return `${asData(rel)} ist leer.`;
             return `${asData(rel)}${f.truncated ? ", nur der Anfang" : ""}: ${excerptData(f.content, 4000)}`;
+          }
+          if (action === "find") {
+            if (!rel) return "Fehler: Welche Datei?";
+            const { files } = await call("projects.allFiles", { projectId: p.id });
+            const hits = matchingFiles(files, rel);
+            if (!hits.length) return `In ${p.name} gibt es keine Datei ${asData(rel)}.`;
+            const shown = hits.slice(0, 10).map((f) => f.path);
+            return `${hits.length === 1 ? "Gefunden" : `${hits.length} Treffer`}: ${asData(shown.join(", "))}${hits.length > 10 ? ` und ${hits.length - 10} weitere` : ""}.`;
           }
           const entries = await call("projects.listFiles", { projectId: p.id, dir: rel });
           if (!entries.length) return rel ? `Der Ordner ${asData(rel)} ist leer.` : `${p.name} ist leer.`;
