@@ -2,9 +2,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { TooltipProvider } from "@radix-ui/react-tooltip";
-import type { Project, ServerEvent, Session } from "@forge/protocol";
+import type { Project, PromptTemplate, ServerEvent, Session } from "@forge/protocol";
 import type * as RpcModuleNs from "@/lib/rpc";
 import { draftKey, useDrafts } from "@/stores/drafts";
+import { useUi } from "@/stores/ui";
 
 type RpcModule = typeof RpcModuleNs;
 
@@ -66,6 +67,9 @@ const session: Session = {
   autoContinueAt: null,
 };
 
+let templateList: PromptTemplate[] = [];
+const tpl = (id: string, name: string, text: string, description: string | null = null): PromptTemplate => ({ id, projectId: null, name, description, text, sortOrder: 0, createdAt: "", updatedAt: "" });
+
 function setup(ui: React.ReactNode) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const wrap = (node: React.ReactNode) => (
@@ -79,11 +83,15 @@ function setup(ui: React.ReactNode) {
 
 beforeEach(() => {
   useDrafts.setState({ drafts: {} });
+  templateList = [];
   callMock.mockReset();
   callMock.mockImplementation(async (method: string) => {
     if (method === "settings.get") return { enterToSend: true, defaultModel: null, defaultEffort: null, sounds: false };
     if (method === "system.runtimeInfo") return { models: [] };
     if (method === "sessions.send") return session;
+    if (method === "templates.list") return templateList;
+    if (method === "projects.get") return { ...project("p1"), git: { branch: "main" }, lastSession: null };
+    if (method === "projects.list") return [];
     throw new Error("unexpected " + method);
   });
 });
@@ -135,6 +143,7 @@ describe("Composer", () => {
     callMock.mockImplementation((method: string) => {
       if (method === "sessions.send") return new Promise<Session>((r) => (finish = r));
       if (method === "settings.get") return Promise.resolve({ enterToSend: true });
+      if (method === "templates.list") return Promise.resolve([]);
       return Promise.resolve({ models: [] });
     });
     useDrafts.getState().setText("s1", "Erste Nachricht");
@@ -143,6 +152,97 @@ describe("Composer", () => {
     act(() => useDrafts.getState().setText("s1", "Zweite Nachricht"));
     await act(async () => finish(session));
     expect(useDrafts.getState().drafts.s1?.text).toBe("Zweite Nachricht");
+  });
+
+  describe("prompt templates", () => {
+    const review = tpl("t1", "Review vor Release", "Mach ein gründliches Review aller Änderungen seit dem letzten Release.");
+    const tests = tpl("t2", "Tests schreiben", "Schreib Tests für {datei} im Projekt {projekt}, Schwerpunkt {thema}.");
+    const type = (box: HTMLElement, text: string) => fireEvent.change(box, { target: { value: text } });
+
+    it("suggests a matching template while typing; Tab takes it, Enter without choosing still sends", async () => {
+      templateList = [review, tests];
+      setup(<Composer project={project("p1")} session={session} />);
+      const box = screen.getByLabelText("Nachricht an Claude");
+      act(() => type(box, "rev"));
+      expect(screen.queryByRole("listbox", { name: "Vorlagen" })).toBeNull();
+      act(() => type(box, "review vor"));
+      await screen.findByRole("option", { name: /Review vor Release/ });
+      expect(screen.getByRole("option", { name: /Review vor Release/ }).getAttribute("aria-selected")).toBe("false");
+      fireEvent.keyDown(box, { key: "Tab" });
+      expect(useDrafts.getState().drafts.s1?.text).toBe(review.text);
+      // Taken: no further suggestion for this draft.
+      expect(screen.queryByRole("listbox", { name: "Vorlagen" })).toBeNull();
+
+      act(() => useDrafts.getState().setText("s1", ""));
+      act(() => type(box, "review vor"));
+      await screen.findByRole("option", { name: /Review vor Release/ });
+      await act(async () => fireEvent.keyDown(box, { key: "Enter" }));
+      expect(callMock).toHaveBeenCalledWith("sessions.send", { sessionId: "s1", text: "review vor", attachments: [] });
+    });
+
+    it("takes the chosen one with the arrows and Enter", async () => {
+      templateList = [tpl("a", "Tests A", "Tests für A"), tpl("b", "Tests B", "Tests für B")];
+      setup(<Composer project={project("p1")} session={session} />);
+      const box = screen.getByLabelText("Nachricht an Claude");
+      act(() => type(box, "tests"));
+      await screen.findByRole("option", { name: /Tests B/ });
+      fireEvent.keyDown(box, { key: "ArrowDown" });
+      fireEvent.keyDown(box, { key: "ArrowDown" });
+      expect(screen.getByRole("option", { name: /Tests B/ }).getAttribute("aria-selected")).toBe("true");
+      fireEvent.keyDown(box, { key: "Enter" });
+      expect(useDrafts.getState().drafts.s1?.text).toBe("Tests für B");
+      expect(callMock).not.toHaveBeenCalledWith("sessions.send", expect.anything());
+    });
+
+    it("hides the suggestion on Esc until the text changes", async () => {
+      templateList = [review];
+      setup(<Composer project={project("p1")} session={session} />);
+      const box = screen.getByLabelText("Nachricht an Claude");
+      act(() => type(box, "review vor"));
+      await screen.findByRole("option", { name: /Review vor Release/ });
+      fireEvent.keyDown(box, { key: "Escape" });
+      expect(screen.queryByRole("listbox", { name: "Vorlagen" })).toBeNull();
+      expect(useDrafts.getState().drafts.s1?.text).toBe("review vor");
+      act(() => type(box, "review vor r"));
+      expect(screen.getByRole("option", { name: /Review vor Release/ })).toBeTruthy();
+    });
+
+    it("lists templates after #, asks for the placeholders with the known ones filled in and sends the result", async () => {
+      templateList = [review, tests];
+      useUi.setState({ selectedFile: { p1: "src/cart.ts" } });
+      setup(<Composer project={project("p1")} session={session} />);
+      const box = screen.getByLabelText("Nachricht an Claude");
+      act(() => type(box, "#"));
+      await screen.findByRole("option", { name: /Tests schreiben/ });
+      expect(screen.getAllByRole("option")).toHaveLength(2);
+      act(() => type(box, "#test"));
+      expect(screen.getAllByRole("option")).toHaveLength(1);
+      // After #, the first one is chosen and Enter takes it.
+      fireEvent.keyDown(box, { key: "Enter" });
+      const datei = (await screen.findByLabelText("Platzhalter datei")) as HTMLInputElement;
+      expect(datei.value).toBe("src/cart.ts");
+      // The project comes from the project query, a moment later.
+      await waitFor(() => expect((screen.getByLabelText("Platzhalter projekt") as HTMLInputElement).value).toBe("p1"));
+      const send = screen.getByRole("button", { name: "Senden" }) as HTMLButtonElement;
+      expect(send.disabled).toBe(true);
+      fireEvent.change(screen.getByLabelText("Platzhalter thema"), { target: { value: "Rabatte" } });
+      await act(async () => fireEvent.click(screen.getByRole("button", { name: "Senden" })));
+      await waitFor(() => expect(callMock).toHaveBeenCalledWith("sessions.send", { sessionId: "s1", text: "Schreib Tests für src/cart.ts im Projekt p1, Schwerpunkt Rabatte.", attachments: [] }));
+    });
+
+    it("puts the filled text into the field without sending", async () => {
+      templateList = [tests];
+      setup(<Composer project={project("p1")} session={session} />);
+      const box = screen.getByLabelText("Nachricht an Claude");
+      act(() => type(box, "#"));
+      await screen.findByRole("option", { name: /Tests schreiben/ });
+      fireEvent.keyDown(box, { key: "Tab" });
+      await waitFor(() => expect((screen.getByLabelText("Platzhalter projekt") as HTMLInputElement).value).toBe("p1"));
+      fireEvent.change(await screen.findByLabelText("Platzhalter datei"), { target: { value: "a.ts" } });
+      fireEvent.click(screen.getByRole("button", { name: "In den Chat übernehmen" }));
+      expect(useDrafts.getState().drafts.s1?.text).toBe("Schreib Tests für a.ts im Projekt p1, Schwerpunkt {thema}.");
+      expect(callMock).not.toHaveBeenCalledWith("sessions.send", expect.anything());
+    });
   });
 
   it("keeps plan mode per project for a new session", () => {
@@ -172,7 +272,7 @@ describe("/clear", () => {
     callMock.mockImplementation(async (method: string) => {
       if (method === "settings.get") return { enterToSend: true };
       if (method === "sessions.close") return { ...session, live: false, status: "stopped" };
-      return { models: [] };
+      return method === "templates.list" ? [] : { models: [] };
     });
     useDrafts.getState().setText("s1", "/clear");
     setup(<Composer project={project("p1")} session={session} />);
@@ -217,7 +317,7 @@ describe("dictation", () => {
     callMock.mockImplementation(async (method: string) => {
       if (method === "settings.get") return { enterToSend: true };
       if (method === "voice.start") return { id: "v1" };
-      return { models: [] };
+      return method === "templates.list" ? [] : { models: [] };
     });
     useDrafts.getState().setText(draftKey("p1", null), "Bitte");
     setup(<Composer project={{ ...project("p1"), name: "Kundenportal", technologies: ["Next.js"] }} session={null} />);
@@ -236,7 +336,7 @@ describe("dictation", () => {
     callMock.mockImplementation(async (method: string) => {
       if (method === "settings.get") return { enterToSend: true };
       if (method === "voice.start") return { id: "v1" };
-      return { models: [] };
+      return method === "templates.list" ? [] : { models: [] };
     });
     setup(<Composer project={project("p1")} session={null} />);
     const box = screen.getByRole("textbox", { name: "Nachricht an Claude" });
@@ -255,7 +355,7 @@ describe("dictation", () => {
         if (method === "settings.get") return { enterToSend: true };
         if (method === "voice.start") return { id: "v1" };
         if (method === "voice.stop") return { text: "die Tests ausführen." };
-        return { models: [] };
+        return method === "templates.list" ? [] : { models: [] };
       });
       stubMicrophone();
     });
@@ -338,7 +438,7 @@ describe("dictation", () => {
         if (method === "settings.get") return { enterToSend: true };
         if (method === "voice.start") return { id: "v1" };
         if (method === "voice.stop") return { text };
-        return { models: [] };
+        return method === "templates.list" ? [] : { models: [] };
       });
     }
     beforeEach(() => stubMicrophone());
@@ -433,7 +533,7 @@ describe("info commands", () => {
       if (method === "settings.get") return { enterToSend: true };
       if (method === "system.diagnostics") return { claude: { found: true, version: "2.1.300" }, auth: { loggedIn: true, subscriptionType: "max", rateLimitTier: "default_claude_max_20x", authMethod: null } };
       if (method === "system.usage") return { available: true, subscriptionType: "max", windows: [{ key: "five_hour", label: "Aktuelle Session", utilization: 12, resetsAt: null }], fetchedAt: new Date().toISOString(), error: null };
-      return { models: [] };
+      return method === "templates.list" ? [] : { models: [] };
     });
     useDrafts.getState().setText("s1", "/usage");
     setup(<Composer project={project("p1")} session={session} />);

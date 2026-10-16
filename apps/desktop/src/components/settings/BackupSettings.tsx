@@ -26,6 +26,7 @@ const PART_LABEL: Record<BackupPart, string> = {
   phone: "Telefon",
   claude: "Claude-Code-Konfiguration",
   git: "Git-Name und E-Mail",
+  templates: "Vorlagen",
 };
 
 const PART_HINT: Record<BackupPart, string> = {
@@ -34,6 +35,7 @@ const PART_HINT: Record<BackupPart, string> = {
   phone: "Anlage, Gesprächspartner, Anrufer, PIN und Tischtelefon. Das Telefon startet danach neu.",
   claude: "CLAUDE.md, settings.json mit Hooks, Agenten, Befehle, Skills und MCP-Server. Seitdem neu angelegte bleiben.",
   git: "Name und E-Mail für Commits.",
+  templates: "Prompt-Vorlagen, global und pro Projekt. Seitdem neu angelegte bleiben.",
 };
 
 export function formatBackupDate(iso: string): string {

@@ -48,6 +48,10 @@ function fullContext(): ActionContext {
     phone: { enabled: false, registration: "registered" } as ActionContext["phone"],
     remote: { enabled: false, sessions: [] },
     githubConnected: true,
+    templates: [
+      { id: "t1", projectId: null, name: "Review vor Release", description: null, text: "Review", sortOrder: 0, createdAt: "", updatedAt: "" },
+      { id: "t2", projectId: "p1", name: "Tests schreiben", description: "für die geänderten Dateien", text: "Tests für {datei}", sortOrder: 0, createdAt: "", updatedAt: "" },
+    ],
     openDialog: () => {},
   };
 }
@@ -107,6 +111,19 @@ describe("command palette covers all of FORGE", () => {
 
   it("finds every blocklist rule", () => {
     expect(missing("policy-", PolicyRuleId.options, ids), hint("Regel der Sperrliste", "RULE_GROUPS (PolicySettings.tsx)")).toEqual([]);
+  });
+
+  it("runs every prompt template and opens their management", async () => {
+    const { useTemplateDialogs } = await import("@/stores/templates");
+    const t2 = entries.find((e) => e.id === "template-t2")!;
+    expect(t2).toMatchObject({ label: "Vorlage: Tests schreiben", hint: "Forge" });
+    expect(entries.find((e) => e.id === "template-t1")?.hint).toBe("global");
+    t2.run();
+    expect(useTemplateDialogs.getState().apply).toEqual({ projectId: "p1", templateId: "t2", values: {} });
+    entries.find((e) => e.id === "templates-manage")!.run();
+    expect(useUi.getState()).toMatchObject({ view: "settings", settingsSection: "templates" });
+    entries.find((e) => e.id === "template-new")!.run();
+    expect(useTemplateDialogs.getState().edit).toEqual({ id: null, projectId: null });
   });
 
   it("offers the actions of the open project and session", () => {

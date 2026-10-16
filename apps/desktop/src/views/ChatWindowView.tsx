@@ -6,6 +6,7 @@ import { splitActive, useUi } from "@/stores/ui";
 import { ErrorBoundary } from "@/components/layout/ErrorBoundary";
 import { Toaster } from "@/components/layout/Toaster";
 import { ContextMenuHost } from "@/components/layout/ContextMenuHost";
+import { TemplateHost } from "@/components/templates/TemplateHost";
 import { TitleTooltips } from "@/components/ui/title-tooltips";
 import { EmptyState, ErrorBanner } from "@/components/ui/misc";
 import { ChatPanel, ChatPanelSkeleton } from "@/components/workspace/ChatPanel";
@@ -39,6 +40,7 @@ export function ChatWindowShell({ target }: { target: ChatWindowTarget }) {
       <TitleTooltips />
       {/* No command palette in a chat window: the menu leaves out the search. */}
       <ContextMenuHost search={false} />
+      <TemplateHost apply={false} />
       <ClaudeLoginRequiredNotice />
     </div>
   );

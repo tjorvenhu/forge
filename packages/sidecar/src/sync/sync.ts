@@ -12,6 +12,7 @@ import {
   TestDbConfig,
   type BackupPart,
   type Project,
+  type PromptTemplate,
   type ServerEvent,
   type SyncAvailableProject,
   type SyncLocalOnly,
@@ -72,11 +73,20 @@ const DevToolsItem = z.object({
   database: TestDbConfig.pick({ name: true, withDevServer: true, envVar: true }),
 });
 export type DevToolsItem = z.infer<typeof DevToolsItem>;
+/** A prompt template; `project`: item key of its project ("project:github.com/me/shop"), null for a global one. */
+const TemplateItem = z.object({
+  name: z.string().min(1),
+  description: z.string().nullable(),
+  text: z.string().min(1),
+  sortOrder: z.number().int(),
+  project: z.string().nullable(),
+});
+type TemplateItem = z.infer<typeof TemplateItem>;
 
 /**
  * The file in the repository: who wrote it in clear, everything else encrypted. The items are flat:
  * "setting:<key>", "git:identity", "project:<remote or folder>", "devtools:<same>", "phone:config",
- * "secret:<name>", "claude:<path below ~/.claude>", "mcp:<server>".
+ * "secret:<name>", "claude:<path below ~/.claude>", "mcp:<server>", "template:<id>".
  */
 const SyncDoc = z.object({
   format: z.literal("forge-sync"),
@@ -98,6 +108,7 @@ const PART_KINDS: Record<BackupPart, Kind[]> = {
   phone: ["phone", "secret"],
   claude: ["claude", "mcp"],
   git: ["git"],
+  templates: ["template"],
 };
 
 const SECRET_LABELS: Record<string, string> = {
@@ -165,6 +176,8 @@ export interface SyncDeps {
   setIdentity(name: string, email: string): Promise<void>;
   /** `get`: the stored row or null; `update` checks it and keeps port and password of this computer */
   devTools: { get(projectId: string): unknown; update(projectId: string, patch: DevToolsItem): void };
+  /** prompt templates; `put` keeps the creation time of one that is already here */
+  templates: { list(): PromptTemplate[]; put(t: Omit<PromptTemplate, "createdAt" | "updatedAt">): void; remove(id: string): void };
   phone: { config(): Record<string, unknown> | null; apply(config: Record<string, unknown>): Promise<void>; secretsChanged(): Promise<void> };
   secrets: { names(): string[]; get(name: string): Promise<string | null>; set(name: string, value: string | null): Promise<void> };
   /** the key from the sync password, kept encrypted for this Windows user */
@@ -374,7 +387,7 @@ export class SyncService {
 
   onServerEvent(e: ServerEvent) {
     if (this.applying > 0 || !this.enabled()) return;
-    if (e.event === "settings.updated" || e.event === "project.updated") this.scheduleCheck();
+    if (e.event === "settings.updated" || e.event === "project.updated" || e.event === "templates.updated") this.scheduleCheck();
     if (e.event === "github.login" && e.payload.phase === "done") this.schedule(0, true);
   }
 
@@ -590,7 +603,7 @@ export class SyncService {
       const localKeys = [...Object.keys(after.items), ...[...after.unknown].filter((k) => state.localKeys.includes(k))].filter((k) => !localOnly.includes(k));
       await this.saveState({ ...state, base, localKeys, localOnly, remote: { updatedAt: doc.updatedAt, device: doc.device }, projectKeys: { ...state.projectKeys, ...after.projectKeys } });
       this.available = this.availableFrom(base, localKeys);
-      this.localOnlyInfo = this.describe(localOnly, after.projects);
+      this.localOnlyInfo = this.describe(localOnly, after.projects, after.items);
       this.d.log(`Synchronisierung: ${key ? key : "dieser Computer"} auf den Stand von GitHub gesetzt`);
     });
     await this.run(true);
@@ -827,6 +840,11 @@ export class SyncService {
         this.keyProblem = null;
         const local = await this.snapshot(state.localOnly);
         const merged = mergeItems(state.base, local.items, remoteItems, (k) => state.localKeys.includes(k) && !local.unknown.has(k));
+        // Templates of a project that is here only since (fetched or imported) were never here: they come now.
+        for (const [k, v] of Object.entries(merged.result)) {
+          if (split(k).kind !== "template" || k in local.items || k in merged.apply || local.unknown.has(k)) continue;
+          if (!state.localKeys.includes(k) && !state.localOnly.includes(k) && this.isLocalAfterApply(k, local.projects, v)) merged.apply[k] = v;
+        }
         const failed = await this.applyRemote(merged.apply, local.projects);
         const localOnly = new Set(state.localOnly);
         for (const k of Object.keys(merged.apply)) localOnly.delete(k);
@@ -855,7 +873,7 @@ export class SyncService {
         const here = new Set([
           ...Object.keys(local.items),
           ...[...local.unknown].filter((k) => state.localKeys.includes(k)),
-          ...Object.keys(merged.apply).filter((k) => !failed.has(k) && this.isLocalAfterApply(k, local.projects)),
+          ...Object.keys(merged.apply).filter((k) => !failed.has(k) && this.isLocalAfterApply(k, local.projects, merged.apply[k])),
         ]);
         for (const k of localOnly) here.delete(k);
         state = {
@@ -869,7 +887,7 @@ export class SyncService {
         };
         await this.saveState(state);
         this.available = this.availableFrom(base, state.localKeys);
-        this.localOnlyInfo = this.describe(state.localOnly, local.projects);
+        this.localOnlyInfo = this.describe(state.localOnly, local.projects, local.items);
         break;
       }
       this.phase = "idle";
@@ -884,9 +902,13 @@ export class SyncService {
   }
 
   /** Projects and their dev tools exist here only when the project does; everything else is written here. */
-  private isLocalAfterApply(key: string, projects: Map<string, Project>): boolean {
+  private isLocalAfterApply(key: string, projects: Map<string, Project>, value: unknown): boolean {
     const { kind, id } = split(key);
     if (kind === "project" || kind === "devtools") return projects.has(`project:${id}`);
+    if (kind === "template") {
+      const t = TemplateItem.safeParse(value);
+      return t.success && (t.data.project === null || projects.has(t.data.project));
+    }
     return true;
   }
 
@@ -966,6 +988,16 @@ export class SyncService {
       } catch {
         unknown.add(`devtools:${key}`);
       }
+    }
+    const projectOf = new Map(Object.entries(projectKeys));
+    for (const t of this.d.templates.list()) {
+      const project = t.projectId ? (projectOf.get(t.projectId) ?? null) : null;
+      // The folder of its project is out of reach just now: the template counts as unchanged.
+      if (t.projectId && !project) {
+        unknown.add(`template:${t.id}`);
+        continue;
+      }
+      items[`template:${t.id}`] = { name: t.name, description: t.description, text: t.text, sortOrder: t.sortOrder, project } satisfies TemplateItem;
     }
     const phone = this.d.phone.config();
     if (phone) items["phone:config"] = phone;
@@ -1084,6 +1116,12 @@ export class SyncService {
           } else if (kind === "mcp") {
             if (!v || typeof v !== "object") throw new Error("ungültiger MCP-Server");
             mcp[id] = v;
+          } else if (kind === "template") {
+            const t = TemplateItem.parse(v);
+            if (!/^[\w-]{1,100}$/.test(id)) throw new Error("ungültige Kennung");
+            // A template of a project that is not here waits in the repository until the project comes.
+            const p = t.project ? projects.get(t.project) : undefined;
+            if (!t.project || p) this.d.templates.put({ id, projectId: p?.id ?? null, name: t.name, description: t.description, text: t.text, sortOrder: t.sortOrder });
           } else throw new Error("unbekannte Art");
         } catch (e) {
           failed.add(k);
@@ -1122,6 +1160,7 @@ export class SyncService {
       if (p) await this.d.removeProject(p.id);
     } else if (kind === "claude") await rm(this.claudeTarget(id), { force: true });
     else if (kind === "mcp") await this.writeMcpServers((servers) => delete servers[id]);
+    else if (kind === "template") this.d.templates.remove(id);
     else if (kind === "secret") {
       await this.d.secrets.set(id, null);
       await this.d.phone.secretsChanged().catch(() => {});
@@ -1152,7 +1191,7 @@ export class SyncService {
     await writeAtomic(target, content);
   }
 
-  private describe(localOnly: string[], projects: Map<string, Project>): SyncLocalOnly[] {
+  private describe(localOnly: string[], projects: Map<string, Project>, items: Items): SyncLocalOnly[] {
     const out: SyncLocalOnly[] = [];
     for (const k of localOnly) {
       const { kind, id } = split(k);
@@ -1168,13 +1207,15 @@ export class SyncService {
               ? `Claude-Datei ${id}`
               : kind === "mcp"
                 ? `MCP-Server ${id}`
-                : kind === "secret"
-                  ? (SECRET_LABELS[id] ?? `Schlüssel ${id}`)
-                  : kind === "phone"
-                    ? "Telefon-Einstellungen"
-                    : kind === "git"
-                      ? "Git-Name und E-Mail"
-                      : `Einstellung ${id}`;
+                : kind === "template"
+                  ? `Vorlage ${TemplateItem.safeParse(items[k]).data?.name ?? id}`
+                  : kind === "secret"
+                    ? (SECRET_LABELS[id] ?? `Schlüssel ${id}`)
+                    : kind === "phone"
+                      ? "Telefon-Einstellungen"
+                      : kind === "git"
+                        ? "Git-Name und E-Mail"
+                        : `Einstellung ${id}`;
       out.push({ key: k, kind, label, projectId: kind === "project" ? (p?.id ?? null) : null });
     }
     return out.sort((a, b) => a.label.localeCompare(b.label));

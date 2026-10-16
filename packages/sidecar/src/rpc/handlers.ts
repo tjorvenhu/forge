@@ -24,6 +24,7 @@ import type { Presence } from "../util/presence.js";
 import type { AppUpdateService } from "../update/app-update.js";
 import type { BackupService } from "../backup/backup.js";
 import type { SyncService } from "../sync/sync.js";
+import type { TemplateService } from "../templates/templates.js";
 import * as cfg from "../config/claude-config.js";
 import { removalInfo, removeProject, removeWorktree } from "../projects/removal.js";
 import os from "node:os";
@@ -53,6 +54,7 @@ export interface Services {
   updates: AppUpdateService;
   backups: BackupService;
   sync: SyncService;
+  templates: TemplateService;
   notifyProject: (projectId: string) => void;
   /** every window takes the new settings, not only the one that saved them */
   notifySettings: (settings: Settings) => void;
@@ -289,6 +291,11 @@ export function createHandlers(s: Services): Handlers {
     "knowledge.checkRefs": ({ projectId, id, refresh }) => s.knowledge.staleness(projectId, { ids: id ? [id] : undefined, refresh }),
     "knowledge.markChecked": ({ projectId, id }) => s.knowledge.markChecked(projectId, id),
     "knowledge.fixDraft": async ({ projectId, id }) => s.sessions.draftKnowledgeFix(s.knowledge.owner(projectId), await s.knowledge.fixContext(projectId, id)),
+
+    "templates.list": ({ projectId, all }) => s.templates.list(projectId, all),
+    "templates.save": (input) => s.templates.save(input),
+    "templates.delete": ({ id }) => ({ ok: s.templates.delete(id) }),
+    "templates.reorder": ({ ids }) => s.templates.reorder(ids),
 
     "app.updateState": () => s.updates.get(),
     "app.presence": ({ focused, active, window }) => {

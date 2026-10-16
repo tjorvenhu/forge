@@ -20,6 +20,10 @@ import {
   KnowledgeMergePlan,
   KnowledgeStaleReport,
   KnowledgeSummary,
+  PromptTemplate,
+  TEMPLATE_DESCRIPTION_MAX,
+  TEMPLATE_NAME_MAX,
+  TEMPLATE_TEXT_MAX,
   TestDbConfig,
   TestDbState,
   SearchHit,
@@ -450,6 +454,24 @@ export const methods = {
   /** one-shot Claude call that corrects the missing refs of an entry; saves nothing (knowledge.save does) */
   "knowledge.fixDraft": { params: projectRef.extend({ id }), result: KnowledgeMergeDraft },
 
+  /** global templates plus those of the project; all: every template of every project (settings page) */
+  "templates.list": { params: z.object({ projectId: id.optional(), all: z.boolean().default(false) }), result: z.array(PromptTemplate) },
+  "templates.save": {
+    params: z.object({
+      /** null creates a new template, at the end of its list */
+      id: id.nullable(),
+      /** null: global */
+      projectId: id.nullable(),
+      name: z.string().trim().min(1).max(TEMPLATE_NAME_MAX),
+      description: z.string().trim().max(TEMPLATE_DESCRIPTION_MAX).nullable().default(null),
+      text: z.string().min(1).max(TEMPLATE_TEXT_MAX),
+    }),
+    result: PromptTemplate,
+  },
+  "templates.delete": { params: z.object({ id }), result: z.object({ ok: z.boolean() }) },
+  /** new order of the given templates within their list (global or one project); others keep their place */
+  "templates.reorder": { params: z.object({ ids: z.array(id).min(1).max(1000) }), result: z.array(PromptTemplate) },
+
   "app.updateState": { params: empty, result: AppUpdateState },
   /**
    * whether a FORGE window is active, and whether the user just used it (keys, mouse); FORGE does not call while they are there.
@@ -707,6 +729,8 @@ export type ServerEvent =
   | { event: "testdb.updated"; payload: TestDbState }
   /** an entry of the project's knowledge was saved or deleted (also by Claude) */
   | { event: "knowledge.updated"; payload: { projectId: string } }
+  /** prompt templates changed (in any window, over the phone or by the sync); projectId null: global ones */
+  | { event: "templates.updated"; payload: { projectId: string | null } }
   /**
    * auto-merge of a finished agent. skipped: FORGE could not merge on its own, the user decides
    * (the dialog for `worktreeId`); conflict: the agent resolves them, the next turn end tries again

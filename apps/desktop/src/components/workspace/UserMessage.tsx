@@ -1,11 +1,12 @@
 import { useState } from "react";
-import { Copy, FileText, GitBranch, ImageIcon, Pencil, Smartphone, SquareSlash, TimerReset, Undo2 } from "lucide-react";
+import { Copy, FilePlus2, FileText, GitBranch, ImageIcon, Pencil, Smartphone, SquareSlash, TimerReset, Undo2 } from "lucide-react";
 import { contextItems, copyText } from "@/lib/context-menu";
 import type { RewindResult } from "@forge/protocol";
 import { useQueryClient } from "@tanstack/react-query";
 import { call, keys, useGitHubAccount, useSession, useSettings } from "@/lib/queries";
 import { draftKey, useDrafts } from "@/stores/drafts";
 import { useMessageEdit } from "@/stores/message-edit";
+import { useTemplateDialogs } from "@/stores/templates";
 import { Textarea } from "@/components/ui/input";
 import { errorMessage } from "@/lib/rpc";
 import { clockTime, cn } from "@/lib/utils";
@@ -75,6 +76,7 @@ export function UserMessage({ item, sessionId }: { item: Extract<ChatItem, { kin
           ? []
           : [
               { label: "Nachricht kopieren", icon: <Copy className="h-3.5 w-3.5" />, onSelect: () => copyText(item.text) },
+              ...(item.text.trim() ? [{ label: "Als Vorlage speichern", icon: <FilePlus2 className="h-3.5 w-3.5" />, onSelect: () => useTemplateDialogs.getState().openEdit({ id: null, text: item.text }) }] : []),
               ...(canEdit ? [{ label: "Bearbeiten", icon: <Pencil className="h-3.5 w-3.5" />, onSelect: () => useMessageEdit.getState().start(sessionId, item.seq) }] : []),
               ...(item.uuid
                 ? [

@@ -6,6 +6,10 @@ import {
   SEARCH_MARK_END,
   SEARCH_MARK_START,
   BackupPart,
+  fillTemplate,
+  findTemplates,
+  knownTemplateValues,
+  templatePlaceholders,
   type DeskPhoneConfig,
   type MethodName,
   type ParamsOf,
@@ -17,6 +21,7 @@ import {
   type PhoneSetupIncomplete,
   type PhoneState,
   type Project,
+  type PromptTemplate,
   type ResultOf,
   type ServerEvent,
   type SessionEventBody,
@@ -407,7 +412,8 @@ function removeEnvLine(text: string, name: string): string {
     .join("\n");
 }
 
-const BACKUP_PARTS: Record<BackupPart, string> = { settings: "Einstellungen", projects: "Projekte", phone: "Telefon", claude: "Claude-Konfiguration", git: "Git-Identität" };
+type SessionsArgs = Parameters<PhoneToolset["sessions"]>;
+const BACKUP_PARTS: Record<BackupPart, string> = { settings: "Einstellungen", projects: "Projekte", phone: "Telefon", claude: "Claude-Konfiguration", git: "Git-Identität", templates: "Vorlagen" };
 const BACKUP_REASONS = { start: "beim Start", manual: "von Hand", "before-restore": "vor einer Wiederherstellung", import: "importiert" } as const;
 
 /** A global setting as said on the phone. */
@@ -1502,6 +1508,72 @@ export class PhoneService {
             : s.status === "error"
               ? "mit Fehler beendet"
               : "beendet";
+    /** Prompt templates: list, send with values for their placeholders, save, sort and delete. */
+    const templateAction = async (action: SessionsArgs[0], o: SessionsArgs[1]): Promise<string> => {
+      const s = o?.session?.trim() ? resolve(o.session) : null;
+      const p = s ? this.d.projects.get(s.projectId) : o?.project?.trim() ? findProject(o.project) : null;
+      const list = await call("templates.list", p ? { projectId: p.id } : { all: true });
+      const names = new Map(this.d.projects.all().map((x) => [x.id, x.name]));
+      const where = (t: PromptTemplate) => (t.projectId ? `nur ${names.get(t.projectId) ?? "ein Projekt"}` : "global");
+      const pickTemplate = () => {
+        const q = o?.template?.trim() ?? "";
+        const hits = q ? findTemplates(q, list) : [];
+        return hits.length === 1 ? hits[0]! : pickOne(hits.length > 1 ? hits : list, q, (t) => [t.name], { none: "Keine Vorlage", many: "Vorlagen" });
+      };
+      if (action === "templates") {
+        if (!list.length) return p ? `Keine Vorlagen für ${p.name}, auch keine globalen.` : "Es gibt noch keine Vorlagen.";
+        const lines = list.slice(0, 15).map((t) => {
+          const holes = templatePlaceholders(t.text);
+          return `${t.name} (${where(t)})${t.description ? `: ${t.description}` : ""}${holes.length ? `, Platzhalter ${holes.join(", ")}` : ""}`;
+        });
+        return `${list.length === 1 ? "1 Vorlage" : `${list.length} Vorlagen`}${list.length > 15 ? ", die ersten 15" : ""}:\n${asData(lines.join("\n"))}`;
+      }
+      if (action === "template_send") {
+        const t = pickTemplate();
+        if (!p) return "Fehler: An welche Session oder in welchem Projekt?";
+        const status = await call("projects.get", { projectId: p.id }).catch(() => null);
+        const given = Object.fromEntries((o?.values ?? []).map((v) => [v.name.replace(/[{}]/g, "").trim(), v.value]));
+        const values = { ...knownTemplateValues(t.text, { project: p.name, branch: status?.git?.branch ?? null, date: localDate(new Date()) }), ...given };
+        const filled = new Map(Object.entries(values).map(([k, v]) => [k.toLowerCase(), v.trim()]));
+        const missing = templatePlaceholders(t.text).filter((n) => !filled.get(n.toLowerCase()));
+        if (missing.length) return `Fehler: Für die Vorlage ${asData(t.name)} fehlen Werte für ${asData(missing.join(", "))}. Frag den Anrufer danach und ruf das Werkzeug dann mit values noch einmal auf.`;
+        const text = fillTemplate(t.text, values);
+        if (s) {
+          await call("sessions.send", { sessionId: s.id, text });
+          a.focus = s.id;
+          return `Vorlage ${asData(t.name)} an ${refFor(s.id)} gesendet. Claude arbeitet daran.`;
+        }
+        const started = await call("sessions.start", { projectId: p.id, prompt: text });
+        a.focus = started.id;
+        return `Neue Session ${refFor(started.id)} im Projekt ${p.name} mit der Vorlage ${asData(t.name)} gestartet.`;
+      }
+      if (action === "template_save") {
+        const existing = o?.template?.trim() ? pickTemplate() : null;
+        const name = o?.name?.trim() || existing?.name;
+        const text = o?.text?.trim() || existing?.text;
+        if (!name) return "Fehler: Wie soll die Vorlage heißen?";
+        if (!text) return "Fehler: Was soll in der Vorlage stehen?";
+        const projectId = existing && !p ? existing.projectId : (p?.id ?? null);
+        const saved = await call("templates.save", { id: existing?.id ?? null, projectId, name, description: o?.description?.trim() || existing?.description || null, text });
+        return `Vorlage ${asData(saved.name)} ${existing ? "geändert" : "angelegt"} (${where(saved)}).`;
+      }
+      const t = pickTemplate();
+      if (action === "template_delete") {
+        return askKeypad(`Die Vorlage ${asData(t.name)} (${where(t)}) wird gelöscht`, async () => {
+          const r = await call("templates.delete", { id: t.id });
+          return r.ok ? `Vorlage ${asData(t.name)} gelöscht.` : `Die Vorlage ${asData(t.name)} gab es schon nicht mehr.`;
+        });
+      }
+      if (!o?.direction) return "Fehler: Nach oben oder nach unten?";
+      const siblings = (await call("templates.list", t.projectId ? { projectId: t.projectId } : {})).filter((x) => x.projectId === t.projectId);
+      const i = siblings.findIndex((x) => x.id === t.id);
+      const j = o.direction === "up" ? i - 1 : i + 1;
+      if (i < 0 || j < 0 || j >= siblings.length) return `${asData(t.name)} steht schon ${o.direction === "up" ? "ganz oben" : "ganz unten"}.`;
+      const ids = siblings.map((x) => x.id);
+      [ids[i], ids[j]] = [ids[j]!, ids[i]!];
+      await call("templates.reorder", { ids });
+      return `${asData(t.name)} steht jetzt an Platz ${j + 1} von ${siblings.length} (${where(t)}).`;
+    };
 
     return {
       status: () =>
@@ -2368,6 +2440,9 @@ export class PhoneService {
             // One block for the whole report: titles, commit messages and questions in it are data.
             const text = reportText(await call("reports.daily", { projectId: p?.id, date }), { ref: refFor });
             return text.length > REPORT_MAX ? `${asData(text.slice(0, REPORT_MAX))} (gekürzt, insgesamt ${text.length} Zeichen; für mehr nach einem Projekt fragen oder eine Zusammenfassung holen)` : asData(text);
+          }
+          if (action === "templates" || action === "template_send" || action === "template_save" || action === "template_delete" || action === "template_move") {
+            return templateAction(action, o);
           }
           if (action === "list") {
             const p = o?.project?.trim() ? findProject(o.project) : null;

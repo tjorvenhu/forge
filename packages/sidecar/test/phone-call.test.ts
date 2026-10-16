@@ -1597,6 +1597,45 @@ describe("PhoneService end to end with a test PBX", () => {
     await end();
   });
 
+  it("lists prompt templates, sends one with values or starts a session with it, saves, moves and deletes only after the keypad", async () => {
+    const tpl = (id: string, name: string, text: string, projectId: string | null = null, sortOrder = 0) => ({ id, projectId, name, description: null, text, sortOrder, createdAt: "", updatedAt: "" });
+    const list = [tpl("t1", "Review vor Release", "Review von {projekt} auf {branch}"), tpl("t2", "Tests schreiben", "Tests für {datei} schreiben", projectId), tpl("t3", "Doku", "Doku", projectId, 1)];
+    rpcResults = {
+      "templates.list": () => list,
+      "projects.get": () => ({ git: { branch: "main" } }),
+      "sessions.send": () => ({ id: "s1" }),
+      "sessions.start": () => ({ id: "s1" }),
+      "templates.save": (p: { name: string; projectId: string | null }) => tpl("t9", p.name, "x", p.projectId),
+      "templates.delete": () => ({ ok: true }),
+      "templates.reorder": () => [],
+    };
+    const { conv, end } = await openCall("c-templates");
+    const listed = await conv.tools.sessions("templates");
+    expect(listed).toContain("3 Vorlagen:");
+    expect(listed).toContain("Tests schreiben (nur shop), Platzhalter datei");
+    expect(rpcCalls.at(-1)).toEqual(["templates.list", { all: true }]);
+
+    expect(await conv.tools.sessions("template_send", { template: "tests", session: "Warenkorb" })).toMatch(/^Fehler: Für die Vorlage .* fehlen Werte für <<<SESSION-DATEN>>>datei<<<ENDE SESSION-DATEN>>>/);
+    expect(await conv.tools.sessions("template_send", { template: "tests", session: "Warenkorb", values: [{ name: "{datei}", value: "src/cart.ts" }] })).toContain("an S1 gesendet");
+    expect(rpcCalls.at(-1)).toEqual(["sessions.send", { sessionId: "s1", text: "Tests für src/cart.ts schreiben" }]);
+    expect(await conv.tools.sessions("template_send", { template: "review", project: "shop" })).toMatch(/^Neue Session S1 im Projekt shop mit der Vorlage/);
+    expect(rpcCalls.at(-1)).toEqual(["sessions.start", { projectId, prompt: "Review von shop auf main" }]);
+    expect(await conv.tools.sessions("template_send", { template: "review" })).toBe("Fehler: An welche Session oder in welchem Projekt?");
+
+    expect(await conv.tools.sessions("template_save", { name: "Changelog", text: "Schreib den Changelog für {version}", project: "shop" })).toBe("Vorlage <<<SESSION-DATEN>>>Changelog<<<ENDE SESSION-DATEN>>> angelegt (nur shop).");
+    expect(rpcCalls.at(-1)).toEqual(["templates.save", { id: null, projectId, name: "Changelog", description: null, text: "Schreib den Changelog für {version}" }]);
+
+    expect(await conv.tools.sessions("template_move", { template: "doku", direction: "up" })).toContain("steht jetzt an Platz 1 von 2");
+    expect(rpcCalls.at(-1)).toEqual(["templates.reorder", { ids: ["t3", "t2"] }]);
+    expect(await conv.tools.sessions("template_move", { template: "review", direction: "up" })).toContain("steht schon ganz oben");
+
+    const ask = await conv.tools.sessions("template_delete", { template: "review" });
+    expect(rpcCalls.some(([m]) => m === "templates.delete")).toBe(false);
+    expect(await keypad(conv, ask)).toContain("gelöscht.");
+    expect(rpcCalls.at(-1)).toEqual(["templates.delete", { id: "t1" }]);
+    await end();
+  });
+
   it("lists, deletes and diffs in Git, restores a commit, publishes, sets the identity, reviews agents and edits the test environment", async () => {
     const wt = await agentWorktree();
     const commit = (hash: string, subject: string) => ({ hash, shortHash: hash.slice(0, 7), author: "T", authorEmail: "t@x", avatarUrl: null, date: "2026-10-13T10:00:00Z", subject, parents: [], refs: [] });

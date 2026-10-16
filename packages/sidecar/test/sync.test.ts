@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { ForgeError, type Project, type Settings, type SyncStatus } from "@forge/protocol";
+import { ForgeError, type Project, type PromptTemplate, type Settings, type SyncStatus } from "@forge/protocol";
 import { DEFAULT_SETTINGS, Db, MIGRATIONS } from "../src/persistence/db.js";
 import { open, seal, type SyncKey } from "../src/sync/crypto.js";
 import { mergeItems, projectKey, SyncService, type SyncDeps, type SyncRemote } from "../src/sync/sync.js";
@@ -117,6 +117,7 @@ function computer(gh: FakeGitHub, device: string) {
     phone: null as Record<string, unknown> | null,
     phoneApplied: [] as Array<Record<string, unknown>>,
     secrets: new Map<string, string>(),
+    templates: [] as PromptTemplate[],
     key: null as SyncKey | null,
     removed: [] as string[],
     backups: 0,
@@ -172,6 +173,16 @@ function computer(gh: FakeGitHub, device: string) {
       update: (id, patch) => {
         const cur = (c.devTools.get(id) as ReturnType<typeof tools> | undefined) ?? tools("", { port: 54400, password: `pw-${device}` });
         c.devTools.set(id, { ...cur, env: patch.env, useEnv: patch.useEnv, database: { ...cur.database, ...patch.database } });
+      },
+    },
+    templates: {
+      list: () => c.templates,
+      put: (t) => {
+        const now = "2026-10-16T00:00:00Z";
+        c.templates = [...c.templates.filter((x) => x.id !== t.id), { ...t, createdAt: now, updatedAt: now }];
+      },
+      remove: (id) => {
+        c.templates = c.templates.filter((x) => x.id !== id);
       },
     },
     phone: {
@@ -379,6 +390,43 @@ describe("encrypted sync over a private GitHub repository", () => {
     expect(b.backups).toBe(1);
     expect(b.svc.status().localOnly).toEqual([]);
     expect(b.projects.map((p) => p.name)).toEqual(["shop"]);
+  });
+
+  it("syncs prompt templates; those of a project come once the project is here", async () => {
+    const gh = new FakeGitHub();
+    const tpl = (id: string, projectId: string | null, name: string): PromptTemplate => ({
+      id,
+      projectId,
+      name,
+      description: null,
+      text: `${name} für {datei}`,
+      sortOrder: 0,
+      createdAt: "2026-10-01T00:00:00Z",
+      updatedAt: "2026-10-01T00:00:00Z",
+    });
+    const a = await joined(gh, "PC-A", (c) => {
+      const shop = c.add("shop", "https://github.com/me/shop.git");
+      c.templates = [tpl("t-global", null, "Review"), tpl("t-shop", shop.id, "Shop-Tests")];
+    });
+    expect(gh.items(a.key!)).toMatchObject({
+      "template:t-global": { name: "Review", project: null, text: "Review für {datei}" },
+      "template:t-shop": { name: "Shop-Tests", project: "project:github.com/me/shop" },
+    });
+
+    const b = await joined(gh, "PC-B");
+    expect(b.templates.map((t) => t.id)).toEqual(["t-global"]);
+    // Not lost meanwhile, and B does not remove it from GitHub.
+    await b.svc.now();
+    expect(gh.items(a.key!)).toHaveProperty(["template:t-shop"]);
+
+    await b.svc.cloneProject("github.com/me/shop");
+    await b.svc.now();
+    expect(b.templates.find((t) => t.id === "t-shop")).toMatchObject({ projectId: b.projects[0]!.id, name: "Shop-Tests" });
+
+    b.templates = b.templates.filter((t) => t.id !== "t-global");
+    await b.svc.now();
+    await a.svc.now();
+    expect(a.svc.status().localOnly).toEqual([{ key: "template:t-global", kind: "template", label: "Vorlage Review", projectId: null }]);
   });
 
   it("sets the whole computer hard to GitHub and keeps what was only added here", async () => {

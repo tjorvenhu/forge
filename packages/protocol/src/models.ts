@@ -995,6 +995,26 @@ export type KnowledgeSummary = z.infer<typeof KnowledgeSummary>;
 export const KnowledgeEntry = KnowledgeSummary.extend({ content: z.string() });
 export type KnowledgeEntry = z.infer<typeof KnowledgeEntry>;
 
+/**
+ * A prompt template: a recurring request saved once ("Review vor Release"), with placeholders like
+ * {datei} that are asked for before sending. projectId null: global, offered in every project.
+ */
+export const PromptTemplate = z.object({
+  id: z.string(),
+  projectId: z.string().nullable(),
+  name: z.string(),
+  description: z.string().nullable(),
+  text: z.string(),
+  /** order in the list; the global templates and those of each project are counted apart */
+  sortOrder: z.number().int(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+export type PromptTemplate = z.infer<typeof PromptTemplate>;
+export const TEMPLATE_NAME_MAX = 80;
+export const TEMPLATE_DESCRIPTION_MAX = 300;
+export const TEMPLATE_TEXT_MAX = 20_000;
+
 /** What to tidy up in a project's knowledge: entries covering the same topic and very long entries. */
 export const KnowledgeCleanup = z.object({
   /** `a` is largely contained in `b`; score 0-1, strongest first */
@@ -1096,7 +1116,7 @@ export const AppChangelog = z.object({
 export type AppChangelog = z.infer<typeof AppChangelog>;
 
 /** Parts of a backup that can be restored one by one. */
-export const BackupPart = z.enum(["settings", "projects", "phone", "claude", "git"]);
+export const BackupPart = z.enum(["settings", "projects", "phone", "claude", "git", "templates"]);
 export type BackupPart = z.infer<typeof BackupPart>;
 
 /** One backup of FORGE's configuration: in the data folder (id) or a file the user picked (no id). */
@@ -1127,7 +1147,7 @@ export type SyncAvailableProject = z.infer<typeof SyncAvailableProject>;
 export const SyncLocalOnly = z.object({
   /** item key, e.g. "project:github.com/me/shop" */
   key: z.string(),
-  kind: z.enum(["project", "claude", "mcp", "secret", "phone", "devtools", "setting", "git"]),
+  kind: z.enum(["project", "claude", "mcp", "secret", "phone", "devtools", "setting", "git", "template"]),
   label: z.string(),
   /** for projects: the project here */
   projectId: z.string().nullable(),

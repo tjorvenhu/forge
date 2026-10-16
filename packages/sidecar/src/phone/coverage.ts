@@ -52,6 +52,10 @@ export const PHONE_TOOL_FOR: Partial<Record<MethodName, string>> = {
   "sessions.summarize": "details",
   "reports.daily": "sessions",
   "reports.dailySummary": "sessions",
+  "templates.list": "sessions",
+  "templates.save": "sessions",
+  "templates.delete": "sessions",
+  "templates.reorder": "sessions",
 
   "settings.get": "forge_settings",
   "settings.update": "forge_settings",

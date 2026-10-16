@@ -1,6 +1,6 @@
 import { DatabaseSync, type StatementSync } from "node:sqlite";
 import type { UsageSample } from "../claude/usage-forecast.js";
-import { DEFAULT_DISABLED_POLICY_RULES, SEARCH_MARK_END, SEARCH_MARK_START, type ContextUsage, type EffortLevel, type PermissionMode, type ProfileId, type Project, type PhoneCallRecord, type SearchHit, type Session, type SessionEvent, type SessionEventBody, type SessionStatus, type Settings } from "@forge/protocol";
+import { DEFAULT_DISABLED_POLICY_RULES, SEARCH_MARK_END, SEARCH_MARK_START, type ContextUsage, type EffortLevel, type PermissionMode, type ProfileId, type Project, type PhoneCallRecord, type PromptTemplate, type SearchHit, type Session, type SessionEvent, type SessionEventBody, type SessionStatus, type Settings } from "@forge/protocol";
 
 export const MIGRATIONS: string[] = [
   `
@@ -255,6 +255,20 @@ export const MIGRATIONS: string[] = [
   CREATE INDEX agent_log_ts ON agent_log(ts);
   CREATE INDEX agent_log_worktree ON agent_log(worktree_id, id);
   `,
+  // Prompt templates; project_id NULL: global. sort_order counts within the globals and within each project.
+  `
+  CREATE TABLE prompt_templates (
+    id TEXT PRIMARY KEY,
+    project_id TEXT REFERENCES projects(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    description TEXT,
+    text TEXT NOT NULL,
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+  CREATE INDEX prompt_templates_project ON prompt_templates(project_id, sort_order);
+  `,
 ];
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -411,6 +425,21 @@ function toAgentLog(r: AgentLogRow): AgentLogEntry {
     commits: JSON.parse(r.commits) as AgentLogEntry["commits"],
     ts: r.ts,
   };
+}
+
+interface TemplateRow {
+  id: string;
+  project_id: string | null;
+  name: string;
+  description: string | null;
+  text: string;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+}
+
+function toTemplate(r: TemplateRow): PromptTemplate {
+  return { id: r.id, projectId: r.project_id, name: r.name, description: r.description, text: r.text, sortOrder: Number(r.sort_order), createdAt: r.created_at, updatedAt: r.updated_at };
 }
 
 function toPhoneCall(r: Record<string, string | null>): PhoneCallRecord {
@@ -1119,6 +1148,57 @@ export class Db {
       if (r) out.set(id, toAgentLog(r));
     }
     return out;
+  }
+
+  // ---- prompt templates
+
+  /** null: only the global ones; a project id: the global ones and that project's; "all": every template. Globals first, then by order. */
+  listTemplates(scope: string | null | "all"): PromptTemplate[] {
+    const order = "ORDER BY project_id IS NOT NULL, project_id, sort_order, created_at";
+    const rows = (
+      scope === "all"
+        ? this.stmt(`SELECT * FROM prompt_templates ${order}`).all()
+        : scope === null
+          ? this.stmt(`SELECT * FROM prompt_templates WHERE project_id IS NULL ${order}`).all()
+          : this.stmt(`SELECT * FROM prompt_templates WHERE project_id IS NULL OR project_id = ? ${order}`).all(scope)
+    ) as unknown as TemplateRow[];
+    return rows.map(toTemplate);
+  }
+
+  getTemplate(id: string): PromptTemplate | null {
+    const r = this.stmt("SELECT * FROM prompt_templates WHERE id = ?").get(id) as TemplateRow | undefined;
+    return r ? toTemplate(r) : null;
+  }
+
+  /** Inserts or replaces the whole row (also from the sync and backups, with their own times). */
+  putTemplate(t: PromptTemplate) {
+    this.stmt(
+      `INSERT INTO prompt_templates(id, project_id, name, description, text, sort_order, created_at, updated_at) VALUES(?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET project_id = excluded.project_id, name = excluded.name, description = excluded.description, text = excluded.text,
+         sort_order = excluded.sort_order, updated_at = excluded.updated_at`,
+    ).run(t.id, t.projectId, t.name, t.description, t.text, t.sortOrder, t.createdAt, t.updatedAt);
+  }
+
+  deleteTemplate(id: string): boolean {
+    return this.stmt("DELETE FROM prompt_templates WHERE id = ?").run(id).changes > 0;
+  }
+
+  /** The next free place at the end of a list (global or one project). */
+  nextTemplateOrder(projectId: string | null): number {
+    const r = this.stmt("SELECT MAX(sort_order) AS m FROM prompt_templates WHERE project_id IS ?").get(projectId) as { m: number | null };
+    return (r.m ?? -1) + 1;
+  }
+
+  setTemplateOrder(order: Array<{ id: string; sortOrder: number }>) {
+    const q = this.stmt("UPDATE prompt_templates SET sort_order = ? WHERE id = ?");
+    this.sql.exec("BEGIN");
+    try {
+      for (const o of order) q.run(o.sortOrder, o.id);
+      this.sql.exec("COMMIT");
+    } catch (e) {
+      this.sql.exec("ROLLBACK");
+      throw e;
+    }
   }
 
   // ---- approvals audit

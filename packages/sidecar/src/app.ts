@@ -30,6 +30,7 @@ import { ASSIST_MODEL } from "./sessions/claude-assist.js";
 import { BackupService } from "./backup/backup.js";
 import { SyncService } from "./sync/sync.js";
 import { SyncKey } from "./sync/crypto.js";
+import { TemplateService } from "./templates/templates.js";
 
 /** The key from the sync password, in the secret store (DPAPI) next to the phone's secrets. */
 const SYNC_KEY_SECRET = "sync-key";
@@ -113,6 +114,11 @@ export function createApp(opts: { dataDir: string; write: Writer; log?: (m: stri
   const notifyProject = (projectId: string) => emit({ event: "project.updated", payload: { projectId } });
   const agentFinish = new AgentFinisher({ db, git, projects, sessions, worktrees, devServers, notifyProject });
   sessions.useAgentFinisher(agentFinish);
+  const templates = new TemplateService({
+    db,
+    rootOf: (projectId) => projects.get(projectId).parentId ?? projectId,
+    emit: (projectId) => emit({ event: "templates.updated", payload: { projectId } }),
+  });
   const reports = new DailyReportService({
     db,
     git,
@@ -185,6 +191,7 @@ export function createApp(opts: { dataDir: string; write: Writer; log?: (m: stri
     afterRestore: async (parts) => {
       if (parts.includes("settings")) sessions.settingsChanged();
       if (parts.includes("phone")) await phone?.reload();
+      if (parts.includes("templates")) emit({ event: "templates.updated", payload: { projectId: null } });
       for (const p of db.listProjects()) emit({ event: "project.updated", payload: { projectId: p.id } });
     },
   });
@@ -223,6 +230,15 @@ export function createApp(opts: { dataDir: string; write: Writer; log?: (m: stri
         devTools.update(projectId, patch);
         notifyProject(projectId);
       },
+    },
+    templates: {
+      list: () => db.listTemplates("all"),
+      put: (t) => {
+        const now = new Date().toISOString();
+        db.putTemplate({ ...t, createdAt: db.getTemplate(t.id)?.createdAt ?? now, updatedAt: now });
+        emit({ event: "templates.updated", payload: { projectId: t.projectId } });
+      },
+      remove: (id) => void templates.delete(id),
     },
     phone: {
       config: () => phone!.syncConfig(),
@@ -273,6 +289,7 @@ export function createApp(opts: { dataDir: string; write: Writer; log?: (m: stri
     presence,
     backups,
     sync,
+    templates,
     updates,
     mcp,
     plugins,

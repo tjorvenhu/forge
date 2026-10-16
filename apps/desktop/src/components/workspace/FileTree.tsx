@@ -2,6 +2,7 @@ import { useMemo, useState, type ComponentType } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ChevronRight,
+  Copy,
   Database,
   File,
   FileArchive,
@@ -10,6 +11,7 @@ import {
   FileImage,
   FileJson,
   FileKey2,
+  FileStack,
   FileLock2,
   FileSpreadsheet,
   FileTerminal,
@@ -17,6 +19,7 @@ import {
   FileType2,
   Folder,
   FolderOpen,
+  FolderSearch,
   FolderTree,
 } from "lucide-react";
 import type { FileStatus, Project } from "@forge/protocol";
@@ -24,6 +27,9 @@ import { call, keys, useGitStatus } from "@/lib/queries";
 import { errorMessage } from "@/lib/rpc";
 import { cn } from "@/lib/utils";
 import { useUi } from "@/stores/ui";
+import { useTemplateDialogs } from "@/stores/templates";
+import { contextItems, copyText } from "@/lib/context-menu";
+import { fileValues } from "@/components/templates/template-values";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Collapse } from "@/components/ui/collapse";
@@ -140,6 +146,12 @@ function Level({ project, dir, depth, status }: { project: Project; dir: string;
                   return n;
                 });
               }}
+              onContextMenu={contextItems(() => [
+                ...(!e.isDir ? [{ label: "Öffnen", icon: <FileText className="h-3.5 w-3.5" />, onSelect: () => useUi.getState().openFile(project.id, e.path) }] : []),
+                { label: "Vorlage anwenden", icon: <FileStack className="h-3.5 w-3.5" />, hint: e.name, onSelect: () => useTemplateDialogs.getState().openApply({ projectId: project.id, values: fileValues(e.path) }) },
+                { label: "Im Explorer zeigen", icon: <FolderSearch className="h-3.5 w-3.5" />, onSelect: () => void revealInProject(project.path, e.path) },
+                { label: "Pfad kopieren", icon: <Copy className="h-3.5 w-3.5" />, onSelect: () => copyText(e.path) },
+              ])}
               aria-expanded={e.isDir ? isOpen : undefined}
               title={mark ? `${e.path} (${mark.label})` : e.path}
             >

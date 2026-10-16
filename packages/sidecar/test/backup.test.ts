@@ -108,6 +108,29 @@ describe("backups", () => {
     expect(db.getSettings().sounds).toBe(true);
   });
 
+  it("saves the prompt templates and restores them, skipping those of a project that is gone", async () => {
+    const { db, svc, project } = setup();
+    project("p1", "Alpha");
+    project("p2", "Beta");
+    const tpl = (id: string, projectId: string | null, text: string) => ({ id, projectId, name: id, description: null, text, sortOrder: 0, createdAt: "2026-10-12T10:00:00.000Z", updatedAt: "2026-10-12T10:00:00.000Z" });
+    db.putTemplate(tpl("global", null, "Review"));
+    db.putTemplate(tpl("alpha", "p1", "Tests für {datei}"));
+    db.putTemplate(tpl("beta", "p2", "Beta"));
+    const saved = await svc.create("manual");
+    expect(saved.parts.find((p) => p.part === "templates")?.label).toBe("3 Vorlagen");
+
+    db.putTemplate({ ...tpl("global", null, "geändert"), updatedAt: "2026-10-13T10:00:00.000Z" });
+    db.deleteTemplate("alpha");
+    db.deleteProject("p2");
+    const r = await svc.restore({ id: saved.id! }, ["templates"]);
+    expect(r.restored).toEqual(["templates"]);
+    expect(db.listTemplates("all").map((x) => [x.id, x.text])).toEqual([
+      ["global", "Review"],
+      ["alpha", "Tests für {datei}"],
+    ]);
+    expect(r.notes).toContain("Eine Vorlage gehört zu einem Projekt, das nicht in FORGE ist, und wurde übersprungen.");
+  });
+
   it("skips the start backup when nothing changed and keeps the newest ones", async () => {
     const { db, svc, t } = setup();
     expect(await svc.createOnStart()).not.toBeNull();

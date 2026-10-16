@@ -1,7 +1,7 @@
 import { useEffect, useRef, type KeyboardEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { useQueries } from "@tanstack/react-query";
-import { AppWindow, Bot, CalendarDays, ChevronDown, Columns2, FolderOpen, Hourglass, LayoutGrid, MessageSquare, MessageSquarePlus, Plus, SquareArrowOutUpRight, X } from "lucide-react";
+import { AppWindow, Bot, CalendarDays, ChevronDown, Columns2, FileStack, FolderOpen, Hourglass, LayoutGrid, MessageSquare, MessageSquarePlus, Plus, SquareArrowOutUpRight, X } from "lucide-react";
 import { openChatWindow, useChatWindows } from "@/lib/chat-windows";
 import { contextItems } from "@/lib/context-menu";
 import { call, keys, useLiveSessions, useProjects, useSession } from "@/lib/queries";
@@ -13,6 +13,7 @@ import { isBusy, isWorking } from "@/lib/working";
 import { cn } from "@/lib/utils";
 import { splitActive, useUi, type SplitPane } from "@/stores/ui";
 import { toast } from "@/stores/toast";
+import { useTemplateDialogs } from "@/stores/templates";
 import { ProjectIcon } from "@/components/projects/ProjectIcon";
 import { Skeleton, SkeletonRegion } from "@/components/ui/skeleton";
 import { sessionStatusLabel } from "@/components/workspace/SessionStatusBadge";
@@ -234,6 +235,7 @@ export function OpenSessions() {
                   },
                 },
                 { label: "Tagesbericht", icon: <CalendarDays className={MENU_ICON} />, onSelect: () => openReport(g.projectId) },
+                { label: "Vorlage anwenden", icon: <FileStack className={MENU_ICON} />, onSelect: () => useTemplateDialogs.getState().openApply({ projectId: g.projectId }) },
                 ...(hasRows ? [{ label: collapsed ? "Sessions einblenden" : "Sessions ausblenden", icon: <ChevronDown className={MENU_ICON} />, onSelect: () => toggleGroup(g.projectId) }] : []),
               ])}
             >

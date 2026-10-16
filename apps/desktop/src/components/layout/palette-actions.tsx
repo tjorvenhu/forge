@@ -15,6 +15,8 @@ import {
   Columns2,
   Cpu,
   Database,
+  FilePlus2,
+  FileStack,
   FileText,
   FlaskConical,
   FolderDown,
@@ -72,6 +74,7 @@ import type {
   PhoneState,
   ProfileId,
   ProjectWithStatus,
+  PromptTemplate,
   RemoteState,
   SearchHit,
   Session,
@@ -89,6 +92,7 @@ import { useActivity } from "@/stores/activity";
 import { draftKey, useDrafts } from "@/stores/drafts";
 import { lastEditablePrompt, useMessageEdit } from "@/stores/message-edit";
 import { toast } from "@/stores/toast";
+import { useTemplateDialogs } from "@/stores/templates";
 import { DEV_TOOLS_SECTIONS, KNOWLEDGE_MERGE_REQUEST, KNOWLEDGE_STALE_REQUEST, PROJECT_SETTINGS_SECTIONS, SETTINGS_SECTIONS, SKILLS_TABS, EXTENSIONS_TABS, workspaceTabsFor, useUi, type SettingsSection, type WorkspaceTab } from "@/stores/ui";
 import { PROFILE_IDS, PROFILE_INFO } from "@/components/projects/ProfileBadge";
 import { RULE_GROUPS } from "@/components/settings/PolicySettings";
@@ -143,6 +147,8 @@ export interface ActionContext {
   phone: PhoneState | undefined;
   remote: RemoteState | undefined;
   githubConnected: boolean;
+  /** prompt templates: the global ones plus those of the open project */
+  templates: PromptTemplate[];
   openDialog: (dialog: PaletteDialog) => void;
 }
 
@@ -514,6 +520,14 @@ export function buildActions(ctx: ActionContext): PaletteEntry[] {
     }
   }
 
+  for (const t of ctx.templates) {
+    act(`template-${t.id}`, `Vorlage: ${t.name}`, icon(FileStack), () => useTemplateDialogs.getState().openApply({ projectId: project?.id ?? null, templateId: t.id }), {
+      hint: t.projectId ? (root?.name ?? project?.name) : "global",
+      keywords: `vorlage prompt auftrag ${t.description ?? ""} ${t.text.slice(0, 200)}`,
+    });
+  }
+  act("templates-manage", "Vorlagen verwalten", icon(FileStack), () => ui.openSettings("templates"), { keywords: "prompt vorlagen templates wiederkehrende aufträge bearbeiten löschen sortieren" });
+  act("template-new", "Neue Vorlage anlegen", icon(FilePlus2), () => useTemplateDialogs.getState().openEdit({ id: null, projectId: null }), { keywords: "prompt vorlage template speichern" });
   act("report", "Tagesbericht", icon(CalendarDays), () => ui.openReport(null), { keywords: "was ist heute passiert rückblick alle projekte agenten commits zusammenfassung tag gestern" });
   act("add-project", "Projekt hinzufügen", icon(FolderPlus), () => ui.setNewProject("import"), { hint: "Strg+O", keywords: "importieren ordner" });
   act("create-project", "Neues Projekt anlegen", icon(FolderPlus), () => ui.setNewProject("create"));

@@ -5,6 +5,7 @@ import { useUi } from "@/stores/ui";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { Toaster } from "@/components/layout/Toaster";
 import { ContextMenuHost } from "@/components/layout/ContextMenuHost";
+import { TemplateHost } from "@/components/templates/TemplateHost";
 import { TitleTooltips } from "@/components/ui/title-tooltips";
 import { ErrorBoundary } from "@/components/layout/ErrorBoundary";
 import { NewProjectDialog } from "@/components/projects/NewProjectDialog";
@@ -145,6 +146,7 @@ function Shell() {
       <Toaster />
       <TitleTooltips />
       <ContextMenuHost />
+      <TemplateHost />
     </div>
   );
 }

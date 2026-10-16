@@ -5,6 +5,7 @@ import {
   CheckCircle2,
   CircleDashed,
   CircleSlash,
+  FileStack,
   FileText,
   FolderOpen,
   Info,
@@ -44,6 +45,7 @@ import { BackupSettings } from "@/components/settings/BackupSettings";
 import { SyncSettings } from "@/components/settings/SyncSettings";
 import { GitHubVersions } from "@/components/settings/BackupSettings";
 import { PolicySettings } from "@/components/settings/PolicySettings";
+import { TemplatesSettings } from "@/components/templates/TemplatesSettings";
 import { GitHubSettings } from "@/components/settings/GitHubSettings";
 import { AppUpdateSettings } from "@/components/layout/AppUpdate";
 import { cn, planLabel } from "@/lib/utils";
@@ -52,6 +54,7 @@ type Save = (patch: Partial<Settings>) => Promise<void>;
 
 export const SECTIONS: ReadonlyArray<SettingsSectionDef<SettingsSection>> = [
   { id: "general", label: "Allgemein", hint: "Modell, Profil, Bedienung", Icon: SlidersHorizontal },
+  { id: "templates", label: "Vorlagen", hint: "Wiederkehrende Aufträge", Icon: FileStack },
   { id: "claude", label: "Claude Code", hint: "Anmeldung, Nutzung, Prognose", Icon: SquareTerminal },
   { id: "policy", label: "Sperrliste", hint: "Was FORGE immer blockiert", Icon: ShieldBan },
   { id: "phone", label: "Telefon", hint: "Anrufe, Sprache, Tischtelefon", Icon: Phone },
@@ -87,6 +90,8 @@ export function SettingsView() {
           <FormSkeleton groups={2} label="Lädt Einstellungen" />
         ) : current.id === "general" ? (
           <GeneralSection s={s} save={save} />
+        ) : current.id === "templates" ? (
+          <TemplatesSettings />
         ) : current.id === "claude" ? (
           <ClaudeSection s={s} save={save} />
         ) : current.id === "policy" ? (
@@ -98,7 +103,7 @@ export function SettingsView() {
         ) : current.id === "backup" ? (
           <Group
             title="Backup"
-            description="Ein Backup enthält deine Einstellungen, die Projektliste, das Telefon, die Claude-Code-Konfiguration und deinen Git-Namen. Nicht enthalten sind Chatverläufe, Projektdateien und die Anmeldungen bei Claude und GitHub."
+            description="Ein Backup enthält deine Einstellungen, die Projektliste, das Telefon, die Claude-Code-Konfiguration, deine Vorlagen und deinen Git-Namen. Nicht enthalten sind Chatverläufe, Projektdateien und die Anmeldungen bei Claude und GitHub."
           >
             <div className="p-4">
               <BackupSettings />

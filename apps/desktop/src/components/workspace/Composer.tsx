@@ -1,7 +1,7 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { ArrowUp, ListTodo, Paperclip, SlidersHorizontal, Square } from "lucide-react";
-import type { EffortLevel, Project, Session } from "@forge/protocol";
-import { useRuntimeInfo, useSettings } from "@/lib/queries";
+import { findTemplates, suggestTemplates, templatePlaceholders, type EffortLevel, type Project, type PromptTemplate, type Session } from "@forge/protocol";
+import { useRuntimeInfo, useSettings, useTemplates } from "@/lib/queries";
 import { EFFORT_LEVELS, findModel, modelLabel } from "@/lib/models";
 import { isWorking } from "@/lib/working";
 import { cn } from "@/lib/utils";
@@ -22,9 +22,15 @@ import { useDictation } from "./useDictation";
 import { compactSession, stopSession, useComposerOptions, useSendMessage } from "./useSendMessage";
 import { composerInputId, useChatSlot } from "./chat-slot";
 import { hasUltrathink, withUltrathink } from "./ultrathink";
+import { TemplateSuggestions } from "@/components/templates/TemplateSuggestions";
+import { TemplateFillDialog } from "@/components/templates/TemplateFillDialog";
 
 /** Words of the trade the speech service should expect; the project adds its name and stack. */
 const DICTATION_TERMS = ["FORGE", "Claude", "Claude Code", "Commit", "Branch", "Pull Request", "Merge", "Deploy", "Worktree", "TypeScript", "JavaScript", "React", "Next.js", "Node", "pnpm", "API", "Endpoint", "Komponente", "Refactoring", "Bug", "Diff", "Session"];
+const NO_TEMPLATES: PromptTemplate[] = [];
+/** "#" and a word: the user asks for templates directly. */
+const TEMPLATE_PREFIX = /^#[^\s#]*$/;
+
 /** Space held this long is dictation; a typed space is up again well before, also when typing slowly. */
 const HOLD_MS = 380;
 
@@ -110,6 +116,32 @@ export const Composer = memo(function Composer({
   const pickCommand = (c: Command) => {
     setText(`/${c.name} `);
     setCustom(c.custom ? c.name : null);
+    ref.current?.focus();
+  };
+
+  /**
+   * Templates: after "#" the list of all that match the word, otherwise a suggestion once the typed text
+   * resembles one. Esc hides them until the text changes; after a template was taken no more suggestions
+   * until the field is empty again.
+   */
+  const templates = useTemplates(project.id).data ?? NO_TEMPLATES;
+  const [dismissedFor, setDismissedFor] = useState<string | null>(null);
+  const [applied, setApplied] = useState(false);
+  if (applied && !text) setApplied(false);
+  const explicitTemplates = TEMPLATE_PREFIX.test(text);
+  const templateMatches = useMemo(() => {
+    if (dismissedFor === text || matches.length) return NO_TEMPLATES;
+    if (explicitTemplates) return findTemplates(text.slice(1), templates).slice(0, 8);
+    if (applied || text.includes("\n")) return NO_TEMPLATES;
+    return suggestTemplates(text, templates);
+  }, [text, templates, dismissedFor, matches.length, explicitTemplates, applied]);
+  const [templateIndex, setTemplateIndex] = useState(-1);
+  useEffect(() => setTemplateIndex(explicitTemplates ? 0 : -1), [text, explicitTemplates]);
+  const [filling, setFilling] = useState<PromptTemplate | null>(null);
+  const pickTemplate = (t: PromptTemplate) => {
+    setApplied(true);
+    if (templatePlaceholders(t.text).length) return setFilling(t);
+    setText(t.text);
     ref.current?.focus();
   };
 
@@ -299,6 +331,7 @@ export const Composer = memo(function Composer({
   const localTyped = clearTyped || !!typedInfo;
   // The field still holds live words or waits for the finished text; sent now, the rest would land in an empty draft.
   const dictating = dictation.state !== "idle";
+  const shownTemplates = dictating || filling ? NO_TEMPLATES : templateMatches;
   /** counts sends; the arrow animation restarts with each */
   const [sentTick, setSentTick] = useState(0);
   const submit = () => {
@@ -337,12 +370,27 @@ export const Composer = memo(function Composer({
       ? "Claude arbeitet. Weitere Anweisung schreiben, sie wird beim nächsten Schritt übernommen. Esc stoppt."
       : session && !session.live
         ? "Nachricht schreiben, um die Session fortzusetzen"
-        : "Nachricht an Claude, / für Befehle, Dateien hineinziehen oder einfügen";
+        : "Nachricht an Claude, / für Befehle, # für Vorlagen, Dateien hineinziehen oder einfügen";
 
   return (
     // A container of its own: the bottom row drops what is not needed by the composer's width (split view, side panel), not the window's.
     <div className="@container/composer relative w-full shrink-0 px-6 pb-5 pt-2">
       <SlashCommandMenu matches={matches} index={cmdIndex} onPick={pickCommand} />
+      <TemplateSuggestions templates={shownTemplates} index={templateIndex} explicit={explicitTemplates} onPick={pickTemplate} />
+      {filling && (
+        <TemplateFillDialog
+          open
+          onOpenChange={(o) => !o && setFilling(null)}
+          projectId={project.id}
+          template={filling}
+          canSend={!waiting && !dictating && !sending}
+          onSubmit={(filled, o) => {
+            setText(filled);
+            if (o.send) void attachments.settled().then((ready) => send(filled, ready));
+            else requestAnimationFrame(() => ref.current?.focus());
+          }}
+        />
+      )}
       <InfoCommandDialog command={info} project={project} session={session} onClose={() => setInfo(null)} />
       <div
         className={cn(
@@ -418,6 +466,26 @@ export const Composer = memo(function Composer({
               setHeld(false);
               dictation.cancel();
               return;
+            }
+            // Suggested templates: Tab takes the chosen (or first) one, the arrows choose, Enter takes one
+            // only once chosen; otherwise Enter sends what was typed, as without a suggestion.
+            if (shownTemplates.length) {
+              if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+                e.preventDefault();
+                const n = shownTemplates.length;
+                setTemplateIndex((i) => (e.key === "ArrowDown" ? (i + 1) % n : i <= 0 ? n - 1 : i - 1));
+                return;
+              }
+              if ((e.key === "Tab" && !e.shiftKey) || (e.key === "Enter" && !e.shiftKey && templateIndex >= 0 && !e.nativeEvent.isComposing)) {
+                e.preventDefault();
+                pickTemplate(shownTemplates[Math.max(0, templateIndex)]!);
+                return;
+              }
+              if (e.key === "Escape") {
+                e.preventDefault();
+                setDismissedFor(text);
+                return;
+              }
             }
             if (matches.length) {
               if (e.key === "ArrowDown" || e.key === "ArrowUp") {

@@ -71,6 +71,8 @@ export const keys = {
   uiCompareImage: (sessionId: string, compareId: string, side: "before" | "after", takenAt: string) => ["uiCompareImage", sessionId, compareId, side, takenAt] as const,
   uiCompareLatest: (sessionId: string | null, projectId: string | null) => ["uiCompareLatest", sessionId, projectId] as const,
   report: (date: string, projectId: string | null) => ["report", date, projectId] as const,
+  /** prompt templates: the global ones plus a project's (null: only global), or every template ("all") */
+  templates: (scope: string | null) => ["templates", scope] as const,
 };
 
 export function call<M extends MethodName>(method: M, params: ParamsOf<M>): Promise<ResultOf<M>> {
@@ -86,6 +88,14 @@ export const useProject = (id: string | null) =>
 /** Whether a folder picked for import already is a git repository; empty path: nothing asked. */
 export const useFolderInspect = (path: string) =>
   useQuery({ queryKey: keys.inspectFolder(path), queryFn: () => call("projects.inspectFolder", { path }), enabled: !!path, staleTime: 5_000 });
+
+/** Global templates plus those of the project (an agent's worktree has its project's); changes arrive as templates.updated. */
+export const useTemplates = (projectId: string | null) =>
+  useQuery({ queryKey: keys.templates(projectId), queryFn: () => call("templates.list", projectId ? { projectId } : {}), staleTime: Infinity });
+
+/** Every template of every project, for the settings page. */
+export const useAllTemplates = (enabled = true) =>
+  useQuery({ queryKey: keys.templates("all"), queryFn: () => call("templates.list", { all: true }), staleTime: Infinity, enabled });
 
 export const useSettings = () => useQuery({ queryKey: keys.settings, queryFn: () => call("settings.get", {}), staleTime: Infinity });
 

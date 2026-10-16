@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import { mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
-import { ForgeError, Project, type BackupInfo, type BackupPart } from "@forge/protocol";
+import { ForgeError, Project, PromptTemplate, type BackupInfo, type BackupPart } from "@forge/protocol";
 import type { Db } from "../persistence/db.js";
 import { claudeHome, writeAtomic } from "../config/claude-config.js";
 import { claudeJsonPath, pathKey } from "../util/paths.js";
@@ -45,6 +45,8 @@ const BackupData = z.object({
   git: z.object({ name: z.string().nullable(), email: z.string().nullable() }),
   /** files below the Claude config folder (forward slashes) and the user's MCP servers from .claude.json */
   claude: z.object({ files: z.record(z.string(), z.string()), mcpServers: z.record(z.string(), z.unknown()).nullable() }),
+  /** prompt templates; backups from before them have none */
+  templates: z.array(PromptTemplate).default([]),
 });
 type BackupData = z.infer<typeof BackupData>;
 
@@ -75,8 +77,8 @@ function contentKey(d: BackupData): string {
 /**
  * Backups of FORGE's configuration: settings, projects, phone (secrets stay encrypted for this
  * Windows user), the global git identity and the Claude Code configuration the user edits in FORGE
- * (CLAUDE.md, settings.json with hooks, agents, commands, skills, user MCP servers). Chat histories,
- * project files and logins (Claude, GitHub) are not part of it.
+ * (CLAUDE.md, settings.json with hooks, agents, commands, skills, user MCP servers) and the prompt
+ * templates. Chat histories, project files and logins (Claude, GitHub) are not part of it.
  */
 export class BackupService {
   constructor(private readonly d: BackupDeps) {}
@@ -107,6 +109,7 @@ export class BackupService {
       projects: this.d.db.listProjects(),
       git: await this.d.git.identity().catch(() => ({ name: null, email: null })),
       claude: { files: await this.readClaudeFiles(), mcpServers: await this.readMcpServers() },
+      templates: this.d.db.listTemplates("all"),
     };
   }
 
@@ -150,6 +153,7 @@ export class BackupService {
     const mcp = Object.keys(d.claude.mcpServers ?? {}).length;
     if (files || mcp) parts.push({ part: "claude", label: `Claude Code: ${files} ${files === 1 ? "Datei" : "Dateien"}, ${mcp} MCP-Server` });
     if (d.git.name || d.git.email) parts.push({ part: "git", label: "Git-Name und E-Mail" });
+    if (d.templates.length) parts.push({ part: "templates", label: d.templates.length === 1 ? "1 Vorlage" : `${d.templates.length} Vorlagen` });
     return { id, createdAt: d.createdAt, reason: d.reason, appVersion: d.appVersion, size, parts };
   }
 
@@ -279,6 +283,14 @@ export class BackupService {
     if (want.has("git") && data.git.name && data.git.email) {
       await this.d.git.setIdentity(data.git.name, data.git.email);
       restored.push("git");
+    }
+
+    if (want.has("templates") && data.templates.length) {
+      // Templates of a project that is not in FORGE (any more) have nowhere to go.
+      const homeless = data.templates.filter((t) => t.projectId && !this.d.db.getProject(t.projectId));
+      for (const t of data.templates) if (!homeless.includes(t)) this.d.db.putTemplate(t);
+      if (homeless.length) notes.push(`${homeless.length === 1 ? "Eine Vorlage gehört" : `${homeless.length} Vorlagen gehören`} zu einem Projekt, das nicht in FORGE ist, und ${homeless.length === 1 ? "wurde" : "wurden"} übersprungen.`);
+      restored.push("templates");
     }
 
     await this.d.afterRestore(restored);
