@@ -202,11 +202,14 @@ export function ClaudeSetupCard() {
   }
 
   return (
-    <div className="flex flex-wrap items-center gap-2 text-body">
-      <CheckCircle2 className="h-4 w-4 text-success" />
-      Claude Code {d.claude.version?.split(" ")[0]} ist eingerichtet
-      {d.auth.subscriptionType && <Badge tone="success">{planLabel(d.auth)}</Badge>}
-      <div className="ml-auto flex gap-1">
+    // Status left, actions right in one row: in narrow cards the buttons used to wrap to a line of their own.
+    <div className="flex items-center gap-3 text-body">
+      <CheckCircle2 className="h-5 w-5 shrink-0 text-success" />
+      <div className="flex min-w-0 flex-1 flex-col items-start gap-1">
+        <span className="truncate">Claude Code {d.claude.version?.split(" ")[0]} ist eingerichtet</span>
+        {d.auth.subscriptionType && <Badge tone="success">{planLabel(d.auth)}</Badge>}
+      </div>
+      <div className="flex shrink-0 gap-1">
         <Button size="sm" variant="ghost" onClick={() => useUi.getState().openClaudeLogin("switch")}>
           <ArrowLeftRight className="h-3.5 w-3.5" /> Konto wechseln
         </Button>
