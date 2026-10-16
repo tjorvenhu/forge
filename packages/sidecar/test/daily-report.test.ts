@@ -171,6 +171,37 @@ describe("DailyReportService", () => {
     expect(text).toContain("Telefonate: 1");
   }, 30_000);
 
+  it("finds agent merges FORGE has no record of in the reflog", async () => {
+    // Merged by a build before agent_log, or by hand: only git knows.
+    await git(repo, "checkout", "-q", "-b", "agent/alt");
+    const first = await commit("a.ts", "Teil eins");
+    const second = await commit("b.ts", "Limit-Prognose");
+    await git(repo, "checkout", "-q", "-");
+    await git(repo, "merge", "--ff-only", "-q", "refs/heads/agent/alt");
+    await git(repo, "branch", "-D", "agent/alt");
+    await git(repo, "checkout", "-q", "-b", "feature/x");
+    await commit("c.ts", "Kein Agent");
+    await git(repo, "checkout", "-q", "-");
+    await git(repo, "merge", "-q", "feature/x");
+    // The same branch also in agent_log: listed once.
+    await git(repo, "checkout", "-q", "-b", "agent/geloggt");
+    const logged = await commit("d.ts", "Geloggt");
+    await git(repo, "checkout", "-q", "-");
+    await git(repo, "merge", "--ff-only", "-q", "agent/geloggt");
+    db.logAgent({ worktreeId: "wt-g", rootId: app.id, rootName: app.name, branch: "agent/geloggt", title: "Mit Log", sessionId: null, parentSessionId: null, startedAt: null, outcome: "merged", message: "1 Commit übernommen", commits: [{ hash: logged, subject: "Geloggt", auto: true }] });
+
+    const r = await service.build();
+    expect(r.agents.map((a) => [a.branch, a.state, a.title, a.message])).toEqual([
+      ["agent/geloggt", "merged", "Mit Log", "1 Commit übernommen"],
+      ["agent/alt", "merged", "Limit-Prognose", "2 Commits übernommen"],
+    ]);
+    const byHash = new Map(r.commits.map((c) => [c.hash, c]));
+    expect(byHash.get(first)?.agentBranch).toBe("agent/alt");
+    expect(byHash.get(second)?.agentBranch).toBe("agent/alt");
+    expect(byHash.get(logged)).toMatchObject({ agentBranch: "agent/geloggt", auto: true });
+    expect(r.commits.find((c) => c.subject === "Kein Agent")?.agentBranch).toBeNull();
+  }, 30_000);
+
   it("narrows to one project with its agents and leaves calls out", async () => {
     turn(session(app.id, "Hier").id);
     turn(session(other.id, "Dort").id);

@@ -240,6 +240,37 @@ export class GitEngine {
   }
 
   /**
+   * Branches merged into HEAD of this folder in [since, until) (ISO), from the reflog, with the commits
+   * each merge brought, newest first. Finds merges FORGE has no record of (by a build before agent_log,
+   * by hand in a terminal). Only branches whose name starts with `prefix`.
+   */
+  async mergesBetween(cwd: string, since: string, until: string, prefix: string): Promise<Array<{ branch: string; at: string; commits: Array<{ hash: string; subject: string }> }>> {
+    const r = await this.exec(cwd, ["log", "-g", "--date=unix", "--format=%H%x1f%gd%x1f%gs", "-n1000", "HEAD"]);
+    if (r.code !== 0) return [];
+    const from = Date.parse(since);
+    const to = Date.parse(until);
+    const entries = r.stdout
+      .split("\n")
+      .filter(Boolean)
+      .map((line) => {
+        const [hash = "", selector = "", subject = ""] = line.split("\x1f");
+        return { hash, ms: Number(/@\{(\d+)\}/.exec(selector)?.[1] ?? NaN) * 1000, subject };
+      });
+    const out: Array<{ branch: string; at: string; commits: Array<{ hash: string; subject: string }> }> = [];
+    for (let i = 0; i < entries.length; i++) {
+      const e = entries[i]!;
+      if (!(e.ms >= from && e.ms < to)) continue;
+      const m = /^merge (?:refs\/heads\/)?(\S+): /.exec(e.subject);
+      if (!m || !m[1]!.startsWith(prefix)) continue;
+      const before = entries[i + 1]?.hash;
+      const list = await this.exec(cwd, ["log", "-n500", "--format=%H%x1f%s", ...(before ? [`${before}..${e.hash}`] : ["-1", e.hash])]);
+      const commits = list.code === 0 ? list.stdout.split("\n").filter(Boolean).map((l) => ({ hash: l.split("\x1f")[0]!, subject: l.split("\x1f")[1] ?? "" })) : [];
+      out.push({ branch: m[1]!, at: new Date(e.ms).toISOString(), commits });
+    }
+    return out;
+  }
+
+  /**
    * The commit and the side it is compared with: its first parent, or the empty tree for a root commit
    * (merges are shown against the first parent, as git log --first-parent would).
    */

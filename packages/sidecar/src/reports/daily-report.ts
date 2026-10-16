@@ -22,10 +22,20 @@ export const MAX_COMMITS = 100;
 /** A merge may bring commits from earlier days; their agent is found this far back. */
 const AGENT_COMMITS_LOOKBACK_MS = 14 * 24 * 3600_000;
 const BUSY = new Set(["starting", "running", "waiting_approval", "stopping"]);
+/** Branches FORGE gives parallel agents (WorktreeService). */
+const AGENT_BRANCH_PREFIX = "agent/";
+
+/** A merge of an agent branch found in a main project's reflog. */
+interface ReflogMerge {
+  root: Project;
+  branch: string;
+  at: string;
+  commits: Array<{ hash: string; subject: string }>;
+}
 
 export interface DailyReportDeps {
   db: Db;
-  git: Pick<GitEngine, "logBetween">;
+  git: Pick<GitEngine, "logBetween" | "mergesBetween">;
   projects: Pick<ProjectManager, "all">;
   /** one-shot Claude call (small model) for the summary */
   summarize(prompt: string, cwd: string): Promise<{ text: string; model: string }>;
@@ -148,8 +158,11 @@ export class DailyReportService {
     }));
     sessions.sort((x, y) => y.lastAt.localeCompare(x.lastAt));
 
-    const agents = this.agents(all, activity, from, to, isToday, root);
-    const { commits, gitErrors, truncated: truncatedCommits } = await this.commits(all, activity, range.from, to, root);
+    const gitErrors: DailyReport["gitErrors"] = [];
+    const repos = await this.reposToAsk(all, activity, range.from, root);
+    const merges = await this.reflogMerges(repos, from, to);
+    const agents = this.agents(all, activity, from, to, isToday, root, merges);
+    const { commits, truncated: truncatedCommits } = await this.commits(repos, activity, range.from, to, merges, gitErrors);
     const open = this.open(all, activity, inScope);
     const calls = root
       ? null
@@ -171,7 +184,23 @@ export class DailyReportService {
     };
   }
 
-  private agents(all: Project[], activity: SessionActivity[], from: string, to: string, isToday: boolean, root: Project | null): DailyReportAgent[] {
+  /** Main projects with git that may have commits that day: without a session there and without a moved HEAD, no git process. */
+  private async reposToAsk(all: Project[], activity: SessionActivity[], fromDate: Date, root: Project | null): Promise<Project[]> {
+    const worked = new Set(activity.map((a) => a.projectParentId ?? a.session.projectId));
+    const candidates = all.filter((p) => !p.parentId && p.gitEnabled && p.exists && (!root || p.id === root.id));
+    const moved = await Promise.all(candidates.map(async (p) => worked.has(p.id) || (await headMovedSince(p.path, fromDate.getTime())) !== false));
+    return candidates.filter((_, i) => moved[i]);
+  }
+
+  /** Agent merges git knows of, also those agent_log has no line for (older build, merged by hand). */
+  private async reflogMerges(repos: Project[], from: string, to: string): Promise<ReflogMerge[]> {
+    const lists = await Promise.all(
+      repos.map(async (p) => (await this.d.git.mergesBetween(p.path, from, to, AGENT_BRANCH_PREFIX).catch(() => [])).map((m) => ({ ...m, root: p }))),
+    );
+    return lists.flat();
+  }
+
+  private agents(all: Project[], activity: SessionActivity[], from: string, to: string, isToday: boolean, root: Project | null, merges: ReflogMerge[]): DailyReportAgent[] {
     const { db } = this.d;
     const nameOf = (id: string) => all.find((p) => p.id === id)?.name ?? "";
     const loggedToday = new Map<string, AgentLogEntry>();
@@ -224,35 +253,50 @@ export class DailyReportService {
         exists: false,
       });
     }
+    const known = new Set(out.map((a) => `${a.rootId}|${a.branch}`));
+    for (const m of merges) {
+      if (known.has(`${m.root.id}|${m.branch}`)) continue;
+      known.add(`${m.root.id}|${m.branch}`);
+      out.push({
+        worktreeId: `reflog:${m.root.id}:${m.branch}`,
+        rootId: m.root.id,
+        rootName: m.root.name,
+        branch: m.branch,
+        // The agent's session went with its worktree; its newest commit tells what it did.
+        title: m.commits.find((c) => !c.subject.startsWith("Restliche Änderungen"))?.subject ?? null,
+        sessionId: null,
+        parentSessionId: null,
+        startedAt: null,
+        at: m.at,
+        state: "merged",
+        message: `${m.commits.length} ${m.commits.length === 1 ? "Commit" : "Commits"} übernommen`,
+        exists: false,
+      });
+    }
     return out.sort((x, y) => y.at.localeCompare(x.at));
   }
 
-  private async commits(all: Project[], activity: SessionActivity[], fromDate: Date, to: string, root: Project | null) {
+  private async commits(candidates: Project[], activity: SessionActivity[], fromDate: Date, to: string, merges: ReflogMerge[], gitErrors: DailyReport["gitErrors"]) {
     const { db } = this.d;
     const from = fromDate.toISOString();
     const autoByHash = new Map<string, string>();
     const autoBySubject = new Map<string, string>();
-    const worked = new Set<string>();
     for (const a of activity) {
-      worked.add(a.projectParentId ?? a.session.projectId);
       for (const c of a.autoCommits) {
         autoByHash.set(c.hash, a.session.id);
         autoBySubject.set(c.subject, a.session.id);
       }
     }
     const agentByHash = new Map<string, { branch: string | null; auto: boolean }>();
+    for (const m of merges) for (const c of m.commits) agentByHash.set(c.hash, { branch: m.branch, auto: false });
     for (const e of db.agentLogBetween(new Date(fromDate.getTime() - AGENT_COMMITS_LOOKBACK_MS).toISOString(), to)) {
       if (e.outcome !== "merged") continue;
       for (const c of e.commits) agentByHash.set(c.hash, { branch: e.branch, auto: c.auto });
     }
 
-    const candidates = all.filter((p) => !p.parentId && p.gitEnabled && p.exists && (!root || p.id === root.id));
-    const gitErrors: DailyReport["gitErrors"] = [];
     let truncated = false;
     const lists = await Promise.all(
       candidates.map(async (p) => {
-        // Without a session there and without a moved HEAD, nothing was committed: no git process for it.
-        if (!worked.has(p.id) && (await headMovedSince(p.path, fromDate.getTime())) === false) return [];
         try {
           const log = await this.d.git.logBetween(p.path, from, to, MAX_COMMITS + 1);
           if (log.length > MAX_COMMITS) {
@@ -282,7 +326,7 @@ export class DailyReportService {
       }),
     );
     const commits = lists.flat().sort((x, y) => y.date.localeCompare(x.date));
-    return { commits, gitErrors, truncated };
+    return { commits, truncated };
   }
 
   private open(all: Project[], activity: SessionActivity[], inScope: (projectId: string) => boolean): DailyReportOpen[] {
