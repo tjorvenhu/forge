@@ -3,11 +3,13 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ContextUsage, PermissionMode, Project, Session } from "@forge/protocol";
 import { call, keys, useDiagnostics, useRuntimeInfo, useUsage } from "@/lib/queries";
 import { useModelLabel } from "@/lib/models";
-import { cn, formatTokens, planLabel, relativeTime } from "@/lib/utils";
+import { formatTokens, planLabel } from "@/lib/utils";
 import { Dialog } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/misc";
 import { Skeleton, SkeletonRegion } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
+import { Meter, MeterSkeleton } from "@/components/ui/meter";
+import { UsageWindows, UsageWindowsSkeleton, usageUnavailableText } from "@/components/usage/UsageWindows";
 import { ProfileBadge } from "@/components/projects/ProfileBadge";
 import { contextTone } from "./ContextMeter";
 import { compactSession } from "./useSendMessage";
@@ -70,39 +72,6 @@ export function InfoCommandDialog({ command, project, session, onClose }: { comm
   );
 }
 
-/** Plan windows warn later than the context window, like the bars in the sidebar. */
-const usageTone = (pct: number) => (pct >= 95 ? "danger" : pct >= 80 ? "warn" : "ok");
-
-function Meter({ label, value, detail, toneOf }: { label: string; value: number; detail?: string; toneOf: (pct: number) => "ok" | "warn" | "danger" }) {
-  const pct = Math.max(0, Math.round(value));
-  const tone = toneOf(pct);
-  return (
-    <div>
-      <div className="mb-1 flex items-baseline justify-between gap-3 text-body">
-        <span>{label}</span>
-        <span className={cn("tabular-nums", tone === "danger" ? "text-danger" : tone === "warn" ? "text-warning" : "text-muted")}>{pct} % genutzt</span>
-      </div>
-      <div className="h-2 overflow-hidden rounded-full bg-surface-3" role="progressbar" aria-valuenow={Math.min(100, pct)} aria-valuemin={0} aria-valuemax={100} aria-label={label}>
-        <div className={cn("h-full rounded-full", tone === "danger" ? "bg-danger" : tone === "warn" ? "bg-warning" : "bg-accent")} style={{ width: `${Math.min(100, pct)}%` }} />
-      </div>
-      {detail && <div className="mt-1 text-caption text-subtle">{detail}</div>}
-    </div>
-  );
-}
-
-function MeterSkeleton({ detail = true }: { detail?: boolean }) {
-  return (
-    <div>
-      <div className="mb-1 flex h-5 items-center justify-between gap-3">
-        <Skeleton className="h-3 w-32" />
-        <Skeleton className="h-3 w-20" />
-      </div>
-      <Skeleton className="h-2 rounded-full" />
-      {detail && <Skeleton className="mt-1.5 h-2.5 w-3/5" />}
-    </div>
-  );
-}
-
 function Rows({ rows }: { rows: Array<[string, ReactNode]> }) {
   return (
     <dl className="grid grid-cols-[max-content_1fr] gap-x-6 gap-y-2 text-body">
@@ -116,34 +85,19 @@ function Rows({ rows }: { rows: Array<[string, ReactNode]> }) {
   );
 }
 
-const resetText = (iso: string | null) =>
-  iso ? `${Date.parse(iso) <= Date.now() ? "Wurde" : "Wird"} ${relativeTime(iso)} zurückgesetzt (${new Date(iso).toLocaleString("de-DE", { weekday: "short", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })})` : undefined;
-
 function UsageBody() {
   const qc = useQueryClient();
   const usage = useUsage();
   const diag = useDiagnostics();
   // Opening the dialog is a request for the current numbers, not the ones from up to 5 minutes ago.
   useEffect(() => void qc.invalidateQueries({ queryKey: keys.usage }), [qc]);
-  if (!usage.data)
-    return (
-      <SkeletonRegion label="Lädt Nutzung" className="space-y-4">
-        <Skeleton className="h-3 w-24" />
-        <MeterSkeleton />
-        <MeterSkeleton />
-        <Skeleton className="h-2.5 w-28" />
-      </SkeletonRegion>
-    );
+  if (!usage.data) return <UsageWindowsSkeleton plan />;
   const plan = diag.data ? planLabel(diag.data.auth) : null;
-  if (!usage.data.available)
-    return <div className="text-body text-muted">{usage.data.error ?? "Claude Code meldet keine Nutzungsdaten. Sie gibt es nur mit einem Claude-Abo (Pro oder Max)."}</div>;
+  if (!usage.data.available) return <div className="text-body text-muted">{usageUnavailableText(usage.data)}</div>;
   return (
     <div className="space-y-4">
       {plan && <div className="text-body text-muted">{plan}</div>}
-      {usage.data.windows.map((w) => (
-        <Meter key={w.key} label={w.label} value={w.utilization} detail={resetText(w.resetsAt)} toneOf={usageTone} />
-      ))}
-      <div className="text-caption text-subtle">Stand {relativeTime(usage.data.fetchedAt)}</div>
+      <UsageWindows usage={usage.data} />
     </div>
   );
 }

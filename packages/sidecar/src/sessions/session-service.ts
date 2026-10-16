@@ -20,7 +20,7 @@ import { ForgeError, IDLE_CLOSED_DETAIL } from "@forge/protocol";
 import { transcriptImages, transcriptToolImages } from "../claude/attachments.js";
 import type { ClaudeRuntime } from "../claude/runtime.js";
 import { UploadStore } from "../claude/uploads.js";
-import { describeUsage } from "../claude/usage.js";
+import { describeUsage, limitWarning } from "../claude/usage.js";
 import { ContextRecovery } from "./context-recovery.js";
 import { IdleClose } from "./idle-close.js";
 import { HISTORY_PAGE_LIMIT, type Db } from "../persistence/db.js";
@@ -208,6 +208,7 @@ export class SessionService {
           project: this.projectDeps,
           finisher: this.agentFinisher,
           usage: async () => describeUsage(await this.catalog.planUsage(false), this.limits.state()),
+          limitWarning: async () => limitWarning(await this.catalog.planUsage(false)),
         }),
     });
   }

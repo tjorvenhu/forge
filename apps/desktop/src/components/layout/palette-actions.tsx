@@ -78,7 +78,7 @@ import type {
 } from "@forge/protocol";
 import { IDLE_CLOSE_CHOICES } from "@forge/protocol";
 import { installUpdate } from "@/lib/app-install";
-import { call, keys } from "@/lib/queries";
+import { call, keys, refreshUsage } from "@/lib/queries";
 import { EFFORT_LEVELS, modelLabel } from "@/lib/models";
 import { errorMessage, RpcCallError } from "@/lib/rpc";
 import { setAlwaysOnTop } from "@/lib/window-options";
@@ -528,6 +528,10 @@ export function buildActions(ctx: ActionContext): PaletteEntry[] {
   act("backup", "Backup anlegen", icon(Archive), () => void createBackup(qc), { keywords: "sichern sicherung" });
   if (settings?.syncEnabled) act("sync-now", "Jetzt über GitHub abgleichen", icon(RefreshCcw), () => void syncNow(qc), { keywords: "sync synchronisieren andere pc" });
   act("setup-wizard", "Einrichtungsassistent öffnen", icon(Wand2), () => ui.setSetupWizard(true), { keywords: "einrichten erster start setup onboarding" });
+  act("usage-forecast", "Nutzung und Limit-Prognose ansehen", icon(Gauge), () => ui.openSettings("claude"), {
+    keywords: "usage limit abo verbrauch prognose reicht reset 5 stunden woche tempo",
+  });
+  act("usage-refresh", "Nutzung aktualisieren", icon(RefreshCw), () => void refreshUsage(qc), { keywords: "usage limit abo verbrauch prognose neu laden" });
   act("claude-login", "Bei Claude anmelden", icon(LogIn), () => ui.openClaudeLogin("manual"), { keywords: "login anmeldung abgelaufen konto abo neu anmelden oauth" });
   act("claude-switch", "Claude-Konto wechseln", icon(ArrowLeftRight), () => ui.openClaudeLogin("switch"), { keywords: "account konto wechseln anderes login" });
   act("claude-logout", "Von Claude abmelden", icon(LogOut), () => ui.setClaudeLogout(true), { keywords: "logout abmelden konto account" });

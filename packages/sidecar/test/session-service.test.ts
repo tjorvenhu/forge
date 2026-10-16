@@ -355,8 +355,18 @@ describe("SessionService", () => {
     const tool = (name: string) => tools.find((t) => t.name === name)!;
 
     expect(await tool("agent_status").run({})).toBe("Diese Session hat keine Agenten gestartet.");
+    // At this pace the 5-hour window runs full before its reset: start_agent says so, but still starts.
+    const now = Date.now();
+    const reset = now + 2 * 3_600_000;
+    db.addUsageSamples(
+      [[-40, 20], [-20, 35]].map(([m, utilization]) => ({ key: "five_hour", resetsAt: reset, at: now + m! * 60_000, utilization: utilization! })),
+      0,
+      now,
+    );
+    rt.usage = { available: true, subscriptionType: "max", windows: [{ key: "five_hour", label: "5 Stunden", utilization: 50, resetsAt: new Date(reset).toISOString() }], fetchedAt: new Date().toISOString(), error: null };
     const out = await tool("start_agent").run({ task: "Baue den CSV-Export in src/export.ts", name: "csv export" });
     expect(out).toMatch(/^Agent [0-9a-f]{8} gestartet, Branch agent\/csv-export-[a-z0-9]+/);
+    expect(out).toMatch(/Hinweis: Bei diesem Tempo ist das Nutzungslimit vor dem Reset erreicht: 5 Stunden gegen /);
     const child = rt.started[1]!;
     expect(child.cwd).toContain(".forge-worktrees");
     expect(child.firstMessage?.text).toBe("Baue den CSV-Export in src/export.ts");
@@ -375,8 +385,8 @@ describe("SessionService", () => {
     expect(await tool("notify").run({ message: "Export fertig, bitte prüfen", urgent: true })).toMatch(/dringend/);
     expect(db.listEvents(s.id).at(-1)?.body).toEqual({ type: "notify", message: "Export fertig, bitte prüfen", urgent: true });
 
-    rt.usage = { available: true, subscriptionType: "max", windows: [{ key: "five_hour", label: "5 Stunden", utilization: 42, resetsAt: null }], fetchedAt: new Date().toISOString(), error: null };
-    expect(await tool("usage_status").run({})).toBe("5 Stunden: 42 % genutzt\nAbo: max");
+    // Within a minute the same reading, with its forecast.
+    expect(await tool("usage_status").run({})).toMatch(/^5 Stunden: 50 % genutzt, Reset .+\. Prognose: bei diesem Tempo ist das Limit gegen .+ erreicht, vor dem Reset\nAbo: max$/);
 
     // After a restart the agent still belongs to its session.
     rt.replay(0);

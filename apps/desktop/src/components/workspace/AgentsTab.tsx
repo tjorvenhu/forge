@@ -15,6 +15,7 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Dialog } from "@/components/ui/dialog";
 import { Field, Input, Textarea } from "@/components/ui/input";
 import { Badge, Checkbox, EmptyState, ErrorBanner, SectionTitle } from "@/components/ui/misc";
+import { LimitForecastWarning } from "@/components/usage/UsageWindows";
 import { SessionStatusBadge } from "./SessionStatusBadge";
 import { Skeleton, SkeletonRegion } from "@/components/ui/skeleton";
 
@@ -356,6 +357,7 @@ export function NewAgentDialog({ open, onOpenChange, root }: { open: boolean; on
         <Field label="Erste Aufgabe (optional)">
           <Textarea value={prompt} onChange={(e) => setPrompt(e.target.value)} rows={4} placeholder="Was soll dieser Agent erledigen?" />
         </Field>
+        <LimitForecastWarning />
       </div>
     </Dialog>
   );

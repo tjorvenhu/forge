@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PlanUsage } from "@forge/protocol";
 import { settleUsage } from "../src/claude/usage.js";
+import type { UsageSample } from "../src/claude/usage-forecast.js";
 import type { ClaudeRuntime } from "../src/claude/runtime.js";
 import type { ProjectManager } from "../src/projects/project-manager.js";
 import { RuntimeCatalog } from "../src/sessions/runtime-catalog.js";
@@ -39,13 +40,21 @@ describe("RuntimeCatalog.planUsage", () => {
   let answers: PlanUsage[];
   let calls: number;
   let catalog: RuntimeCatalog;
+  let samples: UsageSample[];
 
   beforeEach(() => {
     vi.useFakeTimers();
     vi.setSystemTime(T0);
     answers = [];
     calls = 0;
-    const core = { db: { getSettings: () => ({ claudePath: process.execPath, stripApiKey: true }) } } as unknown as SessionCore;
+    samples = [];
+    const core = {
+      db: {
+        getSettings: () => ({ claudePath: process.execPath, stripApiKey: true }),
+        addUsageSamples: (s: UsageSample[]) => samples.push(...s),
+        listUsageSamples: () => samples,
+      },
+    } as unknown as SessionCore;
     const runtime = {
       planUsage: async () => {
         calls++;
@@ -80,6 +89,21 @@ describe("RuntimeCatalog.planUsage", () => {
     const fresh = await catalog.planUsage(false);
     expect(calls).toBe(2);
     expect(fresh.windows[0]).toMatchObject({ utilization: 0, resetsAt: at(5 * 60) });
+  });
+
+  it("stores every reading and forecasts each window from them", async () => {
+    answers.push(usage(at(180), 20), usage(at(180), 35), usage(at(180), 50));
+    expect((await catalog.planUsage(true)).windows[0]).not.toHaveProperty("forecast");
+    vi.advanceTimersByTime(30 * 60_000);
+    await catalog.planUsage(true);
+    vi.advanceTimersByTime(30 * 60_000);
+    const u = await catalog.planUsage(true);
+    expect(samples).toHaveLength(6);
+    expect(u.windows[0]?.forecast).toEqual({ outcome: "limit", limitAt: at(160), perHour: 30 });
+    // The weekly window did not rise: no forecast instead of a made-up one.
+    expect(u.windows[1]).not.toHaveProperty("forecast");
+    // The cached answer carries the forecast as well.
+    expect((await catalog.planUsage(false)).windows[0]?.forecast?.outcome).toBe("limit");
   });
 
   it("reports a passed window as reset even when Claude Code still sends the old numbers", async () => {

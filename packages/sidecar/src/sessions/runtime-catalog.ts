@@ -3,6 +3,7 @@ import type { PlanUsage, RuntimeInfo, SlashCommand } from "@forge/protocol";
 import type { ClaudeRuntime } from "../claude/runtime.js";
 import { locateClaude, sessionEnv } from "../claude/environment.js";
 import { resetSince, settleUsage } from "../claude/usage.js";
+import { SAMPLE_MAX_AGE_MS, samplesOf, withForecasts } from "../claude/usage-forecast.js";
 import type { ProjectManager } from "../projects/project-manager.js";
 import type { SessionCore } from "./session-core.js";
 
@@ -93,11 +94,12 @@ export class RuntimeCatalog {
   /**
    * Plan usage, cached for a minute so frequent UI refreshes do not spawn a CLI each time. A window
    * that reset after the cached reading makes it stale, so the next call reads the new window.
+   * Every reading is stored, so the forecast of each window survives a restart.
    */
   async planUsage(refresh: boolean): Promise<PlanUsage> {
     const cache = this.usageCache;
     const now = this.now();
-    if (!refresh && cache && now - cache.at < 60_000 && !resetSince(cache.value, cache.at, now)) return settleUsage(cache.value, now);
+    if (!refresh && cache && now - cache.at < 60_000 && !resetSince(cache.value, cache.at, now)) return this.forecast(settleUsage(cache.value, now), now);
     const settings = this.core.db.getSettings();
     const claudePath = locateClaude(settings.claudePath);
     const unavailable = (error: string): PlanUsage => ({ available: false, subscriptionType: null, windows: [], fetchedAt: new Date().toISOString(), error });
@@ -106,10 +108,16 @@ export class RuntimeCatalog {
       const value = await this.runtime.planUsage({ cwd: process.cwd(), env: sessionEnv(settings.stripApiKey), claudePath });
       const at = this.now();
       this.usageCache = { at, value };
-      return settleUsage(value, at);
+      if (value.available) this.core.db.addUsageSamples(samplesOf(value, at), at - SAMPLE_MAX_AGE_MS, at);
+      return this.forecast(settleUsage(value, at), at);
     } catch (e) {
       return unavailable(e instanceof Error ? e.message.slice(0, 300) : String(e));
     }
+  }
+
+  private forecast(usage: PlanUsage, now: number): PlanUsage {
+    if (!usage.available) return usage;
+    return withForecasts(usage, this.core.db.listUsageSamples(now - SAMPLE_MAX_AGE_MS), now);
   }
 
   async runtimeInfo(): Promise<RuntimeInfo | null> {

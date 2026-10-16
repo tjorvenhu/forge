@@ -1,5 +1,9 @@
 import { Download, Plus } from "lucide-react";
-import { call, useClaudeSetup, useClaudeUpdate, useDiagnostics, useGitHubAccount, useLiveSessions, useProjects, useUsage } from "@/lib/queries";
+import { useQueryClient } from "@tanstack/react-query";
+import type { UsageWindow } from "@forge/protocol";
+import { usageItems } from "@/components/usage/UsageWindows";
+import { forecastLabel, forecastSentence } from "@/lib/usage-forecast";
+import { call,useClaudeSetup, useClaudeUpdate, useDiagnostics, useGitHubAccount, useLiveSessions, useProjects, useUsage } from "@/lib/queries";
 import { AuthorAvatar } from "@/components/git/AuthorAvatar";
 import { errorMessage } from "@/lib/rpc";
 import { toast } from "@/stores/toast";
@@ -112,6 +116,7 @@ function ClaudeStatusCard() {
   const diag = useDiagnostics();
   const setup = useClaudeSetup().data;
   const usage = useUsage();
+  const qc = useQueryClient();
   const openSettings = useUi((s) => s.openSettings);
   const d = diag.data;
   let tone = "bg-danger";
@@ -132,7 +137,7 @@ function ClaudeStatusCard() {
     }
   }
   const windows = usage.data?.available ? usage.data.windows.slice(0, 3) : [];
-  const items = () => claudeAccountItems(d, () => openSettings("claude"));
+  const items = () => [...(d?.auth.loggedIn ? usageItems(qc, () => openSettings("claude")) : []), ...claudeAccountItems(d, () => openSettings("claude"))];
   const summary = (
     // The menu hands focus back to the button when it closes; the global focus outline would frame the card.
     <button className="flex flex-col gap-2 text-left focus-visible:outline-none" title="Claude-Konto, Nutzung und Diagnose">
@@ -168,7 +173,7 @@ function ClaudeStatusCard() {
         windows.length > 0 && (
           <div className="flex w-full flex-col gap-1.5" aria-label="Nutzung des Abos">
             {windows.map((w) => (
-              <UsageBar key={w.key} label={w.label} value={w.utilization} resetsAt={w.resetsAt} />
+              <UsageBar key={w.key} w={w} />
             ))}
           </div>
         )
@@ -233,15 +238,20 @@ export function resetText(resetsAt: string, now = Date.now()): string {
   return `Wird ${when === "gerade eben" ? "gleich" : when} zurückgesetzt (${at})`;
 }
 
-function UsageBar({ label, value, resetsAt }: { label: string; value: number; resetsAt: string | null }) {
+function UsageBar({ w }: { w: UsageWindow }) {
+  const { label, utilization: value, resetsAt } = w;
   const tone = value >= 95 ? "bg-danger" : value >= 80 ? "bg-warning" : "bg-accent";
   const width = Math.min(100, Math.max(0, value));
-  const reset = resetsAt ? resetText(resetsAt) : undefined;
+  const forecast = forecastLabel(w);
+  const title = [resetsAt ? resetText(resetsAt) : null, forecastSentence(w)].filter(Boolean).join("\n");
   return (
-    <div title={reset}>
-      <div className="mb-0.5 flex justify-between text-caption">
+    <div title={title}>
+      <div className="mb-0.5 flex justify-between gap-2 text-caption">
         <span className="text-muted">{label}</span>
-        <span className="tabular-nums text-subtle">{value} %</span>
+        <span className="flex gap-1.5 tabular-nums">
+          {forecast?.limit && <span className="truncate text-warning">{forecast.text}</span>}
+          <span className="text-subtle">{value} %</span>
+        </span>
       </div>
       <div className="h-1 overflow-hidden rounded-full bg-surface-3" role="progressbar" aria-valuenow={width} aria-valuemin={0} aria-valuemax={100} aria-label={label}>
         <div className={cn("h-full rounded-full", tone)} style={{ width: `${width}%` }} />

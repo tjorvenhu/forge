@@ -41,18 +41,44 @@ export function toPlanUsage(raw: unknown): PlanUsage {
 /** Usage as plain lines for Claude (FORGE tool usage_status). */
 export function describeUsage(usage: PlanUsage, limit: RateLimitState, now = Date.now()): string {
   const u = settleUsage(usage, now);
-  const at = (iso: string) => {
-    const d = new Date(iso);
-    const time = d.toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" });
-    return d.toDateString() === new Date(now).toDateString() ? `heute ${time}` : `${d.toLocaleDateString("de-DE", { weekday: "short", day: "2-digit", month: "2-digit" })} ${time}`;
-  };
+  const at = (iso: string) => usageTime(iso, now);
   const lines: string[] = [];
   if (limit.status === "reached") lines.push(`Limit erreicht${limit.resetsAt ? `, wieder frei ${at(limit.resetsAt)}` : ""}. Neue Durchläufe scheitern bis dahin.`);
   else if (limit.status === "warning") lines.push(`Limit fast erreicht${limit.utilization !== null ? ` (${Math.round(limit.utilization)} %)` : ""}${limit.resetsAt ? `, Reset ${at(limit.resetsAt)}` : ""}.`);
   if (!u.available || !u.windows.length) lines.push(`Nutzung nicht verfügbar${u.error ? `: ${u.error}` : ""}.`);
-  for (const w of u.windows) lines.push(`${w.label}: ${w.utilization} % genutzt${w.resetsAt ? `, Reset ${at(w.resetsAt)}` : ""}`);
+  for (const w of u.windows) {
+    const outlook = forecastText(w, at);
+    lines.push(`${w.label}: ${w.utilization} % genutzt${w.resetsAt ? `, Reset ${at(w.resetsAt)}` : ""}${outlook ? `. Prognose: ${outlook}` : ""}`);
+  }
+  if (u.windows.length && !u.windows.some((w) => w.forecast)) lines.push("Prognose: noch zu wenig Messwerte oder kein Anstieg.");
   if (u.subscriptionType) lines.push(`Abo: ${u.subscriptionType}`);
   return lines.join("\n");
+}
+
+/** "heute 14:05", or with the date when it is not today. */
+function usageTime(iso: string, now: number): string {
+  const d = new Date(iso);
+  const time = d.toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" });
+  return d.toDateString() === new Date(now).toDateString() ? `heute ${time}` : `${d.toLocaleDateString("de-DE", { weekday: "short", day: "2-digit", month: "2-digit" })} ${time}`;
+}
+
+/** The forecast of a window as words, or null without one. `at` formats a time. */
+export function forecastText(w: UsageWindow, at: (iso: string) => string): string | null {
+  const f = w.forecast;
+  if (!f) return null;
+  if (f.outcome === "limit" && f.limitAt) return `bei diesem Tempo ist das Limit gegen ${at(f.limitAt)} erreicht, vor dem Reset`;
+  return "reicht bis zum Reset";
+}
+
+/**
+ * A notice before more work starts (parallel agents): which windows run full before their reset at
+ * the current pace. Null when none does or there is no forecast.
+ */
+export function limitWarning(usage: PlanUsage, now = Date.now()): string | null {
+  const full = settleUsage(usage, now).windows.filter((w) => w.forecast?.outcome === "limit" && w.forecast.limitAt);
+  if (!full.length) return null;
+  const parts = full.map((w) => `${w.label} gegen ${usageTime(w.forecast!.limitAt!, now)}${w.resetsAt ? ` (Reset ${usageTime(w.resetsAt, now)})` : ""}`);
+  return `Bei diesem Tempo ist das Nutzungslimit vor dem Reset erreicht: ${parts.join(", ")}. Weitere Agenten verbrauchen es schneller.`;
 }
 
 function clamp(n: number) {

@@ -587,12 +587,25 @@ export const ModelInfo = z.object({
 });
 export type ModelInfo = z.infer<typeof ModelInfo>;
 
+/**
+ * Where a usage window is heading at the recent pace. "limit": it runs full at `limitAt`, before its
+ * reset; "enough": it lasts until the reset. Missing when there are too few readings or no rise.
+ */
+export const UsageForecast = z.object({
+  outcome: z.enum(["limit", "enough"]),
+  limitAt: z.string().nullable(),
+  /** percentage points per hour, weighted toward recent readings */
+  perHour: z.number(),
+});
+export type UsageForecast = z.infer<typeof UsageForecast>;
+
 export const UsageWindow = z.object({
   key: z.string(),
   label: z.string(),
   /** percent used, 0-100 */
   utilization: z.number(),
   resetsAt: z.string().nullable(),
+  forecast: UsageForecast.optional(),
 });
 export type UsageWindow = z.infer<typeof UsageWindow>;
 

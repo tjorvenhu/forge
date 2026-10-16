@@ -35,6 +35,7 @@ import { Switch } from "@/components/ui/switch";
 import { Group, Row, SettingsLayout, SwitchRow, type SettingsSectionDef } from "@/components/settings/layout";
 import { PROFILE_IDS, PROFILE_INFO } from "@/components/projects/ProfileBadge";
 import { ClaudeSetupCard } from "@/components/settings/ClaudeSetupCard";
+import { UsageSettings } from "@/components/settings/UsageSettings";
 import { MemoryEditor } from "@/components/settings/MemoryEditor";
 import { effortOptions, fromChoice, modelOptions, toChoice } from "@/components/settings/model-options";
 import { idleCloseOptions } from "@/components/settings/idle-close";
@@ -51,7 +52,7 @@ type Save = (patch: Partial<Settings>) => Promise<void>;
 
 export const SECTIONS: ReadonlyArray<SettingsSectionDef<SettingsSection>> = [
   { id: "general", label: "Allgemein", hint: "Modell, Profil, Bedienung", Icon: SlidersHorizontal },
-  { id: "claude", label: "Claude Code", hint: "Installation, Anmeldung, Limits", Icon: SquareTerminal },
+  { id: "claude", label: "Claude Code", hint: "Anmeldung, Nutzung, Prognose", Icon: SquareTerminal },
   { id: "policy", label: "Sperrliste", hint: "Was FORGE immer blockiert", Icon: ShieldBan },
   { id: "phone", label: "Telefon", hint: "Anrufe, Sprache, Tischtelefon", Icon: Phone },
   { id: "github", label: "GitHub", hint: "Konto, Synchronisierung, Versionen", Icon: Cloud },
@@ -233,6 +234,8 @@ function ClaudeSection({ s, save }: { s: Settings; save: Save }) {
           <ClaudeSetupCard />
         </div>
       </Group>
+
+      <UsageSettings />
 
       <Group title="Verhalten">
         <SwitchRow

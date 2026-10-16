@@ -3,7 +3,7 @@ import { createSocket, type Socket } from "node:dgram";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { ForgeError, type BackgroundTask, type MemoryScope, type PhoneState, type ServerEvent, type Settings, type SubagentProgress } from "@forge/protocol";
+import { ForgeError, type BackgroundTask, type MemoryScope, type PhoneState, type PlanUsage, type ServerEvent, type Settings, type SubagentProgress } from "@forge/protocol";
 import * as cfg from "../src/config/claude-config.js";
 import { encodeG711, FRAME_SAMPLES, rms, decodeG711 } from "../src/phone/audio.js";
 import type { ConversationCallbacks } from "../src/phone/call-controller.js";
@@ -395,6 +395,7 @@ describe("PhoneService end to end with a test PBX", () => {
   let startedIn: string[] = [];
   let lastStart: { projectId: string; prompt: string; effort?: string } | null;
   let failStart: boolean;
+  let planUsage: PlanUsage;
   let sessionList: FakeSession[];
   let secrets: SlowSecrets;
   let failConversation: boolean;
@@ -443,6 +444,7 @@ describe("PhoneService end to end with a test PBX", () => {
     startedIn = [];
     lastStart = null;
     failStart = false;
+    planUsage = { available: false, subscriptionType: null, windows: [], fetchedAt: new Date().toISOString(), error: "kein Abo" };
     taskCalls = [];
     approvals = [];
     prsCreated = [];
@@ -483,6 +485,8 @@ describe("PhoneService end to end with a test PBX", () => {
       },
       setPermissionMode: async (id: string, mode: string) => steered.push(`mode:${id}:${mode}`),
       close: (id: string) => steered.push(`close:${id}`),
+      planUsage: async () => planUsage,
+      rateLimit: () => ({ status: "ok", limitType: null, resetsAt: null, utilization: null, updatedAt: null }),
     } as unknown as SessionService;
     secrets = new SlowSecrets(path.join(t.dir, "secrets"));
     const voice: VoiceProvider = {
@@ -1157,6 +1161,25 @@ describe("PhoneService end to end with a test PBX", () => {
     // Removed with force and together with its branch.
     expect(removedWorktrees).toEqual([expect.stringMatching(/:true:true$/)]);
     expect(projects.all().filter((p) => p.parentId === projectId)).toHaveLength(2);
+
+    // "Reicht mein Limit noch?": the usage names the forecast, and a new agent comes with a hint.
+    failStart = false;
+    const resetsAt = new Date(Date.now() + 2 * 3_600_000).toISOString();
+    const limitAt = new Date(Date.now() + 3_600_000).toISOString();
+    planUsage = {
+      available: true,
+      subscriptionType: "max",
+      windows: [
+        { key: "five_hour", label: "5 Stunden", utilization: 60, resetsAt, forecast: { outcome: "limit", limitAt, perHour: 40 } },
+        { key: "seven_day", label: "Woche", utilization: 20, resetsAt: new Date(Date.now() + 3 * 24 * 3_600_000).toISOString(), forecast: { outcome: "enough", limitAt: null, perHour: 0.2 } },
+      ],
+      fetchedAt: new Date().toISOString(),
+      error: null,
+    };
+    const usage = await conv.tools.usage();
+    expect(usage).toMatch(/^5 Stunden: 60 Prozent, zurückgesetzt .+\. Bei diesem Tempo ist das Limit .+ um \d\d:\d\d erreicht, vor dem Reset\.$/m);
+    expect(usage).toMatch(/^Woche: 20 Prozent, .+\. Bei diesem Tempo reicht es bis zum Reset\.$/m);
+    expect(await conv.tools.startSession("shop", "Baue den XML-Export", { agent: true })).toMatch(/^Agent S\d im Projekt shop gestartet.+ Hinweis: Bei diesem Tempo ist das Nutzungslimit vor dem Reset erreicht: 5 Stunden gegen /);
     await byeFromPbx("c-agent", inv, ok);
   }, 30_000);
 

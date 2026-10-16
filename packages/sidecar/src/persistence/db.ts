@@ -1,4 +1,5 @@
 import { DatabaseSync, type StatementSync } from "node:sqlite";
+import type { UsageSample } from "../claude/usage-forecast.js";
 import { DEFAULT_DISABLED_POLICY_RULES, SEARCH_MARK_END, SEARCH_MARK_START, type ContextUsage, type EffortLevel, type PermissionMode, type ProfileId, type Project, type PhoneCallRecord, type SearchHit, type Session, type SessionEvent, type SessionEventBody, type SessionStatus, type Settings } from "@forge/protocol";
 
 export const MIGRATIONS: string[] = [
@@ -221,6 +222,16 @@ export const MIGRATIONS: string[] = [
   SELECT 'setupDone', 'true'
   WHERE EXISTS (SELECT 1 FROM projects) OR EXISTS (SELECT 1 FROM sessions) OR EXISTS (SELECT 1 FROM settings WHERE key <> 'knownModels')
   ON CONFLICT(key) DO NOTHING;
+  `,
+  // Readings of the plan usage windows for the limit forecast; times in epoch milliseconds.
+  `
+  CREATE TABLE usage_samples (
+    window_key TEXT NOT NULL,
+    resets_at INTEGER NOT NULL,
+    at INTEGER NOT NULL,
+    utilization REAL NOT NULL
+  );
+  CREATE INDEX usage_samples_at ON usage_samples(at);
   `,
 ];
 
@@ -733,6 +744,19 @@ export class Db {
     const marks = this.listResumeMarks();
     this.stmt("DELETE FROM update_resume").run();
     return marks;
+  }
+
+  // ---- plan usage readings for the limit forecast
+
+  /** Stores readings and drops those of windows that are over or older than `keepSince`. */
+  addUsageSamples(samples: UsageSample[], keepSince: number, now: number) {
+    for (const s of samples) this.stmt("INSERT INTO usage_samples(window_key, resets_at, at, utilization) VALUES(?, ?, ?, ?)").run(s.key, s.resetsAt, s.at, s.utilization);
+    this.stmt("DELETE FROM usage_samples WHERE at < ? OR resets_at < ?").run(keepSince, now);
+  }
+
+  listUsageSamples(since: number): UsageSample[] {
+    const rows = this.stmt("SELECT window_key, resets_at, at, utilization FROM usage_samples WHERE at >= ? ORDER BY at").all(since) as unknown as Array<{ window_key: string; resets_at: number; at: number; utilization: number }>;
+    return rows.map((r) => ({ key: r.window_key, resetsAt: Number(r.resets_at), at: Number(r.at), utilization: Number(r.utilization) }));
   }
 
   // ---- automatic continuation after a usage limit

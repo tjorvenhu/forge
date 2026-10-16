@@ -73,6 +73,8 @@ export interface ForgeToolDeps {
   finisher?: AgentFinisher | null;
   /** Plan usage as text for usage_status. */
   usage?: (() => Promise<string>) | null;
+  /** A notice when the limit forecast runs full before the reset; added to start_agent, never blocks it. */
+  limitWarning?: (() => Promise<string | null>) | null;
 }
 
 /** Knowledge and dev tools of the session's project, with the lines of start context that explain them. */
@@ -350,7 +352,7 @@ export function forgeSessionTools(rec: SessionRecord, d: ForgeToolDeps): { tools
     ? {
         name: "usage_status",
         description:
-          "Nutzung des Claude-Abos des Nutzers: 5-Stunden- und Wochenfenster in Prozent mit Reset-Zeit, und ob ein Limit erreicht ist. Vor großem Aufwand prüfen (mehrere Agenten, lange Läufe), damit die Arbeit nicht am Limit abbricht.",
+          "Nutzung des Claude-Abos des Nutzers: 5-Stunden- und Wochenfenster in Prozent mit Reset-Zeit, die Prognose nach dem bisherigen Tempo (Limit vor dem Reset erreicht oder reicht bis zum Reset) und ob ein Limit erreicht ist. Vor großem Aufwand prüfen (mehrere Agenten, lange Läufe), damit die Arbeit nicht am Limit abbricht.",
         shape: {},
         autoAllow: true,
         run: () => usage(),
@@ -479,7 +481,8 @@ export function forgeSessionTools(rec: SessionRecord, d: ForgeToolDeps): { tools
         : open
           ? ` Hinweis: ${open} ${open === 1 ? "Datei ist" : "Dateien sind"} bei dir nicht committet, die sieht er nicht (with_changes=true hätte sie mitgegeben).`
           : "";
-      return `Agent ${short(child.id)} gestartet, Branch ${branch}, Ordner ${wt.path}. Er arbeitet unabhängig; den Stand gibt agent_status. Seine Änderungen liegen nur auf seinem Branch.${note}`;
+      const warning = d.limitWarning ? await d.limitWarning().catch(() => null) : null;
+      return `Agent ${short(child.id)} gestartet, Branch ${branch}, Ordner ${wt.path}. Er arbeitet unabhängig; den Stand gibt agent_status. Seine Änderungen liegen nur auf seinem Branch.${note}${warning ? ` Hinweis: ${warning}` : ""}`;
     },
   };
 

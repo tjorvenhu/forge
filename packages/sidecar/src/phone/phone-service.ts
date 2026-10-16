@@ -21,8 +21,10 @@ import {
   type ServerEvent,
   type SessionEventBody,
   type Settings,
+  type UsageWindow,
 } from "@forge/protocol";
 import type { Db } from "../persistence/db.js";
+import { limitWarning } from "../claude/usage.js";
 import type { ProjectManager } from "../projects/project-manager.js";
 import type { SessionService } from "../sessions/session-service.js";
 import type { DevServerService } from "../devserver/dev-server.js";
@@ -323,6 +325,14 @@ function spokenTime(iso: string): string {
   const time = d.toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" });
   if (d.toDateString() === new Date().toDateString()) return `heute um ${time}`;
   return `${d.toLocaleDateString("de-DE", { weekday: "long" })} um ${time}`;
+}
+
+/** The limit forecast of a usage window as said on the phone ("Reicht mein Limit noch?"). */
+export function spokenForecast(w: UsageWindow): string {
+  const f = w.forecast;
+  if (!f) return "Prognose: noch zu wenig Messwerte oder kein Anstieg.";
+  if (f.outcome === "limit" && f.limitAt) return `Bei diesem Tempo ist das Limit ${spokenTime(f.limitAt)} erreicht, vor dem Reset.`;
+  return "Bei diesem Tempo reicht es bis zum Reset.";
 }
 
 function errorText(e: unknown): string {
@@ -1576,7 +1586,8 @@ export class PhoneService {
             throw e;
           }
           a.focus = s.id;
-          return `Agent ${refFor(s.id)} im Projekt ${root.name} gestartet, in einem eigenen Worktree auf eigenem Branch.`;
+          const warning = await sessions.planUsage(false).then((u) => limitWarning(u), () => null);
+          return `Agent ${refFor(s.id)} im Projekt ${root.name} gestartet, in einem eigenen Worktree auf eigenem Branch.${warning ? ` Hinweis: ${warning}` : ""}`;
         }),
       respond: (ref, decision, answers, feedback, scope) =>
         run(true, async () => {
@@ -2743,7 +2754,7 @@ export class PhoneService {
           const perSecond = Math.round(tokenMeter.rate());
           const rate = perSecond ? `Gerade ${perSecond} Tokens pro Sekunde über alle Sessions und Agenten.` : "Gerade gibt Claude keine Tokens aus.";
           if (!u.available || !u.windows.length) return [reached || `Nutzung nicht verfügbar${u.error ? `: ${u.error}` : ""}.`, rate].join("\n");
-          const windows = u.windows.map((w) => `${w.label}: ${Math.round(w.utilization)} Prozent${w.resetsAt ? `, zurückgesetzt ${spokenTime(w.resetsAt)}` : ""}`);
+          const windows = u.windows.map((w) => `${w.label}: ${Math.round(w.utilization)} Prozent${w.resetsAt ? `, zurückgesetzt ${spokenTime(w.resetsAt)}` : ""}. ${spokenForecast(w)}`);
           return [reached, ...windows, rate].filter(Boolean).join("\n");
         }),
     };

@@ -122,6 +122,15 @@ export const useUsage = () =>
     refetchOnWindowFocus: (q) => usageOutdated(q.state.data) && "always",
   });
 
+/** Reads the plan usage now instead of the cached minute; errors become a toast. */
+export async function refreshUsage(qc: QueryClient) {
+  try {
+    qc.setQueryData(keys.usage, await call("system.usage", { refresh: true }));
+  } catch (e) {
+    toast.error("Nutzung nicht aktualisiert", errorMessage(e));
+  }
+}
+
 /** Latest plan rate limit of the account; changes arrive as ratelimit.updated. */
 export const useRateLimit = () =>
   useQuery({ queryKey: keys.rateLimit, queryFn: () => call("system.rateLimit", {}), staleTime: Infinity, refetchOnWindowFocus: false });
