@@ -6,6 +6,7 @@ import type { GitEngine } from "../git/git.js";
 import type { ProjectManager } from "../projects/project-manager.js";
 import type { SessionService } from "../sessions/session-service.js";
 import type { UploadStore } from "../claude/uploads.js";
+import type { UiCompareService } from "../preview/ui-compare.js";
 import type { GitHubService } from "../github/github.js";
 import type { ClaudeSetupService } from "../claude/setup.js";
 import type { McpService } from "../config/mcp.js";
@@ -32,6 +33,7 @@ export interface Services {
   projects: ProjectManager;
   sessions: SessionService;
   uploads: UploadStore;
+  uiCompare: UiCompareService;
   dataDir: string;
   github: GitHubService;
   claudeSetup: ClaudeSetupService;
@@ -226,6 +228,10 @@ export function createHandlers(s: Services): Handlers {
     "sessions.events": ({ sessionId, afterSeq, beforeSeq }) => s.sessions.events(sessionId, afterSeq, beforeSeq),
     "attachments.upload": (p) => s.uploads.put(p),
     "sessions.images": ({ sessionId, seq }) => s.sessions.images(sessionId, seq),
+    "uiCompare.get": ({ sessionId, compareId }) => s.uiCompare.get(sessionId, compareId),
+    "uiCompare.image": ({ sessionId, compareId, side }) => s.uiCompare.image(sessionId, compareId, side),
+    "uiCompare.retake": ({ sessionId, compareId }) => s.uiCompare.retake(sessionId, compareId),
+    "uiCompare.latest": ({ sessionId, projectId }) => s.uiCompare.latest({ sessionId, projectId }),
     "sessions.start": (p) => s.sessions.start(p),
     "sessions.send": ({ sessionId, text, attachments }) => s.sessions.send(sessionId, text, attachments),
     "sessions.resume": ({ sessionId, prompt, attachments }) => s.sessions.resume(sessionId, prompt, attachments),

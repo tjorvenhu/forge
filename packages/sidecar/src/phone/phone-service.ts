@@ -426,6 +426,8 @@ function settingText(s: Settings, key: keyof ForgeSettingsPatch | "alwaysOnTop")
       return s.stripApiKey ? "ein API-Key aus der Umgebung geht nicht an Claude Code" : "ein API-Key aus der Umgebung geht an Claude Code";
     case "screenshotKey":
       return s.screenshotKey ? "die Druck-Taste öffnet das Snipping-Tool von FORGE" : "die Druck-Taste bleibt bei Windows";
+    case "uiCompare":
+      return `Vorher-Nachher-Bilder bei UI-Änderungen ${on(s.uiCompare)}`;
     case "alwaysOnTop":
       return `im Vordergrund bleiben ${on(s.alwaysOnTop)}`;
     case "policyRule":
@@ -2354,6 +2356,17 @@ export class PhoneService {
               return res.deleted ? `${r} gelöscht${res.transcriptDeleted ? ", auch ihr Verlauf bei Claude Code" : ""}.` : `Fehler: ${r} ließ sich nicht löschen.`;
             });
           }
+          if (action === "ui_compare" || action === "ui_compare_retake") {
+            const c = await call("uiCompare.latest", { sessionId: s.id });
+            if (!c) return `Zu ${r} gibt es keinen Vorher-Nachher-Vergleich. FORGE macht einen, wenn Claude UI-Dateien ändert, während der Dev-Server läuft.`;
+            if (action === "ui_compare_retake") {
+              await call("uiCompare.retake", { sessionId: s.id, compareId: c.id });
+              return `Das Nachher-Bild des letzten Vergleichs von ${r} wird neu aufgenommen. Die Bilder gibt es nur am Computer.`;
+            }
+            const files = c.files.length === 1 ? "1 UI-Datei" : `${c.files.length} UI-Dateien`;
+            const state = c.status === "ready" ? "Vorher- und Nachher-Bild liegen vor" : c.status === "capturing" ? "das Nachher-Bild wird gerade aufgenommen" : `das Nachher-Bild fehlt: ${asData(c.error ?? "unbekannter Fehler")}`;
+            return `Letzter Vergleich von ${r} vom ${dateTime(c.createdAt)}, Seite ${asData(c.url)}, ${files} geändert (${asData(c.files.slice(0, 5).join(", "))}): ${state}. Die Bilder gibt es nur am Computer.`;
+          }
           if (action === "rewind") {
             const prompt = await promptBack(s.id, o?.messagesBack ?? 1);
             const res = await call("sessions.rewind", { sessionId: s.id, messageUuid: prompt.uuid, dryRun: false });
@@ -2481,7 +2494,7 @@ export class PhoneService {
           const cur = await call("settings.get", {});
           const update: Partial<Settings> = {};
           const changed: Array<keyof ForgeSettingsPatch> = [];
-          const flags = ["sounds", "desktopNotifications", "enterToSend", "autoContinueAfterLimit", "updateChecks", "debugLogs", "stripApiKey", "screenshotKey"] as const;
+          const flags = ["sounds", "desktopNotifications", "enterToSend", "autoContinueAfterLimit", "updateChecks", "debugLogs", "stripApiKey", "screenshotKey", "uiCompare"] as const;
           for (const k of flags) {
             const v = patch[k];
             if (v === undefined) continue;

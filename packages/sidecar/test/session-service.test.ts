@@ -272,6 +272,48 @@ describe("SessionService", () => {
     await expect(svc.edit(s.id, 9999, "x")).rejects.toThrow(/nicht bearbeiten/);
   });
 
+  it("takes before/after screenshots around a turn that edits UI files, and only around those", async () => {
+    const captures: string[] = [];
+    const ui = svc.useUiCompare({
+      dir: path.join(t.dir, "ui-compare"),
+      devServer: async () => ({ status: "running", url: "http://localhost:5173/" }),
+      hasBrowser: () => true,
+      lastViewed: () => null,
+      capture: async (_projectId, url) => {
+        captures.push(url);
+        return { data: Buffer.from("jpeg").toString("base64"), mimeType: "image/jpeg", width: 1280, height: 800, cut: false, url };
+      },
+      settleMs: 0,
+    });
+    const edit = (id: string, file: string) =>
+      rt.sinks[0]!.onMessage({ type: "assistant", message: { id: `m-${id}`, content: [{ type: "tool_use", id, name: "Edit", input: { file_path: file, old_string: "a", new_string: "b" } }] } });
+    const s = await svc.start({ projectId, prompt: "Mach den Knopf blau" });
+    edit("e1", path.join(projects.get(projectId).path, "src", "Button.tsx"));
+    success(rt.sinks[0]!);
+    await svc.drain();
+    const compares = () => db.listEvents(s.id).flatMap((e) => (e.body.type === "ui.compare" ? [e.body] : []));
+    expect(compares()).toEqual([{ type: "ui.compare", compareId: expect.any(String), url: "http://localhost:5173/", files: ["src/Button.tsx"] }]);
+    expect(captures).toHaveLength(2);
+    expect((await ui.get(s.id, compares()[0]!.compareId)).status).toBe("ready");
+
+    // A turn without UI files: the before image is taken and thrown away, no comparison.
+    await svc.send(s.id, "Und die Logik");
+    edit("e2", "src/logic.ts");
+    success(rt.sinks[0]!);
+    await svc.drain();
+    expect(captures).toHaveLength(3);
+    expect(compares()).toHaveLength(1);
+    // Nothing of it reaches Claude.
+    expect(rt.sentNotes.join("\n")).not.toMatch(/Vorher|ui-compare/);
+
+    db.updateSettings({ uiCompare: false });
+    await svc.send(s.id, "Noch mal");
+    edit("e3", "src/App.tsx");
+    success(rt.sinks[0]!);
+    await svc.drain();
+    expect(captures).toHaveLength(3);
+  });
+
   it("tells sessions in a project without git not to use git and gives them no agents", async () => {
     projects.update(projectId, { gitEnabled: false });
     const s = await svc.start({ projectId, prompt: "Baue die Startseite" });

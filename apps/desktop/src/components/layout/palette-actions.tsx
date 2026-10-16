@@ -23,6 +23,7 @@ import {
   GitBranch,
   GitBranchPlus,
   GitCommitHorizontal,
+  GitCompareArrows,
   GitFork,
   GitPullRequest,
   ListChecks,
@@ -120,7 +121,9 @@ export type PaletteDialog =
   | { kind: "summary"; session: Session }
   | { kind: "new-agent"; root: ProjectWithStatus }
   | { kind: "new-branch"; projectId: string }
-  | { kind: "create-pr"; project: ProjectWithStatus };
+  | { kind: "create-pr"; project: ProjectWithStatus }
+  /** the newest before/after comparison of the session, else of the project */
+  | { kind: "ui-compare"; sessionId: string | null; projectId: string };
 
 export interface ActionContext {
   qc: QueryClient;
@@ -156,6 +159,7 @@ const SETTING_TOGGLES: Record<Exclude<BooleanSetting, keyof typeof UNLISTED_SETT
   screenshotKey: { label: "Druck-Taste für Screenshots", section: "general", keywords: "screenshot bildschirmfoto snipping druck print taste" },
   sounds: { label: "Töne", section: "general", keywords: "sound signal klang" },
   autoContinueAfterLimit: { label: "Nach Nutzungslimit weitermachen", section: "claude", keywords: "auto weitermachen limit reset" },
+  uiCompare: { label: "Vorher-Nachher-Bilder bei UI-Änderungen", section: "claude", keywords: "screenshot vergleich vorschau dev-server ui oberfläche bild vorher nachher" },
   stripApiKey: { label: "ANTHROPIC_API_KEY ausblenden", section: "claude", keywords: "api key abo" },
   updateChecks: { label: "Automatisch nach Updates suchen", section: "about", keywords: "update release version" },
   syncEnabled: { label: "Synchronisierung über GitHub", section: "github", keywords: "sync abgleich andere pc rechner repository forge-data cloud" },
@@ -339,6 +343,9 @@ export function buildActions(ctx: ActionContext): PaletteEntry[] {
       ui.setWorkspaceTab("chat");
       requestAnimationFrame(() => document.getElementById("composer-input")?.focus());
     }, { hint: "Strg+N", keywords: "chat starten" });
+    act("ui-compare-latest", "Letzten Vorher-Nachher-Vergleich öffnen", icon(GitCompareArrows), () => ctx.openDialog({ kind: "ui-compare", sessionId: session?.id ?? null, projectId: project.id }), {
+      keywords: "screenshot vergleich vorschau bild ui oberfläche dev-server vorher nachher",
+    });
 
     if (session) {
       const s = session;

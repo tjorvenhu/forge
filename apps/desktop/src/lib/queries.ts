@@ -65,6 +65,10 @@ export const keys = {
   remote: ["remote"] as const,
   agentReview: (id: string) => ["agentReview", id] as const,
   search: (q: string) => ["search", q] as const,
+  uiCompare: (sessionId: string, compareId: string) => ["uiCompare", sessionId, compareId] as const,
+  /** taken at: an image taken again gets a new key */
+  uiCompareImage: (sessionId: string, compareId: string, side: "before" | "after", takenAt: string) => ["uiCompareImage", sessionId, compareId, side, takenAt] as const,
+  uiCompareLatest: (sessionId: string | null, projectId: string | null) => ["uiCompareLatest", sessionId, projectId] as const,
 };
 
 export function call<M extends MethodName>(method: M, params: ParamsOf<M>): Promise<ResultOf<M>> {

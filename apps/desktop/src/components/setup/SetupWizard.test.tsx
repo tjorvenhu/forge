@@ -62,6 +62,7 @@ beforeEach(() => {
     desktopNotifications: true,
     alwaysOnTop: false,
     screenshotKey: true,
+    uiCompare: true,
     disabledPolicyRules: [],
     setupDone: false,
     syncEnabled: false,

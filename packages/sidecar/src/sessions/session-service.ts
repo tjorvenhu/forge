@@ -37,6 +37,7 @@ import { WorktreeService } from "../automation/worktrees.js";
 import type { AgentFinisher } from "../automation/agent-finish.js";
 import { AgentAutoMerge } from "../automation/agent-auto-merge.js";
 import { pruneSubagentWorktrees } from "../automation/subagent-worktrees.js";
+import { UiCompareService, type UiCompareDeps } from "../preview/ui-compare.js";
 import { PermissionModes } from "./permission-mode.js";
 import { RateLimitTracker } from "./rate-limit.js";
 import { RemoteBridge } from "./remote-bridge.js";
@@ -76,6 +77,8 @@ export class SessionService {
   private agentFinisher: AgentFinisher | null = null;
   /** merges finished agents in projects with auto-merge; built with the finisher */
   private agentAutoMerge: AgentAutoMerge | null = null;
+  /** before/after screenshots around turns that change UI files; set by app.ts once the preview exists */
+  private uiCompare: UiCompareService | null = null;
 
   constructor(
     private readonly db: Db,
@@ -104,6 +107,7 @@ export class SessionService {
         await this.agentAutoMerge?.turnDone(id, testsOk);
         await this.pruneSubagents(git, id);
       },
+      turnStarted: (id) => this.uiCompare?.turnStarted(id),
     });
     this.remote = new RemoteBridge(db, projects, runtime, {
       live: (id) => core.live.get(id),
@@ -170,6 +174,9 @@ export class SessionService {
     core.onRecord = (id, body) => {
       this.idle.touch(id);
       if (body.type === "user.message" && body.source !== "auto") this.autoContinue.userInput(id);
+      if (body.type === "tool.use") this.uiCompare?.toolUsed(id, body.name, body.input);
+      else if (body.type === "turn.result") this.uiCompare?.turnEnded(id);
+      else if (body.type === "status" && (body.status === "stopped" || body.status === "error")) this.uiCompare?.drop(id);
     };
     const stream = new SessionStream(core, {
       automation: this.automation,
@@ -208,6 +215,20 @@ export class SessionService {
   /** Knowledge and dev tools for sessions started from now on. */
   useProjectTools(deps: ProjectToolDeps) {
     this.projectDeps = deps;
+  }
+
+  /** Before/after screenshots of the web app around turns that change UI files. */
+  useUiCompare(deps: Omit<UiCompareDeps, "enabled" | "session" | "record" | "emit" | "track">): UiCompareService {
+    const core = this.core;
+    this.uiCompare = new UiCompareService({
+      ...deps,
+      enabled: () => this.db.getSettings().uiCompare,
+      session: (id) => this.db.getSession(id),
+      record: core.record.bind(core),
+      emit: core.emit,
+      track: (p) => this.automation.track(p),
+    });
+    return this.uiCompare;
   }
 
   private readonly pruning = new Set<string>();
@@ -441,6 +462,7 @@ export class SessionService {
     this.externalCache.clear();
     this.autoContinue.forget(sessionId);
     this.titles.forget(sessionId);
+    this.uiCompare?.drop(sessionId);
     return this.lifecycle.delete(sessionId, deleteTranscript);
   }
 

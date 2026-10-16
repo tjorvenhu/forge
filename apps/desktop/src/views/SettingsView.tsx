@@ -241,6 +241,12 @@ function ClaudeSection({ s, save }: { s: Settings; save: Save }) {
           checked={s.autoContinueAfterLimit}
           onChange={(v) => void save({ autoContinueAfterLimit: v })}
         />
+        <SwitchRow
+          label="Vorher-Nachher-Bilder bei UI-Änderungen"
+          description="Ändert Claude Dateien wie .tsx oder .css, während der Dev-Server läuft, zeigt der Chat Screenshots der Web-App von vor und nach dem Durchlauf. Die Bilder gehen nicht an Claude und werden nach 14 Tagen gelöscht."
+          checked={s.uiCompare}
+          onChange={(v) => void save({ uiCompare: v })}
+        />
         <Row label="Untätige Sessions schließen nach" description="Beendet nur den Claude-Prozess. Die Session bleibt mit Verlauf erhalten und läuft mit der nächsten Nachricht weiter.">
           <Select
             value={String(s.idleCloseMinutes)}

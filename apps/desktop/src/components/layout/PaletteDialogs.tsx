@@ -1,16 +1,17 @@
 import { useEffect, useRef } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { call, keys } from "@/lib/queries";
 import { modelLabel } from "@/lib/models";
 import { errorMessage } from "@/lib/rpc";
 import { Dialog } from "@/components/ui/dialog";
 import { ErrorBanner } from "@/components/ui/misc";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Skeleton, SkeletonRegion } from "@/components/ui/skeleton";
 import { CreatePrDialog } from "@/components/git/Sync";
 import { NewBranchDialog } from "@/components/git/GitCenter";
 import { NewAgentDialog } from "@/components/workspace/AgentsTab";
 import { DeleteSessionDialog } from "@/components/workspace/DeleteSessionDialog";
 import { Markdown } from "@/components/workspace/Markdown";
+import { UiCompareDialog } from "@/components/workspace/UiCompareCard";
 import type { PaletteDialog } from "./palette-actions";
 
 /** The dialog an entry of the command palette asked for; shown after the palette has closed. */
@@ -42,7 +43,32 @@ export function PaletteDialogs({ dialog, onClose }: { dialog: PaletteDialog | nu
         />
       );
     }
+    case "ui-compare":
+      return <LatestUiCompare sessionId={dialog.sessionId} projectId={dialog.projectId} onClose={onClose} />;
   }
+}
+
+/** The newest comparison of the open session, else of the project; a note when there is none yet. */
+function LatestUiCompare({ sessionId, projectId, onClose }: { sessionId: string | null; projectId: string; onClose: () => void }) {
+  const q = useQuery({
+    queryKey: keys.uiCompareLatest(sessionId, projectId),
+    queryFn: async () => (sessionId ? await call("uiCompare.latest", { sessionId }) : null) ?? (await call("uiCompare.latest", { projectId })),
+  });
+  if (q.data) return <UiCompareDialog sessionId={q.data.sessionId} compareId={q.data.id} initialMode="side" onClose={onClose} />;
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()} title="Vorher und nachher">
+      {q.isPending ? (
+        <SkeletonRegion label="Lädt Vergleich" className="grid grid-cols-2 gap-2">
+          <Skeleton className="aspect-[16/10] w-full" />
+          <Skeleton className="aspect-[16/10] w-full" />
+        </SkeletonRegion>
+      ) : q.isError ? (
+        <ErrorBanner>{errorMessage(q.error)}</ErrorBanner>
+      ) : (
+        <p className="text-body text-muted">In diesem Projekt gibt es noch keinen Vergleich. FORGE macht einen, wenn Claude UI-Dateien ändert, während der Dev-Server läuft.</p>
+      )}
+    </Dialog>
+  );
 }
 
 /** "Wo war ich?" like the button in the session bar, started from the palette. */

@@ -67,6 +67,7 @@ import {
   SyncStatus,
   SyncVersion,
   TextDoc,
+  UiCompare,
   MAX_PROMPT_CHARS,
   UPLOAD_CHUNK_CHARS,
 } from "./models.js";
@@ -81,6 +82,8 @@ const knowledgeFields = {
 const knowledgeIds = z.array(id).min(2).max(6);
 const projectRef = z.object({ projectId: id });
 const sessionRef = z.object({ sessionId: id });
+/** also a folder name in the data folder */
+const compareId = z.string().regex(/^[a-z0-9-]{1,64}$/);
 const relPaths = z.array(z.string().min(1).max(4096)).min(1).max(2000);
 const empty = z.object({}).strict();
 const voiceConnection = z.object({ language: z.string().min(2).max(12).default("de"), keyterms: z.array(z.string().max(100)).max(200).default([]) });
@@ -350,6 +353,17 @@ export const methods = {
   "sessions.stop": { params: sessionRef, result: Session },
   /** drops the planned automatic continuation after a usage limit */
   "sessions.cancelAutoContinue": { params: sessionRef, result: Session },
+  /** a before/after comparison of the web app (event ui.compare); NOT_FOUND once its images were cleaned up */
+  "uiCompare.get": { params: sessionRef.extend({ compareId }), result: UiCompare },
+  /** one image of a comparison, read from FORGE's data folder */
+  "uiCompare.image": {
+    params: sessionRef.extend({ compareId, side: z.enum(["before", "after"]) }),
+    result: z.object({ mediaType: z.string(), base64: z.string() }),
+  },
+  /** takes the after image again (the dev server was still reloading); returns right away with status capturing */
+  "uiCompare.retake": { params: sessionRef.extend({ compareId }), result: UiCompare },
+  /** the newest comparison of a session, of a project or of all; null when there is none */
+  "uiCompare.latest": { params: z.object({ sessionId: id.optional(), projectId: id.optional() }), result: UiCompare.nullable() },
   "sessions.close": { params: sessionRef, result: Session },
   "sessions.setModel": { params: sessionRef.extend({ model: z.string().max(100) }), result: Session },
   "sessions.setEffort": { params: sessionRef.extend({ effort: EffortLevel.nullable() }), result: Session },
@@ -683,6 +697,8 @@ export type ServerEvent =
    */
   /** `sessionIds`: sessions of the worktree, read before the merge removed them (their chat windows close) */
   | { event: "agent.autoMerge"; payload: { rootId: string; worktreeId: string; branch: string | null; outcome: "merged" | "conflict" | "skipped" | "waiting"; message: string; sessionIds: string[] } }
+  /** a before/after comparison changed (after image taken, failed, taken again) */
+  | { event: "uiCompare.updated"; payload: UiCompare }
   | { event: "phone.updated"; payload: PhoneState }
   | { event: "sync.updated"; payload: SyncStatus }
   | { event: "update.updated"; payload: AppUpdateState }

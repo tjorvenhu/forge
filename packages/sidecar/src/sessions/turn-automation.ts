@@ -16,6 +16,8 @@ export interface AutomationHost {
   testEnv?(projectId: string): Record<string, string>;
   /** the post-turn work is done and no held turn follows; testsOk is false when auto-test failed */
   turnDone?(sessionId: string, testsOk: boolean): Promise<void>;
+  /** a CLI turn started (also a message joining the running turn) */
+  turnStarted?(sessionId: string): void;
 }
 
 /** A turn FORGE holds back while the previous turn's tests and auto-commit run. */
@@ -74,6 +76,7 @@ export class TurnAutomation {
 
   noteTurnStart(sessionId: string) {
     this.turnSeq.set(sessionId, (this.turnSeq.get(sessionId) ?? 0) + 1);
+    this.host.turnStarted?.(sessionId);
   }
 
   /** True while the post-turn work of the session runs; new turns must be held. */

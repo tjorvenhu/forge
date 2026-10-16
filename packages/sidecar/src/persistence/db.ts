@@ -240,6 +240,7 @@ export const DEFAULT_SETTINGS: Settings = {
   desktopNotifications: true,
   alwaysOnTop: false,
   screenshotKey: true,
+  uiCompare: true,
   disabledPolicyRules: [...DEFAULT_DISABLED_POLICY_RULES],
   setupDone: false,
   syncEnabled: false,

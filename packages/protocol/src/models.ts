@@ -341,6 +341,17 @@ export const SessionEventBody = z.discriminatedUnion("type", [
     attempt: z.number().int().optional(),
     message: z.string().nullable(),
   }),
+  /**
+   * The turn changed UI files while a dev server ran: FORGE took a screenshot of the web app before and
+   * after it. Images and state live in the data folder (uiCompare.get), never in the event or with Claude.
+   */
+  z.object({
+    type: z.literal("ui.compare"),
+    compareId: z.string(),
+    url: z.string(),
+    /** the UI files the turn changed, relative to the session's folder */
+    files: z.array(z.string()),
+  }),
   /** FORGE restarted for an update while this session worked; the next message lets Claude continue. */
   z.object({
     type: z.literal("app.updated"),
@@ -464,6 +475,8 @@ export const Settings = z.object({
   alwaysOnTop: z.boolean(),
   /** while FORGE runs, the Print key opens FORGE's snipping tool instead of the one of Windows */
   screenshotKey: z.boolean(),
+  /** before/after screenshots of the web app when a turn changes UI files and a dev server runs */
+  uiCompare: z.boolean(),
   /** blocklist rules the user switched off; every other rule applies */
   disabledPolicyRules: z.array(PolicyRuleId),
   /** the setup assistant of the first start is done (or was skipped); installations from before it count as done */
@@ -474,6 +487,33 @@ export const Settings = z.object({
   syncAsked: z.boolean(),
 });
 export type Settings = z.infer<typeof Settings>;
+
+export const UiCompareShot = z.object({
+  /** pixels of the JPEG */
+  width: z.number().int(),
+  height: z.number().int(),
+  /** absolute path of the image in FORGE's data folder */
+  path: z.string(),
+  takenAt: z.string(),
+});
+export type UiCompareShot = z.infer<typeof UiCompareShot>;
+
+/** A before/after comparison of the web app around one turn (event ui.compare). */
+export const UiCompare = z.object({
+  id: z.string(),
+  sessionId: z.string(),
+  projectId: z.string(),
+  url: z.string(),
+  files: z.array(z.string()),
+  createdAt: z.string(),
+  /** capturing: the after image is being taken (also when taken again) */
+  status: z.enum(["capturing", "ready", "failed"]),
+  before: UiCompareShot,
+  after: UiCompareShot.nullable(),
+  /** why the after image failed */
+  error: z.string().nullable(),
+});
+export type UiCompare = z.infer<typeof UiCompare>;
 
 /** Choices for idleCloseMinutes in the settings; 0 is off. */
 export const IDLE_CLOSE_CHOICES = [0, 15, 30, 60, 120, 240] as const;

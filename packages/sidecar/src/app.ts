@@ -100,6 +100,14 @@ export function createApp(opts: { dataDir: string; write: Writer; log?: (m: stri
   const knowledge = new KnowledgeStore(projects, (projectId) => emit({ event: "knowledge.updated", payload: { projectId } }));
   const preview = new PreviewService({ devServer: (projectId) => devServers.state(projectId) });
   sessions.useProjectTools({ knowledge, dev: devEnv, preview });
+  const uiCompare = sessions.useUiCompare({
+    dir: path.join(opts.dataDir, "ui-compare"),
+    devServer: (projectId) => devServers.state(projectId),
+    hasBrowser: () => preview.hasBrowser(),
+    lastViewed: (sessionId) => preview.lastViewed(sessionId),
+    capture: (projectId, url) => preview.capture(projectId, url),
+  });
+  void uiCompare.prune().catch(() => null);
   const notifyProject = (projectId: string) => emit({ event: "project.updated", payload: { projectId } });
   const agentFinish = new AgentFinisher({ db, git, projects, sessions, worktrees, devServers, notifyProject });
   sessions.useAgentFinisher(agentFinish);
@@ -272,6 +280,7 @@ export function createApp(opts: { dataDir: string; write: Writer; log?: (m: stri
     projects,
     sessions,
     uploads,
+    uiCompare,
     dataDir: opts.dataDir,
     notifyProject,
     notifySettings: (settings) => emit({ event: "settings.updated", payload: settings }),

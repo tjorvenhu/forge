@@ -265,4 +265,17 @@ describe.skipIf(!browser)("preview in a real browser", () => {
   it("does not follow a redirect off this machine", async () => {
     await expect(preview.screenshot("x", { path: "/weg" })).rejects.toThrow(/außerhalb dieses Rechners/);
   }, 60_000);
+
+  it("captures comparison shots in a tab of their own and remembers the page a session looked at", async () => {
+    devUrl = base;
+    await preview.screenshot("x", { path: "/?seite=2", viewer: "s1" });
+    expect(preview.lastViewed("s1")).toBe(`${base}/?seite=2`);
+    expect(preview.lastViewed("s2")).toBeNull();
+    const shot = await preview.capture("x", `${base}/?vergleich=1`);
+    expect(shot.url).toBe(`${base}/?vergleich=1`);
+    expect(Buffer.from(shot.data, "base64").subarray(0, 2).toString("hex")).toBe("ffd8");
+    // Claude's page stays where it was.
+    expect(await preview.console("x", {})).toContain(`Adresse: ${base}/?seite=2`);
+    await expect(preview.capture("x", "https://example.com/")).rejects.toThrow(/nur Adressen auf diesem Rechner/);
+  }, 60_000);
 });

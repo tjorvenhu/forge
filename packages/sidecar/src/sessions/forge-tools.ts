@@ -194,7 +194,7 @@ export function projectTools(rec: SessionRecord, p: ProjectToolDeps): { tools: S
     run: (a) => p.dev.control(projectId, a.target as DevTarget, a.action as DevAction),
   };
 
-  const preview = p.preview ? previewTools(projectId, p.preview) : [];
+  const preview = p.preview ? previewTools(projectId, p.preview, rec.id) : [];
 
   const { lines, total, summaries } = p.knowledge.index(projectId);
   const cleanup = lines.length ? p.knowledge.cleanup(projectId) : { overlaps: [], long: [] };
@@ -241,8 +241,8 @@ const str = (v: unknown) => (typeof v === "string" ? v : null);
 const int = (v: unknown) => (typeof v === "number" ? v : null);
 
 /** Screenshot, console and simple input on the project's running web app (headless Edge or Chrome). */
-function previewTools(projectId: string, preview: PreviewService): SessionTool[] {
-  const target = (a: Record<string, unknown>) => ({ url: str(a.url), path: str(a.path), width: int(a.width), height: int(a.height) });
+function previewTools(projectId: string, preview: PreviewService, viewer: string): SessionTool[] {
+  const target = (a: Record<string, unknown>) => ({ url: str(a.url), path: str(a.path), width: int(a.width), height: int(a.height), viewer });
   return [
     {
       name: "preview_screenshot",

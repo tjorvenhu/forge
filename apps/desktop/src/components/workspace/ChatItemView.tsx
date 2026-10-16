@@ -12,6 +12,7 @@ import { EVENT_ICON, EventCard, noticeIcon } from "./EventCard";
 import { ChatRow, Dot, HoverTime } from "./ChatRow";
 import { UserMessage } from "./UserMessage";
 import { AutoContinueCard } from "./AutoContinueCard";
+import { UiCompareCard } from "./UiCompareCard";
 
 /**
  * Text updates while streaming. Only the last paragraph is parsed again (StreamingMarkdown), so this
@@ -111,6 +112,8 @@ export const ItemView = memo(function ItemView({ item, sessionId, live, projectD
       return <CheckCard body={item.body} ts={item.ts} />;
     case "autoContinue":
       return <AutoContinueCard item={item} sessionId={sessionId} />;
+    case "uiCompare":
+      return <UiCompareCard item={item} sessionId={sessionId} />;
   }
 });
 

@@ -23,6 +23,13 @@ export interface PreviewTarget {
   path?: string | null;
   width?: number | null;
   height?: number | null;
+  /** the session asking; its last page is where the before/after comparison looks */
+  viewer?: string | null;
+}
+
+/** A screenshot for the before/after comparison and the address it shows. */
+export interface Capture extends Shot {
+  url: string;
 }
 
 export interface PreviewStep {
@@ -37,6 +44,8 @@ export interface PreviewStep {
 interface Instance {
   browser: BrowserProcess;
   page: PreviewPage;
+  /** a tab of its own for comparison shots, so Claude's open page, log and viewport stay as they are */
+  compare?: PreviewPage;
   timer?: ReturnType<typeof setTimeout>;
 }
 
@@ -90,6 +99,8 @@ function shotLine(s: Shot, requested: { width: number; height: number }, fullPag
 export class PreviewService {
   private readonly open = new Map<string, Instance>();
   private readonly locks = new Map<string, Promise<unknown>>();
+  /** session -> the page its preview tools showed last */
+  private readonly viewed = new Map<string, string>();
   private closed = false;
 
   constructor(private readonly deps: PreviewDeps) {}
@@ -171,8 +182,9 @@ export class PreviewService {
     return { ...(await page.navigate(url, LOAD_MS)), navigated: true };
   }
 
-  private async header(page: PreviewPage, loaded: boolean): Promise<string[]> {
+  private async header(page: PreviewPage, loaded: boolean, viewer: string | null | undefined): Promise<string[]> {
     const info = await page.info();
+    if (viewer && isLocalUrl(info.url)) this.viewed.set(viewer, info.url);
     return [
       `Titel: ${info.title || "(ohne Titel)"}`,
       `Adresse: ${info.url}`,
@@ -187,7 +199,7 @@ export class PreviewService {
       const { loaded } = await this.load(page, projectId, t, false);
       const shot = await page.screenshot(t.fullPage === true);
       const text = [
-        ...(await this.header(page, loaded)),
+        ...(await this.header(page, loaded, t.viewer)),
         `Konsole: ${logSummary(page.logs)}${page.logs.length ? " (Einzelheiten mit preview_console)" : ""}`,
         shotLine(shot, page.viewport, t.fullPage === true),
       ];
@@ -199,7 +211,7 @@ export class PreviewService {
     return this.withPage(projectId, async (page) => {
       const { loaded, navigated } = await this.load(page, projectId, t, t.reload !== true);
       return [
-        ...(await this.header(page, loaded)),
+        ...(await this.header(page, loaded, t.viewer)),
         navigated ? "Seite frisch geladen." : "Meldungen der zuletzt geöffneten Seite seit dem Laden.",
         `Zusammenfassung: ${logSummary(page.logs)}`,
         ...formatLogs(page.logs),
@@ -235,7 +247,7 @@ export class PreviewService {
       }
       const logs = page.logs.slice(before);
       const text = [
-        ...(await this.header(page, loaded)),
+        ...(await this.header(page, loaded, t.viewer)),
         "Schritte:",
         ...lines,
         failed !== null ? `Abgebrochen nach Schritt ${failed} von ${t.steps.length}.` : `Alle ${t.steps.length} Schritte ausgeführt.`,
@@ -246,6 +258,36 @@ export class PreviewService {
       const shot = await page.screenshot(t.fullPage === true);
       text.push(shotLine(shot, page.viewport, t.fullPage === true));
       return { text: text.join("\n"), images: [{ data: shot.data, mimeType: shot.mimeType }] };
+    });
+  }
+
+  /** Edge or Chrome is installed; without one the comparison stays quiet instead of failing. */
+  hasBrowser(): boolean {
+    return !!(this.deps.findBrowser ?? defaultFindBrowser)();
+  }
+
+  /** The local page a session's preview tools showed last, or null. */
+  lastViewed(viewer: string): string | null {
+    return this.viewed.get(viewer) ?? null;
+  }
+
+  /**
+   * Loads a local page fresh in the comparison tab (default viewport) and takes a screenshot. Runs in
+   * the project's queue like the tools, but on its own tab: Claude's page is not touched.
+   */
+  async capture(projectId: string, url: string): Promise<Capture> {
+    const target = previewUrl({ url });
+    return this.exclusive(projectId, async () => {
+      try {
+        const inst = await this.instance(projectId);
+        inst.compare ??= await PreviewPage.open(inst.browser.cdp);
+        await inst.compare.navigate(target, LOAD_MS);
+        const shot = await inst.compare.screenshot(false);
+        const info = await inst.compare.info();
+        return { ...shot, url: info.url || target };
+      } finally {
+        this.idle(projectId);
+      }
     });
   }
 

@@ -221,6 +221,10 @@ export function routeServerEvent(qc: QueryClient, git: GitRefresher, e: ServerEv
       }
       break;
     }
+    case "uiCompare.updated":
+      qc.setQueryData(keys.uiCompare(e.payload.sessionId, e.payload.id), e.payload);
+      void qc.invalidateQueries({ queryKey: ["uiCompareLatest"] });
+      break;
     case "agent.autoMerge":
       if (!isChatWindow()) agentAutoMerged(e.payload);
       break;

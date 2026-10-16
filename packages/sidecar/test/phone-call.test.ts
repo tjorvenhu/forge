@@ -1506,6 +1506,18 @@ describe("PhoneService end to end with a test PBX", () => {
     expect(await conv.tools.sessions("delete", { session: "S1" })).toMatch(/^Fehler: Es wartet noch eine Bestätigung/);
     expect(await keypad(conv, all)).toContain("Alle 2 Sessions gelöscht.");
     expect(rpcCalls.at(-1)).toEqual(["sessions.deleteAll", { deleteTranscript: true }]);
+
+    rpcResults["uiCompare.latest"] = () => null;
+    expect(await conv.tools.sessions("ui_compare", { session: "S1" })).toMatch(/^Zu S1 gibt es keinen Vorher-Nachher-Vergleich/);
+    const shot = { width: 1280, height: 800, path: "C:/forge/ui-compare/x/before.jpg", takenAt: "2026-10-16T10:00:00.000Z" };
+    const compare = { id: "x", sessionId: "s1", projectId, url: "http://localhost:5173/cart", files: ["src/Cart.tsx"], createdAt: "2026-10-16T10:00:00.000Z", status: "ready", before: shot, after: shot, error: null };
+    rpcResults["uiCompare.latest"] = () => compare;
+    rpcResults["uiCompare.retake"] = () => ({ ...compare, status: "capturing" });
+    const said = await conv.tools.sessions("ui_compare", { session: "S1" });
+    expect(said).toContain("1 UI-Datei geändert");
+    expect(said).toContain("Vorher- und Nachher-Bild liegen vor. Die Bilder gibt es nur am Computer.");
+    expect(await conv.tools.sessions("ui_compare_retake", { session: "S1" })).toMatch(/^Das Nachher-Bild des letzten Vergleichs von S1 wird neu aufgenommen/);
+    expect(rpcCalls.at(-1)).toEqual(["uiCompare.retake", { sessionId: "s1", compareId: "x" }]);
     await end();
   }, 30_000);
 

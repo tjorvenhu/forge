@@ -41,6 +41,8 @@ export type ChatItem =
       card?: { title: string; ref: string | null; detail: string; icon: NoticeIcon };
     }
   | { kind: "check"; key: string; ts: string; body: Body<"check.result"> }
+  /** before/after screenshots of the web app around a turn that changed UI files */
+  | { kind: "uiCompare"; key: string; ts: string; body: Body<"ui.compare"> }
   | AutoContinueItem;
 
 /** Automatic continuation after a usage limit; `open`: no later message or step replaced this plan. */
@@ -245,6 +247,9 @@ function itemFolder(thread: string | null = null) {
       }
       case "check.result":
         items.push({ kind: "check", key: `c${ev.seq}`, ts: ev.ts, body: b });
+        break;
+      case "ui.compare":
+        items.push({ kind: "uiCompare", key: `v${b.compareId}`, ts: ev.ts, body: b });
         break;
       case "notify":
         items.push({
