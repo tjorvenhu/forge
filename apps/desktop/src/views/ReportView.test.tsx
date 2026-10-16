@@ -33,6 +33,7 @@ const report = (date: string) => ({
   calls: [],
   usage: {
     turns: date === today ? 3 : 0,
+    apiCalls: date === today ? 20 : 0,
     workMs: date === today ? 320 * 60_000 : 0,
     agentWorkMs: date === today ? 60 * 60_000 : 0,
     activeMs: date === today ? 200 * 60_000 : 0,
@@ -127,8 +128,10 @@ describe("daily report", () => {
   it("shows working time and tokens, and opens a day from the trend", async () => {
     show();
     expect(await screen.findByText("5 h 20 min")).toBeTruthy();
+    // The big number leaves out the context read again from the cache; that stands apart, per request.
+    expect(screen.getByText("246 Tsd.")).toBeTruthy();
     expect(screen.getByText("3 Mio.")).toBeTruthy();
-    expect(screen.getByText("92 % davon liest Claude bei jedem Schritt erneut aus dem Cache.")).toBeTruthy();
+    expect(screen.getByText("Ø 150 Tsd. je Anfrage")).toBeTruthy();
     // The hour column carries its value for keyboard and screen readers, the tooltip follows focus.
     fireEvent.focus(screen.getByLabelText(/^10:00 bis 11:00 · 2 Durchläufe/));
     expect(screen.getByRole("tooltip").textContent).toContain("42 min");

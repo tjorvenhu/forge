@@ -297,6 +297,13 @@ export const MIGRATIONS: string[] = [
     FROM events e JOIN sessions s ON s.id = e.session_id JOIN projects p ON p.id = s.project_id LEFT JOIN projects r ON r.id = p.parent_id
     WHERE e.type = 'turn.result';
   `,
+  // Requests to the API per call (numTurns of the result): the context read from the cache is per request.
+  `
+  ALTER TABLE claude_usage ADD COLUMN api_calls INTEGER NOT NULL DEFAULT 0;
+  UPDATE claude_usage SET api_calls = COALESCE((SELECT json_extract(e.body, '$.numTurns') FROM events e
+    WHERE e.session_id = claude_usage.session_id AND e.ts = claude_usage.ts AND e.type = 'turn.result' LIMIT 1), 0)
+  WHERE kind = 'session';
+  `,
 ];
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -401,6 +408,8 @@ export interface ClaudeUsageRow {
   rootId: string | null;
   rootName: string | null;
   durationMs: number;
+  /** requests to the API within the call */
+  apiCalls: number;
   inputTokens: number;
   outputTokens: number;
   cacheReadTokens: number;
@@ -1000,27 +1009,27 @@ export class Db {
     this.stmt("INSERT INTO events(session_id, seq, ts, type, body) VALUES(?, ?, ?, ?, ?)").run(sessionId, ev.seq, ev.ts, body.type, JSON.stringify(body));
     if (body.type === "turn.result") {
       this.stmt(
-        `INSERT INTO claude_usage(ts, kind, session_id, project_id, root_id, root_name, duration_ms, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, is_error)
-         SELECT ?, 'session', s.id, s.project_id, COALESCE(p.parent_id, s.project_id), COALESCE(r.name, p.name), ?, ?, ?, ?, ?, ?
+        `INSERT INTO claude_usage(ts, kind, session_id, project_id, root_id, root_name, duration_ms, api_calls, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, is_error)
+         SELECT ?, 'session', s.id, s.project_id, COALESCE(p.parent_id, s.project_id), COALESCE(r.name, p.name), ?, ?, ?, ?, ?, ?, ?
          FROM sessions s JOIN projects p ON p.id = s.project_id LEFT JOIN projects r ON r.id = p.parent_id WHERE s.id = ?`,
-      ).run(ev.ts, body.durationMs ?? 0, body.inputTokens ?? 0, body.outputTokens ?? 0, body.cacheReadTokens ?? 0, body.cacheWriteTokens ?? 0, body.isError ? 1 : 0, sessionId);
+      ).run(ev.ts, body.durationMs ?? 0, body.numTurns ?? 0, body.inputTokens ?? 0, body.outputTokens ?? 0, body.cacheReadTokens ?? 0, body.cacheWriteTokens ?? 0, body.isError ? 1 : 0, sessionId);
     }
     return ev;
   }
 
   /** A Claude call outside a session (titles, commit messages, summaries, the phone). */
-  recordClaudeUsage(u: { kind: "assist" | "phone"; durationMs: number; inputTokens: number; outputTokens: number; cacheReadTokens: number; cacheWriteTokens: number; isError: boolean }) {
+  recordClaudeUsage(u: { kind: "assist" | "phone"; durationMs: number; apiCalls: number; inputTokens: number; outputTokens: number; cacheReadTokens: number; cacheWriteTokens: number; isError: boolean }) {
     this.stmt(
-      `INSERT INTO claude_usage(ts, kind, duration_ms, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, is_error) VALUES(?, ?, ?, ?, ?, ?, ?, ?)`,
-    ).run(now(), u.kind, u.durationMs, u.inputTokens, u.outputTokens, u.cacheReadTokens, u.cacheWriteTokens, u.isError ? 1 : 0);
+      `INSERT INTO claude_usage(ts, kind, duration_ms, api_calls, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, is_error) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(now(), u.kind, u.durationMs, u.apiCalls, u.inputTokens, u.outputTokens, u.cacheReadTokens, u.cacheWriteTokens, u.isError ? 1 : 0);
   }
 
   /** Claude calls that ended in [from, to), oldest first; rootIds narrows to those projects (calls outside a session drop out). */
   claudeUsageBetween(from: string, to: string, rootIds: ReadonlySet<string> | null): ClaudeUsageRow[] {
     const rows = this.stmt(
-      `SELECT ts, kind, project_id, root_id, root_name, duration_ms, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens FROM claude_usage
+      `SELECT ts, kind, project_id, root_id, root_name, duration_ms, api_calls, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens FROM claude_usage
        WHERE ts >= ? AND ts < ? ORDER BY ts`,
-    ).all(from, to) as Array<{ ts: string; kind: string; project_id: string | null; root_id: string | null; root_name: string | null; duration_ms: number; input_tokens: number; output_tokens: number; cache_read_tokens: number; cache_write_tokens: number }>;
+    ).all(from, to) as Array<{ ts: string; kind: string; project_id: string | null; root_id: string | null; root_name: string | null; duration_ms: number; api_calls: number; input_tokens: number; output_tokens: number; cache_read_tokens: number; cache_write_tokens: number }>;
     return rows
       .filter((r) => !rootIds || (r.root_id !== null && rootIds.has(r.root_id)))
       .map((r) => ({
@@ -1030,6 +1039,7 @@ export class Db {
         rootId: r.root_id,
         rootName: r.root_name,
         durationMs: r.duration_ms,
+        apiCalls: r.api_calls,
         inputTokens: r.input_tokens,
         outputTokens: r.output_tokens,
         cacheReadTokens: r.cache_read_tokens,

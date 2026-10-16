@@ -4,7 +4,11 @@ import type { ClaudeUsageRow } from "../persistence/db.js";
 /** Days in the trend of the report, the report's day included. */
 export const TREND_DAYS = 14;
 
-const tokensOf = (r: ClaudeUsageRow) => r.inputTokens + r.outputTokens + r.cacheReadTokens + r.cacheWriteTokens;
+/**
+ * Tokens Claude wrote or read for the first time. The context read from the cache again on every request
+ * is left out: it is most of the sum and says how long the context was, not how much work was done.
+ */
+const tokensOf = (r: ClaudeUsageRow) => r.inputTokens + r.outputTokens + r.cacheWriteTokens;
 const overlap = (a0: number, a1: number, b0: number, b1: number) => Math.max(0, Math.min(a1, b1) - Math.max(a0, b0));
 
 /** A call runs from ts - duration to ts. */
@@ -80,6 +84,7 @@ export function usageStats(rows: ClaudeUsageRow[], from: Date, to: Date, days: A
   const sum = (list: ClaudeUsageRow[], k: "inputTokens" | "outputTokens" | "cacheReadTokens" | "cacheWriteTokens") => list.reduce((n, r) => n + r[k], 0);
   return {
     turns: own.length,
+    apiCalls: own.reduce((n, r) => n + r.apiCalls, 0),
     workMs,
     agentWorkMs,
     activeMs,

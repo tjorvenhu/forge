@@ -1580,7 +1580,7 @@ describe("PhoneService end to end with a test PBX", () => {
         commits: [],
         open: [],
         calls: [],
-        usage: { turns: 3, workMs: 720_000, agentWorkMs: 0, activeMs: 720_000, peakParallel: 1, inputTokens: 0, outputTokens: 5000, cacheReadTokens: 0, cacheWriteTokens: 0, other: null, hours: [], projects: [], days: [] },
+        usage: { turns: 3, apiCalls: 12, workMs: 720_000, agentWorkMs: 0, activeMs: 720_000, peakParallel: 1, inputTokens: 0, outputTokens: 5000, cacheReadTokens: 0, cacheWriteTokens: 0, other: null, hours: [], projects: [], days: [] },
         gitErrors: [],
         truncated: false,
       }),

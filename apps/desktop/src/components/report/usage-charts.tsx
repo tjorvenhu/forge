@@ -29,9 +29,6 @@ export function niceTicks(max: number, kind: "duration" | "count"): number[] {
   return ticks;
 }
 
-export const tokenTotal = (u: { inputTokens: number; outputTokens: number; cacheReadTokens: number; cacheWriteTokens: number }) =>
-  u.inputTokens + u.outputTokens + u.cacheReadTokens + u.cacheWriteTokens;
-
 /** A chart with title, its table twin (toggle and right-click) and a way to copy its values. */
 function ChartCard({ title, sub, actions, rows, children, className }: { title: string; sub?: ReactNode; actions?: ReactNode; rows: Array<[string, string]>; children: ReactNode; className?: string }) {
   const [table, setTable] = useState(false);
@@ -174,15 +171,17 @@ function Kpi({ label, value, sub }: { label: string; value: string; sub: ReactNo
 }
 
 const SPLIT = [
-  { key: "out", label: "Ausgabe", className: "bg-accent-strong" },
-  { key: "in", label: "Eingabe", className: "bg-tile-blue" },
-  { key: "cache", label: "Aus dem Cache", className: "bg-subtle" },
+  { key: "out", label: "Von Claude geschrieben", className: "bg-accent-strong" },
+  { key: "in", label: "Neu gelesen", className: "bg-tile-blue" },
 ] as const;
 
-/** Working time as the hero figure, tokens with their make-up as one stacked bar. */
+/**
+ * Working time as the hero figure. Tokens: the new ones (written and read for the first time) as the big
+ * number; the context read from the cache again on every request stays apart, with its average per request.
+ */
 export function UsageHeadline({ u }: { u: DailyReportUsage }) {
-  const total = tokenTotal(u);
-  const parts = { out: u.outputTokens, in: u.inputTokens + u.cacheWriteTokens, cache: u.cacheReadTokens };
+  const parts = { out: u.outputTokens, in: u.inputTokens + u.cacheWriteTokens };
+  const fresh = parts.out + parts.in;
   return (
     <div className="grid gap-3 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]">
       <section aria-label="Arbeitszeit von Claude" className="rounded-xl border border-border bg-surface p-4">
@@ -191,34 +190,41 @@ export function UsageHeadline({ u }: { u: DailyReportUsage }) {
         <div className="mt-3 grid grid-cols-3 gap-3">
           <Kpi label="Uhrzeit aktiv" value={formatDuration(u.activeMs)} sub={u.peakParallel > 1 ? `bis zu ${u.peakParallel} gleichzeitig` : "nacheinander"} />
           <Kpi label="Agenten" value={formatDuration(u.agentWorkMs)} sub={u.workMs ? `${Math.round((u.agentWorkMs / u.workMs) * 100)} % der Zeit` : "keine"} />
-          <Kpi label="Durchläufe" value={String(u.turns)} sub={u.turns ? `je ${formatDuration(u.workMs / u.turns)}` : "keine"} />
+          <Kpi label="Durchläufe" value={String(u.turns)} sub={u.apiCalls ? `${u.apiCalls} Anfragen an Claude` : u.turns ? `je ${formatDuration(u.workMs / u.turns)}` : "keine"} />
         </div>
       </section>
       <section aria-label="Tokens" className="flex flex-col rounded-xl border border-border bg-surface p-4">
-        <div className="text-caption text-muted">Tokens</div>
-        <div className="mt-0.5 text-[48px] font-semibold leading-none tracking-tight text-fg">{formatTokens(total)}</div>
-        {total > 0 && parts.cache / total > 0.5 && (
-          <p className="mt-2 text-caption text-subtle">{Math.round((parts.cache / total) * 100)} % davon liest Claude bei jedem Schritt erneut aus dem Cache.</p>
-        )}
-        <div className="mt-3 flex h-2.5 w-full gap-[2px] overflow-hidden rounded-full bg-surface-2" role="img" aria-label={SPLIT.map((s) => `${s.label} ${formatTokens(parts[s.key])}`).join(", ")}>
-          {total > 0 &&
-            SPLIT.map((s) => (parts[s.key] > 0 ? <span key={s.key} className={cn("h-full first:rounded-l-full last:rounded-r-full", s.className)} style={{ width: `${(parts[s.key] / total) * 100}%`, minWidth: 3 }} /> : null))}
+        <div className="text-caption text-muted">Neue Tokens</div>
+        <div className="mt-0.5 text-[48px] font-semibold leading-none tracking-tight text-fg">{formatTokens(fresh)}</div>
+        <div className="mt-3 flex h-2.5 w-full gap-[2px] overflow-hidden rounded-full bg-surface-2" role="img" aria-label={SPLIT.map((x) => `${x.label} ${formatTokens(parts[x.key])}`).join(", ")}>
+          {fresh > 0 &&
+            SPLIT.map((x) => (parts[x.key] > 0 ? <span key={x.key} className={cn("h-full first:rounded-l-full last:rounded-r-full", x.className)} style={{ width: `${(parts[x.key] / fresh) * 100}%`, minWidth: 3 }} /> : null))}
         </div>
         <div className="mt-2.5 grid grid-cols-3 gap-3">
-          {SPLIT.map((s) => (
-            <div key={s.key} className="min-w-0">
-              <div className="flex items-center gap-1.5 text-caption text-muted">
-                <span className={cn("h-2 w-2 shrink-0 rounded-[2px]", s.className)} aria-hidden />
-                {s.label}
+          {SPLIT.map((x) => (
+            <div key={x.key} className="min-w-0">
+              <div className="flex items-center gap-1.5 truncate text-caption text-muted">
+                <span className={cn("h-2 w-2 shrink-0 rounded-[2px]", x.className)} aria-hidden />
+                {x.label}
               </div>
-              <div className="text-ui font-semibold text-fg">{formatTokens(parts[s.key])}</div>
-              <div className="text-caption text-subtle">{total ? `${Math.round((parts[s.key] / total) * 100)} %` : "0 %"}</div>
+              <div className="text-ui font-semibold text-fg">{formatTokens(parts[x.key])}</div>
+              <div className="text-caption text-subtle">{fresh ? `${Math.round((parts[x.key] / fresh) * 100)} %` : "0 %"}</div>
             </div>
           ))}
+          <div className="min-w-0 border-l border-border pl-3">
+            <div className="truncate text-caption text-muted">Kontext aus dem Cache</div>
+            <div className="text-ui font-semibold text-fg">{formatTokens(u.cacheReadTokens)}</div>
+            <div className="truncate text-caption text-subtle">{u.apiCalls ? `Ø ${formatTokens(u.cacheReadTokens / u.apiCalls)} je Anfrage` : "nicht in der Summe"}</div>
+          </div>
         </div>
+        {u.cacheReadTokens > 0 && (
+          <p className="mt-3 text-caption text-subtle">
+            Bei jeder Anfrage liest Claude den bisherigen Verlauf erneut aus dem Cache. Das steht rechts für sich und ist nicht in den neuen Tokens enthalten.
+          </p>
+        )}
         {u.other && u.other.calls > 0 && (
-          <p className="mt-auto pt-3 text-caption text-subtle">
-            Dazu {u.other.calls} {u.other.calls === 1 ? "Aufruf" : "Aufrufe"} außerhalb von Sessions (Titel, Commit-Nachrichten, Telefon) mit {formatTokens(tokenTotal(u.other))} Tokens.
+          <p className="mt-auto pt-2 text-caption text-subtle">
+            Dazu {u.other.calls} {u.other.calls === 1 ? "Aufruf" : "Aufrufe"} außerhalb von Sessions (Titel, Commit-Nachrichten, Telefon) mit {formatTokens(u.other.inputTokens + u.other.outputTokens + u.other.cacheWriteTokens)} neuen Tokens.
           </p>
         )}
       </section>
@@ -249,14 +255,14 @@ export function UsageCharts({ u, date, today, showProjects, onPickDay }: { u: Da
       <ChartCard
         title="Über den Tag"
         sub={peak ? `Arbeitszeit je Stunde, am meisten ${hourLabel(peak.hour)} bis ${hourLabel((peak.hour + 1) % 24)} mit ${formatDuration(peak.workMs)}` : "Arbeitszeit je Stunde"}
-        rows={u.hours.map((h) => [`${hourLabel(h.hour)} bis ${hourLabel((h.hour + 1) % 24)}`, `${formatDuration(h.workMs)}, ${h.turns} Durchl., ${formatTokens(h.tokens)} Tokens`])}
+        rows={u.hours.map((h) => [`${hourLabel(h.hour)} bis ${hourLabel((h.hour + 1) % 24)}`, `${formatDuration(h.workMs)}, ${h.turns} Durchl., ${formatTokens(h.tokens)} neue Tokens`])}
       >
         <Columns
           kind="duration"
           columns={u.hours.map((h) => ({
             key: String(h.hour),
             value: h.workMs,
-            tip: [formatDuration(h.workMs), `${hourLabel(h.hour)} bis ${hourLabel((h.hour + 1) % 24)} · ${h.turns} ${h.turns === 1 ? "Durchlauf" : "Durchläufe"} · ${formatTokens(h.tokens)} Tokens`],
+            tip: [formatDuration(h.workMs), `${hourLabel(h.hour)} bis ${hourLabel((h.hour + 1) % 24)} · ${h.turns} ${h.turns === 1 ? "Durchlauf" : "Durchläufe"} · ${formatTokens(h.tokens)} neue Tokens`],
             axis: h.hour % 3 === 0 ? String(h.hour).padStart(2, "0") : null,
           }))}
         />
@@ -264,8 +270,8 @@ export function UsageCharts({ u, date, today, showProjects, onPickDay }: { u: Da
       <div className={cn("grid gap-3", projects.length > 1 && "lg:grid-cols-2")}>
         <ChartCard
           title="Letzte 14 Tage"
-          sub={avgMs ? `Schnitt der Tage davor mit Arbeit: ${trendKind === "time" ? formatDuration(avgMs) : `${formatTokens(avgTokens)} Tokens`}. Klick öffnet den Tag.` : "Klick öffnet den Tag."}
-          rows={u.days.map((d) => [dayLabel(d.date, today), `${formatDuration(d.workMs)}, ${formatTokens(d.tokens)} Tokens`])}
+          sub={avgMs ? `Schnitt der Tage davor mit Arbeit: ${trendKind === "time" ? formatDuration(avgMs) : `${formatTokens(avgTokens)} neue Tokens`}. Klick öffnet den Tag.` : "Klick öffnet den Tag."}
+          rows={u.days.map((d) => [dayLabel(d.date, today), `${formatDuration(d.workMs)}, ${formatTokens(d.tokens)} neue Tokens`])}
           actions={
             <div className="flex items-center gap-0.5" role="group" aria-label="Messgröße">
               {(
@@ -291,21 +297,21 @@ export function UsageCharts({ u, date, today, showProjects, onPickDay }: { u: Da
                 key: d.date,
                 value,
                 emphasis: d.date === date,
-                tip: [trendKind === "time" ? formatDuration(value) : `${formatTokens(value)} Tokens`, dayLabel(d.date, today)],
+                tip: [trendKind === "time" ? formatDuration(value) : `${formatTokens(value)} neue Tokens`, dayLabel(d.date, today)],
                 axis: d.date === date || i === 0 || i % 3 === 0 ? shortDay(d.date) : null,
               };
             })}
           />
         </ChartCard>
         {projects.length > 1 && (
-          <ChartCard title="Nach Projekt" sub="Arbeitszeit von Claude, Agenten beim Hauptprojekt" rows={projects.map((p) => [p.name, `${formatDuration(p.workMs)}, ${formatTokens(p.tokens)} Tokens`])}>
+          <ChartCard title="Nach Projekt" sub="Arbeitszeit von Claude, Agenten beim Hauptprojekt" rows={projects.map((p) => [p.name, `${formatDuration(p.workMs)}, ${formatTokens(p.tokens)} neue Tokens`])}>
             <ul className="flex flex-col gap-2.5">
               {projects.slice(0, 6).map((p) => (
                 <li key={p.rootId} className="min-w-0">
                   <div className="mb-1 flex items-baseline gap-2 text-small">
                     <span className="min-w-0 flex-1 truncate text-fg">{p.name}</span>
                     <span className="shrink-0 tabular-nums text-fg">{formatDuration(p.workMs)}</span>
-                    <span className="w-24 shrink-0 text-right tabular-nums text-subtle">{formatTokens(p.tokens)} Tokens</span>
+                    <span className="w-24 shrink-0 text-right tabular-nums text-subtle">{formatTokens(p.tokens)} neu</span>
                   </div>
                   <div className="h-2 w-full rounded-r-[4px] bg-surface-2">
                     <div className="h-full rounded-r-[4px] bg-accent-strong" style={{ width: `${Math.max(1, (p.workMs / maxProject) * 100)}%` }} />

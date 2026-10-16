@@ -79,6 +79,7 @@ export function createApp(opts: { dataDir: string; write: Writer; log?: (m: stri
     db.recordClaudeUsage({
       kind: kind === "phone" ? "phone" : "assist",
       durationMs: n(m.duration_ms),
+      apiCalls: n(m.num_turns),
       inputTokens: n(usage.input_tokens),
       outputTokens: n(usage.output_tokens),
       cacheReadTokens: n(usage.cache_read_input_tokens),

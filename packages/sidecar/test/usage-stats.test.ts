@@ -8,7 +8,7 @@ const at = (d: number, h: number, m = 0) => new Date(2026, 9, d, h, m).toISOStri
 const MIN = 60_000;
 
 function row(end: string, minutes: number, o: Partial<ClaudeUsageRow> = {}): ClaudeUsageRow {
-  return { ts: end, kind: "session", projectId: "app", rootId: "app", rootName: "app", durationMs: minutes * MIN, inputTokens: 10, outputTokens: 100, cacheReadTokens: 1000, cacheWriteTokens: 0, ...o };
+  return { ts: end, kind: "session", projectId: "app", rootId: "app", rootName: "app", durationMs: minutes * MIN, apiCalls: 2, inputTokens: 10, outputTokens: 100, cacheReadTokens: 1000, cacheWriteTokens: 0, ...o };
 }
 
 describe("usageStats", () => {
@@ -24,9 +24,9 @@ describe("usageStats", () => {
       row(at(16, 15), 1, { kind: "assist", projectId: null, rootId: null, rootName: null }),
     ];
     const u = usageStats(rows, today.from, today.to, trend, true);
-    expect(u).toMatchObject({ turns: 3, workMs: 120 * MIN, agentWorkMs: 30 * MIN, activeMs: 105 * MIN, peakParallel: 2, outputTokens: 300, cacheReadTokens: 3000 });
+    expect(u).toMatchObject({ turns: 3, apiCalls: 6, workMs: 120 * MIN, agentWorkMs: 30 * MIN, activeMs: 105 * MIN, peakParallel: 2, outputTokens: 300, cacheReadTokens: 3000 });
     expect(u.other).toMatchObject({ calls: 1, outputTokens: 100 });
-    expect(u.hours[10]).toMatchObject({ workMs: 60 * MIN, turns: 2, tokens: 2220 });
+    expect(u.hours[10]).toMatchObject({ workMs: 60 * MIN, turns: 2, tokens: 220 });
     expect(u.hours[13]!.workMs).toBe(60 * MIN);
     expect(u.projects.map((p) => [p.name, p.workMs / MIN, p.turns])).toEqual([
       ["app", 60, 2],
@@ -41,7 +41,7 @@ describe("usageStats", () => {
     expect(u.turns).toBe(1);
     expect(u.days).toEqual([
       { date: "2026-10-15", workMs: 20 * MIN, tokens: 0 },
-      { date: "2026-10-16", workMs: 20 * MIN, tokens: 1110 },
+      { date: "2026-10-16", workMs: 20 * MIN, tokens: 110 },
     ]);
     // A turn without a duration still counts with its tokens.
     expect(usageStats([row(at(16, 9), 0)], today.from, today.to, trend, false)).toMatchObject({ turns: 1, workMs: 0, outputTokens: 100, other: null });

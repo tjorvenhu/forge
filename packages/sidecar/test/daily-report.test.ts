@@ -162,7 +162,7 @@ describe("DailyReportService", () => {
     expect(r.calls).toEqual([expect.objectContaining({ id: "c1", lines: 1 })]);
     expect(r.truncated).toBe(false);
     // Every turn.result is also a row of claude_usage: the agent's stays after its session is gone.
-    expect(r.usage).toMatchObject({ turns: 5, workMs: 5000, agentWorkMs: 1000 });
+    expect(r.usage).toMatchObject({ turns: 5, apiCalls: 5, workMs: 5000, agentWorkMs: 1000 });
     expect(r.usage.projects.map((p) => p.name).sort()).toEqual([app.name, other.name].sort());
     expect(r.usage.days).toHaveLength(14);
 
@@ -181,8 +181,9 @@ describe("DailyReportService", () => {
     turn(s.id);
     db.sql.exec("DROP TABLE claude_usage");
     db.sql.exec(MIGRATIONS.find((m) => m.includes("CREATE TABLE claude_usage"))!);
+    db.sql.exec(MIGRATIONS.find((m) => m.includes("ADD COLUMN api_calls"))!);
     const rows = db.claudeUsageBetween("", "￿", null);
-    expect(rows).toEqual([expect.objectContaining({ kind: "session", projectId: app.id, rootId: app.id, rootName: app.name, durationMs: 1000 })]);
+    expect(rows).toEqual([expect.objectContaining({ kind: "session", projectId: app.id, rootId: app.id, rootName: app.name, durationMs: 1000, apiCalls: 1 })]);
   });
 
   it("finds agent merges FORGE has no record of in the reflog", async () => {

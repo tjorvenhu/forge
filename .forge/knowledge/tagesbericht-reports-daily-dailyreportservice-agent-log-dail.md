@@ -1,8 +1,8 @@
 ---
 title: "Tagesbericht (reports.daily, DailyReportService, agent_log, claude_usage, Diagramme)"
-summary: "Wie der Tagesbericht seine Fakten sammelt (Sessions, Agenten, Commits, Offenes, Anrufe, Tokens und Arbeitszeit), warum es agent_log, claude_usage und den Reflog-Rückgriff gibt, wie die Diagramme gebaut sind und wo Desktop, MCP-Werkzeug und Telefon ihn anbinden."
+summary: "Wie der Tagesbericht Sessions, Agenten, Commits, Offenes, Anrufe, Tokens und Arbeitszeit sammelt, warum es agent_log, claude_usage und den Reflog-Rückgriff gibt, warum Cache-Lesen getrennt steht und wie die Diagramme gebaut sind."
 tags: ["sidecar","agenten","git","telefon","forge-tools","ui","tokens","stolperfalle"]
-updated: "2026-10-16T20:41:10.928Z"
+updated: "2026-10-16T21:00:47.103Z"
 ---
 
 Stand 2026-10-16.
@@ -16,12 +16,12 @@ Stand 2026-10-16.
 - Commits: `GitEngine.logBetween` (`--since/--until` im Format `YYYY-MM-DD HH:MM:SS +0000`, git liest ISO mit Millisekunden unzuverlässig; `-- .` begrenzt auf den Projektordner im Monorepo).
 - Auto-Commit-Kennzeichnung: Hash oder Betreff aus `automation`-Events (action commit) der Sessions des Tages.
 
-## Tokens und Arbeitszeit (claude_usage, Migration 17)
-- Warum eine eigene Tabelle: Events einer Session gehen mit ihr, die eines Agenten also beim Merge. `claude_usage` hat keine Fremdschlüssel und bleibt. Die Migration hat alle noch vorhandenen `turn.result`-Events übernommen; was von Agenten vor dem 2026-10-16 ~23 Uhr gemergt wurde, ist verloren (deshalb zeigte der Bericht für diesen Tag "Agenten 0 min").
+## Tokens und Arbeitszeit (claude_usage, Migrationen 17 und 18)
+- Warum eine eigene Tabelle: Events einer Session gehen mit ihr, die eines Agenten also beim Merge. `claude_usage` hat keine Fremdschlüssel und bleibt. Migration 17 hat alle noch vorhandenen `turn.result`-Events übernommen, Migration 18 `api_calls` (= `numTurns` des Ergebnisses) nachgetragen. Was Agenten vor dem 2026-10-16 ~23 Uhr gearbeitet haben, ist verloren (deshalb "Agenten 0 min" an diesem Tag).
 - Schreiben: `Db.appendEvent` legt bei `turn.result` eine Zeile `kind = session` an (root_id = parent_id des Projekts oder das Projekt selbst; Agent = project_id ≠ root_id). Aufrufe außerhalb von Sessions über `tokenMeter.onResult` in app.ts: Schlüssel-Präfix `complete` = assist (Titel, Commit-Nachrichten, Zusammenfassungen), `phone` = phone. Neue SDK-Abfragen mit Tokens müssen deshalb über `meterKey(...)` in den TokenMeter, sonst fehlen sie auch hier.
-- `turn.result` hat seit 2026-10-16 `cacheWriteTokens` (optional, alte Events ohne).
+- Das SDK meldet `usage` im `result` pro Durchlauf (nicht kumuliert über die Session), summiert über alle API-Anfragen des Durchlaufs. `turn.result` hat seit 2026-10-16 `cacheWriteTokens` (optional, alte Events ohne: dort fehlt der Cache-Aufbau in "neu gelesen").
+- **Stolperfalle Cache-Lesen:** `cache_read_input_tokens` ist bei jeder Anfrage der ganze bisherige Kontext. Ein Durchlauf mit 87 Anfragen bei ~184 Tsd. Kontext hat 16 Mio. Cache-Lesen. Über einen Tag kamen so 72 Mio. zusammen, 99 % der Summe; der Nutzer hielt das für einen Fehler. Deshalb: "Tokens" in Bericht, Stunden, Tagen und Projekten = neue Tokens (Eingabe + Ausgabe + Cache schreiben, `tokensOf` in usage-stats.ts). Cache-Lesen steht getrennt als "Kontext aus dem Cache" mit Ø je Anfrage (`cacheReadTokens / apiCalls`).
 - Rechnung `reports/usage-stats.ts` (`usageStats`, rein, getestet in `test/usage-stats.test.ts`): Ein Aufruf läuft von `ts - duration_ms` bis `ts`. Arbeitszeit wird auf den Tag bzw. die Stunde zugeschnitten (ein Durchlauf über Mitternacht zählt auf beiden Tagen), Tokens zählen am Tag/zur Stunde des Endes. `workMs` = Summe (parallele zählen doppelt), `activeMs` = Uhrzeit mit mindestens einem laufenden Durchlauf, `peakParallel` per Sweep. `days` = 14 Tage bis zum Berichtstag; geladen wird ab einem Tag davor (Durchläufe über Mitternacht).
-- Tokens gesamt = Eingabe + Ausgabe + Cache lesen + Cache schreiben. Cache-Lesen ist meist über 90 %; die UI sagt das dazu, damit die große Zahl nicht erschreckt.
 - `formatDuration` / `formatTokens` liegen in `packages/protocol/src/format.ts` (Desktop und Sidecar/Telefon gleich).
 
 ## Warum agent_log (Migration 15)
@@ -32,10 +32,10 @@ Nach Zusammenführen/Verwerfen sind Worktree-Projekt und Sessions des Agenten ge
 Merges eines FORGE-Builds vor agent_log (oder von Hand im Terminal) stehen nicht in agent_log. Rückgriff: `GitEngine.mergesBetween(cwd, from, to, "agent/")` liest den Reflog von HEAD (`git log -g --date=unix --format=%H%x1f%gd%x1f%gs`; `%gd` ist dann `HEAD@{<unix>}`) und nimmt Einträge `merge refs/heads/agent/<x>: Fast-forward` (FORGE merged mit `merge --ff-only refs/heads/<branch>`). Commits des Merges = `<vorheriger Reflog-Eintrag>..<hash>`; Titel = Betreff des neuesten Commits (ohne "Restliche Änderungen"). Ein Branch, den agent_log oder ein vorhandener Worktree schon nennt, kommt nicht doppelt (Schlüssel rootId + branch); agent_log-Zuordnungen von Commits überschreiben die aus dem Reflog. Reflog-Agenten haben `worktreeId` `reflog:<rootId>:<branch>`, `exists: false`. Grenze: Der Reflog verfällt (gc, Standard 90 Tage) und gilt nur für den Ordner, in dem gemergt wurde.
 
 ## Anbindung
-- MCP-Werkzeug `daily_report` (autoAllow, in `common` von `forgeSessionTools`), verdrahtet über `SessionService.useDailyReport` in app.ts. `reportText` enthält Arbeitszeit, Tokens und Projekte, damit Telefon und Claude sie auch haben.
+- MCP-Werkzeug `daily_report` (autoAllow, in `common` von `forgeSessionTools`), verdrahtet über `SessionService.useDailyReport` in app.ts. `reportText` enthält Arbeitszeit, Anfragen, neue Tokens, Cache-Kontext und Projekte, damit Telefon und Claude sie auch haben.
 - Zusammenfassung: `ClaudeAssist.summarizeDailyReport` mit `runtime.complete` (ASSIST_MODEL, zählt im TokenMeter), Bericht vorher durch `redactText`.
-- Desktop: Ansicht `view: "report"` (`views/ReportView.tsx`), Statistik in `components/report/usage-charts.tsx`: `UsageHeadline` (Arbeitszeit und Tokens als große Zahlen, Token-Anteile als gestapelter Balken), `UsageCharts` (Stunden des Tages, 14 Tage mit hervorgehobenem Berichtstag und Umschalter Zeit/Tokens, Klick auf eine Säule öffnet den Tag, Projekte als waagrechte Balken). Jede Karte hat eine Tabellenansicht (Knopf und Rechtsklick) und "Werte kopieren". Andere Tage/Projekte halten den alten Bericht gedimmt (`keepPreviousData`) statt Skeleton.
-- Diagramme ohne Bibliothek, als HTML-Säulen (bis 24px breit, 2px Abstand, 4px runde Oberkante, Haarlinien-Gitter). Farben: `accent-strong` für Werte, `border-strong` für die übrigen Tage, `tile-blue` für Eingabe, `subtle` für Cache. `--color-accent` (#f97316) liegt für dunkle Flächen über dem Helligkeitsband des dataviz-Validators, `accent-strong` (#ea580c) + `tile-blue` (#4f86f0) bestehen gegen `#1a1e25`.
+- Desktop: Ansicht `view: "report"` (`views/ReportView.tsx`), Statistik in `components/report/usage-charts.tsx`: `UsageHeadline` (Arbeitszeit und neue Tokens als große Zahlen, Balken "von Claude geschrieben" / "neu gelesen", daneben getrennt "Kontext aus dem Cache"), `UsageCharts` (Stunden des Tages, 14 Tage mit hervorgehobenem Berichtstag und Umschalter Zeit/Tokens, Klick auf eine Säule öffnet den Tag, Projekte als waagrechte Balken). Jede Karte hat eine Tabellenansicht (Knopf und Rechtsklick) und "Werte kopieren". Andere Tage/Projekte halten den alten Bericht gedimmt (`keepPreviousData`) statt Skeleton.
+- Diagramme ohne Bibliothek, als HTML-Säulen (bis 24px breit, 2px Abstand, 4px runde Oberkante, Haarlinien-Gitter). Farben: `accent-strong` für Werte, `border-strong` für die übrigen Tage, `tile-blue` für "neu gelesen". `--color-accent` (#f97316) liegt für dunkle Flächen über dem Helligkeitsband des dataviz-Validators, `accent-strong` (#ea580c) + `tile-blue` (#4f86f0) bestehen gegen `#1a1e25`.
 - Befehlspalette: `report`, `report-project`. Rechtsklick: Projektkarte, Projektzeile der Seitenleiste, jede Zeile im Bericht, jede Diagrammkarte. Server-Events `session.done` und `agent.autoMerge` invalidieren `["report"]`, heute zusätzlich alle 60 s.
 
 ## Vorschau im Browser

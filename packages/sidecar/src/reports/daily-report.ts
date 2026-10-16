@@ -463,11 +463,12 @@ export function reportText(r: DailyReport, o: ReportTextOptions = {}): string {
 
   const u = r.usage;
   if (u.turns || u.workMs) {
-    const total = u.inputTokens + u.outputTokens + u.cacheReadTokens + u.cacheWriteTokens;
+    const fresh = u.inputTokens + u.outputTokens + u.cacheWriteTokens;
+    const perRequest = u.apiCalls ? `, im Schnitt ${formatTokens(u.cacheReadTokens / u.apiCalls)} je Anfrage` : "";
     lines.push(
       "",
-      `Claude hat ${formatDuration(u.workMs)} gearbeitet${u.agentWorkMs ? `, davon ${formatDuration(u.agentWorkMs)} in parallelen Agenten` : ""}, verteilt auf ${formatDuration(u.activeMs)} Uhrzeit${u.peakParallel > 1 ? `, bis zu ${u.peakParallel} gleichzeitig` : ""}.`,
-      `Tokens: ${formatTokens(total)} (${formatTokens(u.outputTokens)} Ausgabe, ${formatTokens(u.inputTokens + u.cacheWriteTokens)} Eingabe, ${formatTokens(u.cacheReadTokens)} aus dem Cache gelesen).`,
+      `Claude hat ${formatDuration(u.workMs)} gearbeitet${u.agentWorkMs ? `, davon ${formatDuration(u.agentWorkMs)} in parallelen Agenten` : ""}, verteilt auf ${formatDuration(u.activeMs)} Uhrzeit${u.peakParallel > 1 ? `, bis zu ${u.peakParallel} gleichzeitig` : ""}${u.apiCalls ? `, ${u.apiCalls} Anfragen an Claude` : ""}.`,
+      `Neue Tokens: ${formatTokens(fresh)} (${formatTokens(u.outputTokens)} von Claude geschrieben, ${formatTokens(u.inputTokens + u.cacheWriteTokens)} neu gelesen). Dazu ${formatTokens(u.cacheReadTokens)} Tokens Kontext aus dem Cache: Claude liest bei jeder Anfrage den bisherigen Verlauf erneut${perRequest}.`,
     );
     const top = u.projects.slice(0, 5).map((p) => `${p.name} ${formatDuration(p.workMs)}`);
     if (!r.projectId && top.length > 1) lines.push(`Nach Projekt: ${top.join(", ")}.`);

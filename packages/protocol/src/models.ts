@@ -1429,11 +1429,14 @@ const UsageTokens = {
 };
 
 /**
- * Tokens and working time of Claude that day. Working time is the sum of the calls' durations (parallel
+ * Tokens and working time of Claude that day. `tokens` in hours, projects and days are the new ones
+ * (input, output, cache write), without the context read from the cache again. Working time is the sum of the calls' durations (parallel
  * calls count twice); activeMs is the clock time in which at least one ran.
  */
 export const DailyReportUsage = z.object({
   turns: z.number(),
+  /** requests to the API in these turns; each reads the context from the cache again */
+  apiCalls: z.number(),
   workMs: z.number(),
   /** of workMs: turns of parallel agents */
   agentWorkMs: z.number(),
