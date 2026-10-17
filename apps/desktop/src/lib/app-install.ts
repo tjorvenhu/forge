@@ -1,9 +1,10 @@
 import { create } from "zustand";
 import { invoke } from "@tauri-apps/api/core";
 import type { QueryClient } from "@tanstack/react-query";
-import type { AppUpdateState, Session } from "@forge/protocol";
+import type { AppInstallState, AppUpdateState, Session } from "@forge/protocol";
 import { toast } from "@/stores/toast";
 import { openChatWindow, useChatWindows } from "./chat-windows";
+import { pickInstallerFile } from "./native";
 import { call, keys } from "./queries";
 import { errorMessage } from "./rpc";
 import { isBusy } from "./working";
@@ -33,28 +34,96 @@ export function sessionsNote(sessions: number, working: number): string | null {
  * Downloads the update if needed, tells the sidecar to note the open sessions, and lets the desktop
  * shell install it. FORGE ends and starts again on its own; the sessions continue after that.
  */
-export async function installUpdate(qc: QueryClient) {
+export function installUpdate(qc: QueryClient) {
+  return runInstaller(
+    async () => {
+      let s = qc.getQueryData<AppUpdateState>(keys.appUpdate);
+      if (s?.phase !== "ready") {
+        s = await call("app.downloadUpdate", {});
+        qc.setQueryData(keys.appUpdate, s);
+      }
+      if (s.phase !== "ready" || !s.installerPath) throw new Error(s.message ?? "Der Installer ist nicht bereit.");
+      return s.installerPath;
+    },
+    { busy: "Update wird installiert", failed: "Update nicht installiert" },
+  );
+}
+
+/**
+ * Installs FORGE fully with the full installer for the runtime this version needs (an incomplete
+ * installation). Same way as an update: download, note the sessions, the shell runs the installer.
+ */
+export function installFull(qc: QueryClient) {
+  return runInstaller(
+    async () => {
+      let s = qc.getQueryData<AppInstallState>(keys.appInstall);
+      if (s?.phase !== "ready") {
+        if (!s?.installer) {
+          s = await call("app.checkInstall", {});
+          qc.setQueryData(keys.appInstall, s);
+          if (s.complete) throw new Error("FORGE ist bereits vollständig installiert.");
+          if (!s.installer) throw new Error(s.message ?? "Es gibt keinen passenden Installer.");
+        }
+        if (s.phase !== "ready") {
+          s = await call("app.downloadFullInstaller", {});
+          qc.setQueryData(keys.appInstall, s);
+        }
+      }
+      if (s.phase !== "ready" || !s.installerPath) throw new Error(s.message ?? "Der Installer ist nicht bereit.");
+      return s.installerPath;
+    },
+    { busy: "FORGE wird vollständig installiert", failed: "Installation nicht gestartet" },
+  );
+}
+
+/** "Git fehlt, GitHub CLI fehlt." */
+export function problemText(s: AppInstallState): string {
+  return `${s.problems.map((p) => p.label).join(", ")}.`;
+}
+
+/** Checks the installation again (and looks for the installer), with a toast for the outcome. */
+export async function checkInstall(qc: QueryClient) {
+  try {
+    const next = await call("app.checkInstall", {});
+    qc.setQueryData(keys.appInstall, next);
+    if (!next.checkable) toast.info("Nichts zu prüfen", "Im Entwicklungsmodus gibt es keine Installation.");
+    else if (next.complete) toast.success("FORGE ist vollständig installiert", "Alle mitgelieferten Programme passen zu dieser Version.");
+    else toast.info("Installation unvollständig", problemText(next));
+  } catch (e) {
+    toast.error("Prüfung fehlgeschlagen", errorMessage(e));
+  }
+}
+
+/** A setup.exe the user downloaded by hand: checked by the sidecar, then installed like the found one. */
+export async function installFromFile(qc: QueryClient) {
+  const path = await pickInstallerFile();
+  if (!path) return;
+  try {
+    qc.setQueryData(keys.appInstall, await call("app.useLocalInstaller", { path }));
+  } catch (e) {
+    toast.error("Installer nicht übernommen", errorMessage(e));
+    return;
+  }
+  await installFull(qc);
+}
+
+async function runInstaller(fetchInstaller: () => Promise<string>, text: { busy: string; failed: string }) {
   if (useInstall.getState().installing) return;
   useInstall.setState({ installing: true });
   let prepared = false;
   try {
-    let s = qc.getQueryData<AppUpdateState>(keys.appUpdate);
-    if (s?.phase !== "ready") {
-      s = await call("app.downloadUpdate", {});
-      qc.setQueryData(keys.appUpdate, s);
-    }
-    if (s.phase !== "ready" || !s.installerPath) throw new Error(s.message ?? "Der Installer ist nicht bereit.");
+    const path = await fetchInstaller();
     const { sessions, working } = await call("app.prepareInstall", { cancel: false });
     prepared = true;
     rememberChatWindows();
-    toast.info("Update wird installiert", ["FORGE schließt sich kurz und startet danach von selbst neu.", sessionsNote(sessions, working)].filter(Boolean).join(" "));
-    await invoke("install_update", { path: s.installerPath });
+    toast.info(text.busy, ["FORGE schließt sich kurz und startet danach von selbst neu.", sessionsNote(sessions, working)].filter(Boolean).join(" "));
+    await invoke("install_update", { path });
   } catch (e) {
     if (prepared) {
       localStorage.removeItem(REOPEN_KEY);
       void call("app.prepareInstall", { cancel: true }).catch(() => {});
     }
-    toast.error("Update nicht installiert", errorMessage(e));
+    toast.error(text.failed, errorMessage(e));
     useInstall.setState({ installing: false });
   }
 }

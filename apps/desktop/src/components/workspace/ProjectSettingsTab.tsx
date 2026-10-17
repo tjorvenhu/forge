@@ -25,7 +25,7 @@ import { effortOptions, fromChoice, modelOptions, toChoice } from "@/components/
  */
 export const TAG_INFO: ReadonlyArray<{ tag: string; label: string; info: string; rootOnly?: boolean; git?: boolean }> = [
   { tag: "plan-first", label: "Erst planen", info: "Neue Sessions starten im Plan-Modus." },
-  { tag: "auto-test", label: "Automatisch testen", info: "Nach jedem Durchlauf läuft der Testbefehl, das Ergebnis steht im Chat." },
+  { tag: "auto-test", label: "Automatisch testen", info: "Nach einem Durchlauf läuft der Testbefehl, wenn sich Code oder Konfiguration geändert hat. Ohne solche Änderung oder wenn Claude die Tests schon erfolgreich ausgeführt hat, entfällt er. Der Grund steht dann im Chat." },
   { tag: "auto-commit", label: "Automatisch committen", info: "Nach einem Durchlauf mit grünen Tests werden nur die dabei geänderten Dateien committet (KI-Nachricht).", git: true },
   { tag: "auto-push", label: "Automatisch pushen", info: "Nach Auto-Commit wird gepusht, nie auf main/master und nie mit Force.", git: true },
   {

@@ -188,8 +188,10 @@ describe("WorktreeSetup", () => {
 
   it("ends a running install when the worktree goes, so the folder can be deleted", async () => {
     let killed = false;
+    let installing = false;
     const shell: ShellRunner = (_c, _cwd, _env, onKill) =>
       new Promise((resolve) => {
+        installing = true;
         onKill(() => {
           killed = true;
           resolve({ code: null, output: "" });
@@ -203,7 +205,9 @@ describe("WorktreeSetup", () => {
     });
     const parent = await projects.import(repo);
     const wt = await worktrees.create(parent, "agent/weg");
-    await new Promise((r) => setTimeout(r, 300));
+    // Under load the preparation may still be copying configuration; wait for the install itself.
+    const deadline = Date.now() + 20_000;
+    while (!installing && Date.now() < deadline) await new Promise((r) => setTimeout(r, 50));
     expect(s.state(wt.id)?.status).toBe("running");
     await worktrees.remove(wt, true, { deleteBranch: true });
     expect(killed).toBe(true);

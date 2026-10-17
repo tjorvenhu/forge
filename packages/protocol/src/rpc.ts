@@ -32,6 +32,7 @@ import {
   PhoneEngine,
   PhoneNumberEntry,
   AppUpdateState,
+  AppInstallState,
   AppChangelog,
   BackupInfo,
   BackupPart,
@@ -507,6 +508,16 @@ export const methods = {
   "app.installUpdate": { params: empty, result: AppUpdateState },
   /** state of Claude's summary of the offered release; starts it and returns at once (poll while "writing") */
   "app.changelog": { params: empty, result: AppChangelog.nullable() },
+  /** whether the bundled runtime is complete, and the state of the repair (full installer) */
+  "app.installState": { params: empty, result: AppInstallState },
+  /** checks the runtime again and looks for the matching full installer */
+  "app.checkInstall": { params: empty, result: AppInstallState },
+  /** downloads and checks the full installer that was found (or copies the local one into the update folder) */
+  "app.downloadFullInstaller": { params: empty, result: AppInstallState },
+  /** a setup.exe the user picked: checked and copied into the update folder, then ready to run */
+  "app.useLocalInstaller": { params: z.object({ path: z.string().min(1).max(4096) }), result: AppInstallState },
+  /** asks the main window to install FORGE fully (event install.repair); for the phone */
+  "app.repairInstall": { params: empty, result: AppInstallState },
 
   "backup.list": { params: empty, result: z.array(BackupInfo) },
   "backup.create": { params: empty, result: BackupInfo },
@@ -758,6 +769,9 @@ export type ServerEvent =
   | { event: "update.updated"; payload: AppUpdateState }
   /** the main window installs the offered update (asked for on the phone) */
   | { event: "update.install"; payload: Record<string, never> }
+  | { event: "install.updated"; payload: AppInstallState }
+  /** the main window installs FORGE fully with the full installer (asked for on the phone) */
+  | { event: "install.repair"; payload: Record<string, never> }
   | { event: "sidecar.ready"; payload: { version: string } }
   /** dictation: the text of a running recording so far (finished utterances plus the current one) */
   | { event: "voice.transcript"; payload: { id: string; text: string } }

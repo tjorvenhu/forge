@@ -181,6 +181,19 @@ describe("search focus and compaction", () => {
     expect(items[0]).toMatchObject({ kind: "notice", tone: "info", card: { title: "Wartet aufs Zusammenführen", icon: "merge", detail: expect.stringMatching(/^In main arbeitet/) } });
   });
 
+  it("says why auto-test was left out: calm when nothing changed, a failure stays red", () => {
+    seq = 0;
+    const items = buildChatItems(
+      [
+        ev({ type: "automation", action: "skip", ok: true, message: "Tests übersprungen: Der Durchlauf hat keine Dateien geändert.", hash: null, files: [] }),
+        ev({ type: "automation", action: "skip", ok: false, message: "Tests nicht erneut ausgeführt: Seit dem fehlgeschlagenen Lauf wurden keine Dateien geändert.", hash: null, files: [] }),
+      ],
+      {},
+    );
+    expect(items[0]).toMatchObject({ kind: "notice", tone: "info", card: { title: "Tests übersprungen", detail: "Der Durchlauf hat keine Dateien geändert.", icon: "skip" } });
+    expect(items[1]).toMatchObject({ kind: "notice", tone: "danger", card: { title: "Tests nicht erneut ausgeführt", detail: expect.stringMatching(/^Seit dem fehlgeschlagenen Lauf/) } });
+  });
+
   it("summarises questions and plans in cards and the activity feed", () => {
     expect(toolSummary("AskUserQuestion", { questions: [{ question: "Welche Datenbank?" }] })).toBe("Welche Datenbank?");
     expect(toolSummary("ExitPlanMode", { plan: "x" })).toBe("Plan zur Freigabe");

@@ -1,6 +1,7 @@
 //! Installs a downloaded FORGE update. Two kinds, both only from the update folder of the sidecar:
 //!
-//! - `*-setup.exe`: the full NSIS installer (with node, git and gh). Run with `/P /UPDATE /R`.
+//! - `*-setup.exe`: the full NSIS installer (with node, git and gh). Run with `/P /UPDATE /R /D=<folder>`:
+//!   without questions, into the folder FORGE runs from, and FORGE starts again afterwards.
 //! - `*_update_<runtime>.zip`: only `forge-desktop.exe` and the sidecar, a few MB. The bundled
 //!   runtime stays; the sidecar only offers it when the installed runtime has the same key. A
 //!   small PowerShell script swaps the files once FORGE has exited (a running exe cannot be
@@ -13,11 +14,41 @@ use std::process::Command;
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 const CREATE_BREAKAWAY_FROM_JOB: u32 = 0x0100_0000;
 
+/// Runtime key (node, git, gh …) the release build was made for, from scripts/prepare-runtime.mjs via
+/// release.yml. The sidecar compares it with the installed runtime (FullInstallService).
+pub fn expected_runtime() -> Option<&'static str> {
+    option_env!("FORGE_RUNTIME_KEY").map(str::trim).filter(|k| !k.is_empty())
+}
+
+/// What a release build misses in its runtime folder, for the start screen when the sidecar cannot
+/// run at all. The sidecar checks the versions too (packages/sidecar/src/update/full-install.ts).
+pub fn runtime_gaps(runtime: Option<&Path>) -> Vec<&'static str> {
+    const PARTS: [(&str, &str); 6] = [
+        ("node/node.exe", "Node.js"),
+        ("git/cmd/git.exe", "Git"),
+        ("gh/bin/gh.exe", "GitHub CLI"),
+        ("python/python.exe", "Python"),
+        ("sidecar/sidecar.mjs", "Hintergrunddienst"),
+        ("VERSIONS.json", "Versionsliste"),
+    ];
+    match runtime {
+        None => PARTS.iter().map(|(_, label)| *label).collect(),
+        Some(dir) => PARTS.iter().filter(|(rel, _)| !dir.join(rel).exists()).map(|(_, label)| *label).collect(),
+    }
+}
+
+/// Arguments for Tauri's NSIS installer. `/D=` must come last and unquoted, even with spaces:
+/// NSIS takes the rest of the command line as the folder.
+fn installer_args(install_dir: Option<&Path>) -> (Vec<&'static str>, Option<String>) {
+    let dir = install_dir.map(|d| d.to_string_lossy().into_owned()).filter(|d| !d.is_empty() && !d.contains('"'));
+    (vec!["/P", "/UPDATE", "/R"], dir.map(|d| format!("/D={d}")))
+}
+
 /// The files a small update may contain, relative to the installation folder.
 const PATCH_FILES: [&str; 3] = ["forge-desktop.exe", "runtime/sidecar/sidecar.mjs", "update.json"];
 
 pub enum Plan {
-    Installer(PathBuf),
+    Installer { file: PathBuf, install_dir: Option<PathBuf> },
     Patch { staged: PathBuf, script: PathBuf, install_dir: PathBuf, version: String },
 }
 
@@ -31,7 +62,9 @@ pub fn prepare(path: &str) -> Result<Plan, String> {
     }
     let name = file.file_name().and_then(|n| n.to_str()).unwrap_or_default().to_ascii_lowercase();
     if name.ends_with("-setup.exe") {
-        return Ok(Plan::Installer(file));
+        // A development build is no installation: there the installer keeps its own folder.
+        let install_dir = if cfg!(debug_assertions) { None } else { std::env::current_exe().ok().and_then(|e| e.parent().map(Path::to_path_buf)) };
+        return Ok(Plan::Installer { file, install_dir });
     }
     if !(name.ends_with(".zip") && name.contains("_update_")) {
         return Err("Ungültiges Update".into());
@@ -114,9 +147,16 @@ fn read_version(file: &Path) -> Result<String, String> {
 /// Starts what was prepared. The caller ends FORGE right after.
 pub fn launch(plan: Plan) -> Result<(), String> {
     match plan {
-        Plan::Installer(file) => {
-            // `/P` installs without questions, `/UPDATE` keeps the settings, `/R` starts FORGE again.
-            Command::new(&file).args(["/P", "/UPDATE", "/R"]).spawn().map_err(|e| format!("Installer startet nicht: {e}"))?;
+        Plan::Installer { file, install_dir } => {
+            // `/P` installs without questions, `/UPDATE` keeps the settings, `/R` starts FORGE again,
+            // `/D=` keeps the folder (also one an update zip was unpacked to instead of installing).
+            let (args, dir) = installer_args(install_dir.as_deref());
+            let mut cmd = Command::new(&file);
+            cmd.args(args);
+            if let Some(d) = dir {
+                cmd.raw_arg(d);
+            }
+            cmd.spawn().map_err(|e| format!("Installer startet nicht: {e}"))?;
         }
         Plan::Patch { staged, script, install_dir, version } => {
             let mut cmd = Command::new("powershell.exe");
@@ -185,3 +225,35 @@ if ($ok) {
 Start-Process -FilePath (Join-Path $Dst 'forge-desktop.exe')
 Remove-Item -Recurse -Force -LiteralPath $Src -ErrorAction SilentlyContinue
 "#;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn installer_keeps_the_folder_unquoted_and_last() {
+        let (args, dir) = installer_args(Some(Path::new(r"C:\Users\Max Muster\AppData\Local\FORGE")));
+        assert_eq!(args, ["/P", "/UPDATE", "/R"]);
+        assert_eq!(dir.as_deref(), Some(r"/D=C:\Users\Max Muster\AppData\Local\FORGE"));
+        assert_eq!(installer_args(None).1, None);
+        assert_eq!(installer_args(Some(Path::new(r#"C:\a"b"#))).1, None);
+    }
+
+    #[test]
+    fn names_what_the_runtime_misses() {
+        let dir = std::env::temp_dir().join(format!("forge-gaps-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("sidecar")).unwrap();
+        std::fs::write(dir.join("sidecar").join("sidecar.mjs"), "").unwrap();
+        // An unpacked update zip: only the sidecar.
+        assert_eq!(runtime_gaps(Some(&dir)), ["Node.js", "Git", "GitHub CLI", "Python", "Versionsliste"]);
+        for rel in ["node/node.exe", "git/cmd/git.exe", "gh/bin/gh.exe", "python/python.exe", "VERSIONS.json"] {
+            let p = dir.join(rel);
+            std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+            std::fs::write(p, "{}").unwrap();
+        }
+        assert!(runtime_gaps(Some(&dir)).is_empty());
+        assert_eq!(runtime_gaps(None).len(), 6);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+}

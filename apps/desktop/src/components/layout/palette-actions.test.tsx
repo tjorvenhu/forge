@@ -39,6 +39,7 @@ const session = { id: "s1", projectId: "p1", title: "Test", model: null, effort:
 function fullContext(): ActionContext {
   const qc = new QueryClient();
   qc.setQueryData(keys.appUpdate, { currentVersion: "0.1.1", phase: "ready", latest: { version: "0.1.2", tag: "v0.1.2", notes: "", since: "0.1.1", publishedAt: null, size: null, kind: "patch", via: null }, autoInstall: false, installerPath: "C:/tmp/u.zip", installable: true, checkedAt: null, message: null });
+  qc.setQueryData(keys.appInstall, { checkable: true, complete: false, problems: [{ part: "gh", kind: "missing", label: "GitHub CLI fehlt" }], expectedRuntime: null, phase: "found", installer: { version: "0.1.1", tag: "v0.1.1", name: "FORGE_0.1.1_x64-setup.exe", size: null, source: "github", then: null }, received: null, installerPath: null, canDownload: true, checkedAt: null, message: null });
   return {
     qc,
     project,
@@ -130,7 +131,7 @@ describe("command palette covers all of FORGE", () => {
   });
 
   it("offers the actions of the open project and session", () => {
-    for (const id of ["session-delete", "session-summary", "session-fork", "session-close", "session-mode", "session-model-opus", "git-commit", "git-push", "git-pull", "git-fetch", "git-pr", "git-new-branch", "agent-new", "remote", "phone", "phone-test", "backup", "update-check", "update-install", "testdb-start", "dev-start", "project-git"]) {
+    for (const id of ["session-delete", "session-summary", "session-fork", "session-close", "session-mode", "session-model-opus", "git-commit", "git-push", "git-pull", "git-fetch", "git-pr", "git-new-branch", "agent-new", "remote", "phone", "phone-test", "backup", "update-check", "update-install", "install-check", "install-full", "install-file", "testdb-start", "dev-start", "project-git"]) {
       expect(ids, id).toContain(id);
     }
   });

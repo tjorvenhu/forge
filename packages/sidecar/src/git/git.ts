@@ -1,4 +1,6 @@
-import { readFile, stat } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import { copyFile, readFile, rm, stat } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import {
   ForgeError,
@@ -103,6 +105,35 @@ export class GitEngine {
     const out = await this.ok(cwd, ["status", "--porcelain=v2", "--branch", "-z", "--untracked-files=all", "--", "."]);
     const parsed = scopeToPrefix(parseStatusV2(out), prefix, true);
     return { summary: summarize(parsed, await this.remoteUrl(cwd)), files: parsed.files };
+  }
+
+  /**
+   * Tree id of the project folder as it is on disk (tracked and untracked files, .gitignore applies),
+   * written through a copy of the index: the real index and Claude's own git commands stay untouched.
+   * Two of these tell which files changed in between, also when the changes were committed meanwhile.
+   */
+  async worktreeTree(cwd: string): Promise<string> {
+    const index = path.resolve(cwd, (await this.ok(cwd, ["rev-parse", "--git-path", "index"])).trim());
+    const tmp = path.join(os.tmpdir(), `forge-index-${randomUUID()}`);
+    try {
+      // The copy keeps the stat data, so only files touched since the last git command are hashed again.
+      await copyFile(index, tmp).catch(() => {});
+      const env = { GIT_INDEX_FILE: tmp };
+      // --ignore-errors: a file locked by a running program must not cost the whole snapshot.
+      await this.exec(cwd, ["add", "-A", "--ignore-errors", "--", "."], undefined, 60_000, env);
+      const tree = (await this.exec(cwd, ["write-tree"], undefined, 60_000, env)).stdout.trim();
+      if (!/^[0-9a-f]{40,64}$/.test(tree)) throw new ForgeError("GIT_FAILED", "Stand des Projektordners nicht lesbar.");
+      return tree;
+    } finally {
+      await rm(tmp, { force: true }).catch(() => {});
+    }
+  }
+
+  /** Files of the project folder that differ between two trees of worktreeTree, relative to it. */
+  async treeChanges(cwd: string, from: string, to: string): Promise<string[]> {
+    if (from === to) return [];
+    const out = await this.ok(cwd, ["diff", "--name-only", "--no-renames", "--relative", "-z", from, to]);
+    return out.split("\0").filter(Boolean);
   }
 
   /** Lightweight summary for project cards; never throws for non-repos. */

@@ -57,6 +57,7 @@ export const keys = {
   phoneConfig: ["phoneConfig"] as const,
   phoneCalls: ["phoneCalls"] as const,
   appUpdate: ["appUpdate"] as const,
+  appInstall: ["appInstall"] as const,
   appChangelog: (tag: string) => ["appChangelog", tag] as const,
   backups: ["backups"] as const,
   sync: ["sync"] as const,
@@ -165,6 +166,9 @@ export const useGitStatus = (projectId: string | null, enabled = true) =>
 
 /** FORGE updates; changes arrive as update.updated. */
 export const useAppUpdate = () => useQuery({ queryKey: keys.appUpdate, queryFn: () => call("app.updateState", {}), staleTime: Infinity });
+
+/** Whether the installation is complete (bundled runtime) and the repair; changes arrive as install.updated. */
+export const useAppInstall = () => useQuery({ queryKey: keys.appInstall, queryFn: () => call("app.installState", {}), staleTime: Infinity });
 
 /** Claude's changelog of the offered release; asked again every 1.5 s while Claude still writes it. */
 export const useAppChangelog = (tag: string | null) =>

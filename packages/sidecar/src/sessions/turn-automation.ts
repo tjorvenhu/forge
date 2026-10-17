@@ -1,12 +1,14 @@
 import { createHash } from "node:crypto";
+import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import type { Project, ServerEvent, SessionEventBody } from "@forge/protocol";
+import type { GitStatus, Project, ServerEvent, SessionEventBody } from "@forge/protocol";
 import { sessionEnv } from "../claude/environment.js";
 import type { Db } from "../persistence/db.js";
 import { isArtifactPath, isSensitiveFile, type GitEngine } from "../git/git.js";
 import { runUserCommand } from "../util/shell.js";
 import type { ProjectManager } from "../projects/project-manager.js";
+import { analyzeTurn, equivalentTestCommands, isTestRelevant, scopedTestCommand } from "./test-gate.js";
 
 export interface AutomationHost {
   record(sessionId: string, body: SessionEventBody): void;
@@ -19,6 +21,18 @@ export interface AutomationHost {
   /** a CLI turn started (also a message joining the running turn) */
   turnStarted?(sessionId: string): void;
 }
+
+/** The last state of a project folder auto-test looked at. */
+interface TestedState {
+  /** worktreeTree of the folder then; null without git */
+  tree: string | null;
+  command: string;
+  ok: boolean;
+  /** the tests really ran on it (by FORGE or by Claude), not just a start without changes */
+  ran: boolean;
+}
+
+type TestPlan = { skip: string; ok: boolean } | { skip: null; command: string; remember: (ok: boolean) => void };
 
 /** A turn FORGE holds back while the previous turn's tests and auto-commit run. */
 export interface HeldTurn {
@@ -46,6 +60,14 @@ export class TurnAutomation {
   private notes = new Map<string, string[]>();
   /** Project changes a running session must know about (git switched on or off), for its next message. */
   private hints = new Map<string, string>();
+  /** Failed auto-test runs, for Claude's next message: Claude leaves the full suite to FORGE and must learn its result. */
+  private testNotes = new Map<string, string>();
+  /** per project folder: what auto-test last saw, so an unchanged folder is not tested again */
+  private tested = new Map<string, TestedState>();
+  /** per session: tool events after this seq are not yet looked at by auto-test */
+  private toolSeq = new Map<string, number>();
+  /** per session: where Claude's shell is (a cd persists between its commands) */
+  private shellDirs = new Map<string, string>();
 
   constructor(
     private readonly db: Db,
@@ -66,6 +88,8 @@ export class TurnAutomation {
 
   /** Callers often do not await this; tracking it lets drain() and shutdown wait for the git process. */
   captureBaseline(sessionId: string, cwd: string): Promise<void> {
+    // Only the first turn moves the start; later ones keep tool events of interrupted turns for auto-test.
+    if (!this.toolSeq.has(sessionId)) this.toolSeq.set(sessionId, this.lastSeq(sessionId));
     const p = this.git.status(cwd).then(
       (st) => void this.baseline.set(sessionId, new Set(st.files.map((f) => f.path))),
       () => void this.baseline.set(sessionId, new Set()),
@@ -104,6 +128,13 @@ export class TurnAutomation {
     this.held.delete(sessionId);
     this.notes.delete(sessionId);
     this.hints.delete(sessionId);
+    this.testNotes.delete(sessionId);
+    this.toolSeq.delete(sessionId);
+    this.shellDirs.delete(sessionId);
+  }
+
+  private lastSeq(sessionId: string): number {
+    return this.db.listEvents(sessionId, 0, { limit: 1 })[0]?.seq ?? 0;
   }
 
   /** Replaces an earlier hint of the session: only the latest project state counts. */
@@ -115,8 +146,11 @@ export class TurnAutomation {
   takeNote(sessionId: string): string | null {
     const hint = this.hints.get(sessionId);
     this.hints.delete(sessionId);
+    const tests = this.testNotes.get(sessionId);
+    this.testNotes.delete(sessionId);
     const commits = this.commitNote(sessionId);
-    return hint || commits ? [hint ? `[FORGE-Hinweis, nicht vom Nutzer geschrieben] ${hint}` : "", commits ?? ""].filter(Boolean).join("\n\n") : null;
+    const parts = [hint ? `[FORGE-Hinweis, nicht vom Nutzer geschrieben] ${hint}` : "", tests ?? "", commits ?? ""].filter(Boolean);
+    return parts.length ? parts.join("\n\n") : null;
   }
 
   private commitNote(sessionId: string): string | null {
@@ -191,7 +225,7 @@ export class TurnAutomation {
     const seq = this.turnSeq.get(sessionId) ?? 0;
     const baseline = this.baseline.get(sessionId) ?? new Set<string>();
     const tags = new Set(project.tags);
-    if (!project.gitEnabled || !tags.has("auto-commit")) return this.runTests(sessionId, project.id, project.testCommand, tags, cwd);
+    if (!project.gitEnabled || !tags.has("auto-commit")) return this.runTests(sessionId, project, tags, cwd, baseline);
     let status;
     try {
       status = await this.git.status(cwd);
@@ -202,7 +236,7 @@ export class TurnAutomation {
       .filter((f) => !baseline.has(f.path) && f.kind !== "conflicted" && !isSensitiveFile(f.path) && !isArtifactPath(f.path))
       .map((f) => f.path);
     const before = await this.hashFiles(cwd, files);
-    const testsOk = await this.runTests(sessionId, project.id, project.testCommand, tags, cwd);
+    const testsOk = await this.runTests(sessionId, project, tags, cwd, baseline, status);
 
     if (tags.has("review-required")) {
       this.report(sessionId, { type: "automation", action: "skip", ok: true, message: "Auto-Commit übersprungen: review-required verlangt eine Prüfung im Git-Bereich.", hash: null, files: [] });
@@ -249,19 +283,107 @@ export class TurnAutomation {
     }
   }
 
-  /** Runs the project's test command when auto-test is set; true when green or not configured. */
-  private async runTests(sessionId: string, projectId: string, testCommand: string | null, tags: Set<string>, cwd: string): Promise<boolean> {
+  /**
+   * Runs the project's test command when auto-test is set and the tests are needed; true when green,
+   * not configured or skipped on a green state. A skip on a state whose tests failed stays false.
+   */
+  private async runTests(sessionId: string, project: Project, tags: Set<string>, cwd: string, baseline: Set<string>, status?: GitStatus): Promise<boolean> {
+    const testCommand = project.testCommand;
     if (!tags.has("auto-test") || !testCommand) return true;
-    this.host.record(sessionId, { type: "status", status: "idle", detail: `Tests laufen: ${testCommand}` });
+    const plan = await this.planTests(sessionId, project, testCommand, cwd, baseline, status);
+    if (plan.skip !== null) {
+      // Only shown in the chat: Claude needs no note about tests that did not run.
+      this.host.record(sessionId, { type: "automation", action: "skip", ok: plan.ok, message: plan.skip, hash: null, files: [] });
+      return plan.ok;
+    }
+    this.host.record(sessionId, { type: "status", status: "idle", detail: `Tests laufen: ${plan.command}` });
     let testEnv: Record<string, string> = {};
     try {
-      testEnv = this.host.testEnv?.(projectId) ?? {};
+      testEnv = this.host.testEnv?.(project.id) ?? {};
     } catch {
       /* tests run without the test environment */
     }
-    const r = await runUserCommand(testCommand, cwd, { ...sessionEnv(this.db.getSettings().stripApiKey), ...testEnv });
+    const r = await runUserCommand(plan.command, cwd, { ...sessionEnv(this.db.getSettings().stripApiKey), ...testEnv });
     const ok = r.exitCode === 0 && !r.timedOut;
-    this.host.record(sessionId, { type: "check.result", command: testCommand, ok, exitCode: r.exitCode, durationMs: r.durationMs, output: r.output });
+    this.host.record(sessionId, { type: "check.result", command: plan.command, ok, exitCode: r.exitCode, durationMs: r.durationMs, output: r.output });
+    plan.remember(ok);
+    if (!ok) {
+      this.testNotes.set(
+        sessionId,
+        `[FORGE-Hinweis, nicht vom Nutzer geschrieben] Nach deinem letzten Durchlauf hat FORGE die Tests ausgeführt (Tag auto-test): „${plan.command}“ ist fehlgeschlagen (${r.timedOut ? "Zeitüberschreitung" : `Exit-Code ${r.exitCode}`}). Ende der Ausgabe:\n${r.output.slice(-1500)}`,
+      );
+    }
     return ok;
+  }
+
+  /**
+   * Whether the tests have to run: not when nothing that can affect tests changed since auto-test
+   * last looked at the folder, and not when Claude ran the full test command after its last change.
+   * Changes come from comparing snapshots of the folder (worktreeTree); without an earlier snapshot
+   * from git status against the turn's baseline plus the files Claude edited.
+   */
+  private async planTests(sessionId: string, project: Project, testCommand: string, cwd: string, baseline: Set<string>, status?: GitStatus): Promise<TestPlan> {
+    const root = await rootTestScript(cwd);
+    const events = this.db.listEventsOfTypes(sessionId, ["tool.use", "tool.result"], this.toolSeq.get(sessionId) ?? 0);
+    this.toolSeq.set(sessionId, this.lastSeq(sessionId));
+    const turn = analyzeTurn(events, cwd, equivalentTestCommands(testCommand, root), this.shellDirs.get(sessionId) ?? cwd);
+    this.shellDirs.set(sessionId, turn.shellDir);
+
+    const key = process.platform === "win32" ? path.resolve(cwd).toLowerCase() : path.resolve(cwd);
+    const prev = this.tested.get(key);
+    // A changed test command makes the earlier result meaningless: it runs once.
+    const last = prev?.command === testCommand ? prev : undefined;
+    const tree = project.gitEnabled ? await this.git.worktreeTree(cwd).catch(() => null) : null;
+    const remember = (ok: boolean, ran: boolean) => this.tested.set(key, { tree, command: testCommand, ok, ran });
+
+    let changed: string[] | null = null;
+    if (tree && last?.tree) changed = await this.git.treeChanges(cwd, last.tree, tree).catch(() => null);
+    if (changed) {
+      changed = [...new Set([...changed, ...turn.edited])];
+    } else if (!turn.shellChanges && (!prev || last)) {
+      // No snapshot to compare with: what the turn did. A shell command that may have written files
+      // (or committed them, which git status no longer shows) leaves it unknown.
+      const st = status ?? (project.gitEnabled ? await this.git.status(cwd).catch(() => null) : null);
+      changed = [...new Set([...(st?.files.filter((f) => !baseline.has(f.path)).map((f) => f.path) ?? []), ...turn.edited])];
+    }
+
+    if (turn.testedAfterLastChange) {
+      remember(true, true);
+      return { skip: `Tests übersprungen: Claude hat „${testCommand}“ nach der letzten Änderung schon erfolgreich ausgeführt.`, ok: true };
+    }
+    const relevant = changed?.filter((f) => isTestRelevant(f)) ?? null;
+    if (relevant && !relevant.length) {
+      const ok = last?.ok ?? true;
+      remember(ok, last?.ran ?? false);
+      if (!ok) {
+        return {
+          skip: changed!.length
+            ? "Tests nicht erneut ausgeführt: Seit dem fehlgeschlagenen Lauf wurden nur Dateien ohne Einfluss auf Tests geändert."
+            : "Tests nicht erneut ausgeführt: Seit dem fehlgeschlagenen Lauf wurden keine Dateien geändert.",
+          ok,
+        };
+      }
+      if (changed!.length) {
+        const shown = changed!.slice(0, 3).join(", ") + (changed!.length > 3 ? ", …" : "");
+        return { skip: `Tests übersprungen: Geändert wurden nur Dateien ohne Einfluss auf Tests (Doku, Bilder, Projektwissen): ${shown}`, ok };
+      }
+      return { skip: last?.ran ? "Tests übersprungen: Seit dem letzten erfolgreichen Testlauf wurden keine Dateien geändert." : "Tests übersprungen: Der Durchlauf hat keine Dateien geändert.", ok };
+    }
+    // After a failed run the whole suite runs: the failure may sit in a package that did not change since.
+    const scoped =
+      relevant && (!last || last.ok)
+        ? scopedTestCommand(testCommand, root, relevant, (dir) => existsSync(path.join(cwd, dir, "package.json")), existsSync(path.join(cwd, "pnpm-workspace.yaml")))
+        : null;
+    return { skip: null, command: scoped ?? testCommand, remember: (ok) => remember(ok, true) };
+  }
+}
+
+/** scripts.test of the project's package.json, null without one */
+async function rootTestScript(cwd: string): Promise<string | null> {
+  try {
+    const pkg = JSON.parse(await readFile(path.join(cwd, "package.json"), "utf8")) as { scripts?: Record<string, unknown> };
+    return typeof pkg.scripts?.test === "string" ? pkg.scripts.test : null;
+  } catch {
+    return null;
   }
 }

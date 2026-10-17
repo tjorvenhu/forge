@@ -1498,6 +1498,18 @@ export class PhoneService {
             : "";
       return `FORGE ${st.latest.version} ist verfügbar, installiert ist ${st.currentVersion}.${state}`;
     };
+    const installText = (st: ResultOf<"app.installState">) => {
+      if (!st.checkable) return "Das ist eine Entwicklungsversion von FORGE, da gibt es keine Installation zu prüfen.";
+      if (st.complete === null) return "Die Prüfung läuft noch. Frag gleich noch einmal.";
+      if (st.complete) return "FORGE ist vollständig installiert, alle mitgelieferten Programme sind in der richtigen Version da.";
+      const what = `Die Installation von FORGE ist unvollständig: ${st.problems.map((p) => p.label).join(", ")}.`;
+      if (st.phase === "searching") return `${what} FORGE sucht gerade den passenden Installer.`;
+      const inst = st.installer;
+      if (!inst) return `${what} ${st.message ?? "Es gibt keinen passenden Installer."}`;
+      const from = inst.source === "local" ? `der setup.exe der Version ${inst.version} aus dem Downloads-Ordner` : `dem Installer der Version ${inst.version}${inst.size ? ` (${Math.max(1, Math.round(inst.size / 1048576))} MB)` : ""}`;
+      const then = inst.then ? `, danach holt FORGE von selbst das Update auf ${inst.then}` : "";
+      return `${what} Mit install_repair installiert sich FORGE vollständig mit ${from}${then}. Dabei startet FORGE neu und das Gespräch endet.`;
+    };
     const removal = { projects: this.d.projects, sessions, worktrees: this.d.worktrees, devServers: this.d.devServers };
     const statusText = (s: { status: string; live: boolean }) =>
       s.status === "running" || s.status === "starting"
@@ -2683,6 +2695,7 @@ export class PhoneService {
               d.apiKeyEnvPresent ? (d.apiKeyStripped ? "ein API-Key in der Umgebung wird ausgeblendet" : "ein API-Key in der Umgebung geht an Claude Code") : "",
               d.git.found ? `Git${d.git.version ? ` ${d.git.version}` : ""} ist da` : "Git fehlt",
               d.gh.found ? (d.gh.authenticated === false ? "die GitHub-CLI ist nicht angemeldet" : "die GitHub-CLI ist da") : "die GitHub-CLI fehlt",
+              d.python.found ? `${d.python.version ?? "Python"} ist da${d.python.bundled ? " (mitgeliefert)" : ""}` : "Python fehlt",
             ].filter(Boolean);
             const missing = d.capabilities.filter((c) => c.state === "unavailable").map((c) => c.label);
             return `${facts.join(", ")}.${missing.length ? ` Nicht verfügbar: ${missing.join(", ")}.` : ""}`;
@@ -2692,6 +2705,20 @@ export class PhoneService {
           if (action === "update_install") {
             const st = await call("app.installUpdate", {});
             return `FORGE${st.latest ? ` ${st.latest.version}` : ""} wird jetzt installiert und startet neu, dieses Gespräch endet dabei. Offene Sessions gehen danach weiter, laufende machen von selbst dort weiter, wo sie waren.`;
+          }
+          if (action === "install_check") return installText(await call("app.checkInstall", {}));
+          if (action === "install_repair") {
+            const st = await call("app.checkInstall", {});
+            if (!st.checkable || st.complete !== false || !st.installer) return installText(st);
+            // The restart ends this call: only after the code on the keypad.
+            return askKeypad(
+              `FORGE installiert sich vollständig mit dem Installer ${st.installer.version} und startet dabei neu, dieses Gespräch endet. Offene Sessions machen danach weiter`,
+              async () => {
+                await call("app.repairInstall", {});
+                return "FORGE wird jetzt vollständig installiert und startet neu, dieses Gespräch endet gleich.";
+              },
+              "noch ist nichts geändert",
+            );
           }
           if (action === "changelog") {
             const c = await call("app.changelog", {});

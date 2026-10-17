@@ -69,11 +69,13 @@ export async function collectDiagnostics(opts: {
   const gitTool = resolveTool("git");
   const ghTool = resolveTool("gh");
   const ghBin = ghTool?.path ?? null;
+  const pythonTool = resolveTool("python");
 
-  const [claude, git, gh] = await Promise.all([
+  const [claude, git, gh, python] = await Promise.all([
     versionOf(claudeBin, ["--version"], env),
     versionOf(gitTool?.path ?? null, ["--version"], undefined, gitTool?.bundled),
     versionOf(ghBin, ["--version"], undefined, ghTool?.bundled),
+    versionOf(pythonTool?.path ?? null, ["--version"], undefined, pythonTool?.bundled),
   ]);
 
   const auth = claude.found && claudeBin ? await readAuth(claudeBin, env) : NOT_CHECKED;
@@ -94,6 +96,7 @@ export async function collectDiagnostics(opts: {
     apiKeyStripped: opts.stripApiKey,
     git,
     gh: { ...gh, authenticated: ghAuth },
+    python,
     capabilities: opts.capabilities,
   };
 }
