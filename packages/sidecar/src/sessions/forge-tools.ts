@@ -13,9 +13,6 @@ import { KNOWLEDGE_DIR, type KnowledgeStore } from "../knowledge/knowledge.js";
 import type { DevAction, DevEnvironment, DevTarget } from "../devtools/environment.js";
 import { MAX_STEP_MS, type PreviewService, type PreviewStep } from "../preview/preview.js";
 
-/** Agents one session may have running at the same time. */
-export const MAX_AGENTS = 4;
-const RUNNING = new Set(["starting", "running", "waiting_approval", "stopping"]);
 
 /**
  * Which sessions were started as agents by which session. Stored with the session, so agents stay
@@ -493,8 +490,6 @@ export function forgeSessionTools(rec: SessionRecord, d: ForgeToolDeps): { tools
     },
     autoAllow: false,
     run: async (a) => {
-      const running = d.agents.children(sessionId).filter((c) => RUNNING.has(d.db.getSession(c)?.status ?? ""));
-      if (running.length >= MAX_AGENTS) return `Fehler: Es laufen schon ${running.length} Agenten dieser Session (höchstens ${MAX_AGENTS}). Warte, bis einer fertig ist.`;
       const root = project.parentId ? d.projects.get(project.parentId) : project;
       const task = String(a.task);
       const branch = `agent/${slugify(typeof a.name === "string" && a.name.trim() ? a.name : task, 32)}-${Date.now().toString(36).slice(-4)}`;
