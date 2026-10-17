@@ -81,11 +81,17 @@ Daten gehen nur an diese Stellen:
 
 ## Lizenz
 
-FORGE steht unter der [PolyForm Noncommercial License 1.0.0](LICENSE.md).
+FORGE steht unter der [Functional Source License 1.1 mit Apache-2.0 als späterer Lizenz](LICENSE.md)
+(FSL-1.1-ALv2).
 
-- Private und andere nichtkommerzielle Nutzung ist frei.
-- Kommerzielle Nutzung ist nur mit schriftlicher Erlaubnis gestattet. Frag dafür über GitHub an, per Issue oder
-  über das Profil [tjorvenhu](https://github.com/tjorvenhu).
+- Nutzen, ändern und weitergeben ist frei, auch beruflich und in Firmen.
+- Nicht erlaubt ist, FORGE oder eine abgewandelte Fassung als eigenes Produkt oder als Dienst anzubieten, der mit
+  FORGE konkurriert. Dafür braucht es eine schriftliche Erlaubnis. Frag über GitHub an, per Issue oder über das
+  Profil [tjorvenhu](https://github.com/tjorvenhu).
+- Zwei Jahre nach Veröffentlichung einer Version gilt für diese Version zusätzlich die Apache License 2.0, ohne
+  Einschränkung.
+
+Beiträge sind willkommen, siehe [CONTRIBUTING.md](CONTRIBUTING.md).
 
 Der Copyright-Hinweis steht in [NOTICE](NOTICE). Mitgelieferte Software von Drittanbietern und ihre Lizenzen:
 [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md) und [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

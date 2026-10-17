@@ -3,7 +3,7 @@ name = "forge-desktop"
 version = "0.1.0"
 description = "FORGE – Claude Development Studio"
 edition = "2021"
-license = "PolyForm-Noncommercial-1.0.0"
+license = "FSL-1.1-ALv2"
 publish = false
 
 [lib]

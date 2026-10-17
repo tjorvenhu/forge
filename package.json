@@ -1,7 +1,7 @@
 {
   "name": "forge",
   "private": true,
-  "license": "PolyForm-Noncommercial-1.0.0",
+  "license": "FSL-1.1-ALv2",
   "version": "0.1.0",
   "description": "FORGE – Claude Development Studio (Desktop-GUI für Claude Code)",
   "type": "module",

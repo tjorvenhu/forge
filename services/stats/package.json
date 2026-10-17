@@ -1,7 +1,7 @@
 {
   "name": "forge-stats",
   "private": true,
-  "license": "PolyForm-Noncommercial-1.0.0",
+  "license": "FSL-1.1-ALv2",
   "version": "0.1.0",
   "description": "Statistik-Dienst für FORGE: nimmt anonyme Nutzungszahlen an und zeigt die Summen.",
   "type": "module",
