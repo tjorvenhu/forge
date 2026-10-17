@@ -612,7 +612,7 @@ export const PHONE_TOOLS: readonly PhoneToolSpec[] = [
   {
     name: "project_automation",
     description:
-      "Automatik eines Projekts, wie in den Projekt-Einstellungen: plan-first (neue Sessions planen erst), auto-test (Testbefehl nach jedem Durchlauf), auto-commit, auto-push, auto-merge (fertige Agenten automatisch in den Branch zurückführen, von dem sie gestartet sind), review-required (kein Auto-Commit), no-network (keine Web-Werkzeuge), sandbox-only (Autonomous gesperrt). Mit tag und on schalten; ohne tag sagt es, was an ist. auto-merge gilt immer für das Hauptprojekt samt seinen Agenten.",
+      "Automatik eines Projekts, wie in den Projekt-Einstellungen: plan-first (neue Sessions planen erst), auto-test (Testbefehl nach einem Durchlauf, der Code geändert hat), auto-commit, auto-push, auto-merge (fertige Agenten automatisch in den Branch zurückführen, von dem sie gestartet sind), review-required (kein Auto-Commit), no-network (keine Web-Werkzeuge), sandbox-only (Autonomous gesperrt). Mit tag und on schalten; ohne tag sagt es, was an ist. auto-merge gilt immer für das Hauptprojekt samt seinen Agenten.",
     params: {
       project: targetProject,
       session: targetSession,

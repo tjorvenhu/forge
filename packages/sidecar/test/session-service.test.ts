@@ -2145,3 +2145,115 @@ describe("closing idle sessions", () => {
     }
   });
 });
+
+describe("auto-test runs only when needed", () => {
+  const GREEN = 'node -e "process.exit(0)"';
+  const RED = 'node -e "process.exit(3)"';
+
+  async function repoWith(tags: string[], testCommand: string) {
+    const repo = projects.get(projectId).path;
+    await initRepo(repo);
+    writeFileSync(path.join(repo, "app.ts"), "export const a = 1;\n");
+    await git(repo, "add", ".");
+    await git(repo, "commit", "-m", "init");
+    projects.update(projectId, { tags, testCommand });
+    return repo;
+  }
+  /** Claude calls a tool and gets its result, as the CLI streams it. */
+  function toolCall(sink: SessionSink, id: string, name: string, input: Record<string, unknown>, result = "ok", isError = false) {
+    sink.onMessage({ type: "assistant", message: { id: `m-${id}`, content: [{ type: "tool_use", id, name, input }] } });
+    sink.onMessage({ type: "user", message: { content: [{ type: "tool_result", tool_use_id: id, content: result, is_error: isError }] } });
+  }
+  async function turn(sessionId: string, text: string, work: () => void) {
+    await svc.send(sessionId, text);
+    work();
+    success(rt.sinks[0]!);
+    await svc.drain();
+  }
+  const runs = (id: string) => db.listEvents(id).filter((e) => e.body.type === "check.result").length;
+  const lastSkip = (id: string) => db.listEvents(id).flatMap((e) => (e.body.type === "automation" && e.body.action === "skip" ? [e.body] : [])).at(-1);
+
+  it("tests a realistic series of six turns twice instead of six times", async () => {
+    const repo = await repoWith(["auto-test", "auto-commit"], GREEN);
+    const s = await svc.start({ projectId, prompt: "Baue den Warenkorb" });
+    const sink = rt.sinks[0]!;
+    // 1: code changed: tests run
+    writeFileSync(path.join(repo, "cart.ts"), "export const cart = [];\n");
+    success(sink);
+    await svc.drain();
+    expect(runs(s.id)).toBe(1);
+
+    // 2: only a question answered
+    await turn(s.id, "Wie funktioniert der Warenkorb?", () => toolCall(sink, "r1", "Read", { file_path: path.join(repo, "cart.ts") }));
+    expect(runs(s.id)).toBe(1);
+    expect(lastSkip(s.id)).toMatchObject({ ok: true, message: "Tests übersprungen: Seit dem letzten erfolgreichen Testlauf wurden keine Dateien geändert." });
+
+    // 3: docs and project knowledge only
+    await turn(s.id, "Dokumentiere das", () => {
+      writeFileSync(path.join(repo, "README.md"), "# Shop\n");
+      mkdirSync(path.join(repo, ".forge", "knowledge"), { recursive: true });
+      writeFileSync(path.join(repo, ".forge", "knowledge", "warenkorb.md"), "Wissen\n");
+    });
+    expect(runs(s.id)).toBe(1);
+    expect(lastSkip(s.id)?.message).toMatch(/^Tests übersprungen: Geändert wurden nur Dateien ohne Einfluss auf Tests/);
+
+    // 4: code changed, Claude ran the project's tests itself afterwards
+    await turn(s.id, "Füge Rabatte hinzu", () => {
+      writeFileSync(path.join(repo, "discount.ts"), "export const d = 0.1;\n");
+      toolCall(sink, "e1", "Write", { file_path: path.join(repo, "discount.ts"), content: "export const d = 0.1;\n" });
+      toolCall(sink, "b1", "Bash", { command: GREEN });
+    });
+    expect(runs(s.id)).toBe(1);
+    expect(lastSkip(s.id)?.message).toBe(`Tests übersprungen: Claude hat „${GREEN}“ nach der letzten Änderung schon erfolgreich ausgeführt.`);
+
+    // 5: Claude tested, then changed code again: FORGE tests
+    await turn(s.id, "Und Gutscheine", () => {
+      toolCall(sink, "b2", "Bash", { command: GREEN });
+      writeFileSync(path.join(repo, "voucher.ts"), "export const v = 1;\n");
+      toolCall(sink, "e2", "Write", { file_path: path.join(repo, "voucher.ts"), content: "export const v = 1;\n" });
+    });
+    expect(runs(s.id)).toBe(2);
+
+    // 6: thanks, nothing changed
+    await turn(s.id, "Danke", () => {});
+    expect(runs(s.id)).toBe(2);
+
+    // Before: one run per turn (6). The auto-commits still took every code change.
+    const committed = (await git(repo, "log", "--format=%s", "--name-only")).split("\n").filter((l) => l.endsWith(".ts") || l.endsWith(".md"));
+    expect(committed.sort()).toEqual([".forge/knowledge/warenkorb.md", "README.md", "app.ts", "cart.ts", "discount.ts", "voucher.ts"]);
+  }, 30_000);
+
+  it("does not run unchanged failing tests again and keeps them red for auto-commit and auto-merge", async () => {
+    const repo = await repoWith(["auto-test", "auto-commit"], RED);
+    const s = await svc.start({ projectId, prompt: "x" });
+    writeFileSync(path.join(repo, "a.ts"), "export {};\n");
+    success(rt.sinks[0]!);
+    await svc.drain();
+    expect(runs(s.id)).toBe(1);
+
+    await turn(s.id, "Was ist kaputt?", () => {});
+    expect(runs(s.id)).toBe(1);
+    expect(lastSkip(s.id)).toMatchObject({ ok: false, message: "Auto-Commit übersprungen: Tests sind fehlgeschlagen." });
+    expect(db.listEvents(s.id).map((e) => e.body)).toContainEqual(
+      expect.objectContaining({ type: "automation", action: "skip", ok: false, message: "Tests nicht erneut ausgeführt: Seit dem fehlgeschlagenen Lauf wurden keine Dateien geändert." }),
+    );
+    // Claude got the failure with its next message, since it leaves the suite to FORGE.
+    expect(rt.sentNotes[0]).toMatch(/^\[FORGE-Hinweis[^\n]*auto-test\): „node -e "process\.exit\(3\)"“ ist fehlgeschlagen \(Exit-Code 3\)/);
+
+    // an attempt to fix it changes code: the tests run again
+    await turn(s.id, "Repariere es", () => writeFileSync(path.join(repo, "a.ts"), "export const ok = true;\n"));
+    expect(runs(s.id)).toBe(2);
+    // a new test command runs once, even without changes
+    projects.update(projectId, { testCommand: GREEN });
+    await turn(s.id, "Danke", () => {});
+    expect(runs(s.id)).toBe(3);
+    expect(db.listEvents(s.id).filter((e) => e.body.type === "check.result").at(-1)?.body).toMatchObject({ ok: true });
+  }, 30_000);
+
+  it("tells Claude to test selectively and that FORGE tests at the end", async () => {
+    await repoWith(["auto-test"], "pnpm test");
+    await svc.start({ projectId, prompt: "x" });
+    expect(rt.started[0]!.context).toContain("Tests gezielt ausführen");
+    expect(rt.started[0]!.context).toContain("FORGE führt nach jedem Durchlauf selbst „pnpm test“ aus");
+  });
+});
