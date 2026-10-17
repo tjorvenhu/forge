@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Sicherheitslücke melden
+    url: https://github.com/tjorvenhu/forge/security/advisories/new
+    about: Sicherheitslücken bitte vertraulich über GitHub melden, nicht als öffentliches Issue.

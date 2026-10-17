@@ -543,7 +543,7 @@ describe("desk phone (Yealink)", () => {
     expect(text).toContain("linekey.2.label = -");
     expect(text).toContain("action_url.call_established = \n");
     expect(provisioningText(cfg({ hotline: false }), [])).toContain("features.hotline_number = \n");
-    // Leftover keys (klaus_telefon had Senden, Nochmal, Löschen, Stopp on 5 to 8) become "not used".
+    // Leftover keys (an earlier setup had its own functions on 5 to 8) become "not used".
     const cleared = provisioningText(cfg({ clearKeys: [2, 5, 6] }), []);
     expect(cleared).toContain("linekey.5.type = 0\nlinekey.5.value = \nlinekey.5.label = ");
     expect(cleared).toContain("linekey.6.type = 0");

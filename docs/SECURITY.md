@@ -1,5 +1,7 @@
 # FORGE – Security- und Permission-Konzept
 
+Sicherheitslücken bitte vertraulich melden, wie in [SECURITY.md](../SECURITY.md) beschrieben.
+
 ## Grundsätze
 
 1. **Keine lokale Schnittstelle für die UI.** UI und Sidecar sprechen über stdin/stdout. Es gibt keinen localhost-Port. Einzige Ausnahme im Netz ist das Telefon (Phase 5): SIP und RTP über UDP auf der Schnittstelle zur Anlage, nur Pakete von der Anlage, und beim eingebundenen Tischtelefon ein HTTP-Port, der nur dem Telefon antwortet (siehe Abschnitt Telefon).

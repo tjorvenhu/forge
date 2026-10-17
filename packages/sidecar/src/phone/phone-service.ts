@@ -729,7 +729,7 @@ export class PhoneService {
       const msg = errorText(e);
       this.d.log(`Tischtelefon: nicht gestartet: ${msg}`);
       this.desk.reachable = false;
-      this.desk.message = /EADDRINUSE/.test(msg) ? `Port ${c.httpPort} ist belegt (läuft klaus_telefon noch?).` : msg;
+      this.desk.message = /EADDRINUSE/.test(msg) ? `Port ${c.httpPort} ist belegt (läuft noch ein anderes Programm darauf?).` : msg;
     }
     this.emitState();
   }

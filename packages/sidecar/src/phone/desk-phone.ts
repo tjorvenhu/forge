@@ -107,7 +107,7 @@ export function provisioningText(cfg: DeskConfig, labels: string[]): string {
     "phone_setting.missed_call_power_led_flash.enable = 0",
     `features.hotline_number = ${cfg.hotline ? cfg.forgeNumber : ""}`,
     `features.hotline_delay = ${cfg.hotline ? 1 : 0}`,
-    // FORGE needs no action URLs (it sees calls itself). Older setups (klaus_telefon) left some that
+    // FORGE needs no action URLs (it sees calls itself). Older setups (other scripts) left some that
     // would send every call event to a server that is gone.
     "action_url.outgoing_call = ",
     "action_url.incoming_call = ",

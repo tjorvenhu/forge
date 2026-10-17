@@ -1,6 +1,7 @@
 {
   "name": "forge",
   "private": true,
+  "license": "PolyForm-Noncommercial-1.0.0",
   "version": "0.1.0",
   "description": "FORGE – Claude Development Studio (Desktop-GUI für Claude Code)",
   "type": "module",
@@ -17,7 +18,8 @@
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm -r test",
     "test:e2e": "pnpm --filter @forge/sidecar test:e2e",
-    "prepare:runtime": "pnpm --filter @forge/sidecar build && node scripts/prepare-runtime.mjs"
+    "prepare:runtime": "pnpm --filter @forge/sidecar build && node scripts/prepare-runtime.mjs",
+    "notices": "node scripts/third-party-notices.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

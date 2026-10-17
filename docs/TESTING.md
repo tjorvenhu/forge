@@ -6,7 +6,7 @@ Letzter vollständiger Lauf: 2026-10-12, Windows 11 Pro 26200, Node 24.11, Claud
 |---|---|---|
 | Lint | `pnpm lint` | ohne Befund |
 | Typecheck (protocol, sidecar, desktop) | `pnpm typecheck` | ohne Fehler |
-| Sidecar Unit/Integration | `pnpm --filter @forge/sidecar test` | 386 / 388 bestanden; die 2 Fehler treten auch ohne die Änderungen vom 2026-10-12 auf (gelöschte Datei unter Windows kurz noch sichtbar, siehe HANDOFF) |
+| Sidecar Unit/Integration | `pnpm --filter @forge/sidecar test` | 386 / 388 bestanden; die 2 Fehler treten auch ohne die Änderungen vom 2026-10-12 auf (gelöschte Datei unter Windows kurz noch sichtbar) |
 | Desktop Unit/Komponenten | `pnpm --filter @forge/desktop test` | 139 / 139 bestanden |
 | E2E mit echter Claude-Session | `pnpm test:e2e` (unter PowerShell 5.1: Build und `npx vitest run test/e2e` einzeln) | 17 / 17 bestanden |
 | Release-App ohne Node/Git/gh im PATH | manuell | Sidecar läuft aus `runtime/node`, Diagnose zeigt „mitgeliefert“ |

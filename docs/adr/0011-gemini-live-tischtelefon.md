@@ -6,8 +6,8 @@ Datum: 2026-10-12 · Status: angenommen
 
 FORGE als Zentrale anrufen und frei mit ihr reden: Stand abfragen, Sessions und parallele Agenten starten, Freigaben
 geben. Das Gespräch soll sich wie ein Telefonat anfühlen, nicht wie Diktieren. Dazu kommt das Yealink-Tischtelefon,
-das bisher das Skript `klaus_telefon` bedient hat (Tasten pro Session, LEDs, Display, Rückruf). FORGE ersetzt
-`klaus_telefon`. Wer die Telefon-Funktion nicht braucht, soll sie gar nicht sehen.
+das bisher ein eigenes Skript bedient hat (Tasten pro Session, LEDs, Display, Rückruf). FORGE ersetzt
+dieses Skript. Wer die Telefon-Funktion nicht braucht, soll sie gar nicht sehen.
 
 ## Entscheidungen
 
@@ -38,7 +38,7 @@ startet die Session dort.
 **PIN** (`phone/pin-pad.ts`): Die Tastatur-Logik ist aus dem Claude-Ablauf herausgelöst und gilt für beide
 Gesprächspartner gleich. Gemini erfährt nur, dass Steuern frei ist; die Ziffern laufen nie durch ein Modell.
 
-**Tischtelefon** (`phone/desk-phone.ts`), getestet bisher nur gegen Fakes, Vorlage war `klaus_telefon` am T53W:
+**Tischtelefon** (`phone/desk-phone.ts`), getestet bisher nur gegen Fakes, Vorlage war das bisherige Skript am T53W:
 
 - Das Telefon hängt wie bisher an der Anlage. FORGE ist eine eigene Nebenstelle; Abheben wählt sie nach einer
   Sekunde (Hotline). Kein direkter IP-Anruf, keine MicroSIP, keine virtuellen Audiokabel, kein Tastendruck ins
@@ -79,7 +79,7 @@ gehen die zurückgehaltenen Frames zuerst hinaus, die erste Silbe bleibt erhalte
 
 - Konfiguration über GitHub (ein Repository pro Nutzer) für mehrere Nutzer: FORGE ist pro Windows-Konto getrennt
   (Daten unter `%APPDATA%\forge`, Claude-Login, gh-Login). Für den Kollegen reicht eine eigene Installation.
-- Direkter SIP-Anruf vom Tischtelefon an die PC-IP (wie `klaus_telefon` mit MicroSIP): FORGE nimmt SIP nur von der
+- Direkter SIP-Anruf vom Tischtelefon an die PC-IP (wie das bisherige Skript mit MicroSIP): FORGE nimmt SIP nur von der
   Anlage an (ADR 0010). Über die Anlage geht es auch unterwegs vom Handy.
 
 ## Tests

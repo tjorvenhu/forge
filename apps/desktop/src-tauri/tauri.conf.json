@@ -49,9 +49,13 @@
       "icons/128x128@2x.png",
       "icons/icon.ico"
     ],
-    "resources": [
-      "runtime/**/*"
-    ],
+    "resources": {
+      "runtime/": "runtime/",
+      "../../../LICENSE.md": "LICENSE.md",
+      "../../../NOTICE": "NOTICE",
+      "../../../THIRD_PARTY_LICENSES.md": "THIRD_PARTY_LICENSES.md",
+      "../../../THIRD_PARTY_NOTICES.md": "THIRD_PARTY_NOTICES.md"
+    },
     "shortDescription": "Desktop-GUI für Claude Code",
     "category": "DeveloperTool"
   }

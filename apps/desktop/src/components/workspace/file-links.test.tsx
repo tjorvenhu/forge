@@ -28,11 +28,11 @@ describe("file paths in text", () => {
   });
 
   it("finds absolute folders, also in Git Bash notation, without the sentence's full stop", () => {
-    const text = "Liegt in C:\\Users\\tjorven\\Coding\\forge\\apps\\desktop. Dann cd /c/Users/tjorven/forge && ls";
+    const text = "Liegt in C:\\Users\\anna\\Coding\\forge\\apps\\desktop. Dann cd /c/Users/anna/forge && ls";
     const found = findFileRefs(text).map((r) => [text.slice(r.start, r.end), r.ref.path, r.ref.isFile]);
     expect(found).toEqual([
-      ["C:\\Users\\tjorven\\Coding\\forge\\apps\\desktop", "C:/Users/tjorven/Coding/forge/apps/desktop", false],
-      ["/c/Users/tjorven/forge", "C:/Users/tjorven/forge", false],
+      ["C:\\Users\\anna\\Coding\\forge\\apps\\desktop", "C:/Users/anna/Coding/forge/apps/desktop", false],
+      ["/c/Users/anna/forge", "C:/Users/anna/forge", false],
     ]);
     expect(parseFileRef("C:\\Program Files\\Git")).toEqual({ path: "C:/Program Files/Git", line: null, bare: false, isFile: false });
   });

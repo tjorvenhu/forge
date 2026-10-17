@@ -1,0 +1,55 @@
+name: Fehler melden
+description: Etwas in FORGE funktioniert nicht wie erwartet.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Danke für die Meldung. Bitte keine Passwörter, API-Schlüssel oder Telefonnummern einfügen.
+        Sicherheitslücken bitte nicht hier melden, sondern wie in SECURITY.md beschrieben.
+  - type: textarea
+    id: what
+    attributes:
+      label: Was ist passiert?
+      description: Beschreibe den Fehler. Fehlermeldungen gern wörtlich.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Was hast du erwartet?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Schritte zum Nachstellen
+      placeholder: |
+        1. Projekt öffnen
+        2. ...
+        3. Fehler erscheint
+    validations:
+      required: false
+  - type: input
+    id: version
+    attributes:
+      label: FORGE-Version
+      description: Steht unter Einstellungen > Über FORGE.
+      placeholder: z. B. 0.1.60
+    validations:
+      required: true
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Diagnose
+      description: Die Angaben aus Einstellungen > Über FORGE > Diagnose (Claude-Code-Version, Anmeldestatus, Git, GitHub CLI).
+      render: text
+    validations:
+      required: false
+  - type: textarea
+    id: more
+    attributes:
+      label: Sonstiges
+      description: Screenshots, Windows-Version oder was sonst helfen könnte.
+    validations:
+      required: false

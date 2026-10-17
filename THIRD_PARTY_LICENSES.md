@@ -18,5 +18,9 @@ Nicht im Installer, sondern beim ersten Start einer Test-Datenbank geladen: Post
 (MIT, https://github.com/leinelissen/embedded-postgres). Es enthält Bibliotheken wie OpenSSL, ICU, zlib und libxml2
 unter ihren eigenen Lizenzen. Ablage: `%APPDATA%/forge/postgres`.
 
-Gebündelte npm-Bibliotheken (u. a. React, Radix UI, TanStack, Zod, Claude Agent SDK) stehen mit ihren
-Lizenzen im jeweiligen Paket; die Schriften Geist und Geist Mono stehen unter der SIL Open Font License 1.1.
+Die in FORGE gebündelten npm-Pakete (u. a. React, Radix UI, TanStack, Zod, Claude Agent SDK, die Schriften Geist
+und Geist Mono unter der SIL Open Font License 1.1) stehen mit Lizenz, Copyright-Hinweis und Lizenztext in
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). Die Datei erzeugt `pnpm notices` (`scripts/third-party-notices.mjs`);
+nach Änderungen an den Abhängigkeiten neu erzeugen und einchecken.
+
+Beide Dateien liegen zusammen mit `LICENSE.md` und `NOTICE` auch im Installationsordner von FORGE.

@@ -1,0 +1,25 @@
+name: Vorschlag
+description: Eine Idee für eine neue Funktion oder Verbesserung.
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Worum geht es?
+      description: Was möchtest du mit FORGE tun, und was fehlt dir dafür?
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: Dein Vorschlag
+      description: Wie könnte die Lösung aussehen?
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Andere Wege
+      description: Wie hilfst du dir bisher, oder welche Alternativen hast du überlegt?
+    validations:
+      required: false

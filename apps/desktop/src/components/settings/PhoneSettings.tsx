@@ -659,7 +659,7 @@ function DeskSettings({
               <Field label="Session-Tasten" hint="Leitungstasten für Sessions, in dieser Reihenfolge (S1 auf der ersten). Andere Tasten lässt FORGE in Ruhe.">
                 <Input value={d.sessionKeys} onChange={(e) => up({ sessionKeys: e.target.value })} aria-invalid={parseKeys(d.sessionKeys) === null || undefined} className="font-mono text-xs" />
               </Field>
-              <Field label="Tasten leeren" hint="Diese Tasten stellt FORGE auf „nicht belegt“, z. B. 5, 6, 7, 8 (Senden, Nochmal, Löschen, Stopp aus klaus_telefon).">
+              <Field label="Tasten leeren" hint="Diese Tasten stellt FORGE auf „nicht belegt“, z. B. Tasten, die eine frühere Einrichtung belegt hat.">
                 <Input
                   value={d.clearKeys}
                   onChange={(e) => up({ clearKeys: e.target.value })}
