@@ -35,3 +35,27 @@ Bisher mussten Node.js, git und gh vorhanden sein, Logins liefen über `claude a
 - Größerer Installer, längerer Release-Build (rund 4,5 Minuten).
 - Lizenzen der mitgelieferten Software: [THIRD_PARTY_LICENSES.md](../../THIRD_PARTY_LICENSES.md).
 - Versions-Updates: Konstanten in `scripts/prepare-runtime.mjs` anpassen (Version, URL, SHA-256).
+
+## Nachtrag 2026-10-17: Python
+
+Claude scheiterte in Sessions oft an fehlendem Python (unter Windows meldet sich dann nur der Store-Platzhalter).
+
+- **Variante:** das offizielle NuGet-Paket `python` der PSF (3.14.8, rund 15 MB gepackt, 43 MB entpackt). Es ist
+  eine vollständige CPython mit pip, venv und ensurepip, ohne Tests, tkinter und IDLE; `include`/`libs` bleiben für
+  C-Erweiterungen. Die embeddable-Variante hat kein pip, ignoriert durch `python._pth` Umgebung und User-Site und
+  kann keine venvs anlegen. 3.14 statt des gerade erschienenen 3.15, damit Pakete mit C-Erweiterungen Wheels finden.
+  Prüfung per SHA-512 aus dem Katalogeintrag von nuget.org (`packageHash`).
+- **Ablage:** `runtime/python`, dazu `python3.exe` (Kopie) und `pip`/`pip3` als `.cmd` und Shell-Skript; pips eigene
+  exe-Starter enthalten einen absoluten Pfad.
+- **pip:** `pip.ini` in `sys.prefix` mit `[install] user = true`. Ohne Angabe landet `pip install` in
+  `%APPDATA%\Python\Python314`, nicht im Installationsordner, den der nächste volle Installer ersetzt. Die Datei gilt
+  nur für diesen Interpreter, venvs daraus haben ihr eigenes `sys.prefix` und installieren normal. `PIP_USER` als
+  Umgebungsvariable wäre falsch, weil pip dann in jedem venv abbricht. `--target`/`--prefix` brauchen `--no-user`.
+- **Vorrang:** die mitgelieferte Kopie vor einem System-Python, wie bei git und gh. So gibt es `python3` und `pip`
+  immer, und der Platzhalter in WindowsApps gewinnt nie. Ein eigenes Python erreicht man weiter über `py` oder das
+  venv des Projekts. Ohne mitgelieferte Laufzeit (Entwicklung) gilt ein System-Python, aber nicht der Platzhalter.
+- **PATH** in Sessions, Dev-Servern und Terminal: `runtime/python` und der User-Scripts-Ordner hinter git und gh, vor
+  dem Rest. Zusätzlich `PYTHONUTF8=1`, sonst bricht umgeleitete Ausgabe am ersten Zeichen außerhalb der
+  ANSI-Codepage ab.
+- Der Laufzeit-Schlüssel bekommt `_python-<v>`; Installationen ohne Python behalten den alten Schlüssel und bekommen
+  damit den vollen Installer angeboten.

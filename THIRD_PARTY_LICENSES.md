@@ -8,6 +8,7 @@ Dokumentation und Übersetzungen bei Git). Die Lizenztexte liegen in der Install
 | Node.js | 24.21.0 | MIT (und weitere, siehe `runtime/node/LICENSE`) | https://nodejs.org |
 | Git for Windows (PortableGit) | 2.56.0.2 | GPL-2.0 und weitere, siehe `runtime/git/LICENSE.txt` | https://gitforwindows.org |
 | GitHub CLI | 2.102.0 | MIT (`runtime/gh/LICENSE`) | https://cli.github.com |
+| Python (NuGet-Paket `python`, mit pip) | 3.14.8 | PSF License und weitere, siehe `runtime/python/LICENSE.txt` | https://www.python.org |
 
 Quellcode von Git for Windows: https://github.com/git-for-windows/git/releases/tag/v2.56.0.windows.2
 (GPL-2.0: der Quellcode der mitgelieferten Version ist dort erhältlich).

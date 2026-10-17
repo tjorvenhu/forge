@@ -13,9 +13,6 @@ import { KNOWLEDGE_DIR, type KnowledgeStore } from "../knowledge/knowledge.js";
 import type { DevAction, DevEnvironment, DevTarget } from "../devtools/environment.js";
 import { MAX_STEP_MS, type PreviewService, type PreviewStep } from "../preview/preview.js";
 
-/** Agents one session may have running at the same time. */
-export const MAX_AGENTS = 4;
-const RUNNING = new Set(["starting", "running", "waiting_approval", "stopping"]);
 
 /**
  * Which sessions were started as agents by which session. Stored with the session, so agents stay
@@ -428,6 +425,13 @@ export function forgeSessionTools(rec: SessionRecord, d: ForgeToolDeps): { tools
   const autoCommitLine = project.tags.includes("auto-commit")
     ? `In diesem Projekt committet FORGE nach jedem erfolgreichen Durchlauf selbst die darin geänderten Dateien (Tag auto-commit${project.tags.includes("auto-push") ? ", danach Push außer auf main/master (auto-push)" : ""}). Mit deiner nächsten Nachricht nennt dir FORGE diese Commits. Soll committet oder gepusht werden, ist das meist schon passiert: prüfe mit git status und git log, committe nur, was noch offen ist, und push dann.`
     : "";
+  // Sessions ran the whole suite after every small step, also with nothing changed since the last green run.
+  const autoTest = project.tags.includes("auto-test") && project.testCommand;
+  const testLine = `Tests gezielt ausführen: nur die zu deinen Änderungen passenden (einzelne Testdateien, betroffene Pakete), nicht nach jeder Kleinigkeit die ganze Suite, nicht erneut ohne Änderung seit dem letzten grünen Lauf.${
+    autoTest
+      ? ` FORGE führt nach jedem Durchlauf selbst „${project.testCommand}“ aus, wenn sich dafür relevante Dateien geändert haben (Tag auto-test), und nennt dir Fehlschläge mit deiner nächsten Nachricht. Die ganze Suite musst du deshalb nicht selbst starten.`
+      : ""
+  }`;
 
   if (parent) {
     return {
@@ -438,6 +442,7 @@ export function forgeSessionTools(rec: SessionRecord, d: ForgeToolDeps): { tools
         "Wenn du fertig bist: committe deine Arbeit auf deinem Branch und fasse am Ende in wenigen Sätzen zusammen, was du gemacht hast und was offen ist. Die startende Session liest diese Zusammenfassung.",
         autoMergeLine,
         autoCommitLine,
+        testLine,
         "Mit mcp__forge__notify kannst du den Nutzer benachrichtigen. Weitere Agenten kannst du nicht starten.",
         ...own.context,
       ]
@@ -493,8 +498,6 @@ export function forgeSessionTools(rec: SessionRecord, d: ForgeToolDeps): { tools
     },
     autoAllow: false,
     run: async (a) => {
-      const running = d.agents.children(sessionId).filter((c) => RUNNING.has(d.db.getSession(c)?.status ?? ""));
-      if (running.length >= MAX_AGENTS) return `Fehler: Es laufen schon ${running.length} Agenten dieser Session (höchstens ${MAX_AGENTS}). Warte, bis einer fertig ist.`;
       const root = project.parentId ? d.projects.get(project.parentId) : project;
       const task = String(a.task);
       const branch = `agent/${slugify(typeof a.name === "string" && a.name.trim() ? a.name : task, 32)}-${Date.now().toString(36).slice(-4)}`;
@@ -608,6 +611,7 @@ export function forgeSessionTools(rec: SessionRecord, d: ForgeToolDeps): { tools
       autoMergeLine,
       autoCommitLine,
       "- notify: den Nutzer aktiv benachrichtigen. urgent=true nur, wenn er sofort gebraucht wird (kann sein Telefon klingeln lassen).",
+      testLine,
       usageLine,
       ...own.context,
     ]

@@ -19,9 +19,9 @@ Commit-Betreffs seit dem letzten Tag als Notizen. Ein neuerer Push bricht einen 
 - `FORGE_<v>_update_<laufzeit>.zip` bei jedem Release: nur `forge-desktop.exe`, `runtime/sidecar/sidecar.mjs`
   und `update.json`, etwa 4 MB. Gebaut mit `tauri build --no-bundle`, ohne Laufzeit-Download und ohne NSIS.
 - `FORGE_<v>_<laufzeit>_x64-setup.exe` nur, wenn es für den Laufzeit-Schlüssel noch keinen Installer gibt (neue
-  node-, git- oder gh-Version in `scripts/prepare-runtime.mjs`) oder auf Wunsch (Run workflow → full).
+  node-, git-, gh- oder Python-Version in `scripts/prepare-runtime.mjs`) oder auf Wunsch (Run workflow → full).
 
-Der Laufzeit-Schlüssel ist `node-<v>_git-<v>_gh-<v>` (`prepare-runtime.mjs --key`); die installierte App liest
+Der Laufzeit-Schlüssel ist `node-<v>_git-<v>_gh-<v>_python-<v>` (`prepare-runtime.mjs --key`, Python seit 2026-10-17); die installierte App liest
 ihn aus `runtime/VERSIONS.json`. Rust baut mit Thin-LTO statt vollem LTO (eine Minute schneller, kaum größer),
 die Toolchain wird nicht mehr aktualisiert. „Latest“ auf GitHub bleibt beim neuesten vollen Installer
 (`--latest=false` für die anderen): Download für Neuinstallationen, und ältere FORGE-Versionen, die nur

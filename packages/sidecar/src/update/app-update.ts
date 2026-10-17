@@ -74,14 +74,17 @@ const MAX_COMMITS = 150;
 const bare = (tag: string) => tag.replace(/^v/i, "");
 
 /**
- * Key of the installed runtime (bundled node, git, gh), as written by scripts/prepare-runtime.mjs.
- * null in a development build without bundled runtime.
+ * Key of the installed runtime (bundled node, git, gh, python), as runtimeKey in
+ * scripts/prepare-runtime.mjs builds it. Installations from before Python have the key without it;
+ * no new small update matches that, so they get the full installer. null in a development build
+ * without bundled runtime.
  */
 export function installedRuntimeKey(dir = process.env.FORGE_RUNTIME_DIR): string | null {
   if (!dir) return null;
   try {
-    const v = JSON.parse(readFileSync(path.join(dir, "VERSIONS.json"), "utf8")) as { node?: string; git?: string; gh?: string };
-    return v.node && v.git && v.gh ? `node-${v.node}_git-${v.git}_gh-${v.gh}` : null;
+    const v = JSON.parse(readFileSync(path.join(dir, "VERSIONS.json"), "utf8")) as { node?: string; git?: string; gh?: string; python?: string };
+    if (!v.node || !v.git || !v.gh) return null;
+    return `node-${v.node}_git-${v.git}_gh-${v.gh}${v.python ? `_python-${v.python}` : ""}`;
   } catch {
     return null;
   }

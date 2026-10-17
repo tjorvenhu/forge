@@ -264,7 +264,9 @@ function itemFolder(thread: string | null = null) {
           card: { title: b.urgent ? "Claude braucht dich" : "Claude meldet sich", ref: null, detail: b.message, icon: "notify" },
         });
         break;
-      case "automation":
+      case "automation": {
+        // auto-test left out because nothing that can affect tests changed: information, no warning
+        const testSkip = b.action === "skip" ? /^(Tests übersprungen|Tests nicht erneut ausgeführt):\s*/.exec(b.message) : null;
         items.push({
           kind: "notice",
           key: `m${ev.seq}`,
@@ -276,9 +278,10 @@ function itemFolder(thread: string | null = null) {
                 ? `Auto-Push: ${b.message}`
                 : b.message,
           // A merge that is not ok hit conflicts the agent now resolves: a warning, not a failure.
-          tone: b.action === "merge" ? (b.ok ? "success" : "warning") : b.action === "wait" ? "info" : !b.ok ? "danger" : b.action === "skip" ? "warning" : "success",
-          card:
-            b.action === "commit"
+          tone: b.action === "merge" ? (b.ok ? "success" : "warning") : b.action === "wait" || (testSkip && b.ok) ? "info" : !b.ok ? "danger" : b.action === "skip" ? "warning" : "success",
+          card: testSkip
+            ? { title: testSkip[1]!, ref: null, detail: b.message.slice(testSkip[0].length), icon: "skip" }
+            : b.action === "commit"
               ? { title: b.ok ? "Auto-Commit" : "Auto-Commit fehlgeschlagen", ref: b.ok ? (b.hash?.slice(0, 7) ?? null) : null, detail: b.ok ? `${b.message} · ${b.files.length} Datei(en)` : b.message, icon: "commit" }
               : b.action === "push"
                 ? { title: b.ok ? "Auto-Push" : "Auto-Push fehlgeschlagen", ref: null, detail: b.message, icon: "push" }
@@ -289,6 +292,7 @@ function itemFolder(thread: string | null = null) {
                     : { title: "Automatik übersprungen", ref: null, detail: b.message.replace(/^(Auto-(Commit|Push) übersprungen|Nicht automatisch zusammengeführt):\s*/, ""), icon: "skip" },
         });
         break;
+      }
       case "files.rewound":
         items.push({
           kind: "notice",

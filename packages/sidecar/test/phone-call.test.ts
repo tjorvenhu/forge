@@ -1507,6 +1507,29 @@ describe("PhoneService end to end with a test PBX", () => {
     await end();
   }, 30_000);
 
+  it("names git, gh and the shipped Python in the diagnostics", async () => {
+    const tool = (version: string | null, bundled = true) => ({ found: version !== null, bundled, version, path: null, error: null });
+    let python = tool("Python 3.14.8");
+    rpcResults = {
+      "system.diagnostics": () => ({
+        claude: tool("2.1.300 (Claude Code)", false),
+        auth: { checked: true, loggedIn: true, subscriptionType: "max", error: null },
+        apiKeyEnvPresent: false,
+        git: tool("git version 2.56.0.windows.2"),
+        gh: { ...tool("gh version 2.102.0"), authenticated: true },
+        python,
+        capabilities: [],
+      }),
+    };
+    const { conv, end } = await openCall("c-diag");
+    expect(await conv.tools.forgeSystem("diagnostics")).toBe(
+      "Claude Code 2.1.300 (Claude Code) ist da, angemeldet mit Abo max, Git git version 2.56.0.windows.2 ist da, die GitHub-CLI ist da, Python 3.14.8 ist da (mitgeliefert).",
+    );
+    python = tool(null, false);
+    expect(await conv.tools.forgeSystem("diagnostics")).toMatch(/, Python fehlt\.$/);
+    await end();
+  }, 30_000);
+
   it("lists all sessions, branches and rewinds them and deletes them", async () => {
     sessionList.push(fakeSession({ id: "s2", projectId, title: "Login", status: "stopped", live: false, projectName: "shop", updatedAt: "2026-10-01T10:00:00Z" }));
     const userMessage = (seq: number, text: string, uuid: string) => ({ seq, sessionId: "s1", ts: "", body: { type: "user.message", text, uuid } });

@@ -2,6 +2,7 @@
 //! Only two programs can be started: the user's shell or the Claude CLI.
 
 use std::collections::HashMap;
+use std::ffi::OsString;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU32, Ordering};
@@ -89,6 +90,31 @@ fn default_shell() -> (String, Vec<String>) {
     (exe, vec!["-NoLogo".into()])
 }
 
+/// PATH entries in front of the user's PATH, as `bundledPathEntries` in the sidecar
+/// (packages/sidecar/src/util/tools.ts): shipped git, gh and python, then the folder where
+/// `pip install --user` puts scripts. In front, so the Store placeholder python.exe in WindowsApps
+/// does not win.
+fn runtime_path_entries(rt: &Path, user_base: Option<OsString>, appdata: Option<OsString>) -> Vec<PathBuf> {
+    let mut parts: Vec<PathBuf> = vec![rt.join("git").join("cmd"), rt.join("gh").join("bin")];
+    let python = rt.join("python");
+    if !python.is_dir() {
+        return parts;
+    }
+    parts.push(python);
+    let version = std::fs::read_to_string(rt.join("VERSIONS.json"))
+        .ok()
+        .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
+        .and_then(|v| v.get("python").and_then(|p| p.as_str()).map(str::to_owned));
+    let base = user_base.filter(|b| !b.is_empty()).map(PathBuf::from).or_else(|| appdata.map(|a| PathBuf::from(a).join("Python")));
+    if let (Some(version), Some(base)) = (version, base) {
+        let mut it = version.split('.');
+        if let (Some(major), Some(minor)) = (it.next(), it.next()) {
+            parts.push(base.join(format!("Python{major}{minor}")).join("Scripts"));
+        }
+    }
+    parts
+}
+
 /// The webview may only start the real Claude CLI: an existing file named claude.exe or claude.cmd.
 fn validate_claude_path(p: Option<String>) -> Result<String, String> {
     let p = p.ok_or("Claude Code nicht gefunden")?;
@@ -121,12 +147,17 @@ impl Terminals {
             cmd.env_remove(k);
         }
         if let Some(rt) = runtime {
-            let mut parts: Vec<PathBuf> = vec![rt.join("git").join("cmd"), rt.join("gh").join("bin")];
+            let mut parts = runtime_path_entries(&rt, std::env::var_os("PYTHONUSERBASE"), std::env::var_os("APPDATA"));
             if let Some(cur) = std::env::var_os("PATH") {
                 parts.extend(std::env::split_paths(&cur));
             }
             if let Ok(joined) = std::env::join_paths(parts) {
                 cmd.env("PATH", joined);
+            }
+            // Same as the sidecar's sessionEnv: piped Python output in the ANSI code page fails on the first
+            // character outside it.
+            if rt.join("python").join("python.exe").is_file() && std::env::var_os("PYTHONUTF8").is_none() {
+                cmd.env("PYTHONUTF8", "1");
             }
         }
         cmd.env("TERM", "xterm-256color");
@@ -215,5 +246,32 @@ impl Terminals {
         for t in all {
             t.kill();
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::runtime_path_entries;
+    use std::path::PathBuf;
+
+    #[test]
+    fn python_and_its_user_scripts_come_after_git_and_gh() {
+        let rt = std::env::temp_dir().join(format!("forge-term-rt-{}", std::process::id()));
+        std::fs::create_dir_all(rt.join("python")).unwrap();
+        std::fs::write(rt.join("VERSIONS.json"), r#"{"node":"24.21.0","python":"3.14.8"}"#).unwrap();
+        let parts = runtime_path_entries(&rt, None, Some(r"C:\Users\x\AppData\Roaming".into()));
+        assert_eq!(
+            parts,
+            vec![
+                rt.join("git").join("cmd"),
+                rt.join("gh").join("bin"),
+                rt.join("python"),
+                PathBuf::from(r"C:\Users\x\AppData\Roaming\Python\Python314\Scripts"),
+            ]
+        );
+        let custom = runtime_path_entries(&rt, Some(r"D:\pyuser".into()), Some(r"C:\Users\x\AppData\Roaming".into()));
+        assert_eq!(custom.last(), Some(&PathBuf::from(r"D:\pyuser\Python314\Scripts")));
+        std::fs::remove_dir_all(&rt).unwrap();
+        assert_eq!(runtime_path_entries(&rt, None, None), vec![rt.join("git").join("cmd"), rt.join("gh").join("bin")]);
     }
 }

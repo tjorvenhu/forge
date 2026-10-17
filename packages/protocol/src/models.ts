@@ -589,6 +589,7 @@ export const Diagnostics = z.object({
   apiKeyStripped: z.boolean(),
   git: ToolCheck,
   gh: ToolCheck.extend({ authenticated: z.boolean().nullable() }),
+  python: ToolCheck,
   capabilities: z.array(Capability),
 });
 export type Diagnostics = z.infer<typeof Diagnostics>;

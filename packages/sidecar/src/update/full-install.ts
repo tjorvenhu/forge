@@ -33,6 +33,7 @@ const TOOL_FILES: Record<string, string> = {
   node: path.join("node", "node.exe"),
   git: path.join("git", "cmd", "git.exe"),
   gh: path.join("gh", "bin", "gh.exe"),
+  python: path.join("python", "python.exe"),
 };
 const TOOL_LABELS: Record<string, string> = { node: "Node.js", git: "Git", gh: "GitHub CLI", python: "Python" };
 /** Checked when the build does not know its runtime key. */

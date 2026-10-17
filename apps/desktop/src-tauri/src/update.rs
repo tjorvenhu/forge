@@ -23,10 +23,11 @@ pub fn expected_runtime() -> Option<&'static str> {
 /// What a release build misses in its runtime folder, for the start screen when the sidecar cannot
 /// run at all. The sidecar checks the versions too (packages/sidecar/src/update/full-install.ts).
 pub fn runtime_gaps(runtime: Option<&Path>) -> Vec<&'static str> {
-    const PARTS: [(&str, &str); 5] = [
+    const PARTS: [(&str, &str); 6] = [
         ("node/node.exe", "Node.js"),
         ("git/cmd/git.exe", "Git"),
         ("gh/bin/gh.exe", "GitHub CLI"),
+        ("python/python.exe", "Python"),
         ("sidecar/sidecar.mjs", "Hintergrunddienst"),
         ("VERSIONS.json", "Versionsliste"),
     ];
@@ -245,14 +246,14 @@ mod tests {
         std::fs::create_dir_all(dir.join("sidecar")).unwrap();
         std::fs::write(dir.join("sidecar").join("sidecar.mjs"), "").unwrap();
         // An unpacked update zip: only the sidecar.
-        assert_eq!(runtime_gaps(Some(&dir)), ["Node.js", "Git", "GitHub CLI", "Versionsliste"]);
-        for rel in ["node/node.exe", "git/cmd/git.exe", "gh/bin/gh.exe", "VERSIONS.json"] {
+        assert_eq!(runtime_gaps(Some(&dir)), ["Node.js", "Git", "GitHub CLI", "Python", "Versionsliste"]);
+        for rel in ["node/node.exe", "git/cmd/git.exe", "gh/bin/gh.exe", "python/python.exe", "VERSIONS.json"] {
             let p = dir.join(rel);
             std::fs::create_dir_all(p.parent().unwrap()).unwrap();
             std::fs::write(p, "{}").unwrap();
         }
         assert!(runtime_gaps(Some(&dir)).is_empty());
-        assert_eq!(runtime_gaps(None).len(), 5);
+        assert_eq!(runtime_gaps(None).len(), 6);
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

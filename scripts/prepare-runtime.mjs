@@ -1,7 +1,7 @@
 #!/usr/bin/env node
-// Downloads and verifies the tools FORGE ships with (Node.js, Git, GitHub CLI) and copies the
+// Downloads and verifies the tools FORGE ships with (Node.js, Git, GitHub CLI, Python) and copies the
 // built sidecar next to them. Output: apps/desktop/src-tauri/runtime/ (bundled as Tauri resources).
-// Every download is pinned and checked against the SHA-256 published by the upstream project.
+// Every download is pinned and checked against the hash published by the upstream project.
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { copyFileSync, cpSync, createWriteStream, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -29,6 +29,15 @@ const WINDOWS = {
     url: "https://github.com/cli/cli/releases/download/v2.102.0/gh_2.102.0_windows_amd64.zip",
     sha256: "ae64e556ecc240b200f7eba60d550e4bb60d78e860e69dd88c449405b86067f4",
   },
+  // The official NuGet package of the PSF: a complete CPython with pip, venv and ensurepip, but without
+  // tests, tkinter and IDLE (the embeddable zip has no pip and cannot create venvs). 3.14 instead of the
+  // fresh 3.15 so packages with C extensions find wheels. nuget.org publishes SHA-512 (base64) in the
+  // catalog entry of the package (`packageHash`).
+  python: {
+    version: "3.14.8",
+    url: "https://api.nuget.org/v3-flatcontainer/python/3.14.8/python.3.14.8.nupkg",
+    sha512: "b9oz/C2qiLlE7FKAogz3dyiT38vFX3d9K2IqhooLZmcL3E9REJsgrg3eUXeTHLXRy50jgfHEoX1bx3u91Vjeaw==",
+  },
 };
 
 function log(msg) {
@@ -38,21 +47,22 @@ function log(msg) {
 async function download(spec) {
   mkdirSync(CACHE, { recursive: true });
   const file = path.join(CACHE, path.basename(new URL(spec.url).pathname));
-  if (existsSync(file) && sha256(file) === spec.sha256) return file;
+  const [algo, expected, encoding] = spec.sha512 ? ["sha512", spec.sha512, "base64"] : ["sha256", spec.sha256, "hex"];
+  if (existsSync(file) && digest(file, algo, encoding) === expected) return file;
   log(`lade ${spec.url}`);
   const res = await fetch(spec.url, { redirect: "follow" });
   if (!res.ok || !res.body) throw new Error(`Download fehlgeschlagen (${res.status}): ${spec.url}`);
   await pipeline(Readable.fromWeb(res.body), createWriteStream(file));
-  const got = sha256(file);
-  if (got !== spec.sha256) {
+  const got = digest(file, algo, encoding);
+  if (got !== expected) {
     rmSync(file, { force: true });
-    throw new Error(`Prüfsumme stimmt nicht für ${file}\n erwartet ${spec.sha256}\n erhalten ${got}`);
+    throw new Error(`Prüfsumme stimmt nicht für ${file}\n erwartet ${expected}\n erhalten ${got}`);
   }
   return file;
 }
 
-function sha256(file) {
-  return createHash("sha256").update(readFileSync(file)).digest("hex");
+function digest(file, algo, encoding) {
+  return createHash(algo).update(readFileSync(file)).digest(encoding);
 }
 
 function run(cmd, args, opts = {}) {
@@ -85,6 +95,26 @@ function pruneGit(dir) {
     "ucrt64/share/git-doc",
   ];
   for (const rel of drop) rmSync(path.join(dir, rel), { recursive: true, force: true });
+}
+
+/**
+ * Makes the NuGet Python usable from a shell: `python3` next to `python`, `pip`/`pip3` for cmd,
+ * PowerShell and Git Bash (pip's own exe launchers carry an absolute path and break when the folder
+ * moves). pip.ini sits in sys.prefix, so it applies to this interpreter only, not to venvs made from
+ * it: plain `pip install` goes to the user site (%APPDATA%\Python\Python3xx), not into the FORGE
+ * installation, which the next full installer replaces.
+ */
+function preparePython(dir) {
+  copyFileSync(path.join(dir, "python.exe"), path.join(dir, "python3.exe"));
+  // [install], not [global]: `pip list` and `pip freeze` with user=true would only show the user site.
+  writeFileSync(path.join(dir, "pip.ini"), "[global]\r\ndisable-pip-version-check = true\r\n\r\n[install]\r\nuser = true\r\n");
+  for (const name of ["pip", "pip3"]) {
+    writeFileSync(path.join(dir, `${name}.cmd`), '@"%~dp0python.exe" -m pip %*\r\n');
+    writeFileSync(path.join(dir, name), '#!/bin/sh\nexec "$(dirname "$0")/python.exe" -m pip "$@"\n');
+  }
+  const r = spawnSync(path.join(dir, "python3.exe"), ["-I", "-B", "-m", "pip", "--version"], { encoding: "utf8" });
+  if (r.status !== 0) throw new Error(`Python aus dem Paket startet nicht: ${r.stderr || r.error?.message}`);
+  log(r.stdout.trim());
 }
 
 async function prepareWindows(state) {
@@ -121,6 +151,17 @@ async function prepareWindows(state) {
     copyFileSync(path.join(dest, "LICENSE"), path.join(OUT, "gh", "LICENSE"));
     state.gh = WINDOWS.gh.version;
   }
+
+  if (state.python !== WINDOWS.python.version) {
+    const pkg = await download(WINDOWS.python);
+    const dest = path.join(tmp, "python");
+    // A .nupkg is a zip; the interpreter is in tools/, the rest is NuGet metadata.
+    unzip(pkg, dest);
+    rmSync(path.join(OUT, "python"), { recursive: true, force: true });
+    cpSync(path.join(dest, "tools"), path.join(OUT, "python"), { recursive: true });
+    preparePython(path.join(OUT, "python"));
+    state.python = WINDOWS.python.version;
+  }
   rmSync(tmp, { recursive: true, force: true });
 }
 
@@ -141,17 +182,26 @@ async function main() {
   log(`fertig: ${JSON.stringify(state)}`);
 }
 
+const VERSIONS = Object.fromEntries(Object.entries(WINDOWS).map(([name, spec]) => [name, spec.version]));
+
 /**
- * Key of the bundled runtime versions, e.g. node-24.21.0_git-2.56.0.2_gh-2.102.0. Small updates
- * (exe and sidecar only) carry it in their name; an installation with another runtime needs the
- * full installer.
+ * Key of the bundled runtime versions, e.g. node-24.21.0_git-2.56.0.2_gh-2.102.0_python-3.14.8. Small
+ * updates (exe and sidecar only) carry it in their name; an installation with another runtime needs
+ * the full installer. installedRuntimeKey in packages/sidecar/src/update/app-update.ts builds the same
+ * key from VERSIONS.json.
  */
-export function runtimeKey(versions = { node: WINDOWS.node.version, git: WINDOWS.git.version, gh: WINDOWS.gh.version }) {
-  return `node-${versions.node}_git-${versions.git}_gh-${versions.gh}`;
+export function runtimeKey(versions = VERSIONS) {
+  return `node-${versions.node}_git-${versions.git}_gh-${versions.gh}_python-${versions.python}`;
 }
 
 if (process.argv.includes("--key")) {
   process.stdout.write(runtimeKey() + "\n");
+  process.exit(0);
+}
+
+// VERSIONS.json as a full build writes it (tests compare the key against the sidecar's).
+if (process.argv.includes("--versions")) {
+  process.stdout.write(JSON.stringify(VERSIONS) + "\n");
   process.exit(0);
 }
 

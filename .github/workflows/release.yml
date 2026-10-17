@@ -3,10 +3,10 @@
 # Two kinds of release assets:
 #   FORGE_<v>_update_<runtime>.zip   every release. Only forge-desktop.exe and the sidecar, a few MB.
 #                                    Installed apps with the same bundled runtime install it in seconds.
-#   FORGE_<v>_<runtime>_x64-setup.exe  only when the bundled runtime (node, git, gh) changed, or when
+#   FORGE_<v>_<runtime>_x64-setup.exe  only when the bundled runtime (node, git, gh, python) changed, or when
 #                                    asked for (Run workflow → full). Needed for new installations and
 #                                    for apps with an older runtime.
-# The runtime key comes from scripts/prepare-runtime.mjs (node-<v>_git-<v>_gh-<v>).
+# The runtime key comes from scripts/prepare-runtime.mjs (node-<v>_git-<v>_gh-<v>_python-<v>).
 name: Release
 
 on:
