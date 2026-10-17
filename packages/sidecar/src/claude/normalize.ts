@@ -1,4 +1,4 @@
-import type { SessionEventBody } from "@forge/protocol";
+import type { ModelTokens, SessionEventBody } from "@forge/protocol";
 
 const MAX_TOOL_RESULT = 20_000;
 /** per string field of a tool input; a Write of a large file would otherwise land in the DB in full */
@@ -229,9 +229,27 @@ export class Normalizer {
       outputTokens: num(usage.output_tokens),
       cacheReadTokens: num(usage.cache_read_input_tokens),
       cacheWriteTokens: num(usage.cache_creation_input_tokens),
+      models: modelTokens(m.modelUsage),
       text: str(m.result) ?? (errors || null),
     };
   }
+}
+
+/** modelUsage of an SDK result as ModelTokens per model; undefined when missing or empty. */
+export function modelTokens(raw: unknown): Record<string, ModelTokens> | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+  const out: Record<string, ModelTokens> = {};
+  for (const [model, v] of Object.entries(raw as Record<string, Record<string, unknown>>)) {
+    if (!v || typeof v !== "object") continue;
+    out[model] = {
+      inputTokens: num(v.inputTokens) ?? 0,
+      outputTokens: num(v.outputTokens) ?? 0,
+      cacheReadTokens: num(v.cacheReadInputTokens) ?? 0,
+      cacheWriteTokens: num(v.cacheCreationInputTokens) ?? 0,
+      costUsd: num(v.costUSD) ?? 0,
+    };
+  }
+  return Object.keys(out).length ? out : undefined;
 }
 
 function toolResultText(content: unknown): string {

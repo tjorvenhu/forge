@@ -26,6 +26,7 @@ import { Presence } from "./util/presence.js";
 import { AppUpdateService } from "./update/app-update.js";
 import { FullInstallService } from "./update/full-install.js";
 import { UsageStatsService, usageStatsFile } from "./stats/usage-stats.js";
+import { modelTokens } from "./claude/normalize.js";
 import { SecretStore } from "./phone/secrets.js";
 import { locateClaude, sessionEnv } from "./claude/environment.js";
 import { readAuth } from "./claude/diagnostics.js";
@@ -90,6 +91,7 @@ export function createApp(opts: { dataDir: string; write: Writer; log?: (m: stri
       cacheReadTokens: n(usage.cache_read_input_tokens),
       cacheWriteTokens: n(usage.cache_creation_input_tokens),
       isError: m.is_error === true,
+      models: modelTokens(m.modelUsage),
     });
   });
   jobs = new JobWatcher({

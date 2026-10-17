@@ -192,6 +192,16 @@ export const ToolResultContent = z.object({
 });
 
 /** Normalized, persisted session events. Deltas are transient and never persisted. */
+/** Tokens and estimated cost of one model (modelUsage of the Agent SDK). */
+export const ModelTokens = z.object({
+  inputTokens: z.number(),
+  outputTokens: z.number(),
+  cacheReadTokens: z.number(),
+  cacheWriteTokens: z.number(),
+  costUsd: z.number(),
+});
+export type ModelTokens = z.infer<typeof ModelTokens>;
+
 export const SessionEventBody = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("session.init"),
@@ -332,6 +342,11 @@ export const SessionEventBody = z.discriminatedUnion("type", [
     cacheReadTokens: z.number().nullable(),
     /** missing in events from before it was recorded */
     cacheWriteTokens: z.number().nullable().optional(),
+    /**
+     * modelUsage of the SDK: per model, every call of the query (main loop, subagents, compaction), cumulative
+     * over the turns of one Claude process. The tokens above are the main loop of this turn only.
+     */
+    models: z.record(z.string(), ModelTokens).optional(),
     text: z.string().nullable(),
   }),
   z.object({

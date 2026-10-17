@@ -76,12 +76,15 @@ export class UsageStatsService {
         return "deleted";
       }
       if (state.lastSentAt && now - Date.parse(state.lastSentAt) < SEND_EVERY_MS) return "idle";
+      const { models, ...counters } = this.d.totals();
       await this.request("POST", "/api/v1/report", {
         schema: 1,
         installId: state.installId,
         appVersion: (this.d.appVersion ?? process.env.FORGE_APP_VERSION ?? "0.0.0-dev").slice(0, 32),
         os: `${os.type()} ${os.release()}`.slice(0, 64),
-        counters: this.d.totals(),
+        counters,
+        // Model ids only (e.g. claude-opus-4-7), at most 20; the service checks them again.
+        models: Object.fromEntries(Object.entries(models).slice(0, 20)),
       });
       this.write({ ...state, lastSentAt: new Date(now).toISOString() });
       return "sent";

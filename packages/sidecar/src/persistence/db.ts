@@ -1,6 +1,6 @@
 import { DatabaseSync, type StatementSync } from "node:sqlite";
 import type { UsageSample } from "../claude/usage-forecast.js";
-import { DEFAULT_DISABLED_POLICY_RULES, SEARCH_MARK_END, SEARCH_MARK_START, type ContextUsage, type EffortLevel, type ForgeUsagePurpose, type PermissionMode, type ProfileId, type Project, type PhoneCallRecord, type PromptTemplate, type SearchHit, type Session, type SessionEvent, type SessionEventBody, type SessionStatus, type Settings } from "@forge/protocol";
+import { DEFAULT_DISABLED_POLICY_RULES, SEARCH_MARK_END, SEARCH_MARK_START, type ContextUsage, type EffortLevel, type ModelTokens, type ForgeUsagePurpose, type PermissionMode, type ProfileId, type Project, type PhoneCallRecord, type PromptTemplate, type SearchHit, type Session, type SessionEvent, type SessionEventBody, type SessionStatus, type Settings } from "@forge/protocol";
 
 export const MIGRATIONS: string[] = [
   `
@@ -328,7 +328,50 @@ export const MIGRATIONS: string[] = [
   );
   INSERT INTO stats_counters(key, value) SELECT 'projectsCreated', COUNT(*) FROM projects WHERE parent_id IS NULL;
   `,
+  // Tokens per model of a call (JSON {model: ModelTokens}) and its estimated cost from modelUsage, which also counts
+  // subagents and compaction. NULL for calls recorded before.
+  `
+  ALTER TABLE claude_usage ADD COLUMN models TEXT;
+  ALTER TABLE claude_usage ADD COLUMN cost_usd REAL;
+  `,
 ];
+
+/** Sum over the models of a modelUsage. */
+export function sumModels(models: Record<string, ModelTokens>): ModelTokens & { total: number } {
+  const s = { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, costUsd: 0 };
+  for (const m of Object.values(models)) {
+    s.inputTokens += m.inputTokens;
+    s.outputTokens += m.outputTokens;
+    s.cacheReadTokens += m.cacheReadTokens;
+    s.cacheWriteTokens += m.cacheWriteTokens;
+    s.costUsd += m.costUsd;
+  }
+  return { ...s, total: s.inputTokens + s.outputTokens + s.cacheReadTokens + s.cacheWriteTokens };
+}
+
+/**
+ * Tokens of one turn from two cumulative modelUsage readings of the same session. A model whose total went down
+ * (a new Claude process without saved totals, /clear) counts with its whole new value.
+ */
+export function modelDelta(cur: Record<string, ModelTokens>, prev: Record<string, ModelTokens> | null): Record<string, ModelTokens> {
+  const out: Record<string, ModelTokens> = {};
+  for (const [model, c] of Object.entries(cur)) {
+    const p = prev?.[model];
+    const total = (m: ModelTokens) => m.inputTokens + m.outputTokens + m.cacheReadTokens + m.cacheWriteTokens;
+    const d: ModelTokens =
+      p && total(c) >= total(p)
+        ? {
+            inputTokens: Math.max(0, c.inputTokens - p.inputTokens),
+            outputTokens: Math.max(0, c.outputTokens - p.outputTokens),
+            cacheReadTokens: Math.max(0, c.cacheReadTokens - p.cacheReadTokens),
+            cacheWriteTokens: Math.max(0, c.cacheWriteTokens - p.cacheWriteTokens),
+            costUsd: Math.max(0, c.costUsd - p.costUsd),
+          }
+        : c;
+    if (total(d) > 0) out[model] = d;
+  }
+  return out;
+}
 
 /** Cumulative counters of this installation that the usage statistics send (USAGE_STATS_URL). */
 export interface UsageTotals {
@@ -344,6 +387,12 @@ export interface UsageTotals {
   agentsStarted: number;
   agentsMerged: number;
   phoneCalls: number;
+  /** session turns the user started (not FORGE on its own) */
+  userTurns: number;
+  /** estimated API cost (modelUsage) in US cents, from the calls recorded with it */
+  costUsdCents: number;
+  /** tokens and estimated cost per model, from the calls recorded with modelUsage */
+  models: Record<string, { tokens: number; costUsdCents: number }>;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -775,13 +824,28 @@ export class Db {
                 COUNT(DISTINCT CASE WHEN kind = 'session' THEN session_id END) AS sessions
          FROM claude_usage`,
       )
-      .get() as Omit<UsageTotals, "projectsCreated" | "agentsStarted" | "agentsMerged" | "phoneCalls">;
+      .get() as Pick<UsageTotals, "tokensInput" | "tokensOutput" | "tokensCacheRead" | "tokensCacheWrite" | "claudeTurns" | "claudeWorkMs" | "sessions">;
+    // An agent is in agent_log once it finished; one still running is only its worktree project (same id).
     const a = this.sql
-      .prepare("SELECT COUNT(DISTINCT worktree_id) AS agentsStarted, COUNT(DISTINCT CASE WHEN outcome = 'merged' THEN worktree_id END) AS agentsMerged FROM agent_log")
+      .prepare(
+        `SELECT (SELECT COUNT(*) FROM (SELECT worktree_id FROM agent_log UNION SELECT id FROM projects WHERE parent_id IS NOT NULL)) AS agentsStarted,
+                (SELECT COUNT(DISTINCT worktree_id) FROM agent_log WHERE outcome = 'merged') AS agentsMerged`,
+      )
       .get() as { agentsStarted: number; agentsMerged: number };
     const projects = this.sql.prepare("SELECT value FROM stats_counters WHERE key = 'projectsCreated'").get() as { value: number } | undefined;
     const calls = this.sql.prepare("SELECT COUNT(*) AS n FROM phone_calls").get() as { n: number };
-    return { ...u, ...a, projectsCreated: projects?.value ?? 0, phoneCalls: calls.n };
+    const userTurns = this.sql.prepare("SELECT COUNT(*) AS n FROM claude_usage WHERE kind = 'session' AND purpose IS NULL").get() as { n: number };
+    // Cost and models only exist for calls recorded with modelUsage; older ones count in the token sums above only.
+    const cost = this.sql.prepare("SELECT COALESCE(SUM(cost_usd), 0) AS c FROM claude_usage").get() as { c: number };
+    const models: UsageTotals["models"] = {};
+    for (const r of this.sql.prepare("SELECT models FROM claude_usage WHERE models IS NOT NULL").all() as Array<{ models: string }>) {
+      for (const [model, m] of Object.entries(JSON.parse(r.models) as Record<string, ModelTokens>)) {
+        const t = (models[model] ??= { tokens: 0, costUsdCents: 0 });
+        t.tokens += m.inputTokens + m.outputTokens + m.cacheReadTokens + m.cacheWriteTokens;
+        t.costUsdCents += Math.round(m.costUsd * 100);
+      }
+    }
+    return { ...u, ...a, projectsCreated: projects?.value ?? 0, phoneCalls: calls.n, userTurns: userTurns.n, costUsdCents: Math.round(cost.c * 100), models };
   }
 
   updateProject(id: string, patch: Partial<ProjectRecord>) {
@@ -1081,22 +1145,64 @@ export class Db {
     const ev: SessionEvent = { seq: this.nextSeq(sessionId), sessionId, ts: now(), body };
     this.stmt("INSERT INTO events(session_id, seq, ts, type, body) VALUES(?, ?, ?, ?, ?)").run(sessionId, ev.seq, ev.ts, body.type, JSON.stringify(body));
     if (body.type === "turn.result") {
+      // modelUsage counts subagents and compaction too, but cumulatively per Claude process: this turn is the difference.
+      const turn = body.models ? modelDelta(body.models, this.lastModelTotals(sessionId, ev.seq)) : null;
+      const t = turn ? sumModels(turn) : null;
       this.stmt(
-        `INSERT INTO claude_usage(ts, kind, session_id, project_id, root_id, root_name, duration_ms, api_calls, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, is_error, purpose)
+        `INSERT INTO claude_usage(ts, kind, session_id, project_id, root_id, root_name, duration_ms, api_calls, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, is_error, purpose, models, cost_usd)
          SELECT ?, 'session', s.id, s.project_id, COALESCE(p.parent_id, s.project_id), COALESCE(r.name, p.name), ?, ?, ?, ?, ?, ?, ?,
            CASE (SELECT json_extract(e.body, '$.source') FROM events e WHERE e.session_id = s.id AND e.type = 'user.message' ORDER BY e.seq DESC LIMIT 1)
-             WHEN 'auto' THEN 'auto' END
+             WHEN 'auto' THEN 'auto' END, ?, ?
          FROM sessions s JOIN projects p ON p.id = s.project_id LEFT JOIN projects r ON r.id = p.parent_id WHERE s.id = ?`,
-      ).run(ev.ts, body.durationMs ?? 0, body.numTurns ?? 0, body.inputTokens ?? 0, body.outputTokens ?? 0, body.cacheReadTokens ?? 0, body.cacheWriteTokens ?? 0, body.isError ? 1 : 0, sessionId);
+      ).run(
+        ev.ts,
+        body.durationMs ?? 0,
+        body.numTurns ?? 0,
+        t?.inputTokens ?? body.inputTokens ?? 0,
+        t?.outputTokens ?? body.outputTokens ?? 0,
+        t?.cacheReadTokens ?? body.cacheReadTokens ?? 0,
+        t?.cacheWriteTokens ?? body.cacheWriteTokens ?? 0,
+        body.isError ? 1 : 0,
+        turn ? JSON.stringify(turn) : null,
+        t?.costUsd ?? null,
+        sessionId,
+      );
     }
     return ev;
   }
 
-  /** A Claude call outside a session (titles, commit messages, summaries, the phone). */
-  recordClaudeUsage(u: { kind: "assist" | "phone"; purpose: ForgeUsagePurpose; durationMs: number; apiCalls: number; inputTokens: number; outputTokens: number; cacheReadTokens: number; cacheWriteTokens: number; isError: boolean }) {
+  /** modelUsage of the session's last result before `beforeSeq` that carried any tokens (a crashed run reports zeros). */
+  private lastModelTotals(sessionId: string, beforeSeq: number): Record<string, ModelTokens> | null {
+    const rows = this.stmt("SELECT body FROM events WHERE session_id = ? AND type = 'turn.result' AND seq < ? ORDER BY seq DESC LIMIT 5").all(sessionId, beforeSeq) as Array<{ body: string }>;
+    for (const r of rows) {
+      const models = (JSON.parse(r.body) as { models?: Record<string, ModelTokens> }).models;
+      if (models && sumModels(models).total > 0) return models;
+    }
+    return null;
+  }
+
+  /**
+   * A Claude call outside a session (titles, commit messages, summaries, the phone). With `models` (modelUsage of
+   * the one-shot query, which is its total) the tokens come from there, subagents and all.
+   */
+  recordClaudeUsage(u: { kind: "assist" | "phone"; purpose: ForgeUsagePurpose; durationMs: number; apiCalls: number; inputTokens: number; outputTokens: number; cacheReadTokens: number; cacheWriteTokens: number; isError: boolean; models?: Record<string, ModelTokens> }) {
+    const t = u.models ? sumModels(u.models) : null;
     this.stmt(
-      `INSERT INTO claude_usage(ts, kind, purpose, duration_ms, api_calls, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, is_error) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    ).run(now(), u.kind, u.purpose, u.durationMs, u.apiCalls, u.inputTokens, u.outputTokens, u.cacheReadTokens, u.cacheWriteTokens, u.isError ? 1 : 0);
+      `INSERT INTO claude_usage(ts, kind, purpose, duration_ms, api_calls, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, is_error, models, cost_usd) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(
+      now(),
+      u.kind,
+      u.purpose,
+      u.durationMs,
+      u.apiCalls,
+      t?.inputTokens ?? u.inputTokens,
+      t?.outputTokens ?? u.outputTokens,
+      t?.cacheReadTokens ?? u.cacheReadTokens,
+      t?.cacheWriteTokens ?? u.cacheWriteTokens,
+      u.isError ? 1 : 0,
+      u.models ? JSON.stringify(u.models) : null,
+      t?.costUsd ?? null,
+    );
   }
 
   /** Claude calls that ended in [from, to), oldest first; rootIds narrows to those projects (calls outside a session drop out). */

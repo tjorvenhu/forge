@@ -18,7 +18,12 @@ const TOTALS: UsageTotals = {
   agentsStarted: 4,
   agentsMerged: 3,
   phoneCalls: 0,
+  userTurns: 2,
+  costUsdCents: 1234,
+  models: { "claude-opus-4-7": { tokens: 100, costUsdCents: 1234 } },
 };
+
+const { models: _models, ...COUNTERS } = TOTALS;
 
 const dirs: string[] = [];
 afterEach(() => {
@@ -63,9 +68,9 @@ describe("usage statistics", () => {
     expect(t.requests[0]).toEqual({
       url: `${USAGE_STATS_URL}/api/v1/report`,
       method: "POST",
-      body: { schema: 1, installId: id, appVersion: "0.1.80", os: expect.any(String), counters: TOTALS },
+      body: { schema: 1, installId: id, appVersion: "0.1.80", os: expect.any(String), counters: COUNTERS, models: TOTALS.models },
     });
-    expect(Object.keys(t.requests[0]!.body!).sort()).toEqual(["appVersion", "counters", "installId", "os", "schema"]);
+    expect(Object.keys(t.requests[0]!.body!).sort()).toEqual(["appVersion", "counters", "installId", "models", "os", "schema"]);
     t.advance(4 * 60_000);
     expect(await t.svc.tick()).toBe("idle");
     t.advance(60_000);
@@ -119,7 +124,27 @@ describe("usage statistics", () => {
       db.insertProject(rec("a", null), "a");
       db.insertProject(rec("b", "a"), "b");
       db.insertProject(rec("c", null), "c", true);
-      expect(db.usageTotals()).toMatchObject({ projectsCreated: 1, tokensInput: 0, sessions: 0, agentsMerged: 0, phoneCalls: 0 });
+      // The worktree of a running agent counts as a started agent before it finishes.
+      expect(db.usageTotals()).toMatchObject({ projectsCreated: 1, tokensInput: 0, sessions: 0, agentsStarted: 1, agentsMerged: 0, phoneCalls: 0 });
+
+      // Session turns: modelUsage counts subagents too and adds up over the turns of one process.
+      const now = "2026-10-18T10:00:00.000Z";
+      db.insertSession({ id: "s1", projectId: "a", claudeSessionId: null, cwd: dir, title: null, model: null, effort: null, profile: "balanced", permissionMode: "default", status: "idle", apiKeySource: null, createdAt: now, updatedAt: now, lastError: null });
+      const m = (i: number, o: number, cr: number, cost: number) => ({ inputTokens: i, outputTokens: o, cacheReadTokens: cr, cacheWriteTokens: 0, costUsd: cost });
+      const result = (models: Record<string, ReturnType<typeof m>>, isError = false) =>
+        db.appendEvent("s1", { type: "turn.result", subtype: "success", isError, durationMs: 1000, numTurns: 1, inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0, models, text: null });
+      result({ "claude-opus-4-7": m(10, 20, 100, 0.5), "claude-haiku-4-5": m(5, 5, 0, 0.01) });
+      result({ "claude-opus-4-7": m(15, 30, 300, 0.8), "claude-haiku-4-5": m(5, 5, 0, 0.01) });
+      // A crashed run reports zeros and must not reset the baseline.
+      result({ "claude-opus-4-7": m(0, 0, 0, 0) }, true);
+      result({ "claude-opus-4-7": m(16, 31, 310, 0.81), "claude-haiku-4-5": m(5, 5, 0, 0.01) });
+      // A new process without saved totals starts at zero again: its value counts in full.
+      result({ "claude-opus-4-7": m(2, 3, 0, 0.02) });
+      const t = db.usageTotals();
+      expect(t).toMatchObject({ tokensInput: 10 + 5 + 5 + 1 + 2, tokensOutput: 20 + 5 + 10 + 1 + 3, tokensCacheRead: 100 + 200 + 10, claudeTurns: 5, sessions: 1, userTurns: 5 });
+      expect(t.costUsdCents).toBe(Math.round((0.5 + 0.01 + 0.3 + 0.01 + 0.02) * 100));
+      expect(t.models["claude-opus-4-7"]!.tokens).toBe(130 + 215 + 12 + 5);
+      expect(t.models["claude-haiku-4-5"]!.tokens).toBe(10);
     } finally {
       db.close();
     }
