@@ -47,6 +47,7 @@ export const keys = {
   devServer: (id: string) => ["devServer", id] as const,
   devTools: (id: string) => ["devTools", id] as const,
   testDb: (id: string) => ["testDb", id] as const,
+  worktreeSetup: (id: string) => ["worktreeSetup", id] as const,
   knowledge: (id: string) => ["knowledge", id] as const,
   knowledgeEntry: (id: string, entryId: string) => ["knowledge", id, entryId] as const,
   /** colon: entry ids never contain one, so this cannot clash with an entry */
@@ -196,11 +197,15 @@ export const usePhoneConfig = () => useQuery({ queryKey: keys.phoneConfig, query
 export const useDevServer = (projectId: string) =>
   useQuery({ queryKey: keys.devServer(projectId), queryFn: () => call("devserver.state", { projectId }), staleTime: 30_000 });
 
-/** Dev tools and test database are per project; worktrees use their project's (pass the owner id). */
+/** Dev tools settings are per project; worktrees use their project's (pass the owner id). */
 export const useDevTools = (ownerId: string) => useQuery({ queryKey: keys.devTools(ownerId), queryFn: () => call("devtools.get", { projectId: ownerId }), staleTime: Infinity });
 
-/** Changes arrive as testdb.updated. */
-export const useTestDb = (ownerId: string) => useQuery({ queryKey: keys.testDb(ownerId), queryFn: () => call("testdb.state", { projectId: ownerId }), staleTime: Infinity });
+/** Changes arrive as testdb.updated. An agent's worktree has its own database (its own id). */
+export const useTestDb = (projectId: string) => useQuery({ queryKey: keys.testDb(projectId), queryFn: () => call("testdb.state", { projectId }), staleTime: Infinity });
+
+/** Preparation of an agent's worktree; null for other projects. Changes arrive as worktree.setup. */
+export const useWorktreeSetup = (projectId: string) =>
+  useQuery({ queryKey: keys.worktreeSetup(projectId), queryFn: () => call("worktrees.setup", { projectId }), staleTime: Infinity });
 
 /** Entries of the project's knowledge; Claude's changes arrive as knowledge.updated. */
 export const useKnowledge = (ownerId: string) => useQuery({ queryKey: keys.knowledge(ownerId), queryFn: () => call("knowledge.list", { projectId: ownerId }), staleTime: 60_000, refetchOnWindowFocus: true });

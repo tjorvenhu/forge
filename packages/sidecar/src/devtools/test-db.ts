@@ -1,12 +1,13 @@
 import { createHash } from "node:crypto";
 import { createWriteStream, existsSync, readFileSync, writeFileSync } from "node:fs";
-import { mkdir, readdir, rename, rm, writeFile } from "node:fs/promises";
+import { copyFile, cp, mkdir, readdir, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { spawnSync } from "node:child_process";
-import { ForgeError, type TestDbState } from "@forge/protocol";
+import { ForgeError, type TestDbConfig, type TestDbState } from "@forge/protocol";
 import { run } from "../util/proc.js";
+import { findFreePort, isPortFree } from "../util/ports.js";
 import { connectionUrl, type DevToolsService } from "./dev-tools.js";
 
 /**
@@ -24,6 +25,8 @@ export const POSTGRES = {
 export const DB_USER = "forge";
 const START_TIMEOUT_S = 60;
 const LOG_TAIL = 64_000;
+/** Agents' own servers start here, above the ports of the projects (FIRST_DB_PORT on). */
+export const FIRST_WORKTREE_DB_PORT = 55330;
 /** How often state() asks pg_ctl whether a server marked running still runs. */
 const ALIVE_CHECK_MS = 15_000;
 
@@ -51,7 +54,12 @@ export interface TestDbDeps {
   binDir?: string;
   /** test hook: download limits */
   download?: { url?: string; connectMs?: number; stallMs?: number };
+  /** test hook: whether a port is free */
+  portFree?: (port: number) => Promise<boolean>;
 }
+
+/** What seed() did for an agent's database. */
+export type SeedResult = "copied" | "exists" | "parent-running" | "none";
 
 function tarExe(): string {
   const root = process.env.SystemRoot ?? process.env.SYSTEMROOT ?? "C:\\Windows";
@@ -66,10 +74,24 @@ export function failureReason(log: string): string | null {
   return last ? last.replace(/^.*?(FATAL|ERROR|PANIC|LOG):\s*/i, "").trim() : null;
 }
 
+/** Port a running server was started with: line 4 of postmaster.pid. */
+function pidFilePort(data: string): number | null {
+  try {
+    const port = Number(readFileSync(path.join(data, "postmaster.pid"), "utf8").split(/\r?\n/)[3]);
+    return Number.isInteger(port) && port > 0 ? port : null;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Local PostgreSQL per project for tests and the dev server. Runs from binaries downloaded once into
  * FORGE's data folder; each project gets its own data folder and port, reachable only on 127.0.0.1.
  * pg_ctl keeps the server in the desktop shell's job object, so it ends with FORGE.
+ *
+ * Worktrees (parallel agents) get their own server too, with the settings of their project but
+ * their own data folder and a port of their own: an agent's migrations and test data never reach
+ * the project's database. seed() starts it as a copy of the project's data.
  */
 export class TestDbService {
   private readonly instances = new Map<string, Instance>();
@@ -78,23 +100,45 @@ export class TestDbService {
   private readonly installWatchers = new Set<(p: number) => void>();
   private closed = false;
   private readonly binDir: string;
+  /** ports of the agents' servers; projects keep theirs in the dev tools settings */
+  private readonly ports = new Map<string, number>();
 
   constructor(private readonly d: TestDbDeps) {
     this.binDir = d.binDir ?? path.join(d.dataDir, "postgres", POSTGRES.build, "bin");
   }
 
-  private instance(owner: string): Instance {
-    let i = this.instances.get(owner);
+  private instance(key: string): Instance {
+    let i = this.instances.get(key);
     if (!i) {
       i = { status: "stopped", progress: null, error: null, startedAt: null, running: null, queue: Promise.resolve(), checkedAt: 0 };
-      this.instances.set(owner, i);
+      this.instances.set(key, i);
     }
     return i;
   }
 
-  private folder(owner: string) {
-    const base = path.join(this.d.dataDir, "testdb", owner);
+  private folder(key: string) {
+    const base = path.join(this.d.dataDir, "testdb", key);
     return { base, data: path.join(base, "data"), log: path.join(base, "server.log"), created: path.join(base, "databases.json") };
+  }
+
+  private isWorktree(key: string): boolean {
+    return this.d.devTools.owner(key) !== key;
+  }
+
+  /** Settings of the project; an agent's server has its own port. */
+  private config(key: string): TestDbConfig {
+    const cfg = this.d.devTools.get(key).database;
+    const port = this.ports.get(key);
+    return port !== undefined && this.isWorktree(key) ? { ...cfg, port } : cfg;
+  }
+
+  /** Only inside a queued job: a free port for an agent's server, the one it had if still free. */
+  private async reservePort(key: string) {
+    const free = this.d.portFree ?? isPortFree;
+    const cur = this.ports.get(key);
+    if (cur !== undefined && (await free(cur))) return;
+    const taken = [...this.d.devTools.ports(), ...[...this.ports].filter(([k]) => k !== key).map(([, p]) => p)];
+    this.ports.set(key, await findFreePort(FIRST_WORKTREE_DB_PORT, taken, free));
   }
 
   private bin(name: string) {
@@ -106,17 +150,17 @@ export class TestDbService {
   }
 
   state(projectId: string): TestDbState {
-    const owner = this.d.devTools.owner(projectId);
-    const i = this.instance(owner);
-    const cfg = this.d.devTools.get(owner).database;
-    if (i.status === "running" && Date.now() - i.checkedAt > ALIVE_CHECK_MS) this.checkAlive(owner);
+    const key = projectId;
+    const i = this.instance(key);
+    const cfg = this.config(key);
+    if (i.status === "running" && Date.now() - i.checkedAt > ALIVE_CHECK_MS) this.checkAlive(key);
     return {
-      projectId: owner,
+      projectId: key,
       status: i.status,
       progress: i.progress,
       version: POSTGRES.version,
       installed: this.installed,
-      initialized: existsSync(path.join(this.folder(owner).data, "PG_VERSION")),
+      initialized: existsSync(path.join(this.folder(key).data, "PG_VERSION")),
       url: connectionUrl(i.running && i.status === "running" ? { ...cfg, ...i.running } : cfg),
       startedAt: i.startedAt,
       error: i.error,
@@ -124,7 +168,7 @@ export class TestDbService {
   }
 
   isRunning(projectId: string): boolean {
-    return this.instance(this.d.devTools.owner(projectId)).status === "running";
+    return this.instance(projectId).status === "running";
   }
 
   /** URL of the running server, null when it is not running. */
@@ -133,7 +177,7 @@ export class TestDbService {
   }
 
   log(projectId: string): string {
-    const file = this.folder(this.d.devTools.owner(projectId)).log;
+    const file = this.folder(projectId).log;
     try {
       const text = readFileSync(file, "utf8");
       return text.length > LOG_TAIL ? text.slice(-LOG_TAIL) : text;
@@ -142,102 +186,106 @@ export class TestDbService {
     }
   }
 
-  private set(owner: string, patch: Partial<Instance>) {
-    Object.assign(this.instance(owner), patch);
-    this.d.emit(this.state(owner));
+  private set(key: string, patch: Partial<Instance>) {
+    Object.assign(this.instance(key), patch);
+    this.d.emit(this.state(key));
   }
 
-  private enqueue<T>(owner: string, job: () => Promise<T>): Promise<T> {
-    const i = this.instance(owner);
+  private enqueue<T>(key: string, job: () => Promise<T>): Promise<T> {
+    const i = this.instance(key);
     const next = i.queue.then(job, job);
     i.queue = next.catch(() => {});
     return next;
   }
 
   /** A server can end without FORGE (crash, killed by hand): the status follows it. */
-  private checkAlive(owner: string) {
-    const i = this.instance(owner);
+  private checkAlive(key: string) {
+    const i = this.instance(key);
     i.checkedAt = Date.now();
-    void this.enqueue(owner, async () => {
+    void this.enqueue(key, async () => {
       if (i.status !== "running") return;
-      if (await this.serverAlive(this.folder(owner).data)) {
+      if (await this.serverAlive(this.folder(key).data)) {
         i.checkedAt = Date.now();
         return;
       }
-      this.d.log?.(`Test-Datenbank läuft nicht mehr: Projekt ${owner}`);
-      this.set(owner, { status: "stopped", running: null, startedAt: null });
+      this.d.log?.(`Test-Datenbank läuft nicht mehr: Projekt ${key}`);
+      this.set(key, { status: "stopped", running: null, startedAt: null });
     }).catch(() => {});
   }
 
   start(projectId: string): Promise<TestDbState> {
-    const owner = this.d.devTools.owner(projectId);
-    return this.enqueue(owner, async () => {
-      const i = this.instance(owner);
+    const key = projectId;
+    return this.enqueue(key, async () => {
+      const i = this.instance(key);
       if (this.closed) throw new ForgeError("INTERNAL", "FORGE wird beendet.");
-      const f = this.folder(owner);
+      const f = this.folder(key);
       if (i.status === "running") {
         if (await this.serverAlive(f.data)) {
           i.checkedAt = Date.now();
-          return this.state(owner);
+          return this.state(key);
         }
-        this.d.log?.(`Test-Datenbank läuft nicht mehr, starte neu: Projekt ${owner}`);
-        this.set(owner, { status: "stopped", running: null, startedAt: null });
+        this.d.log?.(`Test-Datenbank läuft nicht mehr, starte neu: Projekt ${key}`);
+        this.set(key, { status: "stopped", running: null, startedAt: null });
       }
       try {
         if (!this.installed) {
-          this.set(owner, { status: "installing", progress: 0, error: null });
+          this.set(key, { status: "installing", progress: 0, error: null });
           await this.install((p) => {
-            if (i.status === "installing" && (i.progress === null || p - i.progress >= 0.02 || p === 1)) this.set(owner, { progress: p });
+            if (i.status === "installing" && (i.progress === null || p - i.progress >= 0.02 || p === 1)) this.set(key, { progress: p });
           });
         }
-        this.set(owner, { status: "starting", progress: null, error: null });
-        const cfg = this.d.devTools.get(owner).database;
+        this.set(key, { status: "starting", progress: null, error: null });
         // A server left behind by a crashed sidecar still holds the data folder: take it over.
         if (await this.serverAlive(f.data)) {
-          this.set(owner, { status: "running", startedAt: new Date().toISOString(), running: { port: cfg.port, name: cfg.name }, checkedAt: Date.now() });
-          return this.state(owner);
+          const port = pidFilePort(f.data);
+          if (port && this.isWorktree(key)) this.ports.set(key, port);
+          const cfg = this.config(key);
+          this.set(key, { status: "running", startedAt: new Date().toISOString(), running: { port: cfg.port, name: cfg.name }, checkedAt: Date.now() });
+          return this.state(key);
         }
+        if (this.isWorktree(key)) await this.reservePort(key);
+        const cfg = this.config(key);
         if (!existsSync(path.join(f.data, "PG_VERSION"))) await this.initCluster(f, cfg.password);
         await this.ensureDatabase(f, cfg.name);
         const r = await run(this.bin("pg_ctl"), ["start", "-D", f.data, "-l", f.log, "-w", "-t", String(START_TIMEOUT_S), "-o", `-p ${cfg.port} -h 127.0.0.1`], {
           timeoutMs: (START_TIMEOUT_S + 15) * 1000,
         });
         if (r.code !== 0) {
-          const reason = failureReason(this.log(owner)) ?? (r.stderr.trim() || r.stdout.trim() || `pg_ctl beendet mit Code ${r.code ?? "?"}`);
+          const reason = failureReason(this.log(key)) ?? (r.stderr.trim() || r.stdout.trim() || `pg_ctl beendet mit Code ${r.code ?? "?"}`);
           throw new Error(/could not bind|address already in use|Adresse wird bereits/i.test(reason) ? `Port ${cfg.port} ist belegt. Wähle einen anderen Port.` : reason);
         }
-        this.set(owner, { status: "running", startedAt: new Date().toISOString(), running: { port: cfg.port, name: cfg.name }, checkedAt: Date.now() });
-        this.d.log?.(`Test-Datenbank gestartet: Projekt ${owner}, Port ${cfg.port}`);
-        return this.state(owner);
+        this.set(key, { status: "running", startedAt: new Date().toISOString(), running: { port: cfg.port, name: cfg.name }, checkedAt: Date.now() });
+        this.d.log?.(`Test-Datenbank gestartet: Projekt ${key}, Port ${cfg.port}`);
+        return this.state(key);
       } catch (e) {
         const message = e instanceof Error ? e.message : String(e);
-        this.set(owner, { status: "failed", progress: null, error: message, running: null });
+        this.set(key, { status: "failed", progress: null, error: message, running: null });
         throw new ForgeError("INTERNAL", `Test-Datenbank nicht gestartet: ${message}`);
       }
     });
   }
 
   stop(projectId: string): Promise<TestDbState> {
-    const owner = this.d.devTools.owner(projectId);
-    return this.enqueue(owner, async () => {
-      await this.stopNow(owner);
-      return this.state(owner);
+    const key = projectId;
+    return this.enqueue(key, async () => {
+      await this.stopNow(key);
+      return this.state(key);
     });
   }
 
   /** Only inside a queued job. */
-  private async stopNow(owner: string) {
-    const f = this.folder(owner);
+  private async stopNow(key: string) {
+    const f = this.folder(key);
     if (!existsSync(path.join(f.data, "PG_VERSION")) || !this.installed) {
-      this.set(owner, { status: "stopped", running: null, startedAt: null });
+      this.set(key, { status: "stopped", running: null, startedAt: null });
       return;
     }
-    this.set(owner, { status: "stopping", error: null });
+    this.set(key, { status: "stopping", error: null });
     await run(this.bin("pg_ctl"), ["stop", "-D", f.data, "-m", "fast", "-w", "-t", "30"], { timeoutMs: 45_000 });
     if (await this.serverAlive(f.data)) {
       await run(this.bin("pg_ctl"), ["stop", "-D", f.data, "-m", "immediate", "-w", "-t", "15"], { timeoutMs: 25_000 });
     }
-    this.set(owner, { status: "stopped", running: null, startedAt: null });
+    this.set(key, { status: "stopped", running: null, startedAt: null });
   }
 
   /**
@@ -245,24 +293,50 @@ export class TestDbService {
    * start can slip in between stop and delete.
    */
   reset(projectId: string): Promise<TestDbState> {
-    const owner = this.d.devTools.owner(projectId);
-    return this.enqueue(owner, async () => {
-      await this.stopNow(owner);
-      await rm(this.folder(owner).base, { recursive: true, force: true });
-      this.set(owner, { status: "stopped", error: null, startedAt: null, running: null });
-      return this.state(owner);
+    const key = projectId;
+    return this.enqueue(key, async () => {
+      await this.stopNow(key);
+      await rm(this.folder(key).base, { recursive: true, force: true });
+      this.set(key, { status: "stopped", error: null, startedAt: null, running: null });
+      return this.state(key);
     });
   }
 
   /** The project was removed from FORGE: stop its server and delete its data. */
   async forget(projectId: string) {
-    const owner = projectId;
-    if (!existsSync(this.folder(owner).base)) return;
-    await this.enqueue(owner, async () => {
-      await this.stopNow(owner).catch(() => {});
-      await rm(this.folder(owner).base, { recursive: true, force: true }).catch(() => {});
+    const key = projectId;
+    if (!existsSync(this.folder(key).base)) return;
+    await this.enqueue(key, async () => {
+      await this.stopNow(key).catch(() => {});
+      await rm(this.folder(key).base, { recursive: true, force: true }).catch(() => {});
     });
-    this.instances.delete(owner);
+    this.instances.delete(key);
+    this.ports.delete(key);
+  }
+
+  /**
+   * An agent's database starts as a copy of its project's data: same tables, same test data. Copied
+   * as files, which is only consistent while the project's server is stopped; while it runs the
+   * agent's first start creates an empty database instead. Queued on the project, so the project's
+   * server cannot start in the middle of the copy.
+   */
+  async seed(projectId: string): Promise<SeedResult> {
+    const owner = this.d.devTools.owner(projectId);
+    if (owner === projectId) return "none";
+    const src = this.folder(owner);
+    const dst = this.folder(projectId);
+    if (existsSync(path.join(dst.data, "PG_VERSION"))) return "exists";
+    if (!existsSync(path.join(src.data, "PG_VERSION"))) return "none";
+    return this.enqueue(owner, async () => {
+      if (await this.serverAlive(src.data)) return "parent-running";
+      await rm(dst.base, { recursive: true, force: true });
+      await mkdir(dst.base, { recursive: true });
+      // postmaster.pid would make the copy look like a running server.
+      await cp(src.data, dst.data, { recursive: true, filter: (from) => path.basename(from) !== "postmaster.pid" });
+      if (existsSync(src.created)) await copyFile(src.created, dst.created);
+      this.d.log?.(`Test-Datenbank für Agenten kopiert: Projekt ${projectId}`);
+      return "copied";
+    });
   }
 
   /**
@@ -272,9 +346,9 @@ export class TestDbService {
   async stopAll() {
     this.closed = true;
     await Promise.allSettled(
-      [...this.instances].map(async ([owner, i]) => {
+      [...this.instances].map(async ([key, i]) => {
         if (i.status !== "running" && i.status !== "starting") return;
-        const data = this.folder(owner).data;
+        const data = this.folder(key).data;
         await run(this.bin("pg_ctl"), ["stop", "-D", data, "-m", "fast", "-w", "-t", "4"], { timeoutMs: 5_000 });
         if (!(await this.serverAlive(data))) Object.assign(i, { status: "stopped", running: null, startedAt: null });
       }),
@@ -284,9 +358,9 @@ export class TestDbService {
   /** Last resort on exit for servers stopAll did not get down in time. */
   shutdown() {
     this.closed = true;
-    for (const [owner, i] of this.instances) {
+    for (const [key, i] of this.instances) {
       if (i.status !== "running" && i.status !== "starting") continue;
-      spawnSync(this.bin("pg_ctl"), ["stop", "-D", this.folder(owner).data, "-m", "fast", "-w", "-t", "10"], { windowsHide: true, stdio: "ignore", timeout: 12_000 });
+      spawnSync(this.bin("pg_ctl"), ["stop", "-D", this.folder(key).data, "-m", "fast", "-w", "-t", "10"], { windowsHide: true, stdio: "ignore", timeout: 12_000 });
     }
   }
 

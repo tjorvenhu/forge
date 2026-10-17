@@ -1103,6 +1103,36 @@ describe("PhoneService end to end with a test PBX", () => {
     await byeFromPbx("c-find", inv, ok);
   }, 30_000);
 
+  it("tells how far an agent's worktree is prepared and starts the preparation again", async () => {
+    const wt = await agentWorktree();
+    await svc.saveConfig({ requirePin: false });
+    await svc.setEnabled(true);
+    await until(() => svc.state().registration === "registered", 5000, "registered");
+    const { inv, ok } = await answeredCall("c-setup");
+    const conv = await until(() => convs[0], 5000, "conversation");
+    const state = {
+      projectId: wt.id,
+      status: "failed",
+      steps: [
+        { id: "deps", label: "Abhängigkeiten", status: "failed", detail: "pnpm install fehlgeschlagen (Exit-Code 1)", durationMs: 3000 },
+        { id: "build", label: "Build-Ausgaben", status: "pending", detail: null, durationMs: null },
+      ],
+      devPort: 4100,
+      startedAt: "2026-10-17T10:00:00.000Z",
+      finishedAt: "2026-10-17T10:00:05.000Z",
+    };
+    rpcResults["worktrees.setup"] = () => state;
+    rpcResults["worktrees.prepare"] = () => ({ ...state, status: "running" });
+    const said = await conv.tools.devServer("export", "setup");
+    expect(said).toMatch(/^Die Vorbereitung von .+ ist mit Fehlern fertig\. Abhängigkeiten: fehlgeschlagen \(.*pnpm install fehlgeschlagen/);
+    expect(said).toContain("Sein Dev-Server bekommt Port 4100.");
+    expect(said).not.toContain("Build-Ausgaben");
+    expect(await conv.tools.devServer("export", "prepare")).toMatch(/^Vorbereitung von .+ neu gestartet/);
+    expect(rpcCalls.at(-1)).toEqual(["worktrees.prepare", { projectId: wt.id }]);
+    expect(await conv.tools.devServer("sho", "setup")).toMatch(/^shop ist kein Agent/);
+    await byeFromPbx("c-setup", inv, ok);
+  }, 30_000);
+
   it("follows background tasks, answers for the whole session and says when nothing ran", async () => {
     await svc.saveConfig({ requirePin: false });
     const fiveMinutesAgo = new Date(Date.now() - 5 * 60_000).toISOString();

@@ -263,6 +263,7 @@ interface PendingConfirm {
 }
 
 const CONFIRM_TTL_MS = 2 * 60_000;
+const SETUP_STEP_WORD = { pending: "wartet", running: "läuft", done: "fertig", skipped: "übersprungen", failed: "fehlgeschlagen" } as const;
 
 /**
  * A phone number in one canonical form, so different notations compare equal: "+49 30 1234567",
@@ -1796,6 +1797,14 @@ export class PhoneService {
         run(true, async () => {
           const p = target(projectName, o);
           const dev = this.d.devServers;
+          if (action === "setup" || action === "prepare") {
+            if (!p.parentId) return `${p.name} ist kein Agent. Vorbereitet werden nur die Worktrees von Agenten.`;
+            const st = action === "prepare" ? await call("worktrees.prepare", { projectId: p.id }) : await call("worktrees.setup", { projectId: p.id });
+            if (!st) return `Für ${p.name} gibt es seit dem Start von FORGE keine Vorbereitung. Mit prepare läuft sie neu.`;
+            const steps = st.steps.filter((x) => x.status !== "pending").map((x) => `${x.label}: ${SETUP_STEP_WORD[x.status]}${x.detail ? ` (${excerptData(x.detail, 300)})` : ""}`);
+            const head = action === "prepare" ? `Vorbereitung von ${p.name} neu gestartet.` : st.status === "running" ? `Die Vorbereitung von ${p.name} läuft noch.` : st.status === "failed" ? `Die Vorbereitung von ${p.name} ist mit Fehlern fertig.` : `Der Worktree von ${p.name} ist vorbereitet.`;
+            return [head, ...steps, st.devPort ? `Sein Dev-Server bekommt Port ${st.devPort}.` : ""].filter(Boolean).join(" ");
+          }
           if (action === "output") {
             const out = dev.output(p.id);
             return out.trim() ? `Letzte Ausgabe des Dev-Servers von ${p.name}: ${excerptData(tail(out, 30), 3000)}` : `Der Dev-Server von ${p.name} hat noch nichts ausgegeben.`;
@@ -1803,7 +1812,7 @@ export class PhoneService {
           if (action === "stop" || action === "restart") await dev.stop(p.id);
           if (action === "stop") return `Dev-Server von ${p.name} gestoppt.`;
           const st = action === "status" ? await dev.state(p.id) : await dev.start(p.id);
-          if (st.status === "running") return `Dev-Server von ${p.name} ${action === "restart" ? "neu gestartet" : "läuft"}.`;
+          if (st.status === "running") return `Dev-Server von ${p.name} ${action === "restart" ? "neu gestartet" : "läuft"}${st.url ? `, Adresse ${st.url}` : ""}.`;
           const why = st.error ?? (st.exitCode !== null ? `Exit-Code ${st.exitCode}` : "");
           const hint = " Was er ausgegeben hat, liefert dev_server mit output.";
           if (action !== "status") return `Fehler: Der Dev-Server von ${p.name} ist nicht gestartet.${why ? ` ${why}.` : ""}${hint}`;

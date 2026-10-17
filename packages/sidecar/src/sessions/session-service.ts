@@ -35,6 +35,7 @@ import { SessionLifecycle, type StartParams } from "./lifecycle.js";
 import { BUSY } from "./live-session.js";
 import { AgentRegistry, forgeSessionTools, type DailyReportText, type ProjectToolDeps } from "./forge-tools.js";
 import { WorktreeService } from "../automation/worktrees.js";
+import type { WorktreeSetup } from "../automation/worktree-setup.js";
 import type { AgentFinisher } from "../automation/agent-finish.js";
 import { AgentAutoMerge } from "../automation/agent-auto-merge.js";
 import { pruneSubagentWorktrees } from "../automation/subagent-worktrees.js";
@@ -69,6 +70,7 @@ export class SessionService {
   private readonly limits: RateLimitTracker;
   private readonly titles: TitleRefresh;
   private readonly agents: AgentRegistry;
+  private readonly worktrees: WorktreeService;
   private readonly idle: IdleClose;
   /** the session a phone call is about; set by app.ts once the phone exists */
   private callFocus: () => string | null = () => null;
@@ -95,7 +97,7 @@ export class SessionService {
     uploads: UploadStore = new UploadStore(path.join(os.tmpdir(), "forge-uploads")),
   ) {
     const core = (this.core = new SessionCore(db, emit));
-    const worktrees = new WorktreeService(git, projects);
+    const worktrees = (this.worktrees = new WorktreeService(git, projects));
     this.agents = new AgentRegistry(db);
     const record = core.record.bind(core);
     this.limits = new RateLimitTracker(emit, now);
@@ -220,6 +222,11 @@ export class SessionService {
   /** Knowledge and dev tools for sessions started from now on. */
   useProjectTools(deps: ProjectToolDeps) {
     this.projectDeps = deps;
+  }
+
+  /** Agents started from sessions (start_agent) get their worktree prepared like the main folder. */
+  useWorktreeSetup(setup: WorktreeSetup) {
+    this.worktrees.useSetup(setup);
   }
 
   /** Before/after screenshots of the web app around turns that change UI files. */

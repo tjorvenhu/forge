@@ -1,3 +1,4 @@
+import type { WorktreeSetup } from "../automation/worktree-setup.js";
 import type { DevServerPrep, DevServerService } from "../devserver/dev-server.js";
 import type { DevToolsService } from "./dev-tools.js";
 import type { TestDbService } from "./test-db.js";
@@ -21,15 +22,22 @@ export class DevEnvironment {
     private readonly devTools: DevToolsService,
     private readonly testDb: TestDbService,
     private readonly devServers: () => DevServerService,
+    /** preparation of agents' worktrees: their own dev server port and what is still being set up */
+    private readonly setup: () => WorktreeSetup | null = () => null,
   ) {}
 
-  /** Before the dev server starts: test environment, the database if it starts along, its URL. */
-  async devServerPrep(projectId: string): Promise<DevServerPrep> {
+  /** Before the dev server starts: test environment, the database if it starts along, its URL, an agent's own port. */
+  async devServerPrep(projectId: string, command?: string): Promise<DevServerPrep> {
     const cfg = this.devTools.get(projectId);
     const env = this.devTools.testVariables(projectId);
     const notes: string[] = [];
     const names = Object.keys(env);
     if (names.length) notes.push(`Test-Umgebung: ${names.join(", ")}`);
+    const own = command ? await this.setup()?.devServerPort(projectId, command) : null;
+    if (own) {
+      Object.assign(env, own.env);
+      notes.push(own.note);
+    }
     if (cfg.database.withDevServer && !this.testDb.isRunning(projectId)) {
       try {
         await this.testDb.start(projectId);
@@ -40,9 +48,14 @@ export class DevEnvironment {
     const url = this.testDb.runningUrl(projectId);
     if (url && cfg.database.envVar) {
       env[cfg.database.envVar] = url;
-      notes.push(`${cfg.database.envVar} zeigt auf die Test-Datenbank (Port ${cfg.database.port}, Datenbank ${cfg.database.name})`);
+      notes.push(`${cfg.database.envVar} zeigt auf die Test-Datenbank (${url.replace(/^.*@/, "")})`);
     }
-    return { env, notes };
+    return { env, notes, command: own?.command };
+  }
+
+  /** Start context of a session in an agent's worktree: what FORGE prepares there. */
+  setupContext(projectId: string): string {
+    return this.setup()?.context(projectId) ?? "";
   }
 
   /** For the auto-test command: same variables, the database only when it already runs. */
@@ -54,14 +67,21 @@ export class DevEnvironment {
     return env;
   }
 
-  /** Current state for Claude (FORGE tool dev_environment). Values of the test environment stay out. */
-  async describe(projectId: string): Promise<string> {
+  /**
+   * Current state for Claude (FORGE tool dev_environment). Values of the test environment stay out.
+   * `waitMs`: in an agent's worktree, first wait that long for its preparation.
+   */
+  async describe(projectId: string, waitMs = 0): Promise<string> {
+    const setup = this.setup();
+    if (setup && waitMs > 0) await setup.wait(projectId, waitMs);
+    const prepared = setup?.describe(projectId) ?? "";
     const cfg = this.devTools.get(projectId);
     const db = this.testDb.state(projectId);
     const dev = await this.devServers().state(projectId);
     const out = this.devServers().output(projectId);
     const testVars = Object.keys(this.devTools.testVariables(projectId));
     const lines = [
+      prepared,
       "Dev-Server:",
       `  Status: ${dev.status}${dev.exitCode !== null ? ` (Exit-Code ${dev.exitCode})` : ""}`,
       `  Befehl: ${dev.command ?? dev.effectiveCommand ?? "keiner eingerichtet"}`,

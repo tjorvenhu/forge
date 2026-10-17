@@ -12,6 +12,8 @@ const FLUSH_MS = 120;
 export interface DevServerPrep {
   env: Record<string, string>;
   notes: string[];
+  /** command to run instead, e.g. with the port of an agent's worktree */
+  command?: string;
 }
 
 interface Running {
@@ -60,8 +62,8 @@ export class DevServerService {
     private readonly projects: ProjectManager,
     private readonly env: () => Record<string, string>,
     private readonly emit: (e: { event: "devserver.updated"; payload: DevServerState } | { event: "devserver.output"; payload: { projectId: string; text: string } }) => void,
-    /** test environment and test database for the start; `notes` go into the output */
-    private readonly prepare?: (projectId: string) => Promise<DevServerPrep>,
+    /** test environment, test database and port for the start; `notes` go into the output */
+    private readonly prepare?: (projectId: string, command: string) => Promise<DevServerPrep>,
   ) {}
 
   private async effectiveCommand(projectId: string): Promise<string | null> {
@@ -118,7 +120,7 @@ export class DevServerService {
       this.emitState(r);
       r.preparing = true;
       try {
-        prep = await this.prepare(projectId);
+        prep = await this.prepare(projectId, command);
       } catch (e) {
         prep = { env: {}, notes: [`Test-Umgebung nicht gesetzt: ${e instanceof Error ? e.message : String(e)}`] };
       } finally {
@@ -131,9 +133,11 @@ export class DevServerService {
       }
     }
     for (const note of prep.notes) this.append(r, `[FORGE] ${note}\n`);
-    this.append(r, `$ ${command}\n`);
+    const line = prep.command ?? command;
+    if (line !== command) r.state = { ...r.state, command: line };
+    this.append(r, `$ ${line}\n`);
     // BROWSER=none: dev servers like Create React App would otherwise open a browser on their own.
-    const child = spawn(command, {
+    const child = spawn(line, {
       cwd: project.path,
       env: { ...this.env(), ...prep.env, BROWSER: "none" },
       shell: true,

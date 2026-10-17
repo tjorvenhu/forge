@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils";
  */
 export function DevToolsBadge({ project }: { project: Project }) {
   const dev = useDevServer(project.id).data;
-  const db = useTestDb(project.parentId ?? project.id).data;
+  const db = useTestDb(project.id).data;
   const devTone = !dev
     ? null
     : dev.status === "running"

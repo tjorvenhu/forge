@@ -947,6 +947,30 @@ export const DevServerState = z.object({
 });
 export type DevServerState = z.infer<typeof DevServerState>;
 
+/** One step of preparing an agent's worktree: what the main folder has and git does not bring along. */
+export const WorktreeSetupStep = z.object({
+  id: z.enum(["files", "deps", "build", "database", "devserver"]),
+  label: z.string(),
+  status: z.enum(["pending", "running", "done", "skipped", "failed"]),
+  /** what was done or why it failed; never values of configuration files */
+  detail: z.string().nullable(),
+  durationMs: z.number().nullable(),
+});
+export type WorktreeSetupStep = z.infer<typeof WorktreeSetupStep>;
+
+/** Preparation of a parallel agent's worktree, running beside its session. */
+export const WorktreeSetupState = z.object({
+  projectId: z.string(),
+  /** failed: at least one step failed; the agent can work anyway and is told what is missing */
+  status: z.enum(["running", "done", "failed"]),
+  steps: z.array(WorktreeSetupStep),
+  /** port reserved for the worktree's own dev server */
+  devPort: z.number().nullable(),
+  startedAt: z.string(),
+  finishedAt: z.string().nullable(),
+});
+export type WorktreeSetupState = z.infer<typeof WorktreeSetupState>;
+
 export const TestDbConfig = z.object({
   port: z.number().int().min(1024).max(65535),
   /** database created on first start */

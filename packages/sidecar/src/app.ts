@@ -8,6 +8,7 @@ import { ClaudeSetupService } from "./claude/setup.js";
 import { McpService } from "./config/mcp.js";
 import { PluginService } from "./config/plugins.js";
 import { WorktreeService } from "./automation/worktrees.js";
+import { WorktreeSetup } from "./automation/worktree-setup.js";
 import { AgentFinisher } from "./automation/agent-finish.js";
 import { DailyReportService, reportText } from "./reports/daily-report.js";
 import { DevServerService } from "./devserver/dev-server.js";
@@ -116,8 +117,19 @@ export function createApp(opts: { dataDir: string; write: Writer; log?: (m: stri
   const worktrees = new WorktreeService(git, projects);
   const devTools = new DevToolsService(db, projects);
   const testDb = new TestDbService({ dataDir: opts.dataDir, devTools, emit: (payload) => emit({ event: "testdb.updated", payload }), log: (m) => opts.log?.(m) });
-  const devEnv: DevEnvironment = new DevEnvironment(devTools, testDb, () => devServers);
-  const devServers = new DevServerService(projects, () => sessionEnv(db.getSettings().stripApiKey), emit, (projectId) => devEnv.devServerPrep(projectId));
+  const devEnv: DevEnvironment = new DevEnvironment(devTools, testDb, () => devServers, () => worktreeSetup);
+  const devServers = new DevServerService(projects, () => sessionEnv(db.getSettings().stripApiKey), emit, (projectId, command) => devEnv.devServerPrep(projectId, command));
+  const worktreeSetup: WorktreeSetup = new WorktreeSetup({
+    git,
+    projects,
+    env: () => sessionEnv(db.getSettings().stripApiKey),
+    emit: (payload) => emit({ event: "worktree.setup", payload }),
+    testDb,
+    devServers: () => devServers,
+    log: (m) => opts.log?.(m),
+  });
+  worktrees.useSetup(worktreeSetup);
+  sessions.useWorktreeSetup(worktreeSetup);
   const knowledge = new KnowledgeStore(projects, (projectId) => emit({ event: "knowledge.updated", payload: { projectId } }), new RefChecker(git, path.join(opts.dataDir, "knowledge-refs.json")));
   const preview = new PreviewService({ devServer: (projectId) => devServers.state(projectId) });
   sessions.useProjectTools({ knowledge, dev: devEnv, preview });
@@ -312,6 +324,7 @@ export function createApp(opts: { dataDir: string; write: Writer; log?: (m: stri
     mcp,
     plugins,
     worktrees,
+    worktreeSetup,
     agentFinish,
     reports,
     devServers,
@@ -348,6 +361,7 @@ export function createApp(opts: { dataDir: string; write: Writer; log?: (m: stri
       updates.stop();
       sync?.stop();
       devServers.shutdown();
+      worktreeSetup.shutdown();
       preview.shutdown();
       testDb.shutdown();
       github.shutdown();

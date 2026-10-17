@@ -29,8 +29,8 @@ type DbPatch = Partial<Omit<DevToolsConfig["database"], "password">>;
 
 /**
  * Dev tools of a project, in sections like the settings: dev server with its start command and
- * output, a local PostgreSQL for tests and a test environment (.env) for both. Worktrees share test
- * database and environment with their project; the dev server is their own.
+ * output, a local PostgreSQL for tests and a test environment (.env) for both. Worktrees share the
+ * settings with their project; dev server and test database (a copy, own port) are their own.
  */
 export function DevToolsTab({ project }: { project: Project }) {
   const owner = project.parentId ?? project.id;
@@ -45,6 +45,7 @@ export function DevToolsTab({ project }: { project: Project }) {
         const next = await call("devtools.update", { projectId: owner, ...patch });
         qc.setQueryData(keys.devTools(owner), next);
         void qc.invalidateQueries({ queryKey: keys.testDb(owner) });
+        if (project.id !== owner) void qc.invalidateQueries({ queryKey: keys.testDb(project.id) });
         if (!quiet) toast.saved();
         return true;
       } catch (e) {
@@ -52,7 +53,7 @@ export function DevToolsTab({ project }: { project: Project }) {
         return false;
       }
     },
-    [owner, qc],
+    [owner, project.id, qc],
   );
 
   return (
@@ -62,14 +63,14 @@ export function DevToolsTab({ project }: { project: Project }) {
           <DevServerCard project={project} />
         ) : config.isLoading ? (
           section === "database" ? (
-            <TestDbSkeleton owner={owner} isWorktree={!!project.parentId} />
+            <TestDbSkeleton dbId={project.id} isWorktree={!!project.parentId} />
           ) : (
             <TestEnvSkeleton />
           )
         ) : config.isError || !config.data ? (
           <ErrorBanner>{errorMessage(config.error)}</ErrorBanner>
         ) : section === "database" ? (
-          <TestDbCard owner={owner} config={config.data} update={update} isWorktree={!!project.parentId} />
+          <TestDbCard dbId={project.id} config={config.data} update={update} isWorktree={!!project.parentId} />
         ) : (
           <TestEnvCard owner={owner} config={config.data} update={update} />
         )}
@@ -142,7 +143,9 @@ function dbBadge(state: TestDbState | undefined) {
 }
 
 function dbDescription(version: string | undefined, isWorktree: boolean) {
-  return `PostgreSQL ${version ?? "17"} nur für dieses Projekt, erreichbar nur auf diesem Rechner. Die Daten bleiben bis zum Zurücksetzen erhalten.${isWorktree ? " Agenten nutzen die Datenbank ihres Projekts." : ""}`;
+  return isWorktree
+    ? `PostgreSQL ${version ?? "17"} nur für diesen Agenten, mit eigenem Port. Beim Anlegen kopiert FORGE die Daten des Projekts, sofern dessen Datenbank gerade nicht läuft. Sie wird mit dem Agenten gelöscht. Die Einstellungen gelten für das ganze Projekt.`
+    : `PostgreSQL ${version ?? "17"} nur für dieses Projekt, erreichbar nur auf diesem Rechner. Die Daten bleiben bis zum Zurücksetzen erhalten. Agenten bekommen eine eigene Kopie.`;
 }
 
 function DbBadgeSkeleton() {
@@ -182,8 +185,8 @@ function RowSkeleton({ control }: { control: string }) {
 }
 
 /** The test database card while the dev tools config loads: real header, placeholders for buttons, URL and settings. */
-function TestDbSkeleton({ owner, isWorktree }: { owner: string; isWorktree: boolean }) {
-  const version = useTestDb(owner).data?.version;
+function TestDbSkeleton({ dbId, isWorktree }: { dbId: string; isWorktree: boolean }) {
+  const version = useTestDb(dbId).data?.version;
   return (
     <Group title="Test-Datenbank" description={dbDescription(version, isWorktree)} action={<Skeleton className="h-5 w-16 rounded" />}>
       <SkeletonRegion label="Lädt Test-Datenbank" className="divide-y divide-border">
@@ -199,7 +202,7 @@ function TestDbSkeleton({ owner, isWorktree }: { owner: string; isWorktree: bool
             <Skeleton className="h-7 w-7 shrink-0" />
           </div>
         </div>
-        <RowSkeleton control="h-8 w-28" />
+        {!isWorktree && <RowSkeleton control="h-8 w-28" />}
         <RowSkeleton control="h-8 w-44" />
         <RowSkeleton control="h-8 w-44" />
         <RowSkeleton control="h-5 w-9 rounded-full" />
@@ -235,18 +238,18 @@ function TestEnvSkeleton() {
 }
 
 function TestDbCard({
-  owner,
+  dbId,
   config,
   update,
   isWorktree,
 }: {
-  owner: string;
+  dbId: string;
   config: DevToolsConfig;
   update: (patch: { database: DbPatch }, quiet?: boolean) => Promise<boolean>;
   isWorktree: boolean;
 }) {
   const qc = useQueryClient();
-  const stateQuery = useTestDb(owner);
+  const stateQuery = useTestDb(dbId);
   const state = stateQuery.data;
   const [busy, setBusy] = useState(false);
   const [resetting, setResetting] = useState(false);
@@ -258,7 +261,7 @@ function TestDbCard({
   const act = async (method: "testdb.start" | "testdb.stop", errorTitle: string) => {
     setBusy(true);
     try {
-      qc.setQueryData(keys.testDb(owner), await call(method, { projectId: owner }));
+      qc.setQueryData(keys.testDb(dbId), await call(method, { projectId: dbId }));
     } catch (e) {
       toast.error(errorTitle, errorMessage(e));
     } finally {
@@ -323,6 +326,7 @@ function TestDbCard({
         <ConnectionUrl url={state?.url ?? ""} />
       </div>
 
+      {!isWorktree && (
       <Row label="Port" description="Gilt ab dem nächsten Start.">
         <Input
           key={db.port}
@@ -342,6 +346,7 @@ function TestDbCard({
           }}
         />
       </Row>
+      )}
       <Row label="Datenbank" description="Wird beim nächsten Start angelegt, falls es sie noch nicht gibt.">
         <Input
           key={db.name}
@@ -388,7 +393,7 @@ function TestDbCard({
         <button onClick={() => setLogOpen(!logOpen)} className="flex items-center gap-1 text-xs text-muted hover:text-fg" aria-expanded={logOpen}>
           {logOpen ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />} Protokoll
         </button>
-        {logOpen && <DbLog owner={owner} state={state} />}
+        {logOpen && <DbLog dbId={dbId} state={state} />}
       </div>
 
       <ConfirmDialog
@@ -401,7 +406,7 @@ function TestDbCard({
         onConfirm={async () => {
           const wasRunning = running;
           try {
-            qc.setQueryData(keys.testDb(owner), await call("testdb.reset", { projectId: owner }));
+            qc.setQueryData(keys.testDb(dbId), await call("testdb.reset", { projectId: dbId }));
           } catch (e) {
             toast.error("Nicht zurückgesetzt", errorMessage(e));
             throw e;
@@ -412,7 +417,7 @@ function TestDbCard({
           }
           // The reset is done; a failed start must not ask for another reset.
           try {
-            qc.setQueryData(keys.testDb(owner), await call("testdb.start", { projectId: owner }));
+            qc.setQueryData(keys.testDb(dbId), await call("testdb.start", { projectId: dbId }));
             toast.success("Test-Datenbank zurückgesetzt", "Sie läuft wieder, leer.");
           } catch (e) {
             toast.error("Zurückgesetzt, aber nicht wieder gestartet", errorMessage(e));
@@ -448,8 +453,8 @@ function ConnectionUrl({ url }: { url: string }) {
   );
 }
 
-function DbLog({ owner, state }: { owner: string; state: TestDbState | undefined }) {
-  const log = useQuery({ queryKey: [...keys.testDb(owner), "log", state?.status], queryFn: () => call("testdb.log", { projectId: owner }), staleTime: 0, placeholderData: (prev) => prev });
+function DbLog({ dbId, state }: { dbId: string; state: TestDbState | undefined }) {
+  const log = useQuery({ queryKey: [...keys.testDb(dbId), "log", state?.status], queryFn: () => call("testdb.log", { projectId: dbId }), staleTime: 0, placeholderData: (prev) => prev });
   const ref = useRef<HTMLPreElement>(null);
   useEffect(() => {
     if (ref.current) ref.current.scrollTop = ref.current.scrollHeight;

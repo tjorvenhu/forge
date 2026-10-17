@@ -8,6 +8,7 @@ import { connectionUrl, dbNameFor, DevToolsService, FIRST_DB_PORT, parseDotenv }
 import { DevEnvironment } from "../src/devtools/environment.js";
 import { failureReason, POSTGRES, TestDbService } from "../src/devtools/test-db.js";
 import { DevServerService } from "../src/devserver/dev-server.js";
+import type { WorktreeSetup } from "../src/automation/worktree-setup.js";
 import { covering, KnowledgeStore, overlaps, parseEntry, rank, serializeEntry, slugifyId, titleOverlap } from "../src/knowledge/knowledge.js";
 import { projectTools } from "../src/sessions/forge-tools.js";
 import { tempDir } from "./helpers.js";
@@ -175,6 +176,55 @@ describe("services", () => {
     expect(described.split("\n").find((l) => l.startsWith("Test-Umgebung"))).not.toContain("hallo");
   }, 30_000);
 
+  it("runs an agent's dev server with its own port and says so", async () => {
+    const tools = new DevToolsService(db, projects);
+    const testDb = new TestDbService({ dataDir: t.dir, devTools: tools, emit: () => {}, binDir: path.join(t.dir, "no-pg") });
+    const script = path.join(t.dir, "web", "port.cjs");
+    writeFileSync(script, "console.log('PORT=' + process.env.PORT + ' ARGS=' + process.argv.slice(2).join(' ')); setInterval(() => {}, 1000);\n");
+    const setup = {
+      devServerPort: async (_id: string, command: string) => ({ env: { PORT: "4100" }, command: `${command} --port 4100`, note: "Eigener Port dieses Agenten: 4100" }),
+    } as unknown as WorktreeSetup;
+    const env: DevEnvironment = new DevEnvironment(tools, testDb, () => devServers, () => setup);
+    const devServers = new DevServerService(projects, () => ({ ...process.env }) as Record<string, string>, () => {}, (id, command) => env.devServerPrep(id, command));
+    projects.update(projectId, { devCommand: `node "${script}"` });
+    const st = await devServers.start(projectId);
+    expect(st.command).toBe(`node "${script}" --port 4100`);
+    const deadline = Date.now() + 15_000;
+    while (!devServers.output(projectId).includes("PORT=") && Date.now() < deadline) await new Promise((r) => setTimeout(r, 100));
+    expect(devServers.output(projectId)).toContain("[FORGE] Eigener Port dieses Agenten: 4100");
+    expect(devServers.output(projectId)).toContain("PORT=4100 ARGS=--port 4100");
+    await devServers.stop(projectId);
+  }, 30_000);
+
+  it("gives an agent its own copy of the project's test database and deletes it with the agent", async () => {
+    const tools = new DevToolsService(db, projects);
+    const wtDir = path.join(t.dir, "web-agent");
+    mkdirSync(wtDir, { recursive: true });
+    const wtId = (await projects.import(wtDir, projectId)).id;
+    const testDb = new TestDbService({ dataDir: t.dir, devTools: tools, emit: () => {}, binDir: path.join(t.dir, "no-pg") });
+    expect(await testDb.seed(projectId)).toBe("none");
+    expect(await testDb.seed(wtId)).toBe("none");
+
+    const base = path.join(t.dir, "testdb", projectId);
+    mkdirSync(path.join(base, "data", "base"), { recursive: true });
+    writeFileSync(path.join(base, "data", "PG_VERSION"), "17");
+    writeFileSync(path.join(base, "data", "base", "1"), "tabelle");
+    // Left behind by a server that is gone: without pg_ctl it counts as not running.
+    writeFileSync(path.join(base, "data", "postmaster.pid"), "123\n");
+    writeFileSync(path.join(base, "databases.json"), '["web"]');
+    expect(await testDb.seed(wtId)).toBe("copied");
+    const own = path.join(t.dir, "testdb", wtId);
+    expect(readFileSync(path.join(own, "data", "base", "1"), "utf8")).toBe("tabelle");
+    expect(existsSync(path.join(own, "data", "postmaster.pid"))).toBe(false);
+    expect(readFileSync(path.join(own, "databases.json"), "utf8")).toBe('["web"]');
+    expect(await testDb.seed(wtId)).toBe("exists");
+    expect(testDb.state(wtId)).toMatchObject({ projectId: wtId, initialized: true });
+
+    await testDb.forget(wtId);
+    expect(existsSync(own)).toBe(false);
+    expect(existsSync(path.join(base, "data", "PG_VERSION"))).toBe(true);
+  });
+
   it("stores knowledge in the project, finds it and refuses near duplicates", async () => {
     const changed: string[] = [];
     const store = new KnowledgeStore(projects, (id) => changed.push(id));
@@ -312,6 +362,40 @@ describe("services", () => {
 
         await testDb.reset(projectId);
         expect(testDb.state(projectId)).toMatchObject({ status: "stopped", initialized: false });
+      } finally {
+        testDb.shutdown();
+      }
+    },
+    180_000,
+  );
+
+  it.skipIf(!process.env.FORGE_TEST_PG_BIN)(
+    "runs an agent's copy of a real PostgreSQL beside the project's, on its own port",
+    async () => {
+      const tools = new DevToolsService(db, projects);
+      const port = 55000 + Math.floor(Math.random() * 300);
+      tools.update(projectId, { database: { port } });
+      const wtDir = path.join(t.dir, "web-agent");
+      mkdirSync(wtDir, { recursive: true });
+      const wtId = (await projects.import(wtDir, projectId)).id;
+      const testDb = new TestDbService({ dataDir: t.dir, devTools: tools, emit: () => {}, binDir: process.env.FORGE_TEST_PG_BIN });
+      try {
+        await testDb.start(projectId);
+        // A file copy of a running server would not be consistent.
+        expect(await testDb.seed(wtId)).toBe("parent-running");
+        await testDb.stop(projectId);
+        expect(await testDb.seed(wtId)).toBe("copied");
+        const [main, agent] = await Promise.all([testDb.start(projectId), testDb.start(wtId)]);
+        expect(main.url).toContain(`:${port}/web`);
+        expect(agent.status).toBe("running");
+        const agentPort = Number(/:(\d+)\//.exec(agent.url)?.[1]);
+        expect(agentPort).toBeGreaterThanOrEqual(55330);
+        expect(agentPort).not.toBe(port);
+        expect(agent.url).toMatch(/\/web$/);
+        await testDb.forget(wtId);
+        expect(existsSync(path.join(t.dir, "testdb", wtId))).toBe(false);
+        expect(testDb.state(projectId).status).toBe("running");
+        await testDb.stop(projectId);
       } finally {
         testDb.shutdown();
       }

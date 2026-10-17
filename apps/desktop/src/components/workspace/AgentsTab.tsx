@@ -1,12 +1,14 @@
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Bot, GitBranch, GitMerge, Plus, Trash2, Users } from "lucide-react";
-import type { Project, ProjectWithStatus, SessionStatus } from "@forge/protocol";
+import { Bot, FolderOpen, GitBranch, GitMerge, Globe, Plus, RotateCcw, Square, Trash2, Users } from "lucide-react";
+import type { DevServerState, Project, ProjectWithStatus, SessionStatus } from "@forge/protocol";
 import { call, keys, useProjects } from "@/lib/queries";
 import { errorMessage, RpcCallError } from "@/lib/rpc";
 import { chatWindowsOfProject, closeChatWindows } from "@/lib/chat-windows";
 import { closeProjectTerminals } from "@/lib/terminal-registry";
 import { relativeTime } from "@/lib/utils";
+import { contextItems } from "@/lib/context-menu";
+import { openDevServer, prepareWorktree, stopDevServer } from "@/lib/dev-server-actions";
 import { useUi } from "@/stores/ui";
 import { useAgentReview } from "@/stores/agent-review";
 import { toast } from "@/stores/toast";
@@ -18,6 +20,7 @@ import { Badge, Checkbox, EmptyState, ErrorBanner, SectionTitle } from "@/compon
 import { LimitForecastWarning } from "@/components/usage/UsageWindows";
 import { SessionStatusBadge } from "./SessionStatusBadge";
 import { Skeleton, SkeletonRegion } from "@/components/ui/skeleton";
+import { AgentEnvironment } from "./AgentEnvironment";
 
 /**
  * Parallel agents of the open project: each runs in its own git worktree (separate folder and
@@ -87,7 +90,7 @@ export function AgentsTab({ project }: { project: ProjectWithStatus }) {
             Parallele Agenten
           </SectionTitle>
           <p className="mb-3 text-xs text-muted">
-            Jeder Agent arbeitet in einem eigenen Worktree{root ? ` von ${root.name}` : ""}: eigener Ordner, eigener Branch. Ist ein Agent fertig, fragt FORGE, ob seine Arbeit in den Branch zurückgeht, von dem er abgezweigt ist, oder verworfen wird. Danach sind Worktree und Branch gelöscht.
+            Jeder Agent arbeitet in einem eigenen Worktree{root ? ` von ${root.name}` : ""}: eigener Ordner, eigener Branch. FORGE richtet ihn wie den Hauptordner ein (Abhängigkeiten, lokale Konfiguration, Build-Ausgaben, eigene Test-Datenbank) und gibt ihm einen eigenen Dev-Server mit eigenem Port. Ist ein Agent fertig, fragt FORGE, ob seine Arbeit in den Branch zurückgeht, von dem er abgezweigt ist, oder verworfen wird. Danach sind Worktree und Branch gelöscht.
             {project.parentId && root && (
               <>
                 {" "}
@@ -108,8 +111,24 @@ export function AgentsTab({ project }: { project: ProjectWithStatus }) {
           <div className="grid grid-cols-[repeat(auto-fill,minmax(320px,1fr))] gap-3">
             {worktrees.map((w) => {
               const current = w.id === project.id;
+              const startRemove = () => {
+                setForce(w.exists && !!w.git?.changedCount);
+                setDeleteBranch(false);
+                setRemoving(w);
+              };
+              const menu = () => {
+                const dev = qc.getQueryData<DevServerState>(keys.devServer(w.id));
+                return [
+                  { label: "Öffnen", icon: <FolderOpen className="h-3.5 w-3.5" />, onSelect: () => openProject(w.id), disabled: current },
+                  { label: "Dev-Server des Agenten öffnen", icon: <Globe className="h-3.5 w-3.5" />, onSelect: () => void openDevServer(qc, w.id), disabled: !w.exists },
+                  ...(dev?.status === "running" ? [{ label: "Dev-Server des Agenten stoppen", icon: <Square className="h-3.5 w-3.5" />, onSelect: () => void stopDevServer(qc, w.id) }] : []),
+                  { label: "Vorbereitung wiederholen", icon: <RotateCcw className="h-3.5 w-3.5" />, onSelect: () => void prepareWorktree(qc, w.id), disabled: !w.exists, hint: "Abhängigkeiten, Konfiguration, Build" },
+                  { label: "Abschließen", icon: <GitMerge className="h-3.5 w-3.5" />, onSelect: () => useAgentReview.getState().request(w.id), disabled: !w.exists },
+                  { label: "Entfernen", icon: <Trash2 className="h-3.5 w-3.5" />, onSelect: startRemove, danger: true },
+                ];
+              };
               return (
-                <div key={w.id} className="flex flex-col gap-2 rounded-xl border border-border bg-surface p-4">
+                <div key={w.id} className="flex flex-col gap-2 rounded-xl border border-border bg-surface p-4" onContextMenu={contextItems(menu)}>
                   <div className="flex items-center gap-2">
                     <GitBranch className="h-4 w-4 shrink-0 text-accent" />
                     <span className="min-w-0 flex-1 truncate font-mono text-body" title={w.path}>
@@ -132,6 +151,7 @@ export function AgentsTab({ project }: { project: ProjectWithStatus }) {
                       <span className="text-subtle">noch keine Session</span>
                     )}
                   </div>
+                  {w.exists && <AgentEnvironment projectId={w.id} />}
                   <div className="mt-1 flex gap-2">
                     <Button size="sm" variant="primary" onClick={() => openProject(w.id)} disabled={current} title={current ? "Dieser Worktree ist gerade geöffnet" : undefined}>
                       {current ? "Geöffnet" : "Öffnen"}
@@ -140,15 +160,7 @@ export function AgentsTab({ project }: { project: ProjectWithStatus }) {
                       <GitMerge className="h-3.5 w-3.5" /> Abschließen
                     </Button>
                     <div className="flex-1" />
-                    <Button
-                      size="sm"
-                      variant="danger-ghost"
-                      onClick={() => {
-                        setForce(w.exists && !!w.git?.changedCount);
-                        setDeleteBranch(false);
-                        setRemoving(w);
-                      }}
-                    >
+                    <Button size="sm" variant="danger-ghost" onClick={startRemove}>
                       <Trash2 className="h-3.5 w-3.5" /> Entfernen
                     </Button>
                   </div>
@@ -181,7 +193,7 @@ export function AgentsTab({ project }: { project: ProjectWithStatus }) {
             onChange={setDeleteBranch}
             label={removing?.git?.branch ? `Branch ${removing.git.branch} auch löschen (ohne Merge)` : "Branch auch löschen (ohne Merge)"}
           />
-          <p className="text-xs text-muted">Eine laufende Session, Terminals und der Dev-Server dieses Worktrees werden vorher beendet.</p>
+          <p className="text-xs text-muted">Eine laufende Session, Terminals, Dev-Server und Test-Datenbank dieses Worktrees werden vorher beendet. Seine Test-Datenbank wird gelöscht.</p>
         </div>
       </ConfirmDialog>
     </div>
@@ -237,6 +249,11 @@ function WorktreeGridSkeleton() {
             <Skeleton className="h-5 w-16 rounded" />
             <Skeleton className="h-2.5 flex-1" />
             <Skeleton className="h-2.5 w-12" />
+          </div>
+          <div className="flex h-5 items-center gap-2">
+            <Skeleton className="h-2.5 w-2/5" />
+            <div className="flex-1" />
+            <Skeleton className="h-2.5 w-20" />
           </div>
           <div className="mt-1 flex gap-2">
             <Skeleton className="h-7 w-16" />

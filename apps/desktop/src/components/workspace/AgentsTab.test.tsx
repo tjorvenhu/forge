@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import type { GitSummary, ProjectWithStatus } from "@forge/protocol";
+import type { DevServerState, GitSummary, ProjectWithStatus, WorktreeSetupState } from "@forge/protocol";
 import type * as RpcModuleNs from "@/lib/rpc";
 import { useUi } from "@/stores/ui";
 import { useToasts } from "@/stores/toast";
@@ -18,6 +18,7 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: (cmd: string, args?: unknown) =
 const { RpcCallError } = await import("@/lib/rpc");
 const { AgentsTab } = await import("./AgentsTab");
 const { useChatWindows } = await import("@/lib/chat-windows");
+const { offeredGroups } = await import("@/lib/context-menu");
 
 function git(branch: string, changedCount = 0): GitSummary {
   return { isRepo: true, branch, detached: false, ahead: 0, behind: 0, upstream: null, changedCount, conflicted: false, remoteUrl: null };
@@ -62,6 +63,22 @@ function setup(open: ProjectWithStatus) {
   );
 }
 
+const failedSetup: WorktreeSetupState = {
+  projectId: "wt-login",
+  status: "failed",
+  steps: [
+    { id: "files", label: "Lokale Konfiguration", status: "done", detail: "1 Datei kopiert: .env", durationMs: 20 },
+    { id: "deps", label: "Abhängigkeiten", status: "failed", detail: "pnpm install fehlgeschlagen (Exit-Code 1)", durationMs: 4000 },
+  ],
+  devPort: 4100,
+  startedAt: "2026-10-17T10:00:00Z",
+  finishedAt: "2026-10-17T10:00:05Z",
+};
+
+function devState(projectId: string, running: boolean): DevServerState {
+  return { projectId, status: running ? "running" : "stopped", command: null, url: running ? "http://localhost:4100/" : null, startedAt: null, exitCode: null, error: null, effectiveCommand: "pnpm dev" };
+}
+
 async function openRemoval(branch: string) {
   const card = (await screen.findByText(branch)).closest("div.rounded-xl") as HTMLElement;
   fireEvent.click(within(card).getByRole("button", { name: "Entfernen" }));
@@ -75,15 +92,49 @@ beforeEach(() => {
   useChatWindows.setState({ sessions: [] });
   useToasts.setState({ toasts: [] });
   useUi.setState({ view: "workspace", activeProjectId: "app", workspaceTab: "agents" });
-  callMock.mockImplementation(async (method: string) => {
+  callMock.mockImplementation(async (method: string, params: { projectId?: string }) => {
     if (method === "projects.list") return [app, login, dirty, other, otherWt];
     if (method === "config.docs") return [];
     if (method === "worktrees.remove") return { ok: true, deletedBranch: null, branchError: null };
+    if (method === "worktrees.setup") return params.projectId === "wt-login" ? failedSetup : null;
+    if (method === "worktrees.prepare") return { ...failedSetup, status: "running" };
+    if (method === "devserver.state") return devState(params.projectId!, params.projectId === "wt-login");
     throw new Error("unexpected " + method);
   });
 });
 
 describe("AgentsTab", () => {
+  it("shows how far each worktree is prepared and its own dev server, and repeats a failed preparation", async () => {
+    setup(app);
+    const card = (await screen.findByText("agent/login")).closest("div.rounded-xl") as HTMLElement;
+    expect((await within(card).findByText("Fehlgeschlagen: Abhängigkeiten")).getAttribute("title")).toMatch(/Lokale Konfiguration: fertig. 1 Datei kopiert: .env/);
+    expect(within(card).getByRole("button", { name: ":4100" }).getAttribute("title")).toBe("Dev-Server öffnen: http://localhost:4100/");
+    const quiet = (await screen.findByText("agent/dirty")).closest("div.rounded-xl") as HTMLElement;
+    expect((await within(quiet).findByRole("button", { name: "Dev-Server" })).getAttribute("title")).toMatch(/starten und öffnen/);
+    await act(async () => {
+      fireEvent.click(within(card).getByRole("button", { name: "Vorbereitung wiederholen" }));
+    });
+    expect(callMock).toHaveBeenCalledWith("worktrees.prepare", { projectId: "wt-login" });
+    expect(await within(card).findByText("Wird vorbereitet")).toBeTruthy();
+    expect(within(card).queryByRole("button", { name: "Vorbereitung wiederholen" })).toBeNull();
+  });
+
+  it("offers the card's actions on right click, with the agent's dev server", async () => {
+    setup(app);
+    const card = (await screen.findByText("agent/login")).closest("div.rounded-xl") as HTMLElement;
+    await within(card).findByText(":4100");
+    const ev = new MouseEvent("contextmenu", { bubbles: true, cancelable: true });
+    card.dispatchEvent(ev);
+    expect(offeredGroups(ev)[0]?.map((i) => i.label)).toEqual([
+      "Öffnen",
+      "Dev-Server des Agenten öffnen",
+      "Dev-Server des Agenten stoppen",
+      "Vorbereitung wiederholen",
+      "Abschließen",
+      "Entfernen",
+    ]);
+  });
+
   it("shows only the worktrees of the open project", async () => {
     setup(app);
     expect(await screen.findByText("agent/login")).toBeTruthy();

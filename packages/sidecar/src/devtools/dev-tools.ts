@@ -67,7 +67,7 @@ function valid<T>(schema: { safeParse: (v: unknown) => { success: boolean; data?
 
 /**
  * Test environment and test database settings per project. Worktrees (agents) use the settings of
- * their project: one test database per project, not one per agent.
+ * their project; their test database runs separately (TestDbService), with its own port.
  */
 export class DevToolsService {
   constructor(
@@ -124,6 +124,11 @@ export class DevToolsService {
     }
     this.db.setDevTools(owner, DevToolsConfig.parse(next));
     return next;
+  }
+
+  /** Test database ports of all projects. */
+  ports(): number[] {
+    return this.db.devToolsPorts("");
   }
 
   private freePort(owner: string): number {

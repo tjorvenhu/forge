@@ -14,6 +14,7 @@ import {
   ReportDate,
   DevServerState,
   DevToolsConfig,
+  WorktreeSetupState,
   KnowledgeCleanup,
   KnowledgeEntry,
   KnowledgeMergeDraft,
@@ -203,6 +204,10 @@ export const methods = {
     params: projectRef.extend({ force: z.boolean().default(false), deleteBranch: z.boolean().default(false) }),
     result: z.object({ ok: z.boolean(), deletedBranch: z.string().nullable(), branchError: z.string().nullable() }),
   },
+  /** preparation of an agent's worktree (dependencies, local config, build cache, database, dev server); null for other projects */
+  "worktrees.setup": { params: projectRef, result: WorktreeSetupState.nullable() },
+  /** runs the preparation again, e.g. after a failed install */
+  "worktrees.prepare": { params: projectRef, result: WorktreeSetupState },
   /** what a parallel agent did, for the decision to merge or discard its branch */
   "agents.review": { params: projectRef, result: AgentReview },
   /** merge: rebase the agent's branch onto its target and fast-forward it, then remove worktree and branch; discard: remove both unmerged */
@@ -735,6 +740,7 @@ export type ServerEvent =
   | { event: "devserver.updated"; payload: DevServerState }
   | { event: "devserver.output"; payload: { projectId: string; text: string } }
   | { event: "testdb.updated"; payload: TestDbState }
+  | { event: "worktree.setup"; payload: WorktreeSetupState }
   /** an entry of the project's knowledge was saved or deleted (also by Claude) */
   | { event: "knowledge.updated"; payload: { projectId: string } }
   /** prompt templates changed (in any window, over the phone or by the sync); projectId null: global ones */

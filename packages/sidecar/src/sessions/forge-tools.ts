@@ -16,6 +16,8 @@ import { MAX_STEP_MS, type PreviewService, type PreviewStep } from "../preview/p
 /** Agents one session may have running at the same time. */
 export const MAX_AGENTS = 4;
 const RUNNING = new Set(["starting", "running", "waiting_approval", "stopping"]);
+/** dev_environment with wait: an install without a shared store can take minutes. */
+const SETUP_WAIT_MS = 4 * 60_000;
 
 /**
  * Which sessions were started as agents by which session. Stored with the session, so agents stay
@@ -200,10 +202,12 @@ export function projectTools(rec: SessionRecord, p: ProjectToolDeps): { tools: S
   const devEnvironment: SessionTool = {
     name: "dev_environment",
     description:
-      "Stand von Dev-Server und Test-Datenbank des Projekts: Status, Adresse, Verbindungs-URL der lokalen PostgreSQL-Testdatenbank, Namen der Test-Umgebungsvariablen und die letzten Zeilen der Dev-Server-Ausgabe.",
-    shape: {},
+      "Stand von Dev-Server und Test-Datenbank des Projekts: Status, Adresse, Verbindungs-URL der lokalen PostgreSQL-Testdatenbank, Namen der Test-Umgebungsvariablen und die letzten Zeilen der Dev-Server-Ausgabe. In einem Agenten-Worktree auch, was FORGE dort vorbereitet hat (Abhängigkeiten, lokale Konfiguration, Build-Ausgaben, eigene Datenbank) und was davon noch läuft oder fehlgeschlagen ist.",
+    shape: {
+      wait: z.boolean().optional().describe("true: in einem Agenten-Worktree erst warten, bis die Vorbereitung fertig ist (höchstens 4 Minuten)"),
+    },
     autoAllow: true,
-    run: () => p.dev.describe(projectId),
+    run: (a) => p.dev.describe(projectId, a.wait === true ? SETUP_WAIT_MS : 0),
   };
   const devControl: SessionTool = {
     name: "dev_control",
@@ -246,6 +250,7 @@ export function projectTools(rec: SessionRecord, p: ProjectToolDeps): { tools: S
       : "",
     "- Ändere das Projektwissen nur mit den knowledge_*-Werkzeugen, nicht mit Read, Edit oder Write auf die Dateien.",
     "Dev-Umgebung (FORGE): mcp__forge__dev_environment zeigt Dev-Server (Adresse, letzte Ausgabe) und die lokale PostgreSQL-Testdatenbank (Verbindungs-URL). Nutze für Tests, Migrationen und Experimente mit Daten diese Testdatenbank, nie eine Produktionsdatenbank. dev_control startet, stoppt oder leert sie und startet den Dev-Server neu.",
+    inWorktree ? p.dev.setupContext(projectId) : "",
     preview.length
       ? "Vorschau (FORGE): preview_screenshot zeigt dir die laufende Web-App als Bild (Standard: Adresse des Dev-Servers, path für Unterseiten), preview_console liefert Konsolenmeldungen, Ausnahmen und fehlgeschlagene Anfragen, preview_interact klickt, tippt und wartet auf der Seite. Nur Adressen auf diesem Rechner. Prüfe UI-Änderungen damit selbst, bevor du sie als fertig meldest."
       : "",

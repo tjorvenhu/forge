@@ -106,6 +106,8 @@ export const PHONE_TOOL_FOR: Partial<Record<MethodName, string>> = {
   "devserver.start": "dev_server",
   "devserver.stop": "dev_server",
   "devserver.output": "dev_server",
+  "worktrees.setup": "dev_server",
+  "worktrees.prepare": "dev_server",
 
   "devtools.get": "dev_settings",
   "devtools.update": "dev_settings",

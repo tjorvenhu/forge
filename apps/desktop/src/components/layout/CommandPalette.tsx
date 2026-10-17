@@ -3,7 +3,7 @@ import * as D from "@radix-ui/react-dialog";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowDown, ArrowUp, CornerDownLeft, Search } from "lucide-react";
 import { call, keys, useGitHubAccount, usePhoneState, useProjects, useRuntimeInfo, useSearch, useSession, useSettings, useTemplates } from "@/lib/queries";
-import type { PromptTemplate } from "@forge/protocol";
+import type { ProjectWithStatus, PromptTemplate } from "@forge/protocol";
 import { cn } from "@/lib/utils";
 import { OVERLAY_MOTION } from "@/lib/motion";
 import { splitActive, useUi } from "@/stores/ui";
@@ -15,6 +15,7 @@ import { usePaletteSources } from "./palette-sources";
 import { PaletteDialogs } from "./PaletteDialogs";
 
 const NO_TEMPLATES: PromptTemplate[] = [];
+const NO_AGENTS: ProjectWithStatus[] = [];
 const GROUP_ORDER: PaletteGroup[] = ["Aktionen", "Einstellungen", "Projekte", "Sessions", "Erweiterungen", "Wissen", "Dateien", "Commits", "In Verläufen"];
 
 /** Rows per group; without a query only the most useful groups show. */
@@ -83,16 +84,17 @@ function PaletteBody({ onClose, openDialog }: { onClose: () => void; openDialog:
   const projectId = view === "workspace" ? activeProjectId : null;
   const project = projects.data?.find((p) => p.id === projectId) ?? null;
   const root = project?.parentId ? (projects.data?.find((p) => p.id === project.parentId) ?? null) : project;
-  const owner = root?.id ?? null;
+  const allProjects = projects.data;
+  const agents = useMemo(() => (root ? (allProjects ?? []).filter((p) => p.parentId === root.id && p.exists) : NO_AGENTS), [allProjects, root]);
   const devServer = useQuery({ queryKey: keys.devServer(projectId ?? ""), queryFn: () => call("devserver.state", { projectId: projectId! }), enabled: !!projectId }).data;
-  const testDb = useQuery({ queryKey: keys.testDb(owner ?? ""), queryFn: () => call("testdb.state", { projectId: owner! }), enabled: !!owner, staleTime: Infinity }).data;
+  const testDb = useQuery({ queryKey: keys.testDb(projectId ?? ""), queryFn: () => call("testdb.state", { projectId: projectId! }), enabled: !!projectId, staleTime: Infinity }).data;
   const session = useSession(projectId ? splitActive(activeSessions[projectId]).sessionId : null).data ?? null;
   const sources = usePaletteSources(query, project);
   const templates = useTemplates(projectId).data ?? NO_TEMPLATES;
 
   const actions = useMemo(
-    () => buildActions({ qc, project, root, session, settings, models: models ?? [], devServer, testDb, phone, remote, githubConnected, templates, openDialog }),
-    [qc, project, root, session, settings, models, devServer, testDb, phone, remote, githubConnected, templates, openDialog],
+    () => buildActions({ qc, project, root, agents, session, settings, models: models ?? [], devServer, testDb, phone, remote, githubConnected, templates, openDialog }),
+    [qc, project, root, agents, session, settings, models, devServer, testDb, phone, remote, githubConnected, templates, openDialog],
   );
 
   const indexed = useMemo(

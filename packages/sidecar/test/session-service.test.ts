@@ -427,7 +427,7 @@ describe("SessionService", () => {
     writeFileSync(path.join(own.path, "eigen.txt"), "nur hier");
     await git(own.path, "add", ".");
     await git(own.path, "commit", "-m", "eigen");
-    svc.useProjectTools({ knowledge: new KnowledgeStore(projects, () => {}), dev: {} as DevEnvironment });
+    svc.useProjectTools({ knowledge: new KnowledgeStore(projects, () => {}), dev: { setupContext: () => "" } as unknown as DevEnvironment });
     svc.useAgentFinisher(
       new AgentFinisher({ db, git: new GitEngine(), projects, sessions: svc, worktrees: new WorktreeService(new GitEngine(), projects), devServers: { forget: async () => {} }, notifyProject: () => {} }),
     );
@@ -483,7 +483,7 @@ describe("SessionService", () => {
           throw new Error("Index kaputt");
         },
       } as unknown as KnowledgeStore,
-      dev: {} as DevEnvironment,
+      dev: { setupContext: () => "" } as unknown as DevEnvironment,
     });
     const s = await svc.start({ projectId, prompt: "x" });
     expect(rt.started[0]!.tools!.map((t) => t.name)).toContain("notify");

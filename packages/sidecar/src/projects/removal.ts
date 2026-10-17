@@ -188,9 +188,9 @@ export async function removeProject(projectId: string, opts: { deleteFolder: boo
     folderDeleted = true;
   }
 
-  // Worktrees share their project's test database; it goes only with the project itself, and only
-  // once nothing above failed: the project then stays, and so does its data.
-  if (!project.parentId) await d.testDb?.forget(project.id);
+  // Only once nothing above failed: the project then stays, and so does its data. A worktree's
+  // database is its own copy and goes with it.
+  await d.testDb?.forget(project.id);
   if (d.projects.all().some((p) => p.id === project.id)) d.projects.remove(project.id);
   return { removed: true, folderDeleted, githubDeleted };
 }

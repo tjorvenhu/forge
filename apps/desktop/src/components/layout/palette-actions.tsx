@@ -24,6 +24,7 @@ import {
   FolderPlus,
   Gauge,
   GitBranch,
+  Globe,
   GitBranchPlus,
   GitCommitHorizontal,
   GitCompareArrows,
@@ -49,6 +50,7 @@ import {
   Power,
   RefreshCcw,
   RefreshCw,
+  RotateCcw,
   Settings2,
   Shield,
   ShieldBan,
@@ -85,6 +87,7 @@ import type {
 import { IDLE_CLOSE_CHOICES } from "@forge/protocol";
 import { installUpdate } from "@/lib/app-install";
 import { call, keys, refreshUsage } from "@/lib/queries";
+import { openDevServer, prepareWorktree } from "@/lib/dev-server-actions";
 import { EFFORT_LEVELS, modelLabel } from "@/lib/models";
 import { errorMessage, RpcCallError } from "@/lib/rpc";
 import { setAlwaysOnTop } from "@/lib/window-options";
@@ -140,6 +143,8 @@ export interface ActionContext {
   project: ProjectWithStatus | null;
   /** main project of a worktree, otherwise the project itself */
   root: ProjectWithStatus | null;
+  /** the agents' worktrees of that main project */
+  agents?: ProjectWithStatus[];
   /** the session shown in the project's chat */
   session: Session | null;
   settings: Settings | undefined;
@@ -432,9 +437,10 @@ export function buildActions(ctx: ActionContext): PaletteEntry[] {
     if (db) {
       const running = db.status === "running";
       const method = running ? "testdb.stop" : "testdb.start";
+      // An agent's worktree has its own test database.
       act(running ? "testdb-stop" : "testdb-start", running ? "Test-Datenbank stoppen" : "Test-Datenbank starten", icon(Database), () => {
-        call(method, { projectId: owner })
-          .then((st) => qc.setQueryData(keys.testDb(owner), st))
+        call(method, { projectId: project.id })
+          .then((st) => qc.setQueryData(keys.testDb(project.id), st))
           .catch((e: unknown) => toast.error(running ? "Test-Datenbank nicht gestoppt" : "Test-Datenbank nicht gestartet", errorMessage(e)));
       }, { keywords: "postgres postgresql db" });
     }
@@ -467,6 +473,17 @@ export function buildActions(ctx: ActionContext): PaletteEntry[] {
     if (root?.exists && root.git) {
       const r = root;
       act("agent-new", "Parallelen Agenten starten", icon(Bot), () => ctx.openDialog({ kind: "new-agent", root: r }), { keywords: "worktree branch agent" });
+    }
+    for (const a of ctx.agents ?? []) {
+      act(`agent-dev-${a.id}`, `Dev-Server des Agenten öffnen: ${a.git?.branch ?? a.name}`, icon(Globe), () => void openDevServer(qc, a.id), {
+        keywords: "agent worktree vorschau browser port starten",
+        hint: a.id === project.id ? "dieser Agent" : undefined,
+      });
+    }
+    if (project.parentId && project.exists) {
+      act("agent-prepare", "Worktree des Agenten neu vorbereiten", icon(RotateCcw), () => void prepareWorktree(qc, project.id), {
+        keywords: "agent abhängigkeiten installieren pnpm install env konfiguration kopieren build cache datenbank",
+      });
     }
 
     act("knowledge-merge", "Projektwissen: Einträge zusammenführen", icon(Combine), () => ui.openKnowledge(KNOWLEDGE_MERGE_REQUEST), {

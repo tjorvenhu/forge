@@ -7,6 +7,7 @@ import { ForgeError, type Project } from "@forge/protocol";
 import { isArtifactPath, isSensitiveFile, type GitEngine } from "../git/git.js";
 import type { ProjectManager } from "../projects/project-manager.js";
 import { pathKey } from "../util/paths.js";
+import type { WorktreeSetup } from "./worktree-setup.js";
 
 /** Branch-safe slug from free text. */
 export function slugify(text: string, max = 40): string {
@@ -52,10 +53,17 @@ export type BranchOwner = "worktree" | "forge" | null;
  * FORGE project linked to its parent. Merging back is AgentFinisher's job (by hand or with the auto-merge tag).
  */
 export class WorktreeService {
+  private setup: WorktreeSetup | null = null;
+
   constructor(
     private readonly git: GitEngine,
     private readonly projects: ProjectManager,
   ) {}
+
+  /** Prepares new worktrees like the main folder and tidies up after them (dev server, test database). */
+  useSetup(setup: WorktreeSetup) {
+    this.setup = setup;
+  }
 
   /**
    * `fromDir`: a new branch starts at the HEAD of this working tree (the project or one of its
@@ -104,7 +112,10 @@ export class WorktreeService {
       defaultModel: parent.defaultModel,
       defaultEffort: parent.defaultEffort,
     });
-    return this.projects.get(project.id);
+    const created = this.projects.get(project.id);
+    // Beside the agent's session, which starts right after: its context says what still runs.
+    this.setup?.start(parent, created);
+    return created;
   }
 
   /**
@@ -241,6 +252,7 @@ export class WorktreeService {
     const root = worktreeRoot(worktree.path);
     const branch = opts.deleteBranch ? await this.branchOf(worktree.path) : null;
     const owner = branch && cwd ? await this.branchOwner(worktree, branch, cwd) : null;
+    await this.setup?.release(worktree.id);
     if (existsSync(root)) await this.deleteFolder(root, cwd, force);
     if (cwd) await this.git.exec(cwd, ["worktree", "prune"]);
     this.projects.remove(worktree.id);

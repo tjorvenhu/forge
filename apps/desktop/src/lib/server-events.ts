@@ -187,6 +187,9 @@ export function routeServerEvent(qc: QueryClient, git: GitRefresher, e: ServerEv
     case "testdb.updated":
       qc.setQueryData(keys.testDb(e.payload.projectId), e.payload);
       break;
+    case "worktree.setup":
+      qc.setQueryData(keys.worktreeSetup(e.payload.projectId), e.payload);
+      break;
     case "templates.updated":
       // Every list may show it: global ones appear in each project.
       void qc.invalidateQueries({ queryKey: ["templates"] });
