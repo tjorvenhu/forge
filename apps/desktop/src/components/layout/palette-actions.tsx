@@ -603,7 +603,8 @@ export function buildActions(ctx: ActionContext): PaletteEntry[] {
   act("claude-switch", "Claude-Konto wechseln", icon(ArrowLeftRight), () => ui.openClaudeLogin("switch"), { keywords: "account konto wechseln anderes login" });
   act("claude-logout", "Von Claude abmelden", icon(LogOut), () => ui.setClaudeLogout(true), { keywords: "logout abmelden konto account" });
   act("update-check", "Nach Updates suchen", icon(RefreshCw), () => void checkForUpdate(qc), { keywords: "version release aktualisieren" });
-  act("support-donate", "FORGE mit einer Spende unterstützen", icon(HandHeart), () => void openExternal(SUPPORT_LINKS.donate), { hint: "PayPal", keywords: "spenden spende paypal unterstützen danke support donate" });
+  act("support-open", "FORGE unterstützen", icon(HandHeart), () => ui.setSupportOpen(true), { hint: "Herz oben rechts", keywords: "unterstützen spenden vorschlag feedback herz support" });
+  act("support-donate","FORGE mit einer Spende unterstützen", icon(HandHeart), () => void openExternal(SUPPORT_LINKS.donate), { hint: "PayPal", keywords: "spenden spende paypal unterstützen danke support donate" });
   act("usage-stats-public", "Gesamtzahlen aller FORGE-Nutzer ansehen", icon(Gauge), () => void openExternal(USAGE_STATS_URL), {
     hint: "Statistik",
     keywords: "statistik zahlen tokens projekte agenten öffentlich gesamt nutzer",

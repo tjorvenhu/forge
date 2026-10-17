@@ -55,7 +55,7 @@ function setup(status = 204) {
 }
 
 describe("usage statistics", () => {
-  it("sends the totals with a random ID once a day, nothing else", async () => {
+  it("sends the totals with a random ID every 5 minutes, nothing else", async () => {
     const t = setup();
     expect(await t.svc.tick()).toBe("sent");
     const id = (JSON.parse(readFileSync(t.file, "utf8")) as { installId: string }).installId;
@@ -66,11 +66,11 @@ describe("usage statistics", () => {
       body: { schema: 1, installId: id, appVersion: "0.1.80", os: expect.any(String), counters: TOTALS },
     });
     expect(Object.keys(t.requests[0]!.body!).sort()).toEqual(["appVersion", "counters", "installId", "os", "schema"]);
-    t.advance(60 * 60_000);
+    t.advance(4 * 60_000);
     expect(await t.svc.tick()).toBe("idle");
-    t.advance(24 * 60 * 60_000);
+    t.advance(60_000);
     expect(await t.svc.tick()).toBe("sent");
-    // The same ID the next day.
+    // The same ID every time.
     expect(t.requests[1]!.body!.installId).toBe(id);
   });
 
@@ -89,7 +89,7 @@ describe("usage statistics", () => {
     const t = setup(502);
     expect(await t.svc.tick()).toBe("failed");
     expect(await t.svc.tick()).toBe("idle");
-    t.advance(16 * 60_000);
+    t.advance(5 * 60_000);
     expect(await t.svc.tick()).toBe("failed");
     expect(t.requests).toHaveLength(2);
   });

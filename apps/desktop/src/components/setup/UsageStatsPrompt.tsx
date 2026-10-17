@@ -39,7 +39,7 @@ function Prompt({ onLater }: { onLater: () => void }) {
       open
       onOpenChange={(o) => !o && onLater()}
       title="Anonyme Nutzungsstatistik"
-      description="Einmal am Tag schickt FORGE Summen an den Statistik-Dienst von FORGE. Daraus entstehen die öffentlichen Gesamtzahlen aller Nutzer."
+      description="Alle 5 Minuten schickt FORGE Summen an den Statistik-Dienst von FORGE. Daraus entstehen die öffentlichen Gesamtzahlen aller Nutzer."
       className="w-150"
       overlayClassName="backdrop-blur-sm"
       bodyClassName="flex flex-col gap-3 text-body"

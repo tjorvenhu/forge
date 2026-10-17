@@ -202,7 +202,7 @@ export interface ForgeSettingsPatch {
   screenshotKey?: boolean;
   /** before/after screenshots of the web app when a turn changes UI files */
   uiCompare?: boolean;
-  /** anonymous usage totals once a day */
+  /** anonymous usage totals every 5 minutes */
   usageStats?: boolean;
   policyRule?: PolicyRuleId;
   policyRuleOn?: boolean;
@@ -931,7 +931,7 @@ export const PHONE_TOOLS: readonly PhoneToolSpec[] = [
       usage_stats: {
         type: "boolean",
         optional: true,
-        description: "anonyme Nutzungsstatistik: einmal am Tag Summen wie Tokens, Projekte und Agenten ohne Inhalte an den Statistik-Dienst von FORGE; aus löscht die gesendeten Daten dort",
+        description: "anonyme Nutzungsstatistik: alle 5 Minuten Summen wie Tokens, Projekte und Agenten ohne Inhalte an den Statistik-Dienst von FORGE; aus löscht die gesendeten Daten dort",
       },
       policy_rule: { type: "string", optional: true, enum: PolicyRuleId.options, description: "Regel der Sperrliste" },
       policy_rule_on: { type: "boolean", optional: true, description: "true schaltet die Regel ein, false aus" },

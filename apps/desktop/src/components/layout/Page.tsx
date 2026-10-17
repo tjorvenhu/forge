@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { AlwaysOnTopButton } from "./AlwaysOnTopButton";
 import { SyncButton } from "./SyncButton";
 import { PhoneButton } from "./PhoneButton";
+import { SupportButton } from "@/components/settings/SupportSettings";
 
 /** Thin vertical line between groups of header controls. */
 export function HeaderDivider() {
@@ -19,6 +20,7 @@ export function Page({ title, subtitle, actions, children }: { title: string; su
         <div className="flex shrink-0 items-center gap-2">
           {actions}
           {actions && <HeaderDivider />}
+          <SupportButton />
           <SyncButton />
           <AlwaysOnTopButton />
           <PhoneButton />

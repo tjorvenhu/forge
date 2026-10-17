@@ -8,7 +8,6 @@ import {
   FileStack,
   FileText,
   FolderOpen,
-  HandHeart,
   Info,
   Phone,
   Cloud,
@@ -49,9 +48,7 @@ import { PolicySettings } from "@/components/settings/PolicySettings";
 import { TemplatesSettings } from "@/components/templates/TemplatesSettings";
 import { GitHubSettings } from "@/components/settings/GitHubSettings";
 import { AppUpdateSettings } from "@/components/layout/AppUpdate";
-import { InstallRepairSettings } from "@/components/layout/InstallRepair";
-import { SupportSettings } from "@/components/settings/SupportSettings";
-import { cn, planLabel } from "@/lib/utils";
+import { InstallRepairSettings } from "@/components/layout/InstallRepair";import { cn, planLabel } from "@/lib/utils";
 
 type Save = (patch: Partial<Settings>) => Promise<void>;
 
@@ -64,9 +61,7 @@ export const SECTIONS: ReadonlyArray<SettingsSectionDef<SettingsSection>> = [
   { id: "github", label: "GitHub", hint: "Konto, Synchronisierung, Versionen", Icon: Cloud },
   { id: "backup", label: "Backup", hint: "Sichern und zurücksetzen", Icon: ArchiveRestore },
   { id: "rules", label: "Globale Regeln", hint: "CLAUDE.md für alle Projekte", Icon: FileText },
-  { id: "about", label: "Über FORGE", hint: "Updates, Datenschutz, Diagnose", Icon: Info },
-  { id: "support", label: "Unterstützen", hint: "Spenden, Vorschläge einreichen", Icon: HandHeart, minor: true },
-];
+  { id: "about", label: "Über FORGE", hint: "Updates, Datenschutz, Diagnose", Icon: Info },];
 
 export function SettingsView() {
   const settings = useSettings();
@@ -119,8 +114,6 @@ export function SettingsView() {
               <MemoryEditor scopes={["global"]} />
             </div>
           </Group>
-        ) : current.id === "support" ? (
-          <SupportSettings />
         ) : (
           <AboutSection s={s} save={save} />
         )}
@@ -354,7 +347,7 @@ function AboutSection({ s, save }: { s: Settings; save: Save }) {
           label="Anonyme Nutzungsstatistik"
           description={
             <>
-              Einmal am Tag gehen Summen an den Statistik-Dienst von FORGE: eine zufällige Kennung, FORGE- und Windows-Version, Tokens, Claude-Arbeitszeit, Sessions, angelegte Projekte,
+              Alle 5 Minuten gehen Summen an den Statistik-Dienst von FORGE: eine zufällige Kennung, FORGE- und Windows-Version, Tokens, Claude-Arbeitszeit, Sessions, angelegte Projekte,
               Agenten und Telefonate. Keine Inhalte, Namen oder Pfade. Ausschalten löscht die gesendeten Daten beim Dienst.{" "}
               <a
                 href={USAGE_STATS_URL}

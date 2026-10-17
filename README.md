@@ -48,7 +48,7 @@ Signatur vor der Installation. Die Suche lässt sich unter Einstellungen > Über
 Deine Projekte, Chatverläufe und Einstellungen liegen auf deinem Rechner (unter `%APPDATA%\forge`).
 Daten gehen nur an diese Stellen:
 
-- **Anonyme Nutzungsstatistik (abschaltbar):** Einmal am Tag schickt FORGE Summen an
+- **Anonyme Nutzungsstatistik (abschaltbar):** Alle 5 Minuten schickt FORGE Summen an
   [forge-stats.vanturis.de](https://forge-stats.vanturis.de): eine zufällige Kennung der Installation (ohne
   Bezug zu Konto oder Rechner), die FORGE- und Windows-Version und Zählerstände (Tokens, Claude-Arbeitszeit,
   Sessions, angelegte Projekte, gestartete und zusammengeführte Agenten, Telefonate). Keine Inhalte, keine

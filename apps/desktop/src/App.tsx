@@ -17,6 +17,7 @@ import { InstallRepairBanner, RELEASES_URL } from "@/components/layout/InstallRe
 import { SetupWizard } from "@/components/setup/SetupWizard";
 import { SyncPrompt } from "@/components/setup/SyncPrompt";
 import { UsageStatsPrompt } from "@/components/setup/UsageStatsPrompt";
+import { SupportDialog } from "@/components/settings/SupportSettings";
 import { ClaudeLoginDialog, ClaudeLogoutDialog } from "@/components/settings/ClaudeLoginDialog";
 import { Logo } from "@/components/layout/Logo";
 import { Button } from "@/components/ui/button";
@@ -150,6 +151,7 @@ function Shell() {
       <ClaudeLogoutDialog />
       <SyncPrompt />
       <UsageStatsPrompt />
+      <SupportDialog />
       <AgentReviewDialog />
       <Toaster />
       <TitleTooltips />

@@ -22,7 +22,7 @@ const GIT_WORKSPACE_TABS: ReadonlySet<WorkspaceTab> = new Set(["agents", "git"])
 export function workspaceTabsFor(project: { gitEnabled: boolean } | null | undefined): WorkspaceTab[] {
   return WORKSPACE_TABS.filter((t) => project?.gitEnabled !== false || !GIT_WORKSPACE_TABS.has(t));
 }
-export const SETTINGS_SECTIONS = ["general", "templates", "claude", "policy", "phone", "github", "backup", "rules", "about", "support"] as const;
+export const SETTINGS_SECTIONS = ["general", "templates", "claude", "policy", "phone", "github", "backup", "rules", "about"] as const;
 export type SettingsSection = (typeof SETTINGS_SECTIONS)[number];
 export const DEV_TOOLS_SECTIONS = ["server", "database", "env"] as const;
 export type DevToolsSection = (typeof DEV_TOOLS_SECTIONS)[number];
@@ -166,6 +166,9 @@ interface UiState {
   /** the setup assistant, opened again by hand (it opens on its own until the first setup is done) */
   setupWizard: boolean;
   setSetupWizard: (open: boolean) => void;
+  /** dialog behind the red heart: donate, suggestions, public statistics */
+  supportOpen: boolean;
+  setSupportOpen: (open: boolean) => void;
   /** dialog to sign in to Claude; `expired`: a session was refused for the sign-in, `switch`: another account */
   claudeLogin: { id: number; reason: ClaudeLoginReason } | null;
   /** keeps a dialog that is already open, so several failing sessions do not restart it */
@@ -308,6 +311,7 @@ export const useUi = create<UiState>((set, get) => ({
   bottomPanelOpen: false,
   newProject: null,
   setupWizard: false,
+  supportOpen: false,
   claudeLogin: null,
   claudeLogout: false,
   terminalRequest: null,
@@ -501,6 +505,7 @@ export const useUi = create<UiState>((set, get) => ({
   },
   setNewProject: (newProject) => set({ newProject }),
   setSetupWizard: (setupWizard) => set({ setupWizard }),
+  setSupportOpen: (supportOpen) => set({ supportOpen }),
   openClaudeLogin: (reason) => set((s) => (s.claudeLogin ? {} : { claudeLogin: { id: Date.now(), reason } })),
   closeClaudeLogin: () => set({ claudeLogin: null }),
   setClaudeLogout: (claudeLogout) => set({ claudeLogout }),

@@ -5,11 +5,11 @@ import path from "node:path";
 import { USAGE_STATS_URL } from "@forge/protocol";
 import type { UsageTotals } from "../persistence/db.js";
 
-const FIRST_TICK_MS = 2 * 60_000;
-const TICK_MS = 60 * 60_000;
-const SEND_EVERY_MS = 24 * 60 * 60_000;
-/** The service takes at most one report per installation every 10 minutes. */
-const RETRY_MS = 15 * 60_000;
+const FIRST_TICK_MS = 60_000;
+const TICK_MS = 60_000;
+/** The service takes at most one report per installation every 4 minutes. */
+const SEND_EVERY_MS = 5 * 60_000;
+const RETRY_MS = 5 * 60_000;
 
 /** Kept in the data folder, not in the settings: backups and the sync copy settings to other PCs. */
 interface StatsFile {
@@ -33,7 +33,7 @@ export interface UsageStatsDeps {
 }
 
 /**
- * Sends anonymous totals of this installation to the statistics service once a day: a random ID, the
+ * Sends anonymous totals of this installation to the statistics service every 5 minutes: a random ID, the
  * version, Windows and counters (tokens, projects, agents ...), never contents, names or paths.
  * Switched off, it asks the service once to delete the installation's row.
  */
