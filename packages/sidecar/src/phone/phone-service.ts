@@ -1727,7 +1727,7 @@ export class PhoneService {
           sessions.cancelAutoContinue(s.id);
           return `Automatisches Weitermachen von ${refFor(s.id)} abgebrochen.`;
         }),
-      backgroundTask: (ref, action, task) =>
+      backgroundTask: (ref, action, task, text) =>
         run(true, async () => {
           const s = resolve(ref);
           const r = refFor(s.id);
@@ -1751,7 +1751,14 @@ export class PhoneService {
             const { moved } = await sessions.toBackground(s.id, t?.toolUseId ?? undefined);
             return moved ? `In den Hintergrund verschoben, ${r} arbeitet weiter.` : `Bei ${r} lief nichts im Vordergrund, das sich verschieben ließ.`;
           }
+          if (action === "message" && !text?.trim()) throw new Error("Was soll in der Nachricht stehen? text fehlt.");
           const t = find();
+          if (action === "message") {
+            await sessions.messageTask(s.id, { taskId: t.taskId }, text!.trim());
+            return t.command
+              ? `Nachricht zu ${asData(t.description)} an ${r} geschickt. Ein Befehl liest keine Eingaben, Claude reagiert darauf.`
+              : `Nachricht an ${asData(t.description)} geschickt, Claude gibt sie an den Subagenten weiter.`;
+          }
           if (action === "stop") {
             await sessions.stopTask(s.id, t.taskId);
             return `${asData(t.description)} gestoppt, der Rest von ${r} läuft weiter.`;

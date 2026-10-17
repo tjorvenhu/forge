@@ -541,6 +541,55 @@ describe("SessionService", () => {
     expect(svc.get(s.id).status).toBe("running");
   });
 
+  it("writes to a background subagent through Claude and keeps the subagent resumed by SendMessage with its first call", async () => {
+    const s = await svc.start({ projectId, prompt: "Recherchiere im Hintergrund" });
+    const sink = rt.sinks[0]!;
+    sink.onMessage({ type: "assistant", message: { id: "m1", content: [{ type: "tool_use", id: "ta1", name: "Agent", input: { description: "Recherche", prompt: "Finde die Routen", run_in_background: true } }] } });
+    sink.onMessage({ type: "user", message: { content: [{ type: "tool_result", tool_use_id: "ta1", content: [{ type: "text", text: "Async agent launched successfully.\nagentId: a1 (internal ID)" }] }] } });
+    sink.onMessage({ type: "system", subtype: "task_started", task_id: "a1", tool_use_id: "ta1", description: "Recherche", task_type: "local_agent", is_backgrounded: true });
+    sink.onMessage({ type: "system", subtype: "task_notification", task_id: "a1", tool_use_id: "ta1", status: "completed", summary: "Drei Routen gefunden." });
+    sink.onMessage({ type: "result", subtype: "success", is_error: false, result: "ok", usage: {} });
+    await svc.drain();
+
+    // Ended: found in the stored events by its Agent call.
+    await svc.messageTask(s.id, { toolUseId: "ta1" }, "Prüf auch die Logout-Route");
+    expect(rt.sent.at(-1)).toBe("Prüf auch die Logout-Route");
+    expect(rt.sentNotes.at(-1)).toMatch(/^\[FORGE-Hinweis.*„Recherche“ .*agentId a1, ist fertig.*SendMessage \(to: "a1"\)/);
+    const messages = db.listEvents(s.id).map((e) => e.body).filter((b) => b.type === "user.message");
+    expect(messages.at(-1)).toMatchObject({ text: "Prüf auch die Logout-Route", task: { taskId: "a1", toolUseId: "ta1", kind: "agent", description: "Recherche" } });
+
+    // SendMessage resumes it as a task with the same id, started by the SendMessage call.
+    sink.onMessage({ type: "system", subtype: "task_started", task_id: "a1", tool_use_id: "ts1", description: "Recherche", task_type: "local_agent" });
+    sink.onMessage({ type: "system", subtype: "background_tasks_changed", tasks: [{ task_id: "a1", task_type: "local_agent", description: "Recherche" }] });
+    expect(svc.get(s.id).background).toMatchObject([{ taskId: "a1", toolUseId: "ta1" }]);
+    expect(svc.get(s.id).subagents).toEqual([]);
+    sink.onMessage({ type: "system", subtype: "task_notification", task_id: "a1", tool_use_id: "ts1", status: "completed", summary: "Logout auch geprüft." });
+    const tasks = db.listEvents(s.id).map((e) => e.body).filter((b) => b.type === "background.task");
+    expect(tasks.slice(-2)).toEqual([
+      { type: "background.task", taskId: "a1", description: "Recherche", state: "started", summary: null, toolUseId: "ta1" },
+      { type: "background.task", taskId: "a1", description: "Recherche", state: "completed", summary: "Logout auch geprüft.", toolUseId: "ta1" },
+    ]);
+  });
+
+  it("writes about a background command to Claude, since the command reads no input", async () => {
+    const s = await svc.start({ projectId, prompt: "Starte den Dev-Server" });
+    const sink = rt.sinks[0]!;
+    sink.onMessage({ type: "assistant", message: { id: "m1", content: [{ type: "tool_use", id: "tb1", name: "Bash", input: { command: "pnpm dev", description: "Dev-Server", run_in_background: true } }] } });
+    sink.onMessage({ type: "user", message: { content: [{ type: "tool_result", tool_use_id: "tb1", content: "Command running in background with ID: b1. Output is being written to: x" }] } });
+    sink.onMessage({ type: "system", subtype: "task_started", task_id: "b1", tool_use_id: "tb1", description: "Dev-Server", task_type: "local_bash", is_backgrounded: true });
+    sink.onMessage({ type: "system", subtype: "background_tasks_changed", tasks: [{ task_id: "b1", task_type: "local_bash", description: "Dev-Server" }] });
+
+    // The turn still runs: the message joins it like any other.
+    await svc.messageTask(s.id, { taskId: "b1" }, "Starte ihn neu");
+    expect(rt.sent.at(-1)).toBe("Starte ihn neu");
+    expect(rt.sentNotes.at(-1)).toMatch(/Hintergrundaufgabe „Dev-Server“ .*Task-ID b1, Befehl: pnpm dev; läuft noch.*liest keine Eingaben/);
+    const messages = db.listEvents(s.id).map((e) => e.body).filter((b) => b.type === "user.message");
+    expect(messages.at(-1)).toMatchObject({ text: "Starte ihn neu", task: { taskId: "b1", toolUseId: "tb1", kind: "shell", description: "Dev-Server" } });
+
+    await expect(svc.messageTask(s.id, { taskId: "zz" }, "x")).rejects.toThrow(/nicht gefunden/);
+    await expect(svc.messageTask(s.id, {}, "x")).rejects.toThrow(/Welche Hintergrundaufgabe/);
+  });
+
   it("uses the Safe profile for real: default mode and disabled network tools", async () => {
     projects.update(projectId, { profile: "safe" });
     await svc.start({ projectId, prompt: "x" });

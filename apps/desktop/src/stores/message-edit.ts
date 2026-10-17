@@ -19,7 +19,8 @@ export function lastEditablePrompt(sessionId: string): number | null {
   const events = useSessionEvents.getState().buffers[sessionId]?.events ?? [];
   for (let i = events.length - 1; i >= 0; i--) {
     const b = events[i]!.body;
-    if (b.type === "user.message" && b.uuid && b.source !== "auto" && !b.text.trimStart().startsWith("<")) return events[i]!.seq;
+    // A message to a background task is not editable: it would go again without the note naming the task.
+    if (b.type === "user.message" && b.uuid && b.source !== "auto" && !b.task && !b.text.trimStart().startsWith("<")) return events[i]!.seq;
   }
   return null;
 }

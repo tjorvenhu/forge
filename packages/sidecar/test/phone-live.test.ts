@@ -96,7 +96,9 @@ describe("phone tools for Gemini", () => {
     await runPhoneTool("test_database", { project: "shop", action: "restart" }, t, ctx);
     expect(calls.at(-1)).toBe(`testDatabase:["shop","restart",{}]`);
     await runPhoneTool("background_task", { session: "S1", action: "to_background" }, t, ctx);
-    expect(calls.at(-1)).toBe(`backgroundTask:["S1","to_background",null]`);
+    expect(calls.at(-1)).toBe(`backgroundTask:["S1","to_background",null,null]`);
+    await runPhoneTool("background_task", { session: "S1", action: "message", task: "auth", text: "Prüf auch Logout" }, t, ctx);
+    expect(calls.at(-1)).toBe(`backgroundTask:["S1","message","auth","Prüf auch Logout"]`);
     await runPhoneTool("dev_settings", { project: "shop", port: 54400, env_var: "" }, t, ctx);
     expect(calls.at(-1)).toBe(`devSettings:["shop",{"port":54400,"envVar":""},{}]`);
     await runPhoneTool("project_automation", { session: "S2", tag: "auto-merge", on: true }, t, ctx);

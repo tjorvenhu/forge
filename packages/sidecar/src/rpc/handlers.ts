@@ -229,6 +229,7 @@ export function createHandlers(s: Services): Handlers {
     "sessions.get": ({ sessionId }) => s.sessions.get(sessionId),
     "sessions.stopTask": ({ sessionId, taskId }) => s.sessions.stopTask(sessionId, taskId),
     "sessions.taskOutput": ({ sessionId, taskId }) => s.sessions.taskOutput(sessionId, taskId),
+    "sessions.messageTask": ({ sessionId, taskId, toolUseId, text }) => s.sessions.messageTask(sessionId, { taskId, toolUseId }, text),
     "sessions.toBackground": ({ sessionId, toolUseId }) => s.sessions.toBackground(sessionId, toolUseId),
     "sessions.fork": ({ sessionId, beforeSeq, rewindFiles }) => s.sessions.fork(sessionId, { beforeSeq, rewindFiles }),
     "sessions.events": ({ sessionId, afterSeq, beforeSeq }) => s.sessions.events(sessionId, afterSeq, beforeSeq),

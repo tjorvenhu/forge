@@ -34,6 +34,7 @@ import {
   LogOut,
   MessageSquare,
   MessageSquarePlus,
+  MessageSquareText,
   MonitorSmartphone,
   NotebookText,
   PanelBottom,
@@ -102,6 +103,7 @@ import { integratedText } from "@/components/git/Sync";
 import { SECTIONS as PROJECT_SECTION_DEFS, TAG_INFO } from "@/components/workspace/ProjectSettingsTab";
 import { compactSession, PROFILE_MODE, stopSession } from "@/components/workspace/useSendMessage";
 import { revealInProject } from "@/components/workspace/file-links";
+import { taskViewOf } from "@/components/workspace/WorkingIndicator";
 import { recheckKnowledgeRefs } from "@/components/knowledge/knowledge-actions";
 import { SECTIONS as SETTINGS_SECTION_DEFS } from "@/views/SettingsView";
 import { EXTENSION_TAB_DEFS, SKILLS_TAB_DEFS } from "@/views/ExtensionsView";
@@ -385,6 +387,18 @@ export function buildActions(ctx: ActionContext): PaletteEntry[] {
         act("session-close", "Claude-Prozess der Session beenden", icon(Power), () => {
           call("sessions.close", { sessionId: s.id }).catch((e: unknown) => toast.error("Beenden fehlgeschlagen", errorMessage(e)));
         }, { keywords: "session schließen prozess schließen stoppen bleibt fortsetzbar" });
+      }
+      // Background tasks and subagents of the session: write to one (its window opens with the input focused).
+      const tasks = [
+        ...s.background.map((t) => taskViewOf(t, s.id)),
+        ...s.subagents.map((a) => (a.toolUseId ? ({ kind: "agent", sessionId: s.id, toolUseId: a.toolUseId, title: a.description } as const) : null)),
+      ];
+      for (const t of tasks) {
+        if (!t) continue;
+        act(`task-message-${t.kind === "agent" ? t.toolUseId : t.taskId}`, `Nachricht an Hintergrundaufgabe: ${t.title}`, icon(MessageSquareText), () => {
+          ui.setWorkspaceTab("chat");
+          ui.openTask({ ...t, compose: true });
+        }, { keywords: "schreiben subagent befehl hintergrund aufgabe sendmessage" });
       }
       act("session-summary", "Session zusammenfassen", icon(NotebookText), () => ctx.openDialog({ kind: "summary", session: s }), { keywords: "wo war ich wiedereinstieg" });
       act("session-fork", "Session verzweigen", icon(GitFork), () => void forkSession(qc, s), { keywords: "fork kopie zweig" });

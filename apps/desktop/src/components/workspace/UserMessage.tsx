@@ -1,7 +1,7 @@
 import { useState } from "react";
-import { Copy, FilePlus2, FileText, GitBranch, ImageIcon, Pencil, Smartphone, SquareSlash, TimerReset, Undo2 } from "lucide-react";
+import { Bot, Copy, FilePlus2, FileText, GitBranch, ImageIcon, Pencil, Smartphone, SquareSlash, SquareTerminal, TimerReset, Undo2 } from "lucide-react";
 import { contextItems, copyText } from "@/lib/context-menu";
-import type { RewindResult } from "@forge/protocol";
+import type { RewindResult, TaskMessageRef } from "@forge/protocol";
 import { useQueryClient } from "@tanstack/react-query";
 import { call, keys, useGitHubAccount, useSession, useSettings } from "@/lib/queries";
 import { draftKey, useDrafts } from "@/stores/drafts";
@@ -11,6 +11,7 @@ import { Textarea } from "@/components/ui/input";
 import { errorMessage } from "@/lib/rpc";
 import { clockTime, cn } from "@/lib/utils";
 import { toast } from "@/stores/toast";
+import { useUi, type TaskView } from "@/stores/ui";
 import { Button } from "@/components/ui/button";
 import { ToggleRow, Tooltip } from "@/components/ui/misc";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -63,7 +64,9 @@ export function UserMessage({ item, sessionId }: { item: Extract<ChatItem, { kin
     }
   };
   const editing = useMessageEdit((s) => s.target?.sessionId === sessionId && s.target.seq === item.seq);
-  const canEdit = !!item.uuid && !item.auto;
+  // Editing would send the text again without the note that names the task.
+  const canEdit = !!item.uuid && !item.auto && !item.task;
+  const taskView = item.task ? taskViewFor(item.task, sessionId) : null;
   // Images show as name chips: loading them back from the transcript was slow or failed.
   const chips = item.attachments;
   const hasMeta = chips.length > 0 || item.auto || item.edited;
@@ -76,6 +79,7 @@ export function UserMessage({ item, sessionId }: { item: Extract<ChatItem, { kin
           ? []
           : [
               { label: "Nachricht kopieren", icon: <Copy className="h-3.5 w-3.5" />, onSelect: () => copyText(item.text) },
+              ...(taskView ? [{ label: "Hintergrundaufgabe öffnen", icon: taskIcon(taskView.kind), onSelect: () => useUi.getState().openTask(taskView) }] : []),
               ...(item.text.trim() ? [{ label: "Als Vorlage speichern", icon: <FilePlus2 className="h-3.5 w-3.5" />, onSelect: () => useTemplateDialogs.getState().openEdit({ id: null, text: item.text }) }] : []),
               ...(canEdit ? [{ label: "Bearbeiten", icon: <Pencil className="h-3.5 w-3.5" />, onSelect: () => useMessageEdit.getState().start(sessionId, item.seq) }] : []),
               ...(item.uuid
@@ -91,6 +95,7 @@ export function UserMessage({ item, sessionId }: { item: Extract<ChatItem, { kin
         <div className="flex min-w-0 items-start gap-3">
           <div className="min-w-0 flex-1">
             {item.remote && <RemoteLabel />}
+            {item.task && <TaskLabel task={item.task} view={taskView} />}
             {editing ? <MessageEditor item={item} sessionId={sessionId} /> : <div className="whitespace-pre-wrap break-words">{withUltrathink(item.text)}</div>}
             {hasMeta && (
               <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-caption leading-normal text-subtle">
@@ -283,6 +288,39 @@ function MessageEditor({ item, sessionId }: { item: Extract<ChatItem, { kind: "u
         </Button>
       </div>
     </div>
+  );
+}
+
+/** What opens the task a message was written to; a subagent's history needs its Agent call. */
+function taskViewFor(task: TaskMessageRef, sessionId: string): TaskView | null {
+  if (task.kind === "agent") return task.toolUseId ? { kind: "agent", sessionId, toolUseId: task.toolUseId, title: task.description } : null;
+  return { kind: "shell", sessionId, taskId: task.taskId, toolUseId: task.toolUseId, title: task.description };
+}
+
+function taskIcon(kind: TaskMessageRef["kind"]) {
+  return kind === "agent" ? <Bot className="h-3.5 w-3.5" /> : <SquareTerminal className="h-3.5 w-3.5" />;
+}
+
+/** Above a message written to a background task; opens the task. */
+function TaskLabel({ task, view }: { task: TaskMessageRef; view: TaskView | null }) {
+  const label = (
+    <>
+      {task.kind === "agent" ? <Bot className="h-3 w-3 shrink-0" /> : <SquareTerminal className="h-3 w-3 shrink-0" />}
+      <span className="shrink-0">{task.kind === "agent" ? "An Subagent" : "Zur Hintergrundaufgabe"}</span>
+      <span className="min-w-0 truncate font-medium text-muted">{task.description}</span>
+    </>
+  );
+  const cls = "mb-1 flex max-w-full items-center gap-1.5 text-caption leading-normal text-subtle";
+  if (!view) return <div className={cls}>{label}</div>;
+  return (
+    <button
+      type="button"
+      className={`${cls} underline-offset-2 hover:text-fg hover:underline`}
+      title={task.kind === "agent" ? "Verlauf des Subagenten öffnen" : "Ausgabe ansehen"}
+      onClick={() => useUi.getState().openTask(view)}
+    >
+      {label}
+    </button>
   );
 }
 

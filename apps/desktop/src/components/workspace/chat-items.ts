@@ -1,4 +1,4 @@
-import { IDLE_CLOSED_DETAIL, type SessionEvent, type SessionEventBody } from "@forge/protocol";
+import { IDLE_CLOSED_DETAIL, type SessionEvent, type SessionEventBody, type TaskMessageRef } from "@forge/protocol";
 import { limitLabel, limitTime } from "@/lib/rate-limit";
 
 type Body<T extends SessionEventBody["type"]> = Extract<SessionEventBody, { type: T }>;
@@ -12,7 +12,7 @@ export interface TodoEntry {
 }
 
 export type ChatItem =
-  | { kind: "user"; key: string; seq: number; text: string; ts: string; uuid: string | null; attachments: Array<{ name: string; mediaType: string; size: number }>; remote: boolean; auto: boolean; edited: boolean }
+  | { kind: "user"; key: string; seq: number; text: string; ts: string; uuid: string | null; attachments: Array<{ name: string; mediaType: string; size: number }>; remote: boolean; auto: boolean; edited: boolean; task: TaskMessageRef | null }
   | { kind: "assistant"; key: string; seq: number | null; text: string; streaming: boolean; ts: string | null }
   | {
       kind: "tool";
@@ -160,7 +160,9 @@ function itemFolder(thread: string | null = null) {
     const b = ev.body;
     if (b.type === "tool.use") threadOf.set(b.toolUseId, b.parentToolUseId ?? null);
     // A resolution only touches an approval this thread registered.
-    if (b.type !== "approval.resolved" && eventThread(b, threadOf) !== thread) {
+    // A message written to a subagent shows in the main chat and in the subagent's own history.
+    const toThisAgent = thread !== null && b.type === "user.message" && b.task?.kind === "agent" && b.task.toolUseId === thread;
+    if (b.type !== "approval.resolved" && !toThisAgent && eventThread(b, threadOf) !== thread) {
       if (thread === null && b.type === "approval.request") {
         approvalIdx.set(b.requestId, { item: items.length, inTool: false });
         items.push({ kind: "approval", key: `p${b.requestId}`, ts: ev.ts, req: b, resolved: null });
@@ -187,6 +189,7 @@ function itemFolder(thread: string | null = null) {
           remote: b.source === "remote",
           auto: b.source === "auto",
           edited: editedNext,
+          task: b.task ?? null,
         });
         editedNext = false;
         break;

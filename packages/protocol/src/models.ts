@@ -111,6 +111,17 @@ export const BackgroundTask = z.object({
 });
 export type BackgroundTask = z.infer<typeof BackgroundTask>;
 
+/** The background task (subagent or command) a user message was written to. */
+export const TaskMessageRef = z.object({
+  /** the CLI's task id; for a subagent also its agentId, the address SendMessage takes */
+  taskId: z.string(),
+  /** the Agent or Bash call that started it */
+  toolUseId: z.string().nullable(),
+  kind: z.enum(["agent", "shell"]),
+  description: z.string(),
+});
+export type TaskMessageRef = z.infer<typeof TaskMessageRef>;
+
 /** A subagent working in the foreground of the current turn (Task tool), with its latest progress. */
 export const SubagentProgress = z.object({
   taskId: z.string(),
@@ -200,6 +211,8 @@ export const SessionEventBody = z.discriminatedUnion("type", [
     attachments: z.array(z.object({ name: z.string(), mediaType: z.string(), size: z.number() })).optional(),
     /** "remote": typed in the Claude app (Remote Control); "auto": sent by FORGE (usage limit reset, restart for an update) */
     source: z.enum(["forge", "remote", "auto"]).optional(),
+    /** written to a background task: Claude got it with a note naming the task (and passes it on to a subagent) */
+    task: TaskMessageRef.optional(),
   }),
   z.object({
     type: z.literal("check.result"),

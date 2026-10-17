@@ -22,6 +22,7 @@ import type { ClaudeRuntime } from "../claude/runtime.js";
 import { UploadStore } from "../claude/uploads.js";
 import { describeUsage, limitWarning } from "../claude/usage.js";
 import { ContextRecovery } from "./context-recovery.js";
+import { findTask, TASK_EVENT_TYPES, taskNote, type TaskQuery } from "./task-message.js";
 import { IdleClose } from "./idle-close.js";
 import { HISTORY_PAGE_LIMIT, type Db } from "../persistence/db.js";
 import type { GitEngine } from "../git/git.js";
@@ -124,7 +125,7 @@ export class SessionService {
     });
     this.titles = new TitleRefresh(core, runtime, this.assist, this.remote, now);
     this.turns = new TurnDispatch(core, this.automation, this.remote, {
-      resume: (id, text, attachments, source) => this.lifecycle.resume(id, text, attachments, source),
+      resume: (id, text, attachments, source, task) => this.lifecycle.resume(id, text, attachments, source, task),
       userMessage: (id, text, source) => this.titles.note(id, text, source),
       spill: (name, data) => uploads.write(name, data),
     });
@@ -563,6 +564,18 @@ export class SessionService {
     if (!live) throw new ForgeError("SESSION_NOT_FOUND", "Session ist nicht aktiv.");
     await live.rt.stopTask(taskId);
     return { ok: true };
+  }
+
+  /**
+   * A message to a background task (subagent or command), running or ended. It goes to the session
+   * like any message, with a note naming the task; sent mid-turn it joins the turn or waits as usual.
+   */
+  async messageTask(sessionId: string, q: TaskQuery, text: string): Promise<Session> {
+    if (!q.taskId && !q.toolUseId) throw new ForgeError("VALIDATION", "Welche Hintergrundaufgabe? Task-ID oder Werkzeugaufruf fehlt.");
+    this.get(sessionId);
+    const target = findTask(this.core.db.listEventsOfTypes(sessionId, TASK_EVENT_TYPES), this.core.live.get(sessionId) ?? null, q);
+    if (!target) throw new ForgeError("NOT_FOUND", "Hintergrundaufgabe nicht gefunden.");
+    return this.turns.send(sessionId, text, [], undefined, { ref: target.ref, note: taskNote(target) });
   }
 
   /** What a background command printed so far (its last 8 KiB). */

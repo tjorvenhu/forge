@@ -391,4 +391,14 @@ describe("subagent threads", () => {
     const bash = items[2];
     expect(bash?.kind === "tool" && bash.approval?.resolved?.decision).toBe("allow");
   });
+
+  it("shows a message written to the subagent in the main chat and in its own thread, not in another one", () => {
+    const task = { taskId: "a1", toolUseId: "agent1", kind: "agent" as const, description: "Auth prüfen" };
+    const all = [...events(), ev({ type: "user.message", text: "Prüf auch Logout", uuid: "u9", task })];
+    expect(buildEventItems(all).at(-1)).toMatchObject({ kind: "user", text: "Prüf auch Logout", task });
+    expect(buildEventItems(all, "agent1").at(-1)).toMatchObject({ kind: "user", text: "Prüf auch Logout", task });
+    expect(buildEventItems(all, "agent2").some((i) => i.kind === "user")).toBe(false);
+    const shell = ev({ type: "user.message", text: "Starte neu", task: { taskId: "b1", toolUseId: "agent1", kind: "shell", description: "Dev-Server" } });
+    expect(buildEventItems([...all, shell], "agent1").at(-1)).toMatchObject({ text: "Prüf auch Logout" });
+  });
 });

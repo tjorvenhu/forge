@@ -146,9 +146,10 @@ function parseStash(raw: unknown): SplitStash | null {
  * A task with its own history: a subagent (its events carry the Agent call as parentToolUseId) or a
  * background command (its output is read from the CLI by task id).
  */
+/** `compose`: opened to write to the task, its input field takes the focus */
 export type TaskView =
-  | { kind: "agent"; sessionId: string; toolUseId: string; title: string }
-  | { kind: "shell"; sessionId: string; taskId: string; toolUseId: string | null; title: string };
+  | { kind: "agent"; sessionId: string; toolUseId: string; title: string; compose?: boolean }
+  | { kind: "shell"; sessionId: string; taskId: string; toolUseId: string | null; title: string; compose?: boolean };
 
 interface UiState {
   view: View;

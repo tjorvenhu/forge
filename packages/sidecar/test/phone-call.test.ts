@@ -471,6 +471,7 @@ describe("PhoneService end to end with a test PBX", () => {
       stopTask: async (id: string, taskId: string) => (taskCalls.push(`stop:${id}:${taskId}`), { ok: true }),
       taskOutput: async () => ({ output: "> vitest run\n\nnpm ERR! Test fehlgeschlagen\n", totalBytes: 40, truncated: false }),
       toBackground: async (id: string, toolUseId?: string) => (taskCalls.push(`bg:${id}:${toolUseId ?? "alle"}`), { moved: true }),
+      messageTask: async (id: string, q: { taskId?: string }, text: string) => (taskCalls.push(`msg:${id}:${q.taskId}:${text}`), sessionList[0]),
       respondApproval: (id: string, requestId: string, decision: string, scope: string) => approvals.push(`${id}:${requestId}:${decision}:${scope}`),
       closeProject: async (ids: string[]) => steered.push(`closeProject:${ids.join(",")}`),
       summarize: async () => ({ summary: "Export gebaut, Tests offen.", model: "haiku" }),
@@ -1136,7 +1137,10 @@ describe("PhoneService end to end with a test PBX", () => {
     expect(await conv.tools.backgroundTask("S1", "stop", "npm test")).toBe("<<<SESSION-DATEN>>>npm test<<<ENDE SESSION-DATEN>>> gestoppt, der Rest von S1 läuft weiter.");
     expect(await conv.tools.backgroundTask("S1", "to_background", "auth")).toBe("In den Hintergrund verschoben, S1 arbeitet weiter.");
     expect(await conv.tools.backgroundTask("S1", "to_background", "npm")).toMatch(/läuft schon im Hintergrund/);
-    expect(taskCalls).toEqual(["stop:s1:b1", "bg:s1:tu1"]);
+    expect(await conv.tools.backgroundTask("S1", "message", "auth")).toMatch(/^Fehler: Was soll in der Nachricht stehen/);
+    expect(await conv.tools.backgroundTask("S1", "message", "auth", "Prüf auch die Logout-Route")).toBe("Nachricht an <<<SESSION-DATEN>>>Auth prüfen<<<ENDE SESSION-DATEN>>> geschickt, Claude gibt sie an den Subagenten weiter.");
+    expect(await conv.tools.backgroundTask("S1", "message", "npm", "Brich ab, wenn es hängt")).toMatch(/^Nachricht zu .*npm test.* an S1 geschickt. Ein Befehl liest keine Eingaben/);
+    expect(taskCalls).toEqual(["stop:s1:b1", "bg:s1:tu1", "msg:s1:k1:Prüf auch die Logout-Route", "msg:s1:b1:Brich ab, wenn es hängt"]);
 
     db.appendEvent("s1", {
       type: "approval.request",

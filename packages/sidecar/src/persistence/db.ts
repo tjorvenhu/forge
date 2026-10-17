@@ -1080,6 +1080,17 @@ export class Db {
     return rows.map((r) => ({ seq: r.seq, sessionId, ts: r.ts, body: JSON.parse(r.body) as SessionEventBody }));
   }
 
+  /** All events of the given types of a session, in order, however long it is. */
+  listEventsOfTypes(sessionId: string, types: readonly SessionEventBody["type"][]): SessionEvent[] {
+    if (!types.length) return [];
+    const rows = this.stmt(`SELECT seq, ts, body FROM events WHERE session_id = ? AND type IN (${types.map(() => "?").join(", ")}) ORDER BY seq ASC`).all(sessionId, ...types) as Array<{
+      seq: number;
+      ts: string;
+      body: string;
+    }>;
+    return rows.map((r) => ({ seq: r.seq, sessionId, ts: r.ts, body: JSON.parse(r.body) as SessionEventBody }));
+  }
+
   /** Ids of all user messages of a session (own sends, imports, remote echoes), however long it is. */
   listUserMessageUuids(sessionId: string): string[] {
     const rows = this.stmt(

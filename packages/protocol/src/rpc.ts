@@ -306,6 +306,14 @@ export const methods = {
     params: sessionRef.extend({ taskId: z.string().min(1) }),
     result: z.object({ output: z.string(), totalBytes: z.number(), truncated: z.boolean() }),
   },
+  /**
+   * A message to a background task, by task id or the call that started it. A subagent gets it
+   * through Claude (SendMessage), a command cannot read input: Claude gets it with the task named.
+   */
+  "sessions.messageTask": {
+    params: sessionRef.extend({ taskId: z.string().min(1).optional(), toolUseId: z.string().min(1).optional(), text: z.string().min(1).max(MAX_PROMPT_CHARS) }),
+    result: Session,
+  },
   /** moves running foreground work (a subagent or command, or all with no toolUseId) into the background, like Ctrl+B */
   "sessions.toBackground": { params: sessionRef.extend({ toolUseId: z.string().optional() }), result: z.object({ moved: z.boolean() }) },
   /**

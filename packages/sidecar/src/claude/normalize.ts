@@ -35,6 +35,22 @@ export class Normalizer {
   private thinkingSeen = new Set<string>();
   /** taskId -> description of tasks Claude moved to the background */
   private backgroundTasks = new Map<string, string>();
+  /** subagent task id -> the Agent call that first started it */
+  private agentCalls = new Map<string, string>();
+
+  /**
+   * The call a task belongs to. SendMessage resumes a finished subagent as a task with the same id,
+   * started by the SendMessage call; its steps still name the first Agent call, so the task stays with it.
+   */
+  taskCall(m: Record<string, unknown>): { toolUseId: string | null; resumed: boolean } {
+    const taskId = str(m.task_id);
+    const toolUseId = str(m.tool_use_id);
+    if (!taskId) return { toolUseId, resumed: false };
+    const first = this.agentCalls.get(taskId);
+    if (first) return { toolUseId: first, resumed: m.subtype === "task_started" && toolUseId !== first };
+    if (m.subtype === "task_started" && toolUseId && (m.task_type === "local_agent" || typeof m.subagent_type === "string")) this.agentCalls.set(taskId, toolUseId);
+    return { toolUseId, resumed: false };
+  }
 
   normalize(raw: unknown): SessionEventBody[] {
     if (!raw || typeof raw !== "object") return [];
@@ -79,11 +95,14 @@ export class Normalizer {
 
   private system(m: Record<string, unknown>): SessionEventBody[] {
     // Only backgrounded tasks: foreground tool calls report task_started/task_notification too.
-    if (m.subtype === "task_started" && m.is_backgrounded === true) {
+    if (m.subtype === "task_started") {
+      const call = this.taskCall(m);
+      // A subagent resumed by SendMessage runs on its own, like one in the background.
+      if (m.is_backgrounded !== true && !call.resumed) return [];
       const taskId = str(m.task_id) ?? "";
-      const description = str(m.description) ?? "Hintergrundaufgabe";
+      const description = str(m.description) ?? this.backgroundTasks.get(taskId) ?? "Hintergrundaufgabe";
       this.backgroundTasks.set(taskId, description);
-      return [{ type: "background.task", taskId, description, state: "started", summary: null, toolUseId: str(m.tool_use_id) }];
+      return [{ type: "background.task", taskId, description, state: "started", summary: null, toolUseId: call.toolUseId }];
     }
     if (m.subtype === "task_notification") {
       const taskId = str(m.task_id) ?? "";
@@ -92,7 +111,7 @@ export class Normalizer {
       this.backgroundTasks.delete(taskId);
       const status = str(m.status);
       const state = status === "completed" ? "completed" : status === "failed" ? "failed" : "stopped";
-      return [{ type: "background.task", taskId, description, state, summary: str(m.summary), toolUseId: str(m.tool_use_id) }];
+      return [{ type: "background.task", taskId, description, state, summary: str(m.summary), toolUseId: this.taskCall(m).toolUseId }];
     }
     if (m.subtype === "compact_boundary") {
       const meta = (m.compact_metadata ?? {}) as Record<string, unknown>;

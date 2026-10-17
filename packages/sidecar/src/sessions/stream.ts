@@ -121,7 +121,8 @@ export class SessionStream {
     const s = (v: unknown) => (typeof v === "string" && v ? v : null);
     let changed = false;
     if (m.subtype === "task_started") {
-      const toolUseId = s(m.tool_use_id);
+      const call = live.normalizer.taskCall(m);
+      const toolUseId = call.toolUseId;
       if (toolUseId) {
         live.taskToolUse.set(taskId, toolUseId);
         const bg = live.background.get(taskId);
@@ -132,10 +133,10 @@ export class SessionStream {
       }
       // Backgrounded work is listed by background_tasks_changed; foreground subagents only here.
       const isAgent = m.task_type === "local_agent" || typeof m.subagent_type === "string";
-      if (m.is_backgrounded === true || !isAgent) return;
+      if (m.is_backgrounded === true || !isAgent || call.resumed) return;
       live.subagents.set(taskId, {
         taskId,
-        toolUseId: s(m.tool_use_id),
+        toolUseId,
         description: s(m.description) ?? "Subagent",
         agentType: s(m.subagent_type),
         summary: null,

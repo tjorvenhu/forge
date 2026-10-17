@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { ForgeError, type Attachment, type Session } from "@forge/protocol";
+import { ForgeError, type Attachment, type Session, type TaskMessageRef } from "@forge/protocol";
 import { buildAttachmentBlocks, fitMessageText, type Spill } from "../claude/attachments.js";
 import type { OutgoingMessage } from "../claude/runtime.js";
 import { BUSY, endLive, REMOTE_PLACEHOLDER_TITLE, titleFrom, type LiveSession } from "./live-session.js";
@@ -9,7 +9,7 @@ import type { TurnAutomation } from "./turn-automation.js";
 
 export interface TurnHost {
   /** no process runs for the session: start one with the message */
-  resume(sessionId: string, text: string, attachments: Attachment[], source?: MessageSource): Promise<Session>;
+  resume(sessionId: string, text: string, attachments: Attachment[], source?: MessageSource, task?: TaskTurn): Promise<Session>;
   /** a message from FORGE (composer, phone) or an automatic one reached the timeline */
   userMessage(sessionId: string, text: string, source?: MessageSource): void;
   /** stores what is too large for a message (long texts, big attachments) for Claude to read */
@@ -19,11 +19,18 @@ export interface TurnHost {
 /** "auto": FORGE continues after a usage limit; the timeline marks the message as automatic. */
 export type MessageSource = "auto";
 
+/** A message written to a background task: the timeline names the task, Claude reads `note` before the text. */
+export interface TaskTurn {
+  ref: TaskMessageRef;
+  note: string;
+}
+
 /** A user turn built for sending; recorded in the timeline only right before it is handed to the CLI. */
 export interface BuiltTurn {
   msg: OutgoingMessage;
   meta: Array<{ name: string; mediaType: string; size: number }>;
   source?: MessageSource;
+  task?: TaskMessageRef;
 }
 
 /**
@@ -62,14 +69,15 @@ export class TurnDispatch {
   }
 
   /** Builds the outgoing turn (text + attachment blocks + id); a turn that starts now gets a fresh baseline. */
-  async build(sessionId: string, text: string, attachments: Attachment[], newTurn: boolean, source?: MessageSource): Promise<BuiltTurn> {
+  async build(sessionId: string, text: string, attachments: Attachment[], newTurn: boolean, source?: MessageSource, task?: TaskTurn): Promise<BuiltTurn> {
     const rec = this.core.db.getSession(sessionId);
     // A message sent mid-turn joins the running turn; its baseline must stay the one from the turn start.
     if (rec && newTurn) await this.automation.captureBaseline(sessionId, rec.cwd);
     const { blocks, meta } = attachments.length ? await buildAttachmentBlocks(attachments, this.host.spill) : { blocks: [], meta: [] };
     // The timeline shows what Claude got: a shortened text names the file with the full one.
     const fitted = await fitMessageText(text, this.host.spill);
-    return { msg: { text: fitted, blocks, uuid: randomUUID() }, meta, ...(source ? { source } : {}) };
+    const withTask = task ? [{ type: "text" as const, text: task.note }, ...blocks] : blocks;
+    return { msg: { text: fitted, blocks: withTask, uuid: randomUUID() }, meta, ...(source ? { source } : {}), ...(task ? { task: task.ref } : {}) };
   }
 
   /**
@@ -83,7 +91,7 @@ export class TurnDispatch {
 
   record(sessionId: string, t: BuiltTurn) {
     this.core.live.get(sessionId)?.seenUuids.add(t.msg.uuid);
-    this.core.record(sessionId, { type: "user.message", text: t.msg.text, uuid: t.msg.uuid, ...(t.meta.length ? { attachments: t.meta } : {}), ...(t.source ? { source: t.source } : {}) });
+    this.core.record(sessionId, { type: "user.message", text: t.msg.text, uuid: t.msg.uuid, ...(t.meta.length ? { attachments: t.meta } : {}), ...(t.source ? { source: t.source } : {}), ...(t.task ? { task: t.task } : {}) });
     this.sinceResult.set(sessionId, [...(this.sinceResult.get(sessionId) ?? []), t]);
     this.titleFromFirstMessage(sessionId, t.msg.text);
     this.host.userMessage(sessionId, t.msg.text, t.source);
@@ -101,11 +109,11 @@ export class TurnDispatch {
     return (this.sending.get(sessionId) ?? 0) > 0;
   }
 
-  async send(sessionId: string, text: string, attachments: Attachment[] = [], source?: MessageSource): Promise<Session> {
+  async send(sessionId: string, text: string, attachments: Attachment[] = [], source?: MessageSource, task?: TaskTurn): Promise<Session> {
     // Counted from the first synchronous step on, so the idle check never closes the process under a message.
     this.sending.set(sessionId, (this.sending.get(sessionId) ?? 0) + 1);
     try {
-      return await this.sendNow(sessionId, text, attachments, source);
+      return await this.sendNow(sessionId, text, attachments, source, task);
     } finally {
       const n = (this.sending.get(sessionId) ?? 1) - 1;
       if (n > 0) this.sending.set(sessionId, n);
@@ -113,7 +121,7 @@ export class TurnDispatch {
     }
   }
 
-  private async sendNow(sessionId: string, text: string, attachments: Attachment[], source?: MessageSource): Promise<Session> {
+  private async sendNow(sessionId: string, text: string, attachments: Attachment[], source?: MessageSource, task?: TaskTurn): Promise<Session> {
     let live = this.core.live.get(sessionId);
     if (live?.closing) {
       // close() was called but the process has not ended yet: its input queue no longer takes messages.
@@ -121,10 +129,10 @@ export class TurnDispatch {
       live = this.core.live.get(sessionId);
       if (live?.closing) throw new ForgeError("SESSION_BUSY", "Die Session wird gerade beendet. Bitte gleich erneut senden.");
     }
-    if (!live) return this.host.resume(sessionId, text, attachments, source);
+    if (!live) return this.host.resume(sessionId, text, attachments, source, task);
     if (live.pending.size > 0) throw new ForgeError("SESSION_BUSY", "Erst die offene Freigabeanfrage beantworten.");
     const status = this.core.db.getSession(sessionId)?.status;
-    const turn = await this.build(sessionId, text, attachments, !this.automation.isBusy(sessionId) && !(status && BUSY.includes(status)), source);
+    const turn = await this.build(sessionId, text, attachments, !this.automation.isBusy(sessionId) && !(status && BUSY.includes(status)), source, task);
     return this.deliver(sessionId, live, turn);
   }
 

@@ -88,6 +88,7 @@ export const PHONE_TOOL_FOR: Partial<Record<MethodName, string>> = {
   "sessions.contextUsage": "details",
   "sessions.stopTask": "background_task",
   "sessions.taskOutput": "background_task",
+  "sessions.messageTask": "background_task",
   "sessions.toBackground": "background_task",
   "sessions.start": "start_session",
   "sessions.send": "send_message",

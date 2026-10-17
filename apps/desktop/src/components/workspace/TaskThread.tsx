@@ -1,12 +1,14 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { History } from "lucide-react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { ArrowUp, History } from "lucide-react";
 import type { SessionEvent, SessionEventBody } from "@forge/protocol";
-import { call, useOlderHistory, useSession, useSessionHistory } from "@/lib/queries";
+import { call, keys, useOlderHistory, useSession, useSessionHistory, useSettings } from "@/lib/queries";
 import { errorMessage } from "@/lib/rpc";
+import { toast } from "@/stores/toast";
 import { useUi, type TaskView } from "@/stores/ui";
 import { Dialog } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { IncrementalItems } from "./chat-items";
 import { ItemView } from "./ChatItemView";
@@ -46,6 +48,7 @@ export function TaskThreadDialog({ sessionId, projectDir }: { sessionId: string;
           <ShellOutput task={task} />
         </FollowScroll>
       ) : null}
+      {task && <TaskComposer key={`composer-${task.kind === "agent" ? task.toolUseId : task.taskId}`} task={task} />}
     </Dialog>
   );
 }
@@ -162,14 +165,20 @@ export function agentCall(events: readonly SessionEvent[], toolUseId: string): {
   let use: Body<"tool.use"> | null = null;
   let direct: Body<"tool.result"> | null = null;
   let finished: Body<"background.task"> | null = null;
+  /** the subagent ran as a task: in the background, or resumed by SendMessage after a run in the foreground */
+  let asTask = false;
   for (const e of events) {
     const b = e.body;
     if (b.type === "tool.use" && b.toolUseId === toolUseId) use = b;
     else if (b.type === "tool.result" && b.toolUseId === toolUseId) direct = b;
-    else if (b.type === "background.task" && b.toolUseId === toolUseId && b.state !== "started") finished = b;
+    // A subagent resumed by SendMessage starts again under its first call: its earlier answer is no longer the last one.
+    else if (b.type === "background.task" && b.toolUseId === toolUseId) {
+      asTask = true;
+      finished = b.state === "started" ? null : b;
+    }
   }
   // The call itself may sit on an older page that is not loaded; the launch notice tells it too.
-  const background = use?.input.run_in_background === true || !!direct?.content.text.startsWith("Async agent launched");
+  const background = asTask || use?.input.run_in_background === true || !!direct?.content.text.startsWith("Async agent launched");
   if (background && !direct?.isError) {
     return { use, result: finished ? { isError: finished.state === "failed", text: finished.summary ?? (finished.state === "stopped" ? "Gestoppt." : "") } : null };
   }
@@ -220,6 +229,82 @@ function ShellOutput({ task }: { task: Extract<TaskView, { kind: "shell" }> }) {
           <TaskWorking startedAt={background.startedAt} />
         </div>
       )}
+    </div>
+  );
+}
+
+/** Placeholder and hint of the input, by what can receive the message. */
+export function composerText(kind: TaskView["kind"], sent: boolean): { placeholder: string; hint: string } {
+  if (kind === "agent")
+    return {
+      placeholder: "Nachricht an den Subagenten",
+      hint: sent ? "Gesendet. Claude gibt sie an den Subagenten weiter, sie steht auch im Chat." : "Claude gibt die Nachricht an den Subagenten weiter. Ist er schon fertig, macht er damit weiter.",
+    };
+  return {
+    placeholder: "Nachricht an Claude zu dieser Aufgabe",
+    hint: sent ? "Gesendet. Claudes Antwort steht im Chat." : "Ein Befehl im Hintergrund liest keine Eingaben. Claude bekommt die Nachricht mit Bezug auf diese Aufgabe und reagiert darauf.",
+  };
+}
+
+/**
+ * Writes to the task. Claude Code cannot hand a message to a task itself: the session gets it with
+ * the task named, and passes it on to a subagent with SendMessage.
+ */
+function TaskComposer({ task }: { task: TaskView }) {
+  const [text, setText] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [sent, setSent] = useState(false);
+  const qc = useQueryClient();
+  const enterToSend = useSettings().data?.enterToSend ?? true;
+  const ref = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => {
+    if (!task.compose) return;
+    // After the dialog's own focus handling and a closing palette handing focus back.
+    const t = setTimeout(() => ref.current?.focus(), 50);
+    return () => clearTimeout(t);
+  }, [task]);
+  const { placeholder, hint } = composerText(task.kind, sent);
+  const send = async () => {
+    const next = text.trim();
+    if (!next || busy) return;
+    setBusy(true);
+    try {
+      const target = task.kind === "agent" ? { toolUseId: task.toolUseId } : { taskId: task.taskId };
+      qc.setQueryData(keys.session(task.sessionId), await call("sessions.messageTask", { sessionId: task.sessionId, ...target, text: next }));
+      setText("");
+      setSent(true);
+    } catch (e) {
+      toast.error("Nachricht nicht gesendet", errorMessage(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="shrink-0 border-t border-border px-5 py-3">
+      <div className="flex items-end gap-2">
+        <Textarea
+          ref={ref}
+          value={text}
+          onChange={(e) => {
+            setText(e.target.value);
+            if (sent) setSent(false);
+          }}
+          placeholder={placeholder}
+          aria-label={placeholder}
+          rows={Math.min(6, Math.max(1, text.split("\n").length))}
+          onKeyDown={(e) => {
+            if (e.key !== "Enter" || e.nativeEvent.isComposing) return;
+            if (enterToSend ? !e.shiftKey && !e.ctrlKey : e.ctrlKey || e.metaKey) {
+              e.preventDefault();
+              void send();
+            }
+          }}
+        />
+        <Button size="icon" variant="primary" className="h-9 w-9 shrink-0" onClick={() => void send()} loading={busy} disabled={!text.trim()} aria-label="Senden">
+          {!busy && <ArrowUp className="h-4 w-4" />}
+        </Button>
+      </div>
+      <p className="mt-1.5 text-caption text-subtle">{hint}</p>
     </div>
   );
 }

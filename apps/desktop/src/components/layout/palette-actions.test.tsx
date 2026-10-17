@@ -30,7 +30,10 @@ const project = {
   git: { isRepo: true, branch: "feature/x", remoteUrl: "https://github.com/a/forge.git", ahead: 1, behind: 0, changedCount: 2 },
 } as unknown as ProjectWithStatus;
 
-const session = { id: "s1", projectId: "p1", title: "Test", model: null, effort: null, profile: "balanced", permissionMode: "acceptEdits", status: "idle", live: true } as unknown as Session;
+const session = { id: "s1", projectId: "p1", title: "Test", model: null, effort: null, profile: "balanced", permissionMode: "acceptEdits", status: "idle", live: true,
+  background: [{ taskId: "b1", description: "Dev-Server", taskType: "local_bash", toolUseId: "tb1", startedAt: "", summary: null }],
+  subagents: [{ taskId: "k1", toolUseId: "tu1", description: "Auth prüfen", agentType: null, summary: null, lastTool: null, toolUses: 0, startedAt: "" }],
+} as unknown as Session;
 
 /** Everything switched on that can show entries, so every area of FORGE has to appear. */
 function fullContext(): ActionContext {
@@ -148,6 +151,13 @@ describe("command palette covers all of FORGE", () => {
     useUi.getState().selectFile(project.id, "src/main.ts");
     const list = buildActions(fullContext());
     expect(list.find((e) => e.id === "explorer-file")?.hint).toBe("src/main.ts");
+  });
+
+  it("offers to write to each background task and subagent of the session", () => {
+    expect(entries.find((e) => e.id === "task-message-b1")?.label).toBe("Nachricht an Hintergrundaufgabe: Dev-Server");
+    entries.find((e) => e.id === "task-message-tu1")!.run();
+    expect(useUi.getState()).toMatchObject({ workspaceTab: "chat", taskView: { kind: "agent", sessionId: "s1", toolUseId: "tu1", title: "Auth prüfen", compose: true } });
+    useUi.getState().openTask(null);
   });
 
   it("gives every entry its own id", () => {

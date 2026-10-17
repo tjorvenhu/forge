@@ -24,7 +24,8 @@ import { call } from "@/lib/queries";
 import { errorMessage } from "@/lib/rpc";
 import { cn } from "@/lib/utils";
 import { toast } from "@/stores/toast";
-import { useUi } from "@/stores/ui";
+import { useUi, type TaskView } from "@/stores/ui";
+import { contextItems } from "@/lib/context-menu";
 import { cardKey, useCardState } from "@/stores/card-state";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -36,6 +37,7 @@ import { PreviewShot } from "./PreviewShot";
 import { ChatRow, Dot, Guide } from "./ChatRow";
 import { cachedEditDiff, cleanToolOutput, countLines, diffStats, inputJson, splitPreview, type DiffLine } from "./tool-view";
 import { FileLink, LinkedText } from "./file-links";
+import { taskMenu } from "./WorkingIndicator";
 
 type ToolItem = Extract<ChatItem, { kind: "tool" }>;
 type ApprovalItem = Extract<ChatItem, { kind: "approval" }>;
@@ -221,23 +223,22 @@ const BACKGROUND_ID_RE = /in background with ID:\s*([A-Za-z0-9_-]+)/;
 function TaskLink({ item, sessionId, title }: { item: ToolItem; sessionId: string; title: string }) {
   const openTask = useUi((s) => s.openTask);
   const { use, result } = item;
-  if (use.name === "Agent" || use.name === "Task")
+  if (use.name === "Agent" || use.name === "Task") {
+    const task: TaskView = { kind: "agent", sessionId, toolUseId: use.toolUseId, title: title || "Subagent" };
     return (
       <Guide className="mt-1">
-        <button type="button" className="flex items-center gap-1.5 text-small text-accent hover:underline" onClick={() => openTask({ kind: "agent", sessionId, toolUseId: use.toolUseId, title: title || "Subagent" })}>
+        <button type="button" className="flex items-center gap-1.5 text-small text-accent hover:underline" onClick={() => openTask(task)} onContextMenu={contextItems(() => taskMenu(task))}>
           <MessagesSquare className="h-3.5 w-3.5" /> Verlauf des Subagenten
         </button>
       </Guide>
     );
+  }
   const taskId = use.input.run_in_background === true && result && !result.isError ? BACKGROUND_ID_RE.exec(result.content.text)?.[1] : undefined;
   if (!taskId) return null;
+  const task: TaskView = { kind: "shell", sessionId, taskId, toolUseId: use.toolUseId, title: title || "Befehl im Hintergrund" };
   return (
     <Guide className="mt-1">
-      <button
-        type="button"
-        className="flex items-center gap-1.5 text-small text-accent hover:underline"
-        onClick={() => openTask({ kind: "shell", sessionId, taskId, toolUseId: use.toolUseId, title: title || "Befehl im Hintergrund" })}
-      >
+      <button type="button" className="flex items-center gap-1.5 text-small text-accent hover:underline" onClick={() => openTask(task)} onContextMenu={contextItems(() => taskMenu(task))}>
         <SquareTerminal className="h-3.5 w-3.5" /> Ausgabe ansehen
       </button>
     </Guide>

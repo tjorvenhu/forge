@@ -1,11 +1,13 @@
 import { memo, useEffect, useState, type ReactNode } from "react";
-import { ArrowDownToLine, Bot, Hourglass, Square } from "lucide-react";
+import { ArrowDownToLine, Bot, Hourglass, MessageSquareText, MessagesSquare, Square, SquareTerminal } from "lucide-react";
 import type { BackgroundTask, SubagentProgress } from "@forge/protocol";
 import { call } from "@/lib/queries";
 import { errorMessage } from "@/lib/rpc";
 import { toast } from "@/stores/toast";
 import { useUi, type TaskView } from "@/stores/ui";
 import { cn } from "@/lib/utils";
+import { contextItems } from "@/lib/context-menu";
+import type { MenuItem } from "@/components/ui/dropdown";
 import { Button } from "@/components/ui/button";
 import { Kbd, Tooltip } from "@/components/ui/misc";
 import { ChatRow } from "./ChatRow";
@@ -22,10 +24,23 @@ function useNow() {
 }
 
 /** What opens when a background task is clicked: a subagent's history or a command's output. */
-function taskViewOf(t: BackgroundTask, sessionId: string | undefined): TaskView | null {
+export function taskViewOf(t: BackgroundTask, sessionId: string | undefined): TaskView | null {
   if (!sessionId) return null;
   if (t.taskType === "local_agent") return t.toolUseId ? { kind: "agent", sessionId, toolUseId: t.toolUseId, title: t.description } : null;
   return { kind: "shell", sessionId, taskId: t.taskId, toolUseId: t.toolUseId, title: t.description };
+}
+
+/** Right-click entries of a task: open it, write to it, and what its row offers besides. */
+export function taskMenu(task: TaskView | null, more: MenuItem[] = []): MenuItem[] {
+  if (!task) return more;
+  const openTask = useUi.getState().openTask;
+  return [
+    task.kind === "agent"
+      ? { label: "Verlauf des Subagenten öffnen", icon: <MessagesSquare className="h-3.5 w-3.5" />, onSelect: () => openTask(task) }
+      : { label: "Ausgabe ansehen", icon: <SquareTerminal className="h-3.5 w-3.5" />, onSelect: () => openTask(task) },
+    { label: "Nachricht schreiben", icon: <MessageSquareText className="h-3.5 w-3.5" />, onSelect: () => openTask({ ...task, compose: true }) },
+    ...more,
+  ];
 }
 
 /** Name of a task; a button that opens its own history when there is one. */
@@ -66,7 +81,12 @@ export const BackgroundIndicator = memo(function BackgroundIndicator({ tasks, se
     <div className="flex flex-col gap-0.5 px-6 pb-4 text-small">
       {tasks.map((t) => (
         <ChatRow key={t.taskId} marker={<Hourglass className="animate-soft-pulse h-3.5 w-3.5 text-accent" />}>
-          <div className="group/task flex min-w-0 items-baseline gap-2">
+          <div
+            className="group/task flex min-w-0 items-baseline gap-2"
+            onContextMenu={contextItems(() =>
+              taskMenu(taskViewOf(t, sessionId), sessionId ? [{ label: "Nur diese Aufgabe stoppen", icon: <Square className="h-3.5 w-3.5" />, onSelect: () => void stop(t.taskId) }] : []),
+            )}
+          >
             <TaskTitle task={taskViewOf(t, sessionId)} className="text-fg">
               Im Hintergrund: {t.description}
             </TaskTitle>
@@ -154,7 +174,12 @@ export const WorkingIndicator = memo(function WorkingIndicator({ startedAt, suba
       </WorkingLine>
       {subagents.map((a) => (
         <ChatRow key={a.taskId} marker={<Bot className="h-3.5 w-3.5 text-accent" />}>
-          <div className="group/agent flex min-w-0 items-baseline gap-2">
+          <div
+            className="group/agent flex min-w-0 items-baseline gap-2"
+            onContextMenu={contextItems(() =>
+              taskMenu(sessionId && a.toolUseId ? { kind: "agent", sessionId, toolUseId: a.toolUseId, title: a.description } : null, sessionId ? [{ label: "In den Hintergrund", icon: <ArrowDownToLine className="h-3.5 w-3.5" />, onSelect: () => void toBackground(a.toolUseId) }] : []),
+            )}
+          >
             <TaskTitle task={sessionId && a.toolUseId ? { kind: "agent", sessionId, toolUseId: a.toolUseId, title: a.description } : null} className="text-fg">
               {a.description}
             </TaskTitle>
