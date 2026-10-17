@@ -23,6 +23,7 @@ Die Tabelle legt der Dienst beim ersten Zugriff selbst an (`CREATE TABLE IF NOT 
 | `POST /api/v1/report` | Stand einer Installation melden | 204; 400 ungültig; 413 Body über 4 KB; 429 zu häufig; 503 DB weg |
 | `DELETE /api/v1/report/<installId>` | Datensatz löschen (Statistik in FORGE abgeschaltet) | 204, auch wenn es ihn nicht gab; 400 keine UUID v4 |
 | `GET /api/v1/totals` | Summen als JSON, `Cache-Control: public, max-age=300` | 200; 503 |
+| `GET /api/v1/downloads` | Downloads des Installers (`*-setup.exe`) über alle Releases, ohne Updates, Signaturen und Marker; für das README-Badge, höchstens alle 30 Minuten von GitHub | 200; 503 |
 | `GET /api/health` | Healthcheck mit DB-Abfrage | 200 `ok`; 503 |
 | `GET /` | Öffentliche Seite | 200, bei DB-Ausfall mit Hinweis statt Zahlen |
 
