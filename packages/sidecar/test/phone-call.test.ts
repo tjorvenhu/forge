@@ -1563,7 +1563,7 @@ describe("PhoneService end to end with a test PBX", () => {
   it("tells where to donate and where to send suggestions", async () => {
     const { conv, end } = await openCall("c-support");
     const text = await conv.tools.forgeSystem("support");
-    expect(text).toContain("paypal.me/tjorvenhu");
+    expect(text).toContain("buy.stripe.com/9B64gBc4e5j80vg1WxbV600");
     expect(text).toContain("github.com/vanturis/forge/issues/new");
     await end();
   }, 30_000);

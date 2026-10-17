@@ -2,7 +2,7 @@
 title: "Lizenz AGPL-3.0, Herausgeber Vanturis, Drittanbieter-Hinweise (NOTICE, CONTRIBUTING)"
 summary: "Warum FORGE unter AGPL-3.0-only mit Zusatzerlaubnis steht und Vanturis herausgibt, wo Herausgeber und Lizenz eingetragen sind, und wie Lizenzdateien und Drittanbieter-Hinweise in den Installer kommen."
 tags: ["release","installer","tauri","konvention","stolperfalle"]
-updated: "2026-10-17T21:14:41.652Z"
+updated: "2026-10-17T21:30:54.679Z"
 ---
 
 ## Herausgeber (Entscheidung 2026-10-17)
@@ -18,7 +18,8 @@ updated: "2026-10-17T21:14:41.652Z"
 - `CONTRIBUTING.md`: Beitragende erlauben Vanturis, ihren Code auch unter anderen Lizenzen und kommerziell zu nutzen (nötig für kommerzielle Lizenzen neben der AGPL).
 
 ## Unterstützen
-- Freiwillige Zahlung an die UG, nicht gemeinnützig: In der App heißt es „freiwilliger Beitrag“ mit dem Hinweis „keine Spendenquittung“, nicht „Spende“. Zahlungsanbieter soll Stripe werden (Payment Link mit frei wählbarem Betrag); bis der Link da ist, steht in `SUPPORT_LINKS.donate` noch der PayPal-Link. Texte sind anbieterneutral, beim Wechsel nur die URL tauschen (App, `services/stats/src/app/layout.tsx`, README, Telefon-Test).
+- Freiwillige Zahlung an die UG, nicht gemeinnützig: In der App heißt es „freiwilliger Beitrag“ mit dem Hinweis „keine Spendenquittung“, nicht „Spende“. Zahlung über einen Stripe Payment Link mit frei wählbarem Betrag (`SUPPORT_LINKS.donate`, seit 2026-10-17; vorher PayPal). Texte sind anbieterneutral, bei einem Wechsel nur die URL tauschen: `support.ts`, `services/stats/src/app/layout.tsx` (`DONATE_URL`), README, Telefon-Test in `phone-call.test.ts`.
+- Stripe-Stolperfalle: „Kundenseitige Preisfestlegung“ geht nicht über ein Produkt im Produktkatalog; beim Zahlungslink oben den Typ „Kundinnen und Kunden entscheiden, was sie zahlen“ wählen.
 
 ## Drittanbieter
 - `THIRD_PARTY_LICENSES.md` (von Hand): mitgelieferte Programme in `runtime/` (Node, Git, gh, Python) und PostgreSQL.

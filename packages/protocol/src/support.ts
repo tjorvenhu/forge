@@ -1,6 +1,6 @@
 /** Where people can support FORGE (voluntary payment to Vanturis); shown behind the heart and read out on the phone. */
 export const SUPPORT_LINKS = {
-  donate: "https://paypal.me/tjorvenhu",
+  donate: "https://buy.stripe.com/9B64gBc4e5j80vg1WxbV600",
   feedback: "https://github.com/vanturis/forge/issues/new",
 } as const;
 

@@ -6,7 +6,7 @@ import logo from "@/assets/forge-logo.png";
 import "./globals.css";
 
 const REPO_URL = "https://github.com/vanturis/forge";
-const DONATE_URL = "https://paypal.me/tjorvenhu";
+const DONATE_URL = "https://buy.stripe.com/9B64gBc4e5j80vg1WxbV600";
 const IMPRINT_URL = "https://vanturis.de/impressum";
 const PRIVACY_URL = "https://vanturis.de/datenschutz";
 

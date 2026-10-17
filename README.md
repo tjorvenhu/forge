@@ -75,7 +75,7 @@ Daten gehen nur an diese Stellen:
 
 ## Unterstützen
 
-- Freiwilliger Beitrag: [FORGE unterstützen](https://paypal.me/tjorvenhu). Das Geld geht an die Vanturis UG
+- Freiwilliger Beitrag: [FORGE unterstützen](https://buy.stripe.com/9B64gBc4e5j80vg1WxbV600). Das Geld geht an die Vanturis UG
   (haftungsbeschränkt). Sie ist nicht gemeinnützig, deshalb gibt es keine Spendenquittung.
 - Vorschläge und Fehler: [neues Issue auf GitHub](https://github.com/vanturis/forge/issues/new). Bei Fehlern
   helfen die FORGE-Version und die Angaben aus Einstellungen > Über FORGE > Diagnose.
