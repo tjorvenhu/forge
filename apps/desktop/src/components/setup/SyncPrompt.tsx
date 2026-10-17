@@ -59,7 +59,6 @@ function Prompt({ s, onLater }: { s: Settings; onLater: () => void }) {
       title="FORGE-Daten über GitHub synchronisieren?"
       description="Dann hat FORGE auf jedem PC, auf dem du dich mit demselben GitHub-Konto anmeldest, dieselben Projekte und Einstellungen."
       className="w-150"
-      overlayClassName="backdrop-blur-sm"
       bodyClassName="flex flex-col gap-4"
       footer={
         <>

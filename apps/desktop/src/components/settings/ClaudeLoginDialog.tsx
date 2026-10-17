@@ -97,7 +97,6 @@ export function ClaudeLoginRequiredNotice() {
       dismissable={false}
       title="Claude Code ist abgemeldet"
       description="Melde dich im FORGE-Hauptfenster an. Danach geht es hier weiter."
-      overlayClassName="backdrop-blur-sm"
     />
   );
 }
@@ -154,7 +153,6 @@ function LoginDialog({ reason }: { reason: DialogReason }) {
       dismissable={!required}
       title={TITLES[reason]}
       description={DESCRIPTIONS[reason]}
-      overlayClassName="backdrop-blur-sm"
       footer={footer}
     >
       {done ? (

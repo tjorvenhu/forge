@@ -104,7 +104,6 @@ export function AppUpdateDialog() {
       title={`FORGE ${s.latest.version} ist verfügbar`}
       description={`Installiert ist ${s.currentVersion}${s.latest.publishedAt ? `. Veröffentlicht ${relativeTime(s.latest.publishedAt)}` : ""}. ${sizeLabel(s.latest)}.`}
       className="w-150"
-      overlayClassName="backdrop-blur-sm"
       footer={
         <>
           {!s.installable && <span className="mr-auto self-center text-xs text-subtle">Aktualisieren geht nur in der installierten App.</span>}

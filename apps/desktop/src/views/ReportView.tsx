@@ -9,6 +9,7 @@ import {
   ClipboardCheck,
   Copy,
   FolderOpen,
+  Gauge,
   GitBranch,
   GitCommitHorizontal,
   GitMerge,
@@ -25,8 +26,9 @@ import {
   TimerOff,
   X,
 } from "lucide-react";
-import type { DailyReport, DailyReportAgent, DailyReportCall, DailyReportCommit, DailyReportOpen, DailyReportSession, ResultOf } from "@forge/protocol";
+import { USAGE_STATS_URL, type DailyReport, type DailyReportAgent, type DailyReportCall, type DailyReportCommit, type DailyReportOpen, type DailyReportSession, type ResultOf } from "@forge/protocol";
 import { call, keys, useProjects } from "@/lib/queries";
+import { openExternal } from "@/lib/native";
 import { errorMessage } from "@/lib/rpc";
 import { contextItems, copyText } from "@/lib/context-menu";
 import { clockTime } from "@/lib/utils";
@@ -36,7 +38,7 @@ import { useUi } from "@/stores/ui";
 import { useAgentReview } from "@/stores/agent-review";
 import { toast } from "@/stores/toast";
 import { Page } from "@/components/layout/Page";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
 import { Badge, EmptyState, ErrorBanner, SectionTitle, Tooltip } from "@/components/ui/misc";
 import { Skeleton, SkeletonRegion } from "@/components/ui/skeleton";
@@ -123,6 +125,20 @@ export function ReportView() {
       subtitle={`${dayLong(date)}${scopeName ? `, ${scopeName}` : ", alle Projekte"}`}
       actions={
         <>
+          <Tooltip content="Summen aller FORGE-Installationen mit eingeschalteter Nutzungsstatistik">
+            {/* A real link, so the right click offers opening and copying it. */}
+            <a
+              href={USAGE_STATS_URL}
+              onClick={(e) => {
+                e.preventDefault();
+                void openExternal(USAGE_STATS_URL);
+              }}
+              className={buttonVariants({ variant: "ghost" })}
+            >
+              <Gauge className="h-4 w-4" />
+              FORGE gesamt
+            </a>
+          </Tooltip>
           <Tooltip content="Neu laden">
             <Button size="icon" variant="ghost" aria-label="Bericht neu laden" onClick={() => void report.refetch()} disabled={report.isFetching}>
               <RefreshCw className={`h-4 w-4 ${report.isFetching && !report.isLoading ? "animate-spin" : ""}`} />

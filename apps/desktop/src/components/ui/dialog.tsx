@@ -15,7 +15,7 @@ interface DialogProps {
   className?: string;
   /** extra classes for the body, e.g. to let the content scroll on its own */
   bodyClassName?: string;
-  /** extra classes for the backdrop, e.g. a blur behind dialogs that ask for a decision */
+  /** extra classes for the backdrop (it is blurred for every dialog) */
   overlayClassName?: string;
   /** Shows backdrop and dialog over this element (it needs `position: relative`) instead of the whole window. */
   container?: HTMLElement | null;
@@ -32,7 +32,7 @@ export function Dialog({ open, onOpenChange, title, description, children, foote
   return (
     <D.Root open={open} onOpenChange={onOpenChange}>
       <D.Portal container={container ?? undefined}>
-        <D.Overlay className={cn("fixed inset-0 z-40 bg-overlay", local && "absolute", OVERLAY_MOTION, overlayClassName)} />
+        <D.Overlay className={cn("fixed inset-0 z-40 bg-overlay backdrop-blur-sm", local && "absolute", OVERLAY_MOTION, overlayClassName)} />
         <D.Content
           onEscapeKeyDown={keep}
           onInteractOutside={keep}
