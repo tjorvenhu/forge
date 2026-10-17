@@ -1,36 +1,46 @@
+/*
+ * Design tokens of the FORGE app (apps/desktop/src/styles.css, @theme). The app has only this dark
+ * theme. Keep the values in step when the app changes them.
+ */
 :root {
-  --bg: #f6f6f4;
-  --surface: #ffffff;
-  --border: #e2e1dc;
-  --text: #1c1c1a;
-  --muted: #6b6a64;
-  --accent: #c2410c;
-  --notice-bg: #fff4e5;
-  --notice-border: #f0c890;
+  --color-bg: #14171d;
+  --color-surface: #1a1e25;
+  --color-surface-2: #21262e;
+  --color-surface-3: #292f38;
+  --color-border: #2b313a;
+  --color-border-strong: #3c444f;
+  --color-fg: #e5e7eb;
+  --color-muted: #9ca3ae;
+  --color-subtle: #6b7280;
+  --color-accent: #f97316;
+  --color-accent-strong: #ea580c;
+  --color-accent-soft: #f973161f;
+  --color-accent-fg: #ffffff;
+  --color-danger: #f0605a;
+  --color-danger-soft: #f0605a1f;
 
-  --radius: 12px;
-  --space-1: 4px;
-  --space-2: 8px;
-  --space-3: 12px;
-  --space-4: 16px;
-  --space-5: 24px;
-  --space-6: 32px;
-  --space-7: 48px;
+  /* --font-geist-sans comes from next/font (layout.tsx) and includes its size-adjusted fallback. */
+  --font-sans: var(--font-geist-sans), "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
 
-  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-}
+  --text-caption: 11px;
+  --text-small: 12px;
+  --text-body: 13px;
+  --text-body-lg: 13.5px;
+  --text-ui: 14px;
+  --text-value: 24px;
+  --text-heading: 26px;
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #131312;
-    --surface: #1c1c1a;
-    --border: #2e2d2a;
-    --text: #ecebe6;
-    --muted: #9b9a93;
-    --accent: #fb923c;
-    --notice-bg: #2a2117;
-    --notice-border: #5c4321;
-  }
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 12px;
+
+  --ease-snappy: cubic-bezier(0.2, 0.8, 0.2, 1);
+
+  --page-width: 56rem;
+  --page-gutter: 24px;
+
+  color-scheme: dark;
 }
 
 *,
@@ -46,178 +56,409 @@ body {
 }
 
 body {
-  background: var(--bg);
-  color: var(--text);
+  min-height: 100vh;
+  background: var(--color-bg);
+  color: var(--color-fg);
   font-family: var(--font-sans);
-  font-size: 16px;
-  line-height: 1.55;
+  font-size: var(--text-body);
+  line-height: 1.5;
   -webkit-font-smoothing: antialiased;
-}
-
-a {
-  color: var(--accent);
-  text-underline-offset: 3px;
+  text-rendering: optimizeLegibility;
+  font-kerning: normal;
 }
 
 h1,
-h2 {
+h2,
+p {
   margin: 0;
-  line-height: 1.2;
 }
 
-.page {
-  max-width: 960px;
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+}
+
+::selection {
+  background: var(--color-accent-soft);
+}
+
+.container {
+  width: 100%;
+  max-width: calc(var(--page-width) + 2 * var(--page-gutter));
   margin: 0 auto;
-  padding: var(--space-7) var(--space-5);
+  padding-left: var(--page-gutter);
+  padding-right: var(--page-gutter);
+}
+
+/* Page header of the app (layout/Page.tsx): 64px high, a line below. */
+.topbar {
+  border-bottom: 1px solid var(--color-border);
+}
+
+.topbar-inner {
+  min-height: 64px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding-top: 12px;
+  padding-bottom: 12px;
+}
+
+.logo {
+  display: block;
+  flex-shrink: 0;
+  user-select: none;
+}
+
+.topbar-actions {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Buttons of components/ui/button.tsx, size md. */
+.btn {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 32px;
+  padding: 0 12px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  font-size: var(--text-body);
+  font-weight: 500;
+  white-space: nowrap;
+  user-select: none;
+  transition:
+    color 120ms var(--ease-snappy),
+    background-color 120ms var(--ease-snappy),
+    border-color 120ms var(--ease-snappy),
+    transform 120ms var(--ease-snappy);
+}
+
+.btn:active {
+  transform: scale(0.97);
+  transition-duration: 75ms;
+}
+
+.btn svg {
+  width: 14px;
+  height: 14px;
+}
+
+.btn-outline {
+  border-color: var(--color-border);
+  color: var(--color-fg);
+}
+
+.btn-outline:hover {
+  background: var(--color-surface-3);
+}
+
+.btn-primary {
+  background: var(--color-accent);
+  color: var(--color-accent-fg);
+}
+
+.btn-primary:hover {
+  background: var(--color-accent-strong);
+}
+
+.content {
   display: flex;
   flex-direction: column;
-  gap: var(--space-6);
+  gap: 24px;
+  padding-top: 32px;
+  padding-bottom: 48px;
 }
 
-h1 {
-  font-size: 2.25rem;
-  letter-spacing: -0.02em;
-}
-
-.lead {
-  margin: var(--space-3) 0 0;
-  color: var(--muted);
-  max-width: 60ch;
-}
-
-.hero,
-.stat,
-.privacy,
-.notice {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-}
-
-.hero {
-  padding: var(--space-6);
-}
-
-.hero-label {
-  font-size: 0.875rem;
+.intro h1 {
+  font-size: var(--text-heading);
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--muted);
+  line-height: 1.25;
+  letter-spacing: -0.015em;
 }
 
-.hero-value {
-  margin-top: var(--space-2);
-  font-size: 3.5rem;
-  font-weight: 700;
-  letter-spacing: -0.03em;
-  line-height: 1.1;
-  color: var(--accent);
-  font-variant-numeric: tabular-nums;
+.intro p {
+  margin-top: 6px;
+  max-width: 62ch;
+  font-size: var(--text-body-lg);
+  color: var(--color-muted);
 }
 
-.hero-note {
-  margin: var(--space-2) 0 0;
-  color: var(--muted);
-}
-
-.breakdown {
-  margin: var(--space-5) 0 0;
-  padding-top: var(--space-5);
-  border-top: 1px solid var(--border);
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-  gap: var(--space-4);
-}
-
-.breakdown dt {
-  font-size: 0.875rem;
-  color: var(--muted);
-}
-
-.breakdown dd {
-  margin: var(--space-1) 0 0;
-  font-size: 1.375rem;
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-}
-
-.grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-  gap: var(--space-4);
-}
-
-.stat {
-  padding: var(--space-5);
-}
-
-.stat-value {
-  font-size: 2rem;
-  font-weight: 700;
-  letter-spacing: -0.02em;
-  line-height: 1.15;
-  font-variant-numeric: tabular-nums;
-}
-
-.stat-label {
-  margin-top: var(--space-1);
-  font-weight: 500;
-}
-
-.stat-note {
-  margin-top: var(--space-1);
-  font-size: 0.875rem;
-  color: var(--muted);
-}
-
-.updated {
-  margin: calc(-1 * var(--space-3)) 0 0;
-  font-size: 0.875rem;
-  color: var(--muted);
-}
-
-.notice {
-  padding: var(--space-5);
-  background: var(--notice-bg);
-  border-color: var(--notice-border);
-}
-
-.privacy {
-  padding: var(--space-5) var(--space-6);
-}
-
-.privacy h2 {
-  font-size: 1.125rem;
-}
-
-.privacy p {
-  margin: var(--space-3) 0 0;
-  max-width: 70ch;
-}
-
-.links {
+/* SectionTitle of components/ui/misc.tsx */
+.section-title {
   display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-5);
-  font-weight: 500;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 8px;
 }
 
-@media (max-width: 560px) {
-  .page {
-    padding: var(--space-6) var(--space-4);
+.section-title h2 {
+  font-size: var(--text-small);
+  font-weight: 600;
+  line-height: 16px;
+  text-transform: uppercase;
+  letter-spacing: 0.025em;
+  color: var(--color-subtle);
+}
+
+.section-meta {
+  font-size: var(--text-caption);
+  line-height: 16px;
+  color: var(--color-subtle);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* Tiles of the daily report (views/ReportView.tsx), with an icon and a larger value. */
+.tiles {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.tile {
+  min-width: 0;
+  padding: 12px 16px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl);
+  background: var(--color-surface);
+}
+
+.tile-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.tile-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--text-caption);
+  line-height: 16px;
+  color: var(--color-muted);
+}
+
+.tile-icon {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  color: var(--color-subtle);
+}
+
+.tile-value {
+  margin-top: 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--text-value);
+  font-weight: 600;
+  line-height: 32px;
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
+}
+
+.tile-value-accent {
+  color: var(--color-accent);
+}
+
+.tile-unit {
+  margin-left: 4px;
+  font-size: var(--text-body);
+  /* keeps the line box of the value at 32px, like the tiles without a unit */
+  line-height: 1;
+  font-weight: 500;
+  letter-spacing: 0;
+  color: var(--color-muted);
+}
+
+.tile-sub {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--text-caption);
+  line-height: 16px;
+  color: var(--color-subtle);
+}
+
+/* Group and Row of components/settings/layout.tsx */
+.group {
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl);
+  background: var(--color-surface);
+}
+
+.group-head {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.group-head h2 {
+  font-size: var(--text-ui);
+  font-weight: 600;
+  line-height: 20px;
+}
+
+.group-head p {
+  margin-top: 2px;
+  font-size: var(--text-small);
+  line-height: 16px;
+  color: var(--color-muted);
+}
+
+.row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px 16px;
+}
+
+.row + .row {
+  border-top: 1px solid var(--color-border);
+}
+
+.row-icon {
+  width: 16px;
+  height: 16px;
+  margin-top: 2px;
+  flex-shrink: 0;
+  color: var(--color-muted);
+}
+
+.row-text {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.row-label {
+  font-weight: 500;
+  line-height: 20px;
+}
+
+.row-description {
+  max-width: 68ch;
+  font-size: var(--text-small);
+  line-height: 18px;
+  color: var(--color-muted);
+}
+
+.row-value {
+  align-self: center;
+  flex-shrink: 0;
+  font-size: var(--text-ui);
+  font-weight: 600;
+  line-height: 20px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ErrorBanner of components/ui/misc.tsx */
+.error-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--color-danger) 30%, transparent);
+  border-radius: var(--radius-lg);
+  background: var(--color-danger-soft);
+}
+
+.error-banner svg {
+  width: 16px;
+  height: 16px;
+  margin-top: 2px;
+  flex-shrink: 0;
+  color: var(--color-danger);
+}
+
+.error-title {
+  font-weight: 500;
+  color: var(--color-danger);
+}
+
+.footnote {
+  font-size: var(--text-caption);
+  color: var(--color-subtle);
+}
+
+/* Skeleton of components/ui/skeleton.tsx; it sits in the line of the text it stands for. */
+.skeleton {
+  display: inline-block;
+  max-width: 100%;
+  height: 0.8em;
+  vertical-align: middle;
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-2);
+  animation: forge-shimmer 1.4s ease-in-out infinite;
+}
+
+.tile-value .skeleton {
+  height: 20px;
+}
+
+@keyframes forge-shimmer {
+  0%,
+  100% {
+    opacity: 0.5;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@media (max-width: 760px) {
+  .tiles {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 480px) {
+  :root {
+    --page-gutter: 16px;
+    --text-heading: 22px;
   }
 
-  h1 {
-    font-size: 1.75rem;
+  .content {
+    padding-top: 24px;
   }
 
-  .hero,
-  .privacy {
-    padding: var(--space-5);
+  .btn-label-wide {
+    display: none;
   }
 
-  .hero-value {
-    font-size: 2.5rem;
+  .btn:has(.btn-label-wide) {
+    width: 32px;
+    padding: 0;
+  }
+
+  .row-description {
+    max-width: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
   }
 }

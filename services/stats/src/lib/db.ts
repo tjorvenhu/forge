@@ -1,8 +1,8 @@
 import { Pool } from "pg";
 import { COUNTER_KEYS, type Counters, type Report } from "./report";
 
-/** Minimum time between two accepted reports of one installation. */
-export const REPORT_INTERVAL_MINUTES = 10;
+/** Minimum time between two accepted reports of one installation; the app reports every 5 minutes. */
+export const REPORT_INTERVAL_MINUTES = 4;
 const TOTALS_MAX_AGE_MS = 5 * 60 * 1000;
 
 export interface Totals {

@@ -6,6 +6,8 @@ Der Ordner gehört nicht zum pnpm-Workspace von FORGE. Er hat ein eigenes `packa
 
 Stack: Next.js (App Router), TypeScript strict, `pg`, `zod`. Schlichtes CSS ohne Framework.
 
+Die Seite übernimmt das Design der Desktop-App: Die Farb-, Schrift- und Radius-Tokens aus `apps/desktop/src/styles.css` stehen als CSS-Variablen in `src/app/globals.css` (nur das dunkle Theme, ein helles hat die App nicht). Die Bausteine in `src/components/blocks.tsx` bilden die Kacheln des Tagesberichts und die Karten der Einstellungen nach. Ändert die App ihre Tokens, hier nachziehen. Schrift ist Geist (Paket `geist`, SIL Open Font License, per `next/font` eingebunden), Icons kommen aus `lucide-react`. Logo und Favicon sind Kopien von `apps/desktop/src/assets/forge-logo.png` und `logo.svg`.
+
 ## Was gespeichert wird
 
 Eine Zeile pro Installation in der Tabelle `installs`: zufällige Installations-ID, erste und letzte Meldung, FORGE-Version, Betriebssystem und die kumulativen Zähler als JSON. Die App schickt immer den Gesamtstand, der Dienst überschreibt den letzten Stand.
@@ -45,7 +47,7 @@ Regeln (siehe `src/lib/report.ts`):
 - Zähler sind ganze Zahlen ab 0. Unbekannte Schlüssel werden ignoriert, fehlende zählen als 0.
 - Obergrenzen pro Installation: Token-Felder 10^12, `claudeWorkMs` 10^11, alle anderen 10^7. Darüber: 400.
 - `appVersion` höchstens 32 Zeichen aus `[0-9A-Za-z.+-]`, `os` höchstens 64 Zeichen ohne Steuerzeichen.
-- Höchstens eine Meldung pro Installation alle 10 Minuten (429). Die App wertet 429 als gesendet.
+- Die App meldet alle 5 Minuten. Höchstens eine Meldung pro Installation alle 4 Minuten (429). Die App wertet 429 als gesendet.
 - Höchstens 20 neue Installations-IDs pro IP-Adresse und Tag (429). Der Zähler liegt nur im Speicher und beginnt nach einem Neustart von vorn.
 
 Die Summen werden höchstens alle 5 Minuten neu aus der Datenbank berechnet (Zwischenspeicher im Prozess). Neue Meldungen erscheinen also mit bis zu 5 Minuten Verzögerung.

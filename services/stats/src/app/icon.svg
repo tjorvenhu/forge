@@ -1,1 +1,32 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" rx="7" fill="#c2410c"/><path d="M11 8h11v3.5h-7v3.5h6v3.5h-6V24h-4z" fill="#fff"/></svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1E293B"/>
+      <stop offset="1" stop-color="#0F172A"/>
+    </linearGradient>
+    <linearGradient id="horn" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#E5E7EB"/>
+      <stop offset="1" stop-color="#94A3B8"/>
+    </linearGradient>
+    <linearGradient id="spark" x1="1" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FDBA74"/>
+      <stop offset="0.45" stop-color="#F97316"/>
+      <stop offset="1" stop-color="#EA580C"/>
+    </linearGradient>
+    <linearGradient id="body" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#C3CCD8"/>
+      <stop offset="1" stop-color="#64748B"/>
+    </linearGradient>
+    <radialGradient id="glow" gradientUnits="userSpaceOnUse" cx="560" cy="470" r="230">
+      <stop offset="0" stop-color="#F97316" stop-opacity="0.5"/>
+      <stop offset="1" stop-color="#F97316" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect x="64" y="64" width="896" height="896" rx="200" fill="url(#tile)"/>
+  <g stroke-linejoin="round" stroke-width="12">
+    <path d="M160 367 H549 L450 462 H240 Z" fill="url(#horn)" stroke="url(#horn)"/>
+    <path d="M618 321 H864 L720 462 H474 Z" fill="url(#spark)" stroke="url(#spark)"/>
+  </g>
+  <path d="M350 489 H674 Q688 489 688 503 V522 C640 528 614 556 614 590 C614 628 650 652 728 656 Q742 657 742 671 V689 Q742 703 728 703 H584 C580 670 552 656 512 656 C472 656 444 670 440 703 H296 Q282 703 282 689 V671 Q282 657 296 656 C374 652 410 628 410 590 C410 556 384 528 336 522 V503 Q336 489 350 489 Z" fill="url(#body)"/>
+  <path d="M350 489 H674 Q688 489 688 503 V522 C640 528 614 556 614 590 C614 628 650 652 728 656 Q742 657 742 671 V689 Q742 703 728 703 H584 C580 670 552 656 512 656 C472 656 444 670 440 703 H296 Q282 703 282 689 V671 Q282 657 296 656 C374 652 410 628 410 590 C410 556 384 528 336 522 V503 Q336 489 350 489 Z" fill="url(#glow)"/>
+</svg>
