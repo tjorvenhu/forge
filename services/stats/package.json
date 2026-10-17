@@ -1,0 +1,34 @@
+{
+  "name": "forge-stats",
+  "private": true,
+  "license": "PolyForm-Noncommercial-1.0.0",
+  "version": "0.1.0",
+  "description": "Statistik-Dienst für FORGE: nimmt anonyme Nutzungszahlen an und zeigt die Summen.",
+  "type": "module",
+  "packageManager": "pnpm@10.30.3",
+  "engines": {
+    "node": ">=22.13"
+  },
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "next": "^16.4.2",
+    "pg": "^8.23.1",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "^24.19.2",
+    "@types/pg": "^8.23.1",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "typescript": "~6.0.3",
+    "vitest": "^5.0.5"
+  }
+}

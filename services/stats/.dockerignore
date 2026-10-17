@@ -1,0 +1,11 @@
+node_modules
+.next
+*.tsbuildinfo
+next-env.d.ts
+.env*
+.git
+Dockerfile
+.dockerignore
+README.md
+src/**/*.test.ts
+vitest.config.ts
