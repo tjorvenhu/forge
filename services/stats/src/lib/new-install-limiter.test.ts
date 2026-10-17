@@ -23,10 +23,13 @@ describe("NewInstallLimiter", () => {
 
 describe("clientIp / hashIp", () => {
   it("prefers CF-Connecting-Ip, then X-Real-Ip, then the last X-Forwarded-For entry", () => {
-    expect(clientIp(new Headers({ "cf-connecting-ip": "8.8.4.4", "x-real-ip": "104.21.7.72" }))).toBe("8.8.4.4");
-    expect(clientIp(new Headers({ "x-real-ip": "1.2.3.4", "x-forwarded-for": "9.9.9.9" }))).toBe("1.2.3.4");
-    expect(clientIp(new Headers({ "x-forwarded-for": "6.6.6.6, 5.6.7.8" }))).toBe("5.6.7.8");
-    expect(clientIp(new Headers())).toBe("unknown");
+    expect(clientIp(new Headers({ "cf-connecting-ip": "8.8.4.4", "x-real-ip": "104.21.7.72" }), undefined)).toBe("8.8.4.4");
+    // A proxy in front of Coolify names its own header (CLIENT_IP_HEADER).
+    expect(clientIp(new Headers({ "x-client-ip": "7.7.7.7", "x-real-ip": "10.0.0.2" }), "x-client-ip")).toBe("7.7.7.7");
+    expect(clientIp(new Headers({ "x-real-ip": "10.0.0.2" }), "x-client-ip")).toBe("10.0.0.2");
+    expect(clientIp(new Headers({ "x-real-ip": "1.2.3.4", "x-forwarded-for": "9.9.9.9" }), undefined)).toBe("1.2.3.4");
+    expect(clientIp(new Headers({ "x-forwarded-for": "6.6.6.6, 5.6.7.8" }), undefined)).toBe("5.6.7.8");
+    expect(clientIp(new Headers(), undefined)).toBe("unknown");
   });
 
   it("hashes deterministically within the process and never returns the address", () => {

@@ -56,10 +56,22 @@ Die Summen werden höchstens alle 5 Minuten neu aus der Datenbank berechnet (Zwi
 | --- | --- | --- |
 | `DATABASE_URL` | ja | Postgres-Verbindung, z. B. `postgres://user:pass@host:5432/forge_stats` |
 | `PORT` | nein | Port des Servers, im Image `3000` |
+| `CLIENT_IP_HEADER` | nein | Header, in dem ein Proxy vor Coolify die Client-Adresse mitgibt, z. B. `x-client-ip` |
 
-Die Client-IP liest der Dienst aus `CF-Connecting-Ip` (Cloudflare steht vor der Domain), sonst aus `X-Real-Ip`, sonst aus dem letzten Eintrag von `X-Forwarded-For`. Die beiden letzten setzt Traefik.
+Die Client-IP liest der Dienst aus dem Header in `CLIENT_IP_HEADER` (falls gesetzt), sonst aus `CF-Connecting-Ip`, sonst aus `X-Real-Ip`, sonst aus dem letzten Eintrag von `X-Forwarded-For`. Die beiden letzten setzt Traefik.
 
-Hinter Cloudflare muss der SSL-Modus für die Domain **Full (strict)** sein. Mit **Flexible** spricht Cloudflare den Server per HTTP an, Traefik leitet auf HTTPS um, und der Browser meldet `ERR_TOO_MANY_REDIRECTS`.
+### Hinter dem eigenen HAProxy (so betrieben)
+
+HAProxy beendet TLS mit eigenem Zertifikat und leitet per HTTP an Traefik weiter. Deshalb:
+
+- Domain in Coolify mit **`http://`**: `http://forge-stats.vanturis.de:3000`. Mit `https://` leitet Traefik jede
+  Anfrage auf HTTPS um, HAProxy schickt sie wieder per HTTP, und der Browser meldet `ERR_TOO_MANY_REDIRECTS`.
+- Im HAProxy-Frontend die Client-Adresse mitgeben (überschreibt, was der Client selbst schickt):
+  `http-request set-header X-Client-IP %[src]`
+- In Coolify die Umgebungsvariable `CLIENT_IP_HEADER=x-client-ip` setzen. Ohne beides sieht der Dienst bei
+  jedem Nutzer die Adresse des HAProxy, und die Sperre für neue Installationen gilt für alle zusammen.
+
+Hinter Cloudflare (Proxy an) muss der SSL-Modus **Full (strict)** sein, aus demselben Grund.
 
 ## Einrichtung in Coolify (eine Ressource mit Postgres)
 

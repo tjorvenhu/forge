@@ -8,6 +8,8 @@ services:
       dockerfile: Dockerfile
     environment:
       DATABASE_URL: postgres://${SERVICE_USER_POSTGRES}:${SERVICE_PASSWORD_POSTGRES}@postgres:5432/forge_stats
+      # header in which a proxy in front of Coolify passes the client address (README)
+      CLIENT_IP_HEADER: ${CLIENT_IP_HEADER:-}
     depends_on:
       postgres:
         condition: service_healthy
