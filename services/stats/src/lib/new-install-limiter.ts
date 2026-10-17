@@ -10,10 +10,14 @@ export function hashIp(ip: string): string {
 }
 
 /**
- * Client address as Traefik passes it on. X-Real-Ip is set by Traefik itself; of X-Forwarded-For only the
- * last entry is trustworthy, because Traefik appends the address it saw to whatever the client sent.
+ * Client address. Behind Cloudflare, Traefik only sees the Cloudflare edge, so CF-Connecting-Ip comes first.
+ * Whoever bypasses Cloudflare can fake it, but only to spread over more addresses, which is possible anyway.
+ * Without Cloudflare: X-Real-Ip is set by Traefik itself; of X-Forwarded-For only the last entry is
+ * trustworthy, because Traefik appends the address it saw to whatever the client sent.
  */
 export function clientIp(headers: Headers): string {
+  const cloudflare = headers.get("cf-connecting-ip")?.trim();
+  if (cloudflare) return cloudflare;
   const real = headers.get("x-real-ip")?.trim();
   if (real) return real;
   const forwarded = headers.get("x-forwarded-for");

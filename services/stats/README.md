@@ -57,7 +57,9 @@ Die Summen werden höchstens alle 5 Minuten neu aus der Datenbank berechnet (Zwi
 | `DATABASE_URL` | ja | Postgres-Verbindung, z. B. `postgres://user:pass@host:5432/forge_stats` |
 | `PORT` | nein | Port des Servers, im Image `3000` |
 
-Die Client-IP liest der Dienst aus `X-Real-Ip`, sonst aus dem letzten Eintrag von `X-Forwarded-For`. Beides setzt Traefik.
+Die Client-IP liest der Dienst aus `CF-Connecting-Ip` (Cloudflare steht vor der Domain), sonst aus `X-Real-Ip`, sonst aus dem letzten Eintrag von `X-Forwarded-For`. Die beiden letzten setzt Traefik.
+
+Hinter Cloudflare muss der SSL-Modus für die Domain **Full (strict)** sein. Mit **Flexible** spricht Cloudflare den Server per HTTP an, Traefik leitet auf HTTPS um, und der Browser meldet `ERR_TOO_MANY_REDIRECTS`.
 
 ## Einrichtung in Coolify (eine Ressource mit Postgres)
 

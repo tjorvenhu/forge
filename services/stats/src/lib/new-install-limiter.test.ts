@@ -22,7 +22,8 @@ describe("NewInstallLimiter", () => {
 });
 
 describe("clientIp / hashIp", () => {
-  it("prefers X-Real-Ip, then the last X-Forwarded-For entry", () => {
+  it("prefers CF-Connecting-Ip, then X-Real-Ip, then the last X-Forwarded-For entry", () => {
+    expect(clientIp(new Headers({ "cf-connecting-ip": "8.8.4.4", "x-real-ip": "104.21.7.72" }))).toBe("8.8.4.4");
     expect(clientIp(new Headers({ "x-real-ip": "1.2.3.4", "x-forwarded-for": "9.9.9.9" }))).toBe("1.2.3.4");
     expect(clientIp(new Headers({ "x-forwarded-for": "6.6.6.6, 5.6.7.8" }))).toBe("5.6.7.8");
     expect(clientIp(new Headers())).toBe("unknown");
