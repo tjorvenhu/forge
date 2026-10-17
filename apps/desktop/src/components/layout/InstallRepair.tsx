@@ -13,7 +13,7 @@ import { Skeleton, SkeletonRegion } from "@/components/ui/skeleton";
 import { RestartNote } from "./AppUpdate";
 
 /** Release page for a manual download. */
-export const RELEASES_URL = "https://github.com/tjorvenhu/forge/releases";
+export const RELEASES_URL = "https://github.com/vanturis/forge/releases";
 
 const mb = (bytes: number) => Math.max(1, Math.round(bytes / 1048576));
 

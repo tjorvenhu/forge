@@ -28,7 +28,7 @@ es beim ersten Start über den offiziellen Installer von Anthropic.
 
 ## Installation
 
-1. Öffne die [Releases](https://github.com/tjorvenhu/forge/releases).
+1. Öffne die [Releases](https://github.com/vanturis/forge/releases).
 2. Nimm das neueste Release, das eine Datei `FORGE_<Version>_x64-setup.exe` hat (ältere heißen
    `FORGE_<Version>_<Laufzeit>_x64-setup.exe`). Nicht jedes Release
    hat einen Installer. Die Dateien `FORGE_<Version>_update_<Laufzeit>.zip` sind nur für Updates bestehender
@@ -75,26 +75,27 @@ Daten gehen nur an diese Stellen:
 
 ## Unterstützen
 
-- Spenden: [paypal.me/tjorvenhu](https://paypal.me/tjorvenhu)
-- Vorschläge und Fehler: [neues Issue auf GitHub](https://github.com/tjorvenhu/forge/issues/new). Bei Fehlern
+- Freiwilliger Beitrag: [FORGE unterstützen](https://paypal.me/tjorvenhu). Das Geld geht an die Vanturis UG
+  (haftungsbeschränkt). Sie ist nicht gemeinnützig, deshalb gibt es keine Spendenquittung.
+- Vorschläge und Fehler: [neues Issue auf GitHub](https://github.com/vanturis/forge/issues/new). Bei Fehlern
   helfen die FORGE-Version und die Angaben aus Einstellungen > Über FORGE > Diagnose.
 - Sicherheitslücken bitte nicht als Issue melden, sondern wie in [SECURITY.md](SECURITY.md) beschrieben.
 
 ## Lizenz
 
-FORGE steht unter der [Functional Source License 1.1 mit Apache-2.0 als späterer Lizenz](LICENSE.md)
-(FSL-1.1-ALv2).
+FORGE ist ein Open-Source-Produkt der [Vanturis UG (haftungsbeschränkt)](https://vanturis.de) und steht unter
+der [GNU Affero General Public License, Version 3](LICENSE.md) (AGPL-3.0-only).
 
 - Nutzen, ändern und weitergeben ist frei, auch beruflich und in Firmen.
-- Nicht erlaubt ist, FORGE oder eine abgewandelte Fassung als eigenes Produkt oder als Dienst anzubieten, der mit
-  FORGE konkurriert. Dafür braucht es eine schriftliche Erlaubnis. Frag über GitHub an, per Issue oder über das
-  Profil [tjorvenhu](https://github.com/tjorvenhu).
-- Zwei Jahre nach Veröffentlichung einer Version gilt für diese Version zusätzlich die Apache License 2.0, ohne
-  Einschränkung.
+- Wer eine veränderte Fassung weitergibt oder als Dienst über ein Netzwerk anbietet, muss deren Quellcode unter
+  der AGPL offenlegen.
+- Für die Kombination mit der Claude-Agent-SDK und Claude Code von Anthropic gilt eine Zusatzerlaubnis nach
+  Abschnitt 7 der AGPL, siehe [NOTICE](NOTICE).
+- Eine kommerzielle Lizenz ohne die Pflichten der AGPL gibt es bei Vanturis: [vanturis.de](https://vanturis.de).
 
 Beiträge sind willkommen, siehe [CONTRIBUTING.md](CONTRIBUTING.md).
 
-Der Copyright-Hinweis steht in [NOTICE](NOTICE). Mitgelieferte Software von Drittanbietern und ihre Lizenzen:
+Copyright-Hinweis und Zusatzerlaubnis stehen in [NOTICE](NOTICE). [Impressum](https://vanturis.de/impressum). Mitgelieferte Software von Drittanbietern und ihre Lizenzen:
 [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md) und [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 ## Entwickeln

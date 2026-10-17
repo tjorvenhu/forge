@@ -9,7 +9,13 @@ import { Dialog } from "@/components/ui/dialog";
 import { Tooltip } from "@/components/ui/misc";
 
 const LINKS: ReadonlyArray<{ Icon: LucideIcon; label: string; description: string; href: string; action: string }> = [
-  { Icon: Heart, label: "Über PayPal spenden", description: "Den Betrag wählst du selbst auf der PayPal-Seite.", href: SUPPORT_LINKS.donate, action: "PayPal öffnen" },
+  {
+    Icon: Heart,
+    label: "Freiwilliger Beitrag",
+    description: "Den Betrag wählst du selbst. Das Geld geht an die Vanturis UG, die FORGE entwickelt. Sie ist nicht gemeinnützig, eine Spendenquittung gibt es deshalb nicht.",
+    href: SUPPORT_LINKS.donate,
+    action: "Beitrag zahlen",
+  },
   {
     Icon: Lightbulb,
     label: "Vorschlag oder Fehler einreichen",
@@ -31,9 +37,9 @@ export function SupportButton() {
         onClick={() => open(true)}
         onContextMenu={(e) =>
           addContextItems(e, [
-            { label: "Spenden über PayPal", icon: <Heart className="h-3.5 w-3.5" />, onSelect: () => void openExternal(SUPPORT_LINKS.donate) },
+            { label: "Freiwilligen Beitrag zahlen", icon: <Heart className="h-3.5 w-3.5" />, onSelect: () => void openExternal(SUPPORT_LINKS.donate) },
             { label: "Vorschlag einreichen", icon: <Lightbulb className="h-3.5 w-3.5" />, onSelect: () => void openExternal(SUPPORT_LINKS.feedback) },
-            { label: "Spendenlink kopieren", icon: <Copy className="h-3.5 w-3.5" />, onSelect: () => copyText(SUPPORT_LINKS.donate) },
+            { label: "Link für Beiträge kopieren", icon: <Copy className="h-3.5 w-3.5" />, onSelect: () => copyText(SUPPORT_LINKS.donate) },
           ])
         }
         aria-label="FORGE unterstützen"
@@ -55,7 +61,7 @@ export function SupportDialog() {
       open={open}
       onOpenChange={setOpen}
       title="FORGE unterstützen"
-      description="Wenn dir FORGE hilft, kannst du die Weiterentwicklung mit einer Spende unterstützen oder Verbesserungen vorschlagen."
+      description="FORGE ist ein Open-Source-Produkt der Vanturis UG. Wenn es dir hilft, kannst du die Weiterentwicklung mit einem freiwilligen Beitrag unterstützen oder Verbesserungen vorschlagen."
       className="w-150"
       bodyClassName="flex flex-col"
     >

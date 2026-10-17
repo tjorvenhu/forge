@@ -5,9 +5,10 @@ import { GitFork, Heart } from "lucide-react";
 import logo from "@/assets/forge-logo.png";
 import "./globals.css";
 
-const REPO_URL = "https://github.com/tjorvenhu/forge";
+const REPO_URL = "https://github.com/vanturis/forge";
 const DONATE_URL = "https://paypal.me/tjorvenhu";
 const IMPRINT_URL = "https://vanturis.de/impressum";
+const PRIVACY_URL = "https://vanturis.de/datenschutz";
 
 export const metadata: Metadata = {
   title: "FORGE in Zahlen",
@@ -43,8 +44,11 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         {children}
         <footer className="footer">
           <div className="container footer-inner">
-            <span>Betrieben von Vanturis</span>
-            <a href={IMPRINT_URL}>Impressum</a>
+            <span>FORGE ist ein Open-Source-Produkt der Vanturis UG (haftungsbeschränkt), lizenziert unter AGPL-3.0.</span>
+            <span className="footer-links">
+              <a href={IMPRINT_URL}>Impressum</a>
+              <a href={PRIVACY_URL}>Datenschutz</a>
+            </span>
           </div>
         </footer>
       </body>

@@ -111,6 +111,11 @@ a {
   padding-bottom: 16px;
 }
 
+.footer-links {
+  display: flex;
+  gap: 16px;
+}
+
 .footer a {
   color: var(--color-muted);
   text-decoration: underline;

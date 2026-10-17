@@ -10,7 +10,7 @@ import { GitHubReleases, type ReleaseAsset, type ReleaseSource } from "./github-
 import { SIG_SUFFIX, verifySignature } from "./signature.js";
 
 /** Repository whose GitHub releases carry the FORGE installer (built by .github/workflows/release.yml). */
-export const UPDATE_REPO = "tjorvenhu/forge";
+export const UPDATE_REPO = "vanturis/forge";
 // Soon after the start, so an available update is offered right away.
 const FIRST_CHECK_MS = 3_000;
 const CHECK_INTERVAL_MS = 30 * 60_000;

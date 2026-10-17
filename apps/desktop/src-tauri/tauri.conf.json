@@ -57,6 +57,10 @@
       "../../../THIRD_PARTY_NOTICES.md": "THIRD_PARTY_NOTICES.md"
     },
     "shortDescription": "Desktop-GUI für Claude Code",
+    "longDescription": "FORGE ist eine Desktop-App für Claude Code: Projekte und Sessions, parallele Agenten in eigenen Git-Worktrees, Git-Ansicht, Projektwissen und Steuerung per Telefon.",
+    "publisher": "Vanturis",
+    "copyright": "Copyright © 2026 Vanturis UG (haftungsbeschränkt)",
+    "homepage": "https://vanturis.de",
     "category": "DeveloperTool"
   }
 }

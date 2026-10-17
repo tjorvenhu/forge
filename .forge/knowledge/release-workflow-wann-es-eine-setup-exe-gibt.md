@@ -1,15 +1,17 @@
 ---
-title: "Release-Workflow: wann es eine setup.exe gibt, Installer-Namen, Signatur der Updates (FORGE_UPDATE_SIGNING_KEY)"
+title: "Release-Workflow: wann es eine setup.exe gibt, Installer-Namen, Signatur (FORGE_UPDATE_SIGNING_KEY)"
 summary: "Warum Releases meist nur ein Update-Zip haben, wie der volle Installer heißt und gebaut wird, wie Release-Dateien signiert werden und was bei fehlendem Schlüssel oder ausbleibendem Lauf zu tun ist."
 tags: ["release","github-actions","installer","stolperfalle"]
-updated: "2026-10-17T21:02:45.690Z"
+updated: "2026-10-17T21:14:57.380Z"
 ---
+
+Repo seit 2026-10-17: `vanturis/forge` (vorher `tjorvenhu/forge`, GitHub leitet weiter).
 
 ## Wann gibt es eine setup.exe
 - `.github/workflows/release.yml` läuft bei jedem Push auf `main` (ohne reine md/docs- und services/-Änderungen) und veröffentlicht `v0.1.<run number>`. So gewollt, auch nach der Veröffentlichung des Repos (Entscheidung 2026-10-17).
 - Jedes Release bekommt `FORGE_<v>_update_<runtime>.zip` (nur App + Sidecar, wenige MB; installierte Apps aktualisieren damit).
-- Der volle Installer (mit node, git, gh, python) entsteht nur, wenn es für den Laufzeit-Schlüssel (`scripts/prepare-runtime.mjs --key`) noch keinen **signierten** Installer gibt, oder von Hand: `gh workflow run release.yml --ref main -f full=true`. Sonst hängt der letzte Installer an einem älteren Release.
-- Für Neuinstallationen das neueste Release mit setup.exe nehmen, nicht einfach „latest“. Finden: `gh api "repos/tjorvenhu/forge/releases?per_page=100" --jq '.[] | select(any(.assets[]; .name | endswith("setup.exe"))) | .tag_name'`.
+- Der volle Installer (mit node, git, gh, python) entsteht nur, wenn es für den Laufzeit-Schlüssel (`scripts/prepare-runtime.mjs --key`) noch keinen **signierten** Installer gibt, oder von Hand: `gh workflow run release.yml -R vanturis/forge --ref main -f full=true`. Sonst hängt der letzte Installer an einem älteren Release.
+- Für Neuinstallationen das neueste Release mit setup.exe nehmen, nicht einfach „latest“. Finden: `gh api "repos/vanturis/forge/releases?per_page=100" --jq '.[] | select(any(.assets[]; .name | endswith("setup.exe"))) | .tag_name'`.
 - Der Schritt „Build app“ gibt den Laufzeit-Schlüssel als `FORGE_RUNTIME_KEY` in die exe (Erkennung unvollständiger Installationen).
 
 ## Installer-Namen (Wunsch des Besitzers 2026-10-17: kurz)
@@ -19,7 +21,7 @@ updated: "2026-10-17T21:02:45.690Z"
 
 ## Signatur (seit 2026-10-17)
 - Jedes Asset bekommt `<asset>.sig` (`scripts/sign-update.mjs`, Ed25519, Format in ADR 0013). Die App bietet nur signierte Assets an; Releases davor (bis v0.1.5x) sind für sie unsichtbar.
-- Privater Schlüssel: Repo-Secret `FORGE_UPDATE_SIGNING_KEY`. Fehlt es, bricht der Workflow schon im Schritt Plan ab („Secret FORGE_UPDATE_SIGNING_KEY fehlt“). Eine Kopie hat der Besitzer gesichert; geht sie verloren und das Secret auch, braucht es einen neuen Schlüssel und alle Installationen den Installer von Hand.
+- Privater Schlüssel: Repo-Secret `FORGE_UPDATE_SIGNING_KEY` (ist beim Übertrag nach `vanturis` mitgezogen). Fehlt es, bricht der Workflow schon im Schritt Plan ab („Secret FORGE_UPDATE_SIGNING_KEY fehlt“). Eine Kopie hat der Besitzer gesichert; geht sie verloren und das Secret auch, braucht es einen neuen Schlüssel und alle Installationen den Installer von Hand.
 - Öffentlicher Schlüssel: `packages/sidecar/src/update/signature.ts`.
 
 ## Stolperfalle: Update-Zip statt Installer (2026-10-17)
@@ -28,4 +30,4 @@ Wer das Update-Zip statt der setup.exe startet, hat kein `runtime/` mit git und 
 ## Wenn ein Push keinen Lauf auslöst (2026-10-14)
 - Symptom: Workflow steht in der API auf `active`, aber `actions/runs` ist leer und Pushes starten nichts.
 - Behoben mit `gh workflow enable release.yml` und einem Lauf per `gh workflow run release.yml --ref main`.
-- Prüfen: `gh api "repos/tjorvenhu/forge/actions/runs?per_page=5"`, `gh release view <tag> --json assets`.
+- Prüfen: `gh api "repos/vanturis/forge/actions/runs?per_page=5"`, `gh release view <tag> -R vanturis/forge --json assets`.

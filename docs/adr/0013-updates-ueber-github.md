@@ -35,7 +35,7 @@ Unit-Tests laufen dort nicht: zwei Tests scheitern unter Windows an verzögert g
 
 **Prüfen und Laden** (`packages/sidecar/src/update/app-update.ts`, `github-releases.ts`; Nachtrag 2026-10-17,
 vorher über `gh` mit der Anmeldung des Nutzers, solange das Repository privat war): direkt per HTTPS an die
-GitHub-API (`/repos/tjorvenhu/forge/releases`, `/compare`, Dateien über die API-Adresse des Assets mit
+GitHub-API (`/repos/vanturis/forge/releases`, `/compare`, Dateien über die API-Adresse des Assets mit
 `Accept: application/octet-stream`). Zuerst anonym, damit Updates ohne GitHub-Konto gehen. Nur wenn GitHub ablehnt
 (401/403/404/429: privates Repository oder Ratenlimit von 60 Anfragen pro Stunde und IP), ein zweiter Versuch mit dem
 Token der gh-Anmeldung (`gh auth token`), falls es eine gibt.

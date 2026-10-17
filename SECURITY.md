@@ -5,7 +5,7 @@ Bitte melde Sicherheitslücken in FORGE vertraulich und nicht als öffentliches 
 So geht es:
 
 1. Öffne im Repository den Reiter **Security**.
-2. Klicke auf **Report a vulnerability**. Direkt: <https://github.com/tjorvenhu/forge/security/advisories/new>
+2. Klicke auf **Report a vulnerability**. Direkt: <https://github.com/vanturis/forge/security/advisories/new>
 3. Beschreibe die Lücke: betroffene Version, Schritte zum Nachstellen und was ein Angreifer damit erreichen kann.
 
 Die Meldung sehen nur du und die Betreuer des Repositorys. Ich melde mich dort zurück und stimme mit dir ab,

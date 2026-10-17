@@ -1,7 +1,13 @@
 {
   "name": "forge",
   "private": true,
-  "license": "FSL-1.1-ALv2",
+  "license": "AGPL-3.0-only",
+  "author": "Vanturis UG (haftungsbeschränkt) (https://vanturis.de)",
+  "homepage": "https://github.com/vanturis/forge",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/vanturis/forge.git"
+  },
   "version": "0.1.0",
   "description": "FORGE – Claude Development Studio (Desktop-GUI für Claude Code)",
   "type": "module",

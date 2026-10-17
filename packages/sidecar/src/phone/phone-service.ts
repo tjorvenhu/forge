@@ -2713,7 +2713,7 @@ export class PhoneService {
           if (action === "install_check") return installText(await call("app.checkInstall", {}));
           if (action === "support") {
             const bare = (url: string) => url.replace(/^https:\/\//, "");
-            return `Spenden für FORGE gehen über PayPal: ${bare(SUPPORT_LINKS.donate)}. Verbesserungen und Featurevorschläge kommen als Issue auf GitHub: ${bare(SUPPORT_LINKS.feedback)}. Beide Links zeigt FORGE hinter dem roten Herz neben der Suche links oben.`;
+            return `FORGE ist ein Open-Source-Produkt der Vanturis UG. Einen freiwilligen Beitrag zahlt man hier: ${bare(SUPPORT_LINKS.donate)}, eine Spendenquittung gibt es nicht. Verbesserungen und Featurevorschläge kommen als Issue auf GitHub: ${bare(SUPPORT_LINKS.feedback)}. Beide Links zeigt FORGE hinter dem roten Herz neben der Suche links oben.`;
           }
           if (action === "install_repair") {
             const st = await call("app.checkInstall", {});

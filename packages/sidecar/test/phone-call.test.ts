@@ -1564,7 +1564,7 @@ describe("PhoneService end to end with a test PBX", () => {
     const { conv, end } = await openCall("c-support");
     const text = await conv.tools.forgeSystem("support");
     expect(text).toContain("paypal.me/tjorvenhu");
-    expect(text).toContain("github.com/tjorvenhu/forge/issues/new");
+    expect(text).toContain("github.com/vanturis/forge/issues/new");
     await end();
   }, 30_000);
 

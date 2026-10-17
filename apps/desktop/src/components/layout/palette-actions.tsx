@@ -208,6 +208,7 @@ const SETTING_OPTIONS: ReadonlyArray<{ id: string; label: string; section: Setti
   { id: "sync-versions", label: "Versionen auf GitHub zurückholen", section: "github", keywords: "sync verlauf commit wiederherstellen backup" },
   { id: "backup-restore", label: "Backup herunterladen oder zurücksetzen", section: "backup", keywords: "sichern wiederherstellen export" },
   { id: "global-rules", label: "Globale Regeln bearbeiten", section: "rules", keywords: "claude.md memory anweisungen" },
+  { id: "publisher", label: "Herausgeber, Impressum und Lizenz", section: "about", keywords: "vanturis firma impressum lizenz agpl open source quellcode datenschutz" },
   { id: "updates", label: "Updates und Version", section: "about", keywords: "version release" },
   { id: "privacy", label: "Datenschutz", section: "about", keywords: "telemetrie nutzungsstatistik anonym" },
   { id: "diagnostics", label: "Diagnose", section: "about", keywords: "system node git gh api key fehler" },
@@ -604,7 +605,7 @@ export function buildActions(ctx: ActionContext): PaletteEntry[] {
   act("claude-logout", "Von Claude abmelden", icon(LogOut), () => ui.setClaudeLogout(true), { keywords: "logout abmelden konto account" });
   act("update-check", "Nach Updates suchen", icon(RefreshCw), () => void checkForUpdate(qc), { keywords: "version release aktualisieren" });
   act("support-open", "FORGE unterstützen", icon(HandHeart), () => ui.setSupportOpen(true), { hint: "Herz neben der Suche", keywords: "unterstützen spenden vorschlag feedback herz support" });
-  act("support-donate","FORGE mit einer Spende unterstützen", icon(HandHeart), () => void openExternal(SUPPORT_LINKS.donate), { hint: "PayPal", keywords: "spenden spende paypal unterstützen danke support donate" });
+  act("support-donate", "FORGE mit einem freiwilligen Beitrag unterstützen", icon(HandHeart), () => void openExternal(SUPPORT_LINKS.donate), { hint: "Vanturis", keywords: "spenden spende beitrag zahlen unterstützen danke support donate" });
   act("usage-stats-public", "Gesamtzahlen aller FORGE-Nutzer ansehen", icon(Gauge), () => void openExternal(USAGE_STATS_URL), {
     hint: "Statistik",
     keywords: "statistik zahlen tokens projekte agenten öffentlich gesamt nutzer",

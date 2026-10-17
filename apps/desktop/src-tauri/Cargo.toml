@@ -2,8 +2,11 @@
 name = "forge-desktop"
 version = "0.1.0"
 description = "FORGE – Claude Development Studio"
+authors = ["Vanturis UG (haftungsbeschränkt)"]
+homepage = "https://vanturis.de"
+repository = "https://github.com/vanturis/forge"
 edition = "2021"
-license = "FSL-1.1-ALv2"
+license = "AGPL-3.0-only"
 publish = false
 
 [lib]

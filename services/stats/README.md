@@ -82,7 +82,7 @@ erreichbar, ihre Daten liegen im Volume `stats-db`.
 
 1. DNS: A-Record `forge-stats.vanturis.de` auf den Coolify-Server.
 2. In Coolify: Projekt wählen, **+ New**, **Public Repository** (oder **Private Repository (with GitHub App)**,
-   solange das Repo privat ist), URL `https://github.com/tjorvenhu/forge`, Branch `main`.
+   solange das Repo privat ist), URL `https://github.com/vanturis/forge`, Branch `main`.
 3. Build Pack: **Docker Compose**. Base Directory: **`/services/stats`**. Docker Compose Location:
    **`/docker-compose.yml`**. Speichern: Coolify liest die Datei und zeigt die Dienste `stats` und `postgres`.
 4. Beim Dienst `stats` als Domain **`https://forge-stats.vanturis.de:3000`** eintragen. Das `:3000` ist der Port

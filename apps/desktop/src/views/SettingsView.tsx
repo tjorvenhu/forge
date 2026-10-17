@@ -19,7 +19,7 @@ import {
   Volume2,
   XCircle,
 } from "lucide-react";
-import { USAGE_STATS_URL, type Diagnostics, type ProfileId, type Settings, type ToolCheck, type EffortLevel } from "@forge/protocol";
+import { PUBLISHER, USAGE_STATS_URL, type Diagnostics, type ProfileId, type Settings, type ToolCheck, type EffortLevel } from "@forge/protocol";
 import { call, keys, useDiagnostics, useRuntimeInfo, useSettings } from "@/lib/queries";
 import { errorMessage } from "@/lib/rpc";
 import { openExternal, pickFolder } from "@/lib/native";
@@ -61,7 +61,8 @@ export const SECTIONS: ReadonlyArray<SettingsSectionDef<SettingsSection>> = [
   { id: "github", label: "GitHub", hint: "Konto, Synchronisierung, Versionen", Icon: Cloud },
   { id: "backup", label: "Backup", hint: "Sichern und zurücksetzen", Icon: ArchiveRestore },
   { id: "rules", label: "Globale Regeln", hint: "CLAUDE.md für alle Projekte", Icon: FileText },
-  { id: "about", label: "Über FORGE", hint: "Updates, Datenschutz, Diagnose", Icon: Info },];
+  { id: "about", label: "Über FORGE", hint: "Herausgeber, Updates, Datenschutz, Diagnose", Icon: Info },
+];
 
 export function SettingsView() {
   const settings = useSettings();
@@ -324,6 +325,36 @@ function PhoneSection() {
 function AboutSection({ s, save }: { s: Settings; save: Save }) {
   return (
     <>
+      <Group title="Herausgeber">
+        <div className="flex flex-col gap-2 px-4 py-3.5 text-body">
+          <p>
+            FORGE ist ein Open-Source-Produkt der {PUBLISHER.name}. Der Quellcode steht unter der {PUBLISHER.license}-Lizenz.
+          </p>
+          <div className="flex flex-wrap gap-x-4 gap-y-1 text-muted">
+            {(
+              [
+                ["vanturis.de", PUBLISHER.site],
+                ["Impressum", PUBLISHER.imprint],
+                ["Datenschutz", PUBLISHER.privacy],
+                ["Quellcode auf GitHub", PUBLISHER.source],
+              ] as const
+            ).map(([label, href]) => (
+              <a
+                key={href}
+                href={href}
+                onClick={(e) => {
+                  e.preventDefault();
+                  void openExternal(href);
+                }}
+                className="underline hover:text-fg"
+              >
+                {label}
+              </a>
+            ))}
+          </div>
+        </div>
+      </Group>
+
       <Group title="Updates">
         <div className="px-4 py-3.5">
           <AppUpdateSettings />
