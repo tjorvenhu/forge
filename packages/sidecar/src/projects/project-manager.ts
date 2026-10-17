@@ -7,6 +7,7 @@ import type { Db, ProjectRecord } from "../persistence/db.js";
 import { repoNameFromUrl, validateCloneUrl, type GitEngine } from "../git/git.js";
 import { canonicalize, isInside, pathKey, validateDirName } from "../util/paths.js";
 import { SANDBOX_ONLY_TAG } from "../policy/profiles.js";
+import { AUTO_MERGE_TAG } from "../automation/agent-auto-merge.js";
 import { detectTechnologies, detectTestCommand } from "./tech.js";
 
 export interface CreateProjectInput {
@@ -132,7 +133,9 @@ export class ProjectManager {
       name: path.basename(canonical) || canonical,
       path: canonical,
       favorite: false,
-      tags: [],
+      // Finished parallel agents go back on their own, as Claude Code does with its subagents; a
+      // worktree copies its tags from the main project, the main project decides.
+      tags: gitEnabled && !parentId ? [AUTO_MERGE_TAG] : [],
       technologies: await detectTechnologies(canonical),
       profile: this.defaultProfile(),
       defaultModel: null,

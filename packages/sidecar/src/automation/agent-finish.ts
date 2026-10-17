@@ -207,11 +207,17 @@ export class AgentFinisher {
       await git.commit(top, `Restliche Änderungen von ${branch}`, files, false);
     }
 
+    // What the target branch moves to: the agent's branch, or a merge commit of both.
+    let to = `refs/heads/${branch}`;
     if (review.behind) {
       const r = await git.exec(wt, ["rebase", `refs/heads/${targetBranch}`], undefined, 180_000);
-      if (r.code !== 0) {
-        const files = (await git.exec(wt, ["diff", "--name-only", "--diff-filter=U"])).stdout.split("\n").map((f) => f.trim()).filter(Boolean);
-        await git.exec(wt, ["rebase", "--abort"]);
+      if (r.code !== 0) await git.exec(wt, ["rebase", "--abort"]);
+      // A rebase replays commit by commit and stops at clashes the end result no longer has. A
+      // three-way merge of both ends often goes through; then the target takes a merge commit.
+      const merged = r.code === 0 ? null : await this.mergeCommit(wt, branch, targetBranch);
+      if (merged?.commit) to = merged.commit;
+      else if (merged) {
+        const files = merged.files;
         const sessionId = await this.handBack(l, conflictPrompt(branch, targetBranch, review.behind, files));
         this.changed(l);
         return {
@@ -230,7 +236,7 @@ export class AgentFinisher {
 
     const commits = await this.count(dir, `refs/heads/${targetBranch}..refs/heads/${branch}`);
     const incoming = await this.incoming(l, dir, branch, targetBranch);
-    const waiting = await this.fastForward(dir, branch, targetBranch);
+    const waiting = await this.fastForward(dir, branch, targetBranch, to);
     if (waiting) {
       this.changed(l);
       return { action: "merge", outcome: "waiting", branch, targetBranch, commits: 0, files: waiting.files, sessionId: null, branchError: null, message: waiting.message };
@@ -272,9 +278,8 @@ export class AgentFinisher {
    * it back, but only when nobody works there right now and a dry run shows it goes back cleanly.
    * Otherwise nothing changes and the result says why the agent has to wait.
    */
-  private async fastForward(dir: string, branch: string, targetBranch: string): Promise<{ message: string; files: string[] } | null> {
+  private async fastForward(dir: string, branch: string, targetBranch: string, own: string): Promise<{ message: string; files: string[] } | null> {
     const git = this.d.git;
-    const own = `refs/heads/${branch}`;
     const tryFf = () => git.exec(dir, ["merge", "--ff-only", own], undefined, 120_000);
     const ff = await tryFf();
     if (ff.code === 0) return null;
@@ -318,6 +323,21 @@ export class AgentFinisher {
     return null;
   }
 
+  /**
+   * The merge of the agent's branch into the target branch as a commit object, without touching a
+   * working tree; no commit, but the clashing files, when it does not go through cleanly.
+   */
+  private async mergeCommit(cwd: string, branch: string, targetBranch: string): Promise<{ commit: string | null; files: string[] }> {
+    const git = this.d.git;
+    const ours = `refs/heads/${targetBranch}`;
+    const theirs = `refs/heads/${branch}`;
+    const tree = await git.exec(cwd, ["merge-tree", "--write-tree", "--name-only", "--no-messages", ours, theirs]);
+    const lines = tree.stdout.split("\n").map((f) => f.trim()).filter(Boolean);
+    if (tree.code !== 0) return { commit: null, files: [...new Set(lines.slice(1))] };
+    const made = await git.exec(cwd, ["commit-tree", lines[0]!, "-p", ours, "-p", theirs, "-m", `Merge branch '${branch}' into ${targetBranch}`]);
+    return { commit: made.code === 0 ? made.stdout.trim() : null, files: [] };
+  }
+
   /** A session is working in this folder right now: its files must not be put aside under it. */
   private busyIn(dir: string): boolean {
     const key = pathKey(dir);
@@ -341,13 +361,13 @@ export class AgentFinisher {
 
 export function conflictPrompt(branch: string, targetBranch: string, behind: number, files: string[]): string {
   return [
-    `Ich wollte deinen Branch ${branch} in ${targetBranch} übernehmen. Auf ${targetBranch} gibt es seit deinem Start ${behind} neue Commits. Der Rebase hatte Konflikte in:`,
+    `Ich wollte deinen Branch ${branch} in ${targetBranch} übernehmen. Auf ${targetBranch} gibt es seit deinem Start ${behind} neue Commits, die mit deinen Änderungen kollidieren in:`,
     files.length ? files.map((f) => `- ${f}`).join("\n") : "- (git hat keine Dateien genannt)",
     "",
-    "Der Rebase ist abgebrochen, dein Branch ist im Stand von vorher.",
+    "Dein Branch ist unverändert.",
     "",
     "Bitte:",
-    `1. Committe zuerst alles Offene, dann \`git rebase ${targetBranch}\`.`,
+    `1. Committe zuerst alles Offene, dann \`git merge ${targetBranch}\` (kein Rebase: so löst du jeden Konflikt nur einmal).`,
     "2. Löse die Konflikte so, dass deine Änderungen und die neuen Commits erhalten bleiben. Wenn nicht klar ist, welche Seite gelten soll: frag mich mit AskUserQuestion und rate nicht.",
     "3. Prüf danach, ob das Projekt noch baut und die Tests laufen, sofern es dafür einen Befehl gibt.",
     "4. Nicht pushen. Fass am Ende kurz zusammen, wie du jeden Konflikt aufgelöst hast. Danach übernimmt FORGE deinen Branch.",

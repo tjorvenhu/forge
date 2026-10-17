@@ -314,6 +314,11 @@ export const MIGRATIONS: string[] = [
     SELECT json_extract(e.body, '$.source') FROM events e
     WHERE e.session_id = claude_usage.session_id AND e.type = 'user.message' AND e.ts <= claude_usage.ts ORDER BY e.seq DESC LIMIT 1) = 'auto';
   `,
+  // auto-merge became the default (2026-10-17): main projects with git get it once; switching it off stays possible.
+  `
+  UPDATE projects SET tags = json_insert(tags, '$[#]', 'auto-merge')
+  WHERE parent_id IS NULL AND git_enabled = 1 AND NOT EXISTS (SELECT 1 FROM json_each(projects.tags) WHERE value = 'auto-merge');
+  `,
 ];
 
 export const DEFAULT_SETTINGS: Settings = {

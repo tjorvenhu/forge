@@ -97,7 +97,7 @@ describe("AgentFinisher", () => {
 
     const r = await finisher.finish(wt.id, "merge");
     expect(r).toMatchObject({ outcome: "conflict", files: ["README.md"], sessionId: "s-konflikt" });
-    expect(started[0]).toMatchObject({ projectId: wt.id, prompt: expect.stringContaining("git rebase main") });
+    expect(started[0]).toMatchObject({ projectId: wt.id, prompt: expect.stringContaining("git merge main") });
     expect(started[0]!.prompt).toContain("- README.md");
     expect(existsSync(wt.path)).toBe(true);
     expect((await git(wt.path, "status", "--porcelain")).trim()).toBe("");

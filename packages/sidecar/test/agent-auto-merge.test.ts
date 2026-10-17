@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { Project, ServerEvent, SessionEventBody } from "@forge/protocol";
@@ -6,7 +6,7 @@ import { AgentAutoMerge, AUTO_MERGE_TAG, MAX_CONFLICT_ROUNDS } from "../src/auto
 import { AgentFinisher } from "../src/automation/agent-finish.js";
 import { WorktreeService } from "../src/automation/worktrees.js";
 import { GitEngine } from "../src/git/git.js";
-import { Db } from "../src/persistence/db.js";
+import { Db, MIGRATIONS } from "../src/persistence/db.js";
 import { ProjectManager } from "../src/projects/project-manager.js";
 import type { SessionService } from "../src/sessions/session-service.js";
 import { git, initRepo, tempDir } from "./helpers.js";
@@ -92,17 +92,60 @@ describe("AgentAutoMerge", () => {
     expect(records.filter((r) => r.sessionId === "main").map((r) => r.body)).toEqual([expect.objectContaining({ type: "automation", action: "merge", ok: true })]);
   }, 30_000);
 
-  it("does nothing without the tag on the main project, for plain sessions and while background work runs", async () => {
+  it("is on for new projects with git, and does nothing without the tag or for plain sessions", async () => {
+    expect((await projects.import(path.join(t.dir))).tags).toEqual([AUTO_MERGE_TAG]);
     const wt = await agent("agent/ohne");
-    background = true;
-    await auto.turnDone("s-agent/ohne", true);
-    background = false;
     await auto.turnDone("main", true);
     projects.update(parent.id, { tags: [] });
     await auto.turnDone("s-agent/ohne", true);
     expect(events).toEqual([]);
     expect(existsSync(wt.path)).toBe(true);
   }, 20_000);
+
+  it("switches auto-merge on once for existing main projects with git", async () => {
+    const plain = await projects.import(path.join(t.dir), null, false);
+    parent = projects.update(parent.id, { tags: ["auto-commit"] });
+    const wt = await agent("agent/alt");
+    db.sql.exec(MIGRATIONS.find((m) => m.includes("'auto-merge'") && m.includes("json_insert"))!);
+    const tags = (id: string) => projects.all().find((p) => p.id === id)!.tags;
+    expect(tags(parent.id)).toEqual(["auto-commit", AUTO_MERGE_TAG]);
+    expect(tags(plain.id)).toEqual([]);
+    expect(tags(wt.id)).not.toContain(AUTO_MERGE_TAG);
+    // Run again (as after a restore): no second entry.
+    db.sql.exec(MIGRATIONS.find((m) => m.includes("'auto-merge'") && m.includes("json_insert"))!);
+    expect(tags(parent.id)).toEqual(["auto-commit", AUTO_MERGE_TAG]);
+  }, 20_000);
+
+  it("lets an agent with running background tasks wait, says so once, and merges it when they end", async () => {
+    const wt = await agent("agent/server");
+    background = true;
+    await auto.turnDone("s-agent/server", true);
+    await auto.retryWaiting();
+    expect(outcomes()).toEqual(["waiting"]);
+    expect(auto.waitingAgents()).toEqual([wt.id]);
+    expect(existsSync(wt.path)).toBe(true);
+    background = false;
+    await auto.retryWaiting();
+    expect(outcomes()).toEqual(["waiting", "merged"]);
+    expect(existsSync(wt.path)).toBe(false);
+  }, 30_000);
+
+  it("merges with a merge commit when the rebase clashes but both ends fit together", async () => {
+    const lines = (change: Record<number, string> = {}) => Array.from({ length: 12 }, (_, i) => change[i + 1] ?? `Zeile ${i + 1}`).join("\n") + "\n";
+    await commitFile(repo, "notes.md", lines(), "Notizen");
+    const wt = await worktrees.create(parent, "agent/hin-und-her", { fromDir: repo });
+    // The agent changes line 1 and later takes it back: the end result leaves line 1 alone.
+    await commitFile(wt.path, "notes.md", lines({ 1: "Agent", 12: "Ende" }), "Zwischenstand");
+    await commitFile(wt.path, "notes.md", lines({ 12: "Ende" }), "Zeile 1 zurück");
+    await commitFile(repo, "notes.md", lines({ 1: "Main" }), "Main ändert Zeile 1");
+    session("s-agent/hin-und-her", wt.id, wt.path);
+    db.setSessionParent("s-agent/hin-und-her", "main");
+    await auto.turnDone("s-agent/hin-und-her", true);
+    expect(outcomes()).toEqual(["merged"]);
+    expect((await git(repo, "log", "-1", "--format=%s")).trim()).toBe("Merge branch 'agent/hin-und-her' into main");
+    expect(readFileSync(path.join(repo, "notes.md"), "utf8").replace(/\r\n/g, "\n")).toBe(lines({ 1: "Main", 12: "Ende" }));
+    expect(existsSync(wt.path)).toBe(false);
+  }, 30_000);
 
   it("clears away the remains of a merged agent whose folder would not go, without asking", async () => {
     const wt = await agent("agent/rest");

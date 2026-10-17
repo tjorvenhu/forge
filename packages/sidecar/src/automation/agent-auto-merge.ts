@@ -11,7 +11,7 @@ export const AUTO_MERGE_TAG = "auto-merge";
 /** Conflict hand-backs per agent before FORGE leaves the decision to the user. */
 export const MAX_CONFLICT_ROUNDS = 3;
 /** Agents waiting for the project are tried again this often, besides at the end of every turn. */
-export const WAITING_RETRY_MS = 2 * 60_000;
+export const WAITING_RETRY_MS = 30_000;
 
 export interface AgentAutoMergeDeps {
   db: Db;
@@ -53,7 +53,16 @@ export class AgentAutoMerge {
     // Any turn that ends (its auto-commit done) may have made room for a waiting agent.
     await this.retryWaiting(sessionId);
     if (!project?.parentId || !autoMergeOn(this.d.projects, project)) return;
-    if (this.d.hasBackground(sessionId)) return;
+    if (this.d.hasBackground(sessionId)) {
+      // Its background tasks start another turn when they end; until then it waits, and says so once.
+      // Before, such an agent was never merged when the task was a server that keeps running.
+      if (!this.waiting.has(project.id)) {
+        this.report(sessionId, this.d.parentOf(sessionId), project, null, "waiting", "Wartet aufs Zusammenführen: Der Agent hat noch laufende Hintergrundaufgaben. FORGE führt ihn zusammen, sobald sie beendet sind.");
+      }
+      this.waiting.set(project.id, sessionId);
+      this.syncTimer();
+      return;
+    }
     await this.attempt(sessionId, project, testsOk);
   }
 
@@ -139,7 +148,7 @@ export class AgentAutoMerge {
       this.syncTimer();
       if (!told) {
         const why = r.message.replace(/^Noch nicht zusammengeführt:\s*/, "");
-        this.report(sessionId, parentId, worktree, r.branch, "waiting", `Wartet aufs Zusammenführen: ${why} FORGE führt den Agenten selbst zusammen, sobald es passt: nach dem nächsten Durchlauf im Projekt (samt Auto-Commit), sonst beim nächsten Versuch in ein paar Minuten.`);
+        this.report(sessionId, parentId, worktree, r.branch, "waiting", `Wartet aufs Zusammenführen: ${why} FORGE führt den Agenten selbst zusammen, sobald es passt: nach dem nächsten Durchlauf im Projekt (samt Auto-Commit), sonst beim nächsten Versuch in einer halben Minute.`);
       }
       return;
     }

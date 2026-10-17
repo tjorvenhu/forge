@@ -31,7 +31,7 @@ export const TAG_INFO: ReadonlyArray<{ tag: string; label: string; info: string;
   {
     tag: "auto-merge",
     label: "Agenten automatisch zusammenführen",
-    info: "Endet der Durchlauf eines Agenten ohne Fehler (und mit grünen Tests bei Automatisch testen), übernimmt FORGE seinen Branch in den Branch, von dem er gestartet ist, meist main. Worktree und Branch werden danach gelöscht. Bei Konflikten löst der Agent sie selbst. Was nicht klappt, legt FORGE dir zur Entscheidung vor.",
+    info: "Endet der Durchlauf eines Agenten ohne Fehler (und mit grünen Tests bei Automatisch testen), übernimmt FORGE seinen Branch in den Branch, von dem er gestartet ist, meist main. Worktree und Branch werden danach gelöscht. Passt seine Arbeit nicht mehr glatt auf main, versucht FORGE einen Merge-Commit; nur bei echten Konflikten löst der Agent sie selbst. Was nicht klappt, legt FORGE dir zur Entscheidung vor. Bei neuen Projekten mit Git ist das an.",
     rootOnly: true,
     git: true,
   },

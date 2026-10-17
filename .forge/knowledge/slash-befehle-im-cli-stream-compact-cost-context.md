@@ -1,11 +1,11 @@
 ---
-title: "Claude-Code-Stream: Slash-Befehle (/compact, /cost), Hintergrund-Aufgaben und Subagenten (getTaskOutput)"
-summary: "Was Claude Code bei Slash-Befehlen, Hintergrund-Befehlen und Hintergrund-Subagenten in den Stream schreibt oder über getTaskOutput liefert (mit echter CLI geprüft) und wie FORGE das filtert; wichtig bei Änderungen an remote-bridge.ts, SessionStream, TaskThread oder der Chat-Darstellung."
+title: "Claude-Code-Stream: Slash-Befehle (/compact, /cost), Hintergrund-Aufgaben und Subagenten (getTaskOutput, SendMessage)"
+summary: "Was Claude Code bei Slash-Befehlen, Hintergrund-Befehlen und -Subagenten in den Stream schreibt, was getTaskOutput und SendMessage können (mit echter CLI geprüft) und wie FORGE das filtert; wichtig für remote-bridge.ts, SessionStream, TaskThread."
 tags: ["sdk","chat","slash","hintergrund","subagent","remote","stolperfalle"]
-updated: "2026-10-15T06:42:32.882Z"
+updated: "2026-10-17T10:34:34.613Z"
 ---
 
-Geprüft am 2026-10-13 mit Claude Code 2.1.296 und Agent SDK 0.3.296 (Probe-Skripte mit Haiku bzw. `--replay-user-messages`, danach gelöscht). Achtung beim Probieren in Git Bash: `MSYS_NO_PATHCONV=1` setzen, sonst wird `/cost` zu `C:/Program Files/Git/cost`.
+Geprüft am 2026-10-13 mit Claude Code 2.1.296 und Agent SDK 0.3.296 (Probe-Skripte mit Haiku bzw. `--replay-user-messages`, danach gelöscht). Nachrichten an Hintergrundaufgaben geprüft am 2026-10-17 (SDK 0.3.296, CLI 2.1.301 hat denselben Stand). Achtung beim Probieren in Git Bash: `MSYS_NO_PATHCONV=1` setzen, sonst wird `/cost` zu `C:/Program Files/Git/cost`. Probe-Skripte müssen im Projektordner liegen (FORGE-Policy sperrt Schreiben außerhalb); das SDK per `file:///…/packages/sidecar/node_modules/@anthropic-ai/claude-agent-sdk/sdk.mjs` importieren. Beliebige Control-Requests gehen mit `q.request({ subtype: … })` (nicht typisiert). Ein Vordergrund-`sleep 25` blockiert die CLI („Standalone-Sleep nicht erlaubt“), zum Warten `node -e 'setTimeout(()=>{},25000)'` nehmen.
 
 ## Slash-Befehle
 
@@ -30,5 +30,12 @@ Das Schlüsselwort wirkt in der CLI selbst (sie hängt dem Prompt einen Hinweis 
 
 ## Hintergrund-Subagenten
 - `task_started` hat `is_backgrounded: true`, `tool_use_id` (Agent-Aufruf), `task_type: "local_agent"`. `task_notification` hat wieder `tool_use_id`, dazu `summary` = die Schlussantwort des Subagenten und `output_file`.
-- Das `tool_result` des Agent-Aufrufs ist sofort ein Platzhalter ("Async agent launched successfully ..."). Das echte Ergebnis ist `task_notification.summary`. FORGE speichert es im Ereignis `background.task` (Feld `toolUseId`, ab 2026-10-13; ältere Ereignisse haben es nicht). `agentCall` in `TaskThread.tsx` nimmt bei Hintergrund-Subagenten dieses Ereignis als Ergebnis.
+- Das `tool_result` des Agent-Aufrufs ist sofort ein Platzhalter ("Async agent launched successfully ... agentId: <id> ..."). Die `task_id` ist gleich dieser agentId. Das echte Ergebnis ist `task_notification.summary`. FORGE speichert es im Ereignis `background.task` (Feld `toolUseId`, ab 2026-10-13; ältere Ereignisse haben es nicht). `agentCall` in `TaskThread.tsx` nimmt bei Hintergrund-Subagenten dieses Ereignis als Ergebnis.
 - Die Schritte des Subagenten kommen im Stream (assistant/user/stream_event mit `parent_tool_use_id`), aber erst nach dem `result` des Durchlaufs, der ihn gestartet hat. `SessionStream.handle` wertet deshalb nur Nachrichten ohne `parent_tool_use_id` als Beginn eines neuen Durchlaufs, sonst stünde die Session als „arbeitet“ da.
+
+## In Hintergrundaufgaben schreiben (geprüft 2026-10-17)
+- **Kein direkter Weg im SDK.** Die CLI kennt den Control-Request `send_task_message`, antwortet aber „Unsupported control request subtype: send_task_message“ (in den Capabilities steht `send_task_message: false`). Eine Nutzernachricht mit `parent_tool_use_id` = Agent-Aufruf landet bei der Haupt-Session, nicht beim Subagenten.
+- **SendMessage über die Haupt-Session funktioniert zuverlässig** (auch mit Haiku): Claude lädt das Werkzeug per ToolSearch (`select:SendMessage`) und ruft `SendMessage { to: "<agentId>", message }`.
+  - Subagent läuft: Ergebnis „Message queued for delivery to <id> at its next tool round.“ Die Nachricht kommt nach seinem laufenden Werkzeugaufruf an; im Stream gibt es dazu keine Nutzernachricht mit `parent_tool_use_id`.
+  - Subagent fertig: „Resuming agent <id>“. Es kommt ein neues `task_started` mit **derselben task_id**, aber `tool_use_id` = der SendMessage-Aufruf; `background_tasks_changed` listet ihn wieder. Seine neuen Schritte tragen weiter `parent_tool_use_id` = der ursprüngliche Agent-Aufruf, das `task_notification` danach wieder die SendMessage-ID.
+- **stdin von Hintergrundbefehlen:** nicht erreichbar. Kein Control-Request dafür; `read line` in einem Hintergrund-Bash bekommt sofort eine leere Eingabe.
