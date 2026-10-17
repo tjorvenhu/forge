@@ -2674,6 +2674,7 @@ export class PhoneService {
               d.apiKeyEnvPresent ? (d.apiKeyStripped ? "ein API-Key in der Umgebung wird ausgeblendet" : "ein API-Key in der Umgebung geht an Claude Code") : "",
               d.git.found ? `Git${d.git.version ? ` ${d.git.version}` : ""} ist da` : "Git fehlt",
               d.gh.found ? (d.gh.authenticated === false ? "die GitHub-CLI ist nicht angemeldet" : "die GitHub-CLI ist da") : "die GitHub-CLI fehlt",
+              d.python.found ? `${d.python.version ?? "Python"} ist da${d.python.bundled ? " (mitgeliefert)" : ""}` : "Python fehlt",
             ].filter(Boolean);
             const missing = d.capabilities.filter((c) => c.state === "unavailable").map((c) => c.label);
             return `${facts.join(", ")}.${missing.length ? ` Nicht verfügbar: ${missing.join(", ")}.` : ""}`;

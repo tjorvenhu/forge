@@ -404,6 +404,7 @@ function DiagnosticsPanel() {
             />
             <ToolRow label="git" t={d.git} />
             <ToolRow label="GitHub CLI" t={d.gh} extra={d.gh.found ? (d.gh.authenticated ? <Badge tone="success">angemeldet</Badge> : <Badge tone="warning">nicht angemeldet</Badge>) : null} />
+            <ToolRow label="Python" t={d.python} />
           </div>
           <div className="px-4 py-3.5">
             <div className="mb-2 text-xs font-medium text-muted">Funktionsübersicht (aktiver Adapter: Agent SDK)</div>
@@ -429,12 +430,12 @@ function DiagnosticsPanel() {
   );
 }
 
-/** Same rows and boxes as the loaded diagnostics: eight info rows, then the capability list. */
+/** Same rows and boxes as the loaded diagnostics: nine info rows, then the capability list. */
 function DiagnosticsSkeleton() {
   return (
     <SkeletonRegion label="Lädt Diagnose" className="divide-y divide-border">
       <div className="flex flex-col gap-1.5 px-4 py-3.5">
-        {[45, 30, 70, 40, 35, 50, 30, 45].map((w, i) => (
+        {[45, 30, 70, 40, 35, 50, 30, 45, 25].map((w, i) => (
           <div key={i} className="flex h-5 items-center gap-3">
             <div className="w-40 shrink-0">
               <Skeleton className="h-3 w-28" />

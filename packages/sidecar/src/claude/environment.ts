@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { which } from "../util/proc.js";
-import { bundledPathEntries, gitBashForClaude } from "../util/tools.js";
+import { bundledPathEntries, gitBashForClaude, resolveTool } from "../util/tools.js";
 
 /**
  * Variables a parent Claude Code process sets for its children. If FORGE itself
@@ -40,6 +40,9 @@ export function sessionEnv(stripApiKey: boolean, base: NodeJS.ProcessEnv = proce
     const key = Object.keys(out).find((k) => k.toLowerCase() === "path") ?? "PATH";
     out[key] = [...extra, out[key] ?? ""].filter(Boolean).join(path.delimiter);
   }
+  // Without UTF-8 mode Python writes piped output in the ANSI code page and a single non-Latin-1
+  // character (a check mark, an emoji) ends the script with UnicodeEncodeError. Python 3.15 makes this the default.
+  if (resolveTool("python")?.bundled && out.PYTHONUTF8 === undefined) out.PYTHONUTF8 = "1";
   const bash = gitBashForClaude();
   if (bash && !out.CLAUDE_CODE_GIT_BASH_PATH) out.CLAUDE_CODE_GIT_BASH_PATH = bash;
   return out;

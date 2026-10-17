@@ -89,8 +89,8 @@ E-Mail-Adresse oder Org-Daten der Claude-Anmeldung.
 
 ## Ergänzungen (Einrichtung, GitHub, KI-Commit, Usage)
 
-- **Mitgelieferte Werkzeuge** (Node, Git, gh) stammen aus den offiziellen Releases und werden beim Build
-  per SHA-256 geprüft (`scripts/prepare-runtime.mjs`). Siehe [ADR 0006](adr/0006-mitgelieferte-laufzeit.md).
+- **Mitgelieferte Werkzeuge** (Node, Git, gh, Python) stammen aus den offiziellen Releases und werden beim Build
+  per SHA-256 geprüft, Python per SHA-512 aus dem Katalog von nuget.org (`scripts/prepare-runtime.mjs`). Siehe [ADR 0006](adr/0006-mitgelieferte-laufzeit.md).
 - **Claude-Code-Installation** aus der App führt den offiziellen Installer von claude.ai aus. Das passiert
   nur auf ausdrücklichen Klick und nur, wenn keine CLI gefunden wird.
 - **Claude-Anmeldung:** FORGE startet `claude auth login`, öffnet die Anmeldeseite und reicht den vom

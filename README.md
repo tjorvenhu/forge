@@ -10,7 +10,7 @@ dieselbe Ansicht. Die Anmeldung läuft über dein Claude-Abo (z. B. Max). Ein AP
 ## Installation
 
 **Für Nutzer:** `FORGE_0.1.0_x64-setup.exe` ausführen. Mehr braucht es nicht: Node.js, Git (inkl. Bash)
-und die GitHub CLI sind enthalten. Fehlt Claude Code, installiert FORGE es beim ersten Start selbst über den
+und die GitHub CLI sowie Python 3 (mit pip) sind enthalten. Fehlt Claude Code, installiert FORGE es beim ersten Start selbst über den
 offiziellen Installer von Anthropic. Anmeldung bei Claude und GitHub erfolgt in der App (Einstellungen → Claude Code
 bzw. Einstellungen → Allgemein → GitHub).
 

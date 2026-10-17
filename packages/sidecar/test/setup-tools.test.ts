@@ -2,7 +2,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { findLoginUrl, stripAnsi } from "../src/claude/setup.js";
-import { bundledPathEntries, resolveTool } from "../src/util/tools.js";
+import { bundledPathEntries, isStorePythonStub, pythonUserScripts, resolveTool } from "../src/util/tools.js";
 import { sessionEnv } from "../src/claude/environment.js";
 import { tempDir } from "./helpers.js";
 
@@ -48,6 +48,51 @@ describe("bundled runtime resolution", () => {
   it("falls back to the system when nothing is shipped", () => {
     delete process.env.FORGE_RUNTIME_DIR;
     expect(resolveTool("git")?.bundled ?? false).toBe(false);
+    expect(resolveTool("python")?.bundled ?? false).toBe(false);
     expect(bundledPathEntries()).toEqual([]);
+  });
+
+  it("puts the shipped python and its user script folder on the session PATH", () => {
+    const rt = tempDir("forge-runtime-py-");
+    try {
+      for (const rel of ["git/cmd/git.exe", "gh/bin/gh.exe", "python/python.exe"]) {
+        mkdirSync(path.dirname(path.join(rt.dir, rel)), { recursive: true });
+        writeFileSync(path.join(rt.dir, rel), "");
+      }
+      writeFileSync(path.join(rt.dir, "VERSIONS.json"), JSON.stringify({ node: "24.21.0", git: "2.56.0.2", gh: "2.102.0", python: "3.14.8" }));
+      process.env.FORGE_RUNTIME_DIR = rt.dir;
+      expect(resolveTool("python")).toEqual({ path: path.join(rt.dir, "python", "python.exe"), bundled: true });
+      const scripts = pythonUserScripts("3.14.8");
+      expect(scripts).toMatch(/[\\/]Python314[\\/]Scripts$/);
+      expect(bundledPathEntries()).toEqual([path.join(rt.dir, "git", "cmd"), path.join(rt.dir, "gh", "bin"), path.join(rt.dir, "python"), scripts]);
+      // In front of WindowsApps, whose python.exe only opens the Store.
+      const env = sessionEnv(true, { Path: "C:\\Users\\x\\AppData\\Local\\Microsoft\\WindowsApps" });
+      expect(env.Path?.split(path.delimiter)).toEqual([...bundledPathEntries(), "C:\\Users\\x\\AppData\\Local\\Microsoft\\WindowsApps"]);
+      expect(env.PYTHONUTF8).toBe("1");
+      expect(sessionEnv(true, { PYTHONUTF8: "0" }).PYTHONUTF8).toBe("0");
+    } finally {
+      rt.cleanup();
+    }
+  });
+
+  it("finds the user script folder like site.py", () => {
+    expect(pythonUserScripts("3.14.8", { APPDATA: "C:\\Users\\x\\AppData\\Roaming" })).toBe(path.join("C:\\Users\\x\\AppData\\Roaming", "Python", "Python314", "Scripts"));
+    expect(pythonUserScripts("3.14.8", { APPDATA: "C:\\a", PYTHONUSERBASE: "D:\\py" })).toBe(path.join("D:\\py", "Python314", "Scripts"));
+    expect(pythonUserScripts(undefined, { APPDATA: "C:\\a" })).toBeNull();
+  });
+
+  it("does not take the Store placeholder in WindowsApps for a Python", () => {
+    const t = tempDir("forge-store-");
+    try {
+      const apps = path.join(t.dir, "WindowsApps");
+      mkdirSync(apps, { recursive: true });
+      writeFileSync(path.join(apps, "python.exe"), "");
+      expect(isStorePythonStub(path.join(apps, "python.exe"))).toBe(true);
+      mkdirSync(path.join(apps, "PythonSoftwareFoundation.Python.3.13_qbz5n2kfra8p0"));
+      expect(isStorePythonStub(path.join(apps, "python.exe"))).toBe(false);
+      expect(isStorePythonStub("C:\\Python314\\python.exe")).toBe(false);
+    } finally {
+      t.cleanup();
+    }
   });
 });
