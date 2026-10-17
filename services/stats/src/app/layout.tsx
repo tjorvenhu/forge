@@ -7,6 +7,7 @@ import "./globals.css";
 
 const REPO_URL = "https://github.com/tjorvenhu/forge";
 const DONATE_URL = "https://paypal.me/tjorvenhu";
+const IMPRINT_URL = "https://vanturis.de/impressum";
 
 export const metadata: Metadata = {
   title: "FORGE in Zahlen",
@@ -40,6 +41,12 @@ export default function RootLayout({ children }: { children: ReactNode }) {
           </div>
         </header>
         {children}
+        <footer className="footer">
+          <div className="container footer-inner">
+            <span>Betrieben von Vanturis</span>
+            <a href={IMPRINT_URL}>Impressum</a>
+          </div>
+        </footer>
       </body>
     </html>
   );

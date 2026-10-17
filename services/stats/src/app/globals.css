@@ -95,6 +95,32 @@ a {
   padding-right: var(--page-gutter);
 }
 
+.footer {
+  border-top: 1px solid var(--color-border);
+  color: var(--color-subtle);
+  font-size: var(--text-small);
+}
+
+.footer-inner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  padding-top: 16px;
+  padding-bottom: 16px;
+}
+
+.footer a {
+  color: var(--color-muted);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.footer a:hover {
+  color: var(--color-fg);
+}
+
 /* Page header of the app (layout/Page.tsx): 64px high, a line below. */
 .topbar {
   border-bottom: 1px solid var(--color-border);
