@@ -378,8 +378,8 @@ function AboutSection({ s, save }: { s: Settings; save: Save }) {
           label="Anonyme Nutzungsstatistik"
           description={
             <>
-              Alle 5 Minuten gehen Summen an den Statistik-Dienst von FORGE: eine zufällige Kennung, FORGE- und Windows-Version, Tokens, Claude-Arbeitszeit, Sessions, angelegte Projekte,
-              Agenten und Telefonate. Keine Inhalte, Namen oder Pfade. Ausschalten löscht die gesendeten Daten beim Dienst.{" "}
+              Alle 5 Minuten gehen Summen an den Statistik-Dienst von FORGE: eine zufällige Kennung, FORGE- und Windows-Version, Tokens je Claude-Modell, geschätzte API-Kosten,
+              Claude-Arbeitszeit, Durchläufe, Sessions, angelegte Projekte, Agenten und Telefonate. Keine Inhalte, Namen oder Pfade. Ausschalten löscht die gesendeten Daten beim Dienst.{" "}
               <a
                 href={USAGE_STATS_URL}
                 onClick={(e) => {

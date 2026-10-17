@@ -116,7 +116,8 @@ Projekte, Chatverläufe und Einstellungen bleiben auf deinem Rechner (`%APPDATA%
 
 - **Anonyme Nutzungsstatistik (abschaltbar):** Alle 5 Minuten gehen Summen an
   [forge-stats.vanturis.de](https://forge-stats.vanturis.de): eine zufällige Kennung der Installation, FORGE-
-  und Windows-Version und Zählerstände wie Tokens, Sessions, Projekte und Agenten. Keine Inhalte, keine
+  und Windows-Version und Zählerstände wie Tokens je Claude-Modell, geschätzte API-Kosten, Sessions, Projekte und
+  Agenten. Keine Inhalte, keine
   Projektnamen, keine Pfade, keine IP-Adressen. Ausschalten unter Einstellungen > Über FORGE > Datenschutz;
   dann löscht FORGE die gesendeten Daten beim Dienst.
 - **Anthropic:** Claude Code schickt deine Prompts und den Projektkontext mit deinem eigenen Konto an Anthropic.

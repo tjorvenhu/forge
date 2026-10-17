@@ -1,22 +1,27 @@
 ---
-title: "Anonyme Nutzungsstatistik (usageStats, UsageStatsService, services/stats, forge-stats.vanturis.de)"
-summary: "Wie FORGE anonyme Summen an den eigenen Statistik-Dienst schickt, welche Zähler es gibt, wie Zustimmung und Abschalten laufen und wo der Server liegt; nötig, bevor man Zähler ergänzt oder den Dienst ändert."
-tags: ["sidecar","einstellungen","telefon","konvention","stolperfalle"]
-updated: "2026-10-17T20:57:59.818Z"
+title: "Anonyme Nutzungsstatistik und Token-Erfassung (usageStats, modelUsage, services/stats)"
+summary: "Wie FORGE Tokens erfasst (modelUsage statt usage), welche Summen anonym an forge-stats.vanturis.de gehen, wie Zustimmung und Abschalten laufen; nötig vor Änderungen an Token-Zählung, Zählern oder dem Dienst."
+tags: ["sidecar","tokens","sdk","stolperfalle","einstellungen","telefon"]
+updated: "2026-10-17T23:24:58.814Z"
 ---
 
-## Entscheidungen (2026-10-17, vom Besitzer)
-- Eigener Dienst in Coolify unter `https://forge-stats.vanturis.de` (`USAGE_STATS_URL` in `packages/protocol/src/support.ts`), Code in `services/stats` (Next.js + Postgres per docker-compose, nicht im pnpm-Workspace, von ESLint und release.yml ausgenommen). Vor Coolify steht ein eigener HAProxy, der TLS beendet: Domain in Coolify deshalb mit `http://…:3000`, Client-IP über `CLIENT_IP_HEADER` (siehe services/stats/README.md).
-- Zustimmung: FORGE fragt einmal (`UsageStatsPrompt`, nach Einrichtungsassistent und Sync-Frage). Ohne Antwort an (`usageStats` Standard true), auch für Installationen, die per Update kommen. `usageStatsAsked` merkt die Antwort; „Später“/Schließen fragt beim nächsten Start wieder.
-- Senden **alle 5 Minuten** (Wunsch des Besitzers). Der Dienst nimmt höchstens eine Meldung pro Installation alle 4 Minuten an; beide Werte zusammen ändern.
-- Gesamtzahlen sind öffentlich (Startseite des Dienstes, im Stil der App, mit Link zum Vanturis-Impressum).
+## Token-Erfassung: modelUsage, nicht usage (Stolperfalle, behoben 2026-10-18)
+- Im Ergebnis der Agent SDK ist `usage` **nur die Hauptschleife** (ohne Task-Subagenten, Nebenläufe, Komprimierung). Vollständig ist `modelUsage` (pro Modell, inkl. `costUSD`). Vorher zählte FORGE nur `usage`: Subagenten-Tokens fehlten in Tagesbericht, Nutzungsanzeige und Statistik. Alte `claude_usage`-Zeilen bleiben so (nicht nachrechenbar).
+- `modelUsage` ist **kumulativ über die Durchläufe eines Claude-Prozesses**. `normalize.ts` legt es als `turn.result.models` ins Ereignis; `Db.appendEvent` bildet die Differenz zum letzten `turn.result` derselben Session mit Tokens (`lastModelTotals`, überspringt abgestürzte Läufe mit Nullen) über `modelDelta`: sinkt der Stand eines Modells (neuer Prozess ohne gespeicherte Summen, `/clear`), zählt der neue Wert ganz. Fortgesetzte Sessions bringen ihre gespeicherten Summen mit, die Differenz stimmt dann.
+- `claude_usage` hat dafür `models` (JSON je Modell, Delta des Durchlaufs) und `cost_usd`. Einmal-Aufrufe (`recordClaudeUsage`, Titel, Commit-Nachrichten, Telefon) nehmen `modelUsage` direkt, dort ist es die Summe der Abfrage.
+- Tests: `packages/sidecar/test/usage-stats.test.ts` (Subagent-Modell, Absturz, neuer Prozess, Kosten).
+
+## Statistik (Entscheidungen 2026-10-17, vom Besitzer)
+- Eigener Dienst unter `https://forge-stats.vanturis.de` (`USAGE_STATS_URL` in `packages/protocol/src/support.ts`), Code in `services/stats` (Next.js + Postgres per docker-compose, nicht im pnpm-Workspace, von ESLint und release.yml ausgenommen). Vor Coolify steht ein HAProxy, der TLS beendet: Domain in Coolify mit `http://…:3000`, Client-IP über `CLIENT_IP_HEADER`.
+- Zustimmung: einmal fragen (`UsageStatsPrompt`), ohne Antwort an (`usageStats` Standard true), auch nach Updates. `usageStatsAsked` merkt die Antwort.
+- Senden **alle 5 Minuten**; der Dienst nimmt höchstens eine Meldung je Installation alle 4 Minuten an. Beide Werte zusammen ändern.
+- Gesamtzahlen öffentlich auf der Startseite des Dienstes (im Stil der App, mit Diagrammen, Impressum von Vanturis). Das README-Badge „Downloads“ zählt nur Installer über `GET /api/v1/downloads` des Dienstes.
 
 ## Client (`packages/sidecar/src/stats/usage-stats.ts`)
-- Nur in der installierten App (`FORGE_RUNTIME_DIR`), sonst würden Dev-Zahlen die echten verfälschen.
-- Tick jede Minute: an und letzter Versand mindestens 5 Minuten her: `POST /api/v1/report` mit kumulativen Zählern (nie Differenzen). Aus und schon gesendet: einmal `DELETE /api/v1/report/<id>`. 429 gilt als gesendet. Nach Fehler 5 Minuten Pause.
-- Installations-ID und letzter Versand in `<dataDir>/usage-stats.json`, bewusst nicht in den Einstellungen: Backup und Sync kopieren die auf andere PCs, dann hätten zwei Rechner dieselbe ID und überschrieben sich.
-- Zähler aus `Db.usageTotals()`: nur aus Tabellen, die Löschungen überleben (`claude_usage`, `agent_log`, `phone_calls`). Projekte zählt `stats_counters.projectsCreated` (Migration startet mit den vorhandenen Hauptprojekten); `insertProject` erhöht ihn, außer für Agenten-Worktrees (`parentId`) und Backup-Restore (`restored`).
-- Neuen Zähler ergänzen: `UsageTotals` + `usageTotals()`, im Dienst (Whitelist und Obergrenzen) und auf seiner Seite, Texte in `UsageStatsPrompt`, Datenschutz-Abschnitt in `SettingsView` und README.
+- Nur in der installierten App (`FORGE_RUNTIME_DIR`). Tick jede Minute, Versand wenn der letzte mindestens 5 Minuten her ist: `POST /api/v1/report` mit kumulativen `counters` und `models` ({ Modell-ID: { tokens, costUsdCents } }, höchstens 20). Aus und schon gesendet: einmal `DELETE`. 429 gilt als gesendet.
+- Installations-ID in `<dataDir>/usage-stats.json`, bewusst nicht in den Einstellungen (Backup und Sync würden sie auf andere PCs kopieren).
+- `Db.usageTotals()`: Tokens, Durchläufe, Arbeitszeit, Sessions aus `claude_usage`; `userTurns` = Session-Durchläufe ohne `purpose`; `costUsdCents` und `models` nur aus Zeilen mit `modelUsage`; Projekte aus `stats_counters.projectsCreated` (nicht für Worktrees und Backup-Restore); gestartete Agenten = `agent_log` ∪ vorhandene Worktree-Projekte (laufende zählen mit), zusammengeführte aus `agent_log`.
+- Neuer Zähler: `UsageTotals` + `usageTotals()`, im Dienst (Whitelist, Obergrenzen, Seite), Texte in `UsageStatsPrompt`, Datenschutz in `SettingsView`, README und `docs/SECURITY.md`.
 
 ## Überall angebunden
-Einstellungen > Über FORGE > Datenschutz (Schalter setzt auch `usageStatsAsked`), Befehlspalette (Schalter + „Gesamtzahlen aller FORGE-Nutzer ansehen“), Tagesbericht (Knopf „FORGE gesamt“), Telefon `forge_settings usage_stats`, Unterstützen-Dialog hinter dem roten Herz rechts neben der Suche in der Seitenleiste (Link zur Statistik).
+Einstellungen > Über FORGE > Datenschutz, Befehlspalette, Tagesbericht (Knopf „FORGE gesamt“), Telefon `forge_settings usage_stats`, Unterstützen-Dialog hinter dem roten Herz neben der Suche.
