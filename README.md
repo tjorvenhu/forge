@@ -4,7 +4,7 @@
 
 <p align="center">
   <a href="https://github.com/vanturis/forge/releases/latest"><img src="https://img.shields.io/github/v/release/vanturis/forge?style=for-the-badge&label=Version&color=f97316" alt="Neueste Version"></a>
-  <a href="https://github.com/vanturis/forge/releases"><img src="https://img.shields.io/github/downloads/vanturis/forge/total?style=for-the-badge&label=Downloads&color=21262e" alt="Downloads"></a>
+  <a href="https://forge-stats.vanturis.de"><img src="https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fforge-stats.vanturis.de%2Fapi%2Fv1%2Ftotals&query=%24.installs&label=Installationen&style=for-the-badge&color=21262e" alt="Installationen"></a>
   <a href="LICENSE.md"><img src="https://img.shields.io/badge/Lizenz-AGPL--3.0-21262e?style=for-the-badge" alt="Lizenz AGPL-3.0"></a>
   <img src="https://img.shields.io/badge/Windows-10%20%7C%2011-21262e?style=for-the-badge" alt="Windows 10 und 11">
   <a href="https://forge-stats.vanturis.de"><img src="https://img.shields.io/badge/FORGE-in%20Zahlen-21262e?style=for-the-badge&logo=googleanalytics&logoColor=white" alt="FORGE in Zahlen"></a>
