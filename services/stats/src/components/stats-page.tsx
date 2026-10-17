@@ -10,7 +10,14 @@ type TileDef = { icon: LucideIcon; label: string; value: string; unit?: string; 
 function tiles(t: Totals): TileDef[] {
   const c = t.counters;
   return [
-    { icon: Coins, label: "Tokens gesamt", value: formatCount(c.tokensInput + c.tokensOutput), sub: "Eingabe und Ausgabe", highlight: true },
+    // Same count as the app (sidebar, daily report): every token Claude processed, the cached context included.
+    {
+      icon: Coins,
+      label: "Tokens gesamt",
+      value: formatCount(c.tokensInput + c.tokensOutput + c.tokensCacheRead + c.tokensCacheWrite),
+      sub: `davon ${formatCount(c.tokensInput + c.tokensOutput + c.tokensCacheWrite)} neu, der Rest Kontext aus dem Cache`,
+      highlight: true,
+    },
     { icon: Clock, label: "Claude-Arbeitszeit", value: formatHours(c.claudeWorkMs), unit: "Std.", sub: "Laufzeit aller Durchläufe" },
     { icon: Repeat, label: "Durchläufe", value: formatCount(c.claudeTurns), sub: "Aufträge an Claude" },
     { icon: MessagesSquare, label: "Sessions", value: formatCount(c.sessions), sub: "Chats mit Claude" },

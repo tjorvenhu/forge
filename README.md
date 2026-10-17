@@ -21,6 +21,17 @@
   und bringt Git, Agenten, Vorschau und Projektwissen in ein Fenster. Mit deinem eigenen Claude-Abo, ohne API-Schlüssel.
 </p>
 
+<table>
+  <tr>
+    <td width="50%"><img src=".github/assets/screenshots/start.png" alt="Startseite: was gerade läuft und zuletzt bearbeitete Sessions"></td>
+    <td width="50%"><img src=".github/assets/screenshots/projekte.png" alt="Projekte mit Git-Status, Tags und parallelen Agenten"></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>Start: was gerade läuft, zuletzt bearbeitete Sessions, Abo-Nutzung</sub></td>
+    <td align="center"><sub>Projekte mit Git-Status, Technologien und laufenden Agenten</sub></td>
+  </tr>
+</table>
+
 <p align="center">
   <a href="#installation">Installation</a> ·
   <a href="#was-forge-kann">Funktionen</a> ·
