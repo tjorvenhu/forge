@@ -30,7 +30,7 @@ function useInstallAction() {
 }
 
 /** What the restart means for the open sessions; nothing without any. */
-function RestartNote({ className }: { className?: string }) {
+export function RestartNote({ className }: { className?: string }) {
   const live = useLiveSessions().data ?? [];
   const note = sessionsNote(live.length, live.filter(isWorkingSession).length);
   if (!note) return null;
@@ -233,7 +233,7 @@ export function AppUpdateSettings() {
         : s.phase === "error"
           ? (s.message ?? "Prüfung fehlgeschlagen.")
           : s.checkedAt
-            ? `Aktuell, geprüft ${relativeTime(s.checkedAt)}.`
+            ? (s.message ?? `Aktuell, geprüft ${relativeTime(s.checkedAt)}.`)
             : "Noch nicht geprüft.";
   return (
     <div className="flex items-center gap-3">

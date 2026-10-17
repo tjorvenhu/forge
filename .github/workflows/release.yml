@@ -114,6 +114,9 @@ jobs:
       - name: Build app
         shell: pwsh
         working-directory: apps/desktop
+        env:
+          # Built into the exe: the app checks its installed runtime against it (incomplete installations).
+          FORGE_RUNTIME_KEY: ${{ steps.plan.outputs.key }}
         run: |
           if ("${{ steps.plan.outputs.full }}" -eq "true") {
             pnpm tauri build --config src-tauri/tauri.ci.json

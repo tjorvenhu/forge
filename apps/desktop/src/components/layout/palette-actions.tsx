@@ -16,6 +16,8 @@ import {
   Cpu,
   Database,
   FilePlus2,
+  FileUp,
+  PackageCheck,
   FileStack,
   FileText,
   FlaskConical,
@@ -65,6 +67,7 @@ import {
   Link2Off,
 } from "lucide-react";
 import type {
+  AppInstallState,
   AppUpdateState,
   ClaudeUpdateInfo,
   DevServerState,
@@ -83,7 +86,7 @@ import type {
   TestDbState,
 } from "@forge/protocol";
 import { IDLE_CLOSE_CHOICES } from "@forge/protocol";
-import { installUpdate } from "@/lib/app-install";
+import { checkInstall, installFromFile, installFull, installUpdate } from "@/lib/app-install";
 import { call, keys, refreshUsage } from "@/lib/queries";
 import { EFFORT_LEVELS, modelLabel } from "@/lib/models";
 import { errorMessage, RpcCallError } from "@/lib/rpc";
@@ -581,6 +584,13 @@ export function buildActions(ctx: ActionContext): PaletteEntry[] {
   const update = qc.getQueryData<AppUpdateState>(keys.appUpdate);
   if (update?.latest && update.installable && ["available", "downloading", "ready"].includes(update.phase)) {
     act("update-install", `FORGE ${update.latest.version} installieren`, icon(ArrowUpCircle), () => void installUpdate(qc), { keywords: "update aktualisieren neustart version" });
+  }
+  const installKeywords = "vollständig installation unvollständig setup installer laufzeit runtime git gh github cli node fehlt reparieren";
+  act("install-check", "Installation prüfen", icon(PackageCheck), () => void checkInstall(qc), { keywords: installKeywords });
+  const install = qc.getQueryData<AppInstallState>(keys.appInstall);
+  if (install?.checkable && install.complete === false) {
+    if (install.installer || install.phase === "ready") act("install-full", "FORGE vollständig installieren", icon(PackageCheck), () => void installFull(qc), { keywords: installKeywords });
+    act("install-file", "Heruntergeladene setup.exe installieren", icon(FileUp), () => void installFromFile(qc), { keywords: installKeywords });
   }
   const claudeUpdate = qc.getQueryData<ClaudeUpdateInfo>(keys.claudeUpdate);
   if (claudeUpdate?.available) {

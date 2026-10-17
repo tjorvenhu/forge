@@ -1,6 +1,8 @@
 import { lazy, Suspense, useEffect, useState } from "react";
-import { AlertTriangle, RotateCw } from "lucide-react";
+import { invoke } from "@tauri-apps/api/core";
+import { AlertTriangle, ExternalLink, RotateCw } from "lucide-react";
 import { isTauri, rpc } from "@/lib/rpc";
+import { openExternal } from "@/lib/native";
 import { useUi } from "@/stores/ui";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { Toaster } from "@/components/layout/Toaster";
@@ -11,6 +13,7 @@ import { ErrorBoundary } from "@/components/layout/ErrorBoundary";
 import { NewProjectDialog } from "@/components/projects/NewProjectDialog";
 import { CommandPalette } from "@/components/layout/CommandPalette";
 import { AppUpdateDialog } from "@/components/layout/AppUpdate";
+import { InstallRepairBanner, RELEASES_URL } from "@/components/layout/InstallRepair";
 import { SetupWizard } from "@/components/setup/SetupWizard";
 import { SyncPrompt } from "@/components/setup/SyncPrompt";
 import { ClaudeLoginDialog, ClaudeLogoutDialog } from "@/components/settings/ClaudeLoginDialog";
@@ -93,7 +96,7 @@ export function App({ chatWindow = null }: { chatWindow?: ChatWindowTarget | nul
           <div className="max-w-md text-center text-body text-muted">Starte ihn im FORGE-Hauptfenster neu. Dieses Fenster verbindet sich danach von selbst.</div>
         ) : (
           <>
-            <div className="max-w-md text-center text-body text-muted">Voraussetzung ist Node.js ab Version 22.13 im PATH.</div>
+            <IncompleteInstallHint />
             <Button variant="primary" onClick={() => void rpc.restart()}>
               <RotateCw className="h-3.5 w-3.5" /> Neu starten
             </Button>
@@ -119,6 +122,9 @@ function Shell() {
           <Sidebar />
         </ErrorBoundary>
         <main className="flex min-w-0 flex-1 flex-col">
+          <ErrorBoundary>
+            <InstallRepairBanner />
+          </ErrorBoundary>
           <ErrorBoundary resetKey={`${view}:${activeProjectId}`}>
             <Suspense fallback={<PageSkeleton />}>
               {/* Keyed per view: each switch fades the new view in (enter only, nothing waits for an exit). */}
@@ -172,6 +178,36 @@ function PageSkeleton() {
         ))}
       </div>
     </SkeletonRegion>
+  );
+}
+
+/**
+ * Why the sidecar may not run: in an installation without its bundled runtime (an update zip unpacked
+ * instead of the installer) node is missing. The shell checks the folder, the sidecar cannot.
+ */
+function IncompleteInstallHint() {
+  const [missing, setMissing] = useState<string[] | null>(null);
+  useEffect(() => {
+    invoke<{ release: boolean; missing: string[] }>("install_check")
+      .then((r) => setMissing(r.release ? r.missing : []))
+      .catch(() => setMissing([]));
+  }, []);
+  if (missing === null)
+    return (
+      <SkeletonRegion label="Lädt Installationsprüfung" className="flex justify-center">
+        <Skeleton className="h-3.5 w-72" />
+      </SkeletonRegion>
+    );
+  if (!missing.length) return <div className="max-w-md text-center text-body text-muted">Voraussetzung ist Node.js ab Version 22.13 im PATH.</div>;
+  return (
+    <div className="flex max-w-md flex-col items-center gap-2 text-center text-body text-muted">
+      <div>
+        FORGE ist nicht vollständig installiert, es fehlt: {missing.join(", ")}. Installiere FORGE mit der vollständigen setup.exe von der Release-Seite, nicht mit dem Update-Zip.
+      </div>
+      <Button variant="outline" onClick={() => void openExternal(RELEASES_URL)}>
+        <ExternalLink className="h-3.5 w-3.5" /> Release-Seite öffnen
+      </Button>
+    </div>
   );
 }
 

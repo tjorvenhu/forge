@@ -123,6 +123,10 @@ impl Sidecar {
         }
         // The sidecar compares this with the GitHub releases (updates).
         cmd.env("FORGE_APP_VERSION", app.package_info().version.to_string());
+        // Only a release build is an installation to check; empty when the build did not know its runtime.
+        if !cfg!(debug_assertions) {
+            cmd.env("FORGE_RUNTIME_EXPECTED", crate::update::expected_runtime().unwrap_or(""));
+        }
         cmd.arg("--no-warnings")
             .arg(&script)
             .stdin(Stdio::piped())

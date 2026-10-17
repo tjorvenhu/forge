@@ -48,6 +48,7 @@ import { PolicySettings } from "@/components/settings/PolicySettings";
 import { TemplatesSettings } from "@/components/templates/TemplatesSettings";
 import { GitHubSettings } from "@/components/settings/GitHubSettings";
 import { AppUpdateSettings } from "@/components/layout/AppUpdate";
+import { InstallRepairSettings } from "@/components/layout/InstallRepair";
 import { cn, planLabel } from "@/lib/utils";
 
 type Save = (patch: Partial<Settings>) => Promise<void>;
@@ -335,6 +336,12 @@ function AboutSection({ s, save }: { s: Settings; save: Save }) {
           checked={s.updateChecks}
           onChange={(v) => void save({ updateChecks: v })}
         />
+      </Group>
+
+      <Group title="Installation" description="Ob die mitgelieferten Programme (Node.js, Git, GitHub CLI) da sind und zu dieser Version passen.">
+        <div className="px-4 py-3.5">
+          <InstallRepairSettings />
+        </div>
       </Group>
 
       <Group title="Datenschutz">

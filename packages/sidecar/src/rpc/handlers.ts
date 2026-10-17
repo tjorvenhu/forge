@@ -22,6 +22,7 @@ import type { PhoneService } from "../phone/phone-service.js";
 import type { DictationService } from "../dictation/dictation.js";
 import type { Presence } from "../util/presence.js";
 import type { AppUpdateService } from "../update/app-update.js";
+import type { FullInstallService } from "../update/full-install.js";
 import type { BackupService } from "../backup/backup.js";
 import type { SyncService } from "../sync/sync.js";
 import type { TemplateService } from "../templates/templates.js";
@@ -52,6 +53,7 @@ export interface Services {
   dictation: DictationService;
   presence: Presence;
   updates: AppUpdateService;
+  installs: FullInstallService;
   backups: BackupService;
   sync: SyncService;
   templates: TemplateService;
@@ -308,6 +310,11 @@ export function createHandlers(s: Services): Handlers {
     "app.prepareInstall": ({ cancel }) => s.sessions.prepareUpdateRestart(!cancel),
     "app.installUpdate": () => s.updates.requestInstall(),
     "app.changelog": () => s.updates.changelog(),
+    "app.installState": () => s.installs.get(),
+    "app.checkInstall": () => s.installs.check(),
+    "app.downloadFullInstaller": () => s.installs.download(),
+    "app.useLocalInstaller": ({ path: file }) => s.installs.useLocal(file),
+    "app.repairInstall": () => s.installs.requestInstall(),
 
     "backup.list": () => s.backups.list(),
     "backup.create": () => s.backups.create("manual"),

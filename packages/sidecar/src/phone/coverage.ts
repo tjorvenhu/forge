@@ -135,6 +135,10 @@ export const PHONE_TOOL_FOR: Partial<Record<MethodName, string>> = {
   "app.downloadUpdate": "forge_system",
   "app.installUpdate": "forge_system",
   "app.changelog": "forge_system",
+  "app.installState": "forge_system",
+  "app.checkInstall": "forge_system",
+  "app.downloadFullInstaller": "forge_system",
+  "app.repairInstall": "forge_system",
 
   "backup.list": "forge_system",
   "backup.create": "forge_system",
@@ -191,6 +195,7 @@ export const NOT_ON_PHONE: Partial<Record<MethodName, string>> = {
   "uiCompare.image": "Vorher-Nachher-Bilder lassen sich nicht vorlesen; ui_compare sagt, ob ein Vergleich vorliegt und was er zeigt.",
   "attachments.upload": "Lädt eingefügte Dateien aus dem Eingabefeld hoch; am Telefon gibt es keine Dateien zum Anhängen.",
   "app.prepareInstall": "Interner Schritt der Installation im Hauptfenster; am Telefon startet forge_system update_install die ganze Installation.",
+  "app.useLocalInstaller": "Eine setup.exe am Rechner auswählen; am Telefon nimmt forge_system install_repair einen passenden Installer aus dem Downloads-Ordner von selbst.",
   "app.presence": "Meldet, ob der Nutzer gerade am Rechner ist; das Telefon ist genau der andere Fall.",
   "backup.export": "Schreibt ein Backup in eine Datei, die der Nutzer im Dateidialog wählt.",
   "backup.inspect": "Liest eine Backup-Datei aus dem Dateidialog für die Vorschau vor dem Wiederherstellen.",

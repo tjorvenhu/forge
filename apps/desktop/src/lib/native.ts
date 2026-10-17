@@ -21,6 +21,12 @@ export async function pickBackupFile(title: string): Promise<string | null> {
   return typeof r === "string" ? r : null;
 }
 
+/** A downloaded FORGE setup.exe; null when the dialog was cancelled. */
+export async function pickInstallerFile(): Promise<string | null> {
+  const r = await open({ multiple: false, directory: false, title: "FORGE-Installer auswählen", filters: [{ name: "FORGE-Installer", extensions: ["exe"] }] });
+  return typeof r === "string" ? r : null;
+}
+
 /** Opens https links and local dev server addresses (http://localhost, 127.0.0.1) in the system browser. */
 export async function openExternal(url: string) {
   if (!/^https:\/\//.test(url) && !/^http:\/\/(localhost|127\.0\.0\.1):\d+(\/|$)/.test(url)) return;

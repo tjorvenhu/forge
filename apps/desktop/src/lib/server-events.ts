@@ -11,7 +11,7 @@ import { playSound } from "./sounds";
 import { notifyAutoContinue, notifyDone, notifyKind, notifySession, shouldNotify } from "./notifications";
 import { isChatWindow } from "./chat-windows";
 import { agentAutoMerged, agentTurnEnded } from "./agent-review";
-import { installUpdate } from "./app-install";
+import { installFull, installUpdate } from "./app-install";
 
 const GIT_REFRESH_DELAY_MS = 400;
 const EVICT_INTERVAL_MS = 60_000;
@@ -200,6 +200,12 @@ export function routeServerEvent(qc: QueryClient, git: GitRefresher, e: ServerEv
       break;
     case "update.install":
       if (!isChatWindow()) void installUpdate(qc);
+      break;
+    case "install.updated":
+      qc.setQueryData(keys.appInstall, e.payload);
+      break;
+    case "install.repair":
+      if (!isChatWindow()) void installFull(qc);
       break;
     case "runtime.models": {
       void qc.invalidateQueries({ queryKey: keys.runtimeInfo });

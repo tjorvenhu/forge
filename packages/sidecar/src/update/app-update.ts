@@ -13,8 +13,53 @@ export const UPDATE_REPO = "tjorvenhu/forge";
 const FIRST_CHECK_MS = 3_000;
 const CHECK_INTERVAL_MS = 30 * 60_000;
 const INSTALLER = /-setup\.exe$/i;
+/** full installer with the runtime key in its name (release.yml); the oldest ones have none */
+const KEYED_INSTALLER = /^FORGE_[^_]+_(.+)_x64-setup\.exe$/i;
 /** small update: exe and sidecar only, for one runtime (key in the name) */
 const PATCH = /_update_(.+)\.zip$/i;
+
+/** Runtime key in the name of a full installer, null for names without one. */
+export function installerRuntimeKey(name: string): string | null {
+  return KEYED_INSTALLER.exec(name)?.[1] ?? null;
+}
+
+/** Runtime key of the small update a release carries, null without one. */
+function patchRuntimeKey(rel: Release): string | null {
+  for (const a of rel.assets ?? []) {
+    const key = a.name ? PATCH.exec(a.name)?.[1] : undefined;
+    if (key) return key;
+  }
+  return null;
+}
+
+/** The full installer of a release, only one for `key` when a key is given. */
+function installerOf(rel: Release, key: string | null): { name: string; size?: number; digest?: string | null } | null {
+  const a = (rel.assets ?? []).find((x) => x.name && INSTALLER.test(x.name) && (!key || installerRuntimeKey(x.name) === key));
+  return a?.name ? { ...a, name: a.name } : null;
+}
+
+/** Published releases, newest first. */
+function published(releases: Release[]): Release[] {
+  return releases.filter((r) => r.tag_name && !r.draft && !r.prerelease).sort((a, b) => compareVersions(b.tag_name!, a.tag_name!));
+}
+
+/**
+ * The newest full installer for a runtime key, whatever its version (the runtime changes rarely, so
+ * the installer usually belongs to an older release). Without a key the newest installer at all.
+ * `then`: the newest small update for that runtime when it is newer than the installer.
+ */
+export function pickInstaller(releases: Release[], key: string | null): { release: Release; asset: { name: string; size?: number; digest?: string | null }; then: Release | null } | null {
+  const list = published(releases);
+  for (const rel of list) {
+    const asset = installerOf(rel, key);
+    if (!asset) continue;
+    const runtime = key ?? installerRuntimeKey(asset.name);
+    const patch = runtime ? list.find((r) => patchRuntimeKey(r) === runtime) : undefined;
+    const then = patch && compareVersions(patch.tag_name!, rel.tag_name!) > 0 ? patch : null;
+    return { release: rel, asset, then };
+  }
+  return null;
+}
 /**
  * Most releases whose changes the update dialog lists. Local builds are 0.1.0 and would otherwise get
  * every release ever made. Below the 100 of the first page of the releases list, so that page is enough.
@@ -45,8 +90,9 @@ export function installedRuntimeKey(dir = process.env.FORGE_RUNTIME_DIR): string
 /**
  * Which release to install from a list. The offered version is always the newest one (`newest`).
  * It is installed directly when it has a full installer or a small update for the installed runtime.
- * Otherwise `release` is the newest full installer, and the small update of `newest` follows after
- * the restart (see AppUpdateService.check).
+ * Otherwise `release` is a full installer for the runtime the small update of `newest` needs, which
+ * then follows after the restart (see AppUpdateService.check). That installer may belong to an older
+ * release than the installed one: the runtime changes rarely, and only such an installer leads on.
  */
 export function pickRelease(
   releases: Release[],
@@ -58,9 +104,25 @@ export function pickRelease(
   if (!newest) return null;
   const patch = runtimeKey ? (newest.assets ?? []).find((a) => a.name && PATCH.exec(a.name)?.[1] === runtimeKey) : undefined;
   if (patch?.name) return { newest, release: newest, asset: { ...patch, name: patch.name }, kind: "patch" };
+  const target = patchRuntimeKey(newest);
+  const full = (rel: Release, key: string | null) => {
+    const asset = installerOf(rel, key);
+    return asset ? { newest, release: rel, asset, kind: "full" as const } : null;
+  };
   for (const rel of newer) {
-    const full = (rel.assets ?? []).find((a) => a.name && INSTALLER.test(a.name));
-    if (full?.name) return { newest, release: rel, asset: { ...full, name: full.name }, kind: "full" };
+    const hit = full(rel, target);
+    if (hit) return hit;
+  }
+  if (target) {
+    for (const rel of published(releases)) {
+      const hit = full(rel, target);
+      if (hit) return hit;
+    }
+  }
+  // Last resort: an installer for another runtime still brings a newer version.
+  for (const rel of newer) {
+    const hit = full(rel, null);
+    if (hit) return hit;
   }
   return null;
 }
@@ -116,8 +178,11 @@ export function updateDir(): string {
   return path.join(os.tmpdir(), "forge-update");
 }
 
+/** Subfolder of updateDir for the full installer of a repair; an update download leaves it alone. */
+export const FULL_DIR = "full";
+
 /** Outside updateDir, which is emptied before every download. */
-function defaultChainFile(): string {
+export function defaultChainFile(): string {
   return path.join(os.tmpdir(), "forge-update-chain.json");
 }
 
@@ -296,12 +361,7 @@ export class AppUpdateService {
   }
 
   private async gh(args: string[], timeoutMs: number) {
-    if (this.d.gh) return this.d.gh(args, timeoutMs);
-    const tool = resolveTool("gh");
-    if (!tool) throw new Error("GitHub CLI fehlt in dieser Installation.");
-    const r = await run(tool.path, args, { env: { ...process.env, GH_PROMPT_DISABLED: "1", GH_PAGER: "", GH_NO_UPDATE_NOTIFIER: "1" }, timeoutMs });
-    if (r.spawnError) throw r.spawnError;
-    return { code: r.code, stdout: r.stdout, stderr: r.stderr };
+    return (this.d.gh ?? runGh)(args, timeoutMs);
   }
 
   /** One check or download at a time; a second call gets the running one. */
@@ -318,13 +378,10 @@ export class AppUpdateService {
       try {
         const r = await this.gh(["api", `repos/${UPDATE_REPO}/releases?per_page=100`], 30_000);
         if (r.code !== 0) {
-          const err = `${r.stderr}${r.stdout}`;
-          if (/auth login|not logged|401/i.test(err)) throw new Error("Für Updates bitte in FORGE bei GitHub anmelden (Ansicht GitHub).");
-          if (/404|Not Found/i.test(err)) {
-            this.set({ phase: "uptodate", latest: null, checkedAt: new Date().toISOString(), message: "Noch kein Release veröffentlicht." });
-            return this.state;
-          }
-          throw new Error(err.trim().split("\n").at(-1) || "GitHub hat die Anfrage abgelehnt.");
+          const err = ghApiError(r, "Updates");
+          if (err) throw new Error(err);
+          this.set({ phase: "uptodate", latest: null, checkedAt: new Date().toISOString(), message: "Noch kein Release veröffentlicht." });
+          return this.state;
         }
         const parsed = JSON.parse(r.stdout) as Release[];
         const list = Array.isArray(parsed) ? parsed : [];
@@ -335,7 +392,10 @@ export class AppUpdateService {
         if (!pick || !range) {
           this.asset = null;
           this.range = null;
-          this.set({ phase: "uptodate", latest: null, installerPath: null, autoInstall: false, checkedAt });
+          // Newer releases, but none this installation can take: say so instead of "up to date".
+          const blocked = range ? bare(range.releases[0]!.tag_name!) : null;
+          const message = blocked ? `FORGE ${blocked} ist erschienen, braucht aber den vollständigen Installer. Dafür gibt es noch keinen.` : null;
+          this.set({ phase: "uptodate", latest: null, installerPath: null, autoInstall: false, checkedAt, message });
           return this.state;
         }
         const { newest, release: rel, asset, kind } = pick;
@@ -461,7 +521,10 @@ export class AppUpdateService {
       this.set({ phase: "downloading", message: null });
       const dir = path.join(updateDir(), latest.tag.replace(/[^\w.-]/g, "_"));
       try {
-        await rm(updateDir(), { recursive: true, force: true });
+        // The full installer of a repair (FullInstallService) keeps its own folder.
+        for (const entry of await readdir(updateDir()).catch(() => [] as string[])) {
+          if (entry !== FULL_DIR) await rm(path.join(updateDir(), entry), { recursive: true, force: true });
+        }
         await mkdir(dir, { recursive: true });
         const r = await this.gh(["release", "download", asset.tag, "--repo", UPDATE_REPO, "--pattern", asset.name, "--dir", dir, "--clobber"], 15 * 60_000);
         if (r.code !== 0) throw new Error(`Download fehlgeschlagen: ${(r.stderr || r.stdout).trim().split("\n").at(-1)}`);
@@ -489,7 +552,24 @@ export class AppUpdateService {
   }
 }
 
-function sha256(file: string): Promise<string> {
+/** Runs the GitHub CLI without prompts; FORGE ships it, a system copy is the fallback. */
+export async function runGh(args: string[], timeoutMs: number): Promise<{ code: number | null; stdout: string; stderr: string }> {
+  const tool = resolveTool("gh");
+  if (!tool) throw new Error("GitHub CLI fehlt in dieser Installation.");
+  const r = await run(tool.path, args, { env: { ...process.env, GH_PROMPT_DISABLED: "1", GH_PAGER: "", GH_NO_UPDATE_NOTIFIER: "1" }, timeoutMs });
+  if (r.spawnError) throw r.spawnError;
+  return { code: r.code, stdout: r.stdout, stderr: r.stderr };
+}
+
+/** The error of a failed `gh api` call, in words for the UI; null when it only means "not found". */
+export function ghApiError(r: { stdout: string; stderr: string }, what: string): string | null {
+  const err = `${r.stderr}${r.stdout}`;
+  if (/auth login|not logged|401/i.test(err)) return `Für ${what} bitte in FORGE bei GitHub anmelden (Ansicht GitHub).`;
+  if (/404|Not Found/i.test(err)) return null;
+  return err.trim().split("\n").at(-1) || "GitHub hat die Anfrage abgelehnt.";
+}
+
+export function sha256(file: string): Promise<string> {
   return new Promise((resolve, reject) => {
     const h = createHash("sha256");
     createReadStream(file)

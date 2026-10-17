@@ -23,6 +23,7 @@ import { tokenMeter } from "./claude/token-meter.js";
 import { DictationService } from "./dictation/dictation.js";
 import { Presence } from "./util/presence.js";
 import { AppUpdateService } from "./update/app-update.js";
+import { FullInstallService } from "./update/full-install.js";
 import { SecretStore } from "./phone/secrets.js";
 import { locateClaude, sessionEnv } from "./claude/environment.js";
 import { readAuth } from "./claude/diagnostics.js";
@@ -195,6 +196,11 @@ export function createApp(opts: { dataDir: string; write: Writer; log?: (m: stri
       return runtime.complete(prompt, { cwd: opts.dataDir, env: c.env, claudePath: c.path, model: ASSIST_MODEL, purpose: "changelog" });
     },
   });
+  const installs = new FullInstallService({
+    emit: (payload) => emit({ event: "install.updated", payload }),
+    requestInstall: () => emit({ event: "install.repair", payload: {} }),
+    log: (m) => opts.log?.(m),
+  });
   const backups = new BackupService({
     dir: path.join(opts.dataDir, "backups"),
     db,
@@ -288,6 +294,7 @@ export function createApp(opts: { dataDir: string; write: Writer; log?: (m: stri
   sessions.resumeAfterUpdate(() => updates.holdsResume());
   if (process.env.FORGE_APP_VERSION) {
     updates.start();
+    installs.start();
     sync.start();
     void backups.createOnStart().catch((e: unknown) => opts.log?.(`Backup beim Start fehlgeschlagen: ${e instanceof Error ? e.message : String(e)}`));
     // A fresh installation without Claude Code fetches it right away (official installer); a configured path is left alone.
@@ -309,6 +316,7 @@ export function createApp(opts: { dataDir: string; write: Writer; log?: (m: stri
     sync,
     templates,
     updates,
+    installs,
     mcp,
     plugins,
     worktrees,
@@ -346,6 +354,7 @@ export function createApp(opts: { dataDir: string; write: Writer; log?: (m: stri
       sessions.shutdown();
       tokenMeter.stop();
       updates.stop();
+      installs.stop();
       sync?.stop();
       devServers.shutdown();
       preview.shutdown();

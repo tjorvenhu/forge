@@ -83,6 +83,21 @@ async fn install_update(app: tauri::AppHandle, path: String) -> Result<(), Strin
     .map_err(|e| e.to_string())?
 }
 
+#[derive(serde::Serialize)]
+struct InstallCheck {
+    release: bool,
+    missing: Vec<&'static str>,
+}
+
+/// What the runtime folder of a release build misses. For the start screen when the sidecar does not
+/// run; with a running sidecar the UI asks it (app.installState), which also compares versions.
+#[tauri::command]
+fn install_check(app: tauri::AppHandle) -> InstallCheck {
+    let release = !cfg!(debug_assertions);
+    let missing = if release { update::runtime_gaps(sidecar::runtime_dir(&app).as_deref()) } else { Vec::new() };
+    InstallCheck { release, missing }
+}
+
 #[tauri::command]
 fn term_open(
     app: tauri::AppHandle,
@@ -125,6 +140,7 @@ pub fn run() {
             sidecar_status,
             sidecar_restart,
             install_update,
+            install_check,
             show_in_explorer,
             term_open,
             term_write,

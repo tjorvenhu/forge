@@ -1849,6 +1849,32 @@ describe("PhoneService end to end with a test PBX", () => {
     expect(await conv.tools.forgeSystem("update_check")).toBe("FORGE 1.3.0 ist verfügbar, installiert ist 1.2.0.");
     expect(await conv.tools.forgeSystem("update_install")).toMatch(/^FORGE 1\.3\.0 wird jetzt installiert und startet neu, dieses Gespräch endet dabei\. Offene Sessions gehen danach weiter/);
     expect(rpcCalls.at(-1)?.[0]).toBe("app.installUpdate");
+    // An incomplete installation: reported, and installed fully only after the keypad code (the restart ends the call).
+    const installState = (complete: boolean) => ({
+      checkable: true,
+      complete,
+      problems: complete ? [] : [{ part: "gh", kind: "missing", label: "GitHub CLI fehlt" }],
+      expectedRuntime: "node-24.21.0_git-2.56.0.2_gh-2.102.0",
+      phase: complete ? "idle" : "found",
+      installer: complete ? null : { version: "0.1.56", tag: "v0.1.56", name: "FORGE_0.1.56_x64-setup.exe", size: 96 * 1048576, source: "github", then: "0.1.60" },
+      received: null,
+      installerPath: null,
+      canDownload: true,
+      checkedAt: null,
+      message: null,
+    });
+    rpcResults["app.checkInstall"] = () => installState(false);
+    rpcResults["app.repairInstall"] = () => installState(false);
+    expect(await conv.tools.forgeSystem("install_check")).toBe(
+      "Die Installation von FORGE ist unvollständig: GitHub CLI fehlt. Mit install_repair installiert sich FORGE vollständig mit dem Installer der Version 0.1.56 (96 MB), danach holt FORGE von selbst das Update auf 0.1.60. Dabei startet FORGE neu und das Gespräch endet.",
+    );
+    const repairAsk = await conv.tools.forgeSystem("install_repair");
+    expect(repairAsk).toMatch(/^Bestätigung nötig, noch ist nichts geändert\. Sag dem Anrufer: FORGE installiert sich vollständig mit dem Installer 0\.1\.56/);
+    expect(rpcCalls.some(([m]) => m === "app.repairInstall")).toBe(false);
+    expect(await keypad(conv, repairAsk)).toContain("FORGE wird jetzt vollständig installiert und startet neu");
+    expect(rpcCalls.at(-1)?.[0]).toBe("app.repairInstall");
+    rpcResults["app.checkInstall"] = () => installState(true);
+    expect(await conv.tools.forgeSystem("install_repair")).toMatch(/^FORGE ist vollständig installiert/);
     expect(await conv.tools.forgeSystem("claude_update")).toBe("Claude Code wird installiert. Ob es geklappt hat, sagt claude_check.");
     expect(rpcCalls.at(-1)?.[0]).toBe("claude.install");
     // Signing in again needs the browser at the computer: only after the keypad code.

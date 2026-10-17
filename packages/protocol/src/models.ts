@@ -1114,6 +1114,52 @@ export const AppUpdateState = z.object({
 });
 export type AppUpdateState = z.infer<typeof AppUpdateState>;
 
+/** One thing missing or outdated in the bundled runtime (node, git, gh …) of an installed FORGE. */
+export const InstallProblem = z.object({
+  /** tool name as in the runtime key (node, git, gh, python …), or runtime/versions for the folder and its list */
+  part: z.string(),
+  kind: z.enum(["missing", "outdated"]),
+  /** short German text for the UI, e.g. "Git fehlt" or "GitHub CLI 2.90.0 statt 2.102.0" */
+  label: z.string(),
+});
+export type InstallProblem = z.infer<typeof InstallProblem>;
+
+/**
+ * Whether the installation has the full bundled runtime this app version expects, and the repair:
+ * the full installer (`*_<runtime>_x64-setup.exe`), found on GitHub or in the Downloads folder.
+ */
+export const AppInstallState = z.object({
+  /** false in a development build: there is no installation to check */
+  checkable: z.boolean(),
+  /** null until the first check */
+  complete: z.boolean().nullable(),
+  problems: z.array(InstallProblem),
+  /** runtime key this app version was built for; null when the build does not know it */
+  expectedRuntime: z.string().nullable(),
+  /** searching: looks for the installer; none: there is no matching one; ready: downloaded and checked */
+  phase: z.enum(["idle", "searching", "found", "none", "downloading", "ready", "error"]),
+  installer: z
+    .object({
+      version: z.string(),
+      tag: z.string().nullable(),
+      name: z.string(),
+      size: z.number().nullable(),
+      /** github: FORGE downloads it; local: a setup.exe the user already has (Downloads folder or picked) */
+      source: z.enum(["github", "local"]),
+      /** newer small update installed by itself after the restart, when the installer is an older version */
+      then: z.string().nullable(),
+    })
+    .nullable(),
+  /** bytes downloaded so far while `downloading` */
+  received: z.number().nullable(),
+  installerPath: z.string().nullable(),
+  /** the GitHub CLI is there: FORGE can fetch the installer itself */
+  canDownload: z.boolean(),
+  checkedAt: z.string().nullable(),
+  message: z.string().nullable(),
+});
+export type AppInstallState = z.infer<typeof AppInstallState>;
+
 /**
  * What changed in the offered release, written by Claude from the release notes and commit messages.
  * `writing`: Claude is still at it, `commits` are already there to show. `unavailable`: no-claude
