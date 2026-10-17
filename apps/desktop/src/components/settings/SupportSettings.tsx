@@ -37,7 +37,8 @@ export function SupportButton() {
           ])
         }
         aria-label="FORGE unterstützen"
-        className="h-9 w-9 rounded-lg text-danger hover:text-danger"
+        // Same box as the search field next to it.
+        className="h-9 w-9 rounded-lg border border-border bg-surface text-danger transition-colors hover:border-border-strong hover:bg-surface hover:text-danger"
       >
         <Heart className="h-4 w-4 fill-current" />
       </Button>

@@ -15,14 +15,30 @@ export const UPDATE_REPO = "tjorvenhu/forge";
 const FIRST_CHECK_MS = 3_000;
 const CHECK_INTERVAL_MS = 30 * 60_000;
 const INSTALLER = /-setup\.exe$/i;
-/** full installer with the runtime key in its name (release.yml); the oldest ones have none */
+/** full installer of releases up to 0.1.8x, with the runtime key in its name; the oldest ones have none */
 const KEYED_INSTALLER = /^FORGE_[^_]+_(.+)_x64-setup\.exe$/i;
+/**
+ * Since the short installer names (FORGE_<v>_x64-setup.exe) the runtime key sits in the name of a
+ * small marker asset next to the installer: FORGE_<v>_x64-setup.<key>.runtime (release.yml).
+ */
+const RUNTIME_MARKER = /^FORGE_[^_]+_x64-setup\.(.+)\.runtime$/i;
 /** small update: exe and sidecar only, for one runtime (key in the name) */
 const PATCH = /_update_(.+)\.zip$/i;
 
-/** Runtime key in the name of a full installer, null for names without one. */
+/** Runtime key in the name of a full installer, null for names without one (short names included). */
 export function installerRuntimeKey(name: string): string | null {
   return KEYED_INSTALLER.exec(name)?.[1] ?? null;
+}
+
+/** Runtime key of a full installer in a release: from its long name or from the marker asset next to it. */
+function releaseInstallerKey(rel: Release, installerName: string): string | null {
+  const named = installerRuntimeKey(installerName);
+  if (named) return named;
+  for (const a of rel.assets ?? []) {
+    const key = a.name ? RUNTIME_MARKER.exec(a.name)?.[1] : undefined;
+    if (key) return key;
+  }
+  return null;
 }
 
 /** Runtime key of the small update a release carries, null without one. */
@@ -39,7 +55,7 @@ export type Asset = ReleaseAsset & { name: string; sig?: ReleaseAsset };
 
 /** The full installer of a release, only one for `key` when a key is given. */
 function installerOf(rel: Release, key: string | null): Asset | null {
-  const a = (rel.assets ?? []).find((x) => x.name && INSTALLER.test(x.name) && (!key || installerRuntimeKey(x.name) === key));
+  const a = (rel.assets ?? []).find((x) => x.name && INSTALLER.test(x.name) && (!key || releaseInstallerKey(rel, x.name) === key));
   return a?.name ? { ...a, name: a.name } : null;
 }
 
@@ -58,7 +74,7 @@ export function pickInstaller(releases: Release[], key: string | null): { releas
   for (const rel of list) {
     const asset = installerOf(rel, key);
     if (!asset) continue;
-    const runtime = key ?? installerRuntimeKey(asset.name);
+    const runtime = key ?? releaseInstallerKey(rel, asset.name);
     const patch = runtime ? list.find((r) => patchRuntimeKey(r) === runtime) : undefined;
     const then = patch && compareVersions(patch.tag_name!, rel.tag_name!) > 0 ? patch : null;
     return { release: rel, asset, then };

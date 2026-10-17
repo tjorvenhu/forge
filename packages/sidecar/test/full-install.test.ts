@@ -91,6 +91,18 @@ describe("incomplete installations", () => {
     expect(pickInstaller(list, null)).toMatchObject({ release: { tag_name: "v0.1.56" } });
   });
 
+  it("reads the runtime of a short installer name from the marker next to it", () => {
+    const list = [
+      rel("v0.1.90", [`FORGE_0.1.90_update_${KEY}.zip`]),
+      rel("v0.1.88", [`FORGE_0.1.88_update_${KEY}.zip`, "FORGE_0.1.88_x64-setup.exe", `FORGE_0.1.88_x64-setup.${KEY}.runtime`]),
+      rel("v0.1.86", ["FORGE_0.1.86_x64-setup.exe", `FORGE_0.1.86_x64-setup.${OLD}.runtime`]),
+    ];
+    expect(pickInstaller(list, KEY)).toMatchObject({ release: { tag_name: "v0.1.88" }, asset: { name: "FORGE_0.1.88_x64-setup.exe" }, then: { tag_name: "v0.1.90" } });
+    expect(pickInstaller(list, OLD)).toMatchObject({ release: { tag_name: "v0.1.86" }, asset: { name: "FORGE_0.1.86_x64-setup.exe" } });
+    // Updates that need the other runtime take the installer with the matching marker.
+    expect(pickRelease(list, "0.1.86", OLD)).toMatchObject({ kind: "full", newest: { tag_name: "v0.1.90" }, release: { tag_name: "v0.1.88" } });
+  });
+
   it("offers an update that needs another runtime over the matching installer, even an older one", () => {
     const list = [
       rel("v0.1.60", [`FORGE_0.1.60_update_${KEY}.zip`]),
@@ -109,6 +121,14 @@ describe("incomplete installations", () => {
     writeFileSync(path.join(dl, `FORGE_0.1.60_update_${KEY}.zip`), INSTALLER);
     expect(await findLocalInstaller([dl, path.join(dl, "fehlt")], KEY)).toMatchObject({ name: `FORGE_0.1.56_${KEY}_x64-setup.exe`, version: "0.1.56" });
     expect(await findLocalInstaller([dl], "node-1_git-1_gh-1")).toBeNull();
+  });
+
+  it("takes a short-named setup.exe from the Downloads folder, but not one of the oldest releases", async () => {
+    const dl = tmp("forge-dl-");
+    writeFileSync(path.join(dl, "FORGE_0.1.7_x64-setup.exe"), INSTALLER);
+    expect(await findLocalInstaller([dl], KEY)).toBeNull();
+    writeFileSync(path.join(dl, "FORGE_0.1.90_x64-setup.exe"), INSTALLER);
+    expect(await findLocalInstaller([dl], KEY)).toMatchObject({ name: "FORGE_0.1.90_x64-setup.exe", version: "0.1.90" });
   });
 });
 

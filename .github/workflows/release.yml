@@ -3,9 +3,11 @@
 # Two kinds of release assets:
 #   FORGE_<v>_update_<runtime>.zip   every release. Only forge-desktop.exe and the sidecar, a few MB.
 #                                    Installed apps with the same bundled runtime install it in seconds.
-#   FORGE_<v>_<runtime>_x64-setup.exe  only when the bundled runtime (node, git, gh, python) changed, or when
+#   FORGE_<v>_x64-setup.exe          only when the bundled runtime (node, git, gh, python) changed, or when
 #                                    asked for (Run workflow → full). Needed for new installations and
-#                                    for apps with an older runtime.
+#                                    for apps with an older runtime. Next to it FORGE_<v>_x64-setup.<runtime>.runtime,
+#                                    a tiny marker whose name tells the app the installer's runtime (the installer
+#                                    name stays short; up to 0.1.8x the key was in the installer name).
 # The runtime key comes from scripts/prepare-runtime.mjs (node-<v>_git-<v>_gh-<v>_python-<v>).
 #
 # Every asset gets a signature <asset>.sig (scripts/sign-update.mjs, key in the secret
@@ -78,7 +80,7 @@ jobs:
           $key = (node scripts/prepare-runtime.mjs --key).Trim()
           $assets = gh api "repos/${{ github.repository }}/releases?per_page=100" --jq '.[].assets[].name'
           # Only a signed installer counts: the app ignores the unsigned ones of older releases.
-          $hasInstaller = [bool]($assets | Where-Object { $_ -like "*_${key}_x64-setup.exe.sig" })
+          $hasInstaller = [bool]($assets | Where-Object { $_ -like "*_x64-setup.${key}.runtime.sig" -or $_ -like "*_${key}_x64-setup.exe.sig" })
           $full = ("${{ inputs.full }}" -eq "true") -or -not $hasInstaller
           $conf = "apps/desktop/src-tauri/tauri.conf.json"
           (Get-Content $conf -Raw) -replace '"version":\s*"[^"]*"', "`"version`": `"$version`"" | Set-Content $conf -NoNewline -Encoding utf8
@@ -154,9 +156,11 @@ jobs:
           $files = @($zip)
           if ("${{ steps.plan.outputs.full }}" -eq "true") {
             $setup = Get-ChildItem apps/desktop/src-tauri/target/release/bundle/nsis/*-setup.exe | Select-Object -First 1
-            $named = Join-Path $env:RUNNER_TEMP "FORGE_${version}_${key}_x64-setup.exe"
+            $named = Join-Path $env:RUNNER_TEMP "FORGE_${version}_x64-setup.exe"
             Copy-Item $setup.FullName $named
-            $files += $named
+            $marker = Join-Path $env:RUNNER_TEMP "FORGE_${version}_x64-setup.${key}.runtime"
+            Set-Content $marker $key -NoNewline -Encoding ascii
+            $files += $named, $marker
           }
           node scripts/sign-update.mjs @files
           if ($LASTEXITCODE -ne 0) { throw "Signieren fehlgeschlagen." }

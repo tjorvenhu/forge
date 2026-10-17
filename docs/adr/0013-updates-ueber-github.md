@@ -18,8 +18,13 @@ Commit-Betreffs seit dem letzten Tag als Notizen. Ein neuerer Push bricht einen 
 
 - `FORGE_<v>_update_<laufzeit>.zip` bei jedem Release: nur `forge-desktop.exe`, `runtime/sidecar/sidecar.mjs`
   und `update.json`, etwa 4 MB. Gebaut mit `tauri build --no-bundle`, ohne Laufzeit-Download und ohne NSIS.
-- `FORGE_<v>_<laufzeit>_x64-setup.exe` nur, wenn es für den Laufzeit-Schlüssel noch keinen Installer gibt (neue
+- `FORGE_<v>_x64-setup.exe` nur, wenn es für den Laufzeit-Schlüssel noch keinen Installer gibt (neue
   node-, git-, gh- oder Python-Version in `scripts/prepare-runtime.mjs`) oder auf Wunsch (Run workflow → full).
+  Daneben `FORGE_<v>_x64-setup.<laufzeit>.runtime`: Der Name dieser kleinen Datei sagt der App die Laufzeit des
+  Installers (Nachtrag 2026-10-17: vorher stand sie als `FORGE_<v>_<laufzeit>_x64-setup.exe` im Namen des
+  Installers, die App liest beide Formen). Kurze Namen bis 0.1.7 sind die ältesten Installer mit alter Laufzeit;
+  eine selbst gewählte setup.exe mit kurzem Namen ab 0.1.8 nimmt die App an, eine falsche Laufzeit fällt dann
+  bei der Prüfung nach der Installation auf.
 
 Der Laufzeit-Schlüssel ist `node-<v>_git-<v>_gh-<v>_python-<v>` (`prepare-runtime.mjs --key`, Python seit 2026-10-17); die installierte App liest
 ihn aus `runtime/VERSIONS.json`. Rust baut mit Thin-LTO statt vollem LTO (eine Minute schneller, kaum größer),

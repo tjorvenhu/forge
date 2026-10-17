@@ -29,7 +29,8 @@ es beim ersten Start über den offiziellen Installer von Anthropic.
 ## Installation
 
 1. Öffne die [Releases](https://github.com/tjorvenhu/forge/releases).
-2. Nimm das neueste Release, das eine Datei `FORGE_<Version>_<Laufzeit>_x64-setup.exe` hat. Nicht jedes Release
+2. Nimm das neueste Release, das eine Datei `FORGE_<Version>_x64-setup.exe` hat (ältere heißen
+   `FORGE_<Version>_<Laufzeit>_x64-setup.exe`). Nicht jedes Release
    hat einen Installer. Die Dateien `FORGE_<Version>_update_<Laufzeit>.zip` sind nur für Updates bestehender
    Installationen gedacht und reichen für eine Neuinstallation nicht.
 3. Lade die `setup.exe` herunter und starte sie.

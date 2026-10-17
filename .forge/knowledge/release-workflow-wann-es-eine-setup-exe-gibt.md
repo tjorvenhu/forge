@@ -1,20 +1,25 @@
 ---
-title: "Release-Workflow: wann es eine setup.exe gibt, Signatur der Updates (FORGE_UPDATE_SIGNING_KEY)"
-summary: "Warum Releases meist nur ein Update-Zip haben, wie man den vollen Installer baut, wie Release-Dateien signiert werden und was bei fehlendem Schlüssel oder ausbleibendem Lauf zu tun ist."
+title: "Release-Workflow: wann es eine setup.exe gibt, Installer-Namen, Signatur der Updates (FORGE_UPDATE_SIGNING_KEY)"
+summary: "Warum Releases meist nur ein Update-Zip haben, wie der volle Installer heißt und gebaut wird, wie Release-Dateien signiert werden und was bei fehlendem Schlüssel oder ausbleibendem Lauf zu tun ist."
 tags: ["release","github-actions","installer","stolperfalle"]
-updated: "2026-10-17T19:50:07.180Z"
+updated: "2026-10-17T21:02:45.690Z"
 ---
 
 ## Wann gibt es eine setup.exe
-- `.github/workflows/release.yml` läuft bei jedem Push auf `main` (ohne reine md/docs-Änderungen) und veröffentlicht `v0.1.<run number>`. So gewollt, auch nach der Veröffentlichung des Repos (Entscheidung 2026-10-17).
+- `.github/workflows/release.yml` läuft bei jedem Push auf `main` (ohne reine md/docs- und services/-Änderungen) und veröffentlicht `v0.1.<run number>`. So gewollt, auch nach der Veröffentlichung des Repos (Entscheidung 2026-10-17).
 - Jedes Release bekommt `FORGE_<v>_update_<runtime>.zip` (nur App + Sidecar, wenige MB; installierte Apps aktualisieren damit).
-- Die volle `FORGE_<v>_<runtime>_x64-setup.exe` (mit node, git, gh, python) entsteht nur, wenn es für den Laufzeit-Schlüssel (`scripts/prepare-runtime.mjs --key`) noch keinen **signierten** Installer gibt, oder von Hand: `gh workflow run release.yml --ref main -f full=true`. Sonst hängt der letzte Installer an einem älteren Release.
+- Der volle Installer (mit node, git, gh, python) entsteht nur, wenn es für den Laufzeit-Schlüssel (`scripts/prepare-runtime.mjs --key`) noch keinen **signierten** Installer gibt, oder von Hand: `gh workflow run release.yml --ref main -f full=true`. Sonst hängt der letzte Installer an einem älteren Release.
 - Für Neuinstallationen das neueste Release mit setup.exe nehmen, nicht einfach „latest“. Finden: `gh api "repos/tjorvenhu/forge/releases?per_page=100" --jq '.[] | select(any(.assets[]; .name | endswith("setup.exe"))) | .tag_name'`.
 - Der Schritt „Build app“ gibt den Laufzeit-Schlüssel als `FORGE_RUNTIME_KEY` in die exe (Erkennung unvollständiger Installationen).
 
+## Installer-Namen (Wunsch des Besitzers 2026-10-17: kurz)
+- Seit 2026-10-17: `FORGE_<v>_x64-setup.exe` plus Markierung `FORGE_<v>_x64-setup.<runtime>.runtime`. Deren **Name** trägt den Laufzeit-Schlüssel (Inhalt: derselbe Schlüssel), die App liest ihn ohne Download (`RUNTIME_MARKER` in app-update.ts). Beides wird signiert wie jedes Asset; ohne `.sig` filtert `signedOnly` die Markierung weg.
+- Vorher (0.1.8 bis 0.1.8x): `FORGE_<v>_<runtime>_x64-setup.exe`; die App liest beide Formen. Bis 0.1.7: kurze Namen mit alter Laufzeit; `SHORT_NAMES_SINCE` in full-install.ts trennt sie von den neuen kurzen.
+- Versionen vor der Umstellung kennen die Markierung nicht: Ändert sich die Laufzeit, finden sie den neuen Installer nicht selbst und brauchen ihn einmal von Hand. Kleine Updates betrifft das nicht.
+
 ## Signatur (seit 2026-10-17)
 - Jedes Asset bekommt `<asset>.sig` (`scripts/sign-update.mjs`, Ed25519, Format in ADR 0013). Die App bietet nur signierte Assets an; Releases davor (bis v0.1.5x) sind für sie unsichtbar.
-- Privater Schlüssel: Repo-Secret `FORGE_UPDATE_SIGNING_KEY`. Fehlt es, bricht der Workflow schon im Schritt Plan ab („Secret FORGE_UPDATE_SIGNING_KEY fehlt“). Eine Kopie liegt beim Besitzer außerhalb des Repos (`~/.forge-release/update-signing-key.pem`); geht sie verloren und das Secret auch, braucht es einen neuen Schlüssel und alle Installationen den Installer von Hand.
+- Privater Schlüssel: Repo-Secret `FORGE_UPDATE_SIGNING_KEY`. Fehlt es, bricht der Workflow schon im Schritt Plan ab („Secret FORGE_UPDATE_SIGNING_KEY fehlt“). Eine Kopie hat der Besitzer gesichert; geht sie verloren und das Secret auch, braucht es einen neuen Schlüssel und alle Installationen den Installer von Hand.
 - Öffentlicher Schlüssel: `packages/sidecar/src/update/signature.ts`.
 
 ## Stolperfalle: Update-Zip statt Installer (2026-10-17)

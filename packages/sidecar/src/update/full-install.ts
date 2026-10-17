@@ -86,14 +86,31 @@ export interface LocalInstaller {
   size: number;
 }
 
-/** The newest FORGE setup.exe in the folders (Downloads), only one for `key` when given. */
+/**
+ * Installers up to 0.1.7 had short names and an older runtime; from 0.1.8 to 0.1.8x the runtime key was
+ * in the name, since then the names are short again (FORGE_<v>_x64-setup.exe, key in a marker asset).
+ */
+const SHORT_NAMES_SINCE = "0.1.8";
+
+/**
+ * Whether a downloaded setup.exe can bring the runtime `key`: a long name says it, a short one from
+ * SHORT_NAMES_SINCE on does not (it is accepted; the check after the installation finds a mismatch).
+ */
+function localInstallerFits(name: string, version: string, key: string | null): boolean {
+  if (!key) return true;
+  const named = installerRuntimeKey(name);
+  if (named) return named === key;
+  return compareVersions(version, SHORT_NAMES_SINCE) >= 0;
+}
+
+/** The newest FORGE setup.exe in the folders (Downloads), only one that can bring `key` when given. */
 export async function findLocalInstaller(dirs: string[], key: string | null): Promise<LocalInstaller | null> {
   let best: LocalInstaller | null = null;
   for (const dir of dirs) {
     const names = await readdir(dir).catch(() => [] as string[]);
     for (const name of names) {
       const version = INSTALLER_FILE.exec(name)?.[1];
-      if (!version || (key && installerRuntimeKey(name) !== key)) continue;
+      if (!version || !localInstallerFits(name, version, key)) continue;
       const full = path.join(dir, name);
       const st = await stat(full).catch(() => null);
       if (!st?.isFile() || st.size < MIN_INSTALLER_BYTES) continue;
@@ -283,9 +300,9 @@ export class FullInstallService {
     return this.once(async () => {
       const name = path.basename(file);
       const version = INSTALLER_FILE.exec(name)?.[1];
-      if (!version) throw new ForgeError("VALIDATION", "Das ist kein FORGE-Installer. Gesucht ist eine Datei wie FORGE_0.1.56_..._x64-setup.exe.");
+      if (!version) throw new ForgeError("VALIDATION", "Das ist kein FORGE-Installer. Gesucht ist eine Datei wie FORGE_0.1.90_x64-setup.exe.");
       const key = installerRuntimeKey(name);
-      if (this.expected && key !== this.expected) {
+      if (!localInstallerFits(name, version, this.expected)) {
         throw new ForgeError("VALIDATION", `Dieser Installer bringt ${key ? `die Laufzeit ${key}` : "eine ältere Laufzeit"} mit. Diese FORGE-Version braucht ${this.expected}.`);
       }
       const st = await stat(file).catch(() => null);
