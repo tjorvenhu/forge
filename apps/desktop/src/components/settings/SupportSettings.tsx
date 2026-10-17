@@ -20,7 +20,7 @@ const LINKS: ReadonlyArray<{ Icon: LucideIcon; label: string; description: strin
   { Icon: Gauge, label: "FORGE in Zahlen", description: "Gesamtzahlen aller Installationen mit eingeschalteter Nutzungsstatistik.", href: USAGE_STATS_URL, action: "Statistik öffnen" },
 ];
 
-/** Small red heart in the header, next to the sync symbol: opens the support dialog. */
+/** Small red heart in the sidebar, right of the search field: opens the support dialog. */
 export function SupportButton() {
   const open = useUi((u) => u.setSupportOpen);
   return (

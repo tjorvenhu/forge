@@ -20,6 +20,7 @@ import { splitProjects } from "@/lib/project-tree";
 import { NAV } from "./nav";
 import { OpenSessions, SplitViewEntry } from "./OpenSessions";
 import { SearchField } from "./SearchField";
+import { SupportButton } from "@/components/settings/SupportSettings";
 import { ErrorBoundary } from "./ErrorBoundary";
 import { TokenRate } from "./TokenRate";
 
@@ -46,8 +47,11 @@ export function Sidebar() {
         <Logo height={44} />
       </div>
 
-      <div className="px-3">
-        <SearchField />
+      <div className="flex items-center gap-1.5 px-3">
+        <div className="min-w-0 flex-1">
+          <SearchField />
+        </div>
+        <SupportButton />
       </div>
 
       <nav className="flex flex-col gap-1 px-3 pt-2" aria-label="Hauptnavigation">
