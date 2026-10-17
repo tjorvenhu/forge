@@ -226,6 +226,7 @@ export function createHandlers(s: Services): Handlers {
     "projects.listFiles": ({ projectId, dir }) => s.projects.listFiles(projectId, dir),
     "projects.allFiles": ({ projectId }) => s.projects.allFiles(projectId),
     "projects.readFile": ({ projectId, path }) => s.projects.readFile(projectId, path),
+    "projects.readFileChunk": ({ projectId, path, offset }) => s.projects.readFileChunk(projectId, path, offset),
 
     "sessions.list": ({ projectId }) => s.sessions.list(projectId),
     "sessions.listAll": ({ query, status }) => s.sessions.listAll(query, status),

@@ -11,6 +11,7 @@ import { EmptyState, ErrorBanner } from "@/components/ui/misc";
 import { useUi } from "@/stores/ui";
 import { fileIcon } from "./FileTree";
 import { revealInProject } from "./file-links";
+import { MediaPreview, NoPreview, mediaType } from "./FilePreview";
 import { Skeleton, SkeletonRegion } from "@/components/ui/skeleton";
 
 /** Read-only project browser. Editing happens through Claude or your editor. */
@@ -89,24 +90,38 @@ function FileIconFor({ name }: { name: string }) {
 
 function FileViewer({ project, path }: { project: Project; path: string }) {
   const projectId = project.id;
-  const q = useQuery({ queryKey: keys.file(projectId, path), queryFn: () => call("projects.readFile", { projectId, path }) });
+  const media = mediaType(path);
+  const isSvg = media?.mime === "image/svg+xml";
+  // SVG is text: preview by default, its code on request. Other media never load as text.
+  const [svgCodeFor, setSvgCodeFor] = useState<string | null>(null);
+  const svgCode = svgCodeFor === path;
+  const setSvgCode = (on: boolean) => setSvgCodeFor(on ? path : null);
+  const showMedia = media && !(isSvg && svgCode);
+  const q = useQuery({ queryKey: keys.file(projectId, path), queryFn: () => call("projects.readFile", { projectId, path }), enabled: !showMedia });
   const jump = useUi((s) => (s.fileJump?.projectId === projectId && s.fileJump.path === path ? s.fileJump : null));
+  const reveal = () => void revealInProject(project.path, path);
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex h-8 shrink-0 items-center gap-2 border-b border-border pl-3 pr-1">
         <span className="min-w-0 flex-1 truncate font-mono text-xs text-muted">{path}</span>
-        <Button size="icon-sm" variant="ghost" onClick={() => void revealInProject(project.path, path)} aria-label="Im Explorer zeigen" title="Im Explorer zeigen">
+        {isSvg && (
+          <Button size="sm" variant="ghost" className="h-6 px-2 text-xs" onClick={() => setSvgCode(!svgCode)} aria-pressed={svgCode}>
+            {svgCode ? "Vorschau" : "Code"}
+          </Button>
+        )}
+        <Button size="icon-sm" variant="ghost" onClick={reveal} aria-label="Im Explorer zeigen" title="Im Explorer zeigen">
           <FolderOpen className="h-3.5 w-3.5" />
         </Button>
       </div>
-      {q.isLoading && (
+      {showMedia && <MediaPreview key={path} projectId={projectId} path={path} kind={media.kind} mime={media.mime} />}
+      {!showMedia && q.isLoading && (
         <div className="min-h-0 flex-1">
           <CodeViewSkeleton />
         </div>
       )}
-      {q.isError && <div className="p-3"><ErrorBanner>{errorMessage(q.error)}</ErrorBanner></div>}
-      {q.data?.binary && <div className="p-4 text-xs text-muted">Binärdatei, keine Vorschau.</div>}
-      {q.data && !q.data.binary && (
+      {!showMedia && q.isError && <div className="p-3"><ErrorBanner>{errorMessage(q.error)}</ErrorBanner></div>}
+      {!showMedia && q.data?.binary && <NoPreview path={path} onReveal={reveal} />}
+      {!showMedia && q.data && !q.data.binary && (
         <div className="min-h-0 flex-1">
           <CodeView path={path} content={q.data.content} truncated={q.data.truncated} line={jump?.line} jumpKey={jump?.n} />
         </div>

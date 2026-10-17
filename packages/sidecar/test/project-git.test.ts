@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { ForgeError } from "@forge/protocol";
 import { GitEngine } from "../src/git/git.js";
 import { Db } from "../src/persistence/db.js";
-import { ProjectManager } from "../src/projects/project-manager.js";
+import { CHUNK_BYTES, ProjectManager } from "../src/projects/project-manager.js";
 import { git, initRepo, tempDir } from "./helpers.js";
 
 let t: ReturnType<typeof tempDir>;
@@ -131,6 +131,22 @@ describe("ProjectManager", () => {
     const p = await pm.import(dir);
     expect((await pm.readFile(p.id, "a.txt")).content).toBe("hallo");
     await expect(pm.readFile(p.id, "../forge.db")).rejects.toThrow(/außerhalb/);
+    await expect(pm.readFileChunk(p.id, "../forge.db", 0)).rejects.toThrow(/außerhalb/);
+  });
+
+  it("reads binary files in chunks for previews", async () => {
+    const dir = path.join(t.dir, "media");
+    mkdirSync(dir);
+    const bytes = Buffer.alloc(CHUNK_BYTES + 10);
+    for (let i = 0; i < bytes.length; i++) bytes[i] = i % 251;
+    writeFileSync(path.join(dir, "bild.png"), bytes);
+    const p = await pm.import(dir);
+    expect((await pm.readFile(p.id, "bild.png")).binary).toBe(true);
+    const first = await pm.readFileChunk(p.id, "bild.png", 0);
+    const rest = await pm.readFileChunk(p.id, "bild.png", CHUNK_BYTES);
+    expect(first.size).toBe(bytes.length);
+    expect(Buffer.concat([Buffer.from(first.base64, "base64"), Buffer.from(rest.base64, "base64")]).equals(bytes)).toBe(true);
+    expect((await pm.readFileChunk(p.id, "bild.png", bytes.length + 5)).base64).toBe("");
   });
 
   it("does not follow links that point outside the project", async () => {

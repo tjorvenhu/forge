@@ -285,6 +285,11 @@ export const methods = {
     params: projectRef.extend({ path: z.string().min(1).max(4096) }),
     result: z.object({ path: z.string(), content: z.string(), truncated: z.boolean(), binary: z.boolean() }),
   },
+  /** raw bytes of a project file from `offset` on (base64, a few MB per call), for image, PDF and media previews */
+  "projects.readFileChunk": {
+    params: projectRef.extend({ path: z.string().min(1).max(4096), offset: z.number().int().min(0).default(0) }),
+    result: z.object({ size: z.number(), base64: z.string() }),
+  },
 
   "sessions.list": {
     params: projectRef,

@@ -19,6 +19,10 @@ export interface CreateProjectInput {
 }
 
 const MAX_FILE_BYTES = 512 * 1024;
+/** Bytes per readFileChunk call: a few MB keep each protocol line small. */
+export const CHUNK_BYTES = 4 * 1024 * 1024;
+/** Larger files get no preview in FORGE; the Explorer opens them. */
+export const MAX_PREVIEW_BYTES = 200 * 1024 * 1024;
 /** Folders allFiles does not descend into: generated or installed, rarely what one looks for. */
 const SKIP_DIRS = new Set(["node_modules", "dist", "build", "out", "target", "coverage", "vendor", "__pycache__", ".git", ".next", ".turbo", ".venv", ".cache"]);
 /** Dot folders that hold project files worth finding. */
@@ -300,6 +304,23 @@ export class ProjectManager {
       await fh.read(buf, 0, len, 0);
       const binary = buf.subarray(0, 8000).includes(0);
       return { path: rel, content: binary ? "" : buf.toString("utf8"), truncated: size > MAX_FILE_BYTES, binary };
+    } finally {
+      await fh.close();
+    }
+  }
+
+  /** Raw bytes for previews of images, PDFs and media, CHUNK_BYTES per call; the caller reads on until `size`. */
+  async readFileChunk(id: string, rel: string, offset: number) {
+    const p = this.requireExisting(id);
+    const abs = await this.resolveInside(p, rel);
+    const fh = await open(abs, "r");
+    try {
+      const { size } = await fh.stat();
+      if (size > MAX_PREVIEW_BYTES) throw new ForgeError("VALIDATION", `Datei zu groß für die Vorschau (über ${MAX_PREVIEW_BYTES / 1024 / 1024} MB).`);
+      const len = Math.max(0, Math.min(CHUNK_BYTES, size - offset));
+      const buf = Buffer.alloc(len);
+      const { bytesRead } = await fh.read(buf, 0, len, offset);
+      return { size, base64: buf.subarray(0, bytesRead).toString("base64") };
     } finally {
       await fh.close();
     }
