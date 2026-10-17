@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { COUNTER_KEYS, COUNTER_LIMITS, MAX_BODY_BYTES, parseReport, readBodyLimited } from "./report";
+import { COUNTER_KEYS, COUNTER_LIMITS, MAX_BODY_BYTES, MAX_MODELS, MODEL_LIMITS, parseReport, readBodyLimited } from "./report";
 
 const ID = "3f2b8c1e-9a4d-4e6f-8b2a-1c3d5e7f9a0b";
 
@@ -82,6 +82,63 @@ describe("parseReport", () => {
     expect(COUNTER_LIMITS.tokensInput).toBe(1e12);
     expect(COUNTER_LIMITS.claudeWorkMs).toBe(1e11);
     expect(COUNTER_LIMITS.phoneCalls).toBe(1e7);
+    expect(COUNTER_LIMITS.userTurns).toBe(1e7);
+    expect(COUNTER_LIMITS.costUsdCents).toBe(1e10);
+  });
+
+  it("accepts the counters userTurns and costUsdCents", () => {
+    const r = parseReport(body({}, { userTurns: 12, costUsdCents: 240_000 }));
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.report.counters.userTurns).toBe(12);
+    expect(r.report.counters.costUsdCents).toBe(240_000);
+  });
+
+  it("accepts reports of older app versions without the new fields", () => {
+    const r = parseReport(body());
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.report.counters.userTurns).toBe(0);
+    expect(r.report.counters.costUsdCents).toBe(0);
+    expect(r.report.models).toEqual({});
+  });
+
+  it("accepts models per model ID", () => {
+    const models = { "claude-opus-4-7": { tokens: 123, costUsdCents: 45 }, "claude-sonnet-4-5[1m]": { tokens: 0, costUsdCents: 0 }, "us.anthropic.claude-haiku-4-5-20251001-v1:0": { tokens: 1, costUsdCents: 0 } };
+    const r = parseReport(body({ models }));
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.report.models).toEqual(models);
+  });
+
+  it("checks model IDs and values", () => {
+    const m = (id: string, v: unknown = { tokens: 1, costUsdCents: 1 }) => body({ models: { [id]: v } });
+    expect(parseReport(m("x".repeat(64))).ok).toBe(true);
+    expectError(m("x".repeat(65)));
+    expectError(m(""));
+    expectError(m("claude opus"));
+    expectError(m("<script>"));
+    expectError(m("claude-opus-4-7", { tokens: -1, costUsdCents: 0 }));
+    expectError(m("claude-opus-4-7", { tokens: 1.5, costUsdCents: 0 }));
+    expectError(m("claude-opus-4-7", { tokens: 1 }));
+    expectError(m("claude-opus-4-7", { tokens: MODEL_LIMITS.tokens + 1, costUsdCents: 0 }));
+    expectError(m("claude-opus-4-7", { tokens: 0, costUsdCents: MODEL_LIMITS.costUsdCents + 1 }));
+    expect(parseReport(m("claude-opus-4-7", { tokens: MODEL_LIMITS.tokens, costUsdCents: MODEL_LIMITS.costUsdCents })).ok).toBe(true);
+    expectError(body({ models: [] }));
+    expectError(body({ models: "x" }));
+  });
+
+  it("allows at most 20 models", () => {
+    const models = (n: number) => Object.fromEntries(Array.from({ length: n }, (_, i) => [`m${i}`, { tokens: 1, costUsdCents: 1 }]));
+    expect(MAX_MODELS).toBe(20);
+    expect(parseReport(body({ models: models(20) })).ok).toBe(true);
+    expectError(body({ models: models(21) }));
+  });
+
+  it("fits the largest valid report into the body limit", () => {
+    const counters = Object.fromEntries(COUNTER_KEYS.map((k) => [k, COUNTER_LIMITS[k]]));
+    const models = Object.fromEntries(Array.from({ length: MAX_MODELS }, (_, i) => [`m${i}`.padEnd(64, "x"), { tokens: MODEL_LIMITS.tokens, costUsdCents: MODEL_LIMITS.costUsdCents }]));
+    const raw = body({ appVersion: "1".repeat(32), os: "x".repeat(64), counters, models });
+    expect(parseReport(raw).ok).toBe(true);
   });
 
   it("rejects bodies over 4 KB with 413", () => {

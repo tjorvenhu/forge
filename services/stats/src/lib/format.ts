@@ -25,3 +25,24 @@ const dateTime = new Intl.DateTimeFormat("de-DE", {
 export function formatDateTime(iso: string): string {
   return dateTime.format(new Date(iso));
 }
+
+const usdSmall = new Intl.NumberFormat("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+/** US cents as dollars: "3,45 $" below ten dollars, "2.400 $", from a million "1,2 Mio. $". */
+export function formatUsd(cents: number): string {
+  const usd = cents / 100;
+  return `${usd < 10 ? usdSmall.format(usd) : formatCount(Math.round(usd))} $`;
+}
+
+const dayShort = new Intl.DateTimeFormat("de-DE", { day: "numeric", month: "numeric", timeZone: "UTC" });
+const dayLong = new Intl.DateTimeFormat("de-DE", { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" });
+
+/** "18.10." for the axis. */
+export function formatDayShort(day: string): string {
+  return dayShort.format(new Date(`${day}T00:00:00Z`));
+}
+
+/** "So., 18. Okt." for tooltips and tables. */
+export function formatDayLong(day: string): string {
+  return dayLong.format(new Date(`${day}T00:00:00Z`));
+}

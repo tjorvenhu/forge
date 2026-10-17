@@ -13,9 +13,9 @@ export function SectionTitle({ children, action }: { children: ReactNode; action
   );
 }
 
-export function Tile({ icon: Icon, label, value, unit, sub, highlight }: { icon: LucideIcon; label: string; value: string; unit?: string; sub: string; highlight?: boolean }) {
+export function Tile({ icon: Icon, label, value, unit, sub, highlight, wide }: { icon: LucideIcon; label: string; value: string; unit?: string; sub: string; highlight?: boolean; wide?: boolean }) {
   return (
-    <div className="tile">
+    <div className={wide ? "tile tile-wide" : "tile"}>
       <div className="tile-head">
         <span className="tile-label">{label}</span>
         <Icon className="tile-icon" aria-hidden />

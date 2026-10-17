@@ -6,15 +6,17 @@ Der Ordner gehört nicht zum pnpm-Workspace von FORGE. Er hat ein eigenes `packa
 
 Stack: Next.js (App Router), TypeScript strict, `pg`, `zod`. Schlichtes CSS ohne Framework.
 
-Die Seite übernimmt das Design der Desktop-App: Die Farb-, Schrift- und Radius-Tokens aus `apps/desktop/src/styles.css` stehen als CSS-Variablen in `src/app/globals.css` (nur das dunkle Theme, ein helles hat die App nicht). Die Bausteine in `src/components/blocks.tsx` bilden die Kacheln des Tagesberichts und die Karten der Einstellungen nach. Ändert die App ihre Tokens, hier nachziehen. Schrift ist Geist (Paket `geist`, SIL Open Font License, per `next/font` eingebunden), Icons kommen aus `lucide-react`. Logo und Favicon sind Kopien von `apps/desktop/src/assets/forge-logo.png` und `logo.svg`.
+Die Seite übernimmt das Design der Desktop-App: Die Farb-, Schrift- und Radius-Tokens aus `apps/desktop/src/styles.css` stehen als CSS-Variablen in `src/app/globals.css` (nur das dunkle Theme, ein helles hat die App nicht). Die Bausteine in `src/components/blocks.tsx` bilden die Kacheln des Tagesberichts und die Karten der Einstellungen nach. Die Diagramme in `src/components/charts.tsx` folgen denen des Tagesberichts (`apps/desktop/src/components/report/usage-charts.tsx`): Säulen und Balken in HTML ohne Chart-Bibliothek, Tooltip bei Hover und Fokus, Tabelle als Alternative. Ändert die App ihre Tokens, hier nachziehen. Schrift ist Geist (Paket `geist`, SIL Open Font License, per `next/font` eingebunden), Icons kommen aus `lucide-react`. Logo und Favicon sind Kopien von `apps/desktop/src/assets/forge-logo.png` und `logo.svg`.
 
 ## Was gespeichert wird
 
-Eine Zeile pro Installation in der Tabelle `installs`: zufällige Installations-ID, erste und letzte Meldung, FORGE-Version, Betriebssystem und die kumulativen Zähler als JSON. Die App schickt immer den Gesamtstand, der Dienst überschreibt den letzten Stand.
+Eine Zeile pro Installation in der Tabelle `installs`: zufällige Installations-ID, erste und letzte Meldung, FORGE-Version, Betriebssystem, die kumulativen Zähler als JSON und die Tokens und Kosten je Claude-Modell (`models`, JSON). Die App schickt immer den Gesamtstand, der Dienst überschreibt den letzten Stand.
+
+Dazu in `install_days` der Stand jeder Installation am Ende jedes UTC-Tages (eine Zeile pro Installation und Tag, jede Meldung überschreibt die des laufenden Tages). Daraus entsteht der Verlauf: Der Zuwachs eines Tages ist der Stand minus dem letzten früheren Stand derselben Installation. Der erste Stand einer Installation zählt nicht als Zuwachs, ebenso ein Zähler, der im früheren Stand fehlt (neue App-Version, die ihren Gesamtstand seit Installation schickt). Negative Differenzen (Neuinstallation mit leerer Datenbank) zählen als 0. Aktive Installationen eines Tages sind die mit einem Stand an diesem Tag. Wer die Statistik abschaltet, löscht mit der Installation auch ihre Tagesstände (`ON DELETE CASCADE`).
 
 Keine IP-Adressen in der Datenbank oder in Logs. Für die Sperre gegen massenhaft neue IDs hält der Prozess gesalzene Hashes der IP-Adressen im Speicher, nur für den laufenden Tag.
 
-Die Tabelle legt der Dienst beim ersten Zugriff selbst an (`CREATE TABLE IF NOT EXISTS`). Eine Migration ist nicht nötig.
+Die Tabellen legt der Dienst beim ersten Zugriff selbst an (`CREATE TABLE IF NOT EXISTS`, neue Spalten mit `ADD COLUMN IF NOT EXISTS`). Eine Migration ist nicht nötig.
 
 ## API
 
@@ -22,7 +24,7 @@ Die Tabelle legt der Dienst beim ersten Zugriff selbst an (`CREATE TABLE IF NOT 
 | --- | --- | --- |
 | `POST /api/v1/report` | Stand einer Installation melden | 204; 400 ungültig; 413 Body über 4 KB; 429 zu häufig; 503 DB weg |
 | `DELETE /api/v1/report/<installId>` | Datensatz löschen (Statistik in FORGE abgeschaltet) | 204, auch wenn es ihn nicht gab; 400 keine UUID v4 |
-| `GET /api/v1/totals` | Summen als JSON, `Cache-Control: public, max-age=300` | 200; 503 |
+| `GET /api/v1/totals` | Summen, Modelle, Versionen und Verlauf als JSON (siehe unten), `Cache-Control: public, max-age=300` | 200; 503 |
 | `GET /api/v1/downloads` | Downloads des Installers (`*-setup.exe`) über alle Releases, ohne Updates, Signaturen und Marker; für das README-Badge, höchstens alle 30 Minuten von GitHub | 200; 503 |
 | `GET /api/health` | Healthcheck mit DB-Abfrage | 200 `ok`; 503 |
 | `GET /` | Öffentliche Seite | 200, bei DB-Ausfall mit Hinweis statt Zahlen |
@@ -38,18 +40,44 @@ Body der Meldung:
   "counters": {
     "tokensInput": 0, "tokensOutput": 0, "tokensCacheRead": 0, "tokensCacheWrite": 0,
     "claudeTurns": 0, "claudeWorkMs": 0, "sessions": 0, "projectsCreated": 0,
-    "agentsStarted": 0, "agentsMerged": 0, "phoneCalls": 0
+    "agentsStarted": 0, "agentsMerged": 0, "phoneCalls": 0,
+    "userTurns": 0, "costUsdCents": 0
+  },
+  "models": {
+    "claude-opus-4-7": { "tokens": 123, "costUsdCents": 45 }
   }
 }
 ```
 
+`userTurns` sind die Durchläufe, die Nutzer selbst gestartet haben, `costUsdCents` die geschätzten API-Kosten aller Claude-Aufrufe in US-Cent. `models` enthält je Modell-ID alle vier Token-Arten zusammen und die geschätzten Kosten, kumulativ seit Installation. Ältere App-Versionen schicken diese Felder nicht; dann gelten 0 und `{}`.
+
 Regeln (siehe `src/lib/report.ts`):
 
 - Zähler sind ganze Zahlen ab 0. Unbekannte Schlüssel werden ignoriert, fehlende zählen als 0.
-- Obergrenzen pro Installation: Token-Felder 10^12, `claudeWorkMs` 10^11, alle anderen 10^7. Darüber: 400.
+- Obergrenzen pro Installation: Token-Felder 10^12, `claudeWorkMs` 10^11, `costUsdCents` 10^10, alle anderen 10^7. Darüber: 400.
+- `models`: höchstens 20 Einträge, Schlüssel 1 bis 64 Zeichen aus `[A-Za-z0-9._:[]-]`, Werte `tokens` (ganzzahlig, 0 bis 4·10^12) und `costUsdCents` (ganzzahlig, 0 bis 10^10), beide Pflicht.
 - `appVersion` höchstens 32 Zeichen aus `[0-9A-Za-z.+-]`, `os` höchstens 64 Zeichen ohne Steuerzeichen.
 - Die App meldet alle 5 Minuten. Höchstens eine Meldung pro Installation alle 4 Minuten (429). Die App wertet 429 als gesendet.
 - Höchstens 20 neue Installations-IDs pro IP-Adresse und Tag (429). Der Zähler liegt nur im Speicher und beginnt nach einem Neustart von vorn.
+
+Antwort von `GET /api/v1/totals`:
+
+```json
+{
+  "installs": 7,
+  "activeInstalls30d": 7,
+  "counters": { "tokensInput": 0, "...": 0, "userTurns": 0, "costUsdCents": 0 },
+  "updatedAt": "2026-10-18T00:00:00.000Z",
+  "models": { "claude-opus-4-7": { "tokens": 803400000, "costUsdCents": 315000 } },
+  "versions": [{ "version": "0.1.81", "installs": 3 }],
+  "history": [{ "day": "2026-10-17", "tokens": 64420000, "claudeTurns": 55, "activeInstalls": 7 }]
+}
+```
+
+- `models`: Summe je Modell-ID über alle Installationen, die 50 mit den meisten Tokens.
+- `versions`: aktive Installationen der letzten 30 Tage je FORGE-Version, die häufigste zuerst.
+- `history`: die letzten 30 UTC-Tage einschließlich heute, älteste zuerst; `tokens` ist der Zuwachs aller vier Token-Arten, `claudeTurns` der Zuwachs an Durchläufen.
+- Das README-Badge liest `installs`.
 
 Die Summen werden höchstens alle 5 Minuten neu aus der Datenbank berechnet (Zwischenspeicher im Prozess). Neue Meldungen erscheinen also mit bis zu 5 Minuten Verzögerung.
 
@@ -124,6 +152,7 @@ Weitere Befehle:
 
 ```sh
 pnpm test             # Unit-Tests (vitest, ohne Datenbank)
+STATS_TEST_DATABASE_URL=postgres://... pnpm test   # dazu die Verlaufsberechnung gegen eine echte Postgres
 pnpm exec tsc --noEmit
 pnpm build            # Standalone-Ausgabe in .next/standalone
 ```

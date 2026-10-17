@@ -1,15 +1,25 @@
 import { Pool } from "pg";
-import { COUNTER_KEYS, type Counters, type Report } from "./report";
+import { HISTORY_DAYS, historyDays, historySql, toHistory, type HistoryDay, type HistoryRow } from "./history";
+import { COUNTER_KEYS, type Counters, type ModelUsage, type Report } from "./report";
+import type { VersionCount } from "./versions";
 
 /** Minimum time between two accepted reports of one installation; the app reports every 5 minutes. */
 export const REPORT_INTERVAL_MINUTES = 4;
 const TOTALS_MAX_AGE_MS = 5 * 60 * 1000;
+/** Models in /api/v1/totals; every installation can send 20 IDs of its own, so the list is capped. */
+const MAX_TOTAL_MODELS = 50;
 
 export interface Totals {
   installs: number;
   activeInstalls30d: number;
   counters: Counters;
   updatedAt: string;
+  /** summed over all installations, most tokens first */
+  models: Record<string, ModelUsage>;
+  /** installations active in the last 30 days per app version, most first */
+  versions: VersionCount[];
+  /** the last 30 days (UTC), oldest first */
+  history: HistoryDay[];
 }
 
 let pool: Pool | null = null;
@@ -37,7 +47,15 @@ async function db(): Promise<Pool> {
         app_version text NOT NULL,
         os text NOT NULL,
         counters jsonb NOT NULL
-      )`,
+      );
+      ALTER TABLE installs ADD COLUMN IF NOT EXISTS models jsonb NOT NULL DEFAULT '{}'::jsonb;
+      CREATE TABLE IF NOT EXISTS install_days (
+        install_id uuid NOT NULL REFERENCES installs(install_id) ON DELETE CASCADE,
+        day date NOT NULL,
+        counters jsonb NOT NULL,
+        PRIMARY KEY (install_id, day)
+      );
+      CREATE INDEX IF NOT EXISTS install_days_day ON install_days (day)`,
     )
     .then(() => undefined)
     .catch((err: unknown) => {
@@ -54,23 +72,34 @@ export async function installExists(installId: string): Promise<boolean> {
   return (res.rowCount ?? 0) > 0;
 }
 
-/** Stores the report as the installation's latest state; false when the previous one is younger than the interval. */
+/**
+ * Stores the report as the installation's latest state and as its state of the current UTC day; false
+ * when the previous report is younger than the interval (then neither is written).
+ */
 export async function upsertReport(r: Report): Promise<boolean> {
   const p = await db();
   const res = await p.query(
-    `INSERT INTO installs (install_id, first_seen, last_seen, app_version, os, counters)
-     VALUES ($1, now(), now(), $2, $3, $4)
-     ON CONFLICT (install_id) DO UPDATE
-       SET last_seen = now(), app_version = EXCLUDED.app_version, os = EXCLUDED.os, counters = EXCLUDED.counters
-       WHERE installs.last_seen <= now() - make_interval(mins => $5)
+    `WITH up AS (
+       INSERT INTO installs (install_id, first_seen, last_seen, app_version, os, counters, models)
+       VALUES ($1, now(), now(), $2, $3, $4, $5)
+       ON CONFLICT (install_id) DO UPDATE
+         SET last_seen = now(), app_version = EXCLUDED.app_version, os = EXCLUDED.os,
+             counters = EXCLUDED.counters, models = EXCLUDED.models
+         WHERE installs.last_seen <= now() - make_interval(mins => $6)
+       RETURNING install_id
+     )
+     INSERT INTO install_days (install_id, day, counters)
+     SELECT install_id, (now() AT TIME ZONE 'UTC')::date, $4 FROM up
+     ON CONFLICT (install_id, day) DO UPDATE SET counters = EXCLUDED.counters
      RETURNING 1`,
-    [r.installId, r.appVersion, r.os, JSON.stringify(r.counters), REPORT_INTERVAL_MINUTES],
+    [r.installId, r.appVersion, r.os, JSON.stringify(r.counters), JSON.stringify(r.models), REPORT_INTERVAL_MINUTES],
   );
   return (res.rowCount ?? 0) > 0;
 }
 
 export async function deleteInstall(installId: string): Promise<void> {
   const p = await db();
+  // install_days goes with it (ON DELETE CASCADE).
   await p.query("DELETE FROM installs WHERE install_id = $1", [installId]);
 }
 
@@ -78,8 +107,42 @@ export async function ping(): Promise<void> {
   await (await db()).query("SELECT 1");
 }
 
+async function queryModels(p: Pool): Promise<Record<string, ModelUsage>> {
+  const res = await p.query<{ id: string; tokens: string; cost: string }>(
+    `SELECT m.key AS id,
+       SUM((m.value->>'tokens')::numeric)::text AS tokens,
+       SUM((m.value->>'costUsdCents')::numeric)::text AS cost
+     FROM installs, jsonb_each(installs.models) AS m
+     GROUP BY m.key
+     ORDER BY SUM((m.value->>'tokens')::numeric) DESC, m.key
+     LIMIT $1`,
+    [MAX_TOTAL_MODELS],
+  );
+  return Object.fromEntries(res.rows.map((r) => [r.id, { tokens: Number(r.tokens), costUsdCents: Number(r.cost) }]));
+}
+
+async function queryVersions(p: Pool): Promise<VersionCount[]> {
+  const res = await p.query<{ version: string; installs: string }>(
+    `SELECT app_version AS version, COUNT(*)::text AS installs
+     FROM installs
+     WHERE last_seen > now() - interval '30 days'
+     GROUP BY app_version
+     ORDER BY COUNT(*) DESC, app_version DESC`,
+  );
+  return res.rows.map((r) => ({ version: r.version, installs: Number(r.installs) }));
+}
+
+/** The history of the `days` UTC days up to `endDay` (today when left out). */
+export async function queryHistory(endDay?: string, days = HISTORY_DAYS): Promise<HistoryDay[]> {
+  const p = await db();
+  const end = endDay ?? new Date().toISOString().slice(0, 10);
+  const res = await p.query<HistoryRow>(historySql(), [historyDays(end, days)[0], end]);
+  return toHistory(res.rows, end, days);
+}
+
 async function queryTotals(): Promise<Totals> {
   const p = await db();
+  const [models, versions, history] = await Promise.all([queryModels(p), queryVersions(p), queryHistory()]);
   // The keys come from COUNTER_KEYS, not from input, so interpolating them is safe.
   const sums = COUNTER_KEYS.map((k) => `COALESCE(SUM((counters->>'${k}')::numeric), 0)::text AS "${k}"`).join(",\n");
   const res = await p.query<Record<string, string>>(
@@ -95,6 +158,9 @@ async function queryTotals(): Promise<Totals> {
     activeInstalls30d: Number(row.active ?? 0),
     counters,
     updatedAt: new Date().toISOString(),
+    models,
+    versions,
+    history,
   };
 }
 

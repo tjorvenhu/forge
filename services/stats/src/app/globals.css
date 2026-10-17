@@ -454,6 +454,363 @@ a {
   }
 }
 
+.tile-wide {
+  grid-column: span 2;
+}
+
+.tiles-note {
+  margin-top: 8px;
+  font-size: var(--text-caption);
+  line-height: 16px;
+  color: var(--color-subtle);
+}
+
+/* Chart cards of components/report/usage-charts.tsx */
+.charts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.chart-card {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  padding: 16px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl);
+  background: var(--color-surface);
+}
+
+.chart-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.chart-titles {
+  min-width: 0;
+  flex: 1;
+}
+
+.chart-titles h3 {
+  margin: 0;
+  font-size: var(--text-body);
+  font-weight: 500;
+  line-height: 20px;
+}
+
+.chart-titles p {
+  font-size: var(--text-caption);
+  line-height: 16px;
+  color: var(--color-muted);
+}
+
+/* Button size icon-sm, variant ghost */
+.icon-btn {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--color-muted);
+  cursor: pointer;
+  transition:
+    color 120ms var(--ease-snappy),
+    background-color 120ms var(--ease-snappy);
+}
+
+.icon-btn:hover {
+  background: var(--color-surface-2);
+  color: var(--color-fg);
+}
+
+.icon-btn svg {
+  width: 14px;
+  height: 14px;
+}
+
+.chart-empty {
+  font-size: var(--text-small);
+  color: var(--color-subtle);
+}
+
+.chart-table {
+  /* the height of a column chart, so switching to the table does not move the page */
+  height: 154px;
+  overflow: auto;
+}
+
+.chart-table table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-small);
+}
+
+.chart-table tr + tr td {
+  border-top: 1px solid var(--color-border);
+}
+
+.chart-table td {
+  padding: 4px 0;
+  color: var(--color-muted);
+}
+
+.chart-table td + td {
+  padding-left: 12px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-fg);
+}
+
+.columns {
+  display: flex;
+  gap: 8px;
+}
+
+.y-axis {
+  position: relative;
+  width: 48px;
+  flex-shrink: 0;
+  font-size: 10px;
+  color: var(--color-subtle);
+  font-variant-numeric: tabular-nums;
+}
+
+.y-axis span {
+  position: absolute;
+  right: 0;
+  transform: translateY(-50%);
+  white-space: nowrap;
+  line-height: 12px;
+}
+
+.plot-wrap {
+  position: relative;
+  min-width: 0;
+  flex: 1;
+}
+
+.plot {
+  position: relative;
+}
+
+.gridline {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: var(--color-border);
+}
+
+.plot-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+.bars {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+}
+
+.col {
+  display: flex;
+  height: 100%;
+  min-width: 0;
+  flex: 1;
+  align-items: flex-end;
+  justify-content: center;
+  outline: none;
+}
+
+.col-bar {
+  display: block;
+  width: 100%;
+  max-width: 24px;
+  border-radius: 4px 4px 0 0;
+  background: var(--color-accent-strong);
+  transition: background-color 120ms var(--ease-snappy);
+}
+
+.col-hover .col-bar {
+  background: var(--color-accent);
+}
+
+.col:focus-visible .col-bar {
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-fg) 40%, transparent);
+}
+
+.x-axis {
+  display: flex;
+  gap: 2px;
+  height: 16px;
+  margin-top: 6px;
+  font-size: 10px;
+  line-height: 16px;
+  color: var(--color-subtle);
+  font-variant-numeric: tabular-nums;
+}
+
+.x-axis span {
+  min-width: 0;
+  flex: 1;
+  overflow: visible;
+  white-space: nowrap;
+  text-align: center;
+}
+
+.tooltip {
+  position: absolute;
+  z-index: 10;
+  transform: translate(-50%, -100%);
+  padding: 4px 8px;
+  white-space: nowrap;
+  pointer-events: none;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-3);
+  box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.35);
+}
+
+.tooltip.tip-start {
+  transform: translate(-12px, -100%);
+}
+
+.tooltip.tip-end {
+  transform: translate(calc(-100% + 12px), -100%);
+}
+
+.tooltip-value {
+  font-size: var(--text-small);
+  font-weight: 600;
+  line-height: 16px;
+  color: var(--color-fg);
+}
+
+.tooltip-label {
+  font-size: var(--text-caption);
+  line-height: 16px;
+  color: var(--color-muted);
+}
+
+.hbars {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.bars-empty {
+  min-height: 154px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.hbar {
+  min-width: 0;
+  outline: none;
+}
+
+.hbar-line {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 4px;
+  font-size: var(--text-small);
+  line-height: 16px;
+}
+
+.hbar-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--color-fg);
+}
+
+.hbar-tag {
+  flex-shrink: 0;
+  padding: 0 6px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-caption);
+  line-height: 14px;
+  color: var(--color-muted);
+}
+
+.hbar-value {
+  margin-left: auto;
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-fg);
+}
+
+.hbar-track {
+  position: relative;
+  height: 8px;
+  border-radius: 0 4px 4px 0;
+  background: var(--color-surface-2);
+}
+
+.hbar-fill {
+  height: 100%;
+  border-radius: 0 4px 4px 0;
+  background: var(--color-accent-strong);
+  transition: background-color 120ms var(--ease-snappy);
+}
+
+.hbar-fill-muted {
+  background: var(--color-subtle);
+}
+
+.hbar-hover .hbar-fill {
+  background: var(--color-accent);
+}
+
+.hbar-hover .hbar-fill-muted {
+  background: var(--color-muted);
+}
+
+.hbar:focus-visible .hbar-track {
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-fg) 40%, transparent);
+}
+
+.tooltip-bar {
+  top: -6px;
+}
+
+.hbars-more {
+  font-size: var(--text-caption);
+  color: var(--color-subtle);
+}
+
+.skeleton-bar {
+  background: var(--color-surface-2);
+  animation: forge-shimmer 1.4s ease-in-out infinite;
+}
+
+@media (max-width: 900px) {
+  .charts {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 @media (max-width: 760px) {
   .tiles {
     grid-template-columns: repeat(2, minmax(0, 1fr));

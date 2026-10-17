@@ -13,6 +13,8 @@ export const COUNTER_KEYS = [
   "agentsStarted",
   "agentsMerged",
   "phoneCalls",
+  "userTurns",
+  "costUsdCents",
 ] as const;
 
 export type CounterKey = (typeof COUNTER_KEYS)[number];
@@ -31,13 +33,31 @@ export const COUNTER_LIMITS: Counters = {
   agentsStarted: 1e7,
   agentsMerged: 1e7,
   phoneCalls: 1e7,
+  userTurns: 1e7,
+  costUsdCents: 1e10,
 };
+
+export const MAX_MODELS = 20;
+/** Ceilings per model and installation: all four token kinds together, and the same cost ceiling as the counter. */
+export const MODEL_LIMITS = { tokens: 4e12, costUsdCents: 1e10 } as const;
 
 export const MAX_BODY_BYTES = 4096;
 
 const counterShape = Object.fromEntries(
   COUNTER_KEYS.map((k) => [k, z.number().int().min(0).max(COUNTER_LIMITS[k]).default(0)]),
 ) as Record<CounterKey, z.ZodDefault<z.ZodNumber>>;
+
+const modelSchema = z.object({
+  tokens: z.number().int().min(0).max(MODEL_LIMITS.tokens),
+  costUsdCents: z.number().int().min(0).max(MODEL_LIMITS.costUsdCents),
+});
+
+export type ModelUsage = z.infer<typeof modelSchema>;
+
+const modelsSchema = z
+  .record(z.string().regex(/^[A-Za-z0-9._:[\]-]{1,64}$/), modelSchema)
+  .refine((m) => Object.keys(m).length <= MAX_MODELS, `at most ${MAX_MODELS} models`)
+  .default({});
 
 export const installIdSchema = z.uuidv4().transform((s) => s.toLowerCase());
 
@@ -48,6 +68,8 @@ export const reportSchema = z.object({
   os: z.string().max(64).regex(/^\P{Cc}*$/u),
   // z.object drops unknown keys, so counters of newer app versions are ignored.
   counters: z.object(counterShape),
+  // Cumulative per model since installation; app versions before it do not send it.
+  models: modelsSchema,
 });
 
 export type Report = z.infer<typeof reportSchema>;
