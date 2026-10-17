@@ -27,6 +27,7 @@ import {
   type SessionEventBody,
   type Settings,
   type UsageWindow,
+  SUPPORT_LINKS,
 } from "@forge/protocol";
 import type { Db } from "../persistence/db.js";
 import { limitWarning } from "../claude/usage.js";
@@ -2707,6 +2708,10 @@ export class PhoneService {
             return `FORGE${st.latest ? ` ${st.latest.version}` : ""} wird jetzt installiert und startet neu, dieses Gespräch endet dabei. Offene Sessions gehen danach weiter, laufende machen von selbst dort weiter, wo sie waren.`;
           }
           if (action === "install_check") return installText(await call("app.checkInstall", {}));
+          if (action === "support") {
+            const bare = (url: string) => url.replace(/^https:\/\//, "");
+            return `Spenden für FORGE gehen über PayPal: ${bare(SUPPORT_LINKS.donate)}. Verbesserungen und Featurevorschläge kommen als Issue auf GitHub: ${bare(SUPPORT_LINKS.feedback)}. Beide Links stehen in FORGE unter Einstellungen, Unterstützen.`;
+          }
           if (action === "install_repair") {
             const st = await call("app.checkInstall", {});
             if (!st.checkable || st.complete !== false || !st.installer) return installText(st);

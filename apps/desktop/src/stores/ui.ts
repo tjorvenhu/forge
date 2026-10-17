@@ -22,7 +22,7 @@ const GIT_WORKSPACE_TABS: ReadonlySet<WorkspaceTab> = new Set(["agents", "git"])
 export function workspaceTabsFor(project: { gitEnabled: boolean } | null | undefined): WorkspaceTab[] {
   return WORKSPACE_TABS.filter((t) => project?.gitEnabled !== false || !GIT_WORKSPACE_TABS.has(t));
 }
-export const SETTINGS_SECTIONS = ["general", "templates", "claude", "policy", "phone", "github", "backup", "rules", "about"] as const;
+export const SETTINGS_SECTIONS = ["general", "templates", "claude", "policy", "phone", "github", "backup", "rules", "about", "support"] as const;
 export type SettingsSection = (typeof SETTINGS_SECTIONS)[number];
 export const DEV_TOOLS_SECTIONS = ["server", "database", "env"] as const;
 export type DevToolsSection = (typeof DEV_TOOLS_SECTIONS)[number];

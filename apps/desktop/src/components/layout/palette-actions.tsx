@@ -32,6 +32,8 @@ import {
   GitCompareArrows,
   GitFork,
   GitPullRequest,
+  HandHeart,
+  Lightbulb,
   ListChecks,
   LogIn,
   LogOut,
@@ -87,7 +89,8 @@ import type {
   Settings,
   TestDbState,
 } from "@forge/protocol";
-import { IDLE_CLOSE_CHOICES } from "@forge/protocol";
+import { IDLE_CLOSE_CHOICES, SUPPORT_LINKS } from "@forge/protocol";
+import { openExternal } from "@/lib/native";
 import { checkInstall, installFromFile, installFull, installUpdate } from "@/lib/app-install";
 import { call, keys, refreshUsage } from "@/lib/queries";
 import { openDevServer, prepareWorktree } from "@/lib/dev-server-actions";
@@ -598,6 +601,11 @@ export function buildActions(ctx: ActionContext): PaletteEntry[] {
   act("claude-switch", "Claude-Konto wechseln", icon(ArrowLeftRight), () => ui.openClaudeLogin("switch"), { keywords: "account konto wechseln anderes login" });
   act("claude-logout", "Von Claude abmelden", icon(LogOut), () => ui.setClaudeLogout(true), { keywords: "logout abmelden konto account" });
   act("update-check", "Nach Updates suchen", icon(RefreshCw), () => void checkForUpdate(qc), { keywords: "version release aktualisieren" });
+  act("support-donate", "FORGE mit einer Spende unterstützen", icon(HandHeart), () => void openExternal(SUPPORT_LINKS.donate), { hint: "PayPal", keywords: "spenden spende paypal unterstützen danke support donate" });
+  act("support-feedback", "Verbesserung oder Feature vorschlagen", icon(Lightbulb), () => void openExternal(SUPPORT_LINKS.feedback), {
+    hint: "GitHub Issues",
+    keywords: "feedback vorschlag idee wunsch feature fehler melden bug issue verbesserung",
+  });
   const update = qc.getQueryData<AppUpdateState>(keys.appUpdate);
   if (update?.latest && update.installable && ["available", "downloading", "ready"].includes(update.phase)) {
     act("update-install", `FORGE ${update.latest.version} installieren`, icon(ArrowUpCircle), () => void installUpdate(qc), { keywords: "update aktualisieren neustart version" });

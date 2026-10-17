@@ -8,6 +8,7 @@ import {
   FileStack,
   FileText,
   FolderOpen,
+  HandHeart,
   Info,
   Phone,
   Cloud,
@@ -49,6 +50,7 @@ import { TemplatesSettings } from "@/components/templates/TemplatesSettings";
 import { GitHubSettings } from "@/components/settings/GitHubSettings";
 import { AppUpdateSettings } from "@/components/layout/AppUpdate";
 import { InstallRepairSettings } from "@/components/layout/InstallRepair";
+import { SupportSettings } from "@/components/settings/SupportSettings";
 import { cn, planLabel } from "@/lib/utils";
 
 type Save = (patch: Partial<Settings>) => Promise<void>;
@@ -63,6 +65,7 @@ export const SECTIONS: ReadonlyArray<SettingsSectionDef<SettingsSection>> = [
   { id: "backup", label: "Backup", hint: "Sichern und zurücksetzen", Icon: ArchiveRestore },
   { id: "rules", label: "Globale Regeln", hint: "CLAUDE.md für alle Projekte", Icon: FileText },
   { id: "about", label: "Über FORGE", hint: "Updates, Datenschutz, Diagnose", Icon: Info },
+  { id: "support", label: "Unterstützen", hint: "Spenden, Vorschläge einreichen", Icon: HandHeart, minor: true },
 ];
 
 export function SettingsView() {
@@ -116,6 +119,8 @@ export function SettingsView() {
               <MemoryEditor scopes={["global"]} />
             </div>
           </Group>
+        ) : current.id === "support" ? (
+          <SupportSettings />
         ) : (
           <AboutSection s={s} save={save} />
         )}

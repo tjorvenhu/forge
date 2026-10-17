@@ -3,7 +3,7 @@ import { cva, type VariantProps } from "class-variance-authority";
 import { Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-const buttonVariants = cva(
+export const buttonVariants = cva(
   // Pressed state: a short dip on mousedown, so every click is felt before anything else happens.
   "inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium transition-[color,background-color,border-color,opacity,transform] duration-120 ease-snappy active:scale-[0.97] active:duration-75 disabled:pointer-events-none disabled:opacity-50 select-none",
   {

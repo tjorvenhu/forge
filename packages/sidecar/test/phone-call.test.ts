@@ -1560,6 +1560,14 @@ describe("PhoneService end to end with a test PBX", () => {
     await end();
   }, 30_000);
 
+  it("tells where to donate and where to send suggestions", async () => {
+    const { conv, end } = await openCall("c-support");
+    const text = await conv.tools.forgeSystem("support");
+    expect(text).toContain("paypal.me/tjorvenhu");
+    expect(text).toContain("github.com/tjorvenhu/forge/issues/new");
+    await end();
+  }, 30_000);
+
   it("lists all sessions, branches and rewinds them and deletes them", async () => {
     sessionList.push(fakeSession({ id: "s2", projectId, title: "Login", status: "stopped", live: false, projectName: "shop", updatedAt: "2026-10-01T10:00:00Z" }));
     const userMessage = (seq: number, text: string, uuid: string) => ({ seq, sessionId: "s1", ts: "", body: { type: "user.message", text, uuid } });
