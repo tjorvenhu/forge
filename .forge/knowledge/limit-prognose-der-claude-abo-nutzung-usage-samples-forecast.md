@@ -2,11 +2,13 @@
 title: "Limit-Prognose der Claude-Abo-Nutzung (usage_samples, forecastWindow, UsageForecast)"
 summary: "Wie FORGE aus gespeicherten Nutzungs-Messwerten pro Fenster prognostiziert, ob das Limit vor dem Reset erreicht wird, wo die Prognose erscheint und welche Stolperfallen es gibt."
 tags: ["usage","sidecar","ui","telefon","forge-tools","stolperfalle"]
-updated: "2026-10-16T18:56:19.828Z"
+updated: "2026-10-17T11:13:39.418Z"
 ---
 
+# Limit-Prognose der Claude-Abo-Nutzung (usage_samples, forecastWindow, UsageForecast)
+
 ## Ablauf
-- `RuntimeCatalog.planUsage` (`packages/sidecar/src/sessions/runtime-catalog.ts`) speichert jede echte Abfrage als Messwerte in der SQLite-Tabelle `usage_samples` (window_key, resets_at, at, utilization; Zeiten in ms) und hängt an jedes Fenster `forecast` (`UsageForecast` in protocol/models.ts, optional). Auch die gecachte Antwort bekommt die Prognose. Kein eigenes RPC: `system.usage` liefert sie mit.
+- `RuntimeCatalog.planUsage` (`packages/sidecar/src/sessions/runtime-catalog.ts`) speichert jede echte Abfrage als Messwerte in der SQLite-Tabelle `usage_samples` (window_key, resets_at, at, utilization; Zeiten in ms) und hängt an jedes Fenster `forecast` (`UsageForecast` in `packages/protocol/src/models.ts`, optional). Auch die gecachte Antwort bekommt die Prognose. Kein eigenes RPC: `system.usage` liefert sie mit.
 - Aufräumen beim Speichern: Messwerte älter als 7 Tage + 1 h oder von Fenstern, deren Reset vorbei ist.
 - Gemessen wird nur, wenn jemand fragt: UI alle 5 Minuten (nur solange FORGE sichtbar ist), nach Turns, Telefon, usage_status.
 

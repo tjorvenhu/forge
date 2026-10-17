@@ -2,8 +2,10 @@
 title: "Tagesbericht (reports.daily, DailyReportService, agent_log, claude_usage, Diagramme)"
 summary: "Wie der Tagesbericht Sessions, Agenten, Commits, Offenes, Anrufe, Tokens, Arbeitszeit und den Anteil von FORGE sammelt, warum es agent_log, claude_usage und den Reflog-Rückgriff gibt, warum Cache-Lesen getrennt steht."
 tags: ["sidecar","agenten","git","telefon","forge-tools","ui","tokens","stolperfalle"]
-updated: "2026-10-16T21:34:25.962Z"
+updated: "2026-10-17T11:12:47.286Z"
 ---
+
+# Tagesbericht (reports.daily, DailyReportService, agent_log, claude_usage, Diagramme)
 
 Stand 2026-10-16.
 
@@ -26,7 +28,7 @@ Stand 2026-10-16.
 - `formatDuration` / `formatTokens` / `FORGE_USAGE_LABEL` liegen in `packages/protocol/src/format.ts` (Desktop und Sidecar/Telefon gleich). `formatTokens` endet auf "Tsd."/"Mio.": im Satz danach kein Punkt, sondern ein Wort ("16 Tsd. Tokens.").
 
 ## Was FORGE selbst verbraucht (usage.forge, purpose)
-- `ForgeUsagePurpose` (protocol/models.ts): `auto` (Session-Durchläufe, deren Nachricht FORGE geschickt hat: user.message `source: "auto"`, also Weitermachen nach dem Limit, Neustart nach Update, /compact der Kontext-Rettung, Konflikte an Agenten über `AgentFinisher.handBack` → `SessionService.send(..., "auto")`), `commit`, `title`, `summary`, `report`, `knowledge`, `pr`, `changelog`, `phone`, `other`. NULL = eigener Durchlauf des Nutzers.
+- `ForgeUsagePurpose` (`packages/protocol/src/models.ts`): `auto` (Session-Durchläufe, deren Nachricht FORGE geschickt hat: user.message `source: "auto"`, also Weitermachen nach dem Limit, Neustart nach Update, /compact der Kontext-Rettung, Konflikte an Agenten über `AgentFinisher.handBack` → `SessionService.send(..., "auto")`), `commit`, `title`, `summary`, `report`, `knowledge`, `pr`, `changelog`, `phone`, `other`. NULL = eigener Durchlauf des Nutzers.
 - `runtime.complete/completeJson` nehmen `purpose` in `CompleteOptions`; der Zweck reist im Meter-Schlüssel `complete:<purpose>` zu `tokenMeter.onResult`. Neue Hilfsaufrufe brauchen einen `purpose`, sonst landen sie unter "Sonstiges".
 - `appendEvent` setzt `auto`, wenn die letzte user.message der Session `source: "auto"` hat. Migration 19 hat das rückwirkend gesetzt, Hilfsaufrufe von davor sind `other`.
 - Für ein einzelnes Projekt zählt nur `auto` (Hilfsaufrufe tragen kein Projekt). UI: Karte "Durch FORGE" (`ForgeCard` in usage-charts.tsx), ein Balken je Zweck nach neuen Tokens; in der Token-Karte "Davon durch FORGE selbst". Telefon/Claude: Zeile "Durch FORGE selbst: … Davon: …" in `reportText`.
