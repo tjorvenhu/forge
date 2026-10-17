@@ -59,15 +59,30 @@ Die Summen werden höchstens alle 5 Minuten neu aus der Datenbank berechnet (Zwi
 
 Die Client-IP liest der Dienst aus `X-Real-Ip`, sonst aus dem letzten Eintrag von `X-Forwarded-For`. Beides setzt Traefik.
 
-## Einrichtung in Coolify
+## Einrichtung in Coolify (eine Ressource mit Postgres)
 
-1. Postgres-Ressource im selben Projekt anlegen und ihre interne Verbindungs-URL kopieren.
-2. Neue Anwendung aus dem Git-Repository `tjorvenhu/forge`, Branch `main`.
-3. Build Pack: **Dockerfile**. Base Directory: **`/services/stats`**. Dockerfile-Pfad: `/Dockerfile`.
-4. Ports Exposes: **`3000`**.
-5. Umgebungsvariable `DATABASE_URL` auf die interne URL der Postgres-Ressource setzen.
-6. Domain: `https://forge-stats.vanturis.de`. TLS und Kompression übernimmt Traefik; Next komprimiert deshalb nicht selbst (`compress: false`).
-7. Healthcheck: Das Image bringt einen `HEALTHCHECK` auf `/api/health` mit. In Coolify kann derselbe Pfad eingetragen werden.
+`docker-compose.yml` startet den Dienst und seine Postgres zusammen. Die Datenbank ist nur im internen Netz
+erreichbar, ihre Daten liegen im Volume `stats-db`.
+
+1. DNS: A-Record `forge-stats.vanturis.de` auf den Coolify-Server.
+2. In Coolify: Projekt wählen, **+ New**, **Public Repository** (oder **Private Repository (with GitHub App)**,
+   solange das Repo privat ist), URL `https://github.com/tjorvenhu/forge`, Branch `main`.
+3. Build Pack: **Docker Compose**. Base Directory: **`/services/stats`**. Docker Compose Location:
+   **`/docker-compose.yml`**. Speichern: Coolify liest die Datei und zeigt die Dienste `stats` und `postgres`.
+4. Beim Dienst `stats` als Domain **`https://forge-stats.vanturis.de:3000`** eintragen. Das `:3000` ist der Port
+   im Container, nicht der öffentliche Port. Traefik macht TLS (Let's Encrypt) und Kompression.
+5. Unter Environment Variables nichts eintragen: `SERVICE_USER_POSTGRES` und `SERVICE_PASSWORD_POSTGRES` erzeugt
+   Coolify beim ersten Deploy selbst. Erscheinen sie dort nicht, beide von Hand setzen (Passwort nur aus
+   Buchstaben und Ziffern, es steht in einer URL).
+6. **Deploy**. Danach prüfen: `https://forge-stats.vanturis.de/api/health` liefert `ok`.
+7. Auto-Deploy: Mit der GitHub App baut Coolify bei jedem Push neu. Mit **Watch Paths** `services/stats/**`
+   nur dann, wenn sich der Dienst ändert.
+
+Das Image läuft als Benutzer `nextjs` (nicht root) und startet die Standalone-Ausgabe von Next mit
+`node server.js`. Es bringt einen `HEALTHCHECK` auf `/api/health` mit.
+
+Ohne Compose geht es auch: Postgres als eigene Coolify-Ressource, Anwendung mit Build Pack **Dockerfile**,
+Base Directory `/services/stats`, Port `3000`, `DATABASE_URL` auf die interne URL der Datenbank.
 
 Das Image läuft als Benutzer `nextjs` (nicht root) und startet die Standalone-Ausgabe von Next mit `node server.js`.
 
