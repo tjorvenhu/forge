@@ -8,8 +8,11 @@ Sicherheitslücken bitte vertraulich melden, wie in [SECURITY.md](../SECURITY.md
 2. **Webview mit minimalen Rechten.** Tauri-Capabilities: `core:default`, `dialog:allow-open`, `opener:allow-open-url` für `https://` sowie `http://localhost:*` und `http://127.0.0.1:*` (Dev-Server). Kein Shell-, FS- oder HTTP-Plugin. CSP ohne externe Quellen (nur GitHub-Avatare als Bilder). `freezePrototype` ist aus, weil Editor- und Terminal-Bibliotheken beim Laden Prototyp-Methoden setzen; es werden keine fremden Inhalte geladen.
 3. **Kein Shell-Interpolieren.** Alle Prozesse (`git`, `gh`, `claude`) starten mit `spawn(cmd, args[], {shell:false})` und explizitem `cwd`.
 4. **Validierung an der Grenze.** Jede RPC-Anfrage wird im Sidecar mit Zod geprüft. Pfade werden kanonisiert, auch über Symlinks und Junctions hinweg (`projects.readFile`, `projects.listFiles`); Datei- und Git-Operationen außerhalb des Projektordners werden abgelehnt. Git bekommt Pfade als literale Pathspecs (`GIT_LITERAL_PATHSPECS=1`), Zeichen wie `[` oder `*` im Dateinamen wählen also keine weiteren Dateien aus. `FORGE_NODE` und `FORGE_SIDECAR` wirken nur in Debug-Builds; `term_open` akzeptiert nur ein vorhandenes Verzeichnis und eine Datei namens `claude`, `claude.exe` oder `claude.cmd`.
-5. **Keine Credentials in FORGE.** Claude-Anmeldung macht die CLI, GitHub-Anmeldung `gh auth`. FORGE liest weder `~/.claude/.credentials.json` noch Tokens. `ANTHROPIC_API_KEY` wird erkannt, nie angezeigt, und standardmäßig aus Session-Umgebungen entfernt.
-6. **Keine Telemetrie.** Alle Daten bleiben lokal. Einzige eigene Netzwerkanfrage: Beim Start und danach alle sechs Stunden liest FORGE die aktuelle Claude-Code-Versionsnummer von `https://downloads.claude.ai/claude-code-releases/<latest|stable>` (derselbe Endpunkt wie der offizielle Installer, Kanal aus `autoUpdatesChannel`). Dabei werden keine Daten mitgeschickt. Das Update selbst führt `claude update` aus.
+5. **Keine Credentials in FORGE.** Claude-Anmeldung macht die CLI, GitHub-Anmeldung `gh auth`. FORGE liest `~/.claude/.credentials.json` nicht und speichert keine Tokens. Einzige Ausnahme: Lehnt GitHub die anonyme Update-Abfrage ab (Ratenlimit), holt FORGE für diesen einen Abruf das Token der gh-Anmeldung über `gh auth token` (siehe ADR 0013). `ANTHROPIC_API_KEY` wird erkannt, nie angezeigt, und standardmäßig aus Session-Umgebungen entfernt.
+6. **Was FORGE selbst ins Netz schickt.** Projektdaten bleiben lokal. Eigene Anfragen von FORGE:
+   - **Nutzungsstatistik (abschaltbar, Einstellungen > Über FORGE > Datenschutz):** alle 5 Minuten anonyme Summen an `https://forge-stats.vanturis.de` (zufällige Installations-ID, Version, Betriebssystem, Zählerstände). Keine Inhalte, Namen oder Pfade. Abschalten löscht den Datensatz beim Dienst. Details in `packages/sidecar/src/stats/usage-stats.ts`.
+   - **Updates:** Release-Liste und Dateien von der GitHub-API, jede Datei mit Ed25519-Signatur geprüft (ADR 0013).
+   - **Claude-Code-Version:** beim Start und danach alle sechs Stunden die Versionsnummer von `https://downloads.claude.ai/claude-code-releases/<latest|stable>` (derselbe Endpunkt wie der offizielle Installer, Kanal aus `autoUpdatesChannel`), ohne mitgeschickte Daten. Das Update selbst führt `claude update` aus.
 
 ## Permission-Profile
 
@@ -60,7 +63,8 @@ Vorher wird geprüft: keine Konflikte, Dateien haben tatsächlich Änderungen, k
 Pfade, nicht der Inhalt: Die Inhaltsprüfung brauchte einen git-Aufruf pro Datei und machte Commits zu langsam.
 Bei Treffern fragt FORGE nach, ob trotzdem committet werden soll, und zeigt die betroffenen Dateien mit Grund.
 Committet wird nur nach ausdrücklicher Bestätigung.
-FORGE pusht in Phase 1 nie.
+Von sich aus pusht FORGE nur in Projekten mit dem Tag `auto-push`. Pushes von Claude auf geschützte Branches
+(`main`, `master`) kann die Sperrliste blockieren (Regel `git-push-protected`, standardmäßig aus).
 
 **Branches löschen** (`git.deleteBranch`) ist eine Aktion im Git-Bereich, nicht für Claude: Die Sperrliste blockiert
 `git branch -d/-D` weiterhin für Claudes Shell. Gelöscht wird nur lokal. Der aktuelle Branch, `main`, `master` und der
