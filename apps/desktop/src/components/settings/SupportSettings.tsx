@@ -1,6 +1,6 @@
 import type { LucideIcon } from "lucide-react";
-import { ExternalLink, HandHeart, Lightbulb } from "lucide-react";
-import { SUPPORT_LINKS } from "@forge/protocol";
+import { ExternalLink, Gauge, HandHeart, Lightbulb } from "lucide-react";
+import { SUPPORT_LINKS, USAGE_STATS_URL } from "@forge/protocol";
 import { openExternal } from "@/lib/native";
 import { useUi } from "@/stores/ui";
 import { buttonVariants } from "@/components/ui/button";
@@ -22,6 +22,9 @@ export function SupportSettings() {
           </button>
           .
         </p>
+      </Group>
+      <Group title="FORGE in Zahlen" description="Gesamtzahlen aller Installationen mit eingeschalteter Nutzungsstatistik.">
+        <LinkRow Icon={Gauge} label="Öffentliche Statistik" description="Tokens, Projekte, Agenten und Sessions aller FORGE-Nutzer." href={USAGE_STATS_URL} action="Statistik öffnen" />
       </Group>
     </>
   );

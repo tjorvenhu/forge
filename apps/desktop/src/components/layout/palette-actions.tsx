@@ -89,7 +89,7 @@ import type {
   Settings,
   TestDbState,
 } from "@forge/protocol";
-import { IDLE_CLOSE_CHOICES, SUPPORT_LINKS } from "@forge/protocol";
+import { IDLE_CLOSE_CHOICES, SUPPORT_LINKS, USAGE_STATS_URL } from "@forge/protocol";
 import { openExternal } from "@/lib/native";
 import { checkInstall, installFromFile, installFull, installUpdate } from "@/lib/app-install";
 import { call, keys, refreshUsage } from "@/lib/queries";
@@ -172,6 +172,7 @@ export const UNLISTED_SETTINGS = {
   debugLogs: "hat keinen Schalter in den Einstellungen und wird nirgends ausgewertet",
   setupDone: "merkt sich, dass der Einrichtungsassistent durch ist; den Assistenten öffnet die Aktion „Einrichtungsassistent öffnen“",
   syncAsked: "merkt sich, dass die Frage nach der Synchronisierung beantwortet ist",
+  usageStatsAsked: "merkt sich, dass die Frage nach der Nutzungsstatistik beantwortet ist",
 } as const satisfies Partial<Record<BooleanSetting, string>>;
 
 const SETTING_TOGGLES: Record<Exclude<BooleanSetting, keyof typeof UNLISTED_SETTINGS>, { label: string; section: SettingsSection; keywords?: string }> = {
@@ -184,6 +185,7 @@ const SETTING_TOGGLES: Record<Exclude<BooleanSetting, keyof typeof UNLISTED_SETT
   uiCompare: { label: "Vorher-Nachher-Bilder bei UI-Änderungen", section: "claude", keywords: "screenshot vergleich vorschau dev-server ui oberfläche bild vorher nachher" },
   stripApiKey: { label: "ANTHROPIC_API_KEY ausblenden", section: "claude", keywords: "api key abo" },
   updateChecks: { label: "Automatisch nach Updates suchen", section: "about", keywords: "update release version" },
+  usageStats: { label: "Anonyme Nutzungsstatistik", section: "about", keywords: "statistik telemetrie datenschutz zahlen tokens anonym senden" },
   syncEnabled: { label: "Synchronisierung über GitHub", section: "github", keywords: "sync abgleich andere pc rechner repository forge-data cloud" },
 };
 
@@ -207,7 +209,7 @@ const SETTING_OPTIONS: ReadonlyArray<{ id: string; label: string; section: Setti
   { id: "backup-restore", label: "Backup herunterladen oder zurücksetzen", section: "backup", keywords: "sichern wiederherstellen export" },
   { id: "global-rules", label: "Globale Regeln bearbeiten", section: "rules", keywords: "claude.md memory anweisungen" },
   { id: "updates", label: "Updates und Version", section: "about", keywords: "version release" },
-  { id: "privacy", label: "Datenschutz", section: "about", keywords: "telemetrie" },
+  { id: "privacy", label: "Datenschutz", section: "about", keywords: "telemetrie nutzungsstatistik anonym" },
   { id: "diagnostics", label: "Diagnose", section: "about", keywords: "system node git gh api key fehler" },
 ];
 
@@ -602,7 +604,11 @@ export function buildActions(ctx: ActionContext): PaletteEntry[] {
   act("claude-logout", "Von Claude abmelden", icon(LogOut), () => ui.setClaudeLogout(true), { keywords: "logout abmelden konto account" });
   act("update-check", "Nach Updates suchen", icon(RefreshCw), () => void checkForUpdate(qc), { keywords: "version release aktualisieren" });
   act("support-donate", "FORGE mit einer Spende unterstützen", icon(HandHeart), () => void openExternal(SUPPORT_LINKS.donate), { hint: "PayPal", keywords: "spenden spende paypal unterstützen danke support donate" });
-  act("support-feedback", "Verbesserung oder Feature vorschlagen", icon(Lightbulb), () => void openExternal(SUPPORT_LINKS.feedback), {
+  act("usage-stats-public", "Gesamtzahlen aller FORGE-Nutzer ansehen", icon(Gauge), () => void openExternal(USAGE_STATS_URL), {
+    hint: "Statistik",
+    keywords: "statistik zahlen tokens projekte agenten öffentlich gesamt nutzer",
+  });
+  act("support-feedback","Verbesserung oder Feature vorschlagen", icon(Lightbulb), () => void openExternal(SUPPORT_LINKS.feedback), {
     hint: "GitHub Issues",
     keywords: "feedback vorschlag idee wunsch feature fehler melden bug issue verbesserung",
   });
@@ -655,7 +661,12 @@ export function buildActions(ctx: ActionContext): PaletteEntry[] {
     const run =
       key === "alwaysOnTop"
         ? () => void setAlwaysOnTop(qc, !on)
-        : () => void saveSetting(qc, key === "syncEnabled" ? { syncEnabled: !on, syncAsked: true } : { [key]: !on }, `${def.label} ${on ? "ausgeschaltet" : "eingeschaltet"}`);
+        : () =>
+            void saveSetting(
+              qc,
+              key === "syncEnabled" ? { syncEnabled: !on, syncAsked: true } : key === "usageStats" ? { usageStats: !on, usageStatsAsked: true } : { [key]: !on },
+              `${def.label} ${on ? "ausgeschaltet" : "eingeschaltet"}`,
+            );
     const ic = key === "alwaysOnTop" ? icon(on ? PinOff : Pin) : icon(on ? ToggleRight : ToggleLeft);
     setting(`setting-${key}`, `${def.label}: ${on ? "ausschalten" : "einschalten"}`, ic, run, { hint: section, keywords: `schalter einstellung ${def.keywords ?? ""}` });
   }

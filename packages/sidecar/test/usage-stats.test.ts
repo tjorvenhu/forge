@@ -1,76 +1,133 @@
-import { describe, expect, it } from "vitest";
-import { formatDuration, formatTokens } from "@forge/protocol";
-import type { ClaudeUsageRow } from "../src/persistence/db.js";
-import { usageStats } from "../src/reports/usage-stats.js";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { afterEach, describe, expect, it } from "vitest";
+import { USAGE_STATS_URL } from "@forge/protocol";
+import { Db, type UsageTotals } from "../src/persistence/db.js";
+import { UsageStatsService } from "../src/stats/usage-stats.js";
 
-const day = (d: number) => ({ date: `2026-10-${String(d).padStart(2, "0")}`, from: new Date(2026, 9, d), to: new Date(2026, 9, d + 1) });
-const at = (d: number, h: number, m = 0) => new Date(2026, 9, d, h, m).toISOString();
-const MIN = 60_000;
+const TOTALS: UsageTotals = {
+  tokensInput: 10,
+  tokensOutput: 20,
+  tokensCacheRead: 30,
+  tokensCacheWrite: 40,
+  claudeTurns: 3,
+  claudeWorkMs: 5000,
+  sessions: 2,
+  projectsCreated: 1,
+  agentsStarted: 4,
+  agentsMerged: 3,
+  phoneCalls: 0,
+};
 
-function row(end: string, minutes: number, o: Partial<ClaudeUsageRow> = {}): ClaudeUsageRow {
-  return { ts: end, kind: "session", purpose: null, projectId: "app", rootId: "app", rootName: "app", durationMs: minutes * MIN, apiCalls: 2, inputTokens: 10, outputTokens: 100, cacheReadTokens: 1000, cacheWriteTokens: 0, ...o };
+const dirs: string[] = [];
+afterEach(() => {
+  for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
+});
+
+function setup(status = 204) {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "forge-stats-"));
+  dirs.push(dir);
+  const file = path.join(dir, "usage-stats.json");
+  const requests: Array<{ url: string; method: string; body: Record<string, unknown> | null }> = [];
+  let enabled = true;
+  let now = Date.parse("2026-10-17T12:00:00Z");
+  const svc = new UsageStatsService({
+    enabled: () => enabled,
+    totals: () => TOTALS,
+    log: () => {},
+    file,
+    active: true,
+    appVersion: "0.1.80",
+    now: () => now,
+    fetchFn: (async (url: string, init: RequestInit) => {
+      requests.push({ url, method: init.method!, body: init.body ? (JSON.parse(init.body as string) as Record<string, unknown>) : null });
+      return new Response(null, { status });
+    }) as unknown as typeof fetch,
+  });
+  return {
+    svc,
+    file,
+    requests,
+    setEnabled: (v: boolean) => (enabled = v),
+    advance: (ms: number) => (now += ms),
+  };
 }
 
-describe("usageStats", () => {
-  const today = day(16);
-  const trend = [day(15), day(16)];
-
-  it("sums working time and tokens, tells clock time and parallel calls apart", () => {
-    const rows = [
-      row(at(16, 10, 30), 30),
-      // an agent in parallel, 10:15 to 10:45
-      row(at(16, 10, 45), 30, { projectId: "wt", rootId: "app" }),
-      row(at(16, 14), 60, { rootId: "web", projectId: "web", rootName: "web" }),
-      row(at(16, 15), 1, { kind: "assist", purpose: "commit", projectId: null, rootId: null, rootName: null }),
-    ];
-    const u = usageStats(rows, today.from, today.to, trend, true);
-    // Tokens include FORGE's own calls; turns, time and parallelism are the sessions'.
-    expect(u).toMatchObject({ turns: 3, apiCalls: 8, workMs: 120 * MIN, agentWorkMs: 30 * MIN, activeMs: 105 * MIN, peakParallel: 2, outputTokens: 400, cacheReadTokens: 4000 });
-    expect(u.forge).toEqual({ calls: 1, workMs: MIN, tokens: 110, cacheReadTokens: 1000, parts: [{ purpose: "commit", calls: 1, workMs: MIN, tokens: 110 }] });
-    expect(u.hours[10]).toMatchObject({ workMs: 60 * MIN, turns: 2, tokens: 220 });
-    expect(u.hours[13]!.workMs).toBe(60 * MIN);
-    expect(u.projects.map((p) => [p.name, p.workMs / MIN, p.turns])).toEqual([
-      ["app", 60, 2],
-      ["web", 60, 1],
-    ]);
+describe("usage statistics", () => {
+  it("sends the totals with a random ID once a day, nothing else", async () => {
+    const t = setup();
+    expect(await t.svc.tick()).toBe("sent");
+    const id = (JSON.parse(readFileSync(t.file, "utf8")) as { installId: string }).installId;
+    expect(id).toMatch(/^[0-9a-f-]{36}$/);
+    expect(t.requests[0]).toEqual({
+      url: `${USAGE_STATS_URL}/api/v1/report`,
+      method: "POST",
+      body: { schema: 1, installId: id, appVersion: "0.1.80", os: expect.any(String), counters: TOTALS },
+    });
+    expect(Object.keys(t.requests[0]!.body!).sort()).toEqual(["appVersion", "counters", "installId", "os", "schema"]);
+    t.advance(60 * 60_000);
+    expect(await t.svc.tick()).toBe("idle");
+    t.advance(24 * 60 * 60_000);
+    expect(await t.svc.tick()).toBe("sent");
+    // The same ID the next day.
+    expect(t.requests[1]!.body!.installId).toBe(id);
   });
 
-  it("splits a turn over midnight between both days, its tokens count when it ended", () => {
-    const rows = [row(at(16, 0, 20), 40)];
-    const u = usageStats(rows, today.from, today.to, trend, true);
-    expect(u.workMs).toBe(20 * MIN);
-    expect(u.turns).toBe(1);
-    expect(u.days).toEqual([
-      { date: "2026-10-15", workMs: 20 * MIN, tokens: 0 },
-      { date: "2026-10-16", workMs: 20 * MIN, tokens: 110 },
-    ]);
-    // A turn without a duration still counts with its tokens.
-    expect(usageStats([row(at(16, 9), 0)], today.from, today.to, trend, false)).toMatchObject({ turns: 1, workMs: 0, outputTokens: 100 });
+  it("asks the service to delete the data once after switching off, and sends again when switched on", async () => {
+    const t = setup();
+    await t.svc.tick();
+    t.setEnabled(false);
+    expect(await t.svc.tick()).toBe("deleted");
+    expect(t.requests[1]).toMatchObject({ method: "DELETE", url: expect.stringMatching(/\/api\/v1\/report\/[0-9a-f-]{36}$/) });
+    expect(await t.svc.tick()).toBe("idle");
+    t.setEnabled(true);
+    expect(await t.svc.tick()).toBe("sent");
   });
 
-  it("tells what FORGE caused apart, by purpose; one project gets only the turns FORGE sent there", () => {
-    const rows = [
-      row(at(16, 9), 10),
-      row(at(16, 10), 5, { purpose: "auto", outputTokens: 1000 }),
-      row(at(16, 11), 1, { kind: "assist", purpose: "commit", projectId: null, rootId: null, rootName: null }),
-      row(at(16, 11, 5), 1, { kind: "assist", purpose: "commit", projectId: null, rootId: null, rootName: null }),
-      row(at(16, 12), 2, { kind: "phone", purpose: "phone", projectId: null, rootId: null, rootName: null, outputTokens: 400 }),
-    ];
-    const all = usageStats(rows, today.from, today.to, trend, true);
-    expect(all.forge.parts.map((p) => [p.purpose, p.calls, p.tokens])).toEqual([
-      ["auto", 1, 1010],
-      ["phone", 1, 410],
-      ["commit", 2, 220],
-    ]);
-    expect(all.forge).toMatchObject({ calls: 4, tokens: 1640, workMs: 9 * MIN });
-    expect(all.turns).toBe(2);
-    const one = usageStats(rows, today.from, today.to, trend, false);
-    expect(one.forge.parts.map((p) => p.purpose)).toEqual(["auto"]);
-    expect(one.outputTokens).toBe(1100);
+  it("waits a while after a failure instead of retrying every tick", async () => {
+    const t = setup(502);
+    expect(await t.svc.tick()).toBe("failed");
+    expect(await t.svc.tick()).toBe("idle");
+    t.advance(16 * 60_000);
+    expect(await t.svc.tick()).toBe("failed");
+    expect(t.requests).toHaveLength(2);
   });
 
-  it("formats durations and token counts for people", () => {
-    expect([formatDuration(45_000), formatDuration(12 * MIN), formatDuration(320 * MIN), formatDuration(120 * MIN)]).toEqual(["45 s", "12 min", "5 h 20 min", "2 h"]);
-    expect([formatTokens(850), formatTokens(12_400), formatTokens(3_240_000)]).toEqual(["850", "12 Tsd.", "3,2 Mio."]);
+  it("counts projects created, not agent worktrees or restored ones", () => {
+    const dir = mkdtempSync(path.join(os.tmpdir(), "forge-stats-db-"));
+    dirs.push(dir);
+    const db = new Db(path.join(dir, "forge.db"));
+    try {
+      const rec = (id: string, parentId: string | null) => ({
+        id,
+        name: id,
+        path: path.join(dir, id),
+        favorite: false,
+        tags: [],
+        technologies: [],
+        profile: "balanced" as const,
+        defaultModel: null,
+        defaultEffort: null,
+        createdAt: "2026-10-17T10:00:00.000Z",
+        lastOpenedAt: null,
+        testCommand: null,
+        devCommand: null,
+        parentId,
+        gitEnabled: true,
+      });
+      db.insertProject(rec("a", null), "a");
+      db.insertProject(rec("b", "a"), "b");
+      db.insertProject(rec("c", null), "c", true);
+      expect(db.usageTotals()).toMatchObject({ projectsCreated: 1, tokensInput: 0, sessions: 0, agentsMerged: 0, phoneCalls: 0 });
+    } finally {
+      db.close();
+    }
+  });
+
+  it("sends nothing from a development build", () => {
+    const svc = new UsageStatsService({ enabled: () => true, totals: () => TOTALS, log: () => {}, file: "x", active: false });
+    svc.start();
+    svc.stop();
   });
 });

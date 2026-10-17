@@ -13,6 +13,8 @@ export default tseslint.config(
       "**/src-tauri/runtime/**",
       ".runtime-cache/**",
       "**/.e2e-tmp/**",
+      // own project with its own lint and types (not part of the pnpm workspace)
+      "services/**",
       "*.png",
       "*.docx",
     ],

@@ -12,7 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton, SkeletonRegion } from "@/components/ui/skeleton";
 import { RestartNote } from "./AppUpdate";
 
-/** Release page for a manual download (the repository is private: only with access). */
+/** Release page for a manual download. */
 export const RELEASES_URL = "https://github.com/tjorvenhu/forge/releases";
 
 const mb = (bytes: number) => Math.max(1, Math.round(bytes / 1048576));

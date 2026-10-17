@@ -202,6 +202,8 @@ export interface ForgeSettingsPatch {
   screenshotKey?: boolean;
   /** before/after screenshots of the web app when a turn changes UI files */
   uiCompare?: boolean;
+  /** anonymous usage totals once a day */
+  usageStats?: boolean;
   policyRule?: PolicyRuleId;
   policyRuleOn?: boolean;
 }
@@ -926,6 +928,11 @@ export const PHONE_TOOLS: readonly PhoneToolSpec[] = [
       strip_api_key: { type: "boolean", optional: true, description: "einen API-Key aus der Umgebung nicht an Claude Code geben, damit das Abo zählt" },
       screenshot_key: { type: "boolean", optional: true, description: "die Druck-Taste öffnet das Snipping-Tool von FORGE statt dem von Windows" },
       ui_compare: { type: "boolean", optional: true, description: "Vorher-Nachher-Bilder der Web-App, wenn Claude UI-Dateien ändert und ein Dev-Server läuft" },
+      usage_stats: {
+        type: "boolean",
+        optional: true,
+        description: "anonyme Nutzungsstatistik: einmal am Tag Summen wie Tokens, Projekte und Agenten ohne Inhalte an den Statistik-Dienst von FORGE; aus löscht die gesendeten Daten dort",
+      },
       policy_rule: { type: "string", optional: true, enum: PolicyRuleId.options, description: "Regel der Sperrliste" },
       policy_rule_on: { type: "boolean", optional: true, description: "true schaltet die Regel ein, false aus" },
     },
@@ -945,6 +952,7 @@ export const PHONE_TOOLS: readonly PhoneToolSpec[] = [
         stripApiKey: optBool(a.strip_api_key),
         screenshotKey: optBool(a.screenshot_key),
         uiCompare: optBool(a.ui_compare),
+        usageStats: optBool(a.usage_stats),
         policyRule: PolicyRuleId.options.find((x) => x === a.policy_rule),
         policyRuleOn: optBool(a.policy_rule_on),
       }),

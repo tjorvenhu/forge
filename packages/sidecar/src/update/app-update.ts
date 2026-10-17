@@ -6,6 +6,8 @@ import path from "node:path";
 import { ForgeError, type AppChangelog, type AppUpdateState } from "@forge/protocol";
 import { run } from "../util/proc.js";
 import { resolveTool } from "../util/tools.js";
+import { GitHubReleases, type ReleaseAsset, type ReleaseSource } from "./github-releases.js";
+import { SIG_SUFFIX, verifySignature } from "./signature.js";
 
 /** Repository whose GitHub releases carry the FORGE installer (built by .github/workflows/release.yml). */
 export const UPDATE_REPO = "tjorvenhu/forge";
@@ -32,8 +34,11 @@ function patchRuntimeKey(rel: Release): string | null {
   return null;
 }
 
+/** A release asset with its name, paired with its signature by signedOnly. */
+export type Asset = ReleaseAsset & { name: string; sig?: ReleaseAsset };
+
 /** The full installer of a release, only one for `key` when a key is given. */
-function installerOf(rel: Release, key: string | null): { name: string; size?: number; digest?: string | null } | null {
+function installerOf(rel: Release, key: string | null): Asset | null {
   const a = (rel.assets ?? []).find((x) => x.name && INSTALLER.test(x.name) && (!key || installerRuntimeKey(x.name) === key));
   return a?.name ? { ...a, name: a.name } : null;
 }
@@ -48,7 +53,7 @@ function published(releases: Release[]): Release[] {
  * the installer usually belongs to an older release). Without a key the newest installer at all.
  * `then`: the newest small update for that runtime when it is newer than the installer.
  */
-export function pickInstaller(releases: Release[], key: string | null): { release: Release; asset: { name: string; size?: number; digest?: string | null }; then: Release | null } | null {
+export function pickInstaller(releases: Release[], key: string | null): { release: Release; asset: Asset; then: Release | null } | null {
   const list = published(releases);
   for (const rel of list) {
     const asset = installerOf(rel, key);
@@ -101,7 +106,7 @@ export function pickRelease(
   releases: Release[],
   current: string,
   runtimeKey: string | null,
-): { newest: Release; release: Release; asset: { name: string; size?: number; digest?: string | null }; kind: "patch" | "full" } | null {
+): { newest: Release; release: Release; asset: Asset; kind: "patch" | "full" } | null {
   const newer = newerReleases(releases, current);
   const newest = newer[0];
   if (!newest) return null;
@@ -213,15 +218,73 @@ export interface Release {
   published_at?: string | null;
   draft?: boolean;
   prerelease?: boolean;
-  assets?: Array<{ name?: string; size?: number; digest?: string | null }>;
+  assets?: Array<ReleaseAsset & { sig?: ReleaseAsset }>;
+}
+
+/**
+ * The releases with only the assets that have a signature next to them (FORGE_x.zip.sig), each
+ * paired with it. Unsigned assets (releases from before the signing) are never offered.
+ */
+export function signedOnly(releases: Release[]): Release[] {
+  return releases.map((r) => {
+    const all = r.assets ?? [];
+    const sigs = new Map(all.filter((a) => a.name?.endsWith(SIG_SUFFIX)).map((a) => [a.name!.slice(0, -SIG_SUFFIX.length), a]));
+    return { ...r, assets: all.filter((a) => a.name && !a.name.endsWith(SIG_SUFFIX) && sigs.has(a.name)).map((a) => ({ ...a, sig: sigs.get(a.name!) })) };
+  });
+}
+
+/** Releases of UPDATE_REPO over HTTPS, anonymous unless GitHub refuses; then with the gh login, if any. */
+export function defaultReleaseSource(): ReleaseSource {
+  return new GitHubReleases(UPDATE_REPO, ghToken);
+}
+
+/** Token of the gh login, null without gh or login. */
+async function ghToken(): Promise<string | null> {
+  if (!resolveTool("gh")) return null;
+  const r = await runGh(["auth", "token"], 10_000);
+  const token = r.code === 0 ? r.stdout.trim() : "";
+  return token || null;
+}
+
+/**
+ * Downloads a signed asset into `dir` and checks it: the SHA-256 GitHub reports (when it does) and
+ * always the signature. A file that fails is deleted; the path of a good one is returned.
+ */
+export async function fetchSigned(source: ReleaseSource, asset: Asset, dir: string, timeoutMs: number, publicKey?: string): Promise<string> {
+  if (!asset.sig) throw new Error("Das Update ist nicht signiert. FORGE installiert es nicht.");
+  const file = path.join(dir, asset.name);
+  const sigFile = `${file}${SIG_SUFFIX}`;
+  try {
+    await source.download(asset.sig, sigFile, 60_000);
+    await source.download(asset, file, timeoutMs);
+  } catch (e) {
+    await rm(file, { force: true }).catch(() => {});
+    await rm(sigFile, { force: true }).catch(() => {});
+    throw new Error(`Download fehlgeschlagen: ${e instanceof Error ? e.message : String(e)}`, { cause: e });
+  }
+  const hash = await sha256(file);
+  const bad =
+    asset.digest?.startsWith("sha256:") && hash !== asset.digest.slice(7).toLowerCase()
+      ? "Prüfsumme des Installers stimmt nicht. Download verworfen."
+      : !verifySignature(asset.name, hash, readFileSync(sigFile, "utf8"), publicKey)
+        ? "Die Signatur des Updates stimmt nicht. Download verworfen."
+        : null;
+  await rm(sigFile, { force: true });
+  if (bad) {
+    await rm(file, { force: true });
+    throw new Error(bad);
+  }
+  return file;
 }
 
 export interface UpdateDeps {
   emit(state: AppUpdateState): void;
   enabled(): boolean;
   log(message: string): void;
-  /** runs gh; tests pass a fake */
-  gh?: (args: string[], timeoutMs: number) => Promise<{ code: number | null; stdout: string; stderr: string }>;
+  /** releases, commits and downloads; tests pass a fake */
+  source?: ReleaseSource;
+  /** key the signatures are checked with; tests pass their own */
+  publicKey?: string;
   currentVersion?: string;
   installable?: boolean;
   /** one-shot Claude call that writes the changelog from the prompt; without it there is none */
@@ -282,18 +345,19 @@ export function changelogPrompt(current: string, range: ChangeRange, commits: st
 }
 
 /**
- * Looks for a newer FORGE release on GitHub and fetches its installer. Uses the gh login of the user
- * (FORGE ships gh), so the releases of a private repository work for everyone with access. The
- * installer is checked against the SHA-256 GitHub reports for the asset before it can be run.
+ * Looks for a newer FORGE release on GitHub and fetches its installer, without a GitHub account
+ * (GitHubReleases). Only signed assets are offered, and a download is checked against its signature
+ * and the SHA-256 GitHub reports before it can be run (fetchSigned).
  */
 export class AppUpdateService {
   private state: AppUpdateState;
   private timer: ReturnType<typeof setTimeout> | null = null;
   /** what download() fetches: the offered version, or the full installer that goes first */
-  private asset: { tag: string; name: string; digest: string | null } | null = null;
+  private asset: { tag: string; file: Asset } | null = null;
   /** releases the offered version brings, for the changelog */
   private range: ChangeRange | null = null;
   private readonly chainFile: string;
+  private readonly source: ReleaseSource;
   private busy: Promise<AppUpdateState> | null = null;
   private changelogs = new Map<string, { state: AppChangelog; done: Promise<void> }>();
   /** a two-step update was under way at the start: its second step may follow right away */
@@ -303,6 +367,7 @@ export class AppUpdateService {
 
   constructor(private readonly d: UpdateDeps) {
     this.chainFile = d.chainFile ?? defaultChainFile();
+    this.source = d.source ?? defaultReleaseSource();
     this.chainAtStart = existsSync(this.chainFile);
     this.state = {
       currentVersion: d.currentVersion ?? process.env.FORGE_APP_VERSION ?? "0.0.0-dev",
@@ -363,10 +428,6 @@ export class AppUpdateService {
     this.d.emit(this.state);
   }
 
-  private async gh(args: string[], timeoutMs: number) {
-    return (this.d.gh ?? runGh)(args, timeoutMs);
-  }
-
   /** One check or download at a time; a second call gets the running one. */
   private once(job: () => Promise<AppUpdateState>): Promise<AppUpdateState> {
     this.busy ??= job().finally(() => (this.busy = null));
@@ -379,15 +440,12 @@ export class AppUpdateService {
       const keep = this.state.phase === "ready" ? this.state.installerPath : null;
       this.set({ phase: "checking", message: null });
       try {
-        const r = await this.gh(["api", `repos/${UPDATE_REPO}/releases?per_page=100`], 30_000);
-        if (r.code !== 0) {
-          const err = ghApiError(r, "Updates");
-          if (err) throw new Error(err);
+        const found = await this.source.releases();
+        if (!found) {
           this.set({ phase: "uptodate", latest: null, checkedAt: new Date().toISOString(), message: "Noch kein Release veröffentlicht." });
           return this.state;
         }
-        const parsed = JSON.parse(r.stdout) as Release[];
-        const list = Array.isArray(parsed) ? parsed : [];
+        const list = signedOnly(found as Release[]);
         const checkedAt = new Date().toISOString();
         const pick = pickRelease(list, this.state.currentVersion, (this.d.runtimeKey ?? installedRuntimeKey)());
         const range = changeRange(list, this.state.currentVersion);
@@ -404,7 +462,7 @@ export class AppUpdateService {
         const { newest, release: rel, asset, kind } = pick;
         const tag = newest.tag_name!;
         const sameRelease = this.state.latest?.tag === tag;
-        this.asset = { tag: rel.tag_name!, name: asset.name, digest: asset.digest ?? null };
+        this.asset = { tag: rel.tag_name!, file: asset };
         this.range = range;
         this.set({
           phase: sameRelease && keep ? "ready" : "available",
@@ -492,9 +550,7 @@ export class AppUpdateService {
 
   /** First lines of the commits between two tags, oldest first; empty when the base tag is unknown (a local build). */
   private async commitsSince(base: string, tag: string): Promise<string[]> {
-    const r = await this.gh(["api", `repos/${UPDATE_REPO}/compare/${base}...${tag}`, "--jq", '.commits[].commit.message | split("\\n")[0]'], 10_000).catch(() => null);
-    if (!r || r.code !== 0) return [];
-    return r.stdout.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+    return this.source.commits(base, tag).catch(() => []);
   }
 
   /**
@@ -512,7 +568,7 @@ export class AppUpdateService {
     return !!target && pick?.kind === "patch" && compareVersions(pick.newest.tag_name!, target) >= 0;
   }
 
-  /** Fetches the installer of the offered release (or the full installer that goes first) and checks its SHA-256. */
+  /** Fetches the installer of the offered release (or the full installer that goes first) and checks it (fetchSigned). */
   download(): Promise<AppUpdateState> {
     return this.once(async () => {
       const latest = this.state.latest;
@@ -529,18 +585,7 @@ export class AppUpdateService {
           if (entry !== FULL_DIR) await rm(path.join(updateDir(), entry), { recursive: true, force: true });
         }
         await mkdir(dir, { recursive: true });
-        const r = await this.gh(["release", "download", asset.tag, "--repo", UPDATE_REPO, "--pattern", asset.name, "--dir", dir, "--clobber"], 15 * 60_000);
-        if (r.code !== 0) throw new Error(`Download fehlgeschlagen: ${(r.stderr || r.stdout).trim().split("\n").at(-1)}`);
-        const file = (await readdir(dir)).find((f) => f === asset.name);
-        if (!file) throw new Error("Das Update fehlt nach dem Download.");
-        const full = path.join(dir, file);
-        if (asset.digest?.startsWith("sha256:")) {
-          const actual = await sha256(full);
-          if (actual !== asset.digest.slice(7).toLowerCase()) {
-            await rm(dir, { recursive: true, force: true });
-            throw new Error("Prüfsumme des Installers stimmt nicht. Download verworfen.");
-          }
-        }
+        const full = await fetchSigned(this.source, asset.file, dir, 15 * 60_000, this.d.publicKey);
         // Two steps: after the full installer, the next start picks up the small update by itself.
         if (latest.via) writeFileSync(this.chainFile, JSON.stringify({ target: latest.tag }));
         else rmSync(this.chainFile, { force: true });
@@ -562,14 +607,6 @@ export async function runGh(args: string[], timeoutMs: number): Promise<{ code: 
   const r = await run(tool.path, args, { env: { ...process.env, GH_PROMPT_DISABLED: "1", GH_PAGER: "", GH_NO_UPDATE_NOTIFIER: "1" }, timeoutMs });
   if (r.spawnError) throw r.spawnError;
   return { code: r.code, stdout: r.stdout, stderr: r.stderr };
-}
-
-/** The error of a failed `gh api` call, in words for the UI; null when it only means "not found". */
-export function ghApiError(r: { stdout: string; stderr: string }, what: string): string | null {
-  const err = `${r.stderr}${r.stdout}`;
-  if (/auth login|not logged|401/i.test(err)) return `Für ${what} bitte in FORGE bei GitHub anmelden (Ansicht GitHub).`;
-  if (/404|Not Found/i.test(err)) return null;
-  return err.trim().split("\n").at(-1) || "GitHub hat die Anfrage abgelehnt.";
 }
 
 export function sha256(file: string): Promise<string> {

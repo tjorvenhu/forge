@@ -442,6 +442,8 @@ function settingText(s: Settings, key: keyof ForgeSettingsPatch | "alwaysOnTop")
       return s.idleCloseMinutes > 0 ? `untätige Claude-Prozesse schließen nach ${s.idleCloseMinutes} Minuten` : "untätige Claude-Prozesse bleiben offen";
     case "updateChecks":
       return `Update-Prüfung ${on(s.updateChecks)}`;
+    case "usageStats":
+      return `anonyme Nutzungsstatistik ${on(s.usageStats)}`;
     case "debugLogs":
       return `Debug-Logs ${on(s.debugLogs)}`;
     case "stripApiKey":
@@ -2648,13 +2650,14 @@ export class PhoneService {
           const cur = await call("settings.get", {});
           const update: Partial<Settings> = {};
           const changed: Array<keyof ForgeSettingsPatch> = [];
-          const flags = ["sounds", "desktopNotifications", "enterToSend", "autoContinueAfterLimit", "updateChecks", "debugLogs", "stripApiKey", "screenshotKey", "uiCompare"] as const;
+          const flags = ["sounds", "desktopNotifications", "enterToSend", "autoContinueAfterLimit", "updateChecks", "debugLogs", "stripApiKey", "screenshotKey", "uiCompare", "usageStats"] as const;
           for (const k of flags) {
             const v = patch[k];
             if (v === undefined) continue;
             update[k] = v;
             changed.push(k);
           }
+          if (patch.usageStats !== undefined) update.usageStatsAsked = true;
           if (patch.defaultModel !== undefined) {
             update.defaultModel = clearable(patch.defaultModel);
             changed.push("defaultModel");

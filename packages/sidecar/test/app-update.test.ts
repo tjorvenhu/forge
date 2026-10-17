@@ -1,24 +1,32 @@
-import { createHash } from "node:crypto";
+import { createHash, generateKeyPairSync, sign } from "node:crypto";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import type { AppUpdateState } from "@forge/protocol";
-import { AppUpdateService, changeRange, compareVersions, installedRuntimeKey, MAX_CHANGE_RELEASES, pickRelease, UPDATE_REPO, type Release } from "../src/update/app-update.js";
+import { AppUpdateService, changeRange, compareVersions, installedRuntimeKey, MAX_CHANGE_RELEASES, pickRelease, signedOnly, type Release } from "../src/update/app-update.js";
+import type { ReleaseSource } from "../src/update/github-releases.js";
+import { signedMessage } from "../src/update/signature.js";
 
 const INSTALLER = Buffer.from("MZ fake installer");
 const DIGEST = `sha256:${createHash("sha256").update(INSTALLER).digest("hex")}`;
 
 const KEY = "node-24.21.0_git-2.56.0.2_gh-2.102.0";
 
-/** A release as the releases list returns it; by default a full installer only (like 0.1.1 to 0.1.6). */
-function rel(tag: string, assets: string[] = [`FORGE_${tag.slice(1)}_x64-setup.exe`], digest: string | null = DIGEST): Release {
-  return { tag_name: tag, body: "- feat: Update-Funktion", published_at: "2026-10-12T10:00:00Z", assets: assets.map((name) => ({ name, size: INSTALLER.length, digest })) };
-}
+/** Own signing key: the real one only exists in the release workflow. */
+const keys = generateKeyPairSync("ed25519");
+const PUBLIC_KEY = keys.publicKey.export({ type: "spki", format: "pem" }).toString();
+const signatureOf = (name: string, content: Buffer = INSTALLER) =>
+  sign(null, signedMessage(name, createHash("sha256").update(content).digest("hex")), keys.privateKey).toString("base64");
 
-/** The answer of the releases list with one release. */
-function release(tag: string, digest: string | null = DIGEST) {
-  return JSON.stringify([rel(tag, undefined, digest)]);
+/** A release as the releases list returns it; by default a full installer only (like 0.1.1 to 0.1.6), every asset signed. */
+function rel(tag: string, assets: string[] = [`FORGE_${tag.slice(1)}_x64-setup.exe`], digest: string | null = DIGEST, signed = true): Release {
+  return {
+    tag_name: tag,
+    body: "- feat: Update-Funktion",
+    published_at: "2026-10-12T10:00:00Z",
+    assets: assets.flatMap((name) => [{ name, size: INSTALLER.length, digest }, ...(signed ? [{ name: `${name}.sig`, size: 88, digest: null }] : [])]),
+  };
 }
 
 /** Own file per test: the real one in the temp folder belongs to the installed app. */
@@ -26,9 +34,40 @@ function chainFile() {
   return path.join(mkdtempSync(path.join(os.tmpdir(), "forge-chain-")), "chain.json");
 }
 
-function service(answer: (args: string[]) => { code: number; stdout?: string; stderr?: string }, version = "0.1.0", opts: { runtimeKey?: string | null; chainFile?: string; requestInstall?: () => void } = {}) {
-  const calls: string[][] = [];
+interface FakeOpts {
+  commits?: string[];
+  /** what a download writes instead of the signed installer */
+  content?: Buffer;
+  /** a download fails with this message */
+  fail?: string;
+}
+
+/** Releases from `list` (an Error is thrown), downloads write the installer and a matching signature. */
+function fakeSource(list: () => Release[] | null | Error, o: FakeOpts = {}) {
+  const calls: string[] = [];
+  const source: ReleaseSource = {
+    releases: async () => {
+      calls.push("releases");
+      const l = list();
+      if (l instanceof Error) throw l;
+      return l;
+    },
+    commits: async (base, head) => {
+      calls.push(`compare ${base}...${head}`);
+      return o.commits ?? [];
+    },
+    download: async (asset, file) => {
+      calls.push(`download ${asset.name}`);
+      if (o.fail) throw new Error(o.fail);
+      writeFileSync(file, asset.name!.endsWith(".sig") ? signatureOf(asset.name!.slice(0, -4)) : (o.content ?? INSTALLER));
+    },
+  };
+  return { source, calls };
+}
+
+function service(list: () => Release[] | null | Error, version = "0.1.0", opts: FakeOpts & { runtimeKey?: string | null; chainFile?: string; requestInstall?: () => void } = {}) {
   const states: AppUpdateState[] = [];
+  const { source, calls } = fakeSource(list, opts);
   const svc = new AppUpdateService({
     emit: (s) => states.push(s),
     enabled: () => true,
@@ -38,16 +77,8 @@ function service(answer: (args: string[]) => { code: number; stdout?: string; st
     runtimeKey: () => (opts.runtimeKey === undefined ? KEY : opts.runtimeKey),
     chainFile: opts.chainFile ?? chainFile(),
     requestInstall: opts.requestInstall,
-    gh: async (args) => {
-      calls.push(args);
-      if (args[0] === "release" && args[1] === "download") {
-        const dir = args[args.indexOf("--dir") + 1]!;
-        const name = args[args.indexOf("--pattern") + 1]!;
-        writeFileSync(path.join(dir, name), INSTALLER);
-      }
-      const a = answer(args);
-      return { code: a.code, stdout: a.stdout ?? "", stderr: a.stderr ?? "" };
-    },
+    source,
+    publicKey: PUBLIC_KEY,
   });
   return { svc, calls, states };
 }
@@ -60,34 +91,59 @@ describe("app updates", () => {
     expect(compareVersions("0.1.0", "0.1.1")).toBe(-1);
   });
 
-  it("offers a newer release, downloads the installer and checks its SHA-256", async () => {
-    const { svc, calls } = service(() => ({ code: 0, stdout: release("v0.1.7") }));
+  it("offers a newer release, downloads the installer and checks signature and SHA-256", async () => {
+    const { svc, calls } = service(() => [rel("v0.1.7")]);
     const checked = await svc.check();
-    expect(calls[0]).toEqual(["api", `repos/${UPDATE_REPO}/releases?per_page=100`]);
+    expect(calls[0]).toBe("releases");
     expect(checked).toMatchObject({ phase: "available", autoInstall: false, latest: { version: "0.1.7", tag: "v0.1.7", notes: "- feat: Update-Funktion", since: "0.1.0", kind: "full", via: null } });
     const ready = await svc.download();
     expect(ready.phase).toBe("ready");
     expect(readFileSync(ready.installerPath!)).toEqual(INSTALLER);
-    expect(calls[1]).toEqual(expect.arrayContaining(["release", "download", "v0.1.7", "--repo", UPDATE_REPO, "--pattern", "FORGE_0.1.7_x64-setup.exe"]));
+    expect(calls).toContain("download FORGE_0.1.7_x64-setup.exe.sig");
+    expect(calls).toContain("download FORGE_0.1.7_x64-setup.exe");
+    // The signature file does not stay next to the installer.
+    expect(existsSync(`${ready.installerPath}.sig`)).toBe(false);
     // Checking again keeps the downloaded installer of the same release.
     expect((await svc.check()).phase).toBe("ready");
   });
 
   it("drops an installer whose checksum does not match", async () => {
-    const { svc } = service(() => ({ code: 0, stdout: release("v0.1.8", "sha256:" + "0".repeat(64)) }));
+    const { svc } = service(() => [rel("v0.1.8", undefined, "sha256:" + "0".repeat(64))]);
     await svc.check();
     const r = await svc.download();
     expect(r).toMatchObject({ phase: "error", message: expect.stringMatching(/Prüfsumme/) });
     expect(r.installerPath).toBeNull();
   });
 
-  it("says up to date for the same or an older release and explains a missing GitHub login", async () => {
-    expect((await service(() => ({ code: 0, stdout: release("v0.1.0") })).svc.check()).phase).toBe("uptodate");
-    expect((await service(() => ({ code: 0, stdout: release("v0.0.9") })).svc.check()).phase).toBe("uptodate");
-    const noLogin = await service(() => ({ code: 4, stderr: "To get started with GitHub CLI, please run:  gh auth login" })).svc.check();
-    expect(noLogin).toMatchObject({ phase: "error", message: expect.stringMatching(/bei GitHub anmelden/) });
-    const none = await service(() => ({ code: 1, stderr: "HTTP 404: Not Found" })).svc.check();
+  it("drops a changed file even when GitHub reports no checksum", async () => {
+    const { svc } = service(() => [rel("v0.1.8", undefined, null)], "0.1.0", { content: Buffer.from("MZ untergeschoben") });
+    await svc.check();
+    expect(await svc.download()).toMatchObject({ phase: "error", installerPath: null, message: expect.stringMatching(/Signatur/) });
+  });
+
+  it("never offers unsigned assets", async () => {
+    const list = [rel("v0.1.9", undefined, DIGEST, false), rel("v0.1.8")];
+    expect(signedOnly(list)[0]!.assets).toEqual([]);
+    expect(signedOnly(list)[1]!.assets).toEqual([expect.objectContaining({ name: "FORGE_0.1.8_x64-setup.exe", sig: expect.objectContaining({ name: "FORGE_0.1.8_x64-setup.exe.sig" }) })]);
+    // The newest version has no signed file, so the update goes to it over the signed installer of 0.1.8.
+    expect(await service(() => list).svc.check()).toMatchObject({ phase: "available", latest: { version: "0.1.9", via: "0.1.8" } });
+    const unsigned = await service(() => [rel("v0.1.9", undefined, DIGEST, false)]).svc.check();
+    expect(unsigned).toMatchObject({ phase: "uptodate", latest: null, message: expect.stringMatching(/0\.1\.9 ist erschienen/) });
+  });
+
+  it("says up to date for the same or an older release, and what went wrong", async () => {
+    expect((await service(() => [rel("v0.1.0")]).svc.check()).phase).toBe("uptodate");
+    expect((await service(() => [rel("v0.0.9")]).svc.check()).phase).toBe("uptodate");
+    const failed = await service(() => new Error("Die Update-Suche ist fehlgeschlagen: GitHub antwortet mit HTTP 502.")).svc.check();
+    expect(failed).toMatchObject({ phase: "error", message: expect.stringMatching(/HTTP 502/) });
+    const none = await service(() => null).svc.check();
     expect(none).toMatchObject({ phase: "uptodate", message: "Noch kein Release veröffentlicht." });
+  });
+
+  it("reports a failed download", async () => {
+    const { svc } = service(() => [rel("v0.1.7")], "0.1.0", { fail: "GitHub antwortet mit HTTP 502." });
+    await svc.check();
+    expect(await svc.download()).toMatchObject({ phase: "error", message: "Download fehlgeschlagen: GitHub antwortet mit HTTP 502." });
   });
 
   it("lets Claude write the changelog from notes and commits, and says why there is none", async () => {
@@ -100,10 +156,7 @@ describe("app updates", () => {
       currentVersion: "0.1.0",
       installable: true,
       chainFile: chainFile(),
-      gh: async (args) =>
-        args[1]?.includes("/compare/")
-          ? { code: 0, stdout: "feat: Backups\nfix: Telefon\n", stderr: "" }
-          : { code: 0, stdout: release("v0.2.0"), stderr: "" },
+      source: fakeSource(() => [rel("v0.2.0")], { commits: ["feat: Backups", "fix: Telefon"] }).source,
       claudeReady: async () => ready,
       writeChangelog: async (prompt) => {
         prompts.push(prompt);
@@ -144,13 +197,13 @@ describe("app updates", () => {
 
   it("writes the changelog over all releases between the installed and the offered version", async () => {
     const prompts: string[] = [];
-    const calls: string[][] = [];
     const list = [
       { ...rel("v0.1.15", [`FORGE_0.1.15_update_${KEY}.zip`]), body: "- feat: Diktat live" },
       { ...rel("v0.1.14", [`FORGE_0.1.14_update_${KEY}.zip`]), body: "- feat: Session-Tabs" },
       { ...rel("v0.1.13", [`FORGE_0.1.13_update_${KEY}.zip`]), body: "- fix: Push auf geschützten Branches" },
       { ...rel("v0.1.12"), body: "- feat: schon installiert" },
     ];
+    const fake = fakeSource(() => list, { commits: ["feat: Session-Tabs", "fix: Push", "feat: Diktat live"] });
     const svc = new AppUpdateService({
       emit: () => {},
       enabled: () => true,
@@ -159,12 +212,7 @@ describe("app updates", () => {
       installable: true,
       runtimeKey: () => KEY,
       chainFile: chainFile(),
-      gh: async (args) => {
-        calls.push(args);
-        return args[1]?.includes("/compare/")
-          ? { code: 0, stdout: "feat: Session-Tabs\nfix: Push\nfeat: Diktat live\n", stderr: "" }
-          : { code: 0, stdout: JSON.stringify(list), stderr: "" };
-      },
+      source: fake.source,
       claudeReady: async () => "ok",
       writeChangelog: async (prompt) => {
         prompts.push(prompt);
@@ -175,7 +223,7 @@ describe("app updates", () => {
     expect(s.latest).toMatchObject({ version: "0.1.15", since: "0.1.12", kind: "patch" });
     expect(s.latest!.notes).toBe("### 0.1.15\n- feat: Diktat live\n\n### 0.1.14\n- feat: Session-Tabs\n\n### 0.1.13\n- fix: Push auf geschützten Branches");
     expect(await svc.changelogDone()).toMatchObject({ status: "ready", commits: ["feat: Session-Tabs", "fix: Push", "feat: Diktat live"] });
-    expect(calls.find((a) => a[1]?.includes("/compare/"))?.[1]).toBe(`repos/${UPDATE_REPO}/compare/v0.1.12...v0.1.15`);
+    expect(fake.calls).toContain("compare v0.1.12...v0.1.15");
     const prompt = prompts[0]!;
     expect(prompt).toContain("alle 3 Versionen nach 0.1.12 bis einschließlich 0.1.15");
     for (const line of ["Version 0.1.15:\n- feat: Diktat live", "Version 0.1.14:\n- feat: Session-Tabs", "Version 0.1.13:\n- fix: Push auf geschützten Branches", "- fix: Push"]) expect(prompt).toContain(line);
@@ -185,10 +233,10 @@ describe("app updates", () => {
 
   it("caps the changelog input of a local build and says so", async () => {
     const prompts: string[] = [];
-    const calls: string[][] = [];
     const big = Array.from({ length: 80 }, (_, i) => `- feat: Änderung Nummer ${i} mit etwas mehr Text`).join("\n");
     const list = Array.from({ length: MAX_CHANGE_RELEASES + 15 }, (_, i) => ({ ...rel(`v0.1.${i + 1}`), body: big }));
-    const commits = Array.from({ length: 400 }, (_, i) => `feat: Commit ${i}`).join("\n");
+    const commits = Array.from({ length: 400 }, (_, i) => `feat: Commit ${i}`);
+    const fake = fakeSource(() => list, { commits });
     const svc = new AppUpdateService({
       emit: () => {},
       enabled: () => true,
@@ -197,10 +245,7 @@ describe("app updates", () => {
       installable: true,
       runtimeKey: () => null,
       chainFile: chainFile(),
-      gh: async (args) => {
-        calls.push(args);
-        return { code: 0, stdout: args[1]?.includes("/compare/") ? commits : JSON.stringify(list), stderr: "" };
-      },
+      source: fake.source,
       claudeReady: async () => "ok",
       writeChangelog: async (prompt) => {
         prompts.push(prompt);
@@ -212,7 +257,7 @@ describe("app updates", () => {
     const log = await svc.changelogDone();
     expect(log!.commits).toHaveLength(150);
     expect(log!.commits.at(-1)).toBe("feat: Commit 399");
-    expect(calls.find((a) => a[1]?.includes("/compare/"))?.[1]).toBe(`repos/${UPDATE_REPO}/compare/v0.1.15...v0.1.35`);
+    expect(fake.calls).toContain("compare v0.1.15...v0.1.35");
     const prompt = prompts[0]!;
     expect(prompt).toContain(`nur die letzten ${MAX_CHANGE_RELEASES} Versionen nach 0.1.15, ältere Änderungen fehlen`);
     expect(prompt).toContain("Version 0.1.35:");
@@ -244,21 +289,21 @@ describe("app updates", () => {
 
   it("offers the newest version over a full installer and installs its small update after the restart", async () => {
     const OLD = "node-22.0.0_git-2.50.0_gh-2.90.0";
-    const list = JSON.stringify([
+    const list = [
       rel("v0.1.15", [`FORGE_0.1.15_update_${KEY}.zip`]),
       rel("v0.1.10", [`FORGE_0.1.10_update_${KEY}.zip`]),
       rel("v0.1.9", [`FORGE_0.1.9_update_${KEY}.zip`, `FORGE_0.1.9_${KEY}_x64-setup.exe`]),
       rel("v0.1.7"),
-    ]);
+    ];
     const chain = chainFile();
-    const before = service(() => ({ code: 0, stdout: list }), "0.1.7", { runtimeKey: OLD, chainFile: chain });
+    const before = service(() => list, "0.1.7", { runtimeKey: OLD, chainFile: chain });
     expect(await before.svc.check()).toMatchObject({ autoInstall: false, latest: { version: "0.1.15", tag: "v0.1.15", kind: "full", via: "0.1.9" } });
     expect((await before.svc.download()).phase).toBe("ready");
-    expect(before.calls[1]).toEqual(expect.arrayContaining(["release", "download", "v0.1.9", "--pattern", `FORGE_0.1.9_${KEY}_x64-setup.exe`]));
+    expect(before.calls).toContain(`download FORGE_0.1.9_${KEY}_x64-setup.exe`);
     expect(existsSync(chain)).toBe(true);
 
     // After the full installer: 0.1.9 with the new runtime finds the small update and installs it without asking.
-    const after = service(() => ({ code: 0, stdout: list }), "0.1.9", { chainFile: chain });
+    const after = service(() => list, "0.1.9", { chainFile: chain });
     after.svc.start();
     after.svc.stop();
     // The sessions of the restart wait for the second step instead of being stopped by it again.
@@ -272,7 +317,7 @@ describe("app updates", () => {
   });
 
   it("holds no sessions back without a two-step update", async () => {
-    const { svc } = service(() => ({ code: 0, stdout: release("v0.1.7") }));
+    const { svc } = service(() => [rel("v0.1.7")]);
     svc.start();
     svc.stop();
     expect(svc.holdsResume()).toBe(false);
@@ -280,7 +325,7 @@ describe("app updates", () => {
 
   it("asks the main window to install an offered update (for the phone)", async () => {
     let asked = 0;
-    const { svc } = service(() => ({ code: 0, stdout: release("v0.1.7") }), "0.1.0", { requestInstall: () => asked++ });
+    const { svc } = service(() => [rel("v0.1.7")], "0.1.0", { requestInstall: () => asked++ });
     expect(() => svc.requestInstall()).toThrow(/kein Update bereit/);
     await svc.check();
     expect(svc.requestInstall().latest?.version).toBe("0.1.7");
@@ -288,15 +333,15 @@ describe("app updates", () => {
   });
 
   it("downloads the small update and checks it like an installer", async () => {
-    const { svc, calls } = service(() => ({ code: 0, stdout: JSON.stringify([rel("v0.1.9", [`FORGE_0.1.9_update_${KEY}.zip`])]) }), "0.1.8");
+    const { svc, calls } = service(() => [rel("v0.1.9", [`FORGE_0.1.9_update_${KEY}.zip`])], "0.1.8");
     expect((await svc.check()).latest).toMatchObject({ kind: "patch", version: "0.1.9" });
     const ready = await svc.download();
     expect(ready.installerPath).toMatch(/FORGE_0\.1\.9_update_node-24\.21\.0_git-2\.56\.0\.2_gh-2\.102\.0\.zip$/);
-    expect(calls[1]).toEqual(expect.arrayContaining(["--pattern", `FORGE_0.1.9_update_${KEY}.zip`]));
+    expect(calls).toContain(`download FORGE_0.1.9_update_${KEY}.zip`);
   });
 
   it("does not download without a known release", async () => {
-    const { svc, calls } = service(() => ({ code: 0 }));
+    const { svc, calls } = service(() => []);
     expect((await svc.download()).phase).toBe("error");
     expect(calls).toEqual([]);
   });

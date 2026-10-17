@@ -308,7 +308,7 @@ export class BackupService {
         const { id: _id, path: _path, createdAt: _created, parentId: _parent, ...patch } = p;
         this.d.db.updateProject(existing.id, patch);
       } else {
-        this.d.db.insertProject(p, key);
+        this.d.db.insertProject(p, key, true);
       }
       if (!existsSync(p.path)) missing++;
     }

@@ -20,10 +20,10 @@ import {
   Volume2,
   XCircle,
 } from "lucide-react";
-import type { Diagnostics, ProfileId, Settings, ToolCheck, EffortLevel } from "@forge/protocol";
+import { USAGE_STATS_URL, type Diagnostics, type ProfileId, type Settings, type ToolCheck, type EffortLevel } from "@forge/protocol";
 import { call, keys, useDiagnostics, useRuntimeInfo, useSettings } from "@/lib/queries";
 import { errorMessage } from "@/lib/rpc";
-import { pickFolder } from "@/lib/native";
+import { openExternal, pickFolder } from "@/lib/native";
 import { playSound } from "@/lib/sounds";
 import { toast } from "@/stores/toast";
 import { useUi, type SettingsSection } from "@/stores/ui";
@@ -337,7 +337,7 @@ function AboutSection({ s, save }: { s: Settings; save: Save }) {
         </div>
         <SwitchRow
           label="Automatisch nach Updates suchen"
-          description="Beim Start und alle 30 Minuten in den GitHub-Releases. Ein neues Update zeigt FORGE mit einer Zusammenfassung von Claude an. Braucht die GitHub-Anmeldung in FORGE."
+          description="Beim Start und alle 30 Minuten in den GitHub-Releases. Ein neues Update zeigt FORGE mit einer Zusammenfassung von Claude an. FORGE installiert nur Updates mit gültiger Signatur."
           checked={s.updateChecks}
           onChange={(v) => void save({ updateChecks: v })}
         />
@@ -350,8 +350,29 @@ function AboutSection({ s, save }: { s: Settings; save: Save }) {
       </Group>
 
       <Group title="Datenschutz">
+        <SwitchRow
+          label="Anonyme Nutzungsstatistik"
+          description={
+            <>
+              Einmal am Tag gehen Summen an den Statistik-Dienst von FORGE: eine zufällige Kennung, FORGE- und Windows-Version, Tokens, Claude-Arbeitszeit, Sessions, angelegte Projekte,
+              Agenten und Telefonate. Keine Inhalte, Namen oder Pfade. Ausschalten löscht die gesendeten Daten beim Dienst.{" "}
+              <a
+                href={USAGE_STATS_URL}
+                onClick={(e) => {
+                  e.preventDefault();
+                  void openExternal(USAGE_STATS_URL);
+                }}
+                className="underline hover:text-fg"
+              >
+                Gesamtzahlen ansehen
+              </a>
+            </>
+          }
+          checked={s.usageStats}
+          onChange={(v) => void save({ usageStats: v, usageStatsAsked: true })}
+        />
         <ul className="list-disc space-y-1.5 py-3.5 pl-9 pr-4 text-body text-muted">
-          <li>Keine Telemetrie durch FORGE. Projektdaten bleiben auf deinem Rechner.</li>
+          <li>Projektdaten, Chatverläufe und Einstellungen bleiben auf deinem Rechner. Außer der Nutzungsstatistik oben sendet FORGE nichts über dich.</li>
           <li>Ist das Telefon eingeschaltet, geht Gesprächsaudio an Google (Gemini) oder OpenAI, je nach Einstellung unter Telefon.</li>
           <li>Tool-Ein- und Ausgaben prüft FORGE vor dem Speichern auf bekannte Secret-Muster und maskiert sie.</li>
           <li>FORGE liest keine Claude-Zugangsdaten. Die Anmeldung speichert Claude Code selbst.</li>

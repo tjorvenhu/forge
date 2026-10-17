@@ -3,23 +3,24 @@ import { copyFile, mkdir, open, readdir, rm, stat } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { ForgeError, type AppInstallState, type InstallProblem } from "@forge/protocol";
-import { resolveTool } from "../util/tools.js";
 import {
   compareVersions,
   defaultChainFile,
+  defaultReleaseSource,
+  fetchSigned,
   FULL_DIR,
-  ghApiError,
   installedRuntimeKey,
   installerRuntimeKey,
   pickInstaller,
-  runGh,
-  sha256,
+  signedOnly,
   UPDATE_REPO,
   updateDir,
+  type Asset,
   type Release,
 } from "./app-update.js";
+import type { ReleaseSource } from "./github-releases.js";
 
-/** Release page for a manual download; the repository is private, so only with access. */
+/** Release page for a manual download. */
 export const RELEASES_URL = `https://github.com/${UPDATE_REPO}/releases`;
 
 const FIRST_CHECK_MS = 2_000;
@@ -120,8 +121,6 @@ async function folderBytes(dir: string): Promise<number> {
   return total;
 }
 
-type Gh = (args: string[], timeoutMs: number) => Promise<{ code: number | null; stdout: string; stderr: string }>;
-
 export interface FullInstallDeps {
   emit(state: AppInstallState): void;
   log(message: string): void;
@@ -130,10 +129,12 @@ export interface FullInstallDeps {
   /** runtime key the app was built for (default: FORGE_RUNTIME_EXPECTED, empty when the build does not know it) */
   expectedRuntime?: string | null;
   runtimeDir?: () => string | null;
-  /** runs gh; tests pass a fake */
-  gh?: Gh;
-  /** whether gh is there to download with */
-  ghAvailable?: () => boolean;
+  /** releases and downloads; tests pass a fake */
+  source?: ReleaseSource;
+  /** key the signatures are checked with; tests pass their own */
+  publicKey?: string;
+  /** false: only look in the Downloads folder (tests) */
+  canDownload?: () => boolean;
   /** folders searched for a setup.exe the user downloaded */
   localDirs?: () => string[];
   /** where the installer goes; the desktop shell runs installers only from updateDir() */
@@ -147,24 +148,26 @@ export interface FullInstallDeps {
 /**
  * Notices an incomplete installation (an update zip unpacked instead of the installer, or a runtime
  * older than this version needs) and fetches the full installer for the runtime this version was
- * built for: from the GitHub releases with the user's gh login, or from the Downloads folder when
- * gh is missing. Installing is the same path as an update (app-install.ts in the desktop app).
+ * built for: signed from the GitHub releases, or from the Downloads folder when GitHub has none or is
+ * not reachable. Installing is the same path as an update (app-install.ts in the desktop app).
  */
 export class FullInstallService {
   private state: AppInstallState;
   private readonly expected: string | null;
   private readonly chainFile: string;
   private readonly downloadDir: string;
+  private readonly releases: ReleaseSource;
   private timer: ReturnType<typeof setTimeout> | null = null;
   private busy: Promise<AppInstallState> | null = null;
   /** what download() fetches */
-  private source: { kind: "github"; tag: string; name: string; size: number | null; digest: string | null; then: string | null } | { kind: "local"; path: string } | null = null;
+  private source: { kind: "github"; tag: string; asset: Asset; then: string | null } | { kind: "local"; path: string } | null = null;
 
   constructor(private readonly d: FullInstallDeps) {
     const env = process.env.FORGE_RUNTIME_EXPECTED;
     this.expected = d.expectedRuntime !== undefined ? d.expectedRuntime : env || null;
     this.chainFile = d.chainFile ?? defaultChainFile();
     this.downloadDir = d.downloadDir ?? path.join(updateDir(), FULL_DIR);
+    this.releases = d.source ?? defaultReleaseSource();
     this.state = {
       checkable: d.checkable ?? env !== undefined,
       complete: null,
@@ -202,7 +205,7 @@ export class FullInstallService {
   }
 
   private canDownload(): boolean {
-    return this.d.ghAvailable ? this.d.ghAvailable() : !!(this.d.gh ?? resolveTool("gh"));
+    return this.d.canDownload?.() ?? true;
   }
 
   private once(job: () => Promise<AppInstallState>): Promise<AppInstallState> {
@@ -239,22 +242,19 @@ export class FullInstallService {
     let failure: string | null = null;
     if (canDownload) {
       try {
-        const r = await (this.d.gh ?? runGh)(["api", `repos/${UPDATE_REPO}/releases?per_page=100`], 30_000);
-        if (r.code === 0) {
-          const parsed = JSON.parse(r.stdout) as Release[];
-          const pick = pickInstaller(Array.isArray(parsed) ? parsed : [], this.expected);
-          if (pick) {
-            const tag = pick.release.tag_name!;
-            const then = pick.then?.tag_name ?? null;
-            this.source = { kind: "github", tag, name: pick.asset.name, size: pick.asset.size ?? null, digest: pick.asset.digest ?? null, then };
-            this.set({
-              phase: "found",
-              installer: { version: tag.replace(/^v/i, ""), tag, name: pick.asset.name, size: pick.asset.size ?? null, source: "github", then: then?.replace(/^v/i, "") ?? null },
-              installerPath: null,
-            });
-            return;
-          }
-        } else failure = ghApiError(r, "den Download");
+        const found = await this.releases.releases();
+        const pick = found ? pickInstaller(signedOnly(found as Release[]), this.expected) : null;
+        if (pick) {
+          const tag = pick.release.tag_name!;
+          const then = pick.then?.tag_name ?? null;
+          this.source = { kind: "github", tag, asset: pick.asset, then };
+          this.set({
+            phase: "found",
+            installer: { version: tag.replace(/^v/i, ""), tag, name: pick.asset.name, size: pick.asset.size ?? null, source: "github", then: then?.replace(/^v/i, "") ?? null },
+            installerPath: null,
+          });
+          return;
+        }
       } catch (e) {
         failure = e instanceof Error ? e.message : String(e);
       }
@@ -269,7 +269,7 @@ export class FullInstallService {
   }
 
   private noneMessage(canDownload: boolean): string {
-    if (!canDownload) return "Ohne GitHub CLI kann FORGE den Installer nicht selbst laden. Lade die setup.exe von der Release-Seite herunter und wähle sie hier aus.";
+    if (!canDownload) return "FORGE kann den Installer gerade nicht selbst laden. Lade die setup.exe von der Release-Seite herunter und wähle sie hier aus.";
     return `Auf GitHub gibt es noch keinen Installer für diese Laufzeit${this.expected ? ` (${this.expected})` : ""}. Er entsteht mit dem nächsten Release, das die Laufzeit ändert, oder in GitHub Actions über Release, Run workflow mit full.`;
   }
 
@@ -324,18 +324,15 @@ export class FullInstallService {
           });
         }, PROGRESS_MS);
         poll.unref?.();
-        const r = await (this.d.gh ?? runGh)(["release", "download", src.tag, "--repo", UPDATE_REPO, "--pattern", src.name, "--dir", dir, "--clobber"], 30 * 60_000);
-        clearInterval(poll);
-        poll = null;
-        if (r.code !== 0) throw new Error(`Download fehlgeschlagen: ${(r.stderr || r.stdout).trim().split("\n").at(-1)}`);
-        file = path.join(dir, src.name);
-        if (!existsSync(file)) throw new Error("Der Installer fehlt nach dem Download.");
+        try {
+          file = await fetchSigned(this.releases, src.asset, dir, 30 * 60_000, this.d.publicKey);
+        } finally {
+          clearInterval(poll);
+          poll = null;
+        }
       }
       const size = (await stat(file)).size;
-      if (src.kind === "github" && src.size && size !== src.size) throw new Error(`Der Installer ist unvollständig (${size} von ${src.size} Bytes). Download verworfen.`);
-      if (src.kind === "github" && src.digest?.startsWith("sha256:") && (await sha256(file)) !== src.digest.slice(7).toLowerCase()) {
-        throw new Error("Prüfsumme des Installers stimmt nicht. Download verworfen.");
-      }
+      if (src.kind === "github" && src.asset.size && size !== src.asset.size) throw new Error(`Der Installer ist unvollständig (${size} von ${src.asset.size} Bytes). Download verworfen.`);
       if (size < MIN_INSTALLER_BYTES || !(await looksLikeExe(file))) throw new Error("Die Datei ist kein vollständiger Installer.");
       // An older installer: the newest small update for its runtime follows by itself after the restart.
       if (src.kind === "github" && src.then) writeFileSync(this.chainFile, JSON.stringify({ target: src.then }));

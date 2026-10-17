@@ -26,15 +26,17 @@ ihn aus `runtime/VERSIONS.json`. Rust baut mit Thin-LTO statt vollem LTO (eine M
 die Toolchain wird nicht mehr aktualisiert. „Latest“ auf GitHub bleibt beim neuesten vollen Installer
 (`--latest=false` für die anderen): Download für Neuinstallationen, und ältere FORGE-Versionen, die nur
 `releases/latest` lesen, finden dort immer einen Installer.
-Unit-Tests laufen dort nicht: zwei Tests scheitern unter Windows an verzögert gelöschten Dateien (siehe HANDOFF).
+Unit-Tests laufen dort nicht: zwei Tests scheitern unter Windows an verzögert gelöschten Dateien.
 
-**Prüfen und Laden** (`packages/sidecar/src/update/app-update.ts`): über das mitgelieferte `gh` mit der Anmeldung
-des Nutzers (`gh api repos/tjorvenhu/forge/releases?per_page=30`, `gh release download`). Grund: Das Repository ist
-privat; der Tauri-Updater kann private Release-Dateien nicht ohne Token laden, und ein öffentliches Release-Repo würde
-die App für alle sichtbar machen. Wer FORGE aktualisieren will, braucht also Lesezugriff auf das Repository.
-Erste Prüfung 20 s nach dem Start, dann alle 30 Minuten (Einstellung `updateChecks`), nur in der Desktop-App
+**Prüfen und Laden** (`packages/sidecar/src/update/app-update.ts`, `github-releases.ts`; Nachtrag 2026-10-17,
+vorher über `gh` mit der Anmeldung des Nutzers, solange das Repository privat war): direkt per HTTPS an die
+GitHub-API (`/repos/tjorvenhu/forge/releases`, `/compare`, Dateien über die API-Adresse des Assets mit
+`Accept: application/octet-stream`). Zuerst anonym, damit Updates ohne GitHub-Konto gehen. Nur wenn GitHub ablehnt
+(401/403/404/429: privates Repository oder Ratenlimit von 60 Anfragen pro Stunde und IP), ein zweiter Versuch mit dem
+Token der gh-Anmeldung (`gh auth token`), falls es eine gibt.
+Erste Prüfung kurz nach dem Start, dann alle 30 Minuten (Einstellung `updateChecks`), nur in der Desktop-App
 (`FORGE_APP_VERSION` gesetzt). Der Installer landet in `%TEMP%\forge-update` und wird gegen den SHA-256 geprüft,
-den GitHub für die Datei meldet (`digest`); bei Abweichung verworfen. Auswahl (`pickRelease`): Hat das neueste
+den GitHub für die Datei meldet (`digest`), und immer gegen seine Signatur (siehe unten); bei Abweichung verworfen. Auswahl (`pickRelease`): Hat das neueste
 Release ein kleines Update für den installierten Laufzeit-Schlüssel, wird es genommen; sonst der neueste volle
 Installer. Danach folgen wieder kleine Updates. Die Oberfläche zeigt Art und Größe.
 
@@ -49,9 +51,16 @@ sich fortsetzen), startet den Installer selbst mit `/P /UPDATE /R` (ohne Rückfr
 FORGE startet danach neu) und beendet sich. Nicht der Sidecar startet ihn: dessen Job-Objekt würde den Installer
 beim Beenden von FORGE mit beenden.
 
-**Keine Updater-Signatur (minisign):** Installer kommen per TLS aus dem eigenen privaten Repository mit
-GitHub-Prüfsumme; wer dort Releases anlegen kann, kann auch den Code ändern. Code-Signing (SmartScreen) fehlt
-weiterhin.
+**Signatur (Nachtrag 2026-10-17, mit der Veröffentlichung):** Jedes Release-Asset hat daneben `<asset>.sig`:
+Ed25519 über `FORGE-UPDATE-1\n<Dateiname>\n<sha256 hex>` (`scripts/sign-update.mjs`, base64). Der Name in der
+Nachricht bindet die Signatur an Version und Laufzeit. Privater Schlüssel: Secret `FORGE_UPDATE_SIGNING_KEY` im
+Repository (PEM, PKCS8), ohne ihn bricht der Workflow schon im Schritt Plan ab. Öffentlicher Schlüssel fest in
+`packages/sidecar/src/update/signature.ts`. Die App bietet nur Assets mit `.sig` an (`signedOnly`), ältere
+unsignierte Releases sind damit unsichtbar. Deshalb zählt im Workflow nur ein signierter Installer als vorhanden:
+Das erste Release nach der Umstellung baut den vollen Installer neu. Ein neuer Schlüssel heißt: neuen öffentlichen
+Schlüssel in `signature.ts`, Secret ersetzen; installierte Versionen mit dem alten Schlüssel nehmen danach nur noch
+den Installer von Hand. Ein Installer, den der Nutzer selbst auswählt (Downloads-Ordner), wird nicht geprüft: Den
+startet er auch so. Code-Signing (SmartScreen) fehlt weiterhin.
 
 ## Nachtrag 2026-10-13: Sessions überstehen das Update
 
@@ -85,6 +94,8 @@ Anruf endet.
 
 ## Tests
 
-`app-update.test.ts`: Versionsvergleich, Update gefunden, Download mit Prüfsumme, falsche Prüfsumme, aktuell,
-fehlender Login, noch kein Release, Wahl zwischen kleinem Update und vollem Installer, Download des kleinen Updates.
+`app-update.test.ts`: Versionsvergleich, Update gefunden, Download mit Prüfsumme und Signatur, falsche Prüfsumme,
+falsche Signatur ohne Prüfsumme, unsignierte Assets, aktuell, noch kein Release, Wahl zwischen kleinem Update und
+vollem Installer, Download des kleinen Updates. `update-signing.test.ts`: Signaturskript gegen Prüfung, anonymer
+Abruf mit Token nur bei Ablehnung, Ratenlimit.
 Das Austausch-Skript ist von Hand geprüft (Erfolg und Rückbau bei gesperrter Datei).

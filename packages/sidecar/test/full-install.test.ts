@@ -1,11 +1,12 @@
-import { createHash } from "node:crypto";
+import { createHash, generateKeyPairSync, sign } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import type { AppInstallState } from "@forge/protocol";
-import { pickInstaller, pickRelease, UPDATE_REPO, type Release } from "../src/update/app-update.js";
+import { pickInstaller, pickRelease, type Release } from "../src/update/app-update.js";
 import { checkRuntime, findLocalInstaller, FullInstallService, parseRuntimeKey } from "../src/update/full-install.js";
+import { signedMessage } from "../src/update/signature.js";
 
 const KEY = "node-24.21.0_git-2.56.0.2_gh-2.102.0";
 const OLD = "node-22.0.0_git-2.50.0_gh-2.90.0";
@@ -23,8 +24,18 @@ afterEach(() => {
   for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
 });
 
-function rel(tag: string, assets: string[], digest: string | null = DIGEST): Release {
-  return { tag_name: tag, body: "", published_at: "2026-10-12T10:00:00Z", assets: assets.map((name) => ({ name, size: INSTALLER.length, digest })) };
+const keys = generateKeyPairSync("ed25519");
+const PUBLIC_KEY = keys.publicKey.export({ type: "spki", format: "pem" }).toString();
+const SHA = createHash("sha256").update(INSTALLER).digest("hex");
+
+/** A release with signed assets; the pickers see them the way signedOnly hands them over. */
+function rel(tag: string, assets: string[], digest: string | null = DIGEST, signed = true): Release {
+  return {
+    tag_name: tag,
+    body: "",
+    published_at: "2026-10-12T10:00:00Z",
+    assets: assets.flatMap((name) => [{ name, size: INSTALLER.length, digest }, ...(signed ? [{ name: `${name}.sig`, size: 88, digest: null }] : [])]),
+  };
 }
 
 /** A runtime folder as the full installer leaves it; `skip` leaves tools out. */
@@ -102,9 +113,9 @@ describe("incomplete installations", () => {
 });
 
 describe("FullInstallService", () => {
-  function service(opts: { runtimeDir: string | null; releases?: Release[]; ghAvailable?: boolean; localDirs?: string[]; failDownload?: boolean; requestInstall?: () => void }) {
+  function service(opts: { runtimeDir: string | null; releases?: Release[]; canDownload?: boolean; localDirs?: string[]; failDownload?: boolean; requestInstall?: () => void }) {
     const states: AppInstallState[] = [];
-    const calls: string[][] = [];
+    const calls: string[] = [];
     const downloadDir = tmp("forge-full-");
     const chainFile = path.join(tmp("forge-chain-"), "chain.json");
     const svc = new FullInstallService({
@@ -113,18 +124,24 @@ describe("FullInstallService", () => {
       checkable: true,
       expectedRuntime: KEY,
       runtimeDir: () => opts.runtimeDir,
-      ghAvailable: () => opts.ghAvailable ?? true,
+      canDownload: () => opts.canDownload ?? true,
       localDirs: () => opts.localDirs ?? [],
       downloadDir,
       chainFile,
       requestInstall: opts.requestInstall,
-      gh: async (args) => {
-        calls.push(args);
-        if (args[0] === "api") return { code: 0, stdout: JSON.stringify(opts.releases ?? []), stderr: "" };
-        if (opts.failDownload) return { code: 1, stdout: "", stderr: "HTTP 502" };
-        const dir = args[args.indexOf("--dir") + 1]!;
-        writeFileSync(path.join(dir, args[args.indexOf("--pattern") + 1]!), INSTALLER);
-        return { code: 0, stdout: "", stderr: "" };
+      publicKey: PUBLIC_KEY,
+      source: {
+        releases: async () => {
+          calls.push("releases");
+          return opts.releases ?? [];
+        },
+        commits: async () => [],
+        download: async (asset, file) => {
+          calls.push(`download ${asset.name}`);
+          if (opts.failDownload) throw new Error("GitHub antwortet mit HTTP 502.");
+          const name = asset.name!;
+          writeFileSync(file, name.endsWith(".sig") ? sign(null, signedMessage(name.slice(0, -4), SHA), keys.privateKey).toString("base64") : INSTALLER);
+        },
       },
     });
     return { svc, states, calls, chainFile };
@@ -150,7 +167,7 @@ describe("FullInstallService", () => {
     const ready = await svc.download();
     expect(ready).toMatchObject({ phase: "ready", received: INSTALLER.length });
     expect(readFileSync(ready.installerPath!)).toEqual(INSTALLER);
-    expect(calls[1]).toEqual(["release", "download", "v0.1.56", "--repo", UPDATE_REPO, "--pattern", `FORGE_0.1.56_${KEY}_x64-setup.exe`, "--dir", path.dirname(ready.installerPath!), "--clobber"]);
+    expect(calls.slice(1)).toEqual([`download FORGE_0.1.56_${KEY}_x64-setup.exe.sig`, `download FORGE_0.1.56_${KEY}_x64-setup.exe`]);
     // After the restart the update service installs 0.1.60 by itself (two-step update).
     expect(JSON.parse(readFileSync(chainFile, "utf8"))).toEqual({ target: "v0.1.60" });
     // A second download keeps the checked file.
@@ -165,7 +182,12 @@ describe("FullInstallService", () => {
     expect(existsSync(chainFile)).toBe(false);
     const failing = service({ runtimeDir: runtime(null, ["gh"]), releases, failDownload: true });
     await failing.svc.check();
-    expect(await failing.svc.download()).toMatchObject({ phase: "error", message: "Download fehlgeschlagen: HTTP 502" });
+    expect(await failing.svc.download()).toMatchObject({ phase: "error", message: "Download fehlgeschlagen: GitHub antwortet mit HTTP 502." });
+  });
+
+  it("ignores unsigned installers (releases from before the signing)", async () => {
+    const { svc } = service({ runtimeDir: runtime(null, ["gh"]), releases: [rel("v0.1.56", [`FORGE_0.1.56_${KEY}_x64-setup.exe`], DIGEST, false)] });
+    expect(await svc.check()).toMatchObject({ phase: "none", installer: null });
   });
 
   it("says clearly when there is no installer for the runtime and how to get one", async () => {
@@ -175,11 +197,11 @@ describe("FullInstallService", () => {
     expect(() => svc.requestInstall()).toThrow(/noch keinen Installer/);
   });
 
-  it("takes a setup.exe from the Downloads folder when gh is missing, and one the user picks", async () => {
+  it("takes a setup.exe from the Downloads folder when it cannot download, and one the user picks", async () => {
     const dl = tmp("forge-dl-");
     const local = path.join(dl, `FORGE_0.1.56_${KEY}_x64-setup.exe`);
     writeFileSync(local, INSTALLER);
-    const { svc, calls } = service({ runtimeDir: runtime(null, ["git", "gh"]), ghAvailable: false, localDirs: [dl] });
+    const { svc, calls } = service({ runtimeDir: runtime(null, ["git", "gh"]), canDownload: false, localDirs: [dl] });
     expect(await svc.check()).toMatchObject({ phase: "found", canDownload: false, installer: { source: "local", version: "0.1.56", tag: null } });
     const ready = await svc.download();
     expect(ready.phase).toBe("ready");
@@ -187,8 +209,8 @@ describe("FullInstallService", () => {
     expect(readFileSync(ready.installerPath!)).toEqual(INSTALLER);
     expect(calls).toEqual([]);
 
-    const empty = service({ runtimeDir: runtime(null, ["gh"]), ghAvailable: false });
-    expect(await empty.svc.check()).toMatchObject({ phase: "none", message: expect.stringMatching(/Ohne GitHub CLI.*Release-Seite/) });
+    const empty = service({ runtimeDir: runtime(null, ["gh"]), canDownload: false });
+    expect(await empty.svc.check()).toMatchObject({ phase: "none", message: expect.stringMatching(/nicht selbst laden.*Release-Seite/) });
     await expect(empty.svc.useLocal(path.join(dl, "FORGE_0.1.9_update_x.zip"))).rejects.toThrow(/kein FORGE-Installer/);
     const other = path.join(dl, `FORGE_0.1.9_${OLD}_x64-setup.exe`);
     writeFileSync(other, INSTALLER);

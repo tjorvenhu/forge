@@ -7,6 +7,10 @@
 #                                    asked for (Run workflow → full). Needed for new installations and
 #                                    for apps with an older runtime.
 # The runtime key comes from scripts/prepare-runtime.mjs (node-<v>_git-<v>_gh-<v>_python-<v>).
+#
+# Every asset gets a signature <asset>.sig (scripts/sign-update.mjs, key in the secret
+# FORGE_UPDATE_SIGNING_KEY). The app installs only signed assets; the public key is in
+# packages/sidecar/src/update/signature.ts.
 name: Release
 
 on:
@@ -15,6 +19,8 @@ on:
     paths-ignore:
       - "**/*.md"
       - "docs/**"
+      # the statistics service deploys through Coolify, not with the app
+      - "services/**"
       - "*.png"
       - "*.docx"
   workflow_dispatch:
@@ -64,11 +70,15 @@ jobs:
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
+          FORGE_UPDATE_SIGNING_KEY: ${{ secrets.FORGE_UPDATE_SIGNING_KEY }}
         run: |
+          # Without the key no installation would take the release: stop before the long build.
+          if (-not $env:FORGE_UPDATE_SIGNING_KEY) { throw "Secret FORGE_UPDATE_SIGNING_KEY fehlt." }
           $version = "0.1.${{ github.run_number }}"
           $key = (node scripts/prepare-runtime.mjs --key).Trim()
           $assets = gh api "repos/${{ github.repository }}/releases?per_page=100" --jq '.[].assets[].name'
-          $hasInstaller = [bool]($assets | Where-Object { $_ -like "*_${key}_x64-setup.exe" })
+          # Only a signed installer counts: the app ignores the unsigned ones of older releases.
+          $hasInstaller = [bool]($assets | Where-Object { $_ -like "*_${key}_x64-setup.exe.sig" })
           $full = ("${{ inputs.full }}" -eq "true") -or -not $hasInstaller
           $conf = "apps/desktop/src-tauri/tauri.conf.json"
           (Get-Content $conf -Raw) -replace '"version":\s*"[^"]*"', "`"version`": `"$version`"" | Set-Content $conf -NoNewline -Encoding utf8
@@ -128,6 +138,7 @@ jobs:
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
+          FORGE_UPDATE_SIGNING_KEY: ${{ secrets.FORGE_UPDATE_SIGNING_KEY }}
         run: |
           $version = "${{ steps.plan.outputs.version }}"
           $key = "${{ steps.plan.outputs.key }}"
@@ -147,6 +158,9 @@ jobs:
             Copy-Item $setup.FullName $named
             $files += $named
           }
+          node scripts/sign-update.mjs @files
+          if ($LASTEXITCODE -ne 0) { throw "Signieren fehlgeschlagen." }
+          $files += @($files | ForEach-Object { "$_.sig" })
           $prev = git describe --tags --abbrev=0 2>$null
           $range = if ($prev) { "$prev..HEAD" } else { "HEAD~20..HEAD" }
           $notes = (git log $range --no-merges --format="- %s") -join "`n"

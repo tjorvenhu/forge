@@ -319,7 +319,32 @@ export const MIGRATIONS: string[] = [
   UPDATE projects SET tags = json_insert(tags, '$[#]', 'auto-merge')
   WHERE parent_id IS NULL AND git_enabled = 1 AND NOT EXISTS (SELECT 1 FROM json_each(projects.tags) WHERE value = 'auto-merge');
   `,
+  // Counters for the usage statistics that no other table keeps: removed projects are gone from projects.
+  // Starts with the projects there are now.
+  `
+  CREATE TABLE stats_counters (
+    key TEXT PRIMARY KEY,
+    value INTEGER NOT NULL DEFAULT 0
+  );
+  INSERT INTO stats_counters(key, value) SELECT 'projectsCreated', COUNT(*) FROM projects WHERE parent_id IS NULL;
+  `,
 ];
+
+/** Cumulative counters of this installation that the usage statistics send (USAGE_STATS_URL). */
+export interface UsageTotals {
+  tokensInput: number;
+  tokensOutput: number;
+  tokensCacheRead: number;
+  tokensCacheWrite: number;
+  /** turns of sessions (not titles, commit messages and the like) */
+  claudeTurns: number;
+  claudeWorkMs: number;
+  sessions: number;
+  projectsCreated: number;
+  agentsStarted: number;
+  agentsMerged: number;
+  phoneCalls: number;
+}
 
 export const DEFAULT_SETTINGS: Settings = {
   claudePath: null,
@@ -342,6 +367,8 @@ export const DEFAULT_SETTINGS: Settings = {
   setupDone: false,
   syncEnabled: false,
   syncAsked: false,
+  usageStats: true,
+  usageStatsAsked: false,
 };
 
 interface ProjectRow {
@@ -702,7 +729,8 @@ export class Db {
     return r ? toProject(r) : null;
   }
 
-  insertProject(p: ProjectRecord, pathKey: string) {
+  /** `restored`: back from a backup, no new project for the usage statistics */
+  insertProject(p: ProjectRecord, pathKey: string, restored = false) {
     this.sql
       .prepare(
         `INSERT INTO projects(id, name, path, path_key, favorite, tags, technologies, profile, default_model, default_effort, created_at, last_opened_at, test_command, dev_command, parent_id, git_enabled)
@@ -726,6 +754,34 @@ export class Db {
         p.parentId,
         p.gitEnabled ? 1 : 0,
       );
+    // Agent worktrees are projects too, but they count as agents.
+    if (!p.parentId && !restored) this.bumpCounter("projectsCreated");
+  }
+
+  // ---- usage statistics
+
+  private bumpCounter(key: string) {
+    this.sql.prepare("INSERT INTO stats_counters(key, value) VALUES(?, 1) ON CONFLICT(key) DO UPDATE SET value = value + 1").run(key);
+  }
+
+  /** Totals since the installation for the anonymous usage statistics; only from rows that outlive deletions. */
+  usageTotals(): UsageTotals {
+    const u = this.sql
+      .prepare(
+        `SELECT COALESCE(SUM(input_tokens), 0) AS tokensInput, COALESCE(SUM(output_tokens), 0) AS tokensOutput,
+                COALESCE(SUM(cache_read_tokens), 0) AS tokensCacheRead, COALESCE(SUM(cache_write_tokens), 0) AS tokensCacheWrite,
+                COALESCE(SUM(CASE WHEN kind = 'session' THEN 1 ELSE 0 END), 0) AS claudeTurns,
+                COALESCE(SUM(duration_ms), 0) AS claudeWorkMs,
+                COUNT(DISTINCT CASE WHEN kind = 'session' THEN session_id END) AS sessions
+         FROM claude_usage`,
+      )
+      .get() as Omit<UsageTotals, "projectsCreated" | "agentsStarted" | "agentsMerged" | "phoneCalls">;
+    const a = this.sql
+      .prepare("SELECT COUNT(DISTINCT worktree_id) AS agentsStarted, COUNT(DISTINCT CASE WHEN outcome = 'merged' THEN worktree_id END) AS agentsMerged FROM agent_log")
+      .get() as { agentsStarted: number; agentsMerged: number };
+    const projects = this.sql.prepare("SELECT value FROM stats_counters WHERE key = 'projectsCreated'").get() as { value: number } | undefined;
+    const calls = this.sql.prepare("SELECT COUNT(*) AS n FROM phone_calls").get() as { n: number };
+    return { ...u, ...a, projectsCreated: projects?.value ?? 0, phoneCalls: calls.n };
   }
 
   updateProject(id: string, patch: Partial<ProjectRecord>) {

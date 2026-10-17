@@ -25,6 +25,7 @@ import { DictationService } from "./dictation/dictation.js";
 import { Presence } from "./util/presence.js";
 import { AppUpdateService } from "./update/app-update.js";
 import { FullInstallService } from "./update/full-install.js";
+import { UsageStatsService, usageStatsFile } from "./stats/usage-stats.js";
 import { SecretStore } from "./phone/secrets.js";
 import { locateClaude, sessionEnv } from "./claude/environment.js";
 import { readAuth } from "./claude/diagnostics.js";
@@ -213,6 +214,12 @@ export function createApp(opts: { dataDir: string; write: Writer; log?: (m: stri
     requestInstall: () => emit({ event: "install.repair", payload: {} }),
     log: (m) => opts.log?.(m),
   });
+  const usageStats = new UsageStatsService({
+    enabled: () => db.getSettings().usageStats,
+    totals: () => db.usageTotals(),
+    log: (m) => opts.log?.(m),
+    file: usageStatsFile(opts.dataDir),
+  });
   const backups = new BackupService({
     dir: path.join(opts.dataDir, "backups"),
     db,
@@ -307,6 +314,7 @@ export function createApp(opts: { dataDir: string; write: Writer; log?: (m: stri
   if (process.env.FORGE_APP_VERSION) {
     updates.start();
     installs.start();
+    usageStats.start();
     sync.start();
     void backups.createOnStart().catch((e: unknown) => opts.log?.(`Backup beim Start fehlgeschlagen: ${e instanceof Error ? e.message : String(e)}`));
     // A fresh installation without Claude Code fetches it right away (official installer); a configured path is left alone.
@@ -368,6 +376,7 @@ export function createApp(opts: { dataDir: string; write: Writer; log?: (m: stri
       tokenMeter.stop();
       updates.stop();
       installs.stop();
+      usageStats.stop();
       sync?.stop();
       devServers.shutdown();
       worktreeSetup.shutdown();

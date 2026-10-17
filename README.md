@@ -45,8 +45,16 @@ Signatur vor der Installation. Die Suche lässt sich unter Einstellungen > Über
 
 ## Datenschutz
 
-FORGE hat keine Telemetrie. Deine Projekte, Chatverläufe und Einstellungen liegen auf deinem Rechner
-(unter `%APPDATA%\forge`). Daten gehen nur an diese Stellen:
+Deine Projekte, Chatverläufe und Einstellungen liegen auf deinem Rechner (unter `%APPDATA%\forge`).
+Daten gehen nur an diese Stellen:
+
+- **Anonyme Nutzungsstatistik (abschaltbar):** Einmal am Tag schickt FORGE Summen an
+  [forge-stats.vanturis.de](https://forge-stats.vanturis.de): eine zufällige Kennung der Installation (ohne
+  Bezug zu Konto oder Rechner), die FORGE- und Windows-Version und Zählerstände (Tokens, Claude-Arbeitszeit,
+  Sessions, angelegte Projekte, gestartete und zusammengeführte Agenten, Telefonate). Keine Inhalte, keine
+  Projektnamen, keine Pfade. Der Dienst speichert keine IP-Adressen. FORGE fragt beim ersten Start danach, ohne
+  Antwort ist die Statistik an. Ausschalten unter Einstellungen > Über FORGE > Datenschutz; dann löscht FORGE
+  die gesendeten Daten beim Dienst. Die Gesamtzahlen aller Nutzer sind auf derselben Seite öffentlich.
 
 - **Anthropic:** Claude Code schickt deine Prompts und den Projektkontext mit deinem eigenen Konto an Anthropic.
   Das gilt auch für Hilfsaufgaben wie Commit-Nachrichten, Sessiontitel oder den Changelog im Update-Fenster.

@@ -500,6 +500,10 @@ export const Settings = z.object({
   syncEnabled: z.boolean(),
   /** the user was asked once whether to sync over GitHub */
   syncAsked: z.boolean(),
+  /** once a day anonymous totals (tokens, projects, agents ...) go to USAGE_STATS_URL */
+  usageStats: z.boolean(),
+  /** the user answered the question about the usage statistics; unanswered they stay on */
+  usageStatsAsked: z.boolean(),
 });
 export type Settings = z.infer<typeof Settings>;
 
