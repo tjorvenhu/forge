@@ -5,6 +5,7 @@ import { FileCode2, X } from "lucide-react";
 import { call, keys } from "@/lib/queries";
 import { errorMessage } from "@/lib/rpc";
 import { cn } from "@/lib/utils";
+import { t } from "@/i18n";
 import { ErrorBanner } from "@/components/ui/misc";
 import { CodeSkeleton } from "@/components/ui/skeleton";
 
@@ -50,21 +51,21 @@ export function DiffView({
             <span className="text-danger">-{diff.data.deletions}</span>
           </>
         )}
-        {staged && <span className="text-subtle">vorgemerkt</span>}
+        {staged && <span className="text-subtle">{t.git.common.staged}</span>}
         {onClose && (
-          <button onClick={onClose} className="rounded p-0.5 text-subtle hover:text-fg" aria-label="Diff schließen">
+          <button onClick={onClose} className="rounded p-0.5 text-subtle hover:text-fg" aria-label={t.git.diff.close}>
             <X className="h-3.5 w-3.5" />
           </button>
         )}
       </div>
-      {diff.isLoading && <CodeSkeleton lines={16} label="Lädt Diff" />}
+      {diff.isLoading && <CodeSkeleton lines={16} label={t.git.common.loadingDiff} />}
       {diff.isError && (
         <div className="p-3">
           <ErrorBanner>{errorMessage(diff.error)}</ErrorBanner>
         </div>
       )}
-      {diff.data?.binary && <div className="p-4 text-xs text-muted">Binärdatei oder zu groß für die Anzeige.</div>}
-      {diff.data && !diff.data.binary && lines.length === 0 && <div className="p-4 text-xs text-muted">Keine Textänderungen (z. B. nur Dateirechte).</div>}
+      {diff.data?.binary && <div className="p-4 text-xs text-muted">{t.git.diff.binary}</div>}
+      {diff.data && !diff.data.binary && lines.length === 0 && <div className="p-4 text-xs text-muted">{t.git.diff.noTextChanges}</div>}
       <div ref={scrollRef} className="min-h-0 flex-1 overflow-auto font-mono text-caption-lg leading-4.5">
         <div className="relative min-w-max" style={{ height: v.getTotalSize() }}>
           {v.getVirtualItems().map((row) => {
@@ -92,7 +93,7 @@ export function DiffView({
           })}
         </div>
       </div>
-      {diff.data?.truncated && <div className="border-t border-border px-3 py-1 text-caption text-subtle">Anzeige auf 5.000 Zeilen gekürzt.</div>}
+      {diff.data?.truncated && <div className="border-t border-border px-3 py-1 text-caption text-subtle">{t.git.diff.truncated}</div>}
     </div>
   );
 }

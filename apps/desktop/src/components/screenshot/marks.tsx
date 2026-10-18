@@ -1,3 +1,4 @@
+import { t } from "@/i18n";
 import type { Point, Rect } from "./geometry";
 
 /**
@@ -17,13 +18,13 @@ export type Tool = "select" | "pen" | "marker" | "arrow" | "box" | "text" | "num
 
 /** Marking colours: the theme's signal colours plus white and black, read when the overlay starts. */
 export const MARK_COLORS = [
-  { token: "--color-danger", label: "Rot" },
-  { token: "--color-warning", label: "Gelb" },
-  { token: "--color-success", label: "Grün" },
-  { token: "--color-graph-blue", label: "Blau" },
-  { token: "--color-accent", label: "Orange" },
-  { token: "white", label: "Weiß" },
-  { token: "black", label: "Schwarz" },
+  { token: "--color-danger", label: t.screenshot.colors.red },
+  { token: "--color-warning", label: t.screenshot.colors.yellow },
+  { token: "--color-success", label: t.screenshot.colors.green },
+  { token: "--color-graph-blue", label: t.screenshot.colors.blue },
+  { token: "--color-accent", label: t.screenshot.colors.orange },
+  { token: "white", label: t.screenshot.colors.white },
+  { token: "black", label: t.screenshot.colors.black },
 ] as const;
 
 export function resolveColor(token: string): string {

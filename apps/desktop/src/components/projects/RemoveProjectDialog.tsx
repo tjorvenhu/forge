@@ -13,6 +13,7 @@ import { Checkbox, ErrorBanner } from "@/components/ui/misc";
 import { Skeleton, SkeletonRegion } from "@/components/ui/skeleton";
 import { DeviceCode } from "@/components/github/DeviceCode";
 import { useAutoOpenGitHub } from "@/components/github/GitHubPanel";
+import { t } from "@/i18n";
 
 export function RemoveProjectDialog({ project, onClose }: { project: Pick<Project, "id" | "name" | "path"> | null; onClose: () => void }) {
   const qc = useQueryClient();
@@ -39,13 +40,9 @@ export function RemoveProjectDialog({ project, onClose }: { project: Pick<Projec
     <ConfirmDialog
       open={!!project}
       onOpenChange={(o) => !o && onClose()}
-      title={destructive ? "Projekt endgültig löschen?" : "Projekt aus FORGE entfernen?"}
-      description={
-        destructive
-          ? "Das lässt sich nicht rückgängig machen."
-          : "Entfernt den Eintrag und die Session-Historie in FORGE. Ordner und GitHub-Repository bleiben, wenn du unten nichts auswählst."
-      }
-      confirmLabel={destructive ? "Endgültig löschen" : "Entfernen"}
+      title={destructive ? t.projects.remove.deleteTitle : t.projects.remove.removeTitle}
+      description={destructive ? t.projects.remove.irreversible : t.projects.remove.removeDescription}
+      confirmLabel={destructive ? t.projects.remove.deleteForever : t.projects.remove.remove}
       danger
       requireText={destructive ? project?.name : undefined}
       confirmDisabled={info.isLoading || needsScope}
@@ -60,11 +57,11 @@ export function RemoveProjectDialog({ project, onClose }: { project: Pick<Projec
           const ui = useUi.getState();
           if (ui.activeProjectId === project.id) ui.closeProject();
           await qc.invalidateQueries({ queryKey: keys.projects });
-          const parts = [r.folderDeleted && "Ordner gelöscht", r.githubDeleted && `${i?.githubRepo} auf GitHub gelöscht`].filter(Boolean);
-          toast.success(destructive ? "Projekt gelöscht" : "Projekt entfernt", parts.length ? parts.join(", ") : project.path);
+          const parts = [r.folderDeleted && t.projects.remove.folderDeleted, r.githubDeleted && t.projects.remove.repoDeleted(i?.githubRepo ?? "")].filter(Boolean);
+          toast.success(destructive ? t.projects.remove.deleted : t.projects.remove.removed, parts.length ? parts.join(", ") : project.path);
         } catch (e) {
           await info.refetch();
-          toast.error("Löschen fehlgeschlagen", errorMessage(e));
+          toast.error(t.projects.remove.deleteFailed, errorMessage(e));
           throw e;
         }
       }}
@@ -72,7 +69,7 @@ export function RemoveProjectDialog({ project, onClose }: { project: Pick<Projec
       {project && (
         <div className="flex flex-col gap-3">
           {info.isLoading && (
-            <SkeletonRegion label="Lädt Projektinfos" className="flex flex-col gap-3">
+            <SkeletonRegion label={t.projects.remove.loadingInfo} className="flex flex-col gap-3">
               {[36, 44].map((w) => (
                 <div key={w} className="rounded-lg border border-border p-3">
                   <div className="flex h-5 items-center gap-2">
@@ -91,30 +88,28 @@ export function RemoveProjectDialog({ project, onClose }: { project: Pick<Projec
             <>
               <div className="rounded-lg border border-border p-3">
                 <label className="flex items-center gap-2 text-body">
-                  <Checkbox checked={deleteFolder} onChange={setDeleteFolder} disabled={!i.folderExists || !!i.folderBlocker} label="Lokalen Ordner löschen" />
-                  Lokalen Ordner löschen
+                  <Checkbox checked={deleteFolder} onChange={setDeleteFolder} disabled={!i.folderExists || !!i.folderBlocker} label={t.projects.remove.deleteFolder} />
+                  {t.projects.remove.deleteFolder}
                 </label>
                 <div className="mt-1.5 break-all pl-6 font-mono text-xs text-muted">{i.path}</div>
-                {!i.folderExists && <p className="mt-1.5 pl-6 text-xs text-subtle">Der Ordner existiert nicht mehr.</p>}
+                {!i.folderExists && <p className="mt-1.5 pl-6 text-xs text-subtle">{t.projects.remove.folderGone}</p>}
                 {i.folderBlocker && <p className="mt-1.5 pl-6 text-xs text-warning">{i.folderBlocker}</p>}
-                {deleteFolder && i.isWorktree && <p className="mt-1.5 pl-6 text-xs text-subtle">Löscht den Worktree. Der Branch und seine Commits bleiben im Repository.</p>}
+                {deleteFolder && i.isWorktree && <p className="mt-1.5 pl-6 text-xs text-subtle">{t.projects.remove.worktreeNote}</p>}
                 {deleteFolder && i.worktrees > 0 && (
-                  <p className="mt-1.5 pl-6 text-xs text-subtle">
-                    {i.worktrees === 1 ? "Der Worktree" : `Die ${i.worktrees} Worktrees`} dieses Projekts werden mit gelöscht.
-                  </p>
+                  <p className="mt-1.5 pl-6 text-xs text-subtle">{t.projects.remove.worktreesDeleted(i.worktrees)}</p>
                 )}
               </div>
 
               {i.githubRepo && (
                 <div className="rounded-lg border border-border p-3">
                   <label className="flex items-center gap-2 text-body">
-                    <Checkbox checked={deleteRepo} onChange={setDeleteRepo} disabled={!i.githubSignedIn} label="Repository auf GitHub löschen" />
-                    Repository auf GitHub löschen
+                    <Checkbox checked={deleteRepo} onChange={setDeleteRepo} disabled={!i.githubSignedIn} label={t.projects.remove.deleteRepo} />
+                    {t.projects.remove.deleteRepo}
                   </label>
                   <div className="mt-1.5 pl-6 font-mono text-xs text-muted">github.com/{i.githubRepo}</div>
-                  {!i.githubSignedIn && <p className="mt-1.5 pl-6 text-xs text-subtle">Dafür musst du in FORGE bei GitHub angemeldet sein.</p>}
+                  {!i.githubSignedIn && <p className="mt-1.5 pl-6 text-xs text-subtle">{t.projects.remove.signInNeeded}</p>}
                   {needsScope && <GrantDeleteScope onGranted={() => void info.refetch()} />}
-                  {deleteRepo && !needsScope && <p className="mt-1.5 pl-6 text-xs text-subtle">Löscht Code, Issues und Pull Requests auf GitHub.</p>}
+                  {deleteRepo && !needsScope && <p className="mt-1.5 pl-6 text-xs text-subtle">{t.projects.remove.repoDeleteNote}</p>}
                 </div>
               )}
             </>
@@ -144,24 +139,24 @@ function GrantDeleteScope({ onGranted }: { onGranted: () => void }) {
       qc.setQueryData(keys.githubLogin, await call("github.startLogin", { scopes: ["delete_repo"] }));
       setStarted(true);
     } catch (e) {
-      toast.error("Berechtigung nicht angefragt", errorMessage(e));
+      toast.error(t.projects.remove.scopeNotRequested, errorMessage(e));
     }
   };
 
   if (started && login?.phase === "waiting" && login.code && login.url) {
     return (
       <div className="mt-2.5 pl-6">
-        <DeviceCode code={login.code} url={login.url} prompt="Gib diesen Code auf der GitHub-Seite ein:" compact />
+        <DeviceCode code={login.code} url={login.url} prompt={t.projects.remove.enterCode} compact />
       </div>
     );
   }
 
   return (
     <div className="mt-2.5 flex flex-col items-start gap-2 pl-6">
-      <p className="text-xs text-muted">GitHub verlangt dafür einmalig die Berechtigung delete_repo. Die Freigabe läuft im Browser.</p>
+      <p className="text-xs text-muted">{t.projects.remove.scopeHint}</p>
       {login?.phase === "error" && started && <p className="text-xs text-danger">{login.message}</p>}
       <Button size="sm" onClick={() => void start()} loading={started && (login?.phase === "starting" || login?.phase === "waiting")}>
-        <KeyRound className="h-3.5 w-3.5" /> Berechtigung erteilen
+        <KeyRound className="h-3.5 w-3.5" /> {t.projects.remove.grantScope}
       </Button>
     </div>
   );

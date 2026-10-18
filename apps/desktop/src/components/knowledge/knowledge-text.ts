@@ -1,4 +1,5 @@
 import type { KnowledgeCleanup, KnowledgeMissingRef, KnowledgeStaleReport, KnowledgeSummary } from "@forge/protocol";
+import { t } from "@/i18n";
 
 /** Missing references per entry id; entries without any are left out. */
 export function staleById(report: KnowledgeStaleReport | undefined): Map<string, KnowledgeMissingRef[]> {
@@ -6,7 +7,7 @@ export function staleById(report: KnowledgeStaleReport | undefined): Map<string,
 }
 
 export function refsMissingLabel(n: number): string {
-  return n === 1 ? "1 Verweis fehlt" : `${n} Verweise fehlen`;
+  return t.knowledge.common.refsMissing(n);
 }
 
 /** Entries whose title, summary or tags contain every word of the query. */
@@ -20,7 +21,7 @@ export function filterKnowledge(entries: KnowledgeSummary[], query: string): Kno
 }
 
 export function parseTags(text: string): string[] {
-  return [...new Set(text.split(/[,\s]+/).map((t) => t.trim().toLowerCase()).filter(Boolean))].slice(0, 12);
+  return [...new Set(text.split(/[,\s]+/).map((tag) => tag.trim().toLowerCase()).filter(Boolean))].slice(0, 12);
 }
 
 /** Entries overlapping with `id` and how strongly (0-1), the strongest first. */

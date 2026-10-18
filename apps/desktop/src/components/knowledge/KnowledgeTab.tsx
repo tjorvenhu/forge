@@ -7,6 +7,7 @@ import { call, keys, useKnowledge, useKnowledgeStale } from "@/lib/queries";
 import { errorMessage, RpcCallError } from "@/lib/rpc";
 import { cn, relativeTime } from "@/lib/utils";
 import { toast } from "@/stores/toast";
+import { t } from "@/i18n";
 import { KNOWLEDGE_MERGE_REQUEST, KNOWLEDGE_STALE_REQUEST, knowledgeFixRequest, useUi } from "@/stores/ui";
 import { Button } from "@/components/ui/button";
 import { CodeEditor } from "@/components/ui/code-editor";
@@ -98,19 +99,15 @@ export function KnowledgeTab({ project }: { project: Project }) {
         <div className="flex items-center gap-2 border-b border-border p-3">
           <div className="relative min-w-0 flex-1">
             <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-subtle" />
-            <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Wissen durchsuchen" className="pl-8" aria-label="Wissen durchsuchen" />
+            <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder={t.knowledge.tab.search} className="pl-8" aria-label={t.knowledge.tab.search} />
           </div>
           <Button
             size="icon"
             variant="ghost"
             onClick={() => setTidying(true)}
             disabled={(list.data?.length ?? 0) < 2}
-            aria-label="Einträge zusammenführen"
-            title={
-              overlapCount
-                ? `Claude führt Einträge zum selben Thema zusammen: ${overlapCount === 1 ? "1 Überschneidung" : `${overlapCount} Überschneidungen`} gefunden`
-                : "Claude führt Einträge zum selben Thema zusammen"
-            }
+            aria-label={t.knowledge.tab.mergeEntries}
+            title={overlapCount ? t.knowledge.tab.mergeHintWithOverlaps(overlapCount) : t.knowledge.tab.mergeHint}
             className="relative"
           >
             <Combine className="h-4 w-4" />
@@ -125,8 +122,8 @@ export function KnowledgeTab({ project }: { project: Project }) {
             variant="ghost"
             onClick={() => setOnlyStale(!onlyStale)}
             aria-pressed={onlyStale}
-            aria-label="Nur veraltete Einträge zeigen"
-            title={stale.size ? `${stale.size === 1 ? "1 Eintrag verweist" : `${stale.size} Einträge verweisen`} auf Dateien oder Bezeichner, die es nicht mehr gibt` : "Nur veraltete Einträge zeigen"}
+            aria-label={t.knowledge.tab.onlyStale}
+            title={stale.size ? t.knowledge.tab.staleHint(stale.size) : t.knowledge.tab.onlyStale}
             className={cn("relative", onlyStale && "bg-accent-soft")}
           >
             <Link2Off className="h-4 w-4" />
@@ -136,7 +133,7 @@ export function KnowledgeTab({ project }: { project: Project }) {
               </span>
             )}
           </Button>
-          <Button size="icon" variant="primary" onClick={() => select(NEW)} aria-label="Neuer Eintrag" title="Neuer Eintrag">
+          <Button size="icon" variant="primary" onClick={() => select(NEW)} aria-label={t.knowledge.tab.newEntry} title={t.knowledge.tab.newEntry}>
             <Plus className="h-4 w-4" />
           </Button>
         </div>
@@ -148,9 +145,9 @@ export function KnowledgeTab({ project }: { project: Project }) {
               <ErrorBanner>{errorMessage(list.error)}</ErrorBanner>
             </div>
           ) : !list.data?.length ? (
-            <p className="px-2 py-3 text-xs text-muted">Noch keine Einträge.</p>
+            <p className="px-2 py-3 text-xs text-muted">{t.knowledge.tab.noEntries}</p>
           ) : !entries.length ? (
-            <p className="px-2 py-3 text-xs text-muted">{onlyStale && !query.trim() ? "Kein Eintrag verweist auf etwas, das es nicht mehr gibt." : "Nichts gefunden."}</p>
+            <p className="px-2 py-3 text-xs text-muted">{onlyStale && !query.trim() ? t.knowledge.tab.noStale : t.knowledge.common.nothingFound}</p>
           ) : (
             <ul className="flex flex-col gap-0.5">
               {entries.map((e) => {
@@ -159,18 +156,18 @@ export function KnowledgeTab({ project }: { project: Project }) {
                 <li
                   key={e.id}
                   onContextMenu={contextItems(() => [
-                    { label: "Verweise prüfen", icon: <RefreshCw className="h-3.5 w-3.5" />, onSelect: () => void recheck(e.id) },
+                    { label: t.knowledge.tab.checkRefs, icon: <RefreshCw className="h-3.5 w-3.5" />, onSelect: () => void recheck(e.id) },
                     ...(missing
                       ? [
                           {
-                            label: "Mit Claude prüfen",
+                            label: t.knowledge.common.checkWithClaude,
                             icon: <Sparkles className="h-3.5 w-3.5" />,
                             onSelect: () => {
                               select(e.id);
                               setFixing(e.id);
                             },
                           },
-                          { label: "Als geprüft markieren", icon: <CheckCheck className="h-3.5 w-3.5" />, onSelect: () => void markKnowledgeChecked(qc, owner, e.id) },
+                          { label: t.knowledge.common.markChecked, icon: <CheckCheck className="h-3.5 w-3.5" />, onSelect: () => void markKnowledgeChecked(qc, owner, e.id) },
                         ]
                       : []),
                   ])}
@@ -193,8 +190,8 @@ export function KnowledgeTab({ project }: { project: Project }) {
                           </Badge>
                         </span>
                       )}
-                      {e.tags.slice(0, 4).map((t) => (
-                        <Badge key={t}>{t}</Badge>
+                      {e.tags.slice(0, 4).map((tag) => (
+                        <Badge key={tag}>{tag}</Badge>
                       ))}
                       <span className="text-caption text-subtle">{relativeTime(e.updatedAt)}</span>
                     </div>
@@ -206,8 +203,9 @@ export function KnowledgeTab({ project }: { project: Project }) {
           )}
         </div>
         <p className="border-t border-border px-3 py-2.5 text-caption text-subtle">
-          Liegt in <span className="font-mono">.forge/knowledge</span> im Projekt und wird mit committet. Claude bekommt zu Beginn jeder Session den Index, liest passende Einträge
-          selbst und legt Neues an.
+          {t.knowledge.tab.storedIn}
+          <span className="font-mono">.forge/knowledge</span>
+          {t.knowledge.tab.storedInRest}
         </p>
       </aside>
 
@@ -238,15 +236,14 @@ export function KnowledgeTab({ project }: { project: Project }) {
         ) : (
           <EmptyState
             icon={<BookOpen className="h-8 w-8" />}
-            title="Noch kein Projektwissen"
+            title={t.knowledge.tab.emptyTitle}
             action={
               <Button variant="primary" onClick={() => select(NEW)}>
-                <Plus className="h-3.5 w-3.5" /> Ersten Eintrag anlegen
+                <Plus className="h-3.5 w-3.5" /> {t.knowledge.tab.createFirst}
               </Button>
             }
           >
-            Claude legt hier selbst ab, was es über das Projekt herausfindet: Entscheidungen, Stolperfallen, Abläufe wie Setup, Tests und Deploy. Jede neue Session bekommt den Index
-            und liest bei Bedarf nach.
+            {t.knowledge.tab.emptyHint}
           </EmptyState>
         )}
       </section>
@@ -254,9 +251,9 @@ export function KnowledgeTab({ project }: { project: Project }) {
       <ConfirmDialog
         open={leaveTo !== null}
         onOpenChange={(open) => !open && setLeaveTo(null)}
-        title="Änderungen verwerfen?"
-        description="Der offene Eintrag hat ungespeicherte Änderungen. Beim Wechsel gehen sie verloren."
-        confirmLabel="Verwerfen"
+        title={t.knowledge.tab.discardTitle}
+        description={t.knowledge.tab.discardDescription}
+        confirmLabel={t.knowledge.common.discard}
         danger
         onConfirm={() => {
           setDirty(false);
@@ -277,7 +274,7 @@ function useKnowledgeCleanup(owner: string) {
 /** Entries of the list while it loads: title, summary, tags and date like the real buttons. */
 function EntryListSkeleton() {
   return (
-    <SkeletonRegion label="Lädt Einträge" className="flex flex-col gap-0.5">
+    <SkeletonRegion label={t.knowledge.tab.loadingEntries} className="flex flex-col gap-0.5">
       {[0, 1, 2, 3].map((i) => (
         <div key={i} className="px-3 py-2">
           <div className="flex h-5 items-center">
@@ -303,7 +300,7 @@ function EntryListSkeleton() {
 /** An entry in the preview it opens with: header with its buttons, summary, tags and the text box. */
 function EntrySkeleton() {
   return (
-    <SkeletonRegion label="Lädt Eintrag" className="flex h-full flex-col gap-3 overflow-hidden px-6 py-5">
+    <SkeletonRegion label={t.knowledge.common.loadingEntry} className="flex h-full flex-col gap-3 overflow-hidden px-6 py-5">
       <div className="flex items-center gap-2">
         <div className="flex h-7 min-w-0 flex-1 items-center">
           <Skeleton className="h-4 w-1/3" />
@@ -344,7 +341,7 @@ interface RefState {
 function RefStatus({ refs }: { refs: RefState }) {
   if (refs.missing === null) {
     return (
-      <SkeletonRegion label="Prüft Verweise" className="flex items-center">
+      <SkeletonRegion label={t.knowledge.tab.checkingRefs} className="flex items-center">
         <Skeleton className="h-5 w-10 rounded" />
       </SkeletonRegion>
     );
@@ -362,29 +359,29 @@ function RefStatus({ refs }: { refs: RefState }) {
 /** Which references go nowhere, with the actions for them; the list turns into a skeleton while it is checked again. */
 function MissingRefs({ refs, missing }: { refs: RefState; missing: KnowledgeMissingRef[] }) {
   return (
-    <div role="status" aria-label="Fehlende Verweise" className="flex flex-col gap-2 rounded-lg border border-warning/30 bg-warning-soft px-3 py-2 text-body">
+    <div role="status" aria-label={t.knowledge.tab.missingRefs} className="flex flex-col gap-2 rounded-lg border border-warning/30 bg-warning-soft px-3 py-2 text-body">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
         <div className="flex min-w-56 flex-1 items-center gap-3">
           <Link2Off className="h-4 w-4 shrink-0 text-warning" />
           <div className="min-w-0">
-            <div className="font-medium">{refsMissingLabel(missing.length)} im Projekt.</div>
-            <div className="text-xs text-muted">Der Eintrag ist hier vermutlich veraltet. Claude sieht den Hinweis beim Lesen auch.</div>
+            <div className="font-medium">{t.knowledge.tab.missingInProject(refsMissingLabel(missing.length))}</div>
+            <div className="text-xs text-muted">{t.knowledge.tab.probablyStale}</div>
           </div>
         </div>
         <div className="ml-auto flex items-center gap-2">
-          <Button size="sm" variant="ghost" onClick={refs.onRecheck} disabled={refs.rechecking} aria-label="Verweise erneut prüfen" title="Erneut prüfen">
+          <Button size="sm" variant="ghost" onClick={refs.onRecheck} disabled={refs.rechecking} aria-label={t.knowledge.tab.recheckRefs} title={t.knowledge.tab.recheck}>
             <RefreshCw className={cn("h-3.5 w-3.5", refs.rechecking && "animate-spin")} />
           </Button>
-          <Button size="sm" onClick={refs.onMarkChecked} title="Die Verweise stimmen, FORGE soll sie nicht mehr melden">
-            <CheckCheck className="h-3.5 w-3.5" /> Als geprüft markieren
+          <Button size="sm" onClick={refs.onMarkChecked} title={t.knowledge.tab.refsAreFine}>
+            <CheckCheck className="h-3.5 w-3.5" /> {t.knowledge.common.markChecked}
           </Button>
           <Button size="sm" variant="primary" onClick={refs.onFix}>
-            <Sparkles className="h-3.5 w-3.5" /> Mit Claude prüfen
+            <Sparkles className="h-3.5 w-3.5" /> {t.knowledge.common.checkWithClaude}
           </Button>
         </div>
       </div>
       {refs.rechecking ? (
-        <SkeletonRegion label="Prüft Verweise" className="flex flex-col gap-1 pl-7">
+        <SkeletonRegion label={t.knowledge.tab.checkingRefs} className="flex flex-col gap-1 pl-7">
           {missing.map((m, i) => (
             <div key={`${m.kind}:${m.ref}`} className="flex h-5 items-center gap-2">
               <Skeleton className="h-4 rounded bg-surface-3" style={{ width: `${Math.min(40, 8 + m.ref.length)}ch` }} />
@@ -398,7 +395,7 @@ function MissingRefs({ refs, missing }: { refs: RefState; missing: KnowledgeMiss
             <li key={`${m.kind}:${m.ref}`} className="flex min-h-5 flex-wrap items-center gap-x-2 text-xs">
               <code className="rounded bg-surface px-1.5 py-0.5 font-mono text-caption text-fg">{m.ref}</code>
               <span className="text-muted">
-                {m.kind === "path" ? "Datei oder Ordner" : "Bezeichner"}
+                {m.kind === "path" ? t.knowledge.tab.fileOrFolder : t.knowledge.tab.identifier}
                 {m.hint ? `, ${m.hint}` : ""}
               </span>
             </li>
@@ -463,7 +460,7 @@ function EntryEditor({
 
   const save = async () => {
     if (!form || saving) return;
-    if (!form.title.trim()) return toast.error("Titel fehlt", "Jeder Eintrag braucht einen Titel.");
+    if (!form.title.trim()) return toast.error(t.knowledge.common.titleMissing, t.knowledge.common.needsTitle);
     setSaving(true);
     try {
       const saved = await call("knowledge.save", { projectId: owner, id: gone ? null : id, title: form.title, summary: form.summary, tags: parseTags(form.tags), content: form.content });
@@ -473,7 +470,7 @@ function EntryEditor({
       toast.saved();
       if (!id || gone) onSaved(saved.id);
     } catch (e) {
-      toast.error("Nicht gespeichert", errorMessage(e));
+      toast.error(t.knowledge.common.notSaved, errorMessage(e));
     } finally {
       setSaving(false);
     }
@@ -491,24 +488,24 @@ function EntryEditor({
   return (
     <div className="flex h-full flex-col gap-3 overflow-y-auto px-6 py-5">
       <div className="flex items-center gap-2">
-        <h2 className="min-w-0 flex-1 truncate text-title-sm font-semibold">{id ? shown.title || "Ohne Titel" : "Neuer Eintrag"}</h2>
+        <h2 className="min-w-0 flex-1 truncate text-title-sm font-semibold">{id ? shown.title || t.knowledge.tab.untitled : t.knowledge.tab.newEntry}</h2>
         {id && !gone && refs && <RefStatus refs={refs} />}
-        {id && entry.data && <span className="text-caption text-subtle">geändert {relativeTime(entry.data.updatedAt)}</span>}
+        {id && entry.data && <span className="text-caption text-subtle">{t.knowledge.tab.changedAgo(relativeTime(entry.data.updatedAt))}</span>}
         <Button size="sm" variant="ghost" onClick={() => setPreview(!preview)} aria-pressed={preview}>
-          {preview ? <Pencil className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />} {preview ? "Bearbeiten" : "Vorschau"}
+          {preview ? <Pencil className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />} {preview ? t.knowledge.common.edit : t.knowledge.tab.preview}
         </Button>
         {id && !gone && onMerge && (
           <Button size="sm" variant="ghost" onClick={onMerge}>
-            <Combine className="h-3.5 w-3.5" /> Zusammenführen
+            <Combine className="h-3.5 w-3.5" /> {t.knowledge.common.merge}
           </Button>
         )}
         {id && !gone && (
-          <Button size="sm" variant="danger-ghost" onClick={() => setDeleting(true)} aria-label="Eintrag löschen">
+          <Button size="sm" variant="danger-ghost" onClick={() => setDeleting(true)} aria-label={t.knowledge.tab.deleteEntry}>
             <Trash2 className="h-3.5 w-3.5" />
           </Button>
         )}
         <Button size="sm" variant="primary" onClick={() => void save()} disabled={!dirty} loading={saving}>
-          Speichern
+          {t.knowledge.tab.save}
         </Button>
       </div>
 
@@ -516,11 +513,11 @@ function EntryEditor({
         <div role="alert" className="flex items-center gap-3 rounded-lg border border-warning/30 bg-warning-soft px-3 py-2 text-body">
           <AlertTriangle className="h-4 w-4 shrink-0 text-warning" />
           <div className="min-w-0 flex-1">
-            <div className="font-medium">Der Eintrag wurde inzwischen geändert, zum Beispiel von Claude.</div>
-            <div className="text-xs text-muted">Neu laden verwirft deine Änderungen. Speichern überschreibt die neue Fassung.</div>
+            <div className="font-medium">{t.knowledge.tab.changedMeanwhile}</div>
+            <div className="text-xs text-muted">{t.knowledge.tab.changedMeanwhileHint}</div>
           </div>
           <Button size="sm" onClick={() => setForm(null)}>
-            Neu laden
+            {t.knowledge.tab.reload}
           </Button>
         </div>
       )}
@@ -529,8 +526,8 @@ function EntryEditor({
         <div role="alert" className="flex items-center gap-3 rounded-lg border border-warning/30 bg-warning-soft px-3 py-2 text-body">
           <AlertTriangle className="h-4 w-4 shrink-0 text-warning" />
           <div className="min-w-0 flex-1">
-            <div className="font-medium">Der Eintrag wurde inzwischen gelöscht, zum Beispiel von Claude.</div>
-            <div className="text-xs text-muted">Deine Änderungen sind noch da. Speichern legt den Eintrag neu an.</div>
+            <div className="font-medium">{t.knowledge.tab.deletedMeanwhile}</div>
+            <div className="text-xs text-muted">{t.knowledge.tab.deletedMeanwhileHint}</div>
           </div>
         </div>
       )}
@@ -540,30 +537,30 @@ function EntryEditor({
           {shown.summary && <p className="text-body text-muted">{shown.summary}</p>}
           {shown.tags && (
             <div className="flex flex-wrap gap-1">
-              {parseTags(shown.tags).map((t) => (
-                <Badge key={t}>{t}</Badge>
+              {parseTags(shown.tags).map((tag) => (
+                <Badge key={tag}>{tag}</Badge>
               ))}
             </div>
           )}
           <div className="rounded-lg border border-border bg-surface p-4">
-            {shown.content.trim() ? <Markdown text={shown.content} /> : <p className="text-body text-muted">Kein Text.</p>}
+            {shown.content.trim() ? <Markdown text={shown.content} /> : <p className="text-body text-muted">{t.knowledge.tab.noText}</p>}
           </div>
         </div>
       ) : (
         <>
           <div className="grid gap-3 lg:grid-cols-2">
-            <Field label="Titel">
-              <Input value={shown.title} onChange={(e) => edit({ title: e.target.value })} maxLength={120} placeholder="z. B. Datenbank-Migrationen mit Prisma" autoFocus={!id} />
+            <Field label={t.knowledge.common.title}>
+              <Input value={shown.title} onChange={(e) => edit({ title: e.target.value })} maxLength={120} placeholder={t.knowledge.tab.titlePlaceholder} autoFocus={!id} />
             </Field>
-            <Field label="Tags" hint="Mit Komma oder Leerzeichen getrennt">
-              <Input value={shown.tags} onChange={(e) => edit({ tags: e.target.value })} placeholder="datenbank, prisma" />
+            <Field label={t.knowledge.common.tags} hint={t.knowledge.common.tagsHint}>
+              <Input value={shown.tags} onChange={(e) => edit({ tags: e.target.value })} placeholder={t.knowledge.tab.tagsPlaceholder} />
             </Field>
           </div>
-          <Field label="Zusammenfassung" hint="Ein Satz. Steht im Index, den Claude zu Beginn jeder Session bekommt.">
-            <Input value={shown.summary} onChange={(e) => edit({ summary: e.target.value })} maxLength={300} placeholder="Wann man den Eintrag braucht und worum es geht" />
+          <Field label={t.knowledge.common.summary} hint={t.knowledge.tab.summaryHint}>
+            <Input value={shown.summary} onChange={(e) => edit({ summary: e.target.value })} maxLength={300} placeholder={t.knowledge.tab.summaryPlaceholder} />
           </Field>
           <div className="min-h-72 flex-1">
-            <CodeEditor value={shown.content} onChange={(content) => edit({ content })} language="markdown" onSave={() => void save()} ariaLabel="Inhalt des Eintrags" />
+            <CodeEditor value={shown.content} onChange={(content) => edit({ content })} language="markdown" onSave={() => void save()} ariaLabel={t.knowledge.tab.content} />
           </div>
         </>
       )}
@@ -571,9 +568,9 @@ function EntryEditor({
       <ConfirmDialog
         open={deleting}
         onOpenChange={setDeleting}
-        title="Eintrag löschen?"
-        description={`„${shown.title}“ wird aus .forge/knowledge gelöscht. Über Git lässt er sich wiederherstellen, falls er schon committet war.`}
-        confirmLabel="Löschen"
+        title={t.knowledge.tab.deleteTitle}
+        description={t.knowledge.tab.deleteDescription(shown.title)}
+        confirmLabel={t.knowledge.tab.delete}
         danger
         onConfirm={async () => {
           try {
@@ -581,7 +578,7 @@ function EntryEditor({
             void qc.invalidateQueries({ queryKey: keys.knowledge(owner) });
             onDeleted();
           } catch (e) {
-            toast.error("Nicht gelöscht", errorMessage(e));
+            toast.error(t.knowledge.tab.notDeleted, errorMessage(e));
             throw e;
           }
         }}

@@ -2,6 +2,7 @@ import { Fragment, useEffect, useMemo, useRef, type KeyboardEvent, type MouseEve
 import { Cloud, GitBranch, Tag } from "lucide-react";
 import type { CommitInfo } from "@forge/protocol";
 import { cn, relativeTime } from "@/lib/utils";
+import { locale, t } from "@/i18n";
 import { Skeleton, SkeletonRegion } from "@/components/ui/skeleton";
 import { layoutGraph, parseRefs, type GraphSegment, type GraphY } from "./graph-layout";
 import { AuthorAvatar } from "./AuthorAvatar";
@@ -37,9 +38,9 @@ export function dayLabel(iso: string, now = new Date()): string {
   const d = new Date(iso);
   const yesterday = new Date(now);
   yesterday.setDate(now.getDate() - 1);
-  if (d.toDateString() === now.toDateString()) return "Heute";
-  if (d.toDateString() === yesterday.toDateString()) return "Gestern";
-  return d.toLocaleDateString("de-DE", { weekday: "long", day: "numeric", month: "long", ...(d.getFullYear() !== now.getFullYear() && { year: "numeric" }) });
+  if (d.toDateString() === now.toDateString()) return t.git.graph.today;
+  if (d.toDateString() === yesterday.toDateString()) return t.git.graph.yesterday;
+  return d.toLocaleDateString(locale, { weekday: "long", day: "numeric", month: "long", ...(d.getFullYear() !== now.getFullYear() && { year: "numeric" }) });
 }
 
 /**
@@ -88,7 +89,7 @@ export function CommitGraph({
   };
 
   return (
-    <ul ref={list} aria-label="Commit-Verlauf" className="px-2 pb-2" onKeyDown={onKeyDown}>
+    <ul ref={list} aria-label={t.git.graph.history} className="px-2 pb-2" onKeyDown={onKeyDown}>
       {commits.map((c, i) => {
         const row = layout.rows[i]!;
         const lane = LANE_COLORS[row.color]!;
@@ -163,7 +164,7 @@ export function CommitGraph({
 /** Two-line commit rows with the graph column, while the history loads. */
 export function CommitListSkeleton({ rows = 9 }: { rows?: number }) {
   return (
-    <SkeletonRegion label="Lädt Verlauf" className="px-2 pb-2">
+    <SkeletonRegion label={t.git.graph.loadingHistory} className="px-2 pb-2">
       <div className="flex items-center" style={{ height: HEADER_H }}>
         <Skeleton className="ml-9 h-2.5 w-14 rounded-sm" />
       </div>
@@ -196,7 +197,7 @@ export function RefBadges({ refs, localBranches }: { refs: readonly string[]; lo
             "inline-flex h-4.5 max-w-40 items-center gap-1 rounded-full border px-1.5",
             r.kind === "branch" && r.head ? "border-accent bg-accent text-accent-fg" : "border-border-strong text-muted",
           )}`}
-          title={r.kind === "branch" ? (r.remote ? `${r.name}, auch auf dem Remote` : r.name) : r.kind === "tag" ? `Tag ${r.name}` : `Remote-Branch ${r.name}`}
+          title={r.kind === "branch" ? (r.remote ? t.git.graph.branchAlsoRemote(r.name) : r.name) : r.kind === "tag" ? t.git.graph.tag(r.name) : t.git.graph.remoteBranch(r.name)}
         >
           {r.kind === "tag" ? <Tag className="h-2.5 w-2.5 shrink-0" /> : r.kind === "remote" ? <Cloud className="h-2.5 w-2.5 shrink-0" /> : <GitBranch className="h-2.5 w-2.5 shrink-0" />}
           <span className="truncate">{r.name}</span>

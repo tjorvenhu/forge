@@ -6,6 +6,7 @@ import { call, keys } from "@/lib/queries";
 import { errorMessage } from "@/lib/rpc";
 import { cn } from "@/lib/utils";
 import { toast } from "@/stores/toast";
+import { t } from "@/i18n";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { Badge, ErrorBanner } from "@/components/ui/misc";
@@ -26,11 +27,11 @@ interface Group {
 }
 
 const STATUS: Record<Status, { label: string; tone: "neutral" | "accent" | "success" | "danger" }> = {
-  waiting: { label: "Wartet", tone: "neutral" },
-  running: { label: "Claude schreibt", tone: "accent" },
-  done: { label: "Zusammengeführt", tone: "success" },
-  failed: { label: "Fehlgeschlagen", tone: "danger" },
-  stopped: { label: "Angehalten", tone: "neutral" },
+  waiting: { label: t.knowledge.autoMerge.waiting, tone: "neutral" },
+  running: { label: t.knowledge.autoMerge.running, tone: "accent" },
+  done: { label: t.knowledge.autoMerge.done, tone: "success" },
+  failed: { label: t.knowledge.autoMerge.failed, tone: "danger" },
+  stopped: { label: t.knowledge.autoMerge.stopped, tone: "neutral" },
 };
 
 /**
@@ -97,8 +98,8 @@ export function AutoMergeDialog({
     await Promise.all(Array.from({ length: Math.min(PARALLEL, plan.length) }, worker));
     if (mine !== attempt.current) return;
     setGroups((cur) => cur && cur.map((g) => (g.status === "waiting" ? { ...g, status: "stopped" } : g)));
-    if (merged) toast.success("Projektwissen aufgeräumt", `${merged === 1 ? "1 Gruppe" : `${merged} Gruppen`} zusammengeführt${failed ? `, ${failed} fehlgeschlagen` : ""}.`);
-    else if (failed) toast.error("Nichts zusammengeführt", `${failed === 1 ? "1 Gruppe ist" : `${failed} Gruppen sind`} fehlgeschlagen.`);
+    if (merged) toast.success(t.knowledge.autoMerge.tidied, t.knowledge.autoMerge.tidiedDetail(merged, failed));
+    else if (failed) toast.error(t.knowledge.autoMerge.nothingMerged, t.knowledge.autoMerge.nothingMergedDetail(failed));
   };
 
   const start = async () => {
@@ -154,17 +155,17 @@ export function AutoMergeDialog({
     <Dialog
       open={open}
       onOpenChange={(o) => !o && close()}
-      title="Projektwissen aufräumen"
+      title={t.knowledge.autoMerge.title}
       description={
         planError
-          ? "Claude konnte das Projektwissen nicht prüfen."
+          ? t.knowledge.autoMerge.planFailed
           : !groups
-            ? `Claude liest Titel, Zusammenfassung und Gliederung aller ${entries.length} Einträge und sucht Einträge zum selben Thema.`
+            ? t.knowledge.autoMerge.reading(entries.length)
             : !groups.length
-              ? "Claude hat keine Einträge gefunden, die dasselbe Thema behandeln."
+              ? t.knowledge.autoMerge.noGroups
               : active
-                ? "Claude führt jede Gruppe zu einem Eintrag zusammen. Schließt du das Fenster, geht es im Hintergrund weiter."
-                : `${done < groups.length ? `${done} von ${groups.length} Gruppen` : done === 1 ? "1 Gruppe" : `${done} Gruppen`} zusammengeführt. Alte Fassungen liegen im Git.`
+                ? t.knowledge.autoMerge.merging
+                : t.knowledge.autoMerge.finished(done, groups.length)
       }
       className="w-180"
       footer={
@@ -176,17 +177,17 @@ export function AutoMergeDialog({
                 onManual();
               }}
             >
-              <Combine className="h-3.5 w-3.5" /> Selbst auswählen
+              <Combine className="h-3.5 w-3.5" /> {t.knowledge.autoMerge.pickYourself}
             </Button>
           )}
-          {planError && <Button onClick={() => void start()}>Erneut versuchen</Button>}
+          {planError && <Button onClick={() => void start()}>{t.knowledge.common.retry}</Button>}
           {active && (
             <Button onClick={stop} disabled={stopped.current}>
-              <Pause className="h-3.5 w-3.5" /> Anhalten
+              <Pause className="h-3.5 w-3.5" /> {t.knowledge.autoMerge.stop}
             </Button>
           )}
           <Button variant="primary" onClick={close}>
-            {busy && !groups ? "Abbrechen" : "Schließen"}
+            {busy && !groups ? t.knowledge.common.cancel : t.knowledge.autoMerge.close}
           </Button>
         </>
       }
@@ -196,7 +197,7 @@ export function AutoMergeDialog({
       ) : !groups ? (
         <PlanSkeleton />
       ) : !groups.length ? (
-        <p className="text-body text-muted">Jeder Eintrag hat ein eigenes Thema. Willst du trotzdem bestimmte Einträge zusammenlegen, wähle sie selbst aus.</p>
+        <p className="text-body text-muted">{t.knowledge.autoMerge.ownTopics}</p>
       ) : (
         <div className="flex flex-col gap-3">
           <ul className="flex max-h-105 flex-col gap-2 overflow-y-auto">
@@ -206,7 +207,7 @@ export function AutoMergeDialog({
                 <div className="min-w-0 flex-1">
                   <div className="truncate text-body font-medium">{g.title ?? titleOf(g.ids[0]!)}</div>
                   {g.reason && <p className="text-xs text-muted">{g.reason}</p>}
-                  <p className="mt-1 text-xs text-subtle">Aus: {g.ids.map((id) => `„${titleOf(id)}“`).join(", ")}</p>
+                  <p className="mt-1 text-xs text-subtle">{t.knowledge.autoMerge.from(g.ids.map((id) => t.knowledge.merge.quoted(titleOf(id))).join(", "))}</p>
                   {g.error && <p className="mt-1 text-xs text-danger">{g.error}</p>}
                 </div>
                 <Badge tone={STATUS[g.status].tone} className={cn(g.status === "running" && "animate-pulse")}>
@@ -215,7 +216,7 @@ export function AutoMergeDialog({
               </li>
             ))}
           </ul>
-          {model && <p className="text-caption text-subtle">Plan und Texte von Claude ({model}).</p>}
+          {model && <p className="text-caption text-subtle">{t.knowledge.autoMerge.planBy(model)}</p>}
         </div>
       )}
     </Dialog>
@@ -234,7 +235,7 @@ function StatusIcon({ status }: { status: Status }) {
 /** The group list while Claude reads the knowledge. */
 function PlanSkeleton() {
   return (
-    <SkeletonRegion label="Claude prüft das Projektwissen" className="flex flex-col gap-2">
+    <SkeletonRegion label={t.knowledge.autoMerge.checking} className="flex flex-col gap-2">
       {[70, 55, 62].map((w, i) => (
         <div key={i} className="flex items-start gap-3 rounded-lg border border-border bg-surface p-3">
           <Skeleton className="mt-0.5 h-4 w-4 shrink-0 rounded" />
@@ -246,7 +247,7 @@ function PlanSkeleton() {
           <Skeleton className="h-5 w-20 shrink-0" />
         </div>
       ))}
-      <p className="text-caption text-subtle">Das dauert meist unter einer Minute.</p>
+      <p className="text-caption text-subtle">{t.knowledge.autoMerge.takesAMinute}</p>
     </SkeletonRegion>
   );
 }

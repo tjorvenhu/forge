@@ -6,6 +6,7 @@ import { call, keys } from "@/lib/queries";
 import { errorMessage } from "@/lib/rpc";
 import { cn } from "@/lib/utils";
 import { toast } from "@/stores/toast";
+import { t } from "@/i18n";
 import { Button } from "@/components/ui/button";
 import { CodeEditor } from "@/components/ui/code-editor";
 import { Dialog } from "@/components/ui/dialog";
@@ -100,51 +101,47 @@ export function MergeDialog({
 
   const merge = async () => {
     if (!draft || merging) return;
-    if (!draft.title.trim()) return toast.error("Titel fehlt", "Der zusammengeführte Eintrag braucht einen Titel.");
+    if (!draft.title.trim()) return toast.error(t.knowledge.common.titleMissing, t.knowledge.merge.needsTitle);
     setMerging(true);
     try {
       const { entry, removed } = await call("knowledge.merge", { projectId: owner, ids, title: draft.title, summary: draft.summary, tags: parseTags(draft.tags), content: draft.content });
       qc.setQueryData(keys.knowledgeEntry(owner, entry.id), entry);
       void qc.invalidateQueries({ queryKey: keys.knowledge(owner) });
-      toast.success("Einträge zusammengeführt", `${removed.length === 1 ? "1 Eintrag" : `${removed.length} Einträge`} in „${entry.title}“ aufgegangen.`);
+      toast.success(t.knowledge.merge.merged, t.knowledge.merge.mergedDetail(removed.length, entry.title));
       onMerged(entry.id);
       onClose();
     } catch (e) {
-      toast.error("Nicht zusammengeführt", errorMessage(e));
+      toast.error(t.knowledge.merge.notMerged, errorMessage(e));
     } finally {
       setMerging(false);
     }
   };
 
   const edit = (patch: Partial<Draft>) => setDraft((d) => (d ? { ...d, ...patch } : d));
-  const removedTitles = others.map((id) => `„${title.get(id) ?? id}“`).join(", ");
+  const removedTitles = others.map((id) => t.knowledge.merge.quoted(title.get(id) ?? id)).join(", ");
 
   return (
     <Dialog
       open={initial !== null}
       onOpenChange={(open) => !open && onClose()}
-      title="Einträge zusammenführen"
-      description={
-        step === "pick"
-          ? "Ein Eintrag bleibt bestehen, die anderen gehen in ihm auf. Claude schreibt einen Entwurf, den du vor dem Zusammenführen prüfst."
-          : `„${title.get(target) ?? target}“ bekommt diesen Text. Danach gelöscht: ${removedTitles}.`
-      }
+      title={t.knowledge.merge.title}
+      description={step === "pick" ? t.knowledge.merge.pickDescription : t.knowledge.merge.draftDescription(title.get(target) ?? target, removedTitles)}
       className="w-220"
       footer={
         step === "pick" ? (
           <>
-            <Button onClick={onClose}>Abbrechen</Button>
+            <Button onClick={onClose}>{t.knowledge.common.cancel}</Button>
             <Button variant="primary" onClick={() => void requestDraft()} disabled={!target || !others.length}>
-              Entwurf erstellen
+              {t.knowledge.merge.createDraft}
             </Button>
           </>
         ) : (
           <>
             <Button onClick={back} disabled={merging}>
-              Zurück
+              {t.knowledge.merge.back}
             </Button>
             <Button variant="primary" onClick={() => void merge()} disabled={!draft || !draft.content.trim()} loading={merging}>
-              Zusammenführen
+              {t.knowledge.common.merge}
             </Button>
           </>
         )
@@ -152,7 +149,7 @@ export function MergeDialog({
     >
       {step === "pick" ? (
         <div className="flex flex-col gap-3">
-          <Field label="Bleibt bestehen">
+          <Field label={t.knowledge.merge.stays}>
             <Select
               value={target || undefined}
               onChange={(id) => {
@@ -160,19 +157,17 @@ export function MergeDialog({
                 setOthers((cur) => cur.filter((x) => x !== id));
               }}
               options={entries.map((e) => ({ value: e.id, label: e.title }))}
-              placeholder="Eintrag wählen"
+              placeholder={t.knowledge.merge.pickEntry}
             />
           </Field>
           <div>
             <div className="mb-1.5 flex h-4 items-center justify-between">
-              <span className="text-xs font-medium text-muted">Geht darin auf</span>
-              <span className="text-caption text-subtle">
-                {others.length} von höchstens {MAX_OTHERS}
-              </span>
+              <span className="text-xs font-medium text-muted">{t.knowledge.merge.goesInto}</span>
+              <span className="text-caption text-subtle">{t.knowledge.merge.countOfMax(others.length, MAX_OTHERS)}</span>
             </div>
             <div className="relative mb-2">
               <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-subtle" />
-              <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Einträge durchsuchen" className="pl-8" aria-label="Einträge durchsuchen" />
+              <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder={t.knowledge.merge.searchEntries} className="pl-8" aria-label={t.knowledge.merge.searchEntries} />
             </div>
             <ul className="flex max-h-80 flex-col gap-0.5 overflow-y-auto">
               {candidates.map((e) => {
@@ -196,39 +191,39 @@ export function MergeDialog({
                         <span className="block truncate text-body font-medium">{e.title}</span>
                         {e.summary && <span className="block truncate text-xs text-muted">{e.summary}</span>}
                       </span>
-                      {score !== undefined && <Badge tone="warning">überschneidet sich zu {Math.round(score * 100)} %</Badge>}
+                      {score !== undefined && <Badge tone="warning">{t.knowledge.merge.overlaps(Math.round(score * 100))}</Badge>}
                     </button>
                   </li>
                 );
               })}
-              {!candidates.length && <li className="px-3 py-2 text-xs text-muted">Nichts gefunden.</li>}
+              {!candidates.length && <li className="px-3 py-2 text-xs text-muted">{t.knowledge.common.nothingFound}</li>}
             </ul>
           </div>
         </div>
       ) : draftError ? (
         <div className="flex flex-col items-start gap-3">
           <ErrorBanner>{draftError}</ErrorBanner>
-          <Button onClick={() => void requestDraft()}>Erneut versuchen</Button>
+          <Button onClick={() => void requestDraft()}>{t.knowledge.common.retry}</Button>
         </div>
       ) : !draft ? (
         <DraftSkeleton />
       ) : (
         <div className="flex flex-col gap-3">
           <div className="grid gap-3 lg:grid-cols-2">
-            <Field label="Titel">
+            <Field label={t.knowledge.common.title}>
               <Input value={draft.title} onChange={(e) => edit({ title: e.target.value })} maxLength={120} />
             </Field>
-            <Field label="Tags" hint="Mit Komma oder Leerzeichen getrennt">
+            <Field label={t.knowledge.common.tags} hint={t.knowledge.common.tagsHint}>
               <Input value={draft.tags} onChange={(e) => edit({ tags: e.target.value })} />
             </Field>
           </div>
-          <Field label="Zusammenfassung">
+          <Field label={t.knowledge.common.summary}>
             <Input value={draft.summary} onChange={(e) => edit({ summary: e.target.value })} maxLength={300} />
           </Field>
           <div className="h-80">
-            <CodeEditor value={draft.content} onChange={(content) => edit({ content })} language="markdown" ariaLabel="Inhalt des zusammengeführten Eintrags" />
+            <CodeEditor value={draft.content} onChange={(content) => edit({ content })} language="markdown" ariaLabel={t.knowledge.merge.content} />
           </div>
-          <p className="text-caption text-subtle">Entwurf von Claude ({draft.model}). Alte Fassungen bleiben im Git.</p>
+          <p className="text-caption text-subtle">{t.knowledge.common.draftBy(draft.model)}</p>
         </div>
       )}
     </Dialog>
@@ -238,7 +233,7 @@ export function MergeDialog({
 /** The draft form while Claude writes: two fields side by side, the summary and the text box. */
 function DraftSkeleton() {
   return (
-    <SkeletonRegion label="Claude schreibt den Entwurf" className="flex flex-col gap-3">
+    <SkeletonRegion label={t.knowledge.common.claudeWritesDraft} className="flex flex-col gap-3">
       <div className="grid gap-3 lg:grid-cols-2">
         {[0, 1].map((i) => (
           <div key={i}>
@@ -258,7 +253,7 @@ function DraftSkeleton() {
       <div className="flex h-80 flex-col gap-2.5 rounded-lg border border-border bg-surface p-4">
         {[60, 92, 85, 0, 40, 88, 76, 81, 0, 45, 90].map((w, i) => (w ? <Skeleton key={i} className="h-3 rounded-sm" style={{ width: `${w}%` }} /> : <div key={i} className="h-1" />))}
       </div>
-      <p className="text-caption text-subtle">Claude führt die Einträge zusammen. Das dauert meist unter einer Minute.</p>
+      <p className="text-caption text-subtle">{t.knowledge.merge.merging}</p>
     </SkeletonRegion>
   );
 }

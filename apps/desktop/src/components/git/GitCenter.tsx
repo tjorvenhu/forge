@@ -6,6 +6,7 @@ import { call, keys, useGitStatus } from "@/lib/queries";
 import { errorMessage, RpcCallError } from "@/lib/rpc";
 import { addContextItems, contextItems, copyText } from "@/lib/context-menu";
 import { cn, relativeTime } from "@/lib/utils";
+import { locale, t } from "@/i18n";
 import { toast } from "@/stores/toast";
 import { useUi } from "@/stores/ui";
 import { Button } from "@/components/ui/button";
@@ -72,7 +73,7 @@ export function GitCenter({ project }: { project: Project }) {
   // Never empty: without a choice (or once the chosen commit left the history) the checked-out one.
   const selected = (selectedHash ? commits.find((c) => c.hash === selectedHash) : undefined) ?? head;
   const localBranches = useMemo(() => new Set(branches.data?.map((b) => b.name)), [branches.data]);
-  const authors = useMemo(() => [...new Set(commits.map((c) => c.author))].sort((a, b) => a.localeCompare(b, "de")), [commits]);
+  const authors = useMemo(() => [...new Set(commits.map((c) => c.author))].sort((a, b) => a.localeCompare(b, locale)), [commits]);
   const q = query.trim().toLowerCase();
   const filtering = !!q || author !== "all";
   const shown = useMemo(
@@ -103,10 +104,10 @@ export function GitCenter({ project }: { project: Project }) {
   const commitMenu = (c: CommitInfo): MenuItem[] => {
     const current = c.hash === head?.hash;
     return [
-      { label: "Hash kopieren", icon: <Copy className="h-3.5 w-3.5" />, onSelect: () => copyText(c.hash) },
-      { label: "Nachricht kopieren", icon: <Copy className="h-3.5 w-3.5" />, onSelect: () => copyText(c.subject) },
+      { label: t.git.common.copyHash, icon: <Copy className="h-3.5 w-3.5" />, onSelect: () => copyText(c.hash) },
+      { label: t.git.common.copyMessage, icon: <Copy className="h-3.5 w-3.5" />, onSelect: () => copyText(c.subject) },
       ...(!current || files.length > 0
-        ? [{ label: current ? "Beiseitelegen" : "Wiederherstellen", icon: <RotateCcw className="h-3.5 w-3.5" />, onSelect: () => setRestoring(c) }]
+        ? [{ label: current ? t.git.common.putAside : t.git.common.restore, icon: <RotateCcw className="h-3.5 w-3.5" />, onSelect: () => setRestoring(c) }]
         : []),
     ];
   };
@@ -124,11 +125,11 @@ export function GitCenter({ project }: { project: Project }) {
           <SyncActions project={project} labeled />
           <DropdownMenu
             items={[
-              { label: "Neuer Branch …", icon: <Plus className="h-3.5 w-3.5" />, onSelect: () => setNewBranch(true), disabled: !branches.data },
-              { label: "Aktualisieren", icon: <RefreshCw className="h-3.5 w-3.5" />, onSelect: refresh },
+              { label: t.git.common.newBranchEllipsis, icon: <Plus className="h-3.5 w-3.5" />, onSelect: () => setNewBranch(true), disabled: !branches.data },
+              { label: t.git.center.refresh, icon: <RefreshCw className="h-3.5 w-3.5" />, onSelect: refresh },
             ]}
             trigger={
-              <Button size="icon" variant="outline" aria-label="Weitere Git-Aktionen" title="Weitere Git-Aktionen">
+              <Button size="icon" variant="outline" aria-label={t.git.center.moreActions} title={t.git.center.moreActions}>
                 {status.isFetching || log.isFetching ? <RefreshCw className="h-4 w-4 animate-spin" /> : <MoreHorizontal className="h-4 w-4" />}
               </Button>
             }
@@ -138,21 +139,21 @@ export function GitCenter({ project }: { project: Project }) {
         <div className={cn("shrink-0 border-b border-border px-2 pt-1", notRepo && "hidden")}>
           <TabBar
             value={tab}
-            onChange={(t) => {
-              setTab(t);
-              if (t !== "changes") setFocusPath(null);
+            onChange={(next) => {
+              setTab(next);
+              if (next !== "changes") setFocusPath(null);
             }}
             fit
             tabs={[
-              { value: "history", label: "Verlauf", icon: <History className="h-3.5 w-3.5" /> },
+              { value: "history", label: t.git.center.tabHistory, icon: <History className="h-3.5 w-3.5" /> },
               {
                 value: "changes",
-                label: "Änderungen",
+                label: t.git.center.tabChanges,
                 icon: <GitCommitHorizontal className="h-3.5 w-3.5" />,
                 badge: files.length ? <Badge tone="warning">{files.length}</Badge> : undefined,
               },
-              { value: "branches", label: "Branches", icon: <GitBranch className="h-3.5 w-3.5" /> },
-              { value: "tags", label: "Tags", icon: <Tag className="h-3.5 w-3.5" /> },
+              { value: "branches", label: t.git.center.tabBranches, icon: <GitBranch className="h-3.5 w-3.5" /> },
+              { value: "tags", label: t.git.center.tabTags, icon: <Tag className="h-3.5 w-3.5" /> },
             ]}
           />
         </div>
@@ -163,15 +164,15 @@ export function GitCenter({ project }: { project: Project }) {
             <div className="flex shrink-0 items-center gap-2 px-3 py-2.5">
               <div className="relative min-w-0 flex-1">
                 <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-subtle" />
-                <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Commits durchsuchen" className="pl-8" aria-label="Commits durchsuchen" />
+                <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder={t.git.center.searchCommits} className="pl-8" aria-label={t.git.center.searchCommits} />
               </div>
               {authors.length > 1 && (
                 <Select
                   value={author}
                   onChange={setAuthor}
-                  aria-label="Nach Autor filtern"
+                  aria-label={t.git.center.filterByAuthor}
                   className="max-w-40"
-                  options={[{ value: "all", label: "Alle Autoren" }, ...authors.map((a) => ({ value: a, label: a }))]}
+                  options={[{ value: "all", label: t.git.center.allAuthors }, ...authors.map((a) => ({ value: a, label: a }))]}
                 />
               )}
             </div>
@@ -179,11 +180,11 @@ export function GitCenter({ project }: { project: Project }) {
               {log.isLoading && <CommitListSkeleton />}
               {log.isError && (
                 <div className="p-3">
-                  <ErrorBanner title="Verlauf nicht geladen">{errorMessage(log.error)}</ErrorBanner>
+                  <ErrorBanner title={t.git.common.historyNotLoaded}>{errorMessage(log.error)}</ErrorBanner>
                 </div>
               )}
-              {log.data?.length === 0 && <p className="px-4 py-2 text-small text-subtle">Noch keine Commits.</p>}
-              {!!commits.length && filtering && !shown.length && <p className="px-4 py-2 text-small text-subtle">Kein Commit passt zur Suche.</p>}
+              {log.data?.length === 0 && <p className="px-4 py-2 text-small text-subtle">{t.git.center.noCommitsYet}</p>}
+              {!!commits.length && filtering && !shown.length && <p className="px-4 py-2 text-small text-subtle">{t.git.center.noSearchMatch}</p>}
               {!!shown.length && (
                 <CommitGraph
                   commits={shown}
@@ -214,23 +215,23 @@ export function GitCenter({ project }: { project: Project }) {
         {tab === "branches" && !notRepo && (
           <div className="min-h-0 flex-1 overflow-y-auto">
             <div className="flex items-center gap-2 px-4 pb-1 pt-3">
-              <span className="flex-1 text-caption font-semibold uppercase tracking-wide text-subtle">Lokale Branches</span>
+              <span className="flex-1 text-caption font-semibold uppercase tracking-wide text-subtle">{t.git.center.localBranches}</span>
               <Button size="sm" variant="ghost" className="h-7" onClick={() => setNewBranch(true)} disabled={!branches.data}>
-                <Plus className="h-3.5 w-3.5" /> Neuer Branch
+                <Plus className="h-3.5 w-3.5" /> {t.git.center.newBranch}
               </Button>
             </div>
-            {branches.isLoading && <ListSkeleton rows={4} label="Lädt Branches" />}
+            {branches.isLoading && <ListSkeleton rows={4} label={t.git.center.loadingBranches} />}
             {branches.isError && (
               <div className="p-3">
-                <ErrorBanner title="Branches nicht geladen">{errorMessage(branches.error)}</ErrorBanner>
+                <ErrorBanner title={t.git.center.branchesNotLoaded}>{errorMessage(branches.error)}</ErrorBanner>
               </div>
             )}
             <ul className="px-2 pb-2">
               {branches.data?.map((b) => {
                 const items: MenuItem[] = [
-                  ...(b.current ? [] : [{ label: "Wechseln", icon: <GitBranch className="h-3.5 w-3.5" />, onSelect: () => void checkout(project.id, b.name, false).catch(() => {}) }]),
-                  { label: "Name kopieren", icon: <Copy className="h-3.5 w-3.5" />, onSelect: () => copyText(b.name) },
-                  ...(b.current ? [] : [{ label: "Löschen …", icon: <Trash2 className="h-3.5 w-3.5" />, danger: true, onSelect: () => setDeletingBranch(b.name) }]),
+                  ...(b.current ? [] : [{ label: t.git.center.switch, icon: <GitBranch className="h-3.5 w-3.5" />, onSelect: () => void checkout(project.id, b.name, false).catch(() => {}) }]),
+                  { label: t.git.center.copyName, icon: <Copy className="h-3.5 w-3.5" />, onSelect: () => copyText(b.name) },
+                  ...(b.current ? [] : [{ label: t.git.center.deleteEllipsis, icon: <Trash2 className="h-3.5 w-3.5" />, danger: true, onSelect: () => setDeletingBranch(b.name) }]),
                 ];
                 return (
                   <li
@@ -244,19 +245,19 @@ export function GitCenter({ project }: { project: Project }) {
                       {b.upstream && <span className="truncate text-caption text-subtle">{b.upstream}</span>}
                     </span>
                     {b.current ? (
-                      <Badge tone="accent">aktuell</Badge>
+                      <Badge tone="accent">{t.git.common.current}</Badge>
                     ) : (
                       <span className="flex items-center opacity-0 group-hover:opacity-100 focus-within:opacity-100">
                         <Button size="sm" variant="ghost" className="h-7 px-2" onClick={() => void checkout(project.id, b.name, false).catch(() => {})}>
-                          Wechseln
+                          {t.git.center.switch}
                         </Button>
                         <Button
                           size="icon-sm"
                           variant="ghost"
                           className="hover:text-danger"
                           onClick={() => setDeletingBranch(b.name)}
-                          aria-label={`Branch ${b.name} löschen`}
-                          title="Branch löschen"
+                          aria-label={t.git.center.deleteBranchNamed(b.name)}
+                          title={t.git.center.deleteBranch}
                         >
                           <Trash2 className="h-3.5 w-3.5" />
                         </Button>
@@ -271,18 +272,18 @@ export function GitCenter({ project }: { project: Project }) {
 
         {tab === "tags" && !notRepo && (
           <div className="min-h-0 flex-1 overflow-y-auto">
-            {log.isLoading && <ListSkeleton rows={4} label="Lädt Tags" />}
-            {log.data && !tags.length && <p className="px-4 py-3 text-small text-subtle">Keine Tags in den letzten {LOG_LIMIT} Commits.</p>}
+            {log.isLoading && <ListSkeleton rows={4} label={t.git.center.loadingTags} />}
+            {log.data && !tags.length && <p className="px-4 py-3 text-small text-subtle">{t.git.center.noTags(LOG_LIMIT)}</p>}
             <ul className="px-2 py-2">
-              {tags.map((t) => {
-                const active = !focusFile && selected?.hash === t.commit.hash;
+              {tags.map((tag) => {
+                const active = !focusFile && selected?.hash === tag.commit.hash;
                 return (
-                  <li key={t.name}>
+                  <li key={tag.name}>
                     <button
-                      onClick={() => select(t.commit.hash)}
+                      onClick={() => select(tag.commit.hash)}
                       onContextMenu={contextItems(() => [
-                        { label: "Tag-Namen kopieren", icon: <Copy className="h-3.5 w-3.5" />, onSelect: () => copyText(t.name) },
-                        ...commitMenu(t.commit),
+                        { label: t.git.center.copyTagName, icon: <Copy className="h-3.5 w-3.5" />, onSelect: () => copyText(tag.name) },
+                        ...commitMenu(tag.commit),
                       ])}
                       aria-current={active ? "true" : undefined}
                       className={cn(
@@ -292,12 +293,12 @@ export function GitCenter({ project }: { project: Project }) {
                     >
                       <Tag className="h-4 w-4 shrink-0 text-muted" />
                       <span className="flex min-w-0 flex-1 flex-col">
-                        <span className="truncate text-body font-medium">{t.name}</span>
+                        <span className="truncate text-body font-medium">{tag.name}</span>
                         <span className="truncate text-caption text-subtle">
-                          {t.commit.subject} · {relativeTime(t.commit.date)}
+                          {tag.commit.subject} · {relativeTime(tag.commit.date)}
                         </span>
                       </span>
-                      <span className="shrink-0 font-mono text-caption text-subtle">{t.commit.shortHash}</span>
+                      <span className="shrink-0 font-mono text-caption text-subtle">{tag.commit.shortHash}</span>
                     </button>
                   </li>
                 );
@@ -329,14 +330,14 @@ export function GitCenter({ project }: { project: Project }) {
           <CommitViewSkeleton />
         ) : log.isError ? (
           <div className="flex flex-1 items-center justify-center">
-            <EmptyState icon={<GitCommitHorizontal className="h-10 w-10" />} title="Verlauf nicht geladen">
+            <EmptyState icon={<GitCommitHorizontal className="h-10 w-10" />} title={t.git.common.historyNotLoaded}>
               {errorMessage(log.error)}
             </EmptyState>
           </div>
         ) : (
           <div className="flex flex-1 items-center justify-center">
-            <EmptyState icon={<GitCommitHorizontal className="h-10 w-10" />} title="Noch keine Commits">
-              Unter Änderungen wählst du Dateien aus und erstellst den ersten Commit.
+            <EmptyState icon={<GitCommitHorizontal className="h-10 w-10" />} title={t.git.center.noCommitsTitle}>
+              {t.git.center.noCommitsHint}
             </EmptyState>
           </div>
         )}
@@ -360,14 +361,14 @@ function BranchMenu({ project, branches, onNew }: { project: Project; branches: 
   const summary = status.data?.summary;
   if (!summary)
     return status.isLoading ? (
-      <SkeletonRegion label="Lädt Branch" className="shrink-0">
+      <SkeletonRegion label={t.git.center.loadingBranch} className="shrink-0">
         <Skeleton className="h-8 w-32" />
       </SkeletonRegion>
     ) : null;
   return (
     <DropdownMenu
       align="start"
-      header="Branch wechseln"
+      header={t.git.center.switchBranch}
       items={[
         ...branches.map((b) => ({
           label: b.name,
@@ -375,12 +376,12 @@ function BranchMenu({ project, branches, onNew }: { project: Project; branches: 
           disabled: b.current,
           onSelect: () => void checkout(project.id, b.name, false).catch(() => {}),
         })),
-        { label: "Neuer Branch …", icon: <Plus className="h-3.5 w-3.5 text-muted" />, onSelect: onNew },
+        { label: t.git.common.newBranchEllipsis, icon: <Plus className="h-3.5 w-3.5 text-muted" />, onSelect: onNew },
       ]}
       trigger={
-        <Button size="sm" variant="outline" className="h-8 min-w-0 gap-1.5 px-2.5" title="Branch wechseln">
+        <Button size="sm" variant="outline" className="h-8 min-w-0 gap-1.5 px-2.5" title={t.git.center.switchBranch}>
           <GitBranch className="h-3.5 w-3.5 shrink-0 text-accent" />
-          <span className="max-w-40 truncate text-body font-semibold">{summary.branch ?? "ohne Branch"}</span>
+          <span className="max-w-40 truncate text-body font-semibold">{summary.branch ?? t.git.common.noBranch}</span>
           {summary.ahead > 0 && (
             <span className="flex items-center text-small text-fg">
               <ArrowUp className="h-3 w-3" />
@@ -403,9 +404,9 @@ function BranchMenu({ project, branches, onNew }: { project: Project; branches: 
 async function checkout(projectId: string, branch: string, create: boolean) {
   try {
     await call("git.checkout", { projectId, branch, create });
-    toast.success(create ? "Branch angelegt" : "Branch gewechselt", branch);
+    toast.success(create ? t.git.center.branchCreated : t.git.center.branchSwitched, branch);
   } catch (e) {
-    toast.error("Branch-Wechsel fehlgeschlagen", errorMessage(e));
+    toast.error(t.git.center.checkoutFailed, errorMessage(e));
     throw e;
   }
 }
@@ -420,12 +421,12 @@ export function NewBranchDialog({ open, onOpenChange, projectId }: { open: boole
     <Dialog
       open={open}
       onOpenChange={onOpenChange}
-      title="Neuen Branch anlegen"
-      description="Der Branch wird vom aktuellen Stand abgezweigt. Uncommittete Änderungen werden mitgenommen."
+      title={t.git.center.newBranchTitle}
+      description={t.git.center.newBranchDescription}
       footer={
         <>
           <Button variant="ghost" onClick={() => onOpenChange(false)}>
-            Abbrechen
+            {t.git.common.cancel}
           </Button>
           <Button
             variant="primary"
@@ -443,12 +444,12 @@ export function NewBranchDialog({ open, onOpenChange, projectId }: { open: boole
               }
             }}
           >
-            Anlegen und wechseln
+            {t.git.center.createAndSwitch}
           </Button>
         </>
       }
     >
-      <Field label="Branch-Name">
+      <Field label={t.git.center.branchName}>
         <Input value={name} onChange={(e) => setName(e.target.value)} autoFocus className="font-mono text-xs" />
       </Field>
     </Dialog>

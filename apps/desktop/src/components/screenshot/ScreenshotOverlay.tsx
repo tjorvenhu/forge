@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import { errorMessage } from "@/lib/rpc";
 import { cn } from "@/lib/utils";
+import { t } from "@/i18n";
 import { Tooltip } from "@/components/ui/misc";
 import { compose, type Snip } from "./compose";
 import { bigEnough, boundsOf, clampRect, contains, HANDLES, monitorAt, moveWithin, rectFromPoints, resize, toolbarSpot, windowAt, type FrameInfo, type Handle, type Point, type Rect } from "./geometry";
@@ -36,22 +37,22 @@ const PREFS_KEY = "forge.snip";
 type Mode = "rect" | "free" | "window" | "screen";
 
 const MODES: Array<{ id: Mode; label: string; key: string; icon: ReactNode; hint: string }> = [
-  { id: "rect", label: "Rechteck", key: "R", icon: <SquareDashed className="h-4 w-4" />, hint: "Bereich aufziehen" },
-  { id: "free", label: "Freihand", key: "F", icon: <Lasso className="h-4 w-4" />, hint: "Bereich umfahren" },
-  { id: "window", label: "Fenster", key: "W", icon: <AppWindow className="h-4 w-4" />, hint: "Fenster anklicken" },
-  { id: "screen", label: "Bildschirm", key: "B", icon: <Monitor className="h-4 w-4" />, hint: "Bildschirm anklicken" },
+  { id: "rect", label: t.screenshot.modes.rect, key: "R", icon: <SquareDashed className="h-4 w-4" />, hint: t.screenshot.modes.rectHint },
+  { id: "free", label: t.screenshot.modes.free, key: "F", icon: <Lasso className="h-4 w-4" />, hint: t.screenshot.modes.freeHint },
+  { id: "window", label: t.screenshot.modes.window, key: "W", icon: <AppWindow className="h-4 w-4" />, hint: t.screenshot.modes.windowHint },
+  { id: "screen", label: t.screenshot.modes.screen, key: "B", icon: <Monitor className="h-4 w-4" />, hint: t.screenshot.modes.screenHint },
 ];
 
 /** `label` stays visible under the icon, `tip` explains it on hover. */
 const TOOLS: Array<{ id: Tool; label: string; tip: string; key: string; icon: ReactNode }> = [
-  { id: "select", label: "Auswahl", tip: "Auswahl verschieben und an den Ecken anpassen", key: "V", icon: <MousePointer2 className="h-4 w-4" /> },
-  { id: "pen", label: "Stift", tip: "Frei zeichnen", key: "P", icon: <Pen className="h-4 w-4" /> },
-  { id: "marker", label: "Marker", tip: "Textmarker, durchscheinend", key: "M", icon: <Highlighter className="h-4 w-4" /> },
-  { id: "arrow", label: "Pfeil", tip: "Pfeil ziehen", key: "A", icon: <MoveUpRight className="h-4 w-4" /> },
-  { id: "box", label: "Rahmen", tip: "Rahmen aufziehen", key: "R", icon: <Square className="h-4 w-4" /> },
-  { id: "text", label: "Text", tip: "Klicken und schreiben, Enter setzt den Text", key: "T", icon: <Type className="h-4 w-4" /> },
-  { id: "number", label: "Nummer", tip: "Klicken setzt die nächste Nummer", key: "N", icon: <Hash className="h-4 w-4" /> },
-  { id: "pixelate", label: "Verpixeln", tip: "Bereich aufziehen, der unkenntlich wird", key: "X", icon: <Grid3x3 className="h-4 w-4" /> },
+  { id: "select", label: t.screenshot.tools.select, tip: t.screenshot.tools.selectTip, key: "V", icon: <MousePointer2 className="h-4 w-4" /> },
+  { id: "pen", label: t.screenshot.tools.pen, tip: t.screenshot.tools.penTip, key: "P", icon: <Pen className="h-4 w-4" /> },
+  { id: "marker", label: t.screenshot.tools.marker, tip: t.screenshot.tools.markerTip, key: "M", icon: <Highlighter className="h-4 w-4" /> },
+  { id: "arrow", label: t.screenshot.tools.arrow, tip: t.screenshot.tools.arrowTip, key: "A", icon: <MoveUpRight className="h-4 w-4" /> },
+  { id: "box", label: t.screenshot.tools.box, tip: t.screenshot.tools.boxTip, key: "R", icon: <Square className="h-4 w-4" /> },
+  { id: "text", label: t.screenshot.tools.text, tip: t.screenshot.tools.textTip, key: "T", icon: <Type className="h-4 w-4" /> },
+  { id: "number", label: t.screenshot.tools.number, tip: t.screenshot.tools.numberTip, key: "N", icon: <Hash className="h-4 w-4" /> },
+  { id: "pixelate", label: t.screenshot.tools.pixelate, tip: t.screenshot.tools.pixelateTip, key: "X", icon: <Grid3x3 className="h-4 w-4" /> },
 ];
 
 /** Line widths and sizes in CSS pixels; marks store them in physical pixels. */
@@ -589,7 +590,7 @@ function Snipper({ shot }: { shot: Shot }) {
             }
           }}
           onBlur={() => commitText()}
-          placeholder="Text"
+          placeholder={t.screenshot.textPlaceholder}
           className="absolute min-w-24 border-0 bg-transparent p-0 font-semibold outline-none ring-1 ring-white/60 placeholder:text-white/50"
           style={{ left: css(text.at.x), top: css(text.at.y), fontSize: SIZE.text, color, fontFamily: MARK_FONT, lineHeight: 1, width: `${Math.max(6, text.value.length + 2)}ch` }}
         />
@@ -840,13 +841,13 @@ function ModeBar({
             </BarButton>
           ))}
           <div className="mx-0.5 h-8 w-px bg-border" />
-          <BarButton label="Abbrechen" tip="Screenshot verwerfen" shortcut="Esc" place={place} onClick={onClose}>
+          <BarButton label={t.screenshot.cancel} tip={t.screenshot.discard} shortcut="Esc" place={place} onClick={onClose}>
             <X className="h-4 w-4" />
           </BarButton>
         </div>
         {hint && (
           <div key={hint} className="animate-fade-in rounded-full bg-black/65 px-3 py-1 text-caption text-white/85">
-            {hint}, Esc bricht ab
+            {t.screenshot.hintWithEsc(hint)}
           </div>
         )}
       </div>
@@ -923,9 +924,9 @@ function EditBar({
         onPointerLeave={() => onHover(false)}
       >
         <div className={BAR}>
-          {TOOLS.map((t) => (
-            <BarButton key={t.id} label={t.label} tip={t.tip} shortcut={t.key} active={tool === t.id} place={place} onClick={() => onTool(t.id)}>
-              {t.icon}
+          {TOOLS.map((x) => (
+            <BarButton key={x.id} label={x.label} tip={x.tip} shortcut={x.key} active={tool === x.id} place={place} onClick={() => onTool(x.id)}>
+              {x.icon}
             </BarButton>
           ))}
           <div className={cn("flex items-center gap-1 overflow-hidden transition-all duration-150", colors ? "max-w-64 px-1.5 py-1 opacity-100" : "max-w-0 px-0 opacity-0")}>
@@ -933,7 +934,7 @@ function EditBar({
               <Tooltip key={c.token} content={c.label} delay={300} side={place.side} boundary={box}>
                 <button
                   type="button"
-                  aria-label={`Farbe ${c.label}`}
+                  aria-label={t.screenshot.color(c.label)}
                   aria-pressed={colorToken === c.token}
                   onClick={() => onColor(c.token)}
                   className={cn(
@@ -946,17 +947,17 @@ function EditBar({
             ))}
           </div>
           <div className="mx-0.5 h-8 w-px bg-border" />
-          <BarButton label="Rückgängig" shortcut="Strg+Z" disabled={!canUndo} place={place} onClick={onUndo}>
+          <BarButton label={t.screenshot.undo} shortcut={t.screenshot.ctrl("Z")} disabled={!canUndo} place={place} onClick={onUndo}>
             <Undo2 className="h-4 w-4" />
           </BarButton>
-          <BarButton label="Wiederholen" shortcut="Strg+Y" disabled={!canRedo} place={place} onClick={onRedo}>
+          <BarButton label={t.screenshot.redo} shortcut={t.screenshot.ctrl("Y")} disabled={!canRedo} place={place} onClick={onRedo}>
             <Redo2 className="h-4 w-4" />
           </BarButton>
           <div className="mx-0.5 h-8 w-px bg-border" />
-          <BarButton label="Kopieren" tip="Nur in die Zwischenablage, nicht an FORGE" shortcut="Strg+C" place={place} onClick={onCopy}>
+          <BarButton label={t.screenshot.copy} tip={t.screenshot.copyTip} shortcut={t.screenshot.ctrl("C")} place={place} onClick={onCopy}>
             <Copy className="h-4 w-4" />
           </BarButton>
-          <Tooltip content="In die Zwischenablage und als Anhang an FORGE (Enter)" delay={300} side={place.side} boundary={box}>
+          <Tooltip content={t.screenshot.sendTip} delay={300} side={place.side} boundary={box}>
             <button
               type="button"
               onClick={onDone}
@@ -964,7 +965,7 @@ function EditBar({
             >
               <Check className="h-4 w-4" />
               <span className="flex flex-col items-start leading-tight">
-                An FORGE
+                {t.screenshot.send}
                 <span className="text-2xs font-normal opacity-80">Enter</span>
               </span>
             </button>

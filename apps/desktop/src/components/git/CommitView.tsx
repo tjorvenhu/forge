@@ -6,6 +6,7 @@ import { call, keys } from "@/lib/queries";
 import { errorMessage } from "@/lib/rpc";
 import { contextItems, copyText } from "@/lib/context-menu";
 import { cn, relativeTime } from "@/lib/utils";
+import { locale, t } from "@/i18n";
 import { useUi } from "@/stores/ui";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, type MenuItem } from "@/components/ui/dropdown";
@@ -53,17 +54,15 @@ export function CommitView({
   const additions = files.reduce((n, f) => n + f.additions, 0);
   const deletions = files.reduce((n, f) => n + f.deletions, 0);
   const canRestore = !current || openChanges > 0;
-  const restoreLabel = current ? "Beiseitelegen" : "Wiederherstellen";
-  const restoreHint = current
-    ? "Legt die offenen Änderungen als Git-Stash beiseite. Der Commit selbst bleibt."
-    : "Holt alle Dateien auf diesen Stand zurück. Branch und Verlauf bleiben, das Ergebnis sind neue, nicht committete Änderungen.";
+  const restoreLabel = current ? t.git.common.putAside : t.git.common.restore;
+  const restoreHint = current ? t.git.commit.putAsideHint : t.git.commit.restoreHint;
 
   const commitItems = (): MenuItem[] => [
-    { label: "Hash kopieren", icon: <Copy className="h-3.5 w-3.5" />, onSelect: () => copyText(commit.hash) },
-    { label: "Nachricht kopieren", icon: <Copy className="h-3.5 w-3.5" />, onSelect: () => copyText(details.data?.body ? `${commit.subject}\n\n${details.data.body}` : commit.subject) },
+    { label: t.git.common.copyHash, icon: <Copy className="h-3.5 w-3.5" />, onSelect: () => copyText(commit.hash) },
+    { label: t.git.common.copyMessage, icon: <Copy className="h-3.5 w-3.5" />, onSelect: () => copyText(details.data?.body ? `${commit.subject}\n\n${details.data.body}` : commit.subject) },
     ...commit.parents
       .filter(known)
-      .map((p) => ({ label: `Vorgänger ${p.slice(0, 7)} anzeigen`, icon: <ArrowLeft className="h-3.5 w-3.5" />, onSelect: () => onSelect(p) })),
+      .map((p) => ({ label: t.git.commit.showParent(p.slice(0, 7)), icon: <ArrowLeft className="h-3.5 w-3.5" />, onSelect: () => onSelect(p) })),
     ...(canRestore ? [{ label: restoreLabel, icon: <RotateCcw className="h-3.5 w-3.5" />, onSelect: onRestore }] : []),
   ];
 
@@ -81,7 +80,7 @@ export function CommitView({
           <DropdownMenu
             items={commitItems()}
             trigger={
-              <Button size="icon-sm" variant="ghost" aria-label="Weitere Aktionen" title="Weitere Aktionen">
+              <Button size="icon-sm" variant="ghost" aria-label={t.git.commit.moreActions} title={t.git.commit.moreActions}>
                 <MoreHorizontal className="h-4 w-4" />
               </Button>
             }
@@ -93,16 +92,16 @@ export function CommitView({
             {commit.author}
           </span>
           <span aria-hidden>·</span>
-          <span title={new Date(commit.date).toLocaleString("de-DE", { dateStyle: "full", timeStyle: "short" })}>{relativeTime(commit.date)}</span>
-          {current && <Badge tone="accent">aktuell</Badge>}
-          {commit.parents.length > 1 && <Badge>Merge</Badge>}
+          <span title={new Date(commit.date).toLocaleString(locale, { dateStyle: "full", timeStyle: "short" })}>{relativeTime(commit.date)}</span>
+          {current && <Badge tone="accent">{t.git.common.current}</Badge>}
+          {commit.parents.length > 1 && <Badge>{t.git.commit.merge}</Badge>}
           <RefBadges refs={commit.refs} localBranches={localBranches} />
         </div>
         {body ? (
           <p className="max-h-32 overflow-y-auto whitespace-pre-wrap text-body text-muted [overflow-wrap:anywhere]">{body}</p>
         ) : (
           details.isLoading && (
-            <SkeletonRegion label="Lädt Beschreibung">
+            <SkeletonRegion label={t.git.commit.loadingDescription}>
               <Skeleton className="h-3 w-2/3 rounded-sm" />
             </SkeletonRegion>
           )
@@ -110,20 +109,20 @@ export function CommitView({
       </header>
 
       {details.isError ? (
-        <ErrorBanner title="Dateien nicht geladen">{errorMessage(details.error)}</ErrorBanner>
+        <ErrorBanner title={t.git.commit.filesNotLoaded}>{errorMessage(details.error)}</ErrorBanner>
       ) : (
         <section className="flex max-h-[40%] min-h-24 shrink-0 flex-col overflow-hidden rounded-lg border border-border bg-surface">
           <div className="flex h-10 shrink-0 items-center gap-3 border-b border-border px-3">
             {details.data ? (
               <>
                 <span className="min-w-0 flex-1 truncate text-body font-medium">
-                  {files.length === 1 ? "1 Datei geändert" : `${files.length}${details.data.truncated ? "+" : ""} Dateien geändert`}
+                  {t.git.commit.filesChanged(files.length, details.data.truncated)}
                 </span>
                 <span className="font-mono text-small text-success">+{additions}</span>
                 <span className="font-mono text-small text-danger">-{deletions}</span>
               </>
             ) : (
-              <SkeletonRegion label="Lädt Dateien" className="flex flex-1 items-center gap-3">
+              <SkeletonRegion label={t.git.common.loadingFiles} className="flex flex-1 items-center gap-3">
                 <Skeleton className="h-3 w-32 rounded-sm" />
                 <span className="flex-1" />
                 <Skeleton className="h-3 w-16 rounded-sm" />
@@ -132,11 +131,11 @@ export function CommitView({
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto py-1">
             {details.isLoading && <FileRowsSkeleton />}
-            {details.data && files.length === 0 && <p className="px-3 py-2 text-small text-subtle">Der Commit ändert in diesem Projektordner keine Dateien.</p>}
+            {details.data && files.length === 0 && <p className="px-3 py-2 text-small text-subtle">{t.git.commit.noFilesHere}</p>}
             {files.map((f) => (
               <FileRow key={f.path} projectId={projectId} file={f} active={f.path === file?.path} onSelect={() => setFilePath(f.path)} />
             ))}
-            {details.data?.truncated && <p className="px-3 py-1.5 text-caption text-subtle">Weitere Dateien werden nicht angezeigt.</p>}
+            {details.data?.truncated && <p className="px-3 py-1.5 text-caption text-subtle">{t.git.commit.moreFilesHidden}</p>}
           </div>
         </section>
       )}
@@ -147,7 +146,7 @@ export function CommitView({
         details.isLoading && (
           <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-border bg-bg">
             <div className="h-9 shrink-0 border-b border-border bg-surface" />
-            <CodeSkeleton lines={14} label="Lädt Diff" />
+            <CodeSkeleton lines={14} label={t.git.common.loadingDiff} />
           </div>
         )
       )}
@@ -164,8 +163,8 @@ function HashChip({ hash, short }: { hash: string; short: string }) {
   const [copied, setCopied] = useState(false);
   useEffect(() => {
     if (!copied) return;
-    const t = setTimeout(() => setCopied(false), 1500);
-    return () => clearTimeout(t);
+    const timer = setTimeout(() => setCopied(false), 1500);
+    return () => clearTimeout(timer);
   }, [copied]);
   return (
     <button
@@ -173,8 +172,8 @@ function HashChip({ hash, short }: { hash: string; short: string }) {
         copyText(hash);
         setCopied(true);
       }}
-      title={`${hash}\nKlicken zum Kopieren`}
-      aria-label="Commit-Hash kopieren"
+      title={`${hash}\n${t.git.commit.clickToCopy}`}
+      aria-label={t.git.commit.copyCommitHash}
       className="inline-flex h-7 shrink-0 items-center gap-1.5 rounded-md border border-border bg-surface-2 px-2 font-mono text-caption text-muted transition-colors duration-120 hover:border-border-strong hover:text-fg"
     >
       {copied ? <Check className="h-3 w-3 text-success" /> : <GitCommitHorizontal className="h-3 w-3" />}
@@ -190,8 +189,8 @@ function FileRow({ projectId, file, active, onSelect }: { projectId: string; fil
     <button
       onClick={onSelect}
       onContextMenu={contextItems(() => [
-        { label: "Pfad kopieren", icon: <Copy className="h-3.5 w-3.5" />, onSelect: () => copyText(file.path) },
-        ...(file.kind === "deleted" ? [] : [{ label: "In Dateien öffnen", icon: <FileText className="h-3.5 w-3.5" />, onSelect: () => useUi.getState().openFile(projectId, file.path) }]),
+        { label: t.git.commit.copyPath, icon: <Copy className="h-3.5 w-3.5" />, onSelect: () => copyText(file.path) },
+        ...(file.kind === "deleted" ? [] : [{ label: t.git.commit.openInFiles, icon: <FileText className="h-3.5 w-3.5" />, onSelect: () => useUi.getState().openFile(projectId, file.path) }]),
       ])}
       aria-current={active ? "true" : undefined}
       title={file.origPath ? `${file.origPath} → ${file.path} (${k.label})` : `${file.path} (${k.label})`}
@@ -203,7 +202,7 @@ function FileRow({ projectId, file, active, onSelect }: { projectId: string; fil
         {slash > 0 && <span className="min-w-0 truncate text-caption text-subtle">{file.path.slice(0, slash)}</span>}
       </span>
       {file.binary ? (
-        <span className="text-caption text-subtle">binär</span>
+        <span className="text-caption text-subtle">{t.git.commit.binary}</span>
       ) : (
         <span className="flex shrink-0 gap-2 font-mono text-caption">
           <span className="text-success">+{file.additions}</span>
@@ -216,7 +215,7 @@ function FileRow({ projectId, file, active, onSelect }: { projectId: string; fil
 
 function FileRowsSkeleton() {
   return (
-    <SkeletonRegion label="Lädt Dateien">
+    <SkeletonRegion label={t.git.common.loadingFiles}>
       {Array.from({ length: 4 }, (_, i) => (
         <div key={i} className="flex h-8 items-center gap-2.5 px-3">
           <Skeleton className="h-3 w-3 shrink-0 rounded-sm" />
@@ -232,7 +231,7 @@ function FileRowsSkeleton() {
 /** Title, author line, file list and diff of a commit, while the history loads. */
 export function CommitViewSkeleton() {
   return (
-    <SkeletonRegion label="Lädt Commit" className="flex min-h-0 flex-1 flex-col gap-4">
+    <SkeletonRegion label={t.git.commit.loadingCommit} className="flex min-h-0 flex-1 flex-col gap-4">
       <div className="flex shrink-0 flex-col gap-2.5">
         <div className="flex items-center gap-3">
           <Skeleton className="h-5 w-1/2 rounded-sm" />

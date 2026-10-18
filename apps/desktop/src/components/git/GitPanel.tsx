@@ -5,6 +5,7 @@ import type { FileStatus, Project } from "@forge/protocol";
 import { call, keys, useGitStatus } from "@/lib/queries";
 import { errorMessage, RpcCallError } from "@/lib/rpc";
 import { cn } from "@/lib/utils";
+import { t } from "@/i18n";
 import { toast } from "@/stores/toast";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/input";
@@ -14,13 +15,13 @@ import { DiffView } from "./DiffView";
 import { ListSkeleton } from "@/components/ui/skeleton";
 
 export const KIND: Record<FileStatus["kind"], { letter: string; tone: string; label: string }> = {
-  modified: { letter: "M", tone: "text-warning", label: "geändert" },
-  added: { letter: "A", tone: "text-success", label: "neu" },
-  untracked: { letter: "U", tone: "text-success", label: "neu, nicht versioniert" },
-  deleted: { letter: "D", tone: "text-danger", label: "gelöscht" },
-  renamed: { letter: "R", tone: "text-accent", label: "umbenannt" },
-  conflicted: { letter: "!", tone: "text-danger", label: "Konflikt" },
-  typechange: { letter: "T", tone: "text-warning", label: "Typ geändert" },
+  modified: { letter: "M", tone: "text-warning", label: t.git.kind.modified },
+  added: { letter: "A", tone: "text-success", label: t.git.kind.added },
+  untracked: { letter: "U", tone: "text-success", label: t.git.kind.untracked },
+  deleted: { letter: "D", tone: "text-danger", label: t.git.kind.deleted },
+  renamed: { letter: "R", tone: "text-accent", label: t.git.kind.renamed },
+  conflicted: { letter: "!", tone: "text-danger", label: t.git.kind.conflicted },
+  typechange: { letter: "T", tone: "text-warning", label: t.git.kind.typechange },
 };
 
 /**
@@ -59,30 +60,30 @@ export function GitPanel({
     setOwnFocus((p) => (p && files.some((x) => x.path === p) ? p : null));
   }, [files]);
 
-  if (!project.exists) return <EmptyState title="Projektordner fehlt">Der Ordner {project.path} existiert nicht mehr.</EmptyState>;
+  if (!project.exists) return <EmptyState title={t.git.panel.folderMissing}>{t.git.panel.folderGone(project.path)}</EmptyState>;
   if (status.isLoading) return <ListSkeleton rows={6} />;
   if (status.isError) {
     const notRepo = status.error instanceof RpcCallError && status.error.code === "GIT_NOT_REPO";
     return notRepo ? (
       <EmptyState
         icon={<GitBranch className="h-8 w-8" />}
-        title="Kein Git-Repository"
+        title={t.git.panel.notRepo}
         action={
           <Button
             onClick={async () => {
               try {
                 await call("git.init", { projectId: project.id });
-                toast.success("Git initialisiert");
+                toast.success(t.git.panel.initialized);
               } catch (e) {
-                toast.error("git init fehlgeschlagen", errorMessage(e));
+                toast.error(t.git.panel.initFailed, errorMessage(e));
               }
             }}
           >
-            Repository initialisieren
+            {t.git.panel.initRepo}
           </Button>
         }
       >
-        Mit Git sieht FORGE, was Claude geändert hat, und du kannst geprüfte Commits erstellen.
+        {t.git.panel.notRepoHint}
       </EmptyState>
     ) : (
       <div className="p-3">
@@ -106,9 +107,9 @@ export function GitPanel({
     try {
       const r = await call("git.suggestCommitMessage", { projectId: project.id, paths: selected.size ? [...selected] : undefined });
       setMessage(r.message);
-      if (r.skipped.length) toast.info("Sensible Dateien nicht an Claude gesendet", r.skipped.join(", "));
+      if (r.skipped.length) toast.info(t.git.panel.sensitiveSkipped, r.skipped.join(", "));
     } catch (e) {
-      toast.error("Commit-Nachricht nicht erzeugt", errorMessage(e));
+      toast.error(t.git.panel.messageNotGenerated, errorMessage(e));
     } finally {
       setGenerating(false);
     }
@@ -117,7 +118,7 @@ export function GitPanel({
   const doCommit = async (allowSensitive: boolean) => {
     try {
       const r = await call("git.commit", { projectId: project.id, message: message.trim(), paths: [...selected], allowSensitive });
-      toast.success("Commit erstellt", `${r.hash.slice(0, 7)} ${r.summary}`);
+      toast.success(t.git.panel.commitCreated, `${r.hash.slice(0, 7)} ${r.summary}`);
       setMessage("");
       setSelected(new Set());
       setFlagged(null);
@@ -129,7 +130,7 @@ export function GitPanel({
         setFlagged(((e.details as { flagged?: Array<{ path: string; reason: string }> })?.flagged ?? []) as Array<{ path: string; reason: string }>);
         return;
       }
-      toast.error("Commit fehlgeschlagen", errorMessage(e));
+      toast.error(t.git.panel.commitFailed, errorMessage(e));
       throw e;
     }
   };
@@ -142,23 +143,23 @@ export function GitPanel({
       {!embedded && (
         <div className={cn("flex items-center gap-3 rounded-lg border px-3 py-2.5", files.length ? "border-accent/30 bg-accent-soft" : "border-border bg-surface")}>
           <div className="min-w-0 flex-1">
-            <div className="text-body font-medium">{files.length ? "Änderungen erkannt" : "Keine Änderungen"}</div>
+            <div className="text-body font-medium">{files.length ? t.git.panel.changesFound : t.git.panel.noChanges}</div>
             <div className="text-xs text-muted">
               <GitBranch className="mr-1 inline h-3 w-3" />
-              {branch ?? "ohne Branch"}
-              {st.summary.ahead > 0 && ` · ${st.summary.ahead} voraus`}
-              {st.summary.behind > 0 && ` · ${st.summary.behind} zurück`}
-              {files.length > 0 && ` · ${files.length} Dateien`}
+              {branch ?? t.git.common.noBranch}
+              {st.summary.ahead > 0 && t.git.panel.ahead(st.summary.ahead)}
+              {st.summary.behind > 0 && t.git.panel.behind(st.summary.behind)}
+              {files.length > 0 && t.git.panel.files(files.length)}
             </div>
           </div>
-          <Button size="icon-sm" variant="ghost" onClick={() => void status.refetch()} aria-label="Status aktualisieren" title="Status aktualisieren">
+          <Button size="icon-sm" variant="ghost" onClick={() => void status.refetch()} aria-label={t.git.panel.refreshStatus} title={t.git.panel.refreshStatus}>
             <RefreshCw className={cn("h-3.5 w-3.5", status.isFetching && "animate-spin")} />
           </Button>
         </div>
       )}
 
       {st.summary.conflicted && (
-        <ErrorBanner title="Merge-Konflikt">Löse die Konflikte (Dateien mit „!“) zuerst auf. Commits sind bis dahin gesperrt.</ErrorBanner>
+        <ErrorBanner title={t.git.panel.mergeConflict}>{t.git.panel.mergeConflictHint}</ErrorBanner>
       )}
 
       {files.length > 0 && (
@@ -174,39 +175,37 @@ export function GitPanel({
                 }
               }}
               rows={Math.min(6, message.split("\n").length + (message.length > 60 ? 1 : 0))}
-              placeholder={`Nachricht (Strg+Enter zum Committen auf ${branch ?? "HEAD"})`}
-              aria-label="Commit-Nachricht"
+              placeholder={t.git.panel.messagePlaceholder(branch ?? "HEAD")}
+              aria-label={t.git.panel.commitMessage}
               className="min-h-8 py-1.5 pr-9"
               disabled={generating}
             />
-            <Tooltip content={selected.size ? `Nachricht aus den ${selected.size} ausgewählten Dateien erzeugen` : "Nachricht aus allen Änderungen erzeugen"}>
+            <Tooltip content={selected.size ? t.git.panel.generateFromSelected(selected.size) : t.git.panel.generateFromAll}>
               <Button
                 size="icon-sm"
                 variant="ghost"
                 className="absolute right-0.5 top-0.5 h-7 w-7 text-accent"
                 onClick={() => void generate()}
                 loading={generating}
-                aria-label="Commit-Nachricht mit Claude erzeugen"
+                aria-label={t.git.panel.generateWithClaude}
               >
                 {!generating && <Sparkles className="h-3.5 w-3.5" />}
               </Button>
             </Tooltip>
           </div>
           <Button variant="primary" className="w-full" disabled={!canCommit} onClick={() => setReview(true)}>
-            <Check className="h-4 w-4" /> Commit erstellen ({selected.size})
+            <Check className="h-4 w-4" /> {t.git.panel.createCommit(selected.size)}
           </Button>
         </div>
       )}
 
-      {files.length === 0 && embedded && <p className="px-1 py-1 text-xs text-subtle">Keine Änderungen. Alles ist committet.</p>}
+      {files.length === 0 && embedded && <p className="px-1 py-1 text-xs text-subtle">{t.git.panel.allCommitted}</p>}
 
       {files.length > 0 && (
         <div className={cn("flex min-h-0 flex-col", !embedded && (compact ? "max-h-56" : "max-h-[40%]"))}>
           <div className="flex h-6 shrink-0 items-center gap-2 px-1 text-xs text-muted">
-            <Checkbox checked={allSelected} onChange={(v) => setSelected(v ? new Set(files.map((f) => f.path)) : new Set())} label="Alle auswählen" />
-            <span className="flex-1">
-              Für Commit auswählen ({selected.size} von {files.length})
-            </span>
+            <Checkbox checked={allSelected} onChange={(v) => setSelected(v ? new Set(files.map((f) => f.path)) : new Set())} label={t.git.panel.selectAll} />
+            <span className="flex-1">{t.git.panel.selectForCommit(selected.size, files.length)}</span>
           </div>
           <div className={cn("min-h-0", !embedded && "overflow-y-auto")}>
             {files.map((f) => {
@@ -217,7 +216,7 @@ export function GitPanel({
                   key={f.path}
                   className={cn("flex h-6 items-center gap-2 rounded px-1 text-small-lg", focus?.path === f.path ? "bg-surface-3" : "hover:bg-surface-2")}
                 >
-                  <Checkbox checked={selected.has(f.path)} onChange={(v) => toggle(f.path, v)} label={`${f.path} auswählen`} />
+                  <Checkbox checked={selected.has(f.path)} onChange={(v) => toggle(f.path, v)} label={t.git.panel.selectFile(f.path)} />
                   <button
                     className={cn("flex min-w-0 flex-1 items-baseline gap-1.5 text-left", f.kind === "deleted" && "line-through decoration-subtle")}
                     onClick={() => setFocusPath(f.path)}
@@ -228,12 +227,12 @@ export function GitPanel({
                     {f.origPath && (
                       <span className="min-w-0 truncate text-caption text-subtle">
                         <ArrowLeft className="mx-1 inline h-3 w-3" aria-hidden />
-                        <span className="sr-only">umbenannt von </span>
+                        <span className="sr-only">{t.git.panel.renamedFrom}</span>
                         {f.origPath}
                       </span>
                     )}
                   </button>
-                  {f.staged && <span className="text-2xs text-subtle">vorgemerkt</span>}
+                  {f.staged && <span className="text-2xs text-subtle">{t.git.common.staged}</span>}
                   <span className={cn("w-3 text-center font-mono text-caption font-bold", k.tone)} title={k.label}>
                     {k.letter}
                   </span>
@@ -248,15 +247,15 @@ export function GitPanel({
         (focus ? (
           <DiffView projectId={project.id} path={focus.path} staged={focus.staged && !focus.unstaged} onClose={() => setFocusPath(null)} />
         ) : (
-          files.length > 0 && <div className="flex-1 rounded-lg border border-dashed border-border p-4 text-center text-xs text-subtle">Datei anklicken, um den Diff zu sehen.</div>
+          files.length > 0 && <div className="flex-1 rounded-lg border border-dashed border-border p-4 text-center text-xs text-subtle">{t.git.panel.clickForDiff}</div>
         ))}
 
       <ConfirmDialog
         open={review}
         onOpenChange={setReview}
-        title="Commit prüfen"
-        description="Nur diese Dateien werden mit ihrem aktuellen Inhalt committet. Andere Änderungen bleiben unberührt. Es wird nichts gepusht."
-        confirmLabel="Committen"
+        title={t.git.panel.reviewTitle}
+        description={t.git.panel.reviewDescription}
+        confirmLabel={t.git.panel.commit}
         onConfirm={() => doCommit(false)}
       >
         <div className="mb-3 rounded-md bg-surface-2 px-3 py-2 font-mono text-xs whitespace-pre-wrap">{message.trim()}</div>
@@ -272,9 +271,9 @@ export function GitPanel({
       <ConfirmDialog
         open={!!flagged}
         onOpenChange={(o) => !o && setFlagged(null)}
-        title="Trotzdem committen?"
-        description="Unter den ausgewählten Dateien sind sensible Dateien (z. B. .env oder Schlüsseldateien) oder Build-Artefakte. Prüfe sie, bevor du committest."
-        confirmLabel="Trotzdem committen"
+        title={t.git.panel.commitAnywayTitle}
+        description={t.git.panel.commitAnywayDescription}
+        confirmLabel={t.git.panel.commitAnyway}
         danger
         onConfirm={() => doCommit(true)}
       >

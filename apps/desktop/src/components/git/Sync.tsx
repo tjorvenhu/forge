@@ -14,6 +14,7 @@ import { Field, Input, Textarea } from "@/components/ui/input";
 import { Badge, Checkbox } from "@/components/ui/misc";
 import { Skeleton, SkeletonRegion } from "@/components/ui/skeleton";
 import { GitHubOwnerSelect } from "@/components/github/GitHubOwnerSelect";
+import { t } from "@/i18n";
 
 function useRefreshGit(projectId: string) {
   const qc = useQueryClient();
@@ -27,9 +28,9 @@ function useRefreshGit(projectId: string) {
 /** "3 neue Commits vom Remote übernommen, 2 eigene darauf gesetzt" for the toast after push or pull. */
 export function integratedText(i: GitIntegrated | null): string | undefined {
   if (!i) return undefined;
-  const remote = i.remoteCommits === 1 ? "1 neuer Commit" : `${i.remoteCommits} neue Commits`;
-  if (i.mode === "fast-forward") return `${remote} vom Remote übernommen.`;
-  return `${remote} vom Remote übernommen, ${i.localCommits === 1 ? "dein Commit" : `deine ${i.localCommits} Commits`} darauf gesetzt (Rebase).`;
+  const remote = t.git.sync.remoteCommits(i.remoteCommits);
+  if (i.mode === "fast-forward") return t.git.sync.fastForward(remote);
+  return t.git.sync.rebased(remote, i.localCommits);
 }
 
 type SyncResult = { integrated: GitIntegrated | null; session: Session | null };
@@ -59,12 +60,12 @@ export function SyncActions({ project, labeled = false }: { project: Project; la
         qc.setQueryData(keys.session(r.session.id), r.session);
         void qc.invalidateQueries({ queryKey: keys.sessions(project.id) });
         useUi.getState().openProject(project.id, r.session.id);
-        toast.info("Konflikte mit dem Remote", "Claude führt die Stände in einer neuen Session zusammen und fragt nach, wenn etwas unklar ist.");
+        toast.info(t.git.sync.conflicts, t.git.sync.conflictsHint);
       } else {
         toast.success(success, integratedText(r?.integrated ?? null));
       }
     } catch (e) {
-      toast.error(`${label} fehlgeschlagen`, errorMessage(e));
+      toast.error(t.git.sync.failed(label), errorMessage(e));
     } finally {
       setBusy(null);
     }
@@ -72,7 +73,7 @@ export function SyncActions({ project, labeled = false }: { project: Project; la
 
   if (!summary)
     return status.isLoading ? (
-      <SkeletonRegion label="Lädt Abgleich" className={labeled ? "flex items-center gap-2" : "flex items-center gap-0.5"}>
+      <SkeletonRegion label={t.git.sync.loadingSync} className={labeled ? "flex items-center gap-2" : "flex items-center gap-0.5"}>
         <Skeleton className={labeled ? "h-8 w-22" : "h-6 w-6"} />
         <Skeleton className={labeled ? "h-8 w-16" : "h-6 w-6.5"} />
         <Skeleton className={labeled ? "h-8 w-16" : "h-6 w-6.5"} />
@@ -88,46 +89,46 @@ export function SyncActions({ project, labeled = false }: { project: Project; la
           {...btn}
           disabled={!account.data}
           onClick={() => setPublishing(true)}
-          title={account.data ? "Auf GitHub veröffentlichen" : "Erst unter Einstellungen → Allgemein bei GitHub anmelden"}
+          title={account.data ? t.git.sync.publishOnGitHub : t.git.sync.signInFirst}
         >
-          <UploadCloud className="h-3.5 w-3.5" /> Veröffentlichen
+          <UploadCloud className="h-3.5 w-3.5" /> {t.git.common.publish}
         </Button>
       ) : (
         <>
           <Button
             {...(labeled ? btn : { size: "icon-sm" as const, variant: "ghost" as const, className: "h-6 w-6" })}
-            onClick={() => void run("Abrufen", () => call("git.fetch", { projectId: project.id }), "Remote abgerufen")}
-            loading={busy === "Abrufen"}
+            onClick={() => void run(t.git.sync.fetch, () => call("git.fetch", { projectId: project.id }), t.git.sync.fetched)}
+            loading={busy === t.git.sync.fetch}
             disabled={busy !== null}
-            aria-label="Abrufen"
-            title={`Abrufen (fetch)${summary.upstream ? ` von ${summary.upstream}` : ""}`}
+            aria-label={t.git.sync.fetch}
+            title={t.git.sync.fetchTitle(summary.upstream ?? null)}
           >
             <CloudDownload className="h-3.5 w-3.5" />
-            {labeled && "Abrufen"}
+            {labeled && t.git.sync.fetch}
           </Button>
           <Button
             {...btn}
-            onClick={() => void run("Pull", () => call("git.pull", { projectId: project.id }), "Aktualisiert")}
-            loading={busy === "Pull"}
+            onClick={() => void run(t.git.sync.pull, () => call("git.pull", { projectId: project.id }), t.git.sync.pulled)}
+            loading={busy === t.git.sync.pull}
             disabled={busy !== null}
-            aria-label="Pull"
-            title={summary.behind > 0 ? `Pull: ${summary.behind} neu auf dem Remote` : "Pull"}
+            aria-label={t.git.sync.pull}
+            title={t.git.sync.pullTitle(summary.behind)}
           >
             <ArrowDown className="h-3.5 w-3.5" />
-            {labeled && "Pull"}
+            {labeled && t.git.sync.pull}
             {summary.behind > 0 && <span className="text-warning">{summary.behind}</span>}
           </Button>
           <Button
             {...btn}
             // A click on push is the consent, also for main; only automatic pushes stay off protected branches.
-            onClick={() => void run("Push", () => call("git.push", { projectId: project.id, allowProtected: true }), "Gepusht")}
-            loading={busy === "Push"}
+            onClick={() => void run(t.git.sync.push, () => call("git.push", { projectId: project.id, allowProtected: true }), t.git.sync.pushed)}
+            loading={busy === t.git.sync.push}
             disabled={busy !== null}
-            aria-label="Push"
-            title={`${summary.ahead > 0 ? `Push: ${summary.ahead} Commits zum Pushen` : "Push"}. Neue Commits vom Remote übernimmt FORGE vorher, bei Konflikten hilft Claude.`}
+            aria-label={t.git.sync.push}
+            title={t.git.sync.pushTitle(summary.ahead)}
           >
             <ArrowUp className="h-3.5 w-3.5" />
-            {labeled && "Push"}
+            {labeled && t.git.sync.push}
             {summary.ahead > 0 && <span className="text-fg">{summary.ahead}</span>}
           </Button>
         </>
@@ -156,7 +157,7 @@ export function PullRequestBar({ project }: { project: Project }) {
   // Until status and account are known the bar may still appear; its height is kept so the graph does not jump.
   if (status.isLoading || (onGitHub && account.isLoading))
     return (
-      <SkeletonRegion label="Lädt Pull Request" className="flex h-8 shrink-0 items-center gap-2 border-b border-border px-3">
+      <SkeletonRegion label={t.git.sync.loadingPr} className="flex h-8 shrink-0 items-center gap-2 border-b border-border px-3">
         <Skeleton className="h-3.5 w-3.5 shrink-0 rounded-sm" />
         <PrStatusSkeleton />
       </SkeletonRegion>
@@ -168,52 +169,52 @@ export function PullRequestBar({ project }: { project: Project }) {
     <div className="flex h-8 shrink-0 items-center gap-2 border-b border-border px-3 text-small-lg">
       <GitPullRequest className="h-3.5 w-3.5 shrink-0 text-muted" />
       {pr.isLoading ? (
-        <SkeletonRegion label="Lädt Pull Request" className="flex min-w-0 flex-1 items-center gap-2">
+        <SkeletonRegion label={t.git.sync.loadingPr} className="flex min-w-0 flex-1 items-center gap-2">
           <PrStatusSkeleton />
         </SkeletonRegion>
       ) : pr.isError ? (
         <>
           <span className="min-w-0 flex-1 truncate text-danger" title={errorMessage(pr.error)}>
-            Pull Request nicht abgefragt
+            {t.git.sync.prNotQueried}
           </span>
-          <Button size="icon-sm" variant="ghost" className="h-6 w-6" onClick={() => void pr.refetch()} loading={pr.isFetching} aria-label="Erneut abfragen" title="Erneut abfragen">
+          <Button size="icon-sm" variant="ghost" className="h-6 w-6" onClick={() => void pr.refetch()} loading={pr.isFetching} aria-label={t.git.sync.retry} title={t.git.sync.retry}>
             <RefreshCw className="h-3.5 w-3.5" />
           </Button>
         </>
       ) : pr.data ? (
         <>
-          <button className="min-w-0 flex-1 truncate text-left hover:underline" onClick={() => void openExternal(pr.data!.url)} title="Auf GitHub öffnen">
+          <button className="min-w-0 flex-1 truncate text-left hover:underline" onClick={() => void openExternal(pr.data!.url)} title={t.git.sync.openOnGitHub}>
             #{pr.data.number} {pr.data.title}
           </button>
           <Badge tone={pr.data.state === "OPEN" ? (pr.data.draft ? "neutral" : "success") : pr.data.state === "MERGED" ? "accent" : "neutral"}>
-            {pr.data.draft ? "Entwurf" : pr.data.state === "OPEN" ? "offen" : pr.data.state === "MERGED" ? "gemergt" : "geschlossen"}
+            {pr.data.draft ? t.git.sync.draft : pr.data.state === "OPEN" ? t.git.sync.open : pr.data.state === "MERGED" ? t.git.sync.merged : t.git.sync.closed}
           </Badge>
           {pr.data.checks.total > 0 &&
             (pr.data.checks.failed > 0 ? (
-              <XCircle className="h-3.5 w-3.5 shrink-0 text-danger" aria-label={`${pr.data.checks.failed} Checks rot`} />
+              <XCircle className="h-3.5 w-3.5 shrink-0 text-danger" aria-label={t.git.sync.checksFailed(pr.data.checks.failed)} />
             ) : pr.data.checks.pending > 0 ? (
-              <CircleDashed className="h-3.5 w-3.5 shrink-0 text-warning" aria-label="Checks laufen" />
+              <CircleDashed className="h-3.5 w-3.5 shrink-0 text-warning" aria-label={t.git.sync.checksRunning} />
             ) : (
-              <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-success" aria-label="Checks grün" />
+              <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-success" aria-label={t.git.sync.checksPassed} />
             ))}
-          {pr.data.reviewDecision === "APPROVED" && <Badge tone="success">freigegeben</Badge>}
-          {pr.data.reviewDecision === "CHANGES_REQUESTED" && <Badge tone="warning">Änderungen gewünscht</Badge>}
-          <Button size="icon-sm" variant="ghost" className="h-6 w-6" aria-label="Pull Request öffnen" onClick={() => void openExternal(pr.data!.url)}>
+          {pr.data.reviewDecision === "APPROVED" && <Badge tone="success">{t.git.sync.approved}</Badge>}
+          {pr.data.reviewDecision === "CHANGES_REQUESTED" && <Badge tone="warning">{t.git.sync.changesRequested}</Badge>}
+          <Button size="icon-sm" variant="ghost" className="h-6 w-6" aria-label={t.git.sync.openPr} onClick={() => void openExternal(pr.data!.url)}>
             <ExternalLink className="h-3.5 w-3.5" />
           </Button>
         </>
       ) : (
         <>
-          <span className="min-w-0 flex-1 truncate text-muted">Kein Pull Request für {summary.branch}</span>
+          <span className="min-w-0 flex-1 truncate text-muted">{t.git.sync.noPr(summary.branch)}</span>
           <Button
             size="sm"
             variant="ghost"
             className="h-6 px-1.5"
             onClick={() => setCreatingPr(true)}
             disabled={onMain}
-            title={onMain ? "Erst einen Feature-Branch anlegen" : undefined}
+            title={onMain ? t.git.sync.featureBranchFirst : undefined}
           >
-            Erstellen
+            {t.git.common.create}
           </Button>
         </>
       )}
@@ -245,12 +246,12 @@ function PublishDialog({ open, onOpenChange, project, onDone }: { open: boolean;
     <Dialog
       open={open}
       onOpenChange={onOpenChange}
-      title="Auf GitHub veröffentlichen"
-      description="Legt ein Repository in deinem GitHub-Konto oder einer Organisation an, verbindet es als origin und pusht den aktuellen Branch."
+      title={t.git.sync.publishOnGitHub}
+      description={t.git.sync.publishDescription}
       footer={
         <>
           <Button variant="ghost" onClick={() => onOpenChange(false)}>
-            Abbrechen
+            {t.git.common.cancel}
           </Button>
           <Button
             variant="primary"
@@ -260,30 +261,30 @@ function PublishDialog({ open, onOpenChange, project, onDone }: { open: boolean;
               setBusy(true);
               try {
                 const r = await call("github.publish", { projectId: project.id, private: isPrivate, name, owner: owner || undefined });
-                toast.success("Veröffentlicht", r.url);
+                toast.success(t.git.sync.published, r.url);
                 onDone();
                 onOpenChange(false);
               } catch (e) {
-                toast.error("Nicht veröffentlicht", errorMessage(e));
+                toast.error(t.git.sync.notPublished, errorMessage(e));
               } finally {
                 setBusy(false);
               }
             }}
           >
-            Veröffentlichen
+            {t.git.common.publish}
           </Button>
         </>
       }
     >
       <div className="flex flex-col gap-3">
-        <Field label="Anlegen in">
+        <Field label={t.git.sync.createIn}>
           <GitHubOwnerSelect value={owner} onChange={setOwner} />
         </Field>
-        <Field label="Repository-Name">
+        <Field label={t.git.sync.repoName}>
           <Input value={name} onChange={(e) => setName(e.target.value)} />
         </Field>
         <label className="flex items-center gap-2 text-body">
-          <Checkbox checked={isPrivate} onChange={setPrivate} label="Privat" /> Privat
+          <Checkbox checked={isPrivate} onChange={setPrivate} label={t.git.sync.private} /> {t.git.sync.private}
         </label>
       </div>
     </Dialog>
@@ -306,7 +307,7 @@ export function CreatePrDialog({ open, onOpenChange, project, onDone }: { open: 
       setBody(s.body);
       setBase(s.base);
     } catch (e) {
-      toast.error("Kein Vorschlag", errorMessage(e));
+      toast.error(t.git.sync.noSuggestion, errorMessage(e));
     } finally {
       setSuggesting(false);
     }
@@ -327,12 +328,12 @@ export function CreatePrDialog({ open, onOpenChange, project, onDone }: { open: 
     <Dialog
       open={open}
       onOpenChange={onOpenChange}
-      title="Pull Request erstellen"
+      title={t.git.sync.createPrTitle}
       className="w-170"
       footer={
         <>
           <Button variant="ghost" onClick={() => onOpenChange(false)}>
-            Abbrechen
+            {t.git.common.cancel}
           </Button>
           <Button
             variant="primary"
@@ -342,18 +343,18 @@ export function CreatePrDialog({ open, onOpenChange, project, onDone }: { open: 
               setBusy(true);
               try {
                 const r = await call("github.createPr", { projectId: project.id, title, body, base, draft });
-                toast.success("Pull Request erstellt", r.url);
+                toast.success(t.git.sync.prCreated, r.url);
                 void openExternal(r.url);
                 onDone();
                 onOpenChange(false);
               } catch (e) {
-                toast.error("Pull Request nicht erstellt", errorMessage(e));
+                toast.error(t.git.sync.prNotCreated, errorMessage(e));
               } finally {
                 setBusy(false);
               }
             }}
           >
-            Erstellen
+            {t.git.common.create}
           </Button>
         </>
       }
@@ -361,28 +362,28 @@ export function CreatePrDialog({ open, onOpenChange, project, onDone }: { open: 
       <div className="flex flex-col gap-3">
         <div className="flex items-end gap-2">
           <div className="flex-1">
-            <Field label="Titel">
+            <Field label={t.git.sync.title}>
               <Input value={title} onChange={(e) => setTitle(e.target.value)} disabled={suggesting} />
             </Field>
           </div>
-          <Button variant="ghost" onClick={() => void suggest()} loading={suggesting} title="Titel und Beschreibung von Claude vorschlagen lassen">
-            {!suggesting && <Sparkles className="h-3.5 w-3.5 text-accent" />} Vorschlag
+          <Button variant="ghost" onClick={() => void suggest()} loading={suggesting} title={t.git.sync.suggestHint}>
+            {!suggesting && <Sparkles className="h-3.5 w-3.5 text-accent" />} {t.git.sync.suggestion}
           </Button>
         </div>
-        <Field label="Beschreibung (Markdown)">
+        <Field label={t.git.sync.description}>
           <Textarea value={body} onChange={(e) => setBody(e.target.value)} rows={12} className="font-mono text-xs" disabled={suggesting} />
         </Field>
         <div className="flex items-center gap-4">
           <div className="w-48">
-            <Field label="Ziel-Branch">
+            <Field label={t.git.sync.baseBranch}>
               <Input value={base} onChange={(e) => setBase(e.target.value)} className="font-mono text-xs" />
             </Field>
           </div>
           <label className="mt-5 flex items-center gap-2 text-body">
-            <Checkbox checked={draft} onChange={setDraft} label="Als Entwurf" /> Als Entwurf
+            <Checkbox checked={draft} onChange={setDraft} label={t.git.sync.asDraft} /> {t.git.sync.asDraft}
           </label>
         </div>
-        <p className="text-xs text-subtle">Der Branch wird vorher gepusht (kein Force-Push).</p>
+        <p className="text-xs text-subtle">{t.git.sync.pushedFirst}</p>
       </div>
     </Dialog>
   );

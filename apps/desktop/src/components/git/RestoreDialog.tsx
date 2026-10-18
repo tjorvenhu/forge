@@ -5,6 +5,7 @@ import { call, keys } from "@/lib/queries";
 import { errorMessage } from "@/lib/rpc";
 import { relativeTime } from "@/lib/utils";
 import { toast } from "@/stores/toast";
+import { t } from "@/i18n";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 
 /**
@@ -32,16 +33,16 @@ export function RestoreDialog({
     try {
       const r = await call("git.restoreTo", { projectId, commit: commit.hash });
       const detail = [
-        r.changed ? `${r.changed} Datei(en) geändert. Prüfe sie im Git-Bereich und committe sie.` : "Die Dateien entsprechen jetzt diesem Stand.",
-        r.stashed ? "Deine offenen Änderungen liegen im Git-Stash." : null,
+        r.changed ? t.git.restore.changed(r.changed) : t.git.restore.unchanged,
+        r.stashed ? t.git.restore.stashed : null,
       ]
         .filter(Boolean)
         .join(" ");
-      toast.success(`Stand von ${r.commit.slice(0, 7)} wiederhergestellt`, detail);
+      toast.success(t.git.restore.restored(r.commit.slice(0, 7)), detail);
       void qc.invalidateQueries({ queryKey: keys.git(projectId) });
       void qc.invalidateQueries({ queryKey: keys.project(projectId) });
     } catch (e) {
-      toast.error("Nicht wiederhergestellt", errorMessage(e));
+      toast.error(t.git.restore.failed, errorMessage(e));
       throw e;
     }
   };
@@ -50,13 +51,9 @@ export function RestoreDialog({
     <ConfirmDialog
       open={!!commit}
       onOpenChange={onOpenChange}
-      title={current ? "Offene Änderungen beiseitelegen?" : "Auf diesen Stand zurück?"}
-      description={
-        current
-          ? "Die Dateien bekommen wieder den Stand des letzten Commits. Der Verlauf bleibt unverändert."
-          : "Alle Dateien im Projekt bekommen den Stand dieses Commits. Das passiert als neue Änderungen, die du danach prüfen und committen kannst. Der Verlauf bleibt unverändert."
-      }
-      confirmLabel={current ? "Beiseitelegen" : "Wiederherstellen"}
+      title={current ? t.git.restore.putAsideTitle : t.git.restore.restoreTitle}
+      description={current ? t.git.restore.putAsideDescription : t.git.restore.restoreDescription}
+      confirmLabel={current ? t.git.common.putAside : t.git.common.restore}
       onConfirm={restore}
     >
       {commit && (
@@ -71,7 +68,8 @@ export function RestoreDialog({
             <div className="flex items-start gap-2 text-xs text-muted">
               <Archive className="mt-0.5 h-3.5 w-3.5 shrink-0 text-warning" />
               <span>
-                {openChanges} nicht committete Datei(en) sichert FORGE vorher im Git-Stash. Zurückholen kannst du sie mit <span className="font-mono">git stash pop</span>.
+                {t.git.restore.stashNotice(openChanges)}
+                <span className="font-mono">git stash pop</span>.
               </span>
             </div>
           )}

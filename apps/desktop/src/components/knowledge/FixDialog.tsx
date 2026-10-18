@@ -5,6 +5,7 @@ import { call, keys } from "@/lib/queries";
 import { errorMessage } from "@/lib/rpc";
 import { cn } from "@/lib/utils";
 import { toast } from "@/stores/toast";
+import { t } from "@/i18n";
 import { Button } from "@/components/ui/button";
 import { CodeEditor } from "@/components/ui/code-editor";
 import { Dialog } from "@/components/ui/dialog";
@@ -75,16 +76,16 @@ export function FixDialog({
 
   const apply = async () => {
     if (!id || !draft || saving) return;
-    if (!draft.title.trim()) return toast.error("Titel fehlt", "Jeder Eintrag braucht einen Titel.");
+    if (!draft.title.trim()) return toast.error(t.knowledge.common.titleMissing, t.knowledge.common.needsTitle);
     setSaving(true);
     try {
       const saved = await call("knowledge.save", { projectId: owner, id, title: draft.title, summary: draft.summary, tags: parseTags(draft.tags), content: draft.content });
       qc.setQueryData(keys.knowledgeEntry(owner, saved.id), saved);
       void qc.invalidateQueries({ queryKey: keys.knowledge(owner) });
-      toast.success("Eintrag korrigiert", `„${saved.title}“ ist gespeichert. Die alte Fassung liegt im Git.`);
+      toast.success(t.knowledge.fix.corrected, t.knowledge.fix.correctedDetail(saved.title));
       onClose();
     } catch (e) {
-      toast.error("Nicht gespeichert", errorMessage(e));
+      toast.error(t.knowledge.common.notSaved, errorMessage(e));
     } finally {
       setSaving(false);
     }
@@ -94,16 +95,16 @@ export function FixDialog({
     <Dialog
       open={id !== null}
       onOpenChange={(open) => !open && onClose()}
-      title="Mit Claude prüfen"
-      description="Claude korrigiert die Verweise, die es im Projekt nicht mehr gibt. Gespeichert wird erst, wenn du den Entwurf übernimmst."
+      title={t.knowledge.common.checkWithClaude}
+      description={t.knowledge.fix.description}
       className="w-220"
       footer={
         <>
           <Button onClick={onClose} disabled={saving}>
-            Verwerfen
+            {t.knowledge.common.discard}
           </Button>
           <Button variant="primary" onClick={() => void apply()} disabled={!draft || !draft.content.trim()} loading={saving}>
-            Übernehmen
+            {t.knowledge.fix.apply}
           </Button>
         </>
       }
@@ -122,7 +123,7 @@ export function FixDialog({
         {error ? (
           <div className="flex flex-col items-start gap-3">
             <ErrorBanner>{error}</ErrorBanner>
-            <Button onClick={() => void request()}>Erneut versuchen</Button>
+            <Button onClick={() => void request()}>{t.knowledge.common.retry}</Button>
           </div>
         ) : !draft ? (
           <FixSkeleton />
@@ -132,8 +133,8 @@ export function FixDialog({
               value={view}
               onChange={setView}
               tabs={[
-                { value: "changes", label: "Änderungen" },
-                { value: "edit", label: "Bearbeiten" },
+                { value: "changes", label: t.knowledge.fix.changes },
+                { value: "edit", label: t.knowledge.common.edit },
               ]}
             />
             {view === "changes" ? (
@@ -141,22 +142,22 @@ export function FixDialog({
             ) : (
               <>
                 <div className="grid gap-3 lg:grid-cols-2">
-                  <Field label="Titel">
+                  <Field label={t.knowledge.common.title}>
                     <Input value={draft.title} onChange={(e) => edit({ title: e.target.value })} maxLength={120} />
                   </Field>
-                  <Field label="Tags" hint="Mit Komma oder Leerzeichen getrennt">
+                  <Field label={t.knowledge.common.tags} hint={t.knowledge.common.tagsHint}>
                     <Input value={draft.tags} onChange={(e) => edit({ tags: e.target.value })} />
                   </Field>
                 </div>
-                <Field label="Zusammenfassung">
+                <Field label={t.knowledge.common.summary}>
                   <Input value={draft.summary} onChange={(e) => edit({ summary: e.target.value })} maxLength={300} />
                 </Field>
                 <div className="h-80">
-                  <CodeEditor value={draft.content} onChange={(content) => edit({ content })} language="markdown" ariaLabel="Inhalt des korrigierten Eintrags" />
+                  <CodeEditor value={draft.content} onChange={(content) => edit({ content })} language="markdown" ariaLabel={t.knowledge.fix.content} />
                 </div>
               </>
             )}
-            <p className="text-caption text-subtle">Entwurf von Claude ({draft.model}). Alte Fassungen bleiben im Git.</p>
+            <p className="text-caption text-subtle">{t.knowledge.common.draftBy(draft.model)}</p>
           </>
         )}
       </div>
@@ -167,7 +168,7 @@ export function FixDialog({
 /** The draft view while Claude writes: the two tabs, the text box and the note below. */
 function FixSkeleton() {
   return (
-    <SkeletonRegion label="Claude schreibt den Entwurf" className="flex flex-col gap-3">
+    <SkeletonRegion label={t.knowledge.common.claudeWritesDraft} className="flex flex-col gap-3">
       <div className="flex h-10 items-center gap-7 px-3">
         <Skeleton className="h-3 w-20 rounded-sm" />
         <Skeleton className="h-3 w-18 rounded-sm" />
@@ -175,7 +176,7 @@ function FixSkeleton() {
       <div className="flex h-80 flex-col gap-2.5 rounded-lg border border-border bg-surface p-4">
         {[30, 0, 85, 88, 0, 25, 76, 81, 45].map((w, i) => (w ? <Skeleton key={i} className="h-3 rounded-sm" style={{ width: `${w}%` }} /> : <div key={i} className="h-1" />))}
       </div>
-      <p className="text-caption text-subtle">Claude prüft den Eintrag. Das dauert meist unter einer Minute.</p>
+      <p className="text-caption text-subtle">{t.knowledge.fix.checking}</p>
     </SkeletonRegion>
   );
 }
@@ -190,16 +191,16 @@ const ROW: Record<Exclude<DiffLine["kind"], "gap">, { row: string; sign: string;
 function DiffList({ lines }: { lines: DiffLine[] | null }) {
   if (!lines) {
     return (
-      <SkeletonRegion label="Lädt Eintrag" className="flex h-80 flex-col gap-2.5 rounded-lg border border-border bg-surface p-4">
+      <SkeletonRegion label={t.knowledge.common.loadingEntry} className="flex h-80 flex-col gap-2.5 rounded-lg border border-border bg-surface p-4">
         {[70, 88, 0, 62, 91, 45].map((w, i) => (w ? <Skeleton key={i} className="h-3 rounded-sm" style={{ width: `${w}%` }} /> : <div key={i} className="h-1" />))}
       </SkeletonRegion>
     );
   }
   if (!lines.some((l) => l.kind === "add" || l.kind === "del")) {
-    return <p className="flex h-80 items-center justify-center rounded-lg border border-border bg-surface text-body text-muted">Claude hat am Text nichts geändert.</p>;
+    return <p className="flex h-80 items-center justify-center rounded-lg border border-border bg-surface text-body text-muted">{t.knowledge.fix.unchanged}</p>;
   }
   return (
-    <div className="h-80 overflow-y-auto rounded-lg border border-border bg-surface py-1 font-mono text-small leading-relaxed" aria-label="Änderungen am Eintrag">
+    <div className="h-80 overflow-y-auto rounded-lg border border-border bg-surface py-1 font-mono text-small leading-relaxed" aria-label={t.knowledge.fix.diff}>
       {lines.map((l, i) =>
         l.kind === "gap" ? (
           <div key={i} className="my-1 border-t border-dashed border-border" />
