@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Tooltip } from "@/components/ui/misc";
 import { Skeleton } from "@/components/ui/skeleton";
+import { t } from "@/i18n";
 import { dayLabel, shortDay } from "./report-days";
 
 const ICON = "h-3.5 w-3.5";
@@ -38,8 +39,8 @@ function ChartCard({ title, sub, actions, rows, children, className }: { title: 
       aria-label={title}
       className={cn("flex min-w-0 flex-col rounded-xl border border-border bg-surface p-4", className)}
       onContextMenu={contextItems(() => [
-        { label: table ? "Als Diagramm anzeigen" : "Als Tabelle anzeigen", icon: table ? <BarChart3 className={ICON} /> : <Table2 className={ICON} />, onSelect: () => setTable(!table) },
-        { label: "Werte kopieren", icon: <Copy className={ICON} />, onSelect: copy },
+        { label: table ? t.report.charts.showAsChart : t.report.charts.showAsTable, icon: table ? <BarChart3 className={ICON} /> : <Table2 className={ICON} />, onSelect: () => setTable(!table) },
+        { label: t.report.charts.copyValues, icon: <Copy className={ICON} />, onSelect: copy },
       ])}
     >
       <div className="mb-3 flex items-start gap-2">
@@ -48,8 +49,8 @@ function ChartCard({ title, sub, actions, rows, children, className }: { title: 
           {sub && <p className="text-caption text-muted">{sub}</p>}
         </div>
         {actions}
-        <Tooltip content={table ? "Als Diagramm" : "Als Tabelle"}>
-          <Button size="icon-sm" variant="ghost" aria-label={table ? `${title} als Diagramm` : `${title} als Tabelle`} aria-pressed={table} onClick={() => setTable(!table)}>
+        <Tooltip content={table ? t.report.charts.asChart : t.report.charts.asTable}>
+          <Button size="icon-sm" variant="ghost" aria-label={table ? t.report.charts.chartLabel(title) : t.report.charts.tableLabel(title)} aria-pressed={table} onClick={() => setTable(!table)}>
             {table ? <BarChart3 className={ICON} /> : <Table2 className={ICON} />}
           </Button>
         </Tooltip>
@@ -171,8 +172,8 @@ function Kpi({ label, value, sub }: { label: string; value: string; sub: ReactNo
 }
 
 const SPLIT = [
-  { key: "out", label: "Von Claude geschrieben", className: "bg-accent-strong" },
-  { key: "in", label: "Neu gelesen", className: "bg-tile-blue" },
+  { key: "out", label: t.report.charts.splitOut, className: "bg-accent-strong" },
+  { key: "in", label: t.report.charts.splitIn, className: "bg-tile-blue" },
 ] as const;
 
 /**
@@ -182,19 +183,20 @@ const SPLIT = [
 export function UsageHeadline({ u }: { u: DailyReportUsage }) {
   const parts = { out: u.outputTokens, in: u.inputTokens + u.cacheWriteTokens };
   const fresh = parts.out + parts.in;
+  const h = t.report.charts.headline;
   return (
     <div className="grid gap-3 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]">
-      <section aria-label="Arbeitszeit von Claude" className="rounded-xl border border-border bg-surface p-4">
-        <div className="text-caption text-muted">Claude hat gearbeitet</div>
+      <section aria-label={h.workAria} className="rounded-xl border border-border bg-surface p-4">
+        <div className="text-caption text-muted">{h.worked}</div>
         <div className="mt-0.5 text-[48px] font-semibold leading-none tracking-tight text-fg">{formatDuration(u.workMs)}</div>
         <div className="mt-3 grid grid-cols-3 gap-3">
-          <Kpi label="Uhrzeit aktiv" value={formatDuration(u.activeMs)} sub={u.peakParallel > 1 ? `bis zu ${u.peakParallel} gleichzeitig` : "nacheinander"} />
-          <Kpi label="Agenten" value={formatDuration(u.agentWorkMs)} sub={u.workMs ? `${Math.round((u.agentWorkMs / u.workMs) * 100)} % der Zeit` : "keine"} />
-          <Kpi label="Durchläufe" value={String(u.turns)} sub={u.apiCalls ? `${u.apiCalls} Anfragen an Claude` : u.turns ? `je ${formatDuration(u.workMs / u.turns)}` : "keine"} />
+          <Kpi label={h.clockActive} value={formatDuration(u.activeMs)} sub={u.peakParallel > 1 ? h.peakParallel(u.peakParallel) : h.sequential} />
+          <Kpi label={h.agents} value={formatDuration(u.agentWorkMs)} sub={u.workMs ? h.shareOfTime(Math.round((u.agentWorkMs / u.workMs) * 100)) : h.none} />
+          <Kpi label={h.turns} value={String(u.turns)} sub={u.apiCalls ? h.requests(u.apiCalls) : u.turns ? h.perTurn(formatDuration(u.workMs / u.turns)) : h.none} />
         </div>
       </section>
-      <section aria-label="Tokens" className="flex flex-col rounded-xl border border-border bg-surface p-4">
-        <div className="text-caption text-muted">Neue Tokens</div>
+      <section aria-label={h.tokensAria} className="flex flex-col rounded-xl border border-border bg-surface p-4">
+        <div className="text-caption text-muted">{h.newTokens}</div>
         <div className="mt-0.5 text-[48px] font-semibold leading-none tracking-tight text-fg">{formatTokens(fresh)}</div>
         <div className="mt-3 flex h-2.5 w-full gap-[2px] overflow-hidden rounded-full bg-surface-2" role="img" aria-label={SPLIT.map((x) => `${x.label} ${formatTokens(parts[x.key])}`).join(", ")}>
           {fresh > 0 &&
@@ -208,26 +210,17 @@ export function UsageHeadline({ u }: { u: DailyReportUsage }) {
                 {x.label}
               </div>
               <div className="text-ui font-semibold text-fg">{formatTokens(parts[x.key])}</div>
-              <div className="text-caption text-subtle">{fresh ? `${Math.round((parts[x.key] / fresh) * 100)} %` : "0 %"}</div>
+              <div className="text-caption text-subtle">{h.percent(fresh ? Math.round((parts[x.key] / fresh) * 100) : 0)}</div>
             </div>
           ))}
           <div className="min-w-0 border-l border-border pl-3">
-            <div className="truncate text-caption text-muted">Kontext aus dem Cache</div>
+            <div className="truncate text-caption text-muted">{h.cacheContext}</div>
             <div className="text-ui font-semibold text-fg">{formatTokens(u.cacheReadTokens)}</div>
-            <div className="truncate text-caption text-subtle">{u.apiCalls ? `Ø ${formatTokens(u.cacheReadTokens / u.apiCalls)} je Anfrage` : "nicht in der Summe"}</div>
+            <div className="truncate text-caption text-subtle">{u.apiCalls ? h.cachePerRequest(formatTokens(u.cacheReadTokens / u.apiCalls)) : h.notInTotal}</div>
           </div>
         </div>
-        {u.cacheReadTokens > 0 && (
-          <p className="mt-3 text-caption text-subtle">
-            Bei jeder Anfrage liest Claude den bisherigen Verlauf erneut aus dem Cache. Das steht rechts für sich und ist nicht in den neuen Tokens enthalten.
-          </p>
-        )}
-        {u.forge.calls > 0 && (
-          <p className="mt-auto pt-2 text-caption text-subtle">
-            Davon durch FORGE selbst: {formatTokens(u.forge.tokens)}
-            {fresh ? ` (${Math.round((u.forge.tokens / fresh) * 100)} %)` : ""}, siehe unten.
-          </p>
-        )}
+        {u.cacheReadTokens > 0 && <p className="mt-3 text-caption text-subtle">{h.cacheNote}</p>}
+        {u.forge.calls > 0 && <p className="mt-auto pt-2 text-caption text-subtle">{h.byForge(formatTokens(u.forge.tokens), fresh ? Math.round((u.forge.tokens / fresh) * 100) : null)}</p>}
       </section>
     </div>
   );

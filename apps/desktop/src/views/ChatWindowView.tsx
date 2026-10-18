@@ -12,6 +12,7 @@ import { TitleTooltips } from "@/components/ui/title-tooltips";
 import { EmptyState, ErrorBanner } from "@/components/ui/misc";
 import { ChatPanel, ChatPanelSkeleton } from "@/components/workspace/ChatPanel";
 import { useLanguageSync } from "@/i18n/sync";
+import { t } from "@/i18n";
 import { ClaudeLoginRequiredNotice } from "@/components/settings/ClaudeLoginDialog";
 
 /**
@@ -29,10 +30,10 @@ export function ChatWindowShell({ target }: { target: ChatWindowTarget }) {
   else if (project.isError || !project.data)
     content = (
       <div className="p-6">
-        <ErrorBanner title="Projekt nicht gefunden">{errorMessage(project.error)}</ErrorBanner>
+        <ErrorBanner title={t.views.chatWindow.projectNotFound}>{errorMessage(project.error)}</ErrorBanner>
       </div>
     );
-  else if (!project.data.exists) content = <EmptyState title="Chat nicht verfügbar">Der Projektordner fehlt.</EmptyState>;
+  else if (!project.data.exists) content = <EmptyState title={t.views.chatWindow.chatUnavailable}>{t.views.chatWindow.folderMissing}</EmptyState>;
   else content = <ChatPanel project={project.data} detached />;
 
   return (
@@ -54,7 +55,7 @@ export function ChatWindowShell({ target }: { target: ChatWindowTarget }) {
 function useReportShownSession(projectId: string) {
   const { sessionId } = splitActive(useUi((s) => s.activeSession[projectId]));
   const session = useSession(sessionId);
-  const title = sessionId ? (session.data?.title ?? "Ohne Titel") : "Neue Session";
+  const title = sessionId ? (session.data?.title ?? t.views.common.untitled) : t.views.chatWindow.newSession;
   const ready = !sessionId || !!session.data;
   useEffect(() => {
     if (ready) reportChatWindow(sessionId, title);

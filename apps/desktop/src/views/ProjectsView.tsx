@@ -11,6 +11,7 @@ import { ProjectCard } from "@/components/projects/ProjectCard";
 import { RemoveProjectDialog } from "@/components/projects/RemoveProjectDialog";
 import { CardGridSkeleton } from "@/components/ui/skeleton";
 import { splitProjects } from "@/lib/project-tree";
+import { t } from "@/i18n";
 
 type Filter = "all" | "favorites" | "dirty" | "missing";
 
@@ -38,33 +39,33 @@ export function ProjectsView() {
 
   return (
     <Page
-      title="Projekte"
-      subtitle={`${roots.length} ${roots.length === 1 ? "Projekt" : "Projekte"}${agentCount ? `, ${agentCount} ${agentCount === 1 ? "Agent" : "Agenten"}` : ""}`}
+      title={t.views.projects.title}
+      subtitle={t.views.projects.subtitle(roots.length, agentCount)}
       actions={<AddProjectActions />}
     >
       <div className="mb-4 flex gap-2">
         <div className="relative flex-1">
           <Search className="pointer-events-none absolute left-2.5 top-2 h-4 w-4 text-subtle" />
-          <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Name, Pfad, Tag oder Technologie" className="pl-8" aria-label="Projekte durchsuchen" />
+          <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t.views.projects.searchPlaceholder} className="pl-8" aria-label={t.views.projects.searchLabel} />
         </div>
         <Select<Filter>
           value={filter}
           onChange={setFilter}
           className="w-44"
-          aria-label="Filter"
+          aria-label={t.views.projects.filterLabel}
           options={[
-            { value: "all", label: "Alle" },
-            { value: "favorites", label: "Favoriten" },
-            { value: "dirty", label: "Mit Änderungen" },
-            { value: "missing", label: "Ordner fehlt" },
+            { value: "all", label: t.views.projects.filterAll },
+            { value: "favorites", label: t.views.projects.filterFavorites },
+            { value: "dirty", label: t.views.projects.filterDirty },
+            { value: "missing", label: t.views.projects.filterMissing },
           ]}
         />
       </div>
-      {projects.isLoading && <CardGridSkeleton count={6} min={300} gap="gap-3" body={1} label="Lädt Projekte" />}
-      {projects.isError && <ErrorBanner>Projekte konnten nicht geladen werden.</ErrorBanner>}
+      {projects.isLoading && <CardGridSkeleton count={6} min={300} gap="gap-3" body={1} label={t.views.projects.loading} />}
+      {projects.isError && <ErrorBanner>{t.views.common.projectsLoadFailed}</ErrorBanner>}
       {projects.isSuccess && items.length === 0 && (
-        <EmptyState title={projects.data.length ? "Keine Treffer" : "Noch keine Projekte"}>
-          {projects.data.length ? "Suchbegriff oder Filter anpassen." : "Füge oben ein Projekt hinzu."}
+        <EmptyState title={projects.data.length ? t.views.projects.noMatches : t.views.common.noProjectsYet}>
+          {projects.data.length ? t.views.projects.adjustSearch : t.views.projects.addAbove}
         </EmptyState>
       )}
       <div className="grid grid-cols-[repeat(auto-fill,minmax(300px,1fr))] gap-3">
