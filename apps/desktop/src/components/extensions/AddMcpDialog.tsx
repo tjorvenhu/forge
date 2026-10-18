@@ -8,6 +8,9 @@ import { Field, Input, Textarea } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { parseEnvLines } from "./env";
 import { mcpScopeOptions, type McpScope } from "./mcp";
+import { t } from "@/i18n";
+
+const m = t.extensions.addMcp;
 
 export function AddMcpDialog({ open, onOpenChange, projectId, onAdded }: { open: boolean; onOpenChange: (o: boolean) => void; projectId?: string; onAdded: () => void }) {
   const [name, setName] = useState("");
@@ -34,11 +37,11 @@ export function AddMcpDialog({ open, onOpenChange, projectId, onAdded }: { open:
     setBusy(true);
     try {
       await call("mcp.add", { projectId, name, scope, transport, target, args: args.trim() ? args.trim().split(/\s+/) : [], env: parsedEnv.env });
-      toast.success("MCP Server hinzugefügt", name);
+      toast.success(m.added, name);
       onAdded();
       onOpenChange(false);
     } catch (e) {
-      toast.error("Nicht hinzugefügt", errorMessage(e));
+      toast.error(m.notAdded, errorMessage(e));
     } finally {
       setBusy(false);
     }
@@ -47,49 +50,49 @@ export function AddMcpDialog({ open, onOpenChange, projectId, onAdded }: { open:
     <Dialog
       open={open}
       onOpenChange={onOpenChange}
-      title="MCP Server hinzufügen"
+      title={m.title}
       footer={
         <>
           <Button variant="ghost" onClick={() => onOpenChange(false)}>
-            Abbrechen
+            {m.cancel}
           </Button>
           <Button variant="primary" onClick={() => void submit()} disabled={!name || !target || !!parsedEnv.error} loading={busy}>
-            Hinzufügen
+            {m.add}
           </Button>
         </>
       }
     >
       <div className="flex flex-col gap-3">
-        <Field label="Name">
+        <Field label={m.name}>
           <Input value={name} onChange={(e) => setName(e.target.value.replace(/[^A-Za-z0-9_-]/g, ""))} placeholder="context7" autoFocus />
         </Field>
         <div className="grid grid-cols-2 gap-3">
-          <Field label="Art">
+          <Field label={m.type}>
             <Select
               value={transport}
               onChange={setTransport}
               className="w-full"
               options={[
-                { value: "stdio", label: "Lokaler Befehl (stdio)" },
+                { value: "stdio", label: m.stdio },
                 { value: "http", label: "HTTP" },
                 { value: "sse", label: "SSE" },
               ]}
             />
           </Field>
-          <Field label="Bereich">
+          <Field label={m.scope}>
             <Select value={scope} onChange={setScope} className="w-full" options={mcpScopeOptions(projectId)} />
           </Field>
         </div>
-        <Field label={transport === "stdio" ? "Befehl" : "URL"}>
+        <Field label={transport === "stdio" ? m.command : m.url}>
           <Input value={target} onChange={(e) => setTarget(e.target.value)} placeholder={transport === "stdio" ? "npx" : "https://…"} className="font-mono text-xs" />
         </Field>
         {transport === "stdio" && (
-          <Field label="Argumente" hint="Durch Leerzeichen getrennt">
+          <Field label={m.args} hint={m.argsHint}>
             <Input value={args} onChange={(e) => setArgs(e.target.value)} placeholder="-y @upstash/context7-mcp" className="font-mono text-xs" />
           </Field>
         )}
         <div>
-          <Field label="Umgebungsvariablen (optional)" hint="Eine pro Zeile: NAME=wert">
+          <Field label={m.env} hint={m.envHint}>
             <Textarea value={env} onChange={(e) => setEnv(e.target.value)} rows={3} className="font-mono text-xs" aria-invalid={!!parsedEnv.error} />
           </Field>
           {parsedEnv.error && (

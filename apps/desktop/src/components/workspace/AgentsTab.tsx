@@ -20,6 +20,7 @@ import { Badge, Checkbox, EmptyState, ErrorBanner, SectionTitle } from "@/compon
 import { LimitForecastWarning } from "@/components/usage/UsageWindows";
 import { SessionStatusBadge } from "./SessionStatusBadge";
 import { Skeleton, SkeletonRegion } from "@/components/ui/skeleton";
+import { t } from "@/i18n";
 import { AgentEnvironment } from "./AgentEnvironment";
 
 /**
@@ -44,11 +45,11 @@ export function AgentsTab({ project }: { project: ProjectWithStatus }) {
   const blocker = findingRoot
     ? null
     : !root
-      ? "Das Hauptprojekt dieses Worktrees ist nicht mehr in FORGE."
+      ? t.workspace.agents.rootMissing
       : !root.exists
-        ? "Der Projektordner fehlt."
+        ? t.workspace.agents.folderMissing
         : !root.git
-          ? "Parallele Agenten brauchen ein Git-Repository."
+          ? t.workspace.agents.needsGit
           : null;
 
   const remove = async () => {
@@ -65,13 +66,13 @@ export function AgentsTab({ project }: { project: ProjectWithStatus }) {
       }
       await qc.invalidateQueries({ queryKey: keys.projects });
       if (root) void qc.invalidateQueries({ queryKey: keys.branches(root.id) });
-      if (r.branchError) toast.error("Worktree entfernt, Branch nicht gelöscht", r.branchError);
-      else if (r.deletedBranch) toast.success("Worktree und Branch gelöscht", r.deletedBranch);
-      else toast.success("Worktree entfernt", `Der Branch ${removing.git?.branch ?? ""} bleibt im Repository.`);
+      if (r.branchError) toast.error(t.workspace.agents.removedBranchKept, r.branchError);
+      else if (r.deletedBranch) toast.success(t.workspace.agents.removedWithBranch, r.deletedBranch);
+      else toast.success(t.workspace.agents.removed, t.workspace.agents.branchStays(removing.git?.branch ?? ""));
     } catch (e) {
       // Uncommitted changes: the dialog stays open and switches to the forced variant.
       if (e instanceof RpcCallError && e.code === "CONFLICT" && !force) setForce(true);
-      else toast.error("Worktree nicht entfernt", errorMessage(e));
+      else toast.error(t.workspace.agents.notRemoved, errorMessage(e));
       throw e;
     }
   };
@@ -83,29 +84,29 @@ export function AgentsTab({ project }: { project: ProjectWithStatus }) {
           <SectionTitle
             action={
               <Button size="sm" variant="primary" onClick={() => setCreating(true)} disabled={!!blocker || findingRoot} title={blocker ?? undefined}>
-                <Plus className="h-3.5 w-3.5" /> Paralleler Agent
+                <Plus className="h-3.5 w-3.5" /> {t.workspace.agents.newAgent}
               </Button>
             }
           >
-            Parallele Agenten
+            {t.workspace.agents.title}
           </SectionTitle>
           <p className="mb-3 text-xs text-muted">
-            Jeder Agent arbeitet in einem eigenen Worktree{root ? ` von ${root.name}` : ""}: eigener Ordner, eigener Branch. FORGE richtet ihn wie den Hauptordner ein (Abhängigkeiten, lokale Konfiguration, Build-Ausgaben, eigene Test-Datenbank) und gibt ihm einen eigenen Dev-Server mit eigenem Port. Ist ein Agent fertig, fragt FORGE, ob seine Arbeit in den Branch zurückgeht, von dem er abgezweigt ist, oder verworfen wird. Danach sind Worktree und Branch gelöscht.
+            {t.workspace.agents.intro(root?.name ?? null)}
             {project.parentId && root && (
               <>
                 {" "}
                 <button className="text-accent underline" onClick={() => openProject(root.id)}>
-                  Hauptprojekt öffnen
+                  {t.workspace.agents.openRoot}
                 </button>
               </>
             )}
           </p>
           {blocker && <p className="mb-3 text-xs text-warning">{blocker}</p>}
           {projects.isLoading && <WorktreeGridSkeleton />}
-          {projects.isError && <ErrorBanner title="Worktrees nicht geladen">{errorMessage(projects.error)}</ErrorBanner>}
+          {projects.isError && <ErrorBanner title={t.workspace.agents.notLoaded}>{errorMessage(projects.error)}</ErrorBanner>}
           {projects.isSuccess && worktrees.length === 0 && (
-            <EmptyState icon={<Users className="h-9 w-9" />} title="Noch keine parallelen Agenten">
-              Ein paralleler Agent bekommt einen eigenen Ordner mit eigenem Branch. Du kannst mehrere gleichzeitig arbeiten lassen.
+            <EmptyState icon={<Users className="h-9 w-9" />} title={t.workspace.agents.emptyTitle}>
+              {t.workspace.agents.emptyText}
             </EmptyState>
           )}
           <div className="grid grid-cols-[repeat(auto-fill,minmax(320px,1fr))] gap-3">
@@ -119,12 +120,12 @@ export function AgentsTab({ project }: { project: ProjectWithStatus }) {
               const menu = () => {
                 const dev = qc.getQueryData<DevServerState>(keys.devServer(w.id));
                 return [
-                  { label: "Öffnen", icon: <FolderOpen className="h-3.5 w-3.5" />, onSelect: () => openProject(w.id), disabled: current },
-                  { label: "Dev-Server des Agenten öffnen", icon: <Globe className="h-3.5 w-3.5" />, onSelect: () => void openDevServer(qc, w.id), disabled: !w.exists },
-                  ...(dev?.status === "running" ? [{ label: "Dev-Server des Agenten stoppen", icon: <Square className="h-3.5 w-3.5" />, onSelect: () => void stopDevServer(qc, w.id) }] : []),
-                  { label: "Vorbereitung wiederholen", icon: <RotateCcw className="h-3.5 w-3.5" />, onSelect: () => void prepareWorktree(qc, w.id), disabled: !w.exists, hint: "Abhängigkeiten, Konfiguration, Build" },
-                  { label: "Abschließen", icon: <GitMerge className="h-3.5 w-3.5" />, onSelect: () => useAgentReview.getState().request(w.id), disabled: !w.exists },
-                  { label: "Entfernen", icon: <Trash2 className="h-3.5 w-3.5" />, onSelect: startRemove, danger: true },
+                  { label: t.workspace.agents.open, icon: <FolderOpen className="h-3.5 w-3.5" />, onSelect: () => openProject(w.id), disabled: current },
+                  { label: t.workspace.agents.openDev, icon: <Globe className="h-3.5 w-3.5" />, onSelect: () => void openDevServer(qc, w.id), disabled: !w.exists },
+                  ...(dev?.status === "running" ? [{ label: t.workspace.agents.stopDev, icon: <Square className="h-3.5 w-3.5" />, onSelect: () => void stopDevServer(qc, w.id) }] : []),
+                  { label: t.workspace.agents.retrySetup, icon: <RotateCcw className="h-3.5 w-3.5" />, onSelect: () => void prepareWorktree(qc, w.id), disabled: !w.exists, hint: t.workspace.agents.retrySetupHint },
+                  { label: t.workspace.agents.finish, icon: <GitMerge className="h-3.5 w-3.5" />, onSelect: () => useAgentReview.getState().request(w.id), disabled: !w.exists },
+                  { label: t.workspace.agents.remove, icon: <Trash2 className="h-3.5 w-3.5" />, onSelect: startRemove, danger: true },
                 ];
               };
               return (
@@ -135,33 +136,33 @@ export function AgentsTab({ project }: { project: ProjectWithStatus }) {
                       {w.git?.branch ?? w.name}
                     </span>
                     {!w.exists ? (
-                      <Badge tone="danger">Ordner fehlt</Badge>
+                      <Badge tone="danger">{t.workspace.agents.folderMissingBadge}</Badge>
                     ) : (
-                      w.git && (w.git.changedCount > 0 ? <Badge tone="warning">{w.git.changedCount} geändert</Badge> : <Badge tone="success">sauber</Badge>)
+                      w.git && (w.git.changedCount > 0 ? <Badge tone="warning">{t.workspace.agents.changed(w.git.changedCount)}</Badge> : <Badge tone="success">{t.workspace.agents.clean}</Badge>)
                     )}
                   </div>
                   <div className="flex items-center gap-2 text-xs">
                     {w.lastSession ? (
                       <>
                         <SessionStatusBadge status={w.lastSession.status as SessionStatus} />
-                        <span className="min-w-0 flex-1 truncate text-muted">{w.lastSession.title ?? "Ohne Titel"}</span>
+                        <span className="min-w-0 flex-1 truncate text-muted">{w.lastSession.title ?? t.workspace.agents.untitled}</span>
                         <span className="shrink-0 text-subtle">{relativeTime(w.lastSession.updatedAt)}</span>
                       </>
                     ) : (
-                      <span className="text-subtle">noch keine Session</span>
+                      <span className="text-subtle">{t.workspace.agents.noSession}</span>
                     )}
                   </div>
                   {w.exists && <AgentEnvironment projectId={w.id} />}
                   <div className="mt-1 flex gap-2">
-                    <Button size="sm" variant="primary" onClick={() => openProject(w.id)} disabled={current} title={current ? "Dieser Worktree ist gerade geöffnet" : undefined}>
-                      {current ? "Geöffnet" : "Öffnen"}
+                    <Button size="sm" variant="primary" onClick={() => openProject(w.id)} disabled={current} title={current ? t.workspace.agents.currentlyOpen : undefined}>
+                      {current ? t.workspace.agents.opened : t.workspace.agents.open}
                     </Button>
-                    <Button size="sm" variant="outline" onClick={() => useAgentReview.getState().request(w.id)} disabled={!w.exists} title="Zusammenführen oder verwerfen">
-                      <GitMerge className="h-3.5 w-3.5" /> Abschließen
+                    <Button size="sm" variant="outline" onClick={() => useAgentReview.getState().request(w.id)} disabled={!w.exists} title={t.workspace.agents.finishTitle}>
+                      <GitMerge className="h-3.5 w-3.5" /> {t.workspace.agents.finish}
                     </Button>
                     <div className="flex-1" />
                     <Button size="sm" variant="danger-ghost" onClick={startRemove}>
-                      <Trash2 className="h-3.5 w-3.5" /> Entfernen
+                      <Trash2 className="h-3.5 w-3.5" /> {t.workspace.agents.remove}
                     </Button>
                   </div>
                 </div>
@@ -177,23 +178,23 @@ export function AgentsTab({ project }: { project: ProjectWithStatus }) {
       <ConfirmDialog
         open={!!removing}
         onOpenChange={(o) => !o && setRemoving(null)}
-        title="Worktree entfernen?"
+        title={t.workspace.agents.removeTitle}
         description={[
-          force ? "Der Worktree hat nicht committete Änderungen. Der Ordner wird samt dieser Änderungen gelöscht." : "Der Ordner wird entfernt.",
-          deleteBranch ? "Der Branch wird ohne Merge gelöscht, seine Commits gehen verloren." : "Branch und Commits bleiben im Repository erhalten.",
+          force ? t.workspace.agents.removeForce : t.workspace.agents.removePlain,
+          deleteBranch ? t.workspace.agents.removeDeleteBranch : t.workspace.agents.removeKeepBranch,
         ].join(" ")}
-        confirmLabel={force || deleteBranch ? "Trotzdem entfernen" : "Entfernen"}
+        confirmLabel={force || deleteBranch ? t.workspace.agents.removeAnyway : t.workspace.agents.remove}
         danger
-        requireText={force ? "LÖSCHEN" : undefined}
+        requireText={force ? t.workspace.agents.confirmWord : undefined}
         onConfirm={remove}
       >
         <div className="space-y-3">
           <Checkbox
             checked={deleteBranch}
             onChange={setDeleteBranch}
-            label={removing?.git?.branch ? `Branch ${removing.git.branch} auch löschen (ohne Merge)` : "Branch auch löschen (ohne Merge)"}
+            label={removing?.git?.branch ? t.workspace.agents.deleteBranchNamed(removing.git.branch) : t.workspace.agents.deleteBranch}
           />
-          <p className="text-xs text-muted">Eine laufende Session, Terminals, Dev-Server und Test-Datenbank dieses Worktrees werden vorher beendet. Seine Test-Datenbank wird gelöscht.</p>
+          <p className="text-xs text-muted">{t.workspace.agents.removeNote}</p>
         </div>
       </ConfirmDialog>
     </div>
@@ -205,25 +206,24 @@ function Subagents({ projectId }: { projectId: string }) {
   const docs = useQuery({ queryKey: ["docs", "agent", projectId], queryFn: () => call("config.docs", { kind: "agent", projectId }) });
   return (
     <section>
-      <SectionTitle>Subagenten</SectionTitle>
+      <SectionTitle>{t.workspace.agents.subagents}</SectionTitle>
       <p className="mb-2 text-xs text-muted">
-        Spezialisierte Helfer, die Claude innerhalb einer Session startet. Hier stehen deine eigenen, global und für dieses Projekt; dazu kommen die eingebauten von Claude Code. Anlegen und
-        bearbeiten kannst du sie unter{" "}
+        {t.workspace.agents.subagentsIntro}{" "}
         <button className="text-accent underline" onClick={() => setView("mcp")}>
-          Erweiterungen
+          {t.workspace.agents.subagentsLink}
         </button>
         .
       </p>
       {docs.isLoading && <SubagentGridSkeleton />}
-      {docs.isError && <ErrorBanner title="Subagenten nicht geladen">{errorMessage(docs.error)}</ErrorBanner>}
-      {docs.data?.length === 0 && <p className="text-xs text-subtle">Noch keine eigenen Subagenten.</p>}
+      {docs.isError && <ErrorBanner title={t.workspace.agents.subagentsNotLoaded}>{errorMessage(docs.error)}</ErrorBanner>}
+      {docs.data?.length === 0 && <p className="text-xs text-subtle">{t.workspace.agents.noSubagents}</p>}
       <div className="grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-2">
         {docs.data?.map((a) => (
           <div key={`${a.scope}:${a.name}`} className="rounded-lg border border-border bg-surface p-3">
             <div className="flex items-center gap-2 text-body">
               <Bot className="h-4 w-4 shrink-0 text-accent" />
               <span className="min-w-0 flex-1 truncate">{a.name}</span>
-              <Badge>{a.scope === "user" ? "global" : "Projekt"}</Badge>
+              <Badge>{a.scope === "user" ? t.workspace.agents.scopeGlobal : t.workspace.agents.scopeProject}</Badge>
             </div>
             {a.description && <p className="mt-1 line-clamp-3 text-xs text-muted">{a.description}</p>}
           </div>
@@ -236,7 +236,7 @@ function Subagents({ projectId }: { projectId: string }) {
 /** Worktree cards as AgentsTab renders them: branch row, session row, buttons. */
 function WorktreeGridSkeleton() {
   return (
-    <SkeletonRegion label="Lädt Worktrees" className="grid grid-cols-[repeat(auto-fill,minmax(320px,1fr))] gap-3">
+    <SkeletonRegion label={t.workspace.agents.loadingWorktrees} className="grid grid-cols-[repeat(auto-fill,minmax(320px,1fr))] gap-3">
       {[45, 60].map((w) => (
         <div key={w} className="flex flex-col gap-2 rounded-xl border border-border bg-surface p-4">
           <div className="flex h-5 items-center gap-2">
@@ -270,7 +270,7 @@ function WorktreeGridSkeleton() {
 /** Subagent cards: name row with scope badge, then a two-line description. */
 function SubagentGridSkeleton() {
   return (
-    <SkeletonRegion label="Lädt Subagenten" className="grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-2">
+    <SkeletonRegion label={t.workspace.agents.loadingSubagents} className="grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-2">
       {[50, 35, 60].map((w) => (
         <div key={w} className="rounded-lg border border-border bg-surface p-3">
           <div className="flex h-5 items-center gap-2">
@@ -317,7 +317,7 @@ export function NewAgentDialog({ open, onOpenChange, root }: { open: boolean; on
     try {
       wt = await call("worktrees.create", { projectId: root.id, branch: name });
     } catch (e) {
-      toast.error("Agent nicht gestartet", errorMessage(e));
+      toast.error(t.workspace.agents.notStarted, errorMessage(e));
       setBusy(false);
       return;
     }
@@ -340,9 +340,9 @@ export function NewAgentDialog({ open, onOpenChange, root }: { open: boolean; on
       const id = wt.id;
       toast.notify({
         tone: "error",
-        title: "Worktree angelegt, Session nicht gestartet",
+        title: t.workspace.agents.sessionNotStarted,
         body: errorMessage(failure),
-        action: { label: "Worktree öffnen", onClick: () => openProject(id) },
+        action: { label: t.workspace.agents.openWorktree, onClick: () => openProject(id) },
         duration: 15_000,
       });
       return;
@@ -354,25 +354,25 @@ export function NewAgentDialog({ open, onOpenChange, root }: { open: boolean; on
     <Dialog
       open={open}
       onOpenChange={setOpen}
-      title="Paralleler Agent"
-      description={`Legt einen Worktree von ${root.name} mit eigenem Branch an und startet dort eine Session.`}
+      title={t.workspace.agents.newAgent}
+      description={t.workspace.agents.newDescription(root.name)}
       footer={
         <>
           <Button variant="ghost" onClick={() => setOpen(false)} disabled={busy}>
-            Abbrechen
+            {t.workspace.agents.cancel}
           </Button>
           <Button variant="primary" loading={busy} disabled={!name || name.endsWith("/")} onClick={() => void start()}>
-            Starten
+            {t.workspace.agents.start}
           </Button>
         </>
       }
     >
       <div className="flex flex-col gap-3">
-        <Field label="Branch">
+        <Field label={t.workspace.agents.branch}>
           <Input value={branch} onChange={(e) => setBranch(e.target.value)} className="font-mono text-xs" autoFocus />
         </Field>
-        <Field label="Erste Aufgabe (optional)">
-          <Textarea value={prompt} onChange={(e) => setPrompt(e.target.value)} rows={4} placeholder="Was soll dieser Agent erledigen?" />
+        <Field label={t.workspace.agents.firstTask}>
+          <Textarea value={prompt} onChange={(e) => setPrompt(e.target.value)} rows={4} placeholder={t.workspace.agents.firstTaskPlaceholder} />
         </Field>
         <LimitForecastWarning />
       </div>

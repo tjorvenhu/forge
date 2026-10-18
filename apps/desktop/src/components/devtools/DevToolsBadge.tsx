@@ -1,6 +1,7 @@
 import type { Project } from "@forge/protocol";
 import { useDevServer, useTestDb } from "@/lib/queries";
 import { cn } from "@/lib/utils";
+import { t } from "@/i18n";
 
 /**
  * State at the Dev-Tools tab, so it shows from every tab: green dot while the dev server runs, amber
@@ -20,7 +21,8 @@ export function DevToolsBadge({ project }: { project: Project }) {
         : null;
   const dbTone = !db ? null : db.status === "running" ? "bg-success" : db.status === "installing" || db.status === "starting" ? "bg-warning animate-soft-pulse" : db.status === "failed" ? "bg-danger" : null;
   if (!devTone && !dbTone) return null;
-  const label = [devTone && `Dev-Server ${dev?.status === "running" ? (dev.url ? "läuft" : "startet") : "abgestürzt"}`, dbTone && `Test-Datenbank ${db?.status === "running" ? "läuft" : db?.status === "failed" ? "fehlgeschlagen" : "startet"}`]
+  const m = t.devtools.badge;
+  const label = [devTone && (dev?.status === "running" ? (dev.url ? m.devRunning : m.devStarting) : m.devCrashed), dbTone && (db?.status === "running" ? m.dbRunning : db?.status === "failed" ? m.dbFailed : m.dbStarting)]
     .filter(Boolean)
     .join(", ");
   return (

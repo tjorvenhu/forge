@@ -17,6 +17,9 @@ import { RemoveProjectDialog } from "@/components/projects/RemoveProjectDialog";
 import { MemoryEditor } from "@/components/settings/MemoryEditor";
 import { Group, Row, SettingsLayout, SwitchRow, type SettingsSectionDef } from "@/components/settings/layout";
 import { effortOptions, fromChoice, modelOptions, toChoice } from "@/components/settings/model-options";
+import { t } from "@/i18n";
+
+const m = t.workspace.projectSettings;
 
 /**
  * Tags with behaviour in FORGE (sessions, turn automation, policy), in the order they are shown.
@@ -24,20 +27,14 @@ import { effortOptions, fromChoice, modelOptions, toChoice } from "@/components/
  * git: only works with git (GIT_TAGS), hidden in a project set up without git.
  */
 export const TAG_INFO: ReadonlyArray<{ tag: string; label: string; info: string; rootOnly?: boolean; git?: boolean }> = [
-  { tag: "plan-first", label: "Erst planen", info: "Neue Sessions starten im Plan-Modus." },
-  { tag: "auto-test", label: "Automatisch testen", info: "Nach einem Durchlauf läuft der Testbefehl, wenn sich Code oder Konfiguration geändert hat. Ohne solche Änderung oder wenn Claude die Tests schon erfolgreich ausgeführt hat, entfällt er. Der Grund steht dann im Chat." },
-  { tag: "auto-commit", label: "Automatisch committen", info: "Nach einem Durchlauf mit grünen Tests werden nur die dabei geänderten Dateien committet (KI-Nachricht).", git: true },
-  { tag: "auto-push", label: "Automatisch pushen", info: "Nach Auto-Commit wird gepusht, nie auf main/master und nie mit Force.", git: true },
-  {
-    tag: "auto-merge",
-    label: "Agenten automatisch zusammenführen",
-    info: "Endet der Durchlauf eines Agenten ohne Fehler (und mit grünen Tests bei Automatisch testen), übernimmt FORGE seinen Branch in den Branch, von dem er gestartet ist, meist main. Worktree und Branch werden danach gelöscht. Passt seine Arbeit nicht mehr glatt auf main, versucht FORGE einen Merge-Commit; nur bei echten Konflikten löst der Agent sie selbst. Was nicht klappt, legt FORGE dir zur Entscheidung vor. Bei neuen Projekten mit Git ist das an.",
-    rootOnly: true,
-    git: true,
-  },
-  { tag: "review-required", label: "Commits nur nach Prüfung", info: "Kein Auto-Commit: Commits nur nach Prüfung im Git-Bereich.", git: true },
-  { tag: "no-network", label: "Ohne Internet", info: "Claude bekommt keine Web-Tools (WebFetch, WebSearch)." },
-  { tag: "sandbox-only", label: "Autonomous sperren", info: "Autonomous ist in diesem Projekt gesperrt." },
+  { tag: "plan-first", ...m.tags["plan-first"] },
+  { tag: "auto-test", ...m.tags["auto-test"] },
+  { tag: "auto-commit", ...m.tags["auto-commit"], git: true },
+  { tag: "auto-push", ...m.tags["auto-push"], git: true },
+  { tag: "auto-merge", ...m.tags["auto-merge"], rootOnly: true, git: true },
+  { tag: "review-required", ...m.tags["review-required"], git: true },
+  { tag: "no-network", ...m.tags["no-network"] },
+  { tag: "sandbox-only", ...m.tags["sandbox-only"] },
 ];
 const KNOWN_TAGS = new Set(TAG_INFO.map((t) => t.tag));
 
@@ -48,11 +45,11 @@ export function tagLabel(tag: string): string {
 const SANDBOX_INFO = TAG_INFO.find((t) => t.tag === "sandbox-only")!.info;
 
 export const SECTIONS: ReadonlyArray<SettingsSectionDef<ProjectSettingsSection>> = [
-  { id: "general", label: "Allgemein", hint: "Name, Modell, Git, Testbefehl", Icon: SlidersHorizontal },
-  { id: "permissions", label: "Berechtigungen", hint: "Was Claude ohne Rückfrage darf", Icon: ShieldCheck },
-  { id: "automation", label: "Automatik", hint: "Planen, testen, committen, Tags", Icon: Workflow },
-  { id: "rules", label: "Regeln für Claude", hint: "CLAUDE.md des Projekts", Icon: FileText },
-  { id: "remove", label: "Entfernen", hint: "Aus FORGE oder ganz löschen", Icon: Trash2 },
+  { id: "general", ...m.sections.general, Icon: SlidersHorizontal },
+  { id: "permissions", ...m.sections.permissions, Icon: ShieldCheck },
+  { id: "automation", ...m.sections.automation, Icon: Workflow },
+  { id: "rules", ...m.sections.rules, Icon: FileText },
+  { id: "remove", ...m.sections.remove, Icon: Trash2 },
 ];
 
 type Patch = {
@@ -81,13 +78,13 @@ export function ProjectSettingsTab({ project }: { project: Project }) {
     } catch (e) {
       // Brings back the stored state after an optimistic change (tags).
       void qc.invalidateQueries({ queryKey: keys.project(project.id) });
-      toast.error("Nicht gespeichert", errorMessage(e));
+      toast.error(m.notSaved, errorMessage(e));
     }
   };
 
   return (
     <div className="h-full overflow-y-auto px-6 py-5">
-      <SettingsLayout sections={SECTIONS} current={section} onSelect={setSection} label="Bereiche der Projekt-Einstellungen">
+      <SettingsLayout sections={SECTIONS} current={section} onSelect={setSection} label={m.navLabel}>
         {section === "general" ? (
           <GeneralSection project={project} update={update} />
         ) : section === "permissions" ? (
@@ -95,7 +92,7 @@ export function ProjectSettingsTab({ project }: { project: Project }) {
         ) : section === "automation" ? (
           <AutomationSection project={project} update={update} />
         ) : section === "rules" ? (
-          <Group title="Regeln für Claude" description="CLAUDE.md des Projekts (wird committet), .claude/CLAUDE.md, nur für dich (CLAUDE.local.md, nicht im Git) und die globalen Regeln.">
+          <Group title={m.rulesTitle} description={m.rulesDescription}>
             <div className="p-4">
               <MemoryEditor projectId={project.id} scopes={["project", "project-dir", "local", "global"]} />
             </div>
@@ -115,8 +112,8 @@ function GeneralSection({ project, update }: SectionProps) {
   const runtime = useRuntimeInfo();
   return (
     <>
-      <Group title="Projekt" description="Gilt für neue Sessions in diesem Projekt. Pro Session lässt sich alles im Chat umstellen.">
-        <Row label="Name" description="So heißt das Projekt in FORGE. Der Ordner bleibt, wie er ist.">
+      <Group title={m.projectTitle} description={m.projectDescription}>
+        <Row label={m.name} description={m.nameDescription}>
           <Input
             key={project.name}
             defaultValue={project.name}
@@ -124,36 +121,36 @@ function GeneralSection({ project, update }: SectionProps) {
             onBlur={(e) => e.target.value.trim() && e.target.value !== project.name && void update({ name: e.target.value.trim() })}
           />
         </Row>
-        <Row label="Modell" description="Leer gilt die globale Einstellung.">
+        <Row label={m.model} description={m.modelDescription}>
           <Select
             value={toChoice(project.defaultModel)}
             onChange={(v) => void update({ defaultModel: fromChoice(v) })}
             className="w-64"
             options={modelOptions(
               runtime.data?.models ?? [],
-              `Global (${settings.data?.defaultModel ? modelLabel(settings.data.defaultModel, runtime.data?.models) : "Claude-Code-Standard"})`,
+              m.global(settings.data?.defaultModel ? modelLabel(settings.data.defaultModel, runtime.data?.models) : m.claudeDefault),
               { descriptions: false },
             )}
           />
         </Row>
-        <Row label="Aufwand" description="Wie gründlich Claude nachdenkt. Höher ist genauer, aber langsamer und verbraucht mehr vom Abo.">
+        <Row label={m.effort} description={m.effortDescription}>
           <Select
             value={toChoice(project.defaultEffort)}
             onChange={(v) => void update({ defaultEffort: fromChoice<EffortLevel>(v) })}
             className="w-64"
-            options={effortOptions(`Global (${settings.data?.defaultEffort ?? "Claude-Code-Standard"})`)}
+            options={effortOptions(m.global(settings.data?.defaultEffort ?? m.claudeDefault))}
           />
         </Row>
       </Group>
 
       {!project.parentId && (
-        <Group title="Versionsverwaltung">
+        <Group title={m.vcsTitle}>
           <SwitchRow
-            label="Mit Git arbeiten"
+            label={m.useGit}
             description={
               project.gitEnabled
-                ? "Ausgeschaltet blendet FORGE die Bereiche Agenten und Git aus, und Claude verwendet in diesem Projekt kein Git. Automatisch committen, pushen und zusammenführen gehen dann aus. Ein vorhandener .git-Ordner bleibt unverändert."
-                : "Das Projekt arbeitet ohne Git: keine Agenten, kein Git-Bereich, und Claude führt keine git-Befehle aus. Eingeschaltet legst du das Repository im Bereich Git an, falls noch keines da ist."
+                ? m.gitOnDescription
+                : m.gitOffDescription
             }
             checked={project.gitEnabled}
             onChange={(on) => void update({ gitEnabled: on })}
@@ -161,9 +158,9 @@ function GeneralSection({ project, update }: SectionProps) {
         </Group>
       )}
 
-      <Group title="Befehle" description="Laufen in einer Shell im Projektordner. Den Dev-Server richtest du im Tab Dev-Tools ein.">
-        <Row label="Testbefehl" description="Für „Automatisch testen“ unter Automatik. Bekommt die Variablen der Test-.env aus Dev-Tools." stacked>
-          <CommandInput value={project.testCommand} placeholder="z. B. pnpm test" onSave={(v) => void update({ testCommand: v })} />
+      <Group title={m.commandsTitle} description={m.commandsDescription}>
+        <Row label={m.testCommand} description={m.testCommandDescription} stacked>
+          <CommandInput value={project.testCommand} placeholder={m.testCommandPlaceholder} onSave={(v) => void update({ testCommand: v })} />
         </Row>
       </Group>
     </>
@@ -188,8 +185,8 @@ function CommandInput({ value, placeholder, onSave }: { value: string | null; pl
 function PermissionsSection({ project, update }: SectionProps) {
   return (
     <Group
-      title="Permission-Profil"
-      description="Gilt sofort, auch für laufende Sessions. Ein aktiver Plan-Modus bleibt bestehen. Die Sperrliste von FORGE gilt in jedem Profil."
+      title={m.profileTitle}
+      description={m.profileDescription}
     >
       <div className="flex flex-col gap-2 p-4">
         {PROFILE_IDS.map((p) => {
@@ -212,7 +209,7 @@ function PermissionsSection({ project, update }: SectionProps) {
                 <span className="flex items-center gap-2 text-body font-medium">
                   {PROFILE_INFO[p].label}
                   {p === "autonomous" && <ShieldAlert className="h-3.5 w-3.5 text-danger" />}
-                  {locked && <Badge>gesperrt</Badge>}
+                  {locked && <Badge>{m.locked}</Badge>}
                 </span>
                 <span className="block text-xs text-muted">{PROFILE_INFO[p].description}</span>
               </span>
@@ -252,13 +249,13 @@ function AutomationSection({ project, update }: SectionProps) {
   const addOwn = () => {
     const tag = draft.trim().toLowerCase();
     if (!tag || project.tags.includes(tag)) return setDraft("");
-    if (!/^[a-z0-9][a-z0-9-]*$/.test(tag)) return toast.error("Ungültiger Tag", "Nur Kleinbuchstaben, Ziffern und Bindestriche.");
+    if (!/^[a-z0-9][a-z0-9-]*$/.test(tag)) return toast.error(m.invalidTag, m.invalidTagHint);
     setTag(tag, true);
     setDraft("");
   };
   return (
     <>
-      <Group title="Automatik" description="Was FORGE in diesem Projekt selbst erledigt. Gespeichert als Tags des Projekts.">
+      <Group title={m.automationTitle} description={m.automationDescription}>
         {TAG_INFO.filter((t) => !(t.rootOnly && project.parentId) && !(t.git && !project.gitEnabled)).map((t) => (
           <SwitchRow
             key={t.tag}
@@ -274,14 +271,14 @@ function AutomationSection({ project, update }: SectionProps) {
         ))}
       </Group>
 
-      <Group title="Eigene Tags" description="Nur zur Ordnung, ohne Wirkung. Zum Beispiel Kunde oder Status.">
+      <Group title={m.ownTagsTitle} description={m.ownTagsDescription}>
         <div className="flex flex-col gap-3 px-4 py-3.5">
           {own.length > 0 && (
             <div className="flex flex-wrap gap-1.5">
               {own.map((t) => (
                 <span key={t} className="inline-flex items-center gap-1 rounded border border-border bg-surface-3 px-1.5 py-0.5 text-xs">
                   {t}
-                  <button onClick={() => setTag(t, false)} aria-label={`Tag ${t} entfernen`} className="text-subtle hover:text-fg">
+                  <button onClick={() => setTag(t, false)} aria-label={m.removeTag(t)} className="text-subtle hover:text-fg">
                     <X className="h-3 w-3" />
                   </button>
                 </span>
@@ -289,9 +286,9 @@ function AutomationSection({ project, update }: SectionProps) {
             </div>
           )}
           <div className="flex gap-2">
-            <Input value={draft} onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addOwn()} placeholder="neuer-tag" className="text-xs" />
+            <Input value={draft} onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addOwn()} placeholder={m.newTagPlaceholder} className="text-xs" />
             <Button onClick={addOwn} disabled={!draft.trim()}>
-              Hinzufügen
+              {m.add}
             </Button>
           </div>
         </div>
@@ -303,10 +300,10 @@ function AutomationSection({ project, update }: SectionProps) {
 function RemoveSection({ project }: { project: Project }) {
   const [removing, setRemoving] = useState(false);
   return (
-    <Group title="Entfernen oder löschen" danger>
-      <Row label="Projekt entfernen" description="Entfernt das Projekt aus FORGE. Auf Wunsch löscht FORGE auch den lokalen Ordner und das GitHub-Repository.">
+    <Group title={m.removeTitle} danger>
+      <Row label={m.removeProject} description={m.removeProjectDescription}>
         <Button variant="danger-ghost" onClick={() => setRemoving(true)}>
-          <Trash2 className="h-3.5 w-3.5" /> Entfernen …
+          <Trash2 className="h-3.5 w-3.5" /> {m.removeButton}
         </Button>
       </Row>
       <RemoveProjectDialog project={removing ? project : null} onClose={() => setRemoving(false)} />

@@ -3,6 +3,7 @@ import { attachTerminal, loadTerminalModule, terminalMenu } from "@/lib/terminal
 import { contextItems } from "@/lib/context-menu";
 import type { TerminalTab } from "@/stores/terminals";
 import { Skeleton, SkeletonRegion } from "@/components/ui/skeleton";
+import { t } from "@/i18n";
 
 /**
  * Shows the PTY-backed terminal of one tab. Unmounting only detaches it: the process keeps running
@@ -31,7 +32,7 @@ export function TerminalView({ tab }: { tab: TerminalTab }) {
     return attachTerminal(key, el, { cwd, program, claudePath });
   }, [ready, key, cwd, program, claudePath]);
 
-  if (failed) return <div className="p-3 text-small text-danger">Terminal konnte nicht geladen werden: {failed}</div>;
+  if (failed) return <div className="p-3 text-small text-danger">{t.workspace.terminal.loadFailed(failed)}</div>;
   return (
     // Only the terminal's own entries: the general field entries would act on xterm's hidden input.
     <div className="relative h-full w-full" data-context-plain>
@@ -44,7 +45,7 @@ export function TerminalView({ tab }: { tab: TerminalTab }) {
 /** Prompt lines at xterm's padding and font size, so the terminal fades in where they stood. */
 function TerminalSkeleton() {
   return (
-    <SkeletonRegion label="Lädt Terminal" className="absolute inset-0 flex flex-col gap-1.5 px-2 py-1.5">
+    <SkeletonRegion label={t.workspace.terminal.loading} className="absolute inset-0 flex flex-col gap-1.5 px-2 py-1.5">
       {[38, 62, 24, 50].map((w, i) => (
         <div key={i} className="flex h-3 items-center gap-2">
           <Skeleton className="h-2.5 w-3 shrink-0 rounded-sm" />

@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { ErrorBanner } from "@/components/ui/misc";
 import { Skeleton } from "@/components/ui/skeleton";
+import { locale, t } from "@/i18n";
 
 export type PreviewKind = "image" | "pdf" | "audio" | "video";
 
@@ -43,10 +44,10 @@ export function mediaType(path: string): { kind: PreviewKind; mime: string } | n
 }
 
 export function formatBytes(n: number): string {
-  const de = (v: number) => v.toLocaleString("de-DE", { maximumFractionDigits: v < 10 ? 1 : 0 });
+  const num = (v: number) => v.toLocaleString(locale, { maximumFractionDigits: v < 10 ? 1 : 0 });
   if (n < 1024) return `${n} B`;
-  if (n < 1024 * 1024) return `${de(n / 1024)} KB`;
-  return `${de(n / 1024 / 1024)} MB`;
+  if (n < 1024 * 1024) return `${num(n / 1024)} KB`;
+  return `${num(n / 1024 / 1024)} MB`;
 }
 
 function base64Bytes(b64: string): Uint8Array<ArrayBuffer> {
@@ -94,7 +95,7 @@ export function MediaPreview({ projectId, path, kind, mime }: { projectId: strin
   const file = useFileUrl(projectId, path, mime);
   if (!file)
     return (
-      <div className="flex min-h-0 flex-1 items-center justify-center p-6" aria-busy aria-label="Vorschau lädt">
+      <div className="flex min-h-0 flex-1 items-center justify-center p-6" aria-busy aria-label={t.workspace.filePreview.loading}>
         <Skeleton className={kind === "audio" ? "h-12 w-80 rounded-full" : "aspect-[4/3] h-auto w-full max-w-md"} />
       </div>
     );
@@ -142,7 +143,7 @@ function ImagePreview({ url, size, path }: { url: string; size: number; path: st
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="min-h-0 flex-1 overflow-auto bg-bg">
         {broken ? (
-          <div className="flex h-full items-center justify-center p-6 text-small text-muted">Das Bild lässt sich nicht anzeigen (Format oder Datei beschädigt).</div>
+          <div className="flex h-full items-center justify-center p-6 text-small text-muted">{t.workspace.filePreview.broken}</div>
         ) : (
           <div className={cn("flex p-4", actual ? "min-h-full min-w-full w-max" : "h-full w-full items-center justify-center")}>
             <img
@@ -161,7 +162,7 @@ function ImagePreview({ url, size, path }: { url: string; size: number; path: st
       <StatusBar>
         {!broken && (
           <button type="button" onClick={() => setActual(!actual)} className="hover:text-fg">
-            {actual ? "Originalgröße" : "Eingepasst"}
+            {actual ? t.workspace.filePreview.actualSize : t.workspace.filePreview.fitted}
           </button>
         )}
         {dims && <span className="ml-auto tabular-nums">{`${dims.w} × ${dims.h} px`}</span>}
@@ -181,10 +182,10 @@ export function NoPreview({ path, onReveal }: { path: string; onReveal: () => vo
   return (
     <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 p-6 text-center">
       <FileQuestion className="h-8 w-8 text-subtle" />
-      <div className="text-small text-muted">{ext ? `Für ${ext}-Dateien gibt es in FORGE keine Vorschau.` : "Für diese Datei gibt es in FORGE keine Vorschau."}</div>
+      <div className="text-small text-muted">{ext ? t.workspace.filePreview.noPreviewExt(ext) : t.workspace.filePreview.noPreview}</div>
       <Button size="sm" variant="outline" onClick={onReveal}>
         <FolderOpen className="h-3.5 w-3.5" />
-        Im Explorer zeigen
+        {t.workspace.filePreview.reveal}
       </Button>
     </div>
   );

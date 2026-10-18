@@ -9,6 +9,7 @@ import { useSessionEvents } from "@/stores/session-events";
 import { toast } from "@/stores/toast";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Checkbox } from "@/components/ui/misc";
+import { t } from "@/i18n";
 
 /** Confirms and deletes every session in FORGE, optionally together with the Claude Code transcripts. */
 export function DeleteAllSessionsDialog({ open, liveCount, onClose }: { open: boolean; liveCount: number; onClose: () => void }) {
@@ -19,19 +20,17 @@ export function DeleteAllSessionsDialog({ open, liveCount, onClose }: { open: bo
     <ConfirmDialog
       open={open}
       onOpenChange={(o) => !o && onClose()}
-      title="Alle Sessions löschen?"
-      description={`Alle Sessions aller Projekte werden mit ihrem Verlauf aus FORGE entfernt.${
-        liveCount > 0 ? ` ${liveCount === 1 ? "Der laufende Claude-Prozess wird" : `Die ${liveCount} laufenden Claude-Prozesse werden`} beendet.` : ""
-      } Dateien in den Projekten bleiben unverändert.`}
-      confirmLabel="Alle löschen"
+      title={t.workspace.deleteSession.allTitle}
+      description={t.workspace.deleteSession.allDescription(liveCount)}
+      confirmLabel={t.workspace.deleteSession.deleteAll}
       danger
-      requireText="LÖSCHEN"
+      requireText={t.workspace.deleteSession.confirmWord}
       onConfirm={async () => {
         let result;
         try {
           result = await call("sessions.deleteAll", { deleteTranscript: withTranscript });
         } catch (e) {
-          toast.error("Sessions nicht gelöscht", errorMessage(e));
+          toast.error(t.workspace.deleteSession.allNotDeleted, errorMessage(e));
           throw e;
         }
         const deleted = new Set(result.deleted);
@@ -46,20 +45,20 @@ export function DeleteAllSessionsDialog({ open, liveCount, onClose }: { open: bo
         void qc.invalidateQueries({ queryKey: ["allSessions"] });
         void qc.invalidateQueries({ queryKey: keys.liveSessions });
         if (result.failed > 0) {
-          toast.error(`${result.failed} ${result.failed === 1 ? "Session" : "Sessions"} nicht gelöscht`, result.error ?? undefined);
+          toast.error(t.workspace.deleteSession.someNotDeleted(result.failed), result.error ?? undefined);
           throw new Error(result.error ?? "");
         }
-        toast.success(deleted.size === 1 ? "1 Session gelöscht" : `${deleted.size} Sessions gelöscht`);
+        toast.success(t.workspace.deleteSession.deletedCount(deleted.size));
       }}
     >
       <label className="flex items-start gap-2.5 text-body">
         <span className="mt-0.5">
-          <Checkbox checked={withTranscript} onChange={setWithTranscript} label="Auch aus Claude Code löschen" />
+          <Checkbox checked={withTranscript} onChange={setWithTranscript} label={t.workspace.deleteSession.alsoClaude} />
         </span>
         <span>
-          <span className="block">Auch aus Claude Code löschen</span>
+          <span className="block">{t.workspace.deleteSession.alsoClaude}</span>
           <span className="block text-xs text-muted">
-            Entfernt die Transkripte, damit die Sessions nicht mehr in „claude --resume“ erscheinen. Ohne Haken tauchen sie in den Projekten wieder als Terminal-Sessions auf.
+            {t.workspace.deleteSession.alsoClaudeAllHint}
           </span>
         </span>
       </label>

@@ -10,6 +10,9 @@ import { CodeEditor } from "@/components/ui/code-editor";
 import { ExternalChangeBanner, useFileDraft } from "@/components/ui/file-draft";
 import { ErrorBanner } from "@/components/ui/misc";
 import { EditorSkeleton } from "@/components/ui/skeleton";
+import { t } from "@/i18n";
+
+const m = t.extensions.docEditor;
 
 export function DocEditor({ doc, projectId, onDelete }: { doc: ConfigDoc; projectId?: string; onDelete: () => void }) {
   const q = useQuery({
@@ -23,10 +26,10 @@ export function DocEditor({ doc, projectId, onDelete }: { doc: ConfigDoc; projec
     setSaving(true);
     try {
       await call("config.docWrite", { kind: doc.kind, scope: doc.scope, name: doc.name, projectId, content: draft, expectedMtimeMs: expectedVersion });
-      toast.success("Gespeichert", doc.path);
+      toast.success(m.saved, doc.path);
       await q.refetch();
     } catch (e) {
-      toast.error("Nicht gespeichert", errorMessage(e));
+      toast.error(m.notSaved, errorMessage(e));
       if (e instanceof RpcCallError && e.code === "CONFLICT") void q.refetch();
     } finally {
       setSaving(false);
@@ -37,17 +40,17 @@ export function DocEditor({ doc, projectId, onDelete }: { doc: ConfigDoc; projec
       <div className="flex items-center gap-2">
         <span className="min-w-0 flex-1 truncate font-mono text-caption text-subtle">{doc.path}</span>
         <Button size="sm" variant="danger-ghost" onClick={onDelete}>
-          <Trash2 className="h-3.5 w-3.5" /> Löschen
+          <Trash2 className="h-3.5 w-3.5" /> {m.delete}
         </Button>
         <Button size="sm" variant="primary" onClick={() => void save()} disabled={!dirty || externalChange || !q.data} loading={saving}>
-          <Save className="h-3.5 w-3.5" /> Speichern
+          <Save className="h-3.5 w-3.5" /> {m.save}
         </Button>
       </div>
       {externalChange && <ExternalChangeBanner onReload={reload} onKeep={keepEditing} />}
       {q.isLoading ? (
         <EditorSkeleton className="h-115" />
       ) : q.isError ? (
-        <ErrorBanner title="Datei nicht lesbar">{errorMessage(q.error)}</ErrorBanner>
+        <ErrorBanner title={m.unreadable}>{errorMessage(q.error)}</ErrorBanner>
       ) : (
         <div className="h-115">
           <CodeEditor value={draft ?? q.data?.content ?? ""} onChange={setDraft} language="markdown" onSave={() => void save()} ariaLabel={doc.name} />

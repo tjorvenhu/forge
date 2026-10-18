@@ -1,10 +1,11 @@
 import type { MarketplacePlugin } from "@forge/protocol";
+import { t } from "@/i18n";
 
 export type PluginShow = "all" | "installed";
 
 export const MARKETPLACE_LABEL: Record<string, string> = {
   "claude-plugins-official": "Anthropic",
-  "anthropic-plugin-directory": "Verzeichnis",
+  "anthropic-plugin-directory": t.extensions.marketplace.directory,
 };
 
 /** Every search word must appear in the name or description. */

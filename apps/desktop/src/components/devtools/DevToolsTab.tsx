@@ -16,6 +16,9 @@ import { EditorSkeleton, Skeleton, SkeletonRegion } from "@/components/ui/skelet
 import { Switch } from "@/components/ui/switch";
 import { Group, Row, SettingsLayout, SwitchRow, type SettingsSectionDef } from "@/components/settings/layout";
 import { DevServerControls, DevServerPanel } from "@/components/workspace/DevServer";
+import { t } from "@/i18n";
+
+const m = t.devtools;
 
 const AUTOSAVE_MS = 800;
 const ENV_KEY_RE = /^[^\S\n]*(?:export[^\S\n]+)?([A-Za-z_][A-Za-z0-9_.-]*)[^\S\n]*=/gm;
@@ -49,7 +52,7 @@ export function DevToolsTab({ project }: { project: Project }) {
         if (!quiet) toast.saved();
         return true;
       } catch (e) {
-        toast.error("Nicht gespeichert", errorMessage(e));
+        toast.error(m.notSaved, errorMessage(e));
         return false;
       }
     },
@@ -58,7 +61,7 @@ export function DevToolsTab({ project }: { project: Project }) {
 
   return (
     <div className="h-full overflow-y-auto px-6 py-5">
-      <SettingsLayout sections={SECTIONS} current={section} onSelect={setSection} label="Bereiche der Dev-Tools">
+      <SettingsLayout sections={SECTIONS} current={section} onSelect={setSection} label={m.navLabel}>
         {section === "server" ? (
           <DevServerCard project={project} />
         ) : config.isLoading ? (
@@ -80,10 +83,10 @@ export function DevToolsTab({ project }: { project: Project }) {
 }
 
 export const SECTIONS: ReadonlyArray<SettingsSectionDef<DevToolsSection>> = [
-  { id: "server", label: "Dev-Server", hint: "Startbefehl und Ausgabe", Icon: Server },
+  { id: "server", ...m.sections.server, Icon: Server },
   // Both belong to the dev server: it gets the variables and the database URL when it starts.
-  { id: "env", label: "Test-.env", hint: "Variablen für Dev-Server und Tests", Icon: FileKey, parent: "server" },
-  { id: "database", label: "Test-Datenbank", hint: "Lokales PostgreSQL für Tests", Icon: Database, parent: "server" },
+  { id: "env", ...m.sections.env, Icon: FileKey, parent: "server" },
+  { id: "database", ...m.sections.database, Icon: Database, parent: "server" },
 ];
 
 function DevServerCard({ project }: { project: Project }) {
@@ -96,22 +99,22 @@ function DevServerCard({ project }: { project: Project }) {
       void qc.invalidateQueries({ queryKey: keys.devServer(project.id) });
       toast.saved();
     } catch (e) {
-      toast.error("Nicht gespeichert", errorMessage(e));
+      toast.error(m.notSaved, errorMessage(e));
     }
   };
   return (
     <Group
-      title="Dev-Server"
-      description="Läuft im Projektordner. Bekommt die Variablen aus der Test-.env und, solange sie läuft, die Verbindung zur Test-Datenbank."
+      title={m.server.title}
+      description={m.server.description}
       action={<DevServerControls project={project} />}
     >
-      <Row label="Startbefehl" description="Leer lassen, um den erkannten Befehl aus package.json zu nutzen." stacked>
+      <Row label={m.server.command} description={m.server.commandDescription} stacked>
         <Input
           key={project.devCommand ?? ""}
           defaultValue={project.devCommand ?? ""}
-          placeholder={dev?.effectiveCommand && !project.devCommand ? `Erkannt: ${dev.effectiveCommand}` : "z. B. pnpm dev"}
+          placeholder={dev?.effectiveCommand && !project.devCommand ? m.server.detected(dev.effectiveCommand) : m.server.commandPlaceholder}
           className="font-mono text-xs"
-          aria-label="Startbefehl des Dev-Servers"
+          aria-label={m.server.commandAria}
           onBlur={(e) => {
             const v = e.target.value.trim() || null;
             if (v !== project.devCommand) void saveCommand(v);
@@ -128,29 +131,29 @@ function DevServerCard({ project }: { project: Project }) {
 function dbBadge(state: TestDbState | undefined) {
   switch (state?.status) {
     case "running":
-      return <Badge tone="success">läuft</Badge>;
+      return <Badge tone="success">{m.db.status.running}</Badge>;
     case "installing":
-      return <Badge tone="warning">wird geladen</Badge>;
+      return <Badge tone="warning">{m.db.status.installing}</Badge>;
     case "starting":
-      return <Badge tone="warning">startet</Badge>;
+      return <Badge tone="warning">{m.db.status.starting}</Badge>;
     case "stopping":
-      return <Badge tone="warning">stoppt</Badge>;
+      return <Badge tone="warning">{m.db.status.stopping}</Badge>;
     case "failed":
-      return <Badge tone="danger">Fehler</Badge>;
+      return <Badge tone="danger">{m.db.status.failed}</Badge>;
     default:
-      return <Badge>gestoppt</Badge>;
+      return <Badge>{m.db.status.stopped}</Badge>;
   }
 }
 
 function dbDescription(version: string | undefined, isWorktree: boolean) {
   return isWorktree
-    ? `PostgreSQL ${version ?? "17"} nur für diesen Agenten, mit eigenem Port. Beim Anlegen kopiert FORGE die Daten des Projekts, sofern dessen Datenbank gerade nicht läuft. Sie wird mit dem Agenten gelöscht. Die Einstellungen gelten für das ganze Projekt.`
-    : `PostgreSQL ${version ?? "17"} nur für dieses Projekt, erreichbar nur auf diesem Rechner. Die Daten bleiben bis zum Zurücksetzen erhalten. Agenten bekommen eine eigene Kopie.`;
+    ? m.db.descriptionWorktree(version ?? "17")
+    : m.db.description(version ?? "17");
 }
 
 function DbBadgeSkeleton() {
   return (
-    <SkeletonRegion label="Lädt Status">
+    <SkeletonRegion label={m.db.loadingStatus}>
       <Skeleton className="h-5 w-16 rounded" />
     </SkeletonRegion>
   );
@@ -159,7 +162,7 @@ function DbBadgeSkeleton() {
 /** Start and reset buttons while the state is unknown, so no "gestoppt" and no start button show too early. */
 function DbActionsSkeleton() {
   return (
-    <SkeletonRegion label="Lädt Steuerung der Test-Datenbank" className="flex items-center gap-2">
+    <SkeletonRegion label={m.db.loadingControls} className="flex items-center gap-2">
       <Skeleton className="h-7 w-22" />
       <div className="flex-1" />
       <Skeleton className="h-7 w-30" />
@@ -188,8 +191,8 @@ function RowSkeleton({ control }: { control: string }) {
 function TestDbSkeleton({ dbId, isWorktree }: { dbId: string; isWorktree: boolean }) {
   const version = useTestDb(dbId).data?.version;
   return (
-    <Group title="Test-Datenbank" description={dbDescription(version, isWorktree)} action={<Skeleton className="h-5 w-16 rounded" />}>
-      <SkeletonRegion label="Lädt Test-Datenbank" className="divide-y divide-border">
+    <Group title={m.db.title} description={dbDescription(version, isWorktree)} action={<Skeleton className="h-5 w-16 rounded" />}>
+      <SkeletonRegion label={m.db.loading} className="divide-y divide-border">
         <div className="flex flex-col gap-3 px-4 py-3.5">
           <div className="flex items-center gap-2">
             <Skeleton className="h-7 w-22" />
@@ -216,21 +219,21 @@ function TestDbSkeleton({ dbId, isWorktree }: { dbId: string; isWorktree: boolea
 
 const ENV_DESCRIPTION = (
   <div className="flex flex-col gap-1.5">
-    <p>Variablen im .env-Format für Dev-Server und Tests. Sie bleiben in FORGE und landen nie im Projektordner oder im Git. Claude sieht nur die Namen.</p>
-    <p>Beispiel: API_URL=http://localhost:4000. Next.js, Vite und dotenv lassen diese Werte vor gleichnamigen Einträgen aus .env-Dateien des Projekts gelten.</p>
+    <p>{m.env.description1}</p>
+    <p>{m.env.description2}</p>
   </div>
 );
 
 /** The test .env card while the dev tools config loads; the editor box has its final height. */
 function TestEnvSkeleton() {
   return (
-    <Group title="Test-.env" description={ENV_DESCRIPTION} action={<Skeleton className="h-5 w-9 rounded-full" />}>
+    <Group title={m.env.title} description={ENV_DESCRIPTION} action={<Skeleton className="h-5 w-9 rounded-full" />}>
       <div className="flex flex-col gap-2 px-4 py-3.5">
         <div className="flex h-4 items-center">
           <Skeleton className="h-2.5 w-2/5 rounded-sm" />
         </div>
         <div className="h-64">
-          <EditorSkeleton className="rounded-lg" label="Lädt Test-.env" />
+          <EditorSkeleton className="rounded-lg" label={m.env.loading} />
         </div>
       </div>
     </Group>
@@ -270,18 +273,18 @@ function TestDbCard({
   };
 
   const restart = async () => {
-    await act("testdb.stop", "Test-Datenbank nicht gestoppt");
-    await act("testdb.start", "Test-Datenbank nicht gestartet");
+    await act("testdb.stop", m.db.notStopped);
+    await act("testdb.start", m.db.notStarted);
   };
 
   /** Port and name apply from the next start; a running server keeps the old ones until then. */
   const saveDb = async (patch: DbPatch) => {
     const ok = await update({ database: patch }, running);
-    if (ok && running && (patch.port !== undefined || patch.name !== undefined)) toast.info("Gespeichert", "Gilt nach einem Neustart der Test-Datenbank.");
+    if (ok && running && (patch.port !== undefined || patch.name !== undefined)) toast.info(m.db.saved, m.db.afterRestart);
   };
 
   return (
-    <Group title="Test-Datenbank" description={dbDescription(state?.version, isWorktree)} action={stateQuery.isLoading ? <DbBadgeSkeleton /> : dbBadge(state)}>
+    <Group title={m.db.title} description={dbDescription(state?.version, isWorktree)} action={stateQuery.isLoading ? <DbBadgeSkeleton /> : dbBadge(state)}>
       <div className="flex flex-col gap-3 px-4 py-3.5">
         {stateQuery.isLoading ? (
           <DbActionsSkeleton />
@@ -289,45 +292,45 @@ function TestDbCard({
           <div className="flex flex-wrap items-center gap-2">
             {running ? (
               <>
-                <Button size="sm" onClick={() => void act("testdb.stop", "Test-Datenbank nicht gestoppt")} disabled={working}>
-                  <Square className="h-3 w-3 fill-current" /> Stoppen
+                <Button size="sm" onClick={() => void act("testdb.stop", m.db.notStopped)} disabled={working}>
+                  <Square className="h-3 w-3 fill-current" /> {m.db.stop}
                 </Button>
                 <Button size="sm" variant="ghost" onClick={() => void restart()} disabled={working}>
-                  <RotateCw className="h-3.5 w-3.5" /> Neu starten
+                  <RotateCw className="h-3.5 w-3.5" /> {m.db.restart}
                 </Button>
               </>
             ) : (
               <>
-                <Button size="sm" variant="primary" onClick={() => void act("testdb.start", "Test-Datenbank nicht gestartet")} loading={working} disabled={working}>
-                  <Play className="h-3.5 w-3.5" /> Starten
+                <Button size="sm" variant="primary" onClick={() => void act("testdb.start", m.db.notStarted)} loading={working} disabled={working}>
+                  <Play className="h-3.5 w-3.5" /> {m.db.start}
                 </Button>
                 {state && !state.installed && state.status === "stopped" && (
-                  <InfoTip>Beim ersten Start lädt FORGE PostgreSQL einmalig herunter (rund 38 MB) und prüft die Prüfsumme. Docker ist nicht nötig.</InfoTip>
+                  <InfoTip>{m.db.firstStartInfo}</InfoTip>
                 )}
               </>
             )}
             <div className="flex-1" />
             <Button size="sm" variant="danger-ghost" onClick={() => setResetting(true)} disabled={working || !state?.initialized}>
-              <RotateCcw className="h-3.5 w-3.5" /> Zurücksetzen …
+              <RotateCcw className="h-3.5 w-3.5" /> {m.db.reset}
             </Button>
           </div>
         )}
 
         {state?.status === "installing" && (
           <div className="flex flex-col gap-1.5" role="status">
-            <div className="text-xs text-muted">PostgreSQL wird einmalig geladen (rund 38 MB): {Math.round((state.progress ?? 0) * 100)} %</div>
+            <div className="text-xs text-muted">{m.db.downloading(Math.round((state.progress ?? 0) * 100))}</div>
             <div className="h-1.5 overflow-hidden rounded-full bg-surface-3">
               <div className="h-full rounded-full bg-accent transition-[width] duration-200" style={{ width: `${Math.round((state.progress ?? 0) * 100)}%` }} />
             </div>
           </div>
         )}
-        {state?.error && <ErrorBanner title="Start fehlgeschlagen">{state.error}</ErrorBanner>}
+        {state?.error && <ErrorBanner title={m.db.startFailed}>{state.error}</ErrorBanner>}
 
         <ConnectionUrl url={state?.url ?? ""} />
       </div>
 
       {!isWorktree && (
-      <Row label="Port" description="Gilt ab dem nächsten Start.">
+      <Row label={m.db.port} description={m.db.portDescription}>
         <Input
           key={db.port}
           type="number"
@@ -335,63 +338,63 @@ function TestDbCard({
           max={65535}
           defaultValue={db.port}
           className="w-28 font-mono text-xs"
-          aria-label="Port der Test-Datenbank"
+          aria-label={m.db.portAria}
           onBlur={(e) => {
             const port = Number(e.target.value);
             if (!Number.isInteger(port) || port < 1024 || port > 65535) {
               e.target.value = String(db.port);
-              return toast.error("Ungültiger Port", "Erlaubt sind 1024 bis 65535.");
+              return toast.error(m.db.invalidPort, m.db.invalidPortHint);
             }
             if (port !== db.port) void saveDb({ port });
           }}
         />
       </Row>
       )}
-      <Row label="Datenbank" description="Wird beim nächsten Start angelegt, falls es sie noch nicht gibt.">
+      <Row label={m.db.name} description={m.db.nameDescription}>
         <Input
           key={db.name}
           defaultValue={db.name}
           className="w-44 font-mono text-xs"
-          aria-label="Name der Test-Datenbank"
+          aria-label={m.db.nameAria}
           onBlur={(e) => {
             const name = e.target.value.trim();
             if (name === db.name) return;
             if (!/^[a-z_][a-z0-9_]{0,62}$/.test(name)) {
               e.target.value = db.name;
-              return toast.error("Ungültiger Name", "Kleinbuchstaben, Ziffern und Unterstriche, am Anfang keine Ziffer.");
+              return toast.error(m.db.invalidName, m.db.invalidNameHint);
             }
             void saveDb({ name });
           }}
         />
       </Row>
-      <Row label="Übergeben als" description="Umgebungsvariable mit der Verbindungs-URL für Dev-Server und Tests. Leer: wird nicht übergeben.">
+      <Row label={m.db.envVar} description={m.db.envVarDescription}>
         <Input
           key={db.envVar ?? ""}
           defaultValue={db.envVar ?? ""}
           placeholder="DATABASE_URL"
           className="w-44 font-mono text-xs"
-          aria-label="Variable für die Verbindungs-URL"
+          aria-label={m.db.envVarAria}
           onBlur={(e) => {
             const v = e.target.value.trim() || null;
             if (v === db.envVar) return;
             if (v && !/^[A-Za-z_][A-Za-z0-9_]*$/.test(v)) {
               e.target.value = db.envVar ?? "";
-              return toast.error("Ungültiger Variablenname", "Buchstaben, Ziffern und Unterstriche.");
+              return toast.error(m.db.invalidEnvVar, m.db.invalidEnvVarHint);
             }
             void saveDb({ envVar: v });
           }}
         />
       </Row>
       <SwitchRow
-        label="Mit dem Dev-Server starten"
-        description="Startet die Test-Datenbank, bevor der Dev-Server startet."
+        label={m.db.withDevServer}
+        description={m.db.withDevServerDescription}
         checked={db.withDevServer}
         onChange={(withDevServer) => void saveDb({ withDevServer })}
       />
 
       <div className="px-4 py-2.5">
         <button onClick={() => setLogOpen(!logOpen)} className="flex items-center gap-1 text-xs text-muted hover:text-fg" aria-expanded={logOpen}>
-          {logOpen ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />} Protokoll
+          {logOpen ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />} {m.db.log}
         </button>
         {logOpen && <DbLog dbId={dbId} state={state} />}
       </div>
@@ -399,28 +402,28 @@ function TestDbCard({
       <ConfirmDialog
         open={resetting}
         onOpenChange={setResetting}
-        title="Test-Datenbank zurücksetzen?"
-        description={`Alle Tabellen und Daten in ${db.name} werden gelöscht. Der nächste Start legt eine leere Datenbank an.`}
-        confirmLabel="Zurücksetzen"
+        title={m.db.resetTitle}
+        description={m.db.resetDescription(db.name)}
+        confirmLabel={m.db.resetConfirm}
         danger
         onConfirm={async () => {
           const wasRunning = running;
           try {
             qc.setQueryData(keys.testDb(dbId), await call("testdb.reset", { projectId: dbId }));
           } catch (e) {
-            toast.error("Nicht zurückgesetzt", errorMessage(e));
+            toast.error(m.db.notReset, errorMessage(e));
             throw e;
           }
           if (!wasRunning) {
-            toast.success("Test-Datenbank zurückgesetzt");
+            toast.success(m.db.resetDone);
             return;
           }
           // The reset is done; a failed start must not ask for another reset.
           try {
             qc.setQueryData(keys.testDb(dbId), await call("testdb.start", { projectId: dbId }));
-            toast.success("Test-Datenbank zurückgesetzt", "Sie läuft wieder, leer.");
+            toast.success(m.db.resetDone, m.db.runningAgain);
           } catch (e) {
-            toast.error("Zurückgesetzt, aber nicht wieder gestartet", errorMessage(e));
+            toast.error(m.db.resetNotRestarted, errorMessage(e));
           }
         }}
       />
@@ -439,14 +442,14 @@ function ConnectionUrl({ url }: { url: string }) {
       clearTimeout(timer.current);
       timer.current = setTimeout(() => setCopied(false), 1500);
     } catch {
-      toast.error("Nicht kopiert", "Die Zwischenablage ist nicht erreichbar.");
+      toast.error(m.db.notCopied, m.db.clipboardUnavailable);
     }
   };
   return (
     <div className="flex items-center gap-2">
       <Database className="h-4 w-4 shrink-0 text-subtle" />
-      <Input readOnly value={url} className="min-w-0 flex-1 font-mono text-xs" aria-label="Verbindungs-URL" onFocus={(e) => e.target.select()} />
-      <Button size="icon-sm" variant="ghost" onClick={() => void copy()} aria-label="Verbindungs-URL kopieren" title="Verbindungs-URL kopieren">
+      <Input readOnly value={url} className="min-w-0 flex-1 font-mono text-xs" aria-label={m.db.url} onFocus={(e) => e.target.select()} />
+      <Button size="icon-sm" variant="ghost" onClick={() => void copy()} aria-label={m.db.copyUrl} title={m.db.copyUrl}>
         {copied ? <Check className="h-3.5 w-3.5 text-success" /> : <Copy className="h-3.5 w-3.5" />}
       </Button>
     </div>
@@ -461,7 +464,7 @@ function DbLog({ dbId, state }: { dbId: string; state: TestDbState | undefined }
   }, [log.data]);
   if (log.isLoading)
     return (
-      <SkeletonRegion label="Lädt Protokoll" className="mt-2 flex flex-col gap-1.5 rounded-md border border-border bg-bg px-3 py-2">
+      <SkeletonRegion label={m.db.loadingLog} className="mt-2 flex flex-col gap-1.5 rounded-md border border-border bg-bg px-3 py-2">
         {[80, 65, 90, 45].map((w, i) => (
           <div key={i} className="flex h-3.5 items-center">
             <Skeleton className="h-2.5 rounded-sm" style={{ width: `${w}%` }} />
@@ -471,7 +474,7 @@ function DbLog({ dbId, state }: { dbId: string; state: TestDbState | undefined }
     );
   return (
     <pre ref={ref} className="mt-2 max-h-56 overflow-auto whitespace-pre-wrap break-all rounded-md border border-border bg-bg px-3 py-2 font-mono text-caption leading-[1.45] text-muted">
-      {log.data?.text.trim() || "Noch kein Protokoll. Es entsteht beim ersten Start."}
+      {log.data?.text.trim() || m.db.noLog}
     </pre>
   );
 }
@@ -507,30 +510,30 @@ function TestEnvCard({ owner, config, update }: { owner: string; config: DevTool
     try {
       const { text: content } = await call("devtools.readEnvFile", { projectId: owner, name });
       const cur = text.trimEnd();
-      setDraft(cur ? `${cur}\n\n# aus ${name}\n${content.trimEnd()}\n` : `${content.trimEnd()}\n`);
-      toast.info(`${name} übernommen`, "Prüf die Werte: für Tests oft eigene Schlüssel und Adressen verwenden.");
+      setDraft(cur ? `${cur}\n\n${m.env.importedFrom(name)}\n${content.trimEnd()}\n` : `${content.trimEnd()}\n`);
+      toast.info(m.env.imported(name), m.env.importedHint);
     } catch (e) {
-      toast.error("Nicht übernommen", errorMessage(e));
+      toast.error(m.env.notImported, errorMessage(e));
     }
   };
 
   return (
     <Group
-      title="Test-.env"
+      title={m.env.title}
       description={ENV_DESCRIPTION}
-      action={<Switch checked={config.useEnv} onChange={(useEnv) => void update({ useEnv })} label="Test-.env verwenden" />}
+      action={<Switch checked={config.useEnv} onChange={(useEnv) => void update({ useEnv })} label={m.env.use} />}
     >
       <div className="flex flex-col gap-2 px-4 py-3.5">
         <div className="flex items-center gap-2">
           <span className="min-w-0 flex-1 truncate text-xs text-muted" title={names.join(", ")}>
-            {!config.useEnv ? "Ausgeschaltet: Dev-Server und Tests laufen ohne diese Variablen." : names.length ? `${names.length} ${names.length === 1 ? "Variable" : "Variablen"}: ${names.join(", ")}` : "Noch keine Variablen."}
+            {!config.useEnv ? m.env.off : names.length ? m.env.variables(names.length, names.join(", ")) : m.env.none}
           </span>
           {(files.data?.length ?? 0) > 0 && (
             <DropdownMenu
-              header="Aus Datei im Projekt übernehmen"
+              header={m.env.fromFileHeader}
               trigger={
                 <Button size="sm" variant="ghost">
-                  <FileInput className="h-3.5 w-3.5" /> Aus Datei
+                  <FileInput className="h-3.5 w-3.5" /> {m.env.fromFile}
                 </Button>
               }
               items={(files.data ?? []).map((f) => ({ label: f, onSelect: () => void importFile(f) }))}
@@ -542,7 +545,7 @@ function TestEnvCard({ owner, config, update }: { owner: string; config: DevTool
             value={text}
             onChange={setDraft}
             language="text"
-            ariaLabel="Test-.env"
+            ariaLabel={m.env.title}
             onSave={() => draft !== null && saveDraft(draft)}
           />
         </div>

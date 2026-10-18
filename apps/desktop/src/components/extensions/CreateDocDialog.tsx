@@ -7,6 +7,9 @@ import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { Field, Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
+import { t } from "@/i18n";
+
+const m = t.extensions.createDoc;
 
 export function CreateDocDialog({
   kind,
@@ -37,11 +40,11 @@ export function CreateDocDialog({
     <Dialog
       open={open}
       onOpenChange={onOpenChange}
-      title={kind === "skill" ? "Skill anlegen" : "Subagent anlegen"}
+      title={kind === "skill" ? m.titleSkill : m.titleAgent}
       footer={
         <>
           <Button variant="ghost" onClick={() => onOpenChange(false)}>
-            Abbrechen
+            {m.cancel}
           </Button>
           <Button
             variant="primary"
@@ -54,32 +57,32 @@ export function CreateDocDialog({
                 onCreated({ kind, scope, name, description, path: r.path });
                 onOpenChange(false);
               } catch (e) {
-                toast.error("Nicht angelegt", errorMessage(e));
+                toast.error(m.notCreated, errorMessage(e));
               } finally {
                 setBusy(false);
               }
             }}
           >
-            Anlegen
+            {m.create}
           </Button>
         </>
       }
     >
       <div className="flex flex-col gap-3">
-        <Field label="Name" hint="Kleinbuchstaben, Ziffern, Bindestriche">
+        <Field label={m.name} hint={m.nameHint}>
           <Input value={name} onChange={(e) => setName(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "-"))} placeholder="release-notes" autoFocus />
         </Field>
-        <Field label="Beschreibung" hint="Woran Claude erkennt, wann er das hier nutzen soll">
+        <Field label={m.description} hint={m.descriptionHint}>
           <Input value={description} onChange={(e) => setDescription(e.target.value)} />
         </Field>
-        <Field label="Bereich">
+        <Field label={m.scope}>
           <Select<ConfigScope>
             value={scope}
             onChange={setScope}
             className="w-full"
             options={[
-              { value: "user", label: "Global", description: "~/.claude, für alle Projekte" },
-              ...(projectId ? [{ value: "project" as const, label: "Projekt", description: ".claude im Projekt, wird mit dem Repo geteilt" }] : []),
+              { value: "user", label: m.global, description: m.globalDescription },
+              ...(projectId ? [{ value: "project" as const, label: m.project, description: m.projectDescription }] : []),
             ]}
           />
         </Field>

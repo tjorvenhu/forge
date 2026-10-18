@@ -13,6 +13,9 @@ import { Skeleton, SkeletonRegion } from "@/components/ui/skeleton";
 import { Select } from "@/components/ui/select";
 import { AddMcpDialog } from "./AddMcpDialog";
 import { MCP_STATUS, MCP_STATUS_TONE, mcpScopeOptions, mcpStatusText, type McpScope } from "./mcp";
+import { t } from "@/i18n";
+
+const m = t.extensions.mcpTab;
 
 export function McpTab({ projectId }: { projectId?: string }) {
   const qc = useQueryClient();
@@ -27,19 +30,19 @@ export function McpTab({ projectId }: { projectId?: string }) {
         action={
           <div className="flex gap-1">
             <Button size="sm" variant="ghost" onClick={() => void list.refetch()} loading={list.isFetching}>
-              <RefreshCw className="h-3.5 w-3.5" /> Prüfen
+              <RefreshCw className="h-3.5 w-3.5" /> {m.check}
             </Button>
             <Button size="sm" variant="primary" onClick={() => setAdding(true)}>
-              <Plus className="h-3.5 w-3.5" /> Hinzufügen
+              <Plus className="h-3.5 w-3.5" /> {m.add}
             </Button>
           </div>
         }
       >
-        MCP Server
+        {m.title}
       </SectionTitle>
-      <p className="mb-3 text-xs text-muted">Verwaltet über die offiziellen Befehle von Claude Code. Der Status wird beim Prüfen live abgefragt.</p>
+      <p className="mb-3 text-xs text-muted">{m.intro}</p>
       {list.isLoading && (
-        <SkeletonRegion label="Lädt MCP-Server" className="divide-y divide-border rounded-lg border border-border">
+        <SkeletonRegion label={m.loading} className="divide-y divide-border rounded-lg border border-border">
           {[30, 45, 25].map((w, i) => (
             <div key={i} className="flex items-center gap-3 px-3 py-2">
               <Skeleton className="h-4 w-4 shrink-0 rounded-sm" />
@@ -54,7 +57,7 @@ export function McpTab({ projectId }: { projectId?: string }) {
         </SkeletonRegion>
       )}
       {list.isError && <ErrorBanner>{errorMessage(list.error)}</ErrorBanner>}
-      {list.data?.length === 0 && <EmptyState icon={<Server className="h-8 w-8" />} title="Keine MCP Server konfiguriert" />}
+      {list.data?.length === 0 && <EmptyState icon={<Server className="h-8 w-8" />} title={m.empty} />}
       <div className={cn("divide-y divide-border rounded-lg border border-border", !list.data?.length && "hidden")}>
         {list.data?.map((s) => (
           <div key={s.name} className="flex items-center gap-3 px-3 py-2 text-body">
@@ -69,7 +72,7 @@ export function McpTab({ projectId }: { projectId?: string }) {
             <Button
               size="icon-sm"
               variant="danger-ghost"
-              aria-label={`${s.name} entfernen`}
+              aria-label={m.remove(s.name)}
               onClick={() => {
                 setScope("user");
                 setRemoving(s.name);
@@ -84,23 +87,23 @@ export function McpTab({ projectId }: { projectId?: string }) {
       <ConfirmDialog
         open={!!removing}
         onOpenChange={(o) => !o && setRemoving(null)}
-        title={`MCP Server ${removing ?? ""} entfernen?`}
-        description="Claude Code entfernt den Eintrag aus dem gewählten Bereich. Wähle den Bereich, in dem der Server eingetragen ist."
-        confirmLabel="Entfernen"
+        title={m.removeTitle(removing ?? "")}
+        description={m.removeDescription}
+        confirmLabel={m.removeConfirm}
         danger
         onConfirm={async () => {
           if (!removing) return;
           try {
             await call("mcp.remove", { projectId, name: removing, scope });
-            toast.success("Entfernt", removing);
+            toast.success(m.removed, removing);
             void qc.invalidateQueries({ queryKey: ["mcp"] });
           } catch (e) {
-            toast.error("Nicht entfernt", errorMessage(e));
+            toast.error(m.notRemoved, errorMessage(e));
             throw e;
           }
         }}
       >
-        <Field label="Bereich">
+        <Field label={m.scope}>
           <Select value={scope} onChange={setScope} className="w-full" options={mcpScopeOptions(projectId)} />
         </Field>
       </ConfirmDialog>

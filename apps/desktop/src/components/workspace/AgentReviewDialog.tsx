@@ -13,11 +13,10 @@ import { toast } from "@/stores/toast";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { Skeleton, SkeletonRegion } from "@/components/ui/skeleton";
+import { t } from "@/i18n";
 import { Markdown } from "./Markdown";
 
 const SHOWN_COMMITS = 5;
-
-const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
 /**
  * Asks in the main window what happens with a parallel agent whose turn ended: merge its branch into
@@ -45,7 +44,7 @@ export function AgentReviewDialog() {
     <Dialog
       open
       onOpenChange={(o) => !o && done(projectId)}
-      title="Agent fertig"
+      title={t.workspace.agentReview.title}
       description={review.data ? <Heading r={review.data} /> : review.isLoading ? <HeadingSkeleton /> : undefined}
       className="w-160"
       footer={review.data ? <Actions key={projectId} r={review.data} onDone={() => done(projectId)} /> : review.isLoading ? <ActionsSkeleton /> : undefined}
@@ -61,11 +60,11 @@ function Heading({ r }: { r: AgentReview }) {
   return (
     <span className="flex flex-wrap items-center gap-x-1.5">
       <Bot className="h-3.5 w-3.5 text-accent" />
-      <span className="font-mono text-fg">{r.branch ?? "ohne Branch"}</span>
-      <span>in {r.rootName}</span>
+      <span className="font-mono text-fg">{r.branch ?? t.workspace.agentReview.noBranch}</span>
+      <span>{t.workspace.agentReview.inRoot(r.rootName)}</span>
       {r.targetBranch && (
         <>
-          <span>, zurück nach</span>
+          <span>{t.workspace.agentReview.backTo}</span>
           <span className="font-mono text-fg">{r.targetBranch}</span>
         </>
       )}
@@ -77,7 +76,7 @@ function Heading({ r }: { r: AgentReview }) {
 function HeadingSkeleton() {
   const bar = "block animate-shimmer rounded-md bg-surface-2";
   return (
-    <span className="flex h-5 items-center gap-1.5" role="status" aria-label="Lädt Agent">
+    <span className="flex h-5 items-center gap-1.5" role="status" aria-label={t.workspace.agentReview.loadingAgent}>
       <span className={cn(bar, "h-3.5 w-3.5 rounded-sm")} aria-hidden />
       <span className={cn(bar, "h-3 w-40")} aria-hidden />
       <span className={cn(bar, "h-3 w-48")} aria-hidden />
@@ -87,7 +86,7 @@ function HeadingSkeleton() {
 
 function DetailsSkeleton() {
   return (
-    <SkeletonRegion label="Lädt Details" className="flex flex-col gap-4">
+    <SkeletonRegion label={t.workspace.agentReview.loadingDetails} className="flex flex-col gap-4">
       <section>
         <Skeleton className="mb-1.5 h-2.5 w-28" />
         <div className="rounded-lg border border-border bg-surface-2 px-3 py-2">
@@ -127,26 +126,27 @@ function ActionsSkeleton() {
 }
 
 function Details({ r }: { r: AgentReview }) {
+  const m = t.workspace.agentReview;
   const facts = [
-    r.ahead ? plural(r.ahead, "Commit", "Commits") : "keine Commits",
-    r.filesChanged ? plural(r.filesChanged, "Datei geändert", "Dateien geändert") : null,
-    r.uncommitted ? `${plural(r.uncommitted, "nicht committete Änderung", "nicht committete Änderungen")}, wird beim Zusammenführen committet` : null,
-    r.behind && r.targetBranch ? `${r.targetBranch} hat ${plural(r.behind, "neuen Commit", "neue Commits")}, die Arbeit des Agenten kommt obendrauf` : null,
+    r.ahead ? m.commits(r.ahead) : m.noCommits,
+    r.filesChanged ? m.filesChanged(r.filesChanged) : null,
+    r.uncommitted ? m.uncommitted(r.uncommitted) : null,
+    r.behind && r.targetBranch ? m.behind(r.targetBranch, r.behind) : null,
   ].filter(Boolean);
   return (
     <div className="flex flex-col gap-4">
       <section>
-        <h3 className="mb-1.5 text-caption font-medium uppercase tracking-wide text-subtle">Zusammenfassung</h3>
+        <h3 className="mb-1.5 text-caption font-medium uppercase tracking-wide text-subtle">{m.summary}</h3>
         {r.summary.trim() ? (
           <div className="max-h-64 overflow-y-auto rounded-lg border border-border bg-surface-2 px-3 py-2">
             <Markdown text={r.summary} />
           </div>
         ) : (
-          <p className="text-body text-muted">Der Agent hat keine Zusammenfassung geschrieben.</p>
+          <p className="text-body text-muted">{m.noSummary}</p>
         )}
       </section>
       <section>
-        <h3 className="mb-1.5 text-caption font-medium uppercase tracking-wide text-subtle">Änderungen</h3>
+        <h3 className="mb-1.5 text-caption font-medium uppercase tracking-wide text-subtle">{m.changes}</h3>
         <p className="text-body text-muted">{facts.join(". ")}.</p>
         {r.commits.length > 0 && (
           <ul className="mt-2 flex flex-col gap-1">
@@ -157,7 +157,7 @@ function Details({ r }: { r: AgentReview }) {
                 <span className="truncate">{c.subject}</span>
               </li>
             ))}
-            {r.ahead > SHOWN_COMMITS && <li className="text-xs text-subtle">und {r.ahead - SHOWN_COMMITS} weitere</li>}
+            {r.ahead > SHOWN_COMMITS && <li className="text-xs text-subtle">{m.moreCommits(r.ahead - SHOWN_COMMITS)}</li>}
           </ul>
         )}
       </section>
@@ -171,6 +171,7 @@ function Actions({ r, onDone }: { r: AgentReview; onDone: () => void }) {
   const openProject = useUi((s) => s.openProject);
   const [busy, setBusy] = useState<"merge" | "discard" | null>(null);
   const [confirmDiscard, setConfirmDiscard] = useState(false);
+  const m = t.workspace.agentReview;
 
   const finish = async (action: "merge" | "discard") => {
     setBusy(action);
@@ -190,23 +191,24 @@ function Actions({ r, onDone }: { r: AgentReview; onDone: () => void }) {
         const sessionId = res.sessionId;
         toast.notify({
           tone: "warning",
-          title: "Konflikte beim Zusammenführen",
+          title: m.conflictTitle,
           body: res.message,
-          action: sessionId ? { label: "Agent öffnen", onClick: () => openProject(r.projectId, sessionId) } : undefined,
+          action: sessionId ? { label: m.openAgent, onClick: () => openProject(r.projectId, sessionId) } : undefined,
           duration: 15_000,
         });
         return;
       }
       if (res.outcome === "waiting") {
         // Nothing changed: the project's open work and the agent's overlap. With auto-merge FORGE tries again by itself.
-        toast.notify({ tone: "warning", title: "Noch nicht zusammengeführt", body: `${res.message.replace(/^Noch nicht zusammengeführt:\s*/, "")} Committe die Änderungen im Projekt oder warte, bis die Session dort fertig ist.`, duration: 15_000 });
+        // The sidecar's message starts with this title and a colon, in the sidecar's language.
+        toast.notify({ tone: "warning", title: m.notMergedYet, body: `${res.message.replace(/^[^:]+:\s*/, "")} ${m.waitingHint}`, duration: 15_000 });
         return;
       }
       const ui = useUi.getState();
       if (ui.view === "workspace" && ui.activeProjectId === r.projectId) openProject(r.rootId);
-      toast.success(res.outcome === "merged" ? "Agent zusammengeführt" : "Agent verworfen", res.message);
+      toast.success(res.outcome === "merged" ? m.merged : m.discarded, res.message);
     } catch (e) {
-      toast.error(action === "merge" ? "Nicht zusammengeführt" : "Nicht verworfen", errorMessage(e));
+      toast.error(action === "merge" ? m.notMerged : m.notDiscarded, errorMessage(e));
       void qc.invalidateQueries({ queryKey: keys.agentReview(r.projectId) });
     } finally {
       setBusy(null);
@@ -217,13 +219,13 @@ function Actions({ r, onDone }: { r: AgentReview; onDone: () => void }) {
     return (
       <div className="flex w-full items-center gap-2">
         <span className="mr-auto text-body text-danger">
-          {r.ahead || r.uncommitted ? "Die Arbeit des Agenten wird gelöscht und lässt sich nicht wiederherstellen." : "Worktree und Branch werden gelöscht."}
+          {r.ahead || r.uncommitted ? m.discardWork : m.discardWorktree}
         </span>
         <Button variant="ghost" onClick={() => setConfirmDiscard(false)} disabled={!!busy}>
-          Zurück
+          {m.back}
         </Button>
         <Button variant="danger" loading={busy === "discard"} onClick={() => void finish("discard")}>
-          Endgültig verwerfen
+          {m.discardForGood}
         </Button>
       </div>
     );
@@ -239,17 +241,17 @@ function Actions({ r, onDone }: { r: AgentReview; onDone: () => void }) {
             openProject(r.projectId, r.sessionId);
           }}
         >
-          Agent öffnen
+          {m.openAgent}
         </Button>
       )}
       <Button variant="ghost" onClick={onDone} disabled={!!busy} className={r.sessionId ? undefined : "mr-auto"}>
-        Später
+        {m.later}
       </Button>
       <Button variant="danger-ghost" onClick={() => setConfirmDiscard(true)} disabled={!!busy || r.busy}>
-        <Trash2 className="h-3.5 w-3.5" /> Verwerfen
+        <Trash2 className="h-3.5 w-3.5" /> {m.discard}
       </Button>
       <Button variant="primary" loading={busy === "merge"} disabled={!!busy || !!r.mergeBlocker} title={r.mergeBlocker ?? undefined} onClick={() => void finish("merge")}>
-        <GitMerge className="h-3.5 w-3.5" /> Zusammenführen
+        <GitMerge className="h-3.5 w-3.5" /> {m.merge}
       </Button>
     </div>
   );

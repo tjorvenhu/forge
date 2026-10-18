@@ -10,6 +10,9 @@ import { ExternalChangeBanner, useFileDraft } from "@/components/ui/file-draft";
 import { ErrorBanner, LabelWithInfo, SectionTitle } from "@/components/ui/misc";
 import { EditorSkeleton, Skeleton } from "@/components/ui/skeleton";
 import { Select } from "@/components/ui/select";
+import { t } from "@/i18n";
+
+const m = t.extensions.hooks;
 
 export function HooksTab({ projectId }: { projectId?: string }) {
   const [scope, setScope] = useState<"user" | "project" | "local">("user");
@@ -21,10 +24,10 @@ export function HooksTab({ projectId }: { projectId?: string }) {
     setSaving(true);
     try {
       await call("config.hooksWrite", { scope, projectId, hooks: draft, expectedMtimeMs: expectedVersion });
-      toast.success("Hooks gespeichert", q.data?.path);
+      toast.success(m.saved, q.data?.path);
       await q.refetch();
     } catch (e) {
-      toast.error("Nicht gespeichert", errorMessage(e));
+      toast.error(m.notSaved, errorMessage(e));
       if (e instanceof RpcCallError && e.code === "CONFLICT") void q.refetch();
     } finally {
       setSaving(false);
@@ -33,22 +36,20 @@ export function HooksTab({ projectId }: { projectId?: string }) {
   return (
     <section className="rounded-xl border border-border bg-surface p-4">
       <SectionTitle>
-        <LabelWithInfo info="Befehle, die Claude Code bei Ereignissen ausführt (z. B. Lint nach jeder Dateiänderung). FORGE ändert nur den Schlüssel „hooks“ in der gewählten settings.json und prüft die Struktur vor dem Speichern.">
-          Hooks
-        </LabelWithInfo>
+        <LabelWithInfo info={m.info}>{m.title}</LabelWithInfo>
       </SectionTitle>
       <div className="mb-2 flex items-center gap-2">
         <Select
           value={scope}
           onChange={setScope}
           className="w-64"
-          aria-label="Bereich"
+          aria-label={m.scope}
           options={[
-            { value: "user", label: "Global (~/.claude/settings.json)" },
+            { value: "user", label: m.scopeUser },
             ...(projectId
               ? [
-                  { value: "project" as const, label: "Projekt (.claude/settings.json)" },
-                  { value: "local" as const, label: "Lokal (.claude/settings.local.json)" },
+                  { value: "project" as const, label: m.scopeProject },
+                  { value: "local" as const, label: m.scopeLocal },
                 ]
               : []),
           ]}
@@ -61,7 +62,7 @@ export function HooksTab({ projectId }: { projectId?: string }) {
           <span className="min-w-0 flex-1 truncate font-mono text-caption text-subtle">{q.data?.path}</span>
         )}
         <Button size="sm" variant="primary" onClick={() => void save()} disabled={!dirty || externalChange} loading={saving}>
-          <Save className="h-3.5 w-3.5" /> Speichern
+          <Save className="h-3.5 w-3.5" /> {m.save}
         </Button>
       </div>
       {externalChange && (
@@ -74,11 +75,11 @@ export function HooksTab({ projectId }: { projectId?: string }) {
         <EditorSkeleton className="h-105" />
       ) : (
         <div className="h-105">
-          <CodeEditor value={draft ?? q.data?.hooks ?? "{}"} onChange={setDraft} language="json" onSave={() => void save()} ariaLabel="Hooks (JSON)" />
+          <CodeEditor value={draft ?? q.data?.hooks ?? "{}"} onChange={setDraft} language="json" onSave={() => void save()} ariaLabel={m.editorAria} />
         </div>
       )}
       <details className="mt-3 text-xs text-muted">
-        <summary className="cursor-pointer">Beispiel</summary>
+        <summary className="cursor-pointer">{m.example}</summary>
         <pre className="mt-2 rounded-md bg-bg p-2 font-mono">{`{
   "PostToolUse": [
     { "matcher": "Write|Edit", "hooks": [{ "type": "command", "command": "pnpm lint --fix" }] }

@@ -33,6 +33,7 @@ import { fileValues } from "@/components/templates/template-values";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Collapse } from "@/components/ui/collapse";
+import { t } from "@/i18n";
 import { revealInProject } from "./file-links";
 
 type Icon = ComponentType<{ className?: string }>;
@@ -60,13 +61,13 @@ export function fileIcon(name: string): [Icon, string] {
 }
 
 const MARK: Record<FileStatus["kind"], { letter: string; tone: string; label: string }> = {
-  modified: { letter: "M", tone: "text-warning", label: "geändert" },
-  added: { letter: "A", tone: "text-success", label: "neu (vorgemerkt)" },
-  untracked: { letter: "U", tone: "text-success", label: "neu" },
-  deleted: { letter: "D", tone: "text-danger", label: "gelöscht" },
-  renamed: { letter: "R", tone: "text-accent", label: "umbenannt" },
-  conflicted: { letter: "!", tone: "text-danger", label: "Konflikt" },
-  typechange: { letter: "T", tone: "text-accent", label: "Typ geändert" },
+  modified: { letter: "M", tone: "text-warning", label: t.workspace.fileTree.mark.modified },
+  added: { letter: "A", tone: "text-success", label: t.workspace.fileTree.mark.added },
+  untracked: { letter: "U", tone: "text-success", label: t.workspace.fileTree.mark.untracked },
+  deleted: { letter: "D", tone: "text-danger", label: t.workspace.fileTree.mark.deleted },
+  renamed: { letter: "R", tone: "text-accent", label: t.workspace.fileTree.mark.renamed },
+  conflicted: { letter: "!", tone: "text-danger", label: t.workspace.fileTree.mark.conflicted },
+  typechange: { letter: "T", tone: "text-accent", label: t.workspace.fileTree.mark.typechange },
 };
 
 /** Project files as a tree with git markers; a click opens the file in the Dateien tab. */
@@ -88,8 +89,8 @@ export function FileTree({ project }: { project: Project }) {
       <div className="flex h-11 shrink-0 items-center gap-2 px-4">
         <FolderTree className="h-4 w-4 text-muted" />
         <span className="min-w-0 flex-1 truncate text-ui font-medium">{project.name}</span>
-        {!!git.data?.files.length && <span className="text-caption text-subtle">{git.data.files.length} geändert</span>}
-        <Button size="icon-sm" variant="ghost" className="-mr-2" onClick={() => void revealInProject(project.path, "")} aria-label="Projektordner im Explorer öffnen" title="Projektordner im Explorer öffnen">
+        {!!git.data?.files.length && <span className="text-caption text-subtle">{t.workspace.fileTree.changed(git.data.files.length)}</span>}
+        <Button size="icon-sm" variant="ghost" className="-mr-2" onClick={() => void revealInProject(project.path, "")} aria-label={t.workspace.fileTree.revealFolder} title={t.workspace.fileTree.revealFolder}>
           <FolderOpen className="h-3.5 w-3.5" />
         </Button>
       </div>
@@ -108,7 +109,7 @@ function Level({ project, dir, depth, status }: { project: Project; dir: string;
   const pad = (d: number) => ({ paddingLeft: 8 + d * 16 });
   if (q.isLoading)
     return (
-      <div className="flex flex-col gap-2 py-2" role="status" aria-label="Lädt">
+      <div className="flex flex-col gap-2 py-2" role="status" aria-label={t.workspace.fileTree.loading}>
         {[60, 45].map((w) => (
           <div key={w} style={pad(depth)} className="flex items-center gap-2">
             <Skeleton className="h-3.5 w-3.5 rounded-sm" />
@@ -147,10 +148,10 @@ function Level({ project, dir, depth, status }: { project: Project; dir: string;
                 });
               }}
               onContextMenu={contextItems(() => [
-                ...(!e.isDir ? [{ label: "Öffnen", icon: <FileText className="h-3.5 w-3.5" />, onSelect: () => useUi.getState().openFile(project.id, e.path) }] : []),
-                { label: "Vorlage anwenden", icon: <FileStack className="h-3.5 w-3.5" />, hint: e.name, onSelect: () => useTemplateDialogs.getState().openApply({ projectId: project.id, values: fileValues(e.path) }) },
-                { label: "Im Explorer zeigen", icon: <FolderSearch className="h-3.5 w-3.5" />, onSelect: () => void revealInProject(project.path, e.path) },
-                { label: "Pfad kopieren", icon: <Copy className="h-3.5 w-3.5" />, onSelect: () => copyText(e.path) },
+                ...(!e.isDir ? [{ label: t.workspace.fileTree.open, icon: <FileText className="h-3.5 w-3.5" />, onSelect: () => useUi.getState().openFile(project.id, e.path) }] : []),
+                { label: t.workspace.fileTree.applyTemplate, icon: <FileStack className="h-3.5 w-3.5" />, hint: e.name, onSelect: () => useTemplateDialogs.getState().openApply({ projectId: project.id, values: fileValues(e.path) }) },
+                { label: t.workspace.fileTree.reveal, icon: <FolderSearch className="h-3.5 w-3.5" />, onSelect: () => void revealInProject(project.path, e.path) },
+                { label: t.workspace.fileTree.copyPath, icon: <Copy className="h-3.5 w-3.5" />, onSelect: () => copyText(e.path) },
               ])}
               aria-expanded={e.isDir ? isOpen : undefined}
               title={mark ? `${e.path} (${mark.label})` : e.path}

@@ -6,6 +6,7 @@ import { splitActive, useUi } from "@/stores/ui";
 import { cn } from "@/lib/utils";
 import { Skeleton, SkeletonRegion } from "@/components/ui/skeleton";
 import type { SessionEvent } from "@forge/protocol";
+import { locale, t } from "@/i18n";
 
 const NO_EVENTS: SessionEvent[] = [];
 
@@ -27,15 +28,15 @@ export function OutputPanel({ projectId, embedded = false }: { projectId: string
   return (
     <div className={embedded ? "flex h-full flex-col" : "flex h-56 shrink-0 flex-col border-t border-border bg-bg"}>
       <div className={embedded ? "hidden" : "flex h-8 shrink-0 items-center gap-2 border-b border-border px-3 text-xs"}>
-        <span className="font-medium">Claude-Ausgabe</span>
-        <span className="text-subtle">{events.length} Events</span>
+        <span className="font-medium">{t.workspace.output.title}</span>
+        <span className="text-subtle">{t.workspace.output.events(events.length)}</span>
         <div className="flex-1" />
-        <button onClick={() => toggle(false)} className="rounded p-0.5 text-subtle hover:text-fg" aria-label="Panel schließen">
+        <button onClick={() => toggle(false)} className="rounded p-0.5 text-subtle hover:text-fg" aria-label={t.workspace.output.close}>
           <X className="h-3.5 w-3.5" />
         </button>
       </div>
       {loading ? (
-        <SkeletonRegion label="Lädt Ausgabe" className="min-h-0 flex-1 overflow-hidden">
+        <SkeletonRegion label={t.workspace.output.loading} className="min-h-0 flex-1 overflow-hidden">
           {[60, 35, 75, 45, 55, 30, 68, 40].map((w, i) => (
             <div key={i} className="flex h-4.5 items-center gap-3 px-3">
               <Skeleton className="h-2.5 w-12 shrink-0 rounded-sm" />
@@ -46,7 +47,7 @@ export function OutputPanel({ projectId, embedded = false }: { projectId: string
           ))}
         </SkeletonRegion>
       ) : !active ? (
-        <div className="p-3 text-xs text-subtle">Keine Session ausgewählt.</div>
+        <div className="p-3 text-xs text-subtle">{t.workspace.output.noSession}</div>
       ) : (
         <div ref={scrollRef} className="min-h-0 flex-1 overflow-auto font-mono text-caption leading-4.5">
           <div className="relative" style={{ height: v.getTotalSize() }}>
@@ -55,7 +56,7 @@ export function OutputPanel({ projectId, embedded = false }: { projectId: string
               const { type, ...rest } = e.body;
               return (
                 <div key={row.index} className="absolute left-0 right-0 flex gap-3 whitespace-nowrap px-3" style={{ transform: `translateY(${row.start}px)`, height: 18 }}>
-                  <span className="text-subtle">{new Date(e.ts).toLocaleTimeString("de-DE")}</span>
+                  <span className="text-subtle">{new Date(e.ts).toLocaleTimeString(locale)}</span>
                   <span className="w-6 text-right text-subtle">{e.seq}</span>
                   <span className={cn("w-32 shrink-0", type === "error" || type === "policy.blocked" ? "text-danger" : type.startsWith("approval") ? "text-warning" : "text-accent")}>
                     {type}

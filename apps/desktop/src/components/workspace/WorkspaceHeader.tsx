@@ -23,6 +23,9 @@ import { AlwaysOnTopButton } from "@/components/layout/AlwaysOnTopButton";
 import { SyncButton } from "@/components/layout/SyncButton";
 import { HeaderDivider } from "@/components/layout/Page";
 import { useSplitLayout } from "./chat-slot";
+import { t } from "@/i18n";
+
+const m = t.workspace.header;
 
 /** The tab is stored for the whole app, not per project: a project without git shows the chat instead of Agenten or Git. */
 export function useWorkspaceTab(project: { gitEnabled: boolean }): WorkspaceTab {
@@ -71,8 +74,8 @@ function LayoutToggles({ project }: { project: { gitEnabled: boolean } }) {
         variant="ghost"
         onClick={() => toggleToolbar()}
         aria-pressed={toolbarOpen}
-        aria-label="Werkzeugleiste"
-        title={`Werkzeugleiste ${toolbarOpen ? "ausblenden" : "einblenden"}\nReiter oben im Projekt:\n- ${project.gitEnabled ? "Chat, Agenten, Git, Dateien" : "Chat, Dateien"}\n- Dev-Tools, Wissen, Einstellungen${toolbarOpen ? "\n\nAusblenden führt zurück zum Chat." : ""}`}
+        aria-label={m.toolbar}
+        title={m.toolbarTitle(toolbarOpen, project.gitEnabled)}
         className={cn(toolbarOpen && "text-accent")}
       >
         <Wrench className="h-4 w-4" />
@@ -82,8 +85,8 @@ function LayoutToggles({ project }: { project: { gitEnabled: boolean } }) {
         variant="ghost"
         onClick={() => toggleBottomPanel()}
         aria-pressed={bottomPanelOpen}
-        aria-label="Untere Leiste"
-        title={`Untere Leiste ${bottomPanelOpen ? "ausblenden" : "einblenden"} (Strg+J)\n- Terminal\n- Dev-Server\n- Claude-Ausgabe`}
+        aria-label={m.bottomBar}
+        title={m.bottomBarTitle(bottomPanelOpen)}
         className={cn(bottomPanelOpen && "text-accent")}
       >
         <SquareTerminal className="h-4 w-4" />
@@ -93,14 +96,14 @@ function LayoutToggles({ project }: { project: { gitEnabled: boolean } }) {
         variant="ghost"
         onClick={() => toggleRightPanel()}
         aria-pressed={showRight}
-        aria-label="Rechte Seitenleiste"
+        aria-label={m.rightSidebar}
         disabled={narrow || workspaceTab !== "chat"}
         title={
           narrow
-            ? "Seitenleiste\nDer Bereich ist zu schmal dafür."
+            ? m.sidebarTooNarrow
             : workspaceTab !== "chat"
-              ? "Seitenleiste\nGibt es nur im Chat."
-              : `Seitenleiste ${showRight ? "ausblenden" : "einblenden"} (Strg+Umschalt+E)\n- Dateien${project.gitEnabled ? "\n- Änderungen" : ""}\n- Aktivität`
+              ? m.sidebarChatOnly
+              : m.sidebarTitle(showRight, project.gitEnabled)
         }
         className={cn(showRight && "text-accent")}
       >
@@ -117,13 +120,9 @@ function SplitButton() {
   const add = useUi((s) => s.addSplitPane);
   if (!split) return null;
   const full = split.shown >= split.capacity;
-  const hint = !full
-    ? `Ansicht teilen\nÖffnet ein weiteres Projekt oder eine weitere Session daneben. ${split.shown} von ${split.capacity} Plätzen belegt, wie viele passen, hängt von der Fenstergröße ab.`
-    : split.capacity > 1
-      ? `Ansicht teilen\nKein Platz für einen weiteren Bereich. In das Fenster passen gerade ${split.capacity}.`
-      : "Ansicht teilen\nKein Platz für einen zweiten Bereich. Vergrößere das Fenster.";
+  const hint = !full ? m.splitHint(split.shown, split.capacity) : split.capacity > 1 ? m.splitFull(split.capacity) : m.splitNoRoom;
   return (
-    <Button size="icon-sm" variant="ghost" aria-label="Ansicht teilen" disabled={full} onClick={() => add()} title={hint} className={cn(split.shown > 1 && "text-accent")}>
+    <Button size="icon-sm" variant="ghost" aria-label={m.split} disabled={full} onClick={() => add()} title={hint} className={cn(split.shown > 1 && "text-accent")}>
       <Columns2 className="h-4 w-4" />
     </Button>
   );
@@ -136,8 +135,8 @@ export function AreaGrip({ area }: { area: string }) {
   return (
     <button
       type="button"
-      aria-label="Bereich verschieben"
-      title={"Bereich verschieben\nAuf einen anderen Bereich ziehen, um die beiden zu tauschen."}
+      aria-label={m.moveArea}
+      title={m.moveAreaTitle}
       onPointerDown={(e) => split.startAreaDrag(area, e)}
       className="absolute left-1/2 top-0 z-10 flex h-3.5 w-12 -translate-x-1/2 cursor-grab items-center justify-center rounded-b-md text-subtle transition-colors duration-120 hover:bg-surface-3 hover:text-fg active:cursor-grabbing"
     >
@@ -162,10 +161,10 @@ export function SplitControlBar({ projectId }: { projectId: string }) {
   return (
     <div className="flex h-12 shrink-0 animate-fade-in items-center gap-3 border-b border-border px-5">
       <LayoutGrid className="h-4 w-4 shrink-0 text-muted" />
-      <span className="min-w-0 truncate text-body font-medium">Geteilte Ansicht</span>
-      <span className="hidden shrink-0 text-caption-lg text-subtle md:inline">{shown} Bereiche</span>
-      <Button size="sm" variant="ghost" className="shrink-0" onClick={() => closeAll()} title="Alle weiteren Bereiche schließen. Ihre Sessions laufen weiter.">
-        Teilung aufheben
+      <span className="min-w-0 truncate text-body font-medium">{m.splitView}</span>
+      <span className="hidden shrink-0 text-caption-lg text-subtle md:inline">{m.areas(shown)}</span>
+      <Button size="sm" variant="ghost" className="shrink-0" onClick={() => closeAll()} title={m.unsplitTitle}>
+        {m.unsplit}
       </Button>
       <div className="flex-1" />
       {project ? (
@@ -211,10 +210,10 @@ export function WorkspaceHeader({ projectId, pane }: { projectId: string; pane?:
       await call("projects.update", { projectId, profile });
       await qc.invalidateQueries({ queryKey: keys.project(projectId) });
       void qc.invalidateQueries({ queryKey: keys.projects });
-      toast.success(`Profil ${PROFILE_INFO[profile].label}`, "Gilt sofort, auch für laufende Sessions.");
+      toast.success(m.profileSet(PROFILE_INFO[profile].label), m.profileSetHint);
     } catch (e) {
       void qc.invalidateQueries({ queryKey: keys.project(projectId) });
-      toast.error("Profil nicht geändert", errorMessage(e));
+      toast.error(m.profileNotChanged, errorMessage(e));
     }
   };
 
@@ -227,7 +226,7 @@ export function WorkspaceHeader({ projectId, pane }: { projectId: string; pane?:
       void qc.invalidateQueries({ queryKey: keys.projects });
     } catch (e) {
       void qc.invalidateQueries({ queryKey: keys.project(projectId) });
-      toast.error("Nicht gespeichert", errorMessage(e));
+      toast.error(m.notSaved, errorMessage(e));
     }
   };
 
@@ -248,8 +247,8 @@ export function WorkspaceHeader({ projectId, pane }: { projectId: string; pane?:
         variant="ghost"
         onClick={() => void toggleFavorite()}
         className="hover:text-warning"
-        aria-label={project.favorite ? "Aus Favoriten entfernen" : "Zu Favoriten"}
-        title={project.favorite ? "Aus Favoriten entfernen" : "Zu Favoriten hinzufügen"}
+        aria-label={project.favorite ? m.unfavorite : m.favoriteAria}
+        title={project.favorite ? m.unfavorite : m.favoriteTitle}
       >
         <Star className={cn("h-4 w-4", project.favorite && "fill-warning text-warning")} />
       </Button>
@@ -262,18 +261,18 @@ export function WorkspaceHeader({ projectId, pane }: { projectId: string; pane?:
             if (pane) useUi.getState().promoteSplitPane(pane.id);
             openProjectSettings("automation");
           }}
-          title={`Aktive Tags\n${project.tags.map((t) => `- ${tagLabel(t)}`).join("\n")}\n\nKlicken, um sie unter Automatik einzustellen.`}
+          title={m.tagsTitle(project.tags.map((t) => `- ${tagLabel(t)}`).join("\n"))}
           className="flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-caption-lg text-muted transition-colors duration-120 hover:bg-surface-3 hover:text-fg"
         >
           <Tag className="h-3.5 w-3.5" />
-          <span className="hidden @2xl:inline">{project.tags.length === 1 ? "1 Tag" : `${project.tags.length} Tags`}</span>
+          <span className="hidden @2xl:inline">{m.tagCount(project.tags.length)}</span>
         </button>
       )}
 
       {!pane && split && (
-        <Tooltip content="Werkzeugleiste, Seitenleisten und Reiter in der Leiste oben gehören zu diesem Bereich.">
+        <Tooltip content={m.mainAreaTooltip}>
           <span className="hidden shrink-0 @2xl:inline-flex">
-            <Badge tone="accent">Hauptbereich</Badge>
+            <Badge tone="accent">{m.mainArea}</Badge>
           </span>
         </Tooltip>
       )}
@@ -281,28 +280,28 @@ export function WorkspaceHeader({ projectId, pane }: { projectId: string; pane?:
       <div className="flex-1" />
 
       {project.parentId && (
-        <Button size="sm" variant="outline" className="shrink-0 gap-1.5" onClick={() => useAgentReview.getState().request(projectId)} title="Arbeit dieses Agenten zusammenführen oder verwerfen">
+        <Button size="sm" variant="outline" className="shrink-0 gap-1.5" onClick={() => useAgentReview.getState().request(projectId)} title={m.finishAgentTitle}>
           <GitMerge className="h-4 w-4" />
-          <span className="hidden @5xl:inline">Agent abschließen</span>
+          <span className="hidden @5xl:inline">{m.finishAgent}</span>
         </Button>
       )}
       {controls && <LayoutToggles project={project} />}
       {controls && <RemoteControlButton project={project} />}
 
       <DropdownMenu
-        header="Berechtigungsprofil"
+        header={m.profileHeader}
         trigger={
           <button
             className="flex h-9 shrink-0 items-center gap-1 whitespace-nowrap rounded-lg px-2 hover:bg-surface-3"
-            aria-label={`Berechtigungsprofil: ${PROFILE_INFO[project.profile].label}. Klicken zum Ändern`}
-            title="Berechtigungsprofil ändern"
+            aria-label={m.profileAria(PROFILE_INFO[project.profile].label)}
+            title={m.profileChange}
           >
             <ProfileBadge profile={project.profile} />
             <ChevronDown className="h-3.5 w-3.5 text-muted" />
           </button>
         }
         items={PROFILE_IDS.map((p) => ({
-          label: `${PROFILE_INFO[p].label}${p === project.profile ? " (aktiv)" : ""}`,
+          label: `${PROFILE_INFO[p].label}${p === project.profile ? m.active : ""}`,
           disabled: p === "autonomous" && sandboxOnly,
           hint: p === "autonomous" && sandboxOnly ? "sandbox-only" : undefined,
           icon: p === "autonomous" ? <AlertTriangle className="h-3.5 w-3.5 text-danger" /> : undefined,
@@ -347,9 +346,9 @@ function ProjectSwitch({ pane, current, children }: { pane: SplitPane; current: 
   return (
     <DropdownMenu
       align="start"
-      header="Projekt in diesem Bereich"
+      header={m.projectInArea}
       trigger={
-        <button className="-mx-1 flex min-w-0 items-center gap-1 rounded-md px-1 py-0.5 hover:bg-surface-3" aria-label="Projekt wechseln">
+        <button className="-mx-1 flex min-w-0 items-center gap-1 rounded-md px-1 py-0.5 hover:bg-surface-3" aria-label={m.switchProject}>
           {children}
           <ChevronDown className="ml-1.5 h-3.5 w-3.5 shrink-0 text-muted" />
         </button>
@@ -357,15 +356,15 @@ function ProjectSwitch({ pane, current, children }: { pane: SplitPane; current: 
       items={[
         ...projects.slice(0, 25).map((p) => ({
           label: p.name,
-          hint: p.id === current ? "offen" : p.favorite ? "Favorit" : undefined,
+          hint: p.id === current ? m.open : p.favorite ? m.favorite : undefined,
           disabled: p.id === current,
           icon: <ProjectIcon id={p.id} name={p.name} size={16} className="rounded" />,
           onSelect: () => setPane(pane.id, p.id),
         })),
         ...agents
           .filter((a) => a.id !== current)
-          .map((a) => ({ label: `Agent ${agentLabel(a)}`, icon: <Bot className="h-3.5 w-3.5 text-accent" />, onSelect: () => setPane(pane.id, a.id) })),
-        { label: "Andere Session oder Projekt wählen …", icon: <Columns2 className="h-3.5 w-3.5" />, onSelect: () => setPane(pane.id, null) },
+          .map((a) => ({ label: m.agent(agentLabel(a)), icon: <Bot className="h-3.5 w-3.5 text-accent" />, onSelect: () => setPane(pane.id, a.id) })),
+        { label: m.pickOther, icon: <Columns2 className="h-3.5 w-3.5" />, onSelect: () => setPane(pane.id, null) },
       ]}
     />
   );
@@ -378,14 +377,14 @@ export function PaneActions({ pane }: { pane: SplitPane }) {
   return (
     <div className="flex shrink-0 items-center gap-0.5">
       {pane.projectId && (
-        <Tooltip content="Zum Hauptbereich machen. Werkzeugleiste, Seitenleisten und Reiter gehören dann zu diesem Projekt.">
-          <Button size="icon-sm" variant="ghost" aria-label="Zum Hauptbereich machen" onClick={() => promote(pane.id)}>
+        <Tooltip content={m.promoteTooltip}>
+          <Button size="icon-sm" variant="ghost" aria-label={m.promote} onClick={() => promote(pane.id)}>
             <Maximize2 className="h-4 w-4" />
           </Button>
         </Tooltip>
       )}
-      <Tooltip content="Bereich schließen. Die Session läuft weiter.">
-        <Button size="icon-sm" variant="ghost" aria-label="Bereich schließen" onClick={() => close(pane.id)}>
+      <Tooltip content={m.closeTooltip}>
+        <Button size="icon-sm" variant="ghost" aria-label={m.closeArea} onClick={() => close(pane.id)}>
           <X className="h-4 w-4" />
         </Button>
       </Tooltip>

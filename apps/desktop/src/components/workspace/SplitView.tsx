@@ -15,6 +15,7 @@ import { ChatPanel, ChatPanelSkeleton } from "./ChatPanel";
 import { sessionStatusLabel } from "./SessionStatusBadge";
 import { AreaGrip, PaneActions, SplitControlBar, useProjectChoices, WorkspaceHeader } from "./WorkspaceHeader";
 import { SplitLayoutContext, type SplitLayout } from "./chat-slot";
+import { t } from "@/i18n";
 
 type Shown = { projectId: string | null; active: string | null };
 
@@ -93,7 +94,7 @@ export function SplitWorkspace({ projectId, children }: { projectId: string; chi
               {drag?.moved && drag.from === c.key && <div aria-hidden className="pointer-events-none absolute inset-0 z-30 bg-bg/60" />}
               {drag?.over === c.key && (
                 <div aria-hidden className="pointer-events-none absolute inset-0 z-30 flex animate-fade-in items-center justify-center border-2 border-accent bg-accent/10">
-                  <span className="rounded-lg bg-surface-3 px-3 py-1.5 text-body text-fg shadow-lg">Hierher verschieben</span>
+                  <span className="rounded-lg bg-surface-3 px-3 py-1.5 text-body text-fg shadow-lg">{t.workspace.split.moveHere}</span>
                 </div>
               )}
             </div>
@@ -104,7 +105,7 @@ export function SplitWorkspace({ projectId, children }: { projectId: string; chi
         createPortal(
           <div aria-hidden style={{ left: drag.x + 12, top: drag.y + 8 }} className="pointer-events-none fixed z-50 flex items-center gap-2 rounded-lg border border-border bg-surface-2 px-3 py-1.5 text-body text-muted shadow-lg">
             <GripHorizontal className="h-3.5 w-3.5 shrink-0" />
-            Bereich verschieben
+            {t.workspace.split.moveArea}
           </div>,
           document.body,
         )}
@@ -166,10 +167,7 @@ function useAreaDrag() {
 /** Areas that do not fit at the current window size; they come back by themselves when it grows. */
 function HiddenPanes({ panes }: { panes: SplitPane[] }) {
   const close = useUi((s) => s.closeSplitPane);
-  const text =
-    panes.length === 1
-      ? "Ein weiterer Bereich ist ausgeblendet, das Fenster ist zu klein. Mit mehr Platz erscheint er wieder."
-      : `${panes.length} weitere Bereiche sind ausgeblendet, das Fenster ist zu klein. Mit mehr Platz erscheinen sie wieder.`;
+  const text = panes.length === 1 ? t.workspace.split.hiddenOne : t.workspace.split.hiddenMany(panes.length);
   return (
     <div role="status" className="flex h-9 shrink-0 animate-fade-in items-center gap-2 border-b border-border bg-surface px-4 text-caption-lg text-muted">
       <EyeOff className="h-3.5 w-3.5 shrink-0" />
@@ -177,7 +175,7 @@ function HiddenPanes({ panes }: { panes: SplitPane[] }) {
         {text}
       </span>
       <Button size="sm" variant="ghost" onClick={() => panes.forEach((p) => close(p.id))}>
-        Schließen
+        {t.workspace.split.close}
       </Button>
     </div>
   );
@@ -203,7 +201,7 @@ function PaneProject({ pane, projectId }: { pane: SplitPane; projectId: string }
     return (
       <PaneMessage pane={pane}>
         <div className="p-4">
-          <ErrorBanner title="Projekt nicht geladen">{errorMessage(project.error)}</ErrorBanner>
+          <ErrorBanner title={t.workspace.split.projectNotLoaded}>{errorMessage(project.error)}</ErrorBanner>
         </div>
       </PaneMessage>
     );
@@ -215,8 +213,8 @@ function PaneProject({ pane, projectId }: { pane: SplitPane; projectId: string }
         {project.data.exists ? (
           <ChatPanel project={project.data} pane={pane} />
         ) : (
-          <EmptyState icon={<FolderX className="h-9 w-9" />} title="Chat nicht verfügbar">
-            Der Projektordner von {project.data.name} fehlt.
+          <EmptyState icon={<FolderX className="h-9 w-9" />} title={t.workspace.split.chatUnavailable}>
+            {t.workspace.split.folderMissing(project.data.name)}
           </EmptyState>
         )}
       </div>
@@ -244,7 +242,7 @@ function PaneSkeleton() {
 }
 
 /** An area without a project (picker, error): a bar with the way to close it. */
-function PaneMessage({ pane, title = "Bereich", children }: { pane: SplitPane; title?: string; children: ReactNode }) {
+function PaneMessage({ pane, title = t.workspace.split.area, children }: { pane: SplitPane; title?: string; children: ReactNode }) {
   return (
     <div className="flex h-full min-h-0 flex-col">
       <header className="relative flex h-12 shrink-0 items-center gap-3 border-b border-border px-5">
@@ -268,38 +266,38 @@ function PanePicker({ pane }: { pane: SplitPane }) {
   const loading = live.isPending || projectsLoading;
 
   return (
-    <PaneMessage pane={pane} title="Projekt oder Session wählen">
+    <PaneMessage pane={pane} title={t.workspace.split.pickTitle}>
       <div className="mx-auto flex max-w-xl animate-view-in flex-col gap-5 px-4 py-4">
         {loading ? (
           <PickerSkeleton />
         ) : (
           <>
             {running.length > 0 && (
-              <PickerSection title="Laufende Sessions">
+              <PickerSection title={t.workspace.split.running}>
                 {running.map((s) => (
                   <PickerRow
                     key={s.id}
                     iconId={s.projectId}
                     iconName={s.projectName}
-                    label={s.title ?? "Ohne Titel"}
+                    label={s.title ?? t.workspace.split.untitled}
                     hint={`${s.projectName}, ${sessionStatusLabel(s.status, s.live, s.autoContinueAt)}`}
                     onPick={() => setPane(pane.id, s.projectId, s.id)}
                   />
                 ))}
               </PickerSection>
             )}
-            <PickerSection title="Projekte">
+            <PickerSection title={t.workspace.split.projects}>
               {projects.map((p) => (
                 <PickerRow
                   key={p.id}
                   iconId={p.id}
                   iconName={p.name}
                   label={p.name}
-                  hint={p.favorite ? "Favorit" : p.lastOpenedAt ? relativeTime(p.lastOpenedAt) : ""}
+                  hint={p.favorite ? t.workspace.split.favorite : p.lastOpenedAt ? relativeTime(p.lastOpenedAt) : ""}
                   onPick={() => setPane(pane.id, p.id)}
                 />
               ))}
-              {!projects.length && <p className="px-2 text-body text-muted">Noch keine Projekte.</p>}
+              {!projects.length && <p className="px-2 text-body text-muted">{t.workspace.split.noProjects}</p>}
             </PickerSection>
           </>
         )}
@@ -334,7 +332,7 @@ function PickerSkeleton() {
       {[3, 6].map((rows) => (
         <div key={rows} className="flex flex-col gap-1">
           <Skeleton className="mx-2 mb-1 h-3 w-28" />
-          <ListSkeleton rows={rows} className="gap-0 p-0 [&>div]:h-9 [&>div]:px-2" label="Lädt Projekte und Sessions" />
+          <ListSkeleton rows={rows} className="gap-0 p-0 [&>div]:h-9 [&>div]:px-2" label={t.workspace.split.loading} />
         </div>
       ))}
     </div>

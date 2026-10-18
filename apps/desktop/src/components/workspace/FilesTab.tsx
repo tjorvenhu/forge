@@ -13,18 +13,19 @@ import { fileIcon } from "./FileTree";
 import { revealInProject } from "./file-links";
 import { MediaPreview, NoPreview, mediaType } from "./FilePreview";
 import { Skeleton, SkeletonRegion } from "@/components/ui/skeleton";
+import { t } from "@/i18n";
 
 /** Read-only project browser. Editing happens through Claude or your editor. */
 export function FilesTab({ project }: { project: Project }) {
   const file = useUi((s) => s.selectedFile[project.id] ?? null);
   const setFile = (p: string) => useUi.getState().selectFile(project.id, p);
-  if (!project.exists) return <EmptyState title="Projektordner fehlt" />;
+  if (!project.exists) return <EmptyState title={t.workspace.files.folderMissing} />;
   return (
     <div className="grid h-full min-h-0 grid-cols-[300px_minmax(0,1fr)]">
       <div className="min-h-0 overflow-y-auto border-r border-border py-2">
         <Dir projectId={project.id} dir="" depth={0} selected={file} onSelect={setFile} />
       </div>
-      <div className="min-h-0">{file ? <FileViewer project={project} path={file} /> : <EmptyState title="Datei auswählen">Links eine Datei anklicken.</EmptyState>}</div>
+      <div className="min-h-0">{file ? <FileViewer project={project} path={file} /> : <EmptyState title={t.workspace.files.selectFile}>{t.workspace.files.selectFileHint}</EmptyState>}</div>
     </div>
   );
 }
@@ -106,10 +107,10 @@ function FileViewer({ project, path }: { project: Project; path: string }) {
         <span className="min-w-0 flex-1 truncate font-mono text-xs text-muted">{path}</span>
         {isSvg && (
           <Button size="sm" variant="ghost" className="h-6 px-2 text-xs" onClick={() => setSvgCode(!svgCode)} aria-pressed={svgCode}>
-            {svgCode ? "Vorschau" : "Code"}
+            {svgCode ? t.workspace.files.preview : t.workspace.files.code}
           </Button>
         )}
-        <Button size="icon-sm" variant="ghost" onClick={reveal} aria-label="Im Explorer zeigen" title="Im Explorer zeigen">
+        <Button size="icon-sm" variant="ghost" onClick={reveal} aria-label={t.workspace.files.reveal} title={t.workspace.files.reveal}>
           <FolderOpen className="h-3.5 w-3.5" />
         </Button>
       </div>

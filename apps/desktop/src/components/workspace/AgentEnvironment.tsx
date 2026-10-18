@@ -6,14 +6,9 @@ import { openDevServer, prepareWorktree } from "@/lib/dev-server-actions";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Skeleton, SkeletonRegion } from "@/components/ui/skeleton";
+import { t } from "@/i18n";
 
-const STEP_WORD: Record<WorktreeSetupState["steps"][number]["status"], string> = {
-  pending: "wartet",
-  running: "läuft",
-  done: "fertig",
-  skipped: "übersprungen",
-  failed: "fehlgeschlagen",
-};
+const STEP_WORD: Record<WorktreeSetupState["steps"][number]["status"], string> = t.workspace.agentEnv.step;
 
 function seconds(from: string, to: string | null): string {
   return `${Math.max(1, Math.round((Date.parse(to ?? from) - Date.parse(from)) / 1000))} s`;
@@ -27,20 +22,21 @@ export function setupSummary(s: WorktreeSetupState): string {
 function setupLine(s: WorktreeSetupState): string {
   if (s.status === "running") {
     const now = s.steps.filter((x) => x.status === "running").map((x) => x.label);
-    return now.length ? `Wird vorbereitet: ${now.join(", ")}` : "Wird vorbereitet";
+    return now.length ? t.workspace.agentEnv.preparingSteps(now.join(", ")) : t.workspace.agentEnv.preparing;
   }
   const failed = s.steps.filter((x) => x.status === "failed").map((x) => x.label);
-  if (failed.length) return `Fehlgeschlagen: ${failed.join(", ")}`;
-  return `Vorbereitet in ${seconds(s.startedAt, s.finishedAt)}`;
+  if (failed.length) return t.workspace.agentEnv.failedSteps(failed.join(", "));
+  return t.workspace.agentEnv.preparedIn(seconds(s.startedAt, s.finishedAt));
 }
 
 function devLabel(dev: DevServerState | undefined): { text: string; tone: string; title: string } {
+  const m = t.workspace.agentEnv;
   if (dev?.status === "running") {
     const port = dev.url ? /:(\d+)(\/|$)/.exec(dev.url)?.[1] : null;
-    return port ? { text: `:${port}`, tone: "font-mono text-accent", title: `Dev-Server öffnen: ${dev.url}` } : { text: "startet", tone: "text-warning", title: "Dev-Server startet" };
+    return port ? { text: `:${port}`, tone: "font-mono text-accent", title: m.openDev(dev.url!) } : { text: m.devStarting, tone: "text-warning", title: m.devStartingTitle };
   }
-  if (dev?.status === "failed" || (dev?.status === "exited" && dev.exitCode !== 0)) return { text: "abgestürzt", tone: "text-danger", title: "Dev-Server neu starten und öffnen" };
-  return { text: "Dev-Server", tone: "text-muted", title: "Eigenen Dev-Server des Agenten starten und öffnen" };
+  if (dev?.status === "failed" || (dev?.status === "exited" && dev.exitCode !== 0)) return { text: m.devCrashed, tone: "text-danger", title: m.devRestartTitle };
+  return { text: m.devServer, tone: "text-muted", title: m.devStartTitle };
 }
 
 /**
@@ -53,7 +49,7 @@ export function AgentEnvironment({ projectId }: { projectId: string }) {
   const dev = useDevServer(projectId);
   if (setup.isLoading || dev.isLoading) {
     return (
-      <SkeletonRegion label="Lädt Umgebung des Agenten" className="flex h-5 items-center gap-2">
+      <SkeletonRegion label={t.workspace.agentEnv.loading} className="flex h-5 items-center gap-2">
         <Skeleton className="h-2.5 w-2/5" />
         <div className="flex-1" />
         <Skeleton className="h-2.5 w-16" />
@@ -69,7 +65,7 @@ export function AgentEnvironment({ projectId }: { projectId: string }) {
         {s ? setupLine(s) : ""}
       </span>
       {s?.status === "failed" && (
-        <Button size="icon-sm" variant="ghost" className="h-5 w-5" onClick={() => void prepareWorktree(qc, projectId)} title="Vorbereitung wiederholen" aria-label="Vorbereitung wiederholen">
+        <Button size="icon-sm" variant="ghost" className="h-5 w-5" onClick={() => void prepareWorktree(qc, projectId)} title={t.workspace.agentEnv.retrySetup} aria-label={t.workspace.agentEnv.retrySetup}>
           <RotateCcw className="h-3 w-3" />
         </Button>
       )}

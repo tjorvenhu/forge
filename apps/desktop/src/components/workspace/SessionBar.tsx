@@ -18,6 +18,7 @@ import { SessionStatusBadge } from "./SessionStatusBadge";
 import { SummaryButton } from "./SummaryButton";
 import { DeleteSessionDialog } from "./DeleteSessionDialog";
 import { useSplitLayout } from "./chat-slot";
+import { t } from "@/i18n";
 
 /** Header of the chat: session picker, status, and actions for the shown session. */
 export function SessionBar({
@@ -47,7 +48,8 @@ export function SessionBar({
   /** sessions another chat of the split view shows; not offered in the picker */
   shownElsewhere?: ReadonlySet<string>;
 }) {
-  const title = session?.title ?? (external ? external.summary : "Neue Session");
+  const m = t.workspace.sessionBar;
+  const title = session?.title ?? (external ? external.summary : m.newSession);
   // Captured when the dialog opens: the shown session may change behind it (Strg+Tab, a notification).
   const [deleting, setDeleting] = useState<Session | null>(null);
   const split = useSplitLayout();
@@ -62,10 +64,10 @@ export function SessionBar({
         ? []
         : [
             pinned
-              ? { label: "Nicht mehr im Vordergrund halten", icon: <PinOff className="h-3.5 w-3.5" />, onSelect: () => void setChatWindowPin(false) }
-              : { label: "Fenster im Vordergrund halten", icon: <Pin className="h-3.5 w-3.5" />, onSelect: () => void setChatWindowPin(true) },
+              ? { label: m.unpin, icon: <PinOff className="h-3.5 w-3.5" />, onSelect: () => void setChatWindowPin(false) }
+              : { label: m.pin, icon: <Pin className="h-3.5 w-3.5" />, onSelect: () => void setChatWindowPin(true) },
           ]),
-      { label: "Ins Hauptfenster zurückholen", icon: <SquareArrowOutDownLeft className="h-3.5 w-3.5" />, onSelect: () => void reattachChatWindow() },
+      { label: m.recallToMain, icon: <SquareArrowOutDownLeft className="h-3.5 w-3.5" />, onSelect: () => void reattachChatWindow() },
     ];
   });
   return (
@@ -79,26 +81,26 @@ export function SessionBar({
       ) : (
         <DropdownMenu
           align="start"
-          header={sessions.length || externals.length ? "Sessions in diesem Projekt" : "Noch keine Sessions"}
+          header={sessions.length || externals.length ? m.sessionsHeader : m.noSessions}
           trigger={
-            <button className="flex min-w-0 max-w-105 items-center gap-1.5 rounded-md px-2 py-1 text-body hover:bg-surface-3" aria-label="Session wählen">
+            <button className="flex min-w-0 max-w-105 items-center gap-1.5 rounded-md px-2 py-1 text-body hover:bg-surface-3" aria-label={m.pickSession}>
               <History className="h-3.5 w-3.5 shrink-0 text-muted" />
               <span className="truncate">{title}</span>
               <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted" />
             </button>
           }
           items={[
-            { label: "Neue Session", icon: <MessageSquarePlus className="h-3.5 w-3.5" />, onSelect: () => onSelect(null), hint: pane ? undefined : "Strg+N" },
+            { label: m.newSession, icon: <MessageSquarePlus className="h-3.5 w-3.5" />, onSelect: () => onSelect(null), hint: pane ? undefined : m.newSessionShortcut },
             ...sessions.slice(0, 30).map((s) => ({
-              label: s.title ?? "Ohne Titel",
-              hint: taken(s.id) ? "daneben offen" : relativeTime(s.updatedAt),
+              label: s.title ?? m.untitled,
+              hint: taken(s.id) ? m.openBeside : relativeTime(s.updatedAt),
               disabled: taken(s.id),
               icon: <span className={cn("h-1.5 w-1.5 rounded-full", s.live ? "bg-accent" : "bg-subtle")} />,
               onSelect: () => onSelect(s.id),
             })),
             ...externals.slice(0, 15).map((e) => ({
               label: e.summary,
-              hint: taken(EXTERNAL_PREFIX + e.claudeSessionId) ? "daneben offen" : "Terminal",
+              hint: taken(EXTERNAL_PREFIX + e.claudeSessionId) ? m.openBeside : m.terminal,
               disabled: taken(EXTERNAL_PREFIX + e.claudeSessionId),
               icon: <Terminal className="h-3.5 w-3.5 text-muted" />,
               onSelect: () => onSelect(EXTERNAL_PREFIX + e.claudeSessionId),
@@ -111,12 +113,12 @@ export function SessionBar({
         <Tooltip content={session.background.map((t) => t.description).join(", ")}>
           <span>
             <Badge tone="accent">
-              <Hourglass className="h-3 w-3" /> {session.background.length} im Hintergrund
+              <Hourglass className="h-3 w-3" /> {m.background(session.background.length)}
             </Badge>
           </span>
         </Tooltip>
       )}
-      {session?.permissionMode === "plan" && <Badge tone="accent">Nur planen</Badge>}
+      {session?.permissionMode === "plan" && <Badge tone="accent">{m.planOnly}</Badge>}
       {session?.permissionMode === "bypassPermissions" && (
         <Badge tone="danger">
           <ShieldAlert className="h-3 w-3" /> Bypass
@@ -138,44 +140,44 @@ export function SessionBar({
         <Button
           size={compact ? "icon-sm" : "sm"}
           variant="ghost"
-          aria-label="Beenden"
+          aria-label={m.stop}
           title={
             session.background.length
-              ? "Claude-Prozess beenden. Bricht auch die Aufgaben im Hintergrund ab. Die Session bleibt fortsetzbar."
-              : "Claude-Prozess dieser Session beenden. Sie bleibt fortsetzbar."
+              ? m.stopTitleBackground
+              : m.stopTitle
           }
-          onClick={() => call("sessions.close", { sessionId: session.id }).catch((e: unknown) => toast.error("Beenden fehlgeschlagen", errorMessage(e)))}
+          onClick={() => call("sessions.close", { sessionId: session.id }).catch((e: unknown) => toast.error(m.stopFailed, errorMessage(e)))}
         >
           <Power className="h-3.5 w-3.5" />
-          {!compact && " Beenden"}
+          {!compact && ` ${m.stop}`}
         </Button>
       )}
       {detached ? (
         <>
           <ChatWindowPinButton />
-          <Button size="sm" variant="ghost" onClick={() => void reattachChatWindow()} title="Ins Hauptfenster zurückholen. Schließt dieses Fenster.">
-            <SquareArrowOutDownLeft className="h-3.5 w-3.5" /> Zurückholen
+          <Button size="sm" variant="ghost" onClick={() => void reattachChatWindow()} title={m.recallTitle}>
+            <SquareArrowOutDownLeft className="h-3.5 w-3.5" /> {m.recall}
           </Button>
         </>
       ) : (
         <>
           {session && !inChatWindow && (
-            <Tooltip content="In eigenem Fenster öffnen">
-              <Button size="icon-sm" variant="ghost" aria-label="In eigenem Fenster öffnen" onClick={() => void openChatWindow(project.id, session.id, session.title)}>
+            <Tooltip content={m.openWindow}>
+              <Button size="icon-sm" variant="ghost" aria-label={m.openWindow} onClick={() => void openChatWindow(project.id, session.id, session.title)}>
                 <SquareArrowOutUpRight className="h-3.5 w-3.5" />
               </Button>
             </Tooltip>
           )}
           {session && (
-            <Tooltip content="Session löschen">
-              <Button size="icon-sm" variant="ghost" aria-label="Session löschen" className="hover:text-danger" onClick={() => setDeleting(session)}>
+            <Tooltip content={m.deleteSession}>
+              <Button size="icon-sm" variant="ghost" aria-label={m.deleteSession} className="hover:text-danger" onClick={() => setDeleting(session)}>
                 <Trash2 className="h-3.5 w-3.5" />
               </Button>
             </Tooltip>
           )}
-          <Button size={compact ? "icon-sm" : "sm"} variant="ghost" aria-label="Neue Session" onClick={() => onSelect(null)} title={pane ? "Neue Session in diesem Bereich" : "Neue Session (Strg+N)"}>
+          <Button size={compact ? "icon-sm" : "sm"} variant="ghost" aria-label={m.newSession} onClick={() => onSelect(null)} title={pane ? m.newInPane : m.newSessionTitle}>
             <MessageSquarePlus className="h-3.5 w-3.5" />
-            {!compact && " Neu"}
+            {!compact && ` ${m.new}`}
           </Button>
           <DeleteSessionDialog session={deleting} onClose={() => setDeleting(null)} />
         </>
