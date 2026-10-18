@@ -43,6 +43,7 @@ import { PROFILE_IDS, PROFILE_INFO } from "@/components/projects/ProfileBadge";
 import { RULE_GROUPS } from "@/components/settings/PolicySettings";
 import { idleCloseLabel } from "@/components/settings/idle-close";
 import { handoffSession, longSessionLabel } from "@/components/workspace/handoff";
+import { CHAT_VIEWS, chatView, setChatView } from "@/components/workspace/chat-view";
 import { formatTokens } from "@/lib/utils";
 import { SECTIONS as DEV_TOOLS_SECTION_DEFS } from "@/components/devtools/DevToolsTab";
 import { integratedText } from "@/components/git/Sync";
@@ -325,6 +326,18 @@ export function buildActions(ctx: ActionContext): PaletteEntry[] {
       ui.setWorkspaceTab("chat");
       openChatFindSoon();
     }, { hint: t.layout.actions.ctrl("F"), keywords: "im chat suchen finden suche verlauf nachrichten durchsuchen session projekt befehle find search history messages project commands" });
+    if (session) {
+      const s = session;
+      const current = chatView(s.id);
+      const labels = { all: t.chat.view.paletteAll, prompts: t.chat.view.palettePrompts, answers: t.chat.view.paletteAnswers };
+      for (const v of CHAT_VIEWS) {
+        if (v.id === current) continue;
+        act(`chat-view-${v.id}`, labels[v.id], icon(v.Icon), () => {
+          ui.setWorkspaceTab("chat");
+          setChatView(s.id, v.id);
+        }, { keywords: t.chat.view.keywords });
+      }
+    }
     act("ui-compare-latest", t.layout.actions.uiCompareLatest, icon(GitCompareArrows), () => ctx.openDialog({ kind: "ui-compare", sessionId: session?.id ?? null, projectId: project.id }), {
       keywords: "screenshot vergleich vorschau bild ui oberfläche dev-server vorher nachher before after compare preview image",
     });

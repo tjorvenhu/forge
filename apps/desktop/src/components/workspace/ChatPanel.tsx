@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useVirtualizer, type VirtualItem } from "@tanstack/react-virtual";
-import { History, MessageSquarePlus, RotateCcw, Search, Terminal } from "lucide-react";
+import { Bot, History, ListTree, MessageSquarePlus, RotateCcw, Search, Terminal, User } from "lucide-react";
 import type { ExternalSession, Project, Session, SessionEvent } from "@forge/protocol";
 import { useOlderHistory, useSession, useSessionHistory, useSessions } from "@/lib/queries";
 import { isWorking } from "@/lib/working";
@@ -18,6 +18,7 @@ import { selectedSeed, useChatFindTarget } from "@/lib/chat-find";
 import { addContextItems } from "@/lib/context-menu";
 import { PendingMessages } from "./PendingMessages";
 import { ChatFindBar, type FindRequest } from "./ChatFindBar";
+import { CHAT_VIEWS, chatView, filterChatItems, setChatView, useChatView } from "./chat-view";
 import { InChatWindowPane } from "./InChatWindowPane";
 import { appendStreaming, IncrementalItems, itemIndexForSeq, lastUserPrompt, reuseStableItems, rowSpacing, startsAnswer, type ChatItem, type RowSpacing } from "./chat-items";
 import { Composer } from "./Composer";
@@ -118,8 +119,13 @@ export function ChatPanel({ project, detached = false, pane }: { project: Projec
       onContextMenu={(e) => {
         if (e.target instanceof Element && e.target.closest("textarea, input")) return;
         const seed = selectedSeed(e.currentTarget);
+        const current = sessionId ? chatView(sessionId) : null;
+        const viewMenu = { all: t.chat.view.menuAll, prompts: t.chat.view.menuPrompts, answers: t.chat.view.menuAnswers };
         addContextItems(e, [
           { label: seed ? t.chat.find.menuFor(seed.length > 30 ? `${seed.slice(0, 30)}…` : seed) : t.chat.find.menu, icon: <Search className="h-3.5 w-3.5" />, hint: t.layout.actions.ctrl("F"), onSelect: () => openFind(seed) },
+          ...(sessionId && current
+            ? CHAT_VIEWS.filter((v) => v.id !== current).map((v) => ({ label: viewMenu[v.id], icon: <v.Icon className="h-3.5 w-3.5" />, onSelect: () => setChatView(sessionId, v.id) }))
+            : []),
         ]);
       }}
     >
@@ -220,7 +226,11 @@ function SessionThread({ sessionId, session, project }: { sessionId: string; ses
   const previous = useRef<ChatItem[]>([]);
   const [builder] = useState(() => new IncrementalItems());
   const eventItems = useMemo(() => (previous.current = reuseStableItems(previous.current, builder.build(events))), [builder, events]);
-  const items = useMemo(() => appendStreaming(eventItems, streaming), [eventItems, streaming]);
+  const allItems = useMemo(() => appendStreaming(eventItems, streaming), [eventItems, streaming]);
+  // Only prompts or only answers: the rows of that view; everything else works on them as on the whole chat.
+  const [view, setView] = useChatView(sessionId);
+  const filtered = useMemo(() => filterChatItems(allItems, view), [allItems, view]);
+  const items = filtered.items;
   const retryPrompt = useMemo(() => lastUserPrompt(events), [events]);
   const working = isWorking(session?.status);
   const startedAt = useMemo(() => (working ? (turnStartedAt(events) ?? session?.updatedAt ?? null) : null), [working, events, session?.updatedAt]);
@@ -235,7 +245,7 @@ function SessionThread({ sessionId, session, project }: { sessionId: string; ses
 
   // Rows that arrive while the thread is open slide in once; loaded history does not.
   const [arrivals] = useState(() => new Arrivals());
-  if (buffer?.loaded && !arrivals.isPrimed) arrivals.prime(items.map((it) => it.key));
+  if (buffer?.loaded && !arrivals.isPrimed) arrivals.prime(allItems.map((it) => it.key));
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -287,6 +297,11 @@ function SessionThread({ sessionId, session, project }: { sessionId: string; ses
   const oldestSeq = events[0]?.seq;
   useEffect(() => {
     if (!focus || focus.sessionId !== sessionId || !buffer?.loaded) return;
+    // A hit may be a row the view hides: back to the whole chat, then this runs again with all rows.
+    if (view !== "all") {
+      setChatView(sessionId, "all");
+      return;
+    }
     useUi.getState().setFocusEvent(null);
     follow.unpin();
     if (oldestSeq !== undefined && focus.seq < oldestSeq) {
@@ -307,7 +322,18 @@ function SessionThread({ sessionId, session, project }: { sessionId: string; ses
     requestAnimationFrame(() => virtualizer.scrollToIndex(i, { align: "center" }));
     setHighlight(items[i]!.key);
     setFocused(items[i]!.key);
-  }, [focus, sessionId, buffer?.loaded, items, virtualizer, oldestSeq, loadUntil, follow]);
+  }, [focus, sessionId, buffer?.loaded, items, virtualizer, oldestSeq, loadUntil, follow, view]);
+
+  // Another view starts at its end, like the chat itself.
+  const shownView = useRef(view);
+  useLayoutEffect(() => {
+    if (shownView.current === view) return;
+    shownView.current = view;
+    follow.pin();
+    setJump(null);
+    const el = scrollRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [view, follow]);
   useEffect(() => {
     if (!highlight) return;
     const t = setTimeout(() => setHighlight(null), 2500);
@@ -375,6 +401,14 @@ function SessionThread({ sessionId, session, project }: { sessionId: string; ses
 
   return (
     <>
+      {view !== "all" && (
+        <div className="flex shrink-0 animate-fade-in items-center justify-center gap-3 border-b border-border bg-surface px-4 py-1.5 text-small" role="status">
+          <span className="text-muted">{t.chat.view.banner(view === "prompts" ? t.chat.view.bannerPrompts : t.chat.view.bannerAnswers, items.length, allItems.length)}</span>
+          <button type="button" className="font-medium text-accent hover:underline" onClick={() => setView("all")}>
+            {t.chat.view.showAll}
+          </button>
+        </div>
+      )}
       <div className="relative flex min-h-0 flex-1 animate-view-in flex-col">
       <div
         ref={scrollRef}
@@ -408,24 +442,49 @@ function SessionThread({ sessionId, session, project }: { sessionId: string; ses
                 </Button>
               </div>
             )}
-            {virtualizer.getVirtualItems().map((v) => (
-              <div key={v.key} data-index={v.index} ref={virtualizer.measureElement} className={cn("absolute left-0 right-0 px-6", ROW_SPACING[rowSpacing(items[v.index - 1], items[v.index]!)])} style={{ transform: `translateY(${v.start}px)` }}>
+            {virtualizer.getVirtualItems().map((v) => {
+              const item = items[v.index]!;
+              const turnStart = filtered.turnStarts.has(item.key);
+              const seq = view !== "all" && (item.kind === "user" || item.kind === "assistant") ? item.seq : null;
+              return (
                 <div
-                  data-find-current={focused === items[v.index]!.key || undefined}
-                  className={cn(
-                    "rounded-md transition-shadow duration-500",
-                    highlight === items[v.index]!.key && "ring-2 ring-accent/60 ring-offset-4 ring-offset-bg",
-                    arrivals.isNew(String(v.key)) && "animate-slide-up-in",
-                  )}
+                  key={v.key}
+                  data-index={v.index}
+                  ref={virtualizer.measureElement}
+                  className={cn("group/row absolute left-0 right-0 px-6", ROW_SPACING[turnStart && v.index > 0 ? "turn" : rowSpacing(items[v.index - 1], item)])}
+                  style={{ transform: `translateY(${v.start}px)` }}
                 >
-                  <LeadMarker.Provider value={startsAnswer(items[v.index - 1], items[v.index]!) ? CLAUDE_LEAD : null}>
-                    <ItemView item={items[v.index]!} sessionId={sessionId} live={!!session?.live} projectDir={session?.cwd ?? project.path} onRetry={onRetry} />
-                  </LeadMarker.Provider>
+                  <div
+                    data-find-current={focused === item.key || undefined}
+                    className={cn(
+                      "relative rounded-md transition-shadow duration-500",
+                      highlight === item.key && "ring-2 ring-accent/60 ring-offset-4 ring-offset-bg",
+                      arrivals.isNew(String(v.key)) && "animate-slide-up-in",
+                    )}
+                  >
+                    <LeadMarker.Provider value={(view === "answers" ? turnStart : startsAnswer(items[v.index - 1], item)) ? CLAUDE_LEAD : null}>
+                      <ItemView item={item} sessionId={sessionId} live={!!session?.live} projectDir={session?.cwd ?? project.path} onRetry={onRetry} />
+                    </LeadMarker.Provider>
+                    {seq !== null && (
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        className="absolute -top-1 right-0 h-6 px-2 text-caption-lg opacity-0 shadow-sm transition-opacity group-hover/row:opacity-100 focus-visible:opacity-100"
+                        title={t.chat.view.showInHistoryTitle}
+                        onClick={() => useUi.getState().setFocusEvent({ sessionId, seq })}
+                      >
+                        <ListTree className="h-3.5 w-3.5" /> {t.chat.view.showInHistory}
+                      </Button>
+                    )}
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
-          {pending.length > 0 && <PendingMessages items={pending} />}
+          {view !== "all" && !items.length && (
+            <EmptyState icon={view === "prompts" ? <User className="h-9 w-9" /> : <Bot className="h-9 w-9" />} title={view === "prompts" ? t.chat.view.emptyPrompts : t.chat.view.emptyAnswers} />
+          )}
+          {pending.length > 0 && view !== "answers" && <PendingMessages items={pending} />}
           {!!session?.background.length && <BackgroundIndicator tasks={session.background} sessionId={sessionId} />}
         </div>
       </div>

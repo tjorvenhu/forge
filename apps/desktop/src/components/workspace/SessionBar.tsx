@@ -16,6 +16,7 @@ import { ProjectIcon } from "@/components/projects/ProjectIcon";
 import { ChatWindowPinButton } from "@/components/layout/AlwaysOnTopButton";
 import { SessionStatusBadge } from "./SessionStatusBadge";
 import { SummaryButton } from "./SummaryButton";
+import { ChatViewToggle } from "./chat-view";
 import { DeleteSessionDialog } from "./DeleteSessionDialog";
 import { useSplitLayout } from "./chat-slot";
 import { t } from "@/i18n";
@@ -135,6 +136,7 @@ export function SessionBar({
           cwd: {session.cwd}
         </Badge>
       )}
+      {session && <ChatViewToggle sessionId={session.id} compact={compact} />}
       {session && <SummaryButton sessionId={session.id} title={session.title} size="icon-sm" />}
       {session?.live && (session.status === "idle" || session.status === "error") && (
         <Button
