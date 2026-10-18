@@ -37,6 +37,17 @@ describe("file paths in text", () => {
     expect(parseFileRef("C:\\Program Files\\Git")).toEqual({ path: "C:/Program Files/Git", line: null, bare: false, isFile: false });
   });
 
+  it("takes a quoted path with spaces as a whole, also JSON-escaped", () => {
+    const refs = (t: string) => findFileRefs(t).map((r) => [t.slice(r.start, r.end), r.ref.path]);
+    expect(refs('cd "C:/Users/TimPl/Desktop/claude.ai Work/.forge-worktrees/feld/agent-ki06" && cat src/a.ts')).toEqual([
+      ["C:/Users/TimPl/Desktop/claude.ai Work/.forge-worktrees/feld/agent-ki06", "C:/Users/TimPl/Desktop/claude.ai Work/.forge-worktrees/feld/agent-ki06"],
+      ["src/a.ts", "src/a.ts"],
+    ]);
+    expect(refs('{ "file_path": "C:\\\\Users\\\\TimPl\\\\claude.ai Work\\\\shot 1.png" }')).toEqual([["C:\\\\Users\\\\TimPl\\\\claude.ai Work\\\\shot 1.png", "C:/Users/TimPl/claude.ai Work/shot 1.png"]]);
+    // Quoted prose stays prose.
+    expect(refs('Er sagte "das ist gut" und ging.')).toEqual([]);
+  });
+
   it("takes a whole path or a bare file name with a known extension, not code", () => {
     expect(parseFileRef("src/cart.ts:3:7")).toEqual({ path: "src/cart.ts", line: 3, bare: false, isFile: true });
     expect(parseFileRef("package.json")).toEqual({ path: "package.json", line: null, bare: true, isFile: true });

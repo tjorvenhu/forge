@@ -18,7 +18,7 @@ import { DeleteAllSessionsDialog } from "@/components/workspace/DeleteAllSession
 import { Select } from "@/components/ui/select";
 import { SessionStatusBadge } from "@/components/workspace/SessionStatusBadge";
 import { ProfileBadge } from "@/components/projects/ProfileBadge";
-import { openSearchHit, SearchHitRow } from "@/components/search/SearchHits";
+import { openSearchHit, SearchHitRow, SearchHitsSkeleton } from "@/components/search/SearchHits";
 import { Skeleton, SkeletonRegion } from "@/components/ui/skeleton";
 import { t } from "@/i18n";
 
@@ -77,7 +77,7 @@ export function SessionsView() {
         <section className="mb-6">
           <SectionTitle action={hits.isFetching && !hits.isLoading ? <Spinner className="h-3.5 w-3.5" /> : undefined}>{sv.hitsInTranscripts}</SectionTitle>
           {hits.isError && <ErrorBanner>{sv.searchFailed}</ErrorBanner>}
-          {hits.isLoading && <HitsSkeleton />}
+          {hits.isLoading && <SearchHitsSkeleton className="rounded-xl border border-border bg-surface p-1" />}
           {hits.data && hits.data.length === 0 && <div className="text-body text-muted">{sv.noHits}</div>}
           {!!hits.data?.length && (
             <div className="rounded-xl border border-border bg-surface p-1">
@@ -202,27 +202,6 @@ function SessionsTableSkeleton({ rows = 8 }: { rows?: number }) {
           ))}
         </tbody>
       </table>
-    </SkeletonRegion>
-  );
-}
-
-/** Full-text hits while the transcripts are searched, in the box the hits will fill. */
-function HitsSkeleton() {
-  return (
-    <SkeletonRegion label={sv.loadingHits} className="rounded-xl border border-border bg-surface p-1">
-      {[0, 1, 2].map((i) => (
-        <div key={i} className="flex items-start gap-2.5 px-2.5 py-2">
-          <Skeleton className="mt-0.5 h-5 w-5 shrink-0 rounded" />
-          <div className="min-w-0 flex-1">
-            <div className="flex h-5 items-center">
-              <Skeleton className="h-3 rounded-sm" style={{ width: `${70 + ((i * 13) % 25)}%` }} />
-            </div>
-            <div className="mt-0.5 flex h-4 items-center">
-              <Skeleton className="h-2.5 w-2/5 rounded-sm" />
-            </div>
-          </div>
-        </div>
-      ))}
     </SkeletonRegion>
   );
 }

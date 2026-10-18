@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import type { QueryClient } from "@tanstack/react-query";
-import { Archive, ArrowDown, ArrowLeftRight, ArrowUp, ArrowUpCircle, BookOpen, Bot, CalendarDays, Camera, CloudDownload, Columns2, Combine, Cpu, Database, Download, FilePlus2, FileStack, FileText, FileUp, FlaskConical, FolderDown, FolderOpen, FolderPlus, Gauge, GitBranch, GitBranchPlus, GitCommitHorizontal, GitCompareArrows, GitFork, GitPullRequest, Globe, HandHeart, Languages, Lightbulb, Link2Off, ListChecks, LogIn, LogOut, MessageSquare, MessageSquarePlus, MessageSquareText, MonitorSmartphone, NotebookText, PackageCheck, PanelBottom, PanelRight, Pencil, Phone, PhoneOff, PhoneOutgoing, Pin, PinOff, Play, Power, RefreshCcw, RefreshCw, RotateCcw, Settings2, Shield, ShieldBan, Shrink, Sparkles, Square, SquareArrowOutDownLeft, SquareArrowOutUpRight, SquareTerminal, Timer, ToggleLeft, ToggleRight, Trash2, type LucideIcon, Wand2 } from "lucide-react";
+import { Archive, ArrowDown, ArrowLeftRight, ArrowUp, ArrowUpCircle, BookOpen, Bot, CalendarDays, Camera, CloudDownload, Columns2, Combine, Cpu, Database, Download, FilePlus2, FileStack, FileText, FileUp, FlaskConical, FolderDown, FolderOpen, FolderPlus, Gauge, GitBranch, GitBranchPlus, GitCommitHorizontal, GitCompareArrows, GitFork, GitPullRequest, Globe, HandHeart, Languages, Lightbulb, Link2Off, ListChecks, LogIn, LogOut, MessageSquare, MessageSquarePlus, MessageSquareText, MonitorSmartphone, NotebookText, PackageCheck, PanelBottom, PanelRight, Pencil, Phone, PhoneOff, PhoneOutgoing, Pin, PinOff, Play, Power, RefreshCcw, RefreshCw, RotateCcw, Search, Settings2, Shield, ShieldBan, Shrink, Sparkles, Square, SquareArrowOutDownLeft, SquareArrowOutUpRight, SquareTerminal, Timer, ToggleLeft, ToggleRight, Trash2, type LucideIcon, Wand2 } from "lucide-react";
 import type {
   AppInstallState,
   AppUpdateState,
@@ -20,7 +20,7 @@ import type {
   Settings,
   TestDbState,
 } from "@forge/protocol";
-import { IDLE_CLOSE_CHOICES, LANGUAGE_NAMES, LANGUAGES, SUPPORT_LINKS, USAGE_STATS_URL } from "@forge/protocol";
+import { IDLE_CLOSE_CHOICES, LANGUAGE_NAMES, LANGUAGES, LONG_SESSION_CHOICES, SUPPORT_LINKS, USAGE_STATS_URL } from "@forge/protocol";
 import { t } from "@/i18n";
 import { openExternal } from "@/lib/native";
 import { checkInstall, installFromFile, installFull, installUpdate } from "@/lib/app-install";
@@ -31,6 +31,7 @@ import { errorMessage, RpcCallError } from "@/lib/rpc";
 import { openChatWindow, pinChatWindow, recallChatWindow, type ChatWindowList } from "@/lib/chat-windows";
 import { setAlwaysOnTop } from "@/lib/window-options";
 import { takeScreenshot } from "@/lib/screenshot";
+import { openChatFindSoon } from "@/lib/chat-find";
 import { useActivity } from "@/stores/activity";
 import { draftKey, useDrafts } from "@/stores/drafts";
 import { lastEditablePrompt, useMessageEdit } from "@/stores/message-edit";
@@ -41,6 +42,8 @@ import { DEV_TOOLS_SECTIONS, KNOWLEDGE_MERGE_REQUEST, KNOWLEDGE_STALE_REQUEST, P
 import { PROFILE_IDS, PROFILE_INFO } from "@/components/projects/ProfileBadge";
 import { RULE_GROUPS } from "@/components/settings/PolicySettings";
 import { idleCloseLabel } from "@/components/settings/idle-close";
+import { handoffSession, longSessionLabel } from "@/components/workspace/handoff";
+import { formatTokens } from "@/lib/utils";
 import { SECTIONS as DEV_TOOLS_SECTION_DEFS } from "@/components/devtools/DevToolsTab";
 import { integratedText } from "@/components/git/Sync";
 import { SECTIONS as PROJECT_SECTION_DEFS, TAG_INFO } from "@/components/workspace/ProjectSettingsTab";
@@ -137,6 +140,7 @@ const SETTING_OPTIONS: ReadonlyArray<{ id: string; label: string; section: Setti
   { id: "claude-setup", label: t.layout.actions.options.claudeSetup, section: "claude", keywords: "claude code installieren anmelden login abo update version install subscription" },
   { id: "claude-path", label: t.layout.actions.options.claudePath, section: "claude", keywords: "pfad claude cli executable programm path program" },
   { id: "idle-close", label: t.layout.actions.options.idleClose, section: "claude", keywords: "untätige sessions claude-prozess beenden inaktiv leerlauf timeout automatisch schließen minuten stunden idle close process minutes hours" },
+  { id: "long-session", label: "Lange Sessions melden", section: "claude", keywords: "kontext tokens verbrauch limit warnung neue session übergabe fortsetzen" },
   { id: "phone-setup", label: t.layout.actions.options.phoneSetup, section: "phone", keywords: "telefon einrichten anruf sip gemini openai stimme tischtelefon phone call voice desk phone set up" },
   { id: "phone-numbers", label: t.layout.actions.options.phoneNumbers, section: "phone", keywords: "telefonnummern nummer handy rufnummer erlaubte anrufer benachrichtigung einschalten ausschalten phone numbers mobile allowed callers notification" },
   { id: "sync-projects", label: t.layout.actions.options.syncProjects, section: "github", keywords: "projekte holen sync klonen abgleich rechner pc fetch projects clone other computers" },
@@ -317,6 +321,10 @@ export function buildActions(ctx: ActionContext): PaletteEntry[] {
       ui.setWorkspaceTab("chat");
       requestAnimationFrame(() => document.getElementById("composer-input")?.focus());
     }, { hint: t.layout.actions.ctrl("N"), keywords: "neue session chat starten new session start" });
+    act("chat-find", "Im Chat suchen", icon(Search), () => {
+      ui.setWorkspaceTab("chat");
+      openChatFindSoon();
+    }, { hint: "Strg+F", keywords: "finden suche verlauf nachrichten durchsuchen session projekt befehle" });
     act("ui-compare-latest", t.layout.actions.uiCompareLatest, icon(GitCompareArrows), () => ctx.openDialog({ kind: "ui-compare", sessionId: session?.id ?? null, projectId: project.id }), {
       keywords: "screenshot vergleich vorschau bild ui oberfläche dev-server vorher nachher before after compare preview image",
     });
@@ -379,6 +387,12 @@ export function buildActions(ctx: ActionContext): PaletteEntry[] {
       );
       act("session-summary", t.layout.actions.sessionSummary, icon(NotebookText), () => ctx.openDialog({ kind: "summary", session: s }), { keywords: "session zusammenfassen wo war ich wiedereinstieg summary summarize where was i" });
       act("session-fork", t.layout.actions.sessionFork, icon(GitFork), () => void forkSession(qc, s), { keywords: "session verzweigen fork kopie zweig copy branch" });
+      if (s.claudeSessionId && !SESSION_BUSY.has(s.status)) {
+        act("session-handoff", "In neuer Session weitermachen", icon(MessageSquarePlus), () => void handoffSession(s), {
+          hint: s.context ? `${formatTokens(s.context.totalTokens)} Tokens Kontext` : undefined,
+          keywords: "übergabe fortsetzen lange session kontext tokens sparen zusammenfassen wissen mitnehmen handoff",
+        });
+      }
       const lastPrompt = lastEditablePrompt(s.id);
       if (lastPrompt !== null) {
         act("session-edit-last", t.layout.actions.editLast, icon(Pencil), () => useMessageEdit.getState().start(s.id, lastPrompt), {
@@ -656,6 +670,14 @@ export function buildActions(ctx: ActionContext): PaletteEntry[] {
       setting(`idle-close-${m}`, label, icon(Timer), () => void saveSetting(qc, { idleCloseMinutes: m }, label), {
         hint: t.layout.actions.now(idleCloseLabel(settings.idleCloseMinutes)),
         keywords: "untätige sessions claude-prozess beenden inaktiv leerlauf timeout automatisch schließen idle close process inactive automatic",
+      });
+    }
+    for (const t of LONG_SESSION_CHOICES) {
+      if (t === settings.longSessionTokens) continue;
+      const label = t > 0 ? `Lange Sessions melden ${longSessionLabel(t)}` : "Lange Sessions nicht mehr melden";
+      setting(`long-session-${t}`, label, icon(MessageSquarePlus), () => void saveSetting(qc, { longSessionTokens: t }, label), {
+        hint: `jetzt ${longSessionLabel(settings.longSessionTokens)}`,
+        keywords: "kontext tokens verbrauch limit warnung hinweis neue session übergabe",
       });
     }
   }

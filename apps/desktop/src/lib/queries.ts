@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { QueryClient, useMutation, useQuery } from "@tanstack/react-query";
-import type { MethodName, ParamsOf, ResultOf } from "@forge/protocol";
+import type { MethodName, ParamsOf, ResultOf, SearchFilter } from "@forge/protocol";
 import { rpc } from "./rpc";
 import { usageOutdated, usageRefetchIn } from "./rate-limit";
 import { loadOlderPages, useSessionEvents } from "@/stores/session-events";
@@ -231,6 +231,18 @@ export const useSearch = (query: string, limit = 50) => {
     enabled: q.length >= 3,
     placeholderData: (prev) => prev,
     staleTime: 10_000,
+  });
+};
+
+/** Full-text search of the search bar in the chat: one session, one project or all, from two characters on. */
+export const useFilteredSearch = (query: string, filter: SearchFilter, limit: number, enabled = true) => {
+  const q = query.trim();
+  return useQuery({
+    queryKey: [...keys.search(q), filter, limit],
+    queryFn: () => call("search.sessions", { query: q, limit, ...filter }),
+    enabled: enabled && q.length >= 2,
+    placeholderData: (prev) => prev,
+    staleTime: 5_000,
   });
 };
 

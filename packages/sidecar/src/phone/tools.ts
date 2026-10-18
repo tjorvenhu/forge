@@ -116,6 +116,7 @@ export const SESSIONS_ACTIONS = [
   "delete",
   "delete_all",
   "fork",
+  "handoff",
   "rewind",
   "edit",
   "ui_compare",
@@ -197,6 +198,8 @@ export interface ForgeSettingsPatch {
   autoContinueAfterLimit?: boolean;
   /** minutes until an idle session's process ends; 0 never */
   idleCloseMinutes?: number;
+  /** context tokens from which FORGE suggests a new session; 0 never */
+  longSessionTokens?: number;
   updateChecks?: boolean;
   debugLogs?: boolean;
   stripApiKey?: boolean;
@@ -329,8 +332,8 @@ export interface PhoneToolset {
   /** diagnostics, updates of FORGE and Claude Code, backups */
   /** `project`: sync_clone, a project another computer synced, as spoken */
   forgeSystem(action: SystemAction, o?: { backup?: string; parts?: BackupPart[]; project?: string }): Promise<string>;
-  /** full-text search in the history of all sessions */
-  search(query: string): Promise<string>;
+  /** full-text search in the history of all sessions, or of one session or project; `phrase`: the words in this order */
+  search(query: string, o?: { session?: string; project?: string; phrase?: boolean }): Promise<string>;
   usage(): Promise<string>;
   /** when FORGE calls the user on its own; an empty patch tells the current setting */
   callSettings(patch: CallSettingsPatch): Promise<string>;
@@ -827,6 +830,13 @@ const TOOL_DEFS: readonly ToolDef[] = [
       enter_to_send: { type: "boolean", optional: true },
       auto_continue: { type: "boolean", optional: true },
       idle_close_minutes: { type: "number", optional: true, min: 0, max: 1440 },
+      long_session_tokens: {
+        type: "number",
+        optional: true,
+        min: 0,
+        max: 2000000,
+        description: "ab wie vielen Tokens Kontext FORGE vorschlägt, in einer neuen Session weiterzumachen; 0 schaltet den Hinweis aus. In den Einstellungen wählbar: 100000, 200000, 400000, 800000",
+      },
       update_checks: { type: "boolean", optional: true },
       debug_logs: { type: "boolean", optional: true },
       strip_api_key: { type: "boolean", optional: true },
@@ -849,6 +859,7 @@ const TOOL_DEFS: readonly ToolDef[] = [
         enterToSend: optBool(a.enter_to_send),
         autoContinueAfterLimit: optBool(a.auto_continue),
         idleCloseMinutes: optNum(a.idle_close_minutes),
+        longSessionTokens: optNum(a.long_session_tokens),
         updateChecks: optBool(a.update_checks),
         debugLogs: optBool(a.debug_logs),
         stripApiKey: optBool(a.strip_api_key),
@@ -878,8 +889,13 @@ const TOOL_DEFS: readonly ToolDef[] = [
   },
   {
     name: "search",
-    params: { query: { type: "string" } },
-    run: (t, a) => t.search(str(a.query)),
+    params: {
+      query: { type: "string" },
+      session: { type: "string", optional: true },
+      project: { type: "string", optional: true },
+      phrase: { type: "boolean", optional: true },
+    },
+    run: (t, a) => t.search(str(a.query), { session: opt(a.session), project: opt(a.project), phrase: optBool(a.phrase) }),
   },
   {
     name: "usage",

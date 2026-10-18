@@ -56,6 +56,10 @@ import { tr } from "../i18n/index.js";
 /** how long a scan of terminal transcripts is reused */
 const EXTERNAL_CACHE_MS = 20_000;
 
+/** First turn of a handed-over session: Claude Code compacts the copied history into a handover. */
+export const HANDOFF_COMPACT =
+  "/compact Diese Zusammenfassung ist die Übergabe an eine neue Session, die genau hier weitermacht. Halte vollständig fest: Ziel und Wünsche des Nutzers, getroffene Entscheidungen mit Begründung, geänderte und wichtige Dateien, den aktuellen Stand, offene Punkte und nächste Schritte, Stolperfallen und was nicht funktioniert hat.";
+
 export class SessionService {
   private readonly core: SessionCore;
   private readonly assist: ClaudeAssist;
@@ -650,6 +654,30 @@ export class SessionService {
     this.db.copyEvents(sessionId, branch.id, opts.beforeSeq);
     this.core.publish(branch);
     return { session: this.get(branch.id), prompt, filesChanged };
+  }
+
+  /**
+   * Goes on with a long session in a new one. Every turn sends the whole history again, so a long
+   * session costs more with each message. The new session gets a copy of Claude's transcript, and its
+   * first turn is /compact with instructions for a handover: Claude Code writes the summary with the
+   * full context, so nothing is lost that a transcript excerpt would miss. The chat of the new session
+   * starts empty apart from a card linking back; the old session stays as it is.
+   */
+  async handoff(sessionId: string): Promise<Session> {
+    const rec = this.db.getSession(sessionId);
+    if (!rec) throw new ForgeError("SESSION_NOT_FOUND", "Session nicht gefunden.");
+    if (BUSY.includes(rec.status)) throw new ForgeError("SESSION_BUSY", "Claude arbeitet noch. Erst warten oder stoppen, dann in einer neuen Session weitermachen.");
+    if (!rec.claudeSessionId) throw new ForgeError("VALIDATION", "Diese Session hat noch keinen Verlauf bei Claude Code.");
+    const contextTokens = this.get(sessionId).context?.totalTokens ?? null;
+    const title = `${(rec.title ?? "Session").replace(/ \(Fortsetzung\)$/, "")} (Fortsetzung)`;
+    const claudeSessionId = await this.runtime.forkTranscript(rec.claudeSessionId, rec.cwd, null, title);
+    const now = new Date().toISOString();
+    const next = { ...rec, id: randomUUID(), claudeSessionId, title, status: "stopped" as const, apiKeySource: null, createdAt: now, updatedAt: now, lastError: null };
+    this.db.insertSession(next);
+    this.core.record(next.id, { type: "session.handoff", direction: "from", otherSessionId: rec.id, otherTitle: rec.title, contextTokens });
+    this.core.record(rec.id, { type: "session.handoff", direction: "to", otherSessionId: next.id, otherTitle: title, contextTokens });
+    this.core.publish(next);
+    return this.send(next.id, HANDOFF_COMPACT, [], "auto");
   }
 
   /**

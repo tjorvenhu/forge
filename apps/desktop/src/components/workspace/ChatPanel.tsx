@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useVirtualizer, type VirtualItem } from "@tanstack/react-virtual";
-import { History, MessageSquarePlus, RotateCcw, Terminal } from "lucide-react";
+import { History, MessageSquarePlus, RotateCcw, Search, Terminal } from "lucide-react";
 import type { ExternalSession, Project, Session, SessionEvent } from "@forge/protocol";
 import { useOlderHistory, useSession, useSessionHistory, useSessions } from "@/lib/queries";
 import { isWorking } from "@/lib/working";
@@ -14,13 +14,16 @@ import { ChatColumnSkeleton, Skeleton } from "@/components/ui/skeleton";
 import { Arrivals } from "@/lib/arrivals";
 import { usePending, usePendingMessages } from "@/stores/pending-messages";
 import { useInChatWindow } from "@/lib/chat-windows";
+import { selectedSeed, useChatFindTarget } from "@/lib/chat-find";
+import { addContextItems } from "@/lib/context-menu";
 import { PendingMessages } from "./PendingMessages";
+import { ChatFindBar, type FindRequest } from "./ChatFindBar";
 import { InChatWindowPane } from "./InChatWindowPane";
 import { appendStreaming, IncrementalItems, itemIndexForSeq, lastUserPrompt, reuseStableItems, rowSpacing, startsAnswer, type ChatItem, type RowSpacing } from "./chat-items";
 import { Composer } from "./Composer";
 import { SessionBar } from "./SessionBar";
 import { ChatSurface } from "./chat-surface";
-import { ChatSlotContext, MAIN_SLOT, useChatSlot, type ChatSlot } from "./chat-slot";
+import { ChatSlotContext, focusComposer, MAIN_SLOT, useChatSlot, type ChatSlot } from "./chat-slot";
 import { FileLinkContext, type FileLinkTarget } from "./file-links";
 import { ItemView } from "./ChatItemView";
 import { BackgroundIndicator, WorkingIndicator } from "./WorkingIndicator";
@@ -80,6 +83,15 @@ export function ChatPanel({ project, detached = false, pane }: { project: Projec
   const settled = (pane ? !pane.pick : mainSettled) || sessions.isError;
   const shownElsewhere = useShownElsewhere(project.id, active);
 
+  // Search in the chat (Ctrl+F, palette, context menu) instead of the WebView's find.
+  const [find, setFind] = useState<FindRequest | null>(null);
+  const openFind = useCallback((seed: string) => setFind((f) => ({ seed, n: (f?.n ?? 0) + 1 })), []);
+  const closeFind = useCallback(() => {
+    setFind(null);
+    focusComposer(slot);
+  }, [slot]);
+  useChatFindTarget(surface, paneId, openFind);
+
   // First open of a project (in a split pane: opened without a session): pick the most recent session
   // instead of an empty chat, but not one that is on screen already.
   const didAutoSelect = useRef<string | null>(null);
@@ -99,7 +111,18 @@ export function ChatPanel({ project, detached = false, pane }: { project: Projec
   if (!settled) return <ChatPanelSkeleton detached={detached} />;
 
   return (
-    <div ref={setSurface} data-split-pane={paneId ?? undefined} className="chat-surface relative flex h-full min-h-0 flex-col">
+    <div
+      ref={setSurface}
+      data-split-pane={paneId ?? undefined}
+      className="chat-surface relative flex h-full min-h-0 flex-col"
+      onContextMenu={(e) => {
+        if (e.target instanceof Element && e.target.closest("textarea, input")) return;
+        const seed = selectedSeed(e.currentTarget);
+        addContextItems(e, [
+          { label: seed ? `„${seed.length > 30 ? `${seed.slice(0, 30)}…` : seed}“ im Chat suchen` : "Im Chat suchen", icon: <Search className="h-3.5 w-3.5" />, hint: "Strg+F", onSelect: () => openFind(seed) },
+        ]);
+      }}
+    >
       <ChatSlotContext.Provider value={slot}>
       <FileLinkContext.Provider value={fileLinks}>
       <ChatSurface.Provider value={surface}>
@@ -115,6 +138,7 @@ export function ChatPanel({ project, detached = false, pane }: { project: Projec
         pane={pane}
         shownElsewhere={shownElsewhere}
       />
+      {find && <ChatFindBar request={find} projectId={project.id} sessionId={sessionId} detached={detached} onClose={closeFind} />}
       {sessionId && elsewhere ? (
         <InChatWindowPane project={project} sessionId={sessionId} title={session.data?.title ?? null} />
       ) : sessionId ? (
@@ -258,6 +282,8 @@ function SessionThread({ sessionId, session, project }: { sessionId: string; ses
   // A search hit asked for this session: scroll to the message once the history is there.
   const focus = useUi((s) => s.focusEvent);
   const [highlight, setHighlight] = useState<string | null>(null);
+  // The row of the last hit stays marked for the search in the chat (stronger marks inside it).
+  const [focused, setFocused] = useState<string | null>(null);
   const oldestSeq = events[0]?.seq;
   useEffect(() => {
     if (!focus || focus.sessionId !== sessionId || !buffer?.loaded) return;
@@ -280,6 +306,7 @@ function SessionThread({ sessionId, session, project }: { sessionId: string; ses
     // Item heights are measured while scrolling; a second pass lands on the final position.
     requestAnimationFrame(() => virtualizer.scrollToIndex(i, { align: "center" }));
     setHighlight(items[i]!.key);
+    setFocused(items[i]!.key);
   }, [focus, sessionId, buffer?.loaded, items, virtualizer, oldestSeq, loadUntil, follow]);
   useEffect(() => {
     if (!highlight) return;
@@ -351,6 +378,7 @@ function SessionThread({ sessionId, session, project }: { sessionId: string; ses
       <div className="relative flex min-h-0 flex-1 animate-view-in flex-col">
       <div
         ref={scrollRef}
+        data-chat-thread
         className="chat-fade-top min-h-0 flex-1 overflow-y-auto"
         onWheel={(e) => follow.wheel(e.deltaY, performance.now())}
         onKeyDown={(e) => {
@@ -383,6 +411,7 @@ function SessionThread({ sessionId, session, project }: { sessionId: string; ses
             {virtualizer.getVirtualItems().map((v) => (
               <div key={v.key} data-index={v.index} ref={virtualizer.measureElement} className={cn("absolute left-0 right-0 px-6", ROW_SPACING[rowSpacing(items[v.index - 1], items[v.index]!)])} style={{ transform: `translateY(${v.start}px)` }}>
                 <div
+                  data-find-current={focused === items[v.index]!.key || undefined}
                   className={cn(
                     "rounded-md transition-shadow duration-500",
                     highlight === items[v.index]!.key && "ring-2 ring-accent/60 ring-offset-4 ring-offset-bg",

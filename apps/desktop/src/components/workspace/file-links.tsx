@@ -47,17 +47,19 @@ const FILE_EXTENSIONS = new Set(
 
 const LINE = String.raw`(?::(\d+)(?::\d+)?|#L(\d+)(?:-L?\d+)?)?`;
 /** A path with at least one folder and a file extension, e.g. src/app.ts, ./a/b.tsx:12, C:\x\y.md */
-const PATH = String.raw`(?:[A-Za-z]:[\\/]|\.{1,2}[\\/]|[\\/])?(?:[\w@.()\[\]+-]+[\\/])+[\w@.+-]*\.[A-Za-z][A-Za-z0-9]{0,9}`;
+const PATH = String.raw`(?:[A-Za-z]:[\\/]{1,2}|\.{1,2}[\\/]|[\\/])?(?:[\w@.()\[\]+-]+[\\/]{1,2})+[\w@.+-]*\.[A-Za-z][A-Za-z0-9]{0,9}`;
 /** An absolute Windows path without an extension, i.e. a folder: C:\x\y or Git Bash's /c/x/y */
-const ABS_DIR = String.raw`(?:[A-Za-z]:[\\/]|\/[A-Za-z]\/)[\w@.+-]+(?:[\\/][\w@.+-]+)*[\\/]?`;
+const ABS_DIR = String.raw`(?:[A-Za-z]:[\\/]{1,2}|\/[A-Za-z]\/)[\w@.+-]+(?:[\\/]{1,2}[\w@.+-]+)*[\\/]?`;
 const PATH_IN_TEXT = new RegExp(String.raw`(?<![\w/\\.:@-])(?:(${PATH})|(${ABS_DIR}))${LINE}(?![\w/\\])`, "g");
 const WHOLE_PATH = new RegExp(String.raw`^(${PATH})${LINE}$`);
 /** In inline code or a link the whole text is the path, so spaces are fine (C:\Program Files\Git). */
-const WHOLE_ABS = /^((?:[A-Za-z]:[\\/]|\/[A-Za-z]\/)[\w@.()+ -]*(?:[\\/][\w@.()+ -]+)*[\\/]?)$/;
+const WHOLE_ABS = /^((?:[A-Za-z]:[\\/]{1,2}|\/[A-Za-z]\/)[\w@.()+ -]*(?:[\\/]{1,2}[\w@.()+ -]+)*[\\/]?)$/;
 const BARE_NAME = new RegExp(String.raw`^([\w@.+-]+\.([A-Za-z][A-Za-z0-9]{0,9}))${LINE}$`);
 /** github.com/org/repo.git and the like: hosts, not folders */
 const HOST = /^[\w-]+(?:\.[\w-]+)*\.(?:com|de|org|net|io|dev|app|co|ai|eu)\//i;
 const HAS_EXTENSION = /\.[A-Za-z][A-Za-z0-9]{0,9}$/;
+/** A quoted string in a command or JSON; its whole content may be a path with spaces. */
+const QUOTED = /(["'])([^"'\r\n]+)\1/g;
 
 const lineOf = (a?: string, b?: string) => (a ? Number(a) : b ? Number(b) : null);
 
@@ -65,6 +67,8 @@ const lineOf = (a?: string, b?: string) => (a ? Number(a) : b ? Number(b) : null
 function normalize(raw: string): string {
   return raw
     .replace(/\\/g, "/")
+    // JSON escapes backslashes: C:\\Users\\x
+    .replace(/(?<=.)\/{2,}/g, "/")
     .replace(/^\/([A-Za-z])\//, (_, d: string) => `${d.toUpperCase()}:/`)
     .replace(/(?<=.)[./]+$/, "");
 }
@@ -92,7 +96,18 @@ export function parseFileRef(raw: string): FileRef | null {
  */
 export function findFileRefs(text: string): Array<{ start: number; end: number; ref: FileRef }> {
   const out: Array<{ start: number; end: number; ref: FileRef }> = [];
+  // In quotes the end of a path is clear, so it may have spaces: cd "C:/Users/x/claude.ai Work/a".
+  for (const m of text.matchAll(QUOTED)) {
+    const inner = m[2]!;
+    if (!/\s/.test(inner)) continue;
+    const ref = parseFileRef(inner);
+    if (!ref || ref.bare) continue;
+    const start = m.index + 1;
+    out.push({ start, end: start + inner.length, ref });
+  }
+  const quoted = [...out];
   for (const m of text.matchAll(PATH_IN_TEXT)) {
+    if (quoted.some((q) => m.index < q.end && m.index + m[0].length > q.start)) continue;
     const file = m[1];
     if (file && HOST.test(file)) continue;
     let end = m.index + m[0].length;
@@ -100,7 +115,7 @@ export function findFileRefs(text: string): Array<{ start: number; end: number; 
     if (!file) while (end > m.index && ".,".includes(text[end - 1]!)) end--;
     out.push({ start: m.index, end, ref: { path: normalize(file ?? m[2]!), line: lineOf(m[3], m[4]), bare: false, isFile: !!file } });
   }
-  return out;
+  return out.sort((a, b) => a.start - b.start);
 }
 
 /** The path inside the project, or null when an absolute path lies outside of it. */

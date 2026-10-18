@@ -82,6 +82,28 @@ describe("full-text search over session timelines", () => {
     expect(db.searchEvents("((( ***", 10)).toEqual([]);
   });
 
+  it("narrows hits to a session or project, finds exact phrases and lists them newest first", async () => {
+    addSession("a", "Erste");
+    addSession("b", "Zweite");
+    db.appendEvent("a", { type: "user.message", text: "Der Webhook für Stripe fehlt noch." });
+    db.appendEvent("a", { type: "assistant.text", messageId: "m1", index: 0, text: "Stripe Webhook ist jetzt in api/stripe.ts." });
+    db.appendEvent("a", { type: "tool.use", toolUseId: "t1", name: "Read", input: { file_path: "src/stripe/webhook.ts" }, parentToolUseId: null });
+    db.appendEvent("b", { type: "user.message", text: "Webhook von Stripe testen" });
+
+    // All words in any order; tool calls with their paths count too.
+    expect(db.searchEvents("webhook stripe", 10, { sessionId: "a", order: "time" }).map((h) => h.seq)).toEqual([3, 2, 1]);
+    expect(db.searchEvents("webhook stripe", 10, { sessionId: "b" }).map((h) => h.sessionId)).toEqual(["b"]);
+    // Exact phrase: only where the words stand in this order next to each other.
+    expect(db.searchEvents("stripe webhook", 10, { phrase: true }).map((h) => `${h.sessionId}:${h.seq}`).sort()).toEqual(["a:2", "a:3"]);
+    expect(db.searchEvents("stripe webh", 10, { phrase: true, sessionId: "a" })).toHaveLength(2);
+
+    // Sessions of other projects stay out.
+    mkdirSync(path.join(t.dir, "other"));
+    const other = (await projects.import(path.join(t.dir, "other"))).id;
+    expect(db.searchEvents("stripe", 10, { projectId: other })).toEqual([]);
+    expect(db.searchEvents("stripe", 10, { projectId })).toHaveLength(4);
+  });
+
   it("drops hits together with the session", () => {
     addSession("s3", "weg");
     db.appendEvent("s3", { type: "user.message", text: "Einmalig Zitronenfalter" });

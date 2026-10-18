@@ -320,6 +320,18 @@ export const SessionEventBody = z.discriminatedUnion("type", [
     message: z.string(),
   }),
   z.object({ type: z.literal("status"), status: SessionStatus, detail: z.string().nullable() }),
+  /**
+   * A long session handed over to a new one (sessions.handoff). In the new session `direction` is "from"
+   * (it continues the other one), in the old one "to" (it goes on in the other one).
+   */
+  z.object({
+    type: z.literal("session.handoff"),
+    direction: z.enum(["from", "to"]),
+    otherSessionId: z.string(),
+    otherTitle: z.string().nullable(),
+    /** context of the old session when it was handed over */
+    contextTokens: z.number().nullable(),
+  }),
   /** Claude asked FORGE to get the user's attention (tool notify); urgent ones may ring the phone */
   z.object({ type: z.literal("notify"), message: z.string(), urgent: z.boolean() }),
   z.object({
@@ -498,6 +510,8 @@ export const Settings = z.object({
   autoContinueAfterLimit: z.boolean(),
   /** minutes without activity after which FORGE ends the idle CLI process of a session; 0 never */
   idleCloseMinutes: z.number().int().min(0).max(1440),
+  /** context size (tokens) from which the composer suggests going on in a new session; 0 never */
+  longSessionTokens: z.number().int().min(0).max(2_000_000),
   /** look for new FORGE releases on GitHub (start and every 30 minutes) */
   updateChecks: z.boolean(),
   /** Windows notifications when Claude is done, needs a decision or fails */
@@ -553,6 +567,9 @@ export const UiCompare = z.object({
   error: z.string().nullable(),
 });
 export type UiCompare = z.infer<typeof UiCompare>;
+
+/** Choices for longSessionTokens in the settings; 0 is off. */
+export const LONG_SESSION_CHOICES = [0, 100_000, 200_000, 400_000, 800_000] as const;
 
 /** Choices for idleCloseMinutes in the settings; 0 is off. */
 export const IDLE_CLOSE_CHOICES = [0, 15, 30, 60, 120, 240] as const;
@@ -968,6 +985,19 @@ export const SearchHit = z.object({
   snippet: z.string(),
 });
 export type SearchHit = z.infer<typeof SearchHit>;
+
+/** Narrows a full-text search; without fields it covers every session, best matches first. */
+export const SearchFilter = z.object({
+  /** only this session */
+  sessionId: z.string().min(1).max(100).optional(),
+  /** only the sessions of this project, the worktrees of its agents included */
+  projectId: z.string().min(1).max(100).optional(),
+  /** the words in this order, next to each other */
+  phrase: z.boolean().optional(),
+  /** time: newest first instead of best first, to step through a chat */
+  order: z.enum(["rank", "time"]).optional(),
+});
+export type SearchFilter = z.infer<typeof SearchFilter>;
 
 export const DevServerState = z.object({
   projectId: z.string(),

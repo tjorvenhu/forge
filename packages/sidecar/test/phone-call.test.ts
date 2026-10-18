@@ -1211,6 +1211,11 @@ describe("PhoneService end to end with a test PBX", () => {
     db.appendEvent("s1", { type: "assistant.text", messageId: "m1", index: 0, text: "Der Stripe-Webhook liegt in api/stripe.ts." });
     expect(await conv.tools.search("stripe webhook")).toMatch(/^S1 <<<SESSION-DATEN>>>Warenkorb<<<ENDE SESSION-DATEN>>> im Projekt shop: <<<SESSION-DATEN>>>.*Stripe-Webhook/);
     expect(await conv.tools.search("zitronenfalter")).toBe("Dazu steht in keiner Session etwas.");
+    // In one session: its places, newest first; in one project: only its sessions.
+    expect(await conv.tools.search("webhook stripe", { session: "S1" })).toMatch(/^In S1 <<<SESSION-DATEN>>>Warenkorb<<<ENDE SESSION-DATEN>>>:\n.*, Claude: <<<SESSION-DATEN>>>.*Stripe-Webhook/);
+    expect(await conv.tools.search("zitronenfalter", { session: "S1" })).toBe("Dazu steht in S1 nichts.");
+    expect(await conv.tools.search("stripe", { project: "shop" })).toMatch(/^S1 /);
+    expect(await conv.tools.search("stripe", { project: "gibtsnicht" })).toMatch(/^Fehler: Kein Projekt/);
     await byeFromPbx("c-tasks", inv, ok);
   }, 30_000);
 
@@ -1601,6 +1606,7 @@ describe("PhoneService end to end with a test PBX", () => {
         prompt: "Baue den Warenkorb",
         filesChanged: null,
       }),
+      "sessions.handoff": () => fakeSession({ id: "s8", projectId, title: "Warenkorb (Fortsetzung)", status: "running", live: true, projectName: "shop" }),
       "sessions.delete": (p: { deleteTranscript: boolean }) => ({ deleted: true, transcriptDeleted: p.deleteTranscript }),
       "sessions.deleteAll": () => ({ deleted: ["s1", "s2"], failed: 0, error: null }),
       "sessions.edit": () => fakeSession({ id: "s1", projectId, title: "Warenkorb", status: "running", live: true, projectName: "shop" }),
@@ -1620,6 +1626,8 @@ describe("PhoneService end to end with a test PBX", () => {
       "Neuer Zweig S3 von S1 angelegt. Er wartet und läuft mit send_message weiter. Die weggelassene Nachricht war: <<<SESSION-DATEN>>>Baue den Warenkorb<<<ENDE SESSION-DATEN>>>",
     );
     expect(rpcCalls.at(-1)).toEqual(["sessions.fork", { sessionId: "s1", beforeSeq: 1, rewindFiles: false }]);
+    expect(await conv.tools.sessions("handoff", { session: "S1" })).toMatch(/^S1 geht in der neuen Session S4 weiter\. Claude fasst den Verlauf gerade als Übergabe zusammen/);
+    expect(rpcCalls.at(-1)).toEqual(["sessions.handoff", { sessionId: "s1" }]);
 
     expect(await conv.tools.sessions("edit", { session: "S1" })).toBe("Fehler: Wie soll die Nachricht neu lauten?");
     expect(await conv.tools.sessions("edit", { session: "S1", text: "Füge Tests für den Rabatt hinzu" })).toBe(

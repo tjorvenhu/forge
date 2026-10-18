@@ -449,6 +449,8 @@ function settingText(s: Settings, key: keyof ForgeSettingsPatch | "alwaysOnTop")
       return m.settings.autoContinue(s.autoContinueAfterLimit);
     case "idleCloseMinutes":
       return s.idleCloseMinutes > 0 ? m.settings.idleClose(s.idleCloseMinutes) : m.settings.idleOpen;
+    case "longSessionTokens":
+      return s.longSessionTokens > 0 ? `Hinweis auf lange Sessions ab ${Math.round(s.longSessionTokens / 1000)} Tausend Tokens Kontext` : "kein Hinweis auf lange Sessions";
     case "updateChecks":
       return m.settings.updateChecks(s.updateChecks);
     case "learnTemplates":
@@ -2607,6 +2609,13 @@ export class PhoneService {
             await call("sessions.edit", { sessionId: s.id, seq: prompt.seq, text });
             return sm.edited(excerptData(prompt.text, 120), r);
           }
+          if (action === "handoff") {
+            const tokens = s.context?.totalTokens;
+            const next = await call("sessions.handoff", { sessionId: s.id });
+            a.focus = next.id;
+            const size = tokens ? ` Die alte hatte ${Math.round(tokens / 1000)} Tausend Tokens Kontext.` : "";
+            return `${r} geht in der neuen Session ${refFor(next.id)} weiter. Claude fasst den Verlauf gerade als Übergabe zusammen, danach läuft sie mit send_message weiter; Nachrichten bis dahin warten.${size} ${r} bleibt unverändert.`;
+          }
           const before = o?.messagesBack ? await promptBack(s.id, o.messagesBack) : null;
           const res = await call("sessions.fork", { sessionId: s.id, beforeSeq: before?.seq, rewindFiles: o?.rewindFiles === true });
           const files = res.filesChanged?.length ? sm.forkFiles(res.filesChanged.length) : "";
@@ -2742,6 +2751,10 @@ export class PhoneService {
             update.idleCloseMinutes = Math.min(1440, Math.max(0, Math.round(patch.idleCloseMinutes)));
             changed.push("idleCloseMinutes");
           }
+          if (patch.longSessionTokens !== undefined) {
+            update.longSessionTokens = Math.min(2_000_000, Math.max(0, Math.round(patch.longSessionTokens)));
+            changed.push("longSessionTokens");
+          }
           if (patch.defaultProfile) {
             update.defaultProfile = patch.defaultProfile;
             changed.push("defaultProfile");
@@ -2757,7 +2770,7 @@ export class PhoneService {
             update.disabledPolicyRules = patch.policyRuleOn ? off : [...off, rule];
             changed.push("policyRule");
           }
-          if (!changed.length) return `${(["defaultModel", "defaultEffort", "defaultProfile", "defaultProjectDir", ...flags, "idleCloseMinutes", "alwaysOnTop", "policyRule"] as const).map((k) => settingText(cur, k)).join(", ")}.`;
+          if (!changed.length) return `${(["defaultModel", "defaultEffort", "defaultProfile", "defaultProjectDir", ...flags, "idleCloseMinutes", "longSessionTokens", "alwaysOnTop", "policyRule"] as const).map((k) => settingText(cur, k)).join(", ")}.`;
           const next = await call("settings.update", update);
           return tr().phone.settings.saved(changed.map((k) => settingText(next, k)).join(", "));
         }),
@@ -2947,19 +2960,29 @@ export class PhoneService {
           const r = await call("backup.restore", { id: b.id, parts });
           return sy.restoredBackup(dateTime(b.createdAt), r.restored.map((x) => sy.backupParts[x]).join(", "), r.notes.join(" "), phone);
         }),
-      search: (query) =>
+      search: (query, o) =>
         run(true, async () => {
-          if (!query.trim()) return tr().phone.search.what;
+          if (!query.trim()) return "Fehler: Wonach soll ich suchen?";
+          const plain = (snippet: string) => snippet.split(SEARCH_MARK_START).join("").split(SEARCH_MARK_END).join("");
+          if (o?.session?.trim()) {
+            // In one session: its places, newest first.
+            const s = resolve(o.session);
+            const hits = db.searchEvents(query, 5, { sessionId: s.id, phrase: o.phrase, order: "time" });
+            if (!hits.length) return `Dazu steht in ${refFor(s.id)} nichts.`;
+            const who = { user: "Anrufer", assistant: "Claude", tool: "Werkzeug" } as const;
+            return [`In ${refFor(s.id)} ${asData(s.title ?? "ohne Titel")}:`, ...hits.map((h) => `${dateTime(h.ts)}, ${who[h.role]}: ${excerptData(plain(h.snippet), 300)}`)].join("\n");
+          }
+          const p = o?.project?.trim() ? findProject(o.project) : null;
           const lines: string[] = [];
           const seen = new Set<string>();
           // One line per session, its best hit first.
-          for (const h of db.searchEvents(query, 30)) {
+          for (const h of db.searchEvents(query, 30, { projectId: p?.id, phrase: o?.phrase })) {
             if (seen.has(h.sessionId) || lines.length >= 5) continue;
             seen.add(h.sessionId);
-            const snippet = h.snippet.split(SEARCH_MARK_START).join("").split(SEARCH_MARK_END).join("");
-            lines.push(tr().phone.search.line(refFor(h.sessionId), asData(h.sessionTitle ?? tr().phone.untitled), h.projectName, excerptData(snippet, 300)));
+            lines.push(`${refFor(h.sessionId)} ${asData(h.sessionTitle ?? "ohne Titel")} im Projekt ${h.projectName}: ${excerptData(plain(h.snippet), 300)}`);
           }
-          return lines.length ? lines.join("\n") : tr().phone.search.none;
+          if (lines.length) return lines.join("\n");
+          return p ? `Dazu steht in keiner Session von ${p.name} etwas.` : "Dazu steht in keiner Session etwas.";
         }),
       callSettings: (patch) =>
         run(Object.values(patch).some((v) => v !== undefined), async () => {
