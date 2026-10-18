@@ -8,6 +8,8 @@ use std::sync::Mutex;
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, Runtime, WebviewWindow, WebviewWindowBuilder};
 
+use crate::i18n::tr;
+
 pub const MAIN: &str = "main";
 pub const PREFIX: &str = "chat-";
 /// Window entry in tauri.conf.json with `"create": false`; size and backdrop of chat windows live there.
@@ -79,17 +81,17 @@ impl ChatTarget {
     fn validate(&self) -> Result<(), String> {
         let id_ok = |s: &str| !s.is_empty() && s.len() <= MAX_ID;
         if !id_ok(&self.project_id) || !self.session_id.as_deref().map_or(true, id_ok) {
-            return Err("Ungültige Session".into());
+            return Err(tr!("Invalid session", "Ungültige Session"));
         }
         if self.draft.as_ref().is_some_and(|d| d.len() > MAX_DRAFT) {
-            return Err("Entwurf zu groß".into());
+            return Err(tr!("Draft too large", "Entwurf zu groß"));
         }
         if self.files.len() > MAX_FILES || self.files.iter().any(|f| f.name.len() > MAX_FILE_NAME || !f.attachment.is_object()) {
-            return Err("Ungültige Anhänge".into());
+            return Err(tr!("Invalid attachments", "Ungültige Anhänge"));
         }
         let bytes: usize = self.files.iter().map(|f| f.attachment.to_string().len()).sum();
         if bytes > MAX_FILES_BYTES {
-            return Err("Anhänge zu groß für ein eigenes Fenster".into());
+            return Err(tr!("Attachments too large for a separate window", "Anhänge zu groß für ein eigenes Fenster"));
         }
         Ok(())
     }
@@ -211,9 +213,9 @@ pub async fn open_chat_window(app: AppHandle, target: ChatTarget, title: String,
     let drag = drag.unwrap_or(false);
     let pinned = pinned.unwrap_or(false);
     target.validate()?;
-    let session_id = target.session_id.clone().ok_or("Ungültige Session")?;
-    let base = label_for(&session_id).ok_or("Ungültige Session")?;
-    let mut config = app.config().app.windows.iter().find(|w| w.label == TEMPLATE).cloned().ok_or("Fenstervorlage fehlt")?;
+    let session_id = target.session_id.clone().ok_or_else(|| tr!("Invalid session", "Ungültige Session"))?;
+    let base = label_for(&session_id).ok_or_else(|| tr!("Invalid session", "Ungültige Session"))?;
+    let mut config = app.config().app.windows.iter().find(|w| w.label == TEMPLATE).cloned().ok_or_else(|| tr!("Window template missing", "Fenstervorlage fehlt"))?;
     // serde_json output is a valid JS expression; the page reads it before any of its own scripts run.
     let script = format!("window.__FORGE_CHAT__ = {};", serde_json::to_string(&target).map_err(|e| e.to_string())?);
     let state = app.state::<ChatWindows>();
@@ -277,7 +279,7 @@ pub async fn open_chat_window(app: AppHandle, target: ChatTarget, title: String,
         }
         Err(e) => {
             state.shown.lock().unwrap().remove(&label);
-            Err(format!("Fenster konnte nicht geöffnet werden ({e})."))
+            Err(tr!("Could not open the window ({e}).", "Fenster konnte nicht geöffnet werden ({e})."))
         }
     }
 }
@@ -313,7 +315,7 @@ pub fn chat_windows(state: tauri::State<'_, ChatWindows>) -> ChatWindowList {
 #[tauri::command]
 pub fn update_chat_window(app: AppHandle, window: WebviewWindow, session_id: Option<String>, title: String) -> Result<(), String> {
     if session_id.as_ref().is_some_and(|s| s.is_empty() || s.len() > MAX_ID) {
-        return Err("Ungültige Session".into());
+        return Err(tr!("Invalid session", "Ungültige Session"));
     }
     let state = app.state::<ChatWindows>();
     let changed = {
@@ -348,11 +350,11 @@ pub fn chat_window_on_top(app: AppHandle, window: WebviewWindow, session_id: Opt
     let state = app.state::<ChatWindows>();
     let target = match session_id {
         Some(id) => {
-            let label = label_of(&state.shown.lock().unwrap(), &id).ok_or("Die Session ist in keinem eigenen Fenster offen.")?;
-            app.get_webview_window(&label).ok_or("Das Fenster ist schon geschlossen.")?
+            let label = label_of(&state.shown.lock().unwrap(), &id).ok_or_else(|| tr!("The session is not open in its own window.", "Die Session ist in keinem eigenen Fenster offen."))?;
+            app.get_webview_window(&label).ok_or_else(|| tr!("The window is already closed.", "Das Fenster ist schon geschlossen."))?
         }
         None if window.label().starts_with(PREFIX) => window,
-        None => return Err("Kein Chat-Fenster".into()),
+        None => return Err(tr!("Not a chat window", "Kein Chat-Fenster")),
     };
     if let Some(on) = on {
         state.pin(&app, &target, on)?;
@@ -395,9 +397,9 @@ pub fn open_session<R: Runtime>(app: &AppHandle<R>, project_id: &str, session_id
 pub async fn reattach_chat_window(app: AppHandle, window: WebviewWindow, target: ChatTarget) -> Result<(), String> {
     target.validate()?;
     if !window.label().starts_with(PREFIX) {
-        return Err("Kein Chat-Fenster".into());
+        return Err(tr!("Not a chat window", "Kein Chat-Fenster"));
     }
-    let main = app.get_webview_window(MAIN).ok_or("Hauptfenster fehlt")?;
+    let main = app.get_webview_window(MAIN).ok_or_else(|| tr!("Main window missing", "Hauptfenster fehlt"))?;
     app.emit_to(MAIN, REATTACH, target).map_err(|e| e.to_string())?;
     bring_to_front(&main);
     // Not close(): the window would hand its (now empty) draft back a second time on the way out.

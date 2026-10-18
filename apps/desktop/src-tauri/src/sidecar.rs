@@ -15,6 +15,7 @@ use std::time::{Duration, Instant};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager};
 
+use crate::i18n::tr;
 use crate::job;
 
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
@@ -86,7 +87,7 @@ fn sidecar_script(runtime: Option<&PathBuf>) -> Result<PathBuf, String> {
     }
     match runtime.map(|r| r.join("sidecar").join("sidecar.mjs")) {
         Some(p) if p.exists() => Ok(p),
-        _ => Err("Sidecar nicht gefunden. Die Installation ist unvollständig.".into()),
+        _ => Err(tr!("Sidecar not found. The installation is incomplete.", "Sidecar nicht gefunden. Die Installation ist unvollständig.")),
     }
 }
 
@@ -138,16 +139,16 @@ impl Sidecar {
         cmd.creation_flags(CREATE_NO_WINDOW);
 
         let mut child = cmd.spawn().map_err(|e| {
-            let msg = format!("Node.js konnte nicht gestartet werden ({e}).");
+            let msg = tr!("Could not start Node.js ({e}).", "Node.js konnte nicht gestartet werden ({e}).");
             let _ = app.emit("sidecar://exit", ExitPayload { code: None, stderr: msg.clone() });
             msg
         })?;
         let job = job::Job::for_child(&child).map_err(|e| eprintln!("[forge] job object failed: {e}")).ok();
 
         let gen = self.generation.fetch_add(1, Ordering::SeqCst) + 1;
-        let stdout = child.stdout.take().ok_or("kein stdout")?;
-        let stderr = child.stderr.take().ok_or("kein stderr")?;
-        let mut stdin = child.stdin.take().ok_or("kein stdin")?;
+        let stdout = child.stdout.take().ok_or_else(|| tr!("no stdout", "kein stdout"))?;
+        let stderr = child.stderr.take().ok_or_else(|| tr!("no stderr", "kein stderr"))?;
+        let mut stdin = child.stdin.take().ok_or_else(|| tr!("no stdin", "kein stdin"))?;
         let (tx, rx) = mpsc::channel::<String>();
         thread::spawn(move || {
             for line in rx {
@@ -240,8 +241,8 @@ impl Sidecar {
     /// Queues one protocol line; never blocks on the pipe.
     pub fn send(&self, line: &str) -> Result<(), String> {
         let guard = self.input.lock().unwrap();
-        let tx = guard.as_ref().ok_or("Hintergrunddienst läuft nicht")?;
-        tx.send(line.to_owned()).map_err(|_| "Hintergrunddienst läuft nicht".to_string())
+        let tx = guard.as_ref().ok_or_else(|| tr!("Background service is not running", "Hintergrunddienst läuft nicht"))?;
+        tx.send(line.to_owned()).map_err(|_| tr!("Background service is not running", "Hintergrunddienst läuft nicht"))
     }
 
     pub fn is_running(&self) -> bool {

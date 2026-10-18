@@ -13,6 +13,8 @@ use serde::{Deserialize, Serialize};
 use tauri::ipc::{InvokeBody, Request, Response};
 use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, WebviewUrl, WebviewWindowBuilder};
 
+use crate::i18n::tr;
+
 /// Label of the overlay window. Built hidden once the Print key is on, and then only hidden, so it opens at once.
 pub const OVERLAY: &str = "screenshot";
 /// To the overlay: a new capture is ready (payload: FrameInfo).
@@ -246,7 +248,7 @@ pub fn screenshot_frame(state: tauri::State<'_, Screenshots>) -> Option<FrameInf
 #[tauri::command]
 pub async fn screenshot_image(state: tauri::State<'_, Screenshots>, id: u64) -> Result<Response, String> {
     let frame = state.frame.lock().unwrap();
-    let f = frame.as_ref().filter(|f| f.id == id).ok_or("Aufnahme nicht mehr vorhanden")?;
+    let f = frame.as_ref().filter(|f| f.id == id).ok_or_else(|| tr!("Capture no longer available", "Aufnahme nicht mehr vorhanden"))?;
     Ok(Response::new(bmp::file(f.width, f.height, &f.pixels)))
 }
 
@@ -279,13 +281,13 @@ pub async fn screenshot_take(app: AppHandle, request: Request<'_>) -> Result<(),
     let header = |k: &str| request.headers().get(k).and_then(|v| v.to_str().ok()).map(str::to_owned);
     let size = |k: &str| header(k).and_then(|v| v.parse::<u32>().ok()).filter(|n| *n > 0 && *n <= 100_000);
     let (Some(width), Some(height)) = (size("x-width"), size("x-height")) else {
-        return Err("Ungültige Bildgröße".into());
+        return Err(tr!("Invalid image size", "Ungültige Bildgröße"));
     };
     let InvokeBody::Raw(rgba) = request.body() else {
-        return Err("Bild fehlt".into());
+        return Err(tr!("Image missing", "Bild fehlt"));
     };
     if rgba.len() != width as usize * height as usize * 4 {
-        return Err("Bild passt nicht zur Größe".into());
+        return Err(tr!("Image does not match the size", "Bild passt nicht zur Größe"));
     }
     let pixels = rgba_to_bgra(rgba);
     hide(&app);
@@ -307,7 +309,7 @@ pub async fn screenshot_taken(state: tauri::State<'_, Screenshots>, id: u64) -> 
         Some((t, bytes)) if t == id => Ok(Response::new(bytes)),
         other => {
             *taken = other;
-            Err("Screenshot nicht mehr vorhanden".into())
+            Err(tr!("Screenshot no longer available", "Screenshot nicht mehr vorhanden"))
         }
     }
 }
@@ -382,11 +384,11 @@ mod grab {
             let w = GetSystemMetrics(SM_CXVIRTUALSCREEN);
             let h = GetSystemMetrics(SM_CYVIRTUALSCREEN);
             if w <= 0 || h <= 0 {
-                return Err("Kein Bildschirm gefunden".into());
+                return Err(tr!("No screen found", "Kein Bildschirm gefunden"));
             }
             let screen = GetDC(null_mut());
             if screen.is_null() {
-                return Err("Bildschirm nicht lesbar".into());
+                return Err(tr!("Could not read the screen", "Bildschirm nicht lesbar"));
             }
             let mem = CreateCompatibleDC(screen);
             let bitmap = CreateCompatibleBitmap(screen, w, h);
@@ -409,7 +411,7 @@ mod grab {
             DeleteDC(mem);
             ReleaseDC(null_mut(), screen);
             if lines != h {
-                return Err("Bildschirm nicht lesbar".into());
+                return Err(tr!("Could not read the screen", "Bildschirm nicht lesbar"));
             }
             // GDI leaves the fourth byte at 0; as alpha that would be fully transparent.
             for px in pixels.chunks_exact_mut(4) {
@@ -462,7 +464,7 @@ mod grab {
         pub pixels: Vec<u8>,
     }
     pub fn virtual_screen() -> Result<Shot, String> {
-        Err("Screenshots gibt es nur unter Windows".into())
+        Err(tr!("Screenshots are only available on Windows", "Screenshots gibt es nur unter Windows"))
     }
     pub fn windows() -> Vec<super::Rect> {
         Vec::new()
@@ -485,12 +487,12 @@ mod clip {
         unsafe {
             let mem = GlobalAlloc(GMEM_MOVEABLE, header.len() + pixels.len());
             if mem.is_null() {
-                return Err("Kein Speicher für die Zwischenablage".into());
+                return Err(tr!("Not enough memory for the clipboard", "Kein Speicher für die Zwischenablage"));
             }
             let dst = GlobalLock(mem) as *mut u8;
             if dst.is_null() {
                 GlobalFree(mem);
-                return Err("Kein Speicher für die Zwischenablage".into());
+                return Err(tr!("Not enough memory for the clipboard", "Kein Speicher für die Zwischenablage"));
             }
             std::ptr::copy_nonoverlapping(header.as_ptr(), dst, header.len());
             for (i, row) in pixels.chunks_exact(stride).rev().enumerate() {
@@ -508,7 +510,7 @@ mod clip {
             }
             if !open {
                 GlobalFree(mem);
-                return Err("Zwischenablage ist belegt".into());
+                return Err(tr!("Clipboard is in use", "Zwischenablage ist belegt"));
             }
             EmptyClipboard();
             let ok = !SetClipboardData(CF_DIB as u32, mem).is_null();
@@ -517,7 +519,7 @@ mod clip {
                 Ok(())
             } else {
                 GlobalFree(mem);
-                Err("Zwischenablage nicht beschreibbar".into())
+                Err(tr!("Could not write to the clipboard", "Zwischenablage nicht beschreibbar"))
             }
         }
     }
@@ -526,7 +528,7 @@ mod clip {
 #[cfg(not(windows))]
 mod clip {
     pub fn set_dib(_width: u32, _height: u32, _pixels: &[u8]) -> Result<(), String> {
-        Err("Zwischenablage nur unter Windows".into())
+        Err(tr!("Clipboard is only available on Windows", "Zwischenablage nur unter Windows"))
     }
 }
 

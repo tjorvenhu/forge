@@ -11,6 +11,8 @@ use std::os::windows::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+use crate::i18n::{pick, tr};
+
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 const CREATE_BREAKAWAY_FROM_JOB: u32 = 0x0100_0000;
 
@@ -23,17 +25,17 @@ pub fn expected_runtime() -> Option<&'static str> {
 /// What a release build misses in its runtime folder, for the start screen when the sidecar cannot
 /// run at all. The sidecar checks the versions too (packages/sidecar/src/update/full-install.ts).
 pub fn runtime_gaps(runtime: Option<&Path>) -> Vec<&'static str> {
-    const PARTS: [(&str, &str); 6] = [
+    let parts: [(&str, &str); 6] = [
         ("node/node.exe", "Node.js"),
         ("git/cmd/git.exe", "Git"),
         ("gh/bin/gh.exe", "GitHub CLI"),
         ("python/python.exe", "Python"),
-        ("sidecar/sidecar.mjs", "Hintergrunddienst"),
-        ("VERSIONS.json", "Versionsliste"),
+        ("sidecar/sidecar.mjs", pick("Background service", "Hintergrunddienst")),
+        ("VERSIONS.json", pick("Version list", "Versionsliste")),
     ];
     match runtime {
-        None => PARTS.iter().map(|(_, label)| *label).collect(),
-        Some(dir) => PARTS.iter().filter(|(rel, _)| !dir.join(rel).exists()).map(|(_, label)| *label).collect(),
+        None => parts.iter().map(|(_, label)| *label).collect(),
+        Some(dir) => parts.iter().filter(|(rel, _)| !dir.join(rel).exists()).map(|(_, label)| *label).collect(),
     }
 }
 
@@ -55,10 +57,10 @@ pub enum Plan {
 /// Checks the downloaded file and gets it ready; nothing is changed in the installation yet.
 pub fn prepare(path: &str) -> Result<Plan, String> {
     let dir = std::env::temp_dir().join("forge-update");
-    let file = PathBuf::from(path).canonicalize().map_err(|_| "Update nicht gefunden".to_string())?;
-    let allowed = dir.canonicalize().map_err(|_| "Kein Update heruntergeladen".to_string())?;
+    let file = PathBuf::from(path).canonicalize().map_err(|_| tr!("Update not found", "Update nicht gefunden"))?;
+    let allowed = dir.canonicalize().map_err(|_| tr!("No update downloaded", "Kein Update heruntergeladen"))?;
     if !file.starts_with(&allowed) {
-        return Err("Ungültiges Update".into());
+        return Err(tr!("Invalid update", "Ungültiges Update"));
     }
     let name = file.file_name().and_then(|n| n.to_str()).unwrap_or_default().to_ascii_lowercase();
     if name.ends_with("-setup.exe") {
@@ -67,13 +69,13 @@ pub fn prepare(path: &str) -> Result<Plan, String> {
         return Ok(Plan::Installer { file, install_dir });
     }
     if !(name.ends_with(".zip") && name.contains("_update_")) {
-        return Err("Ungültiges Update".into());
+        return Err(tr!("Invalid update", "Ungültiges Update"));
     }
 
     let exe = std::env::current_exe().map_err(|e| e.to_string())?;
-    let install_dir = exe.parent().ok_or("Installationsordner unbekannt")?.to_path_buf();
+    let install_dir = exe.parent().ok_or_else(|| tr!("Install folder unknown", "Installationsordner unbekannt"))?.to_path_buf();
     if !install_dir.join("runtime").join("VERSIONS.json").exists() {
-        return Err("Kleine Updates gehen nur in der installierten App.".into());
+        return Err(tr!("Small updates only work in the installed app.", "Kleine Updates gehen nur in der installierten App."));
     }
 
     let staged = dir.join("staged");
@@ -87,9 +89,9 @@ pub fn prepare(path: &str) -> Result<Plan, String> {
         .arg(&staged)
         .creation_flags(CREATE_NO_WINDOW)
         .output()
-        .map_err(|e| format!("Update lässt sich nicht entpacken: {e}"))?;
+        .map_err(|e| tr!("Could not unpack the update: {e}", "Update lässt sich nicht entpacken: {e}"))?;
     if !out.status.success() {
-        return Err(format!("Update lässt sich nicht entpacken: {}", String::from_utf8_lossy(&out.stderr).trim()));
+        return Err(tr!("Could not unpack the update: {}", "Update lässt sich nicht entpacken: {}", String::from_utf8_lossy(&out.stderr).trim()));
     }
     check_contents(&staged)?;
     let version = read_version(&staged.join("update.json"))?;
@@ -108,12 +110,12 @@ fn check_contents(staged: &Path) -> Result<(), String> {
     collect(staged, staged, &mut found)?;
     for rel in &found {
         if !PATCH_FILES.contains(&rel.as_str()) {
-            return Err(format!("Unerwartete Datei im Update: {rel}"));
+            return Err(tr!("Unexpected file in the update: {rel}", "Unerwartete Datei im Update: {rel}"));
         }
     }
     for needed in ["forge-desktop.exe", "runtime/sidecar/sidecar.mjs", "update.json"] {
         if !found.iter().any(|f| f == needed) {
-            return Err(format!("Im Update fehlt {needed}"));
+            return Err(tr!("{needed} is missing from the update", "Im Update fehlt {needed}"));
         }
     }
     Ok(())
@@ -136,10 +138,10 @@ fn collect(root: &Path, dir: &Path, out: &mut Vec<String>) -> Result<(), String>
 fn read_version(file: &Path) -> Result<String, String> {
     let text = std::fs::read_to_string(file).map_err(|e| e.to_string())?;
     let json: serde_json::Value = serde_json::from_str(&text).map_err(|e| e.to_string())?;
-    let v = json.get("version").and_then(|v| v.as_str()).ok_or("update.json ohne Version")?;
+    let v = json.get("version").and_then(|v| v.as_str()).ok_or_else(|| tr!("update.json has no version", "update.json ohne Version"))?;
     // Goes into the script's arguments and the registry: digits and dots only.
     if v.is_empty() || !v.chars().all(|c| c.is_ascii_digit() || c == '.') {
-        return Err("Ungültige Version im Update".into());
+        return Err(tr!("Invalid version in the update", "Ungültige Version im Update"));
     }
     Ok(v.to_string())
 }
@@ -156,7 +158,7 @@ pub fn launch(plan: Plan) -> Result<(), String> {
             if let Some(d) = dir {
                 cmd.raw_arg(d);
             }
-            cmd.spawn().map_err(|e| format!("Installer startet nicht: {e}"))?;
+            cmd.spawn().map_err(|e| tr!("Installer does not start: {e}", "Installer startet nicht: {e}"))?;
         }
         Plan::Patch { staged, script, install_dir, version } => {
             let mut cmd = Command::new("powershell.exe");
@@ -173,7 +175,7 @@ pub fn launch(plan: Plan) -> Result<(), String> {
             // Outside a job object FORGE may run in, so it survives FORGE's exit.
             let started = cmd.creation_flags(CREATE_NO_WINDOW | CREATE_BREAKAWAY_FROM_JOB).spawn();
             if started.is_err() {
-                cmd.creation_flags(CREATE_NO_WINDOW).spawn().map_err(|e| format!("Update startet nicht: {e}"))?;
+                cmd.creation_flags(CREATE_NO_WINDOW).spawn().map_err(|e| tr!("Update does not start: {e}", "Update startet nicht: {e}"))?;
             }
         }
     }
@@ -246,7 +248,7 @@ mod tests {
         std::fs::create_dir_all(dir.join("sidecar")).unwrap();
         std::fs::write(dir.join("sidecar").join("sidecar.mjs"), "").unwrap();
         // An unpacked update zip: only the sidecar.
-        assert_eq!(runtime_gaps(Some(&dir)), ["Node.js", "Git", "GitHub CLI", "Python", "Versionsliste"]);
+        assert_eq!(runtime_gaps(Some(&dir)), ["Node.js", "Git", "GitHub CLI", "Python", "Version list"]);
         for rel in ["node/node.exe", "git/cmd/git.exe", "gh/bin/gh.exe", "python/python.exe", "VERSIONS.json"] {
             let p = dir.join(rel);
             std::fs::create_dir_all(p.parent().unwrap()).unwrap();

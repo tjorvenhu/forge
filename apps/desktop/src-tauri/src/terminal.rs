@@ -15,6 +15,7 @@ use portable_pty::{native_pty_system, ChildKiller, CommandBuilder, MasterPty, Pt
 use serde::Serialize;
 use tauri::{AppHandle, Emitter};
 
+use crate::i18n::tr;
 use crate::job::Job;
 
 /// One terminal. Shared as Arc so a slow call on one terminal never holds the map lock.
@@ -117,10 +118,10 @@ fn runtime_path_entries(rt: &Path, user_base: Option<OsString>, appdata: Option<
 
 /// The webview may only start the real Claude CLI: an existing file named claude.exe or claude.cmd.
 fn validate_claude_path(p: Option<String>) -> Result<String, String> {
-    let p = p.ok_or("Claude Code nicht gefunden")?;
+    let p = p.ok_or_else(|| tr!("Claude Code not found", "Claude Code nicht gefunden"))?;
     let name = Path::new(&p).file_name().and_then(|n| n.to_str()).unwrap_or("").to_lowercase();
     if !matches!(name.as_str(), "claude.exe" | "claude.cmd") || !Path::new(&p).is_file() {
-        return Err("Ungültiger Pfad zur Claude-CLI".into());
+        return Err(tr!("Invalid path to the Claude CLI", "Ungültiger Pfad zur Claude-CLI"));
     }
     Ok(p)
 }
@@ -129,12 +130,12 @@ impl Terminals {
     pub fn open(&self, app: &AppHandle, runtime: Option<PathBuf>, req: OpenRequest) -> Result<u32, String> {
         let dir = Path::new(&req.cwd);
         if !dir.is_dir() {
-            return Err(format!("Ordner existiert nicht: {}", req.cwd));
+            return Err(tr!("Folder does not exist: {}", "Ordner existiert nicht: {}", req.cwd));
         }
         let (exe, args) = match req.program.as_str() {
             "shell" => default_shell(),
             "claude" => (validate_claude_path(req.claude_path)?, vec![]),
-            _ => return Err("Unbekanntes Programm".into()),
+            _ => return Err(tr!("Unknown program", "Unbekanntes Programm")),
         };
 
         let pty = native_pty_system();
@@ -221,11 +222,11 @@ impl Terminals {
     }
 
     fn get(&self, id: u32) -> Result<Arc<Term>, String> {
-        self.terms.lock().unwrap().get(&id).cloned().ok_or_else(|| "Terminal nicht gefunden".to_string())
+        self.terms.lock().unwrap().get(&id).cloned().ok_or_else(|| tr!("Terminal not found", "Terminal nicht gefunden"))
     }
 
     pub fn write(&self, id: u32, data: &str) -> Result<(), String> {
-        self.get(id)?.input.send(data.as_bytes().to_vec()).map_err(|_| "Terminal ist beendet".to_string())
+        self.get(id)?.input.send(data.as_bytes().to_vec()).map_err(|_| tr!("Terminal has ended", "Terminal ist beendet"))
     }
 
     pub fn resize(&self, id: u32, cols: u16, rows: u16) -> Result<(), String> {
