@@ -1,13 +1,14 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useState, type CSSProperties, type ReactNode } from "react";
 import { BarChart3, Table2 } from "lucide-react";
 import type { Totals } from "@/lib/db";
 import { formatCount, formatDayLong, formatDayShort, formatUsd } from "@/lib/format";
 import { groupModels } from "@/lib/models";
 import { planLabel, sortPlans } from "@/lib/plans";
 import { newestVersion } from "@/lib/versions";
-import { SectionTitle, Skeleton } from "./blocks";
+import { LiveDot, SectionTitle, Skeleton } from "./blocks";
+import { Reveal } from "./motion";
 
 // Charts after the daily report of the app (apps/desktop/src/components/report/usage-charts.tsx): cards
 // with title, subtitle and a table twin, columns from one baseline with a tooltip, horizontal bars.
@@ -116,7 +117,7 @@ function Columns({ columns }: { columns: Column[] }) {
               {columns.map((c, i) => (
                 <div
                   key={c.key}
-                  className={hover === i ? "col col-hover" : "col"}
+                  className={`col${hover === i ? " col-hover" : ""}${i === columns.length - 1 ? " col-latest" : ""}`}
                   tabIndex={0}
                   role="img"
                   aria-label={`${c.tip[1]}: ${c.tip[0]}`}
@@ -124,7 +125,7 @@ function Columns({ columns }: { columns: Column[] }) {
                   onFocus={() => setHover(i)}
                   onBlur={() => setHover(null)}
                 >
-                  <span className="col-bar" style={{ height: c.value > 0 ? Math.max(2, (c.value / top) * PLOT_H) : 0 }} />
+                  <span className="col-bar" style={{ height: c.value > 0 ? Math.max(2, (c.value / top) * PLOT_H) : 0, "--i": i } as CSSProperties} />
                 </div>
               ))}
             </div>
@@ -151,6 +152,8 @@ interface Bar {
   label: string;
   /** small text next to the label, e.g. "neueste" */
   tag?: string;
+  /** a pulsing live dot in the tag, for "online" */
+  liveTag?: boolean;
   value: number;
   valueText: string;
   detail: string;
@@ -159,13 +162,13 @@ interface Bar {
 }
 
 /** Horizontal bars with the value at the end of the label line; hover and focus show the details. */
-function Bars({ bars, emphasize, more }: { bars: Bar[]; emphasize?: boolean; more: number }) {
+function Bars({ bars, emphasize, more, empty = EMPTY }: { bars: Bar[]; emphasize?: boolean; more: number; empty?: string }) {
   const [hover, setHover] = useState<string | null>(null);
   const max = Math.max(1, ...bars.map((b) => b.value));
-  if (!bars.length) return <p className="chart-empty bars-empty">{EMPTY}</p>;
+  if (!bars.length) return <p className="chart-empty bars-empty">{empty}</p>;
   return (
     <ul className="hbars" onPointerLeave={() => setHover(null)}>
-      {bars.map((b) => {
+      {bars.map((b, i) => {
         const width = Math.max(1, (b.value / max) * 100);
         const muted = emphasize && !b.emphasis;
         return (
@@ -180,11 +183,16 @@ function Bars({ bars, emphasize, more }: { bars: Bar[]; emphasize?: boolean; mor
           >
             <div className="hbar-line">
               <span className="hbar-label">{b.label}</span>
-              {b.tag && <span className="hbar-tag">{b.tag}</span>}
+              {b.tag && (
+                <span className={b.liveTag ? "hbar-tag hbar-tag-live" : "hbar-tag"}>
+                  {b.liveTag && <LiveDot on />}
+                  {b.tag}
+                </span>
+              )}
               <span className="hbar-value">{b.valueText}</span>
             </div>
             <div className="hbar-track">
-              <div className={muted ? "hbar-fill hbar-fill-muted" : "hbar-fill"} style={{ width: `${width}%` }} />
+              <div className={muted ? "hbar-fill hbar-fill-muted" : "hbar-fill"} style={{ width: `${width}%`, "--i": i } as CSSProperties} />
               {hover === b.key && (
                 <div role="tooltip" className={`tooltip tooltip-bar${width > 70 ? " tip-end" : width < 30 ? " tip-start" : ""}`} style={{ left: `${width}%` }}>
                   <div className="tooltip-value">{b.valueText}</div>
@@ -216,7 +224,8 @@ export function StatsCharts({ totals }: { totals: Totals }) {
   const versions = totals.versions;
   const versionInstalls = versions.reduce((n, v) => n + v.installs, 0);
   const newest = newestVersion(versions);
-  const plans = sortPlans(totals.plans);
+  // Until an installation runs a version that sends its plan, a single "unknown" bar says nothing.
+  const plans = totals.plans.some((p) => p.plan) ? sortPlans(totals.plans) : [];
   const planInstalls = plans.reduce((n, p) => n + p.installs, 0);
   const planDetail = (p: (typeof plans)[number]) =>
     `${percent(p.installs, planInstalls)} der aktiven Installationen · ${formatCount(p.online)} gerade online${p.plan ? "" : " · ältere FORGE-Version oder ohne Claude-Abo"}`;
@@ -227,7 +236,7 @@ export function StatsCharts({ totals }: { totals: Totals }) {
         <SectionTitle>
           <span id="history">Letzte 30 Tage</span>
         </SectionTitle>
-        <div className="charts">
+        <Reveal className="charts">
           <ChartCard
             title="Tokens pro Tag"
             sub={tokenSum ? `Alle Token-Arten, zusammen ${formatCount(tokenSum)}` : "Alle Token-Arten, Tage in UTC"}
@@ -256,14 +265,14 @@ export function StatsCharts({ totals }: { totals: Totals }) {
               }))}
             />
           </ChartCard>
-        </div>
+        </Reveal>
       </section>
 
       <section aria-labelledby="models">
         <SectionTitle>
           <span id="models">Modelle</span>
         </SectionTitle>
-        <div className="charts">
+        <Reveal className="charts">
           <ChartCard
             wide
             title="Tokens nach Modell"
@@ -281,25 +290,30 @@ export function StatsCharts({ totals }: { totals: Totals }) {
               }))}
             />
           </ChartCard>
-        </div>
+        </Reveal>
       </section>
 
       <section aria-labelledby="distribution">
         <SectionTitle>
           <span id="distribution">Abos und Versionen</span>
         </SectionTitle>
-        <div className="charts">
+        <Reveal className="charts">
           <ChartCard
             title="Claude-Abos"
             sub="Aktive Installationen der letzten 30 Tage nach Abo des angemeldeten Kontos"
             rows={plans.map((p) => [planLabel(p.plan), `${plural(p.installs, "Installation", "Installationen")}, ${planDetail(p)}`])}
           >
             <Bars
+              emphasize
+              empty="Noch keine Abo-Angaben. Das Abo melden erst FORGE-Versionen nach 0.1.90."
               more={Math.max(0, plans.length - MAX_BARS)}
               bars={plans.slice(0, MAX_BARS).map((p) => ({
                 key: p.plan ?? "",
                 label: planLabel(p.plan),
                 tag: p.online ? `${formatCount(p.online)} online` : undefined,
+                liveTag: p.online > 0,
+                // the unknown ones step back to gray
+                emphasis: p.plan !== null,
                 value: p.installs,
                 valueText: formatCount(p.installs),
                 detail: planDetail(p),
@@ -325,7 +339,7 @@ export function StatsCharts({ totals }: { totals: Totals }) {
               }))}
             />
           </ChartCard>
-        </div>
+        </Reveal>
       </section>
     </>
   );

@@ -18,6 +18,8 @@
   --color-accent-fg: #ffffff;
   --color-danger: #f0605a;
   --color-danger-soft: #f0605a1f;
+  --color-success: #3fb97a;
+  --color-success-soft: #3fb97a1f;
 
   /* --font-geist-sans comes from next/font (layout.tsx) and includes its size-adjusted fallback. */
   --font-sans: var(--font-geist-sans), "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
@@ -265,6 +267,10 @@ a {
   border: 1px solid var(--color-border);
   border-radius: var(--radius-xl);
   background: var(--color-surface);
+  transition:
+    transform 180ms var(--ease-snappy),
+    border-color 180ms var(--ease-snappy),
+    background-color 180ms var(--ease-snappy);
 }
 
 .tile-head {
@@ -758,6 +764,20 @@ a {
   color: var(--color-muted);
 }
 
+.hbar-tag-live {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border-color: color-mix(in srgb, var(--color-success) 35%, transparent);
+  background: var(--color-success-soft);
+  color: var(--color-success);
+}
+
+.hbar-tag .live-dot {
+  width: 6px;
+  height: 6px;
+}
+
 .hbar-value {
   margin-left: auto;
   flex-shrink: 0;
@@ -842,6 +862,229 @@ a {
 
   .row-description {
     max-width: none;
+  }
+}
+
+/* ---- motion: entrances, live indicator, growing bars. prefers-reduced-motion below cuts them to their end state. */
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.tile-enter {
+  /* backwards, not both: a held end state would block the hover lift */
+  animation: forge-rise 560ms var(--ease-snappy) backwards;
+  animation-delay: calc(var(--i, 0) * 45ms);
+}
+
+.tile:hover {
+  transform: translateY(-2px);
+  border-color: var(--color-border-strong);
+  background: color-mix(in srgb, var(--color-surface) 85%, var(--color-surface-2));
+}
+
+/* the highlighted tile carries a faint accent glow that breathes */
+.tile-highlight {
+  position: relative;
+  overflow: hidden;
+}
+
+.tile-highlight::before {
+  position: absolute;
+  inset: -40% -10% auto auto;
+  width: 60%;
+  height: 180%;
+  background: radial-gradient(closest-side, var(--color-accent-soft), transparent);
+  content: "";
+  pointer-events: none;
+  animation: forge-breathe 6s ease-in-out infinite;
+}
+
+.tile-highlight > * {
+  position: relative;
+}
+
+@keyframes forge-rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+}
+
+@keyframes forge-breathe {
+  0%,
+  100% {
+    opacity: 0.55;
+    transform: translateX(0);
+  }
+  50% {
+    opacity: 1;
+    transform: translateX(-12%);
+  }
+}
+
+.live-dot {
+  position: relative;
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--color-subtle);
+}
+
+.tile-value .live-dot {
+  width: 10px;
+  height: 10px;
+  margin-right: 10px;
+  vertical-align: 0.12em;
+}
+
+.live-dot-on {
+  background: var(--color-success);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--color-success) 60%, transparent);
+}
+
+.live-dot-on::after {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: var(--color-success);
+  content: "";
+  animation: forge-ping 1.8s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
+
+@keyframes forge-ping {
+  75%,
+  100% {
+    opacity: 0;
+    transform: scale(2.8);
+  }
+}
+
+.live-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-right: 10px;
+  padding: 1px 8px 1px 6px;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-muted);
+}
+
+.live-badge-on {
+  border-color: color-mix(in srgb, var(--color-success) 35%, transparent);
+  background: var(--color-success-soft);
+  color: var(--color-success);
+}
+
+.reveal {
+  opacity: 0;
+  transform: translateY(14px);
+  transition:
+    opacity 600ms var(--ease-snappy),
+    transform 600ms var(--ease-snappy);
+}
+
+.reveal.in-view {
+  opacity: 1;
+  transform: none;
+}
+
+.reveal .col-bar {
+  transform-origin: bottom;
+  animation: forge-grow-y 900ms var(--ease-snappy) both paused;
+  animation-delay: calc(150ms + var(--i, 0) * 22ms);
+  transition:
+    height 700ms var(--ease-snappy),
+    background-color 120ms var(--ease-snappy);
+}
+
+.reveal .hbar-fill {
+  transform-origin: left;
+  animation: forge-grow-x 1000ms var(--ease-snappy) both paused;
+  animation-delay: calc(150ms + var(--i, 0) * 90ms);
+  transition:
+    width 700ms var(--ease-snappy),
+    background-color 120ms var(--ease-snappy);
+}
+
+.reveal.in-view .col-bar,
+.reveal.in-view .hbar-fill {
+  animation-play-state: running;
+}
+
+/* today's column is still growing: it breathes once the entrance is done */
+.reveal.in-view .col-latest .col-bar {
+  animation:
+    forge-grow-y 900ms var(--ease-snappy) both,
+    forge-shimmer 2.4s ease-in-out 1.8s infinite;
+  animation-delay: calc(150ms + var(--i, 0) * 22ms), 1.8s;
+}
+
+@keyframes forge-grow-y {
+  from {
+    transform: scaleY(0);
+  }
+}
+
+@keyframes forge-grow-x {
+  from {
+    transform: scaleX(0);
+  }
+}
+
+.chart-card {
+  transition: border-color 180ms var(--ease-snappy);
+}
+
+.chart-card:hover {
+  border-color: var(--color-border-strong);
+}
+
+.intro {
+  position: relative;
+}
+
+/* the drifting glow behind the heading must not widen the page on phones */
+.content {
+  overflow-x: clip;
+}
+
+.intro::before {
+  position: absolute;
+  top: -80px;
+  left: -120px;
+  z-index: -1;
+  width: 520px;
+  height: 260px;
+  background: radial-gradient(closest-side, var(--color-accent-soft), transparent);
+  content: "";
+  pointer-events: none;
+  animation: forge-drift 14s ease-in-out infinite;
+}
+
+@keyframes forge-drift {
+  0%,
+  100% {
+    opacity: 0.7;
+    transform: translate(0, 0);
+  }
+  50% {
+    opacity: 1;
+    transform: translate(80px, 20px);
   }
 }
 

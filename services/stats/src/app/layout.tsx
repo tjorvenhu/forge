@@ -25,6 +25,10 @@ export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="de" className={GeistSans.variable}>
       <body>
+        {/* Without JavaScript nothing scrolls into view: show charts and bars as they are. */}
+        <noscript>
+          <style>{".reveal{opacity:1;transform:none}.reveal .col-bar,.reveal .hbar-fill{animation:none}"}</style>
+        </noscript>
         <header className="topbar">
           <div className="container topbar-inner">
             {/* Shown at 28px, the source is 1055 x 223 and stays sharp. */}

@@ -1,4 +1,5 @@
 import { Pool } from "pg";
+import { ONLINE_MINUTES } from "./constants";
 import { HISTORY_DAYS, historyDays, historySql, toHistory, type HistoryDay, type HistoryRow } from "./history";
 import { COUNTER_KEYS, type Counters, type ModelUsage, type Report } from "./report";
 import type { VersionCount } from "./versions";
@@ -13,8 +14,8 @@ export interface PlanCount {
 /** Minimum time between two accepted reports of one installation; the app reports every 5 minutes. */
 export const REPORT_INTERVAL_MINUTES = 4;
 const TOTALS_MAX_AGE_MS = 5 * 60 * 1000;
-/** An installation reporting within this time counts as online; the app reports every 5 minutes. */
-export const ONLINE_MINUTES = 10;
+/** The online count is one cheap query; the page asks for it every 30 seconds. */
+const ONLINE_MAX_AGE_MS = 15 * 1000;
 /** Models in /api/v1/totals; every installation can send 20 IDs of its own, so the list is capped. */
 const MAX_TOTAL_MODELS = 50;
 
@@ -210,4 +211,28 @@ export async function getTotals(): Promise<Totals> {
       inflight = null;
     });
   return inflight;
+}
+
+export interface Online {
+  onlineInstalls: number;
+  /** online installations per plan; plans without any are left out */
+  plans: Array<{ plan: string | null; online: number }>;
+}
+
+let onlineCached: { at: number; online: Online } | null = null;
+
+/** Installations online now, at most 15 seconds old; between two totals the page updates only this. */
+export async function getOnline(): Promise<Online> {
+  if (onlineCached && Date.now() - onlineCached.at < ONLINE_MAX_AGE_MS) return onlineCached.online;
+  const p = await db();
+  const res = await p.query<{ plan: string | null; online: string }>(
+    `SELECT plan, COUNT(*)::text AS online FROM installs
+     WHERE last_seen > now() - make_interval(mins => $1)
+     GROUP BY plan`,
+    [ONLINE_MINUTES],
+  );
+  const plans = res.rows.map((r) => ({ plan: r.plan, online: Number(r.online) }));
+  const online = { onlineInstalls: plans.reduce((n, r) => n + r.online, 0), plans };
+  onlineCached = { at: Date.now(), online };
+  return online;
 }
