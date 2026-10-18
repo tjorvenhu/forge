@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FORGE Setup</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="app" id="app" data-screen="loading">
+  <header class="titlebar" data-tauri-drag-region>
+    <img class="logo" src="assets/forge-logo.png" width="132" height="28" alt="FORGE, Claude Development Studio" draggable="false" data-tauri-drag-region>
+    <div class="titlebar-actions">
+      <div class="lang" role="group" aria-label="Sprache">
+        <button type="button" class="lang-btn" data-lang="de" title="Deutsch"><img src="assets/de.svg" alt="Deutsch" width="18" height="11"></button>
+        <button type="button" class="lang-btn" data-lang="en" title="English"><img src="assets/gb.svg" alt="English" width="18" height="11"></button>
+      </div>
+      <button type="button" class="win-btn" id="btn-min" data-i18n-title="minimize">
+        <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M3 8.5h10" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+      </button>
+      <button type="button" class="win-btn win-close" id="btn-close" data-i18n-title="close">
+        <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <main class="content">
+    <section class="panel">
+      <!-- start -->
+      <div class="screen" data-for="start">
+        <p class="eyebrow" data-i18n="eyebrow"></p>
+        <h1 id="start-title"></h1>
+        <p class="lead" id="start-lead"></p>
+        <div class="version-line" id="version-line" data-state="resolving">
+          <span class="version-resolving"><span class="pulse-dot"></span><span data-i18n="resolving"></span></span>
+          <span class="version-ready" id="version-ready"></span>
+          <span class="version-error"><span id="resolve-error"></span> <button type="button" class="link" id="btn-resolve-retry" data-i18n="retry"></button></span>
+        </div>
+        <div class="folder" id="folder">
+          <svg class="folder-icon" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>
+          <div class="folder-text">
+            <span class="folder-label" data-i18n="folder"></span>
+            <span class="folder-path" id="folder-path"></span>
+          </div>
+          <button type="button" class="link" id="btn-change" data-i18n="change"></button>
+        </div>
+        <div class="actions">
+          <button type="button" class="btn btn-primary" id="btn-install"></button>
+        </div>
+        <p class="fine" id="license"></p>
+      </div>
+
+      <!-- installing -->
+      <div class="screen" data-for="installing">
+        <p class="eyebrow" id="installing-eyebrow"></p>
+        <h1 id="installing-title"></h1>
+        <p class="lead" id="step"></p>
+        <div class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" id="progress">
+          <div class="progress-fill" id="progress-fill"><div class="progress-shine"></div></div>
+        </div>
+        <div class="progress-meta">
+          <span id="progress-dir"></span>
+          <span class="percent" id="percent">0 %</span>
+        </div>
+        <ol class="steps" id="steps">
+          <li data-step="download"></li>
+          <li data-step="verify"></li>
+          <li data-step="install"></li>
+          <li data-step="finish"></li>
+        </ol>
+      </div>
+
+      <!-- done -->
+      <div class="screen" data-for="done">
+        <p class="eyebrow eyebrow-ok" data-i18n="doneEyebrow"></p>
+        <h1 data-i18n="doneTitle"></h1>
+        <p class="lead" data-i18n="doneLead"></p>
+        <div class="folder folder-done">
+          <svg class="folder-icon folder-icon-ok" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M8 12.3l2.7 2.7 5.3-5.6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <div class="folder-text">
+            <span class="folder-label" data-i18n="installedIn"></span>
+            <span class="folder-path" id="done-path"></span>
+          </div>
+        </div>
+        <div class="actions">
+          <button type="button" class="btn btn-primary" id="btn-launch" data-i18n="launch"></button>
+          <button type="button" class="btn btn-ghost" id="btn-done-close" data-i18n="close"></button>
+        </div>
+      </div>
+
+      <!-- error -->
+      <div class="screen" data-for="error">
+        <p class="eyebrow eyebrow-error" data-i18n="errorEyebrow"></p>
+        <h1 data-i18n="errorTitle"></h1>
+        <p class="lead error-message" id="error-message"></p>
+        <div class="actions">
+          <button type="button" class="btn btn-primary" id="btn-retry" data-i18n="retry"></button>
+          <button type="button" class="btn btn-ghost" id="btn-error-close" data-i18n="close"></button>
+        </div>
+      </div>
+
+      <!-- loading: same shape as the start screen, so nothing jumps -->
+      <div class="screen skeleton" data-for="loading" aria-hidden="true">
+        <span class="sk sk-eyebrow"></span>
+        <span class="sk sk-title"></span>
+        <span class="sk sk-title sk-short"></span>
+        <span class="sk sk-line"></span>
+        <span class="sk sk-folder"></span>
+        <span class="sk sk-button"></span>
+      </div>
+    </section>
+
+    <section class="stage" id="stage" aria-hidden="true">
+      <svg class="forge-art" id="art" viewBox="100 -150 1010 900" preserveAspectRatio="xMidYMid meet">
+        <defs>
+          <!-- colors and shapes of the anvil from apps/desktop/src/assets/logo.svg -->
+          <linearGradient id="horn" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0" stop-color="#E5E7EB"/>
+            <stop offset="1" stop-color="#94A3B8"/>
+          </linearGradient>
+          <linearGradient id="spark" x1="1" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="#FDBA74"/>
+            <stop offset="0.45" stop-color="#F97316"/>
+            <stop offset="1" stop-color="#EA580C"/>
+          </linearGradient>
+          <linearGradient id="body" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="#C3CCD8"/>
+            <stop offset="1" stop-color="#64748B"/>
+          </linearGradient>
+          <radialGradient id="glow" gradientUnits="userSpaceOnUse" cx="560" cy="470" r="230">
+            <stop offset="0" stop-color="#F97316" stop-opacity="0.5"/>
+            <stop offset="1" stop-color="#F97316" stop-opacity="0"/>
+          </radialGradient>
+          <!-- hammer in the same palette -->
+          <linearGradient id="head" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0" stop-color="#E5E7EB"/>
+            <stop offset="0.55" stop-color="#C3CCD8"/>
+            <stop offset="1" stop-color="#94A3B8"/>
+          </linearGradient>
+          <linearGradient id="face" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="#94A3B8"/>
+            <stop offset="1" stop-color="#64748B"/>
+          </linearGradient>
+          <linearGradient id="handle" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="#475569"/>
+            <stop offset="1" stop-color="#1E293B"/>
+          </linearGradient>
+          <radialGradient id="heat" cx="0.5" cy="0.5" r="0.5">
+            <stop offset="0" stop-color="#FFF7ED" stop-opacity="1"/>
+            <stop offset="0.25" stop-color="#FDBA74" stop-opacity="0.85"/>
+            <stop offset="1" stop-color="#F97316" stop-opacity="0"/>
+          </radialGradient>
+          <radialGradient id="shadow" cx="0.5" cy="0.5" r="0.5">
+            <stop offset="0" stop-color="#000" stop-opacity="0.55"/>
+            <stop offset="1" stop-color="#000" stop-opacity="0"/>
+          </radialGradient>
+        </defs>
+
+        <ellipse cx="512" cy="712" rx="330" ry="34" fill="url(#shadow)"/>
+
+        <g id="anvil">
+          <g stroke-linejoin="round" stroke-width="12">
+            <path d="M160 367 H549 L450 462 H240 Z" fill="url(#horn)" stroke="url(#horn)"/>
+            <path id="anvil-face" d="M618 321 H864 L720 462 H474 Z" fill="url(#spark)" stroke="url(#spark)"/>
+          </g>
+          <path d="M350 489 H674 Q688 489 688 503 V522 C640 528 614 556 614 590 C614 628 650 652 728 656 Q742 657 742 671 V689 Q742 703 728 703 H584 C580 670 552 656 512 656 C472 656 444 670 440 703 H296 Q282 703 282 689 V671 Q282 657 296 656 C374 652 410 628 410 590 C410 556 384 528 336 522 V503 Q336 489 350 489 Z" fill="url(#body)"/>
+          <path id="anvil-glow" d="M350 489 H674 Q688 489 688 503 V522 C640 528 614 556 614 590 C614 628 650 652 728 656 Q742 657 742 671 V689 Q742 703 728 703 H584 C580 670 552 656 512 656 C472 656 444 670 440 703 H296 Q282 703 282 689 V671 Q282 657 296 656 C374 652 410 628 410 590 C410 556 384 528 336 522 V503 Q336 489 350 489 Z" fill="url(#glow)"/>
+          <ellipse id="heat" cx="735" cy="326" rx="150" ry="70" fill="url(#heat)" opacity="0"/>
+        </g>
+
+        <!-- pivot of the swing: the grip end of the handle -->
+        <g id="hammer">
+          <rect x="772" y="226" width="300" height="40" rx="18" fill="url(#handle)"/>
+          <rect x="1028" y="221" width="52" height="50" rx="20" fill="#0F172A"/>
+          <rect x="786" y="222" width="22" height="48" rx="6" fill="url(#spark)"/>
+          <rect x="676" y="168" width="118" height="134" rx="16" fill="url(#head)"/>
+          <rect x="676" y="168" width="118" height="22" rx="10" fill="#F1F5F9" opacity="0.55"/>
+          <rect x="666" y="292" width="138" height="30" rx="9" fill="url(#face)"/>
+          <rect x="700" y="196" width="10" height="92" rx="5" fill="#FFFFFF" opacity="0.35"/>
+        </g>
+
+        <circle id="impact" cx="735" cy="321" r="1" fill="none"/>
+      </svg>
+      <p class="credit"><span data-i18n="productBy"></span> <b>Vanturis</b></p>
+    </section>
+  </main>
+  <canvas id="sparks" class="sparks"></canvas>
+</div>
+<script src="app.js"></script>
+</body>
+</html>

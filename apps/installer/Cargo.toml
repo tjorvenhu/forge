@@ -1,0 +1,37 @@
+[package]
+name = "forge-setup"
+version = "1.0.0"
+description = "FORGE Setup: lädt FORGE von GitHub und installiert es"
+authors = ["Vanturis UG (haftungsbeschränkt)"]
+homepage = "https://vanturis.de"
+repository = "https://github.com/vanturis/forge"
+edition = "2021"
+license = "AGPL-3.0-only"
+publish = false
+
+[build-dependencies]
+tauri-build = { version = "2.7", features = [] }
+
+[dependencies]
+tauri = { version = "2.12", features = [] }
+tauri-plugin-dialog = "2.8"
+tauri-plugin-opener = "2.7"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+ureq = { version = "2", default-features = false, features = ["tls", "json"] }
+ed25519-dalek = "2"
+sha2 = "0.10"
+base64 = "0.22"
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Globalization", "Win32_System_Registry", "Win32_UI_WindowsAndMessaging"] }
+
+[features]
+# Without it the window would load devUrl; plain `cargo build` must give the finished setup.
+default = ["custom-protocol"]
+custom-protocol = ["tauri/custom-protocol"]
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+strip = true
+panic = "abort"

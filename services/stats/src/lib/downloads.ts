@@ -1,7 +1,11 @@
 /** Repository whose releases carry the FORGE installers. */
 const REPO = "vanturis/forge";
-/** Only real downloads count: the full installer. Update zips, signatures and runtime markers are fetched by installed apps. */
-const INSTALLER = /-setup\.exe$/i;
+/**
+ * Only real downloads count: the full installer. Update zips, signatures and runtime markers are fetched by
+ * installed apps. FORGE-Setup.exe (release "installer") does not count either: it downloads the full
+ * installer itself, so each installation through it is counted there once.
+ */
+const INSTALLER = /_x64-setup\.exe$/i;
 const CACHE_MS = 30 * 60_000;
 /** One page per push to main; 20 pages are 2000 releases. */
 const MAX_PAGES = 20;

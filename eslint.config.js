@@ -29,6 +29,11 @@ export default tseslint.config(
     },
   },
   {
+    // FORGE Setup: plain script in the setup window, no bundler
+    files: ["apps/installer/ui/**/*.js"],
+    languageOptions: { globals: { ...globals.browser } },
+  },
+  {
     files: ["apps/desktop/src/**/*.{ts,tsx}"],
     languageOptions: { globals: { ...globals.browser } },
     plugins: { "react-hooks": reactHooks },

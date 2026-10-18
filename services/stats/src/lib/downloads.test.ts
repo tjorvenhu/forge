@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { countInstallerDownloads } from "./downloads";
 
 describe("installer downloads", () => {
-  it("counts only the full installers, not updates, signatures or markers", () => {
+  it("counts only the full installers, not updates, signatures, markers or FORGE Setup", () => {
     const releases = [
       {
         assets: [
@@ -13,6 +13,7 @@ describe("installer downloads", () => {
         ],
       },
       { assets: [{ name: "FORGE_0.1.81_node-24.21.0_git-2.56.0.2_gh-2.102.0_python-3.14.8_x64-setup.exe", download_count: 5 }] },
+      { assets: [{ name: "FORGE-Setup.exe", download_count: 9 }] },
       {},
     ];
     expect(countInstallerDownloads(releases)).toBe(12);

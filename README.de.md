@@ -13,7 +13,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/vanturis/forge/releases/latest"><img src="https://img.shields.io/badge/Download-f%C3%BCr%20Windows-f97316?style=for-the-badge&logo=github&logoColor=white" alt="Download für Windows" height="42"></a>
+  <a href="https://github.com/vanturis/forge/releases/download/installer/FORGE-Setup.exe"><img src="https://img.shields.io/badge/Download-f%C3%BCr%20Windows-f97316?style=for-the-badge&logo=github&logoColor=white" alt="Download für Windows" height="42"></a>
   &nbsp;
   <a href="https://buy.stripe.com/9B64gBc4e5j80vg1WxbV600"><img src="https://img.shields.io/badge/FORGE-unterst%C3%BCtzen-e11d48?style=for-the-badge&logo=githubsponsors&logoColor=white" alt="FORGE unterstützen" height="42"></a>
 </p>
@@ -91,8 +91,9 @@
 
 ## Installation
 
-1. Lade die `FORGE_<Version>_x64-setup.exe` aus dem **[neuesten Release](https://github.com/vanturis/forge/releases/latest)** herunter.
-2. Starte sie. Der Installer ist noch nicht signiert, Windows zeigt deshalb eine SmartScreen-Warnung: auf
+1. Lade **[FORGE-Setup.exe](https://github.com/vanturis/forge/releases/download/installer/FORGE-Setup.exe)** herunter (etwa 5 MB).
+2. Starte sie. FORGE Setup sucht die neueste Version auf GitHub, lädt sie herunter (etwa 110 MB), prüft ihre
+   Signatur und installiert sie. Solange FORGE neu ist, kann Windows eine SmartScreen-Warnung zeigen: auf
    **Weitere Informationen** und dann **Trotzdem ausführen** klicken.
 3. Beim ersten Start wählst du die Sprache. Danach führt dich ein Assistent durch die Anmeldung bei Claude und,
    wenn du willst, bei GitHub.
@@ -107,7 +108,7 @@ sie in den Einstellungen ändern.
 <details>
 <summary>Welche Datei ist die richtige?</summary>
 
-Nicht jedes Release hat einen Installer. „Latest“ zeigt immer auf das neueste Release mit Installer. Ältere
+FORGE Setup ist für jede Version dieselbe Datei. Ohne Setup gilt: Nicht jedes Release hat einen Installer. „Latest“ zeigt immer auf das neueste Release mit Installer. Ältere
 Installer heißen `FORGE_<Version>_<Laufzeit>_x64-setup.exe`. Die Dateien `FORGE_<Version>_update_<Laufzeit>.zip`
 sind nur für Updates bestehender Installationen und reichen für eine Neuinstallation nicht. Die Datei
 `FORGE_<Version>.sig` braucht FORGE selbst zum Prüfen der Updates (Releases bis 0.1.101 haben je Datei eine `.sig`
@@ -188,6 +189,7 @@ FORGE ist ein pnpm-Monorepo:
 | Ordner | Inhalt |
 |---|---|
 | `apps/desktop` | Tauri-App (Rust) mit React-Oberfläche |
+| `apps/installer` | FORGE Setup: Online-Installer, der die neueste Version von GitHub lädt (Tauri, eigenständig) |
 | `packages/sidecar` | Node-Prozess, der Claude Code, Git, Telefon und Datenbank steuert |
 | `packages/protocol` | gemeinsame Typen und RPC-Methoden (Zod) |
 | `services/stats` | Statistik-Dienst hinter forge.vanturis.de (Next.js, eigenständig) |

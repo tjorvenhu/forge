@@ -13,7 +13,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/vanturis/forge/releases/latest"><img src="https://img.shields.io/badge/Download-for%20Windows-f97316?style=for-the-badge&logo=github&logoColor=white" alt="Download for Windows" height="42"></a>
+  <a href="https://github.com/vanturis/forge/releases/download/installer/FORGE-Setup.exe"><img src="https://img.shields.io/badge/Download-for%20Windows-f97316?style=for-the-badge&logo=github&logoColor=white" alt="Download for Windows" height="42"></a>
   &nbsp;
   <a href="https://buy.stripe.com/9B64gBc4e5j80vg1WxbV600"><img src="https://img.shields.io/badge/Support-FORGE-e11d48?style=for-the-badge&logo=githubsponsors&logoColor=white" alt="Support FORGE" height="42"></a>
 </p>
@@ -91,8 +91,9 @@
 
 ## Installation
 
-1. Download `FORGE_<Version>_x64-setup.exe` from the **[latest release](https://github.com/vanturis/forge/releases/latest)**.
-2. Run it. The installer is not signed yet, so Windows shows a SmartScreen warning: click **More info** and then
+1. Download **[FORGE-Setup.exe](https://github.com/vanturis/forge/releases/download/installer/FORGE-Setup.exe)** (about 5 MB).
+2. Run it. FORGE Setup looks up the newest version on GitHub, downloads it (about 110 MB), checks its signature and
+   installs it. While FORGE is new, Windows may show a SmartScreen warning: click **More info** and then
    **Run anyway**.
 3. On first start you pick the language. Then an assistant walks you through signing in to Claude and, if you
    want, to GitHub.
@@ -107,7 +108,7 @@ it later in Settings.
 <details>
 <summary>Which file is the right one?</summary>
 
-Not every release has an installer. "Latest" always points to the newest release that has one. Older installers
+FORGE Setup is the same file for every version. Without it: not every release has an installer. "Latest" always points to the newest release that has one. Older installers
 are named `FORGE_<Version>_<Runtime>_x64-setup.exe`. The files `FORGE_<Version>_update_<Runtime>.zip` are only
 for updating existing installations and are not enough for a new installation. FORGE uses the file
 `FORGE_<Version>.sig` itself to verify updates (releases up to 0.1.101 have a `.sig` per file and a `.runtime` file).
@@ -185,6 +186,7 @@ FORGE is a pnpm monorepo:
 | Folder | Contents |
 |---|---|
 | `apps/desktop` | Tauri app (Rust) with a React interface |
+| `apps/installer` | FORGE Setup: online installer that downloads the newest version from GitHub (Tauri, standalone) |
 | `packages/sidecar` | Node process that controls Claude Code, Git, phone and database |
 | `packages/protocol` | shared types and RPC methods (Zod) |
 | `services/stats` | statistics service behind forge.vanturis.de (Next.js, standalone) |

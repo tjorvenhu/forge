@@ -100,11 +100,11 @@ async function setup() {
 
 const isSigned = (signtool, file) => spawnSync(signtool, ["verify", "/pa", "/q", file], { stdio: "ignore" }).status === 0;
 
-// Only FORGE's own executables get the Vanturis signature: the app, the installer and the uninstaller NSIS
-// writes as a temp file (nstXXXX.tmp). Tauri hands every unsigned exe/dll to the sign command, including
-// the bundled runtime (node, git, gh, python: third-party software) and the NSIS plugin DLLs; signatures
+// Only FORGE's own executables get the Vanturis signature: the app, the installer, FORGE Setup (the online
+// installer, apps/installer) and the uninstaller NSIS writes as a temp file (nstXXXX.tmp). Tauri hands
+// every unsigned exe/dll to the sign command, including the bundled runtime (node, git, gh, python: third-party software) and the NSIS plugin DLLs; signatures
 // per month are limited, so everything else is left as it is.
-const SIGN_ONLY = [/^forge-desktop\.exe$/i, /_x64-setup\.exe$/i, /^nst[0-9a-f]+\.tmp$/i];
+const SIGN_ONLY = [/^forge-desktop\.exe$/i, /_x64-setup\.exe$/i, /^FORGE-Setup\.exe$/i, /^nst[0-9a-f]+\.tmp$/i];
 
 function signFile(signtool, file) {
   if (!existsSync(file)) fail(`Datei zum Signieren fehlt: ${file}`);
