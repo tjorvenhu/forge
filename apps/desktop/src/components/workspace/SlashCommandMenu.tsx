@@ -5,6 +5,7 @@ import { call } from "@/lib/queries";
 import { cn } from "@/lib/utils";
 import { Skeleton, SkeletonRegion } from "@/components/ui/skeleton";
 import { INFO_COMMANDS } from "./InfoCommandDialog";
+import { t } from "@/i18n";
 
 type CliCommand = ResultOf<"system.commands">[number];
 export type Command = ResultOf<"system.commands">[number] & {
@@ -15,7 +16,7 @@ export type Command = ResultOf<"system.commands">[number] & {
 /** Commands FORGE handles itself instead of sending them to Claude Code (like /clear in the terminal). */
 export const CLEAR_COMMANDS = ["clear", "reset", "new"];
 const BUILT_IN: Command[] = [
-  { name: "clear", description: "Neues Gespräch starten und den Chat leeren. Das bisherige bleibt in der Session-Liste.", argumentHint: "" },
+  { name: "clear", description: t.chat.slash.clear, argumentHint: "" },
   ...INFO_COMMANDS.map((c) => ({ name: c.name, description: c.description, argumentHint: "" })),
 ];
 /** Handled by FORGE; the CLI's own entries of the same name are left out. */
@@ -66,7 +67,7 @@ export function SlashCommandMenu({ matches, index, onPick }: { matches: SlashMat
   const pending = matches.loading ? Math.min(2, MAX_MATCHES - matches.length) : 0;
   if (!matches.length && !pending) return null;
   return (
-    <div className="absolute bottom-full left-6 right-6 z-20 mb-1 animate-rise-in overflow-hidden rounded-lg border border-border bg-surface-2 shadow-xl" role="listbox" aria-label="Slash-Commands">
+    <div className="absolute bottom-full left-6 right-6 z-20 mb-1 animate-rise-in overflow-hidden rounded-lg border border-border bg-surface-2 shadow-xl" role="listbox" aria-label={t.chat.slash.label}>
       {matches.map((c, i) => (
         <button
           key={c.custom ? `custom:${c.name}` : c.name}
@@ -79,13 +80,13 @@ export function SlashCommandMenu({ matches, index, onPick }: { matches: SlashMat
           className={cn("flex w-full items-baseline gap-3 px-3 py-1.5 text-left", i === index ? "bg-surface-3" : "hover:bg-surface-3")}
         >
           <span className="shrink-0 font-mono text-small-lg text-accent">/{c.name}</span>
-          {c.custom && <span className="shrink-0 text-caption text-subtle">eigener Befehl</span>}
+          {c.custom && <span className="shrink-0 text-caption text-subtle">{t.chat.slash.custom}</span>}
           {c.argumentHint && <span className="shrink-0 font-mono text-caption text-subtle">{c.argumentHint}</span>}
           <span className="min-w-0 truncate text-xs text-muted">{c.description}</span>
         </button>
       ))}
       {pending > 0 && (
-        <SkeletonRegion label="Lädt eigene Befehle">
+        <SkeletonRegion label={t.chat.slash.loading}>
           {Array.from({ length: pending }, (_, i) => (
             <div key={i} className="box-content flex h-[1.5em] items-center gap-3 px-3 py-1.5 text-small-lg">
               <Skeleton className="h-3 w-20 shrink-0 rounded-sm bg-surface-3" />

@@ -11,6 +11,7 @@ import { Input, Textarea } from "@/components/ui/input";
 import { Badge } from "@/components/ui/misc";
 import type { ChatItem } from "./chat-items";
 import { Markdown } from "./Markdown";
+import { t } from "@/i18n";
 
 type ToolItem = Extract<ChatItem, { kind: "tool" }>;
 
@@ -60,7 +61,7 @@ function useRespond(sessionId: string, requestId: string | undefined, cardId: st
     mutationFn: (p: { decision: "allow" | "deny"; message?: string; answers?: Record<string, string> }) =>
       call("sessions.respondApproval", { sessionId, requestId: requestId!, decision: p.decision, scope: "once", message: p.message, answers: p.answers }),
     onSuccess: () => setSent(true),
-    onError: (e) => toast.error("Antwort nicht übermittelt", errorMessage(e)),
+    onError: (e) => toast.error(t.chat.cards.answerNotSent, errorMessage(e)),
   });
   return { mutate: mutation.mutate, isPending: mutation.isPending, sent, locked: mutation.isPending || sent };
 }
@@ -100,9 +101,9 @@ export function QuestionCard({ item, sessionId }: { item: ToolItem; sessionId: s
   };
 
   return (
-    <div className={cardClass(pending)} role="group" aria-label="Rückfrage von Claude">
-      <CardHeader icon={<MessageCircleQuestion className="h-4 w-4" />} title={pending ? "Claude hat eine Rückfrage" : "Rückfrage"}>
-        {resolved && <ResolvedBadge decision={resolved.decision} source={resolved.source} allowText="Beantwortet" denyText="Übersprungen" />}
+    <div className={cardClass(pending)} role="group" aria-label={t.chat.cards.questionLabel}>
+      <CardHeader icon={<MessageCircleQuestion className="h-4 w-4" />} title={pending ? t.chat.cards.questionPending : t.chat.cards.question}>
+        {resolved && <ResolvedBadge decision={resolved.decision} source={resolved.source} allowText={t.chat.cards.answered} denyText={t.chat.cards.skipped} />}
       </CardHeader>
       <div className="space-y-3 border-t border-border px-3 py-2.5">
         {questions.map((q, qi) => {
@@ -154,9 +155,9 @@ export function QuestionCard({ item, sessionId }: { item: ToolItem; sessionId: s
                       setOther((cur) => cur.map((o, i) => (i === qi ? v : o)));
                       if (!q.multiSelect && v) setPicked((cur) => cur.map((p, i) => (i === qi ? [] : p)));
                     }}
-                    placeholder={q.multiSelect ? "Weitere Antwort (optional)" : "Eigene Antwort"}
+                    placeholder={q.multiSelect ? t.chat.cards.moreAnswer : t.chat.cards.ownAnswer}
                     className="mt-2 h-7 text-xs"
-                    aria-label={`Eigene Antwort auf: ${q.question}`}
+                    aria-label={t.chat.cards.ownAnswerTo(q.question)}
                   />
                 </>
               ) : (
@@ -164,7 +165,7 @@ export function QuestionCard({ item, sessionId }: { item: ToolItem; sessionId: s
                   {given ? (
                     <span className="text-fg">{given}</span>
                   ) : resolved?.decision === "deny" ? (
-                    "Nicht beantwortet"
+                    t.chat.cards.notAnswered
                   ) : (
                     q.options.map((o) => o.label).join(" · ")
                   )}
@@ -173,18 +174,18 @@ export function QuestionCard({ item, sessionId }: { item: ToolItem; sessionId: s
             </div>
           );
         })}
-        {!questions.length && <div className="text-xs text-muted">Die Rückfrage enthält keine lesbaren Fragen.</div>}
+        {!questions.length && <div className="text-xs text-muted">{t.chat.cards.noQuestions}</div>}
         {!req && item.result && <div className="text-xs text-subtle">{item.result.content.text}</div>}
       </div>
       {pending && (
         <div className="flex items-center gap-2 border-t border-border px-3 py-2">
-          <span className="text-xs text-subtle">Claude wartet auf deine Antwort.</span>
+          <span className="text-xs text-subtle">{t.chat.cards.waitingForYou}</span>
           <div className="flex-1" />
           <Button size="sm" variant="ghost" onClick={() => respond.mutate({ decision: "deny" })} disabled={respond.locked}>
-            Überspringen
+            {t.chat.cards.skip}
           </Button>
           <Button size="sm" variant="primary" onClick={() => respond.mutate({ decision: "allow", answers })} disabled={!complete || respond.sent} loading={respond.isPending}>
-            Antworten
+            {t.chat.cards.answer}
           </Button>
         </div>
       )}
@@ -208,22 +209,22 @@ export function PlanCard({ item, sessionId }: { item: ToolItem; sessionId: strin
   const showPlan = pending || open;
 
   return (
-    <div className={cardClass(pending)} role="group" aria-label="Plan zur Freigabe">
-      <CardHeader icon={<ClipboardList className="h-4 w-4" />} title={pending ? "Plan zur Freigabe" : "Plan"}>
-        {resolved && <ResolvedBadge decision={resolved.decision} source={resolved.source} allowText="Angenommen" denyText="Zurück zur Überarbeitung" />}
+    <div className={cardClass(pending)} role="group" aria-label={t.chat.cards.planForApproval}>
+      <CardHeader icon={<ClipboardList className="h-4 w-4" />} title={pending ? t.chat.cards.planForApproval : t.chat.cards.plan}>
+        {resolved && <ResolvedBadge decision={resolved.decision} source={resolved.source} allowText={t.chat.cards.accepted} denyText={t.chat.cards.sentBack} />}
         {!pending && (
-          <button className="rounded p-0.5 text-subtle hover:text-fg" onClick={() => setOpen(!open)} aria-expanded={open} aria-label={open ? "Plan einklappen" : "Plan ausklappen"}>
+          <button className="rounded p-0.5 text-subtle hover:text-fg" onClick={() => setOpen(!open)} aria-expanded={open} aria-label={open ? t.chat.cards.collapsePlan : t.chat.cards.expandPlan}>
             <ChevronRight className={cn("h-3.5 w-3.5 transition-transform", open && "rotate-90")} />
           </button>
         )}
       </CardHeader>
       {showPlan && (
         <div className="max-h-[28rem] overflow-y-auto border-t border-border px-4 py-3">
-          {plan ? <Markdown text={plan} /> : <div className="text-xs text-muted">Claude hat keinen Plantext mitgeschickt.</div>}
+          {plan ? <Markdown text={plan} /> : <div className="text-xs text-muted">{t.chat.cards.noPlanText}</div>}
         </div>
       )}
       {resolved?.decision === "deny" && resolved.source === "user" && resolved.message && (
-        <div className="border-t border-border px-3 py-2 text-xs text-muted">Feedback: {resolved.message}</div>
+        <div className="border-t border-border px-3 py-2 text-xs text-muted">{t.chat.cards.feedback(resolved.message)}</div>
       )}
       {pending && (
         <div className="border-t border-border px-3 py-2">
@@ -234,22 +235,22 @@ export function PlanCard({ item, sessionId }: { item: ToolItem; sessionId: strin
                 ref={feedbackRef}
                 onChange={(e) => setFeedback(e.target.value)}
                 rows={3}
-                placeholder="Was soll Claude am Plan ändern?"
-                aria-label="Feedback zum Plan"
+                placeholder={t.chat.cards.feedbackPlaceholder}
+                aria-label={t.chat.cards.feedbackLabel}
                 className="text-body"
               />
               <div className="flex justify-end gap-2">
                 <Button size="sm" variant="ghost" onClick={() => setRevising(false)} disabled={respond.locked}>
-                  Abbrechen
+                  {t.chat.cards.cancel}
                 </Button>
                 <Button size="sm" variant="primary" onClick={() => respond.mutate({ decision: "deny", message: feedback })} disabled={!feedback.trim() || respond.sent} loading={respond.isPending}>
-                  Feedback senden
+                  {t.chat.cards.sendFeedback}
                 </Button>
               </div>
             </div>
           ) : (
             <div className="flex items-center gap-2">
-              <span className="text-xs text-subtle">Nach dem Annehmen setzt Claude den Plan im Modus deines Profils um.</span>
+              <span className="text-xs text-subtle">{t.chat.cards.afterAccept}</span>
               <div className="flex-1" />
               <Button
                 size="sm"
@@ -260,10 +261,10 @@ export function PlanCard({ item, sessionId }: { item: ToolItem; sessionId: strin
                 }}
                 disabled={respond.locked}
               >
-                Überarbeiten
+                {t.chat.cards.revise}
               </Button>
               <Button size="sm" variant="primary" onClick={() => respond.mutate({ decision: "allow" })} loading={respond.isPending} disabled={respond.sent}>
-                Plan annehmen
+                {t.chat.cards.acceptPlan}
               </Button>
             </div>
           )}
@@ -274,7 +275,7 @@ export function PlanCard({ item, sessionId }: { item: ToolItem; sessionId: strin
 }
 
 function ResolvedBadge({ decision, source, allowText, denyText }: { decision: "allow" | "deny"; source: string; allowText: string; denyText: string }) {
-  if (source === "abort") return <Badge>Abgebrochen</Badge>;
+  if (source === "abort") return <Badge>{t.chat.cards.aborted}</Badge>;
   return decision === "allow" ? (
     <Badge tone="success">
       <Check className="h-3 w-3" /> {allowText}

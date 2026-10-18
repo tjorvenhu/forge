@@ -16,15 +16,16 @@ import { ChatRow, HoverTime } from "./ChatRow";
 import { EVENT_ICON } from "./EventCard";
 import { revealPath } from "./file-links";
 import { FORGE_ICON_TONE, FORGE_MARKER_OFFSET, ForgeHighlight, ForgeLabel, type ForgeTone } from "./forge-highlight";
+import { t } from "@/i18n";
 
 export type CompareMode = "side" | "slider" | "before" | "after";
 type Side = "before" | "after";
 
 const MODES: ReadonlyArray<{ value: CompareMode; label: string; icon: ReactNode }> = [
-  { value: "side", label: "Nebeneinander", icon: <Columns2 className="h-3.5 w-3.5" /> },
-  { value: "slider", label: "Schieber", icon: <Blend className="h-3.5 w-3.5" /> },
-  { value: "before", label: "Vorher", icon: null },
-  { value: "after", label: "Nachher", icon: null },
+  { value: "side", label: t.chat.compare.sideBySide, icon: <Columns2 className="h-3.5 w-3.5" /> },
+  { value: "slider", label: t.chat.compare.slider, icon: <Blend className="h-3.5 w-3.5" /> },
+  { value: "before", label: t.chat.compare.before, icon: null },
+  { value: "after", label: t.chat.compare.after, icon: null },
 ];
 
 /** The viewport FORGE takes the shots in; placeholders keep this ratio until the real size is known. */
@@ -53,19 +54,19 @@ export function useUiCompare(sessionId: string, compareId: string) {
 function useCompareActions(sessionId: string, c: UiCompare | undefined, open: (mode: CompareMode) => void) {
   const qc = useQueryClient();
   const retake = useRpcMutation("uiCompare.retake", {
-    errorTitle: "Neu aufnehmen fehlgeschlagen",
+    errorTitle: t.chat.compare.retakeFailed,
     onSuccess: (next) => qc.setQueryData(keys.uiCompare(sessionId, next.id), next),
   });
   const menu = contextItems(() => {
     if (!c) return [];
     return [
-      { label: "Vorher-Bild öffnen", icon: <Maximize2 className="h-3.5 w-3.5" />, onSelect: () => open("before") },
-      ...(c.after ? [{ label: "Nachher-Bild öffnen", icon: <Maximize2 className="h-3.5 w-3.5" />, onSelect: () => open("after") }] : []),
-      { label: "Vorher-Bild im Explorer zeigen", icon: <FolderOpen className="h-3.5 w-3.5" />, onSelect: () => void revealPath(c.before.path) },
-      ...(c.after ? [{ label: "Nachher-Bild im Explorer zeigen", icon: <FolderOpen className="h-3.5 w-3.5" />, onSelect: () => void revealPath(c.after!.path) }] : []),
-      ...(c.status !== "capturing" ? [{ label: "Nachher-Bild neu aufnehmen", icon: <RefreshCw className="h-3.5 w-3.5" />, onSelect: () => retake.mutate({ sessionId, compareId: c.id }) }] : []),
-      { label: "Seite im Browser öffnen", icon: <ExternalLink className="h-3.5 w-3.5" />, onSelect: () => void openExternal(c.url) },
-      { label: "Adresse kopieren", icon: <Copy className="h-3.5 w-3.5" />, onSelect: () => copyText(c.url) },
+      { label: t.chat.compare.openBefore, icon: <Maximize2 className="h-3.5 w-3.5" />, onSelect: () => open("before") },
+      ...(c.after ? [{ label: t.chat.compare.openAfter, icon: <Maximize2 className="h-3.5 w-3.5" />, onSelect: () => open("after") }] : []),
+      { label: t.chat.compare.revealBefore, icon: <FolderOpen className="h-3.5 w-3.5" />, onSelect: () => void revealPath(c.before.path) },
+      ...(c.after ? [{ label: t.chat.compare.revealAfter, icon: <FolderOpen className="h-3.5 w-3.5" />, onSelect: () => void revealPath(c.after!.path) }] : []),
+      ...(c.status !== "capturing" ? [{ label: t.chat.compare.retakeAfter, icon: <RefreshCw className="h-3.5 w-3.5" />, onSelect: () => retake.mutate({ sessionId, compareId: c.id }) }] : []),
+      { label: t.chat.compare.openInBrowser, icon: <ExternalLink className="h-3.5 w-3.5" />, onSelect: () => void openExternal(c.url) },
+      { label: t.chat.compare.copyUrl, icon: <Copy className="h-3.5 w-3.5" />, onSelect: () => copyText(c.url) },
     ];
   });
   return { retake, menu };
@@ -84,18 +85,17 @@ export function UiCompareCard({ item, sessionId }: { item: Extract<ChatItem, { k
   const { retake, menu } = useCompareActions(sessionId, c, setZoom);
   const gone = q.isError;
   const tone: ForgeTone = gone ? "warning" : c?.status === "failed" ? "danger" : "accent";
-  const files = b.files.length === 1 ? "1 UI-Datei" : `${b.files.length} UI-Dateien`;
-
+  
   return (
     <ChatRow className="group text-body" markerClassName={FORGE_MARKER_OFFSET} marker={<GitCompareArrows className={cn(EVENT_ICON, FORGE_ICON_TONE[tone])} />}>
       <div onContextMenu={menu}>
         <ForgeHighlight tone={tone}>
           <div className="flex min-w-0 items-baseline gap-2">
             <div className="min-w-0 flex-1 break-words">
-              <span className="font-medium text-fg">Vorher und nachher</span>
+              <span className="font-medium text-fg">{t.chat.compare.title}</span>
               <span className="ml-2 font-mono text-small text-accent">{pagePath(b.url)}</span>
               <span className="ml-2 text-muted" title={b.files.join("\n")}>
-                {files} geändert
+                {t.chat.compare.filesChanged(b.files.length)}
               </span>
             </div>
             <ForgeLabel />
@@ -103,7 +103,7 @@ export function UiCompareCard({ item, sessionId }: { item: Extract<ChatItem, { k
           </div>
           {gone ? (
             <p className="mt-1.5 flex items-center gap-1.5 text-small text-muted">
-              <ImageOff className="h-3.5 w-3.5" /> Bilder nicht mehr vorhanden. FORGE räumt sie nach 14 Tagen weg.
+              <ImageOff className="h-3.5 w-3.5" /> {t.chat.compare.gone}
             </p>
           ) : (
             <>
@@ -111,9 +111,9 @@ export function UiCompareCard({ item, sessionId }: { item: Extract<ChatItem, { k
               <CompareView sessionId={sessionId} compare={c} mode={mode} onOpen={(m) => setZoom(m)} className="mt-2 max-w-3xl" />
               {c?.status === "failed" && (
                 <div className="mt-2 flex flex-wrap items-center gap-2">
-                  <span className="min-w-0 flex-1 text-small text-danger">Nachher-Bild fehlgeschlagen: {c.error}</span>
+                  <span className="min-w-0 flex-1 text-small text-danger">{t.chat.compare.afterFailed(c.error)}</span>
                   <Button size="sm" variant="outline" loading={retake.isPending} onClick={() => retake.mutate({ sessionId, compareId: c.id })}>
-                    <RefreshCw className="h-3.5 w-3.5" /> Neu aufnehmen
+                    <RefreshCw className="h-3.5 w-3.5" /> {t.chat.compare.retake}
                   </Button>
                 </div>
               )}
@@ -128,7 +128,7 @@ export function UiCompareCard({ item, sessionId }: { item: Extract<ChatItem, { k
 
 function ModeBar({ value, onChange, className }: { value: CompareMode; onChange: (m: CompareMode) => void; className?: string }) {
   return (
-    <div role="radiogroup" aria-label="Ansicht" className={cn("flex flex-wrap items-center gap-1", className)}>
+    <div role="radiogroup" aria-label={t.chat.compare.view} className={cn("flex flex-wrap items-center gap-1", className)}>
       {MODES.map((m) => (
         <Button
           key={m.value}
@@ -164,7 +164,7 @@ function CompareView({ sessionId, compare, mode, onOpen, className, large = fals
       {(["before", "after"] as const).map((side) => (
         <figure key={side} className="min-w-0">
           <Shot sessionId={sessionId} compare={compare} side={side} ratio={ratio} onClick={onOpen ? () => open(side) : undefined} large={large} />
-          <figcaption className="mt-1 text-caption text-subtle">{side === "before" ? "Vorher" : "Nachher"}</figcaption>
+          <figcaption className="mt-1 text-caption text-subtle">{side === "before" ? t.chat.compare.before : t.chat.compare.after}</figcaption>
         </figure>
       ))}
     </div>
@@ -187,11 +187,10 @@ function useShot(sessionId: string, compare: UiCompare | undefined, side: Side) 
 
 function Shot({ sessionId, compare, side, ratio, onClick, large }: { sessionId: string; compare: UiCompare | undefined; side: Side; ratio: CSSProperties; onClick?: () => void; large: boolean }) {
   const { img, loading, missing } = useShot(sessionId, compare, side);
-  const label = side === "before" ? "Vorher" : "Nachher";
   const box = cn("block w-full overflow-hidden rounded-md border border-border bg-surface-2", large && "max-h-[60vh]");
   if (loading)
     return (
-      <SkeletonRegion label={`Lädt ${label}-Bild`} className={box} style={ratio}>
+      <SkeletonRegion label={t.chat.compare.loadingImage(side)} className={box} style={ratio}>
         <Skeleton className="h-full w-full rounded-none" />
       </SkeletonRegion>
     );
@@ -199,11 +198,11 @@ function Shot({ sessionId, compare, side, ratio, onClick, large }: { sessionId: 
     return (
       <div className={cn(box, "flex items-center justify-center")} style={ratio}>
         <span className="flex items-center gap-1.5 text-small text-subtle">
-          <ImageOff className="h-3.5 w-3.5" /> Kein {label}-Bild
+          <ImageOff className="h-3.5 w-3.5" /> {t.chat.compare.noImage(side)}
         </span>
       </div>
     );
-  const image = <img src={`data:${img.mediaType};base64,${img.base64}`} alt={`${label}: Screenshot der Web-App`} className="block h-full w-full object-contain" />;
+  const image = <img src={`data:${img.mediaType};base64,${img.base64}`} alt={t.chat.compare.imageAlt(side)} className="block h-full w-full object-contain" />;
   if (!onClick)
     return (
       <div className={box} style={ratio}>
@@ -211,7 +210,7 @@ function Shot({ sessionId, compare, side, ratio, onClick, large }: { sessionId: 
       </div>
     );
   return (
-    <button type="button" className={cn(box, "cursor-zoom-in")} style={ratio} onClick={onClick} title="Vergrößern">
+    <button type="button" className={cn(box, "cursor-zoom-in")} style={ratio} onClick={onClick} title={t.chat.previewShot.zoomIn}>
       {image}
     </button>
   );
@@ -226,14 +225,14 @@ function SliderView({ sessionId, compare, ratio, className, onOpen, large }: { s
   if (before.loading || after.loading || !before.img || !after.img) {
     if (before.loading || after.loading)
       return (
-        <SkeletonRegion label="Lädt Vergleich" className={cn(box, className)} style={ratio}>
+        <SkeletonRegion label={t.chat.compare.loading} className={cn(box, className)} style={ratio}>
           <Skeleton className="h-full w-full rounded-none" />
         </SkeletonRegion>
       );
     return (
       <div className={cn(box, "flex items-center justify-center", className)} style={ratio}>
         <span className="flex items-center gap-1.5 text-small text-subtle">
-          <ImageOff className="h-3.5 w-3.5" /> Für den Schieber fehlt ein Bild
+          <ImageOff className="h-3.5 w-3.5" /> {t.chat.compare.sliderMissing}
         </span>
       </div>
     );
@@ -254,15 +253,15 @@ function SliderView({ sessionId, compare, ratio, className, onOpen, large }: { s
         }}
         onPointerMove={(e) => e.buttons === 1 && follow(e)}
         onDoubleClick={onOpen}
-        title={onOpen ? "Ziehen verschiebt die Grenze, Doppelklick vergrößert" : "Ziehen verschiebt die Grenze"}
+        title={onOpen ? t.chat.compare.sliderHintZoom : t.chat.compare.sliderHint}
       >
-        <img draggable={false} src={src(after.img)} alt="Nachher: Screenshot der Web-App" className="absolute inset-0 h-full w-full object-contain" />
-        <img draggable={false} src={src(before.img)} alt="Vorher: Screenshot der Web-App" className="absolute inset-0 h-full w-full object-contain" style={{ clipPath: `inset(0 ${100 - pos}% 0 0)` }} />
+        <img draggable={false} src={src(after.img)} alt={t.chat.compare.imageAlt("after")} className="absolute inset-0 h-full w-full object-contain" />
+        <img draggable={false} src={src(before.img)} alt={t.chat.compare.imageAlt("before")} className="absolute inset-0 h-full w-full object-contain" style={{ clipPath: `inset(0 ${100 - pos}% 0 0)` }} />
         <div className="pointer-events-none absolute inset-y-0 w-0.5 bg-accent" style={{ left: `calc(${pos}% - 1px)` }} />
-        <span className="pointer-events-none absolute left-2 top-2 rounded border border-border bg-surface px-1.5 py-0.5 text-caption text-fg">Vorher</span>
-        <span className="pointer-events-none absolute right-2 top-2 rounded border border-border bg-surface px-1.5 py-0.5 text-caption text-fg">Nachher</span>
+        <span className="pointer-events-none absolute left-2 top-2 rounded border border-border bg-surface px-1.5 py-0.5 text-caption text-fg">{t.chat.compare.before}</span>
+        <span className="pointer-events-none absolute right-2 top-2 rounded border border-border bg-surface px-1.5 py-0.5 text-caption text-fg">{t.chat.compare.after}</span>
       </div>
-      <input type="range" min={0} max={100} value={pos} onChange={(e) => setPos(Number(e.target.value))} aria-label="Grenze zwischen Vorher und Nachher" className="mt-2 w-full accent-accent" />
+      <input type="range" min={0} max={100} value={pos} onChange={(e) => setPos(Number(e.target.value))} aria-label={t.chat.compare.sliderLabel} className="mt-2 w-full accent-accent" />
     </div>
   );
 }
@@ -277,26 +276,26 @@ export function UiCompareDialog({ sessionId, compareId, initialMode, onClose }: 
     <Dialog
       open
       onOpenChange={(o) => !o && onClose()}
-      title="Vorher und nachher"
-      description={c ? `${c.url} · ${c.files.length === 1 ? "1 UI-Datei" : `${c.files.length} UI-Dateien`} geändert` : undefined}
+      title={t.chat.compare.title}
+      description={c ? `${c.url} · ${t.chat.compare.filesChanged(c.files.length)}` : undefined}
       className="w-[min(1600px,94vw)]"
       footer={
         c && c.status !== "capturing" ? (
           <Button variant="outline" loading={retake.isPending} onClick={() => retake.mutate({ sessionId, compareId })}>
-            <RefreshCw className="h-3.5 w-3.5" /> Nachher-Bild neu aufnehmen
+            <RefreshCw className="h-3.5 w-3.5" /> {t.chat.compare.retakeAfter}
           </Button>
         ) : undefined
       }
     >
       {q.isError ? (
         <p className="flex items-center gap-1.5 text-body text-muted">
-          <ImageOff className="h-4 w-4" /> Bilder nicht mehr vorhanden. FORGE räumt sie nach 14 Tagen weg.
+          <ImageOff className="h-4 w-4" /> {t.chat.compare.gone}
         </p>
       ) : (
         <div onContextMenu={menu}>
           <ModeBar value={mode} onChange={setMode} />
           <CompareView sessionId={sessionId} compare={c} mode={mode} className="mt-3" large />
-          {c?.status === "failed" && <p className="mt-2 text-small text-danger">Nachher-Bild fehlgeschlagen: {c.error}</p>}
+          {c?.status === "failed" && <p className="mt-2 text-small text-danger">{t.chat.compare.afterFailed(c.error)}</p>}
         </div>
       )}
     </Dialog>

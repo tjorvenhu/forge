@@ -1,5 +1,6 @@
 import { isIdleClosedDetail, type SessionEvent, type SessionEventBody, type TaskMessageRef } from "@forge/protocol";
 import { limitLabel, limitTime } from "@/lib/rate-limit";
+import { t } from "@/i18n";
 
 type Body<T extends SessionEventBody["type"]> = Extract<SessionEventBody, { type: T }>;
 
@@ -261,7 +262,7 @@ function itemFolder(thread: string | null = null) {
           ts: ev.ts,
           text: b.message,
           tone: b.urgent ? "warning" : "info",
-          card: { title: b.urgent ? "Claude braucht dich" : "Claude meldet sich", ref: null, detail: b.message, icon: "notify" },
+          card: { title: b.urgent ? t.chat.events.notifyUrgent : t.chat.events.notify, ref: null, detail: b.message, icon: "notify" },
         });
         break;
       case "automation": {
@@ -273,23 +274,23 @@ function itemFolder(thread: string | null = null) {
           ts: ev.ts,
           text:
             b.action === "commit" && b.ok
-              ? `Auto-Commit ${b.hash?.slice(0, 7) ?? ""}: ${b.message} (${b.files.length} Datei(en))`
+              ? t.chat.events.autoCommitText(b.hash?.slice(0, 7) ?? "", b.message, b.files.length)
               : b.action === "push" && b.ok
-                ? `Auto-Push: ${b.message}`
+                ? t.chat.events.autoPushText(b.message)
                 : b.message,
           // A merge that is not ok hit conflicts the agent now resolves: a warning, not a failure.
           tone: b.action === "merge" ? (b.ok ? "success" : "warning") : b.action === "wait" || (testSkip && b.ok) ? "info" : !b.ok ? "danger" : b.action === "skip" ? "warning" : "success",
           card: testSkip
             ? { title: testSkip[1]!, ref: null, detail: b.message.slice(testSkip[0].length), icon: "skip" }
             : b.action === "commit"
-              ? { title: b.ok ? "Auto-Commit" : "Auto-Commit fehlgeschlagen", ref: b.ok ? (b.hash?.slice(0, 7) ?? null) : null, detail: b.ok ? `${b.message} · ${b.files.length} Datei(en)` : b.message, icon: "commit" }
+              ? { title: b.ok ? t.chat.events.autoCommit : t.chat.events.autoCommitFailed, ref: b.ok ? (b.hash?.slice(0, 7) ?? null) : null, detail: b.ok ? t.chat.events.commitDetail(b.message, b.files.length) : b.message, icon: "commit" }
               : b.action === "push"
-                ? { title: b.ok ? "Auto-Push" : "Auto-Push fehlgeschlagen", ref: null, detail: b.message, icon: "push" }
+                ? { title: b.ok ? t.chat.events.autoPush : t.chat.events.autoPushFailed, ref: null, detail: b.message, icon: "push" }
                 : b.action === "merge"
-                  ? { title: b.ok ? "Agent zusammengeführt" : "Konflikte beim Zusammenführen", ref: null, detail: b.message.replace(/^Automatisch zusammengeführt:\s*/, ""), icon: "merge" }
+                  ? { title: b.ok ? t.chat.events.merged : t.chat.events.mergeConflicts, ref: null, detail: b.message.replace(/^Automatisch zusammengeführt:\s*/, ""), icon: "merge" }
                   : b.action === "wait"
-                    ? { title: "Wartet aufs Zusammenführen", ref: null, detail: b.message.replace(/^Wartet aufs Zusammenführen:\s*/, ""), icon: "merge" }
-                    : { title: "Automatik übersprungen", ref: null, detail: b.message.replace(/^(Auto-(Commit|Push) übersprungen|Nicht automatisch zusammengeführt):\s*/, ""), icon: "skip" },
+                    ? { title: t.chat.events.waitingForMerge, ref: null, detail: b.message.replace(/^Wartet aufs Zusammenführen:\s*/, ""), icon: "merge" }
+                    : { title: t.chat.events.automationSkipped, ref: null, detail: b.message.replace(/^(Auto-(Commit|Push) übersprungen|Nicht automatisch zusammengeführt):\s*/, ""), icon: "skip" },
         });
         break;
       }
@@ -298,59 +299,57 @@ function itemFolder(thread: string | null = null) {
           kind: "notice",
           key: `w${ev.seq}`,
           ts: ev.ts,
-          text: b.filesChanged.length ? `Dateien zurückgesetzt: ${b.filesChanged.length} Datei(en)` : "Zurückgesetzt, keine Dateien geändert",
+          text: b.filesChanged.length ? t.chat.events.rewoundText(b.filesChanged.length) : t.chat.events.rewoundNone,
           tone: "info",
-          card: { title: "Dateien zurückgesetzt", ref: null, detail: b.filesChanged.length ? `${b.filesChanged.length} Datei(en) auf den früheren Stand` : "Keine Dateien geändert", icon: "rewind" },
+          card: { title: t.chat.events.filesRewound, ref: null, detail: b.filesChanged.length ? t.chat.events.rewoundDetail(b.filesChanged.length) : t.chat.events.noFilesChanged, icon: "rewind" },
         });
         break;
       case "turn.result":
         items.push({ kind: "result", key: `r${ev.seq}`, ts: ev.ts, body: b });
         break;
-      case "context.compacted":
+      case "context.compacted": {
+        const title = b.trigger === "auto" ? t.chat.events.compactedAuto : t.chat.events.compacted;
+        const tokens = b.preTokens !== null ? t.chat.events.compactTokens(formatK(b.preTokens), b.postTokens !== null ? formatK(b.postTokens) : null) : null;
         items.push({
           kind: "notice",
           key: `k${ev.seq}`,
           ts: ev.ts,
-          text: `${b.trigger === "auto" ? "Kontext automatisch komprimiert" : "Kontext komprimiert"}${b.preTokens !== null ? `: vorher ${formatK(b.preTokens)}${b.postTokens !== null ? `, nachher ${formatK(b.postTokens)}` : ""} Tokens` : ""}. Claude arbeitet mit einer Zusammenfassung des bisherigen Verlaufs weiter.`,
+          text: t.chat.events.compactText(title, tokens),
           tone: "info",
-          card: {
-            title: b.trigger === "auto" ? "Kontext automatisch komprimiert" : "Kontext komprimiert",
-            ref: null,
-            detail: b.preTokens !== null ? `vorher ${formatK(b.preTokens)}${b.postTokens !== null ? `, nachher ${formatK(b.postTokens)}` : ""} Tokens · Claude arbeitet mit einer Zusammenfassung weiter` : "Claude arbeitet mit einer Zusammenfassung weiter",
-            icon: "compact",
-          },
+          card: { title, ref: null, detail: t.chat.events.compactDetail(tokens), icon: "compact" },
         });
         break;
+      }
       case "error":
         items.push({ kind: "error", key: `e${ev.seq}`, ts: ev.ts, message: b.message, retryable: b.retryable });
         break;
       case "background.task": {
         const text =
           b.state === "started"
-            ? `Läuft im Hintergrund: ${b.description}. Claude meldet sich, wenn die Aufgabe fertig ist.`
+            ? t.chat.events.backgroundStartedText(b.description)
             : b.state === "completed"
-              ? `Hintergrundaufgabe fertig: ${b.description}`
+              ? t.chat.events.backgroundCompletedText(b.description)
               : b.state === "failed"
-                ? `Hintergrundaufgabe fehlgeschlagen: ${b.description}`
-                : `Hintergrundaufgabe beendet: ${b.description}`;
+                ? t.chat.events.backgroundFailedText(b.description)
+                : t.chat.events.backgroundStoppedText(b.description);
         const tone = b.state === "completed" ? "success" : b.state === "failed" ? "danger" : b.state === "stopped" ? "warning" : "info";
         const title =
-          b.state === "started" ? "Läuft im Hintergrund" : b.state === "completed" ? "Hintergrundaufgabe fertig" : b.state === "failed" ? "Hintergrundaufgabe fehlgeschlagen" : "Hintergrundaufgabe beendet";
+          b.state === "started" ? t.chat.events.backgroundStarted : b.state === "completed" ? t.chat.events.backgroundCompleted : b.state === "failed" ? t.chat.events.backgroundFailed : t.chat.events.backgroundStopped;
         items.push({
           kind: "notice",
           key: `n${ev.seq}`,
           ts: ev.ts,
           text,
           tone,
-          card: { title, ref: null, detail: b.state === "started" ? `${b.description} · Claude meldet sich, wenn sie fertig ist` : b.description, icon: "background" },
+          card: { title, ref: null, detail: b.state === "started" ? t.chat.events.backgroundStartedDetail(b.description) : b.description, icon: "background" },
         });
         break;
       }
       case "app.updated": {
         const versions = b.from && b.to && b.from !== b.to ? `${b.from} → ${b.to} · ` : "";
-        const detail = `${versions}Claude macht dort weiter, wo der Neustart unterbrochen hat`;
+        const detail = t.chat.events.updateDetail(versions);
         // Same version: the update did not go through and the old FORGE came back.
-        const title = b.from !== b.to ? "FORGE aktualisiert" : "FORGE neu gestartet";
+        const title = b.from !== b.to ? t.chat.events.updated : t.chat.events.restarted;
         items.push({ kind: "notice", key: `n${ev.seq}`, ts: ev.ts, text: `${title}: ${detail}`, tone: "info", card: { title, ref: null, detail, icon: "update" } });
         break;
       }
@@ -363,9 +362,9 @@ function itemFolder(thread: string | null = null) {
       case "rate_limit":
         if (b.status === "rejected" && !b.overageInUse) {
           const when = b.resetsAt ? limitTime(new Date(b.resetsAt * 1000).toISOString(), Date.parse(ev.ts)) : null;
-          const detail = `${limitLabel(b.limitType)}${when ? ` · zurückgesetzt um ${when}` : ""}`;
+          const detail = t.chat.events.limitDetail(limitLabel(b.limitType), when);
           limitNotice = items.length;
-          items.push({ kind: "notice", key: `n${ev.seq}`, ts: ev.ts, text: `Nutzungslimit erreicht: ${detail}`, tone: "warning", card: { title: "Nutzungslimit erreicht", ref: null, detail, icon: "limit" } });
+          items.push({ kind: "notice", key: `n${ev.seq}`, ts: ev.ts, text: t.chat.events.limitText(detail), tone: "warning", card: { title: t.chat.autoContinue.limitReached, ref: null, detail, icon: "limit" } });
         }
         break;
       case "auto_continue":
@@ -542,13 +541,13 @@ export function toolSummary(name: string, input: Record<string, unknown>, projec
     case "Agent":
       return s("description") || s("subagent_type");
     case "TodoWrite":
-      return "Aufgabenliste aktualisiert";
+      return t.chat.events.todoUpdated;
     case "AskUserQuestion": {
       const qs = Array.isArray(input.questions) ? (input.questions as Array<{ question?: unknown }>) : [];
       return typeof qs[0]?.question === "string" ? qs[0].question : "";
     }
     case "ExitPlanMode":
-      return "Plan zur Freigabe";
+      return t.chat.cards.planForApproval;
     default:
       return Object.values(input).find((v): v is string => typeof v === "string")?.slice(0, 120) ?? "";
   }
@@ -560,24 +559,7 @@ export function toolDisplayName(name: string): string {
   return m ? `${m[1]}: ${m[2]}` : name;
 }
 
-export const TOOL_LABELS: Record<string, string> = {
-  Read: "Lesen",
-  Write: "Erstellen",
-  Edit: "Bearbeiten",
-  MultiEdit: "Bearbeiten",
-  NotebookEdit: "Notebook bearbeiten",
-  Bash: "Terminal",
-  PowerShell: "PowerShell",
-  Glob: "Dateien suchen",
-  Grep: "Durchsuchen",
-  WebFetch: "Web abrufen",
-  WebSearch: "Websuche",
-  Task: "Subagent",
-  Agent: "Subagent",
-  TodoWrite: "Aufgaben",
-  AskUserQuestion: "Rückfrage",
-  ExitPlanMode: "Plan",
-};
+export const TOOL_LABELS: Record<string, string> = t.chat.toolLabels;
 
 /** The first entry after one of your messages (or at the very top) opens Claude's answer. */
 export function startsAnswer(prev: ChatItem | undefined, item: ChatItem): boolean {

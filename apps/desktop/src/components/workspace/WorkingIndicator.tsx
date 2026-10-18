@@ -13,6 +13,7 @@ import { Kbd, Tooltip } from "@/components/ui/misc";
 import { ChatRow } from "./ChatRow";
 import { ClaudeMark } from "./ClaudeMark";
 import { formatElapsed, pickPhrase } from "./working";
+import { t } from "@/i18n";
 
 function useNow() {
   const [now, setNow] = useState(() => Date.now());
@@ -24,10 +25,10 @@ function useNow() {
 }
 
 /** What opens when a background task is clicked: a subagent's history or a command's output. */
-export function taskViewOf(t: BackgroundTask, sessionId: string | undefined): TaskView | null {
+export function taskViewOf(task: BackgroundTask, sessionId: string | undefined): TaskView | null {
   if (!sessionId) return null;
-  if (t.taskType === "local_agent") return t.toolUseId ? { kind: "agent", sessionId, toolUseId: t.toolUseId, title: t.description } : null;
-  return { kind: "shell", sessionId, taskId: t.taskId, toolUseId: t.toolUseId, title: t.description };
+  if (task.taskType === "local_agent") return task.toolUseId ? { kind: "agent", sessionId, toolUseId: task.toolUseId, title: task.description } : null;
+  return { kind: "shell", sessionId, taskId: task.taskId, toolUseId: task.toolUseId, title: task.description };
 }
 
 /** Right-click entries of a task: open it, write to it, and what its row offers besides. */
@@ -36,9 +37,9 @@ export function taskMenu(task: TaskView | null, more: MenuItem[] = []): MenuItem
   const openTask = useUi.getState().openTask;
   return [
     task.kind === "agent"
-      ? { label: "Verlauf des Subagenten öffnen", icon: <MessagesSquare className="h-3.5 w-3.5" />, onSelect: () => openTask(task) }
-      : { label: "Ausgabe ansehen", icon: <SquareTerminal className="h-3.5 w-3.5" />, onSelect: () => openTask(task) },
-    { label: "Nachricht schreiben", icon: <MessageSquareText className="h-3.5 w-3.5" />, onSelect: () => openTask({ ...task, compose: true }) },
+      ? { label: t.chat.working.openSubagentHistory, icon: <MessagesSquare className="h-3.5 w-3.5" />, onSelect: () => openTask(task) }
+      : { label: t.chat.tool.viewOutput, icon: <SquareTerminal className="h-3.5 w-3.5" />, onSelect: () => openTask(task) },
+    { label: t.chat.working.writeMessage, icon: <MessageSquareText className="h-3.5 w-3.5" />, onSelect: () => openTask({ ...task, compose: true }) },
     ...more,
   ];
 }
@@ -51,7 +52,7 @@ function TaskTitle({ task, className, children }: { task: TaskView | null; class
     <button
       type="button"
       className={cn("min-w-0 truncate text-left underline-offset-2 hover:underline", className)}
-      title={task.kind === "agent" ? "Verlauf des Subagenten öffnen" : "Ausgabe ansehen"}
+      title={task.kind === "agent" ? t.chat.working.openSubagentHistory : t.chat.tool.viewOutput}
       onClick={() => openTask(task)}
     >
       {children}
@@ -69,7 +70,7 @@ export const BackgroundIndicator = memo(function BackgroundIndicator({ tasks, se
     try {
       await call("sessions.stopTask", { sessionId, taskId });
     } catch (e) {
-      toast.error("Aufgabe nicht gestoppt", errorMessage(e));
+      toast.error(t.chat.working.taskNotStopped, errorMessage(e));
       setStopping((s) => {
         const next = new Set(s);
         next.delete(taskId);
@@ -79,34 +80,34 @@ export const BackgroundIndicator = memo(function BackgroundIndicator({ tasks, se
   };
   return (
     <div className="flex flex-col gap-0.5 px-6 pb-4 text-small">
-      {tasks.map((t) => (
-        <ChatRow key={t.taskId} marker={<Hourglass className="animate-soft-pulse h-3.5 w-3.5 text-accent" />}>
+      {tasks.map((task) => (
+        <ChatRow key={task.taskId} marker={<Hourglass className="animate-soft-pulse h-3.5 w-3.5 text-accent" />}>
           <div
             className="group/task flex min-w-0 items-baseline gap-2"
             onContextMenu={contextItems(() =>
-              taskMenu(taskViewOf(t, sessionId), sessionId ? [{ label: "Nur diese Aufgabe stoppen", icon: <Square className="h-3.5 w-3.5" />, onSelect: () => void stop(t.taskId) }] : []),
+              taskMenu(taskViewOf(task, sessionId), sessionId ? [{ label: t.chat.working.stopTask, icon: <Square className="h-3.5 w-3.5" />, onSelect: () => void stop(task.taskId) }] : []),
             )}
           >
-            <TaskTitle task={taskViewOf(t, sessionId)} className="text-fg">
-              Im Hintergrund: {t.description}
+            <TaskTitle task={taskViewOf(task, sessionId)} className="text-fg">
+              {t.chat.working.inBackground(task.description)}
             </TaskTitle>
-            {t.summary && (
-              <span className="min-w-0 truncate text-muted" title={t.summary}>
-                · {t.summary}
+            {task.summary && (
+              <span className="min-w-0 truncate text-muted" title={task.summary}>
+                · {task.summary}
               </span>
             )}
-            <span className="shrink-0 tabular-nums text-subtle">seit {formatElapsed(now - new Date(t.startedAt).getTime())}</span>
+            <span className="shrink-0 tabular-nums text-subtle">{t.chat.working.since(formatElapsed(now - new Date(task.startedAt).getTime()))}</span>
             {sessionId && (
-              <Tooltip content="Nur diese Aufgabe stoppen">
+              <Tooltip content={t.chat.working.stopTask}>
                 <Button
                   size="icon-sm"
                   variant="ghost"
                   className="h-5 w-5 shrink-0 self-center opacity-0 group-hover/task:opacity-100 focus-visible:opacity-100"
-                  aria-label={`${t.description} stoppen`}
-                  loading={stopping.has(t.taskId)}
-                  onClick={() => void stop(t.taskId)}
+                  aria-label={t.chat.working.stopNamed(task.description)}
+                  loading={stopping.has(task.taskId)}
+                  onClick={() => void stop(task.taskId)}
                 >
-                  {!stopping.has(t.taskId) && <Square className="h-3 w-3" />}
+                  {!stopping.has(task.taskId) && <Square className="h-3 w-3" />}
                 </Button>
               </Tooltip>
             )}
@@ -114,7 +115,7 @@ export const BackgroundIndicator = memo(function BackgroundIndicator({ tasks, se
         </ChatRow>
       ))}
       <ChatRow>
-        <span className="text-subtle">Claude meldet sich in dieser Session, sobald {tasks.length === 1 ? "die Aufgabe" : "eine Aufgabe"} fertig ist.</span>
+        <span className="text-subtle">{t.chat.working.backgroundNote(tasks.length)}</span>
       </ChatRow>
     </div>
   );
@@ -160,16 +161,16 @@ export const WorkingIndicator = memo(function WorkingIndicator({ startedAt, suba
     if (!sessionId) return;
     try {
       const r = await call("sessions.toBackground", { sessionId, toolUseId: toolUseId ?? undefined });
-      if (!r.moved) toast.info("Nichts verschoben", "Der Subagent ist schon fertig.");
+      if (!r.moved) toast.info(t.chat.working.nothingMoved, t.chat.working.subagentDone);
     } catch (e) {
-      toast.error("Nicht in den Hintergrund verschoben", errorMessage(e));
+      toast.error(t.chat.working.notMoved, errorMessage(e));
     }
   };
   return (
     <div className="max-h-40 shrink-0 overflow-y-auto px-6 pt-2 text-small">
       <WorkingLine startedAt={startedAt} now={now}>
         <span className="tabular-nums text-subtle">
-          ({formatElapsed(elapsed)} · <Kbd>Esc</Kbd> zum Unterbrechen)
+          ({formatElapsed(elapsed)} · <Kbd>Esc</Kbd> {t.chat.working.toInterrupt})
         </span>
       </WorkingLine>
       {subagents.map((a) => (
@@ -177,25 +178,25 @@ export const WorkingIndicator = memo(function WorkingIndicator({ startedAt, suba
           <div
             className="group/agent flex min-w-0 items-baseline gap-2"
             onContextMenu={contextItems(() =>
-              taskMenu(sessionId && a.toolUseId ? { kind: "agent", sessionId, toolUseId: a.toolUseId, title: a.description } : null, sessionId ? [{ label: "In den Hintergrund", icon: <ArrowDownToLine className="h-3.5 w-3.5" />, onSelect: () => void toBackground(a.toolUseId) }] : []),
+              taskMenu(sessionId && a.toolUseId ? { kind: "agent", sessionId, toolUseId: a.toolUseId, title: a.description } : null, sessionId ? [{ label: t.chat.working.toBackground, icon: <ArrowDownToLine className="h-3.5 w-3.5" />, onSelect: () => void toBackground(a.toolUseId) }] : []),
             )}
           >
             <TaskTitle task={sessionId && a.toolUseId ? { kind: "agent", sessionId, toolUseId: a.toolUseId, title: a.description } : null} className="text-fg">
               {a.description}
             </TaskTitle>
             <span className="min-w-0 truncate text-muted" title={a.summary ?? undefined}>
-              {a.summary ?? (a.lastTool ? `nutzt ${a.lastTool}` : "startet …")}
+              {a.summary ?? (a.lastTool ? t.chat.working.usesTool(a.lastTool) : t.chat.working.starting)}
             </span>
             <span className="shrink-0 tabular-nums text-subtle">
-              {a.toolUses} {a.toolUses === 1 ? "Aufruf" : "Aufrufe"} · {formatElapsed(now - new Date(a.startedAt).getTime())}
+              {t.chat.working.toolCalls(a.toolUses)} · {formatElapsed(now - new Date(a.startedAt).getTime())}
             </span>
             {sessionId && (
-              <Tooltip content="In den Hintergrund: Claude arbeitet weiter, der Subagent läuft nebenher (wie Strg+B im Terminal)">
+              <Tooltip content={t.chat.working.toBackgroundTooltip}>
                 <Button
                   size="icon-sm"
                   variant="ghost"
                   className="h-5 w-5 shrink-0 self-center opacity-0 group-hover/agent:opacity-100 focus-visible:opacity-100"
-                  aria-label={`${a.description} in den Hintergrund`}
+                  aria-label={t.chat.working.toBackgroundNamed(a.description)}
                   onClick={() => void toBackground(a.toolUseId)}
                 >
                   <ArrowDownToLine className="h-3 w-3" />

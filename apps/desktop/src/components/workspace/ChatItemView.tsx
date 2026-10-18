@@ -13,6 +13,7 @@ import { ChatRow, Dot, HoverTime } from "./ChatRow";
 import { UserMessage } from "./UserMessage";
 import { AutoContinueCard } from "./AutoContinueCard";
 import { UiCompareCard } from "./UiCompareCard";
+import { t } from "@/i18n";
 
 /**
  * Text updates while streaming. Only the last paragraph is parsed again (StreamingMarkdown), so this
@@ -62,7 +63,7 @@ export const ItemView = memo(function ItemView({ item, sessionId, live, projectD
         <ChatRow
           className="text-body"
           markerClassName={item.resolved ? undefined : "mt-2.75"}
-          marker={<Dot className={item.resolved ? (item.resolved.decision === "allow" ? "bg-success" : "border-[1.5px] border-danger") : "animate-soft-pulse bg-warning"} label={item.resolved ? undefined : "wartet auf Freigabe"} />}
+          marker={<Dot className={item.resolved ? (item.resolved.decision === "allow" ? "bg-success" : "border-[1.5px] border-danger") : "animate-soft-pulse bg-warning"} label={item.resolved ? undefined : t.chat.item.waitingForApproval} />}
         >
           <ApprovalBlock req={item.req} resolved={item.resolved} sessionId={sessionId} projectDir={projectDir} />
         </ChatRow>
@@ -71,7 +72,7 @@ export const ItemView = memo(function ItemView({ item, sessionId, live, projectD
       return (
         <ChatRow className="text-body" marker={<ShieldAlert className={cn(EVENT_ICON, "text-danger")} />}>
           <span className="break-words">
-            <span className="font-medium text-danger">Von der FORGE-Policy blockiert</span> <span className="text-muted">({item.body.toolName}): {item.body.message}</span>
+            <span className="font-medium text-danger">{t.chat.item.blockedByForgePolicy}</span> <span className="text-muted">({item.body.toolName}): {item.body.message}</span>
           </span>
         </ChatRow>
       );
@@ -84,7 +85,7 @@ export const ItemView = memo(function ItemView({ item, sessionId, live, projectD
             <div className="min-w-0 flex-1 break-words text-danger">{item.message}</div>
             {item.retryable && onRetry && (
               <Button size="sm" variant="outline" className="-my-1" onClick={onRetry}>
-                <RotateCcw className="h-3.5 w-3.5" /> Erneut senden
+                <RotateCcw className="h-3.5 w-3.5" /> {t.chat.item.resend}
               </Button>
             )}
           </div>
@@ -121,9 +122,9 @@ function AssistantMessage({ item }: { item: Extract<ChatItem, { kind: "assistant
   const text = useThrottledValue(item.text, item.streaming ? STREAM_RENDER_MS : 0);
   return (
     <ChatRow className="group relative text-ui leading-[1.65]" marker={<Dot className="bg-fg" />}>
-      <div onContextMenu={contextItems(() => (item.streaming ? [] : [{ label: "Antwort kopieren", icon: <Copy className="h-3.5 w-3.5" />, hint: "Markdown", onSelect: () => copyText(item.text) }]))}>
+      <div onContextMenu={contextItems(() => (item.streaming ? [] : [{ label: t.chat.item.copyAnswer, icon: <Copy className="h-3.5 w-3.5" />, hint: "Markdown", onSelect: () => copyText(item.text) }]))}>
         {item.streaming ? <StreamingMarkdown text={text} /> : <Markdown text={text} />}
-        {item.streaming && <span className="animate-soft-pulse mt-1 inline-block h-3.5 w-1.5 bg-muted" aria-label="schreibt" />}
+        {item.streaming && <span className="animate-soft-pulse mt-1 inline-block h-3.5 w-1.5 bg-muted" aria-label={t.chat.item.writing} />}
       </div>
       {item.ts && <HoverTime time={clockTime(item.ts)} className="absolute right-0 top-0 bg-bg pl-2 leading-[1lh]" />}
     </ChatRow>
@@ -135,7 +136,7 @@ function CheckCard({ body, ts }: { body: Extract<ChatItem, { kind: "check" }>["b
     <EventCard
       icon={body.ok ? <CheckCircle2 className={EVENT_ICON} /> : <XCircle className={EVENT_ICON} />}
       tone={body.ok ? "success" : "danger"}
-      title={body.ok ? "Tests erfolgreich" : "Tests fehlgeschlagen"}
+      title={body.ok ? t.chat.item.testsPassed : t.chat.item.testsFailed}
       refText={body.command}
       detail={formatDuration(body.durationMs)}
       ts={ts}
@@ -153,28 +154,24 @@ function ResultLine({ body, onRetry }: { body: Extract<ChatItem, { kind: "result
       <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-subtle">
         {body.isError ? (
           interrupted ? (
-            <span className="text-warning">Gestoppt</span>
+            <span className="text-warning">{t.chat.item.stopped}</span>
           ) : (
-            <span className="text-danger">Fehlgeschlagen: {body.text ?? body.subtype}</span>
+            <span className="text-danger">{t.chat.item.failed(body.text ?? body.subtype)}</span>
           )
         ) : (
-          <span className="text-success">Fertig</span>
+          <span className="text-success">{t.chat.item.done}</span>
         )}
         {body.durationMs !== null && <Part>{formatDuration(body.durationMs)}</Part>}
         {/* A local command (/compact, /cost) reports 0 steps and 0 tokens; that only adds noise. */}
         {!!body.numTurns && (
-          <Part>
-            {body.numTurns} {body.numTurns === 1 ? "Schritt" : "Schritte"}
-          </Part>
+          <Part>{t.chat.item.steps(body.numTurns)}</Part>
         )}
         {(!!body.inputTokens || !!body.outputTokens) && (
-          <Part title="Laut Claude Code gemeldete Tokens dieses Durchlaufs (ohne Cache-Lesezugriffe)">
-            Tokens: {formatTokens(body.inputTokens)} rein, {formatTokens(body.outputTokens)} raus
-          </Part>
+          <Part title={t.chat.item.tokensTitle}>{t.chat.item.tokens(formatTokens(body.inputTokens), formatTokens(body.outputTokens))}</Part>
         )}
         {body.isError && !interrupted && onRetry && (
           <Button size="sm" variant="ghost" className="-my-1 ml-1" onClick={onRetry}>
-            <RotateCcw className="h-3 w-3" /> Erneut senden
+            <RotateCcw className="h-3 w-3" /> {t.chat.item.resend}
           </Button>
         )}
       </div>

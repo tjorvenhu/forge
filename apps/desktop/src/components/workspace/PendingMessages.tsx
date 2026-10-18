@@ -2,6 +2,7 @@ import { FileText } from "lucide-react";
 import type { PendingMessage } from "@/stores/pending-messages";
 import { ChatRow } from "./ChatRow";
 import { UserAvatar } from "./UserMessage";
+import { t } from "@/i18n";
 
 /** Messages on their way to Claude: they look like sent ones, a little dimmer, until the real one arrives. */
 export function PendingMessages({ items }: { items: PendingMessage[] }) {
@@ -25,7 +26,7 @@ export function PendingMessages({ items }: { items: PendingMessage[] }) {
                 )}
               </div>
               <span className="ml-auto flex h-[1lh] shrink-0 items-center text-caption text-subtle">
-                <span className="animate-soft-pulse">wird gesendet …</span>
+                <span className="animate-soft-pulse">{t.chat.pending.sending}</span>
               </span>
             </div>
           </ChatRow>

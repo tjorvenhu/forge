@@ -11,6 +11,7 @@ import { toolIcon } from "./ToolCard";
 import { forgeIcon } from "./ForgeToolCard";
 import { forgeToolName, forgeToolView } from "./forge-tool";
 import { FileLinkContext, LinkedText, type FileLinkTarget } from "./file-links";
+import { t } from "@/i18n";
 
 /**
  * True while the chat still picks the project's session or loads the active session's history; an
@@ -49,16 +50,16 @@ export function ActivityFeed({ projectId, projectDir }: { projectId: string; pro
           out.push({ key: `t${e.seq}`, icon: forgeIcon(view.icon, "h-3.5 w-3.5"), title: view.title, detail: view.ref ?? "", ts: e.ts, tone: view.tone === "danger" ? "text-danger" : view.tone === "warning" ? "text-warning" : "text-accent" });
         else out.push({ key: `t${e.seq}`, icon: toolIcon(b.name), title: TOOL_LABELS[b.name] ?? b.name, detail: toolSummary(b.name, b.input, projectDir), ts: e.ts });
       } else if (b.type === "approval.request")
-        out.push({ key: `a${e.seq}`, icon: <ShieldQuestion className="h-3.5 w-3.5" />, title: "Freigabe angefragt", detail: b.toolName, ts: e.ts, tone: "text-warning" });
+        out.push({ key: `a${e.seq}`, icon: <ShieldQuestion className="h-3.5 w-3.5" />, title: t.chat.activity.approvalRequested, detail: b.toolName, ts: e.ts, tone: "text-warning" });
       else if (b.type === "policy.blocked")
-        out.push({ key: `b${e.seq}`, icon: <ShieldAlert className="h-3.5 w-3.5" />, title: "Von Policy blockiert", detail: b.message, ts: e.ts, tone: "text-danger" });
+        out.push({ key: `b${e.seq}`, icon: <ShieldAlert className="h-3.5 w-3.5" />, title: t.chat.activity.blockedByPolicy, detail: b.message, ts: e.ts, tone: "text-danger" });
     }
     return out;
   }, [events, projectDir]);
 
   if (loading)
     return (
-      <SkeletonRegion label="Lädt Aktivität" className="h-full divide-y divide-border overflow-hidden">
+      <SkeletonRegion label={t.chat.activity.loading} className="h-full divide-y divide-border overflow-hidden">
         {[55, 40, 65, 35, 50, 45].map((w) => (
           <div key={w} className="flex items-start gap-2.5 px-3 py-2">
             <Skeleton className="mt-0.5 h-3.5 w-3.5 shrink-0 rounded-sm" />
@@ -73,8 +74,8 @@ export function ActivityFeed({ projectId, projectDir }: { projectId: string; pro
     );
   if (!sessionId || !rows.length)
     return (
-      <EmptyState icon={<Activity className="h-8 w-8" />} title="Noch keine Aktivität">
-        Tool-Aufrufe der aktiven Session erscheinen hier.
+      <EmptyState icon={<Activity className="h-8 w-8" />} title={t.chat.activity.emptyTitle}>
+        {t.chat.activity.emptyHint}
       </EmptyState>
     );
   return (

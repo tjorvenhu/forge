@@ -1,5 +1,6 @@
 /** What a call of a FORGE tool (mcp__forge__…) means, for its own card in the chat. */
 import type { DevToolsSection } from "@/stores/ui";
+import { t } from "@/i18n";
 
 export type ForgeToolIcon =
   | "knowledge"
@@ -36,8 +37,8 @@ export function forgeToolName(name: string): string | null {
   return FORGE_PREFIX.exec(name)?.[1] ?? null;
 }
 
-const DEV_TARGET: Record<string, string> = { "dev-server": "Dev-Server", database: "Test-Datenbank" };
-const DEV_ACTION: Record<string, string> = { start: "gestartet", stop: "gestoppt", restart: "neu gestartet", reset: "geleert" };
+const DEV_TARGET: Record<string, string> = t.chat.forgeTools.devTargets;
+const DEV_ACTION: Record<string, { done: string; running: string; failed: string }> = t.chat.forgeTools.devActions;
 
 function str(input: Record<string, unknown>, key: string): string | null {
   const v = input[key];
@@ -47,7 +48,6 @@ function str(input: Record<string, unknown>, key: string): string | null {
 const line = (text: string, label: string) => new RegExp(`^${label}: (.+)$`, "m").exec(text)?.[1]?.trim() ?? null;
 /** what the preview reported as problems: console errors, exceptions, failed requests */
 const PROBLEMS = /Fehler|Ausnahme|fehlgeschlagene Anfrage/;
-const steps = (n: number) => (n === 1 ? "1 Schritt" : `${n} Schritte`);
 
 /** Size of the screenshot a preview tool returned ("Screenshot: 1280x800 JPEG"), null without one. */
 export function previewShot(tool: string, text: string): { width: number; height: number } | null {
@@ -78,10 +78,10 @@ export function forgeToolView(tool: string, input: Record<string, unknown>, resu
       const refused = done && /^Nicht gespeichert/.test(text);
       const overlapping = done && text.includes("Überschneidet sich stark mit");
       const savedId = /^(?:Gespeichert|Aktualisiert): (\S+)/.exec(text)?.[1] ?? null;
-      const saved = text.startsWith("Aktualisiert") ? "Projektwissen aktualisiert" : "Im Projektwissen gespeichert";
+      const saved = text.startsWith("Aktualisiert") ? t.chat.forgeTools.knowledgeUpdated : t.chat.forgeTools.knowledgeSaved;
       return view({
-        title: !result ? "Speichert im Projektwissen" : refused ? "Nicht gespeichert: ähnlicher Eintrag vorhanden" : overlapping ? `${saved}, überschneidet sich mit anderem Eintrag` : saved,
-        failedTitle: "Speichern im Projektwissen fehlgeschlagen",
+        title: !result ? t.chat.forgeTools.knowledgeSaving : refused ? t.chat.forgeTools.knowledgeRefused : overlapping ? t.chat.forgeTools.knowledgeOverlapping(saved) : saved,
+        failedTitle: t.chat.forgeTools.knowledgeSaveFailed,
         ref: str(input, "title"),
         icon: "knowledge",
         tone: refused || overlapping ? "warning" : "accent",
@@ -90,24 +90,24 @@ export function forgeToolView(tool: string, input: Record<string, unknown>, resu
     }
     case "knowledge_merge":
       return view({
-        title: result ? "Einträge im Projektwissen zusammengeführt" : "Führt Einträge im Projektwissen zusammen",
-        failedTitle: "Zusammenführen im Projektwissen fehlgeschlagen",
+        title: result ? t.chat.forgeTools.knowledgeMerged : t.chat.forgeTools.knowledgeMerging,
+        failedTitle: t.chat.forgeTools.knowledgeMergeFailed,
         ref: str(input, "title"),
         icon: "knowledge",
         target: { kind: "knowledge", id: /^Zusammengeführt: (\S+)/.exec(text)?.[1] ?? null },
       });
     case "knowledge_read":
       return view({
-        title: result ? "Im Projektwissen gelesen" : "Liest im Projektwissen",
-        failedTitle: "Eintrag im Projektwissen nicht lesbar",
+        title: result ? t.chat.forgeTools.knowledgeRead : t.chat.forgeTools.knowledgeReading,
+        failedTitle: t.chat.forgeTools.knowledgeReadFailed,
         ref: str(input, "id"),
         icon: "knowledge",
         target: { kind: "knowledge", id: str(input, "id") },
       });
     case "knowledge_search":
       return view({
-        title: !result ? "Durchsucht das Projektwissen" : text.startsWith("Keine Treffer") ? "Projektwissen durchsucht, keine Treffer" : "Projektwissen durchsucht",
-        failedTitle: "Suche im Projektwissen fehlgeschlagen",
+        title: !result ? t.chat.forgeTools.knowledgeSearching : text.startsWith("Keine Treffer") ? t.chat.forgeTools.knowledgeSearchedNone : t.chat.forgeTools.knowledgeSearched,
+        failedTitle: t.chat.forgeTools.knowledgeSearchFailed,
         ref: str(input, "query"),
         icon: "knowledge",
         target: { kind: "knowledge", id: null },
@@ -115,8 +115,8 @@ export function forgeToolView(tool: string, input: Record<string, unknown>, resu
     case "knowledge_delete": {
       const missing = done && text.startsWith("Kein Eintrag");
       return view({
-        title: !result ? "Löscht Eintrag im Projektwissen" : missing ? "Eintrag im Projektwissen nicht gefunden" : "Eintrag im Projektwissen gelöscht",
-        failedTitle: "Löschen im Projektwissen fehlgeschlagen",
+        title: !result ? t.chat.forgeTools.knowledgeDeleting : missing ? t.chat.forgeTools.knowledgeNotFound : t.chat.forgeTools.knowledgeDeleted,
+        failedTitle: t.chat.forgeTools.knowledgeDeleteFailed,
         ref: str(input, "id"),
         icon: "knowledge",
         tone: missing ? "warning" : "accent",
@@ -125,18 +125,18 @@ export function forgeToolView(tool: string, input: Record<string, unknown>, resu
     }
     case "dev_environment":
       return view({
-        title: result ? "Dev-Umgebung abgefragt" : "Fragt die Dev-Umgebung ab",
-        failedTitle: "Dev-Umgebung nicht abrufbar",
+        title: result ? t.chat.forgeTools.devQueried : t.chat.forgeTools.devQuerying,
+        failedTitle: t.chat.forgeTools.devQueryFailed,
         ref: null,
         icon: "dev",
         target: { kind: "devtools", section: "server" },
       });
     case "dev_control": {
-      const target = DEV_TARGET[str(input, "target") ?? ""] ?? "Dev-Umgebung";
-      const action = DEV_ACTION[str(input, "action") ?? ""] ?? "gesteuert";
+      const target = DEV_TARGET[str(input, "target") ?? ""] ?? t.chat.forgeTools.devEnvironment;
+      const action = DEV_ACTION[str(input, "action") ?? ""] ?? t.chat.forgeTools.devActionFallback;
       return view({
-        title: result ? `${target} ${action}` : `${target} wird ${action}`,
-        failedTitle: `${target} nicht ${action}`,
+        title: `${target} ${result ? action.done : action.running}`,
+        failedTitle: `${target} ${action.failed}`,
         ref: null,
         icon: "dev",
         target: { kind: "devtools", section: input.target === "database" ? "database" : "server" },
@@ -145,8 +145,8 @@ export function forgeToolView(tool: string, input: Record<string, unknown>, resu
     case "notify": {
       const urgent = input.urgent === true;
       return view({
-        title: urgent ? "Dringende Benachrichtigung" : "Benachrichtigung",
-        failedTitle: "Benachrichtigung fehlgeschlagen",
+        title: urgent ? t.chat.forgeTools.notifyUrgent : t.chat.forgeTools.notify,
+        failedTitle: t.chat.forgeTools.notifyFailed,
         ref: str(input, "message"),
         icon: "notify",
         tone: urgent ? "warning" : "accent",
@@ -156,24 +156,24 @@ export function forgeToolView(tool: string, input: Record<string, unknown>, resu
     }
     case "start_agent":
       return view({
-        title: result ? "Paralleler Agent gestartet" : "Startet parallelen Agenten",
-        failedTitle: "Agent nicht gestartet",
+        title: result ? t.chat.forgeTools.agentStarted : t.chat.forgeTools.agentStarting,
+        failedTitle: t.chat.forgeTools.agentStartFailed,
         ref: /Branch (\S+?),/.exec(text)?.[1] ?? str(input, "name"),
         icon: "agentStart",
         target: { kind: "agents" },
       });
     case "agent_status":
       return view({
-        title: result ? "Stand der Agenten abgefragt" : "Fragt den Stand der Agenten ab",
-        failedTitle: "Stand der Agenten nicht abrufbar",
+        title: result ? t.chat.forgeTools.agentStatus : t.chat.forgeTools.agentStatusRunning,
+        failedTitle: t.chat.forgeTools.agentStatusFailed,
         ref: str(input, "agent"),
         icon: "agentStatus",
         target: { kind: "agents" },
       });
     case "message_agent":
       return view({
-        title: result ? "Anweisung an Agent gesendet" : "Sendet Anweisung an Agent",
-        failedTitle: "Anweisung an Agent nicht gesendet",
+        title: result ? t.chat.forgeTools.agentMessaged : t.chat.forgeTools.agentMessaging,
+        failedTitle: t.chat.forgeTools.agentMessageFailed,
         ref: str(input, "agent"),
         icon: "agentMessage",
         target: { kind: "agents" },
@@ -181,8 +181,8 @@ export function forgeToolView(tool: string, input: Record<string, unknown>, resu
     case "finish_agent": {
       const discard = input.action === "discard";
       return view({
-        title: discard ? (result ? "Agent verworfen" : "Verwirft Agent") : result ? "Agent zusammengeführt" : "Führt Agent zusammen",
-        failedTitle: discard ? "Agent nicht verworfen" : "Agent nicht zusammengeführt",
+        title: discard ? (result ? t.chat.forgeTools.agentDiscarded : t.chat.forgeTools.agentDiscarding) : result ? t.chat.forgeTools.agentMerged : t.chat.forgeTools.agentMerging,
+        failedTitle: discard ? t.chat.forgeTools.agentDiscardFailed : t.chat.forgeTools.agentMergeFailed,
         ref: str(input, "agent"),
         icon: discard ? "agentDiscard" : "agentMerge",
         target: { kind: "agents" },
@@ -191,8 +191,8 @@ export function forgeToolView(tool: string, input: Record<string, unknown>, resu
     case "usage_status": {
       const reached = done && text.startsWith("Limit erreicht");
       return view({
-        title: !result ? "Fragt die Abo-Nutzung ab" : reached ? "Abo-Nutzung abgefragt, Limit erreicht" : "Abo-Nutzung abgefragt",
-        failedTitle: "Abo-Nutzung nicht abrufbar",
+        title: !result ? t.chat.forgeTools.usageQuerying : reached ? t.chat.forgeTools.usageLimitReached : t.chat.forgeTools.usageQueried,
+        failedTitle: t.chat.forgeTools.usageFailed,
         ref: /^5 Stunden: (\d+ %)/m.exec(text)?.[1] ?? null,
         icon: "usage",
         tone: reached ? "warning" : "accent",
@@ -202,8 +202,8 @@ export function forgeToolView(tool: string, input: Record<string, unknown>, resu
     case "preview_screenshot": {
       const problems = done && PROBLEMS.test(line(text, "Konsole") ?? "");
       return view({
-        title: !result ? "Erstellt Screenshot der Vorschau" : problems ? "Screenshot der Vorschau, Konsole meldet Fehler" : "Screenshot der Vorschau",
-        failedTitle: "Screenshot der Vorschau fehlgeschlagen",
+        title: !result ? t.chat.forgeTools.screenshotTaking : problems ? t.chat.forgeTools.screenshotProblems : t.chat.forgeTools.screenshot,
+        failedTitle: t.chat.forgeTools.screenshotFailed,
         ref: line(text, "Adresse") ?? str(input, "url") ?? str(input, "path"),
         icon: "screenshot",
         tone: problems ? "warning" : "accent",
@@ -214,8 +214,8 @@ export function forgeToolView(tool: string, input: Record<string, unknown>, resu
       const summary = line(text, "Zusammenfassung");
       const problems = done && PROBLEMS.test(summary ?? "");
       return view({
-        title: !result ? "Liest die Konsole der Vorschau" : problems ? "Konsole der Vorschau meldet Fehler" : "Konsole der Vorschau gelesen",
-        failedTitle: "Konsole der Vorschau nicht lesbar",
+        title: !result ? t.chat.forgeTools.consoleReading : problems ? t.chat.forgeTools.consoleProblems : t.chat.forgeTools.consoleRead,
+        failedTitle: t.chat.forgeTools.consoleFailed,
         ref: summary ?? str(input, "url") ?? str(input, "path"),
         icon: "console",
         tone: problems ? "warning" : "accent",
@@ -227,11 +227,11 @@ export function forgeToolView(tool: string, input: Record<string, unknown>, resu
       const stopped = done ? /^Abgebrochen nach Schritt (\d+) von (\d+)/m.exec(text) : null;
       return view({
         title: !result
-          ? `Führt ${steps(total)} in der Vorschau aus`
+          ? t.chat.forgeTools.stepsRunning(total)
           : stopped
-            ? `Schritt ${stopped[1]} von ${stopped[2]} in der Vorschau fehlgeschlagen`
-            : `${steps(total)} in der Vorschau ausgeführt`,
-        failedTitle: "Schritte in der Vorschau nicht ausgeführt",
+            ? t.chat.forgeTools.stepFailed(stopped[1]!, stopped[2]!)
+            : t.chat.forgeTools.stepsDone(total),
+        failedTitle: t.chat.forgeTools.stepsFailed,
         ref: line(text, "Adresse") ?? str(input, "url") ?? str(input, "path"),
         icon: "interact",
         tone: stopped ? "warning" : "accent",
@@ -239,11 +239,11 @@ export function forgeToolView(tool: string, input: Record<string, unknown>, resu
       });
     }
     default:
-      return view({ title: `FORGE: ${tool}`, failedTitle: `FORGE: ${tool} fehlgeschlagen`, ref: null, icon: "forge", target: null });
+      return view({ title: `FORGE: ${tool}`, failedTitle: t.chat.forgeTools.genericFailed(tool), ref: null, icon: "forge", target: null });
   }
 }
 
-export function forgeTargetLabel(t: ForgeTarget): string {
-  if (t.kind === "knowledge") return t.id ? "Eintrag öffnen" : "Projektwissen öffnen";
-  return t.kind === "agents" ? "Agenten ansehen" : "Dev-Tools öffnen";
+export function forgeTargetLabel(target: ForgeTarget): string {
+  if (target.kind === "knowledge") return target.id ? t.chat.forgeTools.openEntry : t.chat.forgeTools.openKnowledge;
+  return target.kind === "agents" ? t.chat.forgeTools.viewAgents : t.chat.forgeTools.openDevTools;
 }

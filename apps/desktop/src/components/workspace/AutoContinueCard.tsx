@@ -5,39 +5,40 @@ import { limitTime } from "@/lib/rate-limit";
 import { Button } from "@/components/ui/button";
 import type { AutoContinueItem } from "./chat-items";
 import { EVENT_ICON as ICON, EventCard } from "./EventCard";
+import { t } from "@/i18n";
 
 /** What FORGE does after a usage limit: the planned continuation (cancellable), and what came of it. */
 export function AutoContinueCard({ item, sessionId }: { item: AutoContinueItem; sessionId: string }) {
   const qc = useQueryClient();
   const { data: session } = useSession(sessionId);
   const cancel = useRpcMutation("sessions.cancelAutoContinue", {
-    errorTitle: "Abbrechen fehlgeschlagen",
+    errorTitle: t.chat.autoContinue.cancelFailed,
     onSuccess: (s) => qc.setQueryData(keys.session(s.id), s),
   });
   const b = item.body;
   const pending = item.open && !!session?.autoContinueAt;
-  const attempt = b.attempt && b.attempt > 1 ? ` (${b.attempt}. automatischer Versuch)` : "";
+  const attempt = b.attempt && b.attempt > 1 ? t.chat.autoContinue.attempt(b.attempt) : "";
 
   if (b.state === "scheduled") {
     const at = (pending ? session?.autoContinueAt : null) ?? b.scheduledFor;
     const detail = b.resetKnown === false
-      ? "Zeitpunkt des Resets unbekannt. FORGE prüft alle 15 Minuten und macht danach automatisch weiter."
+      ? t.chat.autoContinue.resetUnknown
       : pending && at
-        ? `FORGE macht um ${limitTime(at)} automatisch weiter.${attempt}`
+        ? t.chat.autoContinue.continuesAt(limitTime(at), attempt)
         : at
-          ? `Automatisches Weitermachen war für ${limitTime(at)} geplant.`
+          ? t.chat.autoContinue.wasPlannedFor(limitTime(at))
           : "";
     return (
       <EventCard
         icon={<Timer className={ICON} />}
         tone="warning"
-        title="Nutzungslimit erreicht"
+        title={t.chat.autoContinue.limitReached}
         detail={detail}
         ts={item.ts}
         action={
           pending ? (
             <Button size="sm" variant="outline" onClick={() => cancel.mutate({ sessionId })} loading={cancel.isPending}>
-              <TimerOff className="h-3.5 w-3.5" /> Nicht automatisch weitermachen
+              <TimerOff className="h-3.5 w-3.5" /> {t.chat.autoContinue.dontContinue}
             </Button>
           ) : undefined
         }
@@ -45,16 +46,16 @@ export function AutoContinueCard({ item, sessionId }: { item: AutoContinueItem; 
     );
   }
   if (b.state === "resumed") {
-    return <EventCard icon={<CirclePlay className={ICON} />} tone="success" title={`Automatisch fortgesetzt um ${limitTime(item.ts)}`} detail={`Das Nutzungslimit ist zurückgesetzt.${attempt}`} ts={item.ts} />;
+    return <EventCard icon={<CirclePlay className={ICON} />} tone="success" title={t.chat.autoContinue.resumedAt(limitTime(item.ts))} detail={t.chat.autoContinue.limitReset(attempt)} ts={item.ts} />;
   }
   if (b.state === "cancelled") {
-    return <EventCard icon={<TimerOff className={ICON} />} tone="info" title="Kein automatisches Weitermachen" detail={b.message ?? undefined} ts={item.ts} />;
+    return <EventCard icon={<TimerOff className={ICON} />} tone="info" title={t.chat.autoContinue.cancelled} detail={b.message ?? undefined} ts={item.ts} />;
   }
   return (
     <EventCard
       icon={<AlertTriangle className={ICON} />}
       tone={b.state === "failed" ? "danger" : "warning"}
-      title={b.state === "failed" ? "Automatisches Weitermachen fehlgeschlagen" : "Automatisches Weitermachen beendet"}
+      title={b.state === "failed" ? t.chat.autoContinue.failed : t.chat.autoContinue.ended}
       detail={b.message ?? undefined}
       ts={item.ts}
     />

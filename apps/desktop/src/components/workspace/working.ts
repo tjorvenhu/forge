@@ -1,28 +1,8 @@
 import type { SessionEvent } from "@forge/protocol";
+import { t } from "@/i18n";
 
 /** Shown while Claude works, in the spirit of the spinner words in the Claude Code shell. */
-export const WORKING_PHRASES = [
-  "Schmiedet",
-  "Hämmert",
-  "Feilt",
-  "Glüht vor",
-  "Schleift",
-  "Härtet",
-  "Tüftelt",
-  "Grübelt",
-  "Werkelt",
-  "Knobelt",
-  "Sinniert",
-  "Brütet",
-  "Puzzelt",
-  "Bastelt",
-  "Jongliert",
-  "Kombiniert",
-  "Wälzt Gedanken",
-  "Dreht an Schrauben",
-  "Zerbricht sich den Kopf",
-  "Sortiert Ideen",
-];
+export const WORKING_PHRASES: readonly string[] = t.chat.working.phrases;
 
 /** A new phrase every this many ms, so long turns do not look frozen. */
 export const PHRASE_INTERVAL_MS = 15_000;

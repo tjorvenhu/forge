@@ -31,6 +31,7 @@ import { FollowState, SCROLL_KEYS } from "./follow";
 import { JumpToEnd, useDragRelease, type JumpKind } from "./FollowScroll";
 import { LeadMarker } from "./ChatRow";
 import { ClaudeMark } from "./ClaudeMark";
+import { t } from "@/i18n";
 
 /** Claude's mark in the gutter of the first entry of each answer, like the avatar of a chat. */
 const CLAUDE_LEAD = <ClaudeMark size={20} />;
@@ -54,7 +55,7 @@ function rememberView(sessionId: string, view: { offset: number; pinned: boolean
   if (threadViews.size > MAX_THREAD_VIEWS) threadViews.delete(threadViews.keys().next().value!);
 }
 
-const toastNotFound = () => toast.error("Eintrag nicht gefunden", "Der Eintrag ist im Verlauf dieser Session nicht vorhanden.");
+const toastNotFound = () => toast.error(t.chat.panel.entryNotFound, t.chat.panel.entryNotFoundDetail);
 
 /**
  * `detached`: rendered as the only content of a chat window. `pane`: the chat of a further area of the split view,
@@ -172,14 +173,12 @@ function NewSessionPane({ project, external }: { project: Project; external: Ext
         {pending.length ? (
           <PendingMessages items={pending} />
         ) : external ? (
-          <EmptyState icon={<Terminal className="h-9 w-9" />} title="Session aus dem Terminal fortsetzen">
-            „{external.summary}“, zuletzt {relativeTime(external.lastModified)}
-            {external.gitBranch ? ` auf ${external.gitBranch}` : ""}. Schreibe eine Nachricht, um sie in FORGE weiterzuführen. Der bisherige Verlauf wird übernommen.
+          <EmptyState icon={<Terminal className="h-9 w-9" />} title={t.chat.panel.resumeTitle}>
+            {t.chat.panel.resumeBody(external.summary, relativeTime(external.lastModified), external.gitBranch)}
           </EmptyState>
         ) : (
-          <EmptyState icon={<MessageSquarePlus className="h-9 w-9" />} title={`Neue Session in ${project.name}`}>
-            Claude Code arbeitet im Projektordner mit Profil {project.profile === "safe" ? "Safe" : project.profile === "balanced" ? "Balanced" : "Autonomous"}. CLAUDE.md und
-            die Projekt-Einstellungen aus .claude/ werden berücksichtigt.
+          <EmptyState icon={<MessageSquarePlus className="h-9 w-9" />} title={t.chat.panel.newSessionTitle(project.name)}>
+            {t.chat.panel.newSessionBody(project.profile === "safe" ? "Safe" : project.profile === "balanced" ? "Balanced" : "Autonomous")}
           </EmptyState>
         )}
       </div>
@@ -323,10 +322,10 @@ function SessionThread({ sessionId, session, project }: { sessionId: string; ses
         <div className="flex flex-1 justify-center p-6">
           <div className="w-full max-w-xl">
             <ErrorBanner
-              title="Verlauf konnte nicht geladen werden"
+              title={t.chat.panel.historyFailed}
               action={
                 <Button size="sm" variant="outline" onClick={retry}>
-                  <RotateCcw className="h-3.5 w-3.5" /> Erneut laden
+                  <RotateCcw className="h-3.5 w-3.5" /> {t.chat.panel.reload}
                 </Button>
               }
             >
@@ -377,7 +376,7 @@ function SessionThread({ sessionId, session, project }: { sessionId: string; ses
             {hasOlder && (
               <div className="absolute inset-x-0 top-0 flex items-end justify-center" style={{ height: OLDER_BAR_HEIGHT }}>
                 <Button size="sm" variant="outline" loading={loadingOlder} onClick={() => void loadOlder()}>
-                  <History className="h-3.5 w-3.5" /> Ältere Einträge laden
+                  <History className="h-3.5 w-3.5" /> {t.chat.panel.loadOlder}
                 </Button>
               </div>
             )}

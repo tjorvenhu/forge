@@ -5,6 +5,7 @@ import { toast } from "@/stores/toast";
 import { NO_FILES, useDrafts, type PendingFile } from "@/stores/drafts";
 import { prepareImage, uploadFile } from "@/lib/attachments";
 import { errorMessage } from "@/lib/rpc";
+import { t } from "@/i18n";
 
 export const MAX_ATTACHMENTS = 10;
 const IMAGE_EXT = /\.(png|jpe?g|gif|webp)$/i;
@@ -45,7 +46,7 @@ export function useAttachments(draftKey: string) {
     (paths: string[]) => {
       setFiles((cur) => {
         const room = MAX_ATTACHMENTS - cur.length;
-        if (paths.length > room) toast.info(`Höchstens ${MAX_ATTACHMENTS} Anhänge`);
+        if (paths.length > room) toast.info(t.chat.attachments.max(MAX_ATTACHMENTS));
         const add = paths.slice(0, Math.max(0, room)).map((p) => ({
           id: crypto.randomUUID(),
           name: p.split(/[\\/]/).pop() ?? p,
@@ -68,7 +69,7 @@ export function useAttachments(draftKey: string) {
       const file = await uploadPasted(f, name, id);
       setFiles((cur) => [...cur, file]);
     } catch (e) {
-      toast.error("Anhang nicht hinzugefügt", `${name}: ${errorMessage(e)}`);
+      toast.error(t.chat.attachments.notAdded, `${name}: ${errorMessage(e)}`);
     } finally {
       setPreparing((p) => p.filter((x) => x.id !== id));
     }
@@ -76,7 +77,7 @@ export function useAttachments(draftKey: string) {
 
   const addBlobs = async (list: File[]) => {
     const room = MAX_ATTACHMENTS - files.length - preparing.length;
-    if (list.length > room) toast.info(`Höchstens ${MAX_ATTACHMENTS} Anhänge`);
+    if (list.length > room) toast.info(t.chat.attachments.max(MAX_ATTACHMENTS));
     const jobs = list.slice(0, Math.max(0, room)).map((f) => {
       const job = addBlob(f).finally(() => running.current.delete(job));
       running.current.add(job);
@@ -123,10 +124,10 @@ export function useAttachments(draftKey: string) {
   const pick = async () => {
     const r = await open({
       multiple: true,
-      title: "Dateien anhängen",
+      title: t.chat.composer.attach,
       filters: [
-        { name: "Bilder, PDF, Text", extensions: ["png", "jpg", "jpeg", "gif", "webp", "pdf", "txt", "md", "json", "csv", "log", "ts", "tsx", "js", "py", "rs", "go", "java", "cs", "html", "css", "yaml", "yml", "toml", "xml", "sql"] },
-        { name: "Alle Dateien", extensions: ["*"] },
+        { name: t.chat.attachments.filterSupported, extensions: ["png", "jpg", "jpeg", "gif", "webp", "pdf", "txt", "md", "json", "csv", "log", "ts", "tsx", "js", "py", "rs", "go", "java", "cs", "html", "css", "yaml", "yml", "toml", "xml", "sql"] },
+        { name: t.chat.attachments.filterAll, extensions: ["*"] },
       ],
     });
     if (Array.isArray(r)) addPaths(r);

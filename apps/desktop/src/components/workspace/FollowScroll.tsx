@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "re
 import { ArrowDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { FollowState, SCROLL_KEYS } from "./follow";
+import { t } from "@/i18n";
 
 /** "new": content grew while scrolled up; "end": far from the end. */
 export type JumpKind = "new" | "end";
@@ -21,14 +22,14 @@ export function useDragRelease(follow: FollowState) {
   }, [follow]);
 }
 
-export function JumpToEnd({ kind, onClick, newLabel = "Neue Nachrichten" }: { kind: JumpKind; onClick: () => void; newLabel?: string }) {
+export function JumpToEnd({ kind, onClick, newLabel = t.chat.follow.newMessages }: { kind: JumpKind; onClick: () => void; newLabel?: string }) {
   return (
     <button
       type="button"
       onClick={onClick}
       className="absolute bottom-3 left-1/2 z-10 flex -translate-x-1/2 animate-rise-in items-center gap-1.5 rounded-full border border-border bg-surface-3 px-3 py-1 text-small text-fg shadow-lg transition-[background-color,transform] duration-120 hover:bg-border-strong active:scale-[0.97]"
     >
-      <ArrowDown className="h-3.5 w-3.5" /> {kind === "new" ? newLabel : "Zum Ende"}
+      <ArrowDown className="h-3.5 w-3.5" /> {kind === "new" ? newLabel : t.chat.follow.toEnd}
     </button>
   );
 }
@@ -99,7 +100,7 @@ export function FollowScroll({ children, className }: { children: ReactNode; cla
       >
         <div ref={contentRef}>{children}</div>
       </div>
-      {jump && <JumpToEnd kind={jump} onClick={jumpToEnd} newLabel="Neue Einträge" />}
+      {jump && <JumpToEnd kind={jump} onClick={jumpToEnd} newLabel={t.chat.follow.newEntries} />}
     </div>
   );
 }

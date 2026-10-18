@@ -10,6 +10,7 @@ import { usePendingMessages } from "@/stores/pending-messages";
 import { useSessionEvents } from "@/stores/session-events";
 import { isClearCommand } from "./SlashCommandMenu";
 import { focusComposer, MAIN_SLOT, type ChatSlot } from "./chat-slot";
+import { t } from "@/i18n";
 
 export const PROFILE_MODE: Record<Project["profile"], PermissionMode> = { safe: "default", balanced: "acceptEdits", autonomous: "bypassPermissions" };
 
@@ -42,18 +43,18 @@ export function useComposerOptions(project: Project, session: Session | null, dr
 
   const changeModel = async (next: string | null) => {
     if (!session) return useDrafts.getState().setOptions(draftKey, { model: next });
-    if (next) await update({ model: next }, () => call("sessions.setModel", { sessionId: session.id, model: next }), "Modell nicht gewechselt");
+    if (next) await update({ model: next }, () => call("sessions.setModel", { sessionId: session.id, model: next }), t.chat.send.modelNotChanged);
   };
 
   const changeEffort = async (next: EffortLevel | null) => {
     if (!session) return useDrafts.getState().setOptions(draftKey, { effort: next });
-    await update({ effort: next }, () => call("sessions.setEffort", { sessionId: session.id, effort: next }), "Effort nicht gewechselt");
+    await update({ effort: next }, () => call("sessions.setEffort", { sessionId: session.id, effort: next }), t.chat.send.effortNotChanged);
   };
 
   const togglePlan = async () => {
     if (!session) return useDrafts.getState().setOptions(draftKey, { planOnly: !planOnly });
     const mode: PermissionMode = isPlan ? PROFILE_MODE[session.profile] : "plan";
-    await update({ permissionMode: mode }, () => call("sessions.setPermissionMode", { sessionId: session.id, mode }), "Modus nicht gewechselt");
+    await update({ permissionMode: mode }, () => call("sessions.setPermissionMode", { sessionId: session.id, mode }), t.chat.send.modeNotChanged);
   };
 
   return { model, effort, planOnly, isPlan, changeModel, changeEffort, togglePlan };
@@ -84,18 +85,18 @@ export function useSendMessage({
       clearConversation(project.id, session, draftKey, slot);
       return true;
     }
-    let prompt = text.trim() || (files.length ? "Siehe Anhang." : "");
+    let prompt = text.trim() || (files.length ? t.chat.send.seeAttachment : "");
     if (!prompt || sending) return false;
     setSending(true);
     const attachments = files.map((f) => f.attachment);
     if (prompt.length > MAX_PROMPT_CHARS) {
       // Beyond what one protocol line takes: the text goes as a file, Claude reads it from there.
       try {
-        attachments.push({ kind: "path", path: await uploadFile(new Blob([prompt], { type: "text/plain" }), "nachricht.txt") });
-        prompt = "Meine Nachricht ist zu lang für das Eingabefeld, sie steht vollständig in der angehängten Datei nachricht.txt.";
+        attachments.push({ kind: "path", path: await uploadFile(new Blob([prompt], { type: "text/plain" }), t.chat.send.longMessageFile) });
+        prompt = t.chat.send.longMessagePrompt(t.chat.send.longMessageFile);
       } catch (e) {
         setSending(false);
-        toast.error("Nachricht nicht gesendet", errorMessage(e));
+        toast.error(t.chat.task.messageNotSent, errorMessage(e));
         return false;
       }
     }
@@ -132,7 +133,7 @@ export function useSendMessage({
       if (pendingId !== null) usePendingMessages.getState().remove(pendingKey, pendingId);
       // The text comes back, unless the user started typing something new meanwhile.
       if (!(useDrafts.getState().drafts[draftKey]?.text ?? "")) useDrafts.getState().setText(draftKey, text);
-      toast.error("Nachricht nicht gesendet", errorMessage(e));
+      toast.error(t.chat.task.messageNotSent, errorMessage(e));
       return false;
     } finally {
       setSending(false);
@@ -152,7 +153,7 @@ export function clearConversation(projectId: string, session: Session | null, dr
   // The new chat mounts a fresh composer, so the focus of the old one is gone.
   requestAnimationFrame(() => focusComposer(slot));
   if (session?.live && (session.status === "idle" || session.status === "error")) {
-    void call("sessions.close", { sessionId: session.id }).catch((e: unknown) => toast.error("Claude-Prozess nicht beendet", errorMessage(e)));
+    void call("sessions.close", { sessionId: session.id }).catch((e: unknown) => toast.error(t.chat.send.processNotClosed, errorMessage(e)));
   }
 }
 
@@ -160,7 +161,7 @@ export async function compactSession(sessionId: string) {
   try {
     queryClient.setQueryData(keys.session(sessionId), await call("sessions.send", { sessionId, text: "/compact", attachments: [] }));
   } catch (e) {
-    toast.error("Komprimieren fehlgeschlagen", errorMessage(e));
+    toast.error(t.chat.send.compactFailed, errorMessage(e));
   }
 }
 
@@ -174,6 +175,6 @@ export async function stopSession(sessionId: string) {
   } catch (e) {
     const now = queryClient.getQueryData<Session>(key);
     if (before && now?.status === "stopping") queryClient.setQueryData(key, before);
-    toast.error("Stop fehlgeschlagen", errorMessage(e));
+    toast.error(t.chat.send.stopFailed, errorMessage(e));
   }
 }

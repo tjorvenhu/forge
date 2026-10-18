@@ -1,15 +1,16 @@
 import type { SessionStatus } from "@forge/protocol";
 import { Badge } from "@/components/ui/misc";
+import { locale, t } from "@/i18n";
 
 const MAP: Record<SessionStatus, { label: string; tone: "neutral" | "accent" | "success" | "warning" | "danger" }> = {
-  starting: { label: "Startet", tone: "accent" },
-  running: { label: "Arbeitet", tone: "accent" },
-  idle: { label: "Bereit", tone: "success" },
-  waiting_approval: { label: "Freigabe nötig", tone: "warning" },
-  stopping: { label: "Stoppt", tone: "warning" },
-  stopped: { label: "Beendet", tone: "neutral" },
-  error: { label: "Fehler", tone: "danger" },
-  interrupted: { label: "Unterbrochen", tone: "neutral" },
+  starting: { label: t.chat.status.starting, tone: "accent" },
+  running: { label: t.chat.status.running, tone: "accent" },
+  idle: { label: t.chat.status.idle, tone: "success" },
+  waiting_approval: { label: t.chat.status.waitingApproval, tone: "warning" },
+  stopping: { label: t.chat.status.stopping, tone: "warning" },
+  stopped: { label: t.chat.status.stopped, tone: "neutral" },
+  error: { label: t.chat.status.error, tone: "danger" },
+  interrupted: { label: t.chat.status.interrupted, tone: "neutral" },
 };
 
 /** An idle session without a live process can still be resumed but isn't "ready" right now. */
@@ -21,9 +22,9 @@ const waitingForLimit = (status: SessionStatus, autoContinueAt?: string | null):
 
 export function sessionStatusLabel(status: SessionStatus, live?: boolean, autoContinueAt?: string | null): string {
   if (waitingForLimit(status, autoContinueAt)) {
-    return `Weiter um ${new Date(autoContinueAt).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })}`;
+    return t.chat.status.continuesAt(new Date(autoContinueAt).toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" }));
   }
-  return paused(status, live) ? "Pausiert" : MAP[status].label;
+  return paused(status, live) ? t.chat.status.paused : MAP[status].label;
 }
 
 export function SessionStatusBadge({ status, live, autoContinueAt }: { status: SessionStatus; live?: boolean; autoContinueAt?: string | null }) {

@@ -14,6 +14,7 @@ import { ProfileBadge } from "@/components/projects/ProfileBadge";
 import { contextTone } from "./ContextMeter";
 import { compactSession } from "./useSendMessage";
 import { useChatSurface } from "./chat-surface";
+import { t } from "@/i18n";
 
 interface InfoProps {
   project: Project;
@@ -33,10 +34,10 @@ export interface InfoCommand {
 }
 
 export const INFO_COMMANDS: InfoCommand[] = [
-  { name: "usage", title: "Nutzung", description: "Verbrauch des Claude-Abos in den laufenden Zeitfenstern anzeigen.", Body: UsageBody },
-  { name: "context", title: "Kontext", description: "Belegung des Kontextfensters dieser Session anzeigen.", Body: ContextBody },
-  { name: "status", title: "Status", description: "Claude Code, Konto, Modell und Session auf einen Blick.", Body: StatusBody },
-  { name: "mcp", title: "MCP-Server", description: "MCP-Server und ihren Verbindungsstatus anzeigen.", Body: McpBody },
+  { name: "usage", title: t.chat.info.usage.title, description: t.chat.info.usage.description, Body: UsageBody },
+  { name: "context", title: t.chat.info.context.title, description: t.chat.info.context.description, Body: ContextBody },
+  { name: "status", title: t.chat.info.status.title, description: t.chat.info.status.description, Body: StatusBody },
+  { name: "mcp", title: t.chat.info.mcp.title, description: t.chat.info.mcp.description, Body: McpBody },
 ];
 
 /**
@@ -111,14 +112,14 @@ function useContextUsage(session: Session | null) {
   });
 }
 
-const KIND_LABEL: Record<ContextUsage["categories"][number]["kind"], string> = { used: "Belegt", free: "Frei", buffer: "Reserve", deferred: "Bei Bedarf" };
+const KIND_LABEL: Record<ContextUsage["categories"][number]["kind"], string> = t.chat.info.context.kinds;
 
 function ContextBody({ session, onClose }: InfoProps) {
   const ctx = useContextUsage(session);
-  if (!session) return <div className="text-body text-muted">Noch keine Session. Die Belegung zeigt sich nach der ersten Antwort.</div>;
+  if (!session) return <div className="text-body text-muted">{t.chat.info.context.noSession}</div>;
   if (ctx.isLoading)
     return (
-      <SkeletonRegion label="Lädt Kontext" className="space-y-4">
+      <SkeletonRegion label={t.chat.info.context.loading} className="space-y-4">
         <MeterSkeleton />
         <div className="divide-y divide-border">
           {[45, 35, 55, 30, 40].map((w) => (
@@ -132,12 +133,12 @@ function ContextBody({ session, onClose }: InfoProps) {
       </SkeletonRegion>
     );
   const usage = ctx.data;
-  if (!usage) return <div className="text-body text-muted">Claude Code hat für diese Session noch keine Belegung gemeldet.</div>;
+  if (!usage) return <div className="text-body text-muted">{t.chat.info.context.noReport}</div>;
   const order = { used: 0, deferred: 1, buffer: 2, free: 3 } as const;
   const categories = [...usage.categories].sort((a, b) => order[a.kind] - order[b.kind] || b.tokens - a.tokens);
   return (
     <div className="space-y-4">
-      <Meter label="Kontextfenster" value={usage.percentage} detail={`${formatTokens(usage.totalTokens)} von ${formatTokens(usage.maxTokens)} Tokens`} toneOf={contextTone} />
+      <Meter label={t.chat.info.context.window} value={usage.percentage} detail={t.chat.info.context.tokensOf(formatTokens(usage.totalTokens), formatTokens(usage.maxTokens))} toneOf={contextTone} />
       <table className="w-full text-body">
         <tbody className="divide-y divide-border">
           {categories.map((c) => (
@@ -153,13 +154,13 @@ function ContextBody({ session, onClose }: InfoProps) {
         <div className="flex justify-end">
           <Button
             disabled={session.status !== "idle"}
-            title={session.status !== "idle" ? "Geht, sobald Claude mit dem aktuellen Schritt fertig ist" : undefined}
+            title={session.status !== "idle" ? t.chat.info.context.compactWhenIdle : undefined}
             onClick={() => {
               onClose();
               void compactSession(session.id);
             }}
           >
-            Jetzt komprimieren
+            {t.chat.info.context.compactNow}
           </Button>
         </div>
       )}
@@ -167,12 +168,7 @@ function ContextBody({ session, onClose }: InfoProps) {
   );
 }
 
-const MODE_LABEL: Record<PermissionMode, string> = {
-  default: "Jede Aktion freigeben",
-  acceptEdits: "Datei-Edits automatisch",
-  plan: "Nur planen",
-  bypassPermissions: "Ohne Rückfragen",
-};
+const MODE_LABEL: Record<PermissionMode, string> = t.chat.info.status.modes;
 
 function StatusBody({ project, session }: InfoProps) {
   const diag = useDiagnostics();
@@ -180,7 +176,7 @@ function StatusBody({ project, session }: InfoProps) {
   const modelLabel = useModelLabel();
   if (!diag.data)
     return (
-      <SkeletonRegion label="Lädt Status" className="grid grid-cols-[max-content_1fr] gap-x-6 gap-y-2">
+      <SkeletonRegion label={t.chat.info.status.loading} className="grid grid-cols-[max-content_1fr] gap-x-6 gap-y-2">
         {Array.from({ length: session ? 10 : 6 }, (_, i) => (
           <div key={i} className="contents">
             <div className="flex h-5 items-center">
@@ -194,51 +190,51 @@ function StatusBody({ project, session }: InfoProps) {
       </SkeletonRegion>
     );
   const d = diag.data;
-  const login = !d.auth.loggedIn ? "Nicht angemeldet" : (planLabel(d.auth) ?? d.auth.authMethod ?? "Angemeldet");
+  const login = !d.auth.loggedIn ? t.chat.info.status.loggedOut : (planLabel(d.auth) ?? d.auth.authMethod ?? t.chat.info.status.loggedIn);
   const mcp = runtime.data?.mcpServers ?? [];
   const rows: Array<[string, ReactNode]> = [
-    ["Claude Code", d.claude.found ? (d.claude.version ?? "unbekannte Version") : "nicht gefunden"],
-    ["Konto", login],
-    ["Projekt", project.name],
-    ["Ordner", <span className="font-mono text-small">{session?.cwd ?? project.path}</span>],
-    ["Profil", <ProfileBadge profile={session?.profile ?? project.profile} />],
+    ["Claude Code", d.claude.found ? (d.claude.version ?? t.chat.info.status.unknownVersion) : t.chat.info.status.notFound],
+    [t.chat.info.status.account, login],
+    [t.chat.info.status.project, project.name],
+    [t.chat.info.status.folder, <span className="font-mono text-small">{session?.cwd ?? project.path}</span>],
+    [t.chat.info.status.profile, <ProfileBadge profile={session?.profile ?? project.profile} />],
   ];
   if (session) {
     rows.push(
-      ["Modell", session.model ? modelLabel(session.model) : "Standard"],
-      ["Effort", session.effort ?? "Standard"],
-      ["Modus", MODE_LABEL[session.permissionMode]],
-      ["Session-ID", <span className="font-mono text-small">{session.claudeSessionId ?? "noch keine"}</span>],
+      [t.chat.info.status.model, session.model ? modelLabel(session.model) : t.chat.info.status.defaultValue],
+      [t.chat.info.status.effort, session.effort ?? t.chat.info.status.defaultValue],
+      [t.chat.info.status.mode, MODE_LABEL[session.permissionMode]],
+      [t.chat.info.status.sessionId, <span className="font-mono text-small">{session.claudeSessionId ?? t.chat.info.status.noSessionId}</span>],
     );
   }
   rows.push([
-    "MCP-Server",
+    t.chat.info.mcp.title,
     runtime.isLoading ? (
-      <SkeletonRegion label="Lädt MCP-Server" className="flex h-5 items-center">
+      <SkeletonRegion label={t.chat.info.mcp.loading} className="flex h-5 items-center">
         <Skeleton className="h-3 w-32" />
       </SkeletonRegion>
     ) : mcp.length ? (
-      `${mcp.filter((s) => s.status === "connected").length} von ${mcp.length} verbunden`
+      t.chat.info.status.mcpConnected(mcp.filter((s) => s.status === "connected").length, mcp.length)
     ) : (
-      "keine gemeldet"
+      t.chat.info.status.mcpNone
     ),
   ]);
   return <Rows rows={rows} />;
 }
 
 const MCP_STATUS: Record<string, { label: string; tone: "success" | "warning" | "danger" | "neutral" }> = {
-  connected: { label: "Verbunden", tone: "success" },
-  pending: { label: "Verbindet", tone: "neutral" },
-  "needs-auth": { label: "Anmeldung nötig", tone: "warning" },
-  failed: { label: "Fehlgeschlagen", tone: "danger" },
-  disabled: { label: "Aus", tone: "neutral" },
+  connected: { label: t.chat.info.mcp.connected, tone: "success" },
+  pending: { label: t.chat.info.mcp.pending, tone: "neutral" },
+  "needs-auth": { label: t.chat.info.mcp.needsAuth, tone: "warning" },
+  failed: { label: t.chat.info.mcp.failed, tone: "danger" },
+  disabled: { label: t.chat.info.mcp.disabled, tone: "neutral" },
 };
 
 function McpBody() {
   const runtime = useRuntimeInfo();
   if (runtime.isLoading)
     return (
-      <SkeletonRegion label="Lädt MCP-Server" className="divide-y divide-border">
+      <SkeletonRegion label={t.chat.info.mcp.loading} className="divide-y divide-border">
         {[40, 28, 52].map((w) => (
           <div key={w} className="flex h-9 items-center justify-between gap-3">
             <Skeleton className="h-3" style={{ width: `${w}%` }} />
@@ -248,7 +244,7 @@ function McpBody() {
       </SkeletonRegion>
     );
   const servers = runtime.data?.mcpServers ?? [];
-  if (!servers.length) return <div className="text-body text-muted">Keine MCP-Server gemeldet. Die Liste füllt sich, sobald eine Session gestartet ist.</div>;
+  if (!servers.length) return <div className="text-body text-muted">{t.chat.info.mcp.empty}</div>;
   return (
     <ul className="divide-y divide-border">
       {servers.map((s) => {

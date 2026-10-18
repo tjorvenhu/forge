@@ -3,6 +3,7 @@ import type { ContextUsage } from "@forge/protocol";
 import { cn, formatTokens } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Tooltip } from "@/components/ui/misc";
+import { t } from "@/i18n";
 
 /** From here on the meter warns; Claude Code compacts on its own near the limit. */
 const WARN_AT = 70;
@@ -26,7 +27,7 @@ export function ContextMeter({ usage, onCompact, disabled }: { usage: ContextUsa
         content={
           <div className="space-y-1 py-0.5">
             <div className="font-medium">
-              Kontext: {formatTokens(usage.totalTokens)} von {formatTokens(usage.maxTokens)} Tokens ({pct} %)
+              {t.chat.contextMeter.summary(formatTokens(usage.totalTokens), formatTokens(usage.maxTokens), pct)}
             </div>
             {used.slice(0, 6).map((c) => (
               <div key={c.name} className="flex justify-between gap-4 text-muted">
@@ -34,22 +35,22 @@ export function ContextMeter({ usage, onCompact, disabled }: { usage: ContextUsa
                 <span className="tabular-nums">{formatTokens(c.tokens)}</span>
               </div>
             ))}
-            {tone !== "ok" && <div className="pt-1 text-warning">Wird es knapp, fasst Claude Code den Verlauf selbst zusammen. Mit Komprimieren geht das sofort.</div>}
+            {tone !== "ok" && <div className="pt-1 text-warning">{t.chat.contextMeter.warning}</div>}
           </div>
         }
       >
-        <div className="flex h-7 items-center gap-1.5 rounded-md px-1.5 text-caption text-muted" aria-label={`Kontext zu ${pct} Prozent belegt`} role="meter" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}>
+        <div className="flex h-7 items-center gap-1.5 rounded-md px-1.5 text-caption text-muted" aria-label={t.chat.contextMeter.ariaLabel(pct)} role="meter" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}>
           <div className="h-1.5 w-12 overflow-hidden rounded-full bg-surface-3">
             <div
               className={cn("h-full rounded-full", tone === "danger" ? "bg-danger" : tone === "warn" ? "bg-warning" : "bg-accent")}
               style={{ width: `${Math.min(100, pct)}%` }}
             />
           </div>
-          <span className={cn("whitespace-nowrap tabular-nums", tone === "danger" ? "text-danger" : tone === "warn" ? "text-warning" : "")}>{pct} %</span>
+          <span className={cn("whitespace-nowrap tabular-nums", tone === "danger" ? "text-danger" : tone === "warn" ? "text-warning" : "")}>{t.chat.contextMeter.percent(pct)}</span>
         </div>
       </Tooltip>
-      <Tooltip content="Verlauf zusammenfassen, um Platz im Kontext zu schaffen (/compact)">
-        <Button size="icon-sm" variant="ghost" onClick={onCompact} disabled={disabled} aria-label="Kontext komprimieren">
+      <Tooltip content={t.chat.contextMeter.compactTooltip}>
+        <Button size="icon-sm" variant="ghost" onClick={onCompact} disabled={disabled} aria-label={t.chat.contextMeter.compact}>
           <Shrink className="h-3.5 w-3.5" />
         </Button>
       </Tooltip>

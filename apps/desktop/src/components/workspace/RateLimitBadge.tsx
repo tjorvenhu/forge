@@ -4,6 +4,7 @@ import { useRateLimit, useUsage } from "@/lib/queries";
 import { activeRateLimit, limitDateTime, limitLabel, limitTime } from "@/lib/rate-limit";
 import { relativeTime } from "@/lib/utils";
 import { Badge, Tooltip } from "@/components/ui/misc";
+import { t } from "@/i18n";
 
 /** setTimeout fires immediately for delays above 2^31-1 ms; later resets are rechecked after this. */
 const MAX_TIMER_MS = 2_000_000_000;
@@ -32,7 +33,7 @@ export function RateLimitBadge({ autoContinueAt }: { autoContinueAt: string | nu
   if (!state) return null;
   const reached = state.status === "reached";
   const goOn = reached ? (autoContinueAt ?? resetsAt) : resetsAt;
-  const text = reached ? `Limit erreicht${goOn ? ` · weiter um ${limitTime(goOn, now)}` : ""}` : `Limit fast erreicht${resetsAt ? ` · Reset ${limitTime(resetsAt, now)}` : ""}`;
+  const text = reached ? t.chat.rateLimit.reached(goOn ? limitTime(goOn, now) : null) : t.chat.rateLimit.nearly(resetsAt ? limitTime(resetsAt, now) : null);
   return (
     <span role="status">
       <Tooltip
@@ -41,13 +42,12 @@ export function RateLimitBadge({ autoContinueAt }: { autoContinueAt: string | nu
         content={
           <div className="space-y-1 py-0.5">
             <div className="font-medium">
-              {limitLabel(state.limitType)} {reached ? "erreicht" : "fast erreicht"}
-              {state.utilization !== null ? ` (${state.utilization} % genutzt)` : ""}
+              {t.chat.rateLimit.title(limitLabel(state.limitType), reached, state.utilization)}
             </div>
             <div className="text-muted">
-              {resetsAt ? `Wird ${relativeTime(resetsAt, now)} zurückgesetzt: ${limitDateTime(resetsAt)}` : "Claude Code hat keine Zeit für den Reset gemeldet."}
+              {resetsAt ? t.chat.rateLimit.resets(relativeTime(resetsAt, now), limitDateTime(resetsAt)) : t.chat.rateLimit.noResetTime}
             </div>
-            {reached && autoContinueAt && <div className="text-muted">FORGE macht diese Session am {limitDateTime(autoContinueAt)} automatisch weiter.</div>}
+            {reached && autoContinueAt && <div className="text-muted">{t.chat.rateLimit.autoContinue(limitDateTime(autoContinueAt))}</div>}
           </div>
         }
       >

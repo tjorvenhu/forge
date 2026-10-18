@@ -15,6 +15,7 @@ import { ItemView } from "./ChatItemView";
 import { Markdown } from "./Markdown";
 import { FollowScroll } from "./FollowScroll";
 import { TaskWorking } from "./WorkingIndicator";
+import { t } from "@/i18n";
 
 const NO_EVENTS: SessionEvent[] = [];
 /** how often a running background command's output is read again */
@@ -35,7 +36,7 @@ export function TaskThreadDialog({ sessionId, projectDir }: { sessionId: string;
       open={!!task}
       onOpenChange={(open) => !open && openTask(null)}
       title={task?.title ?? ""}
-      description={task?.kind === "shell" ? "Ausgabe des Befehls im Hintergrund" : "Verlauf des Subagenten"}
+      description={task?.kind === "shell" ? t.chat.task.shellDescription : t.chat.task.agentDescription}
       className="h-[80vh] w-225"
       bodyClassName="flex flex-col overflow-hidden p-0"
     >
@@ -72,18 +73,18 @@ function AgentThread({ task, projectDir }: { task: Extract<TaskView, { kind: "ag
       {hasOlder && !use && (
         <div className="flex justify-center">
           <Button size="sm" variant="outline" loading={loading} onClick={() => void loadOlder()}>
-            <History className="h-3.5 w-3.5" /> Ältere Einträge laden
+            <History className="h-3.5 w-3.5" /> {t.chat.panel.loadOlder}
           </Button>
         </div>
       )}
       {prompt && (
-        <Section label="Auftrag">
+        <Section label={t.chat.task.prompt}>
           <div className="text-body text-muted">
             <Markdown text={prompt} />
           </div>
         </Section>
       )}
-      <Section label="Schritte">
+      <Section label={t.chat.task.steps}>
         {items.length > 0 && (
           <div className="space-y-2">
             {items.map((item) => (
@@ -91,7 +92,7 @@ function AgentThread({ task, projectDir }: { task: Extract<TaskView, { kind: "ag
             ))}
           </div>
         )}
-        {!items.length && !running && <p className="text-body text-subtle">Für diesen Subagenten sind keine Schritte gespeichert.</p>}
+        {!items.length && !running && <p className="text-body text-subtle">{t.chat.task.noSteps}</p>}
         {running && (
           <div className={items.length ? "mt-3" : undefined}>
             <TaskWorking startedAt={live?.startedAt ?? openedAt} progress={live?.summary} />
@@ -99,9 +100,9 @@ function AgentThread({ task, projectDir }: { task: Extract<TaskView, { kind: "ag
         )}
       </Section>
       {result && (
-        <Section label={result.isError ? "Fehler" : "Ergebnis"}>
+        <Section label={result.isError ? t.chat.task.error : t.chat.task.result}>
           <div className={result.isError ? "text-body text-danger" : "text-body"}>
-            <Markdown text={result.text || "(leer)"} />
+            <Markdown text={result.text || t.chat.task.empty} />
           </div>
         </Section>
       )}
@@ -112,7 +113,7 @@ function AgentThread({ task, projectDir }: { task: Extract<TaskView, { kind: "ag
 /** Same layout as the thread: the task, then steps as chat rows. */
 function AgentThreadSkeleton() {
   return (
-    <div className="space-y-4" role="status" aria-label="Lädt">
+    <div className="space-y-4" role="status" aria-label={t.chat.task.loading}>
       <SectionSkeleton>
         <Skeleton className="h-3 w-[80%]" />
         <Skeleton className="h-3 w-[55%]" />
@@ -132,7 +133,7 @@ function AgentThreadSkeleton() {
 /** Lines of command output in the mono font. */
 function ShellOutputSkeleton() {
   return (
-    <div className="space-y-2" role="status" aria-label="Lädt">
+    <div className="space-y-2" role="status" aria-label={t.chat.task.loading}>
       <Skeleton className="h-3 w-48" />
       <div className="space-y-1.5">
         {[75, 60, 85, 40, 65, 50].map((w, i) => (
@@ -180,7 +181,7 @@ export function agentCall(events: readonly SessionEvent[], toolUseId: string): {
   // The call itself may sit on an older page that is not loaded; the launch notice tells it too.
   const background = asTask || use?.input.run_in_background === true || !!direct?.content.text.startsWith("Async agent launched");
   if (background && !direct?.isError) {
-    return { use, result: finished ? { isError: finished.state === "failed", text: finished.summary ?? (finished.state === "stopped" ? "Gestoppt." : "") } : null };
+    return { use, result: finished ? { isError: finished.state === "failed", text: finished.summary ?? (finished.state === "stopped" ? t.chat.task.stopped : "") } : null };
   }
   return { use, result: direct && { isError: direct.isError, text: direct.content.text } };
 }
@@ -204,15 +205,15 @@ function ShellOutput({ task }: { task: Extract<TaskView, { kind: "shell" }> }) {
   }, [running, live, refetch]);
 
   if (!session) return <ShellOutputSkeleton />;
-  if (!live) return <p className="text-body text-subtle">Die Session ist beendet. Die Ausgabe eines Befehls gibt es nur, solange die Session läuft.</p>;
-  if (out.error) return <p className="text-body text-danger">Ausgabe nicht lesbar: {errorMessage(out.error)}</p>;
+  if (!live) return <p className="text-body text-subtle">{t.chat.task.sessionEnded}</p>;
+  if (out.error) return <p className="text-body text-danger">{t.chat.task.outputUnreadable(errorMessage(out.error))}</p>;
   if (!out.data) return <ShellOutputSkeleton />;
   return (
     <div className="space-y-2">
       {(!running || out.data.truncated) && (
         <p className="text-small text-subtle">
-          {!running && "Beendet."}
-          {out.data.truncated && ` Zu sehen sind die letzten 8 KB von ${Math.round(out.data.totalBytes / 1024)} KB.`}
+          {!running && t.chat.task.finished}
+          {out.data.truncated && t.chat.task.truncated(Math.round(out.data.totalBytes / 1024))}
         </p>
       )}
       {out.data.output ? (
@@ -220,8 +221,8 @@ function ShellOutput({ task }: { task: Extract<TaskView, { kind: "shell" }> }) {
       ) : (
         <p className="text-body text-subtle">
           {running
-            ? "Der Befehl hat noch nichts ausgegeben. Läuft seine Ausgabe durch eine Pipe wie | grep oder | head, kommt sie oft erst, wenn er fertig ist."
-            : "Der Befehl hat nichts ausgegeben."}
+            ? t.chat.task.noOutputYet
+            : t.chat.task.noOutput}
         </p>
       )}
       {background && (
@@ -237,12 +238,12 @@ function ShellOutput({ task }: { task: Extract<TaskView, { kind: "shell" }> }) {
 export function composerText(kind: TaskView["kind"], sent: boolean): { placeholder: string; hint: string } {
   if (kind === "agent")
     return {
-      placeholder: "Nachricht an den Subagenten",
-      hint: sent ? "Gesendet. Claude gibt sie an den Subagenten weiter, sie steht auch im Chat." : "Claude gibt die Nachricht an den Subagenten weiter. Ist er schon fertig, macht er damit weiter.",
+      placeholder: t.chat.task.agentPlaceholder,
+      hint: sent ? t.chat.task.agentSent : t.chat.task.agentHint,
     };
   return {
-    placeholder: "Nachricht an Claude zu dieser Aufgabe",
-    hint: sent ? "Gesendet. Claudes Antwort steht im Chat." : "Ein Befehl im Hintergrund liest keine Eingaben. Claude bekommt die Nachricht mit Bezug auf diese Aufgabe und reagiert darauf.",
+    placeholder: t.chat.task.shellPlaceholder,
+    hint: sent ? t.chat.task.shellSent : t.chat.task.shellHint,
   };
 }
 
@@ -274,7 +275,7 @@ function TaskComposer({ task }: { task: TaskView }) {
       setText("");
       setSent(true);
     } catch (e) {
-      toast.error("Nachricht nicht gesendet", errorMessage(e));
+      toast.error(t.chat.task.messageNotSent, errorMessage(e));
     } finally {
       setBusy(false);
     }
@@ -300,7 +301,7 @@ function TaskComposer({ task }: { task: TaskView }) {
             }
           }}
         />
-        <Button size="icon" variant="primary" className="h-9 w-9 shrink-0" onClick={() => void send()} loading={busy} disabled={!text.trim()} aria-label="Senden">
+        <Button size="icon" variant="primary" className="h-9 w-9 shrink-0" onClick={() => void send()} loading={busy} disabled={!text.trim()} aria-label={t.chat.composer.sendLabel}>
           {!busy && <ArrowUp className="h-4 w-4" />}
         </Button>
       </div>

@@ -10,6 +10,7 @@ import { projectFilesQuery } from "@/components/layout/palette-sources";
 import { isChatWindow, openFileInMain } from "@/lib/chat-windows";
 import { showInExplorer } from "@/lib/native";
 import { errorMessage } from "@/lib/rpc";
+import { t } from "@/i18n";
 
 /**
  * The project file paths in a chat refer to. Given by the chat; without it (knowledge, dialogs) paths
@@ -121,7 +122,7 @@ export async function revealPath(path: string) {
   try {
     await showInExplorer(path.replace(/\//g, "\\"));
   } catch (e) {
-    toast.error("Nicht geöffnet", `${path}: ${errorMessage(e)}`);
+    toast.error(t.chat.fileLinks.notOpened, `${path}: ${errorMessage(e)}`);
   }
 }
 
@@ -175,7 +176,7 @@ export async function openFileRef(target: FileLinkTarget, ref: FileRef) {
   /** The one project file the name or path ending fits; otherwise says what went wrong. */
   const unique = (hits: Array<{ path: string }>, wanted: string) => {
     if (hits.length === 1) return hits[0]!.path;
-    toast.error(hits.length ? `${hits.length} Dateien passen zu ${wanted}` : "Datei nicht gefunden", hits.length ? hits.slice(0, 4).map((f) => f.path).join(", ") : wanted);
+    toast.error(hits.length ? t.chat.fileLinks.ambiguous(hits.length, wanted) : t.chat.fileLinks.notFound, hits.length ? hits.slice(0, 4).map((f) => f.path).join(", ") : wanted);
     return null;
   };
   try {
@@ -192,7 +193,7 @@ export async function openFileRef(target: FileLinkTarget, ref: FileRef) {
       }
     }
   } catch {
-    toast.error("Datei nicht gefunden", path ?? ref.path);
+    toast.error(t.chat.fileLinks.notFound, path ?? ref.path);
     return;
   }
   if (path === null) return;
@@ -239,8 +240,10 @@ export function FileLink({ fileRef, children, className }: { fileRef: FileRef; c
       className={cn("file-link", className)}
       title={
         to === "files"
-          ? `${fileRef.path}${fileRef.line ? `, Zeile ${fileRef.line}` : ""} öffnen`
-          : `${fileRef.path} im Explorer ${fileRef.isFile ? "zeigen" : "öffnen"}`
+          ? t.chat.fileLinks.open(fileRef.path, fileRef.line)
+          : fileRef.isFile
+            ? t.chat.fileLinks.showInExplorer(fileRef.path)
+            : t.chat.fileLinks.openInExplorer(fileRef.path)
       }
       onClick={(e) => {
         e.preventDefault();
@@ -251,9 +254,9 @@ export function FileLink({ fileRef, children, className }: { fileRef: FileRef; c
         const inProject = to === "files" && target ? projectPath(fileRef, target.root) : null;
         const absolute = isAbsolute(fileRef.path) ? fileRef.path : target && inProject !== null ? `${target.root.replace(/[\\/]+$/, "")}/${inProject}` : null;
         return [
-          ...(to === "files" && target ? [{ label: "Im Dateien-Reiter öffnen", icon: <FileText className="h-3.5 w-3.5" />, onSelect: () => void openFileRef(target, fileRef) }] : []),
-          ...(absolute ? [{ label: "Im Explorer zeigen", icon: <FolderOpen className="h-3.5 w-3.5" />, onSelect: () => void revealPath(absolute) }] : []),
-          { label: "Pfad kopieren", icon: <Copy className="h-3.5 w-3.5" />, onSelect: () => copyText(fileRef.path) },
+          ...(to === "files" && target ? [{ label: t.chat.fileLinks.openInFiles, icon: <FileText className="h-3.5 w-3.5" />, onSelect: () => void openFileRef(target, fileRef) }] : []),
+          ...(absolute ? [{ label: t.chat.fileLinks.revealInExplorer, icon: <FolderOpen className="h-3.5 w-3.5" />, onSelect: () => void revealPath(absolute) }] : []),
+          { label: t.chat.fileLinks.copyPath, icon: <Copy className="h-3.5 w-3.5" />, onSelect: () => copyText(fileRef.path) },
         ];
       })}
     >

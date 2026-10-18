@@ -24,9 +24,10 @@ import { composerInputId, useChatSlot } from "./chat-slot";
 import { hasUltrathink, withUltrathink } from "./ultrathink";
 import { TemplateSuggestions } from "@/components/templates/TemplateSuggestions";
 import { TemplateFillDialog } from "@/components/templates/TemplateFillDialog";
+import { t } from "@/i18n";
 
 /** Words of the trade the speech service should expect; the project adds its name and stack. */
-const DICTATION_TERMS = ["FORGE", "Claude", "Claude Code", "Commit", "Branch", "Pull Request", "Merge", "Deploy", "Worktree", "TypeScript", "JavaScript", "React", "Next.js", "Node", "pnpm", "API", "Endpoint", "Komponente", "Refactoring", "Bug", "Diff", "Session"];
+const DICTATION_TERMS = ["FORGE", "Claude", "Claude Code", "Commit", "Branch", "Pull Request", "Merge", "Deploy", "Worktree", "TypeScript", "JavaScript", "React", "Next.js", "Node", "pnpm", "API", "Endpoint", ...t.chat.composer.dictationTerms, "Refactoring", "Bug", "Diff", "Session"];
 const NO_TEMPLATES: PromptTemplate[] = [];
 /** "#" and a word: the user asks for templates directly. */
 const TEMPLATE_PREFIX = /^#[^\s#]*$/;
@@ -347,7 +348,7 @@ export const Composer = memo(function Composer({
 
   const models = runtime.data?.models.filter((m) => m.value !== "default") ?? [];
   const modelOptions = [
-    ...(session && options.model ? [] : [{ value: "__default", label: "Standardmodell" }]),
+    ...(session && options.model ? [] : [{ value: "__default", label: t.chat.composer.defaultModel }]),
     ...models.map((m) => ({ value: m.value, label: m.displayName || m.value, description: m.description })),
   ];
   const modelInfo = findModel(options.model, runtime.data?.models ?? []);
@@ -360,17 +361,17 @@ export const Composer = memo(function Composer({
 
   const placeholder = dictation.state === "recording" || dictation.state === "starting"
     ? held
-      ? "Sprich jetzt. Leertaste loslassen fügt den Text ein, Esc verwirft ihn."
-      : "Sprich jetzt. Klick auf die Aufnahme fügt den Text ein, Esc verwirft ihn."
+      ? t.chat.composer.placeholder.speakHeld
+      : t.chat.composer.placeholder.speakClick
     : dictation.state === "transcribing"
-      ? "Claude schreibt den Rest mit …"
+      ? t.chat.composer.placeholder.transcribing
       : waiting
-    ? "Erst die Anfrage oben beantworten"
+    ? t.chat.composer.placeholder.answerFirst
     : working
-      ? "Claude arbeitet. Weitere Anweisung schreiben, sie wird beim nächsten Schritt übernommen. Esc stoppt."
+      ? t.chat.composer.placeholder.working
       : session && !session.live
-        ? "Nachricht schreiben, um die Session fortzusetzen"
-        : "Nachricht an Claude, / für Befehle, # für Vorlagen, Dateien hineinziehen oder einfügen";
+        ? t.chat.composer.placeholder.resume
+        : t.chat.composer.placeholder.idle;
 
   return (
     // A container of its own: the bottom row drops what is not needed by the composer's width (split view, side panel), not the window's.
@@ -405,7 +406,7 @@ export const Composer = memo(function Composer({
         )}
       >
         {attachments.dragging && (
-          <div className="pointer-events-none absolute inset-0 z-10 flex animate-fade-in items-center justify-center rounded-xl text-body text-accent">Dateien hier ablegen</div>
+          <div className="pointer-events-none absolute inset-0 z-10 flex animate-fade-in items-center justify-center rounded-xl text-body text-accent">{t.chat.composer.dropFiles}</div>
         )}
         <AttachmentList files={files} preparing={attachments.preparing} onRemove={attachments.remove} />
         {dictation.state !== "idle" && dictation.live && (
@@ -437,7 +438,7 @@ export const Composer = memo(function Composer({
             }
           }}
           placeholder={placeholder}
-          aria-label="Nachricht an Claude"
+          aria-label={t.chat.composer.messageLabel}
           rows={2}
           // Not through cn: tailwind-merge takes text-ui for a color and drops it next to text-fg, the text would
           // shrink to 13px and no longer line up with the copy behind it.
@@ -524,23 +525,23 @@ export const Composer = memo(function Composer({
         />
         </div>
         <div className="flex items-center gap-2 px-4 pb-3.5 pt-2">
-          <Tooltip content="Bilder, PDFs oder Textdateien anhängen (auch per Einfügen oder Hineinziehen)">
-            <Button size="icon-sm" variant="ghost" onClick={() => void attachments.pick()} aria-label="Dateien anhängen" disabled={attachments.full}>
+          <Tooltip content={t.chat.composer.attachTooltip}>
+            <Button size="icon-sm" variant="ghost" onClick={() => void attachments.pick()} aria-label={t.chat.composer.attach} disabled={attachments.full}>
               <Paperclip className="h-3.5 w-3.5" />
             </Button>
           </Tooltip>
           <DictationButton state={dictation.state} seconds={dictation.seconds} onToggle={toggleDictation} onPrepare={dictation.prewarm} />
-          <Tooltip content={options.isPlan ? "Plan-Modus: Claude plant nur und ändert nichts" : "Nur planen (Plan-Modus)"}>
+          <Tooltip content={options.isPlan ? t.chat.composer.planOn : t.chat.composer.planOff}>
             <Button
               size="sm"
               variant={options.isPlan ? "secondary" : "outline"}
               onClick={() => void options.togglePlan()}
               aria-pressed={options.isPlan}
-              aria-label="Planen"
+              aria-label={t.chat.composer.plan}
               className={cn("h-8 shrink-0 rounded-lg px-2.5 @2xl/composer:px-3", options.isPlan && "border-accent/40 text-accent")}
             >
               <ListTodo className="h-3.5 w-3.5" />
-              <span className="hidden @2xl/composer:inline">Planen</span>
+              <span className="hidden @2xl/composer:inline">{t.chat.composer.plan}</span>
             </Button>
           </Tooltip>
           <div className="min-w-0 flex-1" />
@@ -549,11 +550,11 @@ export const Composer = memo(function Composer({
           <span className="hidden shrink-0 whitespace-nowrap text-caption text-subtle @5xl/composer:inline">
             {enterToSend ? (
               <>
-                <Kbd>Enter</Kbd> senden · <Kbd>Umschalt+Enter</Kbd> Zeile
+                <Kbd>Enter</Kbd> {t.chat.composer.send} · <Kbd>{t.chat.composer.shiftEnter}</Kbd> {t.chat.composer.newline}
               </>
             ) : (
               <>
-                <Kbd>Strg+Enter</Kbd> senden
+                <Kbd>{t.chat.composer.ctrlEnter}</Kbd> {t.chat.composer.send}
               </>
             )}
           </span>
@@ -562,9 +563,9 @@ export const Composer = memo(function Composer({
               size="sm"
               value={options.effort ?? "__default"}
               onChange={(v) => void options.changeEffort(v === "__default" ? null : (v as EffortLevel))}
-              options={[{ value: "__default", label: "Effort: Standard" }, ...effortLevels.map((l) => ({ value: l, label: `Effort: ${l}` }))]}
+              options={[{ value: "__default", label: t.chat.composer.effortDefault }, ...effortLevels.map((l) => ({ value: l, label: t.chat.composer.effortLevel(l) }))]}
               className="hidden w-36 shrink-0 @4xl/composer:inline-flex"
-              aria-label="Effort"
+              aria-label={t.chat.composer.effort}
               disabled={working}
             />
           )}
@@ -574,28 +575,28 @@ export const Composer = memo(function Composer({
             onChange={(v) => void options.changeModel(v === "__default" ? null : v)}
             options={modelOptions}
             className="hidden w-40 shrink-0 @xl/composer:inline-flex"
-            aria-label="Modell"
+            aria-label={t.chat.composer.model}
             disabled={working}
           />
           {/* Narrow: Effort (and below that the model) move into one menu instead of squeezing the row. */}
           <div className="shrink-0 @4xl/composer:hidden">
             <DropdownMenu
-              header="Modell und Effort"
+              header={t.chat.composer.modelAndEffort}
               trigger={
-                <Button size="icon-sm" variant="ghost" aria-label="Modell und Effort" title="Modell und Effort" disabled={working}>
+                <Button size="icon-sm" variant="ghost" aria-label={t.chat.composer.modelAndEffort} title={t.chat.composer.modelAndEffort} disabled={working}>
                   <SlidersHorizontal className="h-3.5 w-3.5" />
                 </Button>
               }
               items={[
                 ...modelOptions.map((o) => ({
                   label: o.label,
-                  hint: o.value === modelValue ? "aktiv" : undefined,
+                  hint: o.value === modelValue ? t.chat.composer.active : undefined,
                   onSelect: () => void options.changeModel(o.value === "__default" ? null : o.value),
                 })),
                 ...(showEffort
-                  ? [{ value: "__default", label: "Effort: Standard" }, ...effortLevels.map((l) => ({ value: l, label: `Effort: ${l}` }))].map((o) => ({
+                  ? [{ value: "__default", label: t.chat.composer.effortDefault }, ...effortLevels.map((l) => ({ value: l, label: t.chat.composer.effortLevel(l) }))].map((o) => ({
                       label: o.label,
-                      hint: o.value === (options.effort ?? "__default") ? "aktiv" : undefined,
+                      hint: o.value === (options.effort ?? "__default") ? t.chat.composer.active : undefined,
                       onSelect: () => void options.changeEffort(o.value === "__default" ? null : (o.value as EffortLevel)),
                     }))
                   : []),
@@ -603,7 +604,7 @@ export const Composer = memo(function Composer({
             />
           </div>
           {working && (
-            <Button size="icon" variant="danger" className="h-9 w-9 shrink-0 rounded-lg" onClick={stop} aria-label="Stoppen (Esc)" title="Stoppen (Esc)" disabled={session?.status === "stopping"}>
+            <Button size="icon" variant="danger" className="h-9 w-9 shrink-0 rounded-lg" onClick={stop} aria-label={t.chat.composer.stop} title={t.chat.composer.stop} disabled={session?.status === "stopping"}>
               <Square className="h-3.5 w-3.5 fill-current" />
             </Button>
           )}
@@ -615,8 +616,8 @@ export const Composer = memo(function Composer({
               onClick={submit}
               // The message shows in the chat at once ("wird gesendet"), so no spinner here: the arrow flies off.
               disabled={(!text.trim() && !files.length) || (waiting && !localTyped) || sending || dictating}
-              aria-label={working ? "Dazwischen senden" : "Senden"}
-              title={working ? "Dazwischen senden: Claude übernimmt die Nachricht beim nächsten Schritt" : undefined}
+              aria-label={working ? t.chat.composer.sendBetween : t.chat.composer.sendLabel}
+              title={working ? t.chat.composer.sendBetweenTitle : undefined}
             >
               <ArrowUp key={sentTick} className={cn("h-4 w-4", sentTick > 0 && "animate-send")} />
             </Button>

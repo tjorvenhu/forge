@@ -5,6 +5,7 @@ import { Check, Copy } from "lucide-react";
 import { openExternal } from "@/lib/native";
 import { toast } from "@/stores/toast";
 import { FILE_LINK_SCHEME, FileLink, parseFileRef, remarkFileLinks } from "./file-links";
+import { t } from "@/i18n";
 
 const PLUGINS = [remarkGfm, remarkFileLinks];
 
@@ -118,7 +119,7 @@ function CodeBlock({ children }: { children?: ReactNode }) {
   const copy = () =>
     navigator.clipboard.writeText(ref.current?.textContent ?? "").then(
       () => setCopied(true),
-      () => toast.error("Nicht kopiert", "Die Zwischenablage ist nicht erreichbar."),
+      () => toast.error(t.chat.markdown.notCopied, t.chat.markdown.clipboardUnavailable),
     );
   return (
     <div className="code-block group/code">
@@ -128,8 +129,8 @@ function CodeBlock({ children }: { children?: ReactNode }) {
       <button
         type="button"
         onClick={() => void copy()}
-        aria-label={copied ? "Code kopiert" : "Code kopieren"}
-        title="Code kopieren"
+        aria-label={copied ? t.chat.markdown.codeCopied : t.chat.markdown.copyCode}
+        title={t.chat.markdown.copyCode}
         className="absolute right-1.5 top-1.5 flex h-6 w-6 items-center justify-center rounded-md border border-border bg-surface-2 text-muted opacity-0 transition-opacity hover:text-fg focus-visible:opacity-100 group-hover/code:opacity-100"
       >
         {copied ? <Check className="h-3.5 w-3.5 text-success" /> : <Copy className="h-3.5 w-3.5" />}

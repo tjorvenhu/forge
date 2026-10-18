@@ -3,6 +3,7 @@ import type { PendingFile } from "@/stores/drafts";
 import { Button } from "@/components/ui/button";
 import { Skeleton, SkeletonRegion } from "@/components/ui/skeleton";
 import type { PreparingFile } from "./useAttachments";
+import { t } from "@/i18n";
 
 const CHIP = "flex items-center gap-2 rounded-lg border border-border bg-surface-3 py-1 pl-1 pr-1.5 text-xs";
 
@@ -23,13 +24,13 @@ export function AttachmentList({ files, preparing = [], onRemove }: { files: Pen
           <span className="max-w-40 truncate" title={f.attachment.kind === "path" ? f.attachment.path : f.name}>
             {f.name}
           </span>
-          <Button size="icon-sm" variant="ghost" className="h-5 w-5" aria-label={`${f.name} entfernen`} onClick={() => onRemove(f)}>
+          <Button size="icon-sm" variant="ghost" className="h-5 w-5" aria-label={t.chat.attachments.remove(f.name)} onClick={() => onRemove(f)}>
             <X className="h-3.5 w-3.5" />
           </Button>
         </div>
       ))}
       {preparing.map((p) => (
-        <SkeletonRegion key={p.id} label={`Lädt ${p.name}`} className={CHIP}>
+        <SkeletonRegion key={p.id} label={t.chat.attachments.loading(p.name)} className={CHIP}>
           <Skeleton className="h-8 w-8 rounded" />
           <span className="max-w-40 truncate text-muted">{p.name}</span>
           <span className="h-5 w-5" />

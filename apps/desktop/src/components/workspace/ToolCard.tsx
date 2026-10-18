@@ -38,6 +38,7 @@ import { ChatRow, Dot, Guide } from "./ChatRow";
 import { cachedEditDiff, cleanToolOutput, countLines, diffStats, inputJson, splitPreview, type DiffLine } from "./tool-view";
 import { FileLink, LinkedText } from "./file-links";
 import { taskMenu } from "./WorkingIndicator";
+import { t } from "@/i18n";
 
 type ToolItem = Extract<ChatItem, { kind: "tool" }>;
 type ApprovalItem = Extract<ChatItem, { kind: "approval" }>;
@@ -70,13 +71,13 @@ export function toolIcon(name: string) {
 }
 
 const STATE_DOT: Record<ToolState, { className: string; label: string }> = {
-  running: { className: "animate-soft-pulse bg-accent", label: "läuft" },
-  ok: { className: "bg-success", label: "erfolgreich" },
-  error: { className: "bg-danger", label: "Fehler" },
-  blocked: { className: "bg-danger", label: "blockiert" },
-  waiting: { className: "animate-soft-pulse bg-warning", label: "wartet auf Freigabe" },
-  denied: { className: "border-[1.5px] border-danger", label: "abgelehnt" },
-  unknown: { className: "border-[1.5px] border-subtle", label: "ohne Ergebnis" },
+  running: { className: "animate-soft-pulse bg-accent", label: t.chat.tool.state.running },
+  ok: { className: "bg-success", label: t.chat.tool.state.ok },
+  error: { className: "bg-danger", label: t.chat.tool.state.error },
+  blocked: { className: "bg-danger", label: t.chat.tool.state.blocked },
+  waiting: { className: "animate-soft-pulse bg-warning", label: t.chat.tool.state.waiting },
+  denied: { className: "border-[1.5px] border-danger", label: t.chat.tool.state.denied },
+  unknown: { className: "border-[1.5px] border-subtle", label: t.chat.tool.state.unknown },
 };
 
 function StateDot({ state }: { state: ToolState }) {
@@ -114,7 +115,7 @@ export function ToolCard({ item, sessionId, sessionLive, projectDir }: { item: T
       <div className="flex items-start gap-1.5 text-small text-danger">
         <ShieldAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
         <span className="min-w-0 break-words">
-          Von der FORGE-Policy blockiert: {blocked.message} <span className="font-mono text-subtle">({blocked.rule})</span>
+          {t.chat.tool.blockedByPolicy} {blocked.message} <span className="font-mono text-subtle">({blocked.rule})</span>
         </span>
       </div>
     </Guide>
@@ -132,8 +133,8 @@ export function ToolCard({ item, sessionId, sessionLive, projectDir }: { item: T
     ));
   const details = (
     <>
-      <Pre label="Eingabe" text={inputJson(use.input)} />
-      {result && <Pre label={result.isError ? "Fehler" : "Ergebnis"} text={result.content.text || "(leer)"} truncated={result.content.truncated} error={result.isError} />}
+      <Pre label={t.chat.tool.input} text={inputJson(use.input)} />
+      {result && <Pre label={result.isError ? t.chat.task.error : t.chat.task.result} text={result.content.text || t.chat.task.empty} truncated={result.content.truncated} error={result.isError} />}
     </>
   );
 
@@ -168,7 +169,7 @@ export function ToolCard({ item, sessionId, sessionLive, projectDir }: { item: T
   const preview = open ? null : diff?.length ? (
     <DiffPreview lines={diff} expanded={more} onToggle={() => setMore(!more)} truncated={!!use.inputTruncated} />
   ) : result && (result.isError || showsOutput(use.name)) ? (
-    <OutputPreview text={cleanToolOutput(result.content.text)} error={result.isError} expanded={more} onToggle={() => setMore(!more)} empty={result.isError ? "Fehler ohne Meldung" : "(keine Ausgabe)"} />
+    <OutputPreview text={cleanToolOutput(result.content.text)} error={result.isError} expanded={more} onToggle={() => setMore(!more)} empty={result.isError ? t.chat.tool.errorWithoutMessage : t.chat.tool.noOutput} />
   ) : null;
 
   return (
@@ -181,7 +182,7 @@ export function ToolCard({ item, sessionId, sessionLive, projectDir }: { item: T
           onClick={() => setOpen(!open)}
           aria-expanded={open}
           aria-label={`${toolDisplayName(use.name)}${summary ? ` ${summary}` : ""}`}
-          title={label ? `${label}: Details ${open ? "ausblenden" : "anzeigen"}` : `Details ${open ? "ausblenden" : "anzeigen"}`}
+          title={label ? `${label}: ${open ? t.chat.details.hide : t.chat.details.show}` : open ? t.chat.details.hide : t.chat.details.show}
         />
         <span className="shrink-0 font-semibold text-fg">{toolDisplayName(use.name)}</span>
         {summary && (
@@ -224,22 +225,22 @@ function TaskLink({ item, sessionId, title }: { item: ToolItem; sessionId: strin
   const openTask = useUi((s) => s.openTask);
   const { use, result } = item;
   if (use.name === "Agent" || use.name === "Task") {
-    const task: TaskView = { kind: "agent", sessionId, toolUseId: use.toolUseId, title: title || "Subagent" };
+    const task: TaskView = { kind: "agent", sessionId, toolUseId: use.toolUseId, title: title || t.chat.tool.subagent };
     return (
       <Guide className="mt-1">
         <button type="button" className="flex items-center gap-1.5 text-small text-accent hover:underline" onClick={() => openTask(task)} onContextMenu={contextItems(() => taskMenu(task))}>
-          <MessagesSquare className="h-3.5 w-3.5" /> Verlauf des Subagenten
+          <MessagesSquare className="h-3.5 w-3.5" /> {t.chat.task.agentDescription}
         </button>
       </Guide>
     );
   }
   const taskId = use.input.run_in_background === true && result && !result.isError ? BACKGROUND_ID_RE.exec(result.content.text)?.[1] : undefined;
   if (!taskId) return null;
-  const task: TaskView = { kind: "shell", sessionId, taskId, toolUseId: use.toolUseId, title: title || "Befehl im Hintergrund" };
+  const task: TaskView = { kind: "shell", sessionId, taskId, toolUseId: use.toolUseId, title: title || t.chat.tool.backgroundCommand };
   return (
     <Guide className="mt-1">
       <button type="button" className="flex items-center gap-1.5 text-small text-accent hover:underline" onClick={() => openTask(task)} onContextMenu={contextItems(() => taskMenu(task))}>
-        <SquareTerminal className="h-3.5 w-3.5" /> Ausgabe ansehen
+        <SquareTerminal className="h-3.5 w-3.5" /> {t.chat.tool.viewOutput}
       </button>
     </Guide>
   );
@@ -269,13 +270,13 @@ function showsOutput(name: string): boolean {
 }
 
 function lineCount(n: number): string {
-  return n === 1 ? "1 Zeile" : `${n} Zeilen`;
+  return t.chat.tool.lines(n);
 }
 
 function MoreToggle({ expanded, hidden, onToggle }: { expanded: boolean; hidden: number; onToggle: () => void }) {
   return (
     <button type="button" onClick={onToggle} aria-expanded={expanded} className="mt-0.5 text-caption-lg text-subtle hover:text-fg">
-      {expanded ? "Weniger anzeigen" : hidden > 0 ? `+${hidden} ${hidden === 1 ? "Zeile" : "Zeilen"}` : "Ganz anzeigen"}
+      {expanded ? t.chat.tool.showLess : hidden > 0 ? `+${t.chat.tool.lines(hidden)}` : t.chat.tool.showAll}
     </button>
   );
 }
@@ -320,7 +321,7 @@ function DiffPreview({ lines, expanded, onToggle, truncated }: { lines: DiffLine
         )}
       </div>
       {(expanded ? lines.length > DIFF_PREVIEW_LINES : hidden > 0) && <MoreToggle expanded={expanded} hidden={hidden} onToggle={onToggle} />}
-      {truncated && (expanded || hidden === 0) && <div className="mt-0.5 text-caption text-subtle">Inhalt gekürzt gespeichert.</div>}
+      {truncated && (expanded || hidden === 0) && <div className="mt-0.5 text-caption text-subtle">{t.chat.tool.storedTruncated}</div>}
     </div>
   );
 }
@@ -332,7 +333,7 @@ function Pre({ label, text, truncated, error }: { label: string; text: string; t
       <pre className={cn("max-h-72 overflow-auto whitespace-pre-wrap break-all rounded-md bg-surface p-2 font-mono text-caption-lg", error ? "text-danger" : "text-muted")}>
         <LinkedText text={text} />
       </pre>
-      {truncated && <div className="mt-1 text-caption text-subtle">Gekürzt auf 20.000 Zeichen.</div>}
+      {truncated && <div className="mt-1 text-caption text-subtle">{t.chat.tool.truncatedTo}</div>}
     </div>
   );
 }
@@ -350,7 +351,7 @@ export function ApprovalBlock({ req, resolved, sessionId, projectDir }: { req: A
     onSuccess: () => setSent(true),
     onError: (e) => {
       setAnswer(null);
-      toast.error("Antwort nicht übermittelt", errorMessage(e));
+      toast.error(t.chat.cards.answerNotSent, errorMessage(e));
     },
   });
   const locked = respond.isPending || sent;
@@ -359,7 +360,7 @@ export function ApprovalBlock({ req, resolved, sessionId, projectDir }: { req: A
     return (
       <div className="flex animate-fade-in items-center gap-1.5 text-small text-muted">
         {answer.decision === "allow" ? <Check className="h-3.5 w-3.5 shrink-0 text-success" /> : <X className="h-3.5 w-3.5 shrink-0 text-danger" />}
-        <span className="min-w-0 break-words">{answer.decision === "allow" ? (answer.scope === "session" ? "Für diese Session erlaubt" : "Einmal erlaubt") : "Abgelehnt"}</span>
+        <span className="min-w-0 break-words">{answer.decision === "allow" ? (answer.scope === "session" ? t.chat.tool.allowedForSession : t.chat.tool.allowedOnce) : t.chat.tool.denied}</span>
         <span className="animate-soft-pulse text-subtle">…</span>
       </div>
     );
@@ -372,98 +373,89 @@ export function ApprovalBlock({ req, resolved, sessionId, projectDir }: { req: A
         <span className="min-w-0 break-words">
           {resolved.decision === "allow"
             ? resolved.scope === "session"
-              ? "Für diese Session erlaubt"
-              : "Einmal erlaubt"
+              ? t.chat.tool.allowedForSession
+              : t.chat.tool.allowedOnce
             : resolved.source === "abort"
-              ? "Abgebrochen"
-              : `Abgelehnt${resolved.message ? `: ${resolved.message}` : ""}`}
+              ? t.chat.cards.aborted
+              : t.chat.tool.deniedWith(resolved.message)}
         </span>
       </div>
     );
   }
 
   return (
-    <div className="rounded-md border border-l-2 border-warning/40 border-l-warning bg-warning-soft px-3 py-2.5" role="group" aria-label="Freigabeanfrage">
+    <div className="rounded-md border border-l-2 border-warning/40 border-l-warning bg-warning-soft px-3 py-2.5" role="group" aria-label={t.chat.tool.approvalRequest}>
       <div className="flex items-start gap-2 text-body">
         <ShieldQuestion className="mt-0.5 h-4 w-4 shrink-0 text-warning" />
         <div className="min-w-0 flex-1">
           <div className="font-medium">{req.title ?? approvalTitle(req.toolName)}</div>
           {req.description && <div className="text-xs text-muted">{req.description}</div>}
-          {req.outsideProject && <div className="mt-1 text-xs font-medium text-danger">Achtung: Schreibzugriff außerhalb des Projektordners.</div>}
+          {req.outsideProject && <div className="mt-1 text-xs font-medium text-danger">{t.chat.tool.outsideProject}</div>}
           <pre className="mt-1.5 max-h-40 overflow-auto whitespace-pre-wrap break-all rounded bg-bg/60 p-2 font-mono text-caption-lg text-fg/90">
             <LinkedText text={toolSummary(req.toolName, req.input, projectDir) || JSON.stringify(req.input, null, 2)} />
           </pre>
         </div>
       </div>
       <div className="mt-2 flex flex-wrap items-center gap-2 pl-6">
-        <Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Begründung bei Ablehnung (optional)" className="h-7 max-w-64 text-xs" disabled={locked} />
+        <Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder={t.chat.tool.reasonPlaceholder} className="h-7 max-w-64 text-xs" disabled={locked} />
         <div className="flex-1" />
         <Button size="sm" variant="outline" onClick={() => respond.mutate({ decision: "deny", scope: "once" })} disabled={locked}>
-          Ablehnen
+          {t.chat.tool.deny}
         </Button>
         {req.allowSessionScope && (
           <Button size="sm" variant="secondary" onClick={() => respond.mutate({ decision: "allow", scope: "session" })} disabled={locked}>
-            Für Session erlauben
+            {t.chat.tool.allowSession}
           </Button>
         )}
         <Button size="sm" variant="primary" onClick={() => respond.mutate({ decision: "allow", scope: "once" })} loading={respond.isPending} disabled={sent}>
-          Erlauben
+          {t.chat.tool.allow}
         </Button>
       </div>
     </div>
   );
 }
 
-const APPROVAL_TITLES: Record<string, string> = {
-  Write: "Claude möchte eine Datei anlegen",
-  Edit: "Claude möchte eine Datei bearbeiten",
-  MultiEdit: "Claude möchte eine Datei bearbeiten",
-  NotebookEdit: "Claude möchte ein Notebook bearbeiten",
-  Bash: "Claude möchte einen Befehl ausführen",
-  PowerShell: "Claude möchte einen PowerShell-Befehl ausführen",
-  WebFetch: "Claude möchte eine Webseite abrufen",
-  WebSearch: "Claude möchte im Web suchen",
-};
+const APPROVAL_TITLES: Record<string, string> = t.chat.tool.approvalTitles;
 
 function approvalTitle(toolName: string) {
-  return APPROVAL_TITLES[toolName] ?? `Claude möchte das Tool ${toolName} verwenden`;
+  return APPROVAL_TITLES[toolName] ?? t.chat.tool.approvalTitle(toolName);
 }
 
 function TodoBox({ status }: { status: TodoEntry["status"] }) {
   if (status === "completed")
     return (
-      <span className="flex h-3.5 w-3.5 items-center justify-center rounded-sm bg-success" role="img" aria-label="erledigt">
+      <span className="flex h-3.5 w-3.5 items-center justify-center rounded-sm bg-success" role="img" aria-label={t.chat.tool.todo.completed}>
         <Check className="h-2.5 w-2.5 text-bg" strokeWidth={3.5} />
       </span>
     );
   if (status === "in_progress")
     return (
-      <span className="flex h-3.5 w-3.5 items-center justify-center rounded-sm border-[1.5px] border-accent" role="img" aria-label="in Arbeit">
+      <span className="flex h-3.5 w-3.5 items-center justify-center rounded-sm border-[1.5px] border-accent" role="img" aria-label={t.chat.tool.todo.inProgress}>
         <span className="animate-soft-pulse h-1.5 w-1.5 rounded-[1px] bg-accent" />
       </span>
     );
-  return <span className="block h-3.5 w-3.5 rounded-sm border-[1.5px] border-border-strong" role="img" aria-label="offen" />;
+  return <span className="block h-3.5 w-3.5 rounded-sm border-[1.5px] border-border-strong" role="img" aria-label={t.chat.tool.todo.pending} />;
 }
 
 function TodoCard({ todos }: { todos: TodoEntry[] }) {
-  const done = todos.filter((t) => t.status === "completed").length;
+  const done = todos.filter((todo) => todo.status === "completed").length;
   return (
     <ChatRow className="text-body" marker={<Dot className={done === todos.length ? "bg-success" : "bg-accent"} />}>
       <div className="flex items-baseline gap-2">
-        <span className="font-semibold text-fg">Aufgaben</span>
+        <span className="font-semibold text-fg">{t.chat.tool.todo.title}</span>
         <span className="text-small tabular-nums text-subtle">
-          {done}/{todos.length} erledigt
+          {t.chat.tool.todo.done(done, todos.length)}
         </span>
       </div>
       <Guide className="mt-1">
         <ul className="space-y-0.5">
-          {todos.map((t, i) => (
+          {todos.map((todo, i) => (
             <li key={i} className="flex items-start gap-2">
               <span className="flex h-[1lh] shrink-0 items-center">
-                <TodoBox status={t.status} />
+                <TodoBox status={todo.status} />
               </span>
-              <span className={cn("min-w-0 break-words", t.status === "completed" && "text-subtle line-through decoration-subtle/60", t.status === "in_progress" && "font-medium text-fg")}>
-                {t.status === "in_progress" && t.activeForm ? t.activeForm : t.content}
+              <span className={cn("min-w-0 break-words", todo.status === "completed" && "text-subtle line-through decoration-subtle/60", todo.status === "in_progress" && "font-medium text-fg")}>
+                {todo.status === "in_progress" && todo.activeForm ? todo.activeForm : todo.content}
               </span>
             </li>
           ))}

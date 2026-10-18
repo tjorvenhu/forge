@@ -25,6 +25,7 @@ import { ChatRow, Guide } from "./ChatRow";
 import { EVENT_ICON } from "./EventCard";
 import { forgeTargetLabel, type ForgeTarget, type ForgeToolIcon, type ForgeToolView } from "./forge-tool";
 import { FORGE_ICON_TONE, FORGE_MARKER_OFFSET, ForgeHighlight, ForgeLabel, type ForgeTone } from "./forge-highlight";
+import { t } from "@/i18n";
 
 const ICONS: Record<ForgeToolIcon, LucideIcon> = {
   knowledge: BookOpen,
@@ -91,7 +92,7 @@ export function ForgeToolCard({
           className="group/tool flex min-w-0 flex-1 items-baseline gap-2 text-left transition-opacity duration-75 active:opacity-70"
           onClick={() => setOpen(!open)}
           aria-expanded={open}
-          title={`Details ${open ? "ausblenden" : "anzeigen"}`}
+          title={open ? t.chat.details.hide : t.chat.details.show}
         >
           <span className="shrink-0 font-semibold text-fg">{view.title}</span>
           {view.ref && <span className="min-w-0 truncate text-small text-muted">{view.ref}</span>}

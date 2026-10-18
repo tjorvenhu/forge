@@ -3,6 +3,7 @@ import { call } from "@/lib/queries";
 import { errorMessage, rpc } from "@/lib/rpc";
 import { useDictationActivity } from "@/stores/dictation";
 import { toast } from "@/stores/toast";
+import { language, t } from "@/i18n";
 
 /** What Claude's speech service expects; Chromium resamples the microphone to it. */
 const RATE = 16_000;
@@ -91,14 +92,14 @@ export function useDictation(onText: (text: string) => void, keyterms: string[])
     try {
       // Stopped before the connection was open: the queued words go out first.
       const id = r.id ?? (await r.ready);
-      if (!id) throw new Error("Keine Verbindung zum Sprachdienst von Claude.");
+      if (!id) throw new Error(t.chat.dictation.noConnection);
       for (const pcm of r.queue.splice(0)) void call("voice.audio", { id, pcm }).catch(() => {});
       const { text } = await call("voice.stop", { id });
       // The composer may be gone by now (other session opened); it still puts the text into its draft.
       if (text) deliver.current(text);
-      else if (mounted.current) toast.info("Nichts erkannt", "In der Aufnahme war keine Sprache zu hören.");
+      else if (mounted.current) toast.info(t.chat.dictation.nothingRecognized, t.chat.dictation.nothingRecognizedDetail);
     } catch (e) {
-      toast.error("Spracheingabe fehlgeschlagen", errorMessage(e));
+      toast.error(t.chat.dictation.failed, errorMessage(e));
     } finally {
       if (gen.current === r.gen) {
         setState("idle");
@@ -121,7 +122,7 @@ export function useDictation(onText: (text: string) => void, keyterms: string[])
   const prewarm = useCallback(() => {
     if (rec.current || Date.now() - warmedAt.current < PREWARM_EVERY_MS) return;
     warmedAt.current = Date.now();
-    void call("voice.prewarm", { language: "de", keyterms: terms.current }).catch(() => {});
+    void call("voice.prewarm", { language, keyterms: terms.current }).catch(() => {});
   }, []);
 
   const start = useCallback(async () => {
@@ -143,7 +144,7 @@ export function useDictation(onText: (text: string) => void, keyterms: string[])
     setSeconds(0);
     setLive("");
     // The connection opens while the microphone starts; the first words are queued, not lost.
-    const opening = call("voice.start", { language: "de", keyterms: terms.current });
+    const opening = call("voice.start", { language, keyterms: terms.current });
     opening.catch(() => {});
     const dropOpening = () => void opening.then(({ id }) => call("voice.cancel", { id })).catch(() => {});
     let stream: MediaStream | null = null;
@@ -209,10 +210,10 @@ export function useDictation(onText: (text: string) => void, keyterms: string[])
       const missing = e instanceof DOMException && e.name === "NotFoundError";
       if (denied || missing)
         toast.error(
-          "Mikrofon nicht verfügbar",
-          denied ? "Zugriff verweigert. In Windows unter Einstellungen, Datenschutz und Sicherheit, Mikrofon den Zugriff für Desktop-Apps erlauben." : "Kein Mikrofon gefunden.",
+          t.chat.dictation.micUnavailable,
+          denied ? t.chat.dictation.micDenied : t.chat.dictation.micMissing,
         );
-      else toast.error("Spracheingabe nicht gestartet", errorMessage(e));
+      else toast.error(t.chat.dictation.notStarted, errorMessage(e));
     } finally {
       leave();
     }

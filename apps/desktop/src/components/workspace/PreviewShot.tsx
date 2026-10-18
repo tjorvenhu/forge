@@ -3,6 +3,7 @@ import { Skeleton, SkeletonRegion } from "@/components/ui/skeleton";
 import { call } from "@/lib/queries";
 import { cn } from "@/lib/utils";
 import { cardKey, useCardState } from "@/stores/card-state";
+import { t } from "@/i18n";
 
 /**
  * The screenshot of a preview tool, read back from the Claude Code transcript (the chat event only
@@ -23,19 +24,19 @@ export function PreviewShot({ sessionId, seq, size }: { sessionId: string; seq: 
 
   if (q.isPending)
     return (
-      <SkeletonRegion label="Lädt Screenshot" className={box} style={ratio}>
+      <SkeletonRegion label={t.chat.previewShot.loading} className={box} style={ratio}>
         <Skeleton className="h-full w-full rounded-none" />
       </SkeletonRegion>
     );
-  if (!images.length) return <p className="mt-1.5 text-small text-subtle">Screenshot nicht im Verlauf von Claude Code gefunden.</p>;
+  if (!images.length) return <p className="mt-1.5 text-small text-subtle">{t.chat.previewShot.notFound}</p>;
   // A full page comes in parts from top to bottom; they are shown as one picture.
   return (
-    <button type="button" className={cn(box, "flex cursor-zoom-in flex-col", wide && "cursor-zoom-out")} onClick={() => setWide(!wide)} title={wide ? "Verkleinern" : "Vergrößern"}>
+    <button type="button" className={cn(box, "flex cursor-zoom-in flex-col", wide && "cursor-zoom-out")} onClick={() => setWide(!wide)} title={wide ? t.chat.previewShot.zoomOut : t.chat.previewShot.zoomIn}>
       {images.map((img, i) => (
         <img
           key={i}
           src={`data:${img.mediaType};base64,${img.base64}`}
-          alt={images.length > 1 ? `Screenshot der Vorschau, Teil ${i + 1} von ${images.length}` : "Screenshot der Vorschau"}
+          alt={images.length > 1 ? t.chat.previewShot.altPart(i + 1, images.length) : t.chat.previewShot.alt}
           className="block h-auto w-full"
           style={i === 0 ? ratio : undefined}
         />
