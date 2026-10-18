@@ -4,7 +4,7 @@ import { isLocalUrl } from "./url.js";
 
 export interface PageLogEntry {
   kind: "console" | "exception" | "network";
-  /** console: error, warning, log, info, debug; network: status or "fehlgeschlagen" */
+  /** console: error, warning, log, info, debug; network: status or "failed" */
   level: string;
   text: string;
 }
@@ -197,7 +197,7 @@ export class PreviewPage {
       }
       case "Runtime.exceptionThrown": {
         const d = (p.exceptionDetails ?? {}) as { text?: string; exception?: RemoteObject; url?: string; lineNumber?: number };
-        const text = d.exception?.description ?? (d.exception ? remoteText(d.exception) : d.text) ?? "Unbekannter Fehler";
+        const text = d.exception?.description ?? (d.exception ? remoteText(d.exception) : d.text) ?? tr().system.previewLog.unknownError;
         this.log({ kind: "exception", level: "error", text: text + (d.url ? ` (${d.url}:${(d.lineNumber ?? 0) + 1})` : "") });
         break;
       }
@@ -231,8 +231,8 @@ export class PreviewPage {
       case "Network.loadingFailed": {
         const id = String(p.requestId);
         this.inflight.delete(id);
-        const why = p.canceled ? "abgebrochen" : String(p.blockedReason ?? p.errorText ?? "fehlgeschlagen");
-        this.log({ kind: "network", level: "fehlgeschlagen", text: `${this.requests.get(id) ?? id} → ${why}` });
+        const why = p.canceled ? tr().system.previewLog.canceled : String(p.blockedReason ?? p.errorText ?? tr().system.previewLog.failed);
+        this.log({ kind: "network", level: "failed", text: `${this.requests.get(id) ?? id} → ${why}` });
         this.wake();
         break;
       }

@@ -56,7 +56,7 @@ export class PluginService {
 
   private async cli(args: string[], timeoutMs: number) {
     const bin = this.claude();
-    if (!bin) throw new ForgeError("CLAUDE_NOT_INSTALLED", "Claude Code ist nicht installiert.");
+    if (!bin) throw new ForgeError("CLAUDE_NOT_INSTALLED", tr().system.claudeConfig.claudeNotInstalled);
     const r = await run(bin, args, { cwd: os.homedir(), env: this.env(), timeoutMs });
     if (r.spawnError) throw new ForgeError("CLAUDE_RUNTIME", r.spawnError.message);
     return r;
@@ -82,7 +82,7 @@ export class PluginService {
 
   async uninstall(id: string): Promise<MarketplacePlugin[]> {
     const r = await this.cli(["plugin", "uninstall", "--scope", "user", id], 120_000);
-    if (r.code !== 0) throw new ForgeError("CLAUDE_RUNTIME", (r.stderr || r.stdout || "Entfernen fehlgeschlagen").trim());
+    if (r.code !== 0) throw new ForgeError("CLAUDE_RUNTIME", (r.stderr || r.stdout || tr().system.claudeConfig.removeFailed).trim());
     this.cache = null;
     return this.catalog();
   }

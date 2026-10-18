@@ -1,4 +1,5 @@
 import net from "node:net";
+import { tr } from "../i18n/index.js";
 
 function listenable(port: number, host: string): Promise<boolean> {
   return new Promise((resolve) => {
@@ -23,5 +24,5 @@ export async function findFreePort(from: number, skip: Iterable<number> = [], fr
   for (let port = from; port <= 65535; port++) {
     if (!taken.has(port) && (await free(port))) return port;
   }
-  throw new Error(`Kein freier Port ab ${from}.`);
+  throw new Error(tr().system.paths.noFreePort(from));
 }

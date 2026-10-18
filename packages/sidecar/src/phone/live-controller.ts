@@ -225,14 +225,14 @@ export class LiveCallController implements CallHandler {
 
   private startGrace() {
     if (this.graceTimer) return;
-    this.graceTimer = setTimeout(() => void this.call.hangup("FORGE hat aufgelegt"), this.d.timing?.hangupGraceMs ?? HANGUP_GRACE_MS);
+    this.graceTimer = setTimeout(() => void this.call.hangup(tr().phone.call.forgeHungUp), this.d.timing?.hangupGraceMs ?? HANGUP_GRACE_MS);
   }
 
   private maybeHangup() {
     if (!this.hangupPending || this.ended || this.rtp.playing || this.bufferedSamples) return;
     this.hangupPending = false;
     // A little room so the last syllable is not cut off on the line.
-    setTimeout(() => void this.call.hangup("FORGE hat aufgelegt"), 400);
+    setTimeout(() => void this.call.hangup(tr().phone.call.forgeHungUp), 400);
   }
 
   /** Gemini is gone: nothing can be said any more; a short tone, then hang up. */

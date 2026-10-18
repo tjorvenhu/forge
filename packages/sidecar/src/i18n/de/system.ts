@@ -74,6 +74,7 @@ export const system = {
     summary: "Fass am Ende kurz zusammen, wie du jeden Konflikt aufgelöst hast.",
   },
   github: {
+    ghMissing: "GitHub CLI fehlt in dieser Installation.",
     ghExited: (code: number | null) => `gh beendet mit Code ${code}`,
     logoutFailed: "Abmelden fehlgeschlagen",
     reposFailed: "Repositories konnten nicht geladen werden",
@@ -336,6 +337,11 @@ export const system = {
     nameReserved: "Dieser Name ist unter Windows reserviert.",
     nameTrailing: "Name darf nicht mit Punkt oder Leerzeichen enden.",
     noFreePort: (from: number) => `Kein freier Port ab ${from}.`,
+  },
+  previewLog: {
+    unknownError: "Unbekannter Fehler",
+    canceled: "abgebrochen",
+    failed: "fehlgeschlagen",
   },
   claudeConfig: {
     needsProjectFile: "Für diese Datei wird ein Projekt benötigt.",

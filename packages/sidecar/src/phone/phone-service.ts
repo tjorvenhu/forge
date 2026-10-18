@@ -64,7 +64,6 @@ import {
   geminiFunctionDeclarations,
   phoneSystemPrompt,
   policyRuleLabel,
-  type AutomationTag,
   type CallSettingsPatch,
   type ForgeSettingsPatch,
 } from "./tools.js";
@@ -2446,7 +2445,7 @@ export class PhoneService {
             if (deleteGitHubRepo && !info.githubRepo) return pj.noRepo(p.name);
             if (deleteGitHubRepo && !info.githubSignedIn) return pj.notSignedIn;
             if (deleteGitHubRepo && !info.githubCanDelete) return pj.needsDeleteRepo;
-            if (deleteFolder && info.folderBlocker) return `Fehler: ${info.folderBlocker}`;
+            if (deleteFolder && info.folderBlocker) return tr().phone.error(info.folderBlocker);
             const what = [deleteFolder && pj.deleteFolder(p.name), deleteGitHubRepo && pj.deleteRepo(asData(info.githubRepo ?? ""))]
               .filter(Boolean)
               .join(pj.and);

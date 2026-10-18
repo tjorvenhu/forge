@@ -2,6 +2,7 @@ import { mkdirSync, realpath } from "node:fs";
 import { promisify } from "node:util";
 import os from "node:os";
 import path from "node:path";
+import { tr } from "../i18n/index.js";
 
 export function dataDir(): string {
   const base = process.env.FORGE_DATA_DIR || path.join(process.env.APPDATA ?? path.join(os.homedir(), "AppData", "Roaming"), "forge");
@@ -68,12 +69,13 @@ const WIN_RESERVED = /^(con|prn|aux|nul|com[0-9]|lpt[0-9])(\..*)?$/i;
 
 /** Validates a single directory name (no separators, no traversal, no reserved names). */
 export function validateDirName(name: string): string | null {
+  const p = tr().system.paths;
   const t = name.trim();
-  if (!t) return "Name darf nicht leer sein.";
-  if (t === "." || t === "..") return "Ungültiger Name.";
+  if (!t) return p.nameEmpty;
+  if (t === "." || t === "..") return p.nameInvalid;
   // eslint-disable-next-line no-control-regex -- control characters are invalid in file names
-  if (/[<>:"/\\|?*\u0000-\u001f]/.test(t)) return 'Name darf keine der Zeichen < > : " / \\ | ? * enthalten.';
-  if (WIN_RESERVED.test(t)) return "Dieser Name ist unter Windows reserviert.";
-  if (/[. ]$/.test(t)) return "Name darf nicht mit Punkt oder Leerzeichen enden.";
+  if (/[<>:"/\\|?*\u0000-\u001f]/.test(t)) return p.nameChars;
+  if (WIN_RESERVED.test(t)) return p.nameReserved;
+  if (/[. ]$/.test(t)) return p.nameTrailing;
   return null;
 }

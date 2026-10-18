@@ -232,7 +232,7 @@ export function createApp(opts: { dataDir: string; write: Writer; log?: (m: stri
     },
     writeChangelog: (prompt) => {
       const c = claudeFor();
-      if (!c.path) throw new Error("Claude Code ist nicht installiert.");
+      if (!c.path) throw new Error(tr().system.claudeConfig.claudeNotInstalled);
       return runtime.complete(prompt, { cwd: opts.dataDir, env: c.env, claudePath: c.path, model: ASSIST_MODEL, purpose: "changelog" });
     },
   });

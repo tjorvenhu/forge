@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { ForgeError, type ServerEvent } from "@forge/protocol";
 import { claudeHome } from "../config/claude-config.js";
+import { tr } from "../i18n/index.js";
 
 /**
  * Dictation over Claude Code's own speech service (what `/voice` uses in the terminal), with the
@@ -173,7 +174,7 @@ export class DictationService {
 
     socket.onmessage = (e) => this.onMessage(id, s, e.data);
     socket.onerror = () => {
-      s.error ??= "Verbindung zum Sprachdienst unterbrochen.";
+      s.error ??= tr().system.dictation.interrupted;
       s.finish?.();
     };
     socket.onclose = (e) => {
@@ -245,11 +246,11 @@ export class DictationService {
         if (s.closing) s.finish?.();
         break;
       case "TranscriptError":
-        s.error = `Spracherkennung: ${m.description ?? m.error_code ?? "unbekannter Fehler"}`;
+        s.error = tr().system.dictation.recognition(m.description ?? m.error_code);
         this.promote(s);
         break;
       case "error":
-        s.error = `Sprachdienst: ${m.message ?? "unbekannter Fehler"}`;
+        s.error = tr().system.dictation.service(m.message);
         this.promote(s);
         break;
       default:
@@ -265,7 +266,7 @@ export class DictationService {
 
   private require(id: string): Stream {
     const s = this.streams.get(id);
-    if (!s) throw new ForgeError("NOT_FOUND", "Diese Aufnahme ist schon beendet.");
+    if (!s) throw new ForgeError("NOT_FOUND", tr().system.dictation.ended);
     return s;
   }
 
@@ -313,7 +314,7 @@ export class DictationService {
     const socket = (this.d.connect ?? defaultConnect)(`${ENDPOINT}?${query.toString()}`, headers);
     const conn: Conn = { key: connKey(opts), socket, opened: Promise.resolve(), keepalive: null, dead: false, onLost: null };
     conn.opened = new Promise<void>((resolve, reject) => {
-      const timer = setTimeout(() => fail("Der Sprachdienst von Claude antwortet nicht."), CONNECT_TIMEOUT_MS);
+      const timer = setTimeout(() => fail(tr().system.dictation.noAnswer), CONNECT_TIMEOUT_MS);
       const fail = (message: string) => {
         clearTimeout(timer);
         closeConn(conn);
@@ -332,8 +333,8 @@ export class DictationService {
         socket.onclose = lost;
         resolve();
       };
-      socket.onerror = () => fail("Keine Verbindung zum Sprachdienst von Claude. Netzwerk prüfen, sonst hat sich der Dienst mit einem Claude-Code-Update geändert.");
-      socket.onclose = (e) => fail(e.code === 1008 || e.code === 4001 || e.code === 4003 ? "Der Sprachdienst lehnt die Claude-Anmeldung ab." : `Sprachdienst getrennt (Code ${e.code}).`);
+      socket.onerror = () => fail(tr().system.dictation.noConnection);
+      socket.onclose = (e) => fail(e.code === 1008 || e.code === 4001 || e.code === 4003 ? tr().system.dictation.loginRejected : tr().system.dictation.disconnected(e.code));
     });
     // A prewarmed connection may fail without anyone waiting for it.
     conn.opened.catch(() => {});
@@ -364,15 +365,15 @@ export class DictationService {
     };
     let c = await read();
     if (c && c.expiresAt - this.now() < TOKEN_MARGIN_MS) {
-      if (!refresh) throw new ForgeError("CLAUDE_NOT_LOGGED_IN", "Die Claude-Anmeldung läuft ab und wird erst bei der Aufnahme erneuert.");
+      if (!refresh) throw new ForgeError("CLAUDE_NOT_LOGGED_IN", tr().system.dictation.loginExpiring);
       if (this.now() - this.refreshFailedAt >= REFRESH_RETRY_MS) {
         await this.d.refreshLogin().catch(() => {});
         c = await read();
         if (!c || c.expiresAt - this.now() < TOKEN_MARGIN_MS) this.refreshFailedAt = this.now();
       }
     }
-    if (!c) throw new ForgeError("CLAUDE_NOT_LOGGED_IN", "Die Spracheingabe braucht die Anmeldung bei Claude (Pro oder Max).");
-    if (c.expiresAt - this.now() < 0) throw new ForgeError("CLAUDE_NOT_LOGGED_IN", "Die Claude-Anmeldung ist abgelaufen. Unter Einstellungen, Claude Code neu anmelden.");
+    if (!c) throw new ForgeError("CLAUDE_NOT_LOGGED_IN", tr().system.dictation.needsLogin);
+    if (c.expiresAt - this.now() < 0) throw new ForgeError("CLAUDE_NOT_LOGGED_IN", tr().system.dictation.loginExpired);
     return c.token;
   }
 

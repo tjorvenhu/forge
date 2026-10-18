@@ -75,6 +75,7 @@ export const system: typeof De = {
     summary: "At the end, briefly sum up how you resolved each conflict.",
   },
   github: {
+    ghMissing: "GitHub CLI is missing from this installation.",
     ghExited: (code) => `gh exited with code ${code}`,
     logoutFailed: "Sign-out failed",
     reposFailed: "Could not load repositories",
@@ -334,6 +335,11 @@ export const system: typeof De = {
     nameReserved: "This name is reserved on Windows.",
     nameTrailing: "Name must not end with a period or space.",
     noFreePort: (from) => `No free port from ${from}.`,
+  },
+  previewLog: {
+    unknownError: "Unknown error",
+    canceled: "canceled",
+    failed: "failed",
   },
   claudeConfig: {
     needsProjectFile: "This file needs a project.",

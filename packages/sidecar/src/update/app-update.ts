@@ -615,7 +615,7 @@ export class AppUpdateService {
 /** Runs the GitHub CLI without prompts; FORGE ships it, a system copy is the fallback. */
 export async function runGh(args: string[], timeoutMs: number): Promise<{ code: number | null; stdout: string; stderr: string }> {
   const tool = resolveTool("gh");
-  if (!tool) throw new Error("GitHub CLI fehlt in dieser Installation.");
+  if (!tool) throw new Error(tr().system.github.ghMissing);
   const r = await run(tool.path, args, { env: { ...process.env, GH_PROMPT_DISABLED: "1", GH_PAGER: "", GH_NO_UPDATE_NOTIFIER: "1" }, timeoutMs });
   if (r.spawnError) throw r.spawnError;
   return { code: r.code, stdout: r.stdout, stderr: r.stderr };

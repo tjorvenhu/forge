@@ -25,7 +25,7 @@ export class GitHubService {
 
   private gh(): string {
     const t = resolveTool("gh");
-    if (!t) throw new ForgeError("INTERNAL", "GitHub CLI fehlt in dieser Installation.");
+    if (!t) throw new ForgeError("INTERNAL", tr().system.github.ghMissing);
     return t.path;
   }
 

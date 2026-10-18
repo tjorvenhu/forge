@@ -196,7 +196,7 @@ export class CallController implements CallHandler {
       },
       onError: (m) => {
         this.d.log(`Claude: ${m}`);
-        this.farewell("Ich habe gerade ein technisches Problem und lege auf. Bitte versuch es gleich noch einmal.");
+        this.farewell(tr().phone.call.technicalProblem);
       },
     });
     if (this.d.opening) this.tell(this.d.opening);
@@ -307,12 +307,12 @@ export class CallController implements CallHandler {
         for (const c of held) this.rtp.play(c);
         this.rtp.flush();
       }
-      if (signal.aborted && !abort.signal.aborted && !this.ended) throw new Error("Sprachausgabe: OpenAI antwortet nicht rechtzeitig.");
+      if (signal.aborted && !abort.signal.aborted && !this.ended) throw new Error(tr().phone.voice.openAiTimeout(tr().phone.voice.tts));
       this.voiceErrors = 0;
     } catch (e) {
       if (!abort.signal.aborted && !this.ended) {
         this.d.log(`Sprachausgabe: ${e instanceof Error ? e.message : String(e)}`);
-        if (++this.voiceErrors >= MAX_VOICE_ERRORS) void this.call.hangup("Sprachausgabe fehlgeschlagen");
+        if (++this.voiceErrors >= MAX_VOICE_ERRORS) void this.call.hangup(tr().phone.call.speechFailed);
       }
     } finally {
       this.speaking = false;
@@ -336,7 +336,7 @@ export class CallController implements CallHandler {
     if (!this.hangupPending || this.ended) return;
     if (this.speaking || this.speechQueue.length || this.rtp.playing) return;
     // A little room so the last syllable is not cut off on the line.
-    setTimeout(() => void this.call.hangup("FORGE hat aufgelegt"), 400);
+    setTimeout(() => void this.call.hangup(tr().phone.call.forgeHungUp), 400);
     this.hangupPending = false;
   }
 
@@ -379,14 +379,14 @@ export class CallController implements CallHandler {
       let text: string;
       try {
         const signal = AbortSignal.any([this.life.signal, AbortSignal.timeout(this.d.timing?.transcribeTimeoutMs ?? TRANSCRIBE_TIMEOUT_MS)]);
-        text = await raceAbort(this.d.voice.transcribe(pcm, signal), signal, "Spracherkennung: OpenAI antwortet nicht rechtzeitig.");
+        text = await raceAbort(this.d.voice.transcribe(pcm, signal), signal, tr().phone.voice.openAiTimeout(tr().phone.voice.stt));
         this.voiceErrors = 0;
       } catch (e) {
         if (this.ended) return;
         this.d.log(`Spracherkennung: ${e instanceof Error ? e.message : String(e)}`);
         this.dropReply();
-        if (++this.voiceErrors >= MAX_VOICE_ERRORS) this.farewell("Die Spracherkennung funktioniert gerade nicht. Ich lege auf.");
-        else this.speak("Das habe ich nicht verstanden. Sag es bitte noch einmal.");
+        if (++this.voiceErrors >= MAX_VOICE_ERRORS) this.farewell(tr().phone.call.sttBroken);
+        else this.speak(tr().phone.call.notUnderstood);
         return;
       }
       if (this.ended) return;

@@ -1,4 +1,5 @@
 import { ForgeError, type PermissionMode, type ProfileId } from "@forge/protocol";
+import { tr } from "../i18n/index.js";
 
 export interface ProfileConfig {
   id: ProfileId;
@@ -61,7 +62,7 @@ export function revokesSessionApprovals(next: ProfileConfig, prev: ProfileConfig
  */
 export function resolveProfile(profile: ProfileId, tags: readonly string[]): ProfileConfig {
   if (profile === "autonomous" && tags.includes(SANDBOX_ONLY_TAG)) {
-    throw new ForgeError("POLICY_DENIED", "Das Tag sandbox-only verbietet Autonomous in diesem Projekt.");
+    throw new ForgeError("POLICY_DENIED", tr().system.policy.sandboxOnly);
   }
   return PROFILES[profile];
 }

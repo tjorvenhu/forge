@@ -42,7 +42,7 @@ export class ForkedCall extends EventEmitter<CallEvents> implements PhoneCall {
     return this.winner?.state ?? "ringing";
   }
 
-  async hangup(reason = "Aufgelegt") {
+  async hangup(reason = tr().phone.call.hungUp) {
     if (this.done) return;
     if (this.winner) return this.winner.hangup(reason);
     await Promise.all(this.legs.map((l) => l.hangup(reason)));

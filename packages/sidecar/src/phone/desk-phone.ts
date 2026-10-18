@@ -315,10 +315,10 @@ export class DeskPhone {
   }
 
   private stateWord(s: DeskSession): string {
-    if (s.status === "waiting_approval") return "wartet!";
-    if (s.status === "running" || s.status === "starting") return "arbeitet";
-    if (this.unheard.has(s.id)) return "neu";
-    return "bereit";
+    if (s.status === "waiting_approval") return tr().phone.line.deskWaiting;
+    if (s.status === "running" || s.status === "starting") return tr().phone.line.deskWorking;
+    if (this.unheard.has(s.id)) return tr().phone.line.deskNew;
+    return tr().phone.line.deskReady;
   }
 
   /** The session picking up would be about: the selected one, else the most recently active. */
@@ -372,7 +372,7 @@ export class DeskPhone {
       const url = (d: string) => escapeXml(`http://${cfg.localIp}:${cfg.httpPort}/desk/${cfg.token}/answer?s=${encodeURIComponent(s.id)}&r=${encodeURIComponent(req.requestId)}&d=${d}`);
       this.push(
         `<YealinkIPPhoneTextMenu style="numbered" Beep="yes" Timeout="0" destroyOnExit="yes"><Title>${escapeXml(shorten(`${s.title ?? s.projectName}: ${requestShort(req)}`, 60))}</Title>` +
-          `<MenuItem><Prompt>Erlauben</Prompt><URI>${url("allow")}</URI></MenuItem><MenuItem><Prompt>Ablehnen</Prompt><URI>${url("deny")}</URI></MenuItem></YealinkIPPhoneTextMenu>`,
+          `<MenuItem><Prompt>${tr().phone.line.deskAllow}</Prompt><URI>${url("allow")}</URI></MenuItem><MenuItem><Prompt>${tr().phone.line.deskDeny}</Prompt><URI>${url("deny")}</URI></MenuItem></YealinkIPPhoneTextMenu>`,
       );
       return;
     }

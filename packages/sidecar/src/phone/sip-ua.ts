@@ -120,14 +120,14 @@ export class SipCall extends EventEmitter<CallEvents> {
   }
 
   /** Incoming call that is still ringing: final error response, repeated until the ACK (Timer G/H). */
-  reject(status = 486, reason = "Busy Here", why = "Abgewiesen") {
+  reject(status = 486, reason = "Busy Here", why = tr().phone.call.rejected) {
     if (this.direction !== "in" || this.state !== "ringing" || !this.invite) return;
     this.end(why);
     const res = this.ua.inviteResponse(this, status, reason);
     this.repeatUntilAck(() => this.ua.respond(this, res), cseqOf(this.invite).seq, null);
   }
 
-  async hangup(reason = "Aufgelegt") {
+  async hangup(reason = tr().phone.call.hungUp) {
     if (this.state === "ended") return;
     if (this.state === "ringing") {
       if (this.direction === "in") {
@@ -300,7 +300,7 @@ export class SipUserAgent extends EventEmitter<UaEvents> {
     if (this.keepalive) clearInterval(this.keepalive);
     // Hang up and sign off, but do not wait long for a PBX that does not answer.
     const bounded = (p: Promise<unknown>) => Promise.race([p.catch(() => {}), new Promise((r) => setTimeout(r, 2000))]);
-    await bounded(Promise.all([...this.calls.values()].map((c) => c.hangup("FORGE-Telefon ausgeschaltet"))));
+    await bounded(Promise.all([...this.calls.values()].map((c) => c.hangup(tr().phone.call.phoneSwitchedOff))));
     // Also while a (re-)registration runs: the PBX may already hold the binding.
     if (this.state === "registered" || this.state === "registering") await bounded(this.register(0));
     for (const tx of this.clientTx.values()) this.finishTx(tx, null);
@@ -339,7 +339,7 @@ export class SipUserAgent extends EventEmitter<UaEvents> {
       if (min > 0) return this.register(min, relearned);
     }
     if (res.status !== 200) {
-      const why = res.status === 401 || res.status === 403 || res.status === 407 ? "Zugangsdaten abgelehnt" : "Anmeldung abgelehnt";
+      const why = res.status === 401 || res.status === 403 || res.status === 407 ? tr().phone.line.credentialsRejected : tr().phone.line.registrationRejected;
       return this.registerFailed(`${why} (${res.status} ${res.reason ?? ""}).`.replace(" )", ")"));
     }
     // Behind NAT the PBX tells us our public address; register that so calls can reach us. It is
@@ -434,7 +434,7 @@ export class SipUserAgent extends EventEmitter<UaEvents> {
         }
         return;
       }
-      if (!res) return call.end("Keine Antwort von der Anlage");
+      if (!res) return call.end(tr().phone.call.noPbxAnswer);
       if (res.status && res.status >= 200 && res.status < 300) {
         call.remoteTag = tagOf(getHeader(res, "to"));
         call.remoteHeader = getHeader(res, "to") ?? `<${target}>`;
@@ -450,7 +450,7 @@ export class SipUserAgent extends EventEmitter<UaEvents> {
       call.end(describeFailure(res.status ?? 0, res.reason ?? ""));
     });
     call.setRingTimer(() => {
-      if (call.state === "ringing") void call.hangup("Nicht angenommen");
+      if (call.state === "ringing") void call.hangup(tr().phone.call.notAnswered);
     });
     return call;
   }
@@ -695,13 +695,13 @@ export class SipUserAgent extends EventEmitter<UaEvents> {
         const inviteBranch = call?.invite ? parseVia(getHeaders(call.invite, "via")[0] ?? "")?.params.branch : undefined;
         if (!call || call.direction !== "in" || call.state !== "ringing" || inviteBranch !== branch) return noDialog();
         reply(200, "OK");
-        call.reject(487, "Request Terminated", "Anrufer hat aufgelegt");
+        call.reject(487, "Request Terminated", tr().phone.call.callerHungUp);
         return;
       }
       case "BYE":
         if (!call || !this.inDialog(call, req)) return noDialog();
         reply(200, "OK");
-        call.end("Gegenstelle hat aufgelegt");
+        call.end(tr().phone.call.remoteHungUp);
         return;
       case "INFO": {
         if (!call || !this.inDialog(call, req)) return noDialog();
