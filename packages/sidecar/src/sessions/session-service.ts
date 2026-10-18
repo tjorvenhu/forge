@@ -74,6 +74,8 @@ export class SessionService {
   private readonly idle: IdleClose;
   /** the session a phone call is about; set by app.ts once the phone exists */
   private callFocus: () => string | null = () => null;
+  /** every message that reached a session, from FORGE or the Claude app (template learning) */
+  private messageSeen: (source?: string) => void = () => {};
   /** knowledge and dev tools; set by app.ts once those services exist */
   private projectDeps: ProjectToolDeps | null = null;
   /** merges or discards agents; set by app.ts, it needs this service itself */
@@ -123,12 +125,16 @@ export class SessionService {
       userMessage: (id, text) => {
         this.turns.titleFromFirstMessage(id, text);
         this.titles.note(id, text, "remote");
+        this.messageSeen("remote");
       },
     });
     this.titles = new TitleRefresh(core, runtime, this.assist, this.remote, now);
     this.turns = new TurnDispatch(core, this.automation, this.remote, {
       resume: (id, text, attachments, source, task) => this.lifecycle.resume(id, text, attachments, source, task),
-      userMessage: (id, text, source) => this.titles.note(id, text, source),
+      userMessage: (id, text, source) => {
+        this.titles.note(id, text, source);
+        this.messageSeen(source);
+      },
       spill: (name, data) => uploads.write(name, data),
     });
     this.modes = new PermissionModes(core, projects, { reopen: (id) => this.lifecycle.resume(id, null) });
@@ -442,6 +448,11 @@ export class SessionService {
   /** Ends the processes of idle sessions now; the periodic check calls the same. Returns their ids. */
   checkIdle(): string[] {
     return this.idle.check();
+  }
+
+  /** Hears of every message that reached a session; source "auto" for FORGE's own. */
+  useMessageListener(listener: (source?: string) => void) {
+    this.messageSeen = listener;
   }
 
   /** The phone tells which session a running call is about; its process stays open meanwhile. */

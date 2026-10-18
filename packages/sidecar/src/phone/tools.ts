@@ -125,6 +125,7 @@ export const SESSIONS_ACTIONS = [
   "template_save",
   "template_delete",
   "template_move",
+  "template_learn",
 ] as const;
 export type SessionsAction = (typeof SESSIONS_ACTIONS)[number];
 
@@ -202,6 +203,8 @@ export interface ForgeSettingsPatch {
   screenshotKey?: boolean;
   /** before/after screenshots of the web app when a turn changes UI files */
   uiCompare?: boolean;
+  /** FORGE turns repeated messages into templates on its own */
+  learnTemplates?: boolean;
   /** anonymous usage totals every 5 minutes */
   usageStats?: boolean;
   policyRule?: PolicyRuleId;
@@ -837,7 +840,7 @@ export const PHONE_TOOLS: readonly PhoneToolSpec[] = [
   {
     name: "sessions",
     description:
-      "Alle Sessions, auch ältere und geschlossene. list: auflisten, auf Wunsch nach project, Suchwörtern (query) oder status gefiltert; die Kürzel gelten danach für die anderen Werkzeuge. delete: eine Session löschen. delete_all: alle Sessions löschen. fork: Verlauf in eine neue Session abzweigen, ganz oder bis vor eine Nachricht (messages_back). rewind: Dateien auf den Stand vor einer Nachricht des Anrufers zurücksetzen; der Verlauf bleibt. edit: eine Nachricht des Anrufers durch text ersetzen; ein laufender Durchlauf bricht ab und Claude macht mit dem neuen Text weiter, als hätte es die alte Nachricht nie gegeben. ui_compare: ob es zum letzten Durchlauf einen Vorher-Nachher-Vergleich der Web-App gibt (Seite, geänderte UI-Dateien, Stand); die Bilder selbst gibt es nur am Computer. ui_compare_retake: das Nachher-Bild neu aufnehmen. templates: Prompt-Vorlagen auflisten (gespeicherte, wiederkehrende Aufträge mit Platzhaltern wie {datei}), mit project die globalen und die des Projekts. template_send: eine Vorlage (template) mit Werten für ihre Platzhalter (values) an eine Session schicken (session) oder damit eine neue Session im project starten; fehlen Werte, nennt FORGE sie, dann den Anrufer danach fragen. template_save: eine Vorlage anlegen (name, text, optional description, mit project nur für dieses Projekt) oder mit template eine vorhandene ändern. template_delete: eine Vorlage löschen. template_move: eine Vorlage in ihrer Liste nach oben oder unten schieben (direction). day_report: Tagesbericht für „Was ist heute passiert?“: Sessions mit Durchläufen, Agenten (zusammengeführt, verworfen, wartend), Commits, was offen ist und die Anrufe; mit summary eine kurze Zusammenfassung von Claude.",
+      "Alle Sessions, auch ältere und geschlossene. list: auflisten, auf Wunsch nach project, Suchwörtern (query) oder status gefiltert; die Kürzel gelten danach für die anderen Werkzeuge. delete: eine Session löschen. delete_all: alle Sessions löschen. fork: Verlauf in eine neue Session abzweigen, ganz oder bis vor eine Nachricht (messages_back). rewind: Dateien auf den Stand vor einer Nachricht des Anrufers zurücksetzen; der Verlauf bleibt. edit: eine Nachricht des Anrufers durch text ersetzen; ein laufender Durchlauf bricht ab und Claude macht mit dem neuen Text weiter, als hätte es die alte Nachricht nie gegeben. ui_compare: ob es zum letzten Durchlauf einen Vorher-Nachher-Vergleich der Web-App gibt (Seite, geänderte UI-Dateien, Stand); die Bilder selbst gibt es nur am Computer. ui_compare_retake: das Nachher-Bild neu aufnehmen. templates: Prompt-Vorlagen auflisten (gespeicherte, wiederkehrende Aufträge mit Platzhaltern wie {datei}), mit project die globalen und die des Projekts. template_send: eine Vorlage (template) mit Werten für ihre Platzhalter (values) an eine Session schicken (session) oder damit eine neue Session im project starten; fehlen Werte, nennt FORGE sie, dann den Anrufer danach fragen. template_save: eine Vorlage anlegen (name, text, optional description, mit project nur für dieses Projekt) oder mit template eine vorhandene ändern. template_delete: eine Vorlage löschen. template_move: eine Vorlage in ihrer Liste nach oben oder unten schieben (direction). template_learn: jetzt aus den letzten Nachrichten wiederkehrende Aufträge als Vorlagen lernen (das macht FORGE sonst von selbst, gelernte Vorlagen sind markiert). day_report: Tagesbericht für „Was ist heute passiert?“: Sessions mit Durchläufen, Agenten (zusammengeführt, verworfen, wartend), Commits, was offen ist und die Anrufe; mit summary eine kurze Zusammenfassung von Claude.",
     params: {
       action: { type: "string", enum: SESSIONS_ACTIONS },
       session: { type: "string", optional: true, description: "bei delete, fork, rewind, edit, ui_compare und ui_compare_retake: Kürzel wie S1 oder ein Teil des Titels" },
@@ -940,6 +943,7 @@ export const PHONE_TOOLS: readonly PhoneToolSpec[] = [
       strip_api_key: { type: "boolean", optional: true, description: "einen API-Key aus der Umgebung nicht an Claude Code geben, damit das Abo zählt" },
       screenshot_key: { type: "boolean", optional: true, description: "die Druck-Taste öffnet das Snipping-Tool von FORGE statt dem von Windows" },
       ui_compare: { type: "boolean", optional: true, description: "Vorher-Nachher-Bilder der Web-App, wenn Claude UI-Dateien ändert und ein Dev-Server läuft" },
+      learn_templates: { type: "boolean", optional: true, description: "FORGE macht aus Aufträgen, die der Anrufer immer wieder schickt, von selbst Prompt-Vorlagen" },
       usage_stats: {
         type: "boolean",
         optional: true,
@@ -964,6 +968,7 @@ export const PHONE_TOOLS: readonly PhoneToolSpec[] = [
         stripApiKey: optBool(a.strip_api_key),
         screenshotKey: optBool(a.screenshot_key),
         uiCompare: optBool(a.ui_compare),
+        learnTemplates: optBool(a.learn_templates),
         usageStats: optBool(a.usage_stats),
         policyRule: PolicyRuleId.options.find((x) => x === a.policy_rule),
         policyRuleOn: optBool(a.policy_rule_on),

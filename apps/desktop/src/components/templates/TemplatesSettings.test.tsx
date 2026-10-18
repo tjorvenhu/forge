@@ -37,6 +37,9 @@ beforeEach(() => {
     if (method === "projects.list") return projects;
     if (method === "templates.reorder" || method === "templates.delete") return method === "templates.delete" ? { ok: true } : [];
     if (method === "templates.save") return tpl("n", "Neu", null);
+    if (method === "settings.get") return { learnTemplates: true };
+    if (method === "settings.update") return { learnTemplates: false };
+    if (method === "templates.learn") return { added: [{ ...tpl("l", "Pushen", null), learned: true }], message: "Neue Vorlage gelernt: Pushen." };
     throw new Error("unexpected " + method);
   });
   useTemplateDialogs.setState({ apply: null, edit: null });
@@ -66,6 +69,19 @@ describe("templates settings", () => {
     expect(callMock).not.toHaveBeenCalledWith("templates.delete", expect.anything());
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "Löschen" })));
     expect(callMock).toHaveBeenCalledWith("templates.delete", { id: "a" });
+  });
+
+  it("marks learned templates, switches learning off and learns on demand", async () => {
+    list = [{ ...tpl("a", "Review", null), learned: true }, tpl("b", "Changelog", null, 1)];
+    setup(<TemplatesSettings />);
+    expect(await screen.findByText("Gelernt")).toBeTruthy();
+    const toggle = await screen.findByRole("switch", { name: "Vorlagen aus wiederkehrenden Nachrichten lernen" });
+    await act(async () => fireEvent.click(toggle));
+    expect(callMock).toHaveBeenCalledWith("settings.update", { learnTemplates: false });
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: /Jetzt lernen/ })));
+    expect(callMock).toHaveBeenCalledWith("templates.learn", {});
+    fireEvent.click(screen.getByRole("button", { name: "Review löschen" }));
+    expect(screen.getByText(/FORGE lernt diese Vorlage danach nicht noch einmal/)).toBeTruthy();
   });
 
   it("opens the editor for a new template of a project", async () => {

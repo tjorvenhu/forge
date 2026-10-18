@@ -36,6 +36,7 @@ import { BackupService } from "./backup/backup.js";
 import { SyncService } from "./sync/sync.js";
 import { SyncKey } from "./sync/crypto.js";
 import { TemplateService } from "./templates/templates.js";
+import { TemplateLearner } from "./templates/learner.js";
 
 /** The key from the sync password, in the secret store (DPAPI) next to the phone's secrets. */
 const SYNC_KEY_SECRET = "sync-key";
@@ -198,6 +199,19 @@ export function createApp(opts: { dataDir: string; write: Writer; log?: (m: stri
     const settings = db.getSettings();
     return { path: locateClaude(settings.claudePath), env: sessionEnv(settings.stripApiKey) };
   };
+  const templateLearner = new TemplateLearner({
+    db,
+    templates,
+    projects: () => projects.all(),
+    ask: (prompt, schema) => {
+      const c = claudeFor();
+      if (!c.path) throw new Error("Claude Code ist nicht installiert.");
+      return runtime.completeJson(prompt, schema, { cwd: opts.dataDir, env: c.env, claudePath: c.path, model: ASSIST_MODEL, purpose: "templates" });
+    },
+    learned: (names) => emit({ event: "templates.learned", payload: { names } }),
+    log: (m) => opts.log?.(m),
+  });
+  sessions.useMessageListener((source) => templateLearner.noteMessage(source));
   const updates = new AppUpdateService({
     emit: (payload) => emit({ event: "update.updated", payload }),
     requestInstall: () => emit({ event: "update.install", payload: {} }),
@@ -322,6 +336,7 @@ export function createApp(opts: { dataDir: string; write: Writer; log?: (m: stri
     installs.start();
     usageStats.start();
     sync.start();
+    templateLearner.start();
     void backups.createOnStart().catch((e: unknown) => opts.log?.(`Backup beim Start fehlgeschlagen: ${e instanceof Error ? e.message : String(e)}`));
     // A fresh installation without Claude Code fetches it right away (official installer); a configured path is left alone.
     const settings = db.getSettings();
@@ -342,6 +357,7 @@ export function createApp(opts: { dataDir: string; write: Writer; log?: (m: stri
     backups,
     sync,
     templates,
+    templateLearner,
     updates,
     installs,
     mcp,
@@ -384,6 +400,7 @@ export function createApp(opts: { dataDir: string; write: Writer; log?: (m: stri
       updates.stop();
       installs.stop();
       usageStats.stop();
+      templateLearner.stop();
       sync?.stop();
       devServers.shutdown();
       worktreeSetup.shutdown();

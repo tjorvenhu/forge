@@ -32,5 +32,6 @@ export const FORGE_USAGE_LABEL: Record<ForgeUsagePurpose, string> = {
   pr: "Pull Requests",
   changelog: "Neuerungen",
   phone: "Telefon",
+  templates: "Gelernte Vorlagen",
   other: "Sonstiges",
 };

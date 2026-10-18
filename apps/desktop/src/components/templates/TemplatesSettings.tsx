@@ -1,14 +1,15 @@
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { ArrowDown, ArrowUp, FileStack, Pencil, Play, Plus, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, FileStack, Pencil, Play, Plus, Sparkles, Trash2 } from "lucide-react";
 import { templatePlaceholders, type PromptTemplate } from "@forge/protocol";
-import { call, useAllTemplates, useProjects } from "@/lib/queries";
+import { call, keys, useAllTemplates, useProjects, useSettings } from "@/lib/queries";
+import { learnTemplatesNow } from "@/lib/template-learning";
 import { contextItems } from "@/lib/context-menu";
 import { errorMessage } from "@/lib/rpc";
-import { useTemplateDialogs } from "@/stores/templates";
+import { useTemplateDialogs, useTemplateLearning } from "@/stores/templates";
 import { toast } from "@/stores/toast";
 import { useUi } from "@/stores/ui";
-import { Group } from "@/components/settings/layout";
+import { Group, SwitchRow } from "@/components/settings/layout";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Badge, EmptyState } from "@/components/ui/misc";
@@ -37,6 +38,8 @@ export function TemplatesSettings() {
   const openEdit = useTemplateDialogs((s) => s.openEdit);
   const [deleting, setDeleting] = useState<PromptTemplate | null>(null);
   const qc = useQueryClient();
+  const learnOn = useSettings().data?.learnTemplates;
+  const learning = useTemplateLearning((s) => s.running);
 
   if (all.isPending) {
     return (
@@ -88,6 +91,11 @@ export function TemplatesSettings() {
           <div className="min-w-0 flex-1">
             <div className="flex min-w-0 items-center gap-2">
               <span className="truncate text-body font-medium">{t.name}</span>
+              {t.learned && (
+                <Badge tone="accent">
+                  <Sparkles className="h-3 w-3" /> Gelernt
+                </Badge>
+              )}
               {holes.slice(0, 4).map((h) => (
                 <Badge key={h}>{`{${h}}`}</Badge>
               ))}
@@ -118,8 +126,40 @@ export function TemplatesSettings() {
     </Button>
   );
 
+  const setLearn = async (on: boolean) => {
+    try {
+      qc.setQueryData(keys.settings, await call("settings.update", { learnTemplates: on }));
+      toast.saved();
+    } catch (e) {
+      toast.error("Einstellung nicht gespeichert", errorMessage(e));
+    }
+  };
+
   return (
     <>
+      <Group
+        title="Automatisch lernen"
+        description="FORGE schaut nach etwa 30 neuen Nachrichten, höchstens alle 6 Stunden, welche Aufträge du immer wieder schickst. Ab drei ähnlichen Nachrichten legt es eine Vorlage an, markiert mit „Gelernt“. Was du löschst, legt es nicht noch einmal an."
+        action={
+          <Button size="sm" variant="outline" disabled={learning} onClick={() => void learnTemplatesNow(qc)}>
+            <Sparkles className={icon} /> {learning ? "Lernt …" : "Jetzt lernen"}
+          </Button>
+        }
+      >
+        {learnOn === undefined ? (
+          <div className="flex items-center justify-between gap-4 px-4 py-3" aria-hidden>
+            <Skeleton className="h-3.5 w-48" />
+            <Skeleton className="h-5 w-9 rounded-full" />
+          </div>
+        ) : (
+          <SwitchRow
+            label="Vorlagen aus wiederkehrenden Nachrichten lernen"
+            description="Dafür liest Haiku deine letzten Nachrichten. Das zählt wie andere kurze Aufrufe von FORGE zu deinem Claude-Abo."
+            checked={learnOn}
+            onChange={(v) => void setLearn(v)}
+          />
+        )}
+      </Group>
       <Group title="Global" description="In jedem Projekt. Im Chat schlägt FORGE passende Vorlagen beim Tippen vor, mit # listest du alle." action={newButton(null)}>
         {globals.length ? (
           rows(globals)
@@ -138,7 +178,9 @@ export function TemplatesSettings() {
         open={!!deleting}
         onOpenChange={(o) => !o && setDeleting(null)}
         title="Vorlage löschen?"
-        description={deleting ? `„${deleting.name}“ wird gelöscht, auch auf anderen PCs mit Synchronisierung.` : undefined}
+        description={
+          deleting ? `„${deleting.name}“ wird gelöscht, auch auf anderen PCs mit Synchronisierung.${deleting.learned ? " FORGE lernt diese Vorlage danach nicht noch einmal." : ""}` : undefined
+        }
         confirmLabel="Löschen"
         danger
         onConfirm={async () => {

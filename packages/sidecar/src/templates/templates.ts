@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { ForgeError, type PromptTemplate } from "@forge/protocol";
+import { ForgeError, normalizeForMatch, type PromptTemplate } from "@forge/protocol";
 import type { Db } from "../persistence/db.js";
 
 export interface TemplateInput {
@@ -8,7 +8,12 @@ export interface TemplateInput {
   name: string;
   description: string | null;
   text: string;
+  /** made by TemplateLearner; only for new templates */
+  learned?: boolean;
 }
+
+/** Deleted learned templates FORGE remembers, so it does not learn them again; the oldest are forgotten first. */
+export const MAX_DISMISSED = 300;
 
 /**
  * Prompt templates, global or per project, in the database. Every change is announced with
@@ -49,11 +54,23 @@ export class TemplateService {
       const before = this.get(input.id);
       // Moved to another list (global <-> project): it goes to the end there.
       const sortOrder = before.projectId === input.projectId ? before.sortOrder : this.d.db.nextTemplateOrder(input.projectId);
-      t = { ...before, projectId: input.projectId, name: input.name.trim(), description, text: input.text, sortOrder, updatedAt: now };
+      // Edited by the user: no longer a learned one.
+      const { learned: _learned, ...kept } = before;
+      t = { ...kept, projectId: input.projectId, name: input.name.trim(), description, text: input.text, sortOrder, updatedAt: now };
       this.d.db.putTemplate(t);
       if (before.projectId !== input.projectId) this.d.emit(before.projectId);
     } else {
-      t = { id: randomUUID(), projectId: input.projectId, name: input.name.trim(), description, text: input.text, sortOrder: this.d.db.nextTemplateOrder(input.projectId), createdAt: now, updatedAt: now };
+      t = {
+        id: randomUUID(),
+        projectId: input.projectId,
+        name: input.name.trim(),
+        description,
+        text: input.text,
+        sortOrder: this.d.db.nextTemplateOrder(input.projectId),
+        createdAt: now,
+        updatedAt: now,
+        ...(input.learned ? { learned: true } : {}),
+      };
       this.d.db.putTemplate(t);
     }
     this.d.emit(t.projectId);
@@ -64,6 +81,12 @@ export class TemplateService {
     const t = this.d.db.getTemplate(id);
     if (!t) return false;
     this.d.db.deleteTemplate(id);
+    // A learned template the user threw away is not learned again.
+    if (t.learned) {
+      const state = this.d.db.getTemplateLearning();
+      const key = normalizeForMatch(t.text);
+      this.d.db.setTemplateLearning({ ...state, dismissed: [...state.dismissed.filter((x) => x !== key), key].slice(-MAX_DISMISSED) });
+    }
     this.d.emit(t.projectId);
     return true;
   }

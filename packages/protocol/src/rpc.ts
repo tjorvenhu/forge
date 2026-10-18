@@ -490,6 +490,8 @@ export const methods = {
   "templates.delete": { params: z.object({ id }), result: z.object({ ok: z.boolean() }) },
   /** new order of the given templates within their list (global or one project); others keep their place */
   "templates.reorder": { params: z.object({ ids: z.array(id).min(1).max(1000) }), result: z.array(PromptTemplate) },
+  /** looks for requests the user sends again and again and saves them as learned templates (also runs on its own) */
+  "templates.learn": { params: empty, result: z.object({ added: z.array(PromptTemplate), message: z.string() }) },
 
   "app.updateState": { params: empty, result: AppUpdateState },
   /**
@@ -763,6 +765,8 @@ export type ServerEvent =
   | { event: "knowledge.updated"; payload: { projectId: string } }
   /** prompt templates changed (in any window, over the phone or by the sync); projectId null: global ones */
   | { event: "templates.updated"; payload: { projectId: string | null } }
+  /** FORGE learned new templates from repeated messages on its own */
+  | { event: "templates.learned"; payload: { names: string[] } }
   /**
    * auto-merge of a finished agent. skipped: FORGE could not merge on its own, the user decides
    * (the dialog for `worktreeId`); conflict: the agent resolves them, the next turn end tries again

@@ -339,6 +339,10 @@ export const MIGRATIONS: string[] = [
   UPDATE stats_counters SET value = (SELECT COUNT(*) FROM projects WHERE parent_id IS NULL AND created_at >= '2026-10-17T00:00:00.000Z')
   WHERE key = 'projectsCreated';
   `,
+  // Templates FORGE made from repeated messages (TemplateLearner); an edit by the user makes them theirs.
+  `
+  ALTER TABLE prompt_templates ADD COLUMN learned INTEGER NOT NULL DEFAULT 0;
+  `,
 ];
 
 /**
@@ -423,6 +427,7 @@ export const DEFAULT_SETTINGS: Settings = {
   alwaysOnTop: false,
   screenshotKey: true,
   uiCompare: true,
+  learnTemplates: true,
   disabledPolicyRules: [...DEFAULT_DISABLED_POLICY_RULES],
   setupDone: false,
   syncEnabled: false,
@@ -430,6 +435,12 @@ export const DEFAULT_SETTINGS: Settings = {
   usageStats: true,
   usageStatsAsked: false,
 };
+
+/** When FORGE last looked for repeated messages, and the learned templates the user deleted (normalized text). */
+export interface TemplateLearningState {
+  lastRunAt: string | null;
+  dismissed: string[];
+}
 
 interface ProjectRow {
   id: string;
@@ -590,10 +601,11 @@ interface TemplateRow {
   sort_order: number;
   created_at: string;
   updated_at: string;
+  learned: number;
 }
 
 function toTemplate(r: TemplateRow): PromptTemplate {
-  return { id: r.id, projectId: r.project_id, name: r.name, description: r.description, text: r.text, sortOrder: Number(r.sort_order), createdAt: r.created_at, updatedAt: r.updated_at };
+  return { id: r.id, projectId: r.project_id, name: r.name, description: r.description, text: r.text, sortOrder: Number(r.sort_order), createdAt: r.created_at, updatedAt: r.updated_at, ...(r.learned ? { learned: true } : {}) };
 }
 
 function toPhoneCall(r: Record<string, string | null>): PhoneCallRecord {
@@ -731,6 +743,33 @@ export class Db {
 
   setKnownModels(values: string[]) {
     this.stmt("INSERT INTO settings(key, value) VALUES('knownModels', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(JSON.stringify(values));
+  }
+
+  /** State of the template learning (TemplateLearner); not a setting, so not in getSettings. */
+  getTemplateLearning(): TemplateLearningState {
+    const r = this.stmt("SELECT value FROM settings WHERE key = 'templateLearning'").get() as { value: string } | undefined;
+    const v = r ? (JSON.parse(r.value) as Partial<TemplateLearningState>) : {};
+    return { lastRunAt: v.lastRunAt ?? null, dismissed: Array.isArray(v.dismissed) ? v.dismissed : [] };
+  }
+
+  setTemplateLearning(state: TemplateLearningState) {
+    this.stmt("INSERT INTO settings(key, value) VALUES('templateLearning', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(JSON.stringify(state));
+  }
+
+  /** The newest user messages of all sessions with their session's project, newest first. */
+  recentUserMessages(limit: number): Array<{ projectId: string; ts: string; body: Extract<SessionEventBody, { type: "user.message" }> }> {
+    const rows = this.stmt(
+      `SELECT e.body AS body, e.ts AS ts, s.project_id AS project_id FROM events e JOIN sessions s ON s.id = e.session_id
+       WHERE e.type = 'user.message' ORDER BY e.ts DESC LIMIT ?`,
+    ).all(limit) as Array<{ body: string; ts: string; project_id: string }>;
+    return rows.map((r) => ({ projectId: r.project_id, ts: r.ts, body: JSON.parse(r.body) as Extract<SessionEventBody, { type: "user.message" }> }));
+  }
+
+  countUserMessagesSince(ts: string | null): number {
+    const r = (ts === null
+      ? this.stmt("SELECT COUNT(*) AS n FROM events WHERE type = 'user.message'").get()
+      : this.stmt("SELECT COUNT(*) AS n FROM events WHERE type = 'user.message' AND ts > ?").get(ts)) as { n: number };
+    return Number(r.n);
   }
 
   /** Every stored setting as raw JSON text (the phone settings included), for backups. */
@@ -1471,10 +1510,10 @@ export class Db {
   /** Inserts or replaces the whole row (also from the sync and backups, with their own times). */
   putTemplate(t: PromptTemplate) {
     this.stmt(
-      `INSERT INTO prompt_templates(id, project_id, name, description, text, sort_order, created_at, updated_at) VALUES(?, ?, ?, ?, ?, ?, ?, ?)
+      `INSERT INTO prompt_templates(id, project_id, name, description, text, sort_order, created_at, updated_at, learned) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(id) DO UPDATE SET project_id = excluded.project_id, name = excluded.name, description = excluded.description, text = excluded.text,
-         sort_order = excluded.sort_order, updated_at = excluded.updated_at`,
-    ).run(t.id, t.projectId, t.name, t.description, t.text, t.sortOrder, t.createdAt, t.updatedAt);
+         sort_order = excluded.sort_order, updated_at = excluded.updated_at, learned = excluded.learned`,
+    ).run(t.id, t.projectId, t.name, t.description, t.text, t.sortOrder, t.createdAt, t.updatedAt, t.learned ? 1 : 0);
   }
 
   deleteTemplate(id: string): boolean {

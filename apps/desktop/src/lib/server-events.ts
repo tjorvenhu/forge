@@ -9,6 +9,7 @@ import { call, keys } from "./queries";
 import { rpc } from "./rpc";
 import { playSound } from "./sounds";
 import { notifyAutoContinue, notifyDone, notifyKind, notifySession, shouldNotify } from "./notifications";
+import { announceLearnedTemplates } from "./template-learning";
 import { handleChatWindowRequest, isChatWindow } from "./chat-windows";
 import { agentAutoMerged, agentTurnEnded } from "./agent-review";
 import { installFull, installUpdate } from "./app-install";
@@ -189,6 +190,9 @@ export function routeServerEvent(qc: QueryClient, git: GitRefresher, e: ServerEv
       break;
     case "worktree.setup":
       qc.setQueryData(keys.worktreeSetup(e.payload.projectId), e.payload);
+      break;
+    case "templates.learned":
+      if (!isChatWindow()) announceLearnedTemplates(e.payload.names);
       break;
     case "templates.updated":
       // Every list may show it: global ones appear in each project.

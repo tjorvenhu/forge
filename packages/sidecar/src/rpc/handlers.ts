@@ -28,6 +28,7 @@ import type { FullInstallService } from "../update/full-install.js";
 import type { BackupService } from "../backup/backup.js";
 import type { SyncService } from "../sync/sync.js";
 import type { TemplateService } from "../templates/templates.js";
+import type { TemplateLearner } from "../templates/learner.js";
 import * as cfg from "../config/claude-config.js";
 import { removalInfo, removeProject, removeWorktree } from "../projects/removal.js";
 import os from "node:os";
@@ -61,6 +62,7 @@ export interface Services {
   backups: BackupService;
   sync: SyncService;
   templates: TemplateService;
+  templateLearner: Pick<TemplateLearner, "learn">;
   notifyProject: (projectId: string) => void;
   /** every window takes the new settings, not only the one that saved them */
   notifySettings: (settings: Settings) => void;
@@ -306,6 +308,7 @@ export function createHandlers(s: Services): Handlers {
     "templates.save": (input) => s.templates.save(input),
     "templates.delete": ({ id }) => ({ ok: s.templates.delete(id) }),
     "templates.reorder": ({ ids }) => s.templates.reorder(ids),
+    "templates.learn": () => s.templateLearner.learn(),
 
     "app.updateState": () => s.updates.get(),
     "app.presence": ({ focused, active, window }) => {

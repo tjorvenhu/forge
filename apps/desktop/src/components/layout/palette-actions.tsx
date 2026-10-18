@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import type { QueryClient } from "@tanstack/react-query";
-import { Archive, ArrowDown, ArrowLeftRight, ArrowUp, ArrowUpCircle, BookOpen, Bot, CalendarDays, Camera, CloudDownload, Columns2, Combine, Cpu, Database, Download, FilePlus2, FileStack, FileText, FileUp, FlaskConical, FolderDown, FolderOpen, FolderPlus, Gauge, GitBranch, GitBranchPlus, GitCommitHorizontal, GitCompareArrows, GitFork, GitPullRequest, Globe, HandHeart, Lightbulb, Link2Off, ListChecks, LogIn, LogOut, MessageSquare, MessageSquarePlus, MessageSquareText, MonitorSmartphone, NotebookText, PackageCheck, PanelBottom, PanelRight, Pencil, Phone, PhoneOff, PhoneOutgoing, Pin, PinOff, Play, Power, RefreshCcw, RefreshCw, RotateCcw, Settings2, Shield, ShieldBan, Shrink, Square, SquareArrowOutDownLeft, SquareArrowOutUpRight, SquareTerminal, Timer, ToggleLeft, ToggleRight, Trash2, type LucideIcon, Wand2 } from "lucide-react";
+import { Archive, ArrowDown, ArrowLeftRight, ArrowUp, ArrowUpCircle, BookOpen, Bot, CalendarDays, Camera, CloudDownload, Columns2, Combine, Cpu, Database, Download, FilePlus2, FileStack, FileText, FileUp, FlaskConical, FolderDown, FolderOpen, FolderPlus, Gauge, GitBranch, GitBranchPlus, GitCommitHorizontal, GitCompareArrows, GitFork, GitPullRequest, Globe, HandHeart, Lightbulb, Link2Off, ListChecks, LogIn, LogOut, MessageSquare, MessageSquarePlus, MessageSquareText, MonitorSmartphone, NotebookText, PackageCheck, PanelBottom, PanelRight, Pencil, Phone, PhoneOff, PhoneOutgoing, Pin, PinOff, Play, Power, RefreshCcw, RefreshCw, RotateCcw, Settings2, Shield, ShieldBan, Shrink, Sparkles, Square, SquareArrowOutDownLeft, SquareArrowOutUpRight, SquareTerminal, Timer, ToggleLeft, ToggleRight, Trash2, type LucideIcon, Wand2 } from "lucide-react";
 import type {
   AppInstallState,
   AppUpdateState,
@@ -35,6 +35,7 @@ import { draftKey, useDrafts } from "@/stores/drafts";
 import { lastEditablePrompt, useMessageEdit } from "@/stores/message-edit";
 import { toast } from "@/stores/toast";
 import { useTemplateDialogs } from "@/stores/templates";
+import { learnTemplatesNow } from "@/lib/template-learning";
 import { DEV_TOOLS_SECTIONS, KNOWLEDGE_MERGE_REQUEST, KNOWLEDGE_STALE_REQUEST, PROJECT_SETTINGS_SECTIONS, SETTINGS_SECTIONS, SKILLS_TABS, EXTENSIONS_TABS, workspaceTabsFor, useUi, type SettingsSection, type WorkspaceTab } from "@/stores/ui";
 import { PROFILE_IDS, PROFILE_INFO } from "@/components/projects/ProfileBadge";
 import { RULE_GROUPS } from "@/components/settings/PolicySettings";
@@ -116,6 +117,7 @@ const SETTING_TOGGLES: Record<Exclude<BooleanSetting, keyof typeof UNLISTED_SETT
   screenshotKey: { label: "Druck-Taste für Screenshots", section: "general", keywords: "screenshot bildschirmfoto snipping druck print taste" },
   sounds: { label: "Töne", section: "general", keywords: "sound signal klang" },
   autoContinueAfterLimit: { label: "Nach Nutzungslimit weitermachen", section: "claude", keywords: "auto weitermachen limit reset" },
+  learnTemplates: { label: "Vorlagen automatisch lernen", section: "templates", keywords: "prompt vorlagen templates wiederkehrende nachrichten shortcuts textvorschläge selbst anlegen" },
   uiCompare: { label: "Vorher-Nachher-Bilder bei UI-Änderungen", section: "claude", keywords: "screenshot vergleich vorschau dev-server ui oberfläche bild vorher nachher" },
   stripApiKey: { label: "ANTHROPIC_API_KEY ausblenden", section: "claude", keywords: "api key abo" },
   updateChecks: { label: "Automatisch nach Updates suchen", section: "about", keywords: "update release version" },
@@ -515,6 +517,9 @@ export function buildActions(ctx: ActionContext): PaletteEntry[] {
     });
   }
   act("templates-manage", "Vorlagen verwalten", icon(FileStack), () => ui.openSettings("templates"), { keywords: "prompt vorlagen templates wiederkehrende aufträge bearbeiten löschen sortieren" });
+  act("templates-learn", "Vorlagen jetzt aus Nachrichten lernen", icon(Sparkles), () => void learnTemplatesNow(qc), {
+    keywords: "prompt vorlagen templates wiederkehrende aufträge automatisch shortcuts textvorschläge",
+  });
   act("template-new", "Neue Vorlage anlegen", icon(FilePlus2), () => useTemplateDialogs.getState().openEdit({ id: null, projectId: null }), { keywords: "prompt vorlage template speichern" });
   act("report", "Tagesbericht", icon(CalendarDays), () => ui.openReport(null), { keywords: "was ist heute passiert rückblick alle projekte agenten commits zusammenfassung tag gestern" });
   act("add-project", "Projekt hinzufügen", icon(FolderPlus), () => ui.setNewProject("import"), { hint: "Strg+O", keywords: "importieren ordner" });

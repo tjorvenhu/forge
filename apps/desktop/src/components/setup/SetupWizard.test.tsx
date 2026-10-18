@@ -63,6 +63,7 @@ beforeEach(() => {
     alwaysOnTop: false,
     screenshotKey: true,
     uiCompare: true,
+    learnTemplates: true,
     disabledPolicyRules: [],
     setupDone: false,
     syncEnabled: false,

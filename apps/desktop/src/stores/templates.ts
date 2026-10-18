@@ -35,3 +35,6 @@ export const useTemplateDialogs = create<TemplateDialogs>((set) => ({
   closeApply: () => set({ apply: null }),
   closeEdit: () => set({ edit: null }),
 }));
+
+/** A look for repeated messages runs (templates.learn); the buttons wait for it. */
+export const useTemplateLearning = create<{ running: boolean }>(() => ({ running: false }));

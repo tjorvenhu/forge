@@ -501,12 +501,14 @@ export const Settings = z.object({
   updateChecks: z.boolean(),
   /** Windows notifications when Claude is done, needs a decision or fails */
   desktopNotifications: z.boolean(),
-  /** main window and chat windows stay above other apps */
+  /** the main window stays above other apps; chat windows are pinned one by one */
   alwaysOnTop: z.boolean(),
   /** while FORGE runs, the Print key opens FORGE's snipping tool instead of the one of Windows */
   screenshotKey: z.boolean(),
   /** before/after screenshots of the web app when a turn changes UI files and a dev server runs */
   uiCompare: z.boolean(),
+  /** FORGE turns requests the user sends again and again into prompt templates (marked as learned) */
+  learnTemplates: z.boolean(),
   /** blocklist rules the user switched off; every other rule applies */
   disabledPolicyRules: z.array(PolicyRuleId),
   /** the setup assistant of the first start is done (or was skipped); installations from before it count as done */
@@ -1064,6 +1066,8 @@ export const PromptTemplate = z.object({
   name: z.string(),
   description: z.string().nullable(),
   text: z.string(),
+  /** made by FORGE from repeated messages (templates.learn); an edit by the user makes it theirs */
+  learned: z.boolean().optional(),
   /** order in the list; the global templates and those of each project are counted apart */
   sortOrder: z.number().int(),
   createdAt: z.string(),
@@ -1528,7 +1532,7 @@ export type DailyReportCall = z.infer<typeof DailyReportCall>;
  * What FORGE itself had Claude do: "auto" are session turns FORGE sent (continuing after the usage limit,
  * restart after an update, compacting, conflicts of an agent), the rest one-shot calls and the phone.
  */
-export const ForgeUsagePurpose = z.enum(["auto", "commit", "title", "summary", "report", "knowledge", "pr", "changelog", "phone", "other"]);
+export const ForgeUsagePurpose = z.enum(["auto", "commit", "title", "summary", "report", "knowledge", "pr", "changelog", "phone", "templates", "other"]);
 export type ForgeUsagePurpose = z.infer<typeof ForgeUsagePurpose>;
 
 const UsageTokens = {

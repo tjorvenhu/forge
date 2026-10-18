@@ -56,6 +56,7 @@ export const PHONE_TOOL_FOR: Partial<Record<MethodName, string>> = {
   "templates.save": "sessions",
   "templates.delete": "sessions",
   "templates.reorder": "sessions",
+  "templates.learn": "sessions",
 
   "settings.get": "forge_settings",
   "settings.update": "forge_settings",

@@ -80,6 +80,8 @@ const TemplateItem = z.object({
   text: z.string().min(1),
   sortOrder: z.number().int(),
   project: z.string().nullable(),
+  /** only written when true, so items of manual templates stay as they were */
+  learned: z.literal(true).optional(),
 });
 type TemplateItem = z.infer<typeof TemplateItem>;
 
@@ -997,7 +999,7 @@ export class SyncService {
         unknown.add(`template:${t.id}`);
         continue;
       }
-      items[`template:${t.id}`] = { name: t.name, description: t.description, text: t.text, sortOrder: t.sortOrder, project } satisfies TemplateItem;
+      items[`template:${t.id}`] = { name: t.name, description: t.description, text: t.text, sortOrder: t.sortOrder, project, ...(t.learned ? { learned: true as const } : {}) } satisfies TemplateItem;
     }
     const phone = this.d.phone.config();
     if (phone) items["phone:config"] = phone;
@@ -1121,7 +1123,7 @@ export class SyncService {
             if (!/^[\w-]{1,100}$/.test(id)) throw new Error("ungültige Kennung");
             // A template of a project that is not here waits in the repository until the project comes.
             const p = t.project ? projects.get(t.project) : undefined;
-            if (!t.project || p) this.d.templates.put({ id, projectId: p?.id ?? null, name: t.name, description: t.description, text: t.text, sortOrder: t.sortOrder });
+            if (!t.project || p) this.d.templates.put({ id, projectId: p?.id ?? null, name: t.name, description: t.description, text: t.text, sortOrder: t.sortOrder, ...(t.learned ? { learned: true } : {}) });
           } else throw new Error("unbekannte Art");
         } catch (e) {
           failed.add(k);

@@ -445,6 +445,8 @@ function settingText(s: Settings, key: keyof ForgeSettingsPatch | "alwaysOnTop")
       return s.idleCloseMinutes > 0 ? `untätige Claude-Prozesse schließen nach ${s.idleCloseMinutes} Minuten` : "untätige Claude-Prozesse bleiben offen";
     case "updateChecks":
       return `Update-Prüfung ${on(s.updateChecks)}`;
+    case "learnTemplates":
+      return `Vorlagen aus wiederkehrenden Nachrichten lernen ${on(s.learnTemplates)}`;
     case "usageStats":
       return `anonyme Nutzungsstatistik ${on(s.usageStats)}`;
     case "debugLogs":
@@ -1543,7 +1545,7 @@ export class PhoneService {
         if (!list.length) return p ? `Keine Vorlagen für ${p.name}, auch keine globalen.` : "Es gibt noch keine Vorlagen.";
         const lines = list.slice(0, 15).map((t) => {
           const holes = templatePlaceholders(t.text);
-          return `${t.name} (${where(t)})${t.description ? `: ${t.description}` : ""}${holes.length ? `, Platzhalter ${holes.join(", ")}` : ""}`;
+          return `${t.name} (${where(t)}${t.learned ? ", gelernt" : ""})${t.description ? `: ${t.description}` : ""}${holes.length ? `, Platzhalter ${holes.join(", ")}` : ""}`;
         });
         return `${list.length === 1 ? "1 Vorlage" : `${list.length} Vorlagen`}${list.length > 15 ? ", die ersten 15" : ""}:\n${asData(lines.join("\n"))}`;
       }
@@ -2514,6 +2516,7 @@ export class PhoneService {
             const text = reportText(await call("reports.daily", { projectId: p?.id, date }), { ref: refFor });
             return text.length > REPORT_MAX ? `${asData(text.slice(0, REPORT_MAX))} (gekürzt, insgesamt ${text.length} Zeichen; für mehr nach einem Projekt fragen oder eine Zusammenfassung holen)` : asData(text);
           }
+          if (action === "template_learn") return (await call("templates.learn", {})).message;
           if (action === "templates" || action === "template_send" || action === "template_save" || action === "template_delete" || action === "template_move") {
             return templateAction(action, o);
           }
@@ -2692,7 +2695,7 @@ export class PhoneService {
           const cur = await call("settings.get", {});
           const update: Partial<Settings> = {};
           const changed: Array<keyof ForgeSettingsPatch> = [];
-          const flags = ["sounds", "desktopNotifications", "enterToSend", "autoContinueAfterLimit", "updateChecks", "debugLogs", "stripApiKey", "screenshotKey", "uiCompare", "usageStats"] as const;
+          const flags = ["sounds", "desktopNotifications", "enterToSend", "autoContinueAfterLimit", "updateChecks", "debugLogs", "stripApiKey", "screenshotKey", "uiCompare", "learnTemplates", "usageStats"] as const;
           for (const k of flags) {
             const v = patch[k];
             if (v === undefined) continue;
