@@ -3,12 +3,13 @@ import { invoke } from "@tauri-apps/api/core";
 import { emit, emitTo, listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import type { QueryClient } from "@tanstack/react-query";
-import { Attachment, type ResultOf } from "@forge/protocol";
+import { Attachment, type ChatWindowAction, type ResultOf } from "@forge/protocol";
 import { draftKey, useDrafts, type PendingFile } from "@/stores/drafts";
 import { splitActive, useUi } from "@/stores/ui";
 import { toast } from "@/stores/toast";
 import { call, keys, queryClient } from "./queries";
-import { errorMessage, isTauri } from "./rpc";
+import { errorMessage, isTauri, rpc } from "./rpc";
+import { loadChatWindowPin } from "./window-options";
 
 /**
  * Session chats in their own windows. The shell (chat_windows.rs) owns the list of open chat
@@ -94,8 +95,13 @@ export function chatWindowTarget(): ChatWindowTarget | null {
 
 export const isChatWindow = () => chatWindowTarget() !== null;
 
-/** Ids of the sessions shown in chat windows. */
-export const useChatWindows = create<{ sessions: readonly string[] }>(() => ({ sessions: [] }));
+/** Sessions shown in chat windows, and those of them kept on top (pinned one by one). */
+export interface ChatWindowList {
+  sessions: readonly string[];
+  pinned: readonly string[];
+}
+
+export const useChatWindows = create<ChatWindowList>(() => ({ sessions: [], pinned: [] }));
 
 export function useInChatWindow(sessionId: string | null): boolean {
   return useChatWindows((s) => !!sessionId && s.sessions.includes(sessionId));
@@ -145,8 +151,11 @@ function replaceFiles(key: string, files: readonly ChatWindowFile[]) {
   useDrafts.getState().updateFiles(key, () => fromWire(files));
 }
 
-/** Opens the session in its own window, or brings its window to the front. The draft moves along. */
-export async function openChatWindow(projectId: string, sessionId: string, title: string | null, opts: { drag?: boolean } = {}) {
+/**
+ * Opens the session in its own window, or brings its window to the front. The draft moves along.
+ * pinned: the window stays above other apps (after an update restart, pinned from the phone or the palette).
+ */
+export async function openChatWindow(projectId: string, sessionId: string, title: string | null, opts: { drag?: boolean; pinned?: boolean } = {}) {
   const key = draftKey(projectId, sessionId);
   const draft = takeDraft(key);
   try {
@@ -156,6 +165,7 @@ export async function openChatWindow(projectId: string, sessionId: string, title
       title: title ?? "Ohne Titel",
       position: null,
       drag: opts.drag === true,
+      pinned: opts.pinned === true,
     });
     // The new window owns the draft from now on; it comes back with "Zurückholen". A window that
     // already showed the session keeps its own, so nothing moved.
@@ -165,6 +175,25 @@ export async function openChatWindow(projectId: string, sessionId: string, title
     putBack(key, draft);
     toast.error("Fenster nicht geöffnet", errorMessage(e));
   }
+}
+
+/** Main window: keeps the chat window of the session above other apps, or lets it go. */
+export async function pinChatWindow(sessionId: string, on: boolean) {
+  try {
+    await invoke<boolean>("chat_window_on_top", { sessionId, on });
+  } catch (e) {
+    toast.error(on ? "Fenster nicht angeheftet" : "Fenster nicht gelöst", errorMessage(e));
+  }
+}
+
+/** Main window: what the phone asked for (event chatWindow.request). */
+export function handleChatWindowRequest(r: { action: ChatWindowAction; projectId: string; sessionId: string; title: string | null }) {
+  const open = useChatWindows.getState().sessions.includes(r.sessionId);
+  if (r.action === "open") void openChatWindow(r.projectId, r.sessionId, r.title);
+  else if (r.action === "close") recallChatWindow(r.sessionId);
+  else if (r.action === "unpin") void pinChatWindow(r.sessionId, false);
+  else if (open) void pinChatWindow(r.sessionId, true);
+  else void openChatWindow(r.projectId, r.sessionId, r.title, { pinned: true });
 }
 
 /** Main window: asks the chat window of the session to come back; closes it if it does not answer. */
@@ -255,7 +284,11 @@ export function applyReattach(t: ChatWindowTarget, qc: QueryClient = queryClient
 /** Every window: keeps the list of chat windows current. The main window also takes chats back. */
 export async function startChatWindowTracking() {
   if (!isTauri()) return;
-  await listen<string[]>(CHANGED, (e) => useChatWindows.setState({ sessions: e.payload }));
+  await listen<ChatWindowList>(CHANGED, (e) => {
+    useChatWindows.setState({ sessions: e.payload.sessions, pinned: e.payload.pinned });
+    // Pinned from the main window or the phone: the pin in this window's bar follows.
+    if (isChatWindow()) void loadChatWindowPin();
+  });
   if (isChatWindow()) {
     await listen<string>(RECALL, (e) => {
       const t = chatWindowTarget()!;
@@ -286,6 +319,16 @@ export async function startChatWindowTracking() {
       if (ui.view !== "workspace" || ui.activeProjectId !== t.projectId) ui.openProject(t.projectId);
       useUi.getState().openFile(t.projectId, t.path, t.line);
     });
+    // The phone asks the sidecar which chat windows are open; it hears it from here.
+    const report = () => {
+      const { sessions, pinned } = useChatWindows.getState();
+      void call("app.chatWindows", { sessions: [...sessions], pinned: [...pinned] }).catch(() => {});
+    };
+    useChatWindows.subscribe(report);
+    rpc.onStatus((up) => {
+      if (up) report();
+    });
   }
-  useChatWindows.setState({ sessions: await invoke<string[]>("chat_windows") });
+  const list = await invoke<ChatWindowList>("chat_windows");
+  useChatWindows.setState({ sessions: list.sessions, pinned: list.pinned });
 }

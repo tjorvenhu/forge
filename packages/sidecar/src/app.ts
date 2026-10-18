@@ -23,6 +23,7 @@ import { JobWatcher } from "./sessions/job-done.js";
 import { tokenMeter } from "./claude/token-meter.js";
 import { DictationService } from "./dictation/dictation.js";
 import { Presence } from "./util/presence.js";
+import { ChatWindowState } from "./util/chat-windows.js";
 import { AppUpdateService } from "./update/app-update.js";
 import { FullInstallService } from "./update/full-install.js";
 import { UsageStatsService, usageStatsFile } from "./stats/usage-stats.js";
@@ -162,6 +163,7 @@ export function createApp(opts: { dataDir: string; write: Writer; log?: (m: stri
   });
   sessions.useDailyReport(async (projectId, date) => reportText(await reports.build({ projectId: projectId ?? undefined, date })));
   const presence = new Presence();
+  const chatWindows = new ChatWindowState(emit);
   const secrets = new SecretStore(path.join(opts.dataDir, "secrets"));
   let handlers: Handlers | null = null;
   phone = new PhoneService({
@@ -188,6 +190,7 @@ export function createApp(opts: { dataDir: string; write: Writer; log?: (m: stri
     },
     log: (m) => opts.log?.(m),
     userPresent: () => presence.isPresent(),
+    chatWindows,
   });
   void phone.init();
   sessions.useCallFocus(() => phone?.callFocus() ?? null);
@@ -335,6 +338,7 @@ export function createApp(opts: { dataDir: string; write: Writer; log?: (m: stri
   handlers = createHandlers({
     dictation,
     presence,
+    chatWindows,
     backups,
     sync,
     templates,

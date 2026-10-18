@@ -5,7 +5,7 @@ import { useDrafts, type PendingFile } from "@/stores/drafts";
 import { useSessionEvents } from "@/stores/session-events";
 import { useUi } from "@/stores/ui";
 import type * as NotificationsNs from "./notifications";
-import { applyReattach, closeChatWindows, openChatWindow, parseChatWindowTarget, prepareChatWindowUi, recallChatWindow, useChatWindows } from "./chat-windows";
+import { applyReattach, closeChatWindows, handleChatWindowRequest, openChatWindow, parseChatWindowTarget, prepareChatWindowUi, recallChatWindow, useChatWindows } from "./chat-windows";
 import { startChatWindowEvents } from "./chat-window-events";
 import { keys } from "./queries";
 
@@ -23,7 +23,7 @@ beforeEach(() => {
   useUi.setState({ view: "home", activeProjectId: null, activeSession: {} });
   useDrafts.setState({ drafts: {} });
   useSessionEvents.setState({ buffers: {} });
-  useChatWindows.setState({ sessions: [] });
+  useChatWindows.setState({ sessions: [], pinned: [] });
   playSound.mockClear();
   notifySession.mockClear();
   invoke.mockReset();
@@ -136,6 +136,18 @@ describe("detaching a chat", () => {
     useChatWindows.setState({ sessions: ["a", "b"] });
     closeChatWindows(new Set(["b", "c"]));
     expect(invoke.mock.calls).toEqual([["close_chat_window", { sessionId: "b" }]]);
+  });
+
+  it("does what the phone asked for: pins an open window, opens a pinned one for a session without", async () => {
+    invoke.mockResolvedValue(true);
+    useChatWindows.setState({ sessions: ["a"], pinned: [] });
+    handleChatWindowRequest({ action: "pin", projectId: "p", sessionId: "a", title: "A" });
+    handleChatWindowRequest({ action: "unpin", projectId: "p", sessionId: "a", title: "A" });
+    handleChatWindowRequest({ action: "pin", projectId: "p", sessionId: "b", title: "B" });
+    await vi.waitFor(() => expect(invoke).toHaveBeenCalledTimes(3));
+    expect(invoke).toHaveBeenNthCalledWith(1, "chat_window_on_top", { sessionId: "a", on: true });
+    expect(invoke).toHaveBeenNthCalledWith(2, "chat_window_on_top", { sessionId: "a", on: false });
+    expect(invoke).toHaveBeenNthCalledWith(3, "open_chat_window", expect.objectContaining({ target: expect.objectContaining({ sessionId: "b" }), pinned: true }));
   });
 });
 

@@ -146,6 +146,17 @@ describe("command palette covers all of FORGE", () => {
     expect(list.find((e) => e.id === "project-git")?.label).toBe("Git für dieses Projekt einschalten");
   });
 
+  it("offers the chat window of the shown session: open, take back, pin one by one", () => {
+    const label = (ctx: ActionContext, id: string) => buildActions(ctx).find((e) => e.id === id)?.label;
+    const base = fullContext();
+    expect(label(base, "chat-window-open")).toBe("In eigenem Fenster öffnen");
+    expect(label(base, "chat-window-pin")).toBe("Chat-Fenster im Vordergrund halten");
+    const pinned = { ...base, chatWindows: { sessions: [session.id], pinned: [session.id] } };
+    expect(label(pinned, "chat-window-open")).toBeUndefined();
+    expect(label(pinned, "chat-window-recall")).toBe("Chat-Fenster zurückholen");
+    expect(label(pinned, "chat-window-pin")).toBe("Chat-Fenster nicht mehr im Vordergrund halten");
+  });
+
   it("shows the project folder and the open file in Explorer", () => {
     expect(ids).toContain("explorer-project");
     expect(ids).not.toContain("explorer-file");

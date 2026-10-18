@@ -2,7 +2,7 @@
 //! open chat windows, so every webview can ask for it and hears about changes, also a window that
 //! was opened after the others.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Mutex;
 
 use serde::{Deserialize, Serialize};
@@ -12,7 +12,7 @@ pub const MAIN: &str = "main";
 pub const PREFIX: &str = "chat-";
 /// Window entry in tauri.conf.json with `"create": false`; size and backdrop of chat windows live there.
 const TEMPLATE: &str = "chat";
-/// Payload: ids of the sessions shown in chat windows.
+/// Payload: ChatWindowList.
 const CHANGED: &str = "chat-windows://changed";
 /// Sent to the main window: show this chat again.
 const REATTACH: &str = "chat-windows://reattach";
@@ -33,6 +33,16 @@ const MAX_FILE_NAME: usize = 260;
 pub struct ChatWindows {
     /// window label -> session shown there; None while the window shows a new session not started yet
     shown: Mutex<HashMap<String, Option<String>>>,
+    /// labels of the chat windows kept above other apps; each is pinned on its own
+    pinned: Mutex<HashSet<String>>,
+}
+
+/// The chat windows as every webview sees them: sessions shown in their own window, and those of
+/// them kept on top (the main window remembers them across an update restart, the phone asks).
+#[derive(Clone, Serialize)]
+pub struct ChatWindowList {
+    sessions: Vec<String>,
+    pinned: Vec<String>,
 }
 
 /// What a chat window shows; handed to its webview before the page loads, and back to the main window.
@@ -154,13 +164,37 @@ fn bring_to_front<R: Runtime>(w: &WebviewWindow<R>) {
 }
 
 impl ChatWindows {
+    fn list(&self) -> ChatWindowList {
+        let shown = self.shown.lock().unwrap();
+        let pinned = self.pinned.lock().unwrap();
+        let mut on_top: Vec<String> = pinned.iter().filter_map(|l| shown.get(l).cloned().flatten()).collect();
+        on_top.sort();
+        ChatWindowList { sessions: shown_sessions(&shown), pinned: on_top }
+    }
+
     fn notify<R: Runtime>(&self, app: &AppHandle<R>) {
-        let list = shown_sessions(&self.shown.lock().unwrap());
-        let _ = app.emit(CHANGED, list);
+        let _ = app.emit(CHANGED, self.list());
+    }
+
+    fn pin<R: Runtime>(&self, app: &AppHandle<R>, w: &WebviewWindow<R>, on: bool) -> Result<(), String> {
+        w.set_always_on_top(on).map_err(|e| e.to_string())?;
+        let changed = {
+            let mut pinned = self.pinned.lock().unwrap();
+            if on {
+                pinned.insert(w.label().to_owned())
+            } else {
+                pinned.remove(w.label())
+            }
+        };
+        if changed {
+            self.notify(app);
+        }
+        Ok(())
     }
 
     /// A chat window was closed (by the user or because FORGE quits).
     pub fn forget<R: Runtime>(&self, app: &AppHandle<R>, label: &str) {
+        self.pinned.lock().unwrap().remove(label);
         let removed = self.shown.lock().unwrap().remove(label).is_some();
         if removed {
             self.notify(app);
@@ -170,10 +204,12 @@ impl ChatWindows {
 
 /// Shows the session in its own window, or brings the window that already shows it to the front.
 /// True when a new window took the draft; an existing window keeps its own.
+/// pinned: the new window stays above other apps (after an update restart, or pinned from the phone).
 /// Async: building a webview from a synchronous command deadlocks on Windows (WebView2).
 #[tauri::command]
-pub async fn open_chat_window(app: AppHandle, target: ChatTarget, title: String, position: Option<WindowPosition>, drag: Option<bool>) -> Result<bool, String> {
+pub async fn open_chat_window(app: AppHandle, target: ChatTarget, title: String, position: Option<WindowPosition>, drag: Option<bool>, pinned: Option<bool>) -> Result<bool, String> {
     let drag = drag.unwrap_or(false);
+    let pinned = pinned.unwrap_or(false);
     target.validate()?;
     let session_id = target.session_id.clone().ok_or("Ungültige Session")?;
     let base = label_for(&session_id).ok_or("Ungültige Session")?;
@@ -198,6 +234,9 @@ pub async fn open_chat_window(app: AppHandle, target: ChatTarget, title: String,
         Err(existing) => {
             // Without a window it is still being built by the first call.
             if let Some(w) = app.get_webview_window(&existing) {
+                if pinned {
+                    state.pin(&app, &w, true)?;
+                }
                 bring_to_front(&w);
             }
             return Ok(false);
@@ -205,8 +244,8 @@ pub async fn open_chat_window(app: AppHandle, target: ChatTarget, title: String,
     };
     config.label = label.clone();
     config.title = window_title(&title);
-    // Pinned one by one from its own bar; the main window's setting does not carry over.
-    config.always_on_top = false;
+    // Pinned one by one; the main window's setting does not carry over.
+    config.always_on_top = pinned;
     let cursor = if drag { app.cursor_position().ok() } else { None };
     if let Some(c) = cursor {
         // Torn-off tab: the window appears with its title bar under the cursor.
@@ -225,6 +264,9 @@ pub async fn open_chat_window(app: AppHandle, target: ChatTarget, title: String,
         .and_then(|b| b.initialization_script(script).build());
     match built {
         Ok(w) => {
+            if pinned {
+                state.pinned.lock().unwrap().insert(label.clone());
+            }
             state.notify(&app);
             if cursor.is_some() {
                 follow_cursor(&app, w);
@@ -260,10 +302,10 @@ pub fn close_chat_window(app: AppHandle, session_id: String) {
     }
 }
 
-/// Ids of the sessions shown in chat windows.
+/// The sessions shown in chat windows, and those of them kept on top.
 #[tauri::command]
-pub fn chat_windows(state: tauri::State<'_, ChatWindows>) -> Vec<String> {
-    shown_sessions(&state.shown.lock().unwrap())
+pub fn chat_windows(state: tauri::State<'_, ChatWindows>) -> ChatWindowList {
+    state.list()
 }
 
 /// A chat window reports what it shows: another session after a fork or /clear (None while a new
@@ -298,17 +340,24 @@ pub fn set_always_on_top(app: AppHandle, on: bool) {
     }
 }
 
-/// Called by a chat window for itself: pins it above other apps (Some(true)), lets it go (Some(false))
-/// or only asks. Returns whether it stays on top now.
+/// Pins a chat window above other apps (Some(true)), lets it go (Some(false)) or only asks; returns
+/// whether it stays on top now. Without session_id the calling chat window means itself; the main
+/// window names the session (palette, phone).
 #[tauri::command]
-pub fn chat_window_on_top(window: WebviewWindow, on: Option<bool>) -> Result<bool, String> {
-    if !window.label().starts_with(PREFIX) {
-        return Err("Kein Chat-Fenster".into());
-    }
+pub fn chat_window_on_top(app: AppHandle, window: WebviewWindow, session_id: Option<String>, on: Option<bool>) -> Result<bool, String> {
+    let state = app.state::<ChatWindows>();
+    let target = match session_id {
+        Some(id) => {
+            let label = label_of(&state.shown.lock().unwrap(), &id).ok_or("Die Session ist in keinem eigenen Fenster offen.")?;
+            app.get_webview_window(&label).ok_or("Das Fenster ist schon geschlossen.")?
+        }
+        None if window.label().starts_with(PREFIX) => window,
+        None => return Err("Kein Chat-Fenster".into()),
+    };
     if let Some(on) = on {
-        window.set_always_on_top(on).map_err(|e| e.to_string())?;
+        state.pin(&app, &target, on)?;
     }
-    window.is_always_on_top().map_err(|e| e.to_string())
+    target.is_always_on_top().map_err(|e| e.to_string())
 }
 
 /// A click on a Windows notification that names no session.
@@ -387,6 +436,18 @@ mod tests {
     fn free_label_adds_suffix() {
         assert_eq!(free_label("chat-a", |_| false), "chat-a");
         assert_eq!(free_label("chat-a", |l| l == "chat-a" || l == "chat-a-2"), "chat-a-3");
+    }
+
+    #[test]
+    fn list_names_pinned_sessions() {
+        let w = ChatWindows::default();
+        w.shown.lock().unwrap().extend([("chat-a".to_owned(), Some("a".to_owned())), ("chat-b".to_owned(), Some("b".to_owned())), ("chat-new".to_owned(), None)]);
+        w.pinned.lock().unwrap().extend(["chat-b".to_owned(), "chat-new".to_owned(), "chat-gone".to_owned()]);
+        let list = w.list();
+        assert_eq!(list.pinned, vec!["b".to_owned()]);
+        let mut sessions = list.sessions;
+        sessions.sort();
+        assert_eq!(sessions, vec!["a".to_owned(), "b".to_owned()]);
     }
 
     #[test]

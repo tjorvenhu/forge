@@ -1,4 +1,4 @@
-import { BackupPart, EffortLevel, MemoryScope, PermissionMode, PolicyRuleId, ProfileId, SessionStatus } from "@forge/protocol";
+import { BackupPart, CHAT_WINDOW_ACTIONS, EffortLevel, MemoryScope, PermissionMode, PolicyRuleId, ProfileId, SessionStatus, type ChatWindowAction } from "@forge/protocol";
 import { z } from "zod";
 
 export interface SessionSettingsPatch {
@@ -291,8 +291,10 @@ export interface PhoneToolset {
   /** background tasks and subagents of a session: output of a command, stop one, move foreground work into the background */
   backgroundTask(session: string, action: TaskAction, task?: string, text?: string): Promise<string>;
   remote(action: "on" | "off" | "status"): Promise<string>;
-  /** FORGE's windows stay above other programs (setting "Im Vordergrund bleiben") */
+  /** FORGE's main window stays above other programs (setting "Im Vordergrund bleiben") */
   alwaysOnTop(action: "on" | "off" | "status"): Promise<string>;
+  /** sessions in their own chat windows: which are open and pinned, open, take back, pin one by one */
+  chatWindow(action: ChatWindowAction | "status", session?: string): Promise<string>;
   devServer(project: string, action: DevServerAction, o?: TargetOptions): Promise<string>;
   /** the project's local PostgreSQL for tests (dev tools) */
   testDatabase(project: string, action: TestDbAction, o?: TargetOptions): Promise<string>;
@@ -567,6 +569,16 @@ export const PHONE_TOOLS: readonly PhoneToolSpec[] = [
     description: "Hält das FORGE-Hauptfenster am Computer über allen anderen Programmen (on), gibt es wieder frei (off) oder sagt den Stand (status). Ausgekoppelte Chat-Fenster werden am Rechner einzeln angeheftet.",
     params: { action: { type: "string", enum: ["on", "off", "status"] } },
     run: (t, a) => t.alwaysOnTop(a.action === "on" ? "on" : a.action === "off" ? "off" : "status"),
+  },
+  {
+    name: "chat_window",
+    description:
+      "Chat-Fenster am Computer: sagt, welche Sessions in einem eigenen Fenster offen und welche davon angeheftet sind (status), öffnet eine Session in einem eigenen Fenster (open), holt sie ins Hauptfenster zurück (close), hält ihr Fenster über allen anderen Programmen (pin, öffnet es dafür bei Bedarf) oder gibt es wieder frei (unpin).",
+    params: {
+      action: { type: "string", enum: ["status", ...CHAT_WINDOW_ACTIONS] },
+      session: { ...session, optional: true, description: "Kürzel wie S1 oder ein Teil des Titels; bei status nicht nötig" },
+    },
+    run: (t, a) => t.chatWindow((CHAT_WINDOW_ACTIONS as readonly string[]).includes(str(a.action)) ? (str(a.action) as ChatWindowAction) : "status", opt(a.session)),
   },
   {
     name: "dev_server",

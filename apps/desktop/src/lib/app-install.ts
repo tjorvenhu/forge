@@ -129,8 +129,8 @@ async function runInstaller(fetchInstaller: () => Promise<string>, text: { busy:
 }
 
 function rememberChatWindows() {
-  const sessions = useChatWindows.getState().sessions;
-  if (sessions.length) localStorage.setItem(REOPEN_KEY, JSON.stringify({ at: Date.now(), sessions }));
+  const { sessions, pinned } = useChatWindows.getState();
+  if (sessions.length) localStorage.setItem(REOPEN_KEY, JSON.stringify({ at: Date.now(), sessions, pinned }));
   else localStorage.removeItem(REOPEN_KEY);
 }
 
@@ -139,7 +139,7 @@ export async function reopenChatWindows() {
   const raw = localStorage.getItem(REOPEN_KEY);
   if (!raw) return;
   localStorage.removeItem(REOPEN_KEY);
-  let saved: { at?: unknown; sessions?: unknown };
+  let saved: { at?: unknown; sessions?: unknown; pinned?: unknown };
   try {
     saved = JSON.parse(raw) as typeof saved;
   } catch {
@@ -150,7 +150,7 @@ export async function reopenChatWindows() {
     if (typeof id !== "string") continue;
     try {
       const s = await call("sessions.get", { sessionId: id });
-      await openChatWindow(s.projectId, s.id, s.title);
+      await openChatWindow(s.projectId, s.id, s.title, { pinned: Array.isArray(saved.pinned) && saved.pinned.includes(id) });
     } catch {
       // Deleted meanwhile: nothing to show.
     }

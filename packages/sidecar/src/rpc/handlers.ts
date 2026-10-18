@@ -22,6 +22,7 @@ import type { KnowledgeStore } from "../knowledge/knowledge.js";
 import type { PhoneService } from "../phone/phone-service.js";
 import type { DictationService } from "../dictation/dictation.js";
 import type { Presence } from "../util/presence.js";
+import type { ChatWindowState } from "../util/chat-windows.js";
 import type { AppUpdateService } from "../update/app-update.js";
 import type { FullInstallService } from "../update/full-install.js";
 import type { BackupService } from "../backup/backup.js";
@@ -54,6 +55,7 @@ export interface Services {
   phone: PhoneService;
   dictation: DictationService;
   presence: Presence;
+  chatWindows: ChatWindowState;
   updates: AppUpdateService;
   installs: FullInstallService;
   backups: BackupService;
@@ -308,6 +310,10 @@ export function createHandlers(s: Services): Handlers {
     "app.updateState": () => s.updates.get(),
     "app.presence": ({ focused, active, window }) => {
       s.presence.report(window, focused, active);
+      return {};
+    },
+    "app.chatWindows": ({ sessions, pinned }) => {
+      s.chatWindows.report(sessions, pinned);
       return {};
     },
     "app.checkUpdate": () => s.updates.check(),

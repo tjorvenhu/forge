@@ -1,75 +1,6 @@
 import type { ReactNode } from "react";
 import type { QueryClient } from "@tanstack/react-query";
-import {
-  Archive,
-  ArrowDown,
-  ArrowLeftRight,
-  ArrowUp,
-  ArrowUpCircle,
-  BookOpen,
-  Bot,
-  CalendarDays,
-  Camera,
-  CloudDownload,
-  Download,
-  Columns2,
-  Cpu,
-  Database,
-  FilePlus2,
-  FileUp,
-  PackageCheck,
-  FileStack,
-  FileText,
-  FlaskConical,
-  FolderDown,
-  FolderOpen,
-  FolderPlus,
-  Gauge,
-  GitBranch,
-  Globe,
-  GitBranchPlus,
-  GitCommitHorizontal,
-  GitCompareArrows,
-  GitFork,
-  GitPullRequest,
-  HandHeart,
-  Lightbulb,
-  ListChecks,
-  LogIn,
-  LogOut,
-  MessageSquare,
-  MessageSquarePlus,
-  MessageSquareText,
-  MonitorSmartphone,
-  NotebookText,
-  PanelBottom,
-  PanelRight,
-  Pencil,
-  Phone,
-  PhoneOff,
-  PhoneOutgoing,
-  Pin,
-  PinOff,
-  Play,
-  Power,
-  RefreshCcw,
-  RefreshCw,
-  RotateCcw,
-  Settings2,
-  Shield,
-  ShieldBan,
-  Shrink,
-  Square,
-  SquareTerminal,
-  Timer,
-  ToggleLeft,
-  ToggleRight,
-  Trash2,
-  Wand2,
-  type LucideIcon,
-  Combine,
-  Link2Off,
-} from "lucide-react";
+import { Archive, ArrowDown, ArrowLeftRight, ArrowUp, ArrowUpCircle, BookOpen, Bot, CalendarDays, Camera, CloudDownload, Columns2, Combine, Cpu, Database, Download, FilePlus2, FileStack, FileText, FileUp, FlaskConical, FolderDown, FolderOpen, FolderPlus, Gauge, GitBranch, GitBranchPlus, GitCommitHorizontal, GitCompareArrows, GitFork, GitPullRequest, Globe, HandHeart, Lightbulb, Link2Off, ListChecks, LogIn, LogOut, MessageSquare, MessageSquarePlus, MessageSquareText, MonitorSmartphone, NotebookText, PackageCheck, PanelBottom, PanelRight, Pencil, Phone, PhoneOff, PhoneOutgoing, Pin, PinOff, Play, Power, RefreshCcw, RefreshCw, RotateCcw, Settings2, Shield, ShieldBan, Shrink, Square, SquareArrowOutDownLeft, SquareArrowOutUpRight, SquareTerminal, Timer, ToggleLeft, ToggleRight, Trash2, type LucideIcon, Wand2 } from "lucide-react";
 import type {
   AppInstallState,
   AppUpdateState,
@@ -96,6 +27,7 @@ import { call, keys, refreshUsage } from "@/lib/queries";
 import { openDevServer, prepareWorktree } from "@/lib/dev-server-actions";
 import { EFFORT_LEVELS, modelLabel } from "@/lib/models";
 import { errorMessage, RpcCallError } from "@/lib/rpc";
+import { openChatWindow, pinChatWindow, recallChatWindow, type ChatWindowList } from "@/lib/chat-windows";
 import { setAlwaysOnTop } from "@/lib/window-options";
 import { takeScreenshot } from "@/lib/screenshot";
 import { useActivity } from "@/stores/activity";
@@ -162,6 +94,8 @@ export interface ActionContext {
   githubConnected: boolean;
   /** prompt templates: the global ones plus those of the open project */
   templates: PromptTemplate[];
+  /** sessions in their own chat windows, and those of them kept on top */
+  chatWindows?: ChatWindowList;
   openDialog: (dialog: PaletteDialog) => void;
 }
 
@@ -414,6 +348,20 @@ export function buildActions(ctx: ActionContext): PaletteEntry[] {
           ui.openTask({ ...t, compose: true });
         }, { keywords: "schreiben subagent befehl hintergrund aufgabe sendmessage" });
       }
+      const inWindow = ctx.chatWindows?.sessions.includes(s.id) ?? false;
+      const pinned = ctx.chatWindows?.pinned.includes(s.id) ?? false;
+      if (!inWindow) {
+        act("chat-window-open", "In eigenem Fenster öffnen", icon(SquareArrowOutUpRight), () => void openChatWindow(s.projectId, s.id, s.title), { keywords: "auskoppeln chat-fenster abdocken" });
+      } else {
+        act("chat-window-recall", "Chat-Fenster zurückholen", icon(SquareArrowOutDownLeft), () => recallChatWindow(s.id), { keywords: "hauptfenster einkoppeln andocken schließen" });
+      }
+      act(
+        "chat-window-pin",
+        pinned ? "Chat-Fenster nicht mehr im Vordergrund halten" : "Chat-Fenster im Vordergrund halten",
+        icon(pinned ? PinOff : Pin),
+        () => void (pinned ? pinChatWindow(s.id, false) : inWindow ? pinChatWindow(s.id, true) : openChatWindow(s.projectId, s.id, s.title, { pinned: true })),
+        { keywords: "anheften anpinnen immer oben always on top eigenes fenster", hint: inWindow ? undefined : "öffnet ein eigenes Fenster" },
+      );
       act("session-summary", "Session zusammenfassen", icon(NotebookText), () => ctx.openDialog({ kind: "summary", session: s }), { keywords: "wo war ich wiedereinstieg" });
       act("session-fork", "Session verzweigen", icon(GitFork), () => void forkSession(qc, s), { keywords: "fork kopie zweig" });
       const lastPrompt = lastEditablePrompt(s.id);

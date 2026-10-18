@@ -40,6 +40,7 @@ function toolset(calls: string[] = []): PhoneToolset {
     cancelAutoContinue: rec("cancelAutoContinue"),
     remote: rec("remote"),
     alwaysOnTop: rec("alwaysOnTop"),
+    chatWindow: rec("chatWindow"),
     devServer: rec("devServer"),
     testDatabase: rec("testDatabase"),
     knowledge: rec("knowledge"),

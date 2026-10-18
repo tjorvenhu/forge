@@ -28,7 +28,7 @@ beforeEach(() => {
   call.mockReset();
   localStorage.clear();
   useInstall.setState({ installing: false });
-  useChatWindows.setState({ sessions: [] });
+  useChatWindows.setState({ sessions: [], pinned: [] });
 });
 
 describe("installing an update", () => {
@@ -70,6 +70,22 @@ describe("installing an update", () => {
     expect(invoke).toHaveBeenCalledWith("open_chat_window", expect.objectContaining({ target: expect.objectContaining({ projectId: "p1", sessionId: "s1" }), title: "Export" }));
     await reopenChatWindows();
     expect(invoke).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps a pinned chat window pinned through the restart", async () => {
+    const qc = new QueryClient();
+    qc.setQueryData(keys.appUpdate, ready);
+    useChatWindows.setState({ sessions: ["s1", "s2"], pinned: ["s2"] });
+    call.mockResolvedValue({ sessions: 2, working: 0 });
+    invoke.mockResolvedValue(undefined);
+    await installUpdate(qc);
+    call.mockReset();
+    invoke.mockReset();
+    call.mockImplementation(async (_m, p) => ({ id: (p as { sessionId: string }).sessionId, projectId: "p1", title: "T" }));
+    invoke.mockResolvedValue(true);
+    await reopenChatWindows();
+    expect(invoke).toHaveBeenCalledWith("open_chat_window", expect.objectContaining({ target: expect.objectContaining({ sessionId: "s1" }), pinned: false }));
+    expect(invoke).toHaveBeenCalledWith("open_chat_window", expect.objectContaining({ target: expect.objectContaining({ sessionId: "s2" }), pinned: true }));
   });
 
   it("ignores chat windows of a restart long ago", async () => {

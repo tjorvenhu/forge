@@ -497,6 +497,8 @@ export const methods = {
    * window: label of the reporting window (main or a chat window), so several windows do not overwrite each other's focus.
    */
   "app.presence": { params: z.object({ focused: z.boolean(), active: z.boolean(), window: z.string().min(1).max(120).default("main") }), result: z.object({}) },
+  /** the main window reports its chat windows: sessions shown in their own window, and those of them kept on top */
+  "app.chatWindows": { params: z.object({ sessions: z.array(id).max(200), pinned: z.array(id).max(200) }), result: z.object({}) },
   /** looks for a newer release now */
   "app.checkUpdate": { params: empty, result: AppUpdateState },
   /** downloads and checks the installer of the newest release; installing is a command of the desktop shell */
@@ -775,6 +777,11 @@ export type ServerEvent =
   /** the main window installs the offered update (asked for on the phone) */
   | { event: "update.install"; payload: Record<string, never> }
   | { event: "install.updated"; payload: AppInstallState }
+  /**
+   * the main window opens, takes back (close) or pins a session's chat window (asked for on the phone);
+   * pin on a session without a window opens one that stays on top
+   */
+  | { event: "chatWindow.request"; payload: { action: ChatWindowAction; projectId: string; sessionId: string; title: string | null } }
   /** the main window installs FORGE fully with the full installer (asked for on the phone) */
   | { event: "install.repair"; payload: Record<string, never> }
   | { event: "sidecar.ready"; payload: { version: string } }
@@ -783,6 +790,9 @@ export type ServerEvent =
   /** Claude Code's model list changed; `added`: models FORGE has not seen before (empty on the first run) */
   | { event: "runtime.models"; payload: { added: Array<{ value: string; displayName: string }> } }
   | { event: "log"; payload: { level: "info" | "warn" | "error"; message: string } };
+
+export const CHAT_WINDOW_ACTIONS = ["open", "close", "pin", "unpin"] as const;
+export type ChatWindowAction = (typeof CHAT_WINDOW_ACTIONS)[number];
 
 export type ServerEventName = ServerEvent["event"];
 export type ServerEventPayload<E extends ServerEventName> = Extract<ServerEvent, { event: E }>["payload"];

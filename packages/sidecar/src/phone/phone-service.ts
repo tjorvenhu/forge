@@ -49,6 +49,7 @@ import { DeskPhone } from "./desk-phone.js";
 import { DEFAULT_LIVE_MODEL, GeminiLive, type LiveConversation, type LiveHandlers } from "./gemini-live.js";
 import { DEFAULT_GEMINI_STT_MODEL, DEFAULT_GEMINI_TTS_MODEL, DEFAULT_GEMINI_VOICE, GeminiVoice } from "./gemini-voice.js";
 import { LiveCallController, type LiveControllerDeps } from "./live-controller.js";
+import type { ChatWindowState } from "../util/chat-windows.js";
 import { asData, PhoneAgent, type PhoneToolset } from "./phone-agent.js";
 import { excerptData, lastAnswer, openRequest, pendingText, questionTexts } from "./session-info.js";
 import { DEFAULT_PIN_LIMITS, hashPin, PinGuard, verifyPin, type PinGuardState, type PinLimits } from "./pin-guard.js";
@@ -216,6 +217,8 @@ export interface PhoneDeps {
   log(message: string): void;
   /** true while the user works in the FORGE window; then FORGE does not call */
   userPresent?: () => boolean;
+  /** the desktop's chat windows; without it chat_window is not available */
+  chatWindows?: Pick<ChatWindowState, "get" | "request">;
   factories?: Partial<PhoneFactories>;
   /** shorter waits in tests */
   timing?: {
@@ -1793,6 +1796,45 @@ export class PhoneService {
             this.d.emit({ event: "settings.updated", payload: next });
           }
           return this.d.db.getSettings().alwaysOnTop ? "FORGE bleibt im Vordergrund." : "FORGE bleibt nicht im Vordergrund.";
+        }),
+      chatWindow: (action, ref) =>
+        // Also status before the PIN: it names session titles.
+        run(true, async () => {
+          const windows = this.d.chatWindows;
+          if (!windows) return "Fehler: Chat-Fenster gibt es nur in der Desktop-App.";
+          const st = windows.get();
+          if (action === "status") {
+            if (!st.sessions.length) return "Keine Session ist in einem eigenen Fenster offen.";
+            const one = (id: string) => {
+              const s = sessions.listAll().find((x) => x.id === id);
+              const name = s ? `${refFor(id)} ${asData(s.title ?? "ohne Titel")}` : "eine gelöschte Session";
+              return st.pinned.includes(id) ? `${name} (angeheftet)` : name;
+            };
+            return `In eigenen Fenstern: ${st.sessions.map(one).join(", ")}.`;
+          }
+          const s = resolve(ref ?? "");
+          const r = refFor(s.id);
+          const open = st.sessions.includes(s.id);
+          const pinned = st.pinned.includes(s.id);
+          const target = { projectId: s.projectId, sessionId: s.id, title: s.title };
+          if (action === "open") {
+            if (open) return `${r} ist schon in einem eigenen Fenster offen.`;
+            windows.request("open", target);
+            return `${r} öffnet sich in einem eigenen Fenster.`;
+          }
+          if (action === "close") {
+            if (!open) return `${r} ist in keinem eigenen Fenster offen.`;
+            windows.request("close", target);
+            return `${r} ist zurück im Hauptfenster, ihr Fenster schließt sich.`;
+          }
+          if (action === "pin") {
+            if (pinned) return `Das Fenster von ${r} ist schon angeheftet.`;
+            windows.request("pin", target);
+            return open ? `Das Fenster von ${r} bleibt jetzt über allen anderen Programmen.` : `${r} öffnet sich in einem eigenen Fenster, das über allen anderen Programmen bleibt.`;
+          }
+          if (!pinned) return `${r} ist in keinem angehefteten Fenster offen.`;
+          windows.request("unpin", target);
+          return `Das Fenster von ${r} bleibt nicht mehr im Vordergrund.`;
         }),
       remote: (action) =>
         run(action !== "status", async () => {

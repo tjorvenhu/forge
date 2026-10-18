@@ -9,7 +9,7 @@ import { call, keys } from "./queries";
 import { rpc } from "./rpc";
 import { playSound } from "./sounds";
 import { notifyAutoContinue, notifyDone, notifyKind, notifySession, shouldNotify } from "./notifications";
-import { isChatWindow } from "./chat-windows";
+import { handleChatWindowRequest, isChatWindow } from "./chat-windows";
 import { agentAutoMerged, agentTurnEnded } from "./agent-review";
 import { installFull, installUpdate } from "./app-install";
 
@@ -203,6 +203,9 @@ export function routeServerEvent(qc: QueryClient, git: GitRefresher, e: ServerEv
       break;
     case "update.install":
       if (!isChatWindow()) void installUpdate(qc);
+      break;
+    case "chatWindow.request":
+      if (!isChatWindow()) handleChatWindowRequest(e.payload);
       break;
     case "install.updated":
       qc.setQueryData(keys.appInstall, e.payload);

@@ -9,6 +9,7 @@ import { encodeG711, FRAME_SAMPLES, rms, decodeG711 } from "../src/phone/audio.j
 import type { ConversationCallbacks } from "../src/phone/call-controller.js";
 import type { PhoneToolset } from "../src/phone/phone-agent.js";
 import { PhoneService, type PhoneDeps, type PhoneRpc } from "../src/phone/phone-service.js";
+import { ChatWindowState } from "../src/util/chat-windows.js";
 import { PHONE_TOOLS, runPhoneTool, type ParamSpec } from "../src/phone/tools.js";
 import { buildSdp } from "../src/phone/sdp.js";
 import { SecretStore } from "../src/phone/secrets.js";
@@ -388,6 +389,8 @@ describe("PhoneService end to end with a test PBX", () => {
   const sent: Array<[string, string]> = [];
   const steered: string[] = [];
   let remoteOn = false;
+  let windowRequests: ServerEvent[] = [];
+  let chatWindows: ChatWindowState;
   let projectId = "";
   let worktreesCreated: string[] = [];
   /** fromDir of each created worktree */
@@ -504,7 +507,10 @@ describe("PhoneService end to end with a test PBX", () => {
     devConfig = { env: "", useEnv: true, database: { port: 54330, name: "shop", password: "x", withDevServer: false, envVar: "DATABASE_URL" } };
     rpcResults = {};
     rpcCalls = [];
+    windowRequests = [];
+    chatWindows = new ChatWindowState((e) => windowRequests.push(e));
     svc = new PhoneService({
+      chatWindows,
       rpc: (async (method: string, params: never) => {
         rpcCalls.push([method, params]);
         const fn = rpcResults[method];
@@ -933,6 +939,16 @@ describe("PhoneService end to end with a test PBX", () => {
     expect(events).toContainEqual({ event: "settings.updated", payload: expect.objectContaining({ alwaysOnTop: true }) });
     expect(await conv.tools.alwaysOnTop("off")).toBe("FORGE bleibt nicht im Vordergrund.");
     await conv.tools.status();
+    expect(await conv.tools.chatWindow("status")).toBe("Keine Session ist in einem eigenen Fenster offen.");
+    expect(await conv.tools.chatWindow("pin", "S1")).toBe("S1 öffnet sich in einem eigenen Fenster, das über allen anderen Programmen bleibt.");
+    expect(windowRequests).toEqual([{ event: "chatWindow.request", payload: expect.objectContaining({ action: "pin", sessionId: "s1" }) }]);
+    chatWindows.report(["s1"], ["s1"]);
+    expect(await conv.tools.chatWindow("status")).toMatch(/^In eigenen Fenstern: S1 .*\(angeheftet\)\.$/);
+    expect(await conv.tools.chatWindow("pin", "S1")).toBe("Das Fenster von S1 ist schon angeheftet.");
+    expect(await conv.tools.chatWindow("unpin", "S1")).toBe("Das Fenster von S1 bleibt nicht mehr im Vordergrund.");
+    expect(await conv.tools.chatWindow("close", "S1")).toBe("S1 ist zurück im Hauptfenster, ihr Fenster schließt sich.");
+    expect(windowRequests.map((e) => (e.event === "chatWindow.request" ? e.payload.action : null))).toEqual(["pin", "unpin", "close"]);
+    expect(await conv.tools.chatWindow("open")).toMatch(/^Fehler: Welche Session/);
     expect(await conv.tools.sessionSettings("S1", { permissionMode: "acceptEdits" })).toBe("S1: Modus acceptEdits gesetzt.");
     expect(await conv.tools.sessionSettings("S1", {})).toMatch(/^Fehler/);
     expect(await conv.tools.close("S1")).toBe("S1 geschlossen.");
