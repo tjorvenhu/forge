@@ -2,7 +2,8 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { Project } from "@forge/protocol";
-import { AgentFinisher } from "../src/automation/agent-finish.js";
+import { AgentFinisher, conflictPrompt } from "../src/automation/agent-finish.js";
+import { setLanguage } from "../src/i18n/index.js";
 import { WorktreeService, worktreeRoot } from "../src/automation/worktrees.js";
 import { GitEngine } from "../src/git/git.js";
 import { Db } from "../src/persistence/db.js";
@@ -265,5 +266,20 @@ describe("AgentFinisher", () => {
       expect(existsSync(worktreeRoot(wt.path))).toBe(false);
       expect(await git(repo, "branch", "--list", "agent/sub-neu")).toBe("");
     }, 30_000);
+  });
+});
+
+describe("conflictPrompt", () => {
+  it("asks the agent in the language set", () => {
+    expect(conflictPrompt("agent/x", "main", 2, ["a.ts"])).toMatch(/^Ich wollte deinen Branch agent\/x in main übernehmen/);
+    setLanguage("en");
+    try {
+      const prompt = conflictPrompt("agent/x", "main", 1, ["a.ts"]);
+      expect(prompt).toMatch(/^I wanted to take your branch agent\/x into main\. Since you started, main has 1 new commit that conflicts with your changes/);
+      expect(prompt).toContain("- a.ts");
+      expect(prompt).toContain("`git merge main`");
+    } finally {
+      setLanguage("de");
+    }
   });
 });

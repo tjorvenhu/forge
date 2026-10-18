@@ -1,4 +1,5 @@
 import type { BackgroundTask, SessionEvent, SubagentProgress, TaskMessageRef } from "@forge/protocol";
+import { tr } from "../i18n/index.js";
 
 /** Events that tell which background tasks a session had; read when a message goes to one. */
 export const TASK_EVENT_TYPES = ["tool.use", "tool.result", "background.task"] as const;
@@ -63,7 +64,7 @@ export function findTask(events: readonly SessionEvent[], live: { background: Re
   const use = toolUseId ? uses.get(toolUseId) : undefined;
   const isAgent = sub !== undefined || bg?.taskType === "local_agent" || (!!use && AGENT_TOOLS.has(use.name));
   const inputDescription = typeof use?.input.description === "string" && use.input.description ? use.input.description : null;
-  const description = liveTask?.description ?? known.get(taskId)?.description ?? inputDescription ?? (isAgent ? "Subagent" : "Hintergrundaufgabe");
+  const description = liveTask?.description ?? known.get(taskId)?.description ?? inputDescription ?? (isAgent ? tr().core.sessions.subagent : tr().core.sessions.backgroundTask);
   const command = !isAgent && typeof use?.input.command === "string" ? use.input.command : null;
   return { ref: { taskId, toolUseId, kind: isAgent ? "agent" : "shell", description }, running: !!liveTask, command };
 }
@@ -76,14 +77,8 @@ export function findTask(events: readonly SessionEvent[], live: { background: Re
 export function taskNote(t: TaskTarget): string {
   const { taskId, description } = t.ref;
   if (t.ref.kind === "agent") {
-    return [
-      `[FORGE-Hinweis, nicht vom Nutzer geschrieben] Die folgende Nachricht hat der Nutzer in FORGE an deinen Subagenten „${description}“ geschrieben (agentId ${taskId}, ${t.running ? "läuft gerade" : "ist fertig"}).`,
-      `Gib sie mit dem Werkzeug SendMessage (to: "${taskId}") wörtlich an genau diesen Subagenten weiter; ist er fertig, setzt SendMessage ihn fort. Bearbeite den Inhalt nicht selbst und bestätige danach nur kurz.`,
-    ].join(" ");
+    return tr().core.sessions.agentNote(description, taskId, t.running);
   }
-  const command = t.command ? `, Befehl: ${t.command.length > MAX_COMMAND ? `${t.command.slice(0, MAX_COMMAND)} …` : t.command}` : "";
-  return [
-    `[FORGE-Hinweis, nicht vom Nutzer geschrieben] Die folgende Nachricht hat der Nutzer in FORGE zu deiner Hintergrundaufgabe „${description}“ geschrieben (Task-ID ${taskId}${command}; ${t.running ? "läuft noch" : "ist beendet"}).`,
-    "Ein Befehl im Hintergrund liest keine Eingaben, die Nachricht ist an dich gerichtet: Reagiere selbst darauf, zum Beispiel indem du den Befehl beendest, neu startest oder seine Ausgabe prüfst.",
-  ].join(" ");
+  const command = t.command ? tr().core.sessions.taskCommand(t.command.length > MAX_COMMAND ? `${t.command.slice(0, MAX_COMMAND)} …` : t.command) : "";
+  return tr().core.sessions.shellNote(description, taskId, command, t.running);
 }

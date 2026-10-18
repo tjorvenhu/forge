@@ -1,6 +1,6 @@
 import { ForgeError, methods, RpcRequest, type MethodName, type RpcResponse, type ServerEvent } from "@forge/protocol";
-import type { Handlers } from "./handlers.js";
 import { tr } from "../i18n/index.js";
+import type { Handlers } from "./handlers.js";
 
 export type Writer = (line: string) => void;
 

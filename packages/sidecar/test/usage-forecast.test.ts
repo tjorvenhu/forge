@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import type { PlanUsage, RateLimitState, UsageWindow } from "@forge/protocol";
 import { forecastWindow, samplesOf, withForecasts, type UsageSample } from "../src/claude/usage-forecast.js";
 import { describeUsage, limitWarning } from "../src/claude/usage.js";
+import { setLanguage } from "../src/i18n/index.js";
 import { Db } from "../src/persistence/db.js";
 import { spokenForecast } from "../src/phone/phone-service.js";
 import { tempDir } from "./helpers.js";
@@ -152,5 +153,16 @@ describe("forecast texts", () => {
     const none = usage(undefined);
     expect(describeUsage(none, ok, T0)).toMatch(/\nPrognose: noch zu wenig Messwerte oder kein Anstieg\.\nAbo: max$/);
     expect(limitWarning(none, T0)).toBeNull();
+  });
+
+  it("writes usage_status and the warning in English when English is set", () => {
+    const limit = usage({ outcome: "limit", limitAt: iso(T0 + 100 * MIN), perHour: 30 });
+    setLanguage("en");
+    try {
+      expect(describeUsage(limit, ok, T0)).toMatch(/: 50% used, resets .+\. Forecast: at this pace the limit is reached around .+, before the reset\nSubscription: max$/);
+      expect(limitWarning(limit, T0)).toMatch(/^At this pace the usage limit is reached before the reset: .+ around .+ \(resets .+\)\. More agents use it up faster\.$/);
+    } finally {
+      setLanguage("de");
+    }
   });
 });

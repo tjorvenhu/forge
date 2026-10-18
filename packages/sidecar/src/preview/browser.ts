@@ -2,8 +2,8 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { killTree } from "../util/proc.js";
 import { tr } from "../i18n/index.js";
+import { killTree } from "../util/proc.js";
 
 /** Where Edge and Chrome live, Edge first: it ships with every Windows 11. */
 export function browserCandidates(env: NodeJS.ProcessEnv = process.env, platform: NodeJS.Platform = process.platform): string[] {

@@ -2,6 +2,7 @@ import { ForgeError, type ServerEvent, type Session, type SessionEventBody, type
 import type { Db, SessionRecord } from "../persistence/db.js";
 import { redact } from "../policy/redact.js";
 import type { LiveSession } from "./live-session.js";
+import { tr } from "../i18n/index.js";
 
 /** What all session modules share: the running CLI processes and the writers for events and status. */
 export class SessionCore {
@@ -29,7 +30,7 @@ export class SessionCore {
 
   get(id: string): Session {
     const r = this.db.getSession(id);
-    if (!r) throw new ForgeError("SESSION_NOT_FOUND", "Session nicht gefunden.");
+    if (!r) throw new ForgeError("SESSION_NOT_FOUND", tr().core.sessions.notFound);
     return this.toSession(r);
   }
 

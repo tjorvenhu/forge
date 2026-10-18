@@ -1,10 +1,10 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import type { ToolOutput } from "../claude/runtime.js";
+import { tr } from "../i18n/index.js";
 import { CdpTimeout, findBrowser as defaultFindBrowser, launchBrowser, noBrowser, type BrowserProcess, type Cdp } from "./browser.js";
 import { PreviewPage, type PageLogEntry, type Shot } from "./page.js";
 import { isLocalUrl, previewUrl } from "./url.js";
-import { tr } from "../i18n/index.js";
 
 export const LOAD_MS = 20_000;
 export const STEP_MS = 5_000;

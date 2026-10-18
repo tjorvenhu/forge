@@ -3,6 +3,7 @@ import { PROFILES, resolveProfile, revokesSessionApprovals, type ProfileConfig }
 import type { ProjectManager } from "../projects/project-manager.js";
 import { closeLive, describeRuntimeError, endLive, type LiveSession } from "./live-session.js";
 import type { SessionCore } from "./session-core.js";
+import { tr } from "../i18n/index.js";
 
 const MODE_RANK: Record<PermissionMode, number> = { plan: 0, default: 1, acceptEdits: 2, bypassPermissions: 3 };
 
@@ -38,13 +39,13 @@ export class PermissionModes {
         toolUseId: null,
         toolName: "PermissionMode",
         rule: "permission-mode",
-        message: `Claude Code meldete den Modus ${mode.data}, das Profil ${profile.label} erlaubt höchstens ${profile.permissionMode}. FORGE hat den Modus auf ${target} zurückgesetzt.`,
+        message: tr().core.sessions.modeReset(mode.data, profile.label, profile.permissionMode, target),
       });
       if (live) {
         live.rt.setPermissionMode(target).catch((e: unknown) => {
           // A process stuck above its profile must not keep working.
           if (this.core.live.get(id) !== live) return;
-          this.core.record(id, { type: "error", message: `Modus ließ sich nicht zurücksetzen, Session beendet: ${describeRuntimeError(e)}`, retryable: true });
+          this.core.record(id, { type: "error", message: tr().core.sessions.modeNotReset(describeRuntimeError(e)), retryable: true });
           closeLive(live);
         });
       }
@@ -57,10 +58,10 @@ export class PermissionModes {
 
   async set(sessionId: string, mode: PermissionMode) {
     const rec = this.core.db.getSession(sessionId);
-    if (!rec) throw new ForgeError("SESSION_NOT_FOUND", "Session nicht gefunden.");
+    if (!rec) throw new ForgeError("SESSION_NOT_FOUND", tr().core.sessions.notFound);
     const profile = PROFILES[rec.profile];
     if (MODE_RANK[mode] > MODE_RANK[profile.permissionMode]) {
-      throw new ForgeError("POLICY_DENIED", `Das Profil ${profile.label} erlaubt den Modus ${mode} nicht.`);
+      throw new ForgeError("POLICY_DENIED", tr().core.sessions.profileForbidsMode(profile.label, mode));
     }
     const live = this.core.live.get(sessionId);
     if (live) await live.rt.setPermissionMode(mode);
@@ -94,7 +95,7 @@ export class PermissionModes {
       } catch (e) {
         // A process that keeps the old mode must not keep working; resumed, it starts with the new profile.
         if (this.core.live.get(id) !== live || live.closing) continue;
-        this.core.record(id, { type: "error", message: `Profil ließ sich nicht übernehmen, Session beendet: ${describeRuntimeError(e)}`, retryable: true });
+        this.core.record(id, { type: "error", message: tr().core.sessions.profileNotApplied(describeRuntimeError(e)), retryable: true });
         closeLive(live);
       }
     }
@@ -112,14 +113,14 @@ export class PermissionModes {
     this.core.record(id, {
       type: "status",
       status: "starting",
-      detail: `Profil ${profile.label}: Session neu gestartet, Freigaben für die ganze Session gelten nicht mehr.${interrupted ? " Der laufende Durchlauf wurde dabei beendet." : ""}`,
+      detail: tr().core.sessions.profileRestarted(profile.label, interrupted),
     });
     // A process that does not end stays closed; the next message starts the new one.
     if (!(await endLive(live))) return;
     try {
       await this.host.reopen(id);
     } catch (e) {
-      this.core.record(id, { type: "error", message: `Session nach dem Profilwechsel nicht neu gestartet: ${describeRuntimeError(e)}`, retryable: true });
+      this.core.record(id, { type: "error", message: tr().core.sessions.notRestartedAfterProfile(describeRuntimeError(e)), retryable: true });
     }
   }
 }

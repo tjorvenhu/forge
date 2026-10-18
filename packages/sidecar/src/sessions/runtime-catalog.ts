@@ -6,6 +6,7 @@ import { resetSince, settleUsage } from "../claude/usage.js";
 import { SAMPLE_MAX_AGE_MS, samplesOf, withForecasts } from "../claude/usage-forecast.js";
 import type { ProjectManager } from "../projects/project-manager.js";
 import type { SessionCore } from "./session-core.js";
+import { tr } from "../i18n/index.js";
 
 /** Claude Code updates itself in the background; its model list is read again after this long. */
 const MODELS_MAX_AGE_MS = 60 * 60_000;
@@ -103,7 +104,7 @@ export class RuntimeCatalog {
     const settings = this.core.db.getSettings();
     const claudePath = locateClaude(settings.claudePath);
     const unavailable = (error: string): PlanUsage => ({ available: false, subscriptionType: null, windows: [], fetchedAt: new Date().toISOString(), error });
-    if (!claudePath) return unavailable("Claude Code nicht gefunden");
+    if (!claudePath) return unavailable(tr().core.sessions.claudeNotFoundShort);
     try {
       const value = await this.runtime.planUsage({ cwd: process.cwd(), env: sessionEnv(settings.stripApiKey), claudePath });
       const at = this.now();
@@ -125,7 +126,7 @@ export class RuntimeCatalog {
       const settings = this.core.db.getSettings();
       const claudePath = locateClaude(settings.claudePath);
       try {
-        if (!claudePath) throw new Error("Claude Code nicht gefunden");
+        if (!claudePath) throw new Error(tr().core.sessions.claudeNotFoundShort);
         this.noteInitialization(await this.runtime.probe({ cwd: process.cwd(), env: sessionEnv(settings.stripApiKey), claudePath }));
       } catch {
         // A failed refresh keeps the last list; it is tried again on the next call.

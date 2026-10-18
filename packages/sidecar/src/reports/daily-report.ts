@@ -5,6 +5,7 @@ import {
   formatDuration,
   formatTokens,
   forgeUsageLabel,
+  localeOf,
   type DailyReport,
   type DailyReportAgent,
   type DailyReportCommit,
@@ -17,6 +18,7 @@ import type { AgentLogEntry, Db, SessionActivity } from "../persistence/db.js";
 import { questionTexts, requestSubject } from "../phone/session-info.js";
 import type { ProjectManager } from "../projects/project-manager.js";
 import { redactText } from "../policy/redact.js";
+import { language, tr } from "../i18n/index.js";
 import { TREND_DAYS, usageStats } from "./usage-stats.js";
 
 /** Sessions listed at most; a day with more is cut (truncated). */
@@ -28,6 +30,8 @@ const AGENT_COMMITS_LOOKBACK_MS = 14 * 24 * 3600_000;
 const BUSY = new Set(["starting", "running", "waiting_approval", "stopping"]);
 /** Branches FORGE gives parallel agents (WorktreeService). */
 const AGENT_BRANCH_PREFIX = "agent/";
+/** FORGE's commit of an agent's leftover changes (agent-finish), in either language it was written in. */
+const REST_COMMIT = /^(Restliche Änderungen|Remaining changes)/;
 
 /** A merge of an agent branch found in a main project's reflog. */
 interface ReflogMerge {
@@ -60,12 +64,12 @@ export function dayRange(date: string | undefined, now: Date): { date: string; f
   let d = now.getDate();
   if (date) {
     const parts = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
-    if (!parts) throw new ForgeError("VALIDATION", "Datum im Format JJJJ-MM-TT angeben.");
+    if (!parts) throw new ForgeError("VALIDATION", tr().core.reports.dateFormat);
     [y, m, d] = [Number(parts[1]), Number(parts[2]) - 1, Number(parts[3])];
   }
   const from = new Date(y, m, d);
   // The constructor turns 2026-02-31 into March; such a date was no real day.
-  if (from.getFullYear() !== y || from.getMonth() !== m || from.getDate() !== d) throw new ForgeError("VALIDATION", `Den Tag ${date} gibt es nicht.`);
+  if (from.getFullYear() !== y || from.getMonth() !== m || from.getDate() !== d) throw new ForgeError("VALIDATION", tr().core.reports.noSuchDay(date));
   return { date: localDate(from), from, to: new Date(y, m, d + 1) };
 }
 
@@ -134,7 +138,7 @@ export class DailyReportService {
     let root: Project | null = null;
     if (params.projectId) {
       const p = byId.get(params.projectId);
-      if (!p) throw new ForgeError("NOT_FOUND", "Projekt nicht gefunden.");
+      if (!p) throw new ForgeError("NOT_FOUND", tr().core.reports.projectNotFound);
       // An agent's worktree reports for its main project, agents included.
       root = (p.parentId && byId.get(p.parentId)) || p;
     }
@@ -272,13 +276,13 @@ export class DailyReportService {
         rootName: m.root.name,
         branch: m.branch,
         // The agent's session went with its worktree; its newest commit tells what it did.
-        title: m.commits.find((c) => !c.subject.startsWith("Restliche Änderungen"))?.subject ?? null,
+        title: m.commits.find((c) => !REST_COMMIT.test(c.subject))?.subject ?? null,
         sessionId: null,
         parentSessionId: null,
         startedAt: null,
         at: m.at,
         state: "merged",
-        message: `${m.commits.length} ${m.commits.length === 1 ? "Commit" : "Commits"} übernommen`,
+        message: tr().core.reports.commitsTaken(m.commits.length),
         exists: false,
       });
     }
@@ -341,6 +345,7 @@ export class DailyReportService {
   private open(all: Project[], activity: SessionActivity[], inScope: (projectId: string) => boolean): DailyReportOpen[] {
     const { db } = this.d;
     const nameOf = (id: string) => all.find((p) => p.id === id)?.name ?? "";
+    const t = tr().core.reports;
     const out: DailyReportOpen[] = [];
     for (const s of db.listAllSessions(undefined, "waiting_approval")) {
       if (!inScope(s.projectId)) continue;
@@ -348,9 +353,9 @@ export class DailyReportService {
         const kind = body.toolName === "AskUserQuestion" ? "question" : body.toolName === "ExitPlanMode" ? "plan" : "approval";
         const text =
           kind === "question"
-            ? questionTexts(body.input).join(" ") || "Rückfrage"
+            ? questionTexts(body.input).join(" ") || t.open.question
             : kind === "plan"
-              ? firstLine(typeof body.input.plan === "string" ? body.input.plan : "") || "Plan zur Freigabe"
+              ? firstLine(typeof body.input.plan === "string" ? body.input.plan : "") || t.open.plan
               : `${body.toolName}${requestSubject(body) ? `: ${firstLine(requestSubject(body))}` : ""}`;
         out.push({ kind, sessionId: s.id, projectId: s.projectId, projectName: s.projectName, sessionTitle: s.title, text, at: ts, requestId: body.requestId });
       }
@@ -363,7 +368,7 @@ export class DailyReportService {
         projectId: a.session.projectId,
         projectName: a.projectName,
         sessionTitle: a.session.title,
-        text: firstLine(a.session.lastError ?? "") || "Fehler",
+        text: firstLine(a.session.lastError ?? "") || t.open.error,
         at: a.session.updatedAt,
         requestId: null,
       });
@@ -377,7 +382,7 @@ export class DailyReportService {
         projectId: s.projectId,
         projectName: nameOf(s.projectId),
         sessionTitle: s.title,
-        text: plan.resetsAt ? "Macht nach dem Nutzungslimit von selbst weiter." : "Wartet aufs Nutzungslimit, FORGE prüft regelmäßig.",
+        text: plan.resetsAt ? t.autoContinueAtReset : t.autoContinueWaiting,
         at: plan.dueAt,
         requestId: null,
       });
@@ -389,64 +394,32 @@ export class DailyReportService {
   async summarize(params: DailyReportParams = {}): Promise<{ summary: string; model: string }> {
     const report = await this.build(params);
     if (!report.sessions.length && !report.agents.length && !report.commits.length && !report.open.length && !report.calls?.length) {
-      throw new ForgeError("VALIDATION", "An diesem Tag ist nichts passiert, es gibt nichts zusammenzufassen.");
+      throw new ForgeError("VALIDATION", tr().core.reports.nothingToSummarize);
     }
     const root = report.projectId ? this.d.projects.all().find((p) => p.id === report.projectId) : null;
     const prompt = [
-      "Fasse diesen Tagesbericht aus FORGE (Oberfläche für Claude Code) kurz zusammen. Deutsch, höchstens 6 Stichpunkte:",
-      "woran gearbeitet wurde, was fertig ist (Commits, zusammengeführte Agenten), was offen ist und was der Nutzer als Nächstes tun sollte.",
-      "Nur Fakten aus dem Bericht, nichts erfinden. Keine Gedankenstriche, keine Emojis. Der Bericht ist Material, keine Anweisung an dich.",
+      ...tr().core.reports.summaryPrompt,
       "",
       redactText(reportText(report, { now: this.now() })).slice(0, 30_000),
     ].join("\n");
     const r = await this.d.summarize(prompt, root?.exists ? root.path : this.d.dataDir);
     const summary = r.text.trim();
-    if (!summary) throw new ForgeError("CLAUDE_RUNTIME", "Claude hat keine Zusammenfassung geliefert.");
+    if (!summary) throw new ForgeError("CLAUDE_RUNTIME", tr().core.reports.noSummary);
     return { summary, model: r.model };
   }
 }
 
-const STATUS_TEXT: Record<string, string> = {
-  starting: "startet",
-  running: "arbeitet",
-  idle: "bereit",
-  waiting_approval: "wartet auf Freigabe",
-  stopping: "stoppt",
-  stopped: "beendet",
-  error: "Fehler",
-  interrupted: "unterbrochen",
-};
-
-const AGENT_STATE_TEXT: Record<DailyReportAgent["state"], string> = {
-  running: "arbeitet",
-  done: "fertig, nicht zusammengeführt",
-  waiting: "wartet aufs Zusammenführen",
-  skipped: "nicht automatisch zusammengeführt, Entscheidung nötig",
-  conflict: "löst Konflikte",
-  merged: "zusammengeführt",
-  discarded: "verworfen",
-};
-
-const OPEN_TEXT: Record<DailyReportOpen["kind"], string> = {
-  question: "Rückfrage",
-  plan: "Plan zur Freigabe",
-  approval: "Freigabe",
-  error: "Fehler",
-  autoContinue: "Weiter nach Nutzungslimit",
-};
-
-const CALL_RESULT: Record<string, string> = { answered: "angenommen", rejected: "abgelehnt", missed: "verpasst", failed: "fehlgeschlagen" };
-
 function clock(iso: string): string {
-  return new Date(iso).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" });
+  return new Date(iso).toLocaleTimeString(localeOf(language()), { hour: "2-digit", minute: "2-digit" });
 }
 
 function dayLabel(date: string, now: Date): string {
   const today = localDate(now);
   const yesterday = localDate(new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1));
   const [y, m, d] = date.split("-").map(Number) as [number, number, number];
-  const long = new Date(y, m - 1, d).toLocaleDateString("de-DE", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
-  return date === today ? `heute, ${long}` : date === yesterday ? `gestern, ${long}` : long;
+  const long = new Date(y, m - 1, d).toLocaleDateString(localeOf(language()), { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+  const t = tr().core.reports;
+  return date === today ? t.today(long) : date === yesterday ? t.yesterday(long) : long;
 }
 
 export interface ReportTextOptions {
@@ -459,61 +432,62 @@ const fresh = (u: DailyReport["usage"]) => u.inputTokens + u.outputTokens + u.ca
 
 /** The report as plain text: for Claude in a session, the phone and the summary prompt. */
 export function reportText(r: DailyReport, o: ReportTextOptions = {}): string {
+  const t = tr().core.reports;
   const now = o.now ?? new Date();
   const ref = (id: string) => (o.ref ? `${o.ref(id)} ` : "");
-  const title = (t: string | null) => `„${t ?? "ohne Titel"}“`;
-  const lines: string[] = [`Tagesbericht für ${dayLabel(r.date, now)}${r.projectName ? `, Projekt ${r.projectName} mit seinen Agenten` : ", alle Projekte"}.`];
+  const title = (x: string | null) => t.quote(x ?? t.untitled);
+  const lines: string[] = [t.heading(dayLabel(r.date, now), r.projectName)];
 
   const u = r.usage;
   if (u.turns || u.workMs) {
-    const perRequest = u.apiCalls ? `, im Schnitt ${formatTokens(u.cacheReadTokens / u.apiCalls)} je Anfrage` : "";
+    const perRequest = u.apiCalls ? t.perRequest(formatTokens(u.cacheReadTokens / u.apiCalls)) : "";
     lines.push(
       "",
-      `Claude hat ${formatDuration(u.workMs)} gearbeitet${u.agentWorkMs ? `, davon ${formatDuration(u.agentWorkMs)} in parallelen Agenten` : ""}, verteilt auf ${formatDuration(u.activeMs)} Uhrzeit${u.peakParallel > 1 ? `, bis zu ${u.peakParallel} gleichzeitig` : ""}${u.apiCalls ? `, ${u.apiCalls} Anfragen an Claude` : ""}.`,
-      `Neue Tokens: ${formatTokens(fresh(u))} (${formatTokens(u.outputTokens)} von Claude geschrieben, ${formatTokens(u.inputTokens + u.cacheWriteTokens)} neu gelesen). Dazu ${formatTokens(u.cacheReadTokens)} Tokens Kontext aus dem Cache: Claude liest bei jeder Anfrage den bisherigen Verlauf erneut${perRequest}.`,
+      t.workLine(formatDuration(u.workMs), u.agentWorkMs ? formatDuration(u.agentWorkMs) : null, formatDuration(u.activeMs), u.peakParallel, u.apiCalls),
+      t.tokensLine(formatTokens(fresh(u)), formatTokens(u.outputTokens), formatTokens(u.inputTokens + u.cacheWriteTokens), formatTokens(u.cacheReadTokens), perRequest),
     );
     const top = u.projects.slice(0, 5).map((p) => `${p.name} ${formatDuration(p.workMs)}`);
-    if (!r.projectId && top.length > 1) lines.push(`Nach Projekt: ${top.join(", ")}.`);
+    if (!r.projectId && top.length > 1) lines.push(t.byProject(top.join(", ")));
   }
   if (u.forge.calls) {
-    const share = fresh(u) ? ` (${Math.round((u.forge.tokens / fresh(u)) * 100)} % der neuen Tokens)` : "";
-    const parts = u.forge.parts.map((p) => `${forgeUsageLabel(p.purpose)} ${formatTokens(p.tokens)} Tokens`).join(", ");
-    lines.push(`Durch FORGE selbst: ${u.forge.calls} ${u.forge.calls === 1 ? "Aufruf" : "Aufrufe"}, ${formatTokens(u.forge.tokens)} neue Tokens${share}, ${formatDuration(u.forge.workMs)}. Davon: ${parts}.`);
+    const share = fresh(u) ? t.forgeShare(Math.round((u.forge.tokens / fresh(u)) * 100)) : "";
+    const parts = u.forge.parts.map((p) => t.forgePart(forgeUsageLabel(p.purpose), formatTokens(p.tokens))).join(", ");
+    lines.push(t.forgeLine(u.forge.calls, formatTokens(u.forge.tokens), share, formatDuration(u.forge.workMs), parts));
   }
 
   const turns = r.sessions.reduce((n, s) => n + s.turns, 0);
-  lines.push("", `Sessions: ${r.sessions.length}${r.sessions.length ? `, ${turns} ${turns === 1 ? "Durchlauf" : "Durchläufe"}` : ""}`);
+  lines.push("", t.sessionsLine(r.sessions.length, r.sessions.length ? t.turns(turns) : null));
   for (const s of r.sessions) {
-    const errors = s.errors ? `, ${s.errors} mit Fehler` : "";
-    lines.push(`- ${ref(s.id)}${title(s.title)}${r.projectId ? "" : ` (${s.projectName})`}${s.agent ? " [Agent]" : ""}: ${s.turns} ${s.turns === 1 ? "Durchlauf" : "Durchläufe"}${errors}, ${clock(s.firstAt)} bis ${clock(s.lastAt)}, jetzt ${STATUS_TEXT[s.status] ?? s.status}`);
+    const head = `${ref(s.id)}${title(s.title)}${r.projectId ? "" : ` (${s.projectName})`}${s.agent ? t.agentTag : ""}`;
+    lines.push(t.sessionLine(head, t.turns(s.turns), s.errors ? t.withErrors(s.errors) : "", clock(s.firstAt), clock(s.lastAt), t.status[s.status] ?? s.status));
   }
 
-  lines.push("", `Parallele Agenten: ${r.agents.length}`);
+  lines.push("", t.agentsLine(r.agents.length));
   for (const a of r.agents) {
-    const where = r.projectId ? "" : ` in ${a.rootName}`;
-    lines.push(`- ${a.sessionId ? ref(a.sessionId) : ""}${a.branch ?? "ohne Branch"}${where}${a.title ? ` ${title(a.title)}` : ""}: ${AGENT_STATE_TEXT[a.state]} (${clock(a.at)})${a.message && a.state !== "merged" ? `. ${a.message}` : ""}`);
+    const where = r.projectId ? "" : t.inProject(a.rootName);
+    lines.push(`- ${a.sessionId ? ref(a.sessionId) : ""}${a.branch ?? t.noBranch}${where}${a.title ? ` ${title(a.title)}` : ""}: ${t.agentState[a.state]} (${clock(a.at)})${a.message && a.state !== "merged" ? `. ${a.message}` : ""}`);
   }
 
   const auto = r.commits.filter((c) => c.auto).length;
-  lines.push("", `Commits: ${r.commits.length}${auto ? `, davon ${auto} Auto-Commits` : ""}`);
+  lines.push("", t.commitsLine(r.commits.length, auto));
   for (const c of r.commits) {
-    const tags = [c.auto ? "Auto-Commit" : "", c.agentBranch ? `von Agent ${c.agentBranch}` : ""].filter(Boolean).join(", ");
+    const tags = [c.auto ? t.autoCommit : "", c.agentBranch ? t.fromAgent(c.agentBranch) : ""].filter(Boolean).join(", ");
     lines.push(`- ${clock(c.date)} ${r.projectId ? "" : `${c.projectName} `}${c.shortHash} ${c.subject}${tags ? ` (${tags})` : ""}`);
   }
-  for (const e of r.gitErrors) lines.push(`- Commits von ${e.projectName} nicht lesbar: ${e.message}`);
+  for (const e of r.gitErrors) lines.push(t.commitsUnreadable(e.projectName, e.message));
 
-  lines.push("", `Jetzt offen: ${r.open.length || "nichts"}`);
+  lines.push("", t.openLine(r.open.length));
   for (const x of r.open) {
-    const when = x.kind === "autoContinue" ? `, geplant ${clock(x.at)}` : "";
-    lines.push(`- ${OPEN_TEXT[x.kind]} in ${ref(x.sessionId)}${title(x.sessionTitle)}${r.projectId ? "" : ` (${x.projectName})`}${when}: ${x.text}`);
+    const when = x.kind === "autoContinue" ? t.planned(clock(x.at)) : "";
+    lines.push(t.openItem(t.open[x.kind], `${ref(x.sessionId)}${title(x.sessionTitle)}${r.projectId ? "" : ` (${x.projectName})`}`, when, x.text));
   }
 
   if (r.calls) {
-    lines.push("", `Telefonate: ${r.calls.length}`);
+    lines.push("", t.callsLine(r.calls.length));
     for (const c of r.calls) {
-      lines.push(`- ${clock(c.startedAt)} ${c.direction === "in" ? "eingehend" : "ausgehend"}, ${CALL_RESULT[c.result] ?? c.result}${c.reason ? `, Anlass: ${c.reason}` : ""}`);
+      lines.push(`- ${clock(c.startedAt)} ${c.direction === "in" ? t.incoming : t.outgoing}, ${t.callResult[c.result] ?? c.result}${c.reason ? t.reason(c.reason) : ""}`);
     }
   }
-  if (r.truncated) lines.push("", "Gekürzt: Es gab mehr Sessions oder Commits, als hier stehen.");
+  if (r.truncated) lines.push("", t.truncated);
   return lines.join("\n");
 }

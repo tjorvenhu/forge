@@ -1,11 +1,15 @@
 import type { SessionEventBody } from "@forge/protocol";
 import type { Db } from "../persistence/db.js";
 import { describeRuntimeError } from "./live-session.js";
+import { de } from "../i18n/de/index.js";
+import { tr } from "../i18n/index.js";
 
 /** What Claude reads after the restart, sent as an automatic message. */
-export const UPDATE_CONTINUE_PROMPT =
-  "FORGE wurde gerade aktualisiert und neu gestartet. Dabei wurde dein letzter Durchlauf unterbrochen; laufende Befehle, Hintergrundaufgaben und Subagenten wurden beendet. " +
-  "Mach bitte dort weiter, wo du aufgehört hast, und starte Unterbrochenes neu, soweit es noch gebraucht wird.";
+export function updateContinuePrompt(): string {
+  return tr().core.sessions.updateContinuePrompt;
+}
+/** German wording, as older events and the tests have it; what is sent comes from updateContinuePrompt(). */
+export const UPDATE_CONTINUE_PROMPT = de.core.sessions.updateContinuePrompt;
 /** prepare() holds this long; the shell ends the sidecar seconds after the click, not minutes. */
 export const ARM_MS = 2 * 60_000;
 /** Older marks are dropped: FORGE did not come back from the update right away (installer failed, started by hand later). */
@@ -104,10 +108,10 @@ export class UpdateResume {
       if (!this.db.getSession(m.sessionId) || this.host.isLive(m.sessionId)) continue;
       try {
         if (m.working) this.host.record(m.sessionId, { type: "app.updated", from: m.fromVersion, to: this.host.version });
-        await this.host.resume(m.sessionId, m.working ? UPDATE_CONTINUE_PROMPT : null);
+        await this.host.resume(m.sessionId, m.working ? updateContinuePrompt() : null);
       } catch (e) {
         // An idle session stays closed without a word; it opens again with the next message.
-        if (m.working) this.host.record(m.sessionId, { type: "error", message: `Nach dem Update nicht fortgesetzt: ${describeRuntimeError(e)}`, retryable: true });
+        if (m.working) this.host.record(m.sessionId, { type: "error", message: tr().core.sessions.notResumedAfterUpdate(describeRuntimeError(e)), retryable: true });
       }
     }
   }

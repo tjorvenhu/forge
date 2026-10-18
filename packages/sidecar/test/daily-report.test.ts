@@ -6,6 +6,7 @@ import { GitEngine } from "../src/git/git.js";
 import { Db, MIGRATIONS, type SessionRecord } from "../src/persistence/db.js";
 import { ProjectManager } from "../src/projects/project-manager.js";
 import { DailyReportService, dayRange, headMovedSince, localDate, reportText } from "../src/reports/daily-report.js";
+import { setLanguage } from "../src/i18n/index.js";
 import { git, initRepo, tempDir } from "./helpers.js";
 
 describe("dayRange", () => {
@@ -255,6 +256,20 @@ describe("DailyReportService", () => {
     expect(prompts[0]!.cwd).toBe(app.path);
     expect(prompts[0]!.prompt).toContain("„Export“");
     expect(prompts[0]!.prompt).toContain("Nur Fakten aus dem Bericht");
+  });
+
+  it("asks for the summary in English when English is set", async () => {
+    turn(session(app.id, "Export").id);
+    setLanguage("en");
+    try {
+      await service.summarize({ projectId: app.id });
+    } finally {
+      setLanguage("de");
+    }
+    expect(prompts[0]!.prompt).toContain("In English, at most 6 bullet points");
+    expect(prompts[0]!.prompt).toMatch(/^Summarize this daily report/);
+    expect(prompts[0]!.prompt).toContain("Daily report for today, ");
+    expect(prompts[0]!.prompt).toContain('"Export"');
   });
 
   it("tells from the reflog whether HEAD moved", async () => {

@@ -9,6 +9,7 @@ import { isArtifactPath, isSensitiveFile, type GitEngine } from "../git/git.js";
 import { runUserCommand } from "../util/shell.js";
 import type { ProjectManager } from "../projects/project-manager.js";
 import { analyzeTurn, equivalentTestCommands, isTestRelevant, scopedTestCommand } from "./test-gate.js";
+import { tr } from "../i18n/index.js";
 
 export interface AutomationHost {
   record(sessionId: string, body: SessionEventBody): void;
@@ -149,7 +150,7 @@ export class TurnAutomation {
     const tests = this.testNotes.get(sessionId);
     this.testNotes.delete(sessionId);
     const commits = this.commitNote(sessionId);
-    const parts = [hint ? `[FORGE-Hinweis, nicht vom Nutzer geschrieben] ${hint}` : "", tests ?? "", commits ?? ""].filter(Boolean);
+    const parts = [hint ? tr().core.sessions.hint(hint) : "", tests ?? "", commits ?? ""].filter(Boolean);
     return parts.length ? parts.join("\n\n") : null;
   }
 
@@ -157,22 +158,20 @@ export class TurnAutomation {
     const list = this.notes.get(sessionId);
     this.notes.delete(sessionId);
     if (!list?.length) return null;
-    return [
-      "[FORGE-Hinweis, nicht vom Nutzer geschrieben] Nach deinem letzten Durchlauf hat FORGE selbst gearbeitet (Projekt-Tags auto-commit/auto-push):",
-      ...list.map((l) => `- ${l}`),
-      "Diese Commits und Pushes stammen von FORGE, nicht von jemand anderem. Soll committet oder gepusht werden, prüfe mit git status und git log, was noch offen ist, committe nur das und push dann. Erwähne die FORGE-Commits nicht als Überraschung.",
-    ].join("\n");
+    const m = tr().core.sessions;
+    return [m.commitNoteHead, ...list.map((l) => `- ${l}`), m.commitNoteTail].join("\n");
   }
 
   private report(sessionId: string, body: Extract<SessionEventBody, { type: "automation" }>) {
     this.host.record(sessionId, body);
+    const m = tr().core.sessions;
     const line =
       body.action === "commit"
         ? body.ok
-          ? `Commit ${body.hash?.slice(0, 7) ?? ""} „${body.message}“ mit ${body.files.length} Datei(en): ${body.files.slice(0, 8).join(", ")}${body.files.length > 8 ? ", …" : ""}`
-          : `Auto-Commit fehlgeschlagen: ${body.message}. Die Änderungen sind nicht committet.`
+          ? m.commitLine(body.hash?.slice(0, 7) ?? "", body.message, body.files.length, `${body.files.slice(0, 8).join(", ")}${body.files.length > 8 ? ", …" : ""}`)
+          : m.autoCommitFailedLine(body.message)
         : body.action === "push"
-          ? `${body.message} (automatischer Push)`
+          ? m.autoPushLine(body.message)
           : body.message;
     const list = this.notes.get(sessionId) ?? [];
     list.push(line);
@@ -239,18 +238,18 @@ export class TurnAutomation {
     const testsOk = await this.runTests(sessionId, project, tags, cwd, baseline, status);
 
     if (tags.has("review-required")) {
-      this.report(sessionId, { type: "automation", action: "skip", ok: true, message: "Auto-Commit übersprungen: review-required verlangt eine Prüfung im Git-Bereich.", hash: null, files: [] });
+      this.report(sessionId, { type: "automation", action: "skip", ok: true, message: tr().core.sessions.skipReview, hash: null, files: [] });
       return testsOk;
     }
     if (!testsOk) {
-      this.report(sessionId, { type: "automation", action: "skip", ok: false, message: "Auto-Commit übersprungen: Tests sind fehlgeschlagen.", hash: null, files: [] });
+      this.report(sessionId, { type: "automation", action: "skip", ok: false, message: tr().core.sessions.skipTestsFailed, hash: null, files: [] });
       return false;
     }
     if (!files.length) return true;
     // A turn from the Claude app or a background task may have started meanwhile; it bypasses the hold.
     const after = await this.hashFiles(cwd, files);
     if ((this.turnSeq.get(sessionId) ?? 0) !== seq || files.some((f) => before.get(f) !== after.get(f))) {
-      this.report(sessionId, { type: "automation", action: "skip", ok: true, message: "Auto-Commit übersprungen: Dateien haben sich nach dem Durchlauf weiter geändert. Bitte im Git-Bereich prüfen.", hash: null, files: [] });
+      this.report(sessionId, { type: "automation", action: "skip", ok: true, message: tr().core.sessions.skipChangedAgain, hash: null, files: [] });
       return true;
     }
     let message: string;
@@ -272,10 +271,10 @@ export class TurnAutomation {
       this.host.emit({ event: "project.updated", payload: { projectId: project.id } });
       if (project.tags.includes("auto-push")) {
         if (!branch || branch === "main" || branch === "master") {
-          this.report(sessionId, { type: "automation", action: "skip", ok: true, message: `Auto-Push übersprungen: ${branch ?? "ohne Branch"} ist geschützt.`, hash: null, files: [] });
+          this.report(sessionId, { type: "automation", action: "skip", ok: true, message: tr().core.sessions.skipPushProtected(branch), hash: null, files: [] });
         } else {
           await this.git.push(cwd, false);
-          this.report(sessionId, { type: "automation", action: "push", ok: true, message: `Gepusht: ${branch}`, hash: r.hash, files: [] });
+          this.report(sessionId, { type: "automation", action: "push", ok: true, message: tr().core.sessions.pushed(branch), hash: r.hash, files: [] });
         }
       }
     } catch (e) {
@@ -296,7 +295,7 @@ export class TurnAutomation {
       this.host.record(sessionId, { type: "automation", action: "skip", ok: plan.ok, message: plan.skip, hash: null, files: [] });
       return plan.ok;
     }
-    this.host.record(sessionId, { type: "status", status: "idle", detail: `Tests laufen: ${plan.command}` });
+    this.host.record(sessionId, { type: "status", status: "idle", detail: tr().core.sessions.testsRunning(plan.command) });
     let testEnv: Record<string, string> = {};
     try {
       testEnv = this.host.testEnv?.(project.id) ?? {};
@@ -310,7 +309,7 @@ export class TurnAutomation {
     if (!ok) {
       this.testNotes.set(
         sessionId,
-        `[FORGE-Hinweis, nicht vom Nutzer geschrieben] Nach deinem letzten Durchlauf hat FORGE die Tests ausgeführt (Tag auto-test): „${plan.command}“ ist fehlgeschlagen (${r.timedOut ? "Zeitüberschreitung" : `Exit-Code ${r.exitCode}`}). Ende der Ausgabe:\n${r.output.slice(-1500)}`,
+        tr().core.sessions.testsFailedNote(plan.command, r.timedOut, r.exitCode, r.output.slice(-1500)),
       );
     }
     return ok;
@@ -349,7 +348,7 @@ export class TurnAutomation {
 
     if (turn.testedAfterLastChange) {
       remember(true, true);
-      return { skip: `Tests übersprungen: Claude hat „${testCommand}“ nach der letzten Änderung schon erfolgreich ausgeführt.`, ok: true };
+      return { skip: tr().core.sessions.testsAlreadyRan(testCommand), ok: true };
     }
     const relevant = changed?.filter((f) => isTestRelevant(f)) ?? null;
     if (relevant && !relevant.length) {
@@ -358,16 +357,16 @@ export class TurnAutomation {
       if (!ok) {
         return {
           skip: changed!.length
-            ? "Tests nicht erneut ausgeführt: Seit dem fehlgeschlagenen Lauf wurden nur Dateien ohne Einfluss auf Tests geändert."
-            : "Tests nicht erneut ausgeführt: Seit dem fehlgeschlagenen Lauf wurden keine Dateien geändert.",
+            ? tr().core.sessions.testsNotRerunIrrelevant
+            : tr().core.sessions.testsNotRerunUnchanged,
           ok,
         };
       }
       if (changed!.length) {
         const shown = changed!.slice(0, 3).join(", ") + (changed!.length > 3 ? ", …" : "");
-        return { skip: `Tests übersprungen: Geändert wurden nur Dateien ohne Einfluss auf Tests (Doku, Bilder, Projektwissen): ${shown}`, ok };
+        return { skip: tr().core.sessions.testsSkippedIrrelevant(shown), ok };
       }
-      return { skip: last?.ran ? "Tests übersprungen: Seit dem letzten erfolgreichen Testlauf wurden keine Dateien geändert." : "Tests übersprungen: Der Durchlauf hat keine Dateien geändert.", ok };
+      return { skip: last?.ran ? tr().core.sessions.testsSkippedSinceLast : tr().core.sessions.testsSkippedNoChanges, ok };
     }
     // After a failed run the whole suite runs: the failure may sit in a package that did not change since.
     const scoped =

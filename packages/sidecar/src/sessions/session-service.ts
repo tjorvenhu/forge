@@ -50,6 +50,7 @@ import { TitleRefresh } from "./titles.js";
 import { TurnAutomation } from "./turn-automation.js";
 import { TurnDispatch, type MessageSource } from "./turns.js";
 import { UpdateResume } from "./update-resume.js";
+import { tr } from "../i18n/index.js";
 
 /** Entry point for everything session related; wires the session modules and keeps the public API in one place. */
 /** how long a scan of terminal transcripts is reused */
@@ -422,7 +423,7 @@ export class SessionService {
   }
 
   stop(sessionId: string): Promise<Session> {
-    this.autoContinue.cancel(sessionId, "Session gestoppt.");
+    this.autoContinue.cancel(sessionId, tr().core.sessions.autoContinueStopped);
     return this.lifecycle.stop(sessionId);
   }
 
@@ -430,13 +431,13 @@ export class SessionService {
 
   cancelAutoContinue(sessionId: string): Session {
     this.get(sessionId);
-    this.autoContinue.cancel(sessionId, "Du hast das automatische Weitermachen abgebrochen.");
+    this.autoContinue.cancel(sessionId, tr().core.sessions.autoContinueCancelled);
     return this.get(sessionId);
   }
 
   /** Switching the setting off drops all pending plans right away instead of at the next check. */
   settingsChanged() {
-    if (!this.db.getSettings().autoContinueAfterLimit) this.autoContinue.cancelAll("Automatisches Weitermachen ist in den Einstellungen ausgeschaltet.");
+    if (!this.db.getSettings().autoContinueAfterLimit) this.autoContinue.cancelAll(tr().core.sessions.autoContinueOff);
   }
 
   /** Starts the periodic checks (due continuations, passed limit resets, idle processes); the app calls this once. */
@@ -519,7 +520,7 @@ export class SessionService {
     this.idle.stop();
     this.titles.shutdown();
     this.agentAutoMerge?.dispose();
-    this.lifecycle.shutdown(forUpdate ? "FORGE wird aktualisiert" : undefined);
+    this.lifecycle.shutdown(forUpdate ? tr().core.sessions.forgeUpdating : undefined);
   }
 
   // ---------- restart for an update
@@ -543,8 +544,8 @@ export class SessionService {
   async rewind(sessionId: string, messageUuid: string, dryRun: boolean) {
     if (!this.core.live.has(sessionId)) await this.resume(sessionId, null);
     const live = this.core.live.get(sessionId);
-    if (!live) throw new ForgeError("SESSION_NOT_FOUND", "Session ist nicht aktiv.");
-    if (this.db.getSession(sessionId)?.status === "running") throw new ForgeError("SESSION_BUSY", "Erst stoppen, dann zurücksetzen.");
+    if (!live) throw new ForgeError("SESSION_NOT_FOUND", tr().core.sessions.notActive);
+    if (this.db.getSession(sessionId)?.status === "running") throw new ForgeError("SESSION_BUSY", tr().core.sessions.stopBeforeReset);
     const r = await live.rt.rewindFiles(messageUuid, dryRun);
     if (!dryRun && r.canRewind) this.core.record(sessionId, { type: "files.rewound", toMessageUuid: messageUuid, filesChanged: r.filesChanged });
     if (!dryRun) {
@@ -560,26 +561,26 @@ export class SessionService {
    */
   async images(sessionId: string, seq: number) {
     const rec = this.db.getSession(sessionId);
-    if (!rec) throw new ForgeError("SESSION_NOT_FOUND", "Session nicht gefunden.");
+    if (!rec) throw new ForgeError("SESSION_NOT_FOUND", tr().core.sessions.notFound);
     const ev = this.db.getEvent(sessionId, seq);
     const body = ev?.body;
     if (body?.type === "tool.result" && body.toolUseId) {
-      if (!rec.claudeSessionId) throw new ForgeError("NOT_FOUND", "Bild noch nicht im Verlauf.");
+      if (!rec.claudeSessionId) throw new ForgeError("NOT_FOUND", tr().core.sessions.imageNotYet);
       const images = transcriptToolImages(await this.runtime.sessionHistory(rec.claudeSessionId, rec.cwd), body.toolUseId);
-      if (!images) throw new ForgeError("NOT_FOUND", "Bild nicht im Verlauf von Claude Code.");
+      if (!images) throw new ForgeError("NOT_FOUND", tr().core.sessions.imageMissing);
       return images;
     }
-    if (body?.type !== "user.message" || !body.uuid) throw new ForgeError("VALIDATION", "Keine Nachricht mit Anhängen.");
-    if (!rec.claudeSessionId) throw new ForgeError("NOT_FOUND", "Bild noch nicht im Verlauf.");
+    if (body?.type !== "user.message" || !body.uuid) throw new ForgeError("VALIDATION", tr().core.sessions.noAttachments);
+    if (!rec.claudeSessionId) throw new ForgeError("NOT_FOUND", tr().core.sessions.imageNotYet);
     const images = transcriptImages(await this.runtime.sessionHistory(rec.claudeSessionId, rec.cwd), body.uuid);
-    if (!images) throw new ForgeError("NOT_FOUND", "Bild nicht im Verlauf von Claude Code.");
+    if (!images) throw new ForgeError("NOT_FOUND", tr().core.sessions.imageMissing);
     return images;
   }
 
   /** Stops one background task or subagent of a running session. */
   async stopTask(sessionId: string, taskId: string) {
     const live = this.core.live.get(sessionId);
-    if (!live) throw new ForgeError("SESSION_NOT_FOUND", "Session ist nicht aktiv.");
+    if (!live) throw new ForgeError("SESSION_NOT_FOUND", tr().core.sessions.notActive);
     await live.rt.stopTask(taskId);
     return { ok: true };
   }
@@ -589,24 +590,24 @@ export class SessionService {
    * like any message, with a note naming the task; sent mid-turn it joins the turn or waits as usual.
    */
   async messageTask(sessionId: string, q: TaskQuery, text: string): Promise<Session> {
-    if (!q.taskId && !q.toolUseId) throw new ForgeError("VALIDATION", "Welche Hintergrundaufgabe? Task-ID oder Werkzeugaufruf fehlt.");
+    if (!q.taskId && !q.toolUseId) throw new ForgeError("VALIDATION", tr().core.sessions.whichTask);
     this.get(sessionId);
     const target = findTask(this.core.db.listEventsOfTypes(sessionId, TASK_EVENT_TYPES), this.core.live.get(sessionId) ?? null, q);
-    if (!target) throw new ForgeError("NOT_FOUND", "Hintergrundaufgabe nicht gefunden.");
+    if (!target) throw new ForgeError("NOT_FOUND", tr().core.sessions.taskNotFound);
     return this.turns.send(sessionId, text, [], undefined, { ref: target.ref, note: taskNote(target) });
   }
 
   /** What a background command printed so far (its last 8 KiB). */
   async taskOutput(sessionId: string, taskId: string) {
     const live = this.core.live.get(sessionId);
-    if (!live) throw new ForgeError("SESSION_NOT_FOUND", "Session ist nicht aktiv.");
+    if (!live) throw new ForgeError("SESSION_NOT_FOUND", tr().core.sessions.notActive);
     return live.rt.taskOutput(taskId);
   }
 
   /** Moves running foreground work into the background, so the turn goes on (Ctrl+B in the terminal). */
   async toBackground(sessionId: string, toolUseId?: string) {
     const live = this.core.live.get(sessionId);
-    if (!live) throw new ForgeError("SESSION_NOT_FOUND", "Session ist nicht aktiv.");
+    if (!live) throw new ForgeError("SESSION_NOT_FOUND", tr().core.sessions.notActive);
     return { moved: await live.rt.toBackground(toolUseId) };
   }
 
@@ -618,21 +619,21 @@ export class SessionService {
    */
   async fork(sessionId: string, opts: { beforeSeq?: number; rewindFiles?: boolean }): Promise<{ session: Session | null; prompt: string | null; filesChanged: string[] | null }> {
     const rec = this.db.getSession(sessionId);
-    if (!rec) throw new ForgeError("SESSION_NOT_FOUND", "Session nicht gefunden.");
-    if (BUSY.includes(rec.status)) throw new ForgeError("SESSION_BUSY", "Claude arbeitet noch. Erst stoppen, dann verzweigen.");
-    if (!rec.claudeSessionId) throw new ForgeError("VALIDATION", "Diese Session hat noch keinen Verlauf bei Claude Code.");
+    if (!rec) throw new ForgeError("SESSION_NOT_FOUND", tr().core.sessions.notFound);
+    if (BUSY.includes(rec.status)) throw new ForgeError("SESSION_BUSY", tr().core.sessions.stopBeforeFork);
+    if (!rec.claudeSessionId) throw new ForgeError("VALIDATION", tr().core.sessions.noClaudeHistory);
     let prompt: string | null = null;
     let promptUuid: string | null = null;
     /** undefined: copy everything; null: nothing before the prompt */
     let upTo: string | null | undefined;
     if (opts.beforeSeq !== undefined) {
       const ev = this.db.getEvent(sessionId, opts.beforeSeq);
-      if (ev?.body.type !== "user.message" || !ev.body.uuid) throw new ForgeError("VALIDATION", "An dieser Nachricht lässt sich nicht verzweigen.");
+      if (ev?.body.type !== "user.message" || !ev.body.uuid) throw new ForgeError("VALIDATION", tr().core.sessions.cannotForkHere);
       prompt = ev.body.text;
       promptUuid = ev.body.uuid;
       const messages = (await this.runtime.sessionHistory(rec.claudeSessionId, rec.cwd)) as Array<{ uuid?: unknown }>;
       const i = messages.findIndex((m) => m.uuid === promptUuid);
-      if (i < 0) throw new ForgeError("VALIDATION", "Die Nachricht steht nicht mehr im Verlauf von Claude Code (zum Beispiel nach /clear).");
+      if (i < 0) throw new ForgeError("VALIDATION", tr().core.sessions.messageGoneClear);
       upTo = i > 0 ? String(messages[i - 1]!.uuid) : null;
     }
     let filesChanged: string[] | null = null;
@@ -641,7 +642,7 @@ export class SessionService {
       filesChanged = r.canRewind ? r.filesChanged : [];
     }
     if (upTo === null) return { session: null, prompt, filesChanged };
-    const title = `${rec.title ?? "Session"} (Zweig)`;
+    const title = tr().core.sessions.forkTitle(rec.title ?? "Session");
     const claudeSessionId = await this.runtime.forkTranscript(rec.claudeSessionId, rec.cwd, upTo ?? null, title);
     const now = new Date().toISOString();
     const branch = { ...rec, id: randomUUID(), claudeSessionId, title, status: "stopped" as const, apiKeySource: null, createdAt: now, updatedAt: now, lastError: null };
@@ -657,17 +658,17 @@ export class SessionService {
    */
   async edit(sessionId: string, seq: number, text: string): Promise<Session> {
     const rec = this.db.getSession(sessionId);
-    if (!rec) throw new ForgeError("SESSION_NOT_FOUND", "Session nicht gefunden.");
+    if (!rec) throw new ForgeError("SESSION_NOT_FOUND", tr().core.sessions.notFound);
     const ev = this.db.getEvent(sessionId, seq);
-    if (ev?.body.type !== "user.message" || ev.body.source === "auto") throw new ForgeError("VALIDATION", "Diese Nachricht lässt sich nicht bearbeiten.");
-    if (!text.trim()) throw new ForgeError("VALIDATION", "Die Nachricht ist leer.");
+    if (ev?.body.type !== "user.message" || ev.body.source === "auto") throw new ForgeError("VALIDATION", tr().core.sessions.cannotEdit);
+    if (!text.trim()) throw new ForgeError("VALIDATION", tr().core.sessions.messageEmpty);
     /** the transcript entry before the prompt; null: the prompt was the first, the conversation starts over */
     let resumeAt: string | null = null;
     if (rec.claudeSessionId) {
       const uuid = ev.body.uuid;
       const messages = (await this.runtime.sessionHistory(rec.claudeSessionId, rec.cwd)) as Array<{ uuid?: unknown }>;
       const i = uuid ? messages.findIndex((m) => m.uuid === uuid) : -1;
-      if (i < 0) throw new ForgeError("VALIDATION", "Die Nachricht steht nicht mehr im Verlauf von Claude Code (zum Beispiel nach /clear oder einer Komprimierung).");
+      if (i < 0) throw new ForgeError("VALIDATION", tr().core.sessions.messageGoneCompact);
       resumeAt = i > 0 ? String(messages[i - 1]!.uuid) : null;
     }
     return this.lifecycle.restartAt(sessionId, resumeAt, text, () => this.core.record(sessionId, { type: "message.edited", fromSeq: seq }));
@@ -701,9 +702,7 @@ export class SessionService {
 
   /** Running sessions of the project hear with their next message that git was switched on or off. */
   projectGitChanged(projectId: string, enabled: boolean) {
-    const text = enabled
-      ? "Der Nutzer hat Git für dieses Projekt in FORGE wieder eingeschaltet. git-Befehle sind wieder erlaubt. Parallele Agenten (start_agent) gibt es erst in einer neuen Session."
-      : "Der Nutzer hat Git für dieses Projekt in FORGE ausgeschaltet. Führe ab jetzt keine git-Befehle mehr aus (kein git init, status, add, commit, branch, checkout, push), lege kein Repository an und schlage keine Commits, Branches oder Pull Requests vor. Starte keine parallelen Agenten (start_agent).";
+    const text = enabled ? tr().core.sessions.gitOn : tr().core.sessions.gitOff;
     for (const id of this.core.live.keys()) {
       if (this.db.getSession(id)?.projectId === projectId) this.automation.hint(id, text);
     }

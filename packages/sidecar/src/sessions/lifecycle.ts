@@ -8,13 +8,14 @@ import type { SessionRecord } from "../persistence/db.js";
 import { blockedTools, effectivePermissionMode, resolveProfile, type ProfileConfig } from "../policy/profiles.js";
 import type { ProjectManager } from "../projects/project-manager.js";
 import { denyPending, type ApprovalGate } from "./approvals.js";
-import { BUSY, closeLive, describeRuntimeError, endLive, isAuthFailure, REMOTE_PLACEHOLDER_TITLE, titleFrom, type LiveSession } from "./live-session.js";
+import { BUSY, closeLive, describeRuntimeError, endLive, isAuthFailure, remotePlaceholderTitle, titleFrom, type LiveSession } from "./live-session.js";
 import type { RemoteBridge } from "./remote-bridge.js";
 import type { RuntimeCatalog } from "./runtime-catalog.js";
 import type { SessionCore } from "./session-core.js";
 import type { SessionStream } from "./stream.js";
 import type { TurnAutomation } from "./turn-automation.js";
 import type { BuiltTurn, MessageSource, TaskTurn, TurnDispatch } from "./turns.js";
+import { tr } from "../i18n/index.js";
 
 export interface StartParams {
   projectId: string;
@@ -81,7 +82,7 @@ export class SessionLifecycle {
     const settings = db.getSettings();
     const profile = resolveProfile(project.profile, project.tags);
     const claudePath = locateClaude(settings.claudePath);
-    if (!claudePath) throw new ForgeError("CLAUDE_NOT_INSTALLED", "Claude Code CLI wurde nicht gefunden. Pfad in den Einstellungen prüfen.");
+    if (!claudePath) throw new ForgeError("CLAUDE_NOT_INSTALLED", tr().core.sessions.claudeNotFoundCheckPath);
 
     const now = new Date().toISOString();
     const model = params.model ?? project.defaultModel ?? settings.defaultModel ?? null;
@@ -92,7 +93,7 @@ export class SessionLifecycle {
       projectId: project.id,
       claudeSessionId: params.resumeClaudeSessionId ?? null,
       cwd: project.path,
-      title: titleFrom(params.prompt) || REMOTE_PLACEHOLDER_TITLE,
+      title: titleFrom(params.prompt) || remotePlaceholderTitle(),
       model,
       effort: params.effort ?? project.defaultEffort ?? settings.defaultEffort ?? null,
       profile: profile.id,
@@ -118,7 +119,7 @@ export class SessionLifecycle {
       }
       if (first) this.turns.record(rec.id, first);
       if (others > 0) {
-        this.core.record(rec.id, { type: "status", status: "starting", detail: `Achtung: ${others} weitere Session(s) arbeiten gerade im selben Projektordner.` });
+        this.core.record(rec.id, { type: "status", status: "starting", detail: tr().core.sessions.othersInFolder(others) });
       }
       this.attach(rec, profile, claudePath, settings.stripApiKey, params.resumeClaudeSessionId ?? null, first?.msg ?? null);
     });
@@ -132,16 +133,16 @@ export class SessionLifecycle {
     if (this.core.live.has(sessionId)) return prompt === null ? this.core.get(sessionId) : this.turns.send(sessionId, prompt, attachments, source, task);
     const { db } = this.core;
     const rec = db.getSession(sessionId);
-    if (!rec) throw new ForgeError("SESSION_NOT_FOUND", "Session nicht gefunden.");
+    if (!rec) throw new ForgeError("SESSION_NOT_FOUND", tr().core.sessions.notFound);
     if (!rec.claudeSessionId) {
-      throw new ForgeError("CLAUDE_RUNTIME", "Diese Session hat keine Claude-Session-ID und kann nicht fortgesetzt werden.");
+      throw new ForgeError("CLAUDE_RUNTIME", tr().core.sessions.noClaudeSessionId);
     }
-    if (!existsSync(rec.cwd)) throw new ForgeError("PATH_NOT_ACCESSIBLE", `Arbeitsverzeichnis existiert nicht mehr: ${rec.cwd}`);
+    if (!existsSync(rec.cwd)) throw new ForgeError("PATH_NOT_ACCESSIBLE", tr().core.sessions.cwdGone(rec.cwd));
     const project = this.projects.requireExisting(rec.projectId);
     const settings = db.getSettings();
     const profile = resolveProfile(project.profile, project.tags);
     const claudePath = locateClaude(settings.claudePath);
-    if (!claudePath) throw new ForgeError("CLAUDE_NOT_INSTALLED", "Claude Code CLI wurde nicht gefunden.");
+    if (!claudePath) throw new ForgeError("CLAUDE_NOT_INSTALLED", tr().core.sessions.claudeNotFound);
     const permissionMode = rec.permissionMode === "plan" ? "plan" : profile.permissionMode;
     const claudeSessionId = rec.claudeSessionId;
     await this.exclusive(sessionId, async () => {
@@ -165,22 +166,22 @@ export class SessionLifecycle {
     for (let p = this.attaching.get(sessionId); p; p = this.attaching.get(sessionId)) await p.catch(() => {});
     const { db } = this.core;
     const rec = db.getSession(sessionId);
-    if (!rec) throw new ForgeError("SESSION_NOT_FOUND", "Session nicht gefunden.");
-    if (!existsSync(rec.cwd)) throw new ForgeError("PATH_NOT_ACCESSIBLE", `Arbeitsverzeichnis existiert nicht mehr: ${rec.cwd}`);
+    if (!rec) throw new ForgeError("SESSION_NOT_FOUND", tr().core.sessions.notFound);
+    if (!existsSync(rec.cwd)) throw new ForgeError("PATH_NOT_ACCESSIBLE", tr().core.sessions.cwdGone(rec.cwd));
     const live = this.core.live.get(sessionId);
     if (live) {
       this.remote.drop(sessionId);
-      this.automation.dropHeld(sessionId, "Nachricht bearbeitet");
+      this.automation.dropHeld(sessionId, tr().core.sessions.messageEdited);
       // The interrupt ends the turn cleanly and the transcript is written; the process need not take its 7 s to close.
       if (live.turnActive) await this.stop(sessionId);
       await endLive(live, 1_500);
-      if (this.core.live.has(sessionId)) throw new ForgeError("SESSION_BUSY", "Die Session ließ sich nicht beenden. Bitte erneut versuchen.");
+      if (this.core.live.has(sessionId)) throw new ForgeError("SESSION_BUSY", tr().core.sessions.wontEnd);
     }
     const project = this.projects.requireExisting(rec.projectId);
     const settings = db.getSettings();
     const profile = resolveProfile(project.profile, project.tags);
     const claudePath = locateClaude(settings.claudePath);
-    if (!claudePath) throw new ForgeError("CLAUDE_NOT_INSTALLED", "Claude Code CLI wurde nicht gefunden.");
+    if (!claudePath) throw new ForgeError("CLAUDE_NOT_INSTALLED", tr().core.sessions.claudeNotFound);
     const permissionMode = rec.permissionMode === "plan" ? "plan" : profile.permissionMode;
     const resume = resumeAt ? rec.claudeSessionId : null;
     await this.exclusive(sessionId, async () => {
@@ -225,7 +226,7 @@ export class SessionLifecycle {
     } catch (e) {
       // Without FORGE tools the session still works as a plain Claude Code session; the timeline says why.
       extra = null;
-      this.core.record(rec.id, { type: "status", status: "starting", detail: `FORGE-Werkzeuge nicht verfügbar: ${e instanceof Error ? e.message : String(e)}` });
+      this.core.record(rec.id, { type: "status", status: "starting", detail: tr().core.sessions.forgeToolsUnavailable(e instanceof Error ? e.message : String(e)) });
     }
     try {
       live.rt = this.runtime.startSession(
@@ -276,12 +277,12 @@ export class SessionLifecycle {
     live.markEnded();
     const current = this.core.live.get(id) === live;
     if (current) this.core.live.delete(id);
-    denyPending(live, "Session beendet");
+    denyPending(live, tr().core.sessions.sessionEnded);
     live.pending.clear();
     // Replaced by a newer process or shut down: the session's state belongs to someone else now.
     if (!current) return;
     this.remote.drop(id);
-    this.automation.dropHeld(id, "Session beendet");
+    this.automation.dropHeld(id, tr().core.sessions.sessionEnded);
     if (error) {
       const msg = describeRuntimeError(error);
       this.core.record(id, { type: "error", message: msg, retryable: true });
@@ -320,7 +321,7 @@ export class SessionLifecycle {
     } catch (e) {
       // If interrupt fails the process is in a bad state: end it so the UI is never stuck.
       closeLive(live);
-      this.core.record(sessionId, { type: "error", message: `Stop fehlgeschlagen, Session beendet: ${describeRuntimeError(e)}`, retryable: false });
+      this.core.record(sessionId, { type: "error", message: tr().core.sessions.stopFailed(describeRuntimeError(e)), retryable: false });
     }
     return this.core.get(sessionId);
   }
@@ -350,13 +351,13 @@ export class SessionLifecycle {
    */
   async delete(sessionId: string, deleteTranscript: boolean) {
     const rec = this.core.db.getSession(sessionId);
-    if (!rec) throw new ForgeError("SESSION_NOT_FOUND", "Session nicht gefunden.");
+    if (!rec) throw new ForgeError("SESSION_NOT_FOUND", tr().core.sessions.notFound);
     const live = this.core.live.get(sessionId);
     if (live) {
       this.remote.drop(sessionId);
       await endLive(live);
       // Deleting the row while the process still reports would break its event writes.
-      if (this.core.live.has(sessionId)) throw new ForgeError("SESSION_BUSY", "Die Session ließ sich nicht beenden. Bitte erneut versuchen.");
+      if (this.core.live.has(sessionId)) throw new ForgeError("SESSION_BUSY", tr().core.sessions.wontEnd);
     }
     let transcriptDeleted = false;
     if (deleteTranscript && rec.claudeSessionId) {
@@ -365,7 +366,7 @@ export class SessionLifecycle {
         transcriptDeleted = true;
       } catch (e) {
         if (!/not found/i.test(e instanceof Error ? e.message : String(e))) {
-          throw new ForgeError("CLAUDE_RUNTIME", `Transkript nicht gelöscht: ${describeRuntimeError(e)}`);
+          throw new ForgeError("CLAUDE_RUNTIME", tr().core.sessions.transcriptNotDeleted(describeRuntimeError(e)));
         }
       }
     }
@@ -377,7 +378,7 @@ export class SessionLifecycle {
    * Ends all CLI processes. The sessions become "interrupted" like after a crash, so they show up as
    * resumable after the next start. Open approvals are denied while the DB is still open.
    */
-  shutdown(reason = "FORGE wird beendet") {
+  shutdown(reason = tr().core.sessions.forgeQuitting) {
     const entries = [...this.core.live];
     this.core.live.clear();
     for (const [id, l] of entries) {
@@ -406,7 +407,7 @@ export class SessionLifecycle {
         for (const body of n.normalize(m)) if (body.type !== "assistant.delta") this.core.record(sessionId, body);
       }
     } catch (e) {
-      this.core.record(sessionId, { type: "error", message: `Verlauf konnte nicht importiert werden: ${describeRuntimeError(e)}`, retryable: false });
+      this.core.record(sessionId, { type: "error", message: tr().core.sessions.historyNotImported(describeRuntimeError(e)), retryable: false });
     }
   }
 }

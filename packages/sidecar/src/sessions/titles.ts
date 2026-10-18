@@ -3,6 +3,7 @@ import type { ClaudeAssist } from "./claude-assist.js";
 import { titleFrom } from "./live-session.js";
 import type { RemoteBridge } from "./remote-bridge.js";
 import type { SessionCore } from "./session-core.js";
+import { tr } from "../i18n/index.js";
 
 /** Several messages in a row (a correction right after sending) lead to one refresh. */
 export const TITLE_DEBOUNCE_MS = 2_000;
@@ -37,13 +38,8 @@ export function buildTitlePrompt(prompts: string[]): string {
     const one = p.replace(/\s+/g, " ").trim();
     return one.length > PROMPT_CHARS ? `${one.slice(0, PROMPT_CHARS - 1)}…` : one;
   });
-  return [
-    "Schreibe einen kurzen deutschen Titel für diese Claude-Code-Session, höchstens 6 Wörter.",
-    "Er beschreibt, woran gerade gearbeitet wird. Die neueste Anfrage zählt am meisten.",
-    "Antworte nur mit dem Titel, ohne Anführungszeichen und ohne Punkt am Ende.",
-    "",
-    ...short.map((p, i) => `${i === 0 ? "Neueste Anfrage" : "Davor"}: ${p}`),
-  ].join("\n");
+  const m = tr().core.sessions;
+  return [...m.titlePrompt, "", ...short.map((p, i) => `${i === 0 ? m.titleNewest : m.titleBefore}: ${p}`)].join("\n");
 }
 
 const QUOTES = `"'\`„“”‚‘’«»*`;

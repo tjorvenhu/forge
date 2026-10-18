@@ -3,6 +3,7 @@ import type { ClaudeRuntime } from "../claude/runtime.js";
 import type { Db } from "../persistence/db.js";
 import type { ProjectManager } from "../projects/project-manager.js";
 import { describeRuntimeError, type LiveSession } from "./live-session.js";
+import { tr } from "../i18n/index.js";
 
 export interface BridgeHost {
   live(sessionId: string): LiveSession | undefined;
@@ -137,7 +138,7 @@ export class RemoteBridge {
 
   /** Reason for an approval prompt that was aborted by the CLI. */
   abortReason(sessionId: string): string {
-    return this.sessions?.has(sessionId) ? "In der Claude-App beantwortet oder abgebrochen" : "Abgebrochen";
+    return this.sessions?.has(sessionId) ? tr().core.sessions.answeredInApp : tr().core.sessions.aborted;
   }
 
   /**
@@ -178,7 +179,7 @@ export class RemoteBridge {
   private recordMessage(id: string, live: LiveSession, uuid: string, msg: RemoteUserContent) {
     live.seenUuids.add(uuid);
     if (live.remoteTurn) live.remoteTurn.sawMessage = true;
-    const attachments = msg.images.map((img, i) => ({ name: `Bild ${i + 1}`, mediaType: img.mediaType, size: img.size }));
+    const attachments = msg.images.map((img, i) => ({ name: tr().core.sessions.image(i + 1), mediaType: img.mediaType, size: img.size }));
     this.host.record(id, { type: "user.message", text: msg.text, uuid, source: "remote", ...(attachments.length ? { attachments } : {}) });
     this.host.userMessage(id, msg.text);
   }

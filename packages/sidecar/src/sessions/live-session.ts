@@ -3,6 +3,9 @@ import type { ApprovalDecision, ApprovalRequest, RuntimeSession } from "../claud
 import type { Normalizer } from "../claude/normalize.js";
 import type { ProfileConfig } from "../policy/profiles.js";
 import { REPLAY_FLAG } from "../claude/runtime.js";
+import { de } from "../i18n/de/index.js";
+import { en } from "../i18n/en/index.js";
+import { tr } from "../i18n/index.js";
 
 export interface PendingApproval {
   req: ApprovalRequest;
@@ -45,7 +48,14 @@ export interface LiveSession {
 export const BUSY: SessionStatus[] = ["starting", "running", "waiting_approval"];
 
 /** Title of a session started without a prompt (older versions opened one for the Claude app); replaced by the first message. */
-export const REMOTE_PLACEHOLDER_TITLE = "Remote-Session";
+export function remotePlaceholderTitle(): string {
+  return tr().core.sessions.remotePlaceholderTitle;
+}
+
+/** The placeholder title in either language: the language may have changed since the session started. */
+export function isRemotePlaceholderTitle(title: string | null | undefined): boolean {
+  return title === de.core.sessions.remotePlaceholderTitle || title === en.core.sessions.remotePlaceholderTitle;
+}
 
 /** Enough to recognise echoes and find the last known message in a transcript; older ids are not needed. */
 const SEEN_UUIDS_KEEP = 500;
@@ -106,11 +116,11 @@ export function isAuthFailure(msg: string): boolean {
 export function describeRuntimeError(e: unknown): string {
   const msg = e instanceof Error ? e.message : String(e);
   if (isAuthFailure(msg)) {
-    return "Claude Code ist nicht angemeldet oder die Anmeldung ist ungültig. In den Einstellungen unter Claude Code mit „Mit Claude-Konto anmelden“ neu anmelden.";
+    return tr().core.sessions.authFailed;
   }
   if (new RegExp(`unknown option.*${REPLAY_FLAG}`, "i").test(msg)) {
-    return "Diese Claude-Code-Version ist zu alt für FORGE. Bitte Claude Code aktualisieren (Update-Knopf in der Seitenleiste).";
+    return tr().core.sessions.cliTooOld;
   }
-  if (/ENOENT|failed to launch/i.test(msg)) return "Claude Code CLI konnte nicht gestartet werden. Pfad in den Einstellungen prüfen.";
+  if (/ENOENT|failed to launch/i.test(msg)) return tr().core.sessions.cliNotStarted;
   return msg.slice(0, 2000);
 }

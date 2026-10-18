@@ -2,10 +2,11 @@ import { randomUUID } from "node:crypto";
 import { ForgeError, type Attachment, type Session, type TaskMessageRef } from "@forge/protocol";
 import { buildAttachmentBlocks, fitMessageText, type Spill } from "../claude/attachments.js";
 import type { OutgoingMessage } from "../claude/runtime.js";
-import { BUSY, endLive, REMOTE_PLACEHOLDER_TITLE, titleFrom, type LiveSession } from "./live-session.js";
+import { BUSY, endLive, isRemotePlaceholderTitle, titleFrom, type LiveSession } from "./live-session.js";
 import type { RemoteBridge } from "./remote-bridge.js";
 import type { SessionCore } from "./session-core.js";
 import type { TurnAutomation } from "./turn-automation.js";
+import { tr } from "../i18n/index.js";
 
 export interface TurnHost {
   /** no process runs for the session: start one with the message */
@@ -127,10 +128,10 @@ export class TurnDispatch {
       // close() was called but the process has not ended yet: its input queue no longer takes messages.
       await endLive(live);
       live = this.core.live.get(sessionId);
-      if (live?.closing) throw new ForgeError("SESSION_BUSY", "Die Session wird gerade beendet. Bitte gleich erneut senden.");
+      if (live?.closing) throw new ForgeError("SESSION_BUSY", tr().core.sessions.closingRetry);
     }
     if (!live) return this.host.resume(sessionId, text, attachments, source, task);
-    if (live.pending.size > 0) throw new ForgeError("SESSION_BUSY", "Erst die offene Freigabeanfrage beantworten.");
+    if (live.pending.size > 0) throw new ForgeError("SESSION_BUSY", tr().core.sessions.answerApprovalFirst);
     const status = this.core.db.getSession(sessionId)?.status;
     const turn = await this.build(sessionId, text, attachments, !this.automation.isBusy(sessionId) && !(status && BUSY.includes(status)), source, task);
     return this.deliver(sessionId, live, turn);
@@ -139,7 +140,7 @@ export class TurnDispatch {
   /** Sends an already built turn again (after compacting a full context) into the running process. */
   async resend(sessionId: string, turn: BuiltTurn): Promise<Session> {
     const live = this.core.live.get(sessionId);
-    if (!live || live.closing) throw new ForgeError("SESSION_BUSY", "Die Session wurde beendet, bevor die Nachricht erneut gesendet werden konnte.");
+    if (!live || live.closing) throw new ForgeError("SESSION_BUSY", tr().core.sessions.endedBeforeResend);
     const rec = this.core.db.getSession(sessionId);
     if (rec && !this.automation.isBusy(sessionId) && !BUSY.includes(rec.status)) await this.automation.captureBaseline(sessionId, rec.cwd);
     return this.deliver(sessionId, live, turn);
@@ -147,8 +148,8 @@ export class TurnDispatch {
 
   private deliver(sessionId: string, live: LiveSession, turn: BuiltTurn): Session {
     // Re-checked after the await: nothing is recorded for a message that cannot be delivered.
-    if (this.core.live.get(sessionId) !== live || live.closing) throw new ForgeError("SESSION_BUSY", "Die Session wurde beendet, bevor die Nachricht gesendet werden konnte. Bitte erneut senden.");
-    if (live.pending.size > 0) throw new ForgeError("SESSION_BUSY", "Erst die offene Freigabeanfrage beantworten.");
+    if (this.core.live.get(sessionId) !== live || live.closing) throw new ForgeError("SESSION_BUSY", tr().core.sessions.endedBeforeSend);
+    if (live.pending.size > 0) throw new ForgeError("SESSION_BUSY", tr().core.sessions.answerApprovalFirst);
     this.record(sessionId, turn);
     if (this.automation.isBusy(sessionId)) {
       this.hold(sessionId, live, turn.msg);
@@ -162,10 +163,10 @@ export class TurnDispatch {
 
   /** Holds a message until the previous turn's tests and auto-commit are done, so they see only that turn. */
   hold(id: string, live: LiveSession, msg: OutgoingMessage) {
-    this.core.setStatus(id, "running", "Wartet auf Tests und Auto-Commit des letzten Durchlaufs");
+    this.core.setStatus(id, "running", tr().core.sessions.waitingForAutomation);
     this.automation.hold(id, {
       deliver: () => this.automation.track(this.deliverHeld(id, live, msg)),
-      drop: (reason) => this.core.record(id, { type: "error", message: `Nachricht nicht gesendet: ${reason}.`, retryable: true }),
+      drop: (reason) => this.core.record(id, { type: "error", message: tr().core.sessions.messageDropped(reason), retryable: true }),
     });
   }
 
@@ -173,7 +174,7 @@ export class TurnDispatch {
     const rec = this.core.db.getSession(id);
     if (rec) await this.automation.captureBaseline(id, rec.cwd);
     if (this.core.live.get(id) !== live || live.closing) {
-      this.core.record(id, { type: "error", message: "Nachricht nicht gesendet: Session beendet.", retryable: true });
+      this.core.record(id, { type: "error", message: tr().core.sessions.messageDroppedEnded, retryable: true });
       return;
     }
     live.rt.sendMessage(this.withNote(id, msg));
@@ -185,7 +186,7 @@ export class TurnDispatch {
   /** A session started without a prompt takes its title from the first message, from either side. */
   titleFromFirstMessage(id: string, text: string) {
     const rec = this.core.db.getSession(id);
-    if (rec?.title !== REMOTE_PLACEHOLDER_TITLE || !text.trim()) return;
+    if (!isRemotePlaceholderTitle(rec?.title) || !text.trim()) return;
     this.core.publish(this.core.db.updateSession(id, { title: titleFrom(text) }));
     this.remote.retitle(id);
   }

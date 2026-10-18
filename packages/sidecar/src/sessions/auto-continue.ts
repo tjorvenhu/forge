@@ -1,8 +1,16 @@
 import type { PlanUsage, SessionEventBody } from "@forge/protocol";
 import type { AutoContinueRecord, Db } from "../persistence/db.js";
 import { describeRuntimeError } from "./live-session.js";
+import { de } from "../i18n/de/index.js";
+import { tr } from "../i18n/index.js";
 
-export const AUTO_CONTINUE_PROMPT = "Das Nutzungslimit ist zurückgesetzt. Mach bitte dort weiter, wo du aufgehört hast.";
+/** German wording, as older events and the tests have it; what is sent comes from autoContinuePrompt(). */
+export const AUTO_CONTINUE_PROMPT = de.core.sessions.autoContinuePrompt;
+
+/** The automatic message after a limit reset, in the current language. */
+export function autoContinuePrompt(): string {
+  return tr().core.sessions.autoContinuePrompt;
+}
 /** Waited after the reset: the limit server's clock and the local one may differ a little. */
 export const RESET_BUFFER_MS = 2 * 60_000;
 /**
@@ -184,7 +192,7 @@ export class AutoContinue {
 
   private async runDue() {
     if (!this.host.enabled()) {
-      this.cancelAll("Automatisches Weitermachen ist in den Einstellungen ausgeschaltet.");
+      this.cancelAll(tr().core.sessions.autoContinueOff);
       return;
     }
     for (const plan of this.db.listDueAutoContinue(iso(this.now()))) {
@@ -213,7 +221,7 @@ export class AutoContinue {
         state: "exhausted",
         scheduledFor: null,
         attempt: attempts,
-        message: `Das Limit war auch nach ${attempts} automatischen Fortsetzungen erreicht. FORGE macht erst nach deiner nächsten Nachricht wieder automatisch weiter.`,
+        message: tr().core.sessions.autoContinueExhausted(attempts),
       });
       this.host.publish(sessionId);
       return;
@@ -269,7 +277,7 @@ export class AutoContinue {
     this.host.record(id, { type: "auto_continue", state: "resumed", scheduledFor: plan.dueAt, attempt, message: null });
     this.host.publish(id);
     try {
-      await this.host.send(id, AUTO_CONTINUE_PROMPT);
+      await this.host.send(id, autoContinuePrompt());
     } catch (e) {
       this.host.record(id, { type: "auto_continue", state: "failed", scheduledFor: plan.dueAt, attempt, message: describeRuntimeError(e) });
     }

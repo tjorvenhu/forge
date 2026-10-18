@@ -55,7 +55,7 @@ export const automation: typeof De = {
     `Could not fully restore the open changes in the project; they are still in the stash (git stash list). ${detail}`,
   conflictPrompt: (branch, target, behind, files) =>
     [
-      `I wanted to take your branch ${branch} into ${target}. Since you started, ${target} has ${behind} new ${behind === 1 ? "commit" : "commits"} that conflict with your changes in:`,
+      `I wanted to take your branch ${branch} into ${target}. Since you started, ${target} has ${behind} new ${behind === 1 ? "commit that conflicts" : "commits that conflict"} with your changes in:`,
       files.length ? files.map((f) => `- ${f}`).join("\n") : "- (git did not name any files)",
       "",
       "Your branch is unchanged.",

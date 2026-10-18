@@ -3,7 +3,8 @@ import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { browserCandidates, findBrowser, NO_BROWSER, pruneProfiles, sweepProfiles } from "../src/preview/browser.js";
+import { browserCandidates, findBrowser, noBrowser, pruneProfiles, sweepProfiles } from "../src/preview/browser.js";
+import { setLanguage } from "../src/i18n/index.js";
 import { parseKey } from "../src/preview/page.js";
 import { formatLogs, logSummary, PreviewService, stepProblem } from "../src/preview/preview.js";
 import { isLocalUrl, previewUrl } from "../src/preview/url.js";
@@ -84,7 +85,7 @@ describe("browser search", () => {
 
   it("explains a missing browser and a missing dev server in German", async () => {
     const none = new PreviewService({ devServer: async () => ({ status: "stopped", url: null }), findBrowser: () => null });
-    await expect(none.screenshot("p", {})).rejects.toThrow(NO_BROWSER);
+    await expect(none.screenshot("p", {})).rejects.toThrow(noBrowser());
   });
 });
 
@@ -130,6 +131,24 @@ describe("preview helpers", () => {
       "Weitere Konsolenmeldungen:",
       "- [log] hallo",
     ]);
+  });
+
+  it("speaks English when English is set", () => {
+    setLanguage("en");
+    try {
+      const logs = [
+        { kind: "console" as const, level: "error", text: "broken" },
+        { kind: "console" as const, level: "error", text: "broken again" },
+        { kind: "network" as const, level: "404", text: "GET http://localhost:3000/api → 404 Not Found" },
+      ];
+      expect(logSummary(logs)).toBe("2 errors; 1 failed request");
+      expect(logSummary([])).toBe("no messages");
+      expect(formatLogs(logs)[0]).toBe("Console errors and warnings:");
+      expect(stepProblem({ action: "wait" })).toBe("wait needs ms or selector.");
+      expect(() => previewUrl({ url: "https://example.com" })).toThrow("The preview only opens addresses on this computer (localhost, 127.0.0.1, ::1), not example.com.");
+    } finally {
+      setLanguage("de");
+    }
   });
 });
 

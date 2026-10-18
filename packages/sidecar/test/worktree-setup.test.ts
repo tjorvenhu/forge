@@ -9,6 +9,7 @@ import { WorktreeService } from "../src/automation/worktrees.js";
 import { FIRST_AGENT_DEV_PORT, installPlan, LOCAL_CONFIG, runShell, WorktreeSetup, type ShellRunner, type WorktreeSetupDeps } from "../src/automation/worktree-setup.js";
 import { withPortFlag } from "../src/devserver/port-args.js";
 import { findFreePort } from "../src/util/ports.js";
+import { setLanguage } from "../src/i18n/index.js";
 import { git, initRepo, tempDir } from "./helpers.js";
 
 const write = (file: string, text = "x\n") => {
@@ -177,6 +178,13 @@ describe("WorktreeSetup", () => {
     const wt = await worktrees.create(parent, "agent/kaputt");
     await new Promise((r) => setTimeout(r, 300));
     expect(s.context(wt.id)).toMatch(/bereitet deinen Worktree gerade vor.*Abhängigkeiten.*wait=true/);
+    setLanguage("en");
+    try {
+      expect(s.context(wt.id)).toMatch(/preparing your worktree.*Dependencies.*wait=true/);
+      expect(s.describe(wt.id)).toMatch(/^Worktree preparation \(FORGE, running for/);
+    } finally {
+      setLanguage("de");
+    }
     release();
     const done = await s.wait(wt.id, 30_000);
     expect(done?.status).toBe("failed");

@@ -9,13 +9,14 @@ import { blockedTools, NO_NETWORK_TAG } from "../policy/profiles.js";
 import { redact } from "../policy/redact.js";
 import type { LiveSession } from "./live-session.js";
 import type { SessionCore } from "./session-core.js";
+import { tr } from "../i18n/index.js";
 
 /** Tools that ask the user something instead of doing something; answered in their own cards. */
 const QUESTION_TOOL = "AskUserQuestion";
 const PLAN_TOOL = "ExitPlanMode";
 const INTERACTIVE_TOOLS = new Set([QUESTION_TOOL, PLAN_TOOL]);
 
-const GUARD_ERROR: GuardViolation = { rule: "guard-error", message: "Die Policy-Prüfung ist fehlgeschlagen, der Aufruf wurde vorsichtshalber abgelehnt." };
+const guardError = (): GuardViolation => ({ rule: "guard-error", message: tr().core.sessions.guardError });
 
 export interface ApprovalHost {
   /** reason recorded when the CLI aborts an open prompt */
@@ -59,7 +60,7 @@ export class ApprovalGate {
           disabledRules: new Set(this.core.db.getSettings().disabledPolicyRules),
         });
     } catch {
-      v = GUARD_ERROR;
+      v = guardError();
     }
     if (v) {
       try {
@@ -139,16 +140,17 @@ export class ApprovalGate {
   respond(sessionId: string, requestId: string, decision: "allow" | "deny", scope: "once" | "session", message?: string, answers?: Record<string, string>) {
     const live = this.core.live.get(sessionId);
     const p = live?.pending.get(requestId);
-    if (!live || !p) throw new ForgeError("NOT_FOUND", "Diese Freigabeanfrage ist nicht mehr offen.");
+    if (!live || !p) throw new ForgeError("NOT_FOUND", tr().core.sessions.approvalGone);
     const tool = p.req.toolName;
     if (decision === "deny") {
-      const fallback = tool === QUESTION_TOOL ? "Der Nutzer möchte die Rückfrage nicht beantworten." : tool === PLAN_TOOL ? "Der Nutzer möchte den Plan überarbeiten." : "Vom Nutzer abgelehnt";
+      const m = tr().core.sessions;
+      const fallback = tool === QUESTION_TOOL ? m.questionDeclined : tool === PLAN_TOOL ? m.planDeclined : m.deniedByUser;
       p.resolve({ behavior: "deny", message: message?.trim() || fallback });
       return { ok: true };
     }
     if (tool === QUESTION_TOOL) {
       const given = Object.fromEntries(Object.entries(answers ?? {}).filter(([, v]) => v.trim()));
-      if (!Object.keys(given).length) throw new ForgeError("VALIDATION", "Bitte mindestens eine Frage beantworten.");
+      if (!Object.keys(given).length) throw new ForgeError("VALIDATION", tr().core.sessions.answerOne);
       p.resolve({ behavior: "allow", scope: "once", updatedInput: { ...p.req.input, answers: given } });
       return { ok: true };
     }
@@ -160,7 +162,7 @@ export class ApprovalGate {
       return { ok: true };
     }
     if (scope === "session" && !(live.profile.allowSessionScope && !p.req.suppressAlwaysAllow)) {
-      throw new ForgeError("POLICY_DENIED", "Für dieses Profil oder dieses Tool ist keine Freigabe für die ganze Session erlaubt.");
+      throw new ForgeError("POLICY_DENIED", tr().core.sessions.noSessionScope);
     }
     p.resolve({ behavior: "allow", scope });
     return { ok: true };
@@ -168,8 +170,8 @@ export class ApprovalGate {
 
   /** disallowedTools is fixed at process start; a later stricter profile or a new no-network tag is enforced here. */
   private blockedTool(id: string, live: LiveSession, toolName: string): GuardViolation | null {
-    if (live.profile.disallowedTools.includes(toolName)) return { rule: "profile-tool", message: `Das Profil ${live.profile.label} erlaubt ${toolName} nicht.` };
-    if (blockedTools(live.profile, this.host.projectTags(id)).includes(toolName)) return { rule: "no-network", message: `Das Projekt-Tag ${NO_NETWORK_TAG} erlaubt ${toolName} nicht.` };
+    if (live.profile.disallowedTools.includes(toolName)) return { rule: "profile-tool", message: tr().core.sessions.profileForbidsTool(live.profile.label, toolName) };
+    if (blockedTools(live.profile, this.host.projectTags(id)).includes(toolName)) return { rule: "no-network", message: tr().core.sessions.tagForbidsTool(NO_NETWORK_TAG, toolName) };
     return null;
   }
 

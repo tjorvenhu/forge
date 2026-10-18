@@ -1,5 +1,6 @@
 import type { DailyReportUsage, ForgeUsagePurpose } from "@forge/protocol";
 import type { ClaudeUsageRow } from "../persistence/db.js";
+import { tr } from "../i18n/index.js";
 
 /** Days in the trend of the report, the report's day included. */
 export const TREND_DAYS = 14;
@@ -53,7 +54,7 @@ export function usageStats(rows: ClaudeUsageRow[], from: Date, to: Date, days: A
       h.turns++;
     }
     const key = r.rootId ?? "";
-    const p = projects.get(key) ?? { rootId: key, name: r.rootName ?? "Ohne Projekt", workMs: 0, tokens: 0, turns: 0 };
+    const p = projects.get(key) ?? { rootId: key, name: r.rootName ?? tr().core.reports.noProject, workMs: 0, tokens: 0, turns: 0 };
     p.workMs += ms;
     if (ended(r)) {
       p.tokens += tokensOf(r);

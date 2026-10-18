@@ -1,6 +1,6 @@
+import { tr } from "../i18n/index.js";
 import { CdpTimeout, type Cdp } from "./browser.js";
 import { isLocalUrl } from "./url.js";
-import { tr } from "../i18n/index.js";
 
 export interface PageLogEntry {
   kind: "console" | "exception" | "network";
