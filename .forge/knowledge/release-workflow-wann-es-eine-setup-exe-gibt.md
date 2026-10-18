@@ -1,8 +1,8 @@
 ---
 title: "Release-Workflow: nächtlich, setup.exe, Installer-Namen, Signatur (Update-Signatur, Azure Code-Signatur)"
-summary: "Wann Releases entstehen (nachts oder von Hand), warum meist nur ein Update-Zip, wie der volle Installer heißt und gebaut wird, wie Release-Dateien signiert werden (Update-Signatur und Authenticode über Azure Artifact Signing) und was bei fehlendem Schlüssel oder ausbleibendem Lauf zu tun ist."
+summary: "Wann Releases entstehen (nachts oder von Hand), wie der volle Installer gebaut wird, wie Release-Dateien signiert werden (Ed25519-Update-Signatur, Azure-Authenticode nur für eigene exe) und was bei Fehlern zu tun ist."
 tags: ["release","github-actions","installer","stolperfalle"]
-updated: "2026-10-18T19:31:09.208Z"
+updated: "2026-10-18T20:16:33.557Z"
 ---
 
 Repo seit 2026-10-17: `vanturis/forge` (vorher `tjorvenhu/forge`, GitHub leitet weiter).
@@ -31,13 +31,14 @@ Repo seit 2026-10-17: `vanturis/forge` (vorher `tjorvenhu/forge`, GitHub leitet 
 - Reihenfolge: erst Authenticode, dann `.sig` (die Code-Signatur ändert die Bytes der exe).
 
 ## Code-Signatur Authenticode (Azure Artifact Signing, eingebaut 2026-10-18)
-- `scripts/codesign.mjs`: signtool aus dem Windows SDK (>= 10.0.22621, sucht die neueste unter `Windows Kits\10\bin`) plus Microsofts dlib aus dem NuGet-Paket `Microsoft.ArtifactSigning.Client` (Version und SHA-512 gepinnt, Werkzeuge landen in `.codesign/`, gitignored). `--setup` lädt und schreibt `metadata.json`; sonst signiert es die übergebenen Dateien, mit 3 Versuchen und Zeitstempel `http://timestamp.acs.microsoft.com` (Zertifikate gelten nur 3 Tage).
-- Workflow: Ohne Secret `AZURE_CLIENT_ID` baut er unsigniert mit Warnung. Sonst: Schritt „Code signing tools“ (früher Abbruch bei falschen Variablen), `tauri.ci.json` bekommt `bundle.windows.signCommand = {cmd: node, args: [codesign.mjs, %1]}`, nach dem Build wird `target/release/forge-desktop.exe` fürs Update-Zip signiert, „Package and publish“ prüft mit `Get-AuthenticodeSignature` exe und setup.exe.
-- Secrets `AZURE_TENANT_ID`, `AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET` (App-Registrierung mit Rolle „Artifact Signing Certificate Profile Signer“ auf dem Zertifikatsprofil), Variablen `AZURE_SIGNING_ENDPOINT` (regional, muss zur Region des Kontos passen, sonst 403), `AZURE_SIGNING_ACCOUNT`, `AZURE_SIGNING_PROFILE`.
-- Stolperfalle Tauri: der Bundler gibt **jede unsignierte exe/dll der Ressourcen** an den signCommand, also hunderte Dateien aus Git for Windows und Python in `runtime/`. codesign.mjs überspringt alles unter dem Laufzeit-Ordner `runtime` der Ressourcen bzw. `target/<profil>/runtime` (Fremdsoftware soll nicht die Vanturis-Signatur tragen, Signaturen pro Monat sind begrenzt). Tauri kann Pfade als `\\?\C:\…` übergeben, deshalb wird das Präfix vor dem Vergleich entfernt.
+- Eingetragen seit 2026-10-18: Secrets `AZURE_TENANT_ID`, `AZURE_CLIENT_ID` (App-Registrierung `forge-github-signing`), `AZURE_CLIENT_SECRET`; Variablen `AZURE_SIGNING_ENDPOINT` = `https://neu.codesigning.azure.net/` (North Europe, muss zur Region des Kontos passen, sonst 403), `AZURE_SIGNING_ACCOUNT` = `vanturis-signing`, `AZURE_SIGNING_PROFILE` = `vanturis-public`. Die App-Registrierung braucht auf dem Profil die Rolle „Artifact Signing Certificate Profile Signer“.
+- `scripts/codesign.mjs`: signtool aus dem Windows SDK (>= 10.0.22621) plus Microsofts dlib aus dem NuGet-Paket `Microsoft.ArtifactSigning.Client` (Version und SHA-512 gepinnt, Werkzeuge in `.codesign/`, gitignored). `--setup` lädt und schreibt `metadata.json`; sonst signiert es die übergebenen Dateien, mit 3 Versuchen und Zeitstempel `http://timestamp.acs.microsoft.com` (Zertifikate gelten nur 3 Tage).
+- **Nur eigene Programme signieren (Entscheidung des Besitzers 2026-10-18, Kontingent 5000 Signaturen/Monat):** `SIGN_ONLY` in codesign.mjs erlaubt nur `forge-desktop.exe`, `*_x64-setup.exe` und den Deinstaller (`nstXXXX.tmp`, den NSIS als Temp-Datei signieren lässt). Tauri gibt **jede unsignierte exe/dll** an den signCommand: ~560 Dateien der Laufzeit (Git for Windows, Python, Node, gh) und die NSIS-Plugin-DLLs. Die bleiben unsigniert; im Log steht je Datei „nicht signiert (keine Signatur verbraucht)“. Verbrauch: voller Installer 3, nächtliches Update-Release 1. Gezählt wird nur, was signtool mit „Successfully signed“ meldet.
+- Workflow: Ohne Secret `AZURE_CLIENT_ID` baut er unsigniert mit Warnung. Sonst: Schritt „Code signing tools“ (früher Abbruch bei falschen Variablen), `tauri.ci.json` bekommt `bundle.windows.signCommand = {cmd: node, args: [codesign.mjs, %1]}`, nach dem Build wird `target/release/forge-desktop.exe` fürs Update-Zip signiert, „Package and publish“ prüft mit `Get-AuthenticodeSignature` exe und setup.exe (ein umbenannter Installer, der nicht mehr zu `SIGN_ONLY` passt, fällt dort auf).
 - Stolperfalle Tauri: Nach dem Bundling stellt Tauri die unsignierte exe in `target/release` wieder her; in der setup.exe steckt die signierte. Mit `--no-bundle` signiert Tauri gar nichts.
 - Lokal testen: mit gesetzten `AZURE_SIGNING_*` und `az login` (ohne `AZURE_CLIENT_SECRET` lässt metadata.json alle Credential-Arten zu).
 - SignPath Foundation (kostenlos für Open Source) passt nicht: verlangt keine proprietären Bestandteile, der Sidecar bündelt aber `@anthropic-ai/claude-agent-sdk` („All rights reserved“).
+- Logs eines laufenden Jobs liefert die GitHub-API nicht (`actions/jobs/<id>/logs` ist leer); erst nach Ende oder Abbruch mit `gh run view <id> --log`.
 
 ## Stolperfalle: Update-Zip statt Installer (2026-10-17)
 Wer das Update-Zip statt der setup.exe startet, hat kein `runtime/` mit git und gh. FORGE zeigt das als Banner „FORGE ist nicht vollständig installiert“ mit Knopf zum Nachinstallieren.
