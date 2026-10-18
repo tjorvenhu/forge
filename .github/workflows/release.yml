@@ -1,4 +1,6 @@
-# Builds FORGE on every push to main and publishes it as a GitHub release (version 0.1.<run number>).
+# Builds FORGE once a night when main changed since the last release, or by hand (Run workflow), and
+# publishes it as a GitHub release (version 0.1.<run number>). Nightly instead of on every push: installed
+# apps offer each release as an update, and one a day is enough for people who use FORGE.
 #
 # Two kinds of release assets:
 #   FORGE_<v>_update_<runtime>.zip   every release. Only forge-desktop.exe and the sidecar, a few MB.
@@ -16,15 +18,9 @@
 name: Release
 
 on:
-  push:
-    branches: [main]
-    paths-ignore:
-      - "**/*.md"
-      - "docs/**"
-      # the statistics service deploys through Coolify, not with the app
-      - "services/**"
-      - "*.png"
-      - "*.docx"
+  schedule:
+    # 03:00 UTC, early morning in Europe
+    - cron: "0 3 * * *"
   workflow_dispatch:
     inputs:
       full:
@@ -35,13 +31,35 @@ on:
 permissions:
   contents: write
 
-# A newer push makes a running build obsolete: only the newest one is finished.
+# A newer run makes a running build obsolete: only the newest one is finished.
 concurrency:
   group: release
   cancel-in-progress: true
 
 jobs:
+  # Nightly: only when something the app is built from changed since the last release. By hand: always.
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      build: ${{ steps.check.outputs.build }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ "${{ github.event_name }}" != "schedule" ]; then echo "build=true" >> "$GITHUB_OUTPUT"; exit 0; fi
+          last=$(gh api "repos/${{ github.repository }}/releases?per_page=1" --jq '.[0].target_commitish // empty')
+          if [ -z "$last" ] || ! git cat-file -e "$last^{commit}" 2>/dev/null; then echo "build=true" >> "$GITHUB_OUTPUT"; exit 0; fi
+          # the statistics service deploys through Coolify, documents do not ship with the app
+          changed=$(git diff --name-only "$last" HEAD | grep -Ev '\.md$|^docs/|^services/|\.png$|\.docx$|^\.forge/' || true)
+          if [ -n "$changed" ]; then echo "build=true" >> "$GITHUB_OUTPUT"; else echo "build=false" >> "$GITHUB_OUTPUT"; echo "Nothing to release since $last"; fi
+
   release:
+    needs: changes
+    if: needs.changes.outputs.build == 'true'
     runs-on: windows-latest
     timeout-minutes: 60
     steps:
@@ -168,7 +186,7 @@ jobs:
           $prev = git describe --tags --abbrev=0 2>$null
           $range = if ($prev) { "$prev..HEAD" } else { "HEAD~20..HEAD" }
           $notes = (git log $range --no-merges --format="- %s") -join "`n"
-          if (-not $notes) { $notes = "- Wartung" }
+          if (-not $notes) { $notes = "- Maintenance" }
           # "Latest" stays on the newest full installer: the download for new installations, and what
           # versions before the small updates look for (they only read releases/latest).
           $latest = if ("${{ steps.plan.outputs.full }}" -eq "true") { "--latest" } else { "--latest=false" }
