@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { t } from "@/i18n";
 
 export interface Toast {
   id: number;
@@ -86,7 +87,7 @@ export const toast = {
   saved: () => {
     const s = useToasts.getState();
     if (savedId !== null && s.toasts.some((t) => t.id === savedId && !t.leaving)) s.extend(savedId, SAVED_MS);
-    else savedId = s.push({ tone: "success", title: "Automatisch gespeichert", duration: SAVED_MS });
+    else savedId = s.push({ tone: "success", title: t.stores.autoSaved, duration: SAVED_MS });
   },
   success: (title: string, body?: string) => useToasts.getState().push({ tone: "success", title, body }),
   error: (title: string, body?: string) => useToasts.getState().push({ tone: "error", title, body }),

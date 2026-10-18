@@ -1,5 +1,6 @@
 import type { CSSProperties, ReactNode } from "react";
 import { cn } from "@/lib/utils";
+import { t } from "@/i18n";
 
 /** A placeholder block in the shape of content that is still loading. */
 export function Skeleton({ className, style }: { className?: string; style?: CSSProperties }) {
@@ -7,7 +8,7 @@ export function Skeleton({ className, style }: { className?: string; style?: CSS
 }
 
 /** Wraps skeleton blocks so tests and screen readers find them as one loading region. */
-export function SkeletonRegion({ label = "Lädt", className, style, children }: { label?: string; className?: string; style?: CSSProperties; children: ReactNode }) {
+export function SkeletonRegion({ label = t.ui.loading, className, style, children }: { label?: string; className?: string; style?: CSSProperties; children: ReactNode }) {
   return (
     <div className={className} style={style} role="status" aria-label={label}>
       {children}
@@ -186,7 +187,7 @@ export function CodeSkeleton({ lines = 14, gutter = true, className, label }: { 
 }
 
 /** A text editor box in its final size; pass the editor's height via className. */
-export function EditorSkeleton({ className, label = "Lädt Editor" }: { className?: string; label?: string }) {
+export function EditorSkeleton({ className, label = t.ui.loadingEditor }: { className?: string; label?: string }) {
   return (
     <div className={cn("h-full min-h-24 w-full overflow-hidden rounded-md border border-border bg-surface", className)}>
       <CodeSkeleton label={label} lines={12} className="h-full" />
@@ -211,7 +212,7 @@ export function KeyValueSkeleton({ rows = 4, className, label }: { rows?: number
 /** A chat thread while its history loads: a prompt, an answer, a tool line. */
 export function ChatSkeleton() {
   return (
-    <SkeletonRegion label="Lädt Verlauf" className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-7 px-6 pt-6">
+    <SkeletonRegion label={t.ui.loadingHistory} className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-7 px-6 pt-6">
       {[0, 1].map((n) => (
         <div key={n} className="flex flex-col gap-3">
           <Skeleton className="-mx-3 h-11 w-[min(70%,40rem)]" />

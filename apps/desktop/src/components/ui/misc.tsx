@@ -5,6 +5,7 @@ import { AlertTriangle, Check, Info, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { POPPER_MOTION } from "@/lib/motion";
 import { TipText } from "./title-tooltips";
+import { t } from "@/i18n";
 
 type Tone = "neutral" | "accent" | "success" | "warning" | "danger";
 
@@ -25,11 +26,11 @@ export function Badge({ tone = "neutral", children, className }: { tone?: Tone; 
 }
 
 export function Spinner({ className }: { className?: string }) {
-  return <Loader2 className={cn("h-4 w-4 animate-spin text-muted", className)} aria-label="Lädt" />;
+  return <Loader2 className={cn("h-4 w-4 animate-spin text-muted", className)} aria-label={t.ui.loading} />;
 }
 
 /** Loading placeholder for a section: centred spinner with a short text and room around it. */
-export function Loading({ label = "Lädt …", className }: { label?: string; className?: string }) {
+export function Loading({ label = t.ui.loadingEllipsis, className }: { label?: string; className?: string }) {
   return (
     <div className={cn("flex items-center justify-center gap-2 py-6 text-xs text-muted", className)} role="status">
       <Spinner className="h-3.5 w-3.5" /> {label}
@@ -116,7 +117,7 @@ export function InfoTip({ children }: { children: ReactNode }) {
     <Tooltip content={children} delay={100}>
       <button
         type="button"
-        aria-label="Info"
+        aria-label={t.ui.info}
         // Keeps the tip open on click (Radix skips its close handler) and, inside a <label>, the checkbox or field untouched.
         onClick={(e) => e.preventDefault()}
         onPointerDown={(e) => e.preventDefault()}
@@ -181,7 +182,7 @@ export function EmptyState({ icon, title, children, action }: { icon?: ReactNode
   );
 }
 
-export function ErrorBanner({ title = "Fehler", children, action }: { title?: string; children: ReactNode; action?: ReactNode }) {
+export function ErrorBanner({ title = t.ui.error, children, action }: { title?: string; children: ReactNode; action?: ReactNode }) {
   return (
     <div role="alert" className="flex items-start gap-3 rounded-lg border border-danger/30 bg-danger-soft px-3 py-2.5 text-body">
       <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-danger" />

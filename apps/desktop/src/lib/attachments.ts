@@ -1,5 +1,6 @@
 import { MAX_UPLOAD_BYTES, UPLOAD_CHUNK_CHARS } from "@forge/protocol";
 import { call } from "@/lib/queries";
+import { t } from "@/i18n";
 
 /**
  * Long side of a pasted image. More pixels do not help Claude (the API scales larger images down), and
@@ -42,11 +43,11 @@ export async function encodeToFit(size: { width: number; height: number }, sourc
     width = Math.max(1, Math.round(width * 0.75));
     height = Math.max(1, Math.round(height * 0.75));
   }
-  throw new Error("Das Bild ließ sich nicht klein genug speichern.");
+  throw new Error(t.lib.attachments.notSmallEnough);
 }
 
 function toBlob(canvas: HTMLCanvasElement, type: string, quality?: number): Promise<Blob> {
-  return new Promise((resolve, reject) => canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("Bild konnte nicht gespeichert werden."))), type, quality));
+  return new Promise((resolve, reject) => canvas.toBlob((b) => (b ? resolve(b) : reject(new Error(t.lib.attachments.notSaved))), type, quality));
 }
 
 function canvasEncoder(image: ImageBitmap): Encoder {
@@ -55,7 +56,7 @@ function canvasEncoder(image: ImageBitmap): Encoder {
     canvas.width = width;
     canvas.height = height;
     const ctx = canvas.getContext("2d");
-    if (!ctx) throw new Error("Bild konnte nicht verkleinert werden.");
+    if (!ctx) throw new Error(t.lib.attachments.notResized);
     ctx.imageSmoothingQuality = "high";
     ctx.drawImage(image, 0, 0, width, height);
     const blob = await toBlob(canvas, type, quality);
@@ -84,7 +85,7 @@ export async function prepareImage(file: Blob, name: string): Promise<{ blob: Bl
     image = await createImageBitmap(file);
   } catch {
     if (API_TYPES.includes(file.type) && file.size <= MAX_IMAGE_BYTES) return { blob: file, name };
-    throw new Error("Das Bild konnte nicht gelesen werden.");
+    throw new Error(t.lib.attachments.notRead);
   }
   try {
     const target = targetSize({ width: image.width, height: image.height, bytes: file.size, type: file.type });
@@ -103,14 +104,14 @@ function readBase64(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
     const r = new FileReader();
     r.onload = () => resolve(String(r.result).split(",")[1] ?? "");
-    r.onerror = () => reject(r.error ?? new Error("Lesefehler"));
+    r.onerror = () => reject(r.error ?? new Error(t.lib.attachments.readError));
     r.readAsDataURL(blob);
   });
 }
 
 /** Uploads a file in chunks to the sidecar; returns the path it is stored under. */
 export async function uploadFile(blob: Blob, name: string): Promise<string> {
-  if (blob.size > MAX_UPLOAD_BYTES) throw new Error(`Größer als ${MAX_UPLOAD_BYTES / 1024 / 1024} MB. Größere Dateien bitte in das Eingabefeld ziehen.`);
+  if (blob.size > MAX_UPLOAD_BYTES) throw new Error(t.lib.attachments.tooLarge(MAX_UPLOAD_BYTES / 1024 / 1024));
   const uploadId = crypto.randomUUID();
   let index = 0;
   for (let start = 0; ; start += CHUNK_BYTES) {
@@ -118,7 +119,7 @@ export async function uploadFile(blob: Blob, name: string): Promise<string> {
     const chunk = await readBase64(blob.slice(start, start + CHUNK_BYTES));
     const { path } = await call("attachments.upload", { uploadId, name, index: index++, chunk, last });
     if (last) {
-      if (!path) throw new Error("Upload unvollständig.");
+      if (!path) throw new Error(t.lib.attachments.uploadIncomplete);
       return path;
     }
   }

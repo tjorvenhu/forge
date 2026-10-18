@@ -4,6 +4,7 @@ import { toast } from "@/stores/toast";
 import { useUi } from "@/stores/ui";
 import { call } from "./queries";
 import { errorMessage } from "./rpc";
+import { t } from "@/i18n";
 
 /** Looks now for requests the user keeps sending and saves them as learned templates. */
 export async function learnTemplatesNow(qc: QueryClient) {
@@ -12,10 +13,10 @@ export async function learnTemplatesNow(qc: QueryClient) {
   try {
     const r = await call("templates.learn", {});
     void qc.invalidateQueries({ queryKey: ["templates"] });
-    if (r.added.length) toast.success(r.added.length === 1 ? "Vorlage gelernt" : `${r.added.length} Vorlagen gelernt`, r.added.map((t) => t.name).join(", "));
-    else toast.info("Nichts Neues gelernt", r.message);
+    if (r.added.length) toast.success(t.lib.templates.learned(r.added.length), r.added.map((x) => x.name).join(", "));
+    else toast.info(t.lib.templates.nothingNew, r.message);
   } catch (e) {
-    toast.error("Vorlagen nicht gelernt", errorMessage(e));
+    toast.error(t.lib.templates.notLearned, errorMessage(e));
   } finally {
     useTemplateLearning.setState({ running: false });
   }
@@ -25,8 +26,8 @@ export async function learnTemplatesNow(qc: QueryClient) {
 export function announceLearnedTemplates(names: string[]) {
   toast.notify({
     tone: "info",
-    title: names.length === 1 ? "Neue Vorlage gelernt" : `${names.length} neue Vorlagen gelernt`,
-    body: `${names.join(", ")}. Im Chat schlägt FORGE sie beim Tippen vor.`,
-    action: { label: "Ansehen", onClick: () => useUi.getState().openSettings("templates") },
+    title: t.lib.templates.newLearned(names.length),
+    body: t.lib.templates.newLearnedBody(names.join(", ")),
+    action: { label: t.lib.view, onClick: () => useUi.getState().openSettings("templates") },
   });
 }

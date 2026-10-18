@@ -13,6 +13,7 @@ import { announceLearnedTemplates } from "./template-learning";
 import { handleChatWindowRequest, isChatWindow } from "./chat-windows";
 import { agentAutoMerged, agentTurnEnded } from "./agent-review";
 import { installFull, installUpdate } from "./app-install";
+import { t } from "@/i18n";
 
 const GIT_REFRESH_DELAY_MS = 400;
 const EVICT_INTERVAL_MS = 60_000;
@@ -157,9 +158,9 @@ export function routeServerEvent(qc: QueryClient, git: GitRefresher, e: ServerEv
       }
       if (isChatWindow()) break;
       if (e.payload.task === "update" && e.payload.phase === "done") {
-        toast.success("Claude Code aktualisiert", `${e.payload.message ?? ""} Offene Sessions nutzen die neue Version nach einem Neustart.`.trim());
+        toast.success(t.lib.serverEvents.claudeUpdated, `${e.payload.message ?? ""} ${t.lib.serverEvents.claudeUpdatedBody}`.trim());
       } else if (e.payload.task === "update" && e.payload.phase === "error") {
-        toast.error("Update fehlgeschlagen", e.payload.message ?? undefined);
+        toast.error(t.lib.serverEvents.updateFailed, e.payload.message ?? undefined);
       }
       break;
     case "claude.authRequired":
@@ -221,8 +222,8 @@ export function routeServerEvent(qc: QueryClient, git: GitRefresher, e: ServerEv
       void qc.invalidateQueries({ queryKey: keys.runtimeInfo });
       if (isChatWindow()) break;
       const names = e.payload.added.map((m) => m.displayName);
-      if (names.length === 1) toast.info("Neues Modell verfügbar", `${names[0]} lässt sich jetzt im Composer und in den Einstellungen auswählen.`);
-      else if (names.length > 1) toast.info("Neue Modelle verfügbar", `${names.join(", ")} lassen sich jetzt im Composer und in den Einstellungen auswählen.`);
+      if (names.length === 1) toast.info(t.lib.serverEvents.newModel, t.lib.serverEvents.newModelBody(names[0]!));
+      else if (names.length > 1) toast.info(t.lib.serverEvents.newModels, t.lib.serverEvents.newModelsBody(names.join(", ")));
       break;
     }
     case "phone.updated": {

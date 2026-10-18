@@ -2,10 +2,11 @@ import type { MouseEvent as ReactMouseEvent } from "react";
 import type { MenuItem } from "@/components/ui/dropdown";
 import { errorMessage } from "@/lib/rpc";
 import { toast } from "@/stores/toast";
+import { t } from "@/i18n";
 
 /** Copies text for a menu entry; only a failure is worth a word. */
 export function copyText(text: string) {
-  navigator.clipboard.writeText(text).catch((e: unknown) => toast.error("Nicht kopiert", errorMessage(e)));
+  navigator.clipboard.writeText(text).catch((e: unknown) => toast.error(t.lib.copyFailed, errorMessage(e)));
 }
 
 /** Entries a component offers for a right click on it, shown above the general ones (copy, paste, links). */

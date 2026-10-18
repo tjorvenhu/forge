@@ -7,6 +7,7 @@ import { EditorView } from "@codemirror/view";
 import { createTheme } from "@uiw/codemirror-themes";
 import { tags as t } from "@lezer/highlight";
 import { languageFor, type LanguageDescription } from "./file-language";
+import { t as m } from "@/i18n";
 
 const v = (name: string) => `var(--syntax-${name})`;
 
@@ -119,9 +120,9 @@ export function CodeView({ path, content, truncated, line, jumpKey }: CodeViewPr
         basicSetup={{ lineNumbers: true, foldGutter: true, highlightActiveLine: true, highlightActiveLineGutter: true, autocompletion: false }}
       />
       <div className="flex h-6 shrink-0 items-center gap-4 border-t border-border px-3 text-2xs text-muted">
-        {truncated && <span className="text-warning">Vorschau auf 512 KB gekürzt</span>}
-        <span className="ml-auto">{lines === 1 ? "1 Zeile" : `${lines} Zeilen`}</span>
-        <span>{desc?.name ?? "Nur Text"}</span>
+        {truncated && <span className="text-warning">{m.ui.codeView.truncated}</span>}
+        <span className="ml-auto">{m.ui.codeView.lines(lines)}</span>
+        <span>{desc?.name ?? m.ui.codeView.plainText}</span>
       </div>
     </div>
   );

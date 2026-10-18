@@ -5,6 +5,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { toast } from "@/stores/toast";
 import { call, keys, useSettings } from "./queries";
 import { errorMessage, isTauri } from "./rpc";
+import { t } from "@/i18n";
 
 /**
  * Main window: hands "Im Vordergrund bleiben" to the shell, which applies it to the main window only;
@@ -21,9 +22,9 @@ export function useAlwaysOnTop() {
 export async function setAlwaysOnTop(qc: QueryClient, on: boolean) {
   try {
     qc.setQueryData(keys.settings, await call("settings.update", { alwaysOnTop: on }));
-    toast.success(on ? "Das Hauptfenster bleibt im Vordergrund" : "Das Hauptfenster bleibt nicht mehr im Vordergrund");
+    toast.success(on ? t.lib.windowOptions.mainOnTop : t.lib.windowOptions.mainNotOnTop);
   } catch (e) {
-    toast.error("Einstellung nicht gespeichert", errorMessage(e));
+    toast.error(t.lib.windowOptions.settingNotSaved, errorMessage(e));
   }
 }
 
@@ -44,6 +45,6 @@ export async function setChatWindowPin(on: boolean) {
   try {
     useChatWindowPin.setState({ on: await invoke<boolean>("chat_window_on_top", { on }) });
   } catch (e) {
-    toast.error(on ? "Fenster nicht angeheftet" : "Fenster nicht gelöst", errorMessage(e));
+    toast.error(on ? t.lib.chatWindows.notPinned : t.lib.chatWindows.notUnpinned, errorMessage(e));
   }
 }

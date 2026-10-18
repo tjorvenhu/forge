@@ -2,13 +2,14 @@ import { open, save } from "@tauri-apps/plugin-dialog";
 import { isPermissionGranted, requestPermission, sendNotification } from "@tauri-apps/plugin-notification";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { invoke } from "@tauri-apps/api/core";
+import { t } from "@/i18n";
 
 export async function pickFolder(title: string, defaultPath?: string | null): Promise<string | null> {
   const r = await open({ directory: true, multiple: false, title, defaultPath: defaultPath ?? undefined });
   return typeof r === "string" ? r : null;
 }
 
-const JSON_FILTER = [{ name: "FORGE-Backup", extensions: ["json"] }];
+const JSON_FILTER = [{ name: t.lib.backupFilter, extensions: ["json"] }];
 
 /** Where to save a backup file; null when the dialog was cancelled. */
 export async function pickSaveFile(title: string, defaultPath: string): Promise<string | null> {
@@ -23,7 +24,7 @@ export async function pickBackupFile(title: string): Promise<string | null> {
 
 /** A downloaded FORGE setup.exe; null when the dialog was cancelled. */
 export async function pickInstallerFile(): Promise<string | null> {
-  const r = await open({ multiple: false, directory: false, title: "FORGE-Installer auswählen", filters: [{ name: "FORGE-Installer", extensions: ["exe"] }] });
+  const r = await open({ multiple: false, directory: false, title: t.lib.install.pickInstaller, filters: [{ name: t.lib.install.installerFilter, extensions: ["exe"] }] });
   return typeof r === "string" ? r : null;
 }
 

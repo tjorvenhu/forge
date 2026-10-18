@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import type { ErrorCode, MethodName, ParamsOf, ResultOf, RpcError, ServerEvent } from "@forge/protocol";
+import { t } from "@/i18n";
 
 export class RpcCallError extends Error {
   constructor(
@@ -54,7 +55,7 @@ export class RpcClient {
       this.setUp(false, e.payload.stderr);
       for (const [, p] of this.pending) {
         clearTimeout(p.timer);
-        p.reject(new RpcCallError("SIDECAR_DOWN", "Der FORGE-Hintergrunddienst wurde beendet."));
+        p.reject(new RpcCallError("SIDECAR_DOWN", t.lib.rpc.sidecarEnded));
       }
       this.pending.clear();
     });
@@ -110,7 +111,7 @@ export class RpcClient {
     return new Promise<ResultOf<M>>((resolve, reject) => {
       const timer = setTimeout(() => {
         this.pending.delete(id);
-        reject(new RpcCallError("INTERNAL", `Zeitüberschreitung bei ${method}`));
+        reject(new RpcCallError("INTERNAL", t.lib.rpc.timeout(method)));
       }, timeoutMs);
       this.pending.set(id, { resolve: resolve as (v: unknown) => void, reject, timer });
       invoke("sidecar_send", { line: JSON.stringify({ id, method, params }) }).catch((e: unknown) => {

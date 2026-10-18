@@ -4,6 +4,7 @@ import { call, keys } from "@/lib/queries";
 import { openExternal } from "@/lib/native";
 import { errorMessage } from "@/lib/rpc";
 import { toast } from "@/stores/toast";
+import { t } from "@/i18n";
 
 /** How long to wait for a starting dev server to print its address. */
 const URL_WAIT_MS = 30_000;
@@ -25,11 +26,11 @@ export async function openDevServer(qc: QueryClient, projectId: string) {
     qc.setQueryData(keys.devServer(projectId), st);
     if (st.url) return void (await openExternal(st.url));
     toast.error(
-      "Dev-Server nicht geöffnet",
-      st.status === "running" ? "Er läuft, hat aber noch keine Adresse ausgegeben. Die Ausgabe steht in den Dev-Tools." : (st.error ?? "Er ist nicht gestartet. Die Ausgabe steht in den Dev-Tools."),
+      t.lib.devServer.notOpened,
+      st.status === "running" ? t.lib.devServer.runningNoUrl : (st.error ?? t.lib.devServer.notRunning),
     );
   } catch (e) {
-    toast.error("Dev-Server nicht gestartet", errorMessage(e));
+    toast.error(t.lib.devServer.notStarted, errorMessage(e));
   }
 }
 
@@ -37,7 +38,7 @@ export async function stopDevServer(qc: QueryClient, projectId: string) {
   try {
     qc.setQueryData(keys.devServer(projectId), await call("devserver.stop", { projectId }));
   } catch (e) {
-    toast.error("Dev-Server nicht gestoppt", errorMessage(e));
+    toast.error(t.lib.devServer.notStopped, errorMessage(e));
   }
 }
 
@@ -46,6 +47,6 @@ export async function prepareWorktree(qc: QueryClient, projectId: string) {
   try {
     qc.setQueryData(keys.worktreeSetup(projectId), await call("worktrees.prepare", { projectId }));
   } catch (e) {
-    toast.error("Vorbereitung nicht gestartet", errorMessage(e));
+    toast.error(t.lib.devServer.prepareNotStarted, errorMessage(e));
   }
 }

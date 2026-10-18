@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import type { BottomTab } from "./ui";
+import { t } from "@/i18n";
 
 export type TerminalProgram = "shell" | "claude";
 
@@ -37,7 +38,7 @@ export const useTerminals = create<TerminalsState>((set) => ({
     const key = crypto.randomUUID();
     set((s) => {
       const cur = s.tabs[projectId] ?? [];
-      const name = label ?? (tab.program === "claude" ? "Claude" : `Terminal ${cur.filter((t) => t.program === "shell").length + 1}`);
+      const name = label ?? (tab.program === "claude" ? "Claude" : t.stores.terminalTab(cur.filter((x) => x.program === "shell").length + 1));
       return { tabs: { ...s.tabs, [projectId]: [...cur, { ...tab, key, label: name }] }, active: { ...s.active, [projectId]: key } };
     });
     return key;

@@ -2,6 +2,7 @@ import { Fragment, useLayoutEffect, useRef, useState, type ReactNode } from "rea
 import * as T from "@radix-ui/react-tabs";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { t as m } from "@/i18n";
 
 export interface TabDef<V extends string> {
   value: V;
@@ -116,8 +117,8 @@ export function TabBar<V extends string>({
               <button
                 type="button"
                 onClick={t.onClose}
-                aria-label={t.closeLabel ?? `${t.label} schließen`}
-                title={t.closeLabel ?? `${t.label} schließen`}
+                aria-label={t.closeLabel ?? m.ui.closeTab(t.label)}
+                title={t.closeLabel ?? m.ui.closeTab(t.label)}
                 className="-ml-1 mr-1 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded text-subtle transition-[color,background-color,transform] duration-120 hover:bg-surface-3 hover:text-fg active:scale-90"
               >
                 <X className="h-3 w-3" />

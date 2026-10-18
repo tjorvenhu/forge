@@ -6,6 +6,7 @@ import { usageOutdated, usageRefetchIn } from "./rate-limit";
 import { loadOlderPages, useSessionEvents } from "@/stores/session-events";
 import { toast } from "@/stores/toast";
 import { errorMessage } from "./rpc";
+import { t } from "@/i18n";
 
 export const queryClient = new QueryClient({
   defaultOptions: {
@@ -141,7 +142,7 @@ export async function refreshUsage(qc: QueryClient) {
   try {
     qc.setQueryData(keys.usage, await call("system.usage", { refresh: true }));
   } catch (e) {
-    toast.error("Nutzung nicht aktualisiert", errorMessage(e));
+    toast.error(t.lib.queries.usageNotRefreshed, errorMessage(e));
   }
 }
 
@@ -304,7 +305,7 @@ export function useOlderHistory(sessionId: string, beforeApply?: () => void) {
           }),
         )
         .catch((e: unknown) => {
-          toast.error("Ältere Einträge nicht geladen", errorMessage(e));
+          toast.error(t.lib.queries.olderNotLoaded, errorMessage(e));
           return null;
         })
         .finally(() => {
@@ -325,6 +326,6 @@ export function useRpcMutation<M extends MethodName>(method: M, opts: { onSucces
   return useMutation({
     mutationFn: (p: ParamsOf<M>) => call(method, p),
     onSuccess: (r, p) => opts.onSuccess?.(r, p),
-    onError: (e) => toast.error(opts.errorTitle ?? "Aktion fehlgeschlagen", errorMessage(e)),
+    onError: (e) => toast.error(opts.errorTitle ?? t.lib.queries.actionFailed, errorMessage(e)),
   });
 }

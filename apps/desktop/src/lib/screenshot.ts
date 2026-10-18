@@ -7,6 +7,7 @@ import { toast } from "@/stores/toast";
 import { MAX_ATTACHMENTS, uploadPasted } from "@/components/workspace/useAttachments";
 import { useSettings } from "./queries";
 import { errorMessage, isTauri } from "./rpc";
+import { t } from "@/i18n";
 
 /**
  * FORGE's snipping tool on the Print key (screenshot.rs, components/screenshot). The picture always
@@ -33,7 +34,7 @@ export function useScreenshotKey() {
 
 /** Opens the snipping overlay like the Print key (command palette). */
 export function takeScreenshot() {
-  void invoke("screenshot_start").catch((e: unknown) => toast.error("Screenshot nicht gestartet", errorMessage(e)));
+  void invoke("screenshot_start").catch((e: unknown) => toast.error(t.lib.screenshot.notStarted, errorMessage(e)));
 }
 
 interface ComposerEntry {
@@ -83,11 +84,11 @@ export function startScreenshotReceiver() {
   void listen<{ id: number }>(TAKEN, async (e) => {
     const key = screenshotTarget();
     if (!key) {
-      toast.info("Screenshot in der Zwischenablage", "Es ist kein Chat offen. Mit Strg+V fügst du ihn später ein.");
+      toast.info(t.lib.screenshot.inClipboard, t.lib.screenshot.noChat);
       return;
     }
     if ((useDrafts.getState().drafts[key]?.files.length ?? 0) >= MAX_ATTACHMENTS) {
-      toast.info("Screenshot in der Zwischenablage", `Der Chat hat schon ${MAX_ATTACHMENTS} Anhänge.`);
+      toast.info(t.lib.screenshot.inClipboard, t.lib.screenshot.tooMany(MAX_ATTACHMENTS));
       return;
     }
     try {
@@ -95,9 +96,9 @@ export function startScreenshotReceiver() {
       const name = `screenshot-${stamp()}.bmp`;
       const file = await uploadPasted(new File([bytes], name, { type: "image/bmp" }), name);
       useDrafts.getState().updateFiles(key, (cur) => (cur.length >= MAX_ATTACHMENTS ? cur : [...cur, file]));
-      toast.success("Screenshot angehängt", "Liegt auch in der Zwischenablage. Mit dem X am Anhang entfernst du ihn wieder.");
+      toast.success(t.lib.screenshot.attached, t.lib.screenshot.attachedBody);
     } catch (err) {
-      toast.error("Screenshot nicht angehängt", `Er liegt in der Zwischenablage. ${errorMessage(err)}`);
+      toast.error(t.lib.screenshot.notAttached, t.lib.screenshot.notAttachedBody(errorMessage(err)));
     }
   });
 }

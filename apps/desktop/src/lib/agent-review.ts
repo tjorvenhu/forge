@@ -7,6 +7,7 @@ import { closeChatWindows } from "./chat-windows";
 import { keys } from "./queries";
 import { shownSessionIds } from "./session-tabs";
 import { isInterrupted } from "./working";
+import { t } from "@/i18n";
 
 /**
  * A turn of a parallel agent ended: ask whether to merge or discard its branch. Not while the user
@@ -28,24 +29,29 @@ export function agentTurnEnded(qc: QueryClient, ev: SessionEvent) {
   useAgentReview.getState().request(project.id);
 }
 
+/** The sidecar starts these messages with the outcome ("Automatisch zusammengeführt: …"), which the title already says. */
+function withoutPrefix(message: string): string {
+  return message.replace(/^[^:.]{1,40}:\s*/, "");
+}
+
 /**
  * Result of an auto-merge. With auto-merge on, no dialog opens by itself: what FORGE could not merge
  * is a notice whose button opens the dialog.
  */
 export function agentAutoMerged(e: ServerEventPayload<"agent.autoMerge">) {
-  const title = e.branch ?? "Agent";
+  const title = e.branch ?? t.lib.agent.fallback;
   if (e.outcome === "merged") {
     // Its sessions went with the worktree, as after merging in the dialog.
     closeChatWindows(e.sessionIds);
-    toast.success(`${title} zusammengeführt`, e.message.replace(/^Automatisch zusammengeführt:\s*/, ""));
-  } else if (e.outcome === "conflict") toast.notify({ tone: "warning", title: `${title}: Konflikte`, body: e.message });
-  else if (e.outcome === "waiting") toast.notify({ tone: "info", title: `${title} wartet aufs Zusammenführen`, body: e.message.replace(/^Wartet aufs Zusammenführen:\s*/, "") });
+    toast.success(t.lib.agent.merged(title), withoutPrefix(e.message));
+  } else if (e.outcome === "conflict") toast.notify({ tone: "warning", title: t.lib.agent.conflicts(title), body: e.message });
+  else if (e.outcome === "waiting") toast.notify({ tone: "info", title: t.lib.agent.waiting(title), body: withoutPrefix(e.message) });
   else {
     toast.notify({
       tone: "warning",
-      title: `${title} nicht zusammengeführt`,
-      body: e.message.replace(/^Nicht automatisch zusammengeführt:\s*/, ""),
-      action: { label: "Ansehen", onClick: () => useAgentReview.getState().request(e.worktreeId) },
+      title: t.lib.agent.notMerged(title),
+      body: withoutPrefix(e.message),
+      action: { label: t.lib.view, onClick: () => useAgentReview.getState().request(e.worktreeId) },
     });
   }
 }

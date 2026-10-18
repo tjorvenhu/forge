@@ -3,6 +3,7 @@ import * as S from "@radix-ui/react-select";
 import { Check, ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { POPPER_MOTION } from "@/lib/motion";
+import { t } from "@/i18n";
 
 export interface SelectOption<T extends string> {
   value: T;
@@ -51,7 +52,7 @@ export function Select<T extends string>({ value, onChange, options, placeholder
           className,
         )}
       >
-        <S.Value placeholder={<span className="text-subtle">{placeholder ?? "Auswählen"}</span>} />
+        <S.Value placeholder={<span className="text-subtle">{placeholder ?? t.ui.selectPlaceholder}</span>} />
         <S.Icon>
           <ChevronDown className="h-3.5 w-3.5 text-muted" />
         </S.Icon>

@@ -8,6 +8,7 @@ import { pickInstallerFile } from "./native";
 import { call, keys } from "./queries";
 import { errorMessage } from "./rpc";
 import { isBusy } from "./working";
+import { t } from "@/i18n";
 
 /** Chat windows open at the restart for an update; the main window of the new FORGE opens them again. */
 const REOPEN_KEY = "forge.reopenChatWindows";
@@ -24,9 +25,9 @@ export function isWorkingSession(s: Pick<Session, "status" | "background" | "sub
 
 /** What happens to the sessions on the restart, for the update dialog and the toast. */
 export function sessionsNote(sessions: number, working: number): string | null {
-  if (working === 1) return "Eine Session arbeitet gerade. Sie hält für den Neustart kurz an und macht danach von selbst weiter.";
-  if (working > 1) return `${working} Sessions arbeiten gerade. Sie halten für den Neustart kurz an und machen danach von selbst weiter.`;
-  if (sessions > 0) return `${sessions === 1 ? "Die offene Session bleibt" : "Offene Sessions bleiben"} nach dem Neustart offen.`;
+  if (working === 1) return t.lib.install.oneWorking;
+  if (working > 1) return t.lib.install.manyWorking(working);
+  if (sessions > 0) return t.lib.install.openStay(sessions);
   return null;
 }
 
@@ -42,10 +43,10 @@ export function installUpdate(qc: QueryClient) {
         s = await call("app.downloadUpdate", {});
         qc.setQueryData(keys.appUpdate, s);
       }
-      if (s.phase !== "ready" || !s.installerPath) throw new Error(s.message ?? "Der Installer ist nicht bereit.");
+      if (s.phase !== "ready" || !s.installerPath) throw new Error(s.message ?? t.lib.install.installerNotReady);
       return s.installerPath;
     },
-    { busy: "Update wird installiert", failed: "Update nicht installiert" },
+    { busy: t.lib.install.updateBusy, failed: t.lib.install.updateFailed },
   );
 }
 
@@ -61,18 +62,18 @@ export function installFull(qc: QueryClient) {
         if (!s?.installer) {
           s = await call("app.checkInstall", {});
           qc.setQueryData(keys.appInstall, s);
-          if (s.complete) throw new Error("FORGE ist bereits vollständig installiert.");
-          if (!s.installer) throw new Error(s.message ?? "Es gibt keinen passenden Installer.");
+          if (s.complete) throw new Error(t.lib.install.alreadyComplete);
+          if (!s.installer) throw new Error(s.message ?? t.lib.install.noInstaller);
         }
         if (s.phase !== "ready") {
           s = await call("app.downloadFullInstaller", {});
           qc.setQueryData(keys.appInstall, s);
         }
       }
-      if (s.phase !== "ready" || !s.installerPath) throw new Error(s.message ?? "Der Installer ist nicht bereit.");
+      if (s.phase !== "ready" || !s.installerPath) throw new Error(s.message ?? t.lib.install.installerNotReady);
       return s.installerPath;
     },
-    { busy: "FORGE wird vollständig installiert", failed: "Installation nicht gestartet" },
+    { busy: t.lib.install.fullBusy, failed: t.lib.install.fullFailed },
   );
 }
 
@@ -86,11 +87,11 @@ export async function checkInstall(qc: QueryClient) {
   try {
     const next = await call("app.checkInstall", {});
     qc.setQueryData(keys.appInstall, next);
-    if (!next.checkable) toast.info("Nichts zu prüfen", "Im Entwicklungsmodus gibt es keine Installation.");
-    else if (next.complete) toast.success("FORGE ist vollständig installiert", "Alle mitgelieferten Programme passen zu dieser Version.");
-    else toast.info("Installation unvollständig", problemText(next));
+    if (!next.checkable) toast.info(t.lib.install.nothingToCheck, t.lib.install.nothingToCheckBody);
+    else if (next.complete) toast.success(t.lib.install.complete, t.lib.install.completeBody);
+    else toast.info(t.lib.install.incomplete, problemText(next));
   } catch (e) {
-    toast.error("Prüfung fehlgeschlagen", errorMessage(e));
+    toast.error(t.lib.install.checkFailed, errorMessage(e));
   }
 }
 
@@ -101,7 +102,7 @@ export async function installFromFile(qc: QueryClient) {
   try {
     qc.setQueryData(keys.appInstall, await call("app.useLocalInstaller", { path }));
   } catch (e) {
-    toast.error("Installer nicht übernommen", errorMessage(e));
+    toast.error(t.lib.install.installerNotTaken, errorMessage(e));
     return;
   }
   await installFull(qc);
@@ -116,7 +117,7 @@ async function runInstaller(fetchInstaller: () => Promise<string>, text: { busy:
     const { sessions, working } = await call("app.prepareInstall", { cancel: false });
     prepared = true;
     rememberChatWindows();
-    toast.info(text.busy, ["FORGE schließt sich kurz und startet danach von selbst neu.", sessionsNote(sessions, working)].filter(Boolean).join(" "));
+    toast.info(text.busy, [t.lib.install.restarting, sessionsNote(sessions, working)].filter(Boolean).join(" "));
     await invoke("install_update", { path });
   } catch (e) {
     if (prepared) {

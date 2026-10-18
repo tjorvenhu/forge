@@ -10,6 +10,7 @@ import { toast } from "@/stores/toast";
 import { call, keys, queryClient } from "./queries";
 import { errorMessage, isTauri, rpc } from "./rpc";
 import { loadChatWindowPin } from "./window-options";
+import { t } from "@/i18n";
 
 /**
  * Session chats in their own windows. The shell (chat_windows.rs) owns the list of open chat
@@ -60,7 +61,7 @@ export async function openFileInMain(projectId: string, path: string, line: numb
     await emitTo(MAIN, OPEN_FILE, { projectId, path, line } satisfies FileTarget);
     await invoke("show_main_window");
   } catch (e) {
-    toast.error("Datei nicht geöffnet", errorMessage(e));
+    toast.error(t.lib.chatWindows.fileNotOpened, errorMessage(e));
   }
 }
 /** A chat window that does not answer a recall (hung webview) is closed after this. */
@@ -162,7 +163,7 @@ export async function openChatWindow(projectId: string, sessionId: string, title
     // drag: torn off by dragging; the window opens under the cursor and follows it until the button is released.
     const opened = await invoke<boolean>("open_chat_window", {
       target: { projectId, sessionId, draft: draft.text || null, files: toWire(draft.files) },
-      title: title ?? "Ohne Titel",
+      title: title ?? t.lib.untitled,
       position: null,
       drag: opts.drag === true,
       pinned: opts.pinned === true,
@@ -173,7 +174,7 @@ export async function openChatWindow(projectId: string, sessionId: string, title
     else putBack(key, draft);
   } catch (e) {
     putBack(key, draft);
-    toast.error("Fenster nicht geöffnet", errorMessage(e));
+    toast.error(t.lib.chatWindows.windowNotOpened, errorMessage(e));
   }
 }
 
@@ -182,7 +183,7 @@ export async function pinChatWindow(sessionId: string, on: boolean) {
   try {
     await invoke<boolean>("chat_window_on_top", { sessionId, on });
   } catch (e) {
-    toast.error(on ? "Fenster nicht angeheftet" : "Fenster nicht gelöst", errorMessage(e));
+    toast.error(on ? t.lib.chatWindows.notPinned : t.lib.chatWindows.notUnpinned, errorMessage(e));
   }
 }
 
@@ -239,14 +240,14 @@ function handBack(t: ChatWindowTarget): { key: string; draft: MovingDraft; targe
 
 /** Chat window: the main window shows this chat again (with the unsent text) and this window closes. */
 export async function reattachChatWindow() {
-  const t = chatWindowTarget();
-  if (!t) return;
-  const back = handBack(t);
+  const target = chatWindowTarget();
+  if (!target) return;
+  const back = handBack(target);
   try {
     await invoke("reattach_chat_window", { target: back.target });
   } catch (e) {
     putBack(back.key, back.draft);
-    toast.error("Nicht zurückgeholt", errorMessage(e));
+    toast.error(t.lib.chatWindows.notReattached, errorMessage(e));
   }
 }
 

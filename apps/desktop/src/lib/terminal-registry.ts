@@ -8,6 +8,7 @@ import { useTerminals, type TerminalProgram } from "@/stores/terminals";
 import { toast } from "@/stores/toast";
 import { copyText } from "@/lib/context-menu";
 import type { MenuItem } from "@/components/ui/dropdown";
+import { t } from "@/i18n";
 
 /** xterm is loaded with the first terminal, not with the app: most sessions never open one. */
 let xterm: { Terminal: typeof Terminal; FitAddon: typeof FitAddon } | null = null;
@@ -76,7 +77,7 @@ function themeFromTokens() {
 function markExited(entry: Entry) {
   if (entry.id !== null) byId.delete(entry.id);
   entry.id = null;
-  entry.term.write("\r\n\x1b[90m[Prozess beendet]\x1b[0m\r\n");
+  entry.term.write(`\r\n\x1b[90m${t.lib.terminal.exited}\x1b[0m\r\n`);
 }
 
 /** One listener pair for all terminals, attached once for the lifetime of the app. */
@@ -134,7 +135,7 @@ async function startProcess(entry: Entry, spec: TerminalSpec) {
     if (earlyExit.delete(id)) markExited(entry);
     else syncSize(entry);
   } catch (e) {
-    entry.term.write(`\x1b[31mTerminal konnte nicht gestartet werden: ${String(e)}\x1b[0m\r\n`);
+    entry.term.write(`\x1b[31m${t.lib.terminal.startFailed(String(e))}\x1b[0m\r\n`);
   } finally {
     opening--;
     if (opening === 0) {
@@ -207,11 +208,11 @@ export function terminalMenu(key: string): MenuItem[] {
   const selected = term.getSelection();
   const icon = "h-3.5 w-3.5";
   return [
-    { label: "Kopieren", icon: createElement(Copy, { className: icon }), hint: "Strg+Umschalt+C", disabled: !selected, onSelect: () => copyText(selected) },
+    { label: t.lib.terminal.copy, icon: createElement(Copy, { className: icon }), hint: t.lib.terminal.copyHint, disabled: !selected, onSelect: () => copyText(selected) },
     {
-      label: "Einfügen",
+      label: t.lib.terminal.paste,
       icon: createElement(ClipboardPaste, { className: icon }),
-      hint: "Strg+V",
+      hint: t.lib.terminal.pasteHint,
       disabled: entry.id === null,
       onSelect: () => {
         navigator.clipboard.readText().then(
@@ -219,13 +220,13 @@ export function terminalMenu(key: string): MenuItem[] {
             term.paste(text);
             term.focus();
           },
-          () => toast.error("Einfügen nicht möglich", "Die Zwischenablage ist nicht lesbar. Mit Strg+V einfügen."),
+          () => toast.error(t.lib.terminal.pasteFailed, t.lib.terminal.pasteFailedBody),
         );
       },
     },
-    { label: "Alles auswählen", icon: createElement(TextSelect, { className: icon }), onSelect: () => term.selectAll() },
+    { label: t.lib.terminal.selectAll, icon: createElement(TextSelect, { className: icon }), onSelect: () => term.selectAll() },
     {
-      label: "Ausgabe leeren",
+      label: t.lib.terminal.clear,
       icon: createElement(Eraser, { className: icon }),
       onSelect: () => {
         term.clear();

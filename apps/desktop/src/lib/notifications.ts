@@ -3,6 +3,7 @@ import type { ResultOf, SessionEvent } from "@forge/protocol";
 import { rpc } from "./rpc";
 import { desktopNotify, type NotifyTarget } from "./native";
 import { isInterrupted } from "./working";
+import { t } from "@/i18n";
 
 export type NotifyKind = "done" | "approval" | "error";
 
@@ -47,7 +48,7 @@ async function sessionContext(qc: QueryClient, sessionId: string) {
   const session = live ?? qc.getQueryData<ResultOf<"sessions.get">>(["session", sessionId]) ?? (await rpc.call("sessions.get", { sessionId }).catch(() => null));
   if (!session) return null;
   const projectName = live?.projectName ?? qc.getQueryData<ResultOf<"projects.list">>(["projects"])?.find((p) => p.id === session.projectId)?.name;
-  const where = [projectName, session.title ?? "Ohne Titel"].filter(Boolean).join(": ");
+  const where = [projectName, session.title ?? t.lib.untitled].filter(Boolean).join(": ");
   return { session, where, open: { projectId: session.projectId, sessionId: session.id } };
 }
 
@@ -57,14 +58,14 @@ export async function notifyAutoContinue(qc: QueryClient, ev: SessionEvent) {
   if (b.type !== "auto_continue" || (b.state !== "resumed" && b.state !== "exhausted" && b.state !== "failed")) return;
   const ctx = await sessionContext(qc, ev.sessionId);
   if (!ctx) return;
-  if (b.state === "resumed") notify(qc, "Automatisch fortgesetzt", [ctx.where, "Das Nutzungslimit ist zurückgesetzt, Claude arbeitet weiter."], ctx.open);
-  else notify(qc, "Nicht automatisch fortgesetzt", [ctx.where, b.message], ctx.open);
+  if (b.state === "resumed") notify(qc, t.lib.notifications.autoResumed, [ctx.where, t.lib.notifications.autoResumedBody], ctx.open);
+  else notify(qc, t.lib.notifications.notAutoResumed, [ctx.where, b.message], ctx.open);
 }
 
 /** Windows notification for a finished job: the turn, its background tasks and the agents it started. */
 export async function notifyDone(qc: QueryClient, sessionId: string) {
   const ctx = await sessionContext(qc, sessionId);
-  if (ctx) notify(qc, "Claude ist fertig", [ctx.where], ctx.open);
+  if (ctx) notify(qc, t.lib.notifications.done, [ctx.where], ctx.open);
 }
 
 /** Windows notification for a needed decision or an error. */
@@ -76,13 +77,13 @@ export async function notifySession(qc: QueryClient, ev: SessionEvent, kind: Exc
   const detail =
     b.type === "approval.request" ? (b.title ?? b.toolName) : b.type === "error" ? b.message : b.type === "turn.result" && b.isError ? (b.text ?? b.subtype) : null;
   if (b.type === "notify") {
-    notify(qc, b.urgent ? "Claude braucht dich" : "Claude meldet sich", [where, b.message], open);
+    notify(qc, b.urgent ? t.lib.notifications.needsYou : t.lib.notifications.message, [where, b.message], open);
     return;
   }
   if (kind === "approval") {
     const tool = b.type === "approval.request" ? b.toolName : "";
-    const title = tool === "AskUserQuestion" ? "Rückfrage von Claude" : tool === "ExitPlanMode" ? "Plan zur Freigabe" : "Freigabe nötig";
+    const title = tool === "AskUserQuestion" ? t.lib.notifications.question : tool === "ExitPlanMode" ? t.lib.notifications.planApproval : t.lib.notifications.approval;
     const text = tool === "AskUserQuestion" || tool === "ExitPlanMode" ? null : detail;
     notify(qc, title, [where, text], open);
-  } else notify(qc, "Fehler in der Session", [where, detail?.slice(0, 300)], open);
+  } else notify(qc, t.lib.notifications.error, [where, detail?.slice(0, 300)], open);
 }

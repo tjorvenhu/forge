@@ -3,6 +3,7 @@ import { cn } from "@/lib/utils";
 import { Button } from "./button";
 import { Dialog } from "./dialog";
 import { Input } from "./input";
+import { t } from "@/i18n";
 
 interface ConfirmDialogProps {
   open: boolean;
@@ -38,7 +39,7 @@ export function ConfirmDialog({ open, onOpenChange, title, description, children
       footer={
         <>
           <Button variant="ghost" onClick={() => close(false)}>
-            Abbrechen
+            {t.ui.cancel}
           </Button>
           <Button
             variant={danger ? "danger" : "primary"}
@@ -66,7 +67,7 @@ export function ConfirmDialog({ open, onOpenChange, title, description, children
           {children}
           {requireText !== undefined && (
             <label className={cn("block text-body text-muted", children && "mt-3")}>
-              Zur Bestätigung <span className="font-mono text-fg">{requireText}</span> eingeben
+              {t.ui.confirmType.before} <span className="font-mono text-fg">{requireText}</span> {t.ui.confirmType.after}
               <Input className="mt-1.5" value={typed} onChange={(e) => setTyped(e.target.value)} autoFocus />
             </label>
           )}

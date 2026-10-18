@@ -3,6 +3,7 @@ import * as D from "@radix-ui/react-dialog";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { DIALOG_MOTION, OVERLAY_MOTION } from "@/lib/motion";
+import { t } from "@/i18n";
 
 interface DialogProps {
   open: boolean;
@@ -62,7 +63,7 @@ export function Dialog({ open, onOpenChange, title, description, children, foote
                   )}
                 </div>
                 {dismissable && (
-                  <D.Close className="rounded-md p-1 text-muted hover:bg-surface-3 hover:text-fg" aria-label="Schließen">
+                  <D.Close className="rounded-md p-1 text-muted hover:bg-surface-3 hover:text-fg" aria-label={t.ui.close}>
                     <X className="h-4 w-4" />
                   </D.Close>
                 )}
