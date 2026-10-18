@@ -15,4 +15,4 @@ export const PUBLISHER = {
 } as const;
 
 /** Statistics service (services/stats): takes the anonymous usage totals, shows the sums of all installations. */
-export const USAGE_STATS_URL = "https://forge-stats.vanturis.de";
+export const USAGE_STATS_URL = "https://forge.vanturis.de";

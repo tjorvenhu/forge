@@ -46,7 +46,10 @@
     "windows": {
       "nsis": {
         "languages": ["English", "German"],
-        "displayLanguageSelector": true
+        "displayLanguageSelector": true,
+        "installerIcon": "icons/icon.ico",
+        "headerImage": "installer/header.bmp",
+        "sidebarImage": "installer/sidebar.bmp"
       }
     },
     "icon": [

@@ -6,10 +6,10 @@
 
 <p align="center">
   <a href="https://github.com/vanturis/forge/releases/latest"><img src="https://img.shields.io/github/v/release/vanturis/forge?style=for-the-badge&label=Version&color=f97316" alt="Neueste Version"></a>
-  <a href="https://github.com/vanturis/forge/releases/latest"><img src="https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fforge-stats.vanturis.de%2Fapi%2Fv1%2Fdownloads&query=%24.downloads&label=Downloads&style=for-the-badge&color=21262e" alt="Downloads des Installers"></a>
+  <a href="https://github.com/vanturis/forge/releases/latest"><img src="https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fforge.vanturis.de%2Fapi%2Fv1%2Fdownloads&query=%24.downloads&label=Downloads&style=for-the-badge&color=21262e" alt="Downloads des Installers"></a>
   <a href="LICENSE.md"><img src="https://img.shields.io/badge/Lizenz-AGPL--3.0-21262e?style=for-the-badge" alt="Lizenz AGPL-3.0"></a>
   <img src="https://img.shields.io/badge/Windows-10%20%7C%2011-21262e?style=for-the-badge" alt="Windows 10 und 11">
-  <a href="https://forge-stats.vanturis.de"><img src="https://img.shields.io/badge/FORGE-in%20Zahlen-21262e?style=for-the-badge&logo=googleanalytics&logoColor=white" alt="FORGE in Zahlen"></a>
+  <a href="https://forge.vanturis.de"><img src="https://img.shields.io/badge/FORGE-in%20Zahlen-21262e?style=for-the-badge&logo=googleanalytics&logoColor=white" alt="FORGE in Zahlen"></a>
 </p>
 
 <p align="center">
@@ -123,7 +123,7 @@ Projekte, Chatverläufe und Einstellungen bleiben auf deinem Rechner (`%APPDATA%
 
 - **Anonyme Nutzungsstatistik (standardmäßig aus):** FORGE fragt beim ersten Start einmal danach und bittet
   darum, sie einzuschalten. Die Gesamtzahlen zeigen uns, wie FORGE genutzt wird. Ohne Antwort ist sie aus.
-  Eingeschaltet gehen alle 5 Minuten Summen an [forge-stats.vanturis.de](https://forge-stats.vanturis.de): eine
+  Eingeschaltet gehen alle 5 Minuten Summen an [forge.vanturis.de](https://forge.vanturis.de): eine
   zufällige Kennung der Installation, FORGE- und Windows-Version, die Art des Claude-Abos (z. B. Pro oder Max 5x)
   und Zählerstände wie Tokens je Claude-Modell, geschätzte API-Kosten, Sessions, Projekte und Agenten. Keine
   Inhalte, keine Projektnamen, keine Pfade, keine IP-Adressen. Ein- und ausschalten unter Einstellungen > Über
@@ -148,7 +148,7 @@ Projekte, Chatverläufe und Einstellungen bleiben auf deinem Rechner (`%APPDATA%
   als npm-Paket (`@embedded-postgres/windows-x64`) von `registry.npmjs.org`.
 - **Nutzungsstatistik (nur wenn eingeschaltet):** FORGE fragt beim ersten Start danach, ohne Antwort ist sie aus. Zum Schutz vor Missbrauch
   hält der Dienst nur einen gesalzenen Hash der IP-Adresse im Arbeitsspeicher, längstens einen Tag. Die
-  Gesamtzahlen aller Nutzer sind auf [forge-stats.vanturis.de](https://forge-stats.vanturis.de) öffentlich.
+  Gesamtzahlen aller Nutzer sind auf [forge.vanturis.de](https://forge.vanturis.de) öffentlich.
 
 Mehr in der [Datenschutzerklärung von Vanturis](https://vanturis.de/datenschutz).
 </details>
@@ -190,7 +190,7 @@ FORGE ist ein pnpm-Monorepo:
 | `apps/desktop` | Tauri-App (Rust) mit React-Oberfläche |
 | `packages/sidecar` | Node-Prozess, der Claude Code, Git, Telefon und Datenbank steuert |
 | `packages/protocol` | gemeinsame Typen und RPC-Methoden (Zod) |
-| `services/stats` | Statistik-Dienst hinter forge-stats.vanturis.de (Next.js, eigenständig) |
+| `services/stats` | Statistik-Dienst hinter forge.vanturis.de (Next.js, eigenständig) |
 
 <details>
 <summary>Werkzeuge und Befehle</summary>

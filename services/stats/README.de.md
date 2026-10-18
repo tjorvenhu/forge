@@ -2,7 +2,7 @@
 
 # FORGE-Statistik (services/stats)
 
-Kleiner Dienst unter https://forge-stats.vanturis.de. Er nimmt die anonymen Nutzungszahlen der FORGE-Desktop-App an und zeigt die Summen aller Installationen öffentlich auf der Seite „FORGE in Zahlen“.
+Kleiner Dienst unter https://forge.vanturis.de. Er nimmt die anonymen Nutzungszahlen der FORGE-Desktop-App an und zeigt die Summen aller Installationen öffentlich auf der Seite „FORGE in Zahlen“.
 
 In der App ist die Statistik standardmäßig aus. Nach dem Einrichtungsassistenten und der Sync-Frage fragt FORGE einmal, ob sie eingeschaltet werden soll; ohne Antwort bleibt sie aus. Meldungen schicken also nur Installationen, deren Nutzer sie eingeschaltet haben. Ein- und ausschalten lässt sie sich jederzeit unter Einstellungen > Über FORGE > Datenschutz; beim Ausschalten löscht FORGE die gesendeten Daten beim Dienst (`DELETE /api/v1/report/<installId>`).
 
@@ -111,7 +111,7 @@ Die Client-IP liest der Dienst aus dem Header in `CLIENT_IP_HEADER` (falls geset
 
 HAProxy beendet TLS mit eigenem Zertifikat und leitet per HTTP an Traefik weiter. Deshalb:
 
-- Domain in Coolify mit **`http://`**: `http://forge-stats.vanturis.de:3000`. Mit `https://` leitet Traefik jede
+- Domain in Coolify mit **`http://`**: `http://forge.vanturis.de:3000`. Mit `https://` leitet Traefik jede
   Anfrage auf HTTPS um, HAProxy schickt sie wieder per HTTP, und der Browser meldet `ERR_TOO_MANY_REDIRECTS`.
 - Im HAProxy-Frontend die Client-Adresse mitgeben (überschreibt, was der Client selbst schickt):
   `http-request set-header X-Client-IP %[src]`
@@ -125,19 +125,23 @@ Hinter Cloudflare (Proxy an) muss der SSL-Modus **Full (strict)** sein, aus dems
 `docker-compose.yml` startet den Dienst und seine Postgres zusammen. Die Datenbank ist nur im internen Netz
 erreichbar, ihre Daten liegen im Volume `stats-db`.
 
-1. DNS: A-Record `forge-stats.vanturis.de` auf den Coolify-Server.
+1. DNS: A-Record `forge.vanturis.de` auf den Coolify-Server.
 2. In Coolify: Projekt wählen, **+ New**, **Public Repository** (oder **Private Repository (with GitHub App)**,
    solange das Repo privat ist), URL `https://github.com/vanturis/forge`, Branch `main`.
 3. Build Pack: **Docker Compose**. Base Directory: **`/services/stats`**. Docker Compose Location:
    **`/docker-compose.yml`**. Speichern: Coolify liest die Datei und zeigt die Dienste `stats` und `postgres`.
-4. Beim Dienst `stats` als Domain **`https://forge-stats.vanturis.de:3000`** eintragen. Das `:3000` ist der Port
+4. Beim Dienst `stats` als Domain **`https://forge.vanturis.de:3000`** eintragen. Das `:3000` ist der Port
    im Container, nicht der öffentliche Port. Traefik macht TLS (Let's Encrypt) und Kompression.
 5. Unter Environment Variables nichts eintragen: `SERVICE_USER_POSTGRES` und `SERVICE_PASSWORD_POSTGRES` erzeugt
    Coolify beim ersten Deploy selbst. Erscheinen sie dort nicht, beide von Hand setzen (Passwort nur aus
    Buchstaben und Ziffern, es steht in einer URL).
-6. **Deploy**. Danach prüfen: `https://forge-stats.vanturis.de/api/health` liefert `ok`.
+6. **Deploy**. Danach prüfen: `https://forge.vanturis.de/api/health` liefert `ok`.
 7. Auto-Deploy: Mit der GitHub App baut Coolify bei jedem Push neu. Mit **Watch Paths** `services/stats/**`
    nur dann, wenn sich der Dienst ändert.
+
+Bis 2026-10-18 lief der Dienst unter `forge-stats.vanturis.de`, und FORGE bis 0.1.103 meldet dorthin. Diese Domain
+als zweite am Dienst lassen (Coolify: beide, durch Komma getrennt; HAProxy: Zertifikat für beide), bis es diese
+Versionen nicht mehr gibt.
 
 Das Image läuft als Benutzer `nextjs` (nicht root) und startet die Standalone-Ausgabe von Next mit
 `node server.js`. Es bringt einen `HEALTHCHECK` auf `/api/health` mit.

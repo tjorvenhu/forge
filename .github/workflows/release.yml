@@ -14,7 +14,8 @@
 # FORGE_<v>.sig holds the signatures of all assets of the release (scripts/sign-update.mjs --manifest, key in
 # the secret FORGE_UPDATE_SIGNING_KEY). The app installs only signed assets; the public key is in
 # packages/sidecar/src/update/signature.ts. Up to 0.1.101 each asset had its own <asset>.sig and the
-# installer a FORGE_<v>_x64-setup.<runtime>.runtime marker; legacy_signatures publishes those once more.
+# installer a FORGE_<v>_x64-setup.<runtime>.runtime marker. Those versions only look at the newest release,
+# so every release (nightly too) publishes both as well, until no installation up to 0.1.101 is left.
 #
 # Code signature (Authenticode, against SmartScreen): Azure Artifact Signing through scripts/codesign.mjs.
 # Tauri signs forge-desktop.exe, the installer and the uninstaller with it; the exe of the update zip is
@@ -36,7 +37,7 @@ on:
       legacy_signatures:
         description: "Also publish the per-file .sig and the .runtime marker that FORGE up to 0.1.101 needs"
         type: boolean
-        default: false
+        default: true
 
 permissions:
   contents: write
@@ -236,8 +237,9 @@ jobs:
           $sigs = Join-Path $env:RUNNER_TEMP "FORGE_${version}.sig"
           node scripts/sign-update.mjs --manifest $sigs @files
           if ($LASTEXITCODE -ne 0) { throw "Signieren fehlgeschlagen." }
-          if ("${{ inputs.legacy_signatures }}" -eq "true") {
-            # Bridge for installations up to 0.1.101: they only know <asset>.sig and the .runtime marker.
+          if ("${{ inputs.legacy_signatures }}" -ne "false") {
+            # Installations up to 0.1.101 only know <asset>.sig and the .runtime marker, and they only look
+            # at the newest release: one bridge release cannot reach them, every release has to carry both.
             $legacy = @($files)
             if ("${{ steps.plan.outputs.full }}" -eq "true") {
               $marker = Join-Path $env:RUNNER_TEMP "FORGE_${version}_x64-setup.${key}.runtime"

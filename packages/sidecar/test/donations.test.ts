@@ -16,7 +16,7 @@ describe("donations from the statistics service", () => {
       () => now,
     );
     expect(await source.get()).toEqual({ cents: 4250, count: 3 });
-    expect(urls[0]).toBe("https://forge-stats.vanturis.de/api/v1/donations");
+    expect(urls[0]).toBe("https://forge.vanturis.de/api/v1/donations");
     now += 5 * 60_000;
     expect(await source.get()).toEqual({ cents: 4250, count: 3 });
     expect(urls).toHaveLength(1);

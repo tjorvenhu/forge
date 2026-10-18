@@ -1,14 +1,17 @@
 ---
-title: "Statistik-Dienst services/stats (forge-stats.vanturis.de, Coolify, außerhalb des Workspace)"
-summary: "Wie der Next.js-Statistikdienst in services/stats gebaut, getestet, gestaltet (Animationen, Live-Abfrage, Englisch/Deutsch) und in Coolify betrieben wird (Tagesstände, Verlauf, Online, Abos, Diagramme), und welche Stolperfallen es dabei gibt."
+title: "Statistik-Dienst services/stats (forge.vanturis.de, früher forge-stats.vanturis.de, Coolify, außerhalb des Workspace)"
+summary: "Wie der Next.js-Statistikdienst in services/stats gebaut, getestet, gestaltet (Animationen, Live-Abfrage, Englisch/Deutsch) und in Coolify betrieben wird (Domain, Tagesstände, Verlauf, Online, Abos, Diagramme), und welche Stolperfallen es dabei gibt."
 tags: ["stats","coolify","release","stolperfalle","i18n","ui"]
-updated: "2026-10-18T16:01:56.920Z"
+updated: "2026-10-18T20:58:09.196Z"
 ---
 
-# Statistik-Dienst services/stats (forge-stats.vanturis.de, Coolify, außerhalb des Workspace)
-
 ## Was es ist
-`services/stats` ist ein eigenständiges Next.js-Projekt (App Router, pg, zod) für https://forge-stats.vanturis.de. Es nimmt die Meldungen von `packages/sidecar/src/stats/usage-stats.ts` an (URL in `packages/protocol/src/support.ts`, `USAGE_STATS_URL`) und zeigt die Summen. API, Payload und Coolify stehen in `services/stats/README.md`. Deploy in Coolify geschieht nicht automatisch beim Push.
+`services/stats` ist ein eigenständiges Next.js-Projekt (App Router, pg, zod) für https://forge.vanturis.de. Es nimmt die Meldungen von `packages/sidecar/src/stats/usage-stats.ts` an (URL in `packages/protocol/src/support.ts`, `USAGE_STATS_URL`) und zeigt die Summen. API, Payload und Coolify stehen in `services/stats/README.md`. Deploy in Coolify geschieht nicht automatisch beim Push.
+
+## Domain (Umzug 2026-10-18, Wunsch des Besitzers)
+- Neu `forge.vanturis.de`, vorher `forge-stats.vanturis.de`. Alle Verweise im Repo (README-Badges, docs/SECURITY, `USAGE_STATS_URL`, Test donations) zeigen auf die neue.
+- Installierte Apps bis 0.1.103 melden weiter an die alte Domain (fest einkompiliert). Die alte muss deshalb als zweite Domain am Dienst bleiben (Coolify: beide durch Komma, HAProxy: Zertifikat für beide), bis diese Versionen weg sind.
+- DNS beider Namen zeigt auf 46.225.216.21; am 2026-10-18 schlug TLS für forge.vanturis.de noch fehl (Domain in Coolify/HAProxy noch nicht eingerichtet). Prüfen: `curl https://forge.vanturis.de/api/health` liefert `ok`.
 
 ## Meldeintervall
 Die App meldet alle 5 Minuten. Die Sperre pro installId (`REPORT_INTERVAL_MINUTES` in `src/lib/db.ts`) steht deshalb auf 4 Minuten: gleich lang wie das App-Intervall würde jede zweite Meldung mit 429 abweisen, sobald der Timer etwas früh feuert. „Gerade online“ = Meldung in den letzten `ONLINE_MINUTES` (10, zwei Intervalle, in `src/lib/constants.ts`). Ändert die App ihr Intervall, beide Konstanten, `db.test.ts` und die Texte (Seite, README) mitziehen.

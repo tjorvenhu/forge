@@ -1,0 +1,88 @@
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=block");
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { width: 1280px; height: 640px; overflow: hidden; background: #14171d; }
+
+.banner {
+  position: relative;
+  width: 1280px;
+  height: 640px;
+  overflow: hidden;
+  font-family: "Inter", system-ui, sans-serif;
+  color: #f8fafc;
+  background:
+    radial-gradient(300px 300px at 1035px 300px, rgba(249, 115, 22, 0.14), rgba(249, 115, 22, 0) 75%),
+    radial-gradient(460px 460px at 1035px 290px, rgba(249, 115, 22, 0.2), rgba(249, 115, 22, 0) 72%),
+    radial-gradient(520px 380px at 1300px -40px, rgba(180, 90, 40, 0.45), rgba(180, 90, 40, 0) 70%),
+    radial-gradient(520px 300px at -60px 700px, rgba(30, 58, 95, 0.45), rgba(30, 58, 95, 0) 70%),
+    linear-gradient(180deg, #161a21 0%, #12151b 100%);
+}
+
+.wordmark {
+  position: absolute;
+  left: 85px;
+  top: 72px;
+  width: 396px;
+}
+
+h1 {
+  position: absolute;
+  left: 84px;
+  top: 204px;
+  font-size: 53.5px;
+  line-height: 60px;
+  font-weight: 700;
+  letter-spacing: -0.8px;
+}
+h1 em { font-style: normal; color: #f97316; }
+
+.lead {
+  position: absolute;
+  left: 85px;
+  top: 344px;
+  font-size: 22.9px;
+  line-height: 34.5px;
+  font-weight: 400;
+  color: #9ca3af;
+}
+
+.chips {
+  position: absolute;
+  left: 84px;
+  top: 523px;
+  display: flex;
+  gap: 13px;
+}
+.chip {
+  display: inline-flex;
+  align-items: center;
+  height: 45px;
+  padding: 0 19px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  background: rgba(255, 255, 255, 0.025);
+  font-size: 17.4px;
+  font-weight: 400;
+  color: #e5e7eb;
+  white-space: pre;
+}
+.chip b { font-weight: 600; color: #f97316; }
+
+.by {
+  position: absolute;
+  right: 85px;
+  top: 537px;
+  font-size: 17.4px;
+  color: #8b93a1;
+}
+.by strong { font-weight: 600; color: #e5e7eb; }
+
+.icon {
+  position: absolute;
+  left: 900px;
+  top: 150px;
+  width: 270px;
+  height: 270px;
+  transform: rotate(-5deg);
+  filter: drop-shadow(0 18px 40px rgba(0, 0, 0, 0.45));
+}

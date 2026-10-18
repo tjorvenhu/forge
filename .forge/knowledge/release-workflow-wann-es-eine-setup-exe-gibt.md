@@ -1,8 +1,8 @@
 ---
 title: "Release-Workflow: nächtlich, setup.exe, Installer-Namen, Signatur (FORGE_<v>.sig, Azure Code-Signatur)"
-summary: "Wann Releases entstehen (nachts oder von Hand), wie der volle Installer gebaut wird, wie Release-Dateien signiert werden (eine FORGE_<v>.sig pro Release, Azure-Authenticode nur für eigene exe) und was bei Fehlern zu tun ist."
-tags: ["release","github-actions","installer","stolperfalle"]
-updated: "2026-10-18T20:48:36.420Z"
+summary: "Wann Releases entstehen (nachts oder von Hand), wie der volle Installer gebaut und gestaltet wird, wie Release-Dateien signiert werden (FORGE_<v>.sig plus Alt-Signaturen für Versionen bis 0.1.101, Azure-Authenticode nur für eigene exe) und was bei Fehlern zu tun ist."
+tags: ["release","github-actions","installer","stolperfalle","update"]
+updated: "2026-10-18T20:57:32.010Z"
 ---
 
 Repo seit 2026-10-17: `vanturis/forge` (vorher `tjorvenhu/forge`, GitHub leitet weiter).
@@ -12,14 +12,19 @@ Repo seit 2026-10-17: `vanturis/forge` (vorher `tjorvenhu/forge`, GitHub leitet 
 - Job `changes` (ubuntu): nachts baut er nur, wenn sich seit dem Commit des letzten Releases (`target_commitish`) etwas außer `*.md`, `docs/`, `services/`, `*.png`, `*.docx`, `.forge/` geändert hat. Von Hand baut er immer.
 - Version `v0.1.<run number>`; übersprungene Nachtläufe erhöhen die Nummer trotzdem (Lücken sind normal).
 
-## Was ein Release enthält (seit 0.1.103, Wunsch des Besitzers: wenige Dateien)
+## Was ein Release enthält
 - `FORGE_<v>_update_<runtime>.zip` (jedes Release; nur App + Sidecar, wenige MB; installierte Apps aktualisieren damit).
 - `FORGE_<v>_x64-setup.exe` nur, wenn es für den Laufzeit-Schlüssel (`scripts/prepare-runtime.mjs --key`) noch keinen signierten Installer gibt, oder von Hand mit `-f full=true`. Seine Laufzeit ist die des Update-Zips im selben Release (`releaseInstallerKey` fällt auf `patchRuntimeKey` zurück).
 - `FORGE_<v>.sig`: Signaturen aller Assets als JSON (`sign-update.mjs --manifest`, `SIG_MANIFEST`/`signatureFrom` in `signature.ts`). Der Plan-Schritt erkennt einen vorhandenen Installer an setup.exe + Update-Zip mit dem Schlüssel + `FORGE_<v>.sig` im selben Release.
-- Altes Format bis 0.1.101: `<asset>.sig` je Datei und Markierung `FORGE_<v>_x64-setup.<runtime>.runtime`. Die App liest beides weiter. **v0.1.102 ist das Brücken-Release** (Workflow-Eingabe `legacy_signatures=true`, nur Update-Zip): Installationen bis 0.1.101 sehen nur Assets mit eigener `.sig` und kommen darüber ins neue Format. Nicht löschen; es muss in den ersten 100 Releases der Liste bleiben (`releases?per_page=100`), sonst brauchen sehr alte Installationen den Installer von Hand.
+- **Zusätzlich in jedem Release** (seit 2026-10-18, Eingabe `legacy_signatures`, Standard an, auch nachts): `<asset>.sig` je Datei und bei vollem Installer die Markierung `FORGE_<v>_x64-setup.<runtime>.runtime` (+ `.sig`). Das alte Format bis 0.1.101; neue Versionen lesen beides.
 - Für Neuinstallationen das neueste Release mit setup.exe nehmen, nicht einfach „latest“. Finden: `gh api "repos/vanturis/forge/releases?per_page=100" --jq '.[] | select(any(.assets[]; .name | endswith("setup.exe"))) | .tag_name'`.
 - Der Schritt „Build app“ gibt den Laufzeit-Schlüssel als `FORGE_RUNTIME_KEY` in die exe (Erkennung unvollständiger Installationen). Der Installer (NSIS) ist zweisprachig (`languages` English/German, `displayLanguageSelector`).
 - Ältere Installer-Namen: 0.1.8 bis 0.1.8x `FORGE_<v>_<runtime>_x64-setup.exe` (die App liest sie), bis 0.1.7 kurze Namen mit alter Laufzeit (`SHORT_NAMES_SINCE` in full-install.ts).
+
+## Stolperfalle: Ein Brücken-Release erreicht alte Installationen nicht (2026-10-18)
+- Geplant war: nur v0.1.102 bekommt die Alt-Signaturen, Installationen bis 0.1.101 kommen darüber ins neue Format. Funktioniert nicht: `pickRelease` (alt wie neu) schaut nur auf das **neueste** Release (`newer[0]`). Hat das keine `<asset>.sig`, sieht die alte Version dort keine Assets, findet kein Update-Zip und meldet „FORGE 0.1.103 ist erschienen, braucht aber den vollständigen Installer. Dafür gibt es noch keinen.“ (`needsFullInstaller`, Meldung wenn `pickRelease` null liefert, es aber neuere Releases gibt).
+- Darum stehen die Alt-Signaturen in jedem Release, bis keine Installation bis 0.1.101 mehr meldet (Versionen in der Statistik prüfen). Kostet keine Azure-Signatur (Ed25519).
+- Nachträglich reparieren ohne privaten Schlüssel: die Werte aus `FORGE_<v>.sig` (JSON Name → base64) als `<asset>.sig` mit genau diesem Inhalt hochladen (`gh release upload`), vorher mit dem öffentlichen Schlüssel und dem GitHub-`digest` prüfen. Die `.runtime`-Markierung braucht eine neue Signatur und geht so nicht; ohne sie nimmt die alte Version den Installer nur über den Rückfall „irgendein neuerer Installer“.
 
 ## Update-Signatur (seit 2026-10-17)
 - Ed25519 über `FORGE-UPDATE-1\n<Dateiname>\n<sha256>` (Format in ADR 0013). Die App bietet nur signierte Assets an; Releases bis v0.1.5x sind für sie unsichtbar.
@@ -36,6 +41,11 @@ Repo seit 2026-10-17: `vanturis/forge` (vorher `tjorvenhu/forge`, GitHub leitet 
 - Lokal testen: mit gesetzten `AZURE_SIGNING_*` und `az login` (ohne `AZURE_CLIENT_SECRET` lässt metadata.json alle Credential-Arten zu).
 - SignPath Foundation (kostenlos für Open Source) passt nicht: verlangt keine proprietären Bestandteile, der Sidecar bündelt aber `@anthropic-ai/claude-agent-sdk` („All rights reserved“).
 - Logs eines laufenden Jobs liefert die GitHub-API nicht (`actions/jobs/<id>/logs` ist leer); erst nach Ende oder Abbruch mit `gh run view <id> --log`.
+
+## Aussehen des Installers (seit 2026-10-18)
+- `bundle.windows.nsis` in tauri.conf.json: `installerIcon` (icons/icon.ico), `headerImage` (`installer/header.bmp`, 150x57) und `sidebarImage` (`installer/sidebar.bmp`, 164x314), 24-bit BMP. Quellen `apps/desktop/src-tauri/installer/*.html`, neu erzeugen mit `installer/render.ps1` (Chrome/Edge headless).
+- Komplett dunkle Seiten gehen nur mit eigenem `nsis.template`: das Tauri-Template setzt weder `MUI_BGCOLOR` noch Farben je Steuerelement. Dann müsste man das ganze Template bei jedem Tauri-Update nachziehen.
+- Testen ohne vollen Build: lokales makensis (`%LOCALAPPDATA%\tauri\NSIS`) mit einem Minimal-Skript und denselben Bildern.
 
 ## Stolperfalle: Update-Zip statt Installer (2026-10-17)
 Wer das Update-Zip statt der setup.exe startet, hat kein `runtime/` mit git und gh. FORGE zeigt das als Banner „FORGE ist nicht vollständig installiert“ mit Knopf zum Nachinstallieren.

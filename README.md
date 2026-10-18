@@ -1,15 +1,15 @@
 <img src=".github/assets/flags/gb.svg" height="14" alt=""> English · <a href="README.de.md"><img src=".github/assets/flags/de.svg" height="14" alt=""> Deutsch</a>
 
 <p align="center">
-  <img src=".github/assets/banner.png" alt="FORGE: the desktop app for Claude Code" width="100%">
+  <img src=".github/assets/banner-en.png" alt="FORGE: the desktop app for Claude Code" width="100%">
 </p>
 
 <p align="center">
   <a href="https://github.com/vanturis/forge/releases/latest"><img src="https://img.shields.io/github/v/release/vanturis/forge?style=for-the-badge&label=Version&color=f97316" alt="Latest version"></a>
-  <a href="https://github.com/vanturis/forge/releases/latest"><img src="https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fforge-stats.vanturis.de%2Fapi%2Fv1%2Fdownloads&query=%24.downloads&label=Downloads&style=for-the-badge&color=21262e" alt="Installer downloads"></a>
+  <a href="https://github.com/vanturis/forge/releases/latest"><img src="https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fforge.vanturis.de%2Fapi%2Fv1%2Fdownloads&query=%24.downloads&label=Downloads&style=for-the-badge&color=21262e" alt="Installer downloads"></a>
   <a href="LICENSE.md"><img src="https://img.shields.io/badge/License-AGPL--3.0-21262e?style=for-the-badge" alt="License AGPL-3.0"></a>
   <img src="https://img.shields.io/badge/Windows-10%20%7C%2011-21262e?style=for-the-badge" alt="Windows 10 and 11">
-  <a href="https://forge-stats.vanturis.de"><img src="https://img.shields.io/badge/FORGE-in%20numbers-21262e?style=for-the-badge&logo=googleanalytics&logoColor=white" alt="FORGE in numbers"></a>
+  <a href="https://forge.vanturis.de"><img src="https://img.shields.io/badge/FORGE-in%20numbers-21262e?style=for-the-badge&logo=googleanalytics&logoColor=white" alt="FORGE in numbers"></a>
 </p>
 
 <p align="center">
@@ -122,7 +122,7 @@ Projects, chat histories and settings stay on your computer (`%APPDATA%\forge`).
 
 - **Anonymous usage statistics (off by default):** FORGE asks once on first start and asks you to turn them on.
   The totals show us how FORGE is used. Without an answer they stay off. When on, FORGE sends totals to
-  [forge-stats.vanturis.de](https://forge-stats.vanturis.de) every 5 minutes: a random ID for the installation,
+  [forge.vanturis.de](https://forge.vanturis.de) every 5 minutes: a random ID for the installation,
   the FORGE and Windows versions, the type of Claude subscription (for example Pro or Max 5x) and counters such
   as tokens per Claude model, estimated API cost, sessions, projects and agents. No content, no project names, no
   paths, no IP addresses. Turn them on or off under Settings > About FORGE > Privacy; when you turn them off,
@@ -146,7 +146,7 @@ Projects, chat histories and settings stay on your computer (`%APPDATA%\forge`).
   as an npm package (`@embedded-postgres/windows-x64`) from `registry.npmjs.org`.
 - **Usage statistics (only when turned on):** FORGE asks on first start, without an answer they stay off. To
   prevent abuse, the service keeps only a salted hash of the IP address in memory, for one day at most. The
-  totals of all users are public at [forge-stats.vanturis.de](https://forge-stats.vanturis.de).
+  totals of all users are public at [forge.vanturis.de](https://forge.vanturis.de).
 
 More in the [Vanturis privacy policy](https://vanturis.de/datenschutz) (German).
 </details>
@@ -187,7 +187,7 @@ FORGE is a pnpm monorepo:
 | `apps/desktop` | Tauri app (Rust) with a React interface |
 | `packages/sidecar` | Node process that controls Claude Code, Git, phone and database |
 | `packages/protocol` | shared types and RPC methods (Zod) |
-| `services/stats` | statistics service behind forge-stats.vanturis.de (Next.js, standalone) |
+| `services/stats` | statistics service behind forge.vanturis.de (Next.js, standalone) |
 
 <details>
 <summary>Tools and commands</summary>
