@@ -23,13 +23,10 @@
   and puts Git, agents, preview and project knowledge into one window. With your own Claude subscription, no API key.
 </p>
 
-<!-- The screenshots still show the German interface. English versions go to
-     .github/assets/screenshots/en/start.png and .github/assets/screenshots/en/projects.png;
-     once they exist, point the two src attributes below at them. -->
 <table>
   <tr>
-    <td width="50%"><img src=".github/assets/screenshots/start.png" alt="Home: what is running and recently edited sessions"></td>
-    <td width="50%"><img src=".github/assets/screenshots/projekte.png" alt="Projects with Git status, tags and parallel agents"></td>
+    <td width="50%"><img src=".github/assets/screenshots/en/start.png" alt="Home: what is running and recently edited sessions"></td>
+    <td width="50%"><img src=".github/assets/screenshots/en/projects.png" alt="Projects with Git status, tags and parallel agents"></td>
   </tr>
   <tr>
     <td align="center"><sub>Home: what is running, recent sessions, subscription usage</sub></td>
