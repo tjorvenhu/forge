@@ -1,6 +1,7 @@
 import { Component, type ErrorInfo, type ReactNode } from "react";
 import { AlertTriangle, RotateCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { t } from "@/i18n";
 
 interface Props {
   children: ReactNode;
@@ -36,7 +37,7 @@ export class ErrorBoundary extends Component<Props, State> {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-3 p-6" role="alert">
         <AlertTriangle className="h-6 w-6 text-danger" />
-        <div className="text-sm font-medium">Diese Ansicht ist abgestürzt.</div>
+        <div className="text-sm font-medium">{t.layout.errorBoundary.crashed}</div>
         <pre className="max-h-64 max-w-3xl overflow-auto whitespace-pre-wrap rounded-md bg-surface p-3 font-mono text-xs text-muted">
           {this.state.error.message}
           {this.state.info ? `\n${this.state.info.trim().split("\n").slice(0, 8).join("\n")}` : ""}
@@ -48,7 +49,7 @@ export class ErrorBoundary extends Component<Props, State> {
             this.setState({ error: null, info: null });
           }}
         >
-          <RotateCw className="h-3.5 w-3.5" /> Erneut versuchen
+          <RotateCw className="h-3.5 w-3.5" /> {t.layout.errorBoundary.retry}
         </Button>
       </div>
     );

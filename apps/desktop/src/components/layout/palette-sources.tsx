@@ -10,6 +10,7 @@ import { refsMissingLabel, staleById } from "@/components/knowledge/knowledge-te
 import { ProjectIcon } from "@/components/projects/ProjectIcon";
 import { checkoutBranch, LOG_LIMIT } from "@/components/git/GitCenter";
 import type { PaletteEntry } from "./palette-actions";
+import { t } from "@/i18n";
 
 /** All files of a project, shared by the palette and file links in the chat. */
 export const projectFilesQuery = (projectId: string) => ({
@@ -76,7 +77,7 @@ export function usePaletteSources(query: string, project: ProjectWithStatus | nu
       list.push({
         id: `session-${s.id}`,
         group: "Sessions",
-        label: s.title ?? "Ohne Titel",
+        label: s.title ?? t.layout.sources.untitled,
         keywords: s.projectName,
         hint: `${s.projectName} · ${relativeTime(s.updatedAt)}`,
         icon: <History className="h-4 w-4" />,
@@ -90,8 +91,8 @@ export function usePaletteSources(query: string, project: ProjectWithStatus | nu
         list.push({
           id: `branch-${b.name}`,
           group: "Aktionen",
-          label: `Branch wechseln: ${b.name}`,
-          keywords: "git checkout",
+          label: t.layout.sources.switchBranch(b.name),
+          keywords: "branch wechseln git checkout switch",
           hint: b.upstream ?? undefined,
           icon: <GitBranch className="h-4 w-4" />,
           run: () => {
@@ -133,8 +134,8 @@ export function usePaletteSources(query: string, project: ProjectWithStatus | nu
         list.push({
           id: `knowledge-fix-${k.id}`,
           group: "Wissen",
-          label: `Mit Claude prüfen: ${k.title}`,
-          keywords: `veraltet verweise korrigieren ${refs.map((r) => r.ref).join(" ")}`,
+          label: t.layout.sources.checkWithClaude(k.title),
+          keywords: `veraltet verweise korrigieren outdated references fix ${refs.map((r) => r.ref).join(" ")}`,
           hint: refsMissingLabel(refs.length),
           icon: <Sparkles className="h-4 w-4" />,
           run: () => ui.openKnowledge(knowledgeFixRequest(k.id)),
@@ -142,8 +143,8 @@ export function usePaletteSources(query: string, project: ProjectWithStatus | nu
         list.push({
           id: `knowledge-checked-${k.id}`,
           group: "Wissen",
-          label: `Als geprüft markieren: ${k.title}`,
-          keywords: "veraltet verweise fehlalarm geprüft",
+          label: t.layout.sources.markChecked(k.title),
+          keywords: "veraltet verweise fehlalarm geprüft outdated references false alarm checked",
           hint: refsMissingLabel(refs.length),
           icon: <CheckCheck className="h-4 w-4" />,
           run: () => void markKnowledgeChecked(qc, owner, k.id),
@@ -168,7 +169,7 @@ export function usePaletteSources(query: string, project: ProjectWithStatus | nu
         group: "Erweiterungen",
         label: m.name,
         keywords: `mcp server ${m.target}`,
-        hint: `MCP Server · ${m.statusText}`,
+        hint: t.layout.sources.mcpServer(m.statusText),
         icon: <Server className="h-4 w-4" />,
         run: () => ui.openExtensions("mcp"),
       });
@@ -179,7 +180,7 @@ export function usePaletteSources(query: string, project: ProjectWithStatus | nu
         group: "Erweiterungen",
         label: s.name,
         keywords: `skill ${s.description ?? ""}`,
-        hint: s.scope === "project" ? "Eigener Skill im Projekt" : "Eigener Skill",
+        hint: s.scope === "project" ? t.layout.sources.ownSkillProject : t.layout.sources.ownSkill,
         icon: <PenLine className="h-4 w-4" />,
         run: () => ui.openExtensions("skills", "own"),
       });
@@ -190,7 +191,7 @@ export function usePaletteSources(query: string, project: ProjectWithStatus | nu
         group: "Erweiterungen",
         label: p.name,
         keywords: `skill plugin marketplace ${p.marketplace} ${p.description}`,
-        hint: p.installed ? "installiert" : `Marketplace · ${p.marketplace}`,
+        hint: p.installed ? t.layout.sources.installed : t.layout.sources.marketplace(p.marketplace),
         icon: p.installed ? <Blocks className="h-4 w-4" /> : <PackageSearch className="h-4 w-4" />,
         run: () => ui.openExtensions("skills", "marketplace"),
       });

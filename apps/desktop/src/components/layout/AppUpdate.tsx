@@ -15,12 +15,13 @@ import { Markdown } from "@/components/workspace/Markdown";
 import { useDictationQuiet } from "@/stores/dictation";
 import { useUi } from "@/stores/ui";
 import { Logo } from "./Logo";
+import { t } from "@/i18n";
 
 /** "kleines Update · 4 MB", "vollständiger Installer · 92 MB" or, in two steps, "erst Installer 0.1.9 · 92 MB, dann kleines Update". */
 function sizeLabel(latest: NonNullable<AppUpdateState["latest"]>): string {
-  const kind = latest.via ? `erst Installer ${latest.via}` : latest.kind === "patch" ? "kleines Update" : "vollständiger Installer";
+  const kind = latest.via ? t.layout.update.viaInstaller(latest.via) : latest.kind === "patch" ? t.layout.update.smallUpdate : t.layout.update.fullInstaller;
   const sized = latest.size ? `${kind} · ${Math.max(1, Math.round(latest.size / 1048576))} MB` : kind;
-  return latest.via ? `${sized}, dann kleines Update` : sized;
+  return latest.via ? t.layout.update.thenSmallUpdate(sized) : sized;
 }
 
 /** Downloads the installer if needed, then lets the desktop shell run it; FORGE restarts on its own. */
@@ -51,21 +52,19 @@ export function AppUpdateCard() {
   const busy = installing || s.phase === "downloading";
   const details = (
     <div className="flex max-w-64 flex-col gap-1.5 text-xs">
-      <span>
-        Installiert: {s.currentVersion} · {sizeLabel(s.latest)}
-      </span>
-      {s.installable ? <RestartNote /> : <span>Nur in der installierten App, nicht im Entwicklungsmodus.</span>}
+      <span>{t.layout.update.installedLine(s.currentVersion, sizeLabel(s.latest))}</span>
+      {s.installable ? <RestartNote /> : <span>{t.layout.update.devOnly}</span>}
     </div>
   );
   return (
     <div className="mx-3 mt-3 flex h-9 items-center gap-2 rounded-lg border border-accent/40 bg-accent-soft pl-2.5 pr-1 animate-slide-up-in">
       <ArrowUpCircle className="h-3.5 w-3.5 shrink-0 text-accent" />
       <Tooltip content={details}>
-        <span className="min-w-0 flex-1 cursor-default truncate text-caption">Update auf {s.latest.version} verfügbar</span>
+        <span className="min-w-0 flex-1 cursor-default truncate text-caption">{t.layout.update.available(s.latest.version)}</span>
       </Tooltip>
       {s.installable && (
         <Button size="sm" variant="primary" className="h-6 px-2" loading={busy} onClick={() => void install()}>
-          {busy ? (s.phase === "downloading" ? "Lädt …" : "Installiert …") : "Installieren"}
+          {busy ? (s.phase === "downloading" ? t.layout.update.loadingShort : t.layout.update.installingShort) : t.layout.update.install}
         </Button>
       )}
     </div>
@@ -105,19 +104,19 @@ export function AppUpdateDialog() {
     <Dialog
       open
       onOpenChange={(o) => !o && setDismissed(tag)}
-      title={`FORGE ${s.latest.version} ist verfügbar`}
-      description={`Installiert ist ${s.currentVersion}${s.latest.publishedAt ? `. Veröffentlicht ${relativeTime(s.latest.publishedAt)}` : ""}. ${sizeLabel(s.latest)}.`}
+      title={t.layout.update.dialogTitle(s.latest.version)}
+      description={t.layout.update.dialogDescription(s.currentVersion, s.latest.publishedAt ? relativeTime(s.latest.publishedAt) : null, sizeLabel(s.latest))}
       className="w-150"
       footer={
         <>
-          {!s.installable && <span className="mr-auto self-center text-xs text-subtle">Aktualisieren geht nur in der installierten App.</span>}
+          {!s.installable && <span className="mr-auto self-center text-xs text-subtle">{t.layout.update.installedOnly}</span>}
           <Button variant="ghost" onClick={() => setDismissed(tag)}>
-            Später
+            {t.layout.update.later}
           </Button>
           <Button variant="primary" loading={busy} disabled={!s.installable} onClick={() => void install()}>
-            {busy ? (s.phase === "downloading" ? "Wird geladen …" : "Wird installiert …") : (
+            {busy ? (s.phase === "downloading" ? t.layout.update.downloading : t.layout.update.installing) : (
               <>
-                <Download className="h-3.5 w-3.5" /> Jetzt aktualisieren
+                <Download className="h-3.5 w-3.5" /> {t.layout.update.updateNow}
               </>
             )}
           </Button>
@@ -128,10 +127,10 @@ export function AppUpdateDialog() {
         <Logo height={30} />
         <div className="min-w-0">
           <div className="mb-2 flex items-center gap-1.5 text-xs font-medium text-muted">
-            <Sparkles className="h-3.5 w-3.5 text-accent" /> Änderungen seit {s.latest.since}
+            <Sparkles className="h-3.5 w-3.5 text-accent" /> {t.layout.update.changesSince(s.latest.since)}
           </div>
           {s.latest.since !== s.currentVersion && (
-            <div className="-mt-1 mb-2 text-caption text-subtle">Installiert ist {s.currentVersion}. Ältere Änderungen sind hier nicht aufgeführt.</div>
+            <div className="-mt-1 mb-2 text-caption text-subtle">{t.layout.update.olderNotListed(s.currentVersion)}</div>
           )}
           <Changelog
             tag={tag}
@@ -159,7 +158,7 @@ function Changelog({ tag, notes, onSetup }: { tag: string; notes: string; onSetu
     return (
       <div className="max-h-80 overflow-y-auto text-body animate-fade-in">
         <Markdown text={c.text} />
-        <div className="mt-2 text-caption text-subtle">Von Claude aus Release-Notizen und Commit-Messages zusammengefasst.</div>
+        <div className="mt-2 text-caption text-subtle">{t.layout.update.summarizedBy}</div>
       </div>
     );
   const raw = c?.commits.length ? c.commits.map((m) => `- ${m}`).join("\n") : notes;
@@ -168,9 +167,9 @@ function Changelog({ tag, notes, onSetup }: { tag: string; notes: string; onSetu
     <div className="flex flex-col gap-2.5 text-body">
       {noLogin && (
         <div className="flex items-center justify-between gap-3 rounded-md border border-border bg-surface-2 px-3 py-2">
-          <p className="text-muted">Kein Changelog verfügbar, weil noch kein Claude-Login eingerichtet ist.</p>
+          <p className="text-muted">{t.layout.update.noChangelog}</p>
           <Button size="sm" variant="outline" onClick={onSetup}>
-            Claude einrichten
+            {t.layout.update.setupClaude}
           </Button>
         </div>
       )}
@@ -188,11 +187,11 @@ function Changelog({ tag, notes, onSetup }: { tag: string; notes: string; onSetu
       )}
       {(!c || c.status === "writing") && (
         <div className="flex items-center gap-1.5 text-caption text-subtle" role="status">
-          <Spinner className="h-3 w-3" /> Claude fasst die Änderungen zusammen …
+          <Spinner className="h-3 w-3" /> {t.layout.update.summarizing}
         </div>
       )}
-      {c?.unavailable === "error" && <div className="text-caption text-subtle">Die Zusammenfassung von Claude ist gerade nicht verfügbar.</div>}
-      {log.isError && <div className="text-caption text-subtle">Änderungen nicht geladen: {errorMessage(log.error)}</div>}
+      {c?.unavailable === "error" && <div className="text-caption text-subtle">{t.layout.update.summaryUnavailable}</div>}
+      {log.isError && <div className="text-caption text-subtle">{t.layout.update.changesNotLoaded(errorMessage(log.error))}</div>}
     </div>
   );
 }
@@ -209,17 +208,17 @@ export function AppUpdateSettings() {
     try {
       const next = await call("app.checkUpdate", {});
       qc.setQueryData(keys.appUpdate, next);
-      if (next.phase === "uptodate") toast.success("FORGE ist aktuell", next.message ?? `Version ${next.currentVersion}`);
-      if (next.phase === "error") toast.error("Prüfung fehlgeschlagen", next.message ?? "");
+      if (next.phase === "uptodate") toast.success(t.layout.update.upToDate, next.message ?? t.layout.update.version(next.currentVersion));
+      if (next.phase === "error") toast.error(t.layout.update.checkFailed, next.message ?? "");
     } catch (e) {
-      toast.error("Prüfung fehlgeschlagen", errorMessage(e));
+      toast.error(t.layout.update.checkFailed, errorMessage(e));
     } finally {
       setChecking(false);
     }
   };
   if (update.isPending)
     return (
-      <SkeletonRegion label="Lädt Update-Status" className="flex items-center gap-3">
+      <SkeletonRegion label={t.layout.update.loadingStatus} className="flex items-center gap-3">
         <div className="flex min-w-0 flex-1 flex-col gap-1.5 py-0.5">
           <Skeleton className="h-3.5 w-28" />
           <Skeleton className="h-2.5 w-48" />
@@ -230,14 +229,14 @@ export function AppUpdateSettings() {
   if (!s) return null;
   const status =
     s.phase === "available" || s.phase === "ready"
-      ? `Version ${s.latest?.version} ist verfügbar.`
+      ? t.layout.update.versionAvailable(s.latest?.version ?? "")
       : s.phase === "downloading"
-        ? "Update wird geladen …"
+        ? t.layout.update.downloadingUpdate
         : s.phase === "error"
-          ? (s.message ?? "Prüfung fehlgeschlagen.")
+          ? (s.message ?? t.layout.update.checkFailedDot)
           : s.checkedAt
-            ? (s.message ?? `Aktuell, geprüft ${relativeTime(s.checkedAt)}.`)
-            : "Noch nicht geprüft.";
+            ? (s.message ?? t.layout.update.upToDateChecked(relativeTime(s.checkedAt)))
+            : t.layout.update.notChecked;
   return (
     <div className="flex items-center gap-3">
       <div className="min-w-0 flex-1">
@@ -246,11 +245,11 @@ export function AppUpdateSettings() {
       </div>
       {(s.phase === "available" || s.phase === "ready") && s.installable ? (
         <Button size="sm" variant="primary" loading={installing} onClick={() => void install()}>
-          <Download className="h-3.5 w-3.5" /> Aktualisieren
+          <Download className="h-3.5 w-3.5" /> {t.layout.update.update}
         </Button>
       ) : (
         <Button size="sm" variant="outline" loading={checking || s.phase === "checking"} onClick={() => void check()}>
-          <RefreshCw className="h-3.5 w-3.5" /> Jetzt prüfen
+          <RefreshCw className="h-3.5 w-3.5" /> {t.layout.update.checkNow}
         </Button>
       )}
     </div>

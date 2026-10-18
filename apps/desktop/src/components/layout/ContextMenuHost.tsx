@@ -6,6 +6,7 @@ import { openExternal } from "@/lib/native";
 import { useUi } from "@/stores/ui";
 import { toast } from "@/stores/toast";
 import { MENU_CONTENT_CLASS, MenuEntry } from "@/components/ui/dropdown";
+import { t } from "@/i18n";
 
 const ICON = "h-3.5 w-3.5";
 
@@ -54,35 +55,35 @@ function editGroup(target: Element | null): ContextGroup | null {
     document.execCommand(command, false, value);
   };
   return [
-    { label: "Rückgängig", icon: <Undo2 className={ICON} />, hint: "Strg+Z", disabled: !writable, onSelect: () => run("undo") },
-    { label: "Wiederholen", icon: <Redo2 className={ICON} />, hint: "Strg+Y", disabled: !writable, onSelect: () => run("redo") },
+    { label: t.layout.contextMenu.undo, icon: <Undo2 className={ICON} />, hint: t.layout.contextMenu.key("Z"), disabled: !writable, onSelect: () => run("undo") },
+    { label: t.layout.contextMenu.redo, icon: <Redo2 className={ICON} />, hint: t.layout.contextMenu.key("Y"), disabled: !writable, onSelect: () => run("redo") },
     {
-      label: "Ausschneiden",
+      label: t.layout.contextMenu.cut,
       icon: <Scissors className={ICON} />,
-      hint: "Strg+X",
+      hint: t.layout.contextMenu.key("X"),
       disabled: !writable || !selected || secret,
       onSelect: () => {
         copyText(selected);
         run("delete");
       },
     },
-    { label: "Kopieren", icon: <Copy className={ICON} />, hint: "Strg+C", disabled: !selected || secret, onSelect: () => copyText(selected) },
+    { label: t.layout.contextMenu.copy, icon: <Copy className={ICON} />, hint: t.layout.contextMenu.key("C"), disabled: !selected || secret, onSelect: () => copyText(selected) },
     {
-      label: "Einfügen",
+      label: t.layout.contextMenu.paste,
       icon: <ClipboardPaste className={ICON} />,
-      hint: "Strg+V",
+      hint: t.layout.contextMenu.key("V"),
       disabled: !writable,
       onSelect: () => {
         navigator.clipboard.readText().then(
           (text) => run("insertText", text),
-          () => toast.error("Einfügen nicht möglich", "Die Zwischenablage ist nicht lesbar. Mit Strg+V einfügen."),
+          () => toast.error(t.layout.contextMenu.pasteFailed, t.layout.contextMenu.pasteFailedDetail),
         );
       },
     },
     {
-      label: "Alles auswählen",
+      label: t.layout.contextMenu.selectAll,
       icon: <TextSelect className={ICON} />,
-      hint: "Strg+A",
+      hint: t.layout.contextMenu.key("A"),
       onSelect: () => {
         if (field) {
           field.focus();
@@ -100,8 +101,8 @@ export function generalGroups(target: Element | null): ContextGroup[] {
   if (link && /^https?:\/\//.test(link.href)) {
     const href = link.href;
     groups.push([
-      { label: "Link im Browser öffnen", icon: <ExternalLink className={ICON} />, onSelect: () => void openExternal(href) },
-      { label: "Link kopieren", icon: <Link2 className={ICON} />, onSelect: () => copyText(href) },
+      { label: t.layout.contextMenu.openLink, icon: <ExternalLink className={ICON} />, onSelect: () => void openExternal(href) },
+      { label: t.layout.contextMenu.copyLink, icon: <Link2 className={ICON} />, onSelect: () => copyText(href) },
     ]);
   }
   // A region with its own copy and paste (the terminal) keeps the general ones out.
@@ -110,9 +111,9 @@ export function generalGroups(target: Element | null): ContextGroup[] {
   if (edit) groups.push(edit);
   else if (!plain) {
     const text = window.getSelection()?.toString() ?? "";
-    if (text.trim()) groups.push([{ label: "Kopieren", icon: <Copy className={ICON} />, hint: "Strg+C", onSelect: () => copyText(text) }]);
+    if (text.trim()) groups.push([{ label: t.layout.contextMenu.copy, icon: <Copy className={ICON} />, hint: t.layout.contextMenu.key("C"), onSelect: () => copyText(text) }]);
   }
-  groups.push([{ label: "Suchen und Befehle", icon: <Search className={ICON} />, hint: "Strg+K", onSelect: () => useUi.getState().setPaletteOpen(true) }]);
+  groups.push([{ label: t.layout.contextMenu.search, icon: <Search className={ICON} />, hint: t.layout.contextMenu.key("K"), onSelect: () => useUi.getState().setPaletteOpen(true) }]);
   return groups;
 }
 
@@ -157,7 +158,7 @@ export function ContextMenuHost({ search = true }: { search?: boolean }) {
           className={MENU_CONTENT_CLASS}
           // Focus goes where the chosen entry put it (a text field), not back to the invisible anchor.
           onCloseAutoFocus={(e) => e.preventDefault()}
-          aria-label="Kontextmenü"
+          aria-label={t.layout.contextMenu.label}
         >
           {menu.groups.map((g, gi) => (
             <Fragment key={gi}>

@@ -5,6 +5,7 @@ import { setAlwaysOnTop, setChatWindowPin, useChatWindowPin } from "@/lib/window
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Tooltip } from "@/components/ui/misc";
+import { t } from "@/i18n";
 
 /**
  * Header toggle for the setting "Im Vordergrund bleiben", which holds for the main window. Icon
@@ -15,13 +16,13 @@ export function AlwaysOnTopButton() {
   const on = useSettings().data?.alwaysOnTop;
   if (on === undefined) return null;
   return (
-    <Tooltip content={on ? "Das Hauptfenster bleibt im Vordergrund. Klicken zum Ausschalten" : "Hauptfenster über anderen Fenstern halten"}>
+    <Tooltip content={on ? t.layout.onTop.mainOn : t.layout.onTop.mainOff}>
       <Button
         size="icon"
         variant="ghost"
         onClick={() => void setAlwaysOnTop(qc, !on)}
         aria-pressed={on}
-        aria-label="Im Vordergrund bleiben"
+        aria-label={t.layout.onTop.mainLabel}
         className={cn("h-9 w-9 rounded-lg", on && "text-accent hover:text-accent")}
       >
         <Pin className={cn("h-4 w-4", on && "fill-current")} />
@@ -35,13 +36,13 @@ export function ChatWindowPinButton() {
   const on = useChatWindowPin((s) => s.on);
   if (on === null) return null;
   return (
-    <Tooltip content={on ? "Dieses Fenster bleibt im Vordergrund. Klicken zum Lösen" : "Dieses Fenster über anderen Fenstern halten"}>
+    <Tooltip content={on ? t.layout.onTop.windowOn : t.layout.onTop.windowOff}>
       <Button
         size="icon-sm"
         variant="ghost"
         onClick={() => void setChatWindowPin(!on)}
         aria-pressed={on}
-        aria-label="Fenster im Vordergrund halten"
+        aria-label={t.layout.onTop.windowLabel}
         className={cn(on && "text-accent hover:text-accent")}
       >
         <Pin className={cn("h-3.5 w-3.5", on && "fill-current")} />

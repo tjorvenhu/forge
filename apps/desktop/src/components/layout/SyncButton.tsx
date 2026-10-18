@@ -7,18 +7,19 @@ import { useUi } from "@/stores/ui";
 import { Button } from "@/components/ui/button";
 import { Tooltip } from "@/components/ui/misc";
 import { formatBackupDate } from "@/components/settings/BackupSettings";
+import { t } from "@/i18n";
 
 type Tone = "ok" | "busy" | "warn" | "bad";
 
 /** What the sync symbol says at a glance: colour of symbol and dot, and the headline of the tooltip. */
 export function syncLook(st: SyncStatus): { tone: Tone; title: string } {
-  if (st.phase === "syncing") return { tone: "busy", title: "Wird gerade abgeglichen" };
-  if (st.phase === "error") return { tone: "bad", title: "Abgleich fehlgeschlagen" };
-  if (st.phase === "needs-passphrase") return { tone: "warn", title: "Sync-Passwort nötig" };
-  if (st.phase === "no-github") return { tone: "warn", title: "Nicht bei GitHub angemeldet" };
-  if (st.pending) return { tone: "busy", title: "Änderungen werden gleich hochgeladen" };
-  if (!st.lastSyncAt) return { tone: "busy", title: "Noch nicht abgeglichen" };
-  return { tone: "ok", title: "Alles aktuell" };
+  if (st.phase === "syncing") return { tone: "busy", title: t.layout.sync.syncing };
+  if (st.phase === "error") return { tone: "bad", title: t.layout.sync.failed };
+  if (st.phase === "needs-passphrase") return { tone: "warn", title: t.layout.sync.needsPassphrase };
+  if (st.phase === "no-github") return { tone: "warn", title: t.layout.sync.noGithub };
+  if (st.pending) return { tone: "busy", title: t.layout.sync.pending };
+  if (!st.lastSyncAt) return { tone: "busy", title: t.layout.sync.never };
+  return { tone: "ok", title: t.layout.sync.ok };
 }
 
 const DOT: Record<Tone, string> = { ok: "bg-success", busy: "animate-soft-pulse bg-graph-blue", warn: "bg-warning", bad: "bg-danger" };
@@ -37,7 +38,7 @@ export function SyncButton() {
   const { tone, title } = syncLook(st);
   return (
     <Tooltip content={<SyncTip st={st} title={title} tone={tone} />} delay={150}>
-      <Button size="icon" variant="ghost" onClick={() => openSettings("github")} aria-label={`GitHub-Synchronisierung: ${title}`} className="relative h-9 w-9 rounded-lg">
+      <Button size="icon" variant="ghost" onClick={() => openSettings("github")} aria-label={t.layout.sync.label(title)} className="relative h-9 w-9 rounded-lg">
         <RefreshCw className={cn("h-4 w-4", ICON[tone], st.phase === "syncing" && "animate-spin [animation-duration:1.6s]")} strokeWidth={2} />
         <span className={cn("absolute bottom-2 right-1.5 h-2 w-2 rounded-full ring-2 ring-bg", DOT[tone])} aria-hidden />
       </Button>
@@ -47,11 +48,11 @@ export function SyncButton() {
 
 function SyncTip({ st, title, tone }: { st: SyncStatus; title: string; tone: Tone }) {
   const rows: Array<[string, ReactNode]> = [];
-  if (st.lastSyncAt) rows.push(["Zuletzt abgeglichen", `${relativeTime(st.lastSyncAt)}, ${formatBackupDate(st.lastSyncAt)}`]);
-  if (st.remote) rows.push(["Zuletzt geschrieben von", `${st.remote.device}, ${relativeTime(st.remote.updatedAt)}`]);
-  if (st.repo) rows.push(["Repository", <span className="font-mono">{st.repo}</span>]);
-  if (st.localOnly.length) rows.push(["Nur auf diesem PC", `${st.localOnly.length} ${st.localOnly.length === 1 ? "Eintrag" : "Einträge"}`]);
-  if (st.available.length) rows.push(["Von anderen PCs", `${st.available.length} ${st.available.length === 1 ? "Projekt" : "Projekte"} zum Holen`]);
+  if (st.lastSyncAt) rows.push([t.layout.sync.lastSync, `${relativeTime(st.lastSyncAt)}, ${formatBackupDate(st.lastSyncAt)}`]);
+  if (st.remote) rows.push([t.layout.sync.lastWrittenBy, `${st.remote.device}, ${relativeTime(st.remote.updatedAt)}`]);
+  if (st.repo) rows.push([t.layout.sync.repository, <span className="font-mono">{st.repo}</span>]);
+  if (st.localOnly.length) rows.push([t.layout.sync.localOnly, t.layout.sync.entries(st.localOnly.length)]);
+  if (st.available.length) rows.push([t.layout.sync.fromOthers, t.layout.sync.toFetch(st.available.length)]);
   return (
     <div className="flex w-64 flex-col gap-2 py-0.5">
       <div className="flex items-center gap-2">
@@ -69,7 +70,7 @@ function SyncTip({ st, title, tone }: { st: SyncStatus; title: string; tone: Ton
           ))}
         </dl>
       )}
-      <p className="border-t border-border pt-1.5 text-caption text-subtle">Verschlüsselt über GitHub. Klicken für die Einstellungen.</p>
+      <p className="border-t border-border pt-1.5 text-caption text-subtle">{t.layout.sync.footer}</p>
     </div>
   );
 }

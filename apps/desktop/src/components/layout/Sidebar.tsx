@@ -23,6 +23,7 @@ import { SearchField } from "./SearchField";
 import { SupportButton } from "@/components/settings/SupportSettings";
 import { ErrorBoundary } from "./ErrorBoundary";
 import { TokenRate } from "./TokenRate";
+import { locale, t } from "@/i18n";
 
 export function Sidebar() {
   const view = useUi((s) => s.view);
@@ -37,8 +38,8 @@ export function Sidebar() {
   const hasSplit = useUi((s) => s.splitPanes.length > 0);
   const hasOpen = liveCount > 0 || (activeProjectId !== null && (view === "workspace" || hasSplit));
   const counts: Partial<Record<View, { n: number; label: string }>> = {
-    projects: { n: list.length, label: list.length === 1 ? "1 Projekt" : `${list.length} Projekte` },
-    sessions: { n: liveCount, label: liveCount === 1 ? "1 offene Session" : `${liveCount} offene Sessions` },
+    projects: { n: list.length, label: t.layout.sidebar.projectCount(list.length) },
+    sessions: { n: liveCount, label: t.layout.sidebar.openSessionCount(liveCount) },
   };
 
   return (
@@ -54,7 +55,7 @@ export function Sidebar() {
         <SupportButton />
       </div>
 
-      <nav className="flex flex-col gap-1 px-3 pt-2" aria-label="Hauptnavigation">
+      <nav className="flex flex-col gap-1 px-3 pt-2" aria-label={t.layout.sidebar.mainNav}>
         {NAV.map((n) => {
           const active = view === n.view || (n.view === "projects" && view === "workspace");
           const count = counts[n.view];
@@ -87,8 +88,8 @@ export function Sidebar() {
 
       <div className="min-h-0 flex-1 overflow-y-auto px-3 pt-3">
         <div className="flex items-center justify-between px-3 pb-2">
-          <span className="text-body text-muted">Geöffnet</span>
-          <Button size="icon-sm" variant="ghost" onClick={() => setNewProject("import")} className="h-6 w-6 text-subtle hover:bg-surface-2" aria-label="Projekt hinzufügen" title="Projekt hinzufügen">
+          <span className="text-body text-muted">{t.layout.sidebar.opened}</span>
+          <Button size="icon-sm" variant="ghost" onClick={() => setNewProject("import")} className="h-6 w-6 text-subtle hover:bg-surface-2" aria-label={t.layout.sidebar.addProject} title={t.layout.sidebar.addProject}>
             <Plus className="h-4 w-4" />
           </Button>
         </div>
@@ -99,13 +100,13 @@ export function Sidebar() {
         {/* While these load, OpenSessions shows its skeleton in place of the hint. */}
         {!hasOpen && !live.isPending && !projects.isPending && (
           <>
-            <p className="px-3 pb-2 text-small text-subtle">Kein Projekt geöffnet. Wähle eins auf der Startseite oder unter Projekte.</p>
+            <p className="px-3 pb-2 text-small text-subtle">{t.layout.sidebar.noneOpen}</p>
             <Button
               variant="outline"
               onClick={() => setNewProject("import")}
               className="h-11 w-full justify-start gap-2.5 rounded-lg border-dashed px-3 text-body-lg font-normal text-muted hover:border-border-strong hover:bg-transparent hover:text-fg"
             >
-              <Plus className="h-4 w-4" /> Projekt hinzufügen
+              <Plus className="h-4 w-4" /> {t.layout.sidebar.addProject}
             </Button>
           </>
         )}
@@ -124,32 +125,32 @@ function ClaudeStatusCard() {
   const openSettings = useUi((s) => s.openSettings);
   const d = diag.data;
   let tone = "bg-danger";
-  let line = "Status unbekannt";
+  let line = t.layout.sidebar.statusUnknown;
   if (d) {
     if (!d.claude.found && setup?.task === "install" && setup.phase === "running") {
       tone = "bg-warning animate-soft-pulse";
-      line = "Wird installiert …";
+      line = t.layout.sidebar.installing;
     } else if (!d.claude.found) {
       tone = "bg-danger";
-      line = "CLI nicht gefunden";
+      line = t.layout.sidebar.cliMissing;
     } else if (!d.auth.loggedIn) {
       tone = "bg-danger";
-      line = "Nicht angemeldet";
+      line = t.layout.sidebar.notLoggedIn;
     } else {
       tone = d.apiKeyEnvPresent && !d.apiKeyStripped ? "bg-warning" : "bg-success";
-      line = planLabel(d.auth) ?? d.auth.authMethod ?? "angemeldet";
+      line = planLabel(d.auth) ?? d.auth.authMethod ?? t.layout.sidebar.loggedIn;
     }
   }
   const windows = usage.data?.available ? usage.data.windows.slice(0, 3) : [];
   const items = () => [...(d?.auth.loggedIn ? usageItems(qc, () => openSettings("claude")) : []), ...claudeAccountItems(d, () => openSettings("claude"))];
   const summary = (
     // The menu hands focus back to the button when it closes; the global focus outline would frame the card.
-    <button className="flex flex-col gap-2 text-left focus-visible:outline-none" title="Claude-Konto, Nutzung und Diagnose">
+    <button className="flex flex-col gap-2 text-left focus-visible:outline-none" title={t.layout.sidebar.cardTitle}>
       <div className="flex w-full items-center gap-2.5">
         <div className="min-w-0 flex-1">
           <div className="text-body">Claude Code</div>
           {diag.isPending ? (
-            <SkeletonRegion label="Lädt Claude-Status" className="flex h-4 items-center">
+            <SkeletonRegion label={t.layout.sidebar.loadingClaude} className="flex h-4 items-center">
               <Skeleton className="h-2.5 w-24" />
             </SkeletonRegion>
           ) : (
@@ -162,7 +163,7 @@ function ClaudeStatusCard() {
         <GitHubAvatar />
       </div>
       {usage.isPending ? (
-        <SkeletonRegion label="Lädt Nutzung" className="flex w-full flex-col gap-1.5">
+        <SkeletonRegion label={t.layout.sidebar.loadingUsage} className="flex w-full flex-col gap-1.5">
           {[0, 1].map((i) => (
             <div key={i}>
               <div className="mb-0.5 flex h-4 items-center justify-between">
@@ -175,7 +176,7 @@ function ClaudeStatusCard() {
         </SkeletonRegion>
       ) : (
         windows.length > 0 && (
-          <div className="flex w-full flex-col gap-1.5" aria-label="Nutzung des Abos">
+          <div className="flex w-full flex-col gap-1.5" aria-label={t.layout.sidebar.usageLabel}>
             {windows.map((w) => (
               <UsageBar key={w.key} w={w} />
             ))}
@@ -203,7 +204,7 @@ function GitHubAvatar() {
   const a = account.data;
   if (!a) return null;
   return (
-    <span title={`Bei GitHub angemeldet als @${a.login}`}>
+    <span title={t.layout.sidebar.githubAs(a.login)}>
       <AuthorAvatar name={a.name ?? a.login} url={a.avatarUrl} className="h-6 w-6" />
     </span>
   );
@@ -222,12 +223,12 @@ function ClaudeUpdateButton() {
       className="w-full"
       loading={updating}
       disabled={setup.data?.phase === "running"}
-      title={info ? `Claude Code installiert: ${info.installed ?? "unbekannt"}, verfügbar: ${info.latest} (Kanal ${info.channel})` : undefined}
-      onClick={() => call("claude.update", {}).catch((e: unknown) => toast.error("Update nicht gestartet", errorMessage(e)))}
+      title={info ? t.layout.sidebar.claudeUpdateTitle(info.installed ?? t.layout.sidebar.unknown, info.latest ?? "", info.channel) : undefined}
+      onClick={() => call("claude.update", {}).catch((e: unknown) => toast.error(t.layout.sidebar.updateNotStarted, errorMessage(e)))}
     >
-      {updating ? "Claude Code wird aktualisiert …" : (
+      {updating ? t.layout.sidebar.claudeUpdating : (
         <>
-          <Download className="h-3.5 w-3.5" /> Claude-Code-Update auf {info?.latest}
+          <Download className="h-3.5 w-3.5" /> {t.layout.sidebar.claudeUpdate(info?.latest ?? "")}
         </>
       )}
     </Button>
@@ -236,10 +237,12 @@ function ClaudeUpdateButton() {
 
 /** Tooltip of a usage bar; the stored reset time can already lie in the past until the next update. */
 export function resetText(resetsAt: string, now = Date.now()): string {
-  const at = new Date(resetsAt).toLocaleString("de-DE", { weekday: "short", hour: "2-digit", minute: "2-digit" });
+  const at = new Date(resetsAt).toLocaleString(locale, { weekday: "short", hour: "2-digit", minute: "2-digit" });
   const when = relativeTime(resetsAt, now);
-  if (new Date(resetsAt).getTime() <= now) return `Wurde ${when} zurückgesetzt (${at})`;
-  return `Wird ${when === "gerade eben" ? "gleich" : when} zurückgesetzt (${at})`;
+  const left = new Date(resetsAt).getTime() - now;
+  if (left <= 0) return t.layout.sidebar.wasReset(when, at);
+  // relativeTime says "just now" below 45 seconds, for a reset ahead that reads as "soon".
+  return left < 45_000 ? t.layout.sidebar.resetSoon(at) : t.layout.sidebar.willReset(when, at);
 }
 
 function UsageBar({ w }: { w: UsageWindow }) {

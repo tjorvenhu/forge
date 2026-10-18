@@ -1,9 +1,11 @@
 import { AlertTriangle, CheckCircle2, Info, X, XCircle } from "lucide-react";
 import { useToasts } from "@/stores/toast";
 import { cn } from "@/lib/utils";
+import { t } from "@/i18n";
 
 export function Toaster() {
   const { toasts, dismiss, pause, resume } = useToasts();
+  const closeLabel = t.layout.toaster.close;
   return (
     <div className="pointer-events-none fixed bottom-4 right-4 z-[60] flex w-96 max-w-[90vw] flex-col gap-2" aria-live="polite">
       {toasts.map((t) => (
@@ -37,7 +39,7 @@ export function Toaster() {
               </button>
             )}
           </div>
-          <button className="rounded p-0.5 text-subtle hover:text-fg" onClick={() => dismiss(t.id)} aria-label="Meldung schließen">
+          <button className="rounded p-0.5 text-subtle hover:text-fg" onClick={() => dismiss(t.id)} aria-label={closeLabel}>
             <X className="h-3.5 w-3.5" />
           </button>
         </div>

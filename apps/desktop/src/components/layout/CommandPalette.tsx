@@ -14,6 +14,7 @@ import { HIT_ROLE_LABEL, openSearchHit, Snippet } from "@/components/search/Sear
 import { buildActions, type PaletteDialog, type PaletteEntry, type PaletteGroup } from "./palette-actions";
 import { usePaletteSources } from "./palette-sources";
 import { PaletteDialogs } from "./PaletteDialogs";
+import { t } from "@/i18n";
 
 const NO_TEMPLATES: PromptTemplate[] = [];
 const NO_AGENTS: ProjectWithStatus[] = [];
@@ -55,7 +56,7 @@ export function CommandPalette() {
             // The dialog an entry opened has the focus by now.
             onCloseAutoFocus={(e) => dialog && e.preventDefault()}
           >
-            <D.Title className="sr-only">Befehlspalette</D.Title>
+            <D.Title className="sr-only">{t.layout.palette.title}</D.Title>
             {/* Content is mounted only while open or closing; the body stays for the exit animation. */}
             <PaletteBody onClose={() => setOpen(false)} openDialog={setDialog} />
           </D.Content>
@@ -168,8 +169,8 @@ function PaletteBody({ onClose, openDialog }: { onClose: () => void; openDialog:
               runAt(index);
             }
           }}
-          placeholder="Aktion, Einstellung, Projekt, Session, Datei oder Text aus einem Verlauf"
-          aria-label="Befehlspalette durchsuchen"
+          placeholder={t.layout.palette.placeholder}
+          aria-label={t.layout.palette.searchLabel}
           role="combobox"
           aria-expanded
           aria-autocomplete="list"
@@ -179,8 +180,8 @@ function PaletteBody({ onClose, openDialog }: { onClose: () => void; openDialog:
         />
         {hits.isFetching && <Spinner className="h-3.5 w-3.5" />}
       </div>
-      <div ref={listRef} id={listId} className="min-h-0 flex-1 overflow-y-auto p-1.5" role="listbox" aria-label="Ergebnisse">
-        {shown.length === 0 && !loading && <div className="px-3 py-6 text-center text-body text-muted">Nichts gefunden.</div>}
+      <div ref={listRef} id={listId} className="min-h-0 flex-1 overflow-y-auto p-1.5" role="listbox" aria-label={t.layout.palette.results}>
+        {shown.length === 0 && !loading && <div className="px-3 py-6 text-center text-body text-muted">{t.layout.palette.nothingFound}</div>}
         {shown.map((e, i) => {
           const header = e.group !== lastGroup ? e.group : null;
           lastGroup = e.group;
@@ -188,7 +189,7 @@ function PaletteBody({ onClose, openDialog }: { onClose: () => void; openDialog:
             <div key={e.id} role="none">
               {header && (
                 <div role="presentation" className="px-2.5 pb-1 pt-2 text-caption font-semibold uppercase tracking-wide text-subtle">
-                  {header}
+                  {t.layout.palette.groups[header]}
                 </div>
               )}
               <button
@@ -205,7 +206,7 @@ function PaletteBody({ onClose, openDialog }: { onClose: () => void; openDialog:
                   <span className="min-w-0 flex-1">
                     <Snippet text={e.hit.snippet} className="line-clamp-1 block text-body" />
                     <span className="block truncate text-caption text-subtle">
-                      {HIT_ROLE_LABEL[e.hit.role]} ·{e.hit.sessionTitle ?? "Ohne Titel"} · {e.hit.projectName}
+                      {HIT_ROLE_LABEL[e.hit.role]} ·{e.hit.sessionTitle ?? t.layout.palette.untitled} · {e.hit.projectName}
                     </span>
                   </span>
                 ) : (
@@ -225,20 +226,20 @@ function PaletteBody({ onClose, openDialog }: { onClose: () => void; openDialog:
       <div className="flex items-center gap-3 border-t border-border px-4 py-2 text-caption text-subtle">
         <span className="flex items-center gap-1">
           <Kbd>
-            <ArrowUp className="inline h-2.5 w-2.5" aria-label="Pfeil nach oben" />
+            <ArrowUp className="inline h-2.5 w-2.5" aria-label={t.layout.palette.arrowUp} />
           </Kbd>
           <Kbd>
-            <ArrowDown className="inline h-2.5 w-2.5" aria-label="Pfeil nach unten" />
+            <ArrowDown className="inline h-2.5 w-2.5" aria-label={t.layout.palette.arrowDown} />
           </Kbd>
-          auswählen
+          {t.layout.palette.select}
         </span>
         <span>
-          <Kbd>Enter</Kbd> ausführen
+          <Kbd>Enter</Kbd> {t.layout.palette.run}
         </span>
         <span>
-          <Kbd>Esc</Kbd> schließen
+          <Kbd>Esc</Kbd> {t.layout.palette.close}
         </span>
-        <span className="flex-1 text-right">Ab zwei Zeichen auch Dateien und Wissen, ab drei die Verläufe.</span>
+        <span className="flex-1 text-right">{t.layout.palette.footerHint}</span>
       </div>
     </>
   );
@@ -247,7 +248,7 @@ function PaletteBody({ onClose, openDialog }: { onClose: () => void; openDialog:
 /** Result rows still loading, shaped like a group with its rows; full-text hits have two lines. */
 function ResultSkeleton({ twoLine }: { twoLine: boolean }) {
   return (
-    <div role="status" aria-label="Lädt">
+    <div role="status" aria-label={t.layout.palette.loading}>
       <div className="px-2.5 pb-2 pt-3">
         <Skeleton className="h-2.5 w-20 rounded-sm" />
       </div>

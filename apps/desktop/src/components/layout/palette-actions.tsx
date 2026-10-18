@@ -112,64 +112,75 @@ export const UNLISTED_SETTINGS = {
 } as const satisfies Partial<Record<BooleanSetting, string>>;
 
 const SETTING_TOGGLES: Record<Exclude<BooleanSetting, keyof typeof UNLISTED_SETTINGS>, { label: string; section: SettingsSection; keywords?: string }> = {
-  enterToSend: { label: "Enter sendet", section: "general", keywords: "senden zeilenumbruch tastatur" },
-  desktopNotifications: { label: "Windows-Benachrichtigungen", section: "general", keywords: "desktop benachrichtigung meldung" },
-  alwaysOnTop: { label: "Im Vordergrund bleiben", section: "general", keywords: "hauptfenster fenster immer oben anheften anpinnen always on top" },
-  screenshotKey: { label: "Druck-Taste für Screenshots", section: "general", keywords: "screenshot bildschirmfoto snipping druck print taste" },
-  sounds: { label: "Töne", section: "general", keywords: "sound signal klang" },
-  autoContinueAfterLimit: { label: "Nach Nutzungslimit weitermachen", section: "claude", keywords: "auto weitermachen limit reset" },
-  learnTemplates: { label: "Vorlagen automatisch lernen", section: "templates", keywords: "prompt vorlagen templates wiederkehrende nachrichten shortcuts textvorschläge selbst anlegen" },
-  uiCompare: { label: "Vorher-Nachher-Bilder bei UI-Änderungen", section: "claude", keywords: "screenshot vergleich vorschau dev-server ui oberfläche bild vorher nachher" },
-  stripApiKey: { label: "ANTHROPIC_API_KEY ausblenden", section: "claude", keywords: "api key abo" },
-  updateChecks: { label: "Automatisch nach Updates suchen", section: "about", keywords: "update release version" },
-  usageStats: { label: "Anonyme Nutzungsstatistik", section: "about", keywords: "statistik telemetrie datenschutz zahlen tokens anonym senden" },
-  syncEnabled: { label: "Synchronisierung über GitHub", section: "github", keywords: "sync abgleich andere pc rechner repository forge-data cloud" },
+  enterToSend: { label: t.layout.actions.toggles.enterToSend, section: "general", keywords: "enter sendet senden zeilenumbruch tastatur send newline keyboard" },
+  desktopNotifications: { label: t.layout.actions.toggles.desktopNotifications, section: "general", keywords: "windows desktop benachrichtigung meldung notification" },
+  alwaysOnTop: { label: t.layout.actions.toggles.alwaysOnTop, section: "general", keywords: "vordergrund hauptfenster fenster immer oben anheften anpinnen always on top main window pin" },
+  screenshotKey: { label: t.layout.actions.toggles.screenshotKey, section: "general", keywords: "screenshot bildschirmfoto snipping druck print taste key screen capture" },
+  sounds: { label: t.layout.actions.toggles.sounds, section: "general", keywords: "töne ton sound sounds signal klang audio" },
+  autoContinueAfterLimit: { label: t.layout.actions.toggles.autoContinueAfterLimit, section: "claude", keywords: "auto weitermachen nutzungslimit limit reset continue usage" },
+  learnTemplates: { label: t.layout.actions.toggles.learnTemplates, section: "templates", keywords: "prompt vorlagen templates wiederkehrende nachrichten shortcuts textvorschläge selbst anlegen lernen learn automatic recurring messages suggestions" },
+  uiCompare: { label: t.layout.actions.toggles.uiCompare, section: "claude", keywords: "screenshot vergleich vorschau dev-server ui oberfläche bild vorher nachher before after compare preview image" },
+  stripApiKey: { label: t.layout.actions.toggles.stripApiKey, section: "claude", keywords: "api key abo ausblenden hide subscription" },
+  updateChecks: { label: t.layout.actions.toggles.updateChecks, section: "about", keywords: "update updates release version automatisch suchen check automatic" },
+  usageStats: { label: t.layout.actions.toggles.usageStats, section: "about", keywords: "nutzungsstatistik statistik telemetrie datenschutz zahlen tokens anonym senden usage statistics telemetry privacy anonymous" },
+  syncEnabled: { label: t.layout.actions.toggles.syncEnabled, section: "github", keywords: "synchronisierung sync abgleich andere pc rechner repository forge-data cloud github other computers" },
 };
 
 /** Single options of the settings that are no switch; the entry opens their section. */
 const SETTING_OPTIONS: ReadonlyArray<{ id: string; label: string; section: SettingsSection; keywords?: string }> = [
   { id: "language", label: t.layout.paletteLanguageOption, section: "general", keywords: "sprache language english englisch deutsch german flagge" },
-  { id: "default-model", label: "Standardmodell für neue Sessions", section: "general", keywords: "modell model opus sonnet haiku" },
-  { id: "default-effort", label: "Standard-Denkaufwand", section: "general", keywords: "aufwand effort thinking nachdenken" },
-  { id: "default-profile", label: "Profil für neue Projekte", section: "general", keywords: "rechte permission safe balanced autonomous" },
-  { id: "project-dir", label: "Ordner für neue Projekte", section: "general", keywords: "pfad verzeichnis" },
-  { id: "github", label: "GitHub-Anmeldung", section: "github", keywords: "konto login account" },
-  { id: "claude-setup", label: "Claude Code installieren und anmelden", section: "claude", keywords: "login abo update version" },
-  { id: "claude-path", label: "Pfad zur Claude-CLI", section: "claude", keywords: "executable programm" },
-  { id: "idle-close", label: "Untätige Sessions schließen nach", section: "claude", keywords: "claude-prozess beenden inaktiv leerlauf timeout automatisch schließen minuten stunden" },
-  { id: "phone-setup", label: "Telefon einrichten", section: "phone", keywords: "anruf sip gemini openai stimme tischtelefon" },
-  { id: "phone-numbers", label: "Telefonnummern: wen FORGE anruft, wer anrufen darf", section: "phone", keywords: "nummer handy rufnummer erlaubte anrufer benachrichtigung einschalten ausschalten" },
-  { id: "sync-projects", label: "Projekte von anderen PCs holen", section: "github", keywords: "sync klonen abgleich rechner" },
-  { id: "sync-passphrase", label: "Sync-Passwort eingeben oder neu festlegen", section: "github", keywords: "verschlüsselung schlüssel passwort vergessen github" },
-  { id: "sync-local-only", label: "Nur lokal: auf anderen PCs Entferntes", section: "github", keywords: "out of sync nicht synchronisiert gelöscht anderer pc" },
-  { id: "sync-force", label: "Diesen PC hart auf den Stand von GitHub setzen", section: "github", keywords: "sync zurücksetzen überschreiben neuester stand" },
-  { id: "sync-versions", label: "Versionen auf GitHub zurückholen", section: "github", keywords: "sync verlauf commit wiederherstellen backup" },
-  { id: "backup-restore", label: "Backup herunterladen oder zurücksetzen", section: "backup", keywords: "sichern wiederherstellen export" },
-  { id: "global-rules", label: "Globale Regeln bearbeiten", section: "rules", keywords: "claude.md memory anweisungen" },
-  { id: "publisher", label: "Herausgeber, Impressum und Lizenz", section: "about", keywords: "vanturis firma impressum lizenz agpl open source quellcode datenschutz" },
-  { id: "updates", label: "Updates und Version", section: "about", keywords: "version release" },
-  { id: "privacy", label: "Datenschutz", section: "about", keywords: "telemetrie nutzungsstatistik anonym" },
-  { id: "diagnostics", label: "Diagnose", section: "about", keywords: "system node git gh api key fehler" },
+  { id: "default-model", label: t.layout.actions.options.defaultModel, section: "general", keywords: "standardmodell modell model default opus sonnet haiku" },
+  { id: "default-effort", label: t.layout.actions.options.defaultEffort, section: "general", keywords: "denkaufwand aufwand effort thinking nachdenken default" },
+  { id: "default-profile", label: t.layout.actions.options.defaultProfile, section: "general", keywords: "profil rechte profile permission safe balanced autonomous" },
+  { id: "project-dir", label: t.layout.actions.options.projectDir, section: "general", keywords: "ordner pfad verzeichnis folder path directory projects" },
+  { id: "github", label: t.layout.actions.options.github, section: "github", keywords: "github anmeldung konto login account sign in" },
+  { id: "claude-setup", label: t.layout.actions.options.claudeSetup, section: "claude", keywords: "claude code installieren anmelden login abo update version install subscription" },
+  { id: "claude-path", label: t.layout.actions.options.claudePath, section: "claude", keywords: "pfad claude cli executable programm path program" },
+  { id: "idle-close", label: t.layout.actions.options.idleClose, section: "claude", keywords: "untätige sessions claude-prozess beenden inaktiv leerlauf timeout automatisch schließen minuten stunden idle close process minutes hours" },
+  { id: "phone-setup", label: t.layout.actions.options.phoneSetup, section: "phone", keywords: "telefon einrichten anruf sip gemini openai stimme tischtelefon phone call voice desk phone set up" },
+  { id: "phone-numbers", label: t.layout.actions.options.phoneNumbers, section: "phone", keywords: "telefonnummern nummer handy rufnummer erlaubte anrufer benachrichtigung einschalten ausschalten phone numbers mobile allowed callers notification" },
+  { id: "sync-projects", label: t.layout.actions.options.syncProjects, section: "github", keywords: "projekte holen sync klonen abgleich rechner pc fetch projects clone other computers" },
+  { id: "sync-passphrase", label: t.layout.actions.options.syncPassphrase, section: "github", keywords: "sync-passwort verschlüsselung schlüssel passwort vergessen github password passphrase encryption key forgot" },
+  { id: "sync-local-only", label: t.layout.actions.options.syncLocalOnly, section: "github", keywords: "nur lokal out of sync nicht synchronisiert gelöscht anderer pc local only deleted removed other computer" },
+  { id: "sync-force", label: t.layout.actions.options.syncForce, section: "github", keywords: "sync zurücksetzen überschreiben neuester stand github reset overwrite latest hard" },
+  { id: "sync-versions", label: t.layout.actions.options.syncVersions, section: "github", keywords: "versionen sync verlauf commit wiederherstellen backup versions history restore" },
+  { id: "backup-restore", label: t.layout.actions.options.backupRestore, section: "backup", keywords: "backup herunterladen zurücksetzen sichern wiederherstellen export download restore" },
+  { id: "global-rules", label: t.layout.actions.options.globalRules, section: "rules", keywords: "globale regeln claude.md memory anweisungen global rules instructions edit" },
+  { id: "publisher", label: t.layout.actions.options.publisher, section: "about", keywords: "herausgeber vanturis firma impressum lizenz agpl open source quellcode datenschutz publisher company legal notice license source code privacy" },
+  { id: "updates", label: t.layout.actions.options.updates, section: "about", keywords: "updates version release" },
+  { id: "privacy", label: t.layout.actions.options.privacy, section: "about", keywords: "datenschutz telemetrie nutzungsstatistik anonym privacy telemetry usage statistics anonymous" },
+  { id: "diagnostics", label: t.layout.actions.options.diagnostics, section: "about", keywords: "diagnose system node git gh api key fehler diagnostics error" },
 ];
 
 const TAB_ENTRIES: Record<WorkspaceTab, { label: string; Icon: LucideIcon; keywords?: string }> = {
-  chat: { label: "Chat öffnen", Icon: MessageSquare, keywords: "verlauf unterhaltung" },
-  agents: { label: "Agenten öffnen", Icon: Bot, keywords: "parallel worktree subagenten" },
-  git: { label: "Git öffnen", Icon: GitBranch, keywords: "commit diff änderungen" },
-  files: { label: "Dateien öffnen", Icon: FileText, keywords: "explorer" },
-  devtools: { label: "Dev-Tools öffnen", Icon: FlaskConical, keywords: "testdatenbank umgebung env" },
-  knowledge: { label: "Wissen öffnen", Icon: BookOpen, keywords: "notizen wissensbasis" },
-  settings: { label: "Projekt-Einstellungen öffnen", Icon: Settings2, keywords: "claude.md tags testbefehl" },
+  chat: { label: t.layout.actions.tabs.chat, Icon: MessageSquare, keywords: "chat verlauf unterhaltung conversation history" },
+  agents: { label: t.layout.actions.tabs.agents, Icon: Bot, keywords: "agenten parallel worktree subagenten agents subagents" },
+  git: { label: t.layout.actions.tabs.git, Icon: GitBranch, keywords: "git commit diff änderungen changes" },
+  files: { label: t.layout.actions.tabs.files, Icon: FileText, keywords: "dateien explorer files" },
+  devtools: { label: t.layout.actions.tabs.devtools, Icon: FlaskConical, keywords: "dev-tools testdatenbank umgebung env dev tools test database environment" },
+  knowledge: { label: t.layout.actions.tabs.knowledge, Icon: BookOpen, keywords: "wissen notizen wissensbasis knowledge notes project knowledge" },
+  settings: { label: t.layout.actions.tabs.settings, Icon: Settings2, keywords: "projekt-einstellungen claude.md tags testbefehl project settings test command" },
 };
 
 const MODE_LABEL: Record<PermissionMode, string> = {
-  default: "Jede Aktion freigeben",
-  acceptEdits: "Datei-Edits automatisch",
-  plan: "Nur planen",
-  bypassPermissions: "Ohne Rückfragen",
+  default: t.layout.actions.modes.default,
+  acceptEdits: t.layout.actions.modes.acceptEdits,
+  plan: t.layout.actions.modes.plan,
+  bypassPermissions: t.layout.actions.modes.bypassPermissions,
 };
 
 const icon = (Icon: LucideIcon) => <Icon className="h-4 w-4" />;
+
+/** Both languages, so "Gehe zu" finds a view whichever language is on screen. */
+const NAV_KEYWORDS: Record<(typeof NAV)[number]["view"], string> = {
+  home: "start home startseite",
+  projects: "projekte projects",
+  sessions: "sessions verlauf history",
+  report: "tagesbericht daily report",
+  mcp: "erweiterungen extensions mcp plugins skills",
+  settings: "einstellungen settings",
+  workspace: "arbeitsbereich workspace",
+};
 
 function byId<T extends { id: string }>(defs: ReadonlyArray<T>, id: string): T {
   const def = defs.find((d) => d.id === id);
@@ -183,7 +194,7 @@ async function saveSetting(qc: QueryClient, patch: Partial<Settings>, success: s
     void qc.invalidateQueries({ queryKey: keys.diagnostics });
     toast.success(success);
   } catch (e) {
-    toast.error("Einstellung nicht gespeichert", errorMessage(e));
+    toast.error(t.layout.actions.settingNotSaved, errorMessage(e));
   }
 }
 
@@ -194,7 +205,7 @@ async function updateProject(qc: QueryClient, projectId: string, patch: { profil
     void qc.invalidateQueries({ queryKey: keys.projects });
     toast.success(success, body);
   } catch (e) {
-    toast.error("Nicht gespeichert", errorMessage(e));
+    toast.error(t.layout.actions.notSaved, errorMessage(e));
   }
 }
 
@@ -209,12 +220,12 @@ async function gitSync(qc: QueryClient, projectId: string, label: string, fn: ()
       qc.setQueryData(keys.session(r.session.id), r.session);
       void qc.invalidateQueries({ queryKey: keys.sessions(projectId) });
       useUi.getState().openProject(projectId, r.session.id);
-      toast.info("Konflikte mit dem Remote", "Claude führt die Stände in einer neuen Session zusammen und fragt nach, wenn etwas unklar ist.");
+      toast.info(t.layout.actions.conflicts, t.layout.actions.conflictsBody);
     } else {
       toast.success(success, integratedText(r?.integrated ?? null));
     }
   } catch (e) {
-    toast.error(`${label} fehlgeschlagen`, errorMessage(e));
+    toast.error(t.layout.actions.failed(label), errorMessage(e));
   }
 }
 
@@ -240,9 +251,9 @@ async function forkSession(qc: QueryClient, session: Session) {
     void qc.invalidateQueries({ queryKey: keys.sessions(session.projectId) });
     if (r.prompt) useDrafts.getState().setText(draftKey(session.projectId, target), r.prompt);
     useUi.getState().setActiveSession(session.projectId, target);
-    toast.success(r.session ? "Zweig erstellt" : "Neu begonnen", r.session ? "Der ganze Verlauf ist übernommen, das Original bleibt." : "Die Session hat noch keinen Verlauf.");
+    toast.success(r.session ? t.layout.actions.forked : t.layout.actions.restarted, r.session ? t.layout.actions.forkedBody : t.layout.actions.emptyBody);
   } catch (e) {
-    toast.error("Nicht verzweigt", errorMessage(e));
+    toast.error(t.layout.actions.notForked, errorMessage(e));
   }
 }
 
@@ -250,7 +261,7 @@ async function setPhone(qc: QueryClient, enabled: boolean) {
   try {
     qc.setQueryData(keys.phoneState, await call("phone.setEnabled", { enabled }));
   } catch (e) {
-    toast.error(enabled ? "Telefon nicht eingeschaltet" : "Telefon nicht ausgeschaltet", errorMessage(e));
+    toast.error(enabled ? t.layout.actions.phoneNotEnabled : t.layout.actions.phoneNotDisabled, errorMessage(e));
     if (e instanceof RpcCallError && (e.details as Partial<PhoneSetupIncomplete> | undefined)?.phoneSetupIncomplete) useUi.getState().openSettings("phone");
   }
 }
@@ -259,20 +270,20 @@ async function checkForUpdate(qc: QueryClient) {
   try {
     const next = await call("app.checkUpdate", {});
     qc.setQueryData(keys.appUpdate, next);
-    if (next.phase === "uptodate") toast.success("FORGE ist aktuell", next.message ?? `Version ${next.currentVersion}`);
-    else if (next.phase === "error") toast.error("Prüfung fehlgeschlagen", next.message ?? "");
-    else if (next.phase === "available" || next.phase === "ready") toast.info("Update verfügbar", `Version ${next.latest?.version ?? ""}`);
+    if (next.phase === "uptodate") toast.success(t.layout.actions.upToDate, next.message ?? t.layout.actions.version(next.currentVersion));
+    else if (next.phase === "error") toast.error(t.layout.actions.checkFailed, next.message ?? "");
+    else if (next.phase === "available" || next.phase === "ready") toast.info(t.layout.actions.updateAvailable, t.layout.actions.version(next.latest?.version ?? ""));
   } catch (e) {
-    toast.error("Prüfung fehlgeschlagen", errorMessage(e));
+    toast.error(t.layout.actions.checkFailed, errorMessage(e));
   }
 }
 
 async function syncNow(qc: QueryClient) {
   try {
     qc.setQueryData(keys.sync, await call("sync.now", {}));
-    toast.success("Synchronisiert");
+    toast.success(t.layout.actions.synced);
   } catch (e) {
-    toast.error("Synchronisieren fehlgeschlagen", errorMessage(e));
+    toast.error(t.layout.actions.syncFailed, errorMessage(e));
   }
 }
 
@@ -280,9 +291,9 @@ async function createBackup(qc: QueryClient) {
   try {
     await call("backup.create", {});
     void qc.invalidateQueries({ queryKey: keys.backups });
-    toast.success("Backup angelegt");
+    toast.success(t.layout.actions.backupCreated);
   } catch (e) {
-    toast.error("Backup nicht angelegt", errorMessage(e));
+    toast.error(t.layout.actions.backupNotCreated, errorMessage(e));
   }
 }
 
@@ -301,96 +312,96 @@ export function buildActions(ctx: ActionContext): PaletteEntry[] {
   const setting = (id: string, label: string, ic: ReactNode, run: () => void, extra: Partial<PaletteEntry> = {}) => add("Einstellungen", id, label, ic, run, extra);
 
   if (project) {
-    act("new-session", `Neue Session in ${project.name}`, icon(MessageSquarePlus), () => {
+    act("new-session", t.layout.actions.newSession(project.name), icon(MessageSquarePlus), () => {
       ui.setActiveSession(project.id, null);
       ui.setWorkspaceTab("chat");
       requestAnimationFrame(() => document.getElementById("composer-input")?.focus());
-    }, { hint: "Strg+N", keywords: "chat starten" });
-    act("ui-compare-latest", "Letzten Vorher-Nachher-Vergleich öffnen", icon(GitCompareArrows), () => ctx.openDialog({ kind: "ui-compare", sessionId: session?.id ?? null, projectId: project.id }), {
-      keywords: "screenshot vergleich vorschau bild ui oberfläche dev-server vorher nachher",
+    }, { hint: t.layout.actions.ctrl("N"), keywords: "neue session chat starten new session start" });
+    act("ui-compare-latest", t.layout.actions.uiCompareLatest, icon(GitCompareArrows), () => ctx.openDialog({ kind: "ui-compare", sessionId: session?.id ?? null, projectId: project.id }), {
+      keywords: "screenshot vergleich vorschau bild ui oberfläche dev-server vorher nachher before after compare preview image",
     });
 
     if (session) {
       const s = session;
-      if (SESSION_BUSY.has(s.status)) act("session-stop", "Session stoppen", icon(Square), () => void stopSession(s.id), { keywords: "abbrechen anhalten" });
-      if (s.live && s.status === "idle") act("compact", "Kontext komprimieren", icon(Shrink), () => void compactSession(s.id), { keywords: "compact zusammenfassen" });
+      if (SESSION_BUSY.has(s.status)) act("session-stop", t.layout.actions.sessionStop, icon(Square), () => void stopSession(s.id), { keywords: "stoppen abbrechen anhalten stop cancel abort" });
+      if (s.live && s.status === "idle") act("compact", t.layout.actions.compact, icon(Shrink), () => void compactSession(s.id), { keywords: "kontext komprimieren compact zusammenfassen context summarize" });
     }
 
     const dev = ctx.devServer;
     if (dev?.status === "running") {
-      act("dev-stop", "Dev-Server stoppen", icon(Square), () => {
-        call("devserver.stop", { projectId: project.id }).then((st) => qc.setQueryData(keys.devServer(project.id), st)).catch((e: unknown) => toast.error("Dev-Server nicht gestoppt", errorMessage(e)));
-      });
+      act("dev-stop", t.layout.actions.devStop, icon(Square), () => {
+        call("devserver.stop", { projectId: project.id }).then((st) => qc.setQueryData(keys.devServer(project.id), st)).catch((e: unknown) => toast.error(t.layout.actions.devNotStopped, errorMessage(e)));
+      }, { keywords: "dev-server stoppen stop dev server" });
     } else if (dev?.effectiveCommand) {
-      act("dev-start", "Dev-Server starten", icon(Play), () => {
-        call("devserver.start", { projectId: project.id }).then((st) => qc.setQueryData(keys.devServer(project.id), st)).catch((e: unknown) => toast.error("Dev-Server nicht gestartet", errorMessage(e)));
-      }, { hint: dev.effectiveCommand });
+      act("dev-start", t.layout.actions.devStart, icon(Play), () => {
+        call("devserver.start", { projectId: project.id }).then((st) => qc.setQueryData(keys.devServer(project.id), st)).catch((e: unknown) => toast.error(t.layout.actions.devNotStarted, errorMessage(e)));
+      }, { hint: dev.effectiveCommand, keywords: "dev-server starten start dev server" });
     }
 
     // Without a query only the first entries show: tabs before the rarer session actions.
-    workspaceTabsFor(project).forEach((t, i) => {
-      const def = TAB_ENTRIES[t];
-      act(`tab-${t}`, def.label, icon(def.Icon), () => ui.setWorkspaceTab(t), { hint: `Strg+${i + 1}`, keywords: def.keywords });
+    workspaceTabsFor(project).forEach((tab, i) => {
+      const def = TAB_ENTRIES[tab];
+      act(`tab-${tab}`, def.label, icon(def.Icon), () => ui.setWorkspaceTab(tab), { hint: t.layout.actions.ctrl(String(i + 1)), keywords: def.keywords });
     });
 
     if (session) {
       const s = session;
       if (s.live && !SESSION_BUSY.has(s.status)) {
-        act("session-close", "Claude-Prozess der Session beenden", icon(Power), () => {
-          call("sessions.close", { sessionId: s.id }).catch((e: unknown) => toast.error("Beenden fehlgeschlagen", errorMessage(e)));
-        }, { keywords: "session schließen prozess schließen stoppen bleibt fortsetzbar" });
+        act("session-close", t.layout.actions.sessionClose, icon(Power), () => {
+          call("sessions.close", { sessionId: s.id }).catch((e: unknown) => toast.error(t.layout.actions.stopFailed, errorMessage(e)));
+        }, { keywords: "session schließen prozess schließen stoppen bleibt fortsetzbar claude-prozess beenden close stop process resumable" });
       }
       // Background tasks and subagents of the session: write to one (its window opens with the input focused).
       const tasks = [
-        ...s.background.map((t) => taskViewOf(t, s.id)),
+        ...s.background.map((b) => taskViewOf(b, s.id)),
         ...s.subagents.map((a) => (a.toolUseId ? ({ kind: "agent", sessionId: s.id, toolUseId: a.toolUseId, title: a.description } as const) : null)),
       ];
-      for (const t of tasks) {
-        if (!t) continue;
-        act(`task-message-${t.kind === "agent" ? t.toolUseId : t.taskId}`, `Nachricht an Hintergrundaufgabe: ${t.title}`, icon(MessageSquareText), () => {
+      for (const task of tasks) {
+        if (!task) continue;
+        act(`task-message-${task.kind === "agent" ? task.toolUseId : task.taskId}`, t.layout.actions.taskMessage(task.title), icon(MessageSquareText), () => {
           ui.setWorkspaceTab("chat");
-          ui.openTask({ ...t, compose: true });
-        }, { keywords: "schreiben subagent befehl hintergrund aufgabe sendmessage" });
+          ui.openTask({ ...task, compose: true });
+        }, { keywords: "nachricht schreiben subagent befehl hintergrund aufgabe sendmessage message write background task" });
       }
       const inWindow = ctx.chatWindows?.sessions.includes(s.id) ?? false;
       const pinned = ctx.chatWindows?.pinned.includes(s.id) ?? false;
       if (!inWindow) {
-        act("chat-window-open", "In eigenem Fenster öffnen", icon(SquareArrowOutUpRight), () => void openChatWindow(s.projectId, s.id, s.title), { keywords: "auskoppeln chat-fenster abdocken" });
+        act("chat-window-open", t.layout.actions.chatWindowOpen, icon(SquareArrowOutUpRight), () => void openChatWindow(s.projectId, s.id, s.title), { keywords: "eigenem fenster auskoppeln chat-fenster abdocken own window chat window undock pop out" });
       } else {
-        act("chat-window-recall", "Chat-Fenster zurückholen", icon(SquareArrowOutDownLeft), () => recallChatWindow(s.id), { keywords: "hauptfenster einkoppeln andocken schließen" });
+        act("chat-window-recall", t.layout.actions.chatWindowRecall, icon(SquareArrowOutDownLeft), () => recallChatWindow(s.id), { keywords: "chat-fenster zurückholen hauptfenster einkoppeln andocken schließen chat window main window dock back close" });
       }
       act(
         "chat-window-pin",
-        pinned ? "Chat-Fenster nicht mehr im Vordergrund halten" : "Chat-Fenster im Vordergrund halten",
+        pinned ? t.layout.actions.chatWindowUnpin : t.layout.actions.chatWindowPin,
         icon(pinned ? PinOff : Pin),
         () => void (pinned ? pinChatWindow(s.id, false) : inWindow ? pinChatWindow(s.id, true) : openChatWindow(s.projectId, s.id, s.title, { pinned: true })),
-        { keywords: "anheften anpinnen immer oben always on top eigenes fenster", hint: inWindow ? undefined : "öffnet ein eigenes Fenster" },
+        { keywords: "chat-fenster vordergrund anheften anpinnen immer oben always on top eigenes fenster chat window pin own window", hint: inWindow ? undefined : t.layout.actions.opensWindow },
       );
-      act("session-summary", "Session zusammenfassen", icon(NotebookText), () => ctx.openDialog({ kind: "summary", session: s }), { keywords: "wo war ich wiedereinstieg" });
-      act("session-fork", "Session verzweigen", icon(GitFork), () => void forkSession(qc, s), { keywords: "fork kopie zweig" });
+      act("session-summary", t.layout.actions.sessionSummary, icon(NotebookText), () => ctx.openDialog({ kind: "summary", session: s }), { keywords: "session zusammenfassen wo war ich wiedereinstieg summary summarize where was i" });
+      act("session-fork", t.layout.actions.sessionFork, icon(GitFork), () => void forkSession(qc, s), { keywords: "session verzweigen fork kopie zweig copy branch" });
       const lastPrompt = lastEditablePrompt(s.id);
       if (lastPrompt !== null) {
-        act("session-edit-last", "Letzte Nachricht bearbeiten", icon(Pencil), () => useMessageEdit.getState().start(s.id, lastPrompt), {
-          keywords: "ändern korrigieren neu senden prompt",
+        act("session-edit-last", t.layout.actions.editLast, icon(Pencil), () => useMessageEdit.getState().start(s.id, lastPrompt), {
+          keywords: "letzte nachricht bearbeiten ändern korrigieren neu senden prompt edit last message change correct resend",
         });
       }
-      act("session-delete", "Session löschen", icon(Trash2), () => ctx.openDialog({ kind: "delete-session", session: s }), { keywords: "entfernen" });
+      act("session-delete", t.layout.actions.sessionDelete, icon(Trash2), () => ctx.openDialog({ kind: "delete-session", session: s }), { keywords: "session löschen entfernen delete remove" });
       for (const m of ctx.models) {
         if (m.value === "default" || m.value === s.model) continue;
-        act(`session-model-${m.value}`, `Modell wechseln: ${m.displayName || m.value}`, icon(Cpu), () => {
-          void updateSession(qc, s, { model: m.value }, () => call("sessions.setModel", { sessionId: s.id, model: m.value }), "Modell nicht gewechselt");
-        }, { keywords: "model", hint: s.model ? `jetzt ${modelLabel(s.model, ctx.models)}` : undefined });
+        act(`session-model-${m.value}`, t.layout.actions.switchModel(m.displayName || m.value), icon(Cpu), () => {
+          void updateSession(qc, s, { model: m.value }, () => call("sessions.setModel", { sessionId: s.id, model: m.value }), t.layout.actions.modelNotSwitched);
+        }, { keywords: "modell wechseln model switch", hint: s.model ? t.layout.actions.now(modelLabel(s.model, ctx.models)) : undefined });
       }
       for (const level of EFFORT_LEVELS) {
         if (level === s.effort) continue;
-        act(`session-effort-${level}`, `Denkaufwand: ${level}`, icon(Gauge), () => {
-          void updateSession(qc, s, { effort: level }, () => call("sessions.setEffort", { sessionId: s.id, effort: level as EffortLevel }), "Effort nicht gewechselt");
-        }, { keywords: "effort aufwand thinking nachdenken", hint: s.effort ? `jetzt ${s.effort}` : undefined });
+        act(`session-effort-${level}`, t.layout.actions.effort(level), icon(Gauge), () => {
+          void updateSession(qc, s, { effort: level }, () => call("sessions.setEffort", { sessionId: s.id, effort: level as EffortLevel }), t.layout.actions.effortNotSwitched);
+        }, { keywords: "denkaufwand effort aufwand thinking nachdenken", hint: s.effort ? t.layout.actions.now(s.effort) : undefined });
       }
       const mode: PermissionMode = s.permissionMode === "plan" ? PROFILE_MODE[s.profile] : "plan";
-      act("session-mode", s.permissionMode === "plan" ? "Plan-Modus beenden" : "Plan-Modus einschalten", icon(ListChecks), () => {
-        void updateSession(qc, s, { permissionMode: mode }, () => call("sessions.setPermissionMode", { sessionId: s.id, mode }), "Modus nicht gewechselt");
-      }, { keywords: "modus planen permission", hint: `danach: ${MODE_LABEL[mode]}` });
+      act("session-mode", s.permissionMode === "plan" ? t.layout.actions.planOff : t.layout.actions.planOn, icon(ListChecks), () => {
+        void updateSession(qc, s, { permissionMode: mode }, () => call("sessions.setPermissionMode", { sessionId: s.id, mode }), t.layout.actions.modeNotSwitched);
+      }, { keywords: "plan-modus modus planen permission plan mode", hint: t.layout.actions.then(MODE_LABEL[mode]) });
     }
 
     const owner = root?.id ?? project.id;
@@ -399,211 +410,213 @@ export function buildActions(ctx: ActionContext): PaletteEntry[] {
       const running = db.status === "running";
       const method = running ? "testdb.stop" : "testdb.start";
       // An agent's worktree has its own test database.
-      act(running ? "testdb-stop" : "testdb-start", running ? "Test-Datenbank stoppen" : "Test-Datenbank starten", icon(Database), () => {
+      act(running ? "testdb-stop" : "testdb-start", running ? t.layout.actions.testDbStop : t.layout.actions.testDbStart, icon(Database), () => {
         call(method, { projectId: project.id })
           .then((st) => qc.setQueryData(keys.testDb(project.id), st))
-          .catch((e: unknown) => toast.error(running ? "Test-Datenbank nicht gestoppt" : "Test-Datenbank nicht gestartet", errorMessage(e)));
-      }, { keywords: "postgres postgresql db" });
+          .catch((e: unknown) => toast.error(running ? t.layout.actions.testDbNotStopped : t.layout.actions.testDbNotStarted, errorMessage(e)));
+      }, { keywords: "test-datenbank postgres postgresql db test database" });
     }
 
     for (const id of DEV_TOOLS_SECTIONS) {
       const def = byId(DEV_TOOLS_SECTION_DEFS, id);
-      act(`devtools-${id}`, `Dev-Tools: ${def.label}`, icon(def.Icon), () => ui.openDevTools(id), { hint: def.hint });
+      act(`devtools-${id}`, t.layout.actions.devTools(def.label), icon(def.Icon), () => ui.openDevTools(id), { hint: def.hint, keywords: "dev-tools dev tools" });
     }
 
     const git = project.git;
     if (git?.isRepo) {
-      act("git-commit", "Commit erstellen", icon(GitCommitHorizontal), () => ui.setWorkspaceTab("git"), { keywords: "git änderungen stage", hint: git.changedCount ? `${git.changedCount} geändert` : undefined });
+      act("git-commit", t.layout.actions.gitCommit, icon(GitCommitHorizontal), () => ui.setWorkspaceTab("git"), { keywords: "commit erstellen git änderungen stage create changes", hint: git.changedCount ? t.layout.actions.changed(git.changedCount) : undefined });
       if (git.remoteUrl) {
-        act("git-fetch", "Git: Abrufen (fetch)", icon(CloudDownload), () => void gitSync(qc, project.id, "Abrufen", () => call("git.fetch", { projectId: project.id }), "Remote abgerufen"));
-        act("git-pull", "Git: Pull", icon(ArrowDown), () => void gitSync(qc, project.id, "Pull", () => call("git.pull", { projectId: project.id }), "Aktualisiert"), {
-          hint: git.behind ? `${git.behind} neu auf dem Remote` : undefined,
+        act("git-fetch", t.layout.actions.gitFetch, icon(CloudDownload), () => void gitSync(qc, project.id, t.layout.actions.fetch, () => call("git.fetch", { projectId: project.id }), t.layout.actions.fetched), { keywords: "git abrufen fetch" });
+        act("git-pull", t.layout.actions.gitPull, icon(ArrowDown), () => void gitSync(qc, project.id, t.layout.actions.pull, () => call("git.pull", { projectId: project.id }), t.layout.actions.pulled), {
+          hint: git.behind ? t.layout.actions.behind(git.behind) : undefined,
+          keywords: "git pull holen aktualisieren update",
         });
         // Choosing push is the consent, also for main, like the button in the Git tab.
-        act("git-push", "Git: Push", icon(ArrowUp), () => void gitSync(qc, project.id, "Push", () => call("git.push", { projectId: project.id, allowProtected: true }), "Gepusht"), {
-          hint: git.ahead ? `${git.ahead} Commits` : undefined,
+        act("git-push", t.layout.actions.gitPush, icon(ArrowUp), () => void gitSync(qc, project.id, t.layout.actions.push, () => call("git.push", { projectId: project.id, allowProtected: true }), t.layout.actions.pushed), {
+          hint: git.ahead ? t.layout.actions.ahead(git.ahead) : undefined,
+          keywords: "git push hochladen upload",
         });
       }
-      act("git-new-branch", "Neuen Branch anlegen", icon(GitBranchPlus), () => ctx.openDialog({ kind: "new-branch", projectId: project.id }), { keywords: "git checkout" });
+      act("git-new-branch", t.layout.actions.newBranch, icon(GitBranchPlus), () => ctx.openDialog({ kind: "new-branch", projectId: project.id }), { keywords: "neuen branch anlegen git checkout new create" });
       const onMain = git.branch === "main" || git.branch === "master";
       if (git.remoteUrl?.includes("github.com") && ctx.githubConnected && !onMain) {
-        act("git-pr", "Pull Request erstellen", icon(GitPullRequest), () => ctx.openDialog({ kind: "create-pr", project }), { keywords: "github pr", hint: git.branch ?? undefined });
+        act("git-pr", t.layout.actions.createPr, icon(GitPullRequest), () => ctx.openDialog({ kind: "create-pr", project }), { keywords: "pull request erstellen github pr create", hint: git.branch ?? undefined });
       }
     }
 
     if (root?.exists && root.git) {
       const r = root;
-      act("agent-new", "Parallelen Agenten starten", icon(Bot), () => ctx.openDialog({ kind: "new-agent", root: r }), { keywords: "worktree branch agent" });
+      act("agent-new", t.layout.actions.agentNew, icon(Bot), () => ctx.openDialog({ kind: "new-agent", root: r }), { keywords: "parallelen agenten starten worktree branch agent parallel start" });
     }
     for (const a of ctx.agents ?? []) {
-      act(`agent-dev-${a.id}`, `Dev-Server des Agenten öffnen: ${a.git?.branch ?? a.name}`, icon(Globe), () => void openDevServer(qc, a.id), {
-        keywords: "agent worktree vorschau browser port starten",
-        hint: a.id === project.id ? "dieser Agent" : undefined,
+      act(`agent-dev-${a.id}`, t.layout.actions.agentDev(a.git?.branch ?? a.name), icon(Globe), () => void openDevServer(qc, a.id), {
+        keywords: "dev-server agenten agent worktree vorschau browser port starten dev server preview start",
+        hint: a.id === project.id ? t.layout.actions.thisAgent : undefined,
       });
     }
     if (project.parentId && project.exists) {
-      act("agent-prepare", "Worktree des Agenten neu vorbereiten", icon(RotateCcw), () => void prepareWorktree(qc, project.id), {
-        keywords: "agent abhängigkeiten installieren pnpm install env konfiguration kopieren build cache datenbank",
+      act("agent-prepare", t.layout.actions.agentPrepare, icon(RotateCcw), () => void prepareWorktree(qc, project.id), {
+        keywords: "worktree agenten vorbereiten agent abhängigkeiten installieren pnpm install env konfiguration kopieren build cache datenbank prepare dependencies configuration copy database",
       });
     }
 
-    act("knowledge-merge", "Projektwissen: Einträge zusammenführen", icon(Combine), () => ui.openKnowledge(KNOWLEDGE_MERGE_REQUEST), {
-      keywords: "wissen aufräumen überschneidungen doppelt merge automatisch claude",
+    act("knowledge-merge", t.layout.actions.knowledgeMerge, icon(Combine), () => ui.openKnowledge(KNOWLEDGE_MERGE_REQUEST), {
+      keywords: "projektwissen einträge zusammenführen wissen aufräumen überschneidungen doppelt merge automatisch claude project knowledge entries clean up overlaps duplicates",
     });
-    act("knowledge-stale", "Veraltetes Projektwissen anzeigen", icon(Link2Off), () => ui.openKnowledge(KNOWLEDGE_STALE_REQUEST), {
-      keywords: "wissen veraltet verweise fehlen dateien bezeichner kaputt alt prüfen",
+    act("knowledge-stale", t.layout.actions.knowledgeStale, icon(Link2Off), () => ui.openKnowledge(KNOWLEDGE_STALE_REQUEST), {
+      keywords: "projektwissen wissen veraltet verweise fehlen dateien bezeichner kaputt alt prüfen project knowledge outdated stale references missing files identifiers broken check",
     });
-    act("knowledge-recheck", "Projektwissen: Verweise neu prüfen", icon(RefreshCw), () => void recheckKnowledgeRefs(qc, owner), {
-      keywords: "wissen veraltet verweise dateien bezeichner prüfen aktualisieren",
+    act("knowledge-recheck", t.layout.actions.knowledgeRecheck, icon(RefreshCw), () => void recheckKnowledgeRefs(qc, owner), {
+      keywords: "projektwissen wissen veraltet verweise dateien bezeichner prüfen aktualisieren project knowledge outdated references files identifiers recheck refresh",
     });
-    act("report-project", "Tagesbericht für dieses Projekt", icon(CalendarDays), () => ui.openReport(root?.id ?? project.id), {
-      keywords: "heute passiert rückblick agenten commits zusammenfassung tag",
+    act("report-project", t.layout.actions.reportProject, icon(CalendarDays), () => ui.openReport(root?.id ?? project.id), {
+      keywords: "tagesbericht projekt heute passiert rückblick agenten commits zusammenfassung tag daily report project today review agents summary day",
       hint: root?.name ?? project.name,
     });
 
     if (project.exists) {
-      act("explorer-project", "Projektordner im Explorer öffnen", icon(FolderOpen), () => void revealInProject(project.path, ""), { keywords: "explorer ordner dateien windows" });
+      act("explorer-project", t.layout.actions.explorerProject, icon(FolderOpen), () => void revealInProject(project.path, ""), { keywords: "projektordner explorer ordner dateien windows project folder files" });
       const file = ui.selectedFile[project.id];
-      if (file) act("explorer-file", "Datei im Explorer zeigen", icon(FolderOpen), () => void revealInProject(project.path, file), { keywords: "explorer ordner windows", hint: file });
+      if (file) act("explorer-file", t.layout.actions.explorerFile, icon(FolderOpen), () => void revealInProject(project.path, file), { keywords: "datei explorer ordner windows file folder show", hint: file });
     }
-    act("terminal", "Terminal öffnen", icon(SquareTerminal), () => ui.openTerminal(project.id, "shell"), { keywords: "shell konsole" });
-    act("bottom", "Unteres Panel ein- oder ausblenden", icon(PanelBottom), () => ui.toggleBottomPanel(), { hint: "Strg+J" });
-    act("right", "Seitenleiste ein- oder ausblenden", icon(PanelRight), () => ui.toggleRightPanel(), { hint: "Strg+Umschalt+E" });
+    act("terminal", t.layout.actions.terminal, icon(SquareTerminal), () => ui.openTerminal(project.id, "shell"), { keywords: "terminal shell konsole console" });
+    act("bottom", t.layout.actions.bottom, icon(PanelBottom), () => ui.toggleBottomPanel(), { hint: t.layout.actions.ctrl("J"), keywords: "unteres panel einblenden ausblenden bottom panel toggle show hide" });
+    act("right", t.layout.actions.right, icon(PanelRight), () => ui.toggleRightPanel(), { hint: t.layout.actions.ctrlShift("E"), keywords: "seitenleiste einblenden ausblenden sidebar side panel toggle show hide" });
     if (ui.splitRoom > 0) {
-      act("split-add", "Ansicht teilen: weiteren Bereich öffnen", icon(Columns2), () => ui.addSplitPane(), {
-        keywords: "geteilte ansicht split mehrere sessions projekte nebeneinander raster bereich chat daneben",
+      act("split-add", t.layout.actions.splitAdd, icon(Columns2), () => ui.addSplitPane(), {
+        keywords: "geteilte ansicht teilen split mehrere sessions projekte nebeneinander raster bereich chat daneben split view multiple side by side grid area beside",
       });
     }
     if (ui.splitPanes.length) {
-      act("split-close", "Geteilte Ansicht schließen", icon(Columns2), () => ui.closeSplitPanes(), {
-        hint: ui.splitPanes.length === 1 ? "1 weiterer Bereich" : `${ui.splitPanes.length} weitere Bereiche`,
-        keywords: "split mehrere sessions projekte bereiche schließen einzeln",
+      act("split-close", t.layout.actions.splitClose, icon(Columns2), () => ui.closeSplitPanes(), {
+        hint: t.layout.actions.moreAreas(ui.splitPanes.length),
+        keywords: "geteilte ansicht split mehrere sessions projekte bereiche schließen einzeln split view close areas single",
       });
     } else if (ui.splitStash) {
       const n = ui.splitStash.panes.length + 1;
-      act("split-restore", "Geteilte Ansicht wieder öffnen", icon(Columns2), () => ui.restoreSplit(), {
-        hint: `${n} Bereiche`,
-        keywords: "split mehrere sessions projekte bereiche zurück wiederherstellen raster",
+      act("split-restore", t.layout.actions.splitRestore, icon(Columns2), () => ui.restoreSplit(), {
+        hint: t.layout.actions.areas(n),
+        keywords: "geteilte ansicht split mehrere sessions projekte bereiche zurück wiederherstellen raster split view reopen restore areas grid",
       });
     }
     for (const p of PROFILE_IDS) {
       if (p === project.profile || (p === "autonomous" && project.tags.includes("sandbox-only"))) continue;
-      act(`profile-${p}`, `Profil wechseln: ${PROFILE_INFO[p].label}`, icon(Shield), () => {
-        void updateProject(qc, project.id, { profile: p }, `Profil ${PROFILE_INFO[p].label}`, "Gilt sofort, auch für laufende Sessions.");
-      }, { keywords: "rechte permission" });
+      act(`profile-${p}`, t.layout.actions.switchProfile(PROFILE_INFO[p].label), icon(Shield), () => {
+        void updateProject(qc, project.id, { profile: p }, t.layout.actions.profileSet(PROFILE_INFO[p].label), t.layout.actions.profileBody);
+      }, { keywords: "profil wechseln rechte permission profile switch" });
     }
 
     for (const id of PROJECT_SETTINGS_SECTIONS) {
       const def = byId(PROJECT_SECTION_DEFS, id);
-      setting(`project-settings-${id}`, `Projekt-Einstellungen: ${def.label}`, icon(def.Icon), () => ui.openProjectSettings(id), { hint: def.hint, keywords: project.name });
+      setting(`project-settings-${id}`, t.layout.actions.projectSettings(def.label), icon(def.Icon), () => ui.openProjectSettings(id), { hint: def.hint, keywords: `projekt-einstellungen project settings ${project.name}` });
     }
     if (!project.parentId) {
       const on = project.gitEnabled;
-      setting("project-git", on ? "Git für dieses Projekt ausschalten" : "Git für dieses Projekt einschalten", icon(on ? ToggleRight : ToggleLeft), () => {
-        void updateProject(qc, project.id, { gitEnabled: !on }, on ? "Git ausgeschaltet" : "Git eingeschaltet", on ? "Agenten und Git-Bereiche sind ausgeblendet. Claude verwendet kein Git." : project.name);
-      }, { keywords: "versionsverwaltung ohne git agenten repository", hint: project.name });
+      setting("project-git", on ? t.layout.actions.gitOff : t.layout.actions.gitOn, icon(on ? ToggleRight : ToggleLeft), () => {
+        void updateProject(qc, project.id, { gitEnabled: !on }, on ? t.layout.actions.gitTurnedOff : t.layout.actions.gitTurnedOn, on ? t.layout.actions.gitOffBody : project.name);
+      }, { keywords: "git einschalten ausschalten versionsverwaltung ohne git agenten repository turn on off version control without agents", hint: project.name });
     }
-    for (const t of TAG_INFO) {
-      if ((t.rootOnly && project.parentId) || (t.git && !project.gitEnabled)) continue;
-      const on = project.tags.includes(t.tag);
-      setting(`tag-${t.tag}`, `${t.label}: ${on ? "ausschalten" : "einschalten"}`, icon(on ? ToggleRight : ToggleLeft), () => {
-        void updateProject(qc, project.id, { tags: on ? project.tags.filter((x) => x !== t.tag) : [...project.tags, t.tag] }, `${t.label} ${on ? "ausgeschaltet" : "eingeschaltet"}`, project.name);
-      }, { hint: t.tag, keywords: `automatik tag projekt ${t.info}` });
+    for (const tag of TAG_INFO) {
+      if ((tag.rootOnly && project.parentId) || (tag.git && !project.gitEnabled)) continue;
+      const on = project.tags.includes(tag.tag);
+      setting(`tag-${tag.tag}`, t.layout.actions.toggleLabel(tag.label, on), icon(on ? ToggleRight : ToggleLeft), () => {
+        void updateProject(qc, project.id, { tags: on ? project.tags.filter((x) => x !== tag.tag) : [...project.tags, tag.tag] }, t.layout.actions.toggled(tag.label, on), project.name);
+      }, { hint: tag.tag, keywords: `automatik tag projekt einschalten ausschalten automation project turn on off ${tag.info}` });
     }
   }
 
-  for (const t of ctx.templates) {
-    act(`template-${t.id}`, `Vorlage: ${t.name}`, icon(FileStack), () => useTemplateDialogs.getState().openApply({ projectId: project?.id ?? null, templateId: t.id }), {
-      hint: t.projectId ? (root?.name ?? project?.name) : "global",
-      keywords: `vorlage prompt auftrag ${t.description ?? ""} ${t.text.slice(0, 200)}`,
+  for (const tpl of ctx.templates) {
+    act(`template-${tpl.id}`, t.layout.actions.template(tpl.name), icon(FileStack), () => useTemplateDialogs.getState().openApply({ projectId: project?.id ?? null, templateId: tpl.id }), {
+      hint: tpl.projectId ? (root?.name ?? project?.name) : t.layout.actions.global,
+      keywords: `vorlage prompt auftrag template task ${tpl.description ?? ""} ${tpl.text.slice(0, 200)}`,
     });
   }
-  act("templates-manage", "Vorlagen verwalten", icon(FileStack), () => ui.openSettings("templates"), { keywords: "prompt vorlagen templates wiederkehrende aufträge bearbeiten löschen sortieren" });
-  act("templates-learn", "Vorlagen jetzt aus Nachrichten lernen", icon(Sparkles), () => void learnTemplatesNow(qc), {
-    keywords: "prompt vorlagen templates wiederkehrende aufträge automatisch shortcuts textvorschläge",
+  act("templates-manage", t.layout.actions.templatesManage, icon(FileStack), () => ui.openSettings("templates"), { keywords: "vorlagen verwalten prompt vorlagen templates wiederkehrende aufträge bearbeiten löschen sortieren manage recurring tasks edit delete sort" });
+  act("templates-learn", t.layout.actions.templatesLearn, icon(Sparkles), () => void learnTemplatesNow(qc), {
+    keywords: "vorlagen lernen nachrichten prompt vorlagen templates wiederkehrende aufträge automatisch shortcuts textvorschläge learn messages recurring automatic suggestions",
   });
-  act("template-new", "Neue Vorlage anlegen", icon(FilePlus2), () => useTemplateDialogs.getState().openEdit({ id: null, projectId: null }), { keywords: "prompt vorlage template speichern" });
-  act("report", "Tagesbericht", icon(CalendarDays), () => ui.openReport(null), { keywords: "was ist heute passiert rückblick alle projekte agenten commits zusammenfassung tag gestern" });
-  act("add-project", "Projekt hinzufügen", icon(FolderPlus), () => ui.setNewProject("import"), { hint: "Strg+O", keywords: "importieren ordner" });
-  act("create-project", "Neues Projekt anlegen", icon(FolderPlus), () => ui.setNewProject("create"));
-  act("clone-project", "Projekt von GitHub klonen", icon(FolderDown), () => ui.setNewProject("clone"), { keywords: "clone repository" });
+  act("template-new", t.layout.actions.templateNew, icon(FilePlus2), () => useTemplateDialogs.getState().openEdit({ id: null, projectId: null }), { keywords: "neue vorlage anlegen prompt vorlage template speichern new create save" });
+  act("report", t.layout.actions.report, icon(CalendarDays), () => ui.openReport(null), { keywords: "tagesbericht was ist heute passiert rückblick alle projekte agenten commits zusammenfassung tag gestern daily report today what happened review all projects agents summary day yesterday" });
+  act("add-project", t.layout.actions.addProject, icon(FolderPlus), () => ui.setNewProject("import"), { hint: t.layout.actions.ctrl("O"), keywords: "projekt hinzufügen importieren ordner add project import folder" });
+  act("create-project", t.layout.actions.createProject, icon(FolderPlus), () => ui.setNewProject("create"), { keywords: "neues projekt anlegen new project create" });
+  act("clone-project", t.layout.actions.cloneProject, icon(FolderDown), () => ui.setNewProject("clone"), { keywords: "projekt github klonen clone repository project" });
 
   const remoteOn = ctx.remote?.enabled ?? false;
-  act("remote", remoteOn ? "Remote Control ausschalten" : "Remote Control einschalten", icon(MonitorSmartphone), () => {
+  act("remote", remoteOn ? t.layout.actions.remoteOff : t.layout.actions.remoteOn, icon(MonitorSmartphone), () => {
     call(remoteOn ? "remote.stop" : "remote.start", {})
       .then((st) => qc.setQueryData(keys.remote, st))
-      .catch((e: unknown) => toast.error("Remote-Steuerung", errorMessage(e)));
-  }, { keywords: "claude app handy weiterarbeiten" });
+      .catch((e: unknown) => toast.error(t.layout.actions.remoteError, errorMessage(e)));
+  }, { keywords: "remote control einschalten ausschalten claude app handy weiterarbeiten turn on off phone mobile continue" });
 
   if (ctx.phone) {
     const phoneOn = ctx.phone.enabled;
-    act("phone", phoneOn ? "Telefon ausschalten" : "Telefon einschalten", icon(phoneOn ? PhoneOff : Phone), () => void setPhone(qc, !phoneOn), { keywords: "anruf sprache" });
+    act("phone", phoneOn ? t.layout.actions.phoneOff : t.layout.actions.phoneOn, icon(phoneOn ? PhoneOff : Phone), () => void setPhone(qc, !phoneOn), { keywords: "telefon einschalten ausschalten anruf sprache phone turn on off call voice" });
     if (ctx.phone.registration === "registered") {
-      act("phone-test", "Testanruf", icon(PhoneOutgoing), () => {
+      act("phone-test", t.layout.actions.testCall, icon(PhoneOutgoing), () => {
         call("phone.testCall", {})
           .then((st) => qc.setQueryData(keys.phoneState, st))
-          .catch((e: unknown) => toast.error("Testanruf fehlgeschlagen", errorMessage(e)));
-      }, { keywords: "telefon anrufen" });
+          .catch((e: unknown) => toast.error(t.layout.actions.testCallFailed, errorMessage(e)));
+      }, { keywords: "testanruf telefon anrufen test call phone" });
     }
   }
 
-  act("screenshot", "Screenshot aufnehmen", icon(Camera), takeScreenshot, { hint: settings?.screenshotKey ? "Druck" : undefined, keywords: "bildschirmfoto snipping ausschneiden markieren bild" });
-  act("backup", "Backup anlegen", icon(Archive), () => void createBackup(qc), { keywords: "sichern sicherung" });
-  if (settings?.syncEnabled) act("sync-now", "Jetzt über GitHub abgleichen", icon(RefreshCcw), () => void syncNow(qc), { keywords: "sync synchronisieren andere pc" });
-  act("setup-wizard", "Einrichtungsassistent öffnen", icon(Wand2), () => ui.setSetupWizard(true), { keywords: "einrichten erster start setup onboarding" });
-  act("usage-forecast", "Nutzung und Limit-Prognose ansehen", icon(Gauge), () => ui.openSettings("claude"), {
-    keywords: "usage limit abo verbrauch prognose reicht reset 5 stunden woche tempo",
+  act("screenshot", t.layout.actions.screenshot, icon(Camera), takeScreenshot, { hint: settings?.screenshotKey ? t.layout.actions.printKey : undefined, keywords: "screenshot aufnehmen bildschirmfoto snipping ausschneiden markieren bild take capture screen cut mark image" });
+  act("backup", t.layout.actions.backup, icon(Archive), () => void createBackup(qc), { keywords: "backup anlegen sichern sicherung create" });
+  if (settings?.syncEnabled) act("sync-now", t.layout.actions.syncNow, icon(RefreshCcw), () => void syncNow(qc), { keywords: "jetzt github abgleichen sync synchronisieren andere pc now other computers" });
+  act("setup-wizard", t.layout.actions.setupWizard, icon(Wand2), () => ui.setSetupWizard(true), { keywords: "einrichtungsassistent einrichten erster start setup onboarding assistant wizard first start" });
+  act("usage-forecast", t.layout.actions.usageForecast, icon(Gauge), () => ui.openSettings("claude"), {
+    keywords: "nutzung limit-prognose usage limit abo verbrauch prognose reicht reset 5 stunden woche tempo forecast subscription consumption hours week pace",
   });
-  act("usage-refresh", "Nutzung aktualisieren", icon(RefreshCw), () => void refreshUsage(qc), { keywords: "usage limit abo verbrauch prognose neu laden" });
-  act("claude-login", "Bei Claude anmelden", icon(LogIn), () => ui.openClaudeLogin("manual"), { keywords: "login anmeldung abgelaufen konto abo neu anmelden oauth" });
-  act("claude-switch", "Claude-Konto wechseln", icon(ArrowLeftRight), () => ui.openClaudeLogin("switch"), { keywords: "account konto wechseln anderes login" });
-  act("claude-logout", "Von Claude abmelden", icon(LogOut), () => ui.setClaudeLogout(true), { keywords: "logout abmelden konto account" });
-  act("update-check", "Nach Updates suchen", icon(RefreshCw), () => void checkForUpdate(qc), { keywords: "version release aktualisieren" });
-  act("support-open", "FORGE unterstützen", icon(HandHeart), () => ui.setSupportOpen(true), { hint: "Herz neben der Suche", keywords: "unterstützen spenden vorschlag feedback herz support" });
-  act("support-donate", "FORGE mit einem freiwilligen Beitrag unterstützen", icon(HandHeart), () => void openExternal(SUPPORT_LINKS.donate), { hint: "Vanturis", keywords: "spenden spende beitrag zahlen unterstützen danke support donate" });
-  act("usage-stats-public", "Gesamtzahlen aller FORGE-Nutzer ansehen", icon(Gauge), () => void openExternal(USAGE_STATS_URL), {
-    hint: "Statistik",
-    keywords: "statistik zahlen tokens projekte agenten öffentlich gesamt nutzer",
+  act("usage-refresh", t.layout.actions.usageRefresh, icon(RefreshCw), () => void refreshUsage(qc), { keywords: "nutzung aktualisieren usage limit abo verbrauch prognose neu laden refresh reload subscription forecast" });
+  act("claude-login", t.layout.actions.claudeLogin, icon(LogIn), () => ui.openClaudeLogin("manual"), { keywords: "claude anmelden login anmeldung abgelaufen konto abo neu anmelden oauth log in sign in expired account subscription" });
+  act("claude-switch", t.layout.actions.claudeSwitch, icon(ArrowLeftRight), () => ui.openClaudeLogin("switch"), { keywords: "claude-konto account konto wechseln anderes login switch other" });
+  act("claude-logout", t.layout.actions.claudeLogout, icon(LogOut), () => ui.setClaudeLogout(true), { keywords: "claude logout abmelden konto account log out sign out" });
+  act("update-check", t.layout.actions.updateCheck, icon(RefreshCw), () => void checkForUpdate(qc), { keywords: "updates suchen version release aktualisieren check update" });
+  act("support-open", t.layout.actions.supportOpen, icon(HandHeart), () => ui.setSupportOpen(true), { hint: t.layout.actions.supportHint, keywords: "unterstützen spenden vorschlag feedback herz support donate suggestion heart" });
+  act("support-donate", t.layout.actions.supportDonate, icon(HandHeart), () => void openExternal(SUPPORT_LINKS.donate), { hint: "Vanturis", keywords: "spenden spende beitrag zahlen unterstützen danke support donate donation contribution pay thanks" });
+  act("usage-stats-public", t.layout.actions.usageStatsPublic, icon(Gauge), () => void openExternal(USAGE_STATS_URL), {
+    hint: t.layout.actions.statsHint,
+    keywords: "gesamtzahlen statistik zahlen tokens projekte agenten öffentlich gesamt nutzer statistics totals numbers projects agents public users",
   });
-  act("support-feedback","Verbesserung oder Feature vorschlagen", icon(Lightbulb), () => void openExternal(SUPPORT_LINKS.feedback), {
+  act("support-feedback", t.layout.actions.supportFeedback, icon(Lightbulb), () => void openExternal(SUPPORT_LINKS.feedback), {
     hint: "GitHub Issues",
-    keywords: "feedback vorschlag idee wunsch feature fehler melden bug issue verbesserung",
+    keywords: "feedback vorschlag idee wunsch feature fehler melden bug issue verbesserung suggestion idea wish error report improvement",
   });
   const update = qc.getQueryData<AppUpdateState>(keys.appUpdate);
   if (update?.latest && update.installable && ["available", "downloading", "ready"].includes(update.phase)) {
-    act("update-install", `FORGE ${update.latest.version} installieren`, icon(ArrowUpCircle), () => void installUpdate(qc), { keywords: "update aktualisieren neustart version" });
+    act("update-install", t.layout.actions.updateInstall(update.latest.version), icon(ArrowUpCircle), () => void installUpdate(qc), { keywords: "update installieren aktualisieren neustart version install restart" });
   }
-  const installKeywords = "vollständig installation unvollständig setup installer laufzeit runtime git gh github cli node fehlt reparieren";
-  act("install-check", "Installation prüfen", icon(PackageCheck), () => void checkInstall(qc), { keywords: installKeywords });
+  const installKeywords = "vollständig installation unvollständig setup installer laufzeit runtime git gh github cli node fehlt reparieren complete incomplete install missing repair";
+  act("install-check", t.layout.actions.installCheck, icon(PackageCheck), () => void checkInstall(qc), { keywords: installKeywords });
   const install = qc.getQueryData<AppInstallState>(keys.appInstall);
   if (install?.checkable && install.complete === false) {
-    if (install.installer || install.phase === "ready") act("install-full", "FORGE vollständig installieren", icon(PackageCheck), () => void installFull(qc), { keywords: installKeywords });
-    act("install-file", "Heruntergeladene setup.exe installieren", icon(FileUp), () => void installFromFile(qc), { keywords: installKeywords });
+    if (install.installer || install.phase === "ready") act("install-full", t.layout.actions.installFull, icon(PackageCheck), () => void installFull(qc), { keywords: installKeywords });
+    act("install-file", t.layout.actions.installFile, icon(FileUp), () => void installFromFile(qc), { keywords: installKeywords });
   }
   const claudeUpdate = qc.getQueryData<ClaudeUpdateInfo>(keys.claudeUpdate);
   if (claudeUpdate?.available) {
     act(
       "claude-update",
-      `Claude-Code-Update auf ${claudeUpdate.latest}`,
+      t.layout.actions.claudeUpdate(claudeUpdate.latest ?? ""),
       icon(Download),
-      () => void call("claude.update", {}).catch((e: unknown) => toast.error("Update nicht gestartet", errorMessage(e))),
-      { keywords: "claude code aktualisieren version cli" },
+      () => void call("claude.update", {}).catch((e: unknown) => toast.error(t.layout.actions.updateNotStarted, errorMessage(e))),
+      { keywords: "claude code update aktualisieren version cli" },
     );
   }
-  for (const n of NAV) act(`nav-${n.view}`, `Gehe zu ${n.label}`, icon(n.Icon), () => ui.setView(n.view));
+  for (const n of NAV) act(`nav-${n.view}`, t.layout.actions.goTo(n.label), icon(n.Icon), () => ui.setView(n.view), { keywords: `gehe zu go to ${NAV_KEYWORDS[n.view]}` });
 
   for (const id of EXTENSIONS_TABS) {
     const def = EXTENSION_TAB_DEFS.find((d) => d.value === id)!;
-    add("Erweiterungen", `ext-${id}`, `Erweiterungen: ${def.label}`, icon(def.Icon), () => ui.openExtensions(id), { keywords: "plugins" });
+    add("Erweiterungen", `ext-${id}`, t.layout.actions.extensions(def.label), icon(def.Icon), () => ui.openExtensions(id), { keywords: "erweiterungen plugins extensions" });
   }
   for (const id of SKILLS_TABS) {
     const def = SKILLS_TAB_DEFS.find((d) => d.value === id)!;
-    add("Erweiterungen", `skills-${id}`, `Skills: ${def.label}`, icon(def.Icon), () => ui.openExtensions("skills", id), { keywords: "erweiterungen plugins" });
+    add("Erweiterungen", `skills-${id}`, t.layout.actions.skills(def.label), icon(def.Icon), () => ui.openExtensions("skills", id), { keywords: "skills erweiterungen plugins extensions" });
   }
 
   for (const id of SETTINGS_SECTIONS) {
     const def = byId(SETTINGS_SECTION_DEFS, id);
-    setting(`settings-${id}`, `Einstellungen: ${def.label}`, icon(def.Icon), () => ui.openSettings(id), { hint: def.hint });
+    setting(`settings-${id}`, t.layout.actions.settings(def.label), icon(def.Icon), () => ui.openSettings(id), { hint: def.hint, keywords: "einstellungen settings" });
   }
   for (const o of SETTING_OPTIONS) {
     setting(`option-${o.id}`, o.label, icon(byId(SETTINGS_SECTION_DEFS, o.section).Icon), () => ui.openSettings(o.section), {
@@ -622,10 +635,10 @@ export function buildActions(ctx: ActionContext): PaletteEntry[] {
             void saveSetting(
               qc,
               key === "syncEnabled" ? { syncEnabled: !on, syncAsked: true } : key === "usageStats" ? { usageStats: !on, usageStatsAsked: true } : { [key]: !on },
-              `${def.label} ${on ? "ausgeschaltet" : "eingeschaltet"}`,
+              t.layout.actions.toggled(def.label, on),
             );
     const ic = key === "alwaysOnTop" ? icon(on ? PinOff : Pin) : icon(on ? ToggleRight : ToggleLeft);
-    setting(`setting-${key}`, `${def.label}: ${on ? "ausschalten" : "einschalten"}`, ic, run, { hint: section, keywords: `schalter einstellung ${def.keywords ?? ""}` });
+    setting(`setting-${key}`, t.layout.actions.toggleLabel(def.label, on), ic, run, { hint: section, keywords: `schalter einstellung einschalten ausschalten switch setting turn on off ${def.keywords ?? ""}` });
   }
   if (settings) {
     for (const l of LANGUAGES) {
@@ -639,19 +652,19 @@ export function buildActions(ctx: ActionContext): PaletteEntry[] {
     }
     for (const m of IDLE_CLOSE_CHOICES) {
       if (m === settings.idleCloseMinutes) continue;
-      const label = m > 0 ? `Untätige Sessions schließen nach ${idleCloseLabel(m)}` : "Untätige Sessions nicht mehr schließen";
+      const label = m > 0 ? t.layout.actions.idleCloseAfter(idleCloseLabel(m)) : t.layout.actions.idleCloseNever;
       setting(`idle-close-${m}`, label, icon(Timer), () => void saveSetting(qc, { idleCloseMinutes: m }, label), {
-        hint: `jetzt ${idleCloseLabel(settings.idleCloseMinutes)}`,
-        keywords: "claude-prozess beenden inaktiv leerlauf timeout automatisch schließen",
+        hint: t.layout.actions.now(idleCloseLabel(settings.idleCloseMinutes)),
+        keywords: "untätige sessions claude-prozess beenden inaktiv leerlauf timeout automatisch schließen idle close process inactive automatic",
       });
     }
   }
   for (const group of RULE_GROUPS) {
     for (const rule of group.rules) {
       const blocked = !settings?.disabledPolicyRules.includes(rule.id);
-      setting(`policy-${rule.id}`, `Sperrliste: ${rule.label}`, icon(ShieldBan), () => ui.openSettings("policy"), {
-        hint: settings ? (blocked ? "gesperrt" : "erlaubt") : undefined,
-        keywords: `regel blockieren policy ${group.title} ${rule.info}`,
+      setting(`policy-${rule.id}`, t.layout.actions.blocklist(rule.label), icon(ShieldBan), () => ui.openSettings("policy"), {
+        hint: settings ? (blocked ? t.layout.actions.blocked : t.layout.actions.allowed) : undefined,
+        keywords: `sperrliste regel blockieren policy blocklist rule block ${group.title} ${rule.info}`,
       });
     }
   }

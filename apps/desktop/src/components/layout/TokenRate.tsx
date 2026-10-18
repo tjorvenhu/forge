@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import { useTokenRate } from "@/stores/token-rate";
 import { BASELINE_POINTS, createSparkline, sparklineActive, sparklineIdle, sparklinePoints, stepSparkline } from "./token-sparkline";
+import { locale, t } from "@/i18n";
 
 /** Without motion the line moves in whole seconds, like the rate itself arrives. */
 const REDUCED_TICK_MS = 1000;
@@ -32,8 +33,8 @@ function useSparkline() {
     const schedule = (reduced: boolean) => {
       if (cancel) return;
       if (reduced || typeof requestAnimationFrame !== "function") {
-        const t = setTimeout(frame, REDUCED_TICK_MS);
-        cancel = () => clearTimeout(t);
+        const timer = setTimeout(frame, REDUCED_TICK_MS);
+        cancel = () => clearTimeout(timer);
       } else {
         const id = requestAnimationFrame(frame);
         cancel = () => cancelAnimationFrame(id);
@@ -67,8 +68,8 @@ export function useTokensFlowing(perSecond: number): boolean {
       setShown(true);
       return;
     }
-    const t = setTimeout(() => setShown(false), HIDE_AFTER_MS);
-    return () => clearTimeout(t);
+    const timer = setTimeout(() => setShown(false), HIDE_AFTER_MS);
+    return () => clearTimeout(timer);
   }, [perSecond]);
   return shown;
 }
@@ -88,11 +89,11 @@ export function TokenRate() {
         <div
           className={cn("pt-2 transition-transform ease-snappy", shown ? "translate-y-0" : "translate-y-1.5")}
           style={{ transitionDuration: `${REVEAL_MS}ms` }}
-          title="Ausgegebene Tokens pro Sekunde, über alle Sessions, Subagenten, Agenten und das Telefon"
+          title={t.layout.tokenRate.title}
         >
           <div className="mb-0.5 flex justify-between text-caption">
-            <span className="text-muted">Ausgabe</span>
-            <span className={cn("tabular-nums transition-colors duration-300", perSecond > 0 ? "text-fg" : "text-subtle")}>{perSecond.toLocaleString("de-DE")} Token/s</span>
+            <span className="text-muted">{t.layout.tokenRate.output}</span>
+            <span className={cn("tabular-nums transition-colors duration-300", perSecond > 0 ? "text-fg" : "text-subtle")}>{t.layout.tokenRate.perSecond(perSecond.toLocaleString(locale))}</span>
           </div>
           <div className={cn("transition-opacity duration-300", active || perSecond > 0 ? "opacity-100" : "opacity-30")}>
             <svg viewBox="0 0 100 20" preserveAspectRatio="none" className="h-4 w-full text-accent" aria-hidden>

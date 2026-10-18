@@ -34,6 +34,7 @@ import type { ChatWindowTarget } from "@/lib/chat-windows";
 import { ChatWindowShell } from "@/views/ChatWindowView";
 import { AgentReviewDialog } from "@/components/workspace/AgentReviewDialog";
 import { useLanguageSync } from "@/i18n/sync";
+import { t } from "@/i18n";
 
 // Views that are not needed at start (they bring CodeMirror and more) load on first use, or
 // in idle time right after the start, so the first switch does not wait either.
@@ -72,9 +73,9 @@ export function App({ chatWindow = null }: { chatWindow?: ChatWindowTarget | nul
     return (
       <Centered>
         <AlertTriangle className="h-6 w-6 text-warning" />
-        <div className="text-sm font-medium">FORGE läuft nur als Desktop-App.</div>
+        <div className="text-sm font-medium">{t.app.desktopOnly}</div>
         <div className="max-w-md text-center text-body text-muted">
-          Die Oberfläche braucht den lokalen Hintergrunddienst. Starte sie mit <code className="font-mono">pnpm dev</code> im Projektordner.
+          {t.app.needsSidecar} {t.app.startWith} <code className="font-mono">pnpm dev</code> {t.app.inProjectFolder}
         </div>
       </Centered>
     );
@@ -84,7 +85,7 @@ export function App({ chatWindow = null }: { chatWindow?: ChatWindowTarget | nul
       <Centered>
         <Logo height={64} />
         <div className="flex items-center gap-2 text-body text-muted">
-          <Spinner /> FORGE startet …
+          <Spinner /> {t.app.starting}
         </div>
       </Centered>
     );
@@ -93,15 +94,15 @@ export function App({ chatWindow = null }: { chatWindow?: ChatWindowTarget | nul
     return (
       <Centered>
         <AlertTriangle className="h-6 w-6 text-danger" />
-        <div className="text-sm font-medium">Der FORGE-Hintergrunddienst läuft nicht.</div>
+        <div className="text-sm font-medium">{t.app.sidecarDown}</div>
         {boot.detail && <pre className="max-h-48 max-w-2xl overflow-auto rounded-md bg-surface p-3 font-mono text-xs text-muted">{boot.detail}</pre>}
         {isChat ? (
-          <div className="max-w-md text-center text-body text-muted">Starte ihn im FORGE-Hauptfenster neu. Dieses Fenster verbindet sich danach von selbst.</div>
+          <div className="max-w-md text-center text-body text-muted">{t.app.restartInMain}</div>
         ) : (
           <>
             <IncompleteInstallHint />
             <Button variant="primary" onClick={() => void rpc.restart()}>
-              <RotateCw className="h-3.5 w-3.5" /> Neu starten
+              <RotateCw className="h-3.5 w-3.5" /> {t.app.restart}
             </Button>
           </>
         )}
@@ -166,7 +167,7 @@ function Shell() {
 /** Stand-in for a lazy view in the frame of `Page`: header with title and subtitle, then content. */
 function PageSkeleton() {
   return (
-    <SkeletonRegion label="Lädt Ansicht" className="flex min-h-0 flex-1 flex-col">
+    <SkeletonRegion label={t.app.loadingView} className="flex min-h-0 flex-1 flex-col">
       <div className="flex min-h-16 items-center border-b border-border px-6 py-3">
         <div className="flex flex-col gap-2">
           <Skeleton className="h-5 w-44" />
@@ -200,18 +201,18 @@ function IncompleteInstallHint() {
   }, []);
   if (missing === null)
     return (
-      <SkeletonRegion label="Lädt Installationsprüfung" className="flex justify-center">
+      <SkeletonRegion label={t.app.loadingInstallCheck} className="flex justify-center">
         <Skeleton className="h-3.5 w-72" />
       </SkeletonRegion>
     );
-  if (!missing.length) return <div className="max-w-md text-center text-body text-muted">Voraussetzung ist Node.js ab Version 22.13 im PATH.</div>;
+  if (!missing.length) return <div className="max-w-md text-center text-body text-muted">{t.app.nodeRequired}</div>;
   return (
     <div className="flex max-w-md flex-col items-center gap-2 text-center text-body text-muted">
       <div>
-        FORGE ist nicht vollständig installiert, es fehlt: {missing.join(", ")}. Installiere FORGE mit der vollständigen setup.exe von der Release-Seite, nicht mit dem Update-Zip.
+        {t.app.incomplete(missing.join(", "))}
       </div>
       <Button variant="outline" onClick={() => void openExternal(RELEASES_URL)}>
-        <ExternalLink className="h-3.5 w-3.5" /> Release-Seite öffnen
+        <ExternalLink className="h-3.5 w-3.5" /> {t.app.openReleases}
       </Button>
     </div>
   );

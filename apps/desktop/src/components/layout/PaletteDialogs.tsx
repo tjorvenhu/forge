@@ -13,6 +13,7 @@ import { DeleteSessionDialog } from "@/components/workspace/DeleteSessionDialog"
 import { Markdown } from "@/components/workspace/Markdown";
 import { UiCompareDialog } from "@/components/workspace/UiCompareCard";
 import type { PaletteDialog } from "./palette-actions";
+import { t } from "@/i18n";
 
 /** The dialog an entry of the command palette asked for; shown after the palette has closed. */
 export function PaletteDialogs({ dialog, onClose }: { dialog: PaletteDialog | null; onClose: () => void }) {
@@ -56,16 +57,16 @@ function LatestUiCompare({ sessionId, projectId, onClose }: { sessionId: string 
   });
   if (q.data) return <UiCompareDialog sessionId={q.data.sessionId} compareId={q.data.id} initialMode="side" onClose={onClose} />;
   return (
-    <Dialog open onOpenChange={(o) => !o && onClose()} title="Vorher und nachher">
+    <Dialog open onOpenChange={(o) => !o && onClose()} title={t.layout.paletteDialogs.compareTitle}>
       {q.isPending ? (
-        <SkeletonRegion label="Lädt Vergleich" className="grid grid-cols-2 gap-2">
+        <SkeletonRegion label={t.layout.paletteDialogs.loadingCompare} className="grid grid-cols-2 gap-2">
           <Skeleton className="aspect-[16/10] w-full" />
           <Skeleton className="aspect-[16/10] w-full" />
         </SkeletonRegion>
       ) : q.isError ? (
         <ErrorBanner>{errorMessage(q.error)}</ErrorBanner>
       ) : (
-        <p className="text-body text-muted">In diesem Projekt gibt es noch keinen Vergleich. FORGE macht einen, wenn Claude UI-Dateien ändert, während der Dev-Server läuft.</p>
+        <p className="text-body text-muted">{t.layout.paletteDialogs.noCompare}</p>
       )}
     </Dialog>
   );
@@ -83,9 +84,9 @@ function SummaryDialog({ sessionId, title, onClose }: { sessionId: string; title
     mutate();
   }, [mutate]);
   return (
-    <Dialog open onOpenChange={(o) => !o && onClose()} title="Wo war ich?" description={title ?? undefined}>
+    <Dialog open onOpenChange={(o) => !o && onClose()} title={t.layout.paletteDialogs.summaryTitle} description={title ?? undefined}>
       {m.isPending && (
-        <div className="flex flex-col gap-2" role="status" aria-label="Claude fasst die Session zusammen">
+        <div className="flex flex-col gap-2" role="status" aria-label={t.layout.paletteDialogs.summarizing}>
           <Skeleton className="h-3 w-[90%]" />
           <Skeleton className="h-3 w-[75%]" />
           <Skeleton className="h-3 w-[82%]" />
@@ -96,7 +97,7 @@ function SummaryDialog({ sessionId, title, onClose }: { sessionId: string; title
       {m.data && (
         <>
           <Markdown text={m.data.summary} />
-          <p className="mt-3 text-caption text-subtle">Von Claude ({modelLabel(m.data.model)}) aus dem gespeicherten Verlauf dieser Session erstellt.</p>
+          <p className="mt-3 text-caption text-subtle">{t.layout.paletteDialogs.summaryBy(modelLabel(m.data.model))}</p>
         </>
       )}
     </Dialog>

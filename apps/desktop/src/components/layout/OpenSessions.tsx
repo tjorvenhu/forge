@@ -18,6 +18,7 @@ import { ProjectIcon } from "@/components/projects/ProjectIcon";
 import { Skeleton, SkeletonRegion } from "@/components/ui/skeleton";
 import { sessionStatusLabel } from "@/components/workspace/SessionStatusBadge";
 import { focusComposer, openChat } from "@/components/workspace/chat-slot";
+import { t } from "@/i18n";
 
 function dotClass(s: TabSession): string {
   if (s.status === "waiting_approval") return "animate-soft-pulse bg-warning";
@@ -30,7 +31,7 @@ function dotClass(s: TabSession): string {
 
 function statusText(s: TabSession): string {
   const label = sessionStatusLabel(s.status, s.live, s.autoContinueAt);
-  return s.background.length ? `${label}, ${s.background.length} im Hintergrund` : label;
+  return s.background.length ? t.layout.openSessions.inBackground(label, s.background.length) : label;
 }
 
 /**
@@ -50,7 +51,7 @@ function Branch({ last = false, children }: { last?: boolean; children: ReactNod
 /** One project row with two sessions under it, in the sizes of the real tree. */
 function OpenSessionsSkeleton() {
   return (
-    <SkeletonRegion label="Lädt Sessions" className="flex flex-col">
+    <SkeletonRegion label={t.layout.openSessions.loading} className="flex flex-col">
       <div className="flex items-center gap-2.5 px-2 py-1.5">
         <Skeleton className="h-5.5 w-5.5 shrink-0" />
         <Skeleton className="h-3 w-28" />
@@ -104,21 +105,21 @@ export function SplitViewEntry() {
       <button
         onClick={() => restore()}
         aria-current={onScreen ? "page" : undefined}
-        title={onScreen ? `Geteilte Ansicht mit ${areas} Bereichen` : `Geteilte Ansicht wieder öffnen (${areas} Bereiche)`}
+        title={onScreen ? t.layout.openSessions.splitOnScreen(areas) : t.layout.openSessions.splitReopen(areas)}
         className="flex min-w-0 flex-1 items-center gap-2.5 px-2 py-1.5 text-left text-ui"
       >
         <span className="flex h-5.5 w-5.5 shrink-0 items-center justify-center rounded-md bg-accent/15 text-accent">
           <LayoutGrid className="h-3.5 w-3.5" />
         </span>
-        <span className="truncate">Geteilte Ansicht</span>
-        <span className="ml-auto shrink-0 text-caption tabular-nums text-subtle" aria-label={`${areas} Bereiche`}>
+        <span className="truncate">{t.layout.openSessions.splitView}</span>
+        <span className="ml-auto shrink-0 text-caption tabular-nums text-subtle" aria-label={t.layout.openSessions.areas(areas)}>
           {areas}
         </span>
       </button>
       <button
         onClick={() => closeAll()}
-        aria-label="Teilung aufheben"
-        title="Teilung aufheben. Die Sessions laufen weiter."
+        aria-label={t.layout.openSessions.unsplit}
+        title={t.layout.openSessions.unsplitHint}
         className="mr-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-subtle opacity-0 hover:bg-surface-3 hover:text-fg focus-visible:opacity-100 group-hover/split:opacity-100"
       >
         <X className="h-3.5 w-3.5" />
@@ -177,13 +178,13 @@ export function OpenSessions() {
   const activeId = activeIndex >= 0 ? openId : null;
 
   const { drag, handlers: dragHandlers, consumeClick } = useTabTearOff(listRef, (id) => {
-    const s = tabs.find((t) => t.id === id);
+    const s = tabs.find((x) => x.id === id);
     if (s) void openChatWindow(s.projectId, s.id, s.title, { drag: true });
   });
 
   useEffect(() => {
     if (!activeId) return;
-    const el = [...(listRef.current?.querySelectorAll<HTMLElement>("[data-session-tab]") ?? [])].find((t) => t.dataset.sessionTab === activeId);
+    const el = [...(listRef.current?.querySelectorAll<HTMLElement>("[data-session-tab]") ?? [])].find((x) => x.dataset.sessionTab === activeId);
     el?.scrollIntoView?.({ block: "nearest" });
   }, [activeId]);
 
@@ -224,19 +225,19 @@ export function OpenSessions() {
             <div
               className={cn("group/project flex items-center rounded-lg", projectActive && !activeId && !showNew ? "bg-surface-3" : "hover:bg-surface-2")}
               onContextMenu={contextItems(() => [
-                { label: "Projekt öffnen", icon: <FolderOpen className={MENU_ICON} />, onSelect: () => openProject(g.projectId) },
-                ...(splitRoom > 0 && !projectActive ? [{ label: "Daneben öffnen", icon: <Columns2 className={MENU_ICON} />, onSelect: () => addSplitPane(g.projectId) }] : []),
+                { label: t.layout.openSessions.openProject, icon: <FolderOpen className={MENU_ICON} />, onSelect: () => openProject(g.projectId) },
+                ...(splitRoom > 0 && !projectActive ? [{ label: t.layout.openSessions.openBeside, icon: <Columns2 className={MENU_ICON} />, onSelect: () => addSplitPane(g.projectId) }] : []),
                 {
-                  label: "Neue Session",
+                  label: t.layout.openSessions.newSession,
                   icon: <MessageSquarePlus className={MENU_ICON} />,
                   onSelect: () => {
                     toggleGroup(g.projectId, false);
                     openProject(g.projectId, null);
                   },
                 },
-                { label: "Tagesbericht", icon: <CalendarDays className={MENU_ICON} />, onSelect: () => openReport(g.projectId) },
-                { label: "Vorlage anwenden", icon: <FileStack className={MENU_ICON} />, onSelect: () => useTemplateDialogs.getState().openApply({ projectId: g.projectId }) },
-                ...(hasRows ? [{ label: collapsed ? "Sessions einblenden" : "Sessions ausblenden", icon: <ChevronDown className={MENU_ICON} />, onSelect: () => toggleGroup(g.projectId) }] : []),
+                { label: t.layout.openSessions.dailyReport, icon: <CalendarDays className={MENU_ICON} />, onSelect: () => openReport(g.projectId) },
+                { label: t.layout.openSessions.applyTemplate, icon: <FileStack className={MENU_ICON} />, onSelect: () => useTemplateDialogs.getState().openApply({ projectId: g.projectId }) },
+                ...(hasRows ? [{ label: collapsed ? t.layout.openSessions.showSessions : t.layout.openSessions.hideSessions, icon: <ChevronDown className={MENU_ICON} />, onSelect: () => toggleGroup(g.projectId) }] : []),
               ])}
             >
               <button
@@ -244,13 +245,13 @@ export function OpenSessions() {
                   if (e.shiftKey && splitRoom > 0 && !projectActive) addSplitPane(g.projectId);
                   else openProject(g.projectId);
                 }}
-                title={`${g.projectName} öffnen${splitRoom > 0 && !projectActive ? "\nUmschalt+Klick öffnet es daneben." : ""}`}
+                title={t.layout.openSessions.projectTitle(g.projectName, splitRoom > 0 && !projectActive)}
                 className={cn("flex min-w-0 flex-1 items-center gap-2.5 px-2 py-1.5 text-left text-ui", projectActive ? "text-fg" : "text-muted hover:text-fg")}
               >
                 <ProjectIcon id={g.projectId} name={g.projectName} size={22} className="rounded-md" />
                 <span className="truncate">{g.projectName}</span>
                 {collapsed && g.tabs.length > 0 && (
-                  <span className="flex shrink-0 items-center gap-1.5 text-caption tabular-nums text-subtle" aria-label={`${g.tabs.length} ${g.tabs.length === 1 ? "Session" : "Sessions"} ausgeblendet`}>
+                  <span className="flex shrink-0 items-center gap-1.5 text-caption tabular-nums text-subtle" aria-label={t.layout.openSessions.hiddenCount(g.tabs.length)}>
                     {lead && <span aria-hidden className={cn("h-1.5 w-1.5 rounded-full", dotClass(lead))} />}
                     {g.tabs.length}
                   </span>
@@ -261,8 +262,8 @@ export function OpenSessions() {
                   toggleGroup(g.projectId, false);
                   openProject(g.projectId, null);
                 }}
-                aria-label={`Neue Session in ${g.projectName}`}
-                title="Neue Session"
+                aria-label={t.layout.openSessions.newSessionIn(g.projectName)}
+                title={t.layout.openSessions.newSession}
                 className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-subtle opacity-0 hover:bg-surface-3 hover:text-fg focus-visible:opacity-100 group-hover/project:opacity-100"
               >
                 <Plus className="h-3.5 w-3.5" />
@@ -271,8 +272,8 @@ export function OpenSessions() {
                 <button
                   onClick={() => toggleGroup(g.projectId)}
                   aria-expanded={!collapsed}
-                  aria-label={`Sessions von ${g.projectName} ${collapsed ? "einblenden" : "ausblenden"}`}
-                  title={collapsed ? "Sessions einblenden" : "Sessions ausblenden"}
+                  aria-label={collapsed ? t.layout.openSessions.showSessionsOf(g.projectName) : t.layout.openSessions.hideSessionsOf(g.projectName)}
+                  title={collapsed ? t.layout.openSessions.showSessions : t.layout.openSessions.hideSessions}
                   className="mr-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-subtle hover:bg-surface-3 hover:text-fg"
                 >
                   <ChevronDown className={cn("h-3.5 w-3.5 transition-transform duration-120", collapsed && "-rotate-90")} />
@@ -291,24 +292,24 @@ export function OpenSessions() {
                   const inWindow = inChatWindows.includes(s.id);
                   const inPane = inPanes.split(" ").includes(s.id);
                   const canSplit = splitRoom > 0 && !active && !inPane && !inWindow;
-                  const title = s.title ?? "Ohne Titel";
+                  const title = s.title ?? t.layout.openSessions.untitled;
                   const agent = agentOf(s.projectId, g.projectId);
-                  const where = agent ? `Agent ${agentLabel(agent)} in ${g.projectName}` : s.projectName;
+                  const where = agent ? t.layout.openSessions.agentIn(agentLabel(agent), g.projectName) : s.projectName;
                   return (
                     <Branch key={s.id} last={n === g.tabs.length - 1 && !news.length}>
                       <div
                         data-session-tab={s.id}
                         onContextMenu={contextItems(() => [
-                          { label: "Öffnen", icon: <MessageSquare className={MENU_ICON} />, onSelect: () => openChat(s.projectId, s.id) },
-                          ...(canSplit ? [{ label: "Daneben öffnen", icon: <Columns2 className={MENU_ICON} />, onSelect: () => addSplitPane(s.projectId, s.id) }] : []),
-                          ...(!inWindow ? [{ label: "In eigenem Fenster öffnen", icon: <SquareArrowOutUpRight className={MENU_ICON} />, onSelect: () => void openChatWindow(s.projectId, s.id, s.title) }] : []),
+                          { label: t.layout.openSessions.open, icon: <MessageSquare className={MENU_ICON} />, onSelect: () => openChat(s.projectId, s.id) },
+                          ...(canSplit ? [{ label: t.layout.openSessions.openBeside, icon: <Columns2 className={MENU_ICON} />, onSelect: () => addSplitPane(s.projectId, s.id) }] : []),
+                          ...(!inWindow ? [{ label: t.layout.openSessions.openWindow, icon: <SquareArrowOutUpRight className={MENU_ICON} />, onSelect: () => void openChatWindow(s.projectId, s.id, s.title) }] : []),
                           ...(closable
                             ? [
                                 {
-                                  label: "Claude-Prozess beenden",
+                                  label: t.layout.openSessions.stopProcess,
                                   icon: <X className={MENU_ICON} />,
-                                  hint: "bleibt fortsetzbar",
-                                  onSelect: () => void call("sessions.close", { sessionId: s.id }).catch((err: unknown) => toast.error("Beenden fehlgeschlagen", errorMessage(err))),
+                                  hint: t.layout.openSessions.stays,
+                                  onSelect: () => void call("sessions.close", { sessionId: s.id }).catch((err: unknown) => toast.error(t.layout.openSessions.stopFailed, errorMessage(err))),
                                 },
                               ]
                             : []),
@@ -331,7 +332,7 @@ export function OpenSessions() {
                           }}
                           onKeyDown={(e) => onTabKey(e, i)}
                           {...dragHandlers(s.id, title)}
-                          title={`${title}${agent ? `\nParalleler Agent auf Branch ${agent.git?.branch ?? agentLabel(agent)}` : ""}\n${statusText(s)}${s.live ? "" : ". Kein laufender Claude-Prozess"}${inWindow ? "\nIn eigenem Fenster geöffnet" : ""}${inPane ? "\nIn der geteilten Ansicht geöffnet" : ""}\nHerausziehen öffnet ein eigenes Fenster.${canSplit ? "\nUmschalt+Klick öffnet sie daneben." : ""}`}
+                          title={t.layout.openSessions.tabTitle({ title, agentBranch: agent ? (agent.git?.branch ?? agentLabel(agent)) : null, status: statusText(s), live: s.live, inWindow, inPane, canSplit })}
                           className="flex h-full min-w-0 flex-1 cursor-default items-center gap-2 rounded-lg pl-2 pr-1 text-left focus-visible:outline-offset-[-2px]"
                         >
                           <span aria-hidden className={cn("h-1.5 w-1.5 shrink-0 rounded-full", dotClass(s))} />
@@ -349,8 +350,8 @@ export function OpenSessions() {
                         {canSplit && (
                           <button
                             className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-subtle opacity-0 hover:bg-surface-3 hover:text-fg focus-visible:opacity-100 group-hover:opacity-100"
-                            aria-label={`${title} daneben öffnen`}
-                            title="Daneben öffnen"
+                            aria-label={t.layout.openSessions.openBesideOf(title)}
+                            title={t.layout.openSessions.openBeside}
                             onClick={() => addSplitPane(s.projectId, s.id)}
                           >
                             <Columns2 className="h-3 w-3" />
@@ -359,8 +360,8 @@ export function OpenSessions() {
                         {!inWindow && (
                           <button
                             className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-subtle opacity-0 hover:bg-surface-3 hover:text-fg focus-visible:opacity-100 group-hover:opacity-100"
-                            aria-label={`${title} in eigenem Fenster öffnen`}
-                            title="In eigenem Fenster öffnen"
+                            aria-label={t.layout.openSessions.openWindowOf(title)}
+                            title={t.layout.openSessions.openWindow}
                             onClick={() => void openChatWindow(s.projectId, s.id, s.title)}
                           >
                             <SquareArrowOutUpRight className="h-3 w-3" />
@@ -369,9 +370,9 @@ export function OpenSessions() {
                         {closable && (
                           <button
                             className="mr-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-subtle opacity-0 hover:bg-surface-3 hover:text-fg focus-visible:opacity-100 group-hover:opacity-100"
-                            aria-label={`Claude-Prozess von ${title} beenden`}
-                            title="Beenden. Die Session bleibt fortsetzbar."
-                            onClick={() => call("sessions.close", { sessionId: s.id }).catch((err: unknown) => toast.error("Beenden fehlgeschlagen", errorMessage(err)))}
+                            aria-label={t.layout.openSessions.stopProcessOf(title)}
+                            title={t.layout.openSessions.stopHint}
+                            onClick={() => call("sessions.close", { sessionId: s.id }).catch((err: unknown) => toast.error(t.layout.openSessions.stopFailed, errorMessage(err)))}
                           >
                             <X className="h-3 w-3" />
                           </button>
@@ -383,7 +384,7 @@ export function OpenSessions() {
                 {news.map((r, n) => {
                   const pane = r.pane;
                   const newAgent = agentOf(r.projectId, g.projectId);
-                  const label = newAgent ? `Neue Session im Agenten ${agentLabel(newAgent)}` : "Neue Session";
+                  const label = newAgent ? t.layout.openSessions.newSessionInAgent(agentLabel(newAgent)) : t.layout.openSessions.newSession;
                   const icons = (
                     <>
                       <MessageSquarePlus aria-hidden className="h-3 w-3 shrink-0 text-subtle" />
@@ -396,7 +397,7 @@ export function OpenSessions() {
                         <button
                           data-pane-new-session
                           onClick={() => focusComposer({ pane })}
-                          title={`${label} in der geteilten Ansicht`}
+                          title={t.layout.openSessions.inSplit(label)}
                           className="flex h-8 w-full min-w-0 animate-fade-in items-center gap-2 rounded-lg pl-2 pr-1 text-left text-body text-muted transition-colors duration-120 hover:bg-surface-2 hover:text-fg"
                         >
                           {icons}
@@ -405,7 +406,7 @@ export function OpenSessions() {
                         </button>
                       ) : (
                         <div data-new-session className="flex h-8 min-w-0 animate-fade-in items-center rounded-lg bg-surface-3 text-body text-fg">
-                          <span aria-current="page" className="flex h-full min-w-0 flex-1 items-center gap-2 pl-2 pr-1" title="Neue Session. Sie bleibt hier, sobald du die erste Nachricht schickst.">
+                          <span aria-current="page" className="flex h-full min-w-0 flex-1 items-center gap-2 pl-2 pr-1" title={t.layout.openSessions.newSessionHint}>
                             {icons}
                             <span className="truncate italic">{label}</span>
                           </span>

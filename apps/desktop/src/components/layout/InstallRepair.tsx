@@ -11,6 +11,7 @@ import { cn, relativeTime } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Skeleton, SkeletonRegion } from "@/components/ui/skeleton";
 import { RestartNote } from "./AppUpdate";
+import { t } from "@/i18n";
 
 /** Release page for a manual download. */
 export const RELEASES_URL = "https://github.com/vanturis/forge/releases";
@@ -21,8 +22,8 @@ const mb = (bytes: number) => Math.max(1, Math.round(bytes / 1048576));
 export function installerText(s: AppInstallState): string | null {
   const i = s.installer;
   if (!i) return null;
-  if (i.source === "local") return `Installer ${i.version} aus deinem Downloads-Ordner`;
-  return `Installer ${i.version}${i.size ? ` · ${mb(i.size)} MB` : ""}${i.then ? `, danach Update auf ${i.then}` : ""}`;
+  if (i.source === "local") return t.layout.install.localInstaller(i.version);
+  return t.layout.install.installer(i.version, i.size ? mb(i.size) : null, i.then ?? null);
 }
 
 /** Shown when FORGE cannot fix the installation by itself: the release page and a downloaded setup.exe. */
@@ -31,11 +32,11 @@ const canInstall = (s: AppInstallState) => !!s.installer || s.phase === "ready";
 /** The actions for the banner, the settings card and the right click. */
 function menuItems(qc: QueryClient, s: AppInstallState, dismiss?: () => void): ContextGroup {
   return [
-    canInstall(s) && { label: "Vollständig installieren", icon: <PackageCheck className="h-3.5 w-3.5" />, onSelect: () => void installFull(qc) },
-    { label: "Heruntergeladene setup.exe auswählen", icon: <FileUp className="h-3.5 w-3.5" />, onSelect: () => void installFromFile(qc) },
-    { label: "Release-Seite öffnen", icon: <ExternalLink className="h-3.5 w-3.5" />, onSelect: () => void openExternal(RELEASES_URL) },
-    { label: "Erneut prüfen", icon: <RefreshCw className="h-3.5 w-3.5" />, onSelect: () => void checkInstall(qc) },
-    dismiss && { label: "Für jetzt ausblenden", onSelect: dismiss },
+    canInstall(s) && { label: t.layout.install.installFull, icon: <PackageCheck className="h-3.5 w-3.5" />, onSelect: () => void installFull(qc) },
+    { label: t.layout.install.pickDownloaded, icon: <FileUp className="h-3.5 w-3.5" />, onSelect: () => void installFromFile(qc) },
+    { label: t.layout.install.openReleases, icon: <ExternalLink className="h-3.5 w-3.5" />, onSelect: () => void openExternal(RELEASES_URL) },
+    { label: t.layout.install.checkAgain, icon: <RefreshCw className="h-3.5 w-3.5" />, onSelect: () => void checkInstall(qc) },
+    dismiss && { label: t.layout.install.hideForNow, onSelect: dismiss },
   ].filter((x): x is Exclude<typeof x, false | undefined> => !!x);
 }
 
@@ -46,10 +47,10 @@ function Progress({ s }: { s: AppInstallState }) {
   const pct = total ? Math.min(100, Math.round((got / total) * 100)) : null;
   return (
     <div className="flex min-w-0 flex-1 items-center gap-2">
-      <div className="h-1.5 min-w-24 flex-1 overflow-hidden rounded-full bg-surface-3" role="progressbar" aria-valuenow={pct ?? undefined} aria-valuemin={0} aria-valuemax={100} aria-label="Download des Installers">
+      <div className="h-1.5 min-w-24 flex-1 overflow-hidden rounded-full bg-surface-3" role="progressbar" aria-valuenow={pct ?? undefined} aria-valuemin={0} aria-valuemax={100} aria-label={t.layout.install.downloadLabel}>
         <div className={cn("h-full rounded-full bg-accent transition-[width] duration-300", pct === null && "w-1/3 animate-pulse")} style={pct === null ? undefined : { width: `${pct}%` }} />
       </div>
-      <span className="shrink-0 text-caption tabular-nums text-muted">{total ? `${mb(got)} von ${mb(total)} MB` : `${mb(got)} MB`}</span>
+      <span className="shrink-0 text-caption tabular-nums text-muted">{total ? t.layout.install.progressOf(mb(got), mb(total)) : `${mb(got)} MB`}</span>
     </div>
   );
 }
@@ -58,12 +59,12 @@ function Progress({ s }: { s: AppInstallState }) {
 function StatusLine({ s }: { s: AppInstallState }) {
   if (s.phase === "searching")
     return (
-      <SkeletonRegion label="Lädt Installer-Suche" className="flex h-4 items-center">
+      <SkeletonRegion label={t.layout.install.loadingSearch} className="flex h-4 items-center">
         <Skeleton className="h-2.5 w-56" />
       </SkeletonRegion>
     );
   if (s.phase === "downloading") return <Progress s={s} />;
-  if (s.phase === "ready") return <span className="truncate text-caption text-muted">{installerText(s)}. Heruntergeladen und geprüft.</span>;
+  if (s.phase === "ready") return <span className="truncate text-caption text-muted">{t.layout.install.downloadedChecked(installerText(s) ?? "")}</span>;
   if (s.installer) return <span className="truncate text-caption text-muted">{installerText(s)}</span>;
   return <span className={cn("text-caption", s.phase === "error" ? "text-danger" : "text-muted")}>{s.message}</span>;
 }
@@ -89,7 +90,7 @@ export function InstallRepairBanner() {
       <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning" />
       <div className="flex min-w-0 flex-1 flex-col gap-1">
         <div className="text-body">
-          <span className="font-medium">FORGE ist nicht vollständig installiert.</span> <span className="text-muted">{problemText(s)}</span>
+          <span className="font-medium">{t.layout.install.incompleteBanner}</span> <span className="text-muted">{problemText(s)}</span>
         </div>
         <StatusLine s={s} />
       </div>
@@ -97,24 +98,24 @@ export function InstallRepairBanner() {
         {!canInstall(s) && s.phase !== "searching" && (
           <>
             <Button size="sm" variant="ghost" onClick={() => void openExternal(RELEASES_URL)}>
-              <ExternalLink className="h-3.5 w-3.5" /> Release-Seite
+              <ExternalLink className="h-3.5 w-3.5" /> {t.layout.install.releasePage}
             </Button>
             <Button size="sm" variant="outline" onClick={() => void installFromFile(qc)}>
-              <FileUp className="h-3.5 w-3.5" /> setup.exe auswählen
+              <FileUp className="h-3.5 w-3.5" /> {t.layout.install.pickSetup}
             </Button>
           </>
         )}
         {canInstall(s) && (
           <Button size="sm" variant="primary" loading={busy} onClick={() => void installFull(qc)}>
-            {busy ? (s.phase === "downloading" ? "Lädt …" : "Installiert …") : (
+            {busy ? (s.phase === "downloading" ? t.layout.install.loadingShort : t.layout.install.installingShort) : (
               <>
-                <PackageCheck className="h-3.5 w-3.5" /> Vollständig installieren
+                <PackageCheck className="h-3.5 w-3.5" /> {t.layout.install.installFull}
               </>
             )}
           </Button>
         )}
         <Button size="sm" variant="ghost" onClick={() => setDismissed(true)}>
-          Später
+          {t.layout.install.later}
         </Button>
       </div>
     </div>
@@ -135,7 +136,7 @@ export function InstallRepairSettings() {
   };
   if (q.isPending)
     return (
-      <SkeletonRegion label="Lädt Installationsstatus" className="flex items-center gap-3">
+      <SkeletonRegion label={t.layout.install.loadingState} className="flex items-center gap-3">
         <div className="flex min-w-0 flex-1 flex-col gap-1.5 py-0.5">
           <Skeleton className="h-3.5 w-40" />
           <Skeleton className="h-2.5 w-64" />
@@ -143,24 +144,24 @@ export function InstallRepairSettings() {
         <Skeleton className="h-7 w-28" />
       </SkeletonRegion>
     );
-  if (!s) return <div className="text-xs text-danger">{q.isError ? errorMessage(q.error) : "Status nicht verfügbar."}</div>;
+  if (!s) return <div className="text-xs text-danger">{q.isError ? errorMessage(q.error) : t.layout.install.stateUnavailable}</div>;
   const recheck = (
     <Button size="sm" variant="outline" loading={checking || s.phase === "searching"} onClick={() => void check()}>
-      <RefreshCw className="h-3.5 w-3.5" /> Neu prüfen
+      <RefreshCw className="h-3.5 w-3.5" /> {t.layout.install.recheck}
     </Button>
   );
   if (!s.checkable || s.complete !== false) {
     const text = !s.checkable
-      ? "Im Entwicklungsmodus gibt es keine Installation zu prüfen."
+      ? t.layout.install.devMode
       : s.complete
-        ? `Alle mitgelieferten Programme passen zu dieser Version${s.checkedAt ? `, geprüft ${relativeTime(s.checkedAt)}` : ""}.`
-        : "Noch nicht geprüft.";
+        ? t.layout.install.allMatch(s.checkedAt ? relativeTime(s.checkedAt) : null)
+        : t.layout.install.notChecked;
     return (
       <div className="flex items-center gap-3" onContextMenu={s.checkable ? contextItems(() => menuItems(qc, s)) : undefined}>
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5 text-body">
             {s.complete && <CheckCircle2 className="h-3.5 w-3.5 text-success" />}
-            {s.complete ? "Vollständig installiert" : "Installation"}
+            {s.complete ? t.layout.install.complete : t.layout.install.installation}
           </div>
           <div className="text-xs text-muted">{text}</div>
         </div>
@@ -174,7 +175,7 @@ export function InstallRepairSettings() {
       <div className="flex items-start gap-3">
         <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning" />
         <div className="flex min-w-0 flex-1 flex-col gap-1">
-          <div className="text-body">Nicht vollständig installiert</div>
+          <div className="text-body">{t.layout.install.incomplete}</div>
           <ul className="list-disc pl-4 text-xs text-muted">
             {s.problems.map((p) => (
               <li key={`${p.part}:${p.label}`}>{p.label}</li>
@@ -186,14 +187,14 @@ export function InstallRepairSettings() {
       <div className="flex flex-wrap items-center justify-end gap-1.5">
         {recheck}
         <Button size="sm" variant="ghost" onClick={() => void openExternal(RELEASES_URL)}>
-          <ExternalLink className="h-3.5 w-3.5" /> Release-Seite
+          <ExternalLink className="h-3.5 w-3.5" /> {t.layout.install.releasePage}
         </Button>
         <Button size="sm" variant="outline" onClick={() => void installFromFile(qc)}>
-          <FileUp className="h-3.5 w-3.5" /> setup.exe auswählen
+          <FileUp className="h-3.5 w-3.5" /> {t.layout.install.pickSetup}
         </Button>
         {canInstall(s) && (
           <Button size="sm" variant="primary" loading={busy} onClick={() => void installFull(qc)}>
-            <PackageCheck className="h-3.5 w-3.5" /> Vollständig installieren
+            <PackageCheck className="h-3.5 w-3.5" /> {t.layout.install.installFull}
           </Button>
         )}
       </div>
