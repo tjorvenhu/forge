@@ -8,8 +8,11 @@ import { toast } from "@/stores/toast";
 import { useUi } from "@/stores/ui";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { t } from "@/i18n";
 
-export const LOCAL_ONLY_HINT = "Auf einem anderen PC entfernt. Hier ist es noch da, wird aber nicht mehr über GitHub abgeglichen.";
+const tl = t.settings.localOnly;
+
+export const LOCAL_ONLY_HINT = tl.hint;
 
 /** The project's entry when another computer removed it from the sync. */
 export function useLocalOnlyProject(projectId: string): SyncLocalOnly | null {
@@ -21,18 +24,18 @@ function useSyncActions() {
   const keep = async (item: SyncLocalOnly) => {
     try {
       qc.setQueryData(keys.sync, await call("sync.keep", { key: item.key }));
-      toast.success(`${item.label} wird wieder abgeglichen`);
+      toast.success(tl.syncedAgain(item.label));
     } catch (e) {
-      toast.error("Nicht wieder abgeglichen", errorMessage(e));
+      toast.error(tl.notSyncedAgain, errorMessage(e));
     }
   };
   const force = async (item: SyncLocalOnly) => {
     try {
       qc.setQueryData(keys.sync, await call("sync.forceLocal", { key: item.key }));
       await qc.invalidateQueries();
-      toast.success(`${item.label} ist auf dem Stand von GitHub`, "Der Stand davor ist als Backup gesichert.");
+      toast.success(tl.forced(item.label), tl.forcedDetail);
     } catch (e) {
-      toast.error("Nicht zurückgesetzt", errorMessage(e));
+      toast.error(tl.notReset, errorMessage(e));
       throw e;
     }
   };
@@ -41,9 +44,9 @@ function useSyncActions() {
 
 /** What setting an item hard to GitHub means here: removing it. */
 function forceText(item: SyncLocalOnly): string {
-  if (item.kind === "project") return `${item.label} wird auf diesem PC aus FORGE entfernt, wie auf dem anderen PC. Der Ordner mit den Dateien bleibt, die Session-Historie in FORGE ist danach weg.`;
-  if (item.kind === "claude") return `${item.label} wird auf diesem PC gelöscht.`;
-  return `${item.label} wird auf diesem PC entfernt.`;
+  if (item.kind === "project") return tl.forceProject(item.label);
+  if (item.kind === "claude") return tl.forceClaude(item.label);
+  return tl.forceOther(item.label);
 }
 
 /** Small cloud on the project card. */
@@ -61,9 +64,9 @@ export function LocalOnlyBadge({ projectId }: { projectId: string }) {
     <span
       role="button"
       tabIndex={0}
-      aria-label="Nur auf diesem PC"
+      aria-label={tl.title}
       className="shrink-0 text-warning"
-      title={`Nur auf diesem PC\n${LOCAL_ONLY_HINT}\n\nKlicken, um unter Einstellungen, GitHub zu entscheiden.`}
+      title={tl.badgeTitle(LOCAL_ONLY_HINT)}
       onClick={open}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") open(e);
@@ -83,7 +86,7 @@ export function LocalOnlyBanner({ projectId }: { projectId: string }) {
       <div className="flex items-center gap-3 rounded-lg border border-warning/30 bg-warning-soft px-3.5 py-2.5">
         <CloudOff className="h-4 w-4 shrink-0 text-warning" />
         <div className="min-w-0 flex-1">
-          <div className="text-body font-medium">Nur auf diesem PC</div>
+          <div className="text-body font-medium">{tl.title}</div>
           <div className="text-xs text-muted">{LOCAL_ONLY_HINT}</div>
         </div>
         <LocalOnlyActions item={item} />
@@ -107,17 +110,17 @@ function LocalOnlyActions({ item }: { item: SyncLocalOnly }) {
           setBusy(false);
         }}
       >
-        <CloudUpload className="h-3.5 w-3.5" /> Wieder abgleichen
+        <CloudUpload className="h-3.5 w-3.5" /> {tl.syncAgain}
       </Button>
       <Button size="sm" variant="ghost" onClick={() => setConfirm(true)}>
-        <RotateCcw className="h-3.5 w-3.5" /> Auf GitHub-Stand setzen
+        <RotateCcw className="h-3.5 w-3.5" /> {tl.setToGitHub}
       </Button>
       <ConfirmDialog
         open={confirm}
         onOpenChange={setConfirm}
-        title={`${item.label} auf den Stand von GitHub setzen?`}
-        description={`${forceText(item)} Vorher legt FORGE ein Backup an.`}
-        confirmLabel="Auf GitHub-Stand setzen"
+        title={tl.confirmTitle(item.label)}
+        description={tl.confirmDescription(forceText(item))}
+        confirmLabel={tl.setToGitHub}
         danger
         onConfirm={() => force(item)}
       />

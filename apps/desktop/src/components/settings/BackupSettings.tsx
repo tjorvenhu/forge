@@ -12,34 +12,18 @@ import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Badge, EmptyState, ErrorBanner, InfoTip, LabelWithInfo, ToggleRow } from "@/components/ui/misc";
 import { Skeleton, SkeletonRegion } from "@/components/ui/skeleton";
+import { locale, t } from "@/i18n";
 
-const REASON: Record<BackupInfo["reason"], string> = {
-  start: "Beim Start",
-  manual: "Von Hand",
-  "before-restore": "Vor Wiederherstellung",
-  import: "Importiert",
-};
+const tb = t.settings.backup;
 
-const PART_LABEL: Record<BackupPart, string> = {
-  settings: "Einstellungen",
-  projects: "Projekte",
-  phone: "Telefon",
-  claude: "Claude-Code-Konfiguration",
-  git: "Git-Name und E-Mail",
-  templates: "Vorlagen",
-};
+const REASON: Record<BackupInfo["reason"], string> = tb.reason;
 
-const PART_HINT: Record<BackupPart, string> = {
-  settings: "Modell, Aufwand, Profil, Töne, Updates und alle anderen Einstellungen von FORGE.",
-  projects: "Projektliste mit Favoriten, Tags, Profil, Modell und Befehlen. Seitdem hinzugefügte Projekte bleiben.",
-  phone: "Anlage, Gesprächspartner, Anrufer, PIN und Tischtelefon. Das Telefon startet danach neu.",
-  claude: "CLAUDE.md, settings.json mit Hooks, Agenten, Befehle, Skills und MCP-Server. Seitdem neu angelegte bleiben.",
-  git: "Name und E-Mail für Commits.",
-  templates: "Prompt-Vorlagen, global und pro Projekt. Seitdem neu angelegte bleiben.",
-};
+const PART_LABEL: Record<BackupPart, string> = tb.parts;
+
+const PART_HINT: Record<BackupPart, string> = tb.partHints;
 
 export function formatBackupDate(iso: string): string {
-  return new Date(iso).toLocaleString("de-DE", { weekday: "short", day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+  return new Date(iso).toLocaleString(locale, { weekday: "short", day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
 }
 
 function fileName(iso: string) {
@@ -58,9 +42,9 @@ export function BackupSettings() {
     try {
       await call("backup.create", {});
       void qc.invalidateQueries({ queryKey: keys.backups });
-      toast.success("Backup angelegt");
+      toast.success(tb.created);
     } catch (e) {
-      toast.error("Backup nicht angelegt", errorMessage(e));
+      toast.error(tb.notCreated, errorMessage(e));
     } finally {
       setCreating(false);
     }
@@ -68,22 +52,22 @@ export function BackupSettings() {
 
   const download = async (b?: BackupInfo) => {
     try {
-      const target = await pickSaveFile("Backup speichern", fileName(b?.createdAt ?? new Date().toISOString()));
+      const target = await pickSaveFile(tb.saveDialogTitle, fileName(b?.createdAt ?? new Date().toISOString()));
       if (!target) return;
       const r = await call("backup.export", { path: target, ...(b?.id ? { id: b.id } : {}) });
-      toast.success("Backup gespeichert", r.path);
+      toast.success(tb.saved, r.path);
     } catch (e) {
-      toast.error("Backup nicht gespeichert", errorMessage(e));
+      toast.error(tb.notSaved, errorMessage(e));
     }
   };
 
   const importFile = async () => {
     try {
-      const path = await pickBackupFile("Backup-Datei wählen");
+      const path = await pickBackupFile(tb.pickFile);
       if (!path) return;
       setRestore({ info: await call("backup.inspect", { path }), path });
     } catch (e) {
-      toast.error("Datei nicht lesbar", errorMessage(e));
+      toast.error(tb.fileUnreadable, errorMessage(e));
     }
   };
 
@@ -93,26 +77,25 @@ export function BackupSettings() {
       <GitHubBackupStatus />
       <div className="flex flex-wrap items-center gap-2">
         <Button variant="primary" onClick={() => void create()} loading={creating}>
-          <Save className="h-3.5 w-3.5" /> Jetzt sichern
+          <Save className="h-3.5 w-3.5" /> {tb.backUpNow}
         </Button>
         <Button variant="outline" onClick={() => void download()}>
-          <Download className="h-3.5 w-3.5" /> Als Datei herunterladen
+          <Download className="h-3.5 w-3.5" /> {tb.download}
         </Button>
         <Button variant="outline" onClick={() => void importFile()}>
-          <FileUp className="h-3.5 w-3.5" /> Aus Datei wiederherstellen
+          <FileUp className="h-3.5 w-3.5" /> {tb.restoreFromFile}
         </Button>
         <InfoTip>
-          Die Datei enthält deine Konfiguration im Klartext, auch API-Keys, die in MCP-Servern oder Hooks stehen. Bewahre sie auf wie ein Passwort. Die Zugangsdaten des Telefons
-          bleiben verschlüsselt und funktionieren nur unter deinem Windows-Konto.
+          {tb.fileInfo}
         </InfoTip>
       </div>
 
       <div>
-        <LabelWithInfo info="Beim Start sichert FORGE automatisch, wenn sich seit dem letzten Backup etwas geändert hat. Die letzten 40 bleiben." className="mb-2 flex">
-          <h3 className="text-body font-medium">Gespeicherte Backups</h3>
+        <LabelWithInfo info={tb.listInfo} className="mb-2 flex">
+          <h3 className="text-body font-medium">{tb.listTitle}</h3>
         </LabelWithInfo>
         {backups.isLoading && (
-          <SkeletonRegion label="Lädt Backups" className="divide-y divide-border overflow-hidden rounded-lg border border-border">
+          <SkeletonRegion label={tb.loading} className="divide-y divide-border overflow-hidden rounded-lg border border-border">
             {[0, 1, 2].map((i) => (
               <div key={i} className="flex items-center gap-3 px-3.5 py-2.5">
                 <div className="flex min-w-0 flex-1 flex-col gap-1">
@@ -134,8 +117,8 @@ export function BackupSettings() {
         {backups.isError && <ErrorBanner>{errorMessage(backups.error)}</ErrorBanner>}
         {backups.data && !list.length && (
           <div className="rounded-lg border border-dashed border-border">
-            <EmptyState icon={<History className="h-6 w-6" />} title="Noch kein Backup">
-              Das erste legt FORGE beim nächsten Start an. Oder jetzt von Hand sichern.
+            <EmptyState icon={<History className="h-6 w-6" />} title={tb.emptyTitle}>
+              {tb.emptyBody}
             </EmptyState>
           </div>
         )}
@@ -148,15 +131,15 @@ export function BackupSettings() {
                     <span className="tabular-nums">{formatBackupDate(b.createdAt)}</span>
                     <span className="text-caption text-subtle">{relativeTime(b.createdAt)}</span>
                     <Badge tone={b.reason === "before-restore" ? "warning" : b.reason === "manual" ? "accent" : "neutral"}>{REASON[b.reason]}</Badge>
-                    {i === 0 && <Badge tone="success">neuestes</Badge>}
+                    {i === 0 && <Badge tone="success">{tb.newest}</Badge>}
                   </div>
                   <div className="truncate text-xs text-muted">{b.parts.map((p) => p.label).join(" · ")}</div>
                 </div>
-                <Button size="icon-sm" variant="ghost" aria-label="Als Datei herunterladen" title="Als Datei herunterladen" onClick={() => void download(b)}>
+                <Button size="icon-sm" variant="ghost" aria-label={tb.download} title={tb.download} onClick={() => void download(b)}>
                   <Download className="h-3.5 w-3.5" />
                 </Button>
                 <Button size="sm" variant="outline" onClick={() => setRestore({ info: b, path: null })}>
-                  <ArchiveRestore className="h-3.5 w-3.5" /> Zurücksetzen
+                  <ArchiveRestore className="h-3.5 w-3.5" /> {tb.reset}
                 </Button>
               </div>
             ))}
@@ -179,22 +162,22 @@ function GitHubBackupStatus() {
   const ok = on && st.phase === "idle" && !!st.lastSyncAt && !st.pending;
   const text = !on
     ? settings.syncEnabled
-      ? "Die Synchronisierung wartet auf das Sync-Passwort. Bis dahin ist nichts davon auf GitHub."
-      : "Die Backups unten liegen nur auf diesem PC. Mit der GitHub-Synchronisierung liegen Einstellungen, Projekte, Telefon und Claude-Konfiguration zusätzlich verschlüsselt auf GitHub, mit allen früheren Ständen."
+      ? tb.github.waitingPassphrase
+      : tb.github.localOnly
     : st.phase === "error"
-      ? `Der letzte Abgleich mit GitHub ist fehlgeschlagen: ${st.error ?? "unbekannter Fehler"}`
+      ? tb.github.failed(st.error ?? tb.github.unknownError)
       : st.phase === "syncing" || st.pending
-        ? "Änderungen gehen gerade zu GitHub."
+        ? tb.github.pushing
         : st.lastSyncAt
-          ? `Einstellungen und Projekte liegen auch auf GitHub, zuletzt abgeglichen ${relativeTime(st.lastSyncAt)}, der Stand dort ist aktuell. Die Backups unten bleiben auf diesem PC.`
-          : "Noch nichts auf GitHub abgeglichen.";
+          ? tb.github.synced(relativeTime(st.lastSyncAt))
+          : tb.github.nothingYet;
   const Icon = !on ? CloudOff : st.phase === "error" ? CloudAlert : ok ? CloudCheck : CloudUpload;
   return (
     <div className={cn("flex items-center gap-3 rounded-lg border px-3.5 py-2.5", ok ? "border-graph-blue/30 bg-graph-blue/10" : st.phase === "error" && on ? "border-danger/30 bg-danger-soft" : "border-border bg-surface-2")}>
       <Icon className={cn("h-4 w-4 shrink-0", ok || (on && st.phase !== "error") ? "text-graph-blue" : on ? "text-danger" : "text-subtle")} />
       <p className="min-w-0 flex-1 text-body">{text}</p>
       <Button size="sm" variant="ghost" onClick={() => openSettings("github")}>
-        {on ? "Versionen auf GitHub" : "Einrichten"}
+        {on ? tb.github.versions : tb.github.setUp}
       </Button>
     </div>
   );
@@ -207,12 +190,12 @@ export function GitHubVersions() {
   const on = !!settings?.syncEnabled && !!status?.hasKey;
   const versions = useSyncVersions(on);
   const [restore, setRestore] = useState<SyncVersion | null>(null);
-  if (!on) return <p className="text-xs text-muted">Sichtbar, sobald das Sync-Passwort auf diesem PC eingegeben ist.</p>;
+  if (!on) return <p className="text-xs text-muted">{tb.versions.hidden}</p>;
   const list = versions.data ?? [];
   return (
     <div>
       {versions.isLoading && (
-        <SkeletonRegion label="Lädt Versionen auf GitHub" className="divide-y divide-border overflow-hidden rounded-lg border border-border">
+        <SkeletonRegion label={tb.versions.loading} className="divide-y divide-border overflow-hidden rounded-lg border border-border">
           {[0, 1, 2].map((i) => (
             <div key={i} className="flex items-center gap-3 px-3.5 py-2.5">
               <div className="flex h-5 min-w-0 flex-1 items-center gap-2">
@@ -226,7 +209,7 @@ export function GitHubVersions() {
         </SkeletonRegion>
       )}
       {versions.isError && <ErrorBanner>{errorMessage(versions.error)}</ErrorBanner>}
-      {versions.data && !list.length && <p className="text-xs text-muted">Noch kein Stand auf GitHub.</p>}
+      {versions.data && !list.length && <p className="text-xs text-muted">{tb.versions.empty}</p>}
       {list.length > 0 && (
         <div className="divide-y divide-border overflow-hidden rounded-lg border border-border">
           {list.slice(0, 20).map((v, i) => (
@@ -235,10 +218,10 @@ export function GitHubVersions() {
                 <span className="tabular-nums">{formatBackupDate(v.date)}</span>
                 <span className="text-caption text-subtle">{relativeTime(v.date)}</span>
                 {v.device && <Badge tone="neutral">{v.device}</Badge>}
-                {i === 0 && <Badge tone="success">aktuell</Badge>}
+                {i === 0 && <Badge tone="success">{tb.versions.current}</Badge>}
               </div>
               <Button size="sm" variant="outline" disabled={i === 0} onClick={() => setRestore(v)}>
-                <ArchiveRestore className="h-3.5 w-3.5" /> Zurückholen
+                <ArchiveRestore className="h-3.5 w-3.5" /> {tb.versions.restore}
               </Button>
             </div>
           ))}
@@ -258,26 +241,26 @@ function VersionRestoreDialog({ version, onClose }: { version: SyncVersion; onCl
     <ConfirmDialog
       open
       onOpenChange={(o) => !o && onClose()}
-      title={`Stand vom ${formatBackupDate(version.date)} zurückholen`}
-      description="Vorher sichert FORGE den aktuellen Stand lokal. Deine anderen PCs bekommen den zurückgeholten Stand mit dem nächsten Abgleich."
-      confirmLabel="Zurückholen"
+      title={tb.versions.dialogTitle(formatBackupDate(version.date))}
+      description={tb.versions.dialogDescription}
+      confirmLabel={tb.versions.restore}
       confirmDisabled={!parts.length}
       onConfirm={async () => {
         try {
           const r = await call("sync.restoreVersion", { sha: version.sha, parts });
           await qc.invalidateQueries();
-          toast.success("Stand zurückgeholt", [`Zurückgesetzt: ${r.restored.map((p) => PART_LABEL[p]).join(", ") || "nichts"}.`, ...r.notes].join(" "));
+          toast.success(tb.versions.restored, [tb.restoredParts(r.restored.map((p) => PART_LABEL[p]).join(", ") || tb.versions.nothing), ...r.notes].join(" "));
         } catch (e) {
-          toast.error("Nicht zurückgeholt", errorMessage(e));
+          toast.error(tb.versions.notRestored, errorMessage(e));
           throw e;
         }
       }}
     >
       <div className="flex flex-col gap-3">
-        <div className="text-xs font-medium text-muted">Was soll zurückgeholt werden?</div>
+        <div className="text-xs font-medium text-muted">{tb.versions.question}</div>
         {all.map((p) => (
           <ToggleRow key={p} checked={parts.includes(p)} onChange={(v) => toggle(p, v)} label={PART_LABEL[p]}>
-            {p === "projects" ? "Einstellungen und Dev-Tools der Projekte. Projekte, die hier fehlen, lassen sich unter Einstellungen, GitHub holen." : PART_HINT[p]}
+            {p === "projects" ? tb.versions.projectsHint : PART_HINT[p]}
           </ToggleRow>
         ))}
       </div>
@@ -296,9 +279,9 @@ function RestoreDialog({ target, onClose }: { target: { info: BackupInfo; path: 
     <ConfirmDialog
       open
       onOpenChange={(o) => !o && onClose()}
-      title={`Backup vom ${formatBackupDate(target.info.createdAt)} wiederherstellen`}
-      description="Vorher sichert FORGE den aktuellen Stand. Du kannst also jederzeit zurück."
-      confirmLabel="Wiederherstellen"
+      title={tb.restore.dialogTitle(formatBackupDate(target.info.createdAt))}
+      description={tb.restore.dialogDescription}
+      confirmLabel={tb.restore.confirm}
       confirmDisabled={!parts.length}
       onConfirm={async () => {
         try {
@@ -306,15 +289,15 @@ function RestoreDialog({ target, onClose }: { target: { info: BackupInfo; path: 
           const r = await call("backup.restore", params);
           // Settings, projects, phone and Claude configuration all may have changed.
           await qc.invalidateQueries();
-          toast.success("Backup wiederhergestellt", [`Zurückgesetzt: ${r.restored.map((p) => PART_LABEL[p]).join(", ")}.`, ...r.notes].join(" "));
+          toast.success(tb.restore.restored, [tb.restoredParts(r.restored.map((p) => PART_LABEL[p]).join(", ")), ...r.notes].join(" "));
         } catch (e) {
-          toast.error("Nicht wiederhergestellt", errorMessage(e));
+          toast.error(tb.restore.notRestored, errorMessage(e));
           throw e;
         }
       }}
     >
       <div className="flex flex-col gap-3">
-        <div className="text-xs font-medium text-muted">Was soll zurückgesetzt werden?</div>
+        <div className="text-xs font-medium text-muted">{tb.restore.question}</div>
         {available.map((p) => (
           <ToggleRow key={p} checked={parts.includes(p)} onChange={(v) => toggle(p, v)} label={PART_LABEL[p]}>
             {p === "settings" || p === "projects" || p === "claude" ? `${labels.get(p)?.replace(/^Claude Code: /, "")}. ` : ""}

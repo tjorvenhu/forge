@@ -14,6 +14,9 @@ import { Select } from "@/components/ui/select";
 import { PhoneStatusBadge } from "@/components/layout/PhoneButton";
 import { PhoneNumberList } from "./PhoneNumberList";
 import { Group } from "./layout";
+import { t } from "@/i18n";
+
+const tp = t.settings.phone;
 
 const DEFAULT_PORT = "5060";
 
@@ -67,10 +70,10 @@ function toPatch(d: Draft): { patch: ParamsOf<"phone.saveConfig">; key: string; 
   const deskPort = parsePort(d.desk.httpPort, 1024);
   const sessionKeys = parseKeys(d.desk.sessionKeys);
   const clearKeys = parseKeys(d.desk.clearKeys, 30);
-  if (port === null) return { error: "Der Port muss eine Zahl von 1 bis 65535 sein." };
-  if (deskPort === null) return { error: "Der Port fürs Tischtelefon muss eine Zahl von 1024 bis 65535 sein." };
-  if (sessionKeys === null) return { error: "Session-Tasten: bis zu 10 Tastennummern von 1 bis 30, z. B. 1, 2, 3, 4." };
-  if (clearKeys === null) return { error: "Tasten leeren: Tastennummern von 1 bis 30, z. B. 5, 6, 7, 8." };
+  if (port === null) return { error: tp.errors.port };
+  if (deskPort === null) return { error: tp.errors.deskPort };
+  if (sessionKeys === null) return { error: tp.errors.sessionKeys };
+  if (clearKeys === null) return { error: tp.errors.clearKeys };
   const { password: deskPassword, ...desk } = d.desk;
   const base: ParamsOf<"phone.saveConfig"> = {
     server: d.server,
@@ -120,8 +123,8 @@ function isTextField(el: Element | null): boolean {
 }
 
 const ENGINES: Array<{ value: PhoneEngine; label: string; description: string }> = [
-  { value: "gemini-live", label: "Gemini Live", description: "Hört, denkt und spricht in einem Modell. Am natürlichsten, man kann jederzeit dazwischenreden." },
-  { value: "claude", label: "Claude (Abo)", description: "Claude führt das Gespräch über dein Abo. Hören und Sprechen übernimmt OpenAI oder Gemini." },
+  { value: "gemini-live", label: "Gemini Live", description: tp.engines.live },
+  { value: "claude", label: tp.engines.claudeLabel, description: tp.engines.claude },
 ];
 
 /** Phone settings: SIP login of the user's PBX, who talks, who may call, when FORGE calls, PIN, desk phone. */
@@ -165,10 +168,10 @@ export function PhoneSettings() {
       }
       const d = latest.current;
       if (!d) return;
-      if (report && d.pin.length > 0 && d.pin.length < 4) toast.error("PIN nicht gespeichert", "Die PIN braucht 4 bis 8 Ziffern.");
+      if (report && d.pin.length > 0 && d.pin.length < 4) toast.error(tp.pinNotSaved, tp.pinLength);
       const r = toPatch(d);
       if ("error" in r) {
-        if (report) toast.error("Nicht gespeichert", r.error);
+        if (report) toast.error(tp.notSaved, r.error);
         return;
       }
       if (r.key === lastSaved.current && !r.secrets) return;
@@ -180,7 +183,7 @@ export function PhoneSettings() {
         setDraft((cur) => (cur ? clearSent(cur, d) : cur));
         toast.saved();
       } catch (e) {
-        toast.error("Nicht gespeichert", errorMessage(e));
+        toast.error(tp.notSaved, errorMessage(e));
       } finally {
         saving.current = false;
         const again = queued.current;
@@ -240,7 +243,7 @@ export function PhoneSettings() {
       qc.setQueryData(keys.phoneConfig, await call("phone.saveConfig", { [what]: "" }));
       toast.saved();
     } catch (e) {
-      toast.error("Nicht entfernt", errorMessage(e));
+      toast.error(tp.notRemoved, errorMessage(e));
     }
   };
 
@@ -249,7 +252,7 @@ export function PhoneSettings() {
       qc.setQueryData(keys.phoneState, await call("phone.setEnabled", { enabled }));
       qc.setQueryData(keys.phoneConfig, await call("phone.config", {}));
     } catch (e) {
-      toast.error(enabled ? "Telefon nicht eingeschaltet" : "Telefon nicht ausgeschaltet", errorMessage(e));
+      toast.error(enabled ? tp.notEnabled : tp.notDisabled, errorMessage(e));
     }
   };
 
@@ -262,11 +265,11 @@ export function PhoneSettings() {
           inputMode={inputMode}
           autoComplete="new-password"
           onChange={(e) => onChange(e.target.value)}
-          placeholder={has ? "gespeichert, zum Ändern neu eingeben" : "nicht gesetzt"}
+          placeholder={has ? tp.secretSaved : tp.secretUnset}
         />
         {has && (
           <Button variant="ghost" onClick={() => void removeSecret(what)}>
-            Entfernen
+            {tp.remove}
           </Button>
         )}
       </div>
@@ -276,12 +279,8 @@ export function PhoneSettings() {
   return (
     <div onBlur={onFieldBlur} className="flex flex-col gap-6">
       <Group
-        title="Telefon"
-        description={
-          enabled
-            ? "Das Telefon ist eingeschaltet. Ausschalten beendet die Anmeldung an der Anlage und das Tischtelefon."
-            : "Ruf FORGE an, frag nach dem Stand, gib Freigaben und starte Agenten per Sprache. Ausgeschaltet nimmt FORGE keine Anrufe an und ruft nicht zurück."
-        }
+        title={tp.title}
+        description={enabled ? tp.descriptionOn : tp.descriptionOff}
       >
         <div className="flex flex-wrap items-center gap-3 px-4 py-3">
           {state && <PhoneStatusBadge state={state} />}
@@ -289,18 +288,18 @@ export function PhoneSettings() {
             {state?.registration === "failed" && state.message
               ? state.message
               : state?.registration === "registered"
-                ? `Angemeldet als ${c.username} an ${c.server}.`
+                ? tp.registeredAs(c.username, c.server)
                 : !c.server
-                  ? "Trag unten die Zugangsdaten deiner Telefonanlage ein und schalte das Telefon ein."
-                  : "Ein- und ausschalten auch über das Telefon-Symbol oben rechts."}
+                  ? tp.enterCredentials
+                  : tp.toggleHint}
           </span>
           {state?.registration === "registered" && c.notifyNumbers.some((n) => n.enabled) && (
-            <Button size="sm" onClick={() => void call("phone.testCall", {}).then((s) => qc.setQueryData(keys.phoneState, s)).catch((e: unknown) => toast.error("Testanruf fehlgeschlagen", errorMessage(e)))}>
-              <PhoneOutgoing className="h-3.5 w-3.5" /> Testanruf
+            <Button size="sm" onClick={() => void call("phone.testCall", {}).then((s) => qc.setQueryData(keys.phoneState, s)).catch((e: unknown) => toast.error(tp.testCallFailed, errorMessage(e)))}>
+              <PhoneOutgoing className="h-3.5 w-3.5" /> {tp.testCall}
             </Button>
           )}
           <Button size="sm" variant={enabled ? "outline" : "primary"} onClick={() => void toggle(!enabled)}>
-            <Power className="h-3.5 w-3.5" /> {enabled ? "Ausschalten" : "Einschalten"}
+            <Power className="h-3.5 w-3.5" /> {enabled ? tp.turnOff : tp.turnOn}
           </Button>
         </div>
       </Group>
@@ -310,24 +309,21 @@ export function PhoneSettings() {
           <LabelWithInfo
             info={
               <div className="flex flex-col gap-1.5">
-                <p>
-                  FORGE meldet sich über UDP an. Audio läuft unverschlüsselt als G.711 (PCMA/PCMU). TLS und SRTP werden noch nicht unterstützt. Beim ersten Anruf fragt die
-                  Windows-Firewall, ob Node.js Verbindungen annehmen darf. Erlaube mindestens private Netzwerke, sonst kommt im Gespräch kein Ton an.
-                </p>
-                <p>Passwörter und API-Keys speichert FORGE verschlüsselt für dein Windows-Konto. Änderungen speichert FORGE selbst, Textfelder beim Verlassen des Felds.</p>
+                <p>{tp.sipInfo1}</p>
+                <p>{tp.sipInfo2}</p>
               </div>
             }
           >
-            Anmeldung an der Telefonanlage (SIP)
+            {tp.sipTitle}
           </LabelWithInfo>
         }
       >
         <div className="flex flex-col gap-4 p-4">
           <div className="grid grid-cols-[1fr_96px] gap-3">
-            <Field label="Server">
-              <Input value={draft.server} onChange={(e) => up({ server: e.target.value })} placeholder="z. B. pbx.example.de oder 192.168.1.10" className="font-mono text-xs" />
+            <Field label={tp.server}>
+              <Input value={draft.server} onChange={(e) => up({ server: e.target.value })} placeholder={tp.serverPlaceholder} className="font-mono text-xs" />
             </Field>
-            <Field label="Port">
+            <Field label={tp.port}>
               <Input
                 value={draft.port}
                 onChange={(e) => up({ port: e.target.value.replace(/\D/g, "").slice(0, 5) })}
@@ -339,21 +335,21 @@ export function PhoneSettings() {
             </Field>
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Benutzer / Nebenstelle" hint="Diese Nummer rufst du an, um FORGE zu erreichen.">
+            <Field label={tp.username} hint={tp.usernameHint}>
               <Input value={draft.username} onChange={(e) => up({ username: e.target.value })} className="font-mono text-xs" />
             </Field>
-            <Field label="Anzeigename">
+            <Field label={tp.displayName}>
               <Input value={draft.displayName} onChange={(e) => up({ displayName: e.target.value })} />
             </Field>
           </div>
-          {secret("Passwort", c.hasPassword, draft.password, (v) => up({ password: v }), "password")}
+          {secret(tp.password, c.hasPassword, draft.password, (v) => up({ password: v }), "password")}
           <AdvancedToggle open={advanced} onToggle={() => setAdvanced(!advanced)} />
           {advanced && (
             <div className="grid grid-cols-2 gap-3">
-              <Field label="Anmeldename (falls abweichend)">
+              <Field label={tp.authUsername}>
                 <Input value={draft.authUsername ?? ""} onChange={(e) => up({ authUsername: e.target.value })} className="font-mono text-xs" />
               </Field>
-              <Field label="SIP-Domain (falls abweichend)">
+              <Field label={tp.domain}>
                 <Input value={draft.domain ?? ""} onChange={(e) => up({ domain: e.target.value })} placeholder={draft.server} className="font-mono text-xs" />
               </Field>
             </div>
@@ -363,17 +359,17 @@ export function PhoneSettings() {
 
       <Group
         title={
-          <LabelWithInfo info={`Bei eingeschaltetem Telefon geht Gesprächsaudio an ${live ? "Google (Gemini Live)" : draft.speechProvider === "gemini" ? "Google (Gemini)" : "OpenAI"}.`}>
-            Gesprächspartner
+          <LabelWithInfo info={tp.audioInfo(live ? "Google (Gemini Live)" : draft.speechProvider === "gemini" ? "Google (Gemini)" : "OpenAI")}>
+            {tp.partnerTitle}
           </LabelWithInfo>
         }
       >
         <div className="flex flex-col gap-4 p-4">
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Wer spricht mit dir">
+            <Field label={tp.engine}>
               <Select<PhoneEngine> value={draft.engine} onChange={(v) => up({ engine: v })} options={ENGINES} className="w-full" />
             </Field>
-            <Field label="Stimme">
+            <Field label={tp.voice}>
               {needsGemini ? (
                 <Select value={draft.geminiVoice} onChange={(v) => up({ geminiVoice: v })} options={PHONE_GEMINI_VOICES.map((v) => ({ value: v, label: v }))} className="w-full" />
               ) : (
@@ -381,7 +377,7 @@ export function PhoneSettings() {
               )}
             </Field>
             {!live && (
-              <Field label="Hören und Sprechen über">
+              <Field label={tp.speechProvider}>
                 <Select<"openai" | "gemini">
                   value={draft.speechProvider}
                   onChange={(v) => up({ speechProvider: v })}
@@ -396,32 +392,32 @@ export function PhoneSettings() {
           </div>
           {needsGemini &&
             secret(
-              "Gemini-API-Key",
+              tp.geminiKey,
               c.hasGeminiKey,
               draft.geminiKey,
               (v) => up({ geminiKey: v }),
               "geminiKey",
-              live ? "Für Gemini Live. Abgerechnet über dein Google-AI-Konto, nicht über das Claude-Abo." : "Für Spracherkennung und Sprachausgabe. Das Gespräch selbst führt Claude über dein Abo.",
+              live ? tp.geminiKeyLive : tp.speechKeyHint,
             )}
           {needsOpenAi &&
-            secret("OpenAI-API-Key", c.hasOpenAiKey, draft.openAiKey, (v) => up({ openAiKey: v }), "openAiKey", "Für Spracherkennung und Sprachausgabe. Das Gespräch selbst führt Claude über dein Abo.")}
-          <AdvancedToggle label="Modelle" open={models} onToggle={() => setModels(!models)} />
+            secret(tp.openAiKey, c.hasOpenAiKey, draft.openAiKey, (v) => up({ openAiKey: v }), "openAiKey", tp.speechKeyHint)}
+          <AdvancedToggle label={tp.models} open={models} onToggle={() => setModels(!models)} />
           {models && (
             <div className="grid grid-cols-2 gap-3">
-              <Field label="Modell Gemini Live">
+              <Field label={tp.liveModel}>
                 <Input value={draft.liveModel} onChange={(e) => up({ liveModel: e.target.value })} className="font-mono text-xs" />
               </Field>
               <div />
-              <Field label="Gemini Spracherkennung">
+              <Field label={tp.geminiStt}>
                 <Input value={draft.geminiSttModel} onChange={(e) => up({ geminiSttModel: e.target.value })} className="font-mono text-xs" />
               </Field>
-              <Field label="Gemini Sprachausgabe">
+              <Field label={tp.geminiTts}>
                 <Input value={draft.geminiTtsModel} onChange={(e) => up({ geminiTtsModel: e.target.value })} className="font-mono text-xs" />
               </Field>
-              <Field label="OpenAI Spracherkennung">
+              <Field label={tp.openAiStt}>
                 <Input value={draft.sttModel} onChange={(e) => up({ sttModel: e.target.value })} className="font-mono text-xs" />
               </Field>
-              <Field label="OpenAI Sprachausgabe">
+              <Field label={tp.openAiTts}>
                 <Input value={draft.ttsModel} onChange={(e) => up({ ttsModel: e.target.value })} className="font-mono text-xs" />
               </Field>
             </div>
@@ -429,49 +425,43 @@ export function PhoneSettings() {
         </div>
       </Group>
 
-      <Group title="Wer darf anrufen, wann ruft FORGE an">
+      <Group title={tp.callsTitle}>
         <div className="p-4">
           <PhoneNumberList
-            label="Erlaubte Anrufer"
-            hint="Andere Anrufe weist FORGE ab, ausgeschaltete Nummern auch. Ohne eingeschaltete Nummer nimmt FORGE keine Anrufe an."
+            label={tp.allowedCallers}
+            hint={tp.allowedCallersHint}
             entries={draft.allowedCallers}
             onChange={(allowedCallers) => up({ allowedCallers })}
-            addLabel="Nummer hinzufügen"
-            empty="Keine Nummer eingetragen. FORGE nimmt keine Anrufe an."
+            addLabel={tp.addNumber}
+            empty={tp.allowedCallersEmpty}
           />
         </div>
         <div className="flex flex-col gap-4 p-4">
           <PhoneNumberList
-            label="FORGE ruft diese Nummern an"
-            hint="Alle eingeschalteten Nummern klingeln gleichzeitig. Wer zuerst abnimmt, hat das Gespräch, bei den anderen bricht FORGE den Anruf sofort ab. Nicht, solange du in FORGE arbeitest: Ist das Fenster aktiv und du hast es in den letzten 5 Minuten benutzt, bleibt das Telefon still."
+            label={tp.notifyNumbers}
+            hint={tp.notifyNumbersHint}
             entries={draft.notifyNumbers}
             onChange={(notifyNumbers) => up({ notifyNumbers })}
-            addLabel="Nummer hinzufügen"
-            empty="Keine Nummer eingetragen. FORGE ruft nicht von sich aus an."
+            addLabel={tp.addNumber}
+            empty={tp.notifyNumbersEmpty}
           />
           <div className="flex flex-col gap-2">
-            {(
-              [
-                ["done", "Wenn eine Session fertig ist", "mit kurzer Zusammenfassung des Ergebnisses"],
-                ["approval", "Wenn Claude eine Freigabe, Antwort oder Plan-Entscheidung braucht", "nach 15 Sekunden ohne Antwort am Rechner"],
-                ["error", "Bei Fehlern", "abgebrochene Durchläufe und Fehlermeldungen"],
-              ] as const
-            ).map(([k, label, hint]) => (
-              <ToggleRow key={k} checked={draft.notifyOn[k]} onChange={(v) => up({ notifyOn: { ...draft.notifyOn, [k]: v } })} label={label}>
-                {hint}
+            {(["done", "approval", "error"] as const).map((k) => (
+              <ToggleRow key={k} checked={draft.notifyOn[k]} onChange={(v) => up({ notifyOn: { ...draft.notifyOn, [k]: v } })} label={tp.notifyOn[k].label}>
+                {tp.notifyOn[k].hint}
               </ToggleRow>
             ))}
           </div>
         </div>
       </Group>
 
-      <Group title="Steuern am Telefon">
+      <Group title={tp.controlTitle}>
         <div className="flex flex-col gap-4 p-4">
           <div className="max-w-sm">
-            {secret("PIN", c.hasPin, draft.pin, (v) => up({ pin: v.replace(/\D/g, "").slice(0, 8) }), "pin", "4 bis 8 Ziffern. Im Gespräch über die Telefontastatur eingeben und mit # bestätigen.", "numeric")}
+            {secret(tp.pin, c.hasPin, draft.pin, (v) => up({ pin: v.replace(/\D/g, "").slice(0, 8) }), "pin", tp.pinHint, "numeric")}
           </div>
-          <ToggleRow checked={draft.requirePin} onChange={(v) => up({ requirePin: v })} label="PIN zum Steuern verlangen">
-            Empfohlen. Ohne PIN darf jeder mit einer erlaubten Nummer Sessions starten, Anweisungen schicken und Freigaben erteilen. Anrufernummern lassen sich fälschen.
+          <ToggleRow checked={draft.requirePin} onChange={(v) => up({ requirePin: v })} label={tp.requirePin}>
+            {tp.requirePinHint}
           </ToggleRow>
         </div>
       </Group>
@@ -484,7 +474,7 @@ export function PhoneSettings() {
 }
 
 /** Shows and hides the rarely needed fields of a card. */
-function AdvancedToggle({ open, onToggle, label = "Erweitert" }: { open: boolean; onToggle: () => void; label?: string }) {
+function AdvancedToggle({ open, onToggle, label = tp.advanced }: { open: boolean; onToggle: () => void; label?: string }) {
   return (
     <button className="flex items-center gap-1 self-start text-xs text-muted hover:text-fg" onClick={onToggle} aria-expanded={open}>
       <ChevronRight className={cn("h-3.5 w-3.5 transition-transform", open && "rotate-90")} /> {label}
@@ -516,15 +506,15 @@ function CardSkeleton({ title, children }: { title: string; children: ReactNode 
 /** The phone settings in their resting layout: status, SIP and partner cards. */
 function PhoneSettingsSkeleton() {
   return (
-    <SkeletonRegion label="Lädt Telefon-Einstellungen" className="flex flex-col gap-6">
-      <CardSkeleton title="Telefon">
+    <SkeletonRegion label={tp.loading} className="flex flex-col gap-6">
+      <CardSkeleton title={tp.title}>
         <div className="flex items-center gap-3">
           <Skeleton className="h-5 w-20 rounded" />
           <Skeleton className="h-3 flex-1" />
           <Skeleton className="h-7 w-28" />
         </div>
       </CardSkeleton>
-      <CardSkeleton title="Anmeldung an der Telefonanlage (SIP)">
+      <CardSkeleton title={tp.sipTitle}>
         <div className="grid grid-cols-[1fr_96px] gap-3">
           <FieldSkeleton />
           <FieldSkeleton />
@@ -535,7 +525,7 @@ function PhoneSettingsSkeleton() {
         </div>
         <FieldSkeleton />
       </CardSkeleton>
-      <CardSkeleton title="Gesprächspartner">
+      <CardSkeleton title={tp.partnerTitle}>
         <div className="grid grid-cols-2 gap-3">
           <FieldSkeleton />
           <FieldSkeleton />
@@ -548,8 +538,8 @@ function PhoneSettingsSkeleton() {
 
 function CallLogSkeleton() {
   return (
-    <SkeletonRegion label="Lädt Anrufliste">
-      <CardSkeleton title="Letzte Anrufe">
+    <SkeletonRegion label={tp.loadingCalls}>
+      <CardSkeleton title={tp.recentCalls}>
         {[0, 1, 2].map((i) => (
           <div key={i} className="flex h-5 items-center gap-2.5">
             <Skeleton className="h-3.5 w-3.5 rounded-sm" />
@@ -582,26 +572,26 @@ function DeskSettings({
   const url = config.desk.provisioningUrl;
   const copy = (text: string) =>
     navigator.clipboard.writeText(text).then(
-      () => toast.success("Adresse kopiert"),
-      () => toast.error("Nicht kopiert", "Die Zwischenablage ist nicht erreichbar."),
+      () => toast.success(tp.desk.copied),
+      () => toast.error(tp.desk.notCopied, tp.desk.noClipboard),
     );
   const test = () =>
     void call("phone.deskTest", {})
       .then((s) => {
         qc.setQueryData(keys.phoneState, s);
-        toast.success("Testnachricht geschickt", "Auf dem Telefon sollte kurz „Verbindung steht.“ erscheinen.");
+        toast.success(tp.desk.testSent, tp.desk.testSentDetail);
       })
-      .catch((e: unknown) => toast.error("Tischtelefon nicht erreichbar", errorMessage(e)));
+      .catch((e: unknown) => toast.error(tp.desk.unreachableToast, errorMessage(e)));
   const desk = state?.desk;
 
   return (
     <Group
       title={
         <span className="flex items-center gap-2">
-          <MonitorSmartphone className="h-4 w-4 text-muted" /> Tischtelefon (Yealink)
+          <MonitorSmartphone className="h-4 w-4 text-muted" /> {tp.desk.title}
           {desk && (
             <Badge tone={desk.reachable === true ? "success" : desk.reachable === false ? "danger" : "neutral"}>
-              {desk.reachable === true ? "verbunden" : desk.reachable === false ? "nicht erreichbar" : "wartet"}
+              {desk.reachable === true ? tp.desk.connected : desk.reachable === false ? tp.desk.unreachable : tp.desk.waiting}
             </Badge>
           )}
         </span>
@@ -609,14 +599,14 @@ function DeskSettings({
       action={
         desk && (
           <Button size="sm" onClick={test}>
-            Test
+            {tp.desk.test}
           </Button>
         )
       }
     >
       <div className="flex flex-col gap-3 p-4">
-        <ToggleRow checked={d.enabled} onChange={(v) => up({ enabled: v })} label="Tischtelefon einbinden">
-          Pro laufender Session eine Taste mit Namen und farbiger LED, Status auf dem Display, Freigaben als Menü. Abheben ruft FORGE an. Getestet mit Yealink T53W.
+        <ToggleRow checked={d.enabled} onChange={(v) => up({ enabled: v })} label={tp.desk.enable}>
+          {tp.desk.enableHint}
         </ToggleRow>
         {desk?.message && <p className="text-xs text-danger">{desk.message}</p>}
       </div>
@@ -624,10 +614,10 @@ function DeskSettings({
         <>
           <div className="flex flex-col gap-4 p-4">
             <div className="grid grid-cols-[1fr_96px] gap-3">
-              <Field label="IP des Telefons" hint="Am Telefon unter Menü → Status.">
+              <Field label={tp.desk.ip} hint={tp.desk.ipHint}>
                 <Input value={d.phoneIp} onChange={(e) => up({ phoneIp: e.target.value })} placeholder="192.168.0.50" className="font-mono text-xs" />
               </Field>
-              <Field label="Port FORGE">
+              <Field label={tp.desk.port}>
                 <Input
                   value={d.httpPort}
                   onChange={(e) => up({ httpPort: e.target.value.replace(/\D/g, "").slice(0, 5) })}
@@ -638,16 +628,16 @@ function DeskSettings({
               </Field>
             </div>
             <div className="grid grid-cols-2 gap-3">
-              <Field label="Web-Login Benutzer">
+              <Field label={tp.desk.webUser}>
                 <Input value={d.webUser} onChange={(e) => up({ webUser: e.target.value })} className="font-mono text-xs" />
               </Field>
-              {secret("Web-Login Passwort", config.desk.hasWebPassword, d.password, (v) => up({ password: v }), "deskPassword")}
+              {secret(tp.desk.webPassword, config.desk.hasWebPassword, d.password, (v) => up({ password: v }), "deskPassword")}
             </div>
-            <Field label="Adresse für Auto Provision" hint="Im Telefon eintragen: Einstellungen → Auto Provision → Server URL, dann „Autoprovision Now“.">
+            <Field label={tp.desk.provisioning} hint={tp.desk.provisioningHint}>
               <div className="flex gap-2">
-                <Input value={url ?? "erscheint nach dem Speichern bei eingeschaltetem Telefon"} readOnly className="font-mono text-xs" />
+                <Input value={url ?? tp.desk.provisioningPending} readOnly className="font-mono text-xs" />
                 {url && (
-                  <Button variant="ghost" size="icon" aria-label="Adresse kopieren" onClick={() => void copy(url)}>
+                  <Button variant="ghost" size="icon" aria-label={tp.desk.copyAddress} onClick={() => void copy(url)}>
                     <Copy className="h-3.5 w-3.5" />
                   </Button>
                 )}
@@ -656,38 +646,38 @@ function DeskSettings({
           </div>
           <div className="flex flex-col gap-4 p-4">
             <div className="grid grid-cols-2 gap-3">
-              <Field label="Session-Tasten" hint="Leitungstasten für Sessions, in dieser Reihenfolge (S1 auf der ersten). Andere Tasten lässt FORGE in Ruhe.">
+              <Field label={tp.desk.sessionKeys} hint={tp.desk.sessionKeysHint}>
                 <Input value={d.sessionKeys} onChange={(e) => up({ sessionKeys: e.target.value })} aria-invalid={parseKeys(d.sessionKeys) === null || undefined} className="font-mono text-xs" />
               </Field>
-              <Field label="Tasten leeren" hint="Diese Tasten stellt FORGE auf „nicht belegt“, z. B. Tasten, die eine frühere Einrichtung belegt hat.">
+              <Field label={tp.desk.clearKeys} hint={tp.desk.clearKeysHint}>
                 <Input
                   value={d.clearKeys}
                   onChange={(e) => up({ clearKeys: e.target.value })}
                   aria-invalid={parseKeys(d.clearKeys, 30) === null || undefined}
-                  placeholder="keine"
+                  placeholder={tp.desk.none}
                   className="font-mono text-xs"
                 />
               </Field>
             </div>
             <div className="max-w-sm">
-              <Field label="Status auf dem Display">
+              <Field label={tp.desk.display}>
                 <Select<"lines" | "statusline" | "off">
                   value={d.display}
                   onChange={(v) => up({ display: v })}
                   options={[
-                    { value: "lines", label: "Mehrere Zeilen", description: "Gewählte Session, Stand, offene Frage oder Kurzfassung" },
-                    { value: "statusline", label: "Eine Zeile", description: "Kompakt, für Modelle mit nur einer Statuszeile" },
-                    { value: "off", label: "Aus", description: "Nur Tasten und LEDs" },
+                    { value: "lines", ...tp.desk.displayLines },
+                    { value: "statusline", ...tp.desk.displayStatusline },
+                    { value: "off", ...tp.desk.displayOff },
                   ]}
                   className="w-full"
                 />
               </Field>
             </div>
-            <ToggleRow checked={d.hotline} onChange={(v) => up({ hotline: v })} label="Abheben ruft FORGE an">
-              Nach einer Sekunde wählt das Telefon die FORGE-Nebenstelle ({draft.username || "noch nicht eingetragen"}). Sofort eine Nummer tippen = normal telefonieren.
+            <ToggleRow checked={d.hotline} onChange={(v) => up({ hotline: v })} label={tp.desk.hotline}>
+              {tp.desk.hotlineHint(draft.username || tp.desk.notEntered)}
             </ToggleRow>
-            <ToggleRow checked={d.leds} onChange={(v) => up({ leds: v })} label="LEDs der Session-Tasten steuern">
-              Orange blinkt: arbeitet. Rot blinkt schnell: wartet auf dich. Grün blinkt: neues Ergebnis. Grün: bereit.
+            <ToggleRow checked={d.leds} onChange={(v) => up({ leds: v })} label={tp.desk.leds}>
+              {tp.desk.ledsHint}
             </ToggleRow>
           </div>
         </>
@@ -702,26 +692,26 @@ function CallLog() {
   if (calls.isPending) return <CallLogSkeleton />;
   if (!calls.data?.length) return null;
   return (
-    <Group title="Letzte Anrufe">
+    <Group title={tp.recentCalls}>
       {calls.data.map((c) => (
           <div key={c.id}>
             <button className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-body hover:bg-surface-2" onClick={() => setOpen(open === c.id ? null : c.id)} aria-expanded={open === c.id}>
               {c.direction === "in" ? <PhoneIncoming className="h-3.5 w-3.5 text-muted" /> : <PhoneOutgoing className="h-3.5 w-3.5 text-muted" />}
-              <span className="font-mono text-xs">{c.number || "unbekannt"}</span>
+              <span className="font-mono text-xs">{c.number || tp.log.unknown}</span>
               <span className={cn("text-xs", c.result === "answered" ? "text-success" : c.result === "missed" ? "text-warning" : "text-danger")}>
-                {c.result === "answered" ? "Gespräch" : c.result === "missed" ? "nicht erreicht" : c.result === "rejected" ? "abgewiesen" : "fehlgeschlagen"}
+                {c.result === "answered" ? tp.log.answered : c.result === "missed" ? tp.log.missed : c.result === "rejected" ? tp.log.rejected : tp.log.failed}
               </span>
               <span className="min-w-0 flex-1 truncate text-xs text-muted">{c.reason ?? c.detail ?? ""}</span>
               <span className="text-caption text-subtle">{relativeTime(c.startedAt)}</span>
             </button>
             {open === c.id && (
               <div className="space-y-1 bg-surface-2 px-4 py-2 text-xs">
-                {c.detail && <div className="text-muted">Ende: {c.detail}</div>}
-                {c.transcript.length === 0 && <div className="text-subtle">Kein Gesprächsverlauf.</div>}
-                {c.transcript.map((t, i) => (
+                {c.detail && <div className="text-muted">{tp.log.end(c.detail)}</div>}
+                {c.transcript.length === 0 && <div className="text-subtle">{tp.log.noTranscript}</div>}
+                {c.transcript.map((line, i) => (
                   <div key={i} className="flex gap-2">
-                    <span className={cn("w-12 shrink-0", t.role === "caller" ? "text-accent" : "text-muted")}>{t.role === "caller" ? "Du" : "FORGE"}</span>
-                    <span>{t.text}</span>
+                    <span className={cn("w-12 shrink-0", line.role === "caller" ? "text-accent" : "text-muted")}>{line.role === "caller" ? tp.log.you : "FORGE"}</span>
+                    <span>{line.text}</span>
                   </div>
                 ))}
               </div>

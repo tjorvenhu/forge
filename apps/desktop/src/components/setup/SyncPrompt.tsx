@@ -8,7 +8,10 @@ import { useUi } from "@/stores/ui";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { GitHubAccountCard, useAutoOpenGitHub } from "@/components/github/GitHubPanel";
+import { t } from "@/i18n";
 import { SyncOffer, useEnableSync, useNeedsPassphrase } from "./SyncOffer";
+
+const tp = t.setup.syncPrompt;
 
 /**
  * Asks once, on the start after the sync came in, whether FORGE's data should go to a private
@@ -42,11 +45,11 @@ function Prompt({ s, onLater }: { s: Settings; onLater: () => void }) {
         return;
       }
       const firstSync = await enableSync(passphrase);
-      if (firstSync) toast.info("Synchronisierung ist an", `Der erste Abgleich ist fehlgeschlagen: ${firstSync} FORGE versucht es gleich wieder.`);
-      else toast.success("Synchronisierung ist an", "Ein- und ausschalten unter Einstellungen, GitHub.");
+      if (firstSync) toast.info(t.setup.syncOn, t.setup.firstSyncFailed(firstSync));
+      else toast.success(t.setup.syncOn, tp.enabledDetail);
       openSettings("github");
     } catch (e) {
-      toast.error("Nicht gespeichert", errorMessage(e));
+      toast.error(t.setup.notSaved, errorMessage(e));
     } finally {
       setBusy(false);
     }
@@ -56,20 +59,20 @@ function Prompt({ s, onLater }: { s: Settings; onLater: () => void }) {
     <Dialog
       open
       onOpenChange={(o) => !o && onLater()}
-      title="FORGE-Daten über GitHub synchronisieren?"
-      description="Dann hat FORGE auf jedem PC, auf dem du dich mit demselben GitHub-Konto anmeldest, dieselben Projekte und Einstellungen."
+      title={tp.title}
+      description={tp.description}
       className="w-150"
       bodyClassName="flex flex-col gap-4"
       footer={
         <>
           <Button variant="ghost" className="mr-auto" onClick={onLater} disabled={busy}>
-            Später
+            {tp.later}
           </Button>
           <Button variant="ghost" onClick={() => void answer(false)} disabled={busy}>
-            Nein, danke
+            {tp.noThanks}
           </Button>
           <Button variant="primary" loading={busy} disabled={!account.data || !on || (needsPassphrase && !passphrase)} onClick={() => void answer(true)}>
-            Synchronisieren
+            {tp.sync}
           </Button>
         </>
       }
@@ -80,7 +83,7 @@ function Prompt({ s, onLater }: { s: Settings; onLater: () => void }) {
         </div>
       )}
       <SyncOffer checked={on && !!account.data} onChange={setOn} onPassphrase={setPassphrase} />
-      {s.syncEnabled && <p className="text-xs text-muted">Die Synchronisierung ist bereits an.</p>}
+      {s.syncEnabled && <p className="text-xs text-muted">{tp.alreadyOn}</p>}
     </Dialog>
   );
 }

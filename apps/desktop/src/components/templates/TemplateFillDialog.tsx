@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { FileStack } from "lucide-react";
 import { fillTemplate, templatePlaceholders, type PromptTemplate } from "@forge/protocol";
+import { t } from "@/i18n";
 import { useProjects, useTemplates } from "@/lib/queries";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -43,7 +44,7 @@ export function TemplateFillDialog({
   const projectId = givenProject ?? pickedProject;
   const templates = useTemplates(projectId);
   const [picked, setPicked] = useState<PromptTemplate | null>(null);
-  const template = givenTemplate ?? picked ?? (templateId ? (templates.data?.find((t) => t.id === templateId) ?? null) : null);
+  const template = givenTemplate ?? picked ?? (templateId ? (templates.data?.find((tpl) => tpl.id === templateId) ?? null) : null);
   const ctx = useTemplateContext(projectId);
   const [values, setValues] = useState<Record<string, string>>({});
   const holes = useMemo(() => (template ? templatePlaceholders(template.text) : []), [template]);
@@ -86,21 +87,21 @@ export function TemplateFillDialog({
     <Dialog
       open={open}
       onOpenChange={onOpenChange}
-      title={template ? `Vorlage: ${template.name}` : "Vorlage anwenden"}
+      title={template ? t.templates.fill.title(template.name) : t.templates.fill.titleApply}
       description={template?.description ?? undefined}
       className="w-150"
       footer={
         template && projectId ? (
           <>
             <Button variant="ghost" onClick={() => onOpenChange(false)}>
-              Abbrechen
+              {t.templates.common.cancel}
             </Button>
             <Button variant={canSend ? "secondary" : "primary"} onClick={() => submit(false)}>
-              In den Chat übernehmen
+              {t.templates.fill.takeIntoChat}
             </Button>
             {canSend && (
-              <Button variant="primary" disabled={missing.length > 0} onClick={() => submit(true)} title={missing.length ? `Noch offen: ${missing.join(", ")}` : undefined}>
-                Senden
+              <Button variant="primary" disabled={missing.length > 0} onClick={() => submit(true)} title={missing.length ? t.templates.fill.stillMissing(missing.join(", ")) : undefined}>
+                {t.templates.fill.send}
               </Button>
             )}
           </>
@@ -109,20 +110,20 @@ export function TemplateFillDialog({
     >
       <div className="flex flex-col gap-3">
         {!givenProject && (
-          <Field label="Projekt">
+          <Field label={t.templates.fill.project}>
             <Select
               value={pickedProject ?? undefined}
               onChange={setPickedProject}
               options={roots.map((p) => ({ value: p.id, label: p.name }))}
-              placeholder="Projekt wählen"
+              placeholder={t.templates.fill.pickProject}
               className="w-full"
-              aria-label="Projekt"
+              aria-label={t.templates.fill.project}
             />
           </Field>
         )}
         {projectId && !template &&
           (loadingList ? (
-            <SkeletonRegion label="Lädt Vorlagen" className="flex flex-col gap-1">
+            <SkeletonRegion label={t.templates.common.loading}className="flex flex-col gap-1">
               {[0, 1, 2].map((i) => (
                 <div key={i} className="flex flex-col gap-1.5 rounded-lg px-3 py-2">
                   <Skeleton className="h-3.5 w-40" />
@@ -131,23 +132,23 @@ export function TemplateFillDialog({
               ))}
             </SkeletonRegion>
           ) : templates.data?.length ? (
-            <div className="flex flex-col gap-1" role="listbox" aria-label="Vorlagen">
-              {templates.data.map((t) => (
+            <div className="flex flex-col gap-1" role="listbox" aria-label={t.templates.common.templatesLabel}>
+              {templates.data.map((tpl) => (
                 <button
-                  key={t.id}
+                  key={tpl.id}
                   role="option"
                   aria-selected={false}
-                  onClick={() => setPicked(t)}
+                  onClick={() => setPicked(tpl)}
                   className="flex flex-col items-start gap-0.5 rounded-lg px-3 py-2 text-left hover:bg-surface-3 focus-visible:bg-surface-3 focus-visible:outline-none"
                 >
-                  <span className="text-body font-medium">{t.name}</span>
-                  <span className="line-clamp-1 text-xs text-muted">{t.description || t.text}</span>
+                  <span className="text-body font-medium">{tpl.name}</span>
+                  <span className="line-clamp-1 text-xs text-muted">{tpl.description || tpl.text}</span>
                 </button>
               ))}
             </div>
           ) : (
-            <EmptyState icon={<FileStack className="h-5 w-5" />} title="Noch keine Vorlagen">
-              Vorlagen legst du unter Einstellungen, Vorlagen an oder per Rechtsklick auf eine eigene Nachricht im Chat.
+            <EmptyState icon={<FileStack className="h-5 w-5" />} title={t.templates.fill.emptyTitle}>
+              {t.templates.fill.emptyBody}
             </EmptyState>
           ))}
         {template && projectId && (
@@ -166,14 +167,14 @@ export function TemplateFillDialog({
                   }}
                   value={values[h] ?? ""}
                   onChange={(e) => setValues((v) => ({ ...v, [h]: e.target.value }))}
-                  aria-label={`Platzhalter ${h}`}
+                  aria-label={t.templates.fill.placeholderAria(h)}
                 />
               </Field>
             ))}
             {/* Enter in a field submits; the form needs a submit button for that. */}
             <button type="submit" className="hidden" aria-hidden tabIndex={-1} />
             <div>
-              <span className="mb-1.5 block text-xs font-medium text-muted">Vorschau</span>
+              <span className="mb-1.5 block text-xs font-medium text-muted">{t.templates.fill.preview}</span>
               <pre className={cn("max-h-48 overflow-y-auto whitespace-pre-wrap break-words rounded-md border border-border bg-surface-2 px-3 py-2 font-sans text-body", !holes.length && "max-h-72")}>{text}</pre>
             </div>
           </form>

@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import { knownTemplateValues, templatePlaceholders } from "@forge/protocol";
+import { locale } from "@/i18n";
 import { useProject } from "@/lib/queries";
 import { useUi } from "@/stores/ui";
 
@@ -15,7 +16,7 @@ export function useTemplateContext(projectId: string | null): TemplateContext {
   const project = useProject(projectId).data;
   const file = useUi((s) => (projectId ? (s.selectedFile[projectId] ?? null) : null));
   return useMemo(
-    () => ({ project: project?.name ?? null, branch: project?.git?.branch ?? null, file, date: new Date().toLocaleDateString("de-DE") }),
+    () => ({ project: project?.name ?? null, branch: project?.git?.branch ?? null, file, date: new Date().toLocaleDateString(locale) }),
     [project?.name, project?.git?.branch, file],
   );
 }

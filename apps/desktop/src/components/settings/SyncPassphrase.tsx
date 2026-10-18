@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Field, Input } from "@/components/ui/input";
+import { t } from "@/i18n";
 
 export const MIN_PASSPHRASE = 12;
 
@@ -17,20 +18,20 @@ export function SyncPassphraseFields({ existing, onChange, autoFocus }: { existi
   return (
     <div className="grid grid-cols-2 gap-3">
       <Field
-        label={existing ? "Sync-Passwort" : "Neues Sync-Passwort"}
+        label={existing ? t.settings.passphrase.label : t.settings.passphrase.newLabel}
         hint={
           existing
-            ? "Das Passwort, mit dem du die Synchronisierung auf dem anderen PC eingerichtet hast."
+            ? t.settings.passphrase.existingHint
             : short
-              ? `Mindestens ${MIN_PASSPHRASE} Zeichen.`
-              : "Verschlüsselt alles auf GitHub. Du brauchst es auf jedem PC. FORGE kann es nicht wiederherstellen."
+              ? t.settings.passphrase.tooShort(MIN_PASSPHRASE)
+              : t.settings.passphrase.newHint
         }
       >
-        <Input type="password" value={value} onChange={(e) => setValue(e.target.value)} autoFocus={autoFocus} autoComplete="new-password" aria-label={existing ? "Sync-Passwort" : "Neues Sync-Passwort"} />
+        <Input type="password" value={value} onChange={(e) => setValue(e.target.value)} autoFocus={autoFocus} autoComplete="new-password" aria-label={existing ? t.settings.passphrase.label : t.settings.passphrase.newLabel} />
       </Field>
       {!existing && (
-        <Field label="Wiederholen" hint={mismatch ? "Die beiden Eingaben sind verschieden." : undefined}>
-          <Input type="password" value={repeat} onChange={(e) => setRepeat(e.target.value)} autoComplete="new-password" aria-label="Sync-Passwort wiederholen" />
+        <Field label={t.settings.passphrase.repeat} hint={mismatch ? t.settings.passphrase.mismatch : undefined}>
+          <Input type="password" value={repeat} onChange={(e) => setRepeat(e.target.value)} autoComplete="new-password" aria-label={t.settings.passphrase.repeatAria} />
         </Field>
       )}
     </div>

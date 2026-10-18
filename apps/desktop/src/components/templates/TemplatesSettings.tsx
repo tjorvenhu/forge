@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { ArrowDown, ArrowUp, FileStack, Pencil, Play, Plus, Sparkles, Trash2 } from "lucide-react";
 import { templatePlaceholders, type PromptTemplate } from "@forge/protocol";
+import { t } from "@/i18n";
 import { call, keys, useAllTemplates, useProjects, useSettings } from "@/lib/queries";
 import { learnTemplatesNow } from "@/lib/template-learning";
 import { contextItems } from "@/lib/context-menu";
@@ -18,8 +19,8 @@ import { Skeleton, SkeletonRegion } from "@/components/ui/skeleton";
 const icon = "h-3.5 w-3.5";
 
 /** Moves a template one place up or down within its list. */
-async function move(list: PromptTemplate[], t: PromptTemplate, by: -1 | 1) {
-  const i = list.findIndex((x) => x.id === t.id);
+async function move(list: PromptTemplate[], tpl: PromptTemplate, by: -1 | 1) {
+  const i = list.findIndex((x) => x.id === tpl.id);
   const j = i + by;
   if (i < 0 || j < 0 || j >= list.length) return;
   const ids = list.map((x) => x.id);
@@ -27,7 +28,7 @@ async function move(list: PromptTemplate[], t: PromptTemplate, by: -1 | 1) {
   try {
     await call("templates.reorder", { ids });
   } catch (e) {
-    toast.error("Reihenfolge nicht gespeichert", errorMessage(e));
+    toast.error(t.templates.settings.orderNotSaved, errorMessage(e));
   }
 }
 
@@ -43,7 +44,7 @@ export function TemplatesSettings() {
 
   if (all.isPending) {
     return (
-      <SkeletonRegion label="Lädt Vorlagen" className="flex flex-col gap-6">
+      <SkeletonRegion label={t.templates.common.loading} className="flex flex-col gap-6">
         {[3, 2].map((rows, g) => (
           <div key={g} className="overflow-hidden rounded-xl border border-border bg-surface">
             <div className="flex items-center justify-between border-b border-border px-4 py-3">
@@ -66,53 +67,53 @@ export function TemplatesSettings() {
   }
 
   const list = all.data ?? [];
-  const globals = list.filter((t) => !t.projectId);
+  const globals = list.filter((tpl) => !tpl.projectId);
   const byProject = projects
     .filter((p) => !p.parentId)
-    .map((p) => ({ project: p, items: list.filter((t) => t.projectId === p.id) }))
+    .map((p) => ({ project: p, items: list.filter((tpl) => tpl.projectId === p.id) }))
     .filter((g) => g.items.length);
 
-  const apply = (t: PromptTemplate) => {
+  const apply = (tpl: PromptTemplate) => {
     const ui = useUi.getState();
-    useTemplateDialogs.getState().openApply({ projectId: t.projectId ?? ui.activeProjectId, templateId: t.id });
+    useTemplateDialogs.getState().openApply({ projectId: tpl.projectId ?? ui.activeProjectId, templateId: tpl.id });
   };
   const rows = (items: PromptTemplate[]) =>
-    items.map((t, i) => {
-      const holes = templatePlaceholders(t.text);
+    items.map((tpl, i) => {
+      const holes = templatePlaceholders(tpl.text);
       const actions = [
-        { label: "Anwenden", icon: <Play className={icon} />, onSelect: () => apply(t) },
-        { label: "Bearbeiten", icon: <Pencil className={icon} />, onSelect: () => openEdit({ id: t.id }) },
-        ...(i > 0 ? [{ label: "Nach oben", icon: <ArrowUp className={icon} />, onSelect: () => void move(items, t, -1) }] : []),
-        ...(i < items.length - 1 ? [{ label: "Nach unten", icon: <ArrowDown className={icon} />, onSelect: () => void move(items, t, 1) }] : []),
-        { label: "Löschen", icon: <Trash2 className={icon} />, danger: true, onSelect: () => setDeleting(t) },
+        { label: t.templates.settings.apply, icon: <Play className={icon} />, onSelect: () => apply(tpl) },
+        { label: t.templates.common.edit, icon: <Pencil className={icon} />, onSelect: () => openEdit({ id: tpl.id }) },
+        ...(i > 0 ? [{ label: t.templates.common.moveUp, icon: <ArrowUp className={icon} />, onSelect: () => void move(items, tpl, -1) }] : []),
+        ...(i < items.length - 1 ? [{ label: t.templates.common.moveDown, icon: <ArrowDown className={icon} />, onSelect: () => void move(items, tpl, 1) }] : []),
+        { label: t.templates.common.delete, icon: <Trash2 className={icon} />, danger: true, onSelect: () => setDeleting(tpl) },
       ];
       return (
-        <div key={t.id} className="group flex items-center gap-4 px-4 py-3" onContextMenu={contextItems(() => actions)}>
+        <div key={tpl.id} className="group flex items-center gap-4 px-4 py-3" onContextMenu={contextItems(() => actions)}>
           <div className="min-w-0 flex-1">
             <div className="flex min-w-0 items-center gap-2">
-              <span className="truncate text-body font-medium">{t.name}</span>
-              {t.learned && (
+              <span className="truncate text-body font-medium">{tpl.name}</span>
+              {tpl.learned && (
                 <Badge tone="accent">
-                  <Sparkles className="h-3 w-3" /> Gelernt
+                  <Sparkles className="h-3 w-3" /> {t.templates.settings.learned}
                 </Badge>
               )}
               {holes.slice(0, 4).map((h) => (
                 <Badge key={h}>{`{${h}}`}</Badge>
               ))}
             </div>
-            <p className="mt-0.5 line-clamp-1 text-xs text-muted">{t.description || t.text}</p>
+            <p className="mt-0.5 line-clamp-1 text-xs text-muted">{tpl.description || tpl.text}</p>
           </div>
           <div className="flex shrink-0 items-center gap-0.5">
-            <Button size="icon-sm" variant="ghost" aria-label={`${t.name} nach oben`} title="Nach oben" disabled={i === 0} onClick={() => void move(items, t, -1)}>
+            <Button size="icon-sm" variant="ghost" aria-label={t.templates.settings.moveUpAria(tpl.name)} title={t.templates.common.moveUp} disabled={i === 0} onClick={() => void move(items, tpl, -1)}>
               <ArrowUp className={icon} />
             </Button>
-            <Button size="icon-sm" variant="ghost" aria-label={`${t.name} nach unten`} title="Nach unten" disabled={i === items.length - 1} onClick={() => void move(items, t, 1)}>
+            <Button size="icon-sm" variant="ghost" aria-label={t.templates.settings.moveDownAria(tpl.name)} title={t.templates.common.moveDown} disabled={i === items.length - 1} onClick={() => void move(items, tpl, 1)}>
               <ArrowDown className={icon} />
             </Button>
-            <Button size="icon-sm" variant="ghost" aria-label={`${t.name} bearbeiten`} title="Bearbeiten" onClick={() => openEdit({ id: t.id })}>
+            <Button size="icon-sm" variant="ghost" aria-label={t.templates.settings.editAria(tpl.name)} title={t.templates.common.edit} onClick={() => openEdit({ id: tpl.id })}>
               <Pencil className={icon} />
             </Button>
-            <Button size="icon-sm" variant="danger-ghost" aria-label={`${t.name} löschen`} title="Löschen" onClick={() => setDeleting(t)}>
+            <Button size="icon-sm" variant="danger-ghost" aria-label={t.templates.settings.deleteAria(tpl.name)} title={t.templates.common.delete} onClick={() => setDeleting(tpl)}>
               <Trash2 className={icon} />
             </Button>
           </div>
@@ -122,7 +123,7 @@ export function TemplatesSettings() {
 
   const newButton = (projectId: string | null) => (
     <Button size="sm" onClick={() => openEdit({ id: null, projectId })}>
-      <Plus className={icon} /> Neue Vorlage
+      <Plus className={icon} /> {t.templates.common.newTemplate}
     </Button>
   );
 
@@ -131,18 +132,18 @@ export function TemplatesSettings() {
       qc.setQueryData(keys.settings, await call("settings.update", { learnTemplates: on }));
       toast.saved();
     } catch (e) {
-      toast.error("Einstellung nicht gespeichert", errorMessage(e));
+      toast.error(t.templates.settings.settingNotSaved, errorMessage(e));
     }
   };
 
   return (
     <>
       <Group
-        title="Automatisch lernen"
-        description="FORGE schaut nach etwa 30 neuen Nachrichten, höchstens alle 6 Stunden, welche Aufträge du immer wieder schickst. Ab drei ähnlichen Nachrichten legt es eine Vorlage an, markiert mit „Gelernt“. Was du löschst, legt es nicht noch einmal an."
+        title={t.templates.settings.learnTitle}
+        description={t.templates.settings.learnDescription}
         action={
           <Button size="sm" variant="outline" disabled={learning} onClick={() => void learnTemplatesNow(qc)}>
-            <Sparkles className={icon} /> {learning ? "Lernt …" : "Jetzt lernen"}
+            <Sparkles className={icon} /> {learning ? t.templates.settings.learning : t.templates.settings.learnNow}
           </Button>
         }
       >
@@ -153,44 +154,42 @@ export function TemplatesSettings() {
           </div>
         ) : (
           <SwitchRow
-            label="Vorlagen aus wiederkehrenden Nachrichten lernen"
-            description="Dafür liest Haiku deine letzten Nachrichten. Das zählt wie andere kurze Aufrufe von FORGE zu deinem Claude-Abo."
+            label={t.templates.settings.learnSwitch}
+            description={t.templates.settings.learnSwitchDescription}
             checked={learnOn}
             onChange={(v) => void setLearn(v)}
           />
         )}
       </Group>
-      <Group title="Global" description="In jedem Projekt. Im Chat schlägt FORGE passende Vorlagen beim Tippen vor, mit # listest du alle." action={newButton(null)}>
+      <Group title={t.templates.common.global} description={t.templates.settings.globalDescription} action={newButton(null)}>
         {globals.length ? (
           rows(globals)
         ) : (
-          <EmptyState icon={<FileStack className="h-5 w-5" />} title="Noch keine globalen Vorlagen">
-            Speichere wiederkehrende Aufträge wie „Review vor Release“ einmal. Platzhalter wie {"{datei}"} fragt FORGE vor dem Senden ab. Auch per Rechtsklick auf eine eigene Nachricht im Chat.
+          <EmptyState icon={<FileStack className="h-5 w-5" />} title={t.templates.settings.globalEmptyTitle}>
+            {t.templates.settings.globalEmptyBody}
           </EmptyState>
         )}
       </Group>
       {byProject.map(({ project, items }) => (
-        <Group key={project.id} title={project.name} description="Nur in diesem Projekt und seinen Agenten" action={newButton(project.id)}>
+        <Group key={project.id} title={project.name} description={t.templates.settings.projectDescription} action={newButton(project.id)}>
           {rows(items)}
         </Group>
       ))}
       <ConfirmDialog
         open={!!deleting}
         onOpenChange={(o) => !o && setDeleting(null)}
-        title="Vorlage löschen?"
-        description={
-          deleting ? `„${deleting.name}“ wird gelöscht, auch auf anderen PCs mit Synchronisierung.${deleting.learned ? " FORGE lernt diese Vorlage danach nicht noch einmal." : ""}` : undefined
-        }
-        confirmLabel="Löschen"
+        title={t.templates.settings.deleteTitle}
+        description={deleting ? t.templates.settings.deleteDescription(deleting.name, !!deleting.learned) : undefined}
+        confirmLabel={t.templates.common.delete}
         danger
         onConfirm={async () => {
           if (!deleting) return;
           try {
             await call("templates.delete", { id: deleting.id });
             void qc.invalidateQueries({ queryKey: ["templates"] });
-            toast.success("Vorlage gelöscht", deleting.name);
+            toast.success(t.templates.settings.deleted, deleting.name);
           } catch (e) {
-            toast.error("Vorlage nicht gelöscht", errorMessage(e));
+            toast.error(t.templates.settings.deleteFailed, errorMessage(e));
             throw e;
           }
         }}

@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { isShortInfo, LabelWithInfo } from "@/components/ui/misc";
 import { Switch } from "@/components/ui/switch";
+import { t } from "@/i18n";
 
 /**
  * A list of phone numbers as single entries: switch, name, number, delete. Switched off, a number stays
@@ -52,15 +53,15 @@ export function PhoneNumberList({
           <p className="px-3 py-2.5 text-xs text-subtle">{empty}</p>
         ) : (
           entries.map((e) => {
-            const name = e.label.trim() || e.number.trim() || "neue Nummer";
+            const name = e.label.trim() || e.number.trim() || t.settings.phoneNumbers.newNumber;
             return (
               <div key={e.id} className="flex items-center gap-2 px-2.5 py-2">
-                <Switch checked={e.enabled} onChange={(v) => update(e.id, { enabled: v })} label={`${name} ${e.enabled ? "ausschalten" : "einschalten"}`} />
+                <Switch checked={e.enabled} onChange={(v) => update(e.id, { enabled: v })} label={t.settings.phoneNumbers.toggle(name, e.enabled)} />
                 <Input
                   value={e.label}
                   onChange={(ev) => update(e.id, { label: ev.target.value })}
-                  placeholder="Bezeichnung"
-                  aria-label={`Bezeichnung von ${name}`}
+                  placeholder={t.settings.phoneNumbers.labelPlaceholder}
+                  aria-label={t.settings.phoneNumbers.labelOf(name)}
                   maxLength={40}
                   className={cn("w-28 shrink-0 text-xs", !e.enabled && "text-subtle")}
                 />
@@ -72,12 +73,12 @@ export function PhoneNumberList({
                   value={e.number}
                   onChange={(ev) => update(e.id, { number: ev.target.value })}
                   placeholder="+49 170 1234567"
-                  aria-label={`Nummer von ${name}`}
+                  aria-label={t.settings.phoneNumbers.numberOf(name)}
                   inputMode="tel"
                   maxLength={40}
                   className={cn("min-w-0 flex-1 font-mono text-xs", !e.enabled && "text-subtle line-through")}
                 />
-                <Button size="icon-sm" variant="danger-ghost" onClick={() => onChange(entries.filter((x) => x.id !== e.id))} aria-label={`${name} löschen`} title="Nummer löschen">
+                <Button size="icon-sm" variant="danger-ghost" onClick={() => onChange(entries.filter((x) => x.id !== e.id))} aria-label={t.settings.phoneNumbers.deleteName(name)} title={t.settings.phoneNumbers.delete}>
                   <Trash2 className="h-3.5 w-3.5" />
                 </Button>
               </div>

@@ -1,5 +1,6 @@
 import { FileStack } from "lucide-react";
 import type { PromptTemplate } from "@forge/protocol";
+import { t } from "@/i18n";
 import { cn } from "@/lib/utils";
 import { Kbd } from "@/components/ui/misc";
 
@@ -17,7 +18,7 @@ export function TemplateSuggestions({
   index: number;
   /** "#" in front: the user asked for templates */
   explicit: boolean;
-  onPick: (t: PromptTemplate) => void;
+  onPick: (template: PromptTemplate) => void;
 }) {
   if (!templates.length) return null;
   return (
@@ -25,34 +26,34 @@ export function TemplateSuggestions({
       <div className="flex items-center justify-between gap-3 border-b border-border px-3 py-1.5 text-caption text-subtle">
         <span className="flex items-center gap-1.5">
           <FileStack className="h-3.5 w-3.5" />
-          {explicit ? "Vorlagen" : templates.length === 1 ? "Passende Vorlage" : "Passende Vorlagen"}
+          {explicit ? t.templates.suggestions.all : templates.length === 1 ? t.templates.suggestions.matchingOne : t.templates.suggestions.matchingMany}
         </span>
         <span className="flex items-center gap-1.5">
-          <Kbd>Tab</Kbd> übernehmen
+          <Kbd>Tab</Kbd> {t.templates.suggestions.accept}
           {!explicit && (
             <>
               <span aria-hidden>·</span>
-              <Kbd>↓</Kbd> wählen
+              <Kbd>↓</Kbd> {t.templates.suggestions.choose}
             </>
           )}
           <span aria-hidden>·</span>
-          <Kbd>Esc</Kbd> ausblenden
+          <Kbd>Esc</Kbd> {t.templates.suggestions.hide}
         </span>
       </div>
-      <div role="listbox" aria-label="Vorlagen">
-        {templates.map((t, i) => (
+      <div role="listbox" aria-label={t.templates.common.templatesLabel}>
+        {templates.map((tpl, i) => (
           <button
-            key={t.id}
+            key={tpl.id}
             role="option"
             aria-selected={i === index}
             onMouseDown={(e) => {
               e.preventDefault();
-              onPick(t);
+              onPick(tpl);
             }}
             className={cn("flex w-full items-baseline gap-3 px-3 py-1.5 text-left", i === index ? "bg-surface-3" : "hover:bg-surface-3")}
           >
-            <span className="shrink-0 text-small-lg font-medium text-accent">{t.name}</span>
-            <span className="min-w-0 truncate text-xs text-muted">{t.description || t.text}</span>
+            <span className="shrink-0 text-small-lg font-medium text-accent">{tpl.name}</span>
+            <span className="min-w-0 truncate text-xs text-muted">{tpl.description || tpl.text}</span>
           </button>
         ))}
       </div>

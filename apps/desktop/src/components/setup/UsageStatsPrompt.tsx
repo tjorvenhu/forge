@@ -8,10 +8,14 @@ import { toast } from "@/stores/toast";
 import { useUi } from "@/stores/ui";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
+import { t } from "@/i18n";
+
+const tu = t.setup.usageStats;
 
 /**
  * Asks once about the anonymous usage statistics, after the setup assistant and the sync question.
- * Unanswered they stay on; closing asks again on the next start.
+ * Unanswered they stay off (DEFAULT_SETTINGS.usageStats); closing asks again on the next start.
+ * Recommends switching on, without pressure: declining is a full button of its own.
  */
 export function UsageStatsPrompt() {
   const s = useSettings().data;
@@ -29,7 +33,7 @@ function Prompt({ onLater }: { onLater: () => void }) {
     try {
       qc.setQueryData(keys.settings, await call("settings.update", { usageStats, usageStatsAsked: true }));
     } catch (e) {
-      toast.error("Nicht gespeichert", errorMessage(e));
+      toast.error(tu.notSaved, errorMessage(e));
     } finally {
       setBusy(null);
     }
@@ -38,34 +42,32 @@ function Prompt({ onLater }: { onLater: () => void }) {
     <Dialog
       open
       onOpenChange={(o) => !o && onLater()}
-      title="Anonyme Nutzungsstatistik"
-      description="Alle 5 Minuten schickt FORGE Summen an den Statistik-Dienst von FORGE. Daraus entstehen die öffentlichen Gesamtzahlen aller Nutzer."
+      title={tu.title}
+      description={tu.description}
       className="w-150"
       bodyClassName="flex flex-col gap-3 text-body"
       footer={
         <>
           <Button variant="ghost" onClick={() => void answer(false)} loading={busy === false} disabled={busy !== null}>
-            Ausschalten
+            {tu.noThanks}
           </Button>
           <Button variant="primary" onClick={() => void answer(true)} loading={busy === true} disabled={busy !== null}>
-            Einverstanden
+            {tu.enable}
           </Button>
         </>
       }
     >
       <div>
-        <div className="mb-1 font-medium">Gesendet wird</div>
-        <p className="text-muted">
-          Eine zufällige Kennung dieser Installation, die FORGE-Version, die Windows-Version, die Art des Claude-Abos (z. B. Pro oder Max 5x) und Zählerstände: verbrauchte Tokens je Claude-Modell, geschätzte API-Kosten,
-          Claude-Arbeitszeit, Durchläufe, Sessions, angelegte Projekte, gestartete und zusammengeführte Agenten, Telefonate.
-        </p>
+        <div className="mb-1 font-medium">{tu.sentTitle}</div>
+        <p className="text-muted">{tu.sent}</p>
       </div>
       <div>
-        <div className="mb-1 font-medium">Nicht gesendet wird</div>
-        <p className="text-muted">Keine Inhalte aus Chats oder Dateien, keine Projektnamen, keine Pfade, nichts über dein Claude- oder GitHub-Konto. Der Dienst speichert keine IP-Adressen.</p>
+        <div className="mb-1 font-medium">{tu.notSentTitle}</div>
+        <p className="text-muted">{tu.notSent}</p>
       </div>
+      <p>{tu.why}</p>
       <p className="text-xs text-muted">
-        Ohne Antwort bleibt die Statistik an. Ausschalten geht jederzeit unter Einstellungen, Über FORGE, Datenschutz; dann löscht FORGE die gesendeten Daten beim Dienst.{" "}
+        {tu.fineprint}{" "}
         <a
           href={USAGE_STATS_URL}
           onClick={(e) => {
@@ -74,7 +76,7 @@ function Prompt({ onLater }: { onLater: () => void }) {
           }}
           className="underline hover:text-fg"
         >
-          Gesamtzahlen ansehen
+          {tu.viewTotals}
         </a>
       </p>
     </Dialog>

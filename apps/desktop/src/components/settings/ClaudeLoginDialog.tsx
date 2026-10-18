@@ -10,41 +10,29 @@ import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Dialog } from "@/components/ui/dialog";
 import type { MenuItem } from "@/components/ui/dropdown";
+import { t } from "@/i18n";
 import { ClaudeLoginForm } from "./ClaudeSetupCard";
 
 /** `required`: Claude Code is signed out, the dialog cannot be closed until the sign-in is done */
 type DialogReason = ClaudeLoginReason | "required";
 
-const TITLES: Record<DialogReason, string> = {
-  expired: "Claude-Anmeldung abgelaufen",
-  manual: "Bei Claude anmelden",
-  switch: "Claude-Konto wechseln",
-  required: "Bei Claude anmelden",
-};
+const tl = t.settings.claudeLogin;
 
-const DESCRIPTIONS: Record<DialogReason, string> = {
-  expired: "Claude Code hat die Anmeldung abgelehnt. Melde dich hier mit deinem Claude-Konto neu an.",
-  manual: "Claude Code meldet sich mit deinem Claude-Konto an.",
-  switch: "Melde dich im Browser mit dem anderen Konto an. Ist dort noch das bisherige angemeldet, wechsle es auf claude.ai zuerst.",
-  required: "Claude Code ist nicht angemeldet. FORGE braucht dein Claude-Konto, bevor es weitergeht.",
-};
+const TITLES: Record<DialogReason, string> = tl.titles;
 
-const DONE: Record<DialogReason, string> = {
-  expired: "Du bist wieder angemeldet. Schick die abgelehnte Nachricht einfach noch einmal.",
-  manual: "Claude Code ist angemeldet.",
-  switch: "Claude Code nutzt jetzt das neue Konto. Laufende Sessions wechseln spätestens nach einem Neustart.",
-  required: "Claude Code ist angemeldet.",
-};
+const DESCRIPTIONS: Record<DialogReason, string> = tl.descriptions;
+
+const DONE: Record<DialogReason, string> = tl.done;
 
 /** Entries of the Claude card in the sidebar (click and right click). */
 export function claudeAccountItems(d: Diagnostics | undefined, openSettings: () => void): MenuItem[] {
   const ui = useUi.getState();
-  const settings: MenuItem = { label: "Claude-Einstellungen", icon: <Settings2 className="h-3.5 w-3.5" />, onSelect: openSettings };
+  const settings: MenuItem = { label: tl.claudeSettings, icon: <Settings2 className="h-3.5 w-3.5" />, onSelect: openSettings };
   if (!d?.claude.found) return [settings];
-  if (!d.auth.loggedIn) return [{ label: "Anmelden", icon: <LogIn className="h-3.5 w-3.5" />, onSelect: () => ui.openClaudeLogin("manual") }, settings];
+  if (!d.auth.loggedIn) return [{ label: tl.signIn, icon: <LogIn className="h-3.5 w-3.5" />, onSelect: () => ui.openClaudeLogin("manual") }, settings];
   return [
-    { label: "Konto wechseln", icon: <ArrowLeftRight className="h-3.5 w-3.5" />, onSelect: () => ui.openClaudeLogin("switch") },
-    { label: "Abmelden", icon: <LogOut className="h-3.5 w-3.5" />, danger: true, onSelect: () => ui.setClaudeLogout(true) },
+    { label: tl.switchAccount, icon: <ArrowLeftRight className="h-3.5 w-3.5" />, onSelect: () => ui.openClaudeLogin("switch") },
+    { label: tl.signOut, icon: <LogOut className="h-3.5 w-3.5" />, danger: true, onSelect: () => ui.setClaudeLogout(true) },
     settings,
   ];
 }
@@ -95,8 +83,8 @@ export function ClaudeLoginRequiredNotice() {
       open
       onOpenChange={() => {}}
       dismissable={false}
-      title="Claude Code ist abgemeldet"
-      description="Melde dich im FORGE-Hauptfenster an. Danach geht es hier weiter."
+      title={tl.signedOutTitle}
+      description={tl.signedOutDescription}
     />
   );
 }
@@ -124,7 +112,7 @@ function LoginDialog({ reason }: { reason: DialogReason }) {
     try {
       qc.setQueryData(keys.diagnostics, await call("system.diagnostics", { refresh: true }));
     } catch (e) {
-      toast.error("Anmeldung nicht geprüft", errorMessage(e));
+      toast.error(tl.notChecked, errorMessage(e));
     } finally {
       setChecking(false);
     }
@@ -133,16 +121,16 @@ function LoginDialog({ reason }: { reason: DialogReason }) {
   const footer = required ? (
     done ? (
       <Button variant="primary" loading={checking} onClick={() => void recheck()}>
-        Weiter
+        {tl.continue}
       </Button>
     ) : undefined
   ) : done ? (
     <Button variant="primary" onClick={close}>
-      Schließen
+      {tl.close}
     </Button>
   ) : (
     <Button variant="ghost" onClick={dismiss}>
-      Später
+      {tl.later}
     </Button>
   );
 
@@ -176,16 +164,16 @@ export function ClaudeLogoutDialog() {
     <ConfirmDialog
       open={open}
       onOpenChange={setOpen}
-      title="Von Claude abmelden?"
-      description="Claude Code meldet sich auf diesem Rechner ab. Bis du dich wieder anmeldest, lässt sich FORGE nicht nutzen."
-      confirmLabel="Abmelden"
+      title={tl.logoutTitle}
+      description={tl.logoutDescription}
+      confirmLabel={tl.signOut}
       danger
       onConfirm={async () => {
         try {
           await logoutClaude(qc);
-          toast.success("Von Claude abgemeldet");
+          toast.success(tl.loggedOut);
         } catch (e) {
-          toast.error("Abmelden fehlgeschlagen", errorMessage(e));
+          toast.error(tl.logoutFailed, errorMessage(e));
           throw e;
         }
       }}

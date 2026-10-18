@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { KNOWN_PLACEHOLDERS, TEMPLATE_DESCRIPTION_MAX, TEMPLATE_NAME_MAX, TEMPLATE_TEXT_MAX, templatePlaceholders, type PromptTemplate } from "@forge/protocol";
+import { t } from "@/i18n";
 import { call, useProjects } from "@/lib/queries";
 import { errorMessage } from "@/lib/rpc";
 import { toast } from "@/stores/toast";
@@ -36,7 +37,7 @@ export function TemplateEditorDialog({
   template: PromptTemplate | null;
   initialText?: string;
   initialProjectId?: string | null;
-  onSaved?: (t: PromptTemplate) => void;
+  onSaved?: (saved: PromptTemplate) => void;
 }) {
   const qc = useQueryClient();
   const projects = useProjects().data ?? [];
@@ -58,8 +59,8 @@ export function TemplateEditorDialog({
   // Worktrees of agents share their project's templates.
   const roots = projects.filter((p) => !p.parentId);
   const scopeOptions = [
-    { value: GLOBAL, label: "Global", description: "In jedem Projekt" },
-    ...roots.map((p) => ({ value: p.id, label: p.name, description: "Nur in diesem Projekt" })),
+    { value: GLOBAL, label: t.templates.common.global, description: t.templates.editor.scopeGlobalDescription },
+    ...roots.map((p) => ({ value: p.id, label: p.name, description: t.templates.editor.scopeProjectDescription })),
   ];
   const value = scope === GLOBAL ? GLOBAL : (projects.find((p) => p.id === scope)?.parentId ?? scope);
 
@@ -74,11 +75,11 @@ export function TemplateEditorDialog({
         text,
       });
       void qc.invalidateQueries({ queryKey: ["templates"] });
-      toast.success(template ? "Vorlage gespeichert" : "Vorlage angelegt", saved.name);
+      toast.success(template ? t.templates.editor.saved : t.templates.editor.created, saved.name);
       onSaved?.(saved);
       onOpenChange(false);
     } catch (e) {
-      toast.error("Vorlage nicht gespeichert", errorMessage(e));
+      toast.error(t.templates.editor.saveFailed,errorMessage(e));
     } finally {
       setBusy(false);
     }
@@ -88,43 +89,43 @@ export function TemplateEditorDialog({
     <Dialog
       open={open}
       onOpenChange={onOpenChange}
-      title={template ? "Vorlage bearbeiten" : "Neue Vorlage"}
+      title={template ? t.templates.editor.titleEdit : t.templates.editor.titleNew}
       className="w-160"
       footer={
         <>
           <Button variant="ghost" onClick={() => onOpenChange(false)}>
-            Abbrechen
+            {t.templates.common.cancel}
           </Button>
           <Button variant="primary" loading={busy} disabled={!name.trim() || !text.trim()} onClick={() => void save()}>
-            {template ? "Speichern" : "Anlegen"}
+            {template ? t.templates.editor.save : t.templates.editor.create}
           </Button>
         </>
       }
     >
       <div className="flex flex-col gap-3">
         <div className="grid grid-cols-[1fr_14rem] gap-3">
-          <Field label="Name">
-            <Input value={name} onChange={(e) => setName(e.target.value)} maxLength={TEMPLATE_NAME_MAX} placeholder="Review vor Release" autoFocus />
+          <Field label={t.templates.editor.nameLabel}>
+            <Input value={name} onChange={(e) => setName(e.target.value)} maxLength={TEMPLATE_NAME_MAX} placeholder={t.templates.editor.namePlaceholder} autoFocus />
           </Field>
-          <Field label="Gilt für">
-            <Select value={value} onChange={setScope} options={scopeOptions} className="w-full" aria-label="Gilt für" />
+          <Field label={t.templates.editor.scopeLabel}>
+            <Select value={value} onChange={setScope} options={scopeOptions} className="w-full" aria-label={t.templates.editor.scopeLabel} />
           </Field>
         </div>
-        <Field label="Beschreibung" hint="Optional, erscheint in Vorschlägen und in der Suche">
+        <Field label={t.templates.editor.descriptionLabel} hint={t.templates.editor.descriptionHint}>
           <Input value={description} onChange={(e) => setDescription(e.target.value)} maxLength={TEMPLATE_DESCRIPTION_MAX} />
         </Field>
-        <Field label="Text" hint="Platzhalter in geschweiften Klammern, etwa {datei} oder {thema}. FORGE fragt sie vor dem Senden ab.">
-          <Textarea value={text} onChange={(e) => setText(e.target.value)} maxLength={TEMPLATE_TEXT_MAX} rows={9} className="font-mono text-xs" aria-label="Text der Vorlage" />
+        <Field label={t.templates.editor.textLabel} hint={t.templates.editor.textHint}>
+          <Textarea value={text} onChange={(e) => setText(e.target.value)} maxLength={TEMPLATE_TEXT_MAX} rows={9} className="font-mono text-xs" aria-label={t.templates.editor.textAria} />
         </Field>
         {holes.length > 0 && (
           <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted">
-            Platzhalter:
+            {t.templates.editor.placeholders}
             {holes.map((h) => (
               <Badge key={h} tone={KNOWN_PLACEHOLDERS[h.toLowerCase()] ? "accent" : "neutral"}>
                 {`{${h}}`}
               </Badge>
             ))}
-            {holes.some((h) => KNOWN_PLACEHOLDERS[h.toLowerCase()]) && <span className="text-subtle">Farbige füllt FORGE selbst vor.</span>}
+            {holes.some((h) => KNOWN_PLACEHOLDERS[h.toLowerCase()]) && <span className="text-subtle">{t.templates.editor.coloredFilled}</span>}
           </div>
         )}
       </div>

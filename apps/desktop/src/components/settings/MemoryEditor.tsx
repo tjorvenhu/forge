@@ -12,15 +12,11 @@ import { ExternalChangeBanner, useFileDraft } from "@/components/ui/file-draft";
 import { ErrorBanner } from "@/components/ui/misc";
 import { EditorSkeleton, Skeleton, SkeletonRegion } from "@/components/ui/skeleton";
 import { Markdown } from "@/components/workspace/Markdown";
+import { t } from "@/i18n";
 
 const AUTOSAVE_MS = 1000;
 
-const EMPTY_HINT: Record<MemoryScope, string> = {
-  global: "# Globale Regeln\n\nGilt für alle Projekte.\n",
-  project: "# Projektregeln\n\n",
-  "project-dir": "# Projektregeln\n\n",
-  local: "# Persönliche Regeln für dieses Projekt\n\nWird nicht committet.\n",
-};
+const EMPTY_HINT: Record<MemoryScope, string> = t.settings.memory.emptyHint;
 
 /**
  * Edit CLAUDE.md files. `scopes` decides which files are offered (global only in the app settings,
@@ -57,7 +53,7 @@ export function MemoryEditor({ projectId, scopes, height = "h-105" }: { projectI
       void qc.invalidateQueries({ queryKey: ["memory", projectId ?? "global"] });
       return true;
     } catch (e) {
-      toast.error("Nicht gespeichert", errorMessage(e));
+      toast.error(t.settings.memory.notSaved, errorMessage(e));
       if (e instanceof RpcCallError && e.code === "CONFLICT") void doc.refetch();
       return false;
     } finally {
@@ -87,7 +83,7 @@ export function MemoryEditor({ projectId, scopes, height = "h-105" }: { projectI
 
   if (list.isLoading)
     return (
-      <SkeletonRegion label="Lädt CLAUDE.md" className="flex flex-col gap-2">
+      <SkeletonRegion label={t.settings.memory.loading} className="flex flex-col gap-2">
         <div className="flex items-center gap-1.5">
           {scopes.length > 1 && scopes.map((s) => <Skeleton key={s} className="h-6.5 w-20" />)}
           <div className="flex-1" />
@@ -115,7 +111,7 @@ export function MemoryEditor({ projectId, scopes, height = "h-105" }: { projectI
                 setScope(f.scope);
               }}
               disabled={f.scope !== current.scope && dirty && (externalChange || saving)}
-              title={f.scope !== current.scope && dirty && externalChange ? "Erst die Änderung von außen klären" : undefined}
+              title={f.scope !== current.scope && dirty && externalChange ? t.settings.memory.resolveFirst : undefined}
               className={cn(
                 "rounded-md border px-2.5 py-1 text-xs disabled:opacity-40",
                 f.scope === current.scope ? "border-accent bg-accent-soft text-fg" : "border-border text-muted hover:text-fg",
@@ -123,12 +119,12 @@ export function MemoryEditor({ projectId, scopes, height = "h-105" }: { projectI
               aria-pressed={f.scope === current.scope}
             >
               {f.label}
-              {!f.exists && <span className="ml-1 text-subtle">(neu)</span>}
+              {!f.exists && <span className="ml-1 text-subtle">{t.settings.memory.new}</span>}
             </button>
           ))}
         <div className="flex-1" />
         <Button size="sm" variant="ghost" onClick={() => setPreview(!preview)} aria-pressed={preview}>
-          {preview ? <Pencil className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />} {preview ? "Bearbeiten" : "Vorschau"}
+          {preview ? <Pencil className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />} {preview ? t.settings.memory.edit : t.settings.memory.preview}
         </Button>
       </div>
       <div className="truncate font-mono text-caption text-subtle" title={current.path}>{current.path}</div>
@@ -137,9 +133,9 @@ export function MemoryEditor({ projectId, scopes, height = "h-105" }: { projectI
         <EditorSkeleton className={height} />
       ) : !current.exists && draft === null ? (
         <div className={cn("flex flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-border", height)}>
-          <p className="text-body text-muted">Diese Datei gibt es noch nicht.</p>
+          <p className="text-body text-muted">{t.settings.memory.missing}</p>
           <Button onClick={() => setDraft(EMPTY_HINT[current.scope])}>
-            <FilePlus2 className="h-3.5 w-3.5" /> Anlegen
+            <FilePlus2 className="h-3.5 w-3.5" /> {t.settings.memory.create}
           </Button>
         </div>
       ) : preview ? (

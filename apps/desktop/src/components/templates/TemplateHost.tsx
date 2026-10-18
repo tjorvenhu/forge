@@ -33,7 +33,7 @@ export function TemplateHost({ apply = true }: { apply?: boolean }) {
   const closeApply = useTemplateDialogs((s) => s.closeApply);
   const closeEdit = useTemplateDialogs((s) => s.closeEdit);
   const all = useAllTemplates(!!edit?.id);
-  const editing = edit?.id ? (all.data?.find((t) => t.id === edit.id) ?? null) : null;
+  const editing = edit?.id ? (all.data?.find((tpl) => tpl.id === edit.id) ?? null) : null;
   return (
     <>
       {apply && (

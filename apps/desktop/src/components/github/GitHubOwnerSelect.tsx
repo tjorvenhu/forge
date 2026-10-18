@@ -1,6 +1,7 @@
 import { useGitHubAccount, useGitHubOrgs } from "@/lib/queries";
 import { Select } from "@/components/ui/select";
 import { Skeleton, SkeletonRegion } from "@/components/ui/skeleton";
+import { t } from "@/i18n";
 
 const PERSONAL = "__personal";
 
@@ -19,7 +20,7 @@ export function GitHubOwnerSelect({ value, onChange, className }: { value: strin
   if (!account.data) return null;
   if (orgs.isPending) {
     return (
-      <SkeletonRegion label="Lädt Organisationen" className={className}>
+      <SkeletonRegion label={t.github.owner.loading} className={className}>
         <Skeleton className="h-8 w-full" />
       </SkeletonRegion>
     );
@@ -30,13 +31,13 @@ export function GitHubOwnerSelect({ value, onChange, className }: { value: strin
         value={value || PERSONAL}
         onChange={(v) => onChange(v === PERSONAL ? "" : v)}
         options={[
-          { value: PERSONAL, label: account.data.login, description: "Persönliches Konto" },
-          ...(orgs.data ?? []).map((o) => ({ value: o.login, label: o.login, description: "Organisation" })),
+          { value: PERSONAL, label: account.data.login, description: t.github.owner.personal },
+          ...(orgs.data ?? []).map((o) => ({ value: o.login, label: o.login, description: t.github.owner.organization })),
         ]}
-        aria-label="Konto oder Organisation"
+        aria-label={t.github.owner.aria}
         className="w-full"
       />
-      {orgs.isError && <p className="mt-1 text-xs text-danger">Organisationen konnten nicht geladen werden.</p>}
+      {orgs.isError && <p className="mt-1 text-xs text-danger">{t.github.owner.loadFailed}</p>}
     </div>
   );
 }

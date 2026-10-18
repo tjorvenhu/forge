@@ -41,19 +41,15 @@ import { LanguageChoice } from "@/components/settings/LanguageSelect";
 import { t } from "@/i18n";
 import { SyncOffer, useEnableSync, useNeedsPassphrase } from "./SyncOffer";
 
+const ts = t.setup;
+
 const STEPS = [
-  { label: "Willkommen", hint: "Was FORGE kann", Icon: Sparkles, title: "Willkommen bei FORGE", lead: "FORGE arbeitet mit Claude Code und deinem Claude-Abo." },
+  { ...ts.steps.welcome, Icon: Sparkles },
   // the lead of this step says whether Claude Code is ready
-  { label: "Claude Code", hint: "Installieren und anmelden", Icon: SquareTerminal, title: "Claude Code", lead: "" },
-  {
-    label: "GitHub",
-    hint: "Konto und Synchronisierung",
-    Icon: Cloud,
-    title: "GitHub und Synchronisierung",
-    lead: "Optional. Für private Repositories, Pull Requests und damit FORGE auf deinen anderen PCs dieselben Daten hat.",
-  },
-  { label: "Grundlagen", hint: "Ordner und Standards", Icon: SlidersHorizontal, title: "Ordner und Standards", lead: "Gilt für neue Projekte und Sessions. Einzelne Projekte können eigene Werte haben." },
-  { label: "Los geht's", hint: "Erstes Projekt", Icon: Rocket, title: "FORGE ist eingerichtet", lead: "Lege ein Projekt an, importiere einen Ordner oder klone ein Repository." },
+  { ...ts.steps.claude, Icon: SquareTerminal, lead: "" },
+  { ...ts.steps.github, Icon: Cloud },
+  { ...ts.steps.basics, Icon: SlidersHorizontal },
+  { ...ts.steps.done, Icon: Rocket },
 ];
 
 /**
@@ -111,7 +107,7 @@ function Wizard({ s }: { s: Settings }) {
       setSetupWizard(false);
       then?.();
     } catch (e) {
-      toast.error("Einrichtung nicht abgeschlossen", errorMessage(e));
+      toast.error(ts.notFinished, errorMessage(e));
     }
   };
 
@@ -121,10 +117,10 @@ function Wizard({ s }: { s: Settings }) {
     try {
       if (step === 2 && account.data) {
         if (sync) {
-          if (needsPassphrase && !passphrase) throw new Error("Gib zuerst das Sync-Passwort ein.");
+          if (needsPassphrase && !passphrase) throw new Error(ts.passphraseFirst);
           const firstSync = await enableSync(passphrase);
           // Switched on all the same; the next sync tries again, the assistant goes on.
-          if (firstSync) toast.info("Synchronisierung ist an", `Der erste Abgleich ist fehlgeschlagen: ${firstSync} FORGE versucht es gleich wieder.`);
+          if (firstSync) toast.info(ts.syncOn, ts.firstSyncFailed(firstSync));
         } else await save({ syncEnabled: false, syncAsked: true });
       }
       if (step === 3 && identity && filledFrom) {
@@ -134,7 +130,7 @@ function Wizard({ s }: { s: Settings }) {
       }
       setStep((x) => Math.min(x + 1, STEPS.length - 1));
     } catch (e) {
-      toast.error(step === 2 ? "Synchronisieren fehlgeschlagen" : "Nicht gespeichert", errorMessage(e));
+      toast.error(step === 2 ? ts.syncFailed : ts.notSaved, errorMessage(e));
     } finally {
       setBusy(false);
     }
@@ -143,25 +139,25 @@ function Wizard({ s }: { s: Settings }) {
   const last = step === STEPS.length - 1;
   const meta = STEPS[step]!;
   const claudeReady = !!diagnostics.data?.claude.found && !!diagnostics.data.auth.loggedIn;
-  const lead = step === 1 ? (claudeReady ? "Alles bereit." : "Fehlt Claude Code, installiert FORGE es selbst. Danach meldest du dich mit deinem Claude-Konto an.") : meta.lead;
+  const lead = step === 1 ? (claudeReady ? ts.claudeReady : ts.claudeMissing) : meta.lead;
   return (
     <Dialog
       open
       hideHeader
       onOpenChange={(o) => !o && void finish()}
-      title="FORGE einrichten"
-      description="Alles lässt sich später unter Einstellungen ändern."
+      title={ts.title}
+      description={ts.changeLater}
       className="h-150 w-220"
     >
       <div className="flex min-h-0 flex-1">
         <aside className="flex w-60 shrink-0 flex-col border-r border-border bg-bg/50 px-5 pb-5 pt-6">
           <Logo height={26} />
-          <ol aria-label="Schritte" className="mt-9 flex flex-col">
+          <ol aria-label={ts.stepsLabel} className="mt-9 flex flex-col">
             {STEPS.map((x, i) => (
               <StepItem key={x.label} label={x.label} hint={x.hint} index={i} step={step} last={i === STEPS.length - 1} onClick={busy || i >= step ? undefined : () => setStep(i)} />
             ))}
           </ol>
-          <p className="mt-auto text-caption text-subtle">Alles lässt sich später unter Einstellungen ändern.</p>
+          <p className="mt-auto text-caption text-subtle">{ts.changeLater}</p>
         </aside>
 
         <section className="flex min-w-0 flex-1 flex-col">
@@ -171,7 +167,7 @@ function Wizard({ s }: { s: Settings }) {
             </span>
             <div className="min-w-0">
               <p className="text-caption text-subtle">
-                Schritt {step + 1} von {STEPS.length}
+                {ts.stepOf(step + 1, STEPS.length)}
               </p>
               <h2 className="text-title font-semibold">{meta.title}</h2>
               <p className="mt-1 text-body text-muted">{lead}</p>
@@ -202,21 +198,21 @@ function Wizard({ s }: { s: Settings }) {
           <footer className="flex items-center gap-2 border-t border-border px-7 py-3.5">
             {!last && (
               <Button variant="ghost" className="mr-auto" onClick={() => void finish()}>
-                Überspringen
+                {ts.skip}
               </Button>
             )}
             {step > 0 && (
               <Button variant="ghost" className={cn(last && "mr-auto")} onClick={() => setStep((x) => x - 1)} disabled={busy}>
-                <ArrowLeft className="h-3.5 w-3.5" /> Zurück
+                <ArrowLeft className="h-3.5 w-3.5" /> {ts.back}
               </Button>
             )}
             {last ? (
               <Button variant="primary" onClick={() => void finish()}>
-                <Check className="h-3.5 w-3.5" /> Fertig
+                <Check className="h-3.5 w-3.5" /> {ts.finish}
               </Button>
             ) : (
               <Button variant="primary" loading={busy} disabled={probing} onClick={() => void next()} autoFocus>
-                {step === 0 ? "Los" : "Weiter"} <ArrowRight className="h-3.5 w-3.5" />
+                {step === 0 ? ts.start : ts.next} <ArrowRight className="h-3.5 w-3.5" />
               </Button>
             )}
           </footer>
@@ -257,10 +253,10 @@ function StepItem({ label, hint, index, step, last, onClick }: { label: string; 
 }
 
 const FEATURES = [
-  { Icon: FolderKanban, title: "Projekte und Sessions", text: "Jedes Projekt mit eigenen Chats, Einstellungen und Projektwissen." },
-  { Icon: GitBranch, title: "Git im Projekt", text: "Änderungen, Commits, Branches und Pull Requests ohne Terminal." },
-  { Icon: Bot, title: "Parallele Agenten", text: "Teilaufgaben laufen gleichzeitig, jede auf einem eigenen Branch." },
-  { Icon: Phone, title: "Telefon", text: "FORGE per Anruf steuern und bei Rückfragen anrufen lassen." },
+  { Icon: FolderKanban, ...ts.features.projects },
+  { Icon: GitBranch, ...ts.features.git },
+  { Icon: Bot, ...ts.features.agents },
+  { Icon: Phone, ...ts.features.phone },
 ];
 
 function WelcomeStep() {
@@ -283,7 +279,7 @@ function WelcomeStep() {
           </div>
         ))}
       </div>
-      <p className="text-small text-subtle">Als Nächstes: Claude Code anmelden, GitHub verbinden, Ordner und Standards festlegen.</p>
+      <p className="text-small text-subtle">{ts.nextUp}</p>
     </div>
   );
 }
@@ -292,7 +288,7 @@ function GitHubStep() {
   const gh = useDiagnostics().data?.gh;
   return (
     <div className="rounded-lg border border-border p-4">
-      {gh && !gh.found ? <p className="text-body text-danger">Die GitHub-Anbindung fehlt in dieser Installation. Bitte FORGE neu installieren.</p> : <GitHubAccountCard />}
+      {gh && !gh.found ? <p className="text-body text-danger">{ts.githubMissing}</p> : <GitHubAccountCard />}
     </div>
   );
 }
@@ -314,50 +310,50 @@ function BasicsStep({
   gitMissing: boolean;
 }) {
   const models = useRuntimeInfo().data?.models ?? [];
-  const saveNow = (patch: Partial<Settings>) => void save(patch).catch((e: unknown) => toast.error("Einstellung nicht gespeichert", errorMessage(e)));
+  const saveNow = (patch: Partial<Settings>) => void save(patch).catch((e: unknown) => toast.error(ts.basics.settingNotSaved, errorMessage(e)));
   return (
     <div className="flex flex-col gap-5">
-      <BasicsGroup title="Projekte und Sessions" className="grid-cols-3">
+      <BasicsGroup title={ts.basics.projectsTitle} className="grid-cols-3">
         <div className="col-span-3">
-          <Field label="Ordner für neue Projekte" hint="Hier legt FORGE neue und geklonte Projekte an.">
+          <Field label={ts.basics.projectDir} hint={ts.basics.projectDirHint}>
             <div className="flex gap-2">
-              <Input value={s.defaultProjectDir ?? ""} readOnly placeholder="nicht gesetzt" className="font-mono text-xs" />
+              <Input value={s.defaultProjectDir ?? ""} readOnly placeholder={ts.basics.notSet} className="font-mono text-xs" />
               <Button
                 onClick={async () => {
                   try {
-                    const p = await pickFolder("Ordner für neue Projekte wählen", s.defaultProjectDir);
+                    const p = await pickFolder(ts.basics.pickProjectDir, s.defaultProjectDir);
                     if (p) saveNow({ defaultProjectDir: p });
                   } catch (e) {
-                    toast.error("Ordnerdialog fehlgeschlagen", errorMessage(e));
+                    toast.error(ts.basics.folderDialogFailed, errorMessage(e));
                   }
                 }}
               >
-                <FolderOpen className="h-3.5 w-3.5" /> Wählen
+                <FolderOpen className="h-3.5 w-3.5" /> {ts.basics.choose}
               </Button>
             </div>
           </Field>
         </div>
-        <Field label="Profil" hint={PROFILE_INFO[s.defaultProfile].description}>
+        <Field label={ts.basics.profile} hint={PROFILE_INFO[s.defaultProfile].description}>
           <Select<ProfileId>
             value={s.defaultProfile}
             onChange={(v) => saveNow({ defaultProfile: v })}
             options={PROFILE_IDS.map((p) => ({ value: p, label: PROFILE_INFO[p].label, description: PROFILE_INFO[p].description }))}
-            aria-label="Profil für neue Projekte"
+            aria-label={ts.basics.profileAria}
           />
         </Field>
-        <Field label="Modell">
-          <Select value={toChoice(s.defaultModel)} onChange={(v) => saveNow({ defaultModel: fromChoice(v) })} options={modelOptions(models, "Claude-Code-Standard")} aria-label="Modell für neue Sessions" />
+        <Field label={ts.basics.model}>
+          <Select value={toChoice(s.defaultModel)} onChange={(v) => saveNow({ defaultModel: fromChoice(v) })} options={modelOptions(models, ts.basics.claudeDefault)} aria-label={ts.basics.modelAria} />
         </Field>
-        <Field label="Denkaufwand">
-          <Select value={toChoice(s.defaultEffort)} onChange={(v) => saveNow({ defaultEffort: fromChoice<EffortLevel>(v) })} options={effortOptions("Claude-Code-Standard")} aria-label="Denkaufwand" />
+        <Field label={ts.basics.effort}>
+          <Select value={toChoice(s.defaultEffort)} onChange={(v) => saveNow({ defaultEffort: fromChoice<EffortLevel>(v) })} options={effortOptions(ts.basics.claudeDefault)} aria-label={ts.basics.effort} />
         </Field>
       </BasicsGroup>
 
-      <BasicsGroup title="Git">
+      <BasicsGroup title={ts.basics.gitTitle}>
         {gitMissing ? (
-          <p className="col-span-2 text-xs text-warning">Git ist auf diesem PC nicht erreichbar. Name und E-Mail für Commits legst du später unter Einstellungen, GitHub fest.</p>
+          <p className="col-span-2 text-xs text-warning">{ts.basics.gitMissing}</p>
         ) : loadingIdentity || !identity ? (
-          <SkeletonRegion label="Lädt Git-Name und E-Mail" className="col-span-2 grid grid-cols-2 gap-4">
+          <SkeletonRegion label={ts.basics.loadingIdentity} className="col-span-2 grid grid-cols-2 gap-4">
             {[0, 1].map((i) => (
               <div key={i} className="flex flex-col gap-1.5">
                 <Skeleton className="h-3 w-24" />
@@ -367,11 +363,11 @@ function BasicsStep({
           </SkeletonRegion>
         ) : (
           <>
-            <Field label="Git-Name" hint="Steht als Autor in deinen Commits.">
-              <Input value={identity.name} onChange={(e) => setIdentity({ ...identity, name: e.target.value })} placeholder="Vorname Nachname" />
+            <Field label={ts.basics.gitName} hint={ts.basics.gitNameHint}>
+              <Input value={identity.name} onChange={(e) => setIdentity({ ...identity, name: e.target.value })} placeholder={ts.basics.gitNamePlaceholder} />
             </Field>
-            <Field label="Git-E-Mail">
-              <Input value={identity.email} onChange={(e) => setIdentity({ ...identity, email: e.target.value })} placeholder="du@example.com" type="email" />
+            <Field label={ts.basics.gitEmail}>
+              <Input value={identity.email} onChange={(e) => setIdentity({ ...identity, email: e.target.value })} placeholder={ts.basics.gitEmailPlaceholder} type="email" />
             </Field>
           </>
         )}
@@ -390,9 +386,9 @@ function BasicsGroup({ title, className, children }: { title: string; className?
 }
 
 const PROJECT_STARTS: { mode: NewProjectMode; Icon: typeof FolderOpen; label: string; text: string }[] = [
-  { mode: "import", Icon: FolderOpen, label: "Ordner importieren", text: "Ein vorhandenes Projekt auf diesem PC" },
-  { mode: "create", Icon: FolderPlus, label: "Neu anlegen", text: "Leerer Ordner, Claude baut den Rest" },
-  { mode: "clone", Icon: GitBranch, label: "Repository klonen", text: "Von GitHub oder einer Git-URL" },
+  { mode: "import", Icon: FolderOpen, ...ts.doneStep.starts.import },
+  { mode: "create", Icon: FolderPlus, ...ts.doneStep.starts.create },
+  { mode: "clone", Icon: GitBranch, ...ts.doneStep.starts.clone },
 ];
 
 function DoneStep({ s, claudeReady, onProject }: { s: Settings; claudeReady: boolean | null; onProject: (mode: NewProjectMode) => void }) {
@@ -401,7 +397,7 @@ function DoneStep({ s, claudeReady, onProject }: { s: Settings; claudeReady: boo
   return (
     <div className="flex flex-col gap-6">
       <section>
-        <SectionTitle>Erstes Projekt</SectionTitle>
+        <SectionTitle>{ts.doneStep.firstProject}</SectionTitle>
         <div className="grid grid-cols-3 gap-3">
           {PROJECT_STARTS.map(({ mode, Icon, label, text }) => (
             <button
@@ -424,18 +420,18 @@ function DoneStep({ s, claudeReady, onProject }: { s: Settings; claudeReady: boo
 
       {s.syncEnabled && st && st.available.length > 0 && (
         <section>
-          <SectionTitle>Von deinen anderen PCs</SectionTitle>
+          <SectionTitle>{ts.doneStep.fromOtherPcs}</SectionTitle>
           <SyncAvailableList st={st} projectDir={s.defaultProjectDir} />
         </section>
       )}
 
       <section>
-        <SectionTitle>Eingerichtet</SectionTitle>
+        <SectionTitle>{ts.doneStep.summary}</SectionTitle>
         <ul className="divide-y divide-border rounded-lg border border-border bg-surface-2/40">
-          <SummaryRow label="Claude Code" ok={claudeReady} value={claudeReady === null ? null : claudeReady ? "Angemeldet" : "Noch nicht angemeldet"} />
-          <SummaryRow label="GitHub" ok={account.isPending ? null : !!account.data} value={account.isPending ? null : account.data ? `Verbunden als ${account.data.login}` : "Nicht verbunden"} />
-          <SummaryRow label="Synchronisierung" ok={s.syncEnabled} value={s.syncEnabled ? "An" : "Aus"} />
-          <SummaryRow label="Projektordner" ok={!!s.defaultProjectDir} value={s.defaultProjectDir ?? "Nicht gesetzt"} mono={!!s.defaultProjectDir} />
+          <SummaryRow label="Claude Code" ok={claudeReady} value={claudeReady === null ? null : claudeReady ? ts.doneStep.signedIn : ts.doneStep.notSignedIn} />
+          <SummaryRow label="GitHub" ok={account.isPending ? null : !!account.data} value={account.isPending ? null : account.data ? ts.doneStep.connectedAs(account.data.login) : ts.doneStep.notConnected} />
+          <SummaryRow label={ts.doneStep.sync} ok={s.syncEnabled} value={s.syncEnabled ? ts.doneStep.on : ts.doneStep.off} />
+          <SummaryRow label={ts.doneStep.projectDir} ok={!!s.defaultProjectDir} value={s.defaultProjectDir ?? ts.doneStep.notSet} mono={!!s.defaultProjectDir} />
         </ul>
       </section>
     </div>

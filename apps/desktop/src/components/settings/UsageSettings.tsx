@@ -5,6 +5,7 @@ import { refreshUsage, useUsage } from "@/lib/queries";
 import { Button } from "@/components/ui/button";
 import { UsageWindows, UsageWindowsSkeleton, usageItems, usageUnavailableText } from "@/components/usage/UsageWindows";
 import { contextItems } from "@/lib/context-menu";
+import { t } from "@/i18n";
 import { Group } from "./layout";
 
 /** Plan usage per window with the limit forecast (Settings → Claude Code). */
@@ -19,11 +20,11 @@ export function UsageSettings() {
   };
   return (
     <Group
-      title="Nutzung und Prognose"
-      description="Die Prognose rechnet mit dem Tempo der letzten Messwerte, neuere zählen mehr. FORGE misst alle fünf Minuten, solange es offen ist."
+      title={t.settings.usage.title}
+      description={t.settings.usage.description}
       action={
         <Button size="sm" variant="ghost" loading={busy} onClick={() => void refresh()}>
-          <RefreshCw className="h-3.5 w-3.5" /> Aktualisieren
+          <RefreshCw className="h-3.5 w-3.5" /> {t.settings.usage.refresh}
         </Button>
       }
     >

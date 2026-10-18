@@ -12,6 +12,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge, ErrorBanner, Spinner } from "@/components/ui/misc";
 import { Skeleton, SkeletonRegion } from "@/components/ui/skeleton";
+import { t } from "@/i18n";
+
+const tc = t.settings.claudeSetup;
 
 // Opens the sign-in page once per login attempt. Module-level so remounts and StrictMode do not open it again.
 let openedUrl: string | null = null;
@@ -25,7 +28,7 @@ function useSetupAction() {
       qc.setQueryData(keys.claudeSetup, await call(method, {}));
       return true;
     } catch (e) {
-      toast.error("Schritt fehlgeschlagen", errorMessage(e));
+      toast.error(tc.stepFailed, errorMessage(e));
       return false;
     }
   };
@@ -69,19 +72,19 @@ export function ClaudeLoginForm({ showError = true, onStart }: { showError?: boo
           void act("claude.cancelSetup");
         }}
       >
-        Abbrechen
+        {tc.cancel}
       </Button>
     );
     if (!withCode) {
       return (
         <div className="flex w-full flex-col items-start gap-2.5">
           <div className="flex items-center gap-2 text-body">
-            <Spinner className="text-accent" /> Warte auf die Anmeldung im Browser …
+            <Spinner className="text-accent" /> {tc.waitingBrowser}
           </div>
-          <p className="text-xs text-muted">Melde dich auf der geöffneten Seite an. FORGE übernimmt die Anmeldung danach von selbst.</p>
+          <p className="text-xs text-muted">{tc.waitingBrowserHint}</p>
           <div className="flex flex-wrap gap-2">
             <Button size="sm" variant="ghost" onClick={() => s.url && void openExternal(s.url)}>
-              <ExternalLink className="h-3.5 w-3.5" /> Anmeldeseite erneut öffnen
+              <ExternalLink className="h-3.5 w-3.5" /> {tc.reopenPage}
             </Button>
             <Button
               size="sm"
@@ -91,7 +94,7 @@ export function ClaudeLoginForm({ showError = true, onStart }: { showError?: boo
                 if (s.codeUrl) void openExternal(s.codeUrl);
               }}
             >
-              <KeyRound className="h-3.5 w-3.5" /> Mit Code anmelden
+              <KeyRound className="h-3.5 w-3.5" /> {tc.withCode}
             </Button>
             {cancel}
           </div>
@@ -100,9 +103,9 @@ export function ClaudeLoginForm({ showError = true, onStart }: { showError?: boo
     }
     return (
       <div className="flex w-full flex-col items-start gap-2.5">
-        <p className="text-xs text-muted">Melde dich im Browser an. Danach zeigt die Seite einen Code: hier einfügen und bestätigen.</p>
+        <p className="text-xs text-muted">{tc.codeHint}</p>
         <div className="flex w-full gap-2">
-          <Input value={code} onChange={(e) => setCode(e.target.value)} placeholder="Code von der Anmeldeseite" className="font-mono text-xs" autoFocus />
+          <Input value={code} onChange={(e) => setCode(e.target.value)} placeholder={tc.codePlaceholder} className="font-mono text-xs" autoFocus />
           <Button
             variant="primary"
             disabled={!code.trim()}
@@ -114,18 +117,18 @@ export function ClaudeLoginForm({ showError = true, onStart }: { showError?: boo
                 qc.setQueryData(keys.claudeSetup, await call("claude.submitLoginCode", { code }));
                 setCode("");
               } catch (e) {
-                toast.error("Code nicht übermittelt", errorMessage(e));
+                toast.error(tc.codeNotSent, errorMessage(e));
               } finally {
                 setSubmitting(false);
               }
             }}
           >
-            Bestätigen
+            {tc.confirm}
           </Button>
         </div>
         <div className="flex gap-2">
           <Button size="sm" variant="ghost" onClick={() => page && void openExternal(page)}>
-            <ExternalLink className="h-3.5 w-3.5" /> Anmeldeseite erneut öffnen
+            <ExternalLink className="h-3.5 w-3.5" /> {tc.reopenPage}
           </Button>
           {cancel}
         </div>
@@ -135,7 +138,7 @@ export function ClaudeLoginForm({ showError = true, onStart }: { showError?: boo
 
   return (
     <div className="flex w-full flex-col items-start gap-2.5">
-      {showError && s?.task === "login" && s.phase === "error" && <ErrorBanner title="Anmeldung fehlgeschlagen">{s.message}</ErrorBanner>}
+      {showError && s?.task === "login" && s.phase === "error" && <ErrorBanner title={tc.loginFailed}>{s.message}</ErrorBanner>}
       <Button
         variant="primary"
         onClick={async () => {
@@ -143,7 +146,7 @@ export function ClaudeLoginForm({ showError = true, onStart }: { showError?: boo
         }}
         loading={running}
       >
-        <LogIn className="h-3.5 w-3.5" /> Mit Claude-Konto anmelden
+        <LogIn className="h-3.5 w-3.5" /> {tc.signInWithAccount}
       </Button>
     </div>
   );
@@ -160,7 +163,7 @@ export function ClaudeSetupCard() {
 
   if (!d)
     return (
-      <SkeletonRegion label="Lädt Claude-Status" className="flex h-5 items-center gap-2">
+      <SkeletonRegion label={tc.loading} className="flex h-5 items-center gap-2">
         <Skeleton className="h-4 w-4 rounded-full" />
         <Skeleton className="h-3 w-64" />
         <Skeleton className="h-4 w-12 rounded-full" />
@@ -174,16 +177,16 @@ export function ClaudeSetupCard() {
   if (!d.claude.found) {
     return (
       <div className="flex flex-col items-start gap-2.5">
-        <div className="text-body">{running && s?.task === "install" ? "Claude Code wird installiert." : "Claude Code ist auf diesem Rechner noch nicht installiert."}</div>
-        <p className="text-xs text-muted">FORGE nutzt dafür den offiziellen Installer von Anthropic. Das dauert etwa eine Minute.</p>
-        {s?.task === "install" && s.phase === "error" && <ErrorBanner title="Installation fehlgeschlagen">{s.message}</ErrorBanner>}
+        <div className="text-body">{running && s?.task === "install" ? tc.installing : tc.notInstalled}</div>
+        <p className="text-xs text-muted">{tc.installerHint}</p>
+        {s?.task === "install" && s.phase === "error" && <ErrorBanner title={tc.installFailed}>{s.message}</ErrorBanner>}
         <div className="flex gap-2">
           <Button variant="primary" onClick={() => void act("claude.install")} loading={running && s?.task === "install"}>
-            <Download className="h-3.5 w-3.5" /> Claude Code installieren
+            <Download className="h-3.5 w-3.5" /> {tc.install}
           </Button>
           {running && (
             <Button variant="ghost" onClick={() => void act("claude.cancelSetup")}>
-              Abbrechen
+              {tc.cancel}
             </Button>
           )}
         </div>
@@ -195,7 +198,7 @@ export function ClaudeSetupCard() {
   if (!d.auth.loggedIn) {
     return (
       <div className="flex flex-col items-start gap-2.5">
-        <div className="text-body">Claude Code ist installiert, aber nicht angemeldet.</div>
+        <div className="text-body">{tc.notSignedIn}</div>
         <ClaudeLoginForm />
       </div>
     );
@@ -206,15 +209,15 @@ export function ClaudeSetupCard() {
     <div className="flex items-center gap-3 text-body">
       <CheckCircle2 className="h-5 w-5 shrink-0 text-success" />
       <div className="flex min-w-0 flex-1 flex-col items-start gap-1">
-        <span className="truncate">Claude Code {d.claude.version?.split(" ")[0]} ist eingerichtet</span>
+        <span className="truncate">{tc.ready(d.claude.version?.split(" ")[0] ?? "")}</span>
         {d.auth.subscriptionType && <Badge tone="success">{planLabel(d.auth)}</Badge>}
       </div>
       <div className="flex shrink-0 gap-1">
         <Button size="sm" variant="ghost" onClick={() => useUi.getState().openClaudeLogin("switch")}>
-          <ArrowLeftRight className="h-3.5 w-3.5" /> Konto wechseln
+          <ArrowLeftRight className="h-3.5 w-3.5" /> {tc.switchAccount}
         </Button>
         <Button size="sm" variant="ghost" onClick={() => useUi.getState().setClaudeLogout(true)}>
-          <LogOut className="h-3.5 w-3.5" /> Abmelden
+          <LogOut className="h-3.5 w-3.5" /> {tc.signOut}
         </Button>
       </div>
     </div>

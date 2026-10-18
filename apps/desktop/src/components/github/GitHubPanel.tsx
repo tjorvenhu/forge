@@ -11,7 +11,11 @@ import { Input } from "@/components/ui/input";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Badge, ErrorBanner } from "@/components/ui/misc";
 import { Skeleton, SkeletonRegion } from "@/components/ui/skeleton";
+import { t } from "@/i18n";
 import { DeviceCode } from "./DeviceCode";
+
+const ta = t.github.account;
+const tr = t.github.repos;
 
 /** Sign in with GitHub inside FORGE (device flow via the shipped GitHub CLI). */
 export function GitHubAccountCard() {
@@ -27,13 +31,13 @@ export function GitHubAccountCard() {
       const s = await call("github.startLogin", {});
       qc.setQueryData(keys.githubLogin, s);
     } catch (e) {
-      toast.error("Anmeldung nicht gestartet", errorMessage(e));
+      toast.error(ta.loginNotStarted, errorMessage(e));
     }
   };
 
   if (account.isLoading)
     return (
-      <SkeletonRegion label="Lädt GitHub-Konto" className="flex items-center gap-3">
+      <SkeletonRegion label={ta.loading} className="flex items-center gap-3">
         <Skeleton className="h-10 w-10 shrink-0 rounded-full" />
         <div className="flex min-w-0 flex-1 flex-col gap-1.5">
           <Skeleton className="h-3.5 w-36" />
@@ -58,17 +62,17 @@ export function GitHubAccountCard() {
           <div className="text-xs text-muted">@{a.login}</div>
         </div>
         <Button size="sm" variant="ghost" onClick={() => void openExternal(a.profileUrl)}>
-          <ExternalLink className="h-3.5 w-3.5" /> Profil
+          <ExternalLink className="h-3.5 w-3.5" /> {ta.profile}
         </Button>
         <Button size="sm" variant="outline" onClick={() => setConfirmLogout(true)}>
-          <LogOut className="h-3.5 w-3.5" /> Abmelden
+          <LogOut className="h-3.5 w-3.5" /> {ta.signOut}
         </Button>
         <ConfirmDialog
           open={confirmLogout}
           onOpenChange={setConfirmLogout}
-          title="Von GitHub abmelden?"
-          description="FORGE und git können danach nicht mehr auf deine privaten Repositories zugreifen, bis du dich erneut anmeldest."
-          confirmLabel="Abmelden"
+          title={ta.logoutTitle}
+          description={ta.logoutDescription}
+          confirmLabel={ta.signOut}
           danger
           onConfirm={async () => {
             try {
@@ -77,7 +81,7 @@ export function GitHubAccountCard() {
               qc.removeQueries({ queryKey: keys.githubRepos });
               qc.removeQueries({ queryKey: keys.githubOrgs });
             } catch (e) {
-              toast.error("Abmelden fehlgeschlagen", errorMessage(e));
+              toast.error(ta.logoutFailed, errorMessage(e));
               throw e;
             }
           }}
@@ -91,11 +95,11 @@ export function GitHubAccountCard() {
       <DeviceCode
         code={state.code}
         url={state.url}
-        prompt="Gib diesen Code auf der GitHub-Seite ein, die sich im Browser geöffnet hat:"
+        prompt={ta.codePrompt}
         onCancel={() =>
           void call("github.cancelLogin", {})
             .then((s) => qc.setQueryData(keys.githubLogin, s))
-            .catch((e: unknown) => toast.error("Abbrechen fehlgeschlagen", errorMessage(e)))
+            .catch((e: unknown) => toast.error(ta.cancelFailed, errorMessage(e)))
         }
       />
     );
@@ -103,13 +107,10 @@ export function GitHubAccountCard() {
 
   return (
     <div className="flex flex-col items-start gap-3">
-      <p className="text-body text-muted">
-        Melde dich an, um private Repositories zu klonen, zu pushen und Pull Requests zu erstellen. Die Anmeldung läuft über GitHub im Browser; das Token liegt im
-        Windows-Anmeldeinformationsspeicher, nicht in FORGE.
-      </p>
-      {state?.phase === "error" && <ErrorBanner title="Anmeldung fehlgeschlagen">{state.message}</ErrorBanner>}
+      <p className="text-body text-muted">{ta.intro}</p>
+      {state?.phase === "error" && <ErrorBanner title={ta.loginFailed}>{state.message}</ErrorBanner>}
       <Button variant="primary" onClick={() => void start()} loading={busy}>
-        Mit GitHub anmelden
+        {ta.signIn}
       </Button>
     </div>
   );
@@ -144,10 +145,10 @@ export function GitHubRepoPicker({ value, onPick }: { value: string; onPick: (cl
     <div className="flex flex-col gap-2">
       <div className="relative">
         <Search className="pointer-events-none absolute left-2.5 top-2 h-4 w-4 text-subtle" />
-        <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder={`Repositories von ${account.data.login} durchsuchen`} className="pl-8" aria-label="Repositories durchsuchen" autoFocus />
+        <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder={tr.searchPlaceholder(account.data.login)} className="pl-8" aria-label={tr.searchAria} autoFocus />
       </div>
       {repos.isLoading && (
-        <SkeletonRegion label="Lädt Repositories" className="max-h-64 divide-y divide-border overflow-hidden rounded-lg border border-border">
+        <SkeletonRegion label={tr.loading} className="max-h-64 divide-y divide-border overflow-hidden rounded-lg border border-border">
           {[55, 40, 65, 35, 50].map((w, i) => (
             <div key={i} className="flex flex-col gap-1.5 px-3 py-2.5">
               <Skeleton className="h-3" style={{ width: `${w}%` }} />
@@ -157,7 +158,7 @@ export function GitHubRepoPicker({ value, onPick }: { value: string; onPick: (cl
         </SkeletonRegion>
       )}
       {repos.isError && <ErrorBanner>{errorMessage(repos.error)}</ErrorBanner>}
-      <div role="listbox" aria-label="Deine Repositories" className={cn("max-h-64 divide-y divide-border overflow-y-auto rounded-lg border border-border", !repos.isSuccess && "hidden")}>
+      <div role="listbox" aria-label={tr.listAria} className={cn("max-h-64 divide-y divide-border overflow-y-auto rounded-lg border border-border", !repos.isSuccess && "hidden")}>
         {filtered.map((r) => {
           const selected = value === r.cloneUrl;
           return (
@@ -174,19 +175,19 @@ export function GitHubRepoPicker({ value, onPick }: { value: string; onPick: (cl
                   <span className="truncate">{r.fullName}</span>
                   {r.private && (
                     <Badge>
-                      <Lock className="h-3 w-3" /> privat
+                      <Lock className="h-3 w-3" /> {tr.private}
                     </Badge>
                   )}
                 </div>
                 <div className="truncate text-caption text-subtle">
-                  {r.description ? `${r.description} · ` : ""}aktualisiert {relativeTime(r.updatedAt)}
+                  {r.description ? `${r.description} · ` : ""}{tr.updated(relativeTime(r.updatedAt))}
                 </div>
               </div>
               {selected && <Check className="h-4 w-4 shrink-0 text-accent" />}
             </button>
           );
         })}
-        {repos.isSuccess && filtered.length === 0 && <div className="px-3 py-4 text-center text-xs text-muted">Keine Treffer</div>}
+        {repos.isSuccess && filtered.length === 0 && <div className="px-3 py-4 text-center text-xs text-muted">{tr.noResults}</div>}
       </div>
     </div>
   );

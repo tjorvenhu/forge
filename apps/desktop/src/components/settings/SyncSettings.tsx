@@ -15,11 +15,12 @@ import { KeyValueSkeleton } from "@/components/ui/skeleton";
 import { Group, Row, SwitchRow } from "./layout";
 import { LocalOnlyList } from "./SyncLocalOnly";
 import { SyncPassphraseFields } from "./SyncPassphrase";
+import { t } from "@/i18n";
 
-export const SYNC_INCLUDED =
-  "Einstellungen, Projekte mit ihren Einstellungen und Dev-Tools, das Telefon mit Passwörtern und Keys, Git-Name und E-Mail und Claude Code: CLAUDE.md, settings.json, Agents, Commands, Skills und MCP-Server.";
-export const SYNC_EXCLUDED =
-  "Alles außer dem Namen des PCs ist mit deinem Sync-Passwort verschlüsselt, GitHub sieht nur unlesbare Daten. Nicht dabei sind Chatverläufe, Anrufprotokolle und Projektdateien. Pfade dieses PCs bleiben hier, ebenso, ob Telefon und Tischtelefon auf diesem PC laufen.";
+const ts = t.settings.sync;
+
+export const SYNC_INCLUDED = ts.included;
+export const SYNC_EXCLUDED = ts.excluded;
 
 export function SyncSettings({ s, save }: { s: Settings; save: (patch: Partial<Settings>) => Promise<void> }) {
   const account = useGitHubAccount();
@@ -29,12 +30,12 @@ export function SyncSettings({ s, save }: { s: Settings; save: (patch: Partial<S
   return (
     <>
       <Group
-        title="Synchronisierung"
-        description="FORGE legt dafür in deinem GitHub-Konto das private Repository forge-data an. Meldest du dich auf einem anderen PC mit demselben Konto an, hat FORGE dort dieselben Daten."
+        title={ts.title}
+        description={ts.description}
       >
         <SwitchRow
-          label="Daten über GitHub synchronisieren"
-          description={signedIn ? SYNC_INCLUDED : "Dafür musst du oben unter Konto bei GitHub angemeldet sein."}
+          label={ts.enable}
+          description={signedIn ? SYNC_INCLUDED : ts.signInFirst}
           checked={s.syncEnabled}
           disabled={!signedIn && !s.syncEnabled}
           onChange={(v) => void save({ syncEnabled: v, syncAsked: true })}
@@ -44,7 +45,7 @@ export function SyncSettings({ s, save }: { s: Settings; save: (patch: Partial<S
             st.phase !== "needs-passphrase" && <SyncState st={st} />
           ) : (
             <div className="px-4 py-3.5">
-              <KeyValueSkeleton rows={1} label="Lädt Stand der Synchronisierung" />
+              <KeyValueSkeleton rows={1} label={ts.loading} />
             </div>
           ))}
       </Group>
@@ -52,7 +53,7 @@ export function SyncSettings({ s, save }: { s: Settings; save: (patch: Partial<S
       {s.syncEnabled && st?.phase === "needs-passphrase" && <PassphraseGroup st={st} />}
 
       {s.syncEnabled && st && st.localOnly.length > 0 && (
-        <Group title="Nur auf diesem PC" description="Auf einem anderen PC entfernt. Hier ist es noch da, wird aber nicht mehr abgeglichen, bis du dich entscheidest.">
+        <Group title={ts.localOnlyTitle} description={ts.localOnlyDescription}>
           <div className="p-4">
             <LocalOnlyList items={st.localOnly} />
           </div>
@@ -60,18 +61,18 @@ export function SyncSettings({ s, save }: { s: Settings; save: (patch: Partial<S
       )}
 
       {s.syncEnabled && st && st.available.length > 0 && (
-        <Group title="Projekte von anderen PCs" description="Stehen im Sync-Repository, liegen aber noch nicht auf diesem PC.">
+        <Group title={ts.availableTitle} description={ts.availableDescription}>
           <div className="p-4">
             <SyncAvailableList st={st} projectDir={s.defaultProjectDir} />
           </div>
         </Group>
       )}
 
-      <Group title="Was abgeglichen wird">
+      <Group title={ts.whatTitle}>
         <div className="flex flex-col gap-2 px-4 py-3.5 text-body text-muted">
           <p>{SYNC_INCLUDED}</p>
           <p>{SYNC_EXCLUDED}</p>
-          <p>Jeder Abgleich ist ein Commit. Frühere Stände holst du unten unter Versionen auf GitHub zurück. Ausschalten lässt das Repository auf GitHub stehen.</p>
+          <p>{ts.whatCommits}</p>
         </div>
       </Group>
 
@@ -87,33 +88,33 @@ function SyncState({ st }: { st: SyncStatus }) {
     setBusy(true);
     try {
       qc.setQueryData(keys.sync, await call("sync.now", {}));
-      toast.success("Synchronisiert");
+      toast.success(ts.synced);
     } catch (e) {
-      toast.error("Synchronisieren fehlgeschlagen", errorMessage(e));
+      toast.error(ts.syncFailed, errorMessage(e));
     } finally {
       setBusy(false);
     }
   };
   const label =
-    st.phase === "syncing" ? "Wird abgeglichen …" : st.phase === "no-github" ? "Nicht bei GitHub angemeldet" : st.phase === "error" ? "Fehlgeschlagen" : st.lastSyncAt ? `Abgeglichen ${relativeTime(st.lastSyncAt)}` : "Noch nicht abgeglichen";
+    st.phase === "syncing" ? ts.syncing : st.phase === "no-github" ? ts.noGitHub : st.phase === "error" ? ts.failed : st.lastSyncAt ? ts.syncedAt(relativeTime(st.lastSyncAt)) : ts.notSynced;
   return (
     <>
-      <Row label="Stand" description={st.remote ? `Zuletzt geschrieben von ${st.remote.device}, ${relativeTime(st.remote.updatedAt)}.` : "Noch nichts auf GitHub."}>
+      <Row label={ts.state} description={st.remote ? ts.lastWritten(st.remote.device, relativeTime(st.remote.updatedAt)) : ts.nothingOnGitHub}>
         <div className="flex items-center gap-2">
           <Badge tone={st.phase === "error" ? "danger" : st.phase === "idle" && st.lastSyncAt ? "success" : "neutral"}>{label}</Badge>
           {st.repo && (
             <Button size="sm" variant="ghost" onClick={() => void openExternal(`https://github.com/${st.repo}`)}>
-              <ExternalLink className="h-3.5 w-3.5" /> Repository
+              <ExternalLink className="h-3.5 w-3.5" /> {ts.repository}
             </Button>
           )}
           <Button size="sm" onClick={() => void now()} loading={busy || st.phase === "syncing"} disabled={st.phase === "no-github"}>
-            <RefreshCw className="h-3.5 w-3.5" /> Jetzt abgleichen
+            <RefreshCw className="h-3.5 w-3.5" /> {ts.syncNow}
           </Button>
         </div>
       </Row>
       {st.phase === "error" && st.error && (
         <div className="px-4 pb-3.5">
-          <ErrorBanner title="Abgleich fehlgeschlagen">{st.error}</ErrorBanner>
+          <ErrorBanner title={ts.errorTitle}>{st.error}</ErrorBanner>
         </div>
       )}
     </>
@@ -134,28 +135,28 @@ function PassphraseGroup({ st }: { st: SyncStatus }) {
     try {
       qc.setQueryData(keys.sync, await call("sync.setPassphrase", { passphrase }));
       void qc.invalidateQueries({ queryKey: keys.syncProbe });
-      toast.success("Sync-Passwort gespeichert");
+      toast.success(ts.passphraseSaved);
     } catch (e) {
-      toast.error("Sync-Passwort nicht gespeichert", errorMessage(e));
+      toast.error(ts.passphraseNotSaved, errorMessage(e));
     } finally {
       setBusy(false);
     }
   };
   return (
     <Group
-      title="Sync-Passwort"
-      description={existing ? `Auf GitHub liegen verschlüsselte Daten von ${probe.data?.device ?? "einem anderen PC"}. Gib das Passwort ein, mit dem sie verschlüsselt sind.` : "Lege das Passwort fest, mit dem FORGE alles auf GitHub verschlüsselt."}
+      title={ts.passphraseTitle}
+      description={existing ? ts.passphraseExisting(probe.data?.device ?? ts.anotherPc) : ts.passphraseNew}
     >
       <div className="flex flex-col gap-3 p-4">
         {st.error && existing && <p className="text-xs text-warning">{st.error}</p>}
-        {probe.isLoading ? <KeyValueSkeleton rows={1} label="Sieht im Sync-Repository nach" /> : <SyncPassphraseFields existing={existing} onChange={setPassphrase} />}
+        {probe.isLoading ? <KeyValueSkeleton rows={1} label={ts.probing} /> : <SyncPassphraseFields existing={existing} onChange={setPassphrase} />}
         <div className="flex items-center gap-2">
           <Button variant="primary" disabled={!passphrase} loading={busy} onClick={() => void submit()}>
-            <KeyRound className="h-3.5 w-3.5" /> {existing ? "Entsperren" : "Festlegen"}
+            <KeyRound className="h-3.5 w-3.5" /> {existing ? ts.unlock : ts.set}
           </Button>
           {existing && (
             <Button variant="ghost" onClick={() => setReset(true)}>
-              Passwort vergessen
+              {ts.forgot}
             </Button>
           )}
         </div>
@@ -173,18 +174,18 @@ function ResetRemoteDialog({ onClose, forgotten }: { onClose: () => void; forgot
     <ConfirmDialog
       open
       onOpenChange={(o) => !o && onClose()}
-      title="GitHub mit diesem PC überschreiben?"
-      description={`${forgotten ? "Ohne das alte Passwort lassen sich die Daten auf GitHub nicht mehr öffnen. " : ""}FORGE schreibt den Stand dieses PCs mit einem neuen Passwort nach GitHub. Deine anderen PCs brauchen danach das neue Passwort und bekommen den Stand dieses PCs.`}
-      confirmLabel="Überschreiben"
+      title={ts.resetTitle}
+      description={`${forgotten ? ts.resetForgotten : ""}${ts.resetDescription}`}
+      confirmLabel={ts.overwrite}
       danger
       confirmDisabled={!passphrase}
       onConfirm={async () => {
         try {
           qc.setQueryData(keys.sync, await call("sync.resetRemote", { passphrase: passphrase! }));
           void qc.invalidateQueries({ queryKey: keys.syncProbe });
-          toast.success("GitHub hat jetzt den Stand dieses PCs");
+          toast.success(ts.overwritten);
         } catch (e) {
-          toast.error("Nicht überschrieben", errorMessage(e));
+          toast.error(ts.notOverwritten, errorMessage(e));
           throw e;
         }
       }}
@@ -200,31 +201,31 @@ function HardResetGroup({ st }: { st: SyncStatus }) {
   const [reset, setReset] = useState(false);
   const removes = st.localOnly.map((x) => x.label);
   return (
-    <Group title="Hart abgleichen" danger>
-      <Row label="Diesen PC auf den Stand von GitHub setzen" description="Übernimmt alle Werte von GitHub, auch wo du hier etwas anderes eingestellt hast. Was auf GitHub fehlt, wird hier entfernt.">
+    <Group title={ts.hardTitle} danger>
+      <Row label={ts.forceLabel} description={ts.forceDescription}>
         <Button variant="danger-ghost" onClick={() => setConfirm(true)}>
-          <RotateCcw className="h-3.5 w-3.5" /> Auf GitHub-Stand setzen
+          <RotateCcw className="h-3.5 w-3.5" /> {ts.setToGitHub}
         </Button>
       </Row>
-      <Row label="GitHub mit diesem PC überschreiben" description="Schreibt den Stand dieses PCs mit einem neuen Sync-Passwort nach GitHub. Für einen Neuanfang oder ein vergessenes Passwort.">
+      <Row label={ts.overwriteLabel} description={ts.overwriteDescription}>
         <Button variant="danger-ghost" onClick={() => setReset(true)}>
-          <Upload className="h-3.5 w-3.5" /> Überschreiben
+          <Upload className="h-3.5 w-3.5" /> {ts.overwrite}
         </Button>
       </Row>
       <ConfirmDialog
         open={confirm}
         onOpenChange={setConfirm}
-        title="Diesen PC auf den Stand von GitHub setzen?"
-        description={`Alle Einstellungen, Projekte und Dateien bekommen den Stand von GitHub. ${removes.length ? `Hier entfernt wird: ${removes.join(", ")}. Projekte nur aus FORGE, ihre Ordner bleiben.` : "Entfernt wird nichts."} Was du hier neu angelegt und noch nicht abgeglichen hast, bleibt. Vorher legt FORGE ein Backup an.`}
-        confirmLabel="Auf GitHub-Stand setzen"
+        title={ts.forceTitle}
+        description={ts.forceConfirm(removes)}
+        confirmLabel={ts.setToGitHub}
         danger
         onConfirm={async () => {
           try {
             qc.setQueryData(keys.sync, await call("sync.forceLocal", {}));
             await qc.invalidateQueries();
-            toast.success("Dieser PC hat den Stand von GitHub", "Der Stand davor ist als Backup gesichert.");
+            toast.success(ts.forced, ts.forcedDetail);
           } catch (e) {
-            toast.error("Nicht zurückgesetzt", errorMessage(e));
+            toast.error(ts.notReset, errorMessage(e));
             throw e;
           }
         }}
@@ -244,9 +245,9 @@ export function SyncAvailableList({ st, projectDir }: { st: SyncStatus; projectD
     try {
       await call("sync.cloneProject", { key });
       void qc.invalidateQueries({ queryKey: keys.projects });
-      toast.success(`${name} geholt`, projectDir ?? undefined);
+      toast.success(ts.fetched(name), projectDir ?? undefined);
     } catch (e) {
-      toast.error("Projekt nicht geholt", errorMessage(e));
+      toast.error(ts.notFetched, errorMessage(e));
     } finally {
       setBusy(null);
     }
@@ -255,9 +256,9 @@ export function SyncAvailableList({ st, projectDir }: { st: SyncStatus; projectD
     <div className="flex flex-col gap-2">
       {!projectDir && (
         <p className="text-xs text-warning">
-          Zum Holen braucht FORGE einen Ordner für neue Projekte.{" "}
+          {ts.needsFolder}{" "}
           <button className="underline" onClick={() => openSettings("general")}>
-            Unter Allgemein festlegen
+            {ts.setUnderGeneral}
           </button>
         </p>
       )}
@@ -266,10 +267,10 @@ export function SyncAvailableList({ st, projectDir }: { st: SyncStatus; projectD
           <li key={p.key} className="flex items-center gap-3 px-3 py-2">
             <div className="min-w-0 flex-1">
               <div className="truncate text-body">{p.name}</div>
-              <div className="truncate font-mono text-xs text-subtle">{p.cloneUrl ?? "ohne Git-Remote, lässt sich nicht holen"}</div>
+              <div className="truncate font-mono text-xs text-subtle">{p.cloneUrl ?? ts.noRemote}</div>
             </div>
             <Button size="sm" disabled={!p.cloneUrl || !projectDir || (busy !== null && busy !== p.key)} loading={busy === p.key} onClick={() => void fetch(p.key, p.name)}>
-              <CloudDownload className="h-3.5 w-3.5" /> Holen
+              <CloudDownload className="h-3.5 w-3.5" /> {ts.fetch}
             </Button>
           </li>
         ))}
