@@ -1,6 +1,7 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import type { SessionStatus } from "@forge/protocol";
+import { tr } from "../i18n/index.js";
 import { digestAuthorization, parseChallenge } from "./digest.js";
 import type { ApprovalRequest } from "./session-info.js";
 
@@ -445,12 +446,12 @@ export class DeskPhone {
       send(200, empty, "text/xml; charset=utf-8");
       if (!s || !r || (decision !== "allow" && decision !== "deny")) return;
       const open = this.d.pending(s);
-      if (!open || open.requestId !== r) return this.notice("Schon erledigt", "Diese Anfrage ist nicht mehr offen.");
+      if (!open || open.requestId !== r) return this.notice(tr().phone.line.deskDone, tr().phone.line.deskNotOpen);
       try {
         this.d.respond(s, r, decision);
         this.d.log(`Tischtelefon: Freigabe ${decision === "allow" ? "erteilt" : "abgelehnt"}`);
       } catch (e) {
-        this.notice("Nicht möglich", e instanceof Error ? e.message : String(e));
+        this.notice(tr().phone.line.deskNotPossible, e instanceof Error ? e.message : String(e));
       }
       this.refresh();
       return;
@@ -493,10 +494,10 @@ export class DeskPhone {
             : null;
         if (authorization) res = await f(url, { method, headers: { ...headers, authorization }, body, signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) });
       }
-      if (res.status === 401) error = "Anmeldung am Telefon abgelehnt (Benutzer oder Passwort falsch).";
-      else if (!res.ok) error = `Telefon meldet HTTP ${res.status}.`;
+      if (res.status === 401) error = tr().phone.line.deskLoginRejected;
+      else if (!res.ok) error = tr().phone.line.deskHttp(res.status);
     } catch (e) {
-      error = e instanceof Error && e.name === "TimeoutError" ? "Telefon antwortet nicht." : `Telefon nicht erreichbar.`;
+      error = e instanceof Error && e.name === "TimeoutError" ? tr().phone.line.deskNoAnswer : tr().phone.line.deskUnreachable;
     }
     if (this.cfg !== cfg) return;
     const was = this.reachable;
@@ -512,8 +513,8 @@ export class DeskPhone {
 }
 
 function requestShort(req: ApprovalRequest): string {
-  if (req.toolName === "AskUserQuestion") return "Rückfrage, bitte anrufen";
-  if (req.toolName === "ExitPlanMode") return "Plan zur Freigabe";
+  if (req.toolName === "AskUserQuestion") return tr().phone.line.deskQuestion;
+  if (req.toolName === "ExitPlanMode") return tr().phone.line.deskPlan;
   const subject = typeof req.input.command === "string" ? req.input.command : typeof req.input.file_path === "string" ? req.input.file_path : "";
   return `${req.toolName}${subject ? `: ${subject}` : ""}`;
 }

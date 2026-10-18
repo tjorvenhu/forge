@@ -1,3 +1,4 @@
+import { tr } from "../i18n/index.js";
 import { Downsampler, SAMPLE_RATE } from "./audio.js";
 
 export const GEMINI_LIVE_URL = "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent";
@@ -156,7 +157,7 @@ export class GeminiLive implements LiveConversation {
       this.ws = ws;
       this.ready = false;
       let settled = false;
-      const timer = setTimeout(() => fail("Gemini Live antwortet nicht (Verbindungsaufbau)."), this.o.timing?.setupTimeoutMs ?? SETUP_TIMEOUT_MS);
+      const timer = setTimeout(() => fail(tr().phone.voice.liveSetupTimeout), this.o.timing?.setupTimeoutMs ?? SETUP_TIMEOUT_MS);
       const fail = (message: string) => {
         if (settled) return;
         settled = true;
@@ -170,7 +171,7 @@ export class GeminiLive implements LiveConversation {
       };
       ws.onopen = () => ws.send(JSON.stringify({ setup: this.setupMessage(resume) }));
       ws.onerror = () => {
-        if (!settled) fail("Verbindung zu Gemini Live fehlgeschlagen.");
+        if (!settled) fail(tr().phone.voice.liveConnectFailed);
       };
       ws.onclose = (ev) => {
         if (!settled) return fail(closeText(ev.code, ev.reason));
@@ -235,7 +236,7 @@ export class GeminiLive implements LiveConversation {
       return;
     }
     if (msg.error) {
-      h.onError(`Gemini Live: ${msg.error.message ?? "Fehler"}`);
+      h.onError(tr().phone.voice.liveError(msg.error.message));
       return;
     }
     const c = msg.serverContent;
@@ -275,7 +276,7 @@ export class GeminiLive implements LiveConversation {
   private async reconnect() {
     if (this.closed) return;
     if (++this.reconnects > MAX_RECONNECTS) {
-      this.o.handlers.onError("Gemini Live: Verbindung lässt sich nicht halten.");
+      this.o.handlers.onError(tr().phone.voice.liveCannotHold);
       return;
     }
     const old = this.ws;
@@ -336,7 +337,7 @@ export class GeminiLive implements LiveConversation {
     // Reconnecting: the new connection does not know the call ids. The model still has to learn that
     // the tool ran, or it calls it again (a push twice).
     if (!this.ready) {
-      for (const r of responses) this.pendingText.push(`[FORGE: Das Werkzeug ${r.name} ist gelaufen, die Verbindung war kurz weg. Ergebnis: ${r.result}]`);
+      for (const r of responses) this.pendingText.push(tr().phone.voice.liveToolRan(r.name, r.result));
       return;
     }
     this.send({ toolResponse: { functionResponses: responses.map((r) => ({ id: r.id, name: r.name, response: { result: r.result } })) } });
@@ -367,8 +368,9 @@ export class GeminiLive implements LiveConversation {
 
 function closeText(code: number, reason: string): string {
   const r = reason?.trim();
-  if (/api key/i.test(r)) return "Gemini Live: API-Key ungültig.";
-  if (/quota|exhausted|billing/i.test(r)) return "Gemini Live: Limit erreicht oder kein Guthaben.";
-  if (/not found|not supported/i.test(r)) return `Gemini Live: Modell nicht verfügbar (${r}).`;
-  return `Gemini Live: Verbindung beendet (${code}${r ? `: ${r}` : ""}).`;
+  const v = tr().phone.voice;
+  if (/api key/i.test(r)) return v.liveKeyInvalid;
+  if (/quota|exhausted|billing/i.test(r)) return v.liveLimit;
+  if (/not found|not supported/i.test(r)) return v.liveModelMissing(r);
+  return v.liveClosed(code, r);
 }

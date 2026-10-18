@@ -1,3 +1,4 @@
+import { tr } from "../i18n/index.js";
 import { bytesToPcm, Downsampler, pcmToWav } from "./audio.js";
 import { SPEAK_TIMEOUT_MS, TRANSCRIBE_TIMEOUT_MS, type VoiceProvider } from "./voice.js";
 
@@ -9,10 +10,6 @@ export const DEFAULT_GEMINI_VOICE = "Kore";
 /** PCM from Gemini speech is 24 kHz; the phone line is 8 kHz. */
 const TTS_RATE_FACTOR = 3;
 const TTS_GAIN = 0.8;
-const TRANSCRIBE_PROMPT =
-  "Schreib wörtlich auf, was in dieser Telefonaufnahme gesagt wird, auf Deutsch. Nur den gesprochenen Text, ohne Anmerkungen. " +
-  "Fachbegriffe: FORGE, Claude, Session, Build, Test, Commit, Branch, Pull Request, Deploy, Dev-Server, Freigabe, Plan, Projekt, Agent, Worktree. " +
-  "Ist nichts Verständliches zu hören, antworte mit einer leeren Zeile.";
 
 interface GenerateResponse {
   candidates?: Array<{ content?: { parts?: Array<{ text?: string; inlineData?: { data?: string } }> } }>;
@@ -32,12 +29,12 @@ export class GeminiVoice implements VoiceProvider {
     const json = await this.generate(
       this.o.sttModel,
       {
-        contents: [{ role: "user", parts: [{ inlineData: { mimeType: "audio/wav", data: pcmToWav(pcm).toString("base64") } }, { text: TRANSCRIBE_PROMPT }] }],
+        contents: [{ role: "user", parts: [{ inlineData: { mimeType: "audio/wav", data: pcmToWav(pcm).toString("base64") } }, { text: tr().phone.voice.geminiTranscribe }] }],
         generationConfig: { temperature: 0 },
       },
       withTimeout(signal, this.o.timeouts?.transcribeMs ?? TRANSCRIBE_TIMEOUT_MS),
       signal,
-      "Spracherkennung",
+      tr().phone.voice.stt,
     );
     const text = (json.candidates?.[0]?.content?.parts ?? []).map((p) => p.text ?? "").join("");
     return text.replace(/\s+/g, " ").trim();
@@ -61,7 +58,7 @@ export class GeminiVoice implements VoiceProvider {
         }),
         signal: limit,
       });
-      if (!res.ok || !res.body) throw new Error(await geminiError(res, "Sprachausgabe"));
+      if (!res.ok || !res.body) throw new Error(await geminiError(res, tr().phone.voice.tts));
       const down = new Downsampler(TTS_RATE_FACTOR);
       let pending = "";
       let rest: Uint8Array = new Uint8Array(0);
@@ -81,10 +78,10 @@ export class GeminiVoice implements VoiceProvider {
           yield down.push(samples.map((s) => Math.round(s * TTS_GAIN)));
         }
       }
-      if (!got && !limit.aborted) throw new Error("Sprachausgabe: Gemini hat kein Audio geliefert.");
+      if (!got && !limit.aborted) throw new Error(tr().phone.voice.geminiNoAudio);
     } catch (e) {
       if (signal.aborted) return;
-      if (limit.aborted) throw new Error("Sprachausgabe: Gemini antwortet nicht rechtzeitig.", { cause: e });
+      if (limit.aborted) throw new Error(tr().phone.voice.geminiTimeout(tr().phone.voice.tts), { cause: e });
       throw e;
     }
   }
@@ -100,7 +97,7 @@ export class GeminiVoice implements VoiceProvider {
       if (!res.ok) throw new Error(await geminiError(res, what));
       return (await res.json()) as GenerateResponse;
     } catch (e) {
-      if (limit.aborted && !outer?.aborted) throw new Error(`${what}: Gemini antwortet nicht rechtzeitig.`, { cause: e });
+      if (limit.aborted && !outer?.aborted) throw new Error(tr().phone.voice.geminiTimeout(what), { cause: e });
       throw e;
     }
   }
@@ -112,7 +109,7 @@ function audioOf(event: string): string | null {
   if (!line) return null;
   try {
     const j = JSON.parse(line.slice(5)) as GenerateResponse & { error?: { message?: string } };
-    if (j.error) throw new Error(`Sprachausgabe: ${j.error.message ?? "Fehler"}`);
+    if (j.error) throw new Error(tr().phone.voice.geminiSpeechError(j.error.message));
     return j.candidates?.[0]?.content?.parts?.find((p) => p.inlineData?.data)?.inlineData?.data ?? null;
   } catch (e) {
     if (e instanceof SyntaxError) return null;
@@ -133,9 +130,10 @@ export async function geminiError(res: Response, what: string): Promise<string> 
   } catch {
     /* no JSON body */
   }
-  if (res.status === 400 && /api key/i.test(detail)) return `${what}: Gemini-API-Key ungültig.`;
-  if (res.status === 401 || res.status === 403) return `${what}: Gemini-API-Key ungültig oder ohne Zugriff.`;
-  if (res.status === 429) return `${what}: Gemini-Limit erreicht oder kein Guthaben.`;
-  if (res.status === 404) return `${what}: Gemini-Modell nicht gefunden${detail ? ` (${detail})` : ""}.`;
-  return `${what} fehlgeschlagen (${res.status})${detail ? `: ${detail}` : ""}`;
+  const v = tr().phone.voice;
+  if (res.status === 400 && /api key/i.test(detail)) return v.geminiKeyInvalid(what);
+  if (res.status === 401 || res.status === 403) return v.geminiKeyNoAccess(what);
+  if (res.status === 429) return v.geminiLimit(what);
+  if (res.status === 404) return v.geminiModelMissing(what, detail);
+  return v.failed(what, res.status, detail);
 }

@@ -1,0 +1,270 @@
+@@@OLD
+import {
+  AUTOMATION_TAGS,
+  geminiFunctionDeclarations,
+  phoneSystemPrompt,
+  POLICY_RULE_LABELS,
+  type AutomationTag,
+  type CallSettingsPatch,
+  type ForgeSettingsPatch,
+} from "./tools.js";
+@@@NEW
+import {
+  AUTOMATION_TAG_IDS,
+  automationTagLabel,
+  geminiFunctionDeclarations,
+  phoneSystemPrompt,
+  policyRuleLabel,
+  type AutomationTag,
+  type CallSettingsPatch,
+  type ForgeSettingsPatch,
+} from "./tools.js";
+import { tr } from "../i18n/index.js";
+@@@END
+@@@OLD
+const GREETING = "Hallo, hier ist FORGE. Was kann ich für dich tun?";
+@@@NEW
+@@@END
+@@@OLD
+const SETUP_STEP_WORD = { pending: "wartet", running: "läuft", done: "fertig", skipped: "übersprungen", failed: "fehlgeschlagen" } as const;
+@@@NEW
+@@@END
+@@@OLD
+  if (!list.length) return `${what}: keine Nummer eingetragen.`;
+  const one = (n: PhoneNumberEntry) => [n.label, n.number].filter(Boolean).join(" ") + (n.enabled ? "" : " (aus)");
+  return `${what}: ${asData(list.map(one).join(", "))}.`;
+@@@NEW
+  const m = tr().phone;
+  if (!list.length) return m.callSettings.listNone(what);
+  const one = (n: PhoneNumberEntry) => [n.label, n.number].filter(Boolean).join(" ") + (n.enabled ? "" : m.callSettings.listOff);
+  return m.callSettings.listing(what, asData(list.map(one).join(", ")));
+@@@END
+@@@OLD
+  const d = new Date(iso);
+  const time = d.toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" });
+  if (d.toDateString() === new Date().toDateString()) return `heute um ${time}`;
+  return `${d.toLocaleDateString("de-DE", { weekday: "long" })} um ${time}`;
+@@@NEW
+  const m = tr().phone;
+  const d = new Date(iso);
+  const time = d.toLocaleTimeString(m.locale, { hour: "2-digit", minute: "2-digit" });
+  if (d.toDateString() === new Date().toDateString()) return m.time.today(time);
+  return m.time.weekday(d.toLocaleDateString(m.locale, { weekday: "long" }), time);
+@@@END
+@@@OLD
+  const f = w.forecast;
+  if (!f) return "Prognose: noch zu wenig Messwerte oder kein Anstieg.";
+  if (f.outcome === "limit" && f.limitAt) return `Bei diesem Tempo ist das Limit ${spokenTime(f.limitAt)} erreicht, vor dem Reset.`;
+  return "Bei diesem Tempo reicht es bis zum Reset.";
+@@@NEW
+  const m = tr().phone;
+  const f = w.forecast;
+  if (!f) return m.time.forecastNone;
+  if (f.outcome === "limit" && f.limitAt) return m.time.forecastLimit(spokenTime(f.limitAt));
+  return m.time.forecastOk;
+@@@END
+@@@OLD
+  return new Date(iso).toLocaleString("de-DE", { dateStyle: "short", timeStyle: "short" });
+@@@NEW
+  return new Date(iso).toLocaleString(tr().phone.locale, { dateStyle: "short", timeStyle: "short" });
+@@@END
+@@@OLD
+ * `what`: e.g. { none: "Kein Skill", many: "Skills" }; the first key is the name that is said.
+ */
+function pickOne<T>(items: T[], query: string, keys: (x: T) => string[], what: { none: string; many: string }): T {
+  const q = query.trim().toLowerCase();
+@@@NEW
+ * `what`: e.g. { none: "Kein Skill", many: "Skills" }; the first key is the name that is said.
+ */
+function pickOne<T>(items: T[], query: string, keys: (x: T) => string[], what: { none: string; many: string }): T {
+  const m = tr().phone;
+  const q = query.trim().toLowerCase();
+@@@END
+@@@OLD
+  if (q && hits.length > 1) throw new Error(`Mehrere ${what.many} passen zu „${query}“: ${asData(names(hits))}.`);
+  const known = items.length ? ` Vorhanden: ${asData(names(items))}${items.length > 6 ? " und weitere" : ""}.` : "";
+  throw new Error(q ? `${what.none} „${query}“.${known}` : `Welche? Bitte den Namen nennen.${known}`);
+@@@NEW
+  if (q && hits.length > 1) throw new Error(m.common.pickMany(what.many, query, asData(names(hits))));
+  const known = items.length ? m.common.pickKnown(asData(names(items)), items.length > 6) : "";
+  throw new Error(q ? m.common.pickNone(what.none, query, known) : m.common.pickWhich(known));
+@@@END
+@@@OLD
+  return pickOne(orgs, q, (o) => [o.login, plain(o.login)], { none: "Keine GitHub-Organisation", many: "GitHub-Organisationen" }).login;
+@@@NEW
+  const what = tr().phone.common.what;
+  return pickOne(orgs, q, (o) => [o.login, plain(o.login)], { none: what.githubOrgNone, many: what.githubOrgMany }).login;
+@@@END
+@@@OLD
+const BACKUP_PARTS: Record<BackupPart, string> = { settings: "Einstellungen", projects: "Projekte", phone: "Telefon", claude: "Claude-Konfiguration", git: "Git-Identität", templates: "Vorlagen" };
+const BACKUP_REASONS = { start: "beim Start", manual: "von Hand", "before-restore": "vor einer Wiederherstellung", import: "importiert" } as const;
+
+@@@NEW
+
+@@@END
+@@@OLD
+  const on = (v: boolean) => (v ? "an" : "aus");
+  switch (key) {
+    case "defaultModel":
+      return `Standardmodell ${s.defaultModel ?? "von Claude Code"}`;
+    case "defaultEffort":
+      return `Denkaufwand ${s.defaultEffort ?? "von Claude Code"}`;
+    case "defaultProfile":
+      return `Profil neuer Projekte ${s.defaultProfile}`;
+    case "defaultProjectDir":
+      return s.defaultProjectDir ? `neue Projekte kommen nach ${asData(s.defaultProjectDir)}` : "kein Ordner für neue Projekte";
+    case "sounds":
+      return `Töne ${on(s.sounds)}`;
+    case "desktopNotifications":
+      return `Desktop-Benachrichtigungen ${on(s.desktopNotifications)}`;
+    case "enterToSend":
+      return s.enterToSend ? "Enter sendet" : "Enter macht eine neue Zeile";
+    case "autoContinueAfterLimit":
+      return `automatisch weitermachen nach einem Limit ${on(s.autoContinueAfterLimit)}`;
+    case "idleCloseMinutes":
+      return s.idleCloseMinutes > 0 ? `untätige Claude-Prozesse schließen nach ${s.idleCloseMinutes} Minuten` : "untätige Claude-Prozesse bleiben offen";
+    case "updateChecks":
+      return `Update-Prüfung ${on(s.updateChecks)}`;
+    case "learnTemplates":
+      return `Vorlagen aus wiederkehrenden Nachrichten lernen ${on(s.learnTemplates)}`;
+    case "usageStats":
+      return `anonyme Nutzungsstatistik ${on(s.usageStats)}`;
+    case "debugLogs":
+      return `Debug-Logs ${on(s.debugLogs)}`;
+    case "stripApiKey":
+      return s.stripApiKey ? "ein API-Key aus der Umgebung geht nicht an Claude Code" : "ein API-Key aus der Umgebung geht an Claude Code";
+    case "screenshotKey":
+      return s.screenshotKey ? "die Druck-Taste öffnet das Snipping-Tool von FORGE" : "die Druck-Taste bleibt bei Windows";
+    case "uiCompare":
+      return `Vorher-Nachher-Bilder bei UI-Änderungen ${on(s.uiCompare)}`;
+    case "alwaysOnTop":
+      return `im Vordergrund bleiben ${on(s.alwaysOnTop)}`;
+    case "policyRule":
+    case "policyRuleOn":
+      return s.disabledPolicyRules.length ? `Sperrliste: aus sind ${s.disabledPolicyRules.map((r) => POLICY_RULE_LABELS[r]).join(", ")}` : "Sperrliste: alle Regeln an";
+  }
+@@@NEW
+  const m = tr().phone;
+  switch (key) {
+    case "defaultModel":
+      return m.settings.defaultModel(s.defaultModel);
+    case "defaultEffort":
+      return m.settings.defaultEffort(s.defaultEffort);
+    case "defaultProfile":
+      return m.settings.defaultProfile(s.defaultProfile);
+    case "defaultProjectDir":
+      return s.defaultProjectDir ? m.settings.projectDir(asData(s.defaultProjectDir)) : m.settings.noProjectDir;
+    case "language":
+      return m.settings.language(m.settings.languageNames[s.language]);
+    case "sounds":
+      return m.settings.sounds(s.sounds);
+    case "desktopNotifications":
+      return m.settings.desktopNotifications(s.desktopNotifications);
+    case "enterToSend":
+      return s.enterToSend ? m.settings.enterSends : m.settings.enterNewLine;
+    case "autoContinueAfterLimit":
+      return m.settings.autoContinue(s.autoContinueAfterLimit);
+    case "idleCloseMinutes":
+      return s.idleCloseMinutes > 0 ? m.settings.idleClose(s.idleCloseMinutes) : m.settings.idleOpen;
+    case "updateChecks":
+      return m.settings.updateChecks(s.updateChecks);
+    case "learnTemplates":
+      return m.settings.learnTemplates(s.learnTemplates);
+    case "usageStats":
+      return m.settings.usageStats(s.usageStats);
+    case "debugLogs":
+      return m.settings.debugLogs(s.debugLogs);
+    case "stripApiKey":
+      return s.stripApiKey ? m.settings.stripApiKey : m.settings.passApiKey;
+    case "screenshotKey":
+      return s.screenshotKey ? m.settings.screenshotKey : m.settings.windowsScreenshot;
+    case "uiCompare":
+      return m.settings.uiCompare(s.uiCompare);
+    case "alwaysOnTop":
+      return m.settings.alwaysOnTop(s.alwaysOnTop);
+    case "policyRule":
+    case "policyRuleOn":
+      return s.disabledPolicyRules.length ? m.settings.policyOff(s.disabledPolicyRules.map((r) => policyRuleLabel(r)).join(", ")) : m.settings.policyAllOn;
+  }
+@@@END
+@@@OLD
+        if (!c.path) throw new ForgeError("CLAUDE_NOT_INSTALLED", "Claude Code CLI wurde nicht gefunden.");
+@@@NEW
+        if (!c.path) throw new ForgeError("CLAUDE_NOT_INSTALLED", tr().phone.line.claudeNotFound);
+@@@END
+@@@OLD
+    if (this.busy) throw new Error("FORGE telefoniert gerade; die Telefon-Einstellungen kommen beim nächsten Abgleich.");
+@@@NEW
+    if (this.busy) throw new Error(tr().phone.line.syncDuringCall);
+@@@END
+@@@OLD
+      throw new ForgeError("VALIDATION", `Telefon nicht eingerichtet: ${missing} Bitte in den Einstellungen unter Telefon ergänzen.`, details);
+@@@NEW
+      throw new ForgeError("VALIDATION", tr().phone.line.notSetUp(missing), details);
+@@@END
+@@@OLD
+    if (!this.cfg.server || !this.cfg.username) return "Server und Benutzer fehlen.";
+    if (!this.d.secrets.has(SECRET_PASSWORD)) return "SIP-Passwort fehlt.";
+    if (this.cfg.engine === "gemini-live") {
+      if (!this.d.secrets.has(SECRET_GEMINI)) return "Gemini-API-Key fehlt (für Gemini Live).";
+      return null;
+    }
+    if (this.cfg.speechProvider === "openai" && !this.d.secrets.has(SECRET_OPENAI)) return "OpenAI-API-Key fehlt.";
+    if (this.cfg.speechProvider === "gemini" && !this.d.secrets.has(SECRET_GEMINI)) return "Gemini-API-Key fehlt.";
+    if (!this.d.claude().path) return "Claude Code ist nicht installiert.";
+@@@NEW
+    const m = tr().phone.line;
+    if (!this.cfg.server || !this.cfg.username) return m.missingServer;
+    if (!this.d.secrets.has(SECRET_PASSWORD)) return m.missingSipPassword;
+    if (this.cfg.engine === "gemini-live") {
+      if (!this.d.secrets.has(SECRET_GEMINI)) return m.missingGeminiLive;
+      return null;
+    }
+    if (this.cfg.speechProvider === "openai" && !this.d.secrets.has(SECRET_OPENAI)) return m.missingOpenAi;
+    if (this.cfg.speechProvider === "gemini" && !this.d.secrets.has(SECRET_GEMINI)) return m.missingGemini;
+    if (!this.d.claude().path) return m.missingClaude;
+@@@END
+@@@OLD
+    this.message = /ENOTFOUND|EAI_AGAIN/.test(msg) ? `Server ${this.cfg.server} nicht gefunden.` : msg.slice(0, 300);
+@@@NEW
+    this.message = /ENOTFOUND|EAI_AGAIN/.test(msg) ? tr().phone.line.serverNotFound(this.cfg.server) : msg.slice(0, 300);
+@@@END
+@@@OLD
+      this.desk.message = /EADDRINUSE/.test(msg) ? `Port ${c.httpPort} ist belegt (läuft noch ein anderes Programm darauf?).` : msg;
+@@@NEW
+      this.desk.message = /EADDRINUSE/.test(msg) ? tr().phone.line.deskPortBusy(c.httpPort) : msg;
+@@@END
+@@@OLD
+    if (!this.desk.running) throw new ForgeError("VALIDATION", this.desk.message ?? "Das Tischtelefon ist nicht eingeschaltet.");
+    this.desk.notice("FORGE", "Verbindung steht.");
+@@@NEW
+    const m = tr().phone.line;
+    if (!this.desk.running) throw new ForgeError("VALIDATION", this.desk.message ?? m.deskOff);
+    this.desk.notice("FORGE", m.deskTest);
+@@@END
+@@@OLD
+    let title = "ohne Titel";
+    try {
+      title = this.d.sessions.get(sessionId).title ?? title;
+    } catch {
+      return;
+    }
+    a.focus = sessionId;
+    a.controller.note(
+      `[FORGE: Der Anrufer hat am Tischtelefon die Taste für Session ${this.refFor(a, sessionId)} ${asData(title)} gedrückt. Ab jetzt geht es um diese Session, wenn er nichts anderes sagt. Sag kurz, wie es um sie steht.]`,
+    );
+@@@NEW
+    let title = tr().phone.untitled;
+    try {
+      title = this.d.sessions.get(sessionId).title ?? title;
+    } catch {
+      return;
+    }
+    a.focus = sessionId;
+    a.controller.note(tr().phone.notes.deskKey(this.refFor(a, sessionId), asData(title)));
+@@@END
+@@@OLD
+    if (!password) throw new Error("SIP-Passwort fehlt.");
+@@@NEW
+    if (!password) throw new Error(tr().phone.line.missingSipPassword);
+@@@END

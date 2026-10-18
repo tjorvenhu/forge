@@ -1,4 +1,5 @@
 import { EventEmitter } from "node:events";
+import { tr } from "../i18n/index.js";
 import type { CallEvents, PhoneCall, SipCall } from "./sip-ua.js";
 
 /**
@@ -49,11 +50,11 @@ export class ForkedCall extends EventEmitter<CallEvents> implements PhoneCall {
 
   private answered(leg: SipCall, body: string) {
     if (this.done || (this.winner && this.winner !== leg)) {
-      void leg.hangup("An einer anderen Nummer angenommen");
+      void leg.hangup(tr().phone.call.answeredElsewhere);
       return;
     }
     this.winner = leg;
-    for (const other of this.legs) if (other !== leg) void other.hangup("An einer anderen Nummer angenommen");
+    for (const other of this.legs) if (other !== leg) void other.hangup(tr().phone.call.answeredElsewhere);
     this.emit("answered", body);
   }
 

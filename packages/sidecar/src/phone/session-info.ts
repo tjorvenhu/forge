@@ -1,5 +1,6 @@
 import type { SessionEventBody } from "@forge/protocol";
 import type { Db } from "../persistence/db.js";
+import { tr } from "../i18n/index.js";
 import { asData } from "./tools.js";
 
 /** longest command or plan handed to the conversation partner in details */
@@ -8,8 +9,9 @@ const DETAILS_MAX = 4000;
 /** Session text for Claude: marked as data, and a cut is said, not hidden. */
 export function excerptData(text: string, max: number): string {
   const t = text.replace(/\s+/g, " ").trim();
-  if (!t) return "(kein Text)";
-  return t.length > max ? `${asData(t.slice(0, max))} (gekürzt, insgesamt ${t.length} Zeichen)` : asData(t);
+  const p = tr().phone.pending;
+  if (!t) return p.noText;
+  return t.length > max ? p.cut(asData(t.slice(0, max)), t.length) : asData(t);
 }
 
 /** The last thing Claude said in a session (result text, else last answer). */
@@ -44,20 +46,20 @@ export function requestSubject(req: ApprovalRequest): string {
 
 /** What a session waits for, for Claude. `short` (status) names the kind only; details has the full text. */
 export function pendingText(db: Db, sessionId: string, short = false): string {
+  const p = tr().phone.pending;
   const req = openRequest(db, sessionId);
-  if (!req) return "nichts";
+  if (!req) return p.nothing;
   if (req.toolName === "AskUserQuestion") {
-    if (short) return "eine Rückfrage von Claude.";
+    if (short) return p.questionShort;
     const qs = Array.isArray(req.input.questions) ? (req.input.questions as Array<{ question?: string; options?: Array<{ label?: string }> }>) : [];
-    return `Rückfrage von Claude: ${asData(qs.map((q) => `${q.question ?? ""} Optionen: ${(q.options ?? []).map((o) => o.label).join(", ")}.`).join(" "))}`;
+    return p.question(asData(qs.map((q) => p.questionOptions(q.question ?? "", (q.options ?? []).map((o) => o.label).join(", "))).join(" ")));
   }
   if (req.toolName === "ExitPlanMode") {
-    if (short) return "ein Plan zur Freigabe.";
+    if (short) return p.planShort;
     const plan = typeof req.input.plan === "string" ? req.input.plan : "";
-    return `Ein Plan zur Freigabe: ${excerptData(plan, DETAILS_MAX)}`;
+    return p.plan(excerptData(plan, DETAILS_MAX));
   }
-  if (short) return `eine Freigabe für ${req.toolName}.`;
+  if (short) return p.approvalShort(req.toolName);
   const subject = requestSubject(req);
-  return `Freigabe für ${req.toolName}${subject ? `: ${excerptData(subject, DETAILS_MAX)}` : "."}`;
+  return p.approval(req.toolName, subject ? excerptData(subject, DETAILS_MAX) : "");
 }
-

@@ -1,4 +1,5 @@
 import { PHONE_VOICES } from "@forge/protocol";
+import { tr } from "../i18n/index.js";
 import { bytesToPcm, Downsampler, pcmToWav } from "./audio.js";
 
 /** Speech recognition and speech output for calls. Audio is 8 kHz 16-bit mono PCM. */
@@ -25,8 +26,6 @@ const TTS_RATE_FACTOR = 3;
  * top of that. Without headroom peaks are clipped, which is heard as crackling on loud syllables.
  */
 const TTS_GAIN = 0.8;
-/** Words Claude Code users say on the phone that a generic model tends to mishear. */
-const VOCABULARY = "FORGE, Claude, Session, Commit, Branch, Pull Request, Deploy, Dev-Server, Freigabe, Plan, Projekt";
 
 export class OpenAiVoice implements VoiceProvider {
   private readonly timeouts: { transcribeMs: number; speakMs: number };
@@ -43,17 +42,17 @@ export class OpenAiVoice implements VoiceProvider {
     form.append("file", new Blob([new Uint8Array(pcmToWav(pcm))], { type: "audio/wav" }), "anruf.wav");
     form.append("model", this.o.sttModel);
     // gpt-transcribe takes a list of languages instead; without a hint it detects the language itself.
-    if (!this.o.sttModel.startsWith("gpt-transcribe")) form.append("language", "de");
-    form.append("prompt", VOCABULARY);
+    if (!this.o.sttModel.startsWith("gpt-transcribe")) form.append("language", tr().phone.voice.sttLanguage);
+    form.append("prompt", tr().phone.voice.vocabulary);
     form.append("response_format", "json");
     const limit = withTimeout(signal, this.timeouts.transcribeMs);
     try {
       const res = await fetch(`${API}/audio/transcriptions`, { method: "POST", headers: { authorization: `Bearer ${this.apiKey}` }, body: form, signal: limit });
-      if (!res.ok) throw new Error(await apiError(res, "Spracherkennung"));
+      if (!res.ok) throw new Error(await apiError(res, tr().phone.voice.stt));
       const json = (await res.json()) as { text?: string };
       return (json.text ?? "").trim();
     } catch (e) {
-      throw timeoutError(e, limit, signal, "Spracherkennung");
+      throw timeoutError(e, limit, signal, tr().phone.voice.stt);
     }
   }
 
@@ -68,11 +67,11 @@ export class OpenAiVoice implements VoiceProvider {
           voice: this.o.voice,
           input: text,
           response_format: "pcm",
-          instructions: "Sprich natürliches Deutsch, freundlich, zügig und klar, wie am Telefon.",
+          instructions: tr().phone.voice.ttsInstructions,
         }),
         signal: limit,
       });
-      if (!res.ok || !res.body) throw new Error(await apiError(res, "Sprachausgabe"));
+      if (!res.ok || !res.body) throw new Error(await apiError(res, tr().phone.voice.tts));
       const down = new Downsampler(TTS_RATE_FACTOR);
       let rest: Uint8Array = new Uint8Array(0);
       for await (const chunk of res.body as unknown as AsyncIterable<Uint8Array>) {
@@ -86,7 +85,7 @@ export class OpenAiVoice implements VoiceProvider {
       }
     } catch (e) {
       if (signal.aborted) return;
-      throw timeoutError(e, limit, signal, "Sprachausgabe");
+      throw timeoutError(e, limit, signal, tr().phone.voice.tts);
     }
   }
 }
@@ -98,7 +97,7 @@ function withTimeout(signal: AbortSignal | undefined, ms: number): AbortSignal {
 
 /** A timeout reads better than "This operation was aborted". */
 function timeoutError(e: unknown, limit: AbortSignal, outer: AbortSignal | undefined, what: string): unknown {
-  if (limit.aborted && !outer?.aborted) return new Error(`${what}: OpenAI antwortet nicht rechtzeitig.`);
+  if (limit.aborted && !outer?.aborted) return new Error(tr().phone.voice.openAiTimeout(what));
   return e;
 }
 
@@ -110,7 +109,7 @@ async function apiError(res: Response, what: string): Promise<string> {
   } catch {
     /* no JSON body */
   }
-  if (res.status === 401) return `${what}: OpenAI-API-Key ungültig.`;
-  if (res.status === 429) return `${what}: OpenAI-Limit erreicht oder kein Guthaben.`;
-  return `${what} fehlgeschlagen (${res.status})${detail ? `: ${detail}` : ""}`;
+  if (res.status === 401) return tr().phone.voice.openAiKeyInvalid(what);
+  if (res.status === 429) return tr().phone.voice.openAiLimit(what);
+  return tr().phone.voice.failed(what, res.status, detail);
 }

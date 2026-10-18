@@ -76,10 +76,3 @@ export class PinPad {
     this.h.onWrong(final);
   }
 }
-
-export const PIN_TEXT = {
-  unlockedNote: "[FORGE: PIN richtig, Steuern ist frei. Sag nur „Freigeschaltet.“ Wollte der Anrufer vorher schon etwas Gesperrtes, erledige es jetzt.]",
-  locked: "Die PIN-Eingabe ist nach zu vielen Fehlversuchen vorübergehend gesperrt. Steuern geht in diesem Gespräch nicht.",
-  wrong: "Die PIN ist falsch. Bitte noch einmal eingeben und mit Raute bestätigen.",
-  final: "Die PIN war mehrmals falsch. Ich lege auf.",
-};

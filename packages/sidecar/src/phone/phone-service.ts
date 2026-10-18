@@ -59,14 +59,16 @@ import type { SecretStore } from "./secrets.js";
 import { localIpTowards, SipUserAgent, type PhoneCall, type SipAccount, type SipCall } from "./sip-ua.js";
 import { ForkedCall } from "./forked-call.js";
 import {
-  AUTOMATION_TAGS,
+  AUTOMATION_TAG_IDS,
+  automationTagLabel,
   geminiFunctionDeclarations,
   phoneSystemPrompt,
-  POLICY_RULE_LABELS,
+  policyRuleLabel,
   type AutomationTag,
   type CallSettingsPatch,
   type ForgeSettingsPatch,
 } from "./tools.js";
+import { tr } from "../i18n/index.js";
 import { AUTO_MERGE_TAG } from "../automation/agent-auto-merge.js";
 import { localDate, reportText } from "../reports/daily-report.js";
 import { tokenMeter } from "../claude/token-meter.js";
@@ -87,7 +89,7 @@ const AUTO_MERGE_PARALLEL = 3;
 /** wait before calling, so a quick follow-up turn or an answer at the desk makes the call unnecessary */
 const NOTIFY_DELAY_MS = { done: 5_000, error: 5_000, approval: 15_000, notify: 2_000 };
 const NOTIFY_COOLDOWN_MS = 60_000;
-const GREETING = "Hallo, hier ist FORGE. Was kann ich für dich tun?";
+
 /** numbers in national notation (030 ...) belong to this country */
 export const DEFAULT_COUNTRY_CODE = "49";
 const SHUTDOWN_TIMEOUT_MS = 4000;
@@ -267,7 +269,7 @@ interface PendingConfirm {
 }
 
 const CONFIRM_TTL_MS = 2 * 60_000;
-const SETUP_STEP_WORD = { pending: "wartet", running: "läuft", done: "fertig", skipped: "übersprungen", failed: "fehlgeschlagen" } as const;
+
 
 /**
  * A phone number in one canonical form, so different notations compare equal: "+49 30 1234567",
@@ -300,9 +302,10 @@ const FORKED_EXACT_LATCH_MS = 400;
 
 /** "Angerufen wird: Handy 0172 1, Büro 030 2 (aus)." for call_settings. */
 function numberListing(what: string, list: PhoneNumberEntry[]): string {
-  if (!list.length) return `${what}: keine Nummer eingetragen.`;
-  const one = (n: PhoneNumberEntry) => [n.label, n.number].filter(Boolean).join(" ") + (n.enabled ? "" : " (aus)");
-  return `${what}: ${asData(list.map(one).join(", "))}.`;
+  const m = tr().phone;
+  if (!list.length) return m.callSettings.listNone(what);
+  const one = (n: PhoneNumberEntry) => [n.label, n.number].filter(Boolean).join(" ") + (n.enabled ? "" : m.callSettings.listOff);
+  return m.callSettings.listing(what, asData(list.map(one).join(", ")));
 }
 
 type LegacyNumbers = { notifyNumber?: string | null; allowedCallers?: Array<string | PhoneNumberEntry>; notifyNumbers?: PhoneNumberEntry[] };
@@ -335,18 +338,20 @@ function cleanNumbers(list: PhoneNumberEntry[]): PhoneNumberEntry[] {
 
 /** A reset time as it is said on the phone: "um 14:30" today, else with the weekday. */
 function spokenTime(iso: string): string {
+  const m = tr().phone;
   const d = new Date(iso);
-  const time = d.toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" });
-  if (d.toDateString() === new Date().toDateString()) return `heute um ${time}`;
-  return `${d.toLocaleDateString("de-DE", { weekday: "long" })} um ${time}`;
+  const time = d.toLocaleTimeString(m.locale, { hour: "2-digit", minute: "2-digit" });
+  if (d.toDateString() === new Date().toDateString()) return m.time.today(time);
+  return m.time.weekday(d.toLocaleDateString(m.locale, { weekday: "long" }), time);
 }
 
 /** The limit forecast of a usage window as said on the phone ("Reicht mein Limit noch?"). */
 export function spokenForecast(w: UsageWindow): string {
+  const m = tr().phone;
   const f = w.forecast;
-  if (!f) return "Prognose: noch zu wenig Messwerte oder kein Anstieg.";
-  if (f.outcome === "limit" && f.limitAt) return `Bei diesem Tempo ist das Limit ${spokenTime(f.limitAt)} erreicht, vor dem Reset.`;
-  return "Bei diesem Tempo reicht es bis zum Reset.";
+  if (!f) return m.time.forecastNone;
+  if (f.outcome === "limit" && f.limitAt) return m.time.forecastLimit(spokenTime(f.limitAt));
+  return m.time.forecastOk;
 }
 
 function errorText(e: unknown): string {
@@ -354,7 +359,7 @@ function errorText(e: unknown): string {
 }
 
 function dateTime(iso: string): string {
-  return new Date(iso).toLocaleString("de-DE", { dateStyle: "short", timeStyle: "short" });
+  return new Date(iso).toLocaleString(tr().phone.locale, { dateStyle: "short", timeStyle: "short" });
 }
 
 /** "" and "default" clear a setting, so it falls back to the global one */
@@ -368,14 +373,15 @@ function clearable(v: string): string | null {
  * `what`: e.g. { none: "Kein Skill", many: "Skills" }; the first key is the name that is said.
  */
 function pickOne<T>(items: T[], query: string, keys: (x: T) => string[], what: { none: string; many: string }): T {
+  const m = tr().phone;
   const q = query.trim().toLowerCase();
   const exact = items.filter((x) => keys(x).some((k) => k.toLowerCase() === q));
   const hits = exact.length ? exact : items.filter((x) => keys(x).some((k) => k.toLowerCase().includes(q)));
   if (q && hits.length === 1) return hits[0]!;
   const names = (xs: T[]) => xs.slice(0, 6).map((x) => keys(x)[0]).join(", ");
-  if (q && hits.length > 1) throw new Error(`Mehrere ${what.many} passen zu „${query}“: ${asData(names(hits))}.`);
-  const known = items.length ? ` Vorhanden: ${asData(names(items))}${items.length > 6 ? " und weitere" : ""}.` : "";
-  throw new Error(q ? `${what.none} „${query}“.${known}` : `Welche? Bitte den Namen nennen.${known}`);
+  if (q && hits.length > 1) throw new Error(m.common.pickMany(what.many, query, asData(names(hits))));
+  const known = items.length ? m.common.pickKnown(asData(names(items)), items.length > 6) : "";
+  throw new Error(q ? m.common.pickNone(what.none, query, known) : m.common.pickWhich(known));
 }
 
 /** A spoken GitHub organisation ("vanturis") against the account's organisations; nothing spoken or the account itself: the personal account. */
@@ -386,7 +392,8 @@ async function resolveOwner(call: PhoneRpc, spoken: string | undefined): Promise
   const acc = await call("github.account", {});
   if (acc && plain(acc.login) === q) return null;
   const orgs = await call("github.orgs", {});
-  return pickOne(orgs, q, (o) => [o.login, plain(o.login)], { none: "Keine GitHub-Organisation", many: "GitHub-Organisationen" }).login;
+  const what = tr().phone.common.what;
+  return pickOne(orgs, q, (o) => [o.login, plain(o.login)], { none: what.githubOrgNone, many: what.githubOrgMany }).login;
 }
 
 const ENV_LINE = /^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=/;
@@ -418,50 +425,50 @@ function removeEnvLine(text: string, name: string): string {
 }
 
 type SessionsArgs = Parameters<PhoneToolset["sessions"]>;
-const BACKUP_PARTS: Record<BackupPart, string> = { settings: "Einstellungen", projects: "Projekte", phone: "Telefon", claude: "Claude-Konfiguration", git: "Git-Identität", templates: "Vorlagen" };
-const BACKUP_REASONS = { start: "beim Start", manual: "von Hand", "before-restore": "vor einer Wiederherstellung", import: "importiert" } as const;
 
 /** A global setting as said on the phone. */
 function settingText(s: Settings, key: keyof ForgeSettingsPatch | "alwaysOnTop"): string {
-  const on = (v: boolean) => (v ? "an" : "aus");
+  const m = tr().phone;
   switch (key) {
     case "defaultModel":
-      return `Standardmodell ${s.defaultModel ?? "von Claude Code"}`;
+      return m.settings.defaultModel(s.defaultModel);
     case "defaultEffort":
-      return `Denkaufwand ${s.defaultEffort ?? "von Claude Code"}`;
+      return m.settings.defaultEffort(s.defaultEffort);
     case "defaultProfile":
-      return `Profil neuer Projekte ${s.defaultProfile}`;
+      return m.settings.defaultProfile(s.defaultProfile);
     case "defaultProjectDir":
-      return s.defaultProjectDir ? `neue Projekte kommen nach ${asData(s.defaultProjectDir)}` : "kein Ordner für neue Projekte";
+      return s.defaultProjectDir ? m.settings.projectDir(asData(s.defaultProjectDir)) : m.settings.noProjectDir;
+    case "language":
+      return m.settings.language(m.settings.languageNames[s.language]);
     case "sounds":
-      return `Töne ${on(s.sounds)}`;
+      return m.settings.sounds(s.sounds);
     case "desktopNotifications":
-      return `Desktop-Benachrichtigungen ${on(s.desktopNotifications)}`;
+      return m.settings.desktopNotifications(s.desktopNotifications);
     case "enterToSend":
-      return s.enterToSend ? "Enter sendet" : "Enter macht eine neue Zeile";
+      return s.enterToSend ? m.settings.enterSends : m.settings.enterNewLine;
     case "autoContinueAfterLimit":
-      return `automatisch weitermachen nach einem Limit ${on(s.autoContinueAfterLimit)}`;
+      return m.settings.autoContinue(s.autoContinueAfterLimit);
     case "idleCloseMinutes":
-      return s.idleCloseMinutes > 0 ? `untätige Claude-Prozesse schließen nach ${s.idleCloseMinutes} Minuten` : "untätige Claude-Prozesse bleiben offen";
+      return s.idleCloseMinutes > 0 ? m.settings.idleClose(s.idleCloseMinutes) : m.settings.idleOpen;
     case "updateChecks":
-      return `Update-Prüfung ${on(s.updateChecks)}`;
+      return m.settings.updateChecks(s.updateChecks);
     case "learnTemplates":
-      return `Vorlagen aus wiederkehrenden Nachrichten lernen ${on(s.learnTemplates)}`;
+      return m.settings.learnTemplates(s.learnTemplates);
     case "usageStats":
-      return `anonyme Nutzungsstatistik ${on(s.usageStats)}`;
+      return m.settings.usageStats(s.usageStats);
     case "debugLogs":
-      return `Debug-Logs ${on(s.debugLogs)}`;
+      return m.settings.debugLogs(s.debugLogs);
     case "stripApiKey":
-      return s.stripApiKey ? "ein API-Key aus der Umgebung geht nicht an Claude Code" : "ein API-Key aus der Umgebung geht an Claude Code";
+      return s.stripApiKey ? m.settings.stripApiKey : m.settings.passApiKey;
     case "screenshotKey":
-      return s.screenshotKey ? "die Druck-Taste öffnet das Snipping-Tool von FORGE" : "die Druck-Taste bleibt bei Windows";
+      return s.screenshotKey ? m.settings.screenshotKey : m.settings.windowsScreenshot;
     case "uiCompare":
-      return `Vorher-Nachher-Bilder bei UI-Änderungen ${on(s.uiCompare)}`;
+      return m.settings.uiCompare(s.uiCompare);
     case "alwaysOnTop":
-      return `im Vordergrund bleiben ${on(s.alwaysOnTop)}`;
+      return m.settings.alwaysOnTop(s.alwaysOnTop);
     case "policyRule":
     case "policyRuleOn":
-      return s.disabledPolicyRules.length ? `Sperrliste: aus sind ${s.disabledPolicyRules.map((r) => POLICY_RULE_LABELS[r]).join(", ")}` : "Sperrliste: alle Regeln an";
+      return s.disabledPolicyRules.length ? m.settings.policyOff(s.disabledPolicyRules.map((r) => policyRuleLabel(r)).join(", ")) : m.settings.policyAllOn;
   }
 }
 
@@ -500,7 +507,7 @@ export class PhoneService {
       geminiVoice: (key, o) => new GeminiVoice(key, o),
       conversation: ({ tools, context, cb }) => {
         const c = claude();
-        if (!c.path) throw new ForgeError("CLAUDE_NOT_INSTALLED", "Claude Code CLI wurde nicht gefunden.");
+        if (!c.path) throw new ForgeError("CLAUDE_NOT_INSTALLED", tr().phone.line.claudeNotFound);
         return new PhoneAgent({ claudePath: c.path, env: c.env, cwd: c.cwd, model: PHONE_MODEL, tools, context, ...cb });
       },
       live: (o) => new GeminiLive({ ...o, functionDeclarations: geminiFunctionDeclarations() }),
@@ -563,7 +570,7 @@ export class PhoneService {
 
   /** Takes over settings from the sync, keeps the parts of this computer and reconnects. Refuses during a call. */
   async applySyncConfig(synced: Record<string, unknown>) {
-    if (this.busy) throw new Error("FORGE telefoniert gerade; die Telefon-Einstellungen kommen beim nächsten Abgleich.");
+    if (this.busy) throw new Error(tr().phone.line.syncDuringCall);
     const cur = this.cfg;
     const desk = { ...cur.desk, ...((synced.desk as Partial<StoredDesk> | undefined) ?? {}), enabled: cur.desk.enabled };
     this.d.db.setPhoneSettings({ ...cur, ...synced, desk, enabled: cur.enabled, deskToken: cur.deskToken, pinGuard: cur.pinGuard, callbacks: cur.callbacks });
@@ -677,7 +684,7 @@ export class PhoneService {
     const missing = this.missingSetup();
     if (missing) {
       const details: PhoneSetupIncomplete = { phoneSetupIncomplete: true };
-      throw new ForgeError("VALIDATION", `Telefon nicht eingerichtet: ${missing} Bitte in den Einstellungen unter Telefon ergänzen.`, details);
+      throw new ForgeError("VALIDATION", tr().phone.line.notSetUp(missing), details);
     }
     this.persistEnabled(true);
     await this.startDesk();
@@ -686,22 +693,23 @@ export class PhoneService {
   }
 
   private missingSetup(): string | null {
-    if (!this.cfg.server || !this.cfg.username) return "Server und Benutzer fehlen.";
-    if (!this.d.secrets.has(SECRET_PASSWORD)) return "SIP-Passwort fehlt.";
+    const m = tr().phone.line;
+    if (!this.cfg.server || !this.cfg.username) return m.missingServer;
+    if (!this.d.secrets.has(SECRET_PASSWORD)) return m.missingSipPassword;
     if (this.cfg.engine === "gemini-live") {
-      if (!this.d.secrets.has(SECRET_GEMINI)) return "Gemini-API-Key fehlt (für Gemini Live).";
+      if (!this.d.secrets.has(SECRET_GEMINI)) return m.missingGeminiLive;
       return null;
     }
-    if (this.cfg.speechProvider === "openai" && !this.d.secrets.has(SECRET_OPENAI)) return "OpenAI-API-Key fehlt.";
-    if (this.cfg.speechProvider === "gemini" && !this.d.secrets.has(SECRET_GEMINI)) return "Gemini-API-Key fehlt.";
-    if (!this.d.claude().path) return "Claude Code ist nicht installiert.";
+    if (this.cfg.speechProvider === "openai" && !this.d.secrets.has(SECRET_OPENAI)) return m.missingOpenAi;
+    if (this.cfg.speechProvider === "gemini" && !this.d.secrets.has(SECRET_GEMINI)) return m.missingGemini;
+    if (!this.d.claude().path) return m.missingClaude;
     return null;
   }
 
   private fail(e: unknown) {
     this.registration = "failed";
     const msg = errorText(e);
-    this.message = /ENOTFOUND|EAI_AGAIN/.test(msg) ? `Server ${this.cfg.server} nicht gefunden.` : msg.slice(0, 300);
+    this.message = /ENOTFOUND|EAI_AGAIN/.test(msg) ? tr().phone.line.serverNotFound(this.cfg.server) : msg.slice(0, 300);
     this.emitState();
   }
 
@@ -736,15 +744,16 @@ export class PhoneService {
       const msg = errorText(e);
       this.d.log(`Tischtelefon: nicht gestartet: ${msg}`);
       this.desk.reachable = false;
-      this.desk.message = /EADDRINUSE/.test(msg) ? `Port ${c.httpPort} ist belegt (läuft noch ein anderes Programm darauf?).` : msg;
+      this.desk.message = /EADDRINUSE/.test(msg) ? tr().phone.line.deskPortBusy(c.httpPort) : msg;
     }
     this.emitState();
   }
 
   /** Shows a test message on the desk phone and sends keys, LEDs and display again. */
   async deskTest(): Promise<PhoneState> {
-    if (!this.desk.running) throw new ForgeError("VALIDATION", this.desk.message ?? "Das Tischtelefon ist nicht eingeschaltet.");
-    this.desk.notice("FORGE", "Verbindung steht.");
+    const m = tr().phone.line;
+    if (!this.desk.running) throw new ForgeError("VALIDATION", this.desk.message ?? m.deskOff);
+    this.desk.notice("FORGE", m.deskTest);
     this.desk.forceRefresh();
     return this.state();
   }
@@ -753,16 +762,14 @@ export class PhoneService {
   private keyInCall(sessionId: string) {
     const a = this.active;
     if (!a?.controller) return;
-    let title = "ohne Titel";
+    let title = tr().phone.untitled;
     try {
       title = this.d.sessions.get(sessionId).title ?? title;
     } catch {
       return;
     }
     a.focus = sessionId;
-    a.controller.note(
-      `[FORGE: Der Anrufer hat am Tischtelefon die Taste für Session ${this.refFor(a, sessionId)} ${asData(title)} gedrückt. Ab jetzt geht es um diese Session, wenn er nichts anderes sagt. Sag kurz, wie es um sie steht.]`,
-    );
+    a.controller.note(tr().phone.notes.deskKey(this.refFor(a, sessionId), asData(title)));
     this.desk.refresh();
   }
 
@@ -777,7 +784,7 @@ export class PhoneService {
   private async connect() {
     await this.disconnect();
     const password = await this.d.secrets.get(SECRET_PASSWORD);
-    if (!password) throw new Error("SIP-Passwort fehlt.");
+    if (!password) throw new Error(tr().phone.line.missingSipPassword);
     const ua = this.f.ua({
       server: this.cfg.server,
       port: this.cfg.port,
@@ -868,12 +875,13 @@ export class PhoneService {
     const due = live.find((c) => Date.parse(c.dueAt) <= now);
     if (!due || !this.cfg.enabled || this.busy || this.registration !== "registered") return;
     this.saveCallbacks(live.filter((c) => c.id !== due.id));
-    const asked = new Date(due.createdAt).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" });
+    const m = tr().phone;
+    const asked = new Date(due.createdAt).toLocaleTimeString(m.locale, { hour: "2-digit", minute: "2-digit" });
     try {
       await this.dial(
         due.number ? [due.number] : this.notifyTargets(),
-        `Rückruf wie verabredet: ${due.about}`,
-        `[FORGE: Du rufst den Nutzer wie verabredet zurück. Um ${asked} hat er darum gebeten und wollte dann wissen: ${asData(due.about)} Prüfe das jetzt mit den Werkzeugen, nicht aus der Erinnerung. Er hat gerade abgenommen. Sag „Hallo, hier ist FORGE, wie verabredet.“ und dann in ein bis zwei Sätzen das Ergebnis. Dann warte, was er sagt.]`,
+        m.dial.callbackReason(due.about),
+        m.dial.callbackOpening(asked, asData(due.about)),
         new Map(),
         null,
       );
@@ -889,17 +897,18 @@ export class PhoneService {
   }
 
   async hangup(): Promise<PhoneState> {
-    await this.active?.call.hangup("In FORGE aufgelegt");
+    await this.active?.call.hangup(tr().phone.call.hungUpInForge);
     return this.state();
   }
 
   async testCall(): Promise<PhoneState> {
     const numbers = activeNumbers(this.cfg.notifyNumbers);
-    if (!numbers.length) throw new ForgeError("VALIDATION", "Bitte zuerst in den Einstellungen unter Telefon mindestens eine Nummer eintragen und einschalten, die FORGE anrufen soll.");
+    const m = tr().phone;
+    if (!numbers.length) throw new ForgeError("VALIDATION", m.line.noNumberForTest);
     await this.dial(
       numbers,
-      "Testanruf",
-      "[FORGE: Testanruf aus den Einstellungen. Der Nutzer hat gerade abgenommen. Sag nur „Hallo, hier ist FORGE. Die Verbindung steht.“ und warte, ob er etwas will.]",
+      m.dial.testReason,
+      m.dial.testOpening,
       new Map(),
       null,
     );
@@ -912,16 +921,16 @@ export class PhoneService {
   private async speech(): Promise<Speech> {
     if (this.cfg.engine === "gemini-live") {
       const apiKey = await this.d.secrets.get(SECRET_GEMINI);
-      if (!apiKey) throw new Error("Gemini-API-Key fehlt.");
+      if (!apiKey) throw new Error(tr().phone.line.missingGemini);
       return { engine: "gemini-live", apiKey };
     }
     if (this.cfg.speechProvider === "gemini") {
       const key = await this.d.secrets.get(SECRET_GEMINI);
-      if (!key) throw new Error("Gemini-API-Key fehlt.");
+      if (!key) throw new Error(tr().phone.line.missingGemini);
       return { engine: "claude", voice: this.f.geminiVoice(key, { voice: this.cfg.geminiVoice, sttModel: this.cfg.geminiSttModel, ttsModel: this.cfg.geminiTtsModel }) };
     }
     const key = await this.d.secrets.get(SECRET_OPENAI);
-    if (!key) throw new Error("OpenAI-API-Key fehlt.");
+    if (!key) throw new Error(tr().phone.line.missingOpenAi);
     return { engine: "claude", voice: this.f.voice(key, { voice: this.cfg.voice, sttModel: this.cfg.sttModel, ttsModel: this.cfg.ttsModel }) };
   }
 
@@ -980,6 +989,7 @@ export class PhoneService {
   }
 
   private createController(a: ActiveCall, speech: Speech, opening: string | null): CallHandler {
+    const m = tr().phone;
     const pinHash = this.cfg.pinHash;
     const live = speech.engine === "gemini-live";
     const incoming = a.call.direction === "in";
@@ -987,25 +997,21 @@ export class PhoneService {
     if (incoming && a.focus) {
       try {
         const s = this.d.sessions.get(a.focus);
-        picked = `Der Anrufer hat vor dem Anruf am Tischtelefon die Session ${this.refFor(a, a.focus)} ${asData(s.title ?? "ohne Titel")} gewählt. Wenn er nichts anderes sagt, geht es um sie.`;
+        picked = m.context.picked(this.refFor(a, a.focus), asData(s.title ?? m.untitled));
       } catch {
         a.focus = null;
       }
     }
     const context = [
-      `Heute ist ${new Date().toLocaleString("de-DE", { dateStyle: "full", timeStyle: "short" })}.`,
+      m.context.today(new Date().toLocaleString(m.locale, { dateStyle: "full", timeStyle: "short" })),
       incoming
         ? live
-          ? `Eingehender Anruf von ${a.call.remoteNumber}.`
-          : `Eingehender Anruf von ${a.call.remoteNumber}. Du hast schon mit "${GREETING}" begrüßt.`
+          ? m.context.incomingLive(a.call.remoteNumber)
+          : m.context.incoming(a.call.remoteNumber, m.greeting)
         : // The reason holds session titles and the words of an agreed callback: data, not instructions.
-          `Du rufst ${a.call.remoteNumber} an. Anlass: ${asData(a.info.reason ?? "")}.`,
+          m.context.outgoing(a.call.remoteNumber, asData(a.info.reason ?? "")),
       picked,
-      this.cfg.requirePin
-        ? pinHash
-          ? "Steuern ist bis zur PIN-Eingabe gesperrt. Erwähne das erst, wenn ein Werkzeug „Gesperrt“ meldet."
-          : "Steuern ist gesperrt, weil keine PIN eingerichtet ist."
-        : "Steuern ist ohne PIN erlaubt.",
+      this.cfg.requirePin ? (pinHash ? m.context.pinLocked : m.context.noPin) : m.context.open,
     ]
       .filter(Boolean)
       .join("\n");
@@ -1028,7 +1034,7 @@ export class PhoneService {
     if (speech.engine === "gemini-live") {
       a.controller = new LiveCallController(a.call, a.rtp!, {
         ...common,
-        greeting: incoming ? (picked ? "Hallo, hier ist FORGE." : GREETING) : null,
+        greeting: incoming ? (picked ? m.greetingShort : m.greeting) : null,
         tools: this.toolsFor(a),
         createLive: (handlers) =>
           this.f.live({
@@ -1044,7 +1050,7 @@ export class PhoneService {
       a.controller = new CallController(a.call, a.rtp!, {
         ...common,
         voice: speech.voice,
-        greeting: incoming ? GREETING : null,
+        greeting: incoming ? m.greeting : null,
         createConversation: (cb) => this.f.conversation({ tools: this.toolsFor(a), context, cb }),
         timing: this.d.timing?.controller,
       });
@@ -1058,15 +1064,16 @@ export class PhoneService {
       call.reject(status, reason);
       this.finishRecord(rec, "rejected", detail);
     };
-    if (this.busy) return reject(486, "Busy Here", "FORGE telefoniert bereits.");
-    if (this.ua !== ua) return reject(503, "Service Unavailable", "Telefon wird gerade neu verbunden.");
+    const line = tr().phone.line;
+    if (this.busy) return reject(486, "Busy Here", line.busy);
+    if (this.ua !== ua) return reject(503, "Service Unavailable", line.reconnecting);
     if (!activeNumbers(this.cfg.allowedCallers).some((n) => sameNumber(n, call.remoteNumber))) {
       this.d.log(`Telefon: Anruf von ${call.remoteNumber || "unbekannt"} abgewiesen (nicht freigegeben)`);
-      return reject(403, "Forbidden", "Nummer ist nicht freigegeben.");
+      return reject(403, "Forbidden", line.notAllowed);
     }
     const offer = parseSdp(call.remoteSdp);
     const codec = offer && !offer.secure ? chooseCodec(offer) : null;
-    if (!offer || codec === null) return reject(488, "Not Acceptable Here", "Audio-Format nicht unterstützt (kein G.711 oder verschlüsseltes RTP).");
+    if (!offer || codec === null) return reject(488, "Not Acceptable Here", line.codecUnsupported);
     // A session key pressed on the desk phone just before: this call is about that session.
     const a = this.attach(call, rec, null, new Map(), String(Date.now()), this.desk.takePickup());
     try {
@@ -1093,7 +1100,7 @@ export class PhoneService {
       this.d.log(`Telefon: Anruf nicht angenommen: ${msg}`);
       a.failure = msg;
       if (call.state === "ringing") call.reject(500, "Server Internal Error", msg);
-      else void call.hangup("Technischer Fehler");
+      else void call.hangup(tr().phone.call.technicalError);
     }
   }
 
@@ -1102,10 +1109,11 @@ export class PhoneService {
    * Several numbers ring at once; the first to answer takes the call, the others are cancelled.
    */
   private async dial(numbers: string[], reason: string, opening: string, refs: Map<string, string>, focus: string | null) {
-    if (this.busy) throw new ForgeError("SESSION_BUSY", "FORGE telefoniert bereits.");
-    if (!numbers.length) throw new ForgeError("VALIDATION", "Keine Nummer zum Anrufen eingeschaltet.");
+    const line = tr().phone.line;
+    if (this.busy) throw new ForgeError("SESSION_BUSY", line.busy);
+    if (!numbers.length) throw new ForgeError("VALIDATION", line.noNumberOn);
     const ua = this.ua;
-    if (!ua || this.registration !== "registered") throw new ForgeError("VALIDATION", "Das Telefon ist nicht an der Anlage angemeldet.");
+    if (!ua || this.registration !== "registered") throw new ForgeError("VALIDATION", line.notRegistered);
     this.dialing = true;
     let rtp: RtpSession | null = null;
     let a: ActiveCall | null = null;
@@ -1114,7 +1122,7 @@ export class PhoneService {
       const speech = await this.speech();
       rtp = this.f.rtp(ua.bindIp);
       await rtp.open();
-      if (this.ua !== ua) throw new Error("Das Telefon wurde inzwischen ausgeschaltet.");
+      if (this.ua !== ua) throw new Error(line.switchedOff);
       const session = String(Date.now());
       const offer = buildSdp({ ip: ua.localIp, port: rtp.port, sessionId: session, version: 1 });
       const forked = numbers.length > 1;
@@ -1140,7 +1148,7 @@ export class PhoneService {
         } catch (e) {
           active.failure = errorText(e);
           this.d.log(`Telefon: Gespräch nicht gestartet: ${active.failure}`);
-          void call.hangup("Technischer Fehler");
+          void call.hangup(tr().phone.call.technicalError);
         }
       });
       controller.prepare();
@@ -1148,7 +1156,7 @@ export class PhoneService {
       rtp?.close();
       if (a) {
         a.failure = errorText(e);
-        await a.call.hangup("Abgebrochen");
+        await a.call.hangup(tr().phone.call.cancelled);
       }
       throw e;
     } finally {
@@ -1195,26 +1203,27 @@ export class PhoneService {
     const key = c.list === "allowed" ? "allowedCallers" : "notifyNumbers";
     const entries = this.cfg[key];
     const q = c.number.trim();
-    if (!q) throw new Error("Welche Nummer? Bitte die Nummer oder ihre Bezeichnung nennen.");
+    const m = tr().phone.callSettings;
+    if (!q) throw new Error(m.whichNumber);
     const found = entries.filter((n) => sameNumber(n.number, q) || (n.label && n.label.toLowerCase() === q.toLowerCase()));
     const name = (n: PhoneNumberEntry) => asData(n.label ? `${n.label} (${n.number})` : n.number);
     if (c.action === "add") {
-      if (!normalizeNumber(q)) throw new Error("Das ist keine Telefonnummer.");
+      if (!normalizeNumber(q)) throw new Error(m.notANumber);
       const hit = found[0];
       const next = hit ? entries.map((n) => (n === hit ? { ...n, enabled: true } : n)) : [...entries, { id: randomUUID(), number: q, label: c.label?.trim() ?? "", enabled: true }];
       await this.saveConfig({ [key]: next });
-      return hit ? `${name(hit)} stand schon in der Liste und ist jetzt eingeschaltet. ` : `${name(next.at(-1)!)} ist eingetragen und eingeschaltet. `;
+      return hit ? m.alreadyListed(name(hit)) : m.added(name(next.at(-1)!));
     }
-    if (!found.length) throw new Error(`Keine Nummer „${q}“ in der Liste. ${numberListing("Vorhanden", entries)}`);
-    if (found.length > 1) throw new Error(`Mehrere Einträge passen zu „${q}“: ${found.map(name).join(", ")}. Bitte die Nummer nennen.`);
+    if (!found.length) throw new Error(m.notFound(q, numberListing(m.present, entries)));
+    if (found.length > 1) throw new Error(m.many(q, found.map(name).join(", ")));
     const hit = found[0]!;
     if (c.action === "remove") {
       await this.saveConfig({ [key]: entries.filter((n) => n !== hit) });
-      return `${name(hit)} ist gelöscht. `;
+      return m.removed(name(hit));
     }
     const on = c.action === "on";
     await this.saveConfig({ [key]: entries.map((n) => (n === hit ? { ...n, enabled: on } : n)) });
-    return `${name(hit)} ist jetzt ${on ? "eingeschaltet" : "ausgeschaltet"}. `;
+    return m.switched(name(hit), on);
   }
 
   /** The switched-on numbers FORGE calls; all of them ring at once. */
@@ -1247,12 +1256,12 @@ export class PhoneService {
     // Expired: the digits still belong to the code (the PIN is long entered), the caller hears why nothing happened.
     if (Date.now() > c.expiresAt && digit === "#") {
       a.confirm = null;
-      a.controller?.note("[FORGE: Der Code war abgelaufen, nichts ist geändert. Sag ihm das in einem Satz; will er es noch, ruf das Werkzeug neu auf, dann gibt es einen neuen Code.]");
+      a.controller?.note(tr().phone.notes.codeExpired);
       return true;
     }
     if (digit === "*") {
       a.confirm = null;
-      a.controller?.note("[FORGE: Der Anrufer hat mit Stern abgebrochen. Nichts ist geändert. Sag ihm das in einem Satz.]");
+      a.controller?.note(tr().phone.notes.codeCancelled);
       return true;
     }
     if (digit !== "#") {
@@ -1262,14 +1271,14 @@ export class PhoneService {
     a.confirm = null;
     if (c.entered !== c.code) {
       this.d.log("Telefon: Löschen nicht bestätigt (falscher Code)");
-      a.controller?.note("[FORGE: Der Code war falsch. Nichts ist geändert. Sag ihm das in einem Satz; will er es noch, ruf das Werkzeug neu auf, dann gibt es einen neuen Code.]");
+      a.controller?.note(tr().phone.notes.codeWrong);
       return true;
     }
     this.d.log("Telefon: Löschen über die Tastatur bestätigt");
     void c
       .run()
-      .catch((e: unknown) => `Fehler: ${errorText(e)}`)
-      .then((result) => a.controller?.note(`[FORGE: Über die Tastatur bestätigt. Ergebnis: ${result} Sag ihm das in einem Satz.]`));
+      .catch((e: unknown) => tr().phone.error(errorText(e)))
+      .then((result) => a.controller?.note(tr().phone.notes.confirmed(result)));
     return true;
   }
 
@@ -1281,18 +1290,15 @@ export class PhoneService {
   private noteUrgent(sessionId: string, message: string): boolean {
     const a = this.active;
     if (!a?.answered || !a.controller) return false;
+    const m = tr().phone;
     let title: string;
     try {
-      title = this.d.sessions.get(sessionId).title ?? "ohne Titel";
+      title = this.d.sessions.get(sessionId).title ?? m.untitled;
     } catch {
       return false;
     }
     const open = !this.cfg.requirePin || a.info.unlocked;
-    a.controller.note(
-      open
-        ? `[FORGE: Claude Code in der Session ${this.refFor(a, sessionId)} ${asData(title)} meldet sich dringend und lässt ausrichten: ${excerptData(message, 500)} Sag es dem Anrufer bei der nächsten Gelegenheit in einem Satz.]`
-        : "[FORGE: Eine Session meldet sich dringend. Sag dem Anrufer bei der nächsten Gelegenheit in einem Satz, dass eine Session ihn dringend braucht. Einzelheiten gibt es erst nach der PIN.]",
-    );
+    a.controller.note(open ? m.notes.urgent(this.refFor(a, sessionId), asData(title), excerptData(message, 500)) : m.notes.urgentLocked);
     this.d.log("Telefon: dringende Meldung ins laufende Gespräch gegeben");
     return true;
   }
@@ -1336,23 +1342,25 @@ export class PhoneService {
     if (kind === "approval" && session.status !== "waiting_approval") return;
     const project = this.d.projects.get(session.projectId);
     const refs = new Map([["S1", sessionId]]);
-    const title = session.title ?? "ohne Titel";
+    const m = tr().phone;
+    const title = session.title ?? m.untitled;
     const result = body?.type === "turn.result" ? (body.text ?? lastAnswer(this.d.db, sessionId)) : lastAnswer(this.d.db, sessionId);
     const failure = body?.type === "turn.result" ? (body.text ?? body.subtype) : body?.type === "error" ? body.message : "";
     const what =
       body?.type === "notify"
-        ? `Claude Code in der Session S1 ${asData(title)} im Projekt ${project.name} möchte dich erreichen und lässt ausrichten: ${excerptData(body.message, 500)}`
+        ? m.dial.notifyWhat(asData(title), project.name, excerptData(body.message, 500))
         : kind === "done"
-        ? `Die Session S1 ${asData(title)} im Projekt ${project.name} ist fertig. Letztes Ergebnis von Claude Code: ${excerptData(result, 1500)}`
+        ? m.dial.doneWhat(asData(title), project.name, excerptData(result, 1500))
         : kind === "approval"
-          ? `Die Session S1 ${asData(title)} im Projekt ${project.name} wartet auf eine Entscheidung. ${pendingText(this.d.db, sessionId)}`
-          : `In der Session S1 ${asData(title)} im Projekt ${project.name} ist ein Fehler aufgetreten: ${excerptData(failure, 1500)}`;
-    const reason = kind === "notify" ? `Claude meldet sich: ${title}` : kind === "done" ? `Session fertig: ${title}` : kind === "approval" ? `Entscheidung nötig: ${title}` : `Fehler: ${title}`;
+          ? m.dial.approvalWhat(asData(title), project.name, pendingText(this.d.db, sessionId))
+          : m.dial.errorWhat(asData(title), project.name, excerptData(failure, 1500));
+    const reason =
+      kind === "notify" ? m.dial.notifyReason(title) : kind === "done" ? m.dial.doneReason(title) : kind === "approval" ? m.dial.approvalReason(title) : m.dial.errorReason(title);
     this.lastNotifyAt = Date.now();
     await this.dial(
       this.notifyTargets(),
       reason,
-      `[FORGE: Du rufst den Nutzer an. ${what} Er hat gerade abgenommen. Sag „Hallo, hier ist FORGE.“ und in einem Satz, worum es geht, ohne Einzelheiten. Wartet etwas auf seine Entscheidung, sag in einem kurzen Satz, was zur Wahl steht. Dann warte, was er sagt.]`,
+      m.dial.opening(what),
       refs,
       sessionId,
     );
@@ -1365,29 +1373,28 @@ export class PhoneService {
     const db = this.d.db;
     const locked = (): string | null => {
       if (!this.cfg.requirePin || a.info.unlocked) return null;
-      return this.cfg.pinHash
-        ? "Gesperrt. Der Anrufer muss zuerst seine PIN über die Telefontastatur eingeben und mit Raute bestätigen."
-        : "Gesperrt. In FORGE ist keine PIN eingerichtet, deshalb ist Steuern am Telefon aus.";
+      return this.cfg.pinHash ? tr().phone.common.locked : tr().phone.common.lockedNoPin;
     };
     const refFor = (id: string) => this.refFor(a, id);
     const resolve = (ref: string) => {
+      const m = tr().phone;
       const raw = ref.trim();
-      if (!raw) throw new Error("Welche Session? Bitte ein Kürzel wie S1 oder einen Teil des Titels angeben.");
+      if (!raw) throw new Error(m.common.whichSession);
       const key = raw.toUpperCase().replace(/\s+/g, "");
       if (/^S?\d+$/.test(key)) {
         const r = key.startsWith("S") ? key : `S${key}`;
         const id = a.refs.get(r);
-        if (!id) throw new Error(`${r} ist in diesem Gespräch nicht vergeben. Erst status aufrufen.`);
+        if (!id) throw new Error(m.common.refUnknown(r));
         return sessions.get(id);
       }
       const q = raw.toLowerCase();
       const all = sessions.listAll();
       const exact = all.filter((s) => (s.title ?? "").toLowerCase() === q);
       const hits = exact.length ? exact : all.filter((s) => (s.title ?? "").toLowerCase().includes(q) || s.projectName.toLowerCase().includes(q));
-      if (!hits.length) throw new Error(`Keine Session zu „${raw}“ gefunden. Erst status aufrufen.`);
+      if (!hits.length) throw new Error(m.common.noSession(raw));
       if (hits.length > 1) {
-        const names = hits.slice(0, 5).map((s) => `${refFor(s.id)} ${asData(s.title ?? "ohne Titel")}`);
-        throw new Error(`Mehrere Sessions passen zu „${raw}“: ${names.join(", ")}. Bitte das Kürzel nehmen.`);
+        const names = hits.slice(0, 5).map((s) => `${refFor(s.id)} ${asData(s.title ?? m.untitled)}`);
+        throw new Error(m.common.manySessions(raw, names.join(", ")));
       }
       return hits[0]!;
     };
@@ -1396,12 +1403,13 @@ export class PhoneService {
      * caller names its branch part, so "shop" means the project and not every agent of it.
      */
     const findProject = (name: string) => {
+      const m = tr().phone.common;
       const q = name.trim().toLowerCase();
       const all = this.d.projects.all().filter((p) => p.exists);
       const roots = all.filter((p) => !p.parentId);
       // Before the PIN no project names: like session titles they can be confidential.
-      const known = () => (locked() ? "" : ` Vorhanden: ${roots.map((x) => x.name).join(", ")}.`);
-      if (!q) throw new Error(`Welches Projekt?${known()}`);
+      const known = () => (locked() ? "" : m.known(roots.map((x) => x.name).join(", ")));
+      if (!q) throw new Error(m.whichProject(known()));
       const exact = all.filter((x) => x.name.toLowerCase() === q);
       if (exact.length === 1) return exact[0]!;
       const words = (s: string) => s.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
@@ -1416,20 +1424,21 @@ export class PhoneService {
       if (hits.length === 1) return hits[0]!;
       const preferred = hits.filter((x) => !x.parentId);
       if (preferred.length === 1) return preferred[0]!;
-      if (hits.length > 1) throw new Error(`Mehrere Projekte passen zu „${name}“${locked() ? "." : `: ${hits.map((x) => x.name).join(", ")}.`}`);
-      throw new Error(`Kein Projekt „${name}“.${known()}`);
+      if (hits.length > 1) throw new Error(m.manyProjects(name, locked() ? null : hits.map((x) => x.name).join(", ")));
+      throw new Error(m.noProject(name, known()));
     };
     /** The project of a session (also an agent's worktree) when one is named, else the project by name. */
     const target = (projectName: string, o?: { session?: string }) => {
       if (!o?.session?.trim()) return findProject(projectName);
       const s = resolve(o.session);
       const p = this.d.projects.get(s.projectId);
-      if (!p.exists) throw new Error(`Den Ordner von ${refFor(s.id)} gibt es nicht mehr.`);
+      if (!p.exists) throw new Error(tr().phone.common.folderGone(refFor(s.id)));
       return p;
     };
     const minutesSince = (iso: string) => {
-      const m = Math.round((Date.now() - Date.parse(iso)) / 60_000);
-      return m < 1 ? "seit eben" : m === 1 ? "seit einer Minute" : `seit ${m} Minuten`;
+      const m = tr().phone.common;
+      const n = Math.round((Date.now() - Date.parse(iso)) / 60_000);
+      return n < 1 ? m.justNow : n === 1 ? m.oneMinute : m.minutes(n);
     };
     const tail = (text: string, lines: number) => text.split(/\r?\n/).filter((l) => l.trim()).slice(-lines).join("\n");
     /** Runs a tool; errors become text for Claude. Steering tools (`steer`) need the PIN. */
@@ -1439,7 +1448,7 @@ export class PhoneService {
       try {
         return await fn();
       } catch (e) {
-        return `Fehler: ${errorText(e)}`;
+        return tr().phone.error(errorText(e));
       }
     };
     /**
@@ -1447,32 +1456,33 @@ export class PhoneService {
      * from FORGE) run only after the caller typed a code on the keypad; see PendingConfirm. `what` is
      * what the model tells the caller. A pending code is never replaced silently.
      */
-    const askKeypad = (what: string, act: () => Promise<string>, nothingYet = "noch ist nichts gelöscht"): string => {
-      if (a.confirm && Date.now() <= a.confirm.expiresAt) {
-        return "Fehler: Es wartet noch eine Bestätigung über die Tastatur. Der Anrufer tippt erst den Code oder bricht mit Stern ab, dann geht das Nächste.";
-      }
+    const askKeypad = (what: string, act: () => Promise<string>, nothingYet?: string): string => {
+      const m = tr().phone.common;
+      if (a.confirm && Date.now() <= a.confirm.expiresAt) return m.keypadBusy;
       const code = String(randomInt(0, 1000)).padStart(3, "0");
       a.confirm = { code, entered: "", expiresAt: Date.now() + CONFIRM_TTL_MS, run: act };
-      return `Bestätigung nötig, ${nothingYet}. Sag dem Anrufer: ${what}. Zum Bestätigen tippt er auf der Telefontastatur ${code.split("").join(" ")} und dann Raute, Stern bricht ab. Ein Ja im Gespräch reicht nicht, ruf das Werkzeug dafür nicht noch einmal auf. FORGE meldet sich, sobald er getippt hat.`;
+      return m.keypad(nothingYet ?? m.nothingDeleted, what, code.split("").join(" "));
     };
     const projectChanged = (projectId: string) => this.d.emit({ event: "project.updated", payload: { projectId } });
     const call: PhoneRpc = (method, params) => {
-      if (!this.d.rpc) throw new Error("Das ist hier nicht verfügbar.");
+      if (!this.d.rpc) throw new Error(tr().phone.common.unavailable);
       return this.d.rpc(method, params);
     };
     /** a project when one or a session is named, else null (global) */
     const optionalTarget = (projectName: string | undefined, o?: { session?: string }) => (projectName?.trim() || o?.session?.trim() ? target(projectName ?? "", o) : null);
-    const projectText = (p: Project) =>
-      [
-        `Profil ${p.profile}`,
-        `Standardmodell ${p.defaultModel ?? "wie global eingestellt"}`,
-        `Denkaufwand ${p.defaultEffort ?? "wie global eingestellt"}`,
-        p.testCommand ? `Testbefehl ${asData(p.testCommand)}` : "kein Testbefehl",
-        p.devCommand ? `Dev-Befehl ${asData(p.devCommand)}` : "Dev-Befehl wird erkannt",
-        p.gitEnabled ? "mit Git" : "ohne Git",
+    const projectText = (p: Project) => {
+      const m = tr().phone.projects;
+      return [
+        m.profile(p.profile),
+        m.model(p.defaultModel),
+        m.effort(p.defaultEffort),
+        p.testCommand ? m.testCommand(asData(p.testCommand)) : m.noTestCommand,
+        p.devCommand ? m.devCommand(asData(p.devCommand)) : m.devDetected,
+        p.gitEnabled ? m.withGit : m.withoutGit,
       ].join(", ");
+    };
     /** Git, pull requests and agents are refused for a project set up without git. */
-    const gitOff = (p: Project) => `Fehler: ${p.name} ist ohne Git eingerichtet. Git lässt sich mit dem Werkzeug project, action settings, git true einschalten.`;
+    const gitOff = (p: Project) => tr().phone.common.gitOff(p.name);
     /** the user's prompts in a session, oldest first, as far as they can be branched or rewound to */
     const prompts = async (sessionId: string) => {
       let list: Array<{ seq: number; uuid: string; text: string }> = [];
@@ -1489,111 +1499,112 @@ export class PhoneService {
     const promptBack = async (sessionId: string, n: number) => {
       const list = await prompts(sessionId);
       const hit = list[list.length - n];
-      if (!hit) throw new Error(list.length ? `${refFor(sessionId)} hat nur ${list.length} Nachrichten vom Anrufer.` : `${refFor(sessionId)} hat noch keine Nachricht vom Anrufer.`);
+      const m = tr().phone.common;
+      if (!hit) throw new Error(list.length ? m.onlyMessages(refFor(sessionId), list.length) : m.noMessage(refFor(sessionId)));
       return hit;
     };
     const backups = async () => (await call("backup.list", {})).sort((x, y) => y.createdAt.localeCompare(x.createdAt));
     const updateText = (st: ResultOf<"app.updateState">) => {
-      if (!st.installable) return `Das ist eine Entwicklungsversion von FORGE (${st.currentVersion}), sie bekommt keine Updates.`;
-      if (st.phase === "error") return `Fehler: ${st.message ?? "Die Update-Prüfung ist fehlgeschlagen."}`;
-      if (st.phase === "checking") return "Die Suche nach Updates läuft noch. Frag gleich noch einmal.";
-      if (!st.latest || st.phase === "uptodate" || st.phase === "idle") return `FORGE ist aktuell, Version ${st.currentVersion}.`;
-      const state =
-        st.phase === "ready"
-          ? " Es ist heruntergeladen und geprüft. Beim Installieren startet FORGE neu; laufende Sessions machen danach von selbst weiter."
-          : st.phase === "downloading"
-            ? " Es wird gerade heruntergeladen."
-            : "";
-      return `FORGE ${st.latest.version} ist verfügbar, installiert ist ${st.currentVersion}.${state}`;
+      const m = tr().phone.system;
+      if (!st.installable) return m.devVersion(st.currentVersion);
+      if (st.phase === "error") return tr().phone.error(st.message ?? m.updateCheckFailed);
+      if (st.phase === "checking") return m.checking;
+      if (!st.latest || st.phase === "uptodate" || st.phase === "idle") return m.upToDate(st.currentVersion);
+      const state = st.phase === "ready" ? m.ready : st.phase === "downloading" ? m.downloading : "";
+      return m.available(st.latest.version, st.currentVersion, state);
     };
     const installText = (st: ResultOf<"app.installState">) => {
-      if (!st.checkable) return "Das ist eine Entwicklungsversion von FORGE, da gibt es keine Installation zu prüfen.";
-      if (st.complete === null) return "Die Prüfung läuft noch. Frag gleich noch einmal.";
-      if (st.complete) return "FORGE ist vollständig installiert, alle mitgelieferten Programme sind in der richtigen Version da.";
-      const what = `Die Installation von FORGE ist unvollständig: ${st.problems.map((p) => p.label).join(", ")}.`;
-      if (st.phase === "searching") return `${what} FORGE sucht gerade den passenden Installer.`;
+      const m = tr().phone.system;
+      if (!st.checkable) return m.installDev;
+      if (st.complete === null) return m.installChecking;
+      if (st.complete) return m.installComplete;
+      const what = m.installIncomplete(st.problems.map((p) => p.label).join(", "));
+      if (st.phase === "searching") return m.installSearching(what);
       const inst = st.installer;
-      if (!inst) return `${what} ${st.message ?? "Es gibt keinen passenden Installer."}`;
-      const from = inst.source === "local" ? `der setup.exe der Version ${inst.version} aus dem Downloads-Ordner` : `dem Installer der Version ${inst.version}${inst.size ? ` (${Math.max(1, Math.round(inst.size / 1048576))} MB)` : ""}`;
-      const then = inst.then ? `, danach holt FORGE von selbst das Update auf ${inst.then}` : "";
-      return `${what} Mit install_repair installiert sich FORGE vollständig mit ${from}${then}. Dabei startet FORGE neu und das Gespräch endet.`;
+      if (!inst) return `${what} ${st.message ?? m.noInstaller}`;
+      const from = inst.source === "local" ? m.installerLocal(inst.version) : m.installerRemote(inst.version, inst.size ? Math.max(1, Math.round(inst.size / 1048576)) : null);
+      const then = inst.then ? m.installerThen(inst.then) : "";
+      return m.installRepairHint(what, from, then);
     };
     const removal = { projects: this.d.projects, sessions, worktrees: this.d.worktrees, devServers: this.d.devServers };
-    const statusText = (s: { status: string; live: boolean }) =>
-      s.status === "running" || s.status === "starting"
-        ? "arbeitet gerade"
+    const statusText = (s: { status: string; live: boolean }) => {
+      const m = tr().phone.common.status;
+      return s.status === "running" || s.status === "starting"
+        ? m.working
         : s.status === "waiting_approval"
-          ? "wartet auf eine Entscheidung"
+          ? m.waiting
           : s.status === "idle" && s.live
-            ? "fertig, wartet auf Anweisungen"
+            ? m.idle
             : s.status === "error"
-              ? "mit Fehler beendet"
-              : "beendet";
+              ? m.error
+              : m.ended;
+    };
     /** Prompt templates: list, send with values for their placeholders, save, sort and delete. */
     const templateAction = async (action: SessionsArgs[0], o: SessionsArgs[1]): Promise<string> => {
+      const m = tr().phone;
       const s = o?.session?.trim() ? resolve(o.session) : null;
       const p = s ? this.d.projects.get(s.projectId) : o?.project?.trim() ? findProject(o.project) : null;
       const list = await call("templates.list", p ? { projectId: p.id } : { all: true });
       const names = new Map(this.d.projects.all().map((x) => [x.id, x.name]));
-      const where = (t: PromptTemplate) => (t.projectId ? `nur ${names.get(t.projectId) ?? "ein Projekt"}` : "global");
+      const where = (t: PromptTemplate) => (t.projectId ? m.templates.onlyProject(names.get(t.projectId) ?? m.templates.aProject) : m.templates.global);
       const pickTemplate = () => {
         const q = o?.template?.trim() ?? "";
         const hits = q ? findTemplates(q, list) : [];
-        return hits.length === 1 ? hits[0]! : pickOne(hits.length > 1 ? hits : list, q, (t) => [t.name], { none: "Keine Vorlage", many: "Vorlagen" });
+        return hits.length === 1 ? hits[0]! : pickOne(hits.length > 1 ? hits : list, q, (t) => [t.name], { none: m.common.what.templateNone, many: m.common.what.templateMany });
       };
       if (action === "templates") {
-        if (!list.length) return p ? `Keine Vorlagen für ${p.name}, auch keine globalen.` : "Es gibt noch keine Vorlagen.";
+        if (!list.length) return p ? m.templates.noneFor(p.name) : m.templates.none;
         const lines = list.slice(0, 15).map((t) => {
           const holes = templatePlaceholders(t.text);
-          return `${t.name} (${where(t)}${t.learned ? ", gelernt" : ""})${t.description ? `: ${t.description}` : ""}${holes.length ? `, Platzhalter ${holes.join(", ")}` : ""}`;
+          return `${t.name} (${where(t)}${t.learned ? m.templates.learned : ""})${t.description ? `: ${t.description}` : ""}${holes.length ? m.templates.placeholders(holes.join(", ")) : ""}`;
         });
-        return `${list.length === 1 ? "1 Vorlage" : `${list.length} Vorlagen`}${list.length > 15 ? ", die ersten 15" : ""}:\n${asData(lines.join("\n"))}`;
+        return `${m.templates.count(list.length, list.length > 15)}:\n${asData(lines.join("\n"))}`;
       }
       if (action === "template_send") {
         const t = pickTemplate();
-        if (!p) return "Fehler: An welche Session oder in welchem Projekt?";
+        if (!p) return m.templates.whereTo;
         const status = await call("projects.get", { projectId: p.id }).catch(() => null);
         const given = Object.fromEntries((o?.values ?? []).map((v) => [v.name.replace(/[{}]/g, "").trim(), v.value]));
         const values = { ...knownTemplateValues(t.text, { project: p.name, branch: status?.git?.branch ?? null, date: localDate(new Date()) }), ...given };
         const filled = new Map(Object.entries(values).map(([k, v]) => [k.toLowerCase(), v.trim()]));
         const missing = templatePlaceholders(t.text).filter((n) => !filled.get(n.toLowerCase()));
-        if (missing.length) return `Fehler: Für die Vorlage ${asData(t.name)} fehlen Werte für ${asData(missing.join(", "))}. Frag den Anrufer danach und ruf das Werkzeug dann mit values noch einmal auf.`;
+        if (missing.length) return m.templates.missingValues(asData(t.name), asData(missing.join(", ")));
         const text = fillTemplate(t.text, values);
         if (s) {
           await call("sessions.send", { sessionId: s.id, text });
           a.focus = s.id;
-          return `Vorlage ${asData(t.name)} an ${refFor(s.id)} gesendet. Claude arbeitet daran.`;
+          return m.templates.sent(asData(t.name), refFor(s.id));
         }
         const started = await call("sessions.start", { projectId: p.id, prompt: text });
         a.focus = started.id;
-        return `Neue Session ${refFor(started.id)} im Projekt ${p.name} mit der Vorlage ${asData(t.name)} gestartet.`;
+        return m.templates.started(refFor(started.id), p.name, asData(t.name));
       }
       if (action === "template_save") {
         const existing = o?.template?.trim() ? pickTemplate() : null;
         const name = o?.name?.trim() || existing?.name;
         const text = o?.text?.trim() || existing?.text;
-        if (!name) return "Fehler: Wie soll die Vorlage heißen?";
-        if (!text) return "Fehler: Was soll in der Vorlage stehen?";
+        if (!name) return m.templates.whatName;
+        if (!text) return m.templates.whatText;
         const projectId = existing && !p ? existing.projectId : (p?.id ?? null);
         const saved = await call("templates.save", { id: existing?.id ?? null, projectId, name, description: o?.description?.trim() || existing?.description || null, text });
-        return `Vorlage ${asData(saved.name)} ${existing ? "geändert" : "angelegt"} (${where(saved)}).`;
+        return m.templates.saved(asData(saved.name), !!existing, where(saved));
       }
       const t = pickTemplate();
       if (action === "template_delete") {
-        return askKeypad(`Die Vorlage ${asData(t.name)} (${where(t)}) wird gelöscht`, async () => {
+        return askKeypad(m.templates.confirmDelete(asData(t.name), where(t)), async () => {
           const r = await call("templates.delete", { id: t.id });
-          return r.ok ? `Vorlage ${asData(t.name)} gelöscht.` : `Die Vorlage ${asData(t.name)} gab es schon nicht mehr.`;
+          return r.ok ? m.templates.deleted(asData(t.name)) : m.templates.gone(asData(t.name));
         });
       }
-      if (!o?.direction) return "Fehler: Nach oben oder nach unten?";
+      if (!o?.direction) return m.templates.upOrDown;
       const siblings = (await call("templates.list", t.projectId ? { projectId: t.projectId } : {})).filter((x) => x.projectId === t.projectId);
       const i = siblings.findIndex((x) => x.id === t.id);
       const j = o.direction === "up" ? i - 1 : i + 1;
-      if (i < 0 || j < 0 || j >= siblings.length) return `${asData(t.name)} steht schon ${o.direction === "up" ? "ganz oben" : "ganz unten"}.`;
+      if (i < 0 || j < 0 || j >= siblings.length) return m.templates.atEdge(asData(t.name), o.direction === "up");
       const ids = siblings.map((x) => x.id);
       [ids[i], ids[j]] = [ids[j]!, ids[i]!];
       await call("templates.reorder", { ids });
-      return `${asData(t.name)} steht jetzt an Platz ${j + 1} von ${siblings.length} (${where(t)}).`;
+      return m.templates.moved(asData(t.name), j + 1, siblings.length, where(t));
     };
 
     return {
@@ -1604,46 +1615,48 @@ export class PhoneService {
             .listAll()
             .filter((s) => !s.live)
             .slice(0, 3);
-          if (!live.length && !recent.length) return "Es gibt noch keine Sessions.";
+          const m = tr().phone;
+          if (!live.length && !recent.length) return m.status.none;
           if (locked()) {
             // Before the PIN only counts: titles and results can be confidential.
             const working = live.filter((s) => s.status === "running" || s.status === "starting").length;
             const waiting = live.filter((s) => s.status === "waiting_approval").length;
-            return `Aktive Sessions: ${live.length}, davon arbeiten ${working} und ${waiting} warten auf eine Entscheidung. Titel, Ergebnisse und Details gibt es erst nach der PIN.`;
+            return m.status.lockedCounts(live.length, working, waiting);
           }
           const line = (s: (typeof live)[number]) => {
-            const pending = s.status === "waiting_approval" ? ` Offen: ${pendingText(db, s.id, true)}` : "";
-            return `${refFor(s.id)}: ${asData(s.title ?? "ohne Titel")} im Projekt ${s.projectName}, ${statusText(s)}.${pending}`;
+            const pending = s.status === "waiting_approval" ? m.status.open(pendingText(db, s.id, true)) : "";
+            return m.status.line(refFor(s.id), asData(s.title ?? m.untitled), s.projectName, statusText(s), pending);
           };
-          return [live.length ? live.map(line).join("\n") : "Keine aktive Session.", recent.length ? `Zuletzt beendet:\n${recent.map(line).join("\n")}` : ""]
+          return [live.length ? live.map(line).join("\n") : m.status.noActive, recent.length ? m.status.recent(recent.map(line).join("\n")) : ""]
             .filter(Boolean)
             .join("\n");
         }),
       details: (ref, o) =>
         run(true, async () => {
+          const m = tr().phone;
           const s = resolve(ref);
           const project = this.d.projects.get(s.projectId);
           const last = lastAnswer(db, s.id);
-          const setup = [s.model ? `Modell ${s.model}` : "", s.permissionMode ? `Modus ${s.permissionMode}` : ""].filter(Boolean).join(", ");
-          const kind = (taskType: string) => (/bash|shell/i.test(taskType) ? "Befehl" : /agent/i.test(taskType) ? "Subagent" : taskType);
+          const setup = [s.model ? m.details.model(s.model) : "", s.permissionMode ? m.details.mode(s.permissionMode) : ""].filter(Boolean).join(", ");
+          const kind = (taskType: string) => (/bash|shell/i.test(taskType) ? m.details.command : /agent/i.test(taskType) ? m.details.subagentKind : taskType);
           const tasks = [
-            ...s.subagents.map((t) => `Subagent ${asData(t.description)}, ${minutesSince(t.startedAt)}${t.summary ? `, zuletzt: ${excerptData(t.summary, 200)}` : ""}`),
-            ...s.background.map((t) => `Im Hintergrund: ${kind(t.taskType)} ${asData(t.description)}, ${minutesSince(t.startedAt)}${t.summary ? `, zuletzt: ${excerptData(t.summary, 200)}` : ""}`),
+            ...s.subagents.map((t) => m.details.subagent(asData(t.description), minutesSince(t.startedAt), t.summary ? excerptData(t.summary, 200) : "")),
+            ...s.background.map((t) => m.details.background(kind(t.taskType), asData(t.description), minutesSince(t.startedAt), t.summary ? excerptData(t.summary, 200) : "")),
           ];
           const summary = o?.summary ? (await sessions.summarize(s.id)).summary : "";
           let context = "";
           try {
             const c = await sessions.contextUsage(s.id);
-            if (c) context = ` Kontext zu ${Math.round(c.percentage)} Prozent voll.`;
+            if (c) context = m.details.context(Math.round(c.percentage));
           } catch {
             // Only a measurement; details work without it.
           }
           return [
-            `${refFor(s.id)}: ${asData(s.title ?? "ohne Titel")} im Projekt ${project.name}, ${statusText(s)}.${setup ? ` ${setup}.` : ""}${context}`,
-            summary ? `Zusammenfassung des Verlaufs: ${excerptData(summary, 2000)}` : "",
-            `Letztes Ergebnis: ${last ? excerptData(last, 1500) : "noch keins"}`,
-            s.status === "waiting_approval" ? `Offen: ${pendingText(db, s.id)}` : "",
-            tasks.length ? `Laufende Aufgaben:\n${tasks.join("\n")}` : "",
+            m.details.head(refFor(s.id), asData(s.title ?? m.untitled), project.name, statusText(s), setup, context),
+            summary ? m.details.summary(excerptData(summary, 2000)) : "",
+            m.details.last(last ? excerptData(last, 1500) : null),
+            s.status === "waiting_approval" ? m.details.open(pendingText(db, s.id)) : "",
+            tasks.length ? m.details.tasks(tasks.join("\n")) : "",
           ]
             .filter(Boolean)
             .join("\n");
@@ -1651,21 +1664,22 @@ export class PhoneService {
       sendMessage: (ref, text) =>
         run(true, async () => {
           const s = resolve(ref);
-          if (!text.trim()) return "Fehler: Die Nachricht ist leer.";
+          if (!text.trim()) return tr().phone.session.emptyMessage;
           await sessions.send(s.id, text);
-          return `An ${refFor(s.id)} gesendet. Claude arbeitet daran.`;
+          return tr().phone.session.sent(refFor(s.id));
         }),
       startSession: (projectName, prompt, o) =>
         run(true, async () => {
+          const m = tr().phone.session;
           const found = findProject(projectName);
-          if (!prompt.trim()) return "Fehler: Der Auftrag ist leer.";
+          if (!prompt.trim()) return m.emptyPrompt;
           const model = o?.model?.trim() || undefined;
           const effort = o?.effort;
-          if (o?.agent && !found.gitEnabled) return `${gitOff(found)} Ohne Git gibt es keine parallelen Agenten, nur eine normale Session.`;
+          if (o?.agent && !found.gitEnabled) return m.agentNeedsGit(gitOff(found));
           if (!o?.agent) {
             const s = await sessions.start({ projectId: found.id, prompt, model, effort, planOnly: o?.planOnly });
             a.focus = s.id;
-            return `Neue Session ${refFor(s.id)} im Projekt ${found.name} gestartet.`;
+            return m.started(refFor(s.id), found.name);
           }
           // A parallel agent: own worktree and branch next to the project (as in the Agents tab), from
           // where the named project or worktree stands.
@@ -1684,19 +1698,20 @@ export class PhoneService {
           }
           a.focus = s.id;
           const warning = await sessions.planUsage(false).then((u) => limitWarning(u), () => null);
-          return `Agent ${refFor(s.id)} im Projekt ${root.name} gestartet, in einem eigenen Worktree auf eigenem Branch.${warning ? ` Hinweis: ${warning}` : ""}`;
+          return m.agentStarted(refFor(s.id), root.name, warning);
         }),
       respond: (ref, decision, answers, feedback, scope) =>
         run(true, async () => {
+          const m = tr().phone.session;
           const s = resolve(ref);
           const r = refFor(s.id);
           const req = openRequest(db, s.id);
-          if (!req) return `${r} hat keine offene Anfrage.`;
+          if (!req) return m.noRequest(r);
           let mapped: Record<string, string> | undefined;
           if (req.toolName === "AskUserQuestion" && decision === "allow") {
             const questions = questionTexts(req.input);
             const given = Object.entries(answers ?? {});
-            if (!given.length) return "Für die Rückfrage brauche ich die Antworten (answers).";
+            if (!given.length) return m.needAnswers;
             mapped = {};
             given.forEach(([q, v], i) => {
               const exact = questions.find((x) => x === q) ?? questions.find((x) => x.toLowerCase().includes(q.toLowerCase())) ?? questions[i];
@@ -1706,50 +1721,52 @@ export class PhoneService {
           // Questions and plans are answered once; only a tool approval can hold for the whole session.
           const forSession = scope === "session" && decision === "allow" && req.toolName !== "AskUserQuestion" && req.toolName !== "ExitPlanMode";
           sessions.respondApproval(s.id, req.requestId, decision, forSession ? "session" : "once", feedback, mapped);
-          if (decision !== "allow") return `Abgelehnt, ${r} bekommt die Rückmeldung.`;
-          return forSession ? `Erledigt, ${req.toolName} ist für den Rest von ${r} erlaubt.` : `Erledigt, ${r} arbeitet weiter.`;
+          if (decision !== "allow") return m.denied(r);
+          return forSession ? m.allowedForSession(req.toolName, r) : m.allowed(r);
         }),
       stop: (ref) =>
         run(true, async () => {
           const s = resolve(ref);
-          if (!["starting", "running", "waiting_approval", "stopping"].includes(s.status)) return `${refFor(s.id)} arbeitet gerade nicht, da lief nichts zum Stoppen.`;
+          if (!["starting", "running", "waiting_approval", "stopping"].includes(s.status)) return tr().phone.session.notRunning(refFor(s.id));
           await sessions.stop(s.id);
-          return `${refFor(s.id)} gestoppt.`;
+          return tr().phone.session.stopped(refFor(s.id));
         }),
       close: (ref) =>
         run(true, async () => {
           const s = resolve(ref);
           sessions.close(s.id);
-          return `${refFor(s.id)} geschlossen.`;
+          return tr().phone.session.closed(refFor(s.id));
         }),
       sessionSettings: (ref, patch) =>
         run(true, async () => {
+          const m = tr().phone.session;
           const s = resolve(ref);
           const done: string[] = [];
           const model = patch.model?.trim();
           if (model) {
             await sessions.setModel(s.id, model);
-            done.push(`Modell ${model}`);
+            done.push(m.model(model));
           }
           if (patch.effort) {
             await sessions.setEffort(s.id, patch.effort);
-            done.push(`Denkaufwand ${patch.effort}`);
+            done.push(m.effort(patch.effort));
           }
           if (patch.permissionMode) {
             await sessions.setPermissionMode(s.id, patch.permissionMode);
-            done.push(`Modus ${patch.permissionMode}`);
+            done.push(m.mode(patch.permissionMode));
           }
-          if (!done.length) return "Fehler: Es wurde nichts zum Ändern angegeben.";
-          return `${refFor(s.id)}: ${done.join(", ")} gesetzt.`;
+          if (!done.length) return m.nothingToChange;
+          return m.settingsSet(refFor(s.id), done.join(", "));
         }),
       cancelAutoContinue: (ref) =>
         run(true, async () => {
           const s = resolve(ref);
           sessions.cancelAutoContinue(s.id);
-          return `Automatisches Weitermachen von ${refFor(s.id)} abgebrochen.`;
+          return tr().phone.session.autoContinueCancelled(refFor(s.id));
         }),
       backgroundTask: (ref, action, task, text) =>
         run(true, async () => {
+          const m = tr().phone.tasks;
           const s = resolve(ref);
           const r = refFor(s.id);
           const all = [
@@ -1758,37 +1775,35 @@ export class PhoneService {
           ];
           const names = (list: typeof all) => list.map((t) => asData(t.description)).join(", ");
           const find = () => {
-            if (!all.length) throw new Error(`${r} hat gerade keine Hintergrund-Aufgaben und keine Subagenten.`);
+            if (!all.length) throw new Error(m.none(r));
             const q = (task ?? "").trim().toLowerCase();
             if (!q && all.length === 1) return all[0]!;
-            if (!q) throw new Error(`Welche Aufgabe? Laufend: ${names(all)}.`);
+            if (!q) throw new Error(m.which(names(all)));
             const hits = all.filter((t) => t.taskId.toLowerCase() === q || t.description.toLowerCase().includes(q));
             if (hits.length === 1) return hits[0]!;
-            throw new Error(hits.length ? `Mehrere Aufgaben passen: ${names(hits)}.` : `Keine Aufgabe „${task}“ bei ${r}. Laufend: ${names(all)}.`);
+            throw new Error(hits.length ? m.many(names(hits)) : m.notFound(task ?? "", r, names(all)));
           };
           if (action === "to_background") {
             const t = task?.trim() ? find() : null;
-            if (t?.background) return `${asData(t.description)} läuft schon im Hintergrund.`;
+            if (t?.background) return m.alreadyBackground(asData(t.description));
             const { moved } = await sessions.toBackground(s.id, t?.toolUseId ?? undefined);
-            return moved ? `In den Hintergrund verschoben, ${r} arbeitet weiter.` : `Bei ${r} lief nichts im Vordergrund, das sich verschieben ließ.`;
+            return moved ? m.moved(r) : m.nothingToMove(r);
           }
-          if (action === "message" && !text?.trim()) throw new Error("Was soll in der Nachricht stehen? text fehlt.");
+          if (action === "message" && !text?.trim()) throw new Error(m.noText);
           const t = find();
           if (action === "message") {
             await sessions.messageTask(s.id, { taskId: t.taskId }, text!.trim());
-            return t.command
-              ? `Nachricht zu ${asData(t.description)} an ${r} geschickt. Ein Befehl liest keine Eingaben, Claude reagiert darauf.`
-              : `Nachricht an ${asData(t.description)} geschickt, Claude gibt sie an den Subagenten weiter.`;
+            return t.command ? m.messageCommand(asData(t.description), r) : m.messageAgent(asData(t.description));
           }
           if (action === "stop") {
             await sessions.stopTask(s.id, t.taskId);
-            return `${asData(t.description)} gestoppt, der Rest von ${r} läuft weiter.`;
+            return m.stopped(asData(t.description), r);
           }
           // Subagents have no command output; their progress line is what they are doing now.
-          if (!t.command) return t.summary ? `${asData(t.description)} zuletzt: ${excerptData(t.summary, 500)}` : `${asData(t.description)} hat noch keinen Zwischenstand gemeldet.`;
+          if (!t.command) return t.summary ? m.lastSummary(asData(t.description), excerptData(t.summary, 500)) : m.noSummary(asData(t.description));
           const out = await sessions.taskOutput(s.id, t.taskId);
-          if (!out.output.trim()) return `${asData(t.description)} hat noch nichts ausgegeben.`;
-          return `Letzte Ausgabe von ${asData(t.description)}: ${excerptData(tail(out.output, 30), 3000)}`;
+          if (!out.output.trim()) return m.noOutput(asData(t.description));
+          return m.output(asData(t.description), excerptData(tail(out.output, 30), 3000));
         }),
       alwaysOnTop: (action) =>
         run(action !== "status", async () => {
@@ -1797,7 +1812,7 @@ export class PhoneService {
             // The main window applies it to itself; chat windows are pinned one by one.
             this.d.emit({ event: "settings.updated", payload: next });
           }
-          return this.d.db.getSettings().alwaysOnTop ? "FORGE bleibt im Vordergrund." : "FORGE bleibt nicht im Vordergrund.";
+          return this.d.db.getSettings().alwaysOnTop ? tr().phone.windows.onTop : tr().phone.windows.notOnTop;
         }),
       chatWindow: (action, ref) =>
         // Also status before the PIN: it names session titles.

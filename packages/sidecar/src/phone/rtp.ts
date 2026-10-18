@@ -1,6 +1,7 @@
 import { createSocket, type Socket } from "node:dgram";
 import { randomInt } from "node:crypto";
 import { EventEmitter } from "node:events";
+import { tr } from "../i18n/index.js";
 import { decodeG711, encodeG711, FRAME_SAMPLES } from "./audio.js";
 import type { MediaDirection } from "./sdp.js";
 
@@ -63,7 +64,7 @@ export class RtpSession extends EventEmitter<RtpEvents> {
       sock.on("error", () => {});
       return port;
     }
-    throw new Error("Kein freier Port für Audio (RTP) gefunden.");
+    throw new Error(tr().phone.line.noRtpPort);
   }
 
   get address() {
