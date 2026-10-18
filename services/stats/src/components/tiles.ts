@@ -3,8 +3,9 @@ import type { LucideIcon } from "lucide-react";
 import type { Totals } from "@/lib/db";
 import { ONLINE_MINUTES } from "@/lib/constants";
 import { COUNTER_KEYS, type Counters } from "@/lib/report";
-import { formatCount, formatHours, formatUsd } from "@/lib/format";
 import { tokenSum } from "@/lib/history";
+import type { Locale } from "@/lib/i18n";
+import { i18n } from "@/lib/messages";
 
 // Shared by the skeleton (server) and the live tiles (client), so it holds no hooks.
 
@@ -22,50 +23,50 @@ export type TileDef = {
   live?: boolean;
 };
 
-const usd = (cents: number) => `≈ ${formatUsd(cents)}`;
-
-export function tiles(t: Totals): TileDef[] {
+export function tiles(t: Totals, locale: Locale): TileDef[] {
+  const { t: m, f } = i18n(locale);
+  const tt = m.tiles;
   const c = t.counters;
-  const pricedTokens = Object.values(t.models).reduce((n, m) => n + m.tokens, 0);
+  const pricedTokens = Object.values(t.models).reduce((n, mu) => n + mu.tokens, 0);
+  const usd = (cents: number) => `≈ ${f.usd(cents)}`;
   return [
     // Every token Claude processed through FORGE, whatever started it (sessions, agents, helper calls, phone), cache included.
-    { icon: Coins, label: "Tokens gesamt", value: tokenSum(c), format: formatCount, sub: "alle Tokens über FORGE", highlight: true, wide: true },
+    { icon: Coins, label: tt.tokens, value: tokenSum(c), format: f.count, sub: tt.tokensSub, highlight: true, wide: true },
     // Only calls the app recorded with their model and cost (newer app versions) are in it, see the note below the tiles.
     {
       icon: BadgeDollarSign,
-      label: "Wert in API-Preisen",
+      label: tt.cost,
       value: c.costUsdCents,
       format: usd,
       // Below 99 % the gap is worth a word; above, both numbers would read the same.
-      sub: pricedTokens < tokenSum(c) * 0.99 ? `nur für ${formatCount(pricedTokens)} der ${formatCount(tokenSum(c))} Tokens bekannt` : "geschätzt nach API-Preisen",
+      sub: pricedTokens < tokenSum(c) * 0.99 ? tt.costPartial(f.count(pricedTokens), f.count(tokenSum(c))) : tt.costSub,
       wide: true,
     },
-    { icon: Clock, label: "Claude-Arbeitszeit", value: c.claudeWorkMs, format: formatHours, unit: "Std.", sub: "Laufzeit aller Durchläufe" },
+    { icon: Clock, label: tt.workTime, value: c.claudeWorkMs, format: f.hours, unit: tt.hoursUnit, sub: tt.workTimeSub },
     {
       icon: Repeat,
-      label: "Durchläufe",
+      label: tt.turns,
       value: c.claudeTurns,
-      format: formatCount,
-      sub: c.userTurns ? `${formatCount(c.userTurns)} von Nutzern gestartet` : "Aufträge an Claude",
+      format: f.count,
+      sub: c.userTurns ? tt.turnsByUsers(f.count(c.userTurns)) : tt.turnsSub,
     },
-    { icon: MessagesSquare, label: "Sessions", value: c.sessions, format: formatCount, sub: "Chats mit Claude" },
-    { icon: FolderPlus, label: "Projekte", value: c.projectsCreated, format: formatCount, sub: "in FORGE angelegt" },
-    { icon: Bot, label: "Parallele Agenten", value: c.agentsStarted, format: formatCount, sub: `${formatCount(c.agentsMerged)} zusammengeführt` },
-    { icon: Phone, label: "Telefonate", value: c.phoneCalls, format: formatCount, sub: "über die Telefon-Funktion" },
-    { icon: MonitorDown, label: "Installationen", value: t.installs, format: formatCount, sub: `${formatCount(t.activeInstalls30d)} aktiv in 30 Tagen` },
+    { icon: MessagesSquare, label: tt.sessions, value: c.sessions, format: f.count, sub: tt.sessionsSub },
+    { icon: FolderPlus, label: tt.projects, value: c.projectsCreated, format: f.count, sub: tt.projectsSub },
+    { icon: Bot, label: tt.agents, value: c.agentsStarted, format: f.count, sub: tt.agentsMerged(f.count(c.agentsMerged)) },
+    { icon: Phone, label: tt.phone, value: c.phoneCalls, format: f.count, sub: tt.phoneSub },
+    { icon: MonitorDown, label: tt.installs, value: t.installs, format: f.count, sub: tt.installsActive(f.count(t.activeInstalls30d)) },
     {
       icon: Wifi,
-      label: "Gerade online",
+      label: tt.online,
       value: t.onlineInstalls,
-      format: formatCount,
-      sub: `Meldung in den letzten ${ONLINE_MINUTES} Min.`,
+      format: f.count,
+      sub: tt.onlineSub(ONLINE_MINUTES),
       live: t.onlineInstalls > 0,
     },
   ];
 }
 
-// Labels and icons of the tiles while the numbers load.
-export const TILE_SHAPES = tiles({
+const ZERO: Totals = {
   installs: 0,
   activeInstalls30d: 0,
   onlineInstalls: 0,
@@ -75,11 +76,17 @@ export const TILE_SHAPES = tiles({
   versions: [],
   plans: [],
   history: [],
-});
+};
 
-export const TOKEN_ROWS = [
-  { key: "tokensInput", icon: ArrowUpFromLine, label: "Eingabe", description: "Text, den FORGE an Claude geschickt hat" },
-  { key: "tokensOutput", icon: ArrowDownToLine, label: "Ausgabe", description: "Antworten und Werkzeugaufrufe von Claude" },
-  { key: "tokensCacheRead", icon: Database, label: "Cache gelesen", description: "Aus dem Prompt-Cache, günstiger als neue Eingabe" },
-  { key: "tokensCacheWrite", icon: DatabaseZap, label: "Cache geschrieben", description: "Neu in den Prompt-Cache gelegt" },
-] as const;
+/** Labels and icons of the tiles while the numbers load. */
+export const tileShapes = (locale: Locale) => tiles(ZERO, locale);
+
+export function tokenRows(locale: Locale) {
+  const m = i18n(locale).t.tokens;
+  return [
+    { key: "tokensInput", icon: ArrowUpFromLine, label: m.input, description: m.inputDescription },
+    { key: "tokensOutput", icon: ArrowDownToLine, label: m.output, description: m.outputDescription },
+    { key: "tokensCacheRead", icon: Database, label: m.cacheRead, description: m.cacheReadDescription },
+    { key: "tokensCacheWrite", icon: DatabaseZap, label: m.cacheWrite, description: m.cacheWriteDescription },
+  ] as const;
+}

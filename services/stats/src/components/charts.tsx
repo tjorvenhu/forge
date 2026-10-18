@@ -3,11 +3,11 @@
 import { useState, type CSSProperties, type ReactNode } from "react";
 import { BarChart3, Table2 } from "lucide-react";
 import type { Totals } from "@/lib/db";
-import { formatCount, formatDayLong, formatDayShort, formatUsd } from "@/lib/format";
 import { groupModels } from "@/lib/models";
 import { planLabel, sortPlans } from "@/lib/plans";
 import { newestVersion } from "@/lib/versions";
 import { LiveDot, SectionTitle, Skeleton } from "./blocks";
+import { useI18n } from "./locale";
 import { Reveal } from "./motion";
 
 // Charts after the daily report of the app (apps/desktop/src/components/report/usage-charts.tsx): cards
@@ -17,7 +17,6 @@ import { Reveal } from "./motion";
 const PLOT_H = 132;
 /** Horizontal bars shown before the rest moves to the table. */
 const MAX_BARS = 6;
-const EMPTY = "Noch keine Daten für diesen Zeitraum";
 
 /** Clean 1-2-5 steps for an axis up to `max`. */
 export function niceTicks(max: number): number[] {
@@ -32,10 +31,9 @@ export function niceTicks(max: number): number[] {
   return ticks;
 }
 
-const plural = (n: number, one: string, many: string) => `${formatCount(n)} ${n === 1 ? one : many}`;
-
 function ChartCard({ title, sub, rows, wide, children }: { title: string; sub: ReactNode; rows: Array<[string, string]>; wide?: boolean; children: ReactNode }) {
   const [table, setTable] = useState(false);
+  const { t } = useI18n();
   return (
     <section className={wide ? "chart-card chart-card-wide" : "chart-card"} aria-label={title}>
       <div className="chart-head">
@@ -46,8 +44,8 @@ function ChartCard({ title, sub, rows, wide, children }: { title: string; sub: R
         <button
           type="button"
           className="icon-btn"
-          aria-label={table ? `${title} als Diagramm` : `${title} als Tabelle`}
-          title={table ? "Als Diagramm" : "Als Tabelle"}
+          aria-label={table ? t.charts.titleAsChart(title) : t.charts.titleAsTable(title)}
+          title={table ? t.charts.asChart : t.charts.asTable}
           aria-pressed={table}
           onClick={() => setTable(!table)}
         >
@@ -68,7 +66,7 @@ function ChartCard({ title, sub, rows, wide, children }: { title: string; sub: R
               </tbody>
             </table>
           ) : (
-            <p className="chart-empty">{EMPTY}</p>
+            <p className="chart-empty">{t.charts.empty}</p>
           )}
         </div>
       ) : (
@@ -90,6 +88,7 @@ interface Column {
 /** Vertical columns from one baseline, at most 24px wide with a 2px gap, hairline grid, tooltip on hover and focus. */
 function Columns({ columns }: { columns: Column[] }) {
   const [hover, setHover] = useState<number | null>(null);
+  const { t, f } = useI18n();
   const max = Math.max(0, ...columns.map((c) => c.value));
   const ticks = niceTicks(max);
   const top = ticks[ticks.length - 1]! || 1;
@@ -101,7 +100,7 @@ function Columns({ columns }: { columns: Column[] }) {
       <div className="y-axis" style={{ height: PLOT_H }} aria-hidden>
         {ticks.map((v) => (
           <span key={v} style={{ top: y(v) }}>
-            {formatCount(v)}
+            {f.count(v)}
           </span>
         ))}
       </div>
@@ -111,7 +110,7 @@ function Columns({ columns }: { columns: Column[] }) {
             <div key={v} className="gridline" style={{ top: y(v) }} aria-hidden />
           ))}
           {max === 0 ? (
-            <p className="chart-empty plot-empty">{EMPTY}</p>
+            <p className="chart-empty plot-empty">{t.charts.empty}</p>
           ) : (
             <div className="bars" onPointerLeave={() => setHover(null)}>
               {columns.map((c, i) => (
@@ -150,7 +149,7 @@ function Columns({ columns }: { columns: Column[] }) {
 interface Bar {
   key: string;
   label: string;
-  /** small text next to the label, e.g. "neueste" */
+  /** small text next to the label, e.g. "latest" */
   tag?: string;
   /** a pulsing live dot in the tag, for "online" */
   liveTag?: boolean;
@@ -162,10 +161,11 @@ interface Bar {
 }
 
 /** Horizontal bars with the value at the end of the label line; hover and focus show the details. */
-function Bars({ bars, emphasize, more, empty = EMPTY }: { bars: Bar[]; emphasize?: boolean; more: number; empty?: string }) {
+function Bars({ bars, emphasize, more, empty }: { bars: Bar[]; emphasize?: boolean; more: number; empty?: string }) {
   const [hover, setHover] = useState<string | null>(null);
+  const { t } = useI18n();
   const max = Math.max(1, ...bars.map((b) => b.value));
-  if (!bars.length) return <p className="chart-empty bars-empty">{empty}</p>;
+  if (!bars.length) return <p className="chart-empty bars-empty">{empty ?? t.charts.empty}</p>;
   return (
     <ul className="hbars" onPointerLeave={() => setHover(null)}>
       {bars.map((b, i) => {
@@ -203,64 +203,66 @@ function Bars({ bars, emphasize, more, empty = EMPTY }: { bars: Bar[]; emphasize
           </li>
         );
       })}
-      {more > 0 && <li className="hbars-more">und {more} weitere, siehe Tabelle</li>}
+      {more > 0 && <li className="hbars-more">{t.charts.more(more)}</li>}
     </ul>
   );
 }
 
-const percent = (part: number, whole: number) => `${whole ? Math.round((part / whole) * 100) : 0} %`;
-
 export function StatsCharts({ totals }: { totals: Totals }) {
+  const { t, f } = useI18n();
+  const m = t.charts;
+  const turns = (n: number) => m.turns(n, f.count(n));
+  const installs = (n: number) => m.installs(n, f.count(n));
   const history = totals.history;
   const today = history[history.length - 1]?.day;
-  const dayName = (day: string) => `${formatDayLong(day)}${day === today ? ", heute" : ""}`;
+  const dayName = (day: string) => (day === today ? m.today(f.dayLong(day)) : f.dayLong(day));
   // Every 7th day counted back from today carries an axis label.
-  const axis = (i: number, day: string) => ((history.length - 1 - i) % 7 === 0 ? formatDayShort(day) : null);
+  const axis = (i: number, day: string) => ((history.length - 1 - i) % 7 === 0 ? f.dayShort(day) : null);
   const tokenSum = history.reduce((n, d) => n + d.tokens, 0);
   const peakActive = history.reduce((n, d) => Math.max(n, d.activeInstalls), 0);
 
   const models = groupModels(totals.models);
-  const modelTokens = models.reduce((n, m) => n + m.tokens, 0);
+  const modelTokens = models.reduce((n, row) => n + row.tokens, 0);
   const versions = totals.versions;
   const versionInstalls = versions.reduce((n, v) => n + v.installs, 0);
   const newest = newestVersion(versions);
   // Until an installation runs a version that sends its plan, a single "unknown" bar says nothing.
   const plans = totals.plans.some((p) => p.plan) ? sortPlans(totals.plans) : [];
   const planInstalls = plans.reduce((n, p) => n + p.installs, 0);
-  const planDetail = (p: (typeof plans)[number]) =>
-    `${percent(p.installs, planInstalls)} der aktiven Installationen · ${formatCount(p.online)} gerade online${p.plan ? "" : " · ältere FORGE-Version oder ohne Claude-Abo"}`;
+  const planName = (plan: string | null) => planLabel(plan, m.planUnknown);
+  const planDetail = (p: (typeof plans)[number]) => m.planDetail(f.percent(p.installs, planInstalls), f.count(p.online), !p.plan);
 
   return (
     <>
       <section aria-labelledby="history">
         <SectionTitle>
-          <span id="history">Letzte 30 Tage</span>
+          <span id="history">{m.history}</span>
         </SectionTitle>
         <Reveal className="charts">
           <ChartCard
-            title="Tokens pro Tag"
-            sub={tokenSum ? `Alle Token-Arten, zusammen ${formatCount(tokenSum)}` : "Alle Token-Arten, Tage in UTC"}
-            rows={[...history].reverse().map((d) => [dayName(d.day), `${formatCount(d.tokens)} Tokens, ${plural(d.claudeTurns, "Durchlauf", "Durchläufe")}`])}
+            title={m.tokensPerDay}
+            sub={tokenSum ? m.tokensPerDaySum(f.count(tokenSum)) : m.tokensPerDaySub}
+            rows={[...history].reverse().map((d) => [dayName(d.day), `${m.tokens(f.count(d.tokens))}, ${turns(d.claudeTurns)}`])}
           >
             <Columns
               columns={history.map((d, i) => ({
                 key: d.day,
                 value: d.tokens,
-                tip: [`${formatCount(d.tokens)} Tokens`, `${dayName(d.day)} · ${plural(d.claudeTurns, "Durchlauf", "Durchläufe")}`],
+                tip: [m.tokens(f.count(d.tokens)), `${dayName(d.day)} · ${turns(d.claudeTurns)}`],
                 axis: axis(i, d.day),
               }))}
             />
           </ChartCard>
           <ChartCard
-            title="Aktive Installationen pro Tag"
-            sub={peakActive ? `Mit Meldung am Tag, höchstens ${formatCount(peakActive)}` : "Installationen mit Meldung am Tag"}
-            rows={[...history].reverse().map((d) => [dayName(d.day), plural(d.activeInstalls, "Installation", "Installationen")])}
+            title={m.activePerDay}
+            sub={peakActive ? m.activePerDayPeak(f.count(peakActive)) : m.activePerDaySub}
+            rows={[...history].reverse().map((d) => [dayName(d.day), installs(d.activeInstalls)])}
           >
             <Columns
               columns={history.map((d, i) => ({
                 key: d.day,
                 value: d.activeInstalls,
-                tip: [plural(d.activeInstalls, "Installation", "Installationen"), dayName(d.day)],
+                tip: [installs(d.activeInstalls), dayName(d.day)],
                 axis: axis(i, d.day),
               }))}
             />
@@ -270,23 +272,23 @@ export function StatsCharts({ totals }: { totals: Totals }) {
 
       <section aria-labelledby="models">
         <SectionTitle>
-          <span id="models">Modelle</span>
+          <span id="models">{m.models}</span>
         </SectionTitle>
         <Reveal className="charts">
           <ChartCard
             wide
-            title="Tokens nach Modell"
-            sub="Alle Token-Arten seit dem 17. Oktober 2026, nur neuere FORGE-Versionen melden Modelle"
-            rows={models.map((m) => [m.label, `${formatCount(m.tokens)} Tokens, ${percent(m.tokens, modelTokens)}, ≈ ${formatUsd(m.costUsdCents)}`])}
+            title={m.tokensByModel}
+            sub={m.tokensByModelSub}
+            rows={models.map((row) => [row.label, `${m.tokens(f.count(row.tokens))}, ${f.percent(row.tokens, modelTokens)}, ≈ ${f.usd(row.costUsdCents)}`])}
           >
             <Bars
               more={Math.max(0, models.length - MAX_BARS)}
-              bars={models.slice(0, MAX_BARS).map((m) => ({
-                key: m.label,
-                label: m.label,
-                value: m.tokens,
-                valueText: formatCount(m.tokens),
-                detail: `${percent(m.tokens, modelTokens)} der Tokens · ≈ ${formatUsd(m.costUsdCents)}`,
+              bars={models.slice(0, MAX_BARS).map((row) => ({
+                key: row.label,
+                label: row.label,
+                value: row.tokens,
+                valueText: f.count(row.tokens),
+                detail: m.modelDetail(f.percent(row.tokens, modelTokens), f.usd(row.costUsdCents)),
               }))}
             />
           </ChartCard>
@@ -295,35 +297,31 @@ export function StatsCharts({ totals }: { totals: Totals }) {
 
       <section aria-labelledby="distribution">
         <SectionTitle>
-          <span id="distribution">Abos und Versionen</span>
+          <span id="distribution">{m.distribution}</span>
         </SectionTitle>
         <Reveal className="charts">
-          <ChartCard
-            title="Claude-Abos"
-            sub="Aktive Installationen der letzten 30 Tage nach Abo des angemeldeten Kontos"
-            rows={plans.map((p) => [planLabel(p.plan), `${plural(p.installs, "Installation", "Installationen")}, ${planDetail(p)}`])}
-          >
+          <ChartCard title={m.plans} sub={m.plansSub} rows={plans.map((p) => [planName(p.plan), `${installs(p.installs)}, ${planDetail(p)}`])}>
             <Bars
               emphasize
-              empty="Noch keine Abo-Angaben. Das Abo melden erst FORGE-Versionen nach 0.1.90."
+              empty={m.plansEmpty}
               more={Math.max(0, plans.length - MAX_BARS)}
               bars={plans.slice(0, MAX_BARS).map((p) => ({
                 key: p.plan ?? "",
-                label: planLabel(p.plan),
-                tag: p.online ? `${formatCount(p.online)} online` : undefined,
+                label: planName(p.plan),
+                tag: p.online ? m.onlineTag(f.count(p.online)) : undefined,
                 liveTag: p.online > 0,
                 // the unknown ones step back to gray
                 emphasis: p.plan !== null,
                 value: p.installs,
-                valueText: formatCount(p.installs),
+                valueText: f.count(p.installs),
                 detail: planDetail(p),
               }))}
             />
           </ChartCard>
           <ChartCard
-            title="FORGE-Versionen"
-            sub="Aktive Installationen der letzten 30 Tage"
-            rows={versions.map((v) => [v.version === newest ? `${v.version} (neueste)` : v.version, `${plural(v.installs, "Installation", "Installationen")}, ${percent(v.installs, versionInstalls)}`])}
+            title={m.versions}
+            sub={m.versionsSub}
+            rows={versions.map((v) => [v.version === newest ? `${v.version} (${m.newest})` : v.version, `${installs(v.installs)}, ${f.percent(v.installs, versionInstalls)}`])}
           >
             <Bars
               emphasize
@@ -331,11 +329,11 @@ export function StatsCharts({ totals }: { totals: Totals }) {
               bars={versions.slice(0, MAX_BARS).map((v) => ({
                 key: v.version,
                 label: v.version,
-                tag: v.version === newest ? "neueste" : undefined,
+                tag: v.version === newest ? m.newest : undefined,
                 emphasis: v.version === newest,
                 value: v.installs,
-                valueText: formatCount(v.installs),
-                detail: `${percent(v.installs, versionInstalls)} der aktiven Installationen`,
+                valueText: f.count(v.installs),
+                detail: m.versionDetail(f.percent(v.installs, versionInstalls)),
               }))}
             />
           </ChartCard>
@@ -345,25 +343,27 @@ export function StatsCharts({ totals }: { totals: Totals }) {
   );
 }
 
+// Keys into the chart texts, so the skeleton shows the same titles as the charts.
 const CARDS = [
-  { section: "Letzte 30 Tage", cards: ["Tokens pro Tag", "Aktive Installationen pro Tag"], kind: "columns" },
-  { section: "Modelle", cards: ["Tokens nach Modell"], kind: "bars" },
-  { section: "Abos und Versionen", cards: ["Claude-Abos", "FORGE-Versionen"], kind: "bars" },
+  { section: "history", cards: ["tokensPerDay", "activePerDay"], kind: "columns" },
+  { section: "models", cards: ["tokensByModel"], kind: "bars" },
+  { section: "distribution", cards: ["plans", "versions"], kind: "bars" },
 ] as const;
 
 /** Placeholder in the shape of the charts: same titles, columns and bars at the same heights. */
 export function ChartsSkeleton() {
+  const { t } = useI18n();
   return (
     <>
       {CARDS.map((s) => (
         <section key={s.section} aria-busy>
-          <SectionTitle>{s.section}</SectionTitle>
+          <SectionTitle>{t.charts[s.section]}</SectionTitle>
           <div className="charts">
-            {s.cards.map((title, c) => (
-              <section key={title} className={s.cards.length === 1 ? "chart-card chart-card-wide" : "chart-card"} aria-label={title}>
+            {s.cards.map((card, c) => (
+              <section key={card} className={s.cards.length === 1 ? "chart-card chart-card-wide" : "chart-card"} aria-label={t.charts[card]}>
                 <div className="chart-head">
                   <div className="chart-titles">
-                    <h3>{title}</h3>
+                    <h3>{t.charts[card]}</h3>
                     <p>
                       <Skeleton width={`${50 + c * 15}%`} />
                     </p>

@@ -8,7 +8,7 @@ describe("planLabel", () => {
     expect(planLabel("max")).toBe("Max");
     expect(planLabel("pro")).toBe("Pro");
     expect(planLabel("team_premium")).toBe("Team Premium");
-    expect(planLabel(null)).toBe("Unbekannt");
+    expect(planLabel(null, "Unbekannt")).toBe("Unbekannt");
   });
 });
 

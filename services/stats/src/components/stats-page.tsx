@@ -1,26 +1,30 @@
-import { Activity, Cpu, EyeOff, Power, Send, TriangleAlert, UserCheck } from "lucide-react";
+import { Activity, Cpu, EyeOff, Power, Send, ToggleLeft, TriangleAlert, UserCheck } from "lucide-react";
 import type { Totals } from "@/lib/db";
+import type { Locale } from "@/lib/i18n";
+import { i18n } from "@/lib/messages";
 import { Group, Row, SectionTitle, Skeleton } from "./blocks";
 import { ChartsSkeleton } from "./charts";
 import { LiveStats } from "./live-stats";
-import { TILE_SHAPES, TOKEN_ROWS } from "./tiles";
+import { tileShapes, tokenRows } from "./tiles";
 
 export type PageState = { kind: "loading" } | { kind: "error" } | { kind: "ok"; totals: Totals };
 
-export function StatsPage({ state }: { state: PageState }) {
+export function StatsPage({ state, locale }: { state: PageState; locale: Locale }) {
+  const { t } = i18n(locale);
+  const c = t.collected;
   return (
     <main className="container content">
       <div className="intro">
-        <h1>FORGE in Zahlen</h1>
-        <p>FORGE ist eine Desktop-Oberfläche für Claude Code. Hier stehen die Summen aller Installationen, bei denen die anonyme Nutzungsstatistik eingeschaltet ist. Installationen ohne Statistik fehlen in allen Zahlen. Gezählt wird ab dem 17. Oktober 2026, dem Start der Statistik.</p>
+        <h1>{t.intro.title}</h1>
+        <p>{t.intro.text}</p>
       </div>
 
       {state.kind === "error" ? (
         <div className="error-banner" role="alert">
           <TriangleAlert aria-hidden />
           <div>
-            <div className="error-title">Die Zahlen sind gerade nicht abrufbar</div>
-            <div>Die Datenbank antwortet nicht. Bitte versuche es in ein paar Minuten noch einmal.</div>
+            <div className="error-title">{t.unavailable.title}</div>
+            <div>{t.unavailable.text}</div>
           </div>
         </div>
       ) : state.kind === "ok" ? (
@@ -35,10 +39,10 @@ export function StatsPage({ state }: { state: PageState }) {
                 </span>
               }
             >
-              <span id="figures">Kennzahlen</span>
+              <span id="figures">{t.figures.title}</span>
             </SectionTitle>
             <div className="tiles">
-              {TILE_SHAPES.map((t, i) => (
+              {tileShapes(locale).map((t, i) => (
                 <div key={t.label} className={t.wide ? "tile tile-wide" : "tile"}>
                   <div className="tile-head">
                     <span className="tile-label">{t.label}</span>
@@ -60,8 +64,8 @@ export function StatsPage({ state }: { state: PageState }) {
 
           <ChartsSkeleton />
 
-          <Group title="Tokens im Detail" description="Alle Claude-Anfragen aus FORGE, nach Art der Tokens">
-            {TOKEN_ROWS.map((r, i) => (
+          <Group title={t.tokens.title} description={t.tokens.description}>
+            {tokenRows(locale).map((r, i) => (
               <Row key={r.key} icon={r.icon} label={r.label} description={r.description}>
                 <Skeleton width={`${4 + ((i * 3) % 3)}rem`} />
               </Row>
@@ -70,28 +74,17 @@ export function StatsPage({ state }: { state: PageState }) {
         </>
       )}
 
-      <Group title="Was erfasst wird" description="Abschaltbar in FORGE unter Einstellungen > Über FORGE > Datenschutz">
-        <Row
-          icon={UserCheck}
-          label="Wer gezählt wird"
-          description="Nur Installationen, bei denen die anonyme Nutzungsstatistik eingeschaltet ist. Ausgeschaltete Installationen fehlen in allen Zahlen, auch bei Installationen und Gerade online."
-        />
-        <Row
-          icon={Send}
-          label="Gemeldet"
-          description="Alle 5 Minuten die Gesamtzähler seit dem 17. Oktober 2026: Tokens, Arbeitszeit, Durchläufe, Sessions, Projekte, Agenten und Telefonate. Dazu eine zufällige Installations-ID, die FORGE-Version, das Betriebssystem und die Art des Claude-Abos (zum Beispiel Pro oder Max 5x)."
-        />
-        <Row
-          icon={Cpu}
-          label="Modelle und Kosten"
-          description="Neuere FORGE-Versionen melden zusätzlich die Tokens je Claude-Modell und die geschätzten Kosten nach API-Preisen in US-Dollar. Das ist ein Rechenwert, kein Betrag, den jemand bezahlt hat."
-        />
-        <Row icon={Activity} label="Verlauf" description="Der Dienst speichert pro Installation den letzten Stand jedes Tages. Daraus entstehen die Zahlen pro Tag." />
-        <Row icon={EyeOff} label="Nicht erfasst" description="Inhalte von Nachrichten, Dateien, Projektnamen und IP-Adressen." />
-        <Row icon={Power} label="Abschalten" description="Wer die Statistik abschaltet, löscht damit auch den gespeicherten Datensatz seiner Installation." />
+      <Group title={c.title} description={c.description}>
+        <Row icon={ToggleLeft} label={c.offByDefault} description={c.offByDefaultText} />
+        <Row icon={UserCheck} label={c.who} description={c.whoText} />
+        <Row icon={Send} label={c.reported} description={c.reportedText} />
+        <Row icon={Cpu} label={c.models} description={c.modelsText} />
+        <Row icon={Activity} label={c.history} description={c.historyText} />
+        <Row icon={EyeOff} label={c.notCollected} description={c.notCollectedText} />
+        <Row icon={Power} label={c.turnOff} description={c.turnOffText} />
       </Group>
 
-      <p className="footnote">Die Summen werden alle 5 Minuten neu berechnet. Tage beginnen um 0 Uhr UTC.</p>
+      <p className="footnote">{t.footnote}</p>
     </main>
   );
 }

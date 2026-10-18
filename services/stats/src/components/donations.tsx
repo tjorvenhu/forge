@@ -4,7 +4,7 @@ import { useRef } from "react";
 import { ExternalLink, Heart, Lightbulb, X } from "lucide-react";
 import { DONATE_URL, FEEDBACK_URL } from "@/lib/constants";
 import type { Donations } from "@/lib/donations";
-import { formatCount, formatEur } from "@/lib/format";
+import { useI18n } from "./locale";
 import { AnimatedNumber } from "./motion";
 
 /**
@@ -13,6 +13,8 @@ import { AnimatedNumber } from "./motion";
  */
 export function SupportButton({ donations }: { donations: Donations | null }) {
   const dialog = useRef<HTMLDialogElement>(null);
+  const { t, f } = useI18n();
+  const m = t.support;
   const close = () => dialog.current?.close();
   return (
     <>
@@ -26,7 +28,7 @@ export function SupportButton({ donations }: { donations: Donations | null }) {
         }}
       >
         <Heart aria-hidden />
-        Unterstützen
+        {m.button}
       </a>
       <dialog
         ref={dialog}
@@ -37,35 +39,31 @@ export function SupportButton({ donations }: { donations: Donations | null }) {
       >
         <div className="modal-body">
           <header className="modal-head">
-            <h2 id="support-title">FORGE unterstützen</h2>
-            <button type="button" className="modal-close" onClick={close} aria-label="Schließen">
+            <h2 id="support-title">{m.title}</h2>
+            <button type="button" className="modal-close" onClick={close} aria-label={m.close}>
               <X aria-hidden />
             </button>
           </header>
-          <p className="modal-text">
-            FORGE ist ein Open-Source-Produkt der Vanturis UG. Wenn es dir hilft, kannst du die Weiterentwicklung mit einem freiwilligen Beitrag unterstützen oder Verbesserungen vorschlagen.
-          </p>
+          <p className="modal-text">{m.text}</p>
 
           {donations && (
             <div className="donated">
-              <span className="donated-label">Bisher gespendet</span>
+              <span className="donated-label">{m.donated}</span>
               <span className="donated-value">
-                <AnimatedNumber value={donations.cents} format={formatEur} duration={900} />
+                <AnimatedNumber value={donations.cents} format={f.eur} duration={900} />
               </span>
-              <span className="donated-sub">
-                {formatCount(donations.count)} {donations.count === 1 ? "Beitrag" : "Beiträge"}, vor Gebühren
-              </span>
+              <span className="donated-sub">{m.contributions(donations.count, f.count(donations.count))}</span>
             </div>
           )}
 
-          <p className="modal-note">Den Betrag wählst du selbst. Das Geld geht an die Vanturis UG, die FORGE entwickelt. Sie ist nicht gemeinnützig, eine Spendenquittung gibt es deshalb nicht.</p>
+          <p className="modal-note">{m.note}</p>
           <a className="btn btn-primary modal-action" href={DONATE_URL}>
             <Heart aria-hidden />
-            Beitrag über Stripe zahlen
+            {m.pay}
           </a>
-          <a className="btn btn-outline modal-action" href={FEEDBACK_URL} title="Als Issue auf GitHub, mit GitHub-Konto">
+          <a className="btn btn-outline modal-action" href={FEEDBACK_URL} title={m.feedbackTitle}>
             <Lightbulb aria-hidden />
-            Vorschlag oder Fehler melden
+            {m.feedback}
             <ExternalLink className="modal-external" aria-hidden />
           </a>
         </div>

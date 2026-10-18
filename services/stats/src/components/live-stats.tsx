@@ -2,11 +2,11 @@
 
 import { useEffect, useState } from "react";
 import type { Online, Totals } from "@/lib/db";
-import { formatCount, formatDateTime } from "@/lib/format";
 import { Group, LiveDot, Row, SectionTitle, Tile } from "./blocks";
 import { StatsCharts } from "./charts";
+import { useI18n } from "./locale";
 import { AnimatedNumber } from "./motion";
-import { TOKEN_ROWS, tiles } from "./tiles";
+import { tiles, tokenRows } from "./tiles";
 
 /** The online count is cheap and changes often; the totals are cached for five minutes on the server anyway. */
 const ONLINE_EVERY_MS = 30_000;
@@ -57,6 +57,7 @@ function useLiveTotals(initial: Totals): Totals {
 
 export function LiveStats({ initial }: { initial: Totals }) {
   const totals = useLiveTotals(initial);
+  const { locale, t, f } = useI18n();
   const online = totals.onlineInstalls > 0;
 
   return (
@@ -65,33 +66,30 @@ export function LiveStats({ initial }: { initial: Totals }) {
         <SectionTitle
           action={
             <span className="section-meta">
-              <span className={online ? "live-badge live-badge-on" : "live-badge"} title="Die Zahlen aktualisieren sich von selbst">
+              <span className={online ? "live-badge live-badge-on" : "live-badge"} title={t.figures.liveTitle}>
                 <LiveDot on={online} />
-                Live
+                {t.figures.live}
               </span>
-              Stand {formatDateTime(totals.updatedAt)} Uhr
+              {t.figures.updated(f.dateTime(totals.updatedAt))}
             </span>
           }
         >
-          <span id="figures">Kennzahlen</span>
+          <span id="figures">{t.figures.title}</span>
         </SectionTitle>
         <div className="tiles">
-          {tiles(totals).map(({ value, format, ...t }, i) => (
+          {tiles(totals, locale).map(({ value, format, ...t }, i) => (
             <Tile key={t.label} {...t} index={i} value={<AnimatedNumber value={value} format={format} />} />
           ))}
         </div>
-        <p className="tiles-note">
-          Modelle und Kosten melden erst neuere FORGE-Versionen. Claude-Aufrufe davor zählen bei Tokens und Durchläufen, fehlen aber im Wert in API-Preisen. Der größte Teil der
-          Tokens kommt aus dem Prompt-Cache, der nur einen Bruchteil neuer Eingabe kostet.
-        </p>
+        <p className="tiles-note">{t.figures.note}</p>
       </section>
 
       <StatsCharts totals={totals} />
 
-      <Group title="Tokens im Detail" description="Alle Claude-Anfragen aus FORGE, nach Art der Tokens">
-        {TOKEN_ROWS.map((r) => (
+      <Group title={t.tokens.title} description={t.tokens.description}>
+        {tokenRows(locale).map((r) => (
           <Row key={r.key} icon={r.icon} label={r.label} description={r.description}>
-            <AnimatedNumber value={totals.counters[r.key]} format={formatCount} />
+            <AnimatedNumber value={totals.counters[r.key]} format={f.count} />
           </Row>
         ))}
       </Group>

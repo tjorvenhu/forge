@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { DONATE_LINK_ID, donations, resetDonationsCache, sumDonations } from "./donations";
-import { formatEur } from "./format";
+import { formats } from "./format";
 
 describe("donations", () => {
   const env = { key: process.env.STRIPE_SECRET_KEY, link: process.env.STRIPE_PAYMENT_LINK };
@@ -64,8 +64,13 @@ describe("donations", () => {
   });
 
   it("formats euros the way the page shows them", () => {
-    expect(formatEur(2500)).toBe("25 €");
-    expect(formatEur(1250)).toBe("12,50 €");
-    expect(formatEur(123_456)).toBe("1.235 €");
+    // Intl puts a no-break space between number and currency.
+    const eur = (cents: number, locale: "de" | "en") => formats(locale).eur(cents).replace(/ /g, " ");
+    expect(eur(2500, "de")).toBe("25 €");
+    expect(eur(1250, "de")).toBe("12,50 €");
+    expect(eur(123_456, "de")).toBe("1.235 €");
+    expect(eur(2500, "en")).toBe("€25");
+    expect(eur(1250, "en")).toBe("€12.50");
+    expect(eur(123_456, "en")).toBe("€1,235");
   });
 });
