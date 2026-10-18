@@ -47,6 +47,7 @@ import { ProjectManager } from "./projects/project-manager.js";
 import { createHandlers, invokeHandler, type Handlers } from "./rpc/handlers.js";
 import { RpcServer, type Writer } from "./rpc/server.js";
 import { SessionService } from "./sessions/session-service.js";
+import { setLanguage } from "./i18n/index.js";
 
 export interface App {
   server: RpcServer;
@@ -62,6 +63,7 @@ export const SHUTDOWN_LIMIT_MS = 5_000;
 /** Wires all services. Separate from index.ts so tests can run it in-process. */
 export function createApp(opts: { dataDir: string; write: Writer; log?: (m: string) => void; runtime?: ClaudeRuntime }): App {
   const db = new Db(path.join(opts.dataDir, "forge.db"));
+  setLanguage(db.getSettings().language);
   db.markOrphanedSessions();
   const git = new GitEngine();
   const projects = new ProjectManager(db, git, () => db.getSettings().defaultProfile);
@@ -70,6 +72,8 @@ export function createApp(opts: { dataDir: string; write: Writer; log?: (m: stri
   let jobs: JobWatcher | null = null;
   let sync: SyncService | null = null;
   const emit = (e: ServerEvent) => {
+    // Every path that changes the settings (RPC, phone, sync, backup) announces it here.
+    if (e.event === "settings.updated") setLanguage(e.payload.language);
     server?.emit(e);
     phone?.onServerEvent(e);
     jobs?.onServerEvent(e);

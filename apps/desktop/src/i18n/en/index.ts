@@ -1,0 +1,24 @@
+import type { Messages } from "../index";
+import { app } from "./app";
+import { views } from "./views";
+import { layout } from "./layout";
+import { search } from "./search";
+import { usage } from "./usage";
+import { report } from "./report";
+import { settings } from "./settings";
+import { setup } from "./setup";
+import { github } from "./github";
+import { templates } from "./templates";
+import { git } from "./git";
+import { knowledge } from "./knowledge";
+import { projects } from "./projects";
+import { screenshot } from "./screenshot";
+import { devtools } from "./devtools";
+import { extensions } from "./extensions";
+import { chat } from "./chat";
+import { workspace } from "./workspace";
+import { ui } from "./ui";
+import { lib } from "./lib";
+import { stores } from "./stores";
+
+export const en: Messages = { app, views, layout, search, usage, report, settings, setup, github, templates, git, knowledge, projects, screenshot, devtools, extensions, chat, workspace, ui, lib, stores };

@@ -11,6 +11,7 @@ import { TemplateHost } from "@/components/templates/TemplateHost";
 import { TitleTooltips } from "@/components/ui/title-tooltips";
 import { EmptyState, ErrorBanner } from "@/components/ui/misc";
 import { ChatPanel, ChatPanelSkeleton } from "@/components/workspace/ChatPanel";
+import { useLanguageSync } from "@/i18n/sync";
 import { ClaudeLoginRequiredNotice } from "@/components/settings/ClaudeLoginDialog";
 
 /**
@@ -18,6 +19,7 @@ import { ClaudeLoginRequiredNotice } from "@/components/settings/ClaudeLoginDial
  * shortcuts stay with the main window; the composer keeps its own.
  */
 export function ChatWindowShell({ target }: { target: ChatWindowTarget }) {
+  useLanguageSync();
   useReportShownSession(target.projectId);
   useEffect(() => void loadChatWindowPin(), []);
   const project = useProject(target.projectId);

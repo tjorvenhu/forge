@@ -33,6 +33,7 @@ import { reopenChatWindows } from "@/lib/app-install";
 import type { ChatWindowTarget } from "@/lib/chat-windows";
 import { ChatWindowShell } from "@/views/ChatWindowView";
 import { AgentReviewDialog } from "@/components/workspace/AgentReviewDialog";
+import { useLanguageSync } from "@/i18n/sync";
 
 // Views that are not needed at start (they bring CodeMirror and more) load on first use, or
 // in idle time right after the start, so the first switch does not wait either.
@@ -111,6 +112,7 @@ export function App({ chatWindow = null }: { chatWindow?: ChatWindowTarget | nul
 }
 
 function Shell() {
+  useLanguageSync();
   useGlobalShortcuts();
   useAlwaysOnTop();
   useScreenshotKey();

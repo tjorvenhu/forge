@@ -16,7 +16,7 @@ import type {
   Session,
   SlashCommand,
 } from "@forge/protocol";
-import { ForgeError, IDLE_CLOSED_DETAIL } from "@forge/protocol";
+import { ForgeError, idleClosedDetail } from "@forge/protocol";
 import { transcriptImages, transcriptToolImages } from "../claude/attachments.js";
 import type { ClaudeRuntime } from "../claude/runtime.js";
 import { UploadStore } from "../claude/uploads.js";
@@ -178,7 +178,7 @@ export class SessionService {
         minutes: () => db.getSettings().idleCloseMinutes,
         liveIds: () => [...core.live.keys()],
         inUse: (id) => this.inUse(id),
-        close: (id) => this.lifecycle.close(id, IDLE_CLOSED_DETAIL),
+        close: (id) => this.lifecycle.close(id, idleClosedDetail()),
       },
       now,
     );

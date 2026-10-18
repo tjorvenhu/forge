@@ -37,6 +37,8 @@ import { GitHubAccountCard, useAutoOpenGitHub } from "@/components/github/GitHub
 import { SyncAvailableList } from "@/components/settings/SyncSettings";
 import { effortOptions, fromChoice, modelOptions, toChoice } from "@/components/settings/model-options";
 import { PROFILE_IDS, PROFILE_INFO } from "@/components/projects/ProfileBadge";
+import { LanguageChoice } from "@/components/settings/LanguageSelect";
+import { t } from "@/i18n";
 import { SyncOffer, useEnableSync, useNeedsPassphrase } from "./SyncOffer";
 
 const STEPS = [
@@ -264,6 +266,10 @@ const FEATURES = [
 function WelcomeStep() {
   return (
     <div className="flex flex-col gap-5">
+      <section>
+        <SectionTitle>{t.setup.languageTitle}</SectionTitle>
+        <LanguageChoice />
+      </section>
       <div className="grid grid-cols-2 gap-3">
         {FEATURES.map(({ Icon, title, text }) => (
           <div key={title} className="flex flex-col gap-2.5 rounded-lg border border-border bg-surface-2/40 p-4">

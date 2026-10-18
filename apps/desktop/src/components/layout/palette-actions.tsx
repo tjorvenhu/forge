@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import type { QueryClient } from "@tanstack/react-query";
-import { Archive, ArrowDown, ArrowLeftRight, ArrowUp, ArrowUpCircle, BookOpen, Bot, CalendarDays, Camera, CloudDownload, Columns2, Combine, Cpu, Database, Download, FilePlus2, FileStack, FileText, FileUp, FlaskConical, FolderDown, FolderOpen, FolderPlus, Gauge, GitBranch, GitBranchPlus, GitCommitHorizontal, GitCompareArrows, GitFork, GitPullRequest, Globe, HandHeart, Lightbulb, Link2Off, ListChecks, LogIn, LogOut, MessageSquare, MessageSquarePlus, MessageSquareText, MonitorSmartphone, NotebookText, PackageCheck, PanelBottom, PanelRight, Pencil, Phone, PhoneOff, PhoneOutgoing, Pin, PinOff, Play, Power, RefreshCcw, RefreshCw, RotateCcw, Settings2, Shield, ShieldBan, Shrink, Sparkles, Square, SquareArrowOutDownLeft, SquareArrowOutUpRight, SquareTerminal, Timer, ToggleLeft, ToggleRight, Trash2, type LucideIcon, Wand2 } from "lucide-react";
+import { Archive, ArrowDown, ArrowLeftRight, ArrowUp, ArrowUpCircle, BookOpen, Bot, CalendarDays, Camera, CloudDownload, Columns2, Combine, Cpu, Database, Download, FilePlus2, FileStack, FileText, FileUp, FlaskConical, FolderDown, FolderOpen, FolderPlus, Gauge, GitBranch, GitBranchPlus, GitCommitHorizontal, GitCompareArrows, GitFork, GitPullRequest, Globe, HandHeart, Languages, Lightbulb, Link2Off, ListChecks, LogIn, LogOut, MessageSquare, MessageSquarePlus, MessageSquareText, MonitorSmartphone, NotebookText, PackageCheck, PanelBottom, PanelRight, Pencil, Phone, PhoneOff, PhoneOutgoing, Pin, PinOff, Play, Power, RefreshCcw, RefreshCw, RotateCcw, Settings2, Shield, ShieldBan, Shrink, Sparkles, Square, SquareArrowOutDownLeft, SquareArrowOutUpRight, SquareTerminal, Timer, ToggleLeft, ToggleRight, Trash2, type LucideIcon, Wand2 } from "lucide-react";
 import type {
   AppInstallState,
   AppUpdateState,
@@ -20,7 +20,8 @@ import type {
   Settings,
   TestDbState,
 } from "@forge/protocol";
-import { IDLE_CLOSE_CHOICES, SUPPORT_LINKS, USAGE_STATS_URL } from "@forge/protocol";
+import { IDLE_CLOSE_CHOICES, LANGUAGE_NAMES, LANGUAGES, SUPPORT_LINKS, USAGE_STATS_URL } from "@forge/protocol";
+import { t } from "@/i18n";
 import { openExternal } from "@/lib/native";
 import { checkInstall, installFromFile, installFull, installUpdate } from "@/lib/app-install";
 import { call, keys, refreshUsage } from "@/lib/queries";
@@ -127,6 +128,7 @@ const SETTING_TOGGLES: Record<Exclude<BooleanSetting, keyof typeof UNLISTED_SETT
 
 /** Single options of the settings that are no switch; the entry opens their section. */
 const SETTING_OPTIONS: ReadonlyArray<{ id: string; label: string; section: SettingsSection; keywords?: string }> = [
+  { id: "language", label: t.layout.paletteLanguageOption, section: "general", keywords: "sprache language english englisch deutsch german flagge" },
   { id: "default-model", label: "Standardmodell für neue Sessions", section: "general", keywords: "modell model opus sonnet haiku" },
   { id: "default-effort", label: "Standard-Denkaufwand", section: "general", keywords: "aufwand effort thinking nachdenken" },
   { id: "default-profile", label: "Profil für neue Projekte", section: "general", keywords: "rechte permission safe balanced autonomous" },
@@ -626,6 +628,15 @@ export function buildActions(ctx: ActionContext): PaletteEntry[] {
     setting(`setting-${key}`, `${def.label}: ${on ? "ausschalten" : "einschalten"}`, ic, run, { hint: section, keywords: `schalter einstellung ${def.keywords ?? ""}` });
   }
   if (settings) {
+    for (const l of LANGUAGES) {
+      if (l === settings.language) continue;
+      const label = t.layout.paletteLanguage(LANGUAGE_NAMES[l]);
+      setting(`language-${l}`, label, icon(Languages), () => void saveSetting(qc, { language: l }, label), {
+        hint: t.layout.paletteLanguageNow(LANGUAGE_NAMES[settings.language]),
+        // both languages: whoever looks for the switch may not read the one on screen
+        keywords: "sprache language english englisch deutsch german oberfläche interface",
+      });
+    }
     for (const m of IDLE_CLOSE_CHOICES) {
       if (m === settings.idleCloseMinutes) continue;
       const label = m > 0 ? `Untätige Sessions schließen nach ${idleCloseLabel(m)}` : "Untätige Sessions nicht mehr schließen";

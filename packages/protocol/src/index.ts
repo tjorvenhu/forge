@@ -1,3 +1,4 @@
+export * from "./i18n.js";
 export * from "./errors.js";
 export * from "./models.js";
 export * from "./rpc.js";

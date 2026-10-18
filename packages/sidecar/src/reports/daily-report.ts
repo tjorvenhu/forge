@@ -4,7 +4,7 @@ import {
   ForgeError,
   formatDuration,
   formatTokens,
-  FORGE_USAGE_LABEL,
+  forgeUsageLabel,
   type DailyReport,
   type DailyReportAgent,
   type DailyReportCommit,
@@ -477,7 +477,7 @@ export function reportText(r: DailyReport, o: ReportTextOptions = {}): string {
   }
   if (u.forge.calls) {
     const share = fresh(u) ? ` (${Math.round((u.forge.tokens / fresh(u)) * 100)} % der neuen Tokens)` : "";
-    const parts = u.forge.parts.map((p) => `${FORGE_USAGE_LABEL[p.purpose]} ${formatTokens(p.tokens)} Tokens`).join(", ");
+    const parts = u.forge.parts.map((p) => `${forgeUsageLabel(p.purpose)} ${formatTokens(p.tokens)} Tokens`).join(", ");
     lines.push(`Durch FORGE selbst: ${u.forge.calls} ${u.forge.calls === 1 ? "Aufruf" : "Aufrufe"}, ${formatTokens(u.forge.tokens)} neue Tokens${share}, ${formatDuration(u.forge.workMs)}. Davon: ${parts}.`);
   }
 

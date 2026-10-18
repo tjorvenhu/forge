@@ -1,4 +1,4 @@
-import { IDLE_CLOSED_DETAIL, type SessionEvent, type SessionEventBody, type TaskMessageRef } from "@forge/protocol";
+import { isIdleClosedDetail, type SessionEvent, type SessionEventBody, type TaskMessageRef } from "@forge/protocol";
 import { limitLabel, limitTime } from "@/lib/rate-limit";
 
 type Body<T extends SessionEventBody["type"]> = Extract<SessionEventBody, { type: T }>;
@@ -356,7 +356,7 @@ function itemFolder(thread: string | null = null) {
       }
       case "status":
         if (b.detail && b.detail.startsWith("Achtung")) items.push({ kind: "notice", key: `n${ev.seq}`, ts: ev.ts, text: b.detail, tone: "warning" });
-        else if (b.status === "stopped" && b.detail === IDLE_CLOSED_DETAIL) items.push({ kind: "notice", key: `n${ev.seq}`, ts: ev.ts, text: b.detail, tone: "info" });
+        else if (b.status === "stopped" && isIdleClosedDetail(b.detail)) items.push({ kind: "notice", key: `n${ev.seq}`, ts: ev.ts, text: b.detail, tone: "info" });
         break;
       // Warnings ("allowed_warning") arrive with every request near the limit; the composer shows them
       // permanently instead. Only a real stop belongs in the chat.

@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useRef, type ReactNode } from "react";
 import * as S from "@radix-ui/react-select";
 import { Check, ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -9,6 +9,8 @@ export interface SelectOption<T extends string> {
   label: string;
   description?: string;
   disabled?: boolean;
+  /** shown before the label, in the list and in the closed field */
+  icon?: ReactNode;
 }
 
 interface SelectProps<T extends string> {
@@ -67,7 +69,16 @@ export function Select<T extends string>({ value, onChange, options, placeholder
                 <S.ItemIndicator className="absolute left-2 top-2">
                   <Check className="h-3.5 w-3.5 text-accent" />
                 </S.ItemIndicator>
-                <S.ItemText>{o.label}</S.ItemText>
+                <S.ItemText>
+                  {o.icon ? (
+                    <span className="inline-flex items-center gap-2">
+                      {o.icon}
+                      {o.label}
+                    </span>
+                  ) : (
+                    o.label
+                  )}
+                </S.ItemText>
                 {o.description && <span className="text-xs text-muted">{o.description}</span>}
               </S.Item>
             ))}

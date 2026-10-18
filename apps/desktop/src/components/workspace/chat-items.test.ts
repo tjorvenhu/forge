@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { IDLE_CLOSED_DETAIL, type SessionEvent, type SessionEventBody } from "@forge/protocol";
+import { idleClosedDetail, type SessionEvent, type SessionEventBody } from "@forge/protocol";
 import { appendStreaming, buildChatItems, buildEventItems, IncrementalItems, isSlashCommand, itemIndexForSeq, lastUserPrompt, reuseStableItems, rowSpacing, toolDisplayName, toolSummary } from "./chat-items";
 import { useSessionEvents } from "@/stores/session-events";
 
@@ -286,9 +286,9 @@ describe("process closed for being idle", () => {
     seq = 0;
     const items = buildEventItems([
       ev({ type: "status", status: "stopped", detail: null }),
-      ev({ type: "status", status: "stopped", detail: IDLE_CLOSED_DETAIL }),
+      ev({ type: "status", status: "stopped", detail: idleClosedDetail() }),
     ]);
-    expect(items).toEqual([expect.objectContaining({ kind: "notice", tone: "info", text: IDLE_CLOSED_DETAIL })]);
+    expect(items).toEqual([expect.objectContaining({ kind: "notice", tone: "info", text: idleClosedDetail() })]);
     expect(items[0]).not.toHaveProperty("card");
   });
 });

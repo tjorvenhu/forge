@@ -343,6 +343,13 @@ export const MIGRATIONS: string[] = [
   `
   ALTER TABLE prompt_templates ADD COLUMN learned INTEGER NOT NULL DEFAULT 0;
   `,
+  // English became the default language with 0.1.97; installations from before were used in German and stay so.
+  `
+  INSERT INTO settings(key, value)
+  SELECT 'language', '"de"'
+  WHERE EXISTS (SELECT 1 FROM projects) OR EXISTS (SELECT 1 FROM sessions) OR EXISTS (SELECT 1 FROM settings WHERE key <> 'knownModels')
+  ON CONFLICT(key) DO NOTHING;
+  `,
 ];
 
 /**
@@ -432,8 +439,9 @@ export const DEFAULT_SETTINGS: Settings = {
   setupDone: false,
   syncEnabled: false,
   syncAsked: false,
-  usageStats: true,
+  usageStats: false,
   usageStatsAsked: false,
+  language: "en",
 };
 
 /** When FORGE last looked for repeated messages, and the learned templates the user deleted (normalized text). */

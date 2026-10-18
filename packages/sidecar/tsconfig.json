@@ -4,5 +4,5 @@
     "lib": ["ES2023"],
     "types": ["node"]
   },
-  "include": ["src", "test", "build.mjs", "vitest.e2e.config.ts"]
+  "include": ["src", "test", "build.mjs", "vitest.config.ts", "vitest.e2e.config.ts"]
 }

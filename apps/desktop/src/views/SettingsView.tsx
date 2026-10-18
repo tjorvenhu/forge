@@ -48,7 +48,10 @@ import { PolicySettings } from "@/components/settings/PolicySettings";
 import { TemplatesSettings } from "@/components/templates/TemplatesSettings";
 import { GitHubSettings } from "@/components/settings/GitHubSettings";
 import { AppUpdateSettings } from "@/components/layout/AppUpdate";
-import { InstallRepairSettings } from "@/components/layout/InstallRepair";import { cn, planLabel } from "@/lib/utils";
+import { InstallRepairSettings } from "@/components/layout/InstallRepair";
+import { LanguageSelect } from "@/components/settings/LanguageSelect";
+import { cn, planLabel } from "@/lib/utils";
+import { t } from "@/i18n";
 
 type Save = (patch: Partial<Settings>) => Promise<void>;
 
@@ -174,6 +177,9 @@ function GeneralSection({ s, save }: { s: Settings; save: Save }) {
 
 
       <Group title="Bedienung">
+        <Row label={t.settings.language} description={t.settings.languageHint}>
+          <LanguageSelect className="w-64" />
+        </Row>
         <SwitchRow
           label="Enter sendet"
           description={s.enterToSend ? "Umschalt+Enter macht eine neue Zeile." : "Strg+Enter sendet, Enter macht eine neue Zeile."}

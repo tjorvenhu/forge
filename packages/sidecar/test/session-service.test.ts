@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PlanUsage, ServerEvent, SessionEventBody } from "@forge/protocol";
-import { IDLE_CLOSED_DETAIL } from "@forge/protocol";
+import { idleClosedDetail } from "@forge/protocol";
 import { IDLE_CHECK_MS } from "../src/sessions/idle-close.js";
 import type { ClaudeRuntime, RuntimeSession, SessionSink, StartOptions } from "../src/claude/runtime.js";
 import { AgentSdkRuntime, REMOTE_UNAVAILABLE } from "../src/claude/runtime.js";
@@ -2027,7 +2027,7 @@ describe("closing idle sessions", () => {
     clock += MIN;
     expect(svc2.checkIdle()).toEqual([s.id]);
     expect(svc2.get(s.id)).toMatchObject({ live: false, status: "stopped", claudeSessionId: CLAUDE_ID });
-    expect(lastStatus(s.id)).toMatchObject({ status: "stopped", detail: IDLE_CLOSED_DETAIL });
+    expect(lastStatus(s.id)).toMatchObject({ status: "stopped", detail: idleClosedDetail() });
     expect(userTexts(s.id)).toEqual(["Lies a.txt"]);
     expect(svc2.listLive()).toEqual([]);
 

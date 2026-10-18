@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { Language, pick } from "./i18n.js";
 
 export const ProfileId = z.enum(["safe", "balanced", "autonomous"]);
 export type ProfileId = z.infer<typeof ProfileId>;
@@ -519,8 +520,10 @@ export const Settings = z.object({
   syncAsked: z.boolean(),
   /** every 5 minutes anonymous totals (tokens, projects, agents ...) go to USAGE_STATS_URL */
   usageStats: z.boolean(),
-  /** the user answered the question about the usage statistics; unanswered they stay on */
+  /** the user answered the question about the usage statistics; unanswered they stay off */
   usageStatsAsked: z.boolean(),
+  /** language of the interface, the sidecar's texts and the phone; switching reloads the windows */
+  language: Language,
 });
 export type Settings = z.infer<typeof Settings>;
 
@@ -554,8 +557,20 @@ export type UiCompare = z.infer<typeof UiCompare>;
 /** Choices for idleCloseMinutes in the settings; 0 is off. */
 export const IDLE_CLOSE_CHOICES = [0, 15, 30, 60, 120, 240] as const;
 
+const IDLE_CLOSED_DETAILS = {
+  en: "Claude process ended after inactivity. The next message continues the session.",
+  de: "Claude-Prozess wegen Untätigkeit beendet. Die nächste Nachricht setzt die Session fort.",
+} as const;
+
 /** Status detail when FORGE ended the CLI process of an idle session; the chat shows it as a quiet note. */
-export const IDLE_CLOSED_DETAIL = "Claude-Prozess wegen Untätigkeit beendet. Die nächste Nachricht setzt die Session fort.";
+export function idleClosedDetail(): string {
+  return pick(IDLE_CLOSED_DETAILS);
+}
+
+/** Also true for the text in the other language: stored events keep the language they were written in. */
+export function isIdleClosedDetail(detail: string | null | undefined): detail is string {
+  return Object.values(IDLE_CLOSED_DETAILS).some((d) => d === detail);
+}
 
 /**
  * The latest plan rate limit Claude Code reported, for the whole account (not per session).
@@ -700,7 +715,7 @@ export const GitHubOrg = z.object({
 export type GitHubOrg = z.infer<typeof GitHubOrg>;
 
 /** Account or organisation a new repository is created in, as GitHub writes its name. */
-export const GitHubOwner = z.string().regex(/^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$/, "Ungültiger GitHub-Kontoname");
+export const GitHubOwner = z.string().regex(/^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$/, { error: () => pick({ en: "Invalid GitHub account name", de: "Ungültiger GitHub-Kontoname" }) });
 
 export const ClaudeUpdateInfo = z.object({
   installed: z.string().nullable(),

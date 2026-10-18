@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from "react";
 import { BarChart3, Copy, Table2 } from "lucide-react";
-import { FORGE_USAGE_LABEL, formatDuration, formatTokens, type DailyReportUsage } from "@forge/protocol";
+import { forgeUsageLabel, formatDuration, formatTokens, type DailyReportUsage } from "@forge/protocol";
 import { contextItems, copyText } from "@/lib/context-menu";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -246,13 +246,13 @@ function ForgeCard({ u }: { u: DailyReportUsage }) {
     <ChartCard
       title="Durch FORGE"
       sub={`${formatTokens(f.tokens)} neue Tokens, ${share} % des Tages, ${f.calls} ${f.calls === 1 ? "Aufruf" : "Aufrufe"}, ${formatDuration(f.workMs)}`}
-      rows={f.parts.map((p) => [FORGE_USAGE_LABEL[p.purpose], `${formatTokens(p.tokens)} neue Tokens, ${p.calls} ${p.calls === 1 ? "Aufruf" : "Aufrufe"}, ${formatDuration(p.workMs)}`])}
+      rows={f.parts.map((p) => [forgeUsageLabel(p.purpose), `${formatTokens(p.tokens)} neue Tokens, ${p.calls} ${p.calls === 1 ? "Aufruf" : "Aufrufe"}, ${formatDuration(p.workMs)}`])}
     >
       <ul className="flex flex-col gap-2.5">
         {f.parts.map((p) => (
           <li key={p.purpose} className="min-w-0">
             <div className="mb-1 flex items-baseline gap-2 text-small">
-              <span className="min-w-0 flex-1 truncate text-fg">{FORGE_USAGE_LABEL[p.purpose]}</span>
+              <span className="min-w-0 flex-1 truncate text-fg">{forgeUsageLabel(p.purpose)}</span>
               <span className="shrink-0 tabular-nums text-fg">{formatTokens(p.tokens)}</span>
               <span className="w-24 shrink-0 text-right tabular-nums text-subtle">
                 {p.calls} {p.calls === 1 ? "Aufruf" : "Aufrufe"}

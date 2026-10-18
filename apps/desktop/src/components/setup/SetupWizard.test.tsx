@@ -70,6 +70,7 @@ beforeEach(() => {
     syncAsked: false,
     usageStats: true,
     usageStatsAsked: true,
+    language: "de",
   };
   account = { login: "me", id: 1, name: "Me", avatarUrl: null, profileUrl: "https://github.com/me" };
   callMock.mockImplementation(async (method: string, params: Record<string, unknown>) => {
