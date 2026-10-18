@@ -3,7 +3,7 @@ import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { browserCandidates, findBrowser, NO_BROWSER, sweepProfiles } from "../src/preview/browser.js";
+import { browserCandidates, findBrowser, NO_BROWSER, pruneProfiles, sweepProfiles } from "../src/preview/browser.js";
 import { parseKey } from "../src/preview/page.js";
 import { formatLogs, logSummary, PreviewService, stepProblem } from "../src/preview/preview.js";
 import { isLocalUrl, previewUrl } from "../src/preview/url.js";
@@ -192,6 +192,13 @@ describe.skipIf(!browser)("preview in a real browser", () => {
       if (req.url === "/" || req.url?.startsWith("/?")) {
         res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
         res.end(PAGE);
+      } else if (req.url === "/merken") {
+        res.writeHead(200, { "content-type": "text/html; charset=utf-8", "set-cookie": "login=ja; Path=/; HttpOnly" });
+        res.end("<script>localStorage.setItem('ls', 'ja'); document.title = 'gemerkt'</script>");
+      } else if (req.url === "/zeigen") {
+        const login = /login=(\w+)/.exec(req.headers.cookie ?? "")?.[1] ?? "";
+        res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+        res.end(`<script>document.title = 'login=${login}; ls=' + (localStorage.getItem('ls') ?? '')</script>`);
       } else if (req.url === "/weg") {
         res.writeHead(302, { location: "https://example.com/" });
         res.end();
@@ -293,6 +300,31 @@ describe.skipIf(!browser)("preview in a real browser", () => {
     expect(again.text).toContain("HTTP-Status: 200");
     expect(again.text).toMatch(/^Konsole: .*Fehler/m);
   }, 60_000);
+
+  it("keeps logins in the project's profile across browser restarts, not across projects", async () => {
+    const t = tempDir();
+    const make = () => new PreviewService({ devServer: async () => ({ status: "running", url: base }), profileDir: (id) => path.join(t.dir, id) });
+    try {
+      const first = make();
+      // A session cookie (no Max-Age), as many logins use, and the app's own storage.
+      await first.interact("p1", { path: "/", steps: [{ action: "wait", ms: 1 }], screenshot: false });
+      await first.console("p1", { url: `${base}/merken` });
+      await first.closeAll();
+      expect(existsSync(path.join(t.dir, "p1", "forge-session-cookies.json"))).toBe(true);
+
+      const second = make();
+      const seen = await second.console("p1", { url: `${base}/zeigen` });
+      expect(seen).toContain("Titel: login=ja; ls=ja");
+      const other = await second.console("p2", { url: `${base}/zeigen` });
+      expect(other).toContain("Titel: login=; ls=");
+      await second.closeAll();
+
+      pruneProfiles(t.dir, new Set(["p1"]));
+      expect([existsSync(path.join(t.dir, "p1")), existsSync(path.join(t.dir, "p2"))]).toEqual([true, false]);
+    } finally {
+      t.cleanup();
+    }
+  }, 90_000);
 
   it("keeps taking screenshots after a comparison shot in the other tab", async () => {
     devUrl = base;

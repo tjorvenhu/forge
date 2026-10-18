@@ -16,6 +16,7 @@ import { DevToolsService } from "./devtools/dev-tools.js";
 import { TestDbService } from "./devtools/test-db.js";
 import { DevEnvironment } from "./devtools/environment.js";
 import { PreviewService } from "./preview/preview.js";
+import { pruneProfiles } from "./preview/browser.js";
 import { KnowledgeStore } from "./knowledge/knowledge.js";
 import { RefChecker } from "./knowledge/staleness.js";
 import { PhoneService } from "./phone/phone-service.js";
@@ -137,7 +138,9 @@ export function createApp(opts: { dataDir: string; write: Writer; log?: (m: stri
   worktrees.useSetup(worktreeSetup);
   sessions.useWorktreeSetup(worktreeSetup);
   const knowledge = new KnowledgeStore(projects, (projectId) => emit({ event: "knowledge.updated", payload: { projectId } }), new RefChecker(git, path.join(opts.dataDir, "knowledge-refs.json")));
-  const preview = new PreviewService({ devServer: (projectId) => devServers.state(projectId) });
+  const previewProfiles = path.join(opts.dataDir, "preview-profiles");
+  pruneProfiles(previewProfiles, new Set(projects.all().map((p) => p.id)));
+  const preview = new PreviewService({ devServer: (projectId) => devServers.state(projectId), profileDir: (projectId) => path.join(previewProfiles, projectId) });
   sessions.useProjectTools({ knowledge, dev: devEnv, preview });
   const uiCompare = sessions.useUiCompare({
     dir: path.join(opts.dataDir, "ui-compare"),

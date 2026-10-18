@@ -1,5 +1,7 @@
+import { readFileSync, writeFileSync } from "node:fs";
+import path from "node:path";
 import type { ToolOutput } from "../claude/runtime.js";
-import { CdpTimeout, findBrowser as defaultFindBrowser, launchBrowser, NO_BROWSER, type BrowserProcess } from "./browser.js";
+import { CdpTimeout, findBrowser as defaultFindBrowser, launchBrowser, NO_BROWSER, type BrowserProcess, type Cdp } from "./browser.js";
 import { PreviewPage, type PageLogEntry, type Shot } from "./page.js";
 import { isLocalUrl, previewUrl } from "./url.js";
 
@@ -9,13 +11,61 @@ export const MAX_STEP_MS = 15_000;
 const STEPS_TOTAL_MS = 90_000;
 const IDLE_MS = 5 * 60_000;
 const MAX_LOG_LINES = 60;
+/** A browser killed a moment ago may still hold its kept profile. */
+const LAUNCH_ATTEMPTS = 3;
+const LAUNCH_RETRY_MS = 500;
+/** In the kept profile: the session cookies, which a browser drops when it ends. */
+export const SESSION_COOKIES_FILE = "forge-session-cookies.json";
 
 export interface PreviewDeps {
   /** state of the project's dev server (status and the local address it printed) */
   devServer(projectId: string): Promise<{ status: string; url: string | null }>;
   findBrowser?: () => string | null;
-  launch?: (exe: string) => Promise<BrowserProcess>;
+  /** `profile`: the project's kept profile, or none for a throwaway one */
+  launch?: (exe: string, profile?: string) => Promise<BrowserProcess>;
+  /**
+   * A profile folder per project that outlives the browser: logins and the app's storage stay when
+   * it closes after IDLE_MS or hangs. Without it every browser starts empty.
+   */
+  profileDir?: (projectId: string) => string;
   idleMs?: number;
+}
+
+interface CdpCookie {
+  name: string;
+  value: string;
+  domain: string;
+  path: string;
+  secure: boolean;
+  httpOnly: boolean;
+  session: boolean;
+  sameSite?: string;
+  priority?: string;
+  sourceScheme?: string;
+  sourcePort?: number;
+}
+
+/**
+ * The session cookies of local pages as they go to Storage.setCookies. A browser keeps them only while
+ * it runs, and many apps log in with one (no Max-Age); persistent cookies stay in the profile anyway.
+ */
+async function sessionCookies(cdp: Cdp): Promise<string> {
+  const { cookies } = await cdp.send<{ cookies: CdpCookie[] }>("Storage.getCookies", {}, undefined, 2_000);
+  const local = cookies.filter((c) => c.session && isLocalUrl(`http://${c.domain.replace(/^\./, "")}/`));
+  return JSON.stringify(
+    local.map((c) => ({
+      name: c.name,
+      value: c.value,
+      domain: c.domain,
+      path: c.path,
+      secure: c.secure,
+      httpOnly: c.httpOnly,
+      ...(c.sameSite ? { sameSite: c.sameSite } : {}),
+      ...(c.priority ? { priority: c.priority } : {}),
+      ...(c.sourceScheme ? { sourceScheme: c.sourceScheme } : {}),
+      ...(c.sourcePort ? { sourcePort: c.sourcePort } : {}),
+    })),
+  );
 }
 
 export interface PreviewTarget {
@@ -47,6 +97,9 @@ interface Instance {
   /** a tab of its own for comparison shots, so Claude's open page, log and viewport stay as they are */
   compare?: PreviewPage;
   timer?: ReturnType<typeof setTimeout>;
+  /** the kept profile, and the session cookies last written there */
+  profile?: string;
+  cookies?: string;
 }
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
@@ -133,14 +186,57 @@ export class PreviewService {
     }
     const exe = (this.deps.findBrowser ?? defaultFindBrowser)();
     if (!exe) throw new Error(NO_BROWSER);
-    const browser = await (this.deps.launch ?? launchBrowser)(exe);
+    const profile = this.deps.profileDir?.(projectId);
+    const launch = this.deps.launch ?? ((x: string, p?: string) => launchBrowser(x, undefined, p));
+    let browser: BrowserProcess | null = null;
+    for (let attempt = 1; !browser; attempt++) {
+      try {
+        browser = await launch(exe, profile);
+      } catch (e) {
+        if (!profile || attempt >= LAUNCH_ATTEMPTS) throw e;
+        await new Promise((r) => setTimeout(r, LAUNCH_RETRY_MS));
+      }
+    }
     try {
-      const inst = { browser, page: await PreviewPage.open(browser.cdp) };
+      const inst: Instance = { browser, page: await PreviewPage.open(browser.cdp), profile };
+      if (profile) inst.cookies = await this.restoreCookies(browser.cdp, profile);
       this.open.set(projectId, inst);
       return inst;
     } catch (e) {
       browser.killSync();
       throw e;
+    }
+  }
+
+  /** Puts the session cookies of the last browser back; returns what was put back. */
+  private async restoreCookies(cdp: Cdp, profile: string): Promise<string> {
+    let saved: string;
+    try {
+      saved = readFileSync(path.join(profile, SESSION_COOKIES_FILE), "utf8");
+    } catch {
+      return "";
+    }
+    try {
+      const cookies = JSON.parse(saved) as unknown[];
+      if (cookies.length) await cdp.send("Storage.setCookies", { cookies }, undefined, 2_000);
+      return saved;
+    } catch {
+      // A broken file or cookies the browser does not take: the app asks for a login again.
+      return "";
+    }
+  }
+
+  /** Writes the session cookies into the kept profile when they changed, so a killed browser loses none. */
+  private async keepCookies(projectId: string) {
+    const inst = this.open.get(projectId);
+    if (!inst?.profile || !inst.browser.alive) return;
+    try {
+      const now = await sessionCookies(inst.browser.cdp);
+      if (now === inst.cookies) return;
+      writeFileSync(path.join(inst.profile, SESSION_COOKIES_FILE), now);
+      inst.cookies = now;
+    } catch {
+      // the browser hangs or the folder is gone; the cookies of the last write stay
     }
   }
 
@@ -186,6 +282,7 @@ export class PreviewService {
       } catch (e) {
         return this.hung(projectId, e);
       } finally {
+        await this.keepCookies(projectId);
         this.idle(projectId);
       }
     });
@@ -318,6 +415,7 @@ export class PreviewService {
       } catch (e) {
         return this.hung(projectId, e);
       } finally {
+        await this.keepCookies(projectId);
         this.idle(projectId);
       }
     });

@@ -1,5 +1,5 @@
 import { spawn, type ChildProcess } from "node:child_process";
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { killTree } from "../util/proc.js";
@@ -119,14 +119,14 @@ export class Cdp {
 export interface BrowserProcess {
   cdp: Cdp;
   readonly alive: boolean;
-  /** Browser.close, then the process tree and the temporary profile */
+  /** Browser.close, then the process tree and a temporary profile (a kept one stays) */
   close(): Promise<void>;
   /** for the sidecar's shutdown: no waiting, nothing left running */
   killSync(): void;
 }
 
 /** Windows releases the files of a killed browser only a moment after taskkill returns. */
-function removeProfile(dir: string, attempts = 1) {
+function removeTempProfile(dir: string, attempts = 1) {
   const pause = new Int32Array(new SharedArrayBuffer(4));
   for (let i = 0; i < attempts; i++) {
     try {
@@ -168,16 +168,48 @@ export function sweepProfiles(dir = os.tmpdir(), now = Date.now()) {
   }
 }
 
+/** Kept profiles (one folder per project id in `dir`) of projects that are gone. */
+export function pruneProfiles(dir: string, keep: ReadonlySet<string>) {
+  let names: string[];
+  try {
+    names = readdirSync(dir);
+  } catch {
+    return;
+  }
+  for (const name of names) {
+    if (keep.has(name)) continue;
+    try {
+      rmSync(path.join(dir, name), { recursive: true, force: true });
+    } catch {
+      // a browser still has it open; the next start tries again
+    }
+  }
+}
+
+/** A kept profile caches what the dev server sends; this bounds it. */
+const KEPT_CACHE_BYTES = 50 * 1024 * 1024;
+
 /**
- * Starts the browser headless with its own throwaway profile. Port 0 lets the browser pick a free
- * port; it writes the port and the browser's WebSocket path into DevToolsActivePort in the profile.
+ * Starts the browser headless. Port 0 lets the browser pick a free port; it writes the port and the
+ * browser's WebSocket path into DevToolsActivePort in the profile. `keepProfile`: a folder of its own
+ * that outlives the browser (logins, localStorage of the app); otherwise a throwaway one in TEMP.
  */
-export async function launchBrowser(exe: string, timeoutMs = 20_000): Promise<BrowserProcess> {
+export async function launchBrowser(exe: string, timeoutMs = 20_000, keepProfile?: string): Promise<BrowserProcess> {
   sweepProfiles();
-  const profile = mkdtempSync(path.join(os.tmpdir(), PROFILE_PREFIX));
+  let profile: string;
+  if (keepProfile) {
+    mkdirSync(keepProfile, { recursive: true });
+    // From the last run; read before the new browser writes its own, it would point at a dead port.
+    rmSync(path.join(keepProfile, "DevToolsActivePort"), { force: true });
+    profile = keepProfile;
+  } else profile = mkdtempSync(path.join(os.tmpdir(), PROFILE_PREFIX));
+  const removeProfile = (dir: string, attempts = 1) => {
+    if (!keepProfile) removeTempProfile(dir, attempts);
+  };
   const args = [
     "--headless=new",
     `--user-data-dir=${profile}`,
+    ...(keepProfile ? [`--disk-cache-size=${KEPT_CACHE_BYTES}`] : []),
     "--remote-debugging-port=0",
     "--remote-debugging-address=127.0.0.1",
     "--no-first-run",
