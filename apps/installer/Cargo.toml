@@ -22,7 +22,7 @@ ureq = { version = "2", default-features = false, features = ["tls", "json"] }
 ed25519-dalek = "2"
 sha2 = "0.10"
 base64 = "0.22"
-windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Globalization", "Win32_System_Registry", "Win32_UI_WindowsAndMessaging"] }
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_System_Registry", "Win32_UI_WindowsAndMessaging"] }
 
 [features]
 # Without it the window would load devUrl; plain `cargo build` must give the finished setup.

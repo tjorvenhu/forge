@@ -1,10 +1,9 @@
-//! Windows bits: UI language, the existing FORGE installation, WebView2, message boxes.
+//! Windows bits: the existing FORGE installation, WebView2, message boxes.
 
 use std::os::windows::ffi::OsStrExt;
 use std::path::PathBuf;
 
 use serde::Serialize;
-use windows_sys::Win32::Globalization::GetUserDefaultUILanguage;
 use windows_sys::Win32::System::Registry::{RegGetValueW, HKEY, HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, RRF_RT_REG_SZ};
 use windows_sys::Win32::UI::WindowsAndMessaging::{MessageBoxW, MB_ICONERROR, MB_OK};
 
@@ -14,11 +13,6 @@ const WEBVIEW2_GUID: &str = "{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}";
 
 fn wide(s: &str) -> Vec<u16> {
     std::ffi::OsStr::new(s).encode_wide().chain(Some(0)).collect()
-}
-
-pub fn german() -> bool {
-    // primary language id 0x07: German
-    unsafe { GetUserDefaultUILanguage() & 0x3ff == 0x07 }
 }
 
 fn reg_string(root: HKEY, key: &str, value: &str) -> Option<String> {

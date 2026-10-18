@@ -10,17 +10,17 @@ mod win;
 use std::io::Write;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Mutex, OnceLock};
+use std::sync::Mutex;
 
 use serde::Serialize;
 use tauri::{AppHandle, Manager, State, WebviewWindow};
 use tauri_plugin_dialog::DialogExt;
 
-static GERMAN: OnceLock<bool> = OnceLock::new();
+/// English unless the user picks German in the window (set_lang), as FORGE itself starts in English.
+static GERMAN: AtomicBool = AtomicBool::new(false);
 
-/// Text in the language of Windows.
 pub fn t(de: &str, en: &str) -> String {
-    if *GERMAN.get_or_init(win::german) { de } else { en }.to_string()
+    if GERMAN.load(Ordering::Relaxed) { de } else { en }.to_string()
 }
 
 /// %TEMP%\forge-setup.log, for support when an installation fails.
@@ -56,10 +56,15 @@ struct Resolved {
 fn info() -> Info {
     let installed = win::installed();
     Info {
-        lang: if win::german() { "de" } else { "en" },
+        lang: "en",
         default_dir: installed.as_ref().map_or_else(win::default_dir, |i| i.dir.clone()),
         installed,
     }
+}
+
+#[tauri::command]
+fn set_lang(lang: String) {
+    GERMAN.store(lang == "de", Ordering::Relaxed);
 }
 
 #[tauri::command]
@@ -139,7 +144,7 @@ fn main() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .manage(Setup::default())
-        .invoke_handler(tauri::generate_handler![info, resolve, pick_dir, install, launch, quit, minimize, open_url])
+        .invoke_handler(tauri::generate_handler![info, set_lang, resolve, pick_dir, install, launch, quit, minimize, open_url])
         .run(tauri::generate_context!())
         .expect("FORGE Setup startet nicht");
 }
