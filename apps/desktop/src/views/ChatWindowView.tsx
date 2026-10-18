@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { useProject, useSession } from "@/lib/queries";
 import { errorMessage } from "@/lib/rpc";
 import { reportChatWindow, type ChatWindowTarget } from "@/lib/chat-windows";
+import { loadChatWindowPin } from "@/lib/window-options";
 import { splitActive, useUi } from "@/stores/ui";
 import { ErrorBoundary } from "@/components/layout/ErrorBoundary";
 import { Toaster } from "@/components/layout/Toaster";
@@ -18,6 +19,7 @@ import { ClaudeLoginRequiredNotice } from "@/components/settings/ClaudeLoginDial
  */
 export function ChatWindowShell({ target }: { target: ChatWindowTarget }) {
   useReportShownSession(target.projectId);
+  useEffect(() => void loadChatWindowPin(), []);
   const project = useProject(target.projectId);
 
   let content;

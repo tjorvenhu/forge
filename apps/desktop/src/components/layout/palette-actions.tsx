@@ -178,7 +178,7 @@ export const UNLISTED_SETTINGS = {
 const SETTING_TOGGLES: Record<Exclude<BooleanSetting, keyof typeof UNLISTED_SETTINGS>, { label: string; section: SettingsSection; keywords?: string }> = {
   enterToSend: { label: "Enter sendet", section: "general", keywords: "senden zeilenumbruch tastatur" },
   desktopNotifications: { label: "Windows-Benachrichtigungen", section: "general", keywords: "desktop benachrichtigung meldung" },
-  alwaysOnTop: { label: "Im Vordergrund bleiben", section: "general", keywords: "fenster immer oben anheften always on top" },
+  alwaysOnTop: { label: "Im Vordergrund bleiben", section: "general", keywords: "hauptfenster fenster immer oben anheften anpinnen always on top" },
   screenshotKey: { label: "Druck-Taste für Screenshots", section: "general", keywords: "screenshot bildschirmfoto snipping druck print taste" },
   sounds: { label: "Töne", section: "general", keywords: "sound signal klang" },
   autoContinueAfterLimit: { label: "Nach Nutzungslimit weitermachen", section: "claude", keywords: "auto weitermachen limit reset" },

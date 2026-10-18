@@ -564,7 +564,7 @@ export const PHONE_TOOLS: readonly PhoneToolSpec[] = [
   },
   {
     name: "always_on_top",
-    description: "Hält die FORGE-Fenster am Computer über allen anderen Programmen (on), gibt sie wieder frei (off) oder sagt den Stand (status).",
+    description: "Hält das FORGE-Hauptfenster am Computer über allen anderen Programmen (on), gibt es wieder frei (off) oder sagt den Stand (status). Ausgekoppelte Chat-Fenster werden am Rechner einzeln angeheftet.",
     params: { action: { type: "string", enum: ["on", "off", "status"] } },
     run: (t, a) => t.alwaysOnTop(a.action === "on" ? "on" : a.action === "off" ? "off" : "status"),
   },

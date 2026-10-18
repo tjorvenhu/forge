@@ -1,7 +1,9 @@
 import { useState } from "react";
-import { ChevronDown, History, Hourglass, MessageSquarePlus, Power, ShieldAlert, SquareArrowOutDownLeft, SquareArrowOutUpRight, Terminal, Trash2 } from "lucide-react";
+import { ChevronDown, History, Hourglass, MessageSquarePlus, Pin, PinOff, Power, ShieldAlert, SquareArrowOutDownLeft, SquareArrowOutUpRight, Terminal, Trash2 } from "lucide-react";
 import type { ExternalSession, Project, Session } from "@forge/protocol";
 import { openChatWindow, reattachChatWindow } from "@/lib/chat-windows";
+import { contextItems } from "@/lib/context-menu";
+import { setChatWindowPin, useChatWindowPin } from "@/lib/window-options";
 import { call } from "@/lib/queries";
 import { errorMessage } from "@/lib/rpc";
 import { cn, relativeTime } from "@/lib/utils";
@@ -11,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { DropdownMenu } from "@/components/ui/dropdown";
 import { Badge, Tooltip } from "@/components/ui/misc";
 import { ProjectIcon } from "@/components/projects/ProjectIcon";
+import { ChatWindowPinButton } from "@/components/layout/AlwaysOnTopButton";
 import { SessionStatusBadge } from "./SessionStatusBadge";
 import { SummaryButton } from "./SummaryButton";
 import { DeleteSessionDialog } from "./DeleteSessionDialog";
@@ -51,8 +54,22 @@ export function SessionBar({
   // Several chats side by side: buttons without labels, so the title keeps some room.
   const compact = !!pane || (split?.shown ?? 1) > 1;
   const taken = (id: string) => shownElsewhere?.has(id) ?? false;
+  // A chat window offers its own actions on a right click of its bar.
+  const windowItems = contextItems(() => {
+    const pinned = useChatWindowPin.getState().on;
+    return [
+      ...(pinned === null
+        ? []
+        : [
+            pinned
+              ? { label: "Nicht mehr im Vordergrund halten", icon: <PinOff className="h-3.5 w-3.5" />, onSelect: () => void setChatWindowPin(false) }
+              : { label: "Fenster im Vordergrund halten", icon: <Pin className="h-3.5 w-3.5" />, onSelect: () => void setChatWindowPin(true) },
+          ]),
+      { label: "Ins Hauptfenster zurückholen", icon: <SquareArrowOutDownLeft className="h-3.5 w-3.5" />, onSelect: () => void reattachChatWindow() },
+    ];
+  });
   return (
-    <div className="flex h-11 shrink-0 items-center gap-2 border-b border-border px-4">
+    <div className="flex h-11 shrink-0 items-center gap-2 border-b border-border px-4" onContextMenu={detached ? windowItems : undefined}>
       {detached ? (
         <div className="flex min-w-0 items-center gap-2 text-body">
           <ProjectIcon id={project.parentId ?? project.id} name={project.name} size={20} className="rounded-md" />
@@ -134,9 +151,12 @@ export function SessionBar({
         </Button>
       )}
       {detached ? (
-        <Button size="sm" variant="ghost" onClick={() => void reattachChatWindow()} title="Ins Hauptfenster zurückholen. Schließt dieses Fenster.">
-          <SquareArrowOutDownLeft className="h-3.5 w-3.5" /> Zurückholen
-        </Button>
+        <>
+          <ChatWindowPinButton />
+          <Button size="sm" variant="ghost" onClick={() => void reattachChatWindow()} title="Ins Hauptfenster zurückholen. Schließt dieses Fenster.">
+            <SquareArrowOutDownLeft className="h-3.5 w-3.5" /> Zurückholen
+          </Button>
+        </>
       ) : (
         <>
           {session && !inChatWindow && (

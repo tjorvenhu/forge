@@ -188,7 +188,7 @@ function GeneralSection({ s, save }: { s: Settings; save: Save }) {
         />
         <SwitchRow
           label="Im Vordergrund bleiben"
-          description="FORGE und seine Chat-Fenster bleiben über anderen Programmen. Auch über die Befehlspalette (Strg+K) und per Telefon umschaltbar."
+          description="Das Hauptfenster von FORGE bleibt über anderen Programmen. Auch über die Befehlspalette (Strg+K) und per Telefon umschaltbar. Ausgekoppelte Chat-Fenster heftest du einzeln mit der Nadel in ihrer Kopfzeile an."
           checked={s.alwaysOnTop}
           onChange={(v) => void save({ alwaysOnTop: v })}
         />

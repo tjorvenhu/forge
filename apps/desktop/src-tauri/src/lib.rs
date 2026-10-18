@@ -152,6 +152,7 @@ pub fn run() {
             chat_windows::update_chat_window,
             chat_windows::reattach_chat_window,
             chat_windows::set_always_on_top,
+            chat_windows::chat_window_on_top,
             chat_windows::show_main_window,
             screenshot::screenshot_set_enabled,
             screenshot::screenshot_start,

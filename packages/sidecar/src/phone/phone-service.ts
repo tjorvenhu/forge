@@ -1789,7 +1789,7 @@ export class PhoneService {
         run(action !== "status", async () => {
           if (action !== "status") {
             const next = this.d.db.updateSettings({ alwaysOnTop: action === "on" });
-            // The main window applies it to every FORGE window.
+            // The main window applies it to itself; chat windows are pinned one by one.
             this.d.emit({ event: "settings.updated", payload: next });
           }
           return this.d.db.getSettings().alwaysOnTop ? "FORGE bleibt im Vordergrund." : "FORGE bleibt nicht im Vordergrund.";

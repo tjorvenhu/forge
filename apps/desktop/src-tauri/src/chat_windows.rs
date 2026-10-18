@@ -3,7 +3,6 @@
 //! was opened after the others.
 
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 
 use serde::{Deserialize, Serialize};
@@ -34,8 +33,6 @@ const MAX_FILE_NAME: usize = 260;
 pub struct ChatWindows {
     /// window label -> session shown there; None while the window shows a new session not started yet
     shown: Mutex<HashMap<String, Option<String>>>,
-    /// Setting "Im Vordergrund bleiben": holds for the main window and every chat window.
-    on_top: AtomicBool,
 }
 
 /// What a chat window shows; handed to its webview before the page loads, and back to the main window.
@@ -208,7 +205,8 @@ pub async fn open_chat_window(app: AppHandle, target: ChatTarget, title: String,
     };
     config.label = label.clone();
     config.title = window_title(&title);
-    config.always_on_top = state.on_top.load(Ordering::Relaxed);
+    // Pinned one by one from its own bar; the main window's setting does not carry over.
+    config.always_on_top = false;
     let cursor = if drag { app.cursor_position().ok() } else { None };
     if let Some(c) = cursor {
         // Torn-off tab: the window appears with its title bar under the cursor.
@@ -227,8 +225,6 @@ pub async fn open_chat_window(app: AppHandle, target: ChatTarget, title: String,
         .and_then(|b| b.initialization_script(script).build());
     match built {
         Ok(w) => {
-            // The setting may have changed while the webview was built; set_always_on_top only reaches existing windows.
-            let _ = w.set_always_on_top(state.on_top.load(Ordering::Relaxed));
             state.notify(&app);
             if cursor.is_some() {
                 follow_cursor(&app, w);
@@ -293,14 +289,26 @@ pub fn update_chat_window(app: AppHandle, window: WebviewWindow, session_id: Opt
     window.set_title(&window_title(&title)).map_err(|e| e.to_string())
 }
 
-/// Keeps every FORGE window above other apps, or lets them go; chat windows opened later follow.
+/// Setting "Im Vordergrund bleiben": keeps the main window above other apps, or lets it go. Chat
+/// windows are pinned one by one (chat_window_on_top).
 #[tauri::command]
 pub fn set_always_on_top(app: AppHandle, on: bool) {
-    app.state::<ChatWindows>().on_top.store(on, Ordering::Relaxed);
-    // The screenshot overlay always covers everything.
-    for w in app.webview_windows().values().filter(|w| w.label() != crate::screenshot::OVERLAY) {
-        let _ = w.set_always_on_top(on);
+    if let Some(main) = app.get_webview_window(MAIN) {
+        let _ = main.set_always_on_top(on);
     }
+}
+
+/// Called by a chat window for itself: pins it above other apps (Some(true)), lets it go (Some(false))
+/// or only asks. Returns whether it stays on top now.
+#[tauri::command]
+pub fn chat_window_on_top(window: WebviewWindow, on: Option<bool>) -> Result<bool, String> {
+    if !window.label().starts_with(PREFIX) {
+        return Err("Kein Chat-Fenster".into());
+    }
+    if let Some(on) = on {
+        window.set_always_on_top(on).map_err(|e| e.to_string())?;
+    }
+    window.is_always_on_top().map_err(|e| e.to_string())
 }
 
 /// A click on a Windows notification that names no session.
