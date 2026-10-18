@@ -1,5 +1,5 @@
 import type { ToolOutput } from "../claude/runtime.js";
-import { findBrowser as defaultFindBrowser, launchBrowser, NO_BROWSER, type BrowserProcess } from "./browser.js";
+import { CdpTimeout, findBrowser as defaultFindBrowser, launchBrowser, NO_BROWSER, type BrowserProcess } from "./browser.js";
 import { PreviewPage, type PageLogEntry, type Shot } from "./page.js";
 import { isLocalUrl, previewUrl } from "./url.js";
 
@@ -87,10 +87,16 @@ export function formatLogs(logs: PageLogEntry[]): string[] {
   return out;
 }
 
-function shotLine(s: Shot, requested: { width: number; height: number }, fullPage: boolean): string {
+/** "Screenshot: 390x1568 JPEG, ganze Seite in 4 Teilen …"; the card reads the size of the first image from it. */
+function shotLine(shots: Shot[], requested: { width: number; height: number }, fullPage: boolean): string {
+  const s = shots[0]!;
   const notes = [s.cut ? "ganze Seite nach 6000 Pixeln abgeschnitten" : "", s.width < requested.width ? "verkleinert" : ""].filter(Boolean);
-  return `Screenshot: ${s.width}x${s.height} JPEG${fullPage ? ", ganze Seite" : ""}${notes.length ? ` (${notes.join(", ")})` : ""}`;
+  const parts = shots.length > 1 ? ` in ${shots.length} Teilen von oben nach unten` : "";
+  return `Screenshot: ${s.width}x${s.height} JPEG${fullPage ? `, ganze Seite${parts}` : ""}${notes.length ? ` (${notes.join(", ")})` : ""}`;
 }
+
+const take = async (page: PreviewPage, fullPage: boolean): Promise<Shot[]> => (fullPage ? page.fullPage() : [await page.screenshot()]);
+const asImages = (shots: Shot[]) => shots.map((s) => ({ data: s.data, mimeType: s.mimeType }));
 
 /**
  * Headless Edge (or Chrome) per project for the preview tools. A browser stays open for the next
@@ -151,11 +157,34 @@ export class PreviewService {
     inst.timer.unref?.();
   }
 
+  /**
+   * A DevTools call went unanswered: the browser or the page in it hangs and would make every later
+   * call wait just as long. The browser goes; the next call starts a fresh one.
+   */
+  private hung(projectId: string, e: unknown): never {
+    if (!(e instanceof CdpTimeout)) throw e;
+    const inst = this.open.get(projectId);
+    if (inst) {
+      this.open.delete(projectId);
+      clearTimeout(inst.timer);
+      inst.browser.killSync();
+    }
+    throw new Error(
+      `Die Vorschau hat nicht reagiert (${e.method}). FORGE hat den Vorschau-Browser beendet, der nächste Aufruf startet ihn neu. Hängt es dann wieder, blockiert vermutlich die Seite selbst den Browser, etwa durch eine Endlosschleife.`,
+      { cause: e },
+    );
+  }
+
   /** Runs `fn` on the project's page; the browser stays for the next call. */
   private withPage<T>(projectId: string, fn: (page: PreviewPage) => Promise<T>): Promise<T> {
     return this.exclusive(projectId, async () => {
       try {
-        return await fn((await this.instance(projectId)).page);
+        const { page } = await this.instance(projectId);
+        // The comparison tab may have been in front last.
+        await page.activate();
+        return await fn(page);
+      } catch (e) {
+        return this.hung(projectId, e);
       } finally {
         this.idle(projectId);
       }
@@ -197,13 +226,13 @@ export class PreviewService {
   screenshot(projectId: string, t: PreviewTarget & { fullPage?: boolean }): Promise<ToolOutput> {
     return this.withPage(projectId, async (page) => {
       const { loaded } = await this.load(page, projectId, t, false);
-      const shot = await page.screenshot(t.fullPage === true);
+      const shots = await take(page, t.fullPage === true);
       const text = [
         ...(await this.header(page, loaded, t.viewer)),
         `Konsole: ${logSummary(page.logs)}${page.logs.length ? " (Einzelheiten mit preview_console)" : ""}`,
-        shotLine(shot, page.viewport, t.fullPage === true),
+        shotLine(shots, page.viewport, t.fullPage === true),
       ];
-      return { text: text.join("\n"), images: [{ data: shot.data, mimeType: shot.mimeType }] };
+      return { text: text.join("\n"), images: asImages(shots) };
     });
   }
 
@@ -255,9 +284,9 @@ export class PreviewService {
         ...formatLogs(logs).slice(0, 20),
       ];
       if (t.screenshot === false) return { text: text.join("\n") };
-      const shot = await page.screenshot(t.fullPage === true);
-      text.push(shotLine(shot, page.viewport, t.fullPage === true));
-      return { text: text.join("\n"), images: [{ data: shot.data, mimeType: shot.mimeType }] };
+      const shots = await take(page, t.fullPage === true);
+      text.push(shotLine(shots, page.viewport, t.fullPage === true));
+      return { text: text.join("\n"), images: asImages(shots) };
     });
   }
 
@@ -281,10 +310,13 @@ export class PreviewService {
       try {
         const inst = await this.instance(projectId);
         inst.compare ??= await PreviewPage.open(inst.browser.cdp);
+        await inst.compare.activate();
         await inst.compare.navigate(target, LOAD_MS);
-        const shot = await inst.compare.screenshot(false);
+        const shot = await inst.compare.screenshot();
         const info = await inst.compare.info();
         return { ...shot, url: info.url || target };
+      } catch (e) {
+        return this.hung(projectId, e);
       } finally {
         this.idle(projectId);
       }

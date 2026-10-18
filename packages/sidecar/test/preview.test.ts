@@ -183,6 +183,7 @@ describe.skipIf(!browser)("preview in a real browser", () => {
   const PAGE = `<!doctype html><html><head><title>Testseite</title></head><body style="height:3000px">
 <h1 id="h">Hallo</h1><input id="q"><button id="b" onclick="document.title = 'Geklickt: ' + document.getElementById('q').value">Los</button>
 <form id="f" onsubmit="event.preventDefault(); document.title = 'Gesendet'"><input id="enter"></form>
+<button id="frage" onclick="document.title = confirm('Wirklich löschen?') ? 'Gelöscht' : 'Abgelehnt'">Frage</button>
 <script>console.error("absichtlich kaputt"); console.warn("veraltet"); console.log("hallo", 42); fetch("/fehlt"); setTimeout(() => { throw new Error("Boom") }, 0);</script>
 </body></html>`;
 
@@ -233,7 +234,9 @@ describe.skipIf(!browser)("preview in a real browser", () => {
     expect(log).toMatch(/GET .*\/fehlt → 404/);
 
     const full = (await preview.screenshot("x", { fullPage: true })) as ToolOutput;
-    expect(full.text).toMatch(/^Screenshot: \d+x1568 JPEG, ganze Seite \(verkleinert\)$/m);
+    // 3000 px at 800 px width: two readable parts instead of one shrunk image.
+    expect(full.text).toMatch(/^Screenshot: 800x1568 JPEG, ganze Seite in 2 Teilen von oben nach unten$/m);
+    expect(full.images).toHaveLength(2);
   }, 60_000);
 
   it("clicks, types and presses keys", async () => {
@@ -259,7 +262,46 @@ describe.skipIf(!browser)("preview in a real browser", () => {
     expect(failed.text).toContain("Abgebrochen nach Schritt 1 von 2.");
     expect(failed.images).toHaveLength(1);
     const bad = (await preview.interact("x", { steps: [{ action: "wait", selector: "##" }], screenshot: false })) as ToolOutput;
-    expect(bad.text).toContain("Ungültiger CSS-Selektor: ##");
+    expect(bad.text).toContain("Ungültiger Selektor: ##");
+  }, 60_000);
+
+  it("understands the Playwright selectors Claude writes and gets past alert and confirm", async () => {
+    const r = (await preview.interact("x", {
+      path: "/",
+      steps: [
+        { action: "type", selector: "input >> nth=0", text: "A" },
+        { action: "click", selector: 'button:has-text("los")' },
+        { action: "type", selector: "xpath=//input[@id='q']", text: "B", clear: true },
+        { action: "click", selector: "text=Los" },
+        { action: "wait", selector: "text=Hallo" },
+      ],
+      screenshot: false,
+    })) as ToolOutput;
+    expect(r.text).toContain("Alle 5 Schritte ausgeführt.");
+    expect(r.text).toContain("Titel: Geklickt: B");
+
+    const asked = (await preview.interact("x", { steps: [{ action: "click", selector: "#frage" }] })) as ToolOutput;
+    expect(asked.text).toContain("Titel: Abgelehnt");
+    expect(asked.text).toContain("JavaScript-Dialog (confirm): „Wirklich löschen?“, von der Vorschau abgelehnt");
+    expect(asked.images).toHaveLength(1);
+  }, 60_000);
+
+  it("loads a page fresh when only the fragment differs", async () => {
+    devUrl = base;
+    await preview.screenshot("x", { path: "/#oben" });
+    const again = (await preview.screenshot("x", { path: "/#oben" })) as ToolOutput;
+    expect(again.text).toContain("HTTP-Status: 200");
+    expect(again.text).toMatch(/^Konsole: .*Fehler/m);
+  }, 60_000);
+
+  it("keeps taking screenshots after a comparison shot in the other tab", async () => {
+    devUrl = base;
+    await preview.screenshot("x", { path: "/" });
+    await preview.capture("x", `${base}/?vergleich=2`);
+    const started = Date.now();
+    const shot = (await preview.screenshot("x", {})) as ToolOutput;
+    expect(shot.images).toHaveLength(1);
+    expect(Date.now() - started).toBeLessThan(10_000);
   }, 60_000);
 
   it("does not follow a redirect off this machine", async () => {

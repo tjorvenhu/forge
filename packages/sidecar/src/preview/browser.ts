@@ -26,6 +26,13 @@ export const NO_BROWSER = "Kein Browser für die Vorschau gefunden. FORGE nutzt 
 
 type Listener = (method: string, params: Record<string, unknown>, sessionId: string | undefined) => void;
 
+/** A DevTools call that got no answer in time; the browser or the page in it may hang. */
+export class CdpTimeout extends Error {
+  constructor(readonly method: string) {
+    super(`Browser antwortet nicht (${method}).`);
+  }
+}
+
 /** Chrome DevTools Protocol over Node's built-in WebSocket; one connection, pages as flat sessions. */
 export class Cdp {
   private next = 0;
@@ -62,7 +69,7 @@ export class Cdp {
     return new Promise<T>((resolve, reject) => {
       const timer = setTimeout(() => {
         this.pending.delete(id);
-        reject(new Error(`Browser antwortet nicht (${method}).`));
+        reject(new CdpTimeout(method));
       }, timeoutMs);
       this.pending.set(id, { resolve: resolve as (v: unknown) => void, reject, timer });
       this.ws.send(JSON.stringify({ id, method, params, ...(sessionId ? { sessionId } : {}) }));

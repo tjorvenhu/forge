@@ -1,4 +1,4 @@
-import type { Cdp } from "./browser.js";
+import { CdpTimeout, type Cdp } from "./browser.js";
 import { isLocalUrl } from "./url.js";
 
 export interface PageLogEntry {
@@ -21,6 +21,8 @@ export interface Shot {
 /** Claude scales larger images down anyway; bigger ones only cost upload time. */
 export const MAX_EDGE = 1568;
 const MAX_FULL_HEIGHT = 6000;
+/** The first request to a dev server may compile the page first (Next.js, Vite): that can take a while. */
+export const NAVIGATE_MS = 60_000;
 const MAX_LOG = 300;
 const MAX_ENTRY = 500;
 
@@ -82,6 +84,42 @@ export function parseKey(spec: string): { key: string; code: string; keyCode: nu
   return { key: name, code, keyCode, text: typed(name), modifiers };
 }
 
+/**
+ * Runs in the page: the elements a selector names. Besides CSS it takes the Playwright forms Claude
+ * writes out of habit: text=Anmelden, button:has-text("Speichern"), xpath=//button and a trailing
+ * >> nth=1. Text matches are case-insensitive; text= gives the innermost elements holding the text.
+ */
+const FIND_ALL = `(sel) => {
+  let nth = null;
+  const n = /^(.*?)\\s*>>\\s*nth=(-?\\d+)\\s*$/.exec(sel);
+  if (n) { sel = n[1]; nth = Number(n[2]); }
+  const text = (e) => (e.innerText || e.textContent || "").toLowerCase();
+  const unquote = (s) => s.trim().replace(/^(["'])(.*)\\1$/, "$2").toLowerCase();
+  let list;
+  if (/^xpath=/.test(sel) || sel.startsWith("//")) {
+    const r = document.evaluate(sel.replace(/^xpath=/, ""), document, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
+    list = [];
+    for (let i = 0; i < r.snapshotLength; i++) list.push(r.snapshotItem(i));
+  } else if (/^text=/.test(sel)) {
+    const t = unquote(sel.slice(5));
+    const hits = [...document.querySelectorAll("body *")].filter((e) => !/^(SCRIPT|STYLE|NOSCRIPT|TEMPLATE)$/.test(e.tagName) && text(e).includes(t));
+    list = hits.filter((e) => !hits.some((o) => o !== e && e.contains(o)));
+  } else {
+    const h = /^(.*?):has-text\\((["'])(.*?)\\2\\)(.*)$/.exec(sel);
+    list = h
+      ? [...document.querySelectorAll((h[1] || "*") + h[4])].filter((e) => text(e).includes(h[3].toLowerCase()))
+      : [...document.querySelectorAll(sel)];
+  }
+  if (nth !== null) list = [nth < 0 ? list[list.length + nth] : list[nth]].filter(Boolean);
+  return list;
+}`;
+
+/** Expression for the first element `selector` names; with `visible` the first one with a size. */
+export function findElement(selector: string, visible: boolean): string {
+  const pick = visible ? ".find((e) => { const r = e.getBoundingClientRect(); return r.width > 0 && r.height > 0; })" : "[0]";
+  return `((${FIND_ALL})(${JSON.stringify(selector)})${pick} ?? null)`;
+}
+
 /** One tab of the preview browser: navigation, what the page logged, screenshots and simple input. */
 export class PreviewPage {
   logs: PageLogEntry[] = [];
@@ -122,6 +160,14 @@ export class PreviewPage {
 
   send<T = Record<string, unknown>>(method: string, params: Record<string, unknown> = {}, timeoutMs?: number): Promise<T> {
     return this.cdp.send<T>(method, params, this.session, timeoutMs);
+  }
+
+  /**
+   * Makes this the foreground tab. A headless browser draws only the foreground tab: in a background
+   * one captureScreenshot waits for a frame that never comes, and animation frames and timers stall.
+   */
+  async activate() {
+    await this.send("Page.bringToFront", {}, 5_000);
   }
 
   async close() {
@@ -209,6 +255,15 @@ export class PreviewPage {
         this.loading = false;
         this.wake();
         break;
+      case "Page.javascriptDialogOpening": {
+        // An open alert or confirm blocks the page: evaluate and screenshots would wait for it forever.
+        // Confirm and prompt are declined, so a click never deletes something on its own.
+        const type = String(p.type ?? "alert");
+        const accept = type === "alert" || type === "beforeunload";
+        this.log({ kind: "console", level: "warning", text: `JavaScript-Dialog (${type}): „${String(p.message ?? "")}“, von der Vorschau ${accept ? "bestätigt" : "abgelehnt"}` });
+        void this.send("Page.handleJavaScriptDialog", { accept }).catch(() => null);
+        break;
+      }
     }
   }
 
@@ -247,13 +302,26 @@ export class PreviewPage {
   }
 
   async navigate(url: string, loadMs: number): Promise<{ loaded: boolean }> {
+    // Only the fragment differs: the browser would just scroll, without a fresh load, log or status.
+    const target = new URL(url);
+    if (target.hash) {
+      const current = (await this.info()).url;
+      if (current && current.split("#")[0] === url.split("#")[0]) await this.send("Page.navigate", { url: "about:blank" }, 5_000).catch(() => null);
+    }
     this.logs = [];
     this.blocked = [];
     this.status = null;
     this.inflight.clear();
     this.requests.clear();
     this.loading = true;
-    const r = await this.send<{ errorText?: string }>("Page.navigate", { url }, loadMs);
+    let r: { errorText?: string };
+    try {
+      r = await this.send<{ errorText?: string }>("Page.navigate", { url }, NAVIGATE_MS);
+    } catch (e) {
+      if (!(e instanceof CdpTimeout)) throw e;
+      this.loading = false;
+      throw new Error(`Unter ${url} kam nach ${NAVIGATE_MS / 1000} s keine Antwort. Kompiliert der Dev-Server die Seite noch oder hängt er? Prüfe seine Ausgabe mit dev_environment.`, { cause: e });
+    }
     if (r.errorText) {
       this.loading = false;
       throw new Error(
@@ -286,34 +354,54 @@ export class PreviewPage {
     return (await this.evaluate<{ title: string; url: string }>("({ title: document.title, url: location.href })").catch(() => null)) ?? { title: "", url: "" };
   }
 
-  async screenshot(fullPage: boolean): Promise<Shot> {
-    const m = await this.send<{ cssContentSize: { height: number }; cssVisualViewport: { pageX: number; pageY: number } }>("Page.getLayoutMetrics");
-    const width = this.viewport.width;
-    const fullHeight = Math.ceil(m.cssContentSize.height);
-    const height = fullPage ? Math.max(1, Math.min(fullHeight, MAX_FULL_HEIGHT)) : this.viewport.height;
-    const scale = Math.min(1, MAX_EDGE / Math.max(width, height));
-    const x = fullPage ? 0 : m.cssVisualViewport.pageX;
-    const y = fullPage ? 0 : m.cssVisualViewport.pageY;
+  private async capture(x: number, y: number, width: number, height: number, scale: number, beyond: boolean): Promise<string> {
     const { data } = await this.send<{ data: string }>(
       "Page.captureScreenshot",
-      { format: "jpeg", quality: 70, clip: { x, y, width, height, scale }, captureBeyondViewport: fullPage },
+      { format: "jpeg", quality: 70, clip: { x, y, width, height, scale }, captureBeyondViewport: beyond },
       30_000,
     );
-    return { data, mimeType: "image/jpeg", width: Math.round(width * scale), height: Math.round(height * scale), cut: fullPage && fullHeight > MAX_FULL_HEIGHT };
+    return data;
+  }
+
+  /** The visible part of the page. */
+  async screenshot(): Promise<Shot> {
+    const m = await this.send<{ cssVisualViewport: { pageX: number; pageY: number } }>("Page.getLayoutMetrics");
+    const { width, height } = this.viewport;
+    const scale = Math.min(1, MAX_EDGE / Math.max(width, height));
+    const data = await this.capture(m.cssVisualViewport.pageX, m.cssVisualViewport.pageY, width, height, scale, false);
+    return { data, mimeType: "image/jpeg", width: Math.round(width * scale), height: Math.round(height * scale), cut: false };
+  }
+
+  /**
+   * The whole page in parts of at most MAX_EDGE pixels height, at the viewport's width. One image of a
+   * long page would be shrunk until the text is unreadable (a phone page 6000 px high: 102 px wide).
+   */
+  async fullPage(): Promise<Shot[]> {
+    const m = await this.send<{ cssContentSize: { height: number } }>("Page.getLayoutMetrics");
+    const width = this.viewport.width;
+    const fullHeight = Math.max(1, Math.ceil(m.cssContentSize.height));
+    const height = Math.min(fullHeight, MAX_FULL_HEIGHT);
+    const scale = Math.min(1, MAX_EDGE / width);
+    const part = Math.floor(MAX_EDGE / scale);
+    const shots: Shot[] = [];
+    for (let y = 0; y < height; y += part) {
+      const h = Math.min(part, height - y);
+      const data = await this.capture(0, y, width, h, scale, true);
+      shots.push({ data, mimeType: "image/jpeg", width: Math.round(width * scale), height: Math.round(h * scale), cut: fullHeight > MAX_FULL_HEIGHT });
+    }
+    return shots;
   }
 
   /** Waits until the selector matches (visible: with a size), throws after `ms`. */
   async waitFor(selector: string, ms: number, visible = false): Promise<void> {
-    const expr = `(() => { const el = document.querySelector(${JSON.stringify(selector)}); if (!el) return false; ${
-      visible ? "const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0;" : "return true;"
-    } })()`;
+    const expr = `!!${findElement(selector, visible)}`;
     const end = Date.now() + ms;
     for (;;) {
       let found: boolean;
       try {
         found = await this.evaluate<boolean>(expr);
       } catch (e) {
-        if (e instanceof Error && /SyntaxError|not a valid selector/i.test(e.message)) throw new Error(`Ungültiger CSS-Selektor: ${selector}`, { cause: e });
+        if (e instanceof Error && /SyntaxError|not a valid (selector|XPath)/i.test(e.message)) throw new Error(`Ungültiger Selektor: ${selector}`, { cause: e });
         found = false;
       }
       if (found) return;
@@ -325,7 +413,7 @@ export class PreviewPage {
   async click(selector: string, ms: number) {
     await this.waitFor(selector, ms, true);
     const at = await this.evaluate<{ x: number; y: number } | null>(
-      `(() => { const el = document.querySelector(${JSON.stringify(selector)}); if (!el) return null; el.scrollIntoView({ block: "center", inline: "center" }); const r = el.getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; })()`,
+      `(() => { const el = ${findElement(selector, true)}; if (!el) return null; el.scrollIntoView({ block: "center", inline: "center" }); const r = el.getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; })()`,
     );
     if (!at) throw new Error(`Element „${selector}“ ist verschwunden.`);
     const base = { x: at.x, y: at.y, button: "left", clickCount: 1 };
@@ -337,7 +425,7 @@ export class PreviewPage {
   async type(selector: string, text: string, clear: boolean, ms: number) {
     await this.waitFor(selector, ms, true);
     await this.evaluate(
-      `(() => { const el = document.querySelector(${JSON.stringify(selector)}); el.scrollIntoView({ block: "center" }); el.focus(); ${
+      `(() => { const el = ${findElement(selector, true)}; el.scrollIntoView({ block: "center" }); el.focus(); ${
         clear
           ? "if (typeof el.select === 'function') el.select(); else { const s = getSelection(); const r = document.createRange(); r.selectNodeContents(el); s.removeAllRanges(); s.addRange(r); }"
           : ""

@@ -295,7 +295,11 @@ function previewTools(projectId: string, preview: PreviewService, viewer: string
           .array(
             z.object({
               action: z.enum(["click", "type", "press", "wait"]),
-              selector: z.string().max(500).optional().describe("CSS-Selektor (click, type, wait)"),
+              selector: z
+                .string()
+                .max(500)
+                .optional()
+                .describe('CSS-Selektor (click, type, wait); außerdem text=Anmelden, button:has-text("Speichern"), xpath=//button und ein angehängtes >> nth=1'),
               text: z.string().max(5000).optional().describe("Text für type"),
               clear: z.boolean().optional().describe("type: vorhandenen Inhalt ersetzen"),
               key: z.string().max(40).optional().describe("Taste für press"),

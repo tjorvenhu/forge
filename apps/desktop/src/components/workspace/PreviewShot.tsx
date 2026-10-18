@@ -17,7 +17,7 @@ export function PreviewShot({ sessionId, seq, size }: { sessionId: string; seq: 
     retry: 4,
     retryDelay: 1_000,
   });
-  const img = q.data?.[0];
+  const images = q.data ?? [];
   const box = cn("mt-2 w-full overflow-hidden rounded-md border border-border", wide ? "max-w-none" : "max-w-md");
   const ratio = { aspectRatio: `${size.width} / ${size.height}` };
 
@@ -27,10 +27,19 @@ export function PreviewShot({ sessionId, seq, size }: { sessionId: string; seq: 
         <Skeleton className="h-full w-full rounded-none" />
       </SkeletonRegion>
     );
-  if (!img) return <p className="mt-1.5 text-small text-subtle">Screenshot nicht im Verlauf von Claude Code gefunden.</p>;
+  if (!images.length) return <p className="mt-1.5 text-small text-subtle">Screenshot nicht im Verlauf von Claude Code gefunden.</p>;
+  // A full page comes in parts from top to bottom; they are shown as one picture.
   return (
-    <button type="button" className={cn(box, "block cursor-zoom-in", wide && "cursor-zoom-out")} style={ratio} onClick={() => setWide(!wide)} title={wide ? "Verkleinern" : "Vergrößern"}>
-      <img src={`data:${img.mediaType};base64,${img.base64}`} alt="Screenshot der Vorschau" className="block h-full w-full object-contain" />
+    <button type="button" className={cn(box, "flex cursor-zoom-in flex-col", wide && "cursor-zoom-out")} onClick={() => setWide(!wide)} title={wide ? "Verkleinern" : "Vergrößern"}>
+      {images.map((img, i) => (
+        <img
+          key={i}
+          src={`data:${img.mediaType};base64,${img.base64}`}
+          alt={images.length > 1 ? `Screenshot der Vorschau, Teil ${i + 1} von ${images.length}` : "Screenshot der Vorschau"}
+          className="block h-auto w-full"
+          style={i === 0 ? ratio : undefined}
+        />
+      ))}
     </button>
   );
 }
