@@ -1,7 +1,8 @@
 import { open, readFile, stat } from "node:fs/promises";
 import path from "node:path";
-import { ForgeError, type Attachment, type AttachmentMeta } from "@forge/protocol";
+import { ForgeError, localeOf, type Attachment, type AttachmentMeta } from "@forge/protocol";
 import { isSensitivePath } from "../policy/guard.js";
+import { language, tr } from "../i18n/index.js";
 
 const MAX_TEXT = 512 * 1024;
 /** Claude API: at most 5 MB per image, counted on the base64 form (3.7 MB raw stay below it). */
@@ -50,14 +51,14 @@ async function load(a: Attachment): Promise<Source> {
     const data = Buffer.from(a.base64, "base64");
     return { name: a.name, mediaType: a.mediaType, size: data.length, path: null, data };
   }
-  if (isSensitivePath(a.path)) throw new ForgeError("POLICY_DENIED", `Diese Datei darf nicht angehängt werden: ${a.path}`);
+  if (isSensitivePath(a.path)) throw new ForgeError("POLICY_DENIED", tr().core.claude.attachDenied(a.path));
   let s;
   try {
     s = await stat(a.path);
   } catch {
-    throw new ForgeError("PATH_INVALID", `Datei nicht gefunden: ${a.path}`);
+    throw new ForgeError("PATH_INVALID", tr().core.claude.fileNotFound(a.path));
   }
-  if (!s.isFile()) throw new ForgeError("PATH_INVALID", `Keine Datei: ${a.path}`);
+  if (!s.isFile()) throw new ForgeError("PATH_INVALID", tr().core.claude.notAFile(a.path));
   const ext = path.extname(a.path).toLowerCase();
   const mediaType = IMAGE_TYPES[ext] ?? (ext === ".pdf" ? "application/pdf" : "text/plain");
   return { name: path.basename(a.path), mediaType, size: s.size, path: a.path, data: null };
@@ -111,28 +112,25 @@ export function imageSize(b: Buffer): { width: number; height: number } | null {
 }
 
 function formatSize(bytes: number): string {
-  return bytes >= 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(1).replace(".", ",")} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`;
+  return bytes >= 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(1).replace(".", tr().core.claude.decimalSeparator)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`;
 }
 
 function referenceBlock(src: Source, file: string): ContentBlock {
-  const how = src.mediaType.startsWith("image/")
-    ? "Sieh es dir bei Bedarf mit dem Read-Werkzeug an, es verkleinert Bilder dabei."
-    : src.mediaType === "application/pdf"
-      ? "Lies sie bei Bedarf mit dem Read-Werkzeug, bei vielen Seiten abschnittsweise mit dem Parameter pages."
-      : "Lies sie bei Bedarf mit dem Read-Werkzeug, bei großen Dateien abschnittsweise mit offset und limit.";
-  return { type: "text", text: `Angehängte Datei: ${src.name} (${formatSize(src.size)}), zu groß für die Nachricht selbst. Sie liegt unter ${file}\n${how}` };
+  const t = tr().core.claude;
+  const how = src.mediaType.startsWith("image/") ? t.readImageHint : src.mediaType === "application/pdf" ? t.readPdfHint : t.readFileHint;
+  return { type: "text", text: `${t.attachedTooLarge(src.name, formatSize(src.size), file)}\n${how}` };
 }
 
 /** Whether the file goes inside the message; otherwise Claude gets its path. Binary text files are refused. */
 async function fitsInline(src: Source, room: number): Promise<boolean> {
   if (src.mediaType.startsWith("image/")) {
-    if (!Object.values(IMAGE_TYPES).includes(src.mediaType)) throw new ForgeError("VALIDATION", `Bildformat nicht unterstützt: ${src.name}`);
+    if (!Object.values(IMAGE_TYPES).includes(src.mediaType)) throw new ForgeError("VALIDATION", tr().core.claude.imageFormatUnsupported(src.name));
     if (src.size > MAX_IMAGE_BYTES || src.size > room) return false;
     const dim = imageSize(await head(src, HEADER_BYTES));
     return !dim || Math.max(dim.width, dim.height) <= MAX_IMAGE_EDGE;
   }
   if (src.mediaType === "application/pdf") return src.size <= MAX_PDF_BYTES && src.size <= room;
-  if ((await head(src, 8000)).includes(0)) throw new ForgeError("VALIDATION", `${src.name}: Binärdateien können nur als Bild oder PDF angehängt werden.`);
+  if ((await head(src, 8000)).includes(0)) throw new ForgeError("VALIDATION", tr().core.claude.binaryNotAllowed(src.name));
   return src.size <= MAX_TEXT && src.size <= room;
 }
 
@@ -143,7 +141,7 @@ async function inlineBlock(src: Source): Promise<ContentBlock> {
     return { type: "document", source: { type: "base64", media_type: "application/pdf", data: data.toString("base64") }, title: src.name };
   }
   const fence = "```";
-  return { type: "text", text: `Angehängte Datei: ${src.name}\n${fence}\n${data.toString("utf8")}\n${fence}` };
+  return { type: "text", text: `${tr().core.claude.attachedFile(src.name)}\n${fence}\n${data.toString("utf8")}\n${fence}` };
 }
 
 /** The image blocks of one message in a Claude Code transcript, in the order they were sent; null when the message is not in it. */
@@ -212,10 +210,11 @@ function cut(text: string, i: number): number {
  */
 export async function fitMessageText(text: string, spill: Spill): Promise<string> {
   if (text.length <= MAX_INLINE_TEXT) return text;
-  const file = await spill("nachricht.txt", text);
+  const t = tr().core.claude;
+  const file = await spill(t.spillFileName, text);
   const headEnd = cut(text, EXCERPT_HEAD);
   const tailStart = cut(text, text.length - EXCERPT_TAIL);
-  const n = (v: number) => v.toLocaleString("de-DE");
-  const note = `[… ${n(tailStart - headEnd)} Zeichen ausgelassen. Die Nachricht hat ${n(text.length)} Zeichen und ist zu lang für eine Eingabe. Der vollständige Text steht in ${file}. Lies ihn bei Bedarf mit dem Read-Werkzeug, abschnittsweise mit offset und limit.]`;
+  const n = (v: number) => v.toLocaleString(localeOf(language()));
+  const note = t.messageSpilled(n(tailStart - headEnd), n(text.length), file);
   return `${text.slice(0, headEnd)}\n\n${note}\n\n${text.slice(tailStart)}`;
 }

@@ -1,5 +1,6 @@
 import { ForgeError, methods, RpcRequest, type MethodName, type RpcResponse, type ServerEvent } from "@forge/protocol";
 import type { Handlers } from "./handlers.js";
+import { tr } from "../i18n/index.js";
 
 export type Writer = (line: string) => void;
 
@@ -34,7 +35,7 @@ export class RpcServer {
     }
     const { id, method, params } = req.data;
     if (!Object.hasOwn(methods, method)) {
-      this.respond({ id, ok: false, error: { code: "VALIDATION", message: `Unbekannte Methode: ${method}` } });
+      this.respond({ id, ok: false, error: { code: "VALIDATION", message: tr().core.app.unknownMethod(method) } });
       return;
     }
     const name = method as MethodName;
@@ -43,7 +44,7 @@ export class RpcServer {
       this.respond({
         id,
         ok: false,
-        error: { code: "VALIDATION", message: "Ungültige Parameter", details: parsed.error.issues },
+        error: { code: "VALIDATION", message: tr().core.app.invalidParams, details: parsed.error.issues },
       });
       return;
     }

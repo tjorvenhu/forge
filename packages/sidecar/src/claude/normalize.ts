@@ -1,9 +1,9 @@
 import type { ModelTokens, SessionEventBody } from "@forge/protocol";
+import { tr } from "../i18n/index.js";
 
 const MAX_TOOL_RESULT = 20_000;
 /** per string field of a tool input; a Write of a large file would otherwise land in the DB in full */
 export const MAX_INPUT_STRING = 20_000;
-const TRUNCATION_MARK = "\n[… gekürzt]";
 
 /** Shortens long string fields (also nested, e.g. MultiEdit edits) of a tool input for storing. */
 export function truncateInput(input: Record<string, unknown>, max = MAX_INPUT_STRING): { input: Record<string, unknown>; truncated: boolean } {
@@ -12,7 +12,7 @@ export function truncateInput(input: Record<string, unknown>, max = MAX_INPUT_ST
     if (typeof v === "string") {
       if (v.length <= max) return v;
       truncated = true;
-      return v.slice(0, max) + TRUNCATION_MARK;
+      return v.slice(0, max) + tr().core.claude.truncationMark;
     }
     if (Array.isArray(v)) return v.map(walk);
     if (v && typeof v === "object") return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, walk(x)]));

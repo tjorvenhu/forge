@@ -3,6 +3,7 @@ import { mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises"
 import path from "node:path";
 import { ForgeError, type ServerEvent, type SessionEventBody, type UiCompare, type UiCompareShot } from "@forge/protocol";
 import type { Capture } from "./preview.js";
+import { tr } from "../i18n/index.js";
 
 /** Files whose change shows in the browser; a turn that touches none of them gets no comparison. */
 export const UI_EXTENSIONS: ReadonlySet<string> = new Set([".tsx", ".jsx", ".vue", ".svelte", ".css", ".scss", ".sass", ".less", ".html", ".astro"]);
@@ -180,8 +181,8 @@ export class UiCompareService {
     try {
       await new Promise((r) => setTimeout(r, this.deps.settleMs ?? SETTLE_MS));
       const dev = await this.deps.devServer(compare.projectId);
-      if (dev.status !== "running") throw new Error("Der Dev-Server läuft nicht mehr.");
-      if (!this.deps.hasBrowser()) throw new Error("Kein Browser für die Vorschau gefunden.");
+      if (dev.status !== "running") throw new Error(tr().core.preview.devServerStopped);
+      if (!this.deps.hasBrowser()) throw new Error(tr().core.preview.noBrowserShort);
       const shot = await this.deps.capture(compare.projectId, compare.url);
       next = { ...compare, status: "ready", after: await this.save(compare.id, "after", shot), error: null };
     } catch (e) {
@@ -209,18 +210,18 @@ export class UiCompareService {
 
   async get(sessionId: string, compareId: string): Promise<UiCompare> {
     const c = await this.readMeta(compareId);
-    if (!c || c.sessionId !== sessionId) throw new ForgeError("NOT_FOUND", "Vergleich nicht mehr vorhanden. FORGE räumt Bilder nach 14 Tagen weg.");
+    if (!c || c.sessionId !== sessionId) throw new ForgeError("NOT_FOUND", tr().core.preview.compareGone);
     return c;
   }
 
   async image(sessionId: string, compareId: string, side: "before" | "after") {
     const c = await this.get(sessionId, compareId);
     const shot = side === "before" ? c.before : c.after;
-    if (!shot) throw new ForgeError("NOT_FOUND", "Das Nachher-Bild gibt es noch nicht.");
+    if (!shot) throw new ForgeError("NOT_FOUND", tr().core.preview.afterMissing);
     try {
       return { mediaType: "image/jpeg", base64: (await readFile(shot.path)).toString("base64") };
     } catch {
-      throw new ForgeError("NOT_FOUND", "Bild nicht mehr vorhanden.");
+      throw new ForgeError("NOT_FOUND", tr().core.preview.imageGone);
     }
   }
 

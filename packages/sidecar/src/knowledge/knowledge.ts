@@ -6,6 +6,7 @@ import { ForgeError, type KnowledgeEntry, type KnowledgeMissingRef, type Knowled
 import type { ProjectManager } from "../projects/project-manager.js";
 import { stripBom } from "../devtools/dev-tools.js";
 import { GitEngine } from "../git/git.js";
+import { tr } from "../i18n/index.js";
 import { extractRefs, RefChecker } from "./staleness.js";
 
 /** Inside the project, so the knowledge travels with the repository and every clone and agent sees it. */
@@ -248,40 +249,38 @@ export function covering(entries: KnowledgeEntry[], text: Comparable, min = OVER
     .sort((x, y) => y.score - x.score);
 }
 
+/** The descriptions are getters: the schema goes to Claude in the language set at that moment. */
 export const MERGE_SCHEMA = {
   type: "object",
-  properties: {
-    title: { type: "string", description: "kurzer Titel mit den Suchbegriffen, höchstens 100 Zeichen" },
-    summary: { type: "string", description: "ein Satz, höchstens 250 Zeichen" },
-    tags: { type: "array", items: { type: "string" }, description: "2 bis 6 Stichwörter in Kleinbuchstaben" },
-    content: { type: "string", description: "der zusammengeführte Eintrag in Markdown" },
+  get properties() {
+    const k = tr().core.knowledge;
+    return {
+      title: { type: "string", description: k.schemaTitle },
+      summary: { type: "string", description: k.schemaSummary },
+      tags: { type: "array", items: { type: "string" }, description: k.schemaTags },
+      content: { type: "string", description: k.schemaContent },
+    };
   },
   required: ["title", "summary", "tags", "content"],
   additionalProperties: false,
 };
 
+/** Header and fields of an entry as the prompts show it. */
+function entryLines(e: KnowledgeEntry): string[] {
+  const k = tr().core.knowledge;
+  return [
+    k.entryHeader(e.id, e.updatedAt.slice(0, 10)),
+    `${k.fieldTitle}: ${e.title}`,
+    `${k.fieldSummary}: ${e.summary}`,
+    `${k.fieldTags}: ${e.tags.join(", ")}`,
+    "",
+    e.content.trim(),
+  ];
+}
+
 /** Task for the one-shot call that merges entries; the entries go in completely, so nothing is lost on the way. */
 export function buildMergePrompt(entries: KnowledgeEntry[]): string {
-  return [
-    "Führe diese Einträge aus dem Projektwissen eines Softwareprojekts zu einem einzigen Eintrag zusammen.",
-    "- Erhalte alles Wissen: Dateipfade, Befehle, Begründungen, Stolperfallen, Daten. Lass nur Doppeltes weg.",
-    "- Widersprechen sich Einträge, gilt der mit dem neueren Stand.",
-    "- Nichts erfinden, nichts hinzufügen, was nicht in den Einträgen steht.",
-    "- Titel: kurz, mit den Begriffen, unter denen man ihn sucht (Code-Namen gern in Klammern).",
-    "- Zusammenfassung: ein Satz, worum es geht und wann man den Eintrag braucht.",
-    "- Tags: 2 bis 6, aus denen der Einträge.",
-    "- Inhalt: Markdown, beginnt mit '# <Titel>', danach Abschnitte mit '##'. Sprache wie in den Einträgen.",
-    "",
-    ...entries.flatMap((e) => [
-      `=== Eintrag ${e.id} (Stand ${e.updatedAt.slice(0, 10)}) ===`,
-      `Titel: ${e.title}`,
-      `Zusammenfassung: ${e.summary}`,
-      `Tags: ${e.tags.join(", ")}`,
-      "",
-      e.content.trim(),
-      "",
-    ]),
-  ].join("\n");
+  return [...tr().core.knowledge.mergePrompt, "", ...entries.flatMap((e) => [...entryLines(e), ""])].join("\n");
 }
 
 export interface KnowledgeMergeGroup {
@@ -300,9 +299,12 @@ export const MERGE_PLAN_SCHEMA = {
       type: "array",
       items: {
         type: "object",
-        properties: {
-          ids: { type: "array", items: { type: "string" }, description: "Kennungen der Einträge; der erste bleibt bestehen, die anderen gehen in ihm auf" },
-          reason: { type: "string", description: "ein kurzer Satz, warum diese Einträge dasselbe Thema behandeln" },
+        get properties() {
+          const k = tr().core.knowledge;
+          return {
+            ids: { type: "array", items: { type: "string" }, description: k.schemaPlanIds },
+            reason: { type: "string", description: k.schemaPlanReason },
+          };
         },
         required: ["ids", "reason"],
         additionalProperties: false,
@@ -319,17 +321,11 @@ export const MERGE_PLAN_SCHEMA = {
  * knowledge would cost many times the tokens. The full texts only go into the merge itself.
  */
 export function buildMergePlanPrompt(entries: KnowledgeEntry[], pairs: KnowledgeOverlap[]): string {
+  const k = tr().core.knowledge;
   return [
-    "Prüfe das Projektwissen eines Softwareprojekts: Welche Einträge behandeln dasselbe Thema und sollten zu einem Eintrag zusammengeführt werden?",
-    "- Nur Einträge, die wirklich dasselbe Thema behandeln oder sich inhaltlich doppeln. Derselbe Bereich (z. B. beide UI) oder gleiche Tags reichen nicht.",
-    `- Höchstens ${MAX_GROUP} Einträge pro Gruppe, jeder Eintrag in höchstens einer Gruppe.`,
-    `- Zusammen höchstens etwa ${LONG_ENTRY_CHARS} Zeichen (Summe der Längen), sonst wird der neue Eintrag zu lang.`,
-    "- Der erste Eintrag einer Gruppe bleibt bestehen: nimm den umfassendsten.",
-    "- Passt nichts zusammen, gib eine leere Liste zurück. Lieber eine Gruppe zu wenig als eine erzwungene.",
+    ...k.mergePlanPrompt(MAX_GROUP, LONG_ENTRY_CHARS),
     "",
-    ...(pairs.length
-      ? ["Ein lokaler Wortvergleich hält diese Paare für ähnlich (nur ein Hinweis, prüfe selbst):", ...pairs.slice(0, 20).map((p) => `- ${p.a} + ${p.b} (${Math.round(p.score * 100)} %)`), ""]
-      : []),
+    ...(pairs.length ? [k.mergePlanPairs, ...pairs.slice(0, 20).map((p) => `- ${p.a} + ${p.b} (${Math.round(p.score * 100)} %)`), ""] : []),
     ...entries.flatMap((e) => {
       const outline = e.content
         .split("\n")
@@ -337,11 +333,11 @@ export function buildMergePlanPrompt(entries: KnowledgeEntry[], pairs: Knowledge
         .map((l) => l.replace(/^#+\s*/, "").trim())
         .slice(0, 15);
       return [
-        `=== ${e.id} (${e.content.length} Zeichen) ===`,
-        `Titel: ${e.title}`,
-        `Zusammenfassung: ${e.summary}`,
-        `Tags: ${e.tags.join(", ")}`,
-        ...(outline.length ? [`Gliederung: ${outline.join(" | ")}`] : []),
+        k.mergePlanEntryHeader(e.id, e.content.length),
+        `${k.fieldTitle}: ${e.title}`,
+        `${k.fieldSummary}: ${e.summary}`,
+        `${k.fieldTags}: ${e.tags.join(", ")}`,
+        ...(outline.length ? [`${k.fieldOutline}: ${outline.join(" | ")}`] : []),
         "",
       ];
     }),
@@ -367,26 +363,16 @@ export function cleanMergePlan(groups: KnowledgeMergeGroup[], entries: Knowledge
  * there, so the prompt carries what FORGE found out: hints and the diff of the commit that removed a name.
  */
 export function buildFixPrompt(entry: KnowledgeEntry, missing: KnowledgeMissingRef[], details: string): string {
+  const k = tr().core.knowledge;
   return [
-    "Dieser Eintrag aus dem Projektwissen eines Softwareprojekts verweist auf Dateien, Ordner oder Bezeichner, die es im Projekt nicht mehr gibt. Korrigiere ihn.",
-    "- Ersetze veraltete Verweise durch die aktuellen, wenn die Hinweise unten eindeutig zeigen, wohin etwas verschoben oder wie es umbenannt wurde.",
-    "- Ist nicht eindeutig, was an die Stelle getreten ist, entferne die Aussage oder kennzeichne sie knapp als veraltet. Nicht raten.",
-    "- Alles andere bleibt unverändert: Aufbau, Begründungen, Stolperfallen, Sprache und Ton.",
-    "- Nichts erfinden, nichts hinzufügen, was weder im Eintrag noch in den Hinweisen steht.",
-    "- Titel, Zusammenfassung und Tags nur anpassen, wenn sie selbst veraltete Namen enthalten.",
-    "- Inhalt: Markdown wie bisher, beginnt mit '# <Titel>'.",
+    ...k.fixPrompt,
     "",
-    `Fehlende Verweise: ${missing.map((m) => `\`${m.ref}\``).join(", ")}`,
+    k.fixMissing(missing.map((m) => `\`${m.ref}\``).join(", ")),
     "",
-    "Hinweise aus dem Projekt:",
-    details || "(keine)",
+    k.fixHints,
+    details || k.none,
     "",
-    `=== Eintrag ${entry.id} (Stand ${entry.updatedAt.slice(0, 10)}) ===`,
-    `Titel: ${entry.title}`,
-    `Zusammenfassung: ${entry.summary}`,
-    `Tags: ${entry.tags.join(", ")}`,
-    "",
-    entry.content.trim(),
+    ...entryLines(entry),
   ].join("\n");
 }
 
@@ -448,7 +434,7 @@ export class KnowledgeStore {
 
   /** Path of an existing entry, null if there is none. Only names read from the folder are used. */
   private locate(projectId: string, id: string): string | null {
-    if (!ID_RE.test(id)) throw new ForgeError("VALIDATION", `Ungültige Kennung „${id}“.`);
+    if (!ID_RE.test(id)) throw new ForgeError("VALIDATION", tr().core.knowledge.invalidId(id));
     const dir = this.dir(projectId);
     const name = this.files(dir).get(id);
     return name ? path.join(dir, name) : null;
@@ -480,12 +466,12 @@ export class KnowledgeStore {
 
   async read(projectId: string, id: string): Promise<KnowledgeEntry> {
     const full = this.locate(projectId, id);
-    if (!full) throw new ForgeError("NOT_FOUND", `Kein Eintrag „${id}“.`);
+    if (!full) throw new ForgeError("NOT_FOUND", tr().core.knowledge.notFound(id));
     let text: string;
     try {
       text = await readFile(full, "utf8");
     } catch {
-      throw new ForgeError("NOT_FOUND", `Kein Eintrag „${id}“.`);
+      throw new ForgeError("NOT_FOUND", tr().core.knowledge.notFound(id));
     }
     return parseEntry(id, text, statMtime(full));
   }
@@ -527,8 +513,8 @@ export class KnowledgeStore {
   /** Writes the merged text into the first entry and deletes the others. All must exist beforehand. */
   async merge(projectId: string, ids: string[], input: Omit<KnowledgeInput, "id">): Promise<{ entry: KnowledgeEntry; removed: string[] }> {
     const unique = [...new Set(ids)];
-    if (unique.length < 2) throw new ForgeError("VALIDATION", "Zum Zusammenführen braucht es mindestens zwei verschiedene Einträge.");
-    for (const id of unique) if (!this.locate(projectId, id)) throw new ForgeError("NOT_FOUND", `Kein Eintrag „${id}“.`);
+    if (unique.length < 2) throw new ForgeError("VALIDATION", tr().core.knowledge.mergeNeedsTwo);
+    for (const id of unique) if (!this.locate(projectId, id)) throw new ForgeError("NOT_FOUND", tr().core.knowledge.notFound(id));
     const [target, ...rest] = unique as [string, ...string[]];
     const entry = await this.save(projectId, { ...input, id: target });
     for (const id of rest) await this.delete(projectId, id);
@@ -547,7 +533,7 @@ export class KnowledgeStore {
     };
     if (input.id) {
       const full = this.locate(projectId, input.id);
-      if (!full) throw new ForgeError("NOT_FOUND", `Kein Eintrag „${input.id}“.`);
+      if (!full) throw new ForgeError("NOT_FOUND", tr().core.knowledge.notFound(input.id));
       // Marks for refs the new text no longer has would only hide a future alarm.
       const refs = new Set(extractRefs(fields.content).map((r) => r.ref));
       const verified = parseVerified(await readFile(full, "utf8").catch(() => "")).filter((r) => refs.has(r));
@@ -599,7 +585,7 @@ export class KnowledgeStore {
         /* unreadable file: skipped */
       }
     }
-    if (opts.ids?.length === 1 && !inputs.length) throw new ForgeError("NOT_FOUND", `Kein Eintrag „${opts.ids[0]}“.`);
+    if (opts.ids?.length === 1 && !inputs.length) throw new ForgeError("NOT_FOUND", tr().core.knowledge.notFound(opts.ids[0]!));
     const { git, results } = await this.refs.check(project.path, project.gitEnabled !== false, inputs, opts.refresh);
     return { git, entries: inputs.map((i) => ({ id: i.id, ...(results.get(i.id) ?? { missing: [], checked: 0 }) })) };
   }
@@ -607,7 +593,7 @@ export class KnowledgeStore {
   /** The refs the check finds missing were a false alarm: they are left out from now on. The date stays. */
   async markChecked(projectId: string, id: string): Promise<{ verified: string[] }> {
     const full = this.locate(projectId, id);
-    if (!full) throw new ForgeError("NOT_FOUND", `Kein Eintrag „${id}“.`);
+    if (!full) throw new ForgeError("NOT_FOUND", tr().core.knowledge.notFound(id));
     const missing = (await this.staleness(projectId, { ids: [id] })).entries[0]?.missing ?? [];
     const text = await readFile(full, "utf8");
     const before = parseVerified(text);
@@ -622,7 +608,7 @@ export class KnowledgeStore {
   async fixContext(projectId: string, id: string): Promise<{ entry: KnowledgeEntry; missing: KnowledgeMissingRef[]; details: string }> {
     const entry = await this.read(projectId, id);
     const missing = (await this.staleness(projectId, { ids: [id] })).entries[0]?.missing ?? [];
-    if (!missing.length) throw new ForgeError("VALIDATION", "Alle Verweise des Eintrags gibt es im Projekt. Da ist nichts zu korrigieren.");
+    if (!missing.length) throw new ForgeError("VALIDATION", tr().core.knowledge.nothingToFix);
     const project = this.projects.requireExisting(this.owner(projectId));
     return { entry, missing, details: await this.refs.details(project.path, project.gitEnabled !== false, missing) };
   }

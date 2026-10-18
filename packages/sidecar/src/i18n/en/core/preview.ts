@@ -1,3 +1,83 @@
 import type { preview as De } from "../../de/core/preview.js";
 
-export const preview: typeof De = {};
+const count = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+
+export const preview: typeof De = {
+  noBrowser: "No browser found for the preview. FORGE uses Microsoft Edge or Google Chrome; install one of them.",
+  noBrowserShort: "No browser found for the preview.",
+  browserNoAnswer: (method) => `Browser is not responding (${method}).`,
+  browserDisconnected: "Connection to the browser was lost.",
+  browserNoDevTools: "Browser is not responding to the DevTools connection.",
+  browserConnectFailed: "DevTools connection to the browser failed.",
+  browserError: "Error in the browser.",
+  browserStartFailed: (message) => `Browser cannot be started: ${message}`,
+  browserExited: (message) => `Browser exited right after starting${message ? `: ${message}` : ""}.`,
+  browserNoPort: (seconds) => `Browser did not report a DevTools port within ${seconds} s.`,
+  jsDialog: (type, message, accepted) => `JavaScript dialog (${type}): "${message}", ${accepted ? "accepted" : "dismissed"} by the preview`,
+  navigateTimeout: (url, seconds) =>
+    `No response from ${url} after ${seconds} s. Is the dev server still compiling the page, or is it stuck? Check its output with dev_environment.`,
+  connectionRefused: (url) => `Nothing answers at ${url} (connection refused). Is the dev server running?`,
+  redirectedOutside: (url) => `${url} redirects to an address outside this computer; the preview only opens local pages.`,
+  pageNotLoadable: (error) => `Page cannot be loaded: ${error}`,
+  pageScriptError: "Error in the page's script.",
+  invalidSelector: (selector) => `Invalid selector: ${selector}`,
+  noElement: (selector, visible, ms) => `No ${visible ? "visible " : ""}element for "${selector}" after ${ms} ms.`,
+  elementGone: (selector) => `Element "${selector}" has disappeared.`,
+  unknownKey: (spec, keys) => `Unknown key "${spec}". Possible: ${keys}, single characters, prefixed with Control+, Shift+, Alt+ or Meta+.`,
+
+  errors: (n) => count(n, "error", "errors"),
+  warnings: (n) => count(n, "warning", "warnings"),
+  otherMessages: (n) => count(n, "other message", "other messages"),
+  exceptions: (n) => count(n, "uncaught exception", "uncaught exceptions"),
+  failedRequests: (n) => count(n, "failed request", "failed requests"),
+  noMessages: "no messages",
+  olderOmitted: (n) => `(${n} older omitted)`,
+  sectionExceptions: "Uncaught exceptions",
+  sectionConsole: "Console errors and warnings",
+  sectionRequests: "Failed requests",
+  sectionOther: "Other console messages",
+
+  shotCut: "full page cut off after 6000 pixels",
+  shotScaled: "scaled down",
+  shotFullPage: (parts) => `, full page${parts > 1 ? ` in ${parts} parts from top to bottom` : ""}`,
+
+  closing: "FORGE is shutting down.",
+  hung: (method) =>
+    `The preview did not respond (${method}). FORGE closed the preview browser; the next call starts it again. If it hangs again, the page itself is probably blocking the browser, for example with an endless loop.`,
+  devServerNoUrl: "The dev server is running but has not printed an address yet. Wait a moment and check dev_environment, or pass the url (e.g. http://localhost:3000).",
+  noDevServer: "No dev server is running for this project. Start it with dev_control (target dev-server, action start) or pass a local url.",
+
+  title: (title) => `Title: ${title || "(untitled)"}`,
+  address: (url) => `Address: ${url}`,
+  httpStatus: (status) => `HTTP status: ${status ?? "unknown"}`,
+  notLoaded: (seconds) => `Note: The page had not finished loading after ${seconds} s; this is its state at that moment.`,
+  blocked: (urls) => `Blocked (pages outside this computer): ${urls}`,
+  consoleLine: (summary, details) => `Console: ${summary}${details ? " (details with preview_console)" : ""}`,
+  freshlyLoaded: "Page freshly loaded.",
+  sinceLoad: "Messages of the last opened page since it loaded.",
+  summary: (summary) => `Summary: ${summary}`,
+
+  stepProblem: (n, problem) => `Step ${n}: ${problem}`,
+  stepTimedOut: (label, seconds) => `${label}: not run, time limit of ${seconds} s for all steps reached`,
+  stepFailed: (label, message) => `${label}: Error: ${message}`,
+  steps: "Steps:",
+  aborted: (step, total) => `Stopped after step ${step} of ${total}.`,
+  allDone: (total) => `All ${total} steps done.`,
+  consoleDuringSteps: (summary) => `Console during the steps: ${summary}`,
+  quote: (text) => `"${text}"`,
+  needsSelector: (action) => `${action} needs selector.`,
+  typeNeedsText: "type needs text.",
+  pressNeedsKey: "press needs key.",
+  waitNeedsMsOrSelector: "wait needs ms or selector.",
+
+  devServerStopped: "The dev server is no longer running.",
+  compareGone: "Comparison no longer available. FORGE removes images after 14 days.",
+  afterMissing: "The after image does not exist yet.",
+  imageGone: "Image no longer available.",
+
+  noAddress: "No address for the preview.",
+  invalidAddress: (address) => `"${address}" is not a valid address. Expected e.g. http://localhost:3000.`,
+  invalidPath: (p) => `Invalid path "${p}".`,
+  onlyHttp: (protocol) => `The preview only opens http and https addresses, not ${protocol}.`,
+  onlyLocal: (host) => `The preview only opens addresses on this computer (localhost, 127.0.0.1, ::1), not ${host}.`,
+};

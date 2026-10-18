@@ -1,5 +1,6 @@
 import { CdpTimeout, type Cdp } from "./browser.js";
 import { isLocalUrl } from "./url.js";
+import { tr } from "../i18n/index.js";
 
 export interface PageLogEntry {
   kind: "console" | "exception" | "network";
@@ -260,7 +261,7 @@ export class PreviewPage {
         // Confirm and prompt are declined, so a click never deletes something on its own.
         const type = String(p.type ?? "alert");
         const accept = type === "alert" || type === "beforeunload";
-        this.log({ kind: "console", level: "warning", text: `JavaScript-Dialog (${type}): „${String(p.message ?? "")}“, von der Vorschau ${accept ? "bestätigt" : "abgelehnt"}` });
+        this.log({ kind: "console", level: "warning", text: tr().core.preview.jsDialog(type, String(p.message ?? ""), accept) });
         void this.send("Page.handleJavaScriptDialog", { accept }).catch(() => null);
         break;
       }
@@ -320,16 +321,16 @@ export class PreviewPage {
     } catch (e) {
       if (!(e instanceof CdpTimeout)) throw e;
       this.loading = false;
-      throw new Error(`Unter ${url} kam nach ${NAVIGATE_MS / 1000} s keine Antwort. Kompiliert der Dev-Server die Seite noch oder hängt er? Prüfe seine Ausgabe mit dev_environment.`, { cause: e });
+      throw new Error(tr().core.preview.navigateTimeout(url, NAVIGATE_MS / 1000), { cause: e });
     }
     if (r.errorText) {
       this.loading = false;
       throw new Error(
         r.errorText === "net::ERR_CONNECTION_REFUSED"
-          ? `Unter ${url} antwortet nichts (Verbindung abgelehnt). Läuft der Dev-Server?`
+          ? tr().core.preview.connectionRefused(url)
           : r.errorText === "net::ERR_BLOCKED_BY_CLIENT"
-            ? `${url} leitet auf eine Adresse außerhalb dieses Rechners um; die Vorschau öffnet nur lokale Seiten.`
-            : `Seite nicht ladbar: ${r.errorText}`,
+            ? tr().core.preview.redirectedOutside(url)
+            : tr().core.preview.pageNotLoadable(r.errorText),
       );
     }
     return this.settle(loadMs);
@@ -346,7 +347,7 @@ export class PreviewPage {
       { expression, awaitPromise, returnByValue: true },
       timeoutMs,
     );
-    if (r.exceptionDetails) throw new Error(r.exceptionDetails.exception?.description?.split("\n")[0] ?? r.exceptionDetails.text ?? "Fehler im Skript der Seite.");
+    if (r.exceptionDetails) throw new Error(r.exceptionDetails.exception?.description?.split("\n")[0] ?? r.exceptionDetails.text ?? tr().core.preview.pageScriptError);
     return r.result.value as T;
   }
 
@@ -401,11 +402,11 @@ export class PreviewPage {
       try {
         found = await this.evaluate<boolean>(expr);
       } catch (e) {
-        if (e instanceof Error && /SyntaxError|not a valid (selector|XPath)/i.test(e.message)) throw new Error(`Ungültiger Selektor: ${selector}`, { cause: e });
+        if (e instanceof Error && /SyntaxError|not a valid (selector|XPath)/i.test(e.message)) throw new Error(tr().core.preview.invalidSelector(selector), { cause: e });
         found = false;
       }
       if (found) return;
-      if (Date.now() >= end) throw new Error(`Kein ${visible ? "sichtbares " : ""}Element für „${selector}“ nach ${ms} ms.`);
+      if (Date.now() >= end) throw new Error(tr().core.preview.noElement(selector, visible, ms));
       await sleep(100);
     }
   }
@@ -415,7 +416,7 @@ export class PreviewPage {
     const at = await this.evaluate<{ x: number; y: number } | null>(
       `(() => { const el = ${findElement(selector, true)}; if (!el) return null; el.scrollIntoView({ block: "center", inline: "center" }); const r = el.getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; })()`,
     );
-    if (!at) throw new Error(`Element „${selector}“ ist verschwunden.`);
+    if (!at) throw new Error(tr().core.preview.elementGone(selector));
     const base = { x: at.x, y: at.y, button: "left", clickCount: 1 };
     await this.send("Input.dispatchMouseEvent", { type: "mouseMoved", x: at.x, y: at.y });
     await this.send("Input.dispatchMouseEvent", { type: "mousePressed", ...base });
@@ -437,7 +438,7 @@ export class PreviewPage {
 
   async press(spec: string) {
     const k = parseKey(spec);
-    if (!k) throw new Error(`Unbekannte Taste „${spec}“. Möglich: ${Object.keys(KEYS).join(", ")}, einzelne Zeichen, mit Control+, Shift+, Alt+ oder Meta+ davor.`);
+    if (!k) throw new Error(tr().core.preview.unknownKey(spec, Object.keys(KEYS).join(", ")));
     const base = { key: k.key, code: k.code, windowsVirtualKeyCode: k.keyCode, nativeVirtualKeyCode: k.keyCode, modifiers: k.modifiers };
     await this.send("Input.dispatchKeyEvent", { type: k.text ? "keyDown" : "rawKeyDown", ...base, ...(k.text ? { text: k.text, unmodifiedText: k.text } : {}) });
     await this.send("Input.dispatchKeyEvent", { type: "keyUp", ...base });

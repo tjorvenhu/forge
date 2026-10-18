@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { ForgeError, type ClaudeSetupState, type ClaudeUpdateInfo } from "@forge/protocol";
 import { run } from "../util/proc.js";
+import { tr } from "../i18n/index.js";
 import { locateClaude, sessionEnv } from "./environment.js";
 import { compareVersions, fetchLatestVersion, parseVersion, readUpdateChannel } from "./update.js";
 
@@ -112,7 +113,7 @@ export class ClaudeSetupService {
   }
 
   private ensureIdle() {
-    if (this.proc) throw new ForgeError("CONFLICT", "Es läuft bereits ein Einrichtungsschritt.");
+    if (this.proc) throw new ForgeError("CONFLICT", tr().core.claude.setupBusy);
   }
 
   install(): ClaudeSetupState {
@@ -129,8 +130,8 @@ export class ClaudeSetupService {
     child.on("close", (code) => {
       if (!this.release(child)) return;
       const found = locateClaude(this.settings().claudePath);
-      if (code === 0 && found) this.set({ phase: "done", message: `Installiert: ${found}` });
-      else this.set({ phase: "error", message: code === 0 ? "Installer beendet, aber Claude Code wurde nicht gefunden." : `Installer beendet mit Code ${code}` });
+      if (code === 0 && found) this.set({ phase: "done", message: tr().core.claude.installed(found) });
+      else this.set({ phase: "error", message: code === 0 ? tr().core.claude.installerNotFound : tr().core.claude.installerExit(code) });
     });
     return this.state;
   }
@@ -155,7 +156,7 @@ export class ClaudeSetupService {
     this.ensureIdle();
     const s = this.settings();
     const claude = locateClaude(s.claudePath);
-    if (!claude) throw new ForgeError("CLAUDE_NOT_INSTALLED", "Claude Code ist nicht installiert.");
+    if (!claude) throw new ForgeError("CLAUDE_NOT_INSTALLED", tr().core.claude.notInstalled);
     this.set({ task: "update", phase: "running", url: null, log: [], message: null });
     const child = spawn(claude, ["update"], { env: sessionEnv(s.stripApiKey), shell: false, windowsHide: true, stdio: ["ignore", "pipe", "pipe"] });
     this.proc = child;
@@ -168,14 +169,14 @@ export class ClaudeSetupService {
     child.on("close", (code) => {
       if (!this.release(child)) return;
       if (code !== 0) {
-        this.set({ phase: "error", message: this.state.log.at(-1) ?? `Update beendet mit Code ${code}` });
+        this.set({ phase: "error", message: this.state.log.at(-1) ?? tr().core.claude.updateExit(code) });
         return;
       }
       void run(claude, ["--version"], { env: sessionEnv(s.stripApiKey), timeoutMs: 20_000 }).then((r) => {
         // another step started meanwhile and owns the state now
         if (this.proc) return;
         const v = parseVersion(r.stdout);
-        this.set({ phase: "done", message: v ? `Claude Code ${v} ist installiert.` : "Update abgeschlossen." });
+        this.set({ phase: "done", message: tr().core.claude.updateDone(v) });
       });
     });
     return this.state;
@@ -185,7 +186,7 @@ export class ClaudeSetupService {
     this.ensureIdle();
     const s = this.settings();
     const claude = locateClaude(s.claudePath);
-    if (!claude) throw new ForgeError("CLAUDE_NOT_INSTALLED", "Claude Code ist nicht installiert.");
+    if (!claude) throw new ForgeError("CLAUDE_NOT_INSTALLED", tr().core.claude.notInstalled);
     const relay = browserRelay();
     this.set({ task: "login", phase: "running", url: null, codeUrl: null, log: [], message: null });
     const env = { ...sessionEnv(s.stripApiKey), BROWSER: relay.program };
@@ -233,7 +234,7 @@ export class ClaudeSetupService {
       cleanup();
       if (!this.release(child)) return;
       if (this.state.phase === "cancelled") return;
-      this.set(code === 0 ? { phase: "done", url: null, codeUrl: null, message: "Angemeldet" } : { phase: "error", message: `Anmeldung beendet mit Code ${code}` });
+      this.set(code === 0 ? { phase: "done", url: null, codeUrl: null, message: tr().core.claude.loggedIn } : { phase: "error", message: tr().core.claude.loginExit(code) });
     });
     return this.state;
   }
@@ -243,18 +244,18 @@ export class ClaudeSetupService {
     this.ensureIdle();
     const s = this.settings();
     const claude = locateClaude(s.claudePath);
-    if (!claude) throw new ForgeError("CLAUDE_NOT_INSTALLED", "Claude Code ist nicht installiert.");
+    if (!claude) throw new ForgeError("CLAUDE_NOT_INSTALLED", tr().core.claude.notInstalled);
     const r = await run(claude, ["auth", "logout"], { env: sessionEnv(s.stripApiKey), timeoutMs: 20_000 });
     if (r.spawnError || r.code !== 0) {
       const why = r.spawnError?.message ?? stripAnsi(r.stderr || r.stdout).trim().slice(0, 300);
-      throw new ForgeError("INTERNAL", `Abmelden fehlgeschlagen${why ? `: ${why}` : "."}`);
+      throw new ForgeError("INTERNAL", tr().core.claude.logoutFailed(why));
     }
     // A finished login of the old account must not read as the current state.
     this.set({ task: null, phase: "idle", url: null, log: [], message: null });
   }
 
   submitCode(code: string): ClaudeSetupState {
-    if (!this.proc || this.state.task !== "login") throw new ForgeError("NOT_FOUND", "Keine laufende Anmeldung.");
+    if (!this.proc || this.state.task !== "login") throw new ForgeError("NOT_FOUND", tr().core.claude.noLogin);
     this.proc.stdin?.write(code.trim() + "\n");
     this.set({ phase: "running" });
     return this.state;

@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs";
 import path from "node:path";
 import type { Project, ServerEvent, SessionEventBody } from "@forge/protocol";
+import { tr } from "../i18n/index.js";
 import type { Db } from "../persistence/db.js";
 import type { ProjectManager } from "../projects/project-manager.js";
 import type { AgentFinisher } from "./agent-finish.js";
@@ -57,7 +58,7 @@ export class AgentAutoMerge {
       // Its background tasks start another turn when they end; until then it waits, and says so once.
       // Before, such an agent was never merged when the task was a server that keeps running.
       if (!this.waiting.has(project.id)) {
-        this.report(sessionId, this.d.parentOf(sessionId), project, null, "waiting", "Wartet aufs Zusammenführen: Der Agent hat noch laufende Hintergrundaufgaben. FORGE führt ihn zusammen, sobald sie beendet sind.");
+        this.report(sessionId, this.d.parentOf(sessionId), project, null, "waiting", tr().core.automation.waitingBackground);
       }
       this.waiting.set(project.id, sessionId);
       this.syncTimer();
@@ -126,14 +127,14 @@ export class AgentAutoMerge {
     if (review.busy) return;
     const skip = (reason: string) => {
       this.settle(worktree.id);
-      const message = `Nicht automatisch zusammengeführt: ${reason}`;
+      const message = tr().core.automation.notAutoMerged(reason);
       this.logSkipped(sessionId, parentId, worktree, review.branch, message);
       this.report(sessionId, parentId, worktree, review.branch, "skipped", message);
     };
-    if (!testsOk) return skip("Die Tests sind fehlgeschlagen.");
+    if (!testsOk) return skip(tr().core.automation.testsFailed);
     if (review.mergeBlocker) return skip(review.mergeBlocker);
     const rounds = this.conflicts.get(worktree.id) ?? 0;
-    if (rounds >= MAX_CONFLICT_ROUNDS) return skip(`Die Konflikte mit ${review.targetBranch} sind nach ${rounds} Versuchen noch da.`);
+    if (rounds >= MAX_CONFLICT_ROUNDS) return skip(tr().core.automation.conflictsRemain(review.targetBranch ?? "", rounds));
 
     let r;
     try {
@@ -147,8 +148,9 @@ export class AgentAutoMerge {
       this.waiting.set(worktree.id, sessionId);
       this.syncTimer();
       if (!told) {
-        const why = r.message.replace(/^Noch nicht zusammengeführt:\s*/, "");
-        this.report(sessionId, parentId, worktree, r.branch, "waiting", `Wartet aufs Zusammenführen: ${why} FORGE führt den Agenten selbst zusammen, sobald es passt: nach dem nächsten Durchlauf im Projekt (samt Auto-Commit), sonst beim nächsten Versuch in einer halben Minute.`);
+        const prefix = tr().core.automation.notMergedYet("");
+        const why = r.message.startsWith(prefix) ? r.message.slice(prefix.length) : r.message;
+        this.report(sessionId, parentId, worktree, r.branch, "waiting", tr().core.automation.waitingMerge(why));
       }
       return;
     }
@@ -158,7 +160,7 @@ export class AgentAutoMerge {
       return this.report(sessionId, parentId, worktree, r.branch, "conflict", r.message);
     }
     this.conflicts.delete(worktree.id);
-    this.report(null, parentId, worktree, r.branch, "merged", `Automatisch zusammengeführt: ${r.message}`, sessionIds);
+    this.report(null, parentId, worktree, r.branch, "merged", tr().core.automation.autoMerged(r.message), sessionIds);
   }
 
   private settle(worktreeId: string) {

@@ -4,7 +4,8 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { Db } from "../src/persistence/db.js";
 import { GitEngine } from "../src/git/git.js";
 import { ProjectManager } from "../src/projects/project-manager.js";
-import { KNOWLEDGE_DIR, KnowledgeStore } from "../src/knowledge/knowledge.js";
+import { buildFixPrompt, buildMergePlanPrompt, buildMergePrompt, KNOWLEDGE_DIR, KnowledgeStore, MERGE_PLAN_SCHEMA, MERGE_SCHEMA } from "../src/knowledge/knowledge.js";
+import { setLanguage } from "../src/i18n/index.js";
 import { projectTools } from "../src/sessions/forge-tools.js";
 import { ClaudeAssist, MERGE_MODEL } from "../src/sessions/claude-assist.js";
 import type { ClaudeRuntime } from "../src/claude/runtime.js";
@@ -164,5 +165,28 @@ describe("KnowledgeStore files", () => {
     await expect(assist.planKnowledgeMerge(projectId, entries, [])).rejects.toThrow(/keinen Plan/);
     expect(await assist.planKnowledgeMerge(projectId, entries.slice(0, 1), [])).toEqual({ groups: [], model: MERGE_MODEL });
     expect(prompts).toHaveLength(2);
+  });
+});
+
+describe("knowledge prompts in English", () => {
+  const entry = { id: "deploy", title: "Deploy", summary: "How to deploy", tags: ["release"], updatedAt: "2026-10-18T10:00:00.000Z", content: "# Deploy\n\n## Steps\nRun it." };
+  afterEach(() => setLanguage("de"));
+
+  it("asks Claude in English when English is set", () => {
+    setLanguage("en");
+    const merge = buildMergePrompt([entry, { ...entry, id: "deploy-2" }]);
+    expect(merge).toMatch(/^Merge these entries from the project knowledge/);
+    expect(merge).toContain("=== Entry deploy (as of 2026-10-18) ===\nTitle: Deploy\nSummary: How to deploy\nTags: release");
+    const plan = buildMergePlanPrompt([entry], [{ a: "deploy", b: "deploy-2", score: 0.7 }]);
+    expect(plan).toContain("Outline: Steps");
+    expect(plan).toContain("A local word comparison");
+    const fix = buildFixPrompt(entry, [{ ref: "src/old.ts", kind: "path" }], "");
+    expect(fix).toContain("Missing references: `src/old.ts`");
+    expect(fix).toContain("Hints from the project:\n(none)");
+    expect(JSON.stringify(MERGE_SCHEMA)).toContain("the merged entry in Markdown");
+    expect(JSON.stringify(MERGE_PLAN_SCHEMA)).toContain("one short sentence");
+    setLanguage("de");
+    expect(buildMergePrompt([entry])).toMatch(/^Führe diese Einträge/);
+    expect(JSON.stringify(MERGE_SCHEMA)).toContain("der zusammengeführte Eintrag in Markdown");
   });
 });

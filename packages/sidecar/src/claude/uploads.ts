@@ -3,6 +3,7 @@ import { mkdirSync } from "node:fs";
 import { appendFile, mkdir, readdir, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { ForgeError, MAX_UPLOAD_BYTES } from "@forge/protocol";
+import { tr } from "../i18n/index.js";
 
 /** Long enough for a session that is continued weeks later to still find its files. */
 const KEEP_MS = 30 * 24 * 60 * 60_000;
@@ -51,7 +52,7 @@ export class UploadStore {
   async put(p: { uploadId: string; name: string; index: number; chunk: string; last: boolean }): Promise<{ path: string | null }> {
     let u = this.pending.get(p.uploadId);
     if (p.index === 0) {
-      if (u) throw new ForgeError("VALIDATION", "Dieser Upload läuft bereits.");
+      if (u) throw new ForgeError("VALIDATION", tr().core.claude.uploadRunning);
       await this.prune();
       const folder = path.join(this.dir, p.uploadId);
       await mkdir(folder, { recursive: true });
@@ -59,14 +60,14 @@ export class UploadStore {
       await writeFile(u.file, "", { flag: "wx" });
       this.pending.set(p.uploadId, u);
     } else if (!u || u.next !== p.index) {
-      throw new ForgeError("VALIDATION", "Upload unvollständig. Bitte die Datei erneut einfügen.");
+      throw new ForgeError("VALIDATION", tr().core.claude.uploadIncomplete);
     }
     const data = Buffer.from(p.chunk, "base64");
     u.bytes += data.length;
     if (u.bytes > MAX_UPLOAD_BYTES) {
       this.pending.delete(p.uploadId);
       await rm(path.dirname(u.file), { recursive: true, force: true });
-      throw new ForgeError("VALIDATION", `${path.basename(u.file)} ist größer als ${MAX_UPLOAD_BYTES / 1024 / 1024} MB.`);
+      throw new ForgeError("VALIDATION", tr().core.claude.uploadTooLarge(path.basename(u.file), MAX_UPLOAD_BYTES / 1024 / 1024));
     }
     await appendFile(u.file, data);
     u.next++;

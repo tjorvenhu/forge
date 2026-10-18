@@ -1,5 +1,6 @@
 import { normalizeForMatch, templateScore, TEMPLATE_NAME_MAX, TEMPLATE_TEXT_MAX, type PromptTemplate } from "@forge/protocol";
 import { z } from "zod";
+import { tr } from "../i18n/index.js";
 import type { Db } from "../persistence/db.js";
 import { redactText } from "../policy/redact.js";
 import { AUTO_CONTINUE_PROMPT } from "../sessions/auto-continue.js";
@@ -38,11 +39,15 @@ export const LEARN_SCHEMA = {
       type: "array",
       items: {
         type: "object",
-        properties: {
-          name: { type: "string", description: "2 bis 4 Wörter zum Wiederfinden" },
-          text: { type: "string", description: "der Auftrag an Claude, sauber formuliert, Platzhalter wie {datei}" },
-          project: { type: ["string", "null"], description: "Projektname, wenn alle Vorkommen aus einem Projekt stammen, sonst null" },
-          count: { type: "integer", description: "wie oft der Auftrag ungefähr vorkam" },
+        // A getter: the descriptions go to Claude in the language set at that moment.
+        get properties() {
+          const t = tr().core.templates;
+          return {
+            name: { type: "string", description: t.schemaName },
+            text: { type: "string", description: t.schemaText },
+            project: { type: ["string", "null"], description: t.schemaProject },
+            count: { type: "integer", description: t.schemaCount },
+          };
         },
         required: ["name", "text", "project", "count"],
         additionalProperties: false,
@@ -60,26 +65,17 @@ export interface LearnerMessage {
 
 /** What Claude reads: the user's messages, the templates there are, and those the user threw away. */
 export function buildLearnPrompt(messages: LearnerMessage[], existing: Array<Pick<PromptTemplate, "name" | "text">>, dismissed: string[]): string {
+  const tx = tr().core.templates;
   return [
-    "Unten stehen Nachrichten, die ein Nutzer an Claude Code geschickt hat, neueste zuerst, jeweils mit dem Projekt in eckigen Klammern.",
-    `Finde Aufträge, die er immer wieder schickt (mindestens ${MIN_REPEATS} Mal, gleich oder sinngemäß, auch mit Tippfehlern), und mach daraus höchstens 5 wiederverwendbare Prompt-Vorlagen.`,
-    "Regeln:",
-    "- Nur echte Wiederholungen. Keine Einzelfälle und keine bloßen Antworten wie „ja“, „danke“, „weiter“.",
-    "- Ein Befehl aus ein, zwei Wörtern (etwa „push“) lohnt nur, wenn die Vorlage deutlich mehr sagt: dann den vollständigen Auftrag ausformulieren, so wie der Nutzer ihn meint.",
-    "- text: Anweisung an Claude in der Sprache des Nutzers, ohne Tippfehler, knapp. Was sich von Mal zu Mal ändert, wird ein Platzhalter in geschweiften Klammern ohne Leerzeichen, etwa {datei}, {projekt}, {branch}, {thema}.",
-    "- name: 2 bis 4 Wörter.",
-    "- project: der Projektname aus den Klammern, wenn alle Vorkommen aus einem Projekt stammen, sonst null.",
-    "- Nichts, was eine vorhandene Vorlage schon abdeckt, und nichts, was einer abgelehnten ähnelt.",
-    "- Keine Passwörter, Schlüssel, Telefonnummern oder anderen persönlichen Daten.",
-    "- Gibt es keine Wiederholungen, liefere eine leere Liste.",
+    ...tx.learnPrompt(MIN_REPEATS),
     "",
-    "Vorhandene Vorlagen:",
-    existing.length ? existing.map((t) => `- ${t.name}: ${t.text.replace(/\s+/g, " ").slice(0, 200)}`).join("\n") : "(keine)",
+    tx.existing,
+    existing.length ? existing.map((t) => `- ${t.name}: ${t.text.replace(/\s+/g, " ").slice(0, 200)}`).join("\n") : tx.none,
     "",
-    "Abgelehnte Vorlagen:",
-    dismissed.length ? dismissed.slice(-50).map((d) => `- ${d.slice(0, 200)}`).join("\n") : "(keine)",
+    tx.dismissed,
+    dismissed.length ? dismissed.slice(-50).map((d) => `- ${d.slice(0, 200)}`).join("\n") : tx.none,
     "",
-    "Nachrichten:",
+    tx.messages,
     ...messages.map((m) => `[${m.project}] ${m.text.replace(/\s+/g, " ").slice(0, MESSAGE_EXCERPT)}`),
   ].join("\n");
 }
@@ -181,7 +177,7 @@ export class TemplateLearner {
     if (messages.length < LEARN_MIN_HISTORY) {
       // No look is recorded: it comes once there is enough.
       this.pending = messages.length;
-      return { added: [], message: `Noch zu wenige Nachrichten zum Lernen (${messages.length} von ${LEARN_MIN_HISTORY}).` };
+      return { added: [], message: tr().core.templates.tooFewMessages(messages.length, LEARN_MIN_HISTORY) };
     }
     const done = (message: string, added: PromptTemplate[] = []): LearnResult => {
       this.d.db.setTemplateLearning({ ...this.d.db.getTemplateLearning(), lastRunAt: new Date(this.now()).toISOString() });
@@ -190,11 +186,11 @@ export class TemplateLearner {
     };
     const existing = this.d.templates.list(undefined, true);
     const learnedBefore = existing.filter((t) => t.learned).length;
-    if (learnedBefore >= MAX_LEARNED) return done(`Es gibt schon ${MAX_LEARNED} gelernte Vorlagen. Lösch nicht gebrauchte, dann lernt FORGE weitere.`);
+    if (learnedBefore >= MAX_LEARNED) return done(tr().core.templates.learnedFull(MAX_LEARNED));
 
     const { dismissed } = this.d.db.getTemplateLearning();
     const answer = Answer.safeParse(await this.d.ask(buildLearnPrompt(messages, existing, dismissed), LEARN_SCHEMA));
-    if (!answer.success) throw new Error("Claude hat keine lesbare Antwort geliefert.");
+    if (!answer.success) throw new Error(tr().core.templates.unreadableAnswer);
 
     const thrownAway = new Set(dismissed);
     const taken: PromptTemplate[] = [...existing];
@@ -209,13 +205,13 @@ export class TemplateLearner {
       if (thrownAway.has(key)) continue;
       if (taken.some((t) => normalizeForMatch(t.text) === key || normalizeForMatch(t.name) === nameKey || templateScore(text, t) >= DUPLICATE_SCORE)) continue;
       const project = c.project ? projects.find((p) => !p.parentId && p.name.toLowerCase() === c.project!.trim().toLowerCase()) : undefined;
-      const t = this.d.templates.save({ id: null, projectId: project?.id ?? null, name, description: `Gelernt aus etwa ${Math.round(c.count)} ähnlichen Nachrichten`, text, learned: true });
+      const t = this.d.templates.save({ id: null, projectId: project?.id ?? null, name, description: tr().core.templates.learnedDescription(Math.round(c.count)), text, learned: true });
       taken.push(t);
       added.push(t);
     }
     if (added.length && !asked) this.d.learned(added.map((t) => t.name));
     return done(
-      added.length ? `${added.length === 1 ? "Neue Vorlage" : `${added.length} neue Vorlagen`} gelernt: ${added.map((t) => t.name).join(", ")}.` : "Keine neuen wiederkehrenden Aufträge gefunden.",
+      added.length ? tr().core.templates.learned(added.map((t) => t.name)) : tr().core.templates.nothingNew,
       added,
     );
   }

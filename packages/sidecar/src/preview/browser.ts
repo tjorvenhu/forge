@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, 
 import os from "node:os";
 import path from "node:path";
 import { killTree } from "../util/proc.js";
+import { tr } from "../i18n/index.js";
 
 /** Where Edge and Chrome live, Edge first: it ships with every Windows 11. */
 export function browserCandidates(env: NodeJS.ProcessEnv = process.env, platform: NodeJS.Platform = process.platform): string[] {
@@ -22,14 +23,14 @@ export function findBrowser(env: NodeJS.ProcessEnv = process.env, platform: Node
   return browserCandidates(env, platform).find((p) => exists(p)) ?? null;
 }
 
-export const NO_BROWSER = "Kein Browser für die Vorschau gefunden. FORGE nutzt Microsoft Edge oder Google Chrome; installiere einen der beiden.";
+export const noBrowser = () => tr().core.preview.noBrowser;
 
 type Listener = (method: string, params: Record<string, unknown>, sessionId: string | undefined) => void;
 
 /** A DevTools call that got no answer in time; the browser or the page in it may hang. */
 export class CdpTimeout extends Error {
   constructor(readonly method: string) {
-    super(`Browser antwortet nicht (${method}).`);
+    super(tr().core.preview.browserNoAnswer(method));
   }
 }
 
@@ -42,7 +43,7 @@ export class Cdp {
 
   private constructor(private readonly ws: WebSocket) {
     ws.addEventListener("message", (e) => this.onMessage(String(e.data)));
-    ws.addEventListener("close", () => this.fail(new Error("Verbindung zum Browser getrennt.")));
+    ws.addEventListener("close", () => this.fail(new Error(tr().core.preview.browserDisconnected)));
   }
 
   static connect(url: string, timeoutMs: number): Promise<Cdp> {
@@ -50,7 +51,7 @@ export class Cdp {
       const ws = new WebSocket(url);
       const timer = setTimeout(() => {
         ws.close();
-        reject(new Error("Browser antwortet nicht auf die DevTools-Verbindung."));
+        reject(new Error(tr().core.preview.browserNoDevTools));
       }, timeoutMs);
       ws.addEventListener("open", () => {
         clearTimeout(timer);
@@ -58,13 +59,13 @@ export class Cdp {
       });
       ws.addEventListener("error", () => {
         clearTimeout(timer);
-        reject(new Error("DevTools-Verbindung zum Browser fehlgeschlagen."));
+        reject(new Error(tr().core.preview.browserConnectFailed));
       });
     });
   }
 
   send<T = Record<string, unknown>>(method: string, params: Record<string, unknown> = {}, sessionId?: string, timeoutMs = 15_000): Promise<T> {
-    if (this.closed) return Promise.reject(new Error("Verbindung zum Browser getrennt."));
+    if (this.closed) return Promise.reject(new Error(tr().core.preview.browserDisconnected));
     const id = ++this.next;
     return new Promise<T>((resolve, reject) => {
       const timer = setTimeout(() => {
@@ -84,7 +85,7 @@ export class Cdp {
   close() {
     if (this.closed) return;
     this.ws.close();
-    this.fail(new Error("Verbindung zum Browser getrennt."));
+    this.fail(new Error(tr().core.preview.browserDisconnected));
   }
 
   private onMessage(raw: string) {
@@ -99,7 +100,7 @@ export class Cdp {
       if (!p) return;
       this.pending.delete(msg.id);
       clearTimeout(p.timer);
-      if (msg.error) p.reject(new Error(msg.error.message ?? "Fehler im Browser."));
+      if (msg.error) p.reject(new Error(msg.error.message ?? tr().core.preview.browserError));
       else p.resolve(msg.result ?? {});
       return;
     }
@@ -230,7 +231,7 @@ export async function launchBrowser(exe: string, timeoutMs = 20_000, keepProfile
     child = spawn(exe, args, { stdio: "ignore", windowsHide: true });
   } catch (e) {
     removeProfile(profile);
-    throw new Error(`Browser lässt sich nicht starten: ${e instanceof Error ? e.message : String(e)}`, { cause: e });
+    throw new Error(tr().core.preview.browserStartFailed(e instanceof Error ? e.message : String(e)), { cause: e });
   }
   let exited = false;
   let spawnError: Error | null = null;
@@ -251,11 +252,11 @@ export async function launchBrowser(exe: string, timeoutMs = 20_000, keepProfile
   while (!wsUrl) {
     if (exited) {
       removeProfile(profile);
-      throw new Error(`Browser hat sich gleich nach dem Start beendet${spawnError ? `: ${(spawnError as Error).message}` : ""}.`);
+      throw new Error(tr().core.preview.browserExited(spawnError ? (spawnError as Error).message : null));
     }
     if (Date.now() > deadline) {
       killSync();
-      throw new Error(`Browser hat in ${Math.round(timeoutMs / 1000)} s keinen DevTools-Port gemeldet.`);
+      throw new Error(tr().core.preview.browserNoPort(Math.round(timeoutMs / 1000)));
     }
     try {
       const [port, wsPath] = readFileSync(portFile, "utf8").split(/\r?\n/);

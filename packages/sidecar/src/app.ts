@@ -47,7 +47,7 @@ import { ProjectManager } from "./projects/project-manager.js";
 import { createHandlers, invokeHandler, type Handlers } from "./rpc/handlers.js";
 import { RpcServer, type Writer } from "./rpc/server.js";
 import { SessionService } from "./sessions/session-service.js";
-import { setLanguage } from "./i18n/index.js";
+import { setLanguage, tr } from "./i18n/index.js";
 
 export interface App {
   server: RpcServer;
@@ -177,7 +177,7 @@ export function createApp(opts: { dataDir: string; write: Writer; log?: (m: stri
   let handlers: Handlers | null = null;
   phone = new PhoneService({
     rpc: (method, params) => {
-      if (!handlers) throw new Error("FORGE startet noch.");
+      if (!handlers) throw new Error(tr().core.app.starting);
       return invokeHandler(handlers, method, params);
     },
     db,
@@ -213,7 +213,7 @@ export function createApp(opts: { dataDir: string; write: Writer; log?: (m: stri
     projects: () => projects.all(),
     ask: (prompt, schema) => {
       const c = claudeFor();
-      if (!c.path) throw new Error("Claude Code ist nicht installiert.");
+      if (!c.path) throw new Error(tr().core.app.claudeMissing);
       return runtime.completeJson(prompt, schema, { cwd: opts.dataDir, env: c.env, claudePath: c.path, model: ASSIST_MODEL, purpose: "templates" });
     },
     learned: (names) => emit({ event: "templates.learned", payload: { names } }),
@@ -270,7 +270,7 @@ export function createApp(opts: { dataDir: string; write: Writer; log?: (m: stri
     },
   });
   const viaHandlers = () => {
-    if (!handlers) throw new Error("FORGE startet noch.");
+    if (!handlers) throw new Error(tr().core.app.starting);
     return handlers;
   };
   sync = new SyncService({

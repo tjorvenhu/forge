@@ -1,4 +1,5 @@
-import type { PlanUsage, RateLimitState, UsageWindow } from "@forge/protocol";
+import { localeOf, type PlanUsage, type RateLimitState, type UsageWindow } from "@forge/protocol";
+import { language, tr } from "../i18n/index.js";
 
 interface RawWindow {
   utilization?: number | null;
@@ -6,12 +7,15 @@ interface RawWindow {
 }
 
 /** Only documented windows are shown; codenamed or undocumented keys are ignored on purpose. */
-const KNOWN: Array<[key: string, label: string]> = [
-  ["five_hour", "5 Stunden"],
-  ["seven_day", "Woche"],
-  ["seven_day_opus", "Woche Opus"],
-  ["seven_day_sonnet", "Woche Sonnet"],
-];
+function known(): Array<[key: string, label: string]> {
+  const t = tr().core.claude;
+  return [
+    ["five_hour", t.windowFiveHours],
+    ["seven_day", t.windowWeek],
+    ["seven_day_opus", t.windowWeekModel("Opus")],
+    ["seven_day_sonnet", t.windowWeekModel("Sonnet")],
+  ];
+}
 
 /** Converts the SDK's /usage payload into FORGE's stable shape. Tolerates missing fields. */
 export function toPlanUsage(raw: unknown): PlanUsage {
@@ -19,14 +23,14 @@ export function toPlanUsage(raw: unknown): PlanUsage {
   const limits = (r.rate_limits ?? null) as Record<string, unknown> | null;
   const windows: UsageWindow[] = [];
   if (limits) {
-    for (const [key, label] of KNOWN) {
+    for (const [key, label] of known()) {
       const w = limits[key] as RawWindow | null | undefined;
       if (w && typeof w.utilization === "number") windows.push({ key, label, utilization: clamp(w.utilization), resetsAt: w.resets_at ?? null });
     }
     const scoped = Array.isArray(limits.model_scoped) ? (limits.model_scoped as Array<RawWindow & { display_name?: unknown }>) : [];
     for (const m of scoped) {
       if (typeof m.utilization !== "number" || typeof m.display_name !== "string") continue;
-      windows.push({ key: `model:${m.display_name}`, label: `Woche ${m.display_name}`, utilization: clamp(m.utilization), resetsAt: m.resets_at ?? null });
+      windows.push({ key: `model:${m.display_name}`, label: tr().core.claude.windowWeekModel(m.display_name), utilization: clamp(m.utilization), resetsAt: m.resets_at ?? null });
     }
   }
   return {
@@ -42,32 +46,31 @@ export function toPlanUsage(raw: unknown): PlanUsage {
 export function describeUsage(usage: PlanUsage, limit: RateLimitState, now = Date.now()): string {
   const u = settleUsage(usage, now);
   const at = (iso: string) => usageTime(iso, now);
+  const t = tr().core.claude;
   const lines: string[] = [];
-  if (limit.status === "reached") lines.push(`Limit erreicht${limit.resetsAt ? `, wieder frei ${at(limit.resetsAt)}` : ""}. Neue Durchläufe scheitern bis dahin.`);
-  else if (limit.status === "warning") lines.push(`Limit fast erreicht${limit.utilization !== null ? ` (${Math.round(limit.utilization)} %)` : ""}${limit.resetsAt ? `, Reset ${at(limit.resetsAt)}` : ""}.`);
-  if (!u.available || !u.windows.length) lines.push(`Nutzung nicht verfügbar${u.error ? `: ${u.error}` : ""}.`);
-  for (const w of u.windows) {
-    const outlook = forecastText(w, at);
-    lines.push(`${w.label}: ${w.utilization} % genutzt${w.resetsAt ? `, Reset ${at(w.resetsAt)}` : ""}${outlook ? `. Prognose: ${outlook}` : ""}`);
-  }
-  if (u.windows.length && !u.windows.some((w) => w.forecast)) lines.push("Prognose: noch zu wenig Messwerte oder kein Anstieg.");
-  if (u.subscriptionType) lines.push(`Abo: ${u.subscriptionType}`);
+  if (limit.status === "reached") lines.push(t.limitReached(limit.resetsAt ? at(limit.resetsAt) : null));
+  else if (limit.status === "warning") lines.push(t.limitWarning(limit.utilization !== null ? Math.round(limit.utilization) : null, limit.resetsAt ? at(limit.resetsAt) : null));
+  if (!u.available || !u.windows.length) lines.push(t.usageUnavailableLine(u.error));
+  for (const w of u.windows) lines.push(t.windowLine(w.label, w.utilization, w.resetsAt ? at(w.resetsAt) : null, forecastText(w, at)));
+  if (u.windows.length && !u.windows.some((w) => w.forecast)) lines.push(t.noForecast);
+  if (u.subscriptionType) lines.push(t.subscription(u.subscriptionType));
   return lines.join("\n");
 }
 
-/** "heute 14:05", or with the date when it is not today. */
+/** "heute 14:05" ("today 2:05 PM"), or with the date when it is not today. */
 function usageTime(iso: string, now: number): string {
   const d = new Date(iso);
-  const time = d.toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" });
-  return d.toDateString() === new Date(now).toDateString() ? `heute ${time}` : `${d.toLocaleDateString("de-DE", { weekday: "short", day: "2-digit", month: "2-digit" })} ${time}`;
+  const locale = localeOf(language());
+  const time = d.toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" });
+  return d.toDateString() === new Date(now).toDateString() ? tr().core.claude.today(time) : `${d.toLocaleDateString(locale, { weekday: "short", day: "2-digit", month: "2-digit" })} ${time}`;
 }
 
 /** The forecast of a window as words, or null without one. `at` formats a time. */
 export function forecastText(w: UsageWindow, at: (iso: string) => string): string | null {
   const f = w.forecast;
   if (!f) return null;
-  if (f.outcome === "limit" && f.limitAt) return `bei diesem Tempo ist das Limit gegen ${at(f.limitAt)} erreicht, vor dem Reset`;
-  return "reicht bis zum Reset";
+  if (f.outcome === "limit" && f.limitAt) return tr().core.claude.forecastLimit(at(f.limitAt));
+  return tr().core.claude.forecastEnough;
 }
 
 /**
@@ -77,8 +80,9 @@ export function forecastText(w: UsageWindow, at: (iso: string) => string): strin
 export function limitWarning(usage: PlanUsage, now = Date.now()): string | null {
   const full = settleUsage(usage, now).windows.filter((w) => w.forecast?.outcome === "limit" && w.forecast.limitAt);
   if (!full.length) return null;
-  const parts = full.map((w) => `${w.label} gegen ${usageTime(w.forecast!.limitAt!, now)}${w.resetsAt ? ` (Reset ${usageTime(w.resetsAt, now)})` : ""}`);
-  return `Bei diesem Tempo ist das Nutzungslimit vor dem Reset erreicht: ${parts.join(", ")}. Weitere Agenten verbrauchen es schneller.`;
+  const t = tr().core.claude;
+  const parts = full.map((w) => t.limitWarningPart(w.label, usageTime(w.forecast!.limitAt!, now), w.resetsAt ? usageTime(w.resetsAt, now) : null));
+  return t.limitWarningText(parts.join(", "));
 }
 
 function clamp(n: number) {

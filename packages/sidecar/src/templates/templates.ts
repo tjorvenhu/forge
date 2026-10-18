@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { ForgeError, normalizeForMatch, type PromptTemplate } from "@forge/protocol";
+import { tr } from "../i18n/index.js";
 import type { Db } from "../persistence/db.js";
 
 export interface TemplateInput {
@@ -41,7 +42,7 @@ export class TemplateService {
 
   get(id: string): PromptTemplate {
     const t = this.d.db.getTemplate(id);
-    if (!t) throw new ForgeError("NOT_FOUND", "Diese Vorlage gibt es nicht mehr.");
+    if (!t) throw new ForgeError("NOT_FOUND", tr().core.templates.notFound);
     return t;
   }
 
@@ -98,7 +99,7 @@ export class TemplateService {
   reorder(ids: string[]): PromptTemplate[] {
     const picked = [...new Set(ids)].map((id) => this.get(id));
     const projectId = picked[0]!.projectId;
-    if (picked.some((t) => t.projectId !== projectId)) throw new ForgeError("VALIDATION", "Globale Vorlagen und Vorlagen eines Projekts lassen sich nicht untereinander sortieren.");
+    if (picked.some((t) => t.projectId !== projectId)) throw new ForgeError("VALIDATION", tr().core.templates.mixedOrder);
     const list = this.d.db.listTemplates(projectId).filter((t) => t.projectId === projectId);
     const wanted = new Set(picked.map((t) => t.id));
     const queue = [...picked];

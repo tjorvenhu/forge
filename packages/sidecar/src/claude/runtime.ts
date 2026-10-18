@@ -26,6 +26,8 @@ import { toPlanUsage } from "./usage.js";
 import { AsyncQueue } from "./async-queue.js";
 import { meterKey, tokenMeter } from "./token-meter.js";
 import { killTree, PIPE_GRACE_MS } from "../util/proc.js";
+import { tr } from "../i18n/index.js";
+import { de } from "../i18n/de/index.js";
 
 /** What FORGE asks Claude for outside a session; recorded with the call (claude_usage.purpose). */
 export type AssistPurpose = ForgeUsagePurpose;
@@ -207,8 +209,9 @@ interface UsageQuery {
 }
 
 export const REPLAY_FLAG = "replay-user-messages";
-export const REMOTE_UNAVAILABLE = "Remote Control ist mit dieser Claude-Code-Version nicht verfügbar.";
-export const USAGE_UNAVAILABLE = "Die Plan-Auslastung ist mit dieser Claude-Code-Version nicht verfügbar.";
+/** German wording of these errors, for callers that compare messages; the thrown text follows the language. */
+export const REMOTE_UNAVAILABLE = de.core.claude.remoteUnavailable;
+export const USAGE_UNAVAILABLE = de.core.claude.usageUnavailable;
 
 /** Upper bound for one-shot CLI calls (probe, commands, completions, usage); a hung CLI must not block the UI. */
 const ONE_SHOT_TIMEOUT_MS = 45_000;
@@ -248,7 +251,7 @@ export class AgentSdkRuntime implements ClaudeRuntime {
     const timeout = new Promise<never>((_, reject) => {
       timer = setTimeout(() => {
         ac.abort();
-        reject(new Error(`${what}: Claude Code hat nicht innerhalb von ${Math.round(this.oneShotTimeoutMs / 1000)} Sekunden geantwortet.`));
+        reject(new Error(tr().core.claude.oneShotTimeout(what, Math.round(this.oneShotTimeoutMs / 1000))));
       }, this.oneShotTimeoutMs);
     });
     work.catch(() => {});
@@ -267,38 +270,39 @@ export class AgentSdkRuntime implements ClaudeRuntime {
 
   capabilities(init?: SDKControlInitializeResponse | null, cliCapabilities: string[] = []): Capability[] {
     const commands = init?.commands?.length ?? 0;
+    const c = tr().core.claude.capabilities;
     return [
-      { key: "session.start", label: "Session starten", state: "supported", note: "Agent SDK query() mit Streaming-Input" },
-      { key: "session.send", label: "Prompt senden", state: "supported", note: "Weitere Nachrichten in derselben Session" },
-      { key: "stream.tokens", label: "Token-Streaming", state: "supported", note: "includePartialMessages" },
-      { key: "stream.tools", label: "Tool-Events", state: "supported", note: "tool_use / tool_result" },
-      { key: "approvals", label: "Freigabeanfragen", state: "supported", note: "canUseTool-Callback" },
+      { key: "session.start", state: "supported", ...c.sessionStart },
+      { key: "session.send", state: "supported", ...c.sessionSend },
+      { key: "stream.tokens", state: "supported", ...c.streamTokens },
+      { key: "stream.tools", state: "supported", ...c.streamTools },
+      { key: "approvals", state: "supported", ...c.approvals },
       {
         key: "interrupt",
-        label: "Stop/Cancel",
+        label: c.interrupt,
         state: "supported",
-        note: cliCapabilities.includes("interrupt_receipt_v1") ? "interrupt() mit Bestätigung" : "interrupt()",
+        note: cliCapabilities.includes("interrupt_receipt_v1") ? c.interruptReceipt : "interrupt()",
       },
-      { key: "resume", label: "Resume", state: "supported", note: "options.resume, auch Terminal-Sessions" },
-      { key: "sessions.list", label: "Sessions auflisten", state: "supported", note: "listSessions({ dir })" },
-      { key: "model.switch", label: "Modell wechseln", state: "supported", note: "setModel()" },
-      { key: "permission.modes", label: "Permission-Modi", state: "supported", note: "default, acceptEdits, plan, bypassPermissions" },
-      { key: "policy.hook", label: "Harte Sperrliste", state: "supported", note: "PreToolUse-Hook, greift auch im Bypass" },
+      { key: "resume", state: "supported", ...c.resume },
+      { key: "sessions.list", state: "supported", ...c.sessionsList },
+      { key: "model.switch", state: "supported", ...c.modelSwitch },
+      { key: "permission.modes", state: "supported", ...c.permissionModes },
+      { key: "policy.hook", state: "supported", ...c.policyHook },
       {
         key: "slash.commands",
-        label: "Slash-Commands",
+        label: c.slashCommands,
         state: "partial",
-        note: init ? `${commands} Commands/Skills gemeldet; interaktive Built-ins nicht verfügbar` : "Liste erst nach Sessionstart bekannt",
+        note: init ? c.slashReported(commands) : c.slashUnknown,
       },
-      { key: "attachments", label: "Bilder/Dateien im Prompt", state: "supported", note: "Bilder, PDFs und Textdateien als Content-Blöcke" },
-      { key: "rewind", label: "Dateien zurücksetzen", state: "supported", note: "enableFileCheckpointing + rewindFiles()" },
-      { key: "fork", label: "Verzweigen", state: "supported", note: "forkSession() bis vor eine Nachricht" },
-      { key: "questions", label: "Rückfragen und Plan-Freigabe", state: "supported", note: "AskUserQuestion-Antworten und ExitPlanMode über canUseTool" },
-      { key: "context", label: "Kontextauslastung", state: "supported", note: "getContextUsage() nach jedem Durchlauf, /compact" },
-      { key: "remote", label: "Remote Control (Claude-App)", state: "supported", note: "Bridge der laufenden Session; im SDK nicht dokumentiert" },
-      { key: "usage", label: "Token-Usage", state: "supported", note: "aus result.usage" },
-      { key: "cost", label: "Kosten", state: "partial", note: "Bei Abo nur API-Äquivalent, wird nicht angezeigt" },
-      { key: "terminal", label: "Eingebettetes Terminal", state: "supported", note: "xterm.js + PTY in der Tauri-Hülle" },
+      { key: "attachments", state: "supported", ...c.attachments },
+      { key: "rewind", state: "supported", ...c.rewind },
+      { key: "fork", state: "supported", ...c.fork },
+      { key: "questions", state: "supported", ...c.questions },
+      { key: "context", state: "supported", ...c.context },
+      { key: "remote", state: "supported", ...c.remote },
+      { key: "usage", state: "supported", ...c.usage },
+      { key: "cost", state: "partial", ...c.cost },
+      { key: "terminal", state: "supported", ...c.terminal },
     ];
   }
 
@@ -323,7 +327,7 @@ export class AgentSdkRuntime implements ClaudeRuntime {
           o.signal,
         );
       } catch {
-        decision = { behavior: "deny", message: "Die Freigabeanfrage konnte nicht verarbeitet werden." };
+        decision = { behavior: "deny", message: tr().core.claude.approvalFailed };
       }
       if (decision.behavior === "deny") return { behavior: "deny", message: decision.message } satisfies PermissionResult;
       const updates: PermissionUpdate[] = [];
@@ -343,14 +347,14 @@ export class AgentSdkRuntime implements ClaudeRuntime {
         v = await sink.preToolUse(hookInput.tool_name, ti, toolUseId ?? null);
       } catch {
         // Fail closed: a check that could not run must not let the call through.
-        v = { rule: "guard-error", message: "Die Policy-Prüfung ist fehlgeschlagen, der Aufruf wurde vorsichtshalber abgelehnt." };
+        v = { rule: "guard-error", message: tr().core.claude.policyCheckFailed };
       }
       if (!v) return {};
       return {
         hookSpecificOutput: {
           hookEventName: "PreToolUse",
           permissionDecision: "deny",
-          permissionDecisionReason: `FORGE-Policy (${v.rule}): ${v.message}`,
+          permissionDecisionReason: tr().core.claude.policyDenied(v.rule, v.message),
         },
       };
     };
@@ -454,7 +458,7 @@ export class AgentSdkRuntime implements ClaudeRuntime {
       stopTask: (taskId) => q.stopTask(taskId),
       taskOutput: async (taskId) => {
         const tq = q as unknown as TaskOutputQuery;
-        if (typeof tq.getTaskOutput !== "function") throw new Error("Diese Claude-Code-Version liefert keine Ausgabe von Hintergrundaufgaben.");
+        if (typeof tq.getTaskOutput !== "function") throw new Error(tr().core.claude.noTaskOutput);
         const r = await tq.getTaskOutput.call(q, taskId);
         return {
           output: typeof r?.output === "string" ? r.output : "",
@@ -487,7 +491,7 @@ export class AgentSdkRuntime implements ClaudeRuntime {
       },
       setRemoteControl: async (enabled, name) => {
         const rc = q as unknown as RemoteControlQuery;
-        if (typeof rc.enableRemoteControl !== "function") throw new Error(REMOTE_UNAVAILABLE);
+        if (typeof rc.enableRemoteControl !== "function") throw new Error(tr().core.claude.remoteUnavailable);
         const r = await rc.enableRemoteControl.call(q, enabled, name);
         return typeof r?.session_url === "string" ? r.session_url : null;
       },
@@ -542,7 +546,7 @@ export class AgentSdkRuntime implements ClaudeRuntime {
       prompt: input,
       options: { cwd: opts.cwd, env: opts.env, pathToClaudeCodeExecutable: opts.claudePath, settingSources: ["user", "project", "local"], persistSession: false, abortController: ac },
     });
-    return this.oneShot("Slash-Commands laden", q, ac, q.supportedCommands().then((list) => list.map(toCommand)), () => input.end());
+    return this.oneShot(tr().core.claude.oneShotCommands, q, ac, q.supportedCommands().then((list) => list.map(toCommand)), () => input.end());
   }
 
   async complete(prompt: string, opts: CompleteOptions): Promise<string> {
@@ -567,13 +571,13 @@ export class AgentSdkRuntime implements ClaudeRuntime {
       for await (const m of q) {
         tokenMeter.observe(meter, m);
         if (m.type === "result") {
-          if (m.subtype !== "success") throw new Error(`Claude konnte keine Antwort erzeugen (${m.subtype})`);
+          if (m.subtype !== "success") throw new Error(tr().core.claude.noAnswer(m.subtype));
           text = m.result;
         }
       }
       return text;
     })();
-    return this.oneShot("Antwort von Claude", q, ac, work);
+    return this.oneShot(tr().core.claude.oneShotAnswer, q, ac, work);
   }
 
   async completeJson(prompt: string, schema: Record<string, unknown>, opts: CompleteOptions): Promise<unknown> {
@@ -600,14 +604,14 @@ export class AgentSdkRuntime implements ClaudeRuntime {
       for await (const m of q) {
         tokenMeter.observe(meter, m);
         if (m.type === "result") {
-          if (m.subtype !== "success") throw new Error(`Claude konnte keine Antwort erzeugen (${m.subtype})`);
+          if (m.subtype !== "success") throw new Error(tr().core.claude.noAnswer(m.subtype));
           out = m.structured_output;
         }
       }
-      if (out === undefined) throw new Error("Claude hat keine strukturierte Antwort geliefert.");
+      if (out === undefined) throw new Error(tr().core.claude.noStructuredAnswer);
       return out;
     })();
-    return this.oneShot("Antwort von Claude", q, ac, work);
+    return this.oneShot(tr().core.claude.oneShotAnswer, q, ac, work);
   }
 
   async planUsage(opts: Pick<StartOptions, "cwd" | "env" | "claudePath">): Promise<PlanUsage> {
@@ -621,9 +625,9 @@ export class AgentSdkRuntime implements ClaudeRuntime {
     if (typeof usage !== "function") {
       input.end();
       q.close();
-      throw new Error(USAGE_UNAVAILABLE);
+      throw new Error(tr().core.claude.usageUnavailable);
     }
-    return this.oneShot("Plan-Auslastung", q, ac, usage.call(q, { skipBehaviors: true }).then(toPlanUsage), () => input.end());
+    return this.oneShot(tr().core.claude.oneShotUsage, q, ac, usage.call(q, { skipBehaviors: true }).then(toPlanUsage), () => input.end());
   }
 
   async probe(opts: Pick<StartOptions, "cwd" | "env" | "claudePath">): Promise<SDKControlInitializeResponse> {
@@ -655,7 +659,7 @@ function forgeServer(tools: SessionTool[]) {
         try {
           out = await t.run(args);
         } catch (e) {
-          return { content: [{ type: "text" as const, text: `Fehler: ${e instanceof Error ? e.message : String(e)}` }], isError: true };
+          return { content: [{ type: "text" as const, text: tr().core.claude.toolError(e instanceof Error ? e.message : String(e)) }], isError: true };
         }
         const { text, images = [] } = typeof out === "string" ? { text: out } : out;
         return { content: [{ type: "text" as const, text }, ...images.map((i) => ({ type: "image" as const, data: i.data, mimeType: i.mimeType }))] };

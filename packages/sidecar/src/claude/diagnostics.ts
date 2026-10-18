@@ -2,12 +2,13 @@ import { readFile } from "node:fs/promises";
 import os from "node:os";
 import type { Capability, Diagnostics, ToolCheck } from "@forge/protocol";
 import { run } from "../util/proc.js";
+import { tr } from "../i18n/index.js";
 import { resolveTool } from "../util/tools.js";
 import { claudeJsonPath } from "../util/paths.js";
 import { apiKeyEnvPresent, locateClaude, sessionEnv } from "./environment.js";
 
 async function versionOf(bin: string | null, args: string[], env?: NodeJS.ProcessEnv, bundled = false): Promise<ToolCheck> {
-  if (!bin) return { found: false, bundled, version: null, path: null, error: "nicht gefunden" };
+  if (!bin) return { found: false, bundled, version: null, path: null, error: tr().core.claude.notFound };
   const r = await run(bin, args, { timeoutMs: 15_000, env });
   if (r.spawnError) return { found: false, bundled, version: null, path: bin, error: r.spawnError.message };
   if (r.code !== 0) return { found: true, bundled, version: null, path: bin, error: (r.stderr || r.stdout).trim().slice(0, 300) };
@@ -73,7 +74,7 @@ export async function readAuth(claudeBin: string, env: Record<string, string>): 
     auth.apiProvider = typeof j.apiProvider === "string" ? j.apiProvider : null;
     if (auth.loggedIn && auth.subscriptionType) auth.rateLimitTier = await readRateLimitTier();
   } catch {
-    auth.error = (r.stderr || r.stdout).trim().slice(0, 300) || "Auth-Status nicht lesbar";
+    auth.error = (r.stderr || r.stdout).trim().slice(0, 300) || tr().core.claude.authUnreadable;
   }
   return auth;
 }

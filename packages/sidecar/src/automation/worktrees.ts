@@ -6,6 +6,7 @@ import path from "node:path";
 import { ForgeError, type Project } from "@forge/protocol";
 import { isArtifactPath, isSensitiveFile, type GitEngine } from "../git/git.js";
 import type { ProjectManager } from "../projects/project-manager.js";
+import { tr } from "../i18n/index.js";
 import { pathKey } from "../util/paths.js";
 import type { WorktreeSetup } from "./worktree-setup.js";
 
@@ -20,7 +21,7 @@ export function slugify(text: string, max = 40): string {
       .replace(/[^a-z0-9]+/g, "-")
       .replace(/^-+|-+$/g, "")
       .slice(0, max)
-      .replace(/-+$/g, "") || "aufgabe"
+      .replace(/-+$/g, "") || tr().core.automation.slugFallback
   );
 }
 
@@ -70,15 +71,15 @@ export class WorktreeService {
    * worktrees) instead of the parent's HEAD, so an agent continues from where its starter stands.
    */
   async create(parent: Project, branch: string, opts: { fromDir?: string; withChanges?: boolean } = {}): Promise<Project> {
-    if (!(await this.git.isRepo(parent.path))) throw new ForgeError("GIT_NOT_REPO", "Worktrees brauchen ein Git-Repository.");
-    if (!(await this.git.hasCommits(parent.path))) throw new ForgeError("GIT_FAILED", "Das Repository braucht mindestens einen Commit.");
+    if (!(await this.git.isRepo(parent.path))) throw new ForgeError("GIT_NOT_REPO", tr().core.automation.needsGitRepo);
+    if (!(await this.git.hasCommits(parent.path))) throw new ForgeError("GIT_FAILED", tr().core.automation.needsCommit);
     const check = await this.git.exec(parent.path, ["check-ref-format", "--branch", branch]);
-    if (check.code !== 0 || branch.startsWith("-")) throw new ForgeError("VALIDATION", `Ungültiger Branch-Name: ${branch}`);
+    if (check.code !== 0 || branch.startsWith("-")) throw new ForgeError("VALIDATION", tr().core.automation.invalidBranch(branch));
     const exists = (await this.git.exec(parent.path, ["rev-parse", "--verify", "-q", `refs/heads/${branch}`])).code === 0;
     const start: string[] = [];
     if (!exists && opts.fromDir) {
       const head = await this.git.exec(opts.fromDir, ["rev-parse", "--verify", "-q", "HEAD"]);
-      if (head.code !== 0 || !head.stdout.trim()) throw new ForgeError("GIT_FAILED", "Der Ausgangsstand hat noch keinen Commit.");
+      if (head.code !== 0 || !head.stdout.trim()) throw new ForgeError("GIT_FAILED", tr().core.automation.originNoCommit);
       start.push(opts.withChanges ? ((await this.snapshot(opts.fromDir, head.stdout.trim())) ?? head.stdout.trim()) : head.stdout.trim());
     }
     // A project in a subfolder of a larger repository: the checkout goes beside that repository, not
@@ -90,7 +91,7 @@ export class WorktreeService {
     await mkdir(root, { recursive: true });
     const dir = freeDir(path.join(root, slugify(branch.replace(/\//g, "-"), 60)));
     const r = await this.git.exec(parent.path, exists ? ["worktree", "add", dir, branch] : ["worktree", "add", "-b", branch, dir, ...start], undefined, 120_000);
-    if (r.code !== 0) throw new ForgeError("GIT_FAILED", (r.stderr || r.stdout).trim() || "Worktree konnte nicht angelegt werden");
+    if (r.code !== 0) throw new ForgeError("GIT_FAILED", (r.stderr || r.stdout).trim() || tr().core.automation.createFailed);
     if (!exists) await this.rememberOrigin(parent.path, branch, opts.fromDir ?? parent.path);
     // The branch was there before: it is not FORGE's, whatever an earlier agent on it left behind.
     else await this.git.exec(parent.path, ["config", "--unset", `branch.${branch}.forgeWorktree`]);
@@ -145,7 +146,7 @@ export class WorktreeService {
     const top = (await this.git.exec(dir, ["rev-parse", "--show-toplevel"])).stdout.trim() || dir;
     const git = async (args: string[]) => {
       const r = await this.git.exec(top, args, undefined, 120_000, env);
-      if (r.code !== 0) throw new ForgeError("GIT_FAILED", `Nicht committeter Stand nicht übernommen: ${(r.stderr || r.stdout).trim() || `git ${args[0]} fehlgeschlagen`}`);
+      if (r.code !== 0) throw new ForgeError("GIT_FAILED", tr().core.automation.snapshotFailed((r.stderr || r.stdout).trim() || tr().core.automation.gitStepFailed(args[0] ?? "")));
       return r.stdout;
     };
     try {
@@ -158,7 +159,7 @@ export class WorktreeService {
       const base = (await git(["rev-parse", `${head}^{tree}`])).trim();
       if (tree === base) return null;
       const branch = await this.git.currentBranch(dir).catch(() => null);
-      return (await git(["commit-tree", tree, "-p", head, "-m", `FORGE: nicht committeter Stand${branch ? ` von ${branch}` : ""} für den Agenten`])).trim();
+      return (await git(["commit-tree", tree, "-p", head, "-m", tr().core.automation.snapshotCommit(branch)])).trim();
     } finally {
       await rm(index, { force: true }).catch(() => null);
     }
@@ -225,18 +226,18 @@ export class WorktreeService {
     const main = await this.mainWorkingTree(dir);
     if (!main) return false;
     const r = await this.git.exec(main, ["worktree", "remove", "--force", dir], undefined, 60_000);
-    if (r.code !== 0) throw new ForgeError("GIT_FAILED", (r.stderr || r.stdout).trim() || "Worktree konnte nicht entfernt werden");
+    if (r.code !== 0) throw new ForgeError("GIT_FAILED", (r.stderr || r.stdout).trim() || tr().core.automation.removeFailed);
     return true;
   }
 
   /** Throws CONFLICT if the worktree has uncommitted changes and the removal is not forced. */
   async assertRemovable(worktree: Project, force: boolean) {
-    if (!worktree.parentId) throw new ForgeError("VALIDATION", "Das ist kein Worktree-Projekt.");
+    if (!worktree.parentId) throw new ForgeError("VALIDATION", tr().core.automation.notWorktreeProject);
     const root = worktreeRoot(worktree.path);
     if (force || !existsSync(path.join(root, ".git"))) return;
     // The whole checkout: with a monorepo project the agent may also have changed files beside it.
     const st = await this.git.status(root);
-    if (st.files.length) throw new ForgeError("CONFLICT", `Der Worktree hat ${st.files.length} nicht committete Änderungen.`, { dirty: st.files.length });
+    if (st.files.length) throw new ForgeError("CONFLICT", tr().core.automation.uncommittedChanges(st.files.length), { dirty: st.files.length });
   }
 
   /**
@@ -259,7 +260,7 @@ export class WorktreeService {
     if (!opts.deleteBranch) return { deletedBranch: null, branchError: null };
     // The worktree is gone at this point; a failed branch deletion is reported, not thrown, so the
     // caller does not show the removal as failed.
-    if (!branch || !cwd) return { deletedBranch: null, branchError: "Der Branch des Worktrees war nicht mehr zu ermitteln." };
+    if (!branch || !cwd) return { deletedBranch: null, branchError: tr().core.automation.branchUnknown };
     if (!owner) return { deletedBranch: null, branchError: foreignBranch(branch) };
     try {
       await this.git.deleteBranch(cwd, branch, owner === "worktree");
@@ -275,7 +276,7 @@ export class WorktreeService {
       if (attempt) await new Promise((r) => setTimeout(r, REMOVE_RETRY_MS));
       if (!existsSync(dir)) return;
       if (existsSync(path.join(dir, ".git"))) {
-        if (!cwd) throw new ForgeError("GIT_FAILED", `Das Repository zu diesem Worktree wurde nicht gefunden: ${dir}`);
+        if (!cwd) throw new ForgeError("GIT_FAILED", tr().core.automation.repoNotFound(dir));
         const r = await this.git.exec(cwd, ["worktree", "remove", ...(force ? ["--force"] : []), dir], undefined, 60_000);
         if (r.code === 0) {
           // On Windows git can report success and still leave node_modules (pnpm junctions) behind.
@@ -294,7 +295,7 @@ export class WorktreeService {
             continue;
           }
         }
-        if (!FOLDER_IN_USE.test(last)) throw new ForgeError("GIT_FAILED", last || "Worktree konnte nicht entfernt werden");
+        if (!FOLDER_IN_USE.test(last)) throw new ForgeError("GIT_FAILED", last || tr().core.automation.removeFailed);
       } else {
         // An earlier attempt got as far as deleting the .git file: git no longer sees a worktree
         // here, only the leftover files of one.
@@ -308,13 +309,13 @@ export class WorktreeService {
     }
     throw new ForgeError(
       "PATH_NOT_ACCESSIBLE",
-      `Der Worktree-Ordner wird noch von einem anderen Programm benutzt, etwa einem Terminal, Editor oder Explorer-Fenster. Schließe es und versuche es noch einmal. (${last})`,
+      tr().core.automation.folderInUse(last),
     );
   }
 }
 
 export function foreignBranch(branch: string): string {
-  return `Den Branch ${branch} hat nicht FORGE für diesen Agenten angelegt, er bleibt erhalten.`;
+  return tr().core.automation.foreignBranch(branch);
 }
 
 /** git and Node messages for a folder that another process still holds open. */

@@ -7,6 +7,7 @@ import type { Db } from "../persistence/db.js";
 import { isSensitiveFile, type GitEngine } from "../git/git.js";
 import { buildCommitPrompt, cleanCommitMessage } from "../git/commit-message.js";
 import { redactText } from "../policy/redact.js";
+import { tr } from "../i18n/index.js";
 import type { ProjectManager } from "../projects/project-manager.js";
 
 /** Small, fast model: commit messages need speed more than depth. */
@@ -18,12 +19,15 @@ export const MERGE_MODEL = "sonnet";
 const MergeDraft = z.object({ title: z.string(), summary: z.string(), tags: z.array(z.string()), content: z.string() });
 const MergePlan = z.object({ groups: z.array(z.object({ ids: z.array(z.string()), reason: z.string() })) });
 const PrDraft =z.object({ title: z.string(), body: z.string() });
-const PR_SCHEMA = {
-  type: "object",
-  properties: { title: { type: "string", description: "PR-Titel, eine Zeile" }, body: { type: "string", description: "PR-Beschreibung in Markdown" } },
-  required: ["title", "body"],
-  additionalProperties: false,
-};
+function prSchema() {
+  const m = tr().core.sessions;
+  return {
+    type: "object",
+    properties: { title: { type: "string", description: m.prTitleField }, body: { type: "string", description: m.prBodyField } },
+    required: ["title", "body"],
+    additionalProperties: false,
+  };
+}
 
 /** One-shot Claude calls that write text for the user: commit messages, PR texts, session summaries and titles. */
 export class ClaudeAssist {
@@ -37,7 +41,7 @@ export class ClaudeAssist {
   private claude() {
     const settings = this.db.getSettings();
     const claudePath = locateClaude(settings.claudePath);
-    if (!claudePath) throw new ForgeError("CLAUDE_NOT_INSTALLED", "Claude Code CLI wurde nicht gefunden.");
+    if (!claudePath) throw new ForgeError("CLAUDE_NOT_INSTALLED", tr().core.sessions.claudeNotFound);
     return { claudePath, env: sessionEnv(settings.stripApiKey) };
   }
 
@@ -48,7 +52,7 @@ export class ClaudeAssist {
     const status = await this.git.status(project.path);
     const wanted = paths?.length ? new Set(paths) : null;
     const files = status.files.filter((f) => !wanted || wanted.has(f.path));
-    if (!files.length) throw new ForgeError("VALIDATION", "Keine Änderungen für eine Commit-Nachricht.");
+    if (!files.length) throw new ForgeError("VALIDATION", tr().core.sessions.noCommitChanges);
     const skipped = files.filter((f) => isSensitiveFile(f.path)).map((f) => f.path);
     const diffs = [];
     for (const f of files) {
@@ -59,7 +63,7 @@ export class ClaudeAssist {
     const model = ASSIST_MODEL;
     const raw = await this.runtime.complete(buildCommitPrompt(diffs, recent, skipped), { cwd: project.path, env, claudePath, model, purpose: "commit" });
     const message = cleanCommitMessage(raw);
-    if (!message) throw new ForgeError("CLAUDE_RUNTIME", "Claude hat keine Commit-Nachricht geliefert.");
+    if (!message) throw new ForgeError("CLAUDE_RUNTIME", tr().core.sessions.noCommitMessage);
     return { message, model, skipped };
   }
 
@@ -69,28 +73,24 @@ export class ClaudeAssist {
    */
   async summarize(sessionId: string) {
     const rec = this.db.getSession(sessionId);
-    if (!rec) throw new ForgeError("SESSION_NOT_FOUND", "Session nicht gefunden.");
+    if (!rec) throw new ForgeError("SESSION_NOT_FOUND", tr().core.sessions.notFound);
     const { claudePath, env } = this.claude();
+    const m = tr().core.sessions;
+    const l = m.summaryLabels;
     const lines: string[] = [];
     // listEvents returns the newest events, so a long session is summarised from where it stands now.
     for (const e of this.db.listEvents(sessionId)) {
       const b = e.body;
-      if (b.type === "user.message") lines.push(`NUTZER: ${b.text}`);
+      if (b.type === "user.message") lines.push(`${l.user}: ${b.text}`);
       else if (b.type === "assistant.text") lines.push(`${b.parentToolUseId ? "SUBAGENT" : "CLAUDE"}: ${b.text}`);
       else if (b.type === "tool.use") lines.push(`TOOL ${b.name}: ${JSON.stringify(b.input).slice(0, 200)}`);
-      else if (b.type === "turn.result") lines.push(`ERGEBNIS: ${b.isError ? "Fehler" : "fertig"}`);
+      else if (b.type === "turn.result") lines.push(`${l.result}: ${b.isError ? l.error : l.done}`);
       else if (b.type === "automation" && b.action === "commit" && b.ok) lines.push(`COMMIT: ${b.message}`);
-      else if (b.type === "check.result") lines.push(`TESTS: ${b.ok ? "grün" : "rot"}`);
+      else if (b.type === "check.result") lines.push(`TESTS: ${b.ok ? l.green : l.red}`);
     }
-    if (!lines.length) throw new ForgeError("VALIDATION", "Die Session hat noch keinen Verlauf.");
+    if (!lines.length) throw new ForgeError("VALIDATION", m.noHistory);
     const transcript = redactText(lines.join("\n")).slice(-30_000);
-    const prompt = [
-      "Fasse diese Claude-Code-Session für den Wiedereinstieg zusammen. Deutsch, höchstens 6 Stichpunkte:",
-      "was das Ziel war, was erledigt ist, was offen ist, worauf als Nächstes zu achten ist.",
-      "Nur Fakten aus dem Verlauf, nichts erfinden.",
-      "",
-      transcript,
-    ].join("\n");
+    const prompt = [...m.summaryPrompt, "", transcript].join("\n");
     const summary = await this.runtime.complete(prompt, { cwd: rec.cwd, env, claudePath, model: ASSIST_MODEL, purpose: "summary" });
     return { summary: summary.trim(), model: ASSIST_MODEL };
   }
@@ -104,20 +104,20 @@ export class ClaudeAssist {
   /** Raw session title for the prompt built by the title refresh; the caller cleans it up. */
   async sessionTitle(sessionId: string, prompt: string): Promise<string> {
     const rec = this.db.getSession(sessionId);
-    if (!rec) throw new ForgeError("SESSION_NOT_FOUND", "Session nicht gefunden.");
+    if (!rec) throw new ForgeError("SESSION_NOT_FOUND", tr().core.sessions.notFound);
     const { claudePath, env } = this.claude();
     return this.runtime.complete(prompt, { cwd: rec.cwd, env, claudePath, model: ASSIST_MODEL, purpose: "title" });
   }
 
   /** Merged text for knowledge entries on one topic; the caller shows or saves it. */
   async mergeKnowledge(projectId: string, entries: KnowledgeEntry[]) {
-    if (entries.length < 2) throw new ForgeError("VALIDATION", "Zum Zusammenführen braucht es mindestens zwei verschiedene Einträge.");
+    if (entries.length < 2) throw new ForgeError("VALIDATION", tr().core.sessions.mergeNeedsTwo);
     const project = this.projects.requireExisting(projectId);
     const { claudePath, env } = this.claude();
     const model = MERGE_MODEL;
     const raw = await this.runtime.completeJson(buildMergePrompt(entries), MERGE_SCHEMA, { cwd: project.path, env, claudePath, model, purpose: "knowledge" });
     const out = MergeDraft.safeParse(raw);
-    if (!out.success || !out.data.content.trim()) throw new ForgeError("CLAUDE_RUNTIME", "Claude hat keinen zusammengeführten Eintrag geliefert.");
+    if (!out.success || !out.data.content.trim()) throw new ForgeError("CLAUDE_RUNTIME", tr().core.sessions.noMergedEntry);
     return {
       title: out.data.title.trim().slice(0, 120) || entries[0]!.title,
       summary: out.data.summary.trim().slice(0, 300),
@@ -134,7 +134,7 @@ export class ClaudeAssist {
     const model = MERGE_MODEL;
     const raw = await this.runtime.completeJson(buildFixPrompt(ctx.entry, ctx.missing, ctx.details), MERGE_SCHEMA, { cwd: project.path, env, claudePath, model, purpose: "knowledge" });
     const out = MergeDraft.safeParse(raw);
-    if (!out.success || !out.data.content.trim()) throw new ForgeError("CLAUDE_RUNTIME", "Claude hat keinen korrigierten Eintrag geliefert.");
+    if (!out.success || !out.data.content.trim()) throw new ForgeError("CLAUDE_RUNTIME", tr().core.sessions.noFixedEntry);
     const tags = [...new Set(out.data.tags.map((t) => t.trim().toLowerCase()).filter(Boolean))].slice(0, 8);
     return {
       title: out.data.title.trim().slice(0, 120) || ctx.entry.title,
@@ -152,7 +152,7 @@ export class ClaudeAssist {
     const project = this.projects.requireExisting(projectId);
     const { claudePath, env } = this.claude();
     const out = MergePlan.safeParse(await this.runtime.completeJson(buildMergePlanPrompt(entries, pairs), MERGE_PLAN_SCHEMA, { cwd: project.path, env, claudePath, model, purpose: "knowledge" }));
-    if (!out.success) throw new ForgeError("CLAUDE_RUNTIME", "Claude hat keinen Plan zum Zusammenführen geliefert.");
+    if (!out.success) throw new ForgeError("CLAUDE_RUNTIME", tr().core.sessions.noMergePlan);
     return { groups: cleanMergePlan(out.data.groups, entries), model };
   }
 
@@ -160,27 +160,23 @@ export class ClaudeAssist {
   async suggestPullRequest(projectId: string) {
     const project = this.projects.requireExisting(projectId);
     const { claudePath, env } = this.claude();
+    const m = tr().core.sessions;
     const head = await this.git.currentBranch(project.path);
-    if (!head) throw new ForgeError("GIT_FAILED", "Kein Branch ausgecheckt.");
+    if (!head) throw new ForgeError("GIT_FAILED", m.noBranch);
     const base = await this.git.defaultBranch(project.path);
     const { commits, diff } = await this.git.rangeSummary(project.path, base);
-    if (!commits.length) throw new ForgeError("VALIDATION", `Keine Commits gegenüber ${base}. Erst committen.`);
-    const facts = [`Branch: ${head} -> ${base}`, "Commits:", ...commits.map((c) => `- ${c}`), "", "Diff (gekürzt):", redactText(diff)];
-    const task = [
-      "Schreibe Titel und Beschreibung für einen GitHub Pull Request.",
-      "Titel: eine Zeile, höchstens 72 Zeichen.",
-      "Beschreibung: Markdown, kurze Zusammenfassung, dann Abschnitt '## Änderungen' mit Stichpunkten, dann '## Test' mit dem, was geprüft werden sollte.",
-      "Nur beschreiben, was in Commits und Diff steht. Nichts erfinden. Sprache: wie die Commits.",
-    ];
+    if (!commits.length) throw new ForgeError("VALIDATION", m.noCommitsAhead(base));
+    const facts = [`Branch: ${head} -> ${base}`, "Commits:", ...commits.map((c) => `- ${c}`), "", m.prDiff, redactText(diff)];
+    const task = m.prPrompt;
     const opts = { cwd: project.path, env, claudePath, model: ASSIST_MODEL, purpose: "pr" as const };
     // Structured output first, so nothing has to be parsed out of free text; the text format stays as fallback.
     try {
-      const out = PrDraft.parse(await this.runtime.completeJson([...task, "", ...facts].join("\n"), PR_SCHEMA, opts));
+      const out = PrDraft.parse(await this.runtime.completeJson([...task, "", ...facts].join("\n"), prSchema(), opts));
       return { title: out.title.trim().slice(0, 256) || commits[0]!, body: out.body.trim(), base, head };
     } catch {
-      const raw = await this.runtime.complete([...task, "Format exakt:", "TITEL: <Titel>", "BESCHREIBUNG:", "<Beschreibung>", "", ...facts].join("\n"), opts);
-      const title = /TITEL:\s*(.+)/.exec(raw)?.[1]?.trim() ?? commits[0]!;
-      const body = raw.split(/BESCHREIBUNG:\s*/)[1]?.trim() ?? raw.trim();
+      const raw = await this.runtime.complete([...task, ...m.prFormat, "", ...facts].join("\n"), opts);
+      const title = /(?:TITEL|TITLE):\s*(.+)/.exec(raw)?.[1]?.trim() ?? commits[0]!;
+      const body = raw.split(/(?:BESCHREIBUNG|DESCRIPTION):\s*/)[1]?.trim() ?? raw.trim();
       return { title: title.slice(0, 256), body, base, head };
     }
   }

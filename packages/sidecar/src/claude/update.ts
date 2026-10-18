@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { tr } from "../i18n/index.js";
 
 /** Same release endpoint the official installer uses (https://claude.ai/install.sh). */
 const RELEASES_URL = "https://downloads.claude.ai/claude-code-releases";
@@ -35,8 +36,8 @@ export async function readUpdateChannel(configDir = process.env.CLAUDE_CONFIG_DI
 
 export async function fetchLatestVersion(channel: UpdateChannel, fetchImpl: typeof fetch = fetch): Promise<string> {
   const res = await fetchImpl(`${RELEASES_URL}/${channel}`, { signal: AbortSignal.timeout(10_000) });
-  if (!res.ok) throw new Error(`Versionsabfrage fehlgeschlagen (HTTP ${res.status})`);
+  if (!res.ok) throw new Error(tr().core.claude.versionQueryFailed(res.status));
   const version = parseVersion(await res.text());
-  if (!version) throw new Error("Versionsabfrage lieferte keine Versionsnummer");
+  if (!version) throw new Error(tr().core.claude.versionQueryEmpty);
   return version;
 }

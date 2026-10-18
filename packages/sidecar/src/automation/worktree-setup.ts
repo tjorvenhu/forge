@@ -8,6 +8,7 @@ import { withPortFlag } from "../devserver/port-args.js";
 import type { SeedResult } from "../devtools/test-db.js";
 import type { GitEngine } from "../git/git.js";
 import type { ProjectManager } from "../projects/project-manager.js";
+import { tr } from "../i18n/index.js";
 import { pathKey } from "../util/paths.js";
 import { findFreePort, isPortFree } from "../util/ports.js";
 import { killTree, onFinished } from "../util/proc.js";
@@ -37,13 +38,12 @@ const CARGO_TARGET = /(^|\/)target\/$/;
 const CARGO_CACHE = [".fingerprint", "build", "deps"];
 const NODE_LOCKS = ["pnpm-lock.yaml", "yarn.lock", "bun.lock", "bun.lockb", "package-lock.json"];
 
-const STEPS: ReadonlyArray<[WorktreeSetupStep["id"], string]> = [
-  ["files", "Lokale Konfiguration"],
-  ["deps", "Abhängigkeiten"],
-  ["build", "Build-Ausgaben"],
-  ["database", "Test-Datenbank"],
-  ["devserver", "Dev-Server"],
-];
+const STEPS: ReadonlyArray<WorktreeSetupStep["id"]> = ["files", "deps", "build", "database", "devserver"];
+
+function stepLabel(id: WorktreeSetupStep["id"]): string {
+  const t = tr().core.automation;
+  return { files: t.stepFiles, deps: t.stepDeps, build: t.stepBuild, database: t.stepDatabase, devserver: t.stepDevserver }[id];
+}
 
 type StepResult = { status: "done" | "skipped" | "failed"; detail: string | null };
 
@@ -203,7 +203,7 @@ export class WorktreeSetup {
       state: {
         projectId: worktree.id,
         status: "running",
-        steps: STEPS.map(([id, label]) => ({ id, label, status: "pending", detail: null, durationMs: null })),
+        steps: STEPS.map((id) => ({ id, label: stepLabel(id), status: "pending", detail: null, durationMs: null })),
         devPort: this.ports.get(worktree.id) ?? null,
         startedAt: new Date().toISOString(),
         finishedAt: null,
@@ -224,7 +224,7 @@ export class WorktreeSetup {
   /** Runs the preparation of a worktree again, e.g. after a failed install. */
   rerun(projectId: string): WorktreeSetupState {
     const worktree = this.d.projects.requireExisting(projectId);
-    if (!worktree.parentId) throw new ForgeError("VALIDATION", "Das ist kein Worktree-Projekt.");
+    if (!worktree.parentId) throw new ForgeError("VALIDATION", tr().core.automation.notWorktreeProject);
     return this.start(this.d.projects.requireExisting(worktree.parentId), worktree);
   }
 
@@ -301,7 +301,7 @@ export class WorktreeSetup {
     return {
       env: { PORT: String(port) },
       command: flagged ?? command,
-      note: flagged ? `Eigener Port dieses Agenten: ${port}` : `Eigener Port dieses Agenten: ${port} (als PORT übergeben; liest der Server ihn nicht, nutzt er seinen eigenen)`,
+      note: flagged ? tr().core.automation.ownPortFlag(port) : tr().core.automation.ownPortEnv(port),
     };
   }
 
@@ -309,15 +309,16 @@ export class WorktreeSetup {
   describe(projectId: string): string | null {
     const s = this.jobs.get(projectId)?.state;
     if (!s) return null;
+    const t = tr().core.automation;
     const head =
       s.status === "running"
-        ? `läuft seit ${seconds(Date.now() - Date.parse(s.startedAt))}`
-        : `${s.status === "failed" ? "mit Fehlern beendet" : "fertig"} nach ${seconds(Date.parse(s.finishedAt ?? s.startedAt) - Date.parse(s.startedAt))}`;
-    const status: Record<WorktreeSetupStep["status"], string> = { pending: "wartet", running: "läuft", done: "fertig", skipped: "übersprungen", failed: "fehlgeschlagen" };
+        ? t.setupRunningFor(seconds(Date.now() - Date.parse(s.startedAt)))
+        : t.setupFinished(s.status === "failed", seconds(Date.parse(s.finishedAt ?? s.startedAt) - Date.parse(s.startedAt)));
+    const status: Record<WorktreeSetupStep["status"], string> = { pending: t.statusPending, running: t.statusRunning, done: t.statusDone, skipped: t.statusSkipped, failed: t.statusFailed };
     return [
-      `Vorbereitung des Worktrees (FORGE, ${head}):`,
-      ...s.steps.map((step) => `  ${step.label}: ${status[step.status]}${step.detail ? `, ${step.detail}` : ""}`),
-      s.status === "failed" ? "  Was fehlgeschlagen ist, kannst du selbst nachholen, z. B. die Installation mit dem gleichen Befehl." : "",
+      t.setupHeader(head),
+      ...s.steps.map((step) => `  ${stepLabel(step.id)}: ${status[step.status]}${step.detail ? `, ${step.detail}` : ""}`),
+      s.status === "failed" ? t.setupFailedHint : "",
     ]
       .filter(Boolean)
       .join("\n");
@@ -327,14 +328,13 @@ export class WorktreeSetup {
   context(projectId: string): string {
     const s = this.jobs.get(projectId)?.state;
     if (!s) return "";
-    const port = s.devPort ? ` Dein Dev-Server hat einen eigenen Port (${s.devPort}), getrennt vom Hauptprojekt; dev_control startet ihn.` : "";
-    if (s.status !== "running") {
-      return `Dein Worktree ist vorbereitet wie der Hauptordner (Abhängigkeiten, lokale Konfiguration, Build-Ausgaben, eigene Test-Datenbank).${port} Stand und Fehler zeigt dev_environment.`;
-    }
-    const running = s.steps.filter((x) => x.status === "running" || x.status === "pending").map((x) => x.label);
+    const t = tr().core.automation;
+    const port = s.devPort ? t.contextPort(s.devPort) : "";
+    if (s.status !== "running") return t.contextReady(port);
+    const running = s.steps.filter((x) => x.status === "running" || x.status === "pending").map((x) => stepLabel(x.id));
     return [
-      `FORGE bereitet deinen Worktree gerade vor wie den Hauptordner (${running.join(", ")}). Installiere Abhängigkeiten nicht selbst, das läuft schon; bis dahin kannst du lesen und planen.`,
-      "Vor dem ersten Build, Test oder Dev-Server-Start: mcp__forge__dev_environment mit wait=true wartet, bis die Vorbereitung fertig ist, und zeigt, was fehlgeschlagen ist.",
+      t.contextRunning(running),
+      t.contextWait,
       port.trim(),
     ]
       .filter(Boolean)
@@ -367,7 +367,7 @@ export class WorktreeSetup {
 
   private finish(job: Job, t0: number) {
     if (job.state.status !== "running") return;
-    for (const step of job.state.steps) if (step.status === "pending" || step.status === "running") Object.assign(step, { status: "skipped", detail: "abgebrochen" });
+    for (const step of job.state.steps) if (step.status === "pending" || step.status === "running") Object.assign(step, { status: "skipped", detail: tr().core.automation.cancelled });
     job.state.status = job.state.steps.some((s) => s.status === "failed") ? "failed" : "done";
     job.state.finishedAt = new Date().toISOString();
     if (!job.cancelled) this.emit(job);
@@ -378,7 +378,7 @@ export class WorktreeSetup {
   private async step(job: Job, id: WorktreeSetupStep["id"], work: () => Promise<StepResult>) {
     const step = job.state.steps.find((s) => s.id === id)!;
     if (job.cancelled) {
-      Object.assign(step, { status: "skipped", detail: "abgebrochen" });
+      Object.assign(step, { status: "skipped", detail: tr().core.automation.cancelled });
       return;
     }
     const t = Date.now();
@@ -390,7 +390,7 @@ export class WorktreeSetup {
     } catch (e) {
       result = { status: "failed", detail: e instanceof Error ? e.message : String(e) };
     }
-    if (job.cancelled) result = { status: "skipped", detail: "abgebrochen" };
+    if (job.cancelled) result = { status: "skipped", detail: tr().core.automation.cancelled };
     Object.assign(step, { ...result, durationMs: Date.now() - t });
     if (!job.cancelled) this.emit(job);
   }
@@ -402,9 +402,9 @@ export class WorktreeSetup {
   }
 
   private async copyConfig(job: Job, ignored: string[], mainTop: string | null, top: string): Promise<StepResult> {
-    if (!mainTop) return { status: "skipped", detail: "Hauptordner nicht gefunden." };
+    if (!mainTop) return { status: "skipped", detail: tr().core.automation.mainFolderMissing };
     const candidates = ignored.filter((f) => !f.endsWith("/") && LOCAL_CONFIG.test(f));
-    if (!candidates.length) return { status: "skipped", detail: "Keine lokalen Konfigurationsdateien im Hauptordner." };
+    if (!candidates.length) return { status: "skipped", detail: tr().core.automation.noLocalConfig };
     // Only what git ignores in the worktree too: a copy then never shows up as a change to commit.
     // check-ignore refuses literal pathspecs ("pathspec magic not supported"), which GitEngine sets.
     const r = await this.d.git.exec(top, ["check-ignore", "-z", "--stdin"], candidates.join("\0"), undefined, { GIT_LITERAL_PATHSPECS: "0" });
@@ -423,14 +423,13 @@ export class WorktreeSetup {
         () => undefined,
       );
     }
-    if (!copied.length) return { status: "skipped", detail: "Nichts zu kopieren." };
-    const names = copied.length > 6 ? `${copied.slice(0, 6).join(", ")} und ${copied.length - 6} weitere` : copied.join(", ");
-    return { status: "done", detail: `${copied.length} ${copied.length === 1 ? "Datei" : "Dateien"} kopiert: ${names}` };
+    if (!copied.length) return { status: "skipped", detail: tr().core.automation.nothingToCopy };
+    return { status: "done", detail: tr().core.automation.copiedFiles(copied) };
   }
 
   private async install(job: Job, projectDir: string, top: string, mainTop: string | null): Promise<StepResult> {
     const plan = installPlan(projectDir, top, mainTop);
-    if (!plan.length) return { status: "skipped", detail: "Kein Lockfile gefunden." };
+    if (!plan.length) return { status: "skipped", detail: tr().core.automation.noLockfile };
     const done: string[] = [];
     // CI: no questions (pnpm asks before replacing node_modules), no colors in the output.
     const env = { ...this.d.env(), CI: "true", FORCE_COLOR: "0", NO_COLOR: "1" };
@@ -440,7 +439,7 @@ export class WorktreeSetup {
       const r = await this.shell(s.command, s.cwd, env, (kill) => job.kills.add(kill));
       const where = pathKey(s.cwd) === pathKey(projectDir) ? "" : ` in ${path.relative(top, s.cwd) || "."}`;
       if (r.code !== 0) {
-        return { status: "failed", detail: [...done, `${s.command}${where} fehlgeschlagen (Exit-Code ${r.code ?? "?"}): ${lastLines(r.output, 3)}`].join("; ") };
+        return { status: "failed", detail: [...done, tr().core.automation.installFailed(`${s.command}${where}`, r.code, lastLines(r.output, 3))].join("; ") };
       }
       done.push(`${s.command}${where} in ${seconds(Date.now() - t)}`);
     }
@@ -448,7 +447,7 @@ export class WorktreeSetup {
   }
 
   private async provideBuild(job: Job, ignored: string[], mainTop: string | null, top: string): Promise<StepResult> {
-    if (!mainTop) return { status: "skipped", detail: "Hauptordner nicht gefunden." };
+    if (!mainTop) return { status: "skipped", detail: tr().core.automation.mainFolderMissing };
     const ignoredDirs = new Set(ignored.filter((f) => f.endsWith("/")));
     const done: string[] = [];
     const failed: string[] = [];
@@ -459,7 +458,7 @@ export class WorktreeSetup {
       const mainParent = path.join(mainTop, parentRel);
       if (CARGO_TARGET.test(rel) && existsSync(path.join(mainParent, "Cargo.toml"))) {
         const r = await this.copyCargoCache(job, path.join(mainTop, rel), path.join(top, rel));
-        if (r) (r.ok ? done : failed).push(`${r.ok ? "Rust-Abhängigkeiten" : "Rust-Abhängigkeiten nicht kopiert"} (${rel.slice(0, -1)}${r.ok ? "" : `: ${r.detail}`})`);
+        if (r) (r.ok ? done : failed).push(r.ok ? tr().core.automation.rustDeps(rel.slice(0, -1)) : tr().core.automation.rustDepsFailed(rel.slice(0, -1), r.detail));
         for (const res of await tauriResources(mainParent)) {
           const resRel = path.posix.join(parentRel === "." ? "" : parentRel.replace(/\\/g, "/"), res);
           const from = path.join(mainTop, resRel);
@@ -467,20 +466,20 @@ export class WorktreeSetup {
           if (!ignoredDirs.has(`${resRel}/`) || !existsSync(from) || existsSync(to)) continue;
           // Copied, never linked: git worktree remove on Windows follows a junction and empties its target.
           const err = await this.copyTree(job, from, to);
-          if (err === null) done.push(`${resRel} kopiert`);
-          else failed.push(`${resRel} nicht kopiert: ${err}`);
+          if (err === null) done.push(tr().core.automation.copied(resRel));
+          else failed.push(tr().core.automation.notCopied(resRel, err));
         }
       } else if (BUILD_OUTPUT.test(rel) && existsSync(path.join(mainParent, "package.json"))) {
         const from = path.join(mainTop, rel);
         const to = path.join(top, rel);
         if (existsSync(to) || (await sizeWithin(from, MAX_OUTPUT_BYTES, MAX_OUTPUT_FILES)) === null) continue;
         const err = await this.copyTree(job, from, to);
-        if (err === null) done.push(`${rel.slice(0, -1)} kopiert`);
-        else failed.push(`${rel.slice(0, -1)} nicht kopiert: ${err}`);
+        if (err === null) done.push(tr().core.automation.copied(rel.slice(0, -1)));
+        else failed.push(tr().core.automation.notCopied(rel.slice(0, -1), err));
       }
     }
     if (failed.length) return { status: "failed", detail: [...done, ...failed].join("; ") };
-    if (!done.length) return { status: "skipped", detail: "Nichts zu übernehmen." };
+    if (!done.length) return { status: "skipped", detail: tr().core.automation.nothingToTake };
     return { status: "done", detail: done.join("; ") };
   }
 
@@ -515,7 +514,7 @@ export class WorktreeSetup {
         shell: false,
         args: [from, to, "/E", "/XJ", "/MT:16", "/R:1", "/W:1", "/NFL", "/NDL", "/NJH", "/NJS", "/NP"],
       });
-      return r.code !== null && r.code < 8 ? null : lastLines(r.output, 2) || `robocopy Code ${r.code ?? "?"}`;
+      return r.code !== null && r.code < 8 ? null : lastLines(r.output, 2) || tr().core.automation.robocopyCode(r.code);
     }
     try {
       await cp(from, to, { recursive: true, preserveTimestamps: true, filter: (src) => !lstatSync(src).isSymbolicLink() });
@@ -528,12 +527,12 @@ export class WorktreeSetup {
   private async seedDatabase(projectId: string): Promise<StepResult> {
     if (!this.d.testDb) return { status: "skipped", detail: null };
     const r = await this.d.testDb.seed(projectId);
-    if (r === "none") return { status: "skipped", detail: "Das Projekt hat keine Test-Datenbank." };
-    if (r === "exists") return { status: "done", detail: "Eigene Test-Datenbank vorhanden." };
+    if (r === "none") return { status: "skipped", detail: tr().core.automation.noTestDb };
+    if (r === "exists") return { status: "done", detail: tr().core.automation.ownTestDb };
     if (r === "parent-running") {
-      return { status: "done", detail: "Die Datenbank des Projekts läuft gerade und lässt sich so nicht kopieren. Der erste Start legt eine eigene, leere an (Migrationen danach ausführen)." };
+      return { status: "done", detail: tr().core.automation.testDbRunning };
     }
-    return { status: "done", detail: "Eigene Kopie der Datenbank des Projekts, eigener Port beim Start." };
+    return { status: "done", detail: tr().core.automation.testDbCopied };
   }
 
   /**
@@ -544,14 +543,14 @@ export class WorktreeSetup {
     const dev = this.d.devServers?.();
     if (!dev) return { status: "skipped", detail: null };
     const own = await dev.state(worktree.id);
-    if (!own.effectiveCommand) return { status: "skipped", detail: "Kein Dev-Server-Befehl bekannt." };
-    const port = job.state.devPort ? `Port ${job.state.devPort}` : "eigener Port";
-    if (own.status === "running") return { status: "done", detail: `läuft (${port})` };
+    if (!own.effectiveCommand) return { status: "skipped", detail: tr().core.automation.noDevCommand };
+    const port = job.state.devPort ? tr().core.automation.port(job.state.devPort) : tr().core.automation.ownPort;
+    if (own.status === "running") return { status: "done", detail: tr().core.automation.devRunning(port) };
     const main = await dev.state(parent.id).catch(() => null);
-    if (main?.status !== "running" || job.cancelled) return { status: "skipped", detail: `startet bei Bedarf (${port})` };
+    if (main?.status !== "running" || job.cancelled) return { status: "skipped", detail: tr().core.automation.devOnDemand(port) };
     const s = await dev.start(worktree.id);
-    if (s.status !== "running") return { status: "failed", detail: s.error ?? `beendet${s.exitCode !== null ? ` mit Exit-Code ${s.exitCode}` : ""}` };
-    return { status: "done", detail: `gestartet, weil der des Projekts läuft (${port})` };
+    if (s.status !== "running") return { status: "failed", detail: s.error ?? tr().core.automation.devExited(s.exitCode) };
+    return { status: "done", detail: tr().core.automation.devStarted(port) };
   }
 }
 

@@ -3,7 +3,8 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { Db } from "../src/persistence/db.js";
 import { TemplateService } from "../src/templates/templates.js";
-import { LEARN_AFTER_MESSAGES, LEARN_MIN_GAP_MS, LEARN_MIN_HISTORY, MAX_NEW_PER_RUN, TemplateLearner } from "../src/templates/learner.js";
+import { buildLearnPrompt, LEARN_AFTER_MESSAGES, LEARN_MIN_GAP_MS, LEARN_MIN_HISTORY, LEARN_SCHEMA, MAX_NEW_PER_RUN, TemplateLearner } from "../src/templates/learner.js";
+import { setLanguage } from "../src/i18n/index.js";
 import { AUTO_CONTINUE_PROMPT } from "../src/sessions/auto-continue.js";
 import { tempDir } from "./helpers.js";
 
@@ -138,5 +139,19 @@ describe("template learning", () => {
     expect((await learner.learn()).message).toMatch(/^Noch zu wenige Nachrichten/);
     expect(prompts).toEqual([]);
     expect(db.getTemplateLearning().lastRunAt).toBeNull();
+  });
+});
+
+describe("template learning in English", () => {
+  afterEach(() => setLanguage("de"));
+
+  it("asks for templates in English and reports in English", async () => {
+    setLanguage("en");
+    const prompt = buildLearnPrompt([{ text: "push", project: "shop" }], [], []);
+    expect(prompt).toMatch(/^Below are messages a user sent to Claude Code/);
+    expect(prompt).toContain("Existing templates:\n(none)");
+    expect(prompt).toContain("Messages:\n[shop] push");
+    expect(JSON.stringify(LEARN_SCHEMA)).toContain("2 to 4 words to find it again");
+    expect((await learner.learn()).message).toMatch(/^Not enough messages to learn from yet/);
   });
 });

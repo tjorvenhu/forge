@@ -33,6 +33,7 @@ import type { TemplateLearner } from "../templates/learner.js";
 import * as cfg from "../config/claude-config.js";
 import { removalInfo, removeProject, removeWorktree } from "../projects/removal.js";
 import os from "node:os";
+import { tr } from "../i18n/index.js";
 
 export interface Services {
   db: Db;
@@ -76,7 +77,7 @@ export type Handlers = { [M in MethodName]: Handler<M> };
 /** Calls a handler from inside the sidecar (the phone) the way the RPC server does: params checked and defaulted first. */
 export async function invokeHandler<M extends MethodName>(handlers: Handlers, method: M, params: ParamsOf<M>): Promise<ResultOf<M>> {
   const parsed = methods[method].params.safeParse(params);
-  if (!parsed.success) throw new ForgeError("VALIDATION", `Ungültige Angaben: ${parsed.error.issues.map((i) => `${i.path.join(".") || "Eingabe"} ${i.message}`).join("; ")}`);
+  if (!parsed.success) throw new ForgeError("VALIDATION", tr().core.app.invalidInput(parsed.error.issues.map((i) => `${i.path.join(".") || tr().core.app.inputField} ${i.message}`).join("; ")));
   return (handlers[method] as Handler<M>)(parsed.data as ParsedParamsOf<M>);
 }
 
@@ -145,7 +146,7 @@ export function createHandlers(s: Services): Handlers {
     "github.publish": async ({ projectId, private: isPrivate, name, owner }) => {
       const p = s.projects.requireGit(projectId);
       if (!(await s.git.isRepo(p.path))) await s.git.init(p.path);
-      if (await s.git.remoteUrl(p.path)) throw new ForgeError("CONFLICT", "Das Projekt hat bereits ein Remote origin.");
+      if (await s.git.remoteUrl(p.path)) throw new ForgeError("CONFLICT", tr().core.app.hasOrigin);
       if (!(await s.git.hasCommits(p.path))) await s.git.initialCommit(p.path, "chore: Projekt angelegt");
       const url = await s.github.createRepo(p.path, name ?? p.name, isPrivate, owner ?? null);
       s.notifyProject(projectId);
@@ -403,7 +404,7 @@ export function createHandlers(s: Services): Handlers {
       const busy = s.sessions
         .listAll()
         .some((x) => x.projectId === projectId && x.live && (x.status === "running" || x.status === "waiting_approval"));
-      if (busy) throw new ForgeError("SESSION_BUSY", "Eine aktive Session arbeitet gerade in diesem Projekt. Erst stoppen, dann wiederherstellen.");
+      if (busy) throw new ForgeError("SESSION_BUSY", tr().core.app.busyRestore);
       const r = await s.git.restoreTo(gitDir(projectId), commit);
       s.notifyProject(projectId);
       return r;
@@ -418,7 +419,7 @@ export function createHandlers(s: Services): Handlers {
       const busy = s.sessions
         .listAll()
         .some((x) => x.projectId === projectId && x.live && (x.status === "running" || x.status === "waiting_approval"));
-      if (busy) throw new ForgeError("SESSION_BUSY", "Eine aktive Session arbeitet gerade in diesem Projekt. Erst stoppen, dann Branch wechseln.");
+      if (busy) throw new ForgeError("SESSION_BUSY", tr().core.app.busyCheckout);
       await s.git.checkout(gitDir(projectId), branch, create);
       return gitChanged(projectId);
     },
@@ -445,7 +446,7 @@ export function createHandlers(s: Services): Handlers {
       } catch (e) {
         const session = await resolveInSession(projectId, e, false);
         if (!session) throw e;
-        return { output: "Claude führt die Stände zusammen.", integrated: null, session };
+        return { output: tr().core.app.mergingInSession, integrated: null, session };
       }
     },
     "git.fetch": async ({ projectId }) => {
@@ -460,8 +461,8 @@ export function createHandlers(s: Services): Handlers {
     "github.createPr": async ({ projectId, title, body, base, draft }) => {
       const dir = gitDir(projectId);
       const head = await s.git.currentBranch(dir);
-      if (!head) throw new ForgeError("GIT_FAILED", "Kein Branch ausgecheckt.");
-      if (head === base) throw new ForgeError("VALIDATION", "Ziel- und Quell-Branch sind gleich. Lege zuerst einen Feature-Branch an.");
+      if (!head) throw new ForgeError("GIT_FAILED", tr().core.app.noBranch);
+      if (head === base) throw new ForgeError("VALIDATION", tr().core.app.sameBranch);
       // The PR needs the branch on GitHub; pushing a feature branch is always allowed.
       await s.git.push(dir, false);
       const url = await s.github.createPr(dir, { title, body, base, head, draft });

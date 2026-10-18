@@ -6,6 +6,7 @@ import { lastAnswer } from "../phone/session-info.js";
 import { removeWorktree, type RemovalDeps } from "../projects/removal.js";
 import { foreignBranch, worktreeRoot } from "./worktrees.js";
 import { pathKey } from "../util/paths.js";
+import { tr } from "../i18n/index.js";
 
 const BUSY = new Set(["starting", "running", "waiting_approval", "stopping"]);
 const MAX_COMMITS = 20;
@@ -38,7 +39,7 @@ export class AgentFinisher {
 
   private async locate(projectId: string): Promise<Located> {
     const worktree = this.d.projects.get(projectId);
-    if (!worktree.parentId) throw new ForgeError("VALIDATION", "Das ist kein Agent-Worktree.");
+    if (!worktree.parentId) throw new ForgeError("VALIDATION", tr().core.automation.notAgentWorktree);
     const root = this.d.projects.all().find((p) => p.id === worktree.parentId) ?? null;
     const branch = existsSync(worktree.path) ? await this.d.worktrees.branchOf(worktree.path) : null;
     const origin = branch ? await this.d.worktrees.origin(worktree, branch) : { dir: null, branch: null };
@@ -104,15 +105,15 @@ export class AgentFinisher {
   }
 
   private blocker(l: Located, busy: boolean, work: number): string | null {
-    if (!existsSync(l.worktree.path)) return "Der Ordner des Agenten fehlt.";
-    if (!l.dir) return "Das Projekt, in das die Arbeit zurückgehen soll, ist nicht mehr da.";
-    if (!l.branch) return "Im Worktree des Agenten ist kein Branch ausgecheckt.";
-    if (!l.targetBranch) return "Im Projekt ist kein Branch ausgecheckt.";
-    if (busy) return "Der Agent arbeitet noch.";
+    if (!existsSync(l.worktree.path)) return tr().core.automation.blockerFolderMissing;
+    if (!l.dir) return tr().core.automation.blockerTargetGone;
+    if (!l.branch) return tr().core.automation.blockerNoBranch;
+    if (!l.targetBranch) return tr().core.automation.blockerNoTargetBranch;
+    if (busy) return tr().core.automation.blockerBusy;
     if (l.originBranch && l.targetBranch !== l.originBranch) {
-      return `Der Agent ist von ${l.originBranch} abgezweigt, im Projekt ist jetzt ${l.targetBranch} ausgecheckt. Wechsle dort zurück auf ${l.originBranch}.`;
+      return tr().core.automation.blockerOtherBranch(l.originBranch, l.targetBranch);
     }
-    if (!work) return "Der Agent hat nichts geändert.";
+    if (!work) return tr().core.automation.blockerNoWork;
     return null;
   }
 
@@ -183,10 +184,10 @@ export class AgentFinisher {
       sessionId: null,
       branchError: r.branchError,
       message: r.branchError
-        ? `Agent verworfen, aber der Branch blieb: ${r.branchError}`
+        ? tr().core.automation.discardedBranchKept(r.branchError)
         : l.branch && !own
-          ? `Agent verworfen. ${foreignBranch(l.branch)}`
-          : `Agent verworfen${l.branch ? `, Branch ${l.branch} gelöscht` : ""}.`,
+          ? tr().core.automation.discardedForeign(foreignBranch(l.branch))
+          : tr().core.automation.discarded(l.branch),
     };
   }
 
@@ -204,7 +205,7 @@ export class AgentFinisher {
       // From the top of the checkout: in a monorepo project the agent may have changed files beside it too.
       const top = worktreeRoot(wt);
       const files = (await git.status(top)).files.map((f) => f.path);
-      await git.commit(top, `Restliche Änderungen von ${branch}`, files, false);
+      await git.commit(top, tr().core.automation.remainingCommit(branch), files, false);
     }
 
     // What the target branch moves to: the agent's branch, or a merge commit of both.
@@ -229,7 +230,7 @@ export class AgentFinisher {
           files,
           sessionId,
           branchError: null,
-          message: `${targetBranch} hat sich seit dem Start des Agenten geändert, die Änderungen kollidieren${files.length ? ` in ${files.join(", ")}` : ""}. Der Agent löst die Konflikte jetzt, danach kannst du erneut zusammenführen.`,
+          message: tr().core.automation.conflictMessage(targetBranch, files),
         };
       }
     }
@@ -242,7 +243,7 @@ export class AgentFinisher {
       return { action: "merge", outcome: "waiting", branch, targetBranch, commits: 0, files: waiting.files, sessionId: null, branchError: null, message: waiting.message };
     }
     taken.push(...incoming);
-    const done = `${commits === 1 ? "1 Commit" : `${commits} Commits`} von ${branch} in ${targetBranch} übernommen`;
+    const done = tr().core.automation.commitsTaken(commits, branch, targetBranch);
     // A branch that existed before the agent keeps its name after the merge; only FORGE's own goes.
     const own = await this.d.worktrees.branchOwner(l.worktree, branch);
     let removed: { deletedBranch: string | null; branchError: string | null };
@@ -254,7 +255,7 @@ export class AgentFinisher {
       if (own) await git.exec(dir, ["branch", "-d", branch]).catch(() => null);
       this.changed(l);
       const why = e instanceof Error ? e.message : String(e);
-      return { action: "merge", outcome: "merged", branch, targetBranch, commits, files: [], sessionId: null, branchError: null, message: `${done}. Der Worktree-Ordner ließ sich aber nicht löschen: ${why}` };
+      return { action: "merge", outcome: "merged", branch, targetBranch, commits, files: [], sessionId: null, branchError: null, message: tr().core.automation.folderNotDeleted(done, why) };
     }
     this.changed(l);
     return {
@@ -267,8 +268,8 @@ export class AgentFinisher {
       sessionId: null,
       branchError: removed.branchError,
       message: removed.deletedBranch
-        ? `${done}, Worktree und Branch gelöscht.`
-        : `${done}, Worktree gelöscht. ${removed.branchError ? `Der Branch blieb aber: ${removed.branchError}` : foreignBranch(branch)}`,
+        ? tr().core.automation.mergedAllDeleted(done)
+        : tr().core.automation.mergedWorktreeDeleted(done, removed.branchError ? tr().core.automation.branchKept(removed.branchError) : foreignBranch(branch)),
     };
   }
 
@@ -285,41 +286,41 @@ export class AgentFinisher {
     if (ff.code === 0) return null;
     const msg = (ff.stderr || ff.stdout).trim();
     if (!/would be overwritten|overwritten by merge|untracked working tree files/i.test(msg)) {
-      throw new ForgeError("GIT_FAILED", msg || `${branch} ließ sich nicht in ${targetBranch} übernehmen.`);
+      throw new ForgeError("GIT_FAILED", msg || tr().core.automation.notTaken(branch, targetBranch));
     }
     const lines = (out: string) => out.split("\n").map((f) => f.trim()).filter(Boolean);
     // --relative: paths below `dir` as status and ls-files give them, also for a project in a
     // subfolder of the repository.
     const theirs = new Set(lines((await git.exec(dir, ["diff", "--name-only", "--relative", "HEAD", own])).stdout));
     const dirty = (await git.status(dir)).files.map((f) => f.path).filter((f) => theirs.has(f));
-    const wait = (why: string) => ({ message: `Noch nicht zusammengeführt: ${why}`, files: dirty });
+    const wait = (why: string) => ({ message: tr().core.automation.notMergedYet(why), files: dirty });
 
-    if (this.busyIn(dir)) return wait(`In ${targetBranch} arbeitet gerade eine Session, und es gibt dort nicht committete Änderungen an Dateien, die auch der Agent geändert hat (${dirty.join(", ") || "siehe git status"}).`);
+    if (this.busyIn(dir)) return wait(tr().core.automation.waitSessionBusy(targetBranch, dirty));
     // A new, uncommitted file under a name the agent also created: no way to tell which one should win.
     const untracked = lines((await git.exec(dir, ["ls-files", "--others", "--exclude-standard"])).stdout).filter((f) => theirs.has(f));
-    if (untracked.length) return wait(`Im Projekt liegen neue, nicht committete Dateien, die der Agent ebenfalls angelegt hat: ${untracked.join(", ")}.`);
+    if (untracked.length) return wait(tr().core.automation.waitUntracked(untracked));
 
     const stash = (await git.exec(dir, ["stash", "create"])).stdout.trim();
     if (!stash) throw new ForgeError("GIT_FAILED", msg);
     // Dry run of "put back after the fast-forward": base HEAD, one side the agent, the other the open work.
     const check = await git.exec(dir, ["merge-tree", "--write-tree", "--name-only", "--no-messages", "--merge-base=HEAD", own, stash]);
-    if (check.code !== 0 && check.code !== 1) throw new ForgeError("GIT_FAILED", (check.stderr || check.stdout).trim() || "Probelauf des Zusammenführens fehlgeschlagen.");
+    if (check.code !== 0 && check.code !== 1) throw new ForgeError("GIT_FAILED", (check.stderr || check.stdout).trim() || tr().core.automation.dryRunFailed);
     if (check.code === 1) {
       const clashes = [...new Set(lines(check.stdout).slice(1))];
-      return wait(`Die nicht committeten Änderungen im Projekt und die Arbeit des Agenten betreffen dieselben Stellen${clashes.length ? ` in ${clashes.join(", ")}` : ""}.`);
+      return wait(tr().core.automation.waitClash(clashes));
     }
 
-    const pushed = await git.exec(dir, ["stash", "push", "-m", `FORGE: beiseitegelegt beim Zusammenführen von ${branch}`]);
-    if (pushed.code !== 0) throw new ForgeError("GIT_FAILED", (pushed.stderr || pushed.stdout).trim() || "Offene Änderungen ließen sich nicht beiseitelegen.");
+    const pushed = await git.exec(dir, ["stash", "push", "-m", tr().core.automation.stashMessage(branch)]);
+    if (pushed.code !== 0) throw new ForgeError("GIT_FAILED", (pushed.stderr || pushed.stdout).trim() || tr().core.automation.stashFailed);
     const moved = await tryFf();
     const popped = await git.exec(dir, ["stash", "pop"]);
     if (popped.code !== 0) {
       throw new ForgeError(
         "GIT_FAILED",
-        `Die offenen Änderungen im Projekt ließen sich nicht vollständig zurücklegen; sie liegen weiter im Stash (git stash list). ${(popped.stderr || popped.stdout).trim()}`,
+        tr().core.automation.stashPopFailed((popped.stderr || popped.stdout).trim()),
       );
     }
-    if (moved.code !== 0) throw new ForgeError("GIT_FAILED", (moved.stderr || moved.stdout).trim() || `${branch} ließ sich nicht in ${targetBranch} übernehmen.`);
+    if (moved.code !== 0) throw new ForgeError("GIT_FAILED", (moved.stderr || moved.stdout).trim() || tr().core.automation.notTaken(branch, targetBranch));
     return null;
   }
 
@@ -360,16 +361,5 @@ export class AgentFinisher {
 }
 
 export function conflictPrompt(branch: string, targetBranch: string, behind: number, files: string[]): string {
-  return [
-    `Ich wollte deinen Branch ${branch} in ${targetBranch} übernehmen. Auf ${targetBranch} gibt es seit deinem Start ${behind} neue Commits, die mit deinen Änderungen kollidieren in:`,
-    files.length ? files.map((f) => `- ${f}`).join("\n") : "- (git hat keine Dateien genannt)",
-    "",
-    "Dein Branch ist unverändert.",
-    "",
-    "Bitte:",
-    `1. Committe zuerst alles Offene, dann \`git merge ${targetBranch}\` (kein Rebase: so löst du jeden Konflikt nur einmal).`,
-    "2. Löse die Konflikte so, dass deine Änderungen und die neuen Commits erhalten bleiben. Wenn nicht klar ist, welche Seite gelten soll: frag mich mit AskUserQuestion und rate nicht.",
-    "3. Prüf danach, ob das Projekt noch baut und die Tests laufen, sofern es dafür einen Befehl gibt.",
-    "4. Nicht pushen. Fass am Ende kurz zusammen, wie du jeden Konflikt aufgelöst hast. Danach übernimmt FORGE deinen Branch.",
-  ].join("\n");
+  return tr().core.automation.conflictPrompt(branch, targetBranch, behind, files);
 }

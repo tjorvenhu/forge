@@ -1,9 +1,10 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import type { ToolOutput } from "../claude/runtime.js";
-import { CdpTimeout, findBrowser as defaultFindBrowser, launchBrowser, NO_BROWSER, type BrowserProcess, type Cdp } from "./browser.js";
+import { CdpTimeout, findBrowser as defaultFindBrowser, launchBrowser, noBrowser, type BrowserProcess, type Cdp } from "./browser.js";
 import { PreviewPage, type PageLogEntry, type Shot } from "./page.js";
 import { isLocalUrl, previewUrl } from "./url.js";
+import { tr } from "../i18n/index.js";
 
 export const LOAD_MS = 20_000;
 export const STEP_MS = 5_000;
@@ -102,8 +103,6 @@ interface Instance {
   cookies?: string;
 }
 
-const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
-
 /** "2 Fehler, 1 Warnung; 1 unbehandelte Ausnahme; 3 fehlgeschlagene Anfragen" */
 export function logSummary(logs: PageLogEntry[]): string {
   const errors = logs.filter((l) => l.kind === "console" && l.level === "error").length;
@@ -111,41 +110,44 @@ export function logSummary(logs: PageLogEntry[]): string {
   const others = logs.filter((l) => l.kind === "console" && l.level !== "error" && l.level !== "warning").length;
   const exceptions = logs.filter((l) => l.kind === "exception").length;
   const network = logs.filter((l) => l.kind === "network").length;
+  const t = tr().core.preview;
   const parts = [
-    errors || warnings || others ? [errors && plural(errors, "Fehler", "Fehler"), warnings && plural(warnings, "Warnung", "Warnungen"), others && plural(others, "weitere Meldung", "weitere Meldungen")].filter(Boolean).join(", ") : "",
-    exceptions ? plural(exceptions, "unbehandelte Ausnahme", "unbehandelte Ausnahmen") : "",
-    network ? plural(network, "fehlgeschlagene Anfrage", "fehlgeschlagene Anfragen") : "",
+    errors || warnings || others ? [errors && t.errors(errors), warnings && t.warnings(warnings), others && t.otherMessages(others)].filter(Boolean).join(", ") : "",
+    exceptions ? t.exceptions(exceptions) : "",
+    network ? t.failedRequests(network) : "",
   ].filter(Boolean);
-  return parts.length ? parts.join("; ") : "keine Meldungen";
+  return parts.length ? parts.join("; ") : t.noMessages;
 }
 
 /** The page's log for Claude: exceptions, errors and warnings first, other messages last and fewest. */
 export function formatLogs(logs: PageLogEntry[]): string[] {
   const out: string[] = [];
+  const t = tr().core.preview;
   const section = (title: string, entries: PageLogEntry[], max: number, line: (l: PageLogEntry) => string) => {
     if (!entries.length) return;
     out.push(`${title}:`);
     const shown = entries.length > max ? entries.slice(-max) : entries;
-    if (entries.length > max) out.push(`  (${entries.length - max} ältere ausgelassen)`);
+    if (entries.length > max) out.push(`  ${t.olderOmitted(entries.length - max)}`);
     for (const l of shown) out.push(`- ${line(l)}`);
   };
   const exceptions = logs.filter((l) => l.kind === "exception");
   const important = logs.filter((l) => l.kind === "console" && (l.level === "error" || l.level === "warning"));
   const rest = logs.filter((l) => l.kind === "console" && l.level !== "error" && l.level !== "warning");
   const network = logs.filter((l) => l.kind === "network");
-  section("Unbehandelte Ausnahmen", exceptions, 15, (l) => l.text);
-  section("Fehler und Warnungen der Konsole", important, 25, (l) => `[${l.level}] ${l.text}`);
-  section("Fehlgeschlagene Anfragen", network, 20, (l) => l.text);
-  section("Weitere Konsolenmeldungen", rest, Math.max(5, MAX_LOG_LINES - out.length), (l) => `[${l.level}] ${l.text}`);
+  section(t.sectionExceptions, exceptions, 15, (l) => l.text);
+  section(t.sectionConsole, important, 25, (l) => `[${l.level}] ${l.text}`);
+  section(t.sectionRequests, network, 20, (l) => l.text);
+  section(t.sectionOther, rest, Math.max(5, MAX_LOG_LINES - out.length), (l) => `[${l.level}] ${l.text}`);
   return out;
 }
 
 /** "Screenshot: 390x1568 JPEG, ganze Seite in 4 Teilen …"; the card reads the size of the first image from it. */
 function shotLine(shots: Shot[], requested: { width: number; height: number }, fullPage: boolean): string {
   const s = shots[0]!;
-  const notes = [s.cut ? "ganze Seite nach 6000 Pixeln abgeschnitten" : "", s.width < requested.width ? "verkleinert" : ""].filter(Boolean);
-  const parts = shots.length > 1 ? ` in ${shots.length} Teilen von oben nach unten` : "";
-  return `Screenshot: ${s.width}x${s.height} JPEG${fullPage ? `, ganze Seite${parts}` : ""}${notes.length ? ` (${notes.join(", ")})` : ""}`;
+  const t = tr().core.preview;
+  const notes = [s.cut ? t.shotCut : "", s.width < requested.width ? t.shotScaled : ""].filter(Boolean);
+  // "Screenshot: WxH" stays the same in every language: the card reads the size from it.
+  return `Screenshot: ${s.width}x${s.height} JPEG${fullPage ? t.shotFullPage(shots.length) : ""}${notes.length ? ` (${notes.join(", ")})` : ""}`;
 }
 
 const take = async (page: PreviewPage, fullPage: boolean): Promise<Shot[]> => (fullPage ? page.fullPage() : [await page.screenshot()]);
@@ -176,7 +178,7 @@ export class PreviewService {
   }
 
   private async instance(projectId: string): Promise<Instance> {
-    if (this.closed) throw new Error("FORGE wird beendet.");
+    if (this.closed) throw new Error(tr().core.preview.closing);
     const have = this.open.get(projectId);
     if (have) {
       clearTimeout(have.timer);
@@ -185,7 +187,7 @@ export class PreviewService {
       have.browser.killSync();
     }
     const exe = (this.deps.findBrowser ?? defaultFindBrowser)();
-    if (!exe) throw new Error(NO_BROWSER);
+    if (!exe) throw new Error(noBrowser());
     const profile = this.deps.profileDir?.(projectId);
     const launch = this.deps.launch ?? ((x: string, p?: string) => launchBrowser(x, undefined, p));
     let browser: BrowserProcess | null = null;
@@ -266,7 +268,7 @@ export class PreviewService {
       inst.browser.killSync();
     }
     throw new Error(
-      `Die Vorschau hat nicht reagiert (${e.method}). FORGE hat den Vorschau-Browser beendet, der nächste Aufruf startet ihn neu. Hängt es dann wieder, blockiert vermutlich die Seite selbst den Browser, etwa durch eine Endlosschleife.`,
+      tr().core.preview.hung(e.method),
       { cause: e },
     );
   }
@@ -297,8 +299,8 @@ export class PreviewService {
     if (dev.url) return previewUrl({ base: dev.url, path: t.path });
     if (open) return previewUrl({ base: open, path: t.path });
     if (dev.status === "running")
-      throw new Error("Der Dev-Server läuft, hat aber noch keine Adresse ausgegeben. Warte kurz und prüfe dev_environment, oder gib die url an (z. B. http://localhost:3000).");
-    throw new Error("Für dieses Projekt läuft kein Dev-Server. Starte ihn mit dev_control (target dev-server, action start) oder gib eine lokale url an.");
+      throw new Error(tr().core.preview.devServerNoUrl);
+    throw new Error(tr().core.preview.noDevServer);
   }
 
   private async load(page: PreviewPage, projectId: string, t: PreviewTarget, keep: boolean): Promise<{ loaded: boolean; navigated: boolean }> {
@@ -311,12 +313,13 @@ export class PreviewService {
   private async header(page: PreviewPage, loaded: boolean, viewer: string | null | undefined): Promise<string[]> {
     const info = await page.info();
     if (viewer && isLocalUrl(info.url)) this.viewed.set(viewer, info.url);
+    const t = tr().core.preview;
     return [
-      `Titel: ${info.title || "(ohne Titel)"}`,
-      `Adresse: ${info.url}`,
-      `HTTP-Status: ${page.status ?? "unbekannt"}`,
-      loaded ? "" : `Hinweis: Die Seite hat nach ${LOAD_MS / 1000} s noch nicht fertig geladen; der Stand ist der von diesem Moment.`,
-      page.blocked.length ? `Blockiert (Seiten außerhalb dieses Rechners): ${page.blocked.slice(0, 3).join(", ")}` : "",
+      t.title(info.title),
+      t.address(info.url),
+      t.httpStatus(page.status),
+      loaded ? "" : t.notLoaded(LOAD_MS / 1000),
+      page.blocked.length ? t.blocked(page.blocked.slice(0, 3).join(", ")) : "",
     ].filter(Boolean);
   }
 
@@ -326,7 +329,7 @@ export class PreviewService {
       const shots = await take(page, t.fullPage === true);
       const text = [
         ...(await this.header(page, loaded, t.viewer)),
-        `Konsole: ${logSummary(page.logs)}${page.logs.length ? " (Einzelheiten mit preview_console)" : ""}`,
+        tr().core.preview.consoleLine(logSummary(page.logs), page.logs.length > 0),
         shotLine(shots, page.viewport, t.fullPage === true),
       ];
       return { text: text.join("\n"), images: asImages(shots) };
@@ -338,8 +341,8 @@ export class PreviewService {
       const { loaded, navigated } = await this.load(page, projectId, t, t.reload !== true);
       return [
         ...(await this.header(page, loaded, t.viewer)),
-        navigated ? "Seite frisch geladen." : "Meldungen der zuletzt geöffneten Seite seit dem Laden.",
-        `Zusammenfassung: ${logSummary(page.logs)}`,
+        navigated ? tr().core.preview.freshlyLoaded : tr().core.preview.sinceLoad,
+        tr().core.preview.summary(logSummary(page.logs)),
         ...formatLogs(page.logs),
       ].join("\n");
     });
@@ -347,7 +350,7 @@ export class PreviewService {
 
   interact(projectId: string, t: PreviewTarget & { steps: PreviewStep[]; stepMs?: number; screenshot?: boolean; fullPage?: boolean }): Promise<ToolOutput> {
     const problems = t.steps.map((s, i) => [i + 1, stepProblem(s)] as const).filter(([, p]) => p);
-    if (problems.length) return Promise.reject(new Error(problems.map(([i, p]) => `Schritt ${i}: ${p}`).join(" ")));
+    if (problems.length) return Promise.reject(new Error(problems.map(([i, p]) => tr().core.preview.stepProblem(i, p!)).join(" ")));
     return this.withPage(projectId, async (page) => {
       const { loaded } = await this.load(page, projectId, t, true);
       const stepMs = Math.min(Math.max(t.stepMs ?? STEP_MS, 100), MAX_STEP_MS);
@@ -359,7 +362,7 @@ export class PreviewService {
         const label = `${i + 1}. ${describeStep(s)}`;
         if (Date.now() > end) {
           failed = i + 1;
-          lines.push(`${label}: nicht ausgeführt, Zeitlimit von ${STEPS_TOTAL_MS / 1000} s für alle Schritte erreicht`);
+          lines.push(tr().core.preview.stepTimedOut(label, STEPS_TOTAL_MS / 1000));
           break;
         }
         try {
@@ -367,17 +370,17 @@ export class PreviewService {
           lines.push(`${label}: ok`);
         } catch (e) {
           failed = i + 1;
-          lines.push(`${label}: Fehler: ${e instanceof Error ? e.message : String(e)}`);
+          lines.push(tr().core.preview.stepFailed(label, e instanceof Error ? e.message : String(e)));
           break;
         }
       }
       const logs = page.logs.slice(before);
       const text = [
         ...(await this.header(page, loaded, t.viewer)),
-        "Schritte:",
+        tr().core.preview.steps,
         ...lines,
-        failed !== null ? `Abgebrochen nach Schritt ${failed} von ${t.steps.length}.` : `Alle ${t.steps.length} Schritte ausgeführt.`,
-        `Konsole während der Schritte: ${logSummary(logs)}`,
+        failed !== null ? tr().core.preview.aborted(failed, t.steps.length) : tr().core.preview.allDone(t.steps.length),
+        tr().core.preview.consoleDuringSteps(logSummary(logs)),
         ...formatLogs(logs).slice(0, 20),
       ];
       if (t.screenshot === false) return { text: text.join("\n") };
@@ -451,7 +454,7 @@ export function describeStep(s: PreviewStep): string {
     case "click":
       return `click ${s.selector ?? ""}`;
     case "type":
-      return `type ${s.selector ?? ""} „${(s.text ?? "").length > 40 ? `${s.text!.slice(0, 40)} …` : (s.text ?? "")}“`;
+      return `type ${s.selector ?? ""} ${tr().core.preview.quote((s.text ?? "").length > 40 ? `${s.text!.slice(0, 40)} …` : (s.text ?? ""))}`;
     case "press":
       return `press ${s.key ?? ""}`;
     case "wait":
@@ -461,10 +464,10 @@ export function describeStep(s: PreviewStep): string {
 
 /** Checks a step before anything runs, so a typo does not stop a sequence halfway. */
 export function stepProblem(s: PreviewStep): string | null {
-  if ((s.action === "click" || s.action === "type") && !s.selector?.trim()) return `${s.action} braucht selector.`;
-  if (s.action === "type" && s.text === undefined && !s.clear) return "type braucht text.";
-  if (s.action === "press" && !s.key?.trim()) return "press braucht key.";
-  if (s.action === "wait" && s.ms === undefined && !s.selector?.trim()) return "wait braucht ms oder selector.";
+  if ((s.action === "click" || s.action === "type") && !s.selector?.trim()) return tr().core.preview.needsSelector(s.action);
+  if (s.action === "type" && s.text === undefined && !s.clear) return tr().core.preview.typeNeedsText;
+  if (s.action === "press" && !s.key?.trim()) return tr().core.preview.pressNeedsKey;
+  if (s.action === "wait" && s.ms === undefined && !s.selector?.trim()) return tr().core.preview.waitNeedsMsOrSelector;
   return null;
 }
 
