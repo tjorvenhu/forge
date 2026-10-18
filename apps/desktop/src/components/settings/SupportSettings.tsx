@@ -96,7 +96,8 @@ const euroCents = new Intl.NumberFormat("de-DE", { style: "currency", currency: 
 
 /** "Bisher gespendet" from the statistics service; asked when the dialog opens, left out when it does not know. */
 function Donated({ enabled }: { enabled: boolean }) {
-  const q = useQuery({ queryKey: ["donations"], queryFn: () => call("app.donations", {}), enabled, staleTime: 10 * 60_000, retry: false });
+  // Only a known sum is kept; without one the next opening asks again (the sidecar holds back for a minute).
+  const q = useQuery({ queryKey: ["donations"], queryFn: () => call("app.donations", {}), enabled, staleTime: (s) => (s.state.data ? 10 * 60_000 : 0), retry: false });
   if (q.isPending && !enabled) return null;
   if (!q.isPending && !q.data) return null;
   const d = q.data;
