@@ -113,7 +113,7 @@ function isBundledRuntime(file) {
 function signFile(signtool, file) {
   if (!existsSync(file)) fail(`Datei zum Signieren fehlt: ${file}`);
   if (isBundledRuntime(file)) {
-    console.log(`übersprungen (mitgelieferte Laufzeit): ${path.basename(file)}`);
+    console.log(`nicht signiert (mitgelieferte Laufzeit, keine Signatur verbraucht): ${path.basename(file)}`);
     return;
   }
   if (isSigned(signtool, file)) {
