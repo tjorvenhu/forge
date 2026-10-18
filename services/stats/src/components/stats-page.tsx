@@ -1,4 +1,4 @@
-import { Activity, Cpu, EyeOff, Power, Send, TriangleAlert } from "lucide-react";
+import { Activity, Cpu, EyeOff, Power, Send, TriangleAlert, UserCheck } from "lucide-react";
 import type { Totals } from "@/lib/db";
 import { Group, Row, SectionTitle, Skeleton } from "./blocks";
 import { ChartsSkeleton } from "./charts";
@@ -12,7 +12,7 @@ export function StatsPage({ state }: { state: PageState }) {
     <main className="container content">
       <div className="intro">
         <h1>FORGE in Zahlen</h1>
-        <p>FORGE ist eine Desktop-Oberfläche für Claude Code. Hier stehen die Summen aller Installationen, die anonyme Nutzungszahlen senden. Gezählt wird ab dem 17. Oktober 2026, dem Start der Statistik.</p>
+        <p>FORGE ist eine Desktop-Oberfläche für Claude Code. Hier stehen die Summen aller Installationen, bei denen die anonyme Nutzungsstatistik eingeschaltet ist. Installationen ohne Statistik fehlen in allen Zahlen. Gezählt wird ab dem 17. Oktober 2026, dem Start der Statistik.</p>
       </div>
 
       {state.kind === "error" ? (
@@ -71,6 +71,11 @@ export function StatsPage({ state }: { state: PageState }) {
       )}
 
       <Group title="Was erfasst wird" description="Abschaltbar in FORGE unter Einstellungen > Über FORGE > Datenschutz">
+        <Row
+          icon={UserCheck}
+          label="Wer gezählt wird"
+          description="Nur Installationen, bei denen die anonyme Nutzungsstatistik eingeschaltet ist. Ausgeschaltete Installationen fehlen in allen Zahlen, auch bei Installationen und Gerade online."
+        />
         <Row
           icon={Send}
           label="Gemeldet"
