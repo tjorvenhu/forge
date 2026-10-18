@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import type { QueryClient } from "@tanstack/react-query";
-import { Archive, ArrowDown, ArrowLeftRight, ArrowUp, ArrowUpCircle, BookOpen, Bot, CalendarDays, Camera, CloudDownload, Columns2, Combine, Cpu, Database, Download, FilePlus2, FileStack, FileText, FileUp, FlaskConical, FolderDown, FolderOpen, FolderPlus, Gauge, GitBranch, GitBranchPlus, GitCommitHorizontal, GitCompareArrows, GitFork, GitPullRequest, Globe, HandHeart, Lightbulb, Link2Off, ListChecks, LogIn, LogOut, MessageSquare, MessageSquarePlus, MessageSquareText, MonitorSmartphone, NotebookText, PackageCheck, PanelBottom, PanelRight, Pencil, Phone, PhoneOff, PhoneOutgoing, Pin, PinOff, Play, Power, RefreshCcw, RefreshCw, RotateCcw, Settings2, Shield, ShieldBan, Shrink, Sparkles, Square, SquareArrowOutDownLeft, SquareArrowOutUpRight, SquareTerminal, Timer, ToggleLeft, ToggleRight, Trash2, type LucideIcon, Wand2 } from "lucide-react";
+import { Archive, ArrowDown, ArrowLeftRight, ArrowUp, ArrowUpCircle, BookOpen, Bot, CalendarDays, Camera, CloudDownload, Columns2, Combine, Cpu, Database, Download, FilePlus2, FileStack, FileText, FileUp, FlaskConical, FolderDown, FolderOpen, FolderPlus, Gauge, GitBranch, GitBranchPlus, GitCommitHorizontal, GitCompareArrows, GitFork, GitPullRequest, Globe, HandHeart, Lightbulb, Link2Off, ListChecks, LogIn, LogOut, MessageSquare, MessageSquarePlus, MessageSquareText, MonitorSmartphone, NotebookText, PackageCheck, PanelBottom, PanelRight, Pencil, Phone, PhoneOff, PhoneOutgoing, Pin, PinOff, Play, Power, RefreshCcw, RefreshCw, RotateCcw, Search, Settings2, Shield, ShieldBan, Shrink, Sparkles, Square, SquareArrowOutDownLeft, SquareArrowOutUpRight, SquareTerminal, Timer, ToggleLeft, ToggleRight, Trash2, type LucideIcon, Wand2 } from "lucide-react";
 import type {
   AppInstallState,
   AppUpdateState,
@@ -30,6 +30,7 @@ import { errorMessage, RpcCallError } from "@/lib/rpc";
 import { openChatWindow, pinChatWindow, recallChatWindow, type ChatWindowList } from "@/lib/chat-windows";
 import { setAlwaysOnTop } from "@/lib/window-options";
 import { takeScreenshot } from "@/lib/screenshot";
+import { openChatFindSoon } from "@/lib/chat-find";
 import { useActivity } from "@/stores/activity";
 import { draftKey, useDrafts } from "@/stores/drafts";
 import { lastEditablePrompt, useMessageEdit } from "@/stores/message-edit";
@@ -304,6 +305,10 @@ export function buildActions(ctx: ActionContext): PaletteEntry[] {
       ui.setWorkspaceTab("chat");
       requestAnimationFrame(() => document.getElementById("composer-input")?.focus());
     }, { hint: "Strg+N", keywords: "chat starten" });
+    act("chat-find", "Im Chat suchen", icon(Search), () => {
+      ui.setWorkspaceTab("chat");
+      openChatFindSoon();
+    }, { hint: "Strg+F", keywords: "finden suche verlauf nachrichten durchsuchen session projekt befehle" });
     act("ui-compare-latest", "Letzten Vorher-Nachher-Vergleich öffnen", icon(GitCompareArrows), () => ctx.openDialog({ kind: "ui-compare", sessionId: session?.id ?? null, projectId: project.id }), {
       keywords: "screenshot vergleich vorschau bild ui oberfläche dev-server vorher nachher",
     });

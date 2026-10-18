@@ -4,6 +4,7 @@ import { SEARCH_MARK_END, SEARCH_MARK_START, type SearchHit } from "@forge/proto
 import { cn, relativeTime } from "@/lib/utils";
 import { useUi } from "@/stores/ui";
 import { ClaudeMark } from "@/components/workspace/ClaudeMark";
+import { Skeleton, SkeletonRegion } from "@/components/ui/skeleton";
 
 export const HIT_ROLE_LABEL: Record<SearchHit["role"], string> = { user: "Du", assistant: "Claude", tool: "Werkzeug" };
 
@@ -49,5 +50,26 @@ export function SearchHitRow({ hit, active, onSelect }: { hit: SearchHit; active
         </span>
       </span>
     </button>
+  );
+}
+
+/** Full-text hits while the transcripts are searched, in the box the hits will fill. */
+export function SearchHitsSkeleton({ rows = 3, className }: { rows?: number; className?: string }) {
+  return (
+    <SkeletonRegion label="Lädt Treffer" className={className}>
+      {Array.from({ length: rows }, (_, i) => (
+        <div key={i} className="flex items-start gap-2.5 px-2.5 py-2">
+          <Skeleton className="mt-0.5 h-5 w-5 shrink-0 rounded" />
+          <div className="min-w-0 flex-1">
+            <div className="flex h-5 items-center">
+              <Skeleton className="h-3 rounded-sm" style={{ width: `${70 + ((i * 13) % 25)}%` }} />
+            </div>
+            <div className="mt-0.5 flex h-4 items-center">
+              <Skeleton className="h-2.5 w-2/5 rounded-sm" />
+            </div>
+          </div>
+        </div>
+      ))}
+    </SkeletonRegion>
   );
 }

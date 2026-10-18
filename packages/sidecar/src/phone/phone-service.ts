@@ -2919,19 +2919,29 @@ export class PhoneService {
           const r = await call("backup.restore", { id: b.id, parts });
           return `Backup vom ${dateTime(b.createdAt)} wiederhergestellt: ${r.restored.map((x) => BACKUP_PARTS[x]).join(", ")}. Der Stand davor ist als Backup gesichert.${r.notes.length ? ` ${r.notes.join(" ")}` : ""}${phone}`;
         }),
-      search: (query) =>
+      search: (query, o) =>
         run(true, async () => {
           if (!query.trim()) return "Fehler: Wonach soll ich suchen?";
+          const plain = (snippet: string) => snippet.split(SEARCH_MARK_START).join("").split(SEARCH_MARK_END).join("");
+          if (o?.session?.trim()) {
+            // In one session: its places, newest first.
+            const s = resolve(o.session);
+            const hits = db.searchEvents(query, 5, { sessionId: s.id, phrase: o.phrase, order: "time" });
+            if (!hits.length) return `Dazu steht in ${refFor(s.id)} nichts.`;
+            const who = { user: "Anrufer", assistant: "Claude", tool: "Werkzeug" } as const;
+            return [`In ${refFor(s.id)} ${asData(s.title ?? "ohne Titel")}:`, ...hits.map((h) => `${dateTime(h.ts)}, ${who[h.role]}: ${excerptData(plain(h.snippet), 300)}`)].join("\n");
+          }
+          const p = o?.project?.trim() ? findProject(o.project) : null;
           const lines: string[] = [];
           const seen = new Set<string>();
           // One line per session, its best hit first.
-          for (const h of db.searchEvents(query, 30)) {
+          for (const h of db.searchEvents(query, 30, { projectId: p?.id, phrase: o?.phrase })) {
             if (seen.has(h.sessionId) || lines.length >= 5) continue;
             seen.add(h.sessionId);
-            const snippet = h.snippet.split(SEARCH_MARK_START).join("").split(SEARCH_MARK_END).join("");
-            lines.push(`${refFor(h.sessionId)} ${asData(h.sessionTitle ?? "ohne Titel")} im Projekt ${h.projectName}: ${excerptData(snippet, 300)}`);
+            lines.push(`${refFor(h.sessionId)} ${asData(h.sessionTitle ?? "ohne Titel")} im Projekt ${h.projectName}: ${excerptData(plain(h.snippet), 300)}`);
           }
-          return lines.length ? lines.join("\n") : "Dazu steht in keiner Session etwas.";
+          if (lines.length) return lines.join("\n");
+          return p ? `Dazu steht in keiner Session von ${p.name} etwas.` : "Dazu steht in keiner Session etwas.";
         }),
       callSettings: (patch) =>
         run(Object.values(patch).some((v) => v !== undefined), async () => {

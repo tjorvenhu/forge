@@ -1211,6 +1211,11 @@ describe("PhoneService end to end with a test PBX", () => {
     db.appendEvent("s1", { type: "assistant.text", messageId: "m1", index: 0, text: "Der Stripe-Webhook liegt in api/stripe.ts." });
     expect(await conv.tools.search("stripe webhook")).toMatch(/^S1 <<<SESSION-DATEN>>>Warenkorb<<<ENDE SESSION-DATEN>>> im Projekt shop: <<<SESSION-DATEN>>>.*Stripe-Webhook/);
     expect(await conv.tools.search("zitronenfalter")).toBe("Dazu steht in keiner Session etwas.");
+    // In one session: its places, newest first; in one project: only its sessions.
+    expect(await conv.tools.search("webhook stripe", { session: "S1" })).toMatch(/^In S1 <<<SESSION-DATEN>>>Warenkorb<<<ENDE SESSION-DATEN>>>:\n.*, Claude: <<<SESSION-DATEN>>>.*Stripe-Webhook/);
+    expect(await conv.tools.search("zitronenfalter", { session: "S1" })).toBe("Dazu steht in S1 nichts.");
+    expect(await conv.tools.search("stripe", { project: "shop" })).toMatch(/^S1 /);
+    expect(await conv.tools.search("stripe", { project: "gibtsnicht" })).toMatch(/^Fehler: Kein Projekt/);
     await byeFromPbx("c-tasks", inv, ok);
   }, 30_000);
 

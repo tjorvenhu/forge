@@ -131,7 +131,7 @@ describe("command palette covers all of FORGE", () => {
   });
 
   it("offers the actions of the open project and session", () => {
-    for (const id of ["session-delete", "session-summary", "session-fork", "session-close", "session-mode", "session-model-opus", "git-commit", "git-push", "git-pull", "git-fetch", "git-pr", "git-new-branch", "agent-new", "remote", "phone", "phone-test", "backup", "update-check", "update-install", "install-check", "install-full", "install-file", "testdb-start", "dev-start", "project-git"]) {
+    for (const id of ["chat-find", "session-delete", "session-summary", "session-fork", "session-close", "session-mode", "session-model-opus", "git-commit", "git-push", "git-pull", "git-fetch", "git-pr", "git-new-branch", "agent-new", "remote", "phone", "phone-test", "backup", "update-check", "update-install", "install-check", "install-full", "install-file", "testdb-start", "dev-start", "project-git"]) {
       expect(ids, id).toContain(id);
     }
   });

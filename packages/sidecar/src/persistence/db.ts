@@ -1,6 +1,6 @@
 import { DatabaseSync, type StatementSync } from "node:sqlite";
 import type { UsageSample } from "../claude/usage-forecast.js";
-import { DEFAULT_DISABLED_POLICY_RULES, SEARCH_MARK_END, SEARCH_MARK_START, type ContextUsage, type EffortLevel, type ModelTokens, type ForgeUsagePurpose, type PermissionMode, type ProfileId, type Project, type PhoneCallRecord, type PromptTemplate, type SearchHit, type Session, type SessionEvent, type SessionEventBody, type SessionStatus, type Settings } from "@forge/protocol";
+import { DEFAULT_DISABLED_POLICY_RULES, SEARCH_MARK_END, SEARCH_MARK_START, type ContextUsage, type EffortLevel, type ModelTokens, type ForgeUsagePurpose, type PermissionMode, type ProfileId, type Project, type PhoneCallRecord, type PromptTemplate, type SearchFilter, type SearchHit, type Session, type SessionEvent, type SessionEventBody, type SessionStatus, type Settings } from "@forge/protocol";
 
 export const MIGRATIONS: string[] = [
   `
@@ -1329,11 +1329,24 @@ export class Db {
   /**
    * Prompts, answers, tool calls and tool results matching all words of the query (prefix match, case and accents ignored),
    * best matches first. Prompts and answers come before tool hits: tool output is plentiful and would push them out. The query is reduced to plain words, so FTS syntax in it has no effect.
+   * `phrase`: the words in this order, next to each other (the last one still as a prefix). `sessionId` / `projectId` narrow the
+   * hits (a project includes the worktrees of its agents); `order: "time"` lists them newest first, for stepping through a chat.
    */
-  searchEvents(query: string, limit: number): SearchHit[] {
+  searchEvents(query: string, limit: number, opts: SearchFilter = {}): SearchHit[] {
     const words = query.match(/[\p{L}\p{N}_]+/gu)?.slice(0, 8) ?? [];
     if (!words.length) return [];
-    const match = words.map((w) => `"${w}"*`).join(" ");
+    const match = opts.phrase ? `"${words.join(" ")}"*` : words.map((w) => `"${w}"*`).join(" ");
+    const where = ["events_fts MATCH ?"];
+    const args: Array<string | number> = [match];
+    if (opts.sessionId) {
+      where.push("e.session_id = ?");
+      args.push(opts.sessionId);
+    }
+    if (opts.projectId) {
+      where.push("(s.project_id = ? OR p.parent_id = ?)");
+      args.push(opts.projectId, opts.projectId);
+    }
+    const order = opts.order === "time" ? "e.ts DESC, e.seq DESC" : "e.type IN ('tool.use', 'tool.result'), f.rank, e.ts DESC";
     const rows = this.sql
       .prepare(
         `SELECT e.session_id, e.seq, e.ts, e.type, s.project_id, s.title, p.name AS project_name,
@@ -1342,11 +1355,11 @@ export class Db {
          JOIN events e ON e.rowid = f.rowid
          JOIN sessions s ON s.id = e.session_id
          JOIN projects p ON p.id = s.project_id
-         WHERE events_fts MATCH ?
-         ORDER BY e.type IN ('tool.use', 'tool.result'), f.rank, e.ts DESC
+         WHERE ${where.join(" AND ")}
+         ORDER BY ${order}
          LIMIT ?`,
       )
-      .all(match, limit) as Array<{ session_id: string; seq: number; ts: string; type: string; project_id: string; title: string | null; project_name: string; snippet: string }>;
+      .all(...args, limit) as Array<{ session_id: string; seq: number; ts: string; type: string; project_id: string; title: string | null; project_name: string; snippet: string }>;
     return rows.map((r) => ({
       sessionId: r.session_id,
       projectId: r.project_id,

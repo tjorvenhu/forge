@@ -284,6 +284,16 @@ body {
   background: var(--color-accent-soft);
 }
 
+/* Search in the chat (Ctrl+F, lib/chat-find.ts): the words on screen, solid inside the row of the current hit. */
+::highlight(forge-find) {
+  background-color: color-mix(in srgb, var(--color-accent) 30%, transparent);
+  color: inherit;
+}
+::highlight(forge-find-current) {
+  background-color: var(--color-accent);
+  color: var(--color-accent-fg);
+}
+
 /*
  * WebView2 uses the standard scrollbar properties (they win over ::-webkit-scrollbar): a thin,
  * quiet thumb that gets clearer while the pointer is over the scrolling area.

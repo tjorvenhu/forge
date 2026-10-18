@@ -28,6 +28,7 @@ import {
   TestDbConfig,
   TestDbState,
   SearchHit,
+  SearchFilter,
   PhoneConfig,
   PhoneEngine,
   PhoneNumberEntry,
@@ -414,7 +415,7 @@ export const methods = {
   },
   "sessions.contextUsage": { params: sessionRef, result: ContextUsage.nullable() },
   "search.sessions": {
-    params: z.object({ query: z.string().min(1).max(200), limit: z.number().int().min(1).max(200).default(50) }),
+    params: SearchFilter.extend({ query: z.string().min(1).max(200), limit: z.number().int().min(1).max(1000).default(50) }),
     result: z.array(SearchHit),
   },
 

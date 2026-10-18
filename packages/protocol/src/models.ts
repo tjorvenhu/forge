@@ -954,6 +954,19 @@ export const SearchHit = z.object({
 });
 export type SearchHit = z.infer<typeof SearchHit>;
 
+/** Narrows a full-text search; without fields it covers every session, best matches first. */
+export const SearchFilter = z.object({
+  /** only this session */
+  sessionId: z.string().min(1).max(100).optional(),
+  /** only the sessions of this project, the worktrees of its agents included */
+  projectId: z.string().min(1).max(100).optional(),
+  /** the words in this order, next to each other */
+  phrase: z.boolean().optional(),
+  /** time: newest first instead of best first, to step through a chat */
+  order: z.enum(["rank", "time"]).optional(),
+});
+export type SearchFilter = z.infer<typeof SearchFilter>;
+
 export const DevServerState = z.object({
   projectId: z.string(),
   status: z.enum(["stopped", "running", "exited", "failed"]),
