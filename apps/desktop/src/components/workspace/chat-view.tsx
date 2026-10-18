@@ -80,7 +80,8 @@ export function ChatViewToggle({ sessionId, compact }: { sessionId: string; comp
             )}
           >
             <v.Icon className="h-3.5 w-3.5" />
-            {!compact && v.id !== "all" && <span>{v.label}</span>}
+            {/* Labels only where the session bar has room (container sessionbar in SessionBar). */}
+            {!compact && v.id !== "all" && <span className="hidden @3xl/sessionbar:inline">{v.label}</span>}
           </button>
         </Tooltip>
       ))}

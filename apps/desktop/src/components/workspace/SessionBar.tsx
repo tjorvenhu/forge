@@ -72,12 +72,13 @@ export function SessionBar({
     ];
   });
   return (
-    <div className="flex h-11 shrink-0 items-center gap-2 border-b border-border px-4" onContextMenu={detached ? windowItems : undefined}>
+    <div className="@container/sessionbar flex h-11 shrink-0 items-center gap-2 border-b border-border px-4" onContextMenu={detached ? windowItems : undefined}>
       {detached ? (
-        <div className="flex min-w-0 items-center gap-2 text-body">
-          <ProjectIcon id={project.parentId ?? project.id} name={project.name} size={20} className="rounded-md" />
-          <span className="max-w-40 shrink-0 truncate text-muted">{project.name}</span>
-          <span className="truncate">{title}</span>
+        // Shrinks before the badges next to it; the title gives way first, then the project name.
+        <div className="flex min-w-8 items-center gap-2 overflow-hidden text-body" title={`${project.name} · ${title}`}>
+          <ProjectIcon id={project.parentId ?? project.id} name={project.name} size={20} className="shrink-0 rounded-md" />
+          <span className="min-w-0 max-w-40 truncate text-muted">{project.name}</span>
+          <span className="min-w-0 shrink-[4] truncate">{title}</span>
         </div>
       ) : (
         <DropdownMenu
@@ -157,8 +158,9 @@ export function SessionBar({
       {detached ? (
         <>
           <ChatWindowPinButton />
-          <Button size="sm" variant="ghost" onClick={() => void reattachChatWindow()} title={m.recallTitle}>
-            <SquareArrowOutDownLeft className="h-3.5 w-3.5" /> {m.recall}
+          <Button size="sm" variant="ghost" onClick={() => void reattachChatWindow()} title={m.recallTitle} aria-label={m.recall}>
+            <SquareArrowOutDownLeft className="h-3.5 w-3.5" />
+            <span className="hidden @2xl/sessionbar:inline">{m.recall}</span>
           </Button>
         </>
       ) : (
