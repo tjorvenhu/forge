@@ -189,6 +189,7 @@ export function createHandlers(s: Services): Handlers {
     "agents.review": ({ projectId }) => s.agentFinish.review(projectId),
     "agents.finish": ({ projectId, action }) => s.agentFinish.finish(projectId, action),
     "sessions.summarize": ({ sessionId }) => s.sessions.summarize(sessionId),
+    "sessions.handoff": ({ sessionId }) => s.sessions.handoff(sessionId),
     "reports.daily": (p) => s.reports.build(p),
     "reports.dailySummary": (p) => s.reports.summarize(p),
 

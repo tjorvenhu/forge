@@ -10,7 +10,7 @@ import { AgentSdkRuntime, REMOTE_UNAVAILABLE } from "../src/claude/runtime.js";
 import { GitEngine } from "../src/git/git.js";
 import { Db } from "../src/persistence/db.js";
 import { ProjectManager } from "../src/projects/project-manager.js";
-import { SessionService } from "../src/sessions/session-service.js";
+import { HANDOFF_COMPACT, SessionService } from "../src/sessions/session-service.js";
 import { UploadStore } from "../src/claude/uploads.js";
 import {
   AUTO_CONTINUE_PROMPT,
@@ -242,6 +242,26 @@ describe("SessionService", () => {
     rt.history = [{ uuid: first.body.type === "user.message" ? first.body.uuid! : "" }];
     expect(await svc.fork(s.id, { beforeSeq: first.seq })).toEqual({ session: null, prompt: "Lies a.txt", filesChanged: null });
     await expect(svc.fork(s.id, { beforeSeq: 9999 })).rejects.toThrow(/nicht verzweigen/);
+  });
+
+  it("hands a long session over to a new one that compacts the copied history first", async () => {
+    const s = await svc.start({ projectId, prompt: "Lies a.txt" });
+    await expect(svc.handoff(s.id)).rejects.toThrow(/arbeitet noch/);
+    rt.replay();
+    const before = db.listEvents(s.id).length;
+
+    const next = await svc.handoff(s.id);
+    expect(rt.forks.at(-1)).toEqual({ claudeSessionId: "d69118dc-ef0c-4925-9945-3091ab75cb15", upTo: null, title: "Lies a.txt (Fortsetzung)" });
+    expect(next).toMatchObject({ projectId, claudeSessionId: "fork-1", title: "Lies a.txt (Fortsetzung)", status: "running" });
+    // The new chat starts with the card and the compaction, not with a copy of the old chat.
+    const events = db.listEvents(next.id).map((e) => e.body);
+    expect(events[0]).toMatchObject({ type: "session.handoff", direction: "from", otherSessionId: s.id, otherTitle: "Lies a.txt" });
+    expect(events.find((b) => b.type === "user.message")).toMatchObject({ text: HANDOFF_COMPACT, source: "auto" });
+    expect(rt.started.at(-1)).toMatchObject({ resume: "fork-1", firstMessage: expect.objectContaining({ text: HANDOFF_COMPACT }) });
+    // The old session only gets the card pointing to the new one.
+    const old = db.listEvents(s.id);
+    expect(old.length).toBe(before + 1);
+    expect(old.at(-1)!.body).toMatchObject({ type: "session.handoff", direction: "to", otherSessionId: next.id });
   });
 
   it("edits a prompt: stops the running turn and resumes the conversation before it with the new text", async () => {

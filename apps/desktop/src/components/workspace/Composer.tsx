@@ -12,6 +12,7 @@ import { DropdownMenu } from "@/components/ui/dropdown";
 import { Select } from "@/components/ui/select";
 import { Kbd, Tooltip } from "@/components/ui/misc";
 import { ContextMeter } from "./ContextMeter";
+import { LongSessionHint } from "./handoff";
 import { RateLimitBadge } from "./RateLimitBadge";
 import { AttachmentList } from "./AttachmentList";
 import { CLEAR_COMMANDS, isClearCommand, SlashCommandMenu, useSlashCommands, type Command } from "./SlashCommandMenu";
@@ -392,6 +393,7 @@ export const Composer = memo(function Composer({
         />
       )}
       <InfoCommandDialog command={info} project={project} session={session} onClose={() => setInfo(null)} />
+      {session && <LongSessionHint session={session} draftKey={key} disabled={waiting || sending} />}
       <div
         className={cn(
           "relative rounded-2xl border bg-surface shadow-lg shadow-black/20 transition-[border-color,background-color,transform] duration-150 ease-snappy",

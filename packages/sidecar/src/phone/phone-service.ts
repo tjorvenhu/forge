@@ -443,6 +443,8 @@ function settingText(s: Settings, key: keyof ForgeSettingsPatch | "alwaysOnTop")
       return `automatisch weitermachen nach einem Limit ${on(s.autoContinueAfterLimit)}`;
     case "idleCloseMinutes":
       return s.idleCloseMinutes > 0 ? `untätige Claude-Prozesse schließen nach ${s.idleCloseMinutes} Minuten` : "untätige Claude-Prozesse bleiben offen";
+    case "longSessionTokens":
+      return s.longSessionTokens > 0 ? `Hinweis auf lange Sessions ab ${Math.round(s.longSessionTokens / 1000)} Tausend Tokens Kontext` : "kein Hinweis auf lange Sessions";
     case "updateChecks":
       return `Update-Prüfung ${on(s.updateChecks)}`;
     case "learnTemplates":
@@ -2582,6 +2584,13 @@ export class PhoneService {
             await call("sessions.edit", { sessionId: s.id, seq: prompt.seq, text });
             return `Die Nachricht ${excerptData(prompt.text, 120)} in ${r} ist ersetzt. Claude macht mit dem neuen Text weiter; die Dateien sind unverändert.`;
           }
+          if (action === "handoff") {
+            const tokens = s.context?.totalTokens;
+            const next = await call("sessions.handoff", { sessionId: s.id });
+            a.focus = next.id;
+            const size = tokens ? ` Die alte hatte ${Math.round(tokens / 1000)} Tausend Tokens Kontext.` : "";
+            return `${r} geht in der neuen Session ${refFor(next.id)} weiter. Claude fasst den Verlauf gerade als Übergabe zusammen, danach läuft sie mit send_message weiter; Nachrichten bis dahin warten.${size} ${r} bleibt unverändert.`;
+          }
           const before = o?.messagesBack ? await promptBack(s.id, o.messagesBack) : null;
           const res = await call("sessions.fork", { sessionId: s.id, beforeSeq: before?.seq, rewindFiles: o?.rewindFiles === true });
           const files = res.filesChanged?.length ? ` ${res.filesChanged.length} Dateien sind auf den Stand davor zurückgesetzt.` : "";
@@ -2715,6 +2724,10 @@ export class PhoneService {
             update.idleCloseMinutes = Math.min(1440, Math.max(0, Math.round(patch.idleCloseMinutes)));
             changed.push("idleCloseMinutes");
           }
+          if (patch.longSessionTokens !== undefined) {
+            update.longSessionTokens = Math.min(2_000_000, Math.max(0, Math.round(patch.longSessionTokens)));
+            changed.push("longSessionTokens");
+          }
           if (patch.defaultProfile) {
             update.defaultProfile = patch.defaultProfile;
             changed.push("defaultProfile");
@@ -2730,7 +2743,7 @@ export class PhoneService {
             update.disabledPolicyRules = patch.policyRuleOn ? off : [...off, rule];
             changed.push("policyRule");
           }
-          if (!changed.length) return `${(["defaultModel", "defaultEffort", "defaultProfile", "defaultProjectDir", ...flags, "idleCloseMinutes", "alwaysOnTop", "policyRule"] as const).map((k) => settingText(cur, k)).join(", ")}.`;
+          if (!changed.length) return `${(["defaultModel", "defaultEffort", "defaultProfile", "defaultProjectDir", ...flags, "idleCloseMinutes", "longSessionTokens", "alwaysOnTop", "policyRule"] as const).map((k) => settingText(cur, k)).join(", ")}.`;
           const next = await call("settings.update", update);
           return `Gespeichert: ${changed.map((k) => settingText(next, k)).join(", ")}.`;
         }),

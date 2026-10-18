@@ -422,6 +422,7 @@ export const DEFAULT_SETTINGS: Settings = {
   defaultProjectDir: null,
   autoContinueAfterLimit: true,
   idleCloseMinutes: 60,
+  longSessionTokens: 200_000,
   updateChecks: true,
   desktopNotifications: true,
   alwaysOnTop: false,

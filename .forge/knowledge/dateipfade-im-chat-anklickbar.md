@@ -2,13 +2,15 @@
 title: "Dateipfade im Chat anklickbar"
 summary: "Wie Pfade in Chat-Nachrichten, Werkzeug-Karten und Aktivität zu Links werden: Projektdateien öffnen im Dateien-Reiter an der Zeile, Ordner und Dateien außerhalb im Explorer; wie bloße Dateinamen gesucht werden (projects.allFiles, matchingFiles)."
 tags: ["chat","markdown","dateien","explorer","chat-fenster","ui","stolperfalle"]
-updated: "2026-10-16T18:40:21.672Z"
+updated: "2026-10-18T16:03:24.098Z"
 ---
 
 Eingebaut 2026-10-13 auf Wunsch des Nutzers ("wie bei Claude Code"), am selben Tag auf Werkzeug-Karten, Ausgaben und Ordner erweitert.
 
 ## Erkennung (components/workspace/file-links.tsx)
 - Fließtext und Klartext: `findFileRefs` erkennt Pfade mit Ordner und Dateiendung (`src/a.ts:12`) sowie absolute Windows-Ordner (`C:\x\y`, Git-Bash `/c/x/y`, wird zu `C:/x/y`). Bloße Dateinamen im Fließtext bewusst nicht (Node.js, Next.js ...). Hosts (github.com/...) und Zahlen (1.5/2.0) ausgeschlossen; der Satzpunkt nach einem Ordner gehört nicht dazu.
+- Pfade mit Leerzeichen im Fließtext/Befehl (seit 2026-10-18): Ohne Anführungszeichen ist das Ende eines Pfads mit Leerzeichen nicht erkennbar, dort endet der Link am Leerzeichen. Steht der Inhalt in `"…"` oder `'…'` (`cd "C:/…/claude.ai Work/x"`, JSON-Eingaben), prüft `findFileRefs` zuerst diese Strings (`QUOTED`) mit `parseFileRef`; passt der ganze Inhalt als Pfad (nicht als bloßer Name), wird er als ein Link genommen, normale Treffer darin entfallen. Anlass: Der Nutzerordner `claude.ai Work` hat ein Leerzeichen.
+- JSON-escapte Backslashes (`C:\\Users\\x`): Trenner sind `[\\/]{1,2}`, `normalize` fasst doppelte Schrägstriche zusammen.
 - Inline-Code und Markdown-Link-Ziele: `parseFileRef` auf den ganzen Text; dort auch Pfade mit Leerzeichen (`C:\Program Files\Git`) und bloße Dateinamen mit bekannter Endung (`FILE_EXTENSIONS`). Codeblöcke nie (Kontext `InCodeBlock` in `Markdown.tsx`).
 - Fließtext läuft über das Remark-Plugin `remarkFileLinks` mit Link-Schema `forge-file:`; `urlTransform` in `Markdown.tsx` muss das Schema durchlassen (react-markdown filtert sonst).
 - `FileRef.isFile` = hat Dateiendung.

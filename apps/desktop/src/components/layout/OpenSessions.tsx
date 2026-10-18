@@ -10,7 +10,8 @@ import { flatTabs, groupOf, groupTabs, openSessionId, openSessionTab, type TabGr
 import { agentLabel } from "@/lib/project-tree";
 import { useTabTearOff } from "@/lib/tab-drag";
 import { isBusy, isWorking } from "@/lib/working";
-import { cn } from "@/lib/utils";
+import { cn, formatTokens } from "@/lib/utils";
+import { handoffSession } from "@/components/workspace/handoff";
 import { splitActive, useUi, type SplitPane } from "@/stores/ui";
 import { toast } from "@/stores/toast";
 import { useTemplateDialogs } from "@/stores/templates";
@@ -302,6 +303,16 @@ export function OpenSessions() {
                           { label: "Öffnen", icon: <MessageSquare className={MENU_ICON} />, onSelect: () => openChat(s.projectId, s.id) },
                           ...(canSplit ? [{ label: "Daneben öffnen", icon: <Columns2 className={MENU_ICON} />, onSelect: () => addSplitPane(s.projectId, s.id) }] : []),
                           ...(!inWindow ? [{ label: "In eigenem Fenster öffnen", icon: <SquareArrowOutUpRight className={MENU_ICON} />, onSelect: () => void openChatWindow(s.projectId, s.id, s.title) }] : []),
+                          ...(s.claudeSessionId && !isBusy(s.status)
+                            ? [
+                                {
+                                  label: "In neuer Session weitermachen",
+                                  icon: <MessageSquarePlus className={MENU_ICON} />,
+                                  hint: s.context ? `${formatTokens(s.context.totalTokens)} Tokens` : undefined,
+                                  onSelect: () => void handoffSession(s),
+                                },
+                              ]
+                            : []),
                           ...(closable
                             ? [
                                 {

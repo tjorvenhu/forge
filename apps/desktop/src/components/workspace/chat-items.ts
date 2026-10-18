@@ -43,6 +43,8 @@ export type ChatItem =
   | { kind: "check"; key: string; ts: string; body: Body<"check.result"> }
   /** before/after screenshots of the web app around a turn that changed UI files */
   | { kind: "uiCompare"; key: string; ts: string; body: Body<"ui.compare"> }
+  /** a long session went on in a new one, or this one continues an older one */
+  | { kind: "handoff"; key: string; ts: string; body: Body<"session.handoff"> }
   | AutoContinueItem;
 
 /** Automatic continuation after a usage limit; `open`: no later message or step replaced this plan. */
@@ -253,6 +255,9 @@ function itemFolder(thread: string | null = null) {
         break;
       case "ui.compare":
         items.push({ kind: "uiCompare", key: `v${b.compareId}`, ts: ev.ts, body: b });
+        break;
+      case "session.handoff":
+        items.push({ kind: "handoff", key: `h${ev.seq}`, ts: ev.ts, body: b });
         break;
       case "notify":
         items.push({

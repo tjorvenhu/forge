@@ -40,6 +40,7 @@ import { UsageSettings } from "@/components/settings/UsageSettings";
 import { MemoryEditor } from "@/components/settings/MemoryEditor";
 import { effortOptions, fromChoice, modelOptions, toChoice } from "@/components/settings/model-options";
 import { idleCloseOptions } from "@/components/settings/idle-close";
+import { longSessionOptions } from "@/components/workspace/handoff";
 import { PhoneSettings } from "@/components/settings/PhoneSettings";
 import { BackupSettings } from "@/components/settings/BackupSettings";
 import { SyncSettings } from "@/components/settings/SyncSettings";
@@ -262,6 +263,18 @@ function ClaudeSection({ s, save }: { s: Settings; save: Save }) {
             className="w-64"
             options={idleCloseOptions(s.idleCloseMinutes)}
             aria-label="Untätige Sessions schließen nach"
+          />
+        </Row>
+        <Row
+          label="Lange Sessions melden"
+          description="Jede Nachricht schickt den ganzen Verlauf mit. Ist der Kontext so groß, schlägt FORGE über dem Eingabefeld eine neue Session vor, die das Wissen als Zusammenfassung übernimmt."
+        >
+          <Select
+            value={String(s.longSessionTokens)}
+            onChange={(v) => void save({ longSessionTokens: Number(v) })}
+            className="w-64"
+            options={longSessionOptions(s.longSessionTokens)}
+            aria-label="Lange Sessions melden"
           />
         </Row>
         <SwitchRow

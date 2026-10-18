@@ -12,6 +12,7 @@ import { EVENT_ICON, EventCard, noticeIcon } from "./EventCard";
 import { ChatRow, Dot, HoverTime } from "./ChatRow";
 import { UserMessage } from "./UserMessage";
 import { AutoContinueCard } from "./AutoContinueCard";
+import { HandoffCard } from "./handoff";
 import { UiCompareCard } from "./UiCompareCard";
 
 /**
@@ -114,6 +115,8 @@ export const ItemView = memo(function ItemView({ item, sessionId, live, projectD
       return <AutoContinueCard item={item} sessionId={sessionId} />;
     case "uiCompare":
       return <UiCompareCard item={item} sessionId={sessionId} />;
+    case "handoff":
+      return <HandoffCard body={item.body} ts={item.ts} sessionId={sessionId} />;
   }
 });
 

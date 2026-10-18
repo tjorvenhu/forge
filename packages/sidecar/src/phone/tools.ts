@@ -115,6 +115,7 @@ export const SESSIONS_ACTIONS = [
   "delete",
   "delete_all",
   "fork",
+  "handoff",
   "rewind",
   "edit",
   "ui_compare",
@@ -196,6 +197,8 @@ export interface ForgeSettingsPatch {
   autoContinueAfterLimit?: boolean;
   /** minutes until an idle session's process ends; 0 never */
   idleCloseMinutes?: number;
+  /** context tokens from which FORGE suggests a new session; 0 never */
+  longSessionTokens?: number;
   updateChecks?: boolean;
   debugLogs?: boolean;
   stripApiKey?: boolean;
@@ -840,10 +843,10 @@ export const PHONE_TOOLS: readonly PhoneToolSpec[] = [
   {
     name: "sessions",
     description:
-      "Alle Sessions, auch ältere und geschlossene. list: auflisten, auf Wunsch nach project, Suchwörtern (query) oder status gefiltert; die Kürzel gelten danach für die anderen Werkzeuge. delete: eine Session löschen. delete_all: alle Sessions löschen. fork: Verlauf in eine neue Session abzweigen, ganz oder bis vor eine Nachricht (messages_back). rewind: Dateien auf den Stand vor einer Nachricht des Anrufers zurücksetzen; der Verlauf bleibt. edit: eine Nachricht des Anrufers durch text ersetzen; ein laufender Durchlauf bricht ab und Claude macht mit dem neuen Text weiter, als hätte es die alte Nachricht nie gegeben. ui_compare: ob es zum letzten Durchlauf einen Vorher-Nachher-Vergleich der Web-App gibt (Seite, geänderte UI-Dateien, Stand); die Bilder selbst gibt es nur am Computer. ui_compare_retake: das Nachher-Bild neu aufnehmen. templates: Prompt-Vorlagen auflisten (gespeicherte, wiederkehrende Aufträge mit Platzhaltern wie {datei}), mit project die globalen und die des Projekts. template_send: eine Vorlage (template) mit Werten für ihre Platzhalter (values) an eine Session schicken (session) oder damit eine neue Session im project starten; fehlen Werte, nennt FORGE sie, dann den Anrufer danach fragen. template_save: eine Vorlage anlegen (name, text, optional description, mit project nur für dieses Projekt) oder mit template eine vorhandene ändern. template_delete: eine Vorlage löschen. template_move: eine Vorlage in ihrer Liste nach oben oder unten schieben (direction). template_learn: jetzt aus den letzten Nachrichten wiederkehrende Aufträge als Vorlagen lernen (das macht FORGE sonst von selbst, gelernte Vorlagen sind markiert). day_report: Tagesbericht für „Was ist heute passiert?“: Sessions mit Durchläufen, Agenten (zusammengeführt, verworfen, wartend), Commits, was offen ist und die Anrufe; mit summary eine kurze Zusammenfassung von Claude.",
+      "Alle Sessions, auch ältere und geschlossene. list: auflisten, auf Wunsch nach project, Suchwörtern (query) oder status gefiltert; die Kürzel gelten danach für die anderen Werkzeuge. delete: eine Session löschen. delete_all: alle Sessions löschen. fork: Verlauf in eine neue Session abzweigen, ganz oder bis vor eine Nachricht (messages_back). handoff: eine lange Session in einer neuen fortsetzen; jede Nachricht schickt den ganzen Verlauf mit, eine lange Session verbraucht deshalb viel vom Limit. Claude fasst den Verlauf dabei einmal als Übergabe zusammen, die neue Session weiß alles und startet klein; die alte bleibt. rewind: Dateien auf den Stand vor einer Nachricht des Anrufers zurücksetzen; der Verlauf bleibt. edit: eine Nachricht des Anrufers durch text ersetzen; ein laufender Durchlauf bricht ab und Claude macht mit dem neuen Text weiter, als hätte es die alte Nachricht nie gegeben. ui_compare: ob es zum letzten Durchlauf einen Vorher-Nachher-Vergleich der Web-App gibt (Seite, geänderte UI-Dateien, Stand); die Bilder selbst gibt es nur am Computer. ui_compare_retake: das Nachher-Bild neu aufnehmen. templates: Prompt-Vorlagen auflisten (gespeicherte, wiederkehrende Aufträge mit Platzhaltern wie {datei}), mit project die globalen und die des Projekts. template_send: eine Vorlage (template) mit Werten für ihre Platzhalter (values) an eine Session schicken (session) oder damit eine neue Session im project starten; fehlen Werte, nennt FORGE sie, dann den Anrufer danach fragen. template_save: eine Vorlage anlegen (name, text, optional description, mit project nur für dieses Projekt) oder mit template eine vorhandene ändern. template_delete: eine Vorlage löschen. template_move: eine Vorlage in ihrer Liste nach oben oder unten schieben (direction). template_learn: jetzt aus den letzten Nachrichten wiederkehrende Aufträge als Vorlagen lernen (das macht FORGE sonst von selbst, gelernte Vorlagen sind markiert). day_report: Tagesbericht für „Was ist heute passiert?“: Sessions mit Durchläufen, Agenten (zusammengeführt, verworfen, wartend), Commits, was offen ist und die Anrufe; mit summary eine kurze Zusammenfassung von Claude.",
     params: {
       action: { type: "string", enum: SESSIONS_ACTIONS },
-      session: { type: "string", optional: true, description: "bei delete, fork, rewind, edit, ui_compare und ui_compare_retake: Kürzel wie S1 oder ein Teil des Titels" },
+      session: { type: "string", optional: true, description: "bei delete, fork, handoff, rewind, edit, ui_compare und ui_compare_retake: Kürzel wie S1 oder ein Teil des Titels" },
       project: { type: "string", optional: true, description: "bei list und day_report: nur dieses Projekt" },
       days_back: { type: "number", optional: true, min: 0, max: 60, description: "bei day_report: welcher Tag, 0 heute (Standard), 1 gestern" },
       summary: { type: "boolean", optional: true, description: "bei day_report: true für eine kurze Zusammenfassung von Claude (dauert ein paar Sekunden)" },
@@ -938,6 +941,13 @@ export const PHONE_TOOLS: readonly PhoneToolSpec[] = [
       enter_to_send: { type: "boolean", optional: true, description: "Enter sendet die Nachricht" },
       auto_continue: { type: "boolean", optional: true, description: "nach einem Nutzungslimit automatisch weitermachen" },
       idle_close_minutes: { type: "number", optional: true, min: 0, max: 1440, description: "nach wie vielen Minuten ohne Aktivität FORGE den Claude-Prozess einer Session schließt (sie bleibt erhalten); 0 schaltet das aus. In den Einstellungen wählbar: 15, 30, 60, 120, 240" },
+      long_session_tokens: {
+        type: "number",
+        optional: true,
+        min: 0,
+        max: 2000000,
+        description: "ab wie vielen Tokens Kontext FORGE vorschlägt, in einer neuen Session weiterzumachen; 0 schaltet den Hinweis aus. In den Einstellungen wählbar: 100000, 200000, 400000, 800000",
+      },
       update_checks: { type: "boolean", optional: true, description: "nach Updates von FORGE suchen" },
       debug_logs: { type: "boolean", optional: true, description: "ausführliche Protokolle" },
       strip_api_key: { type: "boolean", optional: true, description: "einen API-Key aus der Umgebung nicht an Claude Code geben, damit das Abo zählt" },
@@ -963,6 +973,7 @@ export const PHONE_TOOLS: readonly PhoneToolSpec[] = [
         enterToSend: optBool(a.enter_to_send),
         autoContinueAfterLimit: optBool(a.auto_continue),
         idleCloseMinutes: optNum(a.idle_close_minutes),
+        longSessionTokens: optNum(a.long_session_tokens),
         updateChecks: optBool(a.update_checks),
         debugLogs: optBool(a.debug_logs),
         stripApiKey: optBool(a.strip_api_key),

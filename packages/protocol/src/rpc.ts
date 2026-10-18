@@ -337,6 +337,12 @@ export const methods = {
     params: sessionRef.extend({ beforeSeq: z.number().int().optional(), rewindFiles: z.boolean().default(false) }),
     result: z.object({ session: Session.nullable(), prompt: z.string().nullable(), filesChanged: z.array(z.string()).nullable() }),
   },
+  /**
+   * Goes on with a long session in a new one: the new session gets a copy of Claude's history, which
+   * Claude Code then compacts into a handover (/compact), so the new session starts small but knows
+   * everything. The old session stays as it is. Returns the new session (compacting).
+   */
+  "sessions.handoff": { params: sessionRef, result: Session },
   "sessions.events": {
     /** the newest events (at most 2,000) after afterSeq; older ones page by passing the first seq as beforeSeq */
     params: sessionRef.extend({ afterSeq: z.number().int().optional(), beforeSeq: z.number().int().optional() }),

@@ -20,7 +20,7 @@ import type {
   Settings,
   TestDbState,
 } from "@forge/protocol";
-import { IDLE_CLOSE_CHOICES, SUPPORT_LINKS, USAGE_STATS_URL } from "@forge/protocol";
+import { IDLE_CLOSE_CHOICES, LONG_SESSION_CHOICES, SUPPORT_LINKS, USAGE_STATS_URL } from "@forge/protocol";
 import { openExternal } from "@/lib/native";
 import { checkInstall, installFromFile, installFull, installUpdate } from "@/lib/app-install";
 import { call, keys, refreshUsage } from "@/lib/queries";
@@ -41,6 +41,8 @@ import { DEV_TOOLS_SECTIONS, KNOWLEDGE_MERGE_REQUEST, KNOWLEDGE_STALE_REQUEST, P
 import { PROFILE_IDS, PROFILE_INFO } from "@/components/projects/ProfileBadge";
 import { RULE_GROUPS } from "@/components/settings/PolicySettings";
 import { idleCloseLabel } from "@/components/settings/idle-close";
+import { handoffSession, longSessionLabel } from "@/components/workspace/handoff";
+import { formatTokens } from "@/lib/utils";
 import { SECTIONS as DEV_TOOLS_SECTION_DEFS } from "@/components/devtools/DevToolsTab";
 import { integratedText } from "@/components/git/Sync";
 import { SECTIONS as PROJECT_SECTION_DEFS, TAG_INFO } from "@/components/workspace/ProjectSettingsTab";
@@ -136,6 +138,7 @@ const SETTING_OPTIONS: ReadonlyArray<{ id: string; label: string; section: Setti
   { id: "claude-setup", label: "Claude Code installieren und anmelden", section: "claude", keywords: "login abo update version" },
   { id: "claude-path", label: "Pfad zur Claude-CLI", section: "claude", keywords: "executable programm" },
   { id: "idle-close", label: "Untätige Sessions schließen nach", section: "claude", keywords: "claude-prozess beenden inaktiv leerlauf timeout automatisch schließen minuten stunden" },
+  { id: "long-session", label: "Lange Sessions melden", section: "claude", keywords: "kontext tokens verbrauch limit warnung neue session übergabe fortsetzen" },
   { id: "phone-setup", label: "Telefon einrichten", section: "phone", keywords: "anruf sip gemini openai stimme tischtelefon" },
   { id: "phone-numbers", label: "Telefonnummern: wen FORGE anruft, wer anrufen darf", section: "phone", keywords: "nummer handy rufnummer erlaubte anrufer benachrichtigung einschalten ausschalten" },
   { id: "sync-projects", label: "Projekte von anderen PCs holen", section: "github", keywords: "sync klonen abgleich rechner" },
@@ -371,6 +374,12 @@ export function buildActions(ctx: ActionContext): PaletteEntry[] {
       );
       act("session-summary", "Session zusammenfassen", icon(NotebookText), () => ctx.openDialog({ kind: "summary", session: s }), { keywords: "wo war ich wiedereinstieg" });
       act("session-fork", "Session verzweigen", icon(GitFork), () => void forkSession(qc, s), { keywords: "fork kopie zweig" });
+      if (s.claudeSessionId && !SESSION_BUSY.has(s.status)) {
+        act("session-handoff", "In neuer Session weitermachen", icon(MessageSquarePlus), () => void handoffSession(s), {
+          hint: s.context ? `${formatTokens(s.context.totalTokens)} Tokens Kontext` : undefined,
+          keywords: "übergabe fortsetzen lange session kontext tokens sparen zusammenfassen wissen mitnehmen handoff",
+        });
+      }
       const lastPrompt = lastEditablePrompt(s.id);
       if (lastPrompt !== null) {
         act("session-edit-last", "Letzte Nachricht bearbeiten", icon(Pencil), () => useMessageEdit.getState().start(s.id, lastPrompt), {
@@ -637,6 +646,14 @@ export function buildActions(ctx: ActionContext): PaletteEntry[] {
       setting(`idle-close-${m}`, label, icon(Timer), () => void saveSetting(qc, { idleCloseMinutes: m }, label), {
         hint: `jetzt ${idleCloseLabel(settings.idleCloseMinutes)}`,
         keywords: "claude-prozess beenden inaktiv leerlauf timeout automatisch schließen",
+      });
+    }
+    for (const t of LONG_SESSION_CHOICES) {
+      if (t === settings.longSessionTokens) continue;
+      const label = t > 0 ? `Lange Sessions melden ${longSessionLabel(t)}` : "Lange Sessions nicht mehr melden";
+      setting(`long-session-${t}`, label, icon(MessageSquarePlus), () => void saveSetting(qc, { longSessionTokens: t }, label), {
+        hint: `jetzt ${longSessionLabel(settings.longSessionTokens)}`,
+        keywords: "kontext tokens verbrauch limit warnung hinweis neue session übergabe",
       });
     }
   }
