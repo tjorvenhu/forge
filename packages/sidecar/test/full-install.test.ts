@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import type { AppInstallState } from "@forge/protocol";
-import { pickInstaller, pickRelease, type Release } from "../src/update/app-update.js";
+import { pickInstaller, pickRelease, signedOnly, type Release } from "../src/update/app-update.js";
 import { checkRuntime, findLocalInstaller, FullInstallService, parseRuntimeKey } from "../src/update/full-install.js";
 import { signedMessage } from "../src/update/signature.js";
 
@@ -101,6 +101,17 @@ describe("incomplete installations", () => {
     expect(pickInstaller(list, OLD)).toMatchObject({ release: { tag_name: "v0.1.86" }, asset: { name: "FORGE_0.1.86_x64-setup.exe" } });
     // Updates that need the other runtime take the installer with the matching marker.
     expect(pickRelease(list, "0.1.86", OLD)).toMatchObject({ kind: "full", newest: { tag_name: "v0.1.90" }, release: { tag_name: "v0.1.88" } });
+  });
+
+  it("reads the runtime of an installer from the update zip of its release (one signature file, no marker)", () => {
+    const manifest = (tag: string, assets: string[]): Release => ({ ...rel(tag, assets, DIGEST, false), assets: [...assets, `FORGE_${tag.slice(1)}.sig`].map((name) => ({ name, size: 1, digest: DIGEST })) });
+    const list = signedOnly([
+      manifest("v0.1.104", [`FORGE_0.1.104_update_${KEY}.zip`]),
+      manifest("v0.1.102", [`FORGE_0.1.102_update_${KEY}.zip`, "FORGE_0.1.102_x64-setup.exe"]),
+      manifest("v0.1.100", [`FORGE_0.1.100_update_${OLD}.zip`, "FORGE_0.1.100_x64-setup.exe"]),
+    ]);
+    expect(pickInstaller(list, KEY)).toMatchObject({ release: { tag_name: "v0.1.102" }, asset: { name: "FORGE_0.1.102_x64-setup.exe" }, then: { tag_name: "v0.1.104" } });
+    expect(pickInstaller(list, OLD)).toMatchObject({ release: { tag_name: "v0.1.100" } });
   });
 
   it("offers an update that needs another runtime over the matching installer, even an older one", () => {

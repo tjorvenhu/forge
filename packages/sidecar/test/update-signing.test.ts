@@ -1,11 +1,11 @@
 import { execFileSync } from "node:child_process";
 import { createHash, generateKeyPairSync } from "node:crypto";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { GitHubReleases } from "../src/update/github-releases.js";
-import { verifySignature } from "../src/update/signature.js";
+import { signatureFrom, verifySignature } from "../src/update/signature.js";
 
 const dirs: string[] = [];
 afterEach(() => {
@@ -31,6 +31,30 @@ describe("update signatures", () => {
     expect(verifySignature("FORGE_0.1.70_update_x.zip", "0".repeat(64), sig, pub)).toBe(false);
     expect(verifySignature("FORGE_0.1.70_update_x.zip", sha, sig)).toBe(false);
     expect(verifySignature("FORGE_0.1.70_update_x.zip", sha, "kaputt", pub)).toBe(false);
+  });
+
+  it("writes one signature file for all assets with --manifest", () => {
+    const dir = mkdtempSync(path.join(os.tmpdir(), "forge-sign-"));
+    dirs.push(dir);
+    const keys = generateKeyPairSync("ed25519");
+    const pub = keys.publicKey.export({ type: "spki", format: "pem" }).toString();
+    const zip = path.join(dir, "FORGE_0.1.102_update_x.zip");
+    const setup = path.join(dir, "FORGE_0.1.102_x64-setup.exe");
+    writeFileSync(zip, "zip");
+    writeFileSync(setup, "setup");
+    const manifest = path.join(dir, "FORGE_0.1.102.sig");
+    execFileSync(process.execPath, [path.resolve(__dirname, "../../../scripts/sign-update.mjs"), "--manifest", manifest, zip, setup], {
+      env: { ...process.env, FORGE_UPDATE_SIGNING_KEY: keys.privateKey.export({ type: "pkcs8", format: "pem" }).toString() },
+    });
+    const content = readFileSync(manifest, "utf8");
+    const sha = (s: string) => createHash("sha256").update(s).digest("hex");
+    expect(verifySignature("FORGE_0.1.102_update_x.zip", sha("zip"), signatureFrom("FORGE_0.1.102.sig", content, "FORGE_0.1.102_update_x.zip"), pub)).toBe(true);
+    expect(verifySignature("FORGE_0.1.102_x64-setup.exe", sha("setup"), signatureFrom("FORGE_0.1.102.sig", content, "FORGE_0.1.102_x64-setup.exe"), pub)).toBe(true);
+    // A signature belongs to its asset only; an asset the file does not list has none.
+    expect(verifySignature("FORGE_0.1.102_x64-setup.exe", sha("setup"), signatureFrom("FORGE_0.1.102.sig", content, "FORGE_0.1.102_update_x.zip"), pub)).toBe(false);
+    expect(signatureFrom("FORGE_0.1.102.sig", content, "FORGE_0.1.102_other.zip")).toBe("");
+    expect(signatureFrom("FORGE_0.1.102.sig", "kein json", "x")).toBe("");
+    expect(existsSync(`${zip}.sig`)).toBe(false);
   });
 
   it("refuses to sign without a key", () => {

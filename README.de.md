@@ -109,8 +109,9 @@ sie in den Einstellungen ändern.
 
 Nicht jedes Release hat einen Installer. „Latest“ zeigt immer auf das neueste Release mit Installer. Ältere
 Installer heißen `FORGE_<Version>_<Laufzeit>_x64-setup.exe`. Die Dateien `FORGE_<Version>_update_<Laufzeit>.zip`
-sind nur für Updates bestehender Installationen und reichen für eine Neuinstallation nicht. Dateien mit `.sig`
-und `.runtime` braucht FORGE selbst zum Prüfen der Updates.
+sind nur für Updates bestehender Installationen und reichen für eine Neuinstallation nicht. Die Datei
+`FORGE_<Version>.sig` braucht FORGE selbst zum Prüfen der Updates (Releases bis 0.1.101 haben je Datei eine `.sig`
+und eine `.runtime`-Datei).
 </details>
 
 **Updates** holt FORGE selbst: kurz nach dem Start und danach alle 30 Minuten. Du siehst die Änderungen und

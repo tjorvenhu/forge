@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 import type { AppUpdateState } from "@forge/protocol";
 import { AppUpdateService, changeRange, compareVersions, installedRuntimeKey, MAX_CHANGE_RELEASES, pickRelease, signedOnly, type Release } from "../src/update/app-update.js";
 import type { ReleaseSource } from "../src/update/github-releases.js";
-import { signedMessage } from "../src/update/signature.js";
+import { SIG_MANIFEST, signedMessage } from "../src/update/signature.js";
 
 const INSTALLER = Buffer.from("MZ fake installer");
 const DIGEST = `sha256:${createHash("sha256").update(INSTALLER).digest("hex")}`;
@@ -27,6 +27,11 @@ function rel(tag: string, assets: string[] = [`FORGE_${tag.slice(1)}_x64-setup.e
     published_at: "2026-10-12T10:00:00Z",
     assets: assets.flatMap((name) => [{ name, size: INSTALLER.length, digest }, ...(signed ? [{ name: `${name}.sig`, size: 88, digest: null }] : [])]),
   };
+}
+
+/** A release since 0.1.102: one FORGE_<v>.sig holds the signatures of all assets. */
+function relManifest(tag: string, assets: string[] = [`FORGE_${tag.slice(1)}_x64-setup.exe`]): Release {
+  return { ...rel(tag, assets, DIGEST, false), assets: [...assets.map((name) => ({ name, size: INSTALLER.length, digest: DIGEST })), { name: `FORGE_${tag.slice(1)}.sig`, size: 300, digest: null }] };
 }
 
 /** Own file per test: the real one in the temp folder belongs to the installed app. */
@@ -59,7 +64,11 @@ function fakeSource(list: () => Release[] | null | Error, o: FakeOpts = {}) {
     download: async (asset, file) => {
       calls.push(`download ${asset.name}`);
       if (o.fail) throw new Error(o.fail);
-      writeFileSync(file, asset.name!.endsWith(".sig") ? signatureOf(asset.name!.slice(0, -4)) : (o.content ?? INSTALLER));
+      if (SIG_MANIFEST.test(asset.name!)) {
+        const l = list();
+        const names = Array.isArray(l) ? l.flatMap((r) => (r.assets ?? []).map((a) => a.name!)) : [];
+        writeFileSync(file, JSON.stringify(Object.fromEntries(names.map((n) => [n, signatureOf(n)]))));
+      } else writeFileSync(file, asset.name!.endsWith(".sig") ? signatureOf(asset.name!.slice(0, -4)) : (o.content ?? INSTALLER));
     },
   };
   return { source, calls };
@@ -119,6 +128,19 @@ describe("app updates", () => {
     const { svc } = service(() => [rel("v0.1.8", undefined, null)], "0.1.0", { content: Buffer.from("MZ untergeschoben") });
     await svc.check();
     expect(await svc.download()).toMatchObject({ phase: "error", installerPath: null, message: expect.stringMatching(/Signatur/) });
+  });
+
+  it("takes the signatures from the one signature file of a release", async () => {
+    const list = [relManifest("v0.1.102")];
+    expect(signedOnly(list)[0]!.assets).toEqual([expect.objectContaining({ name: "FORGE_0.1.102_x64-setup.exe", sig: expect.objectContaining({ name: "FORGE_0.1.102.sig" }) })]);
+    const { svc } = service(() => list);
+    expect(await svc.check()).toMatchObject({ phase: "available", latest: { version: "0.1.102" } });
+    expect(await svc.download()).toMatchObject({ phase: "ready" });
+    // A file the signature file does not cover, or a changed one, is not installed.
+    const noDigest = list.map((r) => ({ ...r, assets: r.assets!.map((x) => ({ ...x, digest: null })) }));
+    const changed = service(() => noDigest, "0.1.0", { content: Buffer.from("MZ untergeschoben") }).svc;
+    await changed.check();
+    expect(await changed.download()).toMatchObject({ phase: "error", message: expect.stringMatching(/Signatur/) });
   });
 
   it("never offers unsigned assets", async () => {

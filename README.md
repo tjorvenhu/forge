@@ -112,8 +112,8 @@ it later in Settings.
 
 Not every release has an installer. "Latest" always points to the newest release that has one. Older installers
 are named `FORGE_<Version>_<Runtime>_x64-setup.exe`. The files `FORGE_<Version>_update_<Runtime>.zip` are only
-for updating existing installations and are not enough for a new installation. FORGE uses the `.sig` and
-`.runtime` files itself to verify updates.
+for updating existing installations and are not enough for a new installation. FORGE uses the file
+`FORGE_<Version>.sig` itself to verify updates (releases up to 0.1.101 have a `.sig` per file and a `.runtime` file).
 </details>
 
 **Updates:** FORGE checks for them shortly after start and then every 30 minutes. You see the changes and install

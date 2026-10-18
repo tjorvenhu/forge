@@ -7,7 +7,7 @@ import { ForgeError, type AppChangelog, type AppUpdateState } from "@forge/proto
 import { run } from "../util/proc.js";
 import { resolveTool } from "../util/tools.js";
 import { GitHubReleases, type ReleaseAsset, type ReleaseSource } from "./github-releases.js";
-import { SIG_SUFFIX, verifySignature } from "./signature.js";
+import { SIG_MANIFEST, SIG_SUFFIX, signatureFrom, verifySignature } from "./signature.js";
 import { tr } from "../i18n/index.js";
 
 /** Repository whose GitHub releases carry the FORGE installer (built by .github/workflows/release.yml). */
@@ -31,7 +31,11 @@ export function installerRuntimeKey(name: string): string | null {
   return KEYED_INSTALLER.exec(name)?.[1] ?? null;
 }
 
-/** Runtime key of a full installer in a release: from its long name or from the marker asset next to it. */
+/**
+ * Runtime key of a full installer in a release: from its long name, from the marker asset next to it
+ * (up to 0.1.101), or from the small update of the same release, which the same build made for the
+ * same runtime.
+ */
 function releaseInstallerKey(rel: Release, installerName: string): string | null {
   const named = installerRuntimeKey(installerName);
   if (named) return named;
@@ -39,7 +43,7 @@ function releaseInstallerKey(rel: Release, installerName: string): string | null
     const key = a.name ? RUNTIME_MARKER.exec(a.name)?.[1] : undefined;
     if (key) return key;
   }
-  return null;
+  return patchRuntimeKey(rel);
 }
 
 /** Runtime key of the small update a release carries, null without one. */
@@ -239,14 +243,18 @@ export interface Release {
 }
 
 /**
- * The releases with only the assets that have a signature next to them (FORGE_x.zip.sig), each
- * paired with it. Unsigned assets (releases from before the signing) are never offered.
+ * The releases with only the assets that have a signature, each paired with the file holding it: the
+ * signature file of the release (FORGE_<v>.sig) or, up to 0.1.101, one next to the asset (FORGE_x.zip.sig).
+ * Unsigned assets (releases from before the signing) are never offered. Whether the signature file
+ * really holds a valid one for the asset, fetchSigned checks.
  */
 export function signedOnly(releases: Release[]): Release[] {
   return releases.map((r) => {
     const all = r.assets ?? [];
-    const sigs = new Map(all.filter((a) => a.name?.endsWith(SIG_SUFFIX)).map((a) => [a.name!.slice(0, -SIG_SUFFIX.length), a]));
-    return { ...r, assets: all.filter((a) => a.name && !a.name.endsWith(SIG_SUFFIX) && sigs.has(a.name)).map((a) => ({ ...a, sig: sigs.get(a.name!) })) };
+    const manifest = all.find((a) => a.name && SIG_MANIFEST.test(a.name));
+    const sigs = new Map(all.filter((a) => a !== manifest && a.name?.endsWith(SIG_SUFFIX)).map((a) => [a.name!.slice(0, -SIG_SUFFIX.length), a]));
+    const sigOf = (a: ReleaseAsset) => sigs.get(a.name!) ?? manifest;
+    return { ...r, assets: all.filter((a) => a.name && !a.name.endsWith(SIG_SUFFIX) && sigOf(a)).map((a) => ({ ...a, sig: sigOf(a) })) };
   });
 }
 
@@ -283,7 +291,7 @@ export async function fetchSigned(source: ReleaseSource, asset: Asset, dir: stri
   const bad =
     asset.digest?.startsWith("sha256:") && hash !== asset.digest.slice(7).toLowerCase()
       ? tr().system.update.checksumMismatch
-      : !verifySignature(asset.name, hash, readFileSync(sigFile, "utf8"), publicKey)
+      : !verifySignature(asset.name, hash, signatureFrom(asset.sig.name ?? "", readFileSync(sigFile, "utf8"), asset.name), publicKey)
         ? tr().system.update.signatureMismatch
         : null;
   await rm(sigFile, { force: true });

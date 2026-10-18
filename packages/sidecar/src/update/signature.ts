@@ -10,8 +10,25 @@ MCowBQYDK2VwAyEANolNUx40wUqNPeUVaSGEP8kerxC73987vPWhk9Y6Buc=
 -----END PUBLIC KEY-----
 `;
 
-/** The signature of FORGE_x.zip is the asset FORGE_x.zip.sig (base64). */
+/** Releases up to 0.1.101 sign each asset in its own file: FORGE_x.zip.sig (base64). */
 export const SIG_SUFFIX = ".sig";
+
+/**
+ * Since then one file per release, FORGE_<v>.sig, holds the signatures of all its assets as JSON
+ * ({ "<asset name>": "<base64>" }). The name has no underscore after the version, unlike a per-asset .sig.
+ */
+export const SIG_MANIFEST = /^FORGE_[^_]+\.sig$/i;
+
+/** The signature of `name` from the content of a signature file; "" when it holds none for it. */
+export function signatureFrom(sigFileName: string, content: string, name: string): string {
+  if (!SIG_MANIFEST.test(sigFileName)) return content;
+  try {
+    const entry = (JSON.parse(content) as Record<string, unknown>)[name];
+    return typeof entry === "string" ? entry : "";
+  } catch {
+    return "";
+  }
+}
 
 /**
  * What gets signed: the asset name and the SHA-256 of its content. The name binds the signature to

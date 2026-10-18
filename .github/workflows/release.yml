@@ -7,14 +7,14 @@
 #                                    Installed apps with the same bundled runtime install it in seconds.
 #   FORGE_<v>_x64-setup.exe          only when the bundled runtime (node, git, gh, python) changed, or when
 #                                    asked for (Run workflow → full). Needed for new installations and
-#                                    for apps with an older runtime. Next to it FORGE_<v>_x64-setup.<runtime>.runtime,
-#                                    a tiny marker whose name tells the app the installer's runtime (the installer
-#                                    name stays short; up to 0.1.8x the key was in the installer name).
+#                                    for apps with an older runtime. Its runtime is the one of the update zip
+#                                    of the same release.
 # The runtime key comes from scripts/prepare-runtime.mjs (node-<v>_git-<v>_gh-<v>_python-<v>).
 #
-# Every asset gets a signature <asset>.sig (scripts/sign-update.mjs, key in the secret
-# FORGE_UPDATE_SIGNING_KEY). The app installs only signed assets; the public key is in
-# packages/sidecar/src/update/signature.ts.
+# FORGE_<v>.sig holds the signatures of all assets of the release (scripts/sign-update.mjs --manifest, key in
+# the secret FORGE_UPDATE_SIGNING_KEY). The app installs only signed assets; the public key is in
+# packages/sidecar/src/update/signature.ts. Up to 0.1.101 each asset had its own <asset>.sig and the
+# installer a FORGE_<v>_x64-setup.<runtime>.runtime marker; legacy_signatures publishes those once more.
 #
 # Code signature (Authenticode, against SmartScreen): Azure Artifact Signing through scripts/codesign.mjs.
 # Tauri signs forge-desktop.exe, the installer and the uninstaller with it; the exe of the update zip is
@@ -31,6 +31,10 @@ on:
     inputs:
       full:
         description: "Also build the full installer (with node, git, gh)"
+        type: boolean
+        default: false
+      legacy_signatures:
+        description: "Also publish the per-file .sig and the .runtime marker that FORGE up to 0.1.101 needs"
         type: boolean
         default: false
 
@@ -105,9 +109,15 @@ jobs:
           if (-not $codesign) { Write-Host "::warning::Secret AZURE_CLIENT_ID fehlt: FORGE wird ohne Code-Signatur gebaut." }
           $version = "0.1.${{ github.run_number }}"
           $key = (node scripts/prepare-runtime.mjs --key).Trim()
-          $assets = gh api "repos/${{ github.repository }}/releases?per_page=100" --jq '.[].assets[].name'
-          # Only a signed installer counts: the app ignores the unsigned ones of older releases.
-          $hasInstaller = [bool]($assets | Where-Object { $_ -like "*_x64-setup.${key}.runtime.sig" -or $_ -like "*_${key}_x64-setup.exe.sig" })
+          # One line per release with its asset names. Only a signed installer counts: the app ignores the
+          # unsigned ones of older releases. Since 0.1.102 one FORGE_<v>.sig signs all assets of a release
+          # and the runtime of its installer is the one of the update zip next to it.
+          $releases = gh api "repos/${{ github.repository }}/releases?per_page=100" --jq '.[] | [.assets[].name] | join(" ")'
+          $hasInstaller = [bool]($releases | Where-Object {
+            $names = $_ -split " "
+            ($names | Where-Object { $_ -like "*_x64-setup.${key}.runtime.sig" -or $_ -like "*_${key}_x64-setup.exe.sig" }) -or
+            (($names | Where-Object { $_ -like "*_x64-setup.exe" }) -and ($names | Where-Object { $_ -like "*_update_${key}.zip" }) -and ($names | Where-Object { $_ -match '^FORGE_[^_]+\.sig$' }))
+          })
           $full = ("${{ inputs.full }}" -eq "true") -or -not $hasInstaller
           $conf = "apps/desktop/src-tauri/tauri.conf.json"
           (Get-Content $conf -Raw) -replace '"version":\s*"[^"]*"', "`"version`": `"$version`"" | Set-Content $conf -NoNewline -Encoding utf8
@@ -211,9 +221,7 @@ jobs:
             $setup = Get-ChildItem apps/desktop/src-tauri/target/release/bundle/nsis/*-setup.exe | Select-Object -First 1
             $named = Join-Path $env:RUNNER_TEMP "FORGE_${version}_x64-setup.exe"
             Copy-Item $setup.FullName $named
-            $marker = Join-Path $env:RUNNER_TEMP "FORGE_${version}_x64-setup.${key}.runtime"
-            Set-Content $marker $key -NoNewline -Encoding ascii
-            $files += $named, $marker
+            $files += $named
           }
           if ("${{ steps.plan.outputs.codesign }}" -eq "true") {
             $exes = @("$pkg/forge-desktop.exe") + @($files | Where-Object { $_ -like "*.exe" })
@@ -224,9 +232,23 @@ jobs:
             }
           }
           # After the code signature: it changes the files, the update signature covers the final bytes.
-          node scripts/sign-update.mjs @files
+          # One signature file for all assets of the release.
+          $sigs = Join-Path $env:RUNNER_TEMP "FORGE_${version}.sig"
+          node scripts/sign-update.mjs --manifest $sigs @files
           if ($LASTEXITCODE -ne 0) { throw "Signieren fehlgeschlagen." }
-          $files += @($files | ForEach-Object { "$_.sig" })
+          if ("${{ inputs.legacy_signatures }}" -eq "true") {
+            # Bridge for installations up to 0.1.101: they only know <asset>.sig and the .runtime marker.
+            $legacy = @($files)
+            if ("${{ steps.plan.outputs.full }}" -eq "true") {
+              $marker = Join-Path $env:RUNNER_TEMP "FORGE_${version}_x64-setup.${key}.runtime"
+              Set-Content $marker $key -NoNewline -Encoding ascii
+              $legacy += $marker
+            }
+            node scripts/sign-update.mjs @legacy
+            if ($LASTEXITCODE -ne 0) { throw "Signieren fehlgeschlagen." }
+            $files = @($legacy) + @($legacy | ForEach-Object { "$_.sig" })
+          }
+          $files += $sigs
           $prev = git describe --tags --abbrev=0 2>$null
           $range = if ($prev) { "$prev..HEAD" } else { "HEAD~20..HEAD" }
           $notes = (git log $range --no-merges --format="- %s") -join "`n"

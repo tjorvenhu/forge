@@ -69,6 +69,14 @@ key in `signature.ts`, replace the secret; installed versions with the old key t
 the installer by hand. An installer the user selects themselves (Downloads folder) is not checked: they would
 run it anyway. Code signing (SmartScreen) is still missing.
 
+**One signature file (addendum 2026-10-18):** six files per release were too many for people looking for the
+download. Since 0.1.102 a single `FORGE_<v>.sig` holds the signatures of all assets as JSON (`{ "<asset>":
+"<base64>" }`, same message as above, `sign-update.mjs --manifest`). The `.runtime` marker is gone: the installer's
+runtime is the one of the update zip of the same release, which the same build makes. The app still reads the old
+form (`signedOnly`, `signatureFrom`). Installations up to 0.1.101 only know the old one; one bridge release with both
+forms (workflow input `legacy_signatures`) lets them update into the new form. Since then Authenticode signing via
+Azure Artifact Signing is in place as well (only `forge-desktop.exe`, installer and uninstaller).
+
 ## Addendum 2026-10-13: Sessions survive the update
 
 Goal: an update should neither close nor pause running Claude Sessions.
