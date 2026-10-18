@@ -1,37 +1,41 @@
-# FORGE-Statistik (services/stats)
+<img src="../../.github/assets/flags/gb.svg" height="14" alt=""> English · <a href="README.de.md"><img src="../../.github/assets/flags/de.svg" height="14" alt=""> Deutsch</a>
 
-Kleiner Dienst unter https://forge-stats.vanturis.de. Er nimmt die anonymen Nutzungszahlen der FORGE-Desktop-App an und zeigt die Summen aller Installationen öffentlich auf der Seite „FORGE in Zahlen“.
+# FORGE statistics (services/stats)
 
-Der Ordner gehört nicht zum pnpm-Workspace von FORGE. Er hat ein eigenes `package.json` und ein eigenes `pnpm-lock.yaml`.
+Small service at https://forge-stats.vanturis.de. It receives the anonymous usage numbers of the FORGE desktop app and shows the totals of all installations publicly on the page "FORGE in Zahlen" (FORGE in numbers; the page is in German).
 
-Stack: Next.js (App Router), TypeScript strict, `pg`, `zod`. Schlichtes CSS ohne Framework.
+In the app, usage statistics are off by default. After the setup assistant and the sync question, FORGE asks once whether to turn them on; without an answer they stay off. So only installations whose users turned them on send reports. They can be switched on or off at any time under Settings > About FORGE > Privacy; when they are switched off, FORGE deletes the data already sent at the service (`DELETE /api/v1/report/<installId>`).
 
-Die Seite übernimmt das Design der Desktop-App: Die Farb-, Schrift- und Radius-Tokens aus `apps/desktop/src/styles.css` stehen als CSS-Variablen in `src/app/globals.css` (nur das dunkle Theme, ein helles hat die App nicht). Die Bausteine in `src/components/blocks.tsx` bilden die Kacheln des Tagesberichts und die Karten der Einstellungen nach. Die Diagramme in `src/components/charts.tsx` folgen denen des Tagesberichts (`apps/desktop/src/components/report/usage-charts.tsx`): Säulen und Balken in HTML ohne Chart-Bibliothek, Tooltip bei Hover und Fokus, Tabelle als Alternative. Ändert die App ihre Tokens, hier nachziehen. Schrift ist Geist (Paket `geist`, SIL Open Font License, per `next/font` eingebunden), Icons kommen aus `lucide-react`. Logo und Favicon sind Kopien von `apps/desktop/src/assets/forge-logo.png` und `logo.svg`.
+The folder is not part of the FORGE pnpm workspace. It has its own `package.json` and its own `pnpm-lock.yaml`.
 
-## Was gespeichert wird
+Stack: Next.js (App Router), TypeScript strict, `pg`, `zod`. Plain CSS without a framework.
 
-Eine Zeile pro Installation in der Tabelle `installs`: zufällige Installations-ID, erste und letzte Meldung, FORGE-Version, Betriebssystem, die kumulativen Zähler als JSON, die Tokens und Kosten je Claude-Modell (`models`, JSON) und die Art des Claude-Abos (`plan`). Die App schickt immer den Gesamtstand seit dem 17.10.2026 (Start der Statistik, `USAGE_STATS_SINCE` in `packages/sidecar/src/persistence/db.ts`), der Dienst überschreibt den letzten Stand. App-Versionen vor diesem Stichtag schicken den Stand seit Installation; mit dem Update sinken ihre Zähler einmal.
+The page uses the design of the desktop app: the color, font and radius tokens from `apps/desktop/src/styles.css` are CSS variables in `src/app/globals.css` (dark theme only, the app has no light theme). The building blocks in `src/components/blocks.tsx` mirror the tiles of the daily report and the cards of the settings. The charts in `src/components/charts.tsx` follow those of the daily report (`apps/desktop/src/components/report/usage-charts.tsx`): columns and bars in HTML without a chart library, tooltip on hover and focus, table as an alternative. If the app changes its tokens, update them here. The font is Geist (package `geist`, SIL Open Font License, included via `next/font`), icons come from `lucide-react`. Logo and favicon are copies of `apps/desktop/src/assets/forge-logo.png` and `logo.svg`.
 
-Dazu in `install_days` der Stand jeder Installation am Ende jedes UTC-Tages (eine Zeile pro Installation und Tag, jede Meldung überschreibt die des laufenden Tages). Daraus entsteht der Verlauf: Der Zuwachs eines Tages ist der Stand minus dem letzten früheren Stand derselben Installation. Der erste Stand einer Installation zählt nicht als Zuwachs, ebenso ein Zähler, der im früheren Stand fehlt (neue App-Version, die ihren Gesamtstand seit Installation schickt). Negative Differenzen (Neuinstallation mit leerer Datenbank, Update auf den Stichtag) zählen als 0. Aktive Installationen eines Tages sind die mit einem Stand an diesem Tag. Wer die Statistik abschaltet, löscht mit der Installation auch ihre Tagesstände (`ON DELETE CASCADE`).
+## What is stored
 
-Keine IP-Adressen in der Datenbank oder in Logs. Für die Sperre gegen massenhaft neue IDs hält der Prozess gesalzene Hashes der IP-Adressen im Speicher, nur für den laufenden Tag.
+One row per installation in the table `installs`: random installation ID, first and last report, FORGE version, operating system, the cumulative counters as JSON, the tokens and costs per Claude model (`models`, JSON) and the type of Claude subscription (`plan`). The app always sends the total since 2026-10-17 (start of the statistics, `USAGE_STATS_SINCE` in `packages/sidecar/src/persistence/db.ts`), and the service overwrites the last state. App versions before this cutoff date send the total since installation; with the update their counters drop once.
 
-Die Tabellen legt der Dienst beim ersten Zugriff selbst an (`CREATE TABLE IF NOT EXISTS`, neue Spalten mit `ADD COLUMN IF NOT EXISTS`). Eine Migration ist nicht nötig.
+In addition, `install_days` holds the state of each installation at the end of each UTC day (one row per installation and day, each report overwrites the one for the current day). The history is derived from this: the increase for a day is the state minus the last earlier state of the same installation. The first state of an installation does not count as an increase, nor does a counter missing from the earlier state (a new app version that sends its total since installation). Negative differences (reinstallation with an empty database, update to the cutoff date) count as 0. Active installations on a day are those with a state on that day. Turning off the statistics deletes the installation together with its daily states (`ON DELETE CASCADE`).
+
+No IP addresses in the database or in logs. For the limit on mass-created IDs, the process keeps salted hashes of the IP addresses in memory, only for the current day.
+
+The service creates the tables itself on first access (`CREATE TABLE IF NOT EXISTS`, new columns with `ADD COLUMN IF NOT EXISTS`). No migration is needed.
 
 ## API
 
-| Methode und Pfad | Zweck | Antworten |
+| Method and path | Purpose | Responses |
 | --- | --- | --- |
-| `POST /api/v1/report` | Stand einer Installation melden | 204; 400 ungültig; 413 Body über 4 KB; 429 zu häufig; 503 DB weg |
-| `DELETE /api/v1/report/<installId>` | Datensatz löschen (Statistik in FORGE abgeschaltet) | 204, auch wenn es ihn nicht gab; 400 keine UUID v4 |
-| `GET /api/v1/totals` | Summen, Modelle, Versionen und Verlauf als JSON (siehe unten), `Cache-Control: public, max-age=300` | 200; 503 |
-| `GET /api/v1/live` | Installationen gerade online, gesamt und je Abo (`{ onlineInstalls, plans: [{ plan, online }], updatedAt }`); die Seite fragt alle 30 Sekunden, höchstens 15 Sekunden zwischengespeichert | 200; 503 |
-| `GET /api/v1/downloads` | Downloads des Installers (`*-setup.exe`) über alle Releases, ohne Updates, Signaturen und Marker; für das README-Badge, höchstens alle 30 Minuten von GitHub | 200; 503 |
-| `GET /api/v1/donations` | Bisher gespendet (`{ donations: { cents, count } }`, Euro-Cent; `donations: null` ohne `STRIPE_SECRET_KEY`); für das Herz in der App, höchstens alle 10 Minuten von Stripe | 200; 503 |
-| `GET /api/health` | Healthcheck mit DB-Abfrage | 200 `ok`; 503 |
-| `GET /` | Öffentliche Seite | 200, bei DB-Ausfall mit Hinweis statt Zahlen |
+| `POST /api/v1/report` | Report the state of an installation | 204; 400 invalid; 413 body over 4 KB; 429 too frequent; 503 DB down |
+| `DELETE /api/v1/report/<installId>` | Delete the record (statistics turned off in FORGE) | 204, even if it did not exist; 400 not a UUID v4 |
+| `GET /api/v1/totals` | Totals, models, versions and history as JSON (see below), `Cache-Control: public, max-age=300` | 200; 503 |
+| `GET /api/v1/live` | Installations online right now, in total and per subscription (`{ onlineInstalls, plans: [{ plan, online }], updatedAt }`); the page polls every 30 seconds, cached for at most 15 seconds | 200; 503 |
+| `GET /api/v1/downloads` | Downloads of the installer (`*-setup.exe`) across all releases, excluding updates, signatures and markers; for the README badge, fetched from GitHub at most every 30 minutes | 200; 503 |
+| `GET /api/v1/donations` | Donated so far (`{ donations: { cents, count } }`, euro cents; `donations: null` without `STRIPE_SECRET_KEY`); for the heart in the app, fetched from Stripe at most every 10 minutes | 200; 503 |
+| `GET /api/health` | Health check with a DB query | 200 `ok`; 503 |
+| `GET /` | Public page | 200, on DB failure with a notice instead of numbers |
 
-Body der Meldung:
+Body of the report:
 
 ```json
 {
@@ -52,19 +56,19 @@ Body der Meldung:
 }
 ```
 
-`userTurns` sind die Durchläufe, die Nutzer selbst gestartet haben, `costUsdCents` die geschätzten API-Kosten aller Claude-Aufrufe in US-Cent. `models` enthält je Modell-ID alle vier Token-Arten zusammen und die geschätzten Kosten, kumulativ seit dem Stichtag. `plan` ist das Abo des in Claude Code angemeldeten Kontos (`max_20x`, `max_5x`, `max`, `pro`, `team`, `enterprise` ...), gelesen aus `organizationType` und dem Rate-Limit-Tier in `.claude.json`; `null` ohne claude.ai-Anmeldung. Ältere App-Versionen schicken diese Felder nicht; dann gelten 0, `{}` und `null`.
+`userTurns` are the runs that users started themselves, `costUsdCents` the estimated API cost of all Claude calls in US cents. `models` contains, per model ID, all four token types combined and the estimated cost, cumulative since the cutoff date. `plan` is the subscription of the account logged in to Claude Code (`max_20x`, `max_5x`, `max`, `pro`, `team`, `enterprise` ...), read from `organizationType` and the rate limit tier in `.claude.json`; `null` without a claude.ai login. Older app versions do not send these fields; then 0, `{}` and `null` apply.
 
-Regeln (siehe `src/lib/report.ts`):
+Rules (see `src/lib/report.ts`):
 
-- Zähler sind ganze Zahlen ab 0. Unbekannte Schlüssel werden ignoriert, fehlende zählen als 0.
-- Obergrenzen pro Installation: Token-Felder 10^12, `claudeWorkMs` 10^11, `costUsdCents` 10^10, alle anderen 10^7. Darüber: 400.
-- `models`: höchstens 20 Einträge, Schlüssel 1 bis 64 Zeichen aus `[A-Za-z0-9._:[]-]`, Werte `tokens` (ganzzahlig, 0 bis 4·10^12) und `costUsdCents` (ganzzahlig, 0 bis 10^10), beide Pflicht.
-- `plan`: `null` oder 1 bis 24 Zeichen aus `[a-z0-9_]`.
-- `appVersion` höchstens 32 Zeichen aus `[0-9A-Za-z.+-]`, `os` höchstens 64 Zeichen ohne Steuerzeichen.
-- Die App meldet alle 5 Minuten. Höchstens eine Meldung pro Installation alle 4 Minuten (429). Die App wertet 429 als gesendet.
-- Höchstens 20 neue Installations-IDs pro IP-Adresse und Tag (429). Der Zähler liegt nur im Speicher und beginnt nach einem Neustart von vorn.
+- Counters are integers from 0. Unknown keys are ignored, missing ones count as 0.
+- Upper limits per installation: token fields 10^12, `claudeWorkMs` 10^11, `costUsdCents` 10^10, all others 10^7. Above that: 400.
+- `models`: at most 20 entries, keys 1 to 64 characters from `[A-Za-z0-9._:[]-]`, values `tokens` (integer, 0 to 4·10^12) and `costUsdCents` (integer, 0 to 10^10), both required.
+- `plan`: `null` or 1 to 24 characters from `[a-z0-9_]`.
+- `appVersion` at most 32 characters from `[0-9A-Za-z.+-]`, `os` at most 64 characters without control characters.
+- The app reports every 5 minutes. At most one report per installation every 4 minutes (429). The app treats 429 as sent.
+- At most 20 new installation IDs per IP address and day (429). The counter lives only in memory and starts over after a restart.
 
-Antwort von `GET /api/v1/totals`:
+Response of `GET /api/v1/totals`:
 
 ```json
 {
@@ -80,70 +84,70 @@ Antwort von `GET /api/v1/totals`:
 }
 ```
 
-- `onlineInstalls`: Installationen mit einer Meldung in den letzten 10 Minuten (`ONLINE_MINUTES`, die App meldet alle 5).
-- `models`: Summe je Modell-ID über alle Installationen, die 50 mit den meisten Tokens. Die Seite fasst `claude-opus-5-5` und `claude-opus-5-5[1m]` (dasselbe Modell mit 1M-Kontext) zu einer Zeile zusammen.
-- `plans`: aktive Installationen der letzten 30 Tage je Abo, davon `online` gerade online; `null` heißt unbekannt (ältere App oder ohne claude.ai-Anmeldung).
-- `versions`: aktive Installationen der letzten 30 Tage je FORGE-Version, die häufigste zuerst.
-- `history`: die letzten 30 UTC-Tage einschließlich heute, älteste zuerst; `tokens` ist der Zuwachs aller vier Token-Arten, `claudeTurns` der Zuwachs an Durchläufen.
-- Das README-Badge liest `installs`.
+- `onlineInstalls`: installations with a report in the last 10 minutes (`ONLINE_MINUTES`, the app reports every 5).
+- `models`: total per model ID across all installations, the 50 with the most tokens. The page merges `claude-opus-5-5` and `claude-opus-5-5[1m]` (the same model with 1M context) into one row.
+- `plans`: active installations of the last 30 days per subscription, of which `online` are online right now; `null` means unknown (older app or without a claude.ai login).
+- `versions`: active installations of the last 30 days per FORGE version, most common first.
+- `history`: the last 30 UTC days including today, oldest first; `tokens` is the increase of all four token types, `claudeTurns` the increase in runs.
+- The README badge reads `installs`.
 
-Die Summen werden höchstens alle 5 Minuten neu aus der Datenbank berechnet (Zwischenspeicher im Prozess). Neue Meldungen erscheinen also mit bis zu 5 Minuten Verzögerung.
+The totals are recomputed from the database at most every 5 minutes (in-process cache). New reports therefore appear with a delay of up to 5 minutes.
 
-## Umgebungsvariablen
+## Environment variables
 
-| Variable | Pflicht | Bedeutung |
+| Variable | Required | Meaning |
 | --- | --- | --- |
-| `DATABASE_URL` | ja | Postgres-Verbindung, z. B. `postgres://user:pass@host:5432/forge_stats` |
-| `PORT` | nein | Port des Servers, im Image `3000` |
-| `CLIENT_IP_HEADER` | nein | Header, in dem ein Proxy vor Coolify die Client-Adresse mitgibt, z. B. `x-client-ip` |
-| `STRIPE_SECRET_KEY` | nein | Stripe-Schlüssel für „Bisher gespendet“. Ein eingeschränkter Schlüssel (`rk_live_…`) mit Lesezugriff auf *Checkout Sessions* reicht. Ohne ihn fehlt die Angabe auf der Seite. |
-| `STRIPE_PAYMENT_LINK` | nein | Anderer Spenden-Link (`plink_…`). Standard ist der Link hinter „Unterstützen“ (`DONATE_LINK_ID` in `src/lib/donations.ts`). |
+| `DATABASE_URL` | yes | Postgres connection, e.g. `postgres://user:pass@host:5432/forge_stats` |
+| `PORT` | no | Server port, `3000` in the image |
+| `CLIENT_IP_HEADER` | no | Header in which a proxy in front of Coolify passes the client address, e.g. `x-client-ip` |
+| `STRIPE_SECRET_KEY` | no | Stripe key for the "Bisher gespendet" (donated so far) figure. A restricted key (`rk_live_…`) with read access to *Checkout Sessions* is enough. Without it the figure is missing from the page. |
+| `STRIPE_PAYMENT_LINK` | no | A different donation link (`plink_…`). The default is the link behind "Support" (`DONATE_LINK_ID` in `src/lib/donations.ts`). |
 
-„Bisher gespendet“ ist die Summe aller bezahlten Checkouts in Euro über den Spenden-Link, vor den Stripe-Gebühren und ohne abgezogene Erstattungen. Der Dienst fragt Stripe höchstens alle 10 Minuten.
+"Bisher gespendet" is the sum of all paid checkouts in euros via the donation link, before Stripe fees and without deducting refunds. The service queries Stripe at most every 10 minutes.
 
-Die Client-IP liest der Dienst aus dem Header in `CLIENT_IP_HEADER` (falls gesetzt), sonst aus `CF-Connecting-Ip`, sonst aus `X-Real-Ip`, sonst aus dem letzten Eintrag von `X-Forwarded-For`. Die beiden letzten setzt Traefik.
+The service reads the client IP from the header in `CLIENT_IP_HEADER` (if set), otherwise from `CF-Connecting-Ip`, otherwise from `X-Real-Ip`, otherwise from the last entry of `X-Forwarded-For`. Traefik sets the last two.
 
-### Hinter dem eigenen HAProxy (so betrieben)
+### Behind our own HAProxy (how it is run)
 
-HAProxy beendet TLS mit eigenem Zertifikat und leitet per HTTP an Traefik weiter. Deshalb:
+HAProxy terminates TLS with its own certificate and forwards to Traefik over HTTP. Therefore:
 
-- Domain in Coolify mit **`http://`**: `http://forge-stats.vanturis.de:3000`. Mit `https://` leitet Traefik jede
-  Anfrage auf HTTPS um, HAProxy schickt sie wieder per HTTP, und der Browser meldet `ERR_TOO_MANY_REDIRECTS`.
-- Im HAProxy-Frontend die Client-Adresse mitgeben (überschreibt, was der Client selbst schickt):
+- Domain in Coolify with **`http://`**: `http://forge-stats.vanturis.de:3000`. With `https://`, Traefik redirects every
+  request to HTTPS, HAProxy sends it again over HTTP, and the browser reports `ERR_TOO_MANY_REDIRECTS`.
+- Pass the client address in the HAProxy frontend (overwrites whatever the client sends itself):
   `http-request set-header X-Client-IP %[src]`
-- In Coolify die Umgebungsvariable `CLIENT_IP_HEADER=x-client-ip` setzen. Ohne beides sieht der Dienst bei
-  jedem Nutzer die Adresse des HAProxy, und die Sperre für neue Installationen gilt für alle zusammen.
+- Set the environment variable `CLIENT_IP_HEADER=x-client-ip` in Coolify. Without both, the service sees the
+  HAProxy address for every user, and the limit on new installations applies to all of them together.
 
-Hinter Cloudflare (Proxy an) muss der SSL-Modus **Full (strict)** sein, aus demselben Grund.
+Behind Cloudflare (proxy on), the SSL mode must be **Full (strict)**, for the same reason.
 
-## Einrichtung in Coolify (eine Ressource mit Postgres)
+## Setup in Coolify (one resource with Postgres)
 
-`docker-compose.yml` startet den Dienst und seine Postgres zusammen. Die Datenbank ist nur im internen Netz
-erreichbar, ihre Daten liegen im Volume `stats-db`.
+`docker-compose.yml` starts the service and its Postgres together. The database is only reachable on the internal network,
+its data lives in the volume `stats-db`.
 
-1. DNS: A-Record `forge-stats.vanturis.de` auf den Coolify-Server.
-2. In Coolify: Projekt wählen, **+ New**, **Public Repository** (oder **Private Repository (with GitHub App)**,
-   solange das Repo privat ist), URL `https://github.com/vanturis/forge`, Branch `main`.
+1. DNS: A record `forge-stats.vanturis.de` pointing to the Coolify server.
+2. In Coolify: choose a project, **+ New**, **Public Repository** (or **Private Repository (with GitHub App)**
+   while the repo is private), URL `https://github.com/vanturis/forge`, branch `main`.
 3. Build Pack: **Docker Compose**. Base Directory: **`/services/stats`**. Docker Compose Location:
-   **`/docker-compose.yml`**. Speichern: Coolify liest die Datei und zeigt die Dienste `stats` und `postgres`.
-4. Beim Dienst `stats` als Domain **`https://forge-stats.vanturis.de:3000`** eintragen. Das `:3000` ist der Port
-   im Container, nicht der öffentliche Port. Traefik macht TLS (Let's Encrypt) und Kompression.
-5. Unter Environment Variables nichts eintragen: `SERVICE_USER_POSTGRES` und `SERVICE_PASSWORD_POSTGRES` erzeugt
-   Coolify beim ersten Deploy selbst. Erscheinen sie dort nicht, beide von Hand setzen (Passwort nur aus
-   Buchstaben und Ziffern, es steht in einer URL).
-6. **Deploy**. Danach prüfen: `https://forge-stats.vanturis.de/api/health` liefert `ok`.
-7. Auto-Deploy: Mit der GitHub App baut Coolify bei jedem Push neu. Mit **Watch Paths** `services/stats/**`
-   nur dann, wenn sich der Dienst ändert.
+   **`/docker-compose.yml`**. Save: Coolify reads the file and shows the services `stats` and `postgres`.
+4. For the service `stats`, enter **`https://forge-stats.vanturis.de:3000`** as the domain. The `:3000` is the port
+   inside the container, not the public port. Traefik handles TLS (Let's Encrypt) and compression.
+5. Enter nothing under Environment Variables: Coolify generates `SERVICE_USER_POSTGRES` and `SERVICE_PASSWORD_POSTGRES`
+   itself on the first deploy. If they do not appear there, set both by hand (password only
+   letters and digits, it is part of a URL).
+6. **Deploy**. Then check: `https://forge-stats.vanturis.de/api/health` returns `ok`.
+7. Auto deploy: with the GitHub App, Coolify rebuilds on every push. With **Watch Paths** `services/stats/**`
+   only when the service changes.
 
-Das Image läuft als Benutzer `nextjs` (nicht root) und startet die Standalone-Ausgabe von Next mit
-`node server.js`. Es bringt einen `HEALTHCHECK` auf `/api/health` mit.
+The image runs as user `nextjs` (not root) and starts the Next standalone output with
+`node server.js`. It includes a `HEALTHCHECK` on `/api/health`.
 
-Ohne Compose geht es auch: Postgres als eigene Coolify-Ressource, Anwendung mit Build Pack **Dockerfile**,
-Base Directory `/services/stats`, Port `3000`, `DATABASE_URL` auf die interne URL der Datenbank.
+It also works without Compose: Postgres as a separate Coolify resource, the application with Build Pack **Dockerfile**,
+Base Directory `/services/stats`, port `3000`, `DATABASE_URL` set to the internal URL of the database.
 
-Das Image läuft als Benutzer `nextjs` (nicht root) und startet die Standalone-Ausgabe von Next mit `node server.js`.
+The image runs as user `nextjs` (not root) and starts the Next standalone output with `node server.js`.
 
-## Lokal starten
+## Running locally
 
 ```sh
 cd services/stats
@@ -151,7 +155,7 @@ pnpm install --ignore-workspace
 DATABASE_URL=postgres://user:pass@127.0.0.1:5432/forge_stats pnpm dev
 ```
 
-Danach läuft die Seite auf http://localhost:3000. Eine Testmeldung:
+The page then runs at http://localhost:3000. A test report:
 
 ```sh
 curl -i -X POST http://localhost:3000/api/v1/report \
@@ -160,16 +164,16 @@ curl -i -X POST http://localhost:3000/api/v1/report \
 curl http://localhost:3000/api/v1/totals
 ```
 
-Weitere Befehle:
+More commands:
 
 ```sh
-pnpm test             # Unit-Tests (vitest, ohne Datenbank)
-STATS_TEST_DATABASE_URL=postgres://... pnpm test   # dazu die Verlaufsberechnung gegen eine echte Postgres
+pnpm test             # unit tests (vitest, without a database)
+STATS_TEST_DATABASE_URL=postgres://... pnpm test   # plus the history calculation against a real Postgres
 pnpm exec tsc --noEmit
-pnpm build            # Standalone-Ausgabe in .next/standalone
+pnpm build            # standalone output in .next/standalone
 ```
 
-Docker lokal:
+Docker locally:
 
 ```sh
 docker build -t forge-stats services/stats

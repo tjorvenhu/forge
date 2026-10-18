@@ -1,129 +1,131 @@
-# Tests und Ergebnisse
+<img src="../.github/assets/flags/gb.svg" height="14" alt=""> English · <a href="TESTING.de.md"><img src="../.github/assets/flags/de.svg" height="14" alt=""> Deutsch</a>
 
-Letzter vollständiger Lauf: 2026-10-12, Windows 11 Pro 26200, Node 24.11, Claude Code mit Max-Login (E2E mit Haiku).
+# Tests and results
 
-| Suite | Befehl | Ergebnis |
+Last full run: 2026-10-12, Windows 11 Pro 26200, Node 24.11, Claude Code with Max login (E2E with Haiku).
+
+| Suite | Command | Result |
 |---|---|---|
-| Lint | `pnpm lint` | ohne Befund |
-| Typecheck (protocol, sidecar, desktop) | `pnpm typecheck` | ohne Fehler |
-| Sidecar Unit/Integration | `pnpm --filter @forge/sidecar test` | 386 / 388 bestanden; die 2 Fehler treten auch ohne die Änderungen vom 2026-10-12 auf (gelöschte Datei unter Windows kurz noch sichtbar) |
-| Desktop Unit/Komponenten | `pnpm --filter @forge/desktop test` | 139 / 139 bestanden |
-| E2E mit echter Claude-Session | `pnpm test:e2e` (unter PowerShell 5.1: Build und `npx vitest run test/e2e` einzeln) | 17 / 17 bestanden |
-| Release-App ohne Node/Git/gh im PATH | manuell | Sidecar läuft aus `runtime/node`, Diagnose zeigt „mitgeliefert“ |
-| Rust-Hülle | `cargo build` | ohne Warnungen |
-| Gemini Live und Gemini-Sprache gegen den echten Dienst | `scripts/gemini-live-smoke.ts`, `scripts/gemini-voice-smoke.ts` | bestanden (2026-10-12) |
-| Strukturierte Antwort mit der echten CLI | `scripts/structured-smoke.ts` | bestanden (Haiku, 4 s) |
-| Rust-Hülle mit gebündelten Zeilen | `cargo build` | ohne Fehler |
+| Lint | `pnpm lint` | no findings |
+| Typecheck (protocol, sidecar, desktop) | `pnpm typecheck` | no errors |
+| Sidecar unit/integration | `pnpm --filter @forge/sidecar test` | 386 / 388 passed; the 2 failures also occur without the changes from 2026-10-12 (a deleted file briefly stays visible on Windows) |
+| Desktop unit/components | `pnpm --filter @forge/desktop test` | 139 / 139 passed |
+| E2E with a real Claude session | `pnpm test:e2e` (under PowerShell 5.1: build and `npx vitest run test/e2e` separately) | 17 / 17 passed |
+| Release app without Node/Git/gh in PATH | manual | Sidecar runs from `runtime/node`, diagnostics show "mitgeliefert" (bundled) |
+| Rust shell | `cargo build` | no warnings |
+| Gemini Live and Gemini voice against the real service | `scripts/gemini-live-smoke.ts`, `scripts/gemini-voice-smoke.ts` | passed (2026-10-12) |
+| Structured answer with the real CLI | `scripts/structured-smoke.ts` | passed (Haiku, 4 s) |
+| Rust shell with bundled lines | `cargo build` | no errors |
 
-## Was die Suites abdecken
+## What the suites cover
 
-**Unit/Integration (Sidecar)**
-- `git-parsers.test.ts`: Porcelain-v2-Status (Umbenennungen, Konflikte, Leerzeichen, Umlaute, detached HEAD), Unified-Diff-Parser, Log, Branches, Secret-/Artefakt-Erkennung, Clone-URL-Validierung (`ext::`, `--upload-pack`, `file://` abgelehnt).
-- `policy.test.ts`: Sperrliste (Force-Push, Push auf main, reset --hard, Branch löschen, rm -rf /, sensible Pfade), Profile, sandbox-only sperrt Autonomous, Redaction.
-- `project-git.test.ts`: Import/Kanonisierung/Dubletten (auch Groß-/Kleinschreibung unter Windows), Persistenz über DB-Neustart, Projekt anlegen mit Vorlagen, fehlender Ordner, echte Git-Repos: Diff, Commit nur der ausgewählten Dateien, Secret-Stopp, Konflikt-Stopp, erster Commit.
-- `normalize.test.ts`: Normalizer gegen eine aufgezeichnete echte `stream-json`-Ausgabe (Fixture), Robustheit gegen kaputte/unbekannte Events.
-- `session-service.test.ts`: Session-Lebenszyklus mit simulierter Runtime: Profil-Modi, Freigaben + Audit, Sperrliste, Stop, Absturz und Resume, Fehlerdarstellung, Redaction; Sessions über einen Update-Neustart (wieder geöffnet, arbeitende mit automatischer Nachricht, abgebrochene Installation, alte Marken, zweiter Update-Schritt).
-- `usage-commit.test.ts`: Umwandlung der Usage-Daten, Prompt und Bereinigung der KI-Commit-Nachricht.
-- `setup-tools.test.ts`: Auslesen der Login-URL aus der echten CLI-Ausgabe, Vorrang der mitgelieferten Werkzeuge, PATH für Sessions.
+**Unit/integration (sidecar)**
+- `git-parsers.test.ts`: porcelain v2 status (renames, conflicts, spaces, umlauts, detached HEAD), unified diff parser, log, branches, secret/artifact detection, clone URL validation (`ext::`, `--upload-pack`, `file://` rejected).
+- `policy.test.ts`: blocklist (force push, push to main, reset --hard, delete branch, rm -rf /, sensitive paths), profiles, sandbox-only blocks Autonomous, redaction.
+- `project-git.test.ts`: import/canonicalization/duplicates (including case differences on Windows), persistence across a DB restart, creating a project with templates, missing folder, real Git repos: diff, commit of only the selected files, secret stop, conflict stop, first commit.
+- `normalize.test.ts`: normalizer against a recorded real `stream-json` output (fixture), robustness against broken/unknown events.
+- `session-service.test.ts`: session lifecycle with a simulated runtime: profile modes, approvals + audit, blocklist, stop, crash and resume, error display, redaction; sessions across an update restart (reopened, working ones with an automatic message, aborted installation, old markers, second update step).
+- `usage-commit.test.ts`: conversion of usage data, prompt and cleanup of the AI commit message.
+- `setup-tools.test.ts`: reading the login URL from real CLI output, precedence of the bundled tools, PATH for sessions.
 
-- `claude-config.test.ts`: CLAUDE.md global/Projekt/lokal mit Konflikterkennung, .bak, git exclude; Skills/Subagenten anlegen, auflisten, löschen; Hooks prüfen und nur den Schlüssel ersetzen; MCP-Ausgabe parsen und Argumente bauen.
-- `worktrees.test.ts`: Worktree anlegen/entfernen (echtes Git), Branch-Slugs.
-- `git-sync.test.ts`: Push und Pull gegen ein Bare-Remote: Rebase eigener Commits mit Autostash, Vorspulen, abgebrochener Rebase bei Konflikt (Repo unverändert, Dateien benannt), Schutz von main vor jeder Änderung, neuer Branch; Handler starten bei Konflikt eine Claude-Session.
-- `plugins.test.ts`: Ausgabe von `claude plugin list --available --json` zusammenführen (installierte zuerst, fehlende ergänzen).
-- `removal.test.ts`: GitHub-Repo aus dem Remote lesen, gesperrte Ordner (Laufwerk, Home, Standardordner, FORGE-Daten, verschachtelte Projekte), Löschen von Ordner (inkl. schreibgeschützter Git-Objekte) und Repo mit simuliertem gh. Worktree eines Agenten entfernen, während ein Prozess im Ordner läuft (Session wird vorher beendet; belegter Ordner gibt eine klare Meldung, der Rest geht beim nächsten Versuch).
-- `session-service.test.ts` (Remote): Bridge für offene Sessions, Echo eigener Nachrichten ohne Dublette, Nachricht vom Handy startet einen Durchlauf und landet mit Markierung im Verlauf. Remote ist global: Einschalten ohne laufende Session startet nichts, N laufende Sessions aus mehreren Projekten bekommen N Einträge mit eindeutigen Namen, gestartete und fortgesetzte Sessions werden automatisch verbunden, beendete und gelöschte fallen heraus, Ausschalten trennt alle, erneutes Einschalten verbindet fehlgeschlagene neu.
-- `session-service.test.ts` (ergänzt): Auto-Test + Auto-Commit nur mit Dateien des Durchlaufs, kein Commit bei roten Tests.
-- `project-git.test.ts` (ergänzt): Push/Pull gegen lokales Bare-Remote (main-Schutz, Fast-Forward, Divergenz).
+- `claude-config.test.ts`: CLAUDE.md global/project/local with conflict detection, .bak, git exclude; create, list and delete skills/subagents; check hooks and replace only that key; parse MCP output and build arguments.
+- `worktrees.test.ts`: create/remove worktrees (real Git), branch slugs.
+- `git-sync.test.ts`: push and pull against a bare remote: rebase of own commits with autostash, fast-forward, aborted rebase on conflict (repo unchanged, files named), protection of main against any change, new branch; handlers start a Claude session on conflict.
+- `plugins.test.ts`: merging the output of `claude plugin list --available --json` (installed first, missing ones added).
+- `removal.test.ts`: reading the GitHub repo from the remote, blocked folders (drive, home, standard folders, FORGE data, nested projects), deleting the folder (including read-only Git objects) and the repo with a simulated gh. Removing an agent's worktree while a process runs in the folder (the session is ended first; a locked folder gives a clear message, the rest is removed on the next attempt).
+- `session-service.test.ts` (Remote): bridge for open sessions, echo of own messages without duplicates, a message from the phone starts a turn and appears marked in the history. Remote is global: turning it on without a running session starts nothing, N running sessions from several projects get N entries with unique names, started and resumed sessions are connected automatically, ended and deleted ones drop out, turning it off disconnects all, turning it on again reconnects failed ones.
+- `session-service.test.ts` (extended): auto-test + auto-commit only with the files of the turn, no commit on failing tests.
+- `project-git.test.ts` (extended): push/pull against a local bare remote (main protection, fast-forward, divergence).
 
-- `session-service.test.ts` (Phase 4): Antworten auf Rückfragen als `updatedInput.answers`, Überspringen, Plan annehmen setzt den Profilmodus, Feedback hält den Plan-Modus, Modus-Sync aus `system/status`, Kontextstand nach dem Durchlauf, Komprimierung im Verlauf.
-- `policy.test.ts` (Phase 4): Plan-Datei in `~/.claude/plans` erlaubt, alles andere außerhalb weiter gesperrt (auch per `..`).
-- `search-devserver.test.ts`: Volltextsuche (Präfix, Groß-/Kleinschreibung, Umlaute, FTS-Syntax wirkungslos, Treffer verschwinden mit der Session); Dev-Server-Erkennung (inkl. `npm run dev`), Adress-Erkennung aus typischer Ausgabe, Start/Stopp mit echtem Prozess, Absturz mit Exit-Code.
+- `session-service.test.ts` (phase 4): answers to questions as `updatedInput.answers`, skipping, accepting a plan sets the profile mode, feedback keeps plan mode, mode sync from `system/status`, context state after the turn, compaction in the history.
+- `policy.test.ts` (phase 4): plan file in `~/.claude/plans` allowed, everything else outside still blocked (also via `..`).
+- `search-devserver.test.ts`: full-text search (prefix, case, umlauts, FTS syntax has no effect, hits disappear with the session); dev server detection (including `npm run dev`), address detection from typical output, start/stop with a real process, crash with exit code.
 
-- `phone-units.test.ts`: SIP-Parser (Kurzformen, Fortsetzungszeilen, Header-Listen), Antworten, Digest gegen das RFC-2617-Beispiel, SDP, G.711 gegen Referenzwerte, Downsampling ohne Aliasing, WAV, Sprachpausen-Erkennung (auch höhere Schwelle während FORGE spricht), RTP mit Takt, Stille und DTMF, Nummernvergleich, vorlesbarer Text, DPAPI-Ablage mit Sonderzeichen.
-- `phone-live.test.ts` (ADR 0011): Werkzeug-Schemas für Gemini und Prüfung der Argumente, Gemini-Live-Client mit Fake-WebSocket (Setup, 8↔16/24 kHz, Function Calls, goAway mit Resumption, abgelehnter Key), Gesprächsablauf mit Gemini (Begrüßung, Audio vor dem Abnehmen, Werkzeuge, zurückgezogene Aufrufe, Unterbrechen, Auflegen, PIN, Ausfall), Gemini-Sprache per SSE, Tischtelefon (Provisioning, LEDs, Digest am Telefon, Token- und IP-Prüfung, Taste startet Anruf, Freigabe-Menü, Taste im Gespräch).
-- Gegen echte Dienste (braucht `GEMINI_API_KEY`): `pnpm --filter @forge/sidecar exec tsx scripts/gemini-live-smoke.ts` (Verbindung, Function Call, deutsche Antwort mit Sprache) und `scripts/gemini-voice-smoke.ts` (Sprachausgabe und Wiedererkennung).
-- `phone-call.test.ts`: Test-Anlage über echtes UDP: Registrierung mit Digest und NAT-Erkennung, falsches Passwort, Wählen nur mit Ziffern und CANCEL beim Klingeln; PhoneService Ende zu Ende: fremde Nummer abgewiesen, erlaubter Anruf mit Begrüßung, Audio in beide Richtungen, Erkennung bis zu Claude, gesperrtes Steuern, falsche und richtige PIN per DTMF, Auflegen durch die Gegenstelle, Protokoll mit Transkript; Rückruf nach fertiger Session mit Proxy-Auth, Sprache erst nach dem Abnehmen, PCMU, Auflegen durch FORGE.
+- `phone-units.test.ts`: SIP parser (compact forms, continuation lines, header lists), responses, digest against the RFC 2617 example, SDP, G.711 against reference values, downsampling without aliasing, WAV, speech pause detection (including a higher threshold while FORGE speaks), RTP with clock, silence and DTMF, number matching, speakable text, DPAPI storage with special characters.
+- `phone-live.test.ts` (ADR 0011): tool schemas for Gemini and argument checks, Gemini Live client with a fake WebSocket (setup, 8↔16/24 kHz, function calls, goAway with resumption, rejected key), call flow with Gemini (greeting, audio before pickup, tools, withdrawn calls, interruption, hangup, PIN, outage), Gemini voice via SSE, desk phone (provisioning, LEDs, digest on the phone, token and IP check, key starts a call, approval menu, key during a call).
+- Against real services (requires `GEMINI_API_KEY`): `pnpm --filter @forge/sidecar exec tsx scripts/gemini-live-smoke.ts` (connection, function call, German answer with voice) and `scripts/gemini-voice-smoke.ts` (speech output and recognition).
+- `phone-call.test.ts`: test PBX over real UDP: registration with digest and NAT detection, wrong password, dialing with digits only and CANCEL while ringing; PhoneService end to end: unknown number rejected, allowed call with greeting, audio in both directions, recognition through to Claude, blocked control, wrong and correct PIN via DTMF, hangup by the remote party, log with transcript; callback after a finished session with proxy auth, speech only after pickup, PCMU, hangup by FORGE.
 
 **Desktop**
-- `chat-items.test.ts`: Zusammenbau der Chat-Elemente aus Events, Streaming-Puffer, Store-Merge.
-- `title-tooltips.test.tsx`: eigener Tooltip statt nativem `title`, Wiederherstellen des Attributs, Schließen bei Klick.
-- `chat-items.test.ts` (Phase 4): Sprung zur Nachricht eines Suchtreffers, Hinweis bei Komprimierung, Kurztexte für Rückfrage und Plan.
-- `InteractiveCards.test.ts`: Fragen robust lesen, Antworten zusammensetzen (Einfach-/Mehrfachauswahl, eigene Antwort), Warnstufen der Kontextanzeige.
-- `AgentsTab.test.tsx`: Worktrees nur des offenen Projekts, Entfernen beendet die Terminals des Worktrees und verlässt ihn, wenn er offen war, Bestätigung bei Änderungen.
-- `SessionTabs.test.tsx`: Session-Tabs oben im Fenster: ausgeblendet ohne Sessions, Gruppen pro Projekt in stabiler Reihenfolge, aktive Session nur im Workspace markiert, offene Session ohne Prozess als letzter Tab ihrer Gruppe, Klick öffnet Projekt und Session, Beenden nur ohne laufende Arbeit, Pfeiltasten über Gruppen hinweg.
-- `shortcuts.test.tsx` (ergänzt): `Strg+Tab` in der Reihenfolge der Tab-Leiste.
-- `GitPanel.test.tsx`: Commit-Flow in der Komponente (Auswahl, Review-Dialog, exakter RPC-Aufruf) und KI-Vorschlag.
+- `chat-items.test.ts`: building chat items from events, streaming buffer, store merge.
+- `title-tooltips.test.tsx`: custom tooltip instead of the native `title`, restoring the attribute, closing on click.
+- `chat-items.test.ts` (phase 4): jump to the message of a search hit, notice on compaction, short texts for questions and plans.
+- `InteractiveCards.test.ts`: robust reading of questions, composing answers (single/multiple choice, custom answer), warning levels of the context indicator.
+- `AgentsTab.test.tsx`: worktrees of the open project only, removing one ends the worktree's terminals and leaves it if it was open, confirmation when there are changes.
+- `SessionTabs.test.tsx`: session tabs at the top of the window: hidden without sessions, groups per project in a stable order, active session marked only in the workspace, open session without a process as the last tab of its group, click opens project and session, ending only without running work, arrow keys across groups.
+- `shortcuts.test.tsx` (extended): `Ctrl+Tab` in the order of the tab bar.
+- `GitPanel.test.tsx`: commit flow in the component (selection, review dialog, exact RPC call) and AI suggestion.
 
-**E2E (`real-claude.e2e.test.ts`)**, echter Sidecar-Prozess + installierte CLI + echtes Git:
-1. Diagnose: CLI gefunden, angemeldet (claude.ai, max), kein API-Key; echte Abo-Nutzung abrufbar
-2. Projektimport mit Leerzeichen/Umlauten im Pfad
-3. Session starten, echte Token-Deltas, Tool-Events, Datei geschrieben (Balanced)
-4. Git-Status und Diff, KI-Commit-Vorschlag, Commit
-5. Safe: Freigabeanfrage, Ablehnung, Befehl nicht ausgeführt
-6. Autonomous (bypassPermissions): Sperrliste blockiert `git branch -D` per PreToolUse-Hook
-7. Stop mitten im Streaming, Session bleibt nutzbar
-8. Bild-Anhang: Claude erkennt die Farbe eines erzeugten PNG
-9. Datei-Checkpoint: von Claude angelegte Datei per Rewind entfernt
-10. Session-Zusammenfassung aus dem Verlauf
-11. Slash-Commands (68 im Test)
-12. Sidecar-Absturz (SIGKILL), Neustart, Session als unterbrochen erkannt, Resume mit Kontext
-13. Rückfrage im Autonomous-Profil beantwortet, Claude nennt die gewählte Antwort; Kontextstand gemeldet; `/compact` erzeugt `context.compacted`
-14. Plan-Modus im Autonomous-Profil: Plan-Datei nicht blockiert, Plan angenommen, Modus wechselt auf `bypassPermissions`, Datei angelegt
+**E2E (`real-claude.e2e.test.ts`)**, real sidecar process + installed CLI + real Git:
+1. Diagnostics: CLI found, logged in (claude.ai, max), no API key; real subscription usage available
+2. Project import with spaces/umlauts in the path
+3. Start a session, real token deltas, tool events, file written (Balanced)
+4. Git status and diff, AI commit suggestion, commit
+5. Safe: approval request, denial, command not executed
+6. Autonomous (bypassPermissions): blocklist blocks `git branch -D` via PreToolUse hook
+7. Stop in the middle of streaming, session stays usable
+8. Image attachment: Claude recognizes the color of a generated PNG
+9. File checkpoint: file created by Claude removed via rewind
+10. Session summary from the history
+11. Slash commands (68 in the test)
+12. Sidecar crash (SIGKILL), restart, session detected as interrupted, resume with context
+13. Question in the Autonomous profile answered, Claude names the chosen answer; context state reported; `/compact` produces `context.compacted`
+14. Plan mode in the Autonomous profile: plan file not blocked, plan accepted, mode switches to `bypassPermissions`, file created
 
-15. Telefon: Claude (Haiku) nutzt das Werkzeug status, antwortet in höchstens drei kurzen deutschen Sätzen ohne Markdown, schaltet Remote Control auf Zuruf ohne Rückfrage ein und legt bei „Tschüss“ selbst auf
+15. Phone: Claude (Haiku) uses the status tool, answers in at most three short German sentences without Markdown, turns on Remote Control on request without asking back and hangs up by itself on "Tschüss" (bye)
 
-(Weitere E2E-Fälle seit Phase 2: Profilwechsel im Lauf, Hintergrundaufgaben; Neustart für ein Update mitten in einem
-Tool-Aufruf, die Session macht danach von selbst weiter und legt die Datei aus Schritt 2 an.)
+(Further E2E cases since phase 2: profile switch during a turn, background tasks; restart for an update in the middle of a
+tool call, the session then continues by itself and creates the file from step 2.)
 
-Nicht getestet: echte Telefonanlage und echte OpenAI-Sprachdienste (keine Zugangsdaten im Testlauf).
+Not tested: a real PBX and real OpenAI voice services (no credentials in the test run).
 
-## Manueller UI-Smoke-Test Telefon (2026-10-11)
+## Manual UI smoke test: phone (2026-10-11)
 
-Isolierter Dev-Build gegen eine Mini-Anlage auf 127.0.0.1: Telefon-Knopf oben rechts (angemeldet, Menü),
-Einstellungen mit Status und gespeicherten Geheimnissen, Testanruf mit Anzeige „klingelt“ und Auflegen. Gefunden
-und behoben: Auflegen beim Klingeln wartete bis zu 32 s auf die Antwort zum CANCEL; Nummern mit Leerzeichen wurden
-URL-kodiert gewählt; Statusanzeige „Gespräch läuft“ schon beim Klingeln. Beobachtet: Die Windows-Firewall fragt
-beim ersten Anruf nach Zugriff für Node.js (Hinweis in den Einstellungen ergänzt).
+Isolated dev build against a mini PBX on 127.0.0.1: phone button at the top right (registered, menu),
+settings with status and stored secrets, test call with the "klingelt" (ringing) indicator and hangup. Found
+and fixed: hanging up while ringing waited up to 32 s for the response to the CANCEL; numbers with spaces were
+dialed URL-encoded; status indicator "Gespräch läuft" (call in progress) already while ringing. Observed: Windows Firewall asks
+for access for Node.js on the first call (note added to the settings).
 
-## Manueller UI-Smoke-Test Phase 4 (2026-10-11)
+## Manual UI smoke test: phase 4 (2026-10-11)
 
-Dev-Build mit eigenem `FORGE_DATA_DIR` und `WEBVIEW2_USER_DATA_FOLDER` (die installierte FORGE lief parallel
-unberührt), Testdaten per Skript: Suchfeld in der Sidebar, Strg+K mit Sessions und Volltexttreffern,
-Sprung zur Nachricht mit Hervorhebung, Rückfrage-Karte offen und beantwortet, Plan-Karte, Komprimierungs-Hinweis,
-Dev-Server über Kopfzeile und Panel gestartet (HTTP-Antwort geprüft), „An Claude“ füllt den Entwurf, Stoppen
-beendet den Prozessbaum (Port frei). Gefunden und behoben: ohne Lockfile wurde `npm dev` statt `npm run dev` erkannt.
-Nicht im Fenster geprüft: die Kontextanzeige (braucht eine laufende Session; im E2E-Test abgedeckt).
+Dev build with its own `FORGE_DATA_DIR` and `WEBVIEW2_USER_DATA_FOLDER` (the installed FORGE ran in parallel
+untouched), test data via script: search field in the sidebar, Ctrl+K with sessions and full-text hits,
+jump to the message with highlighting, question card opened and answered, plan card, compaction notice,
+dev server started from the header and the panel (HTTP response checked), "An Claude" (to Claude) fills the draft, stopping
+ends the process tree (port free). Found and fixed: without a lockfile, `npm dev` was detected instead of `npm run dev`.
+Not checked in the window: the context indicator (needs a running session; covered in the E2E test).
 
-## Manueller UI-Smoke-Test (Windows, über UI Automation)
+## Manual UI smoke test (Windows, via UI Automation)
 
-In der laufenden Desktop-App (`pnpm tauri dev`) durchgeführt:
-Projekt öffnen, Datei-Diff ansehen, zwei Dateien auswählen, Commit-Nachricht, Review-Dialog, Commit
-(per `git log` bestätigt); neue Session starten und Prompt senden; Profil auf Safe, Freigabekarte erscheint,
-Erlauben, Datei angelegt; App-Neustart öffnet das letzte Projekt; hartes Beenden des Fensters hinterlässt
-keine Node-Prozesse.
+Performed in the running desktop app (`pnpm tauri dev`):
+open a project, view a file diff, select two files, commit message, review dialog, commit
+(confirmed with `git log`); start a new session and send a prompt; profile set to Safe, approval card appears,
+Allow, file created; app restart opens the last project; force-closing the window leaves
+no Node processes behind.
 
-Dabei gefundene und behobene Fehler: Kopfzeile aktualisierte sich nach Commit nicht; absolute Pfade in
-Tool-Karten; Radix-Select hat beim Laden der Modellliste das Session-Modell ohne Nutzeraktion geändert;
-fehlende Error-Boundary; Warnung über parallele Sessions zählte auch untätige Sessions.
+Bugs found and fixed: the header did not update after a commit; absolute paths in
+tool cards; Radix Select changed the session model without user action while loading the model list;
+missing error boundary; the warning about parallel sessions also counted idle sessions.
 
-## Zweiter UI-Durchlauf (Windows)
+## Second UI pass (Windows)
 
-Usage-Balken in der Statuskarte, GitHub-Anmeldung bis zur Code-Anzeige (abgebrochen; abschließen kann nur der Nutzer), KI-Commit-Nachricht über den Funken-Knopf, kompakte Nachrichtenblase, schlichter Profil-Knopf, gebaute App mit bereinigtem PATH.
+Usage bar in the status card, GitHub login up to the code display (aborted; only the user can complete it), AI commit message via the spark button, compact message bubble, plain profile button, built app with a cleaned PATH.
 
-## Dritter UI-Durchlauf (Windows)
+## Third UI pass (Windows)
 
-Erweiterungen mit echtem MCP-Server, Terminal-Tab (PowerShell im Projekt), Remote-Steuerung (Erkennung „Ordner nicht freigegeben“, Claude-Vertrauensfrage im eingebetteten Terminal), echter Feature-Workflow über die Oberfläche (Worktree, Umsetzung mit zwei Freigaben im Safe-Profil, Commit auf dem Feature-Branch). Gefundene und behobene Fehler: weiße Seite durch freezePrototype; Workflow zeigte nicht an, dass Claude auf eine Freigabe wartet; MCP-Status englisch; Test-Flake durch Hintergrundarbeit beim Aufräumen.
+Extensions with a real MCP server, terminal tab (PowerShell in the project), remote control (detection of "Ordner nicht freigegeben" (folder not shared), Claude trust prompt in the embedded terminal), real feature workflow through the UI (worktree, implementation with two approvals in the Safe profile, commit on the feature branch). Bugs found and fixed: blank page caused by freezePrototype; the workflow did not show that Claude was waiting for an approval; MCP status in English; test flake caused by background work during cleanup.
 
-## Vierter UI-Durchlauf (Windows, Dev-Build mit eigenem Datenordner)
+## Fourth UI pass (Windows, dev build with its own data folder)
 
-Remote Control echt: Einschalten ohne offene Session öffnet eine leere Session, Bridge verbunden, QR-Code und Link; Nachricht aus FORGE ohne Dublette im Verlauf; Ausschalten. Projekt löschen: Dialog mit Ordner und GitHub-Repo, Anfrage der Berechtigung delete_repo sichtbar (nicht ausgeführt), echtes Löschen des Ordners inkl. offener Session. Alle Ansichten auf Umbrüche und Platzierung geprüft. Gefundene und behobene Fehler: leere Modellauswahl bei neuer Remote-Session, „1 Schritte“, Titel blieb „Remote-Session“, Tag-Beschreibungen nicht bündig, Pfad brach mitten im Wort, Badge „Remote“ (Git-Remote) verwechselbar, doppelter Spinner in ladenden Knöpfen, Töne-Beschreibung gequetscht, „max Abo“, veraltete Texte („folgen in Phase 2“), Git-Tab ohne Repository zeigte Branches/Verlauf und hing nach der ersten Korrektur in einer Ladeschleife.
+Remote Control for real: turning it on without an open session opens an empty session, bridge connected, QR code and link; message from FORGE without a duplicate in the history; turning it off. Deleting a project: dialog with folder and GitHub repo, request for the delete_repo permission visible (not executed), real deletion of the folder including an open session. All views checked for line breaks and placement. Bugs found and fixed: empty model selection for a new remote session, "1 Schritte" (wrong plural), title stayed "Remote-Session", tag descriptions not aligned, path broke in the middle of a word, badge "Remote" (Git remote) easy to confuse, double spinner in loading buttons, sound description squeezed, "max Abo", outdated texts ("folgen in Phase 2", "coming in phase 2"), Git tab without a repository showed branches/history and hung in a loading loop after the first fix.
 
-## Nicht getestet
+## Not tested
 
-- Töne: Wiedergabe kann ich nicht hören; Code-Pfad ist typgeprüft, Test-Knöpfe unter Einstellungen
-- Installer-Installation auf einem frischen System ohne Claude Code
-- Claude-Code-Installation aus der App (würde die vorhandene Installation verändern)
-- Remote Control mit der echten Claude-App: Bridge-Verbindung und Session-Link mit dem echten SDK und in der App geprüft, Nachrichten vom Handy nur simuliert
-- Eigene Tooltips im Fenster: Mausbewegung per Automation erreichte das Fenster nicht; Logik per Komponententest geprüft
-- Push/PR gegen GitHub mit echtem Konto (gh nicht angemeldet); Logik gegen lokales Bare-Remote getestet
-- Claude-Anmeldung bis zum Ende (URL-Ausgabe in isoliertem Konfigurationsordner geprüft) und GitHub-Anmeldung bis zum Ende
+- Sounds: I cannot hear playback; the code path is type-checked, test buttons under Settings
+- Installer on a fresh system without Claude Code
+- Claude Code installation from the app (would change the existing installation)
+- Remote Control with the real Claude app: bridge connection and session link checked with the real SDK and in the app, messages from the phone only simulated
+- Custom tooltips in the window: mouse movement via automation did not reach the window; logic checked by component test
+- Push/PR against GitHub with a real account (gh not logged in); logic tested against a local bare remote
+- Claude login to the end (URL output checked in an isolated config folder) and GitHub login to the end

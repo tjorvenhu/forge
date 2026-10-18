@@ -1,5 +1,5 @@
 blank_issues_enabled: true
 contact_links:
-  - name: Sicherheitslücke melden
+  - name: Report a security vulnerability
     url: https://github.com/vanturis/forge/security/advisories/new
-    about: Sicherheitslücken bitte vertraulich über GitHub melden, nicht als öffentliches Issue.
+    about: Please report security vulnerabilities privately through GitHub, not as a public issue. English or German.

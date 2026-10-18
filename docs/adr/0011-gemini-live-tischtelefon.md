@@ -1,98 +1,100 @@
-# ADR 0011: Gemini Live am Telefon, Tischtelefon, Telefon als optionale Funktion
+<img src="../../.github/assets/flags/gb.svg" height="14" alt=""> English · <a href="0011-gemini-live-tischtelefon.de.md"><img src="../../.github/assets/flags/de.svg" height="14" alt=""> Deutsch</a>
 
-Datum: 2026-10-12 · Status: angenommen
+# ADR 0011: Gemini Live on the phone, desk phone, phone as an optional feature
 
-## Ziel
+Date: 2026-10-12 · Status: accepted
 
-FORGE als Zentrale anrufen und frei mit ihr reden: Stand abfragen, Sessions und parallele Agenten starten, Freigaben
-geben. Das Gespräch soll sich wie ein Telefonat anfühlen, nicht wie Diktieren. Dazu kommt das Yealink-Tischtelefon,
-das bisher ein eigenes Skript bedient hat (Tasten pro Session, LEDs, Display, Rückruf). FORGE ersetzt
-dieses Skript. Wer die Telefon-Funktion nicht braucht, soll sie gar nicht sehen.
+## Goal
 
-## Entscheidungen
+Call FORGE as a central hub and talk to it freely: ask about the state, start Sessions and parallel agents, give
+approvals. The conversation should feel like a phone call, not like dictation. In addition, the Yealink desk phone,
+which until now was operated by a separate script (keys per Session, LEDs, display, callback). FORGE replaces
+this script. Anyone who does not need the phone feature should not see it at all.
 
-**Zwei Gesprächspartner, wählbar** (`PhoneConfig.engine`):
+## Decisions
 
-- `gemini-live` (Standard): Gemini 3.8 Live (`gemini-3.8-live`, laut Google-Doku am 2026-10-12 stabil) über die Live API
-  (WebSocket `BidiGenerateContent`). Gemini hört, entscheidet selbst, wann der Anrufer fertig ist, spricht und ruft
-  FORGE-Werkzeuge als Function Calls auf. Unterbrechen erledigt Gemini: Meldet es `interrupted`, verwirft FORGE die
-  wartende Sprachausgabe sofort. Audio: Telefon 8 kHz → 16 kHz (linear) hinein, 24 kHz → 8 kHz (gefiltert) heraus.
-  Verbindungen der Live API sind zeitlich begrenzt. FORGE merkt sich den Resumption-Handle und wechselt bei `goAway`
-  oder einem Abbruch auf eine neue Verbindung mit demselben Kontext (höchstens dreimal hintereinander). Dazu
-  Kontextkompression (Sliding Window). Für eingehende Anrufe verbindet FORGE Gemini schon beim Annehmen; die
-  Begrüßung spricht Gemini selbst.
-- `claude`: wie bisher (ADR 0010), Claude Haiku über das Abo. Hören und Sprechen wahlweise über OpenAI oder Gemini
-  (`speechProvider`). Gemini-Erkennung: `generateContent` mit Audio (Standard `gemini-3.5-flash-lite`).
-  Gemini-Ausgabe: `streamGenerateContent` (SSE) mit `gemini-3.8-flash-tts`, erstes Audio nach etwa 0,7 s.
+**Two conversation partners, selectable** (`PhoneConfig.engine`):
 
-**Ein Werkzeugsatz für beide** (`phone/tools.ts`): Name, Beschreibung, Parameter und Ausführung stehen einmal da.
-Daraus entstehen die MCP-Werkzeuge für Claude (zod) und die Function Declarations für Gemini (Schema-Typen der
-Gemini API). Aufrufe von Gemini kommen als JSON und werden vor der Ausführung mit zod geprüft; Fehler gehen als Text
-zurück. Rückfrage-Antworten sind deshalb eine Liste `{question, answer}` statt eines freien Objekts. Der
-System-Prompt ist derselbe, nur die Zeile zum Medium unterscheidet sich.
+- `gemini-live` (default): Gemini 3.8 Live (`gemini-3.8-live`, stable according to the Google docs on 2026-10-12) via the Live API
+  (WebSocket `BidiGenerateContent`). Gemini listens, decides itself when the caller is finished, speaks and calls
+  FORGE tools as function calls. Gemini handles interruptions: when it reports `interrupted`, FORGE immediately discards the
+  pending speech output. Audio: phone 8 kHz → 16 kHz (linear) in, 24 kHz → 8 kHz (filtered) out.
+  Live API connections are time-limited. FORGE remembers the resumption handle and, on `goAway`
+  or a disconnect, switches to a new connection with the same context (at most three times in a row). In addition,
+  context compression (sliding window). For incoming calls, FORGE connects Gemini as soon as the call is answered; Gemini
+  speaks the greeting itself.
+- `claude`: as before (ADR 0010), Claude Haiku via the subscription. Listening and speaking via either OpenAI or Gemini
+  (`speechProvider`). Gemini recognition: `generateContent` with audio (default `gemini-3.5-flash-lite`).
+  Gemini output: `streamGenerateContent` (SSE) with `gemini-3.8-flash-tts`, first audio after about 0.7 s.
 
-**Neue Agenten per Telefon:** `start_session` hat `agent: true`. FORGE legt dann wie im Tab „Agenten“ einen Worktree
-mit eigenem Branch `agent/<auftrag>-<kürzel>` an (beim Hauptprojekt, auch wenn ein Worktree genannt wurde) und
-startet die Session dort.
+**One tool set for both** (`phone/tools.ts`): name, description, parameters and execution are defined once.
+From this, the MCP tools for Claude (zod) and the function declarations for Gemini (schema types of the
+Gemini API) are generated. Calls from Gemini arrive as JSON and are validated with zod before execution; errors are
+returned as text. Answers to questions are therefore a list `{question, answer}` instead of a free-form object. The
+system prompt is the same; only the line about the medium differs.
 
-**PIN** (`phone/pin-pad.ts`): Die Tastatur-Logik ist aus dem Claude-Ablauf herausgelöst und gilt für beide
-Gesprächspartner gleich. Gemini erfährt nur, dass Steuern frei ist; die Ziffern laufen nie durch ein Modell.
+**New agents by phone:** `start_session` has `agent: true`. FORGE then creates a worktree, as in the "Agenten" tab,
+with its own branch `agent/<auftrag>-<kürzel>` (on the main project, even if a worktree was named) and
+starts the Session there.
 
-**Tischtelefon** (`phone/desk-phone.ts`), getestet bisher nur gegen Fakes, Vorlage war das bisherige Skript am T53W:
+**PIN** (`phone/pin-pad.ts`): the keypad logic has been extracted from the Claude flow and applies equally to both
+conversation partners. Gemini is only told that control is unlocked; the digits never pass through a model.
 
-- Das Telefon hängt wie bisher an der Anlage. FORGE ist eine eigene Nebenstelle; Abheben wählt sie nach einer
-  Sekunde (Hotline). Kein direkter IP-Anruf, keine MicroSIP, keine virtuellen Audiokabel, kein Tastendruck ins
-  Terminal mehr.
-- FORGE startet einen kleinen HTTP-Server (Standard-Port 8766) auf der Schnittstelle zum Telefon. Er liefert die
-  Provisioning-Datei (Leitungstasten Typ 27 mit Session-Namen, Hotline, Push- und Action-URI-Rechte nur für die
-  FORGE-Adresse) und nimmt Tastendrücke und Menüantworten an. Nur Anfragen von der IP des Telefons, jede URL trägt
-  ein zufälliges, gespeichertes Token.
-- FORGE pusht über die Weboberfläche des Telefons (`/servlet?push=xml`, Basic oder Digest, wie es das Telefon
-  verlangt): LEDs (orange blinkend = arbeitet, rot schnell = wartet, grün blinkend = neues Ergebnis, grün = bereit,
-  orange = im Gespräch), Statuszeilen auf dem Startbildschirm, Freigaben als Menü (1 erlauben, 2 ablehnen). Neue
-  Session-Namen lädt das Telefon per Action URI `AutoP` nach, nie während eines Gesprächs.
-- Taste ohne Gespräch: FORGE merkt sich die Session (45 s) und lässt das Telefon die FORGE-Nebenstelle wählen
-  (`key=number=…`). Das Gespräch beginnt dann mit dieser Session. Taste im Gespräch: Gemini oder Claude erfährt,
-  dass es jetzt um diese Session geht.
-- Rückrufe kommen wie bisher über die Anlage (`notifyNumber`), die Session wird auf dem Telefon ausgewählt.
+**Desk phone** (`phone/desk-phone.ts`), so far tested only against fakes, modeled on the previous script on the T53W:
 
-**Optional (ersetzt am 2026-10-12):** Der Schalter `Settings.phoneFeature` ist entfallen; der Telefon-Knopf erscheint, sobald eine Anlage eingetragen oder das Telefon an ist. Ursprünglich: `Settings.phoneFeature`. Aus (Standard bei neuen Installationen): kein Telefon-Knopf, keine
-Telefon-Einstellungen, das Telefon und das Tischtelefon gehen aus. Wer vor dieser Version einen SIP-Server
-eingetragen hatte, behält die Funktion sichtbar.
+- The phone stays connected to the phone system as before. FORGE is its own extension; picking up dials it after one
+  second (hotline). No direct IP call, no MicroSIP, no virtual audio cables, no more keystrokes into the
+  terminal.
+- FORGE starts a small HTTP server (default port 8766) on the interface facing the phone. It serves the
+  provisioning file (line keys type 27 with Session names, hotline, push and Action URI permissions only for the
+  FORGE address) and accepts key presses and menu responses. Only requests from the phone's IP; every URL carries
+  a random, stored token.
+- FORGE pushes via the phone's web interface (`/servlet?push=xml`, Basic or Digest, as the phone
+  requires): LEDs (orange blinking = working, red fast = waiting, green blinking = new result, green = ready,
+  orange = in a call), status lines on the home screen, approvals as a menu (1 allow, 2 deny). The phone loads new
+  Session names via Action URI `AutoP`, never during a call.
+- Key without a call: FORGE remembers the Session (45 s) and has the phone dial the FORGE extension
+  (`key=number=…`). The call then starts with this Session. Key during a call: Gemini or Claude is told
+  that the topic is now this Session.
+- Callbacks come via the phone system as before (`notifyNumber`); the Session is selected on the phone.
 
-**Rückruf auf Zuruf** (Nachtrag 2026-10-12): Werkzeug `call_back(minutes, about)` für beide Gesprächspartner. Der
-Termin steht in den Telefon-Einstellungen (`callbacks`), ein Takt alle 15 s prüft fällige Termine (kein langer Timer,
-der im Standby stehen bliebe). Gerufen wird die Nummer des Gesprächs, wenn sie erlaubt ist, sonst die Rückrufnummer.
-Beim Rückruf bekommt der Gesprächspartner den Wunsch als markierte Daten und prüft frisch mit den Werkzeugen. Belegte
-Leitung oder fehlende Anmeldung: neuer Versuch beim nächsten Takt, nach 15 Minuten verfällt der Termin.
+**Optional (replaced on 2026-10-12):** the switch `Settings.phoneFeature` has been dropped; the phone button appears as soon as a phone system is configured or the phone is on. Originally: `Settings.phoneFeature`. Off (default for new installations): no phone button, no
+phone settings, the phone and the desk phone are turned off. Anyone who had entered a SIP server before this version
+keeps the feature visible.
 
-**Rauschen und Echo** (Nachtrag 2026-10-13): Am echten Telefon brach Gemini mitten im Satz ab und setzte neu an,
-weil seine Sprach-Erkennung Hintergrundgeräusche und das Echo der eigenen Stimme als Anrufer wertete. Drei
-Gegenmaßnahmen: (1) `realtimeInputConfig.automaticActivityDetection` mit `START_SENSITIVITY_LOW`, 300 ms
-`prefixPaddingMs`, 700 ms `silenceDurationMs`. (2) Ein Noise Gate vor Gemini (`NoiseGate` in `phone/vad.ts`, gleiche
-Schwellen wie die VAD im Claude-Ablauf): geschlossen geht digitale Stille gleicher Länge hinaus; es öffnet nach 60 ms
-klarer Sprache, solange FORGE spricht (und 300 ms danach, Echo) erst nach 240 ms mit 2,5-facher Schwelle. Beim Öffnen
-gehen die zurückgehaltenen Frames zuerst hinaus, die erste Silbe bleibt erhalten. (3) 200 ms Vorpuffer vor jedem
-(Neu-)Start der Wiedergabe, damit ein kurzes Stocken im Datenstrom nicht als Stottern hörbar wird.
+**Callback on request** (addendum 2026-10-12): tool `call_back(minutes, about)` for both conversation partners. The
+appointment is stored in the phone settings (`callbacks`); a tick every 15 s checks for due appointments (no long timer
+that would stall in standby). The number of the call is dialed if it is allowed, otherwise the callback number.
+On the callback, the conversation partner receives the request as marked data and checks afresh with the tools. Busy
+line or missing registration: new attempt on the next tick; after 15 minutes the appointment expires.
 
-## Verworfen
+**Noise and echo** (addendum 2026-10-13): on the real phone, Gemini broke off mid-sentence and started over,
+because its speech detection treated background noise and the echo of its own voice as the caller. Three
+countermeasures: (1) `realtimeInputConfig.automaticActivityDetection` with `START_SENSITIVITY_LOW`, 300 ms
+`prefixPaddingMs`, 700 ms `silenceDurationMs`. (2) A noise gate in front of Gemini (`NoiseGate` in `phone/vad.ts`, same
+thresholds as the VAD in the Claude flow): when closed, digital silence of the same length is sent out; it opens after 60 ms
+of clear speech, and while FORGE is speaking (and 300 ms afterwards, echo) only after 240 ms at 2.5 times the threshold. When opening,
+the held-back frames are sent first, so the first syllable is preserved. (3) 200 ms pre-buffer before every
+(re)start of playback, so that a short stall in the data stream is not audible as stuttering.
 
-- Konfiguration über GitHub (ein Repository pro Nutzer) für mehrere Nutzer: FORGE ist pro Windows-Konto getrennt
-  (Daten unter `%APPDATA%\forge`, Claude-Login, gh-Login). Für den Kollegen reicht eine eigene Installation.
-- Direkter SIP-Anruf vom Tischtelefon an die PC-IP (wie das bisherige Skript mit MicroSIP): FORGE nimmt SIP nur von der
-  Anlage an (ADR 0010). Über die Anlage geht es auch unterwegs vom Handy.
+## Rejected
+
+- Configuration via GitHub (one repository per user) for multiple users: FORGE is separated per Windows account
+  (data under `%APPDATA%\forge`, Claude login, gh login). For the colleague, a separate installation is enough.
+- Direct SIP call from the desk phone to the PC's IP (like the previous script with MicroSIP): FORGE only accepts SIP from the
+  phone system (ADR 0010). Going through the phone system also works on the go from a mobile phone.
 
 ## Tests
 
-`phone-live.test.ts`: Werkzeug-Schemas und Prüfung der Argumente, Live-Client mit Fake-WebSocket (Setup, Audio-
-Umrechnung, Function Calls, goAway mit Resumption, abgelehnter Key), Gesprächsablauf mit Gemini (Begrüßung, Audio vor
-dem Abnehmen, Werkzeuge, zurückgezogene Aufrufe, Unterbrechen, Auflegen, PIN, Ausfall), Gemini-Sprache (SSE),
-Tischtelefon (Provisioning, LEDs, Digest am Telefon, Token und IP-Prüfung, Taste → Anruf, Freigabe-Menü, Taste im
-Gespräch). `phone-call.test.ts`: Agent per Telefon im eigenen Worktree.
+`phone-live.test.ts`: tool schemas and argument validation, Live client with fake WebSocket (setup, audio
+conversion, function calls, goAway with resumption, rejected key), call flow with Gemini (greeting, audio before
+pickup, tools, withdrawn calls, interruption, hang-up, PIN, outage), Gemini speech (SSE),
+desk phone (provisioning, LEDs, digest on the phone, token and IP check, key → call, approval menu, key during a
+call). `phone-call.test.ts`: agent by phone in its own worktree.
 
-Gegen die echten Dienste am 2026-10-12 (`packages/sidecar/scripts/gemini-live-smoke.ts`, `gemini-voice-smoke.ts`):
-Gemini Live verbindet in 0,4 bis 0,8 s, ruft `status` auf und antwortet auf Deutsch mit Sprache. Gemini-Ausgabe und
--Erkennung im Durchlauf: Satz gesprochen und wörtlich wiedererkannt.
+Against the real services on 2026-10-12 (`packages/sidecar/scripts/gemini-live-smoke.ts`, `gemini-voice-smoke.ts`):
+Gemini Live connects in 0.4 to 0.8 s, calls `status` and answers in German with speech. Gemini output and
+recognition in a round trip: sentence spoken and recognized verbatim.
 
-Nicht getestet: Gemini Live über eine echte Telefonleitung (Echo, Pausen-Erkennung bei 8 kHz), das T53W mit FORGE
-(Push, LEDs, AutoP, `key=number=`), Verbindungswechsel nach `goAway` gegen den echten Dienst.
+Not tested: Gemini Live over a real phone line (echo, pause detection at 8 kHz), the T53W with FORGE
+(push, LEDs, AutoP, `key=number=`), connection switch after `goAway` against the real service.

@@ -1,28 +1,30 @@
-# ADR 0003: Prozessmodell, IPC und Persistenz
+<img src="../../.github/assets/flags/gb.svg" height="14" alt=""> English · <a href="0003-architektur-prozesse.de.md"><img src="../../.github/assets/flags/de.svg" height="14" alt=""> Deutsch</a>
 
-Datum: 2026-10-10 · Status: angenommen
+# ADR 0003: Process model, IPC and persistence
 
-## Entscheidung
+Date: 2026-10-10 · Status: accepted
 
-- **Tauri 2** (Rust) ist nur die Desktop-Hülle: Fenster, Ordnerdialog, Start/Stopp des Sidecars.
-  Keine Shell-, FS- oder HTTP-Plugins für die Webview.
-- **Node-Sidecar** (`packages/sidecar`) enthält die Logik: Claude-Runtime, Projekte, Git, Policy, Persistenz.
-- **IPC ohne Netzwerkport:** Die Webview ruft `invoke("sidecar_send")`, Rust schreibt die Zeile in
-  stdin des Sidecars. stdout-Zeilen gehen als Tauri-Event `sidecar://message` zurück. Es gibt keinen
-  localhost-Server, also keine Angriffsfläche für andere Prozesse oder Webseiten.
-- Protokoll: JSON-Lines, Request `{id, method, params}`, Response `{id, ok, result|error}`,
-  Event `{event, payload}`. Alle Params werden im Sidecar mit Zod validiert (`packages/protocol`).
-- Prozessstart immer mit Argument-Arrays (`spawn(cmd, args, {shell:false})`), `cwd` explizit.
-- **Persistenz: `node:sqlite`** (in Node ≥ 22.13 ohne Flag) statt Drizzle/better-sqlite3. Grund: kein
-  nativer Build, keine ABI-Probleme beim Paketieren. Schema über nummerierte SQL-Migrationen.
-  Abweichung vom Vorschlag (Drizzle) bewusst; die Repository-Schicht kapselt SQL.
-- Daten liegen in `%APPDATA%/forge`. FORGE läuft nur unter Windows.
+## Decision
 
-## Abweichungen vom bevorzugten Stack
+- **Tauri 2** (Rust) is only the desktop shell: window, folder dialog, starting/stopping the sidecar.
+  No shell, FS or HTTP plugins for the webview.
+- **Node sidecar** (`packages/sidecar`) contains the logic: Claude runtime, projects, Git, policy, persistence.
+- **IPC without a network port:** The webview calls `invoke("sidecar_send")`, Rust writes the line to
+  the sidecar's stdin. stdout lines are sent back as the Tauri event `sidecar://message`. There is no
+  localhost server, so there is no attack surface for other processes or websites.
+- Protocol: JSON Lines, request `{id, method, params}`, response `{id, ok, result|error}`,
+  event `{event, payload}`. All params are validated in the sidecar with Zod (`packages/protocol`).
+- Processes are always started with argument arrays (`spawn(cmd, args, {shell:false})`), `cwd` explicit.
+- **Persistence: `node:sqlite`** (no flag needed in Node ≥ 22.13) instead of Drizzle/better-sqlite3. Reason: no
+  native build, no ABI problems when packaging. Schema via numbered SQL migrations.
+  Deliberate deviation from the proposal (Drizzle); the repository layer encapsulates SQL.
+- Data is stored in `%APPDATA%/forge`. FORGE runs on Windows only.
 
-- **Monaco** kommt erst mit dem CLAUDE.md-Editor (Phase 2). Für Diffs nutzt Phase 1 einen eigenen,
-  virtualisierten Renderer auf Basis des geparsten `git diff` (unit-getestet). Spart ca. 4 MB Bundle.
-- **shadcn/ui**: Komponenten nach shadcn-Muster (Radix + Tailwind + cva) direkt in
-  `apps/desktop/src/components/ui/`, ohne CLI-Generator.
-- **Native Fensterrahmen** statt eigener Titelleiste (Barrierefreiheit, Snap-Layouts unter Windows).
-- **xterm.js + PTY**: Phase 2. Das untere Panel zeigt in Phase 1 die echte Claude-Event-Ausgabe.
+## Deviations from the preferred stack
+
+- **Monaco** only arrives with the CLAUDE.md editor (phase 2). For diffs, phase 1 uses its own
+  virtualized renderer based on the parsed `git diff` (unit-tested). Saves about 4 MB of bundle size.
+- **shadcn/ui**: components following the shadcn pattern (Radix + Tailwind + cva) directly in
+  `apps/desktop/src/components/ui/`, without the CLI generator.
+- **Native window frames** instead of a custom title bar (accessibility, snap layouts on Windows).
+- **xterm.js + PTY**: phase 2. In phase 1 the bottom panel shows the real Claude event output.

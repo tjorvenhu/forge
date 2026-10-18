@@ -1,18 +1,20 @@
-# ADR 0005: Schrift, Töne, Logo, Claude-Marke
+<img src="../../.github/assets/flags/gb.svg" height="14" alt=""> English · <a href="0005-gestaltung.de.md"><img src="../../.github/assets/flags/de.svg" height="14" alt=""> Deutsch</a>
 
-Datum: 2026-10-10 · Status: angenommen (auf Wunsch des Nutzers)
+# ADR 0005: Font, sounds, logo, Claude mark
 
-- **Schrift:** Geist (UI) und Geist Mono (Code) über `@fontsource-variable/*`, lokal gebündelt. Lizenz: SIL OFL 1.1.
-  Kein Laden aus dem Netz (CSP erlaubt nur `'self'`).
-- **Töne:** per Web Audio API synthetisiert (`src/lib/sounds.ts`), keine Audiodateien. Signale: fertig
-  (aufsteigende Terz), Freigabe nötig (zwei kurze Töne), Fehler (fallende Terz). Gestoppte Turns lösen keinen
-  Ton aus. Abschaltbar: Einstellungen → „Töne abspielen“ (FORGE-Einstellung `sounds`, Standard an).
-- **Logo:** Amboss mit drei Funken nach Vorlage des Nutzers, als Vektor nachgebaut
-  (`src/assets/logo.svg`; `logo-dark.svg` mit hellerem Metall für dunkle Flächen). App-Icons werden mit
-  `pnpm tauri icon src-tauri/icons/source.svg` erzeugt. Liegt die Originalvorlage als PNG vor, kann sie
-  stattdessen als Icon-Quelle dienen.
-- **Claude-Marke:** Assistenten-Nachrichten zeigen eine nachgezeichnete Claude-Strahlenmarke in Terrakotta
-  (`ClaudeMark.tsx`, Token `--color-claude`). Hinweis: Die Marke gehört Anthropic. Für den internen Gebrauch
-  unproblematisch; vor einer öffentlichen Verteilung die Anthropic-Markenrichtlinien prüfen. Das
-  ursprüngliche Master-Prompt wollte fremde Marken vermeiden, der Nutzer hat sich ausdrücklich dafür entschieden.
-- **Akzentfarbe** leicht von Violett zu Indigo verschoben (`#6e6bf7`), passend zum Logo.
+Date: 2026-10-10 · Status: accepted (at the user's request)
+
+- **Font:** Geist (UI) and Geist Mono (code) via `@fontsource-variable/*`, bundled locally. License: SIL OFL 1.1.
+  No loading from the network (CSP only allows `'self'`).
+- **Sounds:** synthesized via the Web Audio API (`src/lib/sounds.ts`), no audio files. Signals: done
+  (rising third), approval needed (two short tones), error (falling third). Stopped turns do not trigger a
+  sound. Can be turned off: Settings → "Play sounds" (FORGE setting `sounds`, on by default).
+- **Logo:** anvil with three sparks based on the user's template, rebuilt as a vector
+  (`src/assets/logo.svg`; `logo-dark.svg` with lighter metal for dark surfaces). App icons are generated with
+  `pnpm tauri icon src-tauri/icons/source.svg`. If the original template is available as PNG, it can
+  serve as the icon source instead.
+- **Claude mark:** assistant messages show a traced Claude starburst mark in terracotta
+  (`ClaudeMark.tsx`, token `--color-claude`). Note: the mark belongs to Anthropic. Unproblematic for internal
+  use; check the Anthropic trademark guidelines before public distribution. The
+  original master prompt wanted to avoid third-party marks; the user explicitly decided in favor of it.
+- **Accent color** shifted slightly from violet to indigo (`#6e6bf7`), to match the logo.

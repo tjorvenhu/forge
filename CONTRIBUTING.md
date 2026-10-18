@@ -1,21 +1,23 @@
-# Beitragen
+<img src=".github/assets/flags/gb.svg" height="14" alt=""> English · <a href="CONTRIBUTING.de.md"><img src=".github/assets/flags/de.svg" height="14" alt=""> Deutsch</a>
 
-Vorschläge und Fehler bitte als [Issue](https://github.com/vanturis/forge/issues/new) melden. Für größere
-Änderungen am besten erst ein Issue eröffnen und kurz abstimmen, bevor du einen Pull Request baust.
+# Contributing
 
-Sicherheitslücken nicht als Issue melden, sondern wie in [SECURITY.md](SECURITY.md) beschrieben.
+Please report suggestions and bugs as an [issue](https://github.com/vanturis/forge/issues/new), in English or
+German. For larger changes, open an issue first and agree on the approach before you build a pull request.
 
-## Rechte an Beiträgen
+Do not report security vulnerabilities as an issue. Follow [SECURITY.md](SECURITY.md) instead.
 
-Mit einem Pull Request oder einem anderen Beitrag zu diesem Repository erklärst du:
+## Rights to contributions
 
-1. Der Beitrag stammt von dir, oder du hast das Recht, ihn einzureichen.
-2. Du erlaubst der Vanturis UG (haftungsbeschränkt), den Beitrag unter der Lizenz dieses Projekts
-   (AGPL-3.0-only mit der Zusatzerlaubnis aus [NOTICE](NOTICE), siehe [LICENSE.md](LICENSE.md)) zu
-   veröffentlichen und ihn außerdem unter anderen Lizenzen zu nutzen und weiterzugeben, auch kommerziell.
+By submitting a pull request or any other contribution to this repository, you declare:
 
-Du behältst das Urheberrecht an deinem Beitrag.
+1. The contribution is your own work, or you have the right to submit it.
+2. You allow Vanturis UG (haftungsbeschränkt) to publish the contribution under the license of this project
+   (AGPL-3.0-only with the additional permission from [NOTICE](NOTICE), see [LICENSE.md](LICENSE.md)) and also
+   to use and distribute it under other licenses, including commercially.
 
-## Entwickeln
+You keep the copyright to your contribution.
 
-Wie du FORGE baust und testest, steht in der [README](README.md#entwickeln) und unter [docs/](docs/).
+## Development
+
+How to build and test FORGE is described in the [README](README.md#development) and under [docs/](docs/).

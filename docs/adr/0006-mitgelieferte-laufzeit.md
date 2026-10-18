@@ -1,61 +1,63 @@
-# ADR 0006: Alles in einer Installation (Node, Git, GitHub CLI), Claude-Einrichtung in der App
+<img src="../../.github/assets/flags/gb.svg" height="14" alt=""> English · <a href="0006-mitgelieferte-laufzeit.de.md"><img src="../../.github/assets/flags/de.svg" height="14" alt=""> Deutsch</a>
 
-Datum: 2026-10-10 · Status: angenommen
+# ADR 0006: Everything in one installation (Node, Git, GitHub CLI), Claude setup in the app
 
-## Kontext
+Date: 2026-10-10 · Status: accepted
 
-FORGE soll nach dem Ausführen des Installers ohne weitere Downloads oder Terminalbefehle nutzbar sein.
-Bisher mussten Node.js, git und gh vorhanden sein, Logins liefen über `claude auth login` und `gh auth login`.
+## Context
 
-## Entscheidung
+After running the installer, FORGE should be usable without further downloads or terminal commands.
+Previously Node.js, git and gh had to be present, and logins went through `claude auth login` and `gh auth login`.
 
-- **Mitgeliefert:** Node.js 24.21.0, PortableGit 2.56.0.2 (enthält Bash, ssh und den Git
-  Credential Manager), GitHub CLI 2.102.0. `scripts/prepare-runtime.mjs` lädt die Archive aus den
-  offiziellen Quellen, prüft die SHA-256 und legt sie unter `apps/desktop/src-tauri/runtime/` ab.
-  Tauri bündelt den Ordner als Ressource. Dokumentation, Manpages, Übersetzungen und Vim werden entfernt.
-  Installer: rund 92 MB.
-- **Vorrang:** mitgelieferte Werkzeuge vor System-Werkzeugen, damit sich jede Installation gleich verhält.
-  Globale git-Konfiguration und Credential Store des Nutzers gelten weiterhin (gleiches HOME, gleicher
-  Windows-Anmeldeinformationsspeicher).
-- **Claude-Sessions** bekommen `runtime/git/cmd` und `runtime/gh/bin` vorne in den PATH. Hat der Rechner
-  kein Git for Windows, zeigt `CLAUDE_CODE_GIT_BASH_PATH` auf die mitgelieferte Bash (Claude Code braucht
-  sie unter Windows für sein Bash-Tool).
-- **Claude Code wird nicht mitgeliefert**, sondern bei Bedarf über den offiziellen Installer
-  (`irm https://claude.ai/install.ps1 | iex`) aus der App installiert. Gründe: Die CLI aktualisiert sich
-  selbst, das mitgelieferte SDK-Binary wäre 260 MB groß und veraltet. Die Anmeldung läuft über
-  `claude auth login`: FORGE öffnet die Anmeldeseite und gibt den eingefügten Code an die CLI weiter.
-- **GitHub-Login** über die mitgelieferte gh im Device Flow: FORGE zeigt den Einmal-Code an und öffnet
-  github.com/login/device. Das Token speichert gh im Anmeldeinformationsspeicher, FORGE sieht es nie.
-  Danach `gh auth setup-git`, damit git über https dieselben Zugangsdaten nutzt.
-  Alternative wäre eine eigene GitHub-OAuth-App gewesen; die bräuchte eine registrierte Client-ID und
-  würde Tokens in FORGE verwalten.
+## Decision
 
-## Konsequenzen
+- **Bundled:** Node.js 24.21.0, PortableGit 2.56.0.2 (includes Bash, ssh and the Git
+  Credential Manager), GitHub CLI 2.102.0. `scripts/prepare-runtime.mjs` downloads the archives from the
+  official sources, verifies the SHA-256 and places them under `apps/desktop/src-tauri/runtime/`.
+  Tauri bundles the folder as a resource. Documentation, man pages, translations and Vim are removed.
+  Installer: about 92 MB.
+- **Precedence:** bundled tools before system tools, so that every installation behaves the same.
+  The user's global git configuration and credential store still apply (same HOME, same
+  Windows Credential Manager).
+- **Claude Sessions** get `runtime/git/cmd` and `runtime/gh/bin` prepended to PATH. If the machine
+  has no Git for Windows, `CLAUDE_CODE_GIT_BASH_PATH` points to the bundled Bash (Claude Code needs
+  it on Windows for its Bash tool).
+- **Claude Code is not bundled**; instead it is installed from the app when needed via the official installer
+  (`irm https://claude.ai/install.ps1 | iex`). Reasons: the CLI updates itself,
+  the bundled SDK binary would be 260 MB and outdated. Login runs via
+  `claude auth login`: FORGE opens the login page and passes the pasted code to the CLI.
+- **GitHub login** via the bundled gh using the device flow: FORGE shows the one-time code and opens
+  github.com/login/device. gh stores the token in the credential manager, FORGE never sees it.
+  Afterwards `gh auth setup-git`, so that git over https uses the same credentials.
+  The alternative would have been a custom GitHub OAuth app; it would need a registered client ID and
+  would manage tokens in FORGE.
 
-- Größerer Installer, längerer Release-Build (rund 4,5 Minuten).
-- Lizenzen der mitgelieferten Software: [THIRD_PARTY_LICENSES.md](../../THIRD_PARTY_LICENSES.md).
-- Versions-Updates: Konstanten in `scripts/prepare-runtime.mjs` anpassen (Version, URL, SHA-256).
+## Consequences
 
-## Nachtrag 2026-10-17: Python
+- Larger installer, longer release build (about 4.5 minutes).
+- Licenses of the bundled software: [THIRD_PARTY_LICENSES.md](../../THIRD_PARTY_LICENSES.md).
+- Version updates: adjust the constants in `scripts/prepare-runtime.mjs` (version, URL, SHA-256).
 
-Claude scheiterte in Sessions oft an fehlendem Python (unter Windows meldet sich dann nur der Store-Platzhalter).
+## Addendum 2026-10-17: Python
 
-- **Variante:** das offizielle NuGet-Paket `python` der PSF (3.14.8, rund 15 MB gepackt, 43 MB entpackt). Es ist
-  eine vollständige CPython mit pip, venv und ensurepip, ohne Tests, tkinter und IDLE; `include`/`libs` bleiben für
-  C-Erweiterungen. Die embeddable-Variante hat kein pip, ignoriert durch `python._pth` Umgebung und User-Site und
-  kann keine venvs anlegen. 3.14 statt des gerade erschienenen 3.15, damit Pakete mit C-Erweiterungen Wheels finden.
-  Prüfung per SHA-512 aus dem Katalogeintrag von nuget.org (`packageHash`).
-- **Ablage:** `runtime/python`, dazu `python3.exe` (Kopie) und `pip`/`pip3` als `.cmd` und Shell-Skript; pips eigene
-  exe-Starter enthalten einen absoluten Pfad.
-- **pip:** `pip.ini` in `sys.prefix` mit `[install] user = true`. Ohne Angabe landet `pip install` in
-  `%APPDATA%\Python\Python314`, nicht im Installationsordner, den der nächste volle Installer ersetzt. Die Datei gilt
-  nur für diesen Interpreter, venvs daraus haben ihr eigenes `sys.prefix` und installieren normal. `PIP_USER` als
-  Umgebungsvariable wäre falsch, weil pip dann in jedem venv abbricht. `--target`/`--prefix` brauchen `--no-user`.
-- **Vorrang:** die mitgelieferte Kopie vor einem System-Python, wie bei git und gh. So gibt es `python3` und `pip`
-  immer, und der Platzhalter in WindowsApps gewinnt nie. Ein eigenes Python erreicht man weiter über `py` oder das
-  venv des Projekts. Ohne mitgelieferte Laufzeit (Entwicklung) gilt ein System-Python, aber nicht der Platzhalter.
-- **PATH** in Sessions, Dev-Servern und Terminal: `runtime/python` und der User-Scripts-Ordner hinter git und gh, vor
-  dem Rest. Zusätzlich `PYTHONUTF8=1`, sonst bricht umgeleitete Ausgabe am ersten Zeichen außerhalb der
-  ANSI-Codepage ab.
-- Der Laufzeit-Schlüssel bekommt `_python-<v>`; Installationen ohne Python behalten den alten Schlüssel und bekommen
-  damit den vollen Installer angeboten.
+Claude often failed in Sessions because Python was missing (on Windows only the Store placeholder responds then).
+
+- **Variant:** the official NuGet package `python` from the PSF (3.14.8, about 15 MB packed, 43 MB unpacked). It is
+  a complete CPython with pip, venv and ensurepip, without tests, tkinter and IDLE; `include`/`libs` remain for
+  C extensions. The embeddable variant has no pip, ignores environment and user site because of `python._pth`, and
+  cannot create venvs. 3.14 instead of the just released 3.15, so that packages with C extensions find wheels.
+  Verified via SHA-512 from the nuget.org catalog entry (`packageHash`).
+- **Location:** `runtime/python`, plus `python3.exe` (copy) and `pip`/`pip3` as `.cmd` and shell script; pip's own
+  exe launchers contain an absolute path.
+- **pip:** `pip.ini` in `sys.prefix` with `[install] user = true`. A plain `pip install` therefore ends up in
+  `%APPDATA%\Python\Python314`, not in the installation folder that the next full installer replaces. The file applies
+  only to this interpreter; venvs created from it have their own `sys.prefix` and install normally. `PIP_USER` as
+  an environment variable would be wrong, because pip would then abort in every venv. `--target`/`--prefix` need `--no-user`.
+- **Precedence:** the bundled copy before a system Python, as with git and gh. This way `python3` and `pip`
+  always exist, and the placeholder in WindowsApps never wins. A custom Python is still reachable via `py` or the
+  project's venv. Without the bundled runtime (development), a system Python applies, but not the placeholder.
+- **PATH** in Sessions, dev servers and terminal: `runtime/python` and the user Scripts folder after git and gh, before
+  the rest. Additionally `PYTHONUTF8=1`, otherwise redirected output breaks at the first character outside the
+  ANSI code page.
+- The runtime key gets `_python-<v>`; installations without Python keep the old key and are therefore
+  offered the full installer.

@@ -1,30 +1,32 @@
-# ADR 0002: Capability-Matrix (Stand Claude Code 2.1.296 / Agent SDK 0.3.296)
+<img src="../../.github/assets/flags/gb.svg" height="14" alt=""> English · <a href="0002-capability-matrix.de.md"><img src="../../.github/assets/flags/de.svg" height="14" alt=""> Deutsch</a>
 
-Datum: 2026-10-10 · Status: angenommen
+# ADR 0002: Capability matrix (as of Claude Code 2.1.296 / Agent SDK 0.3.296)
 
-Die Matrix wird zur Laufzeit aus `system/init` und `initializationResult()` neu berechnet und in
-**Einstellungen → Diagnose** angezeigt. Diese Tabelle ist der Stand beim Spike.
+Date: 2026-10-10 · Status: accepted
 
-| Fähigkeit | Status | Weg / Einschränkung |
+The matrix is recomputed at runtime from `system/init` and `initializationResult()` and shown in
+**Settings → Diagnostics**. This table reflects the state at the time of the spike.
+
+| Capability | Status | Method / limitation |
 |---|---|---|
-| Session starten | supported | `query()` mit Streaming-Input |
-| Prompt senden | supported | weitere `user`-Nachrichten in den Input-Stream |
-| Token-Streaming | supported | `includePartialMessages` → `stream_event` `content_block_delta` |
-| Tool-Events | supported | `assistant.tool_use` + `user.tool_result` |
-| Freigabeanfragen | supported | `canUseTool`-Callback |
-| Stop/Cancel | supported | `Query.interrupt()` (CLI meldet `interrupt_receipt_v1`) |
+| Start Session | supported | `query()` with streaming input |
+| Send prompt | supported | further `user` messages into the input stream |
+| Token streaming | supported | `includePartialMessages` → `stream_event` `content_block_delta` |
+| Tool events | supported | `assistant.tool_use` + `user.tool_result` |
+| Approval requests | supported | `canUseTool` callback |
+| Stop/Cancel | supported | `Query.interrupt()` (CLI reports `interrupt_receipt_v1`) |
 | Resume | supported | `options.resume = <sessionId>` |
-| Sessions auflisten | supported | `listSessions({ dir })`, auch im Terminal gestartete |
-| Verlauf lesen | supported | `getSessionMessages()` |
-| Modell wechseln | supported | `setModel()`; Modellliste aus `initializationResult().models` |
-| Permission-Modus | supported | `default`, `acceptEdits`, `plan`, `bypassPermissions` (letzterer nur mit `allowDangerouslySkipPermissions`) |
-| Harte Sperrliste | supported | `PreToolUse`-Hook, greift auch im Bypass |
-| Slash-Commands | partial | Liste aus `initializationResult().commands`; Skills/eigene Commands als Text sendbar, interaktive Built-ins (`/config`, `/login` …) nicht |
-| Bilder/Dateien im Prompt | supported | Bilder, PDFs und Textdateien als Content-Blöcke (seit Phase 2) |
-| Dateien zurücksetzen | supported | `enableFileCheckpointing` + `rewindFiles()` |
-| Remote Control | supported | `enableRemoteControl()` der laufenden Query; nicht in den SDK-Typen (ADR 0008) |
-| Token-Usage | supported | aus `result.usage` (verlässlich) |
-| Kosten | partial | `total_cost_usd` ist bei Abo ein API-Äquivalent, wird nicht als Kosten angezeigt |
-| Rate-Limit-Status | supported | `rate_limit_event` (5-Stunden-Fenster) |
-| Eingebettetes Terminal (PTY) | supported | xterm.js + portable-pty in der Tauri-Hülle |
-| GitHub PR | supported | mitgeliefertes `gh`, Anmeldung in der App |
+| List Sessions | supported | `listSessions({ dir })`, including those started in the terminal |
+| Read history | supported | `getSessionMessages()` |
+| Switch model | supported | `setModel()`; model list from `initializationResult().models` |
+| Permission mode | supported | `default`, `acceptEdits`, `plan`, `bypassPermissions` (the latter only with `allowDangerouslySkipPermissions`) |
+| Hard blocklist | supported | `PreToolUse` hook, also applies in bypass |
+| Slash commands | partial | list from `initializationResult().commands`; skills/custom commands can be sent as text, interactive built-ins (`/config`, `/login` …) cannot |
+| Images/files in prompt | supported | images, PDFs and text files as content blocks (since phase 2) |
+| Rewind files | supported | `enableFileCheckpointing` + `rewindFiles()` |
+| Remote Control | supported | `enableRemoteControl()` of the running query; not in the SDK types (ADR 0008) |
+| Token usage | supported | from `result.usage` (reliable) |
+| Cost | partial | `total_cost_usd` is an API equivalent with a subscription, not shown as cost |
+| Rate limit status | supported | `rate_limit_event` (5-hour window) |
+| Embedded terminal (PTY) | supported | xterm.js + portable-pty in the Tauri shell |
+| GitHub PR | supported | bundled `gh`, login in the app |

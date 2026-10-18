@@ -20,3 +20,30 @@ used as well as that of the covered work.
 
 Commercial licenses without the obligations of the AGPL are available from Vanturis UG
 (haftungsbeschränkt). Contact: https://vanturis.de
+
+----------------------------------------------------------------------------------------------------------
+Deutsche Übersetzung (nur zur Information, maßgeblich ist der englische Text oben)
+
+FORGE
+Copyright (C) 2026 Vanturis UG (haftungsbeschränkt), https://vanturis.de
+
+Dieses Programm ist freie Software: Du kannst es unter den Bedingungen der GNU Affero General Public
+License, Version 3 (AGPL-3.0-only), wie von der Free Software Foundation veröffentlicht, weitergeben
+und/oder ändern, siehe LICENSE.md.
+
+Dieses Programm wird in der Hoffnung verbreitet, dass es nützlich ist, aber OHNE JEDE GEWÄHRLEISTUNG,
+sogar ohne die stillschweigende Gewährleistung der MARKTGÄNGIGKEIT oder EIGNUNG FÜR EINEN BESTIMMTEN
+ZWECK. Einzelheiten stehen in der GNU Affero General Public License.
+
+Zusätzliche Erlaubnis nach Abschnitt 7 der GNU AGPL Version 3
+
+Wenn du dieses Programm oder ein darauf beruhendes Werk veränderst, indem du es mit der Claude Agent SDK
+(@anthropic-ai/claude-agent-sdk) oder Claude Code von Anthropic PBC, oder einer veränderten Fassung davon,
+verlinkst oder kombinierst, und diese Teile enthält, die unter die Lizenz von Anthropic fallen, erteilen
+die Lizenzgeber dieses Programms dir die zusätzliche Erlaubnis, das entstehende Werk weiterzugeben. Der
+korrespondierende Quellcode für eine Nicht-Quelltext-Form einer solchen Kombination muss den Quellcode der
+verwendeten Teile der Claude Agent SDK oder von Claude Code nicht enthalten, wohl aber den des betroffenen
+Werks.
+
+Kommerzielle Lizenzen ohne die Pflichten der AGPL gibt es bei der Vanturis UG (haftungsbeschränkt).
+Kontakt: https://vanturis.de

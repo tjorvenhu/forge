@@ -1,48 +1,50 @@
-# ADR 0001: Claude-Anbindung über den Agent SDK mit der installierten CLI
+<img src="../../.github/assets/flags/gb.svg" height="14" alt=""> English · <a href="0001-runtime-claude-agent-sdk.de.md"><img src="../../.github/assets/flags/de.svg" height="14" alt=""> Deutsch</a>
 
-Datum: 2026-10-10 · Status: angenommen
+# ADR 0001: Claude integration via the Agent SDK with the installed CLI
 
-## Kontext
+Date: 2026-10-10 · Status: accepted
 
-FORGE soll die bestehende Claude-Code-Anmeldung (Max-Abo) nutzen. Kein Pflicht-API-Key, kein Auslesen
-von OAuth-Tokens. Zur Wahl standen der TypeScript Agent SDK (`@anthropic-ai/claude-agent-sdk`) und ein
-eigener CLI-Adapter über `claude -p --output-format stream-json`.
+## Context
 
-## Geprüft (Spike, 2026-10-10)
+FORGE should use the existing Claude Code login (Max subscription). No mandatory API key, no reading
+of OAuth tokens. The options were the TypeScript Agent SDK (`@anthropic-ai/claude-agent-sdk`) and a
+custom CLI adapter via `claude -p --output-format stream-json`.
+
+## Verified (spike, 2026-10-10)
 
 - `claude --version` → 2.1.296; `claude auth status` → `authMethod: claude.ai`, `subscriptionType: max`.
-- CLI-Spike: `claude -p … --output-format stream-json --verbose --include-partial-messages` liefert
-  `system/init`, `stream_event` (Token-Deltas), `assistant`, `user` (tool_result), `rate_limit_event`, `result`.
-- SDK-Spike (0.3.296): `query()` mit Streaming-Input, `canUseTool` wird für `Write` aufgerufen, Ablehnung kommt
-  bei Claude an, `listSessions({dir})` findet die Session. `system/init.apiKeySource = "none"`,
+- CLI spike: `claude -p … --output-format stream-json --verbose --include-partial-messages` delivers
+  `system/init`, `stream_event` (token deltas), `assistant`, `user` (tool_result), `rate_limit_event`, `result`.
+- SDK spike (0.3.296): `query()` with streaming input, `canUseTool` is called for `Write`, a denial reaches
+  Claude, `listSessions({dir})` finds the Session. `system/init.apiKeySource = "none"`,
   `initializationResult().account.subscriptionType = "Claude Max"`.
-- Der vom SDK mitgelieferte Windows-Binary (`@anthropic-ai/claude-agent-sdk-win32-x64`) startete in der
-  pnpm-Installation nicht (ENOENT). Mit `pathToClaudeCodeExecutable` auf die installierte CLI funktioniert alles.
+- The Windows binary shipped with the SDK (`@anthropic-ai/claude-agent-sdk-win32-x64`) did not start in the
+  pnpm installation (ENOENT). With `pathToClaudeCodeExecutable` pointing to the installed CLI, everything works.
 
-## Entscheidung
+## Decision
 
-- Primärer Adapter: **Agent SDK** (`query()` im Streaming-Input-Modus). Er bietet als dokumentierte API:
-  Freigaben (`canUseTool`), `interrupt()`, `setPermissionMode()`, `setModel()`, `resume`, `listSessions()`,
-  `getSessionMessages()`, Hooks (`PreToolUse`).
-- Ausgeführt wird die **installierte CLI** (`pathToClaudeCodeExecutable`), automatisch über PATH gefunden
-  oder in den Einstellungen gesetzt. Dadurch gelten dieselbe Version, derselbe Login und dieselbe
-  `~/.claude`-Konfiguration wie im Terminal.
-- Die Anmeldung macht ausschließlich die CLI selbst. FORGE liest keine Credentials.
-- `settingSources: ["user", "project", "local"]`: CLAUDE.md, Skills und Projekt-Settings bleiben wirksam.
-  Der Permission-Modus wird immer explizit übergeben, damit ein `defaultMode` aus einer Repo-Datei
-  keinen Bypass freischalten kann.
-- `ANTHROPIC_API_KEY` im Umfeld wird erkannt und standardmäßig aus der Session-Umgebung entfernt
-  (abschaltbar), weil er sonst die Abo-Anmeldung überschreibt und API-Kosten auslöst.
+- Primary adapter: **Agent SDK** (`query()` in streaming input mode). It offers as documented API:
+  approvals (`canUseTool`), `interrupt()`, `setPermissionMode()`, `setModel()`, `resume`, `listSessions()`,
+  `getSessionMessages()`, hooks (`PreToolUse`).
+- The **installed CLI** is executed (`pathToClaudeCodeExecutable`), found automatically via PATH
+  or set in the settings. This way the same version, the same login and the same
+  `~/.claude` configuration apply as in the terminal.
+- Login is handled exclusively by the CLI itself. FORGE does not read any credentials.
+- `settingSources: ["user", "project", "local"]`: CLAUDE.md, skills and project settings stay in effect.
+  The permission mode is always passed explicitly, so that a `defaultMode` from a repo file
+  cannot unlock bypass.
+- `ANTHROPIC_API_KEY` in the environment is detected and removed from the Session environment by default
+  (can be turned off), because otherwise it overrides the subscription login and causes API costs.
 
-## Abrechnung / Transparenz
+## Billing / transparency
 
-Laut Anthropic-Hilfeartikel „Use the Claude Agent SDK with your Claude plan" (Stand 07.10.2026, Link im
-Master-Prompt) ist die Nutzung des Agent SDK mit Abo vorgesehen; die Bedingungen können sich ändern.
-FORGE zeigt pro Session die von der CLI gemeldete `apiKeySource` an. `total_cost_usd` aus dem
-`result`-Event ist ein API-Äquivalent und wird bei Abo-Anmeldung **nicht** als Kosten angezeigt.
+According to the Anthropic help article "Use the Claude Agent SDK with your Claude plan" (as of 2026-10-07, link in the
+master prompt), using the Agent SDK with a subscription is intended; the terms may change.
+FORGE shows the `apiKeySource` reported by the CLI for each Session. `total_cost_usd` from the
+`result` event is an API equivalent and is **not** shown as cost when logged in with a subscription.
 
-## Konsequenzen
+## Consequences
 
-- Node.js ≥ 22.13 wird zur Laufzeit gebraucht (Sidecar).
-- CLI-Updates können Event-Formate erweitern. Der Normalizer ignoriert unbekannte Events und
-  protokolliert sie im Debug-Log.
+- Node.js ≥ 22.13 is required at runtime (sidecar).
+- CLI updates may extend event formats. The normalizer ignores unknown events and
+  logs them in the debug log.

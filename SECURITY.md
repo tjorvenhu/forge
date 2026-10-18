@@ -1,21 +1,23 @@
-# Sicherheitslücken melden
+<img src=".github/assets/flags/gb.svg" height="14" alt=""> English · <a href="SECURITY.de.md"><img src=".github/assets/flags/de.svg" height="14" alt=""> Deutsch</a>
 
-Bitte melde Sicherheitslücken in FORGE vertraulich und nicht als öffentliches Issue.
+# Reporting security vulnerabilities
 
-So geht es:
+Please report security vulnerabilities in FORGE privately, not as a public issue.
 
-1. Öffne im Repository den Reiter **Security**.
-2. Klicke auf **Report a vulnerability**. Direkt: <https://github.com/vanturis/forge/security/advisories/new>
-3. Beschreibe die Lücke: betroffene Version, Schritte zum Nachstellen und was ein Angreifer damit erreichen kann.
+How to report:
 
-Die Meldung sehen nur du und die Betreuer des Repositorys. Ich melde mich dort zurück und stimme mit dir ab,
-wann die Lücke veröffentlicht wird.
+1. Open the **Security** tab of the repository.
+2. Click **Report a vulnerability**. Direct link: <https://github.com/vanturis/forge/security/advisories/new>
+3. Describe the vulnerability: affected version, steps to reproduce and what an attacker can achieve with it.
 
-## Unterstützte Versionen
+Only you and the maintainers of the repository can see the report. I will reply there and agree with you on
+when the vulnerability is disclosed. Reports in English or German are welcome.
 
-Sicherheitskorrekturen gibt es nur für die jeweils neueste Version. FORGE aktualisiert sich selbst; prüfe vor
-einer Meldung, ob die Lücke dort noch besteht.
+## Supported versions
 
-## Sicherheitskonzept
+Security fixes are only provided for the latest version. FORGE updates itself; before reporting, check whether
+the vulnerability still exists there.
 
-Wie FORGE mit Rechten, Freigaben und Zugangsdaten umgeht, steht in [docs/SECURITY.md](docs/SECURITY.md).
+## Security concept
+
+How FORGE handles permissions, approvals and credentials is described in [docs/SECURITY.md](docs/SECURITY.md).

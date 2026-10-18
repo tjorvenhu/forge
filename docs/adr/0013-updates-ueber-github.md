@@ -1,106 +1,108 @@
-# ADR 0013: Updates über GitHub-Releases
+<img src="../../.github/assets/flags/gb.svg" height="14" alt=""> English · <a href="0013-updates-ueber-github.de.md"><img src="../../.github/assets/flags/de.svg" height="14" alt=""> Deutsch</a>
 
-Datum: 2026-10-12 · Status: angenommen
+# ADR 0013: Updates via GitHub Releases
 
-## Ziel
+Date: 2026-10-12 · Status: accepted
 
-Neue Versionen ohne manuelles Neuinstallieren: Sobald auf GitHub ein Update liegt, bietet FORGE es an.
+## Goal
 
-## Entscheidungen
+New versions without manual reinstallation: as soon as an update is available on GitHub, FORGE offers it.
 
-**Bauen:** `.github/workflows/release.yml` läuft bei jedem Push auf `main` (nicht bei reinen Doku-Änderungen) auf
-`windows-latest`: Version `0.1.<run_number>` in `tauri.conf.json`, Lint und Typecheck, Sidecar und Frontend
-(einmal, `beforeBuildCommand` leer über `tauri.ci.json`), dann `gh release create v0.1.<n>` mit den
-Commit-Betreffs seit dem letzten Tag als Notizen. Ein neuerer Push bricht einen laufenden Build ab.
+## Decisions
 
-**Zwei Arten von Releases** (Nachtrag 2026-10-12, vorher dauerte jeder Build 9,5 Minuten): node, git und gh sind
-476 MB und ändern sich fast nie; allein das LZMA-Packen im NSIS-Installer kostete 2 Minuten.
+**Build:** `.github/workflows/release.yml` runs on every push to `main` (not for documentation-only changes) on
+`windows-latest`: version `0.1.<run_number>` in `tauri.conf.json`, lint and typecheck, sidecar and frontend
+(once, `beforeBuildCommand` empty via `tauri.ci.json`), then `gh release create v0.1.<n>` with the
+commit subjects since the last tag as notes. A newer push cancels a running build.
 
-- `FORGE_<v>_update_<laufzeit>.zip` bei jedem Release: nur `forge-desktop.exe`, `runtime/sidecar/sidecar.mjs`
-  und `update.json`, etwa 4 MB. Gebaut mit `tauri build --no-bundle`, ohne Laufzeit-Download und ohne NSIS.
-- `FORGE_<v>_x64-setup.exe` nur, wenn es für den Laufzeit-Schlüssel noch keinen Installer gibt (neue
-  node-, git-, gh- oder Python-Version in `scripts/prepare-runtime.mjs`) oder auf Wunsch (Run workflow → full).
-  Daneben `FORGE_<v>_x64-setup.<laufzeit>.runtime`: Der Name dieser kleinen Datei sagt der App die Laufzeit des
-  Installers (Nachtrag 2026-10-17: vorher stand sie als `FORGE_<v>_<laufzeit>_x64-setup.exe` im Namen des
-  Installers, die App liest beide Formen). Kurze Namen bis 0.1.7 sind die ältesten Installer mit alter Laufzeit;
-  eine selbst gewählte setup.exe mit kurzem Namen ab 0.1.8 nimmt die App an, eine falsche Laufzeit fällt dann
-  bei der Prüfung nach der Installation auf.
+**Two kinds of releases** (addendum 2026-10-12, previously every build took 9.5 minutes): node, git and gh are
+476 MB and almost never change; the LZMA packing in the NSIS installer alone took 2 minutes.
 
-Der Laufzeit-Schlüssel ist `node-<v>_git-<v>_gh-<v>_python-<v>` (`prepare-runtime.mjs --key`, Python seit 2026-10-17); die installierte App liest
-ihn aus `runtime/VERSIONS.json`. Rust baut mit Thin-LTO statt vollem LTO (eine Minute schneller, kaum größer),
-die Toolchain wird nicht mehr aktualisiert. „Latest“ auf GitHub bleibt beim neuesten vollen Installer
-(`--latest=false` für die anderen): Download für Neuinstallationen, und ältere FORGE-Versionen, die nur
-`releases/latest` lesen, finden dort immer einen Installer.
-Unit-Tests laufen dort nicht: zwei Tests scheitern unter Windows an verzögert gelöschten Dateien.
+- `FORGE_<v>_update_<laufzeit>.zip` with every release: only `forge-desktop.exe`, `runtime/sidecar/sidecar.mjs`
+  and `update.json`, about 4 MB. Built with `tauri build --no-bundle`, without runtime download and without NSIS.
+- `FORGE_<v>_x64-setup.exe` only if there is no installer yet for the runtime key (new
+  node, git, gh or Python version in `scripts/prepare-runtime.mjs`) or on request (Run workflow → full).
+  Alongside it `FORGE_<v>_x64-setup.<laufzeit>.runtime`: the name of this small file tells the app the runtime of the
+  installer (addendum 2026-10-17: previously it was part of the installer name as `FORGE_<v>_<laufzeit>_x64-setup.exe`;
+  the app reads both forms). Short names up to 0.1.7 are the oldest installers with the old runtime;
+  a self-selected setup.exe with a short name from 0.1.8 on is accepted by the app, and a wrong runtime is then
+  caught by the check after installation.
 
-**Prüfen und Laden** (`packages/sidecar/src/update/app-update.ts`, `github-releases.ts`; Nachtrag 2026-10-17,
-vorher über `gh` mit der Anmeldung des Nutzers, solange das Repository privat war): direkt per HTTPS an die
-GitHub-API (`/repos/vanturis/forge/releases`, `/compare`, Dateien über die API-Adresse des Assets mit
-`Accept: application/octet-stream`). Zuerst anonym, damit Updates ohne GitHub-Konto gehen. Nur wenn GitHub ablehnt
-(401/403/404/429: privates Repository oder Ratenlimit von 60 Anfragen pro Stunde und IP), ein zweiter Versuch mit dem
-Token der gh-Anmeldung (`gh auth token`), falls es eine gibt.
-Erste Prüfung kurz nach dem Start, dann alle 30 Minuten (Einstellung `updateChecks`), nur in der Desktop-App
-(`FORGE_APP_VERSION` gesetzt). Der Installer landet in `%TEMP%\forge-update` und wird gegen den SHA-256 geprüft,
-den GitHub für die Datei meldet (`digest`), und immer gegen seine Signatur (siehe unten); bei Abweichung verworfen. Auswahl (`pickRelease`): Hat das neueste
-Release ein kleines Update für den installierten Laufzeit-Schlüssel, wird es genommen; sonst der neueste volle
-Installer. Danach folgen wieder kleine Updates. Die Oberfläche zeigt Art und Größe.
+The runtime key is `node-<v>_git-<v>_gh-<v>_python-<v>` (`prepare-runtime.mjs --key`, Python since 2026-10-17); the installed app reads
+it from `runtime/VERSIONS.json`. Rust builds with thin LTO instead of full LTO (one minute faster, barely larger),
+the toolchain is no longer updated. "Latest" on GitHub stays on the newest full installer
+(`--latest=false` for the others): download for new installations, and older FORGE versions that only read
+`releases/latest` always find an installer there.
+Unit tests do not run there: two tests fail on Windows because of files that are deleted with a delay.
 
-**Installieren** (Rust-Befehl `install_update`, `src-tauri/src/update.rs`): nur Dateien aus
-`%TEMP%\forge-update`. `*-setup.exe` wie unten. `*_update_*.zip` wird mit `tar.exe` nach `staged` entpackt
-und darf genau die drei erwarteten Dateien enthalten; die Version in `update.json` nur Ziffern und Punkte. Ein
-PowerShell-Skript (außerhalb des Job-Objekts gestartet) wartet, bis FORGE beendet ist, benennt die alten Dateien
-in `.forge-old` um, kopiert die neuen, stellt bei einem Fehler die alten wieder her, setzt `DisplayVersion` im
-Uninstall-Eintrag und startet FORGE neu. Protokoll: `%TEMP%\forge-update\apply-update.log`. Der Installer:
-Die Hülle beendet Terminals und Sidecar sauber (offene Sessions werden wie beim Schließen unterbrochen und lassen
-sich fortsetzen), startet den Installer selbst mit `/P /UPDATE /R` (ohne Rückfragen, Einstellungen bleiben,
-FORGE startet danach neu) und beendet sich. Nicht der Sidecar startet ihn: dessen Job-Objekt würde den Installer
-beim Beenden von FORGE mit beenden.
+**Check and download** (`packages/sidecar/src/update/app-update.ts`, `github-releases.ts`; addendum 2026-10-17,
+previously via `gh` with the user's login while the repository was private): directly via HTTPS to the
+GitHub API (`/repos/vanturis/forge/releases`, `/compare`, files via the asset's API address with
+`Accept: application/octet-stream`). Anonymous first, so that updates work without a GitHub account. Only if GitHub refuses
+(401/403/404/429: private repository or rate limit of 60 requests per hour and IP), a second attempt with the
+token of the gh login (`gh auth token`), if there is one.
+First check shortly after startup, then every 30 minutes (setting `updateChecks`), only in the desktop app
+(`FORGE_APP_VERSION` set). The installer is stored in `%TEMP%\forge-update` and checked against the SHA-256
+that GitHub reports for the file (`digest`), and always against its signature (see below); discarded on mismatch. Selection (`pickRelease`): if the newest
+release has a small update for the installed runtime key, that one is taken; otherwise the newest full
+installer. After that, small updates follow again. The UI shows type and size.
 
-**Signatur (Nachtrag 2026-10-17, mit der Veröffentlichung):** Jedes Release-Asset hat daneben `<asset>.sig`:
-Ed25519 über `FORGE-UPDATE-1\n<Dateiname>\n<sha256 hex>` (`scripts/sign-update.mjs`, base64). Der Name in der
-Nachricht bindet die Signatur an Version und Laufzeit. Privater Schlüssel: Secret `FORGE_UPDATE_SIGNING_KEY` im
-Repository (PEM, PKCS8), ohne ihn bricht der Workflow schon im Schritt Plan ab. Öffentlicher Schlüssel fest in
-`packages/sidecar/src/update/signature.ts`. Die App bietet nur Assets mit `.sig` an (`signedOnly`), ältere
-unsignierte Releases sind damit unsichtbar. Deshalb zählt im Workflow nur ein signierter Installer als vorhanden:
-Das erste Release nach der Umstellung baut den vollen Installer neu. Ein neuer Schlüssel heißt: neuen öffentlichen
-Schlüssel in `signature.ts`, Secret ersetzen; installierte Versionen mit dem alten Schlüssel nehmen danach nur noch
-den Installer von Hand. Ein Installer, den der Nutzer selbst auswählt (Downloads-Ordner), wird nicht geprüft: Den
-startet er auch so. Code-Signing (SmartScreen) fehlt weiterhin.
+**Install** (Rust command `install_update`, `src-tauri/src/update.rs`): only files from
+`%TEMP%\forge-update`. `*-setup.exe` as below. `*_update_*.zip` is extracted with `tar.exe` into `staged`
+and may contain exactly the three expected files; the version in `update.json` only digits and dots. A
+PowerShell script (started outside the job object) waits until FORGE has exited, renames the old files
+to `.forge-old`, copies the new ones, restores the old ones on error, sets `DisplayVersion` in the
+uninstall entry and restarts FORGE. Log: `%TEMP%\forge-update\apply-update.log`. The installer:
+the shell shuts down terminals and the sidecar cleanly (open Sessions are interrupted as on close and can be
+resumed), starts the installer itself with `/P /UPDATE /R` (no prompts, settings are kept,
+FORGE restarts afterwards) and exits. The sidecar does not start it: its job object would terminate the installer
+together with FORGE on exit.
 
-## Nachtrag 2026-10-13: Sessions überstehen das Update
+**Signature (addendum 2026-10-17, with the public release):** every release asset has `<asset>.sig` next to it:
+Ed25519 over `FORGE-UPDATE-1\n<Dateiname>\n<sha256 hex>` (`scripts/sign-update.mjs`, base64). The name in the
+message binds the signature to version and runtime. Private key: secret `FORGE_UPDATE_SIGNING_KEY` in the
+repository (PEM, PKCS8); without it, the workflow aborts already in the Plan step. Public key hardcoded in
+`packages/sidecar/src/update/signature.ts`. The app only offers assets with `.sig` (`signedOnly`), so older
+unsigned releases are invisible. Therefore the workflow only counts a signed installer as existing:
+the first release after the switch rebuilds the full installer. A new key means: new public
+key in `signature.ts`, replace the secret; installed versions with the old key then only accept
+the installer by hand. An installer the user selects themselves (Downloads folder) is not checked: they would
+run it anyway. Code signing (SmartScreen) is still missing.
 
-Ziel: Ein Update soll laufende Claude-Sessions nicht schließen und nicht anhalten.
+## Addendum 2026-10-13: Sessions survive the update
 
-**Warum die Claude-Prozesse nicht durchlaufen:** Jede Session ist ein CLI-Prozess, der über stdio am Sidecar hängt.
-Freigaben (`canUseTool`), die Sperrliste (PreToolUse-Hook) und die FORGE-Werkzeuge (In-Process-MCP-Server) laufen
-im Sidecar. Ein neuer Sidecar kann diese Pipes und Callbacks nicht übernehmen; ein dauerhafter Session-Prozess
-außerhalb des Updates müsste genau diesen Code enthalten und wäre selbst wieder zu aktualisieren. Deshalb:
-anhalten, merken, nach dem Neustart fortsetzen. Der Verlauf liegt im Transkript der CLI, `resume` setzt dort an.
+Goal: an update should neither close nor pause running Claude Sessions.
 
-**Ablauf:** Das Hauptfenster ruft vor `install_update` `app.prepareInstall` auf. Beim Beenden schreibt der Sidecar
-dann nach dem Drain (Auto-Commits und Tests fertiger Durchläufe) jede Session mit laufendem CLI-Prozess in
-`update_resume`, mit `working`, wenn ein Durchlauf, eine Hintergrundaufgabe oder ein Subagent lief. Gilt nur
-zwei Minuten nach `prepareInstall`; scheitert `install_update`, nimmt `prepareInstall { cancel: true }` es zurück.
-Der neue Sidecar öffnet die Sessions 3 s nach dem Start wieder: ruhende ohne Prompt (Tab und Status sind wieder da),
-arbeitende mit einer automatischen Nachricht (`source: "auto"`) und davor dem Ereignis `app.updated` (Karte
-„FORGE aktualisiert“ mit beiden Versionen). Marken älter als 30 Minuten verfallen: FORGE kam dann nicht direkt
-aus dem Update zurück. Unterbrochene Befehle laufen nicht weiter, die Nachricht sagt Claude, sie neu zu starten.
-Offene Chat-Fenster merkt sich das Hauptfenster (`localStorage`) und öffnet sie nach dem Start wieder.
+**Why the Claude processes do not keep running:** each Session is a CLI process attached to the sidecar via stdio.
+Approvals (`canUseTool`), the blocklist (PreToolUse hook) and the FORGE tools (in-process MCP server) run
+in the sidecar. A new sidecar cannot take over these pipes and callbacks; a persistent Session process
+outside the update would have to contain exactly this code and would itself need updating. Therefore:
+pause, remember, resume after the restart. The history is in the CLI transcript; `resume` picks up there.
 
-**Zwei Schritte:** Liegt beim Start die Ketten-Datei, kann gleich der zweite Schritt folgen. Die Sessions warten
-dann (`holdsResume`, höchstens 5 Minuten), bis klar ist, ob er installiert wird; sonst würden sie anlaufen und
-sofort wieder angehalten. Startet er, bleiben die Marken für den nächsten Start stehen.
+**Flow:** before `install_update`, the main window calls `app.prepareInstall`. On exit, after the drain
+(auto-commits and tests of finished runs), the sidecar then writes every Session with a running CLI process to
+`update_resume`, with `working` if a run, a background task or a subagent was running. Only valid for
+two minutes after `prepareInstall`; if `install_update` fails, `prepareInstall { cancel: true }` reverts it.
+The new sidecar reopens the Sessions 3 s after startup: idle ones without a prompt (tab and status are back),
+working ones with an automatic message (`source: "auto"`) preceded by the event `app.updated` (card
+"FORGE aktualisiert" with both versions). Markers older than 30 minutes expire: FORGE then did not come back directly
+from the update. Interrupted commands do not continue; the message tells Claude to restart them.
+The main window remembers open chat windows (`localStorage`) and reopens them after startup.
 
-**Telefon:** `forge_system update_install` (RPC `app.installUpdate`) bittet das Hauptfenster per Ereignis
-`update.install`, zu installieren; das Gespräch endet mit dem Neustart. Befehlspalette: „FORGE … installieren“.
+**Two steps:** if the chain file is present at startup, the second step may follow right away. The Sessions then wait
+(`holdsResume`, at most 5 minutes) until it is clear whether it will be installed; otherwise they would start up and
+be paused again immediately. If it starts, the markers remain for the next startup.
 
-Nicht abgedeckt: Terminals im unteren Panel und Dev-Server starten nach dem Update nicht von selbst neu; ein laufender
-Anruf endet.
+**Phone:** `forge_system update_install` (RPC `app.installUpdate`) asks the main window via the event
+`update.install` to install; the call ends with the restart. Command palette: "FORGE … installieren".
+
+Not covered: terminals in the bottom panel and dev servers do not restart by themselves after the update; a running
+call ends.
 
 ## Tests
 
-`app-update.test.ts`: Versionsvergleich, Update gefunden, Download mit Prüfsumme und Signatur, falsche Prüfsumme,
-falsche Signatur ohne Prüfsumme, unsignierte Assets, aktuell, noch kein Release, Wahl zwischen kleinem Update und
-vollem Installer, Download des kleinen Updates. `update-signing.test.ts`: Signaturskript gegen Prüfung, anonymer
-Abruf mit Token nur bei Ablehnung, Ratenlimit.
-Das Austausch-Skript ist von Hand geprüft (Erfolg und Rückbau bei gesperrter Datei).
+`app-update.test.ts`: version comparison, update found, download with checksum and signature, wrong checksum,
+wrong signature without checksum, unsigned assets, up to date, no release yet, choice between small update and
+full installer, download of the small update. `update-signing.test.ts`: signing script against verification, anonymous
+fetch with token only on refusal, rate limit.
+The replacement script has been checked by hand (success and rollback with a locked file).

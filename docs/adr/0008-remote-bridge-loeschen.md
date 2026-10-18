@@ -1,67 +1,69 @@
-# ADR 0008: Remote Control über die SDK-Session, Projekt löschen, Automationen entfernt
+<img src="../../.github/assets/flags/gb.svg" height="14" alt=""> English · <a href="0008-remote-bridge-loeschen.de.md"><img src="../../.github/assets/flags/de.svg" height="14" alt=""> Deutsch</a>
 
-Datum: 2026-10-10 · Status: angenommen
+# ADR 0008: Remote Control via the SDK Session, deleting projects, automations removed
+
+Date: 2026-10-10 · Status: accepted
 
 ## Remote Control
 
-Problem mit ADR 0007: `claude remote-control` startet eigene Sessions. Was in FORGE geschrieben wurde,
-war in der Claude-App nicht zu sehen und umgekehrt.
+Problem with ADR 0007: `claude remote-control` starts its own Sessions. What was written in FORGE was not
+visible in the Claude app, and vice versa.
 
-Neu: Die laufende Agent-SDK-Query bietet `enableRemoteControl(enabled, name)` (Control-Request
-`remote_control`, so nutzen es auch die IDE-Hosts). Die Methode steht nicht in den SDK-Typen (0.3.296);
-sie ist in `AgentSdkRuntime` gekapselt. Antwort: `session_url` (claude.ai/code/session_…), Status kommt als
-`system/bridge_state` (ready, connected). Im Spike verbunden, auch ohne erste Nachricht und ohne
-Ordner-Vertrauen.
+New: the running Agent SDK query offers `enableRemoteControl(enabled, name)` (control request
+`remote_control`, which is also how the IDE hosts use it). The method is not in the SDK types (0.3.296);
+it is encapsulated in `AgentSdkRuntime`. Response: `session_url` (claude.ai/code/session_…), status arrives as
+`system/bridge_state` (ready, connected). Connected in the spike, even without a first message and without
+folder trust.
 
-- ~~Remote ist pro Projekt an: alle offenen Sessions werden verbunden, neue und fortgesetzte automatisch.
-  Ohne offene Session öffnet FORGE eine leere („Remote-Session“), die den Titel der ersten Nachricht bekommt.~~
-  Ersetzt am 2026-10-11, siehe Nachtrag unten.
-- Nachrichten aus der App: Sessions laufen mit `--replay-user-messages` (über `extraArgs`). Eigene Nachrichten
-  kommen mit der eigenen `uuid` zurück und werden ignoriert; unbekannte `uuid`s sind Nachrichten aus der App.
-  `command_lifecycle: started` mit unbekannter `uuid` markiert einen Durchlauf von dort (Status, Git-Basis für
-  Auto-Commit). Rückfall: fehlt das Echo, liest FORGE nach dem Durchlauf das Transkript.
-- Sicherheit: Nachrichten von der App laufen durch dieselbe Session, also mit Profil, Freigaben (`canUseTool`)
-  und Sperrliste (PreToolUse-Hook). Das ist strenger als vorher.
-- Remote-Zustand wird nicht gespeichert; nach Neustart ist er aus.
+- ~~Remote is on per project: all open Sessions are connected, new and resumed ones automatically.
+  Without an open Session, FORGE opens an empty one ("Remote Session") that gets the title of the first message.~~
+  Replaced on 2026-10-11, see addendum below.
+- Messages from the app: Sessions run with `--replay-user-messages` (via `extraArgs`). FORGE's own messages
+  come back with their own `uuid` and are ignored; unknown `uuid`s are messages from the app.
+  `command_lifecycle: started` with an unknown `uuid` marks a run from there (status, Git base for
+  auto-commit). Fallback: if the echo is missing, FORGE reads the transcript after the run.
+- Security: messages from the app run through the same Session, so with profile, approvals (`canUseTool`)
+  and blocklist (PreToolUse hook). This is stricter than before.
+- Remote state is not saved; after a restart it is off.
 
-### Nachtrag 2026-10-11: global, keine eigene Session
+### Addendum 2026-10-11: global, no separate Session
 
-Wunsch des Nutzers: Einschalten soll keine zusätzliche Session öffnen, sondern jede in FORGE offene Session
-einzeln in der Claude-App anwählbar machen.
+User request: turning it on should not open an additional Session, but make every Session open in FORGE
+individually selectable in the Claude app.
 
-- Remote ist global statt pro Projekt (`remote.state/start/stop` ohne `projectId`, `remote.updated` trägt
-  nur den `RemoteState`). „Offen“ heißt: Session mit laufendem CLI-Prozess, also genau die Session-Tabs.
-  Gespeicherte Sessions ohne Prozess lassen sich nicht verbinden; sie kommen dazu, sobald sie fortgesetzt werden.
-- Jede Session bekommt einen eigenen Bridge-Eintrag mit Namen `FORGE · <Projekt>: <Titel>`; gleiche Namen
-  werden mit ` (2)`, ` (3)` unterschieden. Der Name wird beim Verbinden vergeben und danach nicht geändert.
-- Ohne laufende Session ist Remote nur eingeschaltet; die UI sagt das. Startet oder fortgesetzt wird eine
-  Session danach, verbindet FORGE sie automatisch.
-- Eine beendete oder gelöschte Session fällt aus der Liste. Erneutes Einschalten verbindet fehlgeschlagene
-  Sessions neu. Ausschalten trennt alle (`enableRemoteControl(false)`).
+- Remote is global instead of per project (`remote.state/start/stop` without `projectId`, `remote.updated` carries
+  only the `RemoteState`). "Open" means: a Session with a running CLI process, i.e. exactly the Session tabs.
+  Saved Sessions without a process cannot be connected; they are added as soon as they are resumed.
+- Each Session gets its own bridge entry named `FORGE · <Projekt>: <Titel>`; identical names
+  are distinguished with ` (2)`, ` (3)`. The name is assigned on connect and not changed afterwards.
+- Without a running Session, Remote is merely switched on; the UI says so. If a Session is started or resumed
+  afterwards, FORGE connects it automatically.
+- A finished or deleted Session drops out of the list. Switching on again reconnects failed
+  Sessions. Switching off disconnects all of them (`enableRemoteControl(false)`).
 
-## Projekt löschen
+## Deleting a project
 
-`projects.remove` nimmt optional `deleteFolder` und `deleteGitHubRepo`. Reihenfolge: offene Sessions schließen,
-GitHub-Repo löschen (scheitert am ehesten, dann ist nichts verloren), Ordner löschen, Eintrag entfernen.
-Gesperrt: Laufwerke, Home und Vorfahren, Standardordner im Home, FORGE-Daten und Installationsordner, Ordner mit
-weiteren Projekten. Worktrees werden über `git worktree remove` gelöscht. `gh repo delete` braucht den Scope
-`delete_repo`; FORGE fragt ihn per `gh auth refresh -s delete_repo` (Device-Flow wie beim Login) erst an, wenn
-der Nutzer das Repo löschen will. Die UI verlangt bei jeder löschenden Option das Eintippen des Projektnamens.
+`projects.remove` optionally takes `deleteFolder` and `deleteGitHubRepo`. Order: close open Sessions,
+delete the GitHub repo (most likely to fail, and then nothing is lost), delete the folder, remove the entry.
+Blocked: drives, home and its ancestors, standard folders in home, FORGE data and installation folder, folders
+containing other projects. Worktrees are deleted via `git worktree remove`. `gh repo delete` needs the scope
+`delete_repo`; FORGE requests it via `gh auth refresh -s delete_repo` (device flow as with login) only when
+the user wants to delete the repo. For every deleting option, the UI requires typing the project name.
 
-## Entfernt
+## Removed
 
-Feature-Workflow und geplante Aufgaben (Ansicht „Automatisierungen“) auf Wunsch des Nutzers. Migration 3 löscht
-die Tabellen `workflows` und `schedules`. Projekt-Tags und Worktrees bleiben.
+Feature workflow and scheduled tasks (view "Automatisierungen") at the user's request. Migration 3 drops
+the tables `workflows` and `schedules`. Project tags and worktrees remain.
 
 ## Tooltips
 
-Native `title`-Tooltips werden app-weit durch eine eigene Ebene ersetzt (`TitleTooltips`): das Attribut wandert
-beim Hover nach `data-forge-title` und danach zurück. So greift das eigene Aussehen auch in CodeMirror und xterm.
+Native `title` tooltips are replaced app-wide by a custom layer (`TitleTooltips`): on hover the attribute moves
+to `data-forge-title` and back afterwards. This way the custom look also applies in CodeMirror and xterm.
 
 ## Effort
 
-Effort (low, medium, high, xhigh, max, die Namen von Claude Code) als Auswahl auf drei Ebenen: global (Einstellungen), pro Projekt und pro Session im
-Composer. Start über die SDK-Option `effort`, Wechsel in laufender Session über `applyFlagSettings({ effortLevel })`.
-Welche Stufen ein Modell kann, meldet Claude Code in der Modellliste (`supportsEffort`, `supportedEffortLevels`);
-ohne Unterstützung blendet FORGE die Auswahl aus. Migration 4: `projects.default_effort`, `sessions.effort`.
-Modellnamen kommen aus derselben Liste („opus“ → „Opus 5.5“).
+Effort (low, medium, high, xhigh, max, the names from Claude Code) as a selection on three levels: global (settings), per project and per Session in the
+composer. Start via the SDK option `effort`, change in a running Session via `applyFlagSettings({ effortLevel })`.
+Which levels a model supports is reported by Claude Code in the model list (`supportsEffort`, `supportedEffortLevels`);
+without support, FORGE hides the selection. Migration 4: `projects.default_effort`, `sessions.effort`.
+Model names come from the same list ("opus" → "Opus 5.5").

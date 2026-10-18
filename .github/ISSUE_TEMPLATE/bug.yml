@@ -1,55 +1,56 @@
-name: Fehler melden
-description: Etwas in FORGE funktioniert nicht wie erwartet.
+name: Report a bug
+description: Something in FORGE does not work as expected.
 labels: ["bug"]
 body:
   - type: markdown
     attributes:
       value: |
-        Danke für die Meldung. Bitte keine Passwörter, API-Schlüssel oder Telefonnummern einfügen.
-        Sicherheitslücken bitte nicht hier melden, sondern wie in SECURITY.md beschrieben.
+        Thanks for the report. Please do not paste passwords, API keys or phone numbers.
+        Do not report security vulnerabilities here. Follow SECURITY.md instead.
+        You can write in English or German (Deutsch ist auch willkommen).
   - type: textarea
     id: what
     attributes:
-      label: Was ist passiert?
-      description: Beschreibe den Fehler. Fehlermeldungen gern wörtlich.
+      label: What happened?
+      description: Describe the bug. Quote error messages word for word if you can.
     validations:
       required: true
   - type: textarea
     id: expected
     attributes:
-      label: Was hast du erwartet?
+      label: What did you expect?
     validations:
       required: true
   - type: textarea
     id: steps
     attributes:
-      label: Schritte zum Nachstellen
+      label: Steps to reproduce
       placeholder: |
-        1. Projekt öffnen
+        1. Open a project
         2. ...
-        3. Fehler erscheint
+        3. The error appears
     validations:
       required: false
   - type: input
     id: version
     attributes:
-      label: FORGE-Version
-      description: Steht unter Einstellungen > Über FORGE.
-      placeholder: z. B. 0.1.60
+      label: FORGE version
+      description: Shown under Settings > About FORGE.
+      placeholder: e.g. 0.1.60
     validations:
       required: true
   - type: textarea
     id: diagnostics
     attributes:
-      label: Diagnose
-      description: Die Angaben aus Einstellungen > Über FORGE > Diagnose (Claude-Code-Version, Anmeldestatus, Git, GitHub CLI).
+      label: Diagnostics
+      description: The details from Settings > About FORGE > Diagnostics (Claude Code version, sign-in status, Git, GitHub CLI).
       render: text
     validations:
       required: false
   - type: textarea
     id: more
     attributes:
-      label: Sonstiges
-      description: Screenshots, Windows-Version oder was sonst helfen könnte.
+      label: Anything else
+      description: Screenshots, Windows version or anything else that could help.
     validations:
       required: false

@@ -1,0 +1,156 @@
+<a href="ARCHITECTURE.md"><img src="../.github/assets/flags/gb.svg" height="14" alt=""> English</a> · <img src="../.github/assets/flags/de.svg" height="14" alt=""> Deutsch
+
+# FORGE – Architektur
+
+```
+┌──────────────────────────────── Tauri-Fenster (WebView2) ───────────────────────────────────┐
+│  React-UI (apps/desktop/src)                                                                  │
+│   Zustand (UI-State, Event-Puffer) · TanStack Query (RPC-Cache) · Radix/Tailwind-Primitives   │
+│        │ invoke("sidecar_send", line)                     ▲ event "sidecar://message"        │
+└────────┼──────────────────────────────────────────────────┼──────────────────────────────────┘
+         ▼                                                  │
+┌──────── Rust-Hülle (apps/desktop/src-tauri) ──────────────┼──────────────────────────────────┐
+│  sidecar.rs: startet node, schreibt stdin, liest stdout   │   Plugins: dialog (Ordner),        │
+│  keine Shell-/FS-/HTTP-Rechte für die Webview             │   opener (https, localhost)        │
+└────────┼──────────────────────────────────────────────────┼──────────────────────────────────┘
+         ▼ stdin (JSON-Lines)                               │ stdout (JSON-Lines)
+┌──────── Node-Sidecar (packages/sidecar) ────────────────────────────────────────────────────┐
+│  rpc/server.ts      Zod-Validierung aller Parameter (packages/protocol)                       │
+│  sessions/          SessionService: Statusmaschine, Freigaben, Persistenz, Redaction          │
+│  claude/            ClaudeRuntime-Interface, AgentSdkRuntime, Normalizer, Diagnose            │
+│  policy/            Profile, harte Sperrliste (PreToolUse), Secret-Redactor                   │
+│  git/               GitEngine (git-CLI, Argument-Arrays), Parser                               │
+│  projects/          ProjectManager, Technologie-Erkennung, Vorlagen                           │
+│  persistence/       SQLite (node:sqlite), Migrationen                                         │
+└────────┬───────────────────────────────┬────────────────────────────────────────────────────┘
+         ▼                               ▼
+   Claude Code CLI (installiert,      git / gh
+   eigener Login in ~/.claude)
+```
+
+## Module und Verantwortung
+
+| Modul | Pfad | Aufgabe |
+|---|---|---|
+| desktop-shell | `apps/desktop/src-tauri` | Fenster, Ordnerdialog, Lebenszyklus des Sidecars |
+| UI | `apps/desktop/src` | Screens, Komponenten, Stores |
+| protocol | `packages/protocol` | RPC-Methoden, Events, Modelle, Fehlercodes (Zod) |
+| claude-runtime | `packages/sidecar/src/claude` | Adapter zum Agent SDK, Normalisierung der Stream-Events |
+| session-service | `packages/sidecar/src/sessions` | Sessions starten/fortsetzen/stoppen, Freigaben, Persistenz. `session-service` ist nur die Fassade (öffentliche API, Verdrahtung). Aufgeteilt in `session-core` (Live-Sessions, Events, Status), `lifecycle` (Start, Fortsetzen, Stop, Schließen, Löschen, Shutdown), `turns` (Nachrichten senden, zurückhalten bis die Automatik fertig ist), `stream` (CLI-Ausgabe zu Timeline, Status, Kontext, Hintergrundaufgaben), `approvals` (Policy-Hook, Freigabeanfragen, Audit), `permission-mode` (Modus auf das Profil begrenzen, Profilwechsel), `runtime-catalog` (Fähigkeiten, Modelle, Befehle, Plan-Nutzung), `live-session`, `remote-bridge` (Remote Control), `turn-automation` (Tests, Auto-Commit, Auto-Push nach einem Durchlauf), `titles` (Sessiontitel aus den neuesten Prompts) und `claude-assist` (Commit-Nachricht, PR-Text, Zusammenfassung, Titel) |
+| project-manager | `packages/sidecar/src/projects` | Import, Anlage, Klonen, Metadaten |
+| git-engine | `packages/sidecar/src/git` | Status, Diff, Stage, Commit, Branches |
+| security/policy | `packages/sidecar/src/policy` | Profile, Sperrliste, Redaction |
+| persistence | `packages/sidecar/src/persistence` | SQLite-Schema, Repositories |
+
+## ClaudeRuntime-Schnittstelle
+
+Gefordert waren `startSession, sendMessage, streamEvents, approveOrDenyTool, stopSession, resumeSession,
+listSessions, capabilities`. Umsetzung in `claude/runtime.ts`:
+
+| Gefordert | Umsetzung |
+|---|---|
+| startSession | `ClaudeRuntime.startSession(opts, sink)` |
+| sendMessage | `RuntimeSession.sendMessage(text)` |
+| streamEvents | Push über `SessionSink.onMessage` → `Normalizer` → `session.event` an die UI |
+| approveOrDenyTool | `SessionSink.onApproval` liefert ein Promise; `SessionService.respondApproval` löst es auf |
+| stopSession | `RuntimeSession.interrupt()` (Turn stoppen) und `close()` (Prozess beenden) |
+| resumeSession | `ClaudeRuntime.startSession({ resume: claudeSessionId, … }, sink)` |
+| listSessions | `ClaudeRuntime.listSessions(dir)` (auch im Terminal gestartete Sessions) |
+| capabilities | `ClaudeRuntime.capabilities(init, cliCapabilities)` |
+
+## Session-Statusmaschine
+
+```
+starting ─► running ◄──► waiting_approval
+              │  ▲
+   turn.result│  │send
+              ▼  │
+             idle
+              │
+           close / Prozessende ─► stopped
+           Absturz / Auth-Fehler ─► error
+   running / waiting_approval ──stop──► stopping ─► idle (Turn abgebrochen, Session lebt weiter)
+   App-Ende oder Neustart: offene Sessions ─► interrupted ─(resume)─► starting
+```
+
+Stop auf einer untätigen Session tut nichts. Start und Resume einer Session laufen nacheinander; ein
+zweites Resume oder Senden wartet auf den Prozess, den das erste gestartet hat. Beim Beenden der App
+wartet der Sidecar bis zu 5 Sekunden auf Nacharbeiten (Tests, Auto-Commit) und das Telefon, dann
+setzt er offene Sessions auf `interrupted`.
+
+Jede Session speichert `cwd` beim Start. Resume nutzt immer dieses `cwd`, auch wenn das Projekt
+verschoben wurde. Events werden mit `seq`, Zeitstempel, Typ und Session-ID in SQLite abgelegt;
+Token-Deltas werden nur live gesendet, nie gespeichert. `sessions.events` liefert die neuesten
+2.000 Events in aufsteigender Reihenfolge, ältere über den Parameter `beforeSeq`. Einmal-Aufrufe
+der CLI (Prüfung, Befehlsliste, Commit-Nachricht, Usage) brechen nach 45 Sekunden ab.
+
+### Nutzungslimit und automatisches Weitermachen
+
+`sessions/auto-continue.ts`. Ein Durchlauf gilt als vom Limit gestoppt, wenn sein `turn.result` ein Fehler
+ist (kein Stopp durch den Nutzer) und entweder im selben Durchlauf ein `rate_limit_event` mit
+`status: "rejected"` kam (ohne `isUsingOverage`/`overageInUse`) oder der Ergebnistext eine Limit-Meldung
+ist („You've hit your …“, ältere CLI „Claude AI usage limit reached|<unix>“). Die Reset-Zeit kommt in
+dieser Reihenfolge aus `rate_limit_info.resetsAt`, der Plan-Auslastung (`system.usage`, Fenster des
+gemeldeten Limits oder das späteste volle) und dem Text der Meldung. Ist sie unbekannt, fragt FORGE alle
+15 Minuten die Plan-Auslastung ab, höchstens 20-mal, dann folgt ein Versuch.
+
+Der Plan liegt in der Tabelle `auto_continue` (fällig um, Reset, letzte Event-Nummer beim Limit,
+Anzahl der Versuche). Alle 30 Sekunden (erstmals 10 Sekunden nach dem Start) vergleicht der Sidecar die
+Uhrzeit mit den fälligen Plänen. Es gibt keinen langen Timer, der im Standby stehen bliebe: nach dem
+Aufwachen ist ein Plan überfällig und läuft beim nächsten Check. Fällig heißt: Session prüfen (gibt es
+seit dem Limit eine Nutzernachricht oder ein weiteres Ergebnis, oder läuft gerade ein Durchlauf, entfällt
+der Plan), dann über den normalen Resume-Pfad `AUTO_CONTINUE_PROMPT` senden, als `user.message` mit
+`source: "auto"`. Jede Nutzernachricht (FORGE, Telefon, Claude-App), `sessions.stop`,
+`sessions.cancelAutoContinue`, das Löschen der Session und die Einstellung `autoContinueAfterLimit` heben
+den Plan auf. Ohne Nutzereingabe macht FORGE höchstens dreimal hintereinander automatisch weiter.
+Die Timeline zeigt das über Events `auto_continue` (`scheduled`, `resumed`, `cancelled`, `exhausted`,
+`failed`); `Session.autoContinueAt` trägt die geplante Zeit.
+
+Unabhängig davon merkt sich `sessions/rate-limit.ts` den zuletzt gemeldeten Limit-Stand des Kontos
+(`system.rateLimit`, Event `ratelimit.updated`): `warning` bei `allowed_warning`, `reached` bei
+`rejected`. Eine spätere Meldung `allowed` oder das Verstreichen von `resetsAt` setzt ihn zurück. Der
+Composer zeigt ihn dauerhaft an; Warnungen erscheinen nicht mehr im Chat.
+
+### Sessiontitel
+
+Beim Start ist der Titel die erste Zeile des ersten Prompts. Danach hält `sessions/titles.ts` ihn auf
+dem Stand der neuesten Prompts. Auslöser ist jede Nutzernachricht aus FORGE, vom Telefon oder aus der
+Claude-App. Nicht zählen: automatische Nachrichten (`source: "auto"`), Slash-Commands, Nachrichten unter
+12 Zeichen und reine Füllantworten („ok“, „ja, mach weiter“, „danke, passt so“). Pro Session wartet
+FORGE 2 Sekunden auf weitere Nachrichten, erneuert höchstens einmal pro Minute (die neueste wartende
+Nachricht gewinnt) und nie zwei Mal gleichzeitig.
+
+Grundlage sind die letzten drei zählenden Prompts aus der Timeline, neueste zuerst, je auf 300 Zeichen
+gekürzt. Der Titel kommt in dieser Reihenfolge von `RuntimeSession.generateTitle` (Control-Request
+`generate_session_title` des laufenden Prozesses, mit `persist: false`), von `ClaudeAssist.sessionTitle`
+(Einmal-Aufruf mit Haiku) und zuletzt aus `titleFrom` des neuesten Prompts. Jede Quelle hat 45 Sekunden.
+Die Antwort wird bereinigt (eine Zeile, ohne Anführungszeichen und Schlusszeichen, höchstens 80
+Zeichen); ein unveränderter Titel wird nicht geschrieben.
+
+Ein neuer Titel geht in die Datenbank und per `session.updated` an Tabs und Sessionliste. Läuft ein
+Prozess, setzt `RuntimeSession.rename` ihn per `rename_session` (mit `source: "host"` und der
+Claude-Session-ID) in Claude Code. Ist die Session mit Remote Control verbunden, heißt der Eintrag
+`FORGE · <Projekt>: <Titel>`; denselben Namen bekommen der Eintrag im Remote-Dialog und das
+`rename_session`. Ohne Prozess schreibt `ClaudeRuntime.renameTranscript` (SDK `renameSession`) den
+Titel ins Transkript. `generateSessionTitle` und `renameSession` am Query stehen nicht in den
+SDK-Typen und werden vor der Nutzung geprüft. Fehler bleiben folgenlos, der alte Titel bleibt stehen.
+
+## Prozesse und Aufräumen
+
+- **Job Object:** Jeder Sidecar-Start läuft in einem eigenen Job Object mit `KILL_ON_JOB_CLOSE`. Beenden,
+  Neustart oder Absturz von FORGE beenden damit auch alle Kindprozesse (Claude, Dev-Server, Tests).
+  Jeder Terminal-Tab hat ein eigenes Job Object (`src-tauri/src/job.rs`): Schließen des Tabs, Ende der
+  Shell oder von FORGE beendet auch alles, was darin gestartet wurde, etwa `pnpm dev`.
+- **Zeitlimits:** Ein Timeout beendet den ganzen Prozessbaum (`taskkill /T /F`).
+  Rust wartet beim Beenden 7 Sekunden auf den Sidecar; das muss über dessen eigenem Limit von
+  5 Sekunden bleiben (`SHUTDOWN_GRACE` in `sidecar.rs`, `SHUTDOWN_LIMIT_MS` in `app.ts`).
+
+## Datenablage
+
+- `%APPDATA%\forge\forge.db`, überschreibbar mit `FORGE_DATA_DIR`.
+- Tabellen: `projects`, `sessions`, `events`, `approvals` (Audit), `settings`, `auto_continue`
+  (geplantes Weitermachen nach einem Nutzungslimit, wird mit der Session gelöscht).
+- Claude-eigene Daten (`~/.claude`, `.claude/settings.json`, `CLAUDE.md`) schreibt FORGE nur auf Klick:
+  CLAUDE.md-Dateien, Skills, Subagenten und den Schlüssel `hooks` in `settings.json`. Schreiben ist atomar,
+  legt eine `.bak` an und erkennt gleichzeitige Änderungen. Gelöschte Skills wandern nach
+  `<Datenordner>/trash/skills/`.
