@@ -140,7 +140,7 @@ const SETTING_OPTIONS: ReadonlyArray<{ id: string; label: string; section: Setti
   { id: "claude-setup", label: t.layout.actions.options.claudeSetup, section: "claude", keywords: "claude code installieren anmelden login abo update version install subscription" },
   { id: "claude-path", label: t.layout.actions.options.claudePath, section: "claude", keywords: "pfad claude cli executable programm path program" },
   { id: "idle-close", label: t.layout.actions.options.idleClose, section: "claude", keywords: "untätige sessions claude-prozess beenden inaktiv leerlauf timeout automatisch schließen minuten stunden idle close process minutes hours" },
-  { id: "long-session", label: "Lange Sessions melden", section: "claude", keywords: "kontext tokens verbrauch limit warnung neue session übergabe fortsetzen" },
+  { id: "long-session", label: t.layout.actions.options.longSession, section: "claude", keywords: "lange sessions melden kontext tokens verbrauch limit warnung neue session übergabe fortsetzen long session context usage limit warning new session handoff continue" },
   { id: "phone-setup", label: t.layout.actions.options.phoneSetup, section: "phone", keywords: "telefon einrichten anruf sip gemini openai stimme tischtelefon phone call voice desk phone set up" },
   { id: "phone-numbers", label: t.layout.actions.options.phoneNumbers, section: "phone", keywords: "telefonnummern nummer handy rufnummer erlaubte anrufer benachrichtigung einschalten ausschalten phone numbers mobile allowed callers notification" },
   { id: "sync-projects", label: t.layout.actions.options.syncProjects, section: "github", keywords: "projekte holen sync klonen abgleich rechner pc fetch projects clone other computers" },
@@ -321,10 +321,10 @@ export function buildActions(ctx: ActionContext): PaletteEntry[] {
       ui.setWorkspaceTab("chat");
       requestAnimationFrame(() => document.getElementById("composer-input")?.focus());
     }, { hint: t.layout.actions.ctrl("N"), keywords: "neue session chat starten new session start" });
-    act("chat-find", "Im Chat suchen", icon(Search), () => {
+    act("chat-find", t.layout.actions.chatFind, icon(Search), () => {
       ui.setWorkspaceTab("chat");
       openChatFindSoon();
-    }, { hint: "Strg+F", keywords: "finden suche verlauf nachrichten durchsuchen session projekt befehle" });
+    }, { hint: t.layout.actions.ctrl("F"), keywords: "im chat suchen finden suche verlauf nachrichten durchsuchen session projekt befehle find search history messages project commands" });
     act("ui-compare-latest", t.layout.actions.uiCompareLatest, icon(GitCompareArrows), () => ctx.openDialog({ kind: "ui-compare", sessionId: session?.id ?? null, projectId: project.id }), {
       keywords: "screenshot vergleich vorschau bild ui oberfläche dev-server vorher nachher before after compare preview image",
     });
@@ -388,9 +388,9 @@ export function buildActions(ctx: ActionContext): PaletteEntry[] {
       act("session-summary", t.layout.actions.sessionSummary, icon(NotebookText), () => ctx.openDialog({ kind: "summary", session: s }), { keywords: "session zusammenfassen wo war ich wiedereinstieg summary summarize where was i" });
       act("session-fork", t.layout.actions.sessionFork, icon(GitFork), () => void forkSession(qc, s), { keywords: "session verzweigen fork kopie zweig copy branch" });
       if (s.claudeSessionId && !SESSION_BUSY.has(s.status)) {
-        act("session-handoff", "In neuer Session weitermachen", icon(MessageSquarePlus), () => void handoffSession(s), {
-          hint: s.context ? `${formatTokens(s.context.totalTokens)} Tokens Kontext` : undefined,
-          keywords: "übergabe fortsetzen lange session kontext tokens sparen zusammenfassen wissen mitnehmen handoff",
+        act("session-handoff", t.layout.actions.sessionHandoff, icon(MessageSquarePlus), () => void handoffSession(s), {
+          hint: s.context ? t.layout.actions.handoffHint(formatTokens(s.context.totalTokens)) : undefined,
+          keywords: "in neuer session weitermachen übergabe fortsetzen lange session kontext tokens sparen zusammenfassen wissen mitnehmen continue new session handoff long context save summarize carry over knowledge",
         });
       }
       const lastPrompt = lastEditablePrompt(s.id);
@@ -672,12 +672,12 @@ export function buildActions(ctx: ActionContext): PaletteEntry[] {
         keywords: "untätige sessions claude-prozess beenden inaktiv leerlauf timeout automatisch schließen idle close process inactive automatic",
       });
     }
-    for (const t of LONG_SESSION_CHOICES) {
-      if (t === settings.longSessionTokens) continue;
-      const label = t > 0 ? `Lange Sessions melden ${longSessionLabel(t)}` : "Lange Sessions nicht mehr melden";
-      setting(`long-session-${t}`, label, icon(MessageSquarePlus), () => void saveSetting(qc, { longSessionTokens: t }, label), {
-        hint: `jetzt ${longSessionLabel(settings.longSessionTokens)}`,
-        keywords: "kontext tokens verbrauch limit warnung hinweis neue session übergabe",
+    for (const tokens of LONG_SESSION_CHOICES) {
+      if (tokens === settings.longSessionTokens) continue;
+      const label = tokens > 0 ? t.layout.actions.longSessionOn(longSessionLabel(tokens)) : t.layout.actions.longSessionOff;
+      setting(`long-session-${tokens}`, label, icon(MessageSquarePlus), () => void saveSetting(qc, { longSessionTokens: tokens }, label), {
+        hint: t.layout.actions.now(longSessionLabel(settings.longSessionTokens)),
+        keywords: "lange sessions melden kontext tokens verbrauch limit warnung hinweis neue session übergabe long session context usage limit warning hint new session handoff",
       });
     }
   }

@@ -98,7 +98,6 @@ export const views: typeof De = {
     columnUpdated: "Updated",
     columnActions: "Actions",
     loadingSessions: "Loading sessions",
-    loadingHits: "Loading matches",
   },
   workspace: {
     noProjectOpen: "No project open",
@@ -219,6 +218,9 @@ export const views: typeof De = {
       "If Claude changes files like .tsx or .css while the dev server is running, the chat shows screenshots of the web app from before and after the run. The images are not sent to Claude and are deleted after 14 days.",
     idleCloseLabel: "Close idle sessions after",
     idleCloseDescription: "Only ends the Claude process. The session keeps its history and continues with the next message.",
+    longSessionLabel: "Report long sessions",
+    longSessionDescription:
+      "Every message sends the whole history again. Once the context is this large, FORGE suggests a new session above the input field that carries the knowledge over as a summary.",
     stripKeyLabel: "Hide ANTHROPIC_API_KEY",
     stripKeyDescription: "Recommended. A set API key replaces the subscription sign-in and is billed separately. FORGE never shows the value.",
     advancedTitle: "Advanced",

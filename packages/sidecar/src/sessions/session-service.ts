@@ -50,15 +50,15 @@ import { TitleRefresh } from "./titles.js";
 import { TurnAutomation } from "./turn-automation.js";
 import { TurnDispatch, type MessageSource } from "./turns.js";
 import { UpdateResume } from "./update-resume.js";
+import { de } from "../i18n/de/index.js";
 import { tr } from "../i18n/index.js";
 
 /** Entry point for everything session related; wires the session modules and keeps the public API in one place. */
 /** how long a scan of terminal transcripts is reused */
 const EXTERNAL_CACHE_MS = 20_000;
 
-/** First turn of a handed-over session: Claude Code compacts the copied history into a handover. */
-export const HANDOFF_COMPACT =
-  "/compact Diese Zusammenfassung ist die Übergabe an eine neue Session, die genau hier weitermacht. Halte vollständig fest: Ziel und Wünsche des Nutzers, getroffene Entscheidungen mit Begründung, geänderte und wichtige Dateien, den aktuellen Stand, offene Punkte und nächste Schritte, Stolperfallen und was nicht funktioniert hat.";
+/** German wording, as the tests have it; what is sent comes from tr().core.sessions.handoffCompact. */
+export const HANDOFF_COMPACT = de.core.sessions.handoffCompact;
 
 export class SessionService {
   private readonly core: SessionCore;
@@ -665,11 +665,12 @@ export class SessionService {
    */
   async handoff(sessionId: string): Promise<Session> {
     const rec = this.db.getSession(sessionId);
-    if (!rec) throw new ForgeError("SESSION_NOT_FOUND", "Session nicht gefunden.");
-    if (BUSY.includes(rec.status)) throw new ForgeError("SESSION_BUSY", "Claude arbeitet noch. Erst warten oder stoppen, dann in einer neuen Session weitermachen.");
-    if (!rec.claudeSessionId) throw new ForgeError("VALIDATION", "Diese Session hat noch keinen Verlauf bei Claude Code.");
+    if (!rec) throw new ForgeError("SESSION_NOT_FOUND", tr().core.sessions.notFound);
+    if (BUSY.includes(rec.status)) throw new ForgeError("SESSION_BUSY", tr().core.sessions.stopBeforeHandoff);
+    if (!rec.claudeSessionId) throw new ForgeError("VALIDATION", tr().core.sessions.noClaudeHistory);
     const contextTokens = this.get(sessionId).context?.totalTokens ?? null;
-    const title = `${(rec.title ?? "Session").replace(/ \(Fortsetzung\)$/, "")} (Fortsetzung)`;
+    // A handoff of a handoff keeps one suffix, in whichever language the title got it.
+    const title = tr().core.sessions.handoffTitle((rec.title ?? "Session").replace(/ \((?:Fortsetzung|continued)\)$/, ""));
     const claudeSessionId = await this.runtime.forkTranscript(rec.claudeSessionId, rec.cwd, null, title);
     const now = new Date().toISOString();
     const next = { ...rec, id: randomUUID(), claudeSessionId, title, status: "stopped" as const, apiKeySource: null, createdAt: now, updatedAt: now, lastError: null };
@@ -677,7 +678,7 @@ export class SessionService {
     this.core.record(next.id, { type: "session.handoff", direction: "from", otherSessionId: rec.id, otherTitle: rec.title, contextTokens });
     this.core.record(rec.id, { type: "session.handoff", direction: "to", otherSessionId: next.id, otherTitle: title, contextTokens });
     this.core.publish(next);
-    return this.send(next.id, HANDOFF_COMPACT, [], "auto");
+    return this.send(next.id, tr().core.sessions.handoffCompact, [], "auto");
   }
 
   /**

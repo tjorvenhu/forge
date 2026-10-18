@@ -196,9 +196,9 @@ export const phoneTools = {
     },
   },
   sessions: {
-    description: "Alle Sessions, auch ältere und geschlossene. list: auflisten, auf Wunsch nach project, Suchwörtern (query) oder status gefiltert; die Kürzel gelten danach für die anderen Werkzeuge. delete: eine Session löschen. delete_all: alle Sessions löschen. fork: Verlauf in eine neue Session abzweigen, ganz oder bis vor eine Nachricht (messages_back). rewind: Dateien auf den Stand vor einer Nachricht des Anrufers zurücksetzen; der Verlauf bleibt. edit: eine Nachricht des Anrufers durch text ersetzen; ein laufender Durchlauf bricht ab und Claude macht mit dem neuen Text weiter, als hätte es die alte Nachricht nie gegeben. ui_compare: ob es zum letzten Durchlauf einen Vorher-Nachher-Vergleich der Web-App gibt (Seite, geänderte UI-Dateien, Stand); die Bilder selbst gibt es nur am Computer. ui_compare_retake: das Nachher-Bild neu aufnehmen. templates: Prompt-Vorlagen auflisten (gespeicherte, wiederkehrende Aufträge mit Platzhaltern wie {datei}), mit project die globalen und die des Projekts. template_send: eine Vorlage (template) mit Werten für ihre Platzhalter (values) an eine Session schicken (session) oder damit eine neue Session im project starten; fehlen Werte, nennt FORGE sie, dann den Anrufer danach fragen. template_save: eine Vorlage anlegen (name, text, optional description, mit project nur für dieses Projekt) oder mit template eine vorhandene ändern. template_delete: eine Vorlage löschen. template_move: eine Vorlage in ihrer Liste nach oben oder unten schieben (direction). template_learn: jetzt aus den letzten Nachrichten wiederkehrende Aufträge als Vorlagen lernen (das macht FORGE sonst von selbst, gelernte Vorlagen sind markiert). day_report: Tagesbericht für „Was ist heute passiert?“: Sessions mit Durchläufen, Agenten (zusammengeführt, verworfen, wartend), Commits, was offen ist und die Anrufe; mit summary eine kurze Zusammenfassung von Claude.",
+    description: "Alle Sessions, auch ältere und geschlossene. list: auflisten, auf Wunsch nach project, Suchwörtern (query) oder status gefiltert; die Kürzel gelten danach für die anderen Werkzeuge. delete: eine Session löschen. delete_all: alle Sessions löschen. fork: Verlauf in eine neue Session abzweigen, ganz oder bis vor eine Nachricht (messages_back). handoff: eine lange Session in einer neuen fortsetzen; jede Nachricht schickt den ganzen Verlauf mit, eine lange Session verbraucht deshalb viel vom Limit. Claude fasst den Verlauf dabei einmal als Übergabe zusammen, die neue Session weiß alles und startet klein; die alte bleibt. rewind: Dateien auf den Stand vor einer Nachricht des Anrufers zurücksetzen; der Verlauf bleibt. edit: eine Nachricht des Anrufers durch text ersetzen; ein laufender Durchlauf bricht ab und Claude macht mit dem neuen Text weiter, als hätte es die alte Nachricht nie gegeben. ui_compare: ob es zum letzten Durchlauf einen Vorher-Nachher-Vergleich der Web-App gibt (Seite, geänderte UI-Dateien, Stand); die Bilder selbst gibt es nur am Computer. ui_compare_retake: das Nachher-Bild neu aufnehmen. templates: Prompt-Vorlagen auflisten (gespeicherte, wiederkehrende Aufträge mit Platzhaltern wie {datei}), mit project die globalen und die des Projekts. template_send: eine Vorlage (template) mit Werten für ihre Platzhalter (values) an eine Session schicken (session) oder damit eine neue Session im project starten; fehlen Werte, nennt FORGE sie, dann den Anrufer danach fragen. template_save: eine Vorlage anlegen (name, text, optional description, mit project nur für dieses Projekt) oder mit template eine vorhandene ändern. template_delete: eine Vorlage löschen. template_move: eine Vorlage in ihrer Liste nach oben oder unten schieben (direction). template_learn: jetzt aus den letzten Nachrichten wiederkehrende Aufträge als Vorlagen lernen (das macht FORGE sonst von selbst, gelernte Vorlagen sind markiert). day_report: Tagesbericht für „Was ist heute passiert?“: Sessions mit Durchläufen, Agenten (zusammengeführt, verworfen, wartend), Commits, was offen ist und die Anrufe; mit summary eine kurze Zusammenfassung von Claude.",
     params: {
-      session: "bei delete, fork, rewind, edit, ui_compare und ui_compare_retake: Kürzel wie S1 oder ein Teil des Titels",
+      session: "bei delete, fork, handoff, rewind, edit, ui_compare und ui_compare_retake: Kürzel wie S1 oder ein Teil des Titels",
       project: "bei list und day_report: nur dieses Projekt",
       days_back: "bei day_report: welcher Tag, 0 heute (Standard), 1 gestern",
       summary: "bei day_report: true für eine kurze Zusammenfassung von Claude (dauert ein paar Sekunden)",
@@ -242,6 +242,7 @@ export const phoneTools = {
       enter_to_send: "Enter sendet die Nachricht",
       auto_continue: "nach einem Nutzungslimit automatisch weitermachen",
       idle_close_minutes: "nach wie vielen Minuten ohne Aktivität FORGE den Claude-Prozess einer Session schließt (sie bleibt erhalten); 0 schaltet das aus. In den Einstellungen wählbar: 15, 30, 60, 120, 240",
+      long_session_tokens: "ab wie vielen Tokens Kontext FORGE vorschlägt, in einer neuen Session weiterzumachen; 0 schaltet den Hinweis aus. In den Einstellungen wählbar: 100000, 200000, 400000, 800000",
       update_checks: "nach Updates von FORGE suchen",
       debug_logs: "ausführliche Protokolle",
       strip_api_key: "einen API-Key aus der Umgebung nicht an Claude Code geben, damit das Abo zählt",
@@ -263,9 +264,13 @@ export const phoneTools = {
     },
   },
   search: {
-    description: "Volltextsuche in den Verläufen aller Sessions, etwa „In welcher Session haben wir den Stripe-Webhook gebaut?“. Liefert passende Sessions mit Textstelle.",
+    description:
+      "Volltextsuche in den Verläufen der Sessions (Nachrichten, Antworten, Befehle und Dateipfade), etwa „In welcher Session haben wir den Stripe-Webhook gebaut?“. Alle Suchwörter müssen vorkommen, die Reihenfolge ist egal. Ohne session und project über alle Sessions: passende Sessions mit Textstelle. Mit session: die Stellen in dieser Session, die neueste zuerst. Mit project: nur die Sessions dieses Projekts.",
     params: {
       query: "Suchwörter",
+      session: "nur in dieser Session suchen: Kürzel wie S1 oder Teil des Titels",
+      project: "nur in den Sessions dieses Projekts suchen",
+      phrase: "true: genau diese Wortfolge",
     },
   },
   usage: {

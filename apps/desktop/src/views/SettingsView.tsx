@@ -273,15 +273,15 @@ function ClaudeSection({ s, save }: { s: Settings; save: Save }) {
           />
         </Row>
         <Row
-          label="Lange Sessions melden"
-          description="Jede Nachricht schickt den ganzen Verlauf mit. Ist der Kontext so groß, schlägt FORGE über dem Eingabefeld eine neue Session vor, die das Wissen als Zusammenfassung übernimmt."
+          label={sv.longSessionLabel}
+          description={sv.longSessionDescription}
         >
           <Select
             value={String(s.longSessionTokens)}
             onChange={(v) => void save({ longSessionTokens: Number(v) })}
             className="w-64"
             options={longSessionOptions(s.longSessionTokens)}
-            aria-label="Lange Sessions melden"
+            aria-label={sv.longSessionLabel}
           />
         </Row>
         <SwitchRow

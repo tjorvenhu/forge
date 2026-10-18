@@ -98,6 +98,10 @@ export const sessions = {
   cannotForkHere: "An dieser Nachricht lässt sich nicht verzweigen.",
   messageGoneClear: "Die Nachricht steht nicht mehr im Verlauf von Claude Code (zum Beispiel nach /clear).",
   forkTitle: (title: string) => `${title} (Zweig)`,
+  stopBeforeHandoff: "Claude arbeitet noch. Erst warten oder stoppen, dann in einer neuen Session weitermachen.",
+  handoffTitle: (title: string) => `${title} (Fortsetzung)`,
+  handoffCompact:
+    "/compact Diese Zusammenfassung ist die Übergabe an eine neue Session, die genau hier weitermacht. Halte vollständig fest: Ziel und Wünsche des Nutzers, getroffene Entscheidungen mit Begründung, geänderte und wichtige Dateien, den aktuellen Stand, offene Punkte und nächste Schritte, Stolperfallen und was nicht funktioniert hat.",
   cannotEdit: "Diese Nachricht lässt sich nicht bearbeiten.",
   messageEmpty: "Die Nachricht ist leer.",
   messageGoneCompact: "Die Nachricht steht nicht mehr im Verlauf von Claude Code (zum Beispiel nach /clear oder einer Komprimierung).",

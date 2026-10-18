@@ -119,7 +119,7 @@ export function ChatPanel({ project, detached = false, pane }: { project: Projec
         if (e.target instanceof Element && e.target.closest("textarea, input")) return;
         const seed = selectedSeed(e.currentTarget);
         addContextItems(e, [
-          { label: seed ? `„${seed.length > 30 ? `${seed.slice(0, 30)}…` : seed}“ im Chat suchen` : "Im Chat suchen", icon: <Search className="h-3.5 w-3.5" />, hint: "Strg+F", onSelect: () => openFind(seed) },
+          { label: seed ? t.chat.find.menuFor(seed.length > 30 ? `${seed.slice(0, 30)}…` : seed) : t.chat.find.menu, icon: <Search className="h-3.5 w-3.5" />, hint: t.layout.actions.ctrl("F"), onSelect: () => openFind(seed) },
         ]);
       }}
     >

@@ -3,4 +3,5 @@ export const search = {
   you: "Du",
   tool: "Werkzeug",
   untitled: "Ohne Titel",
+  loadingHits: "Lädt Treffer",
 };

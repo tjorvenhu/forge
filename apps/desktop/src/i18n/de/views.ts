@@ -97,7 +97,6 @@ export const views = {
     columnUpdated: "Aktualisiert",
     columnActions: "Aktionen",
     loadingSessions: "Lädt Sessions",
-    loadingHits: "Lädt Treffer",
   },
   workspace: {
     noProjectOpen: "Kein Projekt geöffnet",
@@ -218,6 +217,9 @@ export const views = {
       "Ändert Claude Dateien wie .tsx oder .css, während der Dev-Server läuft, zeigt der Chat Screenshots der Web-App von vor und nach dem Durchlauf. Die Bilder gehen nicht an Claude und werden nach 14 Tagen gelöscht.",
     idleCloseLabel: "Untätige Sessions schließen nach",
     idleCloseDescription: "Beendet nur den Claude-Prozess. Die Session bleibt mit Verlauf erhalten und läuft mit der nächsten Nachricht weiter.",
+    longSessionLabel: "Lange Sessions melden",
+    longSessionDescription:
+      "Jede Nachricht schickt den ganzen Verlauf mit. Ist der Kontext so groß, schlägt FORGE über dem Eingabefeld eine neue Session vor, die das Wissen als Zusammenfassung übernimmt.",
     stripKeyLabel: "ANTHROPIC_API_KEY ausblenden",
     stripKeyDescription: "Empfohlen. Ein gesetzter API-Key ersetzt die Abo-Anmeldung und wird extra abgerechnet. FORGE zeigt den Wert nie an.",
     advancedTitle: "Erweitert",

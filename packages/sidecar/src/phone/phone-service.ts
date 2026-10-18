@@ -450,7 +450,7 @@ function settingText(s: Settings, key: keyof ForgeSettingsPatch | "alwaysOnTop")
     case "idleCloseMinutes":
       return s.idleCloseMinutes > 0 ? m.settings.idleClose(s.idleCloseMinutes) : m.settings.idleOpen;
     case "longSessionTokens":
-      return s.longSessionTokens > 0 ? `Hinweis auf lange Sessions ab ${Math.round(s.longSessionTokens / 1000)} Tausend Tokens Kontext` : "kein Hinweis auf lange Sessions";
+      return s.longSessionTokens > 0 ? m.settings.longSession(Math.round(s.longSessionTokens / 1000)) : m.settings.longSessionOff;
     case "updateChecks":
       return m.settings.updateChecks(s.updateChecks);
     case "learnTemplates":
@@ -2613,8 +2613,8 @@ export class PhoneService {
             const tokens = s.context?.totalTokens;
             const next = await call("sessions.handoff", { sessionId: s.id });
             a.focus = next.id;
-            const size = tokens ? ` Die alte hatte ${Math.round(tokens / 1000)} Tausend Tokens Kontext.` : "";
-            return `${r} geht in der neuen Session ${refFor(next.id)} weiter. Claude fasst den Verlauf gerade als Übergabe zusammen, danach läuft sie mit send_message weiter; Nachrichten bis dahin warten.${size} ${r} bleibt unverändert.`;
+            const size = tokens ? sm.handoffSize(Math.round(tokens / 1000)) : "";
+            return sm.handedOff(r, refFor(next.id), size);
           }
           const before = o?.messagesBack ? await promptBack(s.id, o.messagesBack) : null;
           const res = await call("sessions.fork", { sessionId: s.id, beforeSeq: before?.seq, rewindFiles: o?.rewindFiles === true });
@@ -2962,15 +2962,15 @@ export class PhoneService {
         }),
       search: (query, o) =>
         run(true, async () => {
-          if (!query.trim()) return "Fehler: Wonach soll ich suchen?";
+          const sr = tr().phone.search;
+          if (!query.trim()) return sr.what;
           const plain = (snippet: string) => snippet.split(SEARCH_MARK_START).join("").split(SEARCH_MARK_END).join("");
           if (o?.session?.trim()) {
             // In one session: its places, newest first.
             const s = resolve(o.session);
             const hits = db.searchEvents(query, 5, { sessionId: s.id, phrase: o.phrase, order: "time" });
-            if (!hits.length) return `Dazu steht in ${refFor(s.id)} nichts.`;
-            const who = { user: "Anrufer", assistant: "Claude", tool: "Werkzeug" } as const;
-            return [`In ${refFor(s.id)} ${asData(s.title ?? "ohne Titel")}:`, ...hits.map((h) => `${dateTime(h.ts)}, ${who[h.role]}: ${excerptData(plain(h.snippet), 300)}`)].join("\n");
+            if (!hits.length) return sr.noneInSession(refFor(s.id));
+            return [sr.sessionHeader(refFor(s.id), asData(s.title ?? tr().phone.untitled)), ...hits.map((h) => sr.sessionLine(dateTime(h.ts), sr.roles[h.role], excerptData(plain(h.snippet), 300)))].join("\n");
           }
           const p = o?.project?.trim() ? findProject(o.project) : null;
           const lines: string[] = [];
@@ -2979,10 +2979,10 @@ export class PhoneService {
           for (const h of db.searchEvents(query, 30, { projectId: p?.id, phrase: o?.phrase })) {
             if (seen.has(h.sessionId) || lines.length >= 5) continue;
             seen.add(h.sessionId);
-            lines.push(`${refFor(h.sessionId)} ${asData(h.sessionTitle ?? "ohne Titel")} im Projekt ${h.projectName}: ${excerptData(plain(h.snippet), 300)}`);
+            lines.push(sr.line(refFor(h.sessionId), asData(h.sessionTitle ?? tr().phone.untitled), h.projectName, excerptData(plain(h.snippet), 300)));
           }
           if (lines.length) return lines.join("\n");
-          return p ? `Dazu steht in keiner Session von ${p.name} etwas.` : "Dazu steht in keiner Session etwas.";
+          return p ? sr.noneInProject(p.name) : sr.none;
         }),
       callSettings: (patch) =>
         run(Object.values(patch).some((v) => v !== undefined), async () => {

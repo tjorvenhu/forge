@@ -217,9 +217,9 @@ export const phoneTools: typeof De = {
   },
   sessions: {
     description:
-      "All sessions, also older and closed ones. list: list them, optionally filtered by project, search words (query) or status; the short names then work for the other tools. delete: delete one session. delete_all: delete all sessions. fork: branch the history into a new session, all of it or up to before a message (messages_back). rewind: set files back to the state before a message of the caller; the history stays. edit: replace a message of the caller with text; a running turn stops and Claude continues with the new text as if the old message had never been sent. ui_compare: whether the last turn has a before and after comparison of the web app (page, changed UI files, state); the images themselves are only on the computer. ui_compare_retake: take the after image again. templates: list prompt templates (saved, recurring tasks with placeholders like {file}), with project the global ones and those of the project. template_send: send a template (template) with values for its placeholders (values) to a session (session) or start a new session in project with it; if values are missing FORGE names them, then ask the caller for them. template_save: create a template (name, text, optional description, with project only for that project) or change an existing one with template. template_delete: delete a template. template_move: move a template up or down in its list (direction). template_learn: learn recurring tasks from the latest messages as templates now (FORGE does this on its own otherwise, learned templates are marked). day_report: daily report for “What happened today?”: sessions with turns, agents (merged, discarded, waiting), commits, what is open and the calls; with summary a short summary by Claude.",
+      "All sessions, also older and closed ones. list: list them, optionally filtered by project, search words (query) or status; the short names then work for the other tools. delete: delete one session. delete_all: delete all sessions. fork: branch the history into a new session, all of it or up to before a message (messages_back). handoff: continue a long session in a new one; every message sends the whole history again, so a long session uses a lot of the limit. Claude summarizes the history once as a handoff, the new session knows everything and starts small; the old one stays. rewind: set files back to the state before a message of the caller; the history stays. edit: replace a message of the caller with text; a running turn stops and Claude continues with the new text as if the old message had never been sent. ui_compare: whether the last turn has a before and after comparison of the web app (page, changed UI files, state); the images themselves are only on the computer. ui_compare_retake: take the after image again. templates: list prompt templates (saved, recurring tasks with placeholders like {file}), with project the global ones and those of the project. template_send: send a template (template) with values for its placeholders (values) to a session (session) or start a new session in project with it; if values are missing FORGE names them, then ask the caller for them. template_save: create a template (name, text, optional description, with project only for that project) or change an existing one with template. template_delete: delete a template. template_move: move a template up or down in its list (direction). template_learn: learn recurring tasks from the latest messages as templates now (FORGE does this on its own otherwise, learned templates are marked). day_report: daily report for “What happened today?”: sessions with turns, agents (merged, discarded, waiting), commits, what is open and the calls; with summary a short summary by Claude.",
     params: {
-      session: "with delete, fork, rewind, edit, ui_compare and ui_compare_retake: short name like S1 or part of the title",
+      session: "with delete, fork, handoff, rewind, edit, ui_compare and ui_compare_retake: short name like S1 or part of the title",
       project: "with list and day_report: only this project",
       days_back: "with day_report: which day, 0 today (default), 1 yesterday",
       summary: "with day_report: true for a short summary by Claude (takes a few seconds)",
@@ -266,6 +266,8 @@ export const phoneTools: typeof De = {
       auto_continue: "Continue automatically after a usage limit",
       idle_close_minutes:
         "After how many minutes without activity FORGE closes the Claude process of a session (the session stays); 0 switches this off. Choices in the settings: 15, 30, 60, 120, 240",
+      long_session_tokens:
+        "From how many tokens of context FORGE suggests continuing in a new session; 0 switches the hint off. Choices in the settings: 100000, 200000, 400000, 800000",
       update_checks: "Look for FORGE updates",
       debug_logs: "Detailed logs",
       strip_api_key: "Do not pass an API key from the environment to Claude Code, so the subscription counts",
@@ -289,9 +291,13 @@ export const phoneTools: typeof De = {
     },
   },
   search: {
-    description: "Full text search in the history of all sessions, for example “In which session did we build the Stripe webhook?”. Returns matching sessions with the passage.",
+    description:
+      "Full text search in the history of the sessions (messages, answers, commands and file paths), for example “In which session did we build the Stripe webhook?”. All search words must appear, in any order. Without session and project it searches all sessions: matching sessions with the passage. With session: the passages in that session, newest first. With project: only the sessions of that project.",
     params: {
       query: "Search words",
+      session: "Search only in this session: short name like S1 or part of the title",
+      project: "Search only in the sessions of this project",
+      phrase: "true: exactly this phrase",
     },
   },
   usage: {

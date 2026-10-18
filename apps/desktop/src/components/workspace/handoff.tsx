@@ -3,6 +3,7 @@ import { ArrowRightLeft, MessageSquarePlus, Shrink, X } from "lucide-react";
 import { LONG_SESSION_CHOICES, type Session, type SessionEventBody } from "@forge/protocol";
 import { call, keys, queryClient, useSettings } from "@/lib/queries";
 import { errorMessage } from "@/lib/rpc";
+import { locale, t } from "@/i18n";
 import { contextItems } from "@/lib/context-menu";
 import { formatTokens } from "@/lib/utils";
 import { isBusy } from "@/lib/working";
@@ -20,14 +21,14 @@ const MENU_ICON = "h-3.5 w-3.5";
 
 /** "Aus", "ab 100 Tsd. Tokens" … */
 export function longSessionLabel(tokens: number): string {
-  return tokens <= 0 ? "Aus" : `ab ${(tokens / 1000).toLocaleString("de-DE", { maximumFractionDigits: 0 })} Tsd. Tokens`;
+  return tokens <= 0 ? t.chat.handoff.off : t.chat.handoff.threshold((tokens / 1000).toLocaleString(locale, { maximumFractionDigits: 0 }));
 }
 
 /** The fixed choices, plus the current value when it was set elsewhere (the phone takes any number). */
 export function longSessionOptions(current: number): SelectOption<string>[] {
   const values: number[] = [...LONG_SESSION_CHOICES];
   if (!values.includes(current)) values.push(current);
-  return values.sort((a, b) => a - b).map((t) => ({ value: String(t), label: longSessionLabel(t) }));
+  return values.sort((a, b) => a - b).map((tokens) => ({ value: String(tokens), label: longSessionLabel(tokens) }));
 }
 
 /** Context tokens of a session that has grown past the threshold; null when it has not (or the hint is off). */
@@ -55,9 +56,9 @@ export async function handoffSession(session: Pick<Session, "id" | "projectId">,
       drafts.clear(from);
     }
     openChat(session.projectId, next.id);
-    toast.success("In neuer Session weiter", "Claude fasst den bisherigen Verlauf als Übergabe zusammen. Deine nächste Nachricht wartet, bis das fertig ist.");
+    toast.success(t.chat.handoff.toastTitle, t.chat.handoff.toastBody);
   } catch (e) {
-    toast.error("Nicht übergeben", errorMessage(e));
+    toast.error(t.chat.handoff.failed, errorMessage(e));
   }
 }
 
@@ -86,24 +87,24 @@ export function LongSessionHint({ session, draftKey: fromDraftKey, disabled }: {
       role="status"
       className="mb-2 flex animate-fade-in items-center gap-3 rounded-xl border border-warning/40 bg-warning-soft px-3.5 py-2 text-small"
       onContextMenu={contextItems(() => [
-        { label: "In neuer Session weitermachen", icon: <MessageSquarePlus className={MENU_ICON} />, disabled: locked, onSelect: () => void handoff() },
-        { label: "Hier komprimieren", icon: <Shrink className={MENU_ICON} />, hint: "/compact", disabled: locked, onSelect: compact },
-        { label: "Hinweis ausblenden", icon: <X className={MENU_ICON} />, onSelect: () => setHiddenAt(tokens) },
+        { label: t.chat.handoff.continueInNew, icon: <MessageSquarePlus className={MENU_ICON} />, disabled: locked, onSelect: () => void handoff() },
+        { label: t.chat.handoff.compactHere, icon: <Shrink className={MENU_ICON} />, hint: "/compact", disabled: locked, onSelect: compact },
+        { label: t.chat.handoff.hideHint, icon: <X className={MENU_ICON} />, onSelect: () => setHiddenAt(tokens) },
       ])}
     >
       <ArrowRightLeft className="h-4 w-4 shrink-0 text-warning" />
       <div className="min-w-0 flex-1">
-        <span className="font-medium text-fg">Lange Session: {formatTokens(tokens)} Tokens Kontext.</span>{" "}
-        <span className="text-muted">Jede Nachricht schickt den ganzen Verlauf mit und verbraucht mehr vom Limit. Eine neue Session übernimmt das Wissen als Zusammenfassung.</span>
+        <span className="font-medium text-fg">{t.chat.handoff.hint(formatTokens(tokens))}</span>{" "}
+        <span className="text-muted">{t.chat.handoff.hintBody}</span>
       </div>
       <div className="flex shrink-0 items-center gap-1.5">
         <Button size="sm" variant="primary" onClick={() => void handoff()} loading={busy} disabled={locked && !busy}>
-          In neuer Session weiter
+          {t.chat.handoff.continueShort}
         </Button>
-        <Button size="sm" variant="ghost" onClick={compact} disabled={locked} title="Den Verlauf hier zusammenfassen (/compact)">
-          Komprimieren
+        <Button size="sm" variant="ghost" onClick={compact} disabled={locked} title={t.chat.handoff.compactTitle}>
+          {t.chat.handoff.compact}
         </Button>
-        <Button size="icon-sm" variant="ghost" onClick={() => setHiddenAt(tokens)} aria-label="Hinweis ausblenden" title="Ausblenden">
+        <Button size="icon-sm" variant="ghost" onClick={() => setHiddenAt(tokens)} aria-label={t.chat.handoff.hideHint} title={t.chat.handoff.hide}>
           <X className="h-3.5 w-3.5" />
         </Button>
       </div>
@@ -114,25 +115,25 @@ export function LongSessionHint({ session, draftKey: fromDraftKey, disabled }: {
 /** Card in both chats of a handover: links to the other session. */
 export function HandoffCard({ body, ts, sessionId }: { body: Extract<SessionEventBody, { type: "session.handoff" }>; ts: string; sessionId: string }) {
   const from = body.direction === "from";
-  const title = body.otherTitle ?? "Ohne Titel";
-  const size = body.contextTokens ? `${formatTokens(body.contextTokens)} Tokens Kontext` : null;
+  const title = body.otherTitle ?? t.chat.handoff.untitled;
+  const size = body.contextTokens ? t.chat.handoff.contextSize(formatTokens(body.contextTokens)) : null;
   // Both sessions belong to the same project; the shown one is in the cache.
   const projectId = queryClient.getQueryData<Session>(keys.session(sessionId))?.projectId ?? useUi.getState().activeProjectId;
   const open = projectId ? () => openChat(projectId, body.otherSessionId) : undefined;
   return (
-    <div onContextMenu={open ? contextItems(() => [{ label: from ? "Vorherige Session öffnen" : "Neue Session öffnen", icon: <ArrowRightLeft className={MENU_ICON} />, onSelect: open }]) : undefined}>
+    <div onContextMenu={open ? contextItems(() => [{ label: from ? t.chat.handoff.openPrevious : t.chat.handoff.openNew, icon: <ArrowRightLeft className={MENU_ICON} />, onSelect: open }]) : undefined}>
       <EventCard
         icon={<ArrowRightLeft className="h-3.5 w-3.5" />}
         tone="info"
-        title={from ? "Fortsetzung einer langen Session" : "In neuer Session fortgesetzt"}
+        title={from ? t.chat.handoff.cardFromTitle : t.chat.handoff.cardToTitle}
         refText={title}
-        detail={from ? `Claude hat den Verlauf${size ? ` (${size})` : ""} als Übergabe zusammengefasst und weiß, wo es weitergeht.` : `Diese Session bleibt, wie sie ist.${size ? ` Sie hatte ${size}.` : ""}`}
+        detail={from ? t.chat.handoff.cardFromDetail(size) : t.chat.handoff.cardToDetail(size)}
         ts={ts}
         highlight
         action={
           open && (
             <Button size="sm" variant="ghost" onClick={open}>
-              Öffnen
+              {t.chat.handoff.open}
             </Button>
           )
         }

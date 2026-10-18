@@ -307,9 +307,9 @@ export function OpenSessions() {
                           ...(s.claudeSessionId && !isBusy(s.status)
                             ? [
                                 {
-                                  label: "In neuer Session weitermachen",
+                                  label: t.layout.openSessions.continueInNew,
                                   icon: <MessageSquarePlus className={MENU_ICON} />,
-                                  hint: s.context ? `${formatTokens(s.context.totalTokens)} Tokens` : undefined,
+                                  hint: s.context ? t.layout.openSessions.tokensHint(formatTokens(s.context.totalTokens)) : undefined,
                                   onSelect: () => void handoffSession(s),
                                 },
                               ]

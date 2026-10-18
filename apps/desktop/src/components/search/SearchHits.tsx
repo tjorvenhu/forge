@@ -57,7 +57,7 @@ export function SearchHitRow({ hit, active, onSelect }: { hit: SearchHit; active
 /** Full-text hits while the transcripts are searched, in the box the hits will fill. */
 export function SearchHitsSkeleton({ rows = 3, className }: { rows?: number; className?: string }) {
   return (
-    <SkeletonRegion label="Lädt Treffer" className={className}>
+    <SkeletonRegion label={t.search.loadingHits} className={className}>
       {Array.from({ length: rows }, (_, i) => (
         <div key={i} className="flex items-start gap-2.5 px-2.5 py-2">
           <Skeleton className="mt-0.5 h-5 w-5 shrink-0 rounded" />

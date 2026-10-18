@@ -100,6 +100,10 @@ export const sessions: typeof De = {
   cannotForkHere: "You cannot branch off at this message.",
   messageGoneClear: "The message is no longer in the Claude Code history (for example after /clear).",
   forkTitle: (title: string) => `${title} (branch)`,
+  stopBeforeHandoff: "Claude is still working. Wait or stop first, then continue in a new session.",
+  handoffTitle: (title: string) => `${title} (continued)`,
+  handoffCompact:
+    "/compact This summary is the handoff to a new session that picks up exactly here. Record in full: the user's goal and wishes, decisions made and why, files changed and files that matter, the current state, open points and next steps, pitfalls and what did not work.",
   cannotEdit: "This message cannot be edited.",
   messageEmpty: "The message is empty.",
   messageGoneCompact: "The message is no longer in the Claude Code history (for example after /clear or a compaction).",

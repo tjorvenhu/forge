@@ -6,6 +6,7 @@ import { findWords } from "@/lib/find-text";
 import { useFindMarks } from "@/lib/chat-find";
 import { shownSessionIds } from "@/lib/session-tabs";
 import { cn } from "@/lib/utils";
+import { t } from "@/i18n";
 import { useUi } from "@/stores/ui";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -27,15 +28,15 @@ export const SESSION_HIT_LIMIT = 1000;
 export const LIST_HIT_LIMIT = 50;
 
 const SCOPES: { value: FindScope; label: string; title: string }[] = [
-  { value: "session", label: "Session", title: "Nur diese Session" },
-  { value: "project", label: "Projekt", title: "Alle Sessions dieses Projekts, auch die seiner Agenten" },
-  { value: "all", label: "Alle", title: "Alle Sessions aller Projekte" },
+  { value: "session", label: t.chat.find.scopeSession, title: t.chat.find.scopeSessionTitle },
+  { value: "project", label: t.chat.find.scopeProject, title: t.chat.find.scopeProjectTitle },
+  { value: "all", label: t.chat.find.scopeAll, title: t.chat.find.scopeAllTitle },
 ];
 
 const PLACEHOLDER: Record<FindScope, string> = {
-  session: "In dieser Session suchen",
-  project: "In allen Sessions des Projekts suchen",
-  all: "In allen Sessions suchen",
+  session: t.chat.find.placeholderSession,
+  project: t.chat.find.placeholderProject,
+  all: t.chat.find.placeholderAll,
 };
 
 /**
@@ -81,8 +82,8 @@ export function ChatFindBar({
   }, [request]);
 
   useEffect(() => {
-    const t = setTimeout(() => setQuery(input), 200);
-    return () => clearTimeout(t);
+    const timer = setTimeout(() => setQuery(input), 200);
+    return () => clearTimeout(timer);
   }, [input]);
 
   const effective: FindScope = scope === "session" && !sessionId ? "project" : scope;
@@ -149,18 +150,18 @@ export function ChatFindBar({
   let count: ReactNode = null;
   if (loading)
     count = (
-      <span role="status" aria-label="Lädt Treffer" className="flex h-5 items-center">
+      <span role="status" aria-label={t.search.loadingHits} className="flex h-5 items-center">
         <Skeleton className="h-3 w-14 rounded-sm bg-surface-3" />
       </span>
     );
-  else if (search.isError && words.length) count = <span className="text-danger">Fehler</span>;
-  else if (ready) count = !hits.length ? "Keine Treffer" : inSession ? `${index + 1} von ${hits.length}${capped}` : `${hits.length}${capped} Treffer`;
+  else if (search.isError && words.length) count = <span className="text-danger">{t.chat.find.error}</span>;
+  else if (ready) count = !hits.length ? t.chat.find.noHits : inSession ? t.chat.find.position(index + 1, hits.length, capped) : t.chat.find.count(hits.length, capped);
 
   return (
     <div
       data-find-skip
       role="search"
-      aria-label="Im Chat suchen"
+      aria-label={t.chat.find.label}
       onKeyDown={onKeyDown}
       className="absolute right-4 top-13 z-30 flex w-[min(30rem,calc(100%-2rem))] animate-drop-in flex-col overflow-hidden rounded-lg border border-border bg-surface-2 shadow-xl"
     >
@@ -171,7 +172,7 @@ export function ChatFindBar({
           value={input}
           onChange={(e) => setInput(e.target.value)}
           placeholder={PLACEHOLDER[effective]}
-          aria-label="Suchbegriff"
+          aria-label={t.chat.find.query}
           spellCheck={false}
           className="h-7 min-w-0 flex-1 bg-transparent px-1 text-body text-fg placeholder:text-subtle focus:outline-none"
         />
@@ -180,20 +181,20 @@ export function ChatFindBar({
         </span>
         {inSession && (
           <>
-            <Button size="icon-sm" variant="ghost" title="Älterer Treffer (Enter)" aria-label="Älterer Treffer" disabled={!hits.length} onClick={() => step(1)}>
+            <Button size="icon-sm" variant="ghost" title={t.chat.find.olderTitle} aria-label={t.chat.find.older} disabled={!hits.length} onClick={() => step(1)}>
               <ChevronUp className="h-4 w-4" />
             </Button>
-            <Button size="icon-sm" variant="ghost" title="Neuerer Treffer (Umschalt+Enter)" aria-label="Neuerer Treffer" disabled={!hits.length} onClick={() => step(-1)}>
+            <Button size="icon-sm" variant="ghost" title={t.chat.find.newerTitle} aria-label={t.chat.find.newer} disabled={!hits.length} onClick={() => step(-1)}>
               <ChevronDown className="h-4 w-4" />
             </Button>
           </>
         )}
-        <Button size="icon-sm" variant="ghost" title="Schließen (Esc)" aria-label="Suche schließen" onClick={onClose}>
+        <Button size="icon-sm" variant="ghost" title={t.chat.find.closeTitle} aria-label={t.chat.find.close} onClick={onClose}>
           <X className="h-4 w-4" />
         </Button>
       </div>
       <div className="flex items-center gap-1 border-t border-border px-1.5 py-1">
-        <div role="group" aria-label="Suchbereich" className="flex items-center gap-0.5 rounded-md bg-surface p-0.5">
+        <div role="group" aria-label={t.chat.find.scopeGroup} className="flex items-center gap-0.5 rounded-md bg-surface p-0.5">
           {SCOPES.filter((s) => !(detached && s.value === "all")).map((s) => (
             <button
               key={s.value}
@@ -217,7 +218,7 @@ export function ChatFindBar({
         <span className="flex-1" />
         <button
           type="button"
-          title="Nur die genaue Wortfolge finden statt aller Wörter in beliebiger Reihenfolge"
+          title={t.chat.find.phraseTitle}
           aria-pressed={phrase}
           onClick={() => {
             setPhrase((p) => !p);
@@ -225,7 +226,7 @@ export function ChatFindBar({
           }}
           className={cn("flex h-6 items-center gap-1 rounded px-2 text-small transition-colors", phrase ? "bg-accent-soft text-fg" : "text-muted hover:bg-surface-3 hover:text-fg")}
         >
-          <Quote className="h-3 w-3" /> Exakte Wortfolge
+          <Quote className="h-3 w-3" /> {t.chat.find.phrase}
         </button>
       </div>
       {!inSession && words.length > 0 && query.trim().length >= 2 && (
@@ -233,7 +234,7 @@ export function ChatFindBar({
           {loading ? (
             <SearchHitsSkeleton rows={3} />
           ) : !hits.length ? (
-            <div className="px-2.5 py-2 text-body text-muted">{effective === "project" ? "In keiner Session dieses Projekts steht das." : "In keiner Session steht das."}</div>
+            <div className="px-2.5 py-2 text-body text-muted">{effective === "project" ? t.chat.find.noneInProject : t.chat.find.noneAnywhere}</div>
           ) : (
             hits.map((h, i) => <SearchHitRow key={`${h.sessionId}:${h.seq}`} hit={h} active={i === active} onSelect={() => open(h)} />)
           )}
