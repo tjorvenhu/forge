@@ -34,6 +34,15 @@ export function formatUsd(cents: number): string {
   return `${usd < 10 ? usdSmall.format(usd) : formatCount(Math.round(usd))} $`;
 }
 
+const eurCents = new Intl.NumberFormat("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+/** Euro cents: "12,50 €", whole amounts without cents ("25 €"), from 1000 € rounded ("1.240 €"). */
+export function formatEur(cents: number): string {
+  const eur = cents / 100;
+  const whole = Math.abs(eur - Math.round(eur)) < 0.005;
+  return `${whole || eur >= 1000 ? formatCount(Math.round(eur)) : eurCents.format(eur)} €`;
+}
+
 const dayShort = new Intl.DateTimeFormat("de-DE", { day: "numeric", month: "numeric", timeZone: "UTC" });
 const dayLong = new Intl.DateTimeFormat("de-DE", { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" });
 

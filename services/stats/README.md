@@ -95,6 +95,10 @@ Die Summen werden höchstens alle 5 Minuten neu aus der Datenbank berechnet (Zwi
 | `DATABASE_URL` | ja | Postgres-Verbindung, z. B. `postgres://user:pass@host:5432/forge_stats` |
 | `PORT` | nein | Port des Servers, im Image `3000` |
 | `CLIENT_IP_HEADER` | nein | Header, in dem ein Proxy vor Coolify die Client-Adresse mitgibt, z. B. `x-client-ip` |
+| `STRIPE_SECRET_KEY` | nein | Stripe-Schlüssel für „Bisher gespendet“. Ein eingeschränkter Schlüssel (`rk_live_…`) mit Lesezugriff auf *Checkout Sessions* und *Payment Links* reicht. Ohne ihn fehlt die Angabe auf der Seite. |
+| `STRIPE_PAYMENT_LINK` | nein | ID des Spenden-Links (`plink_…`). Ohne sie sucht der Dienst den Link über seine Adresse (`DONATE_URL` in `src/lib/constants.ts`). |
+
+„Bisher gespendet“ ist die Summe aller bezahlten Checkouts in Euro über den Spenden-Link, vor den Stripe-Gebühren und ohne abgezogene Erstattungen. Der Dienst fragt Stripe höchstens alle 10 Minuten.
 
 Die Client-IP liest der Dienst aus dem Header in `CLIENT_IP_HEADER` (falls gesetzt), sonst aus `CF-Connecting-Ip`, sonst aus `X-Real-Ip`, sonst aus dem letzten Eintrag von `X-Forwarded-For`. Die beiden letzten setzt Traefik.
 

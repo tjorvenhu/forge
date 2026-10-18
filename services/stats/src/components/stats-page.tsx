@@ -1,5 +1,7 @@
 import { Activity, Cpu, EyeOff, Power, Send, TriangleAlert, UserCheck } from "lucide-react";
 import type { Totals } from "@/lib/db";
+import type { Donations } from "@/lib/donations";
+import { DonationBanner } from "./donations";
 import { Group, Row, SectionTitle, Skeleton } from "./blocks";
 import { ChartsSkeleton } from "./charts";
 import { LiveStats } from "./live-stats";
@@ -7,13 +9,16 @@ import { TILE_SHAPES, TOKEN_ROWS } from "./tiles";
 
 export type PageState = { kind: "loading" } | { kind: "error" } | { kind: "ok"; totals: Totals };
 
-export function StatsPage({ state }: { state: PageState }) {
+/** `donation`: the sum so far, "loading" for its placeholder, left out when the service has no Stripe key. */
+export function StatsPage({ state, donation }: { state: PageState; donation?: Donations | "loading" }) {
   return (
     <main className="container content">
       <div className="intro">
         <h1>FORGE in Zahlen</h1>
         <p>FORGE ist eine Desktop-Oberfläche für Claude Code. Hier stehen die Summen aller Installationen, bei denen die anonyme Nutzungsstatistik eingeschaltet ist. Installationen ohne Statistik fehlen in allen Zahlen. Gezählt wird ab dem 17. Oktober 2026, dem Start der Statistik.</p>
       </div>
+
+      {donation && <DonationBanner data={donation === "loading" ? null : donation} />}
 
       {state.kind === "error" ? (
         <div className="error-banner" role="alert">

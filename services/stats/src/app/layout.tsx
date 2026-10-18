@@ -3,10 +3,10 @@ import type { ReactNode } from "react";
 import { GeistSans } from "geist/font/sans";
 import { GitFork, Heart } from "lucide-react";
 import logo from "@/assets/forge-logo.png";
+import { DONATE_URL } from "@/lib/constants";
 import "./globals.css";
 
 const REPO_URL = "https://github.com/vanturis/forge";
-const DONATE_URL = "https://buy.stripe.com/9B64gBc4e5j80vg1WxbV600";
 const IMPRINT_URL = "https://vanturis.de/impressum";
 const PRIVACY_URL = "https://vanturis.de/datenschutz";
 

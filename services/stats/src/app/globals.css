@@ -829,6 +829,43 @@ a {
   animation: forge-shimmer 1.4s ease-in-out infinite;
 }
 
+/* Donations so far, below the intro: a tile laid out in a row with the link to give. */
+.donation {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 16px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl);
+  background: linear-gradient(135deg, var(--color-accent-soft), transparent 55%), var(--color-surface);
+}
+
+.donation-icon {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-lg);
+  background: var(--color-accent-soft);
+  color: var(--color-accent);
+}
+
+.donation-icon svg {
+  width: 20px;
+  height: 20px;
+}
+
+.donation-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.donation-text .tile-value {
+  margin-top: 2px;
+}
+
 @media (max-width: 900px) {
   .charts {
     grid-template-columns: minmax(0, 1fr);
@@ -849,6 +886,14 @@ a {
 
   .content {
     padding-top: 24px;
+  }
+
+  .donation {
+    flex-wrap: wrap;
+  }
+
+  .donation-action {
+    width: 100%;
   }
 
   .btn-label-wide {
