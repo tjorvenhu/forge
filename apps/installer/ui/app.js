@@ -25,7 +25,13 @@ const TEXT = {
     lead: "The desktop app for Claude Code. Git, Node.js, GitHub CLI and Python are included.",
     leadUpdate: (old) => `FORGE ${old} is installed. Projects and settings are kept.`,
     leadSame: "Reinstalling replaces the program files. Projects and settings are kept.",
-    downloadSize: (mb) => `Downloads ${mb} MB from GitHub.`,
+    downloadSize: (mb) => `${mb} MB`,
+    sumVersion: "Version",
+    sumDownload: "Download",
+    sumIncludes: "Includes",
+    sumIncludesValue: "Node.js, Git, GitHub CLI, Python",
+    sumSource: "Source",
+    sumSourceValue: "GitHub, signed by Vanturis",
     resolveFailed: "GitHub cannot be reached. Check the internet connection.",
     folder: "Install folder",
     change: "Change",
@@ -76,7 +82,13 @@ const TEXT = {
     lead: "Die Desktop-App für Claude Code. Git, Node.js, GitHub CLI und Python sind dabei.",
     leadUpdate: (old) => `FORGE ${old} ist installiert. Projekte und Einstellungen bleiben erhalten.`,
     leadSame: "Neu installieren ersetzt die Programmdateien. Projekte und Einstellungen bleiben erhalten.",
-    downloadSize: (mb) => `Lädt ${mb} MB von GitHub.`,
+    downloadSize: (mb) => `${mb} MB`,
+    sumVersion: "Version",
+    sumDownload: "Download",
+    sumIncludes: "Enthält",
+    sumIncludesValue: "Node.js, Git, GitHub CLI, Python",
+    sumSource: "Quelle",
+    sumSourceValue: "GitHub, signiert von Vanturis",
     resolveFailed: "GitHub ist nicht erreichbar. Prüfe die Internetverbindung.",
     folder: "Zielordner",
     change: "Ändern",
@@ -353,7 +365,15 @@ function renderStart() {
   note.dataset.state = other ? "other" : state.resolved ? "ready" : state.resolveError ? "error" : "resolving";
   if (state.resolveError) note.dataset.state = "error";
   $("note-other").textContent = other ? tx.otherFolder(inst.dir) : "";
-  $("note-ready").textContent = state.resolved ? tx.downloadSize(mb(state.resolved.downloadBytes)) : "";
+  $("note-ready").textContent = "";
+  const sk = (w) => `<span class="sk" style="width: ${w}px; height: 10px"></span>`;
+  if (state.resolved) {
+    $("sum-version").textContent = state.resolved.version;
+    $("sum-download").textContent = tx.downloadSize(mb(state.resolved.downloadBytes));
+  } else {
+    $("sum-version").innerHTML = state.resolveError ? "" : sk(48);
+    $("sum-download").innerHTML = state.resolveError ? "" : sk(56);
+  }
   $("resolve-error").textContent = state.resolveError || "";
 }
 
@@ -425,7 +445,6 @@ async function startInstall() {
   state.error = null;
   state.progress = { step: "download", percent: 0 };
   setScreen("installing");
-  forge.work();
   try {
     await backend.invoke("install", { dir: state.dir });
   } catch (e) {
@@ -437,7 +456,6 @@ function fail(message) {
   state.error = message;
   state.failedAt = state.screen === "installing" ? stepIndex() : 1;
   setScreen("error");
-  forge.idle();
 }
 
 function setLang(lang) {
@@ -457,7 +475,8 @@ async function init() {
     if (d.ok) {
       state.progress = { step: "finish", percent: 100 };
       renderProgress();
-      forge.finish(() => setScreen("done"));
+      setScreen("done");
+      confetti();
     } else {
       fail(d.message);
     }
@@ -516,222 +535,69 @@ document.addEventListener("click", async (e) => {
   if (el.dataset.lang && el.dataset.lang !== state.lang) setLang(el.dataset.lang);
 });
 
-// ---------------------------------------------------------------- hammer and anvil
+// ---------------------------------------------------------------- confetti
 
-const forge = createForge();
-
-function createForge() {
-  const stage = $("stage");
-  const art = $("art");
-  const hammer = $("hammer");
-  const heat = $("heat");
-  const glow = $("anvil-glow");
-  const face = $("anvil-face");
-  const impactEl = $("impact");
-  const canvas = $("sparks");
+/** One shot from each lower corner when FORGE is installed, in the colors of the app. */
+function confetti() {
+  if (reduceMotion) return;
+  const canvas = $("confetti");
   const ctx = canvas.getContext("2d");
-  const PIVOT = [1054, 246];
-  const CYCLE = 1150;
-  // [phase, angle]: hit at 0, rebound, raise, short hold, strike
-  const SWING = [[0, 0], [0.07, 8], [0.15, 5], [0.62, 52], [0.72, 54], [1, 0]];
-  const REST = 40;
-
-  let mode = "idle"; // idle | work | final | rest
-  let t0 = performance.now();
-  let lastCycle = -1;
-  let final = null;
-  let heatLevel = 0;
-  let angle = REST;
-  let blendFrom = null;
-  const particles = [];
-  let lastFrame = performance.now();
-  let emberClock = 0;
-
-  const easeInOut = (k) => (k < 0.5 ? 2 * k * k : 1 - (-2 * k + 2) ** 2 / 2);
-  const easeIn = (k) => k * k * k;
-  const easeOut = (k) => 1 - (1 - k) ** 3;
-
-  function swingAngle(p) {
-    for (let i = 1; i < SWING.length; i++) {
-      const [p1, a1] = SWING[i];
-      const [p0, a0] = SWING[i - 1];
-      if (p <= p1) {
-        const k = (p - p0) / (p1 - p0);
-        const e = i === SWING.length - 1 ? easeIn(k) : i <= 2 ? easeOut(k) : easeInOut(k);
-        return a0 + (a1 - a0) * e;
-      }
-    }
-    return 0;
-  }
-
-  function resize() {
-    const dpr = window.devicePixelRatio || 1;
-    canvas.width = Math.round(canvas.clientWidth * dpr);
-    canvas.height = Math.round(canvas.clientHeight * dpr);
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  }
-  window.addEventListener("resize", resize);
-  resize();
-
-  function impactPoint() {
-    const r = impactEl.getBoundingClientRect();
-    const s = stage.getBoundingClientRect();
-    return [r.left + r.width / 2 - s.left, r.top + r.height / 2 - s.top];
-  }
-
-  // Few, short sparks: the card is small and the setup should stay calm.
-  function impact(strength) {
-    heatLevel = Math.min(1, heatLevel + 0.6 * strength);
-    if (reduceMotion) return;
-    const [x, y] = impactPoint();
-    const n = Math.round(10 * strength);
-    for (let i = 0; i < n; i++) {
-      const dir = -Math.PI * (0.1 + Math.random() * 0.8);
-      const speed = (70 + Math.random() * 150) * Math.sqrt(strength);
-      const life = 0.25 + Math.random() * 0.4 * Math.sqrt(strength);
-      particles.push({ x: x + (Math.random() - 0.5) * 10, y: y - 1, vx: Math.cos(dir) * speed, vy: Math.sin(dir) * speed, life, max: life, w: 0.8 + Math.random() * 0.9, hue: 24 + Math.random() * 22, ember: false });
+  const dpr = window.devicePixelRatio || 1;
+  const w = canvas.clientWidth;
+  const h = canvas.clientHeight;
+  canvas.width = Math.round(w * dpr);
+  canvas.height = Math.round(h * dpr);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const COLORS = ["#f97316", "#fdba74", "#ea580c", "#e5e7eb", "#9ca3ae", "#3fb97a"];
+  const pieces = [];
+  for (const side of [-1, 1]) {
+    for (let i = 0; i < 70; i++) {
+      const angle = (side < 0 ? -62 : -118) * (Math.PI / 180) + (Math.random() - 0.5) * 0.7;
+      const speed = 760 + Math.random() * 520;
+      pieces.push({
+        x: side < 0 ? 0 : w,
+        y: h - 10,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed,
+        rot: Math.random() * Math.PI,
+        spin: (Math.random() - 0.5) * 14,
+        flip: Math.random() * Math.PI,
+        size: 5 + Math.random() * 5,
+        color: COLORS[Math.floor(Math.random() * COLORS.length)],
+        life: 2.2 + Math.random() * 0.8,
+      });
     }
   }
-
-  function ember() {
-    const [x, y] = impactPoint();
-    const life = 1.2 + Math.random() * 1.2;
-    particles.push({ x: x + (Math.random() - 0.5) * 30, y: y + 2, vx: (Math.random() - 0.5) * 6, vy: -(8 + Math.random() * 12), life, max: life, w: 0.7 + Math.random() * 0.6, hue: 22 + Math.random() * 16, ember: true });
-  }
-
-  function step(now) {
-    const dt = Math.min(0.05, (now - lastFrame) / 1000);
-    lastFrame = now;
-    let target = angle;
-
-    if (reduceMotion) {
-      target = mode === "rest" ? 0 : REST;
-    } else if (mode === "idle") {
-      target = REST + Math.sin(now / 1000) * 1.5;
-    } else if (mode === "work") {
-      const elapsed = now - t0;
-      const cycle = Math.floor(elapsed / CYCLE);
-      if (cycle !== lastCycle) {
-        if (lastCycle >= 0) impact(1);
-        lastCycle = cycle;
-      }
-      target = swingAngle((elapsed % CYCLE) / CYCLE);
-    } else if (mode === "final") {
-      const e = now - final.start;
-      const RAISE = 480, HOLD = 140, STRIKE = 180;
-      if (e < RAISE) target = final.from + (66 - final.from) * easeOut(e / RAISE);
-      else if (e < RAISE + HOLD) target = 66;
-      else if (e < RAISE + HOLD + STRIKE) target = 66 * (1 - easeIn((e - RAISE - HOLD) / STRIKE));
-      else {
-        if (!final.hit) {
-          final.hit = true;
-          impact(2);
-          setTimeout(final.done, 550);
-        }
-        const r = (e - RAISE - HOLD - STRIKE) / 380;
-        target = r < 1 ? Math.sin(r * Math.PI) * 8 * (1 - r) : 0;
-      }
-    } else if (mode === "rest") {
-      target = 0;
-    }
-
-    if (blendFrom) {
-      const k = Math.min(1, (now - blendFrom.start) / 260);
-      angle = blendFrom.angle + (target - blendFrom.angle) * easeInOut(k);
-      if (k >= 1) blendFrom = null;
-    } else {
-      angle = target;
-    }
-    hammer.setAttribute("transform", `rotate(${angle.toFixed(2)} ${PIVOT[0]} ${PIVOT[1]})`);
-
-    // a short flash after a hit, a faint warmth otherwise
-    heatLevel = Math.max(0, heatLevel - dt * 2.6);
-    const warm = mode === "work" ? 0.32 : 0.22;
-    heat.setAttribute("opacity", (heatLevel * 0.85).toFixed(3));
-    glow.setAttribute("opacity", (warm + heatLevel * 0.45).toFixed(3));
-    face.style.filter = heatLevel > 0.01 ? `brightness(${(1 + heatLevel * 0.25).toFixed(3)})` : "";
-    art.style.transform = heatLevel > 0.7 && mode === "final" ? `translate(-50%, ${(Math.random() * 0.8).toFixed(2)}px)` : "";
-
-    if (!reduceMotion && mode === "work") {
-      emberClock += dt * 1.5;
-      while (emberClock > 1) {
-        emberClock -= 1;
-        ember();
-      }
-    }
-
-    drawSparks(dt);
-    requestAnimationFrame(step);
-  }
-
-  function drawSparks(dt) {
-    const w = canvas.clientWidth;
-    const h = canvas.clientHeight;
+  let last = performance.now();
+  const frame = (now) => {
+    const dt = Math.min(0.033, (now - last) / 1000);
+    last = now;
     ctx.clearRect(0, 0, w, h);
-    if (!particles.length) return;
-    ctx.globalCompositeOperation = "lighter";
-    ctx.lineCap = "round";
-    for (let i = particles.length - 1; i >= 0; i--) {
-      const p = particles[i];
+    let alive = 0;
+    for (const p of pieces) {
       p.life -= dt;
-      if (p.life <= 0 || p.y > h + 10 || p.x < -10 || p.x > w + 10) {
-        particles.splice(i, 1);
-        continue;
-      }
-      const k = p.life / p.max;
-      if (p.ember) {
-        p.x += p.vx * dt;
-        p.y += p.vy * dt;
-        ctx.fillStyle = `hsla(${p.hue}, 100%, 62%, ${(Math.sin(k * Math.PI) * 0.55).toFixed(3)})`;
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, p.w, 0, Math.PI * 2);
-        ctx.fill();
-        continue;
-      }
-      p.vy += 520 * dt;
-      p.vx *= 1 - 1.2 * dt;
-      const px = p.x;
-      const py = p.y;
+      if (p.life <= 0 || p.y > h + 20) continue;
+      alive++;
+      p.vy += 900 * dt;
+      p.vx *= 1 - 1.6 * dt;
+      p.vy *= 1 - 1.1 * dt;
       p.x += p.vx * dt;
       p.y += p.vy * dt;
-      ctx.strokeStyle = `hsla(${p.hue}, 100%, ${(60 + 25 * k).toFixed(0)}%, ${Math.min(1, k * 1.3).toFixed(3)})`;
-      ctx.lineWidth = p.w;
-      ctx.beginPath();
-      ctx.moveTo(px - p.vx * 0.018, py - p.vy * 0.018);
-      ctx.lineTo(p.x, p.y);
-      ctx.stroke();
+      p.rot += p.spin * dt;
+      p.flip += 8 * dt;
+      ctx.save();
+      ctx.globalAlpha = Math.min(1, p.life / 0.5);
+      ctx.translate(p.x, p.y);
+      ctx.rotate(p.rot);
+      ctx.scale(1, Math.cos(p.flip));
+      ctx.fillStyle = p.color;
+      ctx.fillRect(-p.size / 2, -p.size / 4, p.size, p.size / 2);
+      ctx.restore();
     }
-    ctx.globalCompositeOperation = "source-over";
-  }
-
-  requestAnimationFrame(step);
-
-  const blend = () => (blendFrom = { angle, start: performance.now() });
-
-  return {
-    idle() {
-      blend();
-      mode = "idle";
-    },
-    work() {
-      if (mode === "work") return;
-      blend();
-      mode = "work";
-      // start at the top of a swing, so the first hit comes quickly
-      t0 = performance.now() - 0.62 * CYCLE;
-      lastCycle = 0;
-    },
-    finish(done) {
-      if (reduceMotion) {
-        mode = "rest";
-        done();
-        return;
-      }
-      blendFrom = null;
-      final = { start: performance.now(), from: angle, hit: false, done: () => { mode = "rest"; done(); } };
-      mode = "final";
-    },
+    if (alive) requestAnimationFrame(frame);
+    else ctx.clearRect(0, 0, w, h);
   };
+  requestAnimationFrame(frame);
 }
 
 init();

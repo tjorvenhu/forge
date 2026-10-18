@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="de">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -55,78 +55,13 @@
     </div>
 
     <div class="body">
-      <div class="stage card" id="stage" aria-hidden="true">
-        <svg class="art" id="art" viewBox="-50 -170 1140 920" preserveAspectRatio="xMidYMid meet">
-          <defs>
-            <!-- colors and shapes of the anvil from apps/desktop/src/assets/logo.svg -->
-            <linearGradient id="horn" x1="0" y1="0" x2="1" y2="0">
-              <stop offset="0" stop-color="#E5E7EB"/>
-              <stop offset="1" stop-color="#94A3B8"/>
-            </linearGradient>
-            <linearGradient id="spark" x1="1" y1="0" x2="0" y2="1">
-              <stop offset="0" stop-color="#FDBA74"/>
-              <stop offset="0.45" stop-color="#F97316"/>
-              <stop offset="1" stop-color="#EA580C"/>
-            </linearGradient>
-            <linearGradient id="body" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0" stop-color="#C3CCD8"/>
-              <stop offset="1" stop-color="#64748B"/>
-            </linearGradient>
-            <radialGradient id="glow" gradientUnits="userSpaceOnUse" cx="560" cy="470" r="230">
-              <stop offset="0" stop-color="#F97316" stop-opacity="0.5"/>
-              <stop offset="1" stop-color="#F97316" stop-opacity="0"/>
-            </radialGradient>
-            <linearGradient id="head-metal" x1="0" y1="0" x2="1" y2="0">
-              <stop offset="0" stop-color="#E5E7EB"/>
-              <stop offset="0.55" stop-color="#C3CCD8"/>
-              <stop offset="1" stop-color="#94A3B8"/>
-            </linearGradient>
-            <linearGradient id="face" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0" stop-color="#94A3B8"/>
-              <stop offset="1" stop-color="#64748B"/>
-            </linearGradient>
-            <linearGradient id="handle" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0" stop-color="#475569"/>
-              <stop offset="1" stop-color="#1E293B"/>
-            </linearGradient>
-            <radialGradient id="heat-grad" cx="0.5" cy="0.5" r="0.5">
-              <stop offset="0" stop-color="#FFF7ED" stop-opacity="0.9"/>
-              <stop offset="0.3" stop-color="#FDBA74" stop-opacity="0.6"/>
-              <stop offset="1" stop-color="#F97316" stop-opacity="0"/>
-            </radialGradient>
-            <radialGradient id="shadow" cx="0.5" cy="0.5" r="0.5">
-              <stop offset="0" stop-color="#000" stop-opacity="0.45"/>
-              <stop offset="1" stop-color="#000" stop-opacity="0"/>
-            </radialGradient>
-          </defs>
-
-          <ellipse cx="512" cy="716" rx="300" ry="26" fill="url(#shadow)"/>
-
-          <g>
-            <g stroke-linejoin="round" stroke-width="12">
-              <path d="M160 367 H549 L450 462 H240 Z" fill="url(#horn)" stroke="url(#horn)"/>
-              <path id="anvil-face" d="M618 321 H864 L720 462 H474 Z" fill="url(#spark)" stroke="url(#spark)"/>
-            </g>
-            <path d="M350 489 H674 Q688 489 688 503 V522 C640 528 614 556 614 590 C614 628 650 652 728 656 Q742 657 742 671 V689 Q742 703 728 703 H584 C580 670 552 656 512 656 C472 656 444 670 440 703 H296 Q282 703 282 689 V671 Q282 657 296 656 C374 652 410 628 410 590 C410 556 384 528 336 522 V503 Q336 489 350 489 Z" fill="url(#body)"/>
-            <path id="anvil-glow" d="M350 489 H674 Q688 489 688 503 V522 C640 528 614 556 614 590 C614 628 650 652 728 656 Q742 657 742 671 V689 Q742 703 728 703 H584 C580 670 552 656 512 656 C472 656 444 670 440 703 H296 Q282 703 282 689 V671 Q282 657 296 656 C374 652 410 628 410 590 C410 556 384 528 336 522 V503 Q336 489 350 489 Z" fill="url(#glow)" opacity="0.3"/>
-            <ellipse id="heat" cx="735" cy="326" rx="120" ry="52" fill="url(#heat-grad)" opacity="0"/>
-          </g>
-
-          <!-- pivot of the swing: the grip end of the handle -->
-          <g id="hammer">
-            <rect x="772" y="226" width="300" height="40" rx="18" fill="url(#handle)"/>
-            <rect x="1028" y="221" width="52" height="50" rx="20" fill="#0F172A"/>
-            <rect x="786" y="222" width="22" height="48" rx="6" fill="url(#spark)"/>
-            <rect x="676" y="168" width="118" height="134" rx="16" fill="url(#head-metal)"/>
-            <rect x="676" y="168" width="118" height="22" rx="10" fill="#F1F5F9" opacity="0.5"/>
-            <rect x="666" y="292" width="138" height="30" rx="9" fill="url(#face)"/>
-            <rect x="700" y="196" width="10" height="92" rx="5" fill="#FFFFFF" opacity="0.3"/>
-          </g>
-
-          <circle id="impact" cx="735" cy="321" r="1" fill="none"/>
-        </svg>
-        <canvas id="sparks" class="sparks"></canvas>
-      </div>
+      <!-- what gets installed: while choosing and while installing -->
+      <dl class="card summary">
+        <div class="row"><dt data-i18n="sumVersion"></dt><dd id="sum-version"></dd></div>
+        <div class="row"><dt data-i18n="sumDownload"></dt><dd id="sum-download"></dd></div>
+        <div class="row"><dt data-i18n="sumIncludes"></dt><dd data-i18n="sumIncludesValue"></dd></div>
+        <div class="row"><dt data-i18n="sumSource"></dt><dd data-i18n="sumSourceValue"></dd></div>
+      </dl>
 
       <!-- start -->
       <div class="pane" data-for="start loading">
@@ -192,6 +127,7 @@
     </footer>
   </section>
 </div>
+<canvas class="confetti" id="confetti" aria-hidden="true"></canvas>
 <script src="app.js"></script>
 </body>
 </html>

@@ -392,28 +392,48 @@ h1 {
   background: rgb(33 38 46 / 0.4);
 }
 
-/* the anvil, quiet and small inside its card */
-.stage {
-  position: relative;
-  height: 148px;
+/* what gets installed, rows like the settings of the app */
+.summary {
+  display: flex;
   flex-shrink: 0;
-  overflow: hidden;
+  flex-direction: column;
+  margin: 0;
+  padding: 4px 16px;
 }
-.art {
-  position: absolute;
-  left: 50%;
-  top: 6px;
-  width: 180px;
-  height: 145px;
-  transform: translateX(-50%);
-  overflow: visible;
+.summary .row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 34px;
 }
-.sparks {
-  position: absolute;
+.summary .row + .row {
+  border-top: 1px solid var(--border);
+}
+.summary dt {
+  font-size: var(--text-body);
+  color: var(--muted);
+}
+.summary dd {
+  margin: 0;
+  font-size: var(--text-body);
+  color: var(--fg);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+.app[data-screen="done"] .summary,
+.app[data-screen="error"] .summary {
+  display: none;
+}
+
+/* the success shot at the end, over everything and never in the way */
+.confetti {
+  position: fixed;
   inset: 0;
   width: 100%;
   height: 100%;
   pointer-events: none;
+  z-index: 50;
 }
 
 .pane {
