@@ -10,7 +10,7 @@ Die Seite übernimmt das Design der Desktop-App: Die Farb-, Schrift- und Radius-
 
 ## Was gespeichert wird
 
-Eine Zeile pro Installation in der Tabelle `installs`: zufällige Installations-ID, erste und letzte Meldung, FORGE-Version, Betriebssystem, die kumulativen Zähler als JSON und die Tokens und Kosten je Claude-Modell (`models`, JSON). Die App schickt immer den Gesamtstand, der Dienst überschreibt den letzten Stand.
+Eine Zeile pro Installation in der Tabelle `installs`: zufällige Installations-ID, erste und letzte Meldung, FORGE-Version, Betriebssystem, die kumulativen Zähler als JSON, die Tokens und Kosten je Claude-Modell (`models`, JSON) und die Art des Claude-Abos (`plan`). Die App schickt immer den Gesamtstand, der Dienst überschreibt den letzten Stand.
 
 Dazu in `install_days` der Stand jeder Installation am Ende jedes UTC-Tages (eine Zeile pro Installation und Tag, jede Meldung überschreibt die des laufenden Tages). Daraus entsteht der Verlauf: Der Zuwachs eines Tages ist der Stand minus dem letzten früheren Stand derselben Installation. Der erste Stand einer Installation zählt nicht als Zuwachs, ebenso ein Zähler, der im früheren Stand fehlt (neue App-Version, die ihren Gesamtstand seit Installation schickt). Negative Differenzen (Neuinstallation mit leerer Datenbank) zählen als 0. Aktive Installationen eines Tages sind die mit einem Stand an diesem Tag. Wer die Statistik abschaltet, löscht mit der Installation auch ihre Tagesstände (`ON DELETE CASCADE`).
 
@@ -45,17 +45,19 @@ Body der Meldung:
   },
   "models": {
     "claude-opus-4-7": { "tokens": 123, "costUsdCents": 45 }
-  }
+  },
+  "plan": "max_20x"
 }
 ```
 
-`userTurns` sind die Durchläufe, die Nutzer selbst gestartet haben, `costUsdCents` die geschätzten API-Kosten aller Claude-Aufrufe in US-Cent. `models` enthält je Modell-ID alle vier Token-Arten zusammen und die geschätzten Kosten, kumulativ seit Installation. Ältere App-Versionen schicken diese Felder nicht; dann gelten 0 und `{}`.
+`userTurns` sind die Durchläufe, die Nutzer selbst gestartet haben, `costUsdCents` die geschätzten API-Kosten aller Claude-Aufrufe in US-Cent. `models` enthält je Modell-ID alle vier Token-Arten zusammen und die geschätzten Kosten, kumulativ seit Installation. `plan` ist das Abo des in Claude Code angemeldeten Kontos (`max_20x`, `max_5x`, `max`, `pro`, `team`, `enterprise` ...), gelesen aus `organizationType` und dem Rate-Limit-Tier in `.claude.json`; `null` ohne claude.ai-Anmeldung. Ältere App-Versionen schicken diese Felder nicht; dann gelten 0, `{}` und `null`.
 
 Regeln (siehe `src/lib/report.ts`):
 
 - Zähler sind ganze Zahlen ab 0. Unbekannte Schlüssel werden ignoriert, fehlende zählen als 0.
 - Obergrenzen pro Installation: Token-Felder 10^12, `claudeWorkMs` 10^11, `costUsdCents` 10^10, alle anderen 10^7. Darüber: 400.
 - `models`: höchstens 20 Einträge, Schlüssel 1 bis 64 Zeichen aus `[A-Za-z0-9._:[]-]`, Werte `tokens` (ganzzahlig, 0 bis 4·10^12) und `costUsdCents` (ganzzahlig, 0 bis 10^10), beide Pflicht.
+- `plan`: `null` oder 1 bis 24 Zeichen aus `[a-z0-9_]`.
 - `appVersion` höchstens 32 Zeichen aus `[0-9A-Za-z.+-]`, `os` höchstens 64 Zeichen ohne Steuerzeichen.
 - Die App meldet alle 5 Minuten. Höchstens eine Meldung pro Installation alle 4 Minuten (429). Die App wertet 429 als gesendet.
 - Höchstens 20 neue Installations-IDs pro IP-Adresse und Tag (429). Der Zähler liegt nur im Speicher und beginnt nach einem Neustart von vorn.
@@ -66,15 +68,19 @@ Antwort von `GET /api/v1/totals`:
 {
   "installs": 7,
   "activeInstalls30d": 7,
+  "onlineInstalls": 2,
   "counters": { "tokensInput": 0, "...": 0, "userTurns": 0, "costUsdCents": 0 },
   "updatedAt": "2026-10-18T00:00:00.000Z",
   "models": { "claude-opus-4-7": { "tokens": 803400000, "costUsdCents": 315000 } },
   "versions": [{ "version": "0.1.81", "installs": 3 }],
+  "plans": [{ "plan": "max_20x", "installs": 4, "online": 1 }, { "plan": null, "installs": 3, "online": 1 }],
   "history": [{ "day": "2026-10-17", "tokens": 64420000, "claudeTurns": 55, "activeInstalls": 7 }]
 }
 ```
 
-- `models`: Summe je Modell-ID über alle Installationen, die 50 mit den meisten Tokens.
+- `onlineInstalls`: Installationen mit einer Meldung in den letzten 10 Minuten (`ONLINE_MINUTES`, die App meldet alle 5).
+- `models`: Summe je Modell-ID über alle Installationen, die 50 mit den meisten Tokens. Die Seite fasst `claude-opus-5-5` und `claude-opus-5-5[1m]` (dasselbe Modell mit 1M-Kontext) zu einer Zeile zusammen.
+- `plans`: aktive Installationen der letzten 30 Tage je Abo, davon `online` gerade online; `null` heißt unbekannt (ältere App oder ohne claude.ai-Anmeldung).
 - `versions`: aktive Installationen der letzten 30 Tage je FORGE-Version, die häufigste zuerst.
 - `history`: die letzten 30 UTC-Tage einschließlich heute, älteste zuerst; `tokens` ist der Zuwachs aller vier Token-Arten, `claudeTurns` der Zuwachs an Durchläufen.
 - Das README-Badge liest `installs`.

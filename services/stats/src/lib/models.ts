@@ -6,11 +6,10 @@ const title = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
 /**
  * Readable name of a Claude model ID: "claude-opus-4-7" is "Opus 4.7", "claude-3-5-sonnet-20241022"
- * "Sonnet 3.5", "claude-sonnet-4-5[1m]" "Sonnet 4.5 (1M)". Provider prefixes (us.anthropic.) and
- * suffixes (-v1:0) are ignored. Anything else stays as it is.
+ * "Sonnet 3.5". "[1m]" (the same model with the 1M context window) is dropped, so both count as one model.
+ * Provider prefixes (us.anthropic.) and suffixes (-v1:0) are ignored. Anything else stays as it is.
  */
 export function modelLabel(id: string): string {
-  const oneM = /\[1m\]$/i.test(id);
   const base = id.toLowerCase().replace(/\[1m\]$/, "");
   const fam = FAMILIES.join("|");
   // Version parts are one or two digits; an eight-digit part is the release date.
@@ -19,15 +18,14 @@ export function modelLabel(id: string): string {
   let name: string | null = null;
   if (current) name = `${title(current[1]!)} ${current[2]}${current[3] ? `.${current[3]}` : ""}`;
   else if (legacy) name = `${title(legacy[3]!)} ${legacy[1]}${legacy[2] ? `.${legacy[2]}` : ""}`;
-  if (!name) return id;
-  return oneM ? `${name} (1M)` : name;
+  return name ?? id;
 }
 
 export interface ModelRow extends ModelUsage {
   label: string;
 }
 
-/** Models summed by readable name (dated and undated IDs of one model become one row), most tokens first. */
+/** Models summed by readable name (dated, undated and 1M IDs of one model become one row), most tokens first. */
 export function groupModels(models: Record<string, ModelUsage>): ModelRow[] {
   const rows = new Map<string, ModelRow>();
   for (const [id, m] of Object.entries(models)) {

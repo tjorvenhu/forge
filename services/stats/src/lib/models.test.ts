@@ -9,7 +9,8 @@ describe("modelLabel", () => {
     expect(modelLabel("claude-sonnet-4-20250514")).toBe("Sonnet 4");
     expect(modelLabel("claude-haiku-4-5")).toBe("Haiku 4.5");
     expect(modelLabel("claude-fable-5-1")).toBe("Fable 5.1");
-    expect(modelLabel("claude-opus-4-7[1m]")).toBe("Opus 4.7 (1M)");
+    expect(modelLabel("claude-opus-4-7[1m]")).toBe("Opus 4.7");
+    expect(modelLabel("claude-opus-5-5[1M]")).toBe("Opus 5.5");
   });
 
   it("names legacy and provider-prefixed IDs", () => {
@@ -32,10 +33,11 @@ describe("groupModels", () => {
         "claude-haiku-4-5": { tokens: 5, costUsdCents: 1 },
         "claude-sonnet-4-5": { tokens: 10, costUsdCents: 2 },
         "claude-sonnet-4-5-20250929": { tokens: 3, costUsdCents: 4 },
+        "claude-sonnet-4-5[1m]": { tokens: 2, costUsdCents: 1 },
         "claude-opus-4-7": { tokens: 0, costUsdCents: 0 },
       }),
     ).toEqual([
-      { label: "Sonnet 4.5", tokens: 13, costUsdCents: 6 },
+      { label: "Sonnet 4.5", tokens: 15, costUsdCents: 7 },
       { label: "Haiku 4.5", tokens: 5, costUsdCents: 1 },
     ]);
   });

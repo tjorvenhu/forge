@@ -56,7 +56,7 @@ function Prompt({ onLater }: { onLater: () => void }) {
       <div>
         <div className="mb-1 font-medium">Gesendet wird</div>
         <p className="text-muted">
-          Eine zufällige Kennung dieser Installation, die FORGE-Version, die Windows-Version und Zählerstände: verbrauchte Tokens je Claude-Modell, geschätzte API-Kosten,
+          Eine zufällige Kennung dieser Installation, die FORGE-Version, die Windows-Version, die Art des Claude-Abos (z. B. Pro oder Max 5x) und Zählerstände: verbrauchte Tokens je Claude-Modell, geschätzte API-Kosten,
           Claude-Arbeitszeit, Durchläufe, Sessions, angelegte Projekte, gestartete und zusammengeführte Agenten, Telefonate.
         </p>
       </div>

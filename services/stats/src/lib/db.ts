@@ -3,21 +3,34 @@ import { HISTORY_DAYS, historyDays, historySql, toHistory, type HistoryDay, type
 import { COUNTER_KEYS, type Counters, type ModelUsage, type Report } from "./report";
 import type { VersionCount } from "./versions";
 
+export interface PlanCount {
+  plan: string | null;
+  installs: number;
+  /** of them online now */
+  online: number;
+}
+
 /** Minimum time between two accepted reports of one installation; the app reports every 5 minutes. */
 export const REPORT_INTERVAL_MINUTES = 4;
 const TOTALS_MAX_AGE_MS = 5 * 60 * 1000;
+/** An installation reporting within this time counts as online; the app reports every 5 minutes. */
+export const ONLINE_MINUTES = 10;
 /** Models in /api/v1/totals; every installation can send 20 IDs of its own, so the list is capped. */
 const MAX_TOTAL_MODELS = 50;
 
 export interface Totals {
   installs: number;
   activeInstalls30d: number;
+  /** installations with a report in the last ONLINE_MINUTES */
+  onlineInstalls: number;
   counters: Counters;
   updatedAt: string;
   /** summed over all installations, most tokens first */
   models: Record<string, ModelUsage>;
   /** installations active in the last 30 days per app version, most first */
   versions: VersionCount[];
+  /** installations active in the last 30 days per Claude plan, most first; plan null: unknown */
+  plans: PlanCount[];
   /** the last 30 days (UTC), oldest first */
   history: HistoryDay[];
 }
@@ -49,6 +62,7 @@ async function db(): Promise<Pool> {
         counters jsonb NOT NULL
       );
       ALTER TABLE installs ADD COLUMN IF NOT EXISTS models jsonb NOT NULL DEFAULT '{}'::jsonb;
+      ALTER TABLE installs ADD COLUMN IF NOT EXISTS plan text;
       CREATE TABLE IF NOT EXISTS install_days (
         install_id uuid NOT NULL REFERENCES installs(install_id) ON DELETE CASCADE,
         day date NOT NULL,
@@ -80,11 +94,11 @@ export async function upsertReport(r: Report): Promise<boolean> {
   const p = await db();
   const res = await p.query(
     `WITH up AS (
-       INSERT INTO installs (install_id, first_seen, last_seen, app_version, os, counters, models)
-       VALUES ($1, now(), now(), $2, $3, $4, $5)
+       INSERT INTO installs (install_id, first_seen, last_seen, app_version, os, counters, models, plan)
+       VALUES ($1, now(), now(), $2, $3, $4, $5, $7)
        ON CONFLICT (install_id) DO UPDATE
          SET last_seen = now(), app_version = EXCLUDED.app_version, os = EXCLUDED.os,
-             counters = EXCLUDED.counters, models = EXCLUDED.models
+             counters = EXCLUDED.counters, models = EXCLUDED.models, plan = EXCLUDED.plan
          WHERE installs.last_seen <= now() - make_interval(mins => $6)
        RETURNING install_id
      )
@@ -92,7 +106,7 @@ export async function upsertReport(r: Report): Promise<boolean> {
      SELECT install_id, (now() AT TIME ZONE 'UTC')::date, $4 FROM up
      ON CONFLICT (install_id, day) DO UPDATE SET counters = EXCLUDED.counters
      RETURNING 1`,
-    [r.installId, r.appVersion, r.os, JSON.stringify(r.counters), JSON.stringify(r.models), REPORT_INTERVAL_MINUTES],
+    [r.installId, r.appVersion, r.os, JSON.stringify(r.counters), JSON.stringify(r.models), REPORT_INTERVAL_MINUTES, r.plan],
   );
   return (res.rowCount ?? 0) > 0;
 }
@@ -132,6 +146,19 @@ async function queryVersions(p: Pool): Promise<VersionCount[]> {
   return res.rows.map((r) => ({ version: r.version, installs: Number(r.installs) }));
 }
 
+async function queryPlans(p: Pool): Promise<PlanCount[]> {
+  const res = await p.query<{ plan: string | null; installs: string; online: string }>(
+    `SELECT plan, COUNT(*)::text AS installs,
+       COUNT(*) FILTER (WHERE last_seen > now() - make_interval(mins => $1))::text AS online
+     FROM installs
+     WHERE last_seen > now() - interval '30 days'
+     GROUP BY plan
+     ORDER BY COUNT(*) DESC, plan NULLS LAST`,
+    [ONLINE_MINUTES],
+  );
+  return res.rows.map((r) => ({ plan: r.plan, installs: Number(r.installs), online: Number(r.online) }));
+}
+
 /** The history of the `days` UTC days up to `endDay` (today when left out). */
 export async function queryHistory(endDay?: string, days = HISTORY_DAYS): Promise<HistoryDay[]> {
   const p = await db();
@@ -142,24 +169,28 @@ export async function queryHistory(endDay?: string, days = HISTORY_DAYS): Promis
 
 async function queryTotals(): Promise<Totals> {
   const p = await db();
-  const [models, versions, history] = await Promise.all([queryModels(p), queryVersions(p), queryHistory()]);
+  const [models, versions, plans, history] = await Promise.all([queryModels(p), queryVersions(p), queryPlans(p), queryHistory()]);
   // The keys come from COUNTER_KEYS, not from input, so interpolating them is safe.
   const sums = COUNTER_KEYS.map((k) => `COALESCE(SUM((counters->>'${k}')::numeric), 0)::text AS "${k}"`).join(",\n");
   const res = await p.query<Record<string, string>>(
     `SELECT COUNT(*)::text AS installs,
        COUNT(*) FILTER (WHERE last_seen > now() - interval '30 days')::text AS active,
+       COUNT(*) FILTER (WHERE last_seen > now() - make_interval(mins => $1))::text AS online,
        ${sums}
      FROM installs`,
+    [ONLINE_MINUTES],
   );
   const row = res.rows[0] ?? {};
   const counters = Object.fromEntries(COUNTER_KEYS.map((k) => [k, Number(row[k] ?? 0)])) as Counters;
   return {
     installs: Number(row.installs ?? 0),
     activeInstalls30d: Number(row.active ?? 0),
+    onlineInstalls: Number(row.online ?? 0),
     counters,
     updatedAt: new Date().toISOString(),
     models,
     versions,
+    plans,
     history,
   };
 }

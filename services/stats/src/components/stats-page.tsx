@@ -1,6 +1,6 @@
-import { Activity, ArrowDownToLine, ArrowUpFromLine, BadgeDollarSign, Bot, Clock, Coins, Cpu, Database, DatabaseZap, EyeOff, FolderPlus, MessagesSquare, MonitorDown, Phone, Power, Repeat, Send, TriangleAlert } from "lucide-react";
+import { Activity, ArrowDownToLine, ArrowUpFromLine, BadgeDollarSign, Bot, Clock, Coins, Cpu, Database, DatabaseZap, EyeOff, FolderPlus, MessagesSquare, MonitorDown, Phone, Power, Repeat, Send, TriangleAlert, Wifi } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import type { Totals } from "@/lib/db";
+import { ONLINE_MINUTES, type Totals } from "@/lib/db";
 import { COUNTER_KEYS, type Counters } from "@/lib/report";
 import { formatCount, formatDateTime, formatHours, formatUsd } from "@/lib/format";
 import { tokenSum } from "@/lib/history";
@@ -11,6 +11,7 @@ type TileDef = { icon: LucideIcon; label: string; value: string; unit?: string; 
 
 function tiles(t: Totals): TileDef[] {
   const c = t.counters;
+  const pricedTokens = Object.values(t.models).reduce((n, m) => n + m.tokens, 0);
   return [
     // Every token Claude processed through FORGE, whatever started it (sessions, agents, helper calls, phone), cache included.
     {
@@ -22,7 +23,13 @@ function tiles(t: Totals): TileDef[] {
       wide: true,
     },
     // Only calls the app recorded with their model and cost (newer app versions) are in it, see the note below the tiles.
-    { icon: BadgeDollarSign, label: "Wert in API-Preisen", value: `≈ ${formatUsd(c.costUsdCents)}`, sub: "geschätzt nach API-Preisen", wide: true },
+    {
+      icon: BadgeDollarSign,
+      label: "Wert in API-Preisen",
+      value: `≈ ${formatUsd(c.costUsdCents)}`,
+      sub: pricedTokens < tokenSum(c) ? `nur für ${formatCount(pricedTokens)} der ${formatCount(tokenSum(c))} Tokens bekannt` : "geschätzt nach API-Preisen",
+      wide: true,
+    },
     { icon: Clock, label: "Claude-Arbeitszeit", value: formatHours(c.claudeWorkMs), unit: "Std.", sub: "Laufzeit aller Durchläufe" },
     {
       icon: Repeat,
@@ -34,8 +41,8 @@ function tiles(t: Totals): TileDef[] {
     { icon: FolderPlus, label: "Projekte", value: formatCount(c.projectsCreated), sub: "in FORGE angelegt" },
     { icon: Bot, label: "Parallele Agenten", value: formatCount(c.agentsStarted), sub: `${formatCount(c.agentsMerged)} zusammengeführt` },
     { icon: Phone, label: "Telefonate", value: formatCount(c.phoneCalls), sub: "über die Telefon-Funktion" },
-    { icon: MonitorDown, label: "Installationen", value: formatCount(t.installs), sub: "Statistik eingeschaltet" },
-    { icon: Activity, label: "Aktiv in 30 Tagen", value: formatCount(t.activeInstalls30d), sub: "Installationen mit Meldung" },
+    { icon: MonitorDown, label: "Installationen", value: formatCount(t.installs), sub: `${formatCount(t.activeInstalls30d)} aktiv in 30 Tagen` },
+    { icon: Wifi, label: "Gerade online", value: formatCount(t.onlineInstalls), sub: `Meldung in den letzten ${ONLINE_MINUTES} Min.` },
   ];
 }
 
@@ -43,10 +50,12 @@ function tiles(t: Totals): TileDef[] {
 const TILE_SHAPES = tiles({
   installs: 0,
   activeInstalls30d: 0,
+  onlineInstalls: 0,
   counters: Object.fromEntries(COUNTER_KEYS.map((k) => [k, 0])) as Counters,
   updatedAt: new Date(0).toISOString(),
   models: {},
   versions: [],
+  plans: [],
   history: [],
 });
 
@@ -106,7 +115,10 @@ export function StatsPage({ state }: { state: PageState }) {
                     </div>
                   ))}
             </div>
-            <p className="tiles-note">Modelle und Kosten melden erst neuere FORGE-Versionen. Claude-Aufrufe davor zählen bei Tokens und Durchläufen, fehlen aber im Wert in API-Preisen.</p>
+            <p className="tiles-note">
+              Modelle und Kosten melden erst neuere FORGE-Versionen. Claude-Aufrufe davor zählen bei Tokens und Durchläufen, fehlen aber im Wert in API-Preisen. Der größte Teil
+              der Tokens kommt aus dem Prompt-Cache, der nur einen Bruchteil neuer Eingabe kostet.
+            </p>
           </section>
 
           {totals ? <StatsCharts totals={totals} /> : <ChartsSkeleton />}
@@ -125,7 +137,7 @@ export function StatsPage({ state }: { state: PageState }) {
         <Row
           icon={Send}
           label="Gemeldet"
-          description="Alle 5 Minuten die Gesamtzähler: Tokens, Arbeitszeit, Durchläufe, Sessions, Projekte, Agenten und Telefonate. Dazu eine zufällige Installations-ID, die FORGE-Version und das Betriebssystem."
+          description="Alle 5 Minuten die Gesamtzähler: Tokens, Arbeitszeit, Durchläufe, Sessions, Projekte, Agenten und Telefonate. Dazu eine zufällige Installations-ID, die FORGE-Version, das Betriebssystem und die Art des Claude-Abos (zum Beispiel Pro oder Max 5x)."
         />
         <Row
           icon={Cpu}

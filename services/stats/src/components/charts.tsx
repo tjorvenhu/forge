@@ -5,6 +5,7 @@ import { BarChart3, Table2 } from "lucide-react";
 import type { Totals } from "@/lib/db";
 import { formatCount, formatDayLong, formatDayShort, formatUsd } from "@/lib/format";
 import { groupModels } from "@/lib/models";
+import { planLabel, sortPlans } from "@/lib/plans";
 import { newestVersion } from "@/lib/versions";
 import { SectionTitle, Skeleton } from "./blocks";
 
@@ -32,10 +33,10 @@ export function niceTicks(max: number): number[] {
 
 const plural = (n: number, one: string, many: string) => `${formatCount(n)} ${n === 1 ? one : many}`;
 
-function ChartCard({ title, sub, rows, children }: { title: string; sub: ReactNode; rows: Array<[string, string]>; children: ReactNode }) {
+function ChartCard({ title, sub, rows, wide, children }: { title: string; sub: ReactNode; rows: Array<[string, string]>; wide?: boolean; children: ReactNode }) {
   const [table, setTable] = useState(false);
   return (
-    <section className="chart-card" aria-label={title}>
+    <section className={wide ? "chart-card chart-card-wide" : "chart-card"} aria-label={title}>
       <div className="chart-head">
         <div className="chart-titles">
           <h3>{title}</h3>
@@ -215,6 +216,10 @@ export function StatsCharts({ totals }: { totals: Totals }) {
   const versions = totals.versions;
   const versionInstalls = versions.reduce((n, v) => n + v.installs, 0);
   const newest = newestVersion(versions);
+  const plans = sortPlans(totals.plans);
+  const planInstalls = plans.reduce((n, p) => n + p.installs, 0);
+  const planDetail = (p: (typeof plans)[number]) =>
+    `${percent(p.installs, planInstalls)} der aktiven Installationen · ${formatCount(p.online)} gerade online${p.plan ? "" : " · ältere FORGE-Version oder ohne Claude-Abo"}`;
 
   return (
     <>
@@ -254,12 +259,13 @@ export function StatsCharts({ totals }: { totals: Totals }) {
         </div>
       </section>
 
-      <section aria-labelledby="distribution">
+      <section aria-labelledby="models">
         <SectionTitle>
-          <span id="distribution">Modelle und Versionen</span>
+          <span id="models">Modelle</span>
         </SectionTitle>
         <div className="charts">
           <ChartCard
+            wide
             title="Tokens nach Modell"
             sub="Alle Token-Arten seit Installation, nur neuere FORGE-Versionen melden Modelle"
             rows={models.map((m) => [m.label, `${formatCount(m.tokens)} Tokens, ${percent(m.tokens, modelTokens)}, ≈ ${formatUsd(m.costUsdCents)}`])}
@@ -272,6 +278,31 @@ export function StatsCharts({ totals }: { totals: Totals }) {
                 value: m.tokens,
                 valueText: formatCount(m.tokens),
                 detail: `${percent(m.tokens, modelTokens)} der Tokens · ≈ ${formatUsd(m.costUsdCents)}`,
+              }))}
+            />
+          </ChartCard>
+        </div>
+      </section>
+
+      <section aria-labelledby="distribution">
+        <SectionTitle>
+          <span id="distribution">Abos und Versionen</span>
+        </SectionTitle>
+        <div className="charts">
+          <ChartCard
+            title="Claude-Abos"
+            sub="Aktive Installationen der letzten 30 Tage nach Abo des angemeldeten Kontos"
+            rows={plans.map((p) => [planLabel(p.plan), `${plural(p.installs, "Installation", "Installationen")}, ${planDetail(p)}`])}
+          >
+            <Bars
+              more={Math.max(0, plans.length - MAX_BARS)}
+              bars={plans.slice(0, MAX_BARS).map((p) => ({
+                key: p.plan ?? "",
+                label: planLabel(p.plan),
+                tag: p.online ? `${formatCount(p.online)} online` : undefined,
+                value: p.installs,
+                valueText: formatCount(p.installs),
+                detail: planDetail(p),
               }))}
             />
           </ChartCard>
@@ -302,7 +333,8 @@ export function StatsCharts({ totals }: { totals: Totals }) {
 
 const CARDS = [
   { section: "Letzte 30 Tage", cards: ["Tokens pro Tag", "Aktive Installationen pro Tag"], kind: "columns" },
-  { section: "Modelle und Versionen", cards: ["Tokens nach Modell", "FORGE-Versionen"], kind: "bars" },
+  { section: "Modelle", cards: ["Tokens nach Modell"], kind: "bars" },
+  { section: "Abos und Versionen", cards: ["Claude-Abos", "FORGE-Versionen"], kind: "bars" },
 ] as const;
 
 /** Placeholder in the shape of the charts: same titles, columns and bars at the same heights. */
@@ -314,7 +346,7 @@ export function ChartsSkeleton() {
           <SectionTitle>{s.section}</SectionTitle>
           <div className="charts">
             {s.cards.map((title, c) => (
-              <section key={title} className="chart-card" aria-label={title}>
+              <section key={title} className={s.cards.length === 1 ? "chart-card chart-card-wide" : "chart-card"} aria-label={title}>
                 <div className="chart-head">
                   <div className="chart-titles">
                     <h3>{title}</h3>

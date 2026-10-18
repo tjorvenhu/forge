@@ -29,7 +29,7 @@ import { UsageStatsService, usageStatsFile } from "./stats/usage-stats.js";
 import { modelTokens } from "./claude/normalize.js";
 import { SecretStore } from "./phone/secrets.js";
 import { locateClaude, sessionEnv } from "./claude/environment.js";
-import { readAuth } from "./claude/diagnostics.js";
+import { readAuth, readPlan } from "./claude/diagnostics.js";
 import { ASSIST_MODEL } from "./sessions/claude-assist.js";
 import { BackupService } from "./backup/backup.js";
 import { SyncService } from "./sync/sync.js";
@@ -219,6 +219,7 @@ export function createApp(opts: { dataDir: string; write: Writer; log?: (m: stri
   const usageStats = new UsageStatsService({
     enabled: () => db.getSettings().usageStats,
     totals: () => db.usageTotals(),
+    plan: () => readPlan(),
     log: (m) => opts.log?.(m),
     file: usageStatsFile(opts.dataDir),
   });

@@ -39,6 +39,26 @@ export async function readRateLimitTier(file = claudeJsonPath()): Promise<string
   }
 }
 
+/**
+ * Claude plan of the signed-in account for the usage statistics ("max_20x", "max_5x", "pro", "team" ...),
+ * from `oauthAccount` of .claude.json; null without a claude.ai login. Reads no identifying fields and
+ * starts no process, so it can run with every report.
+ */
+export async function readPlan(file = claudeJsonPath()): Promise<string | null> {
+  try {
+    const j = JSON.parse(await readFile(file, "utf8")) as { oauthAccount?: Record<string, unknown> };
+    const a = j.oauthAccount ?? {};
+    const type = typeof a.organizationType === "string" ? a.organizationType.toLowerCase().replace(/^claude_/, "") : "";
+    if (!/^[a-z0-9_]{1,24}$/.test(type)) return null;
+    if (type !== "max") return type;
+    const tier = a.userRateLimitTier ?? a.organizationRateLimitTier;
+    const multiplier = typeof tier === "string" ? /_(\d{1,3})x$/.exec(tier)?.[1] : undefined;
+    return multiplier ? `max_${multiplier}x` : "max";
+  } catch {
+    return null;
+  }
+}
+
 /** Sign-in state as `claude auth status` reports it. */
 export async function readAuth(claudeBin: string, env: Record<string, string>): Promise<Diagnostics["auth"]> {
   const auth = { ...NOT_CHECKED };

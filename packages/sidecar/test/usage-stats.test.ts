@@ -1,8 +1,9 @@
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { USAGE_STATS_URL } from "@forge/protocol";
+import { readPlan } from "../src/claude/diagnostics.js";
 import { Db, type UsageTotals } from "../src/persistence/db.js";
 import { UsageStatsService } from "../src/stats/usage-stats.js";
 
@@ -40,6 +41,7 @@ function setup(status = 204) {
   const svc = new UsageStatsService({
     enabled: () => enabled,
     totals: () => TOTALS,
+    plan: async () => "max_5x",
     log: () => {},
     file,
     active: true,
@@ -68,9 +70,9 @@ describe("usage statistics", () => {
     expect(t.requests[0]).toEqual({
       url: `${USAGE_STATS_URL}/api/v1/report`,
       method: "POST",
-      body: { schema: 1, installId: id, appVersion: "0.1.80", os: expect.any(String), counters: COUNTERS, models: TOTALS.models },
+      body: { schema: 1, installId: id, appVersion: "0.1.80", os: expect.any(String), counters: COUNTERS, models: TOTALS.models, plan: "max_5x" },
     });
-    expect(Object.keys(t.requests[0]!.body!).sort()).toEqual(["appVersion", "counters", "installId", "models", "os", "schema"]);
+    expect(Object.keys(t.requests[0]!.body!).sort()).toEqual(["appVersion", "counters", "installId", "models", "os", "plan", "schema"]);
     t.advance(4 * 60_000);
     expect(await t.svc.tick()).toBe("idle");
     t.advance(60_000);
@@ -154,5 +156,29 @@ describe("usage statistics", () => {
     const svc = new UsageStatsService({ enabled: () => true, totals: () => TOTALS, log: () => {}, file: "x", active: false });
     svc.start();
     svc.stop();
+  });
+});
+
+describe("readPlan", () => {
+  function plan(account: Record<string, unknown> | undefined) {
+    const dir = mkdtempSync(path.join(os.tmpdir(), "forge-plan-"));
+    dirs.push(dir);
+    const file = path.join(dir, ".claude.json");
+    writeFileSync(file, JSON.stringify(account ? { oauthAccount: { emailAddress: "a@b.c", ...account } } : {}));
+    return readPlan(file);
+  }
+
+  it("reads the plan with the Max multiplier, nothing identifying", async () => {
+    expect(await plan({ organizationType: "claude_max", organizationRateLimitTier: "default_claude_max_5x", userRateLimitTier: null })).toBe("max_5x");
+    expect(await plan({ organizationType: "claude_max", userRateLimitTier: "default_claude_max_20x" })).toBe("max_20x");
+    expect(await plan({ organizationType: "claude_max" })).toBe("max");
+    expect(await plan({ organizationType: "claude_pro", organizationRateLimitTier: "default_claude_ai" })).toBe("pro");
+    expect(await plan({ organizationType: "claude_team" })).toBe("team");
+  });
+
+  it("is null without a claude.ai login or file", async () => {
+    expect(await plan(undefined)).toBeNull();
+    expect(await plan({ organizationType: "x".repeat(40) })).toBeNull();
+    expect(await readPlan(path.join(os.tmpdir(), "forge-missing", ".claude.json"))).toBeNull();
   });
 });

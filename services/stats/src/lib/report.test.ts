@@ -134,10 +134,22 @@ describe("parseReport", () => {
     expectError(body({ models: models(21) }));
   });
 
+  it("takes the plan as a short lowercase name, null when missing", () => {
+    const plan = (v: unknown) => parseReport(body({ plan: v }));
+    const ok = plan("max_20x");
+    expect(ok.ok && ok.report.plan).toBe("max_20x");
+    const missing = parseReport(body({}));
+    expect(missing.ok && missing.report.plan).toBeNull();
+    expect(plan(null).ok).toBe(true);
+    expectError(body({ plan: "Max 20x" }));
+    expectError(body({ plan: "x".repeat(25) }));
+    expectError(body({ plan: 5 }));
+  });
+
   it("fits the largest valid report into the body limit", () => {
     const counters = Object.fromEntries(COUNTER_KEYS.map((k) => [k, COUNTER_LIMITS[k]]));
     const models = Object.fromEntries(Array.from({ length: MAX_MODELS }, (_, i) => [`m${i}`.padEnd(64, "x"), { tokens: MODEL_LIMITS.tokens, costUsdCents: MODEL_LIMITS.costUsdCents }]));
-    const raw = body({ appVersion: "1".repeat(32), os: "x".repeat(64), counters, models });
+    const raw = body({ appVersion: "1".repeat(32), os: "x".repeat(64), counters, models, plan: "x".repeat(24) });
     expect(parseReport(raw).ok).toBe(true);
   });
 

@@ -482,6 +482,10 @@ a {
   background: var(--color-surface);
 }
 
+.chart-card-wide {
+  grid-column: 1 / -1;
+}
+
 .chart-head {
   display: flex;
   align-items: flex-start;

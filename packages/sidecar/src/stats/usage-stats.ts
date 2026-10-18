@@ -22,6 +22,8 @@ export interface UsageStatsDeps {
   /** whether the statistics are on (settings.usageStats) */
   enabled(): boolean;
   totals(): UsageTotals;
+  /** Claude plan of the account, e.g. "max_20x"; null when unknown */
+  plan?(): Promise<string | null>;
   log(message: string): void;
   /** file with the installation ID */
   file: string;
@@ -85,6 +87,7 @@ export class UsageStatsService {
         counters,
         // Model ids only (e.g. claude-opus-4-7), at most 20; the service checks them again.
         models: Object.fromEntries(Object.entries(models).slice(0, 20)),
+        plan: (await this.d.plan?.()) ?? null,
       });
       this.write({ ...state, lastSentAt: new Date(now).toISOString() });
       return "sent";

@@ -43,6 +43,8 @@ export const MODEL_LIMITS = { tokens: 4e12, costUsdCents: 1e10 } as const;
 
 export const MAX_BODY_BYTES = 4096;
 
+export const PLAN_PATTERN = /^[a-z0-9_]{1,24}$/;
+
 const counterShape = Object.fromEntries(
   COUNTER_KEYS.map((k) => [k, z.number().int().min(0).max(COUNTER_LIMITS[k]).default(0)]),
 ) as Record<CounterKey, z.ZodDefault<z.ZodNumber>>;
@@ -70,6 +72,8 @@ export const reportSchema = z.object({
   counters: z.object(counterShape),
   // Cumulative per model since installation; app versions before it do not send it.
   models: modelsSchema,
+  // Claude plan of the account ("max_20x", "pro" ...); null without a claude.ai login or from older app versions.
+  plan: z.string().regex(PLAN_PATTERN).nullable().default(null),
 });
 
 export type Report = z.infer<typeof reportSchema>;
