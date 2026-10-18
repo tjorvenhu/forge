@@ -1578,9 +1578,14 @@ describe("PhoneService end to end with a test PBX", () => {
 
   it("tells where to donate and where to send suggestions", async () => {
     const { conv, end } = await openCall("c-support");
+    rpcResults["app.donations"] = () => ({ cents: 123_450, count: 37 });
     const text = await conv.tools.forgeSystem("support");
     expect(text).toContain("buy.stripe.com/9B64gBc4e5j80vg1WxbV600");
     expect(text).toContain("github.com/vanturis/forge/issues/new");
+    expect(text).toMatch(/Bisher wurden 1\.234,50\s€ gespendet, in 37 Beiträgen, vor Gebühren\./);
+    // Without the figure (offline, no Stripe key) the rest stays.
+    delete rpcResults["app.donations"];
+    expect(await conv.tools.forgeSystem("support")).not.toContain("gespendet");
     await end();
   }, 30_000);
 

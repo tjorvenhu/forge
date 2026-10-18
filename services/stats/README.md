@@ -27,6 +27,7 @@ Die Tabellen legt der Dienst beim ersten Zugriff selbst an (`CREATE TABLE IF NOT
 | `GET /api/v1/totals` | Summen, Modelle, Versionen und Verlauf als JSON (siehe unten), `Cache-Control: public, max-age=300` | 200; 503 |
 | `GET /api/v1/live` | Installationen gerade online, gesamt und je Abo (`{ onlineInstalls, plans: [{ plan, online }], updatedAt }`); die Seite fragt alle 30 Sekunden, höchstens 15 Sekunden zwischengespeichert | 200; 503 |
 | `GET /api/v1/downloads` | Downloads des Installers (`*-setup.exe`) über alle Releases, ohne Updates, Signaturen und Marker; für das README-Badge, höchstens alle 30 Minuten von GitHub | 200; 503 |
+| `GET /api/v1/donations` | Bisher gespendet (`{ donations: { cents, count } }`, Euro-Cent; `donations: null` ohne `STRIPE_SECRET_KEY`); für das Herz in der App, höchstens alle 10 Minuten von Stripe | 200; 503 |
 | `GET /api/health` | Healthcheck mit DB-Abfrage | 200 `ok`; 503 |
 | `GET /` | Öffentliche Seite | 200, bei DB-Ausfall mit Hinweis statt Zahlen |
 

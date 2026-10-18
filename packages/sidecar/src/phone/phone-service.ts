@@ -2758,7 +2758,10 @@ export class PhoneService {
           if (action === "install_check") return installText(await call("app.checkInstall", {}));
           if (action === "support") {
             const bare = (url: string) => url.replace(/^https:\/\//, "");
-            return `FORGE ist ein Open-Source-Produkt der Vanturis UG. Einen freiwilligen Beitrag zahlt man hier: ${bare(SUPPORT_LINKS.donate)}, eine Spendenquittung gibt es nicht. Verbesserungen und Featurevorschläge kommen als Issue auf GitHub: ${bare(SUPPORT_LINKS.feedback)}. Beide Links zeigt FORGE hinter dem roten Herz neben der Suche links oben.`;
+            const given = await call("app.donations", {}).catch(() => null);
+            const euros = given ? new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR" }).format(given.cents / 100) : null;
+            const sum = given ? ` Bisher wurden ${euros} gespendet, in ${given.count} ${given.count === 1 ? "Beitrag" : "Beiträgen"}, vor Gebühren.` : "";
+            return `FORGE ist ein Open-Source-Produkt der Vanturis UG. Einen freiwilligen Beitrag zahlt man hier: ${bare(SUPPORT_LINKS.donate)}, eine Spendenquittung gibt es nicht.${sum} Verbesserungen und Featurevorschläge kommen als Issue auf GitHub: ${bare(SUPPORT_LINKS.feedback)}. Beide Links zeigt FORGE hinter dem roten Herz neben der Suche links oben.`;
           }
           if (action === "install_repair") {
             const st = await call("app.checkInstall", {});

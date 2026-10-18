@@ -138,6 +138,7 @@ export const PHONE_TOOL_FOR: Partial<Record<MethodName, string>> = {
   "app.downloadUpdate": "forge_system",
   "app.installUpdate": "forge_system",
   "app.changelog": "forge_system",
+  "app.donations": "forge_system",
   "app.installState": "forge_system",
   "app.checkInstall": "forge_system",
   "app.downloadFullInstaller": "forge_system",

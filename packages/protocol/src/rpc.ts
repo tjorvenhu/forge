@@ -517,6 +517,8 @@ export const methods = {
   "app.installUpdate": { params: empty, result: AppUpdateState },
   /** state of Claude's summary of the offered release; starts it and returns at once (poll while "writing") */
   "app.changelog": { params: empty, result: AppChangelog.nullable() },
+  /** donations so far over the support link (euro cents), from the statistics service; null when it does not know them */
+  "app.donations": { params: empty, result: z.object({ cents: z.number().int(), count: z.number().int() }).nullable() },
   /** whether the bundled runtime is complete, and the state of the repair (full installer) */
   "app.installState": { params: empty, result: AppInstallState },
   /** checks the runtime again and looks for the matching full installer */

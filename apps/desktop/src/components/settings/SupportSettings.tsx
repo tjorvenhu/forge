@@ -1,8 +1,11 @@
+import { useQuery } from "@tanstack/react-query";
 import type { LucideIcon } from "lucide-react";
 import { Copy, ExternalLink, Gauge, Heart, Lightbulb } from "lucide-react";
 import { SUPPORT_LINKS, USAGE_STATS_URL } from "@forge/protocol";
 import { addContextItems, copyText } from "@/lib/context-menu";
 import { openExternal } from "@/lib/native";
+import { call } from "@/lib/queries";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useUi } from "@/stores/ui";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
@@ -65,6 +68,7 @@ export function SupportDialog() {
       className="w-150"
       bodyClassName="flex flex-col"
     >
+      <Donated enabled={open} />
       <div className="divide-y divide-border">
         {LINKS.map((l) => (
           <LinkRow key={l.href} {...l} />
@@ -84,6 +88,30 @@ export function SupportDialog() {
         .
       </p>
     </Dialog>
+  );
+}
+
+const euro = new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
+const euroCents = new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR" });
+
+/** "Bisher gespendet" from the statistics service; asked when the dialog opens, left out when it does not know. */
+function Donated({ enabled }: { enabled: boolean }) {
+  const q = useQuery({ queryKey: ["donations"], queryFn: () => call("app.donations", {}), enabled, staleTime: 10 * 60_000, retry: false });
+  if (q.isPending && !enabled) return null;
+  if (!q.isPending && !q.data) return null;
+  const d = q.data;
+  return (
+    <div className="mb-1 flex items-center justify-between gap-4 rounded-lg border border-border bg-surface-2 px-3 py-2.5" aria-busy={!d}>
+      <div className="min-w-0">
+        <div className="text-small text-muted">Bisher gespendet</div>
+        <div className="text-xs text-subtle">{d ? `${d.count} ${d.count === 1 ? "Beitrag" : "Beiträge"}, vor Gebühren` : <Skeleton className="mt-1 h-3 w-32" />}</div>
+      </div>
+      {d ? (
+        <div className="shrink-0 text-lg font-semibold tabular-nums text-accent">{(d.cents % 100 === 0 ? euro : euroCents).format(d.cents / 100)}</div>
+      ) : (
+        <Skeleton className="h-6 w-20" />
+      )}
+    </div>
   );
 }
 

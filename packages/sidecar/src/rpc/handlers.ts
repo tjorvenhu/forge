@@ -22,6 +22,7 @@ import type { KnowledgeStore } from "../knowledge/knowledge.js";
 import type { PhoneService } from "../phone/phone-service.js";
 import type { DictationService } from "../dictation/dictation.js";
 import type { Presence } from "../util/presence.js";
+import type { DonationsSource } from "../stats/donations.js";
 import type { ChatWindowState } from "../util/chat-windows.js";
 import type { AppUpdateService } from "../update/app-update.js";
 import type { FullInstallService } from "../update/full-install.js";
@@ -56,6 +57,7 @@ export interface Services {
   phone: PhoneService;
   dictation: DictationService;
   presence: Presence;
+  donations: Pick<DonationsSource, "get">;
   chatWindows: ChatWindowState;
   updates: AppUpdateService;
   installs: FullInstallService;
@@ -324,6 +326,7 @@ export function createHandlers(s: Services): Handlers {
     "app.prepareInstall": ({ cancel }) => s.sessions.prepareUpdateRestart(!cancel),
     "app.installUpdate": () => s.updates.requestInstall(),
     "app.changelog": () => s.updates.changelog(),
+    "app.donations": () => s.donations.get(),
     "app.installState": () => s.installs.get(),
     "app.checkInstall": () => s.installs.check(),
     "app.downloadFullInstaller": () => s.installs.download(),

@@ -25,6 +25,7 @@ import { tokenMeter } from "./claude/token-meter.js";
 import { DictationService } from "./dictation/dictation.js";
 import { Presence } from "./util/presence.js";
 import { ChatWindowState } from "./util/chat-windows.js";
+import { DonationsSource } from "./stats/donations.js";
 import { AppUpdateService } from "./update/app-update.js";
 import { FullInstallService } from "./update/full-install.js";
 import { UsageStatsService, usageStatsFile } from "./stats/usage-stats.js";
@@ -356,6 +357,7 @@ export function createApp(opts: { dataDir: string; write: Writer; log?: (m: stri
   handlers = createHandlers({
     dictation,
     presence,
+    donations: new DonationsSource(),
     chatWindows,
     backups,
     sync,
