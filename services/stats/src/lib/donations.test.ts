@@ -1,6 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { DONATE_URL } from "./constants";
-import { donations, resetDonationsCache, sumDonations } from "./donations";
+import { DONATE_LINK_ID, donations, resetDonationsCache, sumDonations } from "./donations";
 import { formatEur } from "./format";
 
 describe("donations", () => {
@@ -32,7 +31,7 @@ describe("donations", () => {
     expect(await donations(() => Promise.reject(new Error("kein Aufruf erwartet")))).toBeNull();
   });
 
-  it("finds the link by its address and reads every page of its checkouts", async () => {
+  it("reads every page of the donation link's checkouts", async () => {
     process.env.STRIPE_SECRET_KEY = "rk_test_x";
     const calls: string[] = [];
     const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200 });
@@ -40,17 +39,28 @@ describe("donations", () => {
       const u = String(url);
       calls.push(u);
       expect((init?.headers as Record<string, string>).Authorization).toBe("Bearer rk_test_x");
-      if (u.includes("/payment_links")) return json({ data: [{ id: "plink_anders", url: "https://buy.stripe.com/x" }, { id: "plink_spende", url: DONATE_URL }], has_more: false });
       if (!u.includes("starting_after")) return json({ data: [{ id: "cs_1", amount_total: 1000, currency: "eur", payment_status: "paid" }], has_more: true });
       return json({ data: [{ id: "cs_2", amount_total: 550, currency: "eur", payment_status: "paid" }], has_more: false });
     }) as typeof fetch;
     expect(await donations(fake)).toEqual({ cents: 1550, count: 2 });
-    expect(calls[1]).toContain("payment_link=plink_spende");
-    expect(calls[1]).toContain("status=complete");
-    expect(calls[2]).toContain("starting_after=cs_1");
+    expect(calls[0]).toContain(`payment_link=${DONATE_LINK_ID}`);
+    expect(calls[0]).toContain("status=complete");
+    expect(calls[1]).toContain("starting_after=cs_1");
     // cached: no second round to Stripe
     await donations(fake);
-    expect(calls).toHaveLength(3);
+    expect(calls).toHaveLength(2);
+  });
+
+  it("takes another link from STRIPE_PAYMENT_LINK", async () => {
+    process.env.STRIPE_SECRET_KEY = "rk_test_x";
+    process.env.STRIPE_PAYMENT_LINK = "plink_anders";
+    let seen = "";
+    const fake = (async (url: string | URL | Request) => {
+      seen = String(url);
+      return new Response(JSON.stringify({ data: [], has_more: false }));
+    }) as typeof fetch;
+    expect(await donations(fake)).toEqual({ cents: 0, count: 0 });
+    expect(seen).toContain("payment_link=plink_anders");
   });
 
   it("formats euros the way the page shows them", () => {

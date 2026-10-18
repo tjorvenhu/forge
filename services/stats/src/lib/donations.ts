@@ -1,5 +1,5 @@
-import { DONATE_URL } from "./constants";
-
+/** Stripe id of the "Unterstützen" link (DONATE_URL in constants.ts); its payments are the donations. */
+export const DONATE_LINK_ID = "plink_1URfBBPw4QqplHqjIO592fZr";
 const API = "https://api.stripe.com/v1";
 const CACHE_MS = 10 * 60_000;
 /** 100 sessions per page; 50 pages are 5000 donations. */
@@ -14,7 +14,6 @@ export type Donations = {
 
 type Session = { amount_total?: number | null; currency?: string | null; payment_status?: string };
 type Page<T> = { data: T[]; has_more: boolean };
-type PaymentLink = { id: string; url?: string };
 
 /** Paid euro amounts only: an open or failed checkout is no donation. */
 export function sumDonations(sessions: Session[]): Donations {
@@ -48,28 +47,17 @@ async function all<T extends { id?: string }>(path: string, key: string, fetchFn
   return out;
 }
 
-/** The id (plink_…) of the donation link: from STRIPE_PAYMENT_LINK, else looked up by its address. */
-async function paymentLinkId(key: string, fetchFn: typeof fetch): Promise<string> {
-  const given = process.env.STRIPE_PAYMENT_LINK?.trim();
-  if (given) return given;
-  const links = await all<PaymentLink>("/payment_links", key, fetchFn);
-  const link = links.find((l) => l.url === DONATE_URL);
-  if (!link) throw new Error("Zahlungslink zum Spenden nicht im Stripe-Konto gefunden");
-  return link.id;
-}
-
 let cache: { value: Donations; at: number } | null = null;
 
 /**
  * Donations so far, from Stripe at most every 10 minutes. Null without STRIPE_SECRET_KEY: the page
- * then leaves the figure out. A restricted key with read access to Checkout Sessions and Payment Links
- * is enough.
+ * then leaves the figure out. A restricted key with read access to Checkout Sessions is enough.
  */
 export async function donations(fetchFn: typeof fetch = fetch): Promise<Donations | null> {
   const key = process.env.STRIPE_SECRET_KEY?.trim();
   if (!key) return null;
   if (cache && Date.now() - cache.at < CACHE_MS) return cache.value;
-  const link = await paymentLinkId(key, fetchFn);
+  const link = process.env.STRIPE_PAYMENT_LINK?.trim() || DONATE_LINK_ID;
   const sessions = await all<Session & { id: string }>(`/checkout/sessions?payment_link=${encodeURIComponent(link)}&status=complete`, key, fetchFn);
   cache = { value: sumDonations(sessions), at: Date.now() };
   return cache.value;
