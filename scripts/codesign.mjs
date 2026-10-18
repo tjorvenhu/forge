@@ -16,7 +16,6 @@ import path from "node:path";
 
 const ROOT = path.resolve(import.meta.dirname, "..");
 const DIR = path.join(ROOT, ".codesign");
-const SRC_TAURI = path.join(ROOT, "apps/desktop/src-tauri");
 
 // nuget.org publishes SHA-512 (base64) as packageHash in the catalog entry of the package.
 const DLIB = {
@@ -101,19 +100,18 @@ async function setup() {
 
 const isSigned = (signtool, file) => spawnSync(signtool, ["verify", "/pa", "/q", file], { stdio: "ignore" }).status === 0;
 
-// The bundled runtime (node, git, gh, python) is third-party software: Tauri hands every unsigned exe/dll
-// of the resources to the sign command, but those must not carry the Vanturis signature, and the
-// signatures per month are limited.
-function isBundledRuntime(file) {
-  // Tauri may pass canonicalized paths (\\?\C:\...), path.relative would then not see the common root.
-  const rel = path.relative(SRC_TAURI, file.replace(/^\\\\\?\\/, "")).split(path.sep);
-  return rel[0] === "runtime" || (rel[0] === "target" && rel[2] === "runtime");
-}
+// Only FORGE's own executables get the Vanturis signature: the app, the installer and the uninstaller NSIS
+// writes as a temp file (nstXXXX.tmp). Tauri hands every unsigned exe/dll to the sign command, including
+// the bundled runtime (node, git, gh, python: third-party software) and the NSIS plugin DLLs; signatures
+// per month are limited, so everything else is left as it is.
+const SIGN_ONLY = [/^forge-desktop\.exe$/i, /_x64-setup\.exe$/i, /^nst[0-9a-f]+\.tmp$/i];
 
 function signFile(signtool, file) {
   if (!existsSync(file)) fail(`Datei zum Signieren fehlt: ${file}`);
-  if (isBundledRuntime(file)) {
-    console.log(`nicht signiert (mitgelieferte Laufzeit, keine Signatur verbraucht): ${path.basename(file)}`);
+  // Tauri may pass canonicalized paths (\\?\C:\...).
+  const name = path.basename(file.replace(/^\\\\\?\\/, ""));
+  if (!SIGN_ONLY.some((re) => re.test(name))) {
+    console.log(`nicht signiert (keine Signatur verbraucht): ${name}`);
     return;
   }
   if (isSigned(signtool, file)) {
