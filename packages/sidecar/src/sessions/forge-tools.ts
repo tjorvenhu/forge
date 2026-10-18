@@ -12,6 +12,7 @@ import type { StartParams } from "./lifecycle.js";
 import { KNOWLEDGE_DIR, type KnowledgeStore } from "../knowledge/knowledge.js";
 import type { DevAction, DevEnvironment, DevTarget } from "../devtools/environment.js";
 import { MAX_STEP_MS, type PreviewService, type PreviewStep } from "../preview/preview.js";
+import { tr } from "../i18n/index.js";
 
 /** dev_environment with wait: an install without a shared store can take minutes. */
 const SETUP_WAIT_MS = 4 * 60_000;
@@ -83,23 +84,24 @@ export type DailyReportText = (projectId: string | null, date?: string) => Promi
 /** Knowledge and dev tools of the session's project, with the lines of start context that explain them. */
 export function projectTools(rec: SessionRecord, p: ProjectToolDeps): { tools: SessionTool[]; context: string[] } {
   const projectId = rec.projectId;
+  const m = tr().core.forgeTools;
   const inWorktree = p.knowledge.owner(projectId) !== projectId;
   const knowledgeSearch: SessionTool = {
     name: "knowledge_search",
-    description: "Durchsucht das Projektwissen (Titel, Tags, Zusammenfassung, Text). Liefert Kennung, Titel, Zusammenfassung und eine Textstelle je Treffer.",
+    description: m.knowledgeSearchDescription,
     shape: {
-      query: z.string().min(1).max(200).describe("Suchwörter, z. B. 'migration prisma' oder 'deploy coolify'"),
+      query: z.string().min(1).max(200).describe(m.knowledgeSearchQuery),
       limit: z.number().int().min(1).max(20).optional(),
     },
     autoAllow: true,
     run: async (a) => {
       const hits = p.knowledge.search(projectId, String(a.query), typeof a.limit === "number" ? a.limit : 8);
-      if (!hits.length) return "Keine Treffer im Projektwissen.";
+      if (!hits.length) return m.knowledgeSearchNone;
       const gone = await missingRefs(hits.map((h) => h.id));
       return hits
         .map((h) => {
           const refs = gone.get(h.id);
-          return `${h.id}: ${h.title}${h.tags.length ? ` [${h.tags.join(", ")}]` : ""}\n  ${h.summary}\n  ${h.snippet}${refs ? `\n  Veraltet, gibt es nicht mehr: ${refs}` : ""}`;
+          return `${h.id}: ${h.title}${h.tags.length ? ` [${h.tags.join(", ")}]` : ""}\n  ${h.summary}\n  ${h.snippet}${refs ? `\n  ${m.knowledgeSearchStale(refs)}` : ""}`;
         })
         .join("\n");
     },
@@ -113,49 +115,38 @@ export function projectTools(rec: SessionRecord, p: ProjectToolDeps): { tools: S
   };
   const knowledgeRead: SessionTool = {
     name: "knowledge_read",
-    description: "Liest einen Eintrag des Projektwissens vollständig.",
-    shape: { id: z.string().min(1).max(80).describe("Kennung aus dem Index oder knowledge_search") },
+    description: m.knowledgeReadDescription,
+    shape: { id: z.string().min(1).max(80).describe(m.knowledgeReadId) },
     autoAllow: true,
     run: async (a) => {
       const e = await p.knowledge.read(projectId, String(a.id));
       const refs = (await missingRefs([e.id])).get(e.id);
       const stale = refs
-        ? `\nVeraltet: Diese Verweise gibt es im Projekt nicht mehr: ${refs}. Verlass dich an diesen Stellen nicht auf den Eintrag, prüfe den Code und korrigiere den Eintrag mit knowledge_save.`
+        ? `\n${m.knowledgeReadStale(refs)}`
         : "";
-      return `# ${e.title}\nZusammenfassung: ${e.summary}\nTags: ${e.tags.join(", ") || "keine"}\nStand: ${e.updatedAt.slice(0, 10)}${stale}\n\n${e.content}`;
+      return `# ${e.title}\n${m.knowledgeReadSummary}: ${e.summary}\n${m.knowledgeReadTags}: ${e.tags.join(", ") || m.knowledgeReadNoTags}\n${m.knowledgeReadUpdated}: ${e.updatedAt.slice(0, 10)}${stale}\n\n${e.content}`;
     },
   };
   const knownTags = p.knowledge.tags(projectId).slice(0, 30);
   // A worktree has no knowledge folder of its own; a relative path would point into the wrong checkout.
   const fileOf = (id: string) => (inWorktree ? path.join(p.knowledge.dir(projectId), `${id}.md`) : `${KNOWLEDGE_DIR.replace(/\\/g, "/")}/${id}.md`);
   const entryFields = {
-    title: z
-      .string()
-      .min(3)
-      .max(120)
-      .describe("Kurzer, eindeutiger Titel mit den Begriffen, unter denen man ihn sucht, z. B. 'Rechtsklick-Menü (ContextMenuHost, addContextItems)'. Steht so im Index jeder Session"),
-    summary: z.string().min(5).max(300).describe("Ein kurzer Satz: worum es geht und wann man den Eintrag braucht"),
-    tags: z
-      .array(z.string().max(40))
-      .max(8)
-      .optional()
-      .describe(`2 bis 5 Stichwörter in Kleinbuchstaben: Bereich und Art (z. B. stolperfalle, konvention). ${knownTags.length ? `Vorhandene wiederverwenden: ${knownTags.join(", ")}` : ""}`.trim()),
-    content: z.string().min(1).max(50_000).describe("Inhalt in Markdown: konkret, mit Dateipfaden, Befehlen und Begründungen. Beim Aktualisieren der vollständige neue Text"),
+    title: z.string().min(3).max(120).describe(m.entryTitle),
+    summary: z.string().min(5).max(300).describe(m.entrySummary),
+    tags: z.array(z.string().max(40)).max(8).optional().describe(m.entryTags(knownTags)),
+    content: z.string().min(1).max(50_000).describe(m.entryContent),
   };
   const overlapHint = (text: { title: string; summary: string; tags: string[]; content: string }, except: string[]) => {
     const near = p.knowledge.covering(projectId, text, except).slice(0, 3);
-    return near.length
-      ? ` Überschneidet sich stark mit: ${near.map((n) => `${n.id} (${n.title})`).join(", ")}. Ist es dasselbe Thema, führe die Einträge mit knowledge_merge zusammen.`
-      : "";
+    return near.length ? m.overlapHint(near.map((n) => `${n.id} (${n.title})`).join(", ")) : "";
   };
   const knowledgeSave: SessionTool = {
     name: "knowledge_save",
-    description:
-      "Legt einen Eintrag im Projektwissen an oder aktualisiert ihn (mit id). Für dauerhaft nützliches Wissen, das nicht offensichtlich im Code steht. Ein Eintrag pro Thema; bestehende Einträge ergänzen statt Duplikate anlegen.",
+    description: m.knowledgeSaveDescription,
     shape: {
-      id: z.string().max(80).optional().describe("Kennung eines bestehenden Eintrags zum Aktualisieren; leer legt einen neuen an"),
+      id: z.string().max(80).optional().describe(m.knowledgeSaveId),
       ...entryFields,
-      force: z.boolean().optional().describe("true legt trotz eines ähnlichen Eintrags einen neuen an"),
+      force: z.boolean().optional().describe(m.knowledgeSaveForce),
     },
     autoAllow: true,
     run: async (a) => {
@@ -163,20 +154,18 @@ export function projectTools(rec: SessionRecord, p: ProjectToolDeps): { tools: S
       const title = String(a.title);
       if (!id && a.force !== true) {
         const near = p.knowledge.similar(projectId, title);
-        if (near.length)
-          return `Nicht gespeichert: Es gibt schon ähnliche Einträge: ${near.map((n) => `${n.id} (${n.title})`).join(", ")}. Lies sie mit knowledge_read und aktualisiere den passenden mit id, oder setze force=true, wenn es wirklich ein anderes Thema ist.`;
+        if (near.length) return m.knowledgeSaveSimilar(near.map((n) => `${n.id} (${n.title})`).join(", "));
       }
       const tags = Array.isArray(a.tags) ? a.tags.filter((t): t is string => typeof t === "string") : id ? (await p.knowledge.read(projectId, id)).tags : [];
       const e = await p.knowledge.save(projectId, { id, title, summary: String(a.summary), tags, content: String(a.content) });
-      return `${id ? "Aktualisiert" : "Gespeichert"}: ${e.id} (${fileOf(e.id)}).${overlapHint(e, [e.id])}`;
+      return `${m.knowledgeSaved(Boolean(id), e.id, fileOf(e.id))}${overlapHint(e, [e.id])}`;
     },
   };
   const knowledgeMerge: SessionTool = {
     name: "knowledge_merge",
-    description:
-      "Führt Einträge des Projektwissens, die dasselbe Thema behandeln, zu einem zusammen: der erste behält seine Kennung und bekommt den neuen Text, die übrigen werden gelöscht. Lies vorher alle mit knowledge_read; content muss das Wissen aller Einträge enthalten, Doppeltes und Veraltetes fällt weg.",
+    description: m.knowledgeMergeDescription,
     shape: {
-      ids: z.array(z.string().min(1).max(80)).min(2).max(6).describe("Kennungen der Einträge; der erste bleibt bestehen"),
+      ids: z.array(z.string().min(1).max(80)).min(2).max(6).describe(m.knowledgeMergeIds),
       ...entryFields,
     },
     autoAllow: true,
@@ -186,30 +175,28 @@ export function projectTools(rec: SessionRecord, p: ProjectToolDeps): { tools: S
         ? a.tags.filter((t): t is string => typeof t === "string")
         : [...new Set((await Promise.all(ids.map((id) => p.knowledge.read(projectId, id)))).flatMap((e) => e.tags))].slice(0, 8);
       const { entry, removed } = await p.knowledge.merge(projectId, ids, { title: String(a.title), summary: String(a.summary), tags, content: String(a.content) });
-      return `Zusammengeführt: ${entry.id} (${fileOf(entry.id)}). Gelöscht: ${removed.join(", ")}.`;
+      return m.knowledgeMerged(entry.id, fileOf(entry.id), removed.join(", "));
     },
   };
   const knowledgeDelete: SessionTool = {
     name: "knowledge_delete",
-    description: "Löscht einen veralteten oder falschen Eintrag des Projektwissens.",
+    description: m.knowledgeDeleteDescription,
     shape: { id: z.string().min(1).max(80) },
     autoAllow: false,
-    run: async (a) => ((await p.knowledge.delete(projectId, String(a.id))) ? `Gelöscht: ${String(a.id)}` : `Kein Eintrag ${String(a.id)}.`),
+    run: async (a) => ((await p.knowledge.delete(projectId, String(a.id))) ? m.knowledgeDeleted(String(a.id)) : m.knowledgeNoEntry(String(a.id))),
   };
   const devEnvironment: SessionTool = {
     name: "dev_environment",
-    description:
-      "Stand von Dev-Server und Test-Datenbank des Projekts: Status, Adresse, Verbindungs-URL der lokalen PostgreSQL-Testdatenbank, Namen der Test-Umgebungsvariablen und die letzten Zeilen der Dev-Server-Ausgabe. In einem Agenten-Worktree auch, was FORGE dort vorbereitet hat (Abhängigkeiten, lokale Konfiguration, Build-Ausgaben, eigene Datenbank) und was davon noch läuft oder fehlgeschlagen ist.",
+    description: m.devEnvironmentDescription,
     shape: {
-      wait: z.boolean().optional().describe("true: in einem Agenten-Worktree erst warten, bis die Vorbereitung fertig ist (höchstens 4 Minuten)"),
+      wait: z.boolean().optional().describe(m.devEnvironmentWait),
     },
     autoAllow: true,
     run: (a) => p.dev.describe(projectId, a.wait === true ? SETUP_WAIT_MS : 0),
   };
   const devControl: SessionTool = {
     name: "dev_control",
-    description:
-      "Startet, stoppt oder startet Dev-Server bzw. Test-Datenbank neu. reset (nur Datenbank) löscht alle Daten der Test-Datenbank. Der Dev-Server bekommt die Test-Umgebung und, solange sie läuft, die URL der Test-Datenbank.",
+    description: m.devControlDescription,
     shape: {
       target: z.enum(["dev-server", "database"]),
       action: z.enum(["start", "stop", "restart", "reset"]),
@@ -223,44 +210,44 @@ export function projectTools(rec: SessionRecord, p: ProjectToolDeps): { tools: S
   const { lines, total, summaries } = p.knowledge.index(projectId);
   const cleanup = lines.length ? p.knowledge.cleanup(projectId) : { overlaps: [], long: [] };
   const context = [
-    "Projektwissen (FORGE): Gesammeltes Wissen zu diesem Projekt liegt in .forge/knowledge (Markdown, im Git).",
-    inWorktree
-      ? `Du arbeitest in einem Worktree. Das Projektwissen liegt im Ordner des Hauptprojekts: ${p.knowledge.dir(projectId)}. Eine Kopie in deinem Worktree ist nicht maßgeblich.`
-      : "",
-    lines.length
-      ? `Index beim Start dieser Session (${total} Einträge${total > lines.length ? `, die ${lines.length} neuesten` : ""}, ${summaries ? "Kennung: Titel. Zusammenfassung [Tags]" : "Kennung: Titel [Tags]; Zusammenfassungen liefert knowledge_search"}; Neueres findet knowledge_search):\n${lines.join("\n")}`
-      : "Beim Start dieser Session gab es noch keine Einträge. Lege die ersten an, sobald du etwas Passendes herausfindest.",
-    "- Bevor du in einem Bereich arbeitest, zu dem es einen passenden Eintrag gibt, lies ihn mit mcp__forge__knowledge_read. Bei Fragen zu Abläufen, Entscheidungen oder Stolperfallen suche zuerst mit knowledge_search.",
-    "- Speichere mit knowledge_save, was künftigen Sessions Zeit spart und nicht offensichtlich im Code oder in CLAUDE.md steht: Entscheidungen mit Begründung, Stolperfallen und ihre Lösung, Abläufe (Setup, Tests, Deploy), Eigenheiten externer Dienste. Speichere, sobald du so etwas herausgefunden hast, nicht erst am Ende. Kleine Aufgaben (Commit, Push, kurze Frage, kleiner Fix ohne neue Erkenntnis) brauchen keinen Eintrag: Speichern kostet den Nutzer 15 bis 35 Sekunden Wartezeit.",
-    "- Keine Geheimnisse (Passwörter, Tokens, Keys), kein Sitzungsprotokoll, nichts Kurzlebiges. Ein Thema pro Eintrag; bestehende Einträge aktualisieren statt neue anzulegen, Veraltetes korrigieren oder mit knowledge_delete löschen. Titel und Tags sind das, was andere Sessions im Index sehen: Titel mit Suchbegriffen, vorhandene Tags wiederverwenden.",
+    m.knowledgeIntro,
+    inWorktree ? m.knowledgeInWorktree(p.knowledge.dir(projectId)) : "",
+    lines.length ? m.knowledgeIndex(total, lines.length, summaries, lines.join("\n")) : m.knowledgeEmpty,
+    m.knowledgeRead,
+    m.knowledgeSave,
+    m.knowledgeRules,
     cleanup.overlaps.length
-      ? `- Aufräumen: Diese Einträge überschneiden sich wahrscheinlich: ${cleanup.overlaps
-          .slice(0, 3)
-          .map((o) => `${o.a} + ${o.b}`)
-          .join("; ")}. Arbeitest du ohnehin in dem Bereich, lies sie und führe sie mit knowledge_merge zusammen, wenn es dasselbe Thema ist.`
+      ? m.knowledgeOverlaps(
+          cleanup.overlaps
+            .slice(0, 3)
+            .map((o) => `${o.a} + ${o.b}`)
+            .join("; "),
+        )
       : "",
     cleanup.long.length
-      ? `- Sehr lange Einträge: ${cleanup.long
-          .slice(0, 3)
-          .map((l) => `${l.id} (${Math.round(l.chars / 1000)} KB)`)
-          .join(", ")}. Aktualisierst du einen davon, kürze ihn auf das, was nicht im Code steht.`
+      ? m.knowledgeLong(
+          cleanup.long
+            .slice(0, 3)
+            .map((l) => `${l.id} (${Math.round(l.chars / 1000)} KB)`)
+            .join(", "),
+        )
       : "",
-    "- Ändere das Projektwissen nur mit den knowledge_*-Werkzeugen, nicht mit Read, Edit oder Write auf die Dateien.",
-    "Dev-Umgebung (FORGE): mcp__forge__dev_environment zeigt Dev-Server (Adresse, letzte Ausgabe) und die lokale PostgreSQL-Testdatenbank (Verbindungs-URL). Nutze für Tests, Migrationen und Experimente mit Daten diese Testdatenbank, nie eine Produktionsdatenbank. dev_control startet, stoppt oder leert sie und startet den Dev-Server neu.",
+    m.knowledgeOnlyTools,
+    m.devIntro,
     inWorktree ? p.dev.setupContext(projectId) : "",
-    preview.length
-      ? "Vorschau (FORGE): preview_screenshot zeigt dir die laufende Web-App als Bild (Standard: Adresse des Dev-Servers, path für Unterseiten), preview_console liefert Konsolenmeldungen, Ausnahmen und fehlgeschlagene Anfragen, preview_interact klickt, tippt und wartet auf der Seite. Nur Adressen auf diesem Rechner. Prüfe UI-Änderungen damit selbst, bevor du sie als fertig meldest."
-      : "",
+    preview.length ? m.previewIntro : "",
   ].filter(Boolean);
   return { tools: [knowledgeSearch, knowledgeRead, knowledgeSave, knowledgeMerge, knowledgeDelete, devEnvironment, devControl, ...preview], context };
 }
 
-const previewTarget = {
-  url: z.string().max(2000).optional().describe("Lokale Adresse, z. B. http://localhost:5173/login. Weglassen: Adresse des laufenden Dev-Servers"),
-  path: z.string().max(2000).optional().describe("Pfad relativ zur Adresse, z. B. /settings"),
-  width: z.number().int().min(320).max(2560).optional().describe("Breite des Fensters in Pixeln (Standard 1280)"),
-  height: z.number().int().min(240).max(2000).optional().describe("Höhe des Fensters in Pixeln (Standard 800)"),
-};
+type ForgeToolTexts = ReturnType<typeof tr>["core"]["forgeTools"];
+
+const previewTarget = (m: ForgeToolTexts) => ({
+  url: z.string().max(2000).optional().describe(m.previewUrl),
+  path: z.string().max(2000).optional().describe(m.previewPath),
+  width: z.number().int().min(320).max(2560).optional().describe(m.previewWidth),
+  height: z.number().int().min(240).max(2000).optional().describe(m.previewHeight),
+});
 
 const str = (v: unknown) => (typeof v === "string" ? v : null);
 const int = (v: unknown) => (typeof v === "number" ? v : null);
@@ -268,48 +255,43 @@ const int = (v: unknown) => (typeof v === "number" ? v : null);
 /** Screenshot, console and simple input on the project's running web app (headless Edge or Chrome). */
 function previewTools(projectId: string, preview: PreviewService, viewer: string): SessionTool[] {
   const target = (a: Record<string, unknown>) => ({ url: str(a.url), path: str(a.path), width: int(a.width), height: int(a.height), viewer });
+  const m = tr().core.forgeTools;
+  const at = previewTarget(m);
   return [
     {
       name: "preview_screenshot",
-      description:
-        "Lädt die laufende Web-App des Projekts in einem unsichtbaren Browser und liefert einen Screenshot als Bild, dazu Titel, Adresse, HTTP-Status und eine Zählung der Konsolenmeldungen. Nur Adressen auf diesem Rechner (localhost, 127.0.0.1, ::1).",
-      shape: { ...previewTarget, fullPage: z.boolean().optional().describe("true: ganze Seite statt nur des sichtbaren Bereichs") },
+      description: m.previewScreenshotDescription,
+      shape: { ...at, fullPage: z.boolean().optional().describe(m.previewFullPage) },
       autoAllow: true,
       run: (a) => preview.screenshot(projectId, { ...target(a), fullPage: a.fullPage === true }),
     },
     {
       name: "preview_console",
-      description:
-        "Konsolenmeldungen (error, warn, log), unbehandelte Ausnahmen und fehlgeschlagene Netzwerk-Anfragen (Status ab 400 oder abgebrochen) der Web-App. Ohne url und path die zuletzt geöffnete Seite, sonst wird sie geladen.",
-      shape: { ...previewTarget, reload: z.boolean().optional().describe("true: Seite neu laden statt die bisherigen Meldungen zu lesen") },
+      description: m.previewConsoleDescription,
+      shape: { ...at, reload: z.boolean().optional().describe(m.previewReload) },
       autoAllow: true,
       run: (a) => preview.console(projectId, { ...target(a), reload: a.reload === true }),
     },
     {
       name: "preview_interact",
-      description:
-        "Führt Schritte auf der Seite aus (ohne url und path auf der zuletzt geöffneten): click (CSS-Selektor), type (Selektor und Text; clear ersetzt den Inhalt), press (Taste wie Enter, Tab, Escape, ArrowDown, Control+a), wait (ms oder Selektor). Bricht beim ersten Fehler ab und liefert danach einen Screenshot.",
+      description: m.previewInteractDescription,
       shape: {
-        ...previewTarget,
+        ...at,
         steps: z
           .array(
             z.object({
               action: z.enum(["click", "type", "press", "wait"]),
-              selector: z
-                .string()
-                .max(500)
-                .optional()
-                .describe('CSS-Selektor (click, type, wait); außerdem text=Anmelden, button:has-text("Speichern"), xpath=//button und ein angehängtes >> nth=1'),
-              text: z.string().max(5000).optional().describe("Text für type"),
-              clear: z.boolean().optional().describe("type: vorhandenen Inhalt ersetzen"),
-              key: z.string().max(40).optional().describe("Taste für press"),
-              ms: z.number().int().min(0).max(MAX_STEP_MS).optional().describe("wait: Wartezeit, mit selector das Zeitlimit"),
+              selector: z.string().max(500).optional().describe(m.previewSelector),
+              text: z.string().max(5000).optional().describe(m.previewText),
+              clear: z.boolean().optional().describe(m.previewClear),
+              key: z.string().max(40).optional().describe(m.previewKey),
+              ms: z.number().int().min(0).max(MAX_STEP_MS).optional().describe(m.previewMs),
             }),
           )
           .min(1)
           .max(30),
-        stepTimeoutMs: z.number().int().min(100).max(MAX_STEP_MS).optional().describe("Zeitlimit je Schritt für das Finden eines Elements (Standard 5000)"),
-        screenshot: z.boolean().optional().describe("false: ohne Screenshot am Ende"),
+        stepTimeoutMs: z.number().int().min(100).max(MAX_STEP_MS).optional().describe(m.previewStepTimeout),
+        screenshot: z.boolean().optional().describe(m.previewNoScreenshot),
         fullPage: z.boolean().optional(),
       },
       autoAllow: false,
@@ -332,16 +314,7 @@ function excerpt(text: string, max: number): string {
   return t.length > max ? `${t.slice(0, max)} …` : t;
 }
 
-const STATUS: Record<string, string> = {
-  starting: "startet",
-  running: "arbeitet",
-  waiting_approval: "wartet auf eine Freigabe des Nutzers",
-  stopping: "stoppt",
-  idle: "fertig, wartet auf Anweisungen",
-  stopped: "beendet",
-  interrupted: "unterbrochen",
-  error: "mit Fehler beendet",
-};
+const statusText = (status: string) => tr().core.forgeTools.status[status] ?? status;
 
 /**
  * FORGE tools inside a coding session and the context that explains them. Agents (sessions started
@@ -349,6 +322,7 @@ const STATUS: Record<string, string> = {
  */
 export function forgeSessionTools(rec: SessionRecord, d: ForgeToolDeps): { tools: SessionTool[]; context: string } {
   const sessionId = rec.id;
+  const m = tr().core.forgeTools;
   const parent = d.agents.parent(rec);
   const project = d.projects.get(rec.projectId);
   let own: { tools: SessionTool[]; context: string[] } = { tools: [], context: [] };
@@ -356,21 +330,20 @@ export function forgeSessionTools(rec: SessionRecord, d: ForgeToolDeps): { tools
     if (d.project && project.exists) own = projectTools(rec, d.project);
   } catch (e) {
     // Without knowledge and dev tools the session still gets the other FORGE tools; the timeline says why.
-    d.record(sessionId, { type: "status", status: "starting", detail: `Projektwissen und Dev-Werkzeuge nicht verfügbar: ${e instanceof Error ? e.message : String(e)}` });
+    d.record(sessionId, { type: "status", status: "starting", detail: m.projectToolsUnavailable(e instanceof Error ? e.message : String(e)) });
   }
 
   const notify: SessionTool = {
     name: "notify",
-    description:
-      "Benachrichtigt den Nutzer in FORGE (Hinweis mit Ton). urgent=true nur, wenn er wirklich sofort gebraucht wird: dann ruft FORGE ihn an, sofern das Telefon eingerichtet ist.",
+    description: m.notifyDescription,
     shape: {
-      message: z.string().min(1).max(500).describe("Kurze Nachricht an den Nutzer, ein bis zwei Sätze"),
-      urgent: z.boolean().optional().describe("true: dringend, darf anrufen"),
+      message: z.string().min(1).max(500).describe(m.notifyMessage),
+      urgent: z.boolean().optional().describe(m.notifyUrgent),
     },
     autoAllow: true,
     run: async (a) => {
       d.record(sessionId, { type: "notify", message: String(a.message), urgent: a.urgent === true });
-      return a.urgent === true ? "Der Nutzer wurde dringend benachrichtigt." : "Der Nutzer wurde benachrichtigt.";
+      return a.urgent === true ? m.notifiedUrgent : m.notified;
     },
   };
 
@@ -378,8 +351,7 @@ export function forgeSessionTools(rec: SessionRecord, d: ForgeToolDeps): { tools
   const usageStatus: SessionTool | null = usage
     ? {
         name: "usage_status",
-        description:
-          "Nutzung des Claude-Abos des Nutzers: 5-Stunden- und Wochenfenster in Prozent mit Reset-Zeit, die Prognose nach dem bisherigen Tempo (Limit vor dem Reset erreicht oder reicht bis zum Reset) und ob ein Limit erreicht ist. Vor großem Aufwand prüfen (mehrere Agenten, lange Läufe), damit die Arbeit nicht am Limit abbricht.",
+        description: m.usageStatusDescription,
         shape: {},
         autoAllow: true,
         run: () => usage(),
@@ -389,11 +361,10 @@ export function forgeSessionTools(rec: SessionRecord, d: ForgeToolDeps): { tools
   const dailyReport: SessionTool | null = report
     ? {
         name: "daily_report",
-        description:
-          "Tagesbericht von FORGE: Sessions mit Durchläufen, parallele Agenten (gestartet, zusammengeführt, verworfen, wartend), Commits (Auto-Commits markiert), was gerade offen ist (Rückfragen, Freigaben, Fehler, geplantes Weitermachen nach dem Nutzungslimit), bei allen Projekten auch Telefonate. Für Fragen wie „Was ist heute passiert?“ oder „Was haben die Agenten gestern geschafft?“.",
+        description: m.dailyReportDescription,
         shape: {
-          date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().describe("Tag im Format JJJJ-MM-TT; weglassen für heute"),
-          all_projects: z.boolean().optional().describe("true: alle Projekte; sonst nur dieses Projekt mit seinen Agenten"),
+          date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().describe(m.dailyReportDate),
+          all_projects: z.boolean().optional().describe(m.dailyReportAllProjects),
         },
         autoAllow: true,
         run: (a) => report(a.all_projects === true ? null : (project.parentId ?? project.id), typeof a.date === "string" ? a.date : undefined),
@@ -401,8 +372,8 @@ export function forgeSessionTools(rec: SessionRecord, d: ForgeToolDeps): { tools
     : null;
   const common = [notify, ...(usageStatus ? [usageStatus] : []), ...(dailyReport ? [dailyReport] : [])];
   const usageLine = [
-    usageStatus ? "- usage_status: Abo-Nutzung und Limits; vor großem Aufwand (mehrere Agenten, lange Läufe) prüfen." : "",
-    dailyReport ? "- daily_report: was an einem Tag passiert ist (Sessions, Agenten, Commits, Offenes); für Rückblicke und „Was ist heute passiert?“." : "",
+    usageStatus ? m.usageLine : "",
+    dailyReport ? m.dailyReportLine : "",
   ]
     .filter(Boolean)
     .join("\n");
@@ -412,10 +383,10 @@ export function forgeSessionTools(rec: SessionRecord, d: ForgeToolDeps): { tools
     return {
       tools: [...common, ...own.tools],
       context: [
-        "Du läufst in FORGE, einer Desktop-Oberfläche für Claude Code. Neben deinen Werkzeugen gibt es FORGE-Werkzeuge (mcp__forge__…).",
-        `Dieses Projekt arbeitet bewusst ohne Git: Der Nutzer hat Git für ${rec.cwd} in FORGE ausgeschaltet. Führe keine git-Befehle aus (kein git init, status, add, commit, branch, checkout, push), lege kein Repository an und schlage keine Commits, Branches oder Pull Requests vor. Auch ein vorhandener .git-Ordner bleibt unberührt. Änderungen landen nur als Dateien im Ordner; wenn etwas rückgängig gemacht werden muss, geht das nur über die Dateien selbst.`,
-        "Parallele Agenten (start_agent) gibt es deshalb hier nicht.",
-        "- notify: den Nutzer aktiv benachrichtigen. urgent=true nur, wenn er sofort gebraucht wird (kann sein Telefon klingeln lassen).",
+        m.introNoGit,
+        m.noGit(rec.cwd),
+        m.noGitAgents,
+        m.notifyLine,
         usageLine,
         ...own.context,
       ]
@@ -426,33 +397,24 @@ export function forgeSessionTools(rec: SessionRecord, d: ForgeToolDeps): { tools
 
   const autoMerge = autoMergeOn(d.projects, project);
   // A turn that ends with a question in the text would be merged before anyone answers it.
-  const autoMergeLine =
-    project.parentId && autoMerge
-      ? "In diesem Projekt führt FORGE deinen Branch automatisch zusammen, sobald ein Durchlauf ohne Fehler endet. Rückfragen deshalb nur mit AskUserQuestion stellen, nie als Frage am Ende deiner Antwort. Beende einen Durchlauf erst, wenn die Arbeit fertig ist."
-      : "";
+  const autoMergeLine = project.parentId && autoMerge ? m.autoMergeLine : "";
   // Tags can change during the session; the note with the next message says what FORGE actually did.
-  const autoCommitLine = project.tags.includes("auto-commit")
-    ? `In diesem Projekt committet FORGE nach jedem erfolgreichen Durchlauf selbst die darin geänderten Dateien (Tag auto-commit${project.tags.includes("auto-push") ? ", danach Push außer auf main/master (auto-push)" : ""}). Mit deiner nächsten Nachricht nennt dir FORGE diese Commits. Soll committet oder gepusht werden, ist das meist schon passiert: prüfe mit git status und git log, committe nur, was noch offen ist, und push dann.`
-    : "";
+  const autoCommitLine = project.tags.includes("auto-commit") ? m.autoCommitLine(project.tags.includes("auto-push")) : "";
   // Sessions ran the whole suite after every small step, also with nothing changed since the last green run.
   const autoTest = project.tags.includes("auto-test") && project.testCommand;
-  const testLine = `Tests gezielt ausführen: nur die zu deinen Änderungen passenden (einzelne Testdateien, betroffene Pakete), nicht nach jeder Kleinigkeit die ganze Suite, nicht erneut ohne Änderung seit dem letzten grünen Lauf.${
-    autoTest
-      ? ` FORGE führt nach jedem Durchlauf selbst „${project.testCommand}“ aus, wenn sich dafür relevante Dateien geändert haben (Tag auto-test), und nennt dir Fehlschläge mit deiner nächsten Nachricht. Die ganze Suite musst du deshalb nicht selbst starten.`
-      : ""
-  }`;
+  const testLine = m.testLine(autoTest ? project.testCommand : null);
 
   if (parent) {
     return {
       tools: [...common, ...own.tools],
       context: [
-        "Du läufst in FORGE, einer Desktop-Oberfläche für Claude Code, als paralleler Agent: Eine andere FORGE-Session hat dich gestartet.",
-        `Du arbeitest im Git-Worktree ${rec.cwd} auf einem eigenen Branch. Ändere nur Dateien in diesem Ordner.`,
-        "Wenn du fertig bist: committe deine Arbeit auf deinem Branch und fasse am Ende in wenigen Sätzen zusammen, was du gemacht hast und was offen ist. Die startende Session liest diese Zusammenfassung.",
+        m.introAgent,
+        m.agentWorktree(rec.cwd),
+        m.agentFinish,
         autoMergeLine,
         autoCommitLine,
         testLine,
-        "Mit mcp__forge__notify kannst du den Nutzer benachrichtigen. Weitere Agenten kannst du nicht starten.",
+        m.agentNotify,
         ...own.context,
       ]
         .filter(Boolean)
@@ -464,7 +426,7 @@ export function forgeSessionTools(rec: SessionRecord, d: ForgeToolDeps): { tools
     const q = ref.trim().toLowerCase();
     const children = d.agents.children(sessionId);
     const hit = children.find((c) => c.startsWith(q) || short(c) === q);
-    if (!hit) throw new Error(children.length ? `Keinen Agenten „${ref}“ gefunden. Vorhanden: ${children.map(short).join(", ")}.` : "Diese Session hat keine Agenten gestartet.");
+    if (!hit) throw new Error(children.length ? m.agentNotFound(ref, children.map(short).join(", ")) : m.noOwnAgents);
     return hit;
   };
 
@@ -484,7 +446,7 @@ export function forgeSessionTools(rec: SessionRecord, d: ForgeToolDeps): { tools
     if (child) {
       const s = d.db.getSession(child);
       const wt = s && d.projects.all().find((p) => p.id === s.projectId);
-      if (!wt?.parentId) throw new Error(`Agent ${short(child)} hat keinen Worktree mehr, er ist schon abgeschlossen.`);
+      if (!wt?.parentId) throw new Error(m.agentNoWorktree(short(child)));
       return wt.id;
     }
     const others = otherAgents();
@@ -493,17 +455,16 @@ export function forgeSessionTools(rec: SessionRecord, d: ForgeToolDeps): { tools
       if (branch === q || branch === `agent/${q}`) return p.id;
     }
     const known = [...d.agents.children(sessionId).map(short), ...(await Promise.all(others.map(branchLabel)))];
-    throw new Error(known.length ? `Keinen Agenten „${ref}“ gefunden. Vorhanden: ${known.join(", ")}.` : "In diesem Projekt gibt es keine Agenten.");
+    throw new Error(known.length ? m.agentNotFound(ref, known.join(", ")) : m.noAgentsInProject);
   };
 
   const startAgent: SessionTool = {
     name: "start_agent",
-    description:
-      "Startet einen parallelen Agenten (eigene Claude-Code-Session) in einem neuen Git-Worktree auf eigenem Branch. Für unabhängige Teilaufgaben, die gleichzeitig laufen können. Der Agent sieht diesen Chat nicht: Der Auftrag muss für sich allein verständlich sein. Sein Branch beginnt beim letzten Commit deines aktuellen Branches. Nicht committete Änderungen sieht er nur mit with_changes=true: Dann beginnt sein Branch mit einem Commit dieses Stands (ohne .env, Schlüssel und Build-Ausgaben); dein Ordner bleibt unverändert.",
+    description: m.startAgentDescription,
     shape: {
-      task: z.string().min(10).describe("Vollständiger Auftrag mit allem nötigen Kontext"),
-      name: z.string().max(40).optional().describe("Kurzer Name für den Branch, z. B. csv-export"),
-      with_changes: z.boolean().optional().describe("true: der Agent bekommt auch den nicht committeten Stand deines Ordners"),
+      task: z.string().min(10).describe(m.startAgentTask),
+      name: z.string().max(40).optional().describe(m.startAgentName),
+      with_changes: z.boolean().optional().describe(m.startAgentWithChanges),
     },
     autoAllow: false,
     run: async (a) => {
@@ -528,21 +489,16 @@ export function forgeSessionTools(rec: SessionRecord, d: ForgeToolDeps): { tools
         throw e;
       }
       d.agents.adopt(child.id, wt.id);
-      const note = withChanges
-        ? " Er hat deinen nicht committeten Stand als ersten Commit seines Branches."
-        : open
-          ? ` Hinweis: ${open} ${open === 1 ? "Datei ist" : "Dateien sind"} bei dir nicht committet, die sieht er nicht (with_changes=true hätte sie mitgegeben).`
-          : "";
+      const note = withChanges ? m.startAgentWithChangesNote : open ? m.startAgentOpenNote(open) : "";
       const warning = d.limitWarning ? await d.limitWarning().catch(() => null) : null;
-      return `Agent ${short(child.id)} gestartet, Branch ${branch}, Ordner ${wt.path}. Er arbeitet unabhängig; den Stand gibt agent_status. Seine Änderungen liegen nur auf seinem Branch.${note}${warning ? ` Hinweis: ${warning}` : ""}`;
+      return `${m.agentStarted(short(child.id), branch, wt.path)}${note}${warning ? m.startAgentWarning(warning) : ""}`;
     },
   };
 
   const agentStatus: SessionTool = {
     name: "agent_status",
-    description:
-      "Stand der Agenten, die diese Session gestartet hat: Status, Branch und ihre letzte Antwort. Ohne agent auch die übrigen Agenten des Projekts (aus dem Agenten-Reiter, vom Telefon oder aus anderen Sessions).",
-    shape: { agent: z.string().min(1).optional().describe("Kürzel eines Agenten; weglassen für alle") },
+    description: m.agentStatusDescription,
+    shape: { agent: z.string().min(1).optional().describe(m.agentStatusAgent) },
     autoAllow: true,
     run: async (a) => {
       const one = typeof a.agent === "string" && a.agent.trim();
@@ -551,20 +507,20 @@ export function forgeSessionTools(rec: SessionRecord, d: ForgeToolDeps): { tools
       const otherLines = await Promise.all(
         others.map(async (p) => {
           const s = d.db.listSessions(p.id)[0];
-          return `- ${await branchLabel(p)}: ${s ? (STATUS[s.status] ?? s.status) : "ohne Session"}, Ordner ${p.path}${p.exists ? "" : " (fehlt)"}`;
+          return m.otherAgentLine(await branchLabel(p), s ? statusText(s.status) : null, p.path, p.exists);
         }),
       );
-      const otherBlock = otherLines.length ? `Weitere Agenten dieses Projekts (finish_agent mit dem Branch):\n${otherLines.join("\n")}` : "";
-      if (!ids.length) return ["Diese Session hat keine Agenten gestartet.", otherBlock].filter(Boolean).join("\n");
+      const otherBlock = otherLines.length ? m.otherAgentsBlock(otherLines.join("\n")) : "";
+      if (!ids.length) return [m.noOwnAgents, otherBlock].filter(Boolean).join("\n");
       const lines = await Promise.all(
         ids.map(async (id) => {
           const s = d.db.getSession(id);
-          if (!s) return `${short(id)}: gelöscht`;
+          if (!s) return m.agentDeleted(short(id));
           const branch = await d.worktrees.branchOf(s.cwd);
           const last = lastAnswer(d.db, id);
           return [
-            `${short(id)} (${s.title ?? "ohne Titel"}): ${STATUS[s.status] ?? s.status}, Branch ${branch ?? "unbekannt"}, Ordner ${s.cwd}`,
-            last ? `  Letzte Antwort: ${excerpt(last, 800)}` : "",
+            m.agentLine(short(id), s.title, statusText(s.status), branch, s.cwd),
+            last ? m.agentLastAnswer(excerpt(last, 800)) : "",
           ]
             .filter(Boolean)
             .join("\n");
@@ -576,13 +532,13 @@ export function forgeSessionTools(rec: SessionRecord, d: ForgeToolDeps): { tools
 
   const messageAgent: SessionTool = {
     name: "message_agent",
-    description: "Schickt einem Agenten dieser Session eine weitere Anweisung; er arbeitet dann weiter.",
-    shape: { agent: z.string().min(1).describe("Kürzel des Agenten"), text: z.string().min(1).describe("Anweisung, vollständig ausformuliert") },
+    description: m.messageAgentDescription,
+    shape: { agent: z.string().min(1).describe(m.messageAgentAgent), text: z.string().min(1).describe(m.messageAgentText) },
     autoAllow: false,
     run: async (a) => {
       const id = resolveChild(String(a.agent));
       await d.send(id, String(a.text));
-      return `An Agent ${short(id)} gesendet.`;
+      return m.messageSent(short(id));
     },
   };
 
@@ -590,10 +546,9 @@ export function forgeSessionTools(rec: SessionRecord, d: ForgeToolDeps): { tools
   const finishAgent: SessionTool | null = finisher
     ? {
         name: "finish_agent",
-        description:
-          "Schließt einen Agenten dieses Projekts ab, auch einen, den diese Session nicht gestartet hat. merge: übernimmt seinen Branch in den Branch, von dem er abgezweigt ist (Rebase, dann Fast-Forward). discard: verwirft seine Arbeit. Danach sind seine Session beendet und Worktree-Ordner, FORGE-Eintrag und Branch gelöscht. Nur nach Rücksprache mit dem Nutzer. Bei Konflikten im Rebase löst der Agent sie selbst; danach erneut merge.",
+        description: m.finishAgentDescription,
         shape: {
-          agent: z.string().min(1).describe("Kürzel eines eigenen Agenten oder Branch eines anderen Agenten des Projekts (wie agent_status sie nennt)"),
+          agent: z.string().min(1).describe(m.finishAgentAgent),
           action: z.enum(["merge", "discard"]),
         },
         autoAllow: false,
@@ -607,19 +562,13 @@ export function forgeSessionTools(rec: SessionRecord, d: ForgeToolDeps): { tools
   return {
     tools: [startAgent, agentStatus, messageAgent, ...(finishAgent ? [finishAgent] : []), ...common, ...own.tools],
     context: [
-      "Du läufst in FORGE, einer Desktop-Oberfläche für Claude Code. Neben deinen Werkzeugen gibt es FORGE-Werkzeuge (mcp__forge__…):",
-      "- start_agent: startet einen parallelen Agenten in einem eigenen Git-Worktree auf eigenem Branch. Nur für Teilaufgaben, die wirklich unabhängig und gleichzeitig laufen können; der Auftrag muss für sich allein verständlich sein. Der Agent startet beim letzten Commit deines Branches; deinen nicht committeten Stand bekommt er nur mit with_changes=true.",
-      "- agent_status und message_agent: Agenten verfolgen und anleiten. Ihre Arbeit liegt auf ihren Branches.",
-      finisher
-        ? `- finish_agent: einen Agenten des Projekts zusammenführen (merge) oder verwerfen (discard), auch einen fremden; danach sind Session, Worktree, FORGE-Eintrag und Branch weg. Nur nach Rücksprache mit dem Nutzer. ${
-            autoMerge
-              ? "In diesem Projekt führt FORGE fertige Agenten automatisch zusammen (auto-merge), sobald ihr Durchlauf ohne Fehler endet. Was dabei nicht klappt, legt FORGE dem Nutzer vor."
-              : "FORGE zeigt dem Nutzer fertige Agenten auch selbst zur Entscheidung an."
-          }`
-        : "",
+      m.intro,
+      m.startAgentLine,
+      m.agentStatusLine,
+      finisher ? m.finishAgentLine(autoMerge) : "",
       autoMergeLine,
       autoCommitLine,
-      "- notify: den Nutzer aktiv benachrichtigen. urgent=true nur, wenn er sofort gebraucht wird (kann sein Telefon klingeln lassen).",
+      m.notifyLine,
       testLine,
       usageLine,
       ...own.context,
