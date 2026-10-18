@@ -267,7 +267,7 @@ export function StatsCharts({ totals }: { totals: Totals }) {
           <ChartCard
             wide
             title="Tokens nach Modell"
-            sub="Alle Token-Arten seit Installation, nur neuere FORGE-Versionen melden Modelle"
+            sub="Alle Token-Arten seit dem 17. Oktober 2026, nur neuere FORGE-Versionen melden Modelle"
             rows={models.map((m) => [m.label, `${formatCount(m.tokens)} Tokens, ${percent(m.tokens, modelTokens)}, ≈ ${formatUsd(m.costUsdCents)}`])}
           >
             <Bars

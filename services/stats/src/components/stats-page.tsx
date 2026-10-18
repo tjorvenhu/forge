@@ -76,7 +76,7 @@ export function StatsPage({ state }: { state: PageState }) {
     <main className="container content">
       <div className="intro">
         <h1>FORGE in Zahlen</h1>
-        <p>FORGE ist eine Desktop-Oberfläche für Claude Code. Hier stehen die Summen aller Installationen, die anonyme Nutzungszahlen senden.</p>
+        <p>FORGE ist eine Desktop-Oberfläche für Claude Code. Hier stehen die Summen aller Installationen, die anonyme Nutzungszahlen senden. Gezählt wird ab dem 17. Oktober 2026, dem Start der Statistik.</p>
       </div>
 
       {state.kind === "error" ? (
@@ -137,7 +137,7 @@ export function StatsPage({ state }: { state: PageState }) {
         <Row
           icon={Send}
           label="Gemeldet"
-          description="Alle 5 Minuten die Gesamtzähler: Tokens, Arbeitszeit, Durchläufe, Sessions, Projekte, Agenten und Telefonate. Dazu eine zufällige Installations-ID, die FORGE-Version, das Betriebssystem und die Art des Claude-Abos (zum Beispiel Pro oder Max 5x)."
+          description="Alle 5 Minuten die Gesamtzähler seit dem 17. Oktober 2026: Tokens, Arbeitszeit, Durchläufe, Sessions, Projekte, Agenten und Telefonate. Dazu eine zufällige Installations-ID, die FORGE-Version, das Betriebssystem und die Art des Claude-Abos (zum Beispiel Pro oder Max 5x)."
         />
         <Row
           icon={Cpu}

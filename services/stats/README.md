@@ -10,9 +10,9 @@ Die Seite übernimmt das Design der Desktop-App: Die Farb-, Schrift- und Radius-
 
 ## Was gespeichert wird
 
-Eine Zeile pro Installation in der Tabelle `installs`: zufällige Installations-ID, erste und letzte Meldung, FORGE-Version, Betriebssystem, die kumulativen Zähler als JSON, die Tokens und Kosten je Claude-Modell (`models`, JSON) und die Art des Claude-Abos (`plan`). Die App schickt immer den Gesamtstand, der Dienst überschreibt den letzten Stand.
+Eine Zeile pro Installation in der Tabelle `installs`: zufällige Installations-ID, erste und letzte Meldung, FORGE-Version, Betriebssystem, die kumulativen Zähler als JSON, die Tokens und Kosten je Claude-Modell (`models`, JSON) und die Art des Claude-Abos (`plan`). Die App schickt immer den Gesamtstand seit dem 17.10.2026 (Start der Statistik, `USAGE_STATS_SINCE` in `packages/sidecar/src/persistence/db.ts`), der Dienst überschreibt den letzten Stand. App-Versionen vor diesem Stichtag schicken den Stand seit Installation; mit dem Update sinken ihre Zähler einmal.
 
-Dazu in `install_days` der Stand jeder Installation am Ende jedes UTC-Tages (eine Zeile pro Installation und Tag, jede Meldung überschreibt die des laufenden Tages). Daraus entsteht der Verlauf: Der Zuwachs eines Tages ist der Stand minus dem letzten früheren Stand derselben Installation. Der erste Stand einer Installation zählt nicht als Zuwachs, ebenso ein Zähler, der im früheren Stand fehlt (neue App-Version, die ihren Gesamtstand seit Installation schickt). Negative Differenzen (Neuinstallation mit leerer Datenbank) zählen als 0. Aktive Installationen eines Tages sind die mit einem Stand an diesem Tag. Wer die Statistik abschaltet, löscht mit der Installation auch ihre Tagesstände (`ON DELETE CASCADE`).
+Dazu in `install_days` der Stand jeder Installation am Ende jedes UTC-Tages (eine Zeile pro Installation und Tag, jede Meldung überschreibt die des laufenden Tages). Daraus entsteht der Verlauf: Der Zuwachs eines Tages ist der Stand minus dem letzten früheren Stand derselben Installation. Der erste Stand einer Installation zählt nicht als Zuwachs, ebenso ein Zähler, der im früheren Stand fehlt (neue App-Version, die ihren Gesamtstand seit Installation schickt). Negative Differenzen (Neuinstallation mit leerer Datenbank, Update auf den Stichtag) zählen als 0. Aktive Installationen eines Tages sind die mit einem Stand an diesem Tag. Wer die Statistik abschaltet, löscht mit der Installation auch ihre Tagesstände (`ON DELETE CASCADE`).
 
 Keine IP-Adressen in der Datenbank oder in Logs. Für die Sperre gegen massenhaft neue IDs hält der Prozess gesalzene Hashes der IP-Adressen im Speicher, nur für den laufenden Tag.
 
@@ -50,7 +50,7 @@ Body der Meldung:
 }
 ```
 
-`userTurns` sind die Durchläufe, die Nutzer selbst gestartet haben, `costUsdCents` die geschätzten API-Kosten aller Claude-Aufrufe in US-Cent. `models` enthält je Modell-ID alle vier Token-Arten zusammen und die geschätzten Kosten, kumulativ seit Installation. `plan` ist das Abo des in Claude Code angemeldeten Kontos (`max_20x`, `max_5x`, `max`, `pro`, `team`, `enterprise` ...), gelesen aus `organizationType` und dem Rate-Limit-Tier in `.claude.json`; `null` ohne claude.ai-Anmeldung. Ältere App-Versionen schicken diese Felder nicht; dann gelten 0, `{}` und `null`.
+`userTurns` sind die Durchläufe, die Nutzer selbst gestartet haben, `costUsdCents` die geschätzten API-Kosten aller Claude-Aufrufe in US-Cent. `models` enthält je Modell-ID alle vier Token-Arten zusammen und die geschätzten Kosten, kumulativ seit dem Stichtag. `plan` ist das Abo des in Claude Code angemeldeten Kontos (`max_20x`, `max_5x`, `max`, `pro`, `team`, `enterprise` ...), gelesen aus `organizationType` und dem Rate-Limit-Tier in `.claude.json`; `null` ohne claude.ai-Anmeldung. Ältere App-Versionen schicken diese Felder nicht; dann gelten 0, `{}` und `null`.
 
 Regeln (siehe `src/lib/report.ts`):
 

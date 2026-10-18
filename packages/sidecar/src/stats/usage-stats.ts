@@ -10,6 +10,9 @@ const TICK_MS = 60_000;
 /** The service takes at most one report per installation every 4 minutes. */
 const SEND_EVERY_MS = 5 * 60_000;
 const RETRY_MS = 5 * 60_000;
+/** What the service accepts as a model ID and how many; one invalid ID would reject the whole report. */
+const MODEL_ID = /^[A-Za-z0-9._:[\]-]{1,64}$/;
+const MAX_MODELS = 20;
 
 /** Kept in the data folder, not in the settings: backups and the sync copy settings to other PCs. */
 interface StatsFile {
@@ -85,8 +88,13 @@ export class UsageStatsService {
         appVersion: (this.d.appVersion ?? process.env.FORGE_APP_VERSION ?? "0.0.0-dev").slice(0, 32),
         os: `${os.type()} ${os.release()}`.slice(0, 64),
         counters,
-        // Model ids only (e.g. claude-opus-4-7), at most 20; the service checks them again.
-        models: Object.fromEntries(Object.entries(models).slice(0, 20)),
+        // Model ids only (e.g. claude-opus-4-7), the 20 with the most tokens; the service checks them again.
+        models: Object.fromEntries(
+          Object.entries(models)
+            .filter(([id]) => MODEL_ID.test(id))
+            .sort((a, b) => b[1].tokens - a[1].tokens)
+            .slice(0, MAX_MODELS),
+        ),
         plan: (await this.d.plan?.()) ?? null,
       });
       this.write({ ...state, lastSentAt: new Date(now).toISOString() });

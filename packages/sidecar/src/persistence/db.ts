@@ -334,7 +334,18 @@ export const MIGRATIONS: string[] = [
   ALTER TABLE claude_usage ADD COLUMN models TEXT;
   ALTER TABLE claude_usage ADD COLUMN cost_usd REAL;
   `,
+  // The usage statistics count from their release (USAGE_STATS_SINCE): the project counter starts with the projects since then.
+  `
+  UPDATE stats_counters SET value = (SELECT COUNT(*) FROM projects WHERE parent_id IS NULL AND created_at >= '2026-10-17T00:00:00.000Z')
+  WHERE key = 'projectsCreated';
+  `,
 ];
+
+/**
+ * Start of the anonymous usage statistics (the day FORGE 0.1.81 shipped them, UTC): what happened before
+ * was testing during development and is not sent. Also in the migration that resets the project counter.
+ */
+export const USAGE_STATS_SINCE = "2026-10-17T00:00:00.000Z";
 
 /** Sum over the models of a modelUsage. */
 export function sumModels(models: Record<string, ModelTokens>): ModelTokens & { total: number } {
@@ -813,8 +824,8 @@ export class Db {
     this.sql.prepare("INSERT INTO stats_counters(key, value) VALUES(?, 1) ON CONFLICT(key) DO UPDATE SET value = value + 1").run(key);
   }
 
-  /** Totals since the installation for the anonymous usage statistics; only from rows that outlive deletions. */
-  usageTotals(): UsageTotals {
+  /** Totals since USAGE_STATS_SINCE for the anonymous usage statistics; only from rows that outlive deletions. */
+  usageTotals(since = USAGE_STATS_SINCE): UsageTotals {
     const u = this.sql
       .prepare(
         `SELECT COALESCE(SUM(input_tokens), 0) AS tokensInput, COALESCE(SUM(output_tokens), 0) AS tokensOutput,
@@ -822,29 +833,32 @@ export class Db {
                 COALESCE(SUM(CASE WHEN kind = 'session' THEN 1 ELSE 0 END), 0) AS claudeTurns,
                 COALESCE(SUM(duration_ms), 0) AS claudeWorkMs,
                 COUNT(DISTINCT CASE WHEN kind = 'session' THEN session_id END) AS sessions
-         FROM claude_usage`,
+         FROM claude_usage WHERE ts >= ?`,
       )
-      .get() as Pick<UsageTotals, "tokensInput" | "tokensOutput" | "tokensCacheRead" | "tokensCacheWrite" | "claudeTurns" | "claudeWorkMs" | "sessions">;
+      .get(since) as Pick<UsageTotals, "tokensInput" | "tokensOutput" | "tokensCacheRead" | "tokensCacheWrite" | "claudeTurns" | "claudeWorkMs" | "sessions">;
     // An agent is in agent_log once it finished; one still running is only its worktree project (same id).
     const a = this.sql
       .prepare(
-        `SELECT (SELECT COUNT(*) FROM (SELECT worktree_id FROM agent_log UNION SELECT id FROM projects WHERE parent_id IS NOT NULL)) AS agentsStarted,
-                (SELECT COUNT(DISTINCT worktree_id) FROM agent_log WHERE outcome = 'merged') AS agentsMerged`,
+        `SELECT (SELECT COUNT(*) FROM (SELECT worktree_id FROM agent_log WHERE COALESCE(started_at, ts) >= ?1
+                                       UNION SELECT id FROM projects WHERE parent_id IS NOT NULL AND created_at >= ?1)) AS agentsStarted,
+                (SELECT COUNT(DISTINCT worktree_id) FROM agent_log WHERE outcome = 'merged' AND ts >= ?1) AS agentsMerged`,
       )
-      .get() as { agentsStarted: number; agentsMerged: number };
+      .get(since) as { agentsStarted: number; agentsMerged: number };
     const projects = this.sql.prepare("SELECT value FROM stats_counters WHERE key = 'projectsCreated'").get() as { value: number } | undefined;
-    const calls = this.sql.prepare("SELECT COUNT(*) AS n FROM phone_calls").get() as { n: number };
-    const userTurns = this.sql.prepare("SELECT COUNT(*) AS n FROM claude_usage WHERE kind = 'session' AND purpose IS NULL").get() as { n: number };
+    const calls = this.sql.prepare("SELECT COUNT(*) AS n FROM phone_calls WHERE started_at >= ?").get(since) as { n: number };
+    const userTurns = this.sql.prepare("SELECT COUNT(*) AS n FROM claude_usage WHERE kind = 'session' AND purpose IS NULL AND ts >= ?").get(since) as { n: number };
     // Cost and models only exist for calls recorded with modelUsage; older ones count in the token sums above only.
-    const cost = this.sql.prepare("SELECT COALESCE(SUM(cost_usd), 0) AS c FROM claude_usage").get() as { c: number };
-    const models: UsageTotals["models"] = {};
-    for (const r of this.sql.prepare("SELECT models FROM claude_usage WHERE models IS NOT NULL").all() as Array<{ models: string }>) {
+    const cost = this.sql.prepare("SELECT COALESCE(SUM(cost_usd), 0) AS c FROM claude_usage WHERE ts >= ?").get(since) as { c: number };
+    const sums: Record<string, { tokens: number; costUsd: number }> = {};
+    for (const r of this.sql.prepare("SELECT models FROM claude_usage WHERE models IS NOT NULL AND ts >= ?").all(since) as Array<{ models: string }>) {
       for (const [model, m] of Object.entries(JSON.parse(r.models) as Record<string, ModelTokens>)) {
-        const t = (models[model] ??= { tokens: 0, costUsdCents: 0 });
+        const t = (sums[model] ??= { tokens: 0, costUsd: 0 });
         t.tokens += m.inputTokens + m.outputTokens + m.cacheReadTokens + m.cacheWriteTokens;
-        t.costUsdCents += Math.round(m.costUsd * 100);
+        t.costUsd += m.costUsd;
       }
     }
+    // Rounded once at the end: per call, cents would get lost on many cheap calls.
+    const models: UsageTotals["models"] = Object.fromEntries(Object.entries(sums).map(([k, t]) => [k, { tokens: t.tokens, costUsdCents: Math.round(t.costUsd * 100) }]));
     return { ...u, ...a, projectsCreated: projects?.value ?? 0, phoneCalls: calls.n, userTurns: userTurns.n, costUsdCents: Math.round(cost.c * 100), models };
   }
 

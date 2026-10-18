@@ -147,9 +147,38 @@ describe("usage statistics", () => {
       expect(t.costUsdCents).toBe(Math.round((0.5 + 0.01 + 0.3 + 0.01 + 0.02) * 100));
       expect(t.models["claude-opus-4-7"]!.tokens).toBe(130 + 215 + 12 + 5);
       expect(t.models["claude-haiku-4-5"]!.tokens).toBe(10);
+
+      // Only what happened since the release of the statistics counts.
+      const later = new Date(Date.now() + 60_000).toISOString();
+      expect(db.usageTotals(later)).toMatchObject({ tokensInput: 0, claudeTurns: 0, sessions: 0, userTurns: 0, costUsdCents: 0, models: {}, agentsStarted: 0 });
     } finally {
       db.close();
     }
+  });
+
+  it("sends only valid model IDs, the 20 with the most tokens", async () => {
+    const models: UsageTotals["models"] = { "<synthetic>": { tokens: 999, costUsdCents: 0 } };
+    for (let i = 0; i < 25; i++) models[`claude-m-${i}`] = { tokens: i, costUsdCents: 0 };
+    const requests: Array<Record<string, unknown>> = [];
+    const dir = mkdtempSync(path.join(os.tmpdir(), "forge-stats-"));
+    dirs.push(dir);
+    const svc = new UsageStatsService({
+      enabled: () => true,
+      totals: () => ({ ...TOTALS, models }),
+      log: () => {},
+      file: path.join(dir, "usage-stats.json"),
+      active: true,
+      fetchFn: (async (_url: string, init: RequestInit) => {
+        requests.push(JSON.parse(init.body as string) as Record<string, unknown>);
+        return new Response(null, { status: 204 });
+      }) as unknown as typeof fetch,
+    });
+    expect(await svc.tick()).toBe("sent");
+    const sent = Object.keys(requests[0]!.models as object);
+    expect(sent).toHaveLength(20);
+    expect(sent).not.toContain("<synthetic>");
+    expect(sent[0]).toBe("claude-m-24");
+    expect(sent).not.toContain("claude-m-4");
   });
 
   it("sends nothing from a development build", () => {
