@@ -829,41 +829,125 @@ a {
   animation: forge-shimmer 1.4s ease-in-out infinite;
 }
 
-/* Donations so far, below the intro: a tile laid out in a row with the link to give. */
-.donation {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  padding: 16px;
+/* Support dialog behind "Unterstützen", after the SupportDialog of the app. */
+.modal {
+  width: min(440px, calc(100vw - 2 * var(--page-gutter, 24px)));
+  max-height: calc(100vh - 48px);
+  margin: auto;
+  padding: 0;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-xl);
-  background: linear-gradient(135deg, var(--color-accent-soft), transparent 55%), var(--color-surface);
+  background: var(--color-surface);
+  color: var(--color-fg);
+  box-shadow: 0 24px 64px rgb(0 0 0 / 45%);
 }
 
-.donation-icon {
+.modal[open] {
+  animation: forge-rise 220ms var(--ease-snappy);
+}
+
+.modal::backdrop {
+  background: rgb(0 0 0 / 55%);
+  backdrop-filter: blur(2px);
+}
+
+.modal-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px 20px 20px;
+}
+
+.modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.modal-head h2 {
+  font-size: var(--text-ui);
+  font-weight: 600;
+  line-height: 20px;
+}
+
+.modal-close {
   display: inline-flex;
-  flex-shrink: 0;
   align-items: center;
   justify-content: center;
-  width: 40px;
-  height: 40px;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--color-muted);
+  cursor: pointer;
+}
+
+.modal-close:hover {
+  background: var(--color-surface-3);
+  color: var(--color-fg);
+}
+
+.modal-close svg {
+  width: 16px;
+  height: 16px;
+}
+
+.modal-text {
+  font-size: var(--text-body);
+  color: var(--color-muted);
+}
+
+.modal-note {
+  font-size: var(--text-small);
+  line-height: 16px;
+  color: var(--color-subtle);
+}
+
+.modal-action {
+  width: 100%;
+}
+
+.modal-action svg {
+  flex-shrink: 0;
+}
+
+.modal-external {
+  margin-left: auto;
+  color: var(--color-subtle);
+}
+
+/* "Bisher gespendet" in the dialog: small, above the payment link. */
+.donated {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: baseline;
+  gap: 2px 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
-  background: var(--color-accent-soft);
+  background: linear-gradient(135deg, var(--color-accent-soft), transparent 60%), var(--color-surface-2);
+}
+
+.donated-label {
+  font-size: var(--text-small);
+  color: var(--color-muted);
+}
+
+.donated-value {
+  grid-row: span 2;
+  align-self: center;
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
   color: var(--color-accent);
 }
 
-.donation-icon svg {
-  width: 20px;
-  height: 20px;
-}
-
-.donation-text {
-  flex: 1;
-  min-width: 0;
-}
-
-.donation-text .tile-value {
-  margin-top: 2px;
+.donated-sub {
+  font-size: var(--text-caption);
+  color: var(--color-subtle);
 }
 
 @media (max-width: 900px) {
@@ -886,14 +970,6 @@ a {
 
   .content {
     padding-top: 24px;
-  }
-
-  .donation {
-    flex-wrap: wrap;
-  }
-
-  .donation-action {
-    width: 100%;
   }
 
   .btn-label-wide {

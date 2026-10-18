@@ -1,9 +1,10 @@
 import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
 import { GeistSans } from "geist/font/sans";
-import { GitFork, Heart } from "lucide-react";
+import { GitFork } from "lucide-react";
 import logo from "@/assets/forge-logo.png";
-import { DONATE_URL } from "@/lib/constants";
+import { donations, type Donations } from "@/lib/donations";
+import { SupportButton } from "@/components/donations";
 import "./globals.css";
 
 const REPO_URL = "https://github.com/vanturis/forge";
@@ -21,7 +22,18 @@ export const viewport: Viewport = {
   themeColor: "#14171d",
 };
 
-export default function RootLayout({ children }: { children: ReactNode }) {
+/** What the support dialog shows as given so far; left out without a Stripe key or when Stripe fails. */
+async function donated(): Promise<Donations | null> {
+  try {
+    return await donations();
+  } catch (err) {
+    console.error("donations failed:", err instanceof Error ? err.message : err);
+    return null;
+  }
+}
+
+export default async function RootLayout({ children }: { children: ReactNode }) {
+  const given = await donated();
   return (
     <html lang="de" className={GeistSans.variable}>
       <body>
@@ -38,10 +50,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
                 <GitFork aria-hidden />
                 <span className="btn-label-wide">GitHub</span>
               </a>
-              <a className="btn btn-primary" href={DONATE_URL}>
-                <Heart aria-hidden />
-                Unterstützen
-              </a>
+              <SupportButton donations={given} />
             </nav>
           </div>
         </header>
