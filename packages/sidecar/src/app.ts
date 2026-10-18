@@ -260,7 +260,10 @@ export function createApp(opts: { dataDir: string; write: Writer; log?: (m: stri
     },
     log: (m) => opts.log?.(m),
     afterRestore: async (parts) => {
-      if (parts.includes("settings")) sessions.settingsChanged();
+      if (parts.includes("settings")) {
+        sessions.settingsChanged();
+        emit({ event: "settings.updated", payload: db.getSettings() });
+      }
       if (parts.includes("phone")) await phone?.reload();
       if (parts.includes("templates")) emit({ event: "templates.updated", payload: { projectId: null } });
       for (const p of db.listProjects()) emit({ event: "project.updated", payload: { projectId: p.id } });

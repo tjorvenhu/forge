@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSy
 import path from "node:path";
 import type { KnowledgeMissingRef } from "@forge/protocol";
 import type { GitEngine } from "../git/git.js";
+import { tr } from "../i18n/index.js";
 
 /**
  * Finds references in knowledge entries that go nowhere: paths and file names that are not in the
@@ -190,7 +191,7 @@ interface StoredRoot {
 }
 
 function gone(hit: { hash: string; subject: string }): string {
-  return hit.hash ? `zuletzt geändert in ${hit.hash}: ${hit.subject}` : "war bei einer früheren Prüfung noch im Projekt";
+  return hit.hash ? tr().core.knowledge.lastChangedIn(hit.hash, hit.subject) : tr().core.knowledge.seenEarlier;
 }
 
 export interface RefCheck {
@@ -311,7 +312,7 @@ export class RefChecker {
     const parts: string[] = [];
     let budget = 12_000;
     for (const m of missing) {
-      const lines = [`- ${m.kind === "path" ? "Pfad" : "Bezeichner"} \`${m.ref}\`${m.hint ? `: ${m.hint}` : ""}`];
+      const lines = [`- ${m.kind === "path" ? tr().core.knowledge.refPath : tr().core.knowledge.refName}\`${m.ref}\`${m.hint ? `: ${m.hint}` : ""}`];
       if (m.kind === "name" && index.git) {
         const r = nameRef(m.ref);
         const name = r ? codeParts(r).find((n) => !index.found.get(n)) : undefined;
@@ -319,11 +320,11 @@ export class RefChecker {
         if (name && hit) {
           const patch = await this.git.exec(root, ["show", "--format=", "-U2", "--no-color", hit.hash, "--", ".", ...NOT_CODE], undefined, 20_000, MAGIC_PATHSPECS).catch(() => null);
           const excerpt = patch ? hunksWith(patch.stdout, name, Math.min(3000, budget)) : "";
-          if (excerpt) lines.push(`  Änderungen in ${hit.hash}, die ihn betreffen:`, "```diff", excerpt, "```");
+          if (excerpt) lines.push(`  ${tr().core.knowledge.changesIn(hit.hash)}`, "```diff", excerpt, "```");
           // Where things went shows in the files of that commit, even when the new code does not mention the old name.
           const files = await this.git.exec(root, ["show", "--format=", "--name-status", "-M", hit.hash, "--", ".", ...NOT_CODE], undefined, 20_000, MAGIC_PATHSPECS).catch(() => null);
           const list = files?.stdout.trim().split("\n").filter(Boolean) ?? [];
-          if (list.length) lines.push(`  Dateien in ${hit.hash}: ${list.slice(0, 20).map((l) => l.replace(/\t/g, " ")).join("; ")}${list.length > 20 ? " …" : ""}`);
+          if (list.length) lines.push(`  ${tr().core.knowledge.filesIn(hit.hash)} ${list.slice(0, 20).map((l) => l.replace(/\t/g, " ")).join("; ")}${list.length > 20 ? " …" : ""}`);
         }
       }
       const text = lines.join("\n");
@@ -355,7 +356,7 @@ export class RefChecker {
     // Anchor: the first folder must exist somewhere, otherwise the path may be outside (another repo, a branch, a MIME type).
     if (!index.dirNames.has(segs[0]!.toLowerCase())) return null;
     const same = (index.byBase.get(segs[segs.length - 1]!.toLowerCase()) ?? []).filter((f) => r.dir ? index.dirs.has(f) : index.files.has(f));
-    return { ref: r.ref, kind: "path", ...(same.length ? { hint: `gleicher Name: ${same.slice(0, 3).join(", ")}${same.length > 3 ? " …" : ""}` } : {}) };
+    return { ref: r.ref, kind: "path", ...(same.length ? { hint: tr().core.knowledge.sameName(`${same.slice(0, 3).join(", ")}${same.length > 3 ? " …" : ""}`) } : {}) };
   }
 
   private hasPath(index: TreeIndex, p: string, dir: boolean): boolean {
@@ -505,7 +506,7 @@ export class RefChecker {
         const args = ["grep", "-I", "-F", "-w", "-o", "-h", "--untracked", ...chunk.flatMap((n) => ["-e", n]), "--", ".", ...NOT_CODE];
         const r = await this.git.exec(index.root, args, undefined, 60_000, MAGIC_PATHSPECS);
         // 1: nothing found; anything else is an error, and an error must not turn into "missing".
-        if (r.code !== 0 && r.code !== 1) throw new Error(r.stderr.trim() || `git grep fehlgeschlagen (Code ${r.code})`);
+        if (r.code !== 0 && r.code !== 1) throw new Error(r.stderr.trim() || tr().core.knowledge.gitGrepFailed(r.code));
         for (const line of r.stdout.split("\n")) if (line) seen.add(line.trim());
       }
       return seen;
