@@ -33,6 +33,7 @@ export const views = {
     sessionsWorking: "Sessions bei der Arbeit",
     gitRunning: (label: string) => `${label} läuft`,
     devEnvironment: "Dev-Umgebung",
+    updates: "Updates",
     devServer: (name: string) => `Dev-Server: ${name}`,
     openInBrowser: (url: string) => `${url} im Browser öffnen`,
     output: "Ausgabe",
@@ -233,6 +234,7 @@ export const views = {
     autoUpdateLabel: "Automatisch nach Updates suchen",
     autoUpdateDescription:
       "Beim Start und alle 30 Minuten in den GitHub-Releases. Ein neues Update zeigt FORGE mit einer Zusammenfassung von Claude an. FORGE installiert nur Updates mit gültiger Signatur.",
+    updatesTitle: "Updates",
     installationTitle: "Installation",
     installationDescription: "Ob die mitgelieferten Programme (Node.js, Git, GitHub CLI, Python) da sind und zu dieser Version passen.",
     privacyTitle: "Datenschutz",

@@ -2,7 +2,8 @@ import { beep, SAMPLE_RATE } from "./audio.js";
 import type { CallHandler } from "./call-controller.js";
 import type { FunctionCall, LiveConversation, LiveHandlers } from "./gemini-live.js";
 import type { PinResult } from "./pin-guard.js";
-import { PIN_TEXT, PinPad } from "./pin-pad.js";
+import { PinPad } from "./pin-pad.js";
+import { tr } from "../i18n/index.js";
 import type { RtpSession } from "./rtp.js";
 import type { PhoneCall } from "./sip-ua.js";
 import { runPhoneTool, type PhoneToolset } from "./tools.js";
@@ -74,10 +75,10 @@ export class LiveCallController implements CallHandler {
       onUnlocked: () => {
         this.d.onUnlock();
         this.rtp.play(beep());
-        this.note(PIN_TEXT.unlockedNote);
+        this.note(tr().phone.pin.unlockedNote);
       },
-      onLocked: () => this.note(`[FORGE: Sag dem Anrufer genau das: „${PIN_TEXT.locked}“]`),
-      onWrong: (final) => (final ? this.farewell(PIN_TEXT.final) : this.note(`[FORGE: Sag dem Anrufer genau das: „${PIN_TEXT.wrong}“]`)),
+      onLocked: () => this.note(tr().phone.call.sayExactly(tr().phone.pin.locked)),
+      onWrong: (final) => (final ? this.farewell(tr().phone.pin.final) : this.note(tr().phone.call.sayExactly(tr().phone.pin.wrong))),
       log: (m) => this.d.log(m),
     });
     this.rtp.on("audio", (frame) => this.onCallerAudio(frame));
@@ -107,13 +108,13 @@ export class LiveCallController implements CallHandler {
     this.held = null;
     for (const pcm of held ?? []) this.rtp.play(pcm);
     this.touch();
-    this.maxTimer = setTimeout(() => this.farewell("Das Gespräch dauert schon sehr lange. Ich lege jetzt auf."), this.d.timing?.maxCallMs ?? MAX_CALL_MS);
+    this.maxTimer = setTimeout(() => this.farewell(tr().phone.call.tooLong), this.d.timing?.maxCallMs ?? MAX_CALL_MS);
   }
 
   private start() {
     const live = this.d.createLive(this.handlers());
     this.live = live;
-    if (this.d.greeting) live.sendText(`[FORGE: Der Anrufer ist dran. Begrüße ihn mit genau diesen Worten: „${this.d.greeting}“ Dann warte, was er will.]`);
+    if (this.d.greeting) live.sendText(tr().phone.call.liveGreeting(this.d.greeting));
     if (this.d.opening) live.sendText(this.d.opening);
     live.connect().catch((e: unknown) => this.fatal(e instanceof Error ? e.message : String(e)));
   }
@@ -203,7 +204,7 @@ export class LiveCallController implements CallHandler {
     this.live?.sendToolResponses(results.filter((r) => !this.cancelled.has(r.id)));
     // Withdrawn while it ran (the caller interrupted): it ran anyway, and the model must not believe otherwise.
     for (const r of results.filter((x) => this.cancelled.has(x.id))) {
-      this.note(`[FORGE: Das zurückgezogene Werkzeug ${r.name} war schon gelaufen. Ergebnis: ${r.result} Sag das dem Anrufer kurz, falls es etwas geändert hat.]`);
+      this.note(tr().phone.call.liveRetracted(r.name, r.result));
     }
   }
 
@@ -218,7 +219,7 @@ export class LiveCallController implements CallHandler {
     if (this.ended || this.closing) return;
     this.closing = true;
     this.hangupPending = true;
-    this.note(`[FORGE: Das Gespräch endet jetzt. Sag dem Anrufer genau das und sonst nichts: „${text}“]`);
+    this.note(tr().phone.call.liveFarewell(text));
     this.startGrace();
   }
 
@@ -243,7 +244,7 @@ export class LiveCallController implements CallHandler {
     this.rtp.clearPlayback();
     this.rtp.play(beep(400, 440));
     this.rtp.flush();
-    setTimeout(() => void this.call.hangup("Gemini Live nicht verfügbar"), 700);
+    setTimeout(() => void this.call.hangup(tr().phone.call.liveUnavailable), 700);
   }
 
   /** Some phones send each key both as RTP event and as SIP INFO; the first source that sends one counts. */
@@ -261,7 +262,7 @@ export class LiveCallController implements CallHandler {
   private touch() {
     if (!this.begun || this.ended) return;
     if (this.idleTimer) clearTimeout(this.idleTimer);
-    this.idleTimer = setTimeout(() => this.farewell("Ich höre nichts mehr und lege jetzt auf. Bis später."), this.d.timing?.idleMs ?? IDLE_HANGUP_MS);
+    this.idleTimer = setTimeout(() => this.farewell(tr().phone.call.idle), this.d.timing?.idleMs ?? IDLE_HANGUP_MS);
   }
 
   private flushCaller() {

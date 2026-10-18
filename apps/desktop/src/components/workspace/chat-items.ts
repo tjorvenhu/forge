@@ -287,10 +287,16 @@ function itemFolder(thread: string | null = null) {
               : b.action === "push"
                 ? { title: b.ok ? t.chat.events.autoPush : t.chat.events.autoPushFailed, ref: null, detail: b.message, icon: "push" }
                 : b.action === "merge"
-                  ? { title: b.ok ? t.chat.events.merged : t.chat.events.mergeConflicts, ref: null, detail: b.message.replace(/^Automatisch zusammengeführt:\s*/, ""), icon: "merge" }
+                  ? { title: b.ok ? t.chat.events.merged : t.chat.events.mergeConflicts, ref: null, detail: b.message.replace(/^(?:Automatisch zusammengeführt|Merged automatically):\s*/, ""), icon: "merge" }
                   : b.action === "wait"
-                    ? { title: t.chat.events.waitingForMerge, ref: null, detail: b.message.replace(/^Wartet aufs Zusammenführen:\s*/, ""), icon: "merge" }
-                    : { title: t.chat.events.automationSkipped, ref: null, detail: b.message.replace(/^(Auto-(Commit|Push) übersprungen|Nicht automatisch zusammengeführt):\s*/, ""), icon: "skip" },
+                    ? { title: t.chat.events.waitingForMerge, ref: null, detail: b.message.replace(/^(?:Wartet aufs Zusammenführen|Waiting to merge):\s*/, ""), icon: "merge" }
+                    : {
+                        title: t.chat.events.automationSkipped,
+                        ref: null,
+                        // both languages: stored events keep the language they were written in
+                        detail: b.message.replace(/^(Auto-(Commit|Push) übersprungen|Nicht automatisch zusammengeführt|Auto-(commit|push) skipped|Not merged automatically):\s*/, ""),
+                        icon: "skip",
+                      },
         });
         break;
       }

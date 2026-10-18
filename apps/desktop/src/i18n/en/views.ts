@@ -34,6 +34,7 @@ export const views: typeof De = {
     sessionsWorking: "Sessions at work",
     gitRunning: (label) => `${label} in progress`,
     devEnvironment: "Dev environment",
+    updates: "Updates",
     devServer: (name) => `Dev server: ${name}`,
     openInBrowser: (url) => `Open ${url} in browser`,
     output: "Output",
@@ -234,6 +235,7 @@ export const views: typeof De = {
     autoUpdateLabel: "Check for updates automatically",
     autoUpdateDescription:
       "At startup and every 30 minutes in the GitHub releases. FORGE shows a new update with a summary from Claude. FORGE only installs updates with a valid signature.",
+    updatesTitle: "Updates",
     installationTitle: "Installation",
     installationDescription: "Whether the bundled programs (Node.js, Git, GitHub CLI, Python) are present and match this version.",
     privacyTitle: "Privacy",

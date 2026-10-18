@@ -140,6 +140,11 @@ Security:
     liveCannotHold: "Gemini Live: the connection can't be kept up.",
     liveKeyInvalid: "Gemini Live: API key invalid.",
     liveModelMissing: (r: string) => `Gemini Live: model not available (${r}).`,
+    liveLimit: "Gemini Live: limit reached or no credit.",
+    liveSetupTimeout: "Gemini Live isn't responding (connection setup).",
+    liveError: (msg: string | undefined) => `Gemini Live: ${msg ?? "Error"}`,
+    liveClosed: (code: number, reason: string) => `Gemini Live: connection ended (${code}${reason ? `: ${reason}` : ""}).`,
+    liveToolRan: (name: string, result: string) => `[FORGE: The tool ${name} ran, the connection was briefly lost. Result: ${result}]`,
   },
 
   /** the line, setup and errors shown in the settings and the call list */
@@ -161,6 +166,7 @@ Security:
     deskNotOpen: "This request is no longer open.",
     deskNotPossible: "Not possible",
     deskLoginRejected: "Login at the phone rejected (wrong user or password).",
+    deskHttp: (status: number) => `Phone reports HTTP ${status}.`,
     deskNoAnswer: "Phone is not responding.",
     deskUnreachable: "Phone not reachable.",
     deskQuestion: "Question, please call",
@@ -178,6 +184,13 @@ Security:
     credentialsRejected: "Credentials rejected",
     registrationRejected: "Registration rejected",
     unreachable: (sip: string) => `Not reachable, phone not registered or “Do not disturb” (${sip})`,
+    sipBusy: (sip: string) => `Busy (${sip})`,
+    sipDeclined: (sip: string) => `Declined (${sip})`,
+    sipNumberUnreachable: (sip: string) => `Number not reachable (${sip})`,
+    sipNotAnswered: (sip: string) => `Not answered (${sip})`,
+    sipNotAllowed: (sip: string) => `The PBX did not allow the call (${sip})`,
+    sipFailed: (sip: string) => `Call failed (${sip})`,
+    secretFailed: (protect: boolean, detail: string) => `Secret could not be ${protect ? "encrypted" : "decrypted"}: ${detail}`,
   },
 
   /** reasons in the call list and the first words of calls FORGE makes */
@@ -244,6 +257,7 @@ Security:
     locked: "Locked. The caller must first enter their PIN on the phone keypad and confirm it with the pound key.",
     lockedNoPin: "Locked. No PIN is set up in FORGE, so control by phone is off.",
     unavailable: "That isn't available here.",
+    notAvailable: "Not available",
     whichSession: "Which session? Please give a reference like S1 or part of the title.",
     refUnknown: (r: string) => `${r} hasn't been assigned in this call. Call status first.`,
     noSession: (raw: string) => `No session found for “${raw}”. Call status first.`,

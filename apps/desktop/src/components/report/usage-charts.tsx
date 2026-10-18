@@ -231,15 +231,16 @@ export function UsageHeadline({ u }: { u: DailyReportUsage }) {
  * one bar per purpose by new tokens, with calls and time.
  */
 function ForgeCard({ u }: { u: DailyReportUsage }) {
+  const c = t.report.charts;
   const f = u.forge;
   const fresh = u.inputTokens + u.outputTokens + u.cacheWriteTokens;
   const max = Math.max(1, ...f.parts.map((p) => p.tokens));
   const share = fresh ? Math.round((f.tokens / fresh) * 100) : 0;
   return (
     <ChartCard
-      title="Durch FORGE"
-      sub={`${formatTokens(f.tokens)} neue Tokens, ${share} % des Tages, ${f.calls} ${f.calls === 1 ? "Aufruf" : "Aufrufe"}, ${formatDuration(f.workMs)}`}
-      rows={f.parts.map((p) => [forgeUsageLabel(p.purpose), `${formatTokens(p.tokens)} neue Tokens, ${p.calls} ${p.calls === 1 ? "Aufruf" : "Aufrufe"}, ${formatDuration(p.workMs)}`])}
+      title={c.forge.title}
+      sub={c.forge.sub(formatTokens(f.tokens), share, c.calls(f.calls), formatDuration(f.workMs))}
+      rows={f.parts.map((p) => [forgeUsageLabel(p.purpose), c.forge.row(formatTokens(p.tokens), c.calls(p.calls), formatDuration(p.workMs))])}
     >
       <ul className="flex flex-col gap-2.5">
         {f.parts.map((p) => (
@@ -248,7 +249,7 @@ function ForgeCard({ u }: { u: DailyReportUsage }) {
               <span className="min-w-0 flex-1 truncate text-fg">{forgeUsageLabel(p.purpose)}</span>
               <span className="shrink-0 tabular-nums text-fg">{formatTokens(p.tokens)}</span>
               <span className="w-24 shrink-0 text-right tabular-nums text-subtle">
-                {p.calls} {p.calls === 1 ? "Aufruf" : "Aufrufe"}
+                {c.calls(p.calls)}
               </span>
             </div>
             <div className="h-2 w-full rounded-r-[4px] bg-surface-2">
@@ -257,7 +258,7 @@ function ForgeCard({ u }: { u: DailyReportUsage }) {
           </li>
         ))}
       </ul>
-      {f.cacheReadTokens > 0 && <p className="mt-3 text-caption text-subtle">Dazu {formatTokens(f.cacheReadTokens)} Tokens Kontext aus dem Cache.</p>}
+      {f.cacheReadTokens > 0 && <p className="mt-3 text-caption text-subtle">{c.forge.cacheExtra(formatTokens(f.cacheReadTokens))}</p>}
     </ChartCard>
   );
 }
@@ -280,35 +281,37 @@ export function UsageCharts({ u, date, today, showProjects, onPickDay }: { u: Da
   const avg = u.days.slice(0, -1).filter((d) => d.workMs > 0);
   const avgMs = avg.length ? avg.reduce((n, d) => n + d.workMs, 0) / avg.length : 0;
   const avgTokens = avg.length ? avg.reduce((n, d) => n + d.tokens, 0) / avg.length : 0;
+  const c = t.report.charts;
+  const hourRange = (hour: number) => c.day.range(hourLabel(hour), hourLabel((hour + 1) % 24));
 
   return (
     <div className="flex flex-col gap-3">
       <ChartCard
-        title="Über den Tag"
-        sub={peak ? `Arbeitszeit je Stunde, am meisten ${hourLabel(peak.hour)} bis ${hourLabel((peak.hour + 1) % 24)} mit ${formatDuration(peak.workMs)}` : "Arbeitszeit je Stunde"}
-        rows={u.hours.map((h) => [`${hourLabel(h.hour)} bis ${hourLabel((h.hour + 1) % 24)}`, `${formatDuration(h.workMs)}, ${h.turns} Durchl., ${formatTokens(h.tokens)} neue Tokens`])}
+        title={c.day.title}
+        sub={peak ? c.day.subPeak(hourLabel(peak.hour), hourLabel((peak.hour + 1) % 24), formatDuration(peak.workMs)) : c.day.sub}
+        rows={u.hours.map((h) => [hourRange(h.hour), c.day.row(formatDuration(h.workMs), h.turns, formatTokens(h.tokens))])}
       >
         <Columns
           kind="duration"
           columns={u.hours.map((h) => ({
             key: String(h.hour),
             value: h.workMs,
-            tip: [formatDuration(h.workMs), `${hourLabel(h.hour)} bis ${hourLabel((h.hour + 1) % 24)} · ${h.turns} ${h.turns === 1 ? "Durchlauf" : "Durchläufe"} · ${formatTokens(h.tokens)} neue Tokens`],
+            tip: [formatDuration(h.workMs), `${hourRange(h.hour)} · ${t.report.turns(h.turns)} · ${c.newTokens(formatTokens(h.tokens))}`],
             axis: h.hour % 3 === 0 ? String(h.hour).padStart(2, "0") : null,
           }))}
         />
       </ChartCard>
       <div className={cn("grid gap-3", cards > 1 && "lg:grid-cols-2")}>
         <ChartCard
-          title="Letzte 14 Tage"
-          sub={avgMs ? `Schnitt der Tage davor mit Arbeit: ${trendKind === "time" ? formatDuration(avgMs) : `${formatTokens(avgTokens)} neue Tokens`}. Klick öffnet den Tag.` : "Klick öffnet den Tag."}
-          rows={u.days.map((d) => [dayLabel(d.date, today), `${formatDuration(d.workMs)}, ${formatTokens(d.tokens)} neue Tokens`])}
+          title={c.trend.title}
+          sub={avgMs ? c.trend.subAverage(trendKind === "time" ? formatDuration(avgMs) : c.newTokens(formatTokens(avgTokens))) : c.trend.sub}
+          rows={u.days.map((d) => [dayLabel(d.date, today), `${formatDuration(d.workMs)}, ${c.newTokens(formatTokens(d.tokens))}`])}
           actions={
-            <div className="flex items-center gap-0.5" role="group" aria-label="Messgröße">
+            <div className="flex items-center gap-0.5" role="group" aria-label={c.trend.measure}>
               {(
                 [
-                  ["time", "Zeit"],
-                  ["tokens", "Tokens"],
+                  ["time", c.trend.time],
+                  ["tokens", c.trend.tokens],
                 ] as const
               ).map(([k, label]) => (
                 <Button key={k} size="sm" variant="ghost" aria-pressed={trendKind === k} className="aria-pressed:bg-surface-2 aria-pressed:text-fg" onClick={() => setTrendKind(k)}>
@@ -328,28 +331,28 @@ export function UsageCharts({ u, date, today, showProjects, onPickDay }: { u: Da
                 key: d.date,
                 value,
                 emphasis: d.date === date,
-                tip: [trendKind === "time" ? formatDuration(value) : `${formatTokens(value)} neue Tokens`, dayLabel(d.date, today)],
+                tip: [trendKind === "time" ? formatDuration(value) : c.newTokens(formatTokens(value)), dayLabel(d.date, today)],
                 axis: d.date === date || i === 0 || i % 3 === 0 ? shortDay(d.date) : null,
               };
             })}
           />
         </ChartCard>
         {projects.length > 1 && (
-          <ChartCard title="Nach Projekt" sub="Arbeitszeit von Claude, Agenten beim Hauptprojekt" rows={projects.map((p) => [p.name, `${formatDuration(p.workMs)}, ${formatTokens(p.tokens)} neue Tokens`])}>
+          <ChartCard title={c.byProject.title} sub={c.byProject.sub} rows={projects.map((p) => [p.name, `${formatDuration(p.workMs)}, ${c.newTokens(formatTokens(p.tokens))}`])}>
             <ul className="flex flex-col gap-2.5">
               {projects.slice(0, 6).map((p) => (
                 <li key={p.rootId} className="min-w-0">
                   <div className="mb-1 flex items-baseline gap-2 text-small">
                     <span className="min-w-0 flex-1 truncate text-fg">{p.name}</span>
                     <span className="shrink-0 tabular-nums text-fg">{formatDuration(p.workMs)}</span>
-                    <span className="w-24 shrink-0 text-right tabular-nums text-subtle">{formatTokens(p.tokens)} neu</span>
+                    <span className="w-24 shrink-0 text-right tabular-nums text-subtle">{c.byProject.newShort(formatTokens(p.tokens))}</span>
                   </div>
                   <div className="h-2 w-full rounded-r-[4px] bg-surface-2">
                     <div className="h-full rounded-r-[4px] bg-accent-strong" style={{ width: `${Math.max(1, (p.workMs / maxProject) * 100)}%` }} />
                   </div>
                 </li>
               ))}
-              {projects.length > 6 && <li className="text-caption text-subtle">und {projects.length - 6} weitere, siehe Tabelle</li>}
+              {projects.length > 6 && <li className="text-caption text-subtle">{c.byProject.more(projects.length - 6)}</li>}
             </ul>
           </ChartCard>
         )}

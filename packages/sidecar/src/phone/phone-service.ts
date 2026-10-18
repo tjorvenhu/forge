@@ -1818,16 +1818,17 @@ export class PhoneService {
         // Also status before the PIN: it names session titles.
         run(true, async () => {
           const windows = this.d.chatWindows;
-          if (!windows) return "Fehler: Chat-Fenster gibt es nur in der Desktop-App.";
+          const m = tr().phone.windows;
+          if (!windows) return m.desktopOnly;
           const st = windows.get();
           if (action === "status") {
-            if (!st.sessions.length) return "Keine Session ist in einem eigenen Fenster offen.";
+            if (!st.sessions.length) return m.none;
             const one = (id: string) => {
               const s = sessions.listAll().find((x) => x.id === id);
-              const name = s ? `${refFor(id)} ${asData(s.title ?? "ohne Titel")}` : "eine gelöschte Session";
-              return st.pinned.includes(id) ? `${name} (angeheftet)` : name;
+              const name = s ? `${refFor(id)} ${asData(s.title ?? tr().phone.untitled)}` : m.deleted;
+              return st.pinned.includes(id) ? m.pinned(name) : name;
             };
-            return `In eigenen Fenstern: ${st.sessions.map(one).join(", ")}.`;
+            return m.list(st.sessions.map(one).join(", "));
           }
           const s = resolve(ref ?? "");
           const r = refFor(s.id);
@@ -1835,34 +1836,35 @@ export class PhoneService {
           const pinned = st.pinned.includes(s.id);
           const target = { projectId: s.projectId, sessionId: s.id, title: s.title };
           if (action === "open") {
-            if (open) return `${r} ist schon in einem eigenen Fenster offen.`;
+            if (open) return m.alreadyOpen(r);
             windows.request("open", target);
-            return `${r} öffnet sich in einem eigenen Fenster.`;
+            return m.opening(r);
           }
           if (action === "close") {
-            if (!open) return `${r} ist in keinem eigenen Fenster offen.`;
+            if (!open) return m.notOpen(r);
             windows.request("close", target);
-            return `${r} ist zurück im Hauptfenster, ihr Fenster schließt sich.`;
+            return m.closed(r);
           }
           if (action === "pin") {
-            if (pinned) return `Das Fenster von ${r} ist schon angeheftet.`;
+            if (pinned) return m.alreadyPinned(r);
             windows.request("pin", target);
-            return open ? `Das Fenster von ${r} bleibt jetzt über allen anderen Programmen.` : `${r} öffnet sich in einem eigenen Fenster, das über allen anderen Programmen bleibt.`;
+            return open ? m.pinnedNow(r) : m.openPinned(r);
           }
-          if (!pinned) return `${r} ist in keinem angehefteten Fenster offen.`;
+          if (!pinned) return m.notPinned(r);
           windows.request("unpin", target);
-          return `Das Fenster von ${r} bleibt nicht mehr im Vordergrund.`;
+          return m.unpinned(r);
         }),
       remote: (action) =>
         run(action !== "status", async () => {
           const st = action === "on" ? await sessions.remoteStart() : action === "off" ? await sessions.remoteStop() : sessions.remoteState();
-          if (!st.enabled) return "Remote Control ist aus.";
+          const m = tr().phone.remote;
+          if (!st.enabled) return m.off;
           const ok = st.sessions.filter((x) => x.state !== "error").length;
           const failed = st.sessions.filter((x) => x.state === "error");
           return [
-            `Remote Control ist an, ${ok} ${ok === 1 ? "Session ist" : "Sessions sind"} mit der Claude-App verbunden.`,
-            failed.length ? `Nicht verbunden: ${failed.map((x) => `${refFor(x.sessionId)} (${x.message ?? "Fehler"})`).join(", ")}.` : "",
-            st.sessions.length === 0 ? "Gerade läuft keine Session. Neue Sessions werden automatisch verbunden." : "",
+            m.on(ok),
+            failed.length ? m.failed(failed.map((x) => `${refFor(x.sessionId)} (${x.message ?? m.error})`).join(", ")) : "",
+            st.sessions.length === 0 ? m.noneRunning : "",
           ]
             .filter(Boolean)
             .join(" ");
@@ -1871,69 +1873,71 @@ export class PhoneService {
         run(true, async () => {
           const p = target(projectName, o);
           const dev = this.d.devServers;
+          const m = tr().phone.dev;
           if (action === "setup" || action === "prepare") {
-            if (!p.parentId) return `${p.name} ist kein Agent. Vorbereitet werden nur die Worktrees von Agenten.`;
+            if (!p.parentId) return m.notAgent(p.name);
             const st = action === "prepare" ? await call("worktrees.prepare", { projectId: p.id }) : await call("worktrees.setup", { projectId: p.id });
-            if (!st) return `Für ${p.name} gibt es seit dem Start von FORGE keine Vorbereitung. Mit prepare läuft sie neu.`;
-            const steps = st.steps.filter((x) => x.status !== "pending").map((x) => `${x.label}: ${SETUP_STEP_WORD[x.status]}${x.detail ? ` (${excerptData(x.detail, 300)})` : ""}`);
-            const head = action === "prepare" ? `Vorbereitung von ${p.name} neu gestartet.` : st.status === "running" ? `Die Vorbereitung von ${p.name} läuft noch.` : st.status === "failed" ? `Die Vorbereitung von ${p.name} ist mit Fehlern fertig.` : `Der Worktree von ${p.name} ist vorbereitet.`;
-            return [head, ...steps, st.devPort ? `Sein Dev-Server bekommt Port ${st.devPort}.` : ""].filter(Boolean).join(" ");
+            if (!st) return m.noSetup(p.name);
+            const steps = st.steps.filter((x) => x.status !== "pending").map((x) => `${x.label}: ${m.stepWord[x.status]}${x.detail ? ` (${excerptData(x.detail, 300)})` : ""}`);
+            const head = action === "prepare" ? m.prepareRestarted(p.name) : st.status === "running" ? m.setupRunning(p.name) : st.status === "failed" ? m.setupFailed(p.name) : m.setupDone(p.name);
+            return [head, ...steps, st.devPort ? m.devPort(st.devPort) : ""].filter(Boolean).join(" ");
           }
           if (action === "output") {
             const out = dev.output(p.id);
-            return out.trim() ? `Letzte Ausgabe des Dev-Servers von ${p.name}: ${excerptData(tail(out, 30), 3000)}` : `Der Dev-Server von ${p.name} hat noch nichts ausgegeben.`;
+            return out.trim() ? m.output(p.name, excerptData(tail(out, 30), 3000)) : m.noOutput(p.name);
           }
           if (action === "stop" || action === "restart") await dev.stop(p.id);
-          if (action === "stop") return `Dev-Server von ${p.name} gestoppt.`;
+          if (action === "stop") return m.stopped(p.name);
           const st = action === "status" ? await dev.state(p.id) : await dev.start(p.id);
-          if (st.status === "running") return `Dev-Server von ${p.name} ${action === "restart" ? "neu gestartet" : "läuft"}${st.url ? `, Adresse ${st.url}` : ""}.`;
-          const why = st.error ?? (st.exitCode !== null ? `Exit-Code ${st.exitCode}` : "");
-          const hint = " Was er ausgegeben hat, liefert dev_server mit output.";
-          if (action !== "status") return `Fehler: Der Dev-Server von ${p.name} ist nicht gestartet.${why ? ` ${why}.` : ""}${hint}`;
-          return st.status === "stopped" ? `Dev-Server von ${p.name} läuft nicht.` : `Dev-Server von ${p.name} ist beendet.${why ? ` ${why}.` : ""}${hint}`;
+          if (st.status === "running") return m.running(p.name, action === "restart", st.url || null);
+          const why = st.error ?? (st.exitCode !== null ? m.exitCode(st.exitCode) : "");
+          if (action !== "status") return m.notStarted(p.name, why, m.hint);
+          return st.status === "stopped" ? m.notRunning(p.name) : m.ended(p.name, why, m.hint);
         }),
       testDatabase: (projectName, action, o) =>
         // A session named before the PIN would give its title away in errors.
         run(action !== "status" || !!o?.session?.trim(), async () => {
           const p = target(projectName, o);
           const db = this.d.testDb;
-          if (!db) return "Fehler: Die Test-Datenbank ist hier nicht verfügbar.";
+          const m = tr().phone.testDb;
+          if (!db) return m.unavailable;
           if (action === "status") {
             const st = db.state(p.id);
-            if (st.status === "running") return `Die Test-Datenbank von ${p.name} läuft.`;
-            if (st.status === "installing") return `PostgreSQL für die Test-Datenbank wird gerade heruntergeladen${st.progress !== null ? `, ${Math.round(st.progress * 100)} Prozent` : ""}.`;
-            if (st.status === "starting") return `Die Test-Datenbank von ${p.name} startet gerade.`;
-            if (st.status === "stopping") return `Die Test-Datenbank von ${p.name} wird gerade gestoppt.`;
-            if (st.status === "failed") return `Die Test-Datenbank von ${p.name} ist nicht gestartet: ${st.error ?? "unbekannter Fehler"}`;
-            return st.initialized ? `Die Test-Datenbank von ${p.name} ist gestoppt.` : `${p.name} hat noch keine Test-Datenbank. Der erste Start legt sie an.`;
+            if (st.status === "running") return m.running(p.name);
+            if (st.status === "installing") return m.installing(st.progress !== null ? Math.round(st.progress * 100) : null);
+            if (st.status === "starting") return m.starting(p.name);
+            if (st.status === "stopping") return m.stopping(p.name);
+            if (st.status === "failed") return m.failed(p.name, st.error ?? null);
+            return st.initialized ? m.stoppedState(p.name) : m.none(p.name);
           }
           if (action === "log") {
             const log = db.log(p.id);
-            return log.trim() ? `Letzte Zeilen aus dem Protokoll der Test-Datenbank von ${p.name}: ${excerptData(tail(log, 20), 2500)}` : `Das Protokoll der Test-Datenbank von ${p.name} ist leer.`;
+            return log.trim() ? m.log(p.name, excerptData(tail(log, 20), 2500)) : m.logEmpty(p.name);
           }
           if (action === "stop") {
             await db.stop(p.id);
-            return `Test-Datenbank von ${p.name} gestoppt.`;
+            return m.stopped(p.name);
           }
           if (action === "reset") {
             const wasRunning = db.isRunning(p.id);
             await db.reset(p.id);
             if (wasRunning) await db.start(p.id);
-            return `Test-Datenbank von ${p.name} geleert${wasRunning ? " und wieder gestartet" : ""}.`;
+            return m.reset(p.name, wasRunning);
           }
           if (action === "restart") {
             await db.stop(p.id);
             await db.start(p.id);
-            return `Test-Datenbank von ${p.name} neu gestartet.`;
+            return m.restarted(p.name);
           }
           await db.start(p.id);
-          return `Test-Datenbank von ${p.name} läuft.`;
+          return m.started(p.name);
         }),
       devSettings: (projectName, patch, o) =>
         run(true, async () => {
           const p = target(projectName, o);
           const tools = this.d.devTools;
-          if (!tools) return "Fehler: Die Dev-Werkzeuge sind hier nicht verfügbar.";
+          const ds = tr().phone.devSettings;
+          if (!tools) return ds.unavailable;
           const database = {
             ...(patch.withDevServer !== undefined ? { withDevServer: patch.withDevServer } : {}),
             ...(patch.port !== undefined ? { port: patch.port } : {}),
@@ -1946,7 +1950,7 @@ export class PhoneService {
             const fromFile = patch.envFromFile?.trim();
             if (fromFile) {
               const files = await tools.envFiles(p.id);
-              const file = pickOne(files, fromFile, (f) => [f, f.replace(/^\.env\.?/, "")], { none: "Keine .env-Datei", many: ".env-Dateien" });
+              const file = pickOne(files, fromFile, (f) => [f, f.replace(/^\.env\.?/, "")], { none: tr().phone.common.what.envNone, many: tr().phone.common.what.envMany });
               for (const line of (await tools.readEnvFile(p.id, file)).split(/\r?\n/)) {
                 const name = ENV_LINE.exec(line)?.[1];
                 if (name) env = setEnvLine(env, name, line.trim());
@@ -1955,12 +1959,12 @@ export class PhoneService {
             const set = patch.envSet?.trim();
             if (set) {
               const m = /^(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=(.*)$/s.exec(set);
-              if (!m) return "Fehler: Die Variable bitte als NAME=Wert angeben.";
+              if (!m) return ds.envFormat;
               env = setEnvLine(env, m[1]!, `${m[1]}=${m[2]!.trim()}`);
             }
             const remove = patch.envRemove?.trim();
             if (remove) {
-              if (!envNames(env).includes(remove)) return `Fehler: ${remove} steht nicht in der Test-Umgebung.`;
+              if (!envNames(env).includes(remove)) return ds.envMissing(remove);
               env = removeEnvLine(env, remove);
             }
           }
@@ -1976,42 +1980,45 @@ export class PhoneService {
           // Names only: values are often keys and passwords.
           const vars = envNames(cfg.env);
           const text = [
-            `Test-Umgebung ${cfg.useEnv ? "geht an Dev-Server und Tests" : "ist aus"}.`,
-            vars.length ? `Variablen: ${asData(vars.join(", "))}.` : "",
-            `Test-Datenbank auf Port ${d.port}, Name ${d.name}, ${d.withDevServer ? "startet mit dem Dev-Server" : "startet nicht mit dem Dev-Server"}, Verbindungs-URL ${d.envVar ? `in ${d.envVar}` : "wird nicht übergeben"}.`,
+            ds.useEnv(cfg.useEnv),
+            vars.length ? ds.vars(asData(vars.join(", "))) : "",
+            ds.database(d.port, d.name, d.withDevServer, d.envVar || null),
           ]
             .filter(Boolean)
             .join(" ");
           if (!changed) return `${p.name}: ${text}`;
           // The settings belong to the project a worktree comes from; the UI keeps them under that id.
           projectChanged(p.parentId ?? p.id);
-          const restart = (patch.port !== undefined || !!patch.name?.trim()) && this.d.testDb?.isRunning(p.id) ? " Port und Name gelten ab dem nächsten Start der Datenbank." : "";
+          const restart = (patch.port !== undefined || !!patch.name?.trim()) && this.d.testDb?.isRunning(p.id) ? ds.nextStart : "";
           // Agents share their project's settings and test database.
-          return `Gespeichert${p.parentId ? " für das ganze Projekt samt Agenten" : ""}. ${text}${restart}`;
+          return ds.saved(!!p.parentId, text, restart);
         }),
       projectAutomation: (projectName, patch, o) =>
         run(true, async () => {
           const named = target(projectName, o);
           // auto-merge is read from the main project; on a worktree the switch would do nothing.
           const p = patch.tag === AUTO_MERGE_TAG && named.parentId ? this.d.projects.get(named.parentId) : named;
-          const on = (tags: string[]) => (Object.keys(AUTOMATION_TAGS) as AutomationTag[]).filter((t) => tags.includes(t)).map((t) => AUTOMATION_TAGS[t]);
-          const state = (tags: string[]) => (on(tags).length ? `An: ${on(tags).join(", ")}.` : "Keine Automatik an.");
+          const am = tr().phone.automation;
+          const on = (tags: string[]) => AUTOMATION_TAG_IDS.filter((t) => tags.includes(t)).map((t) => automationTagLabel(t));
+          const state = (tags: string[]) => (on(tags).length ? am.on(on(tags).join(", ")) : am.none);
           if (!patch.tag) return `${p.name}: ${state(p.tags)}`;
-          if (patch.on && !p.gitEnabled && GIT_TAGS.includes(patch.tag)) return `${gitOff(p)} ${AUTOMATION_TAGS[patch.tag]} braucht Git.`;
-          if (patch.on === undefined) return `${p.name}: ${AUTOMATION_TAGS[patch.tag]} ist ${p.tags.includes(patch.tag) ? "an" : "aus"}.`;
+          if (patch.on && !p.gitEnabled && GIT_TAGS.includes(patch.tag)) return am.needsGit(gitOff(p), automationTagLabel(patch.tag));
+          if (patch.on === undefined) return am.state(p.name, automationTagLabel(patch.tag), p.tags.includes(patch.tag));
           const tags = patch.on ? [...new Set([...p.tags, patch.tag])] : p.tags.filter((t) => t !== patch.tag);
           const next = this.d.projects.update(p.id, { tags });
           projectChanged(p.id);
-          return `${AUTOMATION_TAGS[patch.tag]} ist für ${p.name} ${patch.on ? "an" : "aus"}. ${state(next.tags)}`;
+          return am.switched(automationTagLabel(patch.tag), p.name, !!patch.on, state(next.tags));
+
         }),
       knowledge: (projectName, query, id, remove, o) =>
         run(true, async () => {
           const p = findProject(projectName);
           const store = this.d.knowledge;
-          if (!store) return "Fehler: Das Projektwissen ist hier nicht verfügbar.";
+          const kn = tr().phone.knowledge;
+          if (!store) return kn.unavailable;
           if (o?.autoMerge) {
             const plan = await call("knowledge.mergePlan", { projectId: p.id });
-            if (!plan.groups.length) return `Claude (${plan.model}) hat im Projektwissen von ${p.name} nichts gefunden, das sich zusammenführen lässt.`;
+            if (!plan.groups.length) return kn.nothingToMerge(plan.model, p.name);
             const queue = [...plan.groups];
             const lines: string[] = [];
             const worker = async () => {
@@ -2019,213 +2026,218 @@ export class PhoneService {
                 try {
                   const draft = await call("knowledge.mergeDraft", { projectId: p.id, ids: g.ids });
                   const { entry, removed } = await call("knowledge.merge", { projectId: p.id, ids: g.ids, title: draft.title, summary: draft.summary, tags: draft.tags, content: draft.content });
-                  lines.push(`Zusammengeführt in ${entry.id} (${entry.title}). Gelöscht: ${removed.join(", ")}.`);
+                  lines.push(kn.mergedLine(entry.id, entry.title, removed.join(", ")));
                 } catch (e) {
-                  lines.push(`Nicht zusammengeführt: ${g.ids.join(", ")}. ${e instanceof Error ? e.message : String(e)}`);
+                  lines.push(kn.notMergedLine(g.ids.join(", "), e instanceof Error ? e.message : String(e)));
                 }
               }
             };
             await Promise.all(Array.from({ length: Math.min(AUTO_MERGE_PARALLEL, queue.length) }, worker));
-            return `Claude (${plan.model}) hat ${plan.groups.length === 1 ? "eine Gruppe" : `${plan.groups.length} Gruppen`} gefunden. Alte Fassungen liegen im Git.\n${asData(lines.join("\n"))}`;
+            return kn.autoMerged(plan.model, plan.groups.length, asData(lines.join("\n")));
           }
           if (o?.merge?.length) {
             const ids = [...new Set(o.merge)];
-            if (ids.length < 2) return "Fehler: Zum Zusammenführen brauche ich mindestens zwei Kennungen.";
+            if (ids.length < 2) return kn.needTwo;
             const draft = await call("knowledge.mergeDraft", { projectId: p.id, ids });
             const { entry, removed } = await call("knowledge.merge", { projectId: p.id, ids, title: draft.title, summary: draft.summary, tags: draft.tags, content: draft.content });
-            return `Zusammengeführt in ${entry.id}: ${asData(entry.title)}. Gelöscht: ${removed.join(", ")}. Den Text hat Claude (${draft.model}) geschrieben; alte Fassungen liegen im Git.`;
+            return kn.merged(entry.id, asData(entry.title), removed.join(", "), draft.model);
           }
           if (o?.stale) {
             const { entries } = await call("knowledge.checkRefs", { projectId: p.id, refresh: false });
             const stale = entries.filter((e) => e.missing.length);
-            if (!stale.length) return `Im Projektwissen von ${p.name} verweist kein Eintrag auf Dateien oder Bezeichner, die es nicht mehr gibt.`;
+            if (!stale.length) return kn.noStale(p.name);
             const title = new Map(store.list(p.id).map((e) => [e.id, e.title]));
-            return `${stale.length === 1 ? "Ein Eintrag verweist" : `${stale.length} Einträge verweisen`} auf etwas, das es nicht mehr gibt:\n${asData(
-              stale
-                .slice(0, 8)
-                .map((e) => `${e.id} (${title.get(e.id) ?? e.id}): fehlt ${e.missing.slice(0, 4).map((m) => m.ref).join(", ")}${e.missing.length > 4 ? ` und ${e.missing.length - 4} weitere` : ""}`)
-                .join("\n"),
-            )}`;
+            return kn.stale(
+              stale.length,
+              asData(
+                stale
+                  .slice(0, 8)
+                  .map((e) => kn.staleLine(e.id, title.get(e.id) ?? e.id, e.missing.slice(0, 4).map((x) => x.ref).join(", "), e.missing.length - 4))
+                  .join("\n"),
+              ),
+            );
           }
           if (o?.markChecked || o?.fix) {
             const key = id?.trim();
-            if (!key) return "Fehler: Dafür brauche ich die Kennung des Eintrags (id).";
+            if (!key) return kn.needId;
             if (o.markChecked) {
               const { verified } = await call("knowledge.markChecked", { projectId: p.id, id: key });
-              return verified.length ? `Eintrag ${key} ist als geprüft markiert. Diese Verweise meldet FORGE nicht mehr: ${asData(verified.join(", "))}.` : `Eintrag ${key} hat keine fehlenden Verweise.`;
+              return verified.length ? kn.checked(key, asData(verified.join(", "))) : kn.noMissing(key);
             }
             const draft = await call("knowledge.fixDraft", { projectId: p.id, id: key });
             const entry = await call("knowledge.save", { projectId: p.id, id: key, title: draft.title, summary: draft.summary, tags: draft.tags, content: draft.content });
-            return `Claude (${draft.model}) hat ${entry.id} korrigiert: ${asData(entry.title)}. Die alte Fassung liegt im Git.`;
+            return kn.fixed(draft.model, entry.id, asData(entry.title));
           }
           if (o?.cleanup) {
             const { overlaps, long } = await call("knowledge.cleanup", { projectId: p.id });
-            if (!overlaps.length && !long.length) return `Im Projektwissen von ${p.name} überschneidet sich nichts, und kein Eintrag ist sehr lang.`;
+            if (!overlaps.length && !long.length) return kn.clean(p.name);
             const title = new Map(store.list(p.id).map((e) => [e.id, e.title]));
             const name = (k: string) => `${k} (${title.get(k) ?? k})`;
             return asData(
               [
-                ...overlaps.slice(0, 5).map((x) => `Überschneidung ${Math.round(x.score * 100)} %: ${name(x.a)} und ${name(x.b)}`),
-                ...long.slice(0, 5).map((l) => `Sehr lang (${Math.round(l.chars / 1000)} KB): ${name(l.id)}`),
+                ...overlaps.slice(0, 5).map((x) => kn.overlap(Math.round(x.score * 100), name(x.a), name(x.b))),
+                ...long.slice(0, 5).map((l) => kn.long(Math.round(l.chars / 1000), name(l.id))),
               ].join("\n"),
             );
           }
           if (remove) {
             const key = id?.trim();
-            if (!key) return "Fehler: Zum Löschen brauche ich die Kennung des Eintrags (id).";
-            return (await store.delete(p.id, key)) ? `Eintrag ${key} aus dem Projektwissen von ${p.name} gelöscht.` : `Fehler: Im Projektwissen von ${p.name} gibt es keinen Eintrag ${key}.`;
+            if (!key) return kn.needIdDelete;
+            return (await store.delete(p.id, key)) ? kn.deleted(key, p.name) : kn.notFound(p.name, key);
           }
           if (id?.trim()) {
             const e = await store.read(p.id, id.trim());
             return asData(`${e.title}. ${e.summary}\n${e.content.slice(0, 4000)}`);
           }
           const hits = store.search(p.id, query, 5);
-          if (!hits.length) return store.list(p.id).length ? `Im Projektwissen von ${p.name} steht dazu nichts.` : `${p.name} hat noch kein Projektwissen.`;
+          if (!hits.length) return store.list(p.id).length ? kn.nothing(p.name) : kn.empty(p.name);
           return asData(hits.map((h) => `${h.id}: ${h.title}. ${h.summary} ${h.snippet}`).join("\n"));
         }),
       rememberNote: (projectName, title, text) =>
         run(true, async () => {
           const p = findProject(projectName);
           const store = this.d.knowledge;
-          if (!store) return "Fehler: Das Projektwissen ist hier nicht verfügbar.";
+          const kn = tr().phone.knowledge;
+          if (!store) return kn.unavailable;
           const note = text.trim();
-          if (!note) return "Fehler: Die Notiz ist leer.";
-          const stamp = new Date().toLocaleDateString("de-DE");
+          if (!note) return kn.emptyNote;
+          const stamp = new Date().toLocaleDateString(tr().phone.locale);
           const near = store.similar(p.id, title)[0];
           if (near) {
             const e = await store.read(p.id, near.id);
-            await store.save(p.id, { id: e.id, title: e.title, summary: e.summary, tags: e.tags, content: `${e.content.trimEnd()}\n\nNotiz vom Telefon (${stamp}): ${note}\n` });
-            return `Notiz bei „${e.title}“ ergänzt.`;
+            await store.save(p.id, { id: e.id, title: e.title, summary: e.summary, tags: e.tags, content: `${e.content.trimEnd()}\n\n${kn.noteLine(stamp, note)}\n` });
+            return kn.noteAdded(e.title);
           }
-          const e = await store.save(p.id, { id: null, title: title.trim() || "Notiz", summary: note.length > 160 ? `${note.slice(0, 157)}...` : note, tags: ["telefon"], content: `Notiz vom Telefon (${stamp}): ${note}\n` });
-          return `Notiz „${e.title}“ im Projektwissen von ${p.name} abgelegt.`;
+          const e = await store.save(p.id, { id: null, title: title.trim() || kn.noteTitle, summary: note.length > 160 ? `${note.slice(0, 157)}...` : note, tags: [kn.noteTag], content: `${kn.noteLine(stamp, note)}\n` });
+          return kn.noteSaved(e.title, p.name);
         }),
       git: (projectName, action, o) =>
         run(true, async () => {
+          const gm = tr().phone.git;
           if (action === "account") {
             const acc = await call("github.account", {});
-            if (!acc) return "FORGE ist nicht bei GitHub angemeldet. Anmelden geht nur in FORGE am Rechner über den Browser.";
+            if (!acc) return gm.notSignedIn;
             const orgs = await call("github.orgs", {}).catch(() => []);
-            const inOrgs = orgs.length ? ` Organisationen: ${asData(orgs.map((o) => o.login).join(", "))}.` : "";
-            return `FORGE ist bei GitHub als ${acc.login} angemeldet${acc.name ? `, ${acc.name}` : ""}.${inOrgs}`;
+            const inOrgs = orgs.length ? gm.orgs(asData(orgs.map((o) => o.login).join(", "))) : "";
+            return gm.account(acc.login, acc.name || null, inOrgs);
           }
           if (action === "identity") {
             const name = o?.name?.trim();
             const email = o?.email?.trim();
             if (name || email) {
-              if (!name || !email) return "Fehler: Für die Git-Identität brauche ich Name und E-Mail.";
+              if (!name || !email) return gm.identityNeedsBoth;
               const id = await call("git.setIdentity", { name, email });
-              return `Commits laufen jetzt unter ${id.name}, ${id.email}.`;
+              return gm.identitySet(id.name ?? "", id.email ?? "");
             }
             const id = await call("git.identity", {});
-            return id.name || id.email ? `Commits laufen unter ${id.name ?? "ohne Namen"}, ${id.email ?? "ohne E-Mail"}.` : "Es ist keine Git-Identität eingerichtet.";
+            return id.name || id.email ? gm.identity(id.name ?? null, id.email ?? null) : gm.noIdentity;
           }
           const p = target(projectName, o);
           if (!p.gitEnabled) return gitOff(p);
           const git = this.d.git;
           if (action === "fetch") {
             const { summary: s } = await call("git.fetch", { projectId: p.id });
-            return s.behind ? `${p.name}: ${s.behind} neue Commits auf dem Server, noch nicht übernommen.` : `${p.name}: Auf dem Server gibt es nichts Neues.`;
+            return s.behind ? gm.behind(p.name, s.behind) : gm.upToDate(p.name);
           }
           if (action === "branches") {
             const list = await call("git.branches", { projectId: p.id });
-            if (!list.length) return `${p.name} hat noch keine Branches.`;
+            if (!list.length) return gm.noBranches(p.name);
             const current = list.find((b) => b.current)?.name;
             const others = list.filter((b) => !b.current).map((b) => b.name);
-            const rest = others.length ? ` Weitere: ${asData(others.slice(0, 15).join(", "))}${others.length > 15 ? ` und ${others.length - 15} mehr` : ""}.` : "";
-            return `${p.name}: ${list.length} ${list.length === 1 ? "Branch" : "Branches"}${current ? `, aktuell ${current}` : ""}.${rest}`;
+            const rest = others.length ? gm.otherBranches(asData(others.slice(0, 15).join(", ")), others.length - 15) : "";
+            return gm.branches(p.name, list.length, current, rest);
           }
           if (action === "delete_branch") {
             const branch = o?.branch?.trim();
-            if (!branch) return "Fehler: Welcher Branch? Bitte branch angeben.";
+            if (!branch) return gm.whichBranch;
             const del = async () => {
               await call("git.deleteBranch", { projectId: p.id, branch, force: o?.force === true });
-              return `Branch ${branch} in ${p.name} gelöscht.`;
+              return gm.branchDeleted(branch, p.name);
             };
             // Without force git refuses a branch whose commits are nowhere else; with force they are gone.
             if (o?.force !== true) return await del();
-            return askKeypad(`Der Branch ${asData(branch)} in ${p.name} wird gelöscht, auch wenn er Commits hat, die in keinem anderen Branch sind`, del);
+            return askKeypad(gm.confirmDeleteBranch(asData(branch), p.name), del);
           }
           if (action === "diff") {
             const st = await call("git.status", { projectId: p.id });
-            if (!st.files.length) return `${p.name} hat keine Änderungen.`;
+            if (!st.files.length) return gm.noChanges(p.name);
             if (!o?.path?.trim()) {
               const names = st.files.slice(0, 15).map((f) => f.path);
-              return `Geändert in ${p.name}: ${asData(names.join(", "))}${st.files.length > 15 ? ` und ${st.files.length - 15} weitere` : ""}. Welche Datei?`;
+              return gm.changedFiles(p.name, asData(names.join(", ")), st.files.length - 15);
             }
-            const f = pickOne(st.files, o.path.replace(/\\/g, "/"), (x) => [x.path], { none: "Keine geänderte Datei", many: "geänderte Dateien" });
-            if (f.kind === "untracked") return `${asData(f.path)} ist neu und noch nicht im Git.`;
-            if (isSensitiveFile(f.path)) return `${asData(f.path)} ist geändert. Die Datei enthält Zugangsdaten, ihr Inhalt wird am Telefon nicht vorgelesen.`;
+            const f = pickOne(st.files, o.path.replace(/\\/g, "/"), (x) => [x.path], { none: tr().phone.common.what.changedNone, many: tr().phone.common.what.changedMany });
+            if (f.kind === "untracked") return gm.untracked(asData(f.path));
+            if (isSensitiveFile(f.path)) return gm.sensitiveChanged(asData(f.path));
             const d = await call("git.diff", { projectId: p.id, path: f.path, staged: f.staged && !f.unstaged });
-            if (d.binary) return `${asData(f.path)} ist eine Binärdatei.`;
-            const lines = d.lines.filter((l) => l.kind === "add" || l.kind === "del").map((l) => `${l.kind === "add" ? "neu" : "weg"}: ${l.text}`);
-            return `${asData(f.path)}: ${d.additions} ${d.additions === 1 ? "Zeile" : "Zeilen"} hinzu, ${d.deletions} entfernt.${lines.length ? ` ${excerptData(lines.slice(0, 60).join("\n"), 3000)}` : ""}`;
+            if (d.binary) return gm.binary(asData(f.path));
+            const lines = d.lines.filter((l) => l.kind === "add" || l.kind === "del").map((l) => `${l.kind === "add" ? gm.added : gm.removed}: ${l.text}`);
+            return gm.diff(asData(f.path), d.additions, d.deletions, lines.length ? excerptData(lines.slice(0, 60).join("\n"), 3000) : "");
           }
           /** hash, position in the log (1 = newest) or words of the subject; null when the log has no such position */
           const commitHash = async (ref: string): Promise<string | null> => {
             if (!/^\d{1,2}$/.test(ref) && /^[0-9a-f]{7,40}$/i.test(ref)) return ref;
             const commits = await call("git.log", { projectId: p.id, limit: 30 });
-            const c = /^\d{1,2}$/.test(ref) ? commits[Number(ref) - 1] : pickOne(commits, ref, (x) => [x.subject, x.shortHash], { none: "Kein Commit", many: "Commits" });
+            const c = /^\d{1,2}$/.test(ref) ? commits[Number(ref) - 1] : pickOne(commits, ref, (x) => [x.subject, x.shortHash], { none: tr().phone.common.what.commitNone, many: tr().phone.common.what.commitMany });
             return c?.hash ?? null;
           };
           if (action === "show") {
             const ref = o?.commit?.trim() || "1";
             const hash = await commitHash(ref);
-            if (!hash) return `Fehler: ${p.name} hat keinen ${ref}. Commit.`;
+            if (!hash) return gm.noCommit(p.name, ref);
             const d = await call("git.commitFiles", { projectId: p.id, commit: hash });
             if (o?.path?.trim()) {
-              const f = pickOne(d.files, o.path.replace(/\\/g, "/"), (x) => [x.path], { none: "Keine Datei dieses Commits", many: "Dateien dieses Commits" });
-              if (isSensitiveFile(f.path)) return `${asData(f.path)} enthält Zugangsdaten, ihr Inhalt wird am Telefon nicht vorgelesen.`;
-              if (f.binary) return `${asData(f.path)} ist eine Binärdatei.`;
+              const f = pickOne(d.files, o.path.replace(/\\/g, "/"), (x) => [x.path], { none: tr().phone.common.what.commitFileNone, many: tr().phone.common.what.commitFileMany });
+              if (isSensitiveFile(f.path)) return gm.sensitive(asData(f.path));
+              if (f.binary) return gm.binary(asData(f.path));
               const diff = await call("git.commitDiff", { projectId: p.id, commit: hash, path: f.path, origPath: f.origPath ?? undefined });
-              const lines = diff.lines.filter((l) => l.kind === "add" || l.kind === "del").map((l) => `${l.kind === "add" ? "neu" : "weg"}: ${l.text}`);
-              return `${asData(f.path)} in diesem Commit: ${diff.additions} ${diff.additions === 1 ? "Zeile" : "Zeilen"} hinzu, ${diff.deletions} entfernt.${lines.length ? ` ${excerptData(lines.slice(0, 60).join("\n"), 3000)}` : ""}`;
+              const lines = diff.lines.filter((l) => l.kind === "add" || l.kind === "del").map((l) => `${l.kind === "add" ? gm.added : gm.removed}: ${l.text}`);
+              return gm.commitFileDiff(asData(f.path), diff.additions, diff.deletions, lines.length ? excerptData(lines.slice(0, 60).join("\n"), 3000) : "");
             }
-            if (!d.files.length) return `Der Commit ändert in ${p.name} keine Dateien.`;
+            if (!d.files.length) return gm.commitNoFiles(p.name);
             const add = d.files.reduce((n, f) => n + f.additions, 0);
             const del = d.files.reduce((n, f) => n + f.deletions, 0);
             const names = d.files.slice(0, 15).map((f) => `${f.path} (+${f.additions} -${f.deletions})`);
-            const rest = d.files.length > 15 ? ` und ${d.files.length - 15} weitere` : "";
-            const body = d.body ? ` Beschreibung: ${excerptData(d.body, 1500)}` : "";
-            return `Der Commit ändert ${d.files.length} ${d.files.length === 1 ? "Datei" : "Dateien"}, ${add} Zeilen hinzu, ${del} entfernt: ${asData(names.join(", "))}${rest}.${body}`;
+            const rest = d.files.length > 15 ? tr().phone.common.andMore(d.files.length - 15) : "";
+            const body = d.body ? gm.commitBody(excerptData(d.body, 1500)) : "";
+            return gm.commitFiles(d.files.length, add, del, asData(names.join(", ")), rest, body);
           }
           if (action === "restore") {
             const ref = o?.commit?.trim();
-            if (!ref) return "Fehler: Auf welchen Commit? Hash, Nummer aus dem Log oder Worte aus der Commit-Nachricht.";
+            if (!ref) return gm.whichCommit;
             const hash = await commitHash(ref);
-            if (!hash) return `Fehler: ${p.name} hat keinen ${ref}. Commit.`;
+            if (!hash) return gm.noCommit(p.name, ref);
             const r = await call("git.restoreTo", { projectId: p.id, commit: hash });
-            return `Dateien von ${p.name} auf den Stand von ${asData(r.subject)} gesetzt, ${r.changed} Dateien geändert und noch nicht committet.${r.stashed ? " Die offene Arbeit von vorher liegt im Stash." : ""}`;
+            return gm.restored(p.name, asData(r.subject), r.changed, !!r.stashed);
           }
           if (action === "init") {
             await call("git.init", { projectId: p.id });
-            return `${p.name} ist jetzt ein Git-Repository.`;
+            return gm.initialized(p.name);
           }
           if (action === "publish") {
             const isPrivate = o?.private !== false;
             const owner = await resolveOwner(call, o?.owner);
             await call("github.publish", { projectId: p.id, private: isPrivate, name: o?.name?.trim() || undefined, owner: owner ?? undefined });
-            return `${p.name} ist als ${isPrivate ? "privates" : "öffentliches"} Repository auf GitHub veröffentlicht${owner ? `, in der Organisation ${owner}` : ""}.`;
+            return gm.published(p.name, isPrivate, owner);
           }
           if (action === "status") {
             const { summary: s } = await git.status(p.path);
-            const sync = [s.ahead ? `${s.ahead} Commits nicht gepusht` : "", s.behind ? `${s.behind} Commits auf dem Server neuer` : ""].filter(Boolean);
-            const parts = [`Branch ${s.branch ?? "keiner (detached)"}`, s.changedCount ? `${s.changedCount} geänderte Dateien` : "keine Änderungen", ...sync, s.conflicted ? "es gibt Konflikte" : ""];
-            return `${p.name}: ${parts.filter(Boolean).join(", ")}.`;
+            const sync = [s.ahead ? gm.notPushed(s.ahead) : "", s.behind ? gm.newerOnServer(s.behind) : ""].filter(Boolean);
+            const parts = [gm.branch(s.branch ?? null), s.changedCount ? gm.changedCount(s.changedCount) : gm.clean, ...sync, s.conflicted ? gm.conflicts : ""];
+            return gm.status(p.name, parts.filter(Boolean).join(", "));
           }
           if (action === "log") {
             const commits = await git.log(p.path, 5);
-            if (!commits.length) return `${p.name} hat noch keine Commits.`;
-            return `Letzte Commits in ${p.name}:\n${commits.map((c) => `${asData(`${c.subject} (${c.author})`)} am ${dateTime(c.date)}`).join("\n")}`;
+            if (!commits.length) return gm.noCommits(p.name);
+            return gm.log(p.name, commits.map((c) => gm.logLine(asData(`${c.subject} (${c.author})`), dateTime(c.date))).join("\n"));
           }
           if (action === "checkout") {
             const branch = o?.branch?.trim();
-            if (!branch) return "Fehler: Auf welchen Branch? Bitte branch angeben.";
+            if (!branch) return gm.whichCheckout;
             const busy = sessions.listAll().some((x) => x.projectId === p.id && x.live && (x.status === "running" || x.status === "waiting_approval"));
-            if (busy) return `Fehler: In ${p.name} arbeitet gerade eine Session. Erst stoppen, dann Branch wechseln.`;
+            if (busy) return gm.sessionBusy(p.name);
             await git.checkout(p.path, branch, o?.create === true);
             projectChanged(p.id);
-            return `${p.name} ist jetzt auf Branch ${branch}${o?.create ? ", neu angelegt" : ""}.`;
+            return gm.checkedOut(p.name, branch, o?.create === true);
           }
           /** origin's commits did not go in automatically: Claude takes over, as in the Git tab */
           const handOver = async (e: unknown, push: boolean) => {
@@ -2233,18 +2245,18 @@ export class PhoneService {
             if (!s) throw e;
             projectChanged(p.id);
             a.focus = s.id;
-            return `Die neuen Commits vom Server ließen sich nicht automatisch mit den eigenen zusammenführen. Claude führt sie in der neuen Session ${refFor(s.id)} zusammen${push ? " und pusht danach" : ""}.`;
+            return gm.handOver(refFor(s.id), push);
           };
           if (action === "commit") {
             const st = await git.status(p.path);
             // Secrets and build output are never committed from the phone; the caller hears what was left out.
             const skipped = st.files.filter((f) => isSensitiveFile(f.path) || isArtifactPath(f.path)).map((f) => f.path);
             const paths = st.files.map((f) => f.path).filter((f) => !skipped.includes(f));
-            if (!paths.length) return skipped.length ? `Nichts committet, geändert sind nur sensible Dateien oder Build-Artefakte: ${skipped.join(", ")}.` : `${p.name} hat keine Änderungen.`;
+            if (!paths.length) return skipped.length ? gm.onlySkipped(skipped.join(", ")) : gm.noChanges(p.name);
             const message = o?.message?.trim() || (await sessions.suggestCommitMessage(p.id, paths)).message;
             await git.commit(p.path, message, paths, false);
             projectChanged(p.id);
-            return `Committet in ${p.name}: ${asData(message.split("\n")[0]!)}${skipped.length ? ` Ausgelassen: ${skipped.join(", ")}.` : ""}`;
+            return gm.committed(p.name, asData(message.split("\n")[0]!), skipped.join(", "));
           }
           if (action === "push") {
             let r: Awaited<ReturnType<GitEngine["push"]>>;
@@ -2254,8 +2266,8 @@ export class PhoneService {
               return handOver(e, true);
             }
             projectChanged(p.id);
-            const took = r.integrated ? ` Vorher ${r.integrated.remoteCommits} neue Commits vom Server übernommen.` : "";
-            return `Branch ${r.branch} von ${p.name} gepusht.${took}`;
+            const took = r.integrated ? gm.integrated(r.integrated.remoteCommits) : "";
+            return gm.pushed(r.branch, p.name, took);
           }
           let r: Awaited<ReturnType<GitEngine["pull"]>>;
           try {
@@ -2271,86 +2283,85 @@ export class PhoneService {
           const p = target(projectName, o);
           if (!p.gitEnabled) return gitOff(p);
           const gh = this.d.github;
-          if (!gh) return "Fehler: GitHub ist hier nicht verfügbar.";
+          const pm = tr().phone.pr;
+          if (!gh) return pm.unavailable;
           const git = this.d.git;
           const head = await git.currentBranch(p.path);
-          if (!head) return `Fehler: In ${p.name} ist kein Branch ausgecheckt.`;
+          if (!head) return pm.noBranch(p.name);
           const pr = await gh.prForBranch(p.path);
           if (action === "status") {
-            if (!pr) return `Für den Branch ${head} gibt es keinen Pull Request.`;
-            const state = pr.state === "OPEN" ? (pr.draft ? "offen, als Entwurf" : "offen") : pr.state === "MERGED" ? "gemergt" : pr.state === "CLOSED" ? "geschlossen" : pr.state;
+            if (!pr) return pm.none(head);
+            const state = pr.state === "OPEN" ? (pr.draft ? pm.openDraft : pm.open) : pr.state === "MERGED" ? pm.merged : pr.state === "CLOSED" ? pm.closed : pr.state;
             const c = pr.checks;
             const checks = !c.total
-              ? "keine CI-Checks"
+              ? pm.noChecks
               : c.failed
-                ? `${c.failed} von ${c.total} Checks fehlgeschlagen`
+                ? pm.checksFailed(c.failed, c.total)
                 : c.pending
-                  ? `${c.pending} von ${c.total} Checks laufen noch`
-                  : `alle ${c.total} Checks grün`;
-            const review =
-              pr.reviewDecision === "APPROVED" ? ", im Review freigegeben" : pr.reviewDecision === "CHANGES_REQUESTED" ? ", im Review wurden Änderungen verlangt" : pr.reviewDecision === "REVIEW_REQUIRED" ? ", Review steht aus" : "";
-            return `Pull Request ${pr.number} ${asData(pr.title)} von ${pr.head} nach ${pr.base}: ${state}, ${checks}${review}.`;
+                  ? pm.checksPending(c.pending, c.total)
+                  : pm.checksGreen(c.total);
+            const review = pr.reviewDecision === "APPROVED" ? pm.approved : pr.reviewDecision === "CHANGES_REQUESTED" ? pm.changesRequested : pr.reviewDecision === "REVIEW_REQUIRED" ? pm.reviewRequired : "";
+            return pm.status(pr.number, asData(pr.title), pr.head, pr.base, state, checks, review);
           }
-          if (pr?.state === "OPEN") return `Für den Branch ${head} gibt es schon den offenen Pull Request ${pr.number} ${asData(pr.title)}.`;
+          if (pr?.state === "OPEN") return pm.exists(head, pr.number, asData(pr.title));
           const base = await git.defaultBranch(p.path);
-          if (head === base) return `Fehler: ${p.name} ist auf ${base}. Ein Pull Request braucht einen eigenen Branch.`;
+          if (head === base) return pm.onBase(p.name, base);
           const draft = await sessions.suggestPullRequest(p.id);
           // The PR needs the branch on GitHub; pushing a feature branch is always allowed.
           await git.push(p.path, false);
           await gh.createPr(p.path, { title: draft.title, body: draft.body, base: draft.base, head: draft.head, draft: o?.draft === true });
           projectChanged(p.id);
-          return `Pull Request ${asData(draft.title)} von ${draft.head} nach ${draft.base} angelegt${o?.draft ? ", als Entwurf" : ""}.`;
+          return pm.created(asData(draft.title), draft.head, draft.base, !!o?.draft);
         }),
       removeAgent: (projectName, o) =>
         run(true, async () => {
           const p = target(projectName, o);
-          if (!p.parentId) return `Fehler: ${p.name} ist kein Agent-Worktree. Projekte entfernt das Werkzeug project mit remove.`;
+          const ag = tr().phone.agents;
+          if (!p.parentId) return ag.notWorktreeRemove(p.name);
           const parentId = p.parentId;
           const removeIt = async () => {
             const r = await removeWorktree(p.id, o?.force === true, removal, { deleteBranch: o?.deleteBranch === true });
             projectChanged(parentId);
-            const branch = r.deletedBranch
-              ? ` Branch ${r.deletedBranch} gelöscht.`
-              : r.branchError
-                ? ` Der Branch ließ sich nicht löschen: ${r.branchError}`
-                : " Der Branch mit seinen Commits bleibt.";
-            return `Worktree ${p.name} entfernt, seine Session ist beendet.${branch}`;
+            const branch = r.deletedBranch ? ag.branchDeleted(r.deletedBranch) : r.branchError ? ag.branchError(r.branchError) : ag.branchKept;
+            return ag.removed(p.name, branch);
           };
           if (o?.force !== true && o?.deleteBranch !== true) return await removeIt();
-          const lost = [o?.force === true && "nicht committete Änderungen darin", o?.deleteBranch === true && "sein Branch mit den Commits"].filter(Boolean).join(" und ");
-          return askKeypad(`Der Agent ${p.name} wird aufgeräumt, dabei gehen ${lost} verloren`, removeIt);
+          const lost = [o?.force === true && ag.lostChanges, o?.deleteBranch === true && ag.lostBranch].filter(Boolean).join(ag.and);
+          return askKeypad(ag.confirmRemove(p.name, lost), removeIt);
         }),
       finishAgent: (projectName, action, o) =>
         run(true, async () => {
           const p = target(projectName, o);
-          if (!p.parentId) return `Fehler: ${p.name} ist kein Agent-Worktree.`;
+          const ag = tr().phone.agents;
+          if (!p.parentId) return ag.notWorktree(p.name);
           if (action === "review") {
             const r = await call("agents.review", { projectId: p.id });
             const facts = [
-              `${r.ahead} ${r.ahead === 1 ? "Commit" : "Commits"} auf ${r.branch ?? "seinem Branch"}, ${r.filesChanged} ${r.filesChanged === 1 ? "Datei" : "Dateien"} geändert`,
-              r.uncommitted ? `${r.uncommitted} nicht committete Änderungen, die beim Zusammenführen mit committet werden` : "",
-              r.behind ? `${r.targetBranch ?? "das Ziel"} ist seitdem ${r.behind} Commits weiter` : "",
-              r.busy ? "er arbeitet noch" : "",
+              ag.commits(r.ahead, r.branch ?? null, r.filesChanged),
+              r.uncommitted ? ag.uncommitted(r.uncommitted) : "",
+              r.behind ? ag.behind(r.targetBranch ?? null, r.behind) : "",
+              r.busy ? ag.busy : "",
             ].filter(Boolean);
             return [
-              `Agent ${p.name}: ${facts.join(", ")}.`,
-              r.commits.length ? `Letzte Commits: ${asData(r.commits.slice(0, 3).map((c) => c.subject).join("; "))}` : "",
-              r.summary.trim() ? `Seine Zusammenfassung: ${excerptData(r.summary, 1500)}` : "",
-              r.mergeBlocker ? `Zusammenführen geht gerade nicht: ${r.mergeBlocker}` : `Zusammenführen nach ${r.targetBranch ?? "seinem Ausgangs-Branch"} ist möglich.`,
+              ag.review(p.name, facts.join(", ")),
+              r.commits.length ? ag.lastCommits(asData(r.commits.slice(0, 3).map((c) => c.subject).join("; "))) : "",
+              r.summary.trim() ? ag.summary(excerptData(r.summary, 1500)) : "",
+              r.mergeBlocker ? ag.blocked(r.mergeBlocker) : ag.canMerge(r.targetBranch ?? null),
             ]
               .filter(Boolean)
               .join("\n");
           }
           const finisher = this.d.agentFinish;
-          if (!finisher) return "Fehler: Agenten abschließen ist hier nicht verfügbar.";
+          if (!finisher) return ag.finishUnavailable;
           const finish = async () => (await finisher.finish(p.id, action)).message;
           if (action === "merge") return await finish();
-          return askKeypad(`Die Arbeit des Agenten ${p.name} wird verworfen, sein Worktree und sein Branch mit allen Commits werden gelöscht`, finish);
+          return askKeypad(ag.confirmDiscard(p.name), finish);
         }),
       projects: () =>
         run(true, async () => {
           const all = this.d.projects.all().filter((p) => p.exists);
-          if (!all.length) return "Es gibt keine Projekte.";
+          const pj = tr().phone.projects;
+          if (!all.length) return pj.none;
           const live = sessions.listLive();
           const lines = await Promise.all(
             all.map(async (p) => {
@@ -2360,102 +2371,99 @@ export class PhoneService {
                 (st) => st.status === "running",
                 () => false,
               );
-              return [p.name, branch ? `Branch ${branch}` : p.gitEnabled ? "" : "ohne Git", dev ? "Dev-Server läuft" : "", n ? `${n} aktive ${n === 1 ? "Session" : "Sessions"}` : ""].filter(Boolean).join(", ");
+              return [p.name, branch ? pj.branch(branch) : p.gitEnabled ? "" : pj.noGit, dev ? pj.devRunning : "", n ? pj.active(n) : ""].filter(Boolean).join(", ");
             }),
           );
           return lines.join("\n");
         }),
       project: (projectName, action, o) =>
         run(true, async () => {
+          const pj = tr().phone.projects;
           const parentDir = async () => {
             const dir = o?.path?.trim() || (await call("settings.get", {})).defaultProjectDir;
-            if (!dir) throw new Error("In welchem Ordner? In den Einstellungen ist kein Ordner für neue Projekte eingetragen.");
+            if (!dir) throw new Error(pj.whichFolder);
             return dir;
           };
           if (action === "create") {
             const name = o?.name?.trim();
-            if (!name) return "Fehler: Wie soll das Projekt heißen?";
+            if (!name) return pj.whatName;
             const withGitHub = !!o?.github && o.git !== false;
             const owner = withGitHub ? await resolveOwner(call, o?.owner) : null;
             const r = await call("projects.create", { name, parentDir: await parentDir(), gitInit: o?.git !== false, gitEnabled: o?.git !== false, github: withGitHub ? { private: o?.github === "private", owner } : null });
             projectChanged(r.project.id);
-            const gh = !r.github
-              ? ""
-              : r.github.url
-                ? ` Das ${o?.github === "public" ? "öffentliche" : "private"} GitHub-Repository ist angelegt${owner ? `, in der Organisation ${owner}` : ""}.`
-                : ` Das GitHub-Repository ließ sich nicht anlegen: ${r.github.error ?? "unbekannter Fehler"}`;
-            return `Projekt ${r.project.name} ${r.project.gitEnabled ? "" : "ohne Git "}angelegt.${gh}`;
+            const gh = !r.github ? "" : r.github.url ? pj.githubCreated(o?.github === "public", owner) : pj.githubFailed(r.github.error ?? null);
+            return pj.created(r.project.name, r.project.gitEnabled, gh);
           }
           if (action === "import") {
             const dir = o?.path?.trim();
-            if (!dir) return "Fehler: Welcher Ordner? Bitte den Pfad nennen.";
+            if (!dir) return pj.whichDir;
             const withGitHub = !!o?.github && o.git !== false;
             const owner = withGitHub ? await resolveOwner(call, o?.owner) : null;
             const p = await call("projects.import", { path: dir, gitEnabled: o?.git !== false });
             projectChanged(p.id);
-            const forcedGit = o?.git === false && p.gitEnabled ? " Der Ordner hat schon ein Git-Repository, deshalb mit Git." : "";
-            const done = `Projekt ${p.name} ${p.gitEnabled ? "" : "ohne Git "}aufgenommen.${forcedGit}`;
+            const forcedGit = o?.git === false && p.gitEnabled ? pj.forcedGit : "";
+            const done = pj.imported(p.name, p.gitEnabled, forcedGit);
             if (!withGitHub) return done;
             try {
               await call("github.publish", { projectId: p.id, private: o?.github === "private", owner: owner ?? undefined });
               projectChanged(p.id);
-              return `${done} Das ${o?.github === "public" ? "öffentliche" : "private"} GitHub-Repository ist angelegt${owner ? `, in der Organisation ${owner}` : ""}.`;
+              return `${done}${pj.githubCreated(o?.github === "public", owner)}`;
             } catch (e) {
-              return `${done} Das GitHub-Repository ließ sich nicht anlegen: ${e instanceof Error ? e.message : String(e)}`;
+              return `${done}${pj.githubFailed(e instanceof Error ? e.message : String(e))}`;
             }
           }
           if (action === "clone") {
             const raw = o?.url?.trim();
-            if (!raw) return "Fehler: Welches Repository?";
+            if (!raw) return pj.whichRepo;
             let url = raw;
             if (!/:\/\/|@|\.git$/i.test(raw)) {
               // A spoken name ("shop api") against the repositories of the GitHub account.
               const plain = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "");
               const repos = await call("github.repos", {});
-              const repo = pickOne(repos, plain(raw), (r) => [r.fullName, plain(r.fullName.split("/").pop() ?? ""), plain(r.fullName)], { none: "Kein GitHub-Repository", many: "GitHub-Repositorys" });
+              const repo = pickOne(repos, plain(raw), (r) => [r.fullName, plain(r.fullName.split("/").pop() ?? ""), plain(r.fullName)], { none: tr().phone.common.what.repoNone, many: tr().phone.common.what.repoMany });
               url = repo.cloneUrl;
             }
             const p = await call("projects.clone", { url, parentDir: await parentDir(), dirName: o?.name?.trim() || undefined });
             projectChanged(p.id);
-            return `${p.name} geklont und als Projekt aufgenommen.`;
+            return pj.cloned(p.name);
           }
           const p = target(projectName, o);
-          if (action === "info") return `${p.name}${p.favorite ? ", Favorit" : ""}${p.parentId ? ", Agent-Worktree" : ""}: ${projectText(p)}.`;
+          if (action === "info") return pj.info(p.name, !!p.favorite, !!p.parentId, projectText(p));
           if (action === "remove") {
-            if (p.parentId) return `Fehler: ${p.name} ist ein Agent-Worktree. Den räumt remove_agent auf.`;
+            if (p.parentId) return pj.isWorktree(p.name);
             const deleteFolder = o?.deleteFolder === true;
             const deleteGitHubRepo = o?.deleteGitHubRepo === true;
             const remove = async () => {
               const r = await call("projects.remove", { projectId: p.id, deleteFolder, deleteGitHubRepo });
               projectChanged(p.id);
-              return [`Projekt ${p.name} aus FORGE entfernt.`, r.folderDeleted ? "Der Ordner ist gelöscht." : "Der Ordner bleibt.", r.githubDeleted ? "Das GitHub-Repository ist gelöscht." : ""]
+              return [pj.removed(p.name), r.folderDeleted ? pj.folderDeleted : pj.folderKept, r.githubDeleted ? pj.repoDeleted : ""]
                 .filter(Boolean)
                 .join(" ");
             };
             // Even without folder or repository: the session history in FORGE goes with it.
-            if (!deleteFolder && !deleteGitHubRepo) return askKeypad(`Das Projekt ${p.name} wird aus FORGE entfernt, mit seiner Session-Historie in FORGE. Ordner und GitHub-Repository bleiben`, remove);
+            if (!deleteFolder && !deleteGitHubRepo) return askKeypad(pj.confirmRemove(p.name), remove);
             const info = await call("projects.removalInfo", { projectId: p.id });
-            if (deleteGitHubRepo && !info.githubRepo) return `Fehler: ${p.name} hat kein GitHub-Repository.`;
-            if (deleteGitHubRepo && !info.githubSignedIn) return "Fehler: FORGE ist nicht bei GitHub angemeldet.";
-            if (deleteGitHubRepo && !info.githubCanDelete) return "Fehler: GitHub verlangt dafür die Berechtigung delete_repo. Die lässt sich nur am Computer beim Entfernen des Projekts erteilen.";
+            if (deleteGitHubRepo && !info.githubRepo) return pj.noRepo(p.name);
+            if (deleteGitHubRepo && !info.githubSignedIn) return pj.notSignedIn;
+            if (deleteGitHubRepo && !info.githubCanDelete) return pj.needsDeleteRepo;
             if (deleteFolder && info.folderBlocker) return `Fehler: ${info.folderBlocker}`;
-            const what = [deleteFolder && `der Ordner des Projekts ${p.name} mit allen Dateien`, deleteGitHubRepo && `das GitHub-Repository ${asData(info.githubRepo ?? "")} mit Code, Issues und Pull Requests`]
+            const what = [deleteFolder && pj.deleteFolder(p.name), deleteGitHubRepo && pj.deleteRepo(asData(info.githubRepo ?? ""))]
               .filter(Boolean)
-              .join(" und ");
-            return askKeypad(`${what} würde endgültig gelöscht, das lässt sich nicht rückgängig machen`, remove);
+              .join(pj.and);
+            return askKeypad(pj.confirmDelete(what), remove);
           }
           if (action === "rename") {
             const name = o?.name?.trim();
-            if (!name) return "Fehler: Wie soll das Projekt heißen?";
+            if (!name) return pj.whatName;
             const next = await call("projects.update", { projectId: p.id, name });
             projectChanged(p.id);
-            return `${p.name} heißt jetzt ${next.name}.`;
+            return pj.renamed(p.name, next.name);
           }
           if (action === "favorite") {
             const favorite = o?.favorite !== false;
             await call("projects.update", { projectId: p.id, favorite });
             projectChanged(p.id);
-            return favorite ? `${p.name} ist jetzt ein Favorit.` : `${p.name} ist kein Favorit mehr.`;
+            return favorite ? pj.favorite(p.name) : pj.noFavorite(p.name);
           }
           const patch = {
             ...(o?.profile ? { profile: o.profile } : {}),
@@ -2465,71 +2473,74 @@ export class PhoneService {
             ...(o?.devCommand !== undefined ? { devCommand: o.devCommand.trim() || null } : {}),
             ...(o?.git !== undefined ? { gitEnabled: o.git } : {}),
           };
-          if (!Object.keys(patch).length) return `${p.name}: ${projectText(p)}.`;
+          if (!Object.keys(patch).length) return pj.settings(p.name, projectText(p));
           const next = await call("projects.update", { projectId: p.id, ...patch });
           projectChanged(p.id);
-          return `Gespeichert für ${next.name}: ${projectText(next)}.`;
+          return pj.saved(next.name, projectText(next));
         }),
       files: (projectName, action, o) =>
         run(true, async () => {
           const p = target(projectName, o);
+          const fm = tr().phone.files;
           const rel = (o?.path ?? "").trim().replace(/\\/g, "/").replace(/^\.?\/+/, "");
           if (action === "read") {
-            if (!rel) return "Fehler: Welche Datei?";
+            if (!rel) return fm.whichFile;
             // Keys would go to the speech service and be read out, like the values of dev_settings.
-            if (isSensitiveFile(rel)) return `Fehler: ${asData(rel)} enthält Zugangsdaten und wird am Telefon nicht vorgelesen.`;
+            if (isSensitiveFile(rel)) return fm.sensitive(asData(rel));
             const f = await call("projects.readFile", { projectId: p.id, path: rel });
-            if (f.binary) return `${asData(rel)} ist keine Textdatei.`;
-            if (!f.content.trim()) return `${asData(rel)} ist leer.`;
-            return `${asData(rel)}${f.truncated ? ", nur der Anfang" : ""}: ${excerptData(f.content, 4000)}`;
+            if (f.binary) return fm.notText(asData(rel));
+            if (!f.content.trim()) return fm.empty(asData(rel));
+            return fm.content(asData(rel), !!f.truncated, excerptData(f.content, 4000));
           }
           if (action === "find") {
-            if (!rel) return "Fehler: Welche Datei?";
+            if (!rel) return fm.whichFile;
             const { files } = await call("projects.allFiles", { projectId: p.id });
             const hits = matchingFiles(files, rel);
-            if (!hits.length) return `In ${p.name} gibt es keine Datei ${asData(rel)}.`;
+            if (!hits.length) return fm.noMatch(p.name, asData(rel));
             const shown = hits.slice(0, 10).map((f) => f.path);
-            return `${hits.length === 1 ? "Gefunden" : `${hits.length} Treffer`}: ${asData(shown.join(", "))}${hits.length > 10 ? ` und ${hits.length - 10} weitere` : ""}.`;
+            return fm.found(hits.length, asData(shown.join(", ")), hits.length - 10);
           }
           const entries = await call("projects.listFiles", { projectId: p.id, dir: rel });
-          if (!entries.length) return rel ? `Der Ordner ${asData(rel)} ist leer.` : `${p.name} ist leer.`;
-          const list = (xs: string[]) => `${xs.slice(0, 40).join(", ")}${xs.length > 40 ? ` und ${xs.length - 40} weitere` : ""}`;
+          if (!entries.length) return rel ? fm.emptyDir(asData(rel)) : fm.emptyProject(p.name);
+          const list = (xs: string[]) => `${xs.slice(0, 40).join(", ")}${xs.length > 40 ? tr().phone.common.andMore(xs.length - 40) : ""}`;
           const dirs = entries.filter((e) => e.isDir).map((e) => e.name);
           const files = entries.filter((e) => !e.isDir).map((e) => e.name);
-          return asData([dirs.length ? `Ordner: ${list(dirs)}.` : "", files.length ? `Dateien: ${list(files)}.` : ""].filter(Boolean).join(" "));
+          return asData([dirs.length ? fm.dirs(list(dirs)) : "", files.length ? fm.list(list(files)) : ""].filter(Boolean).join(" "));
         }),
       claudeMd: (projectName, action, o) =>
         run(true, async () => {
           const p = optionalTarget(projectName, o);
+          const cm = tr().phone.claudeMd;
           if (action === "list") {
             const files = await call("config.memoryList", { projectId: p?.id });
-            return files.map((f) => `${f.label}: ${f.exists ? "vorhanden" : "fehlt"}`).join("\n");
+            return files.map((f) => `${f.label}: ${f.exists ? cm.exists : cm.missing}`).join("\n");
           }
           const scope = o?.scope ?? (p ? "project" : "global");
-          if (scope !== "global" && !p) return "Fehler: Für welches Projekt?";
+          if (scope !== "global" && !p) return tr().phone.common.whichFor;
           const projectId = scope === "global" ? undefined : p?.id;
-          const where = scope === "global" ? "Die globale CLAUDE.md" : scope === "local" ? `Die persönliche CLAUDE.local.md von ${p!.name}` : `Die CLAUDE.md von ${p!.name}`;
+          const where = scope === "global" ? cm.global : scope === "local" ? cm.local(p!.name) : cm.project(p!.name);
           const doc = await call("config.memoryRead", { projectId, scope });
-          if (action === "read") return doc.content.trim() ? `${where}: ${excerptData(doc.content, 4000)}` : `${where} ist leer oder fehlt.`;
+          if (action === "read") return doc.content.trim() ? cm.read(where, excerptData(doc.content, 4000)) : cm.empty(where);
           const text = o?.text?.trim();
-          if (!text) return "Fehler: Was soll ergänzt werden?";
+          if (!text) return cm.whatToAdd;
           const content = doc.content.trim() ? `${doc.content.trimEnd()}\n\n${text}\n` : `${text}\n`;
           await call("config.memoryWrite", { projectId, scope, content, expectedMtimeMs: doc.mtimeMs });
-          return `${where} ist ergänzt.`;
+          return cm.added(where);
         }),
       sessions: (action, o) =>
         run(true, async () => {
+          const sm = tr().phone.sessions;
           if (action === "day_report") {
             const p = o?.project?.trim() ? findProject(o.project) : null;
             const today = new Date();
             const date = localDate(new Date(today.getFullYear(), today.getMonth(), today.getDate() - Math.max(0, Math.round(o?.daysBack ?? 0))));
             if (o?.summary) {
               const r = await call("reports.dailySummary", { projectId: p?.id, date });
-              return `Zusammenfassung von Claude: ${asData(r.summary)}`;
+              return sm.summary(asData(r.summary));
             }
             // One block for the whole report: titles, commit messages and questions in it are data.
             const text = reportText(await call("reports.daily", { projectId: p?.id, date }), { ref: refFor });
-            return text.length > REPORT_MAX ? `${asData(text.slice(0, REPORT_MAX))} (gekürzt, insgesamt ${text.length} Zeichen; für mehr nach einem Projekt fragen oder eine Zusammenfassung holen)` : asData(text);
+            return text.length > REPORT_MAX ? sm.reportCut(asData(text.slice(0, REPORT_MAX)), text.length) : asData(text);
           }
           if (action === "template_learn") return (await call("templates.learn", {})).message;
           if (action === "templates" || action === "template_send" || action === "template_save" || action === "template_delete" || action === "template_move") {
@@ -2548,126 +2559,127 @@ export class PhoneService {
                 .map((s) => ({ ...s, projectName: p.name }));
             } else list = await call("sessions.listAll", { query: query || undefined, status: o?.status });
             list = [...list].sort((x, y) => y.updatedAt.localeCompare(x.updatedAt));
-            const outside = external ? ` Außerdem ${external} Sessions aus dem Terminal, die FORGE nicht steuert.` : "";
-            if (!list.length) return `Keine passende Session.${outside}`;
-            const lines = list.slice(0, 10).map((s) => `${refFor(s.id)}: ${asData(s.title ?? "ohne Titel")}${p ? "" : ` im Projekt ${s.projectName}`}, ${statusText(s)}, zuletzt ${dateTime(s.updatedAt)}`);
-            return `${list.length > 10 ? `${list.length} Sessions, die 10 neuesten:\n` : ""}${lines.join("\n")}${outside}`;
+            const outside = external ? sm.external(external) : "";
+            if (!list.length) return sm.noMatch(outside);
+            const lines = list.slice(0, 10).map((s) => sm.line(refFor(s.id), asData(s.title ?? tr().phone.untitled), p ? null : s.projectName, statusText(s), dateTime(s.updatedAt)));
+            return `${list.length > 10 ? sm.newest(list.length) : ""}${lines.join("\n")}${outside}`;
           }
-          const transcripts = o?.keepTranscript === true ? "Die Verläufe bei Claude Code bleiben" : "Auch die Verläufe bei Claude Code werden gelöscht";
+          const transcripts = o?.keepTranscript === true ? sm.keepTranscripts : sm.deleteTranscripts;
           if (action === "delete_all") {
             const all = await call("sessions.listAll", {});
-            if (!all.length) return "Es gibt keine Sessions.";
-            return askKeypad(`Alle ${all.length} Sessions werden gelöscht. ${transcripts}`, async () => {
+            if (!all.length) return sm.none;
+            return askKeypad(sm.confirmDeleteAll(all.length, transcripts), async () => {
               const r = await call("sessions.deleteAll", { deleteTranscript: o?.keepTranscript !== true });
               a.focus = null;
-              return r.failed ? `${r.deleted.length} Sessions gelöscht, ${r.failed} nicht${r.error ? `: ${r.error}` : "."}` : `Alle ${r.deleted.length} Sessions gelöscht.`;
+              return r.failed ? sm.deletedSome(r.deleted.length, r.failed, r.error ?? null) : sm.deletedAll(r.deleted.length);
             });
           }
           const s = resolve(o?.session ?? "");
           const r = refFor(s.id);
           if (action === "delete") {
-            return askKeypad(`Die Session ${r} ${asData(s.title ?? "ohne Titel")} wird gelöscht. ${transcripts}`, async () => {
+            return askKeypad(sm.confirmDelete(r, asData(s.title ?? tr().phone.untitled), transcripts), async () => {
               const res = await call("sessions.delete", { sessionId: s.id, deleteTranscript: o?.keepTranscript !== true });
               if (a.focus === s.id) a.focus = null;
-              return res.deleted ? `${r} gelöscht${res.transcriptDeleted ? ", auch ihr Verlauf bei Claude Code" : ""}.` : `Fehler: ${r} ließ sich nicht löschen.`;
+              return res.deleted ? sm.deleted(r, !!res.transcriptDeleted) : sm.notDeleted(r);
             });
           }
           if (action === "ui_compare" || action === "ui_compare_retake") {
             const c = await call("uiCompare.latest", { sessionId: s.id });
-            if (!c) return `Zu ${r} gibt es keinen Vorher-Nachher-Vergleich. FORGE macht einen, wenn Claude UI-Dateien ändert, während der Dev-Server läuft.`;
+            if (!c) return sm.noCompare(r);
             if (action === "ui_compare_retake") {
               await call("uiCompare.retake", { sessionId: s.id, compareId: c.id });
-              return `Das Nachher-Bild des letzten Vergleichs von ${r} wird neu aufgenommen. Die Bilder gibt es nur am Computer.`;
+              return sm.retake(r);
             }
-            const files = c.files.length === 1 ? "1 UI-Datei" : `${c.files.length} UI-Dateien`;
-            const state = c.status === "ready" ? "Vorher- und Nachher-Bild liegen vor" : c.status === "capturing" ? "das Nachher-Bild wird gerade aufgenommen" : `das Nachher-Bild fehlt: ${asData(c.error ?? "unbekannter Fehler")}`;
-            return `Letzter Vergleich von ${r} vom ${dateTime(c.createdAt)}, Seite ${asData(c.url)}, ${files} geändert (${asData(c.files.slice(0, 5).join(", "))}): ${state}. Die Bilder gibt es nur am Computer.`;
+            const files = sm.uiFiles(c.files.length);
+            const state = c.status === "ready" ? sm.compareReady : c.status === "capturing" ? sm.compareCapturing : sm.compareFailed(asData(c.error ?? sm.unknownError));
+            return sm.compare(r, dateTime(c.createdAt), asData(c.url), files, asData(c.files.slice(0, 5).join(", ")), state);
           }
           if (action === "rewind") {
             const prompt = await promptBack(s.id, o?.messagesBack ?? 1);
             const res = await call("sessions.rewind", { sessionId: s.id, messageUuid: prompt.uuid, dryRun: false });
-            if (!res.canRewind) return `Fehler: ${r} lässt sich nicht zurückspulen${res.error ? `: ${res.error}` : "."}`;
-            if (!res.filesChanged.length) return `Seit dieser Nachricht hat ${r} keine Dateien geändert, es gab nichts zurückzusetzen.`;
-            return `Dateien von ${r} auf den Stand vor der Nachricht ${excerptData(prompt.text, 120)} zurückgesetzt, ${res.filesChanged.length} ${res.filesChanged.length === 1 ? "Datei" : "Dateien"} geändert. Der Verlauf bleibt.`;
+            if (!res.canRewind) return sm.cannotRewind(r, res.error ?? null);
+            if (!res.filesChanged.length) return sm.nothingToRewind(r);
+            return sm.rewound(r, excerptData(prompt.text, 120), res.filesChanged.length);
           }
           if (action === "edit") {
             const text = o?.text?.trim();
-            if (!text) return "Fehler: Wie soll die Nachricht neu lauten?";
+            if (!text) return sm.editText;
             const prompt = await promptBack(s.id, o?.messagesBack ?? 1);
             await call("sessions.edit", { sessionId: s.id, seq: prompt.seq, text });
-            return `Die Nachricht ${excerptData(prompt.text, 120)} in ${r} ist ersetzt. Claude macht mit dem neuen Text weiter; die Dateien sind unverändert.`;
+            return sm.edited(excerptData(prompt.text, 120), r);
           }
           const before = o?.messagesBack ? await promptBack(s.id, o.messagesBack) : null;
           const res = await call("sessions.fork", { sessionId: s.id, beforeSeq: before?.seq, rewindFiles: o?.rewindFiles === true });
-          const files = res.filesChanged?.length ? ` ${res.filesChanged.length} Dateien sind auf den Stand davor zurückgesetzt.` : "";
-          if (!res.session) return `Vor der ersten Nachricht gibt es nichts zu übernehmen, dafür einfach eine neue Session starten.${files}`;
+          const files = res.filesChanged?.length ? sm.forkFiles(res.filesChanged.length) : "";
+          if (!res.session) return sm.forkNothing(files);
           a.focus = res.session.id;
-          const cut = before && res.prompt ? ` Die weggelassene Nachricht war: ${excerptData(res.prompt, 300)}` : "";
-          return `Neuer Zweig ${refFor(res.session.id)} von ${r} angelegt. Er wartet und läuft mit send_message weiter.${files}${cut}`;
+          const cut = before && res.prompt ? sm.forkCut(excerptData(res.prompt, 300)) : "";
+          return sm.forked(refFor(res.session.id), r, files, cut);
         }),
       extensions: (kind, action, o) =>
         run(true, async () => {
           const p = optionalTarget(o?.project, o);
+          const xm = tr().phone.extensions;
           const projectId = p?.id;
           const name = () => {
             const n = o?.name?.trim();
-            if (!n) throw new Error("Welcher Name?");
+            if (!n) throw new Error(xm.whichName);
             return n;
           };
-          const only = (actions: string) => `Fehler: Hier geht ${actions}.`;
+          const only = (actions: string) => xm.only(actions);
           if (kind === "mcp") {
             if (action === "list") {
               const list = await call("mcp.list", { projectId });
-              const state = { connected: "verbunden", failed: "Fehler", needs_auth: "braucht Anmeldung", unknown: "Zustand unbekannt" } as const;
-              return list.length ? `MCP-Server: ${asData(list.map((m) => `${m.name} ${state[m.status]}`).join(", "))}` : "Keine MCP-Server eingerichtet.";
+              const state = xm.mcpState;
+              return list.length ? xm.mcpList(asData(list.map((m) => `${m.name} ${state[m.status]}`).join(", "))) : xm.mcpNone;
             }
-            if (action !== "add" && action !== "remove") return only("bei MCP-Servern list, add und remove");
+            if (action !== "add" && action !== "remove") return only(xm.mcpOnly);
             const scope = o?.scope ?? (p ? "local" : "user");
-            if (scope !== "user" && !p) return "Fehler: Für welches Projekt?";
-            const where = scope === "user" ? "global" : scope === "project" ? `im Projekt ${p!.name}` : `nur lokal in ${p!.name}`;
+            if (scope !== "user" && !p) return tr().phone.common.whichFor;
+            const where = scope === "user" ? xm.global : scope === "project" ? xm.inProject(p!.name) : xm.localIn(p!.name);
             if (action === "add") {
               const serverTarget = o?.target?.trim();
-              if (!serverTarget) return "Fehler: Welcher Befehl oder welche URL?";
+              if (!serverTarget) return xm.whichTarget;
               const transport = o?.transport ?? (/^https?:\/\//i.test(serverTarget) ? "http" : "stdio");
               const args = o?.args?.trim() ? o.args.trim().split(/\s+/) : [];
               const r = await call("mcp.add", { projectId, name: name(), scope, transport, target: serverTarget, args, env: {} });
-              return r.ok ? `MCP-Server ${name()} ${where} hinzugefügt.` : `Fehler: ${excerptData(r.output, 400)}`;
+              return r.ok ? xm.mcpAdded(name(), where) : tr().phone.error(excerptData(r.output, 400));
             }
             const r = await call("mcp.remove", { projectId, name: name(), scope });
-            return r.ok ? `MCP-Server ${name()} ${where} entfernt.` : `Fehler: ${excerptData(r.output, 400)}`;
+            return r.ok ? xm.mcpRemoved(name(), where) : tr().phone.error(excerptData(r.output, 400));
           }
           if (kind === "skill" || kind === "agent") {
-            const [one, many] = kind === "skill" ? ["Skill", "Skills"] : ["Subagent", "Subagenten"];
+            const [one, many] = kind === "skill" ? [xm.skill, xm.skills] : [xm.agent, xm.agents];
             const docs = await call("config.docs", { kind, projectId });
             if (action === "list") {
-              if (!docs.length) return `Keine ${many}.`;
-              return `${many}: ${asData(docs.map((d) => `${d.name}${d.scope === "project" ? " (Projekt)" : ""}${d.description ? `: ${d.description.slice(0, 160)}` : ""}`).join("\n"))}`;
+              if (!docs.length) return xm.none(many);
+              return xm.docList(many, asData(docs.map((d) => `${d.name}${d.scope === "project" ? xm.projectMark : ""}${d.description ? `: ${d.description.slice(0, 160)}` : ""}`).join("\n")));
             }
             if (action === "add") {
               const scope = o?.scope === "user" || !p ? "user" : "project";
               const docName = slugify(name(), 64);
-              if (!docName) return "Fehler: Der Name braucht Buchstaben oder Ziffern.";
+              if (!docName) return xm.nameNeedsLetters;
               await call("config.docCreate", { kind, scope, name: docName, description: o?.description?.trim() ?? "", projectId });
-              return `${one} ${docName} ${scope === "project" ? `im Projekt ${p!.name}` : "global"} angelegt.`;
+              return xm.docCreated(one, docName, scope === "project" ? xm.inProject(p!.name) : xm.global);
             }
-            if (action !== "read" && action !== "remove") return only(`bei ${many} list, read, add und remove`);
-            const doc = pickOne(docs, name(), (d) => [d.name, d.name.replace(/-/g, " ")], { none: `Kein ${one}`, many });
+            if (action !== "read" && action !== "remove") return only(xm.docOnly(many));
+            const doc = pickOne(docs, name(), (d) => [d.name, d.name.replace(/-/g, " ")], { none: xm.docNone(one), many });
             if (action === "read") {
               const d = await call("config.docRead", { kind, scope: doc.scope, name: doc.name, projectId });
-              return `${one} ${doc.name}: ${excerptData(d.content, 3000)}`;
+              return xm.docRead(one, doc.name, excerptData(d.content, 3000));
             }
             await call("config.docDelete", { kind, scope: doc.scope, name: doc.name, projectId });
-            return `${one} ${doc.name} gelöscht.`;
+            return xm.docDeleted(one, doc.name);
           }
           if (kind === "command") {
-            if (action !== "list") return only("bei Commands nur list; ausführen lassen sie sich mit send_message an eine Session");
+            if (action !== "list") return only(xm.commandOnly);
             const own = (await call("system.commands", { projectId })).filter((c) => !c.builtin);
-            return own.length ? `Eigene Slash-Befehle: ${asData(own.map((c) => `${c.name}${c.description ? `: ${c.description.slice(0, 120)}` : ""}`).join("\n"))}` : "Keine eigenen Slash-Befehle.";
+            return own.length ? xm.commands(asData(own.map((c) => `${c.name}${c.description ? `: ${c.description.slice(0, 120)}` : ""}`).join("\n"))) : xm.noCommands;
           }
           if (kind === "hook") {
-            if (action !== "list" && action !== "read") return only("bei Hooks nur list und read; ändern lassen sie sich in FORGE");
+            if (action !== "list" && action !== "read") return only(xm.hookOnly);
             const scope = o?.scope ?? (p ? "project" : "user");
-            if (scope !== "user" && !p) return "Fehler: Für welches Projekt?";
+            if (scope !== "user" && !p) return tr().phone.common.whichFor;
             const r = await call("config.hooksRead", { scope, projectId });
             let events: Record<string, unknown> = {};
             try {
@@ -2677,33 +2689,34 @@ export class PhoneService {
               // Shown as text below.
             }
             const names = Object.entries(events).map(([e, v]) => `${e} (${Array.isArray(v) ? v.length : 1})`);
-            if (!names.length && !r.hooks.trim().replace(/^\{\s*\}$/, "")) return `Keine Hooks ${scope === "user" ? "global" : `in ${p!.name}`}.`;
-            return `Hooks ${scope === "user" ? "global" : `in ${p!.name}`}: ${asData(names.join(", "))}${action === "read" ? ` Inhalt: ${excerptData(r.hooks, 2000)}` : ""}`;
+            const hookWhere = scope === "user" ? xm.global : xm.hooksIn(p!.name);
+            if (!names.length && !r.hooks.trim().replace(/^\{\s*\}$/, "")) return xm.noHooks(hookWhere);
+            return xm.hooks(hookWhere, asData(names.join(", ")), action === "read" ? excerptData(r.hooks, 2000) : "");
           }
           const catalog = await call("plugins.catalog", {});
-          const pluginState = (x: (typeof catalog)[number]) => (!x.installed ? "nicht installiert" : x.enabled === false ? "installiert, aus" : "installiert");
+          const pluginState = (x: (typeof catalog)[number]) => (!x.installed ? xm.notInstalled : x.enabled === false ? xm.installedOff : xm.installed);
           if (action === "list" || action === "read") {
             const q = (o?.query ?? o?.name ?? "").trim().toLowerCase();
             if (q) {
               const hits = catalog.filter((x) => `${x.name} ${x.description}`.toLowerCase().includes(q)).slice(0, 8);
-              return hits.length ? asData(hits.map((x) => `${x.name}, ${pluginState(x)}: ${x.description.slice(0, 160)}`).join("\n")) : `Kein Plugin zu „${q}“ im Katalog.`;
+              return hits.length ? asData(hits.map((x) => `${x.name}, ${pluginState(x)}: ${x.description.slice(0, 160)}`).join("\n")) : xm.noPlugin(q);
             }
             const installed = catalog.filter((x) => x.installed);
-            return installed.length ? `Plugins: ${asData(installed.map((x) => `${x.name}${x.enabled === false ? " (aus)" : ""}`).join(", "))}` : "Keine Plugins installiert.";
+            return installed.length ? xm.plugins(asData(installed.map((x) => `${x.name}${x.enabled === false ? xm.pluginOff : ""}`).join(", "))) : xm.noPlugins;
           }
-          const plugin = pickOne(catalog, name(), (x) => [x.name, x.id], { none: "Kein Plugin", many: "Plugins" });
+          const plugin = pickOne(catalog, name(), (x) => [x.name, x.id], { none: tr().phone.common.what.pluginNone, many: tr().phone.common.what.pluginMany });
           if (action === "add") {
-            if (plugin.installed) return `Plugin ${plugin.name} ist schon installiert.`;
+            if (plugin.installed) return xm.alreadyInstalled(plugin.name);
             await call("plugins.install", { id: plugin.id });
-            return `Plugin ${plugin.name} installiert.`;
+            return xm.pluginInstalled(plugin.name);
           }
-          if (!plugin.installed) return `Fehler: Plugin ${plugin.name} ist nicht installiert.`;
+          if (!plugin.installed) return xm.pluginNotInstalled(plugin.name);
           if (action === "remove") {
             await call("plugins.uninstall", { id: plugin.id });
-            return `Plugin ${plugin.name} deinstalliert.`;
+            return xm.pluginRemoved(plugin.name);
           }
           await call("plugins.setEnabled", { id: plugin.id, enabled: action === "enable" });
-          return `Plugin ${plugin.name} ist ${action === "enable" ? "an" : "aus"}.`;
+          return xm.pluginSwitched(plugin.name, action === "enable");
         }),
       forgeSettings: (patch) =>
         run(true, async () => {
@@ -2739,7 +2752,7 @@ export class PhoneService {
             changed.push("defaultProjectDir");
           }
           const rule = patch.policyRule;
-          if (rule && patch.policyRuleOn === undefined && !changed.length) return `Die Regel ${POLICY_RULE_LABELS[rule]} ist ${cur.disabledPolicyRules.includes(rule) ? "aus" : "an"}.`;
+          if (rule && patch.policyRuleOn === undefined && !changed.length) return tr().phone.settings.rule(policyRuleLabel(rule), !cur.disabledPolicyRules.includes(rule));
           if (rule && patch.policyRuleOn !== undefined) {
             const off = cur.disabledPolicyRules.filter((r) => r !== rule);
             update.disabledPolicyRules = patch.policyRuleOn ? off : [...off, rule];
@@ -2747,68 +2760,69 @@ export class PhoneService {
           }
           if (!changed.length) return `${(["defaultModel", "defaultEffort", "defaultProfile", "defaultProjectDir", ...flags, "idleCloseMinutes", "alwaysOnTop", "policyRule"] as const).map((k) => settingText(cur, k)).join(", ")}.`;
           const next = await call("settings.update", update);
-          return `Gespeichert: ${changed.map((k) => settingText(next, k)).join(", ")}.`;
+          return tr().phone.settings.saved(changed.map((k) => settingText(next, k)).join(", "));
         }),
       forgeSystem: (action, o) =>
         run(true, async () => {
+          const sy = tr().phone.system;
           if (action === "diagnostics") {
             const d = await call("system.diagnostics", { refresh: true });
             const facts = [
-              d.claude.found ? `Claude Code${d.claude.version ? ` ${d.claude.version}` : ""} ist da` : `Claude Code fehlt${d.claude.error ? `: ${d.claude.error}` : ""}`,
-              !d.auth.checked ? "" : d.auth.loggedIn ? `angemeldet${d.auth.subscriptionType ? ` mit Abo ${d.auth.subscriptionType}` : ""}` : `nicht angemeldet${d.auth.error ? `: ${d.auth.error}` : ""}`,
-              d.apiKeyEnvPresent ? (d.apiKeyStripped ? "ein API-Key in der Umgebung wird ausgeblendet" : "ein API-Key in der Umgebung geht an Claude Code") : "",
-              d.git.found ? `Git${d.git.version ? ` ${d.git.version}` : ""} ist da` : "Git fehlt",
-              d.gh.found ? (d.gh.authenticated === false ? "die GitHub-CLI ist nicht angemeldet" : "die GitHub-CLI ist da") : "die GitHub-CLI fehlt",
-              d.python.found ? `${d.python.version ?? "Python"} ist da${d.python.bundled ? " (mitgeliefert)" : ""}` : "Python fehlt",
+              d.claude.found ? sy.claudeThere(d.claude.version || null) : sy.claudeMissing(d.claude.error || null),
+              !d.auth.checked ? "" : d.auth.loggedIn ? sy.signedIn(d.auth.subscriptionType || null) : sy.notSignedIn(d.auth.error || null),
+              d.apiKeyEnvPresent ? (d.apiKeyStripped ? sy.apiKeyHidden : sy.apiKeyPassed) : "",
+              d.git.found ? sy.gitThere(d.git.version || null) : sy.gitMissing,
+              d.gh.found ? (d.gh.authenticated === false ? sy.ghNotSignedIn : sy.ghThere) : sy.ghMissing,
+              d.python.found ? sy.pythonThere(d.python.version ?? null, !!d.python.bundled) : sy.pythonMissing,
             ].filter(Boolean);
             const missing = d.capabilities.filter((c) => c.state === "unavailable").map((c) => c.label);
-            return `${facts.join(", ")}.${missing.length ? ` Nicht verfügbar: ${missing.join(", ")}.` : ""}`;
+            return sy.diagnostics(facts.join(", "), missing.join(", "));
           }
           if (action === "update_check") return updateText(await call("app.checkUpdate", {}));
           if (action === "update_download") return updateText(await call("app.downloadUpdate", {}));
           if (action === "update_install") {
             const st = await call("app.installUpdate", {});
-            return `FORGE${st.latest ? ` ${st.latest.version}` : ""} wird jetzt installiert und startet neu, dieses Gespräch endet dabei. Offene Sessions gehen danach weiter, laufende machen von selbst dort weiter, wo sie waren.`;
+            return sy.installing(st.latest ? st.latest.version : null);
           }
           if (action === "install_check") return installText(await call("app.checkInstall", {}));
           if (action === "support") {
             const bare = (url: string) => url.replace(/^https:\/\//, "");
             const given = await call("app.donations", {}).catch(() => null);
-            const euros = given ? new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR" }).format(given.cents / 100) : null;
-            const sum = given ? ` Bisher wurden ${euros} gespendet, in ${given.count} ${given.count === 1 ? "Beitrag" : "Beiträgen"}, vor Gebühren.` : "";
-            return `FORGE ist ein Open-Source-Produkt der Vanturis UG. Einen freiwilligen Beitrag zahlt man hier: ${bare(SUPPORT_LINKS.donate)}, eine Spendenquittung gibt es nicht.${sum} Verbesserungen und Featurevorschläge kommen als Issue auf GitHub: ${bare(SUPPORT_LINKS.feedback)}. Beide Links zeigt FORGE hinter dem roten Herz neben der Suche links oben.`;
+            const euros = given ? new Intl.NumberFormat(tr().phone.locale, { style: "currency", currency: "EUR" }).format(given.cents / 100) : null;
+            const sum = given ? sy.donated(euros ?? "", given.count) : "";
+            return sy.support(bare(SUPPORT_LINKS.donate), sum, bare(SUPPORT_LINKS.feedback));
           }
           if (action === "install_repair") {
             const st = await call("app.checkInstall", {});
             if (!st.checkable || st.complete !== false || !st.installer) return installText(st);
             // The restart ends this call: only after the code on the keypad.
             return askKeypad(
-              `FORGE installiert sich vollständig mit dem Installer ${st.installer.version} und startet dabei neu, dieses Gespräch endet. Offene Sessions machen danach weiter`,
+              sy.confirmRepair(st.installer.version),
               async () => {
                 await call("app.repairInstall", {});
-                return "FORGE wird jetzt vollständig installiert und startet neu, dieses Gespräch endet gleich.";
+                return sy.repairing;
               },
-              "noch ist nichts geändert",
+              tr().phone.common.nothingChanged,
             );
           }
           if (action === "changelog") {
             const c = await call("app.changelog", {});
-            if (!c) return "Gerade wird keine neue Version angeboten.";
-            if (c.status === "writing") return "Claude fasst die Neuerungen gerade zusammen. Frag in ein paar Sekunden noch einmal.";
-            if (c.status === "ready" && c.text) return `Neu in ${c.tag}: ${excerptData(c.text, 3000)}`;
+            if (!c) return sy.noNewVersion;
+            if (c.status === "writing") return sy.writingChangelog;
+            if (c.status === "ready" && c.text) return sy.changelog(c.tag, excerptData(c.text, 3000));
             const notes = (await call("app.updateState", {})).latest?.notes;
-            if (notes?.trim()) return `Neu in ${c.tag} laut Release-Notes: ${excerptData(notes, 3000)}`;
-            if (c.commits.length) return `Änderungen in ${c.tag}: ${excerptData(c.commits.slice(0, 15).join("\n"), 3000)}`;
-            return `Fehler: ${c.message ?? "Für diese Version gibt es keine Beschreibung."}`;
+            if (notes?.trim()) return sy.releaseNotes(c.tag, excerptData(notes, 3000));
+            if (c.commits.length) return sy.commits(c.tag, excerptData(c.commits.slice(0, 15).join("\n"), 3000));
+            return tr().phone.error(c.message ?? sy.noDescription);
           }
           if (action === "claude_check") {
             const st = await call("claude.setupState", {});
-            if (st.phase === "running" && st.task !== "login") return st.task === "install" ? "Claude Code wird gerade installiert." : "Claude Code wird gerade aktualisiert.";
-            const last = st.task === "update" || st.task === "install" ? (st.phase === "error" ? ` Der letzte Versuch ist fehlgeschlagen: ${st.message ?? "unbekannter Fehler"}` : "") : "";
+            if (st.phase === "running" && st.task !== "login") return st.task === "install" ? sy.claudeInstalling : sy.claudeUpdating;
+            const last = st.task === "update" || st.task === "install" ? (st.phase === "error" ? sy.lastFailed(st.message ?? null) : "") : "";
             const u = await call("claude.checkUpdate", {});
-            if (!u.installed) return `Claude Code ist nicht installiert.${last}`;
-            if (u.error) return `Installiert ist Claude Code ${u.installed}. Die neueste Version ließ sich nicht abfragen: ${u.error}${last}`;
-            return `${u.available ? `Claude Code ${u.latest} ist verfügbar, installiert ist ${u.installed}.` : `Claude Code ist aktuell, Version ${u.installed}.`}${last}`;
+            if (!u.installed) return sy.claudeNotInstalled(last);
+            if (u.error) return sy.claudeLatestUnknown(u.installed, u.error, last);
+            return `${u.available ? sy.claudeAvailable(u.latest ?? "", u.installed) : sy.claudeCurrent(u.installed)}${last}`;
           }
           if (action === "claude_update") {
             try {
@@ -2816,127 +2830,127 @@ export class PhoneService {
             } catch (e) {
               if (!(e instanceof ForgeError && e.code === "CLAUDE_NOT_INSTALLED")) throw e;
               await call("claude.install", {});
-              return "Claude Code wird installiert. Ob es geklappt hat, sagt claude_check.";
+              return sy.claudeInstallStarted;
             }
-            return "Claude Code wird aktualisiert. Laufende Sessions nutzen die neue Version erst nach einem Neustart.";
+            return sy.claudeUpdateStarted;
           }
           if (action === "claude_logout") {
             // Signing in again needs the browser at the computer, so the phone cannot undo this.
             return askKeypad(
-              "Claude Code wird auf diesem Computer abgemeldet. Sessions brauchen danach eine neue Anmeldung, und die geht nur am Rechner",
+              sy.confirmLogout,
               async () => {
                 await call("claude.logout", {});
-                return "Claude Code ist abgemeldet. Neu anmelden geht in FORGE am Rechner.";
+                return sy.loggedOut;
               },
-              "noch ist nichts geändert",
+              tr().phone.common.nothingChanged,
             );
           }
           if (action === "backup_create") {
             const b = await call("backup.create", {});
-            return `Backup angelegt: ${b.parts.map((x) => x.label).join(", ")}.`;
+            return sy.backupCreated(b.parts.map((x) => x.label).join(", "));
           }
           if (action === "sync_on" || action === "sync_off") {
             const on = action === "sync_on";
-            if (on && !(await call("github.account", {}))) return "Fehler: Dafür muss FORGE bei GitHub angemeldet sein. Die Anmeldung geht nur am Rechner.";
+            if (on && !(await call("github.account", {}))) return sy.syncNeedsGitHub;
             await call("settings.update", { syncEnabled: on, syncAsked: true });
-            return on ? "Der Abgleich über GitHub ist an. FORGE gleicht jetzt ab." : "Der Abgleich über GitHub ist aus. Das Repository auf GitHub bleibt.";
+            return on ? sy.syncOn : sy.syncOffKept;
           }
           if (action === "sync_status" || action === "sync_now") {
             const st = action === "sync_now" ? await call("sync.now", {}) : await call("sync.status", {});
-            if (st.phase === "off") return "Der Abgleich über GitHub ist aus.";
-            if (st.phase === "no-github") return "Der Abgleich ist an, aber FORGE ist nicht bei GitHub angemeldet.";
-            if (st.phase === "needs-passphrase") return `Der Abgleich wartet auf das Sync-Passwort. Das lässt sich nur in FORGE am Rechner eingeben.${st.error ? ` ${st.error}` : ""}`;
-            const when = st.phase === "syncing" ? "FORGE gleicht gerade ab" : st.phase === "error" ? `Der letzte Abgleich ist fehlgeschlagen: ${st.error ?? "unbekannter Fehler"}` : st.lastSyncAt ? `Zuletzt abgeglichen ${dateTime(st.lastSyncAt)}` : "Noch nicht abgeglichen";
+            if (st.phase === "off") return sy.syncOff;
+            if (st.phase === "no-github") return sy.syncNoGitHub;
+            if (st.phase === "needs-passphrase") return sy.syncPassphrase(st.error ?? "");
+            const when = st.phase === "syncing" ? sy.syncing : st.phase === "error" ? sy.syncFailed(st.error ?? null) : st.lastSyncAt ? sy.lastSync(dateTime(st.lastSyncAt)) : sy.neverSynced;
             const facts = [
-              st.remote ? `${when}, zuletzt geschrieben von ${asData(st.remote.device)}` : when,
-              st.available.length ? `Von anderen Computern fehlen hier noch: ${st.available.map((p) => asData(p.name)).join(", ")}` : "",
-              st.localOnly.length ? `Nur noch auf diesem Computer, weil auf einem anderen entfernt: ${st.localOnly.map((x) => asData(x.label)).join(", ")}` : "",
+              st.remote ? sy.writtenBy(when, asData(st.remote.device)) : when,
+              st.available.length ? sy.missingHere(st.available.map((p) => asData(p.name)).join(", ")) : "",
+              st.localOnly.length ? sy.onlyHere(st.localOnly.map((x) => asData(x.label)).join(", ")) : "",
             ].filter(Boolean);
-            return `${facts.join(". ")}.`;
+            return sy.syncFacts(facts.join(". "));
           }
           if (action === "sync_clone") {
             const st = await call("sync.status", {});
             const want = o?.project?.trim();
-            if (!want) return "Fehler: Welches Projekt?";
-            const hit = pickOne(st.available, want.toLowerCase(), (p) => [p.name.toLowerCase(), p.key], { none: "Kein fehlendes Projekt", many: "Fehlende Projekte" });
+            if (!want) return sy.whichProject;
+            const hit = pickOne(st.available, want.toLowerCase(), (p) => [p.name.toLowerCase(), p.key], { none: tr().phone.common.what.missingNone, many: tr().phone.common.what.missingMany });
             const p = await call("sync.cloneProject", { key: hit.key });
             projectChanged(p.id);
-            return `${p.name} ist jetzt auch auf diesem Computer.`;
+            return sy.cloned(p.name);
           }
           const localOnlyItem = async () => {
             const st = await call("sync.status", {});
-            return pickOne(st.localOnly, o!.project!.trim().toLowerCase(), (x) => [x.label.toLowerCase(), x.key], { none: "Nichts, das nur hier ist, heißt", many: "Einträge" });
+            return pickOne(st.localOnly, o!.project!.trim().toLowerCase(), (x) => [x.label.toLowerCase(), x.key], { none: tr().phone.common.what.localNone, many: tr().phone.common.what.localMany });
           };
           if (action === "sync_keep") {
-            if (!o?.project?.trim()) return "Fehler: Was soll wieder abgeglichen werden?";
+            if (!o?.project?.trim()) return sy.whatToKeep;
             const item = await localOnlyItem();
             await call("sync.keep", { key: item.key });
-            return `${item.label} wird wieder abgeglichen und geht auch auf die anderen Computer.`;
+            return sy.kept(item.label);
           }
           if (action === "sync_force") {
             const item = o?.project?.trim() ? await localOnlyItem() : null;
             const st = await call("sync.status", {});
-            if (!st.enabled) return "Fehler: Der Abgleich über GitHub ist aus.";
+            if (!st.enabled) return sy.syncIsOff;
             const removes = item ? [item] : st.localOnly;
             const what = item
-              ? `${item.label} wird auf den Stand von GitHub gesetzt, also hier entfernt${item.kind === "project" ? " (nur aus FORGE, der Ordner bleibt, die Session-Historie in FORGE ist weg)" : ""}`
-              : `Dieser Computer wird hart auf den Stand von GitHub gesetzt${removes.length ? `, entfernt werden hier: ${removes.map((x) => asData(x.label)).join(", ")} (Projekte nur aus FORGE, ihre Ordner bleiben)` : ""}`;
+              ? sy.forceItem(item.label, item.kind === "project")
+              : sy.forceAll(removes.length ? removes.map((x) => asData(x.label)).join(", ") : null);
             // The projects named now are the ones removed; if that changed until the code, nothing happens.
             const expectRemove = item ? undefined : removes.filter((x) => x.kind === "project").map((x) => x.key);
             // Removing from FORGE takes the session history with it: confirmed on the keypad, like deleting.
             return askKeypad(
-              `${what}. Vorher legt FORGE ein Backup an`,
+              sy.forceConfirm(what),
               async () => {
                 await call("sync.forceLocal", { key: item?.key, expectRemove });
-                const later = " Telefon-Einstellungen von GitHub übernimmt FORGE erst nach diesem Gespräch.";
-                return item ? `${item.label} ist auf dem Stand von GitHub.` : `Dieser Computer ist auf dem Stand von GitHub. Der Stand davor ist als Backup gesichert.${later}`;
+                const later = sy.phoneLater;
+                return item ? sy.forcedItem(item.label) : sy.forcedAll(later);
               },
-              "noch ist nichts geändert",
+              tr().phone.common.nothingChanged,
             );
           }
           if (action === "sync_versions" || action === "sync_restore") {
             const versions = await call("sync.versions", {});
             if (action === "sync_versions") {
-              if (!versions.length) return "Auf GitHub liegt noch kein Stand.";
+              if (!versions.length) return sy.noVersions;
               return versions
                 .slice(0, 5)
-                .map((v, i) => `${i + 1}: ${dateTime(v.date)}${v.device ? `, von ${asData(v.device)}` : ""}`)
+                .map((v, i) => sy.versionLine(i + 1, dateTime(v.date), v.device ? asData(v.device) : null))
                 .join("\n");
             }
             const nr = o?.backup?.trim();
-            if (!nr) return "Fehler: Welcher Stand? Die Nummer aus sync_versions.";
+            if (!nr) return sy.whichVersion;
             const v = /^\d+$/.test(nr) ? versions[Number(nr) - 1] : versions.find((x) => x.sha.startsWith(nr));
-            if (!v) return `Fehler: Stand ${nr} gibt es nicht.`;
+            if (!v) return sy.noVersion(nr);
             // The phone settings reconnect the line and would end this call.
             const parts = (o?.parts ?? BackupPart.options).filter((x) => x !== "phone");
-            const phone = o?.parts?.includes("phone") ? " Telefon-Einstellungen lassen sich nur in FORGE am Rechner zurückholen, sonst endet dieses Gespräch." : "";
-            if (!parts.length) return `Fehler: Nichts zum Zurückholen.${phone}`;
+            const phone = o?.parts?.includes("phone") ? sy.phoneRestoreSync : "";
+            if (!parts.length) return sy.nothingToRestore(phone);
             const r = await call("sync.restoreVersion", { sha: v.sha, parts });
-            return `Stand vom ${dateTime(v.date)} zurückgeholt: ${r.restored.map((x) => BACKUP_PARTS[x]).join(", ")}. Der Stand davor ist als Backup gesichert. ${r.notes.join(" ")}${phone}`;
+            return sy.restoredVersion(dateTime(v.date), r.restored.map((x) => sy.backupParts[x]).join(", "), r.notes.join(" "), phone);
           }
           const list = await backups();
           if (action === "backup_list") {
-            if (!list.length) return "Es gibt noch keine Backups.";
+            if (!list.length) return sy.noBackups;
             return list
               .slice(0, 5)
-              .map((b, i) => `${i + 1}: ${dateTime(b.createdAt)}, ${BACKUP_REASONS[b.reason]}, FORGE ${b.appVersion}`)
+              .map((b, i) => sy.backupLine(i + 1, dateTime(b.createdAt), sy.backupReasons[b.reason], b.appVersion))
               .join("\n");
           }
           const key = o?.backup?.trim();
-          if (!key) return "Fehler: Welches Backup? Die Nummer aus backup_list.";
+          if (!key) return sy.whichBackup;
           const b = /^\d+$/.test(key) ? list[Number(key) - 1] : list.find((x) => x.id === key);
-          if (!b?.id) return `Fehler: Backup ${key} gibt es nicht.`;
+          if (!b?.id) return sy.noBackup(key);
           const inside = b.parts.map((x) => x.part);
           // Restoring the phone settings reconnects the line and would end this call.
           const parts = (o?.parts ?? inside).filter((x) => x !== "phone" && inside.includes(x));
-          const phone = o?.parts?.includes("phone") ? " Telefon-Einstellungen lassen sich nur in FORGE am Rechner wiederherstellen, sonst endet dieses Gespräch." : "";
-          if (!parts.length) return `Fehler: Davon ist in diesem Backup nichts enthalten.${phone}`;
+          const phone = o?.parts?.includes("phone") ? sy.phoneRestoreBackup : "";
+          if (!parts.length) return sy.notInBackup(phone);
           const r = await call("backup.restore", { id: b.id, parts });
-          return `Backup vom ${dateTime(b.createdAt)} wiederhergestellt: ${r.restored.map((x) => BACKUP_PARTS[x]).join(", ")}. Der Stand davor ist als Backup gesichert.${r.notes.length ? ` ${r.notes.join(" ")}` : ""}${phone}`;
+          return sy.restoredBackup(dateTime(b.createdAt), r.restored.map((x) => sy.backupParts[x]).join(", "), r.notes.join(" "), phone);
         }),
       search: (query) =>
         run(true, async () => {
-          if (!query.trim()) return "Fehler: Wonach soll ich suchen?";
+          if (!query.trim()) return tr().phone.search.what;
           const lines: string[] = [];
           const seen = new Set<string>();
           // One line per session, its best hit first.
@@ -2944,45 +2958,47 @@ export class PhoneService {
             if (seen.has(h.sessionId) || lines.length >= 5) continue;
             seen.add(h.sessionId);
             const snippet = h.snippet.split(SEARCH_MARK_START).join("").split(SEARCH_MARK_END).join("");
-            lines.push(`${refFor(h.sessionId)} ${asData(h.sessionTitle ?? "ohne Titel")} im Projekt ${h.projectName}: ${excerptData(snippet, 300)}`);
+            lines.push(tr().phone.search.line(refFor(h.sessionId), asData(h.sessionTitle ?? tr().phone.untitled), h.projectName, excerptData(snippet, 300)));
           }
-          return lines.length ? lines.join("\n") : "Dazu steht in keiner Session etwas.";
+          return lines.length ? lines.join("\n") : tr().phone.search.none;
         }),
       callSettings: (patch) =>
         run(Object.values(patch).some((v) => v !== undefined), async () => {
+          const cs = tr().phone.callSettings;
           const { numbers, ...times } = patch;
           const changes = Object.fromEntries(Object.entries(times).filter(([, v]) => v !== undefined)) as CallSettingsPatch;
           if (Object.keys(changes).length) await this.saveConfig({ notifyOn: { ...this.cfg.notifyOn, ...changes } });
           const changed = numbers ? await this.changeNumber(numbers) : "";
           const targets = this.notifyTargets();
           // The numbers themselves only after the PIN: they are personal.
-          const lists = locked() ? "" : ` ${numberListing("Angerufen wird", this.cfg.notifyNumbers)} ${numberListing("Anrufen dürfen", this.cfg.allowedCallers)}`;
-          if (!targets.length) return `${changed}FORGE ruft von sich aus nicht an: In den Einstellungen ist keine Nummer dafür eingetragen und eingeschaltet.${lists}`;
+          const lists = locked() ? "" : ` ${numberListing(cs.called, this.cfg.notifyNumbers)} ${numberListing(cs.allowed, this.cfg.allowedCallers)}`;
+          if (!targets.length) return cs.noTargets(changed, lists);
           const on = this.cfg.notifyOn;
-          const list = [on.done ? "wenn eine Session fertig ist" : "", on.approval ? "wenn eine Entscheidung nötig ist oder Claude dringend etwas meldet" : "", on.error ? "bei Fehlern" : ""].filter(Boolean);
-          const where = targets.length > 1 ? ` Es klingelt bei ${targets.length} Nummern gleichzeitig, wer zuerst abnimmt, hat das Gespräch.` : "";
-          return `${changed}${list.length ? `FORGE ruft an: ${list.join(", ")}.${where}` : "FORGE ruft von sich aus nicht mehr an."}${lists}`;
+          const list = [on.done ? cs.whenDone : "", on.approval ? cs.whenApproval : "", on.error ? cs.whenError : ""].filter(Boolean);
+          const where = targets.length > 1 ? cs.parallel(targets.length) : "";
+          return `${changed}${list.length ? cs.calls(list.join(", "), where) : cs.noCalls}${lists}`;
         }),
       callBack: (minutes, about) =>
         run(false, async () => {
-          if (!about.trim()) return "Fehler: Was soll ich beim Rückruf sagen?";
+          if (!about.trim()) return tr().phone.callBack.what;
           // Back to the number of this call; only numbers FORGE may talk to anyway.
           const number = a.call.remoteNumber;
           const known = [...activeNumbers(this.cfg.allowedCallers), ...this.notifyTargets()].some((n) => sameNumber(n, number));
           // Otherwise the numbers for notifications ring, stored as "".
-          if (!known && !this.notifyTargets().length) return "Fehler: Für diese Nummer kann ich keinen Rückruf vereinbaren.";
+          if (!known && !this.notifyTargets().length) return tr().phone.callBack.notForNumber;
           const due = this.scheduleCallback(known ? number : "", minutes, about);
-          return `Rückruf vereinbart für ${due.toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })} Uhr.`;
+          return tr().phone.callBack.agreed(due.toLocaleTimeString(tr().phone.locale, { hour: "2-digit", minute: "2-digit" }));
         }),
       usage: () =>
         run(false, async () => {
           const u = await sessions.planUsage(false);
+          const um = tr().phone.usage;
           const limit = sessions.rateLimit();
-          const reached = limit.status === "reached" ? `Limit erreicht${limit.resetsAt ? `, wieder frei ${spokenTime(limit.resetsAt)}` : ""}.` : "";
+          const reached = limit.status === "reached" ? um.reached(limit.resetsAt ? spokenTime(limit.resetsAt) : null) : "";
           const perSecond = Math.round(tokenMeter.rate());
-          const rate = perSecond ? `Gerade ${perSecond} Tokens pro Sekunde über alle Sessions und Agenten.` : "Gerade gibt Claude keine Tokens aus.";
-          if (!u.available || !u.windows.length) return [reached || `Nutzung nicht verfügbar${u.error ? `: ${u.error}` : ""}.`, rate].join("\n");
-          const windows = u.windows.map((w) => `${w.label}: ${Math.round(w.utilization)} Prozent${w.resetsAt ? `, zurückgesetzt ${spokenTime(w.resetsAt)}` : ""}. ${spokenForecast(w)}`);
+          const rate = perSecond ? um.rate(perSecond) : um.noRate;
+          if (!u.available || !u.windows.length) return [reached || um.unavailable(u.error ?? null), rate].join("\n");
+          const windows = u.windows.map((w) => um.window(w.label, Math.round(w.utilization), w.resetsAt ? spokenTime(w.resetsAt) : null, spokenForecast(w)));
           return [reached, ...windows, rate].filter(Boolean).join("\n");
         }),
     };

@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import { tr } from "../i18n/index.js";
 
 /**
  * Secrets of the phone feature (SIP password, OpenAI key), encrypted with DPAPI for the current
@@ -73,7 +74,7 @@ function dpapi(op: "protect" | "unprotect", input: string): Promise<string> {
     child.on("error", reject);
     child.on("close", (code) => {
       if (code === 0) resolve((out.charCodeAt(0) === 0xfeff ? out.slice(1) : out).replace(/\r?\n$/, ""));
-      else reject(new Error(`Geheimnis konnte nicht ${op === "protect" ? "verschlüsselt" : "entschlüsselt"} werden: ${err.trim().slice(0, 200)}`));
+      else reject(new Error(tr().phone.line.secretFailed(op === "protect", err.trim().slice(0, 200))));
     });
     child.stdin.end(input, "utf8");
   });

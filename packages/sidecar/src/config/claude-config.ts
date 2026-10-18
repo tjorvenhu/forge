@@ -4,6 +4,7 @@ import { appendFile, copyFile, cp, mkdir, readdir, readFile, rename, rm, stat, w
 import os from "node:os";
 import path from "node:path";
 import { ForgeError, type ConfigDoc, type ConfigDocKind, type ConfigScope, type MemoryFile, type MemoryScope } from "@forge/protocol";
+import { tr } from "../i18n/index.js";
 import { dataDir } from "../util/paths.js";
 import { run } from "../util/proc.js";
 import { resolveTool } from "../util/tools.js";
@@ -21,18 +22,19 @@ const NAME_RE = /^[a-z0-9][a-z0-9-]{0,63}$/;
 
 export function memoryPath(scope: MemoryScope, projectDir: string | null): string {
   if (scope === "global") return path.join(claudeHome(), "CLAUDE.md");
-  if (!projectDir) throw new ForgeError("VALIDATION", "Für diese Datei wird ein Projekt benötigt.");
+  if (!projectDir) throw new ForgeError("VALIDATION", tr().system.claudeConfig.needsProjectFile);
   if (scope === "project") return path.join(projectDir, "CLAUDE.md");
   if (scope === "project-dir") return path.join(projectDir, ".claude", "CLAUDE.md");
   return path.join(projectDir, "CLAUDE.local.md");
 }
 
-const MEMORY_LABELS: Record<MemoryScope, string> = {
-  global: "Global (alle Projekte)",
-  project: "Projekt (CLAUDE.md, wird committet)",
-  "project-dir": "Projekt (.claude/CLAUDE.md)",
-  local: "Nur für dich (CLAUDE.local.md, nicht im Git)",
-};
+function memoryLabel(scope: MemoryScope): string {
+  const c = tr().system.claudeConfig;
+  if (scope === "global") return c.memoryGlobal;
+  if (scope === "project") return c.memoryProject;
+  if (scope === "project-dir") return c.memoryProjectDir;
+  return c.memoryLocal;
+}
 
 async function fileInfo(p: string) {
   try {
@@ -51,7 +53,7 @@ export async function listMemory(projectDir: string | null): Promise<MemoryFile[
     const info = await fileInfo(p);
     // .claude/CLAUDE.md is an alternative location; only show it when it is actually used.
     if (scope === "project-dir" && !info.exists) continue;
-    out.push({ scope, label: MEMORY_LABELS[scope], path: p, ...info });
+    out.push({ scope, label: memoryLabel(scope), path: p, ...info });
   }
   return out;
 }
@@ -59,7 +61,7 @@ export async function listMemory(projectDir: string | null): Promise<MemoryFile[
 async function readText(p: string): Promise<{ content: string; mtimeMs: number | null }> {
   const info = await fileInfo(p);
   if (!info.exists) return { content: "", mtimeMs: null };
-  if (info.size > MAX_DOC_BYTES) throw new ForgeError("VALIDATION", "Datei ist größer als 1 MB.");
+  if (info.size > MAX_DOC_BYTES) throw new ForgeError("VALIDATION", tr().system.claudeConfig.fileTooLarge);
   return { content: await readFile(p, "utf8"), mtimeMs: info.mtimeMs };
 }
 
@@ -90,13 +92,13 @@ export async function writeAtomic(p: string, content: string) {
 }
 
 async function writeText(p: string, content: string, expectedMtimeMs: number | null): Promise<number> {
-  if (Buffer.byteLength(content) > MAX_DOC_BYTES) throw new ForgeError("VALIDATION", "Inhalt ist größer als 1 MB.");
+  if (Buffer.byteLength(content) > MAX_DOC_BYTES) throw new ForgeError("VALIDATION", tr().system.claudeConfig.contentTooLarge);
   const info = await fileInfo(p);
   if (info.exists && expectedMtimeMs !== null && info.mtimeMs !== expectedMtimeMs) {
-    throw new ForgeError("CONFLICT", "Die Datei wurde inzwischen außerhalb von FORGE geändert. Bitte neu laden.");
+    throw new ForgeError("CONFLICT", tr().system.claudeConfig.changedOutside);
   }
   if (info.exists && expectedMtimeMs === null) {
-    throw new ForgeError("CONFLICT", "Die Datei existiert bereits. Bitte neu laden.");
+    throw new ForgeError("CONFLICT", tr().system.claudeConfig.exists);
   }
   await mkdir(path.dirname(p), { recursive: true });
   if (info.exists) await copyFile(p, p + ".bak");
@@ -137,12 +139,12 @@ export async function writeMemory(scope: MemoryScope, projectDir: string | null,
 
 function docRoot(kind: ConfigDocKind, scope: ConfigScope, projectDir: string | null): string {
   const base = scope === "user" ? claudeHome() : projectDir ? path.join(projectDir, ".claude") : null;
-  if (!base) throw new ForgeError("VALIDATION", "Für diesen Bereich wird ein Projekt benötigt.");
+  if (!base) throw new ForgeError("VALIDATION", tr().system.claudeConfig.needsProjectArea);
   return path.join(base, kind === "skill" ? "skills" : "agents");
 }
 
 function docPath(kind: ConfigDocKind, scope: ConfigScope, projectDir: string | null, name: string): string {
-  if (!NAME_RE.test(name)) throw new ForgeError("VALIDATION", "Name: Kleinbuchstaben, Ziffern und Bindestriche, höchstens 64 Zeichen.");
+  if (!NAME_RE.test(name)) throw new ForgeError("VALIDATION", tr().system.claudeConfig.nameRule);
   const root = docRoot(kind, scope, projectDir);
   return kind === "skill" ? path.join(root, name, "SKILL.md") : path.join(root, `${name}.md`);
 }
@@ -191,10 +193,11 @@ export async function writeDoc(kind: ConfigDocKind, scope: ConfigScope, projectD
 }
 
 export function docTemplate(kind: ConfigDocKind, name: string, description: string): string {
+  const c = tr().system.claudeConfig;
   if (kind === "skill") {
-    return `---\nname: ${name}\ndescription: ${description}\n---\n\n# ${name}\n\nAnleitung für Claude: wann dieser Skill gilt und wie vorzugehen ist.\n`;
+    return `---\nname: ${name}\ndescription: ${description}\n---\n\n# ${name}\n\n${c.skillBody}\n`;
   }
-  return `---\nname: ${name}\ndescription: ${description}\n---\n\nDu bist ein spezialisierter Subagent. Beschreibe hier Rolle, Vorgehen und Grenzen.\n`;
+  return `---\nname: ${name}\ndescription: ${description}\n---\n\n${c.agentBody}\n`;
 }
 
 /** Deleted skill folders are moved here, outside every folder Claude Code loads skills from. */
@@ -235,7 +238,7 @@ export type SettingsScope = "user" | "project" | "local";
 
 export function settingsPath(scope: SettingsScope, projectDir: string | null): string {
   if (scope === "user") return path.join(claudeHome(), "settings.json");
-  if (!projectDir) throw new ForgeError("VALIDATION", "Für diesen Bereich wird ein Projekt benötigt.");
+  if (!projectDir) throw new ForgeError("VALIDATION", tr().system.claudeConfig.needsProjectArea);
   return path.join(projectDir, ".claude", scope === "project" ? "settings.json" : "settings.local.json");
 }
 
@@ -266,18 +269,19 @@ const HOOK_EVENTS = new Set([
 
 /** Structural check of a hooks object: { Event: [{ matcher?, hooks: [{ type, command|... }] }] }. */
 export function validateHooks(value: unknown): string | null {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return "Hooks müssen ein JSON-Objekt sein.";
+  const c = tr().system.claudeConfig;
+  if (!value || typeof value !== "object" || Array.isArray(value)) return c.hooksObject;
   for (const [event, matchers] of Object.entries(value)) {
-    if (!HOOK_EVENTS.has(event)) return `Unbekanntes Hook-Ereignis: ${event}`;
-    if (!Array.isArray(matchers)) return `${event}: erwartet wird eine Liste.`;
+    if (!HOOK_EVENTS.has(event)) return c.unknownHook(event);
+    if (!Array.isArray(matchers)) return c.hooksListExpected(event);
     for (const m of matchers) {
-      if (!m || typeof m !== "object") return `${event}: Eintrag muss ein Objekt sein.`;
+      if (!m || typeof m !== "object") return c.hookEntryObject(event);
       const hooks = (m as { hooks?: unknown }).hooks;
-      if (!Array.isArray(hooks) || hooks.length === 0) return `${event}: jeder Eintrag braucht eine nicht leere "hooks"-Liste.`;
+      if (!Array.isArray(hooks) || hooks.length === 0) return c.hooksList(event);
       for (const h of hooks) {
         const t = (h as { type?: unknown }).type;
-        if (typeof t !== "string") return `${event}: jeder Hook braucht einen "type" (z. B. "command").`;
-        if (t === "command" && typeof (h as { command?: unknown }).command !== "string") return `${event}: Hook vom Typ "command" braucht "command".`;
+        if (typeof t !== "string") return c.hookNeedsType(event);
+        if (t === "command" && typeof (h as { command?: unknown }).command !== "string") return c.hookNeedsCommand(event);
       }
     }
   }
@@ -289,10 +293,10 @@ async function readSettings(p: string): Promise<{ data: Record<string, unknown>;
   if (!content.trim()) return { data: {}, mtimeMs };
   try {
     const data = JSON.parse(content) as unknown;
-    if (!data || typeof data !== "object" || Array.isArray(data)) throw new Error("kein Objekt");
+    if (!data || typeof data !== "object" || Array.isArray(data)) throw new Error(tr().system.claudeConfig.notObject);
     return { data: data as Record<string, unknown>, mtimeMs };
   } catch (e) {
-    throw new ForgeError("VALIDATION", `${p} ist kein gültiges JSON: ${e instanceof Error ? e.message : e}`);
+    throw new ForgeError("VALIDATION", tr().system.claudeConfig.invalidJsonFile(p, e instanceof Error ? e.message : String(e)));
   }
 }
 
@@ -308,13 +312,13 @@ export async function writeHooks(scope: SettingsScope, projectDir: string | null
   try {
     hooks = JSON.parse(hooksJson);
   } catch (e) {
-    throw new ForgeError("VALIDATION", `Kein gültiges JSON: ${e instanceof Error ? e.message : e}`);
+    throw new ForgeError("VALIDATION", tr().system.claudeConfig.invalidJson(e instanceof Error ? e.message : String(e)));
   }
   const err = validateHooks(hooks);
   if (err) throw new ForgeError("VALIDATION", err);
   const p = settingsPath(scope, projectDir);
   const { data, mtimeMs } = await readSettings(p);
-  if (mtimeMs !== expectedMtimeMs) throw new ForgeError("CONFLICT", "settings.json wurde inzwischen geändert. Bitte neu laden.");
+  if (mtimeMs !== expectedMtimeMs) throw new ForgeError("CONFLICT", tr().system.claudeConfig.settingsChanged);
   const next = { ...data };
   if (Object.keys(hooks as object).length === 0) delete next.hooks;
   else next.hooks = hooks;

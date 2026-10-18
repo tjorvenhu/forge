@@ -2,6 +2,7 @@ import { createSocket, type Socket } from "node:dgram";
 import { lookup } from "node:dns/promises";
 import { EventEmitter } from "node:events";
 import { digestAuthorization, pickChallenge } from "./digest.js";
+import { tr } from "../i18n/index.js";
 import { answerDirection, parseSdp, withDirection } from "./sdp.js";
 import {
   cseqOf,
@@ -115,7 +116,7 @@ export class SipCall extends EventEmitter<CallEvents> {
     this.localSdp = sdp;
     const res = this.ua.inviteResponse(this, 200, "OK", sdp);
     this.state = "active";
-    this.repeatUntilAck(() => this.ua.respond(this, res), cseqOf(this.invite).seq, () => void this.hangup("Keine Bestätigung (ACK) von der Anlage"));
+    this.repeatUntilAck(() => this.ua.respond(this, res), cseqOf(this.invite).seq, () => void this.hangup(tr().phone.call.noAck));
   }
 
   /** Incoming call that is still ringing: final error response, repeated until the ACK (Timer G/H). */
@@ -332,7 +333,7 @@ export class SipUserAgent extends EventEmitter<UaEvents> {
       false,
     );
     if (expires === 0 || this.stopped) return;
-    if (!res) return this.registerFailed(`Keine Antwort von ${this.account.server}:${this.account.port}. Server und Port prüfen.`);
+    if (!res) return this.registerFailed(tr().phone.line.noResponse(this.account.server, this.account.port));
     if (res.status === 423) {
       const min = Number(getHeader(res, "min-expires"));
       if (min > 0) return this.register(min, relearned);
@@ -852,13 +853,13 @@ function grantedExpires(res: SipMessage, contact: Address): number | null {
 /** Readable reason with the SIP answer, so the call log tells e.g. "not registered" (480) from "no answer" (487). */
 function describeFailure(status: number, reason: string): string {
   const sip = `SIP ${status}${reason ? ` ${reason}` : ""}`;
-  if (status === 486 || status === 600) return `Besetzt (${sip})`;
-  if (status === 603) return `Abgelehnt (${sip})`;
-  if (status === 404 || status === 484) return `Nummer nicht erreichbar (${sip})`;
-  if (status === 480) return `Nicht erreichbar, Telefon nicht angemeldet oder „Nicht stören“ (${sip})`;
-  if (status === 408 || status === 487) return `Nicht angenommen (${sip})`;
-  if (status === 401 || status === 403 || status === 407) return `Anlage hat den Anruf nicht erlaubt (${sip})`;
-  return `Anruf fehlgeschlagen (${sip})`;
+  if (status === 486 || status === 600) return tr().phone.line.sipBusy(sip);
+  if (status === 603) return tr().phone.line.sipDeclined(sip);
+  if (status === 404 || status === 484) return tr().phone.line.sipNumberUnreachable(sip);
+  if (status === 480) return tr().phone.line.unreachable(sip);
+  if (status === 408 || status === 487) return tr().phone.line.sipNotAnswered(sip);
+  if (status === 401 || status === 403 || status === 407) return tr().phone.line.sipNotAllowed(sip);
+  return tr().phone.line.sipFailed(sip);
 }
 
 /** The local IP the OS would use to reach the PBX (no packet is sent). */

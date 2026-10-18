@@ -2,7 +2,7 @@ import type { BackupPart, PolicyRuleId } from "@forge/protocol";
 import type { AutomationTag } from "../../phone/tools.js";
 import { phoneTools } from "./phone-tools.js";
 
-const on = (v: boolean) => (v ? "an" : "aus");
+const on = (v: boolean): string => (v ? "an" : "aus");
 
 /** German texts (phone). Source of the keys: the English file is typed against this one. */
 export const phone = {
@@ -185,6 +185,13 @@ Sicherheit:
     credentialsRejected: "Zugangsdaten abgelehnt",
     registrationRejected: "Anmeldung abgelehnt",
     unreachable: (sip: string) => `Nicht erreichbar, Telefon nicht angemeldet oder „Nicht stören“ (${sip})`,
+    sipBusy: (sip: string) => `Besetzt (${sip})`,
+    sipDeclined: (sip: string) => `Abgelehnt (${sip})`,
+    sipNumberUnreachable: (sip: string) => `Nummer nicht erreichbar (${sip})`,
+    sipNotAnswered: (sip: string) => `Nicht angenommen (${sip})`,
+    sipNotAllowed: (sip: string) => `Anlage hat den Anruf nicht erlaubt (${sip})`,
+    sipFailed: (sip: string) => `Anruf fehlgeschlagen (${sip})`,
+    secretFailed: (protect: boolean, detail: string) => `Geheimnis konnte nicht ${protect ? "verschlüsselt" : "entschlüsselt"} werden: ${detail}`,
   },
 
   /** reasons in the call list and the first words of calls FORGE makes */
@@ -251,6 +258,7 @@ Sicherheit:
     locked: "Gesperrt. Der Anrufer muss zuerst seine PIN über die Telefontastatur eingeben und mit Raute bestätigen.",
     lockedNoPin: "Gesperrt. In FORGE ist keine PIN eingerichtet, deshalb ist Steuern am Telefon aus.",
     unavailable: "Das ist hier nicht verfügbar.",
+    notAvailable: "Nicht verfügbar",
     whichSession: "Welche Session? Bitte ein Kürzel wie S1 oder einen Teil des Titels angeben.",
     refUnknown: (r: string) => `${r} ist in diesem Gespräch nicht vergeben. Erst status aufrufen.`,
     noSession: (raw: string) => `Keine Session zu „${raw}“ gefunden. Erst status aufrufen.`,

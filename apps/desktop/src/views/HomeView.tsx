@@ -14,12 +14,14 @@ import { Badge, EmptyState, ErrorBanner, SectionTitle, Spinner } from "@/compone
 import { SessionStatusBadge } from "@/components/workspace/SessionStatusBadge";
 import { SummaryButton } from "@/components/workspace/SummaryButton";
 import { Skeleton, SkeletonRegion } from "@/components/ui/skeleton";
+import { t } from "@/i18n";
 
 type LiveSession = ResultOf<"sessions.listLive">[number];
 type Tone = "accent" | "warning" | "success" | "danger";
 
 const ICON_TONE: Record<Tone, string> = { accent: "text-accent", warning: "text-warning", success: "text-success", danger: "text-danger" };
 const WORKING = new Set(["starting", "running", "stopping"]);
+const h = t.views.home;
 
 /**
  * Start page as a status page: what runs right now (call, sessions, pushes, dev servers, test
@@ -34,38 +36,38 @@ export function HomeView() {
 
   return (
     <Page
-      title="Start"
-      subtitle="Was gerade läuft und was auf dich wartet"
+      title={h.title}
+      subtitle={h.subtitle}
       actions={
         <Button variant="ghost" onClick={() => openReport(null)}>
           <CalendarDays className="h-4 w-4" />
-          Tagesbericht
+          {h.dailyReport}
         </Button>
       }
     >
       <ApiKeyWarning />
       {projects.isLoading && (
-        <SkeletonRegion label="Lädt Startseite" className="flex flex-col gap-8">
+        <SkeletonRegion label={h.loadingHome} className="flex flex-col gap-8">
           <StatusGroupSkeleton rows={2} />
-          <StatusGroupSkeleton title="Zuletzt bearbeitet" rows={3} lead="badge" />
+          <StatusGroupSkeleton title={h.recentlyEdited} rows={3} lead="badge" />
         </SkeletonRegion>
       )}
-      {projects.isError && <ErrorBanner>Projekte konnten nicht geladen werden.</ErrorBanner>}
+      {projects.isError && <ErrorBanner>{t.views.common.projectsLoadFailed}</ErrorBanner>}
       {none && (
         <EmptyState
           icon={<FolderOpen className="h-10 w-10" />}
-          title="Noch keine Projekte"
+          title={t.views.common.noProjectsYet}
           action={
             <div className="flex gap-2">
               <Button variant="primary" onClick={() => setNewProject("import")}>
-                Ordner importieren
+                {h.importFolder}
               </Button>
-              <Button onClick={() => setNewProject("create")}>Neues Projekt</Button>
-              <Button onClick={() => setNewProject("clone")}>Repository klonen</Button>
+              <Button onClick={() => setNewProject("create")}>{h.newProject}</Button>
+              <Button onClick={() => setNewProject("clone")}>{h.cloneRepo}</Button>
             </div>
           }
         >
-          Importiere einen bestehenden Projektordner oder lege ein neues Projekt an. FORGE startet Claude Code dann direkt im Projekt.
+          {h.noProjectsHint}
         </EmptyState>
       )}
       {projects.isSuccess && !none && (
@@ -118,12 +120,12 @@ function RunningNow() {
       icon={icon}
       tone={tone}
       pulse={tone === "accent"}
-      title={s.title ?? "Ohne Titel"}
+      title={s.title ?? t.views.common.untitled}
       detail={`${s.projectName}${s.model ? ` · ${label(s.model)}` : ""}`}
       badge={<SessionStatusBadge status={s.status} live={s.live} autoContinueAt={s.autoContinueAt} />}
       action={
         <Button size="sm" variant={tone === "warning" ? "primary" : "ghost"} onClick={() => openProject(s.projectId, s.id)}>
-          <Play className="h-3.5 w-3.5" /> Öffnen
+          <Play className="h-3.5 w-3.5" /> {t.views.common.open}
         </Button>
       }
     />
@@ -133,15 +135,15 @@ function RunningNow() {
   const loading = [phoneQuery, liveQuery, appUpdateQuery, setupQuery, ...devServers, ...testDbs].some((q) => q.isLoading);
   if (empty && loading)
     return (
-      <SkeletonRegion label="Lädt laufende Vorgänge">
+      <SkeletonRegion label={h.loadingRunning}>
         <StatusGroupSkeleton rows={2} />
       </SkeletonRegion>
     );
   if (empty)
     return (
       <div className="rounded-xl border border-border bg-surface">
-        <EmptyState icon={<CheckCircle2 className="h-8 w-8 text-success" />} title="Gerade läuft nichts">
-          Telefonate, arbeitende Sessions, Pushes, Dev-Server und Test-Datenbanken erscheinen hier, sobald sie laufen.
+        <EmptyState icon={<CheckCircle2 className="h-8 w-8 text-success" />} title={h.nothingRunning}>
+          {h.nothingRunningHint}
         </EmptyState>
       </div>
     );
@@ -149,18 +151,18 @@ function RunningNow() {
   return (
     <div className="flex flex-col gap-6">
       {call_ && (
-        <StatusGroup title="Telefon">
+        <StatusGroup title={h.phone}>
           <StatusRow
             icon={<Phone className="h-4 w-4" />}
             tone="accent"
             pulse
-            title={call_.state === "ringing" ? (call_.direction === "in" ? `Anruf von ${call_.number}` : `Ruft ${call_.number} an`) : `Telefonat ${call_.direction === "in" ? "mit" : "an"} ${call_.number}`}
-            detail={[call_.state === "active" ? `seit ${clockTime(call_.startedAt)}` : "klingelt", call_.reason, call_.unlocked ? "Steuern freigegeben" : null].filter(Boolean).join(" · ")}
+            title={call_.state === "ringing" ? (call_.direction === "in" ? h.callFrom(call_.number) : h.callingTo(call_.number)) : call_.direction === "in" ? h.callWith(call_.number) : h.callTo(call_.number)}
+            detail={[call_.state === "active" ? h.since(clockTime(call_.startedAt)) : h.ringing, call_.reason, call_.unlocked ? h.controlUnlocked : null].filter(Boolean).join(" · ")}
           />
         </StatusGroup>
       )}
-      {waiting.length > 0 && <StatusGroup title="Wartet auf dich">{waiting.map((s) => sessionRow(s, "warning", <ShieldQuestion className="h-4 w-4" />))}</StatusGroup>}
-      {working.length > 0 && <StatusGroup title="Sessions bei der Arbeit">{working.map((s) => sessionRow(s, "accent", <Sparkles className="h-4 w-4" />))}</StatusGroup>}
+      {waiting.length > 0 && <StatusGroup title={h.waitingForYou}>{waiting.map((s) => sessionRow(s, "warning", <ShieldQuestion className="h-4 w-4" />))}</StatusGroup>}
+      {working.length > 0 && <StatusGroup title={h.sessionsWorking}>{working.map((s) => sessionRow(s, "accent", <Sparkles className="h-4 w-4" />))}</StatusGroup>}
       {ops.length > 0 && (
         <StatusGroup title="Git">
           {ops.map((o) => (
@@ -169,31 +171,31 @@ function RunningNow() {
               icon={<GitPullRequestArrow className="h-4 w-4" />}
               tone="accent"
               pulse
-              title={`${o.label} läuft`}
-              detail={`${names.get(o.projectId) ?? "Projekt"} · seit ${clockTime(o.startedAt)}`}
+              title={h.gitRunning(o.label)}
+              detail={`${names.get(o.projectId) ?? t.views.common.project} · ${h.since(clockTime(o.startedAt))}`}
               badge={<Spinner className="text-accent" />}
             />
           ))}
         </StatusGroup>
       )}
       {(servers.length > 0 || dbs.length > 0) && (
-        <StatusGroup title="Dev-Umgebung">
+        <StatusGroup title={h.devEnvironment}>
           {servers.map((d) => (
             <StatusRow
               key={`s${d!.projectId}`}
               icon={<Server className="h-4 w-4" />}
               tone="success"
-              title={`Dev-Server: ${names.get(d!.projectId) ?? "Projekt"}`}
-              detail={[d!.url, d!.startedAt ? `seit ${clockTime(d!.startedAt)}` : null].filter(Boolean).join(" · ")}
+              title={h.devServer(names.get(d!.projectId) ?? t.views.common.project)}
+              detail={[d!.url, d!.startedAt ? h.since(clockTime(d!.startedAt)) : null].filter(Boolean).join(" · ")}
               action={
                 <>
                   {d!.url && (
-                    <Button size="sm" variant="ghost" onClick={() => void openExternal(d!.url!)} title={`${d!.url} im Browser öffnen`}>
-                      <ExternalLink className="h-3.5 w-3.5" /> Öffnen
+                    <Button size="sm" variant="ghost" onClick={() => void openExternal(d!.url!)} title={h.openInBrowser(d!.url)}>
+                      <ExternalLink className="h-3.5 w-3.5" /> {t.views.common.open}
                     </Button>
                   )}
                   <Button size="sm" variant="ghost" onClick={() => devTools(d!.projectId, "server")}>
-                    <SquareTerminal className="h-3.5 w-3.5" /> Ausgabe
+                    <SquareTerminal className="h-3.5 w-3.5" /> {h.output}
                   </Button>
                 </>
               }
@@ -205,11 +207,11 @@ function RunningNow() {
               icon={<Database className="h-4 w-4" />}
               tone={d!.status === "running" ? "success" : "accent"}
               pulse={d!.status !== "running"}
-              title={`Test-Datenbank: ${names.get(d!.projectId) ?? "Projekt"}`}
-              detail={d!.status === "running" ? `PostgreSQL ${d!.version}${d!.startedAt ? ` · seit ${clockTime(d!.startedAt)}` : ""}` : d!.status === "installing" ? "wird geladen" : d!.status === "starting" ? "startet" : "stoppt"}
+              title={h.testDatabase(names.get(d!.projectId) ?? t.views.common.project)}
+              detail={d!.status === "running" ? `PostgreSQL ${d!.version}${d!.startedAt ? ` · ${h.since(clockTime(d!.startedAt))}` : ""}` : d!.status === "installing" ? h.dbDownloading : d!.status === "starting" ? h.dbStarting : h.dbStopping}
               action={
                 <Button size="sm" variant="ghost" onClick={() => devTools(d!.projectId, "database")}>
-                  Dev-Tools
+                  {h.devTools}
                 </Button>
               }
             />
@@ -217,18 +219,18 @@ function RunningNow() {
         </StatusGroup>
       )}
       {updating && (
-        <StatusGroup title="Updates">
+        <StatusGroup title={h.updates}>
           {setup?.phase === "running" && (
             <StatusRow
               icon={<Download className="h-4 w-4" />}
               tone="accent"
               pulse
-              title={setup.task === "install" ? "Claude Code wird installiert" : setup.task === "update" ? "Claude Code wird aktualisiert" : "Anmeldung bei Claude läuft"}
+              title={setup.task === "install" ? h.installingClaude : setup.task === "update" ? h.updatingClaude : h.signingInClaude}
               detail={setup.message ?? ""}
             />
           )}
-          {appUpdate?.phase === "downloading" && <StatusRow icon={<Download className="h-4 w-4" />} tone="accent" pulse title={`FORGE ${appUpdate.latest?.version ?? ""} wird geladen`} detail="" />}
-          {appUpdate?.phase === "ready" && <StatusRow icon={<Download className="h-4 w-4" />} tone="success" title={`FORGE ${appUpdate.latest?.version ?? ""} ist bereit`} detail="Wird beim nächsten Neustart installiert" />}
+          {appUpdate?.phase === "downloading" && <StatusRow icon={<Download className="h-4 w-4" />} tone="accent" pulse title={h.appDownloading(appUpdate.latest?.version ?? "")} detail="" />}
+          {appUpdate?.phase === "ready" && <StatusRow icon={<Download className="h-4 w-4" />} tone="success" title={h.appReady(appUpdate.latest?.version ?? "")} detail={h.appReadyDetail} />}
         </StatusGroup>
       )}
     </div>
@@ -298,20 +300,20 @@ function ResumeSection() {
   const items = (sessions.data ?? []).filter((s) => !WORKING.has(s.status) && s.status !== "waiting_approval").slice(0, 5);
   if (sessions.isLoading)
     return (
-      <SkeletonRegion label="Lädt zuletzt bearbeitete Sessions">
-        <StatusGroupSkeleton title="Zuletzt bearbeitet" rows={3} lead="badge" />
+      <SkeletonRegion label={h.loadingResume}>
+        <StatusGroupSkeleton title={h.recentlyEdited} rows={3} lead="badge" />
       </SkeletonRegion>
     );
   if (!items.length) return null;
   return (
     <section>
-      <SectionTitle>Zuletzt bearbeitet</SectionTitle>
+      <SectionTitle>{h.recentlyEdited}</SectionTitle>
       <div className="divide-y divide-border rounded-xl border border-border bg-surface">
         {items.map((s) => (
           <div key={s.id} className="flex items-center gap-3 px-4 py-2.5">
             <SessionStatusBadge status={s.status} live={s.live} autoContinueAt={s.autoContinueAt} />
             <div className="min-w-0 flex-1">
-              <div className="truncate text-body">{s.title ?? "Ohne Titel"}</div>
+              <div className="truncate text-body">{s.title ?? t.views.common.untitled}</div>
               <div className="text-caption text-subtle">
                 {s.projectName} · {relativeTime(s.updatedAt)}
                 {s.model ? ` · ${label(s.model)}` : ""}
@@ -320,7 +322,7 @@ function ResumeSection() {
             <SummaryButton sessionId={s.id} title={s.title} size="icon-sm" />
             <Button size="sm" variant="ghost" onClick={() => openProject(s.projectId, s.id)}>
               {s.live ? <Play className="h-3.5 w-3.5" /> : <RotateCcw className="h-3.5 w-3.5" />}
-              {s.live ? "Öffnen" : "Fortsetzen"}
+              {s.live ? t.views.common.open : h.resume}
             </Button>
           </div>
         ))}
@@ -333,7 +335,7 @@ function LoginButton() {
   const openClaudeLogin = useUi((s) => s.openClaudeLogin);
   return (
     <Button size="sm" variant="primary" onClick={() => openClaudeLogin("manual")}>
-      Anmelden
+      {h.signIn}
     </Button>
   );
 }
@@ -342,7 +344,7 @@ function SetupButton() {
   const openSettings = useUi((s) => s.openSettings);
   return (
     <Button size="sm" variant="primary" onClick={() => openSettings("claude")}>
-      Einrichten
+      {h.setUp}
     </Button>
   );
 }
@@ -355,7 +357,7 @@ function ApiKeyWarning() {
     return (
       <div className="mb-5 flex items-center gap-2.5 rounded-lg border border-accent/30 bg-accent-soft px-3 py-2.5 text-body">
         <Spinner className="text-accent" />
-        Claude Code wird installiert. Danach meldest du dich unter Einstellungen mit deinem Claude-Konto an.
+        {h.claudeInstalling}
       </div>
     );
   const notLoggedIn = d.claude.found && d.auth.checked && !d.auth.loggedIn;
@@ -363,24 +365,24 @@ function ApiKeyWarning() {
   if (!d.claude.found)
     return (
       <div className="mb-5">
-        <ErrorBanner title="Claude Code ist noch nicht installiert" action={<SetupButton />}>
-          FORGE richtet Claude Code mit einem Klick ein. Danach meldest du dich mit deinem Claude-Konto an.
+        <ErrorBanner title={h.claudeMissingTitle} action={<SetupButton />}>
+          {h.claudeMissingHint}
         </ErrorBanner>
       </div>
     );
   if (notLoggedIn)
     return (
       <div className="mb-5">
-        <ErrorBanner title="Claude Code ist nicht angemeldet" action={<LoginButton />}>
-          Melde dich mit deinem Claude-Konto an, um Sessions zu starten.
+        <ErrorBanner title={h.notSignedInTitle} action={<LoginButton />}>
+          {h.notSignedInHint}
         </ErrorBanner>
       </div>
     );
   if (keyActive)
     return (
       <div className="mb-5 flex items-center gap-2 rounded-lg border border-warning/30 bg-warning-soft px-3 py-2 text-body">
-        <Badge tone="warning">Hinweis</Badge>
-        ANTHROPIC_API_KEY ist gesetzt und wird an Sessions weitergegeben. Das kann API-Kosten statt Abo-Nutzung auslösen.
+        <Badge tone="warning">{h.note}</Badge>
+        {h.apiKeyActive}
       </div>
     );
   return null;

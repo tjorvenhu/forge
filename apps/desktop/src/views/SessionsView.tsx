@@ -20,15 +20,18 @@ import { SessionStatusBadge } from "@/components/workspace/SessionStatusBadge";
 import { ProfileBadge } from "@/components/projects/ProfileBadge";
 import { openSearchHit, SearchHitRow } from "@/components/search/SearchHits";
 import { Skeleton, SkeletonRegion } from "@/components/ui/skeleton";
+import { t } from "@/i18n";
+
+const sv = t.views.sessions;
 
 const STATUS = [
-  { value: "all", label: "Alle Status" },
-  { value: "running", label: "Läuft" },
-  { value: "waiting_approval", label: "Wartet auf Freigabe" },
-  { value: "idle", label: "Bereit" },
-  { value: "stopped", label: "Beendet" },
-  { value: "interrupted", label: "Unterbrochen" },
-  { value: "error", label: "Fehler" },
+  { value: "all", label: sv.status.all },
+  { value: "running", label: sv.status.running },
+  { value: "waiting_approval", label: sv.status.waitingApproval },
+  { value: "idle", label: sv.status.idle },
+  { value: "stopped", label: sv.status.stopped },
+  { value: "interrupted", label: sv.status.interrupted },
+  { value: "error", label: sv.status.error },
 ];
 
 export function SessionsView() {
@@ -54,28 +57,28 @@ export function SessionsView() {
 
   return (
     <Page
-      title="Sessions"
-      subtitle={`${openCount} ${openCount === 1 ? "offene Session" : "offene Sessions"}`}
+      title={sv.title}
+      subtitle={sv.openSessions(openCount)}
       actions={
         <Button variant="danger-ghost" disabled={!anySessions.data?.length} onClick={() => setDeletingAll(true)}>
           <Trash2 className="h-4 w-4" />
-          Alle löschen
+          {sv.deleteAll}
         </Button>
       }
     >
       <div className="mb-4 flex gap-2">
         <div className="relative flex-1">
           <Search className="pointer-events-none absolute left-2.5 top-2 h-4 w-4 text-subtle" />
-          <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Titel, Projekt, Session-ID oder Inhalt der Verläufe" className="pl-8" aria-label="Sessions durchsuchen" />
+          <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder={sv.searchPlaceholder} className="pl-8" aria-label={sv.searchLabel} />
         </div>
-        <Select value={status} onChange={setStatus} options={STATUS} className="w-52" aria-label="Status-Filter" />
+        <Select value={status} onChange={setStatus} options={STATUS} className="w-52" aria-label={sv.statusFilter} />
       </div>
       {searching && (
         <section className="mb-6">
-          <SectionTitle action={hits.isFetching && !hits.isLoading ? <Spinner className="h-3.5 w-3.5" /> : undefined}>Treffer in Verläufen</SectionTitle>
-          {hits.isError && <ErrorBanner>Suche fehlgeschlagen.</ErrorBanner>}
+          <SectionTitle action={hits.isFetching && !hits.isLoading ? <Spinner className="h-3.5 w-3.5" /> : undefined}>{sv.hitsInTranscripts}</SectionTitle>
+          {hits.isError && <ErrorBanner>{sv.searchFailed}</ErrorBanner>}
           {hits.isLoading && <HitsSkeleton />}
-          {hits.data && hits.data.length === 0 && <div className="text-body text-muted">Kein Prompt und keine Antwort enthält diese Wörter.</div>}
+          {hits.data && hits.data.length === 0 && <div className="text-body text-muted">{sv.noHits}</div>}
           {!!hits.data?.length && (
             <div className="rounded-xl border border-border bg-surface p-1">
               {hits.data.map((h) => (
@@ -85,13 +88,13 @@ export function SessionsView() {
           )}
         </section>
       )}
-      {searching && <SectionTitle>Sessions</SectionTitle>}
+      {searching && <SectionTitle>{sv.title}</SectionTitle>}
       {sessions.isLoading && <SessionsTableSkeleton />}
-      {sessions.isError && <ErrorBanner>Sessions konnten nicht geladen werden.</ErrorBanner>}
-      {sessions.isSuccess && sessions.data.length === 0 && query && <div className="text-body text-muted">Kein Titel, Projekt und keine Session-ID passt.</div>}
+      {sessions.isError && <ErrorBanner>{sv.loadFailed}</ErrorBanner>}
+      {sessions.isSuccess && sessions.data.length === 0 && query && <div className="text-body text-muted">{sv.noMatch}</div>}
       {sessions.isSuccess && sessions.data.length === 0 && !query && (
-        <EmptyState icon={<History className="h-10 w-10" />} title="Keine Sessions">
-          Starte im Workspace eines Projekts eine neue Session. Im Terminal gestartete Sessions erscheinen im Workspace unter „Aus dem Terminal“.
+        <EmptyState icon={<History className="h-10 w-10" />} title={sv.emptyTitle}>
+          {sv.emptyHint}
         </EmptyState>
       )}
       {!!sessions.data?.length && (
@@ -103,9 +106,9 @@ export function SessionsView() {
                 <tr key={s.id} className="cursor-pointer bg-surface hover:bg-surface-2" onClick={() => openProject(s.projectId, s.id)}>
                   <td className="max-w-80 px-4 py-2">
                     <button className="block w-full truncate text-left" onClick={() => openProject(s.projectId, s.id)}>
-                      {s.title ?? "Ohne Titel"}
+                      {s.title ?? t.views.common.untitled}
                     </button>
-                    <div className="truncate font-mono text-2xs text-subtle">{s.claudeSessionId ?? "noch keine Claude-ID"}</div>
+                    <div className="truncate font-mono text-2xs text-subtle">{s.claudeSessionId ?? sv.noClaudeId}</div>
                   </td>
                   <td className="px-4 py-2 text-muted">{s.projectName}</td>
                   <td className="px-4 py-2">
@@ -114,24 +117,24 @@ export function SessionsView() {
                   <td className="px-4 py-2">
                     <ProfileBadge profile={s.profile} />
                   </td>
-                  <td className="px-4 py-2 text-muted">{s.model ? modelLabel(s.model) : "Standard"}</td>
+                  <td className="px-4 py-2 text-muted">{s.model ? modelLabel(s.model) : sv.defaultModel}</td>
                   <td className="px-4 py-2 text-muted">{relativeTime(s.updatedAt)}</td>
                   <td className="px-2 py-1" onClick={(e) => e.stopPropagation()}>
                     <div className="flex justify-end gap-0.5">
                       {s.live && (
-                        <Tooltip content="Claude-Prozess beenden. Die Session bleibt fortsetzbar.">
+                        <Tooltip content={sv.closeTooltip}>
                           <Button
                             size="icon-sm"
                             variant="ghost"
-                            aria-label="Session beenden"
-                            onClick={() => call("sessions.close", { sessionId: s.id }).catch((e: unknown) => toast.error("Beenden fehlgeschlagen", errorMessage(e)))}
+                            aria-label={sv.closeLabel}
+                            onClick={() => call("sessions.close", { sessionId: s.id }).catch((e: unknown) => toast.error(sv.closeFailed, errorMessage(e)))}
                           >
                             <Power className="h-3.5 w-3.5" />
                           </Button>
                         </Tooltip>
                       )}
-                      <Tooltip content="Session löschen">
-                        <Button size="icon-sm" variant="ghost" aria-label="Session löschen" className="hover:text-danger" onClick={() => setDeleting(s)}>
+                      <Tooltip content={sv.deleteSession}>
+                        <Button size="icon-sm" variant="ghost" aria-label={sv.deleteSession} className="hover:text-danger" onClick={() => setDeleting(s)}>
                           <Trash2 className="h-3.5 w-3.5" />
                         </Button>
                       </Tooltip>
@@ -153,14 +156,14 @@ function SessionsTableHead() {
   return (
     <thead className="bg-surface-2 text-left text-xs text-muted">
       <tr>
-        <th className="px-4 py-2 font-medium">Session</th>
-        <th className="px-4 py-2 font-medium">Projekt</th>
-        <th className="px-4 py-2 font-medium">Status</th>
-        <th className="px-4 py-2 font-medium">Profil</th>
-        <th className="px-4 py-2 font-medium">Modell</th>
-        <th className="px-4 py-2 font-medium">Aktualisiert</th>
+        <th className="px-4 py-2 font-medium">{sv.columnSession}</th>
+        <th className="px-4 py-2 font-medium">{sv.columnProject}</th>
+        <th className="px-4 py-2 font-medium">{sv.columnStatus}</th>
+        <th className="px-4 py-2 font-medium">{sv.columnProfile}</th>
+        <th className="px-4 py-2 font-medium">{sv.columnModel}</th>
+        <th className="px-4 py-2 font-medium">{sv.columnUpdated}</th>
         <th className="w-px px-2 py-2">
-          <span className="sr-only">Aktionen</span>
+          <span className="sr-only">{sv.columnActions}</span>
         </th>
       </tr>
     </thead>
@@ -171,7 +174,7 @@ function SessionsTableHead() {
 function SessionsTableSkeleton({ rows = 8 }: { rows?: number }) {
   const line = (widths: string[], r: number, h = "h-3") => <Skeleton className={`${h} rounded-sm ${widths[r % widths.length]}`} />;
   return (
-    <SkeletonRegion label="Lädt Sessions" className="overflow-hidden rounded-xl border border-border">
+    <SkeletonRegion label={sv.loadingSessions} className="overflow-hidden rounded-xl border border-border">
       <table className="w-full text-body">
         <SessionsTableHead />
         <tbody className="divide-y divide-border">
@@ -206,7 +209,7 @@ function SessionsTableSkeleton({ rows = 8 }: { rows?: number }) {
 /** Full-text hits while the transcripts are searched, in the box the hits will fill. */
 function HitsSkeleton() {
   return (
-    <SkeletonRegion label="Lädt Treffer" className="rounded-xl border border-border bg-surface p-1">
+    <SkeletonRegion label={sv.loadingHits} className="rounded-xl border border-border bg-surface p-1">
       {[0, 1, 2].map((i) => (
         <div key={i} className="flex items-start gap-2.5 px-2.5 py-2">
           <Skeleton className="mt-0.5 h-5 w-5 shrink-0 rounded" />

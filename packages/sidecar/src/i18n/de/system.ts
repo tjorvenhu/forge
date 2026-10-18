@@ -284,6 +284,7 @@ export const system = {
       `Dev-Server ${restart ? "neu gestartet" : "gestartet"}: ${cmd}. Die Adresse steht nach ein paar Sekunden in dev_environment.`,
   },
   testDb: {
+    closing: "FORGE wird beendet.",
     pgCtlExited: (code: number | string) => `pg_ctl beendet mit Code ${code}`,
     portBusy: (port: number) => `Port ${port} ist belegt. Wähle einen anderen Port.`,
     notStarted: (why: string) => `Test-Datenbank nicht gestartet: ${why}`,
@@ -353,6 +354,10 @@ export const system = {
     hooksObject: "Hooks müssen ein JSON-Objekt sein.",
     unknownHook: (event: string) => `Unbekanntes Hook-Ereignis: ${event}`,
     hooksList: (event: string) => `${event}: jeder Eintrag braucht eine nicht leere "hooks"-Liste.`,
+    hooksListExpected: (event: string) => `${event}: erwartet wird eine Liste.`,
+    hookEntryObject: (event: string) => `${event}: Eintrag muss ein Objekt sein.`,
+    hookNeedsType: (event: string) => `${event}: jeder Hook braucht einen "type" (z. B. "command").`,
+    hookNeedsCommand: (event: string) => `${event}: Hook vom Typ "command" braucht "command".`,
     notObject: "kein Objekt",
     invalidJsonFile: (file: string, why: string) => `${file} ist kein gültiges JSON: ${why}`,
     invalidJson: (why: string) => `Kein gültiges JSON: ${why}`,

@@ -1,0 +1,101 @@
+@@ 1820 | const windows = this.d.chatWindows;
+          const windows = this.d.chatWindows;
+          const m = tr().phone.windows;
+@@ 1821 | Chat-Fenster gibt es nur
+          if (!windows) return m.desktopOnly;
+@@ 1824 | Keine Session ist in einem eigenen
+            if (!st.sessions.length) return m.none;
+@@ 1827-1828 | const name = s ?
+              const name = s ? `${refFor(id)} ${asData(s.title ?? tr().phone.untitled)}` : m.deleted;
+              return st.pinned.includes(id) ? m.pinned(name) : name;
+@@ 1830 | In eigenen Fenstern
+            return m.list(st.sessions.map(one).join(", "));
+@@ 1838 | schon in einem eigenen Fenster offen
+            if (open) return m.alreadyOpen(r);
+@@ 1840 | öffnet sich in einem eigenen Fenster
+            return m.opening(r);
+@@ 1843 | in keinem eigenen Fenster offen
+            if (!open) return m.notOpen(r);
+@@ 1845 | zurück im Hauptfenster
+            return m.closed(r);
+@@ 1848 | schon angeheftet
+            if (pinned) return m.alreadyPinned(r);
+@@ 1850 | bleibt jetzt über allen
+            return open ? m.pinnedNow(r) : m.openPinned(r);
+@@ 1852 | in keinem angehefteten Fenster
+          if (!pinned) return m.notPinned(r);
+@@ 1854 | bleibt nicht mehr im Vordergrund
+          return m.unpinned(r);
+@@ 1859 | Remote Control ist aus
+          const m = tr().phone.remote;
+          if (!st.enabled) return m.off;
+@@ 1863-1865 | Remote Control ist an
+            m.on(ok),
+            failed.length ? m.failed(failed.map((x) => `${refFor(x.sessionId)} (${x.message ?? m.error})`).join(", ")) : "",
+            st.sessions.length === 0 ? m.noneRunning : "",
+@@ 1873 | const dev = this.d.devServers;
+          const dev = this.d.devServers;
+          const m = tr().phone.dev;
+@@ 1875 | ist kein Agent
+            if (!p.parentId) return m.notAgent(p.name);
+@@ 1877-1880 | keine Vorbereitung
+            if (!st) return m.noSetup(p.name);
+            const steps = st.steps.filter((x) => x.status !== "pending").map((x) => `${x.label}: ${m.stepWord[x.status]}${x.detail ? ` (${excerptData(x.detail, 300)})` : ""}`);
+            const head = action === "prepare" ? m.prepareRestarted(p.name) : st.status === "running" ? m.setupRunning(p.name) : st.status === "failed" ? m.setupFailed(p.name) : m.setupDone(p.name);
+            return [head, ...steps, st.devPort ? m.devPort(st.devPort) : ""].filter(Boolean).join(" ");
+@@ 1884 | Letzte Ausgabe des Dev-Servers
+            return out.trim() ? m.output(p.name, excerptData(tail(out, 30), 3000)) : m.noOutput(p.name);
+@@ 1887 | gestoppt
+          if (action === "stop") return m.stopped(p.name);
+@@ 1889-1893 | st.status === "running"
+          if (st.status === "running") return m.running(p.name, action === "restart", st.url || null);
+          const why = st.error ?? (st.exitCode !== null ? m.exitCode(st.exitCode) : "");
+          if (action !== "status") return m.notStarted(p.name, why, m.hint);
+          return st.status === "stopped" ? m.notRunning(p.name) : m.ended(p.name, why, m.hint);
+@@ 1899-1900 | const db = this.d.testDb;
+          const db = this.d.testDb;
+          const m = tr().phone.testDb;
+          if (!db) return m.unavailable;
+@@ 1903-1908 | läuft.`;
+            if (st.status === "running") return m.running(p.name);
+            if (st.status === "installing") return m.installing(st.progress !== null ? Math.round(st.progress * 100) : null);
+            if (st.status === "starting") return m.starting(p.name);
+            if (st.status === "stopping") return m.stopping(p.name);
+            if (st.status === "failed") return m.failed(p.name, st.error ?? null);
+            return st.initialized ? m.stoppedState(p.name) : m.none(p.name);
+@@ 1912 | Letzte Zeilen aus dem Protokoll
+            return log.trim() ? m.log(p.name, excerptData(tail(log, 20), 2500)) : m.logEmpty(p.name);
+@@ 1916 | gestoppt
+            return m.stopped(p.name);
+@@ 1922 | geleert
+            return m.reset(p.name, wasRunning);
+@@ 1927 | neu gestartet
+            return m.restarted(p.name);
+@@ 1930 | läuft.`;
+          return m.started(p.name);
+@@ 1936 | Dev-Werkzeuge sind hier nicht
+          const ds = tr().phone.devSettings;
+          if (!tools) return ds.unavailable;
+@@ 1949 | Keine .env-Datei
+              const file = pickOne(files, fromFile, (f) => [f, f.replace(/^\.env\.?/, "")], { none: tr().phone.common.what.envNone, many: tr().phone.common.what.envMany });
+@@ 1958 | NAME=Wert
+              if (!m) return ds.envFormat;
+@@ 1963 | steht nicht in der Test-Umgebung
+              if (!envNames(env).includes(remove)) return ds.envMissing(remove);
+@@ 1979-1981 | Test-Umgebung
+            ds.useEnv(cfg.useEnv),
+            vars.length ? ds.vars(asData(vars.join(", "))) : "",
+            ds.database(d.port, d.name, d.withDevServer, d.envVar || null),
+@@ 1988 | Port und Name gelten
+          const restart = (patch.port !== undefined || !!patch.name?.trim()) && this.d.testDb?.isRunning(p.id) ? ds.nextStart : "";
+@@ 1990 | Gespeichert
+          return ds.saved(!!p.parentId, text, restart);
+@@ 1997-1998 | AUTOMATION_TAGS
+          const am = tr().phone.automation;
+          const on = (tags: string[]) => AUTOMATION_TAG_IDS.filter((t) => tags.includes(t)).map((t) => automationTagLabel(t));
+          const state = (tags: string[]) => (on(tags).length ? am.on(on(tags).join(", ")) : am.none);
+@@ 2000-2001 | braucht Git
+          if (patch.on && !p.gitEnabled && GIT_TAGS.includes(patch.tag)) return am.needsGit(gitOff(p), automationTagLabel(patch.tag));
+          if (patch.on === undefined) return am.state(p.name, automationTagLabel(patch.tag), p.tags.includes(patch.tag));
+@@ 2005 | AUTOMATION_TAGS
+          return am.switched(automationTagLabel(patch.tag), p.name, !!patch.on, state(next.tags));

@@ -25,10 +25,13 @@ import { ListSkeleton, Skeleton } from "@/components/ui/skeleton";
 import { Collapse } from "@/components/ui/collapse";
 import { DevToolsBadge } from "@/components/devtools/DevToolsBadge";
 import { LocalOnlyBanner } from "@/components/settings/SyncLocalOnly";
+import { t } from "@/i18n";
+
+const wv = t.views.workspace;
 
 export function WorkspaceView() {
   const projectId = useUi((s) => s.activeProjectId);
-  if (!projectId) return <EmptyState title="Kein Projekt geöffnet">Wähle links ein Projekt oder füge eines hinzu.</EmptyState>;
+  if (!projectId) return <EmptyState title={wv.noProjectOpen}>{wv.noProjectOpenHint}</EmptyState>;
   return (
     <SplitWorkspace projectId={projectId}>
       <MainArea projectId={projectId} />
@@ -83,8 +86,8 @@ function Workspace({ projectId }: { projectId: string }) {
 
       {!project.exists && (
         <div className="px-4 pt-3">
-          <ErrorBanner title="Projektordner fehlt">
-            {project.path} existiert nicht mehr. Sessions und Git sind deaktiviert. Entferne das Projekt unter Einstellungen oder stelle den Ordner wieder her.
+          <ErrorBanner title={wv.folderMissingTitle}>
+            {wv.folderMissingBody(project.path)}
           </ErrorBanner>
         </div>
       )}
@@ -102,27 +105,27 @@ function Workspace({ projectId }: { projectId: string }) {
                 tabs={(
                   [
                     { value: "chat", label: "Chat", icon: <MessageSquare className="h-4 w-4" /> },
-                    { value: "agents", label: "Agenten", icon: <Bot className="h-4 w-4" /> },
+                    { value: "agents", label: wv.tabAgents, icon: <Bot className="h-4 w-4" /> },
                     { value: "git", label: "Git", icon: <GitBranch className="h-4 w-4" />, badge: project.git?.changedCount ? <Badge tone="warning">{project.git.changedCount}</Badge> : undefined },
-                    { value: "files", label: "Dateien", icon: <FileText className="h-4 w-4" /> },
-                    { value: "devtools", label: "Dev-Tools", icon: <FlaskConical className="h-4 w-4" />, badge: <DevToolsBadge project={project} /> },
-                    { value: "knowledge", label: "Wissen", icon: <BookOpen className="h-4 w-4" /> },
-                    { value: "settings", label: "Einstellungen", icon: <Settings2 className="h-4 w-4" /> },
+                    { value: "files", label: wv.tabFiles, icon: <FileText className="h-4 w-4" /> },
+                    { value: "devtools", label: wv.tabDevTools, icon: <FlaskConical className="h-4 w-4" />, badge: <DevToolsBadge project={project} /> },
+                    { value: "knowledge", label: wv.tabKnowledge, icon: <BookOpen className="h-4 w-4" /> },
+                    { value: "settings", label: wv.tabSettings, icon: <Settings2 className="h-4 w-4" /> },
                   ] satisfies TabDef<WorkspaceTab>[]
-                ).filter((t) => visibleTabs.includes(t.value))}
+                ).filter((def) => visibleTabs.includes(def.value))}
               />
             </div>
           </Collapse>
           <div key={workspaceTab} className="min-h-0 flex-1 animate-view-in">
             {workspaceTab === "chat" &&
-              (project.exists ? <ChatPanel project={project} /> : <EmptyState title="Chat nicht verfügbar">Der Projektordner fehlt.</EmptyState>)}
+              (project.exists ? <ChatPanel project={project} /> : <EmptyState title={wv.chatUnavailable}>{t.views.common.folderMissing}</EmptyState>)}
             {workspaceTab === "agents" && <AgentsTab project={project} />}
             {workspaceTab === "git" && <GitCenter project={project} />}
             {workspaceTab === "files" && <FilesTab project={project} />}
             {workspaceTab === "devtools" &&
-              (project.exists ? <DevToolsTab project={project} /> : <EmptyState title="Dev-Tools nicht verfügbar">Der Projektordner fehlt.</EmptyState>)}
+              (project.exists ? <DevToolsTab project={project} /> : <EmptyState title={wv.devToolsUnavailable}>{t.views.common.folderMissing}</EmptyState>)}
             {workspaceTab === "knowledge" &&
-              (project.exists ? <KnowledgeTab project={project} /> : <EmptyState title="Wissen nicht verfügbar">Der Projektordner fehlt.</EmptyState>)}
+              (project.exists ? <KnowledgeTab project={project} /> : <EmptyState title={wv.knowledgeUnavailable}>{t.views.common.folderMissing}</EmptyState>)}
             {workspaceTab === "settings" && <ProjectSettingsTab project={project} />}
           </div>
           <BottomPanel project={project} />
@@ -200,11 +203,11 @@ function RightPanel({ projectId }: { projectId: string }) {
           value={tab}
           onChange={setTab}
           tabs={[
-            { value: "files", label: "Dateien", icon: <FolderTree className="h-4 w-4" /> },
+            { value: "files", label: wv.tabFiles, icon: <FolderTree className="h-4 w-4" /> },
             ...(project.gitEnabled
-              ? [{ value: "git" as const, label: "Änderungen", icon: <GitCompare className="h-4 w-4" />, badge: project.git?.changedCount ? <Badge tone="warning">{project.git.changedCount}</Badge> : undefined }]
+              ? [{ value: "git" as const, label: wv.tabChanges, icon: <GitCompare className="h-4 w-4" />, badge: project.git?.changedCount ? <Badge tone="warning">{project.git.changedCount}</Badge> : undefined }]
               : []),
-            { value: "activity", label: "Aktivität", icon: <Activity className="h-4 w-4" /> },
+            { value: "activity", label: wv.tabActivity, icon: <Activity className="h-4 w-4" /> },
           ]}
         />
       </div>

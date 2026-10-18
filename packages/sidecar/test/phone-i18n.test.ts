@@ -32,7 +32,7 @@ describe("phone in English", () => {
     setLanguage("en");
     for (const t of PHONE_TOOLS) {
       expect(t.description, t.name).toBeTruthy();
-      for (const [k, p] of Object.entries(t.params)) if (p.type !== "boolean" && p.type !== "number" && !p.enum) expect(p.description ?? "", `${t.name}.${k}`).not.toMatch(/[äöüß]/);
+      for (const [k, p] of Object.entries(t.params)) if (p.type !== "boolean" && p.type !== "number" && !(p.type === "string" && p.enum)) expect(p.description ?? "", `${t.name}.${k}`).not.toMatch(/[äöüß]/);
     }
   });
 });

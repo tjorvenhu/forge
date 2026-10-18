@@ -1,0 +1,219 @@
+@@ 2621 | const p = optionalTarget(o?.project, o);
+          const p = optionalTarget(o?.project, o);
+          const xm = tr().phone.extensions;
+@@ 2625 | Welcher Name
+            if (!n) throw new Error(xm.whichName);
+@@ 2628 | Hier geht
+          const only = (actions: string) => xm.only(actions);
+@@ 2632-2633 | const state = {
+              const state = xm.mcpState;
+              return list.length ? xm.mcpList(asData(list.map((m) => `${m.name} ${state[m.status]}`).join(", "))) : xm.mcpNone;
+@@ 2635 | bei MCP-Servern
+            if (action !== "add" && action !== "remove") return only(xm.mcpOnly);
+@@ 2637 | Für welches Projekt
+            if (scope !== "user" && !p) return tr().phone.common.whichFor;
+@@ 2638 | const where
+            const where = scope === "user" ? xm.global : scope === "project" ? xm.inProject(p!.name) : xm.localIn(p!.name);
+@@ 2641 | Welcher Befehl
+              if (!serverTarget) return xm.whichTarget;
+@@ 2645 | hinzugefügt
+              return r.ok ? xm.mcpAdded(name(), where) : tr().phone.error(excerptData(r.output, 400));
+@@ 2648 | entfernt
+            return r.ok ? xm.mcpRemoved(name(), where) : tr().phone.error(excerptData(r.output, 400));
+@@ 2651 | const [one, many]
+            const [one, many] = kind === "skill" ? [xm.skill, xm.skills] : [xm.agent, xm.agents];
+@@ 2654-2655 | Keine ${many}
+              if (!docs.length) return xm.none(many);
+              return xm.docList(many, asData(docs.map((d) => `${d.name}${d.scope === "project" ? xm.projectMark : ""}${d.description ? `: ${d.description.slice(0, 160)}` : ""}`).join("\n")));
+@@ 2660 | Der Name braucht
+              if (!docName) return xm.nameNeedsLetters;
+@@ 2662 | angelegt
+              return xm.docCreated(one, docName, scope === "project" ? xm.inProject(p!.name) : xm.global);
+@@ 2664-2665 | bei ${many}
+            if (action !== "read" && action !== "remove") return only(xm.docOnly(many));
+            const doc = pickOne(docs, name(), (d) => [d.name, d.name.replace(/-/g, " ")], { none: xm.docNone(one), many });
+@@ 2668 | excerptData(d.content, 3000)
+              return xm.docRead(one, doc.name, excerptData(d.content, 3000));
+@@ 2671 | gelöscht
+            return xm.docDeleted(one, doc.name);
+@@ 2674 | bei Commands nur list
+            if (action !== "list") return only(xm.commandOnly);
+@@ 2676 | Eigene Slash-Befehle
+            return own.length ? xm.commands(asData(own.map((c) => `${c.name}${c.description ? `: ${c.description.slice(0, 120)}` : ""}`).join("\n"))) : xm.noCommands;
+@@ 2679 | bei Hooks nur list
+            if (action !== "list" && action !== "read") return only(xm.hookOnly);
+@@ 2681 | Für welches Projekt
+            if (scope !== "user" && !p) return tr().phone.common.whichFor;
+@@ 2691-2692 | Keine Hooks
+            const hookWhere = scope === "user" ? xm.global : xm.hooksIn(p!.name);
+            if (!names.length && !r.hooks.trim().replace(/^\{\s*\}$/, "")) return xm.noHooks(hookWhere);
+            return xm.hooks(hookWhere, asData(names.join(", ")), action === "read" ? excerptData(r.hooks, 2000) : "");
+@@ 2695 | const pluginState
+          const pluginState = (x: (typeof catalog)[number]) => (!x.installed ? xm.notInstalled : x.enabled === false ? xm.installedOff : xm.installed);
+@@ 2700 | Kein Plugin zu
+              return hits.length ? asData(hits.map((x) => `${x.name}, ${pluginState(x)}: ${x.description.slice(0, 160)}`).join("\n")) : xm.noPlugin(q);
+@@ 2703 | Plugins:
+            return installed.length ? xm.plugins(asData(installed.map((x) => `${x.name}${x.enabled === false ? xm.pluginOff : ""}`).join(", "))) : xm.noPlugins;
+@@ 2705 | Kein Plugin
+          const plugin = pickOne(catalog, name(), (x) => [x.name, x.id], { none: tr().phone.common.what.pluginNone, many: tr().phone.common.what.pluginMany });
+@@ 2707 | schon installiert
+            if (plugin.installed) return xm.alreadyInstalled(plugin.name);
+@@ 2709 | installiert
+            return xm.pluginInstalled(plugin.name);
+@@ 2711 | nicht installiert
+          if (!plugin.installed) return xm.pluginNotInstalled(plugin.name);
+@@ 2714 | deinstalliert
+            return xm.pluginRemoved(plugin.name);
+@@ 2717 | ist ${action
+          return xm.pluginSwitched(plugin.name, action === "enable");
+@@ 2753 | Die Regel
+          if (rule && patch.policyRuleOn === undefined && !changed.length) return tr().phone.settings.rule(policyRuleLabel(rule), !cur.disabledPolicyRules.includes(rule));
+@@ 2761 | Gespeichert:
+          return tr().phone.settings.saved(changed.map((k) => settingText(next, k)).join(", "));
+@@ 2764 | run(true, async () => {
+        run(true, async () => {
+          const sy = tr().phone.system;
+@@ 2768-2773 | Claude Code
+              d.claude.found ? sy.claudeThere(d.claude.version || null) : sy.claudeMissing(d.claude.error || null),
+              !d.auth.checked ? "" : d.auth.loggedIn ? sy.signedIn(d.auth.subscriptionType || null) : sy.notSignedIn(d.auth.error || null),
+              d.apiKeyEnvPresent ? (d.apiKeyStripped ? sy.apiKeyHidden : sy.apiKeyPassed) : "",
+              d.git.found ? sy.gitThere(d.git.version || null) : sy.gitMissing,
+              d.gh.found ? (d.gh.authenticated === false ? sy.ghNotSignedIn : sy.ghThere) : sy.ghMissing,
+              d.python.found ? sy.pythonThere(d.python.version ?? null, !!d.python.bundled) : sy.pythonMissing,
+@@ 2776 | Nicht verfügbar
+            return sy.diagnostics(facts.join(", "), missing.join(", "));
+@@ 2782 | wird jetzt installiert
+            return sy.installing(st.latest ? st.latest.version : null);
+@@ 2788-2790 | const euros
+            const euros = given ? new Intl.NumberFormat(tr().phone.locale, { style: "currency", currency: "EUR" }).format(given.cents / 100) : null;
+            const sum = given ? sy.donated(euros ?? "", given.count) : "";
+            return sy.support(bare(SUPPORT_LINKS.donate), sum, bare(SUPPORT_LINKS.feedback));
+@@ 2797 | installiert sich vollständig
+              sy.confirmRepair(st.installer.version),
+@@ 2800 | wird jetzt vollständig
+                return sy.repairing;
+@@ 2802 | noch ist nichts geändert
+              tr().phone.common.nothingChanged,
+@@ 2807-2813 | keine neue Version
+            if (!c) return sy.noNewVersion;
+            if (c.status === "writing") return sy.writingChangelog;
+            if (c.status === "ready" && c.text) return sy.changelog(c.tag, excerptData(c.text, 3000));
+            const notes = (await call("app.updateState", {})).latest?.notes;
+            if (notes?.trim()) return sy.releaseNotes(c.tag, excerptData(notes, 3000));
+            if (c.commits.length) return sy.commits(c.tag, excerptData(c.commits.slice(0, 15).join("\n"), 3000));
+            return tr().phone.error(c.message ?? sy.noDescription);
+@@ 2817-2822 | wird gerade installiert
+            if (st.phase === "running" && st.task !== "login") return st.task === "install" ? sy.claudeInstalling : sy.claudeUpdating;
+            const last = st.task === "update" || st.task === "install" ? (st.phase === "error" ? sy.lastFailed(st.message ?? null) : "") : "";
+            const u = await call("claude.checkUpdate", {});
+            if (!u.installed) return sy.claudeNotInstalled(last);
+            if (u.error) return sy.claudeLatestUnknown(u.installed, u.error, last);
+            return `${u.available ? sy.claudeAvailable(u.latest, u.installed) : sy.claudeCurrent(u.installed)}${last}`;
+@@ 2830 | Claude Code wird installiert
+              return sy.claudeInstallStarted;
+@@ 2832 | Claude Code wird aktualisiert
+            return sy.claudeUpdateStarted;
+@@ 2837 | abgemeldet
+              sy.confirmLogout,
+@@ 2840 | ist abgemeldet
+                return sy.loggedOut;
+@@ 2842 | noch ist nichts geändert
+              tr().phone.common.nothingChanged,
+@@ 2847 | Backup angelegt
+            return sy.backupCreated(b.parts.map((x) => x.label).join(", "));
+@@ 2851 | Dafür muss FORGE
+            if (on && !(await call("github.account", {}))) return sy.syncNeedsGitHub;
+@@ 2853 | Abgleich über GitHub ist an
+            return on ? sy.syncOn : sy.syncOffKept;
+@@ 2857-2860 | Abgleich über GitHub ist aus
+            if (st.phase === "off") return sy.syncOff;
+            if (st.phase === "no-github") return sy.syncNoGitHub;
+            if (st.phase === "needs-passphrase") return sy.syncPassphrase(st.error ?? "");
+            const when = st.phase === "syncing" ? sy.syncing : st.phase === "error" ? sy.syncFailed(st.error ?? null) : st.lastSyncAt ? sy.lastSync(dateTime(st.lastSyncAt)) : sy.neverSynced;
+@@ 2862-2866 | st.remote ?
+              st.remote ? sy.writtenBy(when, asData(st.remote.device)) : when,
+              st.available.length ? sy.missingHere(st.available.map((p) => asData(p.name)).join(", ")) : "",
+              st.localOnly.length ? sy.onlyHere(st.localOnly.map((x) => asData(x.label)).join(", ")) : "",
+            ].filter(Boolean);
+            return sy.syncFacts(facts.join(". "));
+@@ 2871-2872 | Welches Projekt
+            if (!want) return sy.whichProject;
+            const hit = pickOne(st.available, want.toLowerCase(), (p) => [p.name.toLowerCase(), p.key], { none: tr().phone.common.what.missingNone, many: tr().phone.common.what.missingMany });
+@@ 2875 | auch auf diesem Computer
+            return sy.cloned(p.name);
+@@ 2879 | Nichts, das nur hier
+            return pickOne(st.localOnly, o!.project!.trim().toLowerCase(), (x) => [x.label.toLowerCase(), x.key], { none: tr().phone.common.what.localNone, many: tr().phone.common.what.localMany });
+@@ 2882 | Was soll wieder abgeglichen
+            if (!o?.project?.trim()) return sy.whatToKeep;
+@@ 2885 | wird wieder abgeglichen
+            return sy.kept(item.label);
+@@ 2890 | Der Abgleich über GitHub ist aus
+            if (!st.enabled) return sy.syncIsOff;
+@@ 2892-2894 | const what = item
+            const what = item
+              ? sy.forceItem(item.label, item.kind === "project")
+              : sy.forceAll(removes.length ? removes.map((x) => asData(x.label)).join(", ") : null);
+@@ 2899 | Vorher legt FORGE
+              sy.forceConfirm(what),
+@@ 2902-2903 | const later
+                const later = sy.phoneLater;
+                return item ? sy.forcedItem(item.label) : sy.forcedAll(later);
+@@ 2905 | noch ist nichts geändert
+              tr().phone.common.nothingChanged,
+@@ 2911 | liegt noch kein Stand
+              if (!versions.length) return sy.noVersions;
+@@ 2914 | dateTime(v.date)
+                .map((v, i) => sy.versionLine(i + 1, dateTime(v.date), v.device ? asData(v.device) : null))
+@@ 2918 | Welcher Stand
+            if (!nr) return sy.whichVersion;
+@@ 2920 | gibt es nicht
+            if (!v) return sy.noVersion(nr);
+@@ 2923-2924 | const phone
+            const phone = o?.parts?.includes("phone") ? sy.phoneRestoreSync : "";
+            if (!parts.length) return sy.nothingToRestore(phone);
+@@ 2926 | zurückgeholt
+            return sy.restoredVersion(dateTime(v.date), r.restored.map((x) => sy.backupParts[x]).join(", "), r.notes.join(" "), phone);
+@@ 2930 | noch keine Backups
+            if (!list.length) return sy.noBackups;
+@@ 2933 | BACKUP_REASONS
+              .map((b, i) => sy.backupLine(i + 1, dateTime(b.createdAt), sy.backupReasons[b.reason], b.appVersion))
+@@ 2937 | Welches Backup
+          if (!key) return sy.whichBackup;
+@@ 2939 | gibt es nicht
+          if (!b?.id) return sy.noBackup(key);
+@@ 2943-2944 | const phone
+          const phone = o?.parts?.includes("phone") ? sy.phoneRestoreBackup : "";
+          if (!parts.length) return sy.notInBackup(phone);
+@@ 2946 | wiederhergestellt
+          return sy.restoredBackup(dateTime(b.createdAt), r.restored.map((x) => sy.backupParts[x]).join(", "), r.notes.join(" "), phone);
+@@ 2950 | Wonach soll ich suchen
+          if (!query.trim()) return tr().phone.search.what;
+@@ 2958 | im Projekt
+            lines.push(tr().phone.search.line(refFor(h.sessionId), asData(h.sessionTitle ?? tr().phone.untitled), h.projectName, excerptData(snippet, 300)));
+@@ 2960 | Dazu steht
+          return lines.length ? lines.join("\n") : tr().phone.search.none;
+@@ 2964 | const { numbers, ...times }
+          const cs = tr().phone.callSettings;
+          const { numbers, ...times } = patch;
+@@ 2970-2971 | numberListing
+          const lists = locked() ? "" : ` ${numberListing(cs.called, this.cfg.notifyNumbers)} ${numberListing(cs.allowed, this.cfg.allowedCallers)}`;
+          if (!targets.length) return cs.noTargets(changed, lists);
+@@ 2973-2975 | const list
+          const list = [on.done ? cs.whenDone : "", on.approval ? cs.whenApproval : "", on.error ? cs.whenError : ""].filter(Boolean);
+          const where = targets.length > 1 ? cs.parallel(targets.length) : "";
+          return `${changed}${list.length ? cs.calls(list.join(", "), where) : cs.noCalls}${lists}`;
+@@ 2979 | Was soll ich beim Rückruf
+          if (!about.trim()) return tr().phone.callBack.what;
+@@ 2984 | keinen Rückruf
+          if (!known && !this.notifyTargets().length) return tr().phone.callBack.notForNumber;
+@@ 2986 | Rückruf vereinbart
+          return tr().phone.callBack.agreed(due.toLocaleTimeString(tr().phone.locale, { hour: "2-digit", minute: "2-digit" }));
+@@ 2991-2996 | const limit
+          const um = tr().phone.usage;
+          const limit = sessions.rateLimit();
+          const reached = limit.status === "reached" ? um.reached(limit.resetsAt ? spokenTime(limit.resetsAt) : null) : "";
+          const perSecond = Math.round(tokenMeter.rate());
+          const rate = perSecond ? um.rate(perSecond) : um.noRate;
+          if (!u.available || !u.windows.length) return [reached || um.unavailable(u.error ?? null), rate].join("\n");
+          const windows = u.windows.map((w) => um.window(w.label, Math.round(w.utilization), w.resetsAt ? spokenTime(w.resetsAt) : null, spokenForecast(w)));
+@@END

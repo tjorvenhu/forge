@@ -1,0 +1,111 @@
+@@ 2011 |
+@@ 2016 | const store = this.d.knowledge;
+          const store = this.d.knowledge;
+          const kn = tr().phone.knowledge;
+@@ 2017 | Projektwissen ist hier nicht
+          if (!store) return kn.unavailable;
+@@ 2020 | nichts gefunden
+            if (!plan.groups.length) return kn.nothingToMerge(plan.model, p.name);
+@@ 2028 | Zusammengeführt in
+                  lines.push(kn.mergedLine(entry.id, entry.title, removed.join(", ")));
+@@ 2030 | Nicht zusammengeführt
+                  lines.push(kn.notMergedLine(g.ids.join(", "), e instanceof Error ? e.message : String(e)));
+@@ 2035 | hat
+            return kn.autoMerged(plan.model, plan.groups.length, asData(lines.join("\n")));
+@@ 2039 | mindestens zwei Kennungen
+            if (ids.length < 2) return kn.needTwo;
+@@ 2042 | Zusammengeführt in
+            return kn.merged(entry.id, asData(entry.title), removed.join(", "), draft.model);
+@@ 2047 | verweist kein Eintrag
+            if (!stale.length) return kn.noStale(p.name);
+@@ 2049-2054 | verweisen
+            return kn.stale(
+              stale.length,
+              asData(
+                stale
+                  .slice(0, 8)
+                  .map((e) => kn.staleLine(e.id, title.get(e.id) ?? e.id, e.missing.slice(0, 4).map((x) => x.ref).join(", "), e.missing.length - 4))
+                  .join("\n"),
+              ),
+            );
+@@ 2058 | Kennung des Eintrags
+            if (!key) return kn.needId;
+@@ 2061 | als geprüft markiert
+              return verified.length ? kn.checked(key, asData(verified.join(", "))) : kn.noMissing(key);
+@@ 2065 | korrigiert
+            return kn.fixed(draft.model, entry.id, asData(entry.title));
+@@ 2069 | überschneidet sich nichts
+            if (!overlaps.length && !long.length) return kn.clean(p.name);
+@@ 2074-2075 | Überschneidung
+                ...overlaps.slice(0, 5).map((x) => kn.overlap(Math.round(x.score * 100), name(x.a), name(x.b))),
+                ...long.slice(0, 5).map((l) => kn.long(Math.round(l.chars / 1000), name(l.id))),
+@@ 2081 | Zum Löschen brauche ich
+            if (!key) return kn.needIdDelete;
+@@ 2082 | gelöscht.`
+            return (await store.delete(p.id, key)) ? kn.deleted(key, p.name) : kn.notFound(p.name, key);
+@@ 2089 | steht dazu nichts
+          if (!hits.length) return store.list(p.id).length ? kn.nothing(p.name) : kn.empty(p.name);
+@@ 2095-2099 | const store = this.d.knowledge;
+          const store = this.d.knowledge;
+          const kn = tr().phone.knowledge;
+          if (!store) return kn.unavailable;
+          const note = text.trim();
+          if (!note) return kn.emptyNote;
+          const stamp = new Date().toLocaleDateString(tr().phone.locale);
+@@ 2103-2104 | Notiz vom Telefon
+            await store.save(p.id, { id: e.id, title: e.title, summary: e.summary, tags: e.tags, content: `${e.content.trimEnd()}\n\n${kn.noteLine(stamp, note)}\n` });
+            return kn.noteAdded(e.title);
+@@ 2106-2107 | const e = await store.save
+          const e = await store.save(p.id, { id: null, title: title.trim() || kn.noteTitle, summary: note.length > 160 ? `${note.slice(0, 157)}...` : note, tags: [kn.noteTag], content: `${kn.noteLine(stamp, note)}\n` });
+          return kn.noteSaved(e.title, p.name);
+@@ 2111 | if (action === "account") {
+          const gm = tr().phone.git;
+          if (action === "account") {
+@@ 2113-2116 | nicht bei GitHub angemeldet
+            if (!acc) return gm.notSignedIn;
+            const orgs = await call("github.orgs", {}).catch(() => []);
+            const inOrgs = orgs.length ? gm.orgs(asData(orgs.map((o) => o.login).join(", "))) : "";
+            return gm.account(acc.login, acc.name || null, inOrgs);
+@@ 2122 | Name und E-Mail
+              if (!name || !email) return gm.identityNeedsBoth;
+@@ 2124 | Commits laufen jetzt
+              return gm.identitySet(id.name, id.email);
+@@ 2127 | Commits laufen unter
+            return id.name || id.email ? gm.identity(id.name ?? null, id.email ?? null) : gm.noIdentity;
+@@ 2134 | neue Commits auf dem Server
+            return s.behind ? gm.behind(p.name, s.behind) : gm.upToDate(p.name);
+@@ 2138 | noch keine Branches
+            if (!list.length) return gm.noBranches(p.name);
+@@ 2141-2142 | Weitere
+            const rest = others.length ? gm.otherBranches(asData(others.slice(0, 15).join(", ")), others.length - 15) : "";
+            return gm.branches(p.name, list.length, current, rest);
+@@ 2146 | Welcher Branch
+            if (!branch) return gm.whichBranch;
+@@ 2149 | gelöscht
+              return gm.branchDeleted(branch, p.name);
+@@ 2153 | wird gelöscht
+            return askKeypad(gm.confirmDeleteBranch(asData(branch), p.name), del);
+@@ 2157 | keine Änderungen
+            if (!st.files.length) return gm.noChanges(p.name);
+@@ 2160 | Geändert in
+              return gm.changedFiles(p.name, asData(names.join(", ")), st.files.length - 15);
+@@ 2162-2164 | Keine geänderte Datei
+            const f = pickOne(st.files, o.path.replace(/\\/g, "/"), (x) => [x.path], { none: tr().phone.common.what.changedNone, many: tr().phone.common.what.changedMany });
+            if (f.kind === "untracked") return gm.untracked(asData(f.path));
+            if (isSensitiveFile(f.path)) return gm.sensitiveChanged(asData(f.path));
+@@ 2166-2168 | Binärdatei
+            if (d.binary) return gm.binary(asData(f.path));
+            const lines = d.lines.filter((l) => l.kind === "add" || l.kind === "del").map((l) => `${l.kind === "add" ? gm.added : gm.removed}: ${l.text}`);
+            return gm.diff(asData(f.path), d.additions, d.deletions, lines.length ? excerptData(lines.slice(0, 60).join("\n"), 3000) : "");
+@@ 2174 | Kein Commit
+            const c = /^\d{1,2}$/.test(ref) ? commits[Number(ref) - 1] : pickOne(commits, ref, (x) => [x.subject, x.shortHash], { none: tr().phone.common.what.commitNone, many: tr().phone.common.what.commitMany });
+@@ 2180 | hat keinen
+            if (!hash) return gm.noCommit(p.name, ref);
+@@ 2183-2185 | Keine Datei dieses Commits
+              const f = pickOne(d.files, o.path.replace(/\\/g, "/"), (x) => [x.path], { none: tr().phone.common.what.commitFileNone, many: tr().phone.common.what.commitFileMany });
+              if (isSensitiveFile(f.path)) return gm.sensitive(asData(f.path));
+              if (f.binary) return gm.binary(asData(f.path));
+@@ 2187-2188 | const lines = diff.lines
+              const lines = diff.lines.filter((l) => l.kind === "add" || l.kind === "del").map((l) => `${l.kind === "add" ? gm.added : gm.removed}: ${l.text}`);
+              return gm.commitFileDiff(asData(f.path), diff.additions, diff.deletions, lines.length ? excerptData(lines.slice(0, 60).join("\n"), 3000) : "");
+@@END

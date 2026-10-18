@@ -53,18 +53,20 @@ import { LanguageSelect } from "@/components/settings/LanguageSelect";
 import { cn, planLabel } from "@/lib/utils";
 import { t } from "@/i18n";
 
+const sv = t.views.settings;
+
 type Save = (patch: Partial<Settings>) => Promise<void>;
 
 export const SECTIONS: ReadonlyArray<SettingsSectionDef<SettingsSection>> = [
-  { id: "general", label: "Allgemein", hint: "Modell, Profil, Bedienung", Icon: SlidersHorizontal },
-  { id: "templates", label: "Vorlagen", hint: "Wiederkehrende Aufträge", Icon: FileStack },
-  { id: "claude", label: "Claude Code", hint: "Anmeldung, Nutzung, Prognose", Icon: SquareTerminal },
-  { id: "policy", label: "Sperrliste", hint: "Was FORGE immer blockiert", Icon: ShieldBan },
-  { id: "phone", label: "Telefon", hint: "Anrufe, Sprache, Tischtelefon", Icon: Phone },
-  { id: "github", label: "GitHub", hint: "Konto, Synchronisierung, Versionen", Icon: Cloud },
-  { id: "backup", label: "Backup", hint: "Sichern und zurücksetzen", Icon: ArchiveRestore },
-  { id: "rules", label: "Globale Regeln", hint: "CLAUDE.md für alle Projekte", Icon: FileText },
-  { id: "about", label: "Über FORGE", hint: "Herausgeber, Updates, Datenschutz, Diagnose", Icon: Info },
+  { id: "general", label: sv.sections.general.label, hint: sv.sections.general.hint, Icon: SlidersHorizontal },
+  { id: "templates", label: sv.sections.templates.label, hint: sv.sections.templates.hint, Icon: FileStack },
+  { id: "claude", label: sv.sections.claude.label, hint: sv.sections.claude.hint, Icon: SquareTerminal },
+  { id: "policy", label: sv.sections.policy.label, hint: sv.sections.policy.hint, Icon: ShieldBan },
+  { id: "phone", label: sv.sections.phone.label, hint: sv.sections.phone.hint, Icon: Phone },
+  { id: "github", label: sv.sections.github.label, hint: sv.sections.github.hint, Icon: Cloud },
+  { id: "backup", label: sv.sections.backup.label, hint: sv.sections.backup.hint, Icon: ArchiveRestore },
+  { id: "rules", label: sv.sections.rules.label, hint: sv.sections.rules.hint, Icon: FileText },
+  { id: "about", label: sv.sections.about.label, hint: sv.sections.about.hint, Icon: Info },
 ];
 
 export function SettingsView() {
@@ -80,17 +82,17 @@ export function SettingsView() {
       void qc.invalidateQueries({ queryKey: keys.diagnostics });
       toast.saved();
     } catch (e) {
-      toast.error("Einstellung nicht gespeichert", errorMessage(e));
+      toast.error(sv.saveFailed, errorMessage(e));
     }
   };
 
   const s = settings.data;
   const current = SECTIONS.find((x) => x.id === section) ?? SECTIONS[0]!;
   return (
-    <Page title="Einstellungen" subtitle="Änderungen gelten sofort. Ein Backup davon legt FORGE bei jedem Start an.">
-      <SettingsLayout sections={SECTIONS} current={current.id} onSelect={openSettings} label="Bereiche der Einstellungen">
+    <Page title={sv.title} subtitle={sv.subtitle}>
+      <SettingsLayout sections={SECTIONS} current={current.id} onSelect={openSettings} label={sv.sectionsLabel}>
         {!s ? (
-          <FormSkeleton groups={2} label="Lädt Einstellungen" />
+          <FormSkeleton groups={2} label={sv.loading} />
         ) : current.id === "general" ? (
           <GeneralSection s={s} save={save} />
         ) : current.id === "templates" ? (
@@ -105,15 +107,15 @@ export function SettingsView() {
           <GitHubSection s={s} save={save} />
         ) : current.id === "backup" ? (
           <Group
-            title="Backup"
-            description="Ein Backup enthält deine Einstellungen, die Projektliste, das Telefon, die Claude-Code-Konfiguration, deine Vorlagen und deinen Git-Namen. Nicht enthalten sind Chatverläufe, Projektdateien und die Anmeldungen bei Claude und GitHub."
+            title={sv.backupTitle}
+            description={sv.backupDescription}
           >
             <div className="p-4">
               <BackupSettings />
             </div>
           </Group>
         ) : current.id === "rules" ? (
-          <Group title="Globale Regeln für Claude" description="Stehen in ~/.claude/CLAUDE.md und gelten in jedem Projekt, zusätzlich zur CLAUDE.md des Projekts. Auch Claude Code im Terminal liest sie.">
+          <Group title={sv.rulesTitle} description={sv.rulesDescription}>
             <div className="p-4">
               <MemoryEditor scopes={["global"]} />
             </div>
@@ -129,17 +131,17 @@ export function SettingsView() {
 function GeneralSection({ s, save }: { s: Settings; save: Save }) {
   return (
     <>
-      <Group title="Neue Sessions" description="Gilt, solange ein Projekt nichts anderes festlegt. Pro Session lässt sich alles im Chat umstellen.">
+      <Group title={sv.newSessionsTitle} description={sv.newSessionsDescription}>
         <ModelSetting value={s.defaultModel} onChange={(v) => void save({ defaultModel: v })} />
-        <Row label="Aufwand" description="Wie gründlich Claude nachdenkt. Höher ist genauer, aber langsamer und verbraucht mehr vom Abo.">
+        <Row label={sv.effortLabel} description={sv.effortDescription}>
           <Select
             value={toChoice(s.defaultEffort)}
             onChange={(v) => void save({ defaultEffort: fromChoice<EffortLevel>(v) })}
             className="w-64"
-            options={effortOptions("Claude-Code-Standard")}
+            options={effortOptions(sv.claudeCodeDefault)}
           />
         </Row>
-        <Row label="Profil für neue Projekte" description={PROFILE_INFO[s.defaultProfile].description}>
+        <Row label={sv.profileForNewProjects} description={PROFILE_INFO[s.defaultProfile].description}>
           <Select<ProfileId>
             value={s.defaultProfile}
             onChange={(v) => void save({ defaultProfile: v })}
@@ -151,68 +153,67 @@ function GeneralSection({ s, save }: { s: Settings; save: Save }) {
           <div className="flex items-start gap-3 bg-danger-soft/40 px-4 py-3">
             <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0 text-danger" />
             <p className="text-xs text-muted">
-              Autonomous fragt nicht vor Befehlen und Dateiänderungen. Befehle laufen mit deinen Benutzerrechten. Die Sperrliste von FORGE gilt weiterhin, ihre Regeln stellst du unter Sperrliste
-              ein. Mit dem Tag sandbox-only nimmst du einzelne Projekte aus.
+              {sv.autonomousWarning}
             </p>
           </div>
         )}
-        <Row label="Ordner für neue Projekte" description="Hier legt FORGE neue und geklonte Projekte an." stacked>
+        <Row label={sv.projectDirLabel} description={sv.projectDirDescription} stacked>
           <div className="flex gap-2">
-            <Input value={s.defaultProjectDir ?? ""} readOnly placeholder="nicht gesetzt" className="font-mono text-xs" />
+            <Input value={s.defaultProjectDir ?? ""} readOnly placeholder={sv.notSet} className="font-mono text-xs" />
             <Button
               onClick={async () => {
                 try {
-                  const p = await pickFolder("Ordner für neue Projekte wählen", s.defaultProjectDir);
+                  const p = await pickFolder(sv.pickProjectDir, s.defaultProjectDir);
                   if (p) void save({ defaultProjectDir: p });
                 } catch (e) {
-                  toast.error("Ordnerdialog fehlgeschlagen", errorMessage(e));
+                  toast.error(sv.folderDialogFailed, errorMessage(e));
                 }
               }}
             >
-              <FolderOpen className="h-3.5 w-3.5" /> Wählen
+              <FolderOpen className="h-3.5 w-3.5" /> {sv.choose}
             </Button>
           </div>
         </Row>
       </Group>
 
 
-      <Group title="Bedienung">
+      <Group title={sv.controlsTitle}>
         <Row label={t.settings.language} description={t.settings.languageHint}>
           <LanguageSelect className="w-64" />
         </Row>
         <SwitchRow
-          label="Enter sendet"
-          description={s.enterToSend ? "Umschalt+Enter macht eine neue Zeile." : "Strg+Enter sendet, Enter macht eine neue Zeile."}
+          label={sv.enterSends}
+          description={s.enterToSend ? sv.enterSendsOn : sv.enterSendsOff}
           checked={s.enterToSend}
           onChange={(v) => void save({ enterToSend: v })}
         />
         <SwitchRow
-          label="Windows-Benachrichtigungen"
-          description="Meldung von Windows, wenn Claude fertig ist, eine Freigabe oder Antwort braucht oder ein Fehler auftritt. Erscheint auch, wenn FORGE im Hintergrund ist. Ein Klick auf die eingeblendete Meldung öffnet die Session."
+          label={sv.notificationsLabel}
+          description={sv.notificationsDescription}
           checked={s.desktopNotifications}
           onChange={(v) => void save({ desktopNotifications: v })}
         />
         <SwitchRow
-          label="Im Vordergrund bleiben"
-          description="Das Hauptfenster von FORGE bleibt über anderen Programmen. Auch über die Befehlspalette (Strg+K) und per Telefon umschaltbar. Ausgekoppelte Chat-Fenster heftest du einzeln mit der Nadel in ihrer Kopfzeile an."
+          label={sv.alwaysOnTopLabel}
+          description={sv.alwaysOnTopDescription}
           checked={s.alwaysOnTop}
           onChange={(v) => void save({ alwaysOnTop: v })}
         />
         <SwitchRow
-          label="Druck-Taste für Screenshots"
-          description="Solange FORGE läuft, öffnet die Druck-Taste das Snipping-Tool von FORGE statt dem von Windows. Der Screenshot landet in der Zwischenablage und als Anhang im Chat, den du zuletzt benutzt hast. Alt+Druck und Win+Druck bleiben bei Windows."
+          label={sv.screenshotKeyLabel}
+          description={sv.screenshotKeyDescription}
           checked={s.screenshotKey}
           onChange={(v) => void save({ screenshotKey: v })}
         />
-        <Row label="Töne" description="Signal, wenn Claude fertig ist, eine Freigabe braucht oder ein Fehler auftritt.">
+        <Row label={sv.soundsLabel} description={sv.soundsDescription}>
           <div className="flex items-center gap-1">
             {(["done", "approval", "error"] as const).map((k) => (
-              <Button key={k} size="icon-sm" variant="ghost" onClick={() => playSound(k)} aria-label={`Ton ${SOUND_LABEL[k]} anhören`} title={`Ton ${SOUND_LABEL[k]} anhören`}>
+              <Button key={k} size="icon-sm" variant="ghost" onClick={() => playSound(k)} aria-label={sv.soundPlay(SOUND_LABEL[k])} title={sv.soundPlay(SOUND_LABEL[k])}>
                 <Volume2 className="h-3.5 w-3.5" />
               </Button>
             ))}
             <span className="ml-2">
-              <Switch checked={s.sounds} onChange={(v) => void save({ sounds: v })} label="Töne" />
+              <Switch checked={s.sounds} onChange={(v) => void save({ sounds: v })} label={sv.soundsLabel} />
             </span>
           </div>
         </Row>
@@ -221,15 +222,15 @@ function GeneralSection({ s, save }: { s: Settings; save: Save }) {
   );
 }
 
-const SOUND_LABEL = { done: "Fertig", approval: "Freigabe", error: "Fehler" } as const;
+const SOUND_LABEL = { done: sv.soundDone, approval: sv.soundApproval, error: sv.soundError } as const;
 
 export function ModelSetting({ value, onChange }: { value: string | null; onChange: (v: string | null) => void }) {
   const info = useRuntimeInfo();
   const models = info.data?.models ?? [];
-  const hint = info.isLoading ? "Modellliste wird von Claude Code gelesen …" : models.length ? "Mit welchem Modell eine neue Session startet." : "Modellliste nicht verfügbar.";
+  const hint = info.isLoading ? sv.modelLoading : models.length ? sv.modelHint : sv.modelUnavailable;
   return (
-    <Row label="Modell" description={hint}>
-      <Select value={toChoice(value)} onChange={(v) => onChange(fromChoice(v))} className="w-64" options={modelOptions(models, "Claude-Code-Standard")} />
+    <Row label={sv.modelLabel} description={hint}>
+      <Select value={toChoice(value)} onChange={(v) => onChange(fromChoice(v))} className="w-64" options={modelOptions(models, sv.claudeCodeDefault)} />
     </Row>
   );
 }
@@ -238,8 +239,8 @@ function ClaudeSection({ s, save }: { s: Settings; save: Save }) {
   return (
     <>
       <Group
-        title="Installation und Anmeldung"
-        description="FORGE arbeitet mit Claude Code und deinem Claude-Abo. Fehlt Claude Code, installiert FORGE es beim Start selbst. Die Anmeldung teilt FORGE mit Claude Code im Terminal."
+        title={sv.installTitle}
+        description={sv.installDescription}
       >
         <div className="px-4 py-3.5">
           <ClaudeSetupCard />
@@ -248,38 +249,38 @@ function ClaudeSection({ s, save }: { s: Settings; save: Save }) {
 
       <UsageSettings />
 
-      <Group title="Verhalten">
+      <Group title={sv.behaviorTitle}>
         <SwitchRow
-          label="Nach Nutzungslimit weitermachen"
-          description="Stoppt das Limit eine Session, schickt FORGE nach dem Reset selbst eine Nachricht. Höchstens dreimal ohne deine Eingabe, nur solange FORGE läuft."
+          label={sv.autoContinueLabel}
+          description={sv.autoContinueDescription}
           checked={s.autoContinueAfterLimit}
           onChange={(v) => void save({ autoContinueAfterLimit: v })}
         />
         <SwitchRow
-          label="Vorher-Nachher-Bilder bei UI-Änderungen"
-          description="Ändert Claude Dateien wie .tsx oder .css, während der Dev-Server läuft, zeigt der Chat Screenshots der Web-App von vor und nach dem Durchlauf. Die Bilder gehen nicht an Claude und werden nach 14 Tagen gelöscht."
+          label={sv.uiCompareLabel}
+          description={sv.uiCompareDescription}
           checked={s.uiCompare}
           onChange={(v) => void save({ uiCompare: v })}
         />
-        <Row label="Untätige Sessions schließen nach" description="Beendet nur den Claude-Prozess. Die Session bleibt mit Verlauf erhalten und läuft mit der nächsten Nachricht weiter.">
+        <Row label={sv.idleCloseLabel} description={sv.idleCloseDescription}>
           <Select
             value={String(s.idleCloseMinutes)}
             onChange={(v) => void save({ idleCloseMinutes: Number(v) })}
             className="w-64"
             options={idleCloseOptions(s.idleCloseMinutes)}
-            aria-label="Untätige Sessions schließen nach"
+            aria-label={sv.idleCloseLabel}
           />
         </Row>
         <SwitchRow
-          label="ANTHROPIC_API_KEY ausblenden"
-          description="Empfohlen. Ein gesetzter API-Key ersetzt die Abo-Anmeldung und wird extra abgerechnet. FORGE zeigt den Wert nie an."
+          label={sv.stripKeyLabel}
+          description={sv.stripKeyDescription}
           checked={s.stripApiKey}
           onChange={(v) => void save({ stripApiKey: v })}
         />
       </Group>
 
-      <Group title="Erweitert">
-        <Row label="Pfad zur Claude-CLI" description="Leer lassen: FORGE sucht Claude Code selbst." stacked>
+      <Group title={sv.advancedTitle}>
+        <Row label={sv.claudePathLabel} description={sv.claudePathDescription} stacked>
           <ClaudePathInput value={s.claudePath} onSave={(v) => void save({ claudePath: v })} />
         </Row>
       </Group>
@@ -299,9 +300,9 @@ function ClaudePathInput({ value, onSave }: { value: string | null; onSave: (v: 
       onChange={(e) => setDraft(e.target.value)}
       onBlur={commit}
       onKeyDown={(e) => e.key === "Enter" && commit()}
-      placeholder="automatisch"
+      placeholder={sv.claudePathPlaceholder}
       className="font-mono text-xs"
-      aria-label="Pfad zur Claude-CLI"
+      aria-label={sv.claudePathLabel}
     />
   );
 }
@@ -313,7 +314,7 @@ function GitHubSection({ s, save }: { s: Settings; save: Save }) {
       <GitHubSettings />
       <SyncSettings s={s} save={save} />
       {s.syncEnabled && (
-        <Group title="Versionen auf GitHub" description="Jeder Abgleich ist ein Commit. Ein früherer Stand gilt nach dem Zurückholen auch für deine anderen PCs.">
+        <Group title={sv.versionsTitle} description={sv.versionsDescription}>
           <div className="p-4">
             <GitHubVersions />
           </div>
@@ -331,18 +332,18 @@ function PhoneSection() {
 function AboutSection({ s, save }: { s: Settings; save: Save }) {
   return (
     <>
-      <Group title="Herausgeber">
+      <Group title={sv.publisherTitle}>
         <div className="flex flex-col gap-2 px-4 py-3.5 text-body">
           <p>
-            FORGE ist ein Open-Source-Produkt der {PUBLISHER.name}. Der Quellcode steht unter der {PUBLISHER.license}-Lizenz.
+            {sv.publisherText(PUBLISHER.name, PUBLISHER.license)}
           </p>
           <div className="flex flex-wrap gap-x-4 gap-y-1 text-muted">
             {(
               [
                 ["vanturis.de", PUBLISHER.site],
-                ["Impressum", PUBLISHER.imprint],
-                ["Datenschutz", PUBLISHER.privacy],
-                ["Quellcode auf GitHub", PUBLISHER.source],
+                [sv.linkImprint, PUBLISHER.imprint],
+                [sv.linkPrivacy, PUBLISHER.privacy],
+                [sv.linkSource, PUBLISHER.source],
               ] as const
             ).map(([label, href]) => (
               <a
@@ -361,31 +362,30 @@ function AboutSection({ s, save }: { s: Settings; save: Save }) {
         </div>
       </Group>
 
-      <Group title="Updates">
+      <Group title={sv.updatesTitle}>
         <div className="px-4 py-3.5">
           <AppUpdateSettings />
         </div>
         <SwitchRow
-          label="Automatisch nach Updates suchen"
-          description="Beim Start und alle 30 Minuten in den GitHub-Releases. Ein neues Update zeigt FORGE mit einer Zusammenfassung von Claude an. FORGE installiert nur Updates mit gültiger Signatur."
+          label={sv.autoUpdateLabel}
+          description={sv.autoUpdateDescription}
           checked={s.updateChecks}
           onChange={(v) => void save({ updateChecks: v })}
         />
       </Group>
 
-      <Group title="Installation" description="Ob die mitgelieferten Programme (Node.js, Git, GitHub CLI, Python) da sind und zu dieser Version passen.">
+      <Group title={sv.installationTitle} description={sv.installationDescription}>
         <div className="px-4 py-3.5">
           <InstallRepairSettings />
         </div>
       </Group>
 
-      <Group title="Datenschutz">
+      <Group title={sv.privacyTitle}>
         <SwitchRow
-          label="Anonyme Nutzungsstatistik"
+          label={sv.usageStatsLabel}
           description={
             <>
-              Alle 5 Minuten gehen Summen an den Statistik-Dienst von FORGE: eine zufällige Kennung, FORGE- und Windows-Version, die Art des Claude-Abos, Tokens je Claude-Modell, geschätzte API-Kosten,
-              Claude-Arbeitszeit, Durchläufe, Sessions, angelegte Projekte, Agenten und Telefonate. Keine Inhalte, Namen oder Pfade. Ausschalten löscht die gesendeten Daten beim Dienst.{" "}
+              {sv.usageStatsText}{" "}
               <a
                 href={USAGE_STATS_URL}
                 onClick={(e) => {
@@ -394,7 +394,7 @@ function AboutSection({ s, save }: { s: Settings; save: Save }) {
                 }}
                 className="underline hover:text-fg"
               >
-                Gesamtzahlen ansehen
+                {sv.usageStatsLink}
               </a>
             </>
           }
@@ -402,10 +402,10 @@ function AboutSection({ s, save }: { s: Settings; save: Save }) {
           onChange={(v) => void save({ usageStats: v, usageStatsAsked: true })}
         />
         <ul className="list-disc space-y-1.5 py-3.5 pl-9 pr-4 text-body text-muted">
-          <li>Projektdaten, Chatverläufe und Einstellungen bleiben auf deinem Rechner. Außer der Nutzungsstatistik oben sendet FORGE nichts über dich.</li>
-          <li>Ist das Telefon eingeschaltet, geht Gesprächsaudio an Google (Gemini) oder OpenAI, je nach Einstellung unter Telefon.</li>
-          <li>Tool-Ein- und Ausgaben prüft FORGE vor dem Speichern auf bekannte Secret-Muster und maskiert sie.</li>
-          <li>FORGE liest keine Claude-Zugangsdaten. Die Anmeldung speichert Claude Code selbst.</li>
+          <li>{sv.privacyLocal}</li>
+          <li>{sv.privacyPhone}</li>
+          <li>{sv.privacySecrets}</li>
+          <li>{sv.privacyCredentials}</li>
         </ul>
       </Group>
 
@@ -423,7 +423,7 @@ function DiagnosticsPanel() {
     try {
       qc.setQueryData(keys.diagnostics, await call("system.diagnostics", { refresh: true }));
     } catch (e) {
-      toast.error("Diagnose fehlgeschlagen", errorMessage(e));
+      toast.error(sv.diagnosticsFailed, errorMessage(e));
     } finally {
       setRefreshing(false);
     }
@@ -431,11 +431,11 @@ function DiagnosticsPanel() {
   const d = diag.data;
   return (
     <Group
-      title="Diagnose"
-      description="Was FORGE auf diesem Rechner gefunden hat."
+      title={sv.diagnosticsTitle}
+      description={sv.diagnosticsDescription}
       action={
         <Button size="sm" variant="ghost" onClick={() => void refresh()} loading={refreshing}>
-          <RefreshCw className="h-3.5 w-3.5" /> Neu prüfen
+          <RefreshCw className="h-3.5 w-3.5" /> {sv.recheck}
         </Button>
       }
     >
@@ -450,27 +450,27 @@ function DiagnosticsPanel() {
           <div className="flex flex-col gap-1.5 px-4 py-3.5 text-body">
             <InfoRow label="System" value={d.platform} />
             <InfoRow label="Node.js (Sidecar)" value={d.nodeVersion} />
-            <InfoRow label="Datenordner" value={<span className="block truncate font-mono text-xs" title={d.dataDir}>{d.dataDir}</span>} />
-            <ToolRow label="Claude Code" t={d.claude} />
+            <InfoRow label={sv.dataFolder} value={<span className="block truncate font-mono text-xs" title={d.dataDir}>{d.dataDir}</span>} />
+            <ToolRow label="Claude Code" check={d.claude} />
             <AuthRow d={d} />
             <InfoRow
               label="ANTHROPIC_API_KEY"
               value={
                 !d.apiKeyEnvPresent ? (
-                  <Badge tone="success">nicht gesetzt</Badge>
+                  <Badge tone="success">{sv.notSet}</Badge>
                 ) : d.apiKeyStripped ? (
-                  <Badge tone="warning">gesetzt, für Sessions ausgeblendet</Badge>
+                  <Badge tone="warning">{sv.keyStripped}</Badge>
                 ) : (
-                  <Badge tone="danger">gesetzt und aktiv</Badge>
+                  <Badge tone="danger">{sv.keyActive}</Badge>
                 )
               }
             />
-            <ToolRow label="git" t={d.git} />
-            <ToolRow label="GitHub CLI" t={d.gh} extra={d.gh.found ? (d.gh.authenticated ? <Badge tone="success">angemeldet</Badge> : <Badge tone="warning">nicht angemeldet</Badge>) : null} />
-            <ToolRow label="Python" t={d.python} />
+            <ToolRow label="git" check={d.git} />
+            <ToolRow label="GitHub CLI" check={d.gh} extra={d.gh.found ? (d.gh.authenticated ? <Badge tone="success">{sv.signedIn}</Badge> : <Badge tone="warning">{sv.notSignedIn}</Badge>) : null} />
+            <ToolRow label="Python" check={d.python} />
           </div>
           <div className="px-4 py-3.5">
-            <div className="mb-2 text-xs font-medium text-muted">Funktionsübersicht (aktiver Adapter: Agent SDK)</div>
+            <div className="mb-2 text-xs font-medium text-muted">{sv.capabilities}</div>
             <div className="divide-y divide-border rounded-lg border border-border">
               {d.capabilities.map((c) => (
                 <div key={c.key} className="flex items-start gap-2 px-3 py-1.5 text-body">
@@ -496,7 +496,7 @@ function DiagnosticsPanel() {
 /** Same rows and boxes as the loaded diagnostics: nine info rows, then the capability list. */
 function DiagnosticsSkeleton() {
   return (
-    <SkeletonRegion label="Lädt Diagnose" className="divide-y divide-border">
+    <SkeletonRegion label={sv.loadingDiagnostics} className="divide-y divide-border">
       <div className="flex flex-col gap-1.5 px-4 py-3.5">
         {[45, 30, 70, 40, 35, 50, 30, 45, 25].map((w, i) => (
           <div key={i} className="flex h-5 items-center gap-3">
@@ -534,21 +534,21 @@ function InfoRow({ label, value }: { label: string; value: ReactNode }) {
   );
 }
 
-function ToolRow({ label, t, extra }: { label: string; t: ToolCheck; extra?: ReactNode }) {
+function ToolRow({ label, check, extra }: { label: string; check: ToolCheck; extra?: ReactNode }) {
   return (
     <InfoRow
       label={label}
       value={
-        t.found ? (
+        check.found ? (
           <span className="flex flex-wrap items-center gap-2">
             <CheckCircle2 className="h-3.5 w-3.5 text-success" />
-            {t.version ?? "gefunden"}
-            {t.bundled ? <Badge tone="accent">mitgeliefert</Badge> : <Badge>System</Badge>}
+            {check.version ?? sv.found}
+            {check.bundled ? <Badge tone="accent">{sv.bundled}</Badge> : <Badge>System</Badge>}
             {extra}
           </span>
         ) : (
           <span className="flex items-center gap-2 text-danger">
-            <XCircle className="h-3.5 w-3.5" /> nicht gefunden
+            <XCircle className="h-3.5 w-3.5" /> {sv.notFound}
           </span>
         )
       }
@@ -557,22 +557,22 @@ function ToolRow({ label, t, extra }: { label: string; t: ToolCheck; extra?: Rea
 }
 
 function AuthRow({ d }: { d: Diagnostics }) {
-  if (!d.auth.checked) return <InfoRow label="Anmeldung" value={<span className="text-subtle">nicht geprüft</span>} />;
-  if (d.auth.error) return <InfoRow label="Anmeldung" value={<span className="text-danger">{d.auth.error}</span>} />;
+  if (!d.auth.checked) return <InfoRow label={sv.signInLabel} value={<span className="text-subtle">{sv.notChecked}</span>} />;
+  if (d.auth.error) return <InfoRow label={sv.signInLabel} value={<span className="text-danger">{d.auth.error}</span>} />;
   return (
     <InfoRow
-      label="Anmeldung"
+      label={sv.signInLabel}
       value={
         d.auth.loggedIn ? (
           <span className="flex flex-wrap items-center gap-2">
-            <Badge tone="success">angemeldet</Badge>
+            <Badge tone="success">{sv.signedIn}</Badge>
             <span className="text-muted">
-              {d.auth.authMethod === "claude.ai" ? "Claude-Konto" : d.auth.authMethod}
+              {d.auth.authMethod === "claude.ai" ? sv.claudeAccount : d.auth.authMethod}
               {d.auth.subscriptionType ? `, ${planLabel(d.auth)}` : ""}
             </span>
           </span>
         ) : (
-          <span className="text-danger">nicht angemeldet. Die Anmeldung findest du unter Claude Code.</span>
+          <span className="text-danger">{sv.notSignedInHint}</span>
         )
       }
     />

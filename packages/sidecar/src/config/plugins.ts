@@ -1,5 +1,6 @@
 import os from "node:os";
 import { ForgeError, type MarketplacePlugin } from "@forge/protocol";
+import { tr } from "../i18n/index.js";
 import { run } from "../util/proc.js";
 
 interface ListJson {
@@ -13,7 +14,7 @@ export function parsePluginList(json: string): MarketplacePlugin[] {
   try {
     data = JSON.parse(json) as ListJson;
   } catch {
-    throw new ForgeError("CLAUDE_RUNTIME", "Plugin-Liste von Claude Code nicht lesbar.");
+    throw new ForgeError("CLAUDE_RUNTIME", tr().system.claudeConfig.pluginsUnreadable);
   }
   const installed = new Map<string, boolean>();
   for (const p of data.installed ?? []) {
@@ -66,7 +67,7 @@ export class PluginService {
     if (!refresh && this.cache && Date.now() - this.cache.at < 10 * 60_000) return this.cache.list;
     if (refresh) await this.cli(["plugin", "marketplace", "update"], 120_000);
     const r = await this.cli(["plugin", "list", "--available", "--json"], 90_000);
-    if (r.code !== 0) throw new ForgeError("CLAUDE_RUNTIME", (r.stderr || r.stdout || "Plugin-Liste fehlgeschlagen").trim());
+    if (r.code !== 0) throw new ForgeError("CLAUDE_RUNTIME", (r.stderr || r.stdout || tr().system.claudeConfig.pluginListFailed).trim());
     const list = parsePluginList(r.stdout);
     this.cache = { at: Date.now(), list };
     return list;
@@ -74,7 +75,7 @@ export class PluginService {
 
   async install(id: string): Promise<MarketplacePlugin[]> {
     const r = await this.cli(["plugin", "install", "--scope", "user", id], 300_000);
-    if (r.code !== 0) throw new ForgeError("CLAUDE_RUNTIME", (r.stderr || r.stdout || "Installation fehlgeschlagen").trim());
+    if (r.code !== 0) throw new ForgeError("CLAUDE_RUNTIME", (r.stderr || r.stdout || tr().system.claudeConfig.installFailed).trim());
     this.cache = null;
     return this.catalog();
   }
@@ -88,7 +89,7 @@ export class PluginService {
 
   async setEnabled(id: string, enabled: boolean): Promise<MarketplacePlugin[]> {
     const r = await this.cli(["plugin", enabled ? "enable" : "disable", "--scope", "user", id], 60_000);
-    if (r.code !== 0) throw new ForgeError("CLAUDE_RUNTIME", (r.stderr || r.stdout || (enabled ? "Aktivieren fehlgeschlagen" : "Deaktivieren fehlgeschlagen")).trim());
+    if (r.code !== 0) throw new ForgeError("CLAUDE_RUNTIME", (r.stderr || r.stdout || (enabled ? tr().system.claudeConfig.enableFailed : tr().system.claudeConfig.disableFailed)).trim());
     this.cache = null;
     return this.catalog();
   }

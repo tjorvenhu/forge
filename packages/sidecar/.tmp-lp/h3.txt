@@ -1,0 +1,236 @@
+@@ 2196 | keine Dateien
+            if (!d.files.length) return gm.commitNoFiles(p.name);
+@@ 2200-2202 | const rest
+            const rest = d.files.length > 15 ? tr().phone.common.andMore(d.files.length - 15) : "";
+            const body = d.body ? gm.commitBody(excerptData(d.body, 1500)) : "";
+            return gm.commitFiles(d.files.length, add, del, asData(names.join(", ")), rest, body);
+@@ 2206 | Auf welchen Commit
+            if (!ref) return gm.whichCommit;
+@@ 2208 | hat keinen
+            if (!hash) return gm.noCommit(p.name, ref);
+@@ 2210 | auf den Stand von
+            return gm.restored(p.name, asData(r.subject), r.changed, !!r.stashed);
+@@ 2214 | Git-Repository
+            return gm.initialized(p.name);
+@@ 2220 | Repository auf GitHub
+            return gm.published(p.name, isPrivate, owner);
+@@ 2224-2226 | const sync
+            const sync = [s.ahead ? gm.notPushed(s.ahead) : "", s.behind ? gm.newerOnServer(s.behind) : ""].filter(Boolean);
+            const parts = [gm.branch(s.branch ?? null), s.changedCount ? gm.changedCount(s.changedCount) : gm.clean, ...sync, s.conflicted ? gm.conflicts : ""];
+            return gm.status(p.name, parts.filter(Boolean).join(", "));
+@@ 2230-2231 | noch keine Commits
+            if (!commits.length) return gm.noCommits(p.name);
+            return gm.log(p.name, commits.map((c) => gm.logLine(asData(`${c.subject} (${c.author})`), dateTime(c.date))).join("\n"));
+@@ 2235 | Auf welchen Branch
+            if (!branch) return gm.whichCheckout;
+@@ 2237 | arbeitet gerade eine Session
+            if (busy) return gm.sessionBusy(p.name);
+@@ 2240 | ist jetzt auf Branch
+            return gm.checkedOut(p.name, branch, o?.create === true);
+@@ 2248 | Die neuen Commits
+            return gm.handOver(refFor(s.id), push);
+@@ 2255 | Nichts committet
+            if (!paths.length) return skipped.length ? gm.onlySkipped(skipped.join(", ")) : gm.noChanges(p.name);
+@@ 2259 | Committet in
+            return gm.committed(p.name, asData(message.split("\n")[0]!), skipped.join(", "));
+@@ 2269-2270 | const took
+            const took = r.integrated ? gm.integrated(r.integrated.remoteCommits) : "";
+            return gm.pushed(r.branch, p.name, took);
+@@ 2285 | const gh = this.d.github;
+          const gh = this.d.github;
+          const pm = tr().phone.pr;
+@@ 2286 | GitHub ist hier nicht
+          if (!gh) return pm.unavailable;
+@@ 2289 | kein Branch ausgecheckt
+          if (!head) return pm.noBranch(p.name);
+@@ 2292-2304 | keinen Pull Request
+            if (!pr) return pm.none(head);
+            const state = pr.state === "OPEN" ? (pr.draft ? pm.openDraft : pm.open) : pr.state === "MERGED" ? pm.merged : pr.state === "CLOSED" ? pm.closed : pr.state;
+            const c = pr.checks;
+            const checks = !c.total
+              ? pm.noChecks
+              : c.failed
+                ? pm.checksFailed(c.failed, c.total)
+                : c.pending
+                  ? pm.checksPending(c.pending, c.total)
+                  : pm.checksGreen(c.total);
+            const review = pr.reviewDecision === "APPROVED" ? pm.approved : pr.reviewDecision === "CHANGES_REQUESTED" ? pm.changesRequested : pr.reviewDecision === "REVIEW_REQUIRED" ? pm.reviewRequired : "";
+            return pm.status(pr.number, asData(pr.title), pr.head, pr.base, state, checks, review);
+@@ 2306 | schon den offenen Pull Request
+          if (pr?.state === "OPEN") return pm.exists(head, pr.number, asData(pr.title));
+@@ 2308 | braucht einen eigenen Branch
+          if (head === base) return pm.onBase(p.name, base);
+@@ 2314 | angelegt
+          return pm.created(asData(draft.title), draft.head, draft.base, !!o?.draft);
+@@ 2318-2319 | const p = target(projectName, o);
+          const p = target(projectName, o);
+          const ag = tr().phone.agents;
+          if (!p.parentId) return ag.notWorktreeRemove(p.name);
+@@ 2324-2329 | const branch = r.deletedBranch
+            const branch = r.deletedBranch ? ag.branchDeleted(r.deletedBranch) : r.branchError ? ag.branchError(r.branchError) : ag.branchKept;
+            return ag.removed(p.name, branch);
+@@ 2332-2333 | const lost
+          const lost = [o?.force === true && ag.lostChanges, o?.deleteBranch === true && ag.lostBranch].filter(Boolean).join(ag.and);
+          return askKeypad(ag.confirmRemove(p.name, lost), removeIt);
+@@ 2337-2338 | const p = target(projectName, o);
+          const p = target(projectName, o);
+          const ag = tr().phone.agents;
+          if (!p.parentId) return ag.notWorktree(p.name);
+@@ 2341-2352 | const facts = [
+            const facts = [
+              ag.commits(r.ahead, r.branch ?? null, r.filesChanged),
+              r.uncommitted ? ag.uncommitted(r.uncommitted) : "",
+              r.behind ? ag.behind(r.targetBranch ?? null, r.behind) : "",
+              r.busy ? ag.busy : "",
+            ].filter(Boolean);
+            return [
+              ag.review(p.name, facts.join(", ")),
+              r.commits.length ? ag.lastCommits(asData(r.commits.slice(0, 3).map((c) => c.subject).join("; "))) : "",
+              r.summary.trim() ? ag.summary(excerptData(r.summary, 1500)) : "",
+              r.mergeBlocker ? ag.blocked(r.mergeBlocker) : ag.canMerge(r.targetBranch ?? null),
+            ]
+@@ 2357 | Agenten abschließen
+          if (!finisher) return ag.finishUnavailable;
+@@ 2360 | wird verworfen
+          return askKeypad(ag.confirmDiscard(p.name), finish);
+@@ 2364-2365 | const all = this.d.projects.all()
+          const all = this.d.projects.all().filter((p) => p.exists);
+          const pj = tr().phone.projects;
+          if (!all.length) return pj.none;
+@@ 2375 | Dev-Server läuft
+              return [p.name, branch ? pj.branch(branch) : p.gitEnabled ? "" : pj.noGit, dev ? pj.devRunning : "", n ? pj.active(n) : ""].filter(Boolean).join(", ");
+@@ 2382 | const parentDir = async
+          const pj = tr().phone.projects;
+          const parentDir = async () => {
+@@ 2384 | In welchem Ordner
+            if (!dir) throw new Error(pj.whichFolder);
+@@ 2389 | Wie soll das Projekt heißen
+            if (!name) return pj.whatName;
+@@ 2394-2399 | const gh = !r.github
+            const gh = !r.github ? "" : r.github.url ? pj.githubCreated(o?.github === "public", owner) : pj.githubFailed(r.github.error ?? null);
+            return pj.created(r.project.name, r.project.gitEnabled, gh);
+@@ 2403 | Welcher Ordner
+            if (!dir) return pj.whichDir;
+@@ 2408-2409 | const forcedGit
+            const forcedGit = o?.git === false && p.gitEnabled ? pj.forcedGit : "";
+            const done = pj.imported(p.name, p.gitEnabled, forcedGit);
+@@ 2414 | GitHub-Repository ist angelegt
+              return `${done}${pj.githubCreated(o?.github === "public", owner)}`;
+@@ 2416 | ließ sich nicht anlegen
+              return `${done}${pj.githubFailed(e instanceof Error ? e.message : String(e))}`;
+@@ 2421 | Welches Repository
+            if (!raw) return pj.whichRepo;
+@@ 2427 | Kein GitHub-Repository
+              const repo = pickOne(repos, plain(raw), (r) => [r.fullName, plain(r.fullName.split("/").pop() ?? ""), plain(r.fullName)], { none: tr().phone.common.what.repoNone, many: tr().phone.common.what.repoMany });
+@@ 2432 | geklont
+            return pj.cloned(p.name);
+@@ 2435 | Favorit
+          if (action === "info") return pj.info(p.name, !!p.favorite, !!p.parentId, projectText(p));
+@@ 2437 | Agent-Worktree
+            if (p.parentId) return pj.isWorktree(p.name);
+@@ 2443 | aus FORGE entfernt
+              return [pj.removed(p.name), r.folderDeleted ? pj.folderDeleted : pj.folderKept, r.githubDeleted ? pj.repoDeleted : ""]
+@@ 2448 | wird aus FORGE entfernt
+            if (!deleteFolder && !deleteGitHubRepo) return askKeypad(pj.confirmRemove(p.name), remove);
+@@ 2450-2452 | hat kein GitHub-Repository
+            if (deleteGitHubRepo && !info.githubRepo) return pj.noRepo(p.name);
+            if (deleteGitHubRepo && !info.githubSignedIn) return pj.notSignedIn;
+            if (deleteGitHubRepo && !info.githubCanDelete) return pj.needsDeleteRepo;
+@@ 2454-2457 | const what = [
+            const what = [deleteFolder && pj.deleteFolder(p.name), deleteGitHubRepo && pj.deleteRepo(asData(info.githubRepo ?? ""))]
+              .filter(Boolean)
+              .join(pj.and);
+            return askKeypad(pj.confirmDelete(what), remove);
+@@ 2461 | Wie soll das Projekt heißen
+            if (!name) return pj.whatName;
+@@ 2464 | heißt jetzt
+            return pj.renamed(p.name, next.name);
+@@ 2470 | Favorit
+            return favorite ? pj.favorite(p.name) : pj.noFavorite(p.name);
+@@ 2480 | projectText(p)
+          if (!Object.keys(patch).length) return pj.settings(p.name, projectText(p));
+@@ 2483 | Gespeichert für
+          return pj.saved(next.name, projectText(next));
+@@ 2487 | const p = target(projectName, o);
+          const p = target(projectName, o);
+          const fm = tr().phone.files;
+@@ 2490 | Welche Datei
+            if (!rel) return fm.whichFile;
+@@ 2492 | enthält Zugangsdaten
+            if (isSensitiveFile(rel)) return fm.sensitive(asData(rel));
+@@ 2494-2496 | keine Textdatei
+            if (f.binary) return fm.notText(asData(rel));
+            if (!f.content.trim()) return fm.empty(asData(rel));
+            return fm.content(asData(rel), !!f.truncated, excerptData(f.content, 4000));
+@@ 2499 | Welche Datei
+            if (!rel) return fm.whichFile;
+@@ 2502 | gibt es keine Datei
+            if (!hits.length) return fm.noMatch(p.name, asData(rel));
+@@ 2504 | Treffer
+            return fm.found(hits.length, asData(shown.join(", ")), hits.length - 10);
+@@ 2507-2508 | ist leer
+          if (!entries.length) return rel ? fm.emptyDir(asData(rel)) : fm.emptyProject(p.name);
+          const list = (xs: string[]) => `${xs.slice(0, 40).join(", ")}${xs.length > 40 ? tr().phone.common.andMore(xs.length - 40) : ""}`;
+@@ 2511 | Ordner:
+          return asData([dirs.length ? fm.dirs(list(dirs)) : "", files.length ? fm.list(list(files)) : ""].filter(Boolean).join(" "));
+@@ 2515 | const p = optionalTarget(projectName, o);
+          const p = optionalTarget(projectName, o);
+          const cm = tr().phone.claudeMd;
+@@ 2518 | vorhanden
+            return files.map((f) => `${f.label}: ${f.exists ? cm.exists : cm.missing}`).join("\n");
+@@ 2521 | Für welches Projekt
+          if (scope !== "global" && !p) return tr().phone.common.whichFor;
+@@ 2523 | Die globale CLAUDE.md
+          const where = scope === "global" ? cm.global : scope === "local" ? cm.local(p!.name) : cm.project(p!.name);
+@@ 2525 | ist leer oder fehlt
+          if (action === "read") return doc.content.trim() ? cm.read(where, excerptData(doc.content, 4000)) : cm.empty(where);
+@@ 2527 | Was soll ergänzt werden
+          if (!text) return cm.whatToAdd;
+@@ 2530 | ist ergänzt
+          return cm.added(where);
+@@ 2533 | run(true, async () => {
+        run(true, async () => {
+          const sm = tr().phone.sessions;
+@@ 2540 | Zusammenfassung von Claude
+              return sm.summary(asData(r.summary));
+@@ 2544 | gekürzt
+            return text.length > REPORT_MAX ? sm.reportCut(asData(text.slice(0, REPORT_MAX)), text.length) : asData(text);
+@@ 2563-2566 | const outside
+            const outside = external ? sm.external(external) : "";
+            if (!list.length) return sm.noMatch(outside);
+            const lines = list.slice(0, 10).map((s) => sm.line(refFor(s.id), asData(s.title ?? tr().phone.untitled), p ? null : s.projectName, statusText(s), dateTime(s.updatedAt)));
+            return `${list.length > 10 ? sm.newest(list.length) : ""}${lines.join("\n")}${outside}`;
+@@ 2568 | const transcripts
+          const transcripts = o?.keepTranscript === true ? sm.keepTranscripts : sm.deleteTranscripts;
+@@ 2571-2572 | Es gibt keine Sessions
+            if (!all.length) return sm.none;
+            return askKeypad(sm.confirmDeleteAll(all.length, transcripts), async () => {
+@@ 2575 | Sessions gelöscht
+              return r.failed ? sm.deletedSome(r.deleted.length, r.failed, r.error ?? null) : sm.deletedAll(r.deleted.length);
+@@ 2581 | wird gelöscht
+            return askKeypad(sm.confirmDelete(r, asData(s.title ?? tr().phone.untitled), transcripts), async () => {
+@@ 2584 | gelöscht
+              return res.deleted ? sm.deleted(r, !!res.transcriptDeleted) : sm.notDeleted(r);
+@@ 2589 | Vorher-Nachher-Vergleich
+            if (!c) return sm.noCompare(r);
+@@ 2592 | Nachher-Bild des letzten
+              return sm.retake(r);
+@@ 2594-2596 | const files = c.files.length
+            const files = sm.uiFiles(c.files.length);
+            const state = c.status === "ready" ? sm.compareReady : c.status === "capturing" ? sm.compareCapturing : sm.compareFailed(asData(c.error ?? sm.unknownError));
+            return sm.compare(r, dateTime(c.createdAt), asData(c.url), files, asData(c.files.slice(0, 5).join(", ")), state);
+@@ 2601-2603 | lässt sich nicht zurückspulen
+            if (!res.canRewind) return sm.cannotRewind(r, res.error ?? null);
+            if (!res.filesChanged.length) return sm.nothingToRewind(r);
+            return sm.rewound(r, excerptData(prompt.text, 120), res.filesChanged.length);
+@@ 2607 | Wie soll die Nachricht
+            if (!text) return sm.editText;
+@@ 2610 | ist ersetzt
+            return sm.edited(excerptData(prompt.text, 120), r);
+@@ 2614-2615 | const files = res.filesChanged
+          const files = res.filesChanged?.length ? sm.forkFiles(res.filesChanged.length) : "";
+          if (!res.session) return sm.forkNothing(files);
+@@ 2617-2618 | const cut
+          const cut = before && res.prompt ? sm.forkCut(excerptData(res.prompt, 300)) : "";
+          return sm.forked(refFor(res.session.id), r, files, cut);
+@@END

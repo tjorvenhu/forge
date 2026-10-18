@@ -47,7 +47,7 @@ function str(input: Record<string, unknown>, key: string): string | null {
 
 const line = (text: string, label: string) => new RegExp(`^${label}: (.+)$`, "m").exec(text)?.[1]?.trim() ?? null;
 /** what the preview reported as problems: console errors, exceptions, failed requests */
-const PROBLEMS = /Fehler|Ausnahme|fehlgeschlagene Anfrage/;
+const PROBLEMS = /Fehler|Ausnahme|fehlgeschlagene Anfrage|\berrors?\b|exception|failed request/;
 
 /** Size of the screenshot a preview tool returned ("Screenshot: 1280x800 JPEG"), null without one. */
 export function previewShot(tool: string, text: string): { width: number; height: number } | null {
@@ -62,7 +62,8 @@ export function previewShot(tool: string, text: string): { width: number; height
  */
 export function forgeToolView(tool: string, input: Record<string, unknown>, result: { text: string; isError: boolean } | null): ForgeToolView {
   const text = result?.text.trim() ?? "";
-  const failed = !!result && (result.isError || /^Fehler:/.test(text));
+  // The texts come from the sidecar in the language set when the tool ran: both are recognized.
+  const failed = !!result && (result.isError || /^(?:Fehler|Error):/.test(text));
   const done = !!result && !failed;
   const view = (v: Omit<ForgeToolView, "tone" | "hidden"> & { failedTitle: string; tone?: ForgeToolView["tone"]; hidden?: boolean }): ForgeToolView => ({
     title: failed ? v.failedTitle : v.title,
@@ -75,10 +76,11 @@ export function forgeToolView(tool: string, input: Record<string, unknown>, resu
 
   switch (tool) {
     case "knowledge_save": {
-      const refused = done && /^Nicht gespeichert/.test(text);
-      const overlapping = done && text.includes("Überschneidet sich stark mit");
-      const savedId = /^(?:Gespeichert|Aktualisiert): (\S+)/.exec(text)?.[1] ?? null;
-      const saved = text.startsWith("Aktualisiert") ? t.chat.forgeTools.knowledgeUpdated : t.chat.forgeTools.knowledgeSaved;
+      // The sidecar answers in the language set when the tool ran; a card from before a switch has the other one.
+      const refused = done && /^(?:Nicht gespeichert|Not saved)/.test(text);
+      const overlapping = done && /Überschneidet sich stark mit|Overlaps heavily with/.test(text);
+      const savedId = /^(?:Gespeichert|Aktualisiert|Saved|Updated): (\S+)/.exec(text)?.[1] ?? null;
+      const saved = /^(?:Aktualisiert|Updated)/.test(text) ? t.chat.forgeTools.knowledgeUpdated : t.chat.forgeTools.knowledgeSaved;
       return view({
         title: !result ? t.chat.forgeTools.knowledgeSaving : refused ? t.chat.forgeTools.knowledgeRefused : overlapping ? t.chat.forgeTools.knowledgeOverlapping(saved) : saved,
         failedTitle: t.chat.forgeTools.knowledgeSaveFailed,
@@ -94,7 +96,7 @@ export function forgeToolView(tool: string, input: Record<string, unknown>, resu
         failedTitle: t.chat.forgeTools.knowledgeMergeFailed,
         ref: str(input, "title"),
         icon: "knowledge",
-        target: { kind: "knowledge", id: /^Zusammengeführt: (\S+)/.exec(text)?.[1] ?? null },
+        target: { kind: "knowledge", id: /^(?:Zusammengeführt|Merged): (\S+)/.exec(text)?.[1] ?? null },
       });
     case "knowledge_read":
       return view({
@@ -189,29 +191,29 @@ export function forgeToolView(tool: string, input: Record<string, unknown>, resu
       });
     }
     case "usage_status": {
-      const reached = done && text.startsWith("Limit erreicht");
+      const reached = done && /^(?:Limit erreicht|Limit reached)/.test(text);
       return view({
         title: !result ? t.chat.forgeTools.usageQuerying : reached ? t.chat.forgeTools.usageLimitReached : t.chat.forgeTools.usageQueried,
         failedTitle: t.chat.forgeTools.usageFailed,
-        ref: /^5 Stunden: (\d+ %)/m.exec(text)?.[1] ?? null,
+        ref: /^(?:5 Stunden|5 hours): (\d+ ?%)/m.exec(text)?.[1] ?? null,
         icon: "usage",
         tone: reached ? "warning" : "accent",
         target: null,
       });
     }
     case "preview_screenshot": {
-      const problems = done && PROBLEMS.test(line(text, "Konsole") ?? "");
+      const problems = done && PROBLEMS.test(line(text, "(?:Konsole|Console)") ?? "");
       return view({
         title: !result ? t.chat.forgeTools.screenshotTaking : problems ? t.chat.forgeTools.screenshotProblems : t.chat.forgeTools.screenshot,
         failedTitle: t.chat.forgeTools.screenshotFailed,
-        ref: line(text, "Adresse") ?? str(input, "url") ?? str(input, "path"),
+        ref: line(text, "(?:Adresse|Address)") ?? str(input, "url") ?? str(input, "path"),
         icon: "screenshot",
         tone: problems ? "warning" : "accent",
         target: { kind: "devtools", section: "server" },
       });
     }
     case "preview_console": {
-      const summary = line(text, "Zusammenfassung");
+      const summary = line(text, "(?:Zusammenfassung|Summary)");
       const problems = done && PROBLEMS.test(summary ?? "");
       return view({
         title: !result ? t.chat.forgeTools.consoleReading : problems ? t.chat.forgeTools.consoleProblems : t.chat.forgeTools.consoleRead,
@@ -224,7 +226,7 @@ export function forgeToolView(tool: string, input: Record<string, unknown>, resu
     }
     case "preview_interact": {
       const total = Array.isArray(input.steps) ? input.steps.length : 0;
-      const stopped = done ? /^Abgebrochen nach Schritt (\d+) von (\d+)/m.exec(text) : null;
+      const stopped = done ? /^(?:Abgebrochen nach Schritt|Stopped after step) (\d+) (?:von|of) (\d+)/m.exec(text) : null;
       return view({
         title: !result
           ? t.chat.forgeTools.stepsRunning(total)

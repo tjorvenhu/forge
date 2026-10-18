@@ -1,6 +1,7 @@
 import os from "node:os";
 import path from "node:path";
 import type { PolicyRuleId } from "@forge/protocol";
+import { tr } from "../i18n/index.js";
 import { isInside, sensitivePaths } from "../util/paths.js";
 
 export interface GuardContext {
@@ -44,42 +45,42 @@ function longOption(name: string): string {
   return String.raw`(?<![\w-])--(?:${prefixes.join("|")})(?![\w-])`;
 }
 
-const GIT_RULES: Array<{ rule: PolicyRuleId; re: RegExp; message: string }> = [
+const GIT_RULES: Array<{ rule: PolicyRuleId; re: RegExp; message: () => string }> = [
   {
     rule: "git-force-push",
     re: new RegExp(String.raw`${GIT_PUSH}(${longOption("force")}|${longOption("force-with-lease")}|\s-[a-z]*f[a-z]*\b|\s["']?\+[^\s]+)`, "i"),
-    message: "Force-Push ist in FORGE gesperrt.",
+    message: () => tr().system.policy.gitForcePush,
   },
   {
     rule: "git-push-mirror",
     // --mirror and --prune delete remote refs that do not exist locally.
     re: new RegExp(String.raw`${GIT_PUSH}(${longOption("mirror")}|${longOption("prune")})`, "i"),
-    message: "git push --mirror/--prune ist in FORGE gesperrt.",
+    message: () => tr().system.policy.gitPushMirror,
   },
   {
     rule: "git-push-protected",
     re: new RegExp(String.raw`${GIT_PUSH}(?:\s|:)["']?(?:refs/heads/)?(main|master)["']?(?=$|[\s;&|])`, "i"),
-    message: "Push auf main/master ist in FORGE gesperrt.",
+    message: () => tr().system.policy.gitPushProtected,
   },
   {
     rule: "git-push-delete",
     re: new RegExp(String.raw`${GIT_PUSH}(${longOption("delete")}|\s-[a-z]*d[a-z]*\b|\s["']?:[^\s]+)`, "i"),
-    message: "Remote-Branches löschen ist in FORGE gesperrt.",
+    message: () => tr().system.policy.gitPushDelete,
   },
   {
     rule: "git-reset-hard",
     re: new RegExp(String.raw`${GIT}${SEP}\breset\b${SEP}${longOption("hard")}`, "i"),
-    message: "git reset --hard ist in FORGE gesperrt.",
+    message: () => tr().system.policy.gitResetHard,
   },
   {
     rule: "git-branch-delete",
     re: new RegExp(String.raw`${GIT}${SEP}\bbranch\b${SEP}(\s-[a-z]*d[a-z]*\b|${longOption("delete")})`, "i"),
-    message: "Branches löschen ist in FORGE gesperrt.",
+    message: () => tr().system.policy.gitBranchDelete,
   },
   {
     rule: "git-clean-force",
     re: new RegExp(String.raw`${GIT}${SEP}\bclean\b${SEP}(\s-[a-z]*f|${longOption("force")})`, "i"),
-    message: "git clean -f ist in FORGE gesperrt.",
+    message: () => tr().system.policy.gitCleanForce,
   },
 ];
 
@@ -309,7 +310,7 @@ function searchViolation(toolName: string, input: Record<string, unknown>, ctx: 
   const globs = typeof glob === "string" && glob ? [glob] : [];
   const blocked = (what: string): GuardViolation => ({
     rule: "sensitive-path",
-    message: `Suche über ${what} ist gesperrt: der Ordner enthält Zugangsdaten (z. B. ~/.ssh). Bitte einen Unterordner angeben.`,
+    message: tr().system.policy.searchBlocked(what),
   });
   for (const g of globs) {
     if (SENSITIVE_SEGMENTS.test(g)) return blocked(g);
@@ -344,17 +345,17 @@ function shellViolation(command: string, ctx: GuardContext, home: string, on: (r
   const secret = homeSecretPattern(home);
   for (const line of commandLines(command)) {
     for (const r of GIT_RULES) {
-      if (on(r.rule) && r.re.test(line)) return { rule: r.rule, message: r.message };
+      if (on(r.rule) && r.re.test(line)) return { rule: r.rule, message: r.message() };
     }
     const del = on("rm-root") ? rootDelete(line, root) : null;
-    if (del === "unix") return { rule: "rm-root", message: "Rekursives Löschen von Wurzel- oder Home-Verzeichnis ist gesperrt." };
-    if (del === "win") return { rule: "rm-root-win", message: "Löschen von Laufwerks- oder Home-Wurzel ist gesperrt." };
-    if (on("format-disk") && FORMAT_DISK.test(line)) return { rule: "format-disk", message: "Datenträger formatieren ist gesperrt." };
+    if (del === "unix") return { rule: "rm-root", message: tr().system.policy.rmRoot };
+    if (del === "win") return { rule: "rm-root-win", message: tr().system.policy.rmRootWin };
+    if (on("format-disk") && FORMAT_DISK.test(line)) return { rule: "format-disk", message: tr().system.policy.formatDisk };
     if (on("sensitive-path") && (SENSITIVE_SEGMENTS.test(line) || secret.test(line))) {
-      return { rule: "sensitive-path", message: "Zugriff auf Zugangsdaten-Ordner (z. B. ~/.ssh) ist gesperrt." };
+      return { rule: "sensitive-path", message: tr().system.policy.sensitivePath };
     }
     if (on("git-push-protected") && ctx.currentBranch && PROTECTED_BRANCHES.has(ctx.currentBranch) && ANY_PUSH.test(line)) {
-      return { rule: "git-push-protected", message: `Push vom geschützten Branch ${ctx.currentBranch} ist gesperrt.` };
+      return { rule: "git-push-protected", message: tr().system.policy.pushFromProtected(ctx.currentBranch) };
     }
   }
   return null;
@@ -379,7 +380,7 @@ export function checkToolUse(toolName: string, input: Record<string, unknown>, c
     for (const raw of on("sensitive-path") ? pathFields(input) : []) {
       const abs = resolveToolPath(raw, ctx.projectDir, home);
       if (isSensitivePath(abs, home)) {
-        return { rule: "sensitive-path", message: `Zugriff auf ${raw} ist gesperrt (Zugangsdaten/Browserprofil).` };
+        return { rule: "sensitive-path", message: tr().system.policy.sensitiveNamed(raw) };
       }
     }
     if (on("sensitive-path") && SEARCH_TOOLS.has(toolName)) {
@@ -387,7 +388,7 @@ export function checkToolUse(toolName: string, input: Record<string, unknown>, c
       if (v) return v;
     }
     if (on("write-outside-project") && ctx.confineWritesToProject && writesOutsideProject(toolName, input, ctx.projectDir, home, ctx.extraWriteDirs)) {
-      return { rule: "write-outside-project", message: "Im Autonomous-Profil sind Schreibzugriffe außerhalb des Projekts gesperrt." };
+      return { rule: "write-outside-project", message: tr().system.policy.writeOutside };
     }
   }
   return null;

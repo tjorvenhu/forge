@@ -1,4 +1,5 @@
 import { ForgeError, type McpServer } from "@forge/protocol";
+import { tr } from "../i18n/index.js";
 import { run } from "../util/proc.js";
 
 /** Parses `claude mcp list` output lines like `name: npx foo - ✓ Connected`. */
@@ -50,7 +51,7 @@ export class McpService {
 
   private async cli(args: string[], cwd: string, timeoutMs = 60_000) {
     const bin = this.claude();
-    if (!bin) throw new ForgeError("CLAUDE_NOT_INSTALLED", "Claude Code ist nicht installiert.");
+    if (!bin) throw new ForgeError("CLAUDE_NOT_INSTALLED", tr().system.claudeConfig.claudeNotInstalled);
     const r = await run(bin, args, { cwd, env: this.env(), timeoutMs });
     if (r.spawnError) throw new ForgeError("CLAUDE_RUNTIME", r.spawnError.message);
     return r;
@@ -58,21 +59,21 @@ export class McpService {
 
   async list(cwd: string): Promise<McpServer[]> {
     const r = await this.cli(["mcp", "list"], cwd, 90_000);
-    if (r.code !== 0 && !r.stdout.trim()) throw new ForgeError("CLAUDE_RUNTIME", (r.stderr || "claude mcp list fehlgeschlagen").trim());
+    if (r.code !== 0 && !r.stdout.trim()) throw new ForgeError("CLAUDE_RUNTIME", (r.stderr || tr().system.claudeConfig.mcpListFailed).trim());
     return parseMcpList(r.stdout);
   }
 
   async add(cwd: string, input: McpAddInput) {
     const r = await this.cli(mcpAddArgs(input), cwd);
     const output = (r.stdout + r.stderr).trim();
-    if (r.code !== 0) throw new ForgeError("CLAUDE_RUNTIME", output || "Hinzufügen fehlgeschlagen");
+    if (r.code !== 0) throw new ForgeError("CLAUDE_RUNTIME", output || tr().system.claudeConfig.addFailed);
     return { ok: true, output };
   }
 
   async remove(cwd: string, name: string, scope: string) {
     const r = await this.cli(["mcp", "remove", "--scope", scope, name], cwd);
     const output = (r.stdout + r.stderr).trim();
-    if (r.code !== 0) throw new ForgeError("CLAUDE_RUNTIME", output || "Entfernen fehlgeschlagen");
+    if (r.code !== 0) throw new ForgeError("CLAUDE_RUNTIME", output || tr().system.claudeConfig.removeFailed);
     return { ok: true, output };
   }
 }

@@ -1,6 +1,7 @@
 import { beep, SAMPLE_RATE } from "./audio.js";
 import type { PinResult } from "./pin-guard.js";
-import { PIN_TEXT, PinPad } from "./pin-pad.js";
+import { PinPad } from "./pin-pad.js";
+import { tr } from "../i18n/index.js";
 import type { RtpSession } from "./rtp.js";
 import type { PhoneCall } from "./sip-ua.js";
 import { Vad } from "./vad.js";
@@ -131,10 +132,10 @@ export class CallController implements CallHandler {
       onUnlocked: () => {
         this.d.onUnlock();
         this.rtp.play(beep());
-        this.tell(PIN_TEXT.unlockedNote);
+        this.tell(tr().phone.pin.unlockedNote);
       },
-      onLocked: () => this.speak(PIN_TEXT.locked),
-      onWrong: (final) => (final ? this.farewell(PIN_TEXT.final) : this.speak(PIN_TEXT.wrong)),
+      onLocked: () => this.speak(tr().phone.pin.locked),
+      onWrong: (final) => (final ? this.farewell(tr().phone.pin.final) : this.speak(tr().phone.pin.wrong)),
       log: (m) => this.d.log(m),
     });
     // Before the call is up, audio is ringback or an announcement of the network, not the caller.
@@ -169,7 +170,7 @@ export class CallController implements CallHandler {
       for (const s of held) this.speak(s);
     }
     this.touch();
-    this.maxTimer = setTimeout(() => this.farewell("Das Gespräch dauert schon sehr lange. Ich lege jetzt auf."), MAX_CALL_MS);
+    this.maxTimer = setTimeout(() => this.farewell(tr().phone.call.tooLong), MAX_CALL_MS);
   }
 
   private startConversation() {
@@ -253,7 +254,7 @@ export class CallController implements CallHandler {
 
   private touch() {
     if (this.idleTimer) clearTimeout(this.idleTimer);
-    this.idleTimer = setTimeout(() => this.farewell("Ich höre nichts mehr und lege jetzt auf. Bis später."), IDLE_HANGUP_MS);
+    this.idleTimer = setTimeout(() => this.farewell(tr().phone.call.idle), IDLE_HANGUP_MS);
   }
 
   // ---------- speech output

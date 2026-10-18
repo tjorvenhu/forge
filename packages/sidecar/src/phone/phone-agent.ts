@@ -2,6 +2,7 @@ import { createSdkMcpServer, query, tool, type Query, type SDKUserMessage } from
 import { AsyncQueue } from "../claude/async-queue.js";
 import { meterKey, tokenMeter } from "../claude/token-meter.js";
 import { PHONE_TOOLS, phoneSystemPrompt, zodShape, type PhoneToolset } from "./tools.js";
+import { tr } from "../i18n/index.js";
 
 export { asData, type PhoneToolset, type SessionSettingsPatch } from "./tools.js";
 
@@ -53,7 +54,7 @@ export class PhoneAgent {
         tools: [],
         mcpServers: { forge: server },
         allowedTools: PHONE_TOOLS.map((t) => `mcp__forge__${t.name}`),
-        canUseTool: async (name, input) => (name.startsWith("mcp__forge__") ? { behavior: "allow", updatedInput: input } : { behavior: "deny", message: "Nicht verfügbar" }),
+        canUseTool: async (name, input) => (name.startsWith("mcp__forge__") ? { behavior: "allow", updatedInput: input } : { behavior: "deny", message: tr().phone.common.notAvailable }),
         includePartialMessages: true,
         settingSources: [],
         persistSession: false,

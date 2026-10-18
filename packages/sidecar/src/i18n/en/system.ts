@@ -282,6 +282,7 @@ export const system: typeof De = {
     devStarted: (restart, cmd) => `Dev server ${restart ? "restarted" : "started"}: ${cmd}. The address shows up in dev_environment after a few seconds.`,
   },
   testDb: {
+    closing: "FORGE is shutting down.",
     pgCtlExited: (code) => `pg_ctl exited with code ${code}`,
     portBusy: (port) => `Port ${port} is in use. Choose another port.`,
     notStarted: (why) => `Test database not started: ${why}`,
@@ -351,6 +352,10 @@ export const system: typeof De = {
     hooksObject: "Hooks must be a JSON object.",
     unknownHook: (event) => `Unknown hook event: ${event}`,
     hooksList: (event) => `${event}: every entry needs a non-empty "hooks" list.`,
+    hooksListExpected: (event) => `${event}: a list is expected.`,
+    hookEntryObject: (event) => `${event}: entry must be an object.`,
+    hookNeedsType: (event) => `${event}: every hook needs a "type" (e.g. "command").`,
+    hookNeedsCommand: (event) => `${event}: a hook of type "command" needs "command".`,
     notObject: "not an object",
     invalidJsonFile: (file, why) => `${file} is not valid JSON: ${why}`,
     invalidJson: (why) => `Not valid JSON: ${why}`,

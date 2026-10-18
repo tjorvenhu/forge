@@ -6,6 +6,7 @@ import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { spawnSync } from "node:child_process";
 import { ForgeError, type TestDbConfig, type TestDbState } from "@forge/protocol";
+import { tr } from "../i18n/index.js";
 import { run } from "../util/proc.js";
 import { findFreePort, isPortFree } from "../util/ports.js";
 import { connectionUrl, type DevToolsService } from "./dev-tools.js";
@@ -217,7 +218,7 @@ export class TestDbService {
     const key = projectId;
     return this.enqueue(key, async () => {
       const i = this.instance(key);
-      if (this.closed) throw new ForgeError("INTERNAL", "FORGE wird beendet.");
+      if (this.closed) throw new ForgeError("INTERNAL", tr().system.testDb.closing);
       const f = this.folder(key);
       if (i.status === "running") {
         if (await this.serverAlive(f.data)) {
@@ -251,8 +252,8 @@ export class TestDbService {
           timeoutMs: (START_TIMEOUT_S + 15) * 1000,
         });
         if (r.code !== 0) {
-          const reason = failureReason(this.log(key)) ?? (r.stderr.trim() || r.stdout.trim() || `pg_ctl beendet mit Code ${r.code ?? "?"}`);
-          throw new Error(/could not bind|address already in use|Adresse wird bereits/i.test(reason) ? `Port ${cfg.port} ist belegt. Wähle einen anderen Port.` : reason);
+          const reason = failureReason(this.log(key)) ?? (r.stderr.trim() || r.stdout.trim() || tr().system.testDb.pgCtlExited(r.code ?? "?"));
+          throw new Error(/could not bind|address already in use|Adresse wird bereits/i.test(reason) ? tr().system.testDb.portBusy(cfg.port) : reason);
         }
         this.set(key, { status: "running", startedAt: new Date().toISOString(), running: { port: cfg.port, name: cfg.name }, checkedAt: Date.now() });
         this.d.log?.(`Test-Datenbank gestartet: Projekt ${key}, Port ${cfg.port}`);
@@ -260,7 +261,7 @@ export class TestDbService {
       } catch (e) {
         const message = e instanceof Error ? e.message : String(e);
         this.set(key, { status: "failed", progress: null, error: message, running: null });
-        throw new ForgeError("INTERNAL", `Test-Datenbank nicht gestartet: ${message}`);
+        throw new ForgeError("INTERNAL", tr().system.testDb.notStarted(message));
       }
     });
   }
@@ -381,7 +382,7 @@ export class TestDbService {
         ["-D", f.data, "-U", DB_USER, `--pwfile=${pwfile}`, "-A", "scram-sha-256", "-E", "UTF8", "--locale=C", "--no-instructions"],
         { timeoutMs: 120_000 },
       );
-      if (r.code !== 0) throw new Error(`initdb: ${(r.stderr || r.stdout).trim().split(/\r?\n/).at(-1) ?? `Code ${r.code ?? "?"}`}`);
+      if (r.code !== 0) throw new Error(`initdb: ${(r.stderr || r.stdout).trim().split(/\r?\n/).at(-1) ?? tr().system.testDb.exitCode(r.code ?? "?")}`);
     } finally {
       await rm(pwfile, { force: true });
     }
@@ -408,7 +409,7 @@ export class TestDbService {
     if (!exists) {
       const c = await run(this.bin("postgres"), ["--single", "-D", f.data, "-F", "postgres"], { input: `CREATE DATABASE "${name}"\n`, timeoutMs: 60_000 });
       if (c.code !== 0 || /\bERROR\b|FEHLER/.test(c.stderr + c.stdout)) {
-        throw new Error(`Datenbank ${name} nicht angelegt: ${(c.stderr || c.stdout).trim().split(/\r?\n/).filter(Boolean).at(-1) ?? `Code ${c.code ?? "?"}`}`);
+        throw new Error(tr().system.testDb.createFailed(name, (c.stderr || c.stdout).trim().split(/\r?\n/).filter(Boolean).at(-1) ?? tr().system.testDb.exitCode(c.code ?? "?")));
       }
     }
     writeFileSync(f.created, JSON.stringify([...created, name]));
@@ -436,21 +437,21 @@ export class TestDbService {
     try {
       this.d.log?.(`Test-Datenbank: lade PostgreSQL ${POSTGRES.version}`);
       // Without limits a dead connection would hold the queue of every waiting project forever.
-      watchdog = setTimeout(() => abort.abort(new Error("Der Server für den PostgreSQL-Download antwortet nicht. Prüf die Internetverbindung.")), connectMs);
+      watchdog = setTimeout(() => abort.abort(new Error(tr().system.testDb.serverSilent)), connectMs);
       let res: Response;
       try {
         res = await fetch(this.d.download?.url ?? POSTGRES.url, { signal: abort.signal });
       } catch (e) {
-        throw abort.signal.aborted ? (abort.signal.reason as Error) : new Error(`Download von PostgreSQL fehlgeschlagen: ${e instanceof Error ? e.message : String(e)}`);
+        throw abort.signal.aborted ? (abort.signal.reason as Error) : new Error(tr().system.testDb.downloadFailed(e instanceof Error ? e.message : String(e)));
       }
       clearTimeout(watchdog);
-      if (!res.ok || !res.body) throw new Error(`Download von PostgreSQL fehlgeschlagen (HTTP ${res.status}).`);
+      if (!res.ok || !res.body) throw new Error(tr().system.testDb.downloadHttp(res.status));
       const total = Number(res.headers.get("content-length")) || POSTGRES.size;
       const hash = createHash("sha512");
       let got = 0;
       const body = Readable.fromWeb(res.body as Parameters<typeof Readable.fromWeb>[0]);
       const stalled = () => {
-        const err = new Error(`Download von PostgreSQL abgebrochen: seit ${Math.round(stallMs / 1000)} Sekunden keine Daten.`);
+        const err = new Error(tr().system.testDb.stalled(Math.round(stallMs / 1000)));
         abort.abort(err);
         body.destroy(err);
       };
@@ -469,13 +470,13 @@ export class TestDbService {
       } finally {
         clearTimeout(watchdog);
       }
-      if (`sha512-${hash.digest("base64")}` !== POSTGRES.integrity) throw new Error("Prüfsumme von PostgreSQL stimmt nicht. Download verworfen.");
+      if (`sha512-${hash.digest("base64")}` !== POSTGRES.integrity) throw new Error(tr().system.testDb.checksum);
       await rm(tmp, { recursive: true, force: true });
       await mkdir(tmp, { recursive: true });
       const x = await run(tarExe(), ["-xzf", tgz, "-C", tmp], { timeoutMs: 300_000 });
-      if (x.code !== 0) throw new Error(`Entpacken fehlgeschlagen: ${x.stderr.trim() || `Code ${x.code ?? "?"}`}`);
+      if (x.code !== 0) throw new Error(tr().system.testDb.unpackFailed(x.stderr.trim() || tr().system.testDb.exitCode(x.code ?? "?")));
       const native = path.join(tmp, "package", "native");
-      if (!existsSync(path.join(native, "bin", "pg_ctl.exe"))) throw new Error("Das PostgreSQL-Paket enthält kein pg_ctl.exe.");
+      if (!existsSync(path.join(native, "bin", "pg_ctl.exe"))) throw new Error(tr().system.testDb.noPgCtl);
       await rm(root, { recursive: true, force: true });
       await rename(native, root);
       progress(1);

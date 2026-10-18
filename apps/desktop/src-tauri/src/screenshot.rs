@@ -356,6 +356,7 @@ mod bmp {
 #[cfg(windows)]
 mod grab {
     use super::{Rect, MAX_WINDOWS};
+    use crate::i18n::tr;
     use std::ptr::null_mut;
     use windows_sys::Win32::Foundation::{HWND, LPARAM, RECT};
     use windows_sys::Win32::Graphics::Dwm::{DwmGetWindowAttribute, DWMWA_CLOAKED, DWMWA_EXTENDED_FRAME_BOUNDS};
@@ -473,6 +474,7 @@ mod grab {
 
 #[cfg(windows)]
 mod clip {
+    use crate::i18n::tr;
     use std::ptr::null_mut;
     use windows_sys::Win32::Foundation::GlobalFree;
     use windows_sys::Win32::System::DataExchange::{CloseClipboard, EmptyClipboard, OpenClipboard, SetClipboardData};
