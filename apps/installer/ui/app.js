@@ -1,83 +1,121 @@
 // FORGE setup UI. Talks to the Rust side through window.__TAURI__ (withGlobalTauri); without it (a plain
-// browser) it runs a demo, so the screens can be checked with ?installed=1|same, ?offline=1, ?fail=1.
+// browser) it runs a demo, so the screens can be checked with ?installed=1|same, ?offline=1, ?fail=1, ?lang=de.
 "use strict";
 
 const LICENSE_URL = "https://github.com/vanturis/forge/blob/main/LICENSE.md";
+const VANTURIS_URL = "https://vanturis.de";
+
+const ICONS = {
+  download: '<path d="M12 15V3"/><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/>',
+  shield: '<path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/>',
+  hammer: '<path d="m15 12-8.373 8.373a1 1 0 1 1-3-3L12 9"/><path d="m18 15 4-4"/><path d="m21.5 11.5-1.914-1.914A2 2 0 0 1 19 8.172V7l-2.26-2.26a6 6 0 0 0-4.202-1.756L9 2.96l.92.82A6.18 6.18 0 0 1 12 8.4V10l2 2h1.172a2 2 0 0 1 1.414.586L18.5 14.5"/>',
+  check: '<circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/>',
+  alert: '<circle cx="12" cy="12" r="10"/><path d="M12 8v4"/><path d="M12 16h.01"/>',
+  tick: '<path d="M20 6 9 17l-5-5"/>',
+};
 
 const TEXT = {
-  de: {
-    eyebrow: "Setup",
-    titleResolving: "FORGE<br>installieren",
-    title: (v) => `FORGE <em>${v}</em><br>installieren`,
-    titleUpdate: (v) => `Auf FORGE <em>${v}</em><br>aktualisieren`,
-    titleSame: (v) => `FORGE <em>${v}</em><br>ist schon installiert`,
-    lead: "Die Desktop-App für Claude Code. Git, Node.js, GitHub CLI und Python sind dabei.",
-    leadUpdate: (old) => `FORGE ${old} ist installiert. Projekte und Einstellungen bleiben erhalten.`,
-    leadSame: "Neu installieren ersetzt die Programmdateien. Projekte und Einstellungen bleiben erhalten.",
-    resolving: "Suche die neueste Version",
-    downloadSize: (mb) => `Lädt ${mb} MB von GitHub`,
-    resolveFailed: "GitHub ist nicht erreichbar. Prüfe die Internetverbindung.",
-    folder: "Zielordner",
-    change: "Ändern",
-    install: "Installieren",
-    update: "Aktualisieren",
-    reinstall: "Neu installieren",
-    license: (link) => `Mit der Installation gilt die Lizenz ${link}.`,
-    installingEyebrow: "Installation",
-    installingTitle: "FORGE wird installiert",
-    updatingTitle: "FORGE wird aktualisiert",
-    steps: { download: "Lade FORGE herunter", verify: "Prüfe Signatur", install: "Installiere FORGE", finish: "Fast fertig" },
-    stepList: { download: "Herunterladen", verify: "Signatur prüfen", install: "Installieren", finish: "Abschließen" },
-    received: (x, y) => `${x} von ${y} MB`,
-    doneEyebrow: "Fertig",
-    doneTitle: "FORGE ist bereit",
-    doneLead: "Du findest FORGE im Startmenü.",
-    installedIn: "Installiert in",
-    launch: "FORGE starten",
-    close: "Schließen",
-    minimize: "Minimieren",
-    errorEyebrow: "Fehler",
-    errorTitle: "Installation fehlgeschlagen",
-    errorUnknown: "Unbekannter Fehler.",
-    retry: "Erneut versuchen",
-    productBy: "ein Produkt von",
-  },
   en: {
-    eyebrow: "Setup",
-    titleResolving: "Install<br>FORGE",
-    title: (v) => `Install<br>FORGE <em>${v}</em>`,
-    titleUpdate: (v) => `Update to<br>FORGE <em>${v}</em>`,
-    titleSame: (v) => `FORGE <em>${v}</em><br>is already installed`,
+    setup: "FORGE Setup",
+    stepOf: (n) => `Step ${n} of 5`,
+    titleResolving: "Install FORGE",
+    title: (v) => `Install FORGE ${v}`,
+    titleUpdate: (v) => `Update to FORGE ${v}`,
+    titleSame: (v) => `FORGE ${v} is already installed`,
     lead: "The desktop app for Claude Code. Git, Node.js, GitHub CLI and Python are included.",
     leadUpdate: (old) => `FORGE ${old} is installed. Projects and settings are kept.`,
     leadSame: "Reinstalling replaces the program files. Projects and settings are kept.",
-    resolving: "Looking for the latest version",
-    downloadSize: (mb) => `Downloads ${mb} MB from GitHub`,
+    downloadSize: (mb) => `Downloads ${mb} MB from GitHub.`,
     resolveFailed: "GitHub cannot be reached. Check the internet connection.",
     folder: "Install folder",
     change: "Change",
+    otherFolder: (dir) => `FORGE is currently installed in ${dir}. The old folder stays as it is.`,
     install: "Install",
     update: "Update",
     reinstall: "Reinstall",
-    license: (link) => `Installing means accepting the ${link} license.`,
-    installingEyebrow: "Installation",
-    installingTitle: "Installing FORGE",
-    updatingTitle: "Updating FORGE",
-    steps: { download: "Downloading FORGE", verify: "Checking the signature", install: "Installing FORGE", finish: "Almost done" },
-    stepList: { download: "Download", verify: "Check signature", install: "Install", finish: "Finish" },
+    installing: "Installing",
+    titles: { download: "Downloading FORGE", verify: "Checking the signature", install: "Installing FORGE", finish: "Finishing" },
+    leads: {
+      download: "From the FORGE releases on GitHub.",
+      verify: "The signature shows that the files are unchanged.",
+      install: (dir) => `Into ${dir}`,
+      finish: "Applying the newest update.",
+    },
     received: (x, y) => `${x} of ${y} MB`,
-    doneEyebrow: "Done",
+    steps: [
+      ["Prepare", "Version and folder"],
+      ["Download", "From GitHub"],
+      ["Check signature", "Files unchanged"],
+      ["Install", "Into the chosen folder"],
+      ["Done", "Start FORGE"],
+    ],
+    doneCaption: "Done",
     doneTitle: "FORGE is ready",
-    doneLead: "You find FORGE in the Start menu.",
+    doneLead: "FORGE is now in the Start menu.",
     installedIn: "Installed in",
     launch: "Start FORGE",
     close: "Close",
     minimize: "Minimize",
-    errorEyebrow: "Error",
+    errorCaption: "Error",
     errorTitle: "Installation failed",
+    errorLead: "FORGE was not installed. You can try again.",
     errorUnknown: "Unknown error.",
     retry: "Try again",
+    licenseLink: "License AGPL-3.0",
     productBy: "a product by",
+    language: "Language",
+    steps_label: "Steps",
+  },
+  de: {
+    setup: "FORGE Setup",
+    stepOf: (n) => `Schritt ${n} von 5`,
+    titleResolving: "FORGE installieren",
+    title: (v) => `FORGE ${v} installieren`,
+    titleUpdate: (v) => `Auf FORGE ${v} aktualisieren`,
+    titleSame: (v) => `FORGE ${v} ist schon installiert`,
+    lead: "Die Desktop-App für Claude Code. Git, Node.js, GitHub CLI und Python sind dabei.",
+    leadUpdate: (old) => `FORGE ${old} ist installiert. Projekte und Einstellungen bleiben erhalten.`,
+    leadSame: "Neu installieren ersetzt die Programmdateien. Projekte und Einstellungen bleiben erhalten.",
+    downloadSize: (mb) => `Lädt ${mb} MB von GitHub.`,
+    resolveFailed: "GitHub ist nicht erreichbar. Prüfe die Internetverbindung.",
+    folder: "Zielordner",
+    change: "Ändern",
+    otherFolder: (dir) => `FORGE ist bisher in ${dir} installiert. Der alte Ordner bleibt, wie er ist.`,
+    install: "Installieren",
+    update: "Aktualisieren",
+    reinstall: "Neu installieren",
+    installing: "Installiere",
+    titles: { download: "FORGE wird heruntergeladen", verify: "Signatur wird geprüft", install: "FORGE wird installiert", finish: "Wird abgeschlossen" },
+    leads: {
+      download: "Aus den FORGE-Releases auf GitHub.",
+      verify: "Die Signatur zeigt, dass die Dateien unverändert sind.",
+      install: (dir) => `Nach ${dir}`,
+      finish: "Das neueste Update wird eingespielt.",
+    },
+    received: (x, y) => `${x} von ${y} MB`,
+    steps: [
+      ["Vorbereiten", "Version und Ordner"],
+      ["Herunterladen", "Von GitHub"],
+      ["Signatur prüfen", "Dateien unverändert"],
+      ["Installieren", "In den gewählten Ordner"],
+      ["Fertig", "FORGE starten"],
+    ],
+    doneCaption: "Fertig",
+    doneTitle: "FORGE ist bereit",
+    doneLead: "FORGE steht jetzt im Startmenü.",
+    installedIn: "Installiert in",
+    launch: "FORGE starten",
+    close: "Schließen",
+    minimize: "Minimieren",
+    errorCaption: "Fehler",
+    errorTitle: "Installation fehlgeschlagen",
+    errorLead: "FORGE wurde nicht installiert. Du kannst es erneut versuchen.",
+    errorUnknown: "Unbekannter Fehler.",
+    retry: "Erneut versuchen",
+    licenseLink: "Lizenz AGPL-3.0",
+    productBy: "ein Produkt von",
+    language: "Sprache",
+    steps_label: "Schritte",
   },
 };
 
@@ -100,18 +138,20 @@ function demoBackend() {
   const wait = (ms) => new Promise((r) => setTimeout(r, ms));
   const version = "0.1.104";
   const total = 109_400_000;
-  const installed = q.get("installed") === "same" ? { version, dir: "C:\\Users\\Demo\\AppData\\Local\\FORGE" }
-    : q.get("installed") ? { version: "0.1.103", dir: "C:\\Users\\Demo\\AppData\\Local\\FORGE" } : null;
-  const lang = q.get("lang") === "en" ? "en" : "de";
+  const dir = "C:\\Users\\Demo\\AppData\\Local\\FORGE";
+  const installed = q.get("installed") === "same" ? { version, dir } : q.get("installed") ? { version: "0.1.103", dir } : null;
+  const de = q.get("lang") === "de";
+  const picks = ["D:\\Programme\\FORGE", "C:\\Tools\\FORGE", dir];
   let attempt = 0;
+  let pick = 0;
 
   async function run() {
     const fail = q.get("fail") && attempt++ === 0;
     const steps = [
       ["download", 0, 72, 5200],
-      ["verify", 72, 76, 700],
-      ["install", 76, 97, 2600],
-      ["finish", 97, 100, 600],
+      ["verify", 72, 76, 900],
+      ["install", 76, 97, 3000],
+      ["finish", 97, 100, 700],
     ];
     for (const [step, from, to, ms] of steps) {
       const t0 = performance.now();
@@ -121,7 +161,7 @@ function demoBackend() {
         if (step === "download") Object.assign(payload, { received: Math.round(total * k), total });
         emit("setup-progress", payload);
         if (fail && step === "download" && k > 0.55) {
-          emit("setup-done", { ok: false, message: lang === "de" ? "Download abgebrochen: Die Verbindung zu GitHub wurde getrennt." : "Download stopped: the connection to GitHub was lost." });
+          emit("setup-done", { ok: false, message: de ? "Download fehlgeschlagen: Die Verbindung zu GitHub wurde getrennt." : "Download failed: the connection to GitHub was lost." });
           return;
         }
         if (k >= 1) break;
@@ -132,22 +172,22 @@ function demoBackend() {
   }
 
   return {
-    async invoke(cmd, args) {
+    async invoke(cmd) {
       switch (cmd) {
         case "info":
-          await wait(250);
-          return { lang, defaultDir: "C:\\Users\\Demo\\AppData\\Local\\FORGE", installed };
+          await wait(350);
+          // Like the Rust side: English unless switched.
+          return { lang: de ? "de" : "en", defaultDir: dir, installed };
         case "resolve":
           await wait(1100);
-          if (q.get("offline")) throw lang === "de" ? "GitHub ist nicht erreichbar. Prüfe die Internetverbindung." : "GitHub cannot be reached. Check the internet connection.";
+          if (q.get("offline")) throw de ? "GitHub ist nicht erreichbar. Prüfe die Internetverbindung." : "GitHub cannot be reached. Check the internet connection.";
           return { version, downloadBytes: total };
         case "pick_dir":
-          return "D:\\Programme\\FORGE";
+          return picks[pick++ % picks.length];
         case "install":
           run();
           return null;
         default:
-          console.log("demo:", cmd, args);
           return null;
       }
     },
@@ -162,9 +202,11 @@ function demoBackend() {
 const $ = (id) => document.getElementById(id);
 const app = $("app");
 const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+const ORDER = ["download", "verify", "install", "finish"];
 
 const state = {
-  lang: "de",
+  screen: "loading",
+  lang: "en",
   info: null,
   resolved: null, // { version, downloadBytes }
   resolveError: null,
@@ -172,30 +214,48 @@ const state = {
   dir: "",
   progress: { step: "download", percent: 0 },
   error: null,
+  failedAt: 1,
 };
 
 const t = () => TEXT[state.lang];
-
-function escapeHtml(s) {
-  return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
-}
 
 function mb(bytes) {
   const v = bytes / 1_000_000;
   return new Intl.NumberFormat(state.lang === "de" ? "de-DE" : "en-US", { maximumFractionDigits: v < 10 ? 1 : 0 }).format(v);
 }
 
-/** "older" when an older version is installed, "same" when this one, null for a new installation. */
-function installKind() {
+const norm = (p) => (p || "").replace(/[\\/]+$/, "").toLowerCase();
+
+/** The installation the chosen folder replaces, if any. */
+function replaces() {
   const inst = state.info?.installed;
+  return inst && norm(inst.dir) === norm(state.dir) ? inst : null;
+}
+
+/** "older" when an older version is in the chosen folder, "same" when this one, null for a new installation. */
+function installKind() {
+  const inst = replaces();
   if (!inst) return null;
-  if (state.resolved && inst.version === state.resolved.version) return "same";
-  return "older";
+  return state.resolved && inst.version === state.resolved.version ? "same" : "older";
+}
+
+function stepIndex() {
+  if (state.screen === "installing") return Math.min(3, ORDER.indexOf(state.progress.step) + 1) || 1;
+  if (state.screen === "done") return 5;
+  if (state.screen === "error") return state.failedAt;
+  return 0;
 }
 
 function setScreen(name) {
+  state.screen = name;
   app.dataset.screen = name;
-  $("btn-close").disabled = name === "installing";
+  render();
+}
+
+function setIcon(name, tone) {
+  $("tile-icon").innerHTML = ICONS[name];
+  if (tone) $("tile").dataset.tone = tone;
+  else delete $("tile").dataset.tone;
 }
 
 function render() {
@@ -205,53 +265,141 @@ function render() {
     const v = tx[el.dataset.i18n];
     if (typeof v === "string") el.textContent = v;
   }
-  for (const el of document.querySelectorAll("[data-i18n-title]")) el.title = tx[el.dataset.i18nTitle];
-  for (const b of document.querySelectorAll(".lang-btn")) b.setAttribute("aria-pressed", String(b.dataset.lang === state.lang));
+  for (const el of document.querySelectorAll("[data-i18n-label]")) {
+    el.title = tx[el.dataset.i18nLabel];
+    el.setAttribute("aria-label", tx[el.dataset.i18nLabel]);
+  }
+  $("lang").setAttribute("aria-label", tx.language);
+  $("steps").setAttribute("aria-label", tx.steps_label);
+  for (const b of document.querySelectorAll("#lang button")) b.setAttribute("aria-checked", String(b.dataset.lang === state.lang));
 
-  // start
-  const kind = installKind();
-  const v = state.resolved ? escapeHtml(state.resolved.version) : null;
-  $("start-title").innerHTML = !v ? tx.titleResolving : kind === "same" ? tx.titleSame(v) : kind === "older" ? tx.titleUpdate(v) : tx.title(v);
-  $("start-lead").textContent = kind === "same" ? tx.leadSame : kind === "older" && state.info.installed.version ? tx.leadUpdate(state.info.installed.version) : tx.lead;
-  const line = $("version-line");
-  line.dataset.state = state.resolved ? "ready" : state.resolveError ? "error" : "resolving";
-  $("version-ready").textContent = state.resolved ? tx.downloadSize(mb(state.resolved.downloadBytes)) : "";
-  $("resolve-error").textContent = state.resolveError || "";
-  $("folder-path").textContent = state.dir;
-  $("folder-path").title = state.dir;
-  $("done-path").textContent = state.dir;
-  $("folder").dataset.locked = String(!!state.info?.installed);
-  const install = $("btn-install");
-  install.textContent = kind === "same" ? tx.reinstall : kind === "older" ? tx.update : tx.install;
-  install.disabled = !state.resolved;
-  $("license").innerHTML = tx.license(`<button type="button" class="link" id="btn-license">AGPL-3.0</button>`);
-
-  // installing
-  $("installing-eyebrow").textContent = tx.installingEyebrow;
-  $("installing-title").textContent = state.info?.installed ? tx.updatingTitle : tx.installingTitle;
+  renderSteps();
+  renderHead();
+  renderStart();
   renderProgress();
-
-  // error
+  renderFoot();
+  $("done-path").textContent = state.dir;
   $("error-message").textContent = state.error || tx.errorUnknown;
+  $("btn-close").disabled = state.screen === "installing";
+}
+
+function renderSteps() {
+  const tx = t();
+  const at = stepIndex();
+  for (const li of $("steps").children) {
+    const i = Number(li.dataset.index);
+    const st = i < at ? "done" : i === at ? (state.screen === "error" ? "failed" : "current") : "todo";
+    li.dataset.state = st;
+    if (st === "current") li.setAttribute("aria-current", "step");
+    else li.removeAttribute("aria-current");
+    const [label, hint] = tx.steps[i];
+    const mark = st === "done" ? `<svg viewBox="0 0 24 24" aria-hidden="true">${ICONS.tick}</svg>` : st === "failed" ? "!" : String(i + 1);
+    li.innerHTML = `<span class="dot">${mark}</span><span class="step-text"><span class="step-label"></span><span class="step-hint"></span></span>`;
+    li.querySelector(".step-label").textContent = label;
+    li.querySelector(".step-hint").textContent = hint;
+  }
+}
+
+function renderHead() {
+  const tx = t();
+  const v = state.resolved?.version;
+  let caption = tx.setup;
+  let title = "";
+  let lead = "";
+  switch (state.screen) {
+    case "loading":
+    case "start": {
+      const kind = installKind();
+      setIcon("download");
+      caption = tx.stepOf(1);
+      title = !v ? tx.titleResolving : kind === "same" ? tx.titleSame(v) : kind === "older" ? tx.titleUpdate(v) : tx.title(v);
+      lead = kind === "same" ? tx.leadSame : kind === "older" && replaces().version ? tx.leadUpdate(replaces().version) : tx.lead;
+      break;
+    }
+    case "installing": {
+      const step = ORDER.includes(state.progress.step) ? state.progress.step : "install";
+      setIcon(step === "download" ? "download" : step === "verify" ? "shield" : "hammer");
+      caption = tx.stepOf(stepIndex() + 1);
+      title = tx.titles[step];
+      lead = step === "install" ? tx.leads.install(state.dir) : tx.leads[step];
+      break;
+    }
+    case "done":
+      setIcon("check", "success");
+      caption = tx.doneCaption;
+      title = tx.doneTitle;
+      lead = tx.doneLead;
+      break;
+    case "error":
+      setIcon("alert", "danger");
+      caption = tx.errorCaption;
+      title = tx.errorTitle;
+      lead = tx.errorLead;
+      break;
+  }
+  $("head-caption").textContent = caption;
+  $("head-title").textContent = title;
+  $("head-lead").textContent = lead;
+}
+
+function renderStart() {
+  const tx = t();
+  $("folder-text").textContent = state.dir;
+  $("folder-path").title = state.dir;
+  $("btn-change").disabled = state.screen !== "start";
+  const inst = state.info?.installed;
+  const other = inst && !replaces();
+  const note = $("note");
+  note.dataset.state = other ? "other" : state.resolved ? "ready" : state.resolveError ? "error" : "resolving";
+  if (state.resolveError) note.dataset.state = "error";
+  $("note-other").textContent = other ? tx.otherFolder(inst.dir) : "";
+  $("note-ready").textContent = state.resolved ? tx.downloadSize(mb(state.resolved.downloadBytes)) : "";
+  $("resolve-error").textContent = state.resolveError || "";
 }
 
 function renderProgress() {
   const tx = t();
   const p = state.progress;
   const pct = Math.max(0, Math.min(100, p.percent || 0));
-  $("step").textContent = tx.steps[p.step] || tx.steps.install;
   $("progress-fill").style.width = `${pct}%`;
   $("progress").setAttribute("aria-valuenow", String(Math.round(pct)));
   $("percent").textContent = `${Math.floor(pct)} %`;
-  const meta = p.step === "download" && p.received != null && p.total ? tx.received(mb(p.received), mb(p.total)) : state.dir;
-  $("progress-dir").textContent = meta;
-  const order = ["download", "verify", "install", "finish"];
-  const at = pct >= 100 ? order.length : order.indexOf(p.step);
-  for (const li of $("steps").children) {
-    const i = order.indexOf(li.dataset.step);
-    li.textContent = tx.stepList[li.dataset.step];
-    li.dataset.state = i < at ? "done" : i === at ? "active" : "todo";
+  const i = ORDER.indexOf(p.step);
+  $("progress-detail").textContent = p.step === "download" && p.received != null && p.total ? tx.received(mb(p.received), mb(p.total)) : tx.steps[Math.min(3, i + 1)]?.[0] ?? "";
+}
+
+function renderFoot() {
+  const tx = t();
+  const primary = $("btn-primary");
+  const cancel = $("btn-cancel");
+  primary.removeAttribute("aria-busy");
+  primary.dataset.arrow = "true";
+  primary.disabled = false;
+  cancel.disabled = false;
+  let label = "";
+  switch (state.screen) {
+    case "loading":
+    case "start": {
+      const kind = installKind();
+      label = kind === "same" ? tx.reinstall : kind === "older" ? tx.update : tx.install;
+      primary.disabled = !state.resolved;
+      break;
+    }
+    case "installing":
+      label = tx.installing;
+      primary.disabled = true;
+      primary.setAttribute("aria-busy", "true");
+      cancel.disabled = true;
+      break;
+    case "done":
+      label = tx.launch;
+      break;
+    case "error":
+      label = tx.retry;
+      primary.dataset.arrow = "false";
+      break;
   }
+  $("btn-primary-text").textContent = label;
 }
 
 // ---------------------------------------------------------------- actions
@@ -276,7 +424,6 @@ async function startInstall() {
   if (!state.resolved) return;
   state.error = null;
   state.progress = { step: "download", percent: 0 };
-  render();
   setScreen("installing");
   forge.work();
   try {
@@ -288,15 +435,23 @@ async function startInstall() {
 
 function fail(message) {
   state.error = message;
-  render();
+  state.failedAt = state.screen === "installing" ? stepIndex() : 1;
   setScreen("error");
   forge.idle();
 }
 
+function setLang(lang) {
+  state.lang = lang;
+  backend.invoke("set_lang", { lang }).catch(() => {});
+  render();
+}
+
 async function init() {
   await backend.listen("setup-progress", (p) => {
+    const before = state.progress.step;
     state.progress = p;
-    renderProgress();
+    if (p.step !== before) render();
+    else renderProgress();
   });
   await backend.listen("setup-done", (d) => {
     if (d.ok) {
@@ -308,26 +463,39 @@ async function init() {
     }
   });
 
+  render();
   try {
     state.info = await backend.invoke("info");
   } catch {
-    state.info = { lang: "de", defaultDir: "", installed: null };
+    state.info = { lang: "en", defaultDir: "", installed: null };
   }
-  state.lang = state.info.lang === "en" ? "en" : "de";
   state.dir = state.info.installed?.dir || state.info.defaultDir;
-  render();
+  setLang(state.info.lang === "de" ? "de" : "en");
   setScreen("start");
   resolve();
+}
+
+async function primaryAction() {
+  if (state.screen === "start") return startInstall();
+  if (state.screen === "error") {
+    if (!state.resolved) {
+      setScreen("start");
+      return resolve();
+    }
+    return startInstall();
+  }
+  if (state.screen === "done") return backend.invoke("launch", { dir: state.dir });
 }
 
 document.addEventListener("click", async (e) => {
   const el = e.target.closest("button");
   if (!el || el.disabled) return;
   switch (el.id) {
-    case "btn-min": return backend.invoke("minimize");
+    case "btn-min":
+      return backend.invoke("minimize");
     case "btn-close":
-    case "btn-done-close":
-    case "btn-error-close": return backend.invoke("quit");
+    case "btn-cancel":
+      return backend.invoke("quit");
     case "btn-change": {
       const dir = await backend.invoke("pick_dir", { current: state.dir });
       if (dir) {
@@ -336,16 +504,16 @@ document.addEventListener("click", async (e) => {
       }
       return;
     }
-    case "btn-license": return backend.invoke("open_url", { url: LICENSE_URL });
-    case "btn-install":
-    case "btn-retry": return startInstall();
-    case "btn-resolve-retry": return resolve();
-    case "btn-launch": return backend.invoke("launch", { dir: state.dir });
+    case "btn-license":
+      return backend.invoke("open_url", { url: LICENSE_URL });
+    case "btn-vanturis":
+      return backend.invoke("open_url", { url: VANTURIS_URL });
+    case "btn-primary":
+      return primaryAction();
+    case "btn-resolve-retry":
+      return resolve();
   }
-  if (el.dataset.lang) {
-    state.lang = el.dataset.lang;
-    render();
-  }
+  if (el.dataset.lang && el.dataset.lang !== state.lang) setLang(el.dataset.lang);
 });
 
 // ---------------------------------------------------------------- hammer and anvil
@@ -353,6 +521,7 @@ document.addEventListener("click", async (e) => {
 const forge = createForge();
 
 function createForge() {
+  const stage = $("stage");
   const art = $("art");
   const hammer = $("hammer");
   const heat = $("heat");
@@ -362,17 +531,17 @@ function createForge() {
   const canvas = $("sparks");
   const ctx = canvas.getContext("2d");
   const PIVOT = [1054, 246];
-  const CYCLE = 1100;
+  const CYCLE = 1150;
   // [phase, angle]: hit at 0, rebound, raise, short hold, strike
-  const SWING = [[0, 0], [0.07, 9], [0.15, 5], [0.62, 58], [0.72, 61], [1, 0]];
+  const SWING = [[0, 0], [0.07, 8], [0.15, 5], [0.62, 52], [0.72, 54], [1, 0]];
+  const REST = 40;
 
   let mode = "idle"; // idle | work | final | rest
   let t0 = performance.now();
   let lastCycle = -1;
   let final = null;
   let heatLevel = 0;
-  let shake = 0;
-  let angle = 46;
+  let angle = REST;
   let blendFrom = null;
   const particles = [];
   let lastFrame = performance.now();
@@ -406,49 +575,28 @@ function createForge() {
 
   function impactPoint() {
     const r = impactEl.getBoundingClientRect();
-    const a = app.getBoundingClientRect();
-    return [r.left + r.width / 2 - a.left, r.top + r.height / 2 - a.top];
+    const s = stage.getBoundingClientRect();
+    return [r.left + r.width / 2 - s.left, r.top + r.height / 2 - s.top];
   }
 
+  // Few, short sparks: the card is small and the setup should stay calm.
   function impact(strength) {
-    heatLevel = Math.min(1.4, heatLevel + 0.75 * strength);
-    shake = 2.2 * strength;
+    heatLevel = Math.min(1, heatLevel + 0.6 * strength);
     if (reduceMotion) return;
     const [x, y] = impactPoint();
-    const n = Math.round(34 * strength);
+    const n = Math.round(10 * strength);
     for (let i = 0; i < n; i++) {
-      // mostly up and to the sides, a few skidding along the anvil
-      const dir = Math.random() < 0.85 ? -Math.PI * (0.06 + Math.random() * 0.88) : (Math.random() < 0.5 ? -0.08 : Math.PI + 0.08);
-      const speed = (180 + Math.random() * 420) * Math.sqrt(strength);
-      const life = 0.35 + Math.random() * 0.75 * Math.sqrt(strength);
-      particles.push({
-        x: x + (Math.random() - 0.5) * 24,
-        y: y - 2,
-        vx: Math.cos(dir) * speed,
-        vy: Math.sin(dir) * speed,
-        life,
-        max: life,
-        w: 1 + Math.random() * 1.8,
-        hue: 22 + Math.random() * 28,
-        ember: false,
-      });
+      const dir = -Math.PI * (0.1 + Math.random() * 0.8);
+      const speed = (70 + Math.random() * 150) * Math.sqrt(strength);
+      const life = 0.25 + Math.random() * 0.4 * Math.sqrt(strength);
+      particles.push({ x: x + (Math.random() - 0.5) * 10, y: y - 1, vx: Math.cos(dir) * speed, vy: Math.sin(dir) * speed, life, max: life, w: 0.8 + Math.random() * 0.9, hue: 24 + Math.random() * 22, ember: false });
     }
   }
 
   function ember() {
     const [x, y] = impactPoint();
-    const life = 1.6 + Math.random() * 1.6;
-    particles.push({
-      x: x + (Math.random() - 0.5) * 90,
-      y: y + 4 + Math.random() * 10,
-      vx: (Math.random() - 0.5) * 14,
-      vy: -(16 + Math.random() * 26),
-      life,
-      max: life,
-      w: 1 + Math.random() * 1.4,
-      hue: 20 + Math.random() * 20,
-      ember: true,
-    });
+    const life = 1.2 + Math.random() * 1.2;
+    particles.push({ x: x + (Math.random() - 0.5) * 30, y: y + 2, vx: (Math.random() - 0.5) * 6, vy: -(8 + Math.random() * 12), life, max: life, w: 0.7 + Math.random() * 0.6, hue: 22 + Math.random() * 16, ember: true });
   }
 
   function step(now) {
@@ -457,9 +605,9 @@ function createForge() {
     let target = angle;
 
     if (reduceMotion) {
-      target = mode === "rest" ? 0 : 40;
+      target = mode === "rest" ? 0 : REST;
     } else if (mode === "idle") {
-      target = 46 + Math.sin(now / 900) * 2.2;
+      target = REST + Math.sin(now / 1000) * 1.5;
     } else if (mode === "work") {
       const elapsed = now - t0;
       const cycle = Math.floor(elapsed / CYCLE);
@@ -470,19 +618,18 @@ function createForge() {
       target = swingAngle((elapsed % CYCLE) / CYCLE);
     } else if (mode === "final") {
       const e = now - final.start;
-      const RAISE = 520, HOLD = 160, STRIKE = 190;
-      if (e < RAISE) target = final.from + (74 - final.from) * easeOut(e / RAISE);
-      else if (e < RAISE + HOLD) target = 74 + Math.sin(((e - RAISE) / HOLD) * Math.PI) * 1.5;
-      else if (e < RAISE + HOLD + STRIKE) target = 74 * (1 - easeIn((e - RAISE - HOLD) / STRIKE));
+      const RAISE = 480, HOLD = 140, STRIKE = 180;
+      if (e < RAISE) target = final.from + (66 - final.from) * easeOut(e / RAISE);
+      else if (e < RAISE + HOLD) target = 66;
+      else if (e < RAISE + HOLD + STRIKE) target = 66 * (1 - easeIn((e - RAISE - HOLD) / STRIKE));
       else {
         if (!final.hit) {
           final.hit = true;
-          impact(2.8);
-          setTimeout(() => impact(1.2), 90);
-          setTimeout(final.done, 650);
+          impact(2);
+          setTimeout(final.done, 550);
         }
-        const r = (e - RAISE - HOLD - STRIKE) / 420;
-        target = r < 1 ? Math.sin(r * Math.PI) * 11 * (1 - r) : 0;
+        const r = (e - RAISE - HOLD - STRIKE) / 380;
+        target = r < 1 ? Math.sin(r * Math.PI) * 8 * (1 - r) : 0;
       }
     } else if (mode === "rest") {
       target = 0;
@@ -497,19 +644,16 @@ function createForge() {
     }
     hammer.setAttribute("transform", `rotate(${angle.toFixed(2)} ${PIVOT[0]} ${PIVOT[1]})`);
 
-    // heat on the anvil: flash after a hit, a slow breath otherwise
-    heatLevel = Math.max(0, heatLevel - dt * 2.4);
-    const breath = reduceMotion ? 0.7 : 0.62 + Math.sin(now / 1100) * 0.12;
-    heat.setAttribute("opacity", Math.min(1, heatLevel).toFixed(3));
-    glow.setAttribute("opacity", Math.min(1.6, breath + heatLevel * 0.9).toFixed(3));
-    face.style.filter = heatLevel > 0.01 ? `brightness(${(1 + heatLevel * 0.35).toFixed(3)})` : "";
+    // a short flash after a hit, a faint warmth otherwise
+    heatLevel = Math.max(0, heatLevel - dt * 2.6);
+    const warm = mode === "work" ? 0.32 : 0.22;
+    heat.setAttribute("opacity", (heatLevel * 0.85).toFixed(3));
+    glow.setAttribute("opacity", (warm + heatLevel * 0.45).toFixed(3));
+    face.style.filter = heatLevel > 0.01 ? `brightness(${(1 + heatLevel * 0.25).toFixed(3)})` : "";
+    art.style.transform = heatLevel > 0.7 && mode === "final" ? `translate(-50%, ${(Math.random() * 0.8).toFixed(2)}px)` : "";
 
-    shake = Math.max(0, shake - dt * 18);
-    art.style.transform = shake > 0.05 ? `translate(${((Math.random() - 0.5) * shake).toFixed(2)}px, ${((Math.random() - 0.5) * shake).toFixed(2)}px)` : "";
-
-    // embers drifting up from the anvil while it is warm
-    if (!reduceMotion) {
-      emberClock += dt * (mode === "work" ? 5 : mode === "rest" ? 1.2 : 2);
+    if (!reduceMotion && mode === "work") {
+      emberClock += dt * 1.5;
       while (emberClock > 1) {
         emberClock -= 1;
         ember();
@@ -524,38 +668,36 @@ function createForge() {
     const w = canvas.clientWidth;
     const h = canvas.clientHeight;
     ctx.clearRect(0, 0, w, h);
+    if (!particles.length) return;
     ctx.globalCompositeOperation = "lighter";
     ctx.lineCap = "round";
     for (let i = particles.length - 1; i >= 0; i--) {
       const p = particles[i];
       p.life -= dt;
-      if (p.life <= 0 || p.y > h + 20 || p.x < -20 || p.x > w + 20) {
+      if (p.life <= 0 || p.y > h + 10 || p.x < -10 || p.x > w + 10) {
         particles.splice(i, 1);
         continue;
       }
       const k = p.life / p.max;
       if (p.ember) {
-        p.vx += (Math.random() - 0.5) * 40 * dt;
         p.x += p.vx * dt;
         p.y += p.vy * dt;
-        const flicker = 0.55 + Math.random() * 0.45;
-        ctx.fillStyle = `hsla(${p.hue}, 100%, 62%, ${(Math.sin(k * Math.PI) * 0.75 * flicker).toFixed(3)})`;
+        ctx.fillStyle = `hsla(${p.hue}, 100%, 62%, ${(Math.sin(k * Math.PI) * 0.55).toFixed(3)})`;
         ctx.beginPath();
         ctx.arc(p.x, p.y, p.w, 0, Math.PI * 2);
         ctx.fill();
         continue;
       }
-      p.vy += 980 * dt;
-      p.vx *= 1 - 0.9 * dt;
+      p.vy += 520 * dt;
+      p.vx *= 1 - 1.2 * dt;
       const px = p.x;
       const py = p.y;
       p.x += p.vx * dt;
       p.y += p.vy * dt;
-      const tail = 0.022;
-      ctx.strokeStyle = `hsla(${p.hue}, 100%, ${(58 + 30 * k).toFixed(0)}%, ${Math.min(1, k * 1.4).toFixed(3)})`;
-      ctx.lineWidth = p.w * (0.6 + 0.4 * k);
+      ctx.strokeStyle = `hsla(${p.hue}, 100%, ${(60 + 25 * k).toFixed(0)}%, ${Math.min(1, k * 1.3).toFixed(3)})`;
+      ctx.lineWidth = p.w;
       ctx.beginPath();
-      ctx.moveTo(px - p.vx * tail, py - p.vy * tail);
+      ctx.moveTo(px - p.vx * 0.018, py - p.vy * 0.018);
       ctx.lineTo(p.x, p.y);
       ctx.stroke();
     }
