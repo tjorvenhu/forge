@@ -15,6 +15,12 @@
 # Every asset gets a signature <asset>.sig (scripts/sign-update.mjs, key in the secret
 # FORGE_UPDATE_SIGNING_KEY). The app installs only signed assets; the public key is in
 # packages/sidecar/src/update/signature.ts.
+#
+# Code signature (Authenticode, against SmartScreen): Azure Artifact Signing through scripts/codesign.mjs.
+# Tauri signs forge-desktop.exe, the installer and the uninstaller with it; the exe of the update zip is
+# signed after the build. Needs the secrets AZURE_TENANT_ID, AZURE_CLIENT_ID, AZURE_CLIENT_SECRET and the
+# variables AZURE_SIGNING_ENDPOINT, AZURE_SIGNING_ACCOUNT, AZURE_SIGNING_PROFILE. Without AZURE_CLIENT_ID
+# the build stays unsigned with a warning.
 name: Release
 
 on:
@@ -91,9 +97,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           FORGE_UPDATE_SIGNING_KEY: ${{ secrets.FORGE_UPDATE_SIGNING_KEY }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
         run: |
           # Without the key no installation would take the release: stop before the long build.
           if (-not $env:FORGE_UPDATE_SIGNING_KEY) { throw "Secret FORGE_UPDATE_SIGNING_KEY fehlt." }
+          $codesign = [bool]$env:AZURE_CLIENT_ID
+          if (-not $codesign) { Write-Host "::warning::Secret AZURE_CLIENT_ID fehlt: FORGE wird ohne Code-Signatur gebaut." }
           $version = "0.1.${{ github.run_number }}"
           $key = (node scripts/prepare-runtime.mjs --key).Trim()
           $assets = gh api "repos/${{ github.repository }}/releases?per_page=100" --jq '.[].assets[].name'
@@ -105,7 +114,18 @@ jobs:
           "version=$version" >> $env:GITHUB_OUTPUT
           "key=$key" >> $env:GITHUB_OUTPUT
           "full=$($full.ToString().ToLower())" >> $env:GITHUB_OUTPUT
-          Write-Host "Version $version, Laufzeit $key, voller Installer: $full"
+          "codesign=$($codesign.ToString().ToLower())" >> $env:GITHUB_OUTPUT
+          Write-Host "Version $version, Laufzeit $key, voller Installer: $full, Code-Signatur: $codesign"
+
+      # Before the long build: a wrong account name or missing variable fails here.
+      - name: Code signing tools
+        if: steps.plan.outputs.codesign == 'true'
+        env:
+          AZURE_SIGNING_ENDPOINT: ${{ vars.AZURE_SIGNING_ENDPOINT }}
+          AZURE_SIGNING_ACCOUNT: ${{ vars.AZURE_SIGNING_ACCOUNT }}
+          AZURE_SIGNING_PROFILE: ${{ vars.AZURE_SIGNING_PROFILE }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+        run: node scripts/codesign.mjs --setup
 
       - name: Cache bundled runtime downloads
         if: steps.plan.outputs.full == 'true'
@@ -127,7 +147,12 @@ jobs:
           pnpm --filter @forge/sidecar build
           # Types were checked above; vite alone builds the frontend the exe embeds.
           pnpm --filter @forge/desktop exec vite build
-          '{ "build": { "beforeBuildCommand": "" } }' | Set-Content apps/desktop/src-tauri/tauri.ci.json -Encoding utf8
+          $ci = @{ build = @{ beforeBuildCommand = "" } }
+          if ("${{ steps.plan.outputs.codesign }}" -eq "true") {
+            # Tauri calls it once per file: app, NSIS plugins, installer, uninstaller (the runtime is skipped).
+            $ci.bundle = @{ windows = @{ signCommand = @{ cmd = "node"; args = @("$env:GITHUB_WORKSPACE\scripts\codesign.mjs", "%1") } } }
+          }
+          $ci | ConvertTo-Json -Depth 6 | Set-Content apps/desktop/src-tauri/tauri.ci.json -Encoding utf8
 
       - name: Runtime (full installer only)
         if: steps.plan.outputs.full == 'true'
@@ -147,11 +172,21 @@ jobs:
         env:
           # Built into the exe: the app checks its installed runtime against it (incomplete installations).
           FORGE_RUNTIME_KEY: ${{ steps.plan.outputs.key }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
         run: |
           if ("${{ steps.plan.outputs.full }}" -eq "true") {
             pnpm tauri build --config src-tauri/tauri.ci.json
           } else {
             pnpm tauri build --no-bundle --config src-tauri/tauri.ci.json
+          }
+          if ($LASTEXITCODE -ne 0) { throw "Build fehlgeschlagen." }
+          # The exe for the update zip: --no-bundle signs nothing, and after bundling Tauri restores the
+          # unsigned binary in target/release.
+          if ("${{ steps.plan.outputs.codesign }}" -eq "true") {
+            node ../../scripts/codesign.mjs src-tauri/target/release/forge-desktop.exe
+            if ($LASTEXITCODE -ne 0) { throw "Code-Signatur fehlgeschlagen." }
           }
 
       - name: Package and publish
@@ -180,6 +215,15 @@ jobs:
             Set-Content $marker $key -NoNewline -Encoding ascii
             $files += $named, $marker
           }
+          if ("${{ steps.plan.outputs.codesign }}" -eq "true") {
+            $exes = @("$pkg/forge-desktop.exe") + @($files | Where-Object { $_ -like "*.exe" })
+            foreach ($exe in $exes) {
+              $s = Get-AuthenticodeSignature $exe
+              if ($s.Status -ne "Valid") { throw "Code-Signatur fehlt oder ist ungültig: $exe ($($s.Status))" }
+              Write-Host ("codesigniert: {0}  {1}" -f (Split-Path $exe -Leaf), $s.SignerCertificate.Subject)
+            }
+          }
+          # After the code signature: it changes the files, the update signature covers the final bytes.
           node scripts/sign-update.mjs @files
           if ($LASTEXITCODE -ne 0) { throw "Signieren fehlgeschlagen." }
           $files += @($files | ForEach-Object { "$_.sig" })

@@ -24,3 +24,6 @@ apps/desktop/src-tauri/runtime/
 
 # CI-Override des Release-Workflows
 apps/desktop/src-tauri/tauri.ci.json
+
+# Code-Signatur-Werkzeuge (scripts/codesign.mjs)
+.codesign/
