@@ -1,6 +1,7 @@
 import { posix } from "node:path";
 import type { BranchInfo, CommitFile, CommitInfo, DiffLine, FileDiff, FileStatus, GitSummary } from "@forge/protocol";
 import { avatarFromEmail } from "../github/avatars.js";
+import { tr } from "../i18n/index.js";
 
 export interface ParsedStatus {
   branch: string | null;
@@ -199,7 +200,7 @@ export function untrackedDiff(path: string, content: Buffer): FileDiff {
   const truncated = raw.length > MAX_DIFF_LINES;
   const shown = raw.slice(0, MAX_DIFF_LINES);
   const lines: DiffLine[] = [
-    { kind: "meta", text: "neue Datei (nicht versioniert)", oldNo: null, newNo: null },
+    { kind: "meta", text: tr().system.git.newUntrackedFile, oldNo: null, newNo: null },
     ...shown.map((t, i) => ({ kind: "add" as const, text: t, oldNo: null, newNo: i + 1 })),
   ];
   return { path, binary: false, additions: raw.length, deletions: 0, lines, truncated };

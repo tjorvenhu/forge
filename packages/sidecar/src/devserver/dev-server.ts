@@ -3,6 +3,7 @@ import { ForgeError, type DevServerState } from "@forge/protocol";
 import type { ProjectManager } from "../projects/project-manager.js";
 import { detectDevCommand } from "../projects/tech.js";
 import { killTree, onFinished } from "../util/proc.js";
+import { tr } from "../i18n/index.js";
 
 /** Kept per project; older output is dropped. */
 const MAX_LOG_CHARS = 200_000;
@@ -100,7 +101,7 @@ export class DevServerService {
     if (running?.state.status === "running") return this.state(projectId);
     const command = await this.effectiveCommand(projectId);
     if (!command) {
-      throw new ForgeError("VALIDATION", "Kein Dev-Server-Befehl bekannt. Trage ihn in den Projekt-Einstellungen ein, z. B. pnpm dev.");
+      throw new ForgeError("VALIDATION", tr().system.devServer.noCommand);
     }
     let markFinished = () => {};
     const r: Running = {
@@ -122,7 +123,7 @@ export class DevServerService {
       try {
         prep = await this.prepare(projectId, command);
       } catch (e) {
-        prep = { env: {}, notes: [`Test-Umgebung nicht gesetzt: ${e instanceof Error ? e.message : String(e)}`] };
+        prep = { env: {}, notes: [tr().system.devServer.envNotSet(e instanceof Error ? e.message : String(e))] };
       } finally {
         r.preparing = false;
       }

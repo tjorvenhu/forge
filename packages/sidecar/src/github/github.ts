@@ -6,6 +6,7 @@ import { ForgeError, type GitHubAccount, type GitHubLoginState, type GitHubOrg, 
 import { run } from "../util/proc.js";
 import { resolveTool } from "../util/tools.js";
 import { authorsQuery, avatarKey, commitsToResolve, parseAuthorsResponse } from "./avatars.js";
+import { tr } from "../i18n/index.js";
 
 const HOST = "github.com";
 
@@ -116,7 +117,7 @@ export class GitHubService {
         // Lets git push/pull over https use the gh credentials.
         void this.gh_(["auth", "setup-git", "--hostname", HOST]).finally(() => this.set({ phase: "done", code: null, url: null }));
       } else {
-        this.set({ phase: "error", message: output.trim().split("\n").slice(-3).join(" ") || `gh beendet mit Code ${exitCode}` });
+        this.set({ phase: "error", message: output.trim().split("\n").slice(-3).join(" ") || tr().system.github.ghExited(exitCode) });
       }
     });
     return this.state;
@@ -135,13 +136,13 @@ export class GitHubService {
     const acc = await this.account();
     if (!acc) return;
     const r = await this.gh_(["auth", "logout", "--hostname", HOST, "--user", acc.login]);
-    if (r.code !== 0) throw new ForgeError("INTERNAL", (r.stderr || r.stdout).trim() || "Abmelden fehlgeschlagen");
+    if (r.code !== 0) throw new ForgeError("INTERNAL", (r.stderr || r.stdout).trim() || tr().system.github.logoutFailed);
     this.set({ phase: "idle", code: null, url: null, message: null });
   }
 
   async repos(): Promise<GitHubRepo[]> {
     const r = await this.gh_(["repo", "list", "--limit", "200", "--json", "nameWithOwner,description,isPrivate,updatedAt,url"], 60_000);
-    if (r.code !== 0) throw new ForgeError("INTERNAL", (r.stderr || r.stdout).trim() || "Repositories konnten nicht geladen werden");
+    if (r.code !== 0) throw new ForgeError("INTERNAL", (r.stderr || r.stdout).trim() || tr().system.github.reposFailed);
     const list = JSON.parse(r.stdout) as Array<{ nameWithOwner: string; description: string | null; isPrivate: boolean; updatedAt: string; url: string }>;
     return list.map((x) => ({ fullName: x.nameWithOwner, description: x.description || null, private: x.isPrivate, updatedAt: x.updatedAt, cloneUrl: `${x.url}.git` }));
   }
@@ -149,7 +150,7 @@ export class GitHubService {
   /** Organisations of the signed-in account (needs the read:org scope, which `gh auth login` asks for). */
   async orgs(): Promise<GitHubOrg[]> {
     const r = await this.gh_(["api", "user/orgs?per_page=100"], 60_000);
-    if (r.code !== 0) throw new ForgeError("INTERNAL", (r.stderr || r.stdout).trim() || "Organisationen konnten nicht geladen werden");
+    if (r.code !== 0) throw new ForgeError("INTERNAL", (r.stderr || r.stdout).trim() || tr().system.github.orgsFailed);
     const list = JSON.parse(r.stdout) as Array<{ login: string; avatar_url?: string | null }>;
     return list.map((o) => ({ login: o.login, avatarUrl: o.avatar_url ?? null })).sort((a, b) => a.login.localeCompare(b.login));
   }
@@ -165,19 +166,19 @@ export class GitHubService {
       env: this.env(),
       timeoutMs: 120_000,
     });
-    if (r.code !== 0) throw new ForgeError("GIT_FAILED", (r.stderr || r.stdout).trim().split("\n").slice(-2).join(" ") || "Repository konnte nicht erstellt werden");
+    if (r.code !== 0) throw new ForgeError("GIT_FAILED", (r.stderr || r.stdout).trim().split("\n").slice(-2).join(" ") || tr().system.github.createFailed);
     const url = /(https:\/\/github\.com\/[^\s]+)/.exec(r.stdout + r.stderr)?.[1] ?? null;
     return url ?? `https://github.com/${repoName}`;
   }
 
   /** Deletes a repository on GitHub. Needs the delete_repo scope, which FORGE asks for separately. */
   async deleteRepo(fullName: string): Promise<void> {
-    if (!/^[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/.test(fullName)) throw new ForgeError("VALIDATION", `Ungültiger Repository-Name: ${fullName}`);
+    if (!/^[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/.test(fullName)) throw new ForgeError("VALIDATION", tr().system.github.invalidRepo(fullName));
     const r = await this.gh_(["repo", "delete", fullName, "--yes"], 60_000);
     if (r.code === 0) return;
     const out = (r.stderr || r.stdout).trim();
-    if (/delete_repo/.test(out)) throw new ForgeError("POLICY_DENIED", "Für das Löschen fehlt die GitHub-Berechtigung delete_repo.");
-    throw new ForgeError("GIT_FAILED", out.split("\n").slice(-2).join(" ") || "Repository konnte nicht gelöscht werden");
+    if (/delete_repo/.test(out)) throw new ForgeError("POLICY_DENIED", tr().system.github.deleteScope);
+    throw new ForgeError("GIT_FAILED", out.split("\n").slice(-2).join(" ") || tr().system.github.deleteFailed);
   }
 
   /** Visibility of a repository; null when it does not exist (or the account cannot see it). */
@@ -185,7 +186,7 @@ export class GitHubService {
     const r = await this.gh_(["api", `repos/${checkFullName(fullName)}`]);
     if (r.code !== 0) {
       if (isNotFound(r)) return null;
-      throw new ForgeError("INTERNAL", ghError(r, "Repository konnte nicht abgefragt werden"));
+      throw new ForgeError("INTERNAL", ghError(r, tr().system.github.viewFailed));
     }
     return { private: (JSON.parse(r.stdout) as { private?: boolean }).private !== false };
   }
@@ -193,24 +194,24 @@ export class GitHubService {
   /** Creates an empty private repository in the signed-in account. */
   async createPrivateRepo(name: string, description: string): Promise<void> {
     const r = await this.gh_(["repo", "create", toRepoName(name), "--private", "--description", description], 60_000);
-    if (r.code !== 0) throw new ForgeError("GIT_FAILED", ghError(r, "Repository konnte nicht erstellt werden"));
+    if (r.code !== 0) throw new ForgeError("GIT_FAILED", ghError(r, tr().system.github.createFailed));
   }
 
   /** A text file of a repository's default branch with its blob sha; null when it (or any commit) does not exist. */
   async readRepoFile(fullName: string, file: string, ref?: string): Promise<{ sha: string; text: string } | null> {
-    if (ref && !/^[0-9a-f]{7,64}$/.test(ref)) throw new ForgeError("VALIDATION", "Ungültiger Commit.");
+    if (ref && !/^[0-9a-f]{7,64}$/.test(ref)) throw new ForgeError("VALIDATION", tr().system.github.invalidCommit);
     const endpoint = `repos/${checkFullName(fullName)}/contents/${file}${ref ? `?ref=${ref}` : ""}`;
     const meta = await this.gh_(["api", endpoint], 60_000);
     if (meta.code !== 0) {
       // An empty repository answers 404 as well.
       if (isNotFound(meta)) return null;
-      throw new ForgeError("INTERNAL", ghError(meta, "Datei konnte nicht gelesen werden"));
+      throw new ForgeError("INTERNAL", ghError(meta, tr().system.github.readFailed));
     }
     const j = JSON.parse(meta.stdout) as { sha: string; content?: string; encoding?: string };
     if (j.encoding === "base64" && j.content) return { sha: j.sha, text: Buffer.from(j.content, "base64").toString("utf8") };
     // Files above 1 MB come without content in the JSON answer.
     const raw = await this.gh_(["api", "-H", "Accept: application/vnd.github.raw+json", endpoint], 120_000);
-    if (raw.code !== 0) throw new ForgeError("INTERNAL", ghError(raw, "Datei konnte nicht gelesen werden"));
+    if (raw.code !== 0) throw new ForgeError("INTERNAL", ghError(raw, tr().system.github.readFailed));
     return { sha: j.sha, text: raw.stdout };
   }
 
@@ -219,7 +220,7 @@ export class GitHubService {
     const r = await this.gh_(["api", `repos/${checkFullName(fullName)}/commits?path=${encodeURIComponent(file)}&per_page=${limit}`], 60_000);
     if (r.code !== 0) {
       if (isNotFound(r) || /HTTP 409/.test(r.stdout + r.stderr)) return [];
-      throw new ForgeError("INTERNAL", ghError(r, "Versionen konnten nicht geladen werden"));
+      throw new ForgeError("INTERNAL", ghError(r, tr().system.github.versionsFailed));
     }
     const list = JSON.parse(r.stdout) as Array<{ sha: string; commit: { message: string; committer?: { date?: string }; author?: { date?: string } } }>;
     return list.map((c) => ({ sha: c.sha, date: c.commit.committer?.date ?? c.commit.author?.date ?? "", message: c.commit.message }));
@@ -239,8 +240,8 @@ export class GitHubService {
       if (r.code === 0) return;
       // 422 also covers real validation errors (content too large); only the missing or old sha is a conflict.
       const out = r.stdout + r.stderr;
-      if (/HTTP 409/.test(out) || (/HTTP 422/.test(out) && /\bsha\b/i.test(out))) throw new ForgeError("CONFLICT", "Die Datei wurde inzwischen geändert.");
-      throw new ForgeError("GIT_FAILED", ghError(r, "Datei konnte nicht gespeichert werden"));
+      if (/HTTP 409/.test(out) || (/HTTP 422/.test(out) && /\bsha\b/i.test(out))) throw new ForgeError("CONFLICT", tr().system.github.fileChanged);
+      throw new ForgeError("GIT_FAILED", ghError(r, tr().system.github.saveFailed));
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
@@ -286,7 +287,7 @@ export class GitHubService {
     if (p.draft) args.push("--draft");
     const r = await run(this.gh(), args, { cwd, env: this.env(), timeoutMs: 60_000 });
     const out = (r.stdout + r.stderr).trim();
-    if (r.code !== 0) throw new ForgeError("GIT_FAILED", out.split("\n").slice(-2).join(" ") || "Pull Request konnte nicht erstellt werden");
+    if (r.code !== 0) throw new ForgeError("GIT_FAILED", out.split("\n").slice(-2).join(" ") || tr().system.github.prFailed);
     return /(https:\/\/github\.com\/\S+\/pull\/\d+)/.exec(out)?.[1] ?? out;
   }
 
@@ -356,7 +357,7 @@ export function githubRepoFromRemote(remote: string | null): string | null {
 }
 
 function checkFullName(fullName: string): string {
-  if (!/^[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/.test(fullName)) throw new ForgeError("VALIDATION", `Ungültiger Repository-Name: ${fullName}`);
+  if (!/^[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/.test(fullName)) throw new ForgeError("VALIDATION", tr().system.github.invalidRepo(fullName));
   return fullName;
 }
 

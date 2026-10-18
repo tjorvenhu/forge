@@ -1,6 +1,7 @@
 import { createCipheriv, createDecipheriv, randomBytes, scrypt } from "node:crypto";
 import { z } from "zod";
 import { ForgeError } from "@forge/protocol";
+import { tr } from "../i18n/index.js";
 
 /** Parameters of the key derivation; stored next to the data, so every computer derives the same key. */
 export const KdfParams = z.object({ salt: z.string().min(16), N: z.number().int().min(1024), r: z.number().int().min(1), p: z.number().int().min(1) });
@@ -22,7 +23,7 @@ export function newKdf(N = DEFAULT_N): KdfParams {
 }
 
 export async function deriveKey(passphrase: string, kdf: KdfParams): Promise<SyncKey> {
-  if (passphrase.length < MIN_PASSPHRASE) throw new ForgeError("VALIDATION", `Das Sync-Passwort braucht mindestens ${MIN_PASSPHRASE} Zeichen.`);
+  if (passphrase.length < MIN_PASSPHRASE) throw new ForgeError("VALIDATION", tr().system.sync.passphraseTooShort(MIN_PASSPHRASE));
   const key = await new Promise<Buffer>((resolve, reject) =>
     scrypt(passphrase.normalize("NFC"), Buffer.from(kdf.salt, "base64"), 32, { N: kdf.N, r: kdf.r, p: kdf.p, maxmem: 256 * kdf.N * kdf.r }, (e, k) => (e ? reject(e) : resolve(k))),
   );
@@ -43,6 +44,6 @@ export function open(k: SyncKey, box: SealedBox): string {
     d.setAuthTag(Buffer.from(box.tag, "base64"));
     return Buffer.concat([d.update(Buffer.from(box.data, "base64")), d.final()]).toString("utf8");
   } catch {
-    throw new ForgeError("VALIDATION", "Das Sync-Passwort passt nicht zu den Daten auf GitHub.");
+    throw new ForgeError("VALIDATION", tr().system.sync.wrongPassphrase);
   }
 }

@@ -11,6 +11,7 @@ import type { DevServerService } from "../devserver/dev-server.js";
 import type { TestDbService } from "../devtools/test-db.js";
 import { isInside, pathKey, sensitivePaths } from "../util/paths.js";
 import type { ProjectManager } from "./project-manager.js";
+import { tr } from "../i18n/index.js";
 
 export interface RemovalDeps {
   projects: ProjectManager;
@@ -70,8 +71,8 @@ function oneDriveRoots(env: NodeJS.ProcessEnv): string[] {
 /** Why a project folder must never be deleted from FORGE, or null if it may be. */
 export function folderDeleteBlocker(dir: string, others: string[], protectedDirs: string[], home = os.homedir(), env: NodeJS.ProcessEnv = process.env): string | null {
   const abs = path.resolve(dir);
-  if (path.parse(abs).root === abs || path.dirname(abs) === abs) return "Ein Laufwerk kann nicht gelöscht werden.";
-  if (pathKey(abs) === pathKey(home) || isInside(home, abs)) return "Das Benutzerverzeichnis kann nicht gelöscht werden.";
+  if (path.parse(abs).root === abs || path.dirname(abs) === abs) return tr().system.removal.drive;
+  if (pathKey(abs) === pathKey(home) || isInside(home, abs)) return tr().system.removal.home;
 
   const name = path.basename(abs);
   const lower = name.toLowerCase();
@@ -80,23 +81,23 @@ export function folderDeleteBlocker(dir: string, others: string[], protectedDirs
   const underHome = parentKey === pathKey(home);
   const underRoot = underHome || oneDrive.some((r) => pathKey(r) === parentKey);
   if (underRoot && (KNOWN_FOLDERS.has(lower) || name.startsWith(".")) || (underHome && lower.startsWith("onedrive"))) {
-    return `Der Ordner ${name} kann nicht gelöscht werden.`;
+    return tr().system.removal.named(name);
   }
-  if (oneDrive.some((r) => isInside(r, abs))) return "Der Ordner enthält den OneDrive-Ordner.";
+  if (oneDrive.some((r) => isInside(r, abs))) return tr().system.removal.oneDrive;
 
   // Projects in the temp folder stay deletable although it lies inside AppData on Windows.
   const tmp = os.tmpdir();
   const inTemp = isInside(abs, tmp) && pathKey(abs) !== pathKey(tmp);
   for (const sys of systemDirs(home, env)) {
-    if (isInside(sys, abs)) return "Der Ordner enthält System-, Programm- oder Zugangsdaten und kann nicht gelöscht werden.";
+    if (isInside(sys, abs)) return tr().system.removal.containsSystem;
     if (isInside(abs, sys) && !(inTemp && isInside(tmp, sys))) {
-      return "Der Ordner gehört zum System, zu einem Programm oder zu Claude und kann nicht gelöscht werden.";
+      return tr().system.removal.insideSystem;
     }
   }
 
-  if (protectedDirs.some((p) => isInside(p, abs))) return "Der Ordner enthält Daten von FORGE.";
+  if (protectedDirs.some((p) => isInside(p, abs))) return tr().system.removal.forgeData;
   const nested = others.filter((o) => isInside(o, abs));
-  if (nested.length) return `Der Ordner enthält ${nested.length === 1 ? "ein weiteres Projekt" : `${nested.length} weitere Projekte`}.`;
+  if (nested.length) return tr().system.removal.nested(nested.length);
   return null;
 }
 
@@ -158,7 +159,7 @@ export async function removeProject(projectId: string, opts: { deleteFolder: boo
   const project = d.projects.get(projectId);
   const info = await removalInfo(projectId, d);
   if (opts.deleteFolder && info.folderBlocker) throw new ForgeError("POLICY_DENIED", info.folderBlocker);
-  if (opts.deleteGitHubRepo && !info.githubRepo) throw new ForgeError("VALIDATION", "Das Projekt hat kein GitHub-Repository als origin.");
+  if (opts.deleteGitHubRepo && !info.githubRepo) throw new ForgeError("VALIDATION", tr().system.removal.noGitHubRepo);
 
   const children = opts.deleteFolder ? d.projects.all().filter((p) => p.parentId === project.id) : [];
   const affected = [project.id, ...children.map((c) => c.id)];
@@ -173,7 +174,7 @@ export async function removeProject(projectId: string, opts: { deleteFolder: boo
 
   let folderDeleted = false;
   if (opts.deleteFolder && info.folderExists) {
-    const prefix = githubDeleted ? "Das GitHub-Repository wurde gelöscht, der Ordner aber nicht vollständig. " : "";
+    const prefix = githubDeleted ? tr().system.removal.githubDeletedPrefix : "";
     try {
       for (const c of children) await d.worktrees.remove(c, true);
       if (project.parentId) await d.worktrees.remove(project, true);
@@ -183,7 +184,7 @@ export async function removeProject(projectId: string, opts: { deleteFolder: boo
     } catch (e) {
       if (e instanceof ForgeError) throw new ForgeError(e.code, prefix + e.message, e.details);
       const why = e instanceof Error ? e.message : String(e);
-      throw new ForgeError("PATH_NOT_ACCESSIBLE", `${prefix}Ist er noch in einem Terminal oder Editor geöffnet? (${why})`);
+      throw new ForgeError("PATH_NOT_ACCESSIBLE", tr().system.removal.stillOpen(prefix, why));
     }
     folderDeleted = true;
   }

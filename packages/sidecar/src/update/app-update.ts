@@ -8,6 +8,7 @@ import { run } from "../util/proc.js";
 import { resolveTool } from "../util/tools.js";
 import { GitHubReleases, type ReleaseAsset, type ReleaseSource } from "./github-releases.js";
 import { SIG_SUFFIX, verifySignature } from "./signature.js";
+import { tr } from "../i18n/index.js";
 
 /** Repository whose GitHub releases carry the FORGE installer (built by .github/workflows/release.yml). */
 export const UPDATE_REPO = "vanturis/forge";
@@ -194,7 +195,7 @@ export function rangeNotes(range: ChangeRange): string {
 function clip(text: string, max: number): string {
   if (text.length <= max) return text;
   const cut = text.lastIndexOf("\n", max);
-  return `${text.slice(0, cut > 0 ? cut : max)}\n(gekürzt)`;
+  return `${text.slice(0, cut > 0 ? cut : max)}\n${tr().system.update.clipped}`;
 }
 
 /** Where installers are downloaded; the desktop shell runs installers from this folder only. */
@@ -267,7 +268,7 @@ async function ghToken(): Promise<string | null> {
  * always the signature. A file that fails is deleted; the path of a good one is returned.
  */
 export async function fetchSigned(source: ReleaseSource, asset: Asset, dir: string, timeoutMs: number, publicKey?: string): Promise<string> {
-  if (!asset.sig) throw new Error("Das Update ist nicht signiert. FORGE installiert es nicht.");
+  if (!asset.sig) throw new Error(tr().system.update.notSigned);
   const file = path.join(dir, asset.name);
   const sigFile = `${file}${SIG_SUFFIX}`;
   try {
@@ -276,14 +277,14 @@ export async function fetchSigned(source: ReleaseSource, asset: Asset, dir: stri
   } catch (e) {
     await rm(file, { force: true }).catch(() => {});
     await rm(sigFile, { force: true }).catch(() => {});
-    throw new Error(`Download fehlgeschlagen: ${e instanceof Error ? e.message : String(e)}`, { cause: e });
+    throw new Error(tr().system.update.downloadFailed(e instanceof Error ? e.message : String(e)), { cause: e });
   }
   const hash = await sha256(file);
   const bad =
     asset.digest?.startsWith("sha256:") && hash !== asset.digest.slice(7).toLowerCase()
-      ? "Prüfsumme des Installers stimmt nicht. Download verworfen."
+      ? tr().system.update.checksumMismatch
       : !verifySignature(asset.name, hash, readFileSync(sigFile, "utf8"), publicKey)
-        ? "Die Signatur des Updates stimmt nicht. Download verworfen."
+        ? tr().system.update.signatureMismatch
         : null;
   await rm(sigFile, { force: true });
   if (bad) {
@@ -325,38 +326,33 @@ const OFFERED: ReadonlyArray<AppUpdateState["phase"]> = ["available", "downloadi
 export function changelogPrompt(current: string, range: ChangeRange, commits: string[], commitsOmitted = 0): string {
   const version = bare(range.releases[0]!.tag_name!);
   const count = range.releases.length;
+  const m = tr().system.changelogPrompt;
   const sections: string[] = [];
   let size = 0;
   for (const r of range.releases) {
-    const section = `Version ${bare(r.tag_name!)}:\n${clip((r.body ?? "").trim(), MAX_NOTES_PER_RELEASE) || "(keine)"}`;
+    const section = `Version ${bare(r.tag_name!)}:\n${clip((r.body ?? "").trim(), MAX_NOTES_PER_RELEASE) || m.none}`;
     if (sections.length && size + section.length > MAX_NOTES) break;
     sections.push(section);
     size += section.length;
   }
   const notesOmitted = count - sections.length;
-  const scope =
-    count === 1
-      ? `Schreibe für Nutzer von FORGE (Desktop-App für Claude Code), was sich mit Version ${version} gegenüber ${current} ändert.`
-      : `Schreibe für Nutzer von FORGE (Desktop-App für Claude Code), was sich mit dem Update von ${current} auf ${version} ändert. ` +
-        `Das umfasst alle ${count} Versionen nach ${range.since} bis einschließlich ${version}, nicht nur die neueste.`;
+  const scope = count === 1 ? m.scopeOne(version, current) : m.scopeMany(version, current, count, range.since);
   return [
     scope,
-    ...(range.capped
-      ? [`Die installierte Version ${current} ist älter. Unten stehen nur die letzten ${count} Versionen nach ${range.since}, ältere Änderungen fehlen. Behaupte keine Vollständigkeit.`]
-      : []),
-    "Regeln:",
-    `- Deutsch, Markdown-Liste mit höchstens ${count === 1 ? 8 : 12} Punkten, jeder Punkt ein kurzer, konkreter Satz.`,
-    "- Aus Sicht der Nutzer: was sie jetzt tun können oder was besser läuft. Tests, Build und interne Umbauten weglassen.",
-    "- Bei mehreren Versionen das Gesamtergebnis: Wichtigstes zuerst, Zwischenstände und später wieder Zurückgenommenes weglassen.",
-    "- Nur, was in den Notizen oder Commits steht. Nichts erfinden.",
-    "- Keine Einleitung, keine Überschrift, keine Versionsnummern, keine Gedanken- oder Halbgeviertstriche, keine Emoji.",
+    ...(range.capped ? [m.capped(current, count, range.since)] : []),
+    m.rules,
+    m.ruleFormat(count === 1 ? 8 : 12),
+    m.ruleUser,
+    m.ruleOverall,
+    m.ruleTruth,
+    m.ruleStyle,
     "",
-    "Release-Notizen (neueste zuerst):",
+    m.notes,
     ...sections,
-    ...(notesOmitted ? [`(Notizen der ${notesOmitted} ältesten Versionen aus Platzgründen weggelassen)`] : []),
+    ...(notesOmitted ? [m.notesOmitted(notesOmitted)] : []),
     "",
-    `Commits seit ${range.since}${commitsOmitted ? ` (nur die neuesten ${commits.length}, ${commitsOmitted} ältere weggelassen)` : ""}:`,
-    commits.length ? commits.map((c) => `- ${c}`).join("\n") : "(nicht verfügbar)",
+    m.commits(range.since, commits.length, commitsOmitted),
+    commits.length ? commits.map((c) => `- ${c}`).join("\n") : m.unavailable,
   ].join("\n");
 }
 
@@ -432,9 +428,9 @@ export class AppUpdateService {
 
   /** Asks the main window to install the offered update; the phone has no other way to. */
   requestInstall(): AppUpdateState {
-    if (!this.state.installable) throw new ForgeError("VALIDATION", "Updates lassen sich nur in der installierten App einspielen.");
-    if (!this.state.latest || !OFFERED.includes(this.state.phase)) throw new ForgeError("VALIDATION", "Es liegt kein Update bereit. Erst nach Updates suchen.");
-    if (!this.d.requestInstall) throw new ForgeError("VALIDATION", "Installieren geht hier nicht.");
+    if (!this.state.installable) throw new ForgeError("VALIDATION", tr().system.update.notInstalledApp);
+    if (!this.state.latest || !OFFERED.includes(this.state.phase)) throw new ForgeError("VALIDATION", tr().system.update.noneReady);
+    if (!this.d.requestInstall) throw new ForgeError("VALIDATION", tr().system.update.cannotInstallHere);
     this.d.requestInstall();
     return this.state;
   }
@@ -458,7 +454,7 @@ export class AppUpdateService {
       try {
         const found = await this.source.releases();
         if (!found) {
-          this.set({ phase: "uptodate", latest: null, checkedAt: new Date().toISOString(), message: "Noch kein Release veröffentlicht." });
+          this.set({ phase: "uptodate", latest: null, checkedAt: new Date().toISOString(), message: tr().system.update.noRelease });
           return this.state;
         }
         const list = signedOnly(found as Release[]);
@@ -471,7 +467,7 @@ export class AppUpdateService {
           this.range = null;
           // Newer releases, but none this installation can take: say so instead of "up to date".
           const blocked = range ? bare(range.releases[0]!.tag_name!) : null;
-          const message = blocked ? `FORGE ${blocked} ist erschienen, braucht aber den vollständigen Installer. Dafür gibt es noch keinen.` : null;
+          const message = blocked ? tr().system.update.needsFullInstaller(blocked) : null;
           this.set({ phase: "uptodate", latest: null, installerPath: null, autoInstall: false, checkedAt, message });
           return this.state;
         }
@@ -554,7 +550,7 @@ export class AppUpdateService {
       const r = await ready;
       if (r !== "ok" || !this.d.writeChangelog) return { ...base, status: "unavailable", unavailable: r === "ok" ? "no-claude" : r };
       const text = (await this.d.writeChangelog(changelogPrompt(this.state.currentVersion, range, commits, all.length - commits.length))).trim();
-      if (!text) throw new Error("Claude hat keinen Text geliefert.");
+      if (!text) throw new Error(tr().system.update.noText);
       this.d.log(`Update: Changelog für ${tag} in ${Date.now() - t0} ms geschrieben`);
       return { ...base, status: "ready", text, unavailable: null };
     } catch (e) {
@@ -590,7 +586,7 @@ export class AppUpdateService {
       const latest = this.state.latest;
       const asset = this.asset;
       if (!latest || !asset) {
-        this.set({ phase: "error", message: "Kein Update zum Herunterladen. Erst nach Updates suchen." });
+        this.set({ phase: "error", message: tr().system.update.nothingToDownload });
         return this.state;
       }
       this.set({ phase: "downloading", message: null });

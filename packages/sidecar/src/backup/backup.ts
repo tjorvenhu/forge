@@ -6,6 +6,7 @@ import { ForgeError, Project, PromptTemplate, type BackupInfo, type BackupPart }
 import type { Db } from "../persistence/db.js";
 import { claudeHome, writeAtomic } from "../config/claude-config.js";
 import { claudeJsonPath, pathKey } from "../util/paths.js";
+import { tr } from "../i18n/index.js";
 
 /** Backups kept in the data folder; older ones are deleted. */
 export const MAX_BACKUPS = 40;
@@ -92,7 +93,7 @@ export class BackupService {
   }
 
   private file(id: string) {
-    if (!ID_RE.test(id)) throw new ForgeError("VALIDATION", "Ungültige Backup-Kennung.");
+    if (!ID_RE.test(id)) throw new ForgeError("VALIDATION", tr().system.backup.invalidId);
     return path.join(this.d.dir, `${id}.json`);
   }
 
@@ -144,16 +145,17 @@ export class BackupService {
   }
 
   private info(d: BackupData, id: string | null, size: number): BackupInfo {
+    const m = tr().system.backup;
     const parts: BackupInfo["parts"] = [
-      { part: "settings", label: `${Object.keys(d.settings).length} Einstellungen` },
-      { part: "projects", label: d.projects.length === 1 ? "1 Projekt" : `${d.projects.length} Projekte` },
+      { part: "settings", label: m.partSettings(Object.keys(d.settings).length) },
+      { part: "projects", label: m.partProjects(d.projects.length) },
     ];
-    if (d.phone.settings) parts.push({ part: "phone", label: "Telefon" });
+    if (d.phone.settings) parts.push({ part: "phone", label: m.partPhone });
     const files = Object.keys(d.claude.files).length;
     const mcp = Object.keys(d.claude.mcpServers ?? {}).length;
-    if (files || mcp) parts.push({ part: "claude", label: `Claude Code: ${files} ${files === 1 ? "Datei" : "Dateien"}, ${mcp} MCP-Server` });
-    if (d.git.name || d.git.email) parts.push({ part: "git", label: "Git-Name und E-Mail" });
-    if (d.templates.length) parts.push({ part: "templates", label: d.templates.length === 1 ? "1 Vorlage" : `${d.templates.length} Vorlagen` });
+    if (files || mcp) parts.push({ part: "claude", label: m.partClaude(files, mcp) });
+    if (d.git.name || d.git.email) parts.push({ part: "git", label: m.partGit });
+    if (d.templates.length) parts.push({ part: "templates", label: m.partTemplates(d.templates.length) });
     return { id, createdAt: d.createdAt, reason: d.reason, appVersion: d.appVersion, size, parts };
   }
 
@@ -187,16 +189,16 @@ export class BackupService {
     try {
       text = await readFile(file, "utf8");
     } catch {
-      throw new ForgeError("NOT_FOUND", "Backup-Datei nicht gefunden.");
+      throw new ForgeError("NOT_FOUND", tr().system.backup.fileNotFound);
     }
     let raw: unknown;
     try {
       raw = JSON.parse(text);
     } catch {
-      throw new ForgeError("VALIDATION", "Die Datei ist kein FORGE-Backup (kein gültiges JSON).");
+      throw new ForgeError("VALIDATION", tr().system.backup.notJson);
     }
     const parsed = BackupData.safeParse(raw);
-    if (!parsed.success) throw new ForgeError("VALIDATION", "Die Datei ist kein FORGE-Backup oder stammt aus einer unbekannten Version.");
+    if (!parsed.success) throw new ForgeError("VALIDATION", tr().system.backup.notBackup);
     return { data: parsed.data, size: Buffer.byteLength(text) };
   }
 
@@ -248,7 +250,7 @@ export class BackupService {
    */
   async restore(source: { id?: string; path?: string }, parts: BackupPart[]) {
     const file = source.id ? this.file(source.id) : source.path;
-    if (!file) throw new ForgeError("VALIDATION", "Kein Backup angegeben.");
+    if (!file) throw new ForgeError("VALIDATION", tr().system.backup.noneGiven);
     const { data } = await this.readFileData(file);
     const want = new Set(parts);
     // Read before anything changes: a .claude.json FORGE cannot read stops the restore as a whole.
@@ -261,23 +263,23 @@ export class BackupService {
       // Older backups lack these; without them the setup assistant would come back.
       const keep = ["phone", ...KEEP_UNLESS_IN_BACKUP.filter((k) => !(k in data.settings))];
       const skipped = this.d.db.replaceRawSettings(data.settings, keep);
-      if (skipped.length) notes.push(`${skipped.length === 1 ? "Eine Einstellung war" : `${skipped.length} Einstellungen waren`} im Backup beschädigt und ${skipped.length === 1 ? "blieb" : "blieben"} unverändert: ${skipped.join(", ")}.`);
+      if (skipped.length) notes.push(tr().system.backup.skippedSettings(skipped));
       restored.push("settings");
     }
     if (want.has("projects")) {
       const missing = this.restoreProjects(data);
-      if (missing) notes.push(`${missing} ${missing === 1 ? "Projektordner fehlt" : "Projektordner fehlen"} auf diesem Rechner. ${missing === 1 ? "Das Projekt ist" : "Die Projekte sind"} trotzdem wieder in der Liste.`);
+      if (missing) notes.push(tr().system.backup.missingFolders(missing));
       restored.push("projects");
     }
     if (want.has("phone") && data.phone.settings) {
       this.d.db.setPhoneSettings(JSON.parse(data.phone.settings) as Record<string, unknown>);
       this.d.secrets.restoreEncrypted(data.phone.secrets);
-      if (Object.keys(data.phone.secrets).length) notes.push("Passwörter und API-Keys des Telefons lassen sich nur unter demselben Windows-Konto entschlüsseln, unter dem sie gespeichert wurden.");
+      if (Object.keys(data.phone.secrets).length) notes.push(tr().system.backup.phoneSecrets);
       restored.push("phone");
     }
     if (want.has("claude")) {
       await this.restoreClaude(data, claudeJson);
-      notes.push("Laufende Sessions übernehmen geänderte Claude-Code-Einstellungen erst nach einem Neustart der Session.");
+      notes.push(tr().system.backup.restartSessions);
       restored.push("claude");
     }
     if (want.has("git") && data.git.name && data.git.email) {
@@ -289,7 +291,7 @@ export class BackupService {
       // Templates of a project that is not in FORGE (any more) have nowhere to go.
       const homeless = data.templates.filter((t) => t.projectId && !this.d.db.getProject(t.projectId));
       for (const t of data.templates) if (!homeless.includes(t)) this.d.db.putTemplate(t);
-      if (homeless.length) notes.push(`${homeless.length === 1 ? "Eine Vorlage gehört" : `${homeless.length} Vorlagen gehören`} zu einem Projekt, das nicht in FORGE ist, und ${homeless.length === 1 ? "wurde" : "wurden"} übersprungen.`);
+      if (homeless.length) notes.push(tr().system.backup.homelessTemplates(homeless.length));
       restored.push("templates");
     }
 
@@ -325,7 +327,7 @@ export class BackupService {
       text = await readFile(this.claudeJson, "utf8");
     } catch (e) {
       if ((e as NodeJS.ErrnoException).code === "ENOENT") return {};
-      throw new ForgeError("PATH_NOT_ACCESSIBLE", `${this.claudeJson} ließ sich nicht lesen, das Backup wurde nicht wiederhergestellt. (${e instanceof Error ? e.message : String(e)})`);
+      throw new ForgeError("PATH_NOT_ACCESSIBLE", tr().system.backup.claudeJsonUnreadable(this.claudeJson, e instanceof Error ? e.message : String(e)));
     }
     let parsed: unknown;
     try {
@@ -334,7 +336,7 @@ export class BackupService {
       parsed = null;
     }
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-      throw new ForgeError("VALIDATION", `${this.claudeJson} ist kein gültiges JSON. Das Backup wurde nicht wiederhergestellt, damit die Datei nicht überschrieben wird. Repariere oder lösche sie und versuche es noch einmal.`);
+      throw new ForgeError("VALIDATION", tr().system.backup.claudeJsonInvalid(this.claudeJson));
     }
     return parsed as Record<string, unknown>;
   }

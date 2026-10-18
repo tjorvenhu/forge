@@ -1,4 +1,5 @@
 mod chat_windows;
+mod i18n;
 mod job;
 mod screenshot;
 mod sidecar;
@@ -6,6 +7,7 @@ mod terminal;
 mod update;
 
 use chat_windows::ChatWindows;
+use i18n::tr;
 use screenshot::Screenshots;
 use sidecar::Sidecar;
 use tauri::{Manager, RunEvent, WindowEvent};
@@ -22,10 +24,10 @@ const MAX_LINE_BYTES: usize = 16 * 1024 * 1024;
 #[tauri::command]
 fn sidecar_send(line: String, state: tauri::State<'_, Sidecar>) -> Result<(), String> {
     if line.len() > MAX_LINE_BYTES {
-        return Err("Nachricht zu groß".into());
+        return Err(tr!("Message too large", "Nachricht zu groß"));
     }
     if line.contains('\n') {
-        return Err("Ungültige Nachricht".into());
+        return Err(tr!("Invalid message", "Ungültige Nachricht"));
     }
     state.send(&line)
 }
@@ -43,14 +45,14 @@ async fn show_in_explorer(app: tauri::AppHandle, path: String) -> Result<(), Str
     use tauri_plugin_opener::OpenerExt;
     let p = std::path::PathBuf::from(&path);
     if path.len() > 4096 || !p.is_absolute() {
-        return Err("Kein gültiger Pfad".into());
+        return Err(tr!("Not a valid path", "Kein gültiger Pfad"));
     }
     if p.is_dir() {
         app.opener().open_path(path, None::<&str>).map_err(|e| e.to_string())
     } else if p.exists() {
         app.opener().reveal_item_in_dir(&p).map_err(|e| e.to_string())
     } else {
-        Err("Pfad nicht gefunden".into())
+        Err(tr!("Path not found", "Pfad nicht gefunden"))
     }
 }
 
@@ -136,6 +138,7 @@ pub fn run() {
         .manage(ChatWindows::default())
         .manage(Screenshots::default())
         .invoke_handler(tauri::generate_handler![
+            i18n::set_language,
             sidecar_send,
             sidecar_status,
             sidecar_restart,
@@ -200,6 +203,7 @@ pub fn run() {
                     _ => chat_windows::show_main(&app),
                 });
             });
+            i18n::load(&handle);
             screenshot::start(&handle);
             if let Err(e) = app.state::<Sidecar>().start(&handle) {
                 eprintln!("[forge] sidecar start failed: {e}");

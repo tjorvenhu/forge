@@ -4,6 +4,7 @@ import path from "node:path";
 import { DevToolsConfig, ForgeError, TestDbConfig } from "@forge/protocol";
 import type { Db } from "../persistence/db.js";
 import type { ProjectManager } from "../projects/project-manager.js";
+import { tr } from "../i18n/index.js";
 
 /** Away from 5432, where an installed PostgreSQL usually listens. */
 export const FIRST_DB_PORT = 54330;
@@ -120,7 +121,7 @@ export class DevToolsService {
     };
     if (next.database.port !== cur.database.port) {
       const taken = this.db.devToolsPorts(owner);
-      if (taken.includes(next.database.port)) throw new ForgeError("VALIDATION", `Port ${next.database.port} nutzt schon die Test-Datenbank eines anderen Projekts.`);
+      if (taken.includes(next.database.port)) throw new ForgeError("VALIDATION", tr().system.devTools.portTaken(next.database.port));
     }
     this.db.setDevTools(owner, DevToolsConfig.parse(next));
     return next;
@@ -152,10 +153,10 @@ export class DevToolsService {
   }
 
   async readEnvFile(projectId: string, name: string): Promise<string> {
-    if (!ENV_FILE_RE.test(name) || !(await this.envFiles(projectId)).includes(name)) throw new ForgeError("NOT_FOUND", `Keine Datei ${name} im Projektordner.`);
+    if (!ENV_FILE_RE.test(name) || !(await this.envFiles(projectId)).includes(name)) throw new ForgeError("NOT_FOUND", tr().system.devTools.noEnvFile(name));
     const full = path.join(this.projects.requireExisting(projectId).path, name);
     const s = await stat(full);
-    if (s.size > MAX_ENV_FILE) throw new ForgeError("VALIDATION", `${name} ist zu groß (über 100 KB).`);
+    if (s.size > MAX_ENV_FILE) throw new ForgeError("VALIDATION", tr().system.devTools.envFileTooLarge(name));
     return readFile(full, "utf8");
   }
 

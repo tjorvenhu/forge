@@ -19,6 +19,7 @@ import {
   type Release,
 } from "./app-update.js";
 import type { ReleaseSource } from "./github-releases.js";
+import { tr } from "../i18n/index.js";
 
 /** Release page for a manual download. */
 export const RELEASES_URL = `https://github.com/${UPDATE_REPO}/releases`;
@@ -55,26 +56,26 @@ export function parseRuntimeKey(key: string): Array<{ tool: string; version: str
  * added to the runtime later (python) counts without a change here.
  */
 export function checkRuntime(dir: string | null, expected: string | null): InstallProblem[] {
-  if (!dir || !existsSync(dir)) return [{ part: "runtime", kind: "missing", label: "Ordner mit den mitgelieferten Programmen fehlt" }];
+  if (!dir || !existsSync(dir)) return [{ part: "runtime", kind: "missing", label: tr().system.fullInstall.runtimeMissing }];
   const wanted = expected ? parseRuntimeKey(expected) : null;
   const problems: InstallProblem[] = [];
   for (const tool of wanted?.map((w) => w.tool) ?? DEFAULT_TOOLS) {
-    if (!existsSync(path.join(dir, TOOL_FILES[tool] ?? tool))) problems.push({ part: tool, kind: "missing", label: `${toolLabel(tool)} fehlt` });
+    if (!existsSync(path.join(dir, TOOL_FILES[tool] ?? tool))) problems.push({ part: tool, kind: "missing", label: tr().system.fullInstall.toolMissing(toolLabel(tool)) });
   }
   let versions: Record<string, unknown>;
   try {
     versions = JSON.parse(readFileSync(path.join(dir, "VERSIONS.json"), "utf8")) as Record<string, unknown>;
   } catch {
-    return [...problems, { part: "versions", kind: "missing", label: "Versionsliste der mitgelieferten Programme fehlt" }];
+    return [...problems, { part: "versions", kind: "missing", label: tr().system.fullInstall.versionsMissing }];
   }
   if (wanted) {
     for (const w of wanted) {
       if (problems.some((p) => p.part === w.tool)) continue;
       const have = typeof versions[w.tool] === "string" ? (versions[w.tool] as string) : null;
-      if (have !== w.version) problems.push({ part: w.tool, kind: "outdated", label: have ? `${toolLabel(w.tool)} ${have} statt ${w.version}` : `${toolLabel(w.tool)} ${w.version} fehlt` });
+      if (have !== w.version) problems.push({ part: w.tool, kind: "outdated", label: have ? tr().system.fullInstall.toolOutdated(toolLabel(w.tool), have, w.version) : tr().system.fullInstall.toolVersionMissing(toolLabel(w.tool), w.version) });
     }
   } else if (expected && installedRuntimeKey(dir) !== expected) {
-    problems.push({ part: "runtime", kind: "outdated", label: "Mitgelieferte Programme passen nicht zu dieser Version" });
+    problems.push({ part: "runtime", kind: "outdated", label: tr().system.fullInstall.runtimeOutdated });
   }
   return problems;
 }
@@ -286,8 +287,8 @@ export class FullInstallService {
   }
 
   private noneMessage(canDownload: boolean): string {
-    if (!canDownload) return "FORGE kann den Installer gerade nicht selbst laden. Lade die setup.exe von der Release-Seite herunter und wähle sie hier aus.";
-    return `Auf GitHub gibt es noch keinen Installer für diese Laufzeit${this.expected ? ` (${this.expected})` : ""}. Er entsteht mit dem nächsten Release, das die Laufzeit ändert, oder in GitHub Actions über Release, Run workflow mit full.`;
+    if (!canDownload) return tr().system.fullInstall.cannotDownload;
+    return tr().system.fullInstall.noInstaller(this.expected);
   }
 
   private offerLocal(local: LocalInstaller) {
@@ -300,13 +301,13 @@ export class FullInstallService {
     return this.once(async () => {
       const name = path.basename(file);
       const version = INSTALLER_FILE.exec(name)?.[1];
-      if (!version) throw new ForgeError("VALIDATION", "Das ist kein FORGE-Installer. Gesucht ist eine Datei wie FORGE_0.1.90_x64-setup.exe.");
+      if (!version) throw new ForgeError("VALIDATION", tr().system.fullInstall.notInstaller);
       const key = installerRuntimeKey(name);
       if (!localInstallerFits(name, version, this.expected)) {
-        throw new ForgeError("VALIDATION", `Dieser Installer bringt ${key ? `die Laufzeit ${key}` : "eine ältere Laufzeit"} mit. Diese FORGE-Version braucht ${this.expected}.`);
+        throw new ForgeError("VALIDATION", tr().system.fullInstall.wrongRuntime(key, this.expected));
       }
       const st = await stat(file).catch(() => null);
-      if (!st?.isFile()) throw new ForgeError("VALIDATION", "Die Datei gibt es nicht.");
+      if (!st?.isFile()) throw new ForgeError("VALIDATION", tr().system.fullInstall.fileMissing);
       this.offerLocal({ path: file, name, version, size: st.size });
       return this.fetch();
     });
@@ -321,7 +322,7 @@ export class FullInstallService {
     if (this.state.phase === "ready" && this.state.installerPath && existsSync(this.state.installerPath)) return this.state;
     const src = this.source;
     if (!src) {
-      this.set({ phase: "error", message: "Kein Installer gefunden. Erst die Installation prüfen." });
+      this.set({ phase: "error", message: tr().system.fullInstall.noneFound });
       return this.state;
     }
     this.set({ phase: "downloading", received: 0, message: null, installerPath: null });
@@ -349,8 +350,8 @@ export class FullInstallService {
         }
       }
       const size = (await stat(file)).size;
-      if (src.kind === "github" && src.asset.size && size !== src.asset.size) throw new Error(`Der Installer ist unvollständig (${size} von ${src.asset.size} Bytes). Download verworfen.`);
-      if (size < MIN_INSTALLER_BYTES || !(await looksLikeExe(file))) throw new Error("Die Datei ist kein vollständiger Installer.");
+      if (src.kind === "github" && src.asset.size && size !== src.asset.size) throw new Error(tr().system.fullInstall.incomplete(size, src.asset.size));
+      if (size < MIN_INSTALLER_BYTES || !(await looksLikeExe(file))) throw new Error(tr().system.fullInstall.notComplete);
       // An older installer: the newest small update for its runtime follows by itself after the restart.
       if (src.kind === "github" && src.then) writeFileSync(this.chainFile, JSON.stringify({ target: src.then }));
       this.set({ phase: "ready", installerPath: file, received: size });
@@ -366,10 +367,10 @@ export class FullInstallService {
 
   /** Asks the main window to run the full installation; the phone has no other way to. */
   requestInstall(): AppInstallState {
-    if (!this.state.checkable) throw new ForgeError("VALIDATION", "Das geht nur in der installierten App, nicht im Entwicklungsmodus.");
-    if (this.state.complete) throw new ForgeError("VALIDATION", "FORGE ist vollständig installiert.");
-    if (!this.source) throw new ForgeError("VALIDATION", this.state.message ?? "Es gibt keinen passenden Installer. Erst die Installation prüfen.");
-    if (!this.d.requestInstall) throw new ForgeError("VALIDATION", "Installieren geht hier nicht.");
+    if (!this.state.checkable) throw new ForgeError("VALIDATION", tr().system.fullInstall.devMode);
+    if (this.state.complete) throw new ForgeError("VALIDATION", tr().system.fullInstall.alreadyComplete);
+    if (!this.source) throw new ForgeError("VALIDATION", this.state.message ?? tr().system.fullInstall.noMatching);
+    if (!this.d.requestInstall) throw new ForgeError("VALIDATION", tr().system.fullInstall.cannotInstallHere);
     this.d.requestInstall();
     return this.state;
   }

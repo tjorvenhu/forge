@@ -17,6 +17,7 @@ import { isInside } from "../util/paths.js";
 import { run, type RunResult } from "../util/proc.js";
 import { resolveTool } from "../util/tools.js";
 import { LOG_FORMAT, parseBranches, parseCommitFiles, parseLog, parseStatusV2, parseUnifiedDiff, scopeToPrefix, summarize, untrackedDiff } from "./parsers.js";
+import { tr } from "../i18n/index.js";
 
 const SENSITIVE_FILE =
   /(^|\/)(\.env(\..*)?|.*\.pem|.*\.key|id_(rsa|dsa|ecdsa|ed25519)(\.pub)?|.*\.p12|.*\.pfx|.*\.keystore|credentials(\..*)?\.json|secrets?\.(json|ya?ml|toml)|\.npmrc|\.pypirc|\.netrc)$/i;
@@ -57,7 +58,7 @@ export class GitEngine {
       timeoutMs,
     });
     if (r.spawnError) {
-      if (r.spawnError.code === "ENOENT") throw new ForgeError("GIT_NOT_INSTALLED", "git wurde nicht gefunden. Bitte Git installieren.");
+      if (r.spawnError.code === "ENOENT") throw new ForgeError("GIT_NOT_INSTALLED", tr().system.git.notInstalled);
       throw new ForgeError("GIT_FAILED", r.spawnError.message);
     }
     return r;
@@ -66,7 +67,7 @@ export class GitEngine {
   private async ok(cwd: string, args: string[], input?: string, timeoutMs?: number): Promise<string> {
     const r = await this.exec(cwd, args, input, timeoutMs);
     if (r.code !== 0) {
-      const msg = (r.stderr || r.stdout).trim() || `git ${args[0]} fehlgeschlagen (Code ${r.code})`;
+      const msg = (r.stderr || r.stdout).trim() || tr().system.git.commandFailed(args[0], r.code);
       if (/not a git repository/i.test(msg)) throw new ForgeError("GIT_NOT_REPO", "Kein Git-Repository.");
       if (/conflict/i.test(msg)) throw new ForgeError("GIT_CONFLICT", msg);
       throw new ForgeError("GIT_FAILED", msg);
@@ -122,7 +123,7 @@ export class GitEngine {
       // --ignore-errors: a file locked by a running program must not cost the whole snapshot.
       await this.exec(cwd, ["add", "-A", "--ignore-errors", "--", "."], undefined, 60_000, env);
       const tree = (await this.exec(cwd, ["write-tree"], undefined, 60_000, env)).stdout.trim();
-      if (!/^[0-9a-f]{40,64}$/.test(tree)) throw new ForgeError("GIT_FAILED", "Stand des Projektordners nicht lesbar.");
+      if (!/^[0-9a-f]{40,64}$/.test(tree)) throw new ForgeError("GIT_FAILED", tr().system.git.treeUnreadable);
       return tree;
     } finally {
       await rm(tmp, { force: true }).catch(() => {});
@@ -148,7 +149,7 @@ export class GitEngine {
 
   private assertRelative(cwd: string, p: string) {
     if (path.isAbsolute(p) || !isInside(path.resolve(cwd, p), cwd)) {
-      throw new ForgeError("PATH_INVALID", `Pfad liegt außerhalb des Projekts: ${p}`);
+      throw new ForgeError("PATH_INVALID", tr().system.git.pathOutside(p));
     }
   }
 
@@ -192,23 +193,23 @@ export class GitEngine {
     paths.forEach((p) => this.assertRelative(cwd, p));
     const st = await this.status(cwd);
     if (st.summary.conflicted) {
-      throw new ForgeError("GIT_CONFLICT", "Es gibt ungelöste Konflikte. Bitte zuerst auflösen, dann committen.");
+      throw new ForgeError("GIT_CONFLICT", tr().system.git.conflictsBeforeCommit);
     }
     const byPath = new Map(st.files.map((f) => [f.path, f]));
     const unknown = paths.filter((p) => !byPath.has(p));
     if (unknown.length) {
-      throw new ForgeError("VALIDATION", `Diese Dateien haben keine Änderungen: ${unknown.join(", ")}`, { paths: unknown });
+      throw new ForgeError("VALIDATION", tr().system.git.noChanges(unknown.join(", ")), { paths: unknown });
     }
 
     // Only file names are checked: scanning contents cost one git process per file and made commits slow.
     if (!allowSensitive) {
       const flagged: Array<{ path: string; reason: string }> = [];
       for (const p of paths) {
-        if (isSensitiveFile(p)) flagged.push({ path: p, reason: "sensible Datei" });
+        if (isSensitiveFile(p)) flagged.push({ path: p, reason: tr().system.git.sensitiveFile });
         else if (isArtifactPath(p)) flagged.push({ path: p, reason: "Build-Artefakt" });
       }
       if (flagged.length) {
-        throw new ForgeError("POLICY_DENIED", "Sensible Dateien oder Build-Artefakte ausgewählt.", { flagged });
+        throw new ForgeError("POLICY_DENIED", tr().system.git.sensitiveSelected, { flagged });
       }
     }
 
@@ -233,17 +234,17 @@ export class GitEngine {
    * Branch and history stay as they are. Uncommitted work is stashed first, so nothing is lost.
    */
   async restoreTo(cwd: string, commit: string): Promise<{ commit: string; subject: string; stashed: boolean; changed: number }> {
-    if (!/^[0-9a-f]{7,40}$/i.test(commit)) throw new ForgeError("VALIDATION", "Ungültige Commit-Kennung.");
+    if (!/^[0-9a-f]{7,40}$/i.test(commit)) throw new ForgeError("VALIDATION", tr().system.git.invalidCommit);
     const st = await this.status(cwd);
     if (st.summary.conflicted) {
-      throw new ForgeError("GIT_CONFLICT", "Es gibt ungelöste Konflikte. Bitte zuerst auflösen, dann wiederherstellen.");
+      throw new ForgeError("GIT_CONFLICT", tr().system.git.conflictsBeforeRestore);
     }
     const resolved = await this.exec(cwd, ["rev-parse", "--verify", "-q", `${commit}^{commit}`]);
-    if (resolved.code !== 0) throw new ForgeError("NOT_FOUND", "Diesen Commit gibt es in diesem Repository nicht.");
+    if (resolved.code !== 0) throw new ForgeError("NOT_FOUND", tr().system.git.commitNotFound);
     const full = resolved.stdout.trim();
     const stashed = st.files.length > 0;
     if (stashed) {
-      await this.ok(cwd, ["stash", "push", "--include-untracked", "-m", `FORGE: vor Wiederherstellung auf ${full.slice(0, 7)}`, "--", "."]);
+      await this.ok(cwd, ["stash", "push", "--include-untracked", "-m", tr().system.git.restoreStash(full.slice(0, 7)), "--", "."]);
     }
     // Tracked files that do not exist in the source are removed, so the folder matches the commit exactly.
     await this.ok(cwd, ["restore", `--source=${full}`, "--staged", "--worktree", "--", "."]);
@@ -306,9 +307,9 @@ export class GitEngine {
    * (merges are shown against the first parent, as git log --first-parent would).
    */
   private async commitRange(cwd: string, commit: string): Promise<[string, string]> {
-    if (!/^[0-9a-f]{7,40}$/i.test(commit)) throw new ForgeError("VALIDATION", "Ungültige Commit-Kennung.");
+    if (!/^[0-9a-f]{7,40}$/i.test(commit)) throw new ForgeError("VALIDATION", tr().system.git.invalidCommit);
     const resolved = await this.exec(cwd, ["rev-parse", "--verify", "-q", `${commit}^{commit}`]);
-    if (resolved.code !== 0) throw new ForgeError("NOT_FOUND", "Diesen Commit gibt es in diesem Repository nicht.");
+    if (resolved.code !== 0) throw new ForgeError("NOT_FOUND", tr().system.git.commitNotFound);
     const full = resolved.stdout.trim();
     const parent = await this.exec(cwd, ["rev-parse", "--verify", "-q", `${full}^1`]);
     if (parent.code === 0) return [parent.stdout.trim(), full];
@@ -342,9 +343,9 @@ export class GitEngine {
   }
 
   async checkout(cwd: string, branch: string, create: boolean) {
-    if (branch.startsWith("-")) throw new ForgeError("VALIDATION", "Ungültiger Branch-Name.");
+    if (branch.startsWith("-")) throw new ForgeError("VALIDATION", tr().system.git.invalidBranch);
     const check = await this.exec(cwd, ["check-ref-format", "--branch", branch]);
-    if (check.code !== 0) throw new ForgeError("VALIDATION", `Ungültiger Branch-Name: ${branch}`);
+    if (check.code !== 0) throw new ForgeError("VALIDATION", tr().system.git.invalidBranchNamed(branch));
     await this.ok(cwd, create ? ["switch", "-c", branch] : ["switch", branch]);
   }
 
@@ -353,25 +354,25 @@ export class GitEngine {
    * that comes back as CONFLICT so the caller can ask. The current and the default branch are kept.
    */
   async deleteBranch(cwd: string, branch: string, force: boolean) {
-    if (branch.startsWith("-")) throw new ForgeError("VALIDATION", "Ungültiger Branch-Name.");
+    if (branch.startsWith("-")) throw new ForgeError("VALIDATION", tr().system.git.invalidBranch);
     const check = await this.exec(cwd, ["check-ref-format", "--branch", branch]);
-    if (check.code !== 0) throw new ForgeError("VALIDATION", `Ungültiger Branch-Name: ${branch}`);
+    if (check.code !== 0) throw new ForgeError("VALIDATION", tr().system.git.invalidBranchNamed(branch));
     if ((await this.currentBranch(cwd)) === branch) {
-      throw new ForgeError("POLICY_DENIED", "Der aktuelle Branch kann nicht gelöscht werden. Wechsle vorher auf einen anderen.");
+      throw new ForgeError("POLICY_DENIED", tr().system.git.deleteCurrentBranch);
     }
     if (new Set(["main", "master", await this.defaultBranch(cwd)]).has(branch)) {
-      throw new ForgeError("POLICY_DENIED", `${branch} ist der Standard-Branch des Repositorys und wird nicht gelöscht.`);
+      throw new ForgeError("POLICY_DENIED", tr().system.git.deleteDefaultBranch(branch));
     }
     const r = await this.exec(cwd, ["branch", force ? "-D" : "-d", "--", branch]);
     if (r.code === 0) return;
     const msg = (r.stderr || r.stdout).trim();
     if (/not fully merged/i.test(msg)) {
-      throw new ForgeError("CONFLICT", `Der Branch ${branch} enthält Commits, die in keinem anderen Branch sind.`, { unmerged: true });
+      throw new ForgeError("CONFLICT", tr().system.git.branchUnmerged(branch), { unmerged: true });
     }
     if (/used by worktree|checked out at/i.test(msg)) {
-      throw new ForgeError("CONFLICT", `Der Branch ${branch} ist in einem Worktree ausgecheckt. Entferne zuerst den Agenten bzw. Worktree.`);
+      throw new ForgeError("CONFLICT", tr().system.git.branchInWorktree(branch));
     }
-    throw new ForgeError("GIT_FAILED", msg || "Branch konnte nicht gelöscht werden.");
+    throw new ForgeError("GIT_FAILED", msg || tr().system.git.branchDeleteFailed);
   }
 
   async currentBranch(cwd: string): Promise<string | null> {
@@ -386,19 +387,19 @@ export class GitEngine {
    */
   async push(cwd: string, allowProtected: boolean): Promise<{ branch: string; output: string; integrated: GitIntegrated | null }> {
     const branch = await this.currentBranch(cwd);
-    if (!branch) throw new ForgeError("GIT_FAILED", "Kein Branch ausgecheckt (detached HEAD).");
+    if (!branch) throw new ForgeError("GIT_FAILED", tr().system.git.detachedHead);
     if (PROTECTED.has(branch) && !allowProtected) {
-      throw new ForgeError("POLICY_DENIED", `Push auf ${branch} braucht eine ausdrückliche Bestätigung.`, { protectedBranch: branch });
+      throw new ForgeError("POLICY_DENIED", tr().system.git.pushNeedsConfirm(branch), { protectedBranch: branch });
     }
-    if (!(await this.remoteUrl(cwd))) throw new ForgeError("GIT_FAILED", "Kein Remote origin. Veröffentliche das Projekt zuerst auf GitHub.");
+    if (!(await this.remoteUrl(cwd))) throw new ForgeError("GIT_FAILED", tr().system.git.noRemotePublish);
     const integrated = await this.integrateRemote(cwd, branch);
     const r = await this.exec(cwd, ["push", "-u", "origin", `HEAD:refs/heads/${branch}`], undefined, 180_000);
     const output = (r.stdout + r.stderr).trim();
     if (r.code !== 0) {
       if (/rejected|non-fast-forward|fetch first/i.test(output)) {
-        throw new ForgeError("GIT_CONFLICT", "Push abgelehnt: Während des Pushs kamen neue Commits auf den Remote. Bitte erneut pushen.");
+        throw new ForgeError("GIT_CONFLICT", tr().system.git.pushRejected);
       }
-      throw new ForgeError("GIT_FAILED", output || "Push fehlgeschlagen");
+      throw new ForgeError("GIT_FAILED", output || tr().system.git.pushFailed);
     }
     return { branch, output, integrated };
   }
@@ -406,14 +407,14 @@ export class GitEngine {
   /** Takes over new commits from origin: fast-forward, or a rebase of the local commits on top. */
   async pull(cwd: string): Promise<{ output: string; integrated: GitIntegrated | null }> {
     const branch = await this.currentBranch(cwd);
-    if (!branch) throw new ForgeError("GIT_FAILED", "Kein Branch ausgecheckt (detached HEAD).");
-    if (!(await this.remoteUrl(cwd))) throw new ForgeError("GIT_FAILED", "Kein Remote origin.");
+    if (!branch) throw new ForgeError("GIT_FAILED", tr().system.git.detachedHead);
+    if (!(await this.remoteUrl(cwd))) throw new ForgeError("GIT_FAILED", tr().system.git.noRemote);
     const integrated = await this.integrateRemote(cwd, branch);
     const output = !integrated
-      ? "Schon auf dem neuesten Stand."
+      ? tr().system.git.upToDate
       : integrated.mode === "fast-forward"
-        ? `${integrated.remoteCommits} neue Commits übernommen.`
-        : `${integrated.remoteCommits} neue Commits übernommen, ${integrated.localCommits} eigene darauf gesetzt (Rebase).`;
+        ? tr().system.git.pulledFastForward(integrated.remoteCommits)
+        : tr().system.git.pulledRebase(integrated.remoteCommits, integrated.localCommits);
     return { output, integrated };
   }
 
@@ -425,12 +426,12 @@ export class GitEngine {
    */
   async integrateRemote(cwd: string, branch: string): Promise<GitIntegrated | null> {
     const st = await this.status(cwd);
-    if (st.summary.conflicted) throw new ForgeError("GIT_CONFLICT", "Es gibt ungelöste Konflikte. Bitte zuerst auflösen.");
+    if (st.summary.conflicted) throw new ForgeError("GIT_CONFLICT", tr().system.git.conflictsUnresolved);
     if (await this.operationInProgress(cwd)) {
-      throw new ForgeError("GIT_CONFLICT", "Ein Rebase oder Merge ist noch nicht abgeschlossen. Bitte zuerst beenden oder abbrechen.");
+      throw new ForgeError("GIT_CONFLICT", tr().system.git.operationInProgress);
     }
     const fetched = await this.exec(cwd, ["fetch", "--prune", "origin"], undefined, 120_000);
-    if (fetched.code !== 0) throw new ForgeError("GIT_FAILED", (fetched.stderr || fetched.stdout).trim() || "Abrufen von origin fehlgeschlagen");
+    if (fetched.code !== 0) throw new ForgeError("GIT_FAILED", (fetched.stderr || fetched.stdout).trim() || tr().system.git.fetchFailed);
     const remote = `refs/remotes/origin/${branch}`;
     if ((await this.exec(cwd, ["rev-parse", "--verify", "-q", remote])).code !== 0) return null;
     const counts = (await this.ok(cwd, ["rev-list", "--left-right", "--count", `HEAD...${remote}`])).trim().split(/\s+/);
@@ -440,7 +441,7 @@ export class GitEngine {
 
     if (!localCommits) {
       const r = await this.exec(cwd, ["merge", "--ff-only", "--autostash", remote], undefined, 120_000);
-      if (r.code !== 0) throw new ForgeError("GIT_FAILED", (r.stderr || r.stdout).trim() || "Vorspulen fehlgeschlagen");
+      if (r.code !== 0) throw new ForgeError("GIT_FAILED", (r.stderr || r.stdout).trim() || tr().system.git.fastForwardFailed);
       await this.assertNoConflicts(cwd, branch, remoteCommits, localCommits);
       return { mode: "fast-forward", remoteCommits, localCommits };
     }
@@ -452,7 +453,7 @@ export class GitEngine {
       const integration: GitIntegrationConflict = { branch, remoteCommits, localCommits, files };
       throw new ForgeError(
         "GIT_CONFLICT",
-        `Auf origin/${branch} gibt es ${remoteCommits} neue Commits, die sich mit deinen ${localCommits} lokalen nicht automatisch zusammenführen lassen${files.length ? ` (Konflikte in ${files.join(", ")})` : ""}.`,
+        tr().system.git.rebaseConflict(branch, remoteCommits, localCommits, files),
         { integration },
       );
     }
@@ -467,7 +468,7 @@ export class GitEngine {
     const integration: GitIntegrationConflict = { branch, remoteCommits, localCommits, files, stash: true };
     throw new ForgeError(
       "GIT_CONFLICT",
-      `Der Branch ist auf dem Stand von origin/${branch}, aber deine nicht committeten Änderungen kollidieren damit (${files.join(", ")}). Sie liegen zusätzlich im Stash.`,
+      tr().system.git.stashConflict(branch, files.join(", ")),
       { integration },
     );
   }
@@ -537,11 +538,11 @@ export class GitEngine {
 /** Accepts https://, ssh:// and scp-like git@host:path URLs only. */
 export function validateCloneUrl(url: string): string | null {
   const u = url.trim();
-  if (u.startsWith("-")) return "Ungültige URL.";
+  if (u.startsWith("-")) return tr().system.git.invalidUrl;
   if (/^https:\/\/[^\s/]+\/[^\s]+$/.test(u)) return null;
   if (/^ssh:\/\/[^\s/]+\/[^\s]+$/.test(u)) return null;
   if (/^[A-Za-z0-9._-]+@[A-Za-z0-9.-]+:[A-Za-z0-9._~/-]+$/.test(u)) return null;
-  return "Nur https://, ssh:// oder git@host:pfad URLs sind erlaubt.";
+  return tr().system.git.urlSchemes;
 }
 
 export function repoNameFromUrl(url: string): string {

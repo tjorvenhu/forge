@@ -2,6 +2,7 @@ import type { WorktreeSetup } from "../automation/worktree-setup.js";
 import type { DevServerPrep, DevServerService } from "../devserver/dev-server.js";
 import type { DevToolsService } from "./dev-tools.js";
 import type { TestDbService } from "./test-db.js";
+import { tr } from "../i18n/index.js";
 
 export type DevTarget = "dev-server" | "database";
 export type DevAction = "start" | "stop" | "restart" | "reset";
@@ -32,7 +33,7 @@ export class DevEnvironment {
     const env = this.devTools.testVariables(projectId);
     const notes: string[] = [];
     const names = Object.keys(env);
-    if (names.length) notes.push(`Test-Umgebung: ${names.join(", ")}`);
+    if (names.length) notes.push(tr().system.environment.testEnv(names.join(", ")));
     const own = command ? await this.setup()?.devServerPort(projectId, command) : null;
     if (own) {
       Object.assign(env, own.env);
@@ -48,7 +49,7 @@ export class DevEnvironment {
     const url = this.testDb.runningUrl(projectId);
     if (url && cfg.database.envVar) {
       env[cfg.database.envVar] = url;
-      notes.push(`${cfg.database.envVar} zeigt auf die Test-Datenbank (${url.replace(/^.*@/, "")})`);
+      notes.push(tr().system.environment.dbVar(cfg.database.envVar, url.replace(/^.*@/, "")));
     }
     return { env, notes, command: own?.command };
   }
@@ -80,40 +81,42 @@ export class DevEnvironment {
     const dev = await this.devServers().state(projectId);
     const out = this.devServers().output(projectId);
     const testVars = Object.keys(this.devTools.testVariables(projectId));
+    const t = tr().system.environment;
     const lines = [
       prepared,
-      "Dev-Server:",
-      `  Status: ${dev.status}${dev.exitCode !== null ? ` (Exit-Code ${dev.exitCode})` : ""}`,
-      `  Befehl: ${dev.command ?? dev.effectiveCommand ?? "keiner eingerichtet"}`,
-      dev.url ? `  Adresse: ${dev.url}` : "",
-      "Test-Datenbank (PostgreSQL " + db.version + ", nur lokal):",
-      `  Status: ${db.status}${db.error ? `, Fehler: ${db.error}` : ""}`,
-      `  Verbindung: ${db.url}`,
-      `  Startet mit dem Dev-Server: ${cfg.database.withDevServer ? "ja" : "nein"}${cfg.database.envVar ? `, übergeben als ${cfg.database.envVar} (an Dev-Server und Testbefehl, solange sie läuft)` : ""}`,
-      `Test-Umgebung: ${cfg.useEnv ? (testVars.length ? `aktiv, Variablen ${testVars.join(", ")} (Werte stehen nur in FORGE)` : "aktiv, aber leer") : "aus"}`,
-      out.trim() ? `Letzte Ausgabe des Dev-Servers:\n${lastLines(out, CLAUDE_OUTPUT_LINES)}` : "",
+      t.devServer,
+      `  Status: ${dev.status}${dev.exitCode !== null ? t.exitCode(dev.exitCode) : ""}`,
+      t.command(dev.command ?? dev.effectiveCommand ?? null),
+      dev.url ? t.address(dev.url) : "",
+      t.database(db.version),
+      `  Status: ${db.status}${db.error ? t.dbError(db.error) : ""}`,
+      t.connection(db.url),
+      t.withDevServer(cfg.database.withDevServer, cfg.database.envVar || null),
+      t.testEnvState(cfg.useEnv, testVars),
+      out.trim() ? t.lastOutput(lastLines(out, CLAUDE_OUTPUT_LINES)) : "",
     ];
     return lines.filter(Boolean).join("\n");
   }
 
   async control(projectId: string, target: DevTarget, action: DevAction): Promise<string> {
+    const t = tr().system.environment;
     if (target === "database") {
-      if (action === "start") return `Test-Datenbank läuft: ${(await this.testDb.start(projectId)).url}`;
-      if (action === "stop") return (await this.testDb.stop(projectId), "Test-Datenbank gestoppt.");
+      if (action === "start") return t.dbRunning((await this.testDb.start(projectId)).url);
+      if (action === "stop") return (await this.testDb.stop(projectId), t.dbStopped);
       if (action === "restart") {
         await this.testDb.stop(projectId);
-        return `Test-Datenbank neu gestartet: ${(await this.testDb.start(projectId)).url}`;
+        return t.dbRestarted((await this.testDb.start(projectId)).url);
       }
       const running = this.testDb.isRunning(projectId);
       await this.testDb.reset(projectId);
       if (running) await this.testDb.start(projectId);
-      return running ? "Test-Datenbank geleert und neu gestartet." : "Test-Datenbank geleert. Der nächste Start legt sie leer an.";
+      return running ? t.dbResetRunning : t.dbReset;
     }
     const dev = this.devServers();
-    if (action === "reset") return "Fehler: reset gibt es nur für die Datenbank.";
-    if (action === "stop") return (await dev.stop(projectId), "Dev-Server gestoppt.");
+    if (action === "reset") return t.resetOnlyDb;
+    if (action === "stop") return (await dev.stop(projectId), t.devStopped);
     if (action === "restart") await dev.stop(projectId);
     const s = await dev.start(projectId);
-    return `Dev-Server ${action === "restart" ? "neu gestartet" : "gestartet"}: ${s.command ?? ""}. Die Adresse steht nach ein paar Sekunden in dev_environment.`;
+    return t.devStarted(action === "restart", s.command ?? "");
   }
 }

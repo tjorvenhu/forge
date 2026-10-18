@@ -2,6 +2,7 @@ import { createWriteStream } from "node:fs";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import type { ReadableStream as WebReadableStream } from "node:stream/web";
+import { tr } from "../i18n/index.js";
 
 export interface ReleaseAsset {
   name?: string;
@@ -61,7 +62,7 @@ export class GitHubReleases implements ReleaseSource {
   async releases(): Promise<unknown[] | null> {
     const res = await this.request(`${API}/repos/${this.repo}/releases?per_page=100`, "application/vnd.github+json", 30_000);
     if (res.status === 404) return null;
-    if (!res.ok) throw new Error(httpError(res, "Die Update-Suche"));
+    if (!res.ok) throw new Error(httpError(res, tr().system.update.searchWhat));
     const data = (await res.json()) as unknown;
     return Array.isArray(data) ? data : [];
   }
@@ -79,15 +80,15 @@ export class GitHubReleases implements ReleaseSource {
 
   async download(asset: ReleaseAsset, file: string, timeoutMs: number): Promise<void> {
     const url = asset.url ?? asset.browser_download_url;
-    if (!url) throw new Error(`Für ${asset.name ?? "die Datei"} nennt GitHub keine Download-Adresse.`);
+    if (!url) throw new Error(tr().system.update.noDownloadUrl(asset.name));
     const res = await this.request(url, "application/octet-stream", timeoutMs);
-    if (!res.ok || !res.body) throw new Error(httpError(res, "Der Download"));
+    if (!res.ok || !res.body) throw new Error(httpError(res, tr().system.update.downloadWhat));
     await pipeline(Readable.fromWeb(res.body as WebReadableStream<Uint8Array>), createWriteStream(file));
   }
 }
 
 function httpError(res: Response, what: string): string {
   const limited = res.status === 429 || (res.status === 403 && res.headers.get("x-ratelimit-remaining") === "0");
-  if (limited) return `${what} geht gerade nicht: GitHub begrenzt Anfragen ohne Anmeldung. In spätestens einer Stunde geht es wieder, sofort mit einer GitHub-Anmeldung in FORGE.`;
-  return `${what} ist fehlgeschlagen: GitHub antwortet mit HTTP ${res.status}.`;
+  if (limited) return tr().system.update.rateLimited(what);
+  return tr().system.update.httpFailed(what, res.status);
 }

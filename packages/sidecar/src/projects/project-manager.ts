@@ -9,6 +9,7 @@ import { canonicalize, isInside, pathKey, validateDirName } from "../util/paths.
 import { SANDBOX_ONLY_TAG } from "../policy/profiles.js";
 import { AUTO_MERGE_TAG } from "../automation/agent-auto-merge.js";
 import { detectTechnologies, detectTestCommand } from "./tech.js";
+import { tr } from "../i18n/index.js";
 
 export interface CreateProjectInput {
   name: string;
@@ -61,21 +62,21 @@ export class ProjectManager {
 
   get(id: string): Project {
     const p = this.db.getProject(id);
-    if (!p) throw new ForgeError("NOT_FOUND", "Projekt nicht gefunden.");
+    if (!p) throw new ForgeError("NOT_FOUND", tr().system.projects.notFound);
     return this.withExists(p);
   }
 
   /** Same as requireExisting() but fails for a project set to work without git. */
   requireGit(id: string): Project {
     const p = this.requireExisting(id);
-    if (!p.gitEnabled) throw new ForgeError("GIT_DISABLED", `${p.name} ist ohne Git eingerichtet. Git lässt sich in den Projekt-Einstellungen einschalten.`);
+    if (!p.gitEnabled) throw new ForgeError("GIT_DISABLED", tr().system.projects.gitDisabled(p.name));
     return p;
   }
 
   /** Same as get() but fails if the folder vanished. */
   requireExisting(id: string): Project {
     const p = this.get(id);
-    if (!p.exists) throw new ForgeError("PATH_NOT_ACCESSIBLE", `Projektordner existiert nicht mehr: ${p.path}`);
+    if (!p.exists) throw new ForgeError("PATH_NOT_ACCESSIBLE", tr().system.projects.folderGone(p.path));
     return p;
   }
 
@@ -104,14 +105,14 @@ export class ProjectManager {
     try {
       canonical = await canonicalize(p);
     } catch {
-      throw new ForgeError("PATH_INVALID", `Ordner nicht gefunden: ${p}`);
+      throw new ForgeError("PATH_INVALID", tr().system.projects.folderNotFound(p));
     }
     const s = await stat(canonical);
-    if (!s.isDirectory()) throw new ForgeError("PATH_INVALID", `Kein Ordner: ${canonical}`);
+    if (!s.isDirectory()) throw new ForgeError("PATH_INVALID", tr().system.projects.notAFolder(canonical));
     try {
       await access(canonical, constants.R_OK | constants.W_OK);
     } catch {
-      throw new ForgeError("PATH_NOT_ACCESSIBLE", `Keine Lese-/Schreibrechte für ${canonical}`);
+      throw new ForgeError("PATH_NOT_ACCESSIBLE", tr().system.projects.noAccess(canonical));
     }
     return canonical;
   }
@@ -131,7 +132,7 @@ export class ProjectManager {
     if (existsSync(path.join(canonical, ".git"))) gitEnabled = true;
     const key = pathKey(canonical);
     const dup = this.db.findProjectByKey(key);
-    if (dup) throw new ForgeError("DUPLICATE_PROJECT", `Projekt ist bereits vorhanden: ${dup.name}`, { projectId: dup.id });
+    if (dup) throw new ForgeError("DUPLICATE_PROJECT", tr().system.projects.duplicateNamed(dup.name), { projectId: dup.id });
     const rec: ProjectRecord = {
       id: randomUUID(),
       name: path.basename(canonical) || canonical,
@@ -160,8 +161,8 @@ export class ProjectManager {
     if (nameErr) throw new ForgeError("VALIDATION", nameErr);
     const parent = await this.assertAccessibleDir(input.parentDir);
     const target = path.join(parent, input.name.trim());
-    if (existsSync(target)) throw new ForgeError("CONFLICT", `Ordner existiert bereits: ${target}`);
-    if (this.db.findProjectByKey(pathKey(target))) throw new ForgeError("DUPLICATE_PROJECT", "Projekt ist bereits vorhanden.");
+    if (existsSync(target)) throw new ForgeError("CONFLICT", tr().system.projects.folderExists(target));
+    if (this.db.findProjectByKey(pathKey(target))) throw new ForgeError("DUPLICATE_PROJECT", tr().system.projects.duplicate);
 
     // Only an empty folder (plus git): the project structure is Claude's job, not a template's.
     await mkdir(target);
@@ -178,7 +179,7 @@ export class ProjectManager {
     const nameErr = validateDirName(name);
     if (nameErr) throw new ForgeError("VALIDATION", nameErr);
     const target = path.join(parent, name);
-    if (existsSync(target)) throw new ForgeError("CONFLICT", `Ordner existiert bereits: ${target}`);
+    if (existsSync(target)) throw new ForgeError("CONFLICT", tr().system.projects.folderExists(target));
     await this.git.clone(url.trim(), name, parent);
     return this.import(target);
   }
@@ -189,14 +190,14 @@ export class ProjectManager {
   ): Project {
     const cur = this.get(id);
     if (patch.gitEnabled === false && cur.gitEnabled) {
-      if (cur.parentId) throw new ForgeError("CONFLICT", "Ein Agent-Worktree arbeitet immer mit Git.");
+      if (cur.parentId) throw new ForgeError("CONFLICT", tr().system.projects.worktreeNeedsGit);
       if (this.db.listProjects().some((p) => p.parentId === id)) {
-        throw new ForgeError("CONFLICT", "Das Projekt hat noch Agenten. Erst die Agenten abschließen, dann Git ausschalten.");
+        throw new ForgeError("CONFLICT", tr().system.projects.agentsBeforeGitOff);
       }
     }
     const sandboxOnly = (patch.tags ?? cur.tags).includes(SANDBOX_ONLY_TAG);
     if (patch.profile === "autonomous" && sandboxOnly) {
-      throw new ForgeError("POLICY_DENIED", "Das Tag sandbox-only verbietet Autonomous in diesem Projekt.");
+      throw new ForgeError("POLICY_DENIED", tr().system.projects.sandboxOnly);
     }
     const next: Partial<ProjectRecord> = { ...patch };
     // Without git, auto-commit, auto-push, auto-merge and review-required have nothing to act on.
@@ -230,7 +231,7 @@ export class ProjectManager {
    */
   private async resolveInside(p: Project, rel: string): Promise<string> {
     const abs = path.resolve(p.path, rel);
-    const outside = () => new ForgeError("PATH_INVALID", "Pfad liegt außerhalb des Projekts.");
+    const outside = () => new ForgeError("PATH_INVALID", tr().system.projects.pathOutside);
     if (!isInside(abs, p.path)) throw outside();
     const root = await canonicalize(p.path).catch(() => p.path);
     const real = await canonicalizeExisting(abs);
@@ -316,7 +317,7 @@ export class ProjectManager {
     const fh = await open(abs, "r");
     try {
       const { size } = await fh.stat();
-      if (size > MAX_PREVIEW_BYTES) throw new ForgeError("VALIDATION", `Datei zu groß für die Vorschau (über ${MAX_PREVIEW_BYTES / 1024 / 1024} MB).`);
+      if (size > MAX_PREVIEW_BYTES) throw new ForgeError("VALIDATION", tr().system.projects.previewTooLarge(MAX_PREVIEW_BYTES / 1024 / 1024));
       const len = Math.max(0, Math.min(CHUNK_BYTES, size - offset));
       const buf = Buffer.alloc(len);
       const { bytesRead } = await fh.read(buf, 0, len, offset);

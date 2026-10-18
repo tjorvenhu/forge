@@ -25,6 +25,7 @@ import { claudeHome, writeAtomic } from "../config/claude-config.js";
 import { githubRepoFromRemote } from "../github/github.js";
 import { claudeJsonPath } from "../util/paths.js";
 import { deriveKey, KdfParams, newKdf, open, SealedBox, seal, type SyncKey } from "./crypto.js";
+import { tr } from "../i18n/index.js";
 
 export const SYNC_REPO = "forge-data";
 export const SYNC_FILE = "forge-sync.json";
@@ -113,12 +114,6 @@ const PART_KINDS: Record<BackupPart, Kind[]> = {
   templates: ["template"],
 };
 
-const SECRET_LABELS: Record<string, string> = {
-  "sip-password": "SIP-Passwort",
-  "openai-key": "OpenAI-Key",
-  "gemini-key": "Gemini-Key",
-  "desk-password": "Passwort des Tischtelefons",
-};
 
 /** Kept in the data folder of this computer, never in the repository. */
 interface SyncState {
@@ -279,7 +274,7 @@ function parseDoc(text: string): SyncDoc {
     raw = null;
   }
   const parsed = SyncDoc.safeParse(raw);
-  if (!parsed.success) throw new ForgeError("VALIDATION", `${SYNC_FILE} im Sync-Repository ist kein FORGE-Stand oder stammt aus einer anderen Version.`);
+  if (!parsed.success) throw new ForgeError("VALIDATION", tr().system.sync.notForge(SYNC_FILE));
   return parsed.data;
 }
 
@@ -287,12 +282,12 @@ function parseDoc(text: string): SyncDoc {
 class PassphraseNeeded extends Error {}
 
 function decodeItems(doc: SyncDoc, key: SyncKey): Items {
-  if (doc.kdf.salt !== key.kdf.salt) throw new PassphraseNeeded("Auf GitHub liegt ein Stand mit einem anderen Sync-Passwort.");
+  if (doc.kdf.salt !== key.kdf.salt) throw new PassphraseNeeded(tr().system.sync.otherPassphrase);
   let text: string;
   try {
     text = open(key, doc.box);
   } catch {
-    throw new PassphraseNeeded("Das Sync-Passwort passt nicht zu den Daten auf GitHub.");
+    throw new PassphraseNeeded(tr().system.sync.wrongPassphrase);
   }
   return z.record(z.string(), z.unknown()).parse(JSON.parse(text));
 }
@@ -459,12 +454,12 @@ export class SyncService {
   }
 
   async now(): Promise<SyncStatus> {
-    if (!this.enabled()) throw new ForgeError("VALIDATION", "Die Synchronisierung über GitHub ist aus.");
+    if (!this.enabled()) throw new ForgeError("VALIDATION", tr().system.sync.off);
     await this.run(true);
     const s = this.status();
-    if (s.phase === "no-github") throw new ForgeError("VALIDATION", "Melde dich zuerst bei GitHub an.");
-    if (s.phase === "needs-passphrase") throw new ForgeError("VALIDATION", s.error ?? "Gib zuerst das Sync-Passwort ein.");
-    if (s.phase === "error") throw new ForgeError("INTERNAL", s.error ?? "Synchronisieren fehlgeschlagen.");
+    if (s.phase === "no-github") throw new ForgeError("VALIDATION", tr().system.sync.loginFirst);
+    if (s.phase === "needs-passphrase") throw new ForgeError("VALIDATION", s.error ?? tr().system.sync.passphraseFirst);
+    if (s.phase === "error") throw new ForgeError("INTERNAL", s.error ?? tr().system.sync.failed);
     return s;
   }
 
@@ -533,7 +528,7 @@ export class SyncService {
       const { acc, repo } = await this.repo();
       const key = await deriveKey(passphrase, newKdf(this.d.kdfN));
       const local = await this.snapshot([], { fresh: true });
-      if (local.unknown.size) throw new ForgeError("CONFLICT", `Einiges auf diesem PC ist gerade nicht lesbar (${[...local.unknown].join(", ")}). Ohne das würde GitHub es verlieren. Bitte später noch einmal.`);
+      if (local.unknown.size) throw new ForgeError("CONFLICT", tr().system.sync.unreadableHere([...local.unknown].join(", ")));
       const file = await this.d.remote.readRepoFile(repo, SYNC_FILE);
       await this.write(repo, local.items, key, file?.sha ?? null, `FORGE-Daten von ${this.device}, neu angefangen`);
       await this.d.key.set(key);
@@ -560,13 +555,13 @@ export class SyncService {
    * told would be removed; when that no longer holds, nothing happens.
    */
   async forceLocal(key?: string, expectRemove?: string[]): Promise<SyncStatus> {
-    if (!this.enabled()) throw new ForgeError("VALIDATION", "Die Synchronisierung über GitHub ist aus.");
+    if (!this.enabled()) throw new ForgeError("VALIDATION", tr().system.sync.off);
     await this.exclusive(async () => {
       const { acc, repo } = await this.repo();
       const sk = await this.requireKey();
       await this.ensureBase();
       const file = await this.d.remote.readRepoFile(repo, SYNC_FILE);
-      if (!file) throw new ForgeError("NOT_FOUND", "Auf GitHub liegt noch kein Stand.");
+      if (!file) throw new ForgeError("NOT_FOUND", tr().system.sync.nothingOnGitHub);
       const doc = parseDoc(file.text);
       const remote = this.decode(doc, sk);
       const state = this.state?.login === acc.login ? this.state : emptyState(acc.login);
@@ -583,7 +578,7 @@ export class SyncService {
       // Projects are what the user was told about: removing one from FORGE takes its session history.
       const projectsRemoved = remove.filter((k) => k.startsWith("project:")).sort();
       if (expectRemove && stable(projectsRemoved) !== stable([...expectRemove].sort())) {
-        throw new ForgeError("CONFLICT", "Seit der Rückfrage hat sich geändert, was hier entfernt würde. Bitte noch einmal anfragen.");
+        throw new ForgeError("CONFLICT", tr().system.sync.changedSinceAsked);
       }
       await this.d.safetyBackup();
       const failed = await this.applyRemote(apply, local.projects);
@@ -614,7 +609,7 @@ export class SyncService {
 
   /** Syncs an item again that another computer removed. */
   async keep(key: string): Promise<SyncStatus> {
-    if (!this.state?.localOnly.includes(key)) throw new ForgeError("NOT_FOUND", "Das ist nicht nur auf diesem Computer.");
+    if (!this.state?.localOnly.includes(key)) throw new ForgeError("NOT_FOUND", tr().system.sync.notLocalOnly);
     await this.exclusive(async () => {
       await this.ensureBase();
       const drop = withSiblings(key);
@@ -633,18 +628,18 @@ export class SyncService {
 
   /** Takes the chosen parts back from an older state; the other computers get them with the next sync. */
   async restoreVersion(sha: string, parts: BackupPart[]): Promise<{ restored: BackupPart[]; notes: string[] }> {
-    if (!this.enabled()) throw new ForgeError("VALIDATION", "Die Synchronisierung über GitHub ist aus.");
+    if (!this.enabled()) throw new ForgeError("VALIDATION", tr().system.sync.off);
     const out = await this.exclusive(async () => {
       const { repo } = await this.repo();
       const sk = await this.requireKey();
       const file = await this.d.remote.readRepoFile(repo, SYNC_FILE, sha);
-      if (!file) throw new ForgeError("NOT_FOUND", "Diesen Stand gibt es auf GitHub nicht.");
+      if (!file) throw new ForgeError("NOT_FOUND", tr().system.sync.snapshotNotFound);
       const doc = parseDoc(file.text);
       let items: Items;
       try {
         items = decodeItems(doc, sk);
       } catch {
-        throw new ForgeError("VALIDATION", "Dieser Stand ist mit einem früheren Sync-Passwort verschlüsselt und lässt sich hier nicht öffnen.");
+        throw new ForgeError("VALIDATION", tr().system.sync.oldPassphrase);
       }
       await this.d.safetyBackup();
       const local = await this.snapshot([], { fresh: true });
@@ -660,9 +655,9 @@ export class SyncService {
         if (!same(local.items[k], v)) apply[k] = v;
       }
       const failed = await this.applyRemote(apply, local.projects);
-      const notes = ["Die anderen Computer bekommen diesen Stand mit dem nächsten Abgleich."];
-      if (missingProjects) notes.push(`${missingProjects === 1 ? "1 Projekt" : `${missingProjects} Projekte`} aus diesem Stand ${missingProjects === 1 ? "liegt" : "liegen"} nicht auf diesem Computer und ${missingProjects === 1 ? "lässt" : "lassen"} sich unter Einstellungen, GitHub holen.`);
-      if (failed.size) notes.push(`${failed.size === 1 ? "Ein Eintrag ließ" : `${failed.size} Einträge ließen`} sich nicht übernehmen, Einzelheiten stehen im Protokoll.`);
+      const notes = [tr().system.sync.othersFollow];
+      if (missingProjects) notes.push(tr().system.sync.missingProjects(missingProjects));
+      if (failed.size) notes.push(tr().system.sync.failedItems(failed.size));
       this.d.log(`Synchronisierung: Stand ${sha.slice(0, 7)} wiederhergestellt (${[...restored].join(", ")})`);
       return { restored: [...restored], notes };
     });
@@ -675,10 +670,10 @@ export class SyncService {
     await this.ensureBase();
     const raw = this.state?.base?.[`project:${key}`];
     const item = ProjectItem.safeParse(raw);
-    if (!item.success) throw new ForgeError("NOT_FOUND", "Das Projekt steht nicht im Sync-Repository.");
-    if (!item.data.cloneUrl) throw new ForgeError("VALIDATION", "Das Projekt hat kein Git-Remote und lässt sich deshalb nicht holen.");
+    if (!item.success) throw new ForgeError("NOT_FOUND", tr().system.sync.projectNotInRepo);
+    if (!item.data.cloneUrl) throw new ForgeError("VALIDATION", tr().system.sync.projectNoRemote);
     const dir = this.d.settings().defaultProjectDir;
-    if (!dir) throw new ForgeError("VALIDATION", "Lege zuerst in den Einstellungen einen Ordner für neue Projekte fest.");
+    if (!dir) throw new ForgeError("VALIDATION", tr().system.sync.projectsDirFirst);
     const cloned = await this.d.cloneProject(item.data.cloneUrl, dir);
     const { cloneUrl: _url, ...patch } = item.data;
     this.applying++;
@@ -699,7 +694,7 @@ export class SyncService {
   private async repo() {
     const acc = await this.d.remote.account();
     this.account = acc?.login ?? null;
-    if (!acc) throw new ForgeError("VALIDATION", "Melde dich zuerst bei GitHub an.");
+    if (!acc) throw new ForgeError("VALIDATION", tr().system.sync.loginFirst);
     const repo = `${acc.login}/${SYNC_REPO}`;
     await this.ensureRepo(repo);
     return { acc, repo };
@@ -712,7 +707,7 @@ export class SyncService {
 
   private async requireKey(): Promise<SyncKey> {
     const k = await this.loadKey();
-    if (!k) throw new ForgeError("VALIDATION", "Gib zuerst das Sync-Passwort ein.");
+    if (!k) throw new ForgeError("VALIDATION", tr().system.sync.passphraseFirst);
     return k;
   }
 
@@ -817,7 +812,7 @@ export class SyncService {
       const key = await this.loadKey();
       if (!key) {
         this.needsKey = true;
-        this.keyProblem = "Gib das Sync-Passwort ein, mit dem die Daten auf GitHub verschlüsselt werden.";
+        this.keyProblem = tr().system.sync.enterPassphrase;
         this.phase = "idle";
         return;
       }
@@ -917,10 +912,10 @@ export class SyncService {
   private async ensureRepo(repo: string) {
     const info = await this.d.remote.repoInfo(repo);
     if (!info) {
-      await this.d.remote.createPrivateRepo(SYNC_REPO, "Daten von FORGE, verschlüsselt");
+      await this.d.remote.createPrivateRepo(SYNC_REPO, tr().system.sync.repoDescription);
       this.d.log(`Synchronisierung: privates Repository ${repo} angelegt`);
     } else if (!info.private) {
-      throw new ForgeError("POLICY_DENIED", `Das Repository ${repo} ist öffentlich. FORGE speichert seine Daten nur in einem privaten Repository.`);
+      throw new ForgeError("POLICY_DENIED", tr().system.sync.repoPublic(repo));
     }
   }
 
@@ -1056,7 +1051,7 @@ export class SyncService {
       text = await readFile(this.claudeJson, "utf8");
     } catch (e) {
       if ((e as NodeJS.ErrnoException).code === "ENOENT") return {};
-      throw new Error(`${this.claudeJson} ist gerade nicht lesbar: ${errorText(e)}`, { cause: e });
+      throw new Error(tr().system.sync.claudeJsonUnreadable(this.claudeJson, errorText(e)), { cause: e });
     }
     try {
       const j = JSON.parse(text.replace(/^\uFEFF/, "")) as unknown;
@@ -1064,7 +1059,7 @@ export class SyncService {
     } catch {
       // handled below
     }
-    throw new Error(`${this.claudeJson} ist kein gültiges JSON.`);
+    throw new Error(tr().system.sync.claudeJsonInvalid(this.claudeJson));
   }
 
   private async readMcpServers(): Promise<Record<string, unknown>> {
@@ -1200,24 +1195,25 @@ export class SyncService {
       // Dev tools go with their project.
       if (kind === "devtools" && localOnly.includes(`project:${id}`)) continue;
       const p = kind === "project" || kind === "devtools" ? projects.get(`project:${id}`) : undefined;
+      const m = tr().system.sync;
       const label =
         kind === "project"
-          ? `Projekt ${p?.name ?? id}`
+          ? m.labelProject(p?.name ?? id)
           : kind === "devtools"
-            ? `Dev-Tools von ${p?.name ?? id}`
+            ? m.labelDevTools(p?.name ?? id)
             : kind === "claude"
-              ? `Claude-Datei ${id}`
+              ? m.labelClaudeFile(id)
               : kind === "mcp"
-                ? `MCP-Server ${id}`
+                ? m.labelMcp(id)
                 : kind === "template"
-                  ? `Vorlage ${TemplateItem.safeParse(items[k]).data?.name ?? id}`
+                  ? m.labelTemplate(TemplateItem.safeParse(items[k]).data?.name ?? id)
                   : kind === "secret"
-                    ? (SECRET_LABELS[id] ?? `Schlüssel ${id}`)
+                    ? (m.secretLabels[id] ?? m.labelSecret(id))
                     : kind === "phone"
-                      ? "Telefon-Einstellungen"
+                      ? m.labelPhone
                       : kind === "git"
-                        ? "Git-Name und E-Mail"
-                        : `Einstellung ${id}`;
+                        ? m.labelGit
+                        : m.labelSetting(id);
       out.push({ key: k, kind, label, projectId: kind === "project" ? (p?.id ?? null) : null });
     }
     return out.sort((a, b) => a.label.localeCompare(b.label));

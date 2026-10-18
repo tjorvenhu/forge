@@ -1,10 +1,11 @@
 import type { FileDiff } from "@forge/protocol";
 import { redactText } from "../policy/redact.js";
+import { tr } from "../i18n/index.js";
 
 const MAX_DIFF_CHARS = 30_000;
 
 export function diffToText(d: FileDiff): string {
-  if (d.binary) return `--- ${d.path} (binär)\n`;
+  if (d.binary) return `--- ${d.path} (${tr().system.commitPrompt.binary})\n`;
   const body = d.lines
     .filter((l) => l.kind !== "meta")
     .map((l) => (l.kind === "add" ? "+" : l.kind === "del" ? "-" : l.kind === "hunk" ? "" : " ") + l.text)
@@ -18,23 +19,22 @@ export function buildCommitPrompt(diffs: FileDiff[], recentSubjects: string[], s
   for (const d of diffs) {
     const t = diffToText(d);
     if (diffText.length + t.length > MAX_DIFF_CHARS) {
-      diffText += `\n[weitere Änderungen gekürzt: ${d.path} …]\n`;
+      diffText += `\n[${tr().system.commitPrompt.truncated(d.path)}]\n`;
       break;
     }
     diffText += t;
   }
-  const history = recentSubjects.length
-    ? `Letzte Commit-Betreffzeilen dieses Repositorys (Stil und Sprache übernehmen):\n${recentSubjects.map((s) => `- ${s}`).join("\n")}`
-    : "Das Repository hat noch keine Commits. Format zwingend „typ: Beschreibung“ nach Conventional Commits (feat, fix, chore, docs, refactor, test), Beschreibung auf Deutsch.";
+  const m = tr().system.commitPrompt;
+  const history = recentSubjects.length ? m.history(recentSubjects.map((s) => `- ${s}`).join("\n")) : m.noHistory;
   return [
-    "Schreibe eine Git-Commit-Nachricht für die folgenden Änderungen.",
-    "Regeln:",
-    "- Antworte nur mit der Commit-Nachricht, ohne Einleitung, ohne Anführungszeichen, ohne Codeblock.",
-    "- Erste Zeile: Betreff, höchstens 72 Zeichen, Imperativ bzw. im Stil der bisherigen Commits.",
-    "- Bei mehreren unabhängigen Änderungen: Leerzeile, dann kurze Stichpunkte mit \"- \".",
-    "- Beschreibe nur, was im Diff wirklich steht. Nichts erfinden.",
+    m.intro,
+    m.rules,
+    m.ruleOnly,
+    m.ruleSubject,
+    m.ruleBullets,
+    m.ruleTruth,
     history,
-    skipped.length ? `Nicht mitgeschickt (sensible Dateien): ${skipped.join(", ")}` : "",
+    skipped.length ? m.skipped(skipped.join(", ")) : "",
     "",
     "Diff:",
     redactText(diffText),
