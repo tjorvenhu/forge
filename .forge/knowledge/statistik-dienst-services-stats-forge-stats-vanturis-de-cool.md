@@ -2,7 +2,7 @@
 title: "Statistik-Dienst services/stats (forge-stats.vanturis.de, Coolify, außerhalb des Workspace)"
 summary: "Wie der Next.js-Statistikdienst in services/stats gebaut, getestet, gestaltet (Animationen, Live-Abfrage) und in Coolify betrieben wird (Tagesstände, Verlauf, Online, Abos, Diagramme), und welche Stolperfallen es dabei gibt."
 tags: ["stats","coolify","release","stolperfalle","windows","ui"]
-updated: "2026-10-18T10:22:21.312Z"
+updated: "2026-10-18T10:34:15.159Z"
 ---
 
 # Statistik-Dienst services/stats (forge-stats.vanturis.de, Coolify, außerhalb des Workspace)
@@ -29,7 +29,9 @@ Die App meldet alle 5 Minuten. Die Sperre pro installId (`REPORT_INTERVAL_MINUTE
 - `src/components/live-stats.tsx` (Client) hält die Summen im State: `GET /api/v1/live` alle 30 s (Online gesamt und je Abo, 15 s Server-Cache, `getOnline()` in `db.ts`), `/api/v1/totals` alle 5 min; pausiert bei verdecktem Tab, holt beim Zurückkehren sofort nach. Der Online-Wert aus `/live` überschreibt den aus den 5-Minuten-Summen (die Kachel und die Abo-Tags müssen übereinstimmen).
 - `src/components/tiles.ts` (ohne `"use client"`) hält Kachel-Definitionen für Skeleton (Server) und Live-Kacheln (Client). Funktionen aus einer `"use client"`-Datei kann eine Server-Komponente nicht aufrufen, und `db.ts` (pg) darf nicht in den Client-Bundle: deshalb `constants.ts` und nur `import type` aus `db.ts` in Client-Dateien.
 - `src/components/motion.tsx`: `AnimatedNumber` zählt hoch, sobald sichtbar (IntersectionObserver), gleitet nach Aktualisierung zum neuen Wert; Server-HTML und Screenreader bekommen den Endwert über `.sr-only`. `Reveal` blendet Diagrammabschnitte beim Scrollen ein und startet die Balken-Animationen (`animation-play-state`).
-- CSS am Ende von `globals.css` (Abschnitt „motion“): `forge-ping` für `.live-dot-on`, `forge-rise` für Kacheln (fill `backwards`, nicht `both`: ein gehaltener Endzustand blockiert das Anheben beim Hover), `forge-grow-y/x` für Balken, `col-latest` atmet. `prefers-reduced-motion` kürzt alles auf den Endzustand; ein `<noscript>`-Style in `layout.tsx` zeigt `.reveal` ohne JS.
+- CSS am Ende von `globals.css` (Abschnitt „motion“): `forge-ping` für `.live-dot-on`, `forge-rise` für Kacheln (fill `backwards`, nicht `both`: ein gehaltener Endzustand blockiert das Anheben beim Hover), `forge-sweep` (Lichtstreifen an der Oberkante der hervorgehobenen Kachel), `forge-grow-y/x` für Balken, `col-latest` atmet. `prefers-reduced-motion` kürzt alles auf den Endzustand; ein `<noscript>`-Style in `layout.tsx` zeigt `.reveal` ohne JS.
+- Keine frei schwebenden Leuchtkugeln (radial-gradient-Blobs, die wandern): der Besitzer fand sie „random platziert“. Effekte an Kanten oder Ecken verankern.
+- `.tile-value` hat `overflow: hidden` (Ellipse); Kacheln mit Live-Punkt bekommen `.tile-value-live` (overflow visible), sonst schneidet es den Ping-Ring links ab.
 - Prüfen: preview_interact direkt nach `wait .tile-enter` zeigt Zahlen mitten im Hochzählen; untere Abschnitte erst nach `PageDown`/`End` sichtbar (fullPage-Screenshots zeigen sie leer). Live-Wechsel: `last_seen` per SQL zurücksetzen, ~36 s warten.
 
 ## Design

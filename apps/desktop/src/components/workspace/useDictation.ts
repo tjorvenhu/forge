@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { call } from "@/lib/queries";
 import { errorMessage, rpc } from "@/lib/rpc";
+import { useDictationActivity } from "@/stores/dictation";
 import { toast } from "@/stores/toast";
 
 /** What Claude's speech service expects; Chromium resamples the microphone to it. */
@@ -55,6 +56,10 @@ export function useDictation(onText: (text: string) => void, keyterms: string[])
     deliver.current = onText;
     terms.current = keyterms;
   }, [onText, keyterms]);
+
+  // Dialogs that open on their own wait until the recording is transcribed.
+  const busy = state !== "idle";
+  useEffect(() => (busy ? useDictationActivity.getState().hold() : undefined), [busy]);
 
   // Live text of the own recording only.
   useEffect(

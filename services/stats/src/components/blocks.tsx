@@ -42,7 +42,7 @@ export function Tile({
         <span className="tile-label">{label}</span>
         <Icon className="tile-icon" aria-hidden />
       </div>
-      <div className={highlight ? "tile-value tile-value-accent" : "tile-value"}>
+      <div className={`tile-value${highlight ? " tile-value-accent" : ""}${live !== undefined ? " tile-value-live" : ""}`}>
         {live !== undefined && <LiveDot on={live} />}
         {value}
         {unit && <span className="tile-unit">{unit}</span>}

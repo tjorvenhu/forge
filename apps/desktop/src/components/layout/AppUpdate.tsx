@@ -12,6 +12,7 @@ import { Dialog } from "@/components/ui/dialog";
 import { Spinner, Tooltip } from "@/components/ui/misc";
 import { Skeleton, SkeletonRegion } from "@/components/ui/skeleton";
 import { Markdown } from "@/components/workspace/Markdown";
+import { useDictationQuiet } from "@/stores/dictation";
 import { useUi } from "@/stores/ui";
 import { Logo } from "./Logo";
 
@@ -74,8 +75,8 @@ export function AppUpdateCard() {
 const OFFERED = ["available", "downloading", "ready"];
 
 /**
- * Asks to update as soon as a new release is found (shortly after the start). Each release is
- * offered once per run; "Später" leaves the card in the sidebar.
+ * Asks to update as soon as a new release is found (shortly after the start), but never during a
+ * dictation. Each release is offered once per run; "Später" leaves the card in the sidebar.
  */
 export function AppUpdateDialog() {
   const s = useAppUpdate().data;
@@ -84,18 +85,21 @@ export function AppUpdateDialog() {
   const setupOpen = settings?.setupDone === false || reopened;
   const [dismissed, setDismissed] = useState<string | null>(null);
   const { install, installing } = useInstallAction();
+  // The dialog takes the focus and the install restarts FORGE: both would cut a dictation off mid-sentence.
+  const quiet = useDictationQuiet();
   // Second step of an update the user started before the restart: no second click.
   const autoStarted = useRef(false);
   const autoInstall = !!s?.autoInstall && s.installable && OFFERED.includes(s.phase);
   useEffect(() => {
-    if (!autoInstall || autoStarted.current) return;
+    if (!autoInstall || !quiet || autoStarted.current) return;
     autoStarted.current = true;
     void install();
-  }, [autoInstall, install]);
+  }, [autoInstall, quiet, install]);
   const openSettings = useUi((u) => u.openSettings);
   const tag = s?.latest && OFFERED.includes(s.phase) ? s.latest.tag : null;
   // Not on top of the setup assistant; the offer comes once it is done. An install already asked for still runs.
-  if (!s?.latest || !tag || dismissed === tag || (setupOpen && !autoInstall)) return null;
+  // Not during a dictation either; it comes two seconds after the last one.
+  if (!s?.latest || !tag || dismissed === tag || (setupOpen && !autoInstall) || !quiet) return null;
   const busy = installing || s.phase === "downloading";
   return (
     <Dialog

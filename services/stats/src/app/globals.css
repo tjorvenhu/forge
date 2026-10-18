@@ -891,21 +891,25 @@ a {
   background: color-mix(in srgb, var(--color-surface) 85%, var(--color-surface-2));
 }
 
-/* the highlighted tile carries a faint accent glow that breathes */
+/* the highlighted tile: a light runs along its top edge, the corner behind the number is tinted */
 .tile-highlight {
   position: relative;
   overflow: hidden;
+  background: linear-gradient(135deg, var(--color-accent-soft), transparent 45%), var(--color-surface);
 }
 
 .tile-highlight::before {
   position: absolute;
-  inset: -40% -10% auto auto;
-  width: 60%;
-  height: 180%;
-  background: radial-gradient(closest-side, var(--color-accent-soft), transparent);
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--color-accent), transparent);
+  background-repeat: no-repeat;
+  background-size: 40% 100%;
   content: "";
   pointer-events: none;
-  animation: forge-breathe 6s ease-in-out infinite;
+  animation: forge-sweep 4s ease-in-out infinite;
 }
 
 .tile-highlight > * {
@@ -919,15 +923,12 @@ a {
   }
 }
 
-@keyframes forge-breathe {
-  0%,
-  100% {
-    opacity: 0.55;
-    transform: translateX(0);
+@keyframes forge-sweep {
+  from {
+    background-position: -60% 0;
   }
-  50% {
-    opacity: 1;
-    transform: translateX(-12%);
+  to {
+    background-position: 160% 0;
   }
 }
 
@@ -939,6 +940,11 @@ a {
   flex-shrink: 0;
   border-radius: 50%;
   background: var(--color-subtle);
+}
+
+/* the ping ring reaches past the dot; the short count needs no ellipsis */
+.tile-value-live {
+  overflow: visible;
 }
 
 .tile-value .live-dot {
@@ -1052,40 +1058,6 @@ a {
 
 .chart-card:hover {
   border-color: var(--color-border-strong);
-}
-
-.intro {
-  position: relative;
-}
-
-/* the drifting glow behind the heading must not widen the page on phones */
-.content {
-  overflow-x: clip;
-}
-
-.intro::before {
-  position: absolute;
-  top: -80px;
-  left: -120px;
-  z-index: -1;
-  width: 520px;
-  height: 260px;
-  background: radial-gradient(closest-side, var(--color-accent-soft), transparent);
-  content: "";
-  pointer-events: none;
-  animation: forge-drift 14s ease-in-out infinite;
-}
-
-@keyframes forge-drift {
-  0%,
-  100% {
-    opacity: 0.7;
-    transform: translate(0, 0);
-  }
-  50% {
-    opacity: 1;
-    transform: translate(80px, 20px);
-  }
 }
 
 @media (prefers-reduced-motion: reduce) {
