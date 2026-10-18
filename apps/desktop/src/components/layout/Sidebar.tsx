@@ -253,16 +253,14 @@ function UsageBar({ w }: { w: UsageWindow }) {
   const title = [resetsAt ? resetText(resetsAt) : null, forecastSentence(w)].filter(Boolean).join("\n");
   return (
     <div title={title}>
-      <div className="mb-0.5 flex justify-between gap-2 text-caption">
-        <span className="text-muted">{label}</span>
-        <span className="flex gap-1.5 tabular-nums">
-          {forecast?.limit && <span className="truncate text-warning">{forecast.text}</span>}
-          <span className="text-subtle">{value} %</span>
-        </span>
+      <div className="mb-0.5 flex justify-between gap-2 whitespace-nowrap text-caption">
+        <span className="min-w-0 truncate text-muted">{label}</span>
+        <span className="shrink-0 tabular-nums text-subtle">{value} %</span>
       </div>
       <div className="h-1 overflow-hidden rounded-full bg-surface-3" role="progressbar" aria-valuenow={width} aria-valuemin={0} aria-valuemax={100} aria-label={label}>
         <div className={cn("h-full rounded-full", tone)} style={{ width: `${width}%` }} />
       </div>
+      {forecast?.limit && <div className="mt-0.5 truncate text-caption tabular-nums text-warning">{forecast.text}</div>}
     </div>
   );
 }
