@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef } from "react";
+import { useId, useRef } from "react";
 import { ExternalLink, Heart, Lightbulb, X } from "lucide-react";
 import { DONATE_URL, FEEDBACK_URL } from "@/lib/constants";
 import type { Donations } from "@/lib/donations";
@@ -8,11 +8,12 @@ import { useI18n } from "./locale";
 import { AnimatedNumber } from "./motion";
 
 /**
- * "Unterstützen" in the footer: opens the dialog of the app's heart (SupportDialog) with what was
+ * "Unterstützen" with the heart in the top bar: opens the dialog of the app's heart (SupportDialog) with what was
  * given so far above the payment link. A real link, so it still leads to Stripe without JavaScript.
  */
 export function SupportButton({ donations }: { donations: Donations | null }) {
   const dialog = useRef<HTMLDialogElement>(null);
+  const titleId = useId();
   const { t, f } = useI18n();
   const m = t.support;
   const close = () => dialog.current?.close();
@@ -28,18 +29,18 @@ export function SupportButton({ donations }: { donations: Donations | null }) {
         }}
       >
         <Heart aria-hidden />
-        {m.button}
+        <span className="nav-label">{m.button}</span>
       </a>
       <dialog
         ref={dialog}
         className="modal"
-        aria-labelledby="support-title"
+        aria-labelledby={titleId}
         // A click on the backdrop lands on the dialog itself, not on its content.
         onClick={(e) => e.target === e.currentTarget && close()}
       >
         <div className="modal-body">
           <header className="modal-head">
-            <h2 id="support-title">{m.title}</h2>
+            <h2 id={titleId}>{m.title}</h2>
             <button type="button" className="modal-close" onClick={close} aria-label={m.close}>
               <X aria-hidden />
             </button>

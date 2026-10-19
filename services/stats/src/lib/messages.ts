@@ -34,7 +34,7 @@ const de = {
       projects: { title: "Projekte verwalten", text: "Alle Sessions, Dateien und Einstellungen an einem Ort." },
       ui: { title: "Intuitive Oberfläche", text: "Chat, Agenten und Tools übersichtlich vereint." },
       git: { title: "Git Integration", text: "Automatische Commits, Branches und PRs." },
-      workflow: { title: "Dein Workflow", text: "Anpassbar, erweiterbar und auf dich zugeschnitten." },
+      workflow: { title: "Dein Workflow", text: "Anpassbar, erweiterbar\nund auf dich zugeschnitten." },
     },
   },
   stats: {

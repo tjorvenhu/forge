@@ -1,7 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
 import { Download } from "lucide-react";
-import logo from "@/assets/forge-logo.png";
+import logo from "@/assets/forge-wordmark.png";
 import { donations, type Donations } from "@/lib/donations";
 import { SupportButton } from "@/components/donations";
 import { TopLinks } from "@/components/nav";
@@ -37,11 +37,11 @@ async function donated(): Promise<Donations | null> {
   }
 }
 
-/** The wordmark (945 x 223): mark, FORGE and the line below it. */
+/** The wordmark (944 x 184): the mark and FORGE, without the line below it, as in the mockup. */
 function Logo({ label, height }: { label: string; height: number }) {
   return (
     <a href="/" className="logo" aria-label={label}>
-      <img src={logo.src} width={Math.round((height * 945) / 223)} height={height} alt="" />
+      <img src={logo.src} width={Math.round((height * 944) / 184)} height={height} alt="" />
     </a>
   );
 }
@@ -59,9 +59,10 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
           </noscript>
           <header className="topbar">
             <div className="container topbar-inner">
-              <Logo label={t.header.home} height={40} />
+              <Logo label={t.header.home} height={34} />
               <nav className="topbar-nav" aria-label={t.header.nav}>
                 <TopLinks />
+                <SupportButton donations={given} />
                 <a className="btn btn-primary" href={DOWNLOAD_URL} aria-label={t.header.download}>
                   <Download aria-hidden />
                   <span className="nav-label">{t.header.download}</span>
@@ -73,14 +74,13 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
           <footer className="footer">
             <div className="container footer-inner">
               <div className="footer-brand">
-                <Logo label={t.header.home} height={28} />
+                <Logo label={t.header.home} height={24} />
                 <p>{t.footer.license}</p>
               </div>
               <div className="footer-side">
                 <nav className="footer-links" aria-label={t.header.nav}>
                   <a href="/stats">{t.header.liveStats}</a>
                   <a href={REPO_URL}>{t.header.github}</a>
-                  <SupportButton donations={given} />
                   <a href={IMPRINT_URL}>{t.footer.imprint}</a>
                   <a href={PRIVACY_URL}>{t.footer.privacy}</a>
                 </nav>
