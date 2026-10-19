@@ -1,8 +1,8 @@
 ---
 title: "Website und Statistik-Dienst services/stats (forge.vanturis.de: Landingpage auf /, Live Stats auf /stats, Coolify)"
-summary: "Next.js-Website in services/stats: Landingpage und Live Stats nach Bildvorlagen des Besitzers. Hintergrundbild, geneigtes App-Fenster, Spenden-Dialog, Stats-Karten und Diagramme (Modelle, Plattformen, Versionen, Abos, Sprachen, Funktionen), Englisch/Deutsch, Coolify, Stolperfallen."
+summary: "Next.js-Website in services/stats: Landingpage und Live Stats nach Bildvorlagen des Besitzers. Hintergrundbild, geneigtes App-Fenster, Spenden-Dialog, Stats-Karten und Diagramme, Englisch/Deutsch, mobile Ansicht, Coolify, Stolperfallen."
 tags: ["stats","coolify","release","stolperfalle","i18n","ui"]
-updated: "2026-10-19T18:00:19.937Z"
+updated: "2026-10-19T18:27:15.845Z"
 ---
 
 # Website und Statistik-Dienst services/stats
@@ -20,7 +20,12 @@ Er liefert Bildvorlagen (1536 x 1024, in den FORGE-Uploads) und verlangt „GENA
 - Hero ohne Eyebrow. Titel `4.1vw` Gewicht 550, Lead `1.39vw` mit `max-width: 25.85em` (Umbruch nach „mit einer“, bei Textänderung neu prüfen).
 - Fenster: echter Screenshot der Chat-Ansicht, aufgenommen 2400x1680 (`app-{de,en}-2400.webp`), dazu mit sharp lanczos3 verkleinert 800/1200/1600; `<img srcSet sizes="(max-width: 1080px) 100vw, 50vw">`. Grund: Unter dem 3D-Transform verkleinert die GPU ohne gutes Filtern. Neue Screenshots: alle vier Breiten neu erzeugen.
 - Neigung `perspective(2000px) rotateY(-11deg)`, folgt dem Mauszeiger (`components/tilt.tsx`, `--tilt-x/-y`, ±6°/±4°, nur `pointer: fine`, nicht bei reduced motion). Stärkere Neigung (15°) machte den Screenshot unscharf.
-- Vier Blöcke darunter, alle Icons orange. Alles inkl. „Live Stats ansehen“ passt bei 1440x900 in den ersten Bildschirm.
+- Vier Blöcke darunter, alle Icons orange. Alles inkl. „Live Stats ansehen“ passt bei 1440x900 in den ersten Bildschirm. Darunter FAQ (`faq-item`, details/summary).
+
+## Mobile Ansicht (bis 560px, überarbeitet 2026-10-19 auf „ist aktuell cooked“)
+Breakpoints: 1500, 1320, 1080, 900, 560 px (`pages.css` am Ende, `globals.css` für `.feature`/`.section-head`). Bis 560px: Hero-Buttons gleich breit untereinander; Funktionsblöcke und „Was erfasst wird“ als kompakte Karten mit Icon links (`.feature` als Grid); Statistik-Karten einspaltig und kompakt (zweispaltig passt nicht: Zahlen wie „19,920“ oder lange Token-Summen laufen über); Zeitraum-Auswahl unter dem Diagrammtitel; Anteile (`.share`) mit Name und Prozent in einer Zeile und Balken darunter.
+- **Stolperfalle:** Der Spenden-Dialog (`SupportButton`) liegt im DOM innerhalb von `.topbar-nav`. Regeln wie `.topbar-nav .btn` treffen auch seine Buttons; die mobile Icon-Regel ist deshalb `.topbar-nav > .btn`.
+- Prüfen bei 360, 375, 390 px, Englisch und Deutsch, Dialog offen. Die Diagramme blenden per IntersectionObserver ein: für fullPage-Screenshots Höhe 2000 setzen, sonst bleiben sie leer.
 
 ## Spenden-Dialog (`components/donations.tsx`, Styles in `globals.css`)
 Kurz halten: Herz-Kachel + Titel, ein Satz, Karte „Bisher gespendet“, Buttons „Beitrag über Stripe“ und „Idee oder Fehler melden“, eine Zeile Hinweis. Betrag aus Stripe (`STRIPE_SECRET_KEY` nur auf dem Live-Server); `next dev` ohne Schlüssel holt ihn von `https://forge.vanturis.de/api/v1/donations`.
@@ -33,7 +38,7 @@ Kurz halten: Herz-Kachel + Titel, ein Satz, Karte „Bisher gespendet“, Button
 - Darunter „Was erfasst wird“ und Fußnote.
 
 ## Erfasste Felder
-Meldung: Installations-ID, `appVersion`, `os`, Zähler, `models`, `plan`, seit 2026-10-19 `language` (Sprache der Oberfläche, `^[a-z]{2}$`, Spalte `installs.language`, ältere Apps: null). Der Besitzer will alles Sinnvolle sehen, aber nichts, was Nutzer ausspäht (keine Inhalte, Namen, Pfade). Neues Feld: Checkliste im Eintrag zur anonymen Nutzungsstatistik. Ein alter Dienst ignoriert unbekannte Felder (zod strippt), eine neue App kann also vor dem Deploy erscheinen.
+Meldung: Installations-ID, `appVersion`, `os`, Zähler (`COUNTER_KEYS` in `src/lib/report.ts`), `models`, `plan`, seit 2026-10-19 `language` (Sprache der Oberfläche, `^[a-z]{2}$`, Spalte `installs.language`, ältere Apps: null). Der Besitzer will alles Sinnvolle sehen, aber nichts, was Nutzer ausspäht (keine Inhalte, Namen, Pfade). Neues Feld: Checkliste im Eintrag zur anonymen Nutzungsstatistik. Ein alter Dienst ignoriert unbekannte Felder (zod strippt), eine neue App kann also vor dem Deploy erscheinen.
 
 ## Domain
 Neu `forge.vanturis.de`, vorher `forge-stats.vanturis.de`. Apps bis 0.1.103 melden an die alte Domain: beide Domains am Dienst lassen. Prüfen: `curl https://forge.vanturis.de/api/health` liefert `ok`.
@@ -45,11 +50,11 @@ App meldet alle 5 Minuten, Sperre pro installId 4 Minuten (`REPORT_INTERVAL_MINU
 Jede angenommene Meldung schreibt `installs` und den UTC-Tag in `install_days` (FK mit CASCADE). Zuwachs pro Tag rechnet SQL (`historySql()`, LAG); der erste Stand einer Installation zählt nicht als Zuwachs (deshalb zeigt „Tokens pro Tag“ bei frischen Demodaten „Noch keine Daten“). Test: `STATS_TEST_DATABASE_URL=... pnpm test`.
 
 ## Sprachen der Seite
-Standard Englisch; Cookie `lang` > Accept-Language. `LanguageSwitch` in der Fußzeile. Texte in `src/lib/messages.ts` (`de` ist Quelle des Typs: Funktionen mit Literal-Rückgabe brauchen `: string`, sonst passt `en` nicht).
+Standard Englisch; Cookie `lang` > Accept-Language. `LanguageSwitch` in der Fußzeile (`.lang-btn`, zweiter = Deutsch). Texte in `src/lib/messages.ts` (`de` ist Quelle des Typs: Funktionen mit Literal-Rückgabe brauchen `: string`, sonst passt `en` nicht).
 
 ## Stolperfallen
 - **Nicht im pnpm-Workspace**: `pnpm install --ignore-workspace`, eigenes Lockfile. ESLint ignoriert `services/`; Typprüfung mit `pnpm exec tsc --noEmit -p .` im Ordner.
 - **Kein `public/`-Ordner**: Bilder statisch importieren oder per relativer `url()` in globalem CSS.
-- Dev-Server: `DATABASE_URL=<Test-DB aus dev_environment> pnpm exec next dev -p 4100` im Hintergrund (der FORGE-Dev-Server des Projekts ist die Desktop-App, nicht diese Seite). Summen sind 5 Minuten im Prozess gecacht: nach SQL-Testdaten neu starten.
-- Lokale Demodaten: per Node-Skript mit `pg` **im Ordner services/stats** (Schreiben außerhalb des Projekts sperrt die FORGE-Policy; Skript danach löschen) in `installs` + `install_days`, IDs `00000000-0000-4000-8000-0000000000cN`; löschen mit `DELETE FROM installs WHERE install_id::text LIKE '00000000-0000-4000-8000-0000000000c%'`.
+- Dev-Server: `DATABASE_URL=<Test-DB aus dev_environment> pnpm exec next dev -p 4100` im Hintergrund (der FORGE-Dev-Server des Projekts ist die Desktop-App, nicht diese Seite). Summen sind 5 Minuten im Prozess gecacht: nach SQL-Testdaten neu starten. TaskStop beendet nur die Shell; der Next-Prozess hält Port 4100 weiter (Prozess am Port mit `Get-NetTCPConnection -LocalPort 4100` finden und beenden).
+- Lokale Demodaten: per Node-Skript mit `pg` **im Ordner services/stats** (Schreiben außerhalb des Projekts sperrt die FORGE-Policy; Skript danach löschen) in `installs` (mit `models`, `plan`, `language`) + `install_days` (Zähler aus `COUNTER_KEYS`, steigend über 30 Tage), IDs `00000000-0000-4000-8000-0000000000cN`; löschen mit `DELETE FROM installs WHERE install_id::text LIKE '00000000-0000-4000-8000-0000000000c%'`.
 - Bash-Heredocs verlieren Backslashes; Python-Edit-Skripte, die Text mit `\n` suchen, scheitern an CRLF-Arbeitskopien (`core.autocrlf=true`): lieber das Edit-Werkzeug.
