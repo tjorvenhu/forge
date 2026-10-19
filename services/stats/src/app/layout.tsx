@@ -1,6 +1,5 @@
 import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
-import { GeistSans } from "geist/font/sans";
 import { Download } from "lucide-react";
 import mark from "@/assets/logo-mark.svg";
 import { donations, type Donations } from "@/lib/donations";
@@ -10,6 +9,7 @@ import { DOWNLOAD_URL, REPO_URL } from "@/lib/constants";
 import { LanguageSwitch, LocaleProvider } from "@/components/locale";
 import { getLocale } from "@/lib/locale-server";
 import { i18n } from "@/lib/messages";
+import "@fontsource-variable/inter";
 import "./globals.css";
 import "./pages.css";
 
@@ -40,7 +40,7 @@ async function donated(): Promise<Donations | null> {
 function Logo({ label }: { label: string }) {
   return (
     <a href="/" className="logo" aria-label={label}>
-      <img src={mark.src} width={30} height={22} alt="" />
+      <img src={mark.src} width={44} height={33} alt="" />
       <span>FORGE</span>
     </a>
   );
@@ -50,7 +50,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
   const [given, locale] = await Promise.all([donated(), getLocale()]);
   const { t } = i18n(locale);
   return (
-    <html lang={locale} className={GeistSans.variable}>
+    <html lang={locale}>
       <body>
         <LocaleProvider locale={locale}>
           {/* Without JavaScript nothing scrolls into view: show the charts as they are. */}
@@ -62,6 +62,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
               <Logo label={t.header.home} />
               <nav className="topbar-nav" aria-label={t.header.nav}>
                 <TopLinks />
+                <SupportButton donations={given} />
                 <a className="btn btn-primary" href={DOWNLOAD_URL} aria-label={t.header.download}>
                   <Download aria-hidden />
                   <span className="nav-label">{t.header.download}</span>
@@ -80,7 +81,6 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
                 <nav className="footer-links" aria-label={t.header.nav}>
                   <a href="/stats">{t.header.liveStats}</a>
                   <a href={REPO_URL}>{t.header.github}</a>
-                  <SupportButton donations={given} />
                   <a href={IMPRINT_URL}>{t.footer.imprint}</a>
                   <a href={PRIVACY_URL}>{t.footer.privacy}</a>
                 </nav>

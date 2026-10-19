@@ -8,7 +8,7 @@ import { useI18n } from "./locale";
 import { AnimatedNumber } from "./motion";
 
 /**
- * "Unterstützen" in the footer: opens the dialog of the app's heart (SupportDialog) with what was
+ * "Unterstützen" in the top bar: opens the dialog of the app's heart (SupportDialog) with what was
  * given so far above the payment link. A real link, so it still leads to Stripe without JavaScript.
  */
 export function SupportButton({ donations }: { donations: Donations | null }) {
@@ -19,16 +19,17 @@ export function SupportButton({ donations }: { donations: Donations | null }) {
   return (
     <>
       <a
-        className="support-link"
+        className="btn btn-outline btn-support"
         href={DONATE_URL}
         aria-haspopup="dialog"
+        aria-label={m.button}
         onClick={(e) => {
           e.preventDefault();
           dialog.current?.showModal();
         }}
       >
         <Heart aria-hidden />
-        {m.button}
+        <span className="nav-label">{m.button}</span>
       </a>
       <dialog
         ref={dialog}

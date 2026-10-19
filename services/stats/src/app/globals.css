@@ -21,8 +21,8 @@
   --color-success: #3fb97a;
   --color-success-soft: #3fb97a1f;
 
-  /* --font-geist-sans comes from next/font (layout.tsx) and includes its size-adjusted fallback. */
-  --font-sans: var(--font-geist-sans), "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
+  /* Inter from @fontsource-variable/inter (layout.tsx); the app uses the same family. */
+  --font-sans: "Inter Variable", "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
 
   --text-caption: 11px;
   --text-small: 12px;
@@ -37,8 +37,8 @@
 
   --ease-snappy: cubic-bezier(0.2, 0.8, 0.2, 1);
 
-  --page-width: 76rem;
-  --page-gutter: 24px;
+  --page-width: 1392px;
+  --page-gutter: 72px;
 
   color-scheme: dark;
 }
@@ -104,11 +104,11 @@ a {
   align-items: center;
   justify-content: center;
   gap: 8px;
-  height: 40px;
-  padding: 0 16px;
+  height: 46px;
+  padding: 0 22px;
   border: 1px solid transparent;
   border-radius: var(--radius-lg);
-  font-size: var(--text-ui);
+  font-size: 17px;
   font-weight: 600;
   white-space: nowrap;
   user-select: none;
@@ -125,8 +125,8 @@ a {
 }
 
 .btn svg {
-  width: 16px;
-  height: 16px;
+  width: 18px;
+  height: 18px;
 }
 
 .btn-outline {
@@ -148,15 +148,15 @@ a {
 }
 
 .btn-lg {
-  gap: 10px;
-  height: 52px;
-  padding: 0 24px;
-  font-size: 16px;
+  gap: 12px;
+  height: 58px;
+  padding: 0 32px;
+  font-size: 18px;
 }
 
 .btn-lg svg {
-  width: 18px;
-  height: 18px;
+  width: 20px;
+  height: 20px;
 }
 
 .btn-primary.btn-lg {
@@ -176,9 +176,9 @@ a:hover > .btn-arrow {
 .eyebrow {
   display: block;
   color: var(--color-accent);
-  font-size: var(--text-body);
+  font-size: 14px;
   font-weight: 600;
-  letter-spacing: 0.22em;
+  letter-spacing: 0.24em;
   text-transform: uppercase;
 }
 
@@ -221,17 +221,17 @@ a:hover > .btn-arrow {
 }
 
 .feature h3 {
-  margin-top: 14px;
-  font-size: 17px;
+  margin-top: 18px;
+  font-size: 18px;
   font-weight: 700;
   letter-spacing: -0.01em;
 }
 
 .feature p {
-  max-width: 17rem;
-  margin: 6px auto 0;
+  max-width: 15rem;
+  margin: 8px auto 0;
   color: var(--color-muted);
-  font-size: 15px;
+  font-size: 16px;
   line-height: 1.5;
 }
 
@@ -590,6 +590,10 @@ a:hover > .btn-arrow {
 }
 
 @media (max-width: 1080px) {
+  :root {
+    --page-gutter: 32px;
+  }
+
   .features {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -598,6 +602,18 @@ a:hover > .btn-arrow {
 @media (max-width: 560px) {
   :root {
     --page-gutter: 16px;
+  }
+
+  .btn {
+    height: 40px;
+    padding: 0 14px;
+    font-size: 15px;
+  }
+
+  .btn-lg {
+    height: 50px;
+    padding: 0 22px;
+    font-size: 16px;
   }
 
   .features {

@@ -26,8 +26,12 @@ export function Landing({ locale }: { locale: Locale }) {
   return (
     <main className="landing">
       <section className="hero">
-        {/* a slanted panel with a lit edge behind the window */}
-        <div className="hero-shape" aria-hidden />
+        {/* the mark as a huge dark silhouette behind the window, lit along its upper edges */}
+        <div className="hero-anvil" aria-hidden>
+          <span className="anvil-glow" />
+          <span className="anvil-rim" />
+          <span className="anvil-body" />
+        </div>
         <div className="container hero-inner">
           <div className="hero-text">
             <Eyebrow>{l.eyebrow}</Eyebrow>
