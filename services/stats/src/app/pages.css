@@ -1117,6 +1117,22 @@
 
 /* ---- narrower screens */
 
+/* below the mockup's width the stat cards get narrower: less space around the icon so the line below fits */
+@media (max-width: 1500px) {
+  .stat {
+    padding: 16px 20px 16px 24px;
+  }
+
+  .stat-icon {
+    margin-right: 22px;
+  }
+
+  .spark {
+    gap: 3px;
+    margin-left: 6px;
+  }
+}
+
 /* between the mockup's width and the stacked layout: keep both buttons in one row and the title clear of the window */
 @media (max-width: 1320px) {
   .hero-title {

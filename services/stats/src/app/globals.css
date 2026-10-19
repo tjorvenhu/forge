@@ -68,7 +68,10 @@ body {
   font-kerning: normal;
 }
 
-/* the background picture of every page (owner's file, pre-blurred to assets/background.webp), behind all content */
+/*
+ * The background picture of every page (owner's file) in its full 2752 x 1536 and at WebP quality 95:
+ * blurred or downscaled versions showed blocks and bands on the dark gradients.
+ */
 body::before {
   position: fixed;
   inset: 0;

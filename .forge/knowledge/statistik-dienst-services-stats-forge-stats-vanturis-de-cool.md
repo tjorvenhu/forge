@@ -2,7 +2,7 @@
 title: "Website und Statistik-Dienst services/stats (forge.vanturis.de: Landingpage auf /, Live Stats auf /stats, Coolify)"
 summary: "Next.js-Website in services/stats: Landingpage und Live Stats exakt nach Bildvorlagen des Besitzers. Hintergrundbild, Fenster-Perspektive, Wortmarke, Stats-Karten und Diagramme, Plattformen, Live-Abfrage, Englisch/Deutsch, Coolify, Stolperfallen."
 tags: ["stats","coolify","release","stolperfalle","i18n","ui"]
-updated: "2026-10-19T16:29:29.356Z"
+updated: "2026-10-19T17:29:00.153Z"
 ---
 
 # Website und Statistik-Dienst services/stats
@@ -13,7 +13,7 @@ updated: "2026-10-19T16:29:29.356Z"
 ## Arbeitsweise mit dem Besitzer (wichtig)
 Er liefert Bildvorlagen (1536 x 1024, in den FORGE-Uploads) und verlangt „GENAU SO“; freiere Umsetzungen wurden mehrfach scharf abgelehnt. Nichts ergänzen oder weglassen, außer er sagt es. Prüfen bei 1440 x 900 und 1536 x 1024 (dort direkt mit der Vorlage vergleichbar). Vergleich: Vorlage mit sharp auf gleiche Breite skalieren, gleiche Ausschnitte untereinander legen (sharp aus `services/stats/node_modules/.pnpm/sharp@*/node_modules/sharp`). Animationen im Screenshot abwarten (preview_interact mit wait ~2,5 s), sonst sind Balken halb hoch.
 - Vorgaben: Hintergrund `#111418`, Orange `#ff7a1a` (Tokens in `globals.css`), keine übertriebenen Glows.
-- **Hintergrund aller Seiten**: Bild des Besitzers (Quelle `forge_amboss_background_4k.png`, 3840x2160, orange beleuchtete abstrakte Fläche) als `src/assets/background.webp` (2560 breit, mit sharp `blur(5)` vorab weichgezeichnet, ~25 KB), `body::before` fixed, `cover`. Eigene SVG-/CSS-Formen hinter dem Fenster hat er abgelehnt („Amboss sieht scheiße aus“, Glow-Bug); keine eigenen Hintergrundformen mehr bauen.
+- **Hintergrund aller Seiten**: Bild des Besitzers als `src/assets/background.webp`, eingebunden als `body::before` fixed, `cover`, ohne Filter. Stand 2026-10-19: dunkle geschwungene Flächen mit orange leuchtenden Kanten (Gemini-Bild 2752x1536 aus seinem Downloads-Ordner; Chat-Anhänge liegen nicht immer als Datei vor, dann in `Downloads` nach der neuesten Datei suchen). In voller Größe mit sharp `webp({quality: 95, smartSubsample: true})`, ~270 KB. Er will das Bild „0 % verpixelt“: kein Verkleinern, kein vorab eingebackener Blur (zeigte Blöcke und Streifen in den dunklen Verläufen); CSS-`blur()` fand er zu verwaschen. Eigene SVG-/CSS-Formen hinter dem Fenster hat er abgelehnt; keine eigenen Hintergrundformen bauen.
 
 ## Landingpage (`landing.tsx`, `pages.css`)
 - Kopfzeile 76px: Wortmarke `forge-wordmark.png` (944x184, Marke + „FORGE“ ohne Unterzeile, 34px hoch, Fußzeile 24px). Rechts: Live Stats, GitHub, Unterstützen mit rotem Herz (`SupportButton`, Spenden-Dialog, nur oben), Download (40px). Die geöffnete Seite bekommt eine orange Linie unter dem Link, ohne Pfeil-Icon.
@@ -23,7 +23,7 @@ Er liefert Bildvorlagen (1536 x 1024, in den FORGE-Uploads) und verlangt „GENA
 
 ## Live Stats (/stats, Vorlage 2026-10-19)
 `stats-page.tsx` (Kopf links: Eyebrow, „FORGE in **Zahlen**“, zweizeiliger Lead mit `\n`), `live-stats.tsx` (Live-Pille, „Letzte Aktualisierung …“, vier Karten), `charts.tsx`, `tiles.ts`.
-- Karten: Tokens, Sessions, Durchläufe, Arbeitszeit; rechts 7 Mini-Balken der letzten Tage (`Spark`, orange/grau abwechselnd wie in der Vorlage). Projekte/Agenten/Installationen/Online-Kacheln gibt es nicht mehr.
+- Karten: Tokens, Sessions, Durchläufe, Arbeitszeit; rechts 7 Mini-Balken der letzten Tage (`Spark`, orange/grau abwechselnd wie in der Vorlage). Unter 1500px weniger Abstand um Icon und Balken, sonst wird die Unterzeile abgeschnitten. Projekte/Agenten/Installationen/Online-Kacheln gibt es nicht mehr.
 - Diagrammkarten: Tokens pro Tag (Säulen) und Aktive Installationen (Fläche, SVG mit `preserveAspectRatio="none"` + `vector-effect`, Punkt als HTML), je mit Menü „Letzte 7/14/30 Tage“ (`RangeSelect`, eigenes Menü, kein `<select>`); Top Modelle (3 + „Andere“, Anteil in %, Namen „Claude Opus 4.7“); Plattformen (Ring mit Anzahl Installationen in der Mitte, Legende Windows 10/11, macOS, Linux, Andere). Die Vorlage schreibt „Sessions“ in den Ring; bewusst Installationen, weil es Betriebssysteme der Installationen sind.
 - Daten: `history` (30 Tage) hat zusätzlich `sessions`, `claudeWorkMs`; `platforms` aus `installs.os` (App sendet `os.type() os.release()`, z. B. „Windows_NT 10.0.26200“) per `CASE … ILIKE` in `queryPlatforms`. Achsen-Labels `f.axis` („50K“).
 - Darunter weiter „Was erfasst wird“ und Fußnote. Skeletons in Form der Karten (`SparkSkeleton`, `ChartsSkeleton`).
