@@ -196,9 +196,6 @@ export const views = {
     alwaysOnTopLabel: "Im Vordergrund bleiben",
     alwaysOnTopDescription:
       "Das Hauptfenster von FORGE bleibt über anderen Programmen. Auch über die Befehlspalette (Strg+K) und per Telefon umschaltbar. Ausgekoppelte Chat-Fenster heftest du einzeln mit der Nadel in ihrer Kopfzeile an.",
-    screenshotKeyLabel: "Druck-Taste für Screenshots",
-    screenshotKeyDescription:
-      "Solange FORGE läuft, öffnet die Druck-Taste das Snipping-Tool von FORGE statt dem von Windows. Der Screenshot landet in der Zwischenablage und als Anhang im Chat, den du zuletzt benutzt hast. Alt+Druck und Win+Druck bleiben bei Windows.",
     soundsLabel: "Töne",
     soundsDescription: "Signal, wenn Claude fertig ist, eine Freigabe braucht oder ein Fehler auftritt.",
     soundPlay: (label: string) => `Ton ${label} anhören`,

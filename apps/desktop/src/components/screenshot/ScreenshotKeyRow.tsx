@@ -4,7 +4,7 @@ import { TriangleAlert } from "lucide-react";
 import { isTauri } from "@/lib/rpc";
 import { t } from "@/i18n";
 import { SwitchRow } from "@/components/settings/layout";
-import { IS_MAC } from "./keys";
+import { isLinux, isMac } from "@/lib/platform";
 
 /** screenshot.rs `screenshot_key_status` */
 interface KeyStatus {
@@ -13,7 +13,6 @@ interface KeyStatus {
   other: string | null;
 }
 
-const IS_LINUX = typeof navigator !== "undefined" && /Linux/i.test(navigator.userAgent) && !IS_MAC;
 /** The shell retries the registration every 2 s on Windows; another tool may also start later. */
 const POLL_MS = 5_000;
 
@@ -42,12 +41,12 @@ export function ScreenshotKeyRow({ checked, onChange }: { checked: boolean; onCh
   }, [checked]);
 
   const k = t.screenshot.key;
-  const text = IS_MAC ? k.descriptionMac : IS_LINUX ? k.descriptionLinux : k.description;
-  const warning = status?.takenByOther ? (IS_MAC || IS_LINUX ? k.notRegistered : k.takenWindows(status.other ?? k.otherProgram)) : null;
+  const text = isMac ? k.descriptionMac : isLinux ? k.descriptionLinux : k.description;
+  const warning = status?.takenByOther ? (isMac || isLinux ? k.notRegistered : k.takenWindows(status.other ?? k.otherProgram)) : null;
 
   return (
     <SwitchRow
-      label={IS_MAC ? k.labelMac : k.label}
+      label={isMac ? k.labelMac : k.label}
       description={
         warning ? (
           <>

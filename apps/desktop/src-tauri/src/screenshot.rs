@@ -49,6 +49,7 @@ static TRIGGER: OnceLock<Sender<Trigger>> = OnceLock::new();
 
 enum Trigger {
     Capture,
+    #[cfg_attr(not(windows), allow(dead_code))]
     Key(&'static str),
     Prepare,
     #[cfg_attr(windows, allow(dead_code))]

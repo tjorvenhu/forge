@@ -21,7 +21,7 @@ import {
   X,
 } from "lucide-react";
 import { errorMessage } from "@/lib/rpc";
-import { IS_MAC, modKey } from "./keys";
+import { hasPrimaryModifier, isMac } from "@/lib/platform";
 import { cn } from "@/lib/utils";
 import { t } from "@/i18n";
 import { Tooltip } from "@/components/ui/misc";
@@ -456,7 +456,7 @@ function Snipper({ shot }: { shot: Shot }) {
       }
       if (l.text) return;
       const k = e.key.toLowerCase();
-      const mod = e.ctrlKey || (IS_MAC && e.metaKey);
+      const mod = hasPrimaryModifier(e);
       if (mod && k === "z") {
         e.preventDefault();
         if (e.shiftKey) l.redoLast();
@@ -949,14 +949,14 @@ function EditBar({
             ))}
           </div>
           <div className="mx-0.5 h-8 w-px bg-border" />
-          <BarButton label={t.screenshot.undo} shortcut={modKey("Z")} disabled={!canUndo} place={place} onClick={onUndo}>
+          <BarButton label={t.screenshot.undo} shortcut={t.screenshot.ctrl("Z")} disabled={!canUndo} place={place} onClick={onUndo}>
             <Undo2 className="h-4 w-4" />
           </BarButton>
-          <BarButton label={t.screenshot.redo} shortcut={IS_MAC ? modKey("Z", true) : modKey("Y")} disabled={!canRedo} place={place} onClick={onRedo}>
+          <BarButton label={t.screenshot.redo} shortcut={isMac ? t.screenshot.ctrl(`${t.screenshot.shift}+Z`) : t.screenshot.ctrl("Y")} disabled={!canRedo} place={place} onClick={onRedo}>
             <Redo2 className="h-4 w-4" />
           </BarButton>
           <div className="mx-0.5 h-8 w-px bg-border" />
-          <BarButton label={t.screenshot.copy} tip={t.screenshot.copyTip} shortcut={modKey("C")} place={place} onClick={onCopy}>
+          <BarButton label={t.screenshot.copy} tip={t.screenshot.copyTip} shortcut={t.screenshot.ctrl("C")} place={place} onClick={onCopy}>
             <Copy className="h-4 w-4" />
           </BarButton>
           <Tooltip content={t.screenshot.sendTip} delay={300} side={place.side} boundary={box}>

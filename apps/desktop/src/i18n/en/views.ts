@@ -195,9 +195,6 @@ export const views: typeof De = {
     alwaysOnTopLabel: "Stay on top",
     alwaysOnTopDescription:
       "The main FORGE window stays above other programs. Can also be toggled from the command palette (Ctrl+K) and by phone. Detached chat windows are pinned individually with the pin in their header.",
-    screenshotKeyLabel: "Print Screen key for screenshots",
-    screenshotKeyDescription:
-      "While FORGE is running, the Print Screen key opens the FORGE snipping tool instead of the Windows one. The screenshot goes to the clipboard and is attached to the chat you used last. Alt+Print Screen and Win+Print Screen stay with Windows.",
     soundsLabel: "Sounds",
     soundsDescription: "A signal when Claude is done, needs an approval, or an error occurs.",
     soundPlay: (label) => `Play sound: ${label}`,
