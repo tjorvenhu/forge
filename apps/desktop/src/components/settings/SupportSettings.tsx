@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import type { LucideIcon } from "lucide-react";
 import { Copy, ExternalLink, Gauge, Heart, Lightbulb } from "lucide-react";
-import { SUPPORT_LINKS, USAGE_STATS_URL } from "@forge/protocol";
+import { SUPPORT_LINKS, STATS_PAGE_URL } from "@forge/protocol";
 import { addContextItems, copyText } from "@/lib/context-menu";
 import { openExternal } from "@/lib/native";
 import { call } from "@/lib/queries";
@@ -25,7 +25,7 @@ const LINKS: ReadonlyArray<{ Icon: LucideIcon; label: string; description: strin
     ...ts.feedback,
     href: SUPPORT_LINKS.feedback,
   },
-  { Icon: Gauge, ...ts.stats, href: USAGE_STATS_URL },
+  { Icon: Gauge, ...ts.stats, href: STATS_PAGE_URL },
 ];
 
 /** Small red heart in the sidebar, right of the search field: opens the support dialog. */

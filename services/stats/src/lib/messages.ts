@@ -6,13 +6,81 @@ import type { Locale } from "./i18n";
 
 const de = {
   meta: {
+    title: "FORGE, die Desktop-App für Claude Code",
+    description:
+      "FORGE startet echte Claude-Code-Sessions in deinen Projekten und bringt Git, parallele Agenten, Vorschau und Projektwissen in ein Fenster. Open Source, für Windows.",
+  },
+  statsMeta: {
     title: "FORGE in Zahlen",
     description: "Gesamtzahlen aller FORGE-Installationen, die anonyme Nutzungszahlen senden.",
   },
   header: {
-    logoAlt: "FORGE, Claude Development Studio",
+    home: "FORGE, zur Startseite",
     links: "Links",
-    github: "FORGE auf GitHub",
+    nav: "Seiten",
+    features: "Funktionen",
+    stats: "Statistik",
+    docs: "Doku",
+    download: "Herunterladen",
+  },
+  landing: {
+    badge: "Für Entwickler gebaut",
+    title: "FORGE",
+    subtitle: "Claude Development Studio",
+    lead: "Die Desktop-App für Claude Code. Sessions, parallele Agenten in Git-Worktrees, Git, Vorschau der Web-App und Projektwissen in einem Fenster.",
+    download: "Für Windows herunterladen",
+    github: "Auf GitHub ansehen",
+    facts: ["Windows 10 und 11", "Open Source, AGPL-3.0", "Mit deinem Claude-Abo, ohne API-Schlüssel"],
+    screenshotAlt: "FORGE mit der Projektübersicht: Projekte mit Git-Status, Tags und einem laufenden Agenten",
+    featuresTitle: "Was FORGE kann",
+    featuresText: "FORGE startet echte Claude-Code-Sessions in deinen Projekten, zeigt die Antworten live und fragt Freigaben ab.",
+    features: {
+      sessions: {
+        title: "Claude-Sessions",
+        text: "Streaming, Werkzeug-Karten, Freigaben, Plan-Modus und Rückfragen. Mehrere Sessions nebeneinander in der geteilten Ansicht.",
+      },
+      agents: {
+        title: "Parallele Agenten",
+        text: "Jeder Agent arbeitet in einem eigenen Git-Worktree auf eigenem Branch. Fertige Arbeit führt FORGE auf Wunsch automatisch zusammen.",
+      },
+      git: {
+        title: "Git eingebaut",
+        text: "Diffs, Commits nur der ausgewählten Dateien, Branches, Push und Pull, Pull Requests. Commit-Nachrichten schreibt Claude.",
+      },
+      preview: {
+        title: "Vorschau und Dev-Tools",
+        text: "Dev-Server, lokale PostgreSQL-Testdatenbank und Screenshots der Web-App, die Claude selbst ansehen kann.",
+      },
+      safe: {
+        title: "Sicher arbeiten",
+        text: "Rechteprofile (Safe, Balanced, Autonomous) und eine Sperrliste, die gefährliche Befehle immer blockiert.",
+      },
+      knowledge: {
+        title: "Projektwissen",
+        text: "Abläufe, Entscheidungen und Stolperfallen, die jede Session beim Start bekommt. Veraltetes erkennt FORGE selbst.",
+      },
+      usage: {
+        title: "Abo im Blick",
+        text: "Nutzung im 5-Stunden- und Wochenfenster mit Prognose, Tagesbericht mit Tokens, Commits und Agenten.",
+      },
+      phone: {
+        title: "Telefon und Sync",
+        text: "Optional: FORGE per Telefon anrufen und steuern (SIP). Daten verschlüsselt über ein privates GitHub-Repository auf mehreren PCs.",
+      },
+    },
+    numbers: {
+      title: "FORGE in Zahlen",
+      text: "Summen aller Installationen mit eingeschalteter Nutzungsstatistik.",
+      tokens: "Tokens über FORGE",
+      sessions: "Sessions",
+      agents: "Parallele Agenten",
+      installs: "Installationen",
+      all: "Alle Zahlen ansehen",
+    },
+    cta: {
+      title: "Bereit für die erste Session?",
+      text: "FORGE Setup ist etwa 5 MB groß. Es lädt die neueste Version von GitHub, prüft ihre Signatur und installiert sie.",
+    },
   },
   language: {
     label: "Sprache",
@@ -21,6 +89,7 @@ const de = {
     license: "FORGE ist ein Open-Source-Produkt der Vanturis UG (haftungsbeschränkt), lizenziert unter AGPL-3.0.",
     imprint: "Impressum",
     privacy: "Datenschutz",
+    tagline: "Mit Claude gebaut. Für Entwickler.",
   },
   intro: {
     title: "FORGE in Zahlen",
@@ -146,7 +215,7 @@ const de = {
   notFound: {
     title: "Seite nicht gefunden",
     text: "Unter dieser Adresse gibt es nichts.",
-    back: "Zur Statistik",
+    back: "Zur Startseite",
   },
   error: {
     title: "Etwas ist schiefgelaufen",
@@ -159,13 +228,81 @@ export type Messages = typeof de;
 
 const en: Messages = {
   meta: {
+    title: "FORGE, the desktop app for Claude Code",
+    description:
+      "FORGE runs real Claude Code sessions in your projects and puts Git, parallel agents, preview and project knowledge into one window. Open source, for Windows.",
+  },
+  statsMeta: {
     title: "FORGE in numbers",
     description: "Totals of all FORGE installations that send anonymous usage numbers.",
   },
   header: {
-    logoAlt: "FORGE, Claude Development Studio",
+    home: "FORGE, to the home page",
     links: "Links",
-    github: "FORGE on GitHub",
+    nav: "Pages",
+    features: "Features",
+    stats: "Statistics",
+    docs: "Docs",
+    download: "Download",
+  },
+  landing: {
+    badge: "Built for developers",
+    title: "FORGE",
+    subtitle: "Claude Development Studio",
+    lead: "The desktop app for Claude Code. Sessions, parallel agents in Git worktrees, Git, web app preview and project knowledge in one window.",
+    download: "Download for Windows",
+    github: "View on GitHub",
+    facts: ["Windows 10 and 11", "Open source, AGPL-3.0", "With your Claude subscription, no API key"],
+    screenshotAlt: "FORGE showing the projects overview: projects with Git status, tags and a running agent",
+    featuresTitle: "What FORGE does",
+    featuresText: "FORGE runs real Claude Code sessions in your projects, streams the answers and asks for approvals.",
+    features: {
+      sessions: {
+        title: "Claude sessions",
+        text: "Streaming, tool cards, approvals, plan mode and questions from Claude. Several sessions side by side in split view.",
+      },
+      agents: {
+        title: "Parallel agents",
+        text: "Each agent works in its own Git worktree on its own branch. If you want, FORGE merges finished work automatically.",
+      },
+      git: {
+        title: "Git built in",
+        text: "Diffs, commits of only the selected files, branches, push and pull, pull requests. Claude writes the commit messages.",
+      },
+      preview: {
+        title: "Preview and dev tools",
+        text: "Dev server, local PostgreSQL test database and screenshots of the web app that Claude can look at itself.",
+      },
+      safe: {
+        title: "Safe by default",
+        text: "Permission profiles (Safe, Balanced, Autonomous) and a blocklist that always blocks dangerous commands.",
+      },
+      knowledge: {
+        title: "Project knowledge",
+        text: "Workflows, decisions and pitfalls that every session gets at start. FORGE detects outdated entries on its own.",
+      },
+      usage: {
+        title: "Subscription usage",
+        text: "Usage in the 5-hour and weekly windows with a forecast, and a daily report with tokens, commits and agents.",
+      },
+      phone: {
+        title: "Phone and sync",
+        text: "Optional: call FORGE and control it by phone (SIP). Encrypted sync across several PCs through a private GitHub repository.",
+      },
+    },
+    numbers: {
+      title: "FORGE in numbers",
+      text: "Totals of all installations with usage statistics turned on.",
+      tokens: "Tokens through FORGE",
+      sessions: "Sessions",
+      agents: "Parallel agents",
+      installs: "Installations",
+      all: "See all numbers",
+    },
+    cta: {
+      title: "Ready for your first session?",
+      text: "FORGE Setup is about 5 MB. It downloads the newest version from GitHub, checks its signature and installs it.",
+    },
   },
   language: {
     label: "Language",
@@ -174,6 +311,7 @@ const en: Messages = {
     license: "FORGE is an open-source product of Vanturis UG (haftungsbeschränkt), licensed under AGPL-3.0.",
     imprint: "Legal notice",
     privacy: "Privacy policy",
+    tagline: "Built with Claude. For builders.",
   },
   intro: {
     title: "FORGE in numbers",
@@ -298,7 +436,7 @@ const en: Messages = {
   notFound: {
     title: "Page not found",
     text: "There is nothing at this address.",
-    back: "Back to the statistics",
+    back: "Back to the home page",
   },
   error: {
     title: "Something went wrong",

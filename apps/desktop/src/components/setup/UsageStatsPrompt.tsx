@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { USAGE_STATS_URL } from "@forge/protocol";
+import { STATS_PAGE_URL } from "@forge/protocol";
 import { call, keys, useSettings } from "@/lib/queries";
 import { openExternal } from "@/lib/native";
 import { errorMessage } from "@/lib/rpc";
@@ -69,10 +69,10 @@ function Prompt({ onLater }: { onLater: () => void }) {
       <p className="text-xs text-muted">
         {tu.fineprint}{" "}
         <a
-          href={USAGE_STATS_URL}
+          href={STATS_PAGE_URL}
           onClick={(e) => {
             e.preventDefault();
-            void openExternal(USAGE_STATS_URL);
+            void openExternal(STATS_PAGE_URL);
           }}
           className="underline hover:text-fg"
         >

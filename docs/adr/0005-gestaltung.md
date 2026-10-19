@@ -9,10 +9,10 @@ Date: 2026-10-10 · Status: accepted (at the user's request)
 - **Sounds:** synthesized via the Web Audio API (`src/lib/sounds.ts`), no audio files. Signals: done
   (rising third), approval needed (two short tones), error (falling third). Stopped turns do not trigger a
   sound. Can be turned off: Settings → "Play sounds" (FORGE setting `sounds`, on by default).
-- **Logo:** anvil with three sparks based on the user's template, rebuilt as a vector
-  (`src/assets/logo.svg`; `logo-dark.svg` with lighter metal for dark surfaces). App icons are generated with
-  `pnpm tauri icon src-tauri/icons/source.svg`. If the original template is available as PNG, it can
-  serve as the icon source instead.
+- **Logo:** anvil with an orange spark based on the user's template (October 2026), rebuilt as a vector:
+  `src/assets/logo-mark.svg` is the mark, `src/assets/logo.svg` the app icon (mark on a dark tile with an
+  orange glowing rim). App icons are generated with `pnpm tauri icon src/assets/logo.svg` (in `apps/desktop`).
+  The wordmark `src/assets/forge-logo.png` puts the mark in front of the lettering.
 - **Claude mark:** assistant messages show a traced Claude starburst mark in terracotta
   (`ClaudeMark.tsx`, token `--color-claude`). Note: the mark belongs to Anthropic. Unproblematic for internal
   use; check the Anthropic trademark guidelines before public distribution. The

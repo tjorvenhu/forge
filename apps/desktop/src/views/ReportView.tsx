@@ -26,7 +26,7 @@ import {
   TimerOff,
   X,
 } from "lucide-react";
-import { USAGE_STATS_URL, type DailyReport, type DailyReportAgent, type DailyReportCall, type DailyReportCommit, type DailyReportOpen, type DailyReportSession, type ResultOf } from "@forge/protocol";
+import { STATS_PAGE_URL, type DailyReport, type DailyReportAgent, type DailyReportCall, type DailyReportCommit, type DailyReportOpen, type DailyReportSession, type ResultOf } from "@forge/protocol";
 import { call, keys, useProjects } from "@/lib/queries";
 import { openExternal } from "@/lib/native";
 import { errorMessage } from "@/lib/rpc";
@@ -128,10 +128,10 @@ export function ReportView() {
           <Tooltip content={rp.totalTooltip}>
             {/* A real link, so the right click offers opening and copying it. */}
             <a
-              href={USAGE_STATS_URL}
+              href={STATS_PAGE_URL}
               onClick={(e) => {
                 e.preventDefault();
-                void openExternal(USAGE_STATS_URL);
+                void openExternal(STATS_PAGE_URL);
               }}
               className={buttonVariants({ variant: "ghost" })}
             >

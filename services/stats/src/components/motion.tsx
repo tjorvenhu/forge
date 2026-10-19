@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
+import { useI18n } from "./locale";
 
 /** True once the element was on screen (and stays true); without IntersectionObserver at once. */
 function useSeen<T extends Element>(ref: RefObject<T | null>): boolean {
@@ -69,6 +70,11 @@ export function AnimatedNumber({ value, format, duration = 1400 }: { value: numb
       <span className="sr-only">{format(value)}</span>
     </>
   );
+}
+
+/** AnimatedNumber as a count in the page language, for server components (they cannot pass `format`). */
+export function CountUp({ value }: { value: number }) {
+  return <AnimatedNumber value={value} format={useI18n().f.count} />;
 }
 
 /** Fades its content in and starts the bar animations inside once it scrolls into view. */

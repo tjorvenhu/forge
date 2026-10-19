@@ -9,7 +9,7 @@
   <a href="https://github.com/vanturis/forge/releases/latest"><img src="https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fforge.vanturis.de%2Fapi%2Fv1%2Fdownloads&query=%24.downloads&label=Downloads&style=for-the-badge&color=21262e" alt="Installer downloads"></a>
   <a href="LICENSE.md"><img src="https://img.shields.io/badge/License-AGPL--3.0-21262e?style=for-the-badge" alt="License AGPL-3.0"></a>
   <img src="https://img.shields.io/badge/Windows-10%20%7C%2011-21262e?style=for-the-badge" alt="Windows 10 and 11">
-  <a href="https://forge.vanturis.de"><img src="https://img.shields.io/badge/FORGE-in%20numbers-21262e?style=for-the-badge&logo=googleanalytics&logoColor=white" alt="FORGE in numbers"></a>
+  <a href="https://forge.vanturis.de/stats"><img src="https://img.shields.io/badge/FORGE-in%20numbers-21262e?style=for-the-badge&logo=googleanalytics&logoColor=white" alt="FORGE in numbers"></a>
 </p>
 
 <p align="center">
@@ -147,7 +147,7 @@ Projects, chat histories and settings stay on your computer (`%APPDATA%\forge`).
   as an npm package (`@embedded-postgres/windows-x64`) from `registry.npmjs.org`.
 - **Usage statistics (only when turned on):** FORGE asks on first start, without an answer they stay off. To
   prevent abuse, the service keeps only a salted hash of the IP address in memory, for one day at most. The
-  totals of all users are public at [forge.vanturis.de](https://forge.vanturis.de).
+  totals of all users are public at [forge.vanturis.de/stats](https://forge.vanturis.de/stats).
 
 More in the [Vanturis privacy policy](https://vanturis.de/datenschutz) (German).
 </details>

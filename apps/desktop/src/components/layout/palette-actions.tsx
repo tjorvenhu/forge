@@ -20,7 +20,7 @@ import type {
   Settings,
   TestDbState,
 } from "@forge/protocol";
-import { IDLE_CLOSE_CHOICES, LANGUAGE_NAMES, LANGUAGES, LONG_SESSION_CHOICES, SUPPORT_LINKS, USAGE_STATS_URL } from "@forge/protocol";
+import { IDLE_CLOSE_CHOICES, LANGUAGE_NAMES, LANGUAGES, LONG_SESSION_CHOICES, SUPPORT_LINKS, STATS_PAGE_URL } from "@forge/protocol";
 import { t } from "@/i18n";
 import { openExternal } from "@/lib/native";
 import { checkInstall, installFromFile, installFull, installUpdate } from "@/lib/app-install";
@@ -601,7 +601,7 @@ export function buildActions(ctx: ActionContext): PaletteEntry[] {
   act("update-check", t.layout.actions.updateCheck, icon(RefreshCw), () => void checkForUpdate(qc), { keywords: "updates suchen version release aktualisieren check update" });
   act("support-open", t.layout.actions.supportOpen, icon(HandHeart), () => ui.setSupportOpen(true), { hint: t.layout.actions.supportHint, keywords: "unterstützen spenden vorschlag feedback herz support donate suggestion heart" });
   act("support-donate", t.layout.actions.supportDonate, icon(HandHeart), () => void openExternal(SUPPORT_LINKS.donate), { hint: "Vanturis", keywords: "spenden spende beitrag zahlen unterstützen danke support donate donation contribution pay thanks" });
-  act("usage-stats-public", t.layout.actions.usageStatsPublic, icon(Gauge), () => void openExternal(USAGE_STATS_URL), {
+  act("usage-stats-public", t.layout.actions.usageStatsPublic, icon(Gauge), () => void openExternal(STATS_PAGE_URL), {
     hint: t.layout.actions.statsHint,
     keywords: "gesamtzahlen statistik zahlen tokens projekte agenten öffentlich gesamt nutzer statistics totals numbers projects agents public users",
   });

@@ -2,7 +2,7 @@
 
 # FORGE-Statistik (services/stats)
 
-Kleiner Dienst unter https://forge.vanturis.de. Er nimmt die anonymen Nutzungszahlen der FORGE-Desktop-App an und zeigt die Summen aller Installationen öffentlich auf der Seite „FORGE in Zahlen“.
+Kleiner Dienst unter https://forge.vanturis.de. Er zeigt die Startseite von FORGE (`/`), nimmt die anonymen Nutzungszahlen der FORGE-Desktop-App an und zeigt die Summen aller Installationen öffentlich unter `/stats` („FORGE in Zahlen“, Englisch und Deutsch).
 
 In der App ist die Statistik standardmäßig aus. Nach dem Einrichtungsassistenten und der Sync-Frage fragt FORGE einmal, ob sie eingeschaltet werden soll; ohne Antwort bleibt sie aus. Meldungen schicken also nur Installationen, deren Nutzer sie eingeschaltet haben. Ein- und ausschalten lässt sie sich jederzeit unter Einstellungen > Über FORGE > Datenschutz; beim Ausschalten löscht FORGE die gesendeten Daten beim Dienst (`DELETE /api/v1/report/<installId>`).
 

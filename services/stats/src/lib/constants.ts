@@ -4,3 +4,8 @@ export const ONLINE_MINUTES = 10;
 /** The "Unterstützen" link of the app and this page; its payments are the donations (lib/donations.ts). */
 export const DONATE_URL = "https://buy.stripe.com/9B64gBc4e5j80vg1WxbV600";
 export const FEEDBACK_URL = "https://github.com/vanturis/forge/issues/new";
+
+export const REPO_URL = "https://github.com/vanturis/forge";
+/** FORGE Setup, the online installer; the release "installer" always holds the current one. */
+export const DOWNLOAD_URL = "https://github.com/vanturis/forge/releases/download/installer/FORGE-Setup.exe";
+export const DOCS_URL = { en: `${REPO_URL}#readme`, de: `${REPO_URL}/blob/main/README.de.md` } as const;

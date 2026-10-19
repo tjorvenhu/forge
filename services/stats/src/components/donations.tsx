@@ -19,16 +19,17 @@ export function SupportButton({ donations }: { donations: Donations | null }) {
   return (
     <>
       <a
-        className="btn btn-primary"
+        className="btn btn-outline btn-support"
         href={DONATE_URL}
         aria-haspopup="dialog"
+        aria-label={m.button}
         onClick={(e) => {
           e.preventDefault();
           dialog.current?.showModal();
         }}
       >
         <Heart aria-hidden />
-        {m.button}
+        <span className="btn-label-wide">{m.button}</span>
       </a>
       <dialog
         ref={dialog}

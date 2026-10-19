@@ -19,7 +19,7 @@ import {
   Volume2,
   XCircle,
 } from "lucide-react";
-import { PUBLISHER, USAGE_STATS_URL, type Diagnostics, type ProfileId, type Settings, type ToolCheck, type EffortLevel } from "@forge/protocol";
+import { PUBLISHER, STATS_PAGE_URL, type Diagnostics, type ProfileId, type Settings, type ToolCheck, type EffortLevel } from "@forge/protocol";
 import { call, keys, useDiagnostics, useRuntimeInfo, useSettings } from "@/lib/queries";
 import { errorMessage } from "@/lib/rpc";
 import { openExternal, pickFolder } from "@/lib/native";
@@ -400,10 +400,10 @@ function AboutSection({ s, save }: { s: Settings; save: Save }) {
             <>
               {sv.usageStatsText}{" "}
               <a
-                href={USAGE_STATS_URL}
+                href={STATS_PAGE_URL}
                 onClick={(e) => {
                   e.preventDefault();
-                  void openExternal(USAGE_STATS_URL);
+                  void openExternal(STATS_PAGE_URL);
                 }}
                 className="underline hover:text-fg"
               >

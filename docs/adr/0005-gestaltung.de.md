@@ -9,10 +9,10 @@ Datum: 2026-10-10 · Status: angenommen (auf Wunsch des Nutzers)
 - **Töne:** per Web Audio API synthetisiert (`src/lib/sounds.ts`), keine Audiodateien. Signale: fertig
   (aufsteigende Terz), Freigabe nötig (zwei kurze Töne), Fehler (fallende Terz). Gestoppte Turns lösen keinen
   Ton aus. Abschaltbar: Einstellungen → „Töne abspielen“ (FORGE-Einstellung `sounds`, Standard an).
-- **Logo:** Amboss mit drei Funken nach Vorlage des Nutzers, als Vektor nachgebaut
-  (`src/assets/logo.svg`; `logo-dark.svg` mit hellerem Metall für dunkle Flächen). App-Icons werden mit
-  `pnpm tauri icon src-tauri/icons/source.svg` erzeugt. Liegt die Originalvorlage als PNG vor, kann sie
-  stattdessen als Icon-Quelle dienen.
+- **Logo:** Amboss mit orangem Funken nach Vorlage des Nutzers (Oktober 2026), als Vektor nachgebaut:
+  `src/assets/logo-mark.svg` ist die Bildmarke, `src/assets/logo.svg` das App-Icon (Marke auf dunkler Kachel
+  mit orangem Leuchtrand). App-Icons erzeugt `pnpm tauri icon src/assets/logo.svg` (im Ordner `apps/desktop`).
+  Die Wortmarke `src/assets/forge-logo.png` setzt die Marke vor den Schriftzug.
 - **Claude-Marke:** Assistenten-Nachrichten zeigen eine nachgezeichnete Claude-Strahlenmarke in Terrakotta
   (`ClaudeMark.tsx`, Token `--color-claude`). Hinweis: Die Marke gehört Anthropic. Für den internen Gebrauch
   unproblematisch; vor einer öffentlichen Verteilung die Anthropic-Markenrichtlinien prüfen. Das

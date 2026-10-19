@@ -1,17 +1,20 @@
-import { getTotals } from "@/lib/db";
-import { StatsPage, type PageState } from "@/components/stats-page";
+import { Suspense } from "react";
+import { Landing, Numbers, NumbersSkeleton } from "@/components/landing";
 import { getLocale } from "@/lib/locale-server";
 
-// Rendered per request; getTotals() caches the sums for five minutes.
+// Language from cookie and header; the numbers stream in behind their skeleton.
 export const dynamic = "force-dynamic";
 
 export default async function Home() {
-  let state: PageState;
-  try {
-    state = { kind: "ok", totals: await getTotals() };
-  } catch (err) {
-    console.error("totals failed:", err instanceof Error ? err.message : err);
-    state = { kind: "error" };
-  }
-  return <StatsPage state={state} locale={await getLocale()} />;
+  const locale = await getLocale();
+  return (
+    <Landing
+      locale={locale}
+      numbers={
+        <Suspense fallback={<NumbersSkeleton locale={locale} />}>
+          <Numbers locale={locale} />
+        </Suspense>
+      }
+    />
+  );
 }

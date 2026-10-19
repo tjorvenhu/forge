@@ -14,5 +14,7 @@ export const PUBLISHER = {
   license: "AGPL-3.0",
 } as const;
 
-/** Statistics service (services/stats): takes the anonymous usage totals, shows the sums of all installations. */
+/** Statistics service and website (services/stats): takes the anonymous usage totals and shows the sums of all installations. */
 export const USAGE_STATS_URL = "https://forge.vanturis.de";
+/** Public page with those sums; the root of USAGE_STATS_URL is the FORGE start page. */
+export const STATS_PAGE_URL = `${USAGE_STATS_URL}/stats`;
