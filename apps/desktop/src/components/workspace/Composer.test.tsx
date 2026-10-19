@@ -419,13 +419,38 @@ describe("dictation", () => {
       await waitFor(() => expect(draft()).toBe("Bitte die Tests ausführen."));
     });
 
-    it("sends nothing while the dictation runs", async () => {
+    it("sends nothing half-written: Enter ends the switched-on dictation and sends once the text is in", async () => {
       const box = await record("Bitte");
       heard("die");
-      fireEvent.keyDown(box, { key: "Enter" });
+      expect(screen.getByText("Diktat eingeschaltet")).toBeTruthy();
       expect((screen.getByRole("button", { name: "Senden" }) as HTMLButtonElement).disabled).toBe(true);
+      fireEvent.keyDown(box, { key: "Enter" });
       expect(callMock.mock.calls.some(([m]) => String(m).startsWith("sessions."))).toBe(false);
-      expect(draft()).toBe("Bitte die");
+      await waitFor(() => expect(callMock).toHaveBeenCalledWith("sessions.start", expect.objectContaining({ prompt: "Bitte die Tests ausführen." })));
+    });
+
+    it("switches dictation on and off with Ctrl+Space, off without sending", async () => {
+      useDrafts.getState().setText(key, "Bitte");
+      setup(<Composer project={project("p1")} session={null} />);
+      const box = screen.getByRole("textbox", { name: "Nachricht an Claude" }) as HTMLTextAreaElement;
+      box.setSelectionRange(5, 5);
+      fireEvent.keyDown(box, { key: " ", ctrlKey: true });
+      await screen.findByText("Diktat eingeschaltet");
+      await act(async () => {});
+      expect(box.getAttribute("placeholder")).toContain("Enter sendet");
+      fireEvent.keyDown(box, { key: " ", ctrlKey: true });
+      await waitFor(() => expect(draft()).toBe("Bitte die Tests ausführen."));
+      expect(callMock).toHaveBeenCalledWith("voice.stop", expect.anything());
+      expect(callMock.mock.calls.some(([m]) => String(m).startsWith("sessions."))).toBe(false);
+      expect(screen.queryByText("Diktat eingeschaltet")).toBeNull();
+    });
+
+    it("discards a switched-on dictation from its bar", async () => {
+      await record("Bitte");
+      heard("die");
+      fireEvent.click(screen.getByRole("button", { name: /verwerfen/ }));
+      expect(draft()).toBe("Bitte");
+      expect(screen.queryByText("Diktat eingeschaltet")).toBeNull();
     });
   });
 

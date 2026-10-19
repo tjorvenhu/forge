@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import type { QueryClient } from "@tanstack/react-query";
-import { Archive, ArrowDown, ArrowLeftRight, ArrowUp, ArrowUpCircle, BookOpen, Bot, CalendarDays, Camera, CloudDownload, Columns2, Combine, Cpu, Database, Download, FilePlus2, FileStack, FileText, FileUp, FlaskConical, FolderDown, FolderOpen, FolderPlus, Gauge, GitBranch, GitBranchPlus, GitCommitHorizontal, GitCompareArrows, GitFork, GitPullRequest, Globe, HandHeart, Languages, Lightbulb, Link2Off, ListChecks, LogIn, LogOut, MessageSquare, MessageSquarePlus, MessageSquareText, MonitorSmartphone, NotebookText, PackageCheck, PanelBottom, PanelRight, Pencil, Phone, PhoneOff, PhoneOutgoing, Pin, PinOff, Play, Power, RefreshCcw, RefreshCw, RotateCcw, Search, Settings2, Shield, ShieldBan, Shrink, Sparkles, Square, SquareArrowOutDownLeft, SquareArrowOutUpRight, SquareTerminal, Timer, ToggleLeft, ToggleRight, Trash2, type LucideIcon, Wand2 } from "lucide-react";
+import { Archive, ArrowDown, ArrowLeftRight, ArrowUp, ArrowUpCircle, BookOpen, Bot, CalendarDays, Camera, CloudDownload, Columns2, Combine, Cpu, Database, Download, FilePlus2, FileStack, FileText, FileUp, FlaskConical, FolderDown, FolderOpen, FolderPlus, Gauge, GitBranch, GitBranchPlus, GitCommitHorizontal, GitCompareArrows, GitFork, GitPullRequest, Globe, HandHeart, Languages, Lightbulb, Link2Off, ListChecks, LogIn, LogOut, MessageSquare, MessageSquarePlus, MessageSquareText, Mic, MonitorSmartphone, NotebookText, PackageCheck, PanelBottom, PanelRight, Pencil, Phone, PhoneOff, PhoneOutgoing, Pin, PinOff, Play, Power, RefreshCcw, RefreshCw, RotateCcw, Search, Settings2, Shield, ShieldBan, Shrink, Sparkles, Square, SquareArrowOutDownLeft, SquareArrowOutUpRight, SquareTerminal, Timer, ToggleLeft, ToggleRight, Trash2, Wand2, type LucideIcon } from "lucide-react";
 import type {
   AppInstallState,
   AppUpdateState,
@@ -32,6 +32,7 @@ import { openChatWindow, pinChatWindow, recallChatWindow, type ChatWindowList } 
 import { setAlwaysOnTop } from "@/lib/window-options";
 import { takeScreenshot } from "@/lib/screenshot";
 import { openChatFindSoon } from "@/lib/chat-find";
+import { toggleDictationSoon } from "@/stores/dictation";
 import { useActivity } from "@/stores/activity";
 import { draftKey, useDrafts } from "@/stores/drafts";
 import { lastEditablePrompt, useMessageEdit } from "@/stores/message-edit";
@@ -326,6 +327,10 @@ export function buildActions(ctx: ActionContext): PaletteEntry[] {
       ui.setWorkspaceTab("chat");
       openChatFindSoon();
     }, { hint: t.layout.actions.ctrl("F"), keywords: "im chat suchen finden suche verlauf nachrichten durchsuchen session projekt befehle find search history messages project commands" });
+    act("dictate-toggle", t.chat.dictation.paletteToggle, icon(Mic), () => {
+      ui.setWorkspaceTab("chat");
+      toggleDictationSoon();
+    }, { hint: t.layout.actions.ctrl(t.chat.dictation.spaceKey), keywords: t.chat.dictation.paletteKeywords });
     if (session) {
       const s = session;
       const current = chatView(s.id);

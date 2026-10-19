@@ -42,3 +42,24 @@ export function useDictationQuiet(ms = 2000): boolean {
   }, [active, ms]);
   return quiet && !active;
 }
+
+/** Sent to a composer's input to switch dictation on or off, as Ctrl+Space there does. */
+export const DICTATION_TOGGLE_EVENT = "forge:dictation-toggle";
+
+/**
+ * Switches dictation in the focused composer (else the main one) once no dialog is open: the command
+ * palette gives the focus back while it closes.
+ */
+export function toggleDictationSoon(deadline = performance.now() + 1500) {
+  if (document.querySelector('[role="dialog"], [role="alertdialog"]')) {
+    if (performance.now() < deadline) requestAnimationFrame(() => toggleDictationSoon(deadline));
+    return;
+  }
+  setTimeout(() => {
+    const focused = document.activeElement instanceof HTMLElement && document.activeElement.matches("[data-composer]") ? document.activeElement : null;
+    const el = focused ?? document.getElementById("composer-input");
+    if (!el) return;
+    el.focus();
+    el.dispatchEvent(new CustomEvent(DICTATION_TOGGLE_EVENT));
+  }, 30);
+}

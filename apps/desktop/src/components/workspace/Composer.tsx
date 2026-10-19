@@ -18,7 +18,8 @@ import { AttachmentList } from "./AttachmentList";
 import { CLEAR_COMMANDS, isClearCommand, SlashCommandMenu, useSlashCommands, type Command } from "./SlashCommandMenu";
 import { InfoCommandDialog, infoCommand, INFO_COMMANDS, type InfoCommand } from "./InfoCommandDialog";
 import { useAttachments } from "./useAttachments";
-import { DictationButton } from "./DictationButton";
+import { DictationButton, DictationToggleBar } from "./DictationButton";
+import { DICTATION_TOGGLE_EVENT } from "@/stores/dictation";
 import { useDictation } from "./useDictation";
 import { compactSession, stopSession, useComposerOptions, useSendMessage } from "./useSendMessage";
 import { composerInputId, useChatSlot } from "./chat-slot";
@@ -235,12 +236,17 @@ export const Composer = memo(function Composer({
   // Project words help the recognition with names it would otherwise spell like everyday words.
   const keyterms = useMemo(() => [...DICTATION_TERMS, project.name, ...project.technologies], [project.name, project.technologies]);
   const dictation = useDictation(insertDictation, keyterms);
+  /** Dictation switched on (Ctrl+Space or the microphone): runs until Enter sends, Ctrl+Space stops or Esc discards. */
+  const [toggled, setToggled] = useState(false);
+  /** Enter ended a switched-on dictation: the message goes out once the text has landed. */
+  const [sendAfter, setSendAfter] = useState(false);
 
   const lastState = useRef(dictation.state);
   useEffect(() => {
     const was = lastState.current;
     lastState.current = dictation.state;
     if (dictation.state === "idle") {
+      if (was !== "idle") setToggled(false);
       // Ended without a result (discarded or nothing recognized): the live words go again.
       const a = anchor.current;
       anchor.current = null;
@@ -267,8 +273,20 @@ export const Composer = memo(function Composer({
     if (ownsField()) writeSpoken(dictation.live, false);
   }, [dictation.live, dictation.state, draftText, ownsField, setText, writeSpoken]);
   const toggleDictation = () => {
-    if (dictation.state === "recording") return void dictation.stop();
-    if (dictation.state === "idle") void dictation.start();
+    if (dictation.state === "recording" || dictation.state === "starting") return void dictation.stop();
+    if (dictation.state !== "idle") return;
+    setToggled(true);
+    void dictation.start();
+  };
+  const sendDictation = () => {
+    setSendAfter(true);
+    if (dictation.state === "recording" || dictation.state === "starting") void dictation.stop();
+  };
+  const discardDictation = () => {
+    holding.current = false;
+    setHeld(false);
+    setSendAfter(false);
+    dictation.cancel();
   };
 
   /**
@@ -303,6 +321,7 @@ export const Composer = memo(function Composer({
     requestAnimationFrame(() => ref.current?.setSelectionRange(before.start, before.end));
     holding.current = true;
     setHeld(true);
+    setToggled(false);
     void dictation.start();
   };
   const onSpaceDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -346,6 +365,24 @@ export const Composer = memo(function Composer({
   const stop = () => {
     if (session) void stopSession(session.id);
   };
+  // The dictated text is in the field once the state is back to idle: now it goes out.
+  const submitNow = useRef(submit);
+  useEffect(() => {
+    submitNow.current = submit;
+  });
+  useEffect(() => {
+    if (!sendAfter || dictation.state !== "idle") return;
+    setSendAfter(false);
+    if (text.trim() || files.length) submitNow.current();
+  }, [sendAfter, dictation.state, text, files.length]);
+  // Command palette: "Diktieren" switches dictation in this composer.
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const onToggle = () => toggleDictation();
+    el.addEventListener(DICTATION_TOGGLE_EVENT, onToggle);
+    return () => el.removeEventListener(DICTATION_TOGGLE_EVENT, onToggle);
+  });
 
   const models = runtime.data?.models.filter((m) => m.value !== "default") ?? [];
   const modelOptions = [
@@ -363,7 +400,7 @@ export const Composer = memo(function Composer({
   const placeholder = dictation.state === "recording" || dictation.state === "starting"
     ? held
       ? t.chat.composer.placeholder.speakHeld
-      : t.chat.composer.placeholder.speakClick
+      : t.chat.composer.placeholder.speakToggle
     : dictation.state === "transcribing"
       ? t.chat.composer.placeholder.transcribing
       : waiting
@@ -395,6 +432,9 @@ export const Composer = memo(function Composer({
       )}
       <InfoCommandDialog command={info} project={project} session={session} onClose={() => setInfo(null)} />
       {session && <LongSessionHint session={session} draftKey={key} disabled={waiting || sending} />}
+      {(toggled || sendAfter) && !held && (
+        <DictationToggleBar state={dictation.state} seconds={dictation.seconds} sending={sendAfter} onSend={sendDictation} onStop={() => void dictation.stop()} onDiscard={discardDictation} />
+      )}
       <div
         className={cn(
           "relative rounded-2xl border bg-surface shadow-lg shadow-black/20 transition-[border-color,background-color,transform] duration-150 ease-snappy",
@@ -457,6 +497,12 @@ export const Composer = memo(function Composer({
           // Focus gone while holding: the key-up never arrives here, so the recording ends now.
           onBlur={releaseHold}
           onKeyDown={(e) => {
+            // Ctrl+Space switches dictation on until Enter sends (or off again); holding space stays as it is.
+            if (e.key === " " && e.ctrlKey && !e.altKey && !e.metaKey && !e.shiftKey && !e.nativeEvent.isComposing) {
+              e.preventDefault();
+              if (!holding.current && !e.repeat) toggleDictation();
+              return;
+            }
             if (e.key === " " && !e.ctrlKey && !e.altKey && !e.metaKey && !e.shiftKey && !e.nativeEvent.isComposing) return onSpaceDown(e);
             // Another key while space is down: fast typing, not a hold.
             if (!holding.current && spaceDown.current) {
@@ -465,9 +511,12 @@ export const Composer = memo(function Composer({
             }
             if (e.key === "Escape" && (dictation.state === "recording" || dictation.state === "starting")) {
               e.preventDefault();
-              holding.current = false;
-              setHeld(false);
-              dictation.cancel();
+              discardDictation();
+              return;
+            }
+            if (toggled && !held && e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing && dictation.state !== "idle") {
+              e.preventDefault();
+              sendDictation();
               return;
             }
             // Suggested templates: Tab takes the chosen (or first) one, the arrows choose, Enter takes one
