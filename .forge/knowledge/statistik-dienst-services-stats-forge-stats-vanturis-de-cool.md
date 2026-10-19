@@ -2,7 +2,7 @@
 title: "Website und Statistik-Dienst services/stats (forge.vanturis.de: Landingpage auf /, Live Stats auf /stats, Coolify)"
 summary: "Next.js-Website in services/stats: Landingpage und Live Stats exakt nach Bildvorlagen des Besitzers. Hintergrundbild, Fenster-Perspektive, Wortmarke, Stats-Karten und Diagramme, Plattformen, Live-Abfrage, Englisch/Deutsch, Coolify, Stolperfallen."
 tags: ["stats","coolify","release","stolperfalle","i18n","ui"]
-updated: "2026-10-19T17:29:00.153Z"
+updated: "2026-10-19T17:30:13.157Z"
 ---
 
 # Website und Statistik-Dienst services/stats
@@ -13,7 +13,7 @@ updated: "2026-10-19T17:29:00.153Z"
 ## Arbeitsweise mit dem Besitzer (wichtig)
 Er liefert Bildvorlagen (1536 x 1024, in den FORGE-Uploads) und verlangt „GENAU SO“; freiere Umsetzungen wurden mehrfach scharf abgelehnt. Nichts ergänzen oder weglassen, außer er sagt es. Prüfen bei 1440 x 900 und 1536 x 1024 (dort direkt mit der Vorlage vergleichbar). Vergleich: Vorlage mit sharp auf gleiche Breite skalieren, gleiche Ausschnitte untereinander legen (sharp aus `services/stats/node_modules/.pnpm/sharp@*/node_modules/sharp`). Animationen im Screenshot abwarten (preview_interact mit wait ~2,5 s), sonst sind Balken halb hoch.
 - Vorgaben: Hintergrund `#111418`, Orange `#ff7a1a` (Tokens in `globals.css`), keine übertriebenen Glows.
-- **Hintergrund aller Seiten**: Bild des Besitzers als `src/assets/background.webp`, eingebunden als `body::before` fixed, `cover`, ohne Filter. Stand 2026-10-19: dunkle geschwungene Flächen mit orange leuchtenden Kanten (Gemini-Bild 2752x1536 aus seinem Downloads-Ordner; Chat-Anhänge liegen nicht immer als Datei vor, dann in `Downloads` nach der neuesten Datei suchen). In voller Größe mit sharp `webp({quality: 95, smartSubsample: true})`, ~270 KB. Er will das Bild „0 % verpixelt“: kein Verkleinern, kein vorab eingebackener Blur (zeigte Blöcke und Streifen in den dunklen Verläufen); CSS-`blur()` fand er zu verwaschen. Eigene SVG-/CSS-Formen hinter dem Fenster hat er abgelehnt; keine eigenen Hintergrundformen bauen.
+- **Hintergrund aller Seiten**: Bild des Besitzers als `src/assets/background.webp` (Stand 2026-10-19: dunkle geschwungene Flächen mit orange leuchtenden Kanten, Gemini-Bild 2752x1536 aus seinem Downloads-Ordner; Chat-Anhänge liegen nicht immer als Datei vor, dann in `Downloads` nach der neuesten Datei suchen). Datei in voller Größe mit sharp `webp({quality: 95, smartSubsample: true})`, ~270 KB. Weichzeichnen macht der Browser: `body::before` fixed, `inset: -60px`, `cover`, `filter: blur(12px)`; so will er es („verwaschen“). Ein in eine kleinere Datei eingebackener Blur sah verpixelt aus (Blöcke und Streifen in den dunklen Verläufen), das lehnt er ab. Eigene SVG-/CSS-Formen hinter dem Fenster hat er ebenfalls abgelehnt.
 
 ## Landingpage (`landing.tsx`, `pages.css`)
 - Kopfzeile 76px: Wortmarke `forge-wordmark.png` (944x184, Marke + „FORGE“ ohne Unterzeile, 34px hoch, Fußzeile 24px). Rechts: Live Stats, GitHub, Unterstützen mit rotem Herz (`SupportButton`, Spenden-Dialog, nur oben), Download (40px). Die geöffnete Seite bekommt eine orange Linie unter dem Link, ohne Pfeil-Icon.

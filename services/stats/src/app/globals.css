@@ -69,15 +69,17 @@ body {
 }
 
 /*
- * The background picture of every page (owner's file) in its full 2752 x 1536 and at WebP quality 95:
- * blurred or downscaled versions showed blocks and bands on the dark gradients.
+ * The background picture of every page (owner's file) in its full 2752 x 1536 at WebP quality 95, washed
+ * out by the browser: a blur baked into a smaller file showed blocks and bands on the dark gradients.
+ * Drawn larger than the screen so the blurred edges stay outside.
  */
 body::before {
   position: fixed;
-  inset: 0;
+  inset: -60px;
   z-index: -1;
   background: url("../assets/background.webp") center / cover no-repeat;
   content: "";
+  filter: blur(12px);
   pointer-events: none;
 }
 
