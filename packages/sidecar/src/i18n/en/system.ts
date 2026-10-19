@@ -3,6 +3,8 @@ import type { system as De } from "../de/system.js";
 export const system: typeof De = {
   git: {
     notInstalled: "git was not found. Please install Git.",
+    notInstalledMac: "git was not found. Install the Apple Command Line Tools in the Terminal with: xcode-select --install",
+    notInstalledLinux: "git was not found. Install Git with your package manager, for example: sudo apt install git",
     commandFailed: (cmd, code) => `git ${cmd} failed (code ${code})`,
     treeUnreadable: "Could not read the state of the project folder.",
     pathOutside: (p) => `Path is outside the project: ${p}`,
@@ -183,6 +185,7 @@ export const system: typeof De = {
     missingFolders: (n) =>
       `${n} project ${n === 1 ? "folder is" : "folders are"} missing on this computer. ${n === 1 ? "The project is" : "The projects are"} back in the list anyway.`,
     phoneSecrets: "Phone passwords and API keys can only be decrypted under the same Windows account they were saved under.",
+    phoneSecretsUnix: "Phone passwords and API keys can only be decrypted on the computer and under the user account they were saved under.",
     restartSessions: "Running sessions pick up changed Claude Code settings only after the session restarts.",
     homelessTemplates: (n) =>
       `${n === 1 ? "One template belongs" : `${n} templates belong`} to a project that is not in FORGE and ${n === 1 ? "was" : "were"} skipped.`,
@@ -248,6 +251,7 @@ export const system: typeof De = {
     alreadyComplete: "FORGE is fully installed.",
     noMatching: "There is no matching installer. Check the installation first.",
     cannotInstallHere: "Installing is not possible here.",
+    reinstall: "Download FORGE again from the release page and reinstall it.",
   },
   devServer: {
     noCommand: "No dev server command known. Enter it in the project settings, e.g. pnpm dev.",
@@ -295,7 +299,8 @@ export const system: typeof De = {
     stalled: (seconds) => `PostgreSQL download aborted: no data for ${seconds} seconds.`,
     checksum: "PostgreSQL checksum does not match. Download discarded.",
     unpackFailed: (why) => `Unpacking failed: ${why}`,
-    noPgCtl: "The PostgreSQL package contains no pg_ctl.exe.",
+    noPgCtl: (file) => `The PostgreSQL package contains no ${file}.`,
+    asRoot: "PostgreSQL does not run as the root user. Start FORGE with your normal user account.",
   },
   policy: {
     gitForcePush: "Force push is blocked in FORGE.",

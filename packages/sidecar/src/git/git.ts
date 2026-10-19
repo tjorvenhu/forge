@@ -37,10 +37,16 @@ export function isArtifactPath(p: string): boolean {
   return ARTIFACT_PATH.test(p.replace(/\\/g, "/"));
 }
 
+/** Missing git, with how to install it where FORGE does not ship it. */
+export function gitMissing(platform: NodeJS.Platform = process.platform): string {
+  const m = tr().system.git;
+  return platform === "darwin" ? m.notInstalledMac : platform === "linux" ? m.notInstalledLinux : m.notInstalled;
+}
+
 export class GitEngine {
-  /** shipped git when available, else the one on PATH */
-  private get gitBin() {
-    return resolveTool("git")?.path ?? "git";
+  /** shipped git when available, else the one on PATH; null when macOS or Linux have none */
+  private get gitBin(): string | null {
+    return resolveTool("git")?.path ?? (process.platform === "win32" ? "git" : null);
   }
 
   private env(): NodeJS.ProcessEnv {
@@ -51,14 +57,16 @@ export class GitEngine {
 
   async exec(cwd: string, args: string[], input?: string, timeoutMs = 60_000, env?: Record<string, string>): Promise<RunResult> {
     // core.longpaths: Git for Windows otherwise fails on paths over 260 characters (deep node_modules).
-    const r = await run(this.gitBin, ["-c", "core.quotepath=false", "-c", "color.ui=false", "-c", "core.longpaths=true", ...args], {
+    const bin = this.gitBin;
+    if (!bin) throw new ForgeError("GIT_NOT_INSTALLED", gitMissing());
+    const r = await run(bin, ["-c", "core.quotepath=false", "-c", "color.ui=false", "-c", "core.longpaths=true", ...args], {
       cwd,
       env: env ? { ...this.env(), ...env } : this.env(),
       input,
       timeoutMs,
     });
     if (r.spawnError) {
-      if (r.spawnError.code === "ENOENT") throw new ForgeError("GIT_NOT_INSTALLED", tr().system.git.notInstalled);
+      if (r.spawnError.code === "ENOENT") throw new ForgeError("GIT_NOT_INSTALLED", gitMissing());
       throw new ForgeError("GIT_FAILED", r.spawnError.message);
     }
     return r;

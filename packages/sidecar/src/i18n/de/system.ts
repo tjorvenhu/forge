@@ -2,6 +2,8 @@
 export const system = {
   git: {
     notInstalled: "git wurde nicht gefunden. Bitte Git installieren.",
+    notInstalledMac: "git wurde nicht gefunden. Installiere die Command Line Tools von Apple im Terminal mit: xcode-select --install",
+    notInstalledLinux: "git wurde nicht gefunden. Installiere Git über die Paketverwaltung, zum Beispiel mit: sudo apt install git",
     commandFailed: (cmd: string | undefined, code: number | null) => `git ${cmd} fehlgeschlagen (Code ${code})`,
     treeUnreadable: "Stand des Projektordners nicht lesbar.",
     pathOutside: (p: string) => `Pfad liegt außerhalb des Projekts: ${p}`,
@@ -183,6 +185,7 @@ export const system = {
     missingFolders: (n: number) =>
       `${n} ${n === 1 ? "Projektordner fehlt" : "Projektordner fehlen"} auf diesem Rechner. ${n === 1 ? "Das Projekt ist" : "Die Projekte sind"} trotzdem wieder in der Liste.`,
     phoneSecrets: "Passwörter und API-Keys des Telefons lassen sich nur unter demselben Windows-Konto entschlüsseln, unter dem sie gespeichert wurden.",
+    phoneSecretsUnix: "Passwörter und API-Keys des Telefons lassen sich nur auf dem Rechner und unter dem Benutzerkonto entschlüsseln, unter dem sie gespeichert wurden.",
     restartSessions: "Laufende Sessions übernehmen geänderte Claude-Code-Einstellungen erst nach einem Neustart der Session.",
     homelessTemplates: (n: number) =>
       `${n === 1 ? "Eine Vorlage gehört" : `${n} Vorlagen gehören`} zu einem Projekt, das nicht in FORGE ist, und ${n === 1 ? "wurde" : "wurden"} übersprungen.`,
@@ -249,6 +252,7 @@ export const system = {
     alreadyComplete: "FORGE ist vollständig installiert.",
     noMatching: "Es gibt keinen passenden Installer. Erst die Installation prüfen.",
     cannotInstallHere: "Installieren geht hier nicht.",
+    reinstall: "Lade FORGE von der Release-Seite neu herunter und installiere es erneut.",
   },
   devServer: {
     noCommand: "Kein Dev-Server-Befehl bekannt. Trage ihn in den Projekt-Einstellungen ein, z. B. pnpm dev.",
@@ -297,7 +301,8 @@ export const system = {
     stalled: (seconds: number) => `Download von PostgreSQL abgebrochen: seit ${seconds} Sekunden keine Daten.`,
     checksum: "Prüfsumme von PostgreSQL stimmt nicht. Download verworfen.",
     unpackFailed: (why: string) => `Entpacken fehlgeschlagen: ${why}`,
-    noPgCtl: "Das PostgreSQL-Paket enthält kein pg_ctl.exe.",
+    noPgCtl: (file: string) => `Das PostgreSQL-Paket enthält kein ${file}.`,
+    asRoot: "PostgreSQL startet nicht unter dem Benutzer root. Starte FORGE mit deinem normalen Benutzerkonto.",
   },
   policy: {
     gitForcePush: "Force-Push ist in FORGE gesperrt.",

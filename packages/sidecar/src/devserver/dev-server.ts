@@ -2,7 +2,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { ForgeError, type DevServerState } from "@forge/protocol";
 import type { ProjectManager } from "../projects/project-manager.js";
 import { detectDevCommand } from "../projects/tech.js";
-import { killTree, onFinished } from "../util/proc.js";
+import { GROUP_SPAWN, killTree, onFinished } from "../util/proc.js";
 import { tr } from "../i18n/index.js";
 
 /** Kept per project; older output is dropped. */
@@ -144,6 +144,7 @@ export class DevServerService {
       shell: true,
       windowsHide: true,
       stdio: ["ignore", "pipe", "pipe"],
+      ...GROUP_SPAWN,
     });
     r.child = child;
     const onData = (d: string) => {

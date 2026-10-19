@@ -1,8 +1,8 @@
 import { createSocket } from "node:dgram";
-import { readFileSync, rmSync } from "node:fs";
+import { readFileSync, rmSync, statSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { SecretStore } from "../src/phone/secrets.js";
+import { keyFile, masterKeyCipher, SecretStore, type KeyBackend } from "../src/phone/secrets.js";
 import { describe, expect, it } from "vitest";
 import { alawToLinear, beep, decodeG711, Downsampler, encodeG711, linearToAlaw, linearToMulaw, mulawToLinear, pcmToWav, rms } from "../src/phone/audio.js";
 import { createHash } from "node:crypto";
@@ -467,7 +467,54 @@ function dtmfPacket(event: number, end: boolean, ts: number): Buffer {
 }
 
 describe("secret store", () => {
-  it("encrypts with DPAPI and reads secrets back in a new store", async () => {
+  /** A key store held in memory, like the keychain; `broken` fails like a locked one. */
+  const memoryKey = (state: { key: Buffer | null; broken?: boolean }): KeyBackend => ({
+    load: async () => {
+      if (state.broken) throw new Error("locked");
+      return state.key;
+    },
+    save: async (key) => {
+      if (state.broken) return false;
+      state.key = key;
+      return true;
+    },
+  });
+
+  it("encrypts with a key from the keychain on macOS and Linux and reads secrets back in a new store", async () => {
+    const dir = path.join(os.tmpdir(), `forge-secrets-aes-${process.pid}`);
+    try {
+      const keychain = { key: null as Buffer | null };
+      await new SecretStore(dir, masterKeyCipher([memoryKey(keychain)])).set("x", "Pässwört ß €$\"'`;&|");
+      expect(keychain.key?.length).toBe(32);
+      const blob = readFileSync(path.join(dir, "x.secret"), "utf8");
+      expect(blob).toMatch(/^aes1:/);
+      expect(blob).not.toContain("Pässwört");
+      expect(await new SecretStore(dir, masterKeyCipher([memoryKey(keychain)])).get("x")).toBe("Pässwört ß €$\"'`;&|");
+      // Another key (another user or computer) cannot read it.
+      await expect(new SecretStore(dir, masterKeyCipher([memoryKey({ key: Buffer.alloc(32, 7) })])).get("x")).rejects.toThrow();
+      // A locked keychain must not lead to a new key while secrets exist.
+      const fallback = keyFile(path.join(dir, "fb"));
+      await expect(new SecretStore(dir, masterKeyCipher([memoryKey({ key: null, broken: true }), fallback], () => true)).get("x")).rejects.toThrow();
+      expect(await fallback.load()).toBeNull();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("falls back to a key file when there is no keychain", async () => {
+    const dir = path.join(os.tmpdir(), `forge-secrets-file-${process.pid}`);
+    try {
+      const backends = () => [keyFile(dir, true), memoryKey({ key: null, broken: true }), keyFile(dir)];
+      await new SecretStore(dir, masterKeyCipher(backends())).set("x", "geheim");
+      expect(readFileSync(path.join(dir, "master.key"), "utf8")).toMatch(/^[A-Za-z0-9+/]{43}=$/);
+      if (process.platform !== "win32") expect(statSync(path.join(dir, "master.key")).mode & 0o777).toBe(0o600);
+      expect(await new SecretStore(dir, masterKeyCipher(backends())).get("x")).toBe("geheim");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it.runIf(process.platform === "win32")("encrypts with DPAPI and reads secrets back in a new store", async () => {
     const dir = path.join(os.tmpdir(), `forge-secrets-${process.pid}`);
     try {
       await new SecretStore(dir).set("x", "Pässwört ß €$\"'`;&|");

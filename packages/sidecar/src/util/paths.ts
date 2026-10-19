@@ -5,9 +5,19 @@ import path from "node:path";
 import { tr } from "../i18n/index.js";
 
 export function dataDir(): string {
-  const base = process.env.FORGE_DATA_DIR || path.join(process.env.APPDATA ?? path.join(os.homedir(), "AppData", "Roaming"), "forge");
+  const base = process.env.FORGE_DATA_DIR || defaultDataDir();
   mkdirSync(base, { recursive: true });
   return base;
+}
+
+/**
+ * FORGE's data folder without FORGE_DATA_DIR: %APPDATA%\forge on Windows, ~/Library/Application
+ * Support/forge on macOS, $XDG_CONFIG_HOME/forge (default ~/.config/forge) on Linux.
+ */
+export function defaultDataDir(env: NodeJS.ProcessEnv = process.env, platform: NodeJS.Platform = process.platform, home = os.homedir()): string {
+  if (platform === "win32") return path.join(env.APPDATA ?? path.join(home, "AppData", "Roaming"), "forge");
+  if (platform === "darwin") return path.join(home, "Library", "Application Support", "forge");
+  return path.join(env.XDG_CONFIG_HOME || path.join(home, ".config"), "forge");
 }
 
 /** ~/.claude.json, or .claude.json inside CLAUDE_CONFIG_DIR when that is set. */
@@ -15,12 +25,12 @@ export function claudeJsonPath(): string {
   return process.env.CLAUDE_CONFIG_DIR ? path.join(process.env.CLAUDE_CONFIG_DIR, ".claude.json") : path.join(os.homedir(), ".claude.json");
 }
 
-/** Key used for duplicate detection: Windows paths are case-insensitive. */
-export function pathKey(p: string): string {
+/** Key used for duplicate detection: paths on Windows and (by default) macOS are case-insensitive. */
+export function pathKey(p: string, platform: NodeJS.Platform = process.platform): string {
   const resolved = path.resolve(p);
   // A root keeps its separator: "C:" alone would mean the current directory on drive C.
   const n = path.parse(resolved).root === resolved ? resolved : resolved.replace(/[\\/]+$/, "");
-  return n.toLowerCase();
+  return platform === "win32" || platform === "darwin" ? n.toLowerCase() : n;
 }
 
 export async function canonicalize(p: string): Promise<string> {
@@ -40,20 +50,53 @@ export function isInside(child: string, parent: string): boolean {
  * Directories that must never be touched by agent tools without an explicit
  * user decision. Used by the policy guard.
  */
-export function sensitivePaths(home = os.homedir()): string[] {
-  const local = process.env.LOCALAPPDATA ?? path.join(home, "AppData", "Local");
-  const roaming = process.env.APPDATA ?? path.join(home, "AppData", "Roaming");
-  return [
+export function sensitivePaths(home = os.homedir(), platform: NodeJS.Platform = process.platform): string[] {
+  const common = [
     path.join(home, ".ssh"),
     path.join(home, ".aws"),
     path.join(home, ".gnupg"),
-    // gh uses this instead of AppData when XDG_CONFIG_HOME is ~/.config (e.g. shared dotfiles).
+    // gh keeps its login here on macOS and Linux, on Windows when XDG_CONFIG_HOME is ~/.config (e.g. shared dotfiles).
     path.join(home, ".config", "gh"),
     path.join(home, ".docker", "config.json"),
     path.join(home, ".kube"),
     path.join(home, ".npmrc"),
     path.join(home, ".git-credentials"),
     path.join(home, ".claude", ".credentials.json"),
+  ];
+  if (platform === "darwin") {
+    const lib = path.join(home, "Library");
+    const support = path.join(lib, "Application Support");
+    return [
+      ...common,
+      path.join(lib, "Keychains"),
+      path.join(lib, "Cookies"),
+      path.join(lib, "Safari"),
+      path.join(lib, "Mail"),
+      path.join(lib, "Messages"),
+      path.join(support, "Google", "Chrome"),
+      path.join(support, "Microsoft Edge"),
+      path.join(support, "BraveSoftware"),
+      path.join(support, "Chromium"),
+      path.join(support, "Firefox", "Profiles"),
+    ];
+  }
+  if (platform !== "win32") {
+    const config = path.join(home, ".config");
+    return [
+      ...common,
+      path.join(config, "google-chrome"),
+      path.join(config, "chromium"),
+      path.join(config, "microsoft-edge"),
+      path.join(config, "BraveSoftware"),
+      path.join(home, ".mozilla"),
+      path.join(home, ".local", "share", "keyrings"),
+      path.join(home, ".pki"),
+    ];
+  }
+  const local = process.env.LOCALAPPDATA ?? path.join(home, "AppData", "Local");
+  const roaming = process.env.APPDATA ?? path.join(home, "AppData", "Roaming");
+  return [
+    ...common,
     path.join(local, "Google", "Chrome", "User Data"),
     path.join(local, "Microsoft", "Edge", "User Data"),
     path.join(local, "BraveSoftware"),

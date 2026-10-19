@@ -11,7 +11,7 @@ import type { ProjectManager } from "../projects/project-manager.js";
 import { tr } from "../i18n/index.js";
 import { pathKey } from "../util/paths.js";
 import { findFreePort, isPortFree } from "../util/ports.js";
-import { killTree, onFinished } from "../util/proc.js";
+import { GROUP_SPAWN, killTree, onFinished } from "../util/proc.js";
 import { worktreeRoot } from "./worktrees.js";
 
 /** Agents' dev servers start here, away from the usual 3000 and 5173 of the main project. */
@@ -151,7 +151,10 @@ function seconds(ms: number): string {
 export const runShell: ShellRunner = (command, cwd, env, onKill, opts) =>
   new Promise((resolve) => {
     // Like the dev server: the command comes from the project (its lockfile), run by the user's shell.
-    const child = opts?.shell === false ? spawn(command, opts.args ?? [], { cwd, env, windowsHide: true, stdio: ["ignore", "pipe", "pipe"] }) : spawn(command, { cwd, env, shell: true, windowsHide: true, stdio: ["ignore", "pipe", "pipe"] });
+    const child =
+      opts?.shell === false
+        ? spawn(command, opts.args ?? [], { cwd, env, windowsHide: true, stdio: ["ignore", "pipe", "pipe"], ...GROUP_SPAWN })
+        : spawn(command, { cwd, env, shell: true, windowsHide: true, stdio: ["ignore", "pipe", "pipe"], ...GROUP_SPAWN });
     let output = "";
     const keep = (d: Buffer) => {
       output = (output + d.toString("utf8")).slice(-OUTPUT_TAIL);

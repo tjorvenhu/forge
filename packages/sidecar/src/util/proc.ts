@@ -1,5 +1,5 @@
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
-import { existsSync } from "node:fs";
+import { accessSync, constants, existsSync, statSync } from "node:fs";
 import path from "node:path";
 
 export interface RunOptions {
@@ -33,11 +33,58 @@ function taskkill(): string {
 }
 
 /**
+ * Spawn option for processes that killTree may have to end with their children. On macOS and Linux
+ * the child leads a process group of its own, so killTree can signal the whole group; on Windows
+ * taskkill /T walks the tree and a detached child would get a console window of its own.
+ */
+export const GROUP_SPAWN: { detached: boolean } = { detached: process.platform !== "win32" };
+
+/** How long a process group gets after SIGTERM before SIGKILL. */
+export const KILL_GRACE_MS = 3_000;
+
+function groupAlive(pid: number): boolean {
+  try {
+    process.kill(-pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Ends the process group a GROUP_SPAWN child leads; false when there is none (spawned without it). */
+function killGroup(pid: number, sync: boolean): boolean {
+  try {
+    process.kill(-pid, "SIGTERM");
+  } catch {
+    return false;
+  }
+  const force = () => {
+    if (!groupAlive(pid)) return;
+    try {
+      process.kill(-pid, "SIGKILL");
+    } catch {
+      // gone meanwhile
+    }
+  };
+  if (sync) {
+    // Shutdown: nothing may stay behind, and there is no event loop left to wait in.
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 200);
+    force();
+  } else setTimeout(force, KILL_GRACE_MS).unref();
+  return true;
+}
+
+/**
  * Ends a process and everything it started. child.kill() only ends the direct process (e.g. the
- * cmd.exe of a shell command or git's wrapper exe), so this goes through taskkill /T.
+ * cmd.exe of a shell command or git's wrapper exe), so this goes through taskkill /T on Windows and
+ * through the process group (GROUP_SPAWN) elsewhere.
  */
 export function killTree(child: ChildProcess, opts: { sync?: boolean } = {}) {
   if (!child.pid || child.exitCode !== null || child.signalCode !== null) return;
+  if (process.platform !== "win32") {
+    if (!killGroup(child.pid, !!opts.sync)) child.kill("SIGTERM");
+    return;
+  }
   const args = ["/pid", String(child.pid), "/T", "/F"];
   if (opts.sync) {
     const r = spawnSync(taskkill(), args, { windowsHide: true, stdio: "ignore" });
@@ -90,6 +137,7 @@ export function run(cmd: string, args: readonly string[], opts: RunOptions = {})
       shell: false,
       windowsHide: true,
       stdio: ["pipe", "pipe", "pipe"],
+      ...GROUP_SPAWN,
     });
     const finish = (r: RunResult) => {
       if (settled) return;
@@ -123,14 +171,29 @@ export function run(cmd: string, args: readonly string[], opts: RunOptions = {})
   });
 }
 
-/** Resolves an executable on PATH without invoking a shell. Only real binaries (.exe, .com). */
-export function which(name: string, envPath = process.env.PATH ?? process.env.Path ?? ""): string | null {
-  for (const dir of envPath.split(path.delimiter)) {
+/**
+ * Resolves an executable on PATH without invoking a shell. On Windows only real binaries (.exe, .com),
+ * elsewhere a file with the plain name and an execute bit.
+ */
+export function which(name: string, envPath = process.env.PATH ?? process.env.Path ?? "", platform: NodeJS.Platform = process.platform): string | null {
+  const exts = platform === "win32" ? [".exe", ".com"] : [""];
+  const delimiter = platform === "win32" ? ";" : ":";
+  for (const dir of envPath.split(delimiter)) {
     if (!dir) continue;
-    for (const ext of [".exe", ".com"]) {
+    for (const ext of exts) {
       const candidate = path.join(dir.replace(/^"|"$/g, ""), name + ext);
-      if (existsSync(candidate)) return candidate;
+      if (platform === "win32" ? existsSync(candidate) : isExecutable(candidate)) return candidate;
     }
   }
   return null;
+}
+
+function isExecutable(file: string): boolean {
+  try {
+    if (!statSync(file).isFile()) return false;
+    accessSync(file, constants.X_OK);
+    return true;
+  } catch {
+    return false;
+  }
 }

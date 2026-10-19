@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import type { AppUpdateState } from "@forge/protocol";
-import { AppUpdateService, changeRange, compareVersions, installedRuntimeKey, MAX_CHANGE_RELEASES, pickRelease, signedOnly, type Release } from "../src/update/app-update.js";
+import { AppUpdateService, canInstallUpdates, changeRange, compareVersions, installedRuntimeKey, MAX_CHANGE_RELEASES, pickRelease, platformAssetPattern, platformCandidates, signedOnly, type Release } from "../src/update/app-update.js";
 import type { ReleaseSource } from "../src/update/github-releases.js";
 import { SIG_MANIFEST, signedMessage } from "../src/update/signature.js";
 
@@ -78,6 +78,7 @@ function service(list: () => Release[] | null | Error, version = "0.1.0", opts: 
   const states: AppUpdateState[] = [];
   const { source, calls } = fakeSource(list, opts);
   const svc = new AppUpdateService({
+    platform: "win32-x64",
     emit: (s) => states.push(s),
     enabled: () => true,
     log: () => {},
@@ -172,6 +173,7 @@ describe("app updates", () => {
     const prompts: string[] = [];
     let ready: "ok" | "no-login" = "no-login";
     const svc = new AppUpdateService({
+      platform: "win32-x64",
       emit: () => {},
       enabled: () => true,
       log: () => {},
@@ -227,6 +229,7 @@ describe("app updates", () => {
     ];
     const fake = fakeSource(() => list, { commits: ["feat: Session-Tabs", "fix: Push", "feat: Diktat live"] });
     const svc = new AppUpdateService({
+      platform: "win32-x64",
       emit: () => {},
       enabled: () => true,
       log: () => {},
@@ -260,6 +263,7 @@ describe("app updates", () => {
     const commits = Array.from({ length: 400 }, (_, i) => `feat: Commit ${i}`);
     const fake = fakeSource(() => list, { commits });
     const svc = new AppUpdateService({
+      platform: "win32-x64",
       emit: () => {},
       enabled: () => true,
       log: () => {},
@@ -371,13 +375,124 @@ describe("app updates", () => {
   it("reads the runtime key of the installation", () => {
     const dir = mkdtempSync(path.join(os.tmpdir(), "forge-runtime-"));
     try {
-      expect(installedRuntimeKey(dir)).toBeNull();
+      expect(installedRuntimeKey(dir, "win32-x64")).toBeNull();
       writeFileSync(path.join(dir, "VERSIONS.json"), JSON.stringify({ node: "24.21.0", git: "2.56.0.2", gh: "2.102.0" }));
-      expect(installedRuntimeKey(dir)).toBe(KEY);
+      expect(installedRuntimeKey(dir, "win32-x64")).toBe(KEY);
+      expect(installedRuntimeKey(dir, "darwin-arm64")).toBe("darwin-arm64_node-24.21.0_gh-2.102.0");
       // Not undefined: that falls back to FORGE_RUNTIME_DIR, which is set when the tests run inside FORGE.
       expect(installedRuntimeKey("")).toBeNull();
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+});
+
+describe("app updates on macOS and Linux", () => {
+  const mac = (v: string) => `FORGE_${v}_darwin-arm64.app.tar.gz`;
+  const linux = (v: string) => `FORGE_${v}_linux-x64.AppImage`;
+  const asset = (name: string) => ({ name, size: INSTALLER.length, digest: DIGEST });
+  /** A release whose signature files list `signed` (FORGE_<v>.sig) and `platformSigned` (FORGE_<v>_<tag>.sig). */
+  function platformRel(tag: string, names: string[], sigs: Record<string, string[]>): Release {
+    return { ...rel(tag, [], DIGEST, false), assets: [...names.map(asset), ...Object.keys(sigs).map((n) => ({ name: n, size: 300, digest: null }))] };
+  }
+  function platformSource(list: Release[], sigs: Record<string, string[]>) {
+    const calls: string[] = [];
+    const source: ReleaseSource = {
+      releases: async () => list,
+      commits: async () => [],
+      download: async (a, file) => {
+        calls.push(`download ${a.name}`);
+        const listed = sigs[a.name!];
+        writeFileSync(file, listed ? JSON.stringify(Object.fromEntries(listed.map((n) => [n, signatureOf(n)]))) : INSTALLER);
+      },
+    };
+    return { source, calls };
+  }
+  function platformService(list: Release[], sigs: Record<string, string[]>, platform: "darwin-arm64" | "linux-x64", installKind: "app" | "appimage" | "system" | "dev", requestInstall?: () => void) {
+    const { source, calls } = platformSource(list, sigs);
+    const svc = new AppUpdateService({ emit: () => {}, enabled: () => true, log: () => {}, currentVersion: "0.1.0", chainFile: chainFile(), source, publicKey: PUBLIC_KEY, platform, installKind, requestInstall });
+    return { svc, calls };
+  }
+
+  it("matches only the update asset of its own platform", () => {
+    expect(platformAssetPattern("darwin-arm64")!.test(mac("0.2.0"))).toBe(true);
+    expect(platformAssetPattern("darwin-x64")!.test(mac("0.2.0"))).toBe(false);
+    expect(platformAssetPattern("darwin-arm64")!.test("FORGE_0.2.0_darwin-arm64.dmg")).toBe(false);
+    expect(platformAssetPattern("darwin-arm64", true)!.test("FORGE_0.2.0_darwin-arm64.dmg")).toBe(true);
+    expect(platformAssetPattern("linux-x64")!.test(linux("0.2.0"))).toBe(true);
+    expect(platformAssetPattern("linux-x64")!.test("FORGE_0.2.0_linux-x64.deb")).toBe(false);
+    expect(platformAssetPattern("linux-x64", true)!.test("FORGE_0.2.0_linux-x64.deb")).toBe(true);
+    expect(platformAssetPattern("win32-x64")).toBeNull();
+  });
+
+  it("pairs an asset with the signature file of its platform first", () => {
+    const r = platformRel("v0.2.0", [mac("0.2.0"), "FORGE_0.2.0_x64-setup.exe"], { "FORGE_0.2.0.sig": [], "FORGE_0.2.0_darwin-arm64.sig": [] });
+    const [mine] = signedOnly([r], "darwin-arm64");
+    expect(mine!.assets!.find((a) => a.name === mac("0.2.0"))?.sig?.name).toBe("FORGE_0.2.0_darwin-arm64.sig");
+    // Windows keeps FORGE_<v>.sig, the platform files are no assets of their own.
+    const [win] = signedOnly([r]);
+    expect(win!.assets!.find((a) => a.name === "FORGE_0.2.0_x64-setup.exe")?.sig?.name).toBe("FORGE_0.2.0.sig");
+    expect(win!.assets!.map((a) => a.name)).not.toContain("FORGE_0.2.0_darwin-arm64.sig");
+  });
+
+  it("skips newer releases without the platform asset and lists the releases with one, newest first", () => {
+    const list = [
+      platformRel("v0.4.0", ["FORGE_0.4.0_x64-setup.exe"], { "FORGE_0.4.0.sig": [] }),
+      platformRel("v0.3.0", [mac("0.3.0")], { "FORGE_0.3.0.sig": [] }),
+      platformRel("v0.2.0", [mac("0.2.0"), linux("0.2.0")], { "FORGE_0.2.0.sig": [] }),
+    ];
+    expect(platformCandidates(signedOnly(list, "darwin-arm64"), "0.1.0", "darwin-arm64").map((c) => c.release.tag_name)).toEqual(["v0.3.0", "v0.2.0"]);
+    expect(platformCandidates(signedOnly(list, "linux-x64"), "0.1.0", "linux-x64").map((c) => c.asset.name)).toEqual([linux("0.2.0")]);
+    expect(platformCandidates(signedOnly(list, "linux-x64"), "0.2.0", "linux-x64")).toEqual([]);
+  });
+
+  it("offers the newest release whose signature file signs the asset, downloads and checks it", async () => {
+    const sigs = {
+      // uploaded after FORGE_0.3.0.sig: no signature for it there, and no platform file
+      "FORGE_0.3.0.sig": ["FORGE_0.3.0_x64-setup.exe"],
+      "FORGE_0.2.0.sig": ["FORGE_0.2.0_x64-setup.exe"],
+      "FORGE_0.2.0_darwin-arm64.sig": [mac("0.2.0")],
+    };
+    const list = [
+      platformRel("v0.4.0", ["FORGE_0.4.0_x64-setup.exe"], {}),
+      platformRel("v0.3.0", ["FORGE_0.3.0_x64-setup.exe", mac("0.3.0")], { "FORGE_0.3.0.sig": [] }),
+      platformRel("v0.2.0", ["FORGE_0.2.0_x64-setup.exe", mac("0.2.0")], { "FORGE_0.2.0.sig": [], "FORGE_0.2.0_darwin-arm64.sig": [] }),
+    ];
+    let asked = 0;
+    const { svc, calls } = platformService(list, sigs, "darwin-arm64", "app", () => asked++);
+    const state = await svc.check();
+    expect(state).toMatchObject({ phase: "available", installable: true, latest: { version: "0.2.0", kind: "full", via: null, since: "0.1.0" } });
+    const ready = await svc.download();
+    expect(ready.phase).toBe("ready");
+    expect(ready.installerPath?.endsWith(mac("0.2.0"))).toBe(true);
+    expect(existsSync(ready.installerPath!)).toBe(true);
+    expect(calls).toContain(`download ${mac("0.2.0")}`);
+    expect(calls).not.toContain(`download ${mac("0.3.0")}`);
+    svc.requestInstall();
+    expect(asked).toBe(1);
+  });
+
+  it("says up to date while no newer release brings the platform asset", async () => {
+    const list = [platformRel("v0.3.0", ["FORGE_0.3.0_x64-setup.exe"], { "FORGE_0.3.0.sig": [] })];
+    const { svc } = platformService(list, { "FORGE_0.3.0.sig": ["FORGE_0.3.0_x64-setup.exe"] }, "linux-x64", "appimage");
+    expect(await svc.check()).toMatchObject({ phase: "uptodate", latest: null, message: null });
+  });
+
+  it("only tells a package installation (.deb) about a new version", async () => {
+    const list = [platformRel("v0.2.0", ["FORGE_0.2.0_linux-x64.deb"], { "FORGE_0.2.0_linux-x64.sig": [] })];
+    const { svc, calls } = platformService(list, {}, "linux-x64", "system", () => {});
+    expect(await svc.check()).toMatchObject({ phase: "available", installable: false, latest: { version: "0.2.0" } });
+    // nothing fetched to check: there is nothing to install
+    expect(calls).toEqual([]);
+    expect(() => svc.requestInstall()).toThrow();
+  });
+
+  it("installs by itself only as .app or AppImage on macOS and Linux, on Windows as before", () => {
+    expect(canInstallUpdates("darwin-arm64", "app")).toBe(true);
+    expect(canInstallUpdates("linux-x64", "appimage")).toBe(true);
+    expect(canInstallUpdates("linux-x64", "system", "/opt/forge/runtime")).toBe(false);
+    expect(canInstallUpdates("darwin-x64", "dev", "/x")).toBe(false);
+    expect(canInstallUpdates("win32-x64", "nsis", "C:/forge/runtime")).toBe(true);
+    expect(canInstallUpdates("win32-x64", null, "")).toBe(false);
   });
 });

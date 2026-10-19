@@ -19,14 +19,15 @@ describe("runtime key", () => {
     try {
       writeFileSync(path.join(dir, "VERSIONS.json"), script("--versions"));
       const key = script("--key");
-      expect(key).toMatch(/^node-[\d.]+_git-[\d.]+_gh-[\d.]+_python-[\d.]+$/);
+      // macOS and Linux ship node and gh only, behind the platform tag.
+      expect(key).toMatch(process.platform === "win32" ? /^node-[\d.]+_git-[\d.]+_gh-[\d.]+_python-[\d.]+$/ : /^(darwin|linux)-(arm64|x64)_node-[\d.]+_gh-[\d.]+$/);
       expect(installedRuntimeKey(dir)).toBe(key);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
   });
 
-  it("keeps the old key for installations without Python, so they get the full installer", () => {
+  it.runIf(process.platform === "win32")("keeps the old key for installations without Python, so they get the full installer", () => {
     const dir = mkdtempSync(path.join(os.tmpdir(), "forge-runtime-"));
     try {
       writeFileSync(path.join(dir, "VERSIONS.json"), JSON.stringify({ node: "24.21.0", git: "2.56.0.2", gh: "2.102.0" }));

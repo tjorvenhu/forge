@@ -8,7 +8,8 @@ import { redact, redactText } from "../src/policy/redact.js";
 
 const home = os.homedir();
 const projectDir = path.join(home, "Projects", "demo app");
-const ctx = { projectDir, confineWritesToProject: false, currentBranch: "feature/x", home };
+// The shell forms below are those of Windows (Git Bash /c/, cmd, PowerShell), on every test platform.
+const ctx = { projectDir, confineWritesToProject: false, currentBranch: "feature/x", home, platform: "win32" as NodeJS.Platform };
 const bash = (command: string, c = ctx) => checkToolUse("Bash", { command }, c)?.rule ?? null;
 
 describe("guard: shell rules (all profiles)", () => {
@@ -167,6 +168,33 @@ describe("guard: shell rules (all profiles)", () => {
       expect(bash(cmd)).toBeNull();
     },
   );
+
+  const unixCtx = (platform: NodeJS.Platform, h: string) => ({ ...ctx, platform, home: h, projectDir: `${h}/code/app` });
+
+  it.each([
+    ["linux", "rm -rf /home/someone", "rm-root"],
+    ["linux", "rm -rf /home/", "rm-root"],
+    ["linux", "rm -rf /root", "rm-root"],
+    ["darwin", "rm -rf /Users/someone/*", "rm-root"],
+    ["darwin", "rm -rf /Users", "rm-root"],
+    ["linux", "cat /home/someone/.npmrc", "sensitive-path"],
+    ["darwin", "rm -rf ~", "rm-root"],
+  ] as const)("knows the homes of macOS and Linux (%s): %s", (platform, cmd, rule) => {
+    expect(bash(cmd, unixCtx(platform, platform === "darwin" ? "/Users/me" : "/home/me"))).toBe(rule);
+  });
+
+  it.each([
+    ["linux", "rm -rf /a"],
+    ["linux", "rm -rf /c/build"],
+    ["linux", "rm -rf /home/me/code/app/dist"],
+    ["darwin", "rm -rf /Users/me/code/app/node_modules"],
+  ] as const)("does not take one-letter folders for drives on macOS and Linux (%s): %s", (platform, cmd) => {
+    expect(bash(cmd, unixCtx(platform, platform === "darwin" ? "/Users/me" : "/home/me"))).toBeNull();
+  });
+
+  it("still treats /a as a Git Bash drive on Windows", () => {
+    expect(bash("rm -rf /a")).toBe("rm-root");
+  });
 
   it.each([
     ["Git push --force", "git-force-push"],

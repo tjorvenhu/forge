@@ -253,7 +253,7 @@ describe("merge of the synced items", () => {
       key: "https://gitlab.example.com/team/shop",
       cloneUrl: "https://gitlab.example.com/team/shop.git",
     });
-    expect(projectKey("C:\\x\\Notizen", null)).toEqual({ key: "folder:notizen", cloneUrl: null });
+    expect(projectKey(path.join("x", "Notizen"), null)).toEqual({ key: "folder:notizen", cloneUrl: null });
   });
 });
 

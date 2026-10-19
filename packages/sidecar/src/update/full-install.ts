@@ -19,6 +19,7 @@ import {
   type Release,
 } from "./app-update.js";
 import type { ReleaseSource } from "./github-releases.js";
+import { platformTag, type PlatformTag } from "../util/platform.js";
 import { tr } from "../i18n/index.js";
 
 /** Release page for a manual download. */
@@ -37,15 +38,30 @@ const TOOL_FILES: Record<string, string> = {
   gh: path.join("gh", "bin", "gh.exe"),
   python: path.join("python", "python.exe"),
 };
-const TOOL_LABELS: Record<string, string> = { node: "Node.js", git: "Git", gh: "GitHub CLI", python: "Python" };
+/** macOS and Linux ship node and gh only; git and python come from the system. */
+const UNIX_TOOL_FILES: Record<string, string> = {
+  node: path.join("node", "bin", "node"),
+  gh: path.join("gh", "bin", "gh"),
+};
+const SIDECAR_FILE = path.join("sidecar", "sidecar.mjs");
+const TOOL_LABELS: Record<string, string> = { node: "Node.js", git: "Git", gh: "GitHub CLI", python: "Python", sidecar: "Sidecar" };
 /** Checked when the build does not know its runtime key. */
 const DEFAULT_TOOLS = ["node", "git", "gh"];
+const UNIX_DEFAULT_TOOLS = ["node", "gh"];
 
 const toolLabel = (tool: string) => TOOL_LABELS[tool] ?? tool;
 
-/** Tools and versions of a runtime key like node-24.21.0_git-2.56.0.2_gh-2.102.0; null for another format. */
+/** The platform tag a macOS or Linux runtime key starts with (darwin-arm64_node-…_gh-…). */
+const KEY_PLATFORM = /^(win32|darwin|linux)-(x64|arm64)$/i;
+
+/**
+ * Tools and versions of a runtime key like node-24.21.0_git-2.56.0.2_gh-2.102.0 (Windows) or
+ * darwin-arm64_node-24.21.0_gh-2.102.0 (macOS, Linux); null for another format.
+ */
 export function parseRuntimeKey(key: string): Array<{ tool: string; version: string }> | null {
-  const parts = key.split("_").map((p) => /^([a-z][a-z0-9]*)-(.+)$/i.exec(p));
+  const raw = key.split("_");
+  if (raw.length > 1 && KEY_PLATFORM.test(raw[0]!)) raw.shift();
+  const parts = raw.map((p) => /^([a-z][a-z0-9]*)-(.+)$/i.exec(p));
   if (!parts.length || parts.some((m) => !m)) return null;
   return parts.map((m) => ({ tool: m![1]!.toLowerCase(), version: m![2]! }));
 }
@@ -55,13 +71,17 @@ export function parseRuntimeKey(key: string): Array<{ tool: string; version: str
  * for. Every tool named in the key needs its program and its version in VERSIONS.json, so a tool
  * added to the runtime later (python) counts without a change here.
  */
-export function checkRuntime(dir: string | null, expected: string | null): InstallProblem[] {
+export function checkRuntime(dir: string | null, expected: string | null, platform: PlatformTag = platformTag()): InstallProblem[] {
   if (!dir || !existsSync(dir)) return [{ part: "runtime", kind: "missing", label: tr().system.fullInstall.runtimeMissing }];
+  const windows = platform === "win32-x64";
+  const files = windows ? TOOL_FILES : UNIX_TOOL_FILES;
   const wanted = expected ? parseRuntimeKey(expected) : null;
   const problems: InstallProblem[] = [];
-  for (const tool of wanted?.map((w) => w.tool) ?? DEFAULT_TOOLS) {
-    if (!existsSync(path.join(dir, TOOL_FILES[tool] ?? tool))) problems.push({ part: tool, kind: "missing", label: tr().system.fullInstall.toolMissing(toolLabel(tool)) });
+  for (const tool of wanted?.map((w) => w.tool) ?? (windows ? DEFAULT_TOOLS : UNIX_DEFAULT_TOOLS)) {
+    if (!existsSync(path.join(dir, files[tool] ?? tool))) problems.push({ part: tool, kind: "missing", label: tr().system.fullInstall.toolMissing(toolLabel(tool)) });
   }
+  // The desktop shell of macOS and Linux runs the sidecar from the runtime folder as well.
+  if (!windows && !existsSync(path.join(dir, SIDECAR_FILE))) problems.push({ part: "sidecar", kind: "missing", label: tr().system.fullInstall.toolMissing(toolLabel("sidecar")) });
   let versions: Record<string, unknown>;
   try {
     versions = JSON.parse(readFileSync(path.join(dir, "VERSIONS.json"), "utf8")) as Record<string, unknown>;
@@ -74,7 +94,7 @@ export function checkRuntime(dir: string | null, expected: string | null): Insta
       const have = typeof versions[w.tool] === "string" ? (versions[w.tool] as string) : null;
       if (have !== w.version) problems.push({ part: w.tool, kind: "outdated", label: have ? tr().system.fullInstall.toolOutdated(toolLabel(w.tool), have, w.version) : tr().system.fullInstall.toolVersionMissing(toolLabel(w.tool), w.version) });
     }
-  } else if (expected && installedRuntimeKey(dir) !== expected) {
+  } else if (expected && installedRuntimeKey(dir, platform) !== expected) {
     problems.push({ part: "runtime", kind: "outdated", label: tr().system.fullInstall.runtimeOutdated });
   }
   return problems;
@@ -161,6 +181,8 @@ export interface FullInstallDeps {
   chainFile?: string;
   /** asks the main window to run the installation (the desktop shell runs installers) */
   requestInstall?: () => void;
+  /** platform of the installation (default: this one) */
+  platform?: PlatformTag;
 }
 
 /**
@@ -177,11 +199,13 @@ export class FullInstallService {
   private readonly releases: ReleaseSource;
   private timer: ReturnType<typeof setTimeout> | null = null;
   private busy: Promise<AppInstallState> | null = null;
+  private readonly platform: PlatformTag;
   /** what download() fetches */
   private source: { kind: "github"; tag: string; asset: Asset; then: string | null } | { kind: "local"; path: string } | null = null;
 
   constructor(private readonly d: FullInstallDeps) {
     const env = process.env.FORGE_RUNTIME_EXPECTED;
+    this.platform = d.platform ?? platformTag();
     this.expected = d.expectedRuntime !== undefined ? d.expectedRuntime : env || null;
     this.chainFile = d.chainFile ?? defaultChainFile();
     this.downloadDir = d.downloadDir ?? path.join(updateDir(), FULL_DIR);
@@ -236,8 +260,16 @@ export class FullInstallService {
     return this.once(async () => {
       if (!this.state.checkable) return this.state;
       const runtimeDir = this.d.runtimeDir ? this.d.runtimeDir() : process.env.FORGE_RUNTIME_DIR || null;
-      const problems = checkRuntime(runtimeDir, this.expected);
+      const problems = checkRuntime(runtimeDir, this.expected, this.platform);
       const checkedAt = new Date().toISOString();
+      if (this.platform !== "win32-x64") {
+        // macOS and Linux have no repair installer: every update brings the whole app.
+        if (problems.length && this.state.complete !== false) this.d.log(`Installation unvollständig: ${problems.map((p) => p.label).join(", ")}`);
+        this.source = null;
+        const message = problems.length ? tr().system.fullInstall.reinstall : null;
+        this.set({ complete: !problems.length, problems, phase: problems.length ? "none" : "idle", installer: null, installerPath: null, received: null, canDownload: false, checkedAt, message });
+        return this.state;
+      }
       const canDownload = this.canDownload();
       if (!problems.length) {
         this.source = null;
@@ -299,6 +331,7 @@ export class FullInstallService {
   /** A setup.exe the user picked; refused when it brings another runtime than this version needs. */
   useLocal(file: string): Promise<AppInstallState> {
     return this.once(async () => {
+      if (this.platform !== "win32-x64") throw new ForgeError("VALIDATION", tr().system.fullInstall.reinstall);
       const name = path.basename(file);
       const version = INSTALLER_FILE.exec(name)?.[1];
       if (!version) throw new ForgeError("VALIDATION", tr().system.fullInstall.notInstaller);
@@ -322,7 +355,7 @@ export class FullInstallService {
     if (this.state.phase === "ready" && this.state.installerPath && existsSync(this.state.installerPath)) return this.state;
     const src = this.source;
     if (!src) {
-      this.set({ phase: "error", message: tr().system.fullInstall.noneFound });
+      this.set({ phase: "error", message: this.platform === "win32-x64" ? tr().system.fullInstall.noneFound : tr().system.fullInstall.reinstall });
       return this.state;
     }
     this.set({ phase: "downloading", received: 0, message: null, installerPath: null });

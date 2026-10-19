@@ -25,7 +25,7 @@ import type { ContentBlock } from "./attachments.js";
 import { toPlanUsage } from "./usage.js";
 import { AsyncQueue } from "./async-queue.js";
 import { meterKey, tokenMeter } from "./token-meter.js";
-import { killTree, PIPE_GRACE_MS } from "../util/proc.js";
+import { GROUP_SPAWN, killTree, PIPE_GRACE_MS } from "../util/proc.js";
 import { tr } from "../i18n/index.js";
 import { de } from "../i18n/de/index.js";
 
@@ -365,7 +365,7 @@ export class AgentSdkRuntime implements ClaudeRuntime {
     let stderrTail = "";
     let stderrClosed: Promise<void> = Promise.resolve();
     const spawnClaude = (o: SpawnOptions): SpawnedProcess => {
-      const c = spawn(o.command, o.args, { cwd: o.cwd, env: o.env, signal: o.signal, stdio: ["pipe", "pipe", "pipe"], windowsHide: true });
+      const c = spawn(o.command, o.args, { cwd: o.cwd, env: o.env, signal: o.signal, stdio: ["pipe", "pipe", "pipe"], windowsHide: true, ...GROUP_SPAWN });
       c.stderr.setEncoding("utf8");
       c.stderr.on("data", (d: string) => {
         stderrTail = (stderrTail + d).slice(-STDERR_TAIL_CHARS);

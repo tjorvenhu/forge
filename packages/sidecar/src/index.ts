@@ -35,6 +35,9 @@ rl.on("line", (line) => {
 rl.on("close", () => void shutdown(0));
 process.on("SIGTERM", () => void shutdown(0));
 process.on("SIGINT", () => void shutdown(0));
+// macOS and Linux: children run in process groups of their own (GROUP_SPAWN), so nothing but this
+// shutdown ends them; a closed terminal of a development start must lead here as well.
+if (process.platform !== "win32") process.on("SIGHUP", () => void shutdown(0));
 process.on("uncaughtException", (e) => {
   log(`uncaughtException: ${e.stack ?? e.message}`);
 });

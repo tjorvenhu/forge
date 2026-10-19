@@ -19,9 +19,17 @@ export const SIG_SUFFIX = ".sig";
  */
 export const SIG_MANIFEST = /^FORGE_[^_]+\.sig$/i;
 
+/**
+ * Signatures of the macOS and Linux assets of a release, which may be uploaded after the Windows ones:
+ * FORGE_<v>_<platform tag>.sig, the same JSON as SIG_MANIFEST. Group 1 is the platform tag.
+ */
+export const PLATFORM_SIG_MANIFEST = /^FORGE_[^_]+_(win32-x64|darwin-arm64|darwin-x64|linux-x64)\.sig$/i;
+
+export const isSigManifest = (name: string) => SIG_MANIFEST.test(name) || PLATFORM_SIG_MANIFEST.test(name);
+
 /** The signature of `name` from the content of a signature file; "" when it holds none for it. */
 export function signatureFrom(sigFileName: string, content: string, name: string): string {
-  if (!SIG_MANIFEST.test(sigFileName)) return content;
+  if (!isSigManifest(sigFileName)) return content;
   try {
     const entry = (JSON.parse(content) as Record<string, unknown>)[name];
     return typeof entry === "string" ? entry : "";

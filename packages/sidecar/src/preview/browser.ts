@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, 
 import os from "node:os";
 import path from "node:path";
 import { tr } from "../i18n/index.js";
-import { killTree } from "../util/proc.js";
+import { GROUP_SPAWN, killTree } from "../util/proc.js";
 
 /** Where Edge and Chrome live, Edge first: it ships with every Windows 11. */
 export function browserCandidates(env: NodeJS.ProcessEnv = process.env, platform: NodeJS.Platform = process.platform): string[] {
@@ -14,9 +14,22 @@ export function browserCandidates(env: NodeJS.ProcessEnv = process.env, platform
       ...roots.map((r) => path.win32.join(r, "Google", "Chrome", "Application", "chrome.exe")),
     ];
   }
-  if (platform === "darwin")
-    return ["/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge", "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", "/Applications/Chromium.app/Contents/MacOS/Chromium"];
-  return ["/usr/bin/microsoft-edge", "/usr/bin/google-chrome", "/usr/bin/google-chrome-stable", "/usr/bin/chromium", "/usr/bin/chromium-browser"];
+  if (platform === "darwin") {
+    const apps = ["Microsoft Edge.app/Contents/MacOS/Microsoft Edge", "Google Chrome.app/Contents/MacOS/Google Chrome", "Chromium.app/Contents/MacOS/Chromium", "Brave Browser.app/Contents/MacOS/Brave Browser"];
+    const home = env.HOME || os.homedir();
+    return [...apps.map((a) => path.posix.join("/Applications", a)), ...apps.map((a) => path.posix.join(home, "Applications", a))];
+  }
+  return [
+    "/usr/bin/microsoft-edge",
+    "/usr/bin/microsoft-edge-stable",
+    "/usr/bin/google-chrome",
+    "/usr/bin/google-chrome-stable",
+    "/usr/bin/chromium",
+    "/usr/bin/chromium-browser",
+    "/snap/bin/chromium",
+    "/usr/bin/brave-browser",
+    "/var/lib/flatpak/exports/bin/org.chromium.Chromium",
+  ];
 }
 
 export function findBrowser(env: NodeJS.ProcessEnv = process.env, platform: NodeJS.Platform = process.platform, exists: (p: string) => boolean = existsSync): string | null {
@@ -228,7 +241,7 @@ export async function launchBrowser(exe: string, timeoutMs = 20_000, keepProfile
   ];
   let child: ChildProcess;
   try {
-    child = spawn(exe, args, { stdio: "ignore", windowsHide: true });
+    child = spawn(exe, args, { stdio: "ignore", windowsHide: true, ...GROUP_SPAWN });
   } catch (e) {
     removeProfile(profile);
     throw new Error(tr().core.preview.browserStartFailed(e instanceof Error ? e.message : String(e)), { cause: e });

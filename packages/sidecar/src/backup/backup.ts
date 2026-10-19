@@ -274,7 +274,7 @@ export class BackupService {
     if (want.has("phone") && data.phone.settings) {
       this.d.db.setPhoneSettings(JSON.parse(data.phone.settings) as Record<string, unknown>);
       this.d.secrets.restoreEncrypted(data.phone.secrets);
-      if (Object.keys(data.phone.secrets).length) notes.push(tr().system.backup.phoneSecrets);
+      if (Object.keys(data.phone.secrets).length) notes.push(process.platform === "win32" ? tr().system.backup.phoneSecrets : tr().system.backup.phoneSecretsUnix);
       restored.push("phone");
     }
     if (want.has("claude")) {

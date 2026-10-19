@@ -1,7 +1,7 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { run } from "../src/util/proc.js";
+import { run, which } from "../src/util/proc.js";
 import { runUserCommand } from "../src/util/shell.js";
 import { tempDir } from "./helpers.js";
 
@@ -60,6 +60,31 @@ describe("process helpers", () => {
       if (pid && alive(pid)) process.kill(pid);
     }
   }, 20_000);
+
+  it("finds programs on PATH the way the platform runs them", () => {
+    const t = tempDir("forge-which-");
+    try {
+      mkdirSync(t.dir, { recursive: true });
+      const bin = path.join(t.dir, "bin");
+      mkdirSync(bin);
+      if (process.platform === "win32") {
+        writeFileSync(path.join(bin, "tool.exe"), "");
+        writeFileSync(path.join(bin, "script.cmd"), "");
+        expect(which("tool", bin)).toBe(path.join(bin, "tool.exe"));
+        // a .cmd is no real binary
+        expect(which("script", bin)).toBeNull();
+      } else {
+        writeFileSync(path.join(bin, "tool"), "#!/bin/sh\n", { mode: 0o755 });
+        writeFileSync(path.join(bin, "plain"), "", { mode: 0o644 });
+        mkdirSync(path.join(bin, "dir"));
+        expect(which("tool", `/nonexistent:${bin}`)).toBe(path.join(bin, "tool"));
+        expect(which("plain", bin)).toBeNull();
+        expect(which("dir", bin)).toBeNull();
+      }
+    } finally {
+      t.cleanup();
+    }
+  });
 
   describe("user commands", () => {
     let t: ReturnType<typeof tempDir>;

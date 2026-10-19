@@ -8,8 +8,14 @@ import { tr } from "../i18n/index.js";
 import { locateClaude, sessionEnv } from "./environment.js";
 import { compareVersions, fetchLatestVersion, parseVersion, readUpdateChannel } from "./update.js";
 
-// Official installer (https://docs.claude.com/en/docs/claude-code/setup).
+// Official installers (https://docs.claude.com/en/docs/claude-code/setup).
 const INSTALL_ARGS = ["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "irm https://claude.ai/install.ps1 | iex"];
+const INSTALL_SH = "curl -fsSL https://claude.ai/install.sh | bash";
+
+/** Program and arguments of the official installer on this platform. */
+export function installCommand(platform: NodeJS.Platform = process.platform): { command: string; args: string[] } {
+  return platform === "win32" ? { command: "powershell.exe", args: INSTALL_ARGS } : { command: "/bin/bash", args: ["-c", INSTALL_SH] };
+}
 
 /** Strips OSC 8 hyperlinks and other escape sequences from CLI output. */
 export function stripAnsi(s: string): string {
@@ -33,11 +39,18 @@ const BROWSER_POLL_MS = 150;
  * nobody has to paste a code; FORGE opens it itself. With BROWSER=none the CLI only prints the page
  * that shows a code to paste.
  */
-export function browserRelay(): { program: string; read: () => string | null; dispose: () => void } {
+export function browserRelay(platform: NodeJS.Platform = process.platform): { program: string; read: () => string | null; dispose: () => void } {
   const dir = mkdtempSync(path.join(os.tmpdir(), "forge-login-"));
   const file = path.join(dir, "url.txt");
-  const program = path.join(dir, "open.cmd");
-  writeFileSync(program, `@echo off\r\n>"${file}" echo %*\r\n`);
+  let program: string;
+  if (platform === "win32") {
+    program = path.join(dir, "open.cmd");
+    writeFileSync(program, `@echo off\r\n>"${file}" echo %*\r\n`);
+  } else {
+    program = path.join(dir, "open.sh");
+    const quoted = `'${file.replace(/'/g, `'\\''`)}'`;
+    writeFileSync(program, `#!/bin/sh\nprintf '%s\\n' "$*" > ${quoted}\n`, { mode: 0o755 });
+  }
   return {
     program,
     read: () => {
@@ -119,7 +132,8 @@ export class ClaudeSetupService {
   install(): ClaudeSetupState {
     this.ensureIdle();
     this.set({ task: "install", phase: "running", url: null, log: [], message: null });
-    const child = spawn("powershell.exe", INSTALL_ARGS, { shell: false, windowsHide: true, stdio: ["ignore", "pipe", "pipe"] });
+    const { command, args } = installCommand();
+    const child = spawn(command, args, { shell: false, windowsHide: true, stdio: ["ignore", "pipe", "pipe"] });
     this.proc = child;
     child.stdout?.on("data", (d: Buffer) => this.appendLog(d.toString()));
     child.stderr?.on("data", (d: Buffer) => this.appendLog(d.toString()));

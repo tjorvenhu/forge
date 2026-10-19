@@ -10,6 +10,8 @@ import { signedMessage } from "../src/update/signature.js";
 
 const KEY = "node-24.21.0_git-2.56.0.2_gh-2.102.0";
 const OLD = "node-22.0.0_git-2.50.0_gh-2.90.0";
+/** The tests below are about the Windows layout, on every test platform. */
+const W = "win32-x64" as const;
 /** big enough to count as an installer, starts like a Windows program */
 const INSTALLER = Buffer.concat([Buffer.from("MZ"), Buffer.alloc(1_100_000, 1)]);
 const DIGEST = `sha256:${createHash("sha256").update(INSTALLER).digest("hex")}`;
@@ -64,17 +66,17 @@ describe("incomplete installations", () => {
 
   it("finds what an unpacked update zip or an older runtime lacks", () => {
     const full = { node: "24.21.0", git: "2.56.0.2", gh: "2.102.0" };
-    expect(checkRuntime(runtime(full), KEY)).toEqual([]);
+    expect(checkRuntime(runtime(full), KEY, W)).toEqual([]);
     // The update zip brings only the exe and the sidecar.
-    expect(checkRuntime(runtime(null, ["node", "git", "gh"]), KEY).map((p) => p.label)).toEqual(["Node.js fehlt", "Git fehlt", "GitHub CLI fehlt", "Versionsliste der mitgelieferten Programme fehlt"]);
-    expect(checkRuntime(null, KEY)).toMatchObject([{ part: "runtime", kind: "missing" }]);
-    expect(checkRuntime(runtime({ ...full, git: "2.50.0" }), KEY)).toEqual([{ part: "git", kind: "outdated", label: "Git 2.50.0 statt 2.56.0.2" }]);
+    expect(checkRuntime(runtime(null, ["node", "git", "gh"]), KEY, W).map((p) => p.label)).toEqual(["Node.js fehlt", "Git fehlt", "GitHub CLI fehlt", "Versionsliste der mitgelieferten Programme fehlt"]);
+    expect(checkRuntime(null, KEY, W)).toMatchObject([{ part: "runtime", kind: "missing" }]);
+    expect(checkRuntime(runtime({ ...full, git: "2.50.0" }), KEY, W)).toEqual([{ part: "git", kind: "outdated", label: "Git 2.50.0 statt 2.56.0.2" }]);
     // A tool added to the runtime later (python) counts as soon as the key names it.
-    expect(checkRuntime(runtime(full), `${KEY}_python-3.13.1`)).toEqual([{ part: "python", kind: "missing", label: "Python fehlt" }]);
-    expect(checkRuntime(runtime({ ...full, python: "3.13.1" }), `${KEY}_python-3.13.1`)).toEqual([]);
+    expect(checkRuntime(runtime(full), `${KEY}_python-3.13.1`, W)).toEqual([{ part: "python", kind: "missing", label: "Python fehlt" }]);
+    expect(checkRuntime(runtime({ ...full, python: "3.13.1" }), `${KEY}_python-3.13.1`, W)).toEqual([]);
     // Without a key in the build only the programs count.
-    expect(checkRuntime(runtime({ node: "1", git: "1", gh: "1" }), null)).toEqual([]);
-    expect(checkRuntime(runtime(full, ["gh"]), null).map((p) => p.part)).toEqual(["gh"]);
+    expect(checkRuntime(runtime({ node: "1", git: "1", gh: "1" }), null, W)).toEqual([]);
+    expect(checkRuntime(runtime(full, ["gh"]), null, W).map((p) => p.part)).toEqual(["gh"]);
   });
 
   it("picks the newest installer for the runtime, also an older release, and the small update after it", () => {
@@ -161,6 +163,7 @@ describe("FullInstallService", () => {
       chainFile,
       requestInstall: opts.requestInstall,
       publicKey: PUBLIC_KEY,
+      platform: W,
       source: {
         releases: async () => {
           calls.push("releases");
@@ -258,5 +261,62 @@ describe("FullInstallService", () => {
     const complete = service({ runtimeDir: runtime({ node: "24.21.0", git: "2.56.0.2", gh: "2.102.0" }), requestInstall: () => asked++ });
     await complete.svc.check();
     expect(() => complete.svc.requestInstall()).toThrow(/vollständig installiert/);
+  });
+});
+
+describe("installations on macOS and Linux", () => {
+  const UNIX_KEY = "darwin-arm64_node-24.21.0_gh-2.102.0";
+  function unixRuntime(skip: string[] = []) {
+    const dir = tmp("forge-rt-unix-");
+    for (const [tool, rel] of Object.entries({ node: "node/bin/node", gh: "gh/bin/gh", sidecar: "sidecar/sidecar.mjs" })) {
+      if (skip.includes(tool)) continue;
+      mkdirSync(path.dirname(path.join(dir, rel)), { recursive: true });
+      writeFileSync(path.join(dir, rel), "x");
+    }
+    writeFileSync(path.join(dir, "VERSIONS.json"), JSON.stringify({ node: "24.21.0", gh: "2.102.0" }));
+    return dir;
+  }
+
+  it("reads the key with its platform tag", () => {
+    expect(parseRuntimeKey(UNIX_KEY)).toEqual([
+      { tool: "node", version: "24.21.0" },
+      { tool: "gh", version: "2.102.0" },
+    ]);
+  });
+
+  it("needs node, gh and the sidecar, but no git or python", () => {
+    expect(checkRuntime(unixRuntime(), UNIX_KEY, "darwin-arm64")).toEqual([]);
+    expect(checkRuntime(unixRuntime(), null, "linux-x64")).toEqual([]);
+    expect(checkRuntime(unixRuntime(["gh", "sidecar"]), UNIX_KEY, "darwin-arm64").map((p) => p.part)).toEqual(["gh", "sidecar"]);
+  });
+
+  it("reports what is missing but looks for no installer: every update brings the whole app", async () => {
+    const calls: string[] = [];
+    const svc = new FullInstallService({
+      emit: () => {},
+      log: () => {},
+      checkable: true,
+      expectedRuntime: UNIX_KEY,
+      runtimeDir: () => unixRuntime(["node"]),
+      platform: "darwin-arm64",
+      localDirs: () => [],
+      source: {
+        releases: async () => {
+          calls.push("releases");
+          return [];
+        },
+        commits: async () => [],
+        download: async () => {
+          calls.push("download");
+        },
+      },
+    });
+    expect(await svc.check()).toMatchObject({ complete: false, phase: "none", canDownload: false, installer: null, message: expect.stringMatching(/Release-Seite/) });
+    expect(calls).toEqual([]);
+    await expect(svc.useLocal("/tmp/FORGE_0.1.90_x64-setup.exe")).rejects.toThrow(/Release-Seite/);
+    expect(() => svc.requestInstall()).toThrow(/Release-Seite/);
+
+    const complete = new FullInstallService({ emit: () => {}, log: () => {}, checkable: true, expectedRuntime: UNIX_KEY, runtimeDir: () => unixRuntime(), platform: "linux-x64" });
+    expect(await complete.check()).toMatchObject({ complete: true, problems: [], phase: "idle", message: null });
   });
 });

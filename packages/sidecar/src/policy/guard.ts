@@ -15,6 +15,8 @@ export interface GuardContext {
   extraWriteDirs?: string[];
   /** rules the user switched off in the settings */
   disabledRules?: ReadonlySet<PolicyRuleId>;
+  /** defaults to process.platform; decides which shell forms of home and root folders count */
+  platform?: NodeJS.Platform;
 }
 
 export interface GuardViolation {
@@ -94,14 +96,16 @@ const ANY_SEP = String.raw`[\\/]+`;
 
 /**
  * The home folder as a shell writes it: variables of cmd, PowerShell and Bash, the literal path in
- * either slash style and its Git Bash, WSL and Cygwin forms. Other users' folders count as well.
+ * either slash style and its Git Bash, WSL and Cygwin forms. Other users' folders count as well, on
+ * macOS and Linux also those below /Users and /home.
  */
-function homeSource(home: string): string {
+function homeSource(home: string, platform: NodeJS.Platform = process.platform): string {
   const forms = [
     String.raw`~|\$HOME|\$\{HOME\}|\$USERPROFILE|\$\{USERPROFILE\}|\$env:(?:USERPROFILE|HOME)|\$\{env:(?:USERPROFILE|HOME)\}|%USERPROFILE%|%HOMEDRIVE%%HOMEPATH%`,
     String.raw`[A-Za-z]:${ANY_SEP}Users${ANY_SEP}[^\\/\s"']+`,
     String.raw`(?:/mnt|/cygdrive)?/[A-Za-z]/Users/[^\\/\s"']+`,
   ];
+  if (platform !== "win32") forms.push(String.raw`/(?:Users|home)/[^\\/\s"']+`, "/root");
   const parts = home.split(/[\\/]+/).filter(Boolean);
   const drive = /^([A-Za-z]):$/.exec(parts[0] ?? "")?.[1];
   const rest = parts.slice(drive ? 1 : 0).map(escapeRe).join(ANY_SEP);
@@ -115,9 +119,11 @@ function homeSource(home: string): string {
  * trailing separator or wildcard is cut off: /, /*, ~, ~/, $HOME, ${HOME}, C:\, C:/*, /c/ (Git Bash),
  * /mnt/c, $env:USERPROFILE\*, C:\Users\name, /c/Users/name.
  */
-function rootTargetPattern(home: string): RegExp {
+function rootTargetPattern(home: string, platform: NodeJS.Platform = process.platform): RegExp {
+  // A one-letter folder like /a is a Git Bash drive only on Windows; elsewhere /Users and /home hold every home.
+  const local = platform === "win32" ? String.raw`\/[A-Za-z]` : String.raw`\/Users|\/home`;
   return new RegExp(
-    String.raw`^(|${homeSource(home)}|\$env:(HOMEDRIVE|SystemDrive)|%(HOMEDRIVE|SystemDrive)%|[A-Za-z]:|\/[A-Za-z]|\/mnt\/[A-Za-z]|\/cygdrive\/[A-Za-z]|[A-Za-z]:${ANY_SEP}Users|(?:/mnt|/cygdrive)?/[A-Za-z]/Users)$`,
+    String.raw`^(|${homeSource(home, platform)}|\$env:(HOMEDRIVE|SystemDrive)|%(HOMEDRIVE|SystemDrive)%|[A-Za-z]:|${local}|\/mnt\/[A-Za-z]|\/cygdrive\/[A-Za-z]|[A-Za-z]:${ANY_SEP}Users|(?:/mnt|/cygdrive)?/[A-Za-z]/Users)$`,
     "i",
   );
 }
@@ -246,8 +252,8 @@ const SENSITIVE_SEGMENTS =
 /** Credential files that are only sensitive in the home folder (a project's own .npmrc is fine). */
 const HOME_SECRET_FILE = String.raw`[\\/]+(\.npmrc|\.netrc|\.pgpass|\.docker[\\/]+config\.json|\.config[\\/]+gh)(?=[\\/\s"']|$)`;
 
-function homeSecretPattern(home: string): RegExp {
-  return new RegExp(String.raw`(${homeSource(home)})["']?${HOME_SECRET_FILE}`, "i");
+function homeSecretPattern(home: string, platform: NodeJS.Platform = process.platform): RegExp {
+  return new RegExp(String.raw`(${homeSource(home, platform)})["']?${HOME_SECRET_FILE}`, "i");
 }
 
 function pathFields(input: Record<string, unknown>): string[] {
@@ -341,8 +347,8 @@ function searchViolation(toolName: string, input: Record<string, unknown>, ctx: 
  * Returns the first violation or null.
  */
 function shellViolation(command: string, ctx: GuardContext, home: string, on: (rule: PolicyRuleId) => boolean): GuardViolation | null {
-  const root = rootTargetPattern(home);
-  const secret = homeSecretPattern(home);
+  const root = rootTargetPattern(home, ctx.platform);
+  const secret = homeSecretPattern(home, ctx.platform);
   for (const line of commandLines(command)) {
     for (const r of GIT_RULES) {
       if (on(r.rule) && r.re.test(line)) return { rule: r.rule, message: r.message() };

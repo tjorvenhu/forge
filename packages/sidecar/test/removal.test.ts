@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, realpathSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -52,12 +52,30 @@ describe("folderDeleteBlocker", () => {
     for (const dir of blocked) expect(folderDeleteBlocker(dir, [], [], home, env), dir).not.toBeNull();
     expect(folderDeleteBlocker(path.join(home, ".forge-worktrees", "app", "feature"), [], [], home, env)).toBeNull();
     expect(folderDeleteBlocker(path.join(home, "OneDrive - Firma", "Projekte", "app"), [], [], home, env)).toBeNull();
+  });
 
-    const sys = { ...env, ProgramFiles: "C:\\Program Files", SystemRoot: "C:\\Windows", LOCALAPPDATA: path.join(home, "AppData", "Local") };
+  it.runIf(process.platform === "win32")("protects program and system folders of Windows", () => {
+    const env = { CLAUDE_CONFIG_DIR: path.join(home, "claude-config"), OneDrive: path.join(home, "OneDrive - Firma") };
+    const sys ={ ...env, ProgramFiles: "C:\\Program Files", SystemRoot: "C:\\Windows", LOCALAPPDATA: path.join(home, "AppData", "Local") };
     expect(folderDeleteBlocker("C:\\Program Files", [], [], home, sys)).not.toBeNull();
     expect(folderDeleteBlocker("C:\\Program Files\\nodejs", [], [], home, sys)).not.toBeNull();
     expect(folderDeleteBlocker("C:\\Windows\\System32", [], [], home, sys)).not.toBeNull();
     expect(folderDeleteBlocker(path.join(home, "AppData", "Local", "Programs", "app"), [], [], home, sys)).not.toBeNull();
+  });
+
+  it.runIf(process.platform !== "win32")("protects system folders and the homes of macOS and Linux", () => {
+    for (const platform of ["darwin", "linux"] as const) {
+      for (const dir of ["/usr", "/usr/local/lib/app", "/etc", "/home", "/Users", "/opt/tool"]) {
+        expect(folderDeleteBlocker(dir, [], [], home, {}, platform), `${platform} ${dir}`).not.toBeNull();
+      }
+      expect(folderDeleteBlocker(path.join(home, "code", "app"), [], [], home, {}, platform)).toBeNull();
+      // Temp projects stay deletable, even under /private/var on macOS.
+      expect(folderDeleteBlocker(path.join(os.tmpdir(), "forge-x", "app"), [], [], home, {}, platform)).toBeNull();
+      expect(folderDeleteBlocker(path.join(realpathSync(os.tmpdir()), "forge-x", "app"), [], [], home, {}, platform)).toBeNull();
+    }
+    for (const dir of ["/System/Library", "/Applications/Some.app", "/Library/Caches/app", path.join(home, "Library", "x")]) {
+      expect(folderDeleteBlocker(dir, [], [], home, {}, "darwin"), dir).not.toBeNull();
+    }
   });
 });
 

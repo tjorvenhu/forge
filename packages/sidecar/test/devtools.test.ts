@@ -6,7 +6,7 @@ import { GitEngine } from "../src/git/git.js";
 import { ProjectManager } from "../src/projects/project-manager.js";
 import { connectionUrl, dbNameFor, DevToolsService, FIRST_DB_PORT, parseDotenv } from "../src/devtools/dev-tools.js";
 import { DevEnvironment } from "../src/devtools/environment.js";
-import { failureReason, POSTGRES, TestDbService } from "../src/devtools/test-db.js";
+import { failureReason, POSTGRES, postgresPackage, TestDbService } from "../src/devtools/test-db.js";
 import { DevServerService } from "../src/devserver/dev-server.js";
 import type { WorktreeSetup } from "../src/automation/worktree-setup.js";
 import { covering, KnowledgeStore, overlaps, parseEntry, rank, serializeEntry, slugifyId, titleOverlap } from "../src/knowledge/knowledge.js";
@@ -335,6 +335,16 @@ describe("services", () => {
       'could not bind IPv4 address "127.0.0.1": Address already in use',
     );
     expect(failureReason("LOG: alles gut")).toBeNull();
+  });
+
+  it("pins one PostgreSQL package per platform, all of the same build", () => {
+    expect(postgresPackage("win32-x64")).toMatchObject({ url: "https://registry.npmjs.org/@embedded-postgres/windows-x64/-/windows-x64-17.10.0-beta.17.tgz", size: 37_794_841 });
+    const all = (["win32-x64", "darwin-arm64", "darwin-x64", "linux-x64"] as const).map((t) => postgresPackage(t));
+    expect(new Set(all.map((p) => p.build)).size).toBe(1);
+    expect(new Set(all.map((p) => p.integrity)).size).toBe(4);
+    for (const p of all) expect(p.integrity).toMatch(/^sha512-[A-Za-z0-9+/]{86}==$/);
+    expect(postgresPackage("linux-x64").url).toContain("@embedded-postgres/linux-x64/-/linux-x64-");
+    expect(POSTGRES.build).toBe(all[0]!.build);
   });
 
   // Real PostgreSQL: set FORGE_TEST_PG_BIN to the bin folder of the binaries (see devtools/test-db.ts).

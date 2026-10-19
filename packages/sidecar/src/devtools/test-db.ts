@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { createWriteStream, existsSync, readFileSync, writeFileSync } from "node:fs";
-import { copyFile, cp, mkdir, readdir, rename, rm, writeFile } from "node:fs/promises";
+import { chmod, copyFile, cp, mkdir, readdir, rename, rm, symlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
@@ -9,19 +9,39 @@ import { ForgeError, type TestDbConfig, type TestDbState } from "@forge/protocol
 import { tr } from "../i18n/index.js";
 import { run } from "../util/proc.js";
 import { findFreePort, isPortFree } from "../util/ports.js";
+import { platformTag, type PlatformTag } from "../util/platform.js";
 import { connectionUrl, type DevToolsService } from "./dev-tools.js";
 
+const PG_VERSION = "17.10";
+const PG_BUILD = "17.10.0-beta.17";
+
 /**
- * PostgreSQL for Windows x64 from the npm package @embedded-postgres/windows-x64 (official EDB
- * binaries, repackaged). Pinned with its sha512 from the registry; a new version needs a new hash.
+ * PostgreSQL from the npm packages @embedded-postgres/<platform> (official EDB binaries on Windows,
+ * zonky builds elsewhere, repackaged). Pinned with their sha512 from the registry; a new version
+ * needs new hashes for every platform.
  */
-export const POSTGRES = {
-  version: "17.10",
-  build: "17.10.0-beta.17",
-  url: "https://registry.npmjs.org/@embedded-postgres/windows-x64/-/windows-x64-17.10.0-beta.17.tgz",
-  integrity: "sha512-q6xIETTkv67i1QlTWz1LAKb3Z+vG2V3qrp+BjLEWhCQ9jE4hbbsQ/J/3wiOPFLJbuwak7CfHC9EUJG7txAbGKw==",
-  size: 37_794_841,
-} as const;
+const PG_PACKAGES: Record<PlatformTag, { pkg: string; integrity: string; size: number }> = {
+  "win32-x64": { pkg: "windows-x64", integrity: "sha512-q6xIETTkv67i1QlTWz1LAKb3Z+vG2V3qrp+BjLEWhCQ9jE4hbbsQ/J/3wiOPFLJbuwak7CfHC9EUJG7txAbGKw==", size: 37_794_841 },
+  "darwin-arm64": { pkg: "darwin-arm64", integrity: "sha512-E2dxhSllrcyAJBHuvgTrBTx2BaPlX2vvjXClPKHxfwBezk+nTZ01uAEraKiRJMpzHSCyN8J1dTjKh4q/uTsBLQ==", size: 51_141_714 },
+  "darwin-x64": { pkg: "darwin-x64", integrity: "sha512-gXk65MIyttD/PWo6NDSmu/n4vzPcqZQmxVWjEKuecwlyGmWO984AZ3Ljb7F0bwPvXhqcovH4FGN4ydr0fGeJxg==", size: 51_141_708 },
+  "linux-x64": { pkg: "linux-x64", integrity: "sha512-hU4Sgna19ixDP/l3P/zkHhQ9B0JDV39qA97RNz55QcngeRjFC5/1G36LZjODVJ84kVJHUTQMmly7nzWO8js8kg==", size: 23_500_205 },
+};
+
+/** The PostgreSQL package for a platform. */
+export function postgresPackage(tag: PlatformTag = platformTag()) {
+  const p = PG_PACKAGES[tag];
+  return {
+    version: PG_VERSION,
+    build: PG_BUILD,
+    url: `https://registry.npmjs.org/@embedded-postgres/${p.pkg}/-/${p.pkg}-${PG_BUILD}.tgz`,
+    integrity: p.integrity,
+    size: p.size,
+  } as const;
+}
+
+export const POSTGRES = postgresPackage();
+
+const EXE = process.platform === "win32" ? ".exe" : "";
 
 export const DB_USER = "forge";
 const START_TIMEOUT_S = 60;
@@ -63,9 +83,30 @@ export interface TestDbDeps {
 export type SeedResult = "copied" | "exists" | "parent-running" | "none";
 
 function tarExe(): string {
+  if (process.platform !== "win32") return "tar";
   const root = process.env.SystemRoot ?? process.env.SYSTEMROOT ?? "C:\\Windows";
   const abs = path.join(root, "System32", "tar.exe");
   return existsSync(abs) ? abs : "tar";
+}
+
+/**
+ * npm packages cannot hold symlinks, so the macOS and Linux packages list the library links in
+ * native/pg-symlinks.json (their postinstall script recreates them). Paths there start with native/.
+ */
+async function hydrateSymlinks(native: string) {
+  let links: Array<{ source: string; target: string }> = [];
+  try {
+    links = JSON.parse(readFileSync(path.join(native, "pg-symlinks.json"), "utf8")) as typeof links;
+  } catch {
+    return;
+  }
+  const inside = (p: string) => path.join(native, ...p.split("/").slice(1));
+  for (const { source, target } of links) {
+    const to = inside(target);
+    await rm(to, { force: true });
+    await symlink(path.relative(path.dirname(to), inside(source)), to).catch(() => {});
+  }
+  for (const name of await readdir(path.join(native, "bin")).catch(() => [] as string[])) await chmod(path.join(native, "bin", name), 0o755).catch(() => {});
 }
 
 /** Last lines of PostgreSQL's log that explain a failed start ("FATAL", "could not bind" ...). */
@@ -143,7 +184,7 @@ export class TestDbService {
   }
 
   private bin(name: string) {
-    return path.join(this.binDir, `${name}.exe`);
+    return path.join(this.binDir, `${name}${EXE}`);
   }
 
   get installed(): boolean {
@@ -248,7 +289,9 @@ export class TestDbService {
         const cfg = this.config(key);
         if (!existsSync(path.join(f.data, "PG_VERSION"))) await this.initCluster(f, cfg.password);
         await this.ensureDatabase(f, cfg.name);
-        const r = await run(this.bin("pg_ctl"), ["start", "-D", f.data, "-l", f.log, "-w", "-t", String(START_TIMEOUT_S), "-o", `-p ${cfg.port} -h 127.0.0.1`], {
+        // No Unix socket: its default folder may not exist or be writable, and TCP on 127.0.0.1 is enough.
+        const socket = process.platform === "win32" ? "" : " -k ''";
+        const r = await run(this.bin("pg_ctl"), ["start", "-D", f.data, "-l", f.log, "-w", "-t", String(START_TIMEOUT_S), "-o", `-p ${cfg.port} -h 127.0.0.1${socket}`], {
           timeoutMs: (START_TIMEOUT_S + 15) * 1000,
         });
         if (r.code !== 0) {
@@ -372,6 +415,8 @@ export class TestDbService {
   }
 
   private async initCluster(f: ReturnType<TestDbService["folder"]>, password: string) {
+    // initdb and postgres refuse to run as root on macOS and Linux.
+    if (process.getuid?.() === 0) throw new Error(tr().system.testDb.asRoot);
     await rm(f.data, { recursive: true, force: true });
     await mkdir(f.base, { recursive: true });
     const pwfile = path.join(f.base, "pw.tmp");
@@ -476,7 +521,8 @@ export class TestDbService {
       const x = await run(tarExe(), ["-xzf", tgz, "-C", tmp], { timeoutMs: 300_000 });
       if (x.code !== 0) throw new Error(tr().system.testDb.unpackFailed(x.stderr.trim() || tr().system.testDb.exitCode(x.code ?? "?")));
       const native = path.join(tmp, "package", "native");
-      if (!existsSync(path.join(native, "bin", "pg_ctl.exe"))) throw new Error(tr().system.testDb.noPgCtl);
+      if (!existsSync(path.join(native, "bin", `pg_ctl${EXE}`))) throw new Error(tr().system.testDb.noPgCtl(`pg_ctl${EXE}`));
+      if (process.platform !== "win32") await hydrateSymlinks(native);
       await rm(root, { recursive: true, force: true });
       await rename(native, root);
       progress(1);

@@ -1,13 +1,14 @@
 import { createHash } from "node:crypto";
 import { createReadStream, existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { mkdir, readdir, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { ForgeError, type AppChangelog, type AppUpdateState } from "@forge/protocol";
 import { run } from "../util/proc.js";
 import { resolveTool } from "../util/tools.js";
 import { GitHubReleases, type ReleaseAsset, type ReleaseSource } from "./github-releases.js";
-import { SIG_MANIFEST, SIG_SUFFIX, signatureFrom, verifySignature } from "./signature.js";
+import { isSigManifest, PLATFORM_SIG_MANIFEST, SIG_MANIFEST, SIG_SUFFIX, signatureFrom, verifySignature } from "./signature.js";
+import { installKind, platformTag, type InstallKind, type PlatformTag } from "../util/platform.js";
 import { tr } from "../i18n/index.js";
 
 /** Repository whose GitHub releases carry the FORGE installer (built by .github/workflows/release.yml). */
@@ -103,12 +104,13 @@ const bare = (tag: string) => tag.replace(/^v/i, "");
  * Key of the installed runtime (bundled node, git, gh, python), as runtimeKey in
  * scripts/prepare-runtime.mjs builds it. Installations from before Python have the key without it;
  * no new small update matches that, so they get the full installer. null in a development build
- * without bundled runtime.
+ * without bundled runtime. macOS and Linux ship node and gh only: <platform tag>_node-<v>_gh-<v>.
  */
-export function installedRuntimeKey(dir = process.env.FORGE_RUNTIME_DIR): string | null {
+export function installedRuntimeKey(dir = process.env.FORGE_RUNTIME_DIR, platform: PlatformTag = platformTag()): string | null {
   if (!dir) return null;
   try {
     const v = JSON.parse(readFileSync(path.join(dir, "VERSIONS.json"), "utf8")) as { node?: string; git?: string; gh?: string; python?: string };
+    if (platform !== "win32-x64") return v.node && v.gh ? `${platform}_node-${v.node}_gh-${v.gh}` : null;
     if (!v.node || !v.git || !v.gh) return null;
     return `node-${v.node}_git-${v.git}_gh-${v.gh}${v.python ? `_python-${v.python}` : ""}`;
   } catch {
@@ -154,6 +156,35 @@ export function pickRelease(
     if (hit) return hit;
   }
   return null;
+}
+
+/**
+ * The asset a macOS or Linux installation updates itself with: the complete app as
+ * FORGE_<v>_<tag>.app.tar.gz (macOS) or FORGE_<v>_linux-x64.AppImage. Null on Windows, which keeps
+ * installers and small updates. `notifyOnly` also accepts the files for a manual install (.dmg,
+ * .deb), which is all an installation updated by its package manager can point to.
+ */
+export function platformAssetPattern(tag: PlatformTag, notifyOnly = false): RegExp | null {
+  if (tag === "darwin-arm64" || tag === "darwin-x64") return new RegExp(`^FORGE_[^_]+_${tag}\\.(?:app\\.tar\\.gz${notifyOnly ? "|dmg" : ""})$`, "i");
+  if (tag === "linux-x64") return new RegExp(`^FORGE_[^_]+_linux-x64\\.(?:AppImage${notifyOnly ? "|deb" : ""})$`, "i");
+  return null;
+}
+
+/**
+ * Releases newer than `current` that carry the platform's asset, newest first, each with that asset.
+ * Releases without it are skipped: the macOS and Linux builds may be uploaded after the Windows ones.
+ */
+export function platformCandidates(releases: Release[], current: string, tag: PlatformTag, notifyOnly = false): Array<{ release: Release; asset: Asset }> {
+  const pattern = platformAssetPattern(tag, notifyOnly);
+  if (!pattern) return [];
+  const out: Array<{ release: Release; asset: Asset }> = [];
+  for (const rel of newerReleases(releases, current)) {
+    const assets = (rel.assets ?? []).filter((a) => a.name && pattern.test(a.name));
+    // The update asset before a .dmg or .deb of the same release.
+    const a = assets.find((x) => !/\.(dmg|deb)$/i.test(x.name!)) ?? assets[0];
+    if (a?.name) out.push({ release: rel, asset: { ...a, name: a.name } });
+  }
+  return out;
 }
 
 /** Published releases newer than `current`, newest first. */
@@ -248,12 +279,14 @@ export interface Release {
  * Unsigned assets (releases from before the signing) are never offered. Whether the signature file
  * really holds a valid one for the asset, fetchSigned checks.
  */
-export function signedOnly(releases: Release[]): Release[] {
+export function signedOnly(releases: Release[], platform: PlatformTag = "win32-x64"): Release[] {
   return releases.map((r) => {
     const all = r.assets ?? [];
     const manifest = all.find((a) => a.name && SIG_MANIFEST.test(a.name));
-    const sigs = new Map(all.filter((a) => a !== manifest && a.name?.endsWith(SIG_SUFFIX)).map((a) => [a.name!.slice(0, -SIG_SUFFIX.length), a]));
-    const sigOf = (a: ReleaseAsset) => sigs.get(a.name!) ?? manifest;
+    // macOS and Linux: the signature file of the platform first, its assets may come after FORGE_<v>.sig.
+    const own = platform === "win32-x64" ? undefined : all.find((a) => a.name && PLATFORM_SIG_MANIFEST.exec(a.name)?.[1]?.toLowerCase() === platform);
+    const sigs = new Map(all.filter((a) => a !== manifest && a !== own && a.name?.endsWith(SIG_SUFFIX)).map((a) => [a.name!.slice(0, -SIG_SUFFIX.length), a]));
+    const sigOf = (a: ReleaseAsset) => sigs.get(a.name!) ?? own ?? manifest;
     return { ...r, assets: all.filter((a) => a.name && !a.name.endsWith(SIG_SUFFIX) && sigOf(a)).map((a) => ({ ...a, sig: sigOf(a) })) };
   });
 }
@@ -322,6 +355,20 @@ export interface UpdateDeps {
   chainFile?: string;
   /** asks the main window to install the offered update (the desktop shell runs installers) */
   requestInstall?: () => void;
+  /** platform whose assets are offered (default: this one) */
+  platform?: PlatformTag;
+  /** how FORGE was installed (default: FORGE_INSTALL_KIND); system and dev only learn of a new version */
+  installKind?: InstallKind | null;
+}
+
+/**
+ * Whether FORGE can install an update itself. Windows as ever: an installed app has its bundled
+ * runtime. macOS and Linux: the .app and the AppImage replace themselves; a package (.deb) is updated
+ * by the package manager and a development build not at all.
+ */
+export function canInstallUpdates(tag: PlatformTag, kind: InstallKind | null, runtimeDir = process.env.FORGE_RUNTIME_DIR): boolean {
+  if (tag === "win32-x64" || !kind) return !!runtimeDir;
+  return kind === "app" || kind === "appimage";
 }
 
 /** Phases in which an update is offered and can be installed. */
@@ -384,8 +431,11 @@ export class AppUpdateService {
   private readonly chainAtStart: boolean;
   private started = false;
   private checked = false;
+  private readonly platform: PlatformTag;
 
   constructor(private readonly d: UpdateDeps) {
+    this.platform = d.platform ?? platformTag();
+    const kind = d.installKind !== undefined ? d.installKind : installKind();
     this.chainFile = d.chainFile ?? defaultChainFile();
     this.source = d.source ?? defaultReleaseSource();
     this.chainAtStart = existsSync(this.chainFile);
@@ -396,7 +446,7 @@ export class AppUpdateService {
       installerPath: null,
       autoInstall: false,
       // The installed app runs with its bundled runtime; a development build has none.
-      installable: d.installable ?? !!process.env.FORGE_RUNTIME_DIR,
+      installable: d.installable ?? canInstallUpdates(this.platform, kind),
       checkedAt: null,
       message: null,
     };
@@ -465,16 +515,20 @@ export class AppUpdateService {
           this.set({ phase: "uptodate", latest: null, checkedAt: new Date().toISOString(), message: tr().system.update.noRelease });
           return this.state;
         }
-        const list = signedOnly(found as Release[]);
+        const list = signedOnly(found as Release[], this.platform);
         const checkedAt = new Date().toISOString();
-        const pick = pickRelease(list, this.state.currentVersion, (this.d.runtimeKey ?? installedRuntimeKey)());
-        const range = changeRange(list, this.state.currentVersion);
+        const windows = this.platform === "win32-x64";
+        const pick = windows ? pickRelease(list, this.state.currentVersion, (this.d.runtimeKey ?? installedRuntimeKey)()) : await this.pickPlatform(list);
+        // macOS and Linux: the changes up to the offered release, not up to a newer one without their asset.
+        const upTo = !windows && pick ? pick.newest.tag_name! : null;
+        const range = changeRange(upTo ? list.filter((r) => !r.tag_name || compareVersions(r.tag_name, upTo) <= 0) : list, this.state.currentVersion);
         const chained = this.takeChain(pick);
         if (!pick || !range) {
           this.asset = null;
           this.range = null;
           // Newer releases, but none this installation can take: say so instead of "up to date".
-          const blocked = range ? bare(range.releases[0]!.tag_name!) : null;
+          // macOS and Linux simply wait for a release that brings their asset.
+          const blocked = range && windows ? bare(range.releases[0]!.tag_name!) : null;
           const message = blocked ? tr().system.update.needsFullInstaller(blocked) : null;
           this.set({ phase: "uptodate", latest: null, installerPath: null, autoInstall: false, checkedAt, message });
           return this.state;
@@ -513,6 +567,32 @@ export class AppUpdateService {
         this.checked = true;
       }
     });
+  }
+
+  /**
+   * macOS and Linux: the newest release with the platform's asset whose signature file really signs
+   * it (FORGE_<v>.sig does not list assets uploaded after it). Otherwise the next older one.
+   */
+  private async pickPlatform(list: Release[]): Promise<ReturnType<typeof pickRelease>> {
+    const notifyOnly = !this.state.installable;
+    for (const c of platformCandidates(list, this.state.currentVersion, this.platform, notifyOnly)) {
+      if (!notifyOnly && !(await this.signs(c.asset))) continue;
+      return { newest: c.release, release: c.release, asset: c.asset, kind: "full" };
+    }
+    return null;
+  }
+
+  /** Whether the signature file paired with `asset` holds a signature for it; a file of its own always does. */
+  private async signs(asset: Asset): Promise<boolean> {
+    if (!asset.sig?.name || !isSigManifest(asset.sig.name)) return !!asset.sig;
+    const dir = await mkdtemp(path.join(os.tmpdir(), "forge-sigcheck-"));
+    try {
+      const file = path.join(dir, "manifest.sig");
+      await this.source.download(asset.sig, file, 60_000);
+      return !!signatureFrom(asset.sig.name, readFileSync(file, "utf8"), asset.name);
+    } finally {
+      await rm(dir, { recursive: true, force: true }).catch(() => {});
+    }
   }
 
   /**

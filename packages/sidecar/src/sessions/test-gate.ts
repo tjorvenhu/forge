@@ -116,15 +116,15 @@ function cdTarget(segment: string, from: string): string | null {
   const m = /^(cd|pushd|set-location|sl)\s+(.+)$/i.exec(stripNoise(segment));
   if (!m) return null;
   let target = unquote(m[2]!.trim().replace(/^-LiteralPath\s+|^-Path\s+/i, ""));
-  // Git Bash paths: /c/Users/... is C:/Users/...
-  target = target.replace(/^\/([a-z])(\/|$)/i, (_, d: string) => `${d.toUpperCase()}:/`);
+  // Git Bash paths: /c/Users/... is C:/Users/... (elsewhere /c is a folder of its own)
+  if (process.platform === "win32") target = target.replace(/^\/([a-z])(\/|$)/i, (_, d: string) => `${d.toUpperCase()}:/`);
   return path.resolve(from, target);
 }
 
 function sameDir(a: string, b: string): boolean {
   const norm = (p: string) => {
     const r = path.resolve(p).replace(/\\/g, "/").replace(/\/+$/, "");
-    return process.platform === "win32" ? r.toLowerCase() : r;
+    return process.platform === "win32" || process.platform === "darwin" ? r.toLowerCase() : r;
   };
   return norm(a) === norm(b);
 }

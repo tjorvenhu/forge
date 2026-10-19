@@ -1,4 +1,4 @@
-import { existsSync } from "node:fs";
+import { existsSync, realpathSync } from "node:fs";
 import { rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -54,14 +54,34 @@ const KNOWN_FOLDERS = new Set(
 );
 
 /** Folders that belong to the operating system, installed programs, Claude or credentials. */
-export function systemDirs(home = os.homedir(), env: NodeJS.ProcessEnv = process.env): string[] {
+export function systemDirs(home = os.homedir(), env: NodeJS.ProcessEnv = process.env, platform: NodeJS.Platform = process.platform): string[] {
   const list = [...sensitivePaths(home), env.CLAUDE_CONFIG_DIR || path.join(home, ".claude")];
   for (const k of ["ProgramFiles", "ProgramFiles(x86)", "ProgramW6432", "ProgramData", "SystemRoot", "windir", "APPDATA", "LOCALAPPDATA"]) {
     const v = env[k];
     if (v) list.push(v);
   }
   list.push(path.join(home, "AppData"));
+  if (platform !== "win32") {
+    list.push(...UNIX_SYSTEM_DIRS);
+    if (platform === "darwin") list.push(...MAC_SYSTEM_DIRS, path.join(home, "Library"), path.join(home, "Applications"));
+  }
   return list;
+}
+
+/** Folders of macOS and Linux that hold the system or programs. "/" is caught as a root. */
+const UNIX_SYSTEM_DIRS = ["/bin", "/boot", "/dev", "/etc", "/lib", "/lib32", "/lib64", "/opt", "/proc", "/root", "/run", "/sbin", "/snap", "/srv", "/sys", "/usr", "/var"];
+const MAC_SYSTEM_DIRS = ["/System", "/Library", "/Applications", "/private", "/cores"];
+/** They hold the homes or mounted drives of everyone: never delete one, but folders inside are not system folders. */
+const UNIX_CONTAINER_DIRS = ["/home", "/Users", "/Volumes", "/mnt", "/media"];
+/** Folders directly under the home directory on macOS and Linux that are never a project. */
+const UNIX_KNOWN_FOLDERS = new Set(["library", "movies", "applications", "snap"]);
+
+function realTmp(): string {
+  try {
+    return realpathSync.native(os.tmpdir());
+  } catch {
+    return os.tmpdir();
+  }
 }
 
 function oneDriveRoots(env: NodeJS.ProcessEnv): string[] {
@@ -69,10 +89,19 @@ function oneDriveRoots(env: NodeJS.ProcessEnv): string[] {
 }
 
 /** Why a project folder must never be deleted from FORGE, or null if it may be. */
-export function folderDeleteBlocker(dir: string, others: string[], protectedDirs: string[], home = os.homedir(), env: NodeJS.ProcessEnv = process.env): string | null {
+export function folderDeleteBlocker(
+  dir: string,
+  others: string[],
+  protectedDirs: string[],
+  home = os.homedir(),
+  env: NodeJS.ProcessEnv = process.env,
+  platform: NodeJS.Platform = process.platform,
+): string | null {
   const abs = path.resolve(dir);
   if (path.parse(abs).root === abs || path.dirname(abs) === abs) return tr().system.removal.drive;
   if (pathKey(abs) === pathKey(home) || isInside(home, abs)) return tr().system.removal.home;
+  const unix = platform !== "win32";
+  if (unix && UNIX_CONTAINER_DIRS.some((c) => isInside(c, abs))) return tr().system.removal.containsSystem;
 
   const name = path.basename(abs);
   const lower = name.toLowerCase();
@@ -80,17 +109,19 @@ export function folderDeleteBlocker(dir: string, others: string[], protectedDirs
   const parentKey = pathKey(path.dirname(abs));
   const underHome = parentKey === pathKey(home);
   const underRoot = underHome || oneDrive.some((r) => pathKey(r) === parentKey);
-  if (underRoot && (KNOWN_FOLDERS.has(lower) || name.startsWith(".")) || (underHome && lower.startsWith("onedrive"))) {
+  if (underRoot && (KNOWN_FOLDERS.has(lower) || name.startsWith(".")) || (underHome && lower.startsWith("onedrive")) || (unix && underHome && UNIX_KNOWN_FOLDERS.has(lower))) {
     return tr().system.removal.named(name);
   }
   if (oneDrive.some((r) => isInside(r, abs))) return tr().system.removal.oneDrive;
 
-  // Projects in the temp folder stay deletable although it lies inside AppData on Windows.
-  const tmp = os.tmpdir();
-  const inTemp = isInside(abs, tmp) && pathKey(abs) !== pathKey(tmp);
-  for (const sys of systemDirs(home, env)) {
+  // Projects in the temp folder stay deletable although it lies inside AppData on Windows (and
+  // inside /var, really /private/var, on macOS).
+  const temps = unix ? [...new Set([os.tmpdir(), realTmp()])] : [os.tmpdir()];
+  const tmp = temps.find((t) => isInside(abs, t) && pathKey(abs) !== pathKey(t));
+  for (const sys of systemDirs(home, env, platform)) {
     if (isInside(sys, abs)) return tr().system.removal.containsSystem;
-    if (isInside(abs, sys) && !(inTemp && isInside(tmp, sys))) {
+    // A home below a system folder (root's /root) keeps its projects deletable.
+    if (isInside(abs, sys) && !(tmp && isInside(tmp, sys)) && !(unix && isInside(home, sys))) {
       return tr().system.removal.insideSystem;
     }
   }

@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { killTree, onFinished } from "./proc.js";
+import { GROUP_SPAWN, killTree, onFinished } from "./proc.js";
 
 export interface ShellResult {
   exitCode: number | null;
@@ -21,7 +21,7 @@ export function runUserCommand(command: string, cwd: string, env: Record<string,
     let out = "";
     let timedOut = false;
     let settled = false;
-    const child = spawn(command, { cwd, env, shell: true, windowsHide: true, stdio: ["ignore", "pipe", "pipe"] });
+    const child = spawn(command, { cwd, env, shell: true, windowsHide: true, stdio: ["ignore", "pipe", "pipe"], ...GROUP_SPAWN });
     const append = (d: string) => {
       out = (out + d).slice(-MAX_OUTPUT * 2);
     };
