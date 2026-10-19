@@ -1,4 +1,4 @@
-import { ArrowRight, BarChart3, Download, Folder, GitBranch, MessageCircle, Settings, Square, X } from "lucide-react";
+import { ArrowRight, BarChart3, Download, Folder, GitBranch, MessageCircle, Settings } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import de800 from "@/assets/app-de-800.webp";
 import de1200 from "@/assets/app-de-1200.webp";
@@ -72,10 +72,6 @@ export function Landing({ locale }: { locale: Locale }) {
                   <i />
                   <i />
                   <i />
-                </span>
-                <span className="window-controls">
-                  <Square />
-                  <X />
                 </span>
               </div>
               <img

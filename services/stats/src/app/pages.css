@@ -352,18 +352,6 @@
   background: var(--color-success);
 }
 
-.window-controls {
-  display: flex;
-  gap: 22px;
-  margin-left: auto;
-  color: var(--color-fg);
-}
-
-.window-controls svg {
-  width: 13px;
-  height: 13px;
-}
-
 .window-img {
   display: block;
   width: 100%;
