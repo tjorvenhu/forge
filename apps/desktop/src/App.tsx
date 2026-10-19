@@ -83,7 +83,7 @@ export function App({ chatWindow = null }: { chatWindow?: ChatWindowTarget | nul
   if (boot.state === "starting") {
     return (
       <Centered>
-        <Logo height={64} />
+        <Logo height={53} />
         <div className="flex items-center gap-2 text-body text-muted">
           <Spinner /> {t.app.starting}
         </div>

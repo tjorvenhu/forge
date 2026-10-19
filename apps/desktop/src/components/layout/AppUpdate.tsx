@@ -124,7 +124,7 @@ export function AppUpdateDialog() {
       }
     >
       <div className="flex flex-col gap-4">
-        <Logo height={30} />
+        <Logo height={25} />
         <div className="min-w-0">
           <div className="mb-2 flex items-center gap-1.5 text-xs font-medium text-muted">
             <Sparkles className="h-3.5 w-3.5 text-accent" /> {t.layout.update.changesSince(s.latest.since)}

@@ -45,7 +45,7 @@ export function Sidebar() {
   return (
     <aside className="flex w-64 shrink-0 select-none flex-col border-r border-border bg-sidebar">
       <div className="flex items-center px-5 pb-4 pt-5">
-        <Logo height={44} />
+        <Logo height={36} />
       </div>
 
       <div className="flex items-center gap-1.5 px-3">

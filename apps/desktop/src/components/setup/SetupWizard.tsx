@@ -151,7 +151,7 @@ function Wizard({ s }: { s: Settings }) {
     >
       <div className="flex min-h-0 flex-1">
         <aside className="flex w-60 shrink-0 flex-col border-r border-border bg-bg/50 px-5 pb-5 pt-6">
-          <Logo height={26} />
+          <Logo height={21} />
           <ol aria-label={ts.stepsLabel} className="mt-9 flex flex-col">
             {STEPS.map((x, i) => (
               <StepItem key={x.label} label={x.label} hint={x.hint} index={i} step={step} last={i === STEPS.length - 1} onClick={busy || i >= step ? undefined : () => setStep(i)} />
