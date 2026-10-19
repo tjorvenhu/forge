@@ -8,6 +8,8 @@ export interface HistoryDay {
   /** all four token kinds together */
   tokens: number;
   claudeTurns: number;
+  sessions: number;
+  claudeWorkMs: number;
   activeInstalls: number;
 }
 
@@ -74,6 +76,8 @@ export function toHistory(rows: HistoryRow[], endDay: string, days = HISTORY_DAY
     day: d.day,
     tokens: tokenSum(d.increments),
     claudeTurns: d.increments.claudeTurns,
+    sessions: d.increments.sessions,
+    claudeWorkMs: d.increments.claudeWorkMs,
     activeInstalls: d.activeInstalls,
   }));
 }

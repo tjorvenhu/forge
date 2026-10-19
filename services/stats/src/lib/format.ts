@@ -15,6 +15,8 @@ export interface Formats {
   dayShort: (day: string) => string;
   /** "So., 18. Okt." / "Sun, Oct 18" for tooltips and tables. */
   dayLong: (day: string) => string;
+  /** Short axis label: "800", "50K", "1,5M" / "1.5M". */
+  axis: (n: number) => string;
   /** Rounded share: "45 %" / "45%". */
   percent: (part: number, whole: number) => string;
 }
@@ -65,6 +67,7 @@ function build(locale: Locale): Formats {
     dateTime: (iso) => dateTime.format(new Date(iso)),
     dayShort: (d) => dayShort.format(day(d)),
     dayLong: (d) => dayLong.format(day(d)),
+    axis: (n) => (Math.abs(n) < 1e3 ? full.format(n) : Math.abs(n) < 1e6 ? `${oneDecimal.format(n / 1e3)}K` : `${oneDecimal.format(n / 1e6)}M`),
     percent: (part, whole) => pct.format(whole ? part / whole : 0),
   };
 }

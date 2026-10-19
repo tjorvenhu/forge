@@ -1,45 +1,48 @@
 ---
 title: "Website und Statistik-Dienst services/stats (forge.vanturis.de: Landingpage auf /, Live Stats auf /stats, Coolify)"
-summary: "Next.js-Website in services/stats: Landingpage exakt nach Bildvorlage des Besitzers auf /, Live Stats auf /stats. Maße, Fenster-Perspektive, SVG-Hintergrund, Wortmarke ohne Unterzeile, Unterstützen oben, Live-Abfrage, Englisch/Deutsch, Coolify, Stolperfallen."
+summary: "Next.js-Website in services/stats: Landingpage und Live Stats exakt nach Bildvorlagen des Besitzers. Hintergrundbild, Fenster-Perspektive, Wortmarke, Stats-Karten und Diagramme, Plattformen, Live-Abfrage, Englisch/Deutsch, Coolify, Stolperfallen."
 tags: ["stats","coolify","release","stolperfalle","i18n","ui"]
-updated: "2026-10-19T16:09:29.581Z"
+updated: "2026-10-19T16:29:29.356Z"
 ---
 
 # Website und Statistik-Dienst services/stats
 
 ## Was es ist
-`services/stats` ist ein eigenständiges Next.js-Projekt (App Router, pg, zod) für https://forge.vanturis.de. Es nimmt die Meldungen von `packages/sidecar/src/stats/usage-stats.ts` an (`USAGE_STATS_URL` in `packages/protocol/src/`) und zeigt die Summen. API, Payload und Coolify stehen in `services/stats/README.md`. Deploy in Coolify geschieht nicht automatisch beim Push.
+`services/stats` ist ein eigenständiges Next.js-Projekt (App Router, pg, zod) für https://forge.vanturis.de. Es nimmt die Meldungen von `packages/sidecar/src/stats/usage-stats.ts` an (`USAGE_STATS_URL` in `packages/protocol/src/`) und zeigt die Summen. API, Payload und Coolify stehen in `services/stats/README.md`. Deploy in Coolify geschieht nicht automatisch beim Push; „die Website soll so bleiben“ heißt: nicht in Coolify ausrollen. Der Release-Workflow der App ignoriert `services/`.
 
-## Landingpage: exakt nach der Bildvorlage des Besitzers (Stand 2026-10-19)
-Vorlage: 1536 x 1024 (liegt in den FORGE-Uploads als `Forge_ Deine AI-Entwicklungszentrale.png`). Der Besitzer verlangt „pixelgenau“, freiere Umbauten wurden mehrfach scharf abgelehnt. Nichts ergänzen oder weglassen, außer er sagt es. Prüfen bei 1440 x 900 **und** 1536 x 1024 (dort direkt mit der Vorlage vergleichbar). Vergleich: Vorlage mit sharp auf 1440 skalieren, gleiche Ausschnitte untereinander legen (sharp aus `services/stats/node_modules/.pnpm/sharp@*/node_modules/sharp`).
-- Vorgaben: Hintergrund `#111418`, Orange `#ff7a1a` (Tokens in `globals.css`), keine übertriebenen Glows, keine Animationen, keine Karten um die vier Blöcke, kein Raster.
-- Kopfzeile 76px: Wortmarke `forge-wordmark.png` (944x184 = Marke + „FORGE“ **ohne** „Claude Development Studio“, 34px hoch, Fußzeile 24px). Sie ist aus der alten `forge-logo.png` (945x223, App) zusammengesetzt: Marke (1,21,245x184) + Schriftzug (282,37,663x121) bei x 281/y 32. Die Version mit Unterzeile nannte der Besitzer „das alte Logo“. Rechts: Live Stats, GitHub, **Unterstützen mit rotem Herz** (`SupportButton`, Spenden-Dialog; vom Besitzer oben gewünscht, nicht mehr in der Fußzeile), oranger Download (40px). Links 15px.
-- Hero (`landing.tsx`, `pages.css`): Spalten 47,5/52,5, Titel `4.1vw` Gewicht 550, Zeilenhöhe 1.1, Lead `1.39vw`, `max-width: 25.85em` erzwingt den Umbruch nach „mit einer“ wie in der Vorlage (knapp, bei Textänderung neu prüfen). Buttons 55px, Schrift 16,5px/500. Unter 1320px kleinere Buttons und Titel, damit beides neben dem Fenster passt.
-- Fenster: echter Screenshot `app-{de,en}.webp` (1600x1000, Projekte-Ansicht), `perspective(1500px) rotateY(-15deg) rotateX(1.5deg)`, Rahmen per Doppel-Background (grau oben links, orange rechts/unten). Die Vorlage zeigt die Session-Ansicht in höherem Format (~1,35) mit größerer UI; mit 1,6 wirkt das Fenster flacher und die UI kleiner. Näher käme nur ein neuer echter Screenshot (~1150x860 logisch, Chat-Ansicht).
-- Hintergrund: `HeroArt` in `landing.tsx`, ein SVG in den Pixelkoordinaten der Vorlage (viewBox `380 60 1156 760`, `preserveAspectRatio="none"`), als Kind von `.hero-shot` so positioniert, dass das Fenster der Vorlage (731..1482 x 147..762) auf dem echten Fenster liegt. Inhalt: große dunkle Fläche mit orange beleuchteter Ober-/Rechtskante, leuchtende Kurve und Bodenkante links vom Fenster. Farben über CSS-Klassen an den `<stop>`s (Tokens). Unter 1080px aus.
-- Bei 900px Höhe ist es eng: Fläche oben darf nicht unter die Kopfzeile rutschen (`.hero-shot { margin-top }` verschiebt das Fenster, `.hero-art { top }` die Fläche).
-- Vier Blöcke: Raster max. 1160px, Icons 25px, zweites Icon grau wie in der Vorlage, Text mit `white-space: pre-line` (DE „Dein Workflow“ hat ein `\n`).
-- Schrift Inter (`@fontsource-variable/inter`), kein next/font/google (kein Netz beim Build). Container `--page-width: 1392px`, Gutter 72px.
+## Arbeitsweise mit dem Besitzer (wichtig)
+Er liefert Bildvorlagen (1536 x 1024, in den FORGE-Uploads) und verlangt „GENAU SO“; freiere Umsetzungen wurden mehrfach scharf abgelehnt. Nichts ergänzen oder weglassen, außer er sagt es. Prüfen bei 1440 x 900 und 1536 x 1024 (dort direkt mit der Vorlage vergleichbar). Vergleich: Vorlage mit sharp auf gleiche Breite skalieren, gleiche Ausschnitte untereinander legen (sharp aus `services/stats/node_modules/.pnpm/sharp@*/node_modules/sharp`). Animationen im Screenshot abwarten (preview_interact mit wait ~2,5 s), sonst sind Balken halb hoch.
+- Vorgaben: Hintergrund `#111418`, Orange `#ff7a1a` (Tokens in `globals.css`), keine übertriebenen Glows.
+- **Hintergrund aller Seiten**: Bild des Besitzers (Quelle `forge_amboss_background_4k.png`, 3840x2160, orange beleuchtete abstrakte Fläche) als `src/assets/background.webp` (2560 breit, mit sharp `blur(5)` vorab weichgezeichnet, ~25 KB), `body::before` fixed, `cover`. Eigene SVG-/CSS-Formen hinter dem Fenster hat er abgelehnt („Amboss sieht scheiße aus“, Glow-Bug); keine eigenen Hintergrundformen mehr bauen.
 
-## Live Stats (/stats)
-`src/app/stats/page.tsx`, `loading.tsx`, `src/components/stats-page.tsx`: Kopf, Live-Badge, `.stats-grid` mit 8 Zellen (`tiles.ts`), Diagramme (`charts.tsx`), „Was erfasst wird“. Kosten, Telefonate, Abos, Versionen werden nicht gezeigt (API liefert sie). Die App verlinkt über `STATS_PAGE_URL`. Von der Landingpage verlinkt: Kopfzeile, zweiter Hero-Button, Link unter den Blöcken, Fußzeile.
+## Landingpage (`landing.tsx`, `pages.css`)
+- Kopfzeile 76px: Wortmarke `forge-wordmark.png` (944x184, Marke + „FORGE“ ohne Unterzeile, 34px hoch, Fußzeile 24px). Rechts: Live Stats, GitHub, Unterstützen mit rotem Herz (`SupportButton`, Spenden-Dialog, nur oben), Download (40px). Die geöffnete Seite bekommt eine orange Linie unter dem Link, ohne Pfeil-Icon.
+- Hero ohne Eyebrow (vom Besitzer gestrichen). Titel `4.1vw` Gewicht 550, Lead `1.39vw` mit `max-width: 25.85em` (Umbruch nach „mit einer“, bei Textänderung neu prüfen). Unter 1320px kleinere Buttons/Titel.
+- Fenster: echter Screenshot `app-{de,en}.webp` 2400x1680 (Chat-Ansicht „Neue Session in forge“, logisch 1200x840 bei Faktor 2; Entstehung siehe Eintrag Repo-Dokumentation/Screenshots), `perspective(1500px) rotateY(-15deg) rotateX(1.5deg)`, `.hero-shot` 100 % der Spalte. Die Claude-Code-Karte im Screenshot zeigt echte Abo-/Nutzungswerte.
+- Vier Blöcke darunter: Raster max. 1160px, zweites Icon grau wie in der Vorlage, Text `pre-line` (DE „Dein Workflow“ mit `\n`). Alles inkl. „Live Stats ansehen“ passt bei 1440x900 in den ersten Bildschirm.
+
+## Live Stats (/stats, Vorlage 2026-10-19)
+`stats-page.tsx` (Kopf links: Eyebrow, „FORGE in **Zahlen**“, zweizeiliger Lead mit `\n`), `live-stats.tsx` (Live-Pille, „Letzte Aktualisierung …“, vier Karten), `charts.tsx`, `tiles.ts`.
+- Karten: Tokens, Sessions, Durchläufe, Arbeitszeit; rechts 7 Mini-Balken der letzten Tage (`Spark`, orange/grau abwechselnd wie in der Vorlage). Projekte/Agenten/Installationen/Online-Kacheln gibt es nicht mehr.
+- Diagrammkarten: Tokens pro Tag (Säulen) und Aktive Installationen (Fläche, SVG mit `preserveAspectRatio="none"` + `vector-effect`, Punkt als HTML), je mit Menü „Letzte 7/14/30 Tage“ (`RangeSelect`, eigenes Menü, kein `<select>`); Top Modelle (3 + „Andere“, Anteil in %, Namen „Claude Opus 4.7“); Plattformen (Ring mit Anzahl Installationen in der Mitte, Legende Windows 10/11, macOS, Linux, Andere). Die Vorlage schreibt „Sessions“ in den Ring; bewusst Installationen, weil es Betriebssysteme der Installationen sind.
+- Daten: `history` (30 Tage) hat zusätzlich `sessions`, `claudeWorkMs`; `platforms` aus `installs.os` (App sendet `os.type() os.release()`, z. B. „Windows_NT 10.0.26200“) per `CASE … ILIKE` in `queryPlatforms`. Achsen-Labels `f.axis` („50K“).
+- Darunter weiter „Was erfasst wird“ und Fußnote. Skeletons in Form der Karten (`SparkSkeleton`, `ChartsSkeleton`).
 
 ## Domain
 Neu `forge.vanturis.de`, vorher `forge-stats.vanturis.de`. Apps bis 0.1.103 melden an die alte Domain: beide Domains am Dienst lassen. Prüfen: `curl https://forge.vanturis.de/api/health` liefert `ok`.
 
 ## Meldeintervall
-App meldet alle 5 Minuten, Sperre pro installId 4 Minuten (`REPORT_INTERVAL_MINUTES` in `src/lib/db.ts`), „Gerade online“ = 10 Minuten (`ONLINE_MINUTES`). Ändert die App ihr Intervall: Konstanten, `db.test.ts`, Texte mitziehen.
+App meldet alle 5 Minuten, Sperre pro installId 4 Minuten (`REPORT_INTERVAL_MINUTES` in `src/lib/db.ts`), „Gerade online“ = 10 Minuten (`ONLINE_MINUTES`).
 
 ## Verlauf (install_days)
-Jede angenommene Meldung schreibt `installs` und den UTC-Tag in `install_days` (FK mit CASCADE). Zuwachs pro Tag rechnet SQL (`historySql()`, LAG). Test: `STATS_TEST_DATABASE_URL=... pnpm test`, Tage im Jahr 2001.
+Jede angenommene Meldung schreibt `installs` und den UTC-Tag in `install_days` (FK mit CASCADE). Zuwachs pro Tag rechnet SQL (`historySql()`, LAG); der erste Stand einer Installation zählt nicht als Zuwachs. Test: `STATS_TEST_DATABASE_URL=... pnpm test`.
 
 ## Sprachen
-Standard Englisch; Cookie `lang` > Accept-Language. `LanguageSwitch` in der Fußzeile (Server-Action, geht ohne JS). Texte in `src/lib/messages.ts`. preview_screenshot schickt deutsches Accept-Language.
+Standard Englisch; Cookie `lang` > Accept-Language. `LanguageSwitch` in der Fußzeile. Texte in `src/lib/messages.ts` (`de` ist Quelle des Typs: Funktionen mit Literal-Rückgabe brauchen `: string`, sonst passt `en` nicht).
 
 ## Stolperfallen
 - **Nicht im pnpm-Workspace**: `pnpm install --ignore-workspace`, eigenes Lockfile.
-- **Kein `public/`-Ordner**: Bilder statisch importieren, Favicons als `src/app/icon.svg` / `apple-icon.png`.
-- `tsc --noEmit` meldet vor dem ersten `next dev`/`build` Fehler (fehlende `.next/types`).
-- Dev-Server auf Port 4100 läuft oft aus früheren Sessions weiter und lädt Änderungen per HMR; bei „Jest worker“-500ern neu starten. Vor `pnpm build` stoppen.
-- Bash-Heredocs verlieren Backslashes (`\n` in Strings): solche Stellen mit Edit schreiben.
-- Lokal mit DB: `dev_control database start`, dann `DATABASE_URL=... pnpm exec next dev -p 4100`. Testdaten per `curl -X POST http://localhost:4100/api/v1/report`, löschen mit `DELETE /api/v1/report/<id>`.
+- **Kein `public/`-Ordner**: Bilder statisch importieren oder per relativer `url()` in globalem CSS (Next bündelt sie).
+- Dev-Server auf Port 4100 läuft oft schon (auch von FORGE neu gestartet); lädt Änderungen per HMR. Summen sind 5 Minuten im Prozess gecacht: nach SQL-Testdaten neu starten.
+- Lokale Demodaten: direkt per SQL in `installs` + `install_days` (Test-DB aus `dev_environment`), IDs `00000000-0000-4000-8000-0000000000cN`; löschen mit `DELETE FROM installs WHERE install_id::text LIKE '00000000-0000-4000-8000-0000000000c%'`.
+- Bash-Heredocs verlieren Backslashes (`\n`, `` \` ``): solche Stellen mit Edit schreiben.

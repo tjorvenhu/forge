@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import type { Online, Totals } from "@/lib/db";
-import { LiveDot, Stat } from "./blocks";
+import { LiveDot, Spark, Stat } from "./blocks";
 import { StatsCharts } from "./charts";
 import { useI18n } from "./locale";
 import { AnimatedNumber } from "./motion";
@@ -68,8 +68,14 @@ export function LiveStats({ initial }: { initial: Totals }) {
         <span>{t.stats.updated(f.dateTime(totals.updatedAt))}</span>
       </div>
       <div className="stats-grid">
-        {tiles(totals, locale).map(({ value, format, ...s }, i) => (
-          <Stat key={s.label} {...s} index={i} value={<AnimatedNumber value={value} format={format} />} />
+        {tiles(totals, locale).map(({ value, format, spark, sparkAccent, ...s }, i) => (
+          <Stat
+            key={s.label}
+            {...s}
+            index={i}
+            value={<AnimatedNumber value={value} format={format} />}
+            spark={<Spark values={spark} accent={sparkAccent} title={t.stats.tiles.sparkTitle} />}
+          />
         ))}
       </div>
       <StatsCharts totals={totals} />

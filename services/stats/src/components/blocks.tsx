@@ -19,14 +19,14 @@ export function Feature({ icon: Icon, title, text, index = 0 }: { icon: LucideIc
   );
 }
 
-/** One cell of the statistics grid: icon, a large number, its label and a line below. */
+/** One card of the statistics: icon, a large number with its label and a line below, the last days as small bars. */
 export function Stat({
   icon: Icon,
   label,
   value,
   unit,
   sub,
-  live,
+  spark,
   index = 0,
 }: {
   icon: LucideIcon;
@@ -34,22 +34,46 @@ export function Stat({
   value: ReactNode;
   unit?: string;
   sub: ReactNode;
-  /** live dot in front of the value; true pulses, false stays gray */
-  live?: boolean;
+  spark: ReactNode;
   /** position, for the staggered entrance */
   index?: number;
 }) {
   return (
     <div className="stat" style={{ "--i": index } as CSSProperties}>
       <Icon className="stat-icon" aria-hidden />
-      <div className={live !== undefined ? "stat-value stat-value-live" : "stat-value"}>
-        {live !== undefined && <LiveDot on={live} />}
-        {value}
-        {unit && <span className="stat-unit">{unit}</span>}
+      <div className="stat-body">
+        <div className="stat-value">
+          {value}
+          {unit && <span className="stat-unit">{unit}</span>}
+        </div>
+        <div className="stat-label">{label}</div>
+        <div className="stat-sub">{sub}</div>
       </div>
-      <div className="stat-label">{label}</div>
-      <div className="stat-sub">{sub}</div>
+      {spark}
     </div>
+  );
+}
+
+/** Small bars of the last days, each at least a stub so an empty day still shows its slot. */
+export function Spark({ values, accent, title }: { values: number[]; accent: boolean; title?: string }) {
+  const max = Math.max(0, ...values);
+  return (
+    <span className={accent ? "spark spark-accent" : "spark"} title={title} aria-hidden>
+      {values.map((v, i) => (
+        <i key={i} style={{ height: `${max > 0 ? Math.max(14, (v / max) * 100) : 14}%` }} />
+      ))}
+    </span>
+  );
+}
+
+/** Spark in the loading state: gray stubs in a fixed rhythm. */
+export function SparkSkeleton() {
+  return (
+    <span className="spark" aria-hidden>
+      {[40, 55, 35, 60, 50, 70, 85].map((h, i) => (
+        <i key={i} className="skeleton-bar" style={{ height: `${h}%` }} />
+      ))}
+    </span>
   );
 }
 

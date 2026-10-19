@@ -2,7 +2,7 @@ import { EyeOff, Fingerprint, ToggleLeft, Trash2, TriangleAlert } from "lucide-r
 import type { Totals } from "@/lib/db";
 import type { Locale } from "@/lib/i18n";
 import { i18n } from "@/lib/messages";
-import { Eyebrow, Feature, Skeleton, Stat } from "./blocks";
+import { Eyebrow, Feature, Skeleton, SparkSkeleton, Stat } from "./blocks";
 import { ChartsSkeleton } from "./charts";
 import { LiveStats } from "./live-stats";
 import { tileShapes } from "./tiles";
@@ -16,18 +16,21 @@ const PRIVACY = [
   { key: "delete", icon: Trash2 },
 ] as const;
 
+/** Live stats after the owner's mockup: head on the left, four cards, two charts, top models and platforms. */
 export function StatsPage({ state, locale }: { state: PageState; locale: Locale }) {
   const { t } = i18n(locale);
   const s = t.stats;
   return (
     <main className="stats">
-      <section className="container stats-head">
-        <Eyebrow>{s.eyebrow}</Eyebrow>
-        <h1>{s.title}</h1>
-        <p>{s.lead}</p>
-      </section>
-
       <section className="container stats-body" aria-busy={state.kind === "loading" || undefined}>
+        <header className="stats-head">
+          <Eyebrow>{s.eyebrow}</Eyebrow>
+          <h1>
+            {s.title} <span className="stats-title-accent">{s.titleAccent}</span>
+          </h1>
+          <p>{s.lead}</p>
+        </header>
+
         {state.kind === "error" ? (
           <div className="error-banner" role="alert">
             <TriangleAlert aria-hidden />
@@ -41,7 +44,8 @@ export function StatsPage({ state, locale }: { state: PageState; locale: Locale 
         ) : (
           <>
             <div className="stats-meta">
-              <Skeleton width="10rem" />
+              <Skeleton width="4.5rem" style={{ height: 30, borderRadius: 999 }} />
+              <Skeleton width="16rem" />
             </div>
             <div className="stats-grid">
               {tileShapes(locale).map((tile, i) => (
@@ -51,7 +55,8 @@ export function StatsPage({ state, locale }: { state: PageState; locale: Locale 
                   label={tile.label}
                   index={i}
                   value={<Skeleton width={`${45 + ((i * 23) % 30)}%`} />}
-                  sub={<Skeleton width={`${50 + ((i * 17) % 35)}%`} />}
+                  sub={tile.sub}
+                  spark={<SparkSkeleton />}
                 />
               ))}
             </div>

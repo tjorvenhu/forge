@@ -11,6 +11,13 @@ export interface PlanCount {
   online: number;
 }
 
+export type Platform = "windows" | "macos" | "linux" | "other";
+
+export interface PlatformCount {
+  platform: Platform;
+  installs: number;
+}
+
 /** Minimum time between two accepted reports of one installation; the app reports every 5 minutes. */
 export const REPORT_INTERVAL_MINUTES = 4;
 const TOTALS_MAX_AGE_MS = 5 * 60 * 1000;
@@ -32,6 +39,8 @@ export interface Totals {
   versions: VersionCount[];
   /** installations active in the last 30 days per Claude plan, most first; plan null: unknown */
   plans: PlanCount[];
+  /** installations active in the last 30 days per operating system, most first */
+  platforms: PlatformCount[];
   /** the last 30 days (UTC), oldest first */
   history: HistoryDay[];
 }
@@ -160,6 +169,23 @@ async function queryPlans(p: Pool): Promise<PlanCount[]> {
   return res.rows.map((r) => ({ plan: r.plan, installs: Number(r.installs), online: Number(r.online) }));
 }
 
+/** The app sends `os.type() os.release()`: "Windows_NT 10.0.26200", "Darwin 24.1.0", "Linux 6.8.0". */
+async function queryPlatforms(p: Pool): Promise<PlatformCount[]> {
+  const res = await p.query<{ platform: Platform; installs: string }>(
+    `SELECT CASE
+         WHEN os ILIKE 'windows%' THEN 'windows'
+         WHEN os ILIKE 'darwin%' THEN 'macos'
+         WHEN os ILIKE 'linux%' THEN 'linux'
+         ELSE 'other'
+       END AS platform, COUNT(*)::text AS installs
+     FROM installs
+     WHERE last_seen > now() - interval '30 days'
+     GROUP BY 1
+     ORDER BY COUNT(*) DESC, 1`,
+  );
+  return res.rows.map((r) => ({ platform: r.platform, installs: Number(r.installs) }));
+}
+
 /** The history of the `days` UTC days up to `endDay` (today when left out). */
 export async function queryHistory(endDay?: string, days = HISTORY_DAYS): Promise<HistoryDay[]> {
   const p = await db();
@@ -170,7 +196,7 @@ export async function queryHistory(endDay?: string, days = HISTORY_DAYS): Promis
 
 async function queryTotals(): Promise<Totals> {
   const p = await db();
-  const [models, versions, plans, history] = await Promise.all([queryModels(p), queryVersions(p), queryPlans(p), queryHistory()]);
+  const [models, versions, plans, platforms, history] = await Promise.all([queryModels(p), queryVersions(p), queryPlans(p), queryPlatforms(p), queryHistory()]);
   // The keys come from COUNTER_KEYS, not from input, so interpolating them is safe.
   const sums = COUNTER_KEYS.map((k) => `COALESCE(SUM((counters->>'${k}')::numeric), 0)::text AS "${k}"`).join(",\n");
   const res = await p.query<Record<string, string>>(
@@ -192,6 +218,7 @@ async function queryTotals(): Promise<Totals> {
     models,
     versions,
     plans,
+    platforms,
     history,
   };
 }

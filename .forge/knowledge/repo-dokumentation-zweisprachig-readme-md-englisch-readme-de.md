@@ -1,8 +1,8 @@
 ---
 title: "Repo-Dokumentation zweisprachig (README.md englisch, README.de.md deutsch, Sprachumschalter, Flaggen, Screenshots)"
-summary: "Wie die Markdown-Dokumente im Repo auf Englisch und Deutsch gepflegt werden und wie die README-Screenshots entstehen; nötig bei jeder Änderung an README, docs/, ADRs, NOTICE, Issue-Vorlagen oder Screenshots."
+summary: "Wie die Markdown-Dokumente im Repo auf Englisch und Deutsch gepflegt werden und wie echte App-Screenshots (README, Landingpage) ohne Tauri aufgenommen werden; nötig bei Änderungen an README, docs/, ADRs, NOTICE, Issue-Vorlagen oder Screenshots."
 tags: ["konvention","i18n","release","github","preview"]
-updated: "2026-10-18T20:44:19.096Z"
+updated: "2026-10-19T16:29:50.604Z"
 ---
 
 Seit Oktober 2026 ist die Repo-Doku zweisprachig. Englisch ist Standard.
@@ -15,6 +15,14 @@ Seit Oktober 2026 ist die Repo-Doku zweisprachig. Englisch ist Standard.
 - Englischer Stil: knapp, keine Gedankenstriche (— –) als Satzzeichen, keine Werbesprache.
 
 ## README-Screenshots
-- Deutsch: `.github/assets/screenshots/start.png`, `projekte.png`; Englisch: `.github/assets/screenshots/en/start.png`, `en/projects.png`. Alle 2880x1800 (1440x900 bei Pixeldichte 2), dunkles Theme, gleiche Demo-Inhalte: Projekte forge (Favorit, 2 geändert, TypeScript +2, 2 Tags, ein Agent `bundle-python-4dyz`), landingpage, api-gateway, webshop (je 1 Tag), fünf zuletzt bearbeitete Sessions, darunter eine unterbrochene.
-- So entstanden die englischen (2026-10-18), nicht mit echten Nutzerdaten: eigenes Datenverzeichnis per Skript (Klon des Repos plus Worktree, drei kleine Git-Repos; Projekte und Sessions direkt per SQL über `new Db(...).sql`, Einstellungen `language`, `setupDone`, `syncAsked`, `usageStatsAsked`), gebauter Sidecar mit `FORGE_DATA_DIR` hinter einer kleinen HTTP-Brücke, die Oberfläche über Vite (`--port 1430`) mit einer Startseite, die `__TAURI_INTERNALS__` nachbildet (siehe Eintrag zum Git-Reiter / Desktop-UI im Browser). Aufnahme mit Chrome headless über das DevTools-Protokoll (`Emulation.setDeviceMetricsOverride` 1440x900, deviceScaleFactor 2, `Page.captureScreenshot`), nach ~30 s Wartezeit. `preview_screenshot` taugt dafür nicht: höchstens 2560 px breit und verkleinert. `chrome --screenshot --virtual-time-budget` hängt an der offenen Long-Poll-Verbindung.
-- Stolperfalle: Die erste Seite nach dem Start der Brücke blieb in Skeletons hängen (Antworten an eine alte Poll-Verbindung). Erst eine andere Ansicht aufnehmen, dann die gewünschte.
+- Deutsch: `.github/assets/screenshots/start.png`, `projekte.png`; Englisch: `.github/assets/screenshots/en/start.png`, `en/projects.png`. Alle 2880x1800 (1440x900 bei Pixeldichte 2), dunkles Theme, Demo-Inhalte: Projekte forge, landingpage, api-gateway, webshop.
+- Landingpage-Screenshots `services/stats/src/assets/app-{de,en}.webp`: 2400x1680 (1200x840 bei Faktor 2), Chat-Ansicht mit leerer Session und Text im Composer (2026-10-19).
+
+## Echte Screenshots ohne Tauri aufnehmen (Hilfsdateien danach löschen)
+- Eigenes Datenverzeichnis über `FORGE_DATA_DIR`, Demo-Repos unter `C:\tmp\demo\` (liegen noch dort). Einstellungen per RPC `settings.update`: `setupDone`, `syncAsked`, `usageStatsAsked` = true; gegen Störungen `updateChecks`, `desktopNotifications`, `screenshotKey`, `uiCompare`, `learnTemplates` = false. Projekte per `projects.import`.
+- Einfachste Brücke: eigene `vite.config.ts` in einem Hilfsordner unter `apps/desktop/`, deren Plugin den gebauten Sidecar startet und `/bridge/send` (stdin), `/bridge/events` (Server-Sent Events) und `/bridge/rpc` anbietet: ein Prozess, kein CORS, keine hängende Erstansicht. Startseite setzt vor dem App-Import `window.__TAURI_INTERNALS__` (`invoke`, `transformCallback`; `plugin:event|listen` merkt die Callback-ID, Zeilen gehen als `sidecar://messages` mit `payload: [line]` zurück; `sidecar_status` → true).
+- `chat_windows` muss `{ sessions: [], pinned: [] }` liefern, sonst „sessions is not iterable“ und Meldung „Hintergrunddienst läuft nicht“.
+- Aufnahme mit Chrome headless über CDP (`Emulation.setDeviceMetricsOverride` mit deviceScaleFactor 2, `Page.captureScreenshot`). Chrome-Profil nicht im Vite-Root anlegen (Cache-Dateien lösen Reloads aus). `preview_screenshot` taugt nicht (max. 2560 px, verkleinert).
+- Reiterleiste der Projektansicht ist standardmäßig zu: Knopf `aria-label="Werkzeugleiste"`. Text in den Composer: `focus()`, dann CDP `Input.insertText`.
+- Sprachwechsel: erst `about:blank`, dann `language` per RPC setzen, dann mit `?lang=en` laden (sonst Reload-Schleife zwischen localStorage `forge.language` und Einstellung).
+- Die Claude-Code-Karte zeigt die echte lokale Anmeldung (Abo, Nutzung); `github.account` und `claude.checkUpdate` in der Brücke umschreiben, um Avatar und Update-Hinweis auszublenden.
