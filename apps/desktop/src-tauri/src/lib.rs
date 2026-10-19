@@ -164,7 +164,8 @@ pub fn run() {
             screenshot::screenshot_ready,
             screenshot::screenshot_cancel,
             screenshot::screenshot_take,
-            screenshot::screenshot_taken
+            screenshot::screenshot_taken,
+            screenshot::screenshot_key_status
         ])
         .on_window_event(|window, event| {
             // A screenshot goes to the FORGE window the user worked in last.

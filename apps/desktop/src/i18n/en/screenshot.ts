@@ -44,6 +44,23 @@ export const screenshot: typeof De = {
   hintWithEsc: (hint) => `${hint}, Esc cancels`,
   color: (name) => `Color ${name}`,
   ctrl: (key) => `Ctrl+${key}`,
+  shift: "Shift",
+  failed: "Screenshot not possible",
+  key: {
+    label: "Print Screen key for screenshots",
+    labelMac: "⌘⇧2 for screenshots",
+    description:
+      "While FORGE is running, the Print Screen key opens the FORGE snipping tool instead of the Windows one. The screenshot goes to the clipboard and is attached to the chat you used last. Alt+Print Screen and Win+Print Screen stay with Windows.",
+    descriptionMac:
+      "While FORGE is running, ⌘⇧2 opens the FORGE snipping tool. The screenshot goes to the clipboard and is attached to the chat you used last. The first time, macOS asks for permission to record the screen.",
+    descriptionLinux:
+      "While FORGE is running, the Print Screen key opens the FORGE snipping tool. The screenshot goes to the clipboard and is attached to the chat you used last. Wayland has no global shortcuts, there you start it from the command palette.",
+    otherProgram: "Another program",
+    takenWindows: (name) =>
+      `${name} has registered the Print Screen key too. Usually it still reaches FORGE. But while a window with administrator rights is in front, ${name} opens. Remove the Print Screen key from the shortcuts of ${name}, then it always reaches FORGE.`,
+    notRegistered:
+      "The shortcut could not be registered. Another program already uses it, or the session does not allow global shortcuts (Wayland). You can still start a screenshot from the command palette.",
+  },
   undo: "Undo",
   redo: "Redo",
   copy: "Copy",
