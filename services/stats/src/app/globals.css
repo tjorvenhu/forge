@@ -660,8 +660,50 @@ a:hover > .btn-arrow {
     font-size: 16px;
   }
 
+  .section-head {
+    margin-bottom: 24px;
+  }
+
+  .section-head h2 {
+    font-size: 24px;
+  }
+
+  /* centred blocks one below the other were a long column with little text: compact cards, icon on the left */
   .features {
     grid-template-columns: minmax(0, 1fr);
+    gap: 10px;
+  }
+
+  .feature {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    column-gap: 14px;
+    align-items: start;
+    padding: 14px 16px;
+    border: 1px solid var(--color-border);
+    border-radius: 10px;
+    background: color-mix(in srgb, var(--color-surface) 88%, transparent);
+    text-align: left;
+  }
+
+  .feature-icon {
+    grid-row: span 2;
+    width: 24px;
+    height: 24px;
+    margin-top: 1px;
+  }
+
+  .feature h3 {
+    margin-top: 0;
+    font-size: 16px;
+    line-height: 22px;
+  }
+
+  .feature p {
+    max-width: none;
+    margin: 2px 0 0;
+    font-size: 14.5px;
+    line-height: 1.45;
   }
 
   .lang-code {

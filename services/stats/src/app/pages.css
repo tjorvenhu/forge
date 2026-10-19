@@ -1339,7 +1339,8 @@
     gap: 14px;
   }
 
-  .topbar-nav .btn {
+  /* only the download button of the bar: the support dialog sits inside the nav and keeps its wide buttons */
+  .topbar-nav > .btn {
     width: 40px;
     height: 40px;
     padding: 0;
@@ -1354,8 +1355,16 @@
     font-size: 18px;
   }
 
+  /* one below the other at the same width instead of two buttons of different length */
   .hero-actions {
-    gap: 12px;
+    flex-direction: column;
+    gap: 10px;
+    margin-top: 28px;
+  }
+
+  .hero-actions .btn {
+    width: 100%;
+    justify-content: center;
   }
 
   .hero-title {
@@ -1381,11 +1390,75 @@
   }
 
   .landing-features {
+    padding-top: 8px;
+  }
+
+  .landing-features .feature-icon {
+    width: 24px;
+    height: 24px;
+  }
+
+  .landing-features .feature h3 {
+    margin-top: 0;
+    font-size: 16px;
+  }
+
+  .landing-features .feature p {
+    max-width: none;
+    margin-top: 2px;
+    font-size: 14.5px;
+    white-space: normal;
+    text-wrap: pretty;
+  }
+
+  .stats-link {
+    margin-top: 8px;
+    padding-top: 18px;
+  }
+
+  .landing-faq {
     padding-top: 48px;
+    padding-bottom: 56px;
+  }
+
+  .faq {
+    gap: 10px;
+  }
+
+  .faq-item summary {
+    padding: 15px 16px;
+  }
+
+  .faq-item h3 {
+    font-size: 15.5px;
+  }
+
+  .faq-item p {
+    padding: 0 16px 16px;
   }
 
   .stats-body {
     padding-top: 36px;
+  }
+
+  .stats-grid {
+    gap: 10px;
+  }
+
+  .stat {
+    min-height: 0;
+    padding: 14px 16px;
+  }
+
+  .stat-icon {
+    width: 28px;
+    height: 28px;
+    margin-right: 16px;
+  }
+
+  .stat-value {
+    font-size: 24px;
+    line-height: 28px;
   }
 
   .stats-head p {
@@ -1410,8 +1483,40 @@
     margin-right: 16px;
   }
 
+  /* the period choice below the title instead of squeezing it into three lines */
+  .chart-title {
+    flex-basis: calc(100% - 44px);
+  }
+
+  .chart-head .range {
+    margin-left: 44px;
+  }
+
+  /* name and share in one line, the bar below at full width: long model names stay readable */
+  .shares {
+    gap: 12px;
+  }
+
   .share {
-    grid-template-columns: minmax(0, 120px) minmax(0, 1fr) 48px;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "label value"
+      "track track";
+    row-gap: 6px;
+  }
+
+  .share-label {
+    grid-area: label;
+  }
+
+  .share-value {
+    grid-area: value;
+    padding-left: 12px;
+  }
+
+  .share-track {
+    grid-area: track;
+    height: 8px;
   }
 
   .figures {
@@ -1430,6 +1535,11 @@
   }
 
   .stats-privacy {
-    padding-top: 64px;
+    padding-top: 48px;
+    padding-bottom: 48px;
+  }
+
+  .stats-privacy .footnote {
+    margin-top: 28px;
   }
 }
