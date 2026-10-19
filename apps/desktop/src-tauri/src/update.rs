@@ -6,14 +6,26 @@
 //!   runtime stays; the sidecar only offers it when the installed runtime has the same key. A
 //!   small PowerShell script swaps the files once FORGE has exited (a running exe cannot be
 //!   overwritten), rolls back on failure and starts FORGE again.
+//!
+//! macOS: `*.app.tar.gz` with a complete `FORGE.app`, swapped for the running bundle. Linux:
+//! `*.AppImage`, swapped for the running AppImage; a .deb installation updates through its package
+//! manager. On both a small shell script (see unix.rs) swaps once FORGE has exited, rolls back on
+//! failure and starts FORGE again.
 
+#[cfg(windows)]
 use std::os::windows::process::CommandExt;
 use std::path::{Path, PathBuf};
+#[cfg(windows)]
 use std::process::Command;
 
 use crate::i18n::{pick, tr};
 
+#[cfg(any(unix, test))]
+mod unix;
+
+#[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+#[cfg(windows)]
 const CREATE_BREAKAWAY_FROM_JOB: u32 = 0x0100_0000;
 
 /// Runtime key (node, git, gh …) the release build was made for, from scripts/prepare-runtime.mjs via
@@ -22,17 +34,68 @@ pub fn expected_runtime() -> Option<&'static str> {
     option_env!("FORGE_RUNTIME_KEY").map(str::trim).filter(|k| !k.is_empty())
 }
 
+/// Platform part of release asset names and runtime keys (scripts/prepare-runtime.mjs); handed to
+/// the sidecar as FORGE_PLATFORM.
+pub fn platform_tag() -> &'static str {
+    if cfg!(windows) {
+        "win32-x64"
+    } else if cfg!(target_os = "macos") {
+        if cfg!(target_arch = "aarch64") {
+            "darwin-arm64"
+        } else {
+            "darwin-x64"
+        }
+    } else if cfg!(target_arch = "aarch64") {
+        "linux-arm64"
+    } else {
+        "linux-x64"
+    }
+}
+
+/// How this copy was installed, handed to the sidecar as FORGE_INSTALL_KIND: it decides which update
+/// fits. `nsis` (Windows), `app` (macOS bundle), `appimage`, `system` (a Linux package, or anything
+/// else FORGE cannot replace itself), `dev` (debug build).
+pub fn install_kind() -> &'static str {
+    if cfg!(debug_assertions) {
+        return "dev";
+    }
+    release_kind()
+}
+
+#[cfg(windows)]
+fn release_kind() -> &'static str {
+    "nsis"
+}
+
+#[cfg(target_os = "macos")]
+fn release_kind() -> &'static str {
+    match std::env::current_exe().ok().and_then(|e| unix::bundle_of(&e)) {
+        Some(_) => "app",
+        None => "system",
+    }
+}
+
+#[cfg(all(unix, not(target_os = "macos")))]
+fn release_kind() -> &'static str {
+    if unix::appimage().is_some() {
+        "appimage"
+    } else {
+        "system"
+    }
+}
+
 /// What a release build misses in its runtime folder, for the start screen when the sidecar cannot
 /// run at all. The sidecar checks the versions too (packages/sidecar/src/update/full-install.ts).
 pub fn runtime_gaps(runtime: Option<&Path>) -> Vec<&'static str> {
-    let parts: [(&str, &str); 6] = [
-        ("node/node.exe", "Node.js"),
-        ("git/cmd/git.exe", "Git"),
-        ("gh/bin/gh.exe", "GitHub CLI"),
-        ("python/python.exe", "Python"),
-        ("sidecar/sidecar.mjs", pick("Background service", "Hintergrunddienst")),
-        ("VERSIONS.json", pick("Version list", "Versionsliste")),
-    ];
+    #[cfg(windows)]
+    let tools = [("node/node.exe", "Node.js"), ("git/cmd/git.exe", "Git"), ("gh/bin/gh.exe", "GitHub CLI"), ("python/python.exe", "Python")];
+    // git and python come from the system there.
+    #[cfg(unix)]
+    let tools = [("node/bin/node", "Node.js"), ("gh/bin/gh", "GitHub CLI")];
+    let parts: Vec<(&str, &str)> = tools
+        .into_iter()
+        .chain([("sidecar/sidecar.mjs", pick("Background service", "Hintergrunddienst")), ("VERSIONS.json", pick("Version list", "Versionsliste"))])
+        .collect();
     match runtime {
         None => parts.iter().map(|(_, label)| *label).collect(),
         Some(dir) => parts.iter().filter(|(rel, _)| !dir.join(rel).exists()).map(|(_, label)| *label).collect(),
@@ -41,17 +104,24 @@ pub fn runtime_gaps(runtime: Option<&Path>) -> Vec<&'static str> {
 
 /// Arguments for Tauri's NSIS installer. `/D=` must come last and unquoted, even with spaces:
 /// NSIS takes the rest of the command line as the folder.
+#[cfg(windows)]
 fn installer_args(install_dir: Option<&Path>) -> (Vec<&'static str>, Option<String>) {
     let dir = install_dir.map(|d| d.to_string_lossy().into_owned()).filter(|d| !d.is_empty() && !d.contains('"'));
     (vec!["/P", "/UPDATE", "/R"], dir.map(|d| format!("/D={d}")))
 }
 
 /// The files a small update may contain, relative to the installation folder.
+#[cfg(windows)]
 const PATCH_FILES: [&str; 3] = ["forge-desktop.exe", "runtime/sidecar/sidecar.mjs", "update.json"];
 
 pub enum Plan {
+    #[cfg(windows)]
     Installer { file: PathBuf, install_dir: Option<PathBuf> },
+    #[cfg(windows)]
     Patch { staged: PathBuf, script: PathBuf, install_dir: PathBuf, version: String },
+    /// macOS and Linux: `/bin/sh <script> <args>` swaps the app once FORGE has exited.
+    #[cfg(unix)]
+    Swap { script: PathBuf, args: Vec<std::ffi::OsString> },
 }
 
 /// Checks the downloaded file and gets it ready; nothing is changed in the installation yet.
@@ -63,6 +133,16 @@ pub fn prepare(path: &str) -> Result<Plan, String> {
         return Err(tr!("Invalid update", "Ungültiges Update"));
     }
     let name = file.file_name().and_then(|n| n.to_str()).unwrap_or_default().to_ascii_lowercase();
+    prepare_file(&dir, file, &name)
+}
+
+#[cfg(unix)]
+fn prepare_file(dir: &Path, file: PathBuf, name: &str) -> Result<Plan, String> {
+    unix::prepare(dir, file, name)
+}
+
+#[cfg(windows)]
+fn prepare_file(dir: &Path, file: PathBuf, name: &str) -> Result<Plan, String> {
     if name.ends_with("-setup.exe") {
         // A development build is no installation: there the installer keeps its own folder.
         let install_dir = if cfg!(debug_assertions) { None } else { std::env::current_exe().ok().and_then(|e| e.parent().map(Path::to_path_buf)) };
@@ -105,6 +185,7 @@ pub fn prepare(path: &str) -> Result<Plan, String> {
 }
 
 /// Only the expected files, nothing else: an update must not be able to drop files anywhere.
+#[cfg(windows)]
 fn check_contents(staged: &Path) -> Result<(), String> {
     let mut found = Vec::new();
     collect(staged, staged, &mut found)?;
@@ -121,6 +202,7 @@ fn check_contents(staged: &Path) -> Result<(), String> {
     Ok(())
 }
 
+#[cfg(windows)]
 fn collect(root: &Path, dir: &Path, out: &mut Vec<String>) -> Result<(), String> {
     for entry in std::fs::read_dir(dir).map_err(|e| e.to_string())? {
         let entry = entry.map_err(|e| e.to_string())?;
@@ -135,6 +217,7 @@ fn collect(root: &Path, dir: &Path, out: &mut Vec<String>) -> Result<(), String>
     Ok(())
 }
 
+#[cfg(windows)]
 fn read_version(file: &Path) -> Result<String, String> {
     let text = std::fs::read_to_string(file).map_err(|e| e.to_string())?;
     let json: serde_json::Value = serde_json::from_str(&text).map_err(|e| e.to_string())?;
@@ -147,6 +230,13 @@ fn read_version(file: &Path) -> Result<String, String> {
 }
 
 /// Starts what was prepared. The caller ends FORGE right after.
+#[cfg(unix)]
+pub fn launch(plan: Plan) -> Result<(), String> {
+    unix::launch(plan)
+}
+
+/// Starts what was prepared. The caller ends FORGE right after.
+#[cfg(windows)]
 pub fn launch(plan: Plan) -> Result<(), String> {
     match plan {
         Plan::Installer { file, install_dir } => {
@@ -184,6 +274,7 @@ pub fn launch(plan: Plan) -> Result<(), String> {
 
 /// Swaps the files after FORGE exited. Old files are kept as `.forge-old` until all new ones are in
 /// place; any failure puts the old ones back. FORGE starts again in every case.
+#[cfg(windows)]
 const APPLY_SCRIPT: &str = r#"param([int]$WaitPid, [string]$Src, [string]$Dst, [string]$Version)
 $ErrorActionPreference = 'Stop'
 try { Wait-Process -Id $WaitPid -Timeout 60 -ErrorAction SilentlyContinue } catch {}
@@ -232,6 +323,7 @@ Remove-Item -Recurse -Force -LiteralPath $Src -ErrorAction SilentlyContinue
 mod tests {
     use super::*;
 
+    #[cfg(windows)]
     #[test]
     fn installer_keeps_the_folder_unquoted_and_last() {
         let (args, dir) = installer_args(Some(Path::new(r"C:\Users\Max Muster\AppData\Local\FORGE")));
@@ -241,6 +333,7 @@ mod tests {
         assert_eq!(installer_args(Some(Path::new(r#"C:\a"b"#))).1, None);
     }
 
+    #[cfg(windows)]
     #[test]
     fn names_what_the_runtime_misses() {
         let dir = std::env::temp_dir().join(format!("forge-gaps-{}", std::process::id()));
@@ -257,5 +350,33 @@ mod tests {
         assert!(runtime_gaps(Some(&dir)).is_empty());
         assert_eq!(runtime_gaps(None).len(), 6);
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn names_what_the_runtime_misses() {
+        let dir = std::env::temp_dir().join(format!("forge-gaps-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("sidecar")).unwrap();
+        std::fs::write(dir.join("sidecar").join("sidecar.mjs"), "").unwrap();
+        // git and python are not part of the runtime there.
+        assert_eq!(runtime_gaps(Some(&dir)), ["Node.js", "GitHub CLI", "Version list"]);
+        for rel in ["node/bin/node", "gh/bin/gh", "VERSIONS.json"] {
+            let p = dir.join(rel);
+            std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+            std::fs::write(p, "{}").unwrap();
+        }
+        assert!(runtime_gaps(Some(&dir)).is_empty());
+        assert_eq!(runtime_gaps(None).len(), 4);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn platform_and_install_kind() {
+        if cfg!(windows) {
+            assert_eq!(platform_tag(), "win32-x64");
+        }
+        assert!(["win32-x64", "darwin-arm64", "darwin-x64", "linux-x64", "linux-arm64"].contains(&platform_tag()));
+        assert_eq!(install_kind(), if cfg!(debug_assertions) { "dev" } else { release_kind() });
     }
 }

@@ -2,6 +2,7 @@ mod chat_windows;
 mod i18n;
 mod job;
 mod screenshot;
+mod shell_env;
 mod sidecar;
 mod terminal;
 mod update;
@@ -129,6 +130,10 @@ fn term_close(state: tauri::State<'_, Terminals>, id: u32) {
 }
 
 pub fn run() {
+    // Before Tauri starts any thread; the sidecar and the terminals inherit the variables.
+    #[cfg(unix)]
+    shell_env::apply();
+    // On macOS Tauri's default menu stays: without its Edit menu, Cmd+C/V/X/A/Z do nothing in the webview.
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())

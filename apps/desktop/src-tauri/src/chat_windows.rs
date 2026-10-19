@@ -154,9 +154,50 @@ fn primary_button_down() -> bool {
     unsafe { (GetAsyncKeyState(key as i32) as u16 & 0x8000) != 0 }
 }
 
-#[cfg(not(windows))]
+#[cfg(target_os = "macos")]
 fn primary_button_down() -> bool {
-    false
+    // Bit 0 is the primary button, also when the buttons are swapped in the system settings.
+    objc2_app_kit::NSEvent::pressedMouseButtons() & 1 != 0
+}
+
+/// Asks GDK, which the process has loaded anyway (Tauri's windows are GTK 3), through its exported
+/// symbols instead of an extra crate. Must run on the GTK main thread. Under Wayland GDK knows the
+/// state while the pointer is over a FORGE window, which is where a tab is torn off.
+#[cfg(all(unix, not(target_os = "macos")))]
+fn primary_button_down() -> bool {
+    use std::ffi::{c_uint, c_void, CStr};
+    type Ptr = *mut c_void;
+    const GDK_BUTTON1_MASK: c_uint = 1 << 8;
+    // SAFETY: the symbols are looked up by their C names and called with the signatures of GDK 3
+    // (gdk_display_get_default_seat since 3.20, as webkit2gtk 4.1 needs anyway); null results end early.
+    unsafe {
+        let sym = |name: &CStr| libc::dlsym(libc::RTLD_DEFAULT, name.as_ptr());
+        let symbols = [
+            sym(c"gdk_display_get_default"),
+            sym(c"gdk_display_get_default_seat"),
+            sym(c"gdk_seat_get_pointer"),
+            sym(c"gdk_get_default_root_window"),
+            sym(c"gdk_device_get_state"),
+        ];
+        if symbols.iter().any(|s| s.is_null()) {
+            return false;
+        }
+        let display_get_default: extern "C" fn() -> Ptr = std::mem::transmute(symbols[0]);
+        let display_get_default_seat: extern "C" fn(Ptr) -> Ptr = std::mem::transmute(symbols[1]);
+        let seat_get_pointer: extern "C" fn(Ptr) -> Ptr = std::mem::transmute(symbols[2]);
+        let get_default_root_window: extern "C" fn() -> Ptr = std::mem::transmute(symbols[3]);
+        let device_get_state: extern "C" fn(Ptr, Ptr, *mut f64, *mut c_uint) = std::mem::transmute(symbols[4]);
+        let display = display_get_default();
+        let seat = if display.is_null() { display } else { display_get_default_seat(display) };
+        let pointer = if seat.is_null() { seat } else { seat_get_pointer(seat) };
+        let root = get_default_root_window();
+        if pointer.is_null() || root.is_null() {
+            return false;
+        }
+        let mut mask: c_uint = 0;
+        device_get_state(pointer, root, std::ptr::null_mut(), &mut mask);
+        mask & GDK_BUTTON1_MASK != 0
+    }
 }
 
 fn bring_to_front<R: Runtime>(w: &WebviewWindow<R>) {

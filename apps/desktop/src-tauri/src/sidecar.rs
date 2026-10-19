@@ -3,6 +3,7 @@
 //! stdout lines as `sidecar://messages` events (a batch of lines each).
 
 use std::io::{BufRead, BufReader, Read, Write};
+#[cfg(windows)]
 use std::os::windows::process::CommandExt;
 use std::path::PathBuf;
 use std::process::{Child, Command, ExitStatus, Stdio};
@@ -18,6 +19,7 @@ use tauri::{AppHandle, Emitter, Manager};
 use crate::i18n::tr;
 use crate::job;
 
+#[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
 const STDERR_TAIL_BYTES: usize = 8 * 1024;
@@ -69,7 +71,12 @@ fn node_binary(runtime: Option<&PathBuf>) -> PathBuf {
     if let Some(p) = dev_override("FORGE_NODE") {
         return p;
     }
-    match runtime.map(|r| r.join("node").join("node.exe")) {
+    #[cfg(windows)]
+    let bundled = runtime.map(|r| r.join("node").join("node.exe"));
+    // macOS and Linux ship the whole Node distribution as runtime/node.
+    #[cfg(unix)]
+    let bundled = runtime.map(|r| r.join("node").join("bin").join("node"));
+    match bundled {
         Some(p) if p.exists() => p,
         _ => PathBuf::from("node"),
     }
@@ -124,6 +131,9 @@ impl Sidecar {
         }
         // The sidecar compares this with the GitHub releases (updates).
         cmd.env("FORGE_APP_VERSION", app.package_info().version.to_string());
+        // Which update fits this installation (installer, app bundle, AppImage, package manager).
+        cmd.env("FORGE_INSTALL_KIND", crate::update::install_kind());
+        cmd.env("FORGE_PLATFORM", crate::update::platform_tag());
         // Only a release build is an installation to check; empty when the build did not know its runtime.
         if !cfg!(debug_assertions) {
             cmd.env("FORGE_RUNTIME_EXPECTED", crate::update::expected_runtime().unwrap_or(""));
@@ -136,7 +146,10 @@ impl Sidecar {
         if let Some(dir) = script.parent() {
             cmd.current_dir(dir);
         }
+        #[cfg(windows)]
         cmd.creation_flags(CREATE_NO_WINDOW);
+        #[cfg(unix)]
+        job::own_group(&mut cmd, true);
 
         let mut child = cmd.spawn().map_err(|e| {
             let msg = tr!("Could not start Node.js ({e}).", "Node.js konnte nicht gestartet werden ({e}).");

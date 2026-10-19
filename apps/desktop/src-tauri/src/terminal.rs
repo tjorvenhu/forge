@@ -2,6 +2,7 @@
 //! Only two programs can be started: the user's shell or the Claude CLI.
 
 use std::collections::HashMap;
+#[cfg(windows)]
 use std::ffi::OsString;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
@@ -83,6 +84,7 @@ const STRIP_ENV: &[&str] = &[
 /// How long the exit event waits for the last output after the program ended.
 const OUTPUT_DRAIN: Duration = Duration::from_secs(2);
 
+#[cfg(windows)]
 fn default_shell() -> (String, Vec<String>) {
     // Absolute path: Windows PowerShell is not guaranteed to be on PATH.
     let root = std::env::var("SystemRoot").unwrap_or_else(|_| r"C:\Windows".into());
@@ -91,10 +93,17 @@ fn default_shell() -> (String, Vec<String>) {
     (exe, vec!["-NoLogo".into()])
 }
 
+/// A login shell, as Terminal.app starts it: reads the profile with the user's PATH.
+#[cfg(unix)]
+fn default_shell() -> (String, Vec<String>) {
+    (crate::shell_env::user_shell(), vec!["-l".into()])
+}
+
 /// PATH entries in front of the user's PATH, as `bundledPathEntries` in the sidecar
 /// (packages/sidecar/src/util/tools.ts): shipped git, gh and python, then the folder where
 /// `pip install --user` puts scripts. In front, so the Store placeholder python.exe in WindowsApps
 /// does not win.
+#[cfg(windows)]
 fn runtime_path_entries(rt: &Path, user_base: Option<OsString>, appdata: Option<OsString>) -> Vec<PathBuf> {
     let mut parts: Vec<PathBuf> = vec![rt.join("git").join("cmd"), rt.join("gh").join("bin")];
     let python = rt.join("python");
@@ -116,11 +125,20 @@ fn runtime_path_entries(rt: &Path, user_base: Option<OsString>, appdata: Option<
     parts
 }
 
-/// The webview may only start the real Claude CLI: an existing file named claude.exe or claude.cmd.
+/// macOS and Linux: shipped node and gh; git and python come from the system.
+#[cfg(unix)]
+fn runtime_path_entries(rt: &Path) -> Vec<PathBuf> {
+    vec![rt.join("node").join("bin"), rt.join("gh").join("bin")]
+}
+
+/// File names of the Claude CLI: claude.exe or claude.cmd on Windows, claude elsewhere.
+const CLAUDE_NAMES: &[&str] = if cfg!(windows) { &["claude.exe", "claude.cmd"] } else { &["claude"] };
+
+/// The webview may only start the real Claude CLI: an existing file with one of CLAUDE_NAMES.
 fn validate_claude_path(p: Option<String>) -> Result<String, String> {
     let p = p.ok_or_else(|| tr!("Claude Code not found", "Claude Code nicht gefunden"))?;
     let name = Path::new(&p).file_name().and_then(|n| n.to_str()).unwrap_or("").to_lowercase();
-    if !matches!(name.as_str(), "claude.exe" | "claude.cmd") || !Path::new(&p).is_file() {
+    if !CLAUDE_NAMES.contains(&name.as_str()) || !Path::new(&p).is_file() {
         return Err(tr!("Invalid path to the Claude CLI", "Ungültiger Pfad zur Claude-CLI"));
     }
     Ok(p)
@@ -148,7 +166,10 @@ impl Terminals {
             cmd.env_remove(k);
         }
         if let Some(rt) = runtime {
+            #[cfg(windows)]
             let mut parts = runtime_path_entries(&rt, std::env::var_os("PYTHONUSERBASE"), std::env::var_os("APPDATA"));
+            #[cfg(unix)]
+            let mut parts = runtime_path_entries(&rt);
             if let Some(cur) = std::env::var_os("PATH") {
                 parts.extend(std::env::split_paths(&cur));
             }
@@ -157,6 +178,7 @@ impl Terminals {
             }
             // Same as the sidecar's sessionEnv: piped Python output in the ANSI code page fails on the first
             // character outside it.
+            #[cfg(windows)]
             if rt.join("python").join("python.exe").is_file() && std::env::var_os("PYTHONUTF8").is_none() {
                 cmd.env("PYTHONUTF8", "1");
             }
@@ -252,9 +274,9 @@ impl Terminals {
 
 #[cfg(test)]
 mod tests {
-    use super::runtime_path_entries;
-    use std::path::PathBuf;
+    use super::*;
 
+    #[cfg(windows)]
     #[test]
     fn python_and_its_user_scripts_come_after_git_and_gh() {
         let rt = std::env::temp_dir().join(format!("forge-term-rt-{}", std::process::id()));
@@ -274,5 +296,30 @@ mod tests {
         assert_eq!(custom.last(), Some(&PathBuf::from(r"D:\pyuser\Python314\Scripts")));
         std::fs::remove_dir_all(&rt).unwrap();
         assert_eq!(runtime_path_entries(&rt, None, None), vec![rt.join("git").join("cmd"), rt.join("gh").join("bin")]);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn shipped_node_and_gh_come_first() {
+        let rt = Path::new("/Applications/FORGE.app/Contents/Resources/runtime");
+        assert_eq!(runtime_path_entries(rt), vec![rt.join("node").join("bin"), rt.join("gh").join("bin")]);
+    }
+
+    #[test]
+    fn only_the_claude_cli_may_start() {
+        let dir = std::env::temp_dir().join(format!("forge-term-claude-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        for name in CLAUDE_NAMES.iter().chain(["node", "claude.sh"].iter()) {
+            std::fs::write(dir.join(name), "").unwrap();
+        }
+        for name in CLAUDE_NAMES {
+            let p = dir.join(name).to_string_lossy().into_owned();
+            assert_eq!(validate_claude_path(Some(p.clone())), Ok(p));
+        }
+        assert!(validate_claude_path(Some(dir.join("node").to_string_lossy().into_owned())).is_err());
+        assert!(validate_claude_path(Some(dir.join("claude.sh").to_string_lossy().into_owned())).is_err());
+        assert!(validate_claude_path(Some(dir.join("missing").join(CLAUDE_NAMES[0]).to_string_lossy().into_owned())).is_err());
+        assert!(validate_claude_path(None).is_err());
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 }
