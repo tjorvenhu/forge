@@ -185,10 +185,14 @@
    Sizes follow the mockup measured at 1536 wide; the vw values keep its proportions on other desktop widths. */
 
 .landing {
+  overflow-x: clip;
+}
+
+/* The first screen alone fills the window below the top bar; the questions follow when scrolling. */
+.landing-first {
   display: flex;
   min-height: calc(100svh - 77px);
   flex-direction: column;
-  overflow-x: clip;
 }
 
 .hero {
@@ -1282,7 +1286,7 @@
 }
 
 @media (max-width: 1080px) {
-  .landing {
+  .landing-first {
     min-height: 0;
   }
 

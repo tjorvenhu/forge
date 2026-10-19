@@ -29,7 +29,7 @@ const FEATURES: { key: FeatureKey; icon: LucideIcon }[] = [
   { key: "workflow", icon: Settings },
 ];
 
-/** The start page: one screen with the app window, four cards below, the way to the live stats and the questions. */
+/** The start page: one full screen with the app window, four cards and the way to the live stats; the questions below it. */
 export function Landing({ locale, base }: { locale: Locale; base: LocaleBase }) {
   const { t } = i18n(locale);
   const l = t.landing;
@@ -38,6 +38,8 @@ export function Landing({ locale, base }: { locale: Locale; base: LocaleBase }) 
   const shot = shots[shots.length - 1]!;
   return (
     <main className="landing">
+      {/* The first screen fills the window; the questions and the footer come only when scrolling. */}
+      <div className="landing-first">
       <section className="hero">
         <div className="container hero-inner">
           <div className="hero-text">
@@ -104,6 +106,7 @@ export function Landing({ locale, base }: { locale: Locale; base: LocaleBase }) 
           {l.liveStats}
           <ArrowRight aria-hidden className="btn-arrow" />
         </a>
+      </div>
       </div>
 
       <section className="container landing-faq" id="faq" aria-labelledby="faq-title">
