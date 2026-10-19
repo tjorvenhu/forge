@@ -49,13 +49,23 @@ async function all<T extends { id?: string }>(path: string, key: string, fetchFn
 
 let cache: { value: Donations; at: number } | null = null;
 
+/** The live site; only it has the Stripe key, so `next dev` asks it for the figure. */
+const LIVE_DONATIONS_URL = "https://forge.vanturis.de/api/v1/donations";
+
+async function liveDonations(fetchFn: typeof fetch): Promise<Donations | null> {
+  const res = await fetchFn(LIVE_DONATIONS_URL, { signal: AbortSignal.timeout(5_000) });
+  if (!res.ok) return null;
+  return ((await res.json()) as { donations: Donations | null }).donations;
+}
+
 /**
  * Donations so far, from Stripe at most every 10 minutes. Null without STRIPE_SECRET_KEY: the page
  * then leaves the figure out. A restricted key with read access to Checkout Sessions is enough.
+ * In development without a key the figure comes from the live site.
  */
 export async function donations(fetchFn: typeof fetch = fetch): Promise<Donations | null> {
   const key = process.env.STRIPE_SECRET_KEY?.trim();
-  if (!key) return null;
+  if (!key) return process.env.NODE_ENV === "development" ? liveDonations(fetchFn) : null;
   if (cache && Date.now() - cache.at < CACHE_MS) return cache.value;
   const link = process.env.STRIPE_PAYMENT_LINK?.trim() || DONATE_LINK_ID;
   const sessions = await all<Session & { id: string }>(`/checkout/sessions?payment_link=${encodeURIComponent(link)}&status=complete`, key, fetchFn);

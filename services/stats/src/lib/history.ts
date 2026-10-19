@@ -10,6 +10,8 @@ export interface HistoryDay {
   claudeTurns: number;
   sessions: number;
   claudeWorkMs: number;
+  /** what the tokens would have cost at API prices, in US cents */
+  costUsdCents: number;
   activeInstalls: number;
 }
 
@@ -78,6 +80,7 @@ export function toHistory(rows: HistoryRow[], endDay: string, days = HISTORY_DAY
     claudeTurns: d.increments.claudeTurns,
     sessions: d.increments.sessions,
     claudeWorkMs: d.increments.claudeWorkMs,
+    costUsdCents: d.increments.costUsdCents,
     activeInstalls: d.activeInstalls,
   }));
 }

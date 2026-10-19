@@ -1,13 +1,24 @@
 import { ArrowRight, BarChart3, Download, Folder, GitBranch, MessageCircle, Settings, Square, X } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import shotDe from "@/assets/app-de.webp";
-import shotEn from "@/assets/app-en.webp";
+import de800 from "@/assets/app-de-800.webp";
+import de1200 from "@/assets/app-de-1200.webp";
+import de1600 from "@/assets/app-de-1600.webp";
+import de2400 from "@/assets/app-de-2400.webp";
+import en800 from "@/assets/app-en-800.webp";
+import en1200 from "@/assets/app-en-1200.webp";
+import en1600 from "@/assets/app-en-1600.webp";
+import en2400 from "@/assets/app-en-2400.webp";
 import { DOWNLOAD_URL } from "@/lib/constants";
 import type { Locale } from "@/lib/i18n";
 import { i18n, type Messages } from "@/lib/messages";
 import { Feature } from "./blocks";
+import { Tilt } from "./tilt";
 
-const SHOTS = { de: shotDe, en: shotEn } as const;
+/**
+ * The app screenshot (taken at 2400 x 1680) in four widths: the browser picks the one closest to the
+ * window's size on screen. Scaled down on the GPU under the 3D turn, a far larger file looked pixelated.
+ */
+const SHOTS = { de: [de800, de1200, de1600, de2400], en: [en800, en1200, en1600, en2400] } as const;
 
 type FeatureKey = keyof Messages["landing"]["features"];
 
@@ -22,7 +33,8 @@ const FEATURES: { key: FeatureKey; icon: LucideIcon }[] = [
 export function Landing({ locale }: { locale: Locale }) {
   const { t } = i18n(locale);
   const l = t.landing;
-  const shot = SHOTS[locale];
+  const shots = SHOTS[locale];
+  const shot = shots[shots.length - 1]!;
   return (
     <main className="landing">
       <section className="hero">
@@ -53,7 +65,7 @@ export function Landing({ locale }: { locale: Locale }) {
             </ul>
           </div>
 
-          <div className="hero-shot">
+          <Tilt className="hero-shot">
             <div className="window">
               <div className="window-bar" aria-hidden>
                 <span className="window-lights">
@@ -66,9 +78,18 @@ export function Landing({ locale }: { locale: Locale }) {
                   <X />
                 </span>
               </div>
-              <img src={shot.src} width={shot.width} height={shot.height} alt={l.screenshotAlt} className="window-img" fetchPriority="high" />
+              <img
+                src={shots[2].src}
+                srcSet={shots.map((s) => `${s.src} ${s.width}w`).join(", ")}
+                sizes="(max-width: 1080px) 100vw, 50vw"
+                width={shot.width}
+                height={shot.height}
+                alt={l.screenshotAlt}
+                className="window-img"
+                fetchPriority="high"
+              />
             </div>
-          </div>
+          </Tilt>
         </div>
       </section>
 

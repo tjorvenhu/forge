@@ -22,8 +22,8 @@ describe("fillHistory and toHistory", () => {
   });
 
   it("sums all four token kinds", () => {
-    const h = toHistory([{ day: "2026-10-18", active: "1", tokensInput: "1", tokensOutput: "20", tokensCacheRead: "300", tokensCacheWrite: "4000", claudeTurns: "7", sessions: "2", claudeWorkMs: "9000" }], "2026-10-18", 1);
-    expect(h).toEqual([{ day: "2026-10-18", tokens: 4321, claudeTurns: 7, sessions: 2, claudeWorkMs: 9000, activeInstalls: 1 }]);
+    const h = toHistory([{ day: "2026-10-18", active: "1", tokensInput: "1", tokensOutput: "20", tokensCacheRead: "300", tokensCacheWrite: "4000", claudeTurns: "7", sessions: "2", claudeWorkMs: "9000", costUsdCents: "55" }], "2026-10-18", 1);
+    expect(h).toEqual([{ day: "2026-10-18", tokens: 4321, claudeTurns: 7, sessions: 2, claudeWorkMs: 9000, costUsdCents: 55, activeInstalls: 1 }]);
   });
 
   it("builds one increment column per counter", () => {

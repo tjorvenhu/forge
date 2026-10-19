@@ -81,7 +81,7 @@ Response of `GET /api/v1/totals`:
   "versions": [{ "version": "0.1.81", "installs": 3 }],
   "plans": [{ "plan": "max_20x", "installs": 4, "online": 1 }, { "plan": null, "installs": 3, "online": 1 }],
   "platforms": [{ "platform": "windows", "installs": 7 }],
-  "history": [{ "day": "2026-10-17", "tokens": 64420000, "claudeTurns": 55, "sessions": 12, "claudeWorkMs": 5400000, "activeInstalls": 7 }]
+  "history": [{ "day": "2026-10-17", "tokens": 64420000, "claudeTurns": 55, "sessions": 12, "claudeWorkMs": 5400000, "costUsdCents": 4200, "activeInstalls": 7 }]
 }
 ```
 
@@ -90,7 +90,7 @@ Response of `GET /api/v1/totals`:
 - `plans`: active installations of the last 30 days per subscription, of which `online` are online right now; `null` means unknown (older app or without a claude.ai login).
 - `platforms`: active installations of the last 30 days per operating system (`windows`, `macos`, `linux`, `other`, from the `os` of the reports), most first.
 - `versions`: active installations of the last 30 days per FORGE version, most common first.
-- `history`: the last 30 UTC days including today, oldest first; `tokens` is the increase of all four token types, `claudeTurns` the increase in runs, `sessions` and `claudeWorkMs` likewise.
+- `history`: the last 30 UTC days including today, oldest first; `tokens` is the increase of all four token types, `claudeTurns` the increase in runs, `sessions`, `claudeWorkMs` and `costUsdCents` likewise.
 - The README badge reads `installs`.
 
 The totals are recomputed from the database at most every 5 minutes (in-process cache). New reports therefore appear with a delay of up to 5 minutes.

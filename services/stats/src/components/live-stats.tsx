@@ -68,13 +68,21 @@ export function LiveStats({ initial }: { initial: Totals }) {
         <span>{t.stats.updated(f.dateTime(totals.updatedAt))}</span>
       </div>
       <div className="stats-grid">
-        {tiles(totals, locale).map(({ value, format, spark, sparkAccent, ...s }, i) => (
+        {tiles(totals, locale).map(({ value, format, spark, sparkAccent, live, ...s }, i) => (
           <Stat
             key={s.label}
             {...s}
             index={i}
             value={<AnimatedNumber value={value} format={format} />}
-            spark={<Spark values={spark} accent={sparkAccent} title={t.stats.tiles.sparkTitle} />}
+            spark={
+              spark ? (
+                <Spark values={spark} accent={sparkAccent} title={t.stats.tiles.sparkTitle} />
+              ) : (
+                <span className="stat-live" title={t.stats.liveTitle}>
+                  <LiveDot on={!!live} />
+                </span>
+              )
+            }
           />
         ))}
       </div>

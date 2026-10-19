@@ -8,8 +8,8 @@ import { useI18n } from "./locale";
 import { AnimatedNumber } from "./motion";
 
 /**
- * "Unterstützen" with the heart in the top bar: opens the dialog of the app's heart (SupportDialog) with what was
- * given so far above the payment link. A real link, so it still leads to Stripe without JavaScript.
+ * "Unterstützen" with the heart in the top bar: opens a short dialog with what was given so far above
+ * the payment link. A real link, so it still leads to Stripe without JavaScript.
  */
 export function SupportButton({ donations }: { donations: Donations | null }) {
   const dialog = useRef<HTMLDialogElement>(null);
@@ -40,6 +40,9 @@ export function SupportButton({ donations }: { donations: Donations | null }) {
       >
         <div className="modal-body">
           <header className="modal-head">
+            <span className="modal-icon" aria-hidden>
+              <Heart />
+            </span>
             <h2 id={titleId}>{m.title}</h2>
             <button type="button" className="modal-close" onClick={close} aria-label={m.close}>
               <X aria-hidden />
@@ -57,16 +60,18 @@ export function SupportButton({ donations }: { donations: Donations | null }) {
             </div>
           )}
 
+          <div className="modal-actions">
+            <a className="btn btn-primary" href={DONATE_URL}>
+              <Heart aria-hidden />
+              {m.pay}
+            </a>
+            <a className="btn btn-outline" href={FEEDBACK_URL} title={m.feedbackTitle}>
+              <Lightbulb aria-hidden />
+              {m.feedback}
+              <ExternalLink className="modal-external" aria-hidden />
+            </a>
+          </div>
           <p className="modal-note">{m.note}</p>
-          <a className="btn btn-primary modal-action" href={DONATE_URL}>
-            <Heart aria-hidden />
-            {m.pay}
-          </a>
-          <a className="btn btn-outline modal-action" href={FEEDBACK_URL} title={m.feedbackTitle}>
-            <Lightbulb aria-hidden />
-            {m.feedback}
-            <ExternalLink className="modal-external" aria-hidden />
-          </a>
         </div>
       </dialog>
     </>

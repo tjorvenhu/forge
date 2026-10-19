@@ -447,15 +447,16 @@ a:hover > .btn-arrow {
 /* ---- support dialog behind "Unterstützen", after the SupportDialog of the app */
 
 .modal {
-  width: min(440px, calc(100vw - 2 * var(--page-gutter, 24px)));
+  width: min(400px, calc(100vw - 2 * var(--page-gutter, 24px)));
   max-height: calc(100vh - 48px);
   margin: auto;
   padding: 0;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-xl);
-  background: var(--color-surface);
+  background: color-mix(in srgb, var(--color-surface) 92%, transparent);
   color: var(--color-fg);
-  box-shadow: 0 24px 64px rgb(0 0 0 / 45%);
+  box-shadow: 0 24px 64px rgb(0 0 0 / 50%);
+  backdrop-filter: blur(12px);
 }
 
 .modal[open] {
@@ -464,35 +465,53 @@ a:hover > .btn-arrow {
 
 .modal::backdrop {
   background: rgb(0 0 0 / 55%);
-  backdrop-filter: blur(2px);
+  backdrop-filter: blur(3px);
 }
 
 .modal-body {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  padding: 16px 20px 20px;
+  gap: 16px;
+  padding: 22px 24px 20px;
 }
 
 .modal-head {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 12px;
 }
 
+/* the heart in an orange tile, like the icons of the cards */
+.modal-icon {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-lg);
+  background: var(--color-accent-soft);
+  color: var(--color-accent);
+}
+
+.modal-icon svg {
+  width: 18px;
+  height: 18px;
+}
+
 .modal-head h2 {
-  font-size: 16px;
+  flex: 1;
+  font-size: 18px;
   font-weight: 600;
-  line-height: 20px;
+  line-height: 24px;
 }
 
 .modal-close {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
+  width: 30px;
+  height: 30px;
   border: 0;
   border-radius: var(--radius-md);
   background: transparent;
@@ -511,22 +530,61 @@ a:hover > .btn-arrow {
 }
 
 .modal-text {
-  font-size: var(--text-body);
   color: var(--color-muted);
+  font-size: var(--text-ui);
+  line-height: 21px;
 }
 
-.modal-note {
-  font-size: var(--text-small);
-  line-height: 16px;
+/* "Bisher gespendet": the figure as large as the numbers of the stats cards */
+.donated {
+  display: flex;
+  flex-direction: column;
+  padding: 14px 16px;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--color-surface-2) 70%, transparent);
+}
+
+.donated-label {
+  color: var(--color-muted);
+  font-size: var(--text-body);
+}
+
+.donated-value {
+  margin-top: 2px;
+  color: var(--color-accent);
+  font-size: 28px;
+  font-weight: 600;
+  line-height: 34px;
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
+}
+
+.donated-sub {
   color: var(--color-subtle);
+  font-size: var(--text-small);
 }
 
-.modal-action {
+.modal-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.modal-actions .btn {
   width: 100%;
+  font-size: 15px;
+  font-weight: 500;
 }
 
-.modal-action svg {
+.modal-actions .btn svg {
+  width: 17px;
+  height: 17px;
   flex-shrink: 0;
+}
+
+.modal-actions .btn-outline {
+  background: color-mix(in srgb, var(--color-surface) 40%, transparent);
 }
 
 .modal-external {
@@ -534,36 +592,11 @@ a:hover > .btn-arrow {
   color: var(--color-subtle);
 }
 
-/* "Bisher gespendet" in the dialog: small, above the payment link. */
-.donated {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  align-items: baseline;
-  gap: 2px 12px;
-  padding: 10px 12px;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
-  background: linear-gradient(135deg, var(--color-accent-soft), transparent 60%), var(--color-surface-2);
-}
-
-.donated-label {
-  font-size: var(--text-small);
-  color: var(--color-muted);
-}
-
-.donated-value {
-  grid-row: span 2;
-  align-self: center;
-  font-size: 20px;
-  font-weight: 600;
-  letter-spacing: -0.01em;
-  font-variant-numeric: tabular-nums;
-  color: var(--color-accent);
-}
-
-.donated-sub {
-  font-size: var(--text-caption);
+.modal-note {
   color: var(--color-subtle);
+  font-size: var(--text-small);
+  line-height: 17px;
+  text-align: center;
 }
 
 /* ---- motion: entrances and scroll reveal; prefers-reduced-motion below cuts them to their end state */

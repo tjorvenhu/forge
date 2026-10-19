@@ -81,7 +81,7 @@ Antwort von `GET /api/v1/totals`:
   "versions": [{ "version": "0.1.81", "installs": 3 }],
   "plans": [{ "plan": "max_20x", "installs": 4, "online": 1 }, { "plan": null, "installs": 3, "online": 1 }],
   "platforms": [{ "platform": "windows", "installs": 7 }],
-  "history": [{ "day": "2026-10-17", "tokens": 64420000, "claudeTurns": 55, "sessions": 12, "claudeWorkMs": 5400000, "activeInstalls": 7 }]
+  "history": [{ "day": "2026-10-17", "tokens": 64420000, "claudeTurns": 55, "sessions": 12, "claudeWorkMs": 5400000, "costUsdCents": 4200, "activeInstalls": 7 }]
 }
 ```
 
@@ -90,7 +90,7 @@ Antwort von `GET /api/v1/totals`:
 - `plans`: aktive Installationen der letzten 30 Tage je Abo, davon `online` gerade online; `null` heißt unbekannt (ältere App oder ohne claude.ai-Anmeldung).
 - `platforms`: aktive Installationen der letzten 30 Tage je Betriebssystem (`windows`, `macos`, `linux`, `other`, aus dem `os` der Meldungen), die häufigste zuerst.
 - `versions`: aktive Installationen der letzten 30 Tage je FORGE-Version, die häufigste zuerst.
-- `history`: die letzten 30 UTC-Tage einschließlich heute, älteste zuerst; `tokens` ist der Zuwachs aller vier Token-Arten, `claudeTurns` der Zuwachs an Durchläufen, `sessions` und `claudeWorkMs` ebenso.
+- `history`: die letzten 30 UTC-Tage einschließlich heute, älteste zuerst; `tokens` ist der Zuwachs aller vier Token-Arten, `claudeTurns` der Zuwachs an Durchläufen, `sessions`, `claudeWorkMs` und `costUsdCents` ebenso.
 - Das README-Badge liest `installs`.
 
 Die Summen werden höchstens alle 5 Minuten neu aus der Datenbank berechnet (Zwischenspeicher im Prozess). Neue Meldungen erscheinen also mit bis zu 5 Minuten Verzögerung.
