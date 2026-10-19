@@ -5,6 +5,7 @@ import type { AppInstallState, AppUpdateState, Session } from "@forge/protocol";
 import { toast } from "@/stores/toast";
 import { openChatWindow, useChatWindows } from "./chat-windows";
 import { pickInstallerFile } from "./native";
+import { isWindows } from "./platform";
 import { call, keys } from "./queries";
 import { errorMessage } from "./rpc";
 import { isBusy } from "./working";
@@ -14,6 +15,13 @@ import { t } from "@/i18n";
 const REOPEN_KEY = "forge.reopenChatWindows";
 /** Same bound as the sidecar's marks: a FORGE started much later by hand opens nothing. */
 const REOPEN_MAX_AGE_MS = 30 * 60_000;
+
+/**
+ * Only the Windows build ships its runtime with a full installer (setup.exe) that FORGE can run itself.
+ * On macOS and Linux the .dmg, AppImage or .deb is installed by hand, so the repair banner, the settings
+ * card and the palette entries stay away there.
+ */
+export const supportsFullInstall = isWindows;
 
 /** One installation at a time, whether started by a click, the palette or the phone. */
 export const useInstall = create<{ installing: boolean }>(() => ({ installing: false }));

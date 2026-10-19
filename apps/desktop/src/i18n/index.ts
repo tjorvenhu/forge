@@ -1,4 +1,5 @@
 import { DEFAULT_LANGUAGE, Language, localeOf, setProtocolLanguage } from "@forge/protocol";
+import { withPlatformShortcuts } from "@/lib/platform";
 import { de } from "./de";
 import { en } from "./en";
 
@@ -25,7 +26,8 @@ export const language: Language = storedLanguage();
 setProtocolLanguage(language);
 if (typeof document !== "undefined") document.documentElement.lang = language;
 
-export const t: Messages = language === "de" ? de : en;
+/** Shortcut labels like "Strg+K" become "⌘K" on the Mac, here once for every text (formatShortcuts). */
+export const t: Messages = withPlatformShortcuts(language === "de" ? de : en);
 
 /** For Intl and toLocaleString. */
 export const locale = localeOf(language);

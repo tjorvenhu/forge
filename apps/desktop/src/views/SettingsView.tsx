@@ -50,6 +50,7 @@ import { TemplatesSettings } from "@/components/templates/TemplatesSettings";
 import { GitHubSettings } from "@/components/settings/GitHubSettings";
 import { AppUpdateSettings } from "@/components/layout/AppUpdate";
 import { InstallRepairSettings } from "@/components/layout/InstallRepair";
+import { supportsFullInstall } from "@/lib/app-install";
 import { LanguageSelect } from "@/components/settings/LanguageSelect";
 import { cn, planLabel } from "@/lib/utils";
 import { t } from "@/i18n";
@@ -387,11 +388,13 @@ function AboutSection({ s, save }: { s: Settings; save: Save }) {
         />
       </Group>
 
-      <Group title={sv.installationTitle} description={sv.installationDescription}>
-        <div className="px-4 py-3.5">
-          <InstallRepairSettings />
-        </div>
-      </Group>
+      {supportsFullInstall && (
+        <Group title={sv.installationTitle} description={sv.installationDescription}>
+          <div className="px-4 py-3.5">
+            <InstallRepairSettings />
+          </div>
+        </Group>
+      )}
 
       <Group title={sv.privacyTitle}>
         <SwitchRow

@@ -139,8 +139,8 @@ export function TitleTooltips() {
   );
 }
 
-/** A keyboard shortcut at the end of a line: "Untere Leiste (Strg+J)". */
-const SHORTCUT_RE = /\s*\(((?:Strg|Ctrl|Alt|Umschalt|Shift)\+[^)]+|F\d{1,2})\)$/;
+/** A keyboard shortcut at the end of a line: "Untere Leiste (Strg+J)", on the Mac "(⌘J)". */
+const SHORTCUT_RE = /\s*\(((?:Strg|Ctrl|Alt|Umschalt|Shift)\+[^)]+|[⌃⌥⇧⌘]+[^)\s]+|F\d{1,2})\)$/;
 
 /**
  * Tooltip text with a little structure, written as plain text in `title`: with several lines the

@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { findMatches, findPattern } from "@/lib/find-text";
+import { hasPrimaryModifier } from "@/lib/platform";
 
 /**
  * Search in the chat (Ctrl+F) instead of the WebView's own find: every chat on screen (main chat, split
@@ -59,7 +60,7 @@ export function openChatFindSoon(seed = "", deadline = performance.now() + 1500)
 const OWN_FIND = ".xterm, .cm-editor, .monaco-editor";
 
 export function handleChatFindKey(e: KeyboardEvent) {
-  if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey || e.defaultPrevented || e.key.toLowerCase() !== "f") return;
+  if (!hasPrimaryModifier(e) || e.altKey || e.shiftKey || e.defaultPrevented || e.key.toLowerCase() !== "f") return;
   if (e.target instanceof Element && e.target.closest(OWN_FIND)) return;
   if (dialogOpen()) return;
   if (openChatFind()) e.preventDefault();

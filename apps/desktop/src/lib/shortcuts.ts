@@ -4,6 +4,7 @@ import { useUi, workspaceTabsFor } from "@/stores/ui";
 import { keys, queryClient } from "@/lib/queries";
 import { flatTabs, groupTabs, openSessionId, openSessionTab, shownSessionIds } from "@/lib/session-tabs";
 import { openChat } from "@/components/workspace/chat-slot";
+import { hasPrimaryModifier, isMac } from "@/lib/platform";
 
 /** An open dialog owns the keyboard: switching sessions behind it would change what it acts on. */
 function dialogOpen(): boolean {
@@ -16,12 +17,14 @@ function dialogOpen(): boolean {
  * Ctrl+Tab / Ctrl+Shift+Tab next / previous open session, in the order of the sidebar tree.
  */
 export function handleGlobalShortcut(e: KeyboardEvent) {
-  if (!(e.ctrlKey || e.metaKey) || e.altKey || e.defaultPrevented) return;
+  if (e.altKey || e.defaultPrevented) return;
+  // Cmd+Tab switches apps on the Mac, so the session walk keeps Ctrl+Tab there.
+  if (e.key === "Tab" ? !(isMac ? e.ctrlKey && !e.metaKey : hasPrimaryModifier(e)) : !hasPrimaryModifier(e)) return;
   const ui = useUi.getState();
   const k = e.key.toLowerCase();
   if (!e.shiftKey && k === "k") {
-    // Inside a terminal Ctrl+K belongs to the shell (kill line).
-    if (e.target instanceof Element && e.target.closest(".xterm")) return;
+    // Inside a terminal Ctrl+K belongs to the shell (kill line); Cmd+K on the Mac does not.
+    if (!isMac && e.target instanceof Element && e.target.closest(".xterm")) return;
     // The palette itself is a dialog; Ctrl+K closes it again, but does not open it over another dialog.
     if (!ui.paletteOpen && dialogOpen()) return;
     ui.setPaletteOpen(!ui.paletteOpen);

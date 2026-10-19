@@ -62,6 +62,40 @@ describe("file paths in text", () => {
   });
 });
 
+describe("file paths on macOS and Linux", () => {
+  const file = (path: string) => ({ path, line: null, bare: false, isFile: true });
+
+  it("finds POSIX paths, home paths and folders under the usual top folders, without drive letters", () => {
+    for (const os of ["macos", "linux"] as const) {
+      const refs = (t: string) => findFileRefs(t, os).map((r) => [t.slice(r.start, r.end), r.ref.path, r.ref.line, r.ref.isFile]);
+      expect(refs("Siehe /Users/anna/shop/src/cart.ts:12 und ~/.claude/CLAUDE.md.")).toEqual([
+        ["/Users/anna/shop/src/cart.ts:12", "/Users/anna/shop/src/cart.ts", 12, true],
+        ["~/.claude/CLAUDE.md", "~/.claude/CLAUDE.md", null, true],
+      ]);
+      expect(refs("Liegt in /home/anna/forge/apps. Dann cd /a/b && ls")).toEqual([["/home/anna/forge/apps", "/home/anna/forge/apps", null, false]]);
+      // Routes and slash commands are no folders.
+      expect(refs("Die Route /api/users und /compact, https://x.de/a/b.html")).toEqual([]);
+      expect(parseFileRef("/Users/anna/My Projects/shop", os)).toEqual({ path: "/Users/anna/My Projects/shop", line: null, bare: false, isFile: false });
+      expect(parseFileRef("/api/stats", os)).toBeNull();
+    }
+  });
+
+  it("does not read /c/... as a drive on macOS and Linux, as it does on Windows", () => {
+    expect(parseFileRef("/c/Users/anna/a.ts", "linux")).toEqual({ path: "/c/Users/anna/a.ts", line: null, bare: false, isFile: true });
+    expect(parseFileRef("/c/Users/anna/a.ts", "windows")).toEqual({ path: "C:/Users/anna/a.ts", line: null, bare: false, isFile: true });
+  });
+
+  it("maps paths into the project, with case on Linux and ~ for the home folder", () => {
+    expect(projectPath(file("/Users/anna/Shop/src/cart.ts"), "/Users/anna/shop", "macos")).toBe("src/cart.ts");
+    expect(projectPath(file("/home/anna/Shop/src/cart.ts"), "/home/anna/shop", "linux")).toBeNull();
+    expect(projectPath(file("/home/anna/shop/src/cart.ts"), "/home/anna/shop/", "linux")).toBe("src/cart.ts");
+    expect(projectPath(file("~/shop/src/cart.ts"), "/home/anna/shop", "linux")).toBe("src/cart.ts");
+    expect(projectPath(file("~/other/x.ts"), "/home/anna/shop", "linux")).toBeNull();
+    expect(projectPath(file("~/shop/x.ts"), "/srv/shop", "linux")).toBeNull();
+    expect(projectPath(file("./src/cart.ts"), "/home/anna/shop", "linux")).toBe("src/cart.ts");
+  });
+});
+
 describe("file links in the chat", () => {
   afterEach(cleanup);
   beforeEach(() => {

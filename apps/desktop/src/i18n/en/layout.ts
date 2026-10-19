@@ -1,4 +1,6 @@
 import type { layout as De } from "../de/layout";
+import { fileManagerEn as fm } from "../os";
+import { byPlatform } from "@/lib/platform";
 
 export const layout: typeof De = {
   paletteLanguage: (name) => `Language: ${name}`,
@@ -269,7 +271,7 @@ export const layout: typeof De = {
   actions: {
     toggles: {
       enterToSend: "Enter sends",
-      desktopNotifications: "Windows notifications",
+      desktopNotifications: byPlatform({ windows: "Windows notifications", macos: "Notifications", linux: "Desktop notifications" }),
       alwaysOnTop: "Stay on top",
       screenshotKey: "Print key for screenshots",
       sounds: "Sounds",
@@ -402,8 +404,8 @@ export const layout: typeof De = {
     knowledgeStale: "Show outdated project knowledge",
     knowledgeRecheck: "Project knowledge: recheck references",
     reportProject: "Daily report for this project",
-    explorerProject: "Open project folder in Explorer",
-    explorerFile: "Show file in Explorer",
+    explorerProject: `Open project folder in ${fm}`,
+    explorerFile: `Show file in ${fm}`,
     terminal: "Open terminal",
     bottom: "Show or hide bottom panel",
     right: "Show or hide sidebar",

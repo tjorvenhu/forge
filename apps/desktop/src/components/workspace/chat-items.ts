@@ -1,4 +1,5 @@
 import { isIdleClosedDetail, type SessionEvent, type SessionEventBody, type TaskMessageRef } from "@forge/protocol";
+import { pathInside } from "@/lib/platform";
 import { limitLabel, limitTime } from "@/lib/rate-limit";
 import { t } from "@/i18n";
 
@@ -521,10 +522,7 @@ export function lastUserPrompt(events: SessionEvent[]): string | null {
 /** Shows paths inside the project relative to it; everything else unchanged. */
 export function relativeToProject(p: string, projectDir?: string): string {
   if (!projectDir || !p) return p;
-  const norm = (x: string) => x.replace(/\\/g, "/").replace(/\/+$/, "");
-  const file = norm(p);
-  const dir = norm(projectDir);
-  return file.toLowerCase().startsWith(dir.toLowerCase() + "/") ? file.slice(dir.length + 1) : p;
+  return pathInside(p, projectDir) || p;
 }
 
 /** Short one-line summary of a tool call for cards and the activity feed. */

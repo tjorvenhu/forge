@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { AlertTriangle, CheckCircle2, ExternalLink, FileUp, PackageCheck, RefreshCw } from "lucide-react";
 import type { AppInstallState } from "@forge/protocol";
-import { checkInstall, installFromFile, installFull, problemText, useInstall } from "@/lib/app-install";
+import { checkInstall, installFromFile, installFull, problemText, supportsFullInstall, useInstall } from "@/lib/app-install";
 import { contextItems, type ContextGroup } from "@/lib/context-menu";
 import { openExternal } from "@/lib/native";
 import { useAppInstall } from "@/lib/queries";
@@ -79,7 +79,7 @@ export function InstallRepairBanner() {
   const qc = useQueryClient();
   const installing = useInstall((u) => u.installing);
   const [dismissed, setDismissed] = useState(false);
-  if (!s?.checkable || s.complete !== false || dismissed) return null;
+  if (!supportsFullInstall || !s?.checkable || s.complete !== false || dismissed) return null;
   const busy = installing || s.phase === "downloading";
   return (
     <div

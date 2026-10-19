@@ -1,3 +1,5 @@
+import { fileManagerDe as fm } from "../os";
+
 /** German texts (workspace). Source of the keys: the English file is typed against this one. */
 export const workspace = {
   agentEnv: {
@@ -178,7 +180,7 @@ export const workspace = {
     fitted: "Eingepasst",
     noPreviewExt: (ext: string) => `Für ${ext}-Dateien gibt es in FORGE keine Vorschau.`,
     noPreview: "Für diese Datei gibt es in FORGE keine Vorschau.",
-    reveal: "Im Explorer zeigen",
+    reveal: `Im ${fm} zeigen`,
   },
   fileTree: {
     mark: {
@@ -191,11 +193,11 @@ export const workspace = {
       typechange: "Typ geändert",
     },
     changed: (n: number) => `${n} geändert`,
-    revealFolder: "Projektordner im Explorer öffnen",
+    revealFolder: `Projektordner im ${fm} öffnen`,
     loading: "Lädt",
     open: "Öffnen",
     applyTemplate: "Vorlage anwenden",
-    reveal: "Im Explorer zeigen",
+    reveal: `Im ${fm} zeigen`,
     copyPath: "Pfad kopieren",
   },
   files: {
@@ -204,7 +206,7 @@ export const workspace = {
     selectFileHint: "Links eine Datei anklicken.",
     preview: "Vorschau",
     code: "Code",
-    reveal: "Im Explorer zeigen",
+    reveal: `Im ${fm} zeigen`,
   },
   inChatWindow: {
     title: "Dieser Chat ist in einem eigenen Fenster geöffnet",

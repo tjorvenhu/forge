@@ -1,3 +1,6 @@
+import { fileManagerDe as fm } from "../os";
+import { byPlatform } from "@/lib/platform";
+
 /** German texts (projects). Source of the keys: the English file is typed against this one. */
 export const projects = {
   profile: {
@@ -68,7 +71,7 @@ export const projects = {
     signInBefore: "Dafür zuerst unter ",
     signInAfter: " bei GitHub anmelden.",
     settingsLink: "Einstellungen → Allgemein",
-    folderPlaceholder: "C:\\Users\\…\\Projekte",
+    folderPlaceholder: byPlatform({ windows: "C:\\Users\\…\\Projekte", macos: "/Users/…/Projekte", linux: "/home/…/Projekte" }),
     folderDialogFailed: "Ordnerdialog fehlgeschlagen",
     pick: "Wählen",
   },
@@ -81,7 +84,7 @@ export const projects = {
     removeFavorite: "Aus Favoriten entfernen",
     addFavorite: "Zu Favoriten",
     projectSettings: "Projekteinstellungen",
-    showInExplorer: "Im Explorer zeigen",
+    showInExplorer: `Im ${fm} zeigen`,
     copyPath: "Pfad kopieren",
     removeOrDelete: "Entfernen oder löschen",
     openNamed: (name: string) => `${name} öffnen`,

@@ -1,4 +1,5 @@
 import type { github as De } from "../de/github";
+import { byPlatform } from "@/lib/platform";
 
 export const github: typeof De = {
   deviceCode: {
@@ -29,7 +30,7 @@ export const github: typeof De = {
     codePrompt: "Enter this code on the GitHub page that opened in your browser:",
     cancelFailed: "Cancel failed",
     intro:
-      "Sign in to clone private repositories, push and create pull requests. Sign-in runs through GitHub in the browser; the token is stored in Windows Credential Manager, not in FORGE.",
+      `Sign in to clone private repositories, push and create pull requests. Sign-in runs through GitHub in the browser; the token is stored ${byPlatform({ windows: "in Windows Credential Manager", macos: "in the macOS Keychain", linux: "by the GitHub CLI" })}, not in FORGE.`,
     loginFailed: "Sign-in failed",
     signIn: "Sign in with GitHub",
   },

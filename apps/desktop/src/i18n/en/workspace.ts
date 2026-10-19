@@ -1,4 +1,5 @@
 import type { workspace as De } from "../de/workspace";
+import { fileManagerEn as fm } from "../os";
 
 export const workspace: typeof De = {
   agentEnv: {
@@ -179,7 +180,7 @@ export const workspace: typeof De = {
     fitted: "Fit to view",
     noPreviewExt: (ext) => `FORGE has no preview for ${ext} files.`,
     noPreview: "FORGE has no preview for this file.",
-    reveal: "Show in Explorer",
+    reveal: `Show in ${fm}`,
   },
   fileTree: {
     mark: {
@@ -192,11 +193,11 @@ export const workspace: typeof De = {
       typechange: "type changed",
     },
     changed: (n) => `${n} changed`,
-    revealFolder: "Open project folder in Explorer",
+    revealFolder: `Open project folder in ${fm}`,
     loading: "Loading",
     open: "Open",
     applyTemplate: "Apply template",
-    reveal: "Show in Explorer",
+    reveal: `Show in ${fm}`,
     copyPath: "Copy path",
   },
   files: {
@@ -205,7 +206,7 @@ export const workspace: typeof De = {
     selectFileHint: "Click a file on the left.",
     preview: "Preview",
     code: "Code",
-    reveal: "Show in Explorer",
+    reveal: `Show in ${fm}`,
   },
   inChatWindow: {
     title: "This chat is open in its own window",

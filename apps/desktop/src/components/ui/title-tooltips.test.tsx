@@ -136,6 +136,12 @@ describe("TipText", () => {
     expect(screen.getByText("Klicken zum Öffnen.").parentElement!.className).toContain("text-muted");
   });
 
+  it("shows a Mac shortcut as a key too", () => {
+    const { container } = render(<TipText text="Seitenleiste einblenden (⇧⌘E)" />);
+    expect(screen.getByText("Seitenleiste einblenden")).toBeTruthy();
+    expect(container.querySelector("kbd")!.textContent).toBe("⇧⌘E");
+  });
+
   it("keeps a single line plain", () => {
     const { container } = render(<TipText text="Ton anhören" />);
     expect(container.textContent).toBe("Ton anhören");

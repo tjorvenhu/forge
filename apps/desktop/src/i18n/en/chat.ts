@@ -1,4 +1,6 @@
 import type { chat as De } from "../de/chat";
+import { byPlatform } from "@/lib/platform";
+import { fileManagerEn as fm } from "../os";
 
 type Side = "before" | "after";
 
@@ -121,7 +123,11 @@ export const chat: typeof De = {
     nothingRecognizedDetail: "No speech was heard in the recording.",
     failed: "Voice input failed",
     micUnavailable: "Microphone not available",
-    micDenied: "Access denied. In Windows, allow access for desktop apps under Settings, Privacy & security, Microphone.",
+    micDenied: byPlatform({
+      windows: "Access denied. In Windows, allow access for desktop apps under Settings, Privacy & security, Microphone.",
+      macos: "Access denied. Allow access for FORGE in System Settings under Privacy & Security, Microphone.",
+      linux: "Access denied. Allow FORGE to use the microphone in your system settings.",
+    }),
     micMissing: "No microphone found.",
     notStarted: "Voice input not started",
   },
@@ -450,7 +456,7 @@ export const chat: typeof De = {
     usesTool: (tool) => `using ${tool}`,
     starting: "starting …",
     toolCalls: (n) => (n === 1 ? "1 call" : `${n} calls`),
-    toBackgroundTooltip: "Move to background: Claude keeps working, the subagent runs alongside (like Ctrl+B in the terminal)",
+    toBackgroundTooltip: `Move to background: Claude keeps working, the subagent runs alongside (like ${byPlatform({ windows: "Ctrl+B", macos: "⌃B", linux: "Ctrl+B" })} in the terminal)`,
     toBackgroundNamed: (description) => `Move ${description} to background`,
   },
   events: {
@@ -571,10 +577,10 @@ export const chat: typeof De = {
     ambiguous: (n, wanted) => `${n} files match ${wanted}`,
     notFound: "File not found",
     open: (path, line) => `Open ${path}${line ? `, line ${line}` : ""}`,
-    showInExplorer: (path) => `Show ${path} in Explorer`,
-    openInExplorer: (path) => `Open ${path} in Explorer`,
+    showInExplorer: (path) => `Show ${path} in ${fm}`,
+    openInExplorer: (path) => `Open ${path} in ${fm}`,
     openInFiles: "Open in Files tab",
-    revealInExplorer: "Show in Explorer",
+    revealInExplorer: `Show in ${fm}`,
     copyPath: "Copy path",
   },
   compare: {
@@ -585,8 +591,8 @@ export const chat: typeof De = {
     retakeFailed: "Retake failed",
     openBefore: "Open before image",
     openAfter: "Open after image",
-    revealBefore: "Show before image in Explorer",
-    revealAfter: "Show after image in Explorer",
+    revealBefore: `Show before image in ${fm}`,
+    revealAfter: `Show after image in ${fm}`,
     retakeAfter: "Retake after image",
     openInBrowser: "Open page in browser",
     copyUrl: "Copy address",

@@ -1,3 +1,6 @@
+import { osName } from "../os";
+import { byPlatform } from "@/lib/platform";
+
 /** German texts (views). Source of the keys: the English file is typed against this one. */
 export const views = {
   common: {
@@ -187,9 +190,9 @@ export const views = {
     enterSends: "Enter sendet",
     enterSendsOn: "Umschalt+Enter macht eine neue Zeile.",
     enterSendsOff: "Strg+Enter sendet, Enter macht eine neue Zeile.",
-    notificationsLabel: "Windows-Benachrichtigungen",
+    notificationsLabel: byPlatform({ windows: "Windows-Benachrichtigungen", macos: "Mitteilungen", linux: "Desktop-Benachrichtigungen" }),
     notificationsDescription:
-      "Meldung von Windows, wenn Claude fertig ist, eine Freigabe oder Antwort braucht oder ein Fehler auftritt. Erscheint auch, wenn FORGE im Hintergrund ist. Ein Klick auf die eingeblendete Meldung öffnet die Session.",
+      `Meldung ${byPlatform({ windows: "von Windows", macos: "von macOS", linux: "des Systems" })}, wenn Claude fertig ist, eine Freigabe oder Antwort braucht oder ein Fehler auftritt. Erscheint auch, wenn FORGE im Hintergrund ist. Ein Klick auf die eingeblendete Meldung öffnet die Session.`,
     alwaysOnTopLabel: "Im Vordergrund bleiben",
     alwaysOnTopDescription:
       "Das Hauptfenster von FORGE bleibt über anderen Programmen. Auch über die Befehlspalette (Strg+K) und per Telefon umschaltbar. Ausgekoppelte Chat-Fenster heftest du einzeln mit der Nadel in ihrer Kopfzeile an.",
@@ -242,7 +245,7 @@ export const views = {
     privacyTitle: "Datenschutz",
     usageStatsLabel: "Anonyme Nutzungsstatistik",
     usageStatsText:
-      "Sie ist aus, solange du sie nicht einschaltest. Wenn sie an ist, gehen alle 5 Minuten Summen an den Statistik-Dienst von FORGE: eine zufällige Kennung, FORGE- und Windows-Version, die Art des Claude-Abos, Tokens je Claude-Modell, geschätzte API-Kosten, Claude-Arbeitszeit, Durchläufe, Sessions, angelegte Projekte, Agenten und Telefonate. Keine Inhalte, Namen oder Pfade. Ausschalten löscht die gesendeten Daten beim Dienst. Wenn du magst, schalte sie bitte ein: Die öffentlichen Gesamtzahlen zeigen, wie FORGE genutzt wird, und helfen bei der Entscheidung, woran als Nächstes gearbeitet wird.",
+      `Sie ist aus, solange du sie nicht einschaltest. Wenn sie an ist, gehen alle 5 Minuten Summen an den Statistik-Dienst von FORGE: eine zufällige Kennung, FORGE- und ${osName}-Version, die Art des Claude-Abos, Tokens je Claude-Modell, geschätzte API-Kosten, Claude-Arbeitszeit, Durchläufe, Sessions, angelegte Projekte, Agenten und Telefonate. Keine Inhalte, Namen oder Pfade. Ausschalten löscht die gesendeten Daten beim Dienst. Wenn du magst, schalte sie bitte ein: Die öffentlichen Gesamtzahlen zeigen, wie FORGE genutzt wird, und helfen bei der Entscheidung, woran als Nächstes gearbeitet wird.`,
     usageStatsLink: "Gesamtzahlen ansehen",
     privacyLocal: "Projektdaten, Chatverläufe und Einstellungen bleiben auf deinem Rechner. Außer der Nutzungsstatistik oben sendet FORGE nichts über dich.",
     privacyPhone: "Ist das Telefon eingeschaltet, geht Gesprächsaudio an Google (Gemini) oder OpenAI, je nach Einstellung unter Telefon.",

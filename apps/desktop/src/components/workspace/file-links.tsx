@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils";
 import { projectFilesQuery } from "@/components/layout/palette-sources";
 import { isChatWindow, openFileInMain } from "@/lib/chat-windows";
 import { showInExplorer } from "@/lib/native";
+import { nativePath, pathsIgnoreCase, platform as currentPlatform, type Platform } from "@/lib/platform";
 import { errorMessage } from "@/lib/rpc";
 import { t } from "@/i18n";
 
@@ -27,7 +28,7 @@ export interface FileLinkTarget {
 export const FileLinkContext = createContext<FileLinkTarget | null>(null);
 
 export interface FileRef {
-  /** with forward slashes (Git Bash's /c/... as C:/...); relative to the project unless absolute */
+  /** with forward slashes (on Windows Git Bash's /c/... as C:/...); relative to the project unless absolute */
   path: string;
   line: number | null;
   /** only a file name: looked up among the project's files on click */
@@ -46,14 +47,45 @@ const FILE_EXTENSIONS = new Set(
 );
 
 const LINE = String.raw`(?::(\d+)(?::\d+)?|#L(\d+)(?:-L?\d+)?)?`;
-/** A path with at least one folder and a file extension, e.g. src/app.ts, ./a/b.tsx:12, C:\x\y.md */
-const PATH = String.raw`(?:[A-Za-z]:[\\/]{1,2}|\.{1,2}[\\/]|[\\/])?(?:[\w@.()\[\]+-]+[\\/]{1,2})+[\w@.+-]*\.[A-Za-z][A-Za-z0-9]{0,9}`;
-/** An absolute Windows path without an extension, i.e. a folder: C:\x\y or Git Bash's /c/x/y */
-const ABS_DIR = String.raw`(?:[A-Za-z]:[\\/]{1,2}|\/[A-Za-z]\/)[\w@.+-]+(?:[\\/]{1,2}[\w@.+-]+)*[\\/]?`;
-const PATH_IN_TEXT = new RegExp(String.raw`(?<![\w/\\.:@-])(?:(${PATH})|(${ABS_DIR}))${LINE}(?![\w/\\])`, "g");
-const WHOLE_PATH = new RegExp(String.raw`^(${PATH})${LINE}$`);
-/** In inline code or a link the whole text is the path, so spaces are fine (C:\Program Files\Git). */
-const WHOLE_ABS = /^((?:[A-Za-z]:[\\/]{1,2}|\/[A-Za-z]\/)[\w@.()+ -]*(?:[\\/]{1,2}[\w@.()+ -]+)*[\\/]?)$/;
+/** Top folders an absolute path on macOS or Linux starts in; "/api/users" in a text is a route, not a folder. */
+const UNIX_ROOTS = "Users|home|Volumes|Applications|Library|System|private|tmp|var|opt|etc|usr|mnt|media|srv|root|nix|run|snap";
+
+interface PathPatterns {
+  inText: RegExp;
+  whole: RegExp;
+  wholeAbs: RegExp;
+  absolute: RegExp;
+}
+
+function pathPatterns(p: Platform): PathPatterns {
+  if (p === "windows") {
+    /** A path with at least one folder and a file extension, e.g. src/app.ts, ./a/b.tsx:12, C:\x\y.md */
+    const PATH = String.raw`(?:[A-Za-z]:[\\/]{1,2}|\.{1,2}[\\/]|[\\/])?(?:[\w@.()\[\]+-]+[\\/]{1,2})+[\w@.+-]*\.[A-Za-z][A-Za-z0-9]{0,9}`;
+    /** An absolute Windows path without an extension, i.e. a folder: C:\x\y or Git Bash's /c/x/y */
+    const ABS_DIR = String.raw`(?:[A-Za-z]:[\\/]{1,2}|\/[A-Za-z]\/)[\w@.+-]+(?:[\\/]{1,2}[\w@.+-]+)*[\\/]?`;
+    return {
+      inText: new RegExp(String.raw`(?<![\w/\\.:@-])(?:(${PATH})|(${ABS_DIR}))${LINE}(?![\w/\\])`, "g"),
+      whole: new RegExp(String.raw`^(${PATH})${LINE}$`),
+      /** In inline code or a link the whole text is the path, so spaces are fine (C:\Program Files\Git). */
+      wholeAbs: /^((?:[A-Za-z]:[\\/]{1,2}|\/[A-Za-z]\/)[\w@.()+ -]*(?:[\\/]{1,2}[\w@.()+ -]+)*[\\/]?)$/,
+      absolute: /^[A-Za-z]:\//,
+    };
+  }
+  /** As on Windows, but with / only and ~/ for the home folder: ~/a/b.ts, /Users/x/y.md, /home/x/proj */
+  const PATH = String.raw`(?:~\/|\.{1,2}\/|\/)?(?:[\w@.()\[\]+-]+\/{1,2})+[\w@.+-]*\.[A-Za-z][A-Za-z0-9]{0,9}`;
+  const ABS_START = String.raw`(?:~|\/(?:${UNIX_ROOTS}))`;
+  const ABS_DIR = String.raw`${ABS_START}(?:\/[\w@.+-]+)+\/?`;
+  return {
+    inText: new RegExp(String.raw`(?<![\w/\\.:@~-])(?:(${PATH})|(${ABS_DIR}))${LINE}(?![\w/\\])`, "g"),
+    whole: new RegExp(String.raw`^(${PATH})${LINE}$`),
+    wholeAbs: new RegExp(String.raw`^(${ABS_START}(?:\/[\w@.()+ -]+)+\/?)$`),
+    absolute: new RegExp(String.raw`^${ABS_START}\/`),
+  };
+}
+
+const PATTERNS: Partial<Record<Platform, PathPatterns>> = {};
+const patternsOf = (p: Platform) => (PATTERNS[p] ??= pathPatterns(p));
+
 const BARE_NAME = new RegExp(String.raw`^([\w@.+-]+\.([A-Za-z][A-Za-z0-9]{0,9}))${LINE}$`);
 /** github.com/org/repo.git and the like: hosts, not folders */
 const HOST = /^[\w-]+(?:\.[\w-]+)*\.(?:com|de|org|net|io|dev|app|co|ai|eu)\//i;
@@ -63,8 +95,12 @@ const QUOTED = /(["'])([^"'\r\n]+)\1/g;
 
 const lineOf = (a?: string, b?: string) => (a ? Number(a) : b ? Number(b) : null);
 
-/** Forward slashes, Git Bash's /c/... as C:/..., no trailing dot or slash from the sentence around it. */
-function normalize(raw: string): string {
+/**
+ * Forward slashes, no trailing dot or slash from the sentence around it. On Windows also Git Bash's
+ * /c/... as C:/...; elsewhere a backslash belongs to the name and /a/... stays as it is.
+ */
+function normalize(raw: string, p: Platform): string {
+  if (p !== "windows") return raw.replace(/(?<=.)\/{2,}/g, "/").replace(/(?<=.)[./]+$/, "");
   return raw
     .replace(/\\/g, "/")
     // JSON escapes backslashes: C:\\Users\\x
@@ -73,16 +109,16 @@ function normalize(raw: string): string {
     .replace(/(?<=.)[./]+$/, "");
 }
 
-const isAbsolute = (path: string) => /^[A-Za-z]:\//.test(path);
+const isAbsolute = (path: string, p: Platform = currentPlatform) => patternsOf(p).absolute.test(path);
 
 /** A path written alone, as in inline code or a markdown link target; null if it is no path. */
-export function parseFileRef(raw: string): FileRef | null {
+export function parseFileRef(raw: string, p: Platform = currentPlatform): FileRef | null {
   const text = raw.trim();
-  const m = WHOLE_PATH.exec(text);
-  if (m && !HOST.test(m[1]!)) return { path: normalize(m[1]!), line: lineOf(m[2], m[3]), bare: false, isFile: true };
-  const a = WHOLE_ABS.exec(text);
+  const m = patternsOf(p).whole.exec(text);
+  if (m && !HOST.test(m[1]!)) return { path: normalize(m[1]!, p), line: lineOf(m[2], m[3]), bare: false, isFile: true };
+  const a = patternsOf(p).wholeAbs.exec(text);
   if (a) {
-    const path = normalize(a[1]!);
+    const path = normalize(a[1]!, p);
     return { path, line: null, bare: false, isFile: HAS_EXTENSION.test(path) };
   }
   const b = BARE_NAME.exec(text);
@@ -94,54 +130,68 @@ export function parseFileRef(raw: string): FileRef | null {
  * Paths in running text, with their position: paths with a folder and a file extension, and absolute
  * folder paths. A bare name in prose is too often something else.
  */
-export function findFileRefs(text: string): Array<{ start: number; end: number; ref: FileRef }> {
+export function findFileRefs(text: string, p: Platform = currentPlatform): Array<{ start: number; end: number; ref: FileRef }> {
   const out: Array<{ start: number; end: number; ref: FileRef }> = [];
   // In quotes the end of a path is clear, so it may have spaces: cd "C:/Users/x/claude.ai Work/a".
   for (const m of text.matchAll(QUOTED)) {
     const inner = m[2]!;
     if (!/\s/.test(inner)) continue;
-    const ref = parseFileRef(inner);
+    const ref = parseFileRef(inner, p);
     if (!ref || ref.bare) continue;
     const start = m.index + 1;
     out.push({ start, end: start + inner.length, ref });
   }
   const quoted = [...out];
-  for (const m of text.matchAll(PATH_IN_TEXT)) {
+  for (const m of text.matchAll(patternsOf(p).inText)) {
     if (quoted.some((q) => m.index < q.end && m.index + m[0].length > q.start)) continue;
     const file = m[1];
     if (file && HOST.test(file)) continue;
     let end = m.index + m[0].length;
     // "Liegt in C:\x\y." The sentence's full stop is not part of the folder.
     if (!file) while (end > m.index && ".,".includes(text[end - 1]!)) end--;
-    out.push({ start: m.index, end, ref: { path: normalize(file ?? m[2]!), line: lineOf(m[3], m[4]), bare: false, isFile: !!file } });
+    out.push({ start: m.index, end, ref: { path: normalize(file ?? m[2]!, p), line: lineOf(m[3], m[4]), bare: false, isFile: !!file } });
   }
   return out.sort((a, b) => a.start - b.start);
 }
 
 /** The path inside the project, or null when an absolute path lies outside of it. */
-export function projectPath(ref: FileRef, root: string): string | null {
-  const p = ref.path.replace(/^\.\//, "");
-  if (!/^(?:[A-Za-z]:\/|\/)/.test(p)) return p;
-  const dir = root.replace(/\\/g, "/").replace(/\/+$/, "");
-  return p.toLowerCase().startsWith(dir.toLowerCase() + "/") ? p.slice(dir.length + 1) : null;
+export function projectPath(ref: FileRef, root: string, os: Platform = currentPlatform): string | null {
+  let p = ref.path.replace(/^\.\//, "");
+  if (os !== "windows" && p.startsWith("~/")) {
+    // A project in the home folder starts with it; for a project elsewhere ~ is outside anyway.
+    const home = /^\/(?:Users|home)\/[^/]+/.exec(root)?.[0];
+    if (!home) return null;
+    p = home + p.slice(1);
+  }
+  if (!(os === "windows" ? /^(?:[A-Za-z]:\/|\/)/ : /^\//).test(p)) return p;
+  const dir = (os === "windows" ? root.replace(/\\/g, "/") : root).replace(/\/+$/, "");
+  const fold = (x: string) => (pathsIgnoreCase(os) ? x.toLowerCase() : x);
+  return fold(p).startsWith(fold(dir) + "/") ? p.slice(dir.length + 1) : null;
 }
 
-/** Where a click on the path goes: a project file into the Files tab, an absolute path into Explorer, otherwise nowhere. */
+/** Where a click on the path goes: a project file into the Files tab, an absolute path into the file manager, otherwise nowhere. */
 function destination(ref: FileRef, target: FileLinkTarget | null): "files" | "explorer" | null {
   if (ref.isFile && target && projectPath(ref, target.root) !== null) return "files";
   return isAbsolute(ref.path) ? "explorer" : null;
 }
 
-/** Shows an absolute path in Explorer; a failure ends up as a toast. */
+/** ~/x on macOS and Linux as the absolute path the shell needs. */
+async function expandHome(path: string): Promise<string> {
+  if (currentPlatform === "windows" || !path.startsWith("~/")) return path;
+  const { homeDir } = await import("@tauri-apps/api/path");
+  return (await homeDir()).replace(/\/+$/, "") + path.slice(1);
+}
+
+/** Shows an absolute path in the file manager (Explorer, Finder); a failure ends up as a toast. */
 export async function revealPath(path: string) {
   try {
-    await showInExplorer(path.replace(/\//g, "\\"));
+    await showInExplorer(nativePath(await expandHome(path)));
   } catch (e) {
     toast.error(t.chat.fileLinks.notOpened, `${path}: ${errorMessage(e)}`);
   }
 }
 
-/** Shows a file or folder of the project (path relative to its root, "" for the root itself) in Explorer. */
+/** Shows a file or folder of the project (path relative to its root, "" for the root itself) in the file manager. */
 export function revealInProject(root: string, path: string) {
   return revealPath(path ? `${root.replace(/[\\/]+$/, "")}/${path}` : root);
 }

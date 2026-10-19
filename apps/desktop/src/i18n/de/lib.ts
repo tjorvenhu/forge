@@ -1,3 +1,5 @@
+import { byPlatform } from "@/lib/platform";
+
 /** German texts (lib). Source of the keys: the English file is typed against this one. */
 export const lib = {
   untitled: "Ohne Titel",
@@ -130,7 +132,7 @@ export const lib = {
     exited: "[Prozess beendet]",
     startFailed: (error: string) => `Terminal konnte nicht gestartet werden: ${error}`,
     copy: "Kopieren",
-    copyHint: "Strg+Umschalt+C",
+    copyHint: byPlatform({ windows: "Strg+Umschalt+C", macos: "Strg+C", linux: "Strg+Umschalt+C" }),
     paste: "Einfügen",
     pasteHint: "Strg+V",
     pasteFailed: "Einfügen nicht möglich",

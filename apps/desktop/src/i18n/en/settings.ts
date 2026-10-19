@@ -1,4 +1,5 @@
 import type { settings as De } from "../de/settings";
+import { byPlatform } from "@/lib/platform";
 
 export const settings: typeof De = {
   language: "Language",
@@ -61,7 +62,7 @@ export const settings: typeof De = {
       description: "Keys, tokens and sign-ins on this computer.",
       sensitivePath: {
         label: "Credentials and browser profiles",
-        info: "Reading, writing and commands on ~/.ssh, ~/.aws, ~/.config/gh, ~/.npmrc, browser profiles and the Windows Credential Manager. This includes searches with Grep and Glob across your whole user folder.",
+        info: `Reading, writing and commands on ~/.ssh, ~/.aws, ~/.config/gh, ~/.npmrc, browser profiles and the ${byPlatform({ windows: "Windows Credential Manager", macos: "macOS Keychain", linux: "system keyring" })}. This includes searches with Grep and Glob across your whole user folder.`,
       },
     },
     extraOff: (n: number) =>
@@ -103,7 +104,7 @@ export const settings: typeof De = {
     download: "Download as file",
     restoreFromFile: "Restore from file",
     fileInfo:
-      "The file contains your configuration in plain text, including API keys in MCP servers or hooks. Keep it safe like a password. The phone credentials stay encrypted and only work under your Windows account.",
+      `The file contains your configuration in plain text, including API keys in MCP servers or hooks. Keep it safe like a password. The phone credentials stay encrypted and only work under your ${byPlatform({ windows: "Windows account", macos: "user account", linux: "user account" })}.`,
     listInfo: "On start, FORGE backs up automatically if anything changed since the last backup. The last 40 are kept.",
     listTitle: "Saved backups",
     loading: "Loading backups",
@@ -371,8 +372,8 @@ export const settings: typeof De = {
     turnOff: "Turn off",
     turnOn: "Turn on",
     sipInfo1:
-      "FORGE registers over UDP. Audio runs unencrypted as G.711 (PCMA/PCMU). TLS and SRTP are not supported yet. On the first call, Windows Firewall asks whether Node.js may accept connections. Allow at least private networks, otherwise no audio comes through in the call.",
-    sipInfo2: "FORGE stores passwords and API keys encrypted for your Windows account. FORGE saves changes on its own, text fields when you leave the field.",
+      `FORGE registers over UDP. Audio runs unencrypted as G.711 (PCMA/PCMU). TLS and SRTP are not supported yet. ${byPlatform({ windows: "On the first call, Windows Firewall asks whether Node.js may accept connections. Allow at least private networks, otherwise no audio comes through in the call.", macos: "If the macOS firewall is on, it asks on the first call whether Node.js may accept incoming connections. Allow it, otherwise no audio comes through in the call.", linux: "If a firewall is running, it has to let incoming UDP packets through to Node.js, otherwise no audio comes through in the call." })}`,
+    sipInfo2: `FORGE stores passwords and API keys encrypted for your ${byPlatform({ windows: "Windows account", macos: "user account", linux: "user account" })}. FORGE saves changes on its own, text fields when you leave the field.`,
     sipTitle: "PBX registration (SIP)",
     server: "Server",
     serverPlaceholder: "e.g. pbx.example.com or 192.168.1.10",

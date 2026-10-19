@@ -1,3 +1,5 @@
+import { byPlatform } from "@/lib/platform";
+
 /** German texts (app). Source of the keys: the English file is typed against this one. */
 export const app = {
   desktopOnly: "FORGE läuft nur als Desktop-App.",
@@ -12,6 +14,6 @@ export const app = {
   loadingInstallCheck: "Lädt Installationsprüfung",
   nodeRequired: "Voraussetzung ist Node.js ab Version 22.13 im PATH.",
   incomplete: (missing: string) =>
-    `FORGE ist nicht vollständig installiert, es fehlt: ${missing}. Installiere FORGE mit der vollständigen setup.exe von der Release-Seite, nicht mit dem Update-Zip.`,
+    `FORGE ist nicht vollständig installiert, es fehlt: ${missing}. Installiere FORGE ${byPlatform({ windows: "mit der vollständigen setup.exe von der Release-Seite, nicht mit dem Update-Zip", macos: "neu mit der .dmg von der Release-Seite", linux: "neu mit dem AppImage oder .deb-Paket von der Release-Seite" })}.`,
   openReleases: "Release-Seite öffnen",
 };

@@ -1,3 +1,6 @@
+import { fileManagerDe as fm } from "../os";
+import { byPlatform } from "@/lib/platform";
+
 /** German texts (layout). Source of the keys: the English file is typed against this one. */
 export const layout = {
   paletteLanguage: (name: string) => `Sprache: ${name}`,
@@ -269,7 +272,7 @@ export const layout = {
   actions: {
     toggles: {
       enterToSend: "Enter sendet",
-      desktopNotifications: "Windows-Benachrichtigungen",
+      desktopNotifications: byPlatform({ windows: "Windows-Benachrichtigungen", macos: "Mitteilungen", linux: "Desktop-Benachrichtigungen" }),
       alwaysOnTop: "Im Vordergrund bleiben",
       screenshotKey: "Druck-Taste für Screenshots",
       sounds: "Töne",
@@ -402,8 +405,8 @@ export const layout = {
     knowledgeStale: "Veraltetes Projektwissen anzeigen",
     knowledgeRecheck: "Projektwissen: Verweise neu prüfen",
     reportProject: "Tagesbericht für dieses Projekt",
-    explorerProject: "Projektordner im Explorer öffnen",
-    explorerFile: "Datei im Explorer zeigen",
+    explorerProject: `Projektordner im ${fm} öffnen`,
+    explorerFile: `Datei im ${fm} zeigen`,
     terminal: "Terminal öffnen",
     bottom: "Unteres Panel ein- oder ausblenden",
     right: "Seitenleiste ein- oder ausblenden",

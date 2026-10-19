@@ -1,3 +1,5 @@
+import { byPlatform } from "@/lib/platform";
+
 /** German texts (settings). Source of the keys: the English file is typed against this one. */
 export const settings = {
   language: "Sprache",
@@ -60,7 +62,7 @@ export const settings = {
       description: "Schlüssel, Tokens und Anmeldungen auf diesem Rechner.",
       sensitivePath: {
         label: "Zugangsdaten und Browserprofile",
-        info: "Lesen, Schreiben und Befehle auf ~/.ssh, ~/.aws, ~/.config/gh, ~/.npmrc, Browserprofile und den Windows-Anmeldespeicher. Dazu gehören auch Suchen mit Grep und Glob über deinen ganzen Benutzerordner.",
+        info: `Lesen, Schreiben und Befehle auf ~/.ssh, ~/.aws, ~/.config/gh, ~/.npmrc, Browserprofile und den ${byPlatform({ windows: "Windows-Anmeldespeicher", macos: "macOS-Schlüsselbund", linux: "Schlüsselbund des Systems" })}. Dazu gehören auch Suchen mit Grep und Glob über deinen ganzen Benutzerordner.`,
       },
     },
     extraOff: (n: number) =>
@@ -102,7 +104,7 @@ export const settings = {
     download: "Als Datei herunterladen",
     restoreFromFile: "Aus Datei wiederherstellen",
     fileInfo:
-      "Die Datei enthält deine Konfiguration im Klartext, auch API-Keys, die in MCP-Servern oder Hooks stehen. Bewahre sie auf wie ein Passwort. Die Zugangsdaten des Telefons bleiben verschlüsselt und funktionieren nur unter deinem Windows-Konto.",
+      `Die Datei enthält deine Konfiguration im Klartext, auch API-Keys, die in MCP-Servern oder Hooks stehen. Bewahre sie auf wie ein Passwort. Die Zugangsdaten des Telefons bleiben verschlüsselt und funktionieren nur unter deinem ${byPlatform({ windows: "Windows-Konto", macos: "Benutzerkonto", linux: "Benutzerkonto" })}.`,
     listInfo: "Beim Start sichert FORGE automatisch, wenn sich seit dem letzten Backup etwas geändert hat. Die letzten 40 bleiben.",
     listTitle: "Gespeicherte Backups",
     loading: "Lädt Backups",
@@ -374,8 +376,8 @@ export const settings = {
     turnOff: "Ausschalten",
     turnOn: "Einschalten",
     sipInfo1:
-      "FORGE meldet sich über UDP an. Audio läuft unverschlüsselt als G.711 (PCMA/PCMU). TLS und SRTP werden noch nicht unterstützt. Beim ersten Anruf fragt die Windows-Firewall, ob Node.js Verbindungen annehmen darf. Erlaube mindestens private Netzwerke, sonst kommt im Gespräch kein Ton an.",
-    sipInfo2: "Passwörter und API-Keys speichert FORGE verschlüsselt für dein Windows-Konto. Änderungen speichert FORGE selbst, Textfelder beim Verlassen des Felds.",
+      `FORGE meldet sich über UDP an. Audio läuft unverschlüsselt als G.711 (PCMA/PCMU). TLS und SRTP werden noch nicht unterstützt. ${byPlatform({ windows: "Beim ersten Anruf fragt die Windows-Firewall, ob Node.js Verbindungen annehmen darf. Erlaube mindestens private Netzwerke, sonst kommt im Gespräch kein Ton an.", macos: "Ist die Firewall von macOS an, fragt sie beim ersten Anruf, ob Node.js eingehende Verbindungen annehmen darf. Erlaube das, sonst kommt im Gespräch kein Ton an.", linux: "Läuft eine Firewall, muss sie eingehende UDP-Pakete für Node.js zulassen, sonst kommt im Gespräch kein Ton an." })}`,
+    sipInfo2: `Passwörter und API-Keys speichert FORGE verschlüsselt für dein ${byPlatform({ windows: "Windows-Konto", macos: "Benutzerkonto", linux: "Benutzerkonto" })}. Änderungen speichert FORGE selbst, Textfelder beim Verlassen des Felds.`,
     sipTitle: "Anmeldung an der Telefonanlage (SIP)",
     server: "Server",
     serverPlaceholder: "z. B. pbx.example.de oder 192.168.1.10",

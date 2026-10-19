@@ -1,4 +1,5 @@
 import type { lib as De } from "../de/lib";
+import { byPlatform } from "@/lib/platform";
 
 export const lib: typeof De = {
   untitled: "Untitled",
@@ -130,7 +131,7 @@ export const lib: typeof De = {
     exited: "[Process exited]",
     startFailed: (error: string) => `Could not start the terminal: ${error}`,
     copy: "Copy",
-    copyHint: "Ctrl+Shift+C",
+    copyHint: byPlatform({ windows: "Ctrl+Shift+C", macos: "Ctrl+C", linux: "Ctrl+Shift+C" }),
     paste: "Paste",
     pasteHint: "Ctrl+V",
     pasteFailed: "Cannot paste",

@@ -1,4 +1,6 @@
 import type { projects as De } from "../de/projects";
+import { fileManagerEn as fm } from "../os";
+import { byPlatform } from "@/lib/platform";
 
 export const projects: typeof De = {
   profile: {
@@ -69,7 +71,7 @@ export const projects: typeof De = {
     signInBefore: "Sign in to GitHub under ",
     signInAfter: " first.",
     settingsLink: "Settings → General",
-    folderPlaceholder: "C:\\Users\\…\\Projects",
+    folderPlaceholder: byPlatform({ windows: "C:\\Users\\…\\Projects", macos: "/Users/…/Projects", linux: "/home/…/Projects" }),
     folderDialogFailed: "Folder dialog failed",
     pick: "Choose",
   },
@@ -82,7 +84,7 @@ export const projects: typeof De = {
     removeFavorite: "Remove from favorites",
     addFavorite: "Add to favorites",
     projectSettings: "Project settings",
-    showInExplorer: "Show in Explorer",
+    showInExplorer: `Show in ${fm}`,
     copyPath: "Copy path",
     removeOrDelete: "Remove or delete",
     openNamed: (name) => `Open ${name}`,

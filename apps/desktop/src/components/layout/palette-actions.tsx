@@ -23,7 +23,7 @@ import type {
 import { IDLE_CLOSE_CHOICES, LANGUAGE_NAMES, LANGUAGES, LONG_SESSION_CHOICES, SUPPORT_LINKS, STATS_PAGE_URL } from "@forge/protocol";
 import { t } from "@/i18n";
 import { openExternal } from "@/lib/native";
-import { checkInstall, installFromFile, installFull, installUpdate } from "@/lib/app-install";
+import { checkInstall, installFromFile, installFull, installUpdate, supportsFullInstall } from "@/lib/app-install";
 import { call, keys, refreshUsage } from "@/lib/queries";
 import { openDevServer, prepareWorktree } from "@/lib/dev-server-actions";
 import { EFFORT_LEVELS, modelLabel } from "@/lib/models";
@@ -614,9 +614,9 @@ export function buildActions(ctx: ActionContext): PaletteEntry[] {
     act("update-install", t.layout.actions.updateInstall(update.latest.version), icon(ArrowUpCircle), () => void installUpdate(qc), { keywords: "update installieren aktualisieren neustart version install restart" });
   }
   const installKeywords = "vollständig installation unvollständig setup installer laufzeit runtime git gh github cli node fehlt reparieren complete incomplete install missing repair";
-  act("install-check", t.layout.actions.installCheck, icon(PackageCheck), () => void checkInstall(qc), { keywords: installKeywords });
+  if (supportsFullInstall) act("install-check", t.layout.actions.installCheck, icon(PackageCheck), () => void checkInstall(qc), { keywords: installKeywords });
   const install = qc.getQueryData<AppInstallState>(keys.appInstall);
-  if (install?.checkable && install.complete === false) {
+  if (supportsFullInstall && install?.checkable && install.complete === false) {
     if (install.installer || install.phase === "ready") act("install-full", t.layout.actions.installFull, icon(PackageCheck), () => void installFull(qc), { keywords: installKeywords });
     act("install-file", t.layout.actions.installFile, icon(FileUp), () => void installFromFile(qc), { keywords: installKeywords });
   }

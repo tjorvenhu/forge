@@ -1,4 +1,5 @@
 import type { app as De } from "../de/app";
+import { byPlatform } from "@/lib/platform";
 
 export const app: typeof De = {
   desktopOnly: "FORGE only runs as a desktop app.",
@@ -13,6 +14,6 @@ export const app: typeof De = {
   loadingInstallCheck: "Loading installation check",
   nodeRequired: "Requires Node.js 22.13 or later in the PATH.",
   incomplete: (missing) =>
-    `FORGE is not completely installed, missing: ${missing}. Install FORGE with the full setup.exe from the release page, not with the update zip.`,
+    `FORGE is not completely installed, missing: ${missing}. Install FORGE ${byPlatform({ windows: "with the full setup.exe from the release page, not with the update zip", macos: "again with the .dmg from the release page", linux: "again with the AppImage or .deb package from the release page" })}.`,
   openReleases: "Open release page",
 };

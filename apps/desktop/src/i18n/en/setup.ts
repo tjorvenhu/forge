@@ -1,4 +1,5 @@
 import type { setup as De } from "../de/setup";
+import { osName } from "../os";
 
 export const setup: typeof De = {
   languageTitle: "Language · Sprache",
@@ -112,7 +113,7 @@ export const setup: typeof De = {
     noThanks: "No thanks",
     enable: "Turn on (recommended)",
     sentTitle: "What is sent",
-    sent: "A random ID for this installation, the FORGE version, the Windows version, the type of Claude subscription (e.g. Pro or Max 5x) and counters: tokens used per Claude model, estimated API cost, Claude working time, runs, sessions, projects created, agents started and merged, phone calls.",
+    sent: `A random ID for this installation, the FORGE version, the ${osName} version, the type of Claude subscription (e.g. Pro or Max 5x) and counters: tokens used per Claude model, estimated API cost, Claude working time, runs, sessions, projects created, agents started and merged, phone calls.`,
     notSentTitle: "What is not sent",
     notSent: "No content from chats or files, no project names, no paths, nothing about your Claude or GitHub account. The service stores no IP addresses.",
     why: "If you like, turn it on: the public totals show how FORGE is used and help decide what to work on next.",

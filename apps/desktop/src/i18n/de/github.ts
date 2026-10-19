@@ -1,3 +1,5 @@
+import { byPlatform } from "@/lib/platform";
+
 /** German texts (github). Source of the keys: the English file is typed against this one. */
 export const github = {
   deviceCode: {
@@ -28,7 +30,7 @@ export const github = {
     codePrompt: "Gib diesen Code auf der GitHub-Seite ein, die sich im Browser geöffnet hat:",
     cancelFailed: "Abbrechen fehlgeschlagen",
     intro:
-      "Melde dich an, um private Repositories zu klonen, zu pushen und Pull Requests zu erstellen. Die Anmeldung läuft über GitHub im Browser; das Token liegt im Windows-Anmeldeinformationsspeicher, nicht in FORGE.",
+      `Melde dich an, um private Repositories zu klonen, zu pushen und Pull Requests zu erstellen. Die Anmeldung läuft über GitHub im Browser; das Token liegt ${byPlatform({ windows: "im Windows-Anmeldeinformationsspeicher", macos: "im macOS-Schlüsselbund", linux: "bei der GitHub CLI" })}, nicht in FORGE.`,
     loginFailed: "Anmeldung fehlgeschlagen",
     signIn: "Mit GitHub anmelden",
   },

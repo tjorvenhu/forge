@@ -1,4 +1,6 @@
 import type { views as De } from "../de/views";
+import { osName } from "../os";
+import { byPlatform } from "@/lib/platform";
 
 export const views: typeof De = {
   common: {
@@ -187,9 +189,9 @@ export const views: typeof De = {
     enterSends: "Enter sends",
     enterSendsOn: "Shift+Enter inserts a new line.",
     enterSendsOff: "Ctrl+Enter sends, Enter inserts a new line.",
-    notificationsLabel: "Windows notifications",
+    notificationsLabel: byPlatform({ windows: "Windows notifications", macos: "Notifications", linux: "Desktop notifications" }),
     notificationsDescription:
-      "A Windows notification when Claude is done, needs an approval or an answer, or an error occurs. Also appears when FORGE is in the background. Clicking the notification opens the session.",
+      `${byPlatform({ windows: "A Windows notification", macos: "A macOS notification", linux: "A desktop notification" })} when Claude is done, needs an approval or an answer, or an error occurs. Also appears when FORGE is in the background. Clicking the notification opens the session.`,
     alwaysOnTopLabel: "Stay on top",
     alwaysOnTopDescription:
       "The main FORGE window stays above other programs. Can also be toggled from the command palette (Ctrl+K) and by phone. Detached chat windows are pinned individually with the pin in their header.",
@@ -243,7 +245,7 @@ export const views: typeof De = {
     privacyTitle: "Privacy",
     usageStatsLabel: "Anonymous usage statistics",
     usageStatsText:
-      "Off unless you turn it on. When on, totals are sent to the FORGE statistics service every 5 minutes: a random ID, FORGE and Windows version, the type of Claude subscription, tokens per Claude model, estimated API costs, Claude working time, runs, sessions, created projects, agents, and calls. No content, names, or paths. Turning it off deletes the data already sent to the service. If you like, please turn it on: the public totals show how FORGE is used and help decide what to work on next.",
+      `Off unless you turn it on. When on, totals are sent to the FORGE statistics service every 5 minutes: a random ID, FORGE and ${osName} version, the type of Claude subscription, tokens per Claude model, estimated API costs, Claude working time, runs, sessions, created projects, agents, and calls. No content, names, or paths. Turning it off deletes the data already sent to the service. If you like, please turn it on: the public totals show how FORGE is used and help decide what to work on next.`,
     usageStatsLink: "View totals",
     privacyLocal: "Project data, chat transcripts, and settings stay on your computer. Apart from the usage statistics above, FORGE sends nothing about you.",
     privacyPhone: "If the phone is turned on, call audio goes to Google (Gemini) or OpenAI, depending on the setting under Phone.",

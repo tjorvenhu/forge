@@ -1,3 +1,6 @@
+import { byPlatform } from "@/lib/platform";
+import { fileManagerDe as fm } from "../os";
+
 /** German texts (chat). Source of the keys: the English file is typed against this one. */
 type Side = "before" | "after";
 
@@ -120,7 +123,11 @@ export const chat = {
     nothingRecognizedDetail: "In der Aufnahme war keine Sprache zu hören.",
     failed: "Spracheingabe fehlgeschlagen",
     micUnavailable: "Mikrofon nicht verfügbar",
-    micDenied: "Zugriff verweigert. In Windows unter Einstellungen, Datenschutz und Sicherheit, Mikrofon den Zugriff für Desktop-Apps erlauben.",
+    micDenied: byPlatform({
+      windows: "Zugriff verweigert. In Windows unter Einstellungen, Datenschutz und Sicherheit, Mikrofon den Zugriff für Desktop-Apps erlauben.",
+      macos: "Zugriff verweigert. In den Systemeinstellungen unter Datenschutz & Sicherheit, Mikrofon den Zugriff für FORGE erlauben.",
+      linux: "Zugriff verweigert. Erlaube FORGE in den Einstellungen deines Systems den Zugriff auf das Mikrofon.",
+    }),
     micMissing: "Kein Mikrofon gefunden.",
     notStarted: "Spracheingabe nicht gestartet",
   },
@@ -452,7 +459,7 @@ export const chat = {
     usesTool: (tool: string) => `nutzt ${tool}`,
     starting: "startet …",
     toolCalls: (n: number) => `${n} ${n === 1 ? "Aufruf" : "Aufrufe"}`,
-    toBackgroundTooltip: "In den Hintergrund: Claude arbeitet weiter, der Subagent läuft nebenher (wie Strg+B im Terminal)",
+    toBackgroundTooltip: `In den Hintergrund: Claude arbeitet weiter, der Subagent läuft nebenher (wie ${byPlatform({ windows: "Strg+B", macos: "⌃B", linux: "Strg+B" })} im Terminal)`,
     toBackgroundNamed: (description: string) => `${description} in den Hintergrund`,
   },
   events: {
@@ -574,10 +581,10 @@ export const chat = {
     ambiguous: (n: number, wanted: string) => `${n} Dateien passen zu ${wanted}`,
     notFound: "Datei nicht gefunden",
     open: (path: string, line: number | null) => `${path}${line ? `, Zeile ${line}` : ""} öffnen`,
-    showInExplorer: (path: string) => `${path} im Explorer zeigen`,
-    openInExplorer: (path: string) => `${path} im Explorer öffnen`,
+    showInExplorer: (path: string) => `${path} im ${fm} zeigen`,
+    openInExplorer: (path: string) => `${path} im ${fm} öffnen`,
     openInFiles: "Im Dateien-Reiter öffnen",
-    revealInExplorer: "Im Explorer zeigen",
+    revealInExplorer: `Im ${fm} zeigen`,
     copyPath: "Pfad kopieren",
   },
   compare: {
@@ -588,8 +595,8 @@ export const chat = {
     retakeFailed: "Neu aufnehmen fehlgeschlagen",
     openBefore: "Vorher-Bild öffnen",
     openAfter: "Nachher-Bild öffnen",
-    revealBefore: "Vorher-Bild im Explorer zeigen",
-    revealAfter: "Nachher-Bild im Explorer zeigen",
+    revealBefore: `Vorher-Bild im ${fm} zeigen`,
+    revealAfter: `Nachher-Bild im ${fm} zeigen`,
     retakeAfter: "Nachher-Bild neu aufnehmen",
     openInBrowser: "Seite im Browser öffnen",
     copyUrl: "Adresse kopieren",
