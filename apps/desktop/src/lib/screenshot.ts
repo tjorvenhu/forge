@@ -17,6 +17,8 @@ import { t } from "@/i18n";
 
 /** Shell to a FORGE window: a picture was taken for it. */
 const TAKEN = "screenshot://taken";
+/** Shell to a FORGE window: the capture failed (payload: the message, e.g. missing screen recording permission). */
+const FAILED = "screenshot://error";
 
 /** Set by the shell in the overlay window before the page loads. */
 export function isScreenshotWindow(): boolean {
@@ -81,6 +83,7 @@ function stamp(): string {
 /** Every FORGE window (main and chat windows): attaches pictures the shell hands over. */
 export function startScreenshotReceiver() {
   if (!isTauri()) return;
+  void listen<string>(FAILED, (e) => toast.error(t.screenshot.failed, e.payload));
   void listen<{ id: number }>(TAKEN, async (e) => {
     const key = screenshotTarget();
     if (!key) {

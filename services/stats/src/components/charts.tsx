@@ -1,17 +1,19 @@
 "use client";
 
 import { useEffect, useId, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
-import { Box, Check, ChevronDown, Coins, MessagesSquare, Monitor } from "lucide-react";
+import { Box, Check, ChevronDown, Coins, CreditCard, Languages, LayoutGrid, MessagesSquare, Monitor, Tag } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import type { Platform, Totals } from "@/lib/db";
 import type { HistoryDay } from "@/lib/history";
 import { groupModels } from "@/lib/models";
+import { compareVersions, newestVersion } from "@/lib/versions";
 import { Skeleton } from "./blocks";
 import { useI18n } from "./locale";
 import { Reveal } from "./motion";
 
-// The four cards of the live stats after the owner's mockup: tokens per day as columns, active
-// installations as an area, the top models as share bars and the platforms as a ring.
+// The cards of the live stats: the four of the owner's mockup (tokens per day as columns, active
+// installations as an area, the top models as share bars, the platforms as a ring), below them the
+// versions, Claude plans and languages as share bars and the feature counters as figures.
 
 /** Height of the plot area; the x-axis band comes below. */
 const PLOT_H = 116;
@@ -20,6 +22,8 @@ const RANGES = [7, 14, 30] as const;
 type Range = (typeof RANGES)[number];
 /** Models with their own row; the rest is one row "Andere". */
 const TOP_MODELS = 3;
+/** Versions, plans and languages with their own row; the rest is one row "Andere". */
+const TOP_SHARES = 4;
 /** Legend order of the platforms; all four are always listed. */
 const PLATFORMS: Platform[] = ["windows", "macos", "linux", "other"];
 
@@ -222,28 +226,145 @@ function DayPlot({ points, kind, label }: { points: Point[]; kind: "columns" | "
 /** "Claude Opus 4.7" for the known families; anything else as it came. */
 const modelName = (label: string) => (/^(Opus|Sonnet|Haiku|Fable) /.test(label) ? `Claude ${label}` : label);
 
-function TopModels({ totals }: { totals: Totals }) {
+interface ShareRow {
+  key: string;
+  label: ReactNode;
+  value: number;
+  /** hover text with the absolute number */
+  title: string;
+}
+
+/** The first `top` rows, the rest summed into one row; nothing is cut when only one would be left over. */
+function topRows(rows: ShareRow[], top: number, other: (value: number) => ShareRow): ShareRow[] {
+  if (rows.length <= top + 1) return rows;
+  return [...rows.slice(0, top), other(rows.slice(top).reduce((n, r) => n + r.value, 0))];
+}
+
+/** Label, share bar and percentage per row. */
+function ShareList({ rows }: { rows: ShareRow[] }) {
   const { t, f } = useI18n();
-  const m = t.stats.charts;
-  const rows = groupModels(totals.models);
-  const total = rows.reduce((n, r) => n + r.tokens, 0);
-  if (!total) return <p className="chart-empty card-empty">{m.empty}</p>;
-  const shown =
-    rows.length > TOP_MODELS + 1
-      ? [...rows.slice(0, TOP_MODELS).map((r) => ({ label: modelName(r.label), tokens: r.tokens })), { label: m.otherModels, tokens: rows.slice(TOP_MODELS).reduce((n, r) => n + r.tokens, 0) }]
-      : rows.map((r) => ({ label: modelName(r.label), tokens: r.tokens }));
+  const total = rows.reduce((n, r) => n + r.value, 0);
+  if (!total) return <p className="chart-empty card-empty">{t.stats.charts.empty}</p>;
   return (
     <ul className="shares">
-      {shown.map((r, i) => (
-        <li key={r.label} className="share" title={m.tokens(f.count(r.tokens))}>
+      {rows.map((r, i) => (
+        <li key={r.key} className="share" title={r.title}>
           <span className="share-label">{r.label}</span>
           <span className="share-track" aria-hidden>
-            <span className="share-fill" style={{ width: `${Math.max(1, (r.tokens / total) * 100)}%`, "--i": i } as CSSProperties} />
+            <span className="share-fill" style={{ width: `${Math.max(1, (r.value / total) * 100)}%`, "--i": i } as CSSProperties} />
           </span>
-          <span className="share-value">{f.percent(r.tokens, total)}</span>
+          <span className="share-value">{f.percent(r.value, total)}</span>
         </li>
       ))}
     </ul>
+  );
+}
+
+function TopModels({ totals }: { totals: Totals }) {
+  const { t, f } = useI18n();
+  const m = t.stats.charts;
+  const rows = groupModels(totals.models).map((r) => ({ key: r.label, label: modelName(r.label), value: r.tokens, title: m.tokens(f.count(r.tokens)) }));
+  return <ShareList rows={topRows(rows, TOP_MODELS, (value) => ({ key: "other", label: m.otherModels, value, title: m.tokens(f.count(value)) }))} />;
+}
+
+/** Known values in their order, then "Andere" for the rest and last the installations that sent none. */
+function withUnknown(known: ShareRow[], unknown: number, other: (value: number) => ShareRow, unknownRow: (value: number) => ShareRow): ShareRow[] {
+  const rows = topRows(known, unknown ? TOP_SHARES - 1 : TOP_SHARES, other);
+  return unknown ? [...rows, unknownRow(unknown)] : rows;
+}
+
+/** The most used versions, newest first; the newest of all gets a mark. */
+function Versions({ totals }: { totals: Totals }) {
+  const { t, f } = useI18n();
+  const m = t.stats.charts;
+  const newest = newestVersion(totals.versions);
+  const title = (n: number) => m.installs(n, f.count(n));
+  const byCount = totals.versions.map((v) => ({
+    key: v.version,
+    label: (
+      <>
+        v{v.version}
+        {v.version === newest && <span className="share-badge">{m.newest}</span>}
+      </>
+    ),
+    value: v.installs,
+    title: title(v.installs),
+  }));
+  const rows = topRows(byCount, TOP_SHARES, (value) => ({ key: "other", label: m.otherVersions, value, title: title(value) }));
+  const own = rows.filter((r) => r.key !== "other").sort((a, b) => compareVersions(b.key, a.key));
+  return <ShareList rows={[...own, ...rows.filter((r) => r.key === "other")]} />;
+}
+
+/** "max_20x" is "Max 20x", "pro" "Pro". */
+export const planName = (plan: string) => plan.split("_").map((p, i) => (i === 0 ? p.charAt(0).toUpperCase() + p.slice(1) : p)).join(" ");
+
+function Plans({ totals }: { totals: Totals }) {
+  const { t, f } = useI18n();
+  const m = t.stats.charts;
+  const title = (n: number) => m.installs(n, f.count(n));
+  const known = totals.plans.flatMap((p) => (p.plan ? [{ key: p.plan, label: planName(p.plan), value: p.installs, title: title(p.installs) }] : []));
+  const unknown = totals.plans.find((p) => !p.plan)?.installs ?? 0;
+  return (
+    <ShareList
+      rows={withUnknown(
+        known,
+        unknown,
+        (value) => ({ key: "other", label: m.otherPlans, value, title: title(value) }),
+        (value) => ({ key: "unknown", label: m.unknownPlan, value, title: title(value) }),
+      )}
+    />
+  );
+}
+
+function LanguageShares({ totals }: { totals: Totals }) {
+  const { locale, t, f } = useI18n();
+  const m = t.stats.charts;
+  const names = new Intl.DisplayNames([locale], { type: "language" });
+  const name = (code: string) => {
+    try {
+      return names.of(code) ?? code;
+    } catch {
+      return code;
+    }
+  };
+  const title = (n: number) => m.installs(n, f.count(n));
+  const known = totals.languages.flatMap((l) => (l.language ? [{ key: l.language, label: name(l.language), value: l.installs, title: title(l.installs) }] : []));
+  const unknown = totals.languages.find((l) => !l.language)?.installs ?? 0;
+  return (
+    <ShareList
+      rows={withUnknown(
+        known,
+        unknown,
+        (value) => ({ key: "other", label: m.otherLanguages, value, title: title(value) }),
+        (value) => ({ key: "unknown", label: m.unknownLanguage, value, title: title(value) }),
+      )}
+    />
+  );
+}
+
+/** The feature counters as figures: installations, own prompts, projects, agents, phone calls. */
+function Figures({ totals }: { totals: Totals }) {
+  const { t, f } = useI18n();
+  const m = t.stats.charts.figures;
+  const c = totals.counters;
+  const items = [
+    { key: "installs", value: totals.installs, label: m.installs, sub: m.installsSub(f.count(totals.newInstalls30d)) },
+    { key: "active", value: totals.activeInstalls30d, label: m.active, sub: m.activeSub },
+    { key: "prompts", value: c.userTurns, label: m.prompts, sub: m.promptsSub },
+    { key: "projects", value: c.projectsCreated, label: m.projects, sub: m.projectsSub },
+    { key: "agents", value: c.agentsStarted, label: m.agents, sub: m.agentsSub(f.count(c.agentsMerged)) },
+    { key: "phone", value: c.phoneCalls, label: m.phoneCalls, sub: m.phoneCallsSub },
+  ];
+  return (
+    <dl className="figures">
+      {items.map((it) => (
+        <div key={it.key} className="figure">
+          <dt>{it.label}</dt>
+          <dd className="figure-value">{f.count(it.value)}</dd>
+          <dd className="figure-sub">{it.sub}</dd>
+        </div>
+      ))}
+    </dl>
   );
 }
 
@@ -344,11 +465,23 @@ export function StatsCharts({ totals }: { totals: Totals }) {
       <ChartCard icon={Monitor} title={m.platforms} sub={m.platformsSub}>
         <Platforms totals={totals} />
       </ChartCard>
+      <ChartCard icon={Tag} title={m.versions} sub={m.versionsSub}>
+        <Versions totals={totals} />
+      </ChartCard>
+      <ChartCard icon={CreditCard} title={m.plans} sub={m.plansSub}>
+        <Plans totals={totals} />
+      </ChartCard>
+      <ChartCard icon={Languages} title={m.languages} sub={m.languagesSub}>
+        <LanguageShares totals={totals} />
+      </ChartCard>
+      <ChartCard icon={LayoutGrid} title={m.figures.title} sub={m.figures.sub}>
+        <Figures totals={totals} />
+      </ChartCard>
     </Reveal>
   );
 }
 
-/** Placeholder in the shape of the four cards: same icons and titles, columns, bars and the ring in gray. */
+/** Placeholder in the shape of the cards: same icons and titles, columns, bars, the ring and the figures in gray. */
 export function ChartsSkeleton() {
   const { t } = useI18n();
   const m = t.stats.charts;
@@ -381,6 +514,23 @@ export function ChartsSkeleton() {
       </div>
     </div>
   );
+  const shares = (rows: number) => (
+    <ul className="shares">
+      {Array.from({ length: rows }, (_, i) => (
+        <li key={i} className="share">
+          <span className="share-label">
+            <Skeleton width={`${55 + ((i * 13) % 30)}%`} />
+          </span>
+          <span className="share-track">
+            <span className="share-fill skeleton-bar" style={{ width: `${70 - i * 18}%` }} />
+          </span>
+          <span className="share-value">
+            <Skeleton width="2rem" />
+          </span>
+        </li>
+      ))}
+    </ul>
+  );
   return (
     <div className="charts" aria-busy>
       <section className="chart-card" aria-label={m.tokensPerDay}>
@@ -393,21 +543,7 @@ export function ChartsSkeleton() {
       </section>
       <section className="chart-card" aria-label={m.topModels}>
         {head(Box, m.topModels, false)}
-        <ul className="shares">
-          {[0, 1, 2, 3].map((i) => (
-            <li key={i} className="share">
-              <span className="share-label">
-                <Skeleton width={`${55 + ((i * 13) % 30)}%`} />
-              </span>
-              <span className="share-track">
-                <span className="share-fill skeleton-bar" style={{ width: `${70 - i * 18}%` }} />
-              </span>
-              <span className="share-value">
-                <Skeleton width="2rem" />
-              </span>
-            </li>
-          ))}
-        </ul>
+        {shares(4)}
       </section>
       <section className="chart-card" aria-label={m.platforms}>
         {head(Monitor, m.platforms, false)}
@@ -429,6 +565,36 @@ export function ChartsSkeleton() {
             ))}
           </ul>
         </div>
+      </section>
+      <section className="chart-card" aria-label={m.versions}>
+        {head(Tag, m.versions, false)}
+        {shares(4)}
+      </section>
+      <section className="chart-card" aria-label={m.plans}>
+        {head(CreditCard, m.plans, false)}
+        {shares(4)}
+      </section>
+      <section className="chart-card" aria-label={m.languages}>
+        {head(Languages, m.languages, false)}
+        {shares(3)}
+      </section>
+      <section className="chart-card" aria-label={m.figures.title}>
+        {head(LayoutGrid, m.figures.title, false)}
+        <dl className="figures">
+          {[0, 1, 2, 3, 4, 5].map((i) => (
+            <div key={i} className="figure">
+              <dt>
+                <Skeleton width={`${50 + ((i * 17) % 35)}%`} />
+              </dt>
+              <dd className="figure-value">
+                <Skeleton width="3.5rem" />
+              </dd>
+              <dd className="figure-sub">
+                <Skeleton width="70%" />
+              </dd>
+            </div>
+          ))}
+        </dl>
       </section>
     </div>
   );

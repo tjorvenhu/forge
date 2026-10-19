@@ -1,4 +1,4 @@
-import { ArrowRight, BarChart3, Download, Folder, GitBranch, MessageCircle, Settings } from "lucide-react";
+import { ArrowRight, BarChart3, ChevronDown, Download, Folder, GitBranch, MessageCircle, Settings } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import de800 from "@/assets/app-de-800.webp";
 import de1200 from "@/assets/app-de-1200.webp";
@@ -9,7 +9,7 @@ import en1200 from "@/assets/app-en-1200.webp";
 import en1600 from "@/assets/app-en-1600.webp";
 import en2400 from "@/assets/app-en-2400.webp";
 import { DOWNLOAD_URL } from "@/lib/constants";
-import type { Locale } from "@/lib/i18n";
+import { localePath, type Locale, type LocaleBase } from "@/lib/i18n";
 import { i18n, type Messages } from "@/lib/messages";
 import { Feature } from "./blocks";
 import { Tilt } from "./tilt";
@@ -29,10 +29,11 @@ const FEATURES: { key: FeatureKey; icon: LucideIcon }[] = [
   { key: "workflow", icon: Settings },
 ];
 
-/** The start page: one screen with the app window, four cards below and the way to the live stats. */
-export function Landing({ locale }: { locale: Locale }) {
+/** The start page: one screen with the app window, four cards below, the way to the live stats and the questions. */
+export function Landing({ locale, base }: { locale: Locale; base: LocaleBase }) {
   const { t } = i18n(locale);
   const l = t.landing;
+  const stats = localePath("/stats", base);
   const shots = SHOTS[locale];
   const shot = shots[shots.length - 1]!;
   return (
@@ -50,7 +51,7 @@ export function Landing({ locale }: { locale: Locale }) {
                 <Download aria-hidden />
                 {l.download}
               </a>
-              <a className="btn btn-outline btn-lg" href="/stats">
+              <a className="btn btn-outline btn-lg" href={stats}>
                 <BarChart3 aria-hidden />
                 {l.liveStats}
               </a>
@@ -98,12 +99,30 @@ export function Landing({ locale }: { locale: Locale }) {
       </section>
 
       <div className="container landing-foot">
-        <a className="stats-link" href="/stats">
+        <a className="stats-link" href={stats}>
           <BarChart3 aria-hidden />
           {l.liveStats}
           <ArrowRight aria-hidden className="btn-arrow" />
         </a>
       </div>
+
+      <section className="container landing-faq" id="faq" aria-labelledby="faq-title">
+        <header className="section-head">
+          <h2 id="faq-title">{l.faq.title}</h2>
+          <p>{l.faq.lead}</p>
+        </header>
+        <div className="faq">
+          {l.faq.items.map((item) => (
+            <details key={item.q} className="faq-item">
+              <summary>
+                <h3>{item.q}</h3>
+                <ChevronDown aria-hidden className="faq-chevron" />
+              </summary>
+              <p>{item.a}</p>
+            </details>
+          ))}
+        </div>
+      </section>
     </main>
   );
 }

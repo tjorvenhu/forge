@@ -62,19 +62,47 @@ export async function handoffSession(session: Pick<Session, "id" | "projectId">,
   }
 }
 
+const HIDDEN_KEY = "forge.longSessionHidden";
+const HIDDEN_MAX = 200;
+
+function hiddenSessions(): Record<string, number> {
+  try {
+    const v = JSON.parse(localStorage.getItem(HIDDEN_KEY) ?? "{}") as unknown;
+    return v && typeof v === "object" ? (v as Record<string, number>) : {};
+  } catch {
+    return {};
+  }
+}
+
+/** Context size at which the hint was hidden; kept across restarts, otherwise it came back on every start. */
+function hiddenAtStored(sessionId: string): number | null {
+  const v = hiddenSessions()[sessionId];
+  return typeof v === "number" ? v : null;
+}
+
+function storeHiddenAt(sessionId: string, tokens: number) {
+  const entries = Object.entries(hiddenSessions()).filter(([id]) => id !== sessionId);
+  entries.push([sessionId, tokens]);
+  localStorage.setItem(HIDDEN_KEY, JSON.stringify(Object.fromEntries(entries.slice(-HIDDEN_MAX))));
+}
+
 /**
  * Above the composer once the context is large: every message sends the whole history again, so a
  * long session uses up the usage limit faster. Offers a new session with a handover, or /compact here.
- * Hidden, it comes back when the context has grown by another half of the threshold.
+ * Hidden, it comes back only when the context has grown by another full threshold.
  */
 export function LongSessionHint({ session, draftKey: fromDraftKey, disabled }: { session: Session; draftKey: string; disabled: boolean }) {
   const settings = useSettings().data;
   const threshold = settings?.longSessionTokens ?? 0;
   const tokens = longSessionTokens(session, threshold);
-  const [hiddenAt, setHiddenAt] = useCardState<number | null>(cardKey(session.id, "long-session", "hidden"), null);
+  const [hiddenAt, setHiddenAtState] = useCardState<number | null>(cardKey(session.id, "long-session", "hidden"), () => hiddenAtStored(session.id));
   const [busy, setBusy] = useState(false);
   if (tokens === null) return null;
-  if (hiddenAt !== null && tokens < hiddenAt + threshold / 2) return null;
+  if (hiddenAt !== null && tokens < hiddenAt + threshold) return null;
+  const setHiddenAt = (at: number) => {
+    setHiddenAtState(at);
+    storeHiddenAt(session.id, at);
+  };
   const locked = disabled || busy || isBusy(session.status);
   const handoff = async () => {
     setBusy(true);

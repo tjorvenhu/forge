@@ -13,6 +13,7 @@ const { LongSessionHint, longSessionLabel, longSessionOptions, longSessionTokens
 const { keys, queryClient } = await import("@/lib/queries");
 const { draftKey, useDrafts } = await import("@/stores/drafts");
 const { useUi } = await import("@/stores/ui");
+const { useCardStore } = await import("@/stores/card-state");
 
 function session(tokens: number | null, extra: Partial<Session> = {}): Session {
   return {
@@ -61,7 +62,7 @@ describe("long sessions", () => {
     expect(longSessionTokens(session(null), 200_000)).toBeNull();
     expect(longSessionLabel(0)).toBe("Aus");
     expect(longSessionLabel(200_000)).toBe("ab 200 Tsd. Tokens");
-    expect(longSessionOptions(150_000).map((o) => o.value)).toEqual(["0", "100000", "150000", "200000", "400000", "800000"]);
+    expect(longSessionOptions(150_000).map((o) => o.value)).toEqual(["0", "100000", "150000", "200000", "400000", "600000", "800000"]);
   });
 
   it("shows no hint below the threshold", () => {
@@ -69,7 +70,7 @@ describe("long sessions", () => {
     expect(screen.queryByRole("status")).toBeNull();
   });
 
-  it("hides on request and comes back once the context grew by half the threshold", () => {
+  it("hides on request, also after a restart, and comes back once the context grew by the threshold", () => {
     const { rerender } = show(session(250_000, { id: "s-hide" }));
     expect(screen.getByRole("status").textContent).toContain("Lange Session");
     fireEvent.click(screen.getByRole("button", { name: "Hinweis ausblenden" }));
@@ -79,9 +80,13 @@ describe("long sessions", () => {
         <LongSessionHint session={session(tokens, { id: "s-hide" })} draftKey={draftKey("p1", "s-hide")} disabled={false} />
       </QueryClientProvider>
     );
-    rerender(again(320_000));
+    rerender(again(420_000));
     expect(screen.queryByRole("status")).toBeNull();
-    rerender(again(350_000));
+    cleanup();
+    useCardStore.setState({ values: new Map() });
+    const restarted = render(again(440_000));
+    expect(screen.queryByRole("status")).toBeNull();
+    restarted.rerender(again(450_000));
     expect(screen.getByRole("status")).toBeTruthy();
   });
 

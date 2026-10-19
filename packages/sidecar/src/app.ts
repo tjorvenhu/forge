@@ -245,6 +245,7 @@ export function createApp(opts: { dataDir: string; write: Writer; log?: (m: stri
     enabled: () => db.getSettings().usageStats,
     totals: () => db.usageTotals(),
     plan: () => readPlan(),
+    language: () => db.getSettings().language,
     log: (m) => opts.log?.(m),
     file: usageStatsFile(opts.dataDir),
   });

@@ -7,8 +7,10 @@ import { SupportButton } from "@/components/donations";
 import { TopLinks } from "@/components/nav";
 import { DOWNLOAD_URL, REPO_URL } from "@/lib/constants";
 import { LanguageSwitch, LocaleProvider } from "@/components/locale";
-import { getLocale } from "@/lib/locale-server";
+import { localePath, type LocaleBase } from "@/lib/i18n";
+import { getLocale, getRoute } from "@/lib/locale-server";
 import { i18n } from "@/lib/messages";
+import { siteMetadata } from "@/lib/seo";
 import "@fontsource-variable/inter";
 import "./globals.css";
 import "./pages.css";
@@ -17,8 +19,7 @@ const IMPRINT_URL = "https://vanturis.de/impressum";
 const PRIVACY_URL = "https://vanturis.de/datenschutz";
 
 export async function generateMetadata(): Promise<Metadata> {
-  const { t } = i18n(await getLocale());
-  return { title: t.meta.title, description: t.meta.description };
+  return siteMetadata(await getLocale());
 }
 
 // The app has only its dark theme; the page follows it.
@@ -38,28 +39,28 @@ async function donated(): Promise<Donations | null> {
 }
 
 /** The wordmark (944 x 184): the mark and FORGE, without the line below it, as in the mockup. */
-function Logo({ label, height }: { label: string; height: number }) {
+function Logo({ label, height, base }: { label: string; height: number; base: LocaleBase }) {
   return (
-    <a href="/" className="logo" aria-label={label}>
+    <a href={localePath("/", base)} className="logo" aria-label={label}>
       <img src={logo.src} width={Math.round((height * 944) / 184)} height={height} alt="" />
     </a>
   );
 }
 
 export default async function RootLayout({ children }: { children: ReactNode }) {
-  const [given, locale] = await Promise.all([donated(), getLocale()]);
+  const [given, { locale, base }] = await Promise.all([donated(), getRoute()]);
   const { t } = i18n(locale);
   return (
     <html lang={locale}>
       <body>
-        <LocaleProvider locale={locale}>
+        <LocaleProvider locale={locale} base={base}>
           {/* Without JavaScript nothing scrolls into view: show the charts as they are. */}
           <noscript>
             <style>{".reveal{opacity:1;transform:none}.reveal .col-bar,.reveal .hbar-fill{animation:none}"}</style>
           </noscript>
           <header className="topbar">
             <div className="container topbar-inner">
-              <Logo label={t.header.home} height={34} />
+              <Logo label={t.header.home} height={34} base={base} />
               <nav className="topbar-nav" aria-label={t.header.nav}>
                 <TopLinks />
                 <SupportButton donations={given} />
@@ -74,12 +75,12 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
           <footer className="footer">
             <div className="container footer-inner">
               <div className="footer-brand">
-                <Logo label={t.header.home} height={24} />
+                <Logo label={t.header.home} height={24} base={base} />
                 <p>{t.footer.license}</p>
               </div>
               <div className="footer-side">
                 <nav className="footer-links" aria-label={t.header.nav}>
-                  <a href="/stats">{t.header.liveStats}</a>
+                  <a href={localePath("/stats", base)}>{t.header.liveStats}</a>
                   <a href={REPO_URL}>{t.header.github}</a>
                   <a href={IMPRINT_URL}>{t.footer.imprint}</a>
                   <a href={PRIVACY_URL}>{t.footer.privacy}</a>

@@ -569,7 +569,7 @@ export const UiCompare = z.object({
 export type UiCompare = z.infer<typeof UiCompare>;
 
 /** Choices for longSessionTokens in the settings; 0 is off. */
-export const LONG_SESSION_CHOICES = [0, 100_000, 200_000, 400_000, 800_000] as const;
+export const LONG_SESSION_CHOICES = [0, 100_000, 200_000, 400_000, 600_000, 800_000] as const;
 
 /** Choices for idleCloseMinutes in the settings; 0 is off. */
 export const IDLE_CLOSE_CHOICES = [0, 15, 30, 60, 120, 240] as const;

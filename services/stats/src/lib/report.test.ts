@@ -146,10 +146,20 @@ describe("parseReport", () => {
     expectError(body({ plan: 5 }));
   });
 
+  it("takes the interface language as two lowercase letters, null when missing", () => {
+    const ok = parseReport(body({ language: "de" }));
+    expect(ok.ok && ok.report.language).toBe("de");
+    const missing = parseReport(body({}));
+    expect(missing.ok && missing.report.language).toBeNull();
+    expect(parseReport(body({ language: null })).ok).toBe(true);
+    expectError(body({ language: "DE" }));
+    expectError(body({ language: "deu" }));
+  });
+
   it("fits the largest valid report into the body limit", () => {
     const counters = Object.fromEntries(COUNTER_KEYS.map((k) => [k, COUNTER_LIMITS[k]]));
     const models = Object.fromEntries(Array.from({ length: MAX_MODELS }, (_, i) => [`m${i}`.padEnd(64, "x"), { tokens: MODEL_LIMITS.tokens, costUsdCents: MODEL_LIMITS.costUsdCents }]));
-    const raw = body({ appVersion: "1".repeat(32), os: "x".repeat(64), counters, models, plan: "x".repeat(24) });
+    const raw = body({ appVersion: "1".repeat(32), os: "x".repeat(64), counters, models, plan: "x".repeat(24), language: "xx" });
     expect(parseReport(raw).ok).toBe(true);
   });
 

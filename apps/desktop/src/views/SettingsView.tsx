@@ -38,6 +38,7 @@ import { PROFILE_IDS, PROFILE_INFO } from "@/components/projects/ProfileBadge";
 import { ClaudeSetupCard } from "@/components/settings/ClaudeSetupCard";
 import { UsageSettings } from "@/components/settings/UsageSettings";
 import { MemoryEditor } from "@/components/settings/MemoryEditor";
+import { ScreenshotKeyRow } from "@/components/screenshot/ScreenshotKeyRow";
 import { effortOptions, fromChoice, modelOptions, toChoice } from "@/components/settings/model-options";
 import { idleCloseOptions } from "@/components/settings/idle-close";
 import { longSessionOptions } from "@/components/workspace/handoff";
@@ -201,12 +202,7 @@ function GeneralSection({ s, save }: { s: Settings; save: Save }) {
           checked={s.alwaysOnTop}
           onChange={(v) => void save({ alwaysOnTop: v })}
         />
-        <SwitchRow
-          label={sv.screenshotKeyLabel}
-          description={sv.screenshotKeyDescription}
-          checked={s.screenshotKey}
-          onChange={(v) => void save({ screenshotKey: v })}
-        />
+        <ScreenshotKeyRow checked={s.screenshotKey} onChange={(v) => void save({ screenshotKey: v })} />
         <Row label={sv.soundsLabel} description={sv.soundsDescription}>
           <div className="flex items-center gap-1">
             {(["done", "approval", "error"] as const).map((k) => (

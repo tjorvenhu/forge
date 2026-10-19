@@ -114,7 +114,7 @@ export const setup = {
     noThanks: "Nein danke",
     enable: "Einschalten (empfohlen)",
     sentTitle: "Gesendet wird",
-    sent: `Eine zufällige Kennung dieser Installation, die FORGE-Version, die ${osName}-Version, die Art des Claude-Abos (z. B. Pro oder Max 5x) und Zählerstände: verbrauchte Tokens je Claude-Modell, geschätzte API-Kosten, Claude-Arbeitszeit, Durchläufe, Sessions, angelegte Projekte, gestartete und zusammengeführte Agenten, Telefonate.`,
+    sent: `Eine zufällige Kennung dieser Installation, die FORGE-Version, die ${osName}-Version, die Sprache der Oberfläche, die Art des Claude-Abos (z. B. Pro oder Max 5x) und Zählerstände: verbrauchte Tokens je Claude-Modell, geschätzte API-Kosten, Claude-Arbeitszeit, Durchläufe, Sessions, angelegte Projekte, gestartete und zusammengeführte Agenten, Telefonate.`,
     notSentTitle: "Nicht gesendet wird",
     notSent: "Keine Inhalte aus Chats oder Dateien, keine Projektnamen, keine Pfade, nichts über dein Claude- oder GitHub-Konto. Der Dienst speichert keine IP-Adressen.",
     why: "Wenn du magst, schalte sie ein: Die öffentlichen Gesamtzahlen zeigen, wie FORGE genutzt wird, und helfen bei der Entscheidung, woran weiter gearbeitet wird.",

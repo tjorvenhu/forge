@@ -3,17 +3,19 @@
 import { usePathname } from "next/navigation";
 import { BarChart3, ExternalLink } from "lucide-react";
 import { REPO_URL } from "@/lib/constants";
-import { useI18n } from "./locale";
+import { localePath } from "@/lib/i18n";
+import { useI18n, useLocaleBase } from "./locale";
 
 /** Links of the top bar: live stats (marked while open) and the repository. */
 export function TopLinks() {
   const { t } = useI18n();
   const path = usePathname();
+  const base = useLocaleBase();
   const h = t.header;
   return (
     <ul className="nav-links">
       <li>
-        <a href="/stats" aria-current={path === "/stats" ? "page" : undefined} aria-label={h.liveStats}>
+        <a href={localePath("/stats", base)} aria-current={path.endsWith("/stats") ? "page" : undefined} aria-label={h.liveStats}>
           <BarChart3 aria-hidden />
           <span className="nav-label">{h.liveStats}</span>
           <ExternalLink aria-hidden className="nav-arrow" />

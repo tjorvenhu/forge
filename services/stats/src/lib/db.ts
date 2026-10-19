@@ -11,6 +11,12 @@ export interface PlanCount {
   online: number;
 }
 
+export interface LanguageCount {
+  /** null: app versions before the language was sent */
+  language: string | null;
+  installs: number;
+}
+
 export type Platform = "windows" | "macos" | "linux" | "other";
 
 export interface PlatformCount {
@@ -29,6 +35,8 @@ const MAX_TOTAL_MODELS = 50;
 export interface Totals {
   installs: number;
   activeInstalls30d: number;
+  /** installations whose first report was in the last 30 days */
+  newInstalls30d: number;
   /** installations with a report in the last ONLINE_MINUTES */
   onlineInstalls: number;
   counters: Counters;
@@ -41,6 +49,8 @@ export interface Totals {
   plans: PlanCount[];
   /** installations active in the last 30 days per operating system, most first */
   platforms: PlatformCount[];
+  /** installations active in the last 30 days per interface language, most first */
+  languages: LanguageCount[];
   /** the last 30 days (UTC), oldest first */
   history: HistoryDay[];
 }
@@ -73,6 +83,7 @@ async function db(): Promise<Pool> {
       );
       ALTER TABLE installs ADD COLUMN IF NOT EXISTS models jsonb NOT NULL DEFAULT '{}'::jsonb;
       ALTER TABLE installs ADD COLUMN IF NOT EXISTS plan text;
+      ALTER TABLE installs ADD COLUMN IF NOT EXISTS language text;
       CREATE TABLE IF NOT EXISTS install_days (
         install_id uuid NOT NULL REFERENCES installs(install_id) ON DELETE CASCADE,
         day date NOT NULL,
@@ -104,11 +115,12 @@ export async function upsertReport(r: Report): Promise<boolean> {
   const p = await db();
   const res = await p.query(
     `WITH up AS (
-       INSERT INTO installs (install_id, first_seen, last_seen, app_version, os, counters, models, plan)
-       VALUES ($1, now(), now(), $2, $3, $4, $5, $7)
+       INSERT INTO installs (install_id, first_seen, last_seen, app_version, os, counters, models, plan, language)
+       VALUES ($1, now(), now(), $2, $3, $4, $5, $7, $8)
        ON CONFLICT (install_id) DO UPDATE
          SET last_seen = now(), app_version = EXCLUDED.app_version, os = EXCLUDED.os,
-             counters = EXCLUDED.counters, models = EXCLUDED.models, plan = EXCLUDED.plan
+             counters = EXCLUDED.counters, models = EXCLUDED.models, plan = EXCLUDED.plan,
+             language = EXCLUDED.language
          WHERE installs.last_seen <= now() - make_interval(mins => $6)
        RETURNING install_id
      )
@@ -116,7 +128,7 @@ export async function upsertReport(r: Report): Promise<boolean> {
      SELECT install_id, (now() AT TIME ZONE 'UTC')::date, $4 FROM up
      ON CONFLICT (install_id, day) DO UPDATE SET counters = EXCLUDED.counters
      RETURNING 1`,
-    [r.installId, r.appVersion, r.os, JSON.stringify(r.counters), JSON.stringify(r.models), REPORT_INTERVAL_MINUTES, r.plan],
+    [r.installId, r.appVersion, r.os, JSON.stringify(r.counters), JSON.stringify(r.models), REPORT_INTERVAL_MINUTES, r.plan, r.language],
   );
   return (res.rowCount ?? 0) > 0;
 }
@@ -169,6 +181,17 @@ async function queryPlans(p: Pool): Promise<PlanCount[]> {
   return res.rows.map((r) => ({ plan: r.plan, installs: Number(r.installs), online: Number(r.online) }));
 }
 
+async function queryLanguages(p: Pool): Promise<LanguageCount[]> {
+  const res = await p.query<{ language: string | null; installs: string }>(
+    `SELECT language, COUNT(*)::text AS installs
+     FROM installs
+     WHERE last_seen > now() - interval '30 days'
+     GROUP BY language
+     ORDER BY COUNT(*) DESC, language NULLS LAST`,
+  );
+  return res.rows.map((r) => ({ language: r.language, installs: Number(r.installs) }));
+}
+
 /** The app sends `os.type() os.release()`: "Windows_NT 10.0.26200", "Darwin 24.1.0", "Linux 6.8.0". */
 async function queryPlatforms(p: Pool): Promise<PlatformCount[]> {
   const res = await p.query<{ platform: Platform; installs: string }>(
@@ -196,12 +219,20 @@ export async function queryHistory(endDay?: string, days = HISTORY_DAYS): Promis
 
 async function queryTotals(): Promise<Totals> {
   const p = await db();
-  const [models, versions, plans, platforms, history] = await Promise.all([queryModels(p), queryVersions(p), queryPlans(p), queryPlatforms(p), queryHistory()]);
+  const [models, versions, plans, platforms, languages, history] = await Promise.all([
+    queryModels(p),
+    queryVersions(p),
+    queryPlans(p),
+    queryPlatforms(p),
+    queryLanguages(p),
+    queryHistory(),
+  ]);
   // The keys come from COUNTER_KEYS, not from input, so interpolating them is safe.
   const sums = COUNTER_KEYS.map((k) => `COALESCE(SUM((counters->>'${k}')::numeric), 0)::text AS "${k}"`).join(",\n");
   const res = await p.query<Record<string, string>>(
     `SELECT COUNT(*)::text AS installs,
        COUNT(*) FILTER (WHERE last_seen > now() - interval '30 days')::text AS active,
+       COUNT(*) FILTER (WHERE first_seen > now() - interval '30 days')::text AS new,
        COUNT(*) FILTER (WHERE last_seen > now() - make_interval(mins => $1))::text AS online,
        ${sums}
      FROM installs`,
@@ -212,6 +243,7 @@ async function queryTotals(): Promise<Totals> {
   return {
     installs: Number(row.installs ?? 0),
     activeInstalls30d: Number(row.active ?? 0),
+    newInstalls30d: Number(row.new ?? 0),
     onlineInstalls: Number(row.online ?? 0),
     counters,
     updatedAt: new Date().toISOString(),
@@ -219,6 +251,7 @@ async function queryTotals(): Promise<Totals> {
     versions,
     plans,
     platforms,
+    languages,
     history,
   };
 }

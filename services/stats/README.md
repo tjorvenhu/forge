@@ -14,7 +14,7 @@ The page uses the design of the desktop app: the color, font and radius tokens f
 
 ## What is stored
 
-One row per installation in the table `installs`: random installation ID, first and last report, FORGE version, operating system, the cumulative counters as JSON, the tokens and costs per Claude model (`models`, JSON) and the type of Claude subscription (`plan`). The app always sends the total since 2026-10-17 (start of the statistics, `USAGE_STATS_SINCE` in `packages/sidecar/src/persistence/db.ts`), and the service overwrites the last state. App versions before this cutoff date send the total since installation; with the update their counters drop once.
+One row per installation in the table `installs`: random installation ID, first and last report, FORGE version, operating system, the cumulative counters as JSON, the tokens and costs per Claude model (`models`, JSON) the type of Claude subscription (`plan`) and the language of the FORGE interface (`language`). The app always sends the total since 2026-10-17 (start of the statistics, `USAGE_STATS_SINCE` in `packages/sidecar/src/persistence/db.ts`), and the service overwrites the last state. App versions before this cutoff date send the total since installation; with the update their counters drop once.
 
 In addition, `install_days` holds the state of each installation at the end of each UTC day (one row per installation and day, each report overwrites the one for the current day). The history is derived from this: the increase for a day is the state minus the last earlier state of the same installation. The first state of an installation does not count as an increase, nor does a counter missing from the earlier state (a new app version that sends its total since installation). Negative differences (reinstallation with an empty database, update to the cutoff date) count as 0. Active installations on a day are those with a state on that day. Turning off the statistics deletes the installation together with its daily states (`ON DELETE CASCADE`).
 
@@ -52,11 +52,12 @@ Body of the report:
   "models": {
     "claude-opus-4-7": { "tokens": 123, "costUsdCents": 45 }
   },
-  "plan": "max_20x"
+  "plan": "max_20x",
+  "language": "de"
 }
 ```
 
-`userTurns` are the runs that users started themselves, `costUsdCents` the estimated API cost of all Claude calls in US cents. `models` contains, per model ID, all four token types combined and the estimated cost, cumulative since the cutoff date. `plan` is the subscription of the account logged in to Claude Code (`max_20x`, `max_5x`, `max`, `pro`, `team`, `enterprise` ...), read from `organizationType` and the rate limit tier in `.claude.json`; `null` without a claude.ai login. Older app versions do not send these fields; then 0, `{}` and `null` apply.
+`userTurns` are the runs that users started themselves, `costUsdCents` the estimated API cost of all Claude calls in US cents. `models` contains, per model ID, all four token types combined and the estimated cost, cumulative since the cutoff date. `plan` is the subscription of the account logged in to Claude Code (`max_20x`, `max_5x`, `max`, `pro`, `team`, `enterprise` ...), read from `organizationType` and the rate limit tier in `.claude.json`; `null` without a claude.ai login. `language` is the language of the FORGE interface (`de`, `en`). Older app versions do not send these fields; then 0, `{}` and `null` apply.
 
 Rules (see `src/lib/report.ts`):
 
@@ -64,6 +65,7 @@ Rules (see `src/lib/report.ts`):
 - Upper limits per installation: token fields 10^12, `claudeWorkMs` 10^11, `costUsdCents` 10^10, all others 10^7. Above that: 400.
 - `models`: at most 20 entries, keys 1 to 64 characters from `[A-Za-z0-9._:[]-]`, values `tokens` (integer, 0 to 4·10^12) and `costUsdCents` (integer, 0 to 10^10), both required.
 - `plan`: `null` or 1 to 24 characters from `[a-z0-9_]`.
+- `language`: `null` or two lowercase letters.
 - `appVersion` at most 32 characters from `[0-9A-Za-z.+-]`, `os` at most 64 characters without control characters.
 - The app reports every 5 minutes. At most one report per installation every 4 minutes (429). The app treats 429 as sent.
 - At most 20 new installation IDs per IP address and day (429). The counter lives only in memory and starts over after a restart.
@@ -74,6 +76,7 @@ Response of `GET /api/v1/totals`:
 {
   "installs": 7,
   "activeInstalls30d": 7,
+  "newInstalls30d": 2,
   "onlineInstalls": 2,
   "counters": { "tokensInput": 0, "...": 0, "userTurns": 0, "costUsdCents": 0 },
   "updatedAt": "2026-10-18T00:00:00.000Z",
@@ -81,6 +84,7 @@ Response of `GET /api/v1/totals`:
   "versions": [{ "version": "0.1.81", "installs": 3 }],
   "plans": [{ "plan": "max_20x", "installs": 4, "online": 1 }, { "plan": null, "installs": 3, "online": 1 }],
   "platforms": [{ "platform": "windows", "installs": 7 }],
+  "languages": [{ "language": "de", "installs": 5 }, { "language": null, "installs": 2 }],
   "history": [{ "day": "2026-10-17", "tokens": 64420000, "claudeTurns": 55, "sessions": 12, "claudeWorkMs": 5400000, "costUsdCents": 4200, "activeInstalls": 7 }]
 }
 ```
@@ -90,6 +94,8 @@ Response of `GET /api/v1/totals`:
 - `plans`: active installations of the last 30 days per subscription, of which `online` are online right now; `null` means unknown (older app or without a claude.ai login).
 - `platforms`: active installations of the last 30 days per operating system (`windows`, `macos`, `linux`, `other`, from the `os` of the reports), most first.
 - `versions`: active installations of the last 30 days per FORGE version, most common first.
+- `languages`: active installations of the last 30 days per interface language, most first; `null` means an app version that does not send it.
+- `newInstalls30d`: installations whose first report was in the last 30 days.
 - `history`: the last 30 UTC days including today, oldest first; `tokens` is the increase of all four token types, `claudeTurns` the increase in runs, `sessions`, `claudeWorkMs` and `costUsdCents` likewise.
 - The README badge reads `installs`.
 

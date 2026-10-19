@@ -8,6 +8,17 @@ export const DEFAULT_LOCALE: Locale = "en";
 /** Holds the visitor's choice for a year; without it Accept-Language decides on every request. */
 export const LOCALE_COOKIE = "lang";
 export const LOCALE_COOKIE_MAX_AGE = 60 * 60 * 24 * 365;
+/** Set by proxy.ts for /de and /en pages: the language of the path, ahead of cookie and browser. */
+export const LOCALE_HEADER = "x-forge-locale";
+
+/** "" for pages without a language in the path, else "/de" or "/en". */
+export type LocaleBase = "" | `/${Locale}`;
+
+/** Path of a page under a base: ("/stats", "/de") is "/de/stats", ("/", "/de") is "/de". */
+export function localePath(path: "/" | "/stats", base: LocaleBase): string {
+  if (!base) return path;
+  return path === "/" ? base : `${base}${path}`;
+}
 
 export function isLocale(value: unknown): value is Locale {
   return typeof value === "string" && (LOCALES as readonly string[]).includes(value);

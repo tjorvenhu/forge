@@ -6,13 +6,30 @@ import type { Locale } from "./i18n";
 
 const de = {
   meta: {
-    title: "FORGE, die Desktop-App für Claude Code",
+    title: "FORGE: Desktop-App und Oberfläche für Claude Code unter Windows",
     description:
-      "FORGE ist ein modernes Desktop-Tool für Claude Code. Verwalte Projekte, Sessions und Git in einer übersichtlichen Oberfläche statt im Terminal. Open Source, für Windows.",
+      "FORGE ist die kostenlose Open-Source-Oberfläche für Claude Code. Sessions, parallele Agenten in Git-Worktrees, Git, Vorschau und Projektwissen in einem Fenster. Für Windows 10 und 11.",
+    keywords: [
+      "Claude Code",
+      "Claude Code GUI",
+      "Claude Code Desktop App",
+      "Claude Code Windows",
+      "Claude Code Oberfläche",
+      "Claude Desktop",
+      "KI Programmierassistent",
+      "AI Coding",
+      "parallele Agenten",
+      "Git Worktrees",
+      "Anthropic Claude",
+      "FORGE",
+    ],
+    ogAlt: "FORGE, die Desktop-App für Claude Code: Projekte, Sessions, Agenten und Git in einem Fenster",
+    appDescription: "Desktop-App für Claude Code mit Sessions, parallelen Agenten in Git-Worktrees, Git, Vorschau und Projektwissen.",
   },
   statsMeta: {
-    title: "FORGE Live Stats",
-    description: "Gesamtzahlen aller FORGE-Installationen, die anonyme Nutzungszahlen senden.",
+    title: "FORGE Live Stats: Nutzung, Tokens, Versionen und Modelle",
+    description:
+      "Live-Statistik aller FORGE-Installationen mit anonymer Nutzungsstatistik: Tokens, Sessions, Kosten, installierte Versionen, Claude-Modelle, Abos und Plattformen.",
   },
   header: {
     home: "FORGE, zur Startseite",
@@ -35,6 +52,44 @@ const de = {
       ui: { title: "Intuitive Oberfläche", text: "Chat, Agenten und Tools übersichtlich vereint." },
       git: { title: "Git Integration", text: "Automatische Commits, Branches und PRs." },
       workflow: { title: "Dein Workflow", text: "Anpassbar, erweiterbar\nund auf dich zugeschnitten." },
+    },
+    faq: {
+      title: "Häufige Fragen",
+      lead: "Was FORGE ist, was es kostet und was du dafür brauchst.",
+      items: [
+        {
+          q: "Was ist FORGE?",
+          a: "FORGE ist eine Desktop-App für Windows, die Claude Code eine grafische Oberfläche gibt. Sie startet echte Claude-Code-Sessions in deinen Projekten, zeigt die Antworten live, fragt Freigaben ab und bringt Git, parallele Agenten, Vorschau und Projektwissen in ein Fenster.",
+        },
+        {
+          q: "Ist FORGE kostenlos?",
+          a: "Ja. FORGE ist Open Source unter der Lizenz AGPL-3.0 und kostet nichts. Für Claude selbst brauchst du ein Claude-Abo mit Zugang zu Claude Code, zum Beispiel Pro oder Max. Einen API-Schlüssel brauchst du nicht.",
+        },
+        {
+          q: "Was brauche ich, um FORGE zu nutzen?",
+          a: "Windows 10 oder 11 (x64) und ein Claude-Abo. Node.js, Git, die GitHub CLI und Python bringt der Installer mit. Fehlt Claude Code, installiert FORGE es beim ersten Start über den offiziellen Installer von Anthropic.",
+        },
+        {
+          q: "Wie arbeiten parallele Agenten?",
+          a: "Jeder Agent arbeitet in einem eigenen Git-Worktree auf einem eigenen Branch. Mehrere Aufgaben laufen so gleichzeitig, ohne sich gegenseitig Dateien zu ändern. Fertige Arbeit führt FORGE auf Wunsch automatisch zusammen.",
+        },
+        {
+          q: "Was kann FORGE mit Git?",
+          a: "Diffs ansehen, nur ausgewählte Dateien committen, Branches wechseln, Push und Pull, Pull Requests anlegen. Commit-Nachrichten schreibt Claude auf Wunsch selbst.",
+        },
+        {
+          q: "Bleiben meine Daten auf meinem Rechner?",
+          a: "Projekte, Chatverläufe und Einstellungen liegen lokal unter %APPDATA%\\forge. Die anonyme Nutzungsstatistik ist standardmäßig aus. Eingeschaltet sendet sie nur Zählerstände, nie Inhalte, Dateien oder Projektnamen.",
+        },
+        {
+          q: "Gibt es FORGE für macOS oder Linux?",
+          a: "Noch nicht. FORGE läuft im Moment unter Windows 10 und 11.",
+        },
+        {
+          q: "Wie bekomme ich Updates?",
+          a: "FORGE sucht kurz nach dem Start und danach alle 30 Minuten nach einer neuen Version. Du siehst die Änderungen und installierst mit einem Klick. Jedes Update ist signiert, FORGE prüft die Signatur vor der Installation.",
+        },
+      ],
     },
   },
   stats: {
@@ -80,13 +135,41 @@ const de = {
       platformsSub: "Betriebssysteme der Nutzer",
       platformNames: { windows: "Windows 10/11", macos: "macOS", linux: "Linux", other: "Andere" },
       platformTotal: (n: number): string => (n === 1 ? "Installation" : "Installationen"),
+      versions: "Versionen",
+      versionsSub: "Installierte FORGE-Versionen, aktiv in den letzten 30 Tagen",
+      newest: "neueste",
+      otherVersions: "Andere Versionen",
+      plans: "Claude-Abos",
+      plansSub: "Abo des in Claude Code angemeldeten Kontos",
+      otherPlans: "Andere",
+      unknownPlan: "Unbekannt",
+      languages: "Sprachen",
+      languagesSub: "Sprache der FORGE-Oberfläche",
+      otherLanguages: "Andere",
+      unknownLanguage: "Unbekannt",
+      figures: {
+        title: "Funktionen",
+        sub: "Gesamt seit dem 17. Oktober 2026",
+        installs: "Installationen",
+        installsSub: (n: string): string => `${n} neu in 30 Tagen`,
+        active: "Aktiv",
+        activeSub: "in den letzten 30 Tagen",
+        prompts: "Eigene Prompts",
+        promptsSub: "Nachrichten an Claude",
+        projects: "Projekte",
+        projectsSub: "angelegt oder hinzugefügt",
+        agents: "Agenten gestartet",
+        agentsSub: (merged: string): string => `${merged} zusammengeführt`,
+        phoneCalls: "Telefonate",
+        phoneCallsSub: "mit der Telefon-Funktion",
+      },
     },
     privacy: {
       title: "Was erfasst wird",
       text: "In FORGE standardmäßig aus. Ein- und ausschalten unter Einstellungen > Über FORGE > Datenschutz.",
       items: {
         off: { title: "Standardmäßig aus", text: "FORGE fragt einmal nach. Solange die Statistik aus ist, sendet die App nichts." },
-        anonymous: { title: "Anonym", text: "Alle 5 Minuten die Gesamtzähler mit einer zufälligen Installations-ID, Version und Betriebssystem." },
+        anonymous: { title: "Anonym", text: "Alle 5 Minuten die Gesamtzähler mit einer zufälligen Installations-ID, Version, Betriebssystem, Sprache und Art des Claude-Abos." },
         notCollected: { title: "Nicht erfasst", text: "Keine Inhalte von Nachrichten, keine Dateien, Projektnamen oder IP-Adressen." },
         delete: { title: "Abschalten löscht", text: "Wer die Statistik abschaltet, löscht damit den gespeicherten Datensatz seiner Installation." },
       },
@@ -133,13 +216,30 @@ export type Messages = typeof de;
 
 const en: Messages = {
   meta: {
-    title: "FORGE, the desktop app for Claude Code",
+    title: "FORGE: The desktop app and GUI for Claude Code on Windows",
     description:
-      "FORGE is a modern desktop tool for Claude Code. Manage projects, sessions and Git in a clear interface instead of the terminal. Open source, for Windows.",
+      "FORGE is the free, open source GUI for Claude Code. Sessions, parallel agents in Git worktrees, Git, preview and project knowledge in one window. For Windows 10 and 11.",
+    keywords: [
+      "Claude Code",
+      "Claude Code GUI",
+      "Claude Code desktop app",
+      "Claude Code Windows",
+      "Claude Code UI",
+      "Claude desktop",
+      "AI coding assistant",
+      "AI coding",
+      "parallel agents",
+      "Git worktrees",
+      "Anthropic Claude",
+      "FORGE",
+    ],
+    ogAlt: "FORGE, the desktop app for Claude Code: projects, sessions, agents and Git in one window",
+    appDescription: "Desktop app for Claude Code with sessions, parallel agents in Git worktrees, Git, preview and project knowledge.",
   },
   statsMeta: {
-    title: "FORGE Live Stats",
-    description: "Totals of all FORGE installations that send anonymous usage numbers.",
+    title: "FORGE Live Stats: usage, tokens, versions and models",
+    description:
+      "Live statistics of all FORGE installations with anonymous usage statistics: tokens, sessions, cost, installed versions, Claude models, plans and platforms.",
   },
   header: {
     home: "FORGE, to the home page",
@@ -162,6 +262,44 @@ const en: Messages = {
       ui: { title: "Intuitive interface", text: "Chat, agents and tools clearly combined." },
       git: { title: "Git integration", text: "Automatic commits, branches and PRs." },
       workflow: { title: "Your workflow", text: "Adaptable, extensible and tailored to you." },
+    },
+    faq: {
+      title: "Frequently asked questions",
+      lead: "What FORGE is, what it costs and what you need for it.",
+      items: [
+        {
+          q: "What is FORGE?",
+          a: "FORGE is a desktop app for Windows that gives Claude Code a graphical interface. It starts real Claude Code sessions in your projects, shows the answers live, asks for approvals and brings Git, parallel agents, preview and project knowledge into one window.",
+        },
+        {
+          q: "Is FORGE free?",
+          a: "Yes. FORGE is open source under the AGPL-3.0 license and costs nothing. For Claude itself you need a Claude subscription with access to Claude Code, for example Pro or Max. You do not need an API key.",
+        },
+        {
+          q: "What do I need to use FORGE?",
+          a: "Windows 10 or 11 (x64) and a Claude subscription. The installer brings Node.js, Git, the GitHub CLI and Python. If Claude Code is missing, FORGE installs it on first start with the official installer from Anthropic.",
+        },
+        {
+          q: "How do parallel agents work?",
+          a: "Each agent works in its own Git worktree on its own branch. Several tasks run at the same time without changing each other's files. On request, FORGE merges finished work automatically.",
+        },
+        {
+          q: "What can FORGE do with Git?",
+          a: "View diffs, commit only the files you select, switch branches, push and pull, open pull requests. On request, Claude writes the commit messages.",
+        },
+        {
+          q: "Does my data stay on my computer?",
+          a: "Projects, chat history and settings are stored locally in %APPDATA%\\forge. The anonymous usage statistics are off by default. When on, they send only counter values, never contents, files or project names.",
+        },
+        {
+          q: "Is FORGE available for macOS or Linux?",
+          a: "Not yet. FORGE currently runs on Windows 10 and 11.",
+        },
+        {
+          q: "How do I get updates?",
+          a: "FORGE checks for a new version shortly after start and then every 30 minutes. You see the changes and install with one click. Every update is signed, and FORGE checks the signature before installing.",
+        },
+      ],
     },
   },
   stats: {
@@ -207,13 +345,41 @@ const en: Messages = {
       platformsSub: "Operating systems of the users",
       platformNames: { windows: "Windows 10/11", macos: "macOS", linux: "Linux", other: "Other" },
       platformTotal: (n: number) => (n === 1 ? "installation" : "installations"),
+      versions: "Versions",
+      versionsSub: "Installed FORGE versions, active in the last 30 days",
+      newest: "latest",
+      otherVersions: "Other versions",
+      plans: "Claude plans",
+      plansSub: "Plan of the account signed in to Claude Code",
+      otherPlans: "Other",
+      unknownPlan: "Unknown",
+      languages: "Languages",
+      languagesSub: "Language of the FORGE interface",
+      otherLanguages: "Other",
+      unknownLanguage: "Unknown",
+      figures: {
+        title: "Features",
+        sub: "Totals since October 17, 2026",
+        installs: "Installations",
+        installsSub: (n: string) => `${n} new in 30 days`,
+        active: "Active",
+        activeSub: "in the last 30 days",
+        prompts: "Own prompts",
+        promptsSub: "messages sent to Claude",
+        projects: "Projects",
+        projectsSub: "created or added",
+        agents: "Agents started",
+        agentsSub: (merged: string) => `${merged} merged`,
+        phoneCalls: "Phone calls",
+        phoneCallsSub: "with the phone feature",
+      },
     },
     privacy: {
       title: "What is collected",
       text: "Off by default in FORGE. Turn it on or off under Settings > About FORGE > Privacy.",
       items: {
         off: { title: "Off by default", text: "FORGE asks once. While the statistics are off, the app sends nothing." },
-        anonymous: { title: "Anonymous", text: "Every 5 minutes the running totals with a random installation ID, version and operating system." },
+        anonymous: { title: "Anonymous", text: "Every 5 minutes the running totals with a random installation ID, version, operating system, language and type of Claude plan." },
         notCollected: { title: "Not collected", text: "No message contents, files, project names or IP addresses." },
         delete: { title: "Turning off deletes", text: "Turning the statistics off also deletes the stored record of that installation." },
       },

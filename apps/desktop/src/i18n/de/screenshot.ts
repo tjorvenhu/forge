@@ -43,6 +43,23 @@ export const screenshot = {
   hintWithEsc: (hint: string) => `${hint}, Esc bricht ab`,
   color: (name: string) => `Farbe ${name}`,
   ctrl: (key: string) => `Strg+${key}`,
+  shift: "Umschalt",
+  failed: "Screenshot nicht möglich",
+  key: {
+    label: "Druck-Taste für Screenshots",
+    labelMac: "⌘⇧2 für Screenshots",
+    description:
+      "Solange FORGE läuft, öffnet die Druck-Taste das Snipping-Tool von FORGE statt dem von Windows. Der Screenshot landet in der Zwischenablage und als Anhang im Chat, den du zuletzt benutzt hast. Alt+Druck und Win+Druck bleiben bei Windows.",
+    descriptionMac:
+      "Solange FORGE läuft, öffnet ⌘⇧2 das Snipping-Tool von FORGE. Der Screenshot landet in der Zwischenablage und als Anhang im Chat, den du zuletzt benutzt hast. Beim ersten Mal fragt macOS nach der Erlaubnis für Bildschirmaufnahmen.",
+    descriptionLinux:
+      "Solange FORGE läuft, öffnet die Druck-Taste das Snipping-Tool von FORGE. Der Screenshot landet in der Zwischenablage und als Anhang im Chat, den du zuletzt benutzt hast. Unter Wayland gibt es keine globalen Tastenkürzel, dort startest du ihn über die Befehlspalette.",
+    otherProgram: "Ein anderes Programm",
+    takenWindows: (name: string) =>
+      `${name} hat die Druck-Taste ebenfalls belegt. Meist kommt sie trotzdem bei FORGE an. Ist aber ein Fenster mit Administratorrechten vorne, öffnet ${name}. Nimm die Druck-Taste in den Tastenkürzeln von ${name} heraus, dann kommt sie immer bei FORGE an.`,
+    notRegistered:
+      "Das Tastenkürzel ließ sich nicht registrieren. Ein anderes Programm nutzt es schon, oder die Sitzung erlaubt keine globalen Tastenkürzel (Wayland). Über die Befehlspalette startest du den Screenshot trotzdem.",
+  },
   undo: "Rückgängig",
   redo: "Wiederholen",
   copy: "Kopieren",
