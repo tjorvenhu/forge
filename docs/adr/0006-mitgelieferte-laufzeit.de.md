@@ -61,3 +61,8 @@ Claude scheiterte in Sessions oft an fehlendem Python (unter Windows meldet sich
   ANSI-Codepage ab.
 - Der Laufzeit-Schlüssel bekommt `_python-<v>`; Installationen ohne Python behalten den alten Schlüssel und bekommen
   damit den vollen Installer angeboten.
+
+## Nachtrag 2026-10-19: macOS und Linux
+
+Dieser ADR gilt für Windows. Auf macOS und Linux liefert FORGE nur Node.js und die GitHub CLI mit, Git und Python
+kommen vom System: [ADR 0014](0014-macos-und-linux.de.md).

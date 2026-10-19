@@ -8,7 +8,7 @@
   <a href="https://github.com/vanturis/forge/releases/latest"><img src="https://img.shields.io/github/v/release/vanturis/forge?style=for-the-badge&label=Version&color=f97316" alt="Latest version"></a>
   <a href="https://github.com/vanturis/forge/releases/latest"><img src="https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fforge.vanturis.de%2Fapi%2Fv1%2Fdownloads&query=%24.downloads&label=Downloads&style=for-the-badge&color=21262e" alt="Installer downloads"></a>
   <a href="LICENSE.md"><img src="https://img.shields.io/badge/License-AGPL--3.0-21262e?style=for-the-badge" alt="License AGPL-3.0"></a>
-  <img src="https://img.shields.io/badge/Windows-10%20%7C%2011-21262e?style=for-the-badge" alt="Windows 10 and 11">
+  <img src="https://img.shields.io/badge/Windows%20%7C%20macOS%20%7C%20Linux-21262e?style=for-the-badge" alt="Windows, macOS and Linux">
   <a href="https://forge.vanturis.de/stats"><img src="https://img.shields.io/badge/FORGE-in%20numbers-21262e?style=for-the-badge&logo=googleanalytics&logoColor=white" alt="FORGE in numbers"></a>
 </p>
 
@@ -91,6 +91,8 @@
 
 ## Installation
 
+### Windows
+
 1. Download **[FORGE-Setup.exe](https://github.com/vanturis/forge/releases/download/installer/FORGE-Setup.exe)** (about 5 MB).
 2. Run it. FORGE Setup looks up the newest version on GitHub, downloads it (about 110 MB), checks its signature and
    installs it. While FORGE is new, Windows may show a SmartScreen warning: click **More info** and then
@@ -102,6 +104,37 @@
 or Max. The installer includes Node.js, Git, the GitHub CLI and Python. If Claude Code is missing, FORGE installs
 it on first start with the official installer from Anthropic.
 
+### macOS
+
+1. Open the [releases](https://github.com/vanturis/forge/releases) and download from the newest release that
+   has it: `FORGE_<Version>_darwin-arm64.dmg` for Apple silicon (M1 or newer) or `FORGE_<Version>_darwin-x64.dmg`
+   for Intel Macs.
+2. Open the dmg and drag FORGE into **Applications**. Start it from there: FORGE can only update itself in that
+   folder.
+3. FORGE is not notarized by Apple (there is no Apple developer account behind it), so macOS blocks the first start. Right-click FORGE in
+   Applications, choose **Open** and confirm. On macOS 15 and newer: start FORGE once, then open **System
+   Settings > Privacy & Security** and click **Open Anyway**. Alternatively, in Terminal:
+   `xattr -dr com.apple.quarantine /Applications/FORGE.app`. This is only needed once; updates do not ask again.
+4. macOS asks for permissions when a feature first needs them: **Screen Recording** for the screenshot tool and
+   **Microphone** for dictation. If you declined, allow FORGE later in System Settings > Privacy & Security.
+
+**Requirements:** macOS 13.5 or newer, a Claude subscription as above, and `git` and `python3`. Both come with
+the Xcode Command Line Tools (`xcode-select --install`; macOS offers them on the first call of `git`) or from
+Homebrew. FORGE includes Node.js and the GitHub CLI.
+
+### Linux
+
+From the newest release on the [releases](https://github.com/vanturis/forge/releases) page that has them:
+
+- **AppImage** (any distribution): download `FORGE_<Version>_linux-x64.AppImage`, then
+  `chmod +x FORGE_<Version>_linux-x64.AppImage` and start it. FORGE updates the AppImage itself.
+- **deb** (Debian, Ubuntu and derivatives): `sudo apt install ./FORGE_<Version>_linux-x64.deb`. FORGE reports new
+  versions; install them the same way.
+
+**Requirements:** x64 with glibc 2.35 or newer (for example Ubuntu 22.04, Debian 12, Fedora 36), WebKitGTK 4.1
+(`libwebkit2gtk-4.1-0`; the deb package installs it), `git` and `python3` from your distribution, and a Claude
+subscription as above. FORGE includes Node.js and the GitHub CLI.
+
 **Language:** FORGE is available in English and German. You choose the language on first start and can change
 it later in Settings.
 
@@ -112,6 +145,10 @@ FORGE Setup is the same file for every version. Without it: not every release ha
 are named `FORGE_<Version>_<Runtime>_x64-setup.exe`. The files `FORGE_<Version>_update_<Runtime>.zip` are only
 for updating existing installations and are not enough for a new installation. FORGE uses the file
 `FORGE_<Version>.sig` itself to verify updates (releases up to 0.1.101 have a `.sig` per file and a `.runtime` file).
+
+macOS and Linux: the `.dmg`, `.AppImage` and `.deb` files are for installing. `FORGE_<Version>_darwin-*.app.tar.gz`
+is the update for installed Macs, and `FORGE_<Version>_<platform>.sig` holds the signatures of that platform's
+files. These files are added to a release a little after the Windows files.
 </details>
 
 **Updates:** FORGE checks for them shortly after start and then every 30 minutes. You see the changes and install
@@ -198,8 +235,11 @@ FORGE is a pnpm monorepo:
 |---|---|
 | Node.js | 22.13 or newer |
 | pnpm | 10.x |
-| Rust and Cargo | stable (MSVC) |
-| Visual Studio Build Tools | 2022, workload "C++ Build Tools" |
+| Rust and Cargo | stable (MSVC on Windows) |
+| Visual Studio Build Tools | 2022, workload "C++ Build Tools" (Windows only) |
+
+On macOS you need the Xcode Command Line Tools, on Linux the system libraries from
+`.github/workflows/ci.yml` (WebKitGTK 4.1 and others). On Windows:
 
 ```powershell
 winget install Microsoft.VisualStudio.2022.BuildTools --override "--wait --passive --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended"
@@ -213,7 +253,7 @@ pnpm lint             # ESLint across all packages
 pnpm typecheck        # TypeScript strict for protocol, sidecar and desktop
 pnpm test             # unit and integration tests without real Claude calls
 pnpm test:e2e         # E2E with a real Claude session (uses a little of your subscription quota)
-pnpm build            # release with installer (downloads Node, Git, gh and Python the first time)
+pnpm build            # release with installer (downloads the bundled runtime the first time)
 pnpm prepare:runtime  # only prepare the bundled runtime
 pnpm notices          # regenerate THIRD_PARTY_NOTICES.md (after changing dependencies)
 ```
@@ -221,7 +261,9 @@ pnpm notices          # regenerate THIRD_PARTY_NOTICES.md (after changing depend
 Environment variables for special cases: `FORGE_NODE` (path to node), `FORGE_SIDECAR` (path to `sidecar.mjs`),
 `FORGE_DATA_DIR` (data folder), `FORGE_E2E=0` (skip E2E), `FORGE_E2E_MODEL` (model for E2E).
 
-`.github/workflows/release.yml` builds a release on every push to `main`.
+`.github/workflows/release.yml` builds a release every night when `main` changed (Windows first, then macOS and
+Linux, see [ADR 0014](docs/adr/0014-macos-and-linux.md)). `.github/workflows/ci.yml` runs types and tests on all
+three systems for pull requests.
 </details>
 
 More documentation: [Architecture](docs/ARCHITECTURE.md) · [Security concept](docs/SECURITY.md) ·

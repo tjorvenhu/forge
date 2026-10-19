@@ -22,6 +22,16 @@
 # signed after the build. Needs the secrets AZURE_TENANT_ID, AZURE_CLIENT_ID, AZURE_CLIENT_SECRET and the
 # variables AZURE_SIGNING_ENDPOINT, AZURE_SIGNING_ACCOUNT, AZURE_SIGNING_PROFILE. Without AZURE_CLIENT_ID
 # the build stays unsigned with a warning.
+#
+# macOS and Linux (ADR 0014): after the Windows job has created the release, the jobs macos and linux build
+# the same version and add their assets to it. Each one is a full build with the bundled runtime (node, gh);
+# there are no small updates on these systems.
+#   FORGE_<v>_darwin-arm64.app.tar.gz, FORGE_<v>_darwin-x64.app.tar.gz   FORGE.app for in-app updates
+#   FORGE_<v>_darwin-arm64.dmg, FORGE_<v>_darwin-x64.dmg                 download for new installations
+#   FORGE_<v>_linux-x64.AppImage, FORGE_<v>_linux-x64.deb
+#   FORGE_<v>_<platform>.sig                                             signatures of that platform's assets
+# The apps there take the newest release that has their platform asset, so a failed or late macOS/Linux job
+# never touches the Windows release. macOS builds are signed ad hoc only (no Apple notarization).
 name: Release
 
 on:
@@ -66,7 +76,7 @@ jobs:
           last=$(gh api "repos/${{ github.repository }}/releases?per_page=20" --jq '[.[] | select(.tag_name | startswith("v"))][0].target_commitish // empty')
           if [ -z "$last" ] || ! git cat-file -e "$last^{commit}" 2>/dev/null; then echo "build=true" >> "$GITHUB_OUTPUT"; exit 0; fi
           # the statistics service deploys through Coolify, FORGE Setup through setup.yml, documents do not ship with the app
-          changed=$(git diff --name-only "$last" HEAD | grep -Ev '\.md$|^docs/|^services/|^apps/installer/|^\.github/workflows/setup\.yml$|\.png$|\.docx$|^\.forge/' || true)
+          changed=$(git diff --name-only "$last" HEAD | grep -Ev '\.md$|^docs/|^services/|^apps/installer/|^\.github/workflows/(setup|ci)\.yml$|\.png$|\.docx$|^\.forge/' || true)
           if [ -n "$changed" ]; then echo "build=true" >> "$GITHUB_OUTPUT"; else echo "build=false" >> "$GITHUB_OUTPUT"; echo "Nothing to release since $last"; fi
 
   release:
@@ -74,6 +84,8 @@ jobs:
     if: needs.changes.outputs.build == 'true'
     runs-on: windows-latest
     timeout-minutes: 60
+    outputs:
+      version: ${{ steps.plan.outputs.version }}
     steps:
       # Defender scans every file pnpm and cargo write; on the runner that costs minutes.
       - name: Defender off
@@ -261,3 +273,207 @@ jobs:
           $latest = if ("${{ steps.plan.outputs.full }}" -eq "true") { "--latest" } else { "--latest=false" }
           gh release create $tag @files --title "FORGE $version" --notes $notes --target $env:GITHUB_SHA $latest
           Get-Item $files | ForEach-Object { Write-Host ("{0}  {1:N1} MB" -f $_.Name, ($_.Length / 1MB)) }
+
+  # Separate jobs after the Windows release: whatever happens here, the Windows release stays as it is.
+  macos:
+    needs: release
+    runs-on: macos-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: aarch64-apple-darwin
+            platform: darwin-arm64
+          # Built on the arm64 runner too: Rust cross-compiles, prepare-runtime.mjs loads the x64 node and gh.
+          - target: x86_64-apple-darwin
+            platform: darwin-x64
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Rust target
+        run: rustup target add ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: apps/desktop/src-tauri
+          key: ${{ matrix.target }}
+
+      - name: Cache bundled runtime downloads
+        uses: actions/cache@v4
+        with:
+          path: .runtime-cache
+          key: runtime-${{ matrix.platform }}-${{ hashFiles('scripts/prepare-runtime.mjs') }}
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Plan
+        id: plan
+        run: |
+          version="${{ needs.release.outputs.version }}"
+          if [ -z "$version" ]; then echo "::error::Keine Version aus dem Windows-Job."; exit 1; fi
+          key=$(node scripts/prepare-runtime.mjs --key --target ${{ matrix.platform }})
+          # Same patch as the Windows job: the version lives in tauri.conf.json only.
+          node -e 'const fs=require("fs");const f="apps/desktop/src-tauri/tauri.conf.json";fs.writeFileSync(f,fs.readFileSync(f,"utf8").replace(/"version":\s*"[^"]*"/g,"\"version\": \""+process.argv[1]+"\""))' "$version"
+          grep -q "\"version\": \"$version\"" apps/desktop/src-tauri/tauri.conf.json
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "key=$key" >> "$GITHUB_OUTPUT"
+          echo "Version $version, Laufzeit $key"
+
+      - name: Sidecar, frontend and runtime
+        run: |
+          pnpm --filter @forge/sidecar build
+          pnpm --filter @forge/desktop exec vite build
+          echo '{"build":{"beforeBuildCommand":""}}' > apps/desktop/src-tauri/tauri.ci.json
+          node scripts/prepare-runtime.mjs --target ${{ matrix.platform }}
+
+      - name: Build app
+        working-directory: apps/desktop
+        env:
+          FORGE_RUNTIME_KEY: ${{ steps.plan.outputs.key }}
+        run: pnpm tauri build --target ${{ matrix.target }} --bundles app,dmg --config src-tauri/tauri.ci.json
+
+      - name: Package and publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          FORGE_UPDATE_SIGNING_KEY: ${{ secrets.FORGE_UPDATE_SIGNING_KEY }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          version="${{ steps.plan.outputs.version }}"
+          base="FORGE_${version}_${{ matrix.platform }}"
+          bundle="apps/desktop/src-tauri/target/${{ matrix.target }}/release/bundle"
+          app="$bundle/macos/FORGE.app"
+          dmgs=("$bundle"/dmg/*.dmg)
+          if [ ! -d "$app" ] || [ ${#dmgs[@]} -ne 1 ]; then
+            ls -la "$bundle" "$bundle/macos" "$bundle/dmg" || true
+            echo "::error::Erwartet: FORGE.app und genau eine .dmg"; exit 1
+          fi
+          # A broken seal makes macOS call the app damaged; the runtime must keep its executable bits.
+          codesign --verify --deep --verbose=2 "$app"
+          for tool in node/bin/node gh/bin/gh; do
+            test -x "$app/Contents/Resources/runtime/$tool" || { echo "::error::runtime/$tool fehlt oder ist nicht ausführbar"; exit 1; }
+          done
+          out="$RUNNER_TEMP/out"
+          mkdir -p "$out"
+          # Top-level folder FORGE.app; COPYFILE_DISABLE keeps AppleDouble files (._*) out of the archive.
+          COPYFILE_DISABLE=1 tar -czf "$out/$base.app.tar.gz" -C "$bundle/macos" FORGE.app
+          cp "${dmgs[0]}" "$out/$base.dmg"
+          node scripts/sign-update.mjs --manifest "$out/$base.sig" "$out/$base.app.tar.gz" "$out/$base.dmg"
+          # The signatures last: the app only offers assets that are signed.
+          gh release upload "v$version" "$out/$base.app.tar.gz" "$out/$base.dmg" --clobber --repo "${{ github.repository }}"
+          gh release upload "v$version" "$out/$base.sig" --clobber --repo "${{ github.repository }}"
+          ls -la "$out"
+
+  linux:
+    needs: release
+    # The oldest supported runner: an AppImage runs on systems with this glibc or newer.
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: System libraries
+        run: |
+          sudo apt-get update
+          # Tauri (WebKitGTK 4.1, tray, AppImage), xcap for screenshots (X11, Wayland, PipeWire), then GStreamer,
+          # which the AppImage bundles for audio and video in the webview (bundleMediaFramework).
+          sudo apt-get install -y --no-install-recommends \
+            libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev patchelf \
+            build-essential curl wget file libssl-dev libxdo-dev \
+            libxcb1-dev libxrandr-dev libdbus-1-dev libpipewire-0.3-dev libwayland-dev libegl-dev \
+            libgbm-dev libdrm-dev clang libclang-dev pkg-config \
+            libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev gstreamer1.0-plugins-base gstreamer1.0-plugins-good
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: apps/desktop/src-tauri
+
+      - name: Cache bundled runtime downloads
+        uses: actions/cache@v4
+        with:
+          path: .runtime-cache
+          key: runtime-linux-x64-${{ hashFiles('scripts/prepare-runtime.mjs') }}
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Plan
+        id: plan
+        run: |
+          version="${{ needs.release.outputs.version }}"
+          if [ -z "$version" ]; then echo "::error::Keine Version aus dem Windows-Job."; exit 1; fi
+          key=$(node scripts/prepare-runtime.mjs --key --target linux-x64)
+          # Same patch as the Windows job: the version lives in tauri.conf.json only.
+          node -e 'const fs=require("fs");const f="apps/desktop/src-tauri/tauri.conf.json";fs.writeFileSync(f,fs.readFileSync(f,"utf8").replace(/"version":\s*"[^"]*"/g,"\"version\": \""+process.argv[1]+"\""))' "$version"
+          grep -q "\"version\": \"$version\"" apps/desktop/src-tauri/tauri.conf.json
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "key=$key" >> "$GITHUB_OUTPUT"
+          echo "Version $version, Laufzeit $key"
+
+      - name: Sidecar, frontend and runtime
+        run: |
+          pnpm --filter @forge/sidecar build
+          pnpm --filter @forge/desktop exec vite build
+          echo '{"build":{"beforeBuildCommand":""}}' > apps/desktop/src-tauri/tauri.ci.json
+          node scripts/prepare-runtime.mjs --target linux-x64
+
+      - name: Build app
+        working-directory: apps/desktop
+        env:
+          FORGE_RUNTIME_KEY: ${{ steps.plan.outputs.key }}
+          # linuxdeploy is itself an AppImage; this way it runs without FUSE.
+          APPIMAGE_EXTRACT_AND_RUN: "1"
+        run: pnpm tauri build --bundles appimage,deb --config src-tauri/tauri.ci.json
+
+      - name: Package and publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          FORGE_UPDATE_SIGNING_KEY: ${{ secrets.FORGE_UPDATE_SIGNING_KEY }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          version="${{ steps.plan.outputs.version }}"
+          base="FORGE_${version}_linux-x64"
+          bundle="apps/desktop/src-tauri/target/release/bundle"
+          appimages=("$bundle"/appimage/*.AppImage)
+          debs=("$bundle"/deb/*.deb)
+          if [ ${#appimages[@]} -ne 1 ] || [ ${#debs[@]} -ne 1 ]; then
+            ls -la "$bundle" "$bundle/appimage" "$bundle/deb" || true
+            echo "::error::Erwartet: genau ein AppImage und ein .deb"; exit 1
+          fi
+          # The bundled runtime must arrive with its executable bits in both formats.
+          for tool in node/bin/node gh/bin/gh; do
+            dpkg-deb -c "${debs[0]}" | grep -E "^-rwxr-xr-x .*/runtime/$tool\$" > /dev/null || { echo "::error::runtime/$tool fehlt im .deb oder ist nicht ausführbar"; exit 1; }
+          done
+          check="$RUNNER_TEMP/appimage-check"
+          mkdir -p "$check"
+          cp "${appimages[0]}" "$check/FORGE.AppImage"
+          chmod +x "$check/FORGE.AppImage"
+          (cd "$check" && ./FORGE.AppImage --appimage-extract > /dev/null)
+          for tool in node/bin/node gh/bin/gh; do
+            find "$check/squashfs-root" -path "*/runtime/$tool" -perm -u+x | grep . > /dev/null || { echo "::error::runtime/$tool fehlt im AppImage oder ist nicht ausführbar"; exit 1; }
+          done
+          rm -rf "$check"
+          out="$RUNNER_TEMP/out"
+          mkdir -p "$out"
+          cp "${appimages[0]}" "$out/$base.AppImage"
+          cp "${debs[0]}" "$out/$base.deb"
+          node scripts/sign-update.mjs --manifest "$out/$base.sig" "$out/$base.AppImage" "$out/$base.deb"
+          # The signatures last: the app only offers assets that are signed.
+          gh release upload "v$version" "$out/$base.AppImage" "$out/$base.deb" --clobber --repo "${{ github.repository }}"
+          gh release upload "v$version" "$out/$base.sig" --clobber --repo "${{ github.repository }}"
+          ls -la "$out"

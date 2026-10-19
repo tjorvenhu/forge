@@ -61,3 +61,8 @@ Claude often failed in Sessions because Python was missing (on Windows only the 
   ANSI code page.
 - The runtime key gets `_python-<v>`; installations without Python keep the old key and are therefore
   offered the full installer.
+
+## Addendum 2026-10-19: macOS and Linux
+
+This ADR applies to Windows. On macOS and Linux FORGE only bundles Node.js and the GitHub CLI, Git and Python come
+from the system: [ADR 0014](0014-macos-and-linux.md).

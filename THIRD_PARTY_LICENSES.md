@@ -1,7 +1,9 @@
 # Bundled third-party software
 
 The Windows installer of FORGE contains the following programs unchanged (except for removed documentation and
-translations in Git). The license texts are in the installation under `runtime/`.
+translations in Git). The license texts are in the installation under `runtime/`. The macOS and Linux builds
+(`.dmg`, `.app.tar.gz`, `.AppImage`, `.deb`) contain only Node.js (the complete official folder with npm and
+corepack, `runtime/node/LICENSE`) and the GitHub CLI (without man pages); Git and Python come from the system there.
 
 | Software | Version | License | Source |
 |---|---|---|---|
@@ -30,7 +32,10 @@ Both files are also in the FORGE installation folder, together with `LICENSE.md`
 ## Deutsch: Mitgelieferte Software von Drittanbietern
 
 Der Windows-Installer von FORGE enthält folgende Programme unverändert (bis auf entfernte
-Dokumentation und Übersetzungen bei Git). Die Lizenztexte liegen in der Installation unter `runtime/`.
+Dokumentation und Übersetzungen bei Git). Die Lizenztexte liegen in der Installation unter `runtime/`. Die Builds
+für macOS und Linux (`.dmg`, `.app.tar.gz`, `.AppImage`, `.deb`) enthalten nur Node.js (den ganzen offiziellen
+Ordner mit npm und corepack, `runtime/node/LICENSE`) und die GitHub CLI (ohne Manpages). Git und Python kommen
+dort vom System.
 
 | Software | Version | Lizenz | Quelle |
 |---|---|---|---|

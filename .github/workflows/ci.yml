@@ -1,0 +1,87 @@
+# Types and tests on Windows, macOS and Linux. Runs for pull requests and by hand (Run workflow), not on
+# every push: main is built and released nightly by release.yml, which runs lint and types on Windows itself.
+# Builds no installer; the Rust tests need the frontend in apps/desktop/dist (tauri::generate_context!
+# embeds it) but no bundled runtime, so the resources are switched off through TAURI_CONFIG.
+name: CI
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: test (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest, ubuntu-22.04]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    steps:
+      # Defender scans every file pnpm and cargo write; on the runner that costs minutes.
+      - name: Defender off
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          try { Set-MpPreference -DisableRealtimeMonitoring $true -ErrorAction Stop } catch { Write-Host "Defender bleibt an: $_" }
+
+      - uses: actions/checkout@v4
+
+      - name: System libraries
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          # Tauri (WebKitGTK 4.1, tray), then xcap for screenshots (X11, Wayland, PipeWire).
+          sudo apt-get install -y --no-install-recommends \
+            libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev patchelf \
+            build-essential curl wget file libssl-dev libxdo-dev \
+            libxcb1-dev libxrandr-dev libdbus-1-dev libpipewire-0.3-dev libwayland-dev libegl-dev \
+            libgbm-dev libdrm-dev clang libclang-dev pkg-config
+
+      # Tests that commit set their own identity per repository; this covers the ones that do not.
+      - name: Git identity
+        run: |
+          git config --global user.name "FORGE CI"
+          git config --global user.email "ci@forge.local"
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: apps/desktop/src-tauri
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Types
+        run: pnpm -r typecheck
+
+      - name: Sidecar tests
+        if: success() || failure()
+        run: pnpm --filter @forge/sidecar test
+
+      - name: Desktop tests
+        if: success() || failure()
+        run: pnpm --filter @forge/desktop test
+
+      - name: Frontend for the Rust tests
+        if: success() || failure()
+        run: pnpm --filter @forge/desktop exec vite build
+
+      - name: Rust tests
+        if: success() || failure()
+        working-directory: apps/desktop/src-tauri
+        env:
+          TAURI_CONFIG: '{"bundle":{"resources":[]}}'
+        run: cargo test --lib
