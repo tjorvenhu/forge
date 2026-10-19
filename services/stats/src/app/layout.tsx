@@ -1,7 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
 import { Download } from "lucide-react";
-import mark from "@/assets/logo-mark.svg";
+import logo from "@/assets/forge-logo.png";
 import { donations, type Donations } from "@/lib/donations";
 import { SupportButton } from "@/components/donations";
 import { TopLinks } from "@/components/nav";
@@ -24,7 +24,7 @@ export async function generateMetadata(): Promise<Metadata> {
 // The app has only its dark theme; the page follows it.
 export const viewport: Viewport = {
   colorScheme: "dark",
-  themeColor: "#14171d",
+  themeColor: "#111418",
 };
 
 /** What the support dialog shows as given so far; left out without a Stripe key or when Stripe fails. */
@@ -37,11 +37,11 @@ async function donated(): Promise<Donations | null> {
   }
 }
 
-function Logo({ label }: { label: string }) {
+/** The wordmark (945 x 223): mark, FORGE and the line below it. */
+function Logo({ label, height }: { label: string; height: number }) {
   return (
     <a href="/" className="logo" aria-label={label}>
-      <img src={mark.src} width={44} height={33} alt="" />
-      <span>FORGE</span>
+      <img src={logo.src} width={Math.round((height * 945) / 223)} height={height} alt="" />
     </a>
   );
 }
@@ -59,10 +59,9 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
           </noscript>
           <header className="topbar">
             <div className="container topbar-inner">
-              <Logo label={t.header.home} />
+              <Logo label={t.header.home} height={40} />
               <nav className="topbar-nav" aria-label={t.header.nav}>
                 <TopLinks />
-                <SupportButton donations={given} />
                 <a className="btn btn-primary" href={DOWNLOAD_URL} aria-label={t.header.download}>
                   <Download aria-hidden />
                   <span className="nav-label">{t.header.download}</span>
@@ -74,13 +73,14 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
           <footer className="footer">
             <div className="container footer-inner">
               <div className="footer-brand">
-                <Logo label={t.header.home} />
+                <Logo label={t.header.home} height={28} />
                 <p>{t.footer.license}</p>
               </div>
               <div className="footer-side">
                 <nav className="footer-links" aria-label={t.header.nav}>
                   <a href="/stats">{t.header.liveStats}</a>
                   <a href={REPO_URL}>{t.header.github}</a>
+                  <SupportButton donations={given} />
                   <a href={IMPRINT_URL}>{t.footer.imprint}</a>
                   <a href={PRIVACY_URL}>{t.footer.privacy}</a>
                 </nav>

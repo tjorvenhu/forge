@@ -5,14 +5,14 @@
  * and the mark behind it, four cards and the link to the stats all in the first screen, footer below.
  */
 
-/* ---- top bar */
+/* ---- top bar: wordmark left, two text links and the download button right, 76px high */
 
 .topbar {
   position: sticky;
   top: 0;
   z-index: 20;
   border-bottom: 1px solid var(--color-border);
-  background: color-mix(in srgb, var(--color-bg) 90%, transparent);
+  background: color-mix(in srgb, var(--color-bg) 92%, transparent);
   backdrop-filter: blur(12px);
 }
 
@@ -27,12 +27,7 @@
 .logo {
   display: inline-flex;
   flex-shrink: 0;
-  align-items: center;
-  gap: 12px;
   border-radius: var(--radius-sm);
-  font-size: 28px;
-  font-weight: 800;
-  letter-spacing: 0.03em;
   user-select: none;
 }
 
@@ -43,13 +38,13 @@
 .topbar-nav {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 40px;
 }
 
 .nav-links {
   display: flex;
-  gap: 16px;
-  margin: 0 20px 0 0;
+  gap: 40px;
+  margin: 0;
   padding: 0;
   list-style: none;
 }
@@ -58,22 +53,14 @@
   display: inline-flex;
   align-items: center;
   gap: 10px;
-  height: 46px;
-  padding: 0 12px;
-  border-radius: var(--radius-lg);
   color: var(--color-fg);
   font-size: 17px;
   font-weight: 500;
   white-space: nowrap;
-  transition:
-    color 120ms var(--ease-snappy),
-    background-color 120ms var(--ease-snappy);
+  transition: color 120ms var(--ease-snappy);
 }
 
-.nav-links a:hover {
-  background: var(--color-surface-2);
-}
-
+.nav-links a:hover,
 .nav-links a[aria-current="page"] {
   color: var(--color-accent);
 }
@@ -88,10 +75,6 @@
   height: 15px;
   margin-left: -2px;
   color: var(--color-muted);
-}
-
-.btn-support svg {
-  color: var(--color-danger);
 }
 
 /* ---- footer */
@@ -115,18 +98,8 @@
 .footer-brand {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 12px;
   max-width: 40rem;
-}
-
-.footer-brand .logo {
-  gap: 8px;
-  font-size: 18px;
-}
-
-.footer-brand .logo img {
-  width: 26px;
-  height: 20px;
 }
 
 .footer-side {
@@ -152,7 +125,19 @@
   color: var(--color-fg);
 }
 
-/* ---- start page: hero, cards and the stats link fill the first screen */
+.support-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.support-link svg {
+  width: 13px;
+  height: 13px;
+  color: var(--color-danger);
+}
+
+/* ---- start page: hero, four feature blocks and the stats link fill the first screen (mockup 1536 x 1024) */
 
 .landing {
   display: flex;
@@ -166,79 +151,64 @@
   display: flex;
   flex: 1;
   align-items: center;
-  min-height: 540px;
+  min-height: 560px;
 }
 
-/* the mark as a silhouette: body, a lit rim offset up and right, and its glow */
+/* the mark, stretched to the hero's height, as a dark shape with a faint lit edge along the spark */
 .hero-anvil {
   position: absolute;
-  top: 0;
+  top: 2%;
   left: 31%;
-  width: 46%;
-  aspect-ratio: 744 / 559;
+  width: 41%;
+  height: 92%;
   pointer-events: none;
 }
 
 .hero-anvil span {
   position: absolute;
   inset: 0;
-  -webkit-mask: url("../assets/logo-mark.svg") no-repeat center / contain;
-  mask: url("../assets/logo-mark.svg") no-repeat center / contain;
+  -webkit-mask: url("../assets/logo-mark.svg") no-repeat center / 100% 100%;
+  mask: url("../assets/logo-mark.svg") no-repeat center / 100% 100%;
 }
 
 .anvil-body {
-  background: linear-gradient(165deg, var(--color-surface-3) 0%, var(--color-surface) 35%, var(--color-bg) 85%);
+  background: linear-gradient(170deg, #2f343d 0%, #22262e 28%, #181b22 62%, var(--color-bg) 100%);
 }
 
-/* only the spark (the upper 36% of the mark) is lit; the slab below stays dark like in the mockup */
 .anvil-rim {
-  background: linear-gradient(180deg, var(--color-accent) 0%, var(--color-accent) 22%, transparent 36%);
-  transform: translate(5px, -5px);
+  background: linear-gradient(180deg, var(--color-accent) 0%, color-mix(in srgb, var(--color-accent) 70%, transparent) 22%, transparent 36%);
+  transform: translate(4px, -4px);
+  opacity: 0.55;
 }
 
 .anvil-glow {
-  background: linear-gradient(180deg, var(--color-accent) 0%, color-mix(in srgb, var(--color-accent) 80%, transparent) 22%, transparent 36%);
+  background: linear-gradient(180deg, var(--color-accent) 0%, color-mix(in srgb, var(--color-accent) 70%, transparent) 24%, transparent 38%);
   transform: translate(10px, -10px);
-  filter: blur(18px);
-  opacity: 0.9;
+  filter: blur(26px);
+  opacity: 0.6;
 }
 
 .hero-inner {
   position: relative;
   display: grid;
-  grid-template-columns: minmax(0, 49fr) minmax(0, 51fr);
+  grid-template-columns: minmax(0, 47fr) minmax(0, 53fr);
   align-items: center;
-  gap: 40px;
+  gap: 24px;
   padding-top: 24px;
   padding-bottom: 24px;
 }
 
-.hero-text > * {
-  animation: forge-rise 700ms var(--ease-snappy) backwards;
-}
-
-.hero-text > :nth-child(2) {
-  animation-delay: 70ms;
-}
-
-.hero-text > :nth-child(3) {
-  animation-delay: 140ms;
-}
-
-.hero-text > :nth-child(n + 4) {
-  animation-delay: 210ms;
-}
-
 .hero-title {
-  margin-top: 18px;
-  font-size: clamp(40px, 4.1vw, 64px);
+  margin-top: 22px;
+  font-size: clamp(40px, 4.17vw, 64px);
   font-weight: 700;
-  line-height: 1.12;
-  letter-spacing: -0.025em;
+  line-height: 1.17;
+  letter-spacing: -0.03em;
 }
 
 .hero-title span {
   display: block;
+  white-space: nowrap;
 }
 
 .hero-title-accent {
@@ -246,18 +216,18 @@
 }
 
 .hero-lead {
-  max-width: 34rem;
-  margin-top: 26px;
-  color: color-mix(in srgb, var(--color-fg) 75%, var(--color-muted));
-  font-size: 22px;
-  line-height: 1.55;
+  max-width: 35rem;
+  margin-top: 24px;
+  color: #a9afb9;
+  font-size: 20px;
+  line-height: 1.7;
 }
 
 .hero-actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 20px;
-  margin-top: 44px;
+  gap: 22px;
+  margin-top: 46px;
 }
 
 .hero-facts {
@@ -265,7 +235,7 @@
   flex-wrap: wrap;
   align-items: center;
   gap: 8px 0;
-  margin: 34px 0 0;
+  margin: 36px 0 0;
   padding: 0;
   color: var(--color-muted);
   font-size: 16px;
@@ -284,20 +254,19 @@
   content: "•";
 }
 
-/* ---- the app window: tilted, the right edge toward the viewer, lit in orange */
+/* ---- the app window: a real screenshot, slightly turned with its right edge toward the viewer */
 
 .hero-shot {
   position: relative;
-  margin-right: -3%;
-  animation: forge-rise 900ms var(--ease-snappy) 200ms backwards;
+  margin-right: -1.2%;
 }
 
 .hero-shot::before {
   position: absolute;
-  inset: 8% -4% -6% 10%;
+  inset: 20% -3% 0 30%;
   border-radius: 48px;
-  background: radial-gradient(closest-side, color-mix(in srgb, var(--color-accent) 40%, transparent), transparent);
-  filter: blur(44px);
+  background: radial-gradient(closest-side, color-mix(in srgb, var(--color-accent) 22%, transparent), transparent);
+  filter: blur(40px);
   content: "";
   pointer-events: none;
 }
@@ -305,20 +274,14 @@
 .window {
   position: relative;
   overflow: hidden;
-  border: 1px solid color-mix(in srgb, var(--color-accent) 70%, transparent);
-  border-radius: 14px;
+  border: 1px solid color-mix(in srgb, var(--color-accent) 60%, transparent);
+  border-radius: 12px;
   background: var(--color-surface);
   box-shadow:
-    0 0 0 1px color-mix(in srgb, var(--color-accent) 25%, transparent),
-    0 0 60px -10px color-mix(in srgb, var(--color-accent) 55%, transparent),
-    0 40px 90px -30px black;
-  transform: perspective(1500px) rotateY(-11deg);
+    0 0 34px -6px color-mix(in srgb, var(--color-accent) 35%, transparent),
+    0 30px 80px -30px black;
+  transform: perspective(1600px) rotateY(-9deg);
   transform-origin: center;
-  transition: transform 700ms var(--ease-snappy);
-}
-
-.hero-shot:hover .window {
-  transform: perspective(1500px) rotateY(-4deg);
 }
 
 .window-bar {
@@ -893,14 +856,9 @@
     height: 64px;
   }
 
-  .logo {
-    gap: 8px;
-    font-size: 22px;
-  }
-
-  .logo img {
-    width: 34px;
-    height: 26px;
+  .topbar .logo img {
+    width: 127px;
+    height: 30px;
   }
 
   /* icons only: the labels do not fit next to the logo */
@@ -909,16 +867,11 @@
     display: none;
   }
 
-  .nav-links {
-    gap: 0;
-    margin-right: 4px;
-  }
-
+  .nav-links,
   .topbar-nav {
-    gap: 6px;
+    gap: 14px;
   }
 
-  .nav-links a,
   .topbar-nav .btn {
     width: 40px;
     height: 40px;
@@ -940,6 +893,10 @@
 
   .hero-title {
     font-size: clamp(32px, 8.2vw, 40px);
+  }
+
+  .hero-title span {
+    white-space: normal;
   }
 
   .hero-facts {

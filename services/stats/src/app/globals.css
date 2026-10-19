@@ -1,9 +1,9 @@
 /*
- * Design tokens of the FORGE app (apps/desktop/src/styles.css, @theme). The app has only this dark
- * theme. Keep the values in step when the app changes them. Page layout lives in pages.css.
+ * Design tokens after the FORGE app (apps/desktop/src/styles.css, @theme), with the background and the
+ * orange of the owner's landing page mockup. Dark only. Page layout lives in pages.css.
  */
 :root {
-  --color-bg: #14171d;
+  --color-bg: #111418;
   --color-surface: #1a1e25;
   --color-surface-2: #21262e;
   --color-surface-3: #292f38;
@@ -12,9 +12,9 @@
   --color-fg: #e5e7eb;
   --color-muted: #9ca3ae;
   --color-subtle: #6b7280;
-  --color-accent: #f97316;
-  --color-accent-strong: #ea580c;
-  --color-accent-soft: #f973161f;
+  --color-accent: #ff7a1a;
+  --color-accent-strong: #ef6c0e;
+  --color-accent-soft: #ff7a1a1f;
   --color-accent-fg: #ffffff;
   --color-danger: #f0605a;
   --color-danger-soft: #f0605a1f;
@@ -104,10 +104,10 @@ a {
   align-items: center;
   justify-content: center;
   gap: 8px;
-  height: 46px;
+  height: 44px;
   padding: 0 22px;
   border: 1px solid transparent;
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-md);
   font-size: 17px;
   font-weight: 600;
   white-space: nowrap;
@@ -130,7 +130,7 @@ a {
 }
 
 .btn-outline {
-  border-color: var(--color-border-strong);
+  border-color: var(--color-border);
   color: var(--color-fg);
 }
 
@@ -159,9 +159,6 @@ a {
   height: 20px;
 }
 
-.btn-primary.btn-lg {
-  box-shadow: 0 12px 32px -12px var(--color-accent);
-}
 
 .btn-arrow {
   transition: transform 160ms var(--ease-snappy);
@@ -210,8 +207,6 @@ a:hover > .btn-arrow {
 
 .feature {
   text-align: center;
-  animation: forge-rise 600ms var(--ease-snappy) backwards;
-  animation-delay: calc(240ms + var(--i, 0) * 70ms);
 }
 
 .feature-icon {

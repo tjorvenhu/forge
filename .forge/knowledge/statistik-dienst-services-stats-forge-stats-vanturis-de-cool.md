@@ -1,8 +1,8 @@
 ---
 title: "Website und Statistik-Dienst services/stats (forge.vanturis.de: Landingpage auf /, Live Stats auf /stats, Coolify)"
-summary: "Wie die Next.js-Website in services/stats (Landingpage nach Bildvorlage des Besitzers auf /, Live Stats auf /stats) gebaut, getestet, gestaltet (Inter, Amboss-Silhouette, Live-Abfrage, Englisch/Deutsch) und in Coolify betrieben wird, und welche Stolperfallen es dabei gibt."
+summary: "Next.js-Website in services/stats: Landingpage exakt nach Bildvorlage des Besitzers auf /, Live Stats auf /stats. Aufbau, Maße, Inter, Wortmarken-PNG, Amboss-Silhouette, Live-Abfrage, Englisch/Deutsch, Coolify, Stolperfallen."
 tags: ["stats","coolify","release","stolperfalle","i18n","ui"]
-updated: "2026-10-19T15:46:17.483Z"
+updated: "2026-10-19T15:53:31.124Z"
 ---
 
 # Website und Statistik-Dienst services/stats
@@ -10,18 +10,17 @@ updated: "2026-10-19T15:46:17.483Z"
 ## Was es ist
 `services/stats` ist ein eigenständiges Next.js-Projekt (App Router, pg, zod) für https://forge.vanturis.de. Es nimmt die Meldungen von `packages/sidecar/src/stats/usage-stats.ts` an (`USAGE_STATS_URL` in `packages/protocol/src/`, grep nach dem Namen) und zeigt die Summen. API, Payload und Coolify stehen in `services/stats/README.md`. Deploy in Coolify geschieht nicht automatisch beim Push.
 
-## Landingpage: eins zu eins nach der Bildvorlage des Besitzers (2026-10-19)
-Der Besitzer hat eine Vorlage (1536 x 1024) geliefert und verlangt, dass die Seite „1 zu 1“ so aussieht; ein erster, freier Umbau wurde als „richtig scheiße“ abgelehnt. Nichts ergänzen oder weglassen, was die Vorlage nicht zeigt. Maße und Aufbau:
-- Kopfzeile 76px (`src/app/layout.tsx`): Logo = `logo-mark.svg` 44x33 + Wortmarke „FORGE“ 28px/800. Rechts „Live Stats“ (BarChart3, ExternalLink-Icon, 17px), „GitHub“ mit echtem Octocat-SVG (`GithubMark` in `nav.tsx`, lucide 1.x hat keine Marken-Icons), Outline-Button „Unterstützen“ (Herz rot, öffnet Spenden-Dialog; der Besitzer wollte ihn ausdrücklich oben), oranger Button „Download“ (46px). Unter 560px nur Icons (`.nav-label` versteckt, `aria-label` an den Links).
-- Erster Bildschirm = Hero + vier Karten + Trennlinie mit „Live Stats ansehen →“; Fußzeile erst beim Scrollen. Dafür `main.landing` als Flex-Spalte mit `min-height: calc(100svh - 77px)`, der Hero wächst (`flex: 1`, Mindesthöhe 540px).
-- Hero (`src/components/landing.tsx`): Eyebrow „Claude Development Studio“ (14px, orange, 0.24em), Titel „Deine AI“ / „Entwicklungszentrale“ (zweite Zeile orange, `clamp(40px, 4.1vw, 64px)`; lang, braucht zwei Spalten 49/51 und Gutter 72px), Lead 22px, Buttons 58px, Fakten „Windows 10/11 · Open Source · Early Access“ (Windows-Logo als Inline-SVG). Rechts das App-Fenster (`src/assets/app-{de,en}.webp`, Ampel-Punkte, `rotateY(-11deg)`, oranger Rand und Glow, ragt 3 % über den Container).
-- Hinter dem Fenster der Amboss (`.hero-anvil`): drei Spans mit `mask: url("../assets/logo-mark.svg")` (Next bündelt relative url() in globalem CSS). `anvil-body` dunkler Verlauf, `anvil-rim` orange um 5px nach oben rechts versetzt (nur obere 36 % = der Funke, sonst schneidet die Kante den Titel), `anvil-glow` dasselbe mit Blur. Unter 1080px aus.
-- Container: `--page-width: 1392px`, `--page-gutter: 72px` (32px unter 1080, 16px unter 560), wie der Rand in der Vorlage.
-- Schrift Inter (`@fontsource-variable/inter`, Import in `layout.tsx`, `--font-sans: "Inter Variable"`), nicht Geist: der Besitzer wollte die Schrift der Vorlage. Kein next/font/google (kein Netz beim Build).
-- Kein Hintergrund-Raster, keine Deko-Muster, kein blass eingeblendetes Logo (sah matschig aus).
+## Landingpage: exakt nach der Bildvorlage des Besitzers (2026-10-19)
+Der Besitzer hat eine Vorlage (1536 x 1024, Linear/Vercel-Look) geliefert und verlangt „1 zu 1“; zwei freiere Umbauten wurden abgelehnt („richtig scheiße“, „willst du mich trollen“). Nichts ergänzen, nichts weglassen, nichts anders interpretieren. Seine Vorgaben: Hintergrund `#111418`, Orange `#ff7a1a` (beide als Tokens in `globals.css`, weichen von der App ab), keine übertriebenen Glows/Verläufe, keine Animationen, keine Karten/Boxen um die vier Feature-Blöcke, kein Hintergrund-Raster.
+- Kopfzeile 76px (`src/app/layout.tsx`): **altes Wortmarken-PNG** `forge-logo.png` (945x223, 40px hoch; der Besitzer will es „überall“, auch in der Fußzeile mit 28px). Rechts nur „Live Stats“ (BarChart3 + ExternalLink), „GitHub“ mit echtem Octocat-SVG (`GithubMark` in `nav.tsx`) und oranger Button „Download“ (44px, Radius 6). Kein Support-Knopf oben: „Unterstützen“ (Herz, Spenden-Dialog) steht in der Fußzeile, der Besitzer wollte ihn „auf der Seite“ behalten. Unter 560px nur Icons (`.nav-label` versteckt).
+- Erster Bildschirm = Hero + vier Blöcke + Trennlinie mit „Live Stats ansehen →“; Fußzeile erst beim Scrollen (`main.landing` Flex-Spalte mit `min-height: calc(100svh - 77px)`, Hero `flex: 1`, mindestens 560px).
+- Hero (`src/components/landing.tsx`): Eyebrow „Claude Development Studio“ (14px, orange, 0.24em), Titel „Deine AI“ / „Entwicklungszentrale“ (orange, `clamp(40px, 4.17vw, 64px)`, Zeilen `nowrap` ab 560px; Spalten 47/53, Gap 24, Gutter 72px, damit die 64px passen), Lead 20px/1.7 in `#a9afb9` (Text der Vorlage ohne Gedankenstrich), Buttons 58px, Fakten „Windows 10/11 · Open Source · Early Access“ (Windows-Logo Inline-SVG).
+- Rechts das App-Fenster: echter Screenshot `src/assets/app-{de,en}.webp` (1600x1000 aus `.github/assets/screenshots/projekte.png`), Ampel-Punkte, `rotateY(-9deg)`, oranger Rand, dezenter Glow. Die Vorlage zeigt ein höheres Fenster (Verhältnis 1,2 mit Session-Ansicht); mit dem vorhandenen Screenshot ist es flacher. Für mehr Nähe bräuchte es einen neuen echten Screenshot der App im Format ~1200x1000.
+- Hinter dem Fenster der Amboss (`.hero-anvil`, 31 % von links, 41 % breit, auf 92 % Hero-Höhe gestreckt): drei Spans mit `mask: url("../assets/logo-mark.svg") / 100% 100%` (Next bündelt relative url() in globalem CSS). `anvil-body` dunkelgrauer Verlauf, `anvil-rim` orange 4px nach oben rechts versetzt, nur obere 36 % (der Funke; sonst schneidet die Kante den Titel), `anvil-glow` dasselbe geblurrt. Unter 1080px aus.
+- Container `--page-width: 1392px`, `--page-gutter: 72px` (32px unter 1080, 16px unter 560). Schrift Inter (`@fontsource-variable/inter`, Import in `layout.tsx`), nicht Geist; kein next/font/google (kein Netz beim Build).
 
 ## Live Stats (/stats)
-`src/app/stats/page.tsx`, `loading.tsx`, `src/components/stats-page.tsx`: zentrierter Kopf (Eyebrow „Live Stats“, „FORGE in Zahlen“, Lead), Zeile mit Live-Badge und „Stand …“, `.stats-grid` mit 8 Zellen und Hairlines (Tokens, Sessions, Durchläufe, Arbeitszeit, Projekte, Agenten, Installationen, Gerade online; `src/components/tiles.ts`). Kosten, Telefonate, Token-Arten, Abos und Versionen werden nicht mehr gezeigt (die API liefert sie weiter). Diagramme (`charts.tsx`): Tokens pro Tag, Aktive Installationen, Tokens nach Modell (breit); kein Tabellen-Umschalter. Darunter „Was erfasst wird“ als vier Karten (`Feature` aus `blocks.tsx`) und Fußnote. Die App verlinkt die Seite über `STATS_PAGE_URL` (= `USAGE_STATS_URL + "/stats"`).
+`src/app/stats/page.tsx`, `loading.tsx`, `src/components/stats-page.tsx`: zentrierter Kopf (Eyebrow „Live Stats“, „FORGE in Zahlen“, Lead), Zeile mit Live-Badge und „Stand …“, `.stats-grid` mit 8 Zellen und Hairlines (Tokens, Sessions, Durchläufe, Arbeitszeit, Projekte, Agenten, Installationen, Gerade online; `src/components/tiles.ts`). Kosten, Telefonate, Token-Arten, Abos und Versionen werden nicht mehr gezeigt (die API liefert sie weiter). Diagramme (`charts.tsx`): Tokens pro Tag, Aktive Installationen, Tokens nach Modell (breit); kein Tabellen-Umschalter. Darunter „Was erfasst wird“ als vier Blöcke (`Feature` aus `blocks.tsx`) und Fußnote. Die App verlinkt die Seite über `STATS_PAGE_URL` (= `USAGE_STATS_URL + "/stats"`).
 
 ## Domain (Umzug 2026-10-18)
 Neu `forge.vanturis.de`, vorher `forge-stats.vanturis.de`. Apps bis 0.1.103 melden an die alte Domain (fest einkompiliert): die alte muss als zweite Domain am Dienst bleiben (Coolify: beide durch Komma, HAProxy: Zertifikat für beide). Prüfen: `curl https://forge.vanturis.de/api/health` liefert `ok`.
@@ -48,10 +47,10 @@ Die App meldet alle 5 Minuten. Sperre pro installId (`REPORT_INTERVAL_MINUTES` i
 - `src/components/live-stats.tsx` (Client): `/api/v1/live` alle 30 s, `/api/v1/totals` alle 5 min, pausiert bei verdecktem Tab; Online aus `/live` gewinnt.
 - `src/components/tiles.ts` (ohne `"use client"`) für Skeleton und Live-Zellen. `db.ts` (pg) nie in den Client-Bundle: nur `import type`.
 - `motion.tsx`: `AnimatedNumber`, `Reveal` (blendet beim Scrollen ein). `<noscript>`-Style in `layout.tsx` zeigt `.reveal` ohne JS.
-- Animationen: `forge-rise` (fill `backwards`, nicht `both`, sonst blockiert es Hover-Transforms), `forge-ping`, `forge-grow-y/x`; `prefers-reduced-motion` kürzt alles. Karten und Zellen blenden gestaffelt ein: in Screenshots ist die letzte Karte oft noch halb durchsichtig, das ist kein Fehler.
+- Nur die Stats-Seite animiert (Zellen `forge-rise`, Balken wachsen, `prefers-reduced-motion` kürzt alles); die Landingpage ist bewusst statisch.
 
 ## Design
-Tokens der Desktop-App als CSS-Variablen in `src/app/globals.css` (nur dunkel, plus Primitives: Buttons, Eyebrow, Feature-Karten, Sprachumschalter, Modal, Skeleton, Live-Punkt). Seitenlayout (Kopf, Fuß, Hero, Amboss, Stats-Raster, Diagramme) in `src/app/pages.css`.
+Tokens in `src/app/globals.css` (nur dunkel, plus Primitives: Buttons, Eyebrow, Feature-Blöcke, Sprachumschalter, Modal, Skeleton, Live-Punkt). Seitenlayout (Kopf, Fuß, Hero, Amboss, Stats-Raster, Diagramme) in `src/app/pages.css`.
 
 ## Stolperfallen
 - **Nicht im pnpm-Workspace**: im Ordner `pnpm install --ignore-workspace` / `pnpm add --ignore-workspace`, eigenes Lockfile. Kein Prettier.
