@@ -1,6 +1,6 @@
 /*
  * Design tokens of the FORGE app (apps/desktop/src/styles.css, @theme). The app has only this dark
- * theme. Keep the values in step when the app changes them.
+ * theme. Keep the values in step when the app changes them. Page layout lives in pages.css.
  */
 :root {
   --color-bg: #14171d;
@@ -27,10 +27,8 @@
   --text-caption: 11px;
   --text-small: 12px;
   --text-body: 13px;
-  --text-body-lg: 13.5px;
   --text-ui: 14px;
-  --text-value: 24px;
-  --text-heading: 26px;
+  --text-lead: 17px;
 
   --radius-sm: 4px;
   --radius-md: 6px;
@@ -62,7 +60,7 @@ body {
   background: var(--color-bg);
   color: var(--color-fg);
   font-family: var(--font-sans);
-  font-size: var(--text-body);
+  font-size: var(--text-ui);
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
@@ -71,6 +69,7 @@ body {
 
 h1,
 h2,
+h3,
 p {
   margin: 0;
 }
@@ -82,7 +81,7 @@ a {
 
 :focus-visible {
   outline: 2px solid var(--color-accent);
-  outline-offset: 1px;
+  outline-offset: 2px;
 }
 
 ::selection {
@@ -97,78 +96,20 @@ a {
   padding-right: var(--page-gutter);
 }
 
-.footer {
-  border-top: 1px solid var(--color-border);
-  color: var(--color-subtle);
-  font-size: var(--text-small);
-}
+/* ---- buttons, after components/ui/button.tsx */
 
-.footer-inner {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px 16px;
-  padding-top: 16px;
-  padding-bottom: 16px;
-}
-
-.footer-links {
-  display: flex;
-  gap: 16px;
-}
-
-.footer a {
-  color: var(--color-muted);
-  text-decoration: underline;
-  text-underline-offset: 2px;
-}
-
-.footer a:hover {
-  color: var(--color-fg);
-}
-
-/* Page header of the app (layout/Page.tsx): 64px high, a line below. */
-.topbar {
-  border-bottom: 1px solid var(--color-border);
-}
-
-.topbar-inner {
-  min-height: 64px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  padding-top: 12px;
-  padding-bottom: 12px;
-}
-
-.logo {
-  display: block;
-  flex-shrink: 0;
-  user-select: none;
-}
-
-.topbar-actions {
-  display: flex;
-  flex-shrink: 0;
-  align-items: center;
-  gap: 8px;
-}
-
-/* Buttons of components/ui/button.tsx, size md. */
 .btn {
   display: inline-flex;
   flex-shrink: 0;
   align-items: center;
   justify-content: center;
   gap: 8px;
-  height: 32px;
-  padding: 0 12px;
+  height: 40px;
+  padding: 0 16px;
   border: 1px solid transparent;
-  border-radius: var(--radius-md);
-  font-size: var(--text-body);
-  font-weight: 500;
+  border-radius: var(--radius-lg);
+  font-size: var(--text-ui);
+  font-weight: 600;
   white-space: nowrap;
   user-select: none;
   transition:
@@ -184,17 +125,17 @@ a {
 }
 
 .btn svg {
-  width: 14px;
-  height: 14px;
+  width: 16px;
+  height: 16px;
 }
 
 .btn-outline {
-  border-color: var(--color-border);
+  border-color: var(--color-border-strong);
   color: var(--color-fg);
 }
 
 .btn-outline:hover {
-  background: var(--color-surface-3);
+  background: var(--color-surface-2);
 }
 
 .btn-primary {
@@ -206,7 +147,96 @@ a {
   background: var(--color-accent-strong);
 }
 
-/* Language switch: two flag buttons in one outline, the chosen one filled. */
+.btn-lg {
+  gap: 10px;
+  height: 52px;
+  padding: 0 24px;
+  font-size: 16px;
+}
+
+.btn-lg svg {
+  width: 18px;
+  height: 18px;
+}
+
+.btn-primary.btn-lg {
+  box-shadow: 0 12px 32px -12px var(--color-accent);
+}
+
+.btn-arrow {
+  transition: transform 160ms var(--ease-snappy);
+}
+
+a:hover > .btn-arrow {
+  transform: translateX(3px);
+}
+
+/* ---- eyebrow and section heads */
+
+.eyebrow {
+  display: block;
+  color: var(--color-accent);
+  font-size: var(--text-body);
+  font-weight: 600;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+}
+
+.section-head {
+  max-width: 36rem;
+  margin: 0 auto 40px;
+  text-align: center;
+}
+
+.section-head h2 {
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.section-head p {
+  margin-top: 8px;
+  color: var(--color-muted);
+  font-size: 15px;
+}
+
+/* ---- feature cards: icon, title, one line, centred */
+
+.features {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 32px 24px;
+}
+
+.feature {
+  text-align: center;
+  animation: forge-rise 600ms var(--ease-snappy) backwards;
+  animation-delay: calc(240ms + var(--i, 0) * 70ms);
+}
+
+.feature-icon {
+  width: 30px;
+  height: 30px;
+  color: var(--color-accent);
+}
+
+.feature h3 {
+  margin-top: 14px;
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.feature p {
+  max-width: 17rem;
+  margin: 6px auto 0;
+  color: var(--color-muted);
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+/* ---- language switch: two flag buttons in one outline, the chosen one filled */
+
 .lang-switch {
   display: inline-flex;
   flex-shrink: 0;
@@ -269,204 +299,28 @@ a {
   height: 100%;
 }
 
+/* ---- simple pages (error, not found) */
+
 .content {
   display: flex;
   flex-direction: column;
   gap: 24px;
-  padding-top: 32px;
-  padding-bottom: 48px;
+  padding-top: 64px;
+  padding-bottom: 96px;
 }
 
 .intro h1 {
-  font-size: var(--text-heading);
-  font-weight: 600;
-  line-height: 1.25;
-  letter-spacing: -0.015em;
+  font-size: 32px;
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
 }
 
 .intro p {
-  margin-top: 6px;
-  max-width: 62ch;
-  font-size: var(--text-body-lg);
+  margin-top: 8px;
+  max-width: 48ch;
   color: var(--color-muted);
-}
-
-/* SectionTitle of components/ui/misc.tsx */
-.section-title {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 8px;
-}
-
-.section-title h2 {
-  font-size: var(--text-small);
-  font-weight: 600;
-  line-height: 16px;
-  text-transform: uppercase;
-  letter-spacing: 0.025em;
-  color: var(--color-subtle);
-}
-
-.section-meta {
-  font-size: var(--text-caption);
-  line-height: 16px;
-  color: var(--color-subtle);
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-}
-
-/* Tiles of the daily report (views/ReportView.tsx), with an icon and a larger value. */
-.tiles {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 12px;
-}
-
-.tile {
-  min-width: 0;
-  padding: 12px 16px;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-xl);
-  background: var(--color-surface);
-  transition:
-    transform 180ms var(--ease-snappy),
-    border-color 180ms var(--ease-snappy),
-    background-color 180ms var(--ease-snappy);
-}
-
-.tile-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.tile-label {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: var(--text-caption);
-  line-height: 16px;
-  color: var(--color-muted);
-}
-
-.tile-icon {
-  width: 14px;
-  height: 14px;
-  flex-shrink: 0;
-  color: var(--color-subtle);
-}
-
-.tile-value {
-  margin-top: 6px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: var(--text-value);
-  font-weight: 600;
-  line-height: 32px;
-  letter-spacing: -0.01em;
-  font-variant-numeric: tabular-nums;
-}
-
-.tile-value-accent {
-  color: var(--color-accent);
-}
-
-.tile-unit {
-  margin-left: 4px;
-  font-size: var(--text-body);
-  /* keeps the line box of the value at 32px, like the tiles without a unit */
-  line-height: 1;
-  font-weight: 500;
-  letter-spacing: 0;
-  color: var(--color-muted);
-}
-
-.tile-sub {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: var(--text-caption);
-  line-height: 16px;
-  color: var(--color-subtle);
-}
-
-/* Group and Row of components/settings/layout.tsx */
-.group {
-  overflow: hidden;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-xl);
-  background: var(--color-surface);
-}
-
-.group-head {
-  padding: 12px 16px;
-  border-bottom: 1px solid var(--color-border);
-}
-
-.group-head h2 {
-  font-size: var(--text-ui);
-  font-weight: 600;
-  line-height: 20px;
-}
-
-.group-head p {
-  margin-top: 2px;
-  font-size: var(--text-small);
-  line-height: 16px;
-  color: var(--color-muted);
-}
-
-.row {
-  display: flex;
-  align-items: flex-start;
-  gap: 12px;
-  padding: 14px 16px;
-}
-
-.row + .row {
-  border-top: 1px solid var(--color-border);
-}
-
-.row-icon {
-  width: 16px;
-  height: 16px;
-  margin-top: 2px;
-  flex-shrink: 0;
-  color: var(--color-muted);
-}
-
-.row-text {
-  display: flex;
-  min-width: 0;
-  flex: 1;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.row-label {
-  font-weight: 500;
-  line-height: 20px;
-}
-
-.row-description {
-  max-width: 68ch;
-  font-size: var(--text-small);
-  line-height: 18px;
-  color: var(--color-muted);
-}
-
-.row-value {
-  align-self: center;
-  flex-shrink: 0;
-  font-size: var(--text-ui);
-  font-weight: 600;
-  line-height: 20px;
-  font-variant-numeric: tabular-nums;
+  font-size: var(--text-lead);
 }
 
 /* ErrorBanner of components/ui/misc.tsx */
@@ -474,7 +328,7 @@ a {
   display: flex;
   align-items: flex-start;
   gap: 12px;
-  padding: 10px 12px;
+  padding: 12px 14px;
   border: 1px solid color-mix(in srgb, var(--color-danger) 30%, transparent);
   border-radius: var(--radius-lg);
   background: var(--color-danger-soft);
@@ -483,22 +337,23 @@ a {
 .error-banner svg {
   width: 16px;
   height: 16px;
-  margin-top: 2px;
+  margin-top: 3px;
   flex-shrink: 0;
   color: var(--color-danger);
 }
 
 .error-title {
-  font-weight: 500;
+  font-weight: 600;
   color: var(--color-danger);
 }
 
 .footnote {
-  font-size: var(--text-caption);
+  font-size: var(--text-small);
   color: var(--color-subtle);
 }
 
-/* Skeleton of components/ui/skeleton.tsx; it sits in the line of the text it stands for. */
+/* ---- Skeleton of components/ui/skeleton.tsx; it sits in the line of the text it stands for */
+
 .skeleton {
   display: inline-block;
   max-width: 100%;
@@ -509,8 +364,9 @@ a {
   animation: forge-shimmer 1.4s ease-in-out infinite;
 }
 
-.tile-value .skeleton {
-  height: 20px;
+.skeleton-bar {
+  background: var(--color-surface-2);
+  animation: forge-shimmer 1.4s ease-in-out infinite;
 }
 
 @keyframes forge-shimmer {
@@ -523,376 +379,62 @@ a {
   }
 }
 
-.tile-wide {
-  grid-column: span 2;
+/* ---- live indicator */
+
+.live-dot {
+  position: relative;
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--color-subtle);
 }
 
-.tiles-note {
-  margin-top: 8px;
-  font-size: var(--text-caption);
-  line-height: 16px;
-  color: var(--color-subtle);
+.live-dot-on {
+  background: var(--color-success);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--color-success) 60%, transparent);
 }
 
-/* Chart cards of components/report/usage-charts.tsx */
-.charts {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
+.live-dot-on::after {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: var(--color-success);
+  content: "";
+  animation: forge-ping 1.8s cubic-bezier(0, 0, 0.2, 1) infinite;
 }
 
-.chart-card {
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
-  padding: 16px;
+@keyframes forge-ping {
+  75%,
+  100% {
+    opacity: 0;
+    transform: scale(2.8);
+  }
+}
+
+.live-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 2px 10px 2px 8px;
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-xl);
-  background: var(--color-surface);
-}
-
-.chart-card-wide {
-  grid-column: 1 / -1;
-}
-
-.chart-head {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  margin-bottom: 12px;
-}
-
-.chart-titles {
-  min-width: 0;
-  flex: 1;
-}
-
-.chart-titles h3 {
-  margin: 0;
-  font-size: var(--text-body);
-  font-weight: 500;
-  line-height: 20px;
-}
-
-.chart-titles p {
+  border-radius: 999px;
   font-size: var(--text-caption);
-  line-height: 16px;
-  color: var(--color-muted);
-}
-
-/* Button size icon-sm, variant ghost */
-.icon-btn {
-  display: inline-flex;
-  flex-shrink: 0;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  padding: 0;
-  border: 0;
-  border-radius: var(--radius-md);
-  background: transparent;
-  color: var(--color-muted);
-  cursor: pointer;
-  transition:
-    color 120ms var(--ease-snappy),
-    background-color 120ms var(--ease-snappy);
-}
-
-.icon-btn:hover {
-  background: var(--color-surface-2);
-  color: var(--color-fg);
-}
-
-.icon-btn svg {
-  width: 14px;
-  height: 14px;
-}
-
-.chart-empty {
-  font-size: var(--text-small);
-  color: var(--color-subtle);
-}
-
-.chart-table {
-  /* the height of a column chart, so switching to the table does not move the page */
-  height: 154px;
-  overflow: auto;
-}
-
-.chart-table table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: var(--text-small);
-}
-
-.chart-table tr + tr td {
-  border-top: 1px solid var(--color-border);
-}
-
-.chart-table td {
-  padding: 4px 0;
-  color: var(--color-muted);
-}
-
-.chart-table td + td {
-  padding-left: 12px;
-  text-align: right;
-  font-variant-numeric: tabular-nums;
-  color: var(--color-fg);
-}
-
-.columns {
-  display: flex;
-  gap: 8px;
-}
-
-.y-axis {
-  position: relative;
-  width: 48px;
-  flex-shrink: 0;
-  font-size: 10px;
-  color: var(--color-subtle);
-  font-variant-numeric: tabular-nums;
-}
-
-.y-axis span {
-  position: absolute;
-  right: 0;
-  transform: translateY(-50%);
-  white-space: nowrap;
-  line-height: 12px;
-}
-
-.plot-wrap {
-  position: relative;
-  min-width: 0;
-  flex: 1;
-}
-
-.plot {
-  position: relative;
-}
-
-.gridline {
-  position: absolute;
-  left: 0;
-  right: 0;
-  height: 1px;
-  background: var(--color-border);
-}
-
-.plot-empty {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  text-align: center;
-}
-
-.bars {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: flex-end;
-  gap: 2px;
-}
-
-.col {
-  display: flex;
-  height: 100%;
-  min-width: 0;
-  flex: 1;
-  align-items: flex-end;
-  justify-content: center;
-  outline: none;
-}
-
-.col-bar {
-  display: block;
-  width: 100%;
-  max-width: 24px;
-  border-radius: 4px 4px 0 0;
-  background: var(--color-accent-strong);
-  transition: background-color 120ms var(--ease-snappy);
-}
-
-.col-hover .col-bar {
-  background: var(--color-accent);
-}
-
-.col:focus-visible .col-bar {
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-fg) 40%, transparent);
-}
-
-.x-axis {
-  display: flex;
-  gap: 2px;
-  height: 16px;
-  margin-top: 6px;
-  font-size: 10px;
-  line-height: 16px;
-  color: var(--color-subtle);
-  font-variant-numeric: tabular-nums;
-}
-
-.x-axis span {
-  min-width: 0;
-  flex: 1;
-  overflow: visible;
-  white-space: nowrap;
-  text-align: center;
-}
-
-.tooltip {
-  position: absolute;
-  z-index: 10;
-  transform: translate(-50%, -100%);
-  padding: 4px 8px;
-  white-space: nowrap;
-  pointer-events: none;
-  border: 1px solid var(--color-border-strong);
-  border-radius: var(--radius-md);
-  background: var(--color-surface-3);
-  box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.35);
-}
-
-.tooltip.tip-start {
-  transform: translate(-12px, -100%);
-}
-
-.tooltip.tip-end {
-  transform: translate(calc(-100% + 12px), -100%);
-}
-
-.tooltip-value {
-  font-size: var(--text-small);
   font-weight: 600;
-  line-height: 16px;
-  color: var(--color-fg);
-}
-
-.tooltip-label {
-  font-size: var(--text-caption);
-  line-height: 16px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
   color: var(--color-muted);
 }
 
-.hbars {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.bars-empty {
-  min-height: 154px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.hbar {
-  min-width: 0;
-  outline: none;
-}
-
-.hbar-line {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  margin-bottom: 4px;
-  font-size: var(--text-small);
-  line-height: 16px;
-}
-
-.hbar-label {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--color-fg);
-}
-
-.hbar-tag {
-  flex-shrink: 0;
-  padding: 0 6px;
-  border: 1px solid var(--color-border-strong);
-  border-radius: var(--radius-sm);
-  font-size: var(--text-caption);
-  line-height: 14px;
-  color: var(--color-muted);
-}
-
-.hbar-tag-live {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
+.live-badge-on {
   border-color: color-mix(in srgb, var(--color-success) 35%, transparent);
   background: var(--color-success-soft);
   color: var(--color-success);
 }
 
-.hbar-tag .live-dot {
-  width: 6px;
-  height: 6px;
-}
+/* ---- support dialog behind "Unterstützen", after the SupportDialog of the app */
 
-.hbar-value {
-  margin-left: auto;
-  flex-shrink: 0;
-  font-variant-numeric: tabular-nums;
-  color: var(--color-fg);
-}
-
-.hbar-track {
-  position: relative;
-  height: 8px;
-  border-radius: 0 4px 4px 0;
-  background: var(--color-surface-2);
-}
-
-.hbar-fill {
-  height: 100%;
-  border-radius: 0 4px 4px 0;
-  background: var(--color-accent-strong);
-  transition: background-color 120ms var(--ease-snappy);
-}
-
-.hbar-fill-muted {
-  background: var(--color-subtle);
-}
-
-.hbar-hover .hbar-fill {
-  background: var(--color-accent);
-}
-
-.hbar-hover .hbar-fill-muted {
-  background: var(--color-muted);
-}
-
-.hbar:focus-visible .hbar-track {
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-fg) 40%, transparent);
-}
-
-.tooltip-bar {
-  top: -6px;
-}
-
-.hbars-more {
-  font-size: var(--text-caption);
-  color: var(--color-subtle);
-}
-
-.skeleton-bar {
-  background: var(--color-surface-2);
-  animation: forge-shimmer 1.4s ease-in-out infinite;
-}
-
-/* Support dialog behind "Unterstützen", after the SupportDialog of the app. */
 .modal {
   width: min(440px, calc(100vw - 2 * var(--page-gutter, 24px)));
   max-height: calc(100vh - 48px);
@@ -929,7 +471,7 @@ a {
 }
 
 .modal-head h2 {
-  font-size: var(--text-ui);
+  font-size: 16px;
   font-weight: 600;
   line-height: 20px;
 }
@@ -1013,51 +555,7 @@ a {
   color: var(--color-subtle);
 }
 
-@media (max-width: 900px) {
-  .charts {
-    grid-template-columns: minmax(0, 1fr);
-  }
-}
-
-@media (max-width: 760px) {
-  .tiles {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-
-@media (max-width: 480px) {
-  :root {
-    --page-gutter: 16px;
-    --text-heading: 22px;
-  }
-
-  .content {
-    padding-top: 24px;
-  }
-
-  .btn-label-wide {
-    display: none;
-  }
-
-  .btn:has(.btn-label-wide) {
-    width: 32px;
-    padding: 0;
-  }
-
-  .lang-code {
-    display: none;
-  }
-
-  .lang-btn {
-    padding: 0 5px;
-  }
-
-  .row-description {
-    max-width: none;
-  }
-}
-
-/* ---- motion: entrances, live indicator, growing bars. prefers-reduced-motion below cuts them to their end state. */
+/* ---- motion: entrances and scroll reveal; prefers-reduced-motion below cuts them to their end state */
 
 .sr-only {
   position: absolute;
@@ -1071,121 +569,11 @@ a {
   border: 0;
 }
 
-.tile-enter {
-  /* backwards, not both: a held end state would block the hover lift */
-  animation: forge-rise 560ms var(--ease-snappy) backwards;
-  animation-delay: calc(var(--i, 0) * 45ms);
-}
-
-.tile:hover {
-  transform: translateY(-2px);
-  border-color: var(--color-border-strong);
-  background: color-mix(in srgb, var(--color-surface) 85%, var(--color-surface-2));
-}
-
-/* the highlighted tile: a light runs along its top edge, the corner behind the number is tinted */
-.tile-highlight {
-  position: relative;
-  overflow: hidden;
-  background: linear-gradient(135deg, var(--color-accent-soft), transparent 45%), var(--color-surface);
-}
-
-.tile-highlight::before {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 1px;
-  background: linear-gradient(90deg, transparent, var(--color-accent), transparent);
-  background-repeat: no-repeat;
-  background-size: 40% 100%;
-  content: "";
-  pointer-events: none;
-  animation: forge-sweep 4s ease-in-out infinite;
-}
-
-.tile-highlight > * {
-  position: relative;
-}
-
 @keyframes forge-rise {
   from {
     opacity: 0;
     transform: translateY(10px);
   }
-}
-
-@keyframes forge-sweep {
-  from {
-    background-position: -60% 0;
-  }
-  to {
-    background-position: 160% 0;
-  }
-}
-
-.live-dot {
-  position: relative;
-  display: inline-block;
-  width: 8px;
-  height: 8px;
-  flex-shrink: 0;
-  border-radius: 50%;
-  background: var(--color-subtle);
-}
-
-/* the ping ring reaches past the dot; the short count needs no ellipsis */
-.tile-value-live {
-  overflow: visible;
-}
-
-.tile-value .live-dot {
-  width: 10px;
-  height: 10px;
-  margin-right: 10px;
-  vertical-align: 0.12em;
-}
-
-.live-dot-on {
-  background: var(--color-success);
-  box-shadow: 0 0 8px color-mix(in srgb, var(--color-success) 60%, transparent);
-}
-
-.live-dot-on::after {
-  position: absolute;
-  inset: 0;
-  border-radius: 50%;
-  background: var(--color-success);
-  content: "";
-  animation: forge-ping 1.8s cubic-bezier(0, 0, 0.2, 1) infinite;
-}
-
-@keyframes forge-ping {
-  75%,
-  100% {
-    opacity: 0;
-    transform: scale(2.8);
-  }
-}
-
-.live-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  margin-right: 10px;
-  padding: 1px 8px 1px 6px;
-  border: 1px solid var(--color-border);
-  border-radius: 999px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--color-muted);
-}
-
-.live-badge-on {
-  border-color: color-mix(in srgb, var(--color-success) 35%, transparent);
-  background: var(--color-success-soft);
-  color: var(--color-success);
 }
 
 .reveal {
@@ -1201,55 +589,28 @@ a {
   transform: none;
 }
 
-.reveal .col-bar {
-  transform-origin: bottom;
-  animation: forge-grow-y 900ms var(--ease-snappy) both paused;
-  animation-delay: calc(150ms + var(--i, 0) * 22ms);
-  transition:
-    height 700ms var(--ease-snappy),
-    background-color 120ms var(--ease-snappy);
-}
-
-.reveal .hbar-fill {
-  transform-origin: left;
-  animation: forge-grow-x 1000ms var(--ease-snappy) both paused;
-  animation-delay: calc(150ms + var(--i, 0) * 90ms);
-  transition:
-    width 700ms var(--ease-snappy),
-    background-color 120ms var(--ease-snappy);
-}
-
-.reveal.in-view .col-bar,
-.reveal.in-view .hbar-fill {
-  animation-play-state: running;
-}
-
-/* today's column is still growing: it breathes once the entrance is done */
-.reveal.in-view .col-latest .col-bar {
-  animation:
-    forge-grow-y 900ms var(--ease-snappy) both,
-    forge-shimmer 2.4s ease-in-out 1.8s infinite;
-  animation-delay: calc(150ms + var(--i, 0) * 22ms), 1.8s;
-}
-
-@keyframes forge-grow-y {
-  from {
-    transform: scaleY(0);
+@media (max-width: 1080px) {
+  .features {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
-@keyframes forge-grow-x {
-  from {
-    transform: scaleX(0);
+@media (max-width: 560px) {
+  :root {
+    --page-gutter: 16px;
   }
-}
 
-.chart-card {
-  transition: border-color 180ms var(--ease-snappy);
-}
+  .features {
+    grid-template-columns: minmax(0, 1fr);
+  }
 
-.chart-card:hover {
-  border-color: var(--color-border-strong);
+  .lang-code {
+    display: none;
+  }
+
+  .lang-btn {
+    padding: 0 5px;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

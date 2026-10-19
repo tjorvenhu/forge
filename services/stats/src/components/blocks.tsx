@@ -1,26 +1,31 @@
 import type { CSSProperties, ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
 
-// Building blocks after the FORGE app: the tiles of the daily report (ReportView), the settings cards
-// (settings/layout.tsx Group and Row), SectionTitle and Skeleton from components/ui.
+// Small building blocks shared by the start page and the statistics.
 
-export function SectionTitle({ children, action }: { children: ReactNode; action?: ReactNode }) {
+/** Eyebrow line above a title, in the accent colour and letter-spaced like the start page. */
+export function Eyebrow({ children, className }: { children: ReactNode; className?: string }) {
+  return <span className={className ? `eyebrow ${className}` : "eyebrow"}>{children}</span>;
+}
+
+/** Icon, title and one line of text, centred: the four cards of the start page and the privacy notes. */
+export function Feature({ icon: Icon, title, text, index = 0 }: { icon: LucideIcon; title: string; text: string; index?: number }) {
   return (
-    <div className="section-title">
-      <h2>{children}</h2>
-      {action}
-    </div>
+    <article className="feature" style={{ "--i": index } as CSSProperties}>
+      <Icon className="feature-icon" aria-hidden />
+      <h3>{title}</h3>
+      <p>{text}</p>
+    </article>
   );
 }
 
-export function Tile({
+/** One cell of the statistics grid: icon, a large number, its label and a line below. */
+export function Stat({
   icon: Icon,
   label,
   value,
   unit,
   sub,
-  highlight,
-  wide,
   live,
   index = 0,
 }: {
@@ -28,51 +33,22 @@ export function Tile({
   label: string;
   value: ReactNode;
   unit?: string;
-  sub: string;
-  highlight?: boolean;
-  wide?: boolean;
+  sub: ReactNode;
   /** live dot in front of the value; true pulses, false stays gray */
   live?: boolean;
   /** position, for the staggered entrance */
   index?: number;
 }) {
   return (
-    <div className={`tile tile-enter${wide ? " tile-wide" : ""}${highlight ? " tile-highlight" : ""}`} style={{ "--i": index } as CSSProperties}>
-      <div className="tile-head">
-        <span className="tile-label">{label}</span>
-        <Icon className="tile-icon" aria-hidden />
-      </div>
-      <div className={`tile-value${highlight ? " tile-value-accent" : ""}${live !== undefined ? " tile-value-live" : ""}`}>
+    <div className="stat" style={{ "--i": index } as CSSProperties}>
+      <Icon className="stat-icon" aria-hidden />
+      <div className={live !== undefined ? "stat-value stat-value-live" : "stat-value"}>
         {live !== undefined && <LiveDot on={live} />}
         {value}
-        {unit && <span className="tile-unit">{unit}</span>}
+        {unit && <span className="stat-unit">{unit}</span>}
       </div>
-      <div className="tile-sub">{sub}</div>
-    </div>
-  );
-}
-
-export function Group({ title, description, children }: { title: string; description?: string; children: ReactNode }) {
-  return (
-    <section className="group">
-      <header className="group-head">
-        <h2>{title}</h2>
-        {description && <p>{description}</p>}
-      </header>
-      <div className="group-rows">{children}</div>
-    </section>
-  );
-}
-
-export function Row({ icon: Icon, label, description, children }: { icon?: LucideIcon; label: string; description?: ReactNode; children?: ReactNode }) {
-  return (
-    <div className="row">
-      {Icon && <Icon className="row-icon" aria-hidden />}
-      <div className="row-text">
-        <span className="row-label">{label}</span>
-        {description && <span className="row-description">{description}</span>}
-      </div>
-      {children !== undefined && <div className="row-value">{children}</div>}
+      <div className="stat-label">{label}</div>
+      <div className="stat-sub">{sub}</div>
     </div>
   );
 }

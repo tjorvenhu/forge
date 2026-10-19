@@ -2,11 +2,11 @@
 
 import { useEffect, useState } from "react";
 import type { Online, Totals } from "@/lib/db";
-import { Group, LiveDot, Row, SectionTitle, Tile } from "./blocks";
+import { LiveDot, Stat } from "./blocks";
 import { StatsCharts } from "./charts";
 import { useI18n } from "./locale";
 import { AnimatedNumber } from "./motion";
-import { tiles, tokenRows } from "./tiles";
+import { tiles } from "./tiles";
 
 /** The online count is cheap and changes often; the totals are cached for five minutes on the server anyway. */
 const ONLINE_EVERY_MS = 30_000;
@@ -34,9 +34,7 @@ function useLiveTotals(initial: Totals): Totals {
       // The online count of the totals can be five minutes old; the live one wins.
       setTotals((old) => {
         const next = t ?? old;
-        if (!live) return next;
-        const byPlan = new Map(live.plans.map((p) => [p.plan, p.online]));
-        return { ...next, onlineInstalls: live.onlineInstalls, plans: next.plans.map((p) => ({ ...p, online: byPlan.get(p.plan) ?? 0 })) };
+        return live ? { ...next, onlineInstalls: live.onlineInstalls } : next;
       });
     };
     // The page may come from the five-minute cache: fetch the online count right away.
@@ -62,37 +60,19 @@ export function LiveStats({ initial }: { initial: Totals }) {
 
   return (
     <>
-      <section aria-labelledby="figures">
-        <SectionTitle
-          action={
-            <span className="section-meta">
-              <span className={online ? "live-badge live-badge-on" : "live-badge"} title={t.figures.liveTitle}>
-                <LiveDot on={online} />
-                {t.figures.live}
-              </span>
-              {t.figures.updated(f.dateTime(totals.updatedAt))}
-            </span>
-          }
-        >
-          <span id="figures">{t.figures.title}</span>
-        </SectionTitle>
-        <div className="tiles">
-          {tiles(totals, locale).map(({ value, format, ...t }, i) => (
-            <Tile key={t.label} {...t} index={i} value={<AnimatedNumber value={value} format={format} />} />
-          ))}
-        </div>
-        <p className="tiles-note">{t.figures.note}</p>
-      </section>
-
-      <StatsCharts totals={totals} />
-
-      <Group title={t.tokens.title} description={t.tokens.description}>
-        {tokenRows(locale).map((r) => (
-          <Row key={r.key} icon={r.icon} label={r.label} description={r.description}>
-            <AnimatedNumber value={totals.counters[r.key]} format={f.count} />
-          </Row>
+      <div className="stats-meta">
+        <span className={online ? "live-badge live-badge-on" : "live-badge"} title={t.stats.liveTitle}>
+          <LiveDot on={online} />
+          {t.stats.live}
+        </span>
+        <span>{t.stats.updated(f.dateTime(totals.updatedAt))}</span>
+      </div>
+      <div className="stats-grid">
+        {tiles(totals, locale).map(({ value, format, ...s }, i) => (
+          <Stat key={s.label} {...s} index={i} value={<AnimatedNumber value={value} format={format} />} />
         ))}
-      </Group>
+      </div>
+      <StatsCharts totals={totals} />
     </>
   );
 }

@@ -2,7 +2,7 @@
 
 # FORGE statistics (services/stats)
 
-Small service at https://forge.vanturis.de. It shows the FORGE start page (`/`), receives the anonymous usage numbers of the FORGE desktop app and shows the totals of all installations publicly at `/stats` ("FORGE in numbers", English and German).
+Small service at https://forge.vanturis.de. It shows the FORGE start page (`/`), receives the anonymous usage numbers of the FORGE desktop app and shows the totals of all installations publicly at `/stats` ("Live Stats", English and German).
 
 In the app, usage statistics are off by default. After the setup assistant and the sync question, FORGE asks once whether to turn them on; without an answer they stay off. So only installations whose users turned them on send reports. They can be switched on or off at any time under Settings > About FORGE > Privacy; when they are switched off, FORGE deletes the data already sent at the service (`DELETE /api/v1/report/<installId>`).
 
@@ -10,7 +10,7 @@ The folder is not part of the FORGE pnpm workspace. It has its own `package.json
 
 Stack: Next.js (App Router), TypeScript strict, `pg`, `zod`. Plain CSS without a framework.
 
-The page uses the design of the desktop app: the color, font and radius tokens from `apps/desktop/src/styles.css` are CSS variables in `src/app/globals.css` (dark theme only, the app has no light theme). The building blocks in `src/components/blocks.tsx` mirror the tiles of the daily report and the cards of the settings. The charts in `src/components/charts.tsx` follow those of the daily report (`apps/desktop/src/components/report/usage-charts.tsx`): columns and bars in HTML without a chart library, tooltip on hover and focus, table as an alternative. If the app changes its tokens, update them here. The font is Geist (package `geist`, SIL Open Font License, included via `next/font`), icons come from `lucide-react`. Logo and favicon are copies of `apps/desktop/src/assets/forge-logo.png` and `logo.svg`.
+The page uses the design of the desktop app: the color, font and radius tokens from `apps/desktop/src/styles.css` are CSS variables in `src/app/globals.css` (dark theme only, the app has no light theme). The page layout (top bar, footer, start page, statistics) is in `src/app/pages.css`, the building blocks in `src/components/blocks.tsx`. The charts in `src/components/charts.tsx` follow those of the daily report (`apps/desktop/src/components/report/usage-charts.tsx`): columns and bars in HTML without a chart library, tooltip on hover and focus. If the app changes its tokens, update them here. The font is Geist (package `geist`, SIL Open Font License, included via `next/font`), icons come from `lucide-react`. The logo mark and favicon are copies of `apps/desktop/src/assets/logo-mark.svg` and `logo.svg`.
 
 ## What is stored
 

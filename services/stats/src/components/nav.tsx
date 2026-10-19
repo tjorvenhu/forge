@@ -1,29 +1,30 @@
 "use client";
 
 import { usePathname } from "next/navigation";
-import { DOCS_URL, REPO_URL } from "@/lib/constants";
+import { ArrowUpRight, BarChart3, GitFork } from "lucide-react";
+import { REPO_URL } from "@/lib/constants";
 import { useI18n } from "./locale";
 
-/** Page links of top bar and footer; the current page is marked. */
-export function PageLinks({ className }: { className: string }) {
-  const { locale, t } = useI18n();
+/** Links of the top bar: live stats (marked while open) and the repository. */
+export function TopLinks() {
+  const { t } = useI18n();
   const path = usePathname();
   const h = t.header;
-  const links = [
-    { href: "/#features", label: h.features },
-    { href: "/stats", label: h.stats, current: path === "/stats" },
-    { href: DOCS_URL[locale], label: h.docs },
-    { href: REPO_URL, label: "GitHub" },
-  ];
   return (
-    <ul className={className}>
-      {links.map((l) => (
-        <li key={l.href}>
-          <a href={l.href} aria-current={l.current ? "page" : undefined}>
-            {l.label}
-          </a>
-        </li>
-      ))}
+    <ul className="nav-links">
+      <li>
+        <a href="/stats" aria-current={path === "/stats" ? "page" : undefined} aria-label={h.liveStats}>
+          <BarChart3 aria-hidden />
+          <span className="nav-label">{h.liveStats}</span>
+          <ArrowUpRight aria-hidden className="nav-arrow" />
+        </a>
+      </li>
+      <li>
+        <a href={REPO_URL} aria-label={h.github}>
+          <GitFork aria-hidden />
+          <span className="nav-label">{h.github}</span>
+        </a>
+      </li>
     </ul>
   );
 }

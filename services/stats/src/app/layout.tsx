@@ -2,16 +2,16 @@ import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
 import { GeistSans } from "geist/font/sans";
 import { Download } from "lucide-react";
-import logo from "@/assets/forge-logo.png";
+import mark from "@/assets/logo-mark.svg";
 import { donations, type Donations } from "@/lib/donations";
 import { SupportButton } from "@/components/donations";
-import { PageLinks } from "@/components/nav";
-import { DOWNLOAD_URL } from "@/lib/constants";
+import { TopLinks } from "@/components/nav";
+import { DOWNLOAD_URL, REPO_URL } from "@/lib/constants";
 import { LanguageSwitch, LocaleProvider } from "@/components/locale";
 import { getLocale } from "@/lib/locale-server";
 import { i18n } from "@/lib/messages";
 import "./globals.css";
-import "./landing.css";
+import "./pages.css";
 
 const IMPRINT_URL = "https://vanturis.de/impressum";
 const PRIVACY_URL = "https://vanturis.de/datenschutz";
@@ -37,6 +37,15 @@ async function donated(): Promise<Donations | null> {
   }
 }
 
+function Logo({ label }: { label: string }) {
+  return (
+    <a href="/" className="logo" aria-label={label}>
+      <img src={mark.src} width={30} height={22} alt="" />
+      <span>FORGE</span>
+    </a>
+  );
+}
+
 export default async function RootLayout({ children }: { children: ReactNode }) {
   const [given, locale] = await Promise.all([donated(), getLocale()]);
   const { t } = i18n(locale);
@@ -44,51 +53,39 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
     <html lang={locale} className={GeistSans.variable}>
       <body>
         <LocaleProvider locale={locale}>
-          {/* Without JavaScript nothing scrolls into view: show charts and bars as they are. */}
+          {/* Without JavaScript nothing scrolls into view: show the charts as they are. */}
           <noscript>
-            <style>{".reveal,.reveal .feature{opacity:1;transform:none}.reveal .col-bar,.reveal .hbar-fill{animation:none}"}</style>
+            <style>{".reveal{opacity:1;transform:none}.reveal .col-bar,.reveal .hbar-fill{animation:none}"}</style>
           </noscript>
           <header className="topbar">
             <div className="container topbar-inner">
-              <a href="/" className="logo-link" aria-label={t.header.home}>
-                {/* Shown at 28px, the source is 945 x 223 and stays sharp. */}
-                <img src={logo.src} width={119} height={28} alt="" className="logo" />
-              </a>
+              <Logo label={t.header.home} />
               <nav className="topbar-nav" aria-label={t.header.nav}>
-                <PageLinks className="nav-links" />
-              </nav>
-              <div className="topbar-actions" role="group" aria-label={t.header.links}>
-                <LanguageSwitch />
-                <SupportButton donations={given} />
+                <TopLinks />
                 <a className="btn btn-primary" href={DOWNLOAD_URL} aria-label={t.header.download}>
                   <Download aria-hidden />
-                  <span className="btn-label-wide">{t.header.download}</span>
+                  <span className="nav-label">{t.header.download}</span>
                 </a>
-              </div>
+              </nav>
             </div>
           </header>
           {children}
           <footer className="footer">
-            <div className="container">
-              <div className="footer-top">
-                <a href="/" className="logo-link" aria-label={t.header.home}>
-                  <img src={logo.src} width={102} height={24} alt="" className="logo" />
-                </a>
-                <nav aria-label={t.header.nav}>
-                  <PageLinks className="footer-nav" />
-                </nav>
-                <span className="footer-tagline">
-                  <span className="footer-dot" aria-hidden />
-                  {t.footer.tagline}
-                </span>
-              </div>
-            </div>
             <div className="container footer-inner">
-              <span>{t.footer.license}</span>
-              <span className="footer-links">
-                <a href={IMPRINT_URL}>{t.footer.imprint}</a>
-                <a href={PRIVACY_URL}>{t.footer.privacy}</a>
-              </span>
+              <div className="footer-brand">
+                <Logo label={t.header.home} />
+                <p>{t.footer.license}</p>
+              </div>
+              <div className="footer-side">
+                <nav className="footer-links" aria-label={t.header.nav}>
+                  <a href="/stats">{t.header.liveStats}</a>
+                  <a href={REPO_URL}>{t.header.github}</a>
+                  <SupportButton donations={given} />
+                  <a href={IMPRINT_URL}>{t.footer.imprint}</a>
+                  <a href={PRIVACY_URL}>{t.footer.privacy}</a>
+                </nav>
+                <LanguageSwitch />
+              </div>
             </div>
           </footer>
         </LocaleProvider>
