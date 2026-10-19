@@ -1,15 +1,15 @@
 import type { Metadata } from "next";
 import { getTotals } from "@/lib/db";
 import { StatsPage, type PageState } from "@/components/stats-page";
-import { getLocale } from "@/lib/locale-server";
-import { i18n } from "@/lib/messages";
+import { getRoute } from "@/lib/locale-server";
+import { jsonLdScript, pageMetadata, statsJsonLd } from "@/lib/seo";
 
 // Rendered per request; getTotals() caches the sums for five minutes.
 export const dynamic = "force-dynamic";
 
 export async function generateMetadata(): Promise<Metadata> {
-  const { t } = i18n(await getLocale());
-  return { title: t.statsMeta.title, description: t.statsMeta.description };
+  const { locale, base } = await getRoute();
+  return pageMetadata("/stats", locale, base);
 }
 
 export default async function Stats() {
@@ -20,5 +20,11 @@ export default async function Stats() {
     console.error("totals failed:", err instanceof Error ? err.message : err);
     state = { kind: "error" };
   }
-  return <StatsPage state={state} locale={await getLocale()} />;
+  const { locale, base } = await getRoute();
+  return (
+    <>
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLdScript(statsJsonLd(locale, base)) }} />
+      <StatsPage state={state} locale={locale} />
+    </>
+  );
 }

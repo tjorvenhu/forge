@@ -49,6 +49,7 @@ export function tiles(t: Totals, locale: Locale): TileDef[] {
 const ZERO: Totals = {
   installs: 0,
   activeInstalls30d: 0,
+  newInstalls30d: 0,
   onlineInstalls: 0,
   counters: Object.fromEntries(COUNTER_KEYS.map((k) => [k, 0])) as Counters,
   updatedAt: new Date(0).toISOString(),
@@ -56,6 +57,7 @@ const ZERO: Totals = {
   versions: [],
   plans: [],
   platforms: [],
+  languages: [],
   history: [],
 };
 

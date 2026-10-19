@@ -42,6 +42,7 @@ function setup(status = 204) {
     enabled: () => enabled,
     totals: () => TOTALS,
     plan: async () => "max_5x",
+    language: () => "de",
     log: () => {},
     file,
     active: true,
@@ -70,9 +71,9 @@ describe("usage statistics", () => {
     expect(t.requests[0]).toEqual({
       url: `${USAGE_STATS_URL}/api/v1/report`,
       method: "POST",
-      body: { schema: 1, installId: id, appVersion: "0.1.80", os: expect.any(String), counters: COUNTERS, models: TOTALS.models, plan: "max_5x" },
+      body: { schema: 1, installId: id, appVersion: "0.1.80", os: expect.any(String), counters: COUNTERS, models: TOTALS.models, plan: "max_5x", language: "de" },
     });
-    expect(Object.keys(t.requests[0]!.body!).sort()).toEqual(["appVersion", "counters", "installId", "models", "os", "plan", "schema"]);
+    expect(Object.keys(t.requests[0]!.body!).sort()).toEqual(["appVersion", "counters", "installId", "language", "models", "os", "plan", "schema"]);
     t.advance(4 * 60_000);
     expect(await t.svc.tick()).toBe("idle");
     t.advance(60_000);

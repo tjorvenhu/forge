@@ -27,6 +27,8 @@ export interface UsageStatsDeps {
   totals(): UsageTotals;
   /** Claude plan of the account, e.g. "max_20x"; null when unknown */
   plan?(): Promise<string | null>;
+  /** language of the interface (settings.language) */
+  language?(): string;
   log(message: string): void;
   /** file with the installation ID */
   file: string;
@@ -39,7 +41,7 @@ export interface UsageStatsDeps {
 
 /**
  * Sends anonymous totals of this installation to the statistics service every 5 minutes: a random ID, the
- * version, Windows and counters (tokens, projects, agents ...), never contents, names or paths.
+ * version, Windows, the interface language, the Claude plan and counters (tokens, projects, agents ...), never contents, names or paths.
  * Switched off, it asks the service once to delete the installation's row.
  */
 export class UsageStatsService {
@@ -96,6 +98,7 @@ export class UsageStatsService {
             .slice(0, MAX_MODELS),
         ),
         plan: (await this.d.plan?.()) ?? null,
+        language: this.d.language?.() ?? null,
       });
       this.write({ ...state, lastSentAt: new Date(now).toISOString() });
       return "sent";

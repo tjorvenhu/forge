@@ -1,20 +1,26 @@
 "use client";
 
 import { createContext, useContext, useId, type ReactNode } from "react";
+import { usePathname } from "next/navigation";
 import { useFormStatus } from "react-dom";
 import { setLocale } from "@/app/actions";
-import { DEFAULT_LOCALE, LOCALES, type Locale } from "@/lib/i18n";
+import { DEFAULT_LOCALE, LOCALES, type Locale, type LocaleBase } from "@/lib/i18n";
 import { i18n, LANGUAGE_NAMES } from "@/lib/messages";
 
-const LocaleContext = createContext<Locale>(DEFAULT_LOCALE);
+const LocaleContext = createContext<{ locale: Locale; base: LocaleBase }>({ locale: DEFAULT_LOCALE, base: "" });
 
-/** Set once in the root layout from the cookie (or Accept-Language), so client components render the language the server did. */
-export function LocaleProvider({ locale, children }: { locale: Locale; children: ReactNode }) {
-  return <LocaleContext.Provider value={locale}>{children}</LocaleContext.Provider>;
+/** Set once in the root layout from the path, cookie or Accept-Language, so client components render the language the server did. */
+export function LocaleProvider({ locale, base, children }: { locale: Locale; base: LocaleBase; children: ReactNode }) {
+  return <LocaleContext.Provider value={{ locale, base }}>{children}</LocaleContext.Provider>;
 }
 
 export function useI18n() {
-  return i18n(useContext(LocaleContext));
+  return i18n(useContext(LocaleContext).locale);
+}
+
+/** "/de" or "/en" on pages with the language in the path, "" otherwise; links stay in that language. */
+export function useLocaleBase(): LocaleBase {
+  return useContext(LocaleContext).base;
 }
 
 /**
@@ -23,8 +29,12 @@ export function useI18n() {
  */
 export function LanguageSwitch() {
   const { locale, t } = useI18n();
+  const base = useLocaleBase();
+  // On /de and /en pages the switch goes to the same page in the other language.
+  const page = usePathname().endsWith("/stats") ? "/stats" : "/";
   return (
     <form action={setLocale} className="lang-switch" role="group" aria-label={t.language.label}>
+      {base && <input type="hidden" name="page" value={page} />}
       {LOCALES.map((l) => (
         <LanguageButton key={l} locale={l} current={locale} />
       ))}

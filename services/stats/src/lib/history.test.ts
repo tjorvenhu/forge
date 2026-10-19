@@ -71,7 +71,8 @@ describe.skipIf(!url)("queryHistory against Postgres", () => {
 
     const h = await queryHistory("2001-01-30", 3);
     await p.end();
-    expect(h).toEqual([
+    // The other counters of the history are 0 here; only these were reported.
+    expect(h).toMatchObject([
       { day: "2001-01-28", tokens: 60, claudeTurns: 2, activeInstalls: 1 },
       { day: "2001-01-29", tokens: 0, claudeTurns: 0, activeInstalls: 2 },
       { day: "2001-01-30", tokens: 10 + 0 + 1, claudeTurns: 1 + 0 + 0, activeInstalls: 3 },

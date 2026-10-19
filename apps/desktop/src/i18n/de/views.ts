@@ -242,7 +242,7 @@ export const views = {
     privacyTitle: "Datenschutz",
     usageStatsLabel: "Anonyme Nutzungsstatistik",
     usageStatsText:
-      "Sie ist aus, solange du sie nicht einschaltest. Wenn sie an ist, gehen alle 5 Minuten Summen an den Statistik-Dienst von FORGE: eine zufällige Kennung, FORGE- und Windows-Version, die Art des Claude-Abos, Tokens je Claude-Modell, geschätzte API-Kosten, Claude-Arbeitszeit, Durchläufe, Sessions, angelegte Projekte, Agenten und Telefonate. Keine Inhalte, Namen oder Pfade. Ausschalten löscht die gesendeten Daten beim Dienst. Wenn du magst, schalte sie bitte ein: Die öffentlichen Gesamtzahlen zeigen, wie FORGE genutzt wird, und helfen bei der Entscheidung, woran als Nächstes gearbeitet wird.",
+      "Sie ist aus, solange du sie nicht einschaltest. Wenn sie an ist, gehen alle 5 Minuten Summen an den Statistik-Dienst von FORGE: eine zufällige Kennung, FORGE- und Windows-Version, die Sprache der Oberfläche, die Art des Claude-Abos, Tokens je Claude-Modell, geschätzte API-Kosten, Claude-Arbeitszeit, Durchläufe, Sessions, angelegte Projekte, Agenten und Telefonate. Keine Inhalte, Namen oder Pfade. Ausschalten löscht die gesendeten Daten beim Dienst. Wenn du magst, schalte sie bitte ein: Die öffentlichen Gesamtzahlen zeigen, wie FORGE genutzt wird, und helfen bei der Entscheidung, woran als Nächstes gearbeitet wird.",
     usageStatsLink: "Gesamtzahlen ansehen",
     privacyLocal: "Projektdaten, Chatverläufe und Einstellungen bleiben auf deinem Rechner. Außer der Nutzungsstatistik oben sendet FORGE nichts über dich.",
     privacyPhone: "Ist das Telefon eingeschaltet, geht Gesprächsaudio an Google (Gemini) oder OpenAI, je nach Einstellung unter Telefon.",

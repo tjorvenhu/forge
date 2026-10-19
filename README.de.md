@@ -125,7 +125,7 @@ Projekte, Chatverläufe und Einstellungen bleiben auf deinem Rechner (`%APPDATA%
 - **Anonyme Nutzungsstatistik (standardmäßig aus):** FORGE fragt beim ersten Start einmal danach und bittet
   darum, sie einzuschalten. Die Gesamtzahlen zeigen uns, wie FORGE genutzt wird. Ohne Antwort ist sie aus.
   Eingeschaltet gehen alle 5 Minuten Summen an [forge.vanturis.de](https://forge.vanturis.de): eine
-  zufällige Kennung der Installation, FORGE- und Windows-Version, die Art des Claude-Abos (z. B. Pro oder Max 5x)
+  zufällige Kennung der Installation, FORGE- und Windows-Version, die Sprache der Oberfläche, die Art des Claude-Abos (z. B. Pro oder Max 5x)
   und Zählerstände wie Tokens je Claude-Modell, geschätzte API-Kosten, Sessions, Projekte und Agenten. Keine
   Inhalte, keine Projektnamen, keine Pfade, keine IP-Adressen. Ein- und ausschalten unter Einstellungen > Über
   FORGE > Datenschutz; beim Ausschalten löscht FORGE die gesendeten Daten beim Dienst.

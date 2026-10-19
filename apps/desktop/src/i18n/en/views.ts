@@ -243,7 +243,7 @@ export const views: typeof De = {
     privacyTitle: "Privacy",
     usageStatsLabel: "Anonymous usage statistics",
     usageStatsText:
-      "Off unless you turn it on. When on, totals are sent to the FORGE statistics service every 5 minutes: a random ID, FORGE and Windows version, the type of Claude subscription, tokens per Claude model, estimated API costs, Claude working time, runs, sessions, created projects, agents, and calls. No content, names, or paths. Turning it off deletes the data already sent to the service. If you like, please turn it on: the public totals show how FORGE is used and help decide what to work on next.",
+      "Off unless you turn it on. When on, totals are sent to the FORGE statistics service every 5 minutes: a random ID, FORGE and Windows version, the interface language, the type of Claude subscription, tokens per Claude model, estimated API costs, Claude working time, runs, sessions, created projects, agents, and calls. No content, names, or paths. Turning it off deletes the data already sent to the service. If you like, please turn it on: the public totals show how FORGE is used and help decide what to work on next.",
     usageStatsLink: "View totals",
     privacyLocal: "Project data, chat transcripts, and settings stay on your computer. Apart from the usage statistics above, FORGE sends nothing about you.",
     privacyPhone: "If the phone is turned on, call audio goes to Google (Gemini) or OpenAI, depending on the setting under Phone.",

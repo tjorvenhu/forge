@@ -44,6 +44,8 @@ export const MODEL_LIMITS = { tokens: 4e12, costUsdCents: 1e10 } as const;
 export const MAX_BODY_BYTES = 4096;
 
 export const PLAN_PATTERN = /^[a-z0-9_]{1,24}$/;
+/** Language of the FORGE interface, "de" or "en" today. */
+export const LANGUAGE_PATTERN = /^[a-z]{2}$/;
 
 const counterShape = Object.fromEntries(
   COUNTER_KEYS.map((k) => [k, z.number().int().min(0).max(COUNTER_LIMITS[k]).default(0)]),
@@ -74,6 +76,8 @@ export const reportSchema = z.object({
   models: modelsSchema,
   // Claude plan of the account ("max_20x", "pro" ...); null without a claude.ai login or from older app versions.
   plan: z.string().regex(PLAN_PATTERN).nullable().default(null),
+  // Language of the FORGE interface; null from older app versions.
+  language: z.string().regex(LANGUAGE_PATTERN).nullable().default(null),
 });
 
 export type Report = z.infer<typeof reportSchema>;
