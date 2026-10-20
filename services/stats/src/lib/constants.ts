@@ -8,4 +8,9 @@ export const FEEDBACK_URL = "https://github.com/vanturis/forge/issues/new";
 export const REPO_URL = "https://github.com/vanturis/forge";
 /** FORGE Setup, the online installer; the release "installer" always holds the current one. */
 export const DOWNLOAD_URL = "https://github.com/vanturis/forge/releases/download/installer/FORGE-Setup.exe";
-export const DOCS_URL = { en: `${REPO_URL}#readme`, de: `${REPO_URL}/blob/main/README.de.md` } as const;
+/** The download page: FORGE-Setup.exe on Windows, the install command on macOS and Linux. */
+export const DOWNLOAD_PAGE = "/download";
+/** The installer of macOS and Linux (scripts/install.sh); /install.sh here forwards to it. */
+export const INSTALL_SCRIPT_URL = "https://raw.githubusercontent.com/vanturis/forge/main/scripts/install.sh";
+export const INSTALL_COMMAND = "curl -fsSL https://forge.vanturis.de/install.sh | sh";
+export const DOCS_URL ={ en: `${REPO_URL}#readme`, de: `${REPO_URL}/blob/main/README.de.md` } as const;

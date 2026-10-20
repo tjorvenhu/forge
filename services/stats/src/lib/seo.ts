@@ -3,7 +3,7 @@ import ogDe from "@/assets/og-de.png";
 import ogEn from "@/assets/og-en.png";
 import shotDe from "@/assets/app-de-1600.webp";
 import shotEn from "@/assets/app-en-1600.webp";
-import { DOWNLOAD_URL, REPO_URL } from "./constants";
+import { DOWNLOAD_PAGE, REPO_URL } from "./constants";
 import { LOCALES, localePath, type Locale, type LocaleBase } from "./i18n";
 import { i18n } from "./messages";
 
@@ -110,8 +110,8 @@ export function homeJsonLd(locale: Locale, base: LocaleBase): JsonLd {
         applicationCategory: "DeveloperApplication",
         applicationSubCategory: "AI coding assistant",
         operatingSystem: "Windows 10, Windows 11",
-        downloadUrl: DOWNLOAD_URL,
-        installUrl: DOWNLOAD_URL,
+        downloadUrl: absolute(DOWNLOAD_PAGE),
+        installUrl: absolute(DOWNLOAD_PAGE),
         screenshot: absolute(SCREENSHOTS[locale].src),
         image: absolute(OG_IMAGES[locale].src),
         license: "https://www.gnu.org/licenses/agpl-3.0.html",

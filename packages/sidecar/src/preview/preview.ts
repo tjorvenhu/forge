@@ -196,7 +196,8 @@ export class PreviewService {
       try {
         browser = await launch(exe, profile);
       } catch (e) {
-        if (!profile || attempt >= LAUNCH_ATTEMPTS) throw e;
+        // A throwaway profile gets one more try: the very first start of a browser on a machine can miss the time limit.
+        if (attempt >= (profile ? LAUNCH_ATTEMPTS : 2)) throw e;
         await new Promise((r) => setTimeout(r, LAUNCH_RETRY_MS));
       }
     }

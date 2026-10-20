@@ -13,7 +13,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/vanturis/forge/releases/download/installer/FORGE-Setup.exe"><img src="https://img.shields.io/badge/Download-for%20Windows-f97316?style=for-the-badge&logo=github&logoColor=white" alt="Download for Windows" height="42"></a>
+  <a href="https://forge.vanturis.de/download"><img src="https://img.shields.io/badge/Download-Windows%20%7C%20macOS%20%7C%20Linux-f97316?style=for-the-badge" alt="Download for Windows, macOS and Linux" height="42"></a>
   &nbsp;
   <a href="https://buy.stripe.com/9B64gBc4e5j80vg1WxbV600"><img src="https://img.shields.io/badge/Support-FORGE-e11d48?style=for-the-badge&logo=githubsponsors&logoColor=white" alt="Support FORGE" height="42"></a>
 </p>
@@ -91,9 +91,13 @@
 
 ## Installation
 
+**[forge.vanturis.de/download](https://forge.vanturis.de/download)** picks the right installer for your system.
+On Windows, FORGE Setup downloads right away; on macOS and Linux the page shows the install command. Both
+installers stay the same for every version: they fetch the newest FORGE from GitHub and check it.
+
 ### Windows
 
-1. Download **[FORGE-Setup.exe](https://github.com/vanturis/forge/releases/download/installer/FORGE-Setup.exe)** (about 5 MB).
+1. Download **[FORGE-Setup.exe](https://forge.vanturis.de/download)** (about 5 MB).
 2. Run it. FORGE Setup looks up the newest version on GitHub, downloads it (about 110 MB), checks its signature and
    installs it. While FORGE is new, Windows may show a SmartScreen warning: click **More info** and then
    **Run anyway**.
@@ -106,17 +110,28 @@ it on first start with the official installer from Anthropic.
 
 ### macOS
 
-1. Open the [releases](https://github.com/vanturis/forge/releases) and download from the newest release that
-   has it: `FORGE_<Version>_darwin-arm64.dmg` for Apple silicon (M1 or newer) or `FORGE_<Version>_darwin-x64.dmg`
-   for Intel Macs.
-2. Open the dmg and drag FORGE into **Applications**. Start it from there: FORGE can only update itself in that
-   folder.
-3. FORGE is not notarized by Apple (there is no Apple developer account behind it), so macOS blocks the first start. Right-click FORGE in
-   Applications, choose **Open** and confirm. On macOS 15 and newer: start FORGE once, then open **System
-   Settings > Privacy & Security** and click **Open Anyway**. Alternatively, in Terminal:
-   `xattr -dr com.apple.quarantine /Applications/FORGE.app`. This is only needed once; updates do not ask again.
-4. macOS asks for permissions when a feature first needs them: **Screen Recording** for the screenshot tool and
+1. Open Terminal and run:
+
+   ```sh
+   curl -fsSL https://forge.vanturis.de/install.sh | sh
+   ```
+
+   The script ([scripts/install.sh](scripts/install.sh)) picks the build for Apple silicon or Intel from the newest
+   release, checks its SHA-256 checksum, puts FORGE into **Applications** (or `~/Applications`) and starts it.
+   Installed this way, macOS does not block the first start.
+2. macOS asks for permissions when a feature first needs them: **Screen Recording** for the screenshot tool and
    **Microphone** for dictation. If you declined, allow FORGE later in System Settings > Privacy & Security.
+
+<details>
+<summary>Without Terminal: the dmg</summary>
+
+Download `FORGE_<Version>_darwin-arm64.dmg` (Apple silicon) or `FORGE_<Version>_darwin-x64.dmg` (Intel) from
+[forge.vanturis.de/download](https://forge.vanturis.de/download), open it and drag FORGE into **Applications**.
+Start it from there: FORGE can only update itself in that folder. FORGE is not notarized by Apple (there is no
+Apple developer account behind it), so macOS blocks the first start of a downloaded dmg: start FORGE once, then
+open **System Settings > Privacy & Security** and click **Open Anyway**, or run
+`xattr -dr com.apple.quarantine /Applications/FORGE.app`. This is only needed once; updates do not ask again.
+</details>
 
 **Requirements:** macOS 13.5 or newer, a Claude subscription as above, and `git` and `python3`. Both come with
 the Xcode Command Line Tools (`xcode-select --install`; macOS offers them on the first call of `git`) or from
@@ -124,10 +139,20 @@ Homebrew. FORGE includes Node.js and the GitHub CLI.
 
 ### Linux
 
-From the newest release on the [releases](https://github.com/vanturis/forge/releases) page that has them:
+Run in a terminal:
+
+```sh
+curl -fsSL https://forge.vanturis.de/install.sh | sh
+```
+
+The script downloads the AppImage of the newest release, checks its SHA-256 checksum and installs it as
+`~/.local/bin/forge` with an entry in the application menu. FORGE updates the AppImage itself. AppImages need
+FUSE 2 (`sudo apt install libfuse2t64`, on older Ubuntu `libfuse2`); without it FORGE still starts, more slowly.
+
+By hand, from [forge.vanturis.de/download](https://forge.vanturis.de/download):
 
 - **AppImage** (any distribution): download `FORGE_<Version>_linux-x64.AppImage`, then
-  `chmod +x FORGE_<Version>_linux-x64.AppImage` and start it. FORGE updates the AppImage itself.
+  `chmod +x FORGE_<Version>_linux-x64.AppImage` and start it.
 - **deb** (Debian, Ubuntu and derivatives): `sudo apt install ./FORGE_<Version>_linux-x64.deb`. FORGE reports new
   versions; install them the same way.
 

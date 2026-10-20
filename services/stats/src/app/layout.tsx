@@ -5,7 +5,7 @@ import logo from "@/assets/forge-wordmark.png";
 import { donations, type Donations } from "@/lib/donations";
 import { SupportButton } from "@/components/donations";
 import { TopLinks } from "@/components/nav";
-import { DOWNLOAD_URL, REPO_URL } from "@/lib/constants";
+import { DOWNLOAD_PAGE, REPO_URL } from "@/lib/constants";
 import { LanguageSwitch, LocaleProvider } from "@/components/locale";
 import { localePath, type LocaleBase } from "@/lib/i18n";
 import { getLocale, getRoute } from "@/lib/locale-server";
@@ -64,7 +64,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
               <nav className="topbar-nav" aria-label={t.header.nav}>
                 <TopLinks />
                 <SupportButton donations={given} />
-                <a className="btn btn-primary" href={DOWNLOAD_URL} aria-label={t.header.download}>
+                <a className="btn btn-primary" href={DOWNLOAD_PAGE} aria-label={t.header.download}>
                   <Download aria-hidden />
                   <span className="nav-label">{t.header.download}</span>
                 </a>

@@ -8,7 +8,7 @@ import en800 from "@/assets/app-en-800.webp";
 import en1200 from "@/assets/app-en-1200.webp";
 import en1600 from "@/assets/app-en-1600.webp";
 import en2400 from "@/assets/app-en-2400.webp";
-import { DOWNLOAD_URL } from "@/lib/constants";
+import { DOWNLOAD_PAGE } from "@/lib/constants";
 import { localePath, type Locale, type LocaleBase } from "@/lib/i18n";
 import { i18n, type Messages } from "@/lib/messages";
 import { Feature } from "./blocks";
@@ -49,7 +49,7 @@ export function Landing({ locale, base }: { locale: Locale; base: LocaleBase }) 
             </h1>
             <p className="hero-lead">{l.lead}</p>
             <div className="hero-actions">
-              <a className="btn btn-primary btn-lg" href={DOWNLOAD_URL}>
+              <a className="btn btn-primary btn-lg" href={DOWNLOAD_PAGE}>
                 <Download aria-hidden />
                 {l.download}
               </a>
