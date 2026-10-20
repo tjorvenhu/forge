@@ -77,7 +77,7 @@ describe("Claude setup", () => {
     const setup = new ClaudeSetupService(() => {}, () => ({ claudePath: null, stripApiKey: false }));
     setup.login();
     const program = children[0]!.env.BROWSER!;
-    expect(program).toMatch(/open\.cmd$/);
+    expect(program).toMatch(process.platform === "win32" ? /open\.cmd$/ : /open\.sh$/);
     expect(readFileSync(program, "utf8")).toContain("echo %*");
     // what the CLI does: BROWSER gets the page with the local callback, the output names the code page
     writeFileSync(path.join(path.dirname(program), "url.txt"), `"${AUTO}"\r\n`);

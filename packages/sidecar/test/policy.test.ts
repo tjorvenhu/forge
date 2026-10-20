@@ -148,7 +148,8 @@ describe("guard: shell rules (all profiles)", () => {
     [`rm -rf ${home}`, "rm-root"],
     [`rm -rf "${fwd.toUpperCase()}/"`, "rm-root"],
     [`rm -rf ${gitBash}`, "rm-root"],
-    [`rm -rf /mnt${gitBash}`, "rm-root"],
+    // WSL path of the Windows home; elsewhere /mnt/home/... is just some folder.
+    ...(process.platform === "win32" ? [[`rm -rf /mnt${gitBash}`, "rm-root"]] : []),
     ["rm -rf /c/Users/someone", "rm-root"],
     ["rm -rf $USERPROFILE", "rm-root"],
     ["rm -rf ${USERPROFILE}/*", "rm-root"],

@@ -1278,6 +1278,7 @@ name = "forge-desktop"
 version = "0.1.0"
 dependencies = [
  "arboard",
+ "image",
  "libc",
  "objc2",
  "objc2-app-kit",
@@ -1293,6 +1294,7 @@ dependencies = [
  "tauri-plugin-opener",
  "windows-sys 0.61.2",
  "xcap",
+ "zbus",
 ]
 
 [[package]]

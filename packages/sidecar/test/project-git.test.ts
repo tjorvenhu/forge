@@ -37,7 +37,8 @@ describe("ProjectManager", () => {
     expect(p.technologies).toEqual(expect.arrayContaining(["Next.js", "React", "TypeScript"]));
     expect(p.exists).toBe(true);
     await expectCode(pm.import(dir + path.sep), "DUPLICATE_PROJECT");
-    await expectCode(pm.import(dir.toUpperCase()), "DUPLICATE_PROJECT");
+    // Windows and macOS do not tell the case of a path apart; on Linux it is another folder.
+    if (process.platform !== "linux") await expectCode(pm.import(dir.toUpperCase()), "DUPLICATE_PROJECT");
   });
 
   it("persists across a new Db instance (app restart)", async () => {

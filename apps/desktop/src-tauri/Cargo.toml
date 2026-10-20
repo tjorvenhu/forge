@@ -33,8 +33,7 @@ windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Graphic
 libc = "0.2"
 
 [target.'cfg(not(windows))'.dependencies]
-# Screenshots outside Windows: capture (CoreGraphics, X11, Wayland portal), the image clipboard and the key.
-xcap = { version = "0.9", default-features = false }
+# Screenshots outside Windows: the image clipboard and the key.
 arboard = { version = "3.7", default-features = false, features = ["image-data"] }
 tauri-plugin-global-shortcut = "2.4"
 
@@ -42,6 +41,14 @@ tauri-plugin-global-shortcut = "2.4"
 objc2 = "0.6"
 objc2-app-kit = { version = "0.3", features = ["NSEvent", "NSWindow", "NSResponder", "NSApplication", "NSRunningApplication"] }
 objc2-foundation = "0.3"
+# Screen capture with CoreGraphics.
+xcap = { version = "0.9", default-features = false }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+# Screen capture through the desktop portal (X11 and Wayland); xcap needs newer PipeWire headers than
+# Ubuntu 22.04 has, which the AppImage is built on for older glibc.
+zbus = "5"
+image = { version = "0.25", default-features = false, features = ["png"] }
 
 [profile.release]
 # No LTO: with cached dependencies the release build takes 40 s instead of 1.5 min (thin LTO),

@@ -38,12 +38,10 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          # Tauri (WebKitGTK 4.1, tray), then xcap for screenshots (X11, Wayland, PipeWire).
+          # Tauri (WebKitGTK 4.1, tray). Screenshots go through the desktop portal over D-Bus, no extra libraries.
           sudo apt-get install -y --no-install-recommends \
             libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev patchelf \
-            build-essential curl wget file libssl-dev libxdo-dev \
-            libxcb1-dev libxrandr-dev libdbus-1-dev libpipewire-0.3-dev libwayland-dev libegl-dev \
-            libgbm-dev libdrm-dev clang libclang-dev pkg-config
+            build-essential curl wget file libssl-dev libxdo-dev pkg-config
 
       # Tests that commit set their own identity per repository; this covers the ones that do not.
       - name: Git identity

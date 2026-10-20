@@ -152,6 +152,7 @@ function shotLine(shots: Shot[], requested: { width: number; height: number }, f
 
 const take = async (page: PreviewPage, fullPage: boolean): Promise<Shot[]> => (fullPage ? page.fullPage() : [await page.screenshot()]);
 const asImages = (shots: Shot[]) => shots.map((s) => ({ data: s.data, mimeType: s.mimeType }));
+const noDevServer = (status: string) => new Error(status === "running" ? tr().core.preview.devServerNoUrl : tr().core.preview.noDevServer);
 
 /**
  * Headless Edge (or Chrome) per project for the preview tools. A browser stays open for the next
@@ -274,8 +275,14 @@ export class PreviewService {
   }
 
   /** Runs `fn` on the project's page; the browser stays for the next call. */
-  private withPage<T>(projectId: string, fn: (page: PreviewPage) => Promise<T>): Promise<T> {
+  private withPage<T>(projectId: string, fn: (page: PreviewPage) => Promise<T>, t?: PreviewTarget): Promise<T> {
     return this.exclusive(projectId, async () => {
+      // Nothing to show: say so before a browser starts (its first start can take many seconds). A missing
+      // browser is told first, it needs fixing either way.
+      if (t && !t.url?.trim() && !this.open.has(projectId) && (this.deps.findBrowser ?? defaultFindBrowser)()) {
+        const dev = await this.deps.devServer(projectId);
+        if (!dev.url) throw noDevServer(dev.status);
+      }
       try {
         const { page } = await this.instance(projectId);
         // The comparison tab may have been in front last.
@@ -298,9 +305,7 @@ export class PreviewService {
     const dev = await this.deps.devServer(projectId);
     if (dev.url) return previewUrl({ base: dev.url, path: t.path });
     if (open) return previewUrl({ base: open, path: t.path });
-    if (dev.status === "running")
-      throw new Error(tr().core.preview.devServerNoUrl);
-    throw new Error(tr().core.preview.noDevServer);
+    throw noDevServer(dev.status);
   }
 
   private async load(page: PreviewPage, projectId: string, t: PreviewTarget, keep: boolean): Promise<{ loaded: boolean; navigated: boolean }> {
@@ -333,7 +338,7 @@ export class PreviewService {
         shotLine(shots, page.viewport, t.fullPage === true),
       ];
       return { text: text.join("\n"), images: asImages(shots) };
-    });
+    }, t);
   }
 
   console(projectId: string, t: PreviewTarget & { reload?: boolean }): Promise<string> {
@@ -345,7 +350,7 @@ export class PreviewService {
         tr().core.preview.summary(logSummary(page.logs)),
         ...formatLogs(page.logs),
       ].join("\n");
-    });
+    }, t);
   }
 
   interact(projectId: string, t: PreviewTarget & { steps: PreviewStep[]; stepMs?: number; screenshot?: boolean; fullPage?: boolean }): Promise<ToolOutput> {
@@ -387,7 +392,7 @@ export class PreviewService {
       const shots = await take(page, t.fullPage === true);
       text.push(shotLine(shots, page.viewport, t.fullPage === true));
       return { text: text.join("\n"), images: asImages(shots) };
-    });
+    }, t);
   }
 
   /** Edge or Chrome is installed; without one the comparison stays quiet instead of failing. */

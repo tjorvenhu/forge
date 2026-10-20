@@ -33,6 +33,7 @@ const TAKEN: &str = "screenshot://taken";
 /// To the FORGE window used last: the capture failed (payload: the message).
 const FAILED: &str = "screenshot://error";
 /// More are not worth hovering over; the list is in z-order, the front ones come first.
+#[cfg_attr(target_os = "linux", allow(dead_code))]
 const MAX_WINDOWS: usize = 300;
 /// How long the overlay may take to draw a capture before it is reloaded once.
 const READY_WAIT: std::time::Duration = std::time::Duration::from_secs(3);
@@ -558,9 +559,30 @@ mod grab {
     }
 }
 
+/// The monitor under the cursor: outside Windows only that one is captured.
 #[cfg(not(windows))]
+fn cursor_monitor(app: &AppHandle) -> Result<tauri::Monitor, String> {
+    app.cursor_position()
+        .ok()
+        .and_then(|c| app.monitor_from_point(c.x, c.y).ok().flatten())
+        .or_else(|| app.primary_monitor().ok().flatten())
+        .filter(|m| m.size().width > 0 && m.size().height > 0)
+        .ok_or_else(|| tr!("No screen found", "Kein Bildschirm gefunden"))
+}
+
+/// RGBA from an image library to the BGRA of a frame, opaque.
+#[cfg(not(windows))]
+fn rgba_to_frame(mut pixels: Vec<u8>) -> Vec<u8> {
+    for p in pixels.chunks_exact_mut(4) {
+        p.swap(0, 2);
+        p[3] = 255;
+    }
+    pixels
+}
+
+#[cfg(target_os = "macos")]
 mod grab {
-    use super::{overlaps, Rect, MAX_WINDOWS};
+    use super::{cursor_monitor, overlaps, rgba_to_frame, Rect, MAX_WINDOWS};
     use crate::i18n::tr;
     use tauri::AppHandle;
     use xcap::image::imageops::{self, FilterType};
@@ -571,64 +593,40 @@ mod grab {
         pub width: u32,
         pub height: u32,
         pub pixels: Vec<u8>,
-        /// top-left corner of the captured monitor in xcap's units (points on macOS, pixels on X11)
+        /// top-left corner of the captured monitor in points, the unit of CoreGraphics
         units: (i32, i32),
-        /// physical pixels per xcap unit
+        /// physical pixels per point
         scale: f64,
     }
 
     fn failed(e: impl std::fmt::Display) -> String {
-        if cfg!(target_os = "macos") {
-            tr!(
-                "Could not read the screen ({e}). Allow FORGE under System Settings > Privacy & Security > Screen Recording and restart FORGE.",
-                "Bildschirm nicht lesbar ({e}). Erlaube FORGE unter Systemeinstellungen > Datenschutz und Sicherheit > Bildschirmaufnahme und starte FORGE neu."
-            )
-        } else {
-            tr!("Could not read the screen: {e}", "Bildschirm nicht lesbar: {e}")
-        }
+        tr!(
+            "Could not read the screen ({e}). Allow FORGE under System Settings > Privacy & Security > Screen Recording and restart FORGE.",
+            "Bildschirm nicht lesbar ({e}). Erlaube FORGE unter Systemeinstellungen > Datenschutz und Sicherheit > Bildschirmaufnahme und starte FORGE neu."
+        )
     }
 
     /// The monitor under the cursor, in physical pixels like the overlay window is placed.
     pub fn virtual_screen(app: &AppHandle) -> Result<Shot, String> {
-        let screens = xcap::Monitor::all().map_err(failed)?;
-        let monitor = app
-            .cursor_position()
-            .ok()
-            .and_then(|c| app.monitor_from_point(c.x, c.y).ok().flatten())
-            .or_else(|| app.primary_monitor().ok().flatten())
-            .ok_or_else(|| tr!("No screen found", "Kein Bildschirm gefunden"))?;
+        let monitor = cursor_monitor(app)?;
         let (px, py) = (monitor.position().x, monitor.position().y);
+        // xcap counts in points, Tauri's logical position.
         let logical = ((px as f64 / monitor.scale_factor()).round() as i32, (py as f64 / monitor.scale_factor()).round() as i32);
-        // xcap counts in points on macOS (Tauri's logical position) and in pixels on X11 (Tauri's physical one).
-        let screen = screens
+        let screen = xcap::Monitor::all()
+            .map_err(failed)?
             .into_iter()
-            .min_by_key(|s| {
-                let (x, y) = (s.x().unwrap_or(0), s.y().unwrap_or(0));
-                ((x - logical.0).abs() + (y - logical.1).abs()).min((x - px).abs() + (y - py).abs())
-            })
+            .min_by_key(|s| (s.x().unwrap_or(0) - logical.0).abs() + (s.y().unwrap_or(0) - logical.1).abs())
             .ok_or_else(|| tr!("No screen found", "Kein Bildschirm gefunden"))?;
         let image = screen.capture_image().map_err(failed)?;
         let (width, height) = (monitor.size().width, monitor.size().height);
-        if width == 0 || height == 0 {
-            return Err(tr!("No screen found", "Kein Bildschirm gefunden"));
-        }
         let image = if image.width() != width || image.height() != height { imageops::resize(&image, width, height, FilterType::Triangle) } else { image };
         let scale = width as f64 / screen.width().ok().filter(|w| *w > 0).unwrap_or(width) as f64;
-        let mut pixels = image.into_raw();
-        for p in pixels.chunks_exact_mut(4) {
-            p.swap(0, 2);
-            p[3] = 255;
-        }
-        Ok(Shot { x: px, y: py, width, height, pixels, units: (screen.x().unwrap_or(0), screen.y().unwrap_or(0)), scale })
+        Ok(Shot { x: px, y: py, width, height, pixels: rgba_to_frame(image.into_raw()), units: (screen.x().unwrap_or(0), screen.y().unwrap_or(0)), scale })
     }
 
-    /// Visible windows on the captured monitor, front to back, in the frame's pixels.
+    /// Visible windows on the captured monitor, front to back (the order macOS lists them in), in the frame's pixels.
     pub fn windows(shot: &Shot) -> Vec<Rect> {
-        let Ok(mut all) = xcap::Window::all() else { return Vec::new() };
-        // macOS lists them front to back already; X11 does not promise an order.
-        if cfg!(target_os = "linux") {
-            all.sort_by_key(|w| std::cmp::Reverse(w.z().unwrap_or(0)));
-        }
+        let Ok(all) = xcap::Window::all() else { return Vec::new() };
         let area = Rect { x: shot.x, y: shot.y, width: shot.width, height: shot.height };
         let px = |v: i32, origin: i32| (v - origin) as f64 * shot.scale;
         let mut out = Vec::new();
@@ -639,7 +637,7 @@ mod grab {
             if w.is_minimized().unwrap_or(true) {
                 continue;
             }
-            // On macOS the menu bar, the Dock and the like are windows too.
+            // The menu bar, the Dock and the like are windows too.
             if matches!(w.app_name().as_deref(), Ok("Window Server" | "Dock" | "Control Center" | "Notification Center" | "Kontrollzentrum" | "Mitteilungszentrale")) {
                 continue;
             }
@@ -658,6 +656,150 @@ mod grab {
     }
 }
 
+/// Linux: the whole desktop from the screenshot portal of the desktop (GNOME, KDE, wlroots; X11 and
+/// Wayland alike), else from a screenshot program; then the part of the monitor under the cursor.
+/// No window list: Wayland tells no program where the other windows are.
+#[cfg(target_os = "linux")]
+mod grab {
+    use super::{cursor_monitor, rgba_to_frame, Rect};
+    use crate::i18n::tr;
+    use image::imageops::{self, FilterType};
+    use image::RgbaImage;
+    use std::path::{Path, PathBuf};
+    use tauri::AppHandle;
+
+    pub struct Shot {
+        pub x: i32,
+        pub y: i32,
+        pub width: u32,
+        pub height: u32,
+        pub pixels: Vec<u8>,
+    }
+
+    /// Programs that write a picture of the whole desktop to a file, and their arguments before the file.
+    const PROGRAMS: [(&str, &[&str]); 6] = [
+        ("grim", &[]),
+        ("gnome-screenshot", &["-f"]),
+        ("spectacle", &["-b", "-n", "-f", "-o"]),
+        ("maim", &[]),
+        ("scrot", &["-o"]),
+        ("import", &["-window", "root"]),
+    ];
+
+    pub fn virtual_screen(app: &AppHandle) -> Result<Shot, String> {
+        let monitor = cursor_monitor(app)?;
+        let desktop = desktop()?;
+        let monitors: Vec<Rect> = app
+            .available_monitors()
+            .unwrap_or_default()
+            .iter()
+            .map(|m| Rect { x: m.position().x, y: m.position().y, width: m.size().width, height: m.size().height })
+            .collect();
+        let (x, y) = (monitor.position().x, monitor.position().y);
+        let (width, height) = (monitor.size().width, monitor.size().height);
+        let crop = part(&monitors, Rect { x, y, width, height }, desktop.width(), desktop.height());
+        let image = imageops::crop_imm(&desktop, crop.x as u32, crop.y as u32, crop.width, crop.height).to_image();
+        let image = if image.width() != width || image.height() != height { imageops::resize(&image, width, height, FilterType::Triangle) } else { image };
+        Ok(Shot { x, y, width, height, pixels: rgba_to_frame(image.into_raw()) })
+    }
+
+    pub fn windows(_shot: &Shot) -> Vec<Rect> {
+        Vec::new()
+    }
+
+    /// Where `monitor` lies in a picture of all `monitors`. The picture starts at their top-left corner;
+    /// with fractional scaling under Wayland it can be smaller or larger than their physical pixels.
+    pub fn part(monitors: &[Rect], monitor: Rect, image_width: u32, image_height: u32) -> Rect {
+        let all = if monitors.is_empty() { std::slice::from_ref(&monitor) } else { monitors };
+        let left = all.iter().map(|m| m.x).min().unwrap_or(0);
+        let top = all.iter().map(|m| m.y).min().unwrap_or(0);
+        let right = all.iter().map(|m| m.x as i64 + m.width as i64).max().unwrap_or(1);
+        let bottom = all.iter().map(|m| m.y as i64 + m.height as i64).max().unwrap_or(1);
+        let sx = image_width as f64 / (right - left as i64).max(1) as f64;
+        let sy = image_height as f64 / (bottom - top as i64).max(1) as f64;
+        let x = (((monitor.x - left) as f64 * sx).round() as u32).min(image_width.saturating_sub(1));
+        let y = (((monitor.y - top) as f64 * sy).round() as u32).min(image_height.saturating_sub(1));
+        let width = ((monitor.width as f64 * sx).round() as u32).clamp(1, image_width - x);
+        let height = ((monitor.height as f64 * sy).round() as u32).clamp(1, image_height - y);
+        Rect { x: x as i32, y: y as i32, width, height }
+    }
+
+    fn desktop() -> Result<RgbaImage, String> {
+        let mut tried = Vec::new();
+        match portal() {
+            Ok(path) => return decode(&path),
+            Err(e) => tried.push(format!("Portal: {e}")),
+        }
+        let file = std::env::temp_dir().join(format!("forge-screenshot-{}.png", std::process::id()));
+        for (program, args) in PROGRAMS {
+            let _ = std::fs::remove_file(&file);
+            match std::process::Command::new(program).args(args).arg(&file).output() {
+                Ok(out) if out.status.success() && file.exists() => return decode(&file),
+                Ok(out) => tried.push(format!("{program}: {}", String::from_utf8_lossy(&out.stderr).trim())),
+                Err(_) => {}
+            }
+        }
+        Err(tr!(
+            "Could not read the screen ({}). FORGE needs the desktop's screenshot portal (xdg-desktop-portal) or one of grim, gnome-screenshot, spectacle, maim, scrot.",
+            "Bildschirm nicht lesbar ({}). FORGE braucht das Screenshot-Portal des Desktops (xdg-desktop-portal) oder eines der Programme grim, gnome-screenshot, spectacle, maim, scrot.",
+            tried.join("; ")
+        ))
+    }
+
+    /// Reads the picture and deletes the file: the portal saves it among the user's pictures.
+    fn decode(path: &Path) -> Result<RgbaImage, String> {
+        let image = image::open(path).map(|i| i.to_rgba8()).map_err(|e| e.to_string());
+        let _ = std::fs::remove_file(path);
+        image
+    }
+
+    /// org.freedesktop.portal.Screenshot without asking (`interactive` false). The answer comes as a
+    /// signal on a request object whose path the caller can work out, so it is subscribed before the call.
+    fn portal() -> Result<PathBuf, String> {
+        use std::collections::HashMap;
+        use zbus::blocking::{Connection, Proxy};
+        use zbus::zvariant::{OwnedValue, Value};
+
+        let conn = Connection::session().map_err(|e| e.to_string())?;
+        let token = format!("forge{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.subsec_nanos()).unwrap_or(0));
+        let sender = conn.unique_name().ok_or("no D-Bus name")?.trim_start_matches(':').replace('.', "_");
+        let request = Proxy::new(&conn, "org.freedesktop.portal.Desktop", format!("/org/freedesktop/portal/desktop/request/{sender}/{token}"), "org.freedesktop.portal.Request")
+            .map_err(|e| e.to_string())?;
+        let mut answers = request.receive_signal("Response").map_err(|e| e.to_string())?;
+        let screenshot = Proxy::new(&conn, "org.freedesktop.portal.Desktop", "/org/freedesktop/portal/desktop", "org.freedesktop.portal.Screenshot").map_err(|e| e.to_string())?;
+        let mut options: HashMap<&str, Value> = HashMap::new();
+        options.insert("handle_token", Value::from(token.as_str()));
+        options.insert("interactive", Value::from(false));
+        screenshot.call_method("Screenshot", &("", options)).map_err(|e| e.to_string())?;
+        let answer = answers.next().ok_or("no answer")?;
+        let (code, mut results): (u32, HashMap<String, OwnedValue>) = answer.body().deserialize().map_err(|e| e.to_string())?;
+        if code != 0 {
+            return Err(format!("answer {code}"));
+        }
+        let uri = results.remove("uri").and_then(|v| String::try_from(v).ok()).ok_or("no picture")?;
+        file_path(&uri).ok_or_else(|| format!("unexpected address {uri}"))
+    }
+
+    /// `file:///home/x/Bilder/Bildschirmfoto%20von.png` to a path.
+    pub fn file_path(uri: &str) -> Option<PathBuf> {
+        let encoded = uri.strip_prefix("file://")?;
+        let bytes = encoded.as_bytes();
+        let mut out = Vec::with_capacity(bytes.len());
+        let mut i = 0;
+        while i < bytes.len() {
+            if bytes[i] == b'%' && i + 2 < bytes.len() {
+                if let Ok(b) = u8::from_str_radix(std::str::from_utf8(&bytes[i + 1..i + 3]).ok()?, 16) {
+                    out.push(b);
+                    i += 3;
+                    continue;
+                }
+            }
+            out.push(bytes[i]);
+            i += 1;
+        }
+        Some(PathBuf::from(String::from_utf8(out).ok()?))
+    }
+}
 #[cfg(windows)]
 mod clip {
     use crate::i18n::tr;
@@ -1025,6 +1167,25 @@ mod tests {
         assert!(overlaps(&Rect { x: -100, y: 500, width: 200, height: 10 }, &shot));
         assert!(!overlaps(&Rect { x: 1920, y: 0, width: 2560, height: 1440 }, &shot));
         assert!(!overlaps(&Rect { x: 0, y: -1080, width: 1920, height: 1080 }, &shot));
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn finds_the_monitor_in_a_picture_of_the_whole_desktop() {
+        let left = Rect { x: 0, y: 0, width: 1920, height: 1080 };
+        let right = Rect { x: 1920, y: 0, width: 2560, height: 1440 };
+        assert_eq!(grab::part(&[left, right], right, 4480, 1440), Rect { x: 1920, y: 0, width: 2560, height: 1440 });
+        // Wayland with fractional scaling hands out a smaller picture.
+        assert_eq!(grab::part(&[left, right], right, 2240, 720), Rect { x: 960, y: 0, width: 1280, height: 720 });
+        assert_eq!(grab::part(&[], left, 1920, 1080), left);
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn reads_the_portal_file_address() {
+        assert_eq!(grab::file_path("file:///home/max/Bilder/Bildschirmfoto%20von%20heute.png").unwrap(), std::path::PathBuf::from("/home/max/Bilder/Bildschirmfoto von heute.png"));
+        assert_eq!(grab::file_path("file:///tmp/%C3%BC.png").unwrap(), std::path::PathBuf::from("/tmp/ü.png"));
+        assert!(grab::file_path("https://example.com/a.png").is_none());
     }
 
     #[test]

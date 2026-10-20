@@ -115,8 +115,9 @@ export function folderDeleteBlocker(
   if (oneDrive.some((r) => isInside(r, abs))) return tr().system.removal.oneDrive;
 
   // Projects in the temp folder stay deletable although it lies inside AppData on Windows (and
-  // inside /var, really /private/var, on macOS).
-  const temps = unix ? [...new Set([os.tmpdir(), realTmp()])] : [os.tmpdir()];
+  // inside /var, really /private/var, on macOS). Windows hands out TEMP with the short name of a long
+  // user name (C:\Users\MAXMUS~1\...), project paths are canonical: both forms count.
+  const temps = [...new Set([os.tmpdir(), realTmp()])];
   const tmp = temps.find((t) => isInside(abs, t) && pathKey(abs) !== pathKey(t));
   for (const sys of systemDirs(home, env, platform)) {
     if (isInside(sys, abs)) return tr().system.removal.containsSystem;
