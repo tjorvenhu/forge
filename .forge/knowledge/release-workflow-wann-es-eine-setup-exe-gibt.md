@@ -1,56 +1,40 @@
 ---
-title: "Release-Workflow: nächtlich, setup.exe, Installer-Namen, Signatur (FORGE_<v>.sig, Azure Code-Signatur)"
-summary: "Wann Releases entstehen (nachts oder von Hand), wie der volle Installer gebaut und gestaltet wird, wie Release-Dateien signiert werden (FORGE_<v>.sig plus Alt-Signaturen für Versionen bis 0.1.101, Azure-Authenticode nur für eigene exe) und was bei Fehlern zu tun ist."
+title: "Release-Workflow: nächtlich, setup.exe, macOS/Linux-Jobs, Signatur, alte Releases aufräumen"
+summary: "Wann Releases entstehen, was sie enthalten (Windows, macOS, Linux), welche Releases nicht gelöscht werden dürfen, wie signiert wird (FORGE_<v>.sig, Azure-Authenticode nur für eigene exe) und was bei Fehlern zu tun ist."
 tags: ["release","github-actions","installer","stolperfalle","update"]
-updated: "2026-10-18T20:57:32.010Z"
+updated: "2026-10-20T08:44:14.781Z"
 ---
 
-Repo seit 2026-10-17: `vanturis/forge` (vorher `tjorvenhu/forge`, GitHub leitet weiter).
+Repo: `vanturis/forge`.
 
-## Wann es ein Release gibt (seit 2026-10-18)
-- `.github/workflows/release.yml` läuft **nachts um 03:00 UTC** (schedule) und von Hand (`gh workflow run release.yml -R vanturis/forge --ref main`). Kein Lauf mehr bei jedem Push. Grund (Entscheidung des Besitzers zum öffentlichen Start 2026-10-18): installierte Apps bieten jedes Release als Update an; vorher waren es bis zu 15 am Tag.
-- Job `changes` (ubuntu): nachts baut er nur, wenn sich seit dem Commit des letzten Releases (`target_commitish`) etwas außer `*.md`, `docs/`, `services/`, `*.png`, `*.docx`, `.forge/` geändert hat. Von Hand baut er immer.
-- Version `v0.1.<run number>`; übersprungene Nachtläufe erhöhen die Nummer trotzdem (Lücken sind normal).
+## Wann es ein Release gibt
+- `.github/workflows/release.yml` nachts um 03:00 UTC (schedule; GitHub startet ihn oft Stunden später) und von Hand (`gh workflow run release.yml -R vanturis/forge --ref main`). Kein Lauf bei jedem Push (Entscheidung des Besitzers 2026-10-18: jedes Release wird installierten Apps als Update angeboten).
+- Job `changes`: nachts nur, wenn sich seit dem Commit des letzten Releases etwas außer `*.md`, `docs/`, `services/`, `apps/installer/`, `setup.yml`, `ci.yml`, `*.png`, `*.docx`, `.forge/` geändert hat. Von Hand immer.
+- Version `v0.1.<run number>`; Lücken sind normal.
 
-## Was ein Release enthält
-- `FORGE_<v>_update_<runtime>.zip` (jedes Release; nur App + Sidecar, wenige MB; installierte Apps aktualisieren damit).
-- `FORGE_<v>_x64-setup.exe` nur, wenn es für den Laufzeit-Schlüssel (`scripts/prepare-runtime.mjs --key`) noch keinen signierten Installer gibt, oder von Hand mit `-f full=true`. Seine Laufzeit ist die des Update-Zips im selben Release (`releaseInstallerKey` fällt auf `patchRuntimeKey` zurück).
-- `FORGE_<v>.sig`: Signaturen aller Assets als JSON (`sign-update.mjs --manifest`, `SIG_MANIFEST`/`signatureFrom` in `signature.ts`). Der Plan-Schritt erkennt einen vorhandenen Installer an setup.exe + Update-Zip mit dem Schlüssel + `FORGE_<v>.sig` im selben Release.
-- **Zusätzlich in jedem Release** (seit 2026-10-18, Eingabe `legacy_signatures`, Standard an, auch nachts): `<asset>.sig` je Datei und bei vollem Installer die Markierung `FORGE_<v>_x64-setup.<runtime>.runtime` (+ `.sig`). Das alte Format bis 0.1.101; neue Versionen lesen beides.
-- Für Neuinstallationen das neueste Release mit setup.exe nehmen, nicht einfach „latest“. Finden: `gh api "repos/vanturis/forge/releases?per_page=100" --jq '.[] | select(any(.assets[]; .name | endswith("setup.exe"))) | .tag_name'`.
-- Der Schritt „Build app“ gibt den Laufzeit-Schlüssel als `FORGE_RUNTIME_KEY` in die exe (Erkennung unvollständiger Installationen). Der Installer (NSIS) ist zweisprachig (`languages` English/German, `displayLanguageSelector`).
-- Ältere Installer-Namen: 0.1.8 bis 0.1.8x `FORGE_<v>_<runtime>_x64-setup.exe` (die App liest sie), bis 0.1.7 kurze Namen mit alter Laufzeit (`SHORT_NAMES_SINCE` in full-install.ts).
+## Inhalt
+- Windows-Job: `FORGE_<v>_update_<runtime>.zip` (jedes Release), `FORGE_<v>_x64-setup.exe` nur wenn es für den Laufzeit-Schlüssel (`scripts/prepare-runtime.mjs --key`) noch keinen signierten Installer gibt oder mit `-f full=true`; `FORGE_<v>.sig` (Signaturen aller Assets als JSON); zusätzlich in jedem Release die Alt-Signaturen `<asset>.sig` (+ `.runtime`-Markierung beim Installer) für Apps bis 0.1.101, deren `pickRelease` nur das neueste Release ansieht.
+- Jobs `macos` (Matrix arm64/x64 auf macos-latest) und `linux` (ubuntu-22.04) laufen nach dem Windows-Job und hängen ihre Dateien an dessen Release, Details in [[macos-und-linux-plattform-vertrag-laufzeit-updates-pruefen-o]]. Ein Fehler dort berührt Windows nicht. Linux-Paketbau vorab prüfen: CI-Job `bundle-linux` in `ci.yml`.
+- **Stolperfalle Linux (Release 108, 2026-10-20):** `libgstreamer1.0-dev` braucht `libunwind-dev`, das auf den Ubuntu-22.04-Runnern mit vorinstalliertem `libunwind-14-dev` kollidiert („held broken packages“). Darum `sudo apt-get remove -y libunwind-14-dev` vor der Installation. Ein „Re-run“ eines Release-Jobs nutzt den alten Workflow-Stand: Fixes greifen erst im nächsten Release.
 
-## Stolperfalle: Ein Brücken-Release erreicht alte Installationen nicht (2026-10-18)
-- Geplant war: nur v0.1.102 bekommt die Alt-Signaturen, Installationen bis 0.1.101 kommen darüber ins neue Format. Funktioniert nicht: `pickRelease` (alt wie neu) schaut nur auf das **neueste** Release (`newer[0]`). Hat das keine `<asset>.sig`, sieht die alte Version dort keine Assets, findet kein Update-Zip und meldet „FORGE 0.1.103 ist erschienen, braucht aber den vollständigen Installer. Dafür gibt es noch keinen.“ (`needsFullInstaller`, Meldung wenn `pickRelease` null liefert, es aber neuere Releases gibt).
-- Darum stehen die Alt-Signaturen in jedem Release, bis keine Installation bis 0.1.101 mehr meldet (Versionen in der Statistik prüfen). Kostet keine Azure-Signatur (Ed25519).
-- Nachträglich reparieren ohne privaten Schlüssel: die Werte aus `FORGE_<v>.sig` (JSON Name → base64) als `<asset>.sig` mit genau diesem Inhalt hochladen (`gh release upload`), vorher mit dem öffentlichen Schlüssel und dem GitHub-`digest` prüfen. Die `.runtime`-Markierung braucht eine neue Signatur und geht so nicht; ohne sie nimmt die alte Version den Installer nur über den Rückfall „irgendein neuerer Installer“.
+## Welche Releases bleiben müssen (aufgeräumt 2026-10-20 auf Wunsch des Besitzers: „soll nicht nach Entwicklungsumgebung aussehen“)
+Gelöscht wurden 97 Releases samt Tags (`gh release delete <tag> --yes --cleanup-tag`). Nie löschen:
+1. `installer` (FORGE-Setup.exe, Online-Installer, `setup.yml`).
+2. Das **neueste** Release: Update-Zip und Alt-Signaturen für installierte Apps, macOS/Linux-Assets.
+3. Das **neueste Release mit `_x64-setup.exe`** für den aktuellen Laufzeit-Schlüssel: FORGE Setup lädt es, die Reparatur unvollständiger Installationen auch, und der Plan-Schritt erkennt daran (setup.exe + Update-Zip mit Schlüssel + `FORGE_<v>.sig`), dass kein neuer signierter Installer nötig ist. Fehlt es, baut das nächste Release einen vollen Installer (kostet Azure-Signaturen, sonst harmlos).
+- Download-Zähler der Website (`services/stats/src/lib/downloads.ts`) summiert `_x64-setup.exe`-Downloads über alle Releases; die der gelöschten stehen fest in `DELETED_RELEASE_DOWNLOADS` (26). Beim nächsten Aufräumen dazuzählen.
 
-## Update-Signatur (seit 2026-10-17)
-- Ed25519 über `FORGE-UPDATE-1\n<Dateiname>\n<sha256>` (Format in ADR 0013). Die App bietet nur signierte Assets an; Releases bis v0.1.5x sind für sie unsichtbar.
-- Privater Schlüssel: Repo-Secret `FORGE_UPDATE_SIGNING_KEY`. Fehlt es, bricht der Workflow schon im Schritt Plan ab. Eine Kopie hat der Besitzer gesichert; geht sie verloren und das Secret auch, braucht es einen neuen Schlüssel und alle Installationen den Installer von Hand.
-- Öffentlicher Schlüssel: `packages/sidecar/src/update/signature.ts`.
-- Reihenfolge: erst Authenticode, dann die Update-Signatur (die Code-Signatur ändert die Bytes der exe).
+## Update-Signatur
+- Ed25519 über `FORGE-UPDATE-1\n<Dateiname>\n<sha256>` (ADR 0013). Privater Schlüssel: Secret `FORGE_UPDATE_SIGNING_KEY` (fehlt er, bricht der Plan-Schritt ab; eine Kopie hat der Besitzer). Öffentlicher Schlüssel: `packages/sidecar/src/update/signature.ts`. Erst Authenticode, dann Update-Signatur.
+- Nachträglich `<asset>.sig` ohne privaten Schlüssel: Werte aus `FORGE_<v>.sig` als Datei hochladen.
 
-## Code-Signatur Authenticode (Azure Artifact Signing, eingebaut 2026-10-18)
-- Secrets `AZURE_TENANT_ID`, `AZURE_CLIENT_ID` (App-Registrierung `forge-github-signing`), `AZURE_CLIENT_SECRET`; Variablen `AZURE_SIGNING_ENDPOINT` = `https://neu.codesigning.azure.net/` (North Europe, muss zur Region des Kontos passen, sonst 403), `AZURE_SIGNING_ACCOUNT` = `vanturis-signing`, `AZURE_SIGNING_PROFILE` = `vanturis-public`. Die App-Registrierung braucht auf dem Profil die Rolle „Artifact Signing Certificate Profile Signer“.
-- `scripts/codesign.mjs`: signtool aus dem Windows SDK (>= 10.0.22621) plus Microsofts dlib aus dem NuGet-Paket `Microsoft.ArtifactSigning.Client` (Version und SHA-512 gepinnt, Werkzeuge in `.codesign/`, gitignored). `--setup` lädt und schreibt `metadata.json`; sonst signiert es die übergebenen Dateien, mit 3 Versuchen und Zeitstempel `http://timestamp.acs.microsoft.com` (Zertifikate gelten nur 3 Tage).
-- **Nur eigene Programme signieren (Entscheidung des Besitzers 2026-10-18, Kontingent 5000 Signaturen/Monat):** `SIGN_ONLY` in codesign.mjs erlaubt nur `forge-desktop.exe`, `*_x64-setup.exe` und den Deinstaller (`nstXXXX.tmp`, den NSIS als Temp-Datei signieren lässt). Tauri gibt **jede unsignierte exe/dll** an den signCommand: ~560 Dateien der Laufzeit (Git for Windows, Python, Node, gh) und die NSIS-Plugin-DLLs. Die bleiben unsigniert; im Log steht je Datei „nicht signiert (keine Signatur verbraucht)“. Die Zeilen „SignTool Error: No signature found“ davor sind Tauris lokale Prüfung (`signtool verify`) und kosten nichts. Verbrauch gemessen (v0.1.103): voller Installer 4 (forge-desktop.exe zweimal, weil Tauri nach dem Bundling die unsignierte exe wiederherstellt und die fürs Update-Zip danach noch einmal signiert wird, Deinstaller, setup.exe), nächtliches Update-Release 1. Gezählt wird nur, was signtool mit „Successfully signed“ meldet.
-- SmartScreen warnt trotz gültiger Signatur, bis der Herausgeber genug Ruf hat (keine Abkürzung mehr seit 2024, auch nicht mit EV). Hilft: Downloads und Einreichen unter microsoft.com/wdsi/filesubmission.
-- Workflow: Ohne Secret `AZURE_CLIENT_ID` baut er unsigniert mit Warnung. Sonst: Schritt „Code signing tools“, `tauri.ci.json` bekommt `bundle.windows.signCommand = {cmd: node, args: [codesign.mjs, %1]}`, nach dem Build wird `target/release/forge-desktop.exe` fürs Update-Zip signiert, „Package and publish“ prüft mit `Get-AuthenticodeSignature` exe und setup.exe (ein umbenannter Installer, der nicht mehr zu `SIGN_ONLY` passt, fällt dort auf).
-- Lokal testen: mit gesetzten `AZURE_SIGNING_*` und `az login` (ohne `AZURE_CLIENT_SECRET` lässt metadata.json alle Credential-Arten zu).
-- SignPath Foundation (kostenlos für Open Source) passt nicht: verlangt keine proprietären Bestandteile, der Sidecar bündelt aber `@anthropic-ai/claude-agent-sdk` („All rights reserved“).
-- Logs eines laufenden Jobs liefert die GitHub-API nicht (`actions/jobs/<id>/logs` ist leer); erst nach Ende oder Abbruch mit `gh run view <id> --log`.
+## Authenticode (Azure Artifact Signing)
+- Secrets `AZURE_TENANT_ID`, `AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET`; Variablen `AZURE_SIGNING_ENDPOINT` (`https://neu.codesigning.azure.net/`), `AZURE_SIGNING_ACCOUNT` (`vanturis-signing`), `AZURE_SIGNING_PROFILE` (`vanturis-public`). `scripts/codesign.mjs` signiert nur `forge-desktop.exe`, `*_x64-setup.exe` und den Deinstaller (`SIGN_ONLY`, Kontingent 5000/Monat); Tauri reicht ~560 Laufzeit-Dateien durch, die bleiben unsigniert. Verbrauch: voller Installer 4, Update-Release 1.
+- SmartScreen warnt trotz Signatur, bis der Herausgeber Ruf hat.
+- Logs eines laufenden Jobs liefert die API nicht; `gh run view -R vanturis/forge --job <id> --log` geht für fertige Jobs auch während der Rest läuft.
 
-## Aussehen des Installers (seit 2026-10-18)
-- `bundle.windows.nsis` in tauri.conf.json: `installerIcon` (icons/icon.ico), `headerImage` (`installer/header.bmp`, 150x57) und `sidebarImage` (`installer/sidebar.bmp`, 164x314), 24-bit BMP. Quellen `apps/desktop/src-tauri/installer/*.html`, neu erzeugen mit `installer/render.ps1` (Chrome/Edge headless).
-- Komplett dunkle Seiten gehen nur mit eigenem `nsis.template`: das Tauri-Template setzt weder `MUI_BGCOLOR` noch Farben je Steuerelement. Dann müsste man das ganze Template bei jedem Tauri-Update nachziehen.
-- Testen ohne vollen Build: lokales makensis (`%LOCALAPPDATA%\tauri\NSIS`) mit einem Minimal-Skript und denselben Bildern.
+## Installer-Aussehen
+NSIS-Bilder `installer/header.bmp`, `installer/sidebar.bmp` (Quellen `installer/*.html`, `installer/render.ps1`). Komplett dunkel ginge nur mit eigenem `nsis.template`.
 
-## Stolperfalle: Update-Zip statt Installer (2026-10-17)
-Wer das Update-Zip statt der setup.exe startet, hat kein `runtime/` mit git und gh. FORGE zeigt das als Banner „FORGE ist nicht vollständig installiert“ mit Knopf zum Nachinstallieren.
-
-## Wenn kein Lauf startet (2026-10-14)
-- Symptom: Workflow steht in der API auf `active`, aber `actions/runs` ist leer. GitHub schaltet geplante Läufe außerdem nach 60 Tagen ohne Aktivität im Repo ab.
-- Behoben mit `gh workflow enable release.yml` und einem Lauf per `gh workflow run release.yml --ref main`.
-- Prüfen: `gh api "repos/vanturis/forge/actions/runs?per_page=5"`, `gh release view <tag> -R vanturis/forge --json assets`.
+## Wenn kein Lauf startet
+Geplante Läufe schaltet GitHub nach 60 Tagen ohne Aktivität ab: `gh workflow enable release.yml`, dann von Hand starten.
