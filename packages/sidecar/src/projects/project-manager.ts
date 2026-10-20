@@ -138,6 +138,7 @@ export class ProjectManager {
       name: path.basename(canonical) || canonical,
       path: canonical,
       favorite: false,
+      group: null,
       // Finished parallel agents go back on their own, as Claude Code does with its subagents; a
       // worktree copies its tags from the main project, the main project decides.
       tags: gitEnabled && !parentId ? [AUTO_MERGE_TAG] : [],
@@ -186,9 +187,10 @@ export class ProjectManager {
 
   update(
     id: string,
-    patch: Partial<Pick<ProjectRecord, "name" | "favorite" | "tags" | "profile" | "defaultModel" | "defaultEffort" | "testCommand" | "devCommand" | "gitEnabled">>,
+    patch: Partial<Pick<ProjectRecord, "name" | "favorite" | "group" | "tags" | "profile" | "defaultModel" | "defaultEffort" | "testCommand" | "devCommand" | "gitEnabled">>,
   ): Project {
     const cur = this.get(id);
+    if (patch.group) patch = { ...patch, group: this.groupSpelling(patch.group, id) };
     if (patch.gitEnabled === false && cur.gitEnabled) {
       if (cur.parentId) throw new ForgeError("CONFLICT", tr().system.projects.worktreeNeedsGit);
       if (this.db.listProjects().some((p) => p.parentId === id)) {
@@ -209,6 +211,21 @@ export class ProjectManager {
     if (sandboxOnly && !patch.profile && cur.profile === "autonomous") next.profile = "balanced";
     this.db.updateProject(id, next);
     return this.get(id);
+  }
+
+  /** "kunde a" joins the existing group "Kunde A" instead of starting a second one that looks the same. */
+  private groupSpelling(name: string, exceptId?: string): string {
+    const lower = name.toLowerCase();
+    return this.db.listProjects().find((p) => p.id !== exceptId && p.group?.toLowerCase() === lower)?.group ?? name;
+  }
+
+  /** Renames group `from` in all its projects (merging into an existing group of that name); null dissolves it. */
+  renameGroup(from: string, to: string | null): number {
+    const members = this.db.listProjects().filter((p) => p.group?.toLowerCase() === from.toLowerCase());
+    if (!members.length) throw new ForgeError("NOT_FOUND", tr().system.projects.groupNotFound(from));
+    const ids = new Set(members.map((p) => p.id));
+    const target = to && (this.db.listProjects().find((p) => !ids.has(p.id) && p.group?.toLowerCase() === to.toLowerCase())?.group ?? to);
+    return this.db.renameProjectGroup(from, target);
   }
 
   async touch(id: string): Promise<Project> {

@@ -60,6 +60,7 @@ import {
   ProfileId,
   PlanUsage,
   Project,
+  ProjectGroup,
   ProjectTag,
   ProjectWithStatus,
   PullRequest,
@@ -254,6 +255,8 @@ export const methods = {
     params: projectRef.extend({
       name: z.string().min(1).max(100).optional(),
       favorite: z.boolean().optional(),
+      /** null takes the project out of its group */
+      group: ProjectGroup.nullable().optional(),
       tags: z.array(ProjectTag).max(30).optional(),
       profile: ProfileId.optional(),
       defaultModel: z.string().max(100).nullable().optional(),
@@ -263,6 +266,11 @@ export const methods = {
       gitEnabled: z.boolean().optional(),
     }),
     result: Project,
+  },
+  /** Renames a group in every project that has it; `to: null` dissolves it (the projects stay, without group). */
+  "projects.renameGroup": {
+    params: z.object({ from: ProjectGroup, to: ProjectGroup.nullable() }),
+    result: z.object({ count: z.number().int() }),
   },
   "projects.removalInfo": { params: projectRef, result: ProjectRemovalInfo },
   "projects.remove": {

@@ -350,6 +350,10 @@ export const MIGRATIONS: string[] = [
   WHERE EXISTS (SELECT 1 FROM projects) OR EXISTS (SELECT 1 FROM sessions) OR EXISTS (SELECT 1 FROM settings WHERE key <> 'knownModels')
   ON CONFLICT(key) DO NOTHING;
   `,
+  // The user's own grouping of projects (e.g. by client); NULL: no group. "group" is an SQL keyword.
+  `
+  ALTER TABLE projects ADD COLUMN group_name TEXT;
+  `,
 ];
 
 /**
@@ -463,6 +467,7 @@ interface ProjectRow {
   path: string;
   path_key: string;
   favorite: number;
+  group_name: string | null;
   tags: string;
   technologies: string;
   profile: string;
@@ -657,6 +662,7 @@ function toProject(r: ProjectRow): ProjectRecord {
     name: r.name,
     path: r.path,
     favorite: !!r.favorite,
+    group: r.group_name,
     tags: JSON.parse(r.tags) as string[],
     technologies: JSON.parse(r.technologies) as string[],
     profile: r.profile as ProfileId,
@@ -847,8 +853,8 @@ export class Db {
   insertProject(p: ProjectRecord, pathKey: string, restored = false) {
     this.sql
       .prepare(
-        `INSERT INTO projects(id, name, path, path_key, favorite, tags, technologies, profile, default_model, default_effort, created_at, last_opened_at, test_command, dev_command, parent_id, git_enabled)
-         VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO projects(id, name, path, path_key, favorite, tags, technologies, profile, default_model, default_effort, created_at, last_opened_at, test_command, dev_command, parent_id, git_enabled, group_name)
+         VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         p.id,
@@ -867,6 +873,7 @@ export class Db {
         p.devCommand,
         p.parentId,
         p.gitEnabled ? 1 : 0,
+        p.group,
       );
     // Agent worktrees are projects too, but they count as agents.
     if (!p.parentId && !restored) this.bumpCounter("projectsCreated");
@@ -929,11 +936,17 @@ export class Db {
     if (patch.testCommand !== undefined) cols.test_command = patch.testCommand;
     if (patch.devCommand !== undefined) cols.dev_command = patch.devCommand;
     if (patch.gitEnabled !== undefined) cols.git_enabled = patch.gitEnabled ? 1 : 0;
+    if (patch.group !== undefined) cols.group_name = patch.group;
     const keys = Object.keys(cols);
     if (!keys.length) return;
     this.sql
       .prepare(`UPDATE projects SET ${keys.map((k) => `${k} = ?`).join(", ")} WHERE id = ?`)
       .run(...(Object.values(cols) as Array<string | number | null>), id);
+  }
+
+  /** Sets `to` for every project in group `from` (any case); null takes them out of it. Returns how many. */
+  renameProjectGroup(from: string, to: string | null): number {
+    return Number(this.sql.prepare("UPDATE projects SET group_name = ? WHERE lower(group_name) = lower(?)").run(to, from).changes);
   }
 
   deleteProject(id: string): boolean {

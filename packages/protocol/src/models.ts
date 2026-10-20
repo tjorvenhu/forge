@@ -35,6 +35,9 @@ export const ProjectTag = z
   .max(40)
   .regex(/^[a-z0-9][a-z0-9-]*$/, "Tags: Kleinbuchstaben, Ziffern und Bindestriche");
 
+/** Name of a project group as the user typed it (client, area); compared without regard to case. */
+export const ProjectGroup = z.string().trim().min(1).max(60);
+
 /** Automation tags that only work with git; a project without git drops them. */
 export const GIT_TAGS: readonly string[] = ["auto-commit", "auto-push", "auto-merge", "review-required"];
 
@@ -59,6 +62,8 @@ export const Project = z.object({
   name: z.string(),
   path: z.string(),
   favorite: z.boolean(),
+  /** the user's own grouping, e.g. by client; null: no group. Worktrees show under their project's group */
+  group: z.string().nullable(),
   tags: z.array(z.string()),
   technologies: z.array(z.string()),
   profile: ProfileId,

@@ -104,6 +104,7 @@ export const system = {
     folderExists: (path: string) => `Ordner existiert bereits: ${path}`,
     duplicate: "Projekt ist bereits vorhanden.",
     worktreeNeedsGit: "Ein Agent-Worktree arbeitet immer mit Git.",
+    groupNotFound: (name: string) => `Es gibt keine Gruppe ${name}.`,
     agentsBeforeGitOff: "Das Projekt hat noch Agenten. Erst die Agenten abschließen, dann Git ausschalten.",
     sandboxOnly: "Das Tag sandbox-only verbietet Autonomous in diesem Projekt.",
     pathOutside: "Pfad liegt außerhalb des Projekts.",

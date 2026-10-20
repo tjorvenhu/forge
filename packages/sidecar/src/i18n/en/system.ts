@@ -105,6 +105,7 @@ export const system: typeof De = {
     folderExists: (path) => `Folder already exists: ${path}`,
     duplicate: "Project already exists.",
     worktreeNeedsGit: "An agent worktree always works with Git.",
+    groupNotFound: (name) => `There is no group ${name}.`,
     agentsBeforeGitOff: "The project still has agents. Finish the agents first, then turn Git off.",
     sandboxOnly: "The tag sandbox-only forbids Autonomous in this project.",
     pathOutside: "Path is outside the project.",

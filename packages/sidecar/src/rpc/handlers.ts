@@ -227,6 +227,7 @@ export function createHandlers(s: Services): Handlers {
       if (project.gitEnabled !== before.gitEnabled) s.sessions.projectGitChanged(projectId, project.gitEnabled);
       return project;
     },
+    "projects.renameGroup": ({ from, to }) => ({ count: s.projects.renameGroup(from, to) }),
     "projects.removalInfo": ({ projectId }) => removalInfo(projectId, s),
     "projects.remove": ({ projectId, deleteFolder, deleteGitHubRepo }) => removeProject(projectId, { deleteFolder, deleteGitHubRepo }, s),
     "projects.touch": ({ projectId }) => s.projects.touch(projectId),
