@@ -1,28 +1,29 @@
 ---
 title: "Release-Workflow: nächtlich, setup.exe, macOS/Linux-Jobs, Signatur, alte Releases aufräumen"
-summary: "Wann Releases entstehen, was sie enthalten (Windows, macOS, Linux), welche Releases nicht gelöscht werden dürfen, wie signiert wird (FORGE_<v>.sig, Azure-Authenticode nur für eigene exe) und was bei Fehlern zu tun ist."
+summary: "Wann Releases entstehen, was sie enthalten (Windows, macOS, Linux), welche Releases nicht gelöscht werden dürfen und wie man aufräumt, wie signiert wird (FORGE_<v>.sig, Azure-Authenticode nur für eigene exe) und was bei Fehlern zu tun ist."
 tags: ["release","github-actions","installer","stolperfalle","update"]
-updated: "2026-10-20T08:44:14.781Z"
+updated: "2026-10-20T09:20:52.628Z"
 ---
 
 Repo: `vanturis/forge`.
 
 ## Wann es ein Release gibt
-- `.github/workflows/release.yml` nachts um 03:00 UTC (schedule; GitHub startet ihn oft Stunden später) und von Hand (`gh workflow run release.yml -R vanturis/forge --ref main`). Kein Lauf bei jedem Push (Entscheidung des Besitzers 2026-10-18: jedes Release wird installierten Apps als Update angeboten).
+- `.github/workflows/release.yml` nachts um 03:00 UTC (schedule; GitHub startet ihn oft Stunden später) und von Hand (`gh workflow run release.yml -R vanturis/forge --ref main`, mit vollem Windows-Installer `-f full=true`). Kein Lauf bei jedem Push (Entscheidung des Besitzers 2026-10-18: jedes Release wird installierten Apps als Update angeboten). FORGE Setup: `gh workflow run setup.yml -R vanturis/forge --ref main` (ersetzt FORGE-Setup.exe im Release `installer`).
 - Job `changes`: nachts nur, wenn sich seit dem Commit des letzten Releases etwas außer `*.md`, `docs/`, `services/`, `apps/installer/`, `setup.yml`, `ci.yml`, `*.png`, `*.docx`, `.forge/` geändert hat. Von Hand immer.
-- Version `v0.1.<run number>`; Lücken sind normal.
+- Version `v0.1.<run number>`; Lücken sind normal. Ein voller Lauf mit allen Plattformen dauert etwa 30 Minuten.
 
 ## Inhalt
 - Windows-Job: `FORGE_<v>_update_<runtime>.zip` (jedes Release), `FORGE_<v>_x64-setup.exe` nur wenn es für den Laufzeit-Schlüssel (`scripts/prepare-runtime.mjs --key`) noch keinen signierten Installer gibt oder mit `-f full=true`; `FORGE_<v>.sig` (Signaturen aller Assets als JSON); zusätzlich in jedem Release die Alt-Signaturen `<asset>.sig` (+ `.runtime`-Markierung beim Installer) für Apps bis 0.1.101, deren `pickRelease` nur das neueste Release ansieht.
-- Jobs `macos` (Matrix arm64/x64 auf macos-latest) und `linux` (ubuntu-22.04) laufen nach dem Windows-Job und hängen ihre Dateien an dessen Release, Details in [[macos-und-linux-plattform-vertrag-laufzeit-updates-pruefen-o]]. Ein Fehler dort berührt Windows nicht. Linux-Paketbau vorab prüfen: CI-Job `bundle-linux` in `ci.yml`.
+- Jobs `macos` (Matrix arm64/x64 auf macos-latest) und `linux` (ubuntu-22.04) laufen nach dem Windows-Job und hängen ihre Dateien an dessen Release, Details in [[macos-und-linux-plattform-vertrag-laufzeit-updates-pruefen-o]]. Ein Fehler dort berührt Windows nicht. Linux-Paketbau vorab prüfen: CI-Job `bundle-linux` in `ci.yml`. Erstes vollständiges Release mit allen Plattformen: v0.1.109 (2026-10-20; dmg ~70 MB, AppImage ~146 MB, deb ~77 MB, setup.exe ~104 MB).
 - **Stolperfalle Linux (Release 108, 2026-10-20):** `libgstreamer1.0-dev` braucht `libunwind-dev`, das auf den Ubuntu-22.04-Runnern mit vorinstalliertem `libunwind-14-dev` kollidiert („held broken packages“). Darum `sudo apt-get remove -y libunwind-14-dev` vor der Installation. Ein „Re-run“ eines Release-Jobs nutzt den alten Workflow-Stand: Fixes greifen erst im nächsten Release.
 
-## Welche Releases bleiben müssen (aufgeräumt 2026-10-20 auf Wunsch des Besitzers: „soll nicht nach Entwicklungsumgebung aussehen“)
-Gelöscht wurden 97 Releases samt Tags (`gh release delete <tag> --yes --cleanup-tag`). Nie löschen:
-1. `installer` (FORGE-Setup.exe, Online-Installer, `setup.yml`).
+## Aufräumen: welche Releases bleiben müssen (Wunsch des Besitzers 2026-10-20: „nur das, was für neue Nutzer wichtig ist“)
+Seit 2026-10-20 gibt es nur `installer` und das neueste Release (alles bis 0.1.108 gelöscht, samt Tags: `gh release delete <tag> -R vanturis/forge --yes --cleanup-tag`). Nie löschen:
+1. `installer` (FORGE-Setup.exe, Online-Installer; als Pre-release markiert, damit „Latest“ auf das App-Release zeigt).
 2. Das **neueste** Release: Update-Zip und Alt-Signaturen für installierte Apps, macOS/Linux-Assets.
-3. Das **neueste Release mit `_x64-setup.exe`** für den aktuellen Laufzeit-Schlüssel: FORGE Setup lädt es, die Reparatur unvollständiger Installationen auch, und der Plan-Schritt erkennt daran (setup.exe + Update-Zip mit Schlüssel + `FORGE_<v>.sig`), dass kein neuer signierter Installer nötig ist. Fehlt es, baut das nächste Release einen vollen Installer (kostet Azure-Signaturen, sonst harmlos).
-- Download-Zähler der Website (`services/stats/src/lib/downloads.ts`) summiert `_x64-setup.exe`-Downloads über alle Releases; die der gelöschten stehen fest in `DELETED_RELEASE_DOWNLOADS` (26). Beim nächsten Aufräumen dazuzählen.
+3. Das **neueste Release mit `_x64-setup.exe`** für den aktuellen Laufzeit-Schlüssel, falls das neueste keines hat: FORGE Setup lädt es, die Reparatur unvollständiger Installationen auch, und der Plan-Schritt erkennt daran (setup.exe + Update-Zip mit Schlüssel + `FORGE_<v>.sig`), dass kein neuer signierter Installer nötig ist. Fehlt es, baut das nächste Release einen vollen Installer (kostet Azure-Signaturen, sonst harmlos).
+- Vorgehen „Releases auf den neuesten Stand“: Release mit `-f full=true` starten, prüfen dass es setup.exe, Update-Zip, darwin-arm64/-x64 und linux-x64 enthält, dann alle älteren löschen.
+- Download-Zähler der Website (`services/stats/src/lib/downloads.ts`) summiert `_x64-setup.exe`-Downloads über alle Releases; die der gelöschten stehen fest in `DELETED_RELEASE_DOWNLOADS` (Stand 32). Vor jedem Löschen deren Downloads dazuzählen (`gh api repos/vanturis/forge/releases/tags/<tag> --jq '[.assets[] | select(.name|endswith("_x64-setup.exe")) | .download_count] | add // 0'`); wirkt erst nach Coolify-Deploy.
 
 ## Update-Signatur
 - Ed25519 über `FORGE-UPDATE-1\n<Dateiname>\n<sha256>` (ADR 0013). Privater Schlüssel: Secret `FORGE_UPDATE_SIGNING_KEY` (fehlt er, bricht der Plan-Schritt ab; eine Kopie hat der Besitzer). Öffentlicher Schlüssel: `packages/sidecar/src/update/signature.ts`. Erst Authenticode, dann Update-Signatur.
