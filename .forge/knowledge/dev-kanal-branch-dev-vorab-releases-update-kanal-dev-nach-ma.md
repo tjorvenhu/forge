@@ -1,8 +1,8 @@
 ---
-title: "Dev-Branch: Branch dev, Vorab-Releases, Update-Kanal, Dev nach Main übernehmen (DevChannelService, updateChannel)"
-summary: "Wie der Dev-Branch eigene Releases bekommt, wie die App per updateChannel darauf umschaltet (nur für Konten mit Push-Recht), wie dev nach main übernommen wird, welche Rechte wo geprüft werden und was man beim Release-Workflow beachten muss."
+title: "Entwicklungsversion (Branch dev): Vorab-Releases, Update-Kanal, Dev nach Main (DevChannelService, updateChannel)"
+summary: "Wie der Branch dev eigene Releases bekommt, wie die App per updateChannel darauf umschaltet (in der UI „Entwicklungsversion“, nur für Konten mit Push-Recht), wie dev nach main übernommen wird, welche Rechte wo geprüft werden und was man beim Release-Workflow beachten muss."
 tags: ["release","update","github-actions","einstellungen","stolperfalle"]
-updated: "2026-10-20T18:03:40.493Z"
+updated: "2026-10-20T20:26:13.295Z"
 ---
 
 Gebaut 2026-10-20 (Wunsch des Besitzers: auf dev pushen, Apps auf dev aktualisieren sich daraus, später nach main übernehmen; dev schnell und ohne Zertifikat; nur Repo-Mitglieder dürfen umschalten; Dev muss in der App klar sichtbar sein). Branch `dev` auf GitHub seit 2026-10-20, lokal als Tracking-Branch `dev`.
@@ -34,7 +34,7 @@ Gebaut 2026-10-20 (Wunsch des Besitzers: auf dev pushen, Apps auf dev aktualisie
 - Übernehmen (`app.promoteDev`): ist main nicht voraus, Fast-Forward über `PATCH git/refs/heads/main` (force=false), sonst Merge-Commit über `POST /merges` (409 = Konflikt, lokal lösen). Optional danach `workflow_dispatch` von release.yml auf main.
 
 ## UI (Wünsche des Besitzers)
-- In der UI heißt es **„Dev-Branch“**, nicht „Dev-Kanal“ (EN „Dev branch“). Intern bleiben `updateChannel`/`devChannel`.
-- Einstellungen > Über FORGE > Updates (`DevChannelSettings.tsx`): ein **Schalter** (Switch) „Dev-Branch“, keine Radio-Auswahl. „Dev nach Main übernehmen“ erscheint nur, solange der Dev-Branch an ist; ebenso der Palette-Eintrag und Telefon `dev_promote` (sonst `devPromoteOff`).
-- Badge „Dev-Branch“ unter dem Logo (`DevChannelBadge.tsx`, Rechtsklick: ausschalten). Eigene Tokens `--color-dev`, `--color-dev-border`, `--color-dev-fg` in styles.css: dunkles Blutrot, bewusst nicht das helle `danger`-Rot des Support-Herzens. Keine rote Oberkante an der Seitenleiste.
-- Palette: „Dev-Branch für Updates einschalten/ausschalten“, „Dev nach Main übernehmen“. Telefon: `forge_settings update_channel`, `forge_system dev_status` / `dev_promote` (Tastatur-Code).
+- In der UI heißt der Schalter **„Entwicklungsversion“** (EN „Development build“); vorher „Dev-Kanal“, dann „Dev-Branch“, beides vom Besitzer verworfen. Intern bleiben `updateChannel`/`devChannel`. Gilt auch für Palette, Suche, Telefon-Texte und Fehlermeldungen.
+- Einstellungen > Über FORGE > Updates (`DevChannelSettings.tsx`): ein **Schalter** (Switch), keine Radio-Auswahl. „Dev nach Main übernehmen“ erscheint nur, solange die Entwicklungsversion an ist; ebenso der Palette-Eintrag und Telefon `dev_promote` (sonst `devPromoteOff`).
+- Kennzeichnung (`DevChannelBadge.tsx`): Karte **unten links unter der Claude-Code-Karte**, im Stil der Sidebar-Karten (rounded-xl, text-body, kein Uppercase/Mono), Icon Reagenzglas `FlaskConical`, rechts klein „dev“. Klick: Einstellungen, Rechtsklick: ausschalten. Farben über eigene Tokens `--color-dev`, `--color-dev-border`, `--color-dev-fg` in styles.css (dunkles Blutrot, gedämpft per Opazität), bewusst nicht das helle `danger`-Rot des Support-Herzens. Nicht mehr oben unter dem Logo, keine rote Oberkante an der Seitenleiste.
+- Telefon: `forge_settings update_channel`, `forge_system dev_status` / `dev_promote` (Tastatur-Code).
