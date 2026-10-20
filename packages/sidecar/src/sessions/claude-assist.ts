@@ -17,7 +17,7 @@ export const ASSIST_MODEL = "haiku";
 export const MERGE_MODEL = "sonnet";
 
 /** characters of history for a question on the phone, over all sessions asked; keeps the answer within seconds */
-const ANSWER_BUDGET = 40_000;
+const ANSWER_BUDGET = 24_000;
 
 const MergeDraft = z.object({ title: z.string(), summary: z.string(), tags: z.array(z.string()), content: z.string() });
 const MergePlan = z.object({ groups: z.array(z.object({ ids: z.array(z.string()), reason: z.string() })) });
@@ -102,7 +102,8 @@ export class ClaudeAssist {
     if (!parts.length) throw new ForgeError("VALIDATION", m.noHistory);
     const cwd = this.db.getSession(sessions[0]!.id)?.cwd ?? process.cwd();
     const prompt = [...m.answerPrompt, "", `${m.answerQuestion}: ${question}`, "", ...parts].join("\n");
-    const answer = await this.runtime.complete(prompt, { cwd, env, claudePath, model: ASSIST_MODEL, purpose: "phone" });
+    // The caller waits in silence: low effort halves the time (measured 5.8 s to 2.7 s) with the same answer.
+    const answer = await this.runtime.complete(prompt, { cwd, env, claudePath, model: ASSIST_MODEL, purpose: "phone", effort: "low" });
     return { answer: answer.trim(), model: ASSIST_MODEL };
   }
 

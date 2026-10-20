@@ -32,7 +32,7 @@ import { de } from "../i18n/de/index.js";
 /** What FORGE asks Claude for outside a session; recorded with the call (claude_usage.purpose). */
 export type AssistPurpose = ForgeUsagePurpose;
 
-export type CompleteOptions = Pick<StartOptions, "cwd" | "env" | "claudePath"> & { model: string; purpose?: AssistPurpose };
+export type CompleteOptions = Pick<StartOptions, "cwd" | "env" | "claudePath"> & { model: string; purpose?: AssistPurpose; effort?: EffortLevel };
 
 export interface StartOptions {
   cwd: string;
@@ -557,6 +557,7 @@ export class AgentSdkRuntime implements ClaudeRuntime {
         cwd: opts.cwd,
         env: opts.env,
         model: opts.model,
+        ...(opts.effort ? { effort: opts.effort } : {}),
         pathToClaudeCodeExecutable: opts.claudePath,
         tools: [],
         maxTurns: 1,

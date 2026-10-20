@@ -266,7 +266,7 @@ export const phoneTools = {
   },
   ask: {
     description:
-      "Beantwortet eine Frage zum Inhalt der Sessions aus ihrem Verlauf, etwa „Was ist das Konzept hinter dem Ultrathink-Test?“, „Woran hängt der Export?“, „Wie würdest du das Projekt bewerten?“ oder „Was haben wir gestern beim Login gemacht?“. Claude liest dafür die passenden Verläufe, das dauert ein paar Sekunden. Ohne session sucht FORGE selbst die Sessions, die zur Frage passen. Für alle Fragen zu Inhalt, Gründen, Stand und Problemen nimm dieses Werkzeug, nicht details.",
+      "Beantwortet eine Frage zum Inhalt der Sessions aus ihrem Verlauf, etwa „Was ist das Konzept hinter dem Ultrathink-Test?“, „Woran hängt der Export?“, „Wie würdest du das Projekt bewerten?“ oder „Was haben wir gestern beim Login gemacht?“. Claude liest dafür die passenden Verläufe, das dauert ein paar Sekunden. Ohne session sucht FORGE selbst die Sessions, die zur Frage passen. Für Fragen zu Inhalt, Gründen und Hintergründen, die über den letzten Stand hinausgehen; den Stand selbst liefert details schneller.",
     params: {
       question: "die Frage des Anrufers, vollständig ausformuliert, mit dem Thema oder Namen, um das es geht",
       session: "nur diese Session: Kürzel wie S1 oder Teil des Titels; weglassen, wenn unklar ist, welche gemeint ist",

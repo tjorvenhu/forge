@@ -293,7 +293,7 @@ export const phoneTools: typeof De = {
   },
   ask: {
     description:
-      "Answers a question about what is in the sessions from their history, for example “What is the idea behind the ultrathink test?”, “What is the export stuck on?”, “How would you rate the project?” or “What did we do on the login yesterday?”. Claude reads the matching histories, which takes a few seconds. Without session FORGE finds the sessions that fit the question itself. Use this tool, not details, for every question about content, reasons, progress and problems.",
+      "Answers a question about what is in the sessions from their history, for example “What is the idea behind the ultrathink test?”, “What is the export stuck on?”, “How would you rate the project?” or “What did we do on the login yesterday?”. Claude reads the matching histories, which takes a few seconds. Without session FORGE finds the sessions that fit the question itself. For questions about content, reasons and background that go beyond the latest status; details gives the status itself faster.",
     params: {
       question: "the caller's question, written out in full, with the topic or name it is about",
       session: "only this session: short name like S1 or part of the title; leave out when it is unclear which one is meant",
