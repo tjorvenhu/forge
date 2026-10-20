@@ -31,3 +31,5 @@ apps/desktop/src-tauri/tauri.ci.json
 # FORGE Setup (apps/installer)
 apps/installer/target/
 apps/installer/gen/schemas/
+
+.DS_Store
