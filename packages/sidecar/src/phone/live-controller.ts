@@ -18,7 +18,8 @@ export interface LiveControllerDeps {
   /** first note to Gemini (outgoing calls: the reason); null waits for the caller */
   opening: string | null;
   onTranscript(role: "caller" | "forge", text: string): void;
-  onUnlock(): void;
+  /** returns what the conversation partner should now know (the sessions), "" for nothing */
+  onUnlock(): string;
   /** a keypad digit FORGE wants itself (confirming a deletion); true keeps it from the PIN pad */
   onDigit?(digit: string): boolean;
   log(message: string): void;
@@ -73,9 +74,9 @@ export class LiveCallController implements CallHandler {
       checkPin: d.checkPin,
       accepting: () => !this.ended && !this.closing,
       onUnlocked: () => {
-        this.d.onUnlock();
+        const known = this.d.onUnlock();
         this.rtp.play(beep());
-        this.note(tr().phone.pin.unlockedNote);
+        this.note([tr().phone.pin.unlockedNote, known].filter(Boolean).join(" "));
       },
       onLocked: () => this.note(tr().phone.call.sayExactly(tr().phone.pin.locked)),
       onWrong: (final) => (final ? this.farewell(tr().phone.pin.final) : this.note(tr().phone.call.sayExactly(tr().phone.pin.wrong))),

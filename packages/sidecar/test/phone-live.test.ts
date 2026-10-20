@@ -56,6 +56,7 @@ function toolset(calls: string[] = []): PhoneToolset {
     removeAgent: rec("removeAgent"),
     finishAgent: rec("finishAgent"),
     search: rec("search"),
+    ask: rec("ask"),
     callSettings: rec("callSettings"),
     project: rec("project"),
     files: rec("files"),
@@ -366,7 +367,7 @@ function liveSetup(o: { checkPin?: ((pin: string) => Promise<PinResult>) | null;
     greeting: o.greeting === undefined ? "Hallo, hier ist FORGE." : o.greeting,
     opening: o.opening ?? null,
     onTranscript: (role, text) => transcript.push(`${role}:${text}`),
-    onUnlock: () => unlocked++,
+    onUnlock: () => (unlocked++, ""),
     log: () => {},
     timing: { hangupGraceMs: 300 },
   });

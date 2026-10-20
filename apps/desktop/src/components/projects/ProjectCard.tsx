@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, Bot, CalendarDays, Code2, Copy, FileStack, FolderOpen, FolderSearch, GitBranch, MessageSquarePlus, MoreHorizontal, Settings2, Shield, ShieldAlert, ShieldCheck, Star, Tag, Trash2 } from "lucide-react";
+import { AlertTriangle, Bot, CalendarDays, Code2, Copy, FileStack, FolderMinus, FolderOpen, FolderSearch, Folders, GitBranch, MessageSquarePlus, MoreHorizontal, Settings2, Shield, ShieldAlert, ShieldCheck, Star, Tag, Trash2 } from "lucide-react";
 import type { ProjectWithStatus } from "@forge/protocol";
 import { call, keys } from "@/lib/queries";
 import { contextItems, copyText } from "@/lib/context-menu";
@@ -10,9 +10,12 @@ import { relativeTime, cn } from "@/lib/utils";
 import { useUi } from "@/stores/ui";
 import { toast } from "@/stores/toast";
 import { useTemplateDialogs } from "@/stores/templates";
+import { useProjectGroupDialogs } from "@/stores/project-groups";
+import type { MenuItem } from "@/components/ui/dropdown";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu } from "@/components/ui/dropdown";
 import { ProjectIcon } from "./ProjectIcon";
+import { setProjectGroup } from "./ProjectGroupDialogs";
 import { PROFILE_INFO } from "./ProfileBadge";
 import { tagLabel } from "@/components/workspace/ProjectSettingsTab";
 import { agentBusy, agentLabel } from "@/lib/project-tree";
@@ -33,6 +36,10 @@ export function ProjectCard({ p, agents = [], onRemove }: { p: ProjectWithStatus
       toast.error(t.projects.card.favoriteNotSaved, errorMessage(e));
     }
   };
+  const groupItems: MenuItem[] = [
+    { label: p.group ? t.projects.groups.changeGroup : t.projects.groups.setGroup, icon: <Folders className="h-3.5 w-3.5" />, onSelect: () => useProjectGroupDialogs.getState().openAssign(p) },
+    ...(p.group ? [{ label: t.projects.groups.removeFromGroup, icon: <FolderMinus className="h-3.5 w-3.5" />, onSelect: () => void setProjectGroup(qc, p, null) }] : []),
+  ];
 
   return (
     <div
@@ -43,6 +50,7 @@ export function ProjectCard({ p, agents = [], onRemove }: { p: ProjectWithStatus
         { label: t.projects.card.dailyReport, icon: <CalendarDays className="h-3.5 w-3.5" />, onSelect: () => openReport(p.parentId ?? p.id) },
         ...(p.exists ? [{ label: t.projects.card.applyTemplate, icon: <FileStack className="h-3.5 w-3.5" />, onSelect: () => useTemplateDialogs.getState().openApply({ projectId: p.id }) }] : []),
         { label: p.favorite ? t.projects.card.removeFavorite : t.projects.card.addFavorite, icon: <Star className="h-3.5 w-3.5" />, onSelect: () => void toggleFavorite() },
+        ...groupItems,
         {
           label: t.projects.card.projectSettings,
           icon: <Settings2 className="h-3.5 w-3.5" />,
@@ -105,6 +113,7 @@ export function ProjectCard({ p, agents = [], onRemove }: { p: ProjectWithStatus
           }
           items={[
             { label: p.favorite ? t.projects.card.removeFavorite : t.projects.card.addFavorite, icon: <Star className="h-3.5 w-3.5" />, onSelect: () => void toggleFavorite() },
+            ...groupItems,
             { label: t.projects.card.dailyReport, icon: <CalendarDays className="h-3.5 w-3.5" />, onSelect: () => openReport(p.parentId ?? p.id) },
             { label: t.projects.card.removeOrDelete, icon: <Trash2 className="h-3.5 w-3.5" />, danger: true, onSelect: () => onRemove(p) },
           ]}

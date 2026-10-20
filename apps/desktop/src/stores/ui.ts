@@ -242,6 +242,13 @@ interface UiState {
   /** projects whose sessions the sidebar tree hides */
   collapsedGroups: string[];
   toggleGroup: (projectId: string, collapsed?: boolean) => void;
+  /** project groups (lower case; "" = without group) the projects page shows closed */
+  collapsedProjectGroups: string[];
+  toggleProjectGroup: (group: string, collapsed?: boolean) => void;
+  /** the projects page shows only this group (lower case; "" = projects without group); null: all */
+  projectGroupFilter: string | null;
+  /** opens the projects page with only this group, or all of them again with null */
+  showProjectGroup: (group: string | null) => void;
   /** further areas of the split view, in their order on screen after the main area */
   splitPanes: SplitPane[];
   /**
@@ -273,7 +280,7 @@ interface UiState {
 
 const PREFS_KEY = "forge.ui";
 
-type Prefs = Pick<UiState, "activeProjectId" | "toolbarOpen" | "collapsedGroups" | "splitPanes" | "splitStash">;
+type Prefs = Pick<UiState, "activeProjectId" | "toolbarOpen" | "collapsedGroups" | "collapsedProjectGroups" | "splitPanes" | "splitStash">;
 
 /** Reopens the last project on start. Side and bottom panel always start closed and open only on request. */
 function loadPrefs(): Partial<UiState> {
@@ -282,6 +289,7 @@ function loadPrefs(): Partial<UiState> {
     return {
       ...(typeof p.toolbarOpen === "boolean" ? { toolbarOpen: p.toolbarOpen } : {}),
       ...(Array.isArray(p.collapsedGroups) ? { collapsedGroups: p.collapsedGroups.filter((g): g is string => typeof g === "string") } : {}),
+      ...(Array.isArray(p.collapsedProjectGroups) ? { collapsedProjectGroups: p.collapsedProjectGroups.filter((g): g is string => typeof g === "string") } : {}),
       ...(typeof p.activeProjectId === "string" ? { activeProjectId: p.activeProjectId, view: "workspace" as const } : {}),
       splitPanes: parsePanes(p.splitPanes),
       splitStash: parseStash(p.splitStash),
@@ -295,7 +303,10 @@ function loadPrefs(): Partial<UiState> {
 function savePrefs(s: Prefs) {
   if (isChatWindow()) return;
   try {
-    localStorage.setItem(PREFS_KEY, JSON.stringify({ activeProjectId: s.activeProjectId, toolbarOpen: s.toolbarOpen, collapsedGroups: s.collapsedGroups, splitPanes: s.splitPanes, splitStash: s.splitStash }));
+    localStorage.setItem(
+      PREFS_KEY,
+      JSON.stringify({ activeProjectId: s.activeProjectId, toolbarOpen: s.toolbarOpen, collapsedGroups: s.collapsedGroups, collapsedProjectGroups: s.collapsedProjectGroups, splitPanes: s.splitPanes, splitStash: s.splitStash }),
+    );
   } catch {
     /* preferences are optional */
   }
@@ -326,6 +337,8 @@ export const useUi = create<UiState>((set, get) => ({
   devToolsSection: "server",
   projectSettingsSection: "general",
   collapsedGroups: [],
+  collapsedProjectGroups: [],
+  projectGroupFilter: null,
   splitPanes: [],
   splitStash: null,
   splitRoom: 0,
@@ -337,6 +350,20 @@ export const useUi = create<UiState>((set, get) => ({
     });
     savePrefs(get());
   },
+  toggleProjectGroup: (group, collapsed) => {
+    set((s) => {
+      const next = collapsed ?? !s.collapsedProjectGroups.includes(group);
+      return { collapsedProjectGroups: next ? [...new Set([...s.collapsedProjectGroups, group])] : s.collapsedProjectGroups.filter((g) => g !== group) };
+    });
+    savePrefs(get());
+  },
+  showProjectGroup: (group) =>
+    set((s) => ({
+      view: "projects",
+      projectGroupFilter: group,
+      // A group picked on purpose is shown open.
+      collapsedProjectGroups: group === null ? s.collapsedProjectGroups : s.collapsedProjectGroups.filter((g) => g !== group),
+    })),
   openTerminal: (projectId, program, label) => set({ terminalRequest: { projectId, program, label }, bottomPanelOpen: true }),
   clearTerminalRequest: () => set({ terminalRequest: null }),
   openPanelTab: (projectId, tab) => {

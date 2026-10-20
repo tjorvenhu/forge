@@ -175,14 +175,14 @@ export const phoneTools: typeof De = {
     },
   },
   projects: {
-    description: "List of the projects with their Git branch and whether a dev server is running.",
+    description: "List of the projects with their group, Git branch and whether a dev server is running.",
   },
   project: {
     description:
-      "Manages projects. info: profile, default model, thinking effort, test and dev command, favorite, whether with Git. create: create a new project name (in path or in the projects folder from the settings), optionally with a GitHub repository right away (also in an organization) or without Git at all. import: add an existing folder path, with or without Git, optionally with a GitHub repository right away. clone: clone repository url, also by the name of a GitHub repository of the account. remove: remove the project from FORGE; folder and GitHub repository only with delete_folder or delete_github_repo. rename: new name. favorite: mark as favorite or not. settings: set profile, default model, thinking effort, test and dev command and switch Git on or off; only give what should change.",
+      "Manages projects. info: profile, default model, thinking effort, test and dev command, favorite, whether with Git. create: create a new project name (in path or in the projects folder from the settings), optionally with a GitHub repository right away (also in an organization) or without Git at all. import: add an existing folder path, with or without Git, optionally with a GitHub repository right away. clone: clone repository url, also by the name of a GitHub repository of the account. remove: remove the project from FORGE; folder and GitHub repository only with delete_folder or delete_github_repo. rename: new name. favorite: mark as favorite or not. group: put the project into the group group (for example by client), without group take it out of its group. rename_group: rename group group to name, for all its projects. dissolve_group: dissolve group group, the projects stay. settings: set profile, default model, thinking effort, test and dev command and switch Git on or off; only give what should change.",
     params: {
       project: "Project name or part of it; not for create, import and clone",
-      name: "create: name of the new project; rename: the new name; clone: folder name",
+      name: "create: name of the new project; rename: the new name; rename_group: new name of the group; clone: folder name",
       path: "import: the folder; create and clone: the folder the project is created in, only if the caller names one",
       url: "clone: Git URL or name of a GitHub repository",
       git: "create and import: false sets the project up without Git at all (no Git areas, no agents, Claude does not use Git), but a folder with .git is always added with Git; settings: true switches Git on, false off",
@@ -192,6 +192,7 @@ export const phoneTools: typeof De = {
       delete_github_repo:
         "remove: true deletes the whole GitHub repository; only if the caller explicitly wants to delete the repository, never for branches. They have to confirm it on the keypad afterwards",
       favorite: "favorite: true marks it, false removes the mark",
+      group: "group: name of the group, for example a client; empty takes the project out of its group. rename_group and dissolve_group: the existing group",
       profile: "settings: safe asks a lot, balanced is the default, autonomous works without asking",
       default_model: "settings: opus, sonnet, haiku or a model ID; default uses the global setting",
       default_effort: "settings: thinking effort of new sessions; default uses the global setting",
@@ -288,6 +289,15 @@ export const phoneTools: typeof De = {
       backup: "with backup_restore: number from backup_list, with sync_restore from sync_versions (1 = newest)",
       project: "with sync_clone, sync_keep and sync_force: name from sync_status",
       parts: "with backup_restore and sync_restore: which parts, separated by commas: settings, projects, claude, git; if not given all except the phone settings",
+    },
+  },
+  ask: {
+    description:
+      "Answers a question about what is in the sessions from their history, for example “What is the idea behind the ultrathink test?”, “What is the export stuck on?”, “How would you rate the project?” or “What did we do on the login yesterday?”. Claude reads the matching histories, which takes a few seconds. Without session FORGE finds the sessions that fit the question itself. Use this tool, not details, for every question about content, reasons, progress and problems.",
+    params: {
+      question: "the caller's question, written out in full, with the topic or name it is about",
+      session: "only this session: short name like S1 or part of the title; leave out when it is unclear which one is meant",
+      project: "only the sessions of this project",
     },
   },
   search: {

@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import type { QueryClient } from "@tanstack/react-query";
-import { Archive, ArrowDown, ArrowLeftRight, ArrowUp, ArrowUpCircle, BookOpen, Bot, CalendarDays, Camera, CloudDownload, Columns2, Combine, Cpu, Database, Download, FilePlus2, FileStack, FileText, FileUp, FlaskConical, FolderDown, FolderOpen, FolderPlus, Gauge, GitBranch, GitBranchPlus, GitCommitHorizontal, GitCompareArrows, GitFork, GitPullRequest, Globe, HandHeart, Languages, Lightbulb, Link2Off, ListChecks, LogIn, LogOut, MessageSquare, MessageSquarePlus, MessageSquareText, Mic, MonitorSmartphone, NotebookText, PackageCheck, PanelBottom, PanelRight, Pencil, Phone, PhoneOff, PhoneOutgoing, Pin, PinOff, Play, Power, RefreshCcw, RefreshCw, RotateCcw, Search, Settings2, Shield, ShieldBan, Shrink, Sparkles, Square, SquareArrowOutDownLeft, SquareArrowOutUpRight, SquareTerminal, Timer, ToggleLeft, ToggleRight, Trash2, Wand2, type LucideIcon } from "lucide-react";
+import { Archive, ArrowDown, ArrowLeftRight, ArrowUp, ArrowUpCircle, BookOpen, Bot, CalendarDays, Camera, CloudDownload, Columns2, Combine, Cpu, Database, Download, FilePlus2, FileStack, FileText, FileUp, FlaskConical, FolderDown, FolderMinus, FolderOpen, FolderPlus, Folders, Gauge, GitBranch, GitBranchPlus, GitCommitHorizontal, GitCompareArrows, GitFork, GitPullRequest, Globe, HandHeart, Languages, Lightbulb, Link2Off, ListChecks, LogIn, LogOut, MessageSquare, MessageSquarePlus, MessageSquareText, Mic, MonitorSmartphone, NotebookText, PackageCheck, PanelBottom, PanelRight, Pencil, Phone, PhoneOff, PhoneOutgoing, Pin, PinOff, Play, Power, RefreshCcw, RefreshCw, RotateCcw, Search, Settings2, Shield, ShieldBan, Shrink, Sparkles, Square, SquareArrowOutDownLeft, SquareArrowOutUpRight, SquareTerminal, Timer, ToggleLeft, ToggleRight, Trash2, Wand2, type LucideIcon } from "lucide-react";
 import type {
   AppInstallState,
   AppUpdateState,
@@ -38,6 +38,8 @@ import { draftKey, useDrafts } from "@/stores/drafts";
 import { lastEditablePrompt, useMessageEdit } from "@/stores/message-edit";
 import { toast } from "@/stores/toast";
 import { useTemplateDialogs } from "@/stores/templates";
+import { useProjectGroupDialogs } from "@/stores/project-groups";
+import { setProjectGroup } from "@/components/projects/ProjectGroupDialogs";
 import { learnTemplatesNow } from "@/lib/template-learning";
 import { DEV_TOOLS_SECTIONS, KNOWLEDGE_MERGE_REQUEST, KNOWLEDGE_STALE_REQUEST, PROJECT_SETTINGS_SECTIONS, SETTINGS_SECTIONS, SKILLS_TABS, EXTENSIONS_TABS, workspaceTabsFor, useUi, type SettingsSection, type WorkspaceTab } from "@/stores/ui";
 import { PROFILE_IDS, PROFILE_INFO } from "@/components/projects/ProfileBadge";
@@ -547,6 +549,18 @@ export function buildActions(ctx: ActionContext): PaletteEntry[] {
       setting("project-git", on ? t.layout.actions.gitOff : t.layout.actions.gitOn, icon(on ? ToggleRight : ToggleLeft), () => {
         void updateProject(qc, project.id, { gitEnabled: !on }, on ? t.layout.actions.gitTurnedOff : t.layout.actions.gitTurnedOn, on ? t.layout.actions.gitOffBody : project.name);
       }, { keywords: "git einschalten ausschalten versionsverwaltung ohne git agenten repository turn on off version control without agents", hint: project.name });
+    }
+    // A worktree is listed under its project, so the group is the main project's.
+    const grouped = root ?? project;
+    act("project-group", grouped.group ? t.projects.groups.changeGroup : t.projects.groups.setGroup, icon(Folders), () => useProjectGroupDialogs.getState().openAssign(grouped), {
+      hint: grouped.group ?? grouped.name,
+      keywords: "gruppe gruppieren projektgruppe kunde kunden ordnen einordnen sortieren group grouping project group client customer organize sort",
+    });
+    if (grouped.group) {
+      act("project-ungroup", t.projects.groups.removeFromGroup, icon(FolderMinus), () => void setProjectGroup(qc, grouped, null), {
+        hint: grouped.group,
+        keywords: "gruppe entfernen herausnehmen ohne gruppe kunde group remove ungroup without client",
+      });
     }
     for (const tag of TAG_INFO) {
       if ((tag.rootOnly && project.parentId) || (tag.git && !project.gitEnabled)) continue;

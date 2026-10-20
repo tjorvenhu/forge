@@ -23,6 +23,7 @@ const project = {
   path: "C:/forge",
   parentId: null,
   gitEnabled: true,
+  group: null,
   exists: true,
   profile: "balanced",
   tags: [],

@@ -122,7 +122,7 @@ export const views = {
     title: "Projekte",
     subtitle: (projects: number, agents: number) =>
       `${projects} ${projects === 1 ? "Projekt" : "Projekte"}${agents ? `, ${agents} ${agents === 1 ? "Agent" : "Agenten"}` : ""}`,
-    searchPlaceholder: "Name, Pfad, Tag oder Technologie",
+    searchPlaceholder: "Name, Pfad, Gruppe, Tag oder Technologie",
     searchLabel: "Projekte durchsuchen",
     filterLabel: "Filter",
     filterAll: "Alle",

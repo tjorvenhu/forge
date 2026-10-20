@@ -385,6 +385,7 @@ describe("PhoneService end to end with a test PBX", () => {
   let events: ServerEvent[];
   let spoken: string[];
   let transcripts: string[];
+  let asked: Array<{ question: string; labels: string[] }>;
   let convs: Array<{ said: string[]; tools: PhoneToolset; context: string; cb: ConversationCallbacks }>;
   const sent: Array<[string, string]> = [];
   const steered: string[] = [];
@@ -454,6 +455,7 @@ describe("PhoneService end to end with a test PBX", () => {
     prsCreated = [];
     testDbStatus = null;
     sessionList = [fakeSession({ id: "s1", projectId, title: "Warenkorb", status: "idle", live: true, projectName: "shop" })];
+    asked = [];
     const sessions = {
       get: (id: string) => {
         const s = sessionList.find((x) => x.id === id);
@@ -478,6 +480,10 @@ describe("PhoneService end to end with a test PBX", () => {
       respondApproval: (id: string, requestId: string, decision: string, scope: string) => approvals.push(`${id}:${requestId}:${decision}:${scope}`),
       closeProject: async (ids: string[]) => steered.push(`closeProject:${ids.join(",")}`),
       summarize: async () => ({ summary: "Export gebaut, Tests offen.", model: "haiku" }),
+      answerQuestion: async (question: string, list: Array<{ id: string; label: string }>) => {
+        asked.push({ question, labels: list.map((x) => x.label) });
+        return { answer: "Passkeys ersetzen das Passwort, offen ist noch der Test auf Safari.", model: "haiku" };
+      },
       suggestPullRequest: async () => ({ title: "CSV-Export", body: "Neu: CSV-Export", base: "main", head: "agent/csv" }),
       send: async (id: string, text: string) => {
         sent.push([id, text]);
@@ -654,7 +660,11 @@ describe("PhoneService end to end with a test PBX", () => {
     // Steering is locked until the PIN comes in via keypad.
     expect(await conv.tools.sendMessage("S1", "Mach weiter")).toMatch(/^Gesperrt/);
     expect(await conv.tools.details("S1")).toMatch(/^Gesperrt/);
+    expect(await conv.tools.ask("Woran hängt der Warenkorb?")).toMatch(/^Gesperrt/);
     expect(sent).toHaveLength(0);
+    expect(asked).toHaveLength(0);
+    // Titles and results reach the model only after the PIN.
+    expect(conv.context).not.toContain("Warenkorb");
     // Before the PIN, status gives counts only, no titles.
     const lockedStatus = await conv.tools.status();
     expect(lockedStatus).toContain("Aktive Sessions: 1");
@@ -1082,13 +1092,38 @@ describe("PhoneService end to end with a test PBX", () => {
     const { inv, ok } = await answeredCall("c-refs");
     const conv = await until(() => convs[0], 5000, "conversation");
     expect(await conv.tools.details("")).toMatch(/^Fehler: Welche Session/);
-    expect(await conv.tools.details("S3")).toMatch(/^Fehler: S3 ist in diesem Gespräch nicht vergeben/);
+    expect(await conv.tools.details("S9")).toMatch(/^Fehler: S9 ist in diesem Gespräch nicht vergeben/);
     expect(await conv.tools.stop("  ")).toMatch(/^Fehler/);
     // "Warenkorb" is the exact title of one session, "waren" matches two.
     expect(await conv.tools.details("Warenkorb")).toContain("Warenkorb<<<ENDE");
     expect(await conv.tools.details("waren")).toMatch(/^Fehler: Mehrere Sessions passen/);
     expect(await conv.tools.details("login")).toContain("Login");
+    // Speech recognition mishears names; a close title still finds its session.
+    expect(await conv.tools.details("Logn")).toContain("Login");
     await byeFromPbx("c-refs", inv, ok);
+  }, 30_000);
+
+  it("knows the sessions from the start and answers questions from the ones that fit", async () => {
+    await svc.saveConfig({ requirePin: false });
+    sessionList.push(fakeSession({ id: "s2", projectId, title: "Login mit Passkeys", status: "running", live: true, projectName: "shop" }));
+    await svc.setEnabled(true);
+    await until(() => svc.state().registration === "registered", 5000, "registered");
+    const { inv, ok } = await answeredCall("c-ask");
+    const conv = await until(() => convs[0], 5000, "conversation");
+    expect(conv.context).toContain("So stehen die Sessions gerade.");
+    expect(conv.context).toContain("S1: <<<SESSION-DATEN>>>Warenkorb<<<ENDE SESSION-DATEN>>> im Projekt shop, fertig, wartet auf Anweisungen.");
+    expect(conv.context).toContain("S2: <<<SESSION-DATEN>>>Login mit Passkeys<<<ENDE SESSION-DATEN>>> im Projekt shop, arbeitet gerade.");
+
+    expect(await conv.tools.ask("  ")).toBe("Fehler: Was ist die Frage?");
+    // No session named: the misheard "Passkies" points to S2, which comes first.
+    const answer = await conv.tools.ask("Was ist das Konzept hinter den Passkies?");
+    expect(asked[0]).toEqual({ question: "Was ist das Konzept hinter den Passkies?", labels: ["S2 Login mit Passkeys", "S1 Warenkorb"] });
+    expect(answer).toBe(
+      "Aus <<<SESSION-DATEN>>>S2 Login mit Passkeys, S1 Warenkorb<<<ENDE SESSION-DATEN>>>: <<<SESSION-DATEN>>>Passkeys ersetzen das Passwort, offen ist noch der Test auf Safari.<<<ENDE SESSION-DATEN>>>",
+    );
+    await conv.tools.ask("Was fehlt noch?", { session: "Warenkorb" });
+    expect(asked[1]!.labels).toEqual(["S1 Warenkorb"]);
+    await byeFromPbx("c-ask", inv, ok);
   }, 30_000);
 
   /** An agent worktree of shop, named like WorktreeService names it. */
@@ -1409,6 +1444,7 @@ describe("PhoneService end to end with a test PBX", () => {
       "github.publish": (p: { owner?: string }) => ({ url: `https://github.com/${p.owner ?? "me"}/landing` }),
       "projects.clone": () => ({ id: "p-clone", name: "shop-api" }),
       "projects.update": ({ projectId: id, ...patch }: { projectId: string }) => projects.update(id, patch),
+      "projects.renameGroup": ({ from, to }: { from: string; to: string | null }) => ({ count: projects.renameGroup(from, to) }),
       "projects.removalInfo": () => ({ path: dir, folderExists: true, folderBlocker: null, isWorktree: false, worktrees: 0, githubRepo: "me/shop", githubSignedIn: true, githubCanDelete: true }),
       "projects.remove": () => ({ removed: true, folderDeleted: true, githubDeleted: false }),
       "projects.listFiles": (p: { projectId: string; dir: string }) => projects.listFiles(p.projectId, p.dir),
@@ -1453,6 +1489,14 @@ describe("PhoneService end to end with a test PBX", () => {
     expect(await conv.tools.project("shop", "settings", { git: false })).toMatch(/, ohne Git\.$/);
     expect(await conv.tools.git("shop", "status")).toMatch(/^Fehler: shop ist ohne Git eingerichtet\./);
     expect(await conv.tools.project("shop", "settings", { git: true })).toMatch(/, mit Git\.$/);
+    expect(await conv.tools.project("shop", "group", { group: "Kunde A" })).toBe("shop ist jetzt in der Gruppe Kunde A.");
+    expect(await conv.tools.project("shop", "info")).toMatch(/, mit Git, Gruppe Kunde A\.$/);
+    expect(await conv.tools.projects()).toMatch(/^shop, Gruppe Kunde A/m);
+    expect(await conv.tools.project("", "rename_group", { group: "kunde a", name: "Kunde B" })).toBe("Die Gruppe Kunde A heißt jetzt Kunde B, 1 Projekt.");
+    expect(await conv.tools.project("", "rename_group", { group: "Kunde B" })).toBe("Fehler: Wie soll die Gruppe heißen?");
+    expect(await conv.tools.project("", "dissolve_group", { group: "Kunde B" })).toBe("Die Gruppe Kunde B ist aufgelöst. 1 Projekt ist jetzt ohne Gruppe.");
+    expect(await conv.tools.project("", "dissolve_group", { group: "Kunde B" })).toMatch(/Es gibt keine Gruppe Kunde B\./);
+    expect(projects.get(projectId).group).toBeNull();
 
     const listing = await conv.tools.files("shop", "list");
     expect(listing).toContain("Ordner: src.");

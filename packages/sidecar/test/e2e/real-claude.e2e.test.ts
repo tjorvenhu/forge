@@ -457,6 +457,7 @@ describe.skipIf(!enabled)("E2E: sidecar with real Claude Code", () => {
         removeAgent: async () => (calls.push("removeAgent"), "Entfernt."),
         finishAgent: async () => (calls.push("finishAgent"), "Übernommen."),
         search: async () => (calls.push("search"), "Nichts gefunden."),
+        ask: async () => (calls.push("ask"), "Nichts gefunden."),
         callSettings: async () => (calls.push("callSettings"), "FORGE ruft an."),
         project: async () => (calls.push("project"), "Gespeichert."),
         files: async () => (calls.push("files"), "Dateien: package.json."),

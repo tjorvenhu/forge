@@ -1,10 +1,12 @@
 import { useMemo } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { BookOpen, Blocks, CheckCheck, FileText, GitBranch, GitCommitHorizontal, History, PackageSearch, PenLine, Server, Sparkles } from "lucide-react";
+import { BookOpen, Blocks, CheckCheck, FileText, FolderMinus, Folders, GitBranch, GitCommitHorizontal, History, PackageSearch, Pencil, PenLine, Server, Sparkles } from "lucide-react";
 import type { ProjectWithStatus } from "@forge/protocol";
 import { call, keys, useKnowledgeStale, useProjects } from "@/lib/queries";
 import { relativeTime } from "@/lib/utils";
 import { knowledgeFixRequest, useUi } from "@/stores/ui";
+import { useProjectGroupDialogs } from "@/stores/project-groups";
+import { groupKey, groupProjects } from "@/lib/project-tree";
 import { markKnowledgeChecked } from "@/components/knowledge/knowledge-actions";
 import { refsMissingLabel, staleById } from "@/components/knowledge/knowledge-text";
 import { ProjectIcon } from "@/components/projects/ProjectIcon";
@@ -67,11 +69,21 @@ export function usePaletteSources(query: string, project: ProjectWithStatus | nu
         id: `project-${p.id}`,
         group: "Projekte",
         label: p.name,
-        keywords: `${p.path} ${p.technologies.join(" ")} ${p.tags.join(" ")}`,
-        hint: p.git?.branch ?? undefined,
+        keywords: `${p.path} ${p.group ?? ""} ${p.technologies.join(" ")} ${p.tags.join(" ")}`,
+        hint: [p.group, p.git?.branch].filter(Boolean).join(" · ") || undefined,
         icon: <ProjectIcon id={p.parentId ?? p.id} name={p.name} size={18} />,
         run: () => ui.openProject(p.id),
       });
+    }
+    const groups = useProjectGroupDialogs.getState();
+    const gm = t.projects.groups;
+    for (const g of groupProjects((projects.data ?? []).filter((p) => !p.parentId))) {
+      const name = g.name;
+      if (!name) continue;
+      const keywords = `gruppe kunde projektgruppe group client customer ${g.projects.map((p) => p.name).join(" ")}`;
+      list.push({ id: `group-${g.key}`, group: "Projekte", label: gm.showNamed(name), keywords, hint: gm.count(g.projects.length), icon: <Folders className="h-4 w-4" />, run: () => ui.showProjectGroup(groupKey(name)) });
+      list.push({ id: `group-rename-${g.key}`, group: "Aktionen", label: gm.renameNamed(name), keywords: `${keywords} umbenennen rename`, icon: <Pencil className="h-4 w-4" />, run: () => groups.openRename(name) });
+      list.push({ id: `group-dissolve-${g.key}`, group: "Aktionen", label: gm.dissolveNamed(name), keywords: `${keywords} auflösen löschen entfernen dissolve delete remove`, icon: <FolderMinus className="h-4 w-4" />, run: () => groups.openDissolve(name) });
     }
     for (const s of sessions.data ?? []) {
       list.push({

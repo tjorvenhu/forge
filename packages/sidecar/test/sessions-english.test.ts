@@ -71,6 +71,18 @@ describe("session prompts in English", () => {
     expect(prompts[0]).toContain("RESULT: done");
   });
 
+  it("answers a phone question from the named sessions' histories", async () => {
+    db.appendEvent("s1", { type: "user.message", text: "Add passkey login", uuid: "u1" });
+    db.appendEvent("s1", { type: "assistant.text", text: "Passkeys work, Safari is untested." } as never);
+    const prompts: Array<{ p: string; purpose: string }> = [];
+    const runtime = { complete: async (p: string, o: { purpose: string }) => (prompts.push({ p, purpose: o.purpose }), " Safari is still untested. ") } as unknown as ClaudeRuntime;
+    const assist = new ClaudeAssist(db, projects, new GitEngine(), runtime);
+    expect((await assist.answerQuestion("What is left?", [{ id: "s1", label: "S2 Passkeys" }])).answer).toBe("Safari is still untested.");
+    expect(prompts[0]!.purpose).toBe("phone");
+    expect(prompts[0]!.p).toMatch(/^The user asks about their Claude Code sessions on the phone\./);
+    expect(prompts[0]!.p).toContain("Question: What is left?\n\n=== Session S2 Passkeys\nUSER: Add passkey login\nCLAUDE: Passkeys work, Safari is untested.");
+  });
+
   it("writes the pull request prompt in English and reads an English fallback answer", async () => {
     const git = {
       currentBranch: async () => "feature",

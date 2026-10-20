@@ -42,6 +42,7 @@ const project = (id: string, tags: string[] = []): Project => ({
   devCommand: null,
   parentId: null,
   gitEnabled: true,
+  group: null,
   exists: true,
 });
 

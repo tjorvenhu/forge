@@ -51,7 +51,7 @@ import { DEFAULT_GEMINI_STT_MODEL, DEFAULT_GEMINI_TTS_MODEL, DEFAULT_GEMINI_VOIC
 import { LiveCallController, type LiveControllerDeps } from "./live-controller.js";
 import type { ChatWindowState } from "../util/chat-windows.js";
 import { asData, PhoneAgent, type PhoneToolset } from "./phone-agent.js";
-import { excerptData, lastAnswer, openRequest, pendingText, questionTexts } from "./session-info.js";
+import { bestByName, excerptData, nameScore, lastAnswer, openRequest, pendingText, questionTexts } from "./session-info.js";
 import { DEFAULT_PIN_LIMITS, hashPin, PinGuard, verifyPin, type PinGuardState, type PinLimits } from "./pin-guard.js";
 import { RtpSession } from "./rtp.js";
 import { answerDirection, buildSdp, chooseCodec, parseSdp, PT_PCMA } from "./sdp.js";
@@ -75,6 +75,16 @@ import { DEFAULT_STT_MODEL, DEFAULT_TTS_MODEL, DEFAULT_VOICE, OpenAiVoice, type 
 
 /** longest daily report handed to the conversation partner */
 const REPORT_MAX = 6000;
+/** ended sessions named in the overview at the start of a call */
+const OVERVIEW_RECENT = 5;
+/** last answer of a running session in that overview */
+const OVERVIEW_ANSWER_MAX = 300;
+/** sessions whose history Claude reads for a question on the phone */
+const ASK_SESSIONS = 3;
+/** words of the question looked up one by one */
+const ASK_WORDS = 12;
+/** longest answer handed back to the conversation partner */
+const ASK_ANSWER_MAX = 1500;
 
 const SECRET_PASSWORD = "sip-password";
 const SECRET_OPENAI = "openai-key";
@@ -381,6 +391,19 @@ function pickOne<T>(items: T[], query: string, keys: (x: T) => string[], what: {
   if (q && hits.length > 1) throw new Error(m.common.pickMany(what.many, query, asData(names(hits))));
   const known = items.length ? m.common.pickKnown(asData(names(items)), items.length > 6) : "";
   throw new Error(q ? m.common.pickNone(what.none, query, known) : m.common.pickWhich(known));
+}
+
+function statusText(s: { status: string; live: boolean }): string {
+  const m = tr().phone.common.status;
+  return s.status === "running" || s.status === "starting"
+    ? m.working
+    : s.status === "waiting_approval"
+      ? m.waiting
+      : s.status === "idle" && s.live
+        ? m.idle
+        : s.status === "error"
+          ? m.error
+          : m.ended;
 }
 
 /** A spoken GitHub organisation ("vanturis") against the account's organisations; nothing spoken or the account itself: the personal account. */
@@ -774,6 +797,28 @@ export class PhoneService {
     this.desk.refresh();
   }
 
+  /**
+   * The sessions as the conversation partner knows them from the start, so "the login thing" or "what
+   * is it doing" needs no lookup first: running ones with their last answer, then the newest ended ones.
+   */
+  private overview(a: ActiveCall): string {
+    const m = tr().phone;
+    const live = this.d.sessions.listLive();
+    const recent = this.d.sessions
+      .listAll()
+      .filter((s) => !s.live)
+      .slice(0, OVERVIEW_RECENT);
+    if (!live.length && !recent.length) return m.status.none;
+    const line = (s: (typeof recent)[number], withLast: boolean) => {
+      const pending = s.status === "waiting_approval" ? m.status.open(pendingText(this.d.db, s.id, true)) : "";
+      const last = withLast ? lastAnswer(this.d.db, s.id) : "";
+      return m.status.line(this.refFor(a, s.id), asData(s.title ?? m.untitled), s.projectName, statusText(s), pending) + (last ? m.context.lastAnswer(excerptData(last, OVERVIEW_ANSWER_MAX)) : "");
+    };
+    return [live.length ? live.map((s) => line(s, true)).join("\n") : m.status.noActive, recent.length ? m.status.recent(recent.map((s) => line(s, false)).join("\n")) : ""]
+      .filter(Boolean)
+      .join("\n");
+  }
+
   /** The short name (S1, S2 ...) of a session in this call. */
   private refFor(a: ActiveCall, id: string): string {
     for (const [r, sid] of a.refs) if (sid === id) return r;
@@ -1013,6 +1058,8 @@ export class PhoneService {
           m.context.outgoing(a.call.remoteNumber, asData(a.info.reason ?? "")),
       picked,
       this.cfg.requirePin ? (pinHash ? m.context.pinLocked : m.context.noPin) : m.context.open,
+      // Before the PIN no titles or results: they can be confidential. The overview follows the unlock.
+      this.cfg.requirePin ? "" : m.context.overview(this.overview(a)),
     ]
       .filter(Boolean)
       .join("\n");
@@ -1025,6 +1072,7 @@ export class PhoneService {
       onUnlock: () => {
         a.info.unlocked = true;
         this.emitState();
+        return m.notes.overview(this.overview(a));
       },
       onDigit: (digit: string) => this.confirmDigit(a, digit),
       log: (m: string) => {
@@ -1391,7 +1439,12 @@ export class PhoneService {
       const q = raw.toLowerCase();
       const all = sessions.listAll();
       const exact = all.filter((s) => (s.title ?? "").toLowerCase() === q);
-      const hits = exact.length ? exact : all.filter((s) => (s.title ?? "").toLowerCase().includes(q) || s.projectName.toLowerCase().includes(q));
+      let hits = exact.length ? exact : all.filter((s) => (s.title ?? "").toLowerCase().includes(q) || s.projectName.toLowerCase().includes(q));
+      if (!hits.length) {
+        // Spoken names are often misheard; a close title still means that session.
+        const { best, close } = bestByName(raw, all, (s) => `${s.title ?? ""} ${s.projectName}`);
+        hits = best ? [best] : close;
+      }
       if (!hits.length) throw new Error(m.common.noSession(raw));
       if (hits.length > 1) {
         const names = hits.slice(0, 5).map((s) => `${refFor(s.id)} ${asData(s.title ?? m.untitled)}`);
@@ -1480,6 +1533,7 @@ export class PhoneService {
         p.testCommand ? m.testCommand(asData(p.testCommand)) : m.noTestCommand,
         p.devCommand ? m.devCommand(asData(p.devCommand)) : m.devDetected,
         p.gitEnabled ? m.withGit : m.withoutGit,
+        ...(p.group ? [m.group(p.group)] : []),
       ].join(", ");
     };
     /** Git, pull requests and agents are refused for a project set up without git. */
@@ -1528,18 +1582,6 @@ export class PhoneService {
       return m.installRepairHint(what, from, then);
     };
     const removal = { projects: this.d.projects, sessions, worktrees: this.d.worktrees, devServers: this.d.devServers };
-    const statusText = (s: { status: string; live: boolean }) => {
-      const m = tr().phone.common.status;
-      return s.status === "running" || s.status === "starting"
-        ? m.working
-        : s.status === "waiting_approval"
-          ? m.waiting
-          : s.status === "idle" && s.live
-            ? m.idle
-            : s.status === "error"
-              ? m.error
-              : m.ended;
-    };
     /** Prompt templates: list, send with values for their placeholders, save, sort and delete. */
     const templateAction = async (action: SessionsArgs[0], o: SessionsArgs[1]): Promise<string> => {
       const m = tr().phone;
@@ -2372,7 +2414,7 @@ export class PhoneService {
                 (st) => st.status === "running",
                 () => false,
               );
-              return [p.name, branch ? pj.branch(branch) : p.gitEnabled ? "" : pj.noGit, dev ? pj.devRunning : "", n ? pj.active(n) : ""].filter(Boolean).join(", ");
+              return [p.name, p.group ? pj.group(p.group) : "", branch ? pj.branch(branch) : p.gitEnabled ? "" : pj.noGit, dev ? pj.devRunning : "", n ? pj.active(n) : ""].filter(Boolean).join(", ");
             }),
           );
           return lines.join("\n");
@@ -2428,7 +2470,24 @@ export class PhoneService {
             projectChanged(p.id);
             return pj.cloned(p.name);
           }
+          if (action === "rename_group" || action === "dissolve_group") {
+            const from = o?.group?.trim();
+            if (!from) return pj.whichGroup;
+            const to = action === "rename_group" ? o?.name?.trim() : null;
+            if (to === "" || to === undefined) return pj.whatGroupName;
+            const members = this.d.projects.all().filter((x) => x.group?.toLowerCase() === from.toLowerCase());
+            const { count } = await call("projects.renameGroup", { from, to });
+            for (const x of members) projectChanged(x.id);
+            const name = members[0]?.group ?? from;
+            return to ? pj.groupRenamed(name, to, count) : pj.groupDissolved(name, count);
+          }
           const p = target(projectName, o);
+          if (action === "group") {
+            // A worktree shows under its project's group, so the project is the one that moves.
+            const next = await call("projects.update", { projectId: p.parentId ?? p.id, group: o?.group?.trim() || null });
+            projectChanged(next.id);
+            return next.group ? pj.grouped(next.name, next.group) : pj.ungrouped(next.name);
+          }
           if (action === "info") return pj.info(p.name, !!p.favorite, !!p.parentId, projectText(p));
           if (action === "remove") {
             if (p.parentId) return pj.isWorktree(p.name);
@@ -2983,6 +3042,38 @@ export class PhoneService {
           }
           if (lines.length) return lines.join("\n");
           return p ? sr.noneInProject(p.name) : sr.none;
+        }),
+      ask: (question, o) =>
+        run(true, async () => {
+          const ak = tr().phone.ask;
+          if (!question.trim()) return ak.what;
+          const all = sessions.listAll();
+          let picked: Array<{ id: string; title: string | null }>;
+          if (o?.session?.trim()) picked = [resolve(o.session)];
+          else {
+            const p = o?.project?.trim() ? findProject(o.project) : null;
+            const projectOf = new Map(this.d.projects.all().map((x) => [x.id, x.parentId ?? x.id]));
+            const candidates = p ? all.filter((s) => s.projectId === p.id || projectOf.get(s.projectId) === p.id) : all;
+            const score = new Map<string, number>();
+            const add = (id: string, n: number) => score.set(id, (score.get(id) ?? 0) + n);
+            const words = [...new Set(question.toLowerCase().match(/[\p{L}\p{N}]{3,}/gu) ?? [])].slice(0, ASK_WORDS);
+            for (const w of words) {
+              // Word by word: a spoken question rarely has all its words in one place. A word found in many sessions says little.
+              const ids = new Set(db.searchEvents(w, 100, { projectId: p?.id }).map((h) => h.sessionId));
+              for (const id of ids) add(id, 1 / ids.size);
+              for (const s of candidates) add(s.id, nameScore(w, s.title ?? ""));
+            }
+            if (a.focus) add(a.focus, 0.5);
+            for (const s of candidates) if (s.live) add(s.id, 0.2);
+            const ranked = candidates.filter((s) => (score.get(s.id) ?? 0) > 0).sort((x, y) => (score.get(y.id) ?? 0) - (score.get(x.id) ?? 0));
+            // Nothing fits: the newest sessions are still the best guess for "what is going on".
+            picked = (ranked.length ? ranked : candidates).slice(0, ASK_SESSIONS);
+          }
+          if (!picked.length) return ak.noSessions;
+          const label = (s: { id: string; title: string | null }) => `${refFor(s.id)} ${s.title ?? tr().phone.untitled}`;
+          const { answer } = await sessions.answerQuestion(question, picked.map((s) => ({ id: s.id, label: label(s) })));
+          if (picked.length === 1) a.focus = picked[0]!.id;
+          return ak.answer(asData(picked.map(label).join(", ")), excerptData(answer, ASK_ANSWER_MAX));
         }),
       callSettings: (patch) =>
         run(Object.values(patch).some((v) => v !== undefined), async () => {

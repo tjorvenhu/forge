@@ -159,13 +159,13 @@ export const phoneTools = {
     },
   },
   projects: {
-    description: "Liste der Projekte mit Git-Branch und ob ein Dev-Server läuft.",
+    description: "Liste der Projekte mit Gruppe, Git-Branch und ob ein Dev-Server läuft.",
   },
   project: {
-    description: "Projekte verwalten. info: Profil, Standardmodell, Denkaufwand, Test- und Dev-Befehl, Favorit, ob mit Git. create: neues Projekt name anlegen (in path oder im Projektordner aus den Einstellungen), auf Wunsch gleich mit GitHub-Repository (auch in einer Organisation) oder ganz ohne Git. import: vorhandenen Ordner path aufnehmen, mit oder ohne Git, auf Wunsch gleich mit GitHub-Repository. clone: Repository url klonen, auch per Name eines GitHub-Repositorys des Kontos. remove: Projekt aus FORGE entfernen; Ordner und GitHub-Repository nur mit delete_folder oder delete_github_repo. rename: neuer name. favorite: als Favorit markieren oder nicht. settings: Profil, Standardmodell, Denkaufwand, Test- und Dev-Befehl setzen und Git ein- oder ausschalten; nur angeben, was sich ändern soll.",
+    description: "Projekte verwalten. info: Profil, Standardmodell, Denkaufwand, Test- und Dev-Befehl, Favorit, ob mit Git. create: neues Projekt name anlegen (in path oder im Projektordner aus den Einstellungen), auf Wunsch gleich mit GitHub-Repository (auch in einer Organisation) oder ganz ohne Git. import: vorhandenen Ordner path aufnehmen, mit oder ohne Git, auf Wunsch gleich mit GitHub-Repository. clone: Repository url klonen, auch per Name eines GitHub-Repositorys des Kontos. remove: Projekt aus FORGE entfernen; Ordner und GitHub-Repository nur mit delete_folder oder delete_github_repo. rename: neuer name. favorite: als Favorit markieren oder nicht. group: Projekt in die Gruppe group einordnen (z. B. nach Kunde), ohne group aus seiner Gruppe nehmen. rename_group: Gruppe group in name umbenennen, für alle ihre Projekte. dissolve_group: Gruppe group auflösen, die Projekte bleiben. settings: Profil, Standardmodell, Denkaufwand, Test- und Dev-Befehl setzen und Git ein- oder ausschalten; nur angeben, was sich ändern soll.",
     params: {
       project: "Projektname oder Teil davon; nicht bei create, import und clone",
-      name: "create: Name des neuen Projekts; rename: neuer Name; clone: Ordnername",
+      name: "create: Name des neuen Projekts; rename: neuer Name; rename_group: neuer Name der Gruppe; clone: Ordnername",
       path: "import: der Ordner; create und clone: Ordner, in dem das Projekt angelegt wird, nur wenn der Anrufer einen nennt",
       url: "clone: Git-URL oder Name eines GitHub-Repositorys",
       git: "create und import: false richtet das Projekt ganz ohne Git ein (keine Git-Bereiche, keine Agenten, Claude nutzt kein Git), ein Ordner mit .git wird aber immer mit Git aufgenommen; settings: true schaltet Git ein, false aus",
@@ -174,6 +174,7 @@ export const phoneTools = {
       delete_folder: "remove: true löscht auch den Ordner; nur wenn der Anrufer das ausdrücklich will, er muss es danach über die Tastatur bestätigen",
       delete_github_repo: "remove: true löscht das ganze GitHub-Repository; nur wenn der Anrufer ausdrücklich das Repository löschen will, nie für Branches. Er muss es danach über die Tastatur bestätigen",
       favorite: "favorite: true markiert, false nimmt die Markierung weg",
+      group: "group: Name der Gruppe, z. B. ein Kunde; leer nimmt das Projekt aus seiner Gruppe. rename_group und dissolve_group: die bestehende Gruppe",
       profile: "settings: safe fragt viel nach, balanced ist der Standard, autonomous arbeitet ohne Nachfrage",
       default_model: "settings: opus, sonnet, haiku oder eine Modell-ID; default nimmt die globale Einstellung",
       default_effort: "settings: Denkaufwand neuer Sessions; default nimmt die globale Einstellung",
@@ -261,6 +262,15 @@ export const phoneTools = {
       backup: "bei backup_restore: Nummer aus backup_list, bei sync_restore aus sync_versions (1 = neuestes)",
       project: "bei sync_clone, sync_keep und sync_force: Name aus sync_status",
       parts: "bei backup_restore und sync_restore: welche Teile, durch Komma getrennt: settings, projects, claude, git; ohne Angabe alle außer den Telefon-Einstellungen",
+    },
+  },
+  ask: {
+    description:
+      "Beantwortet eine Frage zum Inhalt der Sessions aus ihrem Verlauf, etwa „Was ist das Konzept hinter dem Ultrathink-Test?“, „Woran hängt der Export?“, „Wie würdest du das Projekt bewerten?“ oder „Was haben wir gestern beim Login gemacht?“. Claude liest dafür die passenden Verläufe, das dauert ein paar Sekunden. Ohne session sucht FORGE selbst die Sessions, die zur Frage passen. Für alle Fragen zu Inhalt, Gründen, Stand und Problemen nimm dieses Werkzeug, nicht details.",
+    params: {
+      question: "die Frage des Anrufers, vollständig ausformuliert, mit dem Thema oder Namen, um das es geht",
+      session: "nur diese Session: Kürzel wie S1 oder Teil des Titels; weglassen, wenn unklar ist, welche gemeint ist",
+      project: "nur die Sessions dieses Projekts",
     },
   },
   search: {

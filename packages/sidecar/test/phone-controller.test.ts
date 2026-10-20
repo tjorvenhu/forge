@@ -101,7 +101,7 @@ function setup(o: { checkPin?: ((pin: string) => Promise<PinResult>) | null; voi
     greeting: null,
     opening: null,
     onTranscript: () => {},
-    onUnlock: () => {},
+    onUnlock: () => "",
     log: (m) => logs.push(m),
     timing: { turnEndMs: 10, turnEndUnfinishedMs: 100, ...o.timing },
   });

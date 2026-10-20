@@ -11,6 +11,7 @@ import { answerDirection, buildSdp, chooseCodec, parseSdp, PT_PCMA, PT_PCMU, wit
 import { getHeader, getHeaders, parseNameAddr, parseSip, parseVia, responseTo, serializeSip, uriUser } from "../src/phone/sip-message.js";
 import { RtpSession } from "../src/phone/rtp.js";
 import { Vad } from "../src/phone/vad.js";
+import { bestByName, nameScore } from "../src/phone/session-info.js";
 import { speakable } from "../src/phone/phone-agent.js";
 import { normalizeNumber, sameNumber } from "../src/phone/phone-service.js";
 import { PinGuard, hashPin, verifyPin, type PinGuardState } from "../src/phone/pin-guard.js";
@@ -610,5 +611,21 @@ describe("phone helpers", () => {
   it("keeps only speakable text", () => {
     expect(speakable("**Fertig:** `pnpm test` läuft, siehe [Doku](https://x.y) https://a.b/c")).toBe("Fertig: pnpm test läuft, siehe Doku");
     expect(speakable("# Titel\n- Punkt")).toBe("Titel Punkt");
+  });
+});
+
+describe("spoken session names", () => {
+  it("finds the title a misheard name sounds like", () => {
+    expect(nameScore("Nebenstelle LEDs", "Nebenstellen-LED bei fehlender Anmeldung")).toBeGreaterThanOrEqual(0.8);
+    expect(nameScore("Ultrafink Test", "Ultrathink-Test")).toBeGreaterThanOrEqual(0.8);
+    expect(nameScore("Homecloud", "Home Cloud Automationen")).toBe(1);
+    expect(nameScore("Warenkorb", "Login mit Passkeys")).toBe(0);
+  });
+
+  it("names one session only when it clearly fits best", () => {
+    const titles = ["Warenkorb", "Warenkorb Export", "Login"];
+    expect(bestByName("Logn", titles, (t) => t).best).toBe("Login");
+    expect(bestByName("Warenkob", titles, (t) => t)).toEqual({ best: null, close: ["Warenkorb", "Warenkorb Export"] });
+    expect(bestByName("Stripe", titles, (t) => t)).toEqual({ best: null, close: [] });
   });
 });

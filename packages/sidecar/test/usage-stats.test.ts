@@ -123,6 +123,7 @@ describe("usage statistics", () => {
         devCommand: null,
         parentId,
         gitEnabled: true,
+        group: null,
       });
       db.insertProject(rec("a", null), "a");
       db.insertProject(rec("b", "a"), "b");

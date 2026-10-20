@@ -121,7 +121,7 @@ export const views: typeof De = {
     title: "Projects",
     subtitle: (projects, agents) =>
       `${projects} ${projects === 1 ? "project" : "projects"}${agents ? `, ${agents} ${agents === 1 ? "agent" : "agents"}` : ""}`,
-    searchPlaceholder: "Name, path, tag, or technology",
+    searchPlaceholder: "Name, path, group, tag, or technology",
     searchLabel: "Search projects",
     filterLabel: "Filter",
     filterAll: "All",

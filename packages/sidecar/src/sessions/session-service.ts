@@ -392,6 +392,10 @@ export class SessionService {
     return this.assist.summarize(sessionId);
   }
 
+  answerQuestion(question: string, sessions: Array<{ id: string; label: string }>) {
+    return this.assist.answerQuestion(question, sessions);
+  }
+
   summarizeDailyReport(prompt: string, cwd: string) {
     return this.assist.summarizeDailyReport(prompt, cwd);
   }

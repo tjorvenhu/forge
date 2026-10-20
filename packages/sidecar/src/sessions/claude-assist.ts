@@ -16,6 +16,9 @@ export const ASSIST_MODEL = "haiku";
 /** Merging knowledge must not lose anything; that is worth a stronger model than for commit messages. */
 export const MERGE_MODEL = "sonnet";
 
+/** characters of history for a question on the phone, over all sessions asked; keeps the answer within seconds */
+const ANSWER_BUDGET = 40_000;
+
 const MergeDraft = z.object({ title: z.string(), summary: z.string(), tags: z.array(z.string()), content: z.string() });
 const MergePlan = z.object({ groups: z.array(z.object({ ids: z.array(z.string()), reason: z.string() })) });
 const PrDraft =z.object({ title: z.string(), body: z.string() });
@@ -76,9 +79,38 @@ export class ClaudeAssist {
     if (!rec) throw new ForgeError("SESSION_NOT_FOUND", tr().core.sessions.notFound);
     const { claudePath, env } = this.claude();
     const m = tr().core.sessions;
-    const l = m.summaryLabels;
+    const transcript = this.transcript(sessionId, 30_000);
+    if (!transcript) throw new ForgeError("VALIDATION", m.noHistory);
+    const prompt = [...m.summaryPrompt, "", transcript].join("\n");
+    const summary = await this.runtime.complete(prompt, { cwd: rec.cwd, env, claudePath, model: ASSIST_MODEL, purpose: "summary" });
+    return { summary: summary.trim(), model: ASSIST_MODEL };
+  }
+
+  /**
+   * Answers a question of the user from the recorded history of the given sessions (phone: "what
+   * is the concept behind X?"). `label` is how the answer may name a session, e.g. "S2 Login".
+   */
+  async answerQuestion(question: string, sessions: Array<{ id: string; label: string }>) {
+    const m = tr().core.sessions;
+    const { claudePath, env } = this.claude();
+    // The budget is shared, so one long session does not crowd out the others.
+    const each = Math.floor(ANSWER_BUDGET / Math.max(1, sessions.length));
+    const parts = sessions.flatMap((s) => {
+      const t = this.transcript(s.id, each);
+      return t ? [`=== ${m.answerSession(s.label)}\n${t}`] : [];
+    });
+    if (!parts.length) throw new ForgeError("VALIDATION", m.noHistory);
+    const cwd = this.db.getSession(sessions[0]!.id)?.cwd ?? process.cwd();
+    const prompt = [...m.answerPrompt, "", `${m.answerQuestion}: ${question}`, "", ...parts].join("\n");
+    const answer = await this.runtime.complete(prompt, { cwd, env, claudePath, model: ASSIST_MODEL, purpose: "phone" });
+    return { answer: answer.trim(), model: ASSIST_MODEL };
+  }
+
+  /** The recorded history as plain lines, newest part kept when it is longer than `max`; "" without history. */
+  private transcript(sessionId: string, max: number): string {
+    const l = tr().core.sessions.summaryLabels;
     const lines: string[] = [];
-    // listEvents returns the newest events, so a long session is summarised from where it stands now.
+    // listEvents returns the newest events, so a long session is read from where it stands now.
     for (const e of this.db.listEvents(sessionId)) {
       const b = e.body;
       if (b.type === "user.message") lines.push(`${l.user}: ${b.text}`);
@@ -88,11 +120,7 @@ export class ClaudeAssist {
       else if (b.type === "automation" && b.action === "commit" && b.ok) lines.push(`COMMIT: ${b.message}`);
       else if (b.type === "check.result") lines.push(`TESTS: ${b.ok ? l.green : l.red}`);
     }
-    if (!lines.length) throw new ForgeError("VALIDATION", m.noHistory);
-    const transcript = redactText(lines.join("\n")).slice(-30_000);
-    const prompt = [...m.summaryPrompt, "", transcript].join("\n");
-    const summary = await this.runtime.complete(prompt, { cwd: rec.cwd, env, claudePath, model: ASSIST_MODEL, purpose: "summary" });
-    return { summary: summary.trim(), model: ASSIST_MODEL };
+    return lines.length ? redactText(lines.join("\n")).slice(-max) : "";
   }
 
   /** Summary of the daily report; the prompt carries the report's facts (see reports/daily-report.ts). */

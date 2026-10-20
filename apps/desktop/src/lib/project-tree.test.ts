@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ProjectWithStatus } from "@forge/protocol";
-import { agentBusy, agentLabel, splitProjects } from "./project-tree";
+import { agentBusy, agentLabel, groupNames, groupProjects, splitProjects } from "./project-tree";
 
 const project = (id: string, o: Partial<ProjectWithStatus> = {}): ProjectWithStatus =>
   ({ id, name: id, path: `C:/${id}`, parentId: null, createdAt: "2026-10-01T00:00:00Z", git: null, lastSession: null, ...o }) as ProjectWithStatus;
@@ -18,6 +18,17 @@ describe("project tree", () => {
     expect(agentsOf.get("shop")!.map((p) => p.id)).toEqual(["a2", "a1"]);
     expect(agentBusy(agentsOf.get("shop")![0]!)).toBe(true);
     expect(agentBusy(agentsOf.get("shop")![1]!)).toBe(false);
+  });
+
+  it("sorts groups by name, merges spellings and puts projects without group last", () => {
+    const list = [project("a", { group: null }), project("b", { group: "Zeta" }), project("c", { group: "alpha" }), project("d", { group: "Alpha" })];
+    expect(groupNames(list)).toEqual(["alpha", "Zeta"]);
+    expect(groupProjects(list).map((g) => [g.name, g.projects.map((p) => p.id)])).toEqual([
+      ["alpha", ["c", "d"]],
+      ["Zeta", ["b"]],
+      [null, ["a"]],
+    ]);
+    expect(groupProjects([project("x", { group: "K" })]).map((g) => g.key)).toEqual(["k"]);
   });
 
   it("names an agent by its branch without the agent/ prefix", () => {

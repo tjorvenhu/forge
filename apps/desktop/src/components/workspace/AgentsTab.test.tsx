@@ -41,6 +41,7 @@ function project(id: string, over: Partial<ProjectWithStatus> = {}): ProjectWith
     devCommand: null,
     parentId: null,
     gitEnabled: true,
+    group: null,
     exists: true,
     git: git("main"),
     lastSession: null,

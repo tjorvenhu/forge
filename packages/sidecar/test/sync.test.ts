@@ -94,6 +94,7 @@ function project(dir: string, patch: Partial<Project> = {}): Project {
     devCommand: null,
     parentId: null,
     gitEnabled: true,
+    group: null,
     exists: true,
     ...patch,
   };

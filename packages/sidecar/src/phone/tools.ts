@@ -84,7 +84,7 @@ export interface DevSettingsPatch {
   envFromFile?: string;
 }
 
-export const PROJECT_ACTIONS = ["info", "create", "import", "clone", "remove", "rename", "favorite", "settings"] as const;
+export const PROJECT_ACTIONS = ["info", "create", "import", "clone", "remove", "rename", "favorite", "group", "rename_group", "dissolve_group", "settings"] as const;
 export type ProjectAction = (typeof PROJECT_ACTIONS)[number];
 
 export interface ProjectOptions extends TargetOptions {
@@ -103,6 +103,8 @@ export interface ProjectOptions extends TargetOptions {
   deleteFolder?: boolean;
   deleteGitHubRepo?: boolean;
   favorite?: boolean;
+  /** group: the group to put the project in ("" takes it out); rename_group, dissolve_group: the existing group */
+  group?: string;
   profile?: ProfileId;
   /** "" or "default" clears it */
   defaultModel?: string;
@@ -334,6 +336,11 @@ export interface PhoneToolset {
   forgeSystem(action: SystemAction, o?: { backup?: string; parts?: BackupPart[]; project?: string }): Promise<string>;
   /** full-text search in the history of all sessions, or of one session or project; `phrase`: the words in this order */
   search(query: string, o?: { session?: string; project?: string; phrase?: boolean }): Promise<string>;
+  /**
+   * answers a question about the sessions from their history (Claude reads it); without `session` FORGE
+   * picks the sessions that fit the question, optionally only those of `project`
+   */
+  ask(question: string, o?: { session?: string; project?: string }): Promise<string>;
   usage(): Promise<string>;
   /** when FORGE calls the user on its own; an empty patch tells the current setting */
   callSettings(patch: CallSettingsPatch): Promise<string>;
@@ -695,6 +702,7 @@ const TOOL_DEFS: readonly ToolDef[] = [
       delete_folder: { type: "boolean", optional: true },
       delete_github_repo: { type: "boolean", optional: true },
       favorite: { type: "boolean", optional: true },
+      group: { type: "string", optional: true },
       profile: { type: "string", optional: true, enum: ProfileId.options },
       default_model: { type: "string", optional: true },
       default_effort: { type: "string", optional: true, enum: [...EffortLevel.options, "default"] },
@@ -713,6 +721,7 @@ const TOOL_DEFS: readonly ToolDef[] = [
         deleteFolder: optBool(a.delete_folder),
         deleteGitHubRepo: optBool(a.delete_github_repo),
         favorite: optBool(a.favorite),
+        group: opt(a.group),
         profile: ProfileId.options.find((x) => x === a.profile),
         defaultModel: opt(a.default_model),
         defaultEffort: [...EffortLevel.options, "default" as const].find((x) => x === a.default_effort),
@@ -880,6 +889,15 @@ const TOOL_DEFS: readonly ToolDef[] = [
         .flatMap((x) => BackupPart.options.filter((p) => p === x.trim().toLowerCase()));
       return t.forgeSystem(pick(a.action, SYSTEM_ACTIONS, "diagnostics"), { backup: opt(a.backup), parts: parts.length ? parts : undefined, project: opt(a.project) });
     },
+  },
+  {
+    name: "ask",
+    params: {
+      question: { type: "string" },
+      session: { type: "string", optional: true },
+      project: { type: "string", optional: true },
+    },
+    run: (t, a) => t.ask(str(a.question), { session: opt(a.session), project: opt(a.project) }),
   },
   {
     name: "search",

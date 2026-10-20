@@ -25,7 +25,53 @@ export function lastAnswer(db: Db, sessionId: string): string {
   return "";
 }
 
-export type ApprovalRequest = Extract<SessionEventBody, { type: "approval.request" }>;
+const words = (s: string) => s.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? [];
+
+function editDistance(a: string, b: string): number {
+  let prev = Array.from({ length: b.length + 1 }, (_, i) => i);
+  for (let i = 1; i <= a.length; i++) {
+    const cur = [i];
+    for (let j = 1; j <= b.length; j++) cur[j] = Math.min(prev[j]! + 1, cur[j - 1]! + 1, prev[j - 1]! + (a[i - 1] === b[j - 1] ? 0 : 1));
+    prev = cur;
+  }
+  return prev[b.length]!;
+}
+
+function wordScore(q: string, t: string): number {
+  if (q === t) return 1;
+  if (Math.min(q.length, t.length) >= 3 && (t.startsWith(q) || q.startsWith(t))) return 0.9;
+  const allowed = q.length >= 7 ? 2 : q.length >= 4 ? 1 : 0;
+  return allowed && editDistance(q, t) <= allowed ? 0.8 : 0;
+}
+
+/**
+ * How well a spoken name fits a title, 0 to 1. Speech recognition splits, joins and misspells words
+ * ("Nebenstelle LEDs" for "Nebenstellen-LED", "Ultrafink" for "Ultrathink"), so words count when they
+ * are close, and the name may also match the title with its spaces removed.
+ */
+export function nameScore(spoken: string, title: string): number {
+  const q = words(spoken);
+  const t = words(title);
+  if (!q.length || !t.length) return 0;
+  const joined = q.join("");
+  if (joined.length >= 5 && t.join("").includes(joined)) return 1;
+  // Joined title words catch a name the recognizer wrote as one word ("Homecloud" for "Home Cloud").
+  const pairs = t.slice(1).map((w, i) => t[i] + w);
+  const total = q.reduce((sum, w) => sum + Math.max(...[...t, ...pairs].map((x) => wordScore(w, x))), 0);
+  return total / q.length;
+}
+
+/** The one candidate a spoken name means, or null when none fits well or several fit equally. */
+export function bestByName<T>(spoken: string, items: readonly T[], text: (item: T) => string): { best: T | null; close: T[] } {
+  const scored = items.map((item) => ({ item, score: nameScore(spoken, text(item)) })).filter((x) => x.score >= 0.6);
+  scored.sort((a, b) => b.score - a.score);
+  const top = scored[0];
+  if (!top) return { best: null, close: [] };
+  const close = scored.filter((x) => x.score >= top.score - 0.1).map((x) => x.item);
+  return { best: close.length === 1 ? top.item : null, close };
+}
+
+export type ApprovalRequest =Extract<SessionEventBody, { type: "approval.request" }>;
 
 export function openRequest(db: Db, sessionId: string): ApprovalRequest | null {
   const open = new Map<string, ApprovalRequest>();

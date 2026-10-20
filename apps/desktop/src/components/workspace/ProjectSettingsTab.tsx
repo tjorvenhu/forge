@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { FileText, ShieldAlert, ShieldCheck, SlidersHorizontal, Trash2, Workflow, X } from "lucide-react";
+import { FileText, Folders, ShieldAlert, ShieldCheck, SlidersHorizontal, Trash2, Workflow, X } from "lucide-react";
 import type { ProfileId, Project, EffortLevel } from "@forge/protocol";
 import { call, keys, useRuntimeInfo, useSettings } from "@/lib/queries";
 import { modelLabel } from "@/lib/models";
@@ -8,6 +8,7 @@ import { errorMessage } from "@/lib/rpc";
 import { cn } from "@/lib/utils";
 import { toast } from "@/stores/toast";
 import { useUi, type ProjectSettingsSection } from "@/stores/ui";
+import { useProjectGroupDialogs } from "@/stores/project-groups";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/misc";
@@ -121,6 +122,14 @@ function GeneralSection({ project, update }: SectionProps) {
             onBlur={(e) => e.target.value.trim() && e.target.value !== project.name && void update({ name: e.target.value.trim() })}
           />
         </Row>
+        {!project.parentId && (
+          <Row label={t.projects.groups.nameLabel} description={t.projects.groups.settingDescription}>
+            <Button variant="outline" className="w-64 justify-start font-normal" onClick={() => useProjectGroupDialogs.getState().openAssign(project)}>
+              <Folders className={cn("h-4 w-4", project.group ? "text-accent" : "text-subtle")} />
+              <span className={cn("truncate", !project.group && "text-muted")}>{project.group ?? t.projects.groups.noGroup}</span>
+            </Button>
+          </Row>
+        )}
         <Row label={m.model} description={m.modelDescription}>
           <Select
             value={toChoice(project.defaultModel)}
