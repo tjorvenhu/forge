@@ -1,10 +1,11 @@
 import type { ReactNode } from "react";
 import type { QueryClient } from "@tanstack/react-query";
-import { Archive, ArrowDown, ArrowLeftRight, ArrowUp, ArrowUpCircle, BookOpen, Bot, CalendarDays, Camera, CloudDownload, Columns2, Combine, Cpu, Database, Download, FilePlus2, FileStack, FileText, FileUp, FlaskConical, FolderDown, FolderMinus, FolderOpen, FolderPlus, Folders, Gauge, GitBranch, GitBranchPlus, GitCommitHorizontal, GitCompareArrows, GitFork, GitPullRequest, Globe, HandHeart, Languages, Lightbulb, Link2Off, ListChecks, LogIn, LogOut, MessageSquare, MessageSquarePlus, MessageSquareText, Mic, MonitorSmartphone, NotebookText, PackageCheck, PanelBottom, PanelRight, Pencil, Phone, PhoneOff, PhoneOutgoing, Pin, PinOff, Play, Power, RefreshCcw, RefreshCw, RotateCcw, Search, Settings2, Shield, ShieldBan, Shrink, Sparkles, Square, SquareArrowOutDownLeft, SquareArrowOutUpRight, SquareTerminal, Timer, ToggleLeft, ToggleRight, Trash2, Wand2, type LucideIcon } from "lucide-react";
+import { Archive, ArrowDown, ArrowLeftRight, ArrowUp, ArrowUpCircle, BookOpen, Bot, CalendarDays, Camera, CloudDownload, Columns2, Combine, Cpu, Database, Download, FilePlus2, FileStack, FileText, FileUp, FlaskConical, FolderDown, FolderMinus, FolderOpen, FolderPlus, Folders, Gauge, GitBranch, GitBranchPlus, GitCommitHorizontal, GitCompareArrows, GitFork, GitMerge, GitPullRequest, Globe, HandHeart, Languages, Lightbulb, Link2Off, ListChecks, LogIn, LogOut, MessageSquare, MessageSquarePlus, MessageSquareText, Mic, MonitorSmartphone, NotebookText, PackageCheck, PanelBottom, PanelRight, Pencil, Phone, PhoneOff, PhoneOutgoing, Pin, PinOff, Play, Power, RefreshCcw, RefreshCw, RotateCcw, Search, Settings2, Shield, ShieldBan, Shrink, Sparkles, Square, SquareArrowOutDownLeft, SquareArrowOutUpRight, SquareTerminal, Timer, ToggleLeft, ToggleRight, Trash2, Wand2, type LucideIcon } from "lucide-react";
 import type {
   AppInstallState,
   AppUpdateState,
   ClaudeUpdateInfo,
+  DevChannelState,
   DevServerState,
   EffortLevel,
   ModelInfo,
@@ -101,6 +102,8 @@ export interface ActionContext {
   phone: PhoneState | undefined;
   remote: RemoteState | undefined;
   githubConnected: boolean;
+  /** access to the dev channel; only asked while signed in to GitHub */
+  devChannel?: DevChannelState;
   /** prompt templates: the global ones plus those of the open project */
   templates: PromptTemplate[];
   /** sessions in their own chat windows, and those of them kept on top */
@@ -136,6 +139,7 @@ const SETTING_TOGGLES: Record<Exclude<BooleanSetting, keyof typeof UNLISTED_SETT
 /** Single options of the settings that are no switch; the entry opens their section. */
 const SETTING_OPTIONS: ReadonlyArray<{ id: string; label: string; section: SettingsSection; keywords?: string }> = [
   { id: "language", label: t.layout.paletteLanguageOption, section: "general", keywords: "sprache language english englisch deutsch german flagge" },
+  { id: "update-channel", label: t.layout.actions.options.updateChannel, section: "about", keywords: "update kanal channel dev branch stabil stable main vorabversion pre-release" },
   { id: "default-model", label: t.layout.actions.options.defaultModel, section: "general", keywords: "standardmodell modell model default opus sonnet haiku" },
   { id: "default-effort", label: t.layout.actions.options.defaultEffort, section: "general", keywords: "denkaufwand aufwand effort thinking nachdenken default" },
   { id: "default-profile", label: t.layout.actions.options.defaultProfile, section: "general", keywords: "profil rechte profile permission safe balanced autonomous" },
@@ -621,6 +625,19 @@ export function buildActions(ctx: ActionContext): PaletteEntry[] {
   act("claude-switch", t.layout.actions.claudeSwitch, icon(ArrowLeftRight), () => ui.openClaudeLogin("switch"), { keywords: "claude-konto account konto wechseln anderes login switch other" });
   act("claude-logout", t.layout.actions.claudeLogout, icon(LogOut), () => ui.setClaudeLogout(true), { keywords: "claude logout abmelden konto account log out sign out" });
   act("update-check", t.layout.actions.updateCheck, icon(RefreshCw), () => void checkForUpdate(qc), { keywords: "updates suchen version release aktualisieren check update" });
+  // Only for members of the repository: the sidecar checks the access again when the channel is saved.
+  const dev = ctx.devChannel;
+  if (settings && (dev?.allowed || settings.updateChannel === "dev")) {
+    const toDev = settings.updateChannel !== "dev";
+    act("update-channel", toDev ? t.layout.actions.channelDev : t.layout.actions.channelStable, icon(GitBranch), () => {
+      call("settings.update", { updateChannel: toDev ? "dev" : "stable" })
+        .then((next) => qc.setQueryData(keys.settings, next))
+        .catch((e: unknown) => toast.error(t.layout.actions.channelFailed, errorMessage(e)));
+    }, { keywords: "update kanal channel dev branch stabil stable main vorabversion pre-release beta" });
+  }
+  if (dev?.allowed && dev.ahead) {
+    act("dev-promote", t.layout.actions.devPromote, icon(GitMerge), () => ui.openSettings("about"), { hint: `${dev.ahead}`, keywords: "dev main übernehmen mergen merge branch release veröffentlichen promote publish stable" });
+  }
   act("support-open", t.layout.actions.supportOpen, icon(HandHeart), () => ui.setSupportOpen(true), { hint: t.layout.actions.supportHint, keywords: "unterstützen spenden vorschlag feedback herz support donate suggestion heart" });
   act("support-donate", t.layout.actions.supportDonate, icon(HandHeart), () => void openExternal(SUPPORT_LINKS.donate), { hint: "Vanturis", keywords: "spenden spende beitrag zahlen unterstützen danke support donate donation contribution pay thanks" });
   act("usage-stats-public", t.layout.actions.usageStatsPublic, icon(Gauge), () => void openExternal(STATS_PAGE_URL), {

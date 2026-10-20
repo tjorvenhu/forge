@@ -50,6 +50,7 @@ import { PolicySettings } from "@/components/settings/PolicySettings";
 import { TemplatesSettings } from "@/components/templates/TemplatesSettings";
 import { GitHubSettings } from "@/components/settings/GitHubSettings";
 import { AppUpdateSettings } from "@/components/layout/AppUpdate";
+import { DevChannelSettings } from "@/components/settings/DevChannelSettings";
 import { InstallRepairSettings } from "@/components/layout/InstallRepair";
 import { supportsFullInstall } from "@/lib/app-install";
 import { LanguageSelect } from "@/components/settings/LanguageSelect";
@@ -382,6 +383,7 @@ function AboutSection({ s, save }: { s: Settings; save: Save }) {
           checked={s.updateChecks}
           onChange={(v) => void save({ updateChecks: v })}
         />
+        <DevChannelSettings s={s} save={save} />
       </Group>
 
       {supportsFullInstall && (

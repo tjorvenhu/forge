@@ -20,6 +20,7 @@ import { splitProjects } from "@/lib/project-tree";
 import { NAV } from "./nav";
 import { OpenSessions, SplitViewEntry } from "./OpenSessions";
 import { SearchField } from "./SearchField";
+import { DevChannelBadge, useDevChannelOn } from "./DevChannelBadge";
 import { SupportButton } from "@/components/settings/SupportSettings";
 import { ErrorBoundary } from "./ErrorBoundary";
 import { TokenRate } from "./TokenRate";
@@ -35,6 +36,7 @@ export function Sidebar() {
   // Agents (worktrees) belong to their project and are not counted on their own.
   const list = splitProjects(projects.data ?? []).roots;
   const activeProjectId = useUi((s) => s.activeProjectId);
+  const devChannel = useDevChannelOn();
   const hasSplit = useUi((s) => s.splitPanes.length > 0);
   const hasOpen = liveCount > 0 || (activeProjectId !== null && (view === "workspace" || hasSplit));
   const counts: Partial<Record<View, { n: number; label: string }>> = {
@@ -43,10 +45,11 @@ export function Sidebar() {
   };
 
   return (
-    <aside className="flex w-64 shrink-0 select-none flex-col border-r border-border bg-sidebar">
+    <aside className={cn("flex w-64 shrink-0 select-none flex-col border-r border-border bg-sidebar", devChannel && "border-t-2 border-t-danger")}>
       <div className="flex items-center px-5 pb-4 pt-5">
         <Logo height={36} />
       </div>
+      <DevChannelBadge />
 
       <div className="flex items-center gap-1.5 px-3">
         <div className="min-w-0 flex-1">

@@ -21,6 +21,7 @@ const available: AppUpdateState = {
   installable: true,
   checkedAt: null,
   message: null,
+  channel: "stable",
 };
 
 function setup() {

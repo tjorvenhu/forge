@@ -213,6 +213,16 @@ export const system: typeof De = {
     rateLimited: (what) => `${what} is not possible right now: GitHub limits requests without sign-in. It works again within an hour, or right away after signing in to GitHub in FORGE.`,
     httpFailed: (what, status) => `${what} failed: GitHub answered with HTTP ${status}.`,
   },
+  devChannel: {
+    noGh: "The GitHub CLI is missing. Without it FORGE cannot check whether your account belongs to the repository.",
+    noLogin: "Sign in to GitHub in FORGE. Only members of the repository can switch on the dev channel.",
+    noAccess: (login, repo) => `The account ${login} cannot push to ${repo}. Only members of the repository can switch on the dev channel.`,
+    failed: (why) => `Could not ask GitHub: ${why}`,
+    noDevBranch: (repo) => `${repo} has no branch dev yet.`,
+    conflict: "Dev and main have conflicting changes. Resolve the conflicts locally and push dev.",
+    promoteFailed: (why) => `Could not bring dev into main: ${why}`,
+    releaseFailed: (why) => `Dev is in main, but the release could not be started: ${why}`,
+  },
   changelogPrompt: {
     none: "(none)",
     scopeOne: (version, current) => `Write for users of FORGE (desktop app for Claude Code) what changes with version ${version} compared to ${current}.`,

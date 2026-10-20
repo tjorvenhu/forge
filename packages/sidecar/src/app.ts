@@ -27,6 +27,7 @@ import { Presence } from "./util/presence.js";
 import { ChatWindowState } from "./util/chat-windows.js";
 import { DonationsSource } from "./stats/donations.js";
 import { AppUpdateService } from "./update/app-update.js";
+import { DevChannelService } from "./update/dev-channel.js";
 import { FullInstallService } from "./update/full-install.js";
 import { UsageStatsService, usageStatsFile } from "./stats/usage-stats.js";
 import { modelTokens } from "./claude/normalize.js";
@@ -220,7 +221,9 @@ export function createApp(opts: { dataDir: string; write: Writer; log?: (m: stri
     log: (m) => opts.log?.(m),
   });
   sessions.useMessageListener((source) => templateLearner.noteMessage(source));
+  const devChannel = new DevChannelService({ setting: () => db.getSettings().updateChannel, log: (m) => opts.log?.(m) });
   const updates = new AppUpdateService({
+    channel: () => devChannel.effective(),
     emit: (payload) => emit({ event: "update.updated", payload }),
     requestInstall: () => emit({ event: "update.install", payload: {} }),
     enabled: () => db.getSettings().updateChecks,
@@ -374,6 +377,7 @@ export function createApp(opts: { dataDir: string; write: Writer; log?: (m: stri
     templates,
     templateLearner,
     updates,
+    devChannel,
     installs,
     mcp,
     plugins,

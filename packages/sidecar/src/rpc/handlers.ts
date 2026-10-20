@@ -25,6 +25,7 @@ import type { Presence } from "../util/presence.js";
 import type { DonationsSource } from "../stats/donations.js";
 import type { ChatWindowState } from "../util/chat-windows.js";
 import type { AppUpdateService } from "../update/app-update.js";
+import type { DevChannelService } from "../update/dev-channel.js";
 import type { FullInstallService } from "../update/full-install.js";
 import type { BackupService } from "../backup/backup.js";
 import type { SyncService } from "../sync/sync.js";
@@ -61,6 +62,7 @@ export interface Services {
   donations: Pick<DonationsSource, "get">;
   chatWindows: ChatWindowState;
   updates: AppUpdateService;
+  devChannel: DevChannelService;
   installs: FullInstallService;
   backups: BackupService;
   sync: SyncService;
@@ -195,12 +197,16 @@ export function createHandlers(s: Services): Handlers {
     "reports.dailySummary": (p) => s.reports.summarize(p),
 
     "settings.get": () => s.db.getSettings(),
-    "settings.update": (patch) => {
+    "settings.update": async (patch) => {
       diagCache = null;
+      const channelBefore = s.db.getSettings().updateChannel;
+      // Only members of the repository may switch to the dev channel; GitHub is asked every time.
+      if (patch.updateChannel === "dev" && channelBefore !== "dev") await s.devChannel.requireAccess();
       const next = s.db.updateSettings(patch);
       if (patch.autoContinueAfterLimit !== undefined) s.sessions.settingsChanged();
       s.notifySettings(next);
       if (patch.syncEnabled !== undefined) s.sync.enabledChanged();
+      if (next.updateChannel !== channelBefore) void s.updates.check().catch(() => {});
       return next;
     },
 
@@ -335,6 +341,8 @@ export function createHandlers(s: Services): Handlers {
     "app.downloadFullInstaller": () => s.installs.download(),
     "app.useLocalInstaller": ({ path: file }) => s.installs.useLocal(file),
     "app.repairInstall": () => s.installs.requestInstall(),
+    "app.devChannel": ({ refresh }) => s.devChannel.state(refresh),
+    "app.promoteDev": ({ release }) => s.devChannel.promote(release),
 
     "backup.list": () => s.backups.list(),
     "backup.create": () => s.backups.create("manual"),

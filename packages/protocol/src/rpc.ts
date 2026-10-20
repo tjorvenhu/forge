@@ -34,6 +34,8 @@ import {
   PhoneNumberEntry,
   AppUpdateState,
   AppInstallState,
+  DevChannelState,
+  DevPromoteResult,
   AppChangelog,
   BackupInfo,
   BackupPart,
@@ -544,6 +546,10 @@ export const methods = {
   "app.useLocalInstaller": { params: z.object({ path: z.string().min(1).max(4096) }), result: AppInstallState },
   /** asks the main window to install FORGE fully (event install.repair); for the phone */
   "app.repairInstall": { params: empty, result: AppInstallState },
+  /** whether the signed-in GitHub account may use the dev channel, and how far dev is ahead of main */
+  "app.devChannel": { params: z.object({ refresh: z.boolean().default(false) }), result: DevChannelState },
+  /** brings dev into main on GitHub (fast-forward when possible) and starts the release of main if asked */
+  "app.promoteDev": { params: z.object({ release: z.boolean().default(true) }), result: DevPromoteResult },
 
   "backup.list": { params: empty, result: z.array(BackupInfo) },
   "backup.create": { params: empty, result: BackupInfo },

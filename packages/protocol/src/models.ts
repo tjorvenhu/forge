@@ -501,6 +501,10 @@ export const BranchInfo = z.object({
 });
 export type BranchInfo = z.infer<typeof BranchInfo>;
 
+/** stable: the releases of main; dev: also the pre-releases built from the dev branch */
+export const UpdateChannel = z.enum(["stable", "dev"]);
+export type UpdateChannel = z.infer<typeof UpdateChannel>;
+
 export const Settings = z.object({
   claudePath: z.string().nullable(),
   defaultModel: z.string().nullable(),
@@ -519,6 +523,8 @@ export const Settings = z.object({
   longSessionTokens: z.number().int().min(0).max(2_000_000),
   /** look for new FORGE releases on GitHub (start and every 30 minutes) */
   updateChecks: z.boolean(),
+  /** releases of main (stable) or of the dev branch; dev only for accounts that may push to the repository */
+  updateChannel: UpdateChannel,
   /** Windows notifications when Claude is done, needs a decision or fails */
   desktopNotifications: z.boolean(),
   /** the main window stays above other apps; chat windows are pinned one by one */
@@ -1209,8 +1215,42 @@ export const AppUpdateState = z.object({
   installable: z.boolean(),
   checkedAt: z.string().nullable(),
   message: z.string().nullable(),
+  /** channel of the last check; dev only while the account may push to the repository */
+  channel: UpdateChannel,
 });
 export type AppUpdateState = z.infer<typeof AppUpdateState>;
+
+/**
+ * The dev branch of the FORGE repository: who may use it and how far it is ahead of main. Only an
+ * account with write access (gh login) can switch to the dev channel or bring dev into main.
+ */
+export const DevChannelState = z.object({
+  repo: z.string(),
+  /** signed-in GitHub account, null when nobody is */
+  login: z.string().nullable(),
+  /** the account may push to the repository */
+  allowed: z.boolean(),
+  reason: z.enum(["ok", "no-gh", "no-login", "no-access", "error"]),
+  /** commits on dev that main does not have; null without a dev branch or access */
+  ahead: z.number().int().nullable(),
+  /** commits on main that dev does not have */
+  behind: z.number().int().nullable(),
+  /** subjects of the commits dev brings, newest first (at most 20) */
+  commits: z.array(z.string()),
+  message: z.string().nullable(),
+  checkedAt: z.string().nullable(),
+});
+export type DevChannelState = z.infer<typeof DevChannelState>;
+
+/** Result of bringing dev into main on GitHub. */
+export const DevPromoteResult = z.object({
+  /** fast-forward: main points at the dev commit; merge: a merge commit; none: nothing to bring */
+  mode: z.enum(["fast-forward", "merge", "none"]),
+  sha: z.string().nullable(),
+  /** the release workflow was started for main */
+  releaseStarted: z.boolean(),
+});
+export type DevPromoteResult = z.infer<typeof DevPromoteResult>;
 
 /** One thing missing or outdated in the bundled runtime (node, git, gh …) of an installed FORGE. */
 export const InstallProblem = z.object({

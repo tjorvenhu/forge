@@ -58,6 +58,7 @@ export const keys = {
   phoneConfig: ["phoneConfig"] as const,
   phoneCalls: ["phoneCalls"] as const,
   appUpdate: ["appUpdate"] as const,
+  devChannel: ["devChannel"] as const,
   appInstall: ["appInstall"] as const,
   appChangelog: (tag: string) => ["appChangelog", tag] as const,
   backups: ["backups"] as const,
@@ -167,6 +168,9 @@ export const useGitStatus = (projectId: string | null, enabled = true) =>
 
 /** FORGE updates; changes arrive as update.updated. */
 export const useAppUpdate = () => useQuery({ queryKey: keys.appUpdate, queryFn: () => call("app.updateState", {}), staleTime: Infinity });
+
+/** Whether the GitHub account may use the dev channel and how far dev is ahead of main. */
+export const useDevChannel = (enabled = true) => useQuery({ queryKey: keys.devChannel, queryFn: () => call("app.devChannel", { refresh: false }), staleTime: 60_000, enabled });
 
 /** Whether the installation is complete (bundled runtime) and the repair; changes arrive as install.updated. */
 export const useAppInstall = () => useQuery({ queryKey: keys.appInstall, queryFn: () => call("app.installState", {}), staleTime: Infinity });

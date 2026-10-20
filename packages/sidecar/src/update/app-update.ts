@@ -3,7 +3,7 @@ import { createReadStream, existsSync, readFileSync, rmSync, writeFileSync } fro
 import { mkdir, mkdtemp, readdir, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { ForgeError, type AppChangelog, type AppUpdateState } from "@forge/protocol";
+import { ForgeError, type AppChangelog, type AppUpdateState, type UpdateChannel } from "@forge/protocol";
 import { run } from "../util/proc.js";
 import { resolveTool } from "../util/tools.js";
 import { GitHubReleases, type ReleaseAsset, type ReleaseSource } from "./github-releases.js";
@@ -291,6 +291,16 @@ export function signedOnly(releases: Release[], platform: PlatformTag = "win32-x
   });
 }
 
+/**
+ * The releases a channel sees. Dev builds (release.yml on the branch dev) are pre-releases with a
+ * version tag; on the dev channel they count as published, so every pick below takes them like a
+ * release of main. The release "installer" (FORGE Setup) is a pre-release too, but has no version tag.
+ */
+export function channelReleases(releases: Release[], channel: UpdateChannel): Release[] {
+  if (channel !== "dev") return releases;
+  return releases.map((r) => (r.prerelease && /^v\d/i.test(r.tag_name ?? "") ? { ...r, prerelease: false } : r));
+}
+
 /** Releases of UPDATE_REPO over HTTPS, anonymous unless GitHub refuses; then with the gh login, if any. */
 export function defaultReleaseSource(): ReleaseSource {
   return new GitHubReleases(UPDATE_REPO, ghToken);
@@ -359,6 +369,8 @@ export interface UpdateDeps {
   platform?: PlatformTag;
   /** how FORGE was installed (default: FORGE_INSTALL_KIND); system and dev only learn of a new version */
   installKind?: InstallKind | null;
+  /** channel to check; dev only while the account may use it (DevChannelService.effective). Default stable */
+  channel?: () => Promise<UpdateChannel>;
 }
 
 /**
@@ -449,6 +461,7 @@ export class AppUpdateService {
       installable: d.installable ?? canInstallUpdates(this.platform, kind),
       checkedAt: null,
       message: null,
+      channel: "stable",
     };
   }
 
@@ -515,7 +528,9 @@ export class AppUpdateService {
           this.set({ phase: "uptodate", latest: null, checkedAt: new Date().toISOString(), message: tr().system.update.noRelease });
           return this.state;
         }
-        const list = signedOnly(found as Release[], this.platform);
+        const channel = (await this.d.channel?.().catch(() => "stable" as const)) ?? "stable";
+        if (channel !== this.state.channel) this.set({ channel });
+        const list = channelReleases(signedOnly(found as Release[], this.platform), channel);
         const checkedAt = new Date().toISOString();
         const windows = this.platform === "win32-x64";
         const pick = windows ? pickRelease(list, this.state.currentVersion, (this.d.runtimeKey ?? installedRuntimeKey)()) : await this.pickPlatform(list);

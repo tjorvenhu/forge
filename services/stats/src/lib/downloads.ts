@@ -16,11 +16,12 @@ const CACHE_MS = 30 * 60_000;
 const MAX_PAGES = 20;
 
 type Asset = { name?: string; download_count?: number };
-type Release = { assets?: Asset[] };
+type Release = { prerelease?: boolean; assets?: Asset[] };
 
 export function countInstallerDownloads(releases: Release[]): number {
   let n = 0;
-  for (const r of releases) for (const a of r.assets ?? []) if (a.name && INSTALLER.test(a.name)) n += a.download_count ?? 0;
+  // Pre-releases are dev builds for the people who work on FORGE (release.yml on the branch dev).
+  for (const r of releases) if (!r.prerelease) for (const a of r.assets ?? []) if (a.name && INSTALLER.test(a.name)) n += a.download_count ?? 0;
   return n;
 }
 

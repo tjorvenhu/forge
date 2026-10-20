@@ -213,6 +213,16 @@ export const system = {
     rateLimited: (what: string) => `${what} geht gerade nicht: GitHub begrenzt Anfragen ohne Anmeldung. In spätestens einer Stunde geht es wieder, sofort mit einer GitHub-Anmeldung in FORGE.`,
     httpFailed: (what: string, status: number) => `${what} ist fehlgeschlagen: GitHub antwortet mit HTTP ${status}.`,
   },
+  devChannel: {
+    noGh: "Die GitHub CLI fehlt. Ohne sie lässt sich nicht prüfen, ob dein Konto zum Repository gehört.",
+    noLogin: "Melde dich in FORGE mit GitHub an. Den Dev-Kanal können nur Mitglieder des Repositorys einschalten.",
+    noAccess: (login: string, repo: string) => `Das Konto ${login} hat kein Schreibrecht auf ${repo}. Den Dev-Kanal können nur Mitglieder des Repositorys einschalten.`,
+    failed: (why: string) => `GitHub ließ sich nicht fragen: ${why}`,
+    noDevBranch: (repo: string) => `${repo} hat noch keinen Branch dev.`,
+    conflict: "Dev und Main haben widersprüchliche Änderungen. Bitte die Konflikte lokal lösen und dev pushen.",
+    promoteFailed: (why: string) => `Dev ließ sich nicht nach Main übernehmen: ${why}`,
+    releaseFailed: (why: string) => `Dev ist in Main, aber das Release ließ sich nicht starten: ${why}`,
+  },
   changelogPrompt: {
     none: "(keine)",
     scopeOne: (version: string, current: string) => `Schreibe für Nutzer von FORGE (Desktop-App für Claude Code), was sich mit Version ${version} gegenüber ${current} ändert.`,

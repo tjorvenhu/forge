@@ -1934,6 +1934,7 @@ describe("PhoneService end to end with a test PBX", () => {
         installable: true,
         checkedAt: null,
         message: null,
+        channel: "stable",
       }),
       "app.checkUpdate": () => ({
         currentVersion: "1.2.0",
@@ -1944,6 +1945,7 @@ describe("PhoneService end to end with a test PBX", () => {
         installable: true,
         checkedAt: null,
         message: null,
+        channel: "stable",
       }),
       "claude.update": () => {
         throw new ForgeError("CLAUDE_NOT_INSTALLED", "Claude Code ist nicht installiert.");

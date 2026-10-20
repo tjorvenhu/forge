@@ -32,12 +32,31 @@
 #   FORGE_<v>_<platform>.sig                                             signatures of that platform's assets
 # The apps there take the newest release that has their platform asset, so a failed or late macOS/Linux job
 # never touches the Windows release. macOS builds are signed ad hoc only (no Apple notarization).
+#
+# Dev channel: every push to the branch dev builds a pre-release (same version scheme; run numbers are
+# shared, so dev and main versions never collide). Only apps on the dev channel take it (channelReleases
+# in packages/sidecar/src/update/app-update.ts); FORGE Setup, the download counter and main apps skip
+# pre-releases. Built for speed: Windows only, no lint or typecheck, no Authenticode, no per-file
+# signatures. The update signature stays: the app installs nothing without it.
+# Bringing dev into main: "Dev nach Main übernehmen" in the settings, or a merge on GitHub.
 name: Release
 
 on:
   schedule:
     # 03:00 UTC, early morning in Europe
     - cron: "0 3 * * *"
+  push:
+    branches: [dev]
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
+      - "services/**"
+      - "apps/installer/**"
+      - ".github/workflows/setup.yml"
+      - ".github/workflows/ci.yml"
+      - "**.png"
+      - "**.docx"
+      - ".forge/**"
   workflow_dispatch:
     inputs:
       full:
@@ -52,9 +71,9 @@ on:
 permissions:
   contents: write
 
-# A newer run makes a running build obsolete: only the newest one is finished.
+# A newer run makes a running build of the same branch obsolete: only the newest one is finished.
 concurrency:
-  group: release
+  group: release-${{ github.ref_name }}
   cancel-in-progress: true
 
 jobs:
@@ -63,6 +82,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       build: ${{ steps.check.outputs.build }}
+      channel: ${{ steps.check.outputs.channel }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -71,9 +91,10 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          if [ "${{ github.ref_name }}" = "dev" ]; then echo "channel=dev" >> "$GITHUB_OUTPUT"; else echo "channel=stable" >> "$GITHUB_OUTPUT"; fi
           if [ "${{ github.event_name }}" != "schedule" ]; then echo "build=true" >> "$GITHUB_OUTPUT"; exit 0; fi
-          # Only version releases: FORGE Setup lives in the release "installer" (setup.yml).
-          last=$(gh api "repos/${{ github.repository }}/releases?per_page=20" --jq '[.[] | select(.tag_name | startswith("v"))][0].target_commitish // empty')
+          # Only version releases of main: FORGE Setup lives in the release "installer" (setup.yml), dev builds are pre-releases.
+          last=$(gh api "repos/${{ github.repository }}/releases?per_page=50" --jq '[.[] | select((.tag_name | startswith("v")) and (.prerelease | not))][0].target_commitish // empty')
           if [ -z "$last" ] || ! git cat-file -e "$last^{commit}" 2>/dev/null; then echo "build=true" >> "$GITHUB_OUTPUT"; exit 0; fi
           # the statistics service deploys through Coolify, FORGE Setup through setup.yml, documents do not ship with the app
           changed=$(git diff --name-only "$last" HEAD | grep -Ev '\.md$|^docs/|^services/|^apps/installer/|^\.github/workflows/(setup|ci)\.yml$|\.png$|\.docx$|^\.forge/' || true)
@@ -86,6 +107,7 @@ jobs:
     timeout-minutes: 60
     outputs:
       version: ${{ steps.plan.outputs.version }}
+      channel: ${{ needs.changes.outputs.channel }}
     steps:
       # Defender scans every file pnpm and cargo write; on the runner that costs minutes.
       - name: Defender off
@@ -116,17 +138,23 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           FORGE_UPDATE_SIGNING_KEY: ${{ secrets.FORGE_UPDATE_SIGNING_KEY }}
           AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          CHANNEL: ${{ needs.changes.outputs.channel }}
         run: |
           # Without the key no installation would take the release: stop before the long build.
           if (-not $env:FORGE_UPDATE_SIGNING_KEY) { throw "Secret FORGE_UPDATE_SIGNING_KEY fehlt." }
-          $codesign = [bool]$env:AZURE_CLIENT_ID
-          if (-not $codesign) { Write-Host "::warning::Secret AZURE_CLIENT_ID fehlt: FORGE wird ohne Code-Signatur gebaut." }
+          $dev = $env:CHANNEL -eq "dev"
+          # Dev builds go to the people who work on FORGE: no Authenticode, it costs signatures and minutes.
+          $codesign = [bool]$env:AZURE_CLIENT_ID -and -not $dev
+          if (-not $codesign -and -not $dev) { Write-Host "::warning::Secret AZURE_CLIENT_ID fehlt: FORGE wird ohne Code-Signatur gebaut." }
           $version = "0.1.${{ github.run_number }}"
           $key = (node scripts/prepare-runtime.mjs --key).Trim()
           # One line per release with its asset names. Only a signed installer counts: the app ignores the
           # unsigned ones of older releases. Since 0.1.102 one FORGE_<v>.sig signs all assets of a release
           # and the runtime of its installer is the one of the update zip next to it.
-          $releases = gh api "repos/${{ github.repository }}/releases?per_page=100" --jq '.[] | [.assets[].name] | join(" ")'
+          # Main counts only its own releases (a dev installer has no Authenticode, and main apps skip
+          # pre-releases); dev apps also take the installers of main.
+          $filter = if ($dev) { '.[]' } else { '.[] | select(.prerelease | not)' }
+          $releases = gh api "repos/${{ github.repository }}/releases?per_page=100" --jq ($filter + ' | [.assets[].name] | join(" ")')
           $hasInstaller = [bool]($releases | Where-Object {
             $names = $_ -split " "
             ($names | Where-Object { $_ -like "*_x64-setup.${key}.runtime.sig" -or $_ -like "*_${key}_x64-setup.exe.sig" }) -or
@@ -139,7 +167,8 @@ jobs:
           "key=$key" >> $env:GITHUB_OUTPUT
           "full=$($full.ToString().ToLower())" >> $env:GITHUB_OUTPUT
           "codesign=$($codesign.ToString().ToLower())" >> $env:GITHUB_OUTPUT
-          Write-Host "Version $version, Laufzeit $key, voller Installer: $full, Code-Signatur: $codesign"
+          "dev=$($dev.ToString().ToLower())" >> $env:GITHUB_OUTPUT
+          Write-Host "Kanal $env:CHANNEL, Version $version, Laufzeit $key, voller Installer: $full, Code-Signatur: $codesign"
 
       # Before the long build: a wrong account name or missing variable fails here.
       - name: Code signing tools
@@ -161,6 +190,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
 
       - name: Lint and types
+        if: steps.plan.outputs.dev != 'true'
         run: |
           pnpm lint
           pnpm typecheck
@@ -250,7 +280,7 @@ jobs:
           $sigs = Join-Path $env:RUNNER_TEMP "FORGE_${version}.sig"
           node scripts/sign-update.mjs --manifest $sigs @files
           if ($LASTEXITCODE -ne 0) { throw "Signieren fehlgeschlagen." }
-          if ("${{ inputs.legacy_signatures }}" -ne "false") {
+          if ("${{ inputs.legacy_signatures }}" -ne "false" -and "${{ steps.plan.outputs.dev }}" -ne "true") {
             # Installations up to 0.1.101 only know <asset>.sig and the .runtime marker, and they only look
             # at the newest release: one bridge release cannot reach them, every release has to carry both.
             $legacy = @($files)
@@ -264,19 +294,53 @@ jobs:
             $files = @($legacy) + @($legacy | ForEach-Object { "$_.sig" })
           }
           $files += $sigs
-          $prev = git describe --tags --abbrev=0 --match "v*" 2>$null
+          $dev = "${{ steps.plan.outputs.dev }}" -eq "true"
+          # Notes since the previous release of the same channel. git describe would find dev tags on main
+          # once dev was merged, and main would only list what came after the last dev build.
+          $filter = if ($dev) { 'select(.prerelease and (.tag_name | startswith("v")))' } else { 'select((.prerelease | not) and (.tag_name | startswith("v")))' }
+          $prev = gh api "repos/${{ github.repository }}/releases?per_page=50" --jq ('[.[] | ' + $filter + '][0].tag_name // empty')
+          if ($prev) { git rev-parse -q --verify "refs/tags/$prev" *> $null; if ($LASTEXITCODE -ne 0) { $prev = $null } }
           $range = if ($prev) { "$prev..HEAD" } else { "HEAD~20..HEAD" }
           $notes = (git log $range --no-merges --format="- %s") -join "`n"
           if (-not $notes) { $notes = "- Maintenance" }
-          # "Latest" stays on the newest full installer: the download for new installations, and what
-          # versions before the small updates look for (they only read releases/latest).
-          $latest = if ("${{ steps.plan.outputs.full }}" -eq "true") { "--latest" } else { "--latest=false" }
-          gh release create $tag @files --title "FORGE $version" --notes $notes --target $env:GITHUB_SHA $latest
+          if ($dev) {
+            # Pre-release: main apps, FORGE Setup and the download counter skip it; "Latest" stays on main.
+            gh release create $tag @files --title "FORGE $version (dev)" --notes $notes --target $env:GITHUB_SHA --prerelease --latest=false
+          } else {
+            # "Latest" stays on the newest full installer: the download for new installations, and what
+            # versions before the small updates look for (they only read releases/latest).
+            $latest = if ("${{ steps.plan.outputs.full }}" -eq "true") { "--latest" } else { "--latest=false" }
+            gh release create $tag @files --title "FORGE $version" --notes $notes --target $env:GITHUB_SHA $latest
+          }
+          if ($LASTEXITCODE -ne 0) { throw "Release anlegen fehlgeschlagen." }
           Get-Item $files | ForEach-Object { Write-Host ("{0}  {1:N1} MB" -f $_.Name, ($_.Length / 1MB)) }
+
+      # Dev builds pile up: keep the newest three and the newest one with a full installer.
+      - name: Clean up old dev releases
+        if: steps.plan.outputs.dev == 'true'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $jq = '[.[] | select(.prerelease and (.tag_name | startswith("v")))] | sort_by(.created_at) | reverse | .[] | .tag_name + " " + ([.assets[].name | select(endswith("_x64-setup.exe"))] | length | tostring)'
+          $list = @(gh api "repos/${{ github.repository }}/releases?per_page=100" --jq $jq)
+          $installerKept = $false
+          for ($i = 0; $i -lt $list.Count; $i++) {
+            $tag, $installers = $list[$i] -split " "
+            $hasInstaller = [int]$installers -gt 0
+            if ($i -lt 3 -or ($hasInstaller -and -not $installerKept)) {
+              if ($hasInstaller) { $installerKept = $true }
+              continue
+            }
+            Write-Host "Lösche altes Dev-Release $tag"
+            gh release delete $tag --repo "${{ github.repository }}" --yes --cleanup-tag
+          }
 
   # Separate jobs after the Windows release: whatever happens here, the Windows release stays as it is.
   macos:
     needs: release
+    # Dev builds are Windows only, for speed.
+    if: needs.release.outputs.channel != 'dev'
     runs-on: macos-latest
     timeout-minutes: 60
     strategy:
@@ -374,6 +438,7 @@ jobs:
 
   linux:
     needs: release
+    if: needs.release.outputs.channel != 'dev'
     # The oldest supported runner: an AppImage runs on systems with this glibc or newer.
     runs-on: ubuntu-22.04
     timeout-minutes: 60

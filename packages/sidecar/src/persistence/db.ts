@@ -441,6 +441,7 @@ export const DEFAULT_SETTINGS: Settings = {
   idleCloseMinutes: 60,
   longSessionTokens: 600_000,
   updateChecks: true,
+  updateChannel: "stable",
   desktopNotifications: true,
   alwaysOnTop: false,
   screenshotKey: true,

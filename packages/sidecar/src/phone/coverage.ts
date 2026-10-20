@@ -145,6 +145,8 @@ export const PHONE_TOOL_FOR: Partial<Record<MethodName, string>> = {
   "app.checkInstall": "forge_system",
   "app.downloadFullInstaller": "forge_system",
   "app.repairInstall": "forge_system",
+  "app.devChannel": "forge_system",
+  "app.promoteDev": "forge_system",
 
   "backup.list": "forge_system",
   "backup.create": "forge_system",

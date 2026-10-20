@@ -21,6 +21,7 @@ const ready: AppUpdateState = {
   installable: true,
   checkedAt: null,
   message: null,
+  channel: "stable",
 };
 
 beforeEach(() => {

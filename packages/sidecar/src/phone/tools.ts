@@ -1,4 +1,4 @@
-import { BackupPart, CHAT_WINDOW_ACTIONS, EffortLevel, Language, MemoryScope, PermissionMode, PolicyRuleId, ProfileId, SessionStatus, type ChatWindowAction } from "@forge/protocol";
+import { BackupPart, CHAT_WINDOW_ACTIONS, EffortLevel, Language, MemoryScope, PermissionMode, PolicyRuleId, ProfileId, SessionStatus, UpdateChannel, type ChatWindowAction } from "@forge/protocol";
 import { z } from "zod";
 import { tr, type SidecarMessages } from "../i18n/index.js";
 
@@ -203,6 +203,8 @@ export interface ForgeSettingsPatch {
   /** context tokens from which FORGE suggests a new session; 0 never */
   longSessionTokens?: number;
   updateChecks?: boolean;
+  /** dev only for accounts that may push to the FORGE repository */
+  updateChannel?: UpdateChannel;
   debugLogs?: boolean;
   stripApiKey?: boolean;
   /** the Print key opens FORGE's snipping tool */
@@ -232,6 +234,8 @@ export const SYSTEM_ACTIONS = [
   "changelog",
   "install_check",
   "install_repair",
+  "dev_status",
+  "dev_promote",
   "claude_check",
   "claude_update",
   "claude_logout",
@@ -841,6 +845,7 @@ const TOOL_DEFS: readonly ToolDef[] = [
       idle_close_minutes: { type: "number", optional: true, min: 0, max: 1440 },
       long_session_tokens: { type: "number", optional: true, min: 0, max: 2000000 },
       update_checks: { type: "boolean", optional: true },
+      update_channel: { type: "string", optional: true, enum: UpdateChannel.options },
       debug_logs: { type: "boolean", optional: true },
       strip_api_key: { type: "boolean", optional: true },
       screenshot_key: { type: "boolean", optional: true },
@@ -864,6 +869,7 @@ const TOOL_DEFS: readonly ToolDef[] = [
         idleCloseMinutes: optNum(a.idle_close_minutes),
         longSessionTokens: optNum(a.long_session_tokens),
         updateChecks: optBool(a.update_checks),
+        updateChannel: UpdateChannel.options.find((x) => x === a.update_channel),
         debugLogs: optBool(a.debug_logs),
         stripApiKey: optBool(a.strip_api_key),
         screenshotKey: optBool(a.screenshot_key),

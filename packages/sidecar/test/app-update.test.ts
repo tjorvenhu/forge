@@ -74,7 +74,7 @@ function fakeSource(list: () => Release[] | null | Error, o: FakeOpts = {}) {
   return { source, calls };
 }
 
-function service(list: () => Release[] | null | Error, version = "0.1.0", opts: FakeOpts & { runtimeKey?: string | null; chainFile?: string; requestInstall?: () => void } = {}) {
+function service(list: () => Release[] | null | Error, version = "0.1.0", opts: FakeOpts & { runtimeKey?: string | null; chainFile?: string; requestInstall?: () => void; channel?: "stable" | "dev" } = {}) {
   const states: AppUpdateState[] = [];
   const { source, calls } = fakeSource(list, opts);
   const svc = new AppUpdateService({
@@ -89,11 +89,24 @@ function service(list: () => Release[] | null | Error, version = "0.1.0", opts: 
     requestInstall: opts.requestInstall,
     source,
     publicKey: PUBLIC_KEY,
+    channel: opts.channel ? async () => opts.channel! : undefined,
   });
   return { svc, calls, states };
 }
 
 describe("app updates", () => {
+  it("offers dev pre-releases only on the dev channel, never the release of FORGE Setup", async () => {
+    const devBuild = { ...rel("v0.1.9", [`FORGE_0.1.9_update_${KEY}.zip`]), prerelease: true };
+    const setup = { ...rel("installer", ["FORGE-Setup.exe"]), prerelease: true };
+    const list = () => [devBuild, setup, rel("v0.1.8", [`FORGE_0.1.8_update_${KEY}.zip`]), rel("v0.1.7")];
+    const stable = service(list, "0.1.7");
+    expect(await stable.svc.check()).toMatchObject({ phase: "available", channel: "stable", latest: { version: "0.1.8", kind: "patch" } });
+    const dev = service(list, "0.1.7", { channel: "dev" });
+    expect(await dev.svc.check()).toMatchObject({ phase: "available", channel: "dev", latest: { version: "0.1.9", kind: "patch", via: null } });
+    // A dev build is ahead of main: back on stable nothing is offered until main passes it.
+    expect(await service(list, "0.1.9").svc.check()).toMatchObject({ phase: "uptodate", latest: null });
+  });
+
   it("compares versions numerically", () => {
     expect(compareVersions("v0.1.10", "0.1.9")).toBe(1);
     expect(compareVersions("0.1.0", "v0.1.0")).toBe(0);

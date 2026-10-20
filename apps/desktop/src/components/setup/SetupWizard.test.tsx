@@ -60,6 +60,7 @@ beforeEach(() => {
     idleCloseMinutes: 60,
     longSessionTokens: 200_000,
     updateChecks: true,
+    updateChannel: "stable",
     desktopNotifications: true,
     alwaysOnTop: false,
     screenshotKey: true,

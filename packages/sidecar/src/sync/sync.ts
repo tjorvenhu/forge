@@ -44,10 +44,11 @@ const REMOTE_CACHE_MS = 5 * 60_000;
 const CLAUDE_FILES = ["CLAUDE.md", "settings.json"];
 
 /**
- * Settings that belong to this computer: paths and the setup and sync flags themselves. Every
+ * Settings that belong to this computer: paths, the setup and sync flags themselves and the update
+ * channel (the dev channel depends on the GitHub login of this computer). Every
  * other setting is synced, new ones included.
  */
-const LOCAL_SETTINGS = ["claudePath", "defaultProjectDir", "setupDone", "syncEnabled", "syncAsked"] as const satisfies ReadonlyArray<keyof Settings>;
+const LOCAL_SETTINGS = ["claudePath", "defaultProjectDir", "setupDone", "syncEnabled", "syncAsked", "updateChannel"] as const satisfies ReadonlyArray<keyof Settings>;
 const SYNCED_SETTINGS = Settings.keyof().options.filter((k) => !(LOCAL_SETTINGS as readonly string[]).includes(k));
 
 const ProjectItem = z.object({

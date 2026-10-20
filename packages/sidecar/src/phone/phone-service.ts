@@ -476,6 +476,8 @@ function settingText(s: Settings, key: keyof ForgeSettingsPatch | "alwaysOnTop")
       return s.longSessionTokens > 0 ? m.settings.longSession(Math.round(s.longSessionTokens / 1000)) : m.settings.longSessionOff;
     case "updateChecks":
       return m.settings.updateChecks(s.updateChecks);
+    case "updateChannel":
+      return m.settings.updateChannel(s.updateChannel);
     case "learnTemplates":
       return m.settings.learnTemplates(s.learnTemplates);
     case "usageStats":
@@ -2814,6 +2816,10 @@ export class PhoneService {
             update.longSessionTokens = Math.min(2_000_000, Math.max(0, Math.round(patch.longSessionTokens)));
             changed.push("longSessionTokens");
           }
+          if (patch.updateChannel) {
+            update.updateChannel = patch.updateChannel;
+            changed.push("updateChannel");
+          }
           if (patch.defaultProfile) {
             update.defaultProfile = patch.defaultProfile;
             changed.push("defaultProfile");
@@ -2829,7 +2835,7 @@ export class PhoneService {
             update.disabledPolicyRules = patch.policyRuleOn ? off : [...off, rule];
             changed.push("policyRule");
           }
-          if (!changed.length) return `${(["defaultModel", "defaultEffort", "defaultProfile", "defaultProjectDir", ...flags, "idleCloseMinutes", "longSessionTokens", "alwaysOnTop", "policyRule"] as const).map((k) => settingText(cur, k)).join(", ")}.`;
+          if (!changed.length) return `${(["defaultModel", "defaultEffort", "defaultProfile", "defaultProjectDir", ...flags, "updateChannel", "idleCloseMinutes", "longSessionTokens", "alwaysOnTop", "policyRule"] as const).map((k) => settingText(cur, k)).join(", ")}.`;
           const next = await call("settings.update", update);
           return tr().phone.settings.saved(changed.map((k) => settingText(next, k)).join(", "));
         }),
@@ -2862,6 +2868,22 @@ export class PhoneService {
             const euros = given ? new Intl.NumberFormat(tr().phone.locale, { style: "currency", currency: "EUR" }).format(given.cents / 100) : null;
             const sum = given ? sy.donated(euros ?? "", given.count) : "";
             return sy.support(bare(SUPPORT_LINKS.donate), sum, bare(SUPPORT_LINKS.feedback));
+          }
+          if (action === "dev_status" || action === "dev_promote") {
+            const dev = await call("app.devChannel", { refresh: true });
+            const channel = (await call("settings.get", {})).updateChannel;
+            if (!dev.allowed) return sy.devNotAllowed(dev.message ?? "");
+            if (dev.ahead === null) return sy.devUnknown(dev.message ?? "");
+            if (action === "dev_status" || dev.ahead === 0) return sy.devStatus(channel === "dev", dev.ahead, dev.behind ?? 0, dev.commits.slice(0, 5).join("; "));
+            // Changes main for everyone on the stable channel: only after the code on the keypad.
+            return askKeypad(
+              sy.confirmPromote(dev.ahead),
+              async () => {
+                const r = await call("app.promoteDev", { release: true });
+                return sy.promoted(r.mode === "fast-forward", r.releaseStarted);
+              },
+              tr().phone.common.nothingChanged,
+            );
           }
           if (action === "install_repair") {
             const st = await call("app.checkInstall", {});
