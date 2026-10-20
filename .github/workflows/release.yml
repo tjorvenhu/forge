@@ -383,6 +383,9 @@ jobs:
       - name: System libraries
         run: |
           sudo apt-get update
+          # The runner image ships libunwind-14-dev, which conflicts with libunwind-dev that libgstreamer1.0-dev
+          # needs ("held broken packages").
+          sudo apt-get remove -y libunwind-14-dev || true
           # Tauri (WebKitGTK 4.1, tray, AppImage), then GStreamer, which the AppImage bundles for audio and
           # video in the webview (bundleMediaFramework). Screenshots go through the desktop portal over D-Bus.
           sudo apt-get install -y --no-install-recommends \

@@ -83,3 +83,85 @@ jobs:
         env:
           TAURI_CONFIG: '{"bundle":{"resources":[]}}'
         run: cargo test --lib
+
+  # The Linux packages exactly as release.yml builds them (same system libraries, runtime and checks),
+  # without publishing: so a broken AppImage or .deb shows up before the nightly release. Kept as artifact.
+  bundle-linux:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: System libraries
+        run: |
+          sudo apt-get update
+          # Same as release.yml, including the libunwind conflict of the runner image.
+          sudo apt-get remove -y libunwind-14-dev || true
+          sudo apt-get install -y --no-install-recommends \
+            libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev patchelf \
+            build-essential curl wget file libssl-dev libxdo-dev pkg-config \
+            libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev gstreamer1.0-plugins-base gstreamer1.0-plugins-good
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: apps/desktop/src-tauri
+
+      - name: Cache bundled runtime downloads
+        uses: actions/cache@v4
+        with:
+          path: .runtime-cache
+          key: runtime-linux-x64-${{ hashFiles('scripts/prepare-runtime.mjs') }}
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Sidecar, frontend and runtime
+        run: |
+          pnpm --filter @forge/sidecar build
+          pnpm --filter @forge/desktop exec vite build
+          echo '{"build":{"beforeBuildCommand":""}}' > apps/desktop/src-tauri/tauri.ci.json
+          node scripts/prepare-runtime.mjs --target linux-x64
+
+      - name: Build app
+        working-directory: apps/desktop
+        env:
+          FORGE_RUNTIME_KEY: ci
+          APPIMAGE_EXTRACT_AND_RUN: "1"
+        run: pnpm tauri build --bundles appimage,deb --config src-tauri/tauri.ci.json
+
+      - name: Check packages
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          bundle="apps/desktop/src-tauri/target/release/bundle"
+          appimages=("$bundle"/appimage/*.AppImage)
+          debs=("$bundle"/deb/*.deb)
+          [ ${#appimages[@]} -eq 1 ] && [ ${#debs[@]} -eq 1 ] || { ls -la "$bundle"/* || true; echo "::error::Erwartet: genau ein AppImage und ein .deb"; exit 1; }
+          for tool in node/bin/node gh/bin/gh; do
+            dpkg-deb -c "${debs[0]}" | grep -E "^-rwxr-xr-x .*/runtime/$tool\$" > /dev/null || { echo "::error::runtime/$tool fehlt im .deb"; exit 1; }
+          done
+          check="$RUNNER_TEMP/appimage-check"
+          mkdir -p "$check"
+          cp "${appimages[0]}" "$check/FORGE.AppImage"
+          chmod +x "$check/FORGE.AppImage"
+          (cd "$check" && ./FORGE.AppImage --appimage-extract > /dev/null)
+          for tool in node/bin/node gh/bin/gh; do
+            find "$check/squashfs-root" -path "*/runtime/$tool" -perm -u+x | grep . > /dev/null || { echo "::error::runtime/$tool fehlt im AppImage"; exit 1; }
+          done
+          # The bundled node must start on the runner's glibc.
+          "$(find "$check/squashfs-root" -path '*/runtime/node/bin/node' | head -1)" --version
+          ls -la "${appimages[0]}" "${debs[0]}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: forge-linux
+          path: |
+            apps/desktop/src-tauri/target/release/bundle/appimage/*.AppImage
+            apps/desktop/src-tauri/target/release/bundle/deb/*.deb
+          retention-days: 7
