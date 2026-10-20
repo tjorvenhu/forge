@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { ArrowUpCircle, Download, RefreshCw, Sparkles, Workflow } from "lucide-react";
+import { ArrowUpCircle, Download, FlaskConical, RefreshCw, Sparkles, Workflow } from "lucide-react";
 import type { AppUpdateState } from "@forge/protocol";
 import { installUpdate, isWorkingSession, sessionsNote, useInstall } from "@/lib/app-install";
 import { call, keys, useAppChangelog, useAppUpdate, useLiveSessions, useSettings } from "@/lib/queries";
@@ -50,17 +50,24 @@ export function AppUpdateCard() {
   const { install, installing } = useInstallAction();
   if (!s?.latest || !["available", "downloading", "ready"].includes(s.phase)) return null;
   const busy = installing || s.phase === "downloading";
+  const dev = s.channel === "dev";
   const details = (
     <div className="flex max-w-64 flex-col gap-1.5 text-xs">
+      {dev && <span>{t.layout.update.devNoticeTitle}</span>}
       <span>{t.layout.update.installedLine(s.currentVersion, sizeLabel(s.latest))}</span>
       {s.installable ? <RestartNote /> : <span>{t.layout.update.devOnly}</span>}
     </div>
   );
   return (
-    <div className="mx-3 mt-3 flex h-9 items-center gap-2 rounded-lg border border-accent/40 bg-accent-soft pl-2.5 pr-1 animate-slide-up-in">
-      <ArrowUpCircle className="h-3.5 w-3.5 shrink-0 text-accent" />
+    <div
+      className={cn(
+        "mx-3 mt-3 flex h-9 items-center gap-2 rounded-lg border pl-2.5 pr-1 animate-slide-up-in",
+        dev ? "border-dev-border/70 bg-dev/50 text-dev-fg" : "border-accent/40 bg-accent-soft",
+      )}
+    >
+      {dev ? <FlaskConical className="h-3.5 w-3.5 shrink-0" /> : <ArrowUpCircle className="h-3.5 w-3.5 shrink-0 text-accent" />}
       <Tooltip content={details}>
-        <span className="min-w-0 flex-1 cursor-default truncate text-caption">{t.layout.update.available(s.latest.version)}</span>
+        <span className="min-w-0 flex-1 cursor-default truncate text-caption">{dev ? t.layout.update.devAvailable(s.latest.version) : t.layout.update.available(s.latest.version)}</span>
       </Tooltip>
       {s.installable && (
         <Button size="sm" variant="primary" className="h-6 px-2" loading={busy} onClick={() => void install()}>
@@ -100,11 +107,12 @@ export function AppUpdateDialog() {
   // Not during a dictation either; it comes two seconds after the last one.
   if (!s?.latest || !tag || dismissed === tag || (setupOpen && !autoInstall) || !quiet) return null;
   const busy = installing || s.phase === "downloading";
+  const dev = s.channel === "dev";
   return (
     <Dialog
       open
       onOpenChange={(o) => !o && setDismissed(tag)}
-      title={t.layout.update.dialogTitle(s.latest.version)}
+      title={dev ? t.layout.update.devDialogTitle(s.latest.version) : t.layout.update.dialogTitle(s.latest.version)}
       description={t.layout.update.dialogDescription(s.currentVersion, s.latest.publishedAt ? relativeTime(s.latest.publishedAt) : null, sizeLabel(s.latest))}
       className="w-150"
       footer={
@@ -116,7 +124,7 @@ export function AppUpdateDialog() {
           <Button variant="primary" loading={busy} disabled={!s.installable} onClick={() => void install()}>
             {busy ? (s.phase === "downloading" ? t.layout.update.downloading : t.layout.update.installing) : (
               <>
-                <Download className="h-3.5 w-3.5" /> {t.layout.update.updateNow}
+                <Download className="h-3.5 w-3.5" /> {dev ? t.layout.update.devUpdateNow : t.layout.update.updateNow}
               </>
             )}
           </Button>
@@ -125,6 +133,15 @@ export function AppUpdateDialog() {
     >
       <div className="flex flex-col gap-4">
         <Logo height={25} />
+        {dev && (
+          <div className="flex items-start gap-2.5 rounded-lg border border-dev-border/70 bg-dev/50 px-3 py-2.5 text-dev-fg">
+            <FlaskConical className="mt-0.5 h-4 w-4 shrink-0" />
+            <div className="min-w-0">
+              <div className="text-body font-medium">{t.layout.update.devNoticeTitle}</div>
+              <div className="text-caption text-dev-fg/80">{t.layout.update.devNotice}</div>
+            </div>
+          </div>
+        )}
         <div className="min-w-0">
           <div className="mb-2 flex items-center gap-1.5 text-xs font-medium text-muted">
             <Sparkles className="h-3.5 w-3.5 text-accent" /> {t.layout.update.changesSince(s.latest.since)}
@@ -229,7 +246,7 @@ export function AppUpdateSettings() {
   if (!s) return null;
   const status =
     s.phase === "available" || s.phase === "ready"
-      ? t.layout.update.versionAvailable(s.latest?.version ?? "")
+      ? (s.channel === "dev" ? t.layout.update.devVersionAvailable : t.layout.update.versionAvailable)(s.latest?.version ?? "")
       : s.phase === "downloading"
         ? t.layout.update.downloadingUpdate
         : s.phase === "error"

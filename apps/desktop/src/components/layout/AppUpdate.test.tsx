@@ -70,5 +70,19 @@ describe("update offer and dictation", () => {
   it("shows at once without a dictation", async () => {
     setup();
     expect(await screen.findByText("FORGE 0.1.91 ist verfügbar")).toBeTruthy();
+    expect(screen.queryByText("Vorabversion aus dem Branch dev")).toBeNull();
+  });
+
+  it("marks an update from the dev branch as a development build", async () => {
+    callMock.mockImplementation(async (method: string) => {
+      if (method === "app.updateState") return { ...available, channel: "dev" };
+      if (method === "settings.get") return { setupDone: true };
+      if (method === "sessions.listLive") return [];
+      return null;
+    });
+    setup();
+    expect(await screen.findByText("Entwicklungsversion 0.1.91 ist verfügbar")).toBeTruthy();
+    expect(screen.getByText("Vorabversion aus dem Branch dev")).toBeTruthy();
+    expect(screen.getByText("Entwicklungsversion installieren")).toBeTruthy();
   });
 });
