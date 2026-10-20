@@ -1568,7 +1568,7 @@ export class PhoneService {
       if (st.phase === "checking") return m.checking;
       if (!st.latest || st.phase === "uptodate" || st.phase === "idle") return m.upToDate(st.currentVersion);
       const state = st.phase === "ready" ? m.ready : st.phase === "downloading" ? m.downloading : "";
-      return m.available(st.latest.version, st.currentVersion, state);
+      return m.available(st.latest.version, st.currentVersion, state) + (st.channel === "dev" ? m.devUpdate : "");
     };
     const installText = (st: ResultOf<"app.installState">) => {
       const m = tr().phone.system;

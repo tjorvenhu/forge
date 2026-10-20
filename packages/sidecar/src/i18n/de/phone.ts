@@ -877,6 +877,7 @@ Sicherheit:
     ready: " Es ist heruntergeladen und geprüft. Beim Installieren startet FORGE neu; laufende Sessions machen danach von selbst weiter.",
     downloading: " Es wird gerade heruntergeladen.",
     available: (latest: string, current: string, state: string) => `FORGE ${latest} ist verfügbar, installiert ist ${current}.${state}`,
+    devUpdate: " Das ist eine Entwicklungsversion aus dem Branch dev, ungetestet und ohne Code-Signatur.",
     installDev: "Das ist eine Entwicklungsversion von FORGE, da gibt es keine Installation zu prüfen.",
     installChecking: "Die Prüfung läuft noch. Frag gleich noch einmal.",
     installComplete: "FORGE ist vollständig installiert, alle mitgelieferten Programme sind in der richtigen Version da.",

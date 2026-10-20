@@ -876,6 +876,7 @@ Security:
     ready: " It has been downloaded and verified. When installing, FORGE restarts; running sessions then continue on their own.",
     downloading: " It is being downloaded right now.",
     available: (latest: string, current: string, state: string) => `FORGE ${latest} is available, ${current} is installed.${state}`,
+    devUpdate: " This is a development build from the branch dev, untested and without code signature.",
     installDev: "This is a development version of FORGE, so there is no installation to check.",
     installChecking: "The check is still running. Ask again in a moment.",
     installComplete: "FORGE is completely installed, all bundled programs are there in the right version.",
