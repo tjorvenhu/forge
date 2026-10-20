@@ -39,7 +39,7 @@ const de = {
     download: "Download",
   },
   landing: {
-    eyebrow: "Claude Development Studio",
+    eyebrow: "AI Development Studio",
     title: "Deine AI",
     titleAccent: "Entwicklungszentrale",
     lead: "Forge ist ein modernes Desktop-Tool für Claude Code. Verwalte Projekte, Sessions und Git, mit einer intuitiven Oberfläche statt Terminal.",
@@ -276,7 +276,7 @@ const en: Messages = {
     download: "Download",
   },
   landing: {
-    eyebrow: "Claude Development Studio",
+    eyebrow: "AI Development Studio",
     title: "Your AI",
     titleAccent: "Development Hub",
     lead: "Forge is a modern desktop tool for Claude Code. Manage projects, sessions and Git, with an intuitive interface instead of the terminal.",
