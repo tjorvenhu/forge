@@ -23,9 +23,9 @@
 </p>
 
 <p align="center">
-  <img src=".github/assets/demo.gif" alt="Claude takes a screenshot of the running web app, finds the button with invisible text and fixes it; FORGE shows before and after" width="100%">
+  <img src=".github/assets/demo.gif" alt="Claude takes a screenshot of the running web app and fixes a button with invisible text, FORGE shows before and after; then the profile switches to Autonomous, three parallel agents build new sections on their own branches and FORGE merges them" width="100%">
   <br>
-  <sub>Claude looks at the running app, finds the broken button and fixes it. FORGE shows before and after.</sub>
+  <sub>Claude looks at the running app and fixes the broken button. Then three agents work in parallel, each on its own branch, and FORGE merges their work.</sub>
 </p>
 
 <table>

@@ -23,9 +23,9 @@
 </p>
 
 <p align="center">
-  <img src=".github/assets/demo.gif" alt="Claude macht einen Screenshot der laufenden Web-App, findet den Knopf mit unsichtbarer Schrift und behebt den Fehler; FORGE zeigt Vorher und Nachher" width="100%">
+  <img src=".github/assets/demo.gif" alt="Claude macht einen Screenshot der laufenden Web-App und behebt einen Knopf mit unsichtbarer Schrift, FORGE zeigt Vorher und Nachher; danach wechselt das Profil auf Autonomous, drei parallele Agenten bauen neue Abschnitte auf eigenen Branches und FORGE führt sie zusammen" width="100%">
   <br>
-  <sub>Claude sieht sich die laufende App an, findet den kaputten Knopf und behebt ihn. FORGE zeigt Vorher und Nachher.</sub>
+  <sub>Claude sieht sich die laufende App an und behebt den kaputten Knopf. Danach arbeiten drei Agenten parallel, jeder auf eigenem Branch, und FORGE führt ihre Arbeit zusammen.</sub>
 </p>
 
 <table>
