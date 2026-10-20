@@ -849,7 +849,7 @@ Sicherheit:
     longSession: (thousands: number) => `Hinweis auf lange Sessions ab ${thousands} Tausend Tokens Kontext`,
     longSessionOff: "kein Hinweis auf lange Sessions",
     updateChecks: (v: boolean) => `Update-Prüfung ${on(v)}`,
-    updateChannel: (c: "stable" | "dev"): string => (c === "dev" ? "Dev-Branch an, also die Vorabversionen aus dem Branch dev" : "Dev-Branch aus, also die Releases von main"),
+    updateChannel: (c: "stable" | "dev"): string => (c === "dev" ? "Entwicklungsversion an, also die Vorabversionen aus dem Branch dev" : "Entwicklungsversion aus, also die Releases von main"),
     learnTemplates: (v: boolean) => `Vorlagen aus wiederkehrenden Nachrichten lernen ${on(v)}`,
     usageStats: (v: boolean) => `anonyme Nutzungsstatistik ${on(v)}`,
     debugLogs: (v: boolean) => `Debug-Logs ${on(v)}`,
@@ -909,8 +909,8 @@ Sicherheit:
       `FORGE ist ein Open-Source-Produkt der Vanturis UG. Einen freiwilligen Beitrag zahlt man hier: ${donate}, eine Spendenquittung gibt es nicht.${sum} Verbesserungen und Featurevorschläge kommen als Issue auf GitHub: ${feedback}. Beide Links zeigt FORGE hinter dem roten Herz neben der Suche links oben.`,
     confirmRepair: (v: string) => `FORGE installiert sich vollständig mit dem Installer ${v} und startet dabei neu, dieses Gespräch endet. Offene Sessions machen danach weiter`,
     repairing: "FORGE wird jetzt vollständig installiert und startet neu, dieses Gespräch endet gleich.",
-    devNotAllowed: (why: string) => `Der Dev-Branch geht nicht: ${why}`,
-    devPromoteOff: "Dev nach main übernehmen geht nur, solange FORGE Updates aus dem Dev-Branch bekommt. Schalte dafür zuerst update_channel auf dev.",
+    devNotAllowed: (why: string) => `Die Entwicklungsversion geht nicht: ${why}`,
+    devPromoteOff: "Dev nach main übernehmen geht nur, solange FORGE die Entwicklungsversion bekommt. Schalte dafür zuerst update_channel auf dev.",
     devUnknown: (why: string) => `Den Stand von dev kenne ich nicht: ${why}`,
     devStatus: (onDev: boolean, ahead: number, behind: number, commits: string) =>
       `${onDev ? "FORGE bekommt Updates aus dev." : "FORGE bekommt Updates aus main."} ` +

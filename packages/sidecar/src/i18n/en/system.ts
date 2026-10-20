@@ -215,8 +215,8 @@ export const system: typeof De = {
   },
   devChannel: {
     noGh: "The GitHub CLI is missing. Without it FORGE cannot check whether your account belongs to the repository.",
-    noLogin: "Sign in to GitHub in FORGE. Only members of the repository can switch on the dev branch.",
-    noAccess: (login, repo) => `The account ${login} cannot push to ${repo}. Only members of the repository can switch on the dev branch.`,
+    noLogin: "Sign in to GitHub in FORGE. Only members of the repository can switch on the development build.",
+    noAccess: (login, repo) => `The account ${login} cannot push to ${repo}. Only members of the repository can switch on the development build.`,
     failed: (why) => `Could not ask GitHub: ${why}`,
     noDevBranch: (repo) => `${repo} has no branch dev yet.`,
     conflict: "Dev and main have conflicting changes. Resolve the conflicts locally and push dev.",

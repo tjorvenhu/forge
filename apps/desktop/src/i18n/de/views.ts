@@ -238,7 +238,7 @@ export const views = {
       "Beim Start und alle 30 Minuten in den GitHub-Releases. Ein neues Update zeigt FORGE mit einer Zusammenfassung von Claude an. FORGE installiert nur Updates mit gültiger Signatur.",
     updatesTitle: "Updates",
     devChannel: {
-      label: "Dev-Branch",
+      label: "Entwicklungsversion",
       stableDescription: "Aus: FORGE bekommt die Releases von main, signiert und für alle Nutzer.",
       devDescription: (repo: string) => `An: FORGE bekommt die Vorabversionen aus dem Branch dev von ${repo}: schneller gebaut, ohne Code-Signatur, nur für Windows. Nach dem Ausschalten kommt das nächste Update, sobald main eine neuere Version hat.`,
       membersOnly: (repo: string) => `Dev können nur Mitglieder von ${repo} einschalten, angemeldet mit GitHub.`,

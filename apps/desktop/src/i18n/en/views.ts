@@ -238,7 +238,7 @@ export const views: typeof De = {
       "At startup and every 30 minutes in the GitHub releases. FORGE shows a new update with a summary from Claude. FORGE only installs updates with a valid signature.",
     updatesTitle: "Updates",
     devChannel: {
-      label: "Dev branch",
+      label: "Development build",
       stableDescription: "Off: FORGE gets the releases of main, signed and for everyone.",
       devDescription: (repo) => `On: FORGE gets the pre-releases from the branch dev of ${repo}: built faster, without code signature, Windows only. After switching it off, the next update comes once main has a newer version.`,
       membersOnly: (repo) => `Only members of ${repo}, signed in with GitHub, can switch on dev.`,
