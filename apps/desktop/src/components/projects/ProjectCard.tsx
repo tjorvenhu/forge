@@ -16,13 +16,26 @@ import { Button } from "@/components/ui/button";
 import { DropdownMenu } from "@/components/ui/dropdown";
 import { ProjectIcon } from "./ProjectIcon";
 import { setProjectGroup } from "./ProjectGroupDialogs";
+import { startProjectDrag, useProjectDrag } from "./project-drag";
 import { PROFILE_INFO } from "./ProfileBadge";
 import { tagLabel } from "@/components/workspace/ProjectSettingsTab";
 import { agentBusy, agentLabel } from "@/lib/project-tree";
 import { LocalOnlyBadge } from "@/components/settings/SyncLocalOnly";
 import { t } from "@/i18n";
 
-export function ProjectCard({ p, agents = [], onRemove }: { p: ProjectWithStatus; agents?: ProjectWithStatus[]; onRemove: (p: ProjectWithStatus) => void }) {
+export function ProjectCard({
+  p,
+  agents = [],
+  onRemove,
+  onGroupDrop,
+}: {
+  p: ProjectWithStatus;
+  agents?: ProjectWithStatus[];
+  onRemove: (p: ProjectWithStatus) => void;
+  /** set: the card can be dragged onto a group section of the projects page */
+  onGroupDrop?: (p: ProjectWithStatus, group: string | null) => void;
+}) {
+  const dragged = useProjectDrag((s) => s.project?.id === p.id);
   const openProject = useUi((s) => s.openProject);
   const openProjectSettings = useUi((s) => s.openProjectSettings);
   const openReport = useUi((s) => s.openReport);
@@ -43,7 +56,12 @@ export function ProjectCard({ p, agents = [], onRemove }: { p: ProjectWithStatus
 
   return (
     <div
-      className={cn("group flex flex-col rounded-xl border border-border bg-surface transition-colors hover:border-border-strong", !p.exists && "opacity-70")}
+      className={cn(
+        "group flex flex-col rounded-xl border border-border bg-surface transition-[border-color,opacity] hover:border-border-strong",
+        !p.exists && "opacity-70",
+        dragged && "border-dashed border-accent opacity-50",
+      )}
+      onPointerDown={onGroupDrop && ((e) => startProjectDrag(e, p, onGroupDrop))}
       onContextMenu={contextItems(() => [
         { label: t.projects.card.open, icon: <FolderOpen className="h-3.5 w-3.5" />, onSelect: () => openProject(p.id) },
         { label: t.projects.card.newSession, icon: <MessageSquarePlus className="h-3.5 w-3.5" />, onSelect: () => openProject(p.id, null) },

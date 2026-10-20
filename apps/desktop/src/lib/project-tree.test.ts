@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ProjectWithStatus } from "@forge/protocol";
-import { agentBusy, agentLabel, groupNames, groupProjects, splitProjects } from "./project-tree";
+import { agentBusy, agentLabel, groupNames, groupProjects, splitProjects, withEmptyGroups } from "./project-tree";
 
 const project = (id: string, o: Partial<ProjectWithStatus> = {}): ProjectWithStatus =>
   ({ id, name: id, path: `C:/${id}`, parentId: null, createdAt: "2026-10-01T00:00:00Z", git: null, lastSession: null, ...o }) as ProjectWithStatus;
@@ -29,6 +29,15 @@ describe("project tree", () => {
       [null, ["a"]],
     ]);
     expect(groupProjects([project("x", { group: "K" })]).map((g) => g.key)).toEqual(["k"]);
+  });
+
+  it("puts empty groups between the others by name, once, and never after the projects without group", () => {
+    const sections = groupProjects([project("a", { group: null }), project("b", { group: "Zeta" })]);
+    expect(withEmptyGroups(sections, ["mitte", "zeta", "Mitte"]).map((g) => [g.name, g.projects.length])).toEqual([
+      ["mitte", 0],
+      ["Zeta", 1],
+      [null, 1],
+    ]);
   });
 
   it("names an agent by its branch without the agent/ prefix", () => {

@@ -586,6 +586,9 @@ export function buildActions(ctx: ActionContext): PaletteEntry[] {
   act("add-project", t.layout.actions.addProject, icon(FolderPlus), () => ui.setNewProject("import"), { hint: t.layout.actions.ctrl("O"), keywords: "projekt hinzufügen importieren ordner add project import folder" });
   act("create-project", t.layout.actions.createProject, icon(FolderPlus), () => ui.setNewProject("create"), { keywords: "neues projekt anlegen new project create" });
   act("clone-project", t.layout.actions.cloneProject, icon(FolderDown), () => ui.setNewProject("clone"), { keywords: "projekt github klonen clone repository project" });
+  act("create-group", t.projects.groups.create, icon(Folders), () => useProjectGroupDialogs.getState().openCreate(), {
+    keywords: "gruppe erstellen anlegen neue projektgruppe kunde kunden ordnen create new group project group client customer organize",
+  });
 
   const remoteOn = ctx.remote?.enabled ?? false;
   act("remote", remoteOn ? t.layout.actions.remoteOff : t.layout.actions.remoteOn, icon(MonitorSmartphone), () => {

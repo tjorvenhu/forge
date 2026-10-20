@@ -1,5 +1,6 @@
-import { useMemo, useState, type ReactNode } from "react";
-import { ChevronRight, Eye, FolderMinus, Folders, MoreHorizontal, Pencil, Search } from "lucide-react";
+import { useCallback, useMemo, useState, type ReactNode } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { ChevronRight, Eye, FolderMinus, FolderPlus, Folders, ListPlus, MoreHorizontal, Pencil, Search, X } from "lucide-react";
 import type { ProjectWithStatus } from "@forge/protocol";
 import { useProjects } from "@/lib/queries";
 import { contextItems } from "@/lib/context-menu";
@@ -16,8 +17,10 @@ import { Select } from "@/components/ui/select";
 import { AddProjectActions } from "@/components/projects/AddProjectActions";
 import { ProjectCard } from "@/components/projects/ProjectCard";
 import { RemoveProjectDialog } from "@/components/projects/RemoveProjectDialog";
+import { setProjectGroup } from "@/components/projects/ProjectGroupDialogs";
+import { ProjectDragGhost, dropTargetProps, useDropState, useProjectDrag } from "@/components/projects/project-drag";
 import { CardGridSkeleton } from "@/components/ui/skeleton";
-import { groupKey, groupNames, groupProjects, splitProjects, type ProjectGroupSection } from "@/lib/project-tree";
+import { groupKey, groupNames, groupProjects, splitProjects, withEmptyGroups, type ProjectGroupSection } from "@/lib/project-tree";
 import { t } from "@/i18n";
 
 type Filter = "all" | "favorites" | "dirty" | "missing";
@@ -32,11 +35,17 @@ export function ProjectsView() {
   const [removing, setRemoving] = useState<ProjectWithStatus | null>(null);
   const groupFilter = useUi((s) => s.projectGroupFilter);
   const showProjectGroup = useUi((s) => s.showProjectGroup);
+  const emptyGroups = useProjectGroupDialogs((s) => s.emptyGroups);
+  const openCreate = useProjectGroupDialogs((s) => s.openCreate);
+  const draggingGrouped = useProjectDrag((s) => !!s.project?.group);
+  const qc = useQueryClient();
 
   // Agents (worktrees) are shown inside the card of their project, not as projects of their own.
   const { roots, agentsOf } = useMemo(() => splitProjects(projects.data ?? []), [projects.data]);
   const groups = useMemo(() => groupNames(roots), [roots]);
-  const grouped = groups.length > 0;
+  // Groups made a moment ago hold no project yet; they stand as empty sections to drag projects into.
+  const pending = useMemo(() => emptyGroups.filter((g) => !groups.some((x) => groupKey(x) === groupKey(g))), [emptyGroups, groups]);
+  const grouped = groups.length > 0 || pending.length > 0;
   // A filter for a group that no longer exists (renamed elsewhere, on the phone) shows all again.
   const activeGroup = grouped && groupFilter !== null && (groupFilter === "" || groups.some((g) => groupKey(g) === groupFilter)) ? groupFilter : null;
   const items = useMemo(() => {
@@ -52,17 +61,38 @@ export function ProjectsView() {
       return true;
     });
   }, [roots, agentsOf, q, filter, activeGroup]);
-  const sections = useMemo(() => groupProjects(items), [items]);
   const agentCount = (projects.data?.length ?? 0) - roots.length;
   const filtering = q.trim() !== "" || filter !== "all";
+  const sections = useMemo(() => {
+    const list = groupProjects(items);
+    // Empty groups would only be noise next to search hits or under another group's filter.
+    const all = filtering || activeGroup !== null ? list : withEmptyGroups(list, pending);
+    // While a grouped project is dragged, "Ohne Gruppe" must be there to drop it on, even when empty.
+    return draggingGrouped && !all.some((x) => x.name === null) ? [...all, { key: "", name: null, projects: [] }] : all;
+  }, [items, pending, filtering, activeGroup, draggingGrouped]);
 
-  const card = (p: ProjectWithStatus) => <ProjectCard key={p.id} p={p} agents={agentsOf.get(p.id)} onRemove={setRemoving} />;
+  // A worktree belongs to its project's group: dropping one moves the project.
+  const moveToGroup = useCallback(
+    (p: ProjectWithStatus, group: string | null) => {
+      const owner = (p.parentId && projects.data?.find((x) => x.id === p.parentId)) || p;
+      void setProjectGroup(qc, owner, group);
+    },
+    [qc, projects.data],
+  );
+  const card = (p: ProjectWithStatus) => <ProjectCard key={p.id} p={p} agents={agentsOf.get(p.id)} onRemove={setRemoving} onGroupDrop={grouped ? moveToGroup : undefined} />;
 
   return (
     <Page
       title={t.views.projects.title}
       subtitle={t.views.projects.subtitle(roots.length, agentCount)}
-      actions={<AddProjectActions />}
+      actions={
+        <>
+          <Button onClick={() => openCreate()}>
+            <Folders className="h-3.5 w-3.5" /> {t.projects.groups.create}
+          </Button>
+          <AddProjectActions />
+        </>
+      }
     >
       <div className="mb-4 flex gap-2">
         <div className="relative flex-1">
@@ -107,7 +137,7 @@ export function ProjectsView() {
           {sections.map((s) => (
             // While searching or filtering, closed groups open: a hit must not hide behind a header.
             <GroupSection key={s.key} section={s} forceOpen={filtering} filtered={activeGroup !== null}>
-              {s.projects.map(card)}
+              {s.projects.length > 0 ? <div className={GRID}>{s.projects.map(card)}</div> : <EmptyGroup section={s} />}
             </GroupSection>
           ))}
         </div>
@@ -115,6 +145,7 @@ export function ProjectsView() {
         <div className={GRID}>{items.map(card)}</div>
       )}
       <RemoveProjectDialog project={removing} onClose={() => setRemoving(null)} />
+      <ProjectDragGhost />
     </Page>
   );
 }
@@ -124,29 +155,48 @@ function GroupSection({ section, forceOpen, filtered, children }: { section: Pro
   const toggle = useUi((s) => s.toggleProjectGroup);
   const showProjectGroup = useUi((s) => s.showProjectGroup);
   const dialogs = useProjectGroupDialogs();
-  const open = forceOpen || !collapsed;
+  const drop = useDropState(section.key);
+  // An empty group exists only on this screen (or appears while dragging): nothing to fold, rename or filter.
+  const empty = section.projects.length === 0;
+  const open = forceOpen || empty || !collapsed;
   const label = section.name ?? t.projects.groups.none;
   const m = t.projects.groups;
+  const addProjects = { label: m.addProjects, icon: <ListPlus className="h-3.5 w-3.5" />, onSelect: () => dialogs.openCreate(section.name) };
 
-  const items = (): MenuItem[] => [
-    { label: open ? m.collapse : m.expand, icon: <ChevronRight className={cn("h-3.5 w-3.5", open && "rotate-90")} />, onSelect: () => toggle(section.key, open) },
-    filtered
-      ? { label: m.showAll, icon: <Eye className="h-3.5 w-3.5" />, onSelect: () => showProjectGroup(null) }
-      : { label: m.showOnly, icon: <Eye className="h-3.5 w-3.5" />, onSelect: () => showProjectGroup(section.key) },
-    ...(section.name
-      ? [
-          { label: m.rename, icon: <Pencil className="h-3.5 w-3.5" />, onSelect: () => dialogs.openRename(section.name!) },
-          { label: m.dissolve, icon: <FolderMinus className="h-3.5 w-3.5" />, danger: true, onSelect: () => dialogs.openDissolve(section.name!) },
-        ]
-      : []),
-  ];
+  const items = (): MenuItem[] =>
+    empty
+      ? section.name
+        ? [addProjects, { label: m.removeEmpty, icon: <X className="h-3.5 w-3.5" />, onSelect: () => dialogs.removeEmptyGroup(section.name!) }]
+        : []
+      : [
+          { label: open ? m.collapse : m.expand, icon: <ChevronRight className={cn("h-3.5 w-3.5", open && "rotate-90")} />, onSelect: () => toggle(section.key, open) },
+          filtered
+            ? { label: m.showAll, icon: <Eye className="h-3.5 w-3.5" />, onSelect: () => showProjectGroup(null) }
+            : { label: m.showOnly, icon: <Eye className="h-3.5 w-3.5" />, onSelect: () => showProjectGroup(section.key) },
+          ...(section.name
+            ? [
+                addProjects,
+                { label: m.rename, icon: <Pencil className="h-3.5 w-3.5" />, onSelect: () => dialogs.openRename(section.name!) },
+                { label: m.dissolve, icon: <FolderMinus className="h-3.5 w-3.5" />, danger: true, onSelect: () => dialogs.openDissolve(section.name!) },
+              ]
+            : []),
+        ];
 
   return (
-    <section aria-label={label}>
+    <section
+      aria-label={label}
+      {...dropTargetProps(section.key, section.name)}
+      className={cn(
+        "rounded-xl outline-offset-4 transition-[outline-color,background-color] duration-120",
+        drop === "target" && "outline-dashed outline-1 outline-border-strong",
+        drop === "over" && "bg-accent-soft outline outline-2 outline-accent",
+      )}
+    >
       <div className="mb-2 flex h-7 items-center gap-2" onContextMenu={contextItems(items)}>
         <button
           type="button"
           onClick={() => toggle(section.key, open)}
+          disabled={empty}
           aria-expanded={open}
           title={m.toggle(label, open)}
           className="flex min-w-0 items-center gap-2 rounded-md px-1 py-0.5 text-left text-muted transition-colors duration-120 hover:text-fg"
@@ -157,19 +207,38 @@ function GroupSection({ section, forceOpen, filtered, children }: { section: Pro
           <span className="shrink-0 text-caption tabular-nums text-subtle">{m.count(section.projects.length)}</span>
         </button>
         <div className="h-px flex-1 bg-border" />
-        <DropdownMenu
-          trigger={
-            <Button size="icon-sm" variant="ghost" className="h-6 w-6 rounded text-subtle" aria-label={m.actions}>
-              <MoreHorizontal className="h-4 w-4" />
-            </Button>
-          }
-          items={items()}
-        />
+        {items().length > 0 && (
+          <DropdownMenu
+            trigger={
+              <Button size="icon-sm" variant="ghost" className="h-6 w-6 rounded text-subtle" aria-label={m.actions}>
+                <MoreHorizontal className="h-4 w-4" />
+              </Button>
+            }
+            items={items()}
+          />
+        )}
       </div>
       {/* The collapse clips its content; the margin keeps focus rings of the cards visible. */}
       <Collapse open={open} className="-m-1 p-1">
-        <div className={GRID}>{children}</div>
+        {children}
       </Collapse>
     </section>
+  );
+}
+
+/** The body of a group without projects: a place to drop them, or to pick them in a dialog. */
+function EmptyGroup({ section }: { section: ProjectGroupSection }) {
+  const openCreate = useProjectGroupDialogs((s) => s.openCreate);
+  const m = t.projects.groups;
+  return (
+    <div className="flex h-24 items-center justify-center gap-3 rounded-xl border border-dashed border-border text-caption text-subtle">
+      <FolderPlus className="h-4 w-4" />
+      <span>{m.emptyHint}</span>
+      {section.name && (
+        <Button size="sm" variant="ghost" onClick={() => openCreate(section.name)}>
+          <ListPlus className="h-3.5 w-3.5" /> {m.addProjects}
+        </Button>
+      )}
+    </div>
   );
 }

@@ -49,6 +49,22 @@ export function groupProjects(list: readonly ProjectWithStatus[]): ProjectGroupS
   return [...sections.values(), ...(without.projects.length ? [without] : [])];
 }
 
+/**
+ * Adds the empty groups (made with "Gruppe erstellen", not yet holding a project) to the sections, in
+ * name order among the others; names already in use are left out.
+ */
+export function withEmptyGroups(sections: readonly ProjectGroupSection[], empty: readonly string[]): ProjectGroupSection[] {
+  const named = sections.filter((s) => s.name !== null);
+  const keys = new Set(named.map((s) => s.key));
+  for (const name of empty) {
+    if (keys.has(groupKey(name))) continue;
+    keys.add(groupKey(name));
+    named.push({ key: groupKey(name), name, projects: [] });
+  }
+  named.sort((a, b) => a.name!.localeCompare(b.name!));
+  return [...named, ...sections.filter((s) => s.name === null)];
+}
+
 const BUSY = new Set(["starting", "running", "waiting_approval", "stopping"]);
 
 /** Whether the agent's last session is at work right now (or waits for an approval). */

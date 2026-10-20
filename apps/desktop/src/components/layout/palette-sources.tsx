@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { BookOpen, Blocks, CheckCheck, FileText, FolderMinus, Folders, GitBranch, GitCommitHorizontal, History, PackageSearch, Pencil, PenLine, Server, Sparkles } from "lucide-react";
+import { BookOpen, Blocks, CheckCheck, FileText, FolderMinus, Folders, GitBranch, GitCommitHorizontal, History, ListPlus, PackageSearch, Pencil, PenLine, Server, Sparkles } from "lucide-react";
 import type { ProjectWithStatus } from "@forge/protocol";
 import { call, keys, useKnowledgeStale, useProjects } from "@/lib/queries";
 import { relativeTime } from "@/lib/utils";
@@ -82,6 +82,7 @@ export function usePaletteSources(query: string, project: ProjectWithStatus | nu
       if (!name) continue;
       const keywords = `gruppe kunde projektgruppe group client customer ${g.projects.map((p) => p.name).join(" ")}`;
       list.push({ id: `group-${g.key}`, group: "Projekte", label: gm.showNamed(name), keywords, hint: gm.count(g.projects.length), icon: <Folders className="h-4 w-4" />, run: () => ui.showProjectGroup(groupKey(name)) });
+      list.push({ id: `group-add-${g.key}`, group: "Aktionen", label: gm.addTitle(name), keywords: `${keywords} hinzufügen verschieben einordnen add move`, icon: <ListPlus className="h-4 w-4" />, run: () => groups.openCreate(name) });
       list.push({ id: `group-rename-${g.key}`, group: "Aktionen", label: gm.renameNamed(name), keywords: `${keywords} umbenennen rename`, icon: <Pencil className="h-4 w-4" />, run: () => groups.openRename(name) });
       list.push({ id: `group-dissolve-${g.key}`, group: "Aktionen", label: gm.dissolveNamed(name), keywords: `${keywords} auflösen löschen entfernen dissolve delete remove`, icon: <FolderMinus className="h-4 w-4" />, run: () => groups.openDissolve(name) });
     }
