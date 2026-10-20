@@ -307,6 +307,8 @@ pub async fn open_chat_window(app: AppHandle, target: ChatTarget, title: String,
         .and_then(|b| b.initialization_script(script).build());
     match built {
         Ok(w) => {
+            #[cfg(target_os = "linux")]
+            crate::mic::allow_in(&w);
             if pinned {
                 state.pinned.lock().unwrap().insert(label.clone());
             }

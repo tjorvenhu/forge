@@ -1278,10 +1278,12 @@ name = "forge-desktop"
 version = "0.1.0"
 dependencies = [
  "arboard",
+ "block2",
  "image",
  "libc",
  "objc2",
  "objc2-app-kit",
+ "objc2-av-foundation",
  "objc2-foundation",
  "portable-pty",
  "serde",
@@ -1292,6 +1294,7 @@ dependencies = [
  "tauri-plugin-global-shortcut",
  "tauri-plugin-notification",
  "tauri-plugin-opener",
+ "webkit2gtk",
  "windows-sys 0.61.2",
  "xcap",
  "zbus",

@@ -34,6 +34,19 @@ export async function openExternal(url: string) {
   await openUrl(url);
 }
 
+/** Microphone permission of the system; only macOS asks, elsewhere the webview decides. */
+export type MicAccess = "granted" | "denied" | "restricted";
+
+/** Asks macOS for the microphone if it never decided; `askAgain` resets an earlier denial first. */
+export function micAccess(askAgain = false): Promise<MicAccess> {
+  return invoke<MicAccess>("mic_access", { askAgain });
+}
+
+/** Opens the microphone page of the privacy settings (macOS). */
+export function openMicSettings(): Promise<void> {
+  return invoke("mic_settings");
+}
+
 /** Converts git remote URLs (https or scp-like) to a browsable https URL, if possible. */
 export function remoteToWebUrl(remote: string | null): string | null {
   if (!remote) return null;

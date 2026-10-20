@@ -41,6 +41,9 @@ tauri-plugin-global-shortcut = "2.4"
 objc2 = "0.6"
 objc2-app-kit = { version = "0.3", features = ["NSEvent", "NSWindow", "NSResponder", "NSApplication", "NSRunningApplication"] }
 objc2-foundation = "0.3"
+# Microphone permission for dictation.
+objc2-av-foundation = { version = "0.3", default-features = false, features = ["std", "AVCaptureDevice", "AVMediaFormat", "block2"] }
+block2 = "0.6"
 # Screen capture with CoreGraphics.
 xcap = { version = "0.9", default-features = false }
 
@@ -48,6 +51,8 @@ xcap = { version = "0.9", default-features = false }
 # Screen capture through the desktop portal (X11 and Wayland); xcap needs newer PipeWire headers than
 # Ubuntu 22.04 has, which the AppImage is built on for older glibc.
 zbus = "5"
+# Answers the webview's microphone requests (mic.rs); the version Tauri already uses.
+webkit2gtk = "2.0"
 image = { version = "0.25", default-features = false, features = ["png"] }
 
 [profile.release]

@@ -137,10 +137,14 @@ export const chat: typeof De = {
     micUnavailable: "Microphone not available",
     micDenied: byPlatform({
       windows: "Access denied. In Windows, allow access for desktop apps under Settings, Privacy & security, Microphone.",
-      macos: "Access denied. Allow access for FORGE in System Settings under Privacy & Security, Microphone.",
+      macos: "Access denied. Choose “Request access” and macOS asks again.",
       linux: "Access denied. Allow FORGE to use the microphone in your system settings.",
     }),
     micMissing: "No microphone found.",
+    micAskAgain: "Request access",
+    micGranted: "Microphone allowed. Start voice input again.",
+    micSettingsOpened: "System Settings opened",
+    micSettingsHint: "Allow FORGE under Privacy & Security, Microphone.",
     notStarted: "Voice input not started",
   },
   follow: {

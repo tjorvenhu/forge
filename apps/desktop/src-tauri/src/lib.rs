@@ -1,6 +1,7 @@
 mod chat_windows;
 mod i18n;
 mod job;
+mod mic;
 mod screenshot;
 mod shell_env;
 mod sidecar;
@@ -170,7 +171,9 @@ pub fn run() {
             screenshot::screenshot_cancel,
             screenshot::screenshot_take,
             screenshot::screenshot_taken,
-            screenshot::screenshot_key_status
+            screenshot::screenshot_key_status,
+            mic::mic_access,
+            mic::mic_settings
         ])
         .on_window_event(|window, event| {
             // A screenshot goes to the FORGE window the user worked in last.
@@ -211,6 +214,10 @@ pub fn run() {
             });
             i18n::load(&handle);
             screenshot::start(&handle);
+            #[cfg(target_os = "linux")]
+            if let Some(main) = app.get_webview_window(chat_windows::MAIN) {
+                mic::allow_in(&main);
+            }
             if let Err(e) = app.state::<Sidecar>().start(&handle) {
                 eprintln!("[forge] sidecar start failed: {e}");
             }

@@ -137,10 +137,14 @@ export const chat = {
     micUnavailable: "Mikrofon nicht verfügbar",
     micDenied: byPlatform({
       windows: "Zugriff verweigert. In Windows unter Einstellungen, Datenschutz und Sicherheit, Mikrofon den Zugriff für Desktop-Apps erlauben.",
-      macos: "Zugriff verweigert. In den Systemeinstellungen unter Datenschutz & Sicherheit, Mikrofon den Zugriff für FORGE erlauben.",
+      macos: "Zugriff verweigert. Mit „Zugriff anfragen“ fragt macOS noch einmal nach.",
       linux: "Zugriff verweigert. Erlaube FORGE in den Einstellungen deines Systems den Zugriff auf das Mikrofon.",
     }),
     micMissing: "Kein Mikrofon gefunden.",
+    micAskAgain: "Zugriff anfragen",
+    micGranted: "Mikrofon freigegeben. Starte die Spracheingabe noch einmal.",
+    micSettingsOpened: "Systemeinstellungen geöffnet",
+    micSettingsHint: "Erlaube FORGE unter Datenschutz & Sicherheit, Mikrofon den Zugriff.",
     notStarted: "Spracheingabe nicht gestartet",
   },
   follow: {

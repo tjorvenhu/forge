@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { call } from "@/lib/queries";
+import { micAccess, openMicSettings } from "@/lib/native";
+import { isMac } from "@/lib/platform";
 import { errorMessage, rpc } from "@/lib/rpc";
 import { useDictationActivity } from "@/stores/dictation";
 import { toast } from "@/stores/toast";
@@ -152,6 +154,8 @@ export function useDictation(onText: (text: string) => void, keyterms: string[])
     let r: Recording | null = null;
     try {
       if (prev) await prev.done;
+      // After a denial macOS answers getUserMedia silently; AVFoundation shows the question itself.
+      if (isMac && mounted.current && me.early !== "cancel" && (await micAccess().catch(() => "granted")) !== "granted") throw new DOMException("", "NotAllowedError");
       // Raw voice like Claude Code records it: Chromium's noise suppression and echo cancellation cut
       // word starts and quiet syllables, which the recognizer then guesses wrong.
       if (mounted.current && me.early !== "cancel")
@@ -208,7 +212,15 @@ export function useDictation(onText: (text: string) => void, keyterms: string[])
       if (me.early === "cancel" || !mounted.current) return;
       const denied = e instanceof DOMException && (e.name === "NotAllowedError" || e.name === "SecurityError");
       const missing = e instanceof DOMException && e.name === "NotFoundError";
-      if (denied || missing)
+      if (denied && isMac)
+        toast.notify({
+          tone: "error",
+          title: t.chat.dictation.micUnavailable,
+          body: t.chat.dictation.micDenied,
+          action: { label: t.chat.dictation.micAskAgain, onClick: () => void askMicAgain() },
+          duration: 15_000,
+        });
+      else if (denied || missing)
         toast.error(
           t.chat.dictation.micUnavailable,
           denied ? t.chat.dictation.micDenied : t.chat.dictation.micMissing,
@@ -230,6 +242,17 @@ export function useDictation(onText: (text: string) => void, keyterms: string[])
   }, [teardown]);
 
   return { state, seconds, live, start, stop, cancel, prewarm };
+}
+
+/** macOS asks again after its old decision is reset; if it still says no, the settings page opens. */
+async function askMicAgain() {
+  const access = await micAccess(true).catch(() => "denied" as const);
+  if (access === "granted") {
+    toast.success(t.chat.dictation.micGranted);
+    return;
+  }
+  await openMicSettings().catch(() => {});
+  toast.info(t.chat.dictation.micSettingsOpened, t.chat.dictation.micSettingsHint);
 }
 
 function toInt16(block: Float32Array): Int16Array {
