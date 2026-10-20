@@ -633,9 +633,9 @@ export function buildActions(ctx: ActionContext): PaletteEntry[] {
       call("settings.update", { updateChannel: toDev ? "dev" : "stable" })
         .then((next) => qc.setQueryData(keys.settings, next))
         .catch((e: unknown) => toast.error(t.layout.actions.channelFailed, errorMessage(e)));
-    }, { keywords: "update kanal channel dev branch stabil stable main vorabversion pre-release beta" });
+    }, { keywords: "update kanal channel dev-branch dev branch stabil stable main vorabversion pre-release beta" });
   }
-  if (dev?.allowed && dev.ahead) {
+  if (dev?.allowed && dev.ahead && settings?.updateChannel === "dev") {
     act("dev-promote", t.layout.actions.devPromote, icon(GitMerge), () => ui.openSettings("about"), { hint: `${dev.ahead}`, keywords: "dev main übernehmen mergen merge branch release veröffentlichen promote publish stable" });
   }
   act("support-open", t.layout.actions.supportOpen, icon(HandHeart), () => ui.setSupportOpen(true), { hint: t.layout.actions.supportHint, keywords: "unterstützen spenden vorschlag feedback herz support donate suggestion heart" });

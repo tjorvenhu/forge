@@ -7,7 +7,7 @@ import { toast } from "@/stores/toast";
 import { useUi } from "@/stores/ui";
 import { t } from "@/i18n";
 
-/** Red bar between logo and search while FORGE takes its updates from the dev branch; nothing on stable. */
+/** Dark red bar between logo and search while FORGE takes its updates from the dev branch; nothing on stable. */
 export function DevChannelBadge() {
   const qc = useQueryClient();
   const openSettings = useUi((s) => s.openSettings);
@@ -26,7 +26,7 @@ export function DevChannelBadge() {
         { label: b.openSettings, icon: <Settings2 className="h-3.5 w-3.5" />, onSelect: () => openSettings("about") },
         { label: b.toStable, icon: <Undo2 className="h-3.5 w-3.5" />, onSelect: () => void toStable() },
       ])}
-      className="mx-3 mb-3 flex h-7 items-center justify-center gap-1.5 rounded-md bg-danger text-caption font-semibold uppercase tracking-wide text-accent-fg shadow-sm hover:opacity-90"
+      className="mx-3 mb-3 flex h-7 items-center justify-center gap-1.5 rounded-md border border-dev-border bg-dev font-mono text-caption font-bold uppercase tracking-widest text-dev-fg shadow-sm hover:brightness-125"
     >
       <GitBranch className="h-3.5 w-3.5" />
       {b.label}
@@ -34,7 +34,7 @@ export function DevChannelBadge() {
   );
 }
 
-/** Whether the dev channel is chosen; the sidebar gets a red edge on top as well. */
+/** Whether FORGE takes its updates from the dev branch. */
 export function useDevChannelOn(): boolean {
   return useSettings().data?.updateChannel === "dev";
 }

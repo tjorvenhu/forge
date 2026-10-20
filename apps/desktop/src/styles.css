@@ -26,6 +26,10 @@
   --color-warning-soft: #d9a23b1f;
   --color-danger: #f0605a;
   --color-danger-soft: #f0605a1f;
+  /* the Dev-Branch badge: a dark blood red, so it does not read like the red support heart */
+  --color-dev: #5c0d0d;
+  --color-dev-border: #8f1a1a;
+  --color-dev-fg: #f3c4c4;
   --color-diff-add: #3fb97a1a;
   --color-diff-del: #f0605a1a;
   --color-claude: #d97757;

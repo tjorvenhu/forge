@@ -1,13 +1,12 @@
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { GitMerge, RefreshCw } from "lucide-react";
-import type { Settings, UpdateChannel } from "@forge/protocol";
+import type { Settings } from "@forge/protocol";
 import { call, keys, useDevChannel } from "@/lib/queries";
 import { errorMessage } from "@/lib/rpc";
 import { toast } from "@/stores/toast";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import { RadioGroup } from "@/components/ui/radio-group";
 import { Skeleton, SkeletonRegion } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { Row } from "./layout";
@@ -18,7 +17,7 @@ const dv = t.views.settings.devChannel;
 const LISTED = 8;
 
 /**
- * Update channel (stable or dev) and bringing dev into main. Dev is only selectable for an account
+ * Updates from the dev branch (switch) and bringing dev into main. Dev can only be switched on by an account
  * that may push to the repository; the sidecar checks that again when the setting is saved.
  */
 export function DevChannelSettings({ s, save }: { s: Settings; save: (patch: Partial<Settings>) => Promise<void> }) {
@@ -71,20 +70,17 @@ export function DevChannelSettings({ s, save }: { s: Settings; save: (patch: Par
       >
         {dev.isPending ? (
           <SkeletonRegion label={dv.checking} className="flex items-center gap-4">
-            <Skeleton className="h-4 w-24" />
-            <Skeleton className="h-4 w-12" />
+            <Skeleton className="h-5 w-9 rounded-full" />
+            <Skeleton className="h-7 w-7" />
           </SkeletonRegion>
         ) : (
           <div className="flex items-center gap-3">
-            <RadioGroup<UpdateChannel>
-              aria-label={dv.label}
-              value={s.updateChannel}
-              onChange={(v) => void save({ updateChannel: v })}
-              options={[
-                { value: "stable", label: dv.stable },
-                // Switching back to stable always works, also after the access is gone.
-                { value: "dev", label: dv.dev, disabled: !allowed && s.updateChannel !== "dev" },
-              ]}
+            <Switch
+              checked={s.updateChannel === "dev"}
+              onChange={(on) => void save({ updateChannel: on ? "dev" : "stable" })}
+              label={dv.label}
+              // Switching off always works, also after the access is gone.
+              disabled={!allowed && s.updateChannel !== "dev"}
             />
             <Button size="icon-sm" variant="ghost" title={dv.refresh} aria-label={dv.refresh} loading={refreshing} onClick={() => void refresh()}>
               <RefreshCw className="h-3.5 w-3.5" />
@@ -92,7 +88,7 @@ export function DevChannelSettings({ s, save }: { s: Settings; save: (patch: Par
           </div>
         )}
       </Row>
-      {allowed && st && (
+      {allowed && st && s.updateChannel === "dev" && (
         <Row
           label={dv.promoteLabel}
           description={ahead === null ? (st.message ?? "") : ahead === 0 ? dv.even : `${dv.ahead(ahead)}${st.behind ? dv.behind(st.behind) : ""}`}

@@ -2874,6 +2874,7 @@ export class PhoneService {
             const channel = (await call("settings.get", {})).updateChannel;
             if (!dev.allowed) return sy.devNotAllowed(dev.message ?? "");
             if (dev.ahead === null) return sy.devUnknown(dev.message ?? "");
+            if (action === "dev_promote" && channel !== "dev") return sy.devPromoteOff;
             if (action === "dev_status" || dev.ahead === 0) return sy.devStatus(channel === "dev", dev.ahead, dev.behind ?? 0, dev.commits.slice(0, 5).join("; "));
             // Changes main for everyone on the stable channel: only after the code on the keypad.
             return askKeypad(

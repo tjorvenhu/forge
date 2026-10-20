@@ -848,7 +848,7 @@ Security:
     longSession: (thousands) => `long session hint from ${thousands} thousand tokens of context`,
     longSessionOff: "no hint for long sessions",
     updateChecks: (v: boolean) => `update check ${on(v)}`,
-    updateChannel: (c) => (c === "dev" ? "update channel dev, the pre-releases from the branch dev" : "update channel stable, the releases of main"),
+    updateChannel: (c) => (c === "dev" ? "dev branch on, the pre-releases from the branch dev" : "dev branch off, the releases of main"),
     learnTemplates: (v: boolean) => `learning templates from recurring messages ${on(v)}`,
     usageStats: (v: boolean) => `anonymous usage statistics ${on(v)}`,
     debugLogs: (v: boolean) => `debug logs ${on(v)}`,
@@ -908,7 +908,8 @@ Security:
       `FORGE is an open-source product of Vanturis UG. A voluntary contribution can be made here: ${donate}, there is no donation receipt.${sum} Improvements and feature suggestions go in as an issue on GitHub: ${feedback}. FORGE shows both links behind the red heart next to the search at the top left.`,
     confirmRepair: (v: string) => `FORGE installs itself completely with the installer ${v} and restarts in the process, this call ends. Open sessions continue afterwards`,
     repairing: "FORGE is being installed completely now and restarts, this call ends shortly.",
-    devNotAllowed: (why) => `The dev channel is not available: ${why}`,
+    devNotAllowed: (why) => `The dev branch is not available: ${why}`,
+    devPromoteOff: "Bringing dev into main only works while FORGE gets its updates from the dev branch. Set update_channel to dev first.",
     devUnknown: (why) => `I do not know the state of dev: ${why}`,
     devStatus: (onDev, ahead, behind, commits) =>
       `${onDev ? "FORGE gets its updates from dev." : "FORGE gets its updates from main."} ` +
