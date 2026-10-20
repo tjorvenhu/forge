@@ -31,7 +31,7 @@ import { FullInstallService } from "./update/full-install.js";
 import { UsageStatsService, usageStatsFile } from "./stats/usage-stats.js";
 import { modelTokens } from "./claude/normalize.js";
 import { SecretStore } from "./phone/secrets.js";
-import { locateClaude, sessionEnv } from "./claude/environment.js";
+import { hasOwnClaude, locateClaude, sessionEnv } from "./claude/environment.js";
 import { readAuth, readPlan } from "./claude/diagnostics.js";
 import { ASSIST_MODEL } from "./sessions/claude-assist.js";
 import { BackupService } from "./backup/backup.js";
@@ -350,10 +350,12 @@ export function createApp(opts: { dataDir: string; write: Writer; log?: (m: stri
     sync.start();
     templateLearner.start();
     void backups.createOnStart().catch((e: unknown) => opts.log?.(`Backup beim Start fehlgeschlagen: ${e instanceof Error ? e.message : String(e)}`));
-    // A fresh installation without Claude Code fetches it right away (official installer); a configured path is left alone.
+    // FORGE fetches its own, self-updating Claude Code (official installer) when it has none of its own.
+    // A claude only managed by Homebrew/npm is set aside this way, because `claude update` cannot update it.
+    // A configured path is left alone.
     const settings = db.getSettings();
-    if (!settings.claudePath && !locateClaude(null)) {
-      opts.log?.("Claude Code fehlt, Installation startet");
+    if (!settings.claudePath && !hasOwnClaude()) {
+      opts.log?.(locateClaude(null) ? "Claude Code ist extern verwaltet, FORGE installiert eine eigene, aktualisierbare Kopie" : "Claude Code fehlt, Installation startet");
       claudeSetup.install();
     }
   }

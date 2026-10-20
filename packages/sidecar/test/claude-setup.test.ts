@@ -29,7 +29,8 @@ vi.mock("node:child_process", async (importOriginal) => {
   };
 });
 
-vi.mock("../src/claude/environment.js", () => ({ locateClaude: () => "C:\\claude.exe", sessionEnv: () => ({}) }));
+const hasOwnClaudeMock = vi.hoisted(() => vi.fn(() => true));
+vi.mock("../src/claude/environment.js", () => ({ locateClaude: () => "C:\\claude.exe", sessionEnv: () => ({}), hasOwnClaude: hasOwnClaudeMock }));
 
 const runMock = vi.hoisted(() => vi.fn());
 vi.mock("../src/util/proc.js", () => ({ run: runMock }));
@@ -38,6 +39,7 @@ const { BROWSER_WAIT_MS, ClaudeSetupService } = await import("../src/claude/setu
 
 beforeEach(() => {
   children.length = 0;
+  hasOwnClaudeMock.mockReturnValue(true);
 });
 
 describe("Claude setup", () => {
@@ -102,6 +104,22 @@ describe("Claude setup", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("fetches FORGE's own copy instead of running a no-op update on a Homebrew/npm install", () => {
+    hasOwnClaudeMock.mockReturnValue(false);
+    const setup = new ClaudeSetupService(() => {}, () => ({ claudePath: null, stripApiKey: false }));
+    expect(setup.update()).toMatchObject({ task: "install", phase: "running" });
+  });
+
+  it("does not report success when `claude update` only prints that a package manager owns the CLI", () => {
+    // A pinned path keeps FORGE from swapping to its own copy, so the real no-op surfaces.
+    const setup = new ClaudeSetupService(() => {}, () => ({ claudePath: "C:\\claude.exe", stripApiKey: false }));
+    setup.update();
+    children[0]!.stdout.emit("data", Buffer.from("Claude is managed by Homebrew.\nTo update, run:\n  brew upgrade claude-code\n"));
+    children[0]!.emit("close", 0);
+    expect(setup.current()).toMatchObject({ phase: "error" });
+    expect(setup.current().message).toMatch(/Paketmanager/);
   });
 
   it("signs out through the CLI and forgets the finished login of the old account", async () => {

@@ -52,16 +52,36 @@ export function sessionEnv(stripApiKey: boolean, base: NodeJS.ProcessEnv = proce
   return out;
 }
 
-/** Where the official installers put the CLI when it is not on PATH. */
-export function claudeCandidates(home = os.homedir(), platform: NodeJS.Platform = process.platform): string[] {
-  if (platform === "win32") return [path.join(home, ".local", "bin", "claude.exe"), path.join(home, ".claude", "local", "claude.exe")];
-  return [path.join(home, ".local", "bin", "claude"), path.join(home, ".claude", "local", "claude"), "/opt/homebrew/bin/claude", "/usr/local/bin/claude"];
+/** Where the official installer puts FORGE's own copy; only this install self-updates via `claude update`. */
+export function ownClaudeCandidates(home = os.homedir(), platform: NodeJS.Platform = process.platform): string[] {
+  const bin = platform === "win32" ? "claude.exe" : "claude";
+  return [path.join(home, ".local", "bin", bin), path.join(home, ".claude", "local", bin)];
 }
 
-/** Finds the installed Claude Code CLI. A configured path wins if it exists. */
+/** Externally managed installs (Homebrew), used only when FORGE has no own copy. `claude update` cannot update these. */
+function externalClaudeCandidates(platform: NodeJS.Platform = process.platform): string[] {
+  return platform === "win32" ? [] : ["/opt/homebrew/bin/claude", "/usr/local/bin/claude"];
+}
+
+/** Where the official installers put the CLI when it is not on PATH. */
+export function claudeCandidates(home = os.homedir(), platform: NodeJS.Platform = process.platform): string[] {
+  return [...ownClaudeCandidates(home, platform), ...externalClaudeCandidates(platform)];
+}
+
+/** True once FORGE has its own, self-updating install (not a Homebrew/npm one). */
+export function hasOwnClaude(home = os.homedir(), platform: NodeJS.Platform = process.platform): boolean {
+  return ownClaudeCandidates(home, platform).some((c) => existsSync(c));
+}
+
+/**
+ * Finds the Claude Code CLI. A configured path wins; otherwise FORGE's own, self-updating install is
+ * preferred over anything on PATH, so a Homebrew/npm claude is set aside rather than used for updates.
+ */
 export function locateClaude(configured: string | null): string | null {
   if (configured) return existsSync(configured) ? configured : null;
+  const own = ownClaudeCandidates().find((c) => existsSync(c));
+  if (own) return own;
   const fromPath = which("claude");
   if (fromPath) return fromPath;
-  return claudeCandidates().find((c) => existsSync(c)) ?? null;
+  return externalClaudeCandidates().find((c) => existsSync(c)) ?? null;
 }

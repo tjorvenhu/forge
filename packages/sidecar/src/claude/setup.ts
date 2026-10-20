@@ -5,7 +5,7 @@ import path from "node:path";
 import { ForgeError, type ClaudeSetupState, type ClaudeUpdateInfo } from "@forge/protocol";
 import { run } from "../util/proc.js";
 import { tr } from "../i18n/index.js";
-import { locateClaude, sessionEnv } from "./environment.js";
+import { hasOwnClaude, locateClaude, sessionEnv } from "./environment.js";
 import { compareVersions, fetchLatestVersion, parseVersion, readUpdateChannel } from "./update.js";
 
 // Official installers (https://docs.claude.com/en/docs/claude-code/setup).
@@ -171,6 +171,9 @@ export class ClaudeSetupService {
     const s = this.settings();
     const claude = locateClaude(s.claudePath);
     if (!claude) throw new ForgeError("CLAUDE_NOT_INSTALLED", tr().core.claude.notInstalled);
+    // `claude update` self-updates only FORGE's own install. A Homebrew/npm one just prints "managed by …"
+    // and exits 0 without changing anything, so with no pinned path fetch our own, self-updating copy instead.
+    if (!s.claudePath && !hasOwnClaude()) return this.install();
     this.set({ task: "update", phase: "running", url: null, log: [], message: null });
     const child = spawn(claude, ["update"], { env: sessionEnv(s.stripApiKey), shell: false, windowsHide: true, stdio: ["ignore", "pipe", "pipe"] });
     this.proc = child;
@@ -184,6 +187,11 @@ export class ClaudeSetupService {
       if (!this.release(child)) return;
       if (code !== 0) {
         this.set({ phase: "error", message: this.state.log.at(-1) ?? tr().core.claude.updateExit(code) });
+        return;
+      }
+      // A pinned path to a Homebrew/npm install: `claude update` printed "managed by …" and did nothing.
+      if (this.state.log.some((l) => /managed by/i.test(l))) {
+        this.set({ phase: "error", message: tr().core.claude.updateExternallyManaged });
         return;
       }
       void run(claude, ["--version"], { env: sessionEnv(s.stripApiKey), timeoutMs: 20_000 }).then((r) => {

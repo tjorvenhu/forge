@@ -42,6 +42,7 @@ export const claude = {
   notInstalled: "Claude Code ist nicht installiert.",
   updateExit: (code: number | null) => `Update beendet mit Code ${code}`,
   updateDone: (version: string | null) => (version ? `Claude Code ${version} ist installiert.` : "Update abgeschlossen."),
+  updateExternallyManaged: "Dieses Claude Code wird von einem Paketmanager verwaltet und ließ sich so nicht aktualisieren. Lass den Claude-Pfad in den Einstellungen leer, dann nutzt FORGE eine eigene, aktualisierbare Installation.",
   loggedIn: "Angemeldet",
   loginExit: (code: number | null) => `Anmeldung beendet mit Code ${code}`,
   logoutFailed: (why: string) => `Abmelden fehlgeschlagen${why ? `: ${why}` : "."}`,

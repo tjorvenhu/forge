@@ -4,7 +4,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { browserRelay, findLoginUrl, installCommand, stripAnsi } from "../src/claude/setup.js";
 import { bundledPathEntries, bundledRelPath, extraUnixBinDirs, isStorePythonStub, pythonUserScripts, resolveTool } from "../src/util/tools.js";
-import { claudeCandidates, sessionEnv } from "../src/claude/environment.js";
+import { claudeCandidates, hasOwnClaude, ownClaudeCandidates, sessionEnv } from "../src/claude/environment.js";
 import { tempDir } from "./helpers.js";
 
 describe("claude login output parsing", () => {
@@ -50,6 +50,24 @@ describe("claude login output parsing", () => {
   it("finds Claude Code where the installers put it", () => {
     expect(claudeCandidates("/home/x", "linux")).toEqual([path.join("/home/x", ".local", "bin", "claude"), path.join("/home/x", ".claude", "local", "claude"), "/opt/homebrew/bin/claude", "/usr/local/bin/claude"]);
     expect(claudeCandidates("C:\\Users\\x", "win32")[0]).toBe(path.join("C:\\Users\\x", ".local", "bin", "claude.exe"));
+  });
+
+  it("keeps FORGE's own install locations apart from externally managed ones", () => {
+    // own = what the official installer writes and `claude update` self-updates; no Homebrew paths here
+    expect(ownClaudeCandidates("/home/x", "linux")).toEqual([path.join("/home/x", ".local", "bin", "claude"), path.join("/home/x", ".claude", "local", "claude")]);
+    expect(ownClaudeCandidates("/home/x", "linux")).not.toContain("/opt/homebrew/bin/claude");
+  });
+
+  it("detects whether FORGE has its own install", () => {
+    const { dir: home, cleanup } = tempDir("forge-own-claude-");
+    try {
+      expect(hasOwnClaude(home, "linux")).toBe(false);
+      mkdirSync(path.join(home, ".local", "bin"), { recursive: true });
+      writeFileSync(path.join(home, ".local", "bin", "claude"), "");
+      expect(hasOwnClaude(home, "linux")).toBe(true);
+    } finally {
+      cleanup();
+    }
   });
 });
 

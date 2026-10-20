@@ -41,6 +41,7 @@ export const claude: typeof De = {
   notInstalled: "Claude Code is not installed.",
   updateExit: (code) => `Update exited with code ${code}`,
   updateDone: (version) => (version ? `Claude Code ${version} is installed.` : "Update complete."),
+  updateExternallyManaged: "This Claude Code is managed by a package manager and could not be updated this way. Leave the Claude path empty in settings so FORGE uses its own, updatable installation.",
   loggedIn: "Signed in",
   loginExit: (code) => `Sign-in exited with code ${code}`,
   logoutFailed: (why) => `Sign-out failed${why ? `: ${why}` : "."}`,
