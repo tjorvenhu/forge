@@ -1,4 +1,4 @@
-import { GitBranch, Settings2, Undo2 } from "lucide-react";
+import { FlaskConical, Settings2, Undo2 } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { call, keys, useSettings } from "@/lib/queries";
 import { contextItems } from "@/lib/context-menu";
@@ -7,7 +7,7 @@ import { toast } from "@/stores/toast";
 import { useUi } from "@/stores/ui";
 import { t } from "@/i18n";
 
-/** Dark red bar between logo and search while FORGE takes its updates from the dev branch; nothing on stable. */
+/** Dark red card below the Claude card while FORGE takes its updates from the dev branch; nothing on stable. */
 export function DevChannelBadge() {
   const qc = useQueryClient();
   const openSettings = useUi((s) => s.openSettings);
@@ -26,10 +26,11 @@ export function DevChannelBadge() {
         { label: b.openSettings, icon: <Settings2 className="h-3.5 w-3.5" />, onSelect: () => openSettings("about") },
         { label: b.toStable, icon: <Undo2 className="h-3.5 w-3.5" />, onSelect: () => void toStable() },
       ])}
-      className="mx-3 mb-3 flex h-7 items-center justify-center gap-1.5 rounded-md border border-dev-border bg-dev font-mono text-caption font-bold uppercase tracking-widest text-dev-fg shadow-sm hover:brightness-125"
+      className="mx-3 -mt-1 mb-3 flex h-9 items-center gap-2.5 rounded-xl border border-dev-border/70 bg-dev/50 px-3.5 text-left text-body text-dev-fg transition-colors hover:border-dev-border hover:bg-dev/70"
     >
-      <GitBranch className="h-3.5 w-3.5" />
-      {b.label}
+      <FlaskConical className="h-4 w-4 shrink-0" />
+      <span className="min-w-0 flex-1 truncate">{b.label}</span>
+      <span className="font-mono text-caption text-dev-fg/70">dev</span>
     </button>
   );
 }

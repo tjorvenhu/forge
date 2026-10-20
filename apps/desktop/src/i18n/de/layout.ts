@@ -218,8 +218,8 @@ export const layout = {
     settings: "Einstellungen",
   },
   devBadge: {
-    label: "Dev-Branch",
-    title: "Dev-Branch aktiv: FORGE bekommt die Vorabversionen aus dem Branch dev. Klick öffnet die Einstellungen.",
+    label: "Entwicklungsversion",
+    title: "Entwicklungsversion: FORGE bekommt die Vorabversionen aus dem Branch dev. Klick öffnet die Einstellungen.",
     openSettings: "Dev-Branch einstellen",
     toStable: "Dev-Branch ausschalten (Updates aus main)",
   },

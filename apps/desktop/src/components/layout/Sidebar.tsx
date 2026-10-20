@@ -48,7 +48,6 @@ export function Sidebar() {
       <div className="flex items-center px-5 pb-4 pt-5">
         <Logo height={36} />
       </div>
-      <DevChannelBadge />
 
       <div className="flex items-center gap-1.5 px-3">
         <div className="min-w-0 flex-1">
@@ -115,6 +114,7 @@ export function Sidebar() {
       </div>
 
       <ClaudeStatusCard />
+      <DevChannelBadge />
     </aside>
   );
 }

@@ -217,8 +217,8 @@ export const layout: typeof De = {
     settings: "Settings",
   },
   devBadge: {
-    label: "Dev branch",
-    title: "Dev branch on: FORGE gets the pre-releases from the branch dev. Click to open the settings.",
+    label: "Development build",
+    title: "Development build: FORGE gets the pre-releases from the branch dev. Click to open the settings.",
     openSettings: "Dev branch settings",
     toStable: "Turn off the dev branch (updates from main)",
   },
