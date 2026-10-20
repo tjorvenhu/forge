@@ -6,6 +6,11 @@ const REPO = "vanturis/forge";
  * installer itself, so each installation through it is counted there once.
  */
 const INSTALLER = /_x64-setup\.exe$/i;
+/**
+ * Installer downloads of the releases deleted on 2026-10-20 (all but the installer release, the newest one
+ * and the newest one with a setup.exe): GitHub forgets their counts with them.
+ */
+export const DELETED_RELEASE_DOWNLOADS = 26;
 const CACHE_MS = 30 * 60_000;
 /** One page per push to main; 20 pages are 2000 releases. */
 const MAX_PAGES = 20;
@@ -35,6 +40,6 @@ export async function installerDownloads(fetchFn: typeof fetch = fetch): Promise
     releases.push(...list);
     if (list.length < 100) break;
   }
-  cache = { value: countInstallerDownloads(releases), at: Date.now() };
+  cache = { value: DELETED_RELEASE_DOWNLOADS + countInstallerDownloads(releases), at: Date.now() };
   return cache.value;
 }
