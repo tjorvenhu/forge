@@ -848,6 +848,7 @@ Security:
     longSession: (thousands) => `long session hint from ${thousands} thousand tokens of context`,
     longSessionOff: "no hint for long sessions",
     updateChecks: (v: boolean) => `update check ${on(v)}`,
+    updateChannel: (c) => (c === "dev" ? "update channel dev, the pre-releases from the branch dev" : "update channel stable, the releases of main"),
     learnTemplates: (v: boolean) => `learning templates from recurring messages ${on(v)}`,
     usageStats: (v: boolean) => `anonymous usage statistics ${on(v)}`,
     debugLogs: (v: boolean) => `debug logs ${on(v)}`,
@@ -907,6 +908,14 @@ Security:
       `FORGE is an open-source product of Vanturis UG. A voluntary contribution can be made here: ${donate}, there is no donation receipt.${sum} Improvements and feature suggestions go in as an issue on GitHub: ${feedback}. FORGE shows both links behind the red heart next to the search at the top left.`,
     confirmRepair: (v: string) => `FORGE installs itself completely with the installer ${v} and restarts in the process, this call ends. Open sessions continue afterwards`,
     repairing: "FORGE is being installed completely now and restarts, this call ends shortly.",
+    devNotAllowed: (why) => `The dev channel is not available: ${why}`,
+    devUnknown: (why) => `I do not know the state of dev: ${why}`,
+    devStatus: (onDev, ahead, behind, commits) =>
+      `${onDev ? "FORGE gets its updates from dev." : "FORGE gets its updates from main."} ` +
+      (ahead ? `Dev has ${ahead} ${ahead === 1 ? "commit" : "commits"} that main does not have yet${commits ? `, latest: ${commits}` : ""}.` : "Dev has nothing main does not already have.") +
+      (behind ? ` Main has ${behind} ${behind === 1 ? "commit" : "commits"} of its own, bringing dev over creates a merge commit.` : ""),
+    confirmPromote: (ahead) => `I bring ${ahead} ${ahead === 1 ? "commit" : "commits"} from dev into main on GitHub and start the release. Everyone on the stable channel gets it as an update`,
+    promoted: (fastForward, release) => `Dev is in main now${fastForward ? "" : " (with a merge commit)"}.${release ? " The release is running on GitHub, it takes about half an hour." : ""}`,
     noNewVersion: "No new version is being offered right now.",
     writingChangelog: "Claude is summarizing what's new right now. Ask again in a few seconds.",
     changelog: (tag: string, text: string) => `New in ${tag}: ${text}`,

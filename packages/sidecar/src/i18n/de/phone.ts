@@ -849,6 +849,7 @@ Sicherheit:
     longSession: (thousands: number) => `Hinweis auf lange Sessions ab ${thousands} Tausend Tokens Kontext`,
     longSessionOff: "kein Hinweis auf lange Sessions",
     updateChecks: (v: boolean) => `Update-Prüfung ${on(v)}`,
+    updateChannel: (c: "stable" | "dev"): string => (c === "dev" ? "Update-Kanal Dev, also die Vorabversionen aus dem Branch dev" : "Update-Kanal Stabil, also die Releases von main"),
     learnTemplates: (v: boolean) => `Vorlagen aus wiederkehrenden Nachrichten lernen ${on(v)}`,
     usageStats: (v: boolean) => `anonyme Nutzungsstatistik ${on(v)}`,
     debugLogs: (v: boolean) => `Debug-Logs ${on(v)}`,
@@ -908,6 +909,15 @@ Sicherheit:
       `FORGE ist ein Open-Source-Produkt der Vanturis UG. Einen freiwilligen Beitrag zahlt man hier: ${donate}, eine Spendenquittung gibt es nicht.${sum} Verbesserungen und Featurevorschläge kommen als Issue auf GitHub: ${feedback}. Beide Links zeigt FORGE hinter dem roten Herz neben der Suche links oben.`,
     confirmRepair: (v: string) => `FORGE installiert sich vollständig mit dem Installer ${v} und startet dabei neu, dieses Gespräch endet. Offene Sessions machen danach weiter`,
     repairing: "FORGE wird jetzt vollständig installiert und startet neu, dieses Gespräch endet gleich.",
+    devNotAllowed: (why: string) => `Der Dev-Kanal geht nicht: ${why}`,
+    devUnknown: (why: string) => `Den Stand von dev kenne ich nicht: ${why}`,
+    devStatus: (onDev: boolean, ahead: number, behind: number, commits: string) =>
+      `${onDev ? "FORGE bekommt Updates aus dev." : "FORGE bekommt Updates aus main."} ` +
+      (ahead ? `Dev hat ${ahead} ${ahead === 1 ? "Commit" : "Commits"}, die main noch nicht hat${commits ? `, zuletzt: ${commits}` : ""}.` : "Dev hat nichts, was main nicht schon hat.") +
+      (behind ? ` Main hat ${behind} eigene ${behind === 1 ? "Commit" : "Commits"}, beim Übernehmen entsteht ein Merge-Commit.` : ""),
+    confirmPromote: (ahead: number) => `Ich übernehme ${ahead} ${ahead === 1 ? "Commit" : "Commits"} von dev nach main auf GitHub und starte das Release. Alle Nutzer des stabilen Kanals bekommen es als Update`,
+    promoted: (fastForward: boolean, release: boolean) =>
+      `Dev ist jetzt in main${fastForward ? "" : " (mit Merge-Commit)"}.${release ? " Das Release läuft auf GitHub, das dauert etwa eine halbe Stunde." : ""}`,
     noNewVersion: "Gerade wird keine neue Version angeboten.",
     writingChangelog: "Claude fasst die Neuerungen gerade zusammen. Frag in ein paar Sekunden noch einmal.",
     changelog: (tag: string, text: string) => `Neu in ${tag}: ${text}`,
