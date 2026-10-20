@@ -1,11 +1,11 @@
 <a href="README.md"><img src=".github/assets/flags/gb.svg" height="14" alt=""> English</a> · <img src=".github/assets/flags/de.svg" height="14" alt=""> Deutsch
 
 <p align="center">
-  <img src=".github/assets/banner.png" alt="FORGE: Die Desktop-App für Claude Code" width="100%">
+  <img src=".github/assets/banner.png" alt="FORGE: Eine Desktop-App für Claude Code" width="100%">
 </p>
 
 <p align="center">
-  <a href="https://github.com/vanturis/forge/releases/latest"><img src="https://img.shields.io/github/v/release/vanturis/forge?style=for-the-badge&label=Version&color=f97316" alt="Neueste Version"></a>
+  <a href="https://github.com/vanturis/forge/releases/latest"><img src="https://img.shields.io/github/v/release/vanturis/forge?sort=semver&style=for-the-badge&label=Version&color=f97316" alt="Neueste Version"></a>
   <a href="https://github.com/vanturis/forge/releases/latest"><img src="https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fforge.vanturis.de%2Fapi%2Fv1%2Fdownloads&query=%24.downloads&label=Downloads&style=for-the-badge&color=21262e" alt="Downloads des Installers"></a>
   <a href="LICENSE.md"><img src="https://img.shields.io/badge/Lizenz-AGPL--3.0-21262e?style=for-the-badge" alt="Lizenz AGPL-3.0"></a>
   <a href="https://forge.vanturis.de/stats"><img src="https://img.shields.io/badge/FORGE-in%20Zahlen-21262e?style=for-the-badge&logo=googleanalytics&logoColor=white" alt="FORGE in Zahlen"></a>
@@ -304,5 +304,6 @@ Weitere Dokumentation: [Architektur](docs/ARCHITECTURE.de.md) · [Sicherheitskon
 ---
 
 <p align="center">
-  <sub>Ein Produkt der <a href="https://vanturis.de">Vanturis UG (haftungsbeschränkt)</a> · <a href="https://vanturis.de/impressum">Impressum</a> · <a href="https://vanturis.de/datenschutz">Datenschutz</a></sub>
+  <sub>Ein Produkt der <a href="https://vanturis.de">Vanturis UG (haftungsbeschränkt)</a> · <a href="https://vanturis.de/impressum">Impressum</a> · <a href="https://vanturis.de/datenschutz">Datenschutz</a></sub><br>
+  <sub>FORGE ist ein unabhängiges Projekt und nicht mit Anthropic verbunden oder von Anthropic unterstützt. Claude und Claude Code sind Marken von Anthropic, PBC.</sub>
 </p>

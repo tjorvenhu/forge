@@ -15,8 +15,8 @@ const W = 1200;
 const H = 630;
 
 const TEXT = {
-  de: { title: ["Deine AI", "Entwicklungszentrale"], lead: ["Die Desktop-App für Claude Code:", "Projekte, Sessions, Agenten und Git", "in einem Fenster."], facts: "Windows 10/11 · Open Source · Kostenlos" },
-  en: { title: ["Your AI", "Development Hub"], lead: ["The desktop app for Claude Code:", "projects, sessions, agents and Git", "in one window."], facts: "Windows 10/11 · Open Source · Free" },
+  de: { title: ["Deine AI", "Entwicklungszentrale"], lead: ["Eine Desktop-App für Claude Code:", "Projekte, Sessions, Agenten und Git", "in einem Fenster."], facts: "Windows · macOS · Linux · Open Source · Kostenlos" },
+  en: { title: ["Your AI", "Development Hub"], lead: ["A desktop app for Claude Code:", "projects, sessions, agents and Git", "in one window."], facts: "Windows · macOS · Linux · Open Source · Free" },
 };
 
 const esc = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;");

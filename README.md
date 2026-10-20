@@ -1,11 +1,11 @@
 <img src=".github/assets/flags/gb.svg" height="14" alt=""> English · <a href="README.de.md"><img src=".github/assets/flags/de.svg" height="14" alt=""> Deutsch</a>
 
 <p align="center">
-  <img src=".github/assets/banner-en.png" alt="FORGE: the desktop app for Claude Code" width="100%">
+  <img src=".github/assets/banner-en.png" alt="FORGE: a desktop app for Claude Code" width="100%">
 </p>
 
 <p align="center">
-  <a href="https://github.com/vanturis/forge/releases/latest"><img src="https://img.shields.io/github/v/release/vanturis/forge?style=for-the-badge&label=Version&color=f97316" alt="Latest version"></a>
+  <a href="https://github.com/vanturis/forge/releases/latest"><img src="https://img.shields.io/github/v/release/vanturis/forge?sort=semver&style=for-the-badge&label=Version&color=f97316" alt="Latest version"></a>
   <a href="https://github.com/vanturis/forge/releases/latest"><img src="https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fforge.vanturis.de%2Fapi%2Fv1%2Fdownloads&query=%24.downloads&label=Downloads&style=for-the-badge&color=21262e" alt="Installer downloads"></a>
   <a href="LICENSE.md"><img src="https://img.shields.io/badge/License-AGPL--3.0-21262e?style=for-the-badge" alt="License AGPL-3.0"></a>
   <a href="https://forge.vanturis.de/stats"><img src="https://img.shields.io/badge/FORGE-in%20numbers-21262e?style=for-the-badge&logo=googleanalytics&logoColor=white" alt="FORGE in numbers"></a>
@@ -298,5 +298,6 @@ More documentation: [Architecture](docs/ARCHITECTURE.md) · [Security concept](d
 ---
 
 <p align="center">
-  <sub>A product of <a href="https://vanturis.de">Vanturis UG (haftungsbeschränkt)</a> · <a href="https://vanturis.de/impressum">Imprint</a> · <a href="https://vanturis.de/datenschutz">Privacy policy</a></sub>
+  <sub>A product of <a href="https://vanturis.de">Vanturis UG (haftungsbeschränkt)</a> · <a href="https://vanturis.de/impressum">Imprint</a> · <a href="https://vanturis.de/datenschutz">Privacy policy</a></sub><br>
+  <sub>FORGE is an independent project and not affiliated with or endorsed by Anthropic. Claude and Claude Code are trademarks of Anthropic, PBC.</sub>
 </p>

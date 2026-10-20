@@ -8,7 +8,7 @@ const de = {
   meta: {
     title: "FORGE: Desktop-App und Oberfläche für Claude Code unter Windows, macOS und Linux",
     description:
-      "FORGE ist die kostenlose Open-Source-Oberfläche für Claude Code. Sessions, parallele Agenten in Git-Worktrees, Git, Vorschau und Projektwissen in einem Fenster. Für Windows, macOS und Linux.",
+      "FORGE ist eine kostenlose Open-Source-Oberfläche für Claude Code. Sessions, parallele Agenten in Git-Worktrees, Git, Vorschau und Projektwissen in einem Fenster. Für Windows, macOS und Linux.",
     keywords: [
       "Claude Code",
       "Claude Code GUI",
@@ -23,7 +23,7 @@ const de = {
       "Anthropic Claude",
       "FORGE",
     ],
-    ogAlt: "FORGE, die Desktop-App für Claude Code: Projekte, Sessions, Agenten und Git in einem Fenster",
+    ogAlt: "FORGE, eine Desktop-App für Claude Code: Projekte, Sessions, Agenten und Git in einem Fenster",
     appDescription: "Desktop-App für Claude Code mit Sessions, parallelen Agenten in Git-Worktrees, Git, Vorschau und Projektwissen.",
   },
   statsMeta: {
@@ -185,6 +185,7 @@ const de = {
   },
   footer: {
     license: "FORGE ist ein Open-Source-Produkt der Vanturis UG (haftungsbeschränkt), lizenziert unter AGPL-3.0.",
+    disclaimer: "FORGE ist ein unabhängiges Projekt und nicht mit Anthropic verbunden. Claude und Claude Code sind Marken von Anthropic, PBC.",
     imprint: "Impressum",
     privacy: "Datenschutz",
   },
@@ -242,9 +243,9 @@ export type Messages = typeof de;
 
 const en: Messages = {
   meta: {
-    title: "FORGE: The desktop app and GUI for Claude Code on Windows, macOS and Linux",
+    title: "FORGE: A desktop app and GUI for Claude Code on Windows, macOS and Linux",
     description:
-      "FORGE is the free, open source GUI for Claude Code. Sessions, parallel agents in Git worktrees, Git, preview and project knowledge in one window. For Windows, macOS and Linux.",
+      "FORGE is a free, open source GUI for Claude Code. Sessions, parallel agents in Git worktrees, Git, preview and project knowledge in one window. For Windows, macOS and Linux.",
     keywords: [
       "Claude Code",
       "Claude Code GUI",
@@ -259,7 +260,7 @@ const en: Messages = {
       "Anthropic Claude",
       "FORGE",
     ],
-    ogAlt: "FORGE, the desktop app for Claude Code: projects, sessions, agents and Git in one window",
+    ogAlt: "FORGE, a desktop app for Claude Code: projects, sessions, agents and Git in one window",
     appDescription: "Desktop app for Claude Code with sessions, parallel agents in Git worktrees, Git, preview and project knowledge.",
   },
   statsMeta: {
@@ -421,6 +422,7 @@ const en: Messages = {
   },
   footer: {
     license: "FORGE is an open-source product of Vanturis UG (haftungsbeschränkt), licensed under AGPL-3.0.",
+    disclaimer: "FORGE is an independent project and not affiliated with Anthropic. Claude and Claude Code are trademarks of Anthropic, PBC.",
     imprint: "Legal notice",
     privacy: "Privacy policy",
   },

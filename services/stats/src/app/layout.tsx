@@ -77,6 +77,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
               <div className="footer-brand">
                 <Logo label={t.header.home} height={24} base={base} />
                 <p>{t.footer.license}</p>
+                <p>{t.footer.disclaimer}</p>
               </div>
               <div className="footer-side">
                 <nav className="footer-links" aria-label={t.header.nav}>
