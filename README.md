@@ -22,6 +22,12 @@
   and puts Git, agents, preview and project knowledge into one window. With your own Claude subscription, no API key.
 </p>
 
+<p align="center">
+  <img src=".github/assets/demo.gif" alt="Claude takes a screenshot of the running web app, finds the button with invisible text and fixes it; FORGE shows before and after" width="100%">
+  <br>
+  <sub>Claude looks at the running app, finds the broken button and fixes it. FORGE shows before and after.</sub>
+</p>
+
 <table>
   <tr>
     <td width="50%"><img src=".github/assets/screenshots/en/start.png" alt="Home: what is running and recently edited sessions"></td>

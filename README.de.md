@@ -22,6 +22,12 @@
   und bringt Git, Agenten, Vorschau und Projektwissen in ein Fenster. Mit deinem eigenen Claude-Abo, ohne API-Schlüssel.
 </p>
 
+<p align="center">
+  <img src=".github/assets/demo.gif" alt="Claude macht einen Screenshot der laufenden Web-App, findet den Knopf mit unsichtbarer Schrift und behebt den Fehler; FORGE zeigt Vorher und Nachher" width="100%">
+  <br>
+  <sub>Claude sieht sich die laufende App an, findet den kaputten Knopf und behebt ihn. FORGE zeigt Vorher und Nachher.</sub>
+</p>
+
 <table>
   <tr>
     <td width="50%"><img src=".github/assets/screenshots/start.png" alt="Startseite: was gerade läuft und zuletzt bearbeitete Sessions"></td>
