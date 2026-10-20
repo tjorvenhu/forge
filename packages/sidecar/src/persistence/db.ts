@@ -372,28 +372,34 @@ export function sumModels(models: Record<string, ModelTokens>): ModelTokens & { 
 }
 
 /**
- * Tokens of one turn from two cumulative modelUsage readings of the same session. A model whose total went down
- * (a new Claude process without saved totals, /clear) counts with its whole new value.
+ * Tokens of one turn from two cumulative modelUsage readings of the same session; `prev` null: the session's first
+ * turn, the reading is the turn. Returns null when the difference says nothing: a model's total went down. That is a
+ * new Claude process, and a resumed one does not start at zero but carries most of the session's earlier totals
+ * (seen 2026-10-20: 915M before, 886M after a restart, 2 calls in that turn), so its whole value is no turn either.
  */
-export function modelDelta(cur: Record<string, ModelTokens>, prev: Record<string, ModelTokens> | null): Record<string, ModelTokens> {
+export function modelDelta(cur: Record<string, ModelTokens>, prev: Record<string, ModelTokens> | null): Record<string, ModelTokens> | null {
+  const total = (m: ModelTokens) => m.inputTokens + m.outputTokens + m.cacheReadTokens + m.cacheWriteTokens;
+  // A crashed run reports zeros: nothing happened, and the baseline stays (lastModelTotals skips it).
+  if (Object.values(cur).every((m) => total(m) === 0)) return {};
+  if (prev && Object.entries(prev).some(([model, p]) => total(cur[model] ?? ZERO_TOKENS) < total(p))) return null;
   const out: Record<string, ModelTokens> = {};
   for (const [model, c] of Object.entries(cur)) {
     const p = prev?.[model];
-    const total = (m: ModelTokens) => m.inputTokens + m.outputTokens + m.cacheReadTokens + m.cacheWriteTokens;
-    const d: ModelTokens =
-      p && total(c) >= total(p)
-        ? {
-            inputTokens: Math.max(0, c.inputTokens - p.inputTokens),
-            outputTokens: Math.max(0, c.outputTokens - p.outputTokens),
-            cacheReadTokens: Math.max(0, c.cacheReadTokens - p.cacheReadTokens),
-            cacheWriteTokens: Math.max(0, c.cacheWriteTokens - p.cacheWriteTokens),
-            costUsd: Math.max(0, c.costUsd - p.costUsd),
-          }
-        : c;
+    const d: ModelTokens = p
+      ? {
+          inputTokens: Math.max(0, c.inputTokens - p.inputTokens),
+          outputTokens: Math.max(0, c.outputTokens - p.outputTokens),
+          cacheReadTokens: Math.max(0, c.cacheReadTokens - p.cacheReadTokens),
+          cacheWriteTokens: Math.max(0, c.cacheWriteTokens - p.cacheWriteTokens),
+          costUsd: Math.max(0, c.costUsd - p.costUsd),
+        }
+      : c;
     if (total(d) > 0) out[model] = d;
   }
   return out;
 }
+
+const ZERO_TOKENS: ModelTokens = { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, costUsd: 0 };
 
 /** Cumulative counters of this installation that the usage statistics send (USAGE_STATS_URL). */
 export interface UsageTotals {
@@ -1208,7 +1214,9 @@ export class Db {
     this.stmt("INSERT INTO events(session_id, seq, ts, type, body) VALUES(?, ?, ?, ?, ?)").run(sessionId, ev.seq, ev.ts, body.type, JSON.stringify(body));
     if (body.type === "turn.result") {
       // modelUsage counts subagents and compaction too, but cumulatively per Claude process: this turn is the difference.
-      const turn = body.models ? modelDelta(body.models, this.lastModelTotals(sessionId, ev.seq)) : null;
+      // Without a usable earlier reading the turn's own fields count (main conversation only), not the whole total.
+      const before = body.models ? this.lastModelTotals(sessionId, ev.seq) : "unknown";
+      const turn = body.models && before !== "unknown" ? modelDelta(body.models, before) : null;
       const t = turn ? sumModels(turn) : null;
       this.stmt(
         `INSERT INTO claude_usage(ts, kind, session_id, project_id, root_id, root_name, duration_ms, api_calls, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, is_error, purpose, models, cost_usd)
@@ -1234,13 +1242,14 @@ export class Db {
   }
 
   /** modelUsage of the session's last result before `beforeSeq` that carried any tokens (a crashed run reports zeros). */
-  private lastModelTotals(sessionId: string, beforeSeq: number): Record<string, ModelTokens> | null {
+  /** null: no earlier turn, the session starts here; "unknown": earlier turns, but none of the last ones has a reading. */
+  private lastModelTotals(sessionId: string, beforeSeq: number): Record<string, ModelTokens> | null | "unknown" {
     const rows = this.stmt("SELECT body FROM events WHERE session_id = ? AND type = 'turn.result' AND seq < ? ORDER BY seq DESC LIMIT 5").all(sessionId, beforeSeq) as Array<{ body: string }>;
     for (const r of rows) {
       const models = (JSON.parse(r.body) as { models?: Record<string, ModelTokens> }).models;
       if (models && sumModels(models).total > 0) return models;
     }
-    return null;
+    return rows.length ? "unknown" : null;
   }
 
   /**

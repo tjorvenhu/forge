@@ -141,12 +141,13 @@ describe("usage statistics", () => {
       // A crashed run reports zeros and must not reset the baseline.
       result({ "claude-opus-4-7": m(0, 0, 0, 0) }, true);
       result({ "claude-opus-4-7": m(16, 31, 310, 0.81), "claude-haiku-4-5": m(5, 5, 0, 0.01) });
-      // A new process without saved totals starts at zero again: its value counts in full.
-      result({ "claude-opus-4-7": m(2, 3, 0, 0.02) });
+      // A new process: the totals went down. A resumed Claude process carries most of the session's earlier totals
+      // (915M before, 886M after a restart), so neither the difference nor the whole value is this turn: its own fields count.
+      result({ "claude-opus-4-7": m(14, 29, 290, 0.79) });
       const t = db.usageTotals();
-      expect(t).toMatchObject({ tokensInput: 10 + 5 + 5 + 1 + 2, tokensOutput: 20 + 5 + 10 + 1 + 3, tokensCacheRead: 100 + 200 + 10, claudeTurns: 5, sessions: 1, userTurns: 5 });
-      expect(t.costUsdCents).toBe(Math.round((0.5 + 0.01 + 0.3 + 0.01 + 0.02) * 100));
-      expect(t.models["claude-opus-4-7"]!.tokens).toBe(130 + 215 + 12 + 5);
+      expect(t).toMatchObject({ tokensInput: 10 + 5 + 5 + 1 + 1, tokensOutput: 20 + 5 + 10 + 1 + 1, tokensCacheRead: 100 + 200 + 10, claudeTurns: 5, sessions: 1, userTurns: 5 });
+      expect(t.costUsdCents).toBe(Math.round((0.5 + 0.01 + 0.3 + 0.01) * 100));
+      expect(t.models["claude-opus-4-7"]!.tokens).toBe(130 + 215 + 12);
       expect(t.models["claude-haiku-4-5"]!.tokens).toBe(10);
 
       // Only what happened since the release of the statistics counts.
