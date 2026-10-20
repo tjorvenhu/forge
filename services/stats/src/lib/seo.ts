@@ -109,7 +109,7 @@ export function homeJsonLd(locale: Locale, base: LocaleBase): JsonLd {
         url,
         applicationCategory: "DeveloperApplication",
         applicationSubCategory: "AI coding assistant",
-        operatingSystem: "Windows 10, Windows 11",
+        operatingSystem: "Windows 10, Windows 11, macOS 13.5+, Linux",
         downloadUrl: absolute(DOWNLOAD_PAGE),
         installUrl: absolute(DOWNLOAD_PAGE),
         screenshot: absolute(SCREENSHOTS[locale].src),

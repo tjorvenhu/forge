@@ -180,12 +180,13 @@ with one click. Every update is signed, and FORGE verifies the signature before 
 
 ## Privacy
 
-Projects, chat histories and settings stay on your computer (`%APPDATA%\forge`).
+Projects, chat histories and settings stay on your computer: `%APPDATA%\forge` on Windows,
+`~/Library/Application Support/forge` on macOS and `~/.config/forge` on Linux (or `$XDG_CONFIG_HOME/forge`).
 
 - **Anonymous usage statistics (off by default):** FORGE asks once on first start and asks you to turn them on.
   The totals show us how FORGE is used. Without an answer they stay off. When on, FORGE sends totals to
   [forge.vanturis.de](https://forge.vanturis.de) every 5 minutes: a random ID for the installation,
-  the FORGE and Windows versions, the interface language, the type of Claude subscription (for example Pro or Max 5x) and counters such
+  the versions of FORGE and of the operating system, the interface language, the type of Claude subscription (for example Pro or Max 5x) and counters such
   as tokens per Claude model, estimated API cost, sessions, projects and agents. No content, no project names, no
   paths, no IP addresses. Turn them on or off under Settings > About FORGE > Privacy; when you turn them off,
   FORGE deletes the data already sent from the service.
@@ -205,7 +206,8 @@ Projects, chat histories and settings stay on your computer (`%APPDATA%\forge`).
   encrypted in a private repository of your GitHub account. All other GitHub features use your own account
   through the GitHub CLI.
 - **npm registry:** The first time you start a test database in the dev tools, FORGE downloads PostgreSQL once
-  as an npm package (`@embedded-postgres/windows-x64`) from `registry.npmjs.org`.
+  as an npm package for your system (for example `@embedded-postgres/windows-x64` or
+  `@embedded-postgres/darwin-arm64`) from `registry.npmjs.org`.
 - **Usage statistics (only when turned on):** FORGE asks on first start, without an answer they stay off. To
   prevent abuse, the service keeps only a salted hash of the IP address in memory, for one day at most. The
   totals of all users are public at [forge.vanturis.de/stats](https://forge.vanturis.de/stats).

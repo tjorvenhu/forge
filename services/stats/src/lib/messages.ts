@@ -6,9 +6,9 @@ import type { Locale } from "./i18n";
 
 const de = {
   meta: {
-    title: "FORGE: Desktop-App und Oberfläche für Claude Code unter Windows",
+    title: "FORGE: Desktop-App und Oberfläche für Claude Code unter Windows, macOS und Linux",
     description:
-      "FORGE ist die kostenlose Open-Source-Oberfläche für Claude Code. Sessions, parallele Agenten in Git-Worktrees, Git, Vorschau und Projektwissen in einem Fenster. Für Windows 10 und 11.",
+      "FORGE ist die kostenlose Open-Source-Oberfläche für Claude Code. Sessions, parallele Agenten in Git-Worktrees, Git, Vorschau und Projektwissen in einem Fenster. Für Windows, macOS und Linux.",
     keywords: [
       "Claude Code",
       "Claude Code GUI",
@@ -45,7 +45,7 @@ const de = {
     lead: "Forge ist ein modernes Desktop-Tool für Claude Code. Verwalte Projekte, Sessions und Git, mit einer intuitiven Oberfläche statt Terminal.",
     download: "Jetzt herunterladen",
     liveStats: "Live Stats ansehen",
-    facts: { windows: "Windows 10/11", openSource: "Open Source", earlyAccess: "Early Access" },
+    facts: { platforms: "Windows, macOS, Linux", openSource: "Open Source", earlyAccess: "Early Access" },
     screenshotAlt: "FORGE mit einer neuen Session im Projekt forge: Seitenleiste, Reiter und Eingabefeld mit einem Auftrag an Claude",
     features: {
       projects: { title: "Projekte verwalten", text: "Alle Sessions, Dateien und Einstellungen an einem Ort." },
@@ -59,7 +59,7 @@ const de = {
       items: [
         {
           q: "Was ist FORGE?",
-          a: "FORGE ist eine Desktop-App für Windows, die Claude Code eine grafische Oberfläche gibt. Sie startet echte Claude-Code-Sessions in deinen Projekten, zeigt die Antworten live, fragt Freigaben ab und bringt Git, parallele Agenten, Vorschau und Projektwissen in ein Fenster.",
+          a: "FORGE ist eine Desktop-App für Windows, macOS und Linux, die Claude Code eine grafische Oberfläche gibt. Sie startet echte Claude-Code-Sessions in deinen Projekten, zeigt die Antworten live, fragt Freigaben ab und bringt Git, parallele Agenten, Vorschau und Projektwissen in ein Fenster.",
         },
         {
           q: "Ist FORGE kostenlos?",
@@ -67,7 +67,7 @@ const de = {
         },
         {
           q: "Was brauche ich, um FORGE zu nutzen?",
-          a: "Windows 10 oder 11 (x64) und ein Claude-Abo. Node.js, Git, die GitHub CLI und Python bringt der Installer mit. Fehlt Claude Code, installiert FORGE es beim ersten Start über den offiziellen Installer von Anthropic.",
+          a: "Ein Claude-Abo und Windows 10 oder 11 (x64), macOS ab 13.5 oder Linux (x64, glibc 2.35 oder neuer). Unter Windows bringt der Installer Node.js, Git, die GitHub CLI und Python mit. Unter macOS und Linux bringt FORGE Node.js und die GitHub CLI mit, Git und Python kommen vom System. Fehlt Claude Code, installiert FORGE es beim ersten Start über den offiziellen Installer von Anthropic.",
         },
         {
           q: "Wie arbeiten parallele Agenten?",
@@ -79,11 +79,11 @@ const de = {
         },
         {
           q: "Bleiben meine Daten auf meinem Rechner?",
-          a: "Projekte, Chatverläufe und Einstellungen liegen lokal unter %APPDATA%\\forge. Die anonyme Nutzungsstatistik ist standardmäßig aus. Eingeschaltet sendet sie nur Zählerstände, nie Inhalte, Dateien oder Projektnamen.",
+          a: "Projekte, Chatverläufe und Einstellungen liegen lokal auf deinem Rechner: unter Windows in %APPDATA%\\forge, unter macOS in ~/Library/Application Support/forge, unter Linux in ~/.config/forge. Die anonyme Nutzungsstatistik ist standardmäßig aus. Eingeschaltet sendet sie nur Zählerstände, nie Inhalte, Dateien oder Projektnamen.",
         },
         {
           q: "Gibt es FORGE für macOS oder Linux?",
-          a: "Die Versionen für macOS (ab 13.5, Apple Silicon und Intel) und Linux (x86_64) sind neu. Die Download-Seite zeigt, ob es für dein System schon eine gibt, und den Befehl zum Installieren.",
+          a: "Ja. FORGE läuft unter macOS ab 13.5 (Apple Silicon und Intel) und unter Linux (x64). Die Download-Seite zeigt den Befehl zum Installieren und die Dateien der neuesten Version.",
         },
         {
           q: "Wie bekomme ich Updates?",
@@ -242,9 +242,9 @@ export type Messages = typeof de;
 
 const en: Messages = {
   meta: {
-    title: "FORGE: The desktop app and GUI for Claude Code on Windows",
+    title: "FORGE: The desktop app and GUI for Claude Code on Windows, macOS and Linux",
     description:
-      "FORGE is the free, open source GUI for Claude Code. Sessions, parallel agents in Git worktrees, Git, preview and project knowledge in one window. For Windows 10 and 11.",
+      "FORGE is the free, open source GUI for Claude Code. Sessions, parallel agents in Git worktrees, Git, preview and project knowledge in one window. For Windows, macOS and Linux.",
     keywords: [
       "Claude Code",
       "Claude Code GUI",
@@ -281,7 +281,7 @@ const en: Messages = {
     lead: "Forge is a modern desktop tool for Claude Code. Manage projects, sessions and Git, with an intuitive interface instead of the terminal.",
     download: "Download now",
     liveStats: "View live stats",
-    facts: { windows: "Windows 10/11", openSource: "Open Source", earlyAccess: "Early Access" },
+    facts: { platforms: "Windows, macOS, Linux", openSource: "Open Source", earlyAccess: "Early Access" },
     screenshotAlt: "FORGE with a new session in the project forge: sidebar, tabs and the message box with a task for Claude",
     features: {
       projects: { title: "Manage projects", text: "All sessions, files and settings in one place." },
@@ -295,7 +295,7 @@ const en: Messages = {
       items: [
         {
           q: "What is FORGE?",
-          a: "FORGE is a desktop app for Windows that gives Claude Code a graphical interface. It starts real Claude Code sessions in your projects, shows the answers live, asks for approvals and brings Git, parallel agents, preview and project knowledge into one window.",
+          a: "FORGE is a desktop app for Windows, macOS and Linux that gives Claude Code a graphical interface. It starts real Claude Code sessions in your projects, shows the answers live, asks for approvals and brings Git, parallel agents, preview and project knowledge into one window.",
         },
         {
           q: "Is FORGE free?",
@@ -303,7 +303,7 @@ const en: Messages = {
         },
         {
           q: "What do I need to use FORGE?",
-          a: "Windows 10 or 11 (x64) and a Claude subscription. The installer brings Node.js, Git, the GitHub CLI and Python. If Claude Code is missing, FORGE installs it on first start with the official installer from Anthropic.",
+          a: "A Claude subscription and Windows 10 or 11 (x64), macOS 13.5 or later, or Linux (x64, glibc 2.35 or later). On Windows the installer brings Node.js, Git, the GitHub CLI and Python. On macOS and Linux FORGE brings Node.js and the GitHub CLI, Git and Python come from the system. If Claude Code is missing, FORGE installs it on first start with the official installer from Anthropic.",
         },
         {
           q: "How do parallel agents work?",
@@ -315,11 +315,11 @@ const en: Messages = {
         },
         {
           q: "Does my data stay on my computer?",
-          a: "Projects, chat history and settings are stored locally in %APPDATA%\\forge. The anonymous usage statistics are off by default. When on, they send only counter values, never contents, files or project names.",
+          a: "Projects, chat history and settings stay on your computer: on Windows in %APPDATA%\\forge, on macOS in ~/Library/Application Support/forge, on Linux in ~/.config/forge. The anonymous usage statistics are off by default. When on, they send only counter values, never contents, files or project names.",
         },
         {
           q: "Is FORGE available for macOS or Linux?",
-          a: "The versions for macOS (13.5 or later, Apple silicon and Intel) and Linux (x86_64) are new. The download page shows whether there is one for your system yet, and the command to install it.",
+          a: "Yes. FORGE runs on macOS 13.5 or later (Apple silicon and Intel) and on Linux (x64). The download page shows the command to install it and the files of the newest version.",
         },
         {
           q: "How do I get updates?",

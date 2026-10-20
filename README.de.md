@@ -184,12 +184,13 @@ installierst mit einem Klick. Jedes Update ist signiert, FORGE prüft die Signat
 
 ## Datenschutz
 
-Projekte, Chatverläufe und Einstellungen bleiben auf deinem Rechner (`%APPDATA%\forge`).
+Projekte, Chatverläufe und Einstellungen bleiben auf deinem Rechner: unter Windows in `%APPDATA%\forge`,
+unter macOS in `~/Library/Application Support/forge` und unter Linux in `~/.config/forge` (bzw. `$XDG_CONFIG_HOME/forge`).
 
 - **Anonyme Nutzungsstatistik (standardmäßig aus):** FORGE fragt beim ersten Start einmal danach und bittet
   darum, sie einzuschalten. Die Gesamtzahlen zeigen uns, wie FORGE genutzt wird. Ohne Antwort ist sie aus.
   Eingeschaltet gehen alle 5 Minuten Summen an [forge.vanturis.de](https://forge.vanturis.de): eine
-  zufällige Kennung der Installation, FORGE- und Windows-Version, die Sprache der Oberfläche, die Art des Claude-Abos (z. B. Pro oder Max 5x)
+  zufällige Kennung der Installation, Version von FORGE und vom Betriebssystem, die Sprache der Oberfläche, die Art des Claude-Abos (z. B. Pro oder Max 5x)
   und Zählerstände wie Tokens je Claude-Modell, geschätzte API-Kosten, Sessions, Projekte und Agenten. Keine
   Inhalte, keine Projektnamen, keine Pfade, keine IP-Adressen. Ein- und ausschalten unter Einstellungen > Über
   FORGE > Datenschutz; beim Ausschalten löscht FORGE die gesendeten Daten beim Dienst.
@@ -210,7 +211,8 @@ Projekte, Chatverläufe und Einstellungen bleiben auf deinem Rechner (`%APPDATA%
   FORGE-Daten verschlüsselt in einem privaten Repository deines GitHub-Kontos ab. Alle anderen GitHub-Funktionen
   laufen mit deinem eigenen Konto über die GitHub CLI.
 - **npm-Registry:** Startest du in den Dev-Tools zum ersten Mal eine Test-Datenbank, lädt FORGE PostgreSQL einmalig
-  als npm-Paket (`@embedded-postgres/windows-x64`) von `registry.npmjs.org`.
+  als npm-Paket für dein System (zum Beispiel `@embedded-postgres/windows-x64` oder
+  `@embedded-postgres/darwin-arm64`) von `registry.npmjs.org`.
 - **Nutzungsstatistik (nur wenn eingeschaltet):** FORGE fragt beim ersten Start danach, ohne Antwort ist sie aus. Zum Schutz vor Missbrauch
   hält der Dienst nur einen gesalzenen Hash der IP-Adresse im Arbeitsspeicher, längstens einen Tag. Die
   Gesamtzahlen aller Nutzer sind auf [forge.vanturis.de/stats](https://forge.vanturis.de/stats) öffentlich.

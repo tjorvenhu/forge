@@ -1,4 +1,4 @@
-import { ArrowRight, BarChart3, ChevronDown, Download, Folder, GitBranch, MessageCircle, Settings } from "lucide-react";
+import { ArrowRight, BarChart3, ChevronDown, Download, Folder, GitBranch, MessageCircle, Monitor, Settings } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import de800 from "@/assets/app-de-800.webp";
 import de1200 from "@/assets/app-de-1200.webp";
@@ -60,8 +60,8 @@ export function Landing({ locale, base }: { locale: Locale; base: LocaleBase }) 
             </div>
             <ul className="hero-facts">
               <li>
-                <WindowsMark />
-                {l.facts.windows}
+                <Monitor size={15} aria-hidden />
+                {l.facts.platforms}
               </li>
               <li>{l.facts.openSource}</li>
               <li>{l.facts.earlyAccess}</li>
@@ -127,14 +127,5 @@ export function Landing({ locale, base }: { locale: Locale; base: LocaleBase }) 
         </div>
       </section>
     </main>
-  );
-}
-
-/** The four panes of the Windows logo; lucide has no brand icons. */
-function WindowsMark() {
-  return (
-    <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor" aria-hidden>
-      <path d="M0 2.3 6.6 1.4v6.2H0zM7.4 1.3 16 .1v7.5H7.4zM0 8.4h6.6v6.2L0 13.7zM7.4 8.4H16v7.5l-8.6-1.2z" />
-    </svg>
   );
 }
