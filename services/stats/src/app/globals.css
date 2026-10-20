@@ -56,8 +56,12 @@ body {
   padding: 0;
 }
 
+/* a column, so the footer sits at the bottom of the window on short pages (see .footer) */
 body {
+  display: flex;
+  flex-direction: column;
   min-height: 100vh;
+  min-height: 100dvh;
   background: var(--color-bg);
   color: var(--color-fg);
   font-family: var(--font-sans);

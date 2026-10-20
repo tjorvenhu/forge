@@ -114,6 +114,8 @@
 /* ---- footer */
 
 .footer {
+  /* down to the window's edge when the page is shorter than the window; the start page fills it anyway */
+  margin-top: auto;
   border-top: 1px solid var(--color-border);
   color: var(--color-subtle);
   font-size: var(--text-small);
@@ -1245,8 +1247,6 @@
 
 .download-page {
   max-width: 820px;
-  /* the footer at the bottom of the window although the page is short */
-  min-height: calc(100vh - 160px);
   padding-top: 64px;
   padding-bottom: 88px;
 }
