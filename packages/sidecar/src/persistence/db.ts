@@ -2,6 +2,7 @@ import { DatabaseSync, type StatementSync } from "node:sqlite";
 import type { UsageSample } from "../claude/usage-forecast.js";
 import { DEFAULT_DISABLED_POLICY_RULES, SEARCH_MARK_END, SEARCH_MARK_START, type ContextUsage, type EffortLevel, type ModelTokens, type ForgeUsagePurpose, type PermissionMode, type ProfileId, type Project, type PhoneCallRecord, type PromptTemplate, type SearchFilter, type SearchHit, type Session, type SessionEvent, type SessionEventBody, type SessionStatus, type Settings } from "@forge/protocol";
 
+// Append only: an install stores how many it ran (user_version), so inserting one shifts the rest.
 export const MIGRATIONS: string[] = [
   `
   CREATE TABLE projects (
@@ -343,10 +344,6 @@ export const MIGRATIONS: string[] = [
   `
   ALTER TABLE prompt_templates ADD COLUMN learned INTEGER NOT NULL DEFAULT 0;
   `,
-  // Projects without parallel agents: no worktrees, and start_agent is not offered to Claude.
-  `
-  ALTER TABLE projects ADD COLUMN agents_enabled INTEGER NOT NULL DEFAULT 1;
-  `,
   // English became the default language with 0.1.97; installations from before were used in German and stay so.
   `
   INSERT INTO settings(key, value)
@@ -357,6 +354,11 @@ export const MIGRATIONS: string[] = [
   // The user's own grouping of projects (e.g. by client); NULL: no group. "group" is an SQL keyword.
   `
   ALTER TABLE projects ADD COLUMN group_name TEXT;
+  `,
+  // Projects without parallel agents: no worktrees, and start_agent is not offered to Claude.
+  // 0.1.118 had it before the language migration; Db.migrate repairs what that order did.
+  `
+  ALTER TABLE projects ADD COLUMN agents_enabled INTEGER NOT NULL DEFAULT 1;
   `,
 ];
 
@@ -725,6 +727,7 @@ export class Db {
   }
 
   private migrate() {
+    this.repairAgentsEnabledOrder();
     const row = this.sql.prepare("PRAGMA user_version").get() as { user_version: number };
     for (let v = row.user_version; v < MIGRATIONS.length; v++) {
       this.sql.exec("BEGIN");
@@ -737,6 +740,18 @@ export class Db {
         throw e;
       }
     }
+  }
+
+  /**
+   * 0.1.118 inserted the agents_enabled migration before the language one instead of appending it. An install
+   * coming from 0.1.97 to 0.1.110 ran language again and group_name, so it reached the last version without
+   * agents_enabled. Stepping back one version lets the appended migration add it.
+   */
+  private repairAgentsEnabledOrder() {
+    const { user_version: v } = this.sql.prepare("PRAGMA user_version").get() as { user_version: number };
+    if (v !== MIGRATIONS.length) return;
+    const cols = this.sql.prepare("PRAGMA table_info(projects)").all() as { name: string }[];
+    if (!cols.some((c) => c.name === "agents_enabled")) this.sql.exec(`PRAGMA user_version = ${v - 1}`);
   }
 
   close() {

@@ -1,5 +1,6 @@
 import { mkdirSync } from "node:fs";
 import path from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { PolicyRuleId, Settings } from "@forge/protocol";
 import { DEFAULT_SETTINGS, Db, MIGRATIONS } from "../src/persistence/db.js";
@@ -124,6 +125,42 @@ describe("deleting local branches", () => {
     db.close();
     db = new Db(file);
     expect(db.getSettings().disabledPolicyRules).toEqual(["git-push-protected"]);
+    db.close();
+  });
+});
+
+describe("agents_enabled migration order", () => {
+  /** An install whose schema has every migration but agents_enabled, stored as `userVersion`. */
+  function withoutAgentsEnabled(userVersion: number) {
+    const sql = new DatabaseSync(file);
+    for (const m of MIGRATIONS.filter((m) => !m.includes("agents_enabled"))) sql.exec(m);
+    sql.exec(`PRAGMA user_version = ${userVersion}`);
+    sql.close();
+  }
+
+  function agentsEnabledColumns(db: Db) {
+    return (db.sql.prepare("PRAGMA table_info(projects)").all() as { name: string }[]).filter((c) => c.name === "agents_enabled");
+  }
+
+  it("adds the column for installs from 0.1.111 to 0.1.117", () => {
+    withoutAgentsEnabled(MIGRATIONS.length - 1);
+    const db = new Db(file);
+    expect(agentsEnabledColumns(db)).toHaveLength(1);
+    db.close();
+  });
+
+  it("adds the column for installs that 0.1.118 migrated without it", () => {
+    withoutAgentsEnabled(MIGRATIONS.length);
+    const db = new Db(file);
+    expect(agentsEnabledColumns(db)).toHaveLength(1);
+    db.close();
+  });
+
+  it("leaves complete installs alone", () => {
+    new Db(file).close();
+    const db = new Db(file);
+    expect(agentsEnabledColumns(db)).toHaveLength(1);
+    expect((db.sql.prepare("PRAGMA user_version").get() as { user_version: number }).user_version).toBe(MIGRATIONS.length);
     db.close();
   });
 });
