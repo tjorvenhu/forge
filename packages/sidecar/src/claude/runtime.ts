@@ -396,8 +396,9 @@ export class AgentSdkRuntime implements ClaudeRuntime {
         ...(this.readDirs.length ? { additionalDirectories: this.readDirs } : {}),
         includePartialMessages: true,
         enableFileCheckpointing: true,
-        // Subagents report a one-line progress about every 30 s (task_progress.summary).
-        agentProgressSummaries: true,
+        // No agentProgressSummaries: in an SDK session they fork the whole subagent conversation every
+        // 30 s (the terminal gets a cheap short mode the SDK cannot select). FORGE builds the progress
+        // line from the subagent's tool calls instead (sessions/task-activity.ts).
         // FORGE stops tasks one by one (sessions.stopTask); Stop then only ends the turn, not every background task.
         perTaskStopAffordance: true,
         settingSources: ["user", "project", "local"],

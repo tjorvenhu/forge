@@ -542,6 +542,9 @@ describe("SessionService", () => {
     expect(svc.get(s.id).subagents).toMatchObject([{ taskId: "k1", toolUseId: "tu1", description: "Auth prüfen", agentType: "general-purpose", summary: null }]);
     sink.onMessage({ type: "system", subtype: "task_progress", task_id: "k1", description: "Auth prüfen", usage: { total_tokens: 10, tool_uses: 3, duration_ms: 1 }, last_tool_name: "Grep", summary: "Liest die Login-Routen" });
     expect(svc.get(s.id).subagents[0]).toMatchObject({ summary: "Liest die Login-Routen", lastTool: "Grep", toolUses: 3 });
+    // Without agentProgressSummaries the line comes from the subagent's own tool calls.
+    sink.onMessage({ type: "assistant", parent_tool_use_id: "tu1", message: { id: "m-k1", content: [{ type: "tool_use", id: "tk1", name: "Read", input: { file_path: "/repo/src/auth/login.ts" } }] } });
+    expect(svc.get(s.id).subagents[0]).toMatchObject({ summary: "Read login.ts" });
     sink.onMessage({ type: "system", subtype: "background_tasks_changed", tasks: [{ task_id: "b1", task_type: "local_bash", description: "dev server" }] });
     sink.onMessage({ type: "system", subtype: "task_progress", task_id: "b1", description: "dev server", usage: { total_tokens: 0, tool_uses: 0, duration_ms: 1 }, summary: "läuft auf Port 5173" });
     expect(svc.get(s.id).background).toMatchObject([{ taskId: "b1", summary: "läuft auf Port 5173" }]);
@@ -577,6 +580,9 @@ describe("SessionService", () => {
     sink.onMessage({ type: "stream_event", parent_tool_use_id: "ta1", event: { type: "message_start", message: { id: "m-sub" } } });
     sink.onMessage({ type: "assistant", parent_tool_use_id: "ta1", message: { id: "m-sub", content: [{ type: "tool_use", id: "tr1", name: "Read", input: { file_path: "a.txt" } }] } });
     expect(svc.get(s.id).status).toBe("idle");
+    sink.onMessage({ type: "system", subtype: "background_tasks_changed", tasks: [{ task_id: "a1", task_type: "local_agent", description: "Recherche" }] });
+    sink.onMessage({ type: "assistant", parent_tool_use_id: "ta1", message: { id: "m-sub2", content: [{ type: "tool_use", id: "tr2", name: "Bash", input: { command: "pnpm test\necho fertig" } }] } });
+    expect(svc.get(s.id).background).toMatchObject([{ taskId: "a1", summary: "Bash pnpm test" }]);
     sink.onMessage({ type: "system", subtype: "task_notification", task_id: "a1", tool_use_id: "ta1", status: "completed", summary: "Drei Routen gefunden.", output_file: "x" });
     expect(db.listEvents(s.id).map((e) => e.body)).toContainEqual({ type: "background.task", taskId: "a1", description: "Recherche", state: "completed", summary: "Drei Routen gefunden.", toolUseId: "ta1" });
     // The CLI's own turn about the finished task is a turn again.

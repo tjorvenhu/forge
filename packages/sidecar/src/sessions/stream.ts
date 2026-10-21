@@ -7,6 +7,7 @@ import type { RateLimitTracker } from "./rate-limit.js";
 import type { RemoteBridge } from "./remote-bridge.js";
 import type { RuntimeCatalog } from "./runtime-catalog.js";
 import type { SessionCore } from "./session-core.js";
+import { toolActivity } from "./task-activity.js";
 import type { TurnAutomation } from "./turn-automation.js";
 import type { TurnDispatch } from "./turns.js";
 
@@ -69,7 +70,9 @@ export class SessionStream {
       // The CLI's text for a stopped turn changes between versions ("[ede_diagnostic] result_type=user …").
       if (body.type === "turn.result" && body.isError && live.interrupting) body.interrupted = true;
       this.core.record(id, body);
-      if (body.type === "session.init") {
+      if (body.type === "tool.use" && body.parentToolUseId) {
+        this.noteSubagentTool(id, live, body.parentToolUseId, toolActivity(body.name, body.input));
+      } else if (body.type === "session.init") {
         this.core.publish(
           this.core.db.updateSession(id, {
             claudeSessionId: body.claudeSessionId,
@@ -112,10 +115,26 @@ export class SessionStream {
     );
   }
 
+  /** A subagent's tool call becomes the progress line of its task (foreground or background). */
+  private noteSubagentTool(id: string, live: LiveSession, parentToolUseId: string, summary: string) {
+    let changed = false;
+    for (const [taskId, agent] of live.subagents) {
+      if (agent.toolUseId !== parentToolUseId || agent.summary === summary) continue;
+      live.subagents.set(taskId, { ...agent, summary });
+      changed = true;
+    }
+    for (const [taskId, bg] of live.background) {
+      if (bg.toolUseId !== parentToolUseId || bg.summary === summary) continue;
+      live.background.set(taskId, { ...bg, summary });
+      changed = true;
+    }
+    if (changed) this.core.publish(this.core.db.getSession(id));
+  }
+
   /**
    * Subagents of the turn and the progress of every task. task_progress comes after each tool call
-   * of a subagent and with a model-written summary about every 30 s; the session is published only
-   * when something visible changed.
+   * of a subagent; a summary in it comes from MCP tasks (a CLI with agentProgressSummaries would add
+   * model-written ones). The session is published only when something visible changed.
    */
   private trackTask(id: string, live: LiveSession, m: Record<string, unknown>) {
     const taskId = typeof m.task_id === "string" ? m.task_id : null;

@@ -14,6 +14,7 @@ import { PermissionModes } from "../src/sessions/permission-mode.js";
 import { SessionCore } from "../src/sessions/session-core.js";
 import { buildTitlePrompt, cleanTitle, isTitleWorthy } from "../src/sessions/titles.js";
 import { RuntimeCatalog } from "../src/sessions/runtime-catalog.js";
+import { toolActivity } from "../src/sessions/task-activity.js";
 import { tempDir } from "./helpers.js";
 
 let t: ReturnType<typeof tempDir>;
@@ -202,6 +203,18 @@ describe("PermissionModes", () => {
     expect(live.closing).toBe(true);
     expect(db.getSession(SID)?.permissionMode).toBe("acceptEdits");
     expect(db.listEvents(SID).map((e) => e.body.type)).toEqual(["policy.blocked", "error"]);
+  });
+});
+
+describe("toolActivity", () => {
+  it("names the tool and what it works on, in one short line", () => {
+    expect(toolActivity("Read", { file_path: "C:\\repo\\src\\runAgent.ts" })).toBe("Read runAgent.ts");
+    expect(toolActivity("Bash", { command: "pnpm test\necho ok", description: "Tests" })).toBe("Bash pnpm test");
+    expect(toolActivity("Grep", { pattern: "useAuth", path: "src" })).toBe("Grep useAuth");
+    expect(toolActivity("WebFetch", { url: "https://docs.example.com/a/b" })).toBe("WebFetch docs.example.com");
+    expect(toolActivity("mcp__forge__knowledge_read", { id: "x" })).toBe("knowledge_read");
+    expect(toolActivity("TodoWrite", {})).toBe("TodoWrite");
+    expect(toolActivity("Bash", { command: "x".repeat(200) })).toHaveLength("Bash ".length + 80);
   });
 });
 
