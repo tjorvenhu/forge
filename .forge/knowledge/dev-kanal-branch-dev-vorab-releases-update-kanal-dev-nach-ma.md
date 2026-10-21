@@ -1,8 +1,8 @@
 ---
 title: "Entwicklungsversion (Branch dev): Vorab-Releases, Update-Kanal, Dev nach Main (DevChannelService, updateChannel)"
-summary: "Wie der Branch dev eigene Releases bekommt (Windows und macOS), wie die App per updateChannel darauf umschaltet (in der UI „Entwicklungsversion“, nur für Konten mit Push-Recht), wie dev nach main übernommen wird, welche Rechte wo geprüft werden und was man beim Release-Workflow beachten muss."
+summary: "Dev-Releases (Windows, macOS), Umschalten per updateChannel („Entwicklungsversion“, nur sichtbar mit Push-Recht, kein Prüfen-Knopf), Dev nach Main übernehmen, Rechteprüfung und Stolperfallen im Release-Workflow."
 tags: ["release","update","github-actions","einstellungen","stolperfalle"]
-updated: "2026-10-21T07:12:31.173Z"
+updated: "2026-10-21T08:18:09.477Z"
 ---
 
 Gebaut 2026-10-20 (Wunsch des Besitzers: auf dev pushen, Apps auf dev aktualisieren sich daraus, später nach main übernehmen; dev schnell und ohne Zertifikat; nur Repo-Mitglieder dürfen umschalten; Dev muss in der App klar sichtbar sein). Branch `dev` auf GitHub seit 2026-10-20, lokal als Tracking-Branch `dev`.
@@ -28,7 +28,7 @@ Gebaut 2026-10-20 (Wunsch des Besitzers: auf dev pushen, Apps auf dev aktualisie
 
 ## App-Seite
 - Einstellung `updateChannel` ("stable" | "dev"), in `LOCAL_SETTINGS` von sync.ts (hängt am GitHub-Login dieses Rechners).
-- `packages/sidecar/src/update/dev-channel.ts` (`DevChannelService`): Zugriff = `gh api repos/vanturis/forge --jq .permissions.push` == true. Nur ein erlaubter Zustand wird 10 Min. gecacht.
+- `packages/sidecar/src/update/dev-channel.ts` (`DevChannelService`): Zugriff = `gh api repos/vanturis/forge --jq .permissions.push` == true. Nur ein erlaubter Zustand wird 10 Min. gecacht; `forget()` leert den Cache bei GitHub-Login (`github.login` phase done, in app.ts) und `github.logout`.
 - `settings.update` mit `updateChannel: "dev"` ruft `requireAccess()` (POLICY_DENIED sonst); Kanalwechsel startet sofort eine Update-Prüfung.
 - `AppUpdateService` fragt `channel()` = `DevChannelService.effective()`: Dev nur solange erlaubt, sonst stable. `channelReleases()` macht Dev-Pre-releases (Tag `v…`) für die Auswahl zu normalen Releases. `AppUpdateState.channel` zeigt den benutzten Kanal.
 - Zurück auf Stabil: kein Downgrade, das nächste Update kommt, sobald main eine höhere Version hat.
@@ -36,6 +36,8 @@ Gebaut 2026-10-20 (Wunsch des Besitzers: auf dev pushen, Apps auf dev aktualisie
 
 ## UI (Wünsche des Besitzers)
 - In der UI heißt der Schalter **„Entwicklungsversion“** (EN „Development build“); vorher „Dev-Kanal“, dann „Dev-Branch“, beides vom Besitzer verworfen. Intern bleiben `updateChannel`/`devChannel`. Gilt auch für Palette, Suche, Telefon-Texte und Fehlermeldungen.
-- Einstellungen > Über FORGE > Updates (`DevChannelSettings.tsx`): ein **Schalter** (Switch), keine Radio-Auswahl. „Dev nach Main übernehmen“ erscheint nur, solange die Entwicklungsversion an ist; ebenso der Palette-Eintrag und Telefon `dev_promote` (sonst `devPromoteOff`).
+- Einstellungen > Über FORGE > Updates (`DevChannelSettings.tsx`): ein **Schalter** (Switch), keine Radio-Auswahl.
+- **Nur sichtbar, wenn geprüft ist, dass das GitHub-Konto Push-Recht hat** (Entscheidung 2026-10-21): Abfrage erst bei GitHub-Login, ohne Login/Zugriff rendert die Komponente nichts (auch kein Skeleton, kein Hinweis „nur für Mitglieder“). **Kein „Erneut prüfen“-Knopf**, der Besitzer will keine manuelle Prüfung; neu geprüft wird automatisch (Login/Logout invalidieren `keys.devChannel`, Sidecar-Cache wird geleert). Ausnahme: ist der Kanal schon auf dev und der Zugriff weg, bleibt die Zeile mit Hinweis, damit man ausschalten kann.
+- „Dev nach Main übernehmen“ erscheint nur mit Zugriff und solange die Entwicklungsversion an ist; ebenso der Palette-Eintrag und Telefon `dev_promote` (sonst `devPromoteOff`).
 - Kennzeichnung (`DevChannelBadge.tsx`): Karte **unten links unter der Claude-Code-Karte**, im Stil der Sidebar-Karten (rounded-xl, text-body, kein Uppercase/Mono), Icon Reagenzglas `FlaskConical`, rechts klein „dev“. Klick: Einstellungen, Rechtsklick: ausschalten. Farben über eigene Tokens `--color-dev`, `--color-dev-border`, `--color-dev-fg` in styles.css (dunkles Blutrot, gedämpft per Opazität), bewusst nicht das helle `danger`-Rot des Support-Herzens. Nicht mehr oben unter dem Logo, keine rote Oberkante an der Seitenleiste.
 - Telefon: `forge_settings update_channel`, `forge_system dev_status` / `dev_promote` (Tastatur-Code).

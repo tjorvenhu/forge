@@ -240,10 +240,8 @@ export const views = {
     devChannel: {
       label: "Entwicklungsversion",
       stableDescription: "Aus: FORGE bekommt die Releases von main, signiert und für alle Nutzer.",
-      devDescription: (repo: string) => `An: FORGE bekommt die Vorabversionen aus dem Branch dev von ${repo}: schneller gebaut, ohne Code-Signatur, nur für Windows. Nach dem Ausschalten kommt das nächste Update, sobald main eine neuere Version hat.`,
+      devDescription: (repo: string) => `An: FORGE bekommt die Vorabversionen aus dem Branch dev von ${repo}: schneller gebaut, ohne Code-Signatur. Nach dem Ausschalten kommt das nächste Update, sobald main eine neuere Version hat.`,
       membersOnly: (repo: string) => `Dev können nur Mitglieder von ${repo} einschalten, angemeldet mit GitHub.`,
-      checking: "Prüfe GitHub-Zugriff",
-      refresh: "Erneut prüfen",
       promoteLabel: "Dev nach Main übernehmen",
       ahead: (n: number) => `Dev hat ${n} ${n === 1 ? "Commit" : "Commits"}, die main noch nicht hat.`,
       behind: (n: number) => ` Main hat ${n} eigene ${n === 1 ? "Commit" : "Commits"}, dabei entsteht ein Merge-Commit.`,

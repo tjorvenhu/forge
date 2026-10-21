@@ -1,13 +1,12 @@
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { GitMerge, RefreshCw } from "lucide-react";
+import { GitMerge } from "lucide-react";
 import type { Settings } from "@forge/protocol";
-import { call, keys, useDevChannel } from "@/lib/queries";
+import { call, keys, useDevChannel, useGitHubAccount } from "@/lib/queries";
 import { errorMessage } from "@/lib/rpc";
 import { toast } from "@/stores/toast";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import { Skeleton, SkeletonRegion } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { Row } from "./layout";
 import { t } from "@/i18n";
@@ -17,27 +16,16 @@ const dv = t.views.settings.devChannel;
 const LISTED = 8;
 
 /**
- * Updates from the dev branch (switch) and bringing dev into main. Dev can only be switched on by an account
- * that may push to the repository; the sidecar checks that again when the setting is saved.
+ * Updates from the dev branch (switch) and bringing dev into main. Only shown to a GitHub account that may
+ * push to the repository, checked on its own (GitHub login and logout check again); the sidecar checks that
+ * again when the setting is saved. Someone already on dev keeps the row to switch back.
  */
 export function DevChannelSettings({ s, save }: { s: Settings; save: (patch: Partial<Settings>) => Promise<void> }) {
   const qc = useQueryClient();
-  const dev = useDevChannel();
-  const [refreshing, setRefreshing] = useState(false);
+  const dev = useDevChannel(!!useGitHubAccount().data);
   const [confirm, setConfirm] = useState(false);
   const [release, setRelease] = useState(true);
   const st = dev.data;
-
-  const refresh = async () => {
-    setRefreshing(true);
-    try {
-      qc.setQueryData(keys.devChannel, await call("app.devChannel", { refresh: true }));
-    } catch (e) {
-      toast.error(dv.checking, errorMessage(e));
-    } finally {
-      setRefreshing(false);
-    }
-  };
 
   const promote = async () => {
     try {
@@ -52,6 +40,7 @@ export function DevChannelSettings({ s, save }: { s: Settings; save: (patch: Par
   };
 
   const allowed = st?.allowed ?? false;
+  if (!allowed && s.updateChannel !== "dev") return null;
   const description = s.updateChannel === "dev" ? dv.devDescription(st?.repo ?? "vanturis/forge") : dv.stableDescription;
   const hint = st && !allowed ? (st.message ?? dv.membersOnly(st.repo)) : null;
   const ahead = st?.ahead ?? null;
@@ -68,25 +57,7 @@ export function DevChannelSettings({ s, save }: { s: Settings; save: (patch: Par
           </>
         }
       >
-        {dev.isPending ? (
-          <SkeletonRegion label={dv.checking} className="flex items-center gap-4">
-            <Skeleton className="h-5 w-9 rounded-full" />
-            <Skeleton className="h-7 w-7" />
-          </SkeletonRegion>
-        ) : (
-          <div className="flex items-center gap-3">
-            <Switch
-              checked={s.updateChannel === "dev"}
-              onChange={(on) => void save({ updateChannel: on ? "dev" : "stable" })}
-              label={dv.label}
-              // Switching off always works, also after the access is gone.
-              disabled={!allowed && s.updateChannel !== "dev"}
-            />
-            <Button size="icon-sm" variant="ghost" title={dv.refresh} aria-label={dv.refresh} loading={refreshing} onClick={() => void refresh()}>
-              <RefreshCw className="h-3.5 w-3.5" />
-            </Button>
-          </div>
-        )}
+        <Switch checked={s.updateChannel === "dev"} onChange={(on) => void save({ updateChannel: on ? "dev" : "stable" })} label={dv.label} />
       </Row>
       {allowed && st && s.updateChannel === "dev" && (
         <Row

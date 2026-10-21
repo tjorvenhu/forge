@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useShallow } from "zustand/react/shallow";
-import { AlertTriangle, Bot, ChevronDown, Columns2, FolderTree, GitMerge, GripHorizontal, LayoutGrid, Maximize2, SquareTerminal, Star, Tag, Wrench, X } from "lucide-react";
+import { Bot, ChevronDown, Columns2, FolderTree, GitMerge, GripHorizontal, LayoutGrid, Maximize2, SquareTerminal, Star, Tag, Wrench, X } from "lucide-react";
 import type { ProfileId } from "@forge/protocol";
 import { call, keys, useProject, useProjects } from "@/lib/queries";
 import { errorMessage } from "@/lib/rpc";
@@ -15,7 +15,7 @@ import { DropdownMenu } from "@/components/ui/dropdown";
 import { Badge, Tooltip } from "@/components/ui/misc";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ProjectIcon } from "@/components/projects/ProjectIcon";
-import { PROFILE_IDS, PROFILE_INFO, ProfileBadge } from "@/components/projects/ProfileBadge";
+import { PROFILE_IDS, PROFILE_INFO, ProfileBadge, ProfileIcon } from "@/components/projects/ProfileBadge";
 import { tagLabel } from "@/components/workspace/ProjectSettingsTab";
 import { RemoteControlButton } from "@/components/workspace/RemoteControl";
 import { PhoneButton } from "@/components/layout/PhoneButton";
@@ -292,19 +292,18 @@ export function WorkspaceHeader({ projectId, pane }: { projectId: string; pane?:
         header={m.profileHeader}
         trigger={
           <button
-            className="flex h-9 shrink-0 items-center gap-1 whitespace-nowrap rounded-lg px-2 hover:bg-surface-3"
+            className="flex h-9 shrink-0 items-center whitespace-nowrap rounded-lg px-2 hover:bg-surface-3"
             aria-label={m.profileAria(PROFILE_INFO[project.profile].label)}
             title={m.profileChange}
           >
             <ProfileBadge profile={project.profile} />
-            <ChevronDown className="h-3.5 w-3.5 text-muted" />
           </button>
         }
         items={PROFILE_IDS.map((p) => ({
           label: `${PROFILE_INFO[p].label}${p === project.profile ? m.active : ""}`,
           disabled: p === "autonomous" && sandboxOnly,
           hint: p === "autonomous" && sandboxOnly ? "sandbox-only" : undefined,
-          icon: p === "autonomous" ? <AlertTriangle className="h-3.5 w-3.5 text-danger" /> : undefined,
+          icon: <ProfileIcon profile={p} />,
           onSelect: () => void setProfile(p),
         }))}
       />

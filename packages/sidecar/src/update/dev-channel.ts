@@ -50,6 +50,11 @@ export class DevChannelService {
     return state;
   }
 
+  /** After a GitHub login or logout: the next look asks GitHub again, also for a granted access. */
+  forget(): void {
+    this.cached = null;
+  }
+
   /** The channel the update check uses: dev only while the account may use it. */
   async effective(): Promise<UpdateChannel> {
     if (this.d.setting() !== "dev") return "stable";

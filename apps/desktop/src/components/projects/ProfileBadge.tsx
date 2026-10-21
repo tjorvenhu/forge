@@ -11,22 +11,23 @@ export const PROFILE_INFO: Record<ProfileId, { label: string; description: strin
   autonomous: { label: "Autonomous", description: t.projects.profile.autonomous },
 };
 
+const PROFILE_LOOK = {
+  safe: { Icon: ShieldCheck, tone: "success", text: "text-success" },
+  balanced: { Icon: Shield, tone: "warning", text: "text-warning" },
+  autonomous: { Icon: ShieldAlert, tone: "danger", text: "text-danger" },
+} as const satisfies Record<ProfileId, { Icon: typeof Shield; tone: string; text: string }>;
+
+/** The profile's shield in its colour, for menus next to the label. */
+export function ProfileIcon({ profile }: { profile: ProfileId }) {
+  const { Icon, text } = PROFILE_LOOK[profile];
+  return <Icon className={`h-3.5 w-3.5 ${text}`} />;
+}
+
 export function ProfileBadge({ profile }: { profile: ProfileId }) {
-  if (profile === "safe")
-    return (
-      <Badge tone="success">
-        <ShieldCheck className="h-3 w-3" /> Safe
-      </Badge>
-    );
-  if (profile === "autonomous")
-    return (
-      <Badge tone="danger">
-        <ShieldAlert className="h-3 w-3" /> Autonomous
-      </Badge>
-    );
+  const { Icon, tone } = PROFILE_LOOK[profile];
   return (
-    <Badge tone="warning">
-      <Shield className="h-3 w-3" /> Balanced
+    <Badge tone={tone}>
+      <Icon className="h-3 w-3" /> {PROFILE_INFO[profile].label}
     </Badge>
   );
 }

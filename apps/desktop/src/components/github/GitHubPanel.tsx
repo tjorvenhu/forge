@@ -78,6 +78,7 @@ export function GitHubAccountCard() {
             try {
               await call("github.logout", {});
               await qc.invalidateQueries({ queryKey: keys.githubAccount });
+              void qc.invalidateQueries({ queryKey: keys.devChannel });
               qc.removeQueries({ queryKey: keys.githubRepos });
               qc.removeQueries({ queryKey: keys.githubOrgs });
             } catch (e) {

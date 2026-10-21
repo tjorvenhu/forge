@@ -141,6 +141,7 @@ export function createHandlers(s: Services): Handlers {
     "github.cancelLogin": () => s.github.cancelLogin(),
     "github.logout": async () => {
       await s.github.logout();
+      s.devChannel.forget();
       return { ok: true };
     },
     "github.repos": () => s.github.repos(),

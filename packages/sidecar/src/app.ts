@@ -110,7 +110,10 @@ export function createApp(opts: { dataDir: string; write: Writer; log?: (m: stri
     emit,
   });
   sessions.startBackgroundChecks();
-  const github = new GitHubService((payload) => emit({ event: "github.login", payload }));
+  const github = new GitHubService((payload) => {
+    if (payload.phase === "done") devChannel.forget();
+    emit({ event: "github.login", payload });
+  });
   const claudeSetup = new ClaudeSetupService(
     (payload) => {
       // A new or updated Claude Code may bring new models and commands.
