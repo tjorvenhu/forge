@@ -741,6 +741,14 @@ export class SessionService {
     }
   }
 
+  /** Like projectGitChanged: running sessions of the project hear that start_agent is (not) available any more. */
+  projectAgentsChanged(projectId: string, enabled: boolean) {
+    const text = enabled ? tr().core.sessions.agentsOn : tr().core.sessions.agentsOff;
+    for (const id of this.core.live.keys()) {
+      if (this.db.getSession(id)?.projectId === projectId) this.automation.hint(id, text);
+    }
+  }
+
   // ---------- approvals
 
   respondApproval(sessionId: string, requestId: string, decision: "allow" | "deny", scope: "once" | "session", message?: string, answers?: Record<string, string>) {

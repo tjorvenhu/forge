@@ -12,6 +12,7 @@ import { TitleTooltips } from "@/components/ui/title-tooltips";
 import { ErrorBoundary } from "@/components/layout/ErrorBoundary";
 import { NewProjectDialog } from "@/components/projects/NewProjectDialog";
 import { ProjectGroupDialogs } from "@/components/projects/ProjectGroupDialogs";
+import { AgentsOffDialog } from "@/components/projects/AgentsSwitch";
 import { CommandPalette } from "@/components/layout/CommandPalette";
 import { AppUpdateDialog } from "@/components/layout/AppUpdate";
 import { InstallRepairBanner, RELEASES_URL } from "@/components/layout/InstallRepair";
@@ -162,6 +163,7 @@ function Shell() {
       <ContextMenuHost />
       <TemplateHost />
       <ProjectGroupDialogs />
+      <AgentsOffDialog />
     </div>
   );
 }

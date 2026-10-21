@@ -109,6 +109,10 @@ export const sessions = {
   gitOff:
     "Der Nutzer hat Git für dieses Projekt in FORGE ausgeschaltet. Führe ab jetzt keine git-Befehle mehr aus (kein git init, status, add, commit, branch, checkout, push), lege kein Repository an und schlage keine Commits, Branches oder Pull Requests vor. Starte keine parallelen Agenten (start_agent).",
 
+  agentsOn: "Der Nutzer hat parallele Agenten für dieses Projekt in FORGE wieder erlaubt. start_agent gibt es erst in einer neuen Session.",
+  agentsOff:
+    "Der Nutzer hat parallele Agenten für dieses Projekt in FORGE ausgeschaltet. Starte keine Agenten mehr (start_agent lehnt ab) und arbeite Aufgaben nacheinander in dieser Session ab.",
+
   // task-message.ts
   subagent: "Subagent",
   backgroundTask: "Hintergrundaufgabe",

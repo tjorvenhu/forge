@@ -372,6 +372,29 @@ describe("SessionService", () => {
     expect(rt.sentNotes).toHaveLength(1);
   });
 
+  it("offers no start_agent in a project without parallel agents and refuses it once they are switched off", async () => {
+    const repo = projects.get(projectId).path;
+    await initRepo(repo);
+    projects.update(projectId, { agentsEnabled: false });
+    await svc.start({ projectId, prompt: "Baue die Startseite" });
+    expect(rt.started[0]!.tools!.map((t) => t.name)).toEqual(["agent_status", "message_agent", "notify", "usage_status"]);
+    expect(rt.started[0]!.context).toMatch(/Parallele Agenten hat der Nutzer in diesem Projekt ausgeschaltet/);
+    expect(rt.started[0]!.context).not.toMatch(/start_agent:/);
+
+    // Switched off while a session that has start_agent runs: the tool refuses, no worktree is made.
+    projects.update(projectId, { agentsEnabled: true });
+    const s = await svc.start({ projectId, prompt: "Plane den Export" });
+    const start = rt.started[1]!.tools!.find((t) => t.name === "start_agent")!;
+    projects.update(projectId, { agentsEnabled: false });
+    svc.projectAgentsChanged(projectId, false);
+    await expect(start.run({ task: "Baue den CSV-Export in src/export.ts" })).rejects.toThrow(/parallele Agenten ausgeschaltet/);
+    expect(projects.all().filter((p) => p.parentId === projectId)).toHaveLength(0);
+    success(rt.sinks[1]!);
+    await svc.drain();
+    await svc.send(s.id, "weiter");
+    expect(rt.sentNotes.at(-1)).toMatch(/parallele Agenten für dieses Projekt in FORGE ausgeschaltet/);
+  });
+
   it("gives sessions FORGE tools: start parallel agents in worktrees, follow them, notify the user", async () => {
     const repo = projects.get(projectId).path;
     await initRepo(repo);

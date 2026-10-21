@@ -30,8 +30,12 @@ function isClaudeConfigFile(rel: string): boolean {
 }
 
 // Backups from before projects without git lack gitEnabled; those projects all used git.
-// Backups from before project groups lack group.
-const ProjectEntry = Project.omit({ exists: true }).extend({ gitEnabled: z.boolean().default(true), group: z.string().nullable().default(null) });
+// Backups from before project groups lack group, those from before the agents switch lack agentsEnabled.
+const ProjectEntry = Project.omit({ exists: true }).extend({
+  gitEnabled: z.boolean().default(true),
+  group: z.string().nullable().default(null),
+  agentsEnabled: z.boolean().default(true),
+});
 
 const BackupData = z.object({
   format: z.literal("forge-backup"),

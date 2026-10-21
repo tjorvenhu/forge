@@ -1535,6 +1535,7 @@ export class PhoneService {
         p.testCommand ? m.testCommand(asData(p.testCommand)) : m.noTestCommand,
         p.devCommand ? m.devCommand(asData(p.devCommand)) : m.devDetected,
         p.gitEnabled ? m.withGit : m.withoutGit,
+        ...(p.parentId || p.agentsEnabled ? [] : [m.withoutAgents]),
         ...(p.group ? [m.group(p.group)] : []),
       ].join(", ");
     };
@@ -1721,6 +1722,7 @@ export class PhoneService {
           const model = o?.model?.trim() || undefined;
           const effort = o?.effort;
           if (o?.agent && !found.gitEnabled) return m.agentNeedsGit(gitOff(found));
+          if (o?.agent && !(found.parentId ? this.d.projects.get(found.parentId) : found).agentsEnabled) return m.agentsOff(found.name);
           if (!o?.agent) {
             const s = await sessions.start({ projectId: found.id, prompt, model, effort, planOnly: o?.planOnly });
             a.focus = s.id;
@@ -2534,11 +2536,13 @@ export class PhoneService {
             ...(o?.testCommand !== undefined ? { testCommand: o.testCommand.trim() || null } : {}),
             ...(o?.devCommand !== undefined ? { devCommand: o.devCommand.trim() || null } : {}),
             ...(o?.git !== undefined ? { gitEnabled: o.git } : {}),
+            ...(o?.agents !== undefined ? { agentsEnabled: o.agents } : {}),
           };
           if (!Object.keys(patch).length) return pj.settings(p.name, projectText(p));
           const next = await call("projects.update", { projectId: p.id, ...patch });
           projectChanged(p.id);
-          return pj.saved(next.name, projectText(next));
+          const saved = pj.saved(next.name, projectText(next));
+          return p.agentsEnabled && !next.agentsEnabled ? `${saved} ${pj.agentsOffWarning}` : saved;
         }),
       files: (projectName, action, o) =>
         run(true, async () => {

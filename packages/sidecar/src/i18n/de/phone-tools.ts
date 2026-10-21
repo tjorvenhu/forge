@@ -22,7 +22,7 @@ export const phoneTools = {
       model: "nur wenn der Anrufer ein Modell nennt: opus, sonnet oder haiku",
       effort: "Denkaufwand, nur wenn der Anrufer ihn nennt",
       plan_only: "true, wenn Claude erst einen Plan machen soll",
-      agent: "true, wenn die Aufgabe parallel als eigener Agent laufen soll (eigener Worktree und Branch ab dem letzten Commit des genannten Projekts oder Worktrees)",
+      agent: "true, wenn die Aufgabe parallel als eigener Agent laufen soll (eigener Worktree und Branch ab dem letzten Commit des genannten Projekts oder Worktrees); nicht in Projekten, in denen parallele Agenten ausgeschaltet sind",
       with_changes: "nur mit agent: true, wenn der Agent auch den noch nicht committeten Stand des Projekts bekommen soll",
     },
   },
@@ -162,13 +162,15 @@ export const phoneTools = {
     description: "Liste der Projekte mit Gruppe, Git-Branch und ob ein Dev-Server läuft.",
   },
   project: {
-    description: "Projekte verwalten. info: Profil, Standardmodell, Denkaufwand, Test- und Dev-Befehl, Favorit, ob mit Git. create: neues Projekt name anlegen (in path oder im Projektordner aus den Einstellungen), auf Wunsch gleich mit GitHub-Repository (auch in einer Organisation) oder ganz ohne Git. import: vorhandenen Ordner path aufnehmen, mit oder ohne Git, auf Wunsch gleich mit GitHub-Repository. clone: Repository url klonen, auch per Name eines GitHub-Repositorys des Kontos. remove: Projekt aus FORGE entfernen; Ordner und GitHub-Repository nur mit delete_folder oder delete_github_repo. rename: neuer name. favorite: als Favorit markieren oder nicht. group: Projekt in die Gruppe group einordnen (z. B. nach Kunde), ohne group aus seiner Gruppe nehmen. rename_group: Gruppe group in name umbenennen, für alle ihre Projekte. dissolve_group: Gruppe group auflösen, die Projekte bleiben. settings: Profil, Standardmodell, Denkaufwand, Test- und Dev-Befehl setzen und Git ein- oder ausschalten; nur angeben, was sich ändern soll.",
+    description: "Projekte verwalten. info: Profil, Standardmodell, Denkaufwand, Test- und Dev-Befehl, Favorit, ob mit Git und ob parallele Agenten erlaubt sind. create: neues Projekt name anlegen (in path oder im Projektordner aus den Einstellungen), auf Wunsch gleich mit GitHub-Repository (auch in einer Organisation) oder ganz ohne Git. import: vorhandenen Ordner path aufnehmen, mit oder ohne Git, auf Wunsch gleich mit GitHub-Repository. clone: Repository url klonen, auch per Name eines GitHub-Repositorys des Kontos. remove: Projekt aus FORGE entfernen; Ordner und GitHub-Repository nur mit delete_folder oder delete_github_repo. rename: neuer name. favorite: als Favorit markieren oder nicht. group: Projekt in die Gruppe group einordnen (z. B. nach Kunde), ohne group aus seiner Gruppe nehmen. rename_group: Gruppe group in name umbenennen, für alle ihre Projekte. dissolve_group: Gruppe group auflösen, die Projekte bleiben. settings: Profil, Standardmodell, Denkaufwand, Test- und Dev-Befehl setzen, Git ein- oder ausschalten und parallele Agenten erlauben oder ausschalten; nur angeben, was sich ändern soll.",
     params: {
       project: "Projektname oder Teil davon; nicht bei create, import und clone",
       name: "create: Name des neuen Projekts; rename: neuer Name; rename_group: neuer Name der Gruppe; clone: Ordnername",
       path: "import: der Ordner; create und clone: Ordner, in dem das Projekt angelegt wird, nur wenn der Anrufer einen nennt",
       url: "clone: Git-URL oder Name eines GitHub-Repositorys",
       git: "create und import: false richtet das Projekt ganz ohne Git ein (keine Git-Bereiche, keine Agenten, Claude nutzt kein Git), ein Ordner mit .git wird aber immer mit Git aufgenommen; settings: true schaltet Git ein, false aus",
+      agents:
+        "settings: false schaltet parallele Agenten für das Projekt aus, true erlaubt sie wieder. Vor dem Ausschalten dem Anrufer sagen, dass Claude dann weniger effizient arbeitet: Aufgaben laufen nacheinander statt gleichzeitig",
       github: "create und import: auch ein GitHub-Repository anlegen, privat oder öffentlich",
       owner: "create und import mit github: GitHub-Organisation, in der das Repository entsteht; ohne: persönliches Konto",
       delete_folder: "remove: true löscht auch den Ordner; nur wenn der Anrufer das ausdrücklich will, er muss es danach über die Tastatur bestätigen",

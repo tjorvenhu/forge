@@ -24,7 +24,7 @@ export const phoneTools: typeof De = {
       model: "only if the caller names a model: opus, sonnet or haiku",
       effort: "Thinking effort, only if the caller names it",
       plan_only: "true if Claude should make a plan first",
-      agent: "true if the task should run in parallel as its own agent (own worktree and branch from the last commit of the named project or worktree)",
+      agent: "true if the task should run in parallel as its own agent (own worktree and branch from the last commit of the named project or worktree); not in projects where parallel agents are switched off",
       with_changes: "only with agent: true if the agent should also get the uncommitted state of the project",
     },
   },
@@ -179,13 +179,15 @@ export const phoneTools: typeof De = {
   },
   project: {
     description:
-      "Manages projects. info: profile, default model, thinking effort, test and dev command, favorite, whether with Git. create: create a new project name (in path or in the projects folder from the settings), optionally with a GitHub repository right away (also in an organization) or without Git at all. import: add an existing folder path, with or without Git, optionally with a GitHub repository right away. clone: clone repository url, also by the name of a GitHub repository of the account. remove: remove the project from FORGE; folder and GitHub repository only with delete_folder or delete_github_repo. rename: new name. favorite: mark as favorite or not. group: put the project into the group group (for example by client), without group take it out of its group. rename_group: rename group group to name, for all its projects. dissolve_group: dissolve group group, the projects stay. settings: set profile, default model, thinking effort, test and dev command and switch Git on or off; only give what should change.",
+      "Manages projects. info: profile, default model, thinking effort, test and dev command, favorite, whether with Git and whether parallel agents are allowed. create: create a new project name (in path or in the projects folder from the settings), optionally with a GitHub repository right away (also in an organization) or without Git at all. import: add an existing folder path, with or without Git, optionally with a GitHub repository right away. clone: clone repository url, also by the name of a GitHub repository of the account. remove: remove the project from FORGE; folder and GitHub repository only with delete_folder or delete_github_repo. rename: new name. favorite: mark as favorite or not. group: put the project into the group group (for example by client), without group take it out of its group. rename_group: rename group group to name, for all its projects. dissolve_group: dissolve group group, the projects stay. settings: set profile, default model, thinking effort, test and dev command, switch Git on or off and allow or switch off parallel agents; only give what should change.",
     params: {
       project: "Project name or part of it; not for create, import and clone",
       name: "create: name of the new project; rename: the new name; rename_group: new name of the group; clone: folder name",
       path: "import: the folder; create and clone: the folder the project is created in, only if the caller names one",
       url: "clone: Git URL or name of a GitHub repository",
       git: "create and import: false sets the project up without Git at all (no Git areas, no agents, Claude does not use Git), but a folder with .git is always added with Git; settings: true switches Git on, false off",
+      agents:
+        "settings: false switches parallel agents off for the project, true allows them again. Before switching off, tell the caller that Claude then works less efficiently: tasks run one after another instead of at the same time",
       github: "create and import: also create a GitHub repository, private or public",
       owner: "create and import with github: GitHub organization the repository is created in; without: personal account",
       delete_folder: "remove: true also deletes the folder; only if the caller explicitly wants it, they have to confirm it on the keypad afterwards",

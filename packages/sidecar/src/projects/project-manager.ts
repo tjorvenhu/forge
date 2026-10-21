@@ -73,6 +73,13 @@ export class ProjectManager {
     return p;
   }
 
+  /** Same as requireGit() but also fails when the user switched off parallel agents for the project. */
+  requireAgents(id: string): Project {
+    const p = this.requireGit(id);
+    if (!p.agentsEnabled) throw new ForgeError("AGENTS_DISABLED", tr().system.projects.agentsDisabled(p.name));
+    return p;
+  }
+
   /** Same as get() but fails if the folder vanished. */
   requireExisting(id: string): Project {
     const p = this.get(id);
@@ -152,6 +159,7 @@ export class ProjectManager {
       devCommand: null,
       parentId,
       gitEnabled,
+      agentsEnabled: true,
     };
     this.db.insertProject(rec, key);
     return this.withExists(rec);
@@ -187,7 +195,7 @@ export class ProjectManager {
 
   update(
     id: string,
-    patch: Partial<Pick<ProjectRecord, "name" | "favorite" | "group" | "tags" | "profile" | "defaultModel" | "defaultEffort" | "testCommand" | "devCommand" | "gitEnabled">>,
+    patch: Partial<Pick<ProjectRecord, "name" | "favorite" | "group" | "tags" | "profile" | "defaultModel" | "defaultEffort" | "testCommand" | "devCommand" | "gitEnabled" | "agentsEnabled">>,
   ): Project {
     const cur = this.get(id);
     if (patch.group) patch = { ...patch, group: this.groupSpelling(patch.group, id) };
@@ -197,6 +205,7 @@ export class ProjectManager {
         throw new ForgeError("CONFLICT", tr().system.projects.agentsBeforeGitOff);
       }
     }
+    if (patch.agentsEnabled !== undefined && cur.parentId) throw new ForgeError("CONFLICT", tr().system.projects.worktreeAgents);
     const sandboxOnly = (patch.tags ?? cur.tags).includes(SANDBOX_ONLY_TAG);
     if (patch.profile === "autonomous" && sandboxOnly) {
       throw new ForgeError("POLICY_DENIED", tr().system.projects.sandboxOnly);

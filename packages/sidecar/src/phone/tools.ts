@@ -96,6 +96,8 @@ export interface ProjectOptions extends TargetOptions {
   url?: string;
   /** create and import: false sets the project up without git; settings: switches git on or off */
   git?: boolean;
+  /** settings: false switches parallel agents off for the project, true allows them again */
+  agents?: boolean;
   /** create and import: also a GitHub repository */
   github?: "private" | "public";
   /** create and import with github: GitHub organisation instead of the personal account, as spoken */
@@ -701,6 +703,7 @@ const TOOL_DEFS: readonly ToolDef[] = [
       path: { type: "string", optional: true },
       url: { type: "string", optional: true },
       git: { type: "boolean", optional: true },
+      agents: { type: "boolean", optional: true },
       github: { type: "string", optional: true, enum: ["private", "public"] },
       owner: { type: "string", optional: true },
       delete_folder: { type: "boolean", optional: true },
@@ -720,6 +723,7 @@ const TOOL_DEFS: readonly ToolDef[] = [
         path: opt(a.path),
         url: opt(a.url),
         git: optBool(a.git),
+        agents: optBool(a.agents),
         github: a.github === "private" || a.github === "public" ? a.github : undefined,
         owner: opt(a.owner),
         deleteFolder: optBool(a.delete_folder),

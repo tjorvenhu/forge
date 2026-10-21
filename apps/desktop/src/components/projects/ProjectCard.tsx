@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import { DropdownMenu } from "@/components/ui/dropdown";
 import { ProjectIcon } from "./ProjectIcon";
 import { setProjectGroup } from "./ProjectGroupDialogs";
+import { switchProjectAgents } from "./AgentsSwitch";
 import { startProjectDrag, useProjectDrag } from "./project-drag";
 import { PROFILE_INFO } from "./ProfileBadge";
 import { tagLabel } from "@/components/workspace/ProjectSettingsTab";
@@ -69,6 +70,9 @@ export function ProjectCard({
         ...(p.exists ? [{ label: t.projects.card.applyTemplate, icon: <FileStack className="h-3.5 w-3.5" />, onSelect: () => useTemplateDialogs.getState().openApply({ projectId: p.id }) }] : []),
         { label: p.favorite ? t.projects.card.removeFavorite : t.projects.card.addFavorite, icon: <Star className="h-3.5 w-3.5" />, onSelect: () => void toggleFavorite() },
         ...groupItems,
+        ...(!p.parentId && p.gitEnabled
+          ? [{ label: p.agentsEnabled ? t.projects.agents.menuOff : t.projects.agents.menuOn, icon: <Bot className="h-3.5 w-3.5" />, onSelect: () => switchProjectAgents(qc, p, !p.agentsEnabled) }]
+          : []),
         {
           label: t.projects.card.projectSettings,
           icon: <Settings2 className="h-3.5 w-3.5" />,

@@ -96,6 +96,7 @@ export const system: typeof De = {
   },
   projects: {
     notFound: "Project not found.",
+    agentsDisabled: (name) => `Parallel agents are switched off in ${name}. You can allow them again in the project settings.`,
     gitDisabled: (name) => `${name} is set up without Git. You can turn Git on in the project settings.`,
     folderGone: (path) => `Project folder no longer exists: ${path}`,
     folderNotFound: (path) => `Folder not found: ${path}`,
@@ -104,6 +105,7 @@ export const system: typeof De = {
     duplicateNamed: (name) => `Project already exists: ${name}`,
     folderExists: (path) => `Folder already exists: ${path}`,
     duplicate: "Project already exists.",
+    worktreeAgents: "Parallel agents are allowed or switched off in the main project, not in an agent worktree.",
     worktreeNeedsGit: "An agent worktree always works with Git.",
     groupNotFound: (name) => `There is no group ${name}.`,
     agentsBeforeGitOff: "The project still has agents. Finish the agents first, then turn Git off.",

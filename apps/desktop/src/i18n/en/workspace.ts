@@ -60,6 +60,8 @@ export const workspace: typeof De = {
     rootMissing: "The main project of this worktree is no longer in FORGE.",
     folderMissing: "The project folder is missing.",
     needsGit: "Parallel agents need a Git repository.",
+    agentsOff: "Parallel agents are switched off in this project.",
+    agentsOffLink: "Go to setting",
     removedBranchKept: "Worktree removed, branch not deleted",
     removedWithBranch: "Worktree and branch deleted",
     removed: "Worktree removed",

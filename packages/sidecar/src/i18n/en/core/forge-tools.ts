@@ -131,6 +131,8 @@ export const forgeTools: typeof De = {
   noAgentsInProject: "There are no agents in this project.",
   startAgentDescription:
     "Starts a parallel agent (its own Claude Code session) in a new Git worktree on its own branch. For independent subtasks that can run at the same time. The agent doesn't see this chat: the task must be understandable on its own. Its branch starts at the last commit of your current branch. It only sees uncommitted changes with with_changes=true: then its branch starts with a commit of that state (without .env, keys and build output); your folder stays unchanged.",
+  agentsOffRefused:
+    "The user switched off parallel agents in this project. No agent was started. Do the task yourself in this session, one after another.",
   startAgentTask: "Complete task with all the context needed",
   startAgentName: "Short name for the branch, e.g. csv-export",
   startAgentWithChanges: "true: the agent also gets the uncommitted state of your folder",
@@ -158,6 +160,8 @@ export const forgeTools: typeof De = {
   intro: "You are running in FORGE, a desktop interface for Claude Code. Besides your own tools there are FORGE tools (mcp__forge__…):",
   startAgentLine:
     "- start_agent: starts a parallel agent in its own Git worktree on its own branch. Only for subtasks that are truly independent and can run at the same time; the task must be understandable on its own. The agent starts at the last commit of your branch; it only gets your uncommitted state with with_changes=true.",
+  agentsOffLine:
+    "- The user switched off parallel agents in this project: no start_agent, and no subagents with worktree isolation either. Work through tasks one after another in this session, independent subtasks included.",
   agentStatusLine: "- agent_status and message_agent: track and guide agents. Their work is on their branches.",
   finishAgentLine: (autoMerge) =>
     `- finish_agent: merge (merge) or discard (discard) an agent of the project, also someone else's; afterwards session, worktree, FORGE entry and branch are gone. Only after checking with the user. ${

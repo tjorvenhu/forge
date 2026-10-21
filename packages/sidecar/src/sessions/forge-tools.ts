@@ -422,6 +422,11 @@ export function forgeSessionTools(rec: SessionRecord, d: ForgeToolDeps): { tools
     };
   }
 
+  const rootId = project.parentId ?? project.id;
+  // Switched off by the user: Claude is not offered start_agent at all; switched off later, start_agent refuses.
+  const agentsOn = () => d.projects.all().find((p) => p.id === rootId)?.agentsEnabled !== false;
+  const offerAgents = agentsOn();
+
   const resolveChild = (ref: string) => {
     const q = ref.trim().toLowerCase();
     const children = d.agents.children(sessionId);
@@ -432,7 +437,6 @@ export function forgeSessionTools(rec: SessionRecord, d: ForgeToolDeps): { tools
 
   /** Agent worktrees of this project the session did not start: from the Agents tab, the phone or other sessions. */
   const otherAgents = () => {
-    const rootId = project.parentId ?? project.id;
     const mine = new Set(d.agents.children(sessionId).map((c) => d.db.getSession(c)?.projectId));
     return d.projects.all().filter((p) => p.parentId === rootId && p.id !== project.id && !mine.has(p.id));
   };
@@ -468,6 +472,7 @@ export function forgeSessionTools(rec: SessionRecord, d: ForgeToolDeps): { tools
     },
     autoAllow: false,
     run: async (a) => {
+      if (!agentsOn()) throw new Error(m.agentsOffRefused);
       const root = project.parentId ? d.projects.get(project.parentId) : project;
       const task = String(a.task);
       const branch = `agent/${slugify(typeof a.name === "string" && a.name.trim() ? a.name : task, 32)}-${Date.now().toString(36).slice(-4)}`;
@@ -560,10 +565,10 @@ export function forgeSessionTools(rec: SessionRecord, d: ForgeToolDeps): { tools
     : null;
 
   return {
-    tools: [startAgent, agentStatus, messageAgent, ...(finishAgent ? [finishAgent] : []), ...common, ...own.tools],
+    tools: [...(offerAgents ? [startAgent] : []), agentStatus, messageAgent, ...(finishAgent ? [finishAgent] : []), ...common, ...own.tools],
     context: [
       m.intro,
-      m.startAgentLine,
+      offerAgents ? m.startAgentLine : m.agentsOffLine,
       m.agentStatusLine,
       finisher ? m.finishAgentLine(autoMerge) : "",
       autoMergeLine,

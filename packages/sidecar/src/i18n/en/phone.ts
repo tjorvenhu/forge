@@ -378,6 +378,8 @@ Security:
     sent: (ref: string) => `Sent to ${ref}. Claude is working on it.`,
     emptyPrompt: "Error: The task is empty.",
     agentNeedsGit: (gitOff: string) => `${gitOff} Without git there are no parallel agents, only a regular session.`,
+    agentsOff: (name: string) =>
+      `Error: Parallel agents are switched off in ${name}. They can be allowed again with the tool project, action settings, agents true. Otherwise only a regular session is possible.`,
     started: (ref: string, project: string) => `Started new session ${ref} in project ${project}.`,
     agentStarted: (ref: string, project: string, warning: string | null) =>
       `Started agent ${ref} in project ${project}, in its own worktree on its own branch.${warning ? ` Note: ${warning}` : ""}`,
@@ -682,6 +684,8 @@ Security:
     devDetected: "dev command is detected",
     withGit: "with git",
     withoutGit: "without git",
+    withoutAgents: "without parallel agents",
+    agentsOffWarning: "Claude now works less efficiently there: tasks run one after another instead of at the same time.",
     group: (g: string) => `group ${g}`,
     grouped: (name: string, group: string) => `${name} is now in the group ${group}.`,
     ungrouped: (name: string) => `${name} is no longer in a group.`,

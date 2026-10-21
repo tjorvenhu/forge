@@ -15,6 +15,7 @@ import { Badge } from "@/components/ui/misc";
 import { Select } from "@/components/ui/select";
 import { PROFILE_IDS, PROFILE_INFO } from "@/components/projects/ProfileBadge";
 import { RemoveProjectDialog } from "@/components/projects/RemoveProjectDialog";
+import { switchProjectAgents } from "@/components/projects/AgentsSwitch";
 import { MemoryEditor } from "@/components/settings/MemoryEditor";
 import { Group, Row, SettingsLayout, SwitchRow, type SettingsSectionDef } from "@/components/settings/layout";
 import { effortOptions, fromChoice, modelOptions, toChoice } from "@/components/settings/model-options";
@@ -109,6 +110,7 @@ export function ProjectSettingsTab({ project }: { project: Project }) {
 type SectionProps = { project: Project; update: (patch: Patch) => Promise<void> };
 
 function GeneralSection({ project, update }: SectionProps) {
+  const qc = useQueryClient();
   const settings = useSettings();
   const runtime = useRuntimeInfo();
   return (
@@ -163,6 +165,17 @@ function GeneralSection({ project, update }: SectionProps) {
             }
             checked={project.gitEnabled}
             onChange={(on) => void update({ gitEnabled: on })}
+          />
+        </Group>
+      )}
+
+      {!project.parentId && project.gitEnabled && (
+        <Group title={t.projects.agents.title}>
+          <SwitchRow
+            label={t.projects.agents.switchLabel}
+            description={project.agentsEnabled ? t.projects.agents.allowedDescription : t.projects.agents.offDescription}
+            checked={!project.agentsEnabled}
+            onChange={(off) => switchProjectAgents(qc, project, !off)}
           />
         </Group>
       )}

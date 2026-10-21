@@ -95,6 +95,7 @@ export const system = {
   },
   projects: {
     notFound: "Projekt nicht gefunden.",
+    agentsDisabled: (name: string) => `In ${name} sind parallele Agenten ausgeschaltet. Sie lassen sich in den Projekt-Einstellungen wieder erlauben.`,
     gitDisabled: (name: string) => `${name} ist ohne Git eingerichtet. Git lässt sich in den Projekt-Einstellungen einschalten.`,
     folderGone: (path: string) => `Projektordner existiert nicht mehr: ${path}`,
     folderNotFound: (path: string) => `Ordner nicht gefunden: ${path}`,
@@ -103,6 +104,7 @@ export const system = {
     duplicateNamed: (name: string) => `Projekt ist bereits vorhanden: ${name}`,
     folderExists: (path: string) => `Ordner existiert bereits: ${path}`,
     duplicate: "Projekt ist bereits vorhanden.",
+    worktreeAgents: "Parallele Agenten werden im Hauptprojekt erlaubt oder ausgeschaltet, nicht im Agent-Worktree.",
     worktreeNeedsGit: "Ein Agent-Worktree arbeitet immer mit Git.",
     groupNotFound: (name: string) => `Es gibt keine Gruppe ${name}.`,
     agentsBeforeGitOff: "Das Projekt hat noch Agenten. Erst die Agenten abschließen, dann Git ausschalten.",

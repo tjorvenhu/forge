@@ -50,7 +50,15 @@ export function AgentsTab({ project }: { project: ProjectWithStatus }) {
         ? t.workspace.agents.folderMissing
         : !root.git
           ? t.workspace.agents.needsGit
-          : null;
+          : !root.agentsEnabled
+            ? t.workspace.agents.agentsOff
+            : null;
+  // The switch lives in the settings of the main project, also when the tab is open in one of its worktrees.
+  const openAgentsSetting = () => {
+    if (!root) return;
+    if (root.id !== project.id) openProject(root.id);
+    useUi.getState().openProjectSettings("general");
+  };
 
   const remove = async () => {
     if (!removing) return;
@@ -101,7 +109,19 @@ export function AgentsTab({ project }: { project: ProjectWithStatus }) {
               </>
             )}
           </p>
-          {blocker && <p className="mb-3 text-xs text-warning">{blocker}</p>}
+          {blocker && (
+            <p className="mb-3 text-xs text-warning">
+              {blocker}
+              {root && !root.agentsEnabled && root.git && (
+                <>
+                  {" "}
+                  <button className="text-accent underline" onClick={openAgentsSetting}>
+                    {t.workspace.agents.agentsOffLink}
+                  </button>
+                </>
+              )}
+            </p>
+          )}
           {projects.isLoading && <WorktreeGridSkeleton />}
           {projects.isError && <ErrorBanner title={t.workspace.agents.notLoaded}>{errorMessage(projects.error)}</ErrorBanner>}
           {projects.isSuccess && worktrees.length === 0 && (

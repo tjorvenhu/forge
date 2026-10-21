@@ -182,7 +182,7 @@ export function createHandlers(s: Services): Handlers {
     "plugins.uninstall": ({ id }) => s.plugins.uninstall(id),
     "plugins.setEnabled": ({ id, enabled }) => s.plugins.setEnabled(id, enabled),
 
-    "worktrees.create": ({ projectId, branch }) => s.worktrees.create(s.projects.requireGit(projectId), branch),
+    "worktrees.create": ({ projectId, branch }) => s.worktrees.create(s.projects.requireAgents(projectId), branch),
     "worktrees.remove": async ({ projectId, force, deleteBranch }) => {
       const r = await removeWorktree(projectId, force, s, { deleteBranch });
       return { ok: true, ...r };
@@ -231,6 +231,7 @@ export function createHandlers(s: Services): Handlers {
       const project = s.projects.update(projectId, patch);
       if (project.profile !== before.profile) await s.sessions.applyProjectProfile(projectId);
       if (project.gitEnabled !== before.gitEnabled) s.sessions.projectGitChanged(projectId, project.gitEnabled);
+      if (project.agentsEnabled !== before.agentsEnabled) s.sessions.projectAgentsChanged(projectId, project.agentsEnabled);
       return project;
     },
     "projects.renameGroup": ({ from, to }) => ({ count: s.projects.renameGroup(from, to) }),

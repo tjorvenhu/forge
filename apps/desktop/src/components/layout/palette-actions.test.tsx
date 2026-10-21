@@ -23,6 +23,7 @@ const project = {
   path: "C:/forge",
   parentId: null,
   gitEnabled: true,
+  agentsEnabled: true,
   group: null,
   exists: true,
   profile: "balanced",
@@ -132,7 +133,7 @@ describe("command palette covers all of FORGE", () => {
   });
 
   it("offers the actions of the open project and session", () => {
-    for (const id of ["chat-find", "session-delete", "session-summary", "session-fork", "session-close", "session-mode", "session-model-opus", "git-commit", "git-push", "git-pull", "git-fetch", "git-pr", "git-new-branch", "agent-new", "remote", "phone", "phone-test", "backup", "update-check", "update-install", "install-check", "install-full", "install-file", "testdb-start", "dev-start", "project-git"]) {
+    for (const id of ["chat-find", "session-delete", "session-summary", "session-fork", "session-close", "session-mode", "session-model-opus", "git-commit", "git-push", "git-pull", "git-fetch", "git-pr", "git-new-branch", "agent-new", "remote", "phone", "phone-test", "backup", "update-check", "update-install", "install-check", "install-full", "install-file", "testdb-start", "dev-start", "project-git", "project-agents"]) {
       expect(ids, id).toContain(id);
     }
   });
@@ -145,6 +146,23 @@ describe("command palette covers all of FORGE", () => {
     expect(got).toContain("tag-auto-test");
     expect(list.find((e) => e.id === "tab-files")?.hint).toBe("Strg+2");
     expect(list.find((e) => e.id === "project-git")?.label).toBe("Git für dieses Projekt einschalten");
+  });
+
+  it("offers no new agent when the project switched them off, and switching off asks first", async () => {
+    const { useAgentsSwitch } = await import("@/stores/agents-switch");
+    const allowed = buildActions(fullContext()).find((e) => e.id === "project-agents")!;
+    expect(allowed.label).toBe("Parallele Agenten ausschalten");
+    allowed.run();
+    expect(useAgentsSwitch.getState().confirm).toEqual({ id: "p1", name: "Forge" });
+    useAgentsSwitch.getState().close();
+
+    const off = { ...project, agentsEnabled: false } as ProjectWithStatus;
+    const list = buildActions({ ...fullContext(), project: off, root: off });
+    expect(list.map((e) => e.id)).not.toContain("agent-new");
+    expect(list.find((e) => e.id === "project-agents")?.label).toBe("Parallele Agenten erlauben");
+    // A worktree asks its main project.
+    const wt = { ...project, id: "wt", parentId: "p1" } as ProjectWithStatus;
+    expect(buildActions({ ...fullContext(), project: wt, root: off }).find((e) => e.id === "project-agents")?.label).toBe("Parallele Agenten erlauben");
   });
 
   it("offers the chat window of the shown session: open, take back, pin one by one", () => {

@@ -101,6 +101,26 @@ describe("ProjectManager", () => {
     expect(() => pm.update(p.id, { gitEnabled: false })).toThrow(/Agenten abschließen/);
   });
 
+  it("switches parallel agents off for main projects only and refuses agent worktrees then", async () => {
+    const dir = path.join(t.dir, "ohne-agenten");
+    mkdirSync(dir);
+    const p = await pm.import(dir);
+    expect(p.agentsEnabled).toBe(true);
+    expect(pm.requireAgents(p.id).id).toBe(p.id);
+    expect(pm.update(p.id, { agentsEnabled: false }).agentsEnabled).toBe(false);
+    expect(() => pm.requireAgents(p.id)).toThrow(expect.objectContaining({ code: "AGENTS_DISABLED" }));
+    // Survives a restart.
+    db.close();
+    db = new Db(path.join(t.dir, "..", "forge.db"));
+    pm = new ProjectManager(db, engine, () => "balanced");
+    expect(pm.get(p.id).agentsEnabled).toBe(false);
+
+    const wtDir = path.join(t.dir, "ohne-agenten-wt");
+    mkdirSync(wtDir);
+    const wt = await pm.import(wtDir, p.id);
+    expect(() => pm.update(wt.id, { agentsEnabled: true })).toThrow(/Hauptprojekt/);
+  });
+
   it("marks deleted project folders and blocks file access", async () => {
     const dir = path.join(t.dir, "gone");
     mkdirSync(dir);

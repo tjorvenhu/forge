@@ -145,6 +145,8 @@ export const forgeTools = {
   // start_agent
   startAgentDescription:
     "Startet einen parallelen Agenten (eigene Claude-Code-Session) in einem neuen Git-Worktree auf eigenem Branch. Für unabhängige Teilaufgaben, die gleichzeitig laufen können. Der Agent sieht diesen Chat nicht: Der Auftrag muss für sich allein verständlich sein. Sein Branch beginnt beim letzten Commit deines aktuellen Branches. Nicht committete Änderungen sieht er nur mit with_changes=true: Dann beginnt sein Branch mit einem Commit dieses Stands (ohne .env, Schlüssel und Build-Ausgaben); dein Ordner bleibt unverändert.",
+  agentsOffRefused:
+    "In diesem Projekt hat der Nutzer parallele Agenten ausgeschaltet. Es wurde kein Agent gestartet. Erledige die Aufgabe selbst in dieser Session, eine nach der anderen.",
   startAgentTask: "Vollständiger Auftrag mit allem nötigen Kontext",
   startAgentName: "Kurzer Name für den Branch, z. B. csv-export",
   startAgentWithChanges: "true: der Agent bekommt auch den nicht committeten Stand deines Ordners",
@@ -178,6 +180,8 @@ export const forgeTools = {
   intro: "Du läufst in FORGE, einer Desktop-Oberfläche für Claude Code. Neben deinen Werkzeugen gibt es FORGE-Werkzeuge (mcp__forge__…):",
   startAgentLine:
     "- start_agent: startet einen parallelen Agenten in einem eigenen Git-Worktree auf eigenem Branch. Nur für Teilaufgaben, die wirklich unabhängig und gleichzeitig laufen können; der Auftrag muss für sich allein verständlich sein. Der Agent startet beim letzten Commit deines Branches; deinen nicht committeten Stand bekommt er nur mit with_changes=true.",
+  agentsOffLine:
+    "- Parallele Agenten hat der Nutzer in diesem Projekt ausgeschaltet: kein start_agent, auch keine Subagenten mit Worktree-Isolation. Arbeite Aufgaben nacheinander in dieser Session ab, auch unabhängige Teilaufgaben.",
   agentStatusLine: "- agent_status und message_agent: Agenten verfolgen und anleiten. Ihre Arbeit liegt auf ihren Branches.",
   finishAgentLine: (autoMerge: boolean) =>
     `- finish_agent: einen Agenten des Projekts zusammenführen (merge) oder verwerfen (discard), auch einen fremden; danach sind Session, Worktree, FORGE-Eintrag und Branch weg. Nur nach Rücksprache mit dem Nutzer. ${

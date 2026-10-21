@@ -379,6 +379,8 @@ Sicherheit:
     sent: (ref: string) => `An ${ref} gesendet. Claude arbeitet daran.`,
     emptyPrompt: "Fehler: Der Auftrag ist leer.",
     agentNeedsGit: (gitOff: string) => `${gitOff} Ohne Git gibt es keine parallelen Agenten, nur eine normale Session.`,
+    agentsOff: (name: string) =>
+      `Fehler: In ${name} sind parallele Agenten ausgeschaltet. Sie lassen sich mit dem Werkzeug project, action settings, agents true wieder erlauben. Sonst geht nur eine normale Session.`,
     started: (ref: string, project: string) => `Neue Session ${ref} im Projekt ${project} gestartet.`,
     agentStarted: (ref: string, project: string, warning: string | null) =>
       `Agent ${ref} im Projekt ${project} gestartet, in einem eigenen Worktree auf eigenem Branch.${warning ? ` Hinweis: ${warning}` : ""}`,
@@ -683,6 +685,8 @@ Sicherheit:
     devDetected: "Dev-Befehl wird erkannt",
     withGit: "mit Git",
     withoutGit: "ohne Git",
+    withoutAgents: "ohne parallele Agenten",
+    agentsOffWarning: "Claude arbeitet dort jetzt weniger effizient: Aufgaben laufen nacheinander statt gleichzeitig.",
     group: (g: string) => `Gruppe ${g}`,
     grouped: (name: string, group: string) => `${name} ist jetzt in der Gruppe ${group}.`,
     ungrouped: (name: string) => `${name} ist in keiner Gruppe mehr.`,

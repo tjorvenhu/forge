@@ -343,6 +343,10 @@ export const MIGRATIONS: string[] = [
   `
   ALTER TABLE prompt_templates ADD COLUMN learned INTEGER NOT NULL DEFAULT 0;
   `,
+  // Projects without parallel agents: no worktrees, and start_agent is not offered to Claude.
+  `
+  ALTER TABLE projects ADD COLUMN agents_enabled INTEGER NOT NULL DEFAULT 1;
+  `,
   // English became the default language with 0.1.97; installations from before were used in German and stay so.
   `
   INSERT INTO settings(key, value)
@@ -480,6 +484,7 @@ interface ProjectRow {
   dev_command: string | null;
   parent_id: string | null;
   git_enabled: number;
+  agents_enabled: number;
 }
 
 interface SessionRow {
@@ -675,6 +680,7 @@ function toProject(r: ProjectRow): ProjectRecord {
     devCommand: r.dev_command,
     parentId: r.parent_id,
     gitEnabled: r.git_enabled !== 0,
+    agentsEnabled: r.agents_enabled !== 0,
   };
 }
 
@@ -854,8 +860,8 @@ export class Db {
   insertProject(p: ProjectRecord, pathKey: string, restored = false) {
     this.sql
       .prepare(
-        `INSERT INTO projects(id, name, path, path_key, favorite, tags, technologies, profile, default_model, default_effort, created_at, last_opened_at, test_command, dev_command, parent_id, git_enabled, group_name)
-         VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO projects(id, name, path, path_key, favorite, tags, technologies, profile, default_model, default_effort, created_at, last_opened_at, test_command, dev_command, parent_id, git_enabled, group_name, agents_enabled)
+         VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         p.id,
@@ -875,6 +881,7 @@ export class Db {
         p.parentId,
         p.gitEnabled ? 1 : 0,
         p.group,
+        p.agentsEnabled ? 1 : 0,
       );
     // Agent worktrees are projects too, but they count as agents.
     if (!p.parentId && !restored) this.bumpCounter("projectsCreated");
@@ -937,6 +944,7 @@ export class Db {
     if (patch.testCommand !== undefined) cols.test_command = patch.testCommand;
     if (patch.devCommand !== undefined) cols.dev_command = patch.devCommand;
     if (patch.gitEnabled !== undefined) cols.git_enabled = patch.gitEnabled ? 1 : 0;
+    if (patch.agentsEnabled !== undefined) cols.agents_enabled = patch.agentsEnabled ? 1 : 0;
     if (patch.group !== undefined) cols.group_name = patch.group;
     const keys = Object.keys(cols);
     if (!keys.length) return;

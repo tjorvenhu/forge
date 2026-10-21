@@ -266,6 +266,7 @@ export const methods = {
       testCommand: z.string().max(500).nullable().optional(),
       devCommand: z.string().max(500).nullable().optional(),
       gitEnabled: z.boolean().optional(),
+      agentsEnabled: z.boolean().optional(),
     }),
     result: Project,
   },

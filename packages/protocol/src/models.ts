@@ -79,6 +79,8 @@ export const Project = z.object({
   parentId: z.string().nullable(),
   /** false: the project works without git; FORGE hides git and agents and tells Claude not to use git */
   gitEnabled: z.boolean(),
+  /** false: no parallel agents (worktrees) in this project; only main projects, worktrees follow their project */
+  agentsEnabled: z.boolean(),
   /** false when the folder no longer exists on disk */
   exists: z.boolean(),
 });

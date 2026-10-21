@@ -41,6 +41,7 @@ function project(id: string, over: Partial<ProjectWithStatus> = {}): ProjectWith
     devCommand: null,
     parentId: null,
     gitEnabled: true,
+    agentsEnabled: true,
     group: null,
     exists: true,
     git: git("main"),
@@ -105,6 +106,24 @@ beforeEach(() => {
 });
 
 describe("AgentsTab", () => {
+  it("disables new agents in a project that switched them off and leads to the setting", async () => {
+    const off = { ...app, agentsEnabled: false };
+    callMock.mockImplementation(async (method: string) => {
+      if (method === "projects.list") return [off, login];
+      if (method === "config.docs") return [];
+      if (method === "worktrees.setup" || method === "devserver.state") return null;
+      throw new Error("unexpected " + method);
+    });
+    useUi.setState({ activeProjectId: "wt-login", workspaceTab: "agents" });
+    setup(login);
+    expect(await screen.findByText(/In diesem Projekt sind parallele Agenten ausgeschaltet\./)).toBeTruthy();
+    expect((screen.getByRole("button", { name: /Paralleler Agent/ }) as HTMLButtonElement).disabled).toBe(true);
+    // Existing agents stay and can still be finished.
+    expect(await screen.findByText("agent/login")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Zur Einstellung" }));
+    expect(useUi.getState()).toMatchObject({ activeProjectId: "app", workspaceTab: "settings", projectSettingsSection: "general" });
+  });
+
   it("shows how far each worktree is prepared and its own dev server, and repeats a failed preparation", async () => {
     setup(app);
     const card = (await screen.findByText("agent/login")).closest("div.rounded-xl") as HTMLElement;

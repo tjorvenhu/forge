@@ -111,6 +111,10 @@ export const sessions: typeof De = {
   gitOff:
     "The user turned Git off for this project in FORGE. From now on, run no git commands (no git init, status, add, commit, branch, checkout, push), create no repository and do not suggest commits, branches or pull requests. Do not start parallel agents (start_agent).",
 
+  agentsOn: "The user allowed parallel agents for this project in FORGE again. start_agent is only available in a new session.",
+  agentsOff:
+    "The user switched off parallel agents for this project in FORGE. Do not start any more agents (start_agent refuses) and work through tasks one after another in this session.",
+
   // task-message.ts
   subagent: "Subagent",
   backgroundTask: "Background task",

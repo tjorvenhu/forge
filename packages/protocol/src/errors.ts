@@ -18,6 +18,8 @@ export const ErrorCode = z.enum([
   "GIT_CONFLICT",
   /** the project is set to work without git */
   "GIT_DISABLED",
+  /** the project is set to work without parallel agents */
+  "AGENTS_DISABLED",
   "POLICY_DENIED",
   "INTERNAL",
 ]);

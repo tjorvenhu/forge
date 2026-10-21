@@ -41,6 +41,7 @@ import { toast } from "@/stores/toast";
 import { useTemplateDialogs } from "@/stores/templates";
 import { useProjectGroupDialogs } from "@/stores/project-groups";
 import { setProjectGroup } from "@/components/projects/ProjectGroupDialogs";
+import { switchProjectAgents } from "@/components/projects/AgentsSwitch";
 import { learnTemplatesNow } from "@/lib/template-learning";
 import { DEV_TOOLS_SECTIONS, KNOWLEDGE_MERGE_REQUEST, KNOWLEDGE_STALE_REQUEST, PROJECT_SETTINGS_SECTIONS, SETTINGS_SECTIONS, SKILLS_TABS, EXTENSIONS_TABS, workspaceTabsFor, useUi, type SettingsSection, type WorkspaceTab } from "@/stores/ui";
 import { PROFILE_IDS, PROFILE_INFO } from "@/components/projects/ProfileBadge";
@@ -482,7 +483,7 @@ export function buildActions(ctx: ActionContext): PaletteEntry[] {
       }
     }
 
-    if (root?.exists && root.git) {
+    if (root?.exists && root.git && root.agentsEnabled) {
       const r = root;
       act("agent-new", t.layout.actions.agentNew, icon(Bot), () => ctx.openDialog({ kind: "new-agent", root: r }), { keywords: "parallelen agenten starten worktree branch agent parallel start" });
     }
@@ -553,6 +554,16 @@ export function buildActions(ctx: ActionContext): PaletteEntry[] {
       setting("project-git", on ? t.layout.actions.gitOff : t.layout.actions.gitOn, icon(on ? ToggleRight : ToggleLeft), () => {
         void updateProject(qc, project.id, { gitEnabled: !on }, on ? t.layout.actions.gitTurnedOff : t.layout.actions.gitTurnedOn, on ? t.layout.actions.gitOffBody : project.name);
       }, { keywords: "git einschalten ausschalten versionsverwaltung ohne git agenten repository turn on off version control without agents", hint: project.name });
+    }
+    // Asked for in a worktree too: the main project decides for its agents.
+    const agentsOwner = project.parentId ? root : project;
+    if (agentsOwner?.gitEnabled) {
+      const p = agentsOwner;
+      const on = p.agentsEnabled;
+      setting("project-agents", on ? t.projects.agents.menuOff : t.projects.agents.menuOn, icon(on ? ToggleRight : ToggleLeft), () => switchProjectAgents(qc, p, !on), {
+        hint: p.name,
+        keywords: "parallele agenten keine agenten worktree worktrees ausschalten erlauben nacheinander parallel agents no agents switch off allow sequential",
+      });
     }
     // A worktree is listed under its project, so the group is the main project's.
     const grouped = root ?? project;

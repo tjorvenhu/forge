@@ -1489,6 +1489,13 @@ describe("PhoneService end to end with a test PBX", () => {
     expect(await conv.tools.project("shop", "settings", { git: false })).toMatch(/, ohne Git\.$/);
     expect(await conv.tools.git("shop", "status")).toMatch(/^Fehler: shop ist ohne Git eingerichtet\./);
     expect(await conv.tools.project("shop", "settings", { git: true })).toMatch(/, mit Git\.$/);
+    // Switching parallel agents off: the caller hears the warning, agent starts are refused, sessions still start.
+    expect(await conv.tools.project("shop", "settings", { agents: false })).toMatch(
+      /, mit Git, ohne parallele Agenten\. Claude arbeitet dort jetzt weniger effizient: Aufgaben laufen nacheinander statt gleichzeitig\.$/,
+    );
+    expect(callOf("projects.update")).toMatchObject({ agentsEnabled: false });
+    expect(await conv.tools.startSession("shop", "Baue den CSV-Export", { agent: true })).toMatch(/^Fehler: In shop sind parallele Agenten ausgeschaltet\./);
+    expect(await conv.tools.project("shop", "settings", { agents: true })).toMatch(/, mit Git\.$/);
     expect(await conv.tools.project("shop", "group", { group: "Kunde A" })).toBe("shop ist jetzt in der Gruppe Kunde A.");
     expect(await conv.tools.project("shop", "info")).toMatch(/, mit Git, Gruppe Kunde A\.$/);
     expect(await conv.tools.projects()).toMatch(/^shop, Gruppe Kunde A/m);

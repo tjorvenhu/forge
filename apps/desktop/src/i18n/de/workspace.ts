@@ -60,6 +60,8 @@ export const workspace = {
     rootMissing: "Das Hauptprojekt dieses Worktrees ist nicht mehr in FORGE.",
     folderMissing: "Der Projektordner fehlt.",
     needsGit: "Parallele Agenten brauchen ein Git-Repository.",
+    agentsOff: "In diesem Projekt sind parallele Agenten ausgeschaltet.",
+    agentsOffLink: "Zur Einstellung",
     removedBranchKept: "Worktree entfernt, Branch nicht gelöscht",
     removedWithBranch: "Worktree und Branch gelöscht",
     removed: "Worktree entfernt",
