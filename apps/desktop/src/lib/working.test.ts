@@ -25,6 +25,8 @@ describe("interrupted turns", () => {
     expect(isInterrupted({ isError: true, subtype: "error_during_execution", text: "Request interrupted by user" })).toBe(true);
     expect(isInterrupted({ isError: true, subtype: "aborted", text: null })).toBe(true);
     expect(isInterrupted({ isError: true, subtype: "error", text: "Von FORGE abgebrochen" })).toBe(true);
+    expect(isInterrupted({ isError: true, subtype: "error_during_execution", text: "[ede_diagnostic] result_type=user last_content_type=n/a stop_reason=null" })).toBe(true);
+    expect(isInterrupted({ isError: true, subtype: "error_during_execution", text: "[ede_diagnostic] result_type=assistant", interrupted: true })).toBe(true);
     expect(isInterrupted({ isError: true, subtype: "error_max_turns", text: "Limit erreicht" })).toBe(false);
     expect(isInterrupted({ isError: false, subtype: "success", text: "interrupt handler added" })).toBe(false);
   });

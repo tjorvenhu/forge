@@ -3,7 +3,8 @@ import { t } from "@/i18n";
 
 export interface Toast {
   id: number;
-  tone: "success" | "error" | "info" | "warning";
+  /** stopped: the user ended something on purpose; FORGE orange, not an error */
+  tone: "success" | "error" | "info" | "warning" | "stopped";
   title: string;
   body?: string;
   action?: { label: string; onClick: () => void };

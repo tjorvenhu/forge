@@ -169,9 +169,11 @@ export async function compactSession(sessionId: string) {
 export async function stopSession(sessionId: string) {
   const key = keys.session(sessionId);
   const before = queryClient.getQueryData<Session>(key);
-  if (before && (before.status === "running" || before.status === "waiting_approval" || before.status === "starting")) queryClient.setQueryData(key, { ...before, status: "stopping" as const });
+  const busy = !!before && (before.status === "running" || before.status === "waiting_approval" || before.status === "starting");
+  if (busy) queryClient.setQueryData(key, { ...before, status: "stopping" as const });
   try {
     await call("sessions.stop", { sessionId });
+    if (busy) toast.notify({ tone: "stopped", title: t.chat.send.stopped, body: t.chat.send.stoppedDetail });
   } catch (e) {
     const now = queryClient.getQueryData<Session>(key);
     if (before && now?.status === "stopping") queryClient.setQueryData(key, before);

@@ -366,6 +366,8 @@ export const SessionEventBody = z.discriminatedUnion("type", [
      */
     models: z.record(z.string(), ModelTokens).optional(),
     text: z.string().nullable(),
+    /** stopped by the user or FORGE; missing in events from before it was recorded */
+    interrupted: z.boolean().optional(),
   }),
   z.object({
     type: z.literal("rate_limit"),

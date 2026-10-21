@@ -95,6 +95,7 @@ export const chat = {
     modelAndEffort: "Modell und Effort",
     active: "aktiv",
     stop: "Stoppen (Esc)",
+    stopShort: "Stoppen",
     sendBetween: "Dazwischen senden",
     sendLabel: "Senden",
     sendBetweenTitle: "Dazwischen senden: Claude übernimmt die Nachricht beim nächsten Schritt",
@@ -641,6 +642,8 @@ export const chat = {
     processNotClosed: "Claude-Prozess nicht beendet",
     compactFailed: "Komprimieren fehlgeschlagen",
     stopFailed: "Stop fehlgeschlagen",
+    stopped: "Abgebrochen",
+    stoppedDetail: "Du hast den Vorgang abgebrochen.",
   },
   find: {
     label: "Im Chat suchen",

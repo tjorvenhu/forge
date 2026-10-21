@@ -18,6 +18,7 @@ export function isBusy(status: SessionStatus | null | undefined): boolean {
 }
 
 /** A failed turn that the user (or FORGE) stopped on purpose; shown as "Gestoppt" and not announced as an error. */
-export function isInterrupted(body: Pick<TurnResult, "isError" | "subtype" | "text">): boolean {
-  return body.isError && /interrupt|abort|abgebrochen/i.test(`${body.subtype} ${body.text ?? ""}`);
+export function isInterrupted(body: Pick<TurnResult, "isError" | "subtype" | "text" | "interrupted">): boolean {
+  // The text covers results recorded before `interrupted`; "result_type=user" is a stop in newer CLIs.
+  return body.isError && (body.interrupted === true || /interrupt|abort|abgebrochen|result_type=user/i.test(`${body.subtype} ${body.text ?? ""}`));
 }

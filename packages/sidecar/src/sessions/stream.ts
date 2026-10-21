@@ -66,6 +66,8 @@ export class SessionStream {
     if (turnOutput && this.core.db.getSession(id)?.status === "idle") this.turns.markRunning(id, live);
     if (m.type === "assistant" && !m.parent_tool_use_id && m.error === "authentication_failed") this.authFailed.add(live);
     for (const body of live.normalizer.normalize(msg)) {
+      // The CLI's text for a stopped turn changes between versions ("[ede_diagnostic] result_type=user …").
+      if (body.type === "turn.result" && body.isError && live.interrupting) body.interrupted = true;
       this.core.record(id, body);
       if (body.type === "session.init") {
         this.core.publish(

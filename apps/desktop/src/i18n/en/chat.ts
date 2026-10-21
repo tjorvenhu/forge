@@ -95,6 +95,7 @@ export const chat: typeof De = {
     modelAndEffort: "Model and effort",
     active: "active",
     stop: "Stop (Esc)",
+    stopShort: "Stop",
     sendBetween: "Send now",
     sendLabel: "Send",
     sendBetweenTitle: "Send now: Claude picks up the message at the next step",
@@ -637,6 +638,8 @@ export const chat: typeof De = {
     processNotClosed: "Claude process not closed",
     compactFailed: "Compacting failed",
     stopFailed: "Stop failed",
+    stopped: "Cancelled",
+    stoppedDetail: "You cancelled the run.",
   },
   find: {
     label: "Search in chat",

@@ -655,15 +655,25 @@ export const Composer = memo(function Composer({
             />
           </div>
           {working && (
-            <Button size="icon" variant="danger" className="h-9 w-9 shrink-0 rounded-lg" onClick={stop} aria-label={t.chat.composer.stop} title={t.chat.composer.stop} disabled={session?.status === "stopping"}>
-              <Square className="h-3.5 w-3.5 fill-current" />
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-8 shrink-0 gap-1.5 rounded-lg border-accent/40 bg-accent-soft px-2.5 text-accent hover:border-accent/60 hover:bg-accent/20"
+              onClick={stop}
+              aria-label={t.chat.composer.stop}
+              title={t.chat.composer.stop}
+              disabled={session?.status === "stopping"}
+            >
+              <Square className="h-3 w-3 fill-current" />
+              <span className="hidden @2xl/composer:inline">{t.chat.composer.stopShort}</span>
             </Button>
           )}
           {(!working || text.trim() || files.length > 0) && (
             <Button
               size="icon"
               variant="primary"
-              className="h-9 w-9 shrink-0 rounded-lg"
+              // Disabled it turns grey instead of a faded orange; the glow echoes the logo's rim.
+              className="h-8 w-8 shrink-0 rounded-lg shadow-[0_0_12px_-2px_var(--color-accent)] disabled:bg-surface-3 disabled:text-subtle disabled:opacity-100 disabled:shadow-none"
               onClick={submit}
               // The message shows in the chat at once ("wird gesendet"), so no spinner here: the arrow flies off.
               disabled={(!text.trim() && !files.length) || (waiting && !localTyped) || sending || dictating}

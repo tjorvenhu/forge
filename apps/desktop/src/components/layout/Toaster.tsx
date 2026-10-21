@@ -1,4 +1,4 @@
-import { AlertTriangle, CheckCircle2, Info, X, XCircle } from "lucide-react";
+import { AlertTriangle, CheckCircle2, CircleStop, Info, X, XCircle } from "lucide-react";
 import { useToasts } from "@/stores/toast";
 import { cn } from "@/lib/utils";
 import { t } from "@/i18n";
@@ -17,12 +17,13 @@ export function Toaster() {
           className={cn(
             "pointer-events-auto flex items-start gap-2.5 rounded-lg border bg-surface-2 px-3 py-2.5 shadow-xl",
             t.leaving ? "pointer-events-none animate-toast-out" : "animate-slide-up-in",
-            t.tone === "error" ? "border-danger/40" : t.tone === "success" ? "border-success/40" : t.tone === "warning" ? "border-warning/50" : "border-border",
+            t.tone === "error" ? "border-danger/40" : t.tone === "success" ? "border-success/40" : t.tone === "warning" ? "border-warning/50" : t.tone === "stopped" ? "border-accent/50" : "border-border",
           )}
         >
           {t.tone === "success" && <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-success" />}
           {t.tone === "error" && <XCircle className="mt-0.5 h-4 w-4 shrink-0 text-danger" />}
           {t.tone === "warning" && <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning" />}
+          {t.tone === "stopped" && <CircleStop className="mt-0.5 h-4 w-4 shrink-0 text-accent" />}
           {t.tone === "info" && <Info className="mt-0.5 h-4 w-4 shrink-0 text-accent" />}
           <div className="min-w-0 flex-1">
             <div className="text-body font-medium">{t.title}</div>
