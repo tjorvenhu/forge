@@ -96,7 +96,7 @@ export function ProjectCard({
           </div>
           <GitLine p={p} />
         </div>
-        <ProfileIcon profile={p.profile} />
+        {p.profile !== "autonomous" && <ProfileIcon profile={p.profile} />}
       </button>
 
       {(p.technologies.length > 0 || p.tags.length > 0) && (
@@ -177,7 +177,7 @@ const PROFILE_ICON = {
   autonomous: { Icon: ShieldAlert, tone: "text-danger" },
 } as const;
 
-/** The permission profile as a coloured shield; name and meaning in the tooltip. */
+/** The permission profile as a coloured shield; name and meaning in the tooltip. Not shown for the default (autonomous). */
 function ProfileIcon({ profile }: { profile: ProjectWithStatus["profile"] }) {
   const { Icon, tone } = PROFILE_ICON[profile];
   return (
