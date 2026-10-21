@@ -17,7 +17,7 @@ export interface Builds {
 }
 
 type Asset = { name?: string; browser_download_url?: string };
-type Release = { tag_name?: string; draft?: boolean; assets?: Asset[] };
+type Release = { tag_name?: string; draft?: boolean; prerelease?: boolean; assets?: Asset[] };
 
 /** File names of the release workflow (ADR 0014) and how the download page names them. */
 const FILES: Record<"macos" | "linux", { pattern: RegExp; label: string }[]> = {
@@ -33,7 +33,8 @@ const FILES: Record<"macos" | "linux", { pattern: RegExp; label: string }[]> = {
 
 function newest(releases: Release[], os: "macos" | "linux"): Builds["macos"] {
   for (const r of releases) {
-    if (r.draft) continue;
+    // Pre-releases are dev builds (and the FORGE Setup release); new installations get the stable one.
+    if (r.draft || r.prerelease) continue;
     const files = FILES[os].flatMap(({ pattern, label }) => {
       const a = r.assets?.find((x) => x.name && pattern.test(x.name));
       return a?.browser_download_url ? [{ label, url: a.browser_download_url }] : [];

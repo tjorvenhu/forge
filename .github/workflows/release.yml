@@ -36,7 +36,8 @@
 # Dev channel: every push to the branch dev builds a pre-release (same version scheme; run numbers are
 # shared, so dev and main versions never collide). Only apps on the dev channel take it (channelReleases
 # in packages/sidecar/src/update/app-update.ts); FORGE Setup, the download counter and main apps skip
-# pre-releases. Built for speed: Windows only, no lint or typecheck, no Authenticode, no per-file
+# pre-releases, as do install.sh and the download page. Built for speed: Windows and macOS (no Linux),
+# no lint or typecheck, no Authenticode, no per-file
 # signatures. The update signature stays: the app installs nothing without it.
 # Bringing dev into main: "Dev nach Main übernehmen" in the settings, or a merge on GitHub.
 name: Release
@@ -339,8 +340,7 @@ jobs:
   # Separate jobs after the Windows release: whatever happens here, the Windows release stays as it is.
   macos:
     needs: release
-    # Dev builds are Windows only, for speed.
-    if: needs.release.outputs.channel != 'dev'
+    # Dev builds include macOS (owner's Mac on the dev channel); Linux stays stable only, for speed.
     runs-on: macos-latest
     timeout-minutes: 60
     strategy:

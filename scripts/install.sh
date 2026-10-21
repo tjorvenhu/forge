@@ -77,13 +77,15 @@ releases=$(curl -fsSL -H "Accept: application/vnd.github+json" "https://api.gith
   fail "GitHub cannot be reached." "GitHub ist nicht erreichbar."
 
 # The API answers with indented JSON, one field per line; in every asset "digest" comes before
-# "browser_download_url". Releases are listed newest first.
+# "browser_download_url", and every release names "prerelease" before its assets. Releases are listed
+# newest first. Pre-releases are dev builds: skipped unless FORGE_VERSION asks for one.
 want="_${platform}${suffix}"
 if [ -n "${FORGE_VERSION:-}" ]; then want="/FORGE_${FORGE_VERSION}${want}"; fi
-found=$(printf '%s\n' "$releases" | awk -v want="$want\"" '
+found=$(printf '%s\n' "$releases" | awk -v want="$want\"" -v anypre="${FORGE_VERSION:+1}" '
+  /"prerelease":/ { pre = index($0, "true") > 0 }
   /"digest":/ { d = $0 }
   /"browser_download_url":/ {
-    if (index($0, want)) {
+    if (index($0, want) && (!pre || anypre)) {
       u = $0; sub(/.*"browser_download_url": *"/, "", u); sub(/".*/, "", u)
       if (d ~ /sha256:/) { sub(/.*sha256:/, "", d); sub(/".*/, "", d) } else d = ""
       print u " " d; exit

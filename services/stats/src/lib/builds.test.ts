@@ -22,6 +22,14 @@ describe("download builds", () => {
     expect(findBuilds([{ tag_name: "v1", assets: [{ name: "FORGE_1_x64-setup.exe" }] }])).toEqual({ macos: null, linux: null });
   });
 
+  it("skips dev pre-releases", () => {
+    const builds = findBuilds([
+      { tag_name: "v0.1.131", prerelease: true, assets: [{ name: "FORGE_0.1.131_darwin-arm64.dmg", browser_download_url: url("dev.dmg") }] },
+      { tag_name: "v0.1.130", assets: [{ name: "FORGE_0.1.130_darwin-arm64.dmg", browser_download_url: url("stable.dmg") }] },
+    ]);
+    expect(builds.macos).toEqual({ version: "0.1.130", files: [{ label: "Apple silicon (.dmg)", url: url("stable.dmg") }] });
+  });
+
   it("recognises the system from the client hint or the user agent", () => {
     expect(detectOs('"Windows"', null)).toBe("windows");
     expect(detectOs('"macOS"', "anything")).toBe("macos");
