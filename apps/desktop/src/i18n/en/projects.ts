@@ -118,7 +118,7 @@ export const projects: typeof De = {
     gitOff: "without Git",
     conflict: "conflict",
     changed: (n) => `${n} changed`,
-    clean: "clean",
+    clean: "up to date",
     noRemote: "no remote",
     noBranch: "no branch",
     gitTitle: (branch, state, remote, counts) => `Git\n- Branch ${branch}\n- ${state}\n- Remote: ${remote}${counts}`,
