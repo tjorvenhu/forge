@@ -10,6 +10,9 @@ import {
   findTemplates,
   knownTemplateValues,
   templatePlaceholders,
+  convertRemoteUrl,
+  redactRemoteUrl,
+  remoteKind,
   type DeskPhoneConfig,
   type MethodName,
   type ParamsOf,
@@ -2275,6 +2278,17 @@ export class PhoneService {
             const owner = await resolveOwner(call, o?.owner);
             await call("github.publish", { projectId: p.id, private: isPrivate, name: o?.name?.trim() || undefined, owner: owner ?? undefined });
             return gm.published(p.name, isPrivate, owner);
+          }
+          if (action === "remote") {
+            const current = await git.remoteUrl(p.path);
+            const url = o?.remove ? null : o?.url?.trim() || (o?.protocol && current ? convertRemoteUrl(current, o.protocol) : undefined);
+            if (url === undefined) {
+              if (o?.protocol) return current ? gm.remoteNotConvertible(p.name, asData(redactRemoteUrl(current))) : gm.noRemote(p.name);
+              return current ? gm.remote(p.name, asData(redactRemoteUrl(current)), remoteKind(current)) : gm.noRemote(p.name);
+            }
+            if (url === null && current === null) return gm.noRemote(p.name);
+            await call("git.setRemote", { projectId: p.id, url });
+            return url === null ? gm.remoteRemoved(p.name, asData(redactRemoteUrl(current!))) : gm.remoteSet(p.name, asData(redactRemoteUrl(url)), remoteKind(url));
           }
           if (action === "status") {
             const { summary: s } = await git.status(p.path);

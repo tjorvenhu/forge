@@ -30,6 +30,7 @@ export const system: typeof De = {
     pushAllMessage: "Save open work",
     detachedHead: "No branch checked out (detached HEAD).",
     noRemote: "No remote origin.",
+    invalidRemote: "Invalid remote address. For example https://github.com/name/repo.git or git@github.com:name/repo.git work.",
     upToDate: "Already up to date.",
     pulledFastForward: (remote) => `Took over ${remote} new commits.`,
     pulledRebase: (remote, local) => `Took over ${remote} new commits and put ${local} of your own on top (rebase).`,

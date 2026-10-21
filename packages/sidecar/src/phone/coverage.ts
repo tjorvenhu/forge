@@ -180,6 +180,7 @@ export const PHONE_TOOL_FOR: Partial<Record<MethodName, string>> = {
   "git.unpushed": "git",
   "git.pushAll": "git",
   "git.init": "git",
+  "git.setRemote": "git",
   "git.suggestCommitMessage": "git",
   "github.pr": "pull_request",
   "github.suggestPr": "pull_request",

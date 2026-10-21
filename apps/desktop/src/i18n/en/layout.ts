@@ -404,6 +404,7 @@ export const layout: typeof De = {
     pulled: "Updated",
     behind: (n) => `${n} new on the remote`,
     gitPush: "Git: Push",
+    gitRemote: "Git: Show or change remote address",
     push: "Push",
     pushed: "Pushed",
     ahead: (n) => (n === 1 ? "1 commit" : `${n} commits`),

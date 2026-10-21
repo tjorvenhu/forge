@@ -490,6 +490,10 @@ export function createHandlers(s: Services): Handlers {
       s.notifyProject(projectId);
       return { url };
     },
+    "git.setRemote": async ({ projectId, url }) => {
+      await s.git.setRemoteUrl(gitDir(projectId), url);
+      return gitChanged(projectId);
+    },
     "git.init": async ({ projectId }) => {
       await s.git.init(gitDir(projectId));
       return gitChanged(projectId);

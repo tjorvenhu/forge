@@ -405,6 +405,7 @@ export const layout = {
     pulled: "Aktualisiert",
     behind: (n: number) => `${n} neu auf dem Remote`,
     gitPush: "Git: Push",
+    gitRemote: "Git: Remote-Adresse anzeigen oder ändern",
     push: "Push",
     pushed: "Gepusht",
     ahead: (n: number) => `${n} Commits`,

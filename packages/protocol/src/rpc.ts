@@ -751,6 +751,8 @@ export const methods = {
     result: z.object({ url: z.string() }),
   },
   "git.init": { params: projectRef, result: GitStatus },
+  /** Sets the URL of origin (https or ssh), adds origin when missing; null removes it. */
+  "git.setRemote": { params: projectRef.extend({ url: z.string().trim().min(1).max(2048).nullable() }), result: GitStatus },
   "git.suggestCommitMessage": {
     params: projectRef.extend({ paths: z.array(z.string().min(1).max(4096)).max(2000).optional() }),
     result: z.object({ message: z.string(), model: z.string(), skipped: z.array(z.string()) }),

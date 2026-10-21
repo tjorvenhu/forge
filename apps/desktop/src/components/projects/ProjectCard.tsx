@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, Bot, CalendarDays, Code2, Copy, FileStack, FolderMinus, FolderSearch, Folders, GitBranch, History, MessageSquarePlus, MoreHorizontal, Settings2, Shield, ShieldAlert, ShieldCheck, Star, Tag, Trash2 } from "lucide-react";
+import { AlertTriangle, Bot, CalendarDays, Code2, Copy, FileStack, FolderMinus, FolderSearch, Folders, GitBranch, History, Link, MessageSquarePlus, MoreHorizontal, Settings2, Shield, ShieldAlert, ShieldCheck, Star, Tag, Trash2 } from "lucide-react";
 import type { ProjectWithStatus } from "@forge/protocol";
 import { call, keys } from "@/lib/queries";
 import { contextItems, copyText } from "@/lib/context-menu";
@@ -11,6 +11,7 @@ import { useUi } from "@/stores/ui";
 import { toast } from "@/stores/toast";
 import { useTemplateDialogs } from "@/stores/templates";
 import { useProjectGroupDialogs } from "@/stores/project-groups";
+import { useGitRemoteDialog } from "@/stores/git-remote";
 import type { MenuItem } from "@/components/ui/dropdown";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu } from "@/components/ui/dropdown";
@@ -59,6 +60,7 @@ export function ProjectCard({
     { label: p.favorite ? t.projects.card.removeFavorite : t.projects.card.addFavorite, icon: <Star className="h-3.5 w-3.5" />, onSelect: () => void toggleFavorite() },
     { label: p.group ? t.projects.groups.changeGroup : t.projects.groups.setGroup, icon: <Folders className="h-3.5 w-3.5" />, onSelect: () => useProjectGroupDialogs.getState().openAssign(p) },
     ...(p.group ? [{ label: t.projects.groups.removeFromGroup, icon: <FolderMinus className="h-3.5 w-3.5" />, onSelect: () => void setProjectGroup(qc, p, null) }] : []),
+    ...(!p.parentId && p.git?.isRepo ? [{ label: t.git.remote.menu, icon: <Link className="h-3.5 w-3.5" />, onSelect: () => useGitRemoteDialog.getState().open(p) }] : []),
     ...(!p.parentId && p.gitEnabled
       ? [{ label: p.agentsEnabled ? t.projects.agents.menuOff : t.projects.agents.menuOn, icon: <Bot className="h-3.5 w-3.5" />, onSelect: () => switchProjectAgents(qc, p, !p.agentsEnabled) }]
       : []),

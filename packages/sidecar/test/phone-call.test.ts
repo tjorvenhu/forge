@@ -1319,6 +1319,17 @@ describe("PhoneService end to end with a test PBX", () => {
     };
     expect(await conv.tools.git("shop", "push")).toBe("Fehler: Kein Remote origin.");
 
+    gitEngine.remoteUrl = async () => "https://user:tok@github.com/me/shop.git";
+    rpcResults["git.setRemote"] = () => ({ summary: {}, files: [] });
+    const shown = await conv.tools.git("shop", "remote");
+    expect(shown).toContain("https://***@github.com/me/shop.git");
+    expect(shown).toContain("über HTTPS");
+    expect(shown).not.toContain("tok");
+    expect(await conv.tools.git("shop", "remote", { protocol: "ssh" })).toContain("über SSH");
+    expect(rpcCalls.at(-1)).toEqual(["git.setRemote", { projectId, url: "git@github.com:me/shop.git" }]);
+    expect(await conv.tools.git("shop", "remote", { remove: true })).toContain("entfernt");
+    expect(rpcCalls.at(-1)).toEqual(["git.setRemote", { projectId, url: null }]);
+
     // By session: the agent's worktree, not the project.
     expect(await conv.tools.devServer("", "output", { session: "CSV" })).toContain(`Server ${wt.id}`);
     gitEngine.log = async () => [{ hash: "h", shortHash: "h", author: "Tjorven", authorEmail: "t@x", avatarUrl: null, date: "2026-10-13T10:00:00Z", subject: "CSV-Export", parents: [], refs: [] }];

@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import type { QueryClient } from "@tanstack/react-query";
-import { Archive, ArrowDown, ArrowLeftRight, ArrowUp, ArrowUpCircle, BookOpen, Bot, CalendarDays, Camera, CloudDownload, CloudUpload, Columns2, Combine, Cpu, Database, Download, FilePlus2, FileStack, FileText, FileUp, FlaskConical, FolderDown, FolderMinus, FolderOpen, FolderPlus, Folders, Gauge, GitBranch, GitBranchPlus, GitCommitHorizontal, GitCompareArrows, GitFork, GitMerge, GitPullRequest, Globe, HandHeart, Languages, Lightbulb, Link2Off, ListChecks, LogIn, LogOut, MessageSquare, MessageSquarePlus, MessageSquareText, Mic, MonitorSmartphone, NotebookText, PackageCheck, PanelBottom, PanelRight, Pencil, Phone, PhoneOff, PhoneOutgoing, Pin, PinOff, Play, Power, RefreshCcw, RefreshCw, RotateCcw, Search, Settings2, Shield, ShieldBan, Shrink, Sparkles, Square, SquareArrowOutDownLeft, SquareArrowOutUpRight, SquareTerminal, Timer, ToggleLeft, ToggleRight, Trash2, Wand2, type LucideIcon } from "lucide-react";
+import { Archive, ArrowDown, ArrowLeftRight, ArrowUp, ArrowUpCircle, BookOpen, Bot, CalendarDays, Camera, CloudDownload, CloudUpload, Columns2, Combine, Cpu, Database, Download, FilePlus2, FileStack, FileText, FileUp, FlaskConical, FolderDown, FolderMinus, FolderOpen, FolderPlus, Folders, Gauge, GitBranch, GitBranchPlus, GitCommitHorizontal, GitCompareArrows, GitFork, GitMerge, GitPullRequest, Globe, HandHeart, Languages, Lightbulb, Link, Link2Off, ListChecks, LogIn, LogOut, MessageSquare, MessageSquarePlus, MessageSquareText, Mic, MonitorSmartphone, NotebookText, PackageCheck, PanelBottom, PanelRight, Pencil, Phone, PhoneOff, PhoneOutgoing, Pin, PinOff, Play, Power, RefreshCcw, RefreshCw, RotateCcw, Search, Settings2, Shield, ShieldBan, Shrink, Sparkles, Square, SquareArrowOutDownLeft, SquareArrowOutUpRight, SquareTerminal, Timer, ToggleLeft, ToggleRight, Trash2, Wand2, type LucideIcon } from "lucide-react";
 import type {
   AppInstallState,
   AppUpdateState,
@@ -21,7 +21,7 @@ import type {
   Settings,
   TestDbState,
 } from "@forge/protocol";
-import { IDLE_CLOSE_CHOICES, LANGUAGE_NAMES, LANGUAGES, LONG_SESSION_CHOICES, SUPPORT_LINKS, STATS_PAGE_URL } from "@forge/protocol";
+import { IDLE_CLOSE_CHOICES, LANGUAGE_NAMES, LANGUAGES, LONG_SESSION_CHOICES, SUPPORT_LINKS, STATS_PAGE_URL, redactRemoteUrl } from "@forge/protocol";
 import { t } from "@/i18n";
 import { openExternal } from "@/lib/native";
 import { checkInstall, installFromFile, installFull, installUpdate, supportsFullInstall } from "@/lib/app-install";
@@ -40,6 +40,7 @@ import { lastEditablePrompt, useMessageEdit } from "@/stores/message-edit";
 import { toast } from "@/stores/toast";
 import { useTemplateDialogs } from "@/stores/templates";
 import { useProjectGroupDialogs } from "@/stores/project-groups";
+import { useGitRemoteDialog } from "@/stores/git-remote";
 import { setProjectGroup } from "@/components/projects/ProjectGroupDialogs";
 import { switchProjectAgents } from "@/components/projects/AgentsSwitch";
 import { learnTemplatesNow } from "@/lib/template-learning";
@@ -478,6 +479,10 @@ export function buildActions(ctx: ActionContext): PaletteEntry[] {
           keywords: "git push hochladen upload",
         });
       }
+      act("git-remote", t.layout.actions.gitRemote, icon(Link), () => useGitRemoteDialog.getState().open(root ?? project), {
+        keywords: "git remote origin url adresse https ssh umstellen ändern wechseln anzeigen address change switch show",
+        hint: git.remoteUrl ? redactRemoteUrl(git.remoteUrl) : t.git.remote.none,
+      });
       act("git-new-branch", t.layout.actions.newBranch, icon(GitBranchPlus), () => ctx.openDialog({ kind: "new-branch", projectId: project.id }), { keywords: "neuen branch anlegen git checkout new create" });
       const onMain = git.branch === "main" || git.branch === "master";
       if (git.remoteUrl?.includes("github.com") && ctx.githubConnected && !onMain) {

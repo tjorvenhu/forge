@@ -12,6 +12,7 @@ import {
   type GitIntegrationConflict,
   type GitStatus,
   type GitSummary,
+  isValidRemoteUrl,
 } from "@forge/protocol";
 import { isInside } from "../util/paths.js";
 import { run, type RunResult } from "../util/proc.js";
@@ -101,6 +102,17 @@ export class GitEngine {
   async remoteUrl(cwd: string): Promise<string | null> {
     const r = await this.exec(cwd, ["remote", "get-url", "origin"]);
     return r.code === 0 ? r.stdout.trim() || null : null;
+  }
+
+  /** Points origin at url, adding it when missing; null removes origin. */
+  async setRemoteUrl(cwd: string, url: string | null) {
+    const current = await this.remoteUrl(cwd);
+    if (url === null) {
+      if (current !== null) await this.ok(cwd, ["remote", "remove", "origin"]);
+      return;
+    }
+    if (!isValidRemoteUrl(url)) throw new ForgeError("VALIDATION", tr().system.git.invalidRemote);
+    await this.ok(cwd, current === null ? ["remote", "add", "origin", url.trim()] : ["remote", "set-url", "origin", url.trim()]);
   }
 
   /**

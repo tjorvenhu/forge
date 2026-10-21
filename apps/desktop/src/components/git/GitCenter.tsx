@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState, type MouseEvent } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowDown, ArrowUp, Check, ChevronDown, Copy, GitBranch, GitCommitHorizontal, History, MoreHorizontal, Plus, RefreshCw, RotateCcw, Search, Tag, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, Check, ChevronDown, Copy, GitBranch, GitCommitHorizontal, History, Link, MoreHorizontal, Plus, RefreshCw, RotateCcw, Search, Tag, Trash2 } from "lucide-react";
 import type { CommitInfo, Project } from "@forge/protocol";
+import { useGitRemoteDialog } from "@/stores/git-remote";
 import { call, keys, useGitStatus } from "@/lib/queries";
 import { errorMessage, RpcCallError } from "@/lib/rpc";
 import { addContextItems, contextItems, copyText } from "@/lib/context-menu";
@@ -126,6 +127,7 @@ export function GitCenter({ project }: { project: Project }) {
           <DropdownMenu
             items={[
               { label: t.git.common.newBranchEllipsis, icon: <Plus className="h-3.5 w-3.5" />, onSelect: () => setNewBranch(true), disabled: !branches.data },
+              { label: t.git.remote.menu, icon: <Link className="h-3.5 w-3.5" />, onSelect: () => useGitRemoteDialog.getState().open(project) },
               { label: t.git.center.refresh, icon: <RefreshCw className="h-3.5 w-3.5" />, onSelect: refresh },
             ]}
             trigger={

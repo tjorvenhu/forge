@@ -44,6 +44,7 @@ export const GIT_ACTIONS = [
   "identity",
   "unpushed",
   "push_all",
+  "remote",
 ] as const;
 export type GitAction = (typeof GIT_ACTIONS)[number];
 export type TaskAction = "output" | "stop" | "to_background" | "message";
@@ -69,6 +70,12 @@ export interface GitOptions extends TargetOptions {
   name?: string;
   /** identity: the author email */
   email?: string;
+  /** remote: new URL of origin */
+  url?: string;
+  /** remote: switch origin to this transport */
+  protocol?: "https" | "ssh";
+  /** remote: remove origin */
+  remove?: boolean;
 }
 
 export interface DevSettingsPatch {
@@ -646,6 +653,9 @@ const TOOL_DEFS: readonly ToolDef[] = [
       owner: { type: "string", optional: true },
       name: { type: "string", optional: true },
       email: { type: "string", optional: true },
+      url: { type: "string", optional: true },
+      protocol: { type: "string", enum: ["https", "ssh"], optional: true },
+      remove: { type: "boolean", optional: true },
     },
     run: (t, a) =>
       t.git(str(a.project), pick(a.action, GIT_ACTIONS, "status"), {
@@ -661,6 +671,9 @@ const TOOL_DEFS: readonly ToolDef[] = [
         owner: opt(a.owner),
         name: opt(a.name),
         email: opt(a.email),
+        url: opt(a.url),
+        protocol: a.protocol === "https" || a.protocol === "ssh" ? a.protocol : undefined,
+        remove: optBool(a.remove),
       }),
   },
   {

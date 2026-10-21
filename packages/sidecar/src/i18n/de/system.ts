@@ -29,6 +29,7 @@ export const system = {
     pushAllMessage: "Offenen Stand sichern",
     detachedHead: "Kein Branch ausgecheckt (detached HEAD).",
     noRemote: "Kein Remote origin.",
+    invalidRemote: "Ungültige Remote-Adresse. Erlaubt sind z. B. https://github.com/name/repo.git oder git@github.com:name/repo.git.",
     upToDate: "Schon auf dem neuesten Stand.",
     pulledFastForward: (remote: number) => `${remote} neue Commits übernommen.`,
     pulledRebase: (remote: number, local: number) => `${remote} neue Commits übernommen, ${local} eigene darauf gesetzt (Rebase).`,
