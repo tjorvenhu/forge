@@ -180,8 +180,8 @@ export const phoneTools = {
       profile: "settings: safe fragt viel nach, balanced ist der Standard, autonomous arbeitet ohne Nachfrage",
       default_model: "settings: opus, sonnet, haiku oder eine Modell-ID; default nimmt die globale Einstellung",
       default_effort: "settings: Denkaufwand neuer Sessions; default nimmt die globale Einstellung",
-      test_command: "settings: Testbefehl, z. B. pnpm test; leer entfernt ihn",
-      dev_command: "settings: Befehl für den Dev-Server, z. B. pnpm dev; leer nimmt den erkannten",
+      test_command: "settings: Testbefehl, z. B. pnpm test; leer entfernt ihn; landet in .forge/project.json im Repo",
+      dev_command: "settings: Befehl für den Dev-Server, z. B. pnpm dev; leer nimmt den erkannten; landet in .forge/project.json im Repo",
     },
   },
   files: {

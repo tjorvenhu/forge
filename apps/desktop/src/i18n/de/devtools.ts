@@ -11,7 +11,7 @@ export const devtools = {
     title: "Dev-Server",
     description: "Läuft im Projektordner. Bekommt die Variablen aus der Test-.env und, solange sie läuft, die Verbindung zur Test-Datenbank.",
     command: "Startbefehl",
-    commandDescription: "Leer lassen, um den erkannten Befehl aus package.json zu nutzen.",
+    commandDescription: "Leer lassen, um den erkannten Befehl aus package.json zu nutzen. Gespeichert in .forge/project.json im Repo, gilt also für alle im Projekt.",
     detected: (command: string) => `Erkannt: ${command}`,
     commandPlaceholder: "z. B. pnpm dev",
     commandAria: "Startbefehl des Dev-Servers",

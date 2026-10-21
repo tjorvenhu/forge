@@ -682,6 +682,7 @@ Security:
     noTestCommand: "no test command",
     devCommand: (c: string) => `dev command ${c}`,
     devDetected: "dev command is detected",
+    projectFile: "commands from .forge/project.json in the repository",
     withGit: "with git",
     withoutGit: "without git",
     withoutAgents: "without parallel agents",

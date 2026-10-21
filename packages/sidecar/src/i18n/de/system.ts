@@ -110,6 +110,7 @@ export const system = {
     agentsBeforeGitOff: "Das Projekt hat noch Agenten. Erst die Agenten abschließen, dann Git ausschalten.",
     sandboxOnly: "Das Tag sandbox-only verbietet Autonomous in diesem Projekt.",
     pathOutside: "Pfad liegt außerhalb des Projekts.",
+    projectFileInvalid: (file: string) => `${file} ist kein gültiges JSON. Erst die Datei reparieren, dann speichern.`,
     previewTooLarge: (mb: number) => `Datei zu groß für die Vorschau (über ${mb} MB).`,
   },
   removal: {

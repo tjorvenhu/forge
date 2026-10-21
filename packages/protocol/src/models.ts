@@ -75,6 +75,8 @@ export const Project = z.object({
   testCommand: z.string().nullable(),
   /** command that starts the project's dev server, e.g. "pnpm dev"; null uses the detected one */
   devCommand: z.string().nullable(),
+  /** true when .forge/project.json in the repository sets the test or dev command for everyone */
+  projectFile: z.boolean().optional(),
   /** set for git worktrees: the project they belong to */
   parentId: z.string().nullable(),
   /** false: the project works without git; FORGE hides git and agents and tells Claude not to use git */

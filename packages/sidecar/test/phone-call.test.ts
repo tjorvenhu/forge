@@ -1481,9 +1481,9 @@ describe("PhoneService end to end with a test PBX", () => {
     expect(await conv.tools.project("", "import", {})).toBe("Fehler: Welcher Ordner? Bitte den Pfad nennen.");
 
     expect(await conv.tools.project("shop", "settings", { testCommand: "pnpm test", defaultEffort: "high" })).toBe(
-      "Gespeichert für shop: Profil balanced, Standardmodell wie global eingestellt, Denkaufwand high, Testbefehl <<<SESSION-DATEN>>>pnpm test<<<ENDE SESSION-DATEN>>>, Dev-Befehl wird erkannt, mit Git.",
+      "Gespeichert für shop: Profil balanced, Standardmodell wie global eingestellt, Denkaufwand high, Testbefehl <<<SESSION-DATEN>>>pnpm test<<<ENDE SESSION-DATEN>>>, Dev-Befehl wird erkannt, Befehle aus .forge/project.json im Repo, mit Git.",
     );
-    expect(projects.get(projectId)).toMatchObject({ testCommand: "pnpm test", defaultEffort: "high" });
+    expect(projects.get(projectId)).toMatchObject({ testCommand: "pnpm test", defaultEffort: "high", projectFile: true });
     expect(await conv.tools.project("shop", "favorite", {})).toBe("shop ist jetzt ein Favorit.");
     expect(await conv.tools.project("shop", "info")).toMatch(/^shop, Favorit: Profil balanced, /);
     expect(await conv.tools.project("shop", "settings", { git: false })).toMatch(/, ohne Git\.$/);
@@ -1506,7 +1506,8 @@ describe("PhoneService end to end with a test PBX", () => {
     expect(projects.get(projectId).group).toBeNull();
 
     const listing = await conv.tools.files("shop", "list");
-    expect(listing).toContain("Ordner: src.");
+    // .forge holds the test command saved above.
+    expect(listing).toContain("Ordner: .forge, src.");
     expect(listing).toContain("package.json");
     expect(await conv.tools.files("shop", "find", { path: "Package.JSON" })).toBe("Gefunden: <<<SESSION-DATEN>>>package.json<<<ENDE SESSION-DATEN>>>.");
     expect(await conv.tools.files("shop", "find", { path: "fehlt.ts" })).toBe("In shop gibt es keine Datei <<<SESSION-DATEN>>>fehlt.ts<<<ENDE SESSION-DATEN>>>.");

@@ -1534,6 +1534,7 @@ export class PhoneService {
         m.effort(p.defaultEffort),
         p.testCommand ? m.testCommand(asData(p.testCommand)) : m.noTestCommand,
         p.devCommand ? m.devCommand(asData(p.devCommand)) : m.devDetected,
+        ...(p.projectFile ? [m.projectFile] : []),
         p.gitEnabled ? m.withGit : m.withoutGit,
         ...(p.parentId || p.agentsEnabled ? [] : [m.withoutAgents]),
         ...(p.group ? [m.group(p.group)] : []),

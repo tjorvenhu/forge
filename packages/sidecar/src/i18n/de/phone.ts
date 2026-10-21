@@ -683,6 +683,7 @@ Sicherheit:
     noTestCommand: "kein Testbefehl",
     devCommand: (c: string) => `Dev-Befehl ${c}`,
     devDetected: "Dev-Befehl wird erkannt",
+    projectFile: "Befehle aus .forge/project.json im Repo",
     withGit: "mit Git",
     withoutGit: "ohne Git",
     withoutAgents: "ohne parallele Agenten",

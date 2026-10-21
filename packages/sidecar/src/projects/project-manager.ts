@@ -9,6 +9,7 @@ import { canonicalize, isInside, pathKey, validateDirName } from "../util/paths.
 import { SANDBOX_ONLY_TAG } from "../policy/profiles.js";
 import { AUTO_MERGE_TAG } from "../automation/agent-auto-merge.js";
 import { detectTechnologies, detectTestCommand } from "./tech.js";
+import { readProjectFile, SHARED_KEYS, writeProjectFile, type SharedConfig } from "./project-file.js";
 import { tr } from "../i18n/index.js";
 
 export interface CreateProjectInput {
@@ -56,8 +57,11 @@ export class ProjectManager {
     private readonly defaultProfile: () => Project["profile"],
   ) {}
 
+  /** The repository's .forge/project.json wins over the commands stored on this computer. */
   private withExists(p: ProjectRecord): Project {
-    return { ...p, exists: existsSync(p.path) };
+    const exists = existsSync(p.path);
+    const shared = exists ? readProjectFile(p.path) : {};
+    return { ...p, ...shared, projectFile: Object.keys(shared).length > 0, exists };
   }
 
   get(id: string): Project {
@@ -218,6 +222,10 @@ export class ProjectManager {
     }
     // Setting sandbox-only on an autonomous project falls back to Balanced instead of failing.
     if (sandboxOnly && !patch.profile && cur.profile === "autonomous") next.profile = "balanced";
+    // Agent worktrees take the commands over from their project; only the project itself writes the file.
+    const shared: SharedConfig = {};
+    for (const k of SHARED_KEYS) if (patch[k] !== undefined && patch[k] !== cur[k]) shared[k] = patch[k];
+    if (!cur.parentId && cur.exists && Object.keys(shared).length) writeProjectFile(cur.path, shared);
     this.db.updateProject(id, next);
     return this.get(id);
   }

@@ -198,8 +198,8 @@ export const phoneTools: typeof De = {
       profile: "settings: safe asks a lot, balanced is the default, autonomous works without asking",
       default_model: "settings: opus, sonnet, haiku or a model ID; default uses the global setting",
       default_effort: "settings: thinking effort of new sessions; default uses the global setting",
-      test_command: "settings: test command, for example pnpm test; empty removes it",
-      dev_command: "settings: command for the dev server, for example pnpm dev; empty uses the detected one",
+      test_command: "settings: test command, for example pnpm test; empty removes it; saved in .forge/project.json in the repository",
+      dev_command: "settings: command for the dev server, for example pnpm dev; empty uses the detected one; saved in .forge/project.json in the repository",
     },
   },
   files: {

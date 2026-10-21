@@ -111,6 +111,7 @@ export const system: typeof De = {
     agentsBeforeGitOff: "The project still has agents. Finish the agents first, then turn Git off.",
     sandboxOnly: "The tag sandbox-only forbids Autonomous in this project.",
     pathOutside: "Path is outside the project.",
+    projectFileInvalid: (file) => `${file} is not valid JSON. Fix the file first, then save.`,
     previewTooLarge: (mb) => `File too large for the preview (over ${mb} MB).`,
   },
   removal: {

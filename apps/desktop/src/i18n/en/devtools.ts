@@ -12,7 +12,7 @@ export const devtools: typeof De = {
     title: "Dev server",
     description: "Runs in the project folder. Gets the variables from the test .env and, while it runs, the connection to the test database.",
     command: "Start command",
-    commandDescription: "Leave empty to use the command detected from package.json.",
+    commandDescription: "Leave empty to use the command detected from package.json. Saved in .forge/project.json in the repository, so it applies to everyone on the project.",
     detected: (command) => `Detected: ${command}`,
     commandPlaceholder: "e.g. pnpm dev",
     commandAria: "Dev server start command",
