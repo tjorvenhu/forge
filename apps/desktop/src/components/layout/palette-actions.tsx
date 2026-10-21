@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import type { QueryClient } from "@tanstack/react-query";
-import { Archive, ArrowDown, ArrowLeftRight, ArrowUp, ArrowUpCircle, BookOpen, Bot, CalendarDays, Camera, CloudDownload, Columns2, Combine, Cpu, Database, Download, FilePlus2, FileStack, FileText, FileUp, FlaskConical, FolderDown, FolderMinus, FolderOpen, FolderPlus, Folders, Gauge, GitBranch, GitBranchPlus, GitCommitHorizontal, GitCompareArrows, GitFork, GitMerge, GitPullRequest, Globe, HandHeart, Languages, Lightbulb, Link2Off, ListChecks, LogIn, LogOut, MessageSquare, MessageSquarePlus, MessageSquareText, Mic, MonitorSmartphone, NotebookText, PackageCheck, PanelBottom, PanelRight, Pencil, Phone, PhoneOff, PhoneOutgoing, Pin, PinOff, Play, Power, RefreshCcw, RefreshCw, RotateCcw, Search, Settings2, Shield, ShieldBan, Shrink, Sparkles, Square, SquareArrowOutDownLeft, SquareArrowOutUpRight, SquareTerminal, Timer, ToggleLeft, ToggleRight, Trash2, Wand2, type LucideIcon } from "lucide-react";
+import { Archive, ArrowDown, ArrowLeftRight, ArrowUp, ArrowUpCircle, BookOpen, Bot, CalendarDays, Camera, CloudDownload, CloudUpload, Columns2, Combine, Cpu, Database, Download, FilePlus2, FileStack, FileText, FileUp, FlaskConical, FolderDown, FolderMinus, FolderOpen, FolderPlus, Folders, Gauge, GitBranch, GitBranchPlus, GitCommitHorizontal, GitCompareArrows, GitFork, GitMerge, GitPullRequest, Globe, HandHeart, Languages, Lightbulb, Link2Off, ListChecks, LogIn, LogOut, MessageSquare, MessageSquarePlus, MessageSquareText, Mic, MonitorSmartphone, NotebookText, PackageCheck, PanelBottom, PanelRight, Pencil, Phone, PhoneOff, PhoneOutgoing, Pin, PinOff, Play, Power, RefreshCcw, RefreshCw, RotateCcw, Search, Settings2, Shield, ShieldBan, Shrink, Sparkles, Square, SquareArrowOutDownLeft, SquareArrowOutUpRight, SquareTerminal, Timer, ToggleLeft, ToggleRight, Trash2, Wand2, type LucideIcon } from "lucide-react";
 import type {
   AppInstallState,
   AppUpdateState,
@@ -43,6 +43,7 @@ import { useProjectGroupDialogs } from "@/stores/project-groups";
 import { setProjectGroup } from "@/components/projects/ProjectGroupDialogs";
 import { switchProjectAgents } from "@/components/projects/AgentsSwitch";
 import { learnTemplatesNow } from "@/lib/template-learning";
+import { openPushAll } from "@/lib/push-on-close";
 import { DEV_TOOLS_SECTIONS, KNOWLEDGE_MERGE_REQUEST, KNOWLEDGE_STALE_REQUEST, PROJECT_SETTINGS_SECTIONS, SETTINGS_SECTIONS, SKILLS_TABS, EXTENSIONS_TABS, workspaceTabsFor, useUi, type SettingsSection, type WorkspaceTab } from "@/stores/ui";
 import { PROFILE_IDS, PROFILE_INFO } from "@/components/projects/ProfileBadge";
 import { RULE_GROUPS } from "@/components/settings/PolicySettings";
@@ -129,6 +130,7 @@ const SETTING_TOGGLES: Record<Exclude<BooleanSetting, keyof typeof UNLISTED_SETT
   screenshotKey: { label: t.layout.actions.toggles.screenshotKey, section: "general", keywords: "screenshot bildschirmfoto snipping druck print taste key screen capture" },
   sounds: { label: t.layout.actions.toggles.sounds, section: "general", keywords: "töne ton sound sounds signal klang audio" },
   autoContinueAfterLimit: { label: t.layout.actions.toggles.autoContinueAfterLimit, section: "claude", keywords: "auto weitermachen nutzungslimit limit reset continue usage" },
+  askPushOnClose: { label: t.layout.actions.toggles.askPushOnClose, section: "general", keywords: "schließen beenden pushen push github ungepusht commit andere gerät weiterarbeiten close quit unpushed other device" },
   learnTemplates: { label: t.layout.actions.toggles.learnTemplates, section: "templates", keywords: "prompt vorlagen templates wiederkehrende nachrichten shortcuts textvorschläge selbst anlegen lernen learn automatic recurring messages suggestions" },
   uiCompare: { label: t.layout.actions.toggles.uiCompare, section: "claude", keywords: "screenshot vergleich vorschau dev-server ui oberfläche bild vorher nachher before after compare preview image" },
   stripApiKey: { label: t.layout.actions.toggles.stripApiKey, section: "claude", keywords: "api key abo ausblenden hide subscription" },
@@ -626,6 +628,7 @@ export function buildActions(ctx: ActionContext): PaletteEntry[] {
 
   act("screenshot", t.layout.actions.screenshot, icon(Camera), takeScreenshot, { hint: settings?.screenshotKey ? t.layout.actions.printKey : undefined, keywords: "screenshot aufnehmen bildschirmfoto snipping ausschneiden markieren bild take capture screen cut mark image" });
   act("backup", t.layout.actions.backup, icon(Archive), () => void createBackup(qc), { keywords: "backup anlegen sichern sicherung create" });
+  act("push-all", t.layout.actions.pushAll, icon(CloudUpload), openPushAll, { keywords: "alles pushen alle projekte commit committen github hochladen ungepusht anderes gerät weiterarbeiten push all projects upload unpushed other device" });
   if (settings?.syncEnabled) act("sync-now", t.layout.actions.syncNow, icon(RefreshCcw), () => void syncNow(qc), { keywords: "jetzt github abgleichen sync synchronisieren andere pc now other computers" });
   act("setup-wizard", t.layout.actions.setupWizard, icon(Wand2), () => ui.setSetupWizard(true), { keywords: "einrichtungsassistent einrichten erster start setup onboarding assistant wizard first start" });
   act("usage-forecast", t.layout.actions.usageForecast, icon(Gauge), () => ui.openSettings("claude"), {

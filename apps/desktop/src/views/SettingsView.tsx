@@ -204,6 +204,12 @@ function GeneralSection({ s, save }: { s: Settings; save: Save }) {
           onChange={(v) => void save({ alwaysOnTop: v })}
         />
         <ScreenshotKeyRow checked={s.screenshotKey} onChange={(v) => void save({ screenshotKey: v })} />
+        <SwitchRow
+          label={sv.askPushOnCloseLabel}
+          description={sv.askPushOnCloseDescription}
+          checked={s.askPushOnClose}
+          onChange={(v) => void save({ askPushOnClose: v })}
+        />
         <Row label={sv.soundsLabel} description={sv.soundsDescription}>
           <div className="flex items-center gap-1">
             {(["done", "approval", "error"] as const).map((k) => (

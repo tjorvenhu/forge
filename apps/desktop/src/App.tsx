@@ -35,6 +35,7 @@ import { reopenChatWindows } from "@/lib/app-install";
 import type { ChatWindowTarget } from "@/lib/chat-windows";
 import { ChatWindowShell } from "@/views/ChatWindowView";
 import { AgentReviewDialog } from "@/components/workspace/AgentReviewDialog";
+import { PushAllDialog } from "@/components/git/PushAllDialog";
 import { useLanguageSync } from "@/i18n/sync";
 import { t } from "@/i18n";
 
@@ -164,6 +165,7 @@ function Shell() {
       <TemplateHost />
       <ProjectGroupDialogs />
       <AgentsOffDialog />
+      <PushAllDialog />
     </div>
   );
 }
