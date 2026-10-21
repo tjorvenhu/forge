@@ -23,6 +23,7 @@ const SENSITIVE_FILE =
   /(^|\/)(\.env(\..*)?|.*\.pem|.*\.key|id_(rsa|dsa|ecdsa|ed25519)(\.pub)?|.*\.p12|.*\.pfx|.*\.keystore|credentials(\..*)?\.json|secrets?\.(json|ya?ml|toml)|\.npmrc|\.pypirc|\.netrc)$/i;
 
 const PROTECTED = new Set(["main", "master"]);
+const REMOTE_PREFIX = "refs/remotes/origin/";
 
 /** files listed for one commit; a commit of a whole node_modules folder would flood the list */
 const MAX_COMMIT_FILES = 2000;
@@ -346,15 +347,31 @@ export class GitEngine {
     return parseUnifiedDiff(file, await this.ok(cwd, args));
   }
 
+  /** Local branches, then branches that exist only on origin (e.g. `dev` after a fresh clone). */
   async branches(cwd: string): Promise<BranchInfo[]> {
-    return parseBranches(await this.ok(cwd, ["branch", "--format=%(HEAD)%00%(refname:short)%00%(upstream:short)"]));
+    const [local, remote] = await Promise.all([
+      this.ok(cwd, ["branch", "--format=%(HEAD)%00%(refname:short)%00%(upstream:short)"]),
+      this.exec(cwd, ["for-each-ref", "--format=%(refname)", REMOTE_PREFIX]),
+    ]);
+    const list = parseBranches(local);
+    const names = new Set(list.map((b) => b.name));
+    for (const ref of remote.code === 0 ? remote.stdout.split("\n") : []) {
+      const name = ref.trim().slice(REMOTE_PREFIX.length);
+      if (!ref.startsWith(REMOTE_PREFIX) || !name || name === "HEAD" || names.has(name)) continue;
+      list.push({ name, current: false, upstream: `origin/${name}`, remote: true });
+    }
+    return list;
   }
 
   async checkout(cwd: string, branch: string, create: boolean) {
     if (branch.startsWith("-")) throw new ForgeError("VALIDATION", tr().system.git.invalidBranch);
     const check = await this.exec(cwd, ["check-ref-format", "--branch", branch]);
     if (check.code !== 0) throw new ForgeError("VALIDATION", tr().system.git.invalidBranchNamed(branch));
-    await this.ok(cwd, create ? ["switch", "-c", branch] : ["switch", branch]);
+    if (create) return void (await this.ok(cwd, ["switch", "-c", branch]));
+    // Spelled out instead of relying on git's guess, which `checkout.guess=false` turns off.
+    const local = await this.exec(cwd, ["show-ref", "--verify", "--quiet", `refs/heads/${branch}`]);
+    const remote = local.code === 0 ? null : await this.exec(cwd, ["show-ref", "--verify", "--quiet", `${REMOTE_PREFIX}${branch}`]);
+    await this.ok(cwd, remote?.code === 0 ? ["switch", "-c", branch, "--track", `origin/${branch}`] : ["switch", branch]);
   }
 
   /**

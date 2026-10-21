@@ -502,6 +502,8 @@ export const BranchInfo = z.object({
   name: z.string(),
   current: z.boolean(),
   upstream: z.string().nullable(),
+  /** Only on origin so far; switching to it creates the local tracking branch. */
+  remote: z.boolean().optional(),
 });
 export type BranchInfo = z.infer<typeof BranchInfo>;
 

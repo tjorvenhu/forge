@@ -38,6 +38,7 @@ export const git = {
     noCommitsYet: "Noch keine Commits.",
     noSearchMatch: "Kein Commit passt zur Suche.",
     localBranches: "Lokale Branches",
+    remoteBranches: "Nur auf origin",
     newBranch: "Neuer Branch",
     loadingBranches: "Lädt Branches",
     branchesNotLoaded: "Branches nicht geladen",

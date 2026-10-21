@@ -72,7 +72,7 @@ export function GitCenter({ project }: { project: Project }) {
   const head = commits[0];
   // Never empty: without a choice (or once the chosen commit left the history) the checked-out one.
   const selected = (selectedHash ? commits.find((c) => c.hash === selectedHash) : undefined) ?? head;
-  const localBranches = useMemo(() => new Set(branches.data?.map((b) => b.name)), [branches.data]);
+  const localBranches = useMemo(() => new Set(branches.data?.filter((b) => !b.remote).map((b) => b.name)), [branches.data]);
   const authors = useMemo(() => [...new Set(commits.map((c) => c.author))].sort((a, b) => a.localeCompare(b, locale)), [commits]);
   const q = query.trim().toLowerCase();
   const filtering = !!q || author !== "all";
@@ -226,47 +226,60 @@ export function GitCenter({ project }: { project: Project }) {
                 <ErrorBanner title={t.git.center.branchesNotLoaded}>{errorMessage(branches.error)}</ErrorBanner>
               </div>
             )}
-            <ul className="px-2 pb-2">
-              {branches.data?.map((b) => {
-                const items: MenuItem[] = [
-                  ...(b.current ? [] : [{ label: t.git.center.switch, icon: <GitBranch className="h-3.5 w-3.5" />, onSelect: () => void checkout(project.id, b.name, false).catch(() => {}) }]),
-                  { label: t.git.center.copyName, icon: <Copy className="h-3.5 w-3.5" />, onSelect: () => copyText(b.name) },
-                  ...(b.current ? [] : [{ label: t.git.center.deleteEllipsis, icon: <Trash2 className="h-3.5 w-3.5" />, danger: true, onSelect: () => setDeletingBranch(b.name) }]),
-                ];
-                return (
-                  <li
-                    key={b.name}
-                    onContextMenu={contextItems(() => items)}
-                    className={cn("group flex h-10 items-center gap-2.5 rounded-md px-2.5", b.current ? "bg-accent-soft" : "hover:bg-surface-2")}
-                  >
-                    <GitBranch className={cn("h-4 w-4 shrink-0", b.current ? "text-accent" : "text-muted")} />
-                    <span className="flex min-w-0 flex-1 flex-col">
-                      <span className={cn("truncate text-body", b.current && "font-semibold")}>{b.name}</span>
-                      {b.upstream && <span className="truncate text-caption text-subtle">{b.upstream}</span>}
-                    </span>
-                    {b.current ? (
-                      <Badge tone="accent">{t.git.common.current}</Badge>
-                    ) : (
-                      <span className="flex items-center opacity-0 group-hover:opacity-100 focus-within:opacity-100">
-                        <Button size="sm" variant="ghost" className="h-7 px-2" onClick={() => void checkout(project.id, b.name, false).catch(() => {})}>
-                          {t.git.center.switch}
-                        </Button>
-                        <Button
-                          size="icon-sm"
-                          variant="ghost"
-                          className="hover:text-danger"
-                          onClick={() => setDeletingBranch(b.name)}
-                          aria-label={t.git.center.deleteBranchNamed(b.name)}
-                          title={t.git.center.deleteBranch}
+            {[false, true].map((remote) => {
+              const list = branches.data?.filter((b) => !!b.remote === remote) ?? [];
+              if (remote && !list.length) return null;
+              return (
+                <div key={String(remote)}>
+                  {remote && (
+                    <div className="px-4 pb-1 pt-3 text-caption font-semibold uppercase tracking-wide text-subtle">{t.git.center.remoteBranches}</div>
+                  )}
+                  <ul className="px-2 pb-2">
+                    {list.map((b) => {
+                      const items: MenuItem[] = [
+                        ...(b.current ? [] : [{ label: t.git.center.switch, icon: <GitBranch className="h-3.5 w-3.5" />, onSelect: () => void checkout(project.id, b.name, false).catch(() => {}) }]),
+                        { label: t.git.center.copyName, icon: <Copy className="h-3.5 w-3.5" />, onSelect: () => copyText(b.name) },
+                        ...(b.current || b.remote ? [] : [{ label: t.git.center.deleteEllipsis, icon: <Trash2 className="h-3.5 w-3.5" />, danger: true, onSelect: () => setDeletingBranch(b.name) }]),
+                      ];
+                      return (
+                        <li
+                          key={b.name}
+                          onContextMenu={contextItems(() => items)}
+                          className={cn("group flex h-10 items-center gap-2.5 rounded-md px-2.5", b.current ? "bg-accent-soft" : "hover:bg-surface-2")}
                         >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </Button>
-                      </span>
-                    )}
-                  </li>
-                );
-              })}
-            </ul>
+                          <GitBranch className={cn("h-4 w-4 shrink-0", b.current ? "text-accent" : "text-muted")} />
+                          <span className="flex min-w-0 flex-1 flex-col">
+                            <span className={cn("truncate text-body", b.current && "font-semibold")}>{b.name}</span>
+                            {b.upstream && <span className="truncate text-caption text-subtle">{b.upstream}</span>}
+                          </span>
+                          {b.current ? (
+                            <Badge tone="accent">{t.git.common.current}</Badge>
+                          ) : (
+                            <span className="flex items-center opacity-0 group-hover:opacity-100 focus-within:opacity-100">
+                              <Button size="sm" variant="ghost" className="h-7 px-2" onClick={() => void checkout(project.id, b.name, false).catch(() => {})}>
+                                {t.git.center.switch}
+                              </Button>
+                              {!b.remote && (
+                                <Button
+                                  size="icon-sm"
+                                  variant="ghost"
+                                  className="hover:text-danger"
+                                  onClick={() => setDeletingBranch(b.name)}
+                                  aria-label={t.git.center.deleteBranchNamed(b.name)}
+                                  title={t.git.center.deleteBranch}
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </Button>
+                              )}
+                            </span>
+                          )}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+              );
+            })}
           </div>
         )}
 

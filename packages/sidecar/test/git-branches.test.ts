@@ -58,3 +58,24 @@ describe("deleteBranch", { timeout: 30_000 }, () => {
     await expect(engine.deleteBranch(repo, "--all", true)).rejects.toMatchObject({ code: "VALIDATION" });
   });
 });
+
+describe("branches only on origin", { timeout: 30_000 }, () => {
+  it("lists them and switching creates the tracking branch", async () => {
+    const origin = path.join(t.dir, "origin.git");
+    await git(t.dir, "init", "-q", "--bare", origin);
+    await git(repo, "remote", "add", "origin", origin);
+    await git(repo, "push", "-q", "origin", "main", "main:dev");
+    await git(repo, "fetch", "-q", "origin");
+
+    expect(await engine.branches(repo)).toEqual([
+      { name: "main", current: true, upstream: null },
+      { name: "dev", current: false, upstream: "origin/dev", remote: true },
+    ]);
+
+    await engine.checkout(repo, "dev", false);
+    expect(await engine.branches(repo)).toEqual([
+      { name: "dev", current: true, upstream: "origin/dev" },
+      { name: "main", current: false, upstream: null },
+    ]);
+  });
+});

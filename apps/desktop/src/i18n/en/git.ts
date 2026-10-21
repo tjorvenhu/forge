@@ -39,6 +39,7 @@ export const git: typeof De = {
     noCommitsYet: "No commits yet.",
     noSearchMatch: "No commit matches the search.",
     localBranches: "Local branches",
+    remoteBranches: "Only on origin",
     newBranch: "New branch",
     loadingBranches: "Loading branches",
     branchesNotLoaded: "Branches not loaded",
