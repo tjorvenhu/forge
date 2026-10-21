@@ -27,6 +27,7 @@ export const system: typeof De = {
     noRemotePublish: "No remote origin. Publish the project on GitHub first.",
     pushRejected: "Push rejected: new commits arrived on the remote during the push. Please push again.",
     pushFailed: "Push failed",
+    pushAllMessage: "Save open work",
     detachedHead: "No branch checked out (detached HEAD).",
     noRemote: "No remote origin.",
     upToDate: "Already up to date.",

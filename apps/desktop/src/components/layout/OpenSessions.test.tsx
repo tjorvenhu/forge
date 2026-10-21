@@ -245,7 +245,7 @@ describe("OpenSessions tree", () => {
     setup();
     await screen.findByRole("tab", { name: /^Titel w1/ });
     const web = document.querySelector<HTMLElement>('[data-project-group="web"]')!;
-    expect(within(web).getByRole("button", { name: "Web" }).getAttribute("title")).toBe("Web öffnen");
+    expect(within(web).getByRole("button", { name: "Web" }).getAttribute("title")).toBe("Neue Session in Web");
     expect(within(web).getAllByRole("tab").map((t) => t.getAttribute("aria-label")!.split(",")[0])).toEqual(["Titel w1"]);
   });
 

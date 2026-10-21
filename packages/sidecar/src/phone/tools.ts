@@ -42,6 +42,8 @@ export const GIT_ACTIONS = [
   "publish",
   "account",
   "identity",
+  "unpushed",
+  "push_all",
 ] as const;
 export type GitAction = (typeof GIT_ACTIONS)[number];
 export type TaskAction = "output" | "stop" | "to_background" | "message";
@@ -215,6 +217,8 @@ export interface ForgeSettingsPatch {
   uiCompare?: boolean;
   /** FORGE turns repeated messages into templates on its own */
   learnTemplates?: boolean;
+  /** closing FORGE asks to commit and push what is not on GitHub */
+  askPushOnClose?: boolean;
   /** anonymous usage totals every 5 minutes */
   usageStats?: boolean;
   policyRule?: PolicyRuleId;
@@ -855,6 +859,7 @@ const TOOL_DEFS: readonly ToolDef[] = [
       screenshot_key: { type: "boolean", optional: true },
       ui_compare: { type: "boolean", optional: true },
       learn_templates: { type: "boolean", optional: true },
+      ask_push_on_close: { type: "boolean", optional: true },
       usage_stats: { type: "boolean", optional: true },
       language: { type: "string", optional: true, enum: Language.options },
       policy_rule: { type: "string", optional: true, enum: PolicyRuleId.options },
@@ -879,6 +884,7 @@ const TOOL_DEFS: readonly ToolDef[] = [
         screenshotKey: optBool(a.screenshot_key),
         uiCompare: optBool(a.ui_compare),
         learnTemplates: optBool(a.learn_templates),
+        askPushOnClose: optBool(a.ask_push_on_close),
         usageStats: optBool(a.usage_stats),
         language: Language.options.find((x) => x === a.language),
         policyRule: PolicyRuleId.options.find((x) => x === a.policy_rule),

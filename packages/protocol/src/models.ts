@@ -543,6 +543,8 @@ export const Settings = z.object({
   uiCompare: z.boolean(),
   /** FORGE turns requests the user sends again and again into prompt templates (marked as learned) */
   learnTemplates: z.boolean(),
+  /** closing the main window asks to commit and push what is not on GitHub yet (git.unpushed) */
+  askPushOnClose: z.boolean(),
   /** blocklist rules the user switched off; every other rule applies */
   disabledPolicyRules: z.array(PolicyRuleId),
   /** the setup assistant of the first start is done (or was skipped); installations from before it count as done */
@@ -823,6 +825,28 @@ export const GitIntegrated = z.object({
   localCommits: z.number().int(),
 });
 export type GitIntegrated = z.infer<typeof GitIntegrated>;
+
+/** A project whose state is not completely on its remote: uncommitted files or commits not pushed. */
+export const UnpushedProject = z.object({
+  projectId: z.string(),
+  name: z.string(),
+  branch: z.string(),
+  /** changed files that a commit would take (no secrets, no build output, no conflicts) */
+  changed: z.number().int(),
+  /** commits not on origin: ahead of the upstream, or on no origin branch when there is none */
+  ahead: z.number().int(),
+});
+export type UnpushedProject = z.infer<typeof UnpushedProject>;
+
+export const PushAllResult = z.object({
+  projectId: z.string(),
+  name: z.string(),
+  /** subject of the commit made for the uncommitted files; null: nothing to commit */
+  committed: z.string().nullable(),
+  pushed: z.boolean(),
+  error: z.string().nullable(),
+});
+export type PushAllResult = z.infer<typeof PushAllResult>;
 
 /** `details.integration` of the GIT_CONFLICT error when origin's commits could not be taken over automatically. */
 export interface GitIntegrationConflict {

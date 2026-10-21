@@ -1,7 +1,7 @@
 import { useEffect, useRef, type KeyboardEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { useQueries } from "@tanstack/react-query";
-import { AppWindow, Bot, CalendarDays, ChevronDown, Columns2, FileStack, FolderOpen, Hourglass, LayoutGrid, MessageSquare, MessageSquarePlus, Plus, SquareArrowOutUpRight, X } from "lucide-react";
+import { AppWindow, Bot, CalendarDays, ChevronDown, Columns2, FileStack, Hourglass, LayoutGrid, MessageSquare, MessageSquarePlus, Plus, SquareArrowOutUpRight, X } from "lucide-react";
 import { openChatWindow, useChatWindows } from "@/lib/chat-windows";
 import { contextItems } from "@/lib/context-menu";
 import { call, keys, useLiveSessions, useProjects, useSession } from "@/lib/queries";
@@ -226,8 +226,6 @@ export function OpenSessions() {
             <div
               className={cn("group/project flex items-center rounded-lg", projectActive && !activeId && !showNew ? "bg-surface-3" : "hover:bg-surface-2")}
               onContextMenu={contextItems(() => [
-                { label: t.layout.openSessions.openProject, icon: <FolderOpen className={MENU_ICON} />, onSelect: () => openProject(g.projectId) },
-                ...(splitRoom > 0 && !projectActive ? [{ label: t.layout.openSessions.openBeside, icon: <Columns2 className={MENU_ICON} />, onSelect: () => addSplitPane(g.projectId) }] : []),
                 {
                   label: t.layout.openSessions.newSession,
                   icon: <MessageSquarePlus className={MENU_ICON} />,
@@ -236,6 +234,7 @@ export function OpenSessions() {
                     openProject(g.projectId, null);
                   },
                 },
+                ...(splitRoom > 0 && !projectActive ? [{ label: t.layout.openSessions.openBeside, icon: <Columns2 className={MENU_ICON} />, onSelect: () => addSplitPane(g.projectId) }] : []),
                 { label: t.layout.openSessions.dailyReport, icon: <CalendarDays className={MENU_ICON} />, onSelect: () => openReport(g.projectId) },
                 { label: t.layout.openSessions.applyTemplate, icon: <FileStack className={MENU_ICON} />, onSelect: () => useTemplateDialogs.getState().openApply({ projectId: g.projectId }) },
                 ...(hasRows ? [{ label: collapsed ? t.layout.openSessions.showSessions : t.layout.openSessions.hideSessions, icon: <ChevronDown className={MENU_ICON} />, onSelect: () => toggleGroup(g.projectId) }] : []),
@@ -244,7 +243,10 @@ export function OpenSessions() {
               <button
                 onClick={(e) => {
                   if (e.shiftKey && splitRoom > 0 && !projectActive) addSplitPane(g.projectId);
-                  else openProject(g.projectId);
+                  else {
+                    toggleGroup(g.projectId, false);
+                    openProject(g.projectId, null);
+                  }
                 }}
                 title={t.layout.openSessions.projectTitle(g.projectName, splitRoom > 0 && !projectActive)}
                 className={cn("flex min-w-0 flex-1 items-center gap-2.5 px-2 py-1.5 text-left text-ui", projectActive ? "text-fg" : "text-muted hover:text-fg")}

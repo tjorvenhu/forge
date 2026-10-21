@@ -429,6 +429,18 @@ export class GitEngine {
     return { branch, output, integrated };
   }
 
+  /** Top folder of the repository; projects in subfolders of one monorepo share it. */
+  async repoRoot(cwd: string): Promise<string> {
+    return path.resolve((await this.ok(cwd, ["rev-parse", "--show-toplevel"])).trim());
+  }
+
+  /** Commits of HEAD not on origin: ahead of the upstream, or on no origin branch when the branch has none. */
+  async unpushedCount(cwd: string, summary: GitSummary): Promise<number> {
+    if (summary.upstream) return summary.ahead;
+    const r = await this.exec(cwd, ["rev-list", "--count", "HEAD", "--not", "--remotes=origin"]);
+    return r.code === 0 ? Number(r.stdout.trim()) || 0 : 0;
+  }
+
   /** Takes over new commits from origin: fast-forward, or a rebase of the local commits on top. */
   async pull(cwd: string): Promise<{ output: string; integrated: GitIntegrated | null }> {
     const branch = await this.currentBranch(cwd);

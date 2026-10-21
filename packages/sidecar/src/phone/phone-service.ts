@@ -480,6 +480,8 @@ function settingText(s: Settings, key: keyof ForgeSettingsPatch | "alwaysOnTop")
       return m.settings.updateChannel(s.updateChannel);
     case "learnTemplates":
       return m.settings.learnTemplates(s.learnTemplates);
+    case "askPushOnClose":
+      return m.settings.askPushOnClose(s.askPushOnClose);
     case "usageStats":
       return m.settings.usageStats(s.usageStats);
     case "debugLogs":
@@ -2180,6 +2182,13 @@ export class PhoneService {
             const id = await call("git.identity", {});
             return id.name || id.email ? gm.identity(id.name ?? null, id.email ?? null) : gm.noIdentity;
           }
+          if (action === "unpushed" || action === "push_all") {
+            const open = await call("git.unpushed", {});
+            if (!open.length) return gm.allPushed;
+            if (action === "unpushed") return gm.unpushed(open.map((u) => gm.unpushedLine(u.name, u.branch, u.changed, u.ahead)).join("\n"));
+            const done = await call("git.pushAll", { projectIds: open.map((u) => u.projectId), allowProtected: o?.allowProtected === true });
+            return gm.pushAllDone(done.map((r) => gm.pushAllLine(r.name, r.committed && asData(r.committed), r.pushed, r.error && asData(r.error))).join("\n"));
+          }
           const p = target(projectName, o);
           if (!p.gitEnabled) return gitOff(p);
           const git = this.d.git;
@@ -2797,7 +2806,7 @@ export class PhoneService {
           const cur = await call("settings.get", {});
           const update: Partial<Settings> = {};
           const changed: Array<keyof ForgeSettingsPatch> = [];
-          const flags = ["sounds", "desktopNotifications", "enterToSend", "autoContinueAfterLimit", "updateChecks", "debugLogs", "stripApiKey", "screenshotKey", "uiCompare", "learnTemplates", "usageStats"] as const;
+          const flags = ["sounds", "desktopNotifications", "enterToSend", "autoContinueAfterLimit", "updateChecks", "debugLogs", "stripApiKey", "screenshotKey", "uiCompare", "learnTemplates", "askPushOnClose", "usageStats"] as const;
           for (const k of flags) {
             const v = patch[k];
             if (v === undefined) continue;

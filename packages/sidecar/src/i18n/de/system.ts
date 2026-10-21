@@ -26,6 +26,7 @@ export const system = {
     noRemotePublish: "Kein Remote origin. Veröffentliche das Projekt zuerst auf GitHub.",
     pushRejected: "Push abgelehnt: Während des Pushs kamen neue Commits auf den Remote. Bitte erneut pushen.",
     pushFailed: "Push fehlgeschlagen",
+    pushAllMessage: "Offenen Stand sichern",
     detachedHead: "Kein Branch ausgecheckt (detached HEAD).",
     noRemote: "Kein Remote origin.",
     upToDate: "Schon auf dem neuesten Stand.",

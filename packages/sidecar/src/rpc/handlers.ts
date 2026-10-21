@@ -1,5 +1,6 @@
 import { ForgeError, methods, type MethodName, type ParamsOf, type ParsedParamsOf, type ResultOf, type Settings } from "@forge/protocol";
 import { startIntegrationSession } from "../git/integration-prompt.js";
+import { PushAll } from "../git/push-all.js";
 import { collectDiagnostics } from "../claude/diagnostics.js";
 import type { Db } from "../persistence/db.js";
 import type { GitEngine } from "../git/git.js";
@@ -99,6 +100,12 @@ export function createHandlers(s: Services): Handlers {
     s.notifyProject(projectId);
     return s.git.status(gitDir(projectId));
   };
+  const pushAll = new PushAll({
+    git: s.git,
+    projects: () => s.projects.all(),
+    suggestCommitMessage: (projectId, paths) => s.sessions.suggestCommitMessage(projectId, paths),
+    notifyProject: s.notifyProject,
+  });
 
   return {
     "system.diagnostics": async ({ refresh }) => {
@@ -465,6 +472,8 @@ export function createHandlers(s: Services): Handlers {
       await s.git.fetch(gitDir(projectId));
       return gitChanged(projectId);
     },
+    "git.unpushed": () => pushAll.unpushed(),
+    "git.pushAll": ({ projectIds, allowProtected }) => pushAll.pushAll(projectIds, allowProtected),
     "github.pr": ({ projectId }) => s.github.prForBranch(gitDir(projectId)),
     "github.suggestPr": ({ projectId }) => {
       s.projects.requireGit(projectId);

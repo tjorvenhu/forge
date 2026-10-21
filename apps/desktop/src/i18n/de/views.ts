@@ -193,6 +193,9 @@ export const views = {
     notificationsLabel: byPlatform({ windows: "Windows-Benachrichtigungen", macos: "Mitteilungen", linux: "Desktop-Benachrichtigungen" }),
     notificationsDescription:
       `Meldung ${byPlatform({ windows: "von Windows", macos: "von macOS", linux: "des Systems" })}, wenn Claude fertig ist, eine Freigabe oder Antwort braucht oder ein Fehler auftritt. Erscheint auch, wenn FORGE im Hintergrund ist. Ein Klick auf die eingeblendete Meldung öffnet die Session.`,
+    askPushOnCloseLabel: "Beim Schließen nach Ungepushtem fragen",
+    askPushOnCloseDescription:
+      "Haben Projekte Änderungen oder Commits, die noch nicht auf GitHub sind, fragt FORGE beim Schließen, ob es sie committen und pushen soll. Dann liegt der ganze Stand auf GitHub und du kannst an einem anderen Gerät weiterarbeiten.",
     alwaysOnTopLabel: "Im Vordergrund bleiben",
     alwaysOnTopDescription:
       "Das Hauptfenster von FORGE bleibt über anderen Programmen. Auch über die Befehlspalette (Strg+K) und per Telefon umschaltbar. Ausgekoppelte Chat-Fenster heftest du einzeln mit der Nadel in ihrer Kopfzeile an.",

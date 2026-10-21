@@ -94,8 +94,8 @@ export const projects: typeof De = {
   },
   card: {
     favoriteNotSaved: "Favorite could not be saved",
-    open: "Open",
     newSession: "New session",
+    openLastSession: "Open last session",
     dailyReport: "Daily report",
     applyTemplate: "Apply template",
     removeFavorite: "Remove from favorites",

@@ -53,6 +53,8 @@ import {
   GitHubOwner,
   GitHubRepo,
   GitIntegrated,
+  UnpushedProject,
+  PushAllResult,
   GitStatus,
   McpServer,
   MarketplacePlugin,
@@ -732,6 +734,16 @@ export const methods = {
   /** like git.push without the push; conflicts also start a Claude session */
   "git.pull": { params: projectRef, result: z.object({ output: z.string(), integrated: GitIntegrated.nullable(), session: Session.nullable() }) },
   "git.fetch": { params: projectRef, result: GitStatus },
+  /** Projects with a remote whose work is not completely on it; worktrees of agents are left out. Asked when FORGE closes. */
+  "git.unpushed": { params: empty, result: z.array(UnpushedProject) },
+  /**
+   * Commits the open changes of each project (FORGE writes the message; secrets and build output stay
+   * out) and pushes its branch. Conflicts are reported, not handed to a Claude session.
+   */
+  "git.pushAll": {
+    params: z.object({ projectIds: z.array(id).min(1).max(500), allowProtected: z.boolean().default(false) }),
+    result: z.array(PushAllResult),
+  },
   "github.pr": { params: projectRef, result: PullRequest.nullable() },
   "github.suggestPr": { params: projectRef, result: z.object({ title: z.string(), body: z.string(), base: z.string(), head: z.string() }) },
   "github.createPr": {

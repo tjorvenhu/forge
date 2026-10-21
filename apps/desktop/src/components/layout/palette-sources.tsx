@@ -72,7 +72,7 @@ export function usePaletteSources(query: string, project: ProjectWithStatus | nu
         keywords: `${p.path} ${p.group ?? ""} ${p.technologies.join(" ")} ${p.tags.join(" ")}`,
         hint: [p.group, p.git?.branch].filter(Boolean).join(" · ") || undefined,
         icon: <ProjectIcon id={p.parentId ?? p.id} name={p.name} size={18} />,
-        run: () => ui.openProject(p.id),
+        run: () => ui.openProject(p.id, null),
       });
     }
     const groups = useProjectGroupDialogs.getState();

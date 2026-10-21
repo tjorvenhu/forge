@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, Bot, CalendarDays, Code2, Copy, FileStack, FolderMinus, FolderOpen, FolderSearch, Folders, GitBranch, MessageSquarePlus, MoreHorizontal, Settings2, Shield, ShieldAlert, ShieldCheck, Star, Tag, Trash2 } from "lucide-react";
+import { AlertTriangle, Bot, CalendarDays, Code2, Copy, FileStack, FolderMinus, FolderSearch, Folders, GitBranch, History, MessageSquarePlus, MoreHorizontal, Settings2, Shield, ShieldAlert, ShieldCheck, Star, Tag, Trash2 } from "lucide-react";
 import type { ProjectWithStatus } from "@forge/protocol";
 import { call, keys } from "@/lib/queries";
 import { contextItems, copyText } from "@/lib/context-menu";
@@ -52,8 +52,8 @@ export function ProjectCard({
   };
   // Shared by the context menu and the "…" button so both offer the same actions.
   const menuItems = (): MenuItem[] => [
-    { label: t.projects.card.open, icon: <FolderOpen className="h-3.5 w-3.5" />, onSelect: () => openProject(p.id) },
     { label: t.projects.card.newSession, icon: <MessageSquarePlus className="h-3.5 w-3.5" />, onSelect: () => openProject(p.id, null) },
+    ...(p.lastSession ? [{ label: t.projects.card.openLastSession, icon: <History className="h-3.5 w-3.5" />, onSelect: () => openProject(p.id, p.lastSession!.id) }] : []),
     { label: t.projects.card.dailyReport, icon: <CalendarDays className="h-3.5 w-3.5" />, onSelect: () => openReport(p.parentId ?? p.id) },
     ...(p.exists ? [{ label: t.projects.card.applyTemplate, icon: <FileStack className="h-3.5 w-3.5" />, onSelect: () => useTemplateDialogs.getState().openApply({ projectId: p.id }) }] : []),
     { label: p.favorite ? t.projects.card.removeFavorite : t.projects.card.addFavorite, icon: <Star className="h-3.5 w-3.5" />, onSelect: () => void toggleFavorite() },
@@ -85,7 +85,7 @@ export function ProjectCard({
       onPointerDown={onGroupDrop && ((e) => startProjectDrag(e, p, onGroupDrop))}
       onContextMenu={contextItems(menuItems)}
     >
-      <button className="flex items-center gap-3 px-4 pb-2.5 pt-4 text-left" onClick={() => openProject(p.id)} aria-label={t.projects.card.openNamed(p.name)} title={`${p.name}\n${p.path}`}>
+      <button className="flex items-center gap-3 px-4 pb-2.5 pt-4 text-left" onClick={() => openProject(p.id, null)} aria-label={t.projects.card.openNamed(p.name)} title={`${p.name}\n${p.path}`}>
         <ProjectIcon id={p.parentId ?? p.id} name={p.name} size={32} />
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5">

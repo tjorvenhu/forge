@@ -94,8 +94,8 @@ export const projects = {
   },
   card: {
     favoriteNotSaved: "Favorit konnte nicht gespeichert werden",
-    open: "Öffnen",
     newSession: "Neue Session",
+    openLastSession: "Letzte Session öffnen",
     dailyReport: "Tagesbericht",
     applyTemplate: "Vorlage anwenden",
     removeFavorite: "Aus Favoriten entfernen",

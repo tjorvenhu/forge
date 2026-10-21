@@ -592,6 +592,13 @@ Sicherheit:
     committed: (project: string, message: string, skipped: string) => `Committet in ${project}: ${message}${skipped ? ` Ausgelassen: ${skipped}.` : ""}`,
     integrated: (n: number) => ` Vorher ${n} neue Commits vom Server übernommen.`,
     pushed: (branch: string, project: string, took: string) => `Branch ${branch} von ${project} gepusht.${took}`,
+    allPushed: "Alles ist auf GitHub, es gibt nichts zu pushen.",
+    unpushedLine: (project: string, branch: string, changed: number, ahead: number) =>
+      `${project} auf ${branch}: ${[changed ? `${changed} geänderte ${changed === 1 ? "Datei" : "Dateien"}` : "", ahead ? `${ahead} ${ahead === 1 ? "Commit" : "Commits"} nicht gepusht` : ""].filter(Boolean).join(", ")}`,
+    unpushed: (lines: string) => `Noch nicht auf GitHub:\n${lines}`,
+    pushAllLine: (project: string, committed: string | null, pushed: boolean, error: string | null) =>
+      pushed ? `${project}: ${committed ? `committet (${committed}) und ` : ""}gepusht` : `${project}: Fehler, ${error ?? "unbekannt"}`,
+    pushAllDone: (lines: string) => `Ergebnis:\n${lines}`,
   },
 
   pr: {
@@ -856,6 +863,7 @@ Sicherheit:
     updateChecks: (v: boolean) => `Update-Prüfung ${on(v)}`,
     updateChannel: (c: "stable" | "dev"): string => (c === "dev" ? "Entwicklungsversion an, also die Vorabversionen aus dem Branch dev" : "Entwicklungsversion aus, also die Releases von main"),
     learnTemplates: (v: boolean) => `Vorlagen aus wiederkehrenden Nachrichten lernen ${on(v)}`,
+    askPushOnClose: (v: boolean) => `beim Schließen nach ungepushter Arbeit fragen ${on(v)}`,
     usageStats: (v: boolean) => `anonyme Nutzungsstatistik ${on(v)}`,
     debugLogs: (v: boolean) => `Debug-Logs ${on(v)}`,
     stripApiKey: "ein API-Key aus der Umgebung geht nicht an Claude Code",
