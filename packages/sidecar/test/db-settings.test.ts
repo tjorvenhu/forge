@@ -129,7 +129,8 @@ describe("deleting local branches", () => {
   });
 });
 
-describe("agents_enabled migration order", () => {
+// Every migration on a real file, twice per test: the Windows runner needs over 5 s for that.
+describe("agents_enabled migration order", { timeout: 30_000 }, () => {
   /** An install whose schema has every migration but agents_enabled, stored as `userVersion`. */
   function withoutAgentsEnabled(userVersion: number) {
     const sql = new DatabaseSync(file);
