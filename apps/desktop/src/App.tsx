@@ -8,6 +8,7 @@ import { Sidebar } from "@/components/layout/Sidebar";
 import { Toaster } from "@/components/layout/Toaster";
 import { ContextMenuHost } from "@/components/layout/ContextMenuHost";
 import { TemplateHost } from "@/components/templates/TemplateHost";
+import { SessionUsageDialogHost } from "@/components/usage/SessionUsage";
 import { TitleTooltips } from "@/components/ui/title-tooltips";
 import { ErrorBoundary } from "@/components/layout/ErrorBoundary";
 import { NewProjectDialog } from "@/components/projects/NewProjectDialog";
@@ -165,6 +166,7 @@ function Shell() {
       <TitleTooltips />
       <ContextMenuHost />
       <TemplateHost />
+      <SessionUsageDialogHost />
       <ProjectGroupDialogs />
       <AgentsOffDialog />
       <RemoteCheckDialog />

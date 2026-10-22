@@ -31,7 +31,7 @@ export function forecastTuning(key: string): Tuning {
 /** Readings older than this are not needed by any window. */
 export const SAMPLE_MAX_AGE_MS = WEEK.length + HOUR;
 /** Reset times can differ by a moment between readings of the same window. */
-const SAME_WINDOW_MS = 2 * MINUTE;
+export const SAME_WINDOW_MS = 2 * MINUTE;
 const MIN_SAMPLES = 3;
 
 /**

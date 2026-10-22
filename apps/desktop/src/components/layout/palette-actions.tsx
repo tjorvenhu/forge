@@ -57,6 +57,7 @@ import { runGitSync } from "@/components/git/Sync";
 import { checkRemote } from "@/stores/remote-check";
 import { SECTIONS as PROJECT_SECTION_DEFS, TAG_INFO } from "@/components/workspace/ProjectSettingsTab";
 import { compactSession, PROFILE_MODE, stopSession } from "@/components/workspace/useSendMessage";
+import { useSessionUsageDialog } from "@/stores/session-usage";
 import { revealInProject } from "@/components/workspace/file-links";
 import { taskViewOf } from "@/components/workspace/WorkingIndicator";
 import { recheckKnowledgeRefs } from "@/components/knowledge/knowledge-actions";
@@ -395,6 +396,7 @@ export function buildActions(ctx: ActionContext): PaletteEntry[] {
         () => void (pinned ? pinChatWindow(s.id, false) : inWindow ? pinChatWindow(s.id, true) : openChatWindow(s.projectId, s.id, s.title, { pinned: true })),
         { keywords: "chat-fenster vordergrund anheften anpinnen immer oben always on top eigenes fenster chat window pin own window", hint: inWindow ? undefined : t.layout.actions.opensWindow },
       );
+      act("session-usage", t.usage.session.open, icon(Gauge), () => useSessionUsageDialog.getState().open(s.id, s.title), { keywords: t.usage.session.paletteKeywords });
       act("session-summary", t.layout.actions.sessionSummary, icon(NotebookText), () => ctx.openDialog({ kind: "summary", session: s }), { keywords: "session zusammenfassen wo war ich wiedereinstieg summary summarize where was i" });
       act("session-fork", t.layout.actions.sessionFork, icon(GitFork), () => void forkSession(qc, s), { keywords: "session verzweigen fork kopie zweig copy branch" });
       if (s.claudeSessionId && !SESSION_BUSY.has(s.status)) {

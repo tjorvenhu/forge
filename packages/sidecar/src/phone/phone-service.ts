@@ -1703,8 +1703,17 @@ export class PhoneService {
           } catch {
             // Only a measurement; details work without it.
           }
+          let usage = "";
+          try {
+            const u = await sessions.sessionUsage(s.id);
+            const windows = u.windows.map((w) => m.details.usageWindow(w.label, m.details.percent(w.share))).join(", ");
+            if (u.totalTokens > 0) usage = m.details.usage(m.details.tokens(u.totalTokens), windows);
+          } catch {
+            // Same as the context: a measurement.
+          }
           return [
             m.details.head(refFor(s.id), asData(s.title ?? m.untitled), project.name, statusText(s), setup, context),
+            usage,
             summary ? m.details.summary(excerptData(summary, 2000)) : "",
             m.details.last(last ? excerptData(last, 1500) : null),
             s.status === "waiting_approval" ? m.details.open(pendingText(db, s.id)) : "",

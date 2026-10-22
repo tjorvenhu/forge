@@ -67,6 +67,7 @@ import {
   PermissionMode,
   ProfileId,
   PlanUsage,
+  SessionUsage,
   Project,
   ProjectGroup,
   ProjectTag,
@@ -446,6 +447,7 @@ export const methods = {
     result: z.object({ ok: z.boolean() }),
   },
   "sessions.contextUsage": { params: sessionRef, result: ContextUsage.nullable() },
+  "sessions.usage": { params: sessionRef, result: SessionUsage },
   "search.sessions": {
     params: SearchFilter.extend({ query: z.string().min(1).max(200), limit: z.number().int().min(1).max(1000).default(50) }),
     result: z.array(SearchHit),

@@ -92,6 +92,7 @@ export const PHONE_TOOL_FOR: Partial<Record<MethodName, string>> = {
   "uiCompare.retake": "sessions",
   "sessions.get": "details",
   "sessions.contextUsage": "details",
+  "sessions.usage": "details",
   "sessions.stopTask": "background_task",
   "sessions.taskOutput": "background_task",
   "sessions.messageTask": "background_task",

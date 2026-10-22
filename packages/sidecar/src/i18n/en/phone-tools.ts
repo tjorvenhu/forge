@@ -6,7 +6,7 @@ export const phoneTools: typeof De = {
     description: "Overview: running and recently finished sessions with their short name, status, open approvals and questions, Remote Control.",
   },
   details: {
-    description: "The last result of a session, an open question or plan word for word, running background tasks and subagents.",
+    description: "The last result of a session, an open question or plan word for word, running background tasks and subagents, the session's usage (tokens, estimated share of the 5-hour and weekly limits).",
     params: {
       summary: "true if the caller wants a summary of the whole history (takes a few seconds)",
     },

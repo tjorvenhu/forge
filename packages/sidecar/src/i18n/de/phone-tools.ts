@@ -4,7 +4,7 @@ export const phoneTools = {
     description: "Überblick: laufende und kürzlich beendete Sessions mit Kürzel, Status, offene Freigaben und Rückfragen, Remote Control.",
   },
   details: {
-    description: "Letztes Ergebnis einer Session, offene Rückfrage oder Plan im Wortlaut, laufende Hintergrund-Aufgaben und Subagenten.",
+    description: "Letztes Ergebnis einer Session, offene Rückfrage oder Plan im Wortlaut, laufende Hintergrund-Aufgaben und Subagenten, Verbrauch der Session (Tokens, geschätzter Anteil am 5-Stunden- und Wochenlimit).",
     params: {
       summary: "true, wenn er eine Zusammenfassung des ganzen Verlaufs will (dauert ein paar Sekunden)",
     },

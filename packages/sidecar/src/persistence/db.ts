@@ -1,4 +1,5 @@
 import { DatabaseSync, type StatementSync } from "node:sqlite";
+import type { SessionTotals, UsageCall } from "../claude/session-usage.js";
 import type { UsageSample } from "../claude/usage-forecast.js";
 import { DEFAULT_DISABLED_POLICY_RULES, SEARCH_MARK_END, SEARCH_MARK_START, type ContextUsage, type EffortLevel, type ModelTokens, type ForgeUsagePurpose, type PermissionMode, type ProfileId, type Project, type PhoneCallRecord, type PromptTemplate, type SearchFilter, type SearchHit, type Session, type SessionEvent, type SessionEventBody, type SessionStatus, type Settings } from "@forge/protocol";
 
@@ -1312,6 +1313,32 @@ export class Db {
       u.models ? JSON.stringify(u.models) : null,
       t?.costUsd ?? null,
     );
+  }
+
+  /** Everything the session's turns used so far, subagents included. */
+  sessionUsageTotals(sessionId: string): SessionTotals {
+    const r = this.stmt(
+      `SELECT COUNT(*) AS turns, COALESCE(SUM(input_tokens), 0) AS i, COALESCE(SUM(output_tokens), 0) AS o, COALESCE(SUM(cache_read_tokens), 0) AS cr,
+         COALESCE(SUM(cache_write_tokens), 0) AS cw, COALESCE(SUM(cost_usd), 0) AS cost FROM claude_usage WHERE kind = 'session' AND session_id = ?`,
+    ).get(sessionId) as { turns: number; i: number; o: number; cr: number; cw: number; cost: number };
+    return { inputTokens: r.i, outputTokens: r.o, cacheReadTokens: r.cr, cacheWriteTokens: r.cw, costUsd: r.cost, turns: r.turns };
+  }
+
+  /** All Claude calls since `since` (ISO), sessions and the rest, for sharing out the plan's usage windows. */
+  claudeCallsSince(since: string): UsageCall[] {
+    const rows = this.stmt(
+      "SELECT ts, session_id, duration_ms, models, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens FROM claude_usage WHERE ts >= ? ORDER BY ts",
+    ).all(since) as Array<{ ts: string; session_id: string | null; duration_ms: number; models: string | null; input_tokens: number; output_tokens: number; cache_read_tokens: number; cache_write_tokens: number }>;
+    return rows.map((r) => ({
+      at: Date.parse(r.ts),
+      sessionId: r.session_id,
+      durationMs: r.duration_ms,
+      models: r.models ? (JSON.parse(r.models) as Record<string, ModelTokens>) : null,
+      inputTokens: r.input_tokens,
+      outputTokens: r.output_tokens,
+      cacheReadTokens: r.cache_read_tokens,
+      cacheWriteTokens: r.cache_write_tokens,
+    }));
   }
 
   /** Claude calls that ended in [from, to), oldest first; rootIds narrows to those projects (calls outside a session drop out). */

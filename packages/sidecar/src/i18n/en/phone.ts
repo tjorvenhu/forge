@@ -365,6 +365,10 @@ Security:
     subagent: (desc: string, since: string, summary: string) => `Subagent ${desc}, ${since}${summary ? `, latest: ${summary}` : ""}`,
     background: (kind: string, desc: string, since: string, summary: string) => `In the background: ${kind} ${desc}, ${since}${summary ? `, latest: ${summary}` : ""}`,
     context: (percent: number) => ` Context ${percent} percent full.`,
+    usage: (tokens, windows) => `Session usage: ${tokens} tokens${windows ? `, estimated share of the plan: ${windows}` : ""}.`,
+    usageWindow: (label, percent) => `${label} ${percent} percent`,
+    tokens: (n) => (n >= 1e6 ? `${(n / 1e6).toLocaleString("en-US", { maximumFractionDigits: 1 })} million` : n >= 1000 ? `${Math.round(n / 1000)} thousand` : String(n)),
+    percent: (n) => n.toLocaleString("en-US", { maximumFractionDigits: 1 }),
     head: (ref: string, title: string, project: string, status: string, setup: string, context: string) =>
       `${ref}: ${title} in project ${project}, ${status}.${setup ? ` ${setup}.` : ""}${context}`,
     summary: (s: string) => `Summary of the history: ${s}`,

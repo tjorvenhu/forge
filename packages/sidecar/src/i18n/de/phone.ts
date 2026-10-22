@@ -366,6 +366,11 @@ Sicherheit:
     subagent: (desc: string, since: string, summary: string) => `Subagent ${desc}, ${since}${summary ? `, zuletzt: ${summary}` : ""}`,
     background: (kind: string, desc: string, since: string, summary: string) => `Im Hintergrund: ${kind} ${desc}, ${since}${summary ? `, zuletzt: ${summary}` : ""}`,
     context: (percent: number) => ` Kontext zu ${percent} Prozent voll.`,
+    usage: (tokens: string, windows: string) => `Verbrauch der Session: ${tokens} Tokens${windows ? `, geschätzter Anteil am Abo: ${windows}` : ""}.`,
+    usageWindow: (label: string, percent: string) => `${label} ${percent} Prozent`,
+    tokens: (n: number) =>
+      n >= 1e6 ? `${(n / 1e6).toLocaleString("de-DE", { maximumFractionDigits: 1 })} Millionen` : n >= 1000 ? `${Math.round(n / 1000)} Tausend` : String(n),
+    percent: (n: number) => n.toLocaleString("de-DE", { maximumFractionDigits: 1 }),
     head: (ref: string, title: string, project: string, status: string, setup: string, context: string) =>
       `${ref}: ${title} im Projekt ${project}, ${status}.${setup ? ` ${setup}.` : ""}${context}`,
     summary: (s: string) => `Zusammenfassung des Verlaufs: ${s}`,

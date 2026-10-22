@@ -12,6 +12,7 @@ import { DropdownMenu } from "@/components/ui/dropdown";
 import { Select } from "@/components/ui/select";
 import { Kbd, Tooltip } from "@/components/ui/misc";
 import { ContextMeter } from "./ContextMeter";
+import { SessionUsageMeter } from "@/components/usage/SessionUsage";
 import { LongSessionHint } from "./handoff";
 import { RateLimitBadge } from "./RateLimitBadge";
 import { AttachmentList } from "./AttachmentList";
@@ -597,6 +598,7 @@ export const Composer = memo(function Composer({
           </Tooltip>
           <div className="min-w-0 flex-1" />
           <RateLimitBadge autoContinueAt={session?.autoContinueAt ?? null} />
+          {session && <SessionUsageMeter sessionId={session.id} title={session.title} />}
           {session?.context && <ContextMeter usage={session.context} onCompact={() => void compactSession(session.id)} disabled={working || waiting || sending} />}
           <span className="hidden shrink-0 whitespace-nowrap text-caption text-subtle @5xl/composer:inline">
             {enterToSend ? (

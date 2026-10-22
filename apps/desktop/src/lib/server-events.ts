@@ -136,6 +136,7 @@ export function routeServerEvent(qc: QueryClient, git: GitRefresher, e: ServerEv
         git.schedule(e.payload.projectId);
         void refreshProjectInList(qc, e.payload.projectId);
         void qc.invalidateQueries({ queryKey: keys.usage });
+        void qc.invalidateQueries({ queryKey: keys.sessionUsage(e.payload.id) });
       }
       break;
     case "github.login":

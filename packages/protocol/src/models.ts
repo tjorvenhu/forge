@@ -720,6 +720,36 @@ export const PlanUsage = z.object({
 });
 export type PlanUsage = z.infer<typeof PlanUsage>;
 
+/** What one session took of a usage window. */
+export const SessionUsageWindow = z.object({
+  key: z.string(),
+  label: z.string(),
+  /** percentage points of the window the session used, estimated from readings and FORGE's token counts */
+  share: z.number(),
+  /** the whole window, 0-100 */
+  utilization: z.number(),
+  resetsAt: z.string().nullable(),
+  /** tokens of the session within the window */
+  tokens: z.number(),
+});
+export type SessionUsageWindow = z.infer<typeof SessionUsageWindow>;
+
+/** Tokens of a session over its whole life (subagents included) and its share of the plan's usage windows. */
+export const SessionUsage = z.object({
+  inputTokens: z.number(),
+  outputTokens: z.number(),
+  cacheReadTokens: z.number(),
+  cacheWriteTokens: z.number(),
+  totalTokens: z.number(),
+  /** what the tokens would cost on the API; the plan does not bill it */
+  costUsd: z.number(),
+  turns: z.number(),
+  windows: z.array(SessionUsageWindow),
+  /** set when Claude Code reports no plan usage (API key, no claude.ai login); windows is empty then */
+  planError: z.string().nullable(),
+});
+export type SessionUsage = z.infer<typeof SessionUsage>;
+
 export const RuntimeInfo = z.object({
   models: z.array(ModelInfo),
   commands: z.array(z.object({ name: z.string(), description: z.string() })),

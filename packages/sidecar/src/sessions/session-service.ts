@@ -14,6 +14,7 @@ import type {
   RuntimeInfo,
   ServerEvent,
   Session,
+  SessionUsage,
   SlashCommand,
 } from "@forge/protocol";
 import { ForgeError, idleClosedDetail } from "@forge/protocol";
@@ -21,6 +22,8 @@ import { transcriptImages, transcriptToolImages } from "../claude/attachments.js
 import type { ClaudeRuntime } from "../claude/runtime.js";
 import { UploadStore } from "../claude/uploads.js";
 import { describeUsage, limitWarning } from "../claude/usage.js";
+import { SAMPLE_MAX_AGE_MS } from "../claude/usage-forecast.js";
+import { sessionUsage } from "../claude/session-usage.js";
 import { ContextRecovery } from "./context-recovery.js";
 import { findTask, TASK_EVENT_TYPES, taskNote, type TaskQuery } from "./task-message.js";
 import { IdleClose } from "./idle-close.js";
@@ -64,6 +67,7 @@ export class SessionService {
   private readonly core: SessionCore;
   private readonly assist: ClaudeAssist;
   private readonly catalog: RuntimeCatalog;
+  private readonly clock: () => number;
   private readonly automation: TurnAutomation;
   private readonly remote: RemoteBridge;
   private readonly turns: TurnDispatch;
@@ -103,6 +107,7 @@ export class SessionService {
     /** where long texts and large attachments go for Claude to read; app.ts puts it into the data folder */
     uploads: UploadStore = new UploadStore(path.join(os.tmpdir(), "forge-uploads")),
   ) {
+    this.clock = now;
     const core = (this.core = new SessionCore(db, emit));
     const worktrees = (this.worktrees = new WorktreeService(git, projects));
     this.agents = new AgentRegistry(db);
@@ -366,6 +371,15 @@ export class SessionService {
 
   planUsage(refresh: boolean): Promise<PlanUsage> {
     return this.catalog.planUsage(refresh);
+  }
+
+  /** Tokens of the session and its estimated share of each usage window. */
+  async sessionUsage(sessionId: string): Promise<SessionUsage> {
+    this.get(sessionId);
+    const plan = await this.catalog.planUsage(false);
+    const at = this.clock();
+    const since = at - SAMPLE_MAX_AGE_MS;
+    return sessionUsage(this.db.sessionUsageTotals(sessionId), plan, this.db.listUsageSamples(since), this.db.claudeCallsSince(new Date(since).toISOString()), sessionId, at);
   }
 
   runtimeInfo(): Promise<RuntimeInfo | null> {

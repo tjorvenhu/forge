@@ -70,6 +70,7 @@ const session: Session = {
 };
 
 let templateList: PromptTemplate[] = [];
+const noUsage = { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, totalTokens: 0, costUsd: 0, turns: 0, windows: [], planError: null };
 const tpl = (id: string, name: string, text: string, description: string | null = null): PromptTemplate => ({ id, projectId: null, name, description, text, sortOrder: 0, createdAt: "", updatedAt: "" });
 
 function setup(ui: React.ReactNode) {
@@ -146,6 +147,7 @@ describe("Composer", () => {
       if (method === "sessions.send") return new Promise<Session>((r) => (finish = r));
       if (method === "settings.get") return Promise.resolve({ enterToSend: true });
       if (method === "templates.list") return Promise.resolve([]);
+      if (method === "sessions.usage") return Promise.resolve(noUsage);
       return Promise.resolve({ models: [] });
     });
     useDrafts.getState().setText("s1", "Erste Nachricht");
@@ -274,6 +276,7 @@ describe("/clear", () => {
     callMock.mockImplementation(async (method: string) => {
       if (method === "settings.get") return { enterToSend: true };
       if (method === "sessions.close") return { ...session, live: false, status: "stopped" };
+      if (method === "sessions.usage") return noUsage;
       return method === "templates.list" ? [] : { models: [] };
     });
     useDrafts.getState().setText("s1", "/clear");
@@ -560,6 +563,8 @@ describe("info commands", () => {
       if (method === "settings.get") return { enterToSend: true };
       if (method === "system.diagnostics") return { claude: { found: true, version: "2.1.300" }, auth: { loggedIn: true, subscriptionType: "max", rateLimitTier: "default_claude_max_20x", authMethod: null } };
       if (method === "system.usage") return { available: true, subscriptionType: "max", windows: [{ key: "five_hour", label: "Aktuelle Session", utilization: 12, resetsAt: null }], fetchedAt: new Date().toISOString(), error: null };
+      if (method === "sessions.usage")
+        return { ...noUsage, cacheReadTokens: 2_000_000, totalTokens: 2_000_000, turns: 3, windows: [{ key: "five_hour", label: "5 Stunden", share: 4.5, utilization: 12, resetsAt: null, tokens: 2_000_000 }] };
       return method === "templates.list" ? [] : { models: [] };
     });
     useDrafts.getState().setText("s1", "/usage");
@@ -568,6 +573,9 @@ describe("info commands", () => {
     expect(callMock).not.toHaveBeenCalledWith("sessions.send", expect.anything());
     expect(await screen.findByRole("dialog", { name: "Nutzung" })).toBeTruthy();
     expect(await screen.findByText("12 % genutzt")).toBeTruthy();
+    // the open session's share, also as the badge next to the context meter
+    expect(await screen.findByText("ca. 4,5 %")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Diese Session hat etwa 4,5 Prozent vom Fenster 5 Stunden verbraucht", hidden: true })).toBeTruthy();
     expect(useDrafts.getState().drafts.s1?.text).toBe("");
   });
 

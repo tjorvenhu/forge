@@ -10,6 +10,7 @@ import { Skeleton, SkeletonRegion } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Meter, MeterSkeleton } from "@/components/ui/meter";
 import { UsageWindows, UsageWindowsSkeleton, usageUnavailableText } from "@/components/usage/UsageWindows";
+import { SessionUsageDetails } from "@/components/usage/SessionUsage";
 import { ProfileBadge } from "@/components/projects/ProfileBadge";
 import { contextTone } from "./ContextMeter";
 import { compactSession } from "./useSendMessage";
@@ -86,7 +87,7 @@ function Rows({ rows }: { rows: Array<[string, ReactNode]> }) {
   );
 }
 
-function UsageBody() {
+function UsageBody({ session }: InfoProps) {
   const qc = useQueryClient();
   const usage = useUsage();
   const diag = useDiagnostics();
@@ -94,11 +95,22 @@ function UsageBody() {
   useEffect(() => void qc.invalidateQueries({ queryKey: keys.usage }), [qc]);
   if (!usage.data) return <UsageWindowsSkeleton plan />;
   const plan = diag.data ? planLabel(diag.data.auth) : null;
-  if (!usage.data.available) return <div className="text-body text-muted">{usageUnavailableText(usage.data)}</div>;
   return (
     <div className="space-y-4">
-      {plan && <div className="text-body text-muted">{plan}</div>}
-      <UsageWindows usage={usage.data} />
+      {!usage.data.available ? (
+        <div className="text-body text-muted">{usageUnavailableText(usage.data)}</div>
+      ) : (
+        <>
+          {plan && <div className="text-body text-muted">{plan}</div>}
+          <UsageWindows usage={usage.data} />
+        </>
+      )}
+      {session && (
+        <div className="space-y-3 border-t border-border pt-4">
+          <div className="text-body font-medium">{t.usage.session.sectionTitle}</div>
+          <SessionUsageDetails sessionId={session.id} />
+        </div>
+      )}
     </div>
   );
 }

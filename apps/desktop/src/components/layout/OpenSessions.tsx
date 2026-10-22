@@ -1,7 +1,7 @@
 import { useEffect, useRef, type KeyboardEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { useQueries } from "@tanstack/react-query";
-import { AppWindow, Bot, CalendarDays, ChevronDown, Columns2, FileStack, Hourglass, LayoutGrid, MessageSquare, MessageSquarePlus, Plus, SquareArrowOutUpRight, X } from "lucide-react";
+import { AppWindow, Bot, CalendarDays, ChevronDown, Columns2, FileStack, Gauge, Hourglass, LayoutGrid, MessageSquare, MessageSquarePlus, Plus, SquareArrowOutUpRight, X } from "lucide-react";
 import { openChatWindow, useChatWindows } from "@/lib/chat-windows";
 import { contextItems } from "@/lib/context-menu";
 import { call, keys, useLiveSessions, useProjects, useSession } from "@/lib/queries";
@@ -15,6 +15,7 @@ import { handoffSession } from "@/components/workspace/handoff";
 import { splitActive, useUi, type SplitPane } from "@/stores/ui";
 import { toast } from "@/stores/toast";
 import { useTemplateDialogs } from "@/stores/templates";
+import { useSessionUsageDialog } from "@/stores/session-usage";
 import { ProjectIcon } from "@/components/projects/ProjectIcon";
 import { Skeleton, SkeletonRegion } from "@/components/ui/skeleton";
 import { sessionStatusLabel } from "@/components/workspace/SessionStatusBadge";
@@ -306,6 +307,7 @@ export function OpenSessions() {
                           { label: t.layout.openSessions.open, icon: <MessageSquare className={MENU_ICON} />, onSelect: () => openChat(s.projectId, s.id) },
                           ...(canSplit ? [{ label: t.layout.openSessions.openBeside, icon: <Columns2 className={MENU_ICON} />, onSelect: () => addSplitPane(s.projectId, s.id) }] : []),
                           ...(!inWindow ? [{ label: t.layout.openSessions.openWindow, icon: <SquareArrowOutUpRight className={MENU_ICON} />, onSelect: () => void openChatWindow(s.projectId, s.id, s.title) }] : []),
+                          { label: t.usage.session.open, icon: <Gauge className={MENU_ICON} />, onSelect: () => useSessionUsageDialog.getState().open(s.id, s.title) },
                           ...(s.claudeSessionId && !isBusy(s.status)
                             ? [
                                 {

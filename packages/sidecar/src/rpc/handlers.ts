@@ -291,6 +291,7 @@ export function createHandlers(s: Services): Handlers {
     "sessions.respondApproval": ({ sessionId, requestId, decision, scope, message, answers }) =>
       s.sessions.respondApproval(sessionId, requestId, decision, scope, message, answers),
     "sessions.contextUsage": ({ sessionId }) => s.sessions.contextUsage(sessionId),
+    "sessions.usage": ({ sessionId }) => s.sessions.sessionUsage(sessionId),
     "search.sessions": ({ query, limit, ...filter }) => s.db.searchEvents(query, limit, filter),
 
     "devserver.state": ({ projectId }) => s.devServers.state(projectId),

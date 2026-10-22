@@ -35,6 +35,7 @@ export const keys = {
   diagnostics: ["diagnostics"] as const,
   runtimeInfo: ["runtimeInfo"] as const,
   usage: ["usage"] as const,
+  sessionUsage: (id: string) => ["sessionUsage", id] as const,
   rateLimit: ["rateLimit"] as const,
   githubAccount: ["githubAccount"] as const,
   githubLogin: ["githubLogin"] as const,
@@ -140,10 +141,22 @@ export const useUsage = () =>
     refetchOnWindowFocus: (q) => usageOutdated(q.state.data) && "always",
   });
 
+/** Tokens of a session and its share of the usage windows; refreshed with the plan usage and after each turn. */
+export const useSessionUsage = (sessionId: string | null) =>
+  useQuery({
+    queryKey: keys.sessionUsage(sessionId ?? ""),
+    queryFn: () => call("sessions.usage", { sessionId: sessionId! }),
+    enabled: !!sessionId,
+    staleTime: 60_000,
+    refetchInterval: 5 * 60_000,
+    refetchOnWindowFocus: false,
+  });
+
 /** Reads the plan usage now instead of the cached minute; errors become a toast. */
 export async function refreshUsage(qc: QueryClient) {
   try {
     qc.setQueryData(keys.usage, await call("system.usage", { refresh: true }));
+    void qc.invalidateQueries({ queryKey: ["sessionUsage"] });
   } catch (e) {
     toast.error(t.lib.queries.usageNotRefreshed, errorMessage(e));
   }
