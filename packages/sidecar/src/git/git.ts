@@ -8,8 +8,11 @@ import {
   type CommitDetails,
   type CommitInfo,
   type FileDiff,
+  type GitIncoming,
   type GitIntegrated,
   type GitIntegrationConflict,
+  type GitResetToRemote,
+  type PullStrategy,
   type GitStatus,
   type GitSummary,
 } from "@forge/protocol";
@@ -429,39 +432,101 @@ export class GitEngine {
     return { branch, output, integrated };
   }
 
-  /** Takes over new commits from origin: fast-forward, or a rebase of the local commits on top. */
-  async pull(cwd: string): Promise<{ output: string; integrated: GitIntegrated | null }> {
+  /** Takes over new commits from origin: fast-forward, or the local commits rebased on top or merged. */
+  async pull(cwd: string, strategy: PullStrategy = "rebase"): Promise<{ output: string; integrated: GitIntegrated | null }> {
     const branch = await this.currentBranch(cwd);
     if (!branch) throw new ForgeError("GIT_FAILED", tr().system.git.detachedHead);
     if (!(await this.remoteUrl(cwd))) throw new ForgeError("GIT_FAILED", tr().system.git.noRemote);
-    const integrated = await this.integrateRemote(cwd, branch);
+    const integrated = await this.integrateRemote(cwd, branch, strategy);
+    const m = tr().system.git;
     const output = !integrated
-      ? tr().system.git.upToDate
+      ? m.upToDate
       : integrated.mode === "fast-forward"
-        ? tr().system.git.pulledFastForward(integrated.remoteCommits)
-        : tr().system.git.pulledRebase(integrated.remoteCommits, integrated.localCommits);
+        ? m.pulledFastForward(integrated.remoteCommits)
+        : integrated.mode === "merge"
+          ? m.pulledMerge(integrated.remoteCommits, integrated.localCommits)
+          : m.pulledRebase(integrated.remoteCommits, integrated.localCommits);
     return { output, integrated };
   }
 
   /**
-   * Fetches origin and brings the branch up to date with origin/<branch>. Without own commits it
-   * fast-forwards; with own commits it rebases them on top (merge commits kept). Uncommitted
-   * changes are stashed and put back. On a conflict the rebase is aborted, the repository is as
-   * before, and GIT_CONFLICT carries the details for whoever resolves it.
+   * Fetches origin and compares the branch with origin/<branch>, for the question on opening a
+   * project. Null without branch, remote, own commit or remote branch; a failed fetch throws.
    */
-  async integrateRemote(cwd: string, branch: string): Promise<GitIntegrated | null> {
+  async incoming(cwd: string): Promise<GitIncoming | null> {
+    const branch = await this.currentBranch(cwd);
+    if (!branch || !(await this.remoteUrl(cwd))) return null;
+    if ((await this.exec(cwd, ["rev-parse", "--verify", "-q", "HEAD"])).code !== 0) return null;
+    await this.fetchOrigin(cwd);
+    const remote = `${REMOTE_PREFIX}${branch}`;
+    const head = await this.exec(cwd, ["rev-parse", "--verify", "-q", remote]);
+    if (head.code !== 0) return null;
+    const { local: ahead, remote: behind } = await this.divergence(cwd, remote);
+    const commits = behind ? parseLog(await this.ok(cwd, ["log", "--topo-order", "-n10", `--format=${LOG_FORMAT}`, `HEAD..${remote}`])) : [];
+    const st = await this.status(cwd);
+    return { branch, remoteHead: head.stdout.trim(), behind, ahead, changedCount: st.summary.changedCount, commits };
+  }
+
+  /**
+   * Puts the checked-out branch on origin/<branch>. Uncommitted work of the whole repository goes into
+   * the stash, own commits not on origin stay on a new branch forge-backup/<branch>-<time>.
+   */
+  async resetToRemote(cwd: string): Promise<GitResetToRemote> {
+    const m = tr().system.git;
+    const branch = await this.currentBranch(cwd);
+    if (!branch) throw new ForgeError("GIT_FAILED", m.detachedHead);
+    if (!(await this.remoteUrl(cwd))) throw new ForgeError("GIT_FAILED", m.noRemote);
+    if ((await this.status(cwd)).summary.conflicted) throw new ForgeError("GIT_CONFLICT", m.conflictsUnresolved);
+    if (await this.operationInProgress(cwd)) throw new ForgeError("GIT_CONFLICT", m.operationInProgress);
+    await this.fetchOrigin(cwd);
+    const remote = `${REMOTE_PREFIX}${branch}`;
+    if ((await this.exec(cwd, ["rev-parse", "--verify", "-q", remote])).code !== 0) throw new ForgeError("GIT_FAILED", m.noRemoteBranch(branch));
+    const hasHead = (await this.exec(cwd, ["rev-parse", "--verify", "-q", "HEAD"])).code === 0;
+    const dropped = hasHead ? (await this.divergence(cwd, remote)).local : 0;
+    let backupBranch: string | null = null;
+    if (dropped) {
+      const stamp = new Date().toISOString().slice(0, 16).replace(/[-:]/g, "").replace("T", "-");
+      backupBranch = `forge-backup/${branch}-${stamp}`;
+      for (let i = 2; (await this.exec(cwd, ["rev-parse", "--verify", "-q", `refs/heads/${backupBranch}`])).code === 0; i++) {
+        backupBranch = `forge-backup/${branch}-${stamp}-${i}`;
+      }
+      await this.ok(cwd, ["branch", backupBranch, "HEAD"]);
+    }
+    // Whole repository, not only the project folder: reset --hard would drop changes in a monorepo's other folders too.
+    const stashed = (await this.ok(cwd, ["status", "--porcelain", "--untracked-files=all"])).trim() !== "";
+    if (stashed) await this.ok(cwd, ["stash", "push", "--include-untracked", "-m", m.resetStash(branch)]);
+    await this.ok(cwd, ["reset", "--hard", remote]);
+    return { branch, stashed, backupBranch, dropped };
+  }
+
+  private async fetchOrigin(cwd: string) {
+    const fetched = await this.exec(cwd, ["fetch", "--prune", "origin"], undefined, 120_000);
+    if (fetched.code !== 0) throw new ForgeError("GIT_FAILED", (fetched.stderr || fetched.stdout).trim() || tr().system.git.fetchFailed);
+  }
+
+  /** commits only on HEAD (local) and only on `remote` */
+  private async divergence(cwd: string, remote: string): Promise<{ local: number; remote: number }> {
+    const counts = (await this.ok(cwd, ["rev-list", "--left-right", "--count", `HEAD...${remote}`])).trim().split(/\s+/);
+    return { local: Number(counts[0] ?? 0), remote: Number(counts[1] ?? 0) };
+  }
+
+  /**
+   * Fetches origin and brings the branch up to date with origin/<branch>. Without own commits it
+   * fast-forwards; with own commits it rebases them on top (merge commits kept), or merges with
+   * `strategy` "merge". Uncommitted changes are stashed and put back. On a conflict the rebase or
+   * merge is aborted, the repository is as before, and GIT_CONFLICT carries the details for whoever
+   * resolves it.
+   */
+  async integrateRemote(cwd: string, branch: string, strategy: PullStrategy = "rebase"): Promise<GitIntegrated | null> {
     const st = await this.status(cwd);
     if (st.summary.conflicted) throw new ForgeError("GIT_CONFLICT", tr().system.git.conflictsUnresolved);
     if (await this.operationInProgress(cwd)) {
       throw new ForgeError("GIT_CONFLICT", tr().system.git.operationInProgress);
     }
-    const fetched = await this.exec(cwd, ["fetch", "--prune", "origin"], undefined, 120_000);
-    if (fetched.code !== 0) throw new ForgeError("GIT_FAILED", (fetched.stderr || fetched.stdout).trim() || tr().system.git.fetchFailed);
-    const remote = `refs/remotes/origin/${branch}`;
+    await this.fetchOrigin(cwd);
+    const remote = `${REMOTE_PREFIX}${branch}`;
     if ((await this.exec(cwd, ["rev-parse", "--verify", "-q", remote])).code !== 0) return null;
-    const counts = (await this.ok(cwd, ["rev-list", "--left-right", "--count", `HEAD...${remote}`])).trim().split(/\s+/);
-    const localCommits = Number(counts[0] ?? 0);
-    const remoteCommits = Number(counts[1] ?? 0);
+    const { local: localCommits, remote: remoteCommits } = await this.divergence(cwd, remote);
     if (!remoteCommits) return null;
 
     if (!localCommits) {
@@ -471,9 +536,21 @@ export class GitEngine {
       return { mode: "fast-forward", remoteCommits, localCommits };
     }
 
+    if (strategy === "merge") {
+      const r = await this.exec(cwd, ["merge", "--autostash", "--no-edit", remote], undefined, 180_000);
+      if (r.code !== 0) {
+        const files = await this.unmergedFiles(cwd);
+        await this.exec(cwd, ["merge", "--abort"]);
+        const integration: GitIntegrationConflict = { branch, remoteCommits, localCommits, files, merge: true };
+        throw new ForgeError("GIT_CONFLICT", tr().system.git.mergeConflict(branch, remoteCommits, localCommits, files), { integration });
+      }
+      await this.assertNoConflicts(cwd, branch, remoteCommits, localCommits);
+      return { mode: "merge", remoteCommits, localCommits };
+    }
+
     const r = await this.exec(cwd, ["rebase", "--autostash", "--rebase-merges", remote], undefined, 180_000);
     if (r.code !== 0) {
-      const files = (await this.exec(cwd, ["diff", "--name-only", "--diff-filter=U"])).stdout.split("\n").map((l) => l.trim()).filter(Boolean);
+      const files = await this.unmergedFiles(cwd);
       await this.exec(cwd, ["rebase", "--abort"]);
       const integration: GitIntegrationConflict = { branch, remoteCommits, localCommits, files };
       throw new ForgeError(
@@ -484,6 +561,10 @@ export class GitEngine {
     }
     await this.assertNoConflicts(cwd, branch, remoteCommits, localCommits);
     return { mode: "rebase", remoteCommits, localCommits };
+  }
+
+  private async unmergedFiles(cwd: string): Promise<string[]> {
+    return (await this.exec(cwd, ["diff", "--name-only", "--diff-filter=U"])).stdout.split("\n").map((l) => l.trim()).filter(Boolean);
   }
 
   /** --autostash puts uncommitted changes back after the update; that step itself can conflict. */

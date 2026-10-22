@@ -52,7 +52,10 @@ import {
   GitHubOrg,
   GitHubOwner,
   GitHubRepo,
+  GitIncoming,
   GitIntegrated,
+  GitResetToRemote,
+  PullStrategy,
   GitStatus,
   McpServer,
   MarketplacePlugin,
@@ -729,9 +732,19 @@ export const methods = {
     params: projectRef.extend({ allowProtected: z.boolean().default(false) }),
     result: z.object({ branch: z.string().nullable(), integrated: GitIntegrated.nullable(), session: Session.nullable() }),
   },
-  /** like git.push without the push; conflicts also start a Claude session */
-  "git.pull": { params: projectRef, result: z.object({ output: z.string(), integrated: GitIntegrated.nullable(), session: Session.nullable() }) },
+  /** like git.push without the push (own commits rebased or merged); conflicts also start a Claude session */
+  "git.pull": {
+    params: projectRef.extend({ strategy: PullStrategy.default("rebase") }),
+    result: z.object({ output: z.string(), integrated: GitIntegrated.nullable(), session: Session.nullable() }),
+  },
   "git.fetch": { params: projectRef, result: GitStatus },
+  /** Fetches origin and compares the branch with origin/<branch>; null without remote, branch or remote branch. */
+  "git.incoming": { params: projectRef, result: GitIncoming.nullable() },
+  /**
+   * Puts the branch on the state of origin/<branch>. Uncommitted work goes into the stash, own
+   * commits that are not on origin stay on a backup branch; nothing is deleted.
+   */
+  "git.resetToRemote": { params: projectRef, result: GitResetToRemote },
   "github.pr": { params: projectRef, result: PullRequest.nullable() },
   "github.suggestPr": { params: projectRef, result: z.object({ title: z.string(), body: z.string(), base: z.string(), head: z.string() }) },
   "github.createPr": {

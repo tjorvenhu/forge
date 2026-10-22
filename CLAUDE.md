@@ -4,3 +4,4 @@
 - Suchfunktion: Die Suchfunktion soll ebenfalls sämtliche Funktionen und Bereiche von FORGE abdecken. Neue Features müssen automatisch in die Suche integriert werden, sodass alle verfügbaren Funktionen, Einstellungen, Projekte und Aktionen zentral gefunden und direkt aufgerufen bzw. ausgeführt werden können.
 - Rechtsklickfunktionen: Falls Optionen Sinnvoll für den Rechtsklick sind, baue diese auch immer ein.
 - Verwende bei allen Komponenten und Funktionen, die Ladezeiten haben, Skeleton-Loader als Platzhalter. Diese sollen während des Ladevorgangs angezeigt werden und sich optisch an der späteren Darstellung der Inhalte orientieren. Sobald die Daten vollständig geladen sind, sollen die Skeletons durch die tatsächlichen Inhalte ersetzt werden. Achte dabei auf ein einheitliches, modernes Design und darauf, Layout-Verschiebungen zu vermeiden.
+- Alle Texte in der Benutzeroberfläche und auf der Website müssen jeweils in Deutsch und Englisch bereitstehen.

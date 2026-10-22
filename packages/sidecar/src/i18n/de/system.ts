@@ -31,12 +31,17 @@ export const system = {
     upToDate: "Schon auf dem neuesten Stand.",
     pulledFastForward: (remote: number) => `${remote} neue Commits übernommen.`,
     pulledRebase: (remote: number, local: number) => `${remote} neue Commits übernommen, ${local} eigene darauf gesetzt (Rebase).`,
+    pulledMerge: (remote: number, local: number) => `${remote} neue Commits mit ${local} eigenen zusammengeführt (Merge).`,
+    noRemoteBranch: (branch: string) => `Auf origin gibt es keinen Branch ${branch}.`,
+    resetStash: (branch: string) => `FORGE: vor dem Zurücksetzen von ${branch} auf origin`,
     conflictsUnresolved: "Es gibt ungelöste Konflikte. Bitte zuerst auflösen.",
     operationInProgress: "Ein Rebase oder Merge ist noch nicht abgeschlossen. Bitte zuerst beenden oder abbrechen.",
     fetchFailed: "Abrufen von origin fehlgeschlagen",
     fastForwardFailed: "Vorspulen fehlgeschlagen",
     rebaseConflict: (branch: string, remote: number, local: number, files: string[]) =>
       `Auf origin/${branch} gibt es ${remote} neue Commits, die sich mit deinen ${local} lokalen nicht automatisch zusammenführen lassen${files.length ? ` (Konflikte in ${files.join(", ")})` : ""}.`,
+    mergeConflict: (branch: string, remote: number, local: number, files: string[]) =>
+      `Die ${remote} neuen Commits auf origin/${branch} lassen sich nicht automatisch mit deinen ${local} lokalen mergen${files.length ? ` (Konflikte in ${files.join(", ")})` : ""}.`,
     stashConflict: (branch: string, files: string) =>
       `Der Branch ist auf dem Stand von origin/${branch}, aber deine nicht committeten Änderungen kollidieren damit (${files}). Sie liegen zusätzlich im Stash.`,
     invalidUrl: "Ungültige URL.",
@@ -65,6 +70,10 @@ export const system = {
     rebaseSituation: (intro: string, remote: string, remoteCommits: number, localCommits: number) =>
       `${intro} Auf ${remote} gibt es ${remoteCommits} neue Commits, lokal habe ich ${localCommits} eigene. FORGE hat einen Rebase versucht, der hatte Konflikte in:`,
     rebaseAborted: "Der Rebase ist abgebrochen, das Repository ist wieder im Stand von vorher.",
+    mergeSituation: (intro: string, remote: string, remoteCommits: number, localCommits: number) =>
+      `${intro} Auf ${remote} gibt es ${remoteCommits} neue Commits, lokal habe ich ${localCommits} eigene. Ich wollte sie mergen (kein Rebase), der Merge hatte Konflikte in:`,
+    mergeAborted: "Der Merge ist abgebrochen, das Repository ist wieder im Stand von vorher.",
+    mergeStep: (remote: string) => `\`git fetch origin\`, dann \`git merge --autostash ${remote}\`. Kein Rebase.`,
     stashStep: "Löse die Konflikte so, dass meine Änderungen und die neuen Commits erhalten bleiben. Danach `git stash drop`, aber erst wenn alles aufgelöst ist.",
     rebaseStep: (remote: string) => `\`git fetch origin\`, dann \`git rebase --autostash --rebase-merges ${remote}\`.`,
     bothSides: "Löse die Konflikte so, dass beide Seiten erhalten bleiben.",

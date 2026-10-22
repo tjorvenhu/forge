@@ -32,6 +32,7 @@ export const GIT_ACTIONS = [
   "commit",
   "push",
   "pull",
+  "reset_to_remote",
   "checkout",
   "fetch",
   "branches",
@@ -67,6 +68,8 @@ export interface GitOptions extends TargetOptions {
   name?: string;
   /** identity: the author email */
   email?: string;
+  /** pull: merge own commits with origin's instead of rebasing them */
+  merge?: boolean;
 }
 
 export interface DevSettingsPatch {
@@ -642,6 +645,7 @@ const TOOL_DEFS: readonly ToolDef[] = [
       owner: { type: "string", optional: true },
       name: { type: "string", optional: true },
       email: { type: "string", optional: true },
+      merge: { type: "boolean", optional: true },
     },
     run: (t, a) =>
       t.git(str(a.project), pick(a.action, GIT_ACTIONS, "status"), {
@@ -657,6 +661,7 @@ const TOOL_DEFS: readonly ToolDef[] = [
         owner: opt(a.owner),
         name: opt(a.name),
         email: opt(a.email),
+        merge: optBool(a.merge),
       }),
   },
   {

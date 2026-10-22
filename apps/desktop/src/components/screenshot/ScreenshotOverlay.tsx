@@ -830,28 +830,31 @@ function ModeBar({
     <>
       <MonitorBox monitor={monitor} scale={scale} onBox={setBox} />
       <div
-        className={cn("absolute flex -translate-x-1/2 flex-col items-center gap-2", closing ? "animate-fade-out" : "animate-palette-in")}
+        className="absolute -translate-x-1/2"
         style={{ left: (monitor.x + monitor.width / 2) / scale, top: monitor.y / scale + 16 }}
         onPointerDown={(e) => e.stopPropagation()}
         onPointerEnter={() => onHover(true)}
         onPointerLeave={() => onHover(false)}
       >
-        <div className={BAR} style={{ cursor: "default" }}>
-          {MODES.map((m) => (
-            <BarButton key={m.id} label={m.label} tip={m.hint} shortcut={m.key} active={mode === m.id} place={place} onClick={() => onMode(m.id)}>
-              {m.icon}
+        {/* Own element for the animation: WebKit drops `translate` while a transform animation runs on the same element. */}
+        <div className={cn("flex flex-col items-center gap-2", closing ? "animate-fade-out" : "animate-palette-in")}>
+          <div className={BAR} style={{ cursor: "default" }}>
+            {MODES.map((m) => (
+              <BarButton key={m.id} label={m.label} tip={m.hint} shortcut={m.key} active={mode === m.id} place={place} onClick={() => onMode(m.id)}>
+                {m.icon}
+              </BarButton>
+            ))}
+            <div className="mx-0.5 h-8 w-px bg-border" />
+            <BarButton label={t.screenshot.cancel} tip={t.screenshot.discard} shortcut="Esc" place={place} onClick={onClose}>
+              <X className="h-4 w-4" />
             </BarButton>
-          ))}
-          <div className="mx-0.5 h-8 w-px bg-border" />
-          <BarButton label={t.screenshot.cancel} tip={t.screenshot.discard} shortcut="Esc" place={place} onClick={onClose}>
-            <X className="h-4 w-4" />
-          </BarButton>
-        </div>
-        {hint && (
-          <div key={hint} className="animate-fade-in rounded-full bg-black/65 px-3 py-1 text-caption text-white/85">
-            {t.screenshot.hintWithEsc(hint)}
           </div>
-        )}
+          {hint && (
+            <div key={hint} className="animate-fade-in rounded-full bg-black/65 px-3 py-1 text-caption text-white/85">
+              {t.screenshot.hintWithEsc(hint)}
+            </div>
+          )}
+        </div>
       </div>
     </>
   );

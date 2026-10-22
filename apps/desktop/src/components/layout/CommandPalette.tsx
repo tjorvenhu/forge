@@ -49,7 +49,7 @@ export function CommandPalette() {
           <D.Overlay className={cn("fixed inset-0 z-40 bg-overlay backdrop-blur-sm", OVERLAY_MOTION)} />
           <D.Content
             className={cn(
-              "fixed left-1/2 top-[12vh] z-50 flex max-h-[70vh] w-160 max-w-[92vw] -translate-x-1/2 flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-2xl",
+              "fixed inset-x-0 top-[12vh] z-50 mx-auto flex max-h-[70vh] w-160 max-w-[92vw] flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-2xl",
               "data-[state=open]:animate-palette-in data-[state=closed]:animate-fade-out",
             )}
             aria-describedby={undefined}

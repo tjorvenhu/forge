@@ -545,6 +545,13 @@ Sicherheit:
     noIdentity: "Es ist keine Git-Identität eingerichtet.",
     behind: (project: string, n: number) => `${project}: ${n} neue Commits auf dem Server, noch nicht übernommen.`,
     upToDate: (project: string) => `${project}: Auf dem Server gibt es nichts Neues.`,
+    incoming: (project: string, branch: string, n: number, subjects: string, own: string) =>
+      `${project}: ${n} neue ${n === 1 ? "Commit" : "Commits"} auf origin/${branch}: ${subjects}.${own ? ` Lokal offen: ${own}.` : ""}`,
+    confirmReset: (project: string, branch: string) =>
+      `${project} wird auf den Stand von origin/${branch} gesetzt. Nicht committete Arbeit kommt in den Stash, eigene nicht gepushte Commits bleiben auf einem Sicherungs-Branch`,
+    resetDone: (project: string, branch: string, stashed: boolean, backup: string | null) =>
+      `${project} ist jetzt auf dem Stand von origin/${branch}.${stashed ? " Die offene Arbeit liegt im Stash." : ""}${backup ? ` Die eigenen Commits liegen auf dem Branch ${backup}.` : ""}`,
+    sessionBusyReset: (project: string) => `Fehler: In ${project} arbeitet gerade eine Session. Erst stoppen, dann zurücksetzen.`,
     noBranches: (project: string) => `${project} hat noch keine Branches.`,
     otherBranches: (names: string, more: number) => ` Weitere: ${names}${more > 0 ? ` und ${more} mehr` : ""}.`,
     branches: (project: string, n: number, current: string | undefined, rest: string) => `${project}: ${n} ${n === 1 ? "Branch" : "Branches"}${current ? `, aktuell ${current}` : ""}.${rest}`,

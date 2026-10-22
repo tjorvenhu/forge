@@ -32,12 +32,17 @@ export const system: typeof De = {
     upToDate: "Already up to date.",
     pulledFastForward: (remote) => `Took over ${remote} new commits.`,
     pulledRebase: (remote, local) => `Took over ${remote} new commits and put ${local} of your own on top (rebase).`,
+    pulledMerge: (remote, local) => `Merged ${remote} new commits with ${local} of your own.`,
+    noRemoteBranch: (branch) => `origin has no branch ${branch}.`,
+    resetStash: (branch) => `FORGE: before resetting ${branch} to origin`,
     conflictsUnresolved: "There are unresolved conflicts. Resolve them first.",
     operationInProgress: "A rebase or merge is not finished yet. Finish or abort it first.",
     fetchFailed: "Fetching from origin failed",
     fastForwardFailed: "Fast-forward failed",
     rebaseConflict: (branch, remote, local, files) =>
       `origin/${branch} has ${remote} new commits that cannot be combined automatically with your ${local} local ones${files.length ? ` (conflicts in ${files.join(", ")})` : ""}.`,
+    mergeConflict: (branch, remote, local, files) =>
+      `The ${remote} new commits on origin/${branch} cannot be merged automatically with your ${local} local ones${files.length ? ` (conflicts in ${files.join(", ")})` : ""}.`,
     stashConflict: (branch, files) =>
       `The branch is up to date with origin/${branch}, but your uncommitted changes collide with it (${files}). They are also kept in the stash.`,
     invalidUrl: "Invalid URL.",
@@ -66,6 +71,10 @@ export const system: typeof De = {
     rebaseSituation: (intro, remote, remoteCommits, localCommits) =>
       `${intro} ${remote} has ${remoteCommits} new commits, and I have ${localCommits} of my own locally. FORGE tried a rebase, which had conflicts in:`,
     rebaseAborted: "The rebase was aborted, the repository is back in its previous state.",
+    mergeSituation: (intro, remote, remoteCommits, localCommits) =>
+      `${intro} ${remote} has ${remoteCommits} new commits, locally I have ${localCommits} of my own. I wanted to merge them (no rebase), the merge had conflicts in:`,
+    mergeAborted: "The merge was aborted, the repository is back in its previous state.",
+    mergeStep: (remote) => `\`git fetch origin\`, then \`git merge --autostash ${remote}\`. No rebase.`,
     stashStep: "Resolve the conflicts so that my changes and the new commits are both kept. Then `git stash drop`, but only once everything is resolved.",
     rebaseStep: (remote) => `\`git fetch origin\`, then \`git rebase --autostash --rebase-merges ${remote}\`.`,
     bothSides: "Resolve the conflicts so that both sides are kept.",

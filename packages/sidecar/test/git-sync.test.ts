@@ -101,6 +101,73 @@ describe("push takes over new commits from origin first", SLOW, () => {
   });
 });
 
+describe("on opening a project: what origin has, merge or reset", SLOW, () => {
+  it("incoming names origin's new commits next to the own open work", async () => {
+    expect(await engine.incoming(mine)).toMatchObject({ branch: "main", behind: 0, ahead: 0, changedCount: 0, commits: [] });
+    await commitFile(theirs, "b.txt", "von dort\n", "remote: b");
+    await git(theirs, "push", "-q");
+    await commitFile(mine, "c.txt", "von hier\n", "local: c");
+    writeFileSync(path.join(mine, "d.txt"), "offen\n");
+
+    const r = await engine.incoming(mine);
+    expect(r).toMatchObject({ branch: "main", behind: 1, ahead: 1, changedCount: 1 });
+    expect(r!.commits.map((c) => c.subject)).toEqual(["remote: b"]);
+    expect(r!.remoteHead).toBe((await git(theirs, "rev-parse", "HEAD")).trim());
+  });
+
+  it("incoming is null without a branch on origin", async () => {
+    await git(mine, "checkout", "-q", "-b", "feature/x");
+    expect(await engine.incoming(mine)).toBeNull();
+  });
+
+  it("pull with merge keeps the own commits as they are and adds a merge commit", async () => {
+    await commitFile(theirs, "b.txt", "von dort\n", "remote: b");
+    await git(theirs, "push", "-q");
+    await commitFile(mine, "c.txt", "von hier\n", "local: c");
+    const own = (await git(mine, "rev-parse", "HEAD")).trim();
+
+    const r = await engine.pull(mine, "merge");
+    expect(r.integrated).toEqual({ mode: "merge", remoteCommits: 1, localCommits: 1 });
+    expect((await git(mine, "rev-parse", "HEAD^1")).trim()).toBe(own);
+    expect(readFileSync(path.join(mine, "b.txt"), "utf8")).toBe("von dort\n");
+  });
+
+  it("aborts a conflicting merge and marks the conflict as one of a merge", async () => {
+    await commitFile(theirs, "a.txt", "eins\nZWEI dort\ndrei\n", "remote: a");
+    await git(theirs, "push", "-q");
+    await commitFile(mine, "a.txt", "eins\nZWEI hier\ndrei\n", "local: a");
+    const head = (await git(mine, "rev-parse", "HEAD")).trim();
+
+    const c = await conflictOf(engine.pull(mine, "merge"));
+    expect(c).toMatchObject({ branch: "main", merge: true, files: ["a.txt"] });
+    expect((await git(mine, "rev-parse", "HEAD")).trim()).toBe(head);
+    expect(integrationPrompt(c, false)).toContain("git merge --autostash origin/main");
+  });
+
+  it("resetToRemote keeps own commits on a backup branch and open work in the stash", async () => {
+    await commitFile(theirs, "b.txt", "von dort\n", "remote: b");
+    await git(theirs, "push", "-q");
+    await commitFile(mine, "c.txt", "von hier\n", "local: c");
+    const own = (await git(mine, "rev-parse", "HEAD")).trim();
+    writeFileSync(path.join(mine, "a.txt"), "geändert\n");
+
+    const r = await engine.resetToRemote(mine);
+    expect(r).toMatchObject({ branch: "main", stashed: true, dropped: 1 });
+    expect(r.backupBranch).toMatch(/^forge-backup\/main-\d{8}-\d{4}$/);
+    expect((await git(mine, "rev-parse", "HEAD")).trim()).toBe((await git(theirs, "rev-parse", "HEAD")).trim());
+    expect((await git(mine, "rev-parse", r.backupBranch!)).trim()).toBe(own);
+    expect(await git(mine, "stash", "list")).toMatch(/vor dem Zurücksetzen von main/);
+    expect(await git(mine, "status", "--porcelain")).toBe("");
+  });
+
+  it("resetToRemote without own work changes nothing besides the branch", async () => {
+    await commitFile(theirs, "b.txt", "von dort\n", "remote: b");
+    await git(theirs, "push", "-q");
+    expect(await engine.resetToRemote(mine)).toEqual({ branch: "main", stashed: false, backupBranch: null, dropped: 0 });
+    expect(await git(mine, "stash", "list")).toBe("");
+  });
+});
+
 describe("git.push and git.pull handlers", SLOW, () => {
   function handlers() {
     const started: Array<{ projectId: string; prompt: string }> = [];
@@ -129,7 +196,7 @@ describe("git.push and git.pull handlers", SLOW, () => {
     expect(started).toHaveLength(1);
     expect(started[0]!.prompt).toContain("git push origin main");
 
-    const pulled = await h["git.pull"]({ projectId: "p1" });
+    const pulled = await h["git.pull"]({ projectId: "p1", strategy: "rebase" });
     expect(pulled.session).toMatchObject({ id: "s1" });
     expect(started[1]!.prompt).toContain("Nicht pushen.");
   });

@@ -544,6 +544,13 @@ Security:
     noIdentity: "No git identity is set up.",
     behind: (project: string, n: number) => `${project}: ${n} new ${n === 1 ? "commit" : "commits"} on the server, not pulled yet.`,
     upToDate: (project: string) => `${project}: Nothing new on the server.`,
+    incoming: (project: string, branch: string, n: number, subjects: string, own: string) =>
+      `${project}: ${n} new ${n === 1 ? "commit" : "commits"} on origin/${branch}: ${subjects}.${own ? ` Open locally: ${own}.` : ""}`,
+    confirmReset: (project: string, branch: string) =>
+      `${project} is put on the state of origin/${branch}. Uncommitted work goes into the stash, own unpushed commits stay on a backup branch`,
+    resetDone: (project: string, branch: string, stashed: boolean, backup: string | null) =>
+      `${project} is now on the state of origin/${branch}.${stashed ? " The open work is in the stash." : ""}${backup ? ` The own commits are on the branch ${backup}.` : ""}`,
+    sessionBusyReset: (project: string) => `Error: A session is working in ${project}. Stop it first, then reset.`,
     noBranches: (project: string) => `${project} has no branches yet.`,
     otherBranches: (names: string, more: number) => ` Others: ${names}${more > 0 ? ` and ${more} more` : ""}.`,
     branches: (project: string, n: number, current: string | undefined, rest: string) => `${project}: ${n} ${n === 1 ? "branch" : "branches"}${current ? `, currently ${current}` : ""}.${rest}`,

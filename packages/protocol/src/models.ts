@@ -816,7 +816,7 @@ export type McpServer = z.infer<typeof McpServer>;
 
 /** New commits from origin taken over before a push or on pull. */
 export const GitIntegrated = z.object({
-  mode: z.enum(["fast-forward", "rebase"]),
+  mode: z.enum(["fast-forward", "rebase", "merge"]),
   remoteCommits: z.number().int(),
   localCommits: z.number().int(),
 });
@@ -830,7 +830,40 @@ export interface GitIntegrationConflict {
   files: string[];
   /** the branch is up to date; the conflict is between it and the uncommitted changes (kept in the stash) */
   stash?: boolean;
+  /** a merge was tried instead of a rebase */
+  merge?: boolean;
 }
+
+/** How own commits go together with origin's new ones on pull. */
+export const PullStrategy = z.enum(["rebase", "merge"]);
+export type PullStrategy = z.infer<typeof PullStrategy>;
+
+/** What origin/<branch> has that the checked-out branch does not, right after a fetch. */
+export const GitIncoming = z.object({
+  branch: z.string(),
+  /** commit origin/<branch> points to; a hint the user put off comes back only for a newer one */
+  remoteHead: z.string(),
+  behind: z.number().int(),
+  /** own commits that are not on origin */
+  ahead: z.number().int(),
+  /** uncommitted files in the project folder */
+  changedCount: z.number().int(),
+  /** origin's new commits, newest first, at most 10 */
+  commits: z.array(CommitInfo),
+});
+export type GitIncoming = z.infer<typeof GitIncoming>;
+
+/** Result of git.resetToRemote: what was put aside so that nothing is lost. */
+export const GitResetToRemote = z.object({
+  branch: z.string(),
+  /** uncommitted work went into the stash */
+  stashed: z.boolean(),
+  /** branch that keeps the own commits which were not on origin; null without such commits */
+  backupBranch: z.string().nullable(),
+  /** own commits that left the branch (kept on backupBranch) */
+  dropped: z.number().int(),
+});
+export type GitResetToRemote = z.infer<typeof GitResetToRemote>;
 
 /** What a parallel agent did on its branch, for the decision to merge or discard it. */
 export const AgentReview = z.object({

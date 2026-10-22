@@ -450,9 +450,9 @@ export function createHandlers(s: Services): Handlers {
         return { branch: null, integrated: null, session };
       }
     },
-    "git.pull": async ({ projectId }) => {
+    "git.pull": async ({ projectId, strategy }) => {
       try {
-        const r = await s.git.pull(gitDir(projectId));
+        const r = await s.git.pull(gitDir(projectId), strategy);
         s.notifyProject(projectId);
         return { ...r, session: null };
       } catch (e) {
@@ -464,6 +464,21 @@ export function createHandlers(s: Services): Handlers {
     "git.fetch": async ({ projectId }) => {
       await s.git.fetch(gitDir(projectId));
       return gitChanged(projectId);
+    },
+    "git.incoming": async ({ projectId }) => {
+      const r = await s.git.incoming(gitDir(projectId));
+      // the fetch moved origin's refs: ahead/behind in the Git tab are new
+      s.notifyProject(projectId);
+      return r;
+    },
+    "git.resetToRemote": async ({ projectId }) => {
+      const busy = s.sessions
+        .listAll()
+        .some((x) => x.projectId === projectId && x.live && (x.status === "running" || x.status === "waiting_approval"));
+      if (busy) throw new ForgeError("SESSION_BUSY", tr().core.app.busyReset);
+      const r = await s.git.resetToRemote(gitDir(projectId));
+      s.notifyProject(projectId);
+      return r;
     },
     "github.pr": ({ projectId }) => s.github.prForBranch(gitDir(projectId)),
     "github.suggestPr": ({ projectId }) => {

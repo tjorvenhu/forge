@@ -27,7 +27,7 @@ export function JumpToEnd({ kind, onClick, newLabel = t.chat.follow.newMessages 
     <button
       type="button"
       onClick={onClick}
-      className="absolute bottom-3 left-1/2 z-10 flex -translate-x-1/2 animate-rise-in items-center gap-1.5 rounded-full border border-border bg-surface-3 px-3 py-1 text-small text-fg shadow-lg transition-[background-color,transform] duration-120 hover:bg-border-strong active:scale-[0.97]"
+      className="absolute inset-x-0 bottom-3 z-10 mx-auto flex w-fit animate-rise-in items-center gap-1.5 rounded-full border border-border bg-surface-3 px-3 py-1 text-small text-fg shadow-lg transition-[background-color,transform] duration-120 hover:bg-border-strong active:scale-[0.97]"
     >
       <ArrowDown className="h-3.5 w-3.5" /> {kind === "new" ? newLabel : t.chat.follow.toEnd}
     </button>

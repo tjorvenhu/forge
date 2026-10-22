@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { ArrowDown, ArrowUp, CheckCircle2, CircleDashed, CloudDownload, ExternalLink, GitPullRequest, RefreshCw, Sparkles, UploadCloud, XCircle } from "lucide-react";
 import type { GitIntegrated, Project, Session } from "@forge/protocol";
 import { call, keys, useGitHubAccount, useGitStatus } from "@/lib/queries";
@@ -30,10 +30,37 @@ export function integratedText(i: GitIntegrated | null): string | undefined {
   if (!i) return undefined;
   const remote = t.git.sync.remoteCommits(i.remoteCommits);
   if (i.mode === "fast-forward") return t.git.sync.fastForward(remote);
+  if (i.mode === "merge") return t.git.sync.mergedRemote(remote, i.localCommits);
   return t.git.sync.rebased(remote, i.localCommits);
 }
 
 type SyncResult = { integrated: GitIntegrated | null; session: Session | null };
+
+/**
+ * Runs a fetch, pull or push as project activity, refreshes the Git views and reports the outcome.
+ * Conflicts with origin open the Claude session that resolves them. False when it failed.
+ */
+export async function runGitSync(qc: QueryClient, projectId: string, label: string, fn: () => Promise<SyncResult | unknown>, success: string): Promise<boolean> {
+  try {
+    const r = (await useActivity.getState().track(projectId, label, fn)) as Partial<SyncResult> | undefined;
+    void qc.invalidateQueries({ queryKey: keys.git(projectId) });
+    void qc.invalidateQueries({ queryKey: ["pr", projectId] });
+    void qc.invalidateQueries({ queryKey: keys.log(projectId) });
+    if (r?.session) {
+      // Conflicts with origin: Claude resolves them in a new session and asks when it is unclear.
+      qc.setQueryData(keys.session(r.session.id), r.session);
+      void qc.invalidateQueries({ queryKey: keys.sessions(projectId) });
+      useUi.getState().openProject(projectId, r.session.id);
+      toast.info(t.git.sync.conflicts, t.git.sync.conflictsHint);
+    } else {
+      toast.success(success, integratedText(r?.integrated ?? null));
+    }
+    return true;
+  } catch (e) {
+    toast.error(t.git.sync.failed(label), errorMessage(e));
+    return false;
+  }
+}
 
 /**
  * Fetch, pull and push; "Veröffentlichen" without a remote. As icon buttons for a section header, or
@@ -53,19 +80,7 @@ export function SyncActions({ project, labeled = false }: { project: Project; la
     if (busy) return;
     setBusy(label);
     try {
-      const r = (await useActivity.getState().track(project.id, label, fn)) as Partial<SyncResult> | undefined;
-      refresh();
-      if (r?.session) {
-        // Conflicts with origin: Claude resolves them in a new session and asks when it is unclear.
-        qc.setQueryData(keys.session(r.session.id), r.session);
-        void qc.invalidateQueries({ queryKey: keys.sessions(project.id) });
-        useUi.getState().openProject(project.id, r.session.id);
-        toast.info(t.git.sync.conflicts, t.git.sync.conflictsHint);
-      } else {
-        toast.success(success, integratedText(r?.integrated ?? null));
-      }
-    } catch (e) {
-      toast.error(t.git.sync.failed(label), errorMessage(e));
+      await runGitSync(qc, project.id, label, fn, success);
     } finally {
       setBusy(null);
     }

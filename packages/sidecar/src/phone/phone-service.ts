@@ -2183,8 +2183,24 @@ export class PhoneService {
           if (!p.gitEnabled) return gitOff(p);
           const git = this.d.git;
           if (action === "fetch") {
-            const { summary: s } = await call("git.fetch", { projectId: p.id });
-            return s.behind ? gm.behind(p.name, s.behind) : gm.upToDate(p.name);
+            const inc = await call("git.incoming", { projectId: p.id });
+            if (!inc) {
+              const { summary: s } = await call("git.fetch", { projectId: p.id });
+              return s.behind ? gm.behind(p.name, s.behind) : gm.upToDate(p.name);
+            }
+            const own = [inc.ahead ? gm.notPushed(inc.ahead) : "", inc.changedCount ? gm.changedCount(inc.changedCount) : ""].filter(Boolean).join(", ");
+            if (!inc.behind) return gm.upToDate(p.name);
+            const subjects = inc.commits.slice(0, 5).map((c) => `${c.subject} (${c.author})`);
+            return gm.incoming(p.name, inc.branch, inc.behind, asData(subjects.join("; ")), own);
+          }
+          if (action === "reset_to_remote") {
+            const busy = sessions.listAll().some((x) => x.projectId === p.id && x.live && (x.status === "running" || x.status === "waiting_approval"));
+            if (busy) return gm.sessionBusyReset(p.name);
+            const branch = (await git.currentBranch(p.path)) ?? "";
+            return askKeypad(gm.confirmReset(p.name, branch), async () => {
+              const r = await call("git.resetToRemote", { projectId: p.id });
+              return gm.resetDone(p.name, r.branch, r.stashed, r.backupBranch);
+            });
           }
           if (action === "branches") {
             const list = await call("git.branches", { projectId: p.id });
@@ -2318,7 +2334,7 @@ export class PhoneService {
           }
           let r: Awaited<ReturnType<GitEngine["pull"]>>;
           try {
-            r = await git.pull(p.path);
+            r = await git.pull(p.path, o?.merge === true ? "merge" : "rebase");
           } catch (e) {
             return handOver(e, false);
           }

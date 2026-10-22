@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, Bot, CalendarDays, Code2, Copy, FileStack, FolderMinus, FolderOpen, FolderSearch, Folders, GitBranch, MessageSquarePlus, MoreHorizontal, Settings2, Shield, ShieldAlert, ShieldCheck, Star, Tag, Trash2 } from "lucide-react";
+import { AlertTriangle, Bot, CalendarDays, Code2, Copy, FileStack, FolderMinus, FolderOpen, FolderSearch, Folders, GitBranch, GitCompareArrows, MessageSquarePlus, MoreHorizontal, Settings2, Shield, ShieldAlert, ShieldCheck, Star, Tag, Trash2 } from "lucide-react";
 import type { ProjectWithStatus } from "@forge/protocol";
 import { call, keys } from "@/lib/queries";
 import { contextItems, copyText } from "@/lib/context-menu";
@@ -17,6 +17,7 @@ import { DropdownMenu } from "@/components/ui/dropdown";
 import { ProjectIcon } from "./ProjectIcon";
 import { setProjectGroup } from "./ProjectGroupDialogs";
 import { switchProjectAgents } from "./AgentsSwitch";
+import { checkRemote } from "@/stores/remote-check";
 import { startProjectDrag, useProjectDrag } from "./project-drag";
 import { PROFILE_INFO } from "./ProfileBadge";
 import { tagLabel } from "@/components/workspace/ProjectSettingsTab";
@@ -68,6 +69,18 @@ export function ProjectCard({
         { label: t.projects.card.newSession, icon: <MessageSquarePlus className="h-3.5 w-3.5" />, onSelect: () => openProject(p.id, null) },
         { label: t.projects.card.dailyReport, icon: <CalendarDays className="h-3.5 w-3.5" />, onSelect: () => openReport(p.parentId ?? p.id) },
         ...(p.exists ? [{ label: t.projects.card.applyTemplate, icon: <FileStack className="h-3.5 w-3.5" />, onSelect: () => useTemplateDialogs.getState().openApply({ projectId: p.id }) }] : []),
+        ...(p.exists && p.gitEnabled && p.git?.remoteUrl
+          ? [
+              {
+                label: t.git.remoteCheck.checkLabel,
+                icon: <GitCompareArrows className="h-3.5 w-3.5" />,
+                onSelect: () => {
+                  openProject(p.id);
+                  void checkRemote(p.id, true);
+                },
+              },
+            ]
+          : []),
         { label: p.favorite ? t.projects.card.removeFavorite : t.projects.card.addFavorite, icon: <Star className="h-3.5 w-3.5" />, onSelect: () => void toggleFavorite() },
         ...groupItems,
         ...(!p.parentId && p.gitEnabled

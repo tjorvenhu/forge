@@ -37,8 +37,10 @@ export function Dialog({ open, onOpenChange, title, description, children, foote
         <D.Content
           onEscapeKeyDown={keep}
           onInteractOutside={keep}
+          // Centered with margins, not translate: WebKit (macOS) drops the `translate` property while the pop-in
+          // transform animation runs, so the dialog and its buttons landed off-center.
           className={cn(
-            "fixed left-1/2 top-1/2 z-50 flex max-h-[85vh] w-130 max-w-[92vw] -translate-x-1/2 -translate-y-1/2 flex-col rounded-xl border border-border bg-surface shadow-2xl outline-none",
+            "fixed inset-0 z-50 m-auto flex h-fit max-h-[85vh] w-130 max-w-[92vw] flex-col rounded-xl border border-border bg-surface shadow-2xl outline-none",
             local && "absolute max-h-[85%] max-w-[92%]",
             hideHeader && "overflow-hidden",
             DIALOG_MOTION,

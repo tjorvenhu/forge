@@ -34,7 +34,6 @@ import { setAlwaysOnTop } from "@/lib/window-options";
 import { takeScreenshot } from "@/lib/screenshot";
 import { openChatFindSoon } from "@/lib/chat-find";
 import { toggleDictationSoon } from "@/stores/dictation";
-import { useActivity } from "@/stores/activity";
 import { draftKey, useDrafts } from "@/stores/drafts";
 import { lastEditablePrompt, useMessageEdit } from "@/stores/message-edit";
 import { toast } from "@/stores/toast";
@@ -51,7 +50,8 @@ import { handoffSession, longSessionLabel } from "@/components/workspace/handoff
 import { CHAT_VIEWS, chatView, setChatView } from "@/components/workspace/chat-view";
 import { formatTokens } from "@/lib/utils";
 import { SECTIONS as DEV_TOOLS_SECTION_DEFS } from "@/components/devtools/DevToolsTab";
-import { integratedText } from "@/components/git/Sync";
+import { runGitSync } from "@/components/git/Sync";
+import { checkRemote } from "@/stores/remote-check";
 import { SECTIONS as PROJECT_SECTION_DEFS, TAG_INFO } from "@/components/workspace/ProjectSettingsTab";
 import { compactSession, PROFILE_MODE, stopSession } from "@/components/workspace/useSendMessage";
 import { revealInProject } from "@/components/workspace/file-links";
@@ -223,25 +223,6 @@ async function updateProject(qc: QueryClient, projectId: string, patch: { profil
 }
 
 /** Like the buttons in the Git tab: conflicts with origin open the Claude session that resolves them. */
-async function gitSync(qc: QueryClient, projectId: string, label: string, fn: () => Promise<unknown>, success: string) {
-  try {
-    const r = (await useActivity.getState().track(projectId, label, fn)) as { integrated?: Parameters<typeof integratedText>[0]; session?: Session | null } | undefined;
-    void qc.invalidateQueries({ queryKey: keys.git(projectId) });
-    void qc.invalidateQueries({ queryKey: ["pr", projectId] });
-    void qc.invalidateQueries({ queryKey: keys.log(projectId) });
-    if (r?.session) {
-      qc.setQueryData(keys.session(r.session.id), r.session);
-      void qc.invalidateQueries({ queryKey: keys.sessions(projectId) });
-      useUi.getState().openProject(projectId, r.session.id);
-      toast.info(t.layout.actions.conflicts, t.layout.actions.conflictsBody);
-    } else {
-      toast.success(success, integratedText(r?.integrated ?? null));
-    }
-  } catch (e) {
-    toast.error(t.layout.actions.failed(label), errorMessage(e));
-  }
-}
-
 /** Shows the change at once and goes back if the session refused it, like the composer. */
 async function updateSession(qc: QueryClient, session: Session, optimistic: Partial<Session>, run: () => Promise<Session>, errorTitle: string) {
   const key = keys.session(session.id);
@@ -465,13 +446,16 @@ export function buildActions(ctx: ActionContext): PaletteEntry[] {
     if (git?.isRepo) {
       act("git-commit", t.layout.actions.gitCommit, icon(GitCommitHorizontal), () => ui.setWorkspaceTab("git"), { keywords: "commit erstellen git änderungen stage create changes", hint: git.changedCount ? t.layout.actions.changed(git.changedCount) : undefined });
       if (git.remoteUrl) {
-        act("git-fetch", t.layout.actions.gitFetch, icon(CloudDownload), () => void gitSync(qc, project.id, t.layout.actions.fetch, () => call("git.fetch", { projectId: project.id }), t.layout.actions.fetched), { keywords: "git abrufen fetch" });
-        act("git-pull", t.layout.actions.gitPull, icon(ArrowDown), () => void gitSync(qc, project.id, t.layout.actions.pull, () => call("git.pull", { projectId: project.id }), t.layout.actions.pulled), {
+        act("git-fetch", t.layout.actions.gitFetch, icon(CloudDownload), () => void runGitSync(qc, project.id, t.layout.actions.fetch, () => call("git.fetch", { projectId: project.id }), t.layout.actions.fetched), { keywords: "git abrufen fetch" });
+        act("git-pull", t.layout.actions.gitPull, icon(ArrowDown), () => void runGitSync(qc, project.id, t.layout.actions.pull, () => call("git.pull", { projectId: project.id }), t.layout.actions.pulled), {
           hint: git.behind ? t.layout.actions.behind(git.behind) : undefined,
           keywords: "git pull holen aktualisieren update",
         });
+        act("git-remote-check", t.layout.actions.gitRemoteCheck, icon(GitCompareArrows), () => void checkRemote(project.id, true), {
+          keywords: "git server remote abgleichen vergleichen zurücksetzen reset merge rebase origin stand compare",
+        });
         // Choosing push is the consent, also for main, like the button in the Git tab.
-        act("git-push", t.layout.actions.gitPush, icon(ArrowUp), () => void gitSync(qc, project.id, t.layout.actions.push, () => call("git.push", { projectId: project.id, allowProtected: true }), t.layout.actions.pushed), {
+        act("git-push", t.layout.actions.gitPush, icon(ArrowUp), () => void runGitSync(qc, project.id, t.layout.actions.push, () => call("git.push", { projectId: project.id, allowProtected: true }), t.layout.actions.pushed), {
           hint: git.ahead ? t.layout.actions.ahead(git.ahead) : undefined,
           keywords: "git push hochladen upload",
         });

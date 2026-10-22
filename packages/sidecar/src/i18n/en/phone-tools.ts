@@ -133,7 +133,7 @@ export const phoneTools: typeof De = {
   },
   git: {
     description:
-      "Git in a project or session (for agents their worktree). status: branch and changes. log: the latest commits. show: what a commit changed (commit), with path the diff of one file in it. diff: what changed in a file (path). commit: commit all changes (without message FORGE writes the message). push: push the current branch, new commits from the server are taken over first. pull: get new commits from the server, own commits go on top by rebase. fetch: only check what is new on the server. branches: local branches. checkout: switch to branch. delete_branch: delete a local branch. restore: set files back to the state of a commit, as uncommitted changes; open work is put aside first. init: create a Git repository. publish: publish the project as a new repository on GitHub, optionally in an organization (owner). account: which GitHub account FORGE is signed in with and in which organizations it can create repositories. identity: tell the name and email for commits or set them with name and email. If the states cannot be merged automatically, FORGE starts a session in which Claude does it.",
+      "Git in a project or session (for agents their worktree). status: branch and changes. log: the latest commits. show: what a commit changed (commit), with path the diff of one file in it. diff: what changed in a file (path). commit: commit all changes (without message FORGE writes the message). push: push the current branch, new commits from the server are taken over first. pull: get new commits from the server, own commits go on top by rebase (with merge by a merge). reset_to_remote: put the branch on the server's state; uncommitted work goes into the stash, own unpushed commits onto a backup branch, the caller confirms on the keypad. fetch: only check what is new on the server, with the new commits and the own open work. branches: local branches. checkout: switch to branch. delete_branch: delete a local branch. restore: set files back to the state of a commit, as uncommitted changes; open work is put aside first. init: create a Git repository. publish: publish the project as a new repository on GitHub, optionally in an organization (owner). account: which GitHub account FORGE is signed in with and in which organizations it can create repositories. identity: tell the name and email for commits or set them with name and email. If the states cannot be merged automatically, FORGE starts a session in which Claude does it.",
     params: {
       message: "Commit message, only if the caller gives one",
       allow_protected: "Push to main or master; only if the caller explicitly wants it",
@@ -146,6 +146,7 @@ export const phoneTools: typeof De = {
       owner: "only with publish: GitHub organization the repository is created in; without: personal account",
       name: "with publish: name of the repository; with identity: name for commits",
       email: "only with identity: email for commits",
+      merge: "only with pull: true merges own commits with the server's instead of rebasing them; only if the caller wants a merge",
     },
   },
   pull_request: {

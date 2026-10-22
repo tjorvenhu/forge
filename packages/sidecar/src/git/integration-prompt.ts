@@ -30,8 +30,10 @@ export function integrationPrompt(c: GitIntegrationConflict, push: boolean): str
   const intro = push ? m.introPush(c.branch) : m.introPull(c.branch);
   const situation = c.stash
     ? [m.stashSituation(intro, remote), files]
-    : [m.rebaseSituation(intro, remote, c.remoteCommits, c.localCommits), files, "", m.rebaseAborted];
-  const steps = c.stash ? [m.stashStep] : [m.rebaseStep(remote), m.bothSides];
+    : c.merge
+      ? [m.mergeSituation(intro, remote, c.remoteCommits, c.localCommits), files, "", m.mergeAborted]
+      : [m.rebaseSituation(intro, remote, c.remoteCommits, c.localCommits), files, "", m.rebaseAborted];
+  const steps = c.stash ? [m.stashStep] : [c.merge ? m.mergeStep(remote) : m.rebaseStep(remote), m.bothSides];
   steps.push(m.ask, m.verify, push ? m.push(c.branch) : m.noPush);
   return [...situation, "", m.please, ...steps.map((s, i) => `${i + 1}. ${s}`), "", m.summary].join("\n");
 }

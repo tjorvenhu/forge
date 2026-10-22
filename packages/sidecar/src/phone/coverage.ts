@@ -177,6 +177,8 @@ export const PHONE_TOOL_FOR: Partial<Record<MethodName, string>> = {
   "git.push": "git",
   "git.pull": "git",
   "git.fetch": "git",
+  "git.incoming": "git",
+  "git.resetToRemote": "git",
   "git.init": "git",
   "git.suggestCommitMessage": "git",
   "github.pr": "pull_request",
