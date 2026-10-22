@@ -37,6 +37,8 @@ beforeEach(async () => {
   await git(remote, "init", "-q", "--bare", "-b", "main");
   mkdirSync(mine);
   await initRepo(mine);
+  // A global core.autocrlf=true (Windows runners) would check b.txt out with CRLF.
+  await git(mine, "config", "core.autocrlf", "false");
   await commitFile(mine, "a.txt", "eins\nzwei\ndrei\n", "init");
   await git(mine, "remote", "add", "origin", remote);
   await git(mine, "push", "-q", "-u", "origin", "main");

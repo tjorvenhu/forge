@@ -1,6 +1,6 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Project, SessionStatus } from "@forge/protocol";
 import { GitEngine } from "../src/git/git.js";
 import { Db, MIGRATIONS, type SessionRecord } from "../src/persistence/db.js";
@@ -93,6 +93,7 @@ describe("DailyReportService", () => {
     });
   });
   afterEach(() => {
+    vi.useRealTimers();
     db.close();
     t.cleanup();
   });
@@ -179,8 +180,11 @@ describe("DailyReportService", () => {
   }, 30_000);
 
   it("takes the turns from before the update into claude_usage", () => {
+    // The migrations match the rows to their events by time: two turns in one millisecond would be ambiguous.
+    vi.useFakeTimers({ toFake: ["Date"], now: new Date("2026-10-22T09:00:00Z") });
     const s = session(app.id, "Alt");
     turn(s.id);
+    vi.setSystemTime(new Date("2026-10-22T09:00:05Z"));
     // FORGE continued it after the usage limit: that turn is FORGE's.
     db.appendEvent(s.id, { type: "user.message", text: "Weiter", source: "auto" });
     db.appendEvent(s.id, { type: "turn.result", subtype: "success", isError: false, durationMs: 2000, numTurns: 3, inputTokens: 1, outputTokens: 50, cacheReadTokens: 0, text: "ok" });
