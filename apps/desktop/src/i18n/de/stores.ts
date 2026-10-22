@@ -2,5 +2,4 @@
 export const stores = {
   autoSaved: "Automatisch gespeichert",
   terminalTab: (n: number) => `Terminal ${n}`,
-  teamTab: "Agent-Team",
 };

@@ -1,4 +1,4 @@
-import { BackupPart, CHAT_WINDOW_ACTIONS, EffortLevel, Language, MemoryScope, PermissionMode, PolicyRuleId, ProfileId, SessionStatus, UpdateChannel, type ChatWindowAction } from "@forge/protocol";
+import { BackupPart, CHAT_WINDOW_ACTIONS, EffortLevel, Language, MemoryScope, PermissionMode, PolicyRuleId, ProfileId, SessionStatus, TEAM_LEAD_MODELS, UpdateChannel, type ChatWindowAction, type TeamLeadModel } from "@forge/protocol";
 import { z } from "zod";
 import { tr, type SidecarMessages } from "../i18n/index.js";
 
@@ -49,13 +49,13 @@ export const GIT_ACTIONS = [
 ] as const;
 export type GitAction = (typeof GIT_ACTIONS)[number];
 export type TaskAction = "output" | "stop" | "to_background" | "message";
-export const AGENT_TEAM_ACTIONS = ["status", "message", "start", "stop", "dismiss"] as const;
+export const AGENT_TEAM_ACTIONS = ["status", "message", "start", "stop"] as const;
 export type AgentTeamAction = (typeof AGENT_TEAM_ACTIONS)[number];
 export interface AgentTeamOptions {
   project?: string;
   team?: string;
-  to?: string;
   text?: string;
+  leadModel?: TeamLeadModel;
 }
 
 export interface GitOptions extends TargetOptions {
@@ -730,10 +730,11 @@ const TOOL_DEFS: readonly ToolDef[] = [
       action: { type: "string", enum: AGENT_TEAM_ACTIONS },
       project: { type: "string", optional: true },
       team: { type: "string", optional: true },
-      to: { type: "string", optional: true },
       text: { type: "string", optional: true },
+      lead_model: { type: "string", optional: true, enum: TEAM_LEAD_MODELS },
     },
-    run: (t, a) => t.agentTeam(pick(a.action, AGENT_TEAM_ACTIONS, "status"), { project: opt(a.project), team: opt(a.team), to: opt(a.to), text: opt(a.text) }),
+    run: (t, a) =>
+      t.agentTeam(pick(a.action, AGENT_TEAM_ACTIONS, "status"), { project: opt(a.project), team: opt(a.team), text: opt(a.text), leadModel: TEAM_LEAD_MODELS.find((m) => m === a.lead_model) }),
   },
   {
     name: "projects",

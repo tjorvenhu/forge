@@ -9,6 +9,7 @@ import {
   forkSession as sdkForkSession,
   getSessionMessages,
   query,
+  type AgentDefinition,
   type CanUseTool,
   type HookCallback,
   type PermissionResult,
@@ -57,6 +58,8 @@ export interface StartOptions {
   context?: string | null;
   /** model the CLI switches to when the main one is overloaded (must differ from it) */
   fallbackModel?: string | null;
+  /** subagents the session can start besides Claude Code's own (agent teams: one per role) */
+  agents?: Record<string, AgentDefinition>;
 }
 
 /**
@@ -404,6 +407,7 @@ export class AgentSdkRuntime implements ClaudeRuntime {
         settingSources: ["user", "project", "local"],
         pathToClaudeCodeExecutable: opts.claudePath,
         canUseTool,
+        ...(opts.agents ? { agents: opts.agents } : {}),
         ...(opts.context ? { systemPrompt: { type: "preset", preset: "claude_code", append: opts.context } } : {}),
         hooks: { PreToolUse: [{ hooks: [guard] }] },
         ...(opts.tools?.length

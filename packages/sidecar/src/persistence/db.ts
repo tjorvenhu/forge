@@ -365,6 +365,10 @@ export const MIGRATIONS: string[] = [
   `
   ALTER TABLE projects ADD COLUMN teams_enabled INTEGER NOT NULL DEFAULT 1;
   `,
+  // Agent team sessions: the lead gets the team roles (subagents with their own models) and the orchestration rules.
+  `
+  ALTER TABLE sessions ADD COLUMN team INTEGER NOT NULL DEFAULT 0;
+  `,
 ];
 
 /** user_version once the agents_enabled migration ran */
@@ -515,6 +519,7 @@ interface SessionRow {
   created_at: string;
   updated_at: string;
   last_error: string | null;
+  team: number;
 }
 
 export type ProjectRecord = Omit<Project, "exists">;
@@ -714,6 +719,7 @@ function toSession(r: SessionRow): SessionRecord {
     createdAt: r.created_at,
     updatedAt: r.updated_at,
     lastError: r.last_error,
+    ...(r.team ? { team: true } : {}),
   };
 }
 
@@ -1022,8 +1028,8 @@ export class Db {
   insertSession(s: SessionRecord) {
     this.sql
       .prepare(
-        `INSERT INTO sessions(id, project_id, claude_session_id, cwd, title, model, effort, profile, permission_mode, status, api_key_source, created_at, updated_at, last_error)
-         VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO sessions(id, project_id, claude_session_id, cwd, title, model, effort, profile, permission_mode, status, api_key_source, created_at, updated_at, last_error, team)
+         VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         s.id,
@@ -1040,6 +1046,7 @@ export class Db {
         s.createdAt,
         s.updatedAt,
         s.lastError,
+        s.team ? 1 : 0,
       );
   }
 
@@ -1112,6 +1119,13 @@ export class Db {
     const rows = this.sql
       .prepare("SELECT * FROM sessions WHERE project_id = ? ORDER BY updated_at DESC")
       .all(projectId) as unknown as SessionRow[];
+    return rows.map(toSession);
+  }
+
+  /** agent team sessions, newest first; projectIds: only those projects */
+  listTeamSessions(projectIds: readonly string[] | null, limit: number): SessionRecord[] {
+    const where = projectIds ? ` AND project_id IN (${projectIds.map(() => "?").join(", ") || "NULL"})` : "";
+    const rows = this.sql.prepare(`SELECT * FROM sessions WHERE team = 1${where} ORDER BY created_at DESC LIMIT ?`).all(...(projectIds ?? []), limit) as unknown as SessionRow[];
     return rows.map(toSession);
   }
 

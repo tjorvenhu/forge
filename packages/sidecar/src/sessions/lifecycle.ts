@@ -16,6 +16,7 @@ import type { SessionStream } from "./stream.js";
 import type { TurnAutomation } from "./turn-automation.js";
 import type { BuiltTurn, MessageSource, TaskTurn, TurnDispatch } from "./turns.js";
 import { tr } from "../i18n/index.js";
+import { teamAgents, teamLeadContext } from "../teams/team-agents.js";
 
 export interface StartParams {
   projectId: string;
@@ -25,6 +26,8 @@ export interface StartParams {
   planOnly?: boolean;
   resumeClaudeSessionId?: string;
   attachments?: Attachment[];
+  /** an agent team: the lead gets the team roles and the orchestration rules (teams/team-agents.ts) */
+  team?: boolean;
 }
 
 export interface LifecycleParts {
@@ -103,6 +106,7 @@ export class SessionLifecycle {
       createdAt: now,
       updatedAt: now,
       lastError: null,
+      ...(params.team ? { team: true } : {}),
     };
     db.insertSession(rec);
 
@@ -243,7 +247,8 @@ export class SessionLifecycle {
           firstMessage: first,
           fallbackModel: fallbackFor(rec.model),
           tools: extra?.tools,
-          context: extra?.context ?? null,
+          context: rec.team ? [extra?.context, teamLeadContext()].filter(Boolean).join("\n\n") : (extra?.context ?? null),
+          ...(rec.team ? { agents: teamAgents() } : {}),
         },
         sink,
       );

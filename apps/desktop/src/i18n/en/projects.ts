@@ -95,7 +95,7 @@ export const projects: typeof De = {
   teams: {
     title: "Agent teams",
     switchLabel: "Allow agent teams",
-    onDescription: "A Claude Code team can be started from the Agents tab and the terminal. Every teammate uses its own share of the subscription.",
+    onDescription: "An agent team can be started from the Agents tab. Every member is a Claude instance of its own and uses its own share of the plan.",
     offDescription: "FORGE starts no agent teams in this project and shows none.",
     globalOff: "Agent teams are switched off in the settings. Switch them on there first.",
     openSettings: "Go to the settings",

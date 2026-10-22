@@ -31,6 +31,8 @@ import {
   type Settings,
   type UsageWindow,
   SUPPORT_LINKS,
+  modelFamily,
+  type AgentTeam,
 } from "@forge/protocol";
 import type { Db } from "../persistence/db.js";
 import { limitWarning } from "../claude/usage.js";
@@ -2431,59 +2433,51 @@ export class PhoneService {
       agentTeam: (action, o) =>
         run(true, async () => {
           const m = tr().phone.teams;
-          const projectName = (id: string | null) => (id ? (this.d.projects.all().find((p) => p.id === id)?.name ?? "?") : "?");
+          const projectName = (id: string) => this.d.projects.all().find((p) => p.id === id)?.name ?? "?";
           if (action === "start") {
+            if (!o.text?.trim()) return m.needsGoal;
             const p = findProject(o.project ?? "");
-            await call("teams.start", { projectId: p.id, prompt: o.text?.trim() || undefined });
-            return m.started(p.name, !!o.text?.trim());
+            const s = await call("teams.start", { projectId: p.id, prompt: o.text.trim(), leadModel: o.leadModel });
+            return m.started(p.name, s.model ?? "opus");
           }
           const scope = o.project?.trim() ? findProject(o.project) : null;
           const teams = await call("teams.list", scope ? { projectId: scope.id } : {});
-          const running = teams.filter((t) => t.active);
-          if (action === "dismiss") {
-            const q = o.team?.trim().toLowerCase();
-            const ended = teams.filter((t) => !t.active && (!q || t.name.toLowerCase().includes(q)));
-            if (!ended.length) return m.noneEnded;
-            const r = q
-              ? { count: (await Promise.all(ended.map((t) => call("teams.dismiss", { team: t.name })))).reduce((n, x) => n + x.count, 0) }
-              : await call("teams.dismiss", scope ? { projectId: scope.id } : {});
-            return m.dismissed(r.count);
-          }
-          if (action === "stop") {
-            const q = o.team?.trim().toLowerCase();
-            const hits = q ? running.filter((t) => t.name.toLowerCase().includes(q)) : running;
-            if (!hits.length) return scope ? m.noneInProject(scope.name) : m.none;
-            if (hits.length > 1) return m.whichTeam(hits.map((t) => `${t.name} (${projectName(t.projectId)})`).join(", "));
-            const r = await call("teams.stop", { team: hits[0]!.name });
-            return r.ok ? m.stopped(hits[0]!.name) : m.stopSlow(hits[0]!.name);
-          }
-          if (action === "message") {
+          if (!teams.length) return scope ? m.noneInProject(scope.name) : m.none;
+          const q = o.team?.trim().toLowerCase();
+          const busy = (t: AgentTeam) => t.live && (t.status === "running" || t.status === "waiting_approval" || t.members.some((x) => x.state === "working"));
+          const pickTeam = () => {
+            const hits = q ? teams.filter((t) => (t.title ?? "").toLowerCase().includes(q)) : teams.filter(busy);
+            return hits.length ? hits : q ? [] : teams.slice(0, 1);
+          };
+          if (action === "stop" || action === "message") {
+            const hits = pickTeam();
+            if (!hits.length) return m.notFound(o.team ?? "");
+            if (hits.length > 1) return m.whichTeam(hits.map((t) => `${t.title ?? "?"} (${projectName(t.projectId)})`).join(", "));
+            const t = hits[0]!;
+            if (action === "stop") {
+              const r = await call("teams.stop", { sessionId: t.sessionId });
+              return m.stopped(t.title ?? "?", r.stopped);
+            }
             if (!o.text?.trim()) return m.needsText;
-            if (!o.to?.trim()) return m.needsTo;
-            const q = o.team?.trim().toLowerCase();
-            const hits = q ? running.filter((t) => t.name.toLowerCase().includes(q)) : running;
-            if (!hits.length) return scope ? m.noneInProject(scope.name) : m.none;
-            if (hits.length > 1) return m.whichTeam(hits.map((t) => `${t.name} (${projectName(t.projectId)})`).join(", "));
-            const r = await call("teams.message", { team: hits[0]!.name, to: o.to.trim(), text: o.text.trim() });
-            return m.sent(r.recipients.join(", "));
+            await call("teams.message", { sessionId: t.sessionId, text: o.text.trim() });
+            return m.sent(t.title ?? "?");
           }
-          const shown = running.length ? running : teams.slice(0, 1);
-          if (!shown.length) return scope ? m.noneInProject(scope.name) : m.none;
+          const running = teams.filter(busy);
+          const shown = q ? pickTeam() : running.length ? running : teams.slice(0, 1);
           return shown
             .map((t) => {
               const done = t.tasks.filter((x) => x.status === "completed").length;
               const tasks = t.tasks.length
-                ? m.tasks(done, t.tasks.length, t.tasks.map((x) => m.task(`#${x.id}`, asData(x.subject), m.taskStatus[x.status] ?? x.status, x.owner) + (x.blocked ? m.blocked : "")).join("; "))
+                ? m.tasks(done, t.tasks.length, t.tasks.map((x) => m.task(asData(x.subject), m.taskStatus[x.status] ?? x.status)).join("; "))
                 : m.noTasks;
-              const last = t.messages.slice(-4).map((x) => m.message(x.from, x.to, excerptData(x.text, 200)));
+              const members = t.members.map((x) =>
+                m.member(asData(x.title), (x.role ? m.role[x.role] : null) ?? x.agentType ?? "Agent", modelFamily(x.model) ?? x.model ?? m.leadsModel, m.state[x.state] ?? x.state, x.state === "working" && x.activity ? asData(x.activity) : null),
+              );
               return [
-                m.team(t.name, projectName(t.projectId), t.active),
-                m.members(t.members.map((x) => m.member(x.name, m.state[x.state] ?? "").trim()).join(", ")),
+                m.team(asData(t.title ?? "?"), projectName(t.projectId), modelFamily(t.leadModel) ?? t.leadModel ?? "?", busy(t)),
+                members.length ? m.members(members.join("; ")) : m.noMembers,
                 tasks,
-                last.length ? m.last(last.join(" | ")) : "",
-              ]
-                .filter(Boolean)
-                .join("\n");
+              ].join("\n");
             })
             .join("\n\n");
         }),

@@ -1,10 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import type { AgentTeam, Project } from "@forge/protocol";
+import type { AgentTeam, Project, TeamMember } from "@forge/protocol";
 import type * as RpcModuleNs from "@/lib/rpc";
 import { useUi } from "@/stores/ui";
-import { useTerminals } from "@/stores/terminals";
 
 type RpcModule = typeof RpcModuleNs;
 
@@ -12,31 +11,37 @@ const callMock = vi.fn();
 vi.mock("@/lib/rpc", async (orig) => ({ ...(await orig<RpcModule>()), rpc: { call: (...a: unknown[]) => callMock(...a), subscribe: () => () => {} } }));
 
 const { AgentTeamsSection } = await import("./AgentTeams");
-const { teamLinks, memberColor, startTeamTerminal } = await import("@/lib/agent-teams");
+const { TeamGrid } = await import("./TeamBoard");
+const { leadState, openTeamStart, teamBusy, useTeamDialog } = await import("@/lib/agent-teams");
 
 const project = { id: "p1", name: "shop", path: "C:\\code\\shop", exists: true } as unknown as Project;
+const now = new Date().toISOString();
+
+function member(over: Partial<TeamMember>): TeamMember {
+  return {
+    id: "a1", role: "developer", agentType: "team-developer", title: "Index bauen", prompt: "Baue den Index", model: "sonnet", background: true,
+    state: "working", startedAt: now, endedAt: null, activity: "Edit · src/index.ts", toolUses: 3, files: ["src/index.ts"], result: null, ...over,
+  };
+}
 
 function team(over: Partial<AgentTeam> = {}): AgentTeam {
   return {
-    name: "session-1a2b3c4d",
-    leadSessionId: "1a2b3c4d-0000",
+    sessionId: "s1",
     projectId: "p1",
-    cwd: "C:\\code\\shop",
-    active: true,
-    canStop: true,
-    createdAt: new Date().toISOString(),
-    endedAt: null,
+    title: "Volltextsuche bauen",
+    leadModel: "opus",
+    status: "idle",
+    live: true,
+    createdAt: now,
+    updatedAt: now,
     members: [
-      { name: "team-lead", agentId: "team-lead@x", lead: true, agentType: "team-lead", color: null, model: null, prompt: null, joinedAt: "", state: "unknown", lastResult: null },
-      { name: "alpha", agentId: "alpha@x", lead: false, agentType: "general-purpose", color: "blue", model: "haiku", prompt: "Du bist alpha.", joinedAt: "", state: "working", lastResult: null },
-      { name: "beta", agentId: "beta@x", lead: false, agentType: "general-purpose", color: "green", model: "haiku", prompt: "Du bist beta.", joinedAt: "", state: "idle", lastResult: "write B erledigt" },
+      member({}),
+      member({ id: "a2", role: "scout", agentType: "team-scout", title: "Suche finden", model: "haiku", state: "done", endedAt: now, activity: null, result: "src/search.ts:10" }),
     ],
     tasks: [
-      { id: "1", subject: "write A", description: "", owner: "alpha", status: "in_progress", blocks: ["3"], blockedBy: [], blocked: false },
-      { id: "2", subject: "write B", description: "", owner: "beta", status: "completed", blocks: ["3"], blockedBy: [], blocked: false },
-      { id: "3", subject: "combine", description: "", owner: "alpha", status: "pending", blocks: [], blockedBy: ["1", "2"], blocked: true },
+      { id: "1", subject: "Suche verstehen", status: "completed", activeForm: null },
+      { id: "2", subject: "Index bauen", status: "in_progress", activeForm: "Baut den Index" },
     ],
-    messages: [{ id: "m1", from: "alpha", to: "beta", kind: "message", text: "hello from alpha", summary: null, ts: new Date().toISOString() }],
     ...over,
   };
 }
@@ -46,122 +51,97 @@ function mockRpc(answers: Record<string, unknown>, settings: Record<string, unkn
   callMock.mockImplementation(async (method: string) => (method === "settings.get" ? settings : method === "projects.list" ? [] : (answers[method] ?? null)));
 }
 
-function renderSection() {
+function wrap(node: React.ReactNode) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return render(
-    <QueryClientProvider client={qc}>
-      <AgentTeamsSection project={project} />
-    </QueryClientProvider>,
-  );
+  return render(<QueryClientProvider client={qc}>{node}</QueryClientProvider>);
 }
 
 beforeEach(() => {
   callMock.mockReset();
-  useTerminals.setState({ tabs: {}, active: {} });
+  useTeamDialog.setState({ projectId: null });
+  useUi.setState({ activeProjectId: "p1", view: "workspace", taskView: null });
 });
 afterEach(cleanup);
 
 describe("AgentTeamsSection", () => {
-  it("shows members, the task board with blocked tasks and the messages of a running team", async () => {
+  it("shows a team card with its lead, members and plan, and opens the lead's chat", async () => {
     mockRpc({ "teams.list": [team()] });
-    renderSection();
-    expect(await screen.findByText("session-1a2b3c4d")).toBeTruthy();
-    expect(callMock).toHaveBeenCalledWith("teams.list", { projectId: "p1" });
-    expect(screen.getByText("write B erledigt")).toBeTruthy();
-    expect(screen.getByText("hello from alpha")).toBeTruthy();
-    expect(screen.getByRole("progressbar").getAttribute("aria-valuenow")).toBe("1");
-    expect(screen.getByText(/#1, #2/)).toBeTruthy();
+    wrap(<AgentTeamsSection project={project} />);
+    expect(await screen.findByText("Volltextsuche bauen")).toBeTruthy();
+    expect(screen.getByText("Opus")).toBeTruthy();
+    expect(screen.getByTitle(/Entwickler: Index bauen|Developer: Index bauen/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /^(Öffnen|Open)$/ }));
+    expect(useUi.getState().activeSession.p1).toBe("s1");
+    expect(useUi.getState().workspaceTab).toBe("chat");
   });
 
-  it("sends a message to the chosen member", async () => {
-    mockRpc({ "teams.list": [team()], "teams.message": { recipients: ["team-lead"] } });
-    renderSection();
-    await screen.findByText("session-1a2b3c4d");
-    const box = screen.getByRole("textbox");
-    fireEvent.change(box, { target: { value: "Bitte Tests ergänzen" } });
-    fireEvent.keyDown(box, { key: "Enter", ctrlKey: true });
-    await waitFor(() => expect(callMock).toHaveBeenCalledWith("teams.message", { team: "session-1a2b3c4d", to: "team-lead", text: "Bitte Tests ergänzen" }));
-  });
-
-  it("keeps an ended team collapsed and offers no messages to it", async () => {
-    mockRpc({ "teams.list": [team({ active: false, canStop: false, endedAt: new Date().toISOString() })] });
-    renderSection();
-    await screen.findByText("session-1a2b3c4d");
-    expect(screen.queryByText("hello from alpha")).toBeNull();
-    expect(screen.queryByRole("textbox")).toBeNull();
-    fireEvent.click(screen.getByRole("button", { expanded: false }));
-    expect(screen.getByText("hello from alpha")).toBeTruthy();
-    expect((screen.getByRole("textbox") as HTMLTextAreaElement).disabled).toBe(true);
-  });
-
-  it("starts a team terminal with the task from the dialog", async () => {
-    mockRpc({ "teams.list": [] });
-    useUi.setState({ activeProjectId: "p1" });
-    renderSection();
-    const empty = await screen.findAllByRole("button", { name: /team/i });
-    fireEvent.click(empty[0]!);
+  it("starts a team with the goal and the lead model from the dialog, after warning about the usage", async () => {
+    mockRpc({ "teams.list": [], "teams.start": { id: "s9", projectId: "p1" } });
+    wrap(<AgentTeamsSection project={project} />);
+    fireEvent.click((await screen.findAllByRole("button", { name: /Team starten|Start team/ }))[0]!);
     const dialog = await screen.findByRole("dialog");
-    fireEvent.change(within(dialog).getByRole("textbox"), { target: { value: "  Review mit drei Leuten " } });
-    fireEvent.click(within(dialog).getAllByRole("button").at(-1)!);
-    expect(useUi.getState().terminalRequest).toMatchObject({ projectId: "p1", program: "claude", team: true, prompt: "Review mit drei Leuten" });
+    expect(within(dialog).getByText(/Erhöhter Verbrauch|Higher usage/)).toBeTruthy();
+    // every role with its model
+    for (const m of ["Haiku", "Sonnet", "Opus"]) expect(within(dialog).getAllByText(m).length).toBeGreaterThan(0);
+    const start = within(dialog).getAllByRole("button", { name: /Team starten|Start team/ }).at(-1) as HTMLButtonElement;
+    expect(start.disabled).toBe(true);
+    fireEvent.click(within(dialog).getByRole("radio", { name: /Fable/ }));
+    fireEvent.change(within(dialog).getByRole("textbox"), { target: { value: "  Baue die Suche " } });
+    fireEvent.click(start);
+    await waitFor(() => expect(callMock).toHaveBeenCalledWith("teams.start", { projectId: "p1", prompt: "Baue die Suche", leadModel: "fable" }));
+    await waitFor(() => expect(useUi.getState().activeSession.p1).toBe("s9"));
   });
 
-  it("ends a running team only after asking", async () => {
-    mockRpc({ "teams.list": [team()], "teams.stop": { ok: true } });
-    renderSection();
-    await screen.findByText("session-1a2b3c4d");
-    fireEvent.click(screen.getByRole("button", { name: /^(Beenden|End)$/ }));
+  it("stops a working team only after asking", async () => {
+    mockRpc({ "teams.list": [team({ status: "running" })], "teams.stop": { stopped: 1 } });
+    wrap(<AgentTeamsSection project={project} />);
+    await screen.findByText("Volltextsuche bauen");
+    fireEvent.click(screen.getByRole("button", { name: /^(Stoppen|Stop)$/ }));
     const dialog = await screen.findByRole("dialog");
     expect(callMock).not.toHaveBeenCalledWith("teams.stop", expect.anything());
     fireEvent.click(within(dialog).getAllByRole("button").at(-1)!);
-    await waitFor(() => expect(callMock).toHaveBeenCalledWith("teams.stop", { team: "session-1a2b3c4d" }));
+    await waitFor(() => expect(callMock).toHaveBeenCalledWith("teams.stop", { sessionId: "s1" }));
   });
 
-  it("removes an ended team from the list", async () => {
-    mockRpc({ "teams.list": [team({ active: false, canStop: false, endedAt: new Date().toISOString() })], "teams.dismiss": { count: 1 } });
-    renderSection();
-    await screen.findByText("session-1a2b3c4d");
-    fireEvent.click(screen.getByRole("button", { name: /Aus der Liste entfernen|Remove from the list/ }));
-    await waitFor(() => expect(callMock).toHaveBeenCalledWith("teams.dismiss", { team: "session-1a2b3c4d" }));
-  });
-
-  it("stays hidden while agent teams are switched off, unless one still runs", async () => {
+  it("stays hidden while agent teams are switched off, unless one still works", async () => {
     mockRpc({ "teams.list": [] }, { agentTeams: false });
-    const { container } = renderSection();
+    const { container } = wrap(<AgentTeamsSection project={project} />);
     await waitFor(() => expect(callMock).toHaveBeenCalledWith("teams.list", { projectId: "p1" }));
     expect(container.textContent).toBe("");
     cleanup();
-    mockRpc({ "teams.list": [team()] }, { agentTeams: false });
-    renderSection();
-    expect(await screen.findByText("session-1a2b3c4d")).toBeTruthy();
+    mockRpc({ "teams.list": [team({ status: "running" })] }, { agentTeams: false });
+    wrap(<AgentTeamsSection project={project} />);
+    expect(await screen.findByText("Volltextsuche bauen")).toBeTruthy();
     expect((screen.getAllByRole("button", { name: /Team starten|Start team/ })[0] as HTMLButtonElement).disabled).toBe(true);
   });
 });
 
+describe("team board", () => {
+  it("shows what each member does and opens its history on click", () => {
+    wrap(<TeamGrid team={team()} />);
+    expect(screen.getByText(/Edit · src\/index.ts/)).toBeTruthy();
+    expect(screen.getByText("src/search.ts:10")).toBeTruthy();
+    expect(screen.getByText("Baut den Index")).toBeTruthy();
+    fireEvent.click(screen.getByText("Suche finden"));
+    expect(useUi.getState().taskView).toMatchObject({ kind: "agent", sessionId: "s1", toolUseId: "a2" });
+  });
+});
+
 describe("agent team helpers", () => {
-  it("counts the messages between two members in both directions", () => {
-    const links = teamLinks([
-      { id: "1", from: "alpha", to: "beta", kind: "message", text: "", summary: null, ts: "2026-10-22T10:00:00Z" },
-      { id: "2", from: "beta", to: "alpha", kind: "message", text: "", summary: null, ts: "2026-10-22T10:01:00Z" },
-      { id: "3", from: "user", to: "alpha", kind: "message", text: "", summary: null, ts: "2026-10-22T10:02:00Z" },
-    ]);
-    expect(links).toEqual([
-      { a: "alpha", b: "beta", count: 2, last: "2026-10-22T10:01:00Z" },
-      { a: "alpha", b: "user", count: 1, last: "2026-10-22T10:02:00Z" },
-    ]);
+  it("reads the lead's state from the session and its members", () => {
+    expect(leadState(team({ status: "running" }))).toBe("planning");
+    expect(leadState(team({ status: "idle" }))).toBe("waiting");
+    expect(leadState(team({ status: "idle", members: [] }))).toBe("idle");
+    expect(leadState(team({ status: "waiting_approval" }))).toBe("approval");
+    expect(leadState(team({ live: false }))).toBe("stopped");
+    expect(teamBusy(team({ status: "idle", members: [] }))).toBe(false);
+    expect(teamBusy(team({ live: false, status: "running" }))).toBe(false);
   });
 
-  it("uses Claude Code's color of a teammate and the accent for the lead", () => {
-    const t = team();
-    expect(memberColor(t, "alpha")).toBe("#3e8cf0");
-    expect(memberColor(t, "team-lead")).toBe("var(--color-accent)");
-    expect(memberColor(t, "unbekannt")).toMatch(/^#/);
-  });
-
-  it("opens the project before asking for the team terminal", () => {
+  it("opens the Agents tab of the project with the start dialog", () => {
     useUi.setState({ activeProjectId: "other" });
-    startTeamTerminal("p1", "");
-    expect(useUi.getState().activeProjectId).toBe("p1");
-    expect(useUi.getState().terminalRequest).toMatchObject({ projectId: "p1", team: true, prompt: null });
+    openTeamStart("p1");
+    expect(useUi.getState()).toMatchObject({ activeProjectId: "p1", workspaceTab: "agents" });
+    expect(useTeamDialog.getState().projectId).toBe("p1");
   });
 });

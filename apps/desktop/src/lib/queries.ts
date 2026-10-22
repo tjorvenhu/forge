@@ -70,8 +70,10 @@ export const keys = {
   inspectFolder: (path: string) => ["inspectFolder", path] as const,
   remote: ["remote"] as const,
   agentReview: (id: string) => ["agentReview", id] as const,
-  /** Claude Code agent teams of a project and its worktrees */
+  /** agent teams of a project and its worktrees */
   agentTeams: (projectId: string) => ["agentTeams", projectId] as const,
+  /** one agent team (its lead's session) */
+  agentTeam: (sessionId: string) => ["agentTeam", sessionId] as const,
   search: (q: string) => ["search", q] as const,
   uiCompare: (sessionId: string, compareId: string) => ["uiCompare", sessionId, compareId] as const,
   /** taken at: an image taken again gets a new key */
@@ -361,6 +363,10 @@ export function useRpcMutation<M extends MethodName>(method: M, opts: { onSucces
   });
 }
 
-/** Claude Code agent teams of a project (teams.updated invalidates; no polling needed). */
+/** agent teams of a project (teams.updated invalidates; no polling needed). */
 export const useAgentTeams = (projectId: string) =>
   useQuery({ queryKey: keys.agentTeams(projectId), queryFn: () => call("teams.list", { projectId }), staleTime: 30_000 });
+
+/** one agent team, for the team board over its lead's chat */
+export const useAgentTeam = (sessionId: string | null) =>
+  useQuery({ queryKey: keys.agentTeam(sessionId ?? ""), queryFn: () => call("teams.get", { sessionId: sessionId! }), enabled: !!sessionId, staleTime: 30_000 });

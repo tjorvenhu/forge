@@ -29,6 +29,7 @@ import { FileLinkContext, type FileLinkTarget } from "./file-links";
 import { ItemView } from "./ChatItemView";
 import { BackgroundIndicator, WorkingIndicator } from "./WorkingIndicator";
 import { TaskThreadDialog } from "./TaskThread";
+import { TeamBoard } from "./TeamBoard";
 import { turnStartedAt } from "./working";
 import { anchoredScrollTop, captureAnchor, type ScrollAnchor } from "./scroll-anchor";
 import { FollowState, SCROLL_KEYS } from "./follow";
@@ -401,6 +402,7 @@ function SessionThread({ sessionId, session, project }: { sessionId: string; ses
 
   return (
     <>
+      {session?.team && <TeamBoard session={session} />}
       {view !== "all" && (
         <div className="flex shrink-0 animate-fade-in items-center justify-center gap-3 border-b border-border bg-surface px-4 py-1.5 text-small" role="status">
           <span className="text-muted">{t.chat.view.banner(view === "prompts" ? t.chat.view.bannerPrompts : t.chat.view.bannerAnswers, items.length, allItems.length)}</span>

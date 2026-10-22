@@ -21,7 +21,7 @@ import { KnowledgeStore } from "./knowledge/knowledge.js";
 import { RefChecker } from "./knowledge/staleness.js";
 import { PhoneService } from "./phone/phone-service.js";
 import { JobWatcher } from "./sessions/job-done.js";
-import { AgentTeams, claudeConfigDir } from "./teams/agent-teams.js";
+import { AgentTeams } from "./teams/agent-teams.js";
 import { tokenMeter } from "./claude/token-meter.js";
 import { DictationService } from "./dictation/dictation.js";
 import { Presence } from "./util/presence.js";
@@ -72,6 +72,7 @@ export function createApp(opts: { dataDir: string; write: Writer; log?: (m: stri
   let server: RpcServer | null = null;
   let phone: PhoneService | null = null;
   let jobs: JobWatcher | null = null;
+  let teamEvents: AgentTeams | null = null;
   let sync: SyncService | null = null;
   const emit = (e: ServerEvent) => {
     // Every path that changes the settings (RPC, phone, sync, backup) announces it here.
@@ -79,6 +80,7 @@ export function createApp(opts: { dataDir: string; write: Writer; log?: (m: stri
     server?.emit(e);
     phone?.onServerEvent(e);
     jobs?.onServerEvent(e);
+    teamEvents?.onServerEvent(e);
     sync?.onServerEvent(e);
   };
   const uploads = new UploadStore(path.join(opts.dataDir, "uploads"));
@@ -164,7 +166,8 @@ export function createApp(opts: { dataDir: string; write: Writer; log?: (m: stri
   const agentFinish = new AgentFinisher({ db, git, projects, sessions, worktrees, devServers, notifyProject });
   sessions.useAgentFinisher(agentFinish);
   const teams = new AgentTeams({
-    claudeDir: claudeConfigDir(),
+    db,
+    sessions,
     projects: () => projects.all(),
     emit,
     enabled: (projectId) => {
@@ -175,7 +178,7 @@ export function createApp(opts: { dataDir: string; write: Writer; log?: (m: stri
       return root?.teamsEnabled !== false;
     },
   });
-  teams.start();
+  teamEvents = teams;
   const templates = new TemplateService({
     db,
     rootOf: (projectId) => projects.get(projectId).parentId ?? projectId,
@@ -437,7 +440,7 @@ export function createApp(opts: { dataDir: string; write: Writer; log?: (m: stri
       await Promise.race([Promise.allSettled([sessions.drain(), Promise.resolve().then(() => phone?.shutdown()), testDb.stopAll(), preview.closeAll()]), limit]);
       clearTimeout(timer);
       sessions.shutdown();
-      teams.stop();
+      teams.shutdown();
       tokenMeter.stop();
       updates.stop();
       installs.stop();

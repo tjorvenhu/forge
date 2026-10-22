@@ -27,7 +27,7 @@ import { openExternal } from "@/lib/native";
 import { checkInstall, installFromFile, installFull, installUpdate, supportsFullInstall } from "@/lib/app-install";
 import { call, keys, refreshUsage } from "@/lib/queries";
 import { openDevServer, prepareWorktree } from "@/lib/dev-server-actions";
-import { setProjectTeams, startTeamTerminal } from "@/lib/agent-teams";
+import { openTeamStart, setProjectTeams } from "@/lib/agent-teams";
 import { EFFORT_LEVELS, modelLabel } from "@/lib/models";
 import { errorMessage, RpcCallError } from "@/lib/rpc";
 import { openChatWindow, pinChatWindow, recallChatWindow, type ChatWindowList } from "@/lib/chat-windows";
@@ -515,13 +515,13 @@ export function buildActions(ctx: ActionContext): PaletteEntry[] {
     }
     const teamsOn = !!settings?.agentTeams && (root ?? project).teamsEnabled;
     if (project.exists && teamsOn) {
-      act("team-start", t.layout.actions.teamStart, icon(Users), () => startTeamTerminal(project.id), {
-        keywords: "agent team agenten-team teammitglieder teammates lead starten claude code experimentell parallel zusammenarbeiten agent teams start spawn collaborate",
+      act("team-start", t.layout.actions.teamStart, icon(Users), () => openTeamStart(project.id), {
+        keywords: "agent team agenten-team mitglieder teammates lead orchestrator orchestrieren starten parallel zusammenarbeiten scout entwickler tester reviewer opus sonnet haiku agent teams start spawn collaborate developer",
       });
     }
     if (teamsOn) {
       act("team-view", t.layout.actions.teamView, icon(Users), () => ui.setWorkspaceTab("agents"), {
-        keywords: "agent teams agenten-teams anzeigen aufgaben nachrichten mitglieder status übersicht show tasks messages members overview",
+        keywords: "agent teams agenten-teams anzeigen plan aufgaben mitglieder status übersicht team-board show plan tasks members overview board",
       });
     }
     act("terminal", t.layout.actions.terminal, icon(SquareTerminal), () => ui.openTerminal(project.id, "shell"), { keywords: "terminal shell konsole console" });

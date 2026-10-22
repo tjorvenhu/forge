@@ -12,10 +12,6 @@ export interface TerminalTab {
   cwd: string;
   /** claude binary resolved when the tab was opened; only used for program "claude" */
   claudePath: string | null;
-  /** Claude as the lead of an agent team (Claude Code's agent teams need an interactive session) */
-  team?: boolean;
-  /** first message of a Claude tab */
-  prompt?: string | null;
 }
 
 interface TerminalsState {
@@ -42,7 +38,7 @@ export const useTerminals = create<TerminalsState>((set) => ({
     const key = crypto.randomUUID();
     set((s) => {
       const cur = s.tabs[projectId] ?? [];
-      const name = label ?? (tab.team ? t.stores.teamTab : tab.program === "claude" ? "Claude" : t.stores.terminalTab(cur.filter((x) => x.program === "shell").length + 1));
+      const name = label ?? (tab.program === "claude" ? "Claude" : t.stores.terminalTab(cur.filter((x) => x.program === "shell").length + 1));
       return { tabs: { ...s.tabs, [projectId]: [...cur, { ...tab, key, label: name }] }, active: { ...s.active, [projectId]: key } };
     });
     return key;

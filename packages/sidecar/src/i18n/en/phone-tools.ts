@@ -179,13 +179,14 @@ export const phoneTools: typeof De = {
     },
   },
   agent_team: {
-    description: "Claude Code agent teams: a lead in a FORGE terminal tab spawns teammates that share a task list and message each other. status: running teams with members, tasks and the latest messages. message: sends a member (its name, team-lead for the lead, or all for every teammate) a message. start: opens a terminal with a new team lead in the project and gives it text as its first task. stop: ends a running team with its teammates; ask the caller first, unfinished work of the members is cut off. dismiss: takes ended teams off the list (with team one of them, else all ended ones, with project only those of the project).",
+    description:
+      "FORGE agent teams: a lead (a stronger model) plans a goal, hands packages of work to members with roles and a fitting model (scout on Haiku reads code, developer and tester on Sonnet, specialist and reviewer on Opus), runs independent packages in parallel and checks the result. Uses considerably more of the plan than a session; tell the caller before start. status: teams with plan, members, their model and what they are doing (without team the working ones, else the newest). message: a message to the lead, it passes it on. start: a new team in the project with text as its goal. stop: stops every working member and the lead; ask the caller first, unfinished work is cut off.",
     params: {
-      action: "status, message, start, stop or dismiss",
+      action: "status, message, start or stop",
       project: "project name; optional for status (else all projects), needed for start",
-      team: "for message and stop: team name from status (e.g. session-1a2b3c4d), only needed when several are running; for dismiss one particular ended team",
-      to: "for message: member name, team-lead or all",
-      text: "for message the message, for start the task for the lead, fully worded",
+      team: "title (or part of it) of the team from status; without it the working or newest one",
+      text: "for message the message to the lead, for start the goal, fully worded",
+      lead_model: "for start: the lead's model, opus (default), fable (strongest, most expensive) or sonnet (cheaper)",
     },
   },
   projects: {
@@ -294,7 +295,7 @@ export const phoneTools: typeof De = {
       ui_compare: "Before and after images of the web app when Claude changes UI files and a dev server is running",
       learn_templates: "FORGE turns tasks the caller sends again and again into prompt templates on its own",
       ask_push_on_close: "when FORGE closes, ask whether everything not pushed yet should be committed and pushed",
-      agent_teams: "Claude Code's agent teams in all projects (team terminal, team view); false switches them off everywhere",
+      agent_teams: "agent teams in all projects (a lead hands work to members on their own models); false switches them off everywhere",
       usage_stats:
         "Anonymous usage statistics: every 5 minutes totals like tokens, projects and agents, without content, to FORGE's statistics service; off deletes the data sent there",
       language: "Language of FORGE for the interface, messages and the phone: en English, de German. Afterwards you speak the new language",

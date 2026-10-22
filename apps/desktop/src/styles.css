@@ -597,18 +597,38 @@ body {
   text-decoration-color: currentColor;
 }
 
-/* Agent teams: a fresh message runs along the line between two members of the team graph. */
-.team-flow {
-  stroke-dasharray: 6 6;
-  animation: forge-team-flow 0.9s linear infinite;
+/* Agent teams: a working member (or lead) sends out a soft ring in its role's color (--team-color). */
+.team-ping::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 9999px;
+  box-shadow: 0 0 0 0 color-mix(in srgb, var(--team-color) 55%, transparent);
+  animation: forge-team-ping 1.8s ease-out infinite;
 }
-@keyframes forge-team-flow {
+@keyframes forge-team-ping {
   to {
-    stroke-dashoffset: -12;
+    box-shadow: 0 0 0 7px transparent;
+  }
+}
+/* A light that runs along the top edge of a working member's card. */
+.team-scan {
+  background: linear-gradient(90deg, transparent, var(--team-color), transparent);
+  background-size: 40% 100%;
+  background-repeat: no-repeat;
+  animation: forge-team-scan 1.6s ease-in-out infinite;
+}
+@keyframes forge-team-scan {
+  from {
+    background-position: -40% 0;
+  }
+  to {
+    background-position: 140% 0;
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .team-flow {
+  .team-ping::after,
+  .team-scan {
     animation: none;
   }
 }

@@ -53,7 +53,7 @@ export const PHONE_TOOL_FOR: Partial<Record<MethodName, string>> = {
   "teams.message": "agent_team",
   "teams.start": "agent_team",
   "teams.stop": "agent_team",
-  "teams.dismiss": "agent_team",
+  "teams.get": "agent_team",
   "sessions.summarize": "details",
   "reports.daily": "sessions",
   "reports.dailySummary": "sessions",

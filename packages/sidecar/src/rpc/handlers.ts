@@ -54,7 +54,7 @@ export interface Services {
   worktreeSetup: WorktreeSetup;
   agentFinish: AgentFinisher;
   reports: DailyReportService;
-  /** Claude Code agent teams (lead in a terminal tab) */
+  /** agent teams: sessions whose lead staffs subagents with roles and models */
   teams: AgentTeams;
   devServers: DevServerService;
   devTools: DevToolsService;
@@ -203,10 +203,10 @@ export function createHandlers(s: Services): Handlers {
     "agents.review": ({ projectId }) => s.agentFinish.review(projectId),
     "agents.finish": ({ projectId, action }) => s.agentFinish.finish(projectId, action),
     "teams.list": ({ projectId }) => s.teams.list(projectId),
-    "teams.message": async ({ team, to, text }) => ({ recipients: await s.teams.send(team, to, text) }),
-    "teams.start": ({ projectId, prompt }) => s.teams.requestStart(projectId, prompt),
-    "teams.stop": ({ team }) => s.teams.stopTeam(team),
-    "teams.dismiss": ({ team, projectId }) => ({ count: s.teams.dismiss(team, projectId) }),
+    "teams.get": ({ sessionId }) => s.teams.get(sessionId),
+    "teams.start": ({ projectId, prompt, leadModel }) => s.teams.start(projectId, prompt, leadModel),
+    "teams.message": ({ sessionId, text }) => s.teams.message(sessionId, text),
+    "teams.stop": ({ sessionId }) => s.teams.stop(sessionId),
     "sessions.summarize": ({ sessionId }) => s.sessions.summarize(sessionId),
     "sessions.handoff": ({ sessionId }) => s.sessions.handoff(sessionId),
     "reports.daily": (p) => s.reports.build(p),

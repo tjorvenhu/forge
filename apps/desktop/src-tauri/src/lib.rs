@@ -111,10 +111,8 @@ fn term_open(
     rows: u16,
     program: String,
     claude_path: Option<String>,
-    team: Option<bool>,
-    prompt: Option<String>,
 ) -> Result<u32, String> {
-    state.open(&app, sidecar::runtime_dir(&app), OpenRequest { cwd, cols, rows, program, claude_path, team: team.unwrap_or(false), prompt })
+    state.open(&app, sidecar::runtime_dir(&app), OpenRequest { cwd, cols, rows, program, claude_path })
 }
 
 #[tauri::command]

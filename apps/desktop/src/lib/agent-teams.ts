@@ -1,7 +1,8 @@
 import type { QueryClient } from "@tanstack/react-query";
-import type { AgentTeam, AgentTeamMessage, Project } from "@forge/protocol";
+import { create } from "zustand";
+import { Code2, Compass, FlaskConical, ShieldCheck, Sparkles, type LucideIcon } from "lucide-react";
+import { modelFamily, type AgentTeam, type Project, type TeamLeadModel, type TeamMember, type TeamModelFamily, type TeamRole } from "@forge/protocol";
 import { useUi } from "@/stores/ui";
-import { useTerminals } from "@/stores/terminals";
 import { toast } from "@/stores/toast";
 import { call, keys, useProjects, useSettings } from "./queries";
 import { errorMessage } from "./rpc";
@@ -35,69 +36,106 @@ export async function setProjectTeams(qc: QueryClient, p: { id: string; name: st
   }
 }
 
-/**
- * Opens the project with a terminal tab running Claude as an agent team lead. Agent teams form only
- * in an interactive session, never in the Agent SDK behind FORGE's chat.
- */
-export function startTeamTerminal(projectId: string, prompt?: string | null) {
+/** The start dialog, opened from the Agents tab, the palette or the search. */
+export const useTeamDialog = create<{ projectId: string | null; open: (projectId: string) => void; close: () => void }>((set) => ({
+  projectId: null,
+  open: (projectId) => set({ projectId }),
+  close: () => set({ projectId: null }),
+}));
+
+/** Opens the Agents tab of the project with the start dialog. */
+export function openTeamStart(projectId: string) {
   const ui = useUi.getState();
-  if (ui.activeProjectId !== projectId) ui.openProject(projectId);
-  ui.openTerminal(projectId, "claude", undefined, { team: true, prompt: prompt?.trim() || null });
+  if (ui.activeProjectId !== projectId || ui.view !== "workspace") ui.openProject(projectId);
+  useUi.getState().setWorkspaceTab("agents");
+  useTeamDialog.getState().open(projectId);
 }
 
-/** Shows the newest team terminal of the project in the bottom panel; false when there is none (any more). */
-export function showTeamTerminal(projectId: string): boolean {
-  const tabs = (useTerminals.getState().tabs[projectId] ?? []).filter((t) => t.team);
-  const tab = tabs.at(-1);
-  if (!tab) return false;
-  const ui = useUi.getState();
-  if (ui.activeProjectId !== projectId) ui.openProject(projectId);
-  useTerminals.getState().setActive(projectId, tab.key);
-  ui.toggleBottomPanel(true);
-  return true;
-}
-
-/** Claude Code's teammate colors; readable on the dark and the light theme. */
-const COLORS: Record<string, string> = {
-  red: "#e5484d",
-  blue: "#3e8cf0",
-  green: "#30a46c",
-  yellow: "#d6a10b",
-  purple: "#8e4ec6",
-  orange: "#ef7d32",
-  pink: "#d6409f",
-  cyan: "#0fa3b8",
-};
-const FALLBACK = ["#3e8cf0", "#30a46c", "#8e4ec6", "#ef7d32", "#d6409f", "#0fa3b8", "#d6a10b", "#e5484d"];
-
-/** Color of a member: the one Claude Code gave it, the accent for the lead and the user, else one from its name. */
-export function memberColor(team: AgentTeam, name: string): string {
-  const m = team.members.find((x) => x.name === name);
-  if (m?.lead || name === "user") return "var(--color-accent)";
-  const named = m?.color ? COLORS[m.color.toLowerCase()] : undefined;
-  if (named) return named;
-  let h = 0;
-  for (const c of name) h = (h * 31 + c.charCodeAt(0)) >>> 0;
-  return FALLBACK[h % FALLBACK.length]!;
-}
-
-/** Pairs of members that wrote to each other, with how often and when last; for the team graph. */
-export function teamLinks(messages: AgentTeamMessage[]): Array<{ a: string; b: string; count: number; last: string }> {
-  const links = new Map<string, { a: string; b: string; count: number; last: string }>();
-  for (const m of messages) {
-    if (m.to === "user" || m.from === m.to) continue;
-    const [a, b] = [m.from, m.to].sort() as [string, string];
-    const key = `${a}\u0000${b}`;
-    const cur = links.get(key);
-    if (cur) {
-      cur.count++;
-      if (m.ts > cur.last) cur.last = m.ts;
-    } else links.set(key, { a, b, count: 1, last: m.ts });
+/** Starts a team and opens the lead's chat; null when it failed (the toast is shown). */
+export async function startTeam(qc: QueryClient, projectId: string, prompt: string, leadModel: TeamLeadModel) {
+  try {
+    const s = await call("teams.start", { projectId, prompt, leadModel });
+    qc.setQueryData(keys.session(s.id), s);
+    void qc.invalidateQueries({ queryKey: keys.sessions(projectId) });
+    void qc.invalidateQueries({ queryKey: ["agentTeams"] });
+    useUi.getState().openProject(projectId, s.id);
+    toast.success(t.workspace.teams.startedToast, t.workspace.teams.startedDetail);
+    return s;
+  } catch (e) {
+    toast.error(t.workspace.teams.notStarted, errorMessage(e));
+    return null;
   }
-  return [...links.values()];
 }
 
-/** The task a member is working on: its task in progress, else its first open one. */
-export function currentTask(team: AgentTeam, name: string) {
-  return team.tasks.find((x) => x.owner === name && x.status === "in_progress") ?? team.tasks.find((x) => x.owner === name && x.status === "pending") ?? null;
+export async function stopTeam(qc: QueryClient, team: AgentTeam): Promise<boolean> {
+  try {
+    const r = await call("teams.stop", { sessionId: team.sessionId });
+    toast.success(t.workspace.teams.stopped(r.stopped));
+    void qc.invalidateQueries({ queryKey: ["agentTeams"] });
+    void qc.invalidateQueries({ queryKey: keys.agentTeam(team.sessionId) });
+    return true;
+  } catch (e) {
+    toast.error(t.workspace.teams.notStopped, errorMessage(e));
+    return false;
+  }
+}
+
+export function openTeam(team: Pick<AgentTeam, "projectId" | "sessionId">) {
+  useUi.getState().openProject(team.projectId, team.sessionId);
+}
+
+/** A member's own history (and its composer) over the lead's chat. */
+export function openMember(sessionId: string, m: TeamMember, compose = false) {
+  useUi.getState().openTask({ kind: "agent", sessionId, toolUseId: m.id, title: m.title, ...(compose ? { compose: true } : {}) });
+}
+
+/** the lead is doing something right now: thinking, or waiting for members it started */
+export function teamBusy(team: Pick<AgentTeam, "live" | "status" | "members">): boolean {
+  return team.live && (team.status === "running" || team.status === "starting" || team.status === "waiting_approval" || team.members.some((m) => m.state === "working"));
+}
+
+export type LeadState = keyof typeof t.workspace.teams.leadState;
+
+export function leadState(team: Pick<AgentTeam, "live" | "status" | "members">): LeadState {
+  if (!team.live || team.status === "stopped" || team.status === "error" || team.status === "interrupted") return "stopped";
+  if (team.status === "waiting_approval") return "approval";
+  if (team.status === "running" || team.status === "starting") return "planning";
+  return team.members.some((m) => m.state === "working") ? "waiting" : "idle";
+}
+
+export interface RoleMeta {
+  icon: LucideIcon;
+  /** readable on the dark and the light theme */
+  color: string;
+}
+
+export const ROLE_META: Record<TeamRole | "other", RoleMeta> = {
+  scout: { icon: Compass, color: "#0fa3b8" },
+  developer: { icon: Code2, color: "#3e8cf0" },
+  specialist: { icon: Sparkles, color: "#8e4ec6" },
+  tester: { icon: FlaskConical, color: "#30a46c" },
+  reviewer: { icon: ShieldCheck, color: "#e5734a" },
+  other: { icon: Code2, color: "#8b8d98" },
+};
+
+/** Model families with their display name and a color, cheapest first. */
+export const MODEL_META: Record<TeamModelFamily, { label: string; color: string; tier: number }> = {
+  haiku: { label: "Haiku", color: "#0fa3b8", tier: 1 },
+  sonnet: { label: "Sonnet", color: "#3e8cf0", tier: 2 },
+  opus: { label: "Opus", color: "#8e4ec6", tier: 3 },
+  fable: { label: "Fable", color: "#d6a10b", tier: 4 },
+};
+
+export function modelMeta(model: string | null | undefined) {
+  const f = modelFamily(model);
+  return f ? { family: f, ...MODEL_META[f] } : null;
+}
+
+/** "3 min", "1 h 5 min" */
+export function shortDuration(ms: number): string {
+  const s = Math.max(0, Math.round(ms / 1000));
+  if (s < 60) return `${s} s`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m} min`;
+  return `${Math.floor(m / 60)} h ${m % 60} min`;
 }

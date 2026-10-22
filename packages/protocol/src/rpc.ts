@@ -3,7 +3,6 @@ import { RpcErrorSchema } from "./errors.js";
 import {
   AgentFinishResult,
   AgentReview,
-  AgentTeam,
   Attachment,
   BranchInfo,
   ClaudeSetupState,
@@ -91,6 +90,7 @@ import {
   MAX_PROMPT_CHARS,
   UPLOAD_CHUNK_CHARS,
 } from "./models.js";
+import { AgentTeam, TeamLeadModel } from "./team.js";
 
 const id = z.string().min(1).max(100);
 const knowledgeFields = {
@@ -225,19 +225,15 @@ export const methods = {
   /** merge: rebase the agent's branch onto its target and fast-forward it, then remove worktree and branch; discard: remove both unmerged */
   "agents.finish": { params: projectRef.extend({ action: z.enum(["merge", "discard"]) }), result: AgentFinishResult },
   "sessions.summarize": { params: sessionRef, result: z.object({ summary: z.string(), model: z.string() }) },
-  /** Claude Code agent teams FORGE saw (running ones and ones that ended since FORGE started); projectId: only that project and its worktrees */
+  /** agent teams (sessions with a lead that orchestrates subagents), newest first; projectId: only that project and its worktrees */
   "teams.list": { params: z.object({ projectId: id.optional() }), result: z.array(AgentTeam) },
-  /** a message from the user to a member of a running team (its name, "team-lead" or "all" teammates) */
-  "teams.message": {
-    params: z.object({ team: z.string().min(1).max(100), to: z.string().min(1).max(100), text: z.string().min(1).max(20000) }),
-    result: z.object({ recipients: z.array(z.string()) }),
-  },
-  /** starts a team lead in a terminal tab of the project (main window), optionally with its first message */
-  "teams.start": { params: projectRef.extend({ prompt: z.string().max(20000).optional() }), result: z.object({ ok: z.boolean() }) },
-  /** ends a running team: stops its lead's process, which takes the in-process teammates with it */
-  "teams.stop": { params: z.object({ team: z.string().min(1).max(100) }), result: z.object({ ok: z.boolean() }) },
-  /** takes ended teams off the list: one by name, else all ended ones (of the project and its worktrees) */
-  "teams.dismiss": { params: z.object({ team: z.string().min(1).max(100).optional(), projectId: id.optional() }), result: z.object({ count: z.number().int() }) },
+  "teams.get": { params: sessionRef, result: AgentTeam },
+  /** starts a team on a goal: a session whose lead (leadModel, default opus) staffs the team roles */
+  "teams.start": { params: projectRef.extend({ prompt: z.string().min(1).max(MAX_PROMPT_CHARS), leadModel: TeamLeadModel.optional() }), result: Session },
+  /** a message to the lead (it passes it on to members); starts the lead again when its process ended */
+  "teams.message": { params: sessionRef.extend({ text: z.string().min(1).max(MAX_PROMPT_CHARS) }), result: Session },
+  /** stops the team: the lead's turn and every member still at work; the session stays and can go on */
+  "teams.stop": { params: sessionRef, result: z.object({ stopped: z.number().int() }) },
 
   /** what happened on a day (default today), over all projects or for one with its agents */
   "reports.daily": { params: dailyReportParams, result: DailyReport },
@@ -842,9 +838,8 @@ export type ServerEvent =
   /** `sessionIds`: sessions of the worktree, read before the merge removed them (their chat windows close) */
   | { event: "agent.autoMerge"; payload: { rootId: string; worktreeId: string; branch: string | null; outcome: "merged" | "conflict" | "skipped" | "waiting"; message: string; sessionIds: string[] } }
   /** an agent team changed (members, tasks, messages, ended) */
-  | { event: "teams.updated"; payload: { team: string; projectId: string | null } }
-  /** the main window opens a terminal tab with a team lead in the project (asked for on the phone) */
-  | { event: "team.start"; payload: { projectId: string; prompt: string | null } }
+  /** a team's members or plan changed (throttled while it works) */
+  | { event: "teams.updated"; payload: { sessionId: string; projectId: string } }
   /** a before/after comparison changed (after image taken, failed, taken again) */
   | { event: "uiCompare.updated"; payload: UiCompare }
   | { event: "phone.updated"; payload: PhoneState }
