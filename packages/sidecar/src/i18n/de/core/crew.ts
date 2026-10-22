@@ -66,6 +66,7 @@ export const crew = {
   statusMember: (name: string, self: boolean, online: boolean, branch: string | null, ahead: number) =>
     `- ${name}${self ? " (du)" : ""}: ${online ? "online" : "offline"}${branch ? `, Branch ${branch}` : ""}${ahead ? `, ${plural(ahead, "ungepushter Commit", "ungepushte Commits")}` : ""}`,
   statusFiles: (list: string) => `In Arbeit (nicht gepusht): ${list}`,
+  statusTeam: (working: number) => ` (Agent-Team, ${working} Mitglieder arbeiten gerade)`,
   statusAgent: (title: string, status: AgentStatus, branch: string | null, task: string | null) =>
     `Agent „${title}“${branch ? ` (Worktree ${branch})` : ""} ${AGENT_STATUS[status]}${task ? `: ${task}` : ""}`,
   statusAgentFiles: (list: string) => `geänderte Dateien: ${list}`,

@@ -55,6 +55,8 @@ export interface CrewDeps {
   sessions: {
     get(sessionId: string): Session | null;
     start(projectId: string, prompt: string): Promise<Session>;
+    /** an agent team on the prompt (teams/agent-teams.ts); missing: teams are not available */
+    startTeam?(projectId: string, prompt: string): Promise<Session>;
     /** a session of the project or one of its worktrees works or waits for a decision */
     busy(projectId: string): boolean;
   };
@@ -662,13 +664,13 @@ export class CrewService {
   }
 
   /** A new session works on the task; it is ours and in progress from now on. */
-  async startTask(crewId: string, taskId: string): Promise<{ sessionId: string }> {
+  async startTask(crewId: string, taskId: string, team = false): Promise<{ sessionId: string }> {
     const c = this.requireMember(crewId);
     const task = this.findTask(c, taskId);
     const project = this.project(c);
     if (!project?.exists) throw new ForgeError("NOT_FOUND", tr().core.crew.projectMissing);
     const prompt = tr().core.crew.taskPrompt(this.memberName(c, task.createdBy), task.title, task.detail, task.id);
-    const session = await this.d.sessions.start(project.id, prompt);
+    const session = team && this.d.sessions.startTeam ? await this.d.sessions.startTeam(project.id, prompt) : await this.d.sessions.start(project.id, prompt);
     c.taskSessions.set(session.id, task.id);
     this.updateTask(crewId, taskId, { status: "in_progress" }, session.title ?? excerpt(task.title, 80));
     return { sessionId: session.id };
@@ -1049,10 +1051,15 @@ export class CrewService {
     const c = this.liveFor(s.projectId);
     if (!c) return;
     const a = this.agentOf(c, s);
-    const status = s.status === "running" || s.status === "starting" || s.status === "stopping" ? "working" : s.status === "waiting_approval" ? "waiting" : "idle";
-    if (a.title === (s.title ?? a.title) && a.status === status) return;
+    // Subagents in the background (an agent team's members) work on while the session itself waits.
+    const helpers = s.subagents.length + s.background.filter((b) => b.taskType.includes("agent")).length;
+    const status =
+      s.status === "waiting_approval" ? "waiting" : s.status === "running" || s.status === "starting" || s.status === "stopping" || (s.live && helpers > 0) ? "working" : "idle";
+    const team = s.team ? { working: s.live ? helpers : 0 } : null;
+    if (a.title === (s.title ?? a.title) && a.status === status && (a.team?.working ?? null) === (team?.working ?? null)) return;
     a.title = s.title ?? a.title;
     a.status = status;
+    a.team = team;
     a.updatedAt = toIso(this.now());
     this.schedulePresence(c);
   }

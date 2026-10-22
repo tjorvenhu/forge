@@ -68,6 +68,7 @@ export const crew: typeof De = {
   statusMember: (name: string, self: boolean, online: boolean, branch: string | null, ahead: number) =>
     `- ${name}${self ? " (you)" : ""}: ${online ? "online" : "offline"}${branch ? `, branch ${branch}` : ""}${ahead ? `, ${plural(ahead, "unpushed commit", "unpushed commits")}` : ""}`,
   statusFiles: (list: string) => `In work (not pushed): ${list}`,
+  statusTeam: (working: number) => ` (agent team, ${working} members working now)`,
   statusAgent: (title: string, status: AgentStatus, branch: string | null, task: string | null) =>
     `Agent “${title}”${branch ? ` (worktree ${branch})` : ""} ${AGENT_STATUS[status]}${task ? `: ${task}` : ""}`,
   statusAgentFiles: (list: string) => `changed files: ${list}`,

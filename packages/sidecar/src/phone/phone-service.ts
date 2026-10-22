@@ -2615,8 +2615,8 @@ export class PhoneService {
             }
             case "task_start": {
               const t = task();
-              await call("crew.taskStart", { crewId: c.id, taskId: t.id });
-              return m.taskStarted(t.id);
+              await call("crew.taskStart", { crewId: c.id, taskId: t.id, ...(o.team ? { team: true } : {}) });
+              return o.team ? m.taskStartedTeam(t.id) : m.taskStarted(t.id);
             }
             case "respond": {
               if (!c.requests.length) return m.noRequests;

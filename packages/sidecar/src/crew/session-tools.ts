@@ -20,7 +20,7 @@ export function describeCrew(crew: Crew): string {
     const lines = [head];
     if (x.files.length) lines.push(`  ${m.statusFiles(fileList(x.files))}`);
     for (const a of x.agents) {
-      lines.push(`  ${m.statusAgent(a.title, a.status, a.branch, a.task ? short(a.task, 200) : null)}`);
+      lines.push(`  ${m.statusAgent(a.title, a.status, a.branch, a.task ? short(a.task, 200) : null)}${a.team ? m.statusTeam(a.team.working) : ""}`);
       if (a.files.length) lines.push(`    ${m.statusAgentFiles(fileList(a.files, 10))}`);
       if (a.status === "idle" && a.lastResult) lines.push(`    → ${short(a.lastResult, 240)}`);
     }

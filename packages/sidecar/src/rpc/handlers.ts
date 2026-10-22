@@ -225,7 +225,7 @@ export function createHandlers(s: Services): Handlers {
     "crew.taskAdd": ({ crewId, title, detail, assignee }) => s.crew.addTask(crewId, { title, detail, assignee: assignee ?? null }),
     "crew.taskUpdate": ({ crewId, taskId, ...patch }) => s.crew.updateTask(crewId, taskId, patch),
     "crew.taskRemove": ({ crewId, taskId }) => s.crew.removeTask(crewId, taskId),
-    "crew.taskStart": ({ crewId, taskId }) => s.crew.startTask(crewId, taskId),
+    "crew.taskStart": ({ crewId, taskId, team }) => s.crew.startTask(crewId, taskId, team),
     "crew.pull": ({ crewId }) => s.crew.pull(crewId),
     "sessions.summarize": ({ sessionId }) => s.sessions.summarize(sessionId),
     "sessions.handoff": ({ sessionId }) => s.sessions.handoff(sessionId),

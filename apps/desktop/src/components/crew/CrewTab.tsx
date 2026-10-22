@@ -34,7 +34,8 @@ import {
   X,
 } from "lucide-react";
 import { CREW_INVITE_PREFIX, type Crew, type CrewFeedItem, type CrewJoinRequest, type CrewMember, type CrewTask, type CrewTaskStatus, type Project } from "@forge/protocol";
-import { call, keys, useCrew } from "@/lib/queries";
+import { call, keys, useCrew, useProjects } from "@/lib/queries";
+import { useTeamsAllowed } from "@/lib/agent-teams";
 import { errorMessage } from "@/lib/rpc";
 import { contextItems, copyText } from "@/lib/context-menu";
 import { crewChanged, memberName, openCrew, others, pullCrew, respondCrew, startCrewTask } from "@/lib/crew";
@@ -547,11 +548,11 @@ function MemberCard({ crew, member, onMessage, onTask }: { crew: Crew; member: C
                   className={cn("h-1.5 w-1.5 shrink-0 rounded-full", a.status === "working" ? "animate-pulse bg-accent" : a.status === "waiting" ? "bg-warning" : "bg-success")}
                   aria-hidden
                 />
-                <Bot className="h-3 w-3 shrink-0 text-muted" />
-                <span className="min-w-0 flex-1 truncate font-medium text-fg" title={a.title}>
+                {a.team ? <Users className="h-3 w-3 shrink-0 text-accent" aria-label={m.team} /> : <Bot className="h-3 w-3 shrink-0 text-muted" />}
+                <span className="min-w-0 flex-1 truncate font-medium text-fg" title={a.team ? `${m.team}: ${a.title}` : a.title}>
                   {a.title}
                 </span>
-                <span className="shrink-0 text-subtle">{m.agentStatus[a.status]}</span>
+                <span className="shrink-0 text-subtle">{a.team && a.team.working > 0 ? m.teamWorking(a.team.working) : m.agentStatus[a.status]}</span>
               </div>
               {a.branch && <div className="mt-0.5 text-subtle">{m.worktree(a.branch)}</div>}
               {a.task && (
@@ -665,14 +666,17 @@ function TaskCard({ crew, task, onEdit }: { crew: Crew; task: CrewTask; onEdit: 
       await call("crew.taskRemove", { crewId: crew.id, taskId: task.id });
       toast.success(m.taskDeleted);
     });
-  const start = async () => {
+  const project = useProjects().data?.find((p) => p.id === crew.projectId) ?? null;
+  const teams = useTeamsAllowed(project);
+  const start = async (team = false) => {
     setBusy(true);
-    await startCrewTask(qc, crew, task.id);
+    await startCrewTask(qc, crew, task.id, team);
     setBusy(false);
   };
   const forOther = task.assignee && task.assignee !== crew.selfId;
   const items = (): MenuItem[] => [
     ...(task.status === "open" ? [{ label: m.start, icon: <Play className={ic} />, onSelect: () => void start(), hint: forOther ? m.forMember(memberName(crew, task.assignee)) : undefined }] : []),
+    ...(task.status === "open" && teams.allowed ? [{ label: m.startTeam, icon: <Users className={ic} />, onSelect: () => void start(true), hint: m.startTeamHint }] : []),
     ...(task.status === "open" ? [{ label: m.take, icon: <Hand className={ic} />, onSelect: () => setStatus("in_progress") }] : []),
     ...(task.status !== "done" ? [{ label: m.markDone, icon: <Check className={ic} />, onSelect: () => setStatus("done") }] : []),
     ...(task.status !== "open" ? [{ label: m.reopen, icon: <RotateCcw className={ic} />, onSelect: () => setStatus("open") }] : []),
@@ -719,9 +723,16 @@ function TaskCard({ crew, task, onEdit }: { crew: Crew; task: CrewTask; onEdit: 
       </div>
       {task.note && <p className="mt-1 line-clamp-3 text-muted">→ {task.note}</p>}
       {task.status === "open" && (
-        <Button size="sm" variant="outline" className="mt-2 h-6 w-full text-[11px]" loading={busy} onClick={() => void start()}>
-          <Play className="h-3 w-3" /> {m.start}
-        </Button>
+        <div className="mt-2 flex gap-1.5">
+          <Button size="sm" variant="outline" className="h-6 flex-1 text-[11px]" loading={busy} onClick={() => void start()}>
+            <Play className="h-3 w-3" /> {m.start}
+          </Button>
+          {teams.allowed && (
+            <Button size="sm" variant="outline" className="h-6 px-2 text-[11px]" disabled={busy} title={`${m.startTeam} (${m.startTeamHint})`} aria-label={m.startTeam} onClick={() => void start(true)}>
+              <Users className="h-3 w-3" />
+            </Button>
+          )}
+        </div>
       )}
     </div>
   );

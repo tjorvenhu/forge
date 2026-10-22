@@ -50,10 +50,11 @@ export async function pullCrew(qc: QueryClient, crew: Pick<Crew, "id" | "project
 }
 
 /** A new session works on the task; its chat opens. */
-export async function startCrewTask(qc: QueryClient, crew: Pick<Crew, "id" | "projectId">, taskId: string) {
+export async function startCrewTask(qc: QueryClient, crew: Pick<Crew, "id" | "projectId">, taskId: string, team = false) {
   try {
-    const r = await call("crew.taskStart", { crewId: crew.id, taskId });
-    toast.success(t.crew.started);
+    const r = await call("crew.taskStart", { crewId: crew.id, taskId, ...(team ? { team: true } : {}) });
+    toast.success(team ? t.crew.startedTeam : t.crew.started);
+    if (team) void qc.invalidateQueries({ queryKey: ["agentTeams"] });
     crewChanged(qc, crew);
     void qc.invalidateQueries({ queryKey: keys.sessions(crew.projectId) });
     useUi.getState().openProject(crew.projectId, r.sessionId);

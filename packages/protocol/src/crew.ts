@@ -41,6 +41,8 @@ export const CrewAgent = z.object({
   /** branch of a parallel agent; null in the main checkout */
   branch: z.string().nullable(),
   updatedAt: z.string(),
+  /** an agent team: how many of its members work right now; missing from older FORGE versions */
+  team: z.object({ working: z.number().int() }).nullable().optional(),
 });
 export type CrewAgent = z.infer<typeof CrewAgent>;
 

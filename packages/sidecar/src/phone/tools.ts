@@ -97,6 +97,8 @@ export interface CrewOptions {
   name?: string;
   acceptTasks?: (typeof CREW_ACCEPT_TASKS)[number];
   autoPull?: boolean;
+  /** task_start: an agent team works on it */
+  team?: boolean;
 }
 
 export interface GitOptions extends TargetOptions {
@@ -799,9 +801,11 @@ const TOOL_DEFS: readonly ToolDef[] = [
       name: { type: "string", optional: true },
       accept_tasks: { type: "string", optional: true, enum: CREW_ACCEPT_TASKS },
       auto_pull: { type: "boolean", optional: true },
+      team: { type: "boolean", optional: true },
     },
     run: (t, a) =>
       t.crew(pick(a.action, CREW_ACTIONS, "status"), {
+        team: optBool(a.team),
         project: opt(a.project),
         text: opt(a.text),
         to: opt(a.to),

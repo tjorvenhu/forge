@@ -700,6 +700,7 @@ Sicherheit:
     taskUpdated: (id: string, title: string, status: string) => `Aufgabe ${id} ${title}: ${status}.`,
     taskRemoved: (id: string) => `Aufgabe ${id} gelöscht.`,
     taskStarted: (id: string) => `Eine neue Session arbeitet an Aufgabe ${id}.`,
+    taskStartedTeam: (id: string) => `Ein Agent-Team arbeitet an Aufgabe ${id}. Das verbraucht deutlich mehr vom Abo als eine einzelne Session.`,
     noRequests: "Gerade fragt niemand nach Einlass.",
     whichRequest: (list: string) => `Es fragen mehrere: ${list}. Wer?`,
     accepted: (name: string) => `${name} ist jetzt in der Crew.`,

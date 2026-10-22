@@ -698,6 +698,7 @@ Security:
     taskUpdated: (id, title, status) => `Task ${id} ${title}: ${status}.`,
     taskRemoved: (id) => `Deleted task ${id}.`,
     taskStarted: (id) => `A new session works on task ${id}.`,
+    taskStartedTeam: (id) => `An agent team works on task ${id}. This uses considerably more of the plan than a single session.`,
     noRequests: "Nobody is asking to join right now.",
     whichRequest: (list) => `Several are asking: ${list}. Who?`,
     accepted: (name) => `${name} is in the crew now.`,

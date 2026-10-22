@@ -208,6 +208,7 @@ export function createApp(opts: { dataDir: string; write: Writer; log?: (m: stri
     sessions: {
       get: (id) => (db.getSession(id) ? sessions.get(id) : null),
       start: (projectId, prompt) => sessions.start({ projectId, prompt }),
+      startTeam: (projectId, prompt) => teams.start(projectId, prompt),
       busy: (projectId) => sessions.projectBusy(projectId),
     },
     emit,

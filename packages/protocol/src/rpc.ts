@@ -299,7 +299,8 @@ export const methods = {
   },
   "crew.taskRemove": { params: crewRef.extend({ taskId: id }), result: z.object({ ok: z.boolean() }) },
   /** a new session in the crew's project works on the task; the task is taken (in progress, this member) */
-  "crew.taskStart": { params: crewRef.extend({ taskId: id }), result: z.object({ sessionId: z.string() }) },
+  /** team: an agent team works on it instead of a single session */
+  "crew.taskStart": { params: crewRef.extend({ taskId: id, team: z.boolean().optional() }), result: z.object({ sessionId: z.string() }) },
   /** takes over the commits other members pushed (git pull of the project's branch) */
   "crew.pull": { params: crewRef, result: z.object({ output: z.string() }) },
 
