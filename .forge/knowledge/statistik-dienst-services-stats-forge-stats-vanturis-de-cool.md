@@ -10,6 +10,8 @@ updated: "2026-10-19T18:27:15.845Z"
 ## Was es ist
 `services/stats` ist ein eigenständiges Next.js-Projekt (App Router, pg, zod) für https://forge.vanturis.de. Es nimmt die Meldungen von `packages/sidecar/src/stats/usage-stats.ts` an (`USAGE_STATS_URL` in `packages/protocol/src/`) und zeigt die Summen. API, Payload und Coolify stehen in `services/stats/README.md`. Deploy in Coolify geschieht nicht automatisch beim Push; „die Website soll so bleiben“ heißt: nicht in Coolify ausrollen. Der Release-Workflow der App ignoriert `services/`.
 
+Seit 2026-10-22 läuft im selben Prozess auch der **Crew-Relay** unter `/crew` (Routen `src/app/crew/...`, Kern `src/lib/crew-relay.ts`, ohne Datenbank, nur im Speicher). Details im Eintrag zur Crew-Live-Zusammenarbeit. Die FORGE-App erreicht Crews erst, wenn diese Version der Website in Coolify ausgerollt ist.
+
 ## Arbeitsweise mit dem Besitzer (wichtig)
 Er liefert Bildvorlagen (1536 x 1024, in den FORGE-Uploads) und verlangt „GENAU SO“; freiere Umsetzungen wurden mehrfach scharf abgelehnt. Danach kommen viele kleine Wünsche hintereinander; jeder gilt, auch wenn er von der Vorlage abweicht. Prüfen bei 1440 x 900 und 1536 x 1024. Vergleich: Vorlage mit sharp auf gleiche Breite skalieren, gleiche Ausschnitte untereinander legen (sharp aus `services/stats/node_modules/.pnpm/sharp@*/node_modules/sharp`; `sharp.cache(false)` und Datei vorher einlesen, sonst ist sie beim Überschreiben gesperrt). Animationen im Screenshot abwarten (preview_interact mit wait ~2,5 s). preview_screenshot rendert mit Pixeldichte 1; Unschärfe auf HiDPI-Bildschirmen sieht man dort nicht.
 - Vorgaben: Hintergrund `#111418`, Orange `#ff7a1a` (Tokens in `globals.css`), keine übertriebenen Glows.

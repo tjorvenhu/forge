@@ -13,6 +13,7 @@ import {
   convertRemoteUrl,
   redactRemoteUrl,
   remoteKind,
+  type Crew,
   type DeskPhoneConfig,
   type MethodName,
   type ParamsOf,
@@ -2486,6 +2487,163 @@ export class PhoneService {
                 .join("\n");
             })
             .join("\n\n");
+        }),
+      crew: (action, o) =>
+        run(true, async () => {
+          const m = tr().phone.crew;
+          if (action === "profile") {
+            const name = o.name?.trim();
+            const p = name ? await call("crew.setProfile", { name }) : await call("crew.profile", {});
+            return m.profile(asData(p.name));
+          }
+          if (action === "create") {
+            if (!o.project?.trim()) return m.needsProject;
+            const p = findProject(o.project);
+            const c = await call("crew.create", { projectId: p.id, ...(o.name?.trim() ? { name: o.name.trim() } : {}) });
+            return m.created(asData(c.name), p.name);
+          }
+          const scope = o.project?.trim() ? findProject(o.project) : null;
+          const crews = await call("crew.list", scope ? { projectId: scope.id } : {});
+          if (!crews.length) return scope ? m.noneInProject(scope.name) : m.none;
+          const describe = (c: Crew) => {
+            const name = (id: string | null) => asData(c.members.find((x) => x.id === id)?.name ?? "?");
+            const membership = c.membership === "pending" ? m.pending(c.joinCode) : c.membership === "rejected" ? m.rejected : "";
+            const lines = [m.head(asData(c.name), asData(c.projectName), membership, m.connection[c.connection] ?? c.connection)];
+            if (c.members.length) {
+              lines.push(
+                m.members(
+                  c.members
+                    .map((x) =>
+                      m.member(
+                        asData(x.name),
+                        x.self,
+                        x.online,
+                        x.agents.map((a) => m.agent(asData(a.title), m.agentStatus[a.status] ?? a.status, a.task ? excerptData(a.task, 120) : null)).join("; "),
+                        x.files.length,
+                      ),
+                    )
+                    .join(". "),
+                ),
+              );
+            }
+            const open = c.tasks.filter((t) => t.status === "open");
+            const running = c.tasks.filter((t) => t.status === "in_progress");
+            const done = c.tasks.filter((t) => t.status === "done");
+            if (c.tasks.length) {
+              const list = [...running, ...open, ...done.slice(-3)]
+                .slice(0, 12)
+                .map((t) => m.task(t.id, excerptData(t.title, 120), m.taskStatus[t.status] ?? t.status, t.owner ? name(t.owner.member) : t.assignee ? name(t.assignee) : null))
+                .join("; ");
+              lines.push(m.tasks(open.length, running.length, done.length, list));
+            }
+            if (c.requests.length) lines.push(m.requests(c.requests.map((r) => m.request(asData(r.name), r.code)).join(", ")));
+            const last = c.feed.slice(-4).map((f) => m.feed(name(f.from), excerptData(f.text, 160)));
+            if (last.length) lines.push(m.last(last.join(" | ")));
+            if (c.behind > 0) lines.push(m.behind(c.behind));
+            return lines.join("\n");
+          };
+          if (action === "status") return crews.map(describe).join("\n\n");
+          if (crews.length > 1) return m.which(crews.map((c) => asData(c.projectName)).join(", "));
+          const c = crews[0]!;
+          const member = (ref: string | undefined) => {
+            const q = ref?.trim().toLowerCase();
+            if (!q) return null;
+            const others = c.members.filter((x) => !x.self);
+            const hit = others.find((x) => x.name.toLowerCase() === q) ?? others.find((x) => x.name.toLowerCase().startsWith(q)) ?? others.find((x) => x.name.toLowerCase().includes(q));
+            if (!hit) throw new Error(tr().core.crew.memberNotFound(ref!, c.members.map((x) => x.name).join(", ")));
+            return hit;
+          };
+          const task = () => {
+            const q = o.task?.trim().toLowerCase();
+            const hit = q ? (c.tasks.find((t) => t.id.toLowerCase() === q) ?? c.tasks.find((t) => t.id.toLowerCase().startsWith(q))) : null;
+            if (!hit) throw new Error(m.needsTask(c.tasks.map((t) => `${t.id} ${excerptData(t.title, 60)}`).join(", ")));
+            return hit;
+          };
+          switch (action) {
+            case "invite": {
+              const r = await call("crew.invite", { crewId: c.id });
+              return m.invited(dateTime(r.expiresAt));
+            }
+            case "message": {
+              if (!o.text?.trim()) return m.needsText;
+              const to = member(o.to);
+              await call("crew.message", { crewId: c.id, text: o.text.trim(), to: to?.id ?? null });
+              return m.sent(to ? asData(to.name) : null);
+            }
+            case "task_add": {
+              if (!o.title?.trim()) return m.needsTitle;
+              const to = member(o.assignee);
+              const t = await call("crew.taskAdd", { crewId: c.id, title: o.title.trim(), ...(o.detail?.trim() ? { detail: o.detail.trim() } : {}), assignee: to?.id ?? null });
+              return m.taskAdded(t.id, asData(t.title), to ? asData(to.name) : null);
+            }
+            case "task_take":
+            case "task_done":
+            case "task_release":
+            case "task_update": {
+              const t = task();
+              const status = action === "task_take" ? "in_progress" : action === "task_done" ? "done" : action === "task_release" ? "open" : undefined;
+              const to = o.assignee?.trim() ? member(o.assignee) : undefined;
+              const r = await call("crew.taskUpdate", {
+                crewId: c.id,
+                taskId: t.id,
+                ...(status ? { status } : {}),
+                ...(o.title?.trim() ? { title: o.title.trim() } : {}),
+                ...(o.detail?.trim() ? { detail: o.detail.trim() } : {}),
+                ...(o.note?.trim() ? { note: o.note.trim() } : {}),
+                ...(to ? { assignee: to.id } : {}),
+              });
+              return m.taskUpdated(r.id, asData(r.title), m.taskStatus[r.status] ?? r.status);
+            }
+            case "task_remove": {
+              const t = task();
+              await call("crew.taskRemove", { crewId: c.id, taskId: t.id });
+              return m.taskRemoved(t.id);
+            }
+            case "task_start": {
+              const t = task();
+              await call("crew.taskStart", { crewId: c.id, taskId: t.id });
+              return m.taskStarted(t.id);
+            }
+            case "respond": {
+              if (!c.requests.length) return m.noRequests;
+              const q = o.request?.trim().toLowerCase();
+              const hits = q ? c.requests.filter((r) => r.name.toLowerCase().includes(q) || r.code.replace(/\D/g, "") === q.replace(/\D/g, "")) : c.requests;
+              if (hits.length !== 1) return m.whichRequest((hits.length ? hits : c.requests).map((r) => m.request(asData(r.name), r.code)).join(", "));
+              const r = hits[0]!;
+              const accept = o.accept !== false;
+              await call("crew.respond", { crewId: c.id, requestId: r.id, accept });
+              return accept ? m.accepted(asData(r.name)) : m.declined(asData(r.name));
+            }
+            case "pull": {
+              const r = await call("crew.pull", { crewId: c.id });
+              projectChanged(c.projectId);
+              return m.pulled(asData(r.output));
+            }
+            case "settings": {
+              const r = await call("crew.update", {
+                crewId: c.id,
+                ...(o.name?.trim() ? { name: o.name.trim() } : {}),
+                ...(o.acceptTasks ? { acceptTasks: o.acceptTasks } : {}),
+                ...(o.autoPull !== undefined ? { autoPull: o.autoPull } : {}),
+              });
+              return m.settings(asData(r.name), m.acceptTasks[r.acceptTasks] ?? r.acceptTasks, r.autoPull);
+            }
+            case "leave":
+              return askKeypad(m.confirmLeave(asData(c.name)), async () => {
+                await call("crew.leave", { crewId: c.id });
+                return m.left(asData(c.name));
+              });
+            case "remove_member": {
+              const x = member(o.to);
+              if (!x) return m.needsTo;
+              return askKeypad(m.confirmRemove(asData(x.name), asData(c.name)), async () => {
+                await call("crew.removeMember", { crewId: c.id, memberId: x.id });
+                return m.removed(asData(x.name));
+              });
+            }
+            default:
+              return describe(c);
+          }
         }),
       finishAgent: (projectName, action, o) =>
         run(true, async () => {

@@ -57,6 +57,45 @@ export interface AgentTeamOptions {
   to?: string;
   text?: string;
 }
+export const CREW_ACTIONS = [
+  "status",
+  "create",
+  "invite",
+  "message",
+  "task_add",
+  "task_take",
+  "task_done",
+  "task_release",
+  "task_update",
+  "task_remove",
+  "task_start",
+  "respond",
+  "pull",
+  "settings",
+  "profile",
+  "leave",
+  "remove_member",
+] as const;
+export type CrewAction = (typeof CREW_ACTIONS)[number];
+export const CREW_ACCEPT_TASKS = ["auto", "ask", "off"] as const;
+export interface CrewOptions {
+  project?: string;
+  text?: string;
+  /** member name: recipient of a message, member to remove */
+  to?: string;
+  task?: string;
+  title?: string;
+  detail?: string;
+  note?: string;
+  assignee?: string;
+  /** name of whoever asks to join */
+  request?: string;
+  accept?: boolean;
+  /** crew name (create, settings) or own display name (profile) */
+  name?: string;
+  acceptTasks?: (typeof CREW_ACCEPT_TASKS)[number];
+  autoPull?: boolean;
+}
 
 export interface GitOptions extends TargetOptions {
   message?: string;
@@ -353,6 +392,8 @@ export interface PhoneToolset {
   finishAgent(project: string, action: "merge" | "discard" | "review", o?: TargetOptions): Promise<string>;
   /** Claude Code agent teams: status of the running ones, a message to a member, or a new team lead in a terminal tab */
   agentTeam(action: AgentTeamAction, o: AgentTeamOptions): Promise<string>;
+  /** crews: live collaboration with other FORGE installations on one project */
+  crew(action: CrewAction, o: CrewOptions): Promise<string>;
   projects(): Promise<string>;
   /** creates, imports, clones, removes or configures a project */
   project(project: string, action: ProjectAction, o?: ProjectOptions): Promise<string>;
@@ -734,6 +775,41 @@ const TOOL_DEFS: readonly ToolDef[] = [
       text: { type: "string", optional: true },
     },
     run: (t, a) => t.agentTeam(pick(a.action, AGENT_TEAM_ACTIONS, "status"), { project: opt(a.project), team: opt(a.team), to: opt(a.to), text: opt(a.text) }),
+  },
+  {
+    name: "crew",
+    params: {
+      action: { type: "string", enum: CREW_ACTIONS },
+      project: { type: "string", optional: true },
+      text: { type: "string", optional: true },
+      to: { type: "string", optional: true },
+      task: { type: "string", optional: true },
+      title: { type: "string", optional: true },
+      detail: { type: "string", optional: true },
+      note: { type: "string", optional: true },
+      assignee: { type: "string", optional: true },
+      request: { type: "string", optional: true },
+      accept: { type: "boolean", optional: true },
+      name: { type: "string", optional: true },
+      accept_tasks: { type: "string", optional: true, enum: CREW_ACCEPT_TASKS },
+      auto_pull: { type: "boolean", optional: true },
+    },
+    run: (t, a) =>
+      t.crew(pick(a.action, CREW_ACTIONS, "status"), {
+        project: opt(a.project),
+        text: opt(a.text),
+        to: opt(a.to),
+        task: opt(a.task),
+        title: opt(a.title),
+        detail: opt(a.detail),
+        note: opt(a.note),
+        assignee: opt(a.assignee),
+        request: opt(a.request),
+        accept: optBool(a.accept),
+        name: opt(a.name),
+        acceptTasks: CREW_ACCEPT_TASKS.find((x) => x === a.accept_tasks),
+        autoPull: optBool(a.auto_pull),
+      }),
   },
   {
     name: "projects",

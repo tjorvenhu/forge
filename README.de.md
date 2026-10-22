@@ -92,6 +92,12 @@
       FORGE per Telefon anrufen und steuern (SIP). Daten verschlüsselt über ein privates GitHub-Repository auf mehreren PCs.
     </td>
   </tr>
+  <tr>
+    <td colspan="2" valign="top">
+      <h3>Crew: zusammen live an einem Projekt</h3>
+      Mehrere Leute arbeiten mit FORGE gleichzeitig am selben Repository, jeder auf seinem Rechner. Beitritt per Einladungscode oder QR-Code mit Freigabe, Ende-zu-Ende-verschlüsselt. Die Agenten aller Mitglieder sehen, wer woran arbeitet, teilen sich ein Aufgabenbrett, werden vor Dateien gewarnt, an denen ein anderer gerade arbeitet, und bekommen gepushte Änderungen der anderen automatisch.
+    </td>
+  </tr>
 </table>
 
 ## Installation
@@ -219,6 +225,9 @@ unter macOS in `~/Library/Application Support/forge` und unter Linux in `~/.conf
 - **npm-Registry:** Startest du in den Dev-Tools zum ersten Mal eine Test-Datenbank, lädt FORGE PostgreSQL einmalig
   als npm-Paket für dein System (zum Beispiel `@embedded-postgres/windows-x64` oder
   `@embedded-postgres/darwin-arm64`) von `registry.npmjs.org`.
+- **Crew (nur wenn genutzt):** Die Nachrichten einer Crew laufen über den Relay unter `forge.vanturis.de/crew` (Teil
+  der FORGE-Website in `services/stats`; ein eigener lässt sich einstellen). Sie sind Ende zu Ende mit dem Schlüssel der Crew verschlüsselt;
+  der Relay sieht nur verschlüsselte Bytes. Code selbst geht nur über dein Git-Remote.
 - **Nutzungsstatistik (nur wenn eingeschaltet):** FORGE fragt beim ersten Start danach, ohne Antwort ist sie aus. Zum Schutz vor Missbrauch
   hält der Dienst nur einen gesalzenen Hash der IP-Adresse im Arbeitsspeicher, längstens einen Tag. Die
   Gesamtzahlen aller Nutzer sind auf [forge.vanturis.de/stats](https://forge.vanturis.de/stats) öffentlich.

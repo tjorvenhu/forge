@@ -15,6 +15,8 @@ export interface TurnHost {
   userMessage(sessionId: string, text: string, source?: MessageSource): void;
   /** stores what is too large for a message (long texts, big attachments) for Claude to read */
   spill: Spill;
+  /** a further note for Claude with the next message (news from the crew); null: none */
+  note?: (sessionId: string) => string | null;
 }
 
 /** "auto": FORGE continues after a usage limit; the timeline marks the message as automatic. */
@@ -82,12 +84,12 @@ export class TurnDispatch {
   }
 
   /**
-   * Adds what auto-commit and auto-push did since Claude's last message, as a block before the text.
+   * Adds what auto-commit and auto-push did since Claude's last message (and news from the crew), as blocks before the text.
    * Taken at delivery, after the post-turn work is done; the timeline keeps showing only the user's text.
    */
   withNote(sessionId: string, msg: OutgoingMessage): OutgoingMessage {
-    const note = this.automation.takeNote(sessionId);
-    return note ? { ...msg, blocks: [{ type: "text", text: note }, ...msg.blocks] } : msg;
+    const notes = [this.automation.takeNote(sessionId), this.host.note?.(sessionId) ?? null].filter((n): n is string => !!n);
+    return notes.length ? { ...msg, blocks: [...notes.map((text) => ({ type: "text" as const, text })), ...msg.blocks] } : msg;
   }
 
   record(sessionId: string, t: BuiltTurn) {

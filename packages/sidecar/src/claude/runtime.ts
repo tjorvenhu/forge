@@ -114,6 +114,11 @@ export interface SessionSink {
   onApproval(req: ApprovalRequest, signal: AbortSignal): Promise<ApprovalDecision>;
   /** hard policy check; runs as PreToolUse hook, so it applies in every permission mode */
   preToolUse(toolName: string, input: Record<string, unknown>, toolUseId: string | null): Promise<{ rule: string; message: string } | null>;
+  /**
+   * Context Claude gets with a tool call it may make: before it (pre, e.g. another crew member works
+   * on the file) or with its result (post, e.g. news from the crew). null adds nothing.
+   */
+  toolContext?(phase: "pre" | "post", toolName: string, input: Record<string, unknown>): string | null;
   onEnd(error: Error | null): void;
 }
 
@@ -349,7 +354,10 @@ export class AgentSdkRuntime implements ClaudeRuntime {
         // Fail closed: a check that could not run must not let the call through.
         v = { rule: "guard-error", message: tr().core.claude.policyCheckFailed };
       }
-      if (!v) return {};
+      if (!v) {
+        const extra = contextFor("pre", hookInput.tool_name, ti);
+        return extra ? { hookSpecificOutput: { hookEventName: "PreToolUse", additionalContext: extra } } : {};
+      }
       return {
         hookSpecificOutput: {
           hookEventName: "PreToolUse",
@@ -357,6 +365,20 @@ export class AgentSdkRuntime implements ClaudeRuntime {
           permissionDecisionReason: tr().core.claude.policyDenied(v.rule, v.message),
         },
       };
+    };
+    /** Extra context must never break a tool call. */
+    const contextFor = (phase: "pre" | "post", toolName: string, input: Record<string, unknown>): string | null => {
+      try {
+        return sink.toolContext?.(phase, toolName, input) ?? null;
+      } catch {
+        return null;
+      }
+    };
+    const after: HookCallback = async (hookInput) => {
+      if (hookInput.hook_event_name !== "PostToolUse") return {};
+      const ti = (hookInput.tool_input && typeof hookInput.tool_input === "object" ? hookInput.tool_input : {}) as Record<string, unknown>;
+      const extra = contextFor("post", hookInput.tool_name, ti);
+      return extra ? { hookSpecificOutput: { hookEventName: "PostToolUse", additionalContext: extra } } : {};
     };
 
     // Spawned here instead of by the SDK so a close that hangs can end the whole process tree. The SDK
@@ -405,7 +427,7 @@ export class AgentSdkRuntime implements ClaudeRuntime {
         pathToClaudeCodeExecutable: opts.claudePath,
         canUseTool,
         ...(opts.context ? { systemPrompt: { type: "preset", preset: "claude_code", append: opts.context } } : {}),
-        hooks: { PreToolUse: [{ hooks: [guard] }] },
+        hooks: { PreToolUse: [{ hooks: [guard] }], ...(sink.toolContext ? { PostToolUse: [{ hooks: [after] }] } : {}) },
         ...(opts.tools?.length
           ? {
               mcpServers: { [FORGE_MCP]: forgeServer(opts.tools) },

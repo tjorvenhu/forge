@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { convertRemoteUrl, isValidRemoteUrl, redactRemoteUrl, remoteKind } from "./git-remote.js";
+import { convertRemoteUrl, isValidRemoteUrl, redactRemoteUrl, remoteIdentity, remoteKind } from "./git-remote.js";
 
 describe("remoteKind", () => {
   it("tells https, ssh and the rest apart", () => {
@@ -47,5 +47,15 @@ describe("isValidRemoteUrl", () => {
     expect(isValidRemoteUrl("ext::sh -c evil")).toBe(false);
     expect(isValidRemoteUrl("https://github.com/a b")).toBe(false);
     expect(isValidRemoteUrl("  ")).toBe(false);
+  });
+});
+
+describe("remoteIdentity", () => {
+  it("is the same over https and ssh", () => {
+    expect(remoteIdentity("https://github.com/Vanturis/Forge.git")).toBe("github.com/vanturis/forge");
+    expect(remoteIdentity("git@github.com:vanturis/forge.git")).toBe("github.com/vanturis/forge");
+    expect(remoteIdentity("https://token@github.com/vanturis/forge")).toBe("github.com/vanturis/forge");
+    expect(remoteIdentity("ssh://git@gitlab.example.com:2222/team/app.git")).toBe("gitlab.example.com/team/app");
+    expect(remoteIdentity("C:\\repos\\app\\")).toBe("C:\\repos\\app");
   });
 });

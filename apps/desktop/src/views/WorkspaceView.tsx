@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useShallow } from "zustand/react/shallow";
-import { Activity, Bot, FolderTree, GitCompare, BookOpen, FileText, FlaskConical, GitBranch, MessageSquare, Settings2 } from "lucide-react";
+import { Activity, Bot, FolderTree, GitCompare, BookOpen, FileText, FlaskConical, GitBranch, MessageSquare, Settings2, Users } from "lucide-react";
 import { call, keys, useProject } from "@/lib/queries";
 import { errorMessage, RpcCallError } from "@/lib/rpc";
 import { useUi, workspaceTabsFor, type WorkspaceTab } from "@/stores/ui";
@@ -20,6 +20,8 @@ import { FileTree } from "@/components/workspace/FileTree";
 import { BottomPanel } from "@/components/workspace/BottomPanel";
 import { DevToolsTab } from "@/components/devtools/DevToolsTab";
 import { KnowledgeTab } from "@/components/knowledge/KnowledgeTab";
+import { CrewTab } from "@/components/crew/CrewTab";
+import { CrewTabBadge } from "@/components/crew/CrewPresence";
 import { HeaderDivider } from "@/components/layout/Page";
 import { ListSkeleton, Skeleton } from "@/components/ui/skeleton";
 import { Collapse } from "@/components/ui/collapse";
@@ -110,6 +112,7 @@ function Workspace({ projectId }: { projectId: string }) {
                     { value: "files", label: wv.tabFiles, icon: <FileText className="h-4 w-4" /> },
                     { value: "devtools", label: wv.tabDevTools, icon: <FlaskConical className="h-4 w-4" />, badge: <DevToolsBadge project={project} /> },
                     { value: "knowledge", label: wv.tabKnowledge, icon: <BookOpen className="h-4 w-4" /> },
+                    { value: "crew", label: t.crew.tab, icon: <Users className="h-4 w-4" />, badge: <CrewTabBadge projectId={projectId} /> },
                     { value: "settings", label: wv.tabSettings, icon: <Settings2 className="h-4 w-4" /> },
                   ] satisfies TabDef<WorkspaceTab>[]
                 ).filter((def) => visibleTabs.includes(def.value))}
@@ -126,6 +129,7 @@ function Workspace({ projectId }: { projectId: string }) {
               (project.exists ? <DevToolsTab project={project} /> : <EmptyState title={wv.devToolsUnavailable}>{t.views.common.folderMissing}</EmptyState>)}
             {workspaceTab === "knowledge" &&
               (project.exists ? <KnowledgeTab project={project} /> : <EmptyState title={wv.knowledgeUnavailable}>{t.views.common.folderMissing}</EmptyState>)}
+            {workspaceTab === "crew" && <CrewTab project={project} />}
             {workspaceTab === "settings" && <ProjectSettingsTab project={project} />}
           </div>
           <BottomPanel project={project} />
@@ -174,7 +178,7 @@ function WorkspaceSkeleton() {
       </div>
       <div className="flex min-h-0 flex-1">
         <div className="flex min-w-0 flex-1 flex-col">
-          {toolbarOpen && <div className="flex h-12 shrink-0 items-center gap-1 overflow-hidden border-b border-border px-4">{[32, 56, 24, 48, 56, 44, 84].map(tab)}</div>}
+          {toolbarOpen && <div className="flex h-12 shrink-0 items-center gap-1 overflow-hidden border-b border-border px-4">{[32, 56, 24, 48, 56, 44, 40, 84].map(tab)}</div>}
           <div className="min-h-0 flex-1">{workspaceTab === "chat" ? <ChatPanelSkeleton /> : <ListSkeleton rows={8} className="p-5" />}</div>
         </div>
         {showRight && (

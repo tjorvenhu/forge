@@ -34,6 +34,9 @@ The service creates the tables itself on first access (`CREATE TABLE IF NOT EXIS
 | `GET /api/v1/donations` | Donated so far (`{ donations: { cents, count } }`, euro cents; `donations: null` without `STRIPE_SECRET_KEY`); for the heart in the app, fetched from Stripe at most every 10 minutes | 200; 503 |
 | `GET /api/health` | Health check with a DB query | 200 `ok`; 503 |
 | `GET /` | Public page | 200, on DB failure with a notice instead of numbers |
+| `POST /crew/v1/rooms/<room>` | Crew relay: put a sealed message `{ from, kid, iv, tag, data }` into the room | 200 `{ seq }`; 400; 404 invalid room; 413 over 256 KB; 429 too often; 503 full |
+| `GET /crew/v1/rooms/<room>/stream?after=<seq>` | Crew relay: server-sent events (kept messages after `seq`, then `event: ready`, then live; `event: gap` on gaps, `: ping` every 20 s) | 200 `text/event-stream` |
+| `GET /crew/health` | Crew relay: `{ ok, rooms, streams }`, no database | 200 |
 
 Body of the report:
 
@@ -100,6 +103,24 @@ Response of `GET /api/v1/totals`:
 - The README badge reads `installs`.
 
 The totals are recomputed from the database at most every 5 minutes (in-process cache). New reports therefore appear with a delay of up to 5 minutes.
+
+## Crew relay (/crew)
+
+Meeting point for FORGE crews: several FORGE installations work live on the same project and exchange
+presence, tasks and messages through it. FORGE encrypts everything end to end with the crew's key; the relay
+only sees the room, a sender id, a key id and encrypted bytes. It runs in the same process as the website and
+needs no database and no configuration of its own.
+
+- Core without Next: `src/lib/crew-relay.ts` (`RelayCore`). Next bundles every route separately, so
+  `crewRelay()` keeps the one instance on `globalThis`. `src/lib/crew-relay-node.ts` serves the same core on
+  `node:http` (same paths); FORGE's sidecar tests use it.
+- Limits: per room the newest 500 messages, at most 3 days old; 24 readers at a time; 240 messages per
+  minute and address (salted hash, in memory only); 5000 rooms.
+- Memory only: a redeploy forgets the rooms, the members then exchange their state again. The website
+  therefore has to run as one instance.
+- The stream sends `Cache-Control: no-transform` and `X-Accel-Buffering: no`, so Traefik (and a proxy in
+  front of it) neither compresses nor buffers it.
+- Background: [ADR 0015](../../docs/adr/0015-crew-live-collaboration.md).
 
 ## Environment variables
 

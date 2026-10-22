@@ -34,8 +34,10 @@ describe("global shortcuts", () => {
     fireEvent.keyDown(window, { key: "5", ctrlKey: true });
     expect(useUi.getState().workspaceTab).toBe("devtools");
     fireEvent.keyDown(window, { key: "7", ctrlKey: true });
-    expect(useUi.getState().workspaceTab).toBe("settings");
+    expect(useUi.getState().workspaceTab).toBe("crew");
     fireEvent.keyDown(window, { key: "8", ctrlKey: true });
+    expect(useUi.getState().workspaceTab).toBe("settings");
+    fireEvent.keyDown(window, { key: "9", ctrlKey: true });
     expect(useUi.getState().workspaceTab).toBe("settings");
   });
 

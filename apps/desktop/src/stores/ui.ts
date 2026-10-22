@@ -8,7 +8,7 @@ export type ClaudeLoginReason = "expired" | "manual" | "switch";
 
 // Lists rather than plain unions: the command palette needs an entry for every value (palette-actions.test.tsx).
 /** In the order of the tab bar. */
-export const WORKSPACE_TABS = ["chat", "agents", "git", "files", "devtools", "knowledge", "settings"] as const;
+export const WORKSPACE_TABS = ["chat", "agents", "git", "files", "devtools", "knowledge", "crew", "settings"] as const;
 export type WorkspaceTab = (typeof WORKSPACE_TABS)[number];
 /** knowledgeRequest that opens the merge dialog instead of an entry; entry ids never contain a colon */
 export const KNOWLEDGE_MERGE_REQUEST = ":merge";
@@ -17,7 +17,7 @@ export const KNOWLEDGE_STALE_REQUEST = ":stale";
 /** knowledgeRequest that opens an entry and lets Claude correct its missing references */
 export const knowledgeFixRequest = (id: string) => `:fix:${id}`;
 /** Tabs that need git; a project set up without git does not show them. */
-const GIT_WORKSPACE_TABS: ReadonlySet<WorkspaceTab> = new Set(["agents", "git"]);
+const GIT_WORKSPACE_TABS: ReadonlySet<WorkspaceTab> = new Set(["agents", "git", "crew"]);
 /** The tabs a project shows, in the order of the tab bar. */
 export function workspaceTabsFor(project: { gitEnabled: boolean } | null | undefined): WorkspaceTab[] {
   return WORKSPACE_TABS.filter((t) => project?.gitEnabled !== false || !GIT_WORKSPACE_TABS.has(t));
@@ -32,6 +32,9 @@ export const EXTENSIONS_TABS = ["mcp", "skills", "hooks"] as const;
 export type ExtensionsTab = (typeof EXTENSIONS_TABS)[number];
 export const SKILLS_TABS = ["marketplace", "own"] as const;
 export type SkillsTab = (typeof SKILLS_TABS)[number];
+
+/** What the Crew tab should open once it is shown (from the palette, a toast or the header). */
+export type CrewRequest = "invite" | "create" | "join" | "message" | "task" | "leave" | "profile" | null;
 
 /** activeSession values starting with this prefix point at a terminal session not yet adopted by FORGE */
 export const EXTERNAL_PREFIX = "ext:";
@@ -206,6 +209,11 @@ interface UiState {
   /** switches to the Wissen tab, with one entry selected */
   openKnowledge: (id: string | null) => void;
   clearKnowledgeRequest: () => void;
+  /** dialog the Crew tab opens once it is shown; n counts requests, so the same one twice opens again */
+  crewRequest: { kind: CrewRequest; n: number } | null;
+  /** switches to the Crew tab, optionally with a dialog open */
+  openCrew: (kind?: CrewRequest) => void;
+  clearCrewRequest: () => void;
   /** commit the Git tab should select once it is shown (from search) */
   commitRequest: { projectId: string; hash: string } | null;
   /** switches to the Git tab, with one commit selected */
@@ -334,6 +342,7 @@ export const useUi = create<UiState>((set, get) => ({
   selectedFile: {},
   fileJump: null,
   knowledgeRequest: null,
+  crewRequest: null,
   commitRequest: null,
   devToolsSection: "server",
   projectSettingsSection: "general",
@@ -389,6 +398,11 @@ export const useUi = create<UiState>((set, get) => ({
     savePrefs(get());
   },
   clearKnowledgeRequest: () => set({ knowledgeRequest: null }),
+  openCrew: (kind = null) => {
+    set((s) => ({ crewRequest: kind ? { kind, n: (s.crewRequest?.n ?? 0) + 1 } : null, workspaceTab: "crew", toolbarOpen: true }));
+    savePrefs(get());
+  },
+  clearCrewRequest: () => set({ crewRequest: null }),
   openCommit: (projectId, hash) => {
     set({ commitRequest: { projectId, hash }, workspaceTab: "git", toolbarOpen: true });
     savePrefs(get());

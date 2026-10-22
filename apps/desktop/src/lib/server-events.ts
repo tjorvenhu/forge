@@ -14,6 +14,7 @@ import { handleChatWindowRequest, isChatWindow } from "./chat-windows";
 import { agentAutoMerged, agentTurnEnded } from "./agent-review";
 import { installFull, installUpdate } from "./app-install";
 import { startTeamTerminal } from "./agent-teams";
+import { crewNotice } from "./crew";
 import { t } from "@/i18n";
 
 const GIT_REFRESH_DELAY_MS = 400;
@@ -253,6 +254,12 @@ export function routeServerEvent(qc: QueryClient, git: GitRefresher, e: ServerEv
       break;
     case "teams.updated":
       void qc.invalidateQueries({ queryKey: ["agentTeams"] });
+      break;
+    case "crew.updated":
+      void qc.invalidateQueries({ queryKey: ["crews"] });
+      break;
+    case "crew.notice":
+      if (!isChatWindow()) crewNotice(qc, e.payload);
       break;
     case "team.start":
       if (!isChatWindow()) startTeamTerminal(e.payload.projectId, e.payload.prompt);

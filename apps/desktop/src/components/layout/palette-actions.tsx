@@ -1,7 +1,8 @@
 import type { ReactNode } from "react";
 import type { QueryClient } from "@tanstack/react-query";
-import { Archive, ArrowDown, ArrowLeftRight, ArrowUp, ArrowUpCircle, BookOpen, Bot, CalendarDays, Camera, CloudDownload, CloudUpload, Columns2, Combine, Cpu, Database, Download, FilePlus2, FileStack, FileText, FileUp, FlaskConical, FolderDown, FolderMinus, FolderOpen, FolderPlus, Folders, Gauge, GitBranch, GitBranchPlus, GitCommitHorizontal, GitCompareArrows, GitFork, GitMerge, GitPullRequest, Globe, HandHeart, Languages, Lightbulb, Link, Link2Off, ListChecks, LogIn, LogOut, MessageSquare, MessageSquarePlus, MessageSquareText, Mic, MonitorSmartphone, NotebookText, PackageCheck, PanelBottom, PanelRight, Pencil, Phone, PhoneOff, PhoneOutgoing, Pin, PinOff, Play, Power, RefreshCcw, RefreshCw, RotateCcw, Search, Settings2, Shield, ShieldBan, Shrink, Sparkles, Square, SquareArrowOutDownLeft, SquareArrowOutUpRight, SquareTerminal, Timer, ToggleLeft, ToggleRight, Trash2, Users, Wand2, type LucideIcon } from "lucide-react";
+import { Archive, ArrowDown, ArrowLeftRight, ArrowUp, ArrowUpCircle, BookOpen, Bot, CalendarDays, Camera, CloudDownload, CloudUpload, Columns2, Combine, Cpu, Database, Download, FilePlus2, FileStack, FileText, FileUp, FlaskConical, FolderDown, FolderMinus, FolderOpen, FolderPlus, Folders, Gauge, GitBranch, GitBranchPlus, GitCommitHorizontal, GitCompareArrows, GitFork, GitMerge, GitPullRequest, Globe, HandHeart, Languages, Lightbulb, Link, Link2Off, ListChecks, ListPlus, LogIn, LogOut, MessageSquare, MessageSquarePlus, MessageSquareText, Mic, MonitorSmartphone, NotebookText, PackageCheck, PanelBottom, PanelRight, Pencil, Phone, PhoneOff, PhoneOutgoing, Pin, PinOff, Play, Power, QrCode, RefreshCcw, RefreshCw, RotateCcw, Search, Settings2, Shield, ShieldBan, Shrink, Sparkles, Square, SquareArrowOutDownLeft, SquareArrowOutUpRight, SquareTerminal, Timer, ToggleLeft, ToggleRight, Trash2, UserPlus, Users, Wand2, type LucideIcon } from "lucide-react";
 import type {
+  Crew,
   AppInstallState,
   AppUpdateState,
   ClaudeUpdateInfo,
@@ -28,6 +29,7 @@ import { checkInstall, installFromFile, installFull, installUpdate, supportsFull
 import { call, keys, refreshUsage } from "@/lib/queries";
 import { openDevServer, prepareWorktree } from "@/lib/dev-server-actions";
 import { setProjectTeams, startTeamTerminal } from "@/lib/agent-teams";
+import { openCrew, pullCrew } from "@/lib/crew";
 import { EFFORT_LEVELS, modelLabel } from "@/lib/models";
 import { errorMessage, RpcCallError } from "@/lib/rpc";
 import { openChatWindow, pinChatWindow, recallChatWindow, type ChatWindowList } from "@/lib/chat-windows";
@@ -113,6 +115,8 @@ export interface ActionContext {
   templates: PromptTemplate[];
   /** sessions in their own chat windows, and those of them kept on top */
   chatWindows?: ChatWindowList;
+  /** the crew of the open project's main project; null without one */
+  crew?: Crew | null;
   openDialog: (dialog: PaletteDialog) => void;
 }
 
@@ -146,6 +150,7 @@ const SETTING_TOGGLES: Record<Exclude<BooleanSetting, keyof typeof UNLISTED_SETT
 /** Single options of the settings that are no switch; the entry opens their section. */
 const SETTING_OPTIONS: ReadonlyArray<{ id: string; label: string; section: SettingsSection; keywords?: string }> = [
   { id: "language", label: t.layout.paletteLanguageOption, section: "general", keywords: "sprache language english englisch deutsch german flagge" },
+  { id: "crew-profile", label: t.crew.palette.profile, section: "general", keywords: "crew anzeigename name farbe relay server zusammenarbeit profil display name color collaboration profile" },
   { id: "update-channel", label: t.layout.actions.options.updateChannel, section: "about", keywords: "update kanal channel dev branch stabil stable main vorabversion pre-release" },
   { id: "default-model", label: t.layout.actions.options.defaultModel, section: "general", keywords: "standardmodell modell model default opus sonnet haiku" },
   { id: "default-effort", label: t.layout.actions.options.defaultEffort, section: "general", keywords: "denkaufwand aufwand effort thinking nachdenken default" },
@@ -178,6 +183,7 @@ const TAB_ENTRIES: Record<WorkspaceTab, { label: string; Icon: LucideIcon; keywo
   files: { label: t.layout.actions.tabs.files, Icon: FileText, keywords: "dateien explorer files" },
   devtools: { label: t.layout.actions.tabs.devtools, Icon: FlaskConical, keywords: "dev-tools testdatenbank umgebung env dev tools test database environment" },
   knowledge: { label: t.layout.actions.tabs.knowledge, Icon: BookOpen, keywords: "wissen notizen wissensbasis knowledge notes project knowledge" },
+  crew: { label: t.crew.tab, Icon: Users, keywords: "crew team zusammenarbeit gemeinsam live kollegen mitglieder online collaboration together members" },
   settings: { label: t.layout.actions.tabs.settings, Icon: Settings2, keywords: "projekt-einstellungen claude.md tags testbefehl project settings test command" },
 };
 
@@ -298,6 +304,27 @@ async function createBackup(qc: QueryClient) {
 }
 
 const SESSION_BUSY: ReadonlySet<Session["status"]> = new Set(["starting", "running", "waiting_approval"]);
+
+const CREW_KEYWORDS = "crew team zusammenarbeit gemeinsam live kollegen online collaboration together";
+
+/** Crew entries of the open project: start or join one, or what to do in it. */
+function addCrewActions(ctx: ActionContext, act: (id: string, label: string, ic: ReactNode, run: () => void, extra?: Partial<PaletteEntry>) => void, rootId: string) {
+  const crew = ctx.crew ?? null;
+  const p = t.crew.palette;
+  if (!crew) {
+    act("crew-create", p.create, icon(UserPlus), () => openCrew(rootId, "create"), { keywords: `${CREW_KEYWORDS} starten gründen einladen qr-code start create invite` });
+    act("crew-join", p.join, icon(LogIn), () => openCrew(rootId, "join"), { keywords: `${CREW_KEYWORDS} beitreten einladungscode code join invite code` });
+    return;
+  }
+  act("crew-open", p.open, icon(Users), () => openCrew(crew.projectId), { keywords: `${CREW_KEYWORDS} mitglieder agenten aufgaben verlauf members agents tasks activity`, hint: crew.name });
+  if (crew.membership !== "member") return;
+  if (crew.requests.length) act("crew-requests", p.requests(crew.requests.length), icon(UserPlus), () => openCrew(crew.projectId), { keywords: `${CREW_KEYWORDS} anfrage beitritt hereinlassen request join let in` });
+  act("crew-invite", p.invite, icon(QrCode), () => openCrew(crew.projectId, "invite"), { keywords: `${CREW_KEYWORDS} einladen einladung code qr-code teilen invite share` });
+  act("crew-message", p.message, icon(MessageSquare), () => openCrew(crew.projectId, "message"), { keywords: `${CREW_KEYWORDS} nachricht schreiben absprache chat message write` });
+  act("crew-task", p.task, icon(ListPlus), () => openCrew(crew.projectId, "task"), { keywords: `${CREW_KEYWORDS} aufgabe hinzufügen verteilen zuweisen task add assign` });
+  if (crew.behind > 0) act("crew-pull", p.pull, icon(ArrowDown), () => void pullCrew(ctx.qc, crew), { keywords: `${CREW_KEYWORDS} pull holen übernehmen commits gepusht take over pushed`, hint: String(crew.behind) });
+  act("crew-leave", p.leave, icon(LogOut), () => openCrew(crew.projectId, "leave"), { keywords: `${CREW_KEYWORDS} verlassen austreten leave quit` });
+}
 
 /**
  * Every action and setting the palette offers, for the current state. Pure, so a test can check that
@@ -524,6 +551,7 @@ export function buildActions(ctx: ActionContext): PaletteEntry[] {
         keywords: "agent teams agenten-teams anzeigen aufgaben nachrichten mitglieder status übersicht show tasks messages members overview",
       });
     }
+    if ((root ?? project).gitEnabled) addCrewActions(ctx, act, (root ?? project).id);
     act("terminal", t.layout.actions.terminal, icon(SquareTerminal), () => ui.openTerminal(project.id, "shell"), { keywords: "terminal shell konsole console" });
     act("bottom", t.layout.actions.bottom, icon(PanelBottom), () => ui.toggleBottomPanel(), { hint: t.layout.actions.ctrl("J"), keywords: "unteres panel einblenden ausblenden bottom panel toggle show hide" });
     act("right", t.layout.actions.right, icon(PanelRight), () => ui.toggleRightPanel(), { hint: t.layout.actions.ctrlShift("E"), keywords: "seitenleiste einblenden ausblenden sidebar side panel toggle show hide" });

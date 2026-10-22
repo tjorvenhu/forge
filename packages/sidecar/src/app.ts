@@ -22,6 +22,7 @@ import { RefChecker } from "./knowledge/staleness.js";
 import { PhoneService } from "./phone/phone-service.js";
 import { JobWatcher } from "./sessions/job-done.js";
 import { AgentTeams, claudeConfigDir } from "./teams/agent-teams.js";
+import { CREW_SECRET_PREFIX, CrewService } from "./crew/crew-service.js";
 import { tokenMeter } from "./claude/token-meter.js";
 import { DictationService } from "./dictation/dictation.js";
 import { Presence } from "./util/presence.js";
@@ -73,6 +74,7 @@ export function createApp(opts: { dataDir: string; write: Writer; log?: (m: stri
   let phone: PhoneService | null = null;
   let jobs: JobWatcher | null = null;
   let sync: SyncService | null = null;
+  let crew: CrewService | null = null;
   const emit = (e: ServerEvent) => {
     // Every path that changes the settings (RPC, phone, sync, backup) announces it here.
     if (e.event === "settings.updated") setLanguage(e.payload.language);
@@ -80,6 +82,7 @@ export function createApp(opts: { dataDir: string; write: Writer; log?: (m: stri
     phone?.onServerEvent(e);
     jobs?.onServerEvent(e);
     sync?.onServerEvent(e);
+    crew?.onServerEvent(e);
   };
   const uploads = new UploadStore(path.join(opts.dataDir, "uploads"));
   const runtime = opts.runtime ?? new AgentSdkRuntime({ readDirs: [uploads.dir] });
@@ -192,6 +195,23 @@ export function createApp(opts: { dataDir: string; write: Writer; log?: (m: stri
   const presence = new Presence();
   const chatWindows = new ChatWindowState(emit);
   const secrets = new SecretStore(path.join(opts.dataDir, "secrets"));
+  /** Keys that belong to this installation alone: never in a backup or the GitHub sync. */
+  const localSecret = (name: string) => name === SYNC_KEY_SECRET || name.startsWith(CREW_SECRET_PREFIX);
+  crew = new CrewService({
+    dir: path.join(opts.dataDir, "crew"),
+    secrets,
+    projects: () => projects.all(),
+    git,
+    sessions: {
+      get: (id) => (db.getSession(id) ? sessions.get(id) : null),
+      start: (projectId, prompt) => sessions.start({ projectId, prompt }),
+      busy: (projectId) => sessions.projectBusy(projectId),
+    },
+    emit,
+    log: (m) => opts.log?.(m),
+  });
+  sessions.useCrew(crew);
+  void crew.start().catch((e: unknown) => opts.log?.(`Crew: ${e instanceof Error ? e.message : String(e)}`));
   let handlers: Handlers | null = null;
   phone = new PhoneService({
     rpc: (method, params) => {
@@ -275,10 +295,10 @@ export function createApp(opts: { dataDir: string; write: Writer; log?: (m: stri
     db,
     appVersion: process.env.FORGE_APP_VERSION ?? "dev",
     git,
-    // The sync key belongs to the sync password, not to the phone settings of a backup.
+    // The sync key belongs to the sync password and crew keys to this installation, not to a backup.
     secrets: {
-      encrypted: () => Object.fromEntries(Object.entries(secrets.encrypted()).filter(([n]) => n !== SYNC_KEY_SECRET)),
-      restoreEncrypted: (files) => secrets.restoreEncrypted(files, [SYNC_KEY_SECRET]),
+      encrypted: () => Object.fromEntries(Object.entries(secrets.encrypted()).filter(([n]) => !localSecret(n))),
+      restoreEncrypted: (files) => secrets.restoreEncrypted(files, Object.keys(secrets.encrypted()).filter(localSecret)),
     },
     log: (m) => opts.log?.(m),
     afterRestore: async (parts) => {
@@ -345,7 +365,7 @@ export function createApp(opts: { dataDir: string; write: Writer; log?: (m: stri
       secretsChanged: () => phone!.secretsChanged(),
     },
     secrets: {
-      names: () => Object.keys(secrets.encrypted()).filter((n) => n !== SYNC_KEY_SECRET),
+      names: () => Object.keys(secrets.encrypted()).filter((n) => !localSecret(n)),
       get: (name) => secrets.get(name),
       set: (name, value) => secrets.set(name, value),
     },
@@ -407,6 +427,7 @@ export function createApp(opts: { dataDir: string; write: Writer; log?: (m: stri
     agentFinish,
     reports,
     teams,
+    crew,
     devServers,
     devTools,
     testDb,
@@ -438,6 +459,7 @@ export function createApp(opts: { dataDir: string; write: Writer; log?: (m: stri
       clearTimeout(timer);
       sessions.shutdown();
       teams.stop();
+      crew?.stop();
       tokenMeter.stop();
       updates.stop();
       installs.stop();

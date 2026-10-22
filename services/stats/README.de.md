@@ -34,6 +34,9 @@ Die Tabellen legt der Dienst beim ersten Zugriff selbst an (`CREATE TABLE IF NOT
 | `GET /api/v1/donations` | Bisher gespendet (`{ donations: { cents, count } }`, Euro-Cent; `donations: null` ohne `STRIPE_SECRET_KEY`); für das Herz in der App, höchstens alle 10 Minuten von Stripe | 200; 503 |
 | `GET /api/health` | Healthcheck mit DB-Abfrage | 200 `ok`; 503 |
 | `GET /` | Öffentliche Seite | 200, bei DB-Ausfall mit Hinweis statt Zahlen |
+| `POST /crew/v1/rooms/<raum>` | Crew-Relay: versiegelte Nachricht `{ from, kid, iv, tag, data }` in den Raum legen | 200 `{ seq }`; 400; 404 ungültiger Raum; 413 über 256 KB; 429 zu häufig; 503 voll |
+| `GET /crew/v1/rooms/<raum>/stream?after=<seq>` | Crew-Relay: Server-Sent Events (gespeicherte Nachrichten nach `seq`, dann `event: ready`, dann live; `event: gap` bei Lücken, `: ping` alle 20 s) | 200 `text/event-stream` |
+| `GET /crew/health` | Crew-Relay: `{ ok, rooms, streams }`, ohne Datenbank | 200 |
 
 Body der Meldung:
 
@@ -94,6 +97,24 @@ Antwort von `GET /api/v1/totals`:
 - Das README-Badge liest `installs`.
 
 Die Summen werden höchstens alle 5 Minuten neu aus der Datenbank berechnet (Zwischenspeicher im Prozess). Neue Meldungen erscheinen also mit bis zu 5 Minuten Verzögerung.
+
+## Crew-Relay (/crew)
+
+Treffpunkt für FORGE-Crews: Mehrere FORGE-Installationen arbeiten live am selben Projekt und tauschen
+darüber Präsenz, Aufgaben und Nachrichten aus. FORGE verschlüsselt alles Ende zu Ende mit dem Schlüssel der
+Crew; der Relay sieht nur Raum, Absender-Kennung, Schlüssel-Kennung und verschlüsselte Bytes. Er läuft im
+selben Prozess wie die Website und braucht keine Datenbank und keine eigene Konfiguration.
+
+- Kern ohne Next: `src/lib/crew-relay.ts` (`RelayCore`). Next bündelt jede Route einzeln, deshalb hält
+  `crewRelay()` die eine Instanz auf `globalThis`. `src/lib/crew-relay-node.ts` stellt denselben Kern auf
+  `node:http` bereit (gleiche Pfade); FORGEs Sidecar-Tests nutzen das.
+- Grenzen: pro Raum die neuesten 500 Nachrichten, höchstens 3 Tage alt; 24 Leser gleichzeitig; 240
+  Nachrichten pro Minute und Adresse (gesalzener Hash, nur im Speicher); 5000 Räume.
+- Alles nur im Speicher: Ein neues Ausrollen vergisst die Räume, die Mitglieder tauschen ihren Stand danach
+  wieder aus. Die Website muss deshalb als eine Instanz laufen.
+- Der Stream sendet `Cache-Control: no-transform` und `X-Accel-Buffering: no`, damit Traefik (und ein
+  Proxy davor) ihn weder komprimiert noch puffert.
+- Hintergrund: [ADR 0015](../../docs/adr/0015-crew-live-zusammenarbeit.de.md).
 
 ## Umgebungsvariablen
 

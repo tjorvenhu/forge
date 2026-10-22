@@ -17,6 +17,7 @@ import type { WorktreeSetup } from "../automation/worktree-setup.js";
 import type { AgentFinisher } from "../automation/agent-finish.js";
 import type { DailyReportService } from "../reports/daily-report.js";
 import type { AgentTeams } from "../teams/agent-teams.js";
+import type { CrewService } from "../crew/crew-service.js";
 import type { DevServerService } from "../devserver/dev-server.js";
 import type { DevToolsService } from "../devtools/dev-tools.js";
 import type { TestDbService } from "../devtools/test-db.js";
@@ -56,6 +57,8 @@ export interface Services {
   reports: DailyReportService;
   /** Claude Code agent teams (lead in a terminal tab) */
   teams: AgentTeams;
+  /** live collaboration of several FORGE installations on one project */
+  crew: CrewService;
   devServers: DevServerService;
   devTools: DevToolsService;
   testDb: TestDbService;
@@ -207,6 +210,23 @@ export function createHandlers(s: Services): Handlers {
     "teams.start": ({ projectId, prompt }) => s.teams.requestStart(projectId, prompt),
     "teams.stop": ({ team }) => s.teams.stopTeam(team),
     "teams.dismiss": ({ team, projectId }) => ({ count: s.teams.dismiss(team, projectId) }),
+    "crew.list": ({ projectId }) => s.crew.list(projectId),
+    "crew.profile": () => s.crew.profile(),
+    "crew.setProfile": (patch) => s.crew.setProfile(patch),
+    "crew.create": ({ projectId, name }) => s.crew.create(projectId, name),
+    "crew.invite": ({ crewId }) => s.crew.invite(crewId),
+    "crew.inspect": ({ code }) => s.crew.inspect(code),
+    "crew.join": ({ projectId, code }) => s.crew.join(projectId, code),
+    "crew.respond": ({ crewId, requestId, accept }) => s.crew.respond(crewId, requestId, accept),
+    "crew.leave": ({ crewId }) => s.crew.leave(crewId),
+    "crew.removeMember": ({ crewId, memberId }) => s.crew.removeMember(crewId, memberId),
+    "crew.update": ({ crewId, ...patch }) => s.crew.update(crewId, patch),
+    "crew.message": ({ crewId, text, to }) => s.crew.message(crewId, text, to ?? null),
+    "crew.taskAdd": ({ crewId, title, detail, assignee }) => s.crew.addTask(crewId, { title, detail, assignee: assignee ?? null }),
+    "crew.taskUpdate": ({ crewId, taskId, ...patch }) => s.crew.updateTask(crewId, taskId, patch),
+    "crew.taskRemove": ({ crewId, taskId }) => s.crew.removeTask(crewId, taskId),
+    "crew.taskStart": ({ crewId, taskId }) => s.crew.startTask(crewId, taskId),
+    "crew.pull": ({ crewId }) => s.crew.pull(crewId),
     "sessions.summarize": ({ sessionId }) => s.sessions.summarize(sessionId),
     "sessions.handoff": ({ sessionId }) => s.sessions.handoff(sessionId),
     "reports.daily": (p) => s.reports.build(p),

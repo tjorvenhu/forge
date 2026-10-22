@@ -91,6 +91,21 @@ import {
   MAX_PROMPT_CHARS,
   UPLOAD_CHUNK_CHARS,
 } from "./models.js";
+import {
+  Crew,
+  CrewAcceptTasks,
+  CrewColor,
+  CrewFeedItem,
+  CrewInviteInfo,
+  CrewProfile,
+  CrewTask,
+  CrewTaskStatus,
+  CREW_INVITE_PREFIX,
+  CREW_MESSAGE_MAX,
+  CREW_NAME_MAX,
+  CREW_TASK_DETAIL_MAX,
+  CREW_TASK_TITLE_MAX,
+} from "./crew.js";
 
 const id = z.string().min(1).max(100);
 const knowledgeFields = {
@@ -108,6 +123,8 @@ const relPaths = z.array(z.string().min(1).max(4096)).min(1).max(2000);
 const empty = z.object({}).strict();
 const voiceConnection = z.object({ language: z.string().min(2).max(12).default("de"), keyterms: z.array(z.string().max(100)).max(200).default([]) });
 const pluginId = z.string().regex(/^[A-Za-z0-9._-]{1,128}@[A-Za-z0-9._-]{1,128}$/);
+const crewRef = z.object({ crewId: id });
+const inviteCode = z.string().trim().min(CREW_INVITE_PREFIX.length + 10).max(2000);
 /** date: local day (JJJJ-MM-TT), today without it; projectId: one project with its agents, all without it */
 const dailyReportParams = z.object({ date: ReportDate.optional(), projectId: id.optional() });
 
@@ -238,6 +255,53 @@ export const methods = {
   "teams.stop": { params: z.object({ team: z.string().min(1).max(100) }), result: z.object({ ok: z.boolean() }) },
   /** takes ended teams off the list: one by name, else all ended ones (of the project and its worktrees) */
   "teams.dismiss": { params: z.object({ team: z.string().min(1).max(100).optional(), projectId: id.optional() }), result: z.object({ count: z.number().int() }) },
+
+  /** crews of this installation; projectId: the crew of that project (worktrees count to their main project) */
+  "crew.list": { params: z.object({ projectId: id.optional() }), result: z.array(Crew) },
+  /** name, color and relay of this installation in every crew */
+  "crew.profile": { params: empty, result: CrewProfile },
+  "crew.setProfile": {
+    params: z.object({ name: z.string().trim().min(1).max(40).optional(), color: CrewColor.optional(), relayUrl: z.string().trim().url().max(500).nullable().optional() }),
+    result: CrewProfile,
+  },
+  /** starts a crew for a project (one per project) and makes the first invite */
+  "crew.create": { params: projectRef.extend({ name: z.string().trim().min(1).max(CREW_NAME_MAX).optional() }), result: Crew },
+  /** a new invite; the previous one stops working */
+  "crew.invite": { params: crewRef, result: z.object({ code: z.string(), expiresAt: z.string() }) },
+  /** what an invite code says, and which local projects fit it */
+  "crew.inspect": { params: z.object({ code: inviteCode }), result: CrewInviteInfo },
+  /** asks to join with an invite; a member of the crew lets us in (membership pending until then) */
+  "crew.join": { params: projectRef.extend({ code: inviteCode }), result: Crew },
+  /** lets a newcomer in or turns them down */
+  "crew.respond": { params: crewRef.extend({ requestId: id, accept: z.boolean() }), result: Crew },
+  /** leaves the crew on this installation; the others are told */
+  "crew.leave": { params: crewRef, result: z.object({ ok: z.boolean() }) },
+  /** owner only: removes a member; the crew gets a new key the removed one does not know */
+  "crew.removeMember": { params: crewRef.extend({ memberId: id }), result: Crew },
+  "crew.update": { params: crewRef.extend({ name: z.string().trim().min(1).max(CREW_NAME_MAX).optional(), acceptTasks: CrewAcceptTasks.optional(), autoPull: z.boolean().optional() }), result: Crew },
+  /** a message to the crew (to: one member) */
+  "crew.message": { params: crewRef.extend({ text: z.string().trim().min(1).max(CREW_MESSAGE_MAX), to: id.nullable().optional() }), result: CrewFeedItem },
+  "crew.taskAdd": {
+    params: crewRef.extend({ title: z.string().trim().min(1).max(CREW_TASK_TITLE_MAX), detail: z.string().max(CREW_TASK_DETAIL_MAX).optional(), assignee: id.nullable().optional() }),
+    result: CrewTask,
+  },
+  /** status, assignee or note of a task; owner follows the status (in_progress/done: this member, open: nobody) */
+  "crew.taskUpdate": {
+    params: crewRef.extend({
+      taskId: id,
+      title: z.string().trim().min(1).max(CREW_TASK_TITLE_MAX).optional(),
+      detail: z.string().max(CREW_TASK_DETAIL_MAX).optional(),
+      status: CrewTaskStatus.optional(),
+      assignee: id.nullable().optional(),
+      note: z.string().max(CREW_TASK_DETAIL_MAX).nullable().optional(),
+    }),
+    result: CrewTask,
+  },
+  "crew.taskRemove": { params: crewRef.extend({ taskId: id }), result: z.object({ ok: z.boolean() }) },
+  /** a new session in the crew's project works on the task; the task is taken (in progress, this member) */
+  "crew.taskStart": { params: crewRef.extend({ taskId: id }), result: z.object({ sessionId: z.string() }) },
+  /** takes over the commits other members pushed (git pull of the project's branch) */
+  "crew.pull": { params: crewRef, result: z.object({ output: z.string() }) },
 
   /** what happened on a day (default today), over all projects or for one with its agents */
   "reports.daily": { params: dailyReportParams, result: DailyReport },
@@ -845,6 +909,13 @@ export type ServerEvent =
   | { event: "teams.updated"; payload: { team: string; projectId: string | null } }
   /** the main window opens a terminal tab with a team lead in the project (asked for on the phone) */
   | { event: "team.start"; payload: { projectId: string; prompt: string | null } }
+  /** a crew changed (members, their agents, tasks, feed, connection); removed: left or no longer exists */
+  | { event: "crew.updated"; payload: { crewId: string; projectId: string; removed?: boolean } }
+  /**
+   * something in a crew the user should see now: someone asks to join, a task was given to us, a
+   * member pushed, a message to us, FORGE took over pushed commits, we were let in or removed
+   */
+  | { event: "crew.notice"; payload: { crewId: string; projectId: string; kind: "request" | "task" | "push" | "message" | "pulled" | "joined" | "rejected" | "removed"; title: string; text: string; ref: string | null } }
   /** a before/after comparison changed (after image taken, failed, taken again) */
   | { event: "uiCompare.updated"; payload: UiCompare }
   | { event: "phone.updated"; payload: PhoneState }

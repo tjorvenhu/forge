@@ -1395,6 +1395,81 @@ describe("PhoneService end to end with a test PBX", () => {
     await byeFromPbx("c-calls", inv, ok);
   }, 30_000);
 
+  it("works in a crew behind the PIN, and leaves it only after the code on the keypad", async () => {
+    const { conv, end } = await openCall("c-crew");
+    rpcResults["crew.list"] = () => [];
+    expect(await conv.tools.crew("status", {})).toMatch(/^Es gibt noch keine Crew\./);
+    const crew = {
+      id: "cr1",
+      name: "Shop-Crew",
+      projectId,
+      projectName: "shop",
+      relayUrl: "https://relay.test",
+      membership: "member",
+      joinCode: null,
+      connection: "online",
+      error: null,
+      selfId: "me",
+      members: [
+        { id: "me", name: "Tim", color: "#3e8cf0", self: true, owner: true, online: true, lastSeen: null, branch: "main", files: [], ahead: 0, agents: [] },
+        {
+          id: "an",
+          name: "Anna",
+          color: "#30a46c",
+          self: false,
+          owner: false,
+          online: true,
+          lastSeen: null,
+          branch: "main",
+          files: ["src/login.ts"],
+          ahead: 1,
+          agents: [{ id: "s9", title: "Login", status: "working", task: "Login-Seite bauen", files: ["src/login.ts"], lastResult: null, branch: null, updatedAt: "2026-10-22T10:00:00.000Z" }],
+        },
+      ],
+      tasks: [{ id: "t1", title: "API absichern", detail: "", status: "open", createdBy: "an", assignee: null, owner: null, note: null, source: "user", createdAt: "", updatedAt: "" }],
+      feed: [{ id: "f1", kind: "message", from: "an", agent: null, to: null, text: "Ich mache das Login", files: [], ts: "" }],
+      requests: [{ id: "rq1", name: "Ben", code: "1234-5678", at: "" }],
+      acceptTasks: "ask",
+      autoPull: true,
+      behind: 2,
+      invite: null,
+      createdAt: "",
+    };
+    rpcResults["crew.list"] = () => [crew];
+    const status = await conv.tools.crew("status", {});
+    expect(status).toContain("Crew <<<SESSION-DATEN>>>Shop-Crew<<<ENDE SESSION-DATEN>>> im Projekt");
+    expect(status).toContain("<<<SESSION-DATEN>>>Anna<<<ENDE SESSION-DATEN>>> online: <<<SESSION-DATEN>>>Login<<<ENDE SESSION-DATEN>>> arbeitet");
+    expect(status).toContain("1 Datei nicht gepusht");
+    expect(status).toContain("Beitrittsanfragen: <<<SESSION-DATEN>>>Ben<<<ENDE SESSION-DATEN>>> mit Prüfcode 1234-5678");
+    expect(status).toContain("2 Commits der anderen sind noch nicht übernommen");
+
+    rpcResults["crew.message"] = () => ({ id: "f2", kind: "message", from: "me", agent: null, to: "an", text: "x", files: [], ts: "" });
+    expect(await conv.tools.crew("message", { text: "Nimm du die API", to: "anna" })).toBe("Nachricht an <<<SESSION-DATEN>>>Anna<<<ENDE SESSION-DATEN>>> gesendet.");
+    expect(rpcCalls.at(-1)).toEqual(["crew.message", { crewId: "cr1", text: "Nimm du die API", to: "an" }]);
+    expect(await conv.tools.crew("message", { text: "Hallo", to: "Zoe" })).toMatch(/Kein Crew-Mitglied „Zoe“/);
+
+    rpcResults["crew.taskAdd"] = (p: { title: string }) => ({ ...crew.tasks[0], id: "t2", title: p.title });
+    expect(await conv.tools.crew("task_add", { title: "Tests schreiben", assignee: "Anna" })).toBe(
+      "Aufgabe t2 <<<SESSION-DATEN>>>Tests schreiben<<<ENDE SESSION-DATEN>>> angelegt für <<<SESSION-DATEN>>>Anna<<<ENDE SESSION-DATEN>>>.",
+    );
+    expect(rpcCalls.at(-1)).toEqual(["crew.taskAdd", { crewId: "cr1", title: "Tests schreiben", assignee: "an" }]);
+    rpcResults["crew.taskUpdate"] = () => ({ ...crew.tasks[0], status: "done" });
+    expect(await conv.tools.crew("task_done", { task: "t1", note: "fertig" })).toBe("Aufgabe t1 <<<SESSION-DATEN>>>API absichern<<<ENDE SESSION-DATEN>>>: erledigt.");
+    expect(rpcCalls.at(-1)).toEqual(["crew.taskUpdate", { crewId: "cr1", taskId: "t1", status: "done", note: "fertig" }]);
+
+    rpcResults["crew.respond"] = () => crew;
+    expect(await conv.tools.crew("respond", { accept: true })).toBe("<<<SESSION-DATEN>>>Ben<<<ENDE SESSION-DATEN>>> ist jetzt in der Crew.");
+    expect(rpcCalls.at(-1)).toEqual(["crew.respond", { crewId: "cr1", requestId: "rq1", accept: true }]);
+
+    // Leaving: only after the code on the keypad.
+    rpcResults["crew.leave"] = () => ({ ok: true });
+    const ask = await conv.tools.crew("leave", {});
+    expect(rpcCalls.some(([m]) => m === "crew.leave")).toBe(false);
+    expect(await keypad(conv, ask)).toContain("Crew <<<SESSION-DATEN>>>Shop-Crew<<<ENDE SESSION-DATEN>>> verlassen.");
+    expect(rpcCalls.at(-1)).toEqual(["crew.leave", { crewId: "cr1" }]);
+    await end();
+  }, 30_000);
+
   /** Arguments that pass the schema of a tool: every required parameter with a plain value. */
   const sampleArgs = (params: Record<string, ParamSpec>) =>
     Object.fromEntries(
