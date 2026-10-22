@@ -53,6 +53,9 @@ function crew(over: Partial<Crew> = {}): Crew {
     requests: [],
     acceptTasks: "ask",
     autoPull: true,
+    shareAgents: "ask",
+    shareRequests: [],
+    shares: [],
     behind: 0,
     invite: null,
     createdAt: now,
@@ -130,7 +133,11 @@ describe("CrewTab", () => {
     expect(screen.getByText("2 ungepushte Commits")).toBeTruthy();
     expect(within(screen.getByTestId("crew-column-open")).getByText("Login-Seite")).toBeTruthy();
     expect(within(screen.getByTestId("crew-column-in_progress")).getByText("REST-API")).toBeTruthy();
-    expect(within(screen.getByTestId("crew-column-done")).getByText("Projekt aufsetzen")).toBeTruthy();
+    // finished tasks fold away until asked for
+    const done = screen.getByTestId("crew-column-done");
+    expect(within(done).queryByText("Projekt aufsetzen")).toBeNull();
+    fireEvent.click(within(done).getByRole("button", { expanded: false }));
+    expect(within(done).getByText("Projekt aufsetzen")).toBeTruthy();
     expect(screen.getByText("Ich nehme die API")).toBeTruthy();
   });
 
@@ -155,8 +162,8 @@ describe("CrewTab", () => {
   it("offers to take over pushed commits", async () => {
     mockRpc({ "crew.list": [crew({ behind: 3 })], "crew.pull": { output: "ok" } });
     renderTab();
-    expect(await screen.findByText("3 Commits der Crew fehlen in deinem Projekt.")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: /Übernehmen/ }));
+    const banner = (await screen.findByText("3 Commits der Crew fehlen in deinem Projekt.")).parentElement!;
+    fireEvent.click(within(banner).getByRole("button", { name: /Übernehmen/ }));
     await waitFor(() => expect(callMock).toHaveBeenCalledWith("crew.pull", { crewId: "c1" }));
   });
 
@@ -167,5 +174,39 @@ describe("CrewTab", () => {
     fireEvent.click(within(open).getByRole("button", { name: /Mit Agent starten/ }));
     await waitFor(() => expect(callMock).toHaveBeenCalledWith("crew.taskStart", { crewId: "c1", taskId: "t1" }));
     await waitFor(() => expect(useUi.getState().activeSession.p1).toBe("s1"));
+  });
+
+  it("asks another member for a session to watch live or to take over", async () => {
+    mockRpc({ "crew.list": [crew()], "crew.shareAsk": { id: "x1", agentTitle: "API bauen" } });
+    renderTab();
+    await screen.findByText("API bauen");
+    fireEvent.click(screen.getByRole("button", { name: "Live ansehen" }));
+    await waitFor(() => expect(callMock).toHaveBeenCalledWith("crew.shareAsk", { crewId: "c1", memberId: "anna", agentId: "s9", mode: "view" }));
+    fireEvent.click(screen.getByRole("button", { name: "Übernehmen" }));
+    await waitFor(() => expect(callMock).toHaveBeenCalledWith("crew.shareAsk", { crewId: "c1", memberId: "anna", agentId: "s9", mode: "takeover" }));
+  });
+
+  it("answers a request for one of our sessions, also for good", async () => {
+    const request = { id: "q1", from: "anna", agentId: "s1", agentTitle: "Login bauen", mode: "takeover" as const, at: now };
+    mockRpc({ "crew.list": [crew({ shareRequests: [request] })], "crew.shareRespond": crew() });
+    renderTab();
+    expect(await screen.findByText("Anna möchte deine Session übernehmen")).toBeTruthy();
+    expect(screen.getByText("Login bauen")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Immer erlauben" }));
+    await waitFor(() => expect(callMock).toHaveBeenCalledWith("crew.shareRespond", { crewId: "c1", requestId: "q1", accept: true, always: true }));
+  });
+
+  it("shows how far a requested session got and opens its copy", async () => {
+    const shares = [
+      { id: "x1", member: "anna", agentId: "s9", agentTitle: "API bauen", mode: "view" as const, state: "live" as const, received: 2, total: 2, sessionId: "m1", projectId: "p1", error: null, at: now },
+      { id: "x2", member: "anna", agentId: "s8", agentTitle: "Tests", mode: "takeover" as const, state: "transferring" as const, received: 1, total: 4, sessionId: null, projectId: null, error: null, at: now },
+    ];
+    mockRpc({ "crew.list": [crew({ shares })], "crew.shareStop": { ok: true } });
+    renderTab();
+    expect(await screen.findByText(/überträgt 25/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Öffnen" }));
+    expect(useUi.getState().activeSession.p1).toBe("m1");
+    fireEvent.click(screen.getAllByRole("button", { name: "Beenden" })[0]!);
+    await waitFor(() => expect(callMock).toHaveBeenCalledWith("crew.shareStop", { crewId: "c1", requestId: expect.any(String) }));
   });
 });

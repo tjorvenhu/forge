@@ -1,7 +1,7 @@
 import { DatabaseSync, type StatementSync } from "node:sqlite";
 import type { SessionTotals, UsageCall } from "../claude/session-usage.js";
 import type { UsageSample } from "../claude/usage-forecast.js";
-import { DEFAULT_DISABLED_POLICY_RULES, SEARCH_MARK_END, SEARCH_MARK_START, TeamRoleModels, type ContextUsage, type EffortLevel, type ModelTokens, type ForgeUsagePurpose, type PermissionMode, type ProfileId, type Project, type PhoneCallRecord, type PromptTemplate, type SearchFilter, type SearchHit, type Session, type SessionEvent, type SessionEventBody, type SessionStatus, type Settings } from "@forge/protocol";
+import { CrewMirror, DEFAULT_DISABLED_POLICY_RULES, SEARCH_MARK_END, SEARCH_MARK_START, TeamRoleModels, type ContextUsage, type EffortLevel, type ModelTokens, type ForgeUsagePurpose, type PermissionMode, type ProfileId, type Project, type PhoneCallRecord, type PromptTemplate, type SearchFilter, type SearchHit, type Session, type SessionEvent, type SessionEventBody, type SessionStatus, type Settings } from "@forge/protocol";
 
 // Append only: an install stores how many it ran (user_version), so inserting one shifts the rest.
 export const MIGRATIONS: string[] = [
@@ -373,6 +373,10 @@ export const MIGRATIONS: string[] = [
   `
   ALTER TABLE sessions ADD COLUMN team_models TEXT;
   `,
+  // A crew member's session shown here read-only (JSON CrewMirror); NULL for own sessions.
+  `
+  ALTER TABLE sessions ADD COLUMN crew_mirror TEXT;
+  `,
 ];
 
 /** user_version once the agents_enabled migration ran */
@@ -526,6 +530,7 @@ interface SessionRow {
   last_error: string | null;
   team: number;
   team_models: string | null;
+  crew_mirror: string | null;
 }
 
 export type ProjectRecord = Omit<Project, "exists">;
@@ -709,6 +714,15 @@ function toProject(r: ProjectRow): ProjectRecord {
   };
 }
 
+function parseMirror(raw: string): { mirror?: CrewMirror } {
+  try {
+    const r = CrewMirror.safeParse(JSON.parse(raw));
+    return r.success ? { mirror: r.data } : {};
+  } catch {
+    return {};
+  }
+}
+
 /** A broken or outdated entry falls back to the defaults instead of breaking the session. */
 function parseTeamModels(raw: string): TeamRoleModels {
   try {
@@ -737,6 +751,7 @@ function toSession(r: SessionRow): SessionRecord {
     lastError: r.last_error,
     ...(r.team ? { team: true } : {}),
     ...(r.team_models ? { teamModels: parseTeamModels(r.team_models) } : {}),
+    ...(r.crew_mirror ? parseMirror(r.crew_mirror) : {}),
   };
 }
 
@@ -1045,8 +1060,8 @@ export class Db {
   insertSession(s: SessionRecord) {
     this.sql
       .prepare(
-        `INSERT INTO sessions(id, project_id, claude_session_id, cwd, title, model, effort, profile, permission_mode, status, api_key_source, created_at, updated_at, last_error, team, team_models)
-         VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO sessions(id, project_id, claude_session_id, cwd, title, model, effort, profile, permission_mode, status, api_key_source, created_at, updated_at, last_error, team, team_models, crew_mirror)
+         VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         s.id,
@@ -1065,6 +1080,7 @@ export class Db {
         s.lastError,
         s.team ? 1 : 0,
         s.teamModels && Object.keys(s.teamModels).length ? JSON.stringify(s.teamModels) : null,
+        s.mirror ? JSON.stringify(s.mirror) : null,
       );
   }
 
@@ -1088,6 +1104,10 @@ export class Db {
         sets.push(`${col} = ?`);
         vals.push(v as string | null);
       }
+    }
+    if (patch.mirror !== undefined) {
+      sets.push("crew_mirror = ?");
+      vals.push(patch.mirror ? JSON.stringify(patch.mirror) : null);
     }
     this.stmt(`UPDATE sessions SET ${sets.join(", ")} WHERE id = ?`).run(...vals, id);
     return this.getSession(id);
@@ -1143,7 +1163,7 @@ export class Db {
   /** agent team sessions, newest first; projectIds: only those projects */
   listTeamSessions(projectIds: readonly string[] | null, limit: number): SessionRecord[] {
     const where = projectIds ? ` AND project_id IN (${projectIds.map(() => "?").join(", ") || "NULL"})` : "";
-    const rows = this.sql.prepare(`SELECT * FROM sessions WHERE team = 1${where} ORDER BY created_at DESC LIMIT ?`).all(...(projectIds ?? []), limit) as unknown as SessionRow[];
+    const rows = this.sql.prepare(`SELECT * FROM sessions WHERE team = 1 AND crew_mirror IS NULL${where} ORDER BY created_at DESC LIMIT ?`).all(...(projectIds ?? []), limit) as unknown as SessionRow[];
     return rows.map(toSession);
   }
 
@@ -1291,6 +1311,23 @@ export class Db {
   getEvent(sessionId: string, seq: number): SessionEvent | null {
     const r = this.stmt("SELECT seq, ts, body FROM events WHERE session_id = ? AND seq = ?").get(sessionId, seq) as { seq: number; ts: string; body: string } | undefined;
     return r ? { seq: r.seq, sessionId, ts: r.ts, body: JSON.parse(r.body) as SessionEventBody } : null;
+  }
+
+  /**
+   * Events of a copied session (a crew member's), in one transaction and without the bookkeeping of
+   * appendEvent: their turns used the member's plan, not ours, so they must not count as our usage.
+   */
+  importEvents(sessionId: string, bodies: readonly SessionEventBody[]) {
+    const insert = this.stmt("INSERT INTO events(session_id, seq, ts, type, body) VALUES(?, ?, ?, ?, ?)");
+    this.sql.exec("BEGIN");
+    try {
+      for (const body of bodies) insert.run(sessionId, this.nextSeq(sessionId), now(), body.type, JSON.stringify(body));
+      this.sql.exec("COMMIT");
+    } catch (e) {
+      this.sql.exec("ROLLBACK");
+      this.seqCache.delete(sessionId);
+      throw e;
+    }
   }
 
   appendEvent(sessionId: string, body: SessionEventBody): SessionEvent {

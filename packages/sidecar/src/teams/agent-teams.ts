@@ -70,14 +70,17 @@ export class AgentTeams {
     const key = `${this.d.db.lastEventSeq(sessionId)}:${s.live}:${s.status}:${s.updatedAt}:${[...liveTokens.values()].join(",")}`;
     const hit = this.cache.get(sessionId);
     if (hit?.key === key) return hit.team;
-    const { members, tasks, models } = buildTeam(this.d.db.listEventsOfTypes(sessionId, TEAM_EVENT_TYPES), { live: s.live, cwd: s.cwd, roleModels: s.teamModels, liveTokens });
+    // A live view of a crew member's team works over there: its members are at work, but nobody here can answer their approvals.
+    const live = s.live || !!s.mirror?.live;
+    const { members, tasks, models } = buildTeam(this.d.db.listEventsOfTypes(sessionId, TEAM_EVENT_TYPES), { live, cwd: s.cwd, roleModels: s.teamModels, liveTokens });
+    if (s.mirror) for (const m of members) m.approval = null;
     const team: AgentTeam = {
       sessionId,
       projectId: s.projectId,
       title: s.title,
       leadModel: s.model,
       status: s.status,
-      live: s.live,
+      live,
       createdAt: s.createdAt,
       updatedAt: s.updatedAt,
       members,

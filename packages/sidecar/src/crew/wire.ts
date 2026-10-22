@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { CrewAgent, CrewFeedItem, CrewTask, CREW_INVITE_PREFIX } from "@forge/protocol";
+import { CrewAgent, CrewFeedItem, CrewShareMode, CrewTask, CREW_INVITE_PREFIX } from "@forge/protocol";
 
 /** What one member tells the others about itself; the newest (by `at`) wins. */
 export const Presence = z.object({
@@ -53,8 +53,36 @@ export const RoomMessage = z.discriminatedUnion("t", [
   z.object({ t: z.literal("leave"), member: z.string() }),
   /** the owner removed a member: new crew key, sealed for each remaining member */
   z.object({ t: z.literal("rekey"), epoch: z.number().int().min(1), removed: z.string(), keys: z.record(z.string(), z.object({ iv: z.string(), tag: z.string(), data: z.string() })) }),
+  /** a member asks `to` for one of its sessions (crew/share.ts) */
+  z.object({ t: z.literal("share_ask"), request: z.string().max(64), to: z.string().max(64), agent: z.string().max(100), mode: CrewShareMode }),
+  /** the answer; accepted: the copy follows in its own room on the relay */
+  z.object({
+    t: z.literal("share_answer"),
+    request: z.string().max(64),
+    to: z.string().max(64),
+    accept: z.boolean(),
+    room: z.string().regex(/^[A-Za-z0-9_-]{16,64}$/).nullable(),
+    title: z.string().max(200).nullable(),
+    /** why not, for the asker */
+    reason: z.string().max(500).nullable(),
+  }),
+  /** the asker no longer watches (live view) or gave up */
+  z.object({ t: z.literal("share_stop"), request: z.string().max(64), to: z.string().max(64) }),
+  /** the asker still watches; without it the live view ends */
+  z.object({ t: z.literal("share_keep"), request: z.string().max(64), to: z.string().max(64) }),
 ]);
 export type RoomMessage = z.infer<typeof RoomMessage>;
+
+/** Messages in a share's own room on the relay, sealed with the crew key. */
+export const ShareMessage = z.discriminatedUnion("t", [
+  /** a piece of the gzipped copy (base64) */
+  z.object({ t: z.literal("chunk"), request: z.string().max(64), i: z.number().int().min(0), n: z.number().int().min(1).max(1000), data: z.string() }),
+  /** new events of a session under live view, in order (`n` counts batches) */
+  z.object({ t: z.literal("live"), request: z.string().max(64), n: z.number().int().min(1), events: z.array(z.unknown()).max(500) }),
+  /** the sharer stopped (session gone, live view over, too large, an error) */
+  z.object({ t: z.literal("end"), request: z.string().max(64), reason: z.string().max(500).nullable() }),
+]);
+export type ShareMessage = z.infer<typeof ShareMessage>;
 
 /** What the crew key travels in to a newcomer. */
 export const JoinGrant = z.object({

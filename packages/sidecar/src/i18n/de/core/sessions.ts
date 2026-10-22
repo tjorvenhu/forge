@@ -2,6 +2,7 @@
 export const sessions = {
   // shared errors
   notFound: "Session nicht gefunden.",
+  mirrorReadOnly: "Das ist die Ansicht einer Session eines Crew-Mitglieds und nimmt keine Nachrichten an. Übernimm sie, um selbst weiterzumachen.",
   notActive: "Session ist nicht aktiv.",
   claudeNotFound: "Claude Code CLI wurde nicht gefunden.",
   claudeNotFoundCheckPath: "Claude Code CLI wurde nicht gefunden. Pfad in den Einstellungen prüfen.",

@@ -128,6 +128,56 @@ export type CrewMembership = z.infer<typeof CrewMembership>;
 export const CrewAcceptTasks = z.enum(["auto", "ask", "off"]);
 export type CrewAcceptTasks = z.infer<typeof CrewAcceptTasks>;
 
+/**
+ * Sessions of other members: view (a live, read-only copy of the chat) or takeover (a copy of the
+ * chat with Claude's conversation and the member's files in a worktree here, to go on from there).
+ */
+export const CrewShareMode = z.enum(["view", "takeover"]);
+export type CrewShareMode = z.infer<typeof CrewShareMode>;
+
+/** What a member does when someone wants to see or take over one of its sessions. */
+export const CrewShareAgents = z.enum(["ask", "auto", "off"]);
+export type CrewShareAgents = z.infer<typeof CrewShareAgents>;
+
+/** Someone wants to see or take over one of our sessions and waits for our answer. */
+export const CrewShareRequest = z.object({
+  id: z.string(),
+  /** member asking */
+  from: z.string(),
+  agentId: z.string(),
+  agentTitle: z.string(),
+  mode: CrewShareMode,
+  at: z.string(),
+});
+export type CrewShareRequest = z.infer<typeof CrewShareRequest>;
+
+export const CrewShareState = z.enum(["asking", "transferring", "importing", "live", "done", "declined", "failed", "ended"]);
+export type CrewShareState = z.infer<typeof CrewShareState>;
+
+/** A session of another member we asked for, and how far it got. */
+export const CrewShare = z.object({
+  id: z.string(),
+  /** member whose session it is */
+  member: z.string(),
+  agentId: z.string(),
+  agentTitle: z.string(),
+  mode: CrewShareMode,
+  state: CrewShareState,
+  /** chunks received and expected while it transfers */
+  received: z.number().int(),
+  total: z.number().int().nullable(),
+  /** the session here, once it is imported */
+  sessionId: z.string().nullable(),
+  projectId: z.string().nullable(),
+  error: z.string().nullable(),
+  at: z.string(),
+});
+export type CrewShare = z.infer<typeof CrewShare>;
+
+/** Size limits of a share: chunks on the relay and the whole (compressed) copy. */
+export const CREW_SHARE_CHUNK_CHARS = 180_000;
+export const CREW_SHARE_MAX_BYTES = 40 * 1024 * 1024;
+
 export const Crew = z.object({
   id: z.string(),
   name: z.string(),
@@ -150,6 +200,12 @@ export const Crew = z.object({
   acceptTasks: CrewAcceptTasks,
   /** pushed commits of others are taken over on their own while no session of the project works */
   autoPull: z.boolean(),
+  /** others want to see or take over one of our sessions: ask each time, allow, or refuse */
+  shareAgents: CrewShareAgents,
+  /** waiting for our answer */
+  shareRequests: z.array(CrewShareRequest),
+  /** sessions of others we asked for (this run of FORGE) */
+  shares: z.array(CrewShare),
   /** commits on origin the project does not have yet (after the last push of a member) */
   behind: z.number().int(),
   /** our open invite: anyone with it can ask to join until it expires or a new one is made */

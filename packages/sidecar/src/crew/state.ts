@@ -2,11 +2,14 @@ import { z } from "zod";
 import {
   CREW_ONLINE_MS,
   CrewAcceptTasks,
+  CrewShareAgents,
   CrewFeedItem,
   CrewJoinRequest,
   CrewMembership,
   type Crew,
   type CrewMember,
+  type CrewShare,
+  type CrewShareRequest,
   type CrewTask,
 } from "@forge/protocol";
 import { InviteEntry, MemberCard, Presence, TaskEntry } from "./wire.js";
@@ -44,6 +47,8 @@ export const CrewRecord = z.object({
   lastSeq: z.number().int(),
   acceptTasks: CrewAcceptTasks,
   autoPull: z.boolean(),
+  /** others want to see or take over our sessions (missing in records of before 2026-10-22: ask) */
+  shareAgents: CrewShareAgents.default("ask"),
   members: z.array(MemberEntry),
   removed: z.array(z.string()),
   tasks: z.array(TaskEntry),
@@ -130,7 +135,15 @@ export function cardOf(m: MemberEntry): MemberCard {
 /** The crew as the UI and the tools see it. */
 export function crewView(
   rec: CrewRecord,
-  o: { projectName: string; connection: Crew["connection"]; error: string | null; now: number; self: Pick<MemberEntry, "presence"> | null },
+  o: {
+    projectName: string;
+    connection: Crew["connection"];
+    error: string | null;
+    now: number;
+    self: Pick<MemberEntry, "presence"> | null;
+    shareRequests?: CrewShareRequest[];
+    shares?: CrewShare[];
+  },
 ): Crew {
   const members: CrewMember[] = rec.members
     .filter((m) => !m.left)
@@ -173,6 +186,9 @@ export function crewView(
     requests: rec.requests.map(({ id, name, code, at }) => ({ id, name, code, at })),
     acceptTasks: rec.acceptTasks,
     autoPull: rec.autoPull,
+    shareAgents: rec.shareAgents,
+    shareRequests: o.shareRequests ?? [],
+    shares: o.shares ?? [],
     behind: rec.behind,
     invite: rec.ownInvite && rec.ownInvite.expiresAt > new Date(o.now).toISOString() ? { code: rec.ownInvite.code, expiresAt: rec.ownInvite.expiresAt } : null,
     createdAt: rec.createdAt,

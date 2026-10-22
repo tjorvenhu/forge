@@ -164,6 +164,22 @@ export const SubagentProgress = z.object({
 });
 export type SubagentProgress = z.infer<typeof SubagentProgress>;
 
+/** A crew member's session shown read-only on this installation, live while its owner sends updates. */
+export const CrewMirror = z.object({
+  crewId: z.string(),
+  memberId: z.string(),
+  memberName: z.string(),
+  /** the session id on the member's computer */
+  remoteSessionId: z.string(),
+  /** the share that feeds it */
+  requestId: z.string(),
+  /** updates still arrive */
+  live: z.boolean(),
+  /** when the copy was made */
+  at: z.string(),
+});
+export type CrewMirror = z.infer<typeof CrewMirror>;
+
 /** Context window usage as reported by Claude Code (`getContextUsage`). */
 export const ContextUsage = z.object({
   totalTokens: z.number(),
@@ -205,6 +221,8 @@ export const Session = z.object({
   team: z.boolean().optional(),
   /** agent team: the models its roles run on where they differ from the defaults, fixed at the start */
   teamModels: TeamRoleModels.optional(),
+  /** a crew member's session shown here read-only (crew.shareAsk view); missing for own sessions */
+  mirror: CrewMirror.optional(),
 });
 export type Session = z.infer<typeof Session>;
 

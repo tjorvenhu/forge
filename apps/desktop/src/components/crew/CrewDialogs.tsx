@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Copy, Lock, RefreshCw, Save } from "lucide-react";
-import type { Crew, CrewAcceptTasks, CrewTask } from "@forge/protocol";
+import type { Crew, CrewAcceptTasks, CrewShareAgents, CrewTask } from "@forge/protocol";
 import { call } from "@/lib/queries";
 import { errorMessage } from "@/lib/rpc";
 import { crewChanged, initials } from "@/lib/crew";
@@ -219,7 +219,7 @@ export function CrewSettingsDialog({ crew, open, onOpenChange }: { crew: Crew; o
   useEffect(() => {
     if (open) setName(crew.name);
   }, [open, crew.name]);
-  const update = async (patch: { name?: string; acceptTasks?: CrewAcceptTasks; autoPull?: boolean }) => {
+  const update = async (patch: { name?: string; acceptTasks?: CrewAcceptTasks; autoPull?: boolean; shareAgents?: CrewShareAgents }) => {
     try {
       await call("crew.update", { crewId: crew.id, ...patch });
       crewChanged(qc, crew);
@@ -258,6 +258,14 @@ export function CrewSettingsDialog({ crew, open, onOpenChange }: { crew: Crew; o
         </Field>
         <Field label={m.acceptTasks}>
           <Select value={crew.acceptTasks} onChange={(v) => void update({ acceptTasks: v })} options={options} aria-label={m.acceptTasks} />
+        </Field>
+        <Field label={m.shareAgents}>
+          <Select
+            value={crew.shareAgents}
+            onChange={(v) => void update({ shareAgents: v })}
+            options={(["ask", "auto", "off"] as const).map((v) => ({ value: v, label: m.shareAgentsOptions[v].label, description: m.shareAgentsOptions[v].description }))}
+            aria-label={m.shareAgents}
+          />
         </Field>
         <div className="flex items-start gap-3">
           <div className="min-w-0 flex-1">

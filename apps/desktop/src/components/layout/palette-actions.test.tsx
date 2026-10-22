@@ -206,9 +206,9 @@ describe("command palette covers all of FORGE", () => {
     const ids = (ctx: ActionContext) => new Set(buildActions(ctx).map((e) => e.id));
     const without = ids(fullContext());
     expect(without.has("crew-create") && without.has("crew-join")).toBe(true);
-    const crew = { id: "c1", projectId: "p1", name: "Crew", membership: "member", requests: [{ id: "r1" }], behind: 2 } as unknown as NonNullable<ActionContext["crew"]>;
+    const crew = { id: "c1", projectId: "p1", name: "Crew", membership: "member", requests: [{ id: "r1" }], shareRequests: [{ id: "q1" }], members: [{ id: "me", self: true, online: true, agents: [] }, { id: "anna", name: "Anna", self: false, online: true, agents: [{ id: "s9", title: "API bauen" }] }], behind: 2 } as unknown as NonNullable<ActionContext["crew"]>;
     const inCrew = ids({ ...fullContext(), crew });
-    for (const id of ["crew-open", "crew-invite", "crew-message", "crew-task", "crew-pull", "crew-leave", "crew-requests"]) expect(inCrew.has(id), id).toBe(true);
+    for (const id of ["crew-open", "crew-invite", "crew-message", "crew-task", "crew-pull", "crew-leave", "crew-requests", "crew-share-requests", "crew-view-anna-s9", "crew-takeover-anna-s9"]) expect(inCrew.has(id), id).toBe(true);
     expect(inCrew.has("crew-create")).toBe(false);
     const noGit = { ...project, gitEnabled: false } as ProjectWithStatus;
     expect(ids({ ...fullContext(), project: noGit, root: noGit }).has("crew-create")).toBe(false);

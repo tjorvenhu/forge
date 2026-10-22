@@ -70,14 +70,16 @@ export class WorktreeService {
    * `fromDir`: a new branch starts at the HEAD of this working tree (the project or one of its
    * worktrees) instead of the parent's HEAD, so an agent continues from where its starter stands.
    */
-  async create(parent: Project, branch: string, opts: { fromDir?: string; withChanges?: boolean } = {}): Promise<Project> {
+  async create(parent: Project, branch: string, opts: { fromDir?: string; withChanges?: boolean; startAt?: string } = {}): Promise<Project> {
     if (!(await this.git.isRepo(parent.path))) throw new ForgeError("GIT_NOT_REPO", tr().core.automation.needsGitRepo);
     if (!(await this.git.hasCommits(parent.path))) throw new ForgeError("GIT_FAILED", tr().core.automation.needsCommit);
     const check = await this.git.exec(parent.path, ["check-ref-format", "--branch", branch]);
     if (check.code !== 0 || branch.startsWith("-")) throw new ForgeError("VALIDATION", tr().core.automation.invalidBranch(branch));
     const exists = (await this.git.exec(parent.path, ["rev-parse", "--verify", "-q", `refs/heads/${branch}`])).code === 0;
     const start: string[] = [];
-    if (!exists && opts.fromDir) {
+    // A commit the caller has (a crew member's snapshot): the new branch starts exactly there.
+    if (!exists && opts.startAt) start.push(opts.startAt);
+    else if (!exists && opts.fromDir) {
       const head = await this.git.exec(opts.fromDir, ["rev-parse", "--verify", "-q", "HEAD"]);
       if (head.code !== 0 || !head.stdout.trim()) throw new ForgeError("GIT_FAILED", tr().core.automation.originNoCommit);
       start.push(opts.withChanges ? ((await this.snapshot(opts.fromDir, head.stdout.trim())) ?? head.stdout.trim()) : head.stdout.trim());

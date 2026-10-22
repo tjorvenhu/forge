@@ -71,6 +71,9 @@ export const CREW_ACTIONS = [
   "task_update",
   "task_remove",
   "task_start",
+  "session_view",
+  "session_takeover",
+  "session_answer",
   "respond",
   "pull",
   "settings",
@@ -99,6 +102,12 @@ export interface CrewOptions {
   autoPull?: boolean;
   /** task_start: an agent team works on it */
   team?: boolean;
+  /** session_view, session_takeover: title (or part of it) of the member's session */
+  session?: string;
+  /** session_answer: allow every later request of this crew without asking */
+  always?: boolean;
+  /** settings: what happens when others want one of our sessions */
+  shareSessions?: "ask" | "auto" | "off";
 }
 
 export interface GitOptions extends TargetOptions {
@@ -802,10 +811,16 @@ const TOOL_DEFS: readonly ToolDef[] = [
       accept_tasks: { type: "string", optional: true, enum: CREW_ACCEPT_TASKS },
       auto_pull: { type: "boolean", optional: true },
       team: { type: "boolean", optional: true },
+      session: { type: "string", optional: true },
+      always: { type: "boolean", optional: true },
+      share_sessions: { type: "string", optional: true, enum: ["ask", "auto", "off"] },
     },
     run: (t, a) =>
       t.crew(pick(a.action, CREW_ACTIONS, "status"), {
         team: optBool(a.team),
+        session: opt(a.session),
+        always: optBool(a.always),
+        shareSessions: (["ask", "auto", "off"] as const).find((x) => x === a.share_sessions),
         project: opt(a.project),
         text: opt(a.text),
         to: opt(a.to),

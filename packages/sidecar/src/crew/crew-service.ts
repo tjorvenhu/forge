@@ -5,6 +5,7 @@ import path from "node:path";
 import {
   CREW_COLORS,
   CREW_MAX_MEMBERS,
+  CREW_ONLINE_MS,
   CREW_RELAY_URL,
   CrewProfile,
   ForgeError,
@@ -14,6 +15,9 @@ import {
   type CrewAgent,
   type CrewFeedItem,
   type CrewInviteInfo,
+  type CrewShare,
+  type CrewShareAgents,
+  type CrewShareMode,
   type CrewTask,
   type CrewTaskStatus,
   type Project,
@@ -24,6 +28,7 @@ import {
 import type { GitEngine } from "../git/git.js";
 import { tr } from "../i18n/index.js";
 import { fingerprint, newKey, newKeyPair, open, randomId, seal, sharedKey, type Sealed } from "./crypto.js";
+import { CrewShares, type ShareCrew, type ShareDeps } from "./share.js";
 import { RelayLink, type Envelope, type LinkState } from "./link.js";
 import { cardOf, CrewKeys, CrewRecord, crewView, mergeFeed, mergeMember, mergeTask, overlap, pruneTasks, type MemberEntry } from "./state.js";
 import { decodeInvite, encodeInvite, InviteMessage, JoinGrant, RoomMessage, type InvitePayload, type MemberCard, type Presence, type TaskEntry } from "./wire.js";
@@ -61,6 +66,8 @@ export interface CrewDeps {
     busy(projectId: string): boolean;
   };
   emit(e: ServerEvent): void;
+  /** sessions of members between installations (crew/share.ts); missing: not offered */
+  share?: ShareDeps;
   now?: () => number;
   fetch?: typeof fetch;
   log?: (m: string) => void;
@@ -112,8 +119,11 @@ export class CrewService {
   private readonly now: () => number;
   private started = false;
 
+  private readonly shares: CrewShares | null;
+
   constructor(private readonly d: CrewDeps) {
     this.now = d.now ?? Date.now;
+    this.shares = d.share ? new CrewShares(d.share, { now: () => this.now(), fetch: d.fetch, log: d.log }) : null;
   }
 
   // ---------- lifecycle
@@ -154,6 +164,7 @@ export class CrewService {
 
   stop() {
     this.started = false;
+    this.shares?.stop();
     if (this.heartbeat) clearInterval(this.heartbeat);
     this.heartbeat = null;
     for (const c of this.crews.values()) {
@@ -295,7 +306,57 @@ export class CrewService {
       error: c.error,
       now: this.now(),
       self: { presence: this.ownPresence(c) },
+      ...(this.shares?.forCrew(c.rec.id) ?? {}),
     });
+  }
+
+  /** What the share module sees of a crew. */
+  private shareCrew(c: Live): ShareCrew {
+    return {
+      id: c.rec.id,
+      projectId: c.rec.projectId,
+      selfId: c.rec.selfId,
+      relayUrl: c.rec.relayUrl,
+      key: () => {
+        const key = c.keys.rooms[String(c.rec.epoch)];
+        return key ? { kid: `room:${c.rec.epoch}`, key } : null;
+      },
+      keyFor: (kid) => (kid.startsWith("room:") ? (c.keys.rooms[kid.slice(5)] ?? null) : null),
+      shareAgents: () => c.rec.shareAgents,
+      setShareAgents: (v) => {
+        c.rec.shareAgents = v;
+        this.save(c);
+      },
+      memberName: (id) => this.memberName(c, id),
+      agentTitle: (member, agent) => c.rec.members.find((x) => x.id === member)?.presence?.agents.find((a) => a.id === agent)?.title ?? null,
+      online: (member) => {
+        const x = c.rec.members.find((m) => m.id === member);
+        return !!x && !x.left && x.lastSeen !== null && this.now() - x.lastSeen < CREW_ONLINE_MS;
+      },
+      send: (msg) => this.sendRoom(c, msg),
+      changed: () => this.scheduleEmit(c),
+      notice: (kind, title, text, ref) => this.d.emit({ event: "crew.notice", payload: { crewId: c.rec.id, projectId: c.rec.projectId, kind, title, text, ref } }),
+      project: () => this.project(c),
+    };
+  }
+
+  // ---------- sessions of other members (crew/share.ts)
+
+  shareAsk(crewId: string, memberId: string, agentId: string, mode: CrewShareMode): CrewShare {
+    const c = this.requireMember(crewId);
+    if (!this.shares) throw new ForgeError("CONFLICT", tr().core.crew.notMember);
+    return this.shares.ask(this.shareCrew(c), memberId, agentId, mode);
+  }
+
+  shareRespond(crewId: string, requestId: string, accept: boolean, always = false): Crew {
+    const c = this.requireMember(crewId);
+    this.shares?.respond(this.shareCrew(c), requestId, accept, always);
+    return this.view(c);
+  }
+
+  shareStop(crewId: string, requestId: string): { ok: boolean } {
+    this.require(crewId);
+    return { ok: this.shares?.stopShare(crewId, requestId) ?? false };
   }
 
   private require(crewId: string): Live {
@@ -350,6 +411,7 @@ export class CrewService {
       epoch: 1,
       lastSeq: 0,
       acceptTasks: "ask",
+      shareAgents: "ask",
       autoPull: true,
       members: [{ id: selfId, name: profile.name, color: profile.color, pub: pair.pub, joinedAt: at, owner: true, left: false, lastSeen: null, presence: null }],
       removed: [],
@@ -464,6 +526,7 @@ export class CrewService {
       epoch: 0,
       lastSeq: 0,
       acceptTasks: "ask",
+      shareAgents: "ask",
       autoPull: true,
       members: [{ id: selfId, name: profile.name, color: profile.color, pub: pair.pub, joinedAt: at, owner: false, left: false, lastSeen: null, presence: null }],
       removed: [],
@@ -536,6 +599,7 @@ export class CrewService {
   }
 
   private async drop(c: Live) {
+    this.shares?.dropCrew(c.rec.id);
     c.link?.stop();
     c.link = null;
     for (const t of Object.values(c.timers)) if (t) clearTimeout(t);
@@ -584,9 +648,10 @@ export class CrewService {
     c.rec.requests = c.rec.requests.filter((r) => r.member !== memberId);
   }
 
-  update(crewId: string, patch: { name?: string; acceptTasks?: CrewAcceptTasks; autoPull?: boolean }): Crew {
+  update(crewId: string, patch: { name?: string; acceptTasks?: CrewAcceptTasks; autoPull?: boolean; shareAgents?: CrewShareAgents }): Crew {
     const c = this.require(crewId);
     if (patch.acceptTasks) c.rec.acceptTasks = patch.acceptTasks;
+    if (patch.shareAgents) c.rec.shareAgents = patch.shareAgents;
     if (patch.autoPull !== undefined) {
       c.rec.autoPull = patch.autoPull;
       if (patch.autoPull && c.rec.behind > 0) this.schedulePull(c, 0);
@@ -871,6 +936,12 @@ export class CrewService {
       case "rekey":
         void this.onRekey(c, e, msg);
         break;
+      case "share_ask":
+      case "share_answer":
+      case "share_stop":
+      case "share_keep":
+        this.shares?.onRoom(this.shareCrew(c), e.from, msg);
+        break;
     }
     this.save(c);
     this.scheduleEmit(c);
@@ -1020,7 +1091,10 @@ export class CrewService {
   /** Every event of the app passes here (app.ts); sessions of crew projects become our presence. */
   onServerEvent(e: ServerEvent) {
     if (!this.crews.size) return;
-    if (e.event === "session.event") this.onSessionEvent(e.payload.sessionId, e.payload.body);
+    if (e.event === "session.event") {
+      this.shares?.onSessionEvent(e.payload.sessionId, e.payload.body);
+      this.onSessionEvent(e.payload.sessionId, e.payload.body);
+    }
     else if (e.event === "session.updated") this.onSessionUpdated(e.payload);
     else if (e.event === "project.updated") {
       const c = this.liveFor(e.payload.projectId);
@@ -1048,6 +1122,8 @@ export class CrewService {
   }
 
   private onSessionUpdated(s: Session) {
+    // A copy of another member's session is not our work.
+    if (s.mirror) return;
     const c = this.liveFor(s.projectId);
     if (!c) return;
     const a = this.agentOf(c, s);
@@ -1067,7 +1143,7 @@ export class CrewService {
   private onSessionEvent(sessionId: string, body: SessionEventBody) {
     if (body.type !== "user.message" && body.type !== "tool.use" && body.type !== "turn.result" && body.type !== "approval.request") return;
     const s = this.d.sessions.get(sessionId);
-    if (!s) return;
+    if (!s || s.mirror) return;
     const c = this.liveFor(s.projectId);
     if (!c) return;
     const a = this.agentOf(c, s);

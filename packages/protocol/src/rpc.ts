@@ -99,6 +99,9 @@ import {
   CrewFeedItem,
   CrewInviteInfo,
   CrewProfile,
+  CrewShare,
+  CrewShareAgents,
+  CrewShareMode,
   CrewTask,
   CrewTaskStatus,
   CREW_INVITE_PREFIX,
@@ -278,7 +281,16 @@ export const methods = {
   "crew.leave": { params: crewRef, result: z.object({ ok: z.boolean() }) },
   /** owner only: removes a member; the crew gets a new key the removed one does not know */
   "crew.removeMember": { params: crewRef.extend({ memberId: id }), result: Crew },
-  "crew.update": { params: crewRef.extend({ name: z.string().trim().min(1).max(CREW_NAME_MAX).optional(), acceptTasks: CrewAcceptTasks.optional(), autoPull: z.boolean().optional() }), result: Crew },
+  "crew.update": {
+    params: crewRef.extend({ name: z.string().trim().min(1).max(CREW_NAME_MAX).optional(), acceptTasks: CrewAcceptTasks.optional(), autoPull: z.boolean().optional(), shareAgents: CrewShareAgents.optional() }),
+    result: Crew,
+  },
+  /** asks a member for one of its sessions: view (live, read-only) or takeover (chat, Claude's conversation and files in a worktree here) */
+  "crew.shareAsk": { params: crewRef.extend({ memberId: id, agentId: id, mode: CrewShareMode }), result: CrewShare },
+  /** answers a request for one of our sessions; always: allow every later one of this crew without asking */
+  "crew.shareRespond": { params: crewRef.extend({ requestId: id, accept: z.boolean(), always: z.boolean().optional() }), result: Crew },
+  /** ends a live view (its copy stays) or drops a share that did not finish */
+  "crew.shareStop": { params: crewRef.extend({ requestId: id }), result: z.object({ ok: z.boolean() }) },
   /** a message to the crew (to: one member) */
   "crew.message": { params: crewRef.extend({ text: z.string().trim().min(1).max(CREW_MESSAGE_MAX), to: id.nullable().optional() }), result: CrewFeedItem },
   "crew.taskAdd": {
@@ -915,7 +927,7 @@ export type ServerEvent =
    * something in a crew the user should see now: someone asks to join, a task was given to us, a
    * member pushed, a message to us, FORGE took over pushed commits, we were let in or removed
    */
-  | { event: "crew.notice"; payload: { crewId: string; projectId: string; kind: "request" | "task" | "push" | "message" | "pulled" | "joined" | "rejected" | "removed"; title: string; text: string; ref: string | null } }
+  | { event: "crew.notice"; payload: { crewId: string; projectId: string; kind: "request" | "task" | "push" | "message" | "pulled" | "joined" | "rejected" | "removed" | "share" | "shared"; title: string; text: string; ref: string | null } }
   /** a before/after comparison changed (after image taken, failed, taken again) */
   | { event: "uiCompare.updated"; payload: UiCompare }
   | { event: "phone.updated"; payload: PhoneState }

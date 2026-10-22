@@ -1,8 +1,10 @@
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import type { AddressInfo } from "node:net";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { Crew, Project, ServerEvent, Session } from "@forge/protocol";
+import type { Crew, Project, ServerEvent, Session, SessionEventBody } from "@forge/protocol";
+import { claudeProjectDir, type ShareDeps } from "../src/crew/share.js";
+import type { CopyImport } from "../src/sessions/session-service.js";
 import { createRelayServer } from "../../../services/stats/src/lib/crew-relay-node.js";
 import { CrewService } from "../src/crew/crew-service.js";
 import { fingerprint, newKey, newKeyPair, open, seal, sharedKey } from "../src/crew/crypto.js";
@@ -117,6 +119,39 @@ describe("two FORGE installations in one crew", () => {
     const proj = project(projectId, dir);
     const dataDir = path.join(t.dir, `data-${name}`);
     mkdirSync(dataDir, { recursive: true });
+    // Sessions of other members land here (crew/share.ts); their events, worktrees and Claude folder.
+    const sessionEvents = new Map<string, SessionEventBody[]>();
+    const imported: Array<CopyImport & { id: string }> = [];
+    const appended: SessionEventBody[] = [];
+    const worktreeProjects: Project[] = [];
+    const claudeDir = path.join(t.dir, `claude-${name}`);
+    const share: ShareDeps = {
+      sessions: {
+        get: (id) => sessions.get(id) ?? null,
+        recentEvents: (id) => sessionEvents.get(id) ?? [],
+        importCopy: (o) => {
+          const s: Session = { ...session(`copy-${name}-${imported.length + 1}`, o.projectId, o.cwd, o.title), claudeSessionId: o.claudeSessionId, ...(o.mirror ? { mirror: o.mirror } : {}) };
+          imported.push({ ...o, id: s.id });
+          sessions.set(s.id, s);
+          return s;
+        },
+        appendMirror: (_id, bodies) => void appended.push(...bodies),
+        setMirrorLive: () => {},
+        endMirrors: () => {},
+      },
+      // Tracked changes are enough for the test (FORGE's own snapshot also takes untracked files).
+      snapshot: async (dir) => (await git(dir, "stash", "create")).trim() || null,
+      worktree: async (parent, branch, startAt) => {
+        const wdir = path.join(t.dir, `wt-${name}-${worktreeProjects.length + 1}`);
+        await git(parent.path, "worktree", "add", "-b", branch, wdir, startAt);
+        const wp = { ...project(`wt-${name}-${worktreeProjects.length + 1}`, wdir), parentId: parent.id };
+        worktreeProjects.push(wp);
+        return wp;
+      },
+      git: new GitEngine(),
+      claudeDir,
+      projects: () => [proj, ...worktreeProjects],
+    };
     writeFileSync(path.join(dataDir, "profile.json"), JSON.stringify({ name, color: "#3e8cf0", relayUrl }));
     const make = () =>
       new CrewService({
@@ -144,10 +179,11 @@ describe("two FORGE installations in one crew", () => {
           busy: () => false,
         },
         emit: (e) => events.push(e),
+        share,
       });
     const svc = make();
     services.push(svc);
-    return { svc, events, sessions, started, proj, dir, make, secrets };
+    return { svc, events, sessions, started, proj, dir, make, secrets, sessionEvents, imported, appended, claudeDir };
   }
 
   const crewOf = (svc: CrewService): Crew | undefined => svc.list()[0];
@@ -272,6 +308,88 @@ describe("two FORGE installations in one crew", () => {
     const r = await again.startTask(crewOf(again)!.id, big.id, true);
     expect(a.started.at(-1)).toMatchObject({ team: true });
     expect(r.sessionId).toMatch(/^team-/);
+  });
+
+  it("lets a member watch another member's session live and take it over with its files and Claude's conversation", { timeout: 90_000 }, async () => {
+    const origin = path.join(t.dir, "origin-share.git");
+    await git(t.dir, "init", "--bare", "-b", "main", origin);
+    const dirA = path.join(t.dir, "anna-s");
+    mkdirSync(dirA);
+    await initRepo(dirA);
+    writeFileSync(path.join(dirA, "README.md"), "hallo\n");
+    await git(dirA, "add", ".");
+    await git(dirA, "commit", "-m", "start");
+    await git(dirA, "remote", "add", "origin", origin);
+    await git(dirA, "push", "-u", "origin", "main");
+    const dirB = path.join(t.dir, "ben-s");
+    await git(t.dir, "clone", origin, dirB);
+    await git(dirB, "config", "user.email", "ben@forge.local");
+    await git(dirB, "config", "user.name", "Ben");
+    await git(dirB, "config", "commit.gpgsign", "false");
+
+    const a = installation("Anna", dirA, "pa");
+    const b = installation("Ben", dirB, "pb");
+    await a.svc.start();
+    await b.svc.start();
+    const created = await a.svc.create("pa", "Share");
+    await b.svc.join("pb", created.invite!.code);
+    const request = await waitFor("join request", () => crewOf(a.svc)?.requests[0]);
+    await a.svc.respond(created.id, request.id, true);
+    await waitFor("Ben is a member", () => crewOf(b.svc)?.membership === "member" && crewOf(a.svc)?.members.length === 2);
+    const benId = crewOf(b.svc)!.selfId;
+
+    // Ben works: a commit not pushed yet, a change not committed, and a session with Claude's transcript.
+    writeFileSync(path.join(dirB, "feature.ts"), "export const f = 1;\n");
+    await git(dirB, "add", "feature.ts");
+    await git(dirB, "commit", "-m", "Feature angefangen");
+    writeFileSync(path.join(dirB, "README.md"), "hallo von Ben\n");
+    const benSession: Session = { ...session("sb", "pb", dirB, "Login bauen"), claudeSessionId: "claude-ben-1" };
+    b.sessions.set("sb", benSession);
+    b.sessionEvents.set("sb", [
+      { type: "user.message", text: "Bau die Login-Seite" },
+      { type: "assistant.text", messageId: "m1", index: 0, text: "Mache ich." },
+    ]);
+    const transcriptDir = claudeProjectDir(b.claudeDir, dirB);
+    mkdirSync(transcriptDir, { recursive: true });
+    const line = (o: unknown) => `${JSON.stringify(o)}\n`;
+    writeFileSync(path.join(transcriptDir, "claude-ben-1.jsonl"), line({ type: "user", sessionId: "claude-ben-1", cwd: dirB, message: { role: "user", content: `Lies ${path.join(dirB, "README.md")}` } }));
+    b.svc.onServerEvent({ event: "session.event", payload: { seq: 1, sessionId: "sb", ts: "", body: { type: "user.message", text: "Bau die Login-Seite" } } });
+    await waitFor("Ben's session at Anna", () => crewOf(a.svc)?.members.find((m) => m.id === benId)?.agents.find((x) => x.id === "sb"));
+
+    // View: Ben is asked first, says yes for good; Anna gets a read-only copy that stays live.
+    const asked = a.svc.shareAsk(created.id, benId, "sb", "view");
+    expect(asked).toMatchObject({ state: "asking", agentTitle: "Login bauen" });
+    const pendingShare = await waitFor("request at Ben", () => crewOf(b.svc)?.shareRequests[0]);
+    expect(pendingShare).toMatchObject({ agentId: "sb", mode: "view" });
+    expect(b.events.some((e) => e.event === "crew.notice" && e.payload.kind === "share")).toBe(true);
+    b.svc.shareRespond(crewOf(b.svc)!.id, pendingShare.id, true, true);
+    await waitFor("live view at Anna", () => crewOf(a.svc)?.shares.find((x) => x.id === asked.id && x.state === "live"));
+    expect(a.imported[0]).toMatchObject({ projectId: "pa", claudeSessionId: null, mirror: { memberId: benId, remoteSessionId: "sb", live: true } });
+    expect(a.imported[0]!.events.map((e) => e.type)).toEqual(["user.message", "assistant.text"]);
+    expect(a.events.some((e) => e.event === "crew.notice" && e.payload.kind === "shared" && e.payload.ref === a.imported[0]!.id)).toBe(true);
+    b.svc.onServerEvent({ event: "session.event", payload: { seq: 2, sessionId: "sb", ts: "", body: { type: "assistant.text", messageId: "m2", index: 0, text: "Formular steht." } } });
+    await waitFor("live event at Anna", () => a.appended.find((x) => x.type === "assistant.text" && x.text === "Formular steht."));
+    a.svc.shareStop(created.id, asked.id);
+    expect(crewOf(a.svc)!.shares.find((x) => x.id === asked.id)!.state).toBe("ended");
+
+    // Takeover, now allowed without asking: chat, Claude's conversation and Ben's files in a worktree.
+    const take = a.svc.shareAsk(created.id, benId, "sb", "takeover");
+    const done = await waitFor("takeover done", () => crewOf(a.svc)?.shares.find((x) => x.id === take.id && (x.state === "done" || x.state === "failed")), 60_000);
+    expect(done.error).toBeNull();
+    const copy = a.imported[1]!;
+    expect(copy.title).toContain("Login bauen");
+    expect(copy.claudeSessionId).toMatch(/^[0-9a-f-]{36}$/);
+    // git may check files out with CRLF (core.autocrlf on Windows)
+    const read = (f: string) => readFileSync(path.join(copy.cwd, f), "utf8").replace(/\r\n/g, "\n");
+    expect(read("README.md")).toBe("hallo von Ben\n");
+    expect(read("feature.ts")).toBe("export const f = 1;\n");
+    // Ben's commit is the worktree's HEAD; his uncommitted change is uncommitted here too.
+    expect((await git(copy.cwd, "log", "-1", "--format=%s")).trim()).toBe("Feature angefangen");
+    expect((await git(copy.cwd, "status", "--porcelain")).trim()).toBe("M README.md");
+    const transcript = readFileSync(path.join(claudeProjectDir(a.claudeDir, copy.cwd), `${copy.claudeSessionId}.jsonl`), "utf8");
+    expect(transcript).toContain(copy.claudeSessionId!);
+    expect(transcript).not.toContain("claude-ben-1");
+    expect(transcript).toContain(JSON.stringify(path.join(copy.cwd, "README.md")).slice(1, -1));
   });
 
   it("tells a newcomer when the request was declined", { timeout: 30_000 }, async () => {

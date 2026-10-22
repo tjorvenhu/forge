@@ -6,9 +6,12 @@ import {
   Bot,
   Check,
   CheckCircle2,
+  ChevronRight,
   ClipboardList,
   Copy,
   Crown,
+  Download,
+  Eye,
   FileText,
   GitBranch,
   GitCommitHorizontal,
@@ -24,7 +27,6 @@ import {
   Play,
   Radio,
   RotateCcw,
-  Send,
   Settings2,
   ShieldCheck,
   Trash2,
@@ -33,12 +35,24 @@ import {
   Users,
   X,
 } from "lucide-react";
-import { CREW_INVITE_PREFIX, type Crew, type CrewFeedItem, type CrewJoinRequest, type CrewMember, type CrewTask, type CrewTaskStatus, type Project } from "@forge/protocol";
+import {
+  CREW_INVITE_PREFIX,
+  type Crew,
+  type CrewAgent,
+  type CrewJoinRequest,
+  type CrewMember,
+  type CrewShare,
+  type CrewShareMode,
+  type CrewShareRequest,
+  type CrewTask,
+  type CrewTaskStatus,
+  type Project,
+} from "@forge/protocol";
 import { call, keys, useCrew, useProjects } from "@/lib/queries";
 import { useTeamsAllowed } from "@/lib/agent-teams";
 import { errorMessage } from "@/lib/rpc";
 import { contextItems, copyText } from "@/lib/context-menu";
-import { crewChanged, memberName, openCrew, others, pullCrew, respondCrew, startCrewTask } from "@/lib/crew";
+import { askShare, crewChanged, memberName, openCrew, openShared, pullCrew, respondCrew, respondShare, startCrewTask, stopShare } from "@/lib/crew";
 import { cn, relativeTime } from "@/lib/utils";
 import { toast } from "@/stores/toast";
 import { useUi } from "@/stores/ui";
@@ -46,17 +60,14 @@ import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { DropdownMenu, type MenuItem } from "@/components/ui/dropdown";
 import { Field, Input, Textarea } from "@/components/ui/input";
-import { Badge, EmptyState, ErrorBanner } from "@/components/ui/misc";
-import { Select } from "@/components/ui/select";
+import { EmptyState, ErrorBanner } from "@/components/ui/misc";
 import { Skeleton, SkeletonRegion } from "@/components/ui/skeleton";
 import { CrewSettingsDialog, InviteDialog, MemberAvatar, TaskDialog } from "./CrewDialogs";
+import { CREW_MESSAGE_INPUT, CrewChat } from "./CrewChat";
 import { t } from "@/i18n";
 
 const m = t.crew;
 const ic = "h-3.5 w-3.5";
-/** id of the message field, so the palette and the member menu can put the cursor there */
-export const CREW_MESSAGE_INPUT = "crew-message-input";
-const EVERYONE = "*";
 
 /**
  * Crew tab of a project: live collaboration with other FORGE installations. Without a crew it offers
@@ -74,11 +85,11 @@ export function CrewTab({ project }: { project: Project }) {
       </div>
     );
   const crew = q.crew;
+  // The board fills the tab (chat with its field at the bottom); welcome and waiting scroll.
+  if (crew?.membership === "member") return <CrewBoard crew={crew} />;
   return (
     <div className="h-full overflow-y-auto">
-      <div className="mx-auto flex w-full max-w-7xl flex-col gap-5 p-5">
-        {!crew ? <CrewWelcome project={project} rootId={rootId} /> : crew.membership === "member" ? <CrewBoard crew={crew} /> : <CrewWaiting crew={crew} />}
-      </div>
+      <div className="mx-auto flex w-full max-w-7xl flex-col gap-5 p-5">{!crew ? <CrewWelcome project={project} rootId={rootId} /> : <CrewWaiting crew={crew} />}</div>
     </div>
   );
 }
@@ -347,9 +358,11 @@ function CrewBoard({ crew }: { crew: Crew }) {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [leaveOpen, setLeaveOpen] = useState(false);
   const [taskDialog, setTaskDialog] = useState<{ task: CrewTask | null; assignee?: string | null } | null>(null);
-  const [to, setTo] = useState<string>(EVERYONE);
+  const [to, setTo] = useState<string | null>(null);
+  const [pane, setPane] = useState<Pane>("chat");
   const focusMessage = (memberId: string | null) => {
-    setTo(memberId ?? EVERYONE);
+    setTo(memberId);
+    setPane("chat");
     requestAnimationFrame(() => document.getElementById(CREW_MESSAGE_INPUT)?.focus());
   };
   useCrewRequest((kind) => {
@@ -370,6 +383,7 @@ function CrewBoard({ crew }: { crew: Crew }) {
     }
   };
   const online = crew.members.filter((x) => x.online).length;
+  const openTasks = crew.tasks.filter((x) => x.status !== "done").length;
   const menu: MenuItem[] = [
     { label: m.invite, icon: <UserPlus className={ic} />, onSelect: () => setInviteOpen(true) },
     { label: m.addTaskTitle, icon: <ListPlus className={ic} />, onSelect: () => setTaskDialog({ task: null }) },
@@ -378,30 +392,35 @@ function CrewBoard({ crew }: { crew: Crew }) {
     ...(crew.behind > 0 ? [{ label: m.pull, icon: <ArrowDownToLine className={ic} />, onSelect: () => void pullCrew(qc, crew) }] : []),
     { label: m.leave, icon: <LogOut className={ic} />, onSelect: () => setLeaveOpen(true), danger: true },
   ];
+  const panes: Array<{ id: Pane; label: string; count: number | null }> = [
+    { id: "chat", label: m.panes.chat, count: null },
+    { id: "people", label: m.panes.people, count: online },
+    { id: "tasks", label: m.panes.tasks, count: openTasks },
+  ];
   return (
-    <>
-      <header className="flex flex-wrap items-center gap-3 rounded-xl border border-border bg-surface px-4 py-3" onContextMenu={contextItems(() => menu)}>
-        <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-accent/15 text-accent">
-          <Users className="h-5 w-5" />
+    <div className="@container flex h-full min-h-0 flex-col">
+      <header className="flex shrink-0 items-center gap-3 border-b border-border px-4 py-2.5" onContextMenu={contextItems(() => menu)}>
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-accent/15 text-accent">
+          <Users className="h-4 w-4" />
         </span>
         <div className="flex min-w-0 flex-col">
-          <h2 className="truncate text-title-sm font-semibold">{crew.name}</h2>
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5">
+          <h2 className="truncate text-body font-semibold leading-tight">{crew.name}</h2>
+          <div className="flex flex-wrap items-center gap-x-2.5">
             <ConnectionState crew={crew} />
-            <span className="text-xs text-subtle">{m.memberCount(online, crew.members.length)}</span>
+            <span className="text-caption-lg text-subtle">{m.memberCount(online, crew.members.length)}</span>
           </div>
         </div>
-        <div className="flex -space-x-1 pl-1">
+        <div className="hidden -space-x-1 pl-1 @md:flex">
           {crew.members.map((x) => (
-            <MemberAvatar key={x.id} name={x.name} color={x.color} size={26} className={cn("ring-2 ring-surface", !x.online && "opacity-45")} />
+            <MemberAvatar key={x.id} name={x.name} color={x.color} size={24} className={cn("ring-2 ring-bg", !x.online && "opacity-45")} />
           ))}
         </div>
         <div className="flex-1" />
-        <Button size="sm" variant="outline" onClick={() => setTaskDialog({ task: null })}>
+        <Button size="sm" variant="ghost" className="hidden @lg:inline-flex" onClick={() => setTaskDialog({ task: null })}>
           <ListPlus className={ic} /> {m.addTask}
         </Button>
         <Button size="sm" variant="primary" onClick={() => setInviteOpen(true)}>
-          <UserPlus className={ic} /> {m.invite}
+          <UserPlus className={ic} /> <span className="hidden @md:inline">{m.invite}</span>
         </Button>
         <DropdownMenu
           trigger={
@@ -413,38 +432,81 @@ function CrewBoard({ crew }: { crew: Crew }) {
         />
       </header>
 
-      {crew.requests.map((r) => (
-        <RequestBanner key={r.id} crew={crew} request={r} />
-      ))}
-
-      {crew.behind > 0 && (
-        <div className="flex items-center gap-3 rounded-xl border border-warning/40 bg-warning/10 px-4 py-2.5 text-body">
-          <GitCommitHorizontal className="h-4 w-4 shrink-0 text-warning" />
-          <span className="flex-1">{m.behind(crew.behind)}</span>
-          <Button size="sm" variant="outline" onClick={() => void pullCrew(qc, crew)}>
-            <ArrowDownToLine className={ic} /> {m.pull}
-          </Button>
+      {(crew.requests.length > 0 || crew.shareRequests.length > 0 || crew.behind > 0) && (
+        <div className="flex shrink-0 flex-col gap-2 border-b border-border px-4 py-2.5">
+          {crew.requests.map((r) => (
+            <RequestBanner key={r.id} crew={crew} request={r} />
+          ))}
+          {crew.shareRequests.map((r) => (
+            <ShareRequestBanner key={r.id} crew={crew} request={r} />
+          ))}
+          {crew.behind > 0 && (
+            <div className="flex items-center gap-3 rounded-lg border border-warning/40 bg-warning/10 px-3 py-2 text-small">
+              <GitCommitHorizontal className="h-4 w-4 shrink-0 text-warning" />
+              <span className="flex-1">{m.behind(crew.behind)}</span>
+              <Button size="sm" variant="outline" onClick={() => void pullCrew(qc, crew)}>
+                <ArrowDownToLine className={ic} /> {m.pull}
+              </Button>
+            </div>
+          )}
         </div>
       )}
 
-      <div className="grid gap-5 xl:grid-cols-[340px_minmax(0,1fr)]">
-        <section className="flex flex-col gap-2">
-          <h3 className="text-xs font-medium uppercase tracking-wide text-subtle">{m.membersTitle}</h3>
-          {crew.members.map((x) => (
-            <MemberCard key={x.id} crew={crew} member={x} onMessage={() => focusMessage(x.id)} onTask={() => setTaskDialog({ task: null, assignee: x.id })} />
-          ))}
-        </section>
-        <div className="flex min-w-0 flex-col gap-5">
-          <TaskBoard crew={crew} onEdit={(task) => setTaskDialog({ task })} onAdd={() => setTaskDialog({ task: null })} />
-          <Feed crew={crew} to={to} onTo={setTo} />
-        </div>
+      <div className="flex shrink-0 gap-1 border-b border-border px-3 py-1.5 @3xl:hidden" role="tablist">
+        {panes.map((p) => (
+          <button
+            key={p.id}
+            type="button"
+            role="tab"
+            aria-selected={pane === p.id}
+            onClick={() => setPane(p.id)}
+            className={cn("flex items-center gap-1.5 rounded-md px-2.5 py-1 text-small font-medium transition-colors", pane === p.id ? "bg-surface-3 text-fg" : "text-muted hover:bg-surface-2 hover:text-fg")}
+          >
+            {p.label}
+            {p.count !== null && p.count > 0 && <span className="rounded-full bg-surface-2 px-1.5 text-caption tabular-nums text-muted">{p.count}</span>}
+          </button>
+        ))}
+      </div>
+
+      <div className="flex min-h-0 flex-1">
+        <CrewChat crew={crew} to={to} onTo={setTo} inputId={CREW_MESSAGE_INPUT} className={cn("min-w-0 flex-1", pane !== "chat" ? "hidden @3xl:flex" : "flex")} />
+        <aside className={cn("min-h-0 w-full shrink-0 overflow-y-auto border-border @3xl:w-80 @3xl:border-l @5xl:w-96", pane === "chat" && "hidden @3xl:block")}>
+          <div className={cn("flex flex-col gap-1 p-3", pane === "tasks" && "hidden @3xl:flex")}>
+            <SideTitle>{m.membersTitle}</SideTitle>
+            {crew.members.map((x) => (
+              <MemberRow key={x.id} crew={crew} member={x} onMessage={() => focusMessage(x.id)} onTask={() => setTaskDialog({ task: null, assignee: x.id })} />
+            ))}
+            {crew.shares.length > 0 && (
+              <>
+                <SideTitle className="mt-3">{m.sharesTitle}</SideTitle>
+                {[...crew.shares].reverse().map((s) => (
+                  <ShareRow key={s.id} crew={crew} share={s} />
+                ))}
+              </>
+            )}
+          </div>
+          <div className={cn("flex flex-col gap-2 p-3 @3xl:border-t @3xl:border-border", pane === "people" && "hidden @3xl:flex")}>
+            <TaskList crew={crew} onEdit={(task) => setTaskDialog({ task })} onAdd={() => setTaskDialog({ task: null })} />
+          </div>
+        </aside>
       </div>
 
       <InviteDialog crew={crew} open={inviteOpen} onOpenChange={setInviteOpen} />
       <CrewSettingsDialog crew={crew} open={settingsOpen} onOpenChange={setSettingsOpen} />
       <TaskDialog crew={crew} task={taskDialog?.task ?? null} assignee={taskDialog?.assignee ?? null} open={!!taskDialog} onOpenChange={(o) => !o && setTaskDialog(null)} />
       <ConfirmDialog open={leaveOpen} onOpenChange={setLeaveOpen} title={m.leaveTitle} description={m.leaveDescription(crew.name)} confirmLabel={m.leave} danger onConfirm={leave} />
-    </>
+    </div>
+  );
+}
+
+type Pane = "chat" | "people" | "tasks";
+
+function SideTitle({ children, className, action }: { children: ReactNode; className?: string; action?: ReactNode }) {
+  return (
+    <div className={cn("flex items-center justify-between px-1 pb-0.5", className)}>
+      <h3 className="text-caption-lg font-semibold uppercase tracking-wide text-subtle">{children}</h3>
+      {action}
+    </div>
   );
 }
 
@@ -461,10 +523,10 @@ function RequestBanner({ crew, request }: { crew: Crew; request: CrewJoinRequest
     { label: m.decline, icon: <X className={ic} />, onSelect: () => void answer(false), danger: true },
   ];
   return (
-    <div className="flex flex-wrap items-center gap-3 rounded-xl border border-accent/50 bg-accent/10 px-4 py-3 animate-rise-in" onContextMenu={contextItems(menu)} role="alert">
-      <KeyRound className="h-5 w-5 shrink-0 text-accent" />
+    <div className="flex flex-wrap items-center gap-3 rounded-lg border border-accent/50 bg-accent/10 px-3 py-2 animate-rise-in" onContextMenu={contextItems(menu)} role="alert">
+      <KeyRound className="h-4 w-4 shrink-0 text-accent" />
       <div className="min-w-0 flex-1">
-        <div className="text-body font-medium">{m.requestTitle(request.name)}</div>
+        <div className="text-small font-medium">{m.requestTitle(request.name)}</div>
         <div className="text-xs text-muted">
           {m.requestText} <span className="font-mono text-sm font-semibold tracking-wider text-fg">{request.code}</span>
           <span className="text-subtle"> · {relativeTime(request.at)}</span>
@@ -480,7 +542,54 @@ function RequestBanner({ crew, request }: { crew: Crew; request: CrewJoinRequest
   );
 }
 
-function MemberCard({ crew, member, onMessage, onTask }: { crew: Crew; member: CrewMember; onMessage: () => void; onTask: () => void }) {
+/** Someone wants to watch or take over one of our sessions. */
+function ShareRequestBanner({ crew, request }: { crew: Crew; request: CrewShareRequest }) {
+  const qc = useQueryClient();
+  const [busy, setBusy] = useState<"allow" | "always" | "deny" | null>(null);
+  const name = memberName(crew, request.from);
+  const from = crew.members.find((x) => x.id === request.from);
+  const takeover = request.mode === "takeover";
+  const answer = async (accept: boolean, always = false) => {
+    setBusy(accept ? (always ? "always" : "allow") : "deny");
+    await respondShare(qc, crew, request, name, accept, always);
+    setBusy(null);
+  };
+  return (
+    <div
+      className="flex flex-wrap items-center gap-3 rounded-lg border border-accent/50 bg-accent/10 px-3 py-2 animate-rise-in"
+      role="alert"
+      onContextMenu={contextItems(() => [
+        { label: m.allow, icon: <Check className={ic} />, onSelect: () => void answer(true) },
+        { label: m.allowAlways, icon: <ShieldCheck className={ic} />, onSelect: () => void answer(true, true) },
+        { label: m.deny, icon: <X className={ic} />, onSelect: () => void answer(false), danger: true },
+      ])}
+    >
+      <MemberAvatar name={name} color={from?.color ?? "var(--color-subtle)"} size={26} />
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-1.5 text-small font-medium">
+          {takeover ? <Download className={cn(ic, "text-accent")} /> : <Eye className={cn(ic, "text-accent")} />}
+          {m.shareRequestTitle(name, takeover)}
+        </div>
+        <div className="text-xs text-muted">
+          <span className="font-medium text-fg">{request.agentTitle}</span> · {m.shareRequestText(takeover)}
+        </div>
+      </div>
+      <Button size="sm" variant="ghost" loading={busy === "deny"} disabled={!!busy} onClick={() => void answer(false)}>
+        {m.deny}
+      </Button>
+      <Button size="sm" variant="outline" loading={busy === "always"} disabled={!!busy} onClick={() => void answer(true, true)}>
+        {m.allowAlways}
+      </Button>
+      <Button size="sm" variant="primary" loading={busy === "allow"} disabled={!!busy} onClick={() => void answer(true)}>
+        <Check className={ic} /> {m.allow}
+      </Button>
+    </div>
+  );
+}
+
+const STATUS_DOT: Record<CrewAgent["status"], string> = { working: "animate-pulse bg-accent", waiting: "bg-warning", idle: "bg-success" };
+
+function MemberRow({ crew, member, onMessage, onTask }: { crew: Crew; member: CrewMember; onMessage: () => void; onTask: () => void }) {
   const qc = useQueryClient();
   const [removeOpen, setRemoveOpen] = useState(false);
   const [showFiles, setShowFiles] = useState(false);
@@ -502,98 +611,171 @@ function MemberCard({ crew, member, onMessage, onTask }: { crew: Crew; member: C
     ...(member.files.length ? [{ label: m.copyFiles, icon: <Copy className={ic} />, onSelect: () => copyText(member.files.join("\n")) }] : []),
     ...(canRemove ? [{ label: m.removeMember, icon: <UserMinus className={ic} />, onSelect: () => setRemoveOpen(true), danger: true }] : []),
   ];
-  const files = showFiles ? member.files : member.files.slice(0, 5);
   return (
-    <article className={cn("flex flex-col gap-2.5 rounded-xl border bg-surface p-3", member.self ? "border-accent/40" : "border-border")} onContextMenu={contextItems(menu)}>
-      <div className="flex items-center gap-2.5">
-        <MemberAvatar name={member.name} color={member.color} online={member.online} size={32} />
+    <div className="rounded-lg px-1.5 py-1.5 hover:bg-surface-2/60" onContextMenu={contextItems(menu)}>
+      <div className="group flex items-center gap-2">
+        <MemberAvatar name={member.name} color={member.color} online={member.online} size={26} />
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-1.5">
-            <span className="truncate text-body font-medium">{member.name}</span>
-            {member.self && <span className="text-xs text-subtle">({m.you})</span>}
-            {member.owner && (
-              <span title={m.owner} className="text-warning">
-                <Crown className={ic} aria-label={m.owner} />
-              </span>
-            )}
+          <div className="flex items-center gap-1">
+            <span className="truncate text-small font-medium">{member.name}</span>
+            {member.self && <span className="text-caption text-subtle">({m.you})</span>}
+            {member.owner && <Crown className="h-3 w-3 shrink-0 text-warning" aria-label={m.owner} />}
           </div>
-          <div className="flex flex-wrap items-center gap-x-2 text-xs text-muted">
+          <div className="flex flex-wrap items-center gap-x-1.5 text-caption text-muted">
             <span className={member.online ? "text-success" : undefined}>{member.online ? m.online : member.lastSeen ? m.lastSeen(relativeTime(member.lastSeen)) : m.offline}</span>
             {member.branch && (
-              <span className="inline-flex items-center gap-1">
-                <GitBranch className="h-3 w-3" /> {member.branch}
+              <span className="inline-flex items-center gap-0.5">
+                <GitBranch className="h-2.5 w-2.5" /> {member.branch}
               </span>
             )}
             {member.ahead > 0 && <span className="text-warning">{m.ahead(member.ahead)}</span>}
           </div>
         </div>
-        <DropdownMenu
-          trigger={
-            <Button size="icon-sm" variant="ghost" aria-label={m.menu} title={m.menu}>
-              <MoreHorizontal className="h-4 w-4" />
+        <div className="flex items-center opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
+          {!member.self && (
+            <Button size="icon-sm" variant="ghost" onClick={onMessage} aria-label={m.messageTo(member.name)} title={m.messageTo(member.name)}>
+              <MessageSquare className={ic} />
             </Button>
-          }
-          items={menu()}
-        />
+          )}
+          <DropdownMenu
+            trigger={
+              <Button size="icon-sm" variant="ghost" aria-label={m.menu} title={m.menu}>
+                <MoreHorizontal className="h-4 w-4" />
+              </Button>
+            }
+            items={menu()}
+          />
+        </div>
       </div>
 
-      {member.agents.length === 0 ? (
-        <p className="text-xs text-subtle">{m.noAgents}</p>
-      ) : (
-        <ul className="flex flex-col gap-1.5">
+      {member.agents.length > 0 && (
+        <ul className="ml-3.5 mt-1 flex flex-col border-l border-border pl-2.5">
           {member.agents.map((a) => (
-            <li key={a.id} className="rounded-lg bg-surface-2/60 px-2.5 py-2 text-xs">
-              <div className="flex items-center gap-1.5">
-                <span
-                  className={cn("h-1.5 w-1.5 shrink-0 rounded-full", a.status === "working" ? "animate-pulse bg-accent" : a.status === "waiting" ? "bg-warning" : "bg-success")}
-                  aria-hidden
-                />
-                {a.team ? <Users className="h-3 w-3 shrink-0 text-accent" aria-label={m.team} /> : <Bot className="h-3 w-3 shrink-0 text-muted" />}
-                <span className="min-w-0 flex-1 truncate font-medium text-fg" title={a.team ? `${m.team}: ${a.title}` : a.title}>
-                  {a.title}
-                </span>
-                <span className="shrink-0 text-subtle">{a.team && a.team.working > 0 ? m.teamWorking(a.team.working) : m.agentStatus[a.status]}</span>
-              </div>
-              {a.branch && <div className="mt-0.5 text-subtle">{m.worktree(a.branch)}</div>}
-              {a.task && (
-                <p className="mt-1 line-clamp-2 text-fg" title={a.task}>
-                  {a.task}
-                </p>
-              )}
-              {a.files.length > 0 && <FileChips files={a.files} max={4} />}
-              {a.status === "idle" && a.lastResult && (
-                <p className="mt-1 line-clamp-2 text-muted" title={a.lastResult}>
-                  → {a.lastResult}
-                </p>
-              )}
-            </li>
+            <AgentRow key={a.id} crew={crew} member={member} agent={a} />
           ))}
         </ul>
       )}
 
       {member.files.length > 0 && (
-        <div className="text-xs">
+        <div className="ml-9 mt-1 text-caption">
           <button type="button" className="flex items-center gap-1 text-muted hover:text-fg" onClick={() => setShowFiles(!showFiles)} aria-expanded={showFiles}>
             <FileText className="h-3 w-3" /> {m.filesInWork(member.files.length)}
           </button>
-          <ul className="mt-1 flex flex-col gap-0.5 font-mono text-[11px] text-subtle">
-            {files.map((f) => (
-              <li key={f} className="truncate" title={f}>
-                {f}
-              </li>
-            ))}
-            {!showFiles && member.files.length > files.length && (
-              <li>
-                <button type="button" className="text-accent hover:underline" onClick={() => setShowFiles(true)}>
-                  +{member.files.length - files.length}
-                </button>
-              </li>
-            )}
-          </ul>
+          {showFiles && (
+            <ul className="mt-1 flex flex-col gap-0.5 font-mono text-[11px] text-subtle">
+              {member.files.map((f) => (
+                <li key={f} className="truncate" title={f}>
+                  {f}
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
       )}
       <ConfirmDialog open={removeOpen} onOpenChange={setRemoveOpen} title={m.removeTitle(member.name)} description={m.removeDescription(member.name)} confirmLabel={m.removeMember} danger onConfirm={remove} />
-    </article>
+    </div>
+  );
+}
+
+/** A session of a member; another member's can be watched live or taken over from here. */
+function AgentRow({ crew, member, agent: a }: { crew: Crew; member: CrewMember; agent: CrewAgent }) {
+  const qc = useQueryClient();
+  const canShare = !member.self && member.online;
+  const ask = (mode: CrewShareMode) => void askShare(qc, crew, member.id, a.id, mode);
+  const items = (): MenuItem[] => [
+    ...(canShare
+      ? [
+          { label: m.viewSession, icon: <Eye className={ic} />, onSelect: () => ask("view"), hint: m.viewSessionHint },
+          { label: m.takeoverSession, icon: <Download className={ic} />, onSelect: () => ask("takeover"), hint: m.takeoverSessionHint },
+        ]
+      : []),
+    ...(a.task ? [{ label: m.copyTask, icon: <Copy className={ic} />, onSelect: () => copyText(a.task!) }] : []),
+    ...(a.files.length ? [{ label: m.copyFiles, icon: <FileText className={ic} />, onSelect: () => copyText(a.files.join("\n")) }] : []),
+  ];
+  return (
+    <li className="group/agent rounded-md px-1.5 py-1 hover:bg-surface-3/50" onContextMenu={contextItems(items)}>
+      <div className="flex items-center gap-1.5 text-caption-lg">
+        <span className={cn("h-1.5 w-1.5 shrink-0 rounded-full", STATUS_DOT[a.status])} aria-hidden />
+        {a.team ? <Users className="h-3 w-3 shrink-0 text-accent" aria-label={m.team} /> : <Bot className="h-3 w-3 shrink-0 text-muted" />}
+        <span className="min-w-0 flex-1 truncate font-medium text-fg" title={a.team ? `${m.team}: ${a.title}` : a.title}>
+          {a.title}
+        </span>
+        {canShare ? (
+          <span className="flex shrink-0 items-center opacity-0 transition-opacity focus-within:opacity-100 group-hover/agent:opacity-100">
+            <button type="button" className="rounded p-0.5 text-muted hover:bg-surface-3 hover:text-fg" onClick={() => ask("view")} title={`${m.viewSession}: ${m.viewSessionHint}`} aria-label={m.viewSession}>
+              <Eye className="h-3.5 w-3.5" />
+            </button>
+            <button type="button" className="rounded p-0.5 text-muted hover:bg-surface-3 hover:text-fg" onClick={() => ask("takeover")} title={`${m.takeoverSession}: ${m.takeoverSessionHint}`} aria-label={m.takeoverSession}>
+              <Download className="h-3.5 w-3.5" />
+            </button>
+          </span>
+        ) : null}
+        <span className="shrink-0 text-caption text-subtle group-hover/agent:hidden">{a.team && a.team.working > 0 ? m.teamWorking(a.team.working) : m.agentStatus[a.status]}</span>
+      </div>
+      {a.task && (
+        <p className="ml-3 mt-0.5 line-clamp-1 text-caption text-muted" title={a.task}>
+          {a.task}
+        </p>
+      )}
+      {a.status === "idle" && a.lastResult && (
+        <p className="ml-3 mt-0.5 line-clamp-1 text-caption text-subtle" title={a.lastResult}>
+          → {a.lastResult}
+        </p>
+      )}
+      {a.files.length > 0 && (
+        <div className="ml-3">
+          <FileChips files={a.files} max={3} />
+        </div>
+      )}
+    </li>
+  );
+}
+
+/** A session of another member we asked for: how far it got, and the copy to open. */
+function ShareRow({ crew, share: s }: { crew: Crew; share: CrewShare }) {
+  const qc = useQueryClient();
+  const from = crew.members.find((x) => x.id === s.member);
+  const running = s.state === "asking" || s.state === "transferring" || s.state === "importing" || s.state === "live";
+  const pct = s.total ? Math.round((s.received / s.total) * 100) : 0;
+  const tone = s.state === "failed" || s.state === "declined" ? "text-danger" : s.state === "live" ? "text-accent" : s.state === "done" ? "text-success" : "text-muted";
+  return (
+    <div className="rounded-lg border border-border bg-surface px-2.5 py-2 text-caption-lg">
+      <div className="flex items-center gap-1.5">
+        {s.mode === "view" ? <Eye className="h-3.5 w-3.5 shrink-0 text-muted" /> : <Download className="h-3.5 w-3.5 shrink-0 text-muted" />}
+        <span className="min-w-0 flex-1 truncate font-medium text-fg" title={s.agentTitle}>
+          {s.agentTitle}
+        </span>
+        <span className={cn("shrink-0 font-medium", tone)}>
+          {s.state === "live" && <span className="mr-1 inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-accent align-middle" />}
+          {m.shareState[s.state]}
+          {s.state === "transferring" && s.total ? ` ${pct} %` : ""}
+        </span>
+      </div>
+      <div className="mt-0.5 flex items-center gap-1.5 text-caption text-subtle">
+        <MemberAvatar name={from?.name ?? "?"} color={from?.color ?? "var(--color-subtle)"} size={14} />
+        {from?.name ?? "?"} · {relativeTime(s.at)}
+      </div>
+      {s.state === "transferring" && (
+        <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-surface-3">
+          <div className="h-full rounded-full bg-accent transition-[width] duration-300" style={{ width: `${pct}%` }} />
+        </div>
+      )}
+      {s.error && <p className="mt-1 text-caption text-danger">{s.error}</p>}
+      {(s.sessionId || running) && (
+        <div className="mt-1.5 flex gap-1.5">
+          {s.sessionId && s.projectId && (
+            <Button size="sm" variant="secondary" className="h-6 px-2 text-[11px]" onClick={() => openShared(s.projectId!, s.sessionId!)}>
+              {m.openCopy}
+            </Button>
+          )}
+          {running && (
+            <Button size="sm" variant="ghost" className="h-6 px-2 text-[11px]" onClick={() => void stopShare(qc, crew, s.id)}>
+              {m.stopShare}
+            </Button>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -602,7 +784,7 @@ function FileChips({ files, max }: { files: string[]; max: number }) {
   return (
     <div className="mt-1 flex flex-wrap gap-1" title={files.join("\n")}>
       {shown.map((f) => (
-        <span key={f} className="max-w-48 truncate rounded bg-surface-3 px-1.5 py-px font-mono text-[10px] text-muted">
+        <span key={f} className="max-w-40 truncate rounded bg-surface-3 px-1.5 py-px font-mono text-[10px] text-muted">
           {f.split("/").pop()}
         </span>
       ))}
@@ -613,36 +795,45 @@ function FileChips({ files, max }: { files: string[]; max: number }) {
 
 // ---------- tasks
 
-const COLUMNS: CrewTaskStatus[] = ["open", "in_progress", "done"];
-
-function TaskBoard({ crew, onEdit, onAdd }: { crew: Crew; onEdit: (task: CrewTask) => void; onAdd: () => void }) {
+function TaskList({ crew, onEdit, onAdd }: { crew: Crew; onEdit: (task: CrewTask) => void; onAdd: () => void }) {
+  const [showDone, setShowDone] = useState(false);
+  const running = crew.tasks.filter((x) => x.status === "in_progress");
+  const open = crew.tasks.filter((x) => x.status === "open");
+  const done = [...crew.tasks.filter((x) => x.status === "done")].reverse();
+  const group = (status: CrewTaskStatus, tasks: CrewTask[]) =>
+    tasks.length > 0 && (
+      <div className="flex flex-col gap-1.5" data-testid={`crew-column-${status}`}>
+        <div className="flex items-center gap-1.5 px-1 text-caption text-muted">
+          {m.column[status]} <span className="tabular-nums text-subtle">{tasks.length}</span>
+        </div>
+        {tasks.map((task) => (
+          <TaskCard key={task.id} crew={crew} task={task} onEdit={() => onEdit(task)} />
+        ))}
+      </div>
+    );
   return (
-    <section>
-      <div className="mb-2 flex items-center justify-between">
-        <h3 className="text-xs font-medium uppercase tracking-wide text-subtle">{m.tasksTitle}</h3>
-        <Button size="sm" variant="ghost" onClick={onAdd}>
-          <ListPlus className={ic} /> {m.addTask}
-        </Button>
-      </div>
-      <div className="grid gap-3 md:grid-cols-3">
-        {COLUMNS.map((status) => {
-          const tasks = crew.tasks.filter((x) => x.status === status);
-          const shown = status === "done" ? [...tasks].reverse().slice(0, 25) : tasks;
-          return (
-            <div key={status} className="flex min-h-28 flex-col gap-2 rounded-xl bg-surface-2/50 p-2" data-testid={`crew-column-${status}`}>
-              <div className="flex items-center justify-between px-1 text-xs text-muted">
-                <span>{m.column[status]}</span>
-                <span className="tabular-nums">{tasks.length}</span>
-              </div>
-              {shown.map((task) => (
-                <TaskCard key={task.id} crew={crew} task={task} onEdit={() => onEdit(task)} />
-              ))}
-              {status === "open" && tasks.length === 0 && <p className="px-1 py-2 text-xs text-subtle">{m.noTasks}</p>}
-            </div>
-          );
-        })}
-      </div>
-    </section>
+    <>
+      <SideTitle
+        action={
+          <Button size="sm" variant="ghost" className="h-6 px-1.5" onClick={onAdd}>
+            <ListPlus className={ic} /> {m.addTask}
+          </Button>
+        }
+      >
+        {m.tasksTitle}
+      </SideTitle>
+      {running.length + open.length === 0 && <p className="px-1 text-xs text-subtle">{m.noTasks}</p>}
+      {group("in_progress", running)}
+      {group("open", open)}
+      {done.length > 0 && (
+        <div className="flex flex-col gap-1.5" data-testid="crew-column-done">
+          <button type="button" className="flex items-center gap-1 px-1 text-left text-caption text-muted hover:text-fg" onClick={() => setShowDone(!showDone)} aria-expanded={showDone}>
+            <ChevronRight className={cn("h-3 w-3 transition-transform", showDone && "rotate-90")} /> {m.column.done} <span className="tabular-nums text-subtle">{done.length}</span>
+          </button>
+          {showDone && done.slice(0, 25).map((task) => <TaskCard key={task.id} crew={crew} task={task} onEdit={() => onEdit(task)} />)}
+        </div>
+      )}
+    </>
   );
 }
 
@@ -748,119 +939,6 @@ function MemberChip({ crew, id, prefix = "" }: { crew: Crew; id: string; prefix?
         {member?.self ? m.you : (member?.name ?? "?")}
       </span>
     </span>
-  );
-}
-
-// ---------- feed
-
-function feedText(crew: Crew, f: CrewFeedItem): string {
-  if (f.kind === "pulled") return m.pulledText(f.text);
-  if (f.kind === "joined") return m.joinedText(f.text || memberName(crew, f.from));
-  if (f.kind === "left") return m.leftText(f.text || memberName(crew, f.from));
-  return f.text;
-}
-
-function Feed({ crew, to, onTo }: { crew: Crew; to: string; onTo: (id: string) => void }) {
-  const [open, setOpen] = useState<string | null>(null);
-  const items = [...crew.feed].reverse().slice(0, 80);
-  return (
-    <section className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_300px]">
-      <div className="min-w-0">
-        <h3 className="mb-2 text-xs font-medium uppercase tracking-wide text-subtle">{m.feedTitle}</h3>
-        {items.length === 0 ? (
-          <p className="rounded-lg border border-dashed border-border p-4 text-xs text-subtle">{m.noFeed}</p>
-        ) : (
-          <ol className="flex max-h-[28rem] flex-col gap-1.5 overflow-y-auto pr-1">
-            {items.map((f) => {
-              const from = crew.members.find((x) => x.id === f.from);
-              const text = feedText(crew, f);
-              const expanded = open === f.id;
-              return (
-                <li
-                  key={f.id}
-                  className={cn("animate-rise-in rounded-lg border px-3 py-2", f.kind === "message" ? "border-accent/30 bg-accent/5" : "border-border bg-surface-2/40")}
-                  onContextMenu={contextItems(() => [
-                    { label: m.copyMessage, icon: <Copy className={ic} />, onSelect: () => copyText(text) },
-                    ...(f.files.length ? [{ label: m.copyFiles, icon: <FileText className={ic} />, onSelect: () => copyText(f.files.join("\n")) }] : []),
-                    ...(from && !from.self ? [{ label: m.messageTo(from.name), icon: <MessageSquare className={ic} />, onSelect: () => onTo(from.id) }] : []),
-                  ])}
-                >
-                  <div className="flex items-center gap-1.5 text-xs">
-                    <MemberAvatar name={from?.name ?? "?"} color={from?.color ?? "var(--color-subtle)"} size={18} />
-                    <span className="font-medium text-fg">{from?.self ? m.you : (from?.name ?? "?")}</span>
-                    {f.agent && <span className="truncate text-subtle">· {f.agent}</span>}
-                    <Badge tone={f.kind === "message" ? "accent" : f.kind === "push" ? "warning" : f.kind === "turn" ? "success" : "neutral"}>{m.kind[f.kind]}</Badge>
-                    {f.to && <span className="text-subtle">{m.toMember(memberName(crew, f.to))}</span>}
-                    <span className="ml-auto shrink-0 text-subtle" title={new Date(f.ts).toLocaleString()}>
-                      {relativeTime(f.ts)}
-                    </span>
-                  </div>
-                  {text && (
-                    <button
-                      type="button"
-                      className={cn("mt-1 block w-full whitespace-pre-wrap break-words text-left text-xs text-fg", !expanded && "line-clamp-3")}
-                      onClick={() => setOpen(expanded ? null : f.id)}
-                    >
-                      {text}
-                    </button>
-                  )}
-                  {f.files.length > 0 && <FileChips files={f.files} max={6} />}
-                </li>
-              );
-            })}
-          </ol>
-        )}
-      </div>
-      <Composer crew={crew} to={to} onTo={onTo} />
-    </section>
-  );
-}
-
-function Composer({ crew, to, onTo }: { crew: Crew; to: string; onTo: (id: string) => void }) {
-  const qc = useQueryClient();
-  const [text, setText] = useState("");
-  const [busy, setBusy] = useState(false);
-  const options = [{ value: EVERYONE, label: m.everyone }, ...others(crew).map((x) => ({ value: x.id, label: x.name }))];
-  const target = options.some((o) => o.value === to) ? to : EVERYONE;
-  const send = async () => {
-    if (!text.trim()) return;
-    setBusy(true);
-    try {
-      await call("crew.message", { crewId: crew.id, text: text.trim(), to: target === EVERYONE ? null : target });
-      setText("");
-      crewChanged(qc, crew);
-    } catch (e) {
-      toast.error(m.notSent, errorMessage(e));
-    } finally {
-      setBusy(false);
-    }
-  };
-  return (
-    <div className="flex flex-col gap-2">
-      <h3 className="text-xs font-medium uppercase tracking-wide text-subtle">{m.send}</h3>
-      <Select value={target} onChange={onTo} options={options} size="sm" aria-label={m.recipient} />
-      <Textarea
-        id={CREW_MESSAGE_INPUT}
-        value={text}
-        onChange={(e) => setText(e.target.value)}
-        rows={4}
-        maxLength={2000}
-        placeholder={m.messagePlaceholder}
-        disabled={busy}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
-            e.preventDefault();
-            void send();
-          }
-        }}
-      />
-      <div className="flex items-center gap-2">
-        <span className="flex-1 text-[11px] text-subtle">{m.sendHint}</span>
-        <Button size="sm" variant="primary" loading={busy} disabled={!text.trim()} onClick={() => void send()}>
-          <Send className={ic} /> {m.send}
-        </Button>
-      </div>
-    </div>
   );
 }
 

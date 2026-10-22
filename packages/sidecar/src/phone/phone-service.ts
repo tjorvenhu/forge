@@ -2551,6 +2551,8 @@ export class PhoneService {
               lines.push(m.tasks(open.length, running.length, done.length, list));
             }
             if (c.requests.length) lines.push(m.requests(c.requests.map((r) => m.request(asData(r.name), r.code)).join(", ")));
+            if (c.shareRequests.length)
+              lines.push(m.shareRequests(c.shareRequests.map((r) => m.shareRequest(name(r.from), asData(r.agentTitle), r.mode === "takeover")).join(", ")));
             const last = c.feed.slice(-4).map((f) => m.feed(name(f.from), excerptData(f.text, 160)));
             if (last.length) lines.push(m.last(last.join(" | ")));
             if (c.behind > 0) lines.push(m.behind(c.behind));
@@ -2639,8 +2641,30 @@ export class PhoneService {
                 ...(o.name?.trim() ? { name: o.name.trim() } : {}),
                 ...(o.acceptTasks ? { acceptTasks: o.acceptTasks } : {}),
                 ...(o.autoPull !== undefined ? { autoPull: o.autoPull } : {}),
+                ...(o.shareSessions ? { shareAgents: o.shareSessions } : {}),
               });
-              return m.settings(asData(r.name), m.acceptTasks[r.acceptTasks] ?? r.acceptTasks, r.autoPull);
+              return m.settings(asData(r.name), m.acceptTasks[r.acceptTasks] ?? r.acceptTasks, r.autoPull) + m.shareSetting(m.shareAgents[r.shareAgents] ?? r.shareAgents);
+            }
+            case "session_view":
+            case "session_takeover": {
+              const who = member(o.to);
+              if (!who) return m.needsMember;
+              const q = o.session?.trim().toLowerCase();
+              const hits = q ? who.agents.filter((a) => a.title.toLowerCase().includes(q)) : who.agents;
+              if (!hits.length) return who.agents.length ? m.whichSession(who.agents.map((a) => asData(a.title)).join(", ")) : m.noSessions(asData(who.name));
+              if (hits.length > 1) return m.whichSession(hits.map((a) => asData(a.title)).join(", "));
+              const share = await call("crew.shareAsk", { crewId: c.id, memberId: who.id, agentId: hits[0]!.id, mode: action === "session_view" ? "view" : "takeover" });
+              return action === "session_view" ? m.shareAskedView(asData(who.name), asData(share.agentTitle)) : m.shareAskedTakeover(asData(who.name), asData(share.agentTitle));
+            }
+            case "session_answer": {
+              const name = (id: string) => asData(c.members.find((x) => x.id === id)?.name ?? "?");
+              if (!c.shareRequests.length) return m.noShareRequests;
+              if (o.accept === undefined) return m.needsAccept;
+              const from = o.to?.trim() ? member(o.to) : null;
+              const hits = from ? c.shareRequests.filter((r) => r.from === from.id) : c.shareRequests;
+              if (hits.length !== 1) return m.shareRequests(c.shareRequests.map((r) => m.shareRequest(name(r.from), asData(r.agentTitle), r.mode === "takeover")).join(", "));
+              await call("crew.shareRespond", { crewId: c.id, requestId: hits[0]!.id, accept: o.accept, ...(o.always ? { always: true } : {}) });
+              return o.accept ? m.shareAllowed(name(hits[0]!.from)) : m.shareDenied(name(hits[0]!.from));
             }
             case "leave":
               return askKeypad(m.confirmLeave(asData(c.name)), async () => {

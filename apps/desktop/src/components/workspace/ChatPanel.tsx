@@ -30,6 +30,7 @@ import { ItemView } from "./ChatItemView";
 import { BackgroundIndicator, WorkingIndicator } from "./WorkingIndicator";
 import { TaskThreadDialog } from "./TaskThread";
 import { TeamBoard } from "./TeamBoard";
+import { MirrorBar } from "@/components/crew/MirrorBar";
 import { turnStartedAt } from "./working";
 import { anchoredScrollTop, captureAnchor, type ScrollAnchor } from "./scroll-anchor";
 import { FollowState, SCROLL_KEYS } from "./follow";
@@ -494,7 +495,11 @@ function SessionThread({ sessionId, session, project }: { sessionId: string; ses
       </div>
       {/* Outside the scroll area: the line stays right above the composer, however short the chat is. */}
       {startedAt && <WorkingIndicator startedAt={startedAt} subagents={session?.subagents} sessionId={sessionId} />}
-      <Composer project={project} session={session} prefill={retryText} onPrefillConsumed={clearRetry} />
+      {session?.mirror ? (
+        <MirrorBar session={{ ...session, mirror: session.mirror }} />
+      ) : (
+        <Composer project={project} session={session} prefill={retryText} onPrefillConsumed={clearRetry} />
+      )}
       <TaskThreadDialog sessionId={sessionId} projectDir={session?.cwd ?? project.path} />
     </>
   );

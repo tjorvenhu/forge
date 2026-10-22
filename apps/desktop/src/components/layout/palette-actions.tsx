@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import type { QueryClient } from "@tanstack/react-query";
-import { Archive, ArrowDown, ArrowLeftRight, ArrowUp, ArrowUpCircle, BookOpen, Bot, CalendarDays, Camera, CloudDownload, CloudUpload, Columns2, Combine, Cpu, Database, Download, FilePlus2, FileStack, FileText, FileUp, FlaskConical, FolderDown, FolderMinus, FolderOpen, FolderPlus, Folders, Gauge, GitBranch, GitBranchPlus, GitCommitHorizontal, GitCompareArrows, GitFork, GitMerge, GitPullRequest, Globe, HandHeart, Languages, Lightbulb, Link, Link2Off, ListChecks, ListPlus, LogIn, LogOut, MessageSquare, MessageSquarePlus, MessageSquareText, Mic, MonitorSmartphone, NotebookText, PackageCheck, PanelBottom, PanelRight, Pencil, Phone, PhoneOff, PhoneOutgoing, Pin, PinOff, Play, Power, QrCode, RefreshCcw, RefreshCw, RotateCcw, Search, Settings2, Shield, ShieldBan, Shrink, Sparkles, Square, SquareArrowOutDownLeft, SquareArrowOutUpRight, SquareTerminal, Timer, ToggleLeft, ToggleRight, Trash2, UserPlus, Users, Wand2, type LucideIcon } from "lucide-react";
+import { Archive, ArrowDown, ArrowLeftRight, ArrowUp, ArrowUpCircle, BookOpen, Bot, CalendarDays, Camera, CloudDownload, CloudUpload, Columns2, Combine, Cpu, Database, Download, Eye, FilePlus2, FileStack, FileText, FileUp, FlaskConical, FolderDown, FolderMinus, FolderOpen, FolderPlus, Folders, Gauge, GitBranch, GitBranchPlus, GitCommitHorizontal, GitCompareArrows, GitFork, GitMerge, GitPullRequest, Globe, HandHeart, Languages, Lightbulb, Link, Link2Off, ListChecks, ListPlus, LogIn, LogOut, MessageSquare, MessageSquarePlus, MessageSquareText, Mic, MonitorSmartphone, NotebookText, PackageCheck, PanelBottom, PanelRight, Pencil, Phone, PhoneOff, PhoneOutgoing, Pin, PinOff, Play, Power, QrCode, RefreshCcw, RefreshCw, RotateCcw, Search, Settings2, Shield, ShieldBan, Shrink, Sparkles, Square, SquareArrowOutDownLeft, SquareArrowOutUpRight, SquareTerminal, Timer, ToggleLeft, ToggleRight, Trash2, UserPlus, Users, Wand2, type LucideIcon } from "lucide-react";
 import type {
   Crew,
   AppInstallState,
@@ -29,7 +29,7 @@ import { checkInstall, installFromFile, installFull, installUpdate, supportsFull
 import { call, keys, refreshUsage } from "@/lib/queries";
 import { openDevServer, prepareWorktree } from "@/lib/dev-server-actions";
 import { openTeamStart, setProjectTeams } from "@/lib/agent-teams";
-import { openCrew, pullCrew } from "@/lib/crew";
+import { askShare, openCrew, pullCrew } from "@/lib/crew";
 import { EFFORT_LEVELS, modelLabel } from "@/lib/models";
 import { errorMessage, RpcCallError } from "@/lib/rpc";
 import { openChatWindow, pinChatWindow, recallChatWindow, type ChatWindowList } from "@/lib/chat-windows";
@@ -319,6 +319,18 @@ function addCrewActions(ctx: ActionContext, act: (id: string, label: string, ic:
   act("crew-open", p.open, icon(Users), () => openCrew(crew.projectId), { keywords: `${CREW_KEYWORDS} mitglieder agenten aufgaben verlauf members agents tasks activity`, hint: crew.name });
   if (crew.membership !== "member") return;
   if (crew.requests.length) act("crew-requests", p.requests(crew.requests.length), icon(UserPlus), () => openCrew(crew.projectId), { keywords: `${CREW_KEYWORDS} anfrage beitritt hereinlassen request join let in` });
+  if (crew.shareRequests.length) act("crew-share-requests", p.shareRequests(crew.shareRequests.length), icon(Eye), () => openCrew(crew.projectId), { keywords: `${CREW_KEYWORDS} session anfrage ansehen übernehmen erlauben share request allow` });
+  // Every session of another member online: watch it live or take it over, found by its title.
+  for (const x of crew.members.filter((y) => !y.self && y.online)) {
+    for (const a of x.agents) {
+      act(`crew-view-${x.id}-${a.id}`, p.viewAgent(x.name, a.title), icon(Eye), () => void askShare(ctx.qc, crew, x.id, a.id, "view"), {
+        keywords: `${CREW_KEYWORDS} session ansehen live zuschauen mitlesen ${x.name} ${a.title} watch view`,
+      });
+      act(`crew-takeover-${x.id}-${a.id}`, p.takeoverAgent(x.name, a.title), icon(Download), () => void askShare(ctx.qc, crew, x.id, a.id, "takeover"), {
+        keywords: `${CREW_KEYWORDS} session übernehmen weitermachen dateien kopie worktree ${x.name} ${a.title} take over copy`,
+      });
+    }
+  }
   act("crew-invite", p.invite, icon(QrCode), () => openCrew(crew.projectId, "invite"), { keywords: `${CREW_KEYWORDS} einladen einladung code qr-code teilen invite share` });
   act("crew-message", p.message, icon(MessageSquare), () => openCrew(crew.projectId, "message"), { keywords: `${CREW_KEYWORDS} nachricht schreiben absprache chat message write` });
   act("crew-task", p.task, icon(ListPlus), () => openCrew(crew.projectId, "task"), { keywords: `${CREW_KEYWORDS} aufgabe hinzufügen verteilen zuweisen task add assign` });

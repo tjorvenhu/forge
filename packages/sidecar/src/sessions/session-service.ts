@@ -4,6 +4,7 @@ import path from "node:path";
 import type {
   Attachment,
   ContextUsage,
+  CrewMirror,
   EffortLevel,
   ExternalSession,
   KnowledgeEntry,
@@ -14,8 +15,10 @@ import type {
   RuntimeInfo,
   ServerEvent,
   Session,
+  SessionEventBody,
   SessionUsage,
   SlashCommand,
+  TeamRoleModels,
 } from "@forge/protocol";
 import { ForgeError, idleClosedDetail } from "@forge/protocol";
 import { transcriptImages, transcriptToolImages } from "../claude/attachments.js";
@@ -32,6 +35,7 @@ import type { GitEngine } from "../git/git.js";
 import type { KnowledgeOverlap } from "../knowledge/knowledge.js";
 import type { ProjectManager } from "../projects/project-manager.js";
 import { ApprovalGate } from "./approvals.js";
+import { effectivePermissionMode, resolveProfile } from "../policy/profiles.js";
 import { AutoContinue } from "./auto-continue.js";
 import { ClaudeAssist } from "./claude-assist.js";
 import { SessionLifecycle, type StartParams } from "./lifecycle.js";
@@ -471,12 +475,86 @@ ${crew.context}` } : own;
     return this.lifecycle.start(params);
   }
 
-  resume(sessionId: string, prompt: string | null, attachments: Attachment[] = []): Promise<Session> {
+  async resume(sessionId: string, prompt: string | null, attachments: Attachment[] = []): Promise<Session> {
+    this.assertWritable(sessionId);
     return this.lifecycle.resume(sessionId, prompt, attachments);
   }
 
-  send(sessionId: string, text: string, attachments: Attachment[] = [], source?: MessageSource): Promise<Session> {
+  async send(sessionId: string, text: string, attachments: Attachment[] = [], source?: MessageSource): Promise<Session> {
+    this.assertWritable(sessionId);
     return this.turns.send(sessionId, text, attachments, source);
+  }
+
+  /** A crew member's session shown here read-only takes no messages; taking it over makes an own copy. */
+  private assertWritable(sessionId: string) {
+    if (this.db.getSession(sessionId)?.mirror) throw new ForgeError("CONFLICT", tr().core.sessions.mirrorReadOnly);
+  }
+
+  // ---------- copies of crew members' sessions (crew/share.ts)
+
+  /**
+   * A session made from a crew member's: its chat as it was there (no usage booked here). With
+   * `claudeSessionId` (takeover) the next message continues Claude's conversation; with `mirror` it is
+   * a read-only view that `appendMirror` keeps up to date.
+   */
+  importCopy(o: CopyImport): Session {
+    const project = this.projects.requireExisting(o.projectId);
+    const profile = resolveProfile(project.profile, project.tags);
+    const now = new Date().toISOString();
+    const rec: SessionRecord = {
+      id: randomUUID(),
+      projectId: project.id,
+      claudeSessionId: o.claudeSessionId,
+      cwd: o.cwd,
+      title: o.title,
+      model: o.model,
+      effort: o.effort,
+      profile: profile.id,
+      permissionMode: effectivePermissionMode(profile, false),
+      status: "stopped",
+      apiKeySource: null,
+      createdAt: now,
+      updatedAt: now,
+      lastError: null,
+      ...(o.team ? { team: true, ...(o.teamModels ? { teamModels: o.teamModels } : {}) } : {}),
+      ...(o.mirror ? { mirror: o.mirror } : {}),
+    };
+    this.db.insertSession(rec);
+    this.db.importEvents(rec.id, copyableEvents(o.events));
+    this.core.publish(this.db.getSession(rec.id));
+    return this.core.get(rec.id);
+  }
+
+  /** New events of a live view, in order; they show like the session's own. */
+  appendMirror(sessionId: string, bodies: readonly SessionEventBody[]) {
+    const rec = this.db.getSession(sessionId);
+    if (!rec?.mirror) return;
+    const list = copyableEvents(bodies);
+    if (!list.length) return;
+    const before = this.db.lastEventSeq(sessionId);
+    this.db.importEvents(sessionId, list);
+    for (const ev of this.db.listEvents(sessionId, before)) this.core.emit({ event: "session.event", payload: ev });
+    const status = [...list].reverse().find((b) => b.type === "status");
+    this.db.updateSession(sessionId, status?.type === "status" ? { status: status.status } : {});
+    this.core.publish(this.db.getSession(sessionId));
+  }
+
+  /** A live view ended (or came back): the copy stays and shows its last state. */
+  setMirrorLive(sessionId: string, live: boolean) {
+    const rec = this.db.getSession(sessionId);
+    if (!rec?.mirror || rec.mirror.live === live) return;
+    this.core.publish(this.db.updateSession(sessionId, { mirror: { ...rec.mirror, live }, ...(live ? {} : { status: "stopped" as const }) }));
+  }
+
+  /** After a restart no live view runs any more. */
+  endMirrors() {
+    const ids = this.db.sql.prepare("SELECT id FROM sessions WHERE crew_mirror IS NOT NULL AND json_extract(crew_mirror, '$.live') = 1").all() as Array<{ id: string }>;
+    for (const { id } of ids) this.setMirrorLive(id, false);
+  }
+
+  /** The newest `limit` events of a session, oldest first (for a copy to a crew member). */
+  recentEvents(sessionId: string, limit: number): SessionEventBody[] {
+    return this.db.listEvents(sessionId, 0, { limit }).map((e) => e.body);
   }
 
   stop(sessionId: string): Promise<Session> {
@@ -739,6 +817,7 @@ ${crew.context}` } : own;
    * goes on with `text` in the same session. The timeline keeps the old part; the chat hides it.
    */
   async edit(sessionId: string, seq: number, text: string): Promise<Session> {
+    this.assertWritable(sessionId);
     const rec = this.db.getSession(sessionId);
     if (!rec) throw new ForgeError("SESSION_NOT_FOUND", tr().core.sessions.notFound);
     const ev = this.db.getEvent(sessionId, seq);
@@ -817,4 +896,28 @@ ${crew.context}` } : own;
   remoteStop(): Promise<RemoteState> {
     return this.remote.stop();
   }
+}
+
+/** What a copied session of a crew member brings along (crew/share.ts). */
+export interface CopyImport {
+  projectId: string;
+  cwd: string;
+  title: string;
+  model: string | null;
+  effort: EffortLevel | null;
+  team?: boolean;
+  teamModels?: TeamRoleModels;
+  /** takeover: Claude's conversation, imported under this id */
+  claudeSessionId: string | null;
+  mirror?: CrewMirror;
+  events: readonly SessionEventBody[];
+}
+
+/**
+ * Events worth copying: no streaming deltas, and no approval that is still open (nobody here can
+ * answer it, it would stay a card waiting forever).
+ */
+function copyableEvents(bodies: readonly SessionEventBody[]): SessionEventBody[] {
+  const answered = new Set(bodies.flatMap((b) => (b.type === "approval.resolved" ? [b.requestId] : [])));
+  return bodies.filter((b) => b.type !== "assistant.delta" && (b.type !== "approval.request" || answered.has(b.requestId)));
 }

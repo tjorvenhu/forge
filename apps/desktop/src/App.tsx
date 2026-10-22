@@ -6,6 +6,7 @@ import { openExternal } from "@/lib/native";
 import { useUi } from "@/stores/ui";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { Toaster } from "@/components/layout/Toaster";
+import { CrewBubble } from "@/components/crew/CrewBubble";
 import { ContextMenuHost } from "@/components/layout/ContextMenuHost";
 import { TemplateHost } from "@/components/templates/TemplateHost";
 import { SessionUsageDialogHost } from "@/components/usage/SessionUsage";
@@ -162,6 +163,7 @@ function Shell() {
       <UsageStatsPrompt />
       <SupportDialog />
       <AgentReviewDialog />
+      <CrewBubble />
       <Toaster />
       <TitleTooltips />
       <ContextMenuHost />

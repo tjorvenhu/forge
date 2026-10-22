@@ -3,6 +3,7 @@ import type { sessions as De } from "../../de/core/sessions.js";
 export const sessions: typeof De = {
   // shared errors
   notFound: "Session not found.",
+  mirrorReadOnly: "This is a view of a crew member's session and takes no messages. Take it over to go on yourself.",
   notActive: "Session is not active.",
   claudeNotFound: "Claude Code CLI was not found.",
   claudeNotFoundCheckPath: "Claude Code CLI was not found. Check the path in the settings.",

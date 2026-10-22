@@ -8,6 +8,7 @@ import { ClaudeSetupService } from "./claude/setup.js";
 import { McpService } from "./config/mcp.js";
 import { PluginService } from "./config/plugins.js";
 import { WorktreeService } from "./automation/worktrees.js";
+import { claudeHome } from "./config/claude-config.js";
 import { WorktreeSetup } from "./automation/worktree-setup.js";
 import { AgentFinisher } from "./automation/agent-finish.js";
 import { DailyReportService, reportText } from "./reports/daily-report.js";
@@ -210,6 +211,21 @@ export function createApp(opts: { dataDir: string; write: Writer; log?: (m: stri
       start: (projectId, prompt) => sessions.start({ projectId, prompt }),
       startTeam: (projectId, prompt) => teams.start(projectId, prompt),
       busy: (projectId) => sessions.projectBusy(projectId),
+    },
+    share: {
+      sessions: {
+        get: (id) => (db.getSession(id) ? sessions.get(id) : null),
+        recentEvents: (id, limit) => sessions.recentEvents(id, limit),
+        importCopy: (o) => sessions.importCopy(o),
+        appendMirror: (id, bodies) => sessions.appendMirror(id, bodies),
+        setMirrorLive: (id, live) => sessions.setMirrorLive(id, live),
+        endMirrors: () => sessions.endMirrors(),
+      },
+      snapshot: (dir, head) => worktrees.snapshot(dir, head),
+      worktree: (parent, branch, startAt) => worktrees.create(parent, branch, { startAt }),
+      git,
+      claudeDir: claudeHome(),
+      projects: () => projects.all(),
     },
     emit,
     log: (m) => opts.log?.(m),

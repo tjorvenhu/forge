@@ -2392,3 +2392,46 @@ describe("agent teams", () => {
     }
   });
 });
+
+describe("copies of crew members' sessions", () => {
+  const mirror = { crewId: "c1", memberId: "ben", memberName: "Ben", remoteSessionId: "sb", requestId: "r1", live: true, at: "" };
+  const turn = { type: "turn.result" as const, subtype: "success", isError: false, durationMs: 1, numTurns: 1, inputTokens: 100, outputTokens: 10, cacheReadTokens: 0, text: "fertig" };
+
+  it("keeps a read-only view without booking the member's usage, and appends its live events", () => {
+    const copy = svc.importCopy({
+      projectId,
+      cwd: projects.get(projectId).path,
+      title: "Ben: Login",
+      model: "opus",
+      effort: null,
+      claudeSessionId: null,
+      mirror,
+      events: [
+        { type: "user.message", text: "Bau die Login-Seite" },
+        { type: "approval.request", requestId: "open", toolUseId: "t", toolName: "Bash", input: {}, title: null, description: null, reason: null, allowSessionScope: false, outsideProject: false },
+        { type: "assistant.delta", messageId: "m", index: 0, text: "x" },
+        turn,
+      ],
+    });
+    expect(copy).toMatchObject({ title: "Ben: Login", status: "stopped", mirror: { live: true } });
+    // the open approval and the delta stay behind; the turn does not count as our usage
+    expect(persistedTypes(copy.id)).toEqual(["user.message", "turn.result"]);
+    expect(db.sessionUsageTotals(copy.id).turns).toBe(0);
+    svc.appendMirror(copy.id, [{ type: "assistant.text", messageId: "m2", index: 0, text: "weiter" }, turn]);
+    expect(persistedTypes(copy.id)).toEqual(["user.message", "turn.result", "assistant.text", "turn.result"]);
+    expect(db.sessionUsageTotals(copy.id).turns).toBe(0);
+    expect(emitted.some((e) => e.event === "session.event" && e.payload.sessionId === copy.id && e.payload.body.type === "assistant.text")).toBe(true);
+    svc.setMirrorLive(copy.id, false);
+    expect(svc.get(copy.id).mirror?.live).toBe(false);
+  });
+
+  it("refuses messages to a view, a taken over copy goes on with Claude's conversation", async () => {
+    const view = svc.importCopy({ projectId, cwd: projects.get(projectId).path, title: "v", model: null, effort: null, claudeSessionId: null, mirror, events: [] });
+    await expect(svc.send(view.id, "hallo")).rejects.toMatchObject({ code: "CONFLICT" });
+    await expect(svc.resume(view.id, "hallo")).rejects.toMatchObject({ code: "CONFLICT" });
+    expect(rt.started).toHaveLength(0);
+    const own = svc.importCopy({ projectId, cwd: projects.get(projectId).path, title: "Login (von Ben)", model: "opus", effort: null, claudeSessionId: "c-1", events: [{ type: "user.message", text: "a" }] });
+    await svc.resume(own.id, "weiter");
+    expect(rt.started[0]).toMatchObject({ resume: "c-1", model: "opus" });
+  });
+});

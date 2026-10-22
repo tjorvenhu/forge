@@ -1,7 +1,7 @@
 import { useEffect, useRef, type KeyboardEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { useQueries } from "@tanstack/react-query";
-import { AppWindow, Bot, CalendarDays, ChevronDown, Columns2, FileStack, Gauge, Hourglass, LayoutGrid, MessageSquare, MessageSquarePlus, Plus, SquareArrowOutUpRight, X } from "lucide-react";
+import { useQueries, useQuery } from "@tanstack/react-query";
+import { AppWindow, Bot, CalendarDays, ChevronDown, Columns2, Eye, FileStack, Gauge, Hourglass, LayoutGrid, MessageSquare, MessageSquarePlus, Plus, SquareArrowOutUpRight, Users, X } from "lucide-react";
 import { openChatWindow, useChatWindows } from "@/lib/chat-windows";
 import { contextItems } from "@/lib/context-menu";
 import { call, keys, useLiveSessions, useProjects, useSession } from "@/lib/queries";
@@ -158,6 +158,9 @@ export function OpenSessions() {
     queries: paneSessionIds.map((id) => ({ queryKey: keys.session(id), queryFn: () => call("sessions.get", { sessionId: id }) })),
   });
   const listRef = useRef<HTMLDivElement>(null);
+  // Projects in a crew get a badge with the members online besides us.
+  const crews = useQuery({ queryKey: ["crews", "*"], queryFn: () => call("crew.list", {}), staleTime: 30_000 });
+  const crewOf = (projectId: string) => crews.data?.find((c) => c.projectId === projectId && c.membership === "member") ?? null;
 
   const activeGroup = activeProjectId ? groupOf(activeProjectId, projects.data) : null;
   const paneGroups = panes.flatMap((p) => (p.projectId ? [groupOf(p.projectId, projects.data)] : []));
@@ -254,6 +257,12 @@ export function OpenSessions() {
               >
                 <ProjectIcon id={g.projectId} name={g.projectName} size={22} className="rounded-md" />
                 <span className="truncate">{g.projectName}</span>
+                {crewOf(g.projectId) && (
+                  <span title={t.crew.inCrew(crewOf(g.projectId)!.name)} aria-label={t.crew.inCrew(crewOf(g.projectId)!.name)} className="flex shrink-0 items-center gap-0.5 rounded-full bg-accent/15 px-1.5 py-px text-[10px] font-semibold text-accent">
+                    <Users className="h-2.5 w-2.5" />
+                    {crewOf(g.projectId)!.members.filter((x) => x.online && !x.self).length || ""}
+                  </span>
+                )}
                 {collapsed && g.tabs.length > 0 && (
                   <span className="flex shrink-0 items-center gap-1.5 text-caption tabular-nums text-subtle" aria-label={t.layout.openSessions.hiddenCount(g.tabs.length)}>
                     {lead && <span aria-hidden className={cn("h-1.5 w-1.5 rounded-full", dotClass(lead))} />}
@@ -352,7 +361,13 @@ export function OpenSessions() {
                         >
                           <span aria-hidden className={cn("h-1.5 w-1.5 shrink-0 rounded-full", dotClass(s))} />
                           {agent && <Bot aria-hidden className="h-3.5 w-3.5 shrink-0 text-accent" />}
-                          <span className={cn("truncate", !s.live && "italic")}>{title}</span>
+                          {s.mirror ? (
+                            <Eye aria-label={s.mirror.live ? t.crew.mirrorBadge(s.mirror.memberName) : t.crew.copyBadge(s.mirror.memberName)} className={cn("h-3.5 w-3.5 shrink-0", s.mirror.live ? "text-accent" : "text-subtle")} />
+                          ) : s.team ? (
+                            <Users aria-label={t.crew.team} className="h-3.5 w-3.5 shrink-0 text-accent" />
+                          ) : null}
+                          <span className={cn("truncate", !s.live && !s.mirror?.live && "italic")}>{title}</span>
+                          {s.mirror?.live && <span className="shrink-0 rounded bg-accent/15 px-1 text-[10px] font-semibold uppercase text-accent">live</span>}
                           {inWindow && <AppWindow aria-hidden className="h-3 w-3 shrink-0 text-subtle" />}
                           {inPane && <Columns2 aria-hidden className="h-3 w-3 shrink-0 text-accent" />}
                           {s.background.length > 0 && (
