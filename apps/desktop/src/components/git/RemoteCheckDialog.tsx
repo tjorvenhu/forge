@@ -21,8 +21,8 @@ type Choice = "rebase" | "merge" | "reset";
 const SHOWN_COMMITS = 5;
 
 /**
- * When a project is opened, FORGE fetches origin in the background. Is the branch behind, this asks
- * before the work starts: take over with own work on top (rebase), merge, or reset to origin.
+ * On the first opening of a project after FORGE started, origin is fetched in the background. Is the
+ * branch behind, this asks before the work starts: take over with own work on top (rebase), merge, or reset to origin.
  */
 export function RemoteCheckDialog() {
   useCheckOnOpen();
@@ -46,7 +46,7 @@ function useCheckOnOpen() {
 function Ask({ projectId, incoming }: { projectId: string; incoming: GitIncoming }) {
   const qc = useQueryClient();
   const project = useProject(projectId).data;
-  const { later, close } = useRemoteCheck.getState();
+  const { close } = useRemoteCheck.getState();
   const [choice, setChoice] = useState<Choice>("rebase");
   const [busy, setBusy] = useState(false);
   const m = t.git.remoteCheck;
@@ -90,14 +90,14 @@ function Ask({ projectId, incoming }: { projectId: string; incoming: GitIncoming
   return (
     <Dialog
       open
-      onOpenChange={(o) => !o && !busy && later()}
+      onOpenChange={(o) => !o && !busy && close()}
       title={m.title(incoming.branch)}
       description={m.description(project?.name ?? "", incoming.behind)}
       className="w-150"
       bodyClassName="flex flex-col gap-4"
       footer={
         <>
-          <Button variant="ghost" className="mr-auto" onClick={later} disabled={busy}>
+          <Button variant="ghost" className="mr-auto" onClick={close} disabled={busy}>
             {m.later}
           </Button>
           <Button variant="primary" loading={busy} onClick={() => void run()}>
