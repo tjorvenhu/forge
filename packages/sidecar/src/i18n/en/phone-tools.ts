@@ -178,6 +178,16 @@ export const phoneTools: typeof De = {
       action: "review: check; merge: merge; discard: throw away, only if the caller explicitly wants it",
     },
   },
+  agent_team: {
+    description: "Claude Code agent teams: a lead in a FORGE terminal tab spawns teammates that share a task list and message each other. status: running teams with members, tasks and the latest messages. message: sends a member (its name, team-lead for the lead, or all for every teammate) a message. start: opens a terminal with a new team lead in the project and gives it text as its first task.",
+    params: {
+      action: "status, message or start",
+      project: "project name; optional for status (else all projects), needed for start",
+      team: "for message: team name from status (e.g. session-1a2b3c4d); only needed when several are running",
+      to: "for message: member name, team-lead or all",
+      text: "for message the message, for start the task for the lead, fully worded",
+    },
+  },
   projects: {
     description: "List of the projects with their group, Git branch and whether a dev server is running.",
   },

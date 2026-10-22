@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { Bot, PanelBottomClose, Play, Plus, ScrollText, SquareTerminal } from "lucide-react";
+import { Bot, PanelBottomClose, Play, Plus, ScrollText, SquareTerminal, Users } from "lucide-react";
 import type { Project } from "@forge/protocol";
 import { useDiagnostics } from "@/lib/queries";
 import { closeTerminal } from "@/lib/terminal-registry";
@@ -36,7 +36,7 @@ export function BottomPanel({ project }: { project: Project }) {
     if (!request || request.projectId !== project.id) return;
     // Claude tabs need the resolved binary; the request waits until diagnostics are there.
     if (request.program === "claude" && diagLoading) return;
-    addTerminal(project, request.program, claudePath, request.label);
+    addTerminal(project, request.program, claudePath, request.label, { team: request.team, prompt: request.prompt });
     toggle(true);
     clearRequest();
   }, [request, project, diagLoading, claudePath, toggle, clearRequest]);
@@ -63,7 +63,7 @@ export function BottomPanel({ project }: { project: Project }) {
             ...tabs.map((t) => ({
               value: t.key,
               label: t.label,
-              icon: t.program === "claude" ? <Bot className="h-3.5 w-3.5" /> : <SquareTerminal className="h-3.5 w-3.5" />,
+              icon: t.team ? <Users className="h-3.5 w-3.5" /> : t.program === "claude" ? <Bot className="h-3.5 w-3.5" /> : <SquareTerminal className="h-3.5 w-3.5" />,
               onClose: () => {
                 closeTerminal(t.key);
                 useTerminals.getState().remove(project.id, t.key);
@@ -74,6 +74,16 @@ export function BottomPanel({ project }: { project: Project }) {
         >
           <Button size="icon-sm" variant="ghost" aria-label={tr.workspace.bottomPanel.newTerminal} title={tr.workspace.bottomPanel.newTerminal} onClick={() => addTerminal(project, "shell", claudePath)}>
             <Plus className="h-3.5 w-3.5" />
+          </Button>
+          <Button
+            size="icon-sm"
+            variant="ghost"
+            aria-label={tr.workspace.bottomPanel.newTeam}
+            title={tr.workspace.bottomPanel.newTeamTitle}
+            disabled={diagLoading || !claudePath}
+            onClick={() => addTerminal(project, "claude", claudePath, undefined, { team: true })}
+          >
+            <Users className="h-3.5 w-3.5" />
           </Button>
         </TabBar>
         <div className="flex-1" />
@@ -102,6 +112,7 @@ export function BottomPanel({ project }: { project: Project }) {
   );
 }
 
-function addTerminal(project: Project, program: TerminalProgram, claudePath: string | null, label?: string) {
-  useTerminals.getState().add(project.id, { program, cwd: project.path, claudePath: program === "claude" ? claudePath : null, label });
+function addTerminal(project: Project, program: TerminalProgram, claudePath: string | null, label?: string, opts?: { team?: boolean; prompt?: string | null }) {
+  const claude = program === "claude";
+  useTerminals.getState().add(project.id, { program, cwd: project.path, claudePath: claude ? claudePath : null, label, ...(claude && opts?.team ? { team: true, prompt: opts.prompt ?? null } : {}) });
 }

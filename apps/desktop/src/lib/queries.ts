@@ -69,6 +69,8 @@ export const keys = {
   inspectFolder: (path: string) => ["inspectFolder", path] as const,
   remote: ["remote"] as const,
   agentReview: (id: string) => ["agentReview", id] as const,
+  /** Claude Code agent teams of a project and its worktrees */
+  agentTeams: (projectId: string) => ["agentTeams", projectId] as const,
   search: (q: string) => ["search", q] as const,
   uiCompare: (sessionId: string, compareId: string) => ["uiCompare", sessionId, compareId] as const,
   /** taken at: an image taken again gets a new key */
@@ -345,3 +347,7 @@ export function useRpcMutation<M extends MethodName>(method: M, opts: { onSucces
     onError: (e) => toast.error(opts.errorTitle ?? t.lib.queries.actionFailed, errorMessage(e)),
   });
 }
+
+/** Claude Code agent teams of a project (teams.updated invalidates; no polling needed). */
+export const useAgentTeams = (projectId: string) =>
+  useQuery({ queryKey: keys.agentTeams(projectId), queryFn: () => call("teams.list", { projectId }), staleTime: 30_000 });

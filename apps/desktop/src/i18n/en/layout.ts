@@ -425,6 +425,8 @@ export const layout: typeof De = {
     explorerProject: `Open project folder in ${fm}`,
     explorerFile: `Show file in ${fm}`,
     terminal: "Open terminal",
+    teamStart: "Start an agent team (Claude as team lead in a terminal)",
+    teamView: "Show agent teams",
     bottom: "Show or hide bottom panel",
     right: "Show or hide sidebar",
     splitAdd: "Split view: open another area",

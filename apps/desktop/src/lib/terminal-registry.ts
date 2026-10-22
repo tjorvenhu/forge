@@ -31,6 +31,8 @@ export interface TerminalSpec {
   cwd: string;
   program: TerminalProgram;
   claudePath: string | null;
+  team?: boolean;
+  prompt?: string | null;
 }
 
 interface Entry {
@@ -122,7 +124,7 @@ async function startProcess(entry: Entry, spec: TerminalSpec) {
     await ensureListeners();
     if (entry.closed) return;
     const { cols, rows } = entry.term;
-    const id = await invoke<number>("term_open", { cwd: spec.cwd, cols, rows, program: spec.program, claudePath: spec.program === "claude" ? spec.claudePath : null });
+    const id = await invoke<number>("term_open", { cwd: spec.cwd, cols, rows, program: spec.program, claudePath: spec.program === "claude" ? spec.claudePath : null, team: spec.program === "claude" && !!spec.team, prompt: spec.program === "claude" ? (spec.prompt ?? null) : null });
     if (entry.closed) {
       void invoke("term_close", { id });
       return;

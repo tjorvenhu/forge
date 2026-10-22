@@ -1,0 +1,12 @@
+/** Agent teams of Claude Code (teams/agent-teams.ts). */
+export const teams = {
+  teamNotFound: (name: string, known: string) => (known ? `Kein Agent-Team „${name}“. Bekannt: ${known}.` : `Kein Agent-Team „${name}“. Gerade läuft keins.`),
+  teamEnded: (name: string) => `Das Agent-Team ${name} ist beendet; seine Lead-Sitzung läuft nicht mehr.`,
+  memberNotFound: (name: string, known: string) => `Kein Mitglied „${name}“ im Team. Mitglieder: ${known}.`,
+  noTeammates: "Das Team hat noch keine Teammitglieder.",
+  inboxBusy: "Das Postfach ist gerade gesperrt. Bitte gleich noch einmal versuchen.",
+  fromForge: "Nachricht aus FORGE",
+  noWindow: "Das Hauptfenster von FORGE ist nicht offen, dort startet das Team-Terminal.",
+  projectMissing: "Projekt nicht gefunden.",
+  folderMissing: "Der Projektordner fehlt.",
+};

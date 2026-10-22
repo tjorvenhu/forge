@@ -162,6 +162,16 @@ export const phoneTools = {
       action: "review: prüfen; merge: zusammenführen; discard: verwerfen, nur wenn der Anrufer das ausdrücklich will",
     },
   },
+  agent_team: {
+    description: "Agent-Teams von Claude Code: Ein Lead in einem Terminal-Reiter von FORGE startet Teammitglieder, die eine gemeinsame Aufgabenliste haben und sich gegenseitig Nachrichten schicken. status: laufende Teams mit Mitgliedern, Aufgaben und den letzten Nachrichten. message: schickt einem Mitglied (Name, team-lead für den Lead oder all für alle Teammitglieder) eine Nachricht. start: öffnet im Projekt ein Terminal mit einem neuen Team-Lead und gibt ihm text als ersten Auftrag.",
+    params: {
+      action: "status, message oder start",
+      project: "Projektname; bei status optional (sonst alle Projekte), bei start nötig",
+      team: "bei message: Name des Teams aus status (z. B. session-1a2b3c4d); nur nötig, wenn mehrere laufen",
+      to: "bei message: Name des Mitglieds, team-lead oder all",
+      text: "bei message die Nachricht, bei start der Auftrag an den Lead, vollständig ausformuliert",
+    },
+  },
   projects: {
     description: "Liste der Projekte mit Gruppe, Git-Branch und ob ein Dev-Server läuft.",
   },

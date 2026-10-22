@@ -178,8 +178,9 @@ interface UiState {
   claudeLogout: boolean;
   setClaudeLogout: (open: boolean) => void;
   /** asks the bottom panel of a project to open a terminal tab */
-  terminalRequest: { projectId: string; program: "shell" | "claude"; label?: string } | null;
-  openTerminal: (projectId: string, program: "shell" | "claude", label?: string) => void;
+  terminalRequest: { projectId: string; program: "shell" | "claude"; label?: string; team?: boolean; prompt?: string | null } | null;
+  /** team: Claude as the lead of an agent team; prompt: its first message */
+  openTerminal: (projectId: string, program: "shell" | "claude", label?: string, opts?: { team?: boolean; prompt?: string | null }) => void;
   clearTerminalRequest: () => void;
   /** asks the bottom panel of a project to show one of its fixed tabs */
   panelRequest: { projectId: string; tab: BottomTab } | null;
@@ -364,7 +365,7 @@ export const useUi = create<UiState>((set, get) => ({
       // A group picked on purpose is shown open.
       collapsedProjectGroups: group === null ? s.collapsedProjectGroups : s.collapsedProjectGroups.filter((g) => g !== group),
     })),
-  openTerminal: (projectId, program, label) => set({ terminalRequest: { projectId, program, label }, bottomPanelOpen: true }),
+  openTerminal: (projectId, program, label, opts) => set({ terminalRequest: { projectId, program, label, ...opts }, bottomPanelOpen: true }),
   clearTerminalRequest: () => set({ terminalRequest: null }),
   openPanelTab: (projectId, tab) => {
     set({ panelRequest: { projectId, tab }, bottomPanelOpen: true });

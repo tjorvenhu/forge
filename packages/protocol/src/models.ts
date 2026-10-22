@@ -902,6 +902,78 @@ export const GitResetToRemote = z.object({
 });
 export type GitResetToRemote = z.infer<typeof GitResetToRemote>;
 
+/**
+ * Claude Code's agent teams (experimental), read from the files the CLI keeps under ~/.claude/teams
+ * and ~/.claude/tasks. They form only in an interactive session, so FORGE starts the lead in a
+ * terminal tab and shows the team next to it.
+ */
+export const AGENT_TEAM_LEAD = "team-lead";
+/** recipient of a message to every teammate (not the lead) */
+export const AGENT_TEAM_ALL = "all";
+
+export const AgentTeamMember = z.object({
+  /** "team-lead" for the lead */
+  name: z.string(),
+  agentId: z.string(),
+  lead: z.boolean(),
+  agentType: z.string().nullable(),
+  /** Claude Code's color of the teammate (blue, green, …) */
+  color: z.string().nullable(),
+  model: z.string().nullable(),
+  /** what the lead told the teammate when it spawned it */
+  prompt: z.string().nullable(),
+  joinedAt: z.string(),
+  /** working: got work since its last result; idle: reported a result and waits; unknown: nothing seen yet (always for the lead) */
+  state: z.enum(["working", "idle", "unknown"]),
+  /** the result of its last turn (idle notification to the lead) */
+  lastResult: z.string().nullable(),
+});
+export type AgentTeamMember = z.infer<typeof AgentTeamMember>;
+
+export const AgentTeamTask = z.object({
+  id: z.string(),
+  subject: z.string(),
+  description: z.string(),
+  owner: z.string().nullable(),
+  status: z.enum(["pending", "in_progress", "completed"]),
+  blocks: z.array(z.string()),
+  blockedBy: z.array(z.string()),
+  /** some of blockedBy are not completed yet */
+  blocked: z.boolean(),
+});
+export type AgentTeamTask = z.infer<typeof AgentTeamTask>;
+
+export const AgentTeamMessage = z.object({
+  id: z.string(),
+  /** member name, or "user" for messages from FORGE */
+  from: z.string(),
+  to: z.string(),
+  /** idle: a teammate ended its turn and reports its result; task: a task was assigned; shutdown and plan: protocol messages */
+  kind: z.enum(["message", "task", "idle", "shutdown", "plan", "other"]),
+  text: z.string(),
+  summary: z.string().nullable(),
+  ts: z.string(),
+});
+export type AgentTeamMessage = z.infer<typeof AgentTeamMessage>;
+
+export const AgentTeam = z.object({
+  /** Claude Code's team name: "session-" and the start of the lead's session id */
+  name: z.string(),
+  leadSessionId: z.string(),
+  /** FORGE project the lead runs in; null: a folder FORGE does not know */
+  projectId: z.string().nullable(),
+  cwd: z.string(),
+  /** false: the lead's session ended (Claude Code removed the team); kept until FORGE restarts */
+  active: z.boolean(),
+  createdAt: z.string(),
+  endedAt: z.string().nullable(),
+  members: z.array(AgentTeamMember),
+  tasks: z.array(AgentTeamTask),
+  /** messages FORGE saw while it ran (Claude Code empties an inbox once it is read), oldest first */
+  messages: z.array(AgentTeamMessage),
+});
+export type AgentTeam = z.infer<typeof AgentTeam>;
+
 /** What a parallel agent did on its branch, for the decision to merge or discard it. */
 export const AgentReview = z.object({
   /** the agent's worktree project */

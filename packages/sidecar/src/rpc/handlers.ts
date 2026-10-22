@@ -16,6 +16,7 @@ import type { WorktreeService } from "../automation/worktrees.js";
 import type { WorktreeSetup } from "../automation/worktree-setup.js";
 import type { AgentFinisher } from "../automation/agent-finish.js";
 import type { DailyReportService } from "../reports/daily-report.js";
+import type { AgentTeams } from "../teams/agent-teams.js";
 import type { DevServerService } from "../devserver/dev-server.js";
 import type { DevToolsService } from "../devtools/dev-tools.js";
 import type { TestDbService } from "../devtools/test-db.js";
@@ -53,6 +54,8 @@ export interface Services {
   worktreeSetup: WorktreeSetup;
   agentFinish: AgentFinisher;
   reports: DailyReportService;
+  /** Claude Code agent teams (lead in a terminal tab) */
+  teams: AgentTeams;
   devServers: DevServerService;
   devTools: DevToolsService;
   testDb: TestDbService;
@@ -199,6 +202,9 @@ export function createHandlers(s: Services): Handlers {
     "worktrees.prepare": ({ projectId }) => s.worktreeSetup.rerun(projectId),
     "agents.review": ({ projectId }) => s.agentFinish.review(projectId),
     "agents.finish": ({ projectId, action }) => s.agentFinish.finish(projectId, action),
+    "teams.list": ({ projectId }) => s.teams.list(projectId),
+    "teams.message": async ({ team, to, text }) => ({ recipients: await s.teams.send(team, to, text) }),
+    "teams.start": ({ projectId, prompt }) => s.teams.requestStart(projectId, prompt),
     "sessions.summarize": ({ sessionId }) => s.sessions.summarize(sessionId),
     "sessions.handoff": ({ sessionId }) => s.sessions.handoff(sessionId),
     "reports.daily": (p) => s.reports.build(p),

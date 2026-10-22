@@ -634,6 +634,27 @@ Security:
     created: (title: string, head: string, base: string, draft: boolean) => `Created pull request ${title} from ${head} to ${base}${draft ? ", as a draft" : ""}.`,
   },
 
+  teams: {
+    none: "No agent team is running. agent_team start opens one in a project.",
+    noneInProject: (project) => `No agent team is running in ${project}.`,
+    team: (name, project, active) => `Team ${name} in ${project}${active ? "" : ", ended"}.`,
+    members: (list) => `Members: ${list}.`,
+    member: (name, state) => `${name} ${state}`,
+    state: { working: "working", idle: "waiting", unknown: "" },
+    tasks: (done, total, list) => `Tasks ${done} of ${total} done: ${list}.`,
+    task: (id, subject, status, owner) => `${id} ${subject} (${status}${owner ? `, ${owner}` : ""})`,
+    taskStatus: { pending: "open", in_progress: "in progress", completed: "done" },
+    blocked: ", blocked",
+    noTasks: "No tasks yet.",
+    last: (list) => `Latest messages: ${list}`,
+    message: (from, to, text) => `${from} to ${to}: ${text}`,
+    whichTeam: (names) => `Several teams are running: ${names}. Which one?`,
+    needsText: "What should the message say?",
+    needsTo: "To whom? A name, team-lead or all.",
+    sent: (to) => `Message for ${to} delivered to the inbox. Claude Code hands it over when the member reads its inbox.`,
+    started: (project, withTask) => `FORGE opens a terminal with a team lead in ${project}${withTask ? " and gives it the task" : ""}. The main window has to be open for that.`,
+  },
+
   agents: {
     notWorktreeRemove: (name: string) => `Error: ${name} is not an agent worktree. Projects are removed with the tool project and remove.`,
     branchDeleted: (branch: string) => ` Deleted branch ${branch}.`,

@@ -596,3 +596,19 @@ body {
   color: var(--color-accent);
   text-decoration-color: currentColor;
 }
+
+/* Agent teams: a fresh message runs along the line between two members of the team graph. */
+.team-flow {
+  stroke-dasharray: 6 6;
+  animation: forge-team-flow 0.9s linear infinite;
+}
+@keyframes forge-team-flow {
+  to {
+    stroke-dashoffset: -12;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .team-flow {
+    animation: none;
+  }
+}

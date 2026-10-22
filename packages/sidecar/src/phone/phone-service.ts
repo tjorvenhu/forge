@@ -2416,6 +2416,48 @@ export class PhoneService {
           const lost = [o?.force === true && ag.lostChanges, o?.deleteBranch === true && ag.lostBranch].filter(Boolean).join(ag.and);
           return askKeypad(ag.confirmRemove(p.name, lost), removeIt);
         }),
+      agentTeam: (action, o) =>
+        run(action !== "status", async () => {
+          const m = tr().phone.teams;
+          const projectName = (id: string | null) => (id ? (this.d.projects.all().find((p) => p.id === id)?.name ?? "?") : "?");
+          if (action === "start") {
+            const p = findProject(o.project ?? "");
+            await call("teams.start", { projectId: p.id, prompt: o.text?.trim() || undefined });
+            return m.started(p.name, !!o.text?.trim());
+          }
+          const scope = o.project?.trim() ? findProject(o.project) : null;
+          const teams = await call("teams.list", scope ? { projectId: scope.id } : {});
+          const running = teams.filter((t) => t.active);
+          if (action === "message") {
+            if (!o.text?.trim()) return m.needsText;
+            if (!o.to?.trim()) return m.needsTo;
+            const q = o.team?.trim().toLowerCase();
+            const hits = q ? running.filter((t) => t.name.toLowerCase().includes(q)) : running;
+            if (!hits.length) return scope ? m.noneInProject(scope.name) : m.none;
+            if (hits.length > 1) return m.whichTeam(hits.map((t) => `${t.name} (${projectName(t.projectId)})`).join(", "));
+            const r = await call("teams.message", { team: hits[0]!.name, to: o.to.trim(), text: o.text.trim() });
+            return m.sent(r.recipients.join(", "));
+          }
+          const shown = running.length ? running : teams.slice(0, 1);
+          if (!shown.length) return scope ? m.noneInProject(scope.name) : m.none;
+          return shown
+            .map((t) => {
+              const done = t.tasks.filter((x) => x.status === "completed").length;
+              const tasks = t.tasks.length
+                ? m.tasks(done, t.tasks.length, t.tasks.map((x) => m.task(`#${x.id}`, asData(x.subject), m.taskStatus[x.status] ?? x.status, x.owner) + (x.blocked ? m.blocked : "")).join("; "))
+                : m.noTasks;
+              const last = t.messages.slice(-4).map((x) => m.message(x.from, x.to, excerptData(x.text, 200)));
+              return [
+                m.team(t.name, projectName(t.projectId), t.active),
+                m.members(t.members.map((x) => m.member(x.name, m.state[x.state] ?? "").trim()).join(", ")),
+                tasks,
+                last.length ? m.last(last.join(" | ")) : "",
+              ]
+                .filter(Boolean)
+                .join("\n");
+            })
+            .join("\n\n");
+        }),
       finishAgent: (projectName, action, o) =>
         run(true, async () => {
           const p = target(projectName, o);

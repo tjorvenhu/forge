@@ -3,6 +3,7 @@ import { RpcErrorSchema } from "./errors.js";
 import {
   AgentFinishResult,
   AgentReview,
+  AgentTeam,
   Attachment,
   BranchInfo,
   ClaudeSetupState,
@@ -223,6 +224,15 @@ export const methods = {
   /** merge: rebase the agent's branch onto its target and fast-forward it, then remove worktree and branch; discard: remove both unmerged */
   "agents.finish": { params: projectRef.extend({ action: z.enum(["merge", "discard"]) }), result: AgentFinishResult },
   "sessions.summarize": { params: sessionRef, result: z.object({ summary: z.string(), model: z.string() }) },
+  /** Claude Code agent teams FORGE saw (running ones and ones that ended since FORGE started); projectId: only that project and its worktrees */
+  "teams.list": { params: z.object({ projectId: id.optional() }), result: z.array(AgentTeam) },
+  /** a message from the user to a member of a running team (its name, "team-lead" or "all" teammates) */
+  "teams.message": {
+    params: z.object({ team: z.string().min(1).max(100), to: z.string().min(1).max(100), text: z.string().min(1).max(20000) }),
+    result: z.object({ recipients: z.array(z.string()) }),
+  },
+  /** starts a team lead in a terminal tab of the project (main window), optionally with its first message */
+  "teams.start": { params: projectRef.extend({ prompt: z.string().max(20000).optional() }), result: z.object({ ok: z.boolean() }) },
 
   /** what happened on a day (default today), over all projects or for one with its agents */
   "reports.daily": { params: dailyReportParams, result: DailyReport },
@@ -824,6 +834,10 @@ export type ServerEvent =
    */
   /** `sessionIds`: sessions of the worktree, read before the merge removed them (their chat windows close) */
   | { event: "agent.autoMerge"; payload: { rootId: string; worktreeId: string; branch: string | null; outcome: "merged" | "conflict" | "skipped" | "waiting"; message: string; sessionIds: string[] } }
+  /** an agent team changed (members, tasks, messages, ended) */
+  | { event: "teams.updated"; payload: { team: string; projectId: string | null } }
+  /** the main window opens a terminal tab with a team lead in the project (asked for on the phone) */
+  | { event: "team.start"; payload: { projectId: string; prompt: string | null } }
   /** a before/after comparison changed (after image taken, failed, taken again) */
   | { event: "uiCompare.updated"; payload: UiCompare }
   | { event: "phone.updated"; payload: PhoneState }

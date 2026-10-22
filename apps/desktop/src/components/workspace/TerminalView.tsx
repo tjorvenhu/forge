@@ -11,7 +11,7 @@ import { t } from "@/i18n";
  */
 export function TerminalView({ tab }: { tab: TerminalTab }) {
   const host = useRef<HTMLDivElement>(null);
-  const { key, cwd, program, claudePath } = tab;
+  const { key, cwd, program, claudePath, team, prompt } = tab;
   const [ready, setReady] = useState(false);
   const [failed, setFailed] = useState<string | null>(null);
 
@@ -29,8 +29,8 @@ export function TerminalView({ tab }: { tab: TerminalTab }) {
   useEffect(() => {
     const el = host.current;
     if (!el || !ready) return;
-    return attachTerminal(key, el, { cwd, program, claudePath });
-  }, [ready, key, cwd, program, claudePath]);
+    return attachTerminal(key, el, { cwd, program, claudePath, team, prompt });
+  }, [ready, key, cwd, program, claudePath, team, prompt]);
 
   if (failed) return <div className="p-3 text-small text-danger">{t.workspace.terminal.loadFailed(failed)}</div>;
   return (

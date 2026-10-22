@@ -21,6 +21,7 @@ import { KnowledgeStore } from "./knowledge/knowledge.js";
 import { RefChecker } from "./knowledge/staleness.js";
 import { PhoneService } from "./phone/phone-service.js";
 import { JobWatcher } from "./sessions/job-done.js";
+import { AgentTeams, claudeConfigDir } from "./teams/agent-teams.js";
 import { tokenMeter } from "./claude/token-meter.js";
 import { DictationService } from "./dictation/dictation.js";
 import { Presence } from "./util/presence.js";
@@ -162,6 +163,8 @@ export function createApp(opts: { dataDir: string; write: Writer; log?: (m: stri
   const notifyProject = (projectId: string) => emit({ event: "project.updated", payload: { projectId } });
   const agentFinish = new AgentFinisher({ db, git, projects, sessions, worktrees, devServers, notifyProject });
   sessions.useAgentFinisher(agentFinish);
+  const teams = new AgentTeams({ claudeDir: claudeConfigDir(), projects: () => projects.all(), emit });
+  teams.start();
   const templates = new TemplateService({
     db,
     rootOf: (projectId) => projects.get(projectId).parentId ?? projectId,
@@ -392,6 +395,7 @@ export function createApp(opts: { dataDir: string; write: Writer; log?: (m: stri
     worktreeSetup,
     agentFinish,
     reports,
+    teams,
     devServers,
     devTools,
     testDb,
@@ -422,6 +426,7 @@ export function createApp(opts: { dataDir: string; write: Writer; log?: (m: stri
       await Promise.race([Promise.allSettled([sessions.drain(), Promise.resolve().then(() => phone?.shutdown()), testDb.stopAll(), preview.closeAll()]), limit]);
       clearTimeout(timer);
       sessions.shutdown();
+      teams.stop();
       tokenMeter.stop();
       updates.stop();
       installs.stop();

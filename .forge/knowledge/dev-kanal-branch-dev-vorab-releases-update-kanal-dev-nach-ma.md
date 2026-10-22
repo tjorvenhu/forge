@@ -1,11 +1,16 @@
 ---
 title: "Entwicklungsversion (Branch dev): Version 0.1.N-dev, Kanalwechsel, Dev nach Main (DevChannelService, versionChannel)"
-summary: "Dev-Releases mit -dev-Version, jeder Kanal nimmt nur eigene Builds, Kanalwechsel installiert den Build des anderen Kanals (auch niedrigere Nummer), Rechteprüfung, Dev nach Main, Stolperfallen im Release-Workflow."
-tags: ["release","update","github-actions","einstellungen","stolperfalle"]
-updated: "2026-10-22T09:10:28.338Z"
+summary: "Neue Arbeit immer auf dev, nie direkt auf main; Dev-Releases mit -dev-Version, jeder Kanal nimmt nur eigene Builds, Kanalwechsel, Rechteprüfung, Dev nach Main, Stolperfallen im Release-Workflow."
+tags: ["release","update","github-actions","konvention","stolperfalle"]
+updated: "2026-10-22T15:33:05.698Z"
 ---
 
 # Entwicklungsversion (Branch dev)
+
+## Arbeitsweise (Regel des Besitzers, 2026-10-22)
+- **Neue Features und größere Änderungen entstehen auf `dev`, nie direkt auf `main`.** Vor Beginn den Branch prüfen; steht die Session auf main: `git switch dev` (fehlt der lokale Branch: `git switch -c dev --track origin/dev`). Nicht committete Änderungen kommen beim Wechsel mit.
+- Commits und Pushes gehen nach `origin/dev`. main bekommt die Arbeit nur über „Dev nach Main übernehmen“.
+- Dev-Läufe machen kein Lint und keinen Typecheck: beides vor dem Push selbst ausführen.
 
 Gebaut 2026-10-20 (Wunsch des Besitzers: auf dev pushen, Apps auf dev aktualisieren sich daraus, später nach main übernehmen; dev schnell und ohne Zertifikat; nur Repo-Mitglieder dürfen umschalten; Dev muss in der App klar sichtbar sein). Versionsschema und Kanalwechsel neu seit 2026-10-22.
 

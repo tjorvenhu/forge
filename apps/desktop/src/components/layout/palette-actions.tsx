@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import type { QueryClient } from "@tanstack/react-query";
-import { Archive, ArrowDown, ArrowLeftRight, ArrowUp, ArrowUpCircle, BookOpen, Bot, CalendarDays, Camera, CloudDownload, CloudUpload, Columns2, Combine, Cpu, Database, Download, FilePlus2, FileStack, FileText, FileUp, FlaskConical, FolderDown, FolderMinus, FolderOpen, FolderPlus, Folders, Gauge, GitBranch, GitBranchPlus, GitCommitHorizontal, GitCompareArrows, GitFork, GitMerge, GitPullRequest, Globe, HandHeart, Languages, Lightbulb, Link, Link2Off, ListChecks, LogIn, LogOut, MessageSquare, MessageSquarePlus, MessageSquareText, Mic, MonitorSmartphone, NotebookText, PackageCheck, PanelBottom, PanelRight, Pencil, Phone, PhoneOff, PhoneOutgoing, Pin, PinOff, Play, Power, RefreshCcw, RefreshCw, RotateCcw, Search, Settings2, Shield, ShieldBan, Shrink, Sparkles, Square, SquareArrowOutDownLeft, SquareArrowOutUpRight, SquareTerminal, Timer, ToggleLeft, ToggleRight, Trash2, Wand2, type LucideIcon } from "lucide-react";
+import { Archive, ArrowDown, ArrowLeftRight, ArrowUp, ArrowUpCircle, BookOpen, Bot, CalendarDays, Camera, CloudDownload, CloudUpload, Columns2, Combine, Cpu, Database, Download, FilePlus2, FileStack, FileText, FileUp, FlaskConical, FolderDown, FolderMinus, FolderOpen, FolderPlus, Folders, Gauge, GitBranch, GitBranchPlus, GitCommitHorizontal, GitCompareArrows, GitFork, GitMerge, GitPullRequest, Globe, HandHeart, Languages, Lightbulb, Link, Link2Off, ListChecks, LogIn, LogOut, MessageSquare, MessageSquarePlus, MessageSquareText, Mic, MonitorSmartphone, NotebookText, PackageCheck, PanelBottom, PanelRight, Pencil, Phone, PhoneOff, PhoneOutgoing, Pin, PinOff, Play, Power, RefreshCcw, RefreshCw, RotateCcw, Search, Settings2, Shield, ShieldBan, Shrink, Sparkles, Square, SquareArrowOutDownLeft, SquareArrowOutUpRight, SquareTerminal, Timer, ToggleLeft, ToggleRight, Trash2, Users, Wand2, type LucideIcon } from "lucide-react";
 import type {
   AppInstallState,
   AppUpdateState,
@@ -27,6 +27,7 @@ import { openExternal } from "@/lib/native";
 import { checkInstall, installFromFile, installFull, installUpdate, supportsFullInstall } from "@/lib/app-install";
 import { call, keys, refreshUsage } from "@/lib/queries";
 import { openDevServer, prepareWorktree } from "@/lib/dev-server-actions";
+import { startTeamTerminal } from "@/lib/agent-teams";
 import { EFFORT_LEVELS, modelLabel } from "@/lib/models";
 import { errorMessage, RpcCallError } from "@/lib/rpc";
 import { openChatWindow, pinChatWindow, recallChatWindow, type ChatWindowList } from "@/lib/chat-windows";
@@ -509,6 +510,14 @@ export function buildActions(ctx: ActionContext): PaletteEntry[] {
       const file = ui.selectedFile[project.id];
       if (file) act("explorer-file", t.layout.actions.explorerFile, icon(FolderOpen), () => void revealInProject(project.path, file), { keywords: "datei explorer ordner windows file folder show", hint: file });
     }
+    if (project.exists) {
+      act("team-start", t.layout.actions.teamStart, icon(Users), () => startTeamTerminal(project.id), {
+        keywords: "agent team agenten-team teammitglieder teammates lead starten claude code experimentell parallel zusammenarbeiten agent teams start spawn collaborate",
+      });
+    }
+    act("team-view", t.layout.actions.teamView, icon(Users), () => ui.setWorkspaceTab("agents"), {
+      keywords: "agent teams agenten-teams anzeigen aufgaben nachrichten mitglieder status übersicht show tasks messages members overview",
+    });
     act("terminal", t.layout.actions.terminal, icon(SquareTerminal), () => ui.openTerminal(project.id, "shell"), { keywords: "terminal shell konsole console" });
     act("bottom", t.layout.actions.bottom, icon(PanelBottom), () => ui.toggleBottomPanel(), { hint: t.layout.actions.ctrl("J"), keywords: "unteres panel einblenden ausblenden bottom panel toggle show hide" });
     act("right", t.layout.actions.right, icon(PanelRight), () => ui.toggleRightPanel(), { hint: t.layout.actions.ctrlShift("E"), keywords: "seitenleiste einblenden ausblenden sidebar side panel toggle show hide" });

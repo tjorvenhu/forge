@@ -49,6 +49,14 @@ export const GIT_ACTIONS = [
 ] as const;
 export type GitAction = (typeof GIT_ACTIONS)[number];
 export type TaskAction = "output" | "stop" | "to_background" | "message";
+export const AGENT_TEAM_ACTIONS = ["status", "message", "start"] as const;
+export type AgentTeamAction = (typeof AGENT_TEAM_ACTIONS)[number];
+export interface AgentTeamOptions {
+  project?: string;
+  team?: string;
+  to?: string;
+  text?: string;
+}
 
 export interface GitOptions extends TargetOptions {
   message?: string;
@@ -339,6 +347,8 @@ export interface PhoneToolset {
   removeAgent(project: string, o?: TargetOptions & { deleteBranch?: boolean; force?: boolean }): Promise<string>;
   /** merges an agent's branch into the branch it started from, or discards it (worktree and branch go either way); review tells what it did */
   finishAgent(project: string, action: "merge" | "discard" | "review", o?: TargetOptions): Promise<string>;
+  /** Claude Code agent teams: status of the running ones, a message to a member, or a new team lead in a terminal tab */
+  agentTeam(action: AgentTeamAction, o: AgentTeamOptions): Promise<string>;
   projects(): Promise<string>;
   /** creates, imports, clones, removes or configures a project */
   project(project: string, action: ProjectAction, o?: ProjectOptions): Promise<string>;
@@ -709,6 +719,17 @@ const TOOL_DEFS: readonly ToolDef[] = [
       action: { type: "string", enum: ["review", "merge", "discard"] },
     },
     run: (t, a) => t.finishAgent(str(a.project), a.action === "discard" ? "discard" : a.action === "review" ? "review" : "merge", { session: opt(a.session) }),
+  },
+  {
+    name: "agent_team",
+    params: {
+      action: { type: "string", enum: AGENT_TEAM_ACTIONS },
+      project: { type: "string", optional: true },
+      team: { type: "string", optional: true },
+      to: { type: "string", optional: true },
+      text: { type: "string", optional: true },
+    },
+    run: (t, a) => t.agentTeam(pick(a.action, AGENT_TEAM_ACTIONS, "status"), { project: opt(a.project), team: opt(a.team), to: opt(a.to), text: opt(a.text) }),
   },
   {
     name: "projects",

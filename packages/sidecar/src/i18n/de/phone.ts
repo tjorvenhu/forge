@@ -635,6 +635,28 @@ Sicherheit:
     created: (title: string, head: string, base: string, draft: boolean) => `Pull Request ${title} von ${head} nach ${base} angelegt${draft ? ", als Entwurf" : ""}.`,
   },
 
+  teams: {
+    none: "Gerade läuft kein Agent-Team. Mit agent_team start öffnet FORGE eins im Projekt.",
+    noneInProject: (project: string) => `In ${project} läuft gerade kein Agent-Team.`,
+    team: (name: string, project: string, active: boolean) => `Team ${name} in ${project}${active ? "" : ", beendet"}.`,
+    members: (list: string) => `Mitglieder: ${list}.`,
+    member: (name: string, state: string) => `${name} ${state}`,
+    state: { working: "arbeitet", idle: "wartet", unknown: "" } as Record<string, string>,
+    tasks: (done: number, total: number, list: string) => `Aufgaben ${done} von ${total} erledigt: ${list}.`,
+    task: (id: string, subject: string, status: string, owner: string | null) => `${id} ${subject} (${status}${owner ? `, ${owner}` : ""})`,
+    taskStatus: { pending: "offen", in_progress: "in Arbeit", completed: "erledigt" } as Record<string, string>,
+    blocked: ", blockiert",
+    noTasks: "Noch keine Aufgaben.",
+    last: (list: string) => `Letzte Nachrichten: ${list}`,
+    message: (from: string, to: string, text: string) => `${from} an ${to}: ${text}`,
+    whichTeam: (names: string) => `Es laufen mehrere Teams: ${names}. Welches?`,
+    needsText: "Was soll in der Nachricht stehen?",
+    needsTo: "An wen? Ein Name, team-lead oder all.",
+    sent: (to: string) => `Nachricht an ${to} abgelegt. Claude Code stellt sie zu, sobald das Mitglied sein Postfach liest.`,
+    started: (project: string, withTask: boolean) =>
+      `FORGE öffnet in ${project} ein Terminal mit einem Team-Lead${withTask ? " und gibt ihm den Auftrag" : ""}. Das Hauptfenster muss dafür offen sein.`,
+  },
+
   agents: {
     notWorktreeRemove: (name: string) => `Fehler: ${name} ist kein Agent-Worktree. Projekte entfernt das Werkzeug project mit remove.`,
     branchDeleted: (branch: string) => ` Branch ${branch} gelöscht.`,

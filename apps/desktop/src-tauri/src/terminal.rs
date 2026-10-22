@@ -1,5 +1,5 @@
 //! Embedded terminals: one PTY per tab, output streamed as `term://data` events.
-//! Only two programs can be started: the user's shell or the Claude CLI.
+//! Only two programs can be started: the user's shell or the Claude CLI (also as an agent team).
 
 use std::collections::HashMap;
 #[cfg(windows)]
@@ -55,6 +55,26 @@ pub struct OpenRequest {
     pub rows: u16,
     pub program: String,
     pub claude_path: Option<String>,
+    /// Claude as the lead of an agent team (Claude Code's experimental agent teams)
+    pub team: bool,
+    /// first message of a Claude tab
+    pub prompt: Option<String>,
+}
+
+/// Agent teams form only in an interactive session (not in the Agent SDK behind FORGE's chat). Without the
+/// todo tools current models get no shared task list, so the team would coordinate by messages alone.
+const TEAM_ENV: &[(&str, &str)] = &[("CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS", "1"), ("CLAUDE_CODE_ENABLE_TODO_TOOLS", "1")];
+
+/// Arguments of the Claude CLI: in-process teammates work in every terminal (split panes need tmux or iTerm2).
+fn claude_args(team: bool, prompt: Option<String>) -> Vec<String> {
+    let mut args = Vec::new();
+    if team {
+        args.extend(["--teammate-mode".to_string(), "in-process".to_string()]);
+    }
+    if let Some(p) = prompt.map(|p| p.trim().to_string()).filter(|p| !p.is_empty()) {
+        args.push(p);
+    }
+    args
 }
 
 #[derive(Clone, Serialize)]
@@ -152,7 +172,7 @@ impl Terminals {
         }
         let (exe, args) = match req.program.as_str() {
             "shell" => default_shell(),
-            "claude" => (validate_claude_path(req.claude_path)?, vec![]),
+            "claude" => (validate_claude_path(req.claude_path)?, claude_args(req.team, req.prompt)),
             _ => return Err(tr!("Unknown program", "Unbekanntes Programm")),
         };
 
@@ -184,6 +204,11 @@ impl Terminals {
             }
         }
         cmd.env("TERM", "xterm-256color");
+        if req.team && req.program == "claude" {
+            for (k, v) in TEAM_ENV {
+                cmd.env(k, v);
+            }
+        }
         let mut child = pair.slave.spawn_command(cmd).map_err(|e| e.to_string())?;
         drop(pair.slave);
         let mut reader = pair.master.try_clone_reader().map_err(|e| e.to_string())?;
@@ -303,6 +328,14 @@ mod tests {
     fn shipped_node_and_gh_come_first() {
         let rt = Path::new("/Applications/FORGE.app/Contents/Resources/runtime");
         assert_eq!(runtime_path_entries(rt), vec![rt.join("node").join("bin"), rt.join("gh").join("bin")]);
+    }
+
+    #[test]
+    fn a_team_tab_starts_claude_in_process_with_its_prompt() {
+        assert!(claude_args(false, None).is_empty());
+        assert_eq!(claude_args(false, Some("  ".into())), Vec::<String>::new());
+        assert_eq!(claude_args(true, None), vec!["--teammate-mode", "in-process"]);
+        assert_eq!(claude_args(true, Some(" baue X ".into())), vec!["--teammate-mode", "in-process", "baue X"]);
     }
 
     #[test]

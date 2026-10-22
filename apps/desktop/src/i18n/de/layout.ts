@@ -426,6 +426,8 @@ export const layout = {
     explorerProject: `Projektordner im ${fm} öffnen`,
     explorerFile: `Datei im ${fm} zeigen`,
     terminal: "Terminal öffnen",
+    teamStart: "Agent-Team starten (Claude als Team-Lead im Terminal)",
+    teamView: "Agent-Teams anzeigen",
     bottom: "Unteres Panel ein- oder ausblenden",
     right: "Seitenleiste ein- oder ausblenden",
     splitAdd: "Ansicht teilen: weiteren Bereich öffnen",
