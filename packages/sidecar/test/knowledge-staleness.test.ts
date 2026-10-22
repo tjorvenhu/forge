@@ -230,4 +230,21 @@ describe("KnowledgeStore staleness", { timeout: 30_000 }, () => {
     expect(ctx.missing.map((m) => m.ref)).toEqual(["stopApp"]);
     expect(ctx.details).toContain("-export function stopApp() {}");
   });
+
+  it("lets Claude list outdated entries and mark false alarms with knowledge_check and knowledge_mark_checked", async () => {
+    const e = await store.save(projectId, { id: null, title: "App beenden", summary: "Wie die App endet", tags: ["app"], content: "# App\n\nBeenden mit `stopApp`." });
+    await store.save(projectId, { id: null, title: "App starten", summary: "Wie die App startet", tags: ["app"], content: "# App\n\n`startApp` in `src/app.ts`." });
+    const rec = { id: "s1", projectId } as Parameters<typeof projectTools>[0];
+    const { tools } = projectTools(rec, { knowledge: store, dev: { config: () => ({}) } as unknown as DevEnvironment });
+    const tool = (name: string) => tools.find((x) => x.name === name)!;
+
+    const found = await tool("knowledge_check").run({});
+    expect(found).toMatch(new RegExp(`^Veraltete Verweise in 1 von 2 Einträgen:\\n- ${e.id}: \`stopApp\` \\(.*stopApp entfernt\\)\\n`));
+    expect(found).toContain("knowledge_mark_checked");
+
+    expect(await tool("knowledge_mark_checked").run({ id: e.id })).toBe(`Als geprüft markiert: ${e.id} (\`stopApp\`).`);
+    expect(await tool("knowledge_mark_checked").run({ id: e.id })).toBe(`Nichts zu markieren: ${e.id} hat keine fehlenden Verweise.`);
+    expect(await tool("knowledge_check").run({ refresh: true })).toBe("Keine veralteten Verweise (2 Einträge geprüft).");
+    expect(await tool("knowledge_check").run({ ids: [e.id] })).toBe("Keine veralteten Verweise (1 Eintrag geprüft).");
+  });
 });

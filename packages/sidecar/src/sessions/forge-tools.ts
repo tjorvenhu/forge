@@ -1,5 +1,5 @@
 import path from "node:path";
-import type { Project, ServerEvent, Session, SessionEventBody } from "@forge/protocol";
+import type { KnowledgeMissingRef, Project, ServerEvent, Session, SessionEventBody } from "@forge/protocol";
 import { z } from "zod";
 import { slugify, type WorktreeService } from "../automation/worktrees.js";
 import type { AgentFinisher } from "../automation/agent-finish.js";
@@ -185,6 +185,37 @@ export function projectTools(rec: SessionRecord, p: ProjectToolDeps): { tools: S
     autoAllow: false,
     run: async (a) => ((await p.knowledge.delete(projectId, String(a.id))) ? m.knowledgeDeleted(String(a.id)) : m.knowledgeNoEntry(String(a.id))),
   };
+  const refList = (missing: KnowledgeMissingRef[]) => missing.map((r) => `\`${r.ref}\`${r.hint ? ` (${r.hint})` : ""}`).join("; ");
+  const knowledgeCheck: SessionTool = {
+    name: "knowledge_check",
+    description: m.knowledgeCheckDescription,
+    shape: {
+      ids: z.array(z.string().min(1).max(80)).max(100).optional().describe(m.knowledgeCheckIds),
+      refresh: z.boolean().optional().describe(m.knowledgeCheckRefresh),
+    },
+    autoAllow: true,
+    run: async (a) => {
+      const ids = Array.isArray(a.ids) && a.ids.length ? a.ids.map((x) => String(x).trim()) : undefined;
+      const report = await p.knowledge.staleness(projectId, { ids, refresh: a.refresh === true });
+      const stale = report.entries.filter((e) => e.missing.length);
+      const noGit = report.git ? "" : `\n${m.knowledgeCheckNoGit}`;
+      if (!stale.length) return `${m.knowledgeCheckNone(report.entries.length)}${noGit}`;
+      return `${m.knowledgeCheckFound(stale.length, report.entries.length, stale.map((e) => `- ${e.id}: ${refList(e.missing)}`).join("\n"))}${noGit}`;
+    },
+  };
+  const knowledgeMarkChecked: SessionTool = {
+    name: "knowledge_mark_checked",
+    description: m.knowledgeMarkDescription,
+    shape: { id: z.string().min(1).max(80).describe(m.knowledgeMarkId) },
+    autoAllow: true,
+    run: async (a) => {
+      const id = String(a.id).trim();
+      const missing = (await p.knowledge.staleness(projectId, { ids: [id] })).entries[0]?.missing ?? [];
+      if (!missing.length) return m.knowledgeMarkNothing(id);
+      await p.knowledge.markChecked(projectId, id);
+      return m.knowledgeMarked(id, missing.map((r) => `\`${r.ref}\``).join(", "));
+    },
+  };
   const devEnvironment: SessionTool = {
     name: "dev_environment",
     description: m.devEnvironmentDescription,
@@ -237,7 +268,7 @@ export function projectTools(rec: SessionRecord, p: ProjectToolDeps): { tools: S
     inWorktree ? p.dev.setupContext(projectId) : "",
     preview.length ? m.previewIntro : "",
   ].filter(Boolean);
-  return { tools: [knowledgeSearch, knowledgeRead, knowledgeSave, knowledgeMerge, knowledgeDelete, devEnvironment, devControl, ...preview], context };
+  return { tools: [knowledgeSearch, knowledgeRead, knowledgeSave, knowledgeMerge, knowledgeDelete, knowledgeCheck, knowledgeMarkChecked, devEnvironment, devControl, ...preview], context };
 }
 
 type ForgeToolTexts = ReturnType<typeof tr>["core"]["forgeTools"];

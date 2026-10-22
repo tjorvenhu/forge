@@ -35,6 +35,19 @@ export const forgeTools: typeof De = {
   knowledgeDeleteDescription: "Deletes an outdated or wrong project knowledge entry.",
   knowledgeDeleted: (id) => `Deleted: ${id}`,
   knowledgeNoEntry: (id) => `No entry ${id}.`,
+  knowledgeCheckDescription:
+    "Checks the project knowledge for outdated references: paths, file names and identifiers from the entries that no longer exist in the project (the same check as in the Knowledge tab). Returns the missing references per affected entry, with a hint where they went.",
+  knowledgeCheckIds: "Only check these entries; empty checks all",
+  knowledgeCheckRefresh: "true drops the cache and checks again",
+  knowledgeCheckNone: (checked) => `No outdated references (${checked === 1 ? "1 entry" : `${checked} entries`} checked).`,
+  knowledgeCheckFound: (stale, checked, lines) =>
+    `Outdated references in ${stale} of ${checked} entries:\n${lines}\nCorrect real findings with knowledge_save. If a reference is right after all (e.g. outside the repo or an example), mark the entry with knowledge_mark_checked.`,
+  knowledgeCheckNoGit: "Checked without git: identifiers only count as missing once an earlier check found them.",
+  knowledgeMarkDescription:
+    "Marks the missing references of an entry as a false alarm: the check leaves them out from then on, the entry's date stays. Only for references that are right; correct real findings with knowledge_save first, otherwise they get marked too.",
+  knowledgeMarkId: "ID of the entry",
+  knowledgeMarked: (id, refs) => `Marked as checked: ${id} (${refs}).`,
+  knowledgeMarkNothing: (id) => `Nothing to mark: ${id} has no missing references.`,
   devEnvironmentDescription:
     "State of the project's dev server and test database: status, address, connection URL of the local PostgreSQL test database, names of the test environment variables and the last lines of dev server output. In an agent worktree also what FORGE prepared there (dependencies, local config, build output, own database) and what of it is still running or failed.",
   devEnvironmentWait: "true: in an agent worktree, wait until the preparation is done first (at most 4 minutes)",

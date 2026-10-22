@@ -40,6 +40,21 @@ export const forgeTools = {
   knowledgeDeleteDescription: "Löscht einen veralteten oder falschen Eintrag des Projektwissens.",
   knowledgeDeleted: (id: string) => `Gelöscht: ${id}`,
   knowledgeNoEntry: (id: string) => `Kein Eintrag ${id}.`,
+  // knowledge_check
+  knowledgeCheckDescription:
+    "Prüft das Projektwissen auf veraltete Verweise: Pfade, Dateinamen und Bezeichner aus den Einträgen, die es im Projekt nicht mehr gibt (dieselbe Prüfung wie im Wissen-Tab). Liefert je betroffenem Eintrag die fehlenden Verweise mit Hinweis, wohin sie gingen.",
+  knowledgeCheckIds: "Nur diese Einträge prüfen; leer prüft alle",
+  knowledgeCheckRefresh: "true verwirft den Zwischenspeicher und prüft neu",
+  knowledgeCheckNone: (checked: number) => `Keine veralteten Verweise (${checked === 1 ? "1 Eintrag" : `${checked} Einträge`} geprüft).`,
+  knowledgeCheckFound: (stale: number, checked: number, lines: string) =>
+    `Veraltete Verweise in ${stale} von ${checked} Einträgen:\n${lines}\nKorrigiere echte Funde mit knowledge_save. Stimmt ein Verweis doch (liegt z. B. außerhalb des Repos oder ist ein Beispiel), markiere den Eintrag mit knowledge_mark_checked.`,
+  knowledgeCheckNoGit: "Ohne Git geprüft: Bezeichner gelten erst als fehlend, wenn eine frühere Prüfung sie gefunden hat.",
+  // knowledge_mark_checked
+  knowledgeMarkDescription:
+    "Markiert die fehlenden Verweise eines Eintrags als Fehlalarm: die Prüfung lässt sie danach aus, das Datum des Eintrags bleibt. Nur für Verweise, die stimmen; echte Funde vorher mit knowledge_save korrigieren, sonst werden sie mit markiert.",
+  knowledgeMarkId: "Kennung des Eintrags",
+  knowledgeMarked: (id: string, refs: string) => `Als geprüft markiert: ${id} (${refs}).`,
+  knowledgeMarkNothing: (id: string) => `Nichts zu markieren: ${id} hat keine fehlenden Verweise.`,
   // dev tools
   devEnvironmentDescription:
     "Stand von Dev-Server und Test-Datenbank des Projekts: Status, Adresse, Verbindungs-URL der lokalen PostgreSQL-Testdatenbank, Namen der Test-Umgebungsvariablen und die letzten Zeilen der Dev-Server-Ausgabe. In einem Agenten-Worktree auch, was FORGE dort vorbereitet hat (Abhängigkeiten, lokale Konfiguration, Build-Ausgaben, eigene Datenbank) und was davon noch läuft oder fehlgeschlagen ist.",

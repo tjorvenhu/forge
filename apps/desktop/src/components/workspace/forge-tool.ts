@@ -108,14 +108,14 @@ export function forgeToolView(tool: string, input: Record<string, unknown>, resu
       });
     case "knowledge_search":
       return view({
-        title: !result ? t.chat.forgeTools.knowledgeSearching : text.startsWith("Keine Treffer") ? t.chat.forgeTools.knowledgeSearchedNone : t.chat.forgeTools.knowledgeSearched,
+        title: !result ? t.chat.forgeTools.knowledgeSearching : /^(?:Keine Treffer|No hits)/.test(text) ? t.chat.forgeTools.knowledgeSearchedNone : t.chat.forgeTools.knowledgeSearched,
         failedTitle: t.chat.forgeTools.knowledgeSearchFailed,
         ref: str(input, "query"),
         icon: "knowledge",
         target: { kind: "knowledge", id: null },
       });
     case "knowledge_delete": {
-      const missing = done && text.startsWith("Kein Eintrag");
+      const missing = done && /^(?:Kein Eintrag|No entry)/.test(text);
       return view({
         title: !result ? t.chat.forgeTools.knowledgeDeleting : missing ? t.chat.forgeTools.knowledgeNotFound : t.chat.forgeTools.knowledgeDeleted,
         failedTitle: t.chat.forgeTools.knowledgeDeleteFailed,
@@ -123,6 +123,29 @@ export function forgeToolView(tool: string, input: Record<string, unknown>, resu
         icon: "knowledge",
         tone: missing ? "warning" : "accent",
         target: { kind: "knowledge", id: null },
+      });
+    }
+    case "knowledge_check": {
+      const clean = done && /^(?:Keine veralteten|No outdated)/.test(text);
+      const stale = /^(?:Veraltete Verweise in|Outdated references in) (\d+)/.exec(text)?.[1];
+      return view({
+        title: !result ? t.chat.forgeTools.knowledgeChecking : clean ? t.chat.forgeTools.knowledgeCheckedClean : t.chat.forgeTools.knowledgeCheckedStale,
+        failedTitle: t.chat.forgeTools.knowledgeCheckFailed,
+        ref: stale ? t.chat.forgeTools.knowledgeStaleCount(Number(stale)) : null,
+        icon: "knowledge",
+        tone: done && !clean ? "warning" : "accent",
+        target: { kind: "knowledge", id: null },
+      });
+    }
+    case "knowledge_mark_checked": {
+      const nothing = done && /^(?:Nichts zu markieren|Nothing to mark)/.test(text);
+      return view({
+        title: !result ? t.chat.forgeTools.knowledgeMarking : nothing ? t.chat.forgeTools.knowledgeMarkNothing : t.chat.forgeTools.knowledgeMarked,
+        failedTitle: t.chat.forgeTools.knowledgeMarkFailed,
+        ref: str(input, "id"),
+        icon: "knowledge",
+        tone: nothing ? "warning" : "accent",
+        target: { kind: "knowledge", id: str(input, "id") },
       });
     }
     case "dev_environment":

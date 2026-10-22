@@ -139,6 +139,23 @@ describe("FORGE tools in the chat", () => {
     expect(useUi.getState().knowledgeRequest).toBe("deploy");
   });
 
+  it("shows the knowledge check and marking false alarms", () => {
+    show(tool("mcp__forge__knowledge_check", {}, { text: "Veraltete Verweise in 2 von 66 Einträgen:\n- a: `x`\n- b: `y`" }));
+    expect(screen.getByText("Projektwissen geprüft, veraltete Verweise gefunden")).toBeTruthy();
+    expect(screen.getByText("2 Einträge betroffen")).toBeTruthy();
+    cleanup();
+    show(tool("mcp__forge__knowledge_check", {}, { text: "No outdated references (66 entries checked)." }));
+    expect(screen.getByText("Projektwissen geprüft, nichts veraltet")).toBeTruthy();
+    cleanup();
+    show(tool("mcp__forge__knowledge_mark_checked", { id: "demo" }, { text: "Als geprüft markiert: demo (`projects/nimbus`)." }));
+    expect(screen.getByText("Eintrag im Projektwissen als geprüft markiert")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Eintrag öffnen" }));
+    expect(useUi.getState().knowledgeRequest).toBe("demo");
+    cleanup();
+    show(tool("mcp__forge__knowledge_mark_checked", { id: "demo" }, { text: "Nichts zu markieren: demo hat keine fehlenden Verweise." }));
+    expect(screen.getByText("Nichts zu markieren, Eintrag ist aktuell")).toBeTruthy();
+  });
+
   it("names refusals and failures instead of reporting success", () => {
     show(tool("mcp__forge__knowledge_save", { title: "Deploy" }, { text: "Nicht gespeichert: Es gibt schon ähnliche Einträge: deploy (Deploy)." }));
     expect(screen.getByText("Nicht gespeichert: ähnlicher Eintrag vorhanden")).toBeTruthy();
