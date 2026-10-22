@@ -32,7 +32,7 @@ jobs:
         run: |
           try { Set-MpPreference -DisableRealtimeMonitoring $true -ErrorAction Stop } catch { Write-Host "Defender bleibt an: $_" }
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: System libraries
         if: runner.os == 'Linux'
@@ -49,9 +49,9 @@ jobs:
           git config --global user.name "FORGE CI"
           git config --global user.email "ci@forge.local"
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 24
           cache: pnpm
@@ -90,7 +90,7 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: System libraries
         run: |
@@ -102,9 +102,9 @@ jobs:
             build-essential curl wget file libssl-dev libxdo-dev pkg-config \
             libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev gstreamer1.0-plugins-base gstreamer1.0-plugins-good
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 24
           cache: pnpm
@@ -114,7 +114,7 @@ jobs:
           workspaces: apps/desktop/src-tauri
 
       - name: Cache bundled runtime downloads
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: .runtime-cache
           key: runtime-linux-x64-${{ hashFiles('scripts/prepare-runtime.mjs') }}
@@ -158,7 +158,7 @@ jobs:
           "$(find "$check/squashfs-root" -path '*/runtime/node/bin/node' | head -1)" --version
           ls -la "${appimages[0]}" "${debs[0]}"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: forge-linux
           path: |
