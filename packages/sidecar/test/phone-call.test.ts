@@ -1947,7 +1947,7 @@ describe("PhoneService end to end with a test PBX", () => {
       "app.installUpdate": () => ({
         currentVersion: "1.2.0",
         phase: "ready",
-        latest: { version: "1.3.0", tag: "v1.3.0", notes: "", since: "1.2.0", publishedAt: null, size: null, kind: "patch", via: null },
+        latest: { version: "1.3.0", tag: "v1.3.0", notes: "", since: "1.2.0", publishedAt: null, size: null, kind: "patch", via: null, channelSwitch: false },
         autoInstall: false,
         installerPath: "C:/tmp/forge-update/v1.3.0/x.zip",
         installable: true,
@@ -1958,7 +1958,7 @@ describe("PhoneService end to end with a test PBX", () => {
       "app.checkUpdate": () => ({
         currentVersion: "1.2.0",
         phase: "available",
-        latest: { version: "1.3.0", tag: "v1.3.0", notes: "", since: "1.2.0", publishedAt: null, size: null, kind: "patch", via: null },
+        latest: { version: "1.3.0", tag: "v1.3.0", notes: "", since: "1.2.0", publishedAt: null, size: null, kind: "patch", via: null, channelSwitch: false },
         autoInstall: false,
         installerPath: null,
         installable: true,

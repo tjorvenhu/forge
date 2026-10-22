@@ -15,7 +15,7 @@ vi.mock("./queries", async (orig) => ({ ...(await orig<typeof QueriesNs>()), cal
 const ready: AppUpdateState = {
   currentVersion: "0.1.40",
   phase: "ready",
-  latest: { version: "0.1.41", tag: "v0.1.41", notes: "", since: "0.1.40", publishedAt: null, size: null, kind: "patch", via: null },
+  latest: { version: "0.1.41", tag: "v0.1.41", notes: "", since: "0.1.40", publishedAt: null, size: null, kind: "patch", via: null, channelSwitch: false },
   autoInstall: false,
   installerPath: "C:/tmp/forge-update/v0.1.41/u.zip",
   installable: true,

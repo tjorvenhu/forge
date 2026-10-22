@@ -28,7 +28,7 @@ function readRaw(root: string): Raw {
   if (hit && hit.mtimeMs === s.mtimeMs && hit.size === s.size) return hit.raw;
   let raw: Raw = { data: null, broken: true };
   try {
-    const j = JSON.parse(readFileSync(file, "utf8").replace(/^﻿/, "")) as unknown;
+    const j = JSON.parse(readFileSync(file, "utf8").replace(/^\uFEFF/, "")) as unknown;
     if (j && typeof j === "object" && !Array.isArray(j)) raw = { data: j as Record<string, unknown>, broken: false };
   } catch {
     // A broken file (merge conflict, typo) leaves the local values in effect until it is fixed.

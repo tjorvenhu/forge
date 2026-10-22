@@ -227,6 +227,7 @@ export function createApp(opts: { dataDir: string; write: Writer; log?: (m: stri
   const devChannel = new DevChannelService({ setting: () => db.getSettings().updateChannel, log: (m) => opts.log?.(m) });
   const updates = new AppUpdateService({
     channel: () => devChannel.effective(),
+    chosenChannel: () => db.getSettings().updateChannel,
     emit: (payload) => emit({ event: "update.updated", payload }),
     requestInstall: () => emit({ event: "update.install", payload: {} }),
     enabled: () => db.getSettings().updateChecks,

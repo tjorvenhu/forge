@@ -243,7 +243,7 @@ export const views: typeof De = {
     devChannel: {
       label: "Development build",
       stableDescription: "Off: FORGE gets the releases of main, signed and for everyone.",
-      devDescription: (repo) => `On: FORGE gets the pre-releases from the branch dev of ${repo}: built faster, without code signature. After switching it off, the next update comes once main has a newer version.`,
+      devDescription: (repo) => `On: FORGE gets the pre-releases from the branch dev of ${repo}: built faster, without code signature. Dev builds carry -dev in their version. Switching it off offers the newest build of main again.`,
       membersOnly: (repo) => `Only members of ${repo}, signed in with GitHub, can switch on dev.`,
       promoteLabel: "Bring dev into main",
       ahead: (n) => `Dev has ${n} ${n === 1 ? "commit" : "commits"} that main does not have yet.`,

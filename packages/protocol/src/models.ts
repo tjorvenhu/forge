@@ -509,9 +509,20 @@ export const BranchInfo = z.object({
 });
 export type BranchInfo = z.infer<typeof BranchInfo>;
 
-/** stable: the releases of main; dev: also the pre-releases built from the dev branch */
+/** stable: the releases of main; dev: the pre-releases built from the branch dev */
 export const UpdateChannel = z.enum(["stable", "dev"]);
 export type UpdateChannel = z.infer<typeof UpdateChannel>;
+
+/**
+ * Builds of the branch dev carry this suffix (0.1.<run>-dev, release.yml), those of main none (0.1.<run>).
+ * Dev builds up to 0.1.130 had plain versions and count as stable.
+ */
+export const DEV_VERSION_SUFFIX = "-dev";
+
+/** Channel a version (or tag like v0.1.132-dev) was built for. */
+export function versionChannel(version: string): UpdateChannel {
+  return version.toLowerCase().endsWith(DEV_VERSION_SUFFIX) ? "dev" : "stable";
+}
 
 export const Settings = z.object({
   claudePath: z.string().nullable(),
@@ -1270,6 +1281,11 @@ export const AppUpdateState = z.object({
        * newer runtime than the installed one. The small update follows by itself after the restart.
        */
       via: z.string().nullable(),
+      /**
+       * The installed version belongs to the other channel (the channel was switched): `version` is the
+       * newest build of this channel, which may be older than the installed one.
+       */
+      channelSwitch: z.boolean(),
     })
     .nullable(),
   /** second step of an update the user already started before the restart: install without asking */

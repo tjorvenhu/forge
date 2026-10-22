@@ -903,6 +903,7 @@ Sicherheit:
     downloading: " Es wird gerade heruntergeladen.",
     available: (latest: string, current: string, state: string) => `FORGE ${latest} ist verfügbar, installiert ist ${current}.${state}`,
     devUpdate: " Das ist eine Entwicklungsversion aus dem Branch dev, ungetestet und ohne Code-Signatur.",
+    stableSwitch: " Das ist der Wechsel zurück auf die stabile Version aus main. Was noch nicht nach main übernommen wurde, fehlt darin.",
     installDev: "Das ist eine Entwicklungsversion von FORGE, da gibt es keine Installation zu prüfen.",
     installChecking: "Die Prüfung läuft noch. Frag gleich noch einmal.",
     installComplete: "FORGE ist vollständig installiert, alle mitgelieferten Programme sind in der richtigen Version da.",

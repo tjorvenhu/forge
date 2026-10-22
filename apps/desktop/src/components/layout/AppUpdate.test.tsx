@@ -15,7 +15,7 @@ const { useDictationActivity } = await import("@/stores/dictation");
 const available: AppUpdateState = {
   currentVersion: "0.1.90",
   phase: "available",
-  latest: { version: "0.1.91", tag: "v0.1.91", notes: "- Neu", since: "0.1.90", publishedAt: null, size: 4 * 1048576, kind: "patch", via: null },
+  latest: { version: "0.1.91", tag: "v0.1.91", notes: "- Neu", since: "0.1.90", publishedAt: null, size: 4 * 1048576, kind: "patch", via: null, channelSwitch: false },
   autoInstall: false,
   installerPath: null,
   installable: true,
@@ -84,5 +84,21 @@ describe("update offer and dictation", () => {
     expect(await screen.findByText("Entwicklungsversion 0.1.91 ist verfügbar")).toBeTruthy();
     expect(screen.getByText("Vorabversion aus dem Branch dev")).toBeTruthy();
     expect(screen.getByText("Entwicklungsversion installieren")).toBeTruthy();
+  });
+
+  it("explains the way back to main instead of listing main's changes", async () => {
+    const back: AppUpdateState = { ...available, currentVersion: "0.1.92-dev", latest: { ...available.latest!, since: "0.1.92-dev", channelSwitch: true } };
+    callMock.mockImplementation(async (method: string) => {
+      if (method === "app.updateState") return back;
+      if (method === "settings.get") return { setupDone: true };
+      if (method === "sessions.listLive") return [];
+      return null;
+    });
+    setup();
+    expect(await screen.findByText("Zurück zur stabilen Version 0.1.91")).toBeTruthy();
+    expect(screen.getByText("Entwicklungsversion ausgeschaltet")).toBeTruthy();
+    expect(screen.getByText("Stabile Version installieren")).toBeTruthy();
+    expect(screen.queryByText("- Neu")).toBeNull();
+    expect(callMock).not.toHaveBeenCalledWith("app.changelog", expect.anything());
   });
 });

@@ -4,7 +4,8 @@ import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import type { AppUpdateState } from "@forge/protocol";
-import { AppUpdateService, canInstallUpdates, changeRange, compareVersions, installedRuntimeKey, MAX_CHANGE_RELEASES, pickRelease, platformAssetPattern, platformCandidates, signedOnly, type Release } from "../src/update/app-update.js";
+import { versionChannel } from "@forge/protocol";
+import { AppUpdateService, canInstallUpdates, changeRange, channelReleases, compareVersions, installedRuntimeKey, MAX_CHANGE_RELEASES, pickRelease, platformAssetPattern, platformCandidates, releaseChannel, signedOnly, type Release, type UpdateDeps } from "../src/update/app-update.js";
 import type { ReleaseSource } from "../src/update/github-releases.js";
 import { SIG_MANIFEST, signedMessage } from "../src/update/signature.js";
 
@@ -74,7 +75,11 @@ function fakeSource(list: () => Release[] | null | Error, o: FakeOpts = {}) {
   return { source, calls };
 }
 
-function service(list: () => Release[] | null | Error, version = "0.1.0", opts: FakeOpts & { runtimeKey?: string | null; chainFile?: string; requestInstall?: () => void; channel?: "stable" | "dev" } = {}) {
+function service(
+  list: () => Release[] | null | Error,
+  version = "0.1.0",
+  opts: FakeOpts & { runtimeKey?: string | null; chainFile?: string; requestInstall?: () => void; channel?: "stable" | "dev"; chosenChannel?: "stable" | "dev" } = {},
+) {
   const states: AppUpdateState[] = [];
   const { source, calls } = fakeSource(list, opts);
   const svc = new AppUpdateService({
@@ -90,21 +95,73 @@ function service(list: () => Release[] | null | Error, version = "0.1.0", opts: 
     source,
     publicKey: PUBLIC_KEY,
     channel: opts.channel ? async () => opts.channel! : undefined,
+    chosenChannel: opts.chosenChannel ? () => opts.chosenChannel! : undefined,
   });
   return { svc, calls, states };
 }
 
 describe("app updates", () => {
-  it("offers dev pre-releases only on the dev channel, never the release of FORGE Setup", async () => {
-    const devBuild = { ...rel("v0.1.9", [`FORGE_0.1.9_update_${KEY}.zip`]), prerelease: true };
+  /** A dev build as release.yml publishes it: pre-release with -dev in tag and asset names. */
+  const devRel = (v: string, assets: string[] = [`FORGE_${v}-dev_update_${KEY}.zip`]) => ({ ...rel(`v${v}-dev`, assets), prerelease: true });
+
+  it("tells the channels apart by the version", () => {
+    expect(versionChannel("0.1.132-dev")).toBe("dev");
+    expect(versionChannel("v0.1.132-DEV")).toBe("dev");
+    expect(versionChannel("0.1.131")).toBe("stable");
+    expect(compareVersions("v0.1.132-dev", "0.1.131")).toBe(1);
+    expect(releaseChannel(devRel("0.1.132"))).toBe("dev");
+    expect(releaseChannel(rel("v0.1.131"))).toBe("stable");
+    // dev builds up to 0.1.130 (plain version, pre-release), FORGE Setup and a -dev tag published by mistake
+    expect(releaseChannel({ ...rel("v0.1.130"), prerelease: true })).toBeNull();
+    expect(releaseChannel({ ...rel("installer", ["FORGE-Setup.exe"]), prerelease: true })).toBeNull();
+    expect(releaseChannel(rel("v0.1.132-dev"))).toBeNull();
+    expect(channelReleases([devRel("0.1.132"), rel("v0.1.131")], "dev").map((r) => [r.tag_name, r.prerelease])).toEqual([["v0.1.132-dev", false]]);
+  });
+
+  it("offers each channel only its own builds, never the release of FORGE Setup", async () => {
     const setup = { ...rel("installer", ["FORGE-Setup.exe"]), prerelease: true };
-    const list = () => [devBuild, setup, rel("v0.1.8", [`FORGE_0.1.8_update_${KEY}.zip`]), rel("v0.1.7")];
-    const stable = service(list, "0.1.7");
-    expect(await stable.svc.check()).toMatchObject({ phase: "available", channel: "stable", latest: { version: "0.1.8", kind: "patch" } });
-    const dev = service(list, "0.1.7", { channel: "dev" });
-    expect(await dev.svc.check()).toMatchObject({ phase: "available", channel: "dev", latest: { version: "0.1.9", kind: "patch", via: null } });
-    // A dev build is ahead of main: back on stable nothing is offered until main passes it.
-    expect(await service(list, "0.1.9").svc.check()).toMatchObject({ phase: "uptodate", latest: null });
+    const legacy = { ...rel("v0.1.10", [`FORGE_0.1.10_update_${KEY}.zip`]), prerelease: true };
+    const list = () => [devRel("0.1.9"), legacy, setup, rel("v0.1.8", [`FORGE_0.1.8_update_${KEY}.zip`]), rel("v0.1.7")];
+    expect(await service(list, "0.1.7").svc.check()).toMatchObject({ phase: "available", channel: "stable", latest: { version: "0.1.8", kind: "patch", channelSwitch: false } });
+    expect(await service(list, "0.1.9-dev", { channel: "dev" }).svc.check()).toMatchObject({ phase: "uptodate", latest: null });
+    expect(await service(list, "0.1.8").svc.check()).toMatchObject({ phase: "uptodate", latest: null });
+  });
+
+  it("keeps the dev channel on dev when a nightly build of main gets the higher number", async () => {
+    const list = () => [rel("v0.1.131", [`FORGE_0.1.131_update_${KEY}.zip`]), devRel("0.1.130"), devRel("0.1.129")];
+    expect(await service(list, "0.1.130-dev", { channel: "dev" }).svc.check()).toMatchObject({ phase: "uptodate", latest: null });
+    expect(await service(list, "0.1.129-dev", { channel: "dev" }).svc.check()).toMatchObject({ phase: "available", latest: { version: "0.1.130-dev", channelSwitch: false } });
+  });
+
+  it("switches to the newest build of the chosen channel, also to a lower number", async () => {
+    const list = () => [devRel("0.1.135"), rel("v0.1.134", [`FORGE_0.1.134_update_${KEY}.zip`]), devRel("0.1.133"), rel("v0.1.131", [`FORGE_0.1.131_update_${KEY}.zip`])];
+    const toStable = service(list, "0.1.135-dev");
+    expect(await toStable.svc.check()).toMatchObject({ phase: "available", channel: "stable", latest: { version: "0.1.134", tag: "v0.1.134", kind: "patch", since: "0.1.135-dev", channelSwitch: true } });
+    // Dev builds 0.1.130 and older (plain versions) count as main: dev offers its newest build.
+    const toDev = service(list, "0.1.130", { channel: "dev" });
+    expect(await toDev.svc.check()).toMatchObject({ phase: "available", channel: "dev", latest: { version: "0.1.135-dev", since: "0.1.130", channelSwitch: true } });
+    expect(toDev.svc.changelog()).toMatchObject({ tag: "v0.1.135-dev" });
+    expect(toDev.calls).toContain("compare v0.1.130...v0.1.135-dev");
+    // Only the switched-to build, not every build of the channel above the installed number.
+    const down = service(() => [rel("v0.1.120", [`FORGE_0.1.120_update_${KEY}.zip`]), rel("v0.1.110")], "0.1.125-dev");
+    expect(await down.svc.check()).toMatchObject({ latest: { version: "0.1.120", channelSwitch: true } });
+  });
+
+  it("does not leave dev when the access to it could not be confirmed", async () => {
+    const list = () => [devRel("0.1.135"), rel("v0.1.134", [`FORGE_0.1.134_update_${KEY}.zip`])];
+    // dev chosen, GitHub unreachable: the check falls back to main, but only to a higher number
+    expect(await service(list, "0.1.135-dev", { channel: "stable", chosenChannel: "dev" }).svc.check()).toMatchObject({ phase: "uptodate", latest: null });
+    expect(await service(list, "0.1.133-dev", { channel: "stable", chosenChannel: "dev" }).svc.check()).toMatchObject({ latest: { version: "0.1.134", channelSwitch: false } });
+  });
+
+  it("takes an installer of main when no dev build has one for the runtime", async () => {
+    const OLD = "node-22.0.0_git-2.50.0_gh-2.90.0";
+    const list = () => [devRel("0.1.140"), relManifest("v0.1.139", ["FORGE_0.1.139_x64-setup.exe", `FORGE_0.1.139_update_${KEY}.zip`])];
+    const dev = service(list, "0.1.138-dev", { channel: "dev", runtimeKey: OLD });
+    expect(await dev.svc.check()).toMatchObject({ latest: { version: "0.1.140-dev", kind: "full", via: "0.1.139" } });
+    // main never takes a dev installer
+    const dev2 = () => [{ ...devRel("0.1.140", ["FORGE_0.1.140-dev_x64-setup.exe", `FORGE_0.1.140-dev_update_${KEY}.zip`]) }, rel("v0.1.139", [`FORGE_0.1.139_update_${KEY}.zip`])];
+    expect(await service(dev2, "0.1.138", { runtimeKey: OLD }).svc.check()).toMatchObject({ phase: "uptodate", latest: null });
   });
 
   it("compares versions numerically", () => {
@@ -421,11 +478,32 @@ describe("app updates on macOS and Linux", () => {
     };
     return { source, calls };
   }
-  function platformService(list: Release[], sigs: Record<string, string[]>, platform: "darwin-arm64" | "linux-x64", installKind: "app" | "appimage" | "system" | "dev", requestInstall?: () => void) {
+  function platformService(
+    list: Release[],
+    sigs: Record<string, string[]>,
+    platform: "darwin-arm64" | "linux-x64",
+    installKind: "app" | "appimage" | "system" | "dev",
+    requestInstall?: () => void,
+    extra: Partial<UpdateDeps> = {},
+  ) {
     const { source, calls } = platformSource(list, sigs);
-    const svc = new AppUpdateService({ emit: () => {}, enabled: () => true, log: () => {}, currentVersion: "0.1.0", chainFile: chainFile(), source, publicKey: PUBLIC_KEY, platform, installKind, requestInstall });
+    const svc = new AppUpdateService({ emit: () => {}, enabled: () => true, log: () => {}, currentVersion: "0.1.0", chainFile: chainFile(), source, publicKey: PUBLIC_KEY, platform, installKind, requestInstall, ...extra });
     return { svc, calls };
   }
+
+  it("switches channel on macOS too, back to a lower number of main", async () => {
+    const list = [
+      { ...platformRel("v0.1.135-dev", [mac("0.1.135-dev")], { "FORGE_0.1.135-dev_darwin-arm64.sig": [mac("0.1.135-dev")] }), prerelease: true },
+      platformRel("v0.1.134", [mac("0.1.134")], { "FORGE_0.1.134_darwin-arm64.sig": [mac("0.1.134")] }),
+    ];
+    const sigs = { "FORGE_0.1.135-dev_darwin-arm64.sig": [mac("0.1.135-dev")], "FORGE_0.1.134_darwin-arm64.sig": [mac("0.1.134")] };
+    const stable = platformService(list, sigs, "darwin-arm64", "app", undefined, { currentVersion: "0.1.135-dev" });
+    expect(await stable.svc.check()).toMatchObject({ phase: "available", latest: { version: "0.1.134", channelSwitch: true } });
+    const dev = platformService(list, sigs, "darwin-arm64", "app", undefined, { currentVersion: "0.1.134", channel: async () => "dev" });
+    expect(await dev.svc.check()).toMatchObject({ phase: "available", latest: { version: "0.1.135-dev", channelSwitch: true } });
+    const same = platformService(list, sigs, "darwin-arm64", "app", undefined, { currentVersion: "0.1.135-dev", channel: async () => "dev" });
+    expect(await same.svc.check()).toMatchObject({ phase: "uptodate", latest: null });
+  });
 
   it("matches only the update asset of its own platform", () => {
     expect(platformAssetPattern("darwin-arm64")!.test(mac("0.2.0"))).toBe(true);

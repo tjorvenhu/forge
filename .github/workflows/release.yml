@@ -33,12 +33,13 @@
 # The apps there take the newest release that has their platform asset, so a failed or late macOS/Linux job
 # never touches the Windows release. macOS builds are signed ad hoc only (no Apple notarization).
 #
-# Dev channel: every push to the branch dev builds a pre-release (same version scheme; run numbers are
-# shared, so dev and main versions never collide). Only apps on the dev channel take it (channelReleases
-# in packages/sidecar/src/update/app-update.ts); FORGE Setup, the download counter and main apps skip
-# pre-releases, as do install.sh and the download page. Built for speed: Windows and macOS (no Linux),
-# no lint or typecheck, no Authenticode, no per-file
-# signatures. The update signature stays: the app installs nothing without it.
+# Dev channel: every push to the branch dev builds a pre-release 0.1.<run>-dev (tag v0.1.<run>-dev; run
+# numbers are shared, so dev and main versions never collide). Each channel only takes its own builds, and
+# switching the channel installs the newest build of the other one, also a lower number (channelReleases
+# and versionChannel). FORGE Setup, the download counter, install.sh and the download page skip
+# pre-releases. Dev builds up to 0.1.130 had plain versions; no app takes them any more. Built for speed:
+# Windows and macOS (no Linux), no lint or typecheck, no Authenticode, no per-file signatures. The update
+# signature stays: the app installs nothing without it.
 # Bringing dev into main: "Dev nach Main übernehmen" in the settings, or a merge on GitHub.
 name: Release
 
@@ -147,7 +148,9 @@ jobs:
           # Dev builds go to the people who work on FORGE: no Authenticode, it costs signatures and minutes.
           $codesign = [bool]$env:AZURE_CLIENT_ID -and -not $dev
           if (-not $codesign -and -not $dev) { Write-Host "::warning::Secret AZURE_CLIENT_ID fehlt: FORGE wird ohne Code-Signatur gebaut." }
-          $version = "0.1.${{ github.run_number }}"
+          # Dev builds carry -dev: the app tells the channels apart by the version (versionChannel).
+          $core = "0.1.${{ github.run_number }}"
+          $version = if ($dev) { "$core-dev" } else { $core }
           $key = (node scripts/prepare-runtime.mjs --key).Trim()
           # One line per release with its asset names. Only a signed installer counts: the app ignores the
           # unsigned ones of older releases. Since 0.1.102 one FORGE_<v>.sig signs all assets of a release
@@ -165,6 +168,7 @@ jobs:
           $conf = "apps/desktop/src-tauri/tauri.conf.json"
           (Get-Content $conf -Raw) -replace '"version":\s*"[^"]*"', "`"version`": `"$version`"" | Set-Content $conf -NoNewline -Encoding utf8
           "version=$version" >> $env:GITHUB_OUTPUT
+          "core=$core" >> $env:GITHUB_OUTPUT
           "key=$key" >> $env:GITHUB_OUTPUT
           "full=$($full.ToString().ToLower())" >> $env:GITHUB_OUTPUT
           "codesign=$($codesign.ToString().ToLower())" >> $env:GITHUB_OUTPUT
@@ -257,7 +261,8 @@ jobs:
           New-Item -ItemType Directory -Force "$pkg/runtime/sidecar" | Out-Null
           Copy-Item apps/desktop/src-tauri/target/release/forge-desktop.exe "$pkg/forge-desktop.exe"
           Copy-Item packages/sidecar/dist/sidecar.mjs "$pkg/runtime/sidecar/sidecar.mjs"
-          @{ version = $version; runtime = $key } | ConvertTo-Json | Set-Content "$pkg/update.json" -Encoding utf8
+          # The apply step up to 0.1.131 takes digits and dots only; newer ones read fullVersion.
+          @{ version = "${{ steps.plan.outputs.core }}"; fullVersion = $version; runtime = $key } | ConvertTo-Json | Set-Content "$pkg/update.json" -Encoding utf8
           $zip = Join-Path $env:RUNNER_TEMP "FORGE_${version}_update_${key}.zip"
           # Windows tar writes zip entries with forward slashes, as the app's tar.exe expects.
           tar.exe -a -c -f $zip -C $pkg forge-desktop.exe runtime update.json
@@ -298,7 +303,7 @@ jobs:
           $dev = "${{ steps.plan.outputs.dev }}" -eq "true"
           # Notes since the previous release of the same channel. git describe would find dev tags on main
           # once dev was merged, and main would only list what came after the last dev build.
-          $filter = if ($dev) { 'select(.prerelease and (.tag_name | startswith("v")))' } else { 'select((.prerelease | not) and (.tag_name | startswith("v")))' }
+          $filter = if ($dev) { 'select(.prerelease and (.tag_name | test("^v[0-9].*-dev$")))' } else { 'select((.prerelease | not) and (.tag_name | startswith("v")))' }
           $prev = gh api "repos/${{ github.repository }}/releases?per_page=50" --jq ('[.[] | ' + $filter + '][0].tag_name // empty')
           if ($prev) { git rev-parse -q --verify "refs/tags/$prev" *> $null; if ($LASTEXITCODE -ne 0) { $prev = $null } }
           $range = if ($prev) { "$prev..HEAD" } else { "HEAD~20..HEAD" }
@@ -306,7 +311,7 @@ jobs:
           if (-not $notes) { $notes = "- Maintenance" }
           if ($dev) {
             # Pre-release: main apps, FORGE Setup and the download counter skip it; "Latest" stays on main.
-            gh release create $tag @files --title "FORGE $version (dev)" --notes $notes --target $env:GITHUB_SHA --prerelease --latest=false
+            gh release create $tag @files --title "FORGE $version" --notes $notes --target $env:GITHUB_SHA --prerelease --latest=false
           } else {
             # "Latest" stays on the newest full installer: the download for new installations, and what
             # versions before the small updates look for (they only read releases/latest).
@@ -323,7 +328,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $jq = '[.[] | select(.prerelease and (.tag_name | startswith("v")))] | sort_by(.created_at) | reverse | .[] | .tag_name + " " + ([.assets[].name | select(endswith("_x64-setup.exe"))] | length | tostring)'
+          $jq = '[.[] | select(.prerelease and (.tag_name | test("^v[0-9].*-dev$")))] | sort_by(.created_at) | reverse | .[] | .tag_name + " " + ([.assets[].name | select(endswith("_x64-setup.exe"))] | length | tostring)'
           $list = @(gh api "repos/${{ github.repository }}/releases?per_page=100" --jq $jq)
           $installerKept = $false
           for ($i = 0; $i -lt $list.Count; $i++) {

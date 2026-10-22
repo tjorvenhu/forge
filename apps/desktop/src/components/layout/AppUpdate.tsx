@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { ArrowUpCircle, Download, FlaskConical, RefreshCw, Sparkles, Workflow } from "lucide-react";
+import { ArrowUpCircle, Download, FlaskConical, RefreshCw, ShieldCheck, Sparkles, Workflow } from "lucide-react";
 import type { AppUpdateState } from "@forge/protocol";
 import { installUpdate, isWorkingSession, sessionsNote, useInstall } from "@/lib/app-install";
 import { call, keys, useAppChangelog, useAppUpdate, useLiveSessions, useSettings } from "@/lib/queries";
@@ -51,6 +51,7 @@ export function AppUpdateCard() {
   if (!s?.latest || !["available", "downloading", "ready"].includes(s.phase)) return null;
   const busy = installing || s.phase === "downloading";
   const dev = s.channel === "dev";
+  const toStable = !dev && s.latest.channelSwitch;
   const details = (
     <div className="flex max-w-64 flex-col gap-1.5 text-xs">
       {dev && <span>{t.layout.update.devNoticeTitle}</span>}
@@ -67,7 +68,7 @@ export function AppUpdateCard() {
     >
       {dev ? <FlaskConical className="h-3.5 w-3.5 shrink-0" /> : <ArrowUpCircle className="h-3.5 w-3.5 shrink-0 text-accent" />}
       <Tooltip content={details}>
-        <span className="min-w-0 flex-1 cursor-default truncate text-caption">{dev ? t.layout.update.devAvailable(s.latest.version) : t.layout.update.available(s.latest.version)}</span>
+        <span className="min-w-0 flex-1 cursor-default truncate text-caption">{dev ? t.layout.update.devAvailable(s.latest.version) : toStable ? t.layout.update.stableAvailable(s.latest.version) : t.layout.update.available(s.latest.version)}</span>
       </Tooltip>
       {s.installable && (
         <Button size="sm" variant="primary" className="h-6 px-2" loading={busy} onClick={() => void install()}>
@@ -108,11 +109,13 @@ export function AppUpdateDialog() {
   if (!s?.latest || !tag || dismissed === tag || (setupOpen && !autoInstall) || !quiet) return null;
   const busy = installing || s.phase === "downloading";
   const dev = s.channel === "dev";
+  // Back to main: its notes list what main got, not what the installed dev build loses.
+  const toStable = !dev && s.latest.channelSwitch;
   return (
     <Dialog
       open
       onOpenChange={(o) => !o && setDismissed(tag)}
-      title={dev ? t.layout.update.devDialogTitle(s.latest.version) : t.layout.update.dialogTitle(s.latest.version)}
+      title={dev ? t.layout.update.devDialogTitle(s.latest.version) : toStable ? t.layout.update.stableDialogTitle(s.latest.version) : t.layout.update.dialogTitle(s.latest.version)}
       description={t.layout.update.dialogDescription(s.currentVersion, s.latest.publishedAt ? relativeTime(s.latest.publishedAt) : null, sizeLabel(s.latest))}
       className="w-150"
       footer={
@@ -124,7 +127,7 @@ export function AppUpdateDialog() {
           <Button variant="primary" loading={busy} disabled={!s.installable} onClick={() => void install()}>
             {busy ? (s.phase === "downloading" ? t.layout.update.downloading : t.layout.update.installing) : (
               <>
-                <Download className="h-3.5 w-3.5" /> {dev ? t.layout.update.devUpdateNow : t.layout.update.updateNow}
+                <Download className="h-3.5 w-3.5" /> {dev ? t.layout.update.devUpdateNow : toStable ? t.layout.update.stableUpdateNow : t.layout.update.updateNow}
               </>
             )}
           </Button>
@@ -142,22 +145,33 @@ export function AppUpdateDialog() {
             </div>
           </div>
         )}
-        <div className="min-w-0">
-          <div className="mb-2 flex items-center gap-1.5 text-xs font-medium text-muted">
-            <Sparkles className="h-3.5 w-3.5 text-accent" /> {t.layout.update.changesSince(s.latest.since)}
+        {toStable && (
+          <div className="flex items-start gap-2.5 rounded-lg border border-border bg-surface-2 px-3 py-2.5">
+            <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-accent" />
+            <div className="min-w-0">
+              <div className="text-body font-medium">{t.layout.update.stableNoticeTitle}</div>
+              <div className="text-caption text-muted">{t.layout.update.stableNotice}</div>
+            </div>
           </div>
-          {s.latest.since !== s.currentVersion && (
-            <div className="-mt-1 mb-2 text-caption text-subtle">{t.layout.update.olderNotListed(s.currentVersion)}</div>
-          )}
-          <Changelog
-            tag={tag}
-            notes={s.latest.notes}
-            onSetup={() => {
-              setDismissed(tag);
-              openSettings("claude");
-            }}
-          />
-        </div>
+        )}
+        {!toStable && (
+          <div className="min-w-0">
+            <div className="mb-2 flex items-center gap-1.5 text-xs font-medium text-muted">
+              <Sparkles className="h-3.5 w-3.5 text-accent" /> {t.layout.update.changesSince(s.latest.since)}
+            </div>
+            {s.latest.since !== s.currentVersion && (
+              <div className="-mt-1 mb-2 text-caption text-subtle">{t.layout.update.olderNotListed(s.currentVersion)}</div>
+            )}
+            <Changelog
+              tag={tag}
+              notes={s.latest.notes}
+              onSetup={() => {
+                setDismissed(tag);
+                openSettings("claude");
+              }}
+            />
+          </div>
+        )}
         {s.installable && <RestartNote className="rounded-md border border-border bg-surface-2 px-3 py-2" />}
       </div>
     </Dialog>
@@ -246,7 +260,7 @@ export function AppUpdateSettings() {
   if (!s) return null;
   const status =
     s.phase === "available" || s.phase === "ready"
-      ? (s.channel === "dev" ? t.layout.update.devVersionAvailable : t.layout.update.versionAvailable)(s.latest?.version ?? "")
+      ? (s.channel === "dev" ? t.layout.update.devVersionAvailable : s.latest?.channelSwitch ? t.layout.update.stableVersionAvailable : t.layout.update.versionAvailable)(s.latest?.version ?? "")
       : s.phase === "downloading"
         ? t.layout.update.downloadingUpdate
         : s.phase === "error"

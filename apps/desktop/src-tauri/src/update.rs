@@ -221,9 +221,15 @@ fn collect(root: &Path, dir: &Path, out: &mut Vec<String>) -> Result<(), String>
 fn read_version(file: &Path) -> Result<String, String> {
     let text = std::fs::read_to_string(file).map_err(|e| e.to_string())?;
     let json: serde_json::Value = serde_json::from_str(&text).map_err(|e| e.to_string())?;
-    let v = json.get("version").and_then(|v| v.as_str()).ok_or_else(|| tr!("update.json has no version", "update.json ohne Version"))?;
-    // Goes into the script's arguments and the registry: digits and dots only.
-    if v.is_empty() || !v.chars().all(|c| c.is_ascii_digit() || c == '.') {
+    // fullVersion carries the -dev suffix of dev builds; version stays digits and dots, which is all
+    // the apply step up to 0.1.131 accepts.
+    let v = json
+        .get("fullVersion")
+        .or_else(|| json.get("version"))
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| tr!("update.json has no version", "update.json ohne Version"))?;
+    // Goes into the script's arguments and the registry: digits, dots and a suffix like -dev only.
+    if v.is_empty() || !v.starts_with(|c: char| c.is_ascii_digit()) || !v.chars().all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '-') {
         return Err(tr!("Invalid version in the update", "Ungültige Version im Update"));
     }
     Ok(v.to_string())
@@ -322,6 +328,23 @@ Remove-Item -Recurse -Force -LiteralPath $Src -ErrorAction SilentlyContinue
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(windows)]
+    #[test]
+    fn update_version_takes_the_dev_suffix() {
+        let dir = std::env::temp_dir().join(format!("forge-update-version-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("update.json");
+        let read = |json: &str| {
+            std::fs::write(&file, json).unwrap();
+            read_version(&file)
+        };
+        assert_eq!(read(r#"{"version":"0.1.132","fullVersion":"0.1.132-dev"}"#).unwrap(), "0.1.132-dev");
+        assert_eq!(read(r#"{"version":"0.1.131"}"#).unwrap(), "0.1.131");
+        assert!(read(r#"{"version":"0.1.1; rm"}"#).is_err());
+        assert!(read(r#"{"fullVersion":"-dev"}"#).is_err());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     #[cfg(windows)]
     #[test]

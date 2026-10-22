@@ -3,7 +3,7 @@ import { createReadStream, existsSync, readFileSync, rmSync, writeFileSync } fro
 import { mkdir, mkdtemp, readdir, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { ForgeError, type AppChangelog, type AppUpdateState, type UpdateChannel } from "@forge/protocol";
+import { ForgeError, versionChannel, type AppChangelog, type AppUpdateState, type UpdateChannel } from "@forge/protocol";
 import { run } from "../util/proc.js";
 import { resolveTool } from "../util/tools.js";
 import { GitHubReleases, type ReleaseAsset, type ReleaseSource } from "./github-releases.js";
@@ -124,11 +124,13 @@ export function installedRuntimeKey(dir = process.env.FORGE_RUNTIME_DIR, platfor
  * Otherwise `release` is a full installer for the runtime the small update of `newest` needs, which
  * then follows after the restart (see AppUpdateService.check). That installer may belong to an older
  * release than the installed one: the runtime changes rarely, and only such an installer leads on.
+ * `installers`: where such an installer may come from (the dev channel also takes those of main).
  */
 export function pickRelease(
   releases: Release[],
   current: string,
   runtimeKey: string | null,
+  installers: Release[] = releases,
 ): { newest: Release; release: Release; asset: Asset; kind: "patch" | "full" } | null {
   const newer = newerReleases(releases, current);
   const newest = newer[0];
@@ -145,7 +147,7 @@ export function pickRelease(
     if (hit) return hit;
   }
   if (target) {
-    for (const rel of published(releases)) {
+    for (const rel of published(installers)) {
       const hit = full(rel, target);
       if (hit) return hit;
     }
@@ -217,6 +219,16 @@ export function changeRange(releases: Release[], current: string, max = MAX_CHAN
   if (before) return { releases: listed, since: bare(before.tag_name!), sinceTag: before.tag_name!, capped: true };
   const installed = releases.find((r) => r.tag_name && compareVersions(r.tag_name, current) === 0);
   return { releases: listed, since: current, sinceTag: installed?.tag_name ?? `v${current}`, capped: false };
+}
+
+/**
+ * After switching the channel: only the offered build, compared with the installed one. Its notes list
+ * what came since the previous build of its own channel, the commit comparison what it has that the
+ * installed version lacks.
+ */
+export function switchRange(releases: Release[], newest: Release, current: string): ChangeRange {
+  const installed = releases.find((r) => r.tag_name && compareVersions(r.tag_name, current) === 0);
+  return { releases: [newest], since: current, sinceTag: installed?.tag_name ?? `v${current}`, capped: false };
 }
 
 /** Release notes of a range for the update dialog: one release as is, several under a heading each. */
@@ -292,13 +304,23 @@ export function signedOnly(releases: Release[], platform: PlatformTag = "win32-x
 }
 
 /**
- * The releases a channel sees. Dev builds (release.yml on the branch dev) are pre-releases with a
- * version tag; on the dev channel they count as published, so every pick below takes them like a
- * release of main. The release "installer" (FORGE Setup) is a pre-release too, but has no version tag.
+ * Channel of a release: dev builds have the -dev suffix (and are pre-releases, so FORGE Setup, the
+ * download page and older apps skip them), releases of main are published ones. Null for everything
+ * else: the release "installer" of FORGE Setup and the dev builds up to 0.1.130 with plain versions.
+ */
+export function releaseChannel(r: Release): UpdateChannel | null {
+  if (!r.tag_name || !/^v\d/i.test(r.tag_name) || r.draft) return null;
+  if (versionChannel(r.tag_name) === "dev") return r.prerelease ? "dev" : null;
+  return r.prerelease ? null : "stable";
+}
+
+/**
+ * The releases of one channel, all as published: every pick below takes them alike. A channel sees
+ * only its own builds, whatever their numbers: run numbers are shared, so a nightly build of main
+ * may have a higher one than the dev build that holds everything of main and more.
  */
 export function channelReleases(releases: Release[], channel: UpdateChannel): Release[] {
-  if (channel !== "dev") return releases;
-  return releases.map((r) => (r.prerelease && /^v\d/i.test(r.tag_name ?? "") ? { ...r, prerelease: false } : r));
+  return releases.filter((r) => releaseChannel(r) === channel).map((r) => (r.prerelease ? { ...r, prerelease: false } : r));
 }
 
 /** Releases of UPDATE_REPO over HTTPS, anonymous unless GitHub refuses; then with the gh login, if any. */
@@ -371,6 +393,8 @@ export interface UpdateDeps {
   installKind?: InstallKind | null;
   /** channel to check; dev only while the account may use it (DevChannelService.effective). Default stable */
   channel?: () => Promise<UpdateChannel>;
+  /** channel chosen in the settings; a check on another one (dev without access) never switches */
+  chosenChannel?: () => UpdateChannel;
 }
 
 /**
@@ -530,13 +554,23 @@ export class AppUpdateService {
         }
         const channel = (await this.d.channel?.().catch(() => "stable" as const)) ?? "stable";
         if (channel !== this.state.channel) this.set({ channel });
-        const list = channelReleases(signedOnly(found as Release[], this.platform), channel);
+        const signed = signedOnly(found as Release[], this.platform);
+        const list = channelReleases(signed, channel);
+        const current = this.state.currentVersion;
+        // Switched channel: the newest build of the chosen one, also when its number is lower. Not when
+        // dev was chosen but GitHub could not confirm the access right now; that must not go back to main.
+        const switching = versionChannel(current) !== channel && (this.d.chosenChannel?.() ?? channel) === channel;
+        const floor = switching ? "0" : current;
         const checkedAt = new Date().toISOString();
         const windows = this.platform === "win32-x64";
-        const pick = windows ? pickRelease(list, this.state.currentVersion, (this.d.runtimeKey ?? installedRuntimeKey)()) : await this.pickPlatform(list);
+        const installers = channel === "dev" ? [...list, ...channelReleases(signed, "stable")] : list;
+        const pick = windows ? pickRelease(list, floor, (this.d.runtimeKey ?? installedRuntimeKey)(), installers) : await this.pickPlatform(list, floor);
         // macOS and Linux: the changes up to the offered release, not up to a newer one without their asset.
         const upTo = !windows && pick ? pick.newest.tag_name! : null;
-        const range = changeRange(upTo ? list.filter((r) => !r.tag_name || compareVersions(r.tag_name, upTo) <= 0) : list, this.state.currentVersion);
+        const range =
+          switching && pick
+            ? switchRange(signed, pick.newest, current)
+            : changeRange(upTo ? list.filter((r) => !r.tag_name || compareVersions(r.tag_name, upTo) <= 0) : list, current);
         const chained = this.takeChain(pick);
         if (!pick || !range) {
           this.asset = null;
@@ -565,6 +599,7 @@ export class AppUpdateService {
             size: asset.size ?? null,
             kind,
             via: rel === newest ? null : bare(rel.tag_name!),
+            channelSwitch: switching,
           },
           autoInstall: chained,
           checkedAt,
@@ -572,7 +607,8 @@ export class AppUpdateService {
         if (!sameRelease) {
           this.d.log(`Update: FORGE ${tag} ist verfügbar`);
           // Written right away, so it is ready when the update dialog asks for it.
-          if (this.d.writeChangelog) this.changelog();
+          // Back to main the dialog explains the switch instead: main's notes are not what changes.
+          if (this.d.writeChangelog && !(switching && channel === "stable")) this.changelog();
         }
         return this.state;
       } catch (e) {
@@ -588,9 +624,9 @@ export class AppUpdateService {
    * macOS and Linux: the newest release with the platform's asset whose signature file really signs
    * it (FORGE_<v>.sig does not list assets uploaded after it). Otherwise the next older one.
    */
-  private async pickPlatform(list: Release[]): Promise<ReturnType<typeof pickRelease>> {
+  private async pickPlatform(list: Release[], after: string): Promise<ReturnType<typeof pickRelease>> {
     const notifyOnly = !this.state.installable;
-    for (const c of platformCandidates(list, this.state.currentVersion, this.platform, notifyOnly)) {
+    for (const c of platformCandidates(list, after, this.platform, notifyOnly)) {
       if (!notifyOnly && !(await this.signs(c.asset))) continue;
       return { newest: c.release, release: c.release, asset: c.asset, kind: "full" };
     }
