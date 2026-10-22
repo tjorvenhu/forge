@@ -29,6 +29,9 @@ describe("isTeamCheckCommand", () => {
       "pytest tests/test_a.py",
       "dotnet test",
       "./gradlew test",
+      "node --test",
+      "node --test test/",
+      "deno test",
     ])
       expect(isTeamCheckCommand(c), c).toBe(true);
   });
@@ -61,6 +64,8 @@ describe("isTeamCheckCommand", () => {
       "go run main.go",
       "python script.py",
       "./gradlew publish",
+      "node script.js",
+      "node -e 'require(\"fs\").rmSync(\"x\")'",
       "",
     ])
       expect(isTeamCheckCommand(c), c).toBe(false);

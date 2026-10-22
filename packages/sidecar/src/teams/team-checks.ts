@@ -39,6 +39,8 @@ function single(cmd: string, testCommand: string | null): boolean {
   if (PACKAGE_MANAGERS.has(bin)) return packageCheck(w);
   if (bin === "npx") return CHECK_BIN.has(w.find((x, i) => i > 0 && !x.startsWith("-")) ?? "");
   if (CHECK_BIN.has(bin)) return true;
+  if (bin === "node") return w[1] === "--test" || (w[1] === "--check" && !!w[2]);
+  if (bin === "deno") return ["test", "check", "lint", "fmt"].includes(w[1] ?? "") && w[2] !== "--fix";
   if (bin === "cargo") return ["test", "check", "clippy", "fmt"].includes(w[1] ?? "");
   if (bin === "go") return ["test", "vet"].includes(w[1] ?? "");
   if (bin === "dotnet") return w[1] === "test";
