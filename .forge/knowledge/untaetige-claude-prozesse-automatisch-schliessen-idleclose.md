@@ -2,16 +2,17 @@
 title: "Untätige Claude-Prozesse automatisch schließen (IdleClose)"
 summary: "Wie FORGE die CLI-Prozesse untätiger Sessions nach der eingestellten Zeit beendet, was als Nutzung zählt und wie der Wettlauf mit gleichzeitig gesendeten Nachrichten gelöst ist; wichtig bei neuen Zuständen, die einen Prozess offen halten müssen."
 tags: ["sessions","sidecar","einstellungen","telefon","stolperfalle"]
-updated: "2026-10-14T18:02:58.873Z"
+updated: "2026-10-22T08:07:48.725Z"
 ---
 
-Stand: 2026-10-14.
+Stand: 2026-10-14, Detailtext seit i18n (2026-10-18) zweisprachig.
 
 ## Was passiert
 - Einstellung `idleCloseMinutes` (protocol `Settings`, Standard 60, 0 = aus, Auswahl `IDLE_CLOSE_CHOICES` = 0/15/30/60/120/240). Wird automatisch per GitHub-Sync abgeglichen (nicht in `LOCAL_SETTINGS`).
 - `packages/sidecar/src/sessions/idle-close.ts` (`IdleClose`): prüft jede Minute (`IDLE_CHECK_MS`) gegen die Wanduhr, nicht mit einem Timer pro Session (Standby). Gestartet in `SessionService.startBackgroundChecks()`, gestoppt in `shutdown()`. Für Tests: `svc.checkIdle()` mit injizierter Uhr.
-- Geschlossen wird nur der Prozess: `lifecycle.close(id, IDLE_CLOSED_DETAIL)` setzt `live.endDetail`, `onEnd` schreibt dann `status: stopped` mit diesem Detail. Session, Verlauf, `claudeSessionId` und Agenten-Worktree bleiben; die nächste Nachricht macht Resume. Die Seitenleiste blendet Sessions ohne Prozess ohnehin aus „Geöffnet“ aus (außer der offenen).
-- Chat: `chat-items.ts` zeigt `status`-Events mit genau `IDLE_CLOSED_DETAIL` als schlichte Info-Zeile (notice ohne Karte). Andere Prozess-Enden zeigen nichts.
+- Geschlossen wird nur der Prozess: `lifecycle.close(id, idleClosedDetail())` setzt `live.endDetail`, `onEnd` schreibt dann `status: stopped` mit diesem Detail. Session, Verlauf, `claudeSessionId` und Agenten-Worktree bleiben; die nächste Nachricht macht Resume. Die Seitenleiste blendet Sessions ohne Prozess ohnehin aus „Geöffnet“ aus (außer der offenen).
+- Chat: `chat-items.ts` zeigt `status`-Events, deren Detail `isIdleClosedDetail` erkennt, als schlichte Info-Zeile (notice ohne Karte). Andere Prozess-Enden zeigen nichts.
+- **Stolperfalle i18n:** `idleClosedDetail()` (`packages/protocol/src/models.ts`) liefert den Text in der aktuellen Sprache. Gespeicherte Events behalten die Sprache, in der sie geschrieben wurden; deshalb nie auf Gleichheit mit `idleClosedDetail()` prüfen, sondern `isIdleClosedDetail` (vergleicht mit beiden Sprachen).
 
 ## Was als Aktivität / Nutzung zählt
 - Aktivität: jedes gespeicherte Event (`core.onRecord` ruft `idle.touch`), also auch Statuswechsel. Deltas laufen nicht über onRecord, dann ist aber `turnActive` gesetzt.

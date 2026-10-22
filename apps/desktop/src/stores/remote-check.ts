@@ -7,39 +7,28 @@ import { toast } from "@/stores/toast";
 import { useUi } from "@/stores/ui";
 import { t } from "@/i18n";
 
-/** Opening a project compares it with origin at most this often; switching back and forth does not fetch each time. */
-export const AUTO_CHECK_EVERY_MS = 5 * 60_000;
-
 interface RemoteCheck {
   /** the project whose branch is behind origin; components/git/RemoteCheckDialog.tsx asks what to do */
   shown: { projectId: string; incoming: GitIncoming } | null;
-  /** "Später": the same remote state does not ask again on the next opening, a newer one does */
-  later: () => void;
   close: () => void;
 }
 
-const checkedAt = new Map<string, number>();
-const putOff = new Map<string, string>();
+/** Projects compared automatically since FORGE started: only the first opening asks, not later switches back. */
+const checked = new Set<string>();
 
-export const useRemoteCheck = create<RemoteCheck>((set, get) => ({
+export const useRemoteCheck = create<RemoteCheck>((set) => ({
   shown: null,
-  later: () => {
-    const s = get().shown;
-    if (s) putOff.set(s.projectId, s.incoming.remoteHead);
-    set({ shown: null });
-  },
   close: () => set({ shown: null }),
 }));
 
 /**
- * Fetches origin and asks when the branch is behind. `manual` (palette, project menu) also asks after
- * "Später" and reports when there is nothing to take over; the automatic check on opening stays silent
- * then, also when the server cannot be reached.
+ * Fetches origin and asks when the branch is behind. Automatically only on the first opening of a
+ * project after FORGE started, silent when there is nothing new or the server cannot be reached.
+ * `manual` (palette, project menu) always checks, also after "Später", and reports the outcome.
  */
 export async function checkRemote(projectId: string, manual: boolean) {
-  const now = Date.now();
-  if (!manual && now - (checkedAt.get(projectId) ?? 0) < AUTO_CHECK_EVERY_MS) return;
-  checkedAt.set(projectId, now);
+  if (!manual && checked.has(projectId)) return;
+  checked.add(projectId);
   const m = t.git.remoteCheck;
   let incoming: GitIncoming | null;
   try {
@@ -59,13 +48,12 @@ export async function checkRemote(projectId: string, manual: boolean) {
     toast.success(m.upToDate, local.length ? m.upToDateLocal(local.join(", ")) : undefined);
     return;
   }
-  if (!manual && (putOff.get(projectId) === incoming.remoteHead || useUi.getState().activeProjectId !== projectId)) return;
+  if (!manual && useUi.getState().activeProjectId !== projectId) return;
   useRemoteCheck.setState({ shown: { projectId, incoming } });
 }
 
 /** for tests */
 export function resetRemoteChecks() {
-  checkedAt.clear();
-  putOff.clear();
+  checked.clear();
   useRemoteCheck.setState({ shown: null });
 }

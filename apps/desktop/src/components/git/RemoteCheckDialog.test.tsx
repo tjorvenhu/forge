@@ -9,11 +9,11 @@ vi.mock("@/lib/rpc", async (orig) => ({ ...(await orig<typeof RpcModuleNs>()), r
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 
 const { RemoteCheckDialog } = await import("./RemoteCheckDialog");
-const { AUTO_CHECK_EVERY_MS, checkRemote, resetRemoteChecks, useRemoteCheck } = await import("@/stores/remote-check");
+const { checkRemote, resetRemoteChecks, useRemoteCheck } = await import("@/stores/remote-check");
 const { useUi } = await import("@/stores/ui");
 
 const project = { id: "p1", name: "Shop", exists: true, gitEnabled: true, git: { remoteUrl: "https://github.com/x/shop.git", detached: false } };
-const commit = (n: number) => ({ hash: `${n}`.repeat(40).slice(0, 40), shortHash: `${n}`.repeat(7), author: "Anna", email: "a@x", date: new Date().toISOString(), parents: [], refs: [], subject: `Neu ${n}` });
+const commit = (n: number) => ({ hash: `${n}`.repeat(40).slice(0, 40), shortHash: `${n}`.repeat(7), author: "Anna", authorEmail: "a@x", avatarUrl: null, date: new Date().toISOString(), parents: [], refs: [], subject: `Neu ${n}` });
 const behind = (o: Partial<GitIncoming> = {}): GitIncoming => ({ branch: "dev", remoteHead: "r1", behind: 2, ahead: 1, changedCount: 3, commits: [commit(1), commit(2)], ...o });
 
 let incoming: GitIncoming | null;
@@ -81,20 +81,17 @@ describe("remote check on opening a project", () => {
     expect(methods()).not.toContain("git.pull");
   });
 
-  it("does not ask again for the same remote state after Später, but for a newer one", async () => {
-    const now = Date.now();
-    const clock = vi.spyOn(Date, "now").mockReturnValue(now);
+  it("checks automatically only on the first opening; the palette asks again after Später", async () => {
     setup();
     fireEvent.click(await screen.findByRole("button", { name: "Später" }));
     expect(useRemoteCheck.getState().shown).toBeNull();
 
-    clock.mockReturnValue(now + AUTO_CHECK_EVERY_MS + 1);
-    await act(() => checkRemote("p1", false));
-    expect(useRemoteCheck.getState().shown).toBeNull();
-
-    clock.mockReturnValue(now + 2 * AUTO_CHECK_EVERY_MS + 2);
     incoming = behind({ remoteHead: "r2" });
     await act(() => checkRemote("p1", false));
+    expect(useRemoteCheck.getState().shown).toBeNull();
+    expect(methods().filter((m) => m === "git.incoming")).toHaveLength(1);
+
+    await act(() => checkRemote("p1", true));
     expect(useRemoteCheck.getState().shown?.incoming.remoteHead).toBe("r2");
   });
 

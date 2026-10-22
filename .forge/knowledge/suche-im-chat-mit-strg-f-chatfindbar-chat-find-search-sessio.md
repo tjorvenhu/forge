@@ -2,13 +2,13 @@
 title: "Suche im Chat mit Strg+F (ChatFindBar, chat-find, search.sessions-Filter, CSS Highlight API)"
 summary: "Wie die eigene Chat-Suche (Strg+F statt WebView-Suche) aufgebaut ist: Sidecar-Volltextsuche mit Session/Projekt-Filter, Springen per focusEvent, Markieren per CSS Custom Highlight API; wichtig bei Änderungen am Chat-Thread, an search.sessions oder an Tastenkürzeln."
 tags: ["chat","suche","ui","telefon","sidecar"]
-updated: "2026-10-18T15:57:43.546Z"
+updated: "2026-10-22T08:08:01.810Z"
 ---
 
 Eingebaut 2026-10-18 auf Wunsch des Nutzers: Strg+F im Chat öffnet eine eigene Suchleiste statt der Suche der WebView, durchsucht den **ganzen gespeicherten Verlauf** (der Chat ist virtualisiert und lädt seitenweise, darum sucht der Sidecar).
 
 ## Aufbau
-- Sidecar: `db.searchEvents(query, limit, filter)` mit `SearchFilter` (protocol/models.ts): `sessionId`, `projectId` (schließt Worktrees der Agenten ein, `p.parent_id`), `phrase` (FTS5-Phrase `"a b"*`), `order: "time"` (neueste zuerst, zum Durchsteppen). Keine neue RPC-Methode: `search.sessions` hat die Filter als optionale Parameter bekommen (Limit bis 1000). Durchsucht werden Nachrichten, Antworten, Werkzeug-Aufrufe (Name + alle Strings der Eingabe, also Befehle und Pfade) und Werkzeug-Ergebnisse (FTS-Trigger in der Migration in db.ts).
+- Sidecar: `db.searchEvents(query, limit, filter)` mit `SearchFilter` (`packages/protocol/src/models.ts`): `sessionId`, `projectId` (schließt Worktrees der Agenten ein, `p.parent_id`), `phrase` (FTS5-Phrase `"a b"*`), `order: "time"` (neueste zuerst, zum Durchsteppen). Keine neue RPC-Methode: `search.sessions` hat die Filter als optionale Parameter bekommen (Limit bis 1000). Durchsucht werden Nachrichten, Antworten, Werkzeug-Aufrufe (Name + alle Strings der Eingabe, also Befehle und Pfade) und Werkzeug-Ergebnisse (FTS-Trigger in der Migration in db.ts).
 - `lib/find-text.ts`: Wörter wie der Sidecar (`[\p{L}\p{N}_]+`, max. 8), Falten (klein, ohne Akzente, mit Offset-Abbildung), Muster „Wortanfang“ wie FTS-Präfixsuche.
 - `lib/chat-find.ts`: Register aller Chats auf dem Bildschirm (`useChatFindTarget(surface, pane, open)` in `ChatPanel`), eigener `keydown`-Listener (läuft auch in Chat-Fenstern, die keine globalen Shortcuts haben). Ziel = Chat mit dem Fokus, sonst Hauptchat. Editoren (`.cm-editor`, `.monaco-editor`) und Terminal behalten ihr Strg+F; bei offenem Dialog nichts. Ohne Chat auf dem Bildschirm bleibt die WebView-Suche.
 - `components/workspace/ChatFindBar.tsx`: schwebt oben rechts im ChatPanel (`top-13`). Umfang Session / Projekt / Alle (im Chat-Fenster ohne „Alle“; ohne Session gilt Projekt), Schalter „Exakte Wortfolge“. Session: Zähler „1 von 17“, Enter = älterer Treffer, Umschalt+Enter = neuerer (Reihenfolge neueste zuerst, wie Chat-Apps). Projekt/Alle: Liste mit `SearchHitRow`, Pfeiltasten + Enter, Klick öffnet die Session in **diesem** Bereich (`slot.select`), schon sichtbare Sessions per `openChat`, anderes Projekt im Hauptchat per `openProject`.
