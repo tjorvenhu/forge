@@ -106,12 +106,19 @@ export class Normalizer {
     }
     if (m.subtype === "task_notification") {
       const taskId = str(m.task_id) ?? "";
+      const usage = (m.usage ?? null) as Record<string, unknown> | null;
+      const call = this.taskCall(m).toolUseId;
+      // What a subagent used, foreground or background (agent teams show it per member).
+      const used: SessionEventBody[] =
+        usage && call && typeof usage.total_tokens === "number"
+          ? [{ type: "task.usage", toolUseId: call, tokens: usage.total_tokens, toolUses: num(usage.tool_uses) ?? 0, durationMs: num(usage.duration_ms) ?? 0 }]
+          : [];
       const description = this.backgroundTasks.get(taskId);
-      if (description === undefined) return [];
+      if (description === undefined) return used;
       this.backgroundTasks.delete(taskId);
       const status = str(m.status);
       const state = status === "completed" ? "completed" : status === "failed" ? "failed" : "stopped";
-      return [{ type: "background.task", taskId, description, state, summary: str(m.summary), toolUseId: this.taskCall(m).toolUseId }];
+      return [{ type: "background.task", taskId, description, state, summary: str(m.summary), toolUseId: call }, ...used];
     }
     if (m.subtype === "compact_boundary") {
       const meta = (m.compact_metadata ?? {}) as Record<string, unknown>;

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { SessionStatus, type EffortLevel, type SessionEvent } from "./models.js";
+import { ModelTokens, SessionStatus, TEAM_ROLES, TeamRole, type TeamRoleModels, type EffortLevel, type SessionEvent, type TeamModelFamily } from "./models.js";
 
 /**
  * Agent teams, built by FORGE: a team is a session whose lead (a strong model) plans the work, hands
@@ -7,15 +7,10 @@ import { SessionStatus, type EffortLevel, type SessionEvent } from "./models.js"
  * parallel and reviews the result. Everything FORGE shows of a team comes from the session's events.
  */
 
-/** Roles the lead can staff; each is a subagent type (TEAM_AGENT_PREFIX + role) of the lead's session. */
-export const TEAM_ROLES = ["scout", "developer", "specialist", "tester", "reviewer"] as const;
-export const TeamRole = z.enum(TEAM_ROLES);
-export type TeamRole = z.infer<typeof TeamRole>;
+/* Roles the lead can staff (TEAM_ROLES in models.ts); each is a subagent type TEAM_AGENT_PREFIX + role. */
 
 /** subagent type of a role in Claude Code ("team-developer"); keeps clear of the user's own agents */
 export const TEAM_AGENT_PREFIX = "team-";
-
-export type TeamModelFamily = "haiku" | "sonnet" | "opus" | "fable";
 
 export interface TeamRoleSpec {
   /** model alias Claude Code resolves to the newest of the family */
@@ -37,6 +32,11 @@ export const TEAM_ROLE_SPECS: Record<TeamRole, TeamRoleSpec> = {
   tester: { model: "sonnet", effort: "medium", readOnly: false },
   reviewer: { model: "opus", effort: "high", readOnly: true },
 };
+
+/** the model a role runs on in a team with these overrides */
+export function teamRoleModel(role: TeamRole, overrides?: TeamRoleModels | null): TeamModelFamily {
+  return overrides?.[role] ?? TEAM_ROLE_SPECS[role].model;
+}
 
 /** Models the lead can run on; the first is the default. */
 export const TEAM_LEAD_MODELS = ["opus", "fable", "sonnet"] as const;
@@ -91,6 +91,18 @@ export const TeamMember = z.object({
   files: z.array(z.string()),
   /** the start of its report to the lead */
   result: z.string().nullable(),
+  /** tokens it used: so far while it works (when Claude Code reports them), all when it ended */
+  tokens: z.number().nullable(),
+  /** a tool call of it waits for the user's approval */
+  approval: z
+    .object({
+      requestId: z.string(),
+      toolName: z.string(),
+      /** command, file or title of the call */
+      detail: z.string().nullable(),
+      allowSessionScope: z.boolean(),
+    })
+    .nullable(),
 });
 export type TeamMember = z.infer<typeof TeamMember>;
 
@@ -116,11 +128,15 @@ export const AgentTeam = z.object({
   members: z.array(TeamMember),
   /** the lead's plan (its latest todo list) */
   tasks: z.array(TeamTask),
+  /** models of the roles in this team (defaults with the team's overrides) */
+  roleModels: z.record(TeamRole, z.string()),
+  /** tokens and estimated cost per model over the whole team (lead, members, compaction) */
+  models: z.record(z.string(), ModelTokens),
 });
 export type AgentTeam = z.infer<typeof AgentTeam>;
 
 /** event types buildTeam reads; enough to load just these from a long session */
-export const TEAM_EVENT_TYPES = ["tool.use", "tool.result", "background.task"] as const;
+export const TEAM_EVENT_TYPES = ["tool.use", "tool.result", "background.task", "task.usage", "approval.request", "approval.resolved", "session.init", "turn.result"] as const;
 
 const AGENT_TOOLS = new Set(["Agent", "Task"]);
 const FILE_TOOLS = new Set(["Edit", "Write", "MultiEdit", "NotebookEdit"]);
@@ -150,22 +166,61 @@ interface Draft {
   bg: { state: "started" | "completed" | "failed" | "stopped"; summary: string | null; ts: string } | null;
 }
 
-/**
- * The team of a session from its events (tool.use, tool.result, background.task, oldest first).
- * `live`: the lead's process runs; members still at work in an ended session count as stopped.
- */
-export function buildTeam(events: readonly SessionEvent[], opts: { live: boolean; cwd?: string | null }): { members: TeamMember[]; tasks: TeamTask[] } {
+export interface BuildTeamOptions {
+  /** the lead's process runs; members still at work in an ended session count as stopped */
+  live: boolean;
+  cwd?: string | null;
+  /** the team's role models (Session.teamModels) */
+  roleModels?: TeamRoleModels | null;
+  /** tokens of members at work as Claude Code reports them (live, not in the events), by Agent call */
+  liveTokens?: ReadonlyMap<string, number>;
+}
+
+function addTokens(into: Record<string, ModelTokens>, from: Record<string, ModelTokens>) {
+  for (const [model, t] of Object.entries(from)) {
+    const cur = (into[model] ??= { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, costUsd: 0 });
+    cur.inputTokens += t.inputTokens;
+    cur.outputTokens += t.outputTokens;
+    cur.cacheReadTokens += t.cacheReadTokens;
+    cur.cacheWriteTokens += t.cacheWriteTokens;
+    cur.costUsd += t.costUsd;
+  }
+}
+
+/** The team of a session from its events (TEAM_EVENT_TYPES, oldest first). */
+export function buildTeam(events: readonly SessionEvent[], opts: BuildTeamOptions): { members: TeamMember[]; tasks: TeamTask[]; models: Record<string, ModelTokens> } {
   const cwd = opts.cwd ?? null;
   const drafts = new Map<string, Draft>();
   let tasks: TeamTask[] = [];
   /** TaskCreate calls waiting for their result (which carries the id) */
   const created = new Map<string, TeamTask>();
+  /** tool call of a member → the member */
+  const ownerOf = new Map<string, string>();
+  const approvals = new Map<string, { toolUseId: string; approval: NonNullable<TeamMember["approval"]> }>();
+  const tokens = new Map<string, number>();
+  // turn.result carries modelUsage summed over one CLI process; a new process starts with session.init.
+  const models: Record<string, ModelTokens> = {};
+  let processModels: Record<string, ModelTokens> | null = null;
   for (const ev of events) {
     const b = ev.body;
-    if (b.type === "tool.use") {
+    if (b.type === "session.init") {
+      if (processModels) addTokens(models, processModels);
+      processModels = null;
+    } else if (b.type === "turn.result") {
+      if (b.models) processModels = b.models;
+    } else if (b.type === "task.usage") {
+      tokens.set(b.toolUseId, b.tokens);
+    } else if (b.type === "approval.request") {
+      const detail = str(b.input.command) ?? str(b.input.file_path) ?? str(b.title) ?? str(b.description);
+      const approval = { requestId: b.requestId, toolName: b.toolName, detail: detail ? clip(detail.split("\n")[0] ?? "", 160) : null, allowSessionScope: b.allowSessionScope };
+      approvals.set(b.requestId, { toolUseId: b.toolUseId, approval });
+    } else if (b.type === "approval.resolved") {
+      approvals.delete(b.requestId);
+    } else if (b.type === "tool.use") {
       if (b.parentToolUseId) {
         const d = drafts.get(b.parentToolUseId);
         if (!d) continue;
+        ownerOf.set(b.toolUseId, b.parentToolUseId);
         d.member.toolUses++;
         d.member.activity = activityOf(b.name, b.input, cwd);
         const file = FILE_TOOLS.has(b.name) ? (str(b.input.file_path) ?? str(b.input.notebook_path)) : null;
@@ -186,7 +241,7 @@ export function buildTeam(events: readonly SessionEvent[], opts: { live: boolean
             agentType,
             title: str(b.input.description) ?? clip(prompt.split("\n")[0] ?? "", 60),
             prompt: clip(prompt, PROMPT_CHARS),
-            model: str(b.input.model) ?? (role ? TEAM_ROLE_SPECS[role].model : null),
+            model: str(b.input.model) ?? (role ? teamRoleModel(role, opts.roleModels) : null),
             background: b.input.run_in_background === true,
             state: "working",
             startedAt: ev.ts,
@@ -195,6 +250,8 @@ export function buildTeam(events: readonly SessionEvent[], opts: { live: boolean
             toolUses: 0,
             files: [],
             result: null,
+            tokens: null,
+            approval: null,
           },
           result: null,
           bg: null,
@@ -238,6 +295,14 @@ export function buildTeam(events: readonly SessionEvent[], opts: { live: boolean
     }
   }
 
+  if (processModels) addTokens(models, processModels);
+  // The sidecar answers an approval only while its process runs; older open ones are void.
+  if (opts.live) {
+    for (const { toolUseId, approval } of approvals.values()) {
+      const d = drafts.get(ownerOf.get(toolUseId) ?? "");
+      if (d && !d.member.approval) d.member.approval = approval;
+    }
+  }
   const members = [...drafts.values()].map(({ member: m, result, bg }) => {
     // A background agent's tool result only says it was launched; its end comes as background.task.
     if (bg || m.background) {
@@ -253,7 +318,52 @@ export function buildTeam(events: readonly SessionEvent[], opts: { live: boolean
       m.result = clip(result.text, RESULT_CHARS);
     }
     if (m.state === "working" && !opts.live) m.state = "stopped";
+    m.tokens = tokens.get(m.id) ?? (m.state === "working" ? (opts.liveTokens?.get(m.id) ?? null) : null);
+    if (m.state !== "working") m.approval = null;
     return m;
   });
-  return { members, tasks };
+  return { members, tasks, models };
+}
+
+const ROLE_WORDS: Record<string, TeamRole> = {
+  scout: "scout",
+  scouts: "scout",
+  developer: "developer",
+  entwickler: "developer",
+  dev: "developer",
+  specialist: "specialist",
+  spezialist: "specialist",
+  tester: "tester",
+  test: "tester",
+  reviewer: "reviewer",
+  review: "reviewer",
+};
+
+/**
+ * "reviewer=sonnet, spezialist=fable" (also "reviewer: sonnet") → overrides; "standard"/"default" as
+ * model drops the override of that role. Unknown parts come back in `invalid`.
+ */
+export function parseTeamRoleModels(text: string): { models: Partial<Record<TeamRole, TeamModelFamily | null>>; invalid: string[] } {
+  const models: Partial<Record<TeamRole, TeamModelFamily | null>> = {};
+  const invalid: string[] = [];
+  for (const part of text.split(/[,;\n]+/).map((p) => p.trim()).filter(Boolean)) {
+    const [r, m] = part.split(/\s*[=:]\s*|\s+/).map((x) => x.trim().toLowerCase());
+    const role = r ? ROLE_WORDS[r] : undefined;
+    const family = m === "standard" || m === "default" ? null : (["haiku", "sonnet", "opus", "fable"] as const).find((f) => f === m);
+    if (!role || family === undefined) invalid.push(part);
+    else models[role] = family;
+  }
+  return { models, invalid };
+}
+
+/** overrides with `changes` applied; a role set to its default or to null drops out */
+export function mergeTeamRoleModels(base: TeamRoleModels | null | undefined, changes: Partial<Record<TeamRole, TeamModelFamily | null>>): TeamRoleModels {
+  const out: TeamRoleModels = { ...(base ?? {}) };
+  for (const role of TEAM_ROLES) {
+    if (!(role in changes)) continue;
+    const m = changes[role];
+    if (!m || m === TEAM_ROLE_SPECS[role].model) delete out[role];
+    else out[role] = m;
+  }
+  return out;
 }

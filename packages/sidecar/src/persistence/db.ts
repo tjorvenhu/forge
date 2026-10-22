@@ -1,7 +1,7 @@
 import { DatabaseSync, type StatementSync } from "node:sqlite";
 import type { SessionTotals, UsageCall } from "../claude/session-usage.js";
 import type { UsageSample } from "../claude/usage-forecast.js";
-import { DEFAULT_DISABLED_POLICY_RULES, SEARCH_MARK_END, SEARCH_MARK_START, type ContextUsage, type EffortLevel, type ModelTokens, type ForgeUsagePurpose, type PermissionMode, type ProfileId, type Project, type PhoneCallRecord, type PromptTemplate, type SearchFilter, type SearchHit, type Session, type SessionEvent, type SessionEventBody, type SessionStatus, type Settings } from "@forge/protocol";
+import { DEFAULT_DISABLED_POLICY_RULES, SEARCH_MARK_END, SEARCH_MARK_START, TeamRoleModels, type ContextUsage, type EffortLevel, type ModelTokens, type ForgeUsagePurpose, type PermissionMode, type ProfileId, type Project, type PhoneCallRecord, type PromptTemplate, type SearchFilter, type SearchHit, type Session, type SessionEvent, type SessionEventBody, type SessionStatus, type Settings } from "@forge/protocol";
 
 // Append only: an install stores how many it ran (user_version), so inserting one shifts the rest.
 export const MIGRATIONS: string[] = [
@@ -369,6 +369,10 @@ export const MIGRATIONS: string[] = [
   `
   ALTER TABLE sessions ADD COLUMN team INTEGER NOT NULL DEFAULT 0;
   `,
+  // Models of an agent team's roles where they differ from the defaults (JSON), fixed when it starts.
+  `
+  ALTER TABLE sessions ADD COLUMN team_models TEXT;
+  `,
 ];
 
 /** user_version once the agents_enabled migration ran */
@@ -467,6 +471,7 @@ export const DEFAULT_SETTINGS: Settings = {
   learnTemplates: true,
   askPushOnClose: true,
   agentTeams: false,
+  teamRoleModels: {},
   disabledPolicyRules: [...DEFAULT_DISABLED_POLICY_RULES],
   setupDone: false,
   syncEnabled: false,
@@ -520,6 +525,7 @@ interface SessionRow {
   updated_at: string;
   last_error: string | null;
   team: number;
+  team_models: string | null;
 }
 
 export type ProjectRecord = Omit<Project, "exists">;
@@ -703,6 +709,16 @@ function toProject(r: ProjectRow): ProjectRecord {
   };
 }
 
+/** A broken or outdated entry falls back to the defaults instead of breaking the session. */
+function parseTeamModels(raw: string): TeamRoleModels {
+  try {
+    const r = TeamRoleModels.safeParse(JSON.parse(raw));
+    return r.success ? r.data : {};
+  } catch {
+    return {};
+  }
+}
+
 function toSession(r: SessionRow): SessionRecord {
   return {
     id: r.id,
@@ -720,6 +736,7 @@ function toSession(r: SessionRow): SessionRecord {
     updatedAt: r.updated_at,
     lastError: r.last_error,
     ...(r.team ? { team: true } : {}),
+    ...(r.team_models ? { teamModels: parseTeamModels(r.team_models) } : {}),
   };
 }
 
@@ -1028,8 +1045,8 @@ export class Db {
   insertSession(s: SessionRecord) {
     this.sql
       .prepare(
-        `INSERT INTO sessions(id, project_id, claude_session_id, cwd, title, model, effort, profile, permission_mode, status, api_key_source, created_at, updated_at, last_error, team)
-         VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO sessions(id, project_id, claude_session_id, cwd, title, model, effort, profile, permission_mode, status, api_key_source, created_at, updated_at, last_error, team, team_models)
+         VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         s.id,
@@ -1047,6 +1064,7 @@ export class Db {
         s.updatedAt,
         s.lastError,
         s.team ? 1 : 0,
+        s.teamModels && Object.keys(s.teamModels).length ? JSON.stringify(s.teamModels) : null,
       );
   }
 

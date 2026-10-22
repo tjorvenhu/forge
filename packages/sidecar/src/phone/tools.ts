@@ -56,6 +56,8 @@ export interface AgentTeamOptions {
   team?: string;
   text?: string;
   leadModel?: TeamLeadModel;
+  /** at start: role models for this team, as text like forge_settings team_models */
+  models?: string;
 }
 
 export interface GitOptions extends TargetOptions {
@@ -239,8 +241,10 @@ export interface ForgeSettingsPatch {
   learnTemplates?: boolean;
   /** closing FORGE asks to commit and push what is not on GitHub */
   askPushOnClose?: boolean;
-  /** Claude Code's agent teams (team terminal, team view) */
+  /** agent teams (a lead orchestrates members with their own models) */
   agentTeams?: boolean;
+  /** models of the team roles for new teams, as text ("reviewer=sonnet, specialist=fable"; "standard" resets a role) */
+  teamRoleModels?: string;
   /** anonymous usage totals every 5 minutes */
   usageStats?: boolean;
   policyRule?: PolicyRuleId;
@@ -732,9 +736,10 @@ const TOOL_DEFS: readonly ToolDef[] = [
       team: { type: "string", optional: true },
       text: { type: "string", optional: true },
       lead_model: { type: "string", optional: true, enum: TEAM_LEAD_MODELS },
+      models: { type: "string", optional: true },
     },
     run: (t, a) =>
-      t.agentTeam(pick(a.action, AGENT_TEAM_ACTIONS, "status"), { project: opt(a.project), team: opt(a.team), text: opt(a.text), leadModel: TEAM_LEAD_MODELS.find((m) => m === a.lead_model) }),
+      t.agentTeam(pick(a.action, AGENT_TEAM_ACTIONS, "status"), { project: opt(a.project), team: opt(a.team), text: opt(a.text), leadModel: TEAM_LEAD_MODELS.find((m) => m === a.lead_model), models: opt(a.models) }),
   },
   {
     name: "projects",
@@ -907,6 +912,7 @@ const TOOL_DEFS: readonly ToolDef[] = [
       learn_templates: { type: "boolean", optional: true },
       ask_push_on_close: { type: "boolean", optional: true },
       agent_teams: { type: "boolean", optional: true },
+      team_models: { type: "string", optional: true },
       usage_stats: { type: "boolean", optional: true },
       language: { type: "string", optional: true, enum: Language.options },
       policy_rule: { type: "string", optional: true, enum: PolicyRuleId.options },
@@ -933,6 +939,7 @@ const TOOL_DEFS: readonly ToolDef[] = [
         learnTemplates: optBool(a.learn_templates),
         askPushOnClose: optBool(a.ask_push_on_close),
         agentTeams: optBool(a.agent_teams),
+        teamRoleModels: opt(a.team_models),
         usageStats: optBool(a.usage_stats),
         language: Language.options.find((x) => x === a.language),
         policyRule: PolicyRuleId.options.find((x) => x === a.policy_rule),

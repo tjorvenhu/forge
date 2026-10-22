@@ -428,6 +428,7 @@ export const layout: typeof De = {
     terminal: "Open terminal",
     teamStart: "Start an agent team (a lead plans and hands work to members on their own models)",
     teamView: "Show agent teams",
+    teamModels: "Set the models of the team roles",
     bottom: "Show or hide bottom panel",
     right: "Show or hide sidebar",
     splitAdd: "Split view: open another area",

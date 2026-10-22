@@ -1,7 +1,7 @@
 import type { QueryClient } from "@tanstack/react-query";
 import { create } from "zustand";
 import { Code2, Compass, FlaskConical, ShieldCheck, Sparkles, type LucideIcon } from "lucide-react";
-import { modelFamily, type AgentTeam, type Project, type TeamLeadModel, type TeamMember, type TeamModelFamily, type TeamRole } from "@forge/protocol";
+import { modelFamily, type AgentTeam, type Project, type TeamLeadModel, type TeamMember, type TeamModelFamily, type TeamRole, type TeamRoleModels } from "@forge/protocol";
 import { useUi } from "@/stores/ui";
 import { toast } from "@/stores/toast";
 import { call, keys, useProjects, useSettings } from "./queries";
@@ -52,9 +52,9 @@ export function openTeamStart(projectId: string) {
 }
 
 /** Starts a team and opens the lead's chat; null when it failed (the toast is shown). */
-export async function startTeam(qc: QueryClient, projectId: string, prompt: string, leadModel: TeamLeadModel) {
+export async function startTeam(qc: QueryClient, projectId: string, prompt: string, leadModel: TeamLeadModel, roleModels?: TeamRoleModels) {
   try {
-    const s = await call("teams.start", { projectId, prompt, leadModel });
+    const s = await call("teams.start", { projectId, prompt, leadModel, ...(roleModels ? { roleModels } : {}) });
     qc.setQueryData(keys.session(s.id), s);
     void qc.invalidateQueries({ queryKey: keys.sessions(projectId) });
     void qc.invalidateQueries({ queryKey: ["agentTeams"] });
@@ -64,6 +64,17 @@ export async function startTeam(qc: QueryClient, projectId: string, prompt: stri
   } catch (e) {
     toast.error(t.workspace.teams.notStarted, errorMessage(e));
     return null;
+  }
+}
+
+/** The default models of the team roles (settings); false when saving failed (the toast is shown). */
+export async function saveTeamRoleModels(qc: QueryClient, teamRoleModels: TeamRoleModels): Promise<boolean> {
+  try {
+    qc.setQueryData(keys.settings, await call("settings.update", { teamRoleModels }));
+    return true;
+  } catch (e) {
+    toast.error(t.ui.error, errorMessage(e));
+    return false;
   }
 }
 

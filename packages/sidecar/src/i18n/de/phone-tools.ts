@@ -164,13 +164,14 @@ export const phoneTools = {
   },
   agent_team: {
     description:
-      "Agent-Teams von FORGE: Ein Lead (stärkeres Modell) plant ein Ziel, verteilt Arbeitspakete an Mitglieder mit Rollen und passendem Modell (Scout auf Haiku liest Code, Entwickler und Tester auf Sonnet, Spezialist und Reviewer auf Opus), lässt unabhängige Pakete parallel laufen und prüft das Ergebnis. Verbraucht deutlich mehr vom Abo als eine Session; das vor start dem Anrufer sagen. status: Teams mit Plan, Mitgliedern, ihrem Modell und was sie gerade tun (ohne team die arbeitenden, sonst das neueste). message: Nachricht an den Lead, er gibt sie weiter. start: neues Team im Projekt mit text als Ziel. stop: stoppt alle arbeitenden Mitglieder und den Lead; vorher beim Anrufer nachfragen, unfertige Arbeit bricht ab.",
+      "Agent-Teams von FORGE: Ein Lead (stärkeres Modell) plant ein Ziel, verteilt Arbeitspakete an Mitglieder mit Rollen und passendem Modell (Scout auf Haiku liest Code, Entwickler und Tester auf Sonnet, Spezialist und Reviewer auf Opus), lässt unabhängige Pakete parallel laufen und prüft das Ergebnis. Verbraucht deutlich mehr vom Abo als eine Session; das vor start dem Anrufer sagen. status: Teams mit Plan, Mitgliedern, ihrem Modell und was sie gerade tun (ohne team die arbeitenden, sonst das neueste). message: Nachricht an den Lead, er gibt sie weiter. start: neues Team im Projekt mit text als Ziel. Mitglieder, die auf eine Freigabe warten, nennt status; beantwortet werden sie mit respond in der Session des Teams. Prüfbefehle (Tests, Lint, Typecheck, lesende Befehle) laufen im Profil Balanced ohne Rückfrage. stop: stoppt alle arbeitenden Mitglieder und den Lead; vorher beim Anrufer nachfragen, unfertige Arbeit bricht ab.",
     params: {
       action: "status, message, start oder stop",
       project: "Projektname; bei status optional (sonst alle Projekte), bei start nötig",
       team: "Titel (oder ein Teil davon) des Teams aus status; ohne Angabe das arbeitende bzw. neueste",
       text: "bei message die Nachricht an den Lead, bei start das Ziel, vollständig ausformuliert",
       lead_model: "bei start: Modell des Leads, opus (Standard), fable (stärkstes, teuerstes) oder sonnet (sparsamer)",
+      models: "bei start: Modelle einzelner Rollen nur für dieses Team, z. B. reviewer=sonnet, spezialist=fable; sonst gelten die Einstellungen",
     },
   },
   projects: {
@@ -271,6 +272,7 @@ export const phoneTools = {
       learn_templates: "FORGE macht aus Aufträgen, die der Anrufer immer wieder schickt, von selbst Prompt-Vorlagen",
       ask_push_on_close: "beim Schließen von FORGE fragen, ob alles noch nicht Gepushte committet und gepusht werden soll",
       agent_teams: "Agent-Teams in allen Projekten (ein Lead verteilt Arbeit an Mitglieder mit eigenen Modellen); false schaltet sie überall aus",
+      team_models: "Modelle der Team-Rollen für neue Teams, z. B. reviewer=sonnet, spezialist=fable; Rollen scout, entwickler, spezialist, tester, reviewer; Modelle haiku, sonnet, opus, fable; standard setzt eine Rolle zurück",
       usage_stats: "anonyme Nutzungsstatistik: alle 5 Minuten Summen wie Tokens, Projekte und Agenten ohne Inhalte an den Statistik-Dienst von FORGE; aus löscht die gesendeten Daten dort",
       language: "Sprache von FORGE für Oberfläche, Meldungen und Telefon: en Englisch, de Deutsch. Danach sprichst du in der neuen Sprache",
       policy_rule: "Regel der Sperrliste",

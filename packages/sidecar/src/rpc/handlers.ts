@@ -204,7 +204,7 @@ export function createHandlers(s: Services): Handlers {
     "agents.finish": ({ projectId, action }) => s.agentFinish.finish(projectId, action),
     "teams.list": ({ projectId }) => s.teams.list(projectId),
     "teams.get": ({ sessionId }) => s.teams.get(sessionId),
-    "teams.start": ({ projectId, prompt, leadModel }) => s.teams.start(projectId, prompt, leadModel),
+    "teams.start": ({ projectId, prompt, leadModel, roleModels }) => s.teams.start(projectId, prompt, leadModel, roleModels),
     "teams.message": ({ sessionId, text }) => s.teams.message(sessionId, text),
     "teams.stop": ({ sessionId }) => s.teams.stop(sessionId),
     "sessions.summarize": ({ sessionId }) => s.sessions.summarize(sessionId),

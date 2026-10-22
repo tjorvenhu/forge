@@ -58,6 +58,49 @@ describe("buildTeam", () => {
   });
 });
 
+describe("buildTeam: approvals, tokens and models", () => {
+  const tok = (input: number, output: number, costUsd: number) => ({ inputTokens: input, outputTokens: output, cacheReadTokens: 0, cacheWriteTokens: 0, costUsd });
+  const turn = (models: Record<string, ReturnType<typeof tok>>) =>
+    ev({ type: "turn.result", subtype: "success", isError: false, durationMs: 1, numTurns: 1, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, models, text: null });
+  const init = () => ev({ type: "session.init", claudeSessionId: "c", model: "opus", permissionMode: "acceptEdits", cwd: "", tools: [], claudeCodeVersion: null, apiKeySource: null });
+  const approval = (requestId: string, toolUseId: string, command: string) =>
+    ev({ type: "approval.request", requestId, toolUseId, toolName: "Bash", input: { command }, title: null, description: null, reason: null, allowSessionScope: true, outsideProject: false });
+
+  it("shows an open approval at the member whose tool call waits, until it is answered", () => {
+    const base = [
+      use("a1", "Agent", { subagent_type: "team-tester", description: "Tests", prompt: "x", run_in_background: true }),
+      use("b1", "Bash", { command: "pnpm install" }, "a1"),
+      approval("r1", "b1", "pnpm install"),
+    ];
+    expect(buildTeam(base, { live: true }).members[0]!.approval).toMatchObject({ requestId: "r1", toolName: "Bash", detail: "pnpm install", allowSessionScope: true });
+    expect(buildTeam([...base, ev({ type: "approval.resolved", requestId: "r1", decision: "allow", scope: "once", source: "user", message: null })], { live: true }).members[0]!.approval).toBeNull();
+    // a request of an ended process can no longer be answered
+    expect(buildTeam(base, { live: false }).members[0]!.approval).toBeNull();
+  });
+
+  it("takes a member's tokens from its end, or live while it works, and sums the models over every process", () => {
+    const events = [
+      init(),
+      use("a1", "Agent", { subagent_type: "team-scout", description: "s", prompt: "x" }),
+      result("a1", "ok"),
+      ev({ type: "task.usage", toolUseId: "a1", tokens: 12000, toolUses: 4, durationMs: 9000 }),
+      use("a2", "Agent", { subagent_type: "team-developer", description: "d", prompt: "x", run_in_background: true }),
+      turn({ "claude-opus-5-5": tok(100, 10, 1), "claude-haiku-5-5": tok(50, 5, 0.1) }),
+      turn({ "claude-opus-5-5": tok(200, 20, 2), "claude-haiku-5-5": tok(50, 5, 0.1) }),
+      init(),
+      turn({ "claude-opus-5-5": tok(30, 3, 0.5) }),
+    ];
+    const { members, models } = buildTeam(events, { live: true, liveTokens: new Map([["a2", 3400], ["a1", 1]]) });
+    expect(members.map((m) => m.tokens)).toEqual([12000, 3400]);
+    expect(models).toEqual({ "claude-opus-5-5": tok(230, 23, 2.5), "claude-haiku-5-5": tok(50, 5, 0.1) });
+  });
+
+  it("names the model a role runs on in this team", () => {
+    const { members } = buildTeam([use("a1", "Agent", { subagent_type: "team-reviewer", description: "r", prompt: "x" })], { live: true, roleModels: { reviewer: "sonnet" } });
+    expect(members[0]!.model).toBe("sonnet");
+  });
+});
+
 describe("team helpers", () => {
   it("maps agent types to roles and models to families", () => {
     expect(teamRoleOf("team-tester")).toBe("tester");
@@ -66,5 +109,15 @@ describe("team helpers", () => {
     expect(modelFamily("claude-sonnet-5-5")).toBe("sonnet");
     expect(modelFamily("opus[1m]")).toBe("opus");
     expect(modelFamily(null)).toBeNull();
+  });
+});
+
+describe("role models from text", () => {
+  it("reads roles in German or English and drops overrides set back to the default", async () => {
+    const { parseTeamRoleModels, mergeTeamRoleModels } = await import("./team.js");
+    const p = parseTeamRoleModels("Reviewer=Sonnet, spezialist: fable; scout standard, koch=opus, tester=gpt");
+    expect(p.models).toEqual({ reviewer: "sonnet", specialist: "fable", scout: null });
+    expect(p.invalid).toEqual(["koch=opus", "tester=gpt"]);
+    expect(mergeTeamRoleModels({ scout: "sonnet", tester: "opus" }, { ...p.models, tester: "sonnet" })).toEqual({ reviewer: "sonnet", specialist: "fable" });
   });
 });

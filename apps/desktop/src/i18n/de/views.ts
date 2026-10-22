@@ -216,6 +216,9 @@ export const views = {
     autoContinueLabel: "Nach Nutzungslimit weitermachen",
     autoContinueDescription: "Stoppt das Limit eine Session, schickt FORGE nach dem Reset selbst eine Nachricht. Höchstens dreimal ohne deine Eingabe, nur solange FORGE läuft.",
     agentTeamsLabel: "Agent-Teams",
+    teamModelsLabel: "Modelle der Team-Rollen",
+    teamModelsDescription: "Vorgabe für neue Teams. Teure Modelle lohnen sich dort, wo Urteilsvermögen zählt; der Lead kann für einzelne Pakete trotzdem ein anderes Modell wählen.",
+    teamModelsReset: "Auf Standard zurücksetzen",
     agentTeamsDescription:
       "Ein Lead plant ein Ziel und verteilt die Arbeit an Mitglieder mit festen Rollen und passendem Modell (Haiku liest Code, Sonnet setzt um, Opus prüft). Verbraucht deutlich mehr vom Abo als eine einzelne Session. Pro Projekt lässt es sich in den Projekt-Einstellungen wieder ausschalten.",
     uiCompareLabel: "Vorher-Nachher-Bilder bei UI-Änderungen",

@@ -55,6 +55,18 @@ export const GitSummary = z.object({
 export type GitSummary = z.infer<typeof GitSummary>;
 
 export const EffortLevel = z.enum(["low", "medium", "high", "xhigh", "max"]);
+
+/** Roles of an agent team (team.ts); here because sessions and settings name them. */
+export const TEAM_ROLES = ["scout", "developer", "specialist", "tester", "reviewer"] as const;
+export const TeamRole = z.enum(TEAM_ROLES);
+export type TeamRole = z.infer<typeof TeamRole>;
+/** model families a team role can run on; Claude Code resolves the alias to the newest model */
+export const TEAM_MODEL_FAMILIES = ["haiku", "sonnet", "opus", "fable"] as const;
+export const TeamModelFamily = z.enum(TEAM_MODEL_FAMILIES);
+export type TeamModelFamily = z.infer<typeof TeamModelFamily>;
+/** model per role where it differs from the default (TEAM_ROLE_SPECS) */
+export const TeamRoleModels = z.partialRecord(TeamRole, TeamModelFamily);
+export type TeamRoleModels = z.infer<typeof TeamRoleModels>;
 export type EffortLevel = z.infer<typeof EffortLevel>;
 
 export const Project = z.object({
@@ -120,6 +132,8 @@ export const BackgroundTask = z.object({
   startedAt: z.string(),
   /** one-line progress (subagents: written by the model about every 30 s) */
   summary: z.string().nullable(),
+  /** tokens a subagent used so far (task_progress) */
+  tokens: z.number().nullable().optional(),
 });
 export type BackgroundTask = z.infer<typeof BackgroundTask>;
 
@@ -145,6 +159,8 @@ export const SubagentProgress = z.object({
   lastTool: z.string().nullable(),
   toolUses: z.number(),
   startedAt: z.string(),
+  /** tokens it used so far */
+  tokens: z.number().nullable().optional(),
 });
 export type SubagentProgress = z.infer<typeof SubagentProgress>;
 
@@ -187,6 +203,8 @@ export const Session = z.object({
   autoContinueAt: z.string().nullable(),
   /** agent team: the lead orchestrates subagents with their own models (team.ts); missing for plain sessions */
   team: z.boolean().optional(),
+  /** agent team: the models its roles run on where they differ from the defaults, fixed at the start */
+  teamModels: TeamRoleModels.optional(),
 });
 export type Session = z.infer<typeof Session>;
 
@@ -356,6 +374,14 @@ export const SessionEventBody = z.discriminatedUnion("type", [
     summary: z.string().nullable(),
     /** the tool call that started it; missing in events of older FORGE versions */
     toolUseId: z.string().nullable().optional(),
+  }),
+  /** what a subagent used, when it ended (foreground or background) */
+  z.object({
+    type: z.literal("task.usage"),
+    toolUseId: z.string(),
+    tokens: z.number(),
+    toolUses: z.number(),
+    durationMs: z.number(),
   }),
   z.object({
     type: z.literal("turn.result"),
@@ -562,6 +588,8 @@ export const Settings = z.object({
   askPushOnClose: z.boolean(),
   /** Claude Code's agent teams (team terminal, team view); off hides them everywhere */
   agentTeams: z.boolean(),
+  /** models of the team roles for new teams, where they differ from the defaults */
+  teamRoleModels: TeamRoleModels.optional(),
   /** blocklist rules the user switched off; every other rule applies */
   disabledPolicyRules: z.array(PolicyRuleId),
   /** the setup assistant of the first start is done (or was skipped); installations from before it count as done */

@@ -1,5 +1,5 @@
 import type { AgentDefinition } from "@anthropic-ai/claude-agent-sdk";
-import { TEAM_AGENT_PREFIX, TEAM_MAX_PARALLEL, TEAM_ROLE_SPECS, TEAM_ROLES, type TeamRole } from "@forge/protocol";
+import { TEAM_AGENT_PREFIX, TEAM_MAX_PARALLEL, TEAM_ROLE_SPECS, TEAM_ROLES, teamRoleModel, type TeamModelFamily, type TeamRole, type TeamRoleModels } from "@forge/protocol";
 
 /**
  * What the lead and the members of a FORGE agent team are told. English on purpose: these are
@@ -8,18 +8,29 @@ import { TEAM_AGENT_PREFIX, TEAM_MAX_PARALLEL, TEAM_ROLE_SPECS, TEAM_ROLES, type
 
 const EDIT_TOOLS = ["Edit", "Write", "MultiEdit", "NotebookEdit"];
 
-const ROLE_DESCRIPTIONS: Record<TeamRole, string> = {
-  scout:
-    "Team scout (Haiku, very cheap, read-only). Finds and maps code: where X lives, how Y works, which files Z touches. Reports paths, line numbers and short facts. Use several in parallel for separate questions instead of reading many files yourself.",
-  developer:
-    "Team developer (Sonnet). Implements one clearly specified package of work: the files it owns, what to change, acceptance criteria. The workhorse for most implementation.",
-  specialist:
-    "Team specialist (Opus, expensive). Only for the hard parts: tricky algorithms, concurrency, bugs with an unknown cause, cross-cutting design, security-sensitive code.",
-  tester:
-    "Team tester (Sonnet). Writes or adapts tests for a package and runs the relevant tests; reports failures with their cause.",
-  reviewer:
-    "Team reviewer (Opus, read-only). Reviews a finished change set for bugs, regressions, missed edge cases and inconsistencies. Run once at the end of a substantial change.",
+const MODEL_NOTE: Record<TeamModelFamily, string> = {
+  haiku: "Haiku, very cheap",
+  sonnet: "Sonnet",
+  opus: "Opus, expensive",
+  fable: "Fable, the strongest and most expensive",
 };
+
+/** What the lead reads about a role; names the model the role runs on in this team. */
+function roleDescription(role: TeamRole, model: TeamModelFamily): string {
+  const m = MODEL_NOTE[model];
+  switch (role) {
+    case "scout":
+      return `Team scout (${m}, read-only). Finds and maps code: where X lives, how Y works, which files Z touches. Reports paths, line numbers and short facts. Use several in parallel for separate questions instead of reading many files yourself.`;
+    case "developer":
+      return `Team developer (${m}). Implements one clearly specified package of work: the files it owns, what to change, acceptance criteria. The workhorse for most implementation.`;
+    case "specialist":
+      return `Team specialist (${m}). Only for the hard parts: tricky algorithms, concurrency, bugs with an unknown cause, cross-cutting design, security-sensitive code.`;
+    case "tester":
+      return `Team tester (${m}). Writes or adapts tests for a package and runs the relevant tests; reports failures with their cause.`;
+    case "reviewer":
+      return `Team reviewer (${m}, read-only). Reviews a finished change set for bugs, regressions, missed edge cases and inconsistencies. Run once at the end of a substantial change.`;
+  }
+}
 
 const REPORT = "Your final message is your report to the lead: short and factual, no repeated code, no pleasantries.";
 
@@ -48,15 +59,16 @@ Report the findings ranked by severity, each with file:line, what is wrong, a co
 ${REPORT}`,
 };
 
-/** The subagents of a team session: one per role, each on the model of its role. */
-export function teamAgents(): Record<string, AgentDefinition> {
+/** The subagents of a team session: one per role, each on the model of its role (overrides: the team's choice). */
+export function teamAgents(overrides?: TeamRoleModels | null): Record<string, AgentDefinition> {
   return Object.fromEntries(
     TEAM_ROLES.map((role) => {
       const spec = TEAM_ROLE_SPECS[role];
+      const model = teamRoleModel(role, overrides);
       const def: AgentDefinition = {
-        description: ROLE_DESCRIPTIONS[role],
+        description: roleDescription(role, model),
         prompt: ROLE_PROMPTS[role],
-        model: spec.model,
+        model,
         ...(spec.effort ? { effort: spec.effort } : {}),
         ...(spec.readOnly ? { disallowedTools: EDIT_TOOLS } : {}),
         // A scout needs the question, not the project's rules for writing code.
@@ -68,8 +80,8 @@ export function teamAgents(): Record<string, AgentDefinition> {
 }
 
 /** Appended to the lead's system prompt. */
-export function teamLeadContext(): string {
-  const roster = TEAM_ROLES.map((r) => `- ${TEAM_AGENT_PREFIX}${r}: ${ROLE_DESCRIPTIONS[r]}`).join("\n");
+export function teamLeadContext(overrides?: TeamRoleModels | null): string {
+  const roster = TEAM_ROLES.map((r) => `- ${TEAM_AGENT_PREFIX}${r}: ${roleDescription(r, teamRoleModel(r, overrides))}`).join("\n");
   return `# You lead an agent team (FORGE)
 You are the lead of an agent team. You understand the goal, plan, hand packages of work to team members (subagents via the Agent tool), coordinate them, check their results and report to the user. Your context is the team's memory: keep it for decisions, not for reading lots of files or writing code yourself.
 

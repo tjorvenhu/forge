@@ -116,7 +116,7 @@ export interface ActionContext {
   openDialog: (dialog: PaletteDialog) => void;
 }
 
-type BooleanSetting = { [K in keyof Settings]: Settings[K] extends boolean ? K : never }[keyof Settings];
+type BooleanSetting = { [K in keyof Settings]-?: Settings[K] extends boolean ? K : never }[keyof Settings];
 
 /** Boolean settings the palette leaves out on purpose, with the reason. */
 export const UNLISTED_SETTINGS = {
@@ -520,6 +520,9 @@ export function buildActions(ctx: ActionContext): PaletteEntry[] {
       });
     }
     if (teamsOn) {
+      act("team-models", t.layout.actions.teamModels, icon(Users), () => ui.openSettings("claude"), {
+        keywords: "agent team modelle rollen scout entwickler spezialist tester reviewer haiku sonnet opus fable einstellen team models roles developer specialist set",
+      });
       act("team-view", t.layout.actions.teamView, icon(Users), () => ui.setWorkspaceTab("agents"), {
         keywords: "agent teams agenten-teams anzeigen plan aufgaben mitglieder status übersicht team-board show plan tasks members overview board",
       });

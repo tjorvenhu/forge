@@ -55,6 +55,7 @@ import { InstallRepairSettings } from "@/components/layout/InstallRepair";
 import { supportsFullInstall } from "@/lib/app-install";
 import { LanguageSelect } from "@/components/settings/LanguageSelect";
 import { cn, planLabel } from "@/lib/utils";
+import { RoleModelsEditor } from "@/components/workspace/TeamModels";
 import { t } from "@/i18n";
 
 const sv = t.views.settings;
@@ -273,6 +274,24 @@ function ClaudeSection({ s, save }: { s: Settings; save: Save }) {
           checked={s.agentTeams}
           onChange={(v) => void save({ agentTeams: v })}
         />
+        {s.agentTeams && (
+          <Row
+            stacked
+            label={
+              <span className="flex items-center justify-between gap-2">
+                {sv.teamModelsLabel}
+                {Object.keys(s.teamRoleModels ?? {}).length > 0 && (
+                  <Button size="sm" variant="ghost" onClick={() => void save({ teamRoleModels: {} })}>
+                    {sv.teamModelsReset}
+                  </Button>
+                )}
+              </span>
+            }
+            description={sv.teamModelsDescription}
+          >
+            <RoleModelsEditor value={s.teamRoleModels ?? {}} onChange={(v) => void save({ teamRoleModels: v })} />
+          </Row>
+        )}
         <Row label={sv.idleCloseLabel} description={sv.idleCloseDescription}>
           <Select
             value={String(s.idleCloseMinutes)}

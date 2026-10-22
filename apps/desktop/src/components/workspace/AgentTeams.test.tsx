@@ -20,7 +20,7 @@ const now = new Date().toISOString();
 function member(over: Partial<TeamMember>): TeamMember {
   return {
     id: "a1", role: "developer", agentType: "team-developer", title: "Index bauen", prompt: "Baue den Index", model: "sonnet", background: true,
-    state: "working", startedAt: now, endedAt: null, activity: "Edit · src/index.ts", toolUses: 3, files: ["src/index.ts"], result: null, ...over,
+    state: "working", startedAt: now, endedAt: null, activity: "Edit · src/index.ts", toolUses: 3, files: ["src/index.ts"], result: null, tokens: null, approval: null, ...over,
   };
 }
 
@@ -42,6 +42,8 @@ function team(over: Partial<AgentTeam> = {}): AgentTeam {
       { id: "1", subject: "Suche verstehen", status: "completed", activeForm: null },
       { id: "2", subject: "Index bauen", status: "in_progress", activeForm: "Baut den Index" },
     ],
+    roleModels: { scout: "haiku", developer: "sonnet", specialist: "opus", tester: "sonnet", reviewer: "opus" },
+    models: { "claude-opus-5-5": { inputTokens: 1000, outputTokens: 200, cacheReadTokens: 50000, cacheWriteTokens: 4000, costUsd: 0.4 }, "claude-haiku-5-5": { inputTokens: 900, outputTokens: 100, cacheReadTokens: 9000, cacheWriteTokens: 0, costUsd: 0.01 } },
     ...over,
   };
 }
@@ -81,14 +83,15 @@ describe("AgentTeamsSection", () => {
     fireEvent.click((await screen.findAllByRole("button", { name: /Team starten|Start team/ }))[0]!);
     const dialog = await screen.findByRole("dialog");
     expect(within(dialog).getByText(/Erhöhter Verbrauch|Higher usage/)).toBeTruthy();
-    // every role with its model
-    for (const m of ["Haiku", "Sonnet", "Opus"]) expect(within(dialog).getAllByText(m).length).toBeGreaterThan(0);
+    // every role with its model, changeable
+    expect(within(dialog).getAllByRole("combobox")).toHaveLength(5);
+    expect(within(dialog).getByRole("combobox", { name: /Scout/ }).textContent).toMatch(/Haiku/);
     const start = within(dialog).getAllByRole("button", { name: /Team starten|Start team/ }).at(-1) as HTMLButtonElement;
     expect(start.disabled).toBe(true);
     fireEvent.click(within(dialog).getByRole("radio", { name: /Fable/ }));
     fireEvent.change(within(dialog).getByRole("textbox"), { target: { value: "  Baue die Suche " } });
     fireEvent.click(start);
-    await waitFor(() => expect(callMock).toHaveBeenCalledWith("teams.start", { projectId: "p1", prompt: "Baue die Suche", leadModel: "fable" }));
+    await waitFor(() => expect(callMock).toHaveBeenCalledWith("teams.start", { projectId: "p1", prompt: "Baue die Suche", leadModel: "fable", roleModels: {} }));
     await waitFor(() => expect(useUi.getState().activeSession.p1).toBe("s9"));
   });
 
@@ -124,6 +127,40 @@ describe("team board", () => {
     expect(screen.getByText("Baut den Index")).toBeTruthy();
     fireEvent.click(screen.getByText("Suche finden"));
     expect(useUi.getState().taskView).toMatchObject({ kind: "agent", sessionId: "s1", toolUseId: "a2" });
+  });
+});
+
+describe("team board: approvals, tokens and usage", () => {
+  it("answers a member's waiting tool call right on its card", async () => {
+    mockRpc({ "sessions.respondApproval": {} });
+    wrap(<TeamGrid team={team({ members: [member({ tokens: 12_300, approval: { requestId: "r7", toolName: "Bash", detail: "pnpm install", allowSessionScope: true } })] })} />);
+    expect(screen.getAllByText(/wartet auf Freigabe|waiting for approval/).length).toBeGreaterThan(0);
+    expect(screen.getByText(/12[,.]3k/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /^(Immer in dieser Session|Always in this session)$/ }));
+    await waitFor(() => expect(callMock).toHaveBeenCalledWith("sessions.respondApproval", { sessionId: "s1", requestId: "r7", decision: "allow", scope: "session" }));
+    // answering does not open the member's history
+    expect(useUi.getState().taskView).toBeNull();
+  });
+
+  it("shows where the usage goes, by model", () => {
+    mockRpc({});
+    wrap(<TeamGrid team={team()} />);
+    expect(screen.getByText(/· 98 ?%/)).toBeTruthy();
+    expect(screen.getByText(/· 2 ?%/)).toBeTruthy();
+  });
+});
+
+describe("start dialog: models of the roles", () => {
+  it("starts with the defaults from the settings and passes a change for this team only", async () => {
+    mockRpc({ "teams.list": [], "teams.start": { id: "s9", projectId: "p1" } }, { agentTeams: true, teamRoleModels: { reviewer: "sonnet" } });
+    useTeamDialog.setState({ projectId: "p1" });
+    wrap(<AgentTeamsSection project={project} />);
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByRole("combobox", { name: /Reviewer/ }).textContent).toMatch(/Sonnet/);
+    fireEvent.change(within(dialog).getByRole("textbox"), { target: { value: "Ziel" } });
+    fireEvent.click(within(dialog).getAllByRole("button", { name: /Team starten|Start team/ }).at(-1)!);
+    await waitFor(() => expect(callMock).toHaveBeenCalledWith("teams.start", { projectId: "p1", prompt: "Ziel", leadModel: "opus", roleModels: { reviewer: "sonnet" } }));
+    expect(callMock).not.toHaveBeenCalledWith("settings.update", expect.anything());
   });
 });
 

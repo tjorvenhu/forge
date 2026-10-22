@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
-import { ForgeError, type Attachment, type EffortLevel, type Session } from "@forge/protocol";
+import { ForgeError, type Attachment, type EffortLevel, type Session, type TeamRoleModels } from "@forge/protocol";
 import { fallbackFor, type ClaudeRuntime, type OutgoingMessage, type RuntimeSession, type SessionSink, type SessionTool } from "../claude/runtime.js";
 import { Normalizer } from "../claude/normalize.js";
 import { locateClaude, sessionEnv } from "../claude/environment.js";
@@ -28,6 +28,8 @@ export interface StartParams {
   attachments?: Attachment[];
   /** an agent team: the lead gets the team roles and the orchestration rules (teams/team-agents.ts) */
   team?: boolean;
+  /** agent team: models of its roles where they differ from the defaults */
+  teamModels?: TeamRoleModels;
 }
 
 export interface LifecycleParts {
@@ -106,7 +108,7 @@ export class SessionLifecycle {
       createdAt: now,
       updatedAt: now,
       lastError: null,
-      ...(params.team ? { team: true } : {}),
+      ...(params.team ? { team: true, ...(params.teamModels && Object.keys(params.teamModels).length ? { teamModels: params.teamModels } : {}) } : {}),
     };
     db.insertSession(rec);
 
@@ -247,8 +249,8 @@ export class SessionLifecycle {
           firstMessage: first,
           fallbackModel: fallbackFor(rec.model),
           tools: extra?.tools,
-          context: rec.team ? [extra?.context, teamLeadContext()].filter(Boolean).join("\n\n") : (extra?.context ?? null),
-          ...(rec.team ? { agents: teamAgents() } : {}),
+          context: rec.team ? [extra?.context, teamLeadContext(rec.teamModels)].filter(Boolean).join("\n\n") : (extra?.context ?? null),
+          ...(rec.team ? { agents: teamAgents(rec.teamModels) } : {}),
         },
         sink,
       );

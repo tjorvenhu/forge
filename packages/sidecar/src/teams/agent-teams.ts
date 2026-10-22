@@ -1,4 +1,18 @@
-import { buildTeam, ForgeError, TEAM_EVENT_TYPES, TEAM_LEAD_EFFORT, TEAM_LEAD_MODELS, type AgentTeam, type Project, type ServerEvent, type Session, type TeamLeadModel } from "@forge/protocol";
+import {
+  buildTeam,
+  ForgeError,
+  TEAM_EVENT_TYPES,
+  TEAM_LEAD_EFFORT,
+  TEAM_LEAD_MODELS,
+  TEAM_ROLES,
+  teamRoleModel,
+  type AgentTeam,
+  type Project,
+  type ServerEvent,
+  type Session,
+  type TeamLeadModel,
+  type TeamRoleModels,
+} from "@forge/protocol";
 import type { Db } from "../persistence/db.js";
 import type { StartParams } from "../sessions/lifecycle.js";
 import { tr } from "../i18n/index.js";
@@ -50,10 +64,13 @@ export class AgentTeams {
     const rec = this.d.db.getSession(sessionId);
     if (!rec?.team) throw new ForgeError("NOT_FOUND", tr().core.teams.notATeam);
     const s = this.d.sessions.get(sessionId);
-    const key = `${this.d.db.lastEventSeq(sessionId)}:${s.live}:${s.status}:${s.updatedAt}`;
+    // Tokens of members at work come with the session (task_progress), not as events.
+    const liveTokens = new Map<string, number>();
+    for (const t of [...s.subagents, ...s.background]) if (t.toolUseId && typeof t.tokens === "number") liveTokens.set(t.toolUseId, t.tokens);
+    const key = `${this.d.db.lastEventSeq(sessionId)}:${s.live}:${s.status}:${s.updatedAt}:${[...liveTokens.values()].join(",")}`;
     const hit = this.cache.get(sessionId);
     if (hit?.key === key) return hit.team;
-    const { members, tasks } = buildTeam(this.d.db.listEventsOfTypes(sessionId, TEAM_EVENT_TYPES), { live: s.live, cwd: s.cwd });
+    const { members, tasks, models } = buildTeam(this.d.db.listEventsOfTypes(sessionId, TEAM_EVENT_TYPES), { live: s.live, cwd: s.cwd, roleModels: s.teamModels, liveTokens });
     const team: AgentTeam = {
       sessionId,
       projectId: s.projectId,
@@ -65,18 +82,22 @@ export class AgentTeams {
       updatedAt: s.updatedAt,
       members,
       tasks,
+      roleModels: Object.fromEntries(TEAM_ROLES.map((r) => [r, teamRoleModel(r, s.teamModels)])) as AgentTeam["roleModels"],
+      models,
     };
     this.cache.set(sessionId, { key, team });
     return team;
   }
 
-  async start(projectId: string, prompt: string, leadModel?: TeamLeadModel): Promise<Session> {
+  /** roleModels: models of the roles for this team; without it the defaults from the settings */
+  async start(projectId: string, prompt: string, leadModel?: TeamLeadModel, roleModels?: TeamRoleModels): Promise<Session> {
     if (!this.d.enabled(null)) throw new ForgeError("TEAMS_DISABLED", tr().core.teams.disabled);
     if (!this.d.enabled(projectId)) {
       const p = this.d.projects().find((x) => x.id === projectId);
       throw new ForgeError("TEAMS_DISABLED", tr().core.teams.disabledInProject(p?.name ?? projectId));
     }
-    return this.d.sessions.start({ projectId, prompt, model: leadModel ?? TEAM_LEAD_MODELS[0], effort: TEAM_LEAD_EFFORT, team: true });
+    const teamModels = roleModels ?? this.d.db.getSettings().teamRoleModels ?? {};
+    return this.d.sessions.start({ projectId, prompt, model: leadModel ?? TEAM_LEAD_MODELS[0], effort: TEAM_LEAD_EFFORT, team: true, teamModels });
   }
 
   /** to the lead; it passes the message on to the members concerned */

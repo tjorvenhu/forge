@@ -2338,6 +2338,41 @@ describe("agent teams", () => {
     expect(() => teams.get(plain.id)).toThrow();
   });
 
+  it("keeps the role models of a team from its start, from the settings or the start itself", async () => {
+    db.updateSettings({ teamRoleModels: { reviewer: "sonnet" } });
+    const teams = teamsFor();
+    const a = await teams.start(projectId, "a");
+    expect(rt.started[0]!.agents?.["team-reviewer"]).toMatchObject({ model: "sonnet" });
+    expect(rt.started[0]!.context).toContain("team-reviewer: Team reviewer (Sonnet");
+    const b = await teams.start(projectId, "b", "sonnet", { specialist: "fable" });
+    expect(rt.started[1]!.agents?.["team-specialist"]).toMatchObject({ model: "fable" });
+    expect(rt.started[1]!.agents?.["team-reviewer"]).toMatchObject({ model: "opus" });
+    // a later change of the settings does not move a running team
+    db.updateSettings({ teamRoleModels: {} });
+    rt.replay(0);
+    rt.sinks[0]!.onEnd(null);
+    await svc.resume(a.id, "weiter");
+    expect(rt.started.at(-1)!.agents?.["team-reviewer"]).toMatchObject({ model: "sonnet" });
+    expect(teams.get(b.id).roleModels).toMatchObject({ specialist: "fable", reviewer: "opus", scout: "haiku" });
+  });
+
+  it("lets team members run checks without asking in Balanced, but not other commands or other sessions", async () => {
+    const teams = teamsFor();
+    const s = await teams.start(projectId, "x");
+    const ask = (requestId: string, command: string, i = 0) =>
+      rt.sinks[i]!.onApproval({ requestId, toolUseId: requestId, toolName: "Bash", input: { command }, title: null, description: null, reason: null, suppressAlwaysAllow: false }, new AbortController().signal);
+    await expect(ask("r1", "cd packages/a && pnpm vitest run")).resolves.toEqual({ behavior: "allow", scope: "once" });
+    expect(svc.get(s.id).status).not.toBe("waiting_approval");
+    void ask("r2", "pnpm install");
+    expect(svc.get(s.id).status).toBe("waiting_approval");
+    const audit = db.sql.prepare("SELECT request_id, source, reason FROM approvals WHERE request_id = 'r1'").all();
+    expect(audit).toEqual([{ request_id: "r1", source: "policy", reason: "team-check" }]);
+
+    const plain = await svc.start({ projectId, prompt: "y" });
+    void ask("r3", "pnpm test", 1);
+    expect(svc.get(plain.id).status).toBe("waiting_approval");
+  });
+
   it("refuses to start a team while teams are switched off", async () => {
     await expect(teamsFor(false).start(projectId, "x")).rejects.toMatchObject({ code: "TEAMS_DISABLED" });
     expect(rt.started).toHaveLength(0);

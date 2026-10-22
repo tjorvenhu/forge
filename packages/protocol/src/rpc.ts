@@ -81,6 +81,7 @@ import {
   Session,
   SessionEvent,
   Settings,
+  TeamRoleModels,
   SlashCommand,
   SyncProbe,
   SyncStatus,
@@ -229,7 +230,10 @@ export const methods = {
   "teams.list": { params: z.object({ projectId: id.optional() }), result: z.array(AgentTeam) },
   "teams.get": { params: sessionRef, result: AgentTeam },
   /** starts a team on a goal: a session whose lead (leadModel, default opus) staffs the team roles */
-  "teams.start": { params: projectRef.extend({ prompt: z.string().min(1).max(MAX_PROMPT_CHARS), leadModel: TeamLeadModel.optional() }), result: Session },
+  "teams.start": {
+    params: projectRef.extend({ prompt: z.string().min(1).max(MAX_PROMPT_CHARS), leadModel: TeamLeadModel.optional(), roleModels: TeamRoleModels.optional() }),
+    result: Session,
+  },
   /** a message to the lead (it passes it on to members); starts the lead again when its process ended */
   "teams.message": { params: sessionRef.extend({ text: z.string().min(1).max(MAX_PROMPT_CHARS) }), result: Session },
   /** stops the team: the lead's turn and every member still at work; the session stays and can go on */

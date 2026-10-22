@@ -31,8 +31,13 @@ import {
   type Settings,
   type UsageWindow,
   SUPPORT_LINKS,
+  mergeTeamRoleModels,
   modelFamily,
+  parseTeamRoleModels,
+  TEAM_ROLES,
+  teamRoleModel,
   type AgentTeam,
+  type TeamRoleModels,
 } from "@forge/protocol";
 import type { Db } from "../persistence/db.js";
 import { limitWarning } from "../claude/usage.js";
@@ -489,6 +494,8 @@ function settingText(s: Settings, key: keyof ForgeSettingsPatch | "alwaysOnTop")
       return m.settings.askPushOnClose(s.askPushOnClose);
     case "agentTeams":
       return m.settings.agentTeams(s.agentTeams);
+    case "teamRoleModels":
+      return m.settings.teamRoleModels(TEAM_ROLES.map((r) => `${m.teams.role[r] ?? r} ${teamRoleModel(r, s.teamRoleModels)}`).join(", "));
     case "usageStats":
       return m.settings.usageStats(s.usageStats);
     case "debugLogs":
@@ -2437,7 +2444,13 @@ export class PhoneService {
           if (action === "start") {
             if (!o.text?.trim()) return m.needsGoal;
             const p = findProject(o.project ?? "");
-            const s = await call("teams.start", { projectId: p.id, prompt: o.text.trim(), leadModel: o.leadModel });
+            let roleModels: TeamRoleModels | undefined;
+            if (o.models?.trim()) {
+              const parsed = parseTeamRoleModels(o.models);
+              if (parsed.invalid.length) return m.badModels(parsed.invalid.join(", "));
+              roleModels = mergeTeamRoleModels((await call("settings.get", {})).teamRoleModels, parsed.models);
+            }
+            const s = await call("teams.start", { projectId: p.id, prompt: o.text.trim(), leadModel: o.leadModel, roleModels });
             return m.started(p.name, s.model ?? "opus");
           }
           const scope = o.project?.trim() ? findProject(o.project) : null;
@@ -2470,14 +2483,21 @@ export class PhoneService {
               const tasks = t.tasks.length
                 ? m.tasks(done, t.tasks.length, t.tasks.map((x) => m.task(asData(x.subject), m.taskStatus[x.status] ?? x.status)).join("; "))
                 : m.noTasks;
-              const members = t.members.map((x) =>
-                m.member(asData(x.title), (x.role ? m.role[x.role] : null) ?? x.agentType ?? "Agent", modelFamily(x.model) ?? x.model ?? m.leadsModel, m.state[x.state] ?? x.state, x.state === "working" && x.activity ? asData(x.activity) : null),
+              const members = t.members.map(
+                (x) =>
+                  m.member(asData(x.title), (x.role ? m.role[x.role] : null) ?? x.agentType ?? "Agent", modelFamily(x.model) ?? x.model ?? m.leadsModel, m.state[x.state] ?? x.state, x.state === "working" && x.activity ? asData(x.activity) : null) +
+                  (x.tokens ? m.tokens(Math.round(x.tokens / 1000)) : "") +
+                  (x.approval ? m.waitsApproval(x.approval.toolName, x.approval.detail ? asData(x.approval.detail) : null) : ""),
               );
+              const spent = Object.values(t.models).reduce((n, v) => n + v.inputTokens + v.outputTokens + v.cacheReadTokens + v.cacheWriteTokens, 0);
               return [
                 m.team(asData(t.title ?? "?"), projectName(t.projectId), modelFamily(t.leadModel) ?? t.leadModel ?? "?", busy(t)),
                 members.length ? m.members(members.join("; ")) : m.noMembers,
                 tasks,
-              ].join("\n");
+                spent ? m.spent(Math.round(spent / 1000)) : "",
+              ]
+                .filter(Boolean)
+                .join("\n");
             })
             .join("\n\n");
         }),
@@ -2910,6 +2930,12 @@ export class PhoneService {
             changed.push(k);
           }
           if (patch.usageStats !== undefined) update.usageStatsAsked = true;
+          if (patch.teamRoleModels !== undefined) {
+            const parsed = parseTeamRoleModels(patch.teamRoleModels);
+            if (parsed.invalid.length) return tr().phone.teams.badModels(parsed.invalid.join(", "));
+            update.teamRoleModels = mergeTeamRoleModels(cur.teamRoleModels, parsed.models);
+            changed.push("teamRoleModels");
+          }
           if (patch.defaultModel !== undefined) {
             update.defaultModel = clearable(patch.defaultModel);
             changed.push("defaultModel");

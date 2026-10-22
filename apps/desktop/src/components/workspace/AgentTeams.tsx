@@ -1,21 +1,22 @@
 import { useState, type CSSProperties } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, Copy, Crown, MessageSquareText, Power, Users } from "lucide-react";
-import { TEAM_LEAD_MODELS, TEAM_ROLE_SPECS, TEAM_ROLES, type AgentTeam, type Project, type TeamLeadModel } from "@forge/protocol";
-import { useAgentTeams, useUsage } from "@/lib/queries";
+import { TEAM_LEAD_MODELS, type AgentTeam, type Project, type TeamLeadModel, type TeamRoleModels } from "@forge/protocol";
+import { useAgentTeams, useSettings, useUsage } from "@/lib/queries";
 import { errorMessage } from "@/lib/rpc";
 import { contextItems, copyText } from "@/lib/context-menu";
-import { leadState, MODEL_META, modelMeta, openTeam, ROLE_META, startTeam, stopTeam, teamBusy, useTeamDialog, useTeamsAllowed } from "@/lib/agent-teams";
+import { leadState, MODEL_META, openTeam, saveTeamRoleModels, startTeam, stopTeam, teamBusy, useTeamDialog, useTeamsAllowed } from "@/lib/agent-teams";
 import { cn, relativeTime } from "@/lib/utils";
 import { useUi } from "@/stores/ui";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Dialog } from "@/components/ui/dialog";
 import { Field, Textarea } from "@/components/ui/input";
-import { EmptyState, ErrorBanner, SectionTitle } from "@/components/ui/misc";
+import { Checkbox, EmptyState, ErrorBanner, SectionTitle } from "@/components/ui/misc";
 import { Skeleton, SkeletonRegion } from "@/components/ui/skeleton";
 import { LimitForecastWarning } from "@/components/usage/UsageWindows";
 import { LeadAvatar, ModelChip, PlanProgress, RoleAvatar } from "./TeamBoard";
+import { RoleModelsEditor } from "./TeamModels";
 import { t } from "@/i18n";
 
 /**
@@ -175,10 +176,25 @@ function StartTeamDialog({ open, onOpenChange, project }: { open: boolean; onOpe
   const [lead, setLead] = useState<TeamLeadModel>(TEAM_LEAD_MODELS[0]);
   const [busy, setBusy] = useState(false);
   const usage = useUsage();
+  const settings = useSettings();
+  const defaults = settings.data?.teamRoleModels ?? {};
+  // The dialog starts with the defaults from the settings each time it opens.
+  const [roleModels, setRoleModels] = useState<TeamRoleModels>(defaults);
+  const [remember, setRemember] = useState(false);
+  const [openedWith, setOpenedWith] = useState<boolean>(false);
+  if (open !== openedWith) {
+    setOpenedWith(open);
+    if (open) {
+      setRoleModels(defaults);
+      setRemember(false);
+    }
+  }
+  const changed = JSON.stringify(roleModels) !== JSON.stringify(defaults);
   const start = async () => {
     if (!prompt.trim() || busy) return;
     setBusy(true);
-    const s = await startTeam(qc, project.id, prompt.trim(), lead);
+    if (changed && remember) await saveTeamRoleModels(qc, roleModels);
+    const s = await startTeam(qc, project.id, prompt.trim(), lead, roleModels);
     setBusy(false);
     if (s) {
       setPrompt("");
@@ -251,29 +267,17 @@ function StartTeamDialog({ open, onOpenChange, project }: { open: boolean; onOpe
 
         <div>
           <div className="mb-1.5 flex items-baseline gap-2">
-            <span className="text-small font-medium">{tt.roster}</span>
-            <span className="text-caption-lg text-muted">{tt.rosterHint}</span>
+            <span className="shrink-0 text-small font-medium">{tt.roster}</span>
+            <span className="text-caption-lg text-muted">
+              {tt.rosterHint} {tt.roleModelsHint}
+            </span>
           </div>
-          <div className="grid grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-2">
-            {TEAM_ROLES.map((role) => {
-              const meta = ROLE_META[role];
-              const Icon = meta.icon;
-              const model = modelMeta(TEAM_ROLE_SPECS[role].model);
-              return (
-                <div key={role} className="flex items-start gap-2 rounded-lg border border-border bg-surface p-2">
-                  <span className="mt-0.5 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full" style={{ background: `${meta.color}22`, color: meta.color }}>
-                    <Icon className="h-3.5 w-3.5" />
-                  </span>
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-1.5 text-small font-medium">
-                      {tt.role[role]} {model && <ModelChip model={model.family} />}
-                    </div>
-                    <div className="text-caption-lg leading-snug text-muted">{tt.roleInfo[role]}</div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+          <RoleModelsEditor value={roleModels} onChange={setRoleModels} compact />
+          {changed && (
+            <div className="mt-2">
+              <Checkbox checked={remember} onChange={setRemember} label={tt.saveAsDefault} />
+            </div>
+          )}
         </div>
 
         <div role="note" className="flex items-start gap-3 rounded-lg border border-warning/30 bg-warning-soft px-3 py-2.5">

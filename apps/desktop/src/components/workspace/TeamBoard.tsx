@@ -1,15 +1,18 @@
 import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Check, CheckCircle2, ChevronDown, Circle, CircleDashed, Copy, Crown, FileText, ListChecks, MessageSquare, PanelTopOpen, Power, X } from "lucide-react";
+import { Check, CheckCircle2, ChevronDown, Circle, CircleDashed, Copy, Crown, FileText, ListChecks, MessageSquare, PanelTopOpen, Power, ShieldAlert, X } from "lucide-react";
 import type { AgentTeam, Session, TeamMember, TeamTask } from "@forge/protocol";
-import { useAgentTeam } from "@/lib/queries";
+import { call, useAgentTeam } from "@/lib/queries";
+import { errorMessage } from "@/lib/rpc";
+import { toast } from "@/stores/toast";
 import { leadState, modelMeta, openMember, ROLE_META, shortDuration, stopTeam, teamBusy } from "@/lib/agent-teams";
 import { contextItems, copyText } from "@/lib/context-menu";
-import { cn } from "@/lib/utils";
+import { cn, formatTokens } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Collapse } from "@/components/ui/collapse";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Skeleton, SkeletonRegion } from "@/components/ui/skeleton";
+import { TeamUsage } from "./TeamModels";
 import { t } from "@/i18n";
 
 /** collapsed boards per session, for this run of the app */
@@ -188,7 +191,10 @@ export function TeamGrid({ team }: { team: AgentTeam }) {
         )}
         {members.length > 0 && <p className="mt-2 text-caption-lg text-subtle">{tt.boardHint}</p>}
       </div>
-      <PlanList tasks={team.tasks} />
+      <div className="flex min-w-0 flex-col gap-3">
+        <PlanList tasks={team.tasks} />
+        <TeamUsage team={team} />
+      </div>
     </div>
   );
 }
@@ -209,10 +215,15 @@ export function MemberCard({ sessionId, member: m }: { sessionId: string; member
   const working = m.state === "working";
   const now = useNow(working);
   const ms = (m.endedAt ? Date.parse(m.endedAt) : now) - Date.parse(m.startedAt);
+  const waits = !!m.approval;
   return (
-    <button
-      type="button"
+    <div
+      role="button"
+      tabIndex={0}
       onClick={() => openMember(sessionId, m)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" && e.target === e.currentTarget) openMember(sessionId, m);
+      }}
       onContextMenu={contextItems(() => [
         { label: tt.openMember, icon: <PanelTopOpen className="h-3.5 w-3.5" />, onSelect: () => openMember(sessionId, m) },
         { label: tt.messageMember, icon: <MessageSquare className="h-3.5 w-3.5" />, onSelect: () => openMember(sessionId, m, true) },
@@ -221,11 +232,11 @@ export function MemberCard({ sessionId, member: m }: { sessionId: string; member
       ])}
       title={tt.openMember}
       className={cn(
-        "group relative flex min-w-0 flex-col gap-2 overflow-hidden rounded-lg border bg-surface p-2.5 text-left transition-colors hover:border-border-strong hover:bg-surface-2",
-        working ? "border-border-strong" : "border-border",
+        "group relative flex min-w-0 cursor-pointer flex-col gap-2 overflow-hidden rounded-lg border bg-surface p-2.5 text-left transition-colors hover:border-border-strong hover:bg-surface-2 focus-visible:outline-2 focus-visible:outline-accent",
+        waits ? "border-warning/60" : working ? "border-border-strong" : "border-border",
         m.state === "failed" && "border-danger/40",
       )}
-      style={{ "--team-color": meta.color } as CSSProperties}
+      style={{ "--team-color": waits ? "var(--color-warning)" : meta.color } as CSSProperties}
     >
       {working && <span className="team-scan absolute inset-x-0 top-0 h-0.5" aria-hidden />}
       <div className="flex min-w-0 items-center gap-2">
@@ -254,7 +265,7 @@ export function MemberCard({ sessionId, member: m }: { sessionId: string; member
           (m.result?.split("\n").find((l) => l.trim()) ?? tt.state[m.state])
         )}
       </div>
-      <div className="flex items-center gap-2 text-caption text-subtle">
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 whitespace-nowrap text-caption text-subtle">
         <span className={cn("font-medium", m.state === "done" && "text-success", m.state === "failed" && "text-danger", working && "text-fg/70")}>{tt.state[m.state]}</span>
         <span>·</span>
         <span className="tabular-nums">{working ? tt.elapsed(shortDuration(ms)) : tt.took(shortDuration(ms))}</span>
@@ -262,6 +273,12 @@ export function MemberCard({ sessionId, member: m }: { sessionId: string; member
           <>
             <span>·</span>
             <span className="tabular-nums">{tt.tools(m.toolUses)}</span>
+          </>
+        )}
+        {m.tokens !== null && m.tokens > 0 && (
+          <>
+            <span>·</span>
+            <span className="tabular-nums">{tt.tokens(formatTokens(m.tokens))}</span>
           </>
         )}
         {m.files.length > 0 && (
@@ -273,7 +290,48 @@ export function MemberCard({ sessionId, member: m }: { sessionId: string; member
           </>
         )}
       </div>
-    </button>
+      {m.approval && <MemberApproval sessionId={sessionId} approval={m.approval} />}
+    </div>
+  );
+}
+
+/** A tool call of the member waits for the user: answered right here, like the card in the chat. */
+function MemberApproval({ sessionId, approval }: { sessionId: string; approval: NonNullable<TeamMember["approval"]> }) {
+  const tt = t.workspace.teams;
+  const [busy, setBusy] = useState<string | null>(null);
+  const answer = async (decision: "allow" | "deny", scope: "once" | "session") => {
+    setBusy(`${decision}:${scope}`);
+    try {
+      await call("sessions.respondApproval", { sessionId, requestId: approval.requestId, decision, scope });
+    } catch (e) {
+      toast.error(tt.approvalFailed, errorMessage(e));
+      setBusy(null);
+    }
+  };
+  return (
+    <div className="-mx-2.5 -mb-2.5 flex flex-col gap-1.5 border-t border-warning/30 bg-warning-soft px-2.5 py-2" onClick={(e) => e.stopPropagation()}>
+      <div className="flex min-w-0 items-center gap-1.5 text-caption-lg">
+        <ShieldAlert className="h-3.5 w-3.5 shrink-0 text-warning" />
+        <span className="shrink-0 font-medium text-warning">{tt.waitsApproval}</span>
+        <span className="min-w-0 truncate font-mono text-fg/80" title={approval.detail ?? approval.toolName}>
+          {approval.toolName}
+          {approval.detail ? ` · ${approval.detail}` : ""}
+        </span>
+      </div>
+      <div className="flex flex-wrap items-center gap-1.5">
+        <Button size="sm" variant="primary" className="h-6 px-2" loading={busy === "allow:once"} disabled={!!busy} onClick={() => void answer("allow", "once")}>
+          <Check className="h-3 w-3" /> {tt.allow}
+        </Button>
+        {approval.allowSessionScope && (
+          <Button size="sm" variant="secondary" className="h-6 px-2" loading={busy === "allow:session"} disabled={!!busy} onClick={() => void answer("allow", "session")}>
+            {tt.allowSession}
+          </Button>
+        )}
+        <Button size="sm" variant="danger-ghost" className="h-6 px-2" loading={busy === "deny:once"} disabled={!!busy} onClick={() => void answer("deny", "once")}>
+          <X className="h-3 w-3" /> {tt.deny}
+        </Button>
+      </div>
+    </div>
   );
 }
 

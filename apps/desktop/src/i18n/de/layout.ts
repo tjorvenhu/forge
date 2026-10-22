@@ -429,6 +429,7 @@ export const layout = {
     terminal: "Terminal öffnen",
     teamStart: "Agent-Team starten (Lead plant und verteilt an Mitglieder mit eigenen Modellen)",
     teamView: "Agent-Teams anzeigen",
+    teamModels: "Modelle der Team-Rollen einstellen",
     bottom: "Unteres Panel ein- oder ausblenden",
     right: "Seitenleiste ein- oder ausblenden",
     splitAdd: "Ansicht teilen: weiteren Bereich öffnen",

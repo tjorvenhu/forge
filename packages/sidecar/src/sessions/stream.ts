@@ -169,15 +169,22 @@ export class SessionStream {
     } else if (m.subtype === "task_progress") {
       const usage = (m.usage ?? {}) as Record<string, unknown>;
       const summary = s(m.summary);
+      const tokens = typeof usage.total_tokens === "number" ? usage.total_tokens : null;
       const agent = live.subagents.get(taskId);
       if (agent) {
-        const next = { ...agent, summary: summary ?? agent.summary, lastTool: s(m.last_tool_name) ?? agent.lastTool, toolUses: typeof usage.tool_uses === "number" ? usage.tool_uses : agent.toolUses };
-        changed = next.summary !== agent.summary || next.lastTool !== agent.lastTool || next.toolUses !== agent.toolUses;
+        const next = {
+          ...agent,
+          summary: summary ?? agent.summary,
+          lastTool: s(m.last_tool_name) ?? agent.lastTool,
+          toolUses: typeof usage.tool_uses === "number" ? usage.tool_uses : agent.toolUses,
+          tokens: tokens ?? agent.tokens ?? null,
+        };
+        changed = next.summary !== agent.summary || next.lastTool !== agent.lastTool || next.toolUses !== agent.toolUses || next.tokens !== agent.tokens;
         live.subagents.set(taskId, next);
       }
       const bg = live.background.get(taskId);
-      if (bg && summary && summary !== bg.summary) {
-        live.background.set(taskId, { ...bg, summary });
+      if (bg && ((summary && summary !== bg.summary) || (tokens !== null && tokens !== bg.tokens))) {
+        live.background.set(taskId, { ...bg, summary: summary ?? bg.summary, tokens: tokens ?? bg.tokens ?? null });
         changed = true;
       }
     } else {
@@ -200,6 +207,7 @@ export class SessionStream {
         toolUseId: live.taskToolUse.get(taskId) ?? null,
         startedAt: live.background.get(taskId)?.startedAt ?? new Date().toISOString(),
         summary: live.background.get(taskId)?.summary ?? null,
+        tokens: live.background.get(taskId)?.tokens ?? null,
       });
     }
     live.background = next;

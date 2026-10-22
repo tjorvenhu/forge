@@ -180,13 +180,14 @@ export const phoneTools: typeof De = {
   },
   agent_team: {
     description:
-      "FORGE agent teams: a lead (a stronger model) plans a goal, hands packages of work to members with roles and a fitting model (scout on Haiku reads code, developer and tester on Sonnet, specialist and reviewer on Opus), runs independent packages in parallel and checks the result. Uses considerably more of the plan than a session; tell the caller before start. status: teams with plan, members, their model and what they are doing (without team the working ones, else the newest). message: a message to the lead, it passes it on. start: a new team in the project with text as its goal. stop: stops every working member and the lead; ask the caller first, unfinished work is cut off.",
+      "FORGE agent teams: a lead (a stronger model) plans a goal, hands packages of work to members with roles and a fitting model (scout on Haiku reads code, developer and tester on Sonnet, specialist and reviewer on Opus), runs independent packages in parallel and checks the result. Uses considerably more of the plan than a session; tell the caller before start. status: teams with plan, members, their model and what they are doing (without team the working ones, else the newest). message: a message to the lead, it passes it on. start: a new team in the project with text as its goal. status names members waiting for an approval; answer them with respond in the team's session. Checks (tests, lint, type checks, reading commands) run without asking in the Balanced profile. stop: stops every working member and the lead; ask the caller first, unfinished work is cut off.",
     params: {
       action: "status, message, start or stop",
       project: "project name; optional for status (else all projects), needed for start",
       team: "title (or part of it) of the team from status; without it the working or newest one",
       text: "for message the message to the lead, for start the goal, fully worded",
       lead_model: "for start: the lead's model, opus (default), fable (strongest, most expensive) or sonnet (cheaper)",
+      models: "for start: models of single roles for this team only, e.g. reviewer=sonnet, specialist=fable; else the settings apply",
     },
   },
   projects: {
@@ -296,6 +297,7 @@ export const phoneTools: typeof De = {
       learn_templates: "FORGE turns tasks the caller sends again and again into prompt templates on its own",
       ask_push_on_close: "when FORGE closes, ask whether everything not pushed yet should be committed and pushed",
       agent_teams: "agent teams in all projects (a lead hands work to members on their own models); false switches them off everywhere",
+      team_models: "models of the team roles for new teams, e.g. reviewer=sonnet, specialist=fable; roles scout, developer, specialist, tester, reviewer; models haiku, sonnet, opus, fable; default resets a role",
       usage_stats:
         "Anonymous usage statistics: every 5 minutes totals like tokens, projects and agents, without content, to FORGE's statistics service; off deletes the data sent there",
       language: "Language of FORGE for the interface, messages and the phone: en English, de German. Afterwards you speak the new language",
