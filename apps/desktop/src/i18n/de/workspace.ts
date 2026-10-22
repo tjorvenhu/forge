@@ -268,7 +268,7 @@ export const workspace = {
     gitOffDescription:
       "Das Projekt arbeitet ohne Git: keine Agenten, kein Git-Bereich, und Claude führt keine git-Befehle aus. Eingeschaltet legst du das Repository im Bereich Git an, falls noch keines da ist.",
     commandsTitle: "Befehle",
-    commandsDescription: "Laufen in einer Shell im Projektordner. Den Dev-Server richtest du im Tab Dev-Tools ein.",
+    commandsDescription: "Laufen in einer Shell im Projektordner. Gespeichert in .forge/project.json im Repo, damit gelten sie für alle, die am Projekt arbeiten. Den Dev-Server richtest du im Tab Dev-Tools ein.",
     testCommand: "Testbefehl",
     testCommandDescription: "Für „Automatisch testen“ unter Automatik. Bekommt die Variablen der Test-.env aus Dev-Tools.",
     testCommandPlaceholder: "z. B. pnpm test",

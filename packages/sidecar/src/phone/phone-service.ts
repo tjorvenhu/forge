@@ -10,6 +10,9 @@ import {
   findTemplates,
   knownTemplateValues,
   templatePlaceholders,
+  convertRemoteUrl,
+  redactRemoteUrl,
+  remoteKind,
   type DeskPhoneConfig,
   type MethodName,
   type ParamsOf,
@@ -480,6 +483,8 @@ function settingText(s: Settings, key: keyof ForgeSettingsPatch | "alwaysOnTop")
       return m.settings.updateChannel(s.updateChannel);
     case "learnTemplates":
       return m.settings.learnTemplates(s.learnTemplates);
+    case "askPushOnClose":
+      return m.settings.askPushOnClose(s.askPushOnClose);
     case "usageStats":
       return m.settings.usageStats(s.usageStats);
     case "debugLogs":
@@ -1534,6 +1539,7 @@ export class PhoneService {
         m.effort(p.defaultEffort),
         p.testCommand ? m.testCommand(asData(p.testCommand)) : m.noTestCommand,
         p.devCommand ? m.devCommand(asData(p.devCommand)) : m.devDetected,
+        ...(p.projectFile ? [m.projectFile] : []),
         p.gitEnabled ? m.withGit : m.withoutGit,
         ...(p.parentId || p.agentsEnabled ? [] : [m.withoutAgents]),
         ...(p.group ? [m.group(p.group)] : []),
@@ -2179,6 +2185,13 @@ export class PhoneService {
             const id = await call("git.identity", {});
             return id.name || id.email ? gm.identity(id.name ?? null, id.email ?? null) : gm.noIdentity;
           }
+          if (action === "unpushed" || action === "push_all") {
+            const open = await call("git.unpushed", {});
+            if (!open.length) return gm.allPushed;
+            if (action === "unpushed") return gm.unpushed(open.map((u) => gm.unpushedLine(u.name, u.branch, u.changed, u.ahead)).join("\n"));
+            const done = await call("git.pushAll", { projectIds: open.map((u) => u.projectId), allowProtected: o?.allowProtected === true });
+            return gm.pushAllDone(done.map((r) => gm.pushAllLine(r.name, r.committed && asData(r.committed), r.pushed, r.error && asData(r.error))).join("\n"));
+          }
           const p = target(projectName, o);
           if (!p.gitEnabled) return gitOff(p);
           const git = this.d.git;
@@ -2281,6 +2294,17 @@ export class PhoneService {
             const owner = await resolveOwner(call, o?.owner);
             await call("github.publish", { projectId: p.id, private: isPrivate, name: o?.name?.trim() || undefined, owner: owner ?? undefined });
             return gm.published(p.name, isPrivate, owner);
+          }
+          if (action === "remote") {
+            const current = await git.remoteUrl(p.path);
+            const url = o?.remove ? null : o?.url?.trim() || (o?.protocol && current ? convertRemoteUrl(current, o.protocol) : undefined);
+            if (url === undefined) {
+              if (o?.protocol) return current ? gm.remoteNotConvertible(p.name, asData(redactRemoteUrl(current))) : gm.noRemote(p.name);
+              return current ? gm.remote(p.name, asData(redactRemoteUrl(current)), remoteKind(current)) : gm.noRemote(p.name);
+            }
+            if (url === null && current === null) return gm.noRemote(p.name);
+            await call("git.setRemote", { projectId: p.id, url });
+            return url === null ? gm.remoteRemoved(p.name, asData(redactRemoteUrl(current!))) : gm.remoteSet(p.name, asData(redactRemoteUrl(url)), remoteKind(url));
           }
           if (action === "status") {
             const { summary: s } = await git.status(p.path);
@@ -2812,7 +2836,7 @@ export class PhoneService {
           const cur = await call("settings.get", {});
           const update: Partial<Settings> = {};
           const changed: Array<keyof ForgeSettingsPatch> = [];
-          const flags = ["sounds", "desktopNotifications", "enterToSend", "autoContinueAfterLimit", "updateChecks", "debugLogs", "stripApiKey", "screenshotKey", "uiCompare", "learnTemplates", "usageStats"] as const;
+          const flags = ["sounds", "desktopNotifications", "enterToSend", "autoContinueAfterLimit", "updateChecks", "debugLogs", "stripApiKey", "screenshotKey", "uiCompare", "learnTemplates", "askPushOnClose", "usageStats"] as const;
           for (const k of flags) {
             const v = patch[k];
             if (v === undefined) continue;

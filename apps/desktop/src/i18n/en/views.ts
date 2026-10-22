@@ -192,6 +192,9 @@ export const views: typeof De = {
     notificationsLabel: byPlatform({ windows: "Windows notifications", macos: "Notifications", linux: "Desktop notifications" }),
     notificationsDescription:
       `${byPlatform({ windows: "A Windows notification", macos: "A macOS notification", linux: "A desktop notification" })} when Claude is done, needs an approval or an answer, or an error occurs. Also appears when FORGE is in the background. Clicking the notification opens the session.`,
+    askPushOnCloseLabel: "Ask about unpushed work when closing",
+    askPushOnCloseDescription:
+      "If projects have changes or commits that are not on GitHub yet, FORGE asks when closing whether to commit and push them. Then the whole state is on GitHub and you can continue on another device.",
     alwaysOnTopLabel: "Stay on top",
     alwaysOnTopDescription:
       "The main FORGE window stays above other programs. Can also be toggled from the command palette (Ctrl+K) and by phone. Detached chat windows are pinned individually with the pin in their header.",

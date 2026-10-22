@@ -43,6 +43,9 @@ export const GIT_ACTIONS = [
   "publish",
   "account",
   "identity",
+  "unpushed",
+  "push_all",
+  "remote",
 ] as const;
 export type GitAction = (typeof GIT_ACTIONS)[number];
 export type TaskAction = "output" | "stop" | "to_background" | "message";
@@ -70,6 +73,12 @@ export interface GitOptions extends TargetOptions {
   email?: string;
   /** pull: merge own commits with origin's instead of rebasing them */
   merge?: boolean;
+  /** remote: new URL of origin */
+  url?: string;
+  /** remote: switch origin to this transport */
+  protocol?: "https" | "ssh";
+  /** remote: remove origin */
+  remove?: boolean;
 }
 
 export interface DevSettingsPatch {
@@ -218,6 +227,8 @@ export interface ForgeSettingsPatch {
   uiCompare?: boolean;
   /** FORGE turns repeated messages into templates on its own */
   learnTemplates?: boolean;
+  /** closing FORGE asks to commit and push what is not on GitHub */
+  askPushOnClose?: boolean;
   /** anonymous usage totals every 5 minutes */
   usageStats?: boolean;
   policyRule?: PolicyRuleId;
@@ -646,6 +657,9 @@ const TOOL_DEFS: readonly ToolDef[] = [
       name: { type: "string", optional: true },
       email: { type: "string", optional: true },
       merge: { type: "boolean", optional: true },
+      url: { type: "string", optional: true },
+      protocol: { type: "string", enum: ["https", "ssh"], optional: true },
+      remove: { type: "boolean", optional: true },
     },
     run: (t, a) =>
       t.git(str(a.project), pick(a.action, GIT_ACTIONS, "status"), {
@@ -662,6 +676,9 @@ const TOOL_DEFS: readonly ToolDef[] = [
         name: opt(a.name),
         email: opt(a.email),
         merge: optBool(a.merge),
+        url: opt(a.url),
+        protocol: a.protocol === "https" || a.protocol === "ssh" ? a.protocol : undefined,
+        remove: optBool(a.remove),
       }),
   },
   {
@@ -860,6 +877,7 @@ const TOOL_DEFS: readonly ToolDef[] = [
       screenshot_key: { type: "boolean", optional: true },
       ui_compare: { type: "boolean", optional: true },
       learn_templates: { type: "boolean", optional: true },
+      ask_push_on_close: { type: "boolean", optional: true },
       usage_stats: { type: "boolean", optional: true },
       language: { type: "string", optional: true, enum: Language.options },
       policy_rule: { type: "string", optional: true, enum: PolicyRuleId.options },
@@ -884,6 +902,7 @@ const TOOL_DEFS: readonly ToolDef[] = [
         screenshotKey: optBool(a.screenshot_key),
         uiCompare: optBool(a.ui_compare),
         learnTemplates: optBool(a.learn_templates),
+        askPushOnClose: optBool(a.ask_push_on_close),
         usageStats: optBool(a.usage_stats),
         language: Language.options.find((x) => x === a.language),
         policyRule: PolicyRuleId.options.find((x) => x === a.policy_rule),

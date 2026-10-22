@@ -36,6 +36,8 @@ import type { ChatWindowTarget } from "@/lib/chat-windows";
 import { ChatWindowShell } from "@/views/ChatWindowView";
 import { AgentReviewDialog } from "@/components/workspace/AgentReviewDialog";
 import { RemoteCheckDialog } from "@/components/git/RemoteCheckDialog";
+import { PushAllDialog } from "@/components/git/PushAllDialog";
+import { RemoteDialog } from "@/components/git/RemoteDialog";
 import { useLanguageSync } from "@/i18n/sync";
 import { t } from "@/i18n";
 
@@ -166,6 +168,8 @@ function Shell() {
       <ProjectGroupDialogs />
       <AgentsOffDialog />
       <RemoteCheckDialog />
+      <PushAllDialog />
+      <RemoteDialog />
     </div>
   );
 }

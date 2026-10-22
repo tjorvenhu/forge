@@ -94,8 +94,8 @@ export const projects = {
   },
   card: {
     favoriteNotSaved: "Favorit konnte nicht gespeichert werden",
-    open: "Öffnen",
     newSession: "Neue Session",
+    openLastSession: "Letzte Session öffnen",
     dailyReport: "Tagesbericht",
     applyTemplate: "Vorlage anwenden",
     removeFavorite: "Aus Favoriten entfernen",
@@ -118,7 +118,7 @@ export const projects = {
     gitOff: "ohne Git",
     conflict: "Konflikt",
     changed: (n: number) => `${n} geändert`,
-    clean: "sauber",
+    clean: "aktuell",
     noRemote: "kein Remote",
     noBranch: "ohne Branch",
     gitTitle: (branch: string, state: string, remote: string, counts: string) => `Git\n- Branch ${branch}\n- ${state}\n- Remote: ${remote}${counts}`,

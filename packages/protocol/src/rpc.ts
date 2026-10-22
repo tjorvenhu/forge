@@ -56,6 +56,8 @@ import {
   GitIntegrated,
   GitResetToRemote,
   PullStrategy,
+  UnpushedProject,
+  PushAllResult,
   GitStatus,
   McpServer,
   MarketplacePlugin,
@@ -745,6 +747,16 @@ export const methods = {
    * commits that are not on origin stay on a backup branch; nothing is deleted.
    */
   "git.resetToRemote": { params: projectRef, result: GitResetToRemote },
+  /** Projects with a remote whose work is not completely on it; worktrees of agents are left out. Asked when FORGE closes. */
+  "git.unpushed": { params: empty, result: z.array(UnpushedProject) },
+  /**
+   * Commits the open changes of each project (FORGE writes the message; secrets and build output stay
+   * out) and pushes its branch. Conflicts are reported, not handed to a Claude session.
+   */
+  "git.pushAll": {
+    params: z.object({ projectIds: z.array(id).min(1).max(500), allowProtected: z.boolean().default(false) }),
+    result: z.array(PushAllResult),
+  },
   "github.pr": { params: projectRef, result: PullRequest.nullable() },
   "github.suggestPr": { params: projectRef, result: z.object({ title: z.string(), body: z.string(), base: z.string(), head: z.string() }) },
   "github.createPr": {
@@ -752,6 +764,8 @@ export const methods = {
     result: z.object({ url: z.string() }),
   },
   "git.init": { params: projectRef, result: GitStatus },
+  /** Sets the URL of origin (https or ssh), adds origin when missing; null removes it. */
+  "git.setRemote": { params: projectRef.extend({ url: z.string().trim().min(1).max(2048).nullable() }), result: GitStatus },
   "git.suggestCommitMessage": {
     params: projectRef.extend({ paths: z.array(z.string().min(1).max(4096)).max(2000).optional() }),
     result: z.object({ message: z.string(), model: z.string(), skipped: z.array(z.string()) }),

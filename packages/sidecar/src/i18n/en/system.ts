@@ -27,8 +27,10 @@ export const system: typeof De = {
     noRemotePublish: "No remote origin. Publish the project on GitHub first.",
     pushRejected: "Push rejected: new commits arrived on the remote during the push. Please push again.",
     pushFailed: "Push failed",
+    pushAllMessage: "Save open work",
     detachedHead: "No branch checked out (detached HEAD).",
     noRemote: "No remote origin.",
+    invalidRemote: "Invalid remote address. For example https://github.com/name/repo.git or git@github.com:name/repo.git work.",
     upToDate: "Already up to date.",
     pulledFastForward: (remote) => `Took over ${remote} new commits.`,
     pulledRebase: (remote, local) => `Took over ${remote} new commits and put ${local} of your own on top (rebase).`,
@@ -120,6 +122,7 @@ export const system: typeof De = {
     agentsBeforeGitOff: "The project still has agents. Finish the agents first, then turn Git off.",
     sandboxOnly: "The tag sandbox-only forbids Autonomous in this project.",
     pathOutside: "Path is outside the project.",
+    projectFileInvalid: (file) => `${file} is not valid JSON. Fix the file first, then save.`,
     previewTooLarge: (mb) => `File too large for the preview (over ${mb} MB).`,
   },
   removal: {

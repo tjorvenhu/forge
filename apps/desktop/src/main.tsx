@@ -8,6 +8,7 @@ import { startServerEvents } from "./lib/server-events";
 import { startPresenceReporting } from "./lib/presence";
 import { chatWindowTarget, prepareChatWindowUi, startChatWindowTracking } from "./lib/chat-windows";
 import { startChatWindowEvents } from "./lib/chat-window-events";
+import { startPushOnClose } from "./lib/push-on-close";
 import { isScreenshotWindow, startScreenshotReceiver } from "./lib/screenshot";
 import { ScreenshotOverlay } from "./components/screenshot/ScreenshotOverlay";
 import "./styles.css";
@@ -28,7 +29,10 @@ if (isScreenshotWindow()) {
   if (chatWindow) {
     prepareChatWindowUi(chatWindow);
     startChatWindowEvents(queryClient);
-  } else startServerEvents(queryClient);
+  } else {
+    startServerEvents(queryClient);
+    void startPushOnClose().catch(() => {});
+  }
   startPresenceReporting();
   startScreenshotReceiver();
   void startChatWindowTracking().catch(() => {});

@@ -133,7 +133,7 @@ export const phoneTools: typeof De = {
   },
   git: {
     description:
-      "Git in a project or session (for agents their worktree). status: branch and changes. log: the latest commits. show: what a commit changed (commit), with path the diff of one file in it. diff: what changed in a file (path). commit: commit all changes (without message FORGE writes the message). push: push the current branch, new commits from the server are taken over first. pull: get new commits from the server, own commits go on top by rebase (with merge by a merge). reset_to_remote: put the branch on the server's state; uncommitted work goes into the stash, own unpushed commits onto a backup branch, the caller confirms on the keypad. fetch: only check what is new on the server, with the new commits and the own open work. branches: local branches. checkout: switch to branch. delete_branch: delete a local branch. restore: set files back to the state of a commit, as uncommitted changes; open work is put aside first. init: create a Git repository. publish: publish the project as a new repository on GitHub, optionally in an organization (owner). account: which GitHub account FORGE is signed in with and in which organizations it can create repositories. identity: tell the name and email for commits or set them with name and email. If the states cannot be merged automatically, FORGE starts a session in which Claude does it.",
+      "Git in a project or session (for agents their worktree). status: branch and changes. log: the latest commits. show: what a commit changed (commit), with path the diff of one file in it. diff: what changed in a file (path). commit: commit all changes (without message FORGE writes the message). push: push the current branch, new commits from the server are taken over first. pull: get new commits from the server, own commits go on top by rebase (with merge by a merge). reset_to_remote: put the branch on the server's state; uncommitted work goes into the stash, own unpushed commits onto a backup branch, the caller confirms on the keypad. fetch: only check what is new on the server, with the new commits and the own open work. branches: local branches. checkout: switch to branch. delete_branch: delete a local branch. restore: set files back to the state of a commit, as uncommitted changes; open work is put aside first. init: create a Git repository. publish: publish the project as a new repository on GitHub, optionally in an organization (owner). account: which GitHub account FORGE is signed in with and in which organizations it can create repositories. identity: tell the name and email for commits or set them with name and email. unpushed: which projects (no project needed) have changes or commits that are not on GitHub yet. push_all: commit and push the open changes in all those projects, so the whole state is on GitHub and work can go on from another computer; main and master only with allow_protected. If the states cannot be merged automatically, FORGE starts a session in which Claude does it. remote: tell the address of the remote origin; with protocol switch it to HTTPS or SSH, with url set a new address, with remove remove it.",
     params: {
       message: "Commit message, only if the caller gives one",
       allow_protected: "Push to main or master; only if the caller explicitly wants it",
@@ -147,6 +147,9 @@ export const phoneTools: typeof De = {
       name: "with publish: name of the repository; with identity: name for commits",
       email: "only with identity: email for commits",
       merge: "only with pull: true merges own commits with the server's instead of rebasing them; only if the caller wants a merge",
+      url: "only with remote: new address of the remote origin, e.g. git@github.com:name/repo.git",
+      protocol: "only with remote: https or ssh, switches the existing address to that transport",
+      remove: "only with remote: true removes the remote origin; only if the caller explicitly wants it",
     },
   },
   pull_request: {
@@ -199,8 +202,8 @@ export const phoneTools: typeof De = {
       profile: "settings: safe asks a lot, balanced is the default, autonomous works without asking",
       default_model: "settings: opus, sonnet, haiku or a model ID; default uses the global setting",
       default_effort: "settings: thinking effort of new sessions; default uses the global setting",
-      test_command: "settings: test command, for example pnpm test; empty removes it",
-      dev_command: "settings: command for the dev server, for example pnpm dev; empty uses the detected one",
+      test_command: "settings: test command, for example pnpm test; empty removes it; saved in .forge/project.json in the repository",
+      dev_command: "settings: command for the dev server, for example pnpm dev; empty uses the detected one; saved in .forge/project.json in the repository",
     },
   },
   files: {
@@ -279,6 +282,7 @@ export const phoneTools: typeof De = {
       screenshot_key: "The Print key opens FORGE's snipping tool instead of the Windows one",
       ui_compare: "Before and after images of the web app when Claude changes UI files and a dev server is running",
       learn_templates: "FORGE turns tasks the caller sends again and again into prompt templates on its own",
+      ask_push_on_close: "when FORGE closes, ask whether everything not pushed yet should be committed and pushed",
       usage_stats:
         "Anonymous usage statistics: every 5 minutes totals like tokens, projects and agents, without content, to FORGE's statistics service; off deletes the data sent there",
       language: "Language of FORGE for the interface, messages and the phone: en English, de German. Afterwards you speak the new language",

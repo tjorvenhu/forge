@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "main-close",
+  "description": "Closing the main window may first ask whether to push unpushed work (push-on-close.ts); the window then ends itself with destroy.",
+  "windows": ["main"],
+  "permissions": ["core:window:allow-destroy"]
+}

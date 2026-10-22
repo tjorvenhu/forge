@@ -1,17 +1,20 @@
 import { useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { FileText, Folders, ShieldAlert, ShieldCheck, SlidersHorizontal, Trash2, Workflow, X } from "lucide-react";
-import type { ProfileId, Project, EffortLevel } from "@forge/protocol";
-import { call, keys, useRuntimeInfo, useSettings } from "@/lib/queries";
+import { Copy, FileText, Folders, Pencil, ShieldAlert, ShieldCheck, SlidersHorizontal, Trash2, Workflow, X } from "lucide-react";
+import { redactRemoteUrl, remoteKind, type ProfileId, type Project, type EffortLevel } from "@forge/protocol";
+import { call, keys, useGitStatus, useRuntimeInfo, useSettings } from "@/lib/queries";
+import { contextItems, copyText } from "@/lib/context-menu";
 import { modelLabel } from "@/lib/models";
 import { errorMessage } from "@/lib/rpc";
 import { cn } from "@/lib/utils";
 import { toast } from "@/stores/toast";
 import { useUi, type ProjectSettingsSection } from "@/stores/ui";
 import { useProjectGroupDialogs } from "@/stores/project-groups";
+import { useGitRemoteDialog } from "@/stores/git-remote";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/misc";
+import { Skeleton, SkeletonRegion } from "@/components/ui/skeleton";
 import { Select } from "@/components/ui/select";
 import { PROFILE_IDS, PROFILE_INFO } from "@/components/projects/ProfileBadge";
 import { RemoveProjectDialog } from "@/components/projects/RemoveProjectDialog";
@@ -166,6 +169,7 @@ function GeneralSection({ project, update }: SectionProps) {
             checked={project.gitEnabled}
             onChange={(on) => void update({ gitEnabled: on })}
           />
+          {project.gitEnabled && <RemoteRow project={project} />}
         </Group>
       )}
 
@@ -186,6 +190,42 @@ function GeneralSection({ project, update }: SectionProps) {
         </Row>
       </Group>
     </>
+  );
+}
+
+/** origin of the repository, changed in RemoteDialog; hidden while the project is not a repository yet. */
+function RemoteRow({ project }: { project: Project }) {
+  const status = useGitStatus(project.id, project.exists);
+  if (!status.isLoading && !status.data) return null;
+  const url = status.data?.summary.remoteUrl ?? null;
+  const shown = url ? redactRemoteUrl(url) : null;
+  const edit = () => useGitRemoteDialog.getState().open(project);
+  return (
+    <Row label={t.git.remote.settingLabel} description={t.git.remote.settingDescription}>
+      {status.isLoading ? (
+        <SkeletonRegion label={t.git.remote.loading} className="flex items-center gap-2">
+          <Skeleton className="h-4 w-56 rounded-sm" />
+          <Skeleton className="h-5 w-11 rounded" />
+          <Skeleton className="h-8 w-20" />
+        </SkeletonRegion>
+      ) : (
+        <div
+          className="flex min-w-0 items-center gap-2"
+          onContextMenu={contextItems(() => [
+            { label: t.git.remote.menu, icon: <Pencil className="h-3.5 w-3.5" />, onSelect: edit },
+            ...(url ? [{ label: t.git.remote.copy, icon: <Copy className="h-3.5 w-3.5" />, onSelect: () => copyText(url) }] : []),
+          ])}
+        >
+          <span className={cn("max-w-72 truncate", shown ? "font-mono text-xs" : "text-body text-muted")} title={shown ?? undefined}>
+            {shown ?? t.git.remote.none}
+          </span>
+          {url && <Badge>{t.git.remote.kind[remoteKind(url)]}</Badge>}
+          <Button size="sm" variant="outline" onClick={edit}>
+            {t.git.remote.change}
+          </Button>
+        </div>
+      )}
+    </Row>
   );
 }
 

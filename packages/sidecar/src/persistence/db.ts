@@ -453,6 +453,7 @@ export const DEFAULT_SETTINGS: Settings = {
   screenshotKey: true,
   uiCompare: true,
   learnTemplates: true,
+  askPushOnClose: true,
   disabledPolicyRules: [...DEFAULT_DISABLED_POLICY_RULES],
   setupDone: false,
   syncEnabled: false,

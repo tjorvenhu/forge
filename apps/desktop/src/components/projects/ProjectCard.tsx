@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, Bot, CalendarDays, Code2, Copy, FileStack, FolderMinus, FolderOpen, FolderSearch, Folders, GitBranch, GitCompareArrows, MessageSquarePlus, MoreHorizontal, Settings2, Shield, ShieldAlert, ShieldCheck, Star, Tag, Trash2 } from "lucide-react";
+import { AlertTriangle, Bot, CalendarDays, Code2, Copy, FileStack, FolderMinus, FolderSearch, Folders, GitBranch, GitCompareArrows, History, Link, MessageSquarePlus, MoreHorizontal, Settings2, Shield, ShieldAlert, ShieldCheck, Star, Tag, Trash2 } from "lucide-react";
 import type { ProjectWithStatus } from "@forge/protocol";
 import { call, keys } from "@/lib/queries";
 import { contextItems, copyText } from "@/lib/context-menu";
@@ -11,6 +11,7 @@ import { useUi } from "@/stores/ui";
 import { toast } from "@/stores/toast";
 import { useTemplateDialogs } from "@/stores/templates";
 import { useProjectGroupDialogs } from "@/stores/project-groups";
+import { useGitRemoteDialog } from "@/stores/git-remote";
 import type { MenuItem } from "@/components/ui/dropdown";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu } from "@/components/ui/dropdown";
@@ -51,9 +52,42 @@ export function ProjectCard({
       toast.error(t.projects.card.favoriteNotSaved, errorMessage(e));
     }
   };
-  const groupItems: MenuItem[] = [
+  // Shared by the context menu and the "…" button so both offer the same actions.
+  const menuItems = (): MenuItem[] => [
+    { label: t.projects.card.newSession, icon: <MessageSquarePlus className="h-3.5 w-3.5" />, onSelect: () => openProject(p.id, null) },
+    ...(p.lastSession ? [{ label: t.projects.card.openLastSession, icon: <History className="h-3.5 w-3.5" />, onSelect: () => openProject(p.id, p.lastSession!.id) }] : []),
+    { label: t.projects.card.dailyReport, icon: <CalendarDays className="h-3.5 w-3.5" />, onSelect: () => openReport(p.parentId ?? p.id) },
+    ...(p.exists ? [{ label: t.projects.card.applyTemplate, icon: <FileStack className="h-3.5 w-3.5" />, onSelect: () => useTemplateDialogs.getState().openApply({ projectId: p.id }) }] : []),
+    ...(p.exists && p.gitEnabled && p.git?.remoteUrl
+      ? [
+          {
+            label: t.git.remoteCheck.checkLabel,
+            icon: <GitCompareArrows className="h-3.5 w-3.5" />,
+            onSelect: () => {
+              openProject(p.id);
+              void checkRemote(p.id, true);
+            },
+          },
+        ]
+      : []),
+    { label: p.favorite ? t.projects.card.removeFavorite : t.projects.card.addFavorite, icon: <Star className="h-3.5 w-3.5" />, onSelect: () => void toggleFavorite() },
     { label: p.group ? t.projects.groups.changeGroup : t.projects.groups.setGroup, icon: <Folders className="h-3.5 w-3.5" />, onSelect: () => useProjectGroupDialogs.getState().openAssign(p) },
     ...(p.group ? [{ label: t.projects.groups.removeFromGroup, icon: <FolderMinus className="h-3.5 w-3.5" />, onSelect: () => void setProjectGroup(qc, p, null) }] : []),
+    ...(!p.parentId && p.git?.isRepo ? [{ label: t.git.remote.menu, icon: <Link className="h-3.5 w-3.5" />, onSelect: () => useGitRemoteDialog.getState().open(p) }] : []),
+    ...(!p.parentId && p.gitEnabled
+      ? [{ label: p.agentsEnabled ? t.projects.agents.menuOff : t.projects.agents.menuOn, icon: <Bot className="h-3.5 w-3.5" />, onSelect: () => switchProjectAgents(qc, p, !p.agentsEnabled) }]
+      : []),
+    {
+      label: t.projects.card.projectSettings,
+      icon: <Settings2 className="h-3.5 w-3.5" />,
+      onSelect: () => {
+        openProject(p.id);
+        openProjectSettings("general");
+      },
+    },
+    ...(p.exists ? [{ label: t.projects.card.showInExplorer, icon: <FolderSearch className="h-3.5 w-3.5" />, onSelect: () => void revealPath(p.path) }] : []),
+    { label: t.projects.card.copyPath, icon: <Copy className="h-3.5 w-3.5" />, onSelect: () => copyText(p.path) },
+    { label: t.projects.card.removeOrDelete, icon: <Trash2 className="h-3.5 w-3.5" />, danger: true, onSelect: () => onRemove(p) },
   ];
 
   return (
@@ -64,42 +98,9 @@ export function ProjectCard({
         dragged && "border-dashed border-accent opacity-50",
       )}
       onPointerDown={onGroupDrop && ((e) => startProjectDrag(e, p, onGroupDrop))}
-      onContextMenu={contextItems(() => [
-        { label: t.projects.card.open, icon: <FolderOpen className="h-3.5 w-3.5" />, onSelect: () => openProject(p.id) },
-        { label: t.projects.card.newSession, icon: <MessageSquarePlus className="h-3.5 w-3.5" />, onSelect: () => openProject(p.id, null) },
-        { label: t.projects.card.dailyReport, icon: <CalendarDays className="h-3.5 w-3.5" />, onSelect: () => openReport(p.parentId ?? p.id) },
-        ...(p.exists ? [{ label: t.projects.card.applyTemplate, icon: <FileStack className="h-3.5 w-3.5" />, onSelect: () => useTemplateDialogs.getState().openApply({ projectId: p.id }) }] : []),
-        ...(p.exists && p.gitEnabled && p.git?.remoteUrl
-          ? [
-              {
-                label: t.git.remoteCheck.checkLabel,
-                icon: <GitCompareArrows className="h-3.5 w-3.5" />,
-                onSelect: () => {
-                  openProject(p.id);
-                  void checkRemote(p.id, true);
-                },
-              },
-            ]
-          : []),
-        { label: p.favorite ? t.projects.card.removeFavorite : t.projects.card.addFavorite, icon: <Star className="h-3.5 w-3.5" />, onSelect: () => void toggleFavorite() },
-        ...groupItems,
-        ...(!p.parentId && p.gitEnabled
-          ? [{ label: p.agentsEnabled ? t.projects.agents.menuOff : t.projects.agents.menuOn, icon: <Bot className="h-3.5 w-3.5" />, onSelect: () => switchProjectAgents(qc, p, !p.agentsEnabled) }]
-          : []),
-        {
-          label: t.projects.card.projectSettings,
-          icon: <Settings2 className="h-3.5 w-3.5" />,
-          onSelect: () => {
-            openProject(p.id);
-            openProjectSettings("general");
-          },
-        },
-        ...(p.exists ? [{ label: t.projects.card.showInExplorer, icon: <FolderSearch className="h-3.5 w-3.5" />, onSelect: () => void revealPath(p.path) }] : []),
-        { label: t.projects.card.copyPath, icon: <Copy className="h-3.5 w-3.5" />, onSelect: () => copyText(p.path) },
-        { label: t.projects.card.removeOrDelete, icon: <Trash2 className="h-3.5 w-3.5" />, danger: true, onSelect: () => onRemove(p) },
-      ])}
+      onContextMenu={contextItems(menuItems)}
     >
-      <button className="flex items-center gap-3 px-4 pb-2.5 pt-4 text-left" onClick={() => openProject(p.id)} aria-label={t.projects.card.openNamed(p.name)} title={`${p.name}\n${p.path}`}>
+      <button className="flex items-center gap-3 px-4 pb-2.5 pt-4 text-left" onClick={() => openProject(p.id, null)} aria-label={t.projects.card.openNamed(p.name)} title={`${p.name}\n${p.path}`}>
         <ProjectIcon id={p.parentId ?? p.id} name={p.name} size={32} />
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5">
@@ -109,7 +110,7 @@ export function ProjectCard({
           </div>
           <GitLine p={p} />
         </div>
-        <ProfileIcon profile={p.profile} />
+        {p.profile !== "autonomous" && <ProfileIcon profile={p.profile} />}
       </button>
 
       {(p.technologies.length > 0 || p.tags.length > 0) && (
@@ -146,12 +147,7 @@ export function ProjectCard({
               <MoreHorizontal className="h-4 w-4" />
             </Button>
           }
-          items={[
-            { label: p.favorite ? t.projects.card.removeFavorite : t.projects.card.addFavorite, icon: <Star className="h-3.5 w-3.5" />, onSelect: () => void toggleFavorite() },
-            ...groupItems,
-            { label: t.projects.card.dailyReport, icon: <CalendarDays className="h-3.5 w-3.5" />, onSelect: () => openReport(p.parentId ?? p.id) },
-            { label: t.projects.card.removeOrDelete, icon: <Trash2 className="h-3.5 w-3.5" />, danger: true, onSelect: () => onRemove(p) },
-          ]}
+          items={menuItems()}
         />
       </div>
     </div>
@@ -190,7 +186,7 @@ const PROFILE_ICON = {
   autonomous: { Icon: ShieldAlert, tone: "text-danger" },
 } as const;
 
-/** The permission profile as a coloured shield; name and meaning in the tooltip. */
+/** The permission profile as a coloured shield; name and meaning in the tooltip. Not shown for the default (autonomous). */
 function ProfileIcon({ profile }: { profile: ProjectWithStatus["profile"] }) {
   const { Icon, tone } = PROFILE_ICON[profile];
   return (

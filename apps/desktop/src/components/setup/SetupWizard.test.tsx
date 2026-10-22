@@ -66,6 +66,7 @@ beforeEach(() => {
     screenshotKey: true,
     uiCompare: true,
     learnTemplates: true,
+    askPushOnClose: true,
     disabledPolicyRules: [],
     setupDone: false,
     syncEnabled: false,

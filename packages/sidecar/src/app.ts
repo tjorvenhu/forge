@@ -291,7 +291,10 @@ export function createApp(opts: { dataDir: string; write: Writer; log?: (m: stri
     remoteUrl: (dir) => git.remoteUrl(dir),
     identity: () => git.identity(),
     setIdentity: (name, email) => git.setIdentity(name, email),
-    updateProject: async (projectId, patch) => {
+    updateProject: async (projectId, { testCommand, devCommand, ...patch }) => {
+      // Only into this computer's database: .forge/project.json travels with git, writing it here
+      // would leave a change in the repository that clashes with the next pull.
+      db.updateProject(projectId, { testCommand, devCommand });
       const p = await invokeHandler(viaHandlers(), "projects.update", { projectId, ...patch });
       notifyProject(projectId);
       return p;

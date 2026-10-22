@@ -26,8 +26,10 @@ export const system = {
     noRemotePublish: "Kein Remote origin. Veröffentliche das Projekt zuerst auf GitHub.",
     pushRejected: "Push abgelehnt: Während des Pushs kamen neue Commits auf den Remote. Bitte erneut pushen.",
     pushFailed: "Push fehlgeschlagen",
+    pushAllMessage: "Offenen Stand sichern",
     detachedHead: "Kein Branch ausgecheckt (detached HEAD).",
     noRemote: "Kein Remote origin.",
+    invalidRemote: "Ungültige Remote-Adresse. Erlaubt sind z. B. https://github.com/name/repo.git oder git@github.com:name/repo.git.",
     upToDate: "Schon auf dem neuesten Stand.",
     pulledFastForward: (remote: number) => `${remote} neue Commits übernommen.`,
     pulledRebase: (remote: number, local: number) => `${remote} neue Commits übernommen, ${local} eigene darauf gesetzt (Rebase).`,
@@ -119,6 +121,7 @@ export const system = {
     agentsBeforeGitOff: "Das Projekt hat noch Agenten. Erst die Agenten abschließen, dann Git ausschalten.",
     sandboxOnly: "Das Tag sandbox-only verbietet Autonomous in diesem Projekt.",
     pathOutside: "Pfad liegt außerhalb des Projekts.",
+    projectFileInvalid: (file: string) => `${file} ist kein gültiges JSON. Erst die Datei reparieren, dann speichern.`,
     previewTooLarge: (mb: number) => `Datei zu groß für die Vorschau (über ${mb} MB).`,
   },
   removal: {

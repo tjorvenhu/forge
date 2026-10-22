@@ -94,8 +94,8 @@ export const projects: typeof De = {
   },
   card: {
     favoriteNotSaved: "Favorite could not be saved",
-    open: "Open",
     newSession: "New session",
+    openLastSession: "Open last session",
     dailyReport: "Daily report",
     applyTemplate: "Apply template",
     removeFavorite: "Remove from favorites",
@@ -118,7 +118,7 @@ export const projects: typeof De = {
     gitOff: "without Git",
     conflict: "conflict",
     changed: (n) => `${n} changed`,
-    clean: "clean",
+    clean: "up to date",
     noRemote: "no remote",
     noBranch: "no branch",
     gitTitle: (branch, state, remote, counts) => `Git\n- Branch ${branch}\n- ${state}\n- Remote: ${remote}${counts}`,

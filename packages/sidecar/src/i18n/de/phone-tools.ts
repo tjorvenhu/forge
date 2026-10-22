@@ -120,7 +120,7 @@ export const phoneTools = {
     },
   },
   git: {
-    description: "Git in einem Projekt oder einer Session (bei Agenten ihr Worktree). status: Branch und Änderungen. log: die letzten Commits. show: was ein Commit geändert hat (commit), mit path der Diff einer Datei daraus. diff: was sich in einer Datei geändert hat (path). commit: alle Änderungen committen (ohne message schreibt FORGE die Nachricht). push: aktuellen Branch pushen, neue Commits vom Server werden vorher übernommen. pull: neue Commits vom Server holen, eigene Commits kommen per Rebase obendrauf (mit merge per Merge). reset_to_remote: Branch auf den Stand vom Server setzen; nicht committete Arbeit kommt in den Stash, eigene nicht gepushte Commits auf einen Sicherungs-Branch, der Anrufer bestätigt über die Tastatur. fetch: nur nachsehen, was es auf dem Server Neues gibt, mit den neuen Commits und der eigenen offenen Arbeit. branches: lokale Branches. checkout: auf branch wechseln. delete_branch: lokalen branch löschen. restore: Dateien auf den Stand eines Commits zurücksetzen, als nicht committete Änderungen; offene Arbeit wird vorher beiseitegelegt. init: Git-Repository anlegen. publish: Projekt als neues Repository auf GitHub veröffentlichen, auf Wunsch in einer Organisation (owner). account: mit welchem GitHub-Konto FORGE angemeldet ist und in welchen Organisationen es Repositorys anlegen kann. identity: Name und E-Mail für Commits sagen oder mit name und email setzen. Lassen sich die Stände nicht automatisch zusammenführen, startet FORGE eine Session, in der Claude das erledigt.",
+    description: "Git in einem Projekt oder einer Session (bei Agenten ihr Worktree). status: Branch und Änderungen. log: die letzten Commits. show: was ein Commit geändert hat (commit), mit path der Diff einer Datei daraus. diff: was sich in einer Datei geändert hat (path). commit: alle Änderungen committen (ohne message schreibt FORGE die Nachricht). push: aktuellen Branch pushen, neue Commits vom Server werden vorher übernommen. pull: neue Commits vom Server holen, eigene Commits kommen per Rebase obendrauf (mit merge per Merge). reset_to_remote: Branch auf den Stand vom Server setzen; nicht committete Arbeit kommt in den Stash, eigene nicht gepushte Commits auf einen Sicherungs-Branch, der Anrufer bestätigt über die Tastatur. fetch: nur nachsehen, was es auf dem Server Neues gibt, mit den neuen Commits und der eigenen offenen Arbeit. branches: lokale Branches. checkout: auf branch wechseln. delete_branch: lokalen branch löschen. restore: Dateien auf den Stand eines Commits zurücksetzen, als nicht committete Änderungen; offene Arbeit wird vorher beiseitegelegt. init: Git-Repository anlegen. publish: Projekt als neues Repository auf GitHub veröffentlichen, auf Wunsch in einer Organisation (owner). account: mit welchem GitHub-Konto FORGE angemeldet ist und in welchen Organisationen es Repositorys anlegen kann. identity: Name und E-Mail für Commits sagen oder mit name und email setzen. unpushed: welche Projekte (ohne project) Änderungen oder Commits haben, die noch nicht auf GitHub sind. push_all: in allen diesen Projekten offene Änderungen committen und pushen, damit der ganze Stand auf GitHub liegt und es an einem anderen Rechner weitergehen kann; main und master nur mit allow_protected. Lassen sich die Stände nicht automatisch zusammenführen, startet FORGE eine Session, in der Claude das erledigt. remote: Adresse des Remote origin sagen; mit protocol auf HTTPS oder SSH umstellen, mit url eine neue Adresse setzen, mit remove entfernen.",
     params: {
       message: "Commit-Nachricht, nur wenn der Anrufer eine vorgibt",
       allow_protected: "Push auf main oder master; nur wenn der Anrufer das ausdrücklich will",
@@ -134,6 +134,9 @@ export const phoneTools = {
       name: "bei publish: Name des Repositorys; bei identity: Name für Commits",
       email: "nur bei identity: E-Mail für Commits",
       merge: "nur bei pull: true führt eigene Commits per Merge statt Rebase mit denen vom Server zusammen; nur wenn der Anrufer Merge will",
+      url: "nur bei remote: neue Adresse des Remote origin, z. B. git@github.com:name/repo.git",
+      protocol: "nur bei remote: https oder ssh, stellt die vorhandene Adresse auf diesen Weg um",
+      remove: "nur bei remote: true entfernt den Remote origin; nur wenn der Anrufer das ausdrücklich will",
     },
   },
   pull_request: {
@@ -181,8 +184,8 @@ export const phoneTools = {
       profile: "settings: safe fragt viel nach, balanced ist der Standard, autonomous arbeitet ohne Nachfrage",
       default_model: "settings: opus, sonnet, haiku oder eine Modell-ID; default nimmt die globale Einstellung",
       default_effort: "settings: Denkaufwand neuer Sessions; default nimmt die globale Einstellung",
-      test_command: "settings: Testbefehl, z. B. pnpm test; leer entfernt ihn",
-      dev_command: "settings: Befehl für den Dev-Server, z. B. pnpm dev; leer nimmt den erkannten",
+      test_command: "settings: Testbefehl, z. B. pnpm test; leer entfernt ihn; landet in .forge/project.json im Repo",
+      dev_command: "settings: Befehl für den Dev-Server, z. B. pnpm dev; leer nimmt den erkannten; landet in .forge/project.json im Repo",
     },
   },
   files: {
@@ -254,6 +257,7 @@ export const phoneTools = {
       screenshot_key: "die Druck-Taste öffnet das Snipping-Tool von FORGE statt dem von Windows",
       ui_compare: "Vorher-Nachher-Bilder der Web-App, wenn Claude UI-Dateien ändert und ein Dev-Server läuft",
       learn_templates: "FORGE macht aus Aufträgen, die der Anrufer immer wieder schickt, von selbst Prompt-Vorlagen",
+      ask_push_on_close: "beim Schließen von FORGE fragen, ob alles noch nicht Gepushte committet und gepusht werden soll",
       usage_stats: "anonyme Nutzungsstatistik: alle 5 Minuten Summen wie Tokens, Projekte und Agenten ohne Inhalte an den Statistik-Dienst von FORGE; aus löscht die gesendeten Daten dort",
       language: "Sprache von FORGE für Oberfläche, Meldungen und Telefon: en Englisch, de Deutsch. Danach sprichst du in der neuen Sprache",
       policy_rule: "Regel der Sperrliste",

@@ -543,6 +543,11 @@ Sicherheit:
     identitySet: (name: string, email: string) => `Commits laufen jetzt unter ${name}, ${email}.`,
     identity: (name: string | null, email: string | null) => `Commits laufen unter ${name ?? "ohne Namen"}, ${email ?? "ohne E-Mail"}.`,
     noIdentity: "Es ist keine Git-Identität eingerichtet.",
+    remote: (project: string, url: string, kind: string) => `${project} ist mit ${url} verbunden${kind === "other" ? "" : `, über ${kind === "ssh" ? "SSH" : "HTTPS"}`}.`,
+    noRemote: (project: string) => `${project} hat kein Remote origin.`,
+    remoteNotConvertible: (project: string, url: string) => `Die Remote-Adresse von ${project} ist ${url}. Sie lässt sich nicht automatisch umstellen, bitte die neue Adresse mit url angeben.`,
+    remoteSet: (project: string, url: string, kind: string) => `${project} ist jetzt mit ${url} verbunden${kind === "other" ? "" : `, über ${kind === "ssh" ? "SSH" : "HTTPS"}`}.`,
+    remoteRemoved: (project: string, url: string) => `Remote origin von ${project} entfernt. Es zeigte auf ${url}.`,
     behind: (project: string, n: number) => `${project}: ${n} neue Commits auf dem Server, noch nicht übernommen.`,
     upToDate: (project: string) => `${project}: Auf dem Server gibt es nichts Neues.`,
     incoming: (project: string, branch: string, n: number, subjects: string, own: string) =>
@@ -599,6 +604,13 @@ Sicherheit:
     committed: (project: string, message: string, skipped: string) => `Committet in ${project}: ${message}${skipped ? ` Ausgelassen: ${skipped}.` : ""}`,
     integrated: (n: number) => ` Vorher ${n} neue Commits vom Server übernommen.`,
     pushed: (branch: string, project: string, took: string) => `Branch ${branch} von ${project} gepusht.${took}`,
+    allPushed: "Alles ist auf GitHub, es gibt nichts zu pushen.",
+    unpushedLine: (project: string, branch: string, changed: number, ahead: number) =>
+      `${project} auf ${branch}: ${[changed ? `${changed} geänderte ${changed === 1 ? "Datei" : "Dateien"}` : "", ahead ? `${ahead} ${ahead === 1 ? "Commit" : "Commits"} nicht gepusht` : ""].filter(Boolean).join(", ")}`,
+    unpushed: (lines: string) => `Noch nicht auf GitHub:\n${lines}`,
+    pushAllLine: (project: string, committed: string | null, pushed: boolean, error: string | null) =>
+      pushed ? `${project}: ${committed ? `committet (${committed}) und ` : ""}gepusht` : `${project}: Fehler, ${error ?? "unbekannt"}`,
+    pushAllDone: (lines: string) => `Ergebnis:\n${lines}`,
   },
 
   pr: {
@@ -690,6 +702,7 @@ Sicherheit:
     noTestCommand: "kein Testbefehl",
     devCommand: (c: string) => `Dev-Befehl ${c}`,
     devDetected: "Dev-Befehl wird erkannt",
+    projectFile: "Befehle aus .forge/project.json im Repo",
     withGit: "mit Git",
     withoutGit: "ohne Git",
     withoutAgents: "ohne parallele Agenten",
@@ -862,6 +875,7 @@ Sicherheit:
     updateChecks: (v: boolean) => `Update-Prüfung ${on(v)}`,
     updateChannel: (c: "stable" | "dev"): string => (c === "dev" ? "Entwicklungsversion an, also die Vorabversionen aus dem Branch dev" : "Entwicklungsversion aus, also die Releases von main"),
     learnTemplates: (v: boolean) => `Vorlagen aus wiederkehrenden Nachrichten lernen ${on(v)}`,
+    askPushOnClose: (v: boolean) => `beim Schließen nach ungepushter Arbeit fragen ${on(v)}`,
     usageStats: (v: boolean) => `anonyme Nutzungsstatistik ${on(v)}`,
     debugLogs: (v: boolean) => `Debug-Logs ${on(v)}`,
     stripApiKey: "ein API-Key aus der Umgebung geht nicht an Claude Code",

@@ -542,6 +542,11 @@ Security:
     identitySet: (name: string, email: string) => `Commits are now made as ${name}, ${email}.`,
     identity: (name: string | null, email: string | null) => `Commits are made as ${name ?? "no name"}, ${email ?? "no email"}.`,
     noIdentity: "No git identity is set up.",
+    remote: (project: string, url: string, kind: string) => `${project} is connected to ${url}${kind === "other" ? "" : `, over ${kind === "ssh" ? "SSH" : "HTTPS"}`}.`,
+    noRemote: (project: string) => `${project} has no remote origin.`,
+    remoteNotConvertible: (project: string, url: string) => `The remote address of ${project} is ${url}. It cannot be switched automatically, please give the new address with url.`,
+    remoteSet: (project: string, url: string, kind: string) => `${project} is now connected to ${url}${kind === "other" ? "" : `, over ${kind === "ssh" ? "SSH" : "HTTPS"}`}.`,
+    remoteRemoved: (project: string, url: string) => `Removed remote origin of ${project}. It pointed to ${url}.`,
     behind: (project: string, n: number) => `${project}: ${n} new ${n === 1 ? "commit" : "commits"} on the server, not pulled yet.`,
     upToDate: (project: string) => `${project}: Nothing new on the server.`,
     incoming: (project: string, branch: string, n: number, subjects: string, own: string) =>
@@ -598,6 +603,13 @@ Security:
     committed: (project: string, message: string, skipped: string) => `Committed in ${project}: ${message}${skipped ? ` Left out: ${skipped}.` : ""}`,
     integrated: (n: number) => ` Pulled ${n} new ${n === 1 ? "commit" : "commits"} from the server first.`,
     pushed: (branch: string, project: string, took: string) => `Pushed branch ${branch} of ${project}.${took}`,
+    allPushed: "Everything is on GitHub, there is nothing to push.",
+    unpushedLine: (project: string, branch: string, changed: number, ahead: number) =>
+      `${project} on ${branch}: ${[changed ? `${changed} changed ${changed === 1 ? "file" : "files"}` : "", ahead ? `${ahead} ${ahead === 1 ? "commit" : "commits"} not pushed` : ""].filter(Boolean).join(", ")}`,
+    unpushed: (lines: string) => `Not on GitHub yet:\n${lines}`,
+    pushAllLine: (project: string, committed: string | null, pushed: boolean, error: string | null) =>
+      pushed ? `${project}: ${committed ? `committed (${committed}) and ` : ""}pushed` : `${project}: error, ${error ?? "unknown"}`,
+    pushAllDone: (lines: string) => `Result:\n${lines}`,
   },
 
   pr: {
@@ -689,6 +701,7 @@ Security:
     noTestCommand: "no test command",
     devCommand: (c: string) => `dev command ${c}`,
     devDetected: "dev command is detected",
+    projectFile: "commands from .forge/project.json in the repository",
     withGit: "with git",
     withoutGit: "without git",
     withoutAgents: "without parallel agents",
@@ -861,6 +874,7 @@ Security:
     updateChecks: (v: boolean) => `update check ${on(v)}`,
     updateChannel: (c) => (c === "dev" ? "development build on, the pre-releases from the branch dev" : "development build off, the releases of main"),
     learnTemplates: (v: boolean) => `learning templates from recurring messages ${on(v)}`,
+    askPushOnClose: (v: boolean) => `asking about unpushed work on closing ${on(v)}`,
     usageStats: (v: boolean) => `anonymous usage statistics ${on(v)}`,
     debugLogs: (v: boolean) => `debug logs ${on(v)}`,
     stripApiKey: "an API key from the environment is not passed to Claude Code",

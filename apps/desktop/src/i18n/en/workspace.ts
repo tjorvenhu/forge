@@ -268,7 +268,7 @@ export const workspace: typeof De = {
     gitOffDescription:
       "The project works without Git: no agents, no Git area, and Claude runs no git commands. When on, you create the repository in the Git area if there isn't one yet.",
     commandsTitle: "Commands",
-    commandsDescription: "Run in a shell in the project folder. Set up the dev server in the Dev tools tab.",
+    commandsDescription: "Run in a shell in the project folder. Saved in .forge/project.json in the repository, so they apply to everyone working on the project. Set up the dev server in the Dev tools tab.",
     testCommand: "Test command",
     testCommandDescription: "For \"Test automatically\" under Automation. Gets the variables of the test .env from Dev tools.",
     testCommandPlaceholder: "e.g. pnpm test",
