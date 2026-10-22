@@ -56,6 +56,7 @@ import { supportsFullInstall } from "@/lib/app-install";
 import { LanguageSelect } from "@/components/settings/LanguageSelect";
 import { cn, planLabel } from "@/lib/utils";
 import { RoleModelsEditor } from "@/components/workspace/TeamModels";
+import { CrewProfileSettings } from "@/components/settings/CrewProfileSettings";
 import { t } from "@/i18n";
 
 const sv = t.views.settings;
@@ -224,6 +225,8 @@ function GeneralSection({ s, save }: { s: Settings; save: Save }) {
           </div>
         </Row>
       </Group>
+
+      <CrewProfileSettings />
     </>
   );
 }

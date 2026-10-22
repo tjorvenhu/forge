@@ -41,6 +41,7 @@
 | git-engine | `packages/sidecar/src/git` | Status, Diff, Stage, Commit, Branches |
 | security/policy | `packages/sidecar/src/policy` | Profile, Sperrliste, Redaction |
 | persistence | `packages/sidecar/src/persistence` | SQLite-Schema, Repositories |
+| crew | `packages/sidecar/src/crew` | Live-Zusammenarbeit mehrerer FORGE-Installationen an einem Projekt: `crew-service` (Crews, Beitritt mit Freigabe, Präsenz der eigenen Sessions, Aufgaben, Feed, Push-Erkennung, automatisches Übernehmen), `link` (Relay-Verbindung: SSE-Stream, POST-Warteschlange), `crypto` (AES-256-GCM, X25519), `wire`/`state` (Nachrichten, Abgleich), `session-tools` (crew_status, crew_task, crew_message). Relay: Teil der Website (`services/stats`, `lib/crew-relay.ts`, Routen `/crew/...`), siehe [ADR 0015](adr/0015-crew-live-zusammenarbeit.de.md) |
 
 ## ClaudeRuntime-Schnittstelle
 
@@ -134,6 +135,19 @@ Claude-Session-ID) in Claude Code. Ist die Session mit Remote Control verbunden,
 `rename_session`. Ohne Prozess schreibt `ClaudeRuntime.renameTranscript` (SDK `renameSession`) den
 Titel ins Transkript. `generateSessionTitle` und `renameSession` am Query stehen nicht in den
 SDK-Typen und werden vor der Nutzung geprüft. Fehler bleiben folgenlos, der alte Titel bleibt stehen.
+
+## Crew (Live-Zusammenarbeit)
+
+Die Mitglieder treffen sich in einem Raum auf dem Relay (`forge.vanturis.de/crew`, Teil von `services/stats`); alles ist mit dem
+Crew-Schlüssel versiegelt, jedes Mitglied hält den ganzen Stand (`<Datenordner>/crew/<id>.json`, Schlüssel im
+Secret-Store, nie in Backups oder im Sync). Beitritt: Einladungscode → Anfrage mit X25519-Schlüssel und
+Prüfcode → ein Mitglied nimmt an → Crew-Schlüssel versiegelt für den Neuen. Agenten eines Crew-Projekts
+bekommen `crew_status`, `crew_task`, `crew_message` und Start-Kontext; Neuigkeiten erreichen sie mit der
+nächsten Nachricht (`TurnHost.note`) und live nach Werkzeugaufrufen (PostToolUse `additionalContext`); vor
+Edit/Write auf eine Datei, an der ein anderes Mitglied arbeitet, kommt eine Warnung (PreToolUse
+`additionalContext`). Eigene Pushes erkennt FORGE an `origin/<branch>` und meldet sie; die anderen holen sie
+und übernehmen sie, solange in ihrem Projekt keine Session arbeitet (`autoPull`). Einzelheiten:
+[ADR 0015](adr/0015-crew-live-zusammenarbeit.de.md).
 
 ## Prozesse und Aufräumen
 

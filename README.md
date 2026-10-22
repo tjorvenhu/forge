@@ -92,6 +92,12 @@
       Call FORGE and control it by phone (SIP). Encrypted sync across several PCs through a private GitHub repository.
     </td>
   </tr>
+  <tr>
+    <td colspan="2" valign="top">
+      <h3>Crew: work live on one project together</h3>
+      Several people work with FORGE on the same repository at the same time, each on their own computer. Join with an invite code or QR code and approval, end-to-end encrypted. The agents of all members see who works on what, share a task board, get warned about files someone else is working on, and receive the others' pushed changes automatically.
+    </td>
+  </tr>
 </table>
 
 ## Installation
@@ -214,6 +220,9 @@ Projects, chat histories and settings stay on your computer: `%APPDATA%\forge` o
 - **npm registry:** The first time you start a test database in the dev tools, FORGE downloads PostgreSQL once
   as an npm package for your system (for example `@embedded-postgres/windows-x64` or
   `@embedded-postgres/darwin-arm64`) from `registry.npmjs.org`.
+- **Crew (only when used):** A crew's messages go through the relay at `forge.vanturis.de/crew` (part of the
+  FORGE website in `services/stats`; you can set your own). They are end-to-end encrypted with the crew's key; the relay only sees encrypted
+  bytes. Code itself only goes through your git remote.
 - **Usage statistics (only when turned on):** FORGE asks on first start, without an answer they stay off. To
   prevent abuse, the service keeps only a salted hash of the IP address in memory, for one day at most. The
   totals of all users are public at [forge.vanturis.de/stats](https://forge.vanturis.de/stats).

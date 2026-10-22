@@ -41,6 +41,8 @@ export interface LifecycleParts {
   catalog: RuntimeCatalog;
   /** FORGE tools and start context for a session's CLI */
   sessionTools?: (rec: SessionRecord) => { tools: SessionTool[]; context: string } | null;
+  /** context for Claude around its tool calls (see SessionSink.toolContext) */
+  toolContext?: (sessionId: string, phase: "pre" | "post", toolName: string, input: Record<string, unknown>) => string | null;
 }
 
 /** Starting, resuming, stopping and ending the CLI process of a session. */
@@ -54,6 +56,7 @@ export class SessionLifecycle {
   private readonly stream: SessionStream;
   private readonly catalog: RuntimeCatalog;
   private readonly sessionTools: LifecycleParts["sessionTools"];
+  private readonly toolContext: LifecycleParts["toolContext"];
 
   constructor(
     private readonly core: SessionCore,
@@ -68,6 +71,7 @@ export class SessionLifecycle {
     this.stream = parts.stream;
     this.catalog = parts.catalog;
     this.sessionTools = parts.sessionTools;
+    this.toolContext = parts.toolContext;
   }
 
   /** Runs `job` as the one start/resume of the session; others wait for it in resume(). */
@@ -276,6 +280,7 @@ export class SessionLifecycle {
       onMessage: (msg) => this.stream.handle(id, live, msg),
       onApproval: (req, signal) => this.approvals.request(id, live, req, signal),
       preToolUse: (toolName, input, toolUseId) => this.approvals.guard(id, live, toolName, input, toolUseId),
+      ...(this.toolContext ? { toolContext: (phase: "pre" | "post", toolName: string, input: Record<string, unknown>) => this.toolContext!(id, phase, toolName, input) } : {}),
       onEnd: (error) => this.onEnd(id, live, error),
     };
   }

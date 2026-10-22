@@ -201,6 +201,18 @@ describe("command palette covers all of FORGE", () => {
     expect(none.some((e) => e.id.startsWith("tab-") || e.id.startsWith("tag-") || e.id.startsWith("session-"))).toBe(false);
     expect(none.some((e) => e.id === "settings-general")).toBe(true);
   });
+
+  it("offers to start or join a crew, and what to do in one", () => {
+    const ids = (ctx: ActionContext) => new Set(buildActions(ctx).map((e) => e.id));
+    const without = ids(fullContext());
+    expect(without.has("crew-create") && without.has("crew-join")).toBe(true);
+    const crew = { id: "c1", projectId: "p1", name: "Crew", membership: "member", requests: [{ id: "r1" }], behind: 2 } as unknown as NonNullable<ActionContext["crew"]>;
+    const inCrew = ids({ ...fullContext(), crew });
+    for (const id of ["crew-open", "crew-invite", "crew-message", "crew-task", "crew-pull", "crew-leave", "crew-requests"]) expect(inCrew.has(id), id).toBe(true);
+    expect(inCrew.has("crew-create")).toBe(false);
+    const noGit = { ...project, gitEnabled: false } as ProjectWithStatus;
+    expect(ids({ ...fullContext(), project: noGit, root: noGit }).has("crew-create")).toBe(false);
+  });
 });
 
 describe("palette ranking", () => {

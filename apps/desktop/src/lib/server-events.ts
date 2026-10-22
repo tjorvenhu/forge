@@ -13,6 +13,7 @@ import { announceLearnedTemplates } from "./template-learning";
 import { handleChatWindowRequest, isChatWindow } from "./chat-windows";
 import { agentAutoMerged, agentTurnEnded } from "./agent-review";
 import { installFull, installUpdate } from "./app-install";
+import { crewNotice } from "./crew";
 import { t } from "@/i18n";
 
 const GIT_REFRESH_DELAY_MS = 400;
@@ -253,6 +254,12 @@ export function routeServerEvent(qc: QueryClient, git: GitRefresher, e: ServerEv
     case "teams.updated":
       void qc.invalidateQueries({ queryKey: ["agentTeams"] });
       void qc.invalidateQueries({ queryKey: keys.agentTeam(e.payload.sessionId) });
+      break;
+    case "crew.updated":
+      void qc.invalidateQueries({ queryKey: ["crews"] });
+      break;
+    case "crew.notice":
+      if (!isChatWindow()) crewNotice(qc, e.payload);
       break;
     case "agent.autoMerge":
       if (!isChatWindow()) agentAutoMerged(e.payload);

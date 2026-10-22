@@ -23,6 +23,7 @@ import { AlwaysOnTopButton } from "@/components/layout/AlwaysOnTopButton";
 import { SyncButton } from "@/components/layout/SyncButton";
 import { HeaderDivider } from "@/components/layout/Page";
 import { useSplitLayout } from "./chat-slot";
+import { CrewPresence } from "@/components/crew/CrewPresence";
 import { t } from "@/i18n";
 
 const m = t.workspace.header;
@@ -279,6 +280,7 @@ export function WorkspaceHeader({ projectId, pane }: { projectId: string; pane?:
 
       <div className="flex-1" />
 
+      {project.gitEnabled && <CrewPresence projectId={projectId} />}
       {project.parentId && (
         <Button size="sm" variant="outline" className="shrink-0 gap-1.5" onClick={() => useAgentReview.getState().request(projectId)} title={m.finishAgentTitle}>
           <GitMerge className="h-4 w-4" />

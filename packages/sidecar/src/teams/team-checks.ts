@@ -14,6 +14,9 @@ const PACKAGE_MANAGERS = new Set(["pnpm", "npm", "yarn", "bun"]);
 /** anything that could run a second command, write somewhere else or substitute output */
 const UNSAFE = /[;|<>`&\n\r]|\$\(/;
 
+/** `cd dir`, also with a quoted path that has spaces */
+const CD = /^cd\s+("[^"]*"|'[^']*'|\S+)$/;
+
 function words(cmd: string): string[] {
   return cmd.trim().split(/\s+/).filter(Boolean);
 }
@@ -56,5 +59,5 @@ export function isTeamCheckCommand(command: string, testCommand: string | null =
   const parts = c.split("&&").map((p) => p.trim());
   if (parts.some((p) => !p)) return false;
   // `cd dir && pnpm test`: changing into a folder is harmless, the last part must be a check
-  return parts.every((p, i) => (i < parts.length - 1 && /^cd\s+\S+$/.test(p)) || single(p, testCommand)) && !/^cd\s/.test(parts.at(-1)!);
+  return parts.every((p, i) => (i < parts.length - 1 && CD.test(p)) || single(p, testCommand)) && !/^cd\s/.test(parts.at(-1)!);
 }

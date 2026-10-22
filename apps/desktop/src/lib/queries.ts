@@ -74,6 +74,9 @@ export const keys = {
   agentTeams: (projectId: string) => ["agentTeams", projectId] as const,
   /** one agent team (its lead's session) */
   agentTeam: (sessionId: string) => ["agentTeam", sessionId] as const,
+  /** crews of a project (its main project's; worktrees share it) */
+  crews: (projectId: string) => ["crews", projectId] as const,
+  crewProfile: ["crewProfile"] as const,
   search: (q: string) => ["search", q] as const,
   uiCompare: (sessionId: string, compareId: string) => ["uiCompare", sessionId, compareId] as const,
   /** taken at: an image taken again gets a new key */
@@ -370,3 +373,16 @@ export const useAgentTeams = (projectId: string) =>
 /** one agent team, for the team board over its lead's chat */
 export const useAgentTeam = (sessionId: string | null) =>
   useQuery({ queryKey: keys.agentTeam(sessionId ?? ""), queryFn: () => call("teams.get", { sessionId: sessionId! }), enabled: !!sessionId, staleTime: 30_000 });
+
+/** Crews of a project; crew.updated invalidates, so no polling. Online states age, a minute keeps them fresh. */
+export const useCrews = (projectId: string | null) =>
+  useQuery({ queryKey: keys.crews(projectId ?? ""), queryFn: () => call("crew.list", { projectId: projectId! }), enabled: !!projectId, staleTime: 30_000, refetchInterval: 60_000 });
+
+/** The crew of a project (one per project), null without one. */
+export function useCrew(projectId: string | null) {
+  const q = useCrews(projectId);
+  return { ...q, crew: q.data?.[0] ?? null };
+}
+
+/** Name, color and relay of this installation in every crew. */
+export const useCrewProfile = () => useQuery({ queryKey: keys.crewProfile, queryFn: () => call("crew.profile", {}), staleTime: Infinity });

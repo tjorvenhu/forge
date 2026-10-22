@@ -49,3 +49,14 @@ export function isValidRemoteUrl(url: string): boolean {
   const u = url.trim();
   return u.length > 0 && u.length <= 2048 && !/\s/.test(u) && ![...u].some((c) => c < " ") &&!u.startsWith("-") && !/^(ext|fd)::/i.test(u);
 }
+
+/**
+ * The repository a remote URL points to, the same over https and ssh: host/owner/repo in lower case,
+ * without .git. Local paths and other transports: the trimmed URL itself. Crew members find their
+ * copy of the project with it.
+ */
+export function remoteIdentity(url: string): string {
+  const p = parseRemote(url);
+  if (!p || !p.path) return url.trim().replace(/[\\/]+$/, "").replace(/\.git$/i, "");
+  return `${p.host}/${p.path.replace(/\.git$/i, "")}`.toLowerCase();
+}

@@ -145,7 +145,8 @@ export class ApprovalGate {
    * Logged like every decision. Safe keeps asking.
    */
   private teamCheck(id: string, live: LiveSession, req: ApprovalRequest): boolean {
-    if (req.toolName !== "Bash" || live.profile.id !== "balanced" || typeof req.input.command !== "string") return false;
+    // Claude Code on Windows runs shell commands through its PowerShell tool as well.
+    if ((req.toolName !== "Bash" && req.toolName !== "PowerShell") || live.profile.id !== "balanced" || typeof req.input.command !== "string") return false;
     const rec = this.core.db.getSession(id);
     if (!rec?.team || !isTeamCheckCommand(req.input.command, this.core.db.getProject(rec.projectId)?.testCommand ?? null)) return false;
     try {

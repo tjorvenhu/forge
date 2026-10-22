@@ -41,6 +41,7 @@
 | git-engine | `packages/sidecar/src/git` | Status, diff, stage, commit, branches |
 | security/policy | `packages/sidecar/src/policy` | Profiles, blocklist, redaction |
 | persistence | `packages/sidecar/src/persistence` | SQLite schema, repositories |
+| crew | `packages/sidecar/src/crew` | Live collaboration of several FORGE installations on one project: `crew-service` (crews, join with approval, presence of the own sessions, tasks, feed, push detection, auto pull), `link` (relay connection: SSE stream, POST outbox), `crypto` (AES-256-GCM, X25519), `wire`/`state` (messages, merge), `session-tools` (crew_status, crew_task, crew_message). Relay: part of the website (`services/stats`, `lib/crew-relay.ts`, routes `/crew/...`), see [ADR 0015](adr/0015-crew-live-collaboration.md) |
 
 ## ClaudeRuntime interface
 
@@ -134,6 +135,17 @@ is named `FORGE · <project>: <title>`; the entry in the remote dialog and the `
 same name. Without a process, `ClaudeRuntime.renameTranscript` (SDK `renameSession`) writes the
 title into the transcript. `generateSessionTitle` and `renameSession` on the query are not in the
 SDK types and are checked before use. Errors have no effect; the old title stays.
+
+## Crew (live collaboration)
+
+Members meet in a room on the relay (`forge.vanturis.de/crew`, part of `services/stats`); everything is sealed with the crew key, every
+member keeps the whole state (`<data folder>/crew/<id>.json`, keys in the secret store, never in backups or
+the sync). Joining: invite code → request with an X25519 key and check code → a member accepts → crew key
+sealed for the newcomer. Agents of a crew project get `crew_status`, `crew_task`, `crew_message` and start
+context; news reaches them with the next message (`TurnHost.note`) and live after tool calls (PostToolUse
+`additionalContext`); before Edit/Write on a file another member works on they get a warning (PreToolUse
+`additionalContext`). Own pushes are noticed on `origin/<branch>` and reported; the others fetch and pull
+while no session of their project works (`autoPull`). Details: [ADR 0015](adr/0015-crew-live-collaboration.md).
 
 ## Processes and cleanup
 

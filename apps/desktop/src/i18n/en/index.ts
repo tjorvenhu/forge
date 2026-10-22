@@ -20,5 +20,6 @@ import { workspace } from "./workspace";
 import { ui } from "./ui";
 import { lib } from "./lib";
 import { stores } from "./stores";
+import { crew } from "./crew";
 
-export const en: Messages = { app, views, layout, search, usage, report, settings, setup, github, templates, git, knowledge, projects, screenshot, devtools, extensions, chat, workspace, ui, lib, stores };
+export const en: Messages = { app, views, layout, search, usage, report, settings, setup, github, templates, git, knowledge, projects, screenshot, devtools, extensions, chat, workspace, ui, lib, stores, crew };

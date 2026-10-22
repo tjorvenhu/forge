@@ -19,7 +19,7 @@ import type {
 } from "@forge/protocol";
 import { ForgeError, idleClosedDetail } from "@forge/protocol";
 import { transcriptImages, transcriptToolImages } from "../claude/attachments.js";
-import type { ClaudeRuntime } from "../claude/runtime.js";
+import type { ClaudeRuntime, SessionTool } from "../claude/runtime.js";
 import { UploadStore } from "../claude/uploads.js";
 import { describeUsage, limitWarning } from "../claude/usage.js";
 import { SAMPLE_MAX_AGE_MS } from "../claude/usage-forecast.js";
@@ -27,7 +27,7 @@ import { sessionUsage } from "../claude/session-usage.js";
 import { ContextRecovery } from "./context-recovery.js";
 import { findTask, TASK_EVENT_TYPES, taskNote, type TaskQuery } from "./task-message.js";
 import { IdleClose } from "./idle-close.js";
-import { HISTORY_PAGE_LIMIT, type Db } from "../persistence/db.js";
+import { HISTORY_PAGE_LIMIT, type Db, type SessionRecord } from "../persistence/db.js";
 import type { GitEngine } from "../git/git.js";
 import type { KnowledgeOverlap } from "../knowledge/knowledge.js";
 import type { ProjectManager } from "../projects/project-manager.js";
@@ -53,6 +53,8 @@ import { TitleRefresh } from "./titles.js";
 import { TurnAutomation } from "./turn-automation.js";
 import { TurnDispatch, type MessageSource } from "./turns.js";
 import { UpdateResume } from "./update-resume.js";
+import type { CrewService } from "../crew/crew-service.js";
+import { crewSessionTools } from "../crew/session-tools.js";
 import { de } from "../i18n/de/index.js";
 import { tr } from "../i18n/index.js";
 
@@ -95,6 +97,8 @@ export class SessionService {
   private uiCompare: UiCompareService | null = null;
   /** the daily report as text for the tool daily_report; set by app.ts, the report needs this service */
   private dailyReport: DailyReportText | null = null;
+  /** live collaboration with other FORGE installations; set by app.ts, it needs this service itself */
+  private crew: CrewService | null = null;
 
   constructor(
     private readonly db: Db,
@@ -146,6 +150,7 @@ export class SessionService {
         this.messageSeen(source);
       },
       spill: (name, data) => uploads.write(name, data),
+      note: (id) => this.crew?.takeNews(id, false) ?? null,
     });
     this.modes = new PermissionModes(core, projects, { reopen: (id) => this.lifecycle.resume(id, null) });
     this.approvals = new ApprovalGate(core, git, {
@@ -216,7 +221,8 @@ export class SessionService {
       approvals: this.approvals,
       stream,
       catalog: this.catalog,
-      sessionTools: (rec) =>
+      toolContext: (id, phase, toolName, input) => (phase === "pre" ? (this.crew?.editWarning(id, toolName, input) ?? null) : (this.crew?.takeNews(id, true) ?? null)),
+      sessionTools: (rec) => this.withCrew(rec, () =>
         forgeSessionTools(rec, {
           db,
           projects,
@@ -231,8 +237,37 @@ export class SessionService {
           report: this.dailyReport,
           usage: async () => describeUsage(await this.catalog.planUsage(false), this.limits.state()),
           limitWarning: async () => limitWarning(await this.catalog.planUsage(false)),
-        }),
+        })),
     });
+  }
+
+  /** The FORGE tools of a session plus the crew's, when its project works in a crew. */
+  private withCrew(rec: SessionRecord, base: () => { tools: SessionTool[]; context: string }): { tools: SessionTool[]; context: string } {
+    const own = base();
+    let crew: { tools: SessionTool[]; context: string } | null;
+    try {
+      crew = this.crew ? crewSessionTools(this.crew, rec.id, rec.projectId, () => this.db.getSession(rec.id)?.title ?? null) : null;
+    } catch {
+      // Without the crew tools the session still works; it just does not hear from the crew.
+      crew = null;
+    }
+    return crew ? { tools: [...own.tools, ...crew.tools], context: `${own.context}
+${crew.context}` } : own;
+  }
+
+  /** Crew tools, notes and live context for sessions started from now on. */
+  useCrew(crew: CrewService) {
+    this.crew = crew;
+  }
+
+  /** A session of the project or one of its worktrees works or waits for a decision. */
+  projectBusy(projectId: string): boolean {
+    const root = this.projects.all().find((p) => p.id === projectId)?.parentId ?? projectId;
+    const ids = this.projects
+      .all()
+      .filter((p) => p.id === root || p.parentId === root)
+      .map((p) => p.id);
+    return ids.some((id) => this.db.listSessions(id).some((r) => BUSY.includes(r.status) && this.core.live.has(r.id)));
   }
 
   /** Knowledge and dev tools for sessions started from now on. */

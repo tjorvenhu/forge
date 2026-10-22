@@ -2,7 +2,7 @@ import { useEffect, useId, useMemo, useRef, useState } from "react";
 import * as D from "@radix-ui/react-dialog";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowDown, ArrowUp, CornerDownLeft, Search } from "lucide-react";
-import { call, keys, useDevChannel, useGitHubAccount, usePhoneState, useProjects, useRuntimeInfo, useSearch, useSession, useSettings, useTemplates } from "@/lib/queries";
+import { call, keys, useCrew, useDevChannel, useGitHubAccount, usePhoneState, useProjects, useRuntimeInfo, useSearch, useSession, useSettings, useTemplates } from "@/lib/queries";
 import type { ProjectWithStatus, PromptTemplate } from "@forge/protocol";
 import { useChatWindows } from "@/lib/chat-windows";
 import { cn } from "@/lib/utils";
@@ -94,13 +94,14 @@ function PaletteBody({ onClose, openDialog }: { onClose: () => void; openDialog:
   const session = useSession(projectId ? splitActive(activeSessions[projectId]).sessionId : null).data ?? null;
   const sources = usePaletteSources(query, project);
   const templates = useTemplates(projectId).data ?? NO_TEMPLATES;
+  const crew = useCrew(root?.gitEnabled ? root.id : null).crew;
   const chatSessions = useChatWindows((s) => s.sessions);
   const chatPinned = useChatWindows((s) => s.pinned);
   const chatWindows = useMemo(() => ({ sessions: chatSessions, pinned: chatPinned }), [chatSessions, chatPinned]);
 
   const actions = useMemo(
-    () => buildActions({ qc, project, root, agents, session, settings, models: models ?? [], devServer, testDb, phone, remote, githubConnected, devChannel, templates, chatWindows, openDialog }),
-    [qc, project, root, agents, session, settings, models, devServer, testDb, phone, remote, githubConnected, devChannel, templates, chatWindows, openDialog],
+    () => buildActions({ qc, project, root, agents, session, settings, models: models ?? [], devServer, testDb, phone, remote, githubConnected, devChannel, templates, chatWindows, crew, openDialog }),
+    [qc, project, root, agents, session, settings, models, devServer, testDb, phone, remote, githubConnected, devChannel, templates, chatWindows, crew, openDialog],
   );
 
   const indexed = useMemo(
