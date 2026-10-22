@@ -27,7 +27,7 @@ import { openExternal } from "@/lib/native";
 import { checkInstall, installFromFile, installFull, installUpdate, supportsFullInstall } from "@/lib/app-install";
 import { call, keys, refreshUsage } from "@/lib/queries";
 import { openDevServer, prepareWorktree } from "@/lib/dev-server-actions";
-import { startTeamTerminal } from "@/lib/agent-teams";
+import { setProjectTeams, startTeamTerminal } from "@/lib/agent-teams";
 import { EFFORT_LEVELS, modelLabel } from "@/lib/models";
 import { errorMessage, RpcCallError } from "@/lib/rpc";
 import { openChatWindow, pinChatWindow, recallChatWindow, type ChatWindowList } from "@/lib/chat-windows";
@@ -133,6 +133,7 @@ const SETTING_TOGGLES: Record<Exclude<BooleanSetting, keyof typeof UNLISTED_SETT
   screenshotKey: { label: t.layout.actions.toggles.screenshotKey, section: "general", keywords: "screenshot bildschirmfoto snipping druck print taste key screen capture" },
   sounds: { label: t.layout.actions.toggles.sounds, section: "general", keywords: "töne ton sound sounds signal klang audio" },
   autoContinueAfterLimit: { label: t.layout.actions.toggles.autoContinueAfterLimit, section: "claude", keywords: "auto weitermachen nutzungslimit limit reset continue usage" },
+  agentTeams: { label: t.layout.actions.toggles.agentTeams, section: "claude", keywords: "agent teams agenten-teams teammitglieder lead claude code experimentell einschalten ausschalten agent teams teammates experimental switch on off" },
   askPushOnClose: { label: t.layout.actions.toggles.askPushOnClose, section: "general", keywords: "schließen beenden pushen push github ungepusht commit andere gerät weiterarbeiten close quit unpushed other device" },
   learnTemplates: { label: t.layout.actions.toggles.learnTemplates, section: "templates", keywords: "prompt vorlagen templates wiederkehrende nachrichten shortcuts textvorschläge selbst anlegen lernen learn automatic recurring messages suggestions" },
   uiCompare: { label: t.layout.actions.toggles.uiCompare, section: "claude", keywords: "screenshot vergleich vorschau dev-server ui oberfläche bild vorher nachher before after compare preview image" },
@@ -512,14 +513,17 @@ export function buildActions(ctx: ActionContext): PaletteEntry[] {
       const file = ui.selectedFile[project.id];
       if (file) act("explorer-file", t.layout.actions.explorerFile, icon(FolderOpen), () => void revealInProject(project.path, file), { keywords: "datei explorer ordner windows file folder show", hint: file });
     }
-    if (project.exists) {
+    const teamsOn = !!settings?.agentTeams && (root ?? project).teamsEnabled;
+    if (project.exists && teamsOn) {
       act("team-start", t.layout.actions.teamStart, icon(Users), () => startTeamTerminal(project.id), {
         keywords: "agent team agenten-team teammitglieder teammates lead starten claude code experimentell parallel zusammenarbeiten agent teams start spawn collaborate",
       });
     }
-    act("team-view", t.layout.actions.teamView, icon(Users), () => ui.setWorkspaceTab("agents"), {
-      keywords: "agent teams agenten-teams anzeigen aufgaben nachrichten mitglieder status übersicht show tasks messages members overview",
-    });
+    if (teamsOn) {
+      act("team-view", t.layout.actions.teamView, icon(Users), () => ui.setWorkspaceTab("agents"), {
+        keywords: "agent teams agenten-teams anzeigen aufgaben nachrichten mitglieder status übersicht show tasks messages members overview",
+      });
+    }
     act("terminal", t.layout.actions.terminal, icon(SquareTerminal), () => ui.openTerminal(project.id, "shell"), { keywords: "terminal shell konsole console" });
     act("bottom", t.layout.actions.bottom, icon(PanelBottom), () => ui.toggleBottomPanel(), { hint: t.layout.actions.ctrl("J"), keywords: "unteres panel einblenden ausblenden bottom panel toggle show hide" });
     act("right", t.layout.actions.right, icon(PanelRight), () => ui.toggleRightPanel(), { hint: t.layout.actions.ctrlShift("E"), keywords: "seitenleiste einblenden ausblenden sidebar side panel toggle show hide" });
@@ -565,6 +569,14 @@ export function buildActions(ctx: ActionContext): PaletteEntry[] {
       setting("project-agents", on ? t.projects.agents.menuOff : t.projects.agents.menuOn, icon(on ? ToggleRight : ToggleLeft), () => switchProjectAgents(qc, p, !on), {
         hint: p.name,
         keywords: "parallele agenten keine agenten worktree worktrees ausschalten erlauben nacheinander parallel agents no agents switch off allow sequential",
+      });
+    }
+    if (agentsOwner) {
+      const p = agentsOwner;
+      const on = p.teamsEnabled;
+      setting("project-teams", on ? t.projects.teams.menuOff : t.projects.teams.menuOn, icon(on ? ToggleRight : ToggleLeft), () => void setProjectTeams(qc, p, !on), {
+        hint: p.name,
+        keywords: "agent teams agenten-teams teammitglieder lead claude code ausschalten erlauben projekt agent teams teammates switch off allow project",
       });
     }
     // A worktree is listed under its project, so the group is the main project's.

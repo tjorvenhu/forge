@@ -296,6 +296,7 @@ export const layout = {
       autoContinueAfterLimit: "Nach Nutzungslimit weitermachen",
       learnTemplates: "Vorlagen automatisch lernen",
       askPushOnClose: "Beim Schließen nach Ungepushtem fragen",
+      agentTeams: "Agent-Teams von Claude Code",
       uiCompare: "Vorher-Nachher-Bilder bei UI-Änderungen",
       stripApiKey: "ANTHROPIC_API_KEY ausblenden",
       updateChecks: "Automatisch nach Updates suchen",

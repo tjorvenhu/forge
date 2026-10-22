@@ -124,6 +124,7 @@ describe("usage statistics", () => {
         parentId,
         gitEnabled: true,
         agentsEnabled: true,
+        teamsEnabled: true,
         group: null,
       });
       db.insertProject(rec("a", null), "a");

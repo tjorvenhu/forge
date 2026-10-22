@@ -1,13 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
-import { CheckCircle2, ChevronDown, ChevronRight, ClipboardList, Copy, Crown, FileText, Lock, MessageSquare, Power, Send, SquareTerminal, Users } from "lucide-react";
+import { CheckCircle2, ChevronDown, ChevronRight, ClipboardList, Copy, Crown, FileText, Lock, MessageSquare, Power, Send, SquareTerminal, Users, X } from "lucide-react";
 import { AGENT_TEAM_ALL, AGENT_TEAM_LEAD, type AgentTeam, type AgentTeamMember, type AgentTeamMessage, type AgentTeamTask, type Project } from "@forge/protocol";
 import { call, useAgentTeams } from "@/lib/queries";
 import { errorMessage } from "@/lib/rpc";
 import { contextItems, copyText } from "@/lib/context-menu";
-import { currentTask, memberColor, showTeamTerminal, startTeamTerminal, teamLinks } from "@/lib/agent-teams";
+import { currentTask, memberColor, showTeamTerminal, startTeamTerminal, teamLinks, useTeamsAllowed } from "@/lib/agent-teams";
 import { cn, relativeTime } from "@/lib/utils";
 import { toast } from "@/stores/toast";
+import { useUi } from "@/stores/ui";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Dialog } from "@/components/ui/dialog";
 import { Field, Textarea } from "@/components/ui/input";
 import { Badge, EmptyState, ErrorBanner, SectionTitle } from "@/components/ui/misc";
@@ -25,20 +27,58 @@ const RECENT_MS = 20_000;
  */
 export function AgentTeamsSection({ project }: { project: Project }) {
   const teams = useAgentTeams(project.id);
+  const allowed = useTeamsAllowed(project);
   const [starting, setStarting] = useState(false);
+  const [dismissing, setDismissing] = useState(false);
   const tt = t.workspace.teams;
+  const ended = (teams.data ?? []).filter((x) => !x.active).length;
+  // Switched off: nothing to see, unless a team still runs and needs ending.
+  if (!allowed.allowed && !teams.data?.some((x) => x.active)) return null;
+  const dismissEnded = async () => {
+    setDismissing(true);
+    try {
+      const r = await call("teams.dismiss", { projectId: project.id });
+      toast.success(tt.dismissed(r.count));
+    } catch (e) {
+      toast.error(tt.notDismissed, errorMessage(e));
+    } finally {
+      setDismissing(false);
+    }
+  };
+  const openSetting = () => {
+    if (!allowed.global) useUi.getState().openSettings("claude");
+    else {
+      if (allowed.rootId && allowed.rootId !== project.id) useUi.getState().openProject(allowed.rootId);
+      useUi.getState().openProjectSettings("general");
+    }
+  };
   return (
     <section>
       <SectionTitle
         action={
-          <Button size="sm" variant="primary" onClick={() => setStarting(true)} disabled={!project.exists}>
-            <Users className="h-3.5 w-3.5" /> {tt.start}
-          </Button>
+          <div className="flex items-center gap-2">
+            {ended > 0 && (
+              <Button size="sm" variant="ghost" loading={dismissing} onClick={() => void dismissEnded()}>
+                <X className="h-3.5 w-3.5" /> {tt.dismissEnded}
+              </Button>
+            )}
+            <Button size="sm" variant="primary" onClick={() => setStarting(true)} disabled={!project.exists || !allowed.allowed}>
+              <Users className="h-3.5 w-3.5" /> {tt.start}
+            </Button>
+          </div>
         }
       >
         {tt.title}
       </SectionTitle>
       <p className="mb-3 text-xs text-muted">{tt.intro}</p>
+      {!allowed.allowed && (
+        <p className="mb-3 text-xs text-warning">
+          {allowed.global ? tt.offProject : tt.offGlobal}{" "}
+          <button className="text-accent underline" onClick={openSetting}>
+            {tt.offLink}
+          </button>
+        </p>
+      )}
       {teams.isLoading && <TeamSkeleton />}
       {teams.isError && <ErrorBanner title={tt.notLoaded}>{errorMessage(teams.error)}</ErrorBanner>}
       {teams.isSuccess && teams.data.length === 0 && (
@@ -73,13 +113,34 @@ function TeamCard({ team, projectId }: { team: AgentTeam; projectId: string }) {
   const done = team.tasks.filter((x) => x.status === "completed").length;
   const running = team.tasks.filter((x) => x.status === "in_progress").length;
   const teammates = team.members.filter((m) => !m.lead);
+  const [confirmStop, setConfirmStop] = useState(false);
   const openTerminal = () => {
     if (!showTeamTerminal(team.projectId ?? projectId)) toast.info(tt.terminalGone);
+  };
+  const stop = async () => {
+    try {
+      const r = await call("teams.stop", { team: team.name });
+      if (r.ok) toast.success(tt.stopped, team.name);
+      else toast.info(tt.stopSlow);
+    } catch (e) {
+      toast.error(tt.notStopped, errorMessage(e));
+      throw e;
+    }
+  };
+  const dismiss = async () => {
+    try {
+      await call("teams.dismiss", { team: team.name });
+    } catch (e) {
+      toast.error(tt.notDismissed, errorMessage(e));
+    }
   };
   const menu = () => [
     { label: tt.showTerminal, icon: <SquareTerminal className="h-3.5 w-3.5" />, onSelect: openTerminal, disabled: !team.active },
     { label: expanded ? tt.collapseTeam : tt.expandTeam, icon: expanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />, onSelect: () => setExpanded(!expanded) },
     { label: tt.copyName, icon: <Copy className="h-3.5 w-3.5" />, onSelect: () => copyText(team.name) },
+    team.active
+      ? { label: tt.stopConfirm, icon: <Power className="h-3.5 w-3.5" />, onSelect: () => setConfirmStop(true), disabled: !team.canStop, hint: team.canStop ? undefined : tt.cannotStop, danger: true }
+      : { label: tt.dismiss, icon: <X className="h-3.5 w-3.5" />, onSelect: () => void dismiss() },
   ];
   return (
     <div className={cn("flex flex-col rounded-xl border border-border bg-surface p-4", expanded ? "gap-4" : "gap-3")} onContextMenu={contextItems(menu)}>
@@ -107,11 +168,29 @@ function TeamCard({ team, projectId }: { team: AgentTeam; projectId: string }) {
             <SquareTerminal className="h-3.5 w-3.5" /> {tt.showTerminal}
           </Button>
         )}
+        {team.active ? (
+          <Button size="sm" variant="danger-ghost" onClick={() => setConfirmStop(true)} disabled={!team.canStop} title={team.canStop ? undefined : tt.cannotStop}>
+            <Power className="h-3.5 w-3.5" /> {tt.stop}
+          </Button>
+        ) : (
+          <Button size="icon-sm" variant="ghost" onClick={() => void dismiss()} aria-label={tt.dismiss} title={tt.dismiss}>
+            <X className="h-3.5 w-3.5" />
+          </Button>
+        )}
       </div>
 
       {team.tasks.length > 0 && <TaskProgress done={done} running={running} total={team.tasks.length} />}
 
       {expanded && <TeamDetails team={team} to={to} onTo={setTo} />}
+      <ConfirmDialog
+        open={confirmStop}
+        onOpenChange={setConfirmStop}
+        title={tt.stopTitle}
+        description={tt.stopDescription(team.name)}
+        confirmLabel={tt.stopConfirm}
+        danger
+        onConfirm={stop}
+      />
     </div>
   );
 }

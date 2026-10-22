@@ -215,6 +215,9 @@ export const views: typeof De = {
     autoContinueLabel: "Continue after usage limit",
     autoContinueDescription:
       "If the limit stops a session, FORGE sends a message itself after the reset. At most three times without your input, and only while FORGE is running.",
+    agentTeamsLabel: "Claude Code agent teams",
+    agentTeamsDescription:
+      "Experimental. A lead in the terminal starts teammates that share tasks and message each other. Every teammate is its own Claude instance and uses its own share of the subscription. Each project can switch it off again in its project settings.",
     uiCompareLabel: "Before and after images for UI changes",
     uiCompareDescription:
       "If Claude changes files like .tsx or .css while the dev server is running, the chat shows screenshots of the web app from before and after the run. The images are not sent to Claude and are deleted after 14 days.",

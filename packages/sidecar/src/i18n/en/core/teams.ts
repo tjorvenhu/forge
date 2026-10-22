@@ -8,6 +8,10 @@ export const teams: typeof De = {
   inboxBusy: "The inbox is locked right now. Please try again in a moment.",
   fromForge: "Message from FORGE",
   noWindow: "FORGE's main window is not open; the team terminal starts there.",
-  projectMissing: "Project not found.",
+  disabled: "Agent teams are switched off in the settings.",
+  disabledInProject: (name) => `Agent teams are switched off in ${name}. You can allow them again in the project settings.`,
+  cannotStop: "FORGE does not know the lead's process. End the team in its terminal, for example with /exit.",
+  stillRunning: (name) => `The agent team ${name} is still running. End it first, then remove it.`,
+  projectMissing:"Project not found.",
   folderMissing: "The project folder is missing.",
 };

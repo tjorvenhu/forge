@@ -295,6 +295,7 @@ export const layout: typeof De = {
       autoContinueAfterLimit: "Continue after usage limit",
       learnTemplates: "Learn templates automatically",
       askPushOnClose: "Ask about unpushed work when closing",
+      agentTeams: "Claude Code agent teams",
       uiCompare: "Before and after images for UI changes",
       stripApiKey: "Hide ANTHROPIC_API_KEY",
       updateChecks: "Check for updates automatically",

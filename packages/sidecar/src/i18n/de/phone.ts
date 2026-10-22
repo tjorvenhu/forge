@@ -660,6 +660,10 @@ Sicherheit:
     sent: (to: string) => `Nachricht an ${to} abgelegt. Claude Code stellt sie zu, sobald das Mitglied sein Postfach liest.`,
     started: (project: string, withTask: boolean) =>
       `FORGE öffnet in ${project} ein Terminal mit einem Team-Lead${withTask ? " und gibt ihm den Auftrag" : ""}. Das Hauptfenster muss dafür offen sein.`,
+    stopped: (name: string) => `Team ${name} beendet.`,
+    stopSlow: (name: string) => `Team ${name} soll enden, sein Lead läuft aber noch. Gleich noch einmal nachsehen.`,
+    noneEnded: "Es gibt kein beendetes Team zum Entfernen.",
+    dismissed: (count: number) => (count === 1 ? "Ein beendetes Team aus der Liste genommen." : `${count} beendete Teams aus der Liste genommen.`),
   },
 
   agents: {
@@ -733,6 +737,7 @@ Sicherheit:
     withGit: "mit Git",
     withoutGit: "ohne Git",
     withoutAgents: "ohne parallele Agenten",
+    withoutTeams: "ohne Agent-Teams",
     agentsOffWarning: "Claude arbeitet dort jetzt weniger effizient: Aufgaben laufen nacheinander statt gleichzeitig.",
     group: (g: string) => `Gruppe ${g}`,
     grouped: (name: string, group: string) => `${name} ist jetzt in der Gruppe ${group}.`,
@@ -903,6 +908,7 @@ Sicherheit:
     updateChannel: (c: "stable" | "dev"): string => (c === "dev" ? "Entwicklungsversion an, also die Vorabversionen aus dem Branch dev" : "Entwicklungsversion aus, also die Releases von main"),
     learnTemplates: (v: boolean) => `Vorlagen aus wiederkehrenden Nachrichten lernen ${on(v)}`,
     askPushOnClose: (v: boolean) => `beim Schließen nach ungepushter Arbeit fragen ${on(v)}`,
+    agentTeams: (v: boolean) => `Agent-Teams ${on(v)}`,
     usageStats: (v: boolean) => `anonyme Nutzungsstatistik ${on(v)}`,
     debugLogs: (v: boolean) => `Debug-Logs ${on(v)}`,
     stripApiKey: "ein API-Key aus der Umgebung geht nicht an Claude Code",

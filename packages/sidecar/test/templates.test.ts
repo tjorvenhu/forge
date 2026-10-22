@@ -30,6 +30,7 @@ function addProject(id: string, parentId: string | null = null) {
       parentId,
       gitEnabled: true,
       agentsEnabled: true,
+      teamsEnabled: true,
       group: null,
     },
     `c:\\${id}`,

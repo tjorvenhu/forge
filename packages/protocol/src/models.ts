@@ -83,6 +83,8 @@ export const Project = z.object({
   gitEnabled: z.boolean(),
   /** false: no parallel agents (worktrees) in this project; only main projects, worktrees follow their project */
   agentsEnabled: z.boolean(),
+  /** false: no Claude Code agent teams in this project; only main projects, worktrees follow their project */
+  teamsEnabled: z.boolean(),
   /** false when the folder no longer exists on disk */
   exists: z.boolean(),
 });
@@ -556,6 +558,8 @@ export const Settings = z.object({
   learnTemplates: z.boolean(),
   /** closing the main window asks to commit and push what is not on GitHub yet (git.unpushed) */
   askPushOnClose: z.boolean(),
+  /** Claude Code's agent teams (team terminal, team view); off hides them everywhere */
+  agentTeams: z.boolean(),
   /** blocklist rules the user switched off; every other rule applies */
   disabledPolicyRules: z.array(PolicyRuleId),
   /** the setup assistant of the first start is done (or was skipped); installations from before it count as done */
@@ -993,8 +997,10 @@ export const AgentTeam = z.object({
   /** FORGE project the lead runs in; null: a folder FORGE does not know */
   projectId: z.string().nullable(),
   cwd: z.string(),
-  /** false: the lead's session ended (Claude Code removed the team); kept until FORGE restarts */
+  /** false: the lead's session ended (its process is gone); kept until FORGE restarts or the user removes it */
   active: z.boolean(),
+  /** FORGE knows the lead's process and can end it (teams.stop) */
+  canStop: z.boolean(),
   createdAt: z.string(),
   endedAt: z.string().nullable(),
   members: z.array(AgentTeamMember),

@@ -14,7 +14,7 @@ function project(id: string, dir: string, extra: Partial<Project> = {}): Project
   return {
     id, name: id, path: dir, favorite: false, group: null, tags: [], technologies: [], profile: "balanced",
     defaultModel: null, defaultEffort: null, createdAt: "", lastOpenedAt: null, testCommand: null, devCommand: null,
-    parentId: null, gitEnabled: true, agentsEnabled: true, exists: true, ...extra,
+    parentId: null, gitEnabled: true, agentsEnabled: true, teamsEnabled: true, exists: true, ...extra,
   };
 }
 

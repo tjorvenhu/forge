@@ -19,7 +19,7 @@ let clock: number;
 
 function addProject(id: string) {
   db.insertProject(
-    { id, name: id, path: `C:\\${id}`, favorite: false, tags: [], technologies: [], profile: "balanced", defaultModel: null, defaultEffort: null, createdAt: "2026-10-01T00:00:00Z", lastOpenedAt: null, testCommand: null, devCommand: null, parentId: null, gitEnabled: true, agentsEnabled: true, group: null },
+    { id, name: id, path: `C:\\${id}`, favorite: false, tags: [], technologies: [], profile: "balanced", defaultModel: null, defaultEffort: null, createdAt: "2026-10-01T00:00:00Z", lastOpenedAt: null, testCommand: null, devCommand: null, parentId: null, gitEnabled: true, agentsEnabled: true, teamsEnabled: true, group: null },
     `c:\\${id}`,
   );
   const now = new Date().toISOString();

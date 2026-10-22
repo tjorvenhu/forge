@@ -23,6 +23,7 @@ function team(over: Partial<AgentTeam> = {}): AgentTeam {
     projectId: "p1",
     cwd: "C:\\code\\shop",
     active: true,
+    canStop: true,
     createdAt: new Date().toISOString(),
     endedAt: null,
     members: [
@@ -38,6 +39,11 @@ function team(over: Partial<AgentTeam> = {}): AgentTeam {
     messages: [{ id: "m1", from: "alpha", to: "beta", kind: "message", text: "hello from alpha", summary: null, ts: new Date().toISOString() }],
     ...over,
   };
+}
+
+/** The sidecar of the tests: agent teams switched on, plus the answers a test needs. */
+function mockRpc(answers: Record<string, unknown>, settings: Record<string, unknown> = { agentTeams: true }) {
+  callMock.mockImplementation(async (method: string) => (method === "settings.get" ? settings : method === "projects.list" ? [] : (answers[method] ?? null)));
 }
 
 function renderSection() {
@@ -57,7 +63,7 @@ afterEach(cleanup);
 
 describe("AgentTeamsSection", () => {
   it("shows members, the task board with blocked tasks and the messages of a running team", async () => {
-    callMock.mockImplementation(async (method: string) => (method === "teams.list" ? [team()] : null));
+    mockRpc({ "teams.list": [team()] });
     renderSection();
     expect(await screen.findByText("session-1a2b3c4d")).toBeTruthy();
     expect(callMock).toHaveBeenCalledWith("teams.list", { projectId: "p1" });
@@ -68,7 +74,7 @@ describe("AgentTeamsSection", () => {
   });
 
   it("sends a message to the chosen member", async () => {
-    callMock.mockImplementation(async (method: string) => (method === "teams.list" ? [team()] : method === "teams.message" ? { recipients: ["team-lead"] } : null));
+    mockRpc({ "teams.list": [team()], "teams.message": { recipients: ["team-lead"] } });
     renderSection();
     await screen.findByText("session-1a2b3c4d");
     const box = screen.getByRole("textbox");
@@ -78,7 +84,7 @@ describe("AgentTeamsSection", () => {
   });
 
   it("keeps an ended team collapsed and offers no messages to it", async () => {
-    callMock.mockImplementation(async (method: string) => (method === "teams.list" ? [team({ active: false, endedAt: new Date().toISOString() })] : null));
+    mockRpc({ "teams.list": [team({ active: false, canStop: false, endedAt: new Date().toISOString() })] });
     renderSection();
     await screen.findByText("session-1a2b3c4d");
     expect(screen.queryByText("hello from alpha")).toBeNull();
@@ -89,7 +95,7 @@ describe("AgentTeamsSection", () => {
   });
 
   it("starts a team terminal with the task from the dialog", async () => {
-    callMock.mockImplementation(async (method: string) => (method === "teams.list" ? [] : null));
+    mockRpc({ "teams.list": [] });
     useUi.setState({ activeProjectId: "p1" });
     renderSection();
     const empty = await screen.findAllByRole("button", { name: /team/i });
@@ -98,6 +104,37 @@ describe("AgentTeamsSection", () => {
     fireEvent.change(within(dialog).getByRole("textbox"), { target: { value: "  Review mit drei Leuten " } });
     fireEvent.click(within(dialog).getAllByRole("button").at(-1)!);
     expect(useUi.getState().terminalRequest).toMatchObject({ projectId: "p1", program: "claude", team: true, prompt: "Review mit drei Leuten" });
+  });
+
+  it("ends a running team only after asking", async () => {
+    mockRpc({ "teams.list": [team()], "teams.stop": { ok: true } });
+    renderSection();
+    await screen.findByText("session-1a2b3c4d");
+    fireEvent.click(screen.getByRole("button", { name: /^(Beenden|End)$/ }));
+    const dialog = await screen.findByRole("dialog");
+    expect(callMock).not.toHaveBeenCalledWith("teams.stop", expect.anything());
+    fireEvent.click(within(dialog).getAllByRole("button").at(-1)!);
+    await waitFor(() => expect(callMock).toHaveBeenCalledWith("teams.stop", { team: "session-1a2b3c4d" }));
+  });
+
+  it("removes an ended team from the list", async () => {
+    mockRpc({ "teams.list": [team({ active: false, canStop: false, endedAt: new Date().toISOString() })], "teams.dismiss": { count: 1 } });
+    renderSection();
+    await screen.findByText("session-1a2b3c4d");
+    fireEvent.click(screen.getByRole("button", { name: /Aus der Liste entfernen|Remove from the list/ }));
+    await waitFor(() => expect(callMock).toHaveBeenCalledWith("teams.dismiss", { team: "session-1a2b3c4d" }));
+  });
+
+  it("stays hidden while agent teams are switched off, unless one still runs", async () => {
+    mockRpc({ "teams.list": [] }, { agentTeams: false });
+    const { container } = renderSection();
+    await waitFor(() => expect(callMock).toHaveBeenCalledWith("teams.list", { projectId: "p1" }));
+    expect(container.textContent).toBe("");
+    cleanup();
+    mockRpc({ "teams.list": [team()] }, { agentTeams: false });
+    renderSection();
+    expect(await screen.findByText("session-1a2b3c4d")).toBeTruthy();
+    expect((screen.getAllByRole("button", { name: /Team starten|Start team/ })[0] as HTMLButtonElement).disabled).toBe(true);
   });
 });
 

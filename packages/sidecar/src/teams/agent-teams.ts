@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { AGENT_TEAM_ALL, AGENT_TEAM_LEAD, type AgentTeam, type AgentTeamMember, type AgentTeamMessage, type AgentTeamTask, type Project, type ServerEvent } from "@forge/protocol";
+import { AGENT_TEAM_ALL, AGENT_TEAM_LEAD, ForgeError, type AgentTeam, type AgentTeamMember, type AgentTeamMessage, type AgentTeamTask, type Project, type ServerEvent } from "@forge/protocol";
 import { tr } from "../i18n/index.js";
 
 /**
@@ -18,13 +18,40 @@ export const ENDED_TEAM_LIMIT = 20;
 /** proper-lockfile, which Claude Code uses for inboxes, calls a lock older than this stale */
 const LOCK_STALE_MS = 10_000;
 const LOCK_WAIT_MS = 3_000;
+/** a new team counts as running this long before Claude Code's session file of its lead shows up */
+const LEAD_GRACE_MS = 15_000;
+/** how long teams.stop waits for the lead's process to go */
+const STOP_WAIT_MS = 5_000;
 
 export interface AgentTeamsDeps {
   /** Claude Code's folder (~/.claude or CLAUDE_CONFIG_DIR) */
   claudeDir: string;
   projects(): Project[];
   emit(e: ServerEvent): void;
+  /** agent teams switched on: globally (null) or for a project (its main project decides) */
+  enabled?(projectId: string | null): boolean;
   now?: () => number;
+  /** tests: whether a process runs, and ending one */
+  alive?(pid: number): boolean;
+  kill?(pid: number): void;
+}
+
+function processAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (e) {
+    // EPERM: it exists, it is just not ours to signal.
+    return (e as NodeJS.ErrnoException).code === "EPERM";
+  }
+}
+
+/** A running Claude Code process, from its file under ~/.claude/sessions (<pid>.json). */
+interface ClaudeProcess {
+  pid: number;
+  sessionId: string;
+  cwd: string;
+  startedAt: number;
 }
 
 export function claudeConfigDir(env: NodeJS.ProcessEnv = process.env): string {
@@ -65,6 +92,8 @@ interface TeamState {
   lastResult: Map<string, string>;
   /** file -> mtime and size of the last read, so unchanged files are not parsed again */
   stamps: Map<string, string>;
+  /** the lead's process while it runs; null: not known (older Claude Code without session files) */
+  pid: number | null;
 }
 
 const str = (v: unknown): string | null => (typeof v === "string" && v.trim() ? v : null);
@@ -93,6 +122,16 @@ function listDir(dir: string): fs.Dirent[] {
   } catch {
     return [];
   }
+}
+
+/** rmSync deletes nothing under a path with umlauts on Windows with Node 24.11, so file by file. */
+function removeDir(dir: string) {
+  for (const e of listDir(dir)) {
+    const p = path.join(dir, e.name);
+    if (e.isDirectory()) removeDir(p);
+    else fs.unlinkSync(p);
+  }
+  fs.rmdirSync(dir);
 }
 
 /**
@@ -175,11 +214,16 @@ function parseTask(raw: unknown): Omit<AgentTeamTask, "blocked"> | null {
  */
 export class AgentTeams {
   private readonly teams = new Map<string, TeamState>();
+  /** ended teams the user took off the list; they come back only when their lead runs again */
+  private readonly dismissed = new Set<string>();
+  private readonly sessionFiles = new Map<string, { stamp: string; proc: ClaudeProcess | null }>();
   private timer: ReturnType<typeof setInterval> | null = null;
   private readonly now: () => number;
+  private readonly alive: (pid: number) => boolean;
 
   constructor(private readonly d: AgentTeamsDeps) {
     this.now = d.now ?? Date.now;
+    this.alive = d.alive ?? processAlive;
   }
 
   private get teamsDir() {
@@ -188,6 +232,52 @@ export class AgentTeams {
 
   private get tasksDir() {
     return path.join(this.d.claudeDir, "tasks");
+  }
+
+  private enabled(projectId: string | null): boolean {
+    return this.d.enabled?.(projectId) ?? true;
+  }
+
+  /**
+   * Claude Code's running processes; null when it writes no session files (older versions). A team
+   * folder alone says little: a lead killed with its terminal tab can leave it behind.
+   */
+  private processes(): ClaudeProcess[] | null {
+    const dir = path.join(this.d.claudeDir, "sessions");
+    if (!fs.existsSync(dir)) return null;
+    const out: ClaudeProcess[] = [];
+    const files = new Set<string>();
+    for (const e of listDir(dir)) {
+      if (!e.isFile() || !e.name.endsWith(".json")) continue;
+      const file = path.join(dir, e.name);
+      files.add(file);
+      const s = stamp(file);
+      if (s === null) continue;
+      let cached = this.sessionFiles.get(file);
+      if (cached?.stamp !== s) {
+        const r = readJson(file) as Record<string, unknown> | undefined;
+        const pid = typeof r?.pid === "number" ? r.pid : null;
+        const sessionId = str(r?.sessionId);
+        cached = { stamp: s, proc: pid && sessionId ? { pid, sessionId, cwd: str(r?.cwd) ?? "", startedAt: typeof r?.startedAt === "number" ? r.startedAt : 0 } : null };
+        this.sessionFiles.set(file, cached);
+      }
+      if (cached.proc && this.alive(cached.proc.pid)) out.push(cached.proc);
+    }
+    for (const f of this.sessionFiles.keys()) if (!files.has(f)) this.sessionFiles.delete(f);
+    return out;
+  }
+
+  /**
+   * The lead's process: the one with its session, else (after /clear the session changes) one started
+   * in the lead's folder shortly before the team was created, which happens at the start of the session.
+   */
+  private leadOf(t: TeamState, procs: ClaudeProcess[]): ClaudeProcess | null {
+    const created = Date.parse(t.createdAt);
+    return (
+      procs.find((p) => p.sessionId === t.leadSessionId) ??
+      procs.find((p) => !!t.cwd && !!p.cwd && samePath(path.resolve(p.cwd), path.resolve(t.cwd)) && p.startedAt <= created + 5_000 && p.startedAt >= created - 120_000) ??
+      null
+    );
   }
 
   start() {
@@ -204,14 +294,16 @@ export class AgentTeams {
 
   /** Reads what changed; announces each team that changed. Synchronous: the files are small. */
   scan(): void {
+    // Switched off: no reading at all, unless a team is still shown (so it can be ended).
+    if (!this.enabled(null) && !this.teams.size) return;
     const nowIso = new Date(this.now()).toISOString();
     const live = new Set<string>();
+    const procs = this.processes();
     for (const e of listDir(this.teamsDir)) {
       if (!e.isDirectory()) continue;
       const cfgFile = path.join(this.teamsDir, e.name, "config.json");
       const cfg = readJson(cfgFile) as Record<string, unknown> | undefined;
       if (!cfg || typeof cfg !== "object") continue;
-      live.add(e.name);
       let t = this.teams.get(e.name);
       let changed = false;
       if (!t) {
@@ -230,10 +322,29 @@ export class AgentTeams {
           state: new Map(),
           lastResult: new Map(),
           stamps: new Map(),
+          pid: null,
         };
         this.teams.set(e.name, t);
         changed = true;
-      } else if (t.endedAt) {
+      }
+      const lead = procs ? this.leadOf(t, procs) : null;
+      const running = !procs || !!lead || this.now() - Date.parse(t.createdAt) < LEAD_GRACE_MS;
+      if (t.pid !== (lead?.pid ?? null)) {
+        t.pid = lead?.pid ?? null;
+        changed = true;
+      }
+      if (!running) {
+        // The folder outlived its lead: ended, though Claude Code did not clean up.
+        if (this.dismissed.has(t.name)) this.teams.delete(t.name);
+        else if (!t.endedAt) {
+          if (this.fresh(t, cfgFile)) t.members = Array.isArray(cfg.members) ? (cfg.members as RawMember[]) : [];
+          this.end(t, nowIso);
+        }
+        continue;
+      }
+      live.add(e.name);
+      this.dismissed.delete(t.name);
+      if (t.endedAt) {
         // A resumed lead brings its team back under the same name.
         t.endedAt = null;
         changed = true;
@@ -249,12 +360,17 @@ export class AgentTeams {
     for (const t of this.teams.values()) {
       if (live.has(t.name) || t.endedAt) continue;
       // Claude Code removed the team's folder: the lead's session ended. The tasks stay on disk.
-      this.readTasks(t);
-      t.endedAt = nowIso;
-      for (const [name, s] of t.state) if (s === "working") t.state.set(name, "idle");
-      this.announce(t);
+      this.end(t, nowIso);
     }
     this.trimEnded();
+  }
+
+  private end(t: TeamState, nowIso: string) {
+    this.readTasks(t);
+    t.endedAt = nowIso;
+    t.pid = null;
+    for (const [name, s] of t.state) if (s === "working") t.state.set(name, "idle");
+    this.announce(t);
   }
 
   private fresh(t: TeamState, file: string): boolean {
@@ -344,6 +460,7 @@ export class AgentTeams {
       projectId: project?.id ?? null,
       cwd: t.cwd,
       active: !t.endedAt,
+      canStop: !t.endedAt && t.pid !== null,
       createdAt: t.createdAt,
       endedAt: t.endedAt,
       members,
@@ -372,9 +489,76 @@ export class AgentTeams {
     const m = tr().core.teams;
     const p = this.d.projects().find((x) => x.id === projectId);
     if (!p) throw new Error(m.projectMissing);
+    if (!this.enabled(null)) throw new ForgeError("TEAMS_DISABLED", m.disabled);
+    if (!this.enabled(projectId)) throw new ForgeError("TEAMS_DISABLED", m.disabledInProject(p.name));
     if (!fs.existsSync(p.path)) throw new Error(m.folderMissing);
     this.d.emit({ event: "team.start", payload: { projectId, prompt: prompt?.trim() || null } });
     return { ok: true };
+  }
+
+  private find(teamName: string): TeamState {
+    const t = this.teams.get(teamName) ?? [...this.teams.values()].find((x) => x.name.endsWith(teamName) || x.leadSessionId.startsWith(teamName));
+    if (!t) throw new Error(tr().core.teams.teamNotFound(teamName, [...this.teams.keys()].join(", ")));
+    return t;
+  }
+
+  /**
+   * Ends a running team by ending its lead's process; in-process teammates run inside it. On Windows
+   * that is TerminateProcess, so Claude Code may leave the folder behind; it then counts as ended.
+   */
+  async stopTeam(teamName: string): Promise<{ ok: boolean }> {
+    const m = tr().core.teams;
+    this.scan();
+    const t = this.find(teamName);
+    if (t.endedAt) throw new Error(m.teamEnded(t.name));
+    if (t.pid === null) throw new Error(m.cannotStop);
+    const pid = t.pid;
+    try {
+      (this.d.kill ?? ((p: number) => process.kill(p)))(pid);
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code !== "ESRCH") throw e;
+    }
+    const until = Date.now() + STOP_WAIT_MS;
+    while (this.alive(pid) && Date.now() < until) await new Promise((r) => setTimeout(r, 100));
+    this.scan();
+    if (!t.endedAt && !this.alive(pid)) this.end(t, new Date(this.now()).toISOString());
+    return { ok: !this.alive(pid) };
+  }
+
+  /**
+   * Takes ended teams off the list: the named one, else all ended ones (of the project). A folder
+   * Claude Code left behind goes too, so the team does not come back with the next start of FORGE.
+   */
+  dismiss(teamName?: string, projectId?: string): number {
+    this.scan();
+    let targets: TeamState[];
+    if (teamName) {
+      const t = this.find(teamName);
+      if (!t.endedAt) throw new Error(tr().core.teams.stillRunning(t.name));
+      targets = [t];
+    } else {
+      const scope = projectId ? this.scope(projectId) : null;
+      targets = [...this.teams.values()].filter((t) => {
+        if (!t.endedAt) return false;
+        const id = this.view(t).projectId;
+        return !scope || (id !== null && scope.has(id));
+      });
+    }
+    for (const t of targets) {
+      const id = this.view(t).projectId;
+      this.teams.delete(t.name);
+      const dir = path.join(this.teamsDir, t.name);
+      if (fs.existsSync(dir)) {
+        this.dismissed.add(t.name);
+        try {
+          removeDir(dir);
+        } catch {
+          // Still in use after all: hidden until its lead runs again.
+        }
+      }
+      this.d.emit({ event: "teams.updated", payload: { team: t.name, projectId: id } });
+    }
+    return targets.length;
   }
 
   /**
@@ -384,8 +568,7 @@ export class AgentTeams {
   async send(teamName: string, to: string, text: string): Promise<string[]> {
     const m = tr().core.teams;
     this.scan();
-    const t = this.teams.get(teamName) ?? [...this.teams.values()].find((x) => x.name.endsWith(teamName) || x.leadSessionId.startsWith(teamName));
-    if (!t) throw new Error(m.teamNotFound(teamName, [...this.teams.keys()].join(", ")));
+    const t = this.find(teamName);
     if (t.endedAt) throw new Error(m.teamEnded(t.name));
     const names = t.members.map((x) => str(x.name)).filter((x): x is string => !!x);
     const wanted = to.trim().toLowerCase();

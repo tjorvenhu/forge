@@ -1,6 +1,39 @@
-import type { AgentTeam, AgentTeamMessage } from "@forge/protocol";
+import type { QueryClient } from "@tanstack/react-query";
+import type { AgentTeam, AgentTeamMessage, Project } from "@forge/protocol";
 import { useUi } from "@/stores/ui";
 import { useTerminals } from "@/stores/terminals";
+import { toast } from "@/stores/toast";
+import { call, keys, useProjects, useSettings } from "./queries";
+import { errorMessage } from "./rpc";
+import { t } from "@/i18n";
+
+/**
+ * Agent teams are off until switched on in the settings (they cost a lot of the subscription); a main
+ * project can then switch them off for itself, its worktrees follow it.
+ */
+export function useTeamsAllowed(project: Pick<Project, "id" | "parentId" | "teamsEnabled"> | null) {
+  const settings = useSettings();
+  const projects = useProjects();
+  const root = project?.parentId ? (projects.data ?? []).find((p) => p.id === project.parentId) : project;
+  const global = settings.data?.agentTeams === true;
+  const inProject = root?.teamsEnabled !== false;
+  return { global, project: inProject, allowed: global && inProject, rootId: root?.id ?? project?.id ?? null };
+}
+
+/** Saves the project switch; false when it failed (the toast is shown). */
+export async function setProjectTeams(qc: QueryClient, p: { id: string; name: string }, enabled: boolean): Promise<boolean> {
+  const m = t.projects.teams;
+  try {
+    await call("projects.update", { projectId: p.id, teamsEnabled: enabled });
+    await qc.invalidateQueries({ queryKey: keys.project(p.id) });
+    void qc.invalidateQueries({ queryKey: keys.projects });
+    toast.success(enabled ? m.turnedOn : m.turnedOff, p.name);
+    return true;
+  } catch (e) {
+    toast.error(t.projects.agents.notSaved, errorMessage(e));
+    return false;
+  }
+}
 
 /**
  * Opens the project with a terminal tab running Claude as an agent team lead. Agent teams form only

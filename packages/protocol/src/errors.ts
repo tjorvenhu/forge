@@ -20,6 +20,8 @@ export const ErrorCode = z.enum([
   "GIT_DISABLED",
   /** the project is set to work without parallel agents */
   "AGENTS_DISABLED",
+  /** agent teams are switched off (settings or project) */
+  "TEAMS_DISABLED",
   "POLICY_DENIED",
   "INTERNAL",
 ]);

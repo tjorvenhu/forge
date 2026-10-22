@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { Bot, PanelBottomClose, Play, Plus, ScrollText, SquareTerminal, Users } from "lucide-react";
 import type { Project } from "@forge/protocol";
 import { useDiagnostics } from "@/lib/queries";
+import { useTeamsAllowed } from "@/lib/agent-teams";
 import { closeTerminal } from "@/lib/terminal-registry";
 import { cn } from "@/lib/utils";
 import { useUi } from "@/stores/ui";
@@ -26,6 +27,7 @@ export function BottomPanel({ project }: { project: Project }) {
   const panelRequest = useUi((s) => s.panelRequest);
   const clearPanelRequest = useUi((s) => s.clearPanelRequest);
   const diag = useDiagnostics();
+  const teams = useTeamsAllowed(project);
   const tabs = useTerminals((s) => s.tabs[project.id] ?? NO_TABS);
   const active = useTerminals((s) => s.active[project.id] ?? DEFAULT_BOTTOM_TAB);
   const setActive = (tab: string) => useTerminals.getState().setActive(project.id, tab);
@@ -75,16 +77,18 @@ export function BottomPanel({ project }: { project: Project }) {
           <Button size="icon-sm" variant="ghost" aria-label={tr.workspace.bottomPanel.newTerminal} title={tr.workspace.bottomPanel.newTerminal} onClick={() => addTerminal(project, "shell", claudePath)}>
             <Plus className="h-3.5 w-3.5" />
           </Button>
-          <Button
-            size="icon-sm"
-            variant="ghost"
-            aria-label={tr.workspace.bottomPanel.newTeam}
-            title={tr.workspace.bottomPanel.newTeamTitle}
-            disabled={diagLoading || !claudePath}
-            onClick={() => addTerminal(project, "claude", claudePath, undefined, { team: true })}
-          >
-            <Users className="h-3.5 w-3.5" />
-          </Button>
+          {teams.allowed && (
+            <Button
+              size="icon-sm"
+              variant="ghost"
+              aria-label={tr.workspace.bottomPanel.newTeam}
+              title={tr.workspace.bottomPanel.newTeamTitle}
+              disabled={diagLoading || !claudePath}
+              onClick={() => addTerminal(project, "claude", claudePath, undefined, { team: true })}
+            >
+              <Users className="h-3.5 w-3.5" />
+            </Button>
+          )}
         </TabBar>
         <div className="flex-1" />
         <Button size="icon-sm" variant="ghost" onClick={() => toggle(false)} aria-label={tr.workspace.bottomPanel.hide} title={tr.workspace.bottomPanel.hideTitle}>

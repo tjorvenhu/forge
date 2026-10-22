@@ -51,7 +51,7 @@ function setup() {
     const p = path.join(t.dir, name);
     mkdirSync(p, { recursive: true });
     db.insertProject(
-      { id, name, path: p, favorite: false, tags: [], technologies: [], profile: "balanced", defaultModel: null, defaultEffort: null, createdAt: "2026-10-12T10:00:00.000Z", lastOpenedAt: null, testCommand: null, devCommand: null, parentId: null, gitEnabled: true, agentsEnabled: true, group: null },
+      { id, name, path: p, favorite: false, tags: [], technologies: [], profile: "balanced", defaultModel: null, defaultEffort: null, createdAt: "2026-10-12T10:00:00.000Z", lastOpenedAt: null, testCommand: null, devCommand: null, parentId: null, gitEnabled: true, agentsEnabled: true, teamsEnabled: true, group: null },
       pathKey(p),
     );
   };

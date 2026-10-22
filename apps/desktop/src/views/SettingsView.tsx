@@ -267,6 +267,12 @@ function ClaudeSection({ s, save }: { s: Settings; save: Save }) {
           checked={s.uiCompare}
           onChange={(v) => void save({ uiCompare: v })}
         />
+        <SwitchRow
+          label={sv.agentTeamsLabel}
+          description={sv.agentTeamsDescription}
+          checked={s.agentTeams}
+          onChange={(v) => void save({ agentTeams: v })}
+        />
         <Row label={sv.idleCloseLabel} description={sv.idleCloseDescription}>
           <Select
             value={String(s.idleCloseMinutes)}

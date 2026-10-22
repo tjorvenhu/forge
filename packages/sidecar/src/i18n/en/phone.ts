@@ -657,6 +657,10 @@ Security:
     needsTo: "To whom? A name, team-lead or all.",
     sent: (to) => `Message for ${to} delivered to the inbox. Claude Code hands it over when the member reads its inbox.`,
     started: (project, withTask) => `FORGE opens a terminal with a team lead in ${project}${withTask ? " and gives it the task" : ""}. The main window has to be open for that.`,
+    stopped: (name) => `Ended team ${name}.`,
+    stopSlow: (name) => `Team ${name} should end, but its lead is still running. Check again in a moment.`,
+    noneEnded: "There is no ended team to remove.",
+    dismissed: (count) => (count === 1 ? "Took one ended team off the list." : `Took ${count} ended teams off the list.`),
   },
 
   agents: {
@@ -730,6 +734,7 @@ Security:
     withGit: "with git",
     withoutGit: "without git",
     withoutAgents: "without parallel agents",
+    withoutTeams: "without agent teams",
     agentsOffWarning: "Claude now works less efficiently there: tasks run one after another instead of at the same time.",
     group: (g: string) => `group ${g}`,
     grouped: (name: string, group: string) => `${name} is now in the group ${group}.`,
@@ -900,6 +905,7 @@ Security:
     updateChannel: (c) => (c === "dev" ? "development build on, the pre-releases from the branch dev" : "development build off, the releases of main"),
     learnTemplates: (v: boolean) => `learning templates from recurring messages ${on(v)}`,
     askPushOnClose: (v: boolean) => `asking about unpushed work on closing ${on(v)}`,
+    agentTeams: (v: boolean) => `agent teams ${on(v)}`,
     usageStats: (v: boolean) => `anonymous usage statistics ${on(v)}`,
     debugLogs: (v: boolean) => `debug logs ${on(v)}`,
     stripApiKey: "an API key from the environment is not passed to Claude Code",

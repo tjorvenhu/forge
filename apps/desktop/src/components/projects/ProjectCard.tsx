@@ -1,8 +1,9 @@
 import type { ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, Bot, CalendarDays, Code2, Copy, FileStack, FolderMinus, FolderSearch, Folders, GitBranch, GitCompareArrows, History, Link, MessageSquarePlus, MoreHorizontal, Settings2, Shield, ShieldAlert, ShieldCheck, Star, Tag, Trash2 } from "lucide-react";
+import { AlertTriangle, Bot, CalendarDays, Code2, Copy, FileStack, FolderMinus, FolderSearch, Folders, GitBranch, GitCompareArrows, History, Link, MessageSquarePlus, MoreHorizontal, Settings2, Shield, ShieldAlert, ShieldCheck, Star, Tag, Trash2, Users } from "lucide-react";
 import type { ProjectWithStatus } from "@forge/protocol";
-import { call, keys } from "@/lib/queries";
+import { call, keys, useSettings } from "@/lib/queries";
+import { setProjectTeams } from "@/lib/agent-teams";
 import { contextItems, copyText } from "@/lib/context-menu";
 import { revealPath } from "@/components/workspace/file-links";
 import { errorMessage } from "@/lib/rpc";
@@ -43,6 +44,7 @@ export function ProjectCard({
   const openProjectSettings = useUi((s) => s.openProjectSettings);
   const openReport = useUi((s) => s.openReport);
   const qc = useQueryClient();
+  const teamsGlobal = useSettings().data?.agentTeams === true;
 
   const toggleFavorite = async () => {
     try {
@@ -76,6 +78,9 @@ export function ProjectCard({
     ...(!p.parentId && p.git?.isRepo ? [{ label: t.git.remote.menu, icon: <Link className="h-3.5 w-3.5" />, onSelect: () => useGitRemoteDialog.getState().open(p) }] : []),
     ...(!p.parentId && p.gitEnabled
       ? [{ label: p.agentsEnabled ? t.projects.agents.menuOff : t.projects.agents.menuOn, icon: <Bot className="h-3.5 w-3.5" />, onSelect: () => switchProjectAgents(qc, p, !p.agentsEnabled) }]
+      : []),
+    ...(!p.parentId && teamsGlobal
+      ? [{ label: p.teamsEnabled ? t.projects.teams.menuOff : t.projects.teams.menuOn, icon: <Users className="h-3.5 w-3.5" />, onSelect: () => void setProjectTeams(qc, p, !p.teamsEnabled) }]
       : []),
     {
       label: t.projects.card.projectSettings,

@@ -163,11 +163,11 @@ export const phoneTools = {
     },
   },
   agent_team: {
-    description: "Agent-Teams von Claude Code: Ein Lead in einem Terminal-Reiter von FORGE startet Teammitglieder, die eine gemeinsame Aufgabenliste haben und sich gegenseitig Nachrichten schicken. status: laufende Teams mit Mitgliedern, Aufgaben und den letzten Nachrichten. message: schickt einem Mitglied (Name, team-lead für den Lead oder all für alle Teammitglieder) eine Nachricht. start: öffnet im Projekt ein Terminal mit einem neuen Team-Lead und gibt ihm text als ersten Auftrag.",
+    description: "Agent-Teams von Claude Code: Ein Lead in einem Terminal-Reiter von FORGE startet Teammitglieder, die eine gemeinsame Aufgabenliste haben und sich gegenseitig Nachrichten schicken. status: laufende Teams mit Mitgliedern, Aufgaben und den letzten Nachrichten. message: schickt einem Mitglied (Name, team-lead für den Lead oder all für alle Teammitglieder) eine Nachricht. start: öffnet im Projekt ein Terminal mit einem neuen Team-Lead und gibt ihm text als ersten Auftrag. stop: beendet ein laufendes Team samt Teammitgliedern; vorher beim Anrufer nachfragen, unfertige Arbeit der Mitglieder bricht ab. dismiss: nimmt beendete Teams aus der Liste (mit team eins, sonst alle beendeten, mit project nur die des Projekts).",
     params: {
-      action: "status, message oder start",
+      action: "status, message, start, stop oder dismiss",
       project: "Projektname; bei status optional (sonst alle Projekte), bei start nötig",
-      team: "bei message: Name des Teams aus status (z. B. session-1a2b3c4d); nur nötig, wenn mehrere laufen",
+      team: "bei message und stop: Name des Teams aus status (z. B. session-1a2b3c4d), nur nötig, wenn mehrere laufen; bei dismiss ein bestimmtes beendetes Team",
       to: "bei message: Name des Mitglieds, team-lead oder all",
       text: "bei message die Nachricht, bei start der Auftrag an den Lead, vollständig ausformuliert",
     },
@@ -176,7 +176,7 @@ export const phoneTools = {
     description: "Liste der Projekte mit Gruppe, Git-Branch und ob ein Dev-Server läuft.",
   },
   project: {
-    description: "Projekte verwalten. info: Profil, Standardmodell, Denkaufwand, Test- und Dev-Befehl, Favorit, ob mit Git und ob parallele Agenten erlaubt sind. create: neues Projekt name anlegen (in path oder im Projektordner aus den Einstellungen), auf Wunsch gleich mit GitHub-Repository (auch in einer Organisation) oder ganz ohne Git. import: vorhandenen Ordner path aufnehmen, mit oder ohne Git, auf Wunsch gleich mit GitHub-Repository. clone: Repository url klonen, auch per Name eines GitHub-Repositorys des Kontos. remove: Projekt aus FORGE entfernen; Ordner und GitHub-Repository nur mit delete_folder oder delete_github_repo. rename: neuer name. favorite: als Favorit markieren oder nicht. group: Projekt in die Gruppe group einordnen (z. B. nach Kunde), ohne group aus seiner Gruppe nehmen. rename_group: Gruppe group in name umbenennen, für alle ihre Projekte. dissolve_group: Gruppe group auflösen, die Projekte bleiben. settings: Profil, Standardmodell, Denkaufwand, Test- und Dev-Befehl setzen, Git ein- oder ausschalten und parallele Agenten erlauben oder ausschalten; nur angeben, was sich ändern soll.",
+    description: "Projekte verwalten. info: Profil, Standardmodell, Denkaufwand, Test- und Dev-Befehl, Favorit, ob mit Git und ob parallele Agenten erlaubt sind. create: neues Projekt name anlegen (in path oder im Projektordner aus den Einstellungen), auf Wunsch gleich mit GitHub-Repository (auch in einer Organisation) oder ganz ohne Git. import: vorhandenen Ordner path aufnehmen, mit oder ohne Git, auf Wunsch gleich mit GitHub-Repository. clone: Repository url klonen, auch per Name eines GitHub-Repositorys des Kontos. remove: Projekt aus FORGE entfernen; Ordner und GitHub-Repository nur mit delete_folder oder delete_github_repo. rename: neuer name. favorite: als Favorit markieren oder nicht. group: Projekt in die Gruppe group einordnen (z. B. nach Kunde), ohne group aus seiner Gruppe nehmen. rename_group: Gruppe group in name umbenennen, für alle ihre Projekte. dissolve_group: Gruppe group auflösen, die Projekte bleiben. settings: Profil, Standardmodell, Denkaufwand, Test- und Dev-Befehl setzen, Git ein- oder ausschalten, parallele Agenten und Agent-Teams erlauben oder ausschalten; nur angeben, was sich ändern soll.",
     params: {
       project: "Projektname oder Teil davon; nicht bei create, import und clone",
       name: "create: Name des neuen Projekts; rename: neuer Name; rename_group: neuer Name der Gruppe; clone: Ordnername",
@@ -185,6 +185,7 @@ export const phoneTools = {
       git: "create und import: false richtet das Projekt ganz ohne Git ein (keine Git-Bereiche, keine Agenten, Claude nutzt kein Git), ein Ordner mit .git wird aber immer mit Git aufgenommen; settings: true schaltet Git ein, false aus",
       agents:
         "settings: false schaltet parallele Agenten für das Projekt aus, true erlaubt sie wieder. Vor dem Ausschalten dem Anrufer sagen, dass Claude dann weniger effizient arbeitet: Aufgaben laufen nacheinander statt gleichzeitig",
+      teams: "settings: false schaltet Agent-Teams von Claude Code für das Projekt aus (kein Team-Terminal, keine Team-Ansicht), true erlaubt sie wieder",
       github: "create und import: auch ein GitHub-Repository anlegen, privat oder öffentlich",
       owner: "create und import mit github: GitHub-Organisation, in der das Repository entsteht; ohne: persönliches Konto",
       delete_folder: "remove: true löscht auch den Ordner; nur wenn der Anrufer das ausdrücklich will, er muss es danach über die Tastatur bestätigen",
@@ -268,6 +269,7 @@ export const phoneTools = {
       ui_compare: "Vorher-Nachher-Bilder der Web-App, wenn Claude UI-Dateien ändert und ein Dev-Server läuft",
       learn_templates: "FORGE macht aus Aufträgen, die der Anrufer immer wieder schickt, von selbst Prompt-Vorlagen",
       ask_push_on_close: "beim Schließen von FORGE fragen, ob alles noch nicht Gepushte committet und gepusht werden soll",
+      agent_teams: "Agent-Teams von Claude Code in allen Projekten (Team-Terminal, Team-Ansicht); false schaltet sie überall aus",
       usage_stats: "anonyme Nutzungsstatistik: alle 5 Minuten Summen wie Tokens, Projekte und Agenten ohne Inhalte an den Statistik-Dienst von FORGE; aus löscht die gesendeten Daten dort",
       language: "Sprache von FORGE für Oberfläche, Meldungen und Telefon: en Englisch, de Deutsch. Danach sprichst du in der neuen Sprache",
       policy_rule: "Regel der Sperrliste",

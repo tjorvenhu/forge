@@ -14,7 +14,7 @@ function project(id: string, dir: string, extra: Partial<Project> = {}): Project
   return {
     id, name: id, path: dir, favorite: false, group: null, tags: [], technologies: [], profile: "balanced",
     defaultModel: null, defaultEffort: null, createdAt: "", lastOpenedAt: null, testCommand: null, devCommand: null,
-    parentId: null, gitEnabled: true, agentsEnabled: true, exists: true, ...extra,
+    parentId: null, gitEnabled: true, agentsEnabled: true, teamsEnabled: true, exists: true, ...extra,
   };
 }
 
@@ -57,8 +57,13 @@ function removeDir(dir: string) {
 
 const inbox = (name: string) => path.join(teamDir(), "inboxes", `${name}.json`);
 
-function service(projects: Project[]) {
-  return new AgentTeams({ claudeDir, projects: () => projects, emit: (e) => events.push(e) });
+function service(projects: Project[], extra: Partial<ConstructorParameters<typeof AgentTeams>[0]> = {}) {
+  return new AgentTeams({ claudeDir, projects: () => projects, emit: (e) => events.push(e), ...extra });
+}
+
+/** Claude Code's file of a running process (format seen with CLI 2.1.308). */
+function writeSession(pid: number, sessionId: string, startedAt = 1792683833000) {
+  json(path.join(claudeDir, "sessions", `${pid}.json`), { pid, sessionId, cwd: path.join(repo, "src"), startedAt, kind: "interactive", status: "busy" });
 }
 
 beforeEach(() => {
@@ -170,6 +175,60 @@ describe("AgentTeams", () => {
     teams.scan();
     removeDir(teamDir());
     await expect(teams.send(TEAM, "alpha", "x")).rejects.toThrow();
+  });
+
+  it("counts a team as ended when its lead's process is gone, also when the folder stays", () => {
+    writeTeam();
+    writeSession(4242, "1a2b3c4d-65aa-4626-80c0-1a09095037b6");
+    const alive = new Set([4242]);
+    const teams = service([project("shop", repo)], { alive: (pid) => alive.has(pid) });
+    teams.scan();
+    expect(teams.list("shop")[0]).toMatchObject({ active: true, canStop: true });
+    alive.delete(4242);
+    teams.scan();
+    expect(teams.list("shop")[0]).toMatchObject({ active: false, canStop: false });
+    expect(existsSync(teamDir())).toBe(true);
+  });
+
+  it("finds the lead by folder and start time once /clear gave it a new session", () => {
+    writeTeam();
+    writeSession(4242, "99999999-0000-0000-0000-000000000000");
+    const teams = service([project("shop", repo)], { alive: () => true });
+    teams.scan();
+    expect(teams.list("shop")[0]).toMatchObject({ active: true, canStop: true });
+  });
+
+  it("ends a team by ending its lead's process", async () => {
+    writeTeam();
+    writeSession(4242, "1a2b3c4d-65aa-4626-80c0-1a09095037b6");
+    const alive = new Set([4242]);
+    const killed: number[] = [];
+    const teams = service([project("shop", repo)], { alive: (pid) => alive.has(pid), kill: (pid) => (killed.push(pid), alive.delete(pid)) });
+    expect(await teams.stopTeam(TEAM)).toEqual({ ok: true });
+    expect(killed).toEqual([4242]);
+    expect(teams.list("shop")[0]!.active).toBe(false);
+    await expect(teams.stopTeam(TEAM)).rejects.toThrow();
+  });
+
+  it("removes ended teams from the list with the folder Claude Code left behind", () => {
+    writeTeam();
+    writeSession(4242, "1a2b3c4d-65aa-4626-80c0-1a09095037b6");
+    const alive = new Set([4242]);
+    const teams = service([project("shop", repo)], { alive: (pid) => alive.has(pid) });
+    teams.scan();
+    expect(() => teams.dismiss(TEAM)).toThrow(/läuft noch|still running/);
+    alive.delete(4242);
+    expect(teams.dismiss(undefined, "shop")).toBe(1);
+    expect(existsSync(teamDir())).toBe(false);
+    teams.scan();
+    expect(teams.list()).toEqual([]);
+  });
+
+  it("refuses to start a team when agent teams are switched off", () => {
+    const off = service([project("shop", repo)], { enabled: () => false });
+    expect(() => off.requestStart("shop")).toThrow(expect.objectContaining({ code: "TEAMS_DISABLED" }));
+    const projectOff = service([project("shop", repo)], { enabled: (id) => id === null });
+    expect(() => projectOff.requestStart("shop")).toThrow(/shop/);
   });
 
   it("asks the main window for a team terminal only in an existing project folder", () => {

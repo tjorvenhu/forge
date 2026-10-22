@@ -66,6 +66,8 @@ const ProjectItem = z.object({
   group: z.string().nullable().optional(),
   // Missing in items of FORGE versions before the agents switch: then it stays as it is here.
   agentsEnabled: z.boolean().optional(),
+  // Missing in items of FORGE versions before the agent teams switch: then it stays as it is here.
+  teamsEnabled: z.boolean().optional(),
 });
 type ProjectItem = z.infer<typeof ProjectItem>;
 const GitItem = z.object({ name: z.string().min(1), email: z.string().min(1) });
@@ -980,6 +982,7 @@ export class SyncService {
         gitEnabled: p.gitEnabled,
         group: p.group,
         agentsEnabled: p.agentsEnabled,
+        teamsEnabled: p.teamsEnabled,
       };
       items[id] = item;
       try {

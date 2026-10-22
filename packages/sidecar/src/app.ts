@@ -163,7 +163,18 @@ export function createApp(opts: { dataDir: string; write: Writer; log?: (m: stri
   const notifyProject = (projectId: string) => emit({ event: "project.updated", payload: { projectId } });
   const agentFinish = new AgentFinisher({ db, git, projects, sessions, worktrees, devServers, notifyProject });
   sessions.useAgentFinisher(agentFinish);
-  const teams = new AgentTeams({ claudeDir: claudeConfigDir(), projects: () => projects.all(), emit });
+  const teams = new AgentTeams({
+    claudeDir: claudeConfigDir(),
+    projects: () => projects.all(),
+    emit,
+    enabled: (projectId) => {
+      if (!db.getSettings().agentTeams) return false;
+      if (!projectId) return true;
+      const p = db.getProject(projectId);
+      const root = p?.parentId ? db.getProject(p.parentId) : p;
+      return root?.teamsEnabled !== false;
+    },
+  });
   teams.start();
   const templates = new TemplateService({
     db,

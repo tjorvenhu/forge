@@ -3,7 +3,7 @@ import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { PolicyRuleId, Settings } from "@forge/protocol";
-import { DEFAULT_SETTINGS, Db, MIGRATIONS } from "../src/persistence/db.js";
+import { DEFAULT_SETTINGS, Db, MIGRATIONS, AGENTS_ENABLED_VERSION } from "../src/persistence/db.js";
 import { tempDir } from "./helpers.js";
 
 let t: ReturnType<typeof tempDir>;
@@ -95,7 +95,7 @@ describe("language", () => {
   it("stays German for installs that already had projects", () => {
     const db = new Db(file);
     db.insertProject(
-      { id: "p1", name: "p", path: t.dir, favorite: false, tags: [], technologies: [], profile: "balanced", defaultModel: null, defaultEffort: null, createdAt: new Date().toISOString(), lastOpenedAt: null, testCommand: null, devCommand: null, parentId: null, gitEnabled: true, agentsEnabled: true, group: null },
+      { id: "p1", name: "p", path: t.dir, favorite: false, tags: [], technologies: [], profile: "balanced", defaultModel: null, defaultEffort: null, createdAt: new Date().toISOString(), lastOpenedAt: null, testCommand: null, devCommand: null, parentId: null, gitEnabled: true, agentsEnabled: true, teamsEnabled: true, group: null },
       t.dir.toLowerCase(),
     );
     rerunMigration(db);
@@ -131,10 +131,10 @@ describe("deleting local branches", () => {
 
 // Every migration on a real file, twice per test: the Windows runner needs over 5 s for that.
 describe("agents_enabled migration order", { timeout: 30_000 }, () => {
-  /** An install whose schema has every migration but agents_enabled, stored as `userVersion`. */
+  /** An install whose schema has every migration up to agents_enabled but that one, stored as `userVersion`. */
   function withoutAgentsEnabled(userVersion: number) {
     const sql = new DatabaseSync(file);
-    for (const m of MIGRATIONS.filter((m) => !m.includes("agents_enabled"))) sql.exec(m);
+    for (const m of MIGRATIONS.slice(0, AGENTS_ENABLED_VERSION).filter((m) => !m.includes("agents_enabled"))) sql.exec(m);
     sql.exec(`PRAGMA user_version = ${userVersion}`);
     sql.close();
   }
@@ -144,14 +144,14 @@ describe("agents_enabled migration order", { timeout: 30_000 }, () => {
   }
 
   it("adds the column for installs from 0.1.111 to 0.1.117", () => {
-    withoutAgentsEnabled(MIGRATIONS.length - 1);
+    withoutAgentsEnabled(AGENTS_ENABLED_VERSION - 1);
     const db = new Db(file);
     expect(agentsEnabledColumns(db)).toHaveLength(1);
     db.close();
   });
 
   it("adds the column for installs that 0.1.118 migrated without it", () => {
-    withoutAgentsEnabled(MIGRATIONS.length);
+    withoutAgentsEnabled(AGENTS_ENABLED_VERSION);
     const db = new Db(file);
     expect(agentsEnabledColumns(db)).toHaveLength(1);
     db.close();

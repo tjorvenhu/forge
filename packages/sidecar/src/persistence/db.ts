@@ -361,7 +361,14 @@ export const MIGRATIONS: string[] = [
   `
   ALTER TABLE projects ADD COLUMN agents_enabled INTEGER NOT NULL DEFAULT 1;
   `,
+  // Projects without Claude Code agent teams: no team terminal, no team view.
+  `
+  ALTER TABLE projects ADD COLUMN teams_enabled INTEGER NOT NULL DEFAULT 1;
+  `,
 ];
+
+/** user_version once the agents_enabled migration ran */
+export const AGENTS_ENABLED_VERSION = MIGRATIONS.findIndex((m) => m.includes("ADD COLUMN agents_enabled")) + 1;
 
 /**
  * Start of the anonymous usage statistics (the day FORGE 0.1.81 shipped them, UTC): what happened before
@@ -455,6 +462,7 @@ export const DEFAULT_SETTINGS: Settings = {
   uiCompare: true,
   learnTemplates: true,
   askPushOnClose: true,
+  agentTeams: false,
   disabledPolicyRules: [...DEFAULT_DISABLED_POLICY_RULES],
   setupDone: false,
   syncEnabled: false,
@@ -489,6 +497,7 @@ interface ProjectRow {
   parent_id: string | null;
   git_enabled: number;
   agents_enabled: number;
+  teams_enabled: number;
 }
 
 interface SessionRow {
@@ -685,6 +694,7 @@ function toProject(r: ProjectRow): ProjectRecord {
     parentId: r.parent_id,
     gitEnabled: r.git_enabled !== 0,
     agentsEnabled: r.agents_enabled !== 0,
+    teamsEnabled: r.teams_enabled !== 0,
   };
 }
 
@@ -747,11 +757,12 @@ export class Db {
   /**
    * 0.1.118 inserted the agents_enabled migration before the language one instead of appending it. An install
    * coming from 0.1.97 to 0.1.110 ran language again and group_name, so it reached the last version without
-   * agents_enabled. Stepping back one version lets the appended migration add it.
+   * agents_enabled. Stepping back one version lets the appended migration add it. Such an install stands at the
+   * version right after that migration, not at the last one once more migrations follow it.
    */
   private repairAgentsEnabledOrder() {
     const { user_version: v } = this.sql.prepare("PRAGMA user_version").get() as { user_version: number };
-    if (v !== MIGRATIONS.length) return;
+    if (v !== AGENTS_ENABLED_VERSION) return;
     const cols = this.sql.prepare("PRAGMA table_info(projects)").all() as { name: string }[];
     if (!cols.some((c) => c.name === "agents_enabled")) this.sql.exec(`PRAGMA user_version = ${v - 1}`);
   }
@@ -877,8 +888,8 @@ export class Db {
   insertProject(p: ProjectRecord, pathKey: string, restored = false) {
     this.sql
       .prepare(
-        `INSERT INTO projects(id, name, path, path_key, favorite, tags, technologies, profile, default_model, default_effort, created_at, last_opened_at, test_command, dev_command, parent_id, git_enabled, group_name, agents_enabled)
-         VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO projects(id, name, path, path_key, favorite, tags, technologies, profile, default_model, default_effort, created_at, last_opened_at, test_command, dev_command, parent_id, git_enabled, group_name, agents_enabled, teams_enabled)
+         VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         p.id,
@@ -899,6 +910,7 @@ export class Db {
         p.gitEnabled ? 1 : 0,
         p.group,
         p.agentsEnabled ? 1 : 0,
+        p.teamsEnabled ? 1 : 0,
       );
     // Agent worktrees are projects too, but they count as agents.
     if (!p.parentId && !restored) this.bumpCounter("projectsCreated");
@@ -962,6 +974,7 @@ export class Db {
     if (patch.devCommand !== undefined) cols.dev_command = patch.devCommand;
     if (patch.gitEnabled !== undefined) cols.git_enabled = patch.gitEnabled ? 1 : 0;
     if (patch.agentsEnabled !== undefined) cols.agents_enabled = patch.agentsEnabled ? 1 : 0;
+    if (patch.teamsEnabled !== undefined) cols.teams_enabled = patch.teamsEnabled ? 1 : 0;
     if (patch.group !== undefined) cols.group_name = patch.group;
     const keys = Object.keys(cols);
     if (!keys.length) return;

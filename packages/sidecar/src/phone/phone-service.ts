@@ -485,6 +485,8 @@ function settingText(s: Settings, key: keyof ForgeSettingsPatch | "alwaysOnTop")
       return m.settings.learnTemplates(s.learnTemplates);
     case "askPushOnClose":
       return m.settings.askPushOnClose(s.askPushOnClose);
+    case "agentTeams":
+      return m.settings.agentTeams(s.agentTeams);
     case "usageStats":
       return m.settings.usageStats(s.usageStats);
     case "debugLogs":
@@ -1542,6 +1544,7 @@ export class PhoneService {
         ...(p.projectFile ? [m.projectFile] : []),
         p.gitEnabled ? m.withGit : m.withoutGit,
         ...(p.parentId || p.agentsEnabled ? [] : [m.withoutAgents]),
+        ...(p.parentId || p.teamsEnabled ? [] : [m.withoutTeams]),
         ...(p.group ? [m.group(p.group)] : []),
       ].join(", ");
     };
@@ -2426,7 +2429,7 @@ export class PhoneService {
           return askKeypad(ag.confirmRemove(p.name, lost), removeIt);
         }),
       agentTeam: (action, o) =>
-        run(action !== "status", async () => {
+        run(true, async () => {
           const m = tr().phone.teams;
           const projectName = (id: string | null) => (id ? (this.d.projects.all().find((p) => p.id === id)?.name ?? "?") : "?");
           if (action === "start") {
@@ -2437,6 +2440,23 @@ export class PhoneService {
           const scope = o.project?.trim() ? findProject(o.project) : null;
           const teams = await call("teams.list", scope ? { projectId: scope.id } : {});
           const running = teams.filter((t) => t.active);
+          if (action === "dismiss") {
+            const q = o.team?.trim().toLowerCase();
+            const ended = teams.filter((t) => !t.active && (!q || t.name.toLowerCase().includes(q)));
+            if (!ended.length) return m.noneEnded;
+            const r = q
+              ? { count: (await Promise.all(ended.map((t) => call("teams.dismiss", { team: t.name })))).reduce((n, x) => n + x.count, 0) }
+              : await call("teams.dismiss", scope ? { projectId: scope.id } : {});
+            return m.dismissed(r.count);
+          }
+          if (action === "stop") {
+            const q = o.team?.trim().toLowerCase();
+            const hits = q ? running.filter((t) => t.name.toLowerCase().includes(q)) : running;
+            if (!hits.length) return scope ? m.noneInProject(scope.name) : m.none;
+            if (hits.length > 1) return m.whichTeam(hits.map((t) => `${t.name} (${projectName(t.projectId)})`).join(", "));
+            const r = await call("teams.stop", { team: hits[0]!.name });
+            return r.ok ? m.stopped(hits[0]!.name) : m.stopSlow(hits[0]!.name);
+          }
           if (action === "message") {
             if (!o.text?.trim()) return m.needsText;
             if (!o.to?.trim()) return m.needsTo;
@@ -2628,6 +2648,7 @@ export class PhoneService {
             ...(o?.devCommand !== undefined ? { devCommand: o.devCommand.trim() || null } : {}),
             ...(o?.git !== undefined ? { gitEnabled: o.git } : {}),
             ...(o?.agents !== undefined ? { agentsEnabled: o.agents } : {}),
+            ...(o?.teams !== undefined ? { teamsEnabled: o.teams } : {}),
           };
           if (!Object.keys(patch).length) return pj.settings(p.name, projectText(p));
           const next = await call("projects.update", { projectId: p.id, ...patch });
@@ -2887,7 +2908,7 @@ export class PhoneService {
           const cur = await call("settings.get", {});
           const update: Partial<Settings> = {};
           const changed: Array<keyof ForgeSettingsPatch> = [];
-          const flags = ["sounds", "desktopNotifications", "enterToSend", "autoContinueAfterLimit", "updateChecks", "debugLogs", "stripApiKey", "screenshotKey", "uiCompare", "learnTemplates", "askPushOnClose", "usageStats"] as const;
+          const flags = ["sounds", "desktopNotifications", "enterToSend", "autoContinueAfterLimit", "updateChecks", "debugLogs", "stripApiKey", "screenshotKey", "uiCompare", "learnTemplates", "askPushOnClose", "agentTeams", "usageStats"] as const;
           for (const k of flags) {
             const v = patch[k];
             if (v === undefined) continue;

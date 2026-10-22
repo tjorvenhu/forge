@@ -215,6 +215,9 @@ export const views = {
     behaviorTitle: "Verhalten",
     autoContinueLabel: "Nach Nutzungslimit weitermachen",
     autoContinueDescription: "Stoppt das Limit eine Session, schickt FORGE nach dem Reset selbst eine Nachricht. Höchstens dreimal ohne deine Eingabe, nur solange FORGE läuft.",
+    agentTeamsLabel: "Agent-Teams von Claude Code",
+    agentTeamsDescription:
+      "Experimentell. Ein Lead im Terminal startet Teammitglieder, die sich Aufgaben teilen und sich Nachrichten schicken. Jedes Mitglied ist eine eigene Claude-Instanz und verbraucht eigenes Abo-Kontingent. Pro Projekt lässt es sich in den Projekt-Einstellungen wieder ausschalten.",
     uiCompareLabel: "Vorher-Nachher-Bilder bei UI-Änderungen",
     uiCompareDescription:
       "Ändert Claude Dateien wie .tsx oder .css, während der Dev-Server läuft, zeigt der Chat Screenshots der Web-App von vor und nach dem Durchlauf. Die Bilder gehen nicht an Claude und werden nach 14 Tagen gelöscht.",

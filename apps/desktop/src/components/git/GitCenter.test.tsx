@@ -48,6 +48,7 @@ const project: Project = {
   parentId: null,
   gitEnabled: true,
   agentsEnabled: true,
+  teamsEnabled: true,
   group: null,
   exists: true,
 };

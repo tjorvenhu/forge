@@ -205,6 +205,8 @@ export function createHandlers(s: Services): Handlers {
     "teams.list": ({ projectId }) => s.teams.list(projectId),
     "teams.message": async ({ team, to, text }) => ({ recipients: await s.teams.send(team, to, text) }),
     "teams.start": ({ projectId, prompt }) => s.teams.requestStart(projectId, prompt),
+    "teams.stop": ({ team }) => s.teams.stopTeam(team),
+    "teams.dismiss": ({ team, projectId }) => ({ count: s.teams.dismiss(team, projectId) }),
     "sessions.summarize": ({ sessionId }) => s.sessions.summarize(sessionId),
     "sessions.handoff": ({ sessionId }) => s.sessions.handoff(sessionId),
     "reports.daily": (p) => s.reports.build(p),

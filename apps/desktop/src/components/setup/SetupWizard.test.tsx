@@ -67,6 +67,7 @@ beforeEach(() => {
     uiCompare: true,
     learnTemplates: true,
     askPushOnClose: true,
+    agentTeams: false,
     disabledPolicyRules: [],
     setupDone: false,
     syncEnabled: false,

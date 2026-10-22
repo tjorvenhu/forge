@@ -49,7 +49,7 @@ export const GIT_ACTIONS = [
 ] as const;
 export type GitAction = (typeof GIT_ACTIONS)[number];
 export type TaskAction = "output" | "stop" | "to_background" | "message";
-export const AGENT_TEAM_ACTIONS = ["status", "message", "start"] as const;
+export const AGENT_TEAM_ACTIONS = ["status", "message", "start", "stop", "dismiss"] as const;
 export type AgentTeamAction = (typeof AGENT_TEAM_ACTIONS)[number];
 export interface AgentTeamOptions {
   project?: string;
@@ -118,6 +118,8 @@ export interface ProjectOptions extends TargetOptions {
   git?: boolean;
   /** settings: false switches parallel agents off for the project, true allows them again */
   agents?: boolean;
+  /** settings: false switches Claude Code's agent teams off for the project, true allows them again */
+  teams?: boolean;
   /** create and import: also a GitHub repository */
   github?: "private" | "public";
   /** create and import with github: GitHub organisation instead of the personal account, as spoken */
@@ -237,6 +239,8 @@ export interface ForgeSettingsPatch {
   learnTemplates?: boolean;
   /** closing FORGE asks to commit and push what is not on GitHub */
   askPushOnClose?: boolean;
+  /** Claude Code's agent teams (team terminal, team view) */
+  agentTeams?: boolean;
   /** anonymous usage totals every 5 minutes */
   usageStats?: boolean;
   policyRule?: PolicyRuleId;
@@ -747,6 +751,7 @@ const TOOL_DEFS: readonly ToolDef[] = [
       url: { type: "string", optional: true },
       git: { type: "boolean", optional: true },
       agents: { type: "boolean", optional: true },
+      teams: { type: "boolean", optional: true },
       github: { type: "string", optional: true, enum: ["private", "public"] },
       owner: { type: "string", optional: true },
       delete_folder: { type: "boolean", optional: true },
@@ -767,6 +772,7 @@ const TOOL_DEFS: readonly ToolDef[] = [
         url: opt(a.url),
         git: optBool(a.git),
         agents: optBool(a.agents),
+        teams: optBool(a.teams),
         github: a.github === "private" || a.github === "public" ? a.github : undefined,
         owner: opt(a.owner),
         deleteFolder: optBool(a.delete_folder),
@@ -899,6 +905,7 @@ const TOOL_DEFS: readonly ToolDef[] = [
       ui_compare: { type: "boolean", optional: true },
       learn_templates: { type: "boolean", optional: true },
       ask_push_on_close: { type: "boolean", optional: true },
+      agent_teams: { type: "boolean", optional: true },
       usage_stats: { type: "boolean", optional: true },
       language: { type: "string", optional: true, enum: Language.options },
       policy_rule: { type: "string", optional: true, enum: PolicyRuleId.options },
@@ -924,6 +931,7 @@ const TOOL_DEFS: readonly ToolDef[] = [
         uiCompare: optBool(a.ui_compare),
         learnTemplates: optBool(a.learn_templates),
         askPushOnClose: optBool(a.ask_push_on_close),
+        agentTeams: optBool(a.agent_teams),
         usageStats: optBool(a.usage_stats),
         language: Language.options.find((x) => x === a.language),
         policyRule: PolicyRuleId.options.find((x) => x === a.policy_rule),

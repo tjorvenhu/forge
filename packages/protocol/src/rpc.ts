@@ -234,6 +234,10 @@ export const methods = {
   },
   /** starts a team lead in a terminal tab of the project (main window), optionally with its first message */
   "teams.start": { params: projectRef.extend({ prompt: z.string().max(20000).optional() }), result: z.object({ ok: z.boolean() }) },
+  /** ends a running team: stops its lead's process, which takes the in-process teammates with it */
+  "teams.stop": { params: z.object({ team: z.string().min(1).max(100) }), result: z.object({ ok: z.boolean() }) },
+  /** takes ended teams off the list: one by name, else all ended ones (of the project and its worktrees) */
+  "teams.dismiss": { params: z.object({ team: z.string().min(1).max(100).optional(), projectId: id.optional() }), result: z.object({ count: z.number().int() }) },
 
   /** what happened on a day (default today), over all projects or for one with its agents */
   "reports.daily": { params: dailyReportParams, result: DailyReport },
@@ -283,6 +287,7 @@ export const methods = {
       devCommand: z.string().max(500).nullable().optional(),
       gitEnabled: z.boolean().optional(),
       agentsEnabled: z.boolean().optional(),
+      teamsEnabled: z.boolean().optional(),
     }),
     result: Project,
   },
