@@ -66,6 +66,16 @@ purpose, and the interface says so.
 **More agent power.** Tasks have an assignee. When a member gets one, its FORGE starts a session for it on
 its own depending on the setting (`acceptTasks`: auto, ask, off); its successful end marks the task done.
 
+**Crew in the browser (addendum 2026-10-23).** Whoever is away from the computer follows the crew on the
+website (`/crew`, also on a phone). The invite link (`https://forge.vanturis.de/crew#<code>`, also in the QR
+code) opens it; FORGE takes the same link as a code. The browser is a member of its own with its own X25519
+key (flag `web` on the member card) and gets in like any installation, only after the check code. On purpose
+no access through a shared crew key without approval: it could not be shut out when removed. The browser
+reads chat, people, tasks and join requests, writes messages and tasks, lets others in and watches a session
+live (`share_ask` with `events`: only the newest 400 events; older FORGE versions ignore the field and send
+everything). It has no sessions and declines requests for them. Keys and state live in this browser's
+`localStorage`.
+
 ## Consequences
 
 - The website has to run with these routes (deployed in Coolify), otherwise every crew stays offline. Own

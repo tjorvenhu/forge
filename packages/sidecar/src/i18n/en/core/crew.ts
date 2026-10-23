@@ -67,6 +67,7 @@ export const crew: typeof De = {
   statusHead: (name: string, n: number) => `Crew “${name}”, ${plural(n, "member", "members")}:`,
   statusMember: (name: string, self: boolean, online: boolean, branch: string | null, ahead: number) =>
     `- ${name}${self ? " (you)" : ""}: ${online ? "online" : "offline"}${branch ? `, branch ${branch}` : ""}${ahead ? `, ${plural(ahead, "unpushed commit", "unpushed commits")}` : ""}`,
+  statusWeb: " (in the browser on the website, without FORGE: reads and writes along, has no sessions and does not take tasks itself)",
   statusFiles: (list: string) => `In work (not pushed): ${list}`,
   statusTeam: (working: number) => ` (agent team, ${working} members working now)`,
   statusAgent: (title: string, status: AgentStatus, branch: string | null, task: string | null) =>

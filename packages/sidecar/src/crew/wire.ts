@@ -19,6 +19,8 @@ export const MemberCard = z.object({
   pub: z.string().min(20).max(100),
   joinedAt: z.string(),
   owner: z.boolean(),
+  /** a member in the browser (website), not a FORGE installation; missing from FORGE installations */
+  web: z.boolean().optional(),
 });
 export type MemberCard = z.infer<typeof MemberCard>;
 
@@ -54,7 +56,15 @@ export const RoomMessage = z.discriminatedUnion("t", [
   /** the owner removed a member: new crew key, sealed for each remaining member */
   z.object({ t: z.literal("rekey"), epoch: z.number().int().min(1), removed: z.string(), keys: z.record(z.string(), z.object({ iv: z.string(), tag: z.string(), data: z.string() })) }),
   /** a member asks `to` for one of its sessions (crew/share.ts) */
-  z.object({ t: z.literal("share_ask"), request: z.string().max(64), to: z.string().max(64), agent: z.string().max(100), mode: CrewShareMode }),
+  z.object({
+    t: z.literal("share_ask"),
+    request: z.string().max(64),
+    to: z.string().max(64),
+    agent: z.string().max(100),
+    mode: CrewShareMode,
+    /** only the newest this many events (the browser on a phone); missing: all a copy may carry */
+    events: z.number().int().min(1).max(20_000).optional(),
+  }),
   /** the answer; accepted: the copy follows in its own room on the relay */
   z.object({
     t: z.literal("share_answer"),

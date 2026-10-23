@@ -71,6 +71,16 @@ Crew-Mitglieder. Das ist der Zweck, steht aber auch so in der Oberfläche.
 Einstellung (`acceptTasks`: auto, ask, off) selbst eine Session dafür; deren erfolgreiches Ende markiert die
 Aufgabe als erledigt.
 
+**Crew im Browser (Nachtrag 2026-10-23).** Wer gerade nicht am Rechner ist, folgt der Crew auf der Website
+(`/crew`, auch am Handy). Der Einladungslink (`https://forge.vanturis.de/crew#<code>`, auch im QR-Code)
+öffnet sie; FORGE nimmt denselben Link als Code. Der Browser ist ein eigenes Mitglied mit eigenem
+X25519-Schlüssel (Kennzeichen `web` auf der Mitgliedskarte) und kommt wie jede Installation nur nach dem
+Prüfcode herein. Bewusst kein Zugang per geteiltem Crew-Schlüssel ohne Freigabe: Dann könnte man ihn beim
+Entfernen nicht ausschließen. Der Browser liest Chat, Leute, Aufgaben und Beitrittsanfragen, schreibt
+Nachrichten und Aufgaben, lässt andere herein und sieht eine Session live (`share_ask` mit `events`: nur die
+neuesten 400 Ereignisse; ältere FORGE-Versionen ignorieren das Feld und schicken alles). Sessions hat er
+keine, Anfragen danach lehnt er ab. Schlüssel und Stand liegen in `localStorage` dieses Browsers.
+
 ## Folgen
 
 - Die Website muss mit diesen Routen laufen (in Coolify ausgerollt), sonst bleibt jede Crew offline. Eigene

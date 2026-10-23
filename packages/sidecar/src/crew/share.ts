@@ -135,6 +135,8 @@ interface Outgoing {
 interface Pending {
   crew: ShareCrew;
   request: CrewShareRequest;
+  /** newest events the asker wants (a phone in the browser); undefined: SHARE_EVENTS_MAX */
+  events?: number;
 }
 
 /** One of our sessions under live view. */
@@ -505,10 +507,10 @@ export class CrewShares {
     }
     const request: CrewShareRequest = { id: msg.request, from, agentId: msg.agent, agentTitle: s.title ?? "Session", mode: msg.mode, at: this.iso() };
     if (policy === "auto") {
-      void this.accept(crew, request);
+      void this.accept(crew, request, msg.events);
       return;
     }
-    this.pending.set(request.id, { crew, request });
+    this.pending.set(request.id, { crew, request, events: msg.events });
     crew.changed();
     const who = crew.memberName(from);
     crew.notice("share", msg.mode === "view" ? m.shareAskViewTitle(who) : m.shareAskTakeoverTitle(who), request.agentTitle, request.id);
@@ -524,12 +526,12 @@ export class CrewShares {
     if (!p || p.crew.id !== crew.id) throw new ForgeError("NOT_FOUND", tr().core.crew.shareRequestGone);
     this.pending.delete(requestId);
     if (accept && always) crew.setShareAgents("auto");
-    if (accept) void this.accept(crew, p.request);
+    if (accept) void this.accept(crew, p.request, p.events);
     else crew.send({ t: "share_answer", request: requestId, to: p.request.from, accept: false, room: null, title: null, reason: tr().core.crew.shareDeclined(crew.memberName(crew.selfId)) });
     crew.changed();
   }
 
-  private async accept(crew: ShareCrew, r: CrewShareRequest) {
+  private async accept(crew: ShareCrew, r: CrewShareRequest, events?: number) {
     const s = this.d.sessions.get(r.agentId);
     if (!s) return;
     const room = randomId(24);
@@ -549,7 +551,7 @@ export class CrewShares {
       this.watched.set(r.id, watched);
     }
     try {
-      const payload = await this.build(s, r.mode, r.id);
+      const payload = await this.build(s, r.mode, r.id, events);
       const zipped = gzipSync(Buffer.from(JSON.stringify(payload), "utf8")).toString("base64");
       if (zipped.length > CREW_SHARE_MAX_BYTES * 1.34) throw new ForgeError("VALIDATION", tr().core.crew.shareTooLarge(Math.round(zipped.length / 1.34 / 1024 / 1024)));
       const n = Math.max(1, Math.ceil(zipped.length / CREW_SHARE_CHUNK_CHARS));
@@ -577,13 +579,13 @@ export class CrewShares {
     }, 15 * 60_000);
   }
 
-  private async build(s: Session, mode: CrewShareMode, requestId: string): Promise<SharePayload> {
+  private async build(s: Session, mode: CrewShareMode, requestId: string, limit = SHARE_EVENTS_MAX): Promise<SharePayload> {
     const payload: SharePayload = {
       v: 1,
       mode,
       session: { title: s.title ?? "Session", model: s.model, effort: s.effort, team: !!s.team, teamModels: s.teamModels ?? null },
       cwd: s.cwd,
-      events: this.d.sessions.recentEvents(s.id, SHARE_EVENTS_MAX).filter((b) => b.type !== "assistant.delta"),
+      events: this.d.sessions.recentEvents(s.id, Math.min(limit, SHARE_EVENTS_MAX)).filter((b) => b.type !== "assistant.delta"),
       transcript: null,
       git: null,
     };

@@ -16,7 +16,7 @@ export function describeCrew(crew: Crew): string {
   const m = tr().core.crew;
   const name = (id: string | null) => crew.members.find((x) => x.id === id)?.name ?? "?";
   const member = (x: CrewMember) => {
-    const head = m.statusMember(x.name, x.self, x.online, x.branch, x.ahead);
+    const head = m.statusMember(x.name, x.self, x.online, x.branch, x.ahead) + (x.web ? m.statusWeb : "");
     const lines = [head];
     if (x.files.length) lines.push(`  ${m.statusFiles(fileList(x.files))}`);
     for (const a of x.agents) {

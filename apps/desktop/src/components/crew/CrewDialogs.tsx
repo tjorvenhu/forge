@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Copy, Lock, RefreshCw, Save } from "lucide-react";
-import type { Crew, CrewAcceptTasks, CrewShareAgents, CrewTask } from "@forge/protocol";
+import { Copy, Globe, Link2, Lock, RefreshCw, Save } from "lucide-react";
+import { crewWebLink, type Crew, type CrewAcceptTasks, type CrewShareAgents, type CrewTask } from "@forge/protocol";
 import { call } from "@/lib/queries";
 import { errorMessage } from "@/lib/rpc";
 import { crewChanged, initials } from "@/lib/crew";
@@ -39,7 +39,8 @@ export function InviteDialog({ crew, open, onOpenChange }: { crew: Crew; open: b
     let gone = false;
     // qrcode loads only when a code is shown.
     void import("qrcode")
-      .then(({ default: QRCode }) => QRCode.toDataURL(invite.code, { margin: 1, width: 260, color, errorCorrectionLevel: "L" }))
+      // The link: a phone camera opens the crew in the browser, and FORGE takes it like the code.
+      .then(({ default: QRCode }) => QRCode.toDataURL(crewWebLink(invite.code), { margin: 1, width: 260, color, errorCorrectionLevel: "L" }))
       .then((url) => !gone && setQr(url))
       .catch(() => !gone && setQr(null));
     return () => {
@@ -60,11 +61,11 @@ export function InviteDialog({ crew, open, onOpenChange }: { crew: Crew; open: b
     }
   }
 
-  const copy = () => {
+  const copy = (link: boolean) => {
     if (!invite) return;
     navigator.clipboard
-      .writeText(invite.code)
-      .then(() => toast.success(m.copied))
+      .writeText(link ? crewWebLink(invite.code) : invite.code)
+      .then(() => toast.success(link ? m.linkCopied : m.copied))
       .catch((e: unknown) => toast.error(t.lib.copyFailed, errorMessage(e)));
   };
 
@@ -101,9 +102,12 @@ export function InviteDialog({ crew, open, onOpenChange }: { crew: Crew; open: b
               <code className="max-h-28 select-all overflow-y-auto break-all rounded-md border border-border bg-bg/60 p-2 font-mono text-[11px] leading-snug text-fg" data-testid="crew-invite-code">
                 {invite.code}
               </code>
-              <div className="flex items-center gap-2">
-                <Button size="sm" variant="outline" onClick={copy}>
+              <div className="flex flex-wrap items-center gap-2">
+                <Button size="sm" variant="outline" onClick={() => copy(false)}>
                   <Copy className="h-3.5 w-3.5" /> {m.copyCode}
+                </Button>
+                <Button size="sm" variant="outline" onClick={() => copy(true)} data-testid="crew-invite-link">
+                  <Link2 className="h-3.5 w-3.5" /> {m.copyLink}
                 </Button>
                 <span className="text-xs text-subtle" title={new Date(invite.expiresAt).toLocaleString()}>
                   {m.expires(relativeTime(invite.expiresAt))}
@@ -116,6 +120,9 @@ export function InviteDialog({ crew, open, onOpenChange }: { crew: Crew; open: b
               <Skeleton className="h-7 w-32" />
             </SkeletonRegion>
           )}
+          <p className="flex items-start gap-1.5 text-xs text-muted">
+            <Globe className="mt-px h-3.5 w-3.5 shrink-0" /> {m.webHint}
+          </p>
           <p className="flex items-start gap-1.5 text-xs text-muted">
             <Lock className="mt-px h-3.5 w-3.5 shrink-0 text-success" /> {m.security}
           </p>

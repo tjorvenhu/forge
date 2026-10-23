@@ -119,7 +119,8 @@ export function mergeMember(rec: CrewRecord, card: MemberCard, seen: number | nu
     return true;
   }
   // The owner flag of a known member never changes: nobody can make themselves owner later.
-  const changed = cur.name !== card.name || cur.color !== card.color || cur.pub !== card.pub || cur.left;
+  const changed = cur.name !== card.name || cur.color !== card.color || cur.pub !== card.pub || cur.left || !!cur.web !== !!card.web;
+  cur.web = card.web;
   cur.name = card.name;
   cur.color = card.color;
   cur.pub = card.pub;
@@ -129,7 +130,7 @@ export function mergeMember(rec: CrewRecord, card: MemberCard, seen: number | nu
 }
 
 export function cardOf(m: MemberEntry): MemberCard {
-  return { id: m.id, name: m.name, color: m.color, pub: m.pub, joinedAt: m.joinedAt, owner: m.owner };
+  return { id: m.id, name: m.name, color: m.color, pub: m.pub, joinedAt: m.joinedAt, owner: m.owner, ...(m.web ? { web: true } : {}) };
 }
 
 /** The crew as the UI and the tools see it. */
@@ -156,6 +157,7 @@ export function crewView(
         color: m.color,
         self,
         owner: m.owner,
+        web: !!m.web,
         online: self ? o.connection === "online" : m.lastSeen !== null && o.now - m.lastSeen < CREW_ONLINE_MS,
         lastSeen: m.lastSeen ? new Date(m.lastSeen).toISOString() : null,
         branch: p?.branch ?? null,

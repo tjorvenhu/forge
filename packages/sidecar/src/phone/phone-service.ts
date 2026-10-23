@@ -2529,7 +2529,7 @@ export class PhoneService {
                   c.members
                     .map((x) =>
                       m.member(
-                        asData(x.name),
+                        asData(x.name) + (x.web ? m.inBrowser : ""),
                         x.self,
                         x.online,
                         x.agents.map((a) => m.agent(asData(a.title), m.agentStatus[a.status] ?? a.status, a.task ? excerptData(a.task, 120) : null)).join("; "),

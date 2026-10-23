@@ -6,6 +6,9 @@ import type { Crew, Project, ServerEvent, Session, SessionEventBody } from "@for
 import { claudeProjectDir, type ShareDeps } from "../src/crew/share.js";
 import type { CopyImport } from "../src/sessions/session-service.js";
 import { createRelayServer } from "../../../services/stats/src/lib/crew-relay-node.js";
+import { CrewWebClient, type Storage } from "../../../services/stats/src/lib/crew-web/client.js";
+import * as web from "../../../services/stats/src/lib/crew-web/crypto.js";
+import { decodeInvite as decodeInviteWeb } from "../../../services/stats/src/lib/crew-web/wire.js";
 import { CrewService } from "../src/crew/crew-service.js";
 import { fingerprint, newKey, newKeyPair, open, seal, sharedKey } from "../src/crew/crypto.js";
 import { crewSessionTools, describeCrew } from "../src/crew/session-tools.js";
@@ -73,6 +76,23 @@ describe("crew building blocks", () => {
     expect(tasks[0]!.title).toBe("neu");
     const pruned = pruneTasks([{ ...t("2020-01-01T00:00:00.000Z", "weg"), deleted: true }, t("2026-01-01T00:00:00.000Z", "bleibt")], Date.parse("2026-01-02T00:00:00.000Z"));
     expect(pruned.map((x) => x.title)).toEqual(["bleibt"]);
+  });
+
+  it("speaks the same crypto in the browser (WebCrypto) as in the sidecar", async () => {
+    const key = newKey();
+    const fromNode = seal(key, "hallö", "room|room:1");
+    expect(await web.open(key, fromNode, "room|room:1")).toBe("hallö");
+    expect(await web.open(key, fromNode, "other|room:1")).toBeNull();
+    expect(open(key, await web.seal(key, "zurück", "room|room:2"), "room|room:2")).toBe("zurück");
+    const node = newKeyPair();
+    const browser = await web.newKeyPair();
+    expect(await web.sharedKey(browser, node.pub, "grant:7")).toBe(sharedKey(node, browser.pub, "grant:7"));
+    expect(await web.fingerprint(node.pub)).toBe(fingerprint(node.pub));
+    const code = encodeInvite({ v: 1, u: "https://relay.example/crew", r: "abcdefghijklmnopqrstuv", i: "inv", k: newKey(), x: 2_000_000_000, n: "Crew", p: "app", o: null, c: null, f: "Anna" });
+    // The link of the invite dialog works in FORGE and on the page.
+    expect(decodeInvite(`https://forge.vanturis.de/crew#${code}`)?.n).toBe("Crew");
+    expect(decodeInviteWeb(`https://forge.vanturis.de/crew#${code}`)?.f).toBe("Anna");
+    expect(decodeInviteWeb("forge-crew1.kaputt")).toBeNull();
   });
 
   it("finds files both members touch, regardless of slashes and case", () => {
@@ -390,6 +410,64 @@ describe("two FORGE installations in one crew", () => {
     expect(transcript).toContain(copy.claudeSessionId!);
     expect(transcript).not.toContain("claude-ben-1");
     expect(transcript).toContain(JSON.stringify(path.join(copy.cwd, "README.md")).slice(1, -1));
+  });
+
+  it("lets someone follow the crew in the browser: join, read, write, plan and watch a session live", { timeout: 60_000 }, async () => {
+    const dirA = path.join(t.dir, "anna-w");
+    mkdirSync(dirA);
+    const a = installation("Anna", dirA, "pa");
+    await a.svc.start();
+    const created = await a.svc.create("pa", "Team App");
+    const store = new Map<string, string>();
+    const storage: Storage = { get: (k) => store.get(k) ?? null, set: (k, v) => void (v === null ? store.delete(k) : store.set(k, v)) };
+    const ben = await CrewWebClient.join(`${relayUrl.replace(/\/crew$/, "")}/crew#${created.invite!.code}`, { name: "Ben", color: "#30a46c" }, { storage });
+    ben.start();
+    try {
+      expect(ben.view().membership).toBe("pending");
+      const request = await waitFor("browser request at Anna", () => crewOf(a.svc)?.requests[0]);
+      expect(request.code).toBe(ben.view().joinCode);
+      await a.svc.respond(created.id, request.id, true);
+      await waitFor("browser is a member", () => ben.view().membership === "member" && ben.view().members.length === 2);
+      expect(ben.view().name).toBe("Team App");
+      const benId = ben.view().selfId;
+      await waitFor("Anna sees Ben in the browser", () => crewOf(a.svc)?.members.find((m) => m.id === benId && m.web && m.online));
+
+      // Writing and planning from the phone reaches FORGE, and FORGE's answers reach the phone.
+      await ben.message("Bin unterwegs, schaue mit.");
+      await waitFor("message at Anna", () => crewOf(a.svc)?.feed.find((f) => f.kind === "message" && f.from === benId));
+      const task = await ben.addTask({ title: "Footer prüfen", assignee: crewOf(a.svc)!.selfId });
+      await waitFor("task at Anna", () => crewOf(a.svc)?.tasks.find((x) => x.id === task.id));
+      a.svc.message(created.id, "Danke!");
+      await waitFor("answer in the browser", () => ben.view().feed.find((f) => f.text === "Danke!"));
+
+      // What Anna's agent does shows in the browser.
+      a.sessions.set("sa", session("sa", "pa", dirA, "Header"));
+      a.sessionEvents.set("sa", [{ type: "user.message", text: "Bau den Header" }]);
+      a.svc.onServerEvent({ event: "session.event", payload: { seq: 1, sessionId: "sa", ts: "", body: { type: "user.message", text: "Bau den Header" } } });
+      const anna = await waitFor("Anna's agent in the browser", () => ben.view().members.find((m) => m.agents.some((x) => x.task === "Bau den Header")));
+
+      // A live view of the session: Anna agrees, the copy (only the newest events) and then new events arrive.
+      await ben.watch(anna.id, "sa");
+      const ask = await waitFor("share request at Anna", () => crewOf(a.svc)?.shareRequests[0]);
+      a.svc.shareRespond(created.id, ask.id, true);
+      await waitFor("live in the browser", () => ben.view().watch?.state === "live");
+      expect(ben.view().watch!.events).toEqual([{ type: "user.message", text: "Bau den Header" }]);
+      a.svc.onServerEvent({ event: "session.event", payload: { seq: 2, sessionId: "sa", ts: "", body: { type: "assistant.text", messageId: "m1", index: 0, text: "Header steht." } } });
+      await waitFor("live event in the browser", () => ben.view().watch?.events.some((x) => (x as { text?: string }).text === "Header steht."));
+      ben.stopWatch();
+
+      // A reload keeps the crew; the owner can still remove the browser member.
+      ben.stop();
+      const again = CrewWebClient.list({ storage });
+      expect(again.map((c) => c.view().membership)).toEqual(["member"]);
+      again[0]!.start();
+      await waitFor("online again", () => again[0]!.view().connection === "online");
+      await a.svc.removeMember(created.id, benId);
+      await waitFor("browser removed", () => again[0]!.view().membership === "removed");
+      again[0]!.stop();
+    } finally {
+      ben.stop();
+    }
   });
 
   it("tells a newcomer when the request was declined", { timeout: 30_000 }, async () => {

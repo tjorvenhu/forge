@@ -15,6 +15,7 @@ import {
   FileText,
   GitBranch,
   GitCommitHorizontal,
+  Globe,
   Hand,
   Hourglass,
   KeyRound,
@@ -620,6 +621,11 @@ function MemberRow({ crew, member, onMessage, onTask }: { crew: Crew; member: Cr
             <span className="truncate text-small font-medium">{member.name}</span>
             {member.self && <span className="text-caption text-subtle">({m.you})</span>}
             {member.owner && <Crown className="h-3 w-3 shrink-0 text-warning" aria-label={m.owner} />}
+            {member.web && (
+              <span className="inline-flex shrink-0 items-center gap-0.5 text-caption text-subtle" title={m.webMemberHint}>
+                <Globe className="h-3 w-3" /> {m.webMember}
+              </span>
+            )}
           </div>
           <div className="flex flex-wrap items-center gap-x-1.5 text-caption text-muted">
             <span className={member.online ? "text-success" : undefined}>{member.online ? m.online : member.lastSeen ? m.lastSeen(relativeTime(member.lastSeen)) : m.offline}</span>

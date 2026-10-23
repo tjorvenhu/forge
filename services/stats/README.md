@@ -122,6 +122,18 @@ needs no database and no configuration of its own.
   front of it) neither compresses nor buffers it.
 - Background: [ADR 0015](../../docs/adr/0015-crew-live-collaboration.md).
 
+### Crew in the browser (/crew)
+
+The page `/crew` is a crew member without FORGE, for a phone or a computer without FORGE. FORGE's invite
+link (`https://forge.vanturis.de/crew#forge-crew1.…`, also the QR code) opens it; the code after `#` never
+reaches the server. The browser joins like an installation (own X25519 key, a member lets it in after
+comparing the check code), keeps keys and state in `localStorage` and talks to the relay directly.
+
+- `src/lib/crew-web/`: WebCrypto (`crypto.ts`, the same boxes as `packages/sidecar/src/crew/crypto.ts`),
+  message shapes (`wire.ts`, a copy of the sidecar's, without zod so the sidecar tests can import it),
+  relay link and `CrewWebClient`. FORGE's `test/crew.test.ts` runs it against a real installation.
+- UI in `src/components/crew-web/`, texts in `src/lib/crew-web/messages.ts`. `noindex`.
+
 ## Environment variables
 
 | Variable | Required | Meaning |

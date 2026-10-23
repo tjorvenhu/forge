@@ -331,7 +331,7 @@ function addCrewActions(ctx: ActionContext, act: (id: string, label: string, ic:
       });
     }
   }
-  act("crew-invite", p.invite, icon(QrCode), () => openCrew(crew.projectId, "invite"), { keywords: `${CREW_KEYWORDS} einladen einladung code qr-code teilen invite share` });
+  act("crew-invite", p.invite, icon(QrCode), () => openCrew(crew.projectId, "invite"), { keywords: `${CREW_KEYWORDS} einladen einladung code qr-code teilen link browser handy website web ohne forge invite share phone without forge` });
   act("crew-message", p.message, icon(MessageSquare), () => openCrew(crew.projectId, "message"), { keywords: `${CREW_KEYWORDS} nachricht schreiben absprache chat message write` });
   act("crew-task", p.task, icon(ListPlus), () => openCrew(crew.projectId, "task"), { keywords: `${CREW_KEYWORDS} aufgabe hinzufügen verteilen zuweisen task add assign` });
   if (crew.behind > 0) act("crew-pull", p.pull, icon(ArrowDown), () => void pullCrew(ctx.qc, crew), { keywords: `${CREW_KEYWORDS} pull holen übernehmen commits gepusht take over pushed`, hint: String(crew.behind) });

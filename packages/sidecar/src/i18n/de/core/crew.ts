@@ -65,6 +65,7 @@ export const crew = {
   statusHead: (name: string, n: number) => `Crew „${name}“, ${plural(n, "Mitglied", "Mitglieder")}:`,
   statusMember: (name: string, self: boolean, online: boolean, branch: string | null, ahead: number) =>
     `- ${name}${self ? " (du)" : ""}: ${online ? "online" : "offline"}${branch ? `, Branch ${branch}` : ""}${ahead ? `, ${plural(ahead, "ungepushter Commit", "ungepushte Commits")}` : ""}`,
+  statusWeb: " (im Browser auf der Website, ohne FORGE: liest und schreibt mit, hat keine Sessions und übernimmt keine Aufgaben selbst)",
   statusFiles: (list: string) => `In Arbeit (nicht gepusht): ${list}`,
   statusTeam: (working: number) => ` (Agent-Team, ${working} Mitglieder arbeiten gerade)`,
   statusAgent: (title: string, status: AgentStatus, branch: string | null, task: string | null) =>

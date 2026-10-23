@@ -116,6 +116,20 @@ selben Prozess wie die Website und braucht keine Datenbank und keine eigene Konf
   Proxy davor) ihn weder komprimiert noch puffert.
 - Hintergrund: [ADR 0015](../../docs/adr/0015-crew-live-zusammenarbeit.de.md).
 
+### Crew im Browser (/crew)
+
+Die Seite `/crew` ist ein Crew-Mitglied ohne FORGE, für das Handy oder einen Rechner ohne FORGE. Der
+Einladungslink aus FORGE (`https://forge.vanturis.de/crew#forge-crew1.…`, auch der QR-Code) öffnet sie; der
+Code hinter `#` erreicht den Server nie. Der Browser tritt bei wie eine Installation (eigener X25519-Schlüssel,
+ein Mitglied lässt ihn nach dem Prüfcode herein), hält Schlüssel und Stand in `localStorage` und spricht
+direkt mit dem Relay.
+
+- `src/lib/crew-web/`: WebCrypto (`crypto.ts`, dieselben Boxen wie `packages/sidecar/src/crew/crypto.ts`),
+  Nachrichtenformen (`wire.ts`, eine Kopie der Sidecar-Formen, ohne zod, damit die Sidecar-Tests sie
+  importieren können), Relay-Verbindung und `CrewWebClient`. FORGEs `test/crew.test.ts` lässt ihn gegen eine
+  echte Installation laufen.
+- Oberfläche in `src/components/crew-web/`, Texte in `src/lib/crew-web/messages.ts`. `noindex`.
+
 ## Umgebungsvariablen
 
 | Variable | Pflicht | Bedeutung |

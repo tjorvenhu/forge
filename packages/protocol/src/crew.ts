@@ -12,6 +12,12 @@ import { z } from "zod";
  * other one that speaks the same paths (<url>/v1/rooms/<room>[/stream]).
  */
 export const CREW_RELAY_URL = "https://forge.vanturis.de/crew";
+/**
+ * The crew in the browser (services/stats, page /crew): an invite as a link to it lets someone join
+ * from a phone without FORGE. The code after # never reaches the server.
+ */
+export const CREW_WEB_URL = "https://forge.vanturis.de/crew";
+export const crewWebLink = (code: string) => `${CREW_WEB_URL}#${code}`;
 /** Prefix of an invite code; the rest is base64url. */
 export const CREW_INVITE_PREFIX = "forge-crew1.";
 /** Members of one crew at most: everyone answers a newcomer with the whole state. */
@@ -55,6 +61,8 @@ export const CrewMember = z.object({
   self: z.boolean(),
   /** created the crew; may remove members */
   owner: z.boolean(),
+  /** in the browser on the website (forge.vanturis.de/crew), not a FORGE installation: no project, no agents */
+  web: z.boolean().optional(),
   online: z.boolean(),
   lastSeen: z.string().nullable(),
   /** checked-out branch of the member's project */
