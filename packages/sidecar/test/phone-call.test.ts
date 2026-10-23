@@ -2179,6 +2179,51 @@ describe("PhoneService end to end with a test PBX", () => {
     await until(() => svc.state().call === null, 5000, "second call ended");
   }, 30_000);
 
+  it("calls once when the usage limit stops several sessions, and not again until the limit is over", async () => {
+    sessionList.push(fakeSession({ id: "s2", projectId, title: "Export", status: "idle", live: true, projectName: "shop" }));
+    await svc.setEnabled(true);
+    await until(() => svc.state().registration === "registered", 5000, "registered");
+    const limitStop = (sessionId: string) =>
+      svc.onServerEvent({
+        event: "session.event",
+        payload: {
+          seq: 1,
+          sessionId,
+          ts: new Date().toISOString(),
+          body: { type: "turn.result", subtype: "success", isError: true, durationMs: 1, numTurns: 1, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, text: "You've hit your limit · resets 3pm" },
+        },
+      });
+    const invites = () => pbx.inbox.filter((r) => r.msg.method === "INVITE").length;
+    limitStop("s1");
+    limitStop("s2");
+    const first = await pbx.next((m) => m.method === "INVITE");
+    expect(svc.state().call).toMatchObject({ direction: "out", reason: "Limit voll: 2 Sessions angehalten" });
+    expect(convs.at(-1)!.said[0]).toContain("2 Sessions haben deshalb angehalten: S1 <<<SESSION-DATEN>>>Warenkorb<<<ENDE SESSION-DATEN>>> (shop), S2 <<<SESSION-DATEN>>>Export<<<ENDE SESSION-DATEN>>> (shop).");
+    pbx.send(responseTo(first.msg, 486, "Busy Here", "callee"), first.port);
+    await until(() => svc.state().call === null, 5000, "call ended");
+
+    // Retries and further stops of the same limit: the user knows already.
+    limitStop("s1");
+    limitStop("s2");
+    await sleep(500);
+    expect(invites()).toBe(1);
+    expect(logs.filter((l) => l.includes("kein Anruf (limit)"))).toHaveLength(2);
+
+    // A turn that ran through: the limit is over, the next one gets its call again.
+    svc.onServerEvent({
+      event: "session.event",
+      payload: {
+        seq: 2,
+        sessionId: "s1",
+        ts: new Date().toISOString(),
+        body: { type: "turn.result", subtype: "success", isError: false, durationMs: 1, numTurns: 1, inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, text: "Weiter geht's." },
+      },
+    });
+    limitStop("s1");
+    await pbx.next((m) => m.method === "INVITE" && getHeader(m, "call-id") !== getHeader(first.msg, "call-id"), 5000);
+    expect(svc.state().call).toMatchObject({ reason: "Limit voll: 1 Session angehalten" });
+  }, 30_000);
+
   it("keeps PIN failures across calls and locks the number", async () => {
     await svc.setEnabled(true);
     await until(() => svc.state().registration === "registered", 5000, "registered");

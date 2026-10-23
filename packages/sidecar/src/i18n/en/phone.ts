@@ -224,10 +224,13 @@ Security:
     doneWhat: (title: string, project: string, result: string) => `Session S1 ${title} in project ${project} is finished. Last result from Claude Code: ${result}`,
     approvalWhat: (title: string, project: string, pending: string) => `Session S1 ${title} in project ${project} is waiting for a decision. ${pending}`,
     errorWhat: (title: string, project: string, failure: string) => `An error occurred in session S1 ${title} in project ${project}: ${failure}`,
+    limitWhat: (count: number, sessions: string, reset: string | null, autoContinue: boolean) =>
+      `Claude's usage limit is full. ${count === 1 ? "One session has" : `${count} sessions have`} stopped because of it: ${sessions}.${reset ? ` The limit is free again ${reset}.` : " It is not known when the limit is free again."}${autoContinue ? " FORGE continues the sessions automatically then." : " Automatic continuation is switched off, the sessions wait for the user then."} Until then FORGE does not call again about the limit.`,
     notifyReason: (title: string) => `Claude is reaching out: ${title}`,
     doneReason: (title: string) => `Session finished: ${title}`,
     approvalReason: (title: string) => `Decision needed: ${title}`,
     errorReason: (title: string) => `Error: ${title}`,
+    limitReason: (count: number) => `Limit full: ${count === 1 ? "1 session stopped" : `${count} sessions stopped`}`,
     opening: (what: string) =>
       `[FORGE: You are calling the user. ${what} They just picked up. Say “Hello, this is FORGE.” and in one sentence what it is about, without details. If something is waiting for their decision, say in one short sentence what the choice is. Then wait to hear what they say.]`,
   },

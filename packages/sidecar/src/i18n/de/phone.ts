@@ -225,10 +225,13 @@ Sicherheit:
     doneWhat: (title: string, project: string, result: string) => `Die Session S1 ${title} im Projekt ${project} ist fertig. Letztes Ergebnis von Claude Code: ${result}`,
     approvalWhat: (title: string, project: string, pending: string) => `Die Session S1 ${title} im Projekt ${project} wartet auf eine Entscheidung. ${pending}`,
     errorWhat: (title: string, project: string, failure: string) => `In der Session S1 ${title} im Projekt ${project} ist ein Fehler aufgetreten: ${failure}`,
+    limitWhat: (count: number, sessions: string, reset: string | null, autoContinue: boolean) =>
+      `Das Nutzungslimit von Claude ist voll. ${count === 1 ? "Eine Session hat" : `${count} Sessions haben`} deshalb angehalten: ${sessions}.${reset ? ` Das Limit ist ${reset} wieder frei.` : " Wann das Limit wieder frei ist, ist nicht bekannt."}${autoContinue ? " FORGE setzt die Sessions danach automatisch fort." : " Automatisch fortsetzen ist ausgeschaltet, die Sessions warten danach auf ihn."} Bis dahin ruft FORGE wegen des Limits nicht noch einmal an.`,
     notifyReason: (title: string) => `Claude meldet sich: ${title}`,
     doneReason: (title: string) => `Session fertig: ${title}`,
     approvalReason: (title: string) => `Entscheidung nötig: ${title}`,
     errorReason: (title: string) => `Fehler: ${title}`,
+    limitReason: (count: number) => `Limit voll: ${count === 1 ? "1 Session angehalten" : `${count} Sessions angehalten`}`,
     opening: (what: string) =>
       `[FORGE: Du rufst den Nutzer an. ${what} Er hat gerade abgenommen. Sag „Hallo, hier ist FORGE.“ und in einem Satz, worum es geht, ohne Einzelheiten. Wartet etwas auf seine Entscheidung, sag in einem kurzen Satz, was zur Wahl steht. Dann warte, was er sagt.]`,
   },

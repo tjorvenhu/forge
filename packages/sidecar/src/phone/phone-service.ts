@@ -13,6 +13,7 @@ import {
   convertRemoteUrl,
   redactRemoteUrl,
   remoteKind,
+  isUsageLimitText,
   type Crew,
   type DeskPhoneConfig,
   type MethodName,
@@ -42,6 +43,7 @@ import {
 } from "@forge/protocol";
 import type { Db } from "../persistence/db.js";
 import { limitWarning } from "../claude/usage.js";
+import { resetFromText } from "../sessions/auto-continue.js";
 import type { ProjectManager } from "../projects/project-manager.js";
 import type { SessionService } from "../sessions/session-service.js";
 import type { DevServerService } from "../devserver/dev-server.js";
@@ -107,8 +109,10 @@ const PHONE_MODEL = "haiku";
 /** Groups merged at once when Claude tidies up the knowledge; each is its own Claude process. */
 const AUTO_MERGE_PARALLEL = 3;
 /** wait before calling, so a quick follow-up turn or an answer at the desk makes the call unnecessary */
-const NOTIFY_DELAY_MS = { done: 5_000, error: 5_000, approval: 15_000, notify: 2_000 };
+const NOTIFY_DELAY_MS = { done: 5_000, error: 5_000, approval: 15_000, notify: 2_000, limit: 10_000 };
 const NOTIFY_COOLDOWN_MS = 60_000;
+/** After the limit call, without a known reset time: no further limit call for this long (one five-hour window). */
+const LIMIT_QUIET_MS = 5 * 60 * 60_000;
 
 /** numbers in national notation (030 ...) belong to this country */
 export const DEFAULT_COUNTRY_CODE = "49";
@@ -117,8 +121,8 @@ const SHUTDOWN_TIMEOUT_MS = 4000;
 /** A FORGE RPC method as the UI calls it: same checks, defaults and side effects as in the app. */
 export type PhoneRpc = <M extends MethodName>(method: M, params: ParamsOf<M>) => Promise<ResultOf<M>>;
 
-/** notify: Claude asked for the user with the tool notify (urgent) */
-type NotifyKind = "done" | "approval" | "error" | "notify";
+/** notify: Claude asked for the user with the tool notify (urgent); limit: the plan limit stopped sessions */
+type NotifyKind = "done" | "approval" | "error" | "notify" | "limit";
 
 type StoredDesk = Omit<DeskPhoneConfig, "hasWebPassword" | "provisioningUrl">;
 
@@ -536,6 +540,12 @@ export class PhoneService {
   private readonly lastTurn = new Map<string, SessionEventBody>();
   private callbackTicker: ReturnType<typeof setInterval> | null = null;
   private lastNotifyAt = 0;
+  /**
+   * The plan limit stops every running session at once: they are collected for one call instead of
+   * one call each. Until limitQuietUntil (the reset) the user knows already and is not called again.
+   */
+  private readonly limitStopped = new Set<string>();
+  private limitQuietUntil = 0;
   private readonly f: PhoneFactories;
   private readonly pinGuard: PinGuard;
   private readonly desk: DeskPhone;
@@ -1238,6 +1248,7 @@ export class PhoneService {
   onServerEvent(e: ServerEvent) {
     if (!this.cfg.enabled) return;
     if (e.event === "session.updated") this.desk.refresh();
+    if (e.event === "ratelimit.updated" && e.payload.status !== "reached") this.limitOver();
     // "Fertig" only for the whole job: a turn that leaves background tasks or agents running is a step.
     if (e.event === "session.done" && this.notifyTargets().length && this.wantsCall("done")) {
       const id = e.payload.sessionId;
@@ -1247,6 +1258,7 @@ export class PhoneService {
     const b = e.payload.body;
     const sessionId = e.payload.sessionId;
     if (b.type === "turn.result" && !b.isError) {
+      this.limitOver();
       this.desk.markUnheard(sessionId);
       this.lastTurn.set(sessionId, b);
     }
@@ -1263,7 +1275,39 @@ export class PhoneService {
     else if (b.type === "error") kind = "error";
     else if (b.type === "notify" && b.urgent) kind = "notify";
     if (!kind || !this.wantsCall(kind)) return;
+    if (kind === "error" && this.isLimitStop(b)) {
+      this.noteLimitStop(sessionId, b);
+      return;
+    }
     this.scheduleNotify(sessionId, kind, b, this.d.timing?.notifyDelayMs ?? NOTIFY_DELAY_MS[kind]);
+  }
+
+  private isLimitStop(b: SessionEventBody): boolean {
+    const text = b.type === "turn.result" ? b.text : b.type === "error" ? b.message : null;
+    return isUsageLimitText(text) || this.d.sessions.rateLimit().status === "reached";
+  }
+
+  /** One more session stopped by the limit; the call waits a moment for the others, which stop at the same time. */
+  private noteLimitStop(sessionId: string, b: SessionEventBody) {
+    if (Date.now() < this.limitQuietUntil) {
+      this.d.log("Telefon: kein Anruf (limit), zu diesem Limit kam schon einer");
+      return;
+    }
+    this.limitStopped.add(sessionId);
+    this.scheduleNotify("", "limit", b, this.d.timing?.notifyDelayMs ?? NOTIFY_DELAY_MS.limit);
+  }
+
+  /** Sessions run again: the next limit gets its call again. */
+  private limitOver() {
+    this.limitQuietUntil = 0;
+  }
+
+  /** The reset time of the limit (ms), from the account's rate limit or the CLI's message. */
+  private limitResetAt(b: SessionEventBody | null): number | null {
+    const now = Date.now();
+    const known = this.d.sessions.rateLimit().resetsAt;
+    const at = known ? Date.parse(known) : resetFromText(b?.type === "turn.result" ? b.text : b?.type === "error" ? b.message : null, now);
+    return at !== null && Number.isFinite(at) && at > now ? at : null;
   }
 
   /** Switches one entry of a number list on or off, adds or removes it (call_settings); returns what changed. */
@@ -1301,7 +1345,7 @@ export class PhoneService {
 
   private wantsCall(kind: NotifyKind): boolean {
     // An urgent notify means Claude needs the user: it follows the setting for decisions.
-    return this.cfg.notifyOn[kind === "notify" ? "approval" : kind];
+    return this.cfg.notifyOn[kind === "notify" ? "approval" : kind === "limit" ? "error" : kind];
   }
 
   private scheduleNotify(sessionId: string, kind: NotifyKind, body: SessionEventBody | null, delayMs: number) {
@@ -1397,8 +1441,10 @@ export class PhoneService {
     // The user is at FORGE and sees it there; a call would only interrupt.
     if (this.d.userPresent?.()) {
       this.d.log(`Telefon: kein Rückruf (${kind}), FORGE ist im Vordergrund`);
+      if (kind === "limit") this.limitCalled(body);
       return;
     }
+    if (kind === "limit") return this.notifyLimit(body);
     let session;
     try {
       session = this.d.sessions.get(sessionId);
@@ -1432,6 +1478,32 @@ export class PhoneService {
       refs,
       sessionId,
     );
+  }
+
+  private limitCalled(body: SessionEventBody | null): number | null {
+    this.limitStopped.clear();
+    const reset = this.limitResetAt(body);
+    this.limitQuietUntil = reset ?? Date.now() + LIMIT_QUIET_MS;
+    return reset;
+  }
+
+  /** One call for all sessions the limit stopped. */
+  private async notifyLimit(body: SessionEventBody | null) {
+    const m = tr().phone;
+    const stopped = [...this.limitStopped].flatMap((id) => {
+      try {
+        return [this.d.sessions.get(id)];
+      } catch {
+        return [];
+      }
+    });
+    const reset = this.limitCalled(body);
+    if (!stopped.length) return;
+    const refs = new Map(stopped.map((s, i) => [`S${i + 1}`, s.id]));
+    const list = stopped.map((s, i) => `S${i + 1} ${asData(s.title ?? m.untitled)} (${this.d.projects.get(s.projectId).name})`).join(", ");
+    const what = m.dial.limitWhat(stopped.length, list, reset ? spokenTime(new Date(reset).toISOString()) : null, this.d.db.getSettings().autoContinueAfterLimit);
+    this.lastNotifyAt = Date.now();
+    await this.dial(this.notifyTargets(), m.dial.limitReason(stopped.length), m.dial.opening(what), refs, stopped[0]!.id);
   }
 
   // ---------- tools for Claude on the phone
