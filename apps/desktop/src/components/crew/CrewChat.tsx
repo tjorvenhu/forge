@@ -148,7 +148,7 @@ function MessageRow({ crew, item, head, own, onReply }: { crew: Crew; item: Crew
         ...(from && !from.self ? [{ label: m.messageTo(from.name), icon: <MessageSquare className="h-3.5 w-3.5" />, onSelect: onReply }] : []),
       ])}
     >
-      <div className="w-7 shrink-0">{head && !own && <MemberAvatar name={from?.name ?? "?"} color={color} size={28} />}</div>
+      <div className="w-7 shrink-0">{head && !own && <MemberAvatar name={from?.name ?? "?"} color={color} avatar={from?.avatar} size={28} />}</div>
       <div className={cn("flex min-w-0 max-w-[80%] flex-col", own ? "items-end" : "items-start")}>
         {head && (
           <div className={cn("mb-0.5 flex items-baseline gap-1.5 px-1 text-caption-lg", own && "flex-row-reverse")}>

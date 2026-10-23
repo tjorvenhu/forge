@@ -18,6 +18,9 @@ export const CREW_RELAY_URL = "https://forge.vanturis.de/crew";
  */
 export const CREW_WEB_URL = "https://forge.vanturis.de/crew";
 export const crewWebLink = (code: string) => `${CREW_WEB_URL}#${code}`;
+/** Pictures of members come from GitHub only: a member must not make the others load any address. */
+export const CREW_AVATAR_PREFIX = "https://avatars.githubusercontent.com/";
+export const isCrewAvatar = (url: unknown): url is string => typeof url === "string" && url.length <= 300 && url.startsWith(CREW_AVATAR_PREFIX);
 /** Prefix of an invite code; the rest is base64url. */
 export const CREW_INVITE_PREFIX = "forge-crew1.";
 /** Members of one crew at most: everyone answers a newcomer with the whole state. */
@@ -63,6 +66,8 @@ export const CrewMember = z.object({
   owner: z.boolean(),
   /** in the browser on the website (forge.vanturis.de/crew), not a FORGE installation: no project, no agents */
   web: z.boolean().optional(),
+  /** GitHub picture of the member (CREW_AVATAR_PREFIX); missing: initials */
+  avatar: z.string().nullable().optional(),
   online: z.boolean(),
   lastSeen: z.string().nullable(),
   /** checked-out branch of the member's project */

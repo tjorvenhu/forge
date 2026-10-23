@@ -5,6 +5,14 @@
 
 .crew-page {
   --crew-top: 76px;
+  /* FORGE's chat colors and sizes the website does not have (apps/desktop/src/styles.css) */
+  --color-claude: #d97757;
+  --color-warning: #d9a23b;
+  --color-warning-soft: #d9a23b1f;
+  --color-diff-add: #3fb97a1a;
+  --color-diff-del: #f0605a1a;
+  --font-mono: ui-monospace, "Cascadia Code", Consolas, monospace;
+  --text-caption-lg: 11.5px;
   display: flex;
   flex-direction: column;
   padding-top: 20px;
@@ -512,18 +520,6 @@
   gap: 10px;
 }
 
-.crew-avatar {
-  display: inline-grid;
-  place-items: center;
-  width: 30px;
-  height: 30px;
-  flex-shrink: 0;
-  border-radius: 50%;
-  color: var(--color-accent-fg);
-  font-size: var(--text-caption);
-  font-weight: 700;
-}
-
 .crew-feed-body {
   display: flex;
   min-width: 0;
@@ -605,7 +601,7 @@
   padding: 0;
 }
 
-/* ---- people */
+/* ---- people: each member like FORGE's sidebar (project, sessions, agents) */
 
 .crew-people {
   display: flex;
@@ -637,114 +633,239 @@
 
 .crew-person-name strong {
   display: flex;
+  min-width: 0;
   flex-wrap: wrap;
   align-items: center;
   gap: 6px;
 }
 
 .crew-person-name > span {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
   font-size: var(--text-small);
 }
 
-.crew-person-git {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 12px;
-  color: var(--color-muted);
-  font-size: var(--text-small);
+.crew-person-note {
+  padding-left: 2px;
 }
 
-.crew-person-git span,
-.crew-small-text {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.crew-person-git svg,
-.crew-small-text svg {
-  width: 13px;
-  height: 13px;
-}
-
-.crew-agents {
+.crew-tree {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  margin: 0;
-  padding: 0;
+}
+
+.crew-tree-project {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 8px;
+  color: var(--color-fg);
+  font-size: var(--text-ui);
+}
+
+.crew-project-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  border-radius: var(--radius-md);
+  background: var(--color-accent-soft);
+  color: var(--color-accent);
+  font-size: var(--text-small);
+  font-weight: 700;
+}
+
+.crew-tree-meta {
+  display: inline-flex;
+  min-width: 0;
+  flex-shrink: 1;
+  align-items: center;
+  gap: 3px;
+  color: var(--color-subtle);
+  font-size: var(--text-caption);
+}
+
+.crew-page .crew-tree-meta svg {
+  width: 12px;
+  height: 12px;
+}
+
+.crew-tree-meta.crew-warn {
+  flex-shrink: 0;
+  color: var(--color-warning);
+}
+
+.crew-tree-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0 0 0 18px;
+  padding: 2px 0 0;
   list-style: none;
 }
 
-.crew-agent {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 4px;
-  padding: 10px;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  background: var(--color-bg);
+/* the bend from the project's line to a row, as in FORGE's sidebar (Branch in OpenSessions.tsx) */
+.crew-branch {
+  position: relative;
+  padding-left: 14px;
 }
 
-.crew-agent-head {
+.crew-branch::before {
+  position: absolute;
+  top: -2px;
+  left: 0;
+  width: 10px;
+  height: 17px;
+  border-bottom: 1px solid var(--color-border);
+  border-left: 1px solid var(--color-border);
+  border-bottom-left-radius: var(--radius-md);
+  content: "";
+  pointer-events: none;
+}
+
+.crew-branch:not(.crew-branch-last)::after {
+  position: absolute;
+  top: -2px;
+  bottom: 0;
+  left: 0;
+  width: 1px;
+  background: var(--color-border);
+  content: "";
+  pointer-events: none;
+}
+
+.crew-tree-row {
   display: flex;
   width: 100%;
-  align-items: center;
-  gap: 6px;
-}
-
-.crew-status {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  margin-left: auto;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: var(--radius-lg);
+  background: transparent;
   color: var(--color-muted);
+  font: inherit;
+  font-size: var(--text-body);
+  text-align: left;
+}
+
+button.crew-tree-row {
+  cursor: pointer;
+}
+
+button.crew-tree-row:hover,
+button.crew-tree-row:focus-visible {
+  background: var(--color-surface-3);
+  color: var(--color-fg);
+}
+
+.crew-tree-head {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+}
+
+.crew-tree-title {
+  color: var(--color-fg);
+}
+
+.crew-tree-branch {
+  flex-shrink: 1;
+  color: var(--color-subtle);
+  font-family: var(--font-mono);
   font-size: var(--text-caption);
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  white-space: nowrap;
 }
 
-.crew-status::before {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: currentColor;
-  content: "";
+.crew-page .crew-tree-head svg {
+  width: 14px;
+  height: 14px;
 }
 
-.crew-agent-working .crew-status {
-  color: var(--color-success);
-}
-
-.crew-agent-waiting .crew-status {
+.crew-accent {
   color: var(--color-accent);
 }
 
-.crew-agent-task {
-  color: var(--color-fg-soft);
-  font-size: var(--text-body);
-  overflow-wrap: anywhere;
+.crew-page .crew-tree-eye {
+  margin-left: auto;
+  color: var(--color-subtle);
 }
 
-.crew-agent-result {
+button.crew-tree-row:hover .crew-tree-eye {
+  color: var(--color-accent);
+}
+
+.crew-tree-dot {
+  width: 6px;
+  height: 6px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--color-success);
+}
+
+.crew-tree-dot-working {
+  background: var(--color-accent);
+  animation: fc-pulse 1.6s ease-in-out infinite;
+}
+
+.crew-tree-dot-waiting {
+  background: var(--color-warning);
+  animation: fc-pulse 1.6s ease-in-out infinite;
+}
+
+.crew-tree-line {
+  display: -webkit-box;
+  overflow: hidden;
+  padding-left: 14px;
   color: var(--color-muted);
   font-size: var(--text-small);
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
   overflow-wrap: anywhere;
 }
 
-.crew-agent-result span {
-  color: var(--color-fg-soft);
-  font-weight: 600;
+/* members: GitHub picture or initials in their color */
+.crew-avatar {
+  position: relative;
+  display: inline-flex;
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+  border-radius: 50%;
 }
 
-.crew-agent .btn {
-  margin-top: 4px;
+.crew-avatar img {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.crew-avatar-letters {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  place-items: center;
+  border-radius: 50%;
+  color: var(--color-accent-fg);
+  font-weight: 600;
+  line-height: 1;
+}
+
+.crew-avatar-dot {
+  position: absolute;
+  right: -1px;
+  bottom: -1px;
+  width: 10px;
+  height: 10px;
+  border: 2px solid var(--color-surface-2);
+  border-radius: 50%;
+  background: var(--color-subtle);
+}
+
+.crew-avatar-dot-on {
+  background: var(--color-success);
 }
 
 /* ---- tasks */
@@ -872,7 +993,7 @@
   margin-top: 2px;
 }
 
-/* ---- a session live */
+/* ---- a session live, drawn like FORGE's chat (ChatPanel, ChatRow, ToolCard; sizes of apps/desktop/src/styles.css) */
 
 .crew-watch {
   position: fixed;
@@ -888,123 +1009,908 @@
 
 .crew-watch-panel {
   display: flex;
-  width: min(860px, 100%);
-  height: min(88dvh, 100%);
+  width: min(900px, 100%);
+  height: min(90dvh, 100%);
   flex-direction: column;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-xl);
-  background: var(--color-surface);
+  background: var(--color-bg);
   overflow: hidden;
 }
 
 .crew-watch-panel > header {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 12px 14px;
+  gap: 10px;
+  padding: 10px 14px;
   border-bottom: 1px solid var(--color-border);
+  background: var(--color-surface);
 }
 
 .crew-watch-title {
   display: flex;
   min-width: 0;
   flex: 1;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px 10px;
-}
-
-.crew-watch-body {
-  display: flex;
-  min-height: 0;
-  flex: 1;
   flex-direction: column;
-  gap: 10px;
-  padding: 16px;
-  overflow-y: auto;
-  overscroll-behavior: contain;
+  line-height: 1.3;
 }
 
-.crew-ev-user {
-  align-self: flex-end;
-  max-width: 88%;
-  padding: 10px 12px;
-  border-radius: var(--radius-lg);
-  background: var(--color-accent-soft);
-  border: 1px solid color-mix(in srgb, var(--color-accent) 30%, transparent);
+.crew-watch-title strong {
+  font-size: var(--text-ui);
+  font-weight: 600;
 }
 
-.crew-ev-text {
-  line-height: 1.55;
-}
-
-.crew-ev-sub {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 4px;
-  padding: 8px 10px;
-  border-radius: var(--radius-md);
-  background: var(--color-surface-2);
-  color: var(--color-fg-soft);
-  font-size: var(--text-body);
-}
-
-.crew-ev-tool {
+.crew-watch-sub {
   display: flex;
   min-width: 0;
   align-items: center;
   gap: 8px;
-  padding: 6px 10px;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  background: var(--color-bg);
   color: var(--color-muted);
-  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
   font-size: var(--text-small);
 }
 
-.crew-ev-tool strong {
-  color: var(--color-fg-soft);
+.crew-watch-model {
+  flex-shrink: 0;
+  padding: 0 6px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  color: var(--color-subtle);
+  font-family: var(--font-mono);
+  font-size: var(--text-caption);
 }
 
-.crew-ev-tool-sub {
-  margin-left: 14px;
+.crew-watch-body {
+  min-height: 0;
+  flex: 1;
+  padding: 0 24px 24px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
-.crew-ev-tool svg {
-  width: 13px;
-  height: 13px;
+.crew-watch-body > .error-banner {
+  margin-top: 16px;
 }
 
-.crew-ev-error {
+/* ---- FORGE chat (fc-) */
+
+.fc-thread {
+  display: flex;
+  flex-direction: column;
+  color: var(--color-fg);
+}
+
+.fc-gap-first {
+  padding-top: 20px;
+}
+
+.fc-gap-turn {
+  padding-top: 32px;
+}
+
+.fc-gap-block {
+  padding-top: 14px;
+}
+
+.fc-gap-tight {
+  padding-top: 6px;
+}
+
+.fc-chatrow {
+  display: flex;
+  gap: 10px;
+}
+
+/* one line high: the marker sits on the first text line in any font size */
+.fc-gutter {
+  display: flex;
+  width: 24px;
+  height: 1lh;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+}
+
+.fc-marker-box {
+  margin-top: 9px;
+}
+
+.fc-content {
+  min-width: 0;
+  flex: 1;
+}
+
+.fc-text-ui {
+  font-size: var(--text-ui);
+  line-height: 1.65;
+}
+
+.fc-text-body {
+  font-size: var(--text-body);
+  line-height: 1.5;
+}
+
+.fc-text-caption-lg {
+  font-size: var(--text-caption-lg);
+  line-height: 1.5;
+}
+
+.fc-text-small {
+  font-size: var(--text-small);
+}
+
+.fc-caption {
+  margin-top: 2px;
+  font-size: var(--text-caption);
+}
+
+.fc-pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.fc-break {
+  overflow-wrap: anywhere;
+}
+
+.fc-strong {
+  font-weight: 500;
+}
+
+.fc-muted {
+  color: var(--color-muted);
+}
+
+.fc-subtle {
+  color: var(--color-subtle);
+}
+
+.fc-success {
+  color: var(--color-success);
+}
+
+.fc-danger {
   color: var(--color-danger);
 }
 
-.crew-ev-approval {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 10px;
-  border: 1px solid color-mix(in srgb, var(--color-accent) 35%, transparent);
-  border-radius: var(--radius-md);
-  background: var(--color-accent-soft);
-  font-size: var(--text-body);
+.fc-warning {
+  color: var(--color-warning);
 }
 
-.crew-ev-divider {
+.fc-mt-1 {
+  margin-top: 4px;
+}
+
+.fc-mt-15 {
+  margin-top: 6px;
+}
+
+.fc-mt-2 {
+  margin-top: 8px;
+}
+
+.crew-page .fc-icon {
+  width: 14px;
+  height: 14px;
+}
+
+.fc-tone-info {
+  color: var(--color-muted);
+}
+
+.fc-tone-success {
+  color: var(--color-success);
+}
+
+.fc-tone-warning {
+  color: var(--color-warning);
+}
+
+.fc-tone-danger {
+  color: var(--color-danger);
+}
+
+.fc-tone-accent {
+  color: var(--color-accent);
+}
+
+.fc-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+  color: var(--color-subtle);
+  font-size: var(--text-caption);
+  line-height: 1.5;
+}
+
+.fc-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-muted);
+}
+
+.crew-page .fc-chip svg {
+  width: 12px;
+  height: 12px;
+}
+
+/* status dots of the gutter (Dot, STATE_DOT) */
+.fc-dot {
+  display: block;
+  width: 8px;
+  height: 8px;
+  flex-shrink: 0;
+  border-radius: 50%;
+}
+
+.fc-dot-fg {
+  background: var(--color-fg);
+}
+
+.fc-dot-ok {
+  background: var(--color-success);
+}
+
+.fc-dot-error {
+  background: var(--color-danger);
+}
+
+.fc-dot-accent {
+  background: var(--color-accent);
+}
+
+.fc-dot-running {
+  background: var(--color-accent);
+  animation: fc-pulse 1.6s ease-in-out infinite;
+}
+
+.fc-dot-waiting {
+  background: var(--color-warning);
+  animation: fc-pulse 1.6s ease-in-out infinite;
+}
+
+.fc-dot-denied {
+  border: 1.5px solid var(--color-danger);
+}
+
+.fc-dot-unknown {
+  border: 1.5px solid var(--color-subtle);
+}
+
+@keyframes fc-pulse {
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+/* indented block under a row with a thin neutral guide line, as in FORGE: output, details */
+.fc-guide {
+  margin-left: 2px;
+  padding-left: 12px;
+  border-left: 1px solid var(--color-border);
+}
+
+.fc-details {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-bottom: 4px;
+}
+
+/* a tool call: name, argument, line count or +/- */
+.fc-tool {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  align-items: baseline;
+  gap: 8px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.fc-tool:active {
+  opacity: 0.7;
+}
+
+.fc-tool-name {
+  flex-shrink: 0;
+  color: var(--color-fg);
+  font-weight: 600;
+}
+
+.fc-tool-summary {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--color-muted);
+  font-family: var(--font-mono);
+  font-size: var(--text-small);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fc-stats {
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  font-size: var(--text-caption-lg);
+}
+
+.crew-page .fc-chevron {
+  width: 14px;
+  height: 14px;
+  margin-left: auto;
+  flex-shrink: 0;
+  align-self: center;
+  color: var(--color-subtle);
+  opacity: 0;
+  transition:
+    transform 120ms var(--ease-snappy),
+    opacity 120ms;
+}
+
+.fc-tool:hover .fc-chevron,
+.fc-tool:focus-visible .fc-chevron {
+  opacity: 1;
+}
+
+.crew-page .fc-chevron-open {
+  opacity: 1;
+  transform: rotate(90deg);
+}
+
+.fc-blocked {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  color: var(--color-danger);
+  font-size: var(--text-small);
+  overflow-wrap: anywhere;
+}
+
+.crew-page .fc-blocked svg {
+  width: 14px;
+  height: 14px;
+  margin-top: 2px;
+}
+
+.fc-output {
+  margin: 0;
+  color: var(--color-muted);
+  font-family: var(--font-mono);
+  font-size: var(--text-small);
+  line-height: 1.625;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.fc-output-open {
+  max-height: 24rem;
+  overflow-y: auto;
+}
+
+.fc-empty-output {
+  color: var(--color-subtle);
+  font-size: var(--text-small);
+  font-style: italic;
+}
+
+.fc-more {
+  margin-top: 2px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--color-subtle);
+  font: inherit;
+  font-size: var(--text-caption-lg);
+  cursor: pointer;
+}
+
+.fc-more:hover {
+  color: var(--color-fg);
+}
+
+.fc-diff {
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  font-size: var(--text-small);
+  line-height: 1.625;
+}
+
+.fc-diff-open {
+  max-height: 32rem;
+  overflow-y: auto;
+}
+
+.fc-diff-line {
+  display: flex;
+}
+
+.fc-diff-add {
+  background: var(--color-diff-add);
+}
+
+.fc-diff-del {
+  background: var(--color-diff-del);
+}
+
+.fc-diff-sign {
+  width: 20px;
+  flex-shrink: 0;
+  text-align: center;
+  user-select: none;
+}
+
+.fc-diff-add .fc-diff-sign {
+  color: var(--color-success);
+}
+
+.fc-diff-del .fc-diff-sign {
+  color: var(--color-danger);
+}
+
+.fc-diff-text {
+  min-width: 0;
+  flex: 1;
+  padding-right: 16px;
+  color: var(--color-fg);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.fc-diff-ctx .fc-diff-text {
+  color: var(--color-muted);
+}
+
+.fc-diff-gap {
+  margin: 4px 0;
+  border-top: 1px dashed var(--color-border);
+}
+
+.fc-pre-label {
+  margin-bottom: 4px;
+  color: var(--color-subtle);
+  font-size: var(--text-caption);
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.fc-pre-box {
+  max-height: 18rem;
+  margin: 0;
+  padding: 8px;
+  overflow: auto;
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-muted);
+  font-family: var(--font-mono);
+  font-size: var(--text-caption-lg);
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+/* approvals: waiting in FORGE (read-only here), or how they were answered */
+.fc-approved {
   display: flex;
   align-items: center;
-  justify-content: center;
   gap: 6px;
-  color: var(--color-subtle);
+  color: var(--color-muted);
   font-size: var(--text-small);
 }
 
-.crew-ev-divider svg {
-  width: 13px;
-  height: 13px;
-  color: var(--color-success);
+.crew-page .fc-approved svg {
+  width: 14px;
+  height: 14px;
+}
+
+.fc-approval {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--color-warning) 40%, transparent);
+  border-radius: var(--radius-md);
+  background: var(--color-warning-soft);
+  font-size: var(--text-body);
+}
+
+.crew-page .fc-approval > svg {
+  margin-top: 2px;
+}
+
+.fc-approval-input {
+  max-height: 10rem;
+  margin: 6px 0 4px;
+  padding: 8px;
+  overflow: auto;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--color-bg) 60%, transparent);
+  color: color-mix(in srgb, var(--color-fg) 90%, transparent);
+  font-family: var(--font-mono);
+  font-size: var(--text-caption-lg);
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+/* the line at the end of a turn */
+.fc-result {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 6px;
+  color: var(--color-subtle);
+}
+
+.fc-part {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.fc-part-dot {
+  width: 2px;
+  height: 2px;
+  border-radius: 50%;
+  background: var(--color-subtle);
+}
+
+/* events (EventCard), FORGE's own in the highlighted box */
+.fc-event {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 8px;
+  overflow-wrap: anywhere;
+}
+
+.fc-event-title {
+  color: var(--color-fg);
+  font-weight: 500;
+}
+
+.fc-event-ref {
+  color: var(--color-accent);
+  font-family: var(--font-mono);
+  font-size: var(--text-small);
+}
+
+.fc-forge-label {
+  margin-left: auto;
+  color: var(--color-subtle);
+  font-size: var(--text-caption);
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.fc-forge {
+  padding: 8px 12px;
+  border: 1px solid;
+  border-radius: var(--radius-md);
+}
+
+.fc-forge-accent {
+  border-color: color-mix(in srgb, var(--color-accent) 30%, transparent);
+  background: var(--color-accent-soft);
+}
+
+.fc-forge-warning {
+  border-color: color-mix(in srgb, var(--color-warning) 40%, transparent);
+  background: var(--color-warning-soft);
+}
+
+.fc-forge-danger {
+  border-color: color-mix(in srgb, var(--color-danger) 40%, transparent);
+  background: var(--color-danger-soft);
+}
+
+/* todo list (TodoCard) */
+.fc-todo-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.fc-todos {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.fc-todo-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  overflow-wrap: anywhere;
+}
+
+.fc-todo-box {
+  display: flex;
+  height: 1lh;
+  flex-shrink: 0;
+  align-items: center;
+}
+
+.fc-todo {
+  display: grid;
+  width: 14px;
+  height: 14px;
+  place-items: center;
+  border: 1.5px solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+}
+
+.fc-todo-done {
+  border: 0;
+  background: var(--color-success);
+  color: var(--color-bg);
+}
+
+.crew-page .fc-todo-done svg {
+  width: 10px;
+  height: 10px;
+}
+
+.fc-todo-doing {
+  border-color: var(--color-accent);
+}
+
+.fc-todo-doing span {
+  width: 6px;
+  height: 6px;
+  border-radius: 1px;
+  background: var(--color-accent);
+  animation: fc-pulse 1.6s ease-in-out infinite;
+}
+
+.fc-todo-completed {
+  color: var(--color-subtle);
+  text-decoration: line-through;
+  text-decoration-color: color-mix(in srgb, var(--color-subtle) 60%, transparent);
+}
+
+.fc-todo-in_progress {
+  color: var(--color-fg);
+  font-weight: 500;
+}
+
+/* Claude at work, until the turn ends */
+.fc-working {
+  color: var(--color-muted);
+  font-size: var(--text-body);
+}
+
+.fc-dots span {
+  animation: fc-pulse 1.2s ease-in-out infinite;
+}
+
+.fc-dots span:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.fc-dots span:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+.fc-spin {
+  animation: fc-spin 2.4s linear infinite;
+}
+
+@keyframes fc-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* markdown of Claude's answers (apps/desktop/src/styles.css .markdown) */
+.markdown {
+  line-height: 1.65;
+}
+
+.markdown > :first-child {
+  margin-top: 0;
+}
+
+.markdown > :last-child {
+  margin-bottom: 0;
+}
+
+.markdown p {
+  margin: 0 0 0.75em;
+}
+
+.markdown strong {
+  font-weight: 600;
+  color: var(--color-fg);
+}
+
+.markdown h1,
+.markdown h2,
+.markdown h3,
+.markdown h4,
+.markdown h5,
+.markdown h6 {
+  margin: 1.3em 0 0.5em;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.markdown h1 {
+  font-size: 1.2em;
+}
+
+.markdown h2 {
+  font-size: 1.1em;
+}
+
+.markdown h3,
+.markdown h4,
+.markdown h5,
+.markdown h6 {
+  font-size: 1em;
+}
+
+.markdown h4,
+.markdown h5,
+.markdown h6 {
+  color: var(--color-muted);
+}
+
+.markdown ul,
+.markdown ol {
+  margin: 0.25em 0 0.75em;
+  padding-left: 1.5em;
+}
+
+.markdown ul {
+  list-style: disc;
+}
+
+.markdown ol {
+  list-style: decimal;
+}
+
+.markdown li {
+  margin: 0.2em 0;
+  padding-left: 0.15em;
+}
+
+.markdown li::marker {
+  color: var(--color-subtle);
+}
+
+.markdown li > p {
+  margin: 0 0 0.35em;
+}
+
+.markdown code {
+  padding: 0.1em 0.35em;
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-3);
+  font-family: var(--font-mono);
+  font-size: 0.86em;
+}
+
+.markdown .code-block {
+  position: relative;
+  margin: 0.75em 0;
+}
+
+.markdown pre {
+  margin: 0;
+  padding: 10px 14px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  font-size: 12.5px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.markdown pre code {
+  padding: 0;
+  border-radius: 0;
+  background: none;
+  font-size: inherit;
+}
+
+.markdown a {
+  color: var(--color-accent);
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--color-accent) 45%, transparent);
+  text-underline-offset: 2px;
+}
+
+.markdown a:hover {
+  text-decoration-color: currentColor;
+}
+
+.markdown blockquote {
+  margin: 0.75em 0;
+  padding-left: 12px;
+  border-left: 2px solid var(--color-border-strong);
+  color: var(--color-muted);
+}
+
+.markdown hr {
+  margin: 1.25em 0;
+  border: 0;
+  border-top: 1px solid var(--color-border);
+}
+
+.markdown table {
+  display: block;
+  width: max-content;
+  max-width: 100%;
+  margin: 0.75em 0;
+  overflow-x: auto;
+  border-collapse: collapse;
+  font-size: 0.93em;
+}
+
+.markdown th,
+.markdown td {
+  padding: 4px 10px;
+  border: 1px solid var(--color-border);
+  text-align: left;
+}
+
+.markdown th {
+  background: var(--color-surface-2);
+  font-weight: 600;
+}
+
+.fc-copy {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: grid;
+  width: 24px;
+  height: 24px;
+  place-items: center;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-2);
+  color: var(--color-muted);
+  opacity: 0;
+  cursor: pointer;
+  transition: opacity 120ms;
+}
+
+.code-block:hover .fc-copy,
+.fc-copy:focus-visible {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .fc-copy {
+    opacity: 1;
+  }
+}
+
+.crew-page .fc-copy svg {
+  width: 14px;
+  height: 14px;
 }
 
 /* ---- skeletons in the shape of what comes */
@@ -1034,31 +1940,66 @@
   border-radius: var(--radius-sm);
 }
 
-.crew-sk-short {
-  width: 50%;
-}
-
-.crew-sk-user {
-  align-self: flex-end;
-  width: 55%;
-  height: 40px;
-  border-radius: var(--radius-lg);
-}
-
-.crew-sk-tool {
-  width: 70%;
-  height: 28px;
-  border-radius: var(--radius-md);
-}
-
-.crew-watch-skeleton {
+.fc-sk-lines {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 8px;
+  padding-top: 4px;
 }
 
-.crew-watch-skeleton .skeleton-bar {
+.fc-sk-lines .skeleton-bar,
+.fc-gutter .skeleton-bar {
   display: block;
+}
+
+.sk-avatar {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+}
+
+.sk-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.sk-text {
+  height: 13px;
+  border-radius: var(--radius-sm);
+}
+
+.sk-tool {
+  height: 15px;
+  border-radius: var(--radius-sm);
+}
+
+.sk-w40 {
+  width: 40%;
+}
+
+.sk-w45 {
+  width: 45%;
+}
+
+.sk-w55 {
+  width: 55%;
+}
+
+.sk-w60 {
+  width: 60%;
+}
+
+.sk-w70 {
+  width: 70%;
+}
+
+.sk-w80 {
+  width: 80%;
+}
+
+.sk-w85 {
+  width: 85%;
 }
 
 .crew-skeleton .crew-col-chat {

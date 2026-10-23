@@ -138,7 +138,7 @@ export function CrewBubble() {
                 .filter((x) => !x.self)
                 .slice(0, 4)
                 .map((x) => (
-                  <MemberAvatar key={x.id} name={x.name} color={x.color} online={x.online} size={24} className="ring-2 ring-surface" />
+                  <MemberAvatar key={x.id} name={x.name} color={x.color} avatar={x.avatar} online={x.online} size={24} className="ring-2 ring-surface" />
                 ))}
             </div>
             <div className="min-w-0 flex-1">

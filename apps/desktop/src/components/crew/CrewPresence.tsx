@@ -38,7 +38,7 @@ export function CrewPresence({ projectId }: { projectId: string }) {
         {/* Stacked: a status dot would cover the next avatar, so offline members are only dimmed. */}
         <span className="flex -space-x-1">
           {shown.map((x) => (
-            <MemberAvatar key={x.id} name={x.name} color={x.color} size={22} className={cn("ring-2 ring-bg", !x.online && "opacity-45")} />
+            <MemberAvatar key={x.id} name={x.name} color={x.color} avatar={x.avatar} size={22} className={cn("ring-2 ring-bg", !x.online && "opacity-45")} />
           ))}
         </span>
         {crew.members.length > MAX && <span className="ml-1 text-xs text-muted">+{crew.members.length - MAX}</span>}

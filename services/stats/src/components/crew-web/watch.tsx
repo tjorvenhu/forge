@@ -1,97 +1,25 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useRef } from "react";
-import { AlertTriangle, Bot, CheckCircle2, Hand, RotateCcw, Wrench, X } from "lucide-react";
-import type { WatchView } from "@/lib/crew-web/client";
-import { crewMessages, type CrewMessages } from "@/lib/crew-web/messages";
+import { RotateCcw, X } from "lucide-react";
+import type { MemberView, WatchView } from "@/lib/crew-web/client";
+import { crewMessages } from "@/lib/crew-web/messages";
 import { useI18n } from "../locale";
+import { MemberAvatar } from "./avatar";
+import { SessionChat } from "./session-chat";
 
-type Ev = Record<string, unknown> & { type?: unknown };
-
-const s = (v: unknown): string | null => (typeof v === "string" && v.trim() ? v : null);
-
-/** One line for a tool call: what it works on (file, command, search). */
-function toolSummary(input: unknown): string {
-  if (typeof input !== "object" || !input) return "";
-  const i = input as Record<string, unknown>;
-  const v = s(i.description) ?? s(i.file_path) ?? s(i.notebook_path) ?? s(i.command) ?? s(i.pattern) ?? s(i.url) ?? s(i.query) ?? s(i.prompt) ?? s(i.path) ?? "";
-  return v.length > 160 ? `${v.slice(0, 159)}…` : v;
-}
-
-function EventRow({ e, m }: { e: Ev; m: CrewMessages }) {
-  switch (e.type) {
-    case "user.message":
-      return s(e.text) ? <div className="crew-ev-user crew-text">{e.text as string}</div> : null;
-    case "assistant.text":
-      if (!s(e.text)) return null;
-      return e.parentToolUseId ? (
-        <div className="crew-ev-sub crew-text">
-          <span className="crew-chip">
-            <Bot aria-hidden /> {m.event.subagent}
-          </span>
-          {e.text as string}
-        </div>
-      ) : (
-        <div className="crew-ev-text crew-text">{e.text as string}</div>
-      );
-    case "tool.use":
-      return (
-        <div className={e.parentToolUseId ? "crew-ev-tool crew-ev-tool-sub" : "crew-ev-tool"}>
-          <Wrench aria-hidden />
-          <strong>{String(e.name ?? "")}</strong>
-          <span className="crew-ellipsis">{toolSummary(e.input)}</span>
-        </div>
-      );
-    case "tool.result":
-      return e.isError ? (
-        <div className="crew-ev-tool crew-ev-error">
-          <AlertTriangle aria-hidden /> {m.event.toolError}
-        </div>
-      ) : null;
-    case "approval.request":
-      return (
-        <div className="crew-ev-approval">
-          <Hand aria-hidden /> {m.event.approval(String(e.title ?? e.toolName ?? ""))}
-        </div>
-      );
-    case "approval.resolved":
-      return <div className="crew-ev-divider">{e.decision === "allow" ? m.event.allowed : m.event.denied}</div>;
-    case "turn.result": {
-      if (e.interrupted) return <div className="crew-ev-divider">{m.event.interrupted}</div>;
-      if (e.isError) return <div className="crew-ev-divider crew-ev-error">{m.event.turnError}</div>;
-      const ms = typeof e.durationMs === "number" ? e.durationMs : null;
-      return (
-        <div className="crew-ev-divider">
-          <CheckCircle2 aria-hidden /> {ms === null ? m.event.turnDone("") : m.event.turnDone(ms < 60_000 ? `${Math.round(ms / 1000)} s` : `${Math.round(ms / 60_000)} min`)}
-        </div>
-      );
-    }
-    case "context.compacted":
-      return <div className="crew-ev-divider">{m.event.compacted}</div>;
-    case "notify":
-      return s(e.message) ? <div className="crew-ev-approval">{e.message as string}</div> : null;
-    case "error":
-      return s(e.message) ? (
-        <div className="crew-ev-tool crew-ev-error">
-          <AlertTriangle aria-hidden /> {e.message as string}
-        </div>
-      ) : null;
-    default:
-      return null;
-  }
-}
-
-/** A member's session, read-only and live, over the board (full screen on a phone). */
-export function WatchPanel({ watch, memberName, onClose, onRetry }: { watch: WatchView; memberName: string; onClose: () => void; onRetry: () => void }) {
+/** A member's session, read-only and live, over the board (full screen on a phone), drawn like FORGE's chat. */
+export function WatchPanel({ watch, member, onClose, onRetry }: { watch: WatchView; member: MemberView | null; onClose: () => void; onRetry: () => void }) {
   const { locale } = useI18n();
   const m = crewMessages(locale);
   const body = useRef<HTMLDivElement>(null);
   const stick = useRef(true);
-  const events = watch.events as Ev[];
-  const shown = events.filter((e) => e && typeof e === "object" && ["user.message", "assistant.text", "tool.use", "tool.result", "approval.request", "approval.resolved", "turn.result", "context.compacted", "notify", "error"].includes(String(e.type)));
   const loading = watch.state === "asking" || watch.state === "transferring";
   const over = watch.state === "failed" || watch.state === "ended" || watch.state === "declined";
   const error = watch.error ? ((m.watchErrors as Record<string, string>)[watch.error] ?? watch.error) : null;
+  const name = member?.name ?? "?";
+  const agent = member?.agents.find((a) => a.id === watch.agentId) ?? null;
+  const working = watch.state === "live" && agent && agent.status !== "idle" ? agent.status : null;
 
   useEffect(() => {
     const key = (e: globalThis.KeyboardEvent) => e.key === "Escape" && onClose();
@@ -102,20 +30,25 @@ export function WatchPanel({ watch, memberName, onClose, onRetry }: { watch: Wat
   useLayoutEffect(() => {
     const el = body.current;
     if (el && stick.current) el.scrollTop = el.scrollHeight;
-  }, [shown.length, watch.state]);
+  }, [watch.events.length, watch.state, working]);
 
   return (
-    <div className="crew-watch" role="dialog" aria-modal="true" aria-label={m.watchTitle(memberName, watch.title)}>
+    <div className="crew-watch" role="dialog" aria-modal="true" aria-label={m.watchTitle(name, watch.title)}>
       <div className="crew-watch-panel">
         <header>
+          <MemberAvatar name={name} color={member?.color ?? "var(--color-subtle)"} avatar={member?.avatar} size={26} />
           <div className="crew-watch-title">
-            <strong className="crew-ellipsis">{m.watchTitle(memberName, watch.title)}</strong>
-            <span className={watch.state === "live" ? "live-badge live-badge-on" : "live-badge"}>
-              {watch.state === "live" && <span className="live-dot live-dot-on" aria-hidden />}
-              {m.watchState[watch.state]}
-              {watch.state === "transferring" && watch.total ? ` · ${m.watchProgress(watch.received, watch.total)}` : ""}
+            <strong className="crew-ellipsis">{watch.title}</strong>
+            <span className="crew-watch-sub">
+              <span className="crew-ellipsis">{name}</span>
+              {watch.model && <span className="crew-watch-model">{watch.model}</span>}
             </span>
           </div>
+          <span className={watch.state === "live" ? "live-badge live-badge-on" : "live-badge"}>
+            {watch.state === "live" && <span className="live-dot live-dot-on" aria-hidden />}
+            {m.watchState[watch.state]}
+            {watch.state === "transferring" && watch.total ? ` · ${m.watchProgress(watch.received, watch.total)}` : ""}
+          </span>
           {over && (
             <button type="button" className="btn btn-outline crew-small" onClick={onRetry}>
               <RotateCcw aria-hidden /> {m.watchRetry}
@@ -141,22 +74,48 @@ export function WatchPanel({ watch, memberName, onClose, onRetry }: { watch: Wat
               <p>{error}</p>
             </div>
           )}
-          {loading && (
-            <div className="crew-watch-skeleton" aria-label={m.watchState[watch.state]}>
-              <span className="skeleton-bar crew-sk-user" />
-              <span className="skeleton-bar crew-sk-line" />
-              <span className="skeleton-bar crew-sk-line crew-sk-short" />
-              <span className="skeleton-bar crew-sk-tool" />
-              <span className="skeleton-bar crew-sk-tool" />
-              <span className="skeleton-bar crew-sk-line" />
-            </div>
+          {loading && <ChatSkeleton label={m.watchState[watch.state]} />}
+          {!loading && !error && !watch.events.length && <p className="crew-empty">{m.watchEmpty}</p>}
+          {!loading && (
+            <SessionChat
+              events={watch.events}
+              m={m.chat}
+              live={watch.state === "live"}
+              working={working}
+              cwd={watch.cwd}
+              member={{ name, color: member?.color ?? "var(--color-subtle)", avatar: member?.avatar ?? null }}
+            />
           )}
-          {!loading && !error && !shown.length && <p className="crew-empty">{m.watchEmpty}</p>}
-          {shown.map((e, i) => (
-            <EventRow key={i} e={e} m={m} />
-          ))}
         </div>
       </div>
+    </div>
+  );
+}
+
+/** The shape of a chat while the copy arrives: a prompt, Claude's answer, tool lines. */
+function ChatSkeleton({ label }: { label: string }) {
+  return (
+    <div className="fc-thread" aria-label={label}>
+      {[
+        ["avatar", "sk-text sk-w60"],
+        ["claude", "sk-text sk-w85", "sk-text sk-w70"],
+        ["dot", "sk-tool sk-w45"],
+        ["dot", "sk-tool sk-w55"],
+        ["dot", "sk-text sk-w80", "sk-text sk-w40"],
+      ].map(([marker, ...lines], i) => (
+        <div key={i} className={`fc-row fc-gap-${i === 0 ? "first" : i === 1 ? "block" : "tight"}`}>
+          <div className="fc-chatrow">
+            <span className="fc-gutter">
+              <span className={`skeleton-bar ${marker === "dot" ? "sk-dot" : "sk-avatar"}`} />
+            </span>
+            <div className="fc-content fc-sk-lines">
+              {lines.map((l, j) => (
+                <span key={j} className={`skeleton-bar ${l}`} />
+              ))}
+            </div>
+          </div>
+        </div>
+      ))}
     </div>
   );
 }

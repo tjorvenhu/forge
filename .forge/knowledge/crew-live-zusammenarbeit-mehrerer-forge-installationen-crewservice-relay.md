@@ -1,28 +1,28 @@
 ---
 title: "Crew: Live-Zusammenarbeit (CrewService, Relay, Sessions teilen, Crew-Chat, Crew im Browser /crew)"
-summary: "Wie mehrere Leute gleichzeitig am selben Projekt arbeiten: Relay, Verschlüsselung, Beitritt, Präsenz, Hinweise, Push/Auto-Pull, Sessions teilen, Crew-Chat, Töne und Crew im Browser ohne FORGE (/crew auf der Website)."
+summary: "Wie mehrere Leute gleichzeitig am selben Projekt arbeiten: Relay, Verschlüsselung, Beitritt, Präsenz, Hinweise, Push/Auto-Pull, Sessions teilen, Crew-Chat, Töne, GitHub-Bilder und Crew im Browser ohne FORGE (/crew auf der Website)."
 tags: ["crew","zusammenarbeit","sidecar","relay","agenten","git","stats","stolperfalle"]
-updated: "2026-10-23T10:46:54.680Z"
+updated: "2026-10-23T11:07:18.416Z"
 ---
 
 Seit 2026-10-22. Die Entscheidungen und ihre Begründungen stehen in `docs/adr/0015-crew-live-zusammenarbeit.de.md`. Der Name lautet „Crew“, weil „Teams“ die Agent-Teams sind (`teams/agent-teams.ts`).
 
 ## Wo was liegt
 - **Protokoll:**
-  - `packages/protocol/src/crew.ts` mit Crew, CrewMember (`web?`), CrewAgent (`team?`), CrewTask, CrewFeedItem, CrewShare und CrewShareRequest, außerdem `CREW_RELAY_URL`, `CREW_WEB_URL`/`crewWebLink` und die Share-Limits.
+  - `packages/protocol/src/crew.ts` mit Crew, CrewMember (`web?`, `avatar?`), CrewAgent (`team?`), CrewTask, CrewFeedItem, CrewShare und CrewShareRequest, außerdem `CREW_RELAY_URL`, `CREW_WEB_URL`/`crewWebLink`, `CREW_AVATAR_PREFIX`/`isCrewAvatar` und die Share-Limits.
   - RPC `crew.*` in `rpc.ts`, Events `crew.updated` und `crew.notice` (Arten u. a. `share` und `shared`).
 - **Sidecar** in `packages/sidecar/src/crew/`:
-  - `crew-service.ts`: alles Fachliche.
+  - `crew-service.ts`: alles Fachliche. `loadAvatar` holt beim Start einmal das GitHub-Bild (`deps.avatar`, in `app.ts` aus `github.account()`), setzt es auf die eigene MemberCard und schickt `hello`.
   - `link.ts`: Verbindung zum Relay. Liest per SSE mit Reconnect und sendet per POST mit Outbox. Die Klasse `RelayLink` wird auch für Share-Räume genutzt.
   - `crypto.ts`: AES-256-GCM, AAD `room|kid`.
-  - `wire.ts`: zod-Nachrichten, darunter `share_ask` (optional `events`), `share_answer`, `share_stop`, `share_keep` und `ShareMessage` für den Share-Raum.
+  - `wire.ts`: zod-Nachrichten, darunter `share_ask` (optional `events`), `share_answer`, `share_stop`, `share_keep` und `ShareMessage` für den Share-Raum. MemberCard mit optional `web` und `avatar`.
   - `state.ts`: Datensatz mit `shareAgents` (Standard `ask`) und LWW-Merge.
   - `share.ts`: Sessions anderer.
   - `session-tools.ts`.
 - **Relay:** Teil der Website `services/stats` (`src/lib/crew-relay.ts`). Es speichert nur im Arbeitsspeicher, höchstens 256 KB pro Nachricht, 500 Nachrichten pro Raum und 240 POSTs pro Minute und IP. Räume sind beliebige IDs mit 16 bis 64 Zeichen aus `[A-Za-z0-9_-]`. Änderungen wirken erst nach dem Ausrollen in Coolify.
 - **Desktop** (`components/crew/`):
   - `CrewTab.tsx`: volle Höhe. Container-Queries `@container`/`@3xl:`; schmal gibt es Reiter Chat, Leute und Aufgaben. Browser-Mitglieder mit Globus „Browser“.
-  - `CrewDialogs.tsx` `InviteDialog`: Code, „Link kopieren“, der QR-Code enthält den Web-Link.
+  - `CrewDialogs.tsx`: `InviteDialog` (Code, „Link kopieren“, der QR-Code enthält den Web-Link) und `MemberAvatar` (GitHub-Bild mit `avatar`, sonst Initialen).
   - `CrewChat.tsx`: Feed und Nachrichten als eine Unterhaltung, Enter sendet. Wird im Reiter und in der Bubble genutzt.
   - `CrewBubble.tsx`: verschiebbar, Position in localStorage `forge.crew.bubble`. Ungelesen-Stand über `useCrewRead` in `lib/crew.ts` (localStorage `forge.crew.read`). Bei sichtbarem Crew-Reiter ausgeblendet.
   - `MirrorBar.tsx`: ersetzt im Chat den Composer, wenn die Session eine Kopie ist (`session.mirror`).
@@ -35,15 +35,20 @@ Seit 2026-10-22. Die Entscheidungen und ihre Begründungen stehen in `docs/adr/0
 - Einladungslink `https://forge.vanturis.de/crew#forge-crew1.…`: Der Code steht hinter `#`, erreicht also nie den Server; die Seite liest ihn einmal und nimmt ihn aus der Adresszeile. FORGEs `decodeInvite` sucht das Präfix irgendwo im Text, deshalb nimmt FORGE den Link auch als Code.
 - Der Browser ist ein eigenes Mitglied (eigener X25519-Schlüssel, `web: true` auf der MemberCard), kommt nur nach Prüfcode herein und zählt zu den 8 Plätzen. Schlüssel und Stand liegen in `localStorage` (`forge.crew.web`, `forge.crew.web.<id>`, Profil `forge.crew.web-profile`).
 - Kann: Chat lesen und schreiben, Aufgaben anlegen/ändern/löschen, Beitrittsanfragen annehmen, Session live ansehen (`share_ask` mit `events: 400`; ältere FORGE schicken alles, bei echten Sessions bis etwa 13 Teile, geht in wenigen Sekunden). Hat keine Sessions und lehnt `share_ask` an sich ab. Sendet alle 30 s eine leere Präsenz, damit er online gilt. Nach dem Entsperren des Handys (`wake`) schickt er sofort `share_keep`; beendete Live-Ansichten haben „Erneut versuchen“.
+- **Leute** wie FORGEs Seitenleiste: Projekt (Crew-Projekt, Branch, ungepushte Commits), darunter Sessions (`CrewAgent.branch` null), dann parallele Agenten (mit Branch); Bogenlinien wie `Branch` in `OpenSessions.tsx`. Ein Klick auf eine Zeile öffnet die Live-Ansicht.
+- **Live-Ansicht** ist FORGEs Chat nachgebaut (Wunsch des Nutzers: 1:1): `lib/crew-web/chat-items.ts` (Faltung wie `apps/desktop/.../chat-items.ts`, nur Hauptgespräch, Schlüssel nach Position, weil die Kopie keine seq/ts hat), `lib/crew-web/tool-view.ts` (Kopie von `tool-view.ts`), `components/crew-web/session-chat.tsx` (ChatRow mit Gutter, ClaudeMark am Antwortbeginn, ToolCard mit Statuspunkt, Diff- und Ausgabevorschau, Details aufklappbar, TodoCard, Freigabe nur lesend, Ergebniszeile, FORGE-Karten) und `.fc-*`/`.markdown` in `app/crew/crew.css` mit Größen und Farben aus `apps/desktop/src/styles.css`. Markdown mit `react-markdown` und `remark-gfm` (wie FORGE). Pfade relativ zu `payload.cwd` der Kopie. Änderungen am FORGE-Chat hier nachziehen.
 - **Stolperfallen:**
   - Längenprüfungen in `crew-web/wire.ts`: `str()` hat 100.000 Zeichen als Standard, ein Share-`chunk` hat bis 180.000. Das ließ jede echte Session-Kopie stumm verwerfen (Ansicht blieb bei „wird übertragen“), weil Testsessions in ein kurzes Stück passten. Der Test nutzt deshalb eine kaum komprimierbare 400-KB-Session mit mehreren Teilen.
-  - `wire.ts` ist eine Kopie der Sidecar-Formen ohne zod: Die Sidecar-Tests importieren `client.ts` direkt aus `services/stats`, dort sind im CI keine Website-Pakete installiert. Neue Nachrichtenfelder in beiden Dateien nachziehen.
+  - `wire.ts` ist eine Kopie der Sidecar-Formen ohne zod: Die Sidecar-Tests importieren `client.ts` direkt aus `services/stats`, dort sind im CI keine Website-Pakete installiert. Neue Nachrichtenfelder in beiden Dateien nachziehen. `chat-items.ts` und `session-chat.tsx` importiert der Sidecar nicht, dort dürfen Website-Pakete stehen.
   - Keine DOM-Typnamen (`AesGcmParams`, `CryptoKeyPair`) in `crew-web/crypto.ts`: Der Sidecar kompiliert die Datei ohne DOM-Lib mit.
+  - Pakete der Website mit `pnpm add --ignore-workspace` in `services/stats` installieren; ohne den Schalter bricht pnpm am Monorepo-Workspace ab („undefined is not a function“).
+  - `.crew-page svg` setzt alle Symbole auf 16 px und schlägt das `width`-Attribut: Größere oder kleinere SVGs (ClaudeMark) brauchen ein Inline-`style` oder eine eigene Regel.
+  - Profilbilder nur von `https://avatars.githubusercontent.com/` (`isCrewAvatar`/`isAvatar`): Ein Mitglied darf die anderen keine beliebige Adresse laden lassen. Ältere FORGE geben Karten ohne `avatar` weiter; `mergeMember` überschreibt das Bild deshalb nur, wenn die Karte eins hat.
   - WebCrypto ist async: Eingehende Umschläge laufen über eine Promise-Kette, sonst geraten Beitritt und Rekey durcheinander. WebCrypto hängt das GCM-Tag an, der Sidecar hält es getrennt.
   - `.btn-outline` der Website ist für Links gebaut; auf `<button>` bleibt sonst das Grau des Browsers (in `crew.css` überschrieben).
-  - `next dev` der Website lud in dieser Umgebung die Seite in einer Schleife neu (auch `/stats`). Zum Prüfen `pnpm build` und `pnpm start` nehmen.
-  - Gegen den echten Relay prüfen: ein tsx-Skript in `packages/sidecar` mit `CrewService` (Relay `https://forge.vanturis.de/crew`, Events einer echten Session aus `%APPDATA%/forge/forge.db`, nur lesend) und `CrewWebClient`; danach löschen.
-- **Test:** `test/crew.test.ts` „lets someone follow the crew in the browser …“ (Beitritt, Nachricht, Aufgabe, Präsenz, Live-Ansicht mit mehreren Teilen, Neuladen, Entfernen) und der Krypto-Abgleich Node gegen WebCrypto.
+  - `next dev` der Website lud in dieser Umgebung die Seite in einer Schleife neu (auch `/stats`). Zum Prüfen `pnpm build` und `pnpm start` nehmen. Schreiben außerhalb des Projekts ist im Autonomous-Profil gesperrt: Hilfsdateien im Projekt ablegen und danach löschen.
+  - Gegen den echten Relay oder mit echten Sessions prüfen: ein tsx-Skript in `packages/sidecar` mit `CrewService` (Relay lokal `http://localhost:3917/crew` oder `https://forge.vanturis.de/crew`, Events einer echten Session aus `%APPDATA%/forge/forge.db`, nur lesend) und dem Browser über `preview_interact`; danach löschen.
+- **Test:** `test/crew.test.ts` „lets someone follow the crew in the browser …“ (Beitritt, Nachricht, Aufgabe, Präsenz, GitHub-Bild, Live-Ansicht mit mehreren Teilen, Neuladen, Entfernen), der Krypto-Abgleich Node gegen WebCrypto und `services/stats/src/lib/crew-web/chat-items.test.ts`.
 
 ## Sessions anderer (crew/share.ts)
 - **Ablauf:**
@@ -77,7 +82,7 @@ Seit 2026-10-22. Die Entscheidungen und ihre Begründungen stehen in `docs/adr/0
 - **Git:** Eigener Push wird über die Autor-E-Mail erkannt. Bei Pushes anderer folgen `git.incoming` und Auto-Pull, solange das Projekt nicht beschäftigt ist.
 
 ## Stolperfallen
-- Ältere FORGE-Versionen verwerfen unbekannte Raumnachrichten (zod-Union). Neue Felder in bestehenden Typen deshalb optional halten (z. B. `CrewAgent.team`, `MemberCard.web`, `share_ask.events`).
-- Bash- und Python-Heredocs verlieren `\n` und Backslashes. Code-Ersetzungen als Skriptdatei schreiben oder das Edit-Werkzeug nehmen.
+- Ältere FORGE-Versionen verwerfen unbekannte Raumnachrichten (zod-Union). Neue Felder in bestehenden Typen deshalb optional halten (z. B. `CrewAgent.team`, `MemberCard.web`, `MemberCard.avatar`, `share_ask.events`).
+- Bash- und Python-Heredocs verlieren `\n` und Backslashes (auch in Regex wie `/\\/g`). Code-Ersetzungen als Skriptdatei schreiben oder das Edit-Werkzeug nehmen.
 - `rmSync` löscht unter Umlaut-Pfaden auf Windows mit Node 24.11 nichts; stattdessen `unlinkSync` verwenden.
 - Die Telefon-Testdaten in `test/phone-call.test.ts` („works in a crew …“) müssen alle Pflichtfelder von `Crew` haben (`shareAgents`, `shareRequests`, `shares`), sonst bricht `crew status` mit „Cannot read properties of undefined“ ab.

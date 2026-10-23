@@ -9,6 +9,7 @@ import {
   CREW_RELAY_URL,
   CrewProfile,
   ForgeError,
+  isCrewAvatar,
   remoteIdentity,
   type Crew,
   type CrewAcceptTasks,
@@ -68,6 +69,8 @@ export interface CrewDeps {
   emit(e: ServerEvent): void;
   /** sessions of members between installations (crew/share.ts); missing: not offered */
   share?: ShareDeps;
+  /** the signed-in GitHub account's picture, shown to the others; missing or null: initials */
+  avatar?: () => Promise<string | null>;
   now?: () => number;
   fetch?: typeof fetch;
   log?: (m: string) => void;
@@ -111,6 +114,7 @@ const toIso = (ms: number) => new Date(ms).toISOString();
 export class CrewService {
   private readonly crews = new Map<string, Live>();
   private profileCache: CrewProfile | null = null;
+  private avatarUrl: string | null = null;
   private heartbeat: NodeJS.Timeout | null = null;
   /** session id -> news number it has seen */
   private readonly cursors = new Map<string, number>();
@@ -160,6 +164,22 @@ export class CrewService {
       }
     }, HEARTBEAT_MS);
     this.heartbeat.unref();
+    void this.loadAvatar();
+  }
+
+  /** The GitHub picture goes on our card in every crew; the others get it with the next hello. */
+  private async loadAvatar() {
+    const url = await this.d.avatar?.().catch(() => null);
+    if (!isCrewAvatar(url) || url === this.avatarUrl) return;
+    this.avatarUrl = url;
+    for (const c of this.crews.values()) {
+      const me = c.rec.members.find((m) => m.id === c.rec.selfId);
+      if (!me || me.avatar === url) continue;
+      me.avatar = url;
+      this.save(c);
+      if (c.rec.membership === "member") this.sendRoom(c, { t: "hello", member: this.selfCard(c) });
+      this.scheduleEmit(c);
+    }
   }
 
   stop() {
@@ -413,7 +433,7 @@ export class CrewService {
       acceptTasks: "ask",
       shareAgents: "ask",
       autoPull: true,
-      members: [{ id: selfId, name: profile.name, color: profile.color, pub: pair.pub, joinedAt: at, owner: true, left: false, lastSeen: null, presence: null }],
+      members: [{ id: selfId, name: profile.name, color: profile.color, pub: pair.pub, joinedAt: at, owner: true, ...(this.avatarUrl ? { avatar: this.avatarUrl } : {}), left: false, lastSeen: null, presence: null }],
       removed: [],
       tasks: [],
       feed: [],
@@ -528,7 +548,7 @@ export class CrewService {
       acceptTasks: "ask",
       shareAgents: "ask",
       autoPull: true,
-      members: [{ id: selfId, name: profile.name, color: profile.color, pub: pair.pub, joinedAt: at, owner: false, left: false, lastSeen: null, presence: null }],
+      members: [{ id: selfId, name: profile.name, color: profile.color, pub: pair.pub, joinedAt: at, owner: false, ...(this.avatarUrl ? { avatar: this.avatarUrl } : {}), left: false, lastSeen: null, presence: null }],
       removed: [],
       tasks: [],
       feed: [],

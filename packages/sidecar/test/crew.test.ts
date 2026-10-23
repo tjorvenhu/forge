@@ -201,6 +201,7 @@ describe("two FORGE installations in one crew", () => {
         },
         emit: (e) => events.push(e),
         share,
+        avatar: async () => `https://avatars.githubusercontent.com/u/${name.length}?v=4`,
       });
     const svc = make();
     services.push(svc);
@@ -448,6 +449,8 @@ describe("two FORGE installations in one crew", () => {
       a.sessionEvents.set("sa", [{ type: "user.message", text: "Bau den Header" }, { type: "assistant.text", messageId: "m0", index: 0, text: big }]);
       a.svc.onServerEvent({ event: "session.event", payload: { seq: 1, sessionId: "sa", ts: "", body: { type: "user.message", text: "Bau den Header" } } });
       const anna = await waitFor("Anna's agent in the browser", () => ben.view().members.find((m) => m.agents.some((x) => x.task === "Bau den Header")));
+      // Her GitHub picture came along with her card.
+      expect(anna.avatar).toBe("https://avatars.githubusercontent.com/u/4?v=4");
 
       // A live view of the session: Anna agrees, the copy (only the newest events) and then new events arrive.
       await ben.watch(anna.id, "sa");

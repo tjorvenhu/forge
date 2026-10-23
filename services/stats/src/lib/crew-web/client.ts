@@ -2,6 +2,7 @@ import { fingerprint, gunzipBase64, newKeyPair, open, randomId, seal, sharedKey,
 import { RelayLink, type LinkState } from "./link";
 import {
   decodeInvite,
+  isAvatar,
   MAX_MEMBERS,
   ONLINE_MS,
   parseGrant,
@@ -102,6 +103,7 @@ export interface MemberView {
   self: boolean;
   owner: boolean;
   web: boolean;
+  avatar: string | null;
   online: boolean;
   lastSeen: string | null;
   branch: string | null;
@@ -123,6 +125,9 @@ export interface WatchView {
   error: string | null;
   /** session events (FORGE's SessionEventBody), oldest first */
   events: unknown[];
+  /** the session's folder on the member's computer, to show paths relative to it */
+  cwd: string | null;
+  model: string | null;
 }
 
 export interface CrewView {
@@ -191,11 +196,13 @@ function mergeMember(rec: WebCrewRecord, card: MemberCard, seen: number | null) 
   cur.color = card.color;
   cur.pub = card.pub;
   cur.web = !!card.web;
+  // Older FORGE versions drop the picture from the cards they pass on; only a card with one changes it.
+  if (card.avatar !== undefined) cur.avatar = card.avatar;
   cur.left = false;
   if (seen !== null) cur.lastSeen = Math.max(cur.lastSeen ?? 0, seen);
 }
 
-const cardOf = (m: MemberEntry): MemberCard => ({ id: m.id, name: m.name, color: m.color, pub: m.pub, joinedAt: m.joinedAt, owner: m.owner, ...(m.web ? { web: true } : {}) });
+const cardOf = (m: MemberEntry): MemberCard => ({ id: m.id, name: m.name, color: m.color, pub: m.pub, joinedAt: m.joinedAt, owner: m.owner, ...(m.web ? { web: true } : {}), ...(m.avatar ? { avatar: m.avatar } : {}) });
 
 interface Watch {
   view: WatchView;
@@ -399,6 +406,7 @@ export class CrewWebClient {
           self,
           owner: m.owner,
           web: !!m.web,
+          avatar: isAvatar(m.avatar) ? m.avatar : null,
           online: self ? this.connection === "online" : m.lastSeen !== null && now - m.lastSeen < ONLINE_MS,
           lastSeen: m.lastSeen ? iso(m.lastSeen) : null,
           branch: m.presence?.branch ?? null,
@@ -550,7 +558,7 @@ export class CrewWebClient {
     this.stopWatch();
     const title = member.presence?.agents.find((a) => a.id === agentId)?.title ?? "Session";
     const w: Watch = {
-      view: { id: randomId(12), member: memberId, agentId, title, state: "asking", received: 0, total: null, error: null, events: [] },
+      view: { id: randomId(12), member: memberId, agentId, title, state: "asking", received: 0, total: null, error: null, events: [], cwd: null, model: null },
       room: null,
       link: null,
       chunks: [],
@@ -650,17 +658,22 @@ export class CrewWebClient {
 
   private async completeWatch(w: Watch) {
     if (w.timers.stall) clearTimeout(w.timers.stall);
-    let events: unknown[];
+    let payload: { events?: unknown; cwd?: unknown; session?: { model?: unknown } };
     try {
-      const payload = JSON.parse(await gunzipBase64(w.chunks.join(""))) as { events?: unknown };
+      payload = JSON.parse(await gunzipBase64(w.chunks.join(""))) as typeof payload;
       if (!Array.isArray(payload.events)) throw new Error("no events");
-      events = payload.events;
     } catch {
       return this.failWatch(w, "broken");
     }
     w.chunks = [];
     if (this.watchState !== w) return;
-    w.view = { ...w.view, state: "live", events: events.slice(-WATCH_EVENTS_MAX) };
+    w.view = {
+      ...w.view,
+      state: "live",
+      events: (payload.events as unknown[]).slice(-WATCH_EVENTS_MAX),
+      cwd: typeof payload.cwd === "string" ? payload.cwd : null,
+      model: typeof payload.session?.model === "string" ? payload.session.model : null,
+    };
     w.timers.keep = setInterval(() => void this.sendRoom({ t: "share_keep", request: w.view.id, to: w.view.member }), KEEP_MS);
     this.drainLive(w);
     this.changed();

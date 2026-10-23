@@ -51,7 +51,13 @@ export interface MemberCard {
   owner: boolean;
   /** a member in the browser (this website), not a FORGE installation */
   web?: boolean;
+  /** GitHub picture (AVATAR_PREFIX); missing from older FORGE versions and from browsers */
+  avatar?: string;
 }
+
+/** Pictures come from GitHub only: a member must not make the others load any address. */
+export const AVATAR_PREFIX = "https://avatars.githubusercontent.com/";
+export const isAvatar = (v: unknown): v is string => typeof v === "string" && v.length <= 300 && v.startsWith(AVATAR_PREFIX);
 
 export type TaskStatus = "open" | "in_progress" | "done";
 
@@ -154,7 +160,7 @@ const ROOM_ID = /^[A-Za-z0-9_-]{16,64}$/;
 export const isSealed = (v: unknown): v is Sealed => isObj(v) && str(v.iv) && str(v.tag) && str(v.data);
 
 export function isCard(v: unknown): v is MemberCard {
-  return isObj(v) && str(v.id, 64) && !!v.id && str(v.name, 60) && !!v.name && str(v.color, 20) && str(v.pub, 100) && str(v.joinedAt) && typeof v.owner === "boolean" && (v.web === undefined || typeof v.web === "boolean");
+  return isObj(v) && str(v.id, 64) && !!v.id && str(v.name, 60) && !!v.name && str(v.color, 20) && str(v.pub, 100) && str(v.joinedAt) && typeof v.owner === "boolean" && (v.web === undefined || typeof v.web === "boolean") && (v.avatar === undefined || typeof v.avatar === "string");
 }
 
 function isAgent(v: unknown): v is CrewAgent {

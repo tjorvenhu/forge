@@ -212,6 +212,7 @@ export function createApp(opts: { dataDir: string; write: Writer; log?: (m: stri
       startTeam: (projectId, prompt) => teams.start(projectId, prompt),
       busy: (projectId) => sessions.projectBusy(projectId),
     },
+    avatar: async () => (await github.account())?.avatarUrl ?? null,
     share: {
       sessions: {
         get: (id) => (db.getSession(id) ? sessions.get(id) : null),

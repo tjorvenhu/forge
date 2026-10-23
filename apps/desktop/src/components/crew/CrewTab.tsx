@@ -413,7 +413,7 @@ function CrewBoard({ crew }: { crew: Crew }) {
         </div>
         <div className="hidden -space-x-1 pl-1 @md:flex">
           {crew.members.map((x) => (
-            <MemberAvatar key={x.id} name={x.name} color={x.color} size={24} className={cn("ring-2 ring-bg", !x.online && "opacity-45")} />
+            <MemberAvatar key={x.id} name={x.name} color={x.color} avatar={x.avatar} size={24} className={cn("ring-2 ring-bg", !x.online && "opacity-45")} />
           ))}
         </div>
         <div className="flex-1" />
@@ -565,7 +565,7 @@ function ShareRequestBanner({ crew, request }: { crew: Crew; request: CrewShareR
         { label: m.deny, icon: <X className={ic} />, onSelect: () => void answer(false), danger: true },
       ])}
     >
-      <MemberAvatar name={name} color={from?.color ?? "var(--color-subtle)"} size={26} />
+      <MemberAvatar name={name} color={from?.color ?? "var(--color-subtle)"} avatar={from?.avatar} size={26} />
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-1.5 text-small font-medium">
           {takeover ? <Download className={cn(ic, "text-accent")} /> : <Eye className={cn(ic, "text-accent")} />}
@@ -615,7 +615,7 @@ function MemberRow({ crew, member, onMessage, onTask }: { crew: Crew; member: Cr
   return (
     <div className="rounded-lg px-1.5 py-1.5 hover:bg-surface-2/60" onContextMenu={contextItems(menu)}>
       <div className="group flex items-center gap-2">
-        <MemberAvatar name={member.name} color={member.color} online={member.online} size={26} />
+        <MemberAvatar name={member.name} color={member.color} avatar={member.avatar} online={member.online} size={26} />
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1">
             <span className="truncate text-small font-medium">{member.name}</span>
@@ -758,7 +758,7 @@ function ShareRow({ crew, share: s }: { crew: Crew; share: CrewShare }) {
         </span>
       </div>
       <div className="mt-0.5 flex items-center gap-1.5 text-caption text-subtle">
-        <MemberAvatar name={from?.name ?? "?"} color={from?.color ?? "var(--color-subtle)"} size={14} />
+        <MemberAvatar name={from?.name ?? "?"} color={from?.color ?? "var(--color-subtle)"} avatar={from?.avatar} size={14} />
         {from?.name ?? "?"} · {relativeTime(s.at)}
       </div>
       {s.state === "transferring" && (

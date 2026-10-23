@@ -21,6 +21,8 @@ export const MemberCard = z.object({
   owner: z.boolean(),
   /** a member in the browser (website), not a FORGE installation; missing from FORGE installations */
   web: z.boolean().optional(),
+  /** GitHub picture (CREW_AVATAR_PREFIX); missing from older FORGE versions */
+  avatar: z.string().max(300).optional(),
 });
 export type MemberCard = z.infer<typeof MemberCard>;
 

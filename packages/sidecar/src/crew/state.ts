@@ -1,6 +1,7 @@
 import { z } from "zod";
 import {
   CREW_ONLINE_MS,
+  isCrewAvatar,
   CrewAcceptTasks,
   CrewShareAgents,
   CrewFeedItem,
@@ -119,8 +120,10 @@ export function mergeMember(rec: CrewRecord, card: MemberCard, seen: number | nu
     return true;
   }
   // The owner flag of a known member never changes: nobody can make themselves owner later.
-  const changed = cur.name !== card.name || cur.color !== card.color || cur.pub !== card.pub || cur.left || !!cur.web !== !!card.web;
+  const changed = cur.name !== card.name || cur.color !== card.color || cur.pub !== card.pub || cur.left || !!cur.web !== !!card.web || (card.avatar !== undefined && cur.avatar !== card.avatar);
   cur.web = card.web;
+  // Older FORGE versions drop the picture from the cards they pass on; only a card with one changes it.
+  if (card.avatar !== undefined) cur.avatar = card.avatar;
   cur.name = card.name;
   cur.color = card.color;
   cur.pub = card.pub;
@@ -130,7 +133,7 @@ export function mergeMember(rec: CrewRecord, card: MemberCard, seen: number | nu
 }
 
 export function cardOf(m: MemberEntry): MemberCard {
-  return { id: m.id, name: m.name, color: m.color, pub: m.pub, joinedAt: m.joinedAt, owner: m.owner, ...(m.web ? { web: true } : {}) };
+  return { id: m.id, name: m.name, color: m.color, pub: m.pub, joinedAt: m.joinedAt, owner: m.owner, ...(m.web ? { web: true } : {}), ...(m.avatar ? { avatar: m.avatar } : {}) };
 }
 
 /** The crew as the UI and the tools see it. */
@@ -158,6 +161,7 @@ export function crewView(
         self,
         owner: m.owner,
         web: !!m.web,
+        avatar: isCrewAvatar(m.avatar) ? m.avatar : null,
         online: self ? o.connection === "online" : m.lastSeen !== null && o.now - m.lastSeen < CREW_ONLINE_MS,
         lastSeen: m.lastSeen ? new Date(m.lastSeen).toISOString() : null,
         branch: p?.branch ?? null,

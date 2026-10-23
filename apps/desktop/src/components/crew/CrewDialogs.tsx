@@ -287,18 +287,23 @@ export function CrewSettingsDialog({ crew, open, onOpenChange }: { crew: Crew; o
 }
 
 /** Round avatar with the member's initials in its color; a dot shows whether it is online. */
-export function MemberAvatar({ name, color, online, size = 28, className }: { name: string; color: string; online?: boolean; size?: number; className?: string }) {
+export function MemberAvatar({ name, color, avatar, online, size = 28, className }: { name: string; color: string; avatar?: string | null; online?: boolean; size?: number; className?: string }) {
+  const [broken, setBroken] = useState(false);
   // Two letters only fit from 26 px on; smaller avatars (header, feed) show one.
   const letters = size < 26 ? initials(name).slice(0, 1) : initials(name);
   return (
     <span className={cn("relative inline-flex shrink-0 rounded-full", className)} style={{ width: size, height: size }}>
-      <span
-        className="flex h-full w-full items-center justify-center rounded-full font-semibold text-white"
-        style={{ background: color, fontSize: Math.round(size * (letters.length > 1 ? 0.38 : 0.46)) }}
-        aria-hidden
-      >
-        {letters}
-      </span>
+      {avatar && !broken ? (
+        <img src={avatar} alt="" width={size} height={size} className="h-full w-full rounded-full object-cover" onError={() => setBroken(true)} />
+      ) : (
+        <span
+          className="flex h-full w-full items-center justify-center rounded-full font-semibold text-white"
+          style={{ background: color, fontSize: Math.round(size * (letters.length > 1 ? 0.38 : 0.46)) }}
+          aria-hidden
+        >
+          {letters}
+        </span>
+      )}
       {online !== undefined && (
         <span
           className={cn("absolute -bottom-px -right-px h-2.5 w-2.5 rounded-full border-2 border-surface", online ? "bg-success" : "bg-subtle")}

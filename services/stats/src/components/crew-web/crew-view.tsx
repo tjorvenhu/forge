@@ -1,13 +1,14 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
-import { Bot, Check, CheckCircle2, Circle, CircleDot, Eye, GitBranch, Globe, LogOut, MessageSquare, Plus, RotateCcw, Send, Trash2, UserCheck, Users, X } from "lucide-react";
+import { ArrowUp, Bot, Check, CheckCircle2, Circle, CircleDot, Eye, GitBranch, Globe, LogOut, MessageSquare, Plus, RotateCcw, Send, Trash2, UserCheck, Users, X } from "lucide-react";
 import type { CrewView, CrewWebClient, MemberView } from "@/lib/crew-web/client";
 import { crewMessages, type CrewMessages } from "@/lib/crew-web/messages";
 import { MESSAGE_MAX, TASK_DETAIL_MAX, TASK_TITLE_MAX, type CrewAgent, type FeedItem, type TaskEntry, type TaskStatus } from "@/lib/crew-web/wire";
 import type { Locale } from "@/lib/i18n";
 import { useI18n } from "../locale";
-import { clock, errorText, initials, relativeTime, useTick } from "./util";
+import { clock, errorText, relativeTime, useTick } from "./util";
+import { MemberAvatar } from "./avatar";
 import { WatchPanel } from "./watch";
 
 type Tab = "chat" | "people" | "tasks";
@@ -116,7 +117,7 @@ export function CrewBoard({ client, crew, onLeft }: { client: CrewWebClient; cre
       {crew.watch && (
         <WatchPanel
           watch={crew.watch}
-          memberName={client.memberName(crew.watch.member)}
+          member={crew.members.find((x) => x.id === crew.watch!.member) ?? null}
           onClose={() => client.stopWatch()}
           onRetry={() => {
             const w = crew.watch!;
@@ -125,14 +126,6 @@ export function CrewBoard({ client, crew, onLeft }: { client: CrewWebClient; cre
         />
       )}
     </div>
-  );
-}
-
-function Avatar({ name, color }: { name: string; color: string }) {
-  return (
-    <span className="crew-avatar" style={{ background: color }} aria-hidden>
-      {initials(name)}
-    </span>
   );
 }
 
@@ -203,7 +196,7 @@ function FeedRow({ item, from, name, toName, self, m, locale }: { item: FeedItem
   const mine = item.kind === "message" && item.from === self;
   return (
     <article className={`crew-feed-item crew-feed-${item.kind}${mine ? " crew-feed-mine" : ""}`}>
-      <Avatar name={name} color={color} />
+      <MemberAvatar name={name} color={color} avatar={from?.avatar} size={30} />
       <div className="crew-feed-body">
         <header>
           <strong>{name}</strong>
@@ -237,91 +230,102 @@ function FeedRow({ item, from, name, toName, self, m, locale }: { item: FeedItem
 
 // ---------- people
 
+/**
+ * Members as FORGE's sidebar shows its own work: the project, under it the sessions in the main
+ * checkout, then the parallel agents (with their branch). A row opens the session live.
+ */
 function People({ crew, m, locale, onWatch }: { crew: CrewView; m: CrewMessages; locale: Locale; onWatch: (member: string, agent: string) => void }) {
   return (
     <div className="crew-people">
-      {crew.members.map((p) => (
-        <article key={p.id} className="crew-person">
-          <header>
-            <Avatar name={p.name} color={p.color} />
-            <div className="crew-person-name">
-              <strong>
-                {p.name}
-                {p.self && <span className="crew-chip">{m.you}</span>}
-                {p.owner && <span className="crew-chip">{m.owner}</span>}
-                {p.web && (
-                  <span className="crew-chip">
-                    <Globe aria-hidden /> {m.browser}
+      {crew.members.map((p) => {
+        const sessions = p.agents.filter((a) => !a.branch);
+        const agents = p.agents.filter((a) => a.branch);
+        const rows = [...sessions, ...agents];
+        const canWatch = !p.self && p.online;
+        return (
+          <article key={p.id} className="crew-person">
+            <header>
+              <MemberAvatar name={p.name} color={p.color} avatar={p.avatar} size={28} online={p.online} />
+              <div className="crew-person-name">
+                <strong>
+                  <span className="crew-ellipsis">{p.name}</span>
+                  {p.self && <span className="crew-chip">{m.you}</span>}
+                  {p.owner && <span className="crew-chip">{m.owner}</span>}
+                  {p.web && (
+                    <span className="crew-chip">
+                      <Globe aria-hidden /> {m.browser}
+                    </span>
+                  )}
+                </strong>
+                <span className="crew-muted">{p.online ? m.online : p.lastSeen ? m.lastSeen(relativeTime(p.lastSeen, locale)) : m.neverSeen}</span>
+              </div>
+            </header>
+            {p.web ? (
+              !p.self && <p className="crew-muted crew-small-text crew-person-note">{m.webMember}</p>
+            ) : (
+              <div className="crew-tree">
+                <div className="crew-tree-project">
+                  <span className="crew-project-icon" aria-hidden>
+                    {(crew.project.trim()[0] ?? "?").toUpperCase()}
                   </span>
+                  <span className="crew-ellipsis">{crew.project}</span>
+                  {p.branch && (
+                    <span className="crew-tree-meta" title={m.branch(p.branch)}>
+                      <GitBranch aria-hidden /> <span className="crew-ellipsis">{p.branch}</span>
+                    </span>
+                  )}
+                  {p.ahead > 0 && (
+                    <span className="crew-tree-meta crew-warn" title={m.ahead(p.ahead)}>
+                      <ArrowUp aria-hidden />
+                      {p.ahead}
+                    </span>
+                  )}
+                </div>
+                {rows.length ? (
+                  <ul className="crew-tree-rows">
+                    {rows.map((a, i) => (
+                      <TreeRow key={a.id} agent={a} last={i === rows.length - 1} m={m} canWatch={canWatch} onWatch={() => onWatch(p.id, a.id)} />
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="crew-muted crew-small-text crew-person-note">{m.noAgents}</p>
                 )}
-              </strong>
-              <span className="crew-muted">
-                <span className={p.online ? "live-dot live-dot-on" : "live-dot"} aria-hidden /> {p.online ? m.online : p.lastSeen ? m.lastSeen(relativeTime(p.lastSeen, locale)) : m.neverSeen}
-              </span>
-            </div>
-          </header>
-          {!p.web && (p.branch || p.ahead > 0 || p.files.length > 0) && (
-            <p className="crew-person-git">
-              {p.branch && (
-                <span>
-                  <GitBranch aria-hidden /> {p.branch}
-                </span>
-              )}
-              {p.ahead > 0 && <span>{m.ahead(p.ahead)}</span>}
-              {p.files.length > 0 && <span>{m.changed(p.files.length)}</span>}
-            </p>
-          )}
-          {p.web ? (
-            !p.self && <p className="crew-muted crew-small-text">{m.webMember}</p>
-          ) : p.agents.length ? (
-            <ul className="crew-agents">
-              {p.agents.map((a) => (
-                <AgentRow key={a.id} agent={a} m={m} canWatch={!p.self && p.online} onWatch={() => onWatch(p.id, a.id)} />
-              ))}
-            </ul>
-          ) : (
-            <p className="crew-muted crew-small-text">{m.noAgents}</p>
-          )}
-        </article>
-      ))}
+              </div>
+            )}
+          </article>
+        );
+      })}
     </div>
   );
 }
 
-function AgentRow({ agent, m, canWatch, onWatch }: { agent: CrewAgent; m: CrewMessages; canWatch: boolean; onWatch: () => void }) {
+function TreeRow({ agent, last, m, canWatch, onWatch }: { agent: CrewAgent; last: boolean; m: CrewMessages; canWatch: boolean; onWatch: () => void }) {
+  const status = m.status[agent.status];
+  const line = agent.status === "idle" && agent.lastResult ? agent.lastResult : agent.task;
+  const content = (
+    <>
+      <span className="crew-tree-head">
+        <span className={`crew-tree-dot crew-tree-dot-${agent.status}`} aria-hidden />
+        {agent.branch && <Bot aria-hidden className="crew-accent" />}
+        {agent.team && <Users aria-hidden className="crew-accent" />}
+        <span className="crew-ellipsis crew-tree-title">{agent.title}</span>
+        {agent.branch && <span className="crew-tree-branch crew-ellipsis">{agent.branch}</span>}
+        {canWatch && <Eye aria-hidden className="crew-tree-eye" />}
+      </span>
+      {line && <span className="crew-tree-line">{line}</span>}
+      {agent.team && agent.team.working > 0 && <span className="crew-tree-line">{m.team(agent.team.working)}</span>}
+    </>
+  );
   return (
-    <li className={`crew-agent crew-agent-${agent.status}`}>
-      <div className="crew-agent-head">
-        <Bot aria-hidden />
-        <strong className="crew-ellipsis">{agent.title}</strong>
-        <span className="crew-status">{m.status[agent.status]}</span>
-      </div>
-      {agent.team && agent.team.working > 0 && <p className="crew-muted crew-small-text">{m.team(agent.team.working)}</p>}
-      {agent.branch && (
-        <p className="crew-muted crew-small-text">
-          <GitBranch aria-hidden /> {agent.branch}
-        </p>
-      )}
-      {agent.task && <p className="crew-agent-task">{agent.task}</p>}
-      {agent.lastResult && agent.status === "idle" && (
-        <p className="crew-agent-result">
-          <span>{m.lastResult}:</span> {agent.lastResult}
-        </p>
-      )}
-      {agent.files.length > 0 && (
-        <details className="crew-files">
-          <summary>{m.files(agent.files.length)}</summary>
-          <ul>
-            {agent.files.map((f) => (
-              <li key={f}>{f}</li>
-            ))}
-          </ul>
-        </details>
-      )}
-      {canWatch && (
-        <button type="button" className="btn btn-outline crew-small" onClick={onWatch}>
-          <Eye aria-hidden /> {m.watch}
+    <li className={last ? "crew-branch crew-branch-last" : "crew-branch"}>
+      {canWatch ? (
+        <button type="button" className="crew-tree-row" onClick={onWatch} title={`${m.watch}: ${agent.title} (${status})`} aria-label={`${agent.title}, ${status}. ${m.watch}`}>
+          {content}
         </button>
+      ) : (
+        <div className="crew-tree-row" title={`${agent.title} (${status})`}>
+          {content}
+        </div>
       )}
     </li>
   );
@@ -412,7 +416,7 @@ function TaskRow({ task, client, m, locale, act }: { task: TaskEntry; client: Cr
       <div className="crew-task-body">
         <strong>{task.title}</strong>
         {task.detail && <p className="crew-text crew-small-text">{task.detail}</p>}
-        {task.note && <p className="crew-agent-result crew-small-text">{task.note}</p>}
+        {task.note && <p className="crew-muted crew-small-text">{task.note}</p>}
         <p className="crew-muted crew-small-text">{meta.join(" · ")}</p>
         <div className="crew-task-actions">
           {task.status === "open" && (
