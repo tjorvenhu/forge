@@ -247,11 +247,12 @@ describe("usage limit in the chat", () => {
     expect(JSON.stringify(items)).not.toMatch(/rejected|allowed/);
   });
 
-  it("replaces the stop notice with the plan card and closes the plan once something follows", () => {
+  it("replaces the stop notice, Claude's limit message and the failed turn end with the plan card and closes the plan once something follows", () => {
     seq = 0;
     const scheduled: SessionEventBody = { type: "auto_continue", state: "scheduled", scheduledFor: "2026-10-10T17:12:00.000Z", resetKnown: true, attempt: 1, message: null };
-    const planned = buildEventItems([ev({ type: "user.message", text: "Bau das" }), ev(limit("rejected")), ev(failed), ev(scheduled)]);
-    expect(planned.map((i) => i.kind)).toEqual(["user", "result", "autoContinue"]);
+    const limitText: SessionEventBody = { type: "assistant.text", messageId: "m9", index: 0, text: "You've hit your session limit · resets 12:40pm (Europe/Berlin)" };
+    const planned = buildEventItems([ev({ type: "user.message", text: "Bau das" }), ev(limitText), ev(limit("rejected")), ev(failed), ev(scheduled)]);
+    expect(planned.map((i) => i.kind)).toEqual(["user", "autoContinue"]);
     expect(planned.at(-1)).toMatchObject({ open: true });
 
     const ran = buildEventItems([
@@ -259,11 +260,26 @@ describe("usage limit in the chat", () => {
       ev({ type: "auto_continue", state: "resumed", scheduledFor: "2026-10-10T17:12:00.000Z", attempt: 1, message: null }, 5),
       ev({ type: "user.message", text: "Das Nutzungslimit ist zurückgesetzt.", source: "auto" }, 6),
     ]);
-    expect(ran.map((i) => (i.kind === "autoContinue" ? `${i.body.state}:${i.open}` : i.kind))).toEqual(["user", "result", "scheduled:false", "resumed:false", "user"]);
+    expect(ran.map((i) => (i.kind === "autoContinue" ? `${i.body.state}:${i.open}` : i.kind))).toEqual(["user", "scheduled:false", "resumed:false", "user"]);
     expect(ran.at(-1)).toMatchObject({ kind: "user", auto: true });
 
     const overruled = buildEventItems([ev(scheduled, 1), ev({ type: "user.message", text: "Mach ich selbst" }, 2)]);
     expect(overruled[0]).toMatchObject({ kind: "autoContinue", open: false });
+  });
+
+  it("keeps the limit message and the failed turn end when FORGE plans nothing, and earlier texts that only mention a limit", () => {
+    seq = 0;
+    const said: SessionEventBody = { type: "assistant.text", messageId: "m1", index: 0, text: "You've hit your limit · resets 3pm" };
+    expect(buildEventItems([ev({ type: "user.message", text: "x" }), ev(said), ev(failed)]).map((i) => i.kind)).toEqual(["user", "assistant", "result"]);
+
+    const earlier = buildEventItems([
+      ev({ type: "user.message", text: "x" }),
+      ev(said),
+      ev({ type: "tool.use", toolUseId: "t1", name: "Bash", input: { command: "ls" }, parentToolUseId: null }),
+      ev(failed),
+      ev({ type: "auto_continue", state: "scheduled", scheduledFor: "2026-10-10T17:12:00.000Z", resetKnown: true, attempt: 1, message: null }),
+    ]);
+    expect(earlier.map((i) => i.kind)).toEqual(["user", "assistant", "tool", "autoContinue"]);
   });
 });
 

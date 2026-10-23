@@ -1,4 +1,4 @@
-import type { PlanUsage, SessionEventBody } from "@forge/protocol";
+import { isUsageLimitText, type PlanUsage, type SessionEventBody } from "@forge/protocol";
 import type { AutoContinueRecord, Db } from "../persistence/db.js";
 import { describeRuntimeError } from "./live-session.js";
 import { de } from "../i18n/de/index.js";
@@ -45,15 +45,7 @@ export interface AutoContinueHost {
   track(p: Promise<unknown>): void;
 }
 
-/**
- * The text Claude Code ends a turn with when a plan limit stops it ("You've hit your limit · resets 3pm",
- * older CLIs "Claude AI usage limit reached|<unix time>"). Credit and admin limits do not reset by
- * waiting and are left out on purpose.
- */
-export function isUsageLimitText(text: string | null): boolean {
-  if (!text) return false;
-  return /you['’]ve (hit|reached) your|usage limit reached|claude ai usage limit|(5-hour|five.hour|weekly|session|opus|sonnet) limit (reached|hit)/i.test(text);
-}
+export { isUsageLimitText };
 
 const MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
 

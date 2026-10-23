@@ -31,10 +31,11 @@ export function AutoContinueCard({ item, sessionId }: { item: AutoContinueItem; 
     return (
       <EventCard
         icon={<Timer className={ICON} />}
-        tone="warning"
+        tone="danger"
         title={t.chat.autoContinue.limitReached}
         detail={detail}
         ts={item.ts}
+        highlight
         action={
           pending ? (
             <Button size="sm" variant="outline" onClick={() => cancel.mutate({ sessionId })} loading={cancel.isPending}>

@@ -674,6 +674,16 @@ export function isIdleClosedDetail(detail: string | null | undefined): detail is
 }
 
 /**
+ * The text Claude Code ends a turn with when a plan limit stops it ("You've hit your limit · resets 3pm",
+ * older CLIs "Claude AI usage limit reached|<unix time>"). Credit and admin limits do not reset by
+ * waiting and are left out on purpose.
+ */
+export function isUsageLimitText(text: string | null): boolean {
+  if (!text) return false;
+  return /you['’]ve (hit|reached) your|usage limit reached|claude ai usage limit|(5-hour|five.hour|weekly|session|opus|sonnet) limit (reached|hit)/i.test(text);
+}
+
+/**
  * The latest plan rate limit Claude Code reported, for the whole account (not per session).
  * "warning": close to the limit; "reached": requests are rejected until resetsAt.
  */

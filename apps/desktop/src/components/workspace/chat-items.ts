@@ -1,4 +1,4 @@
-import { isIdleClosedDetail, type SessionEvent, type SessionEventBody, type TaskMessageRef } from "@forge/protocol";
+import { isIdleClosedDetail, isUsageLimitText, type SessionEvent, type SessionEventBody, type TaskMessageRef } from "@forge/protocol";
 import { pathInside } from "@/lib/platform";
 import { limitLabel, limitTime } from "@/lib/rate-limit";
 import { t } from "@/i18n";
@@ -130,6 +130,9 @@ function itemFolder(thread: string | null = null) {
   let lastTodo: number | null = null;
   /** the "limit reached" notice of the current turn; replaced by the plan card when one follows */
   let limitNotice: number | null = null;
+  /** Claude's limit message and the failed turn end of the current turn; the plan card replaces them too */
+  let limitText: number | null = null;
+  let limitResult: number | null = null;
   /** the plan card that is still the latest word on the automatic continuation */
   let openPlan: number | null = null;
   const dropped = new Set<number>();
@@ -147,6 +150,8 @@ function itemFolder(thread: string | null = null) {
     for (const i of dropped) if (i >= index) dropped.delete(i);
     if (lastTodo !== null && lastTodo >= index) lastTodo = null;
     if (limitNotice !== null && limitNotice >= index) limitNotice = null;
+    if (limitText !== null && limitText >= index) limitText = null;
+    if (limitResult !== null && limitResult >= index) limitResult = null;
     if (openPlan !== null && openPlan >= index) openPlan = null;
   };
 
@@ -181,7 +186,7 @@ function itemFolder(thread: string | null = null) {
           items[openPlan] = { ...(items[openPlan] as AutoContinueItem), open: false };
           openPlan = null;
         }
-        limitNotice = null;
+        limitNotice = limitText = limitResult = null;
         items.push({
           kind: "user",
           key: `u${ev.seq}`,
@@ -206,6 +211,7 @@ function itemFolder(thread: string | null = null) {
           textIdx.set(key, items.length);
           items.push(item);
         }
+        if (thread === null && isUsageLimitText(b.text)) limitText = existing ?? items.length - 1;
         break;
       }
       case "tool.use": {
@@ -317,6 +323,9 @@ function itemFolder(thread: string | null = null) {
         });
         break;
       case "turn.result":
+        limitResult = b.isError ? items.length : null;
+        // only the message the turn ended with; an earlier one that merely mentions a limit stays
+        if (!b.isError || (limitText !== null && limitText < items.length - (limitNotice === items.length - 1 ? 2 : 1))) limitText = null;
         items.push({ kind: "result", key: `r${ev.seq}`, ts: ev.ts, body: b });
         break;
       case "context.compacted": {
@@ -382,9 +391,10 @@ function itemFolder(thread: string | null = null) {
       case "auto_continue":
         if (openPlan !== null) items[openPlan] = { ...(items[openPlan] as AutoContinueItem), open: false };
         openPlan = null;
-        // The plan card says the limit was reached; the plain notice right before it would repeat that.
-        if (b.state === "scheduled" && limitNotice !== null) dropped.add(limitNotice);
-        limitNotice = null;
+        // The plan card says the limit was reached; the notice, Claude's limit message and the failed
+        // turn end right before it would only repeat that.
+        if (b.state === "scheduled") for (const i of [limitNotice, limitText, limitResult]) if (i !== null) dropped.add(i);
+        limitNotice = limitText = limitResult = null;
         if (b.state === "scheduled") openPlan = items.length;
         items.push({ kind: "autoContinue", key: `l${ev.seq}`, ts: ev.ts, body: b, open: b.state === "scheduled" });
         break;
