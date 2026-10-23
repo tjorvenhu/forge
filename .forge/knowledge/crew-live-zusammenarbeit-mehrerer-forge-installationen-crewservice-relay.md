@@ -1,8 +1,8 @@
 ---
 title: "Crew: Live-Zusammenarbeit (CrewService, Relay, Sessions teilen, Crew-Chat, Crew im Browser /crew)"
-summary: "Wie mehrere Leute gleichzeitig am selben Projekt arbeiten: Relay, Verschlüsselung, Beitritt, Präsenz, Hinweise, Push/Auto-Pull, Sessions teilen, Crew-Chat und Crew im Browser ohne FORGE (/crew auf der Website)."
+summary: "Wie mehrere Leute gleichzeitig am selben Projekt arbeiten: Relay, Verschlüsselung, Beitritt, Präsenz, Hinweise, Push/Auto-Pull, Sessions teilen, Crew-Chat, Töne und Crew im Browser ohne FORGE (/crew auf der Website)."
 tags: ["crew","zusammenarbeit","sidecar","relay","agenten","git","stats","stolperfalle"]
-updated: "2026-10-23T10:25:38.495Z"
+updated: "2026-10-23T10:46:54.680Z"
 ---
 
 Seit 2026-10-22. Die Entscheidungen und ihre Begründungen stehen in `docs/adr/0015-crew-live-zusammenarbeit.de.md`. Der Name lautet „Crew“, weil „Teams“ die Agent-Teams sind (`teams/agent-teams.ts`).
@@ -27,20 +27,23 @@ Seit 2026-10-22. Die Entscheidungen und ihre Begründungen stehen in `docs/adr/0
   - `CrewBubble.tsx`: verschiebbar, Position in localStorage `forge.crew.bubble`. Ungelesen-Stand über `useCrewRead` in `lib/crew.ts` (localStorage `forge.crew.read`). Bei sichtbarem Crew-Reiter ausgeblendet.
   - `MirrorBar.tsx`: ersetzt im Chat den Composer, wenn die Session eine Kopie ist (`session.mirror`).
   - Seitenleiste `OpenSessions.tsx` mit Crew-Kennzeichen am Projekt und Live-, Kopie- bzw. Team-Kennzeichen an Sessions.
+  - Töne (`lib/sounds.ts`, in `crewNotice` von `lib/crew.ts`): `knock` (Klingel) bei Beitrittsanfrage, Session-Anfrage und Aufgabe für mich, `message` bei Nachrichten. Hängen an der Einstellung `sounds`; Vorhören in Einstellungen > Töne.
 - **Telefon:** `crew` mit `session_view`, `session_takeover` und `session_answer`, dazu `settings` mit `share_sessions`. Browser-Mitglieder heißen dort „(im Browser)“.
 
 ## Crew im Browser (/crew, seit 2026-10-23)
 - Seite `services/stats/src/app/crew/page.tsx` (noindex), Oberfläche `src/components/crew-web/`, Kern ohne Framework in `src/lib/crew-web/` (`crypto.ts` WebCrypto, `wire.ts`, `link.ts`, `client.ts` mit `CrewWebClient`, Texte `messages.ts`).
 - Einladungslink `https://forge.vanturis.de/crew#forge-crew1.…`: Der Code steht hinter `#`, erreicht also nie den Server; die Seite liest ihn einmal und nimmt ihn aus der Adresszeile. FORGEs `decodeInvite` sucht das Präfix irgendwo im Text, deshalb nimmt FORGE den Link auch als Code.
 - Der Browser ist ein eigenes Mitglied (eigener X25519-Schlüssel, `web: true` auf der MemberCard), kommt nur nach Prüfcode herein und zählt zu den 8 Plätzen. Schlüssel und Stand liegen in `localStorage` (`forge.crew.web`, `forge.crew.web.<id>`, Profil `forge.crew.web-profile`).
-- Kann: Chat lesen und schreiben, Aufgaben anlegen/ändern/löschen, Beitrittsanfragen annehmen, Session live ansehen (`share_ask` mit `events: 400`; ältere FORGE schicken alles). Hat keine Sessions und lehnt `share_ask` an sich ab. Sendet alle 30 s eine leere Präsenz, damit er online gilt.
+- Kann: Chat lesen und schreiben, Aufgaben anlegen/ändern/löschen, Beitrittsanfragen annehmen, Session live ansehen (`share_ask` mit `events: 400`; ältere FORGE schicken alles, bei echten Sessions bis etwa 13 Teile, geht in wenigen Sekunden). Hat keine Sessions und lehnt `share_ask` an sich ab. Sendet alle 30 s eine leere Präsenz, damit er online gilt. Nach dem Entsperren des Handys (`wake`) schickt er sofort `share_keep`; beendete Live-Ansichten haben „Erneut versuchen“.
 - **Stolperfallen:**
+  - Längenprüfungen in `crew-web/wire.ts`: `str()` hat 100.000 Zeichen als Standard, ein Share-`chunk` hat bis 180.000. Das ließ jede echte Session-Kopie stumm verwerfen (Ansicht blieb bei „wird übertragen“), weil Testsessions in ein kurzes Stück passten. Der Test nutzt deshalb eine kaum komprimierbare 400-KB-Session mit mehreren Teilen.
   - `wire.ts` ist eine Kopie der Sidecar-Formen ohne zod: Die Sidecar-Tests importieren `client.ts` direkt aus `services/stats`, dort sind im CI keine Website-Pakete installiert. Neue Nachrichtenfelder in beiden Dateien nachziehen.
   - Keine DOM-Typnamen (`AesGcmParams`, `CryptoKeyPair`) in `crew-web/crypto.ts`: Der Sidecar kompiliert die Datei ohne DOM-Lib mit.
   - WebCrypto ist async: Eingehende Umschläge laufen über eine Promise-Kette, sonst geraten Beitritt und Rekey durcheinander. WebCrypto hängt das GCM-Tag an, der Sidecar hält es getrennt.
   - `.btn-outline` der Website ist für Links gebaut; auf `<button>` bleibt sonst das Grau des Browsers (in `crew.css` überschrieben).
   - `next dev` der Website lud in dieser Umgebung die Seite in einer Schleife neu (auch `/stats`). Zum Prüfen `pnpm build` und `pnpm start` nehmen.
-- **Test:** `test/crew.test.ts` „lets someone follow the crew in the browser …“ (Beitritt, Nachricht, Aufgabe, Präsenz, Live-Ansicht, Neuladen, Entfernen) und der Krypto-Abgleich Node gegen WebCrypto.
+  - Gegen den echten Relay prüfen: ein tsx-Skript in `packages/sidecar` mit `CrewService` (Relay `https://forge.vanturis.de/crew`, Events einer echten Session aus `%APPDATA%/forge/forge.db`, nur lesend) und `CrewWebClient`; danach löschen.
+- **Test:** `test/crew.test.ts` „lets someone follow the crew in the browser …“ (Beitritt, Nachricht, Aufgabe, Präsenz, Live-Ansicht mit mehreren Teilen, Neuladen, Entfernen) und der Krypto-Abgleich Node gegen WebCrypto.
 
 ## Sessions anderer (crew/share.ts)
 - **Ablauf:**

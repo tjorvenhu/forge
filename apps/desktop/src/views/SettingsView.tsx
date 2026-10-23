@@ -214,7 +214,7 @@ function GeneralSection({ s, save }: { s: Settings; save: Save }) {
         />
         <Row label={sv.soundsLabel} description={sv.soundsDescription}>
           <div className="flex items-center gap-1">
-            {(["done", "approval", "error"] as const).map((k) => (
+            {(["done", "approval", "error", "knock", "message"] as const).map((k) => (
               <Button key={k} size="icon-sm" variant="ghost" onClick={() => playSound(k)} aria-label={sv.soundPlay(SOUND_LABEL[k])} title={sv.soundPlay(SOUND_LABEL[k])}>
                 <Volume2 className="h-3.5 w-3.5" />
               </Button>
@@ -231,7 +231,7 @@ function GeneralSection({ s, save }: { s: Settings; save: Save }) {
   );
 }
 
-const SOUND_LABEL = { done: sv.soundDone, approval: sv.soundApproval, error: sv.soundError } as const;
+const SOUND_LABEL = { done: sv.soundDone, approval: sv.soundApproval, error: sv.soundError, knock: sv.soundKnock, message: sv.soundMessage } as const;
 
 export function ModelSetting({ value, onChange }: { value: string | null; onChange: (v: string | null) => void }) {
   const info = useRuntimeInfo();

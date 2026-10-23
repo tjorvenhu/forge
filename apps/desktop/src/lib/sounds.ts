@@ -1,4 +1,4 @@
-export type SoundKind = "done" | "approval" | "error";
+export type SoundKind = "done" | "approval" | "error" | "knock" | "message";
 
 let ctx: AudioContext | null = null;
 
@@ -42,6 +42,15 @@ const PATTERNS: Record<SoundKind, Array<[freq: number, offset: number, duration:
     [392, 0, 0.3],
     [329.63, 0.16, 0.45],
   ],
+  // doorbell (high, then a fourth lower), twice: someone in the crew waits for the user (join, a session, a task)
+  knock: [
+    [1046.5, 0, 0.22],
+    [783.99, 0.22, 0.4],
+    [1046.5, 0.75, 0.22],
+    [783.99, 0.97, 0.45],
+  ],
+  // one short, soft high note: a crew message
+  message: [[1318.51, 0, 0.18]],
 };
 
 export function playSound(kind: SoundKind, volume = 0.12) {

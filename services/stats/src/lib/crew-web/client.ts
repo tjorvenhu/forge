@@ -352,6 +352,12 @@ export class CrewWebClient {
   wake() {
     this.link?.nudge();
     if (this.rec.membership === "member" && this.connection === "online") void this.publishPresence();
+    // A locked phone sent no keep-alive meanwhile: say right away that we still watch.
+    const w = this.watchState;
+    if (w) {
+      w.link?.nudge();
+      if (w.view.state === "live") void this.sendRoom({ t: "share_keep", request: w.view.id, to: w.view.member });
+    }
   }
 
   /** Leaves the crew (members read the goodbye) and forgets it here. */

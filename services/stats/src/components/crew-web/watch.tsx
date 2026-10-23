@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useRef } from "react";
-import { AlertTriangle, Bot, CheckCircle2, Hand, Wrench, X } from "lucide-react";
+import { AlertTriangle, Bot, CheckCircle2, Hand, RotateCcw, Wrench, X } from "lucide-react";
 import type { WatchView } from "@/lib/crew-web/client";
 import { crewMessages, type CrewMessages } from "@/lib/crew-web/messages";
 import { useI18n } from "../locale";
@@ -82,7 +82,7 @@ function EventRow({ e, m }: { e: Ev; m: CrewMessages }) {
 }
 
 /** A member's session, read-only and live, over the board (full screen on a phone). */
-export function WatchPanel({ watch, memberName, onClose }: { watch: WatchView; memberName: string; onClose: () => void }) {
+export function WatchPanel({ watch, memberName, onClose, onRetry }: { watch: WatchView; memberName: string; onClose: () => void; onRetry: () => void }) {
   const { locale } = useI18n();
   const m = crewMessages(locale);
   const body = useRef<HTMLDivElement>(null);
@@ -90,6 +90,7 @@ export function WatchPanel({ watch, memberName, onClose }: { watch: WatchView; m
   const events = watch.events as Ev[];
   const shown = events.filter((e) => e && typeof e === "object" && ["user.message", "assistant.text", "tool.use", "tool.result", "approval.request", "approval.resolved", "turn.result", "context.compacted", "notify", "error"].includes(String(e.type)));
   const loading = watch.state === "asking" || watch.state === "transferring";
+  const over = watch.state === "failed" || watch.state === "ended" || watch.state === "declined";
   const error = watch.error ? ((m.watchErrors as Record<string, string>)[watch.error] ?? watch.error) : null;
 
   useEffect(() => {
@@ -115,6 +116,11 @@ export function WatchPanel({ watch, memberName, onClose }: { watch: WatchView; m
               {watch.state === "transferring" && watch.total ? ` · ${m.watchProgress(watch.received, watch.total)}` : ""}
             </span>
           </div>
+          {over && (
+            <button type="button" className="btn btn-outline crew-small" onClick={onRetry}>
+              <RotateCcw aria-hidden /> {m.watchRetry}
+            </button>
+          )}
           <button type="button" className="crew-icon-btn" onClick={onClose} aria-label={m.close} title={m.close}>
             <X aria-hidden />
           </button>

@@ -115,6 +115,7 @@ const de = {
     declined: "Das Mitglied möchte die Session nicht zeigen.",
   },
   watchEmpty: "Noch keine Nachrichten in dieser Session.",
+  watchRetry: "Erneut versuchen",
   close: "Schließen",
   event: {
     approval: (tool: string) => `Wartet auf Freigabe: ${tool}`,
@@ -247,6 +248,7 @@ const en: CrewMessages = {
     declined: "The member does not want to show the session.",
   },
   watchEmpty: "No messages in this session yet.",
+  watchRetry: "Try again",
   close: "Close",
   event: {
     approval: (tool: string) => `Waiting for approval: ${tool}`,

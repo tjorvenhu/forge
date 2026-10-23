@@ -239,7 +239,8 @@ export function parseGrant(v: unknown): JoinGrant | null {
 
 export function parseShare(v: unknown): ShareMessage | null {
   if (!isObj(v) || !str(v.request, 64)) return null;
-  if (v.t === "chunk") return int(v.i) && int(v.n) && v.n >= 1 && v.i >= 0 && v.i < v.n && str(v.data) ? (v as ShareMessage) : null;
+  // A chunk holds up to CREW_SHARE_CHUNK_CHARS (180,000) characters of the gzipped copy.
+  if (v.t === "chunk") return int(v.i) && int(v.n) && v.n >= 1 && v.i >= 0 && v.i < v.n && str(v.data, 200_000) ? (v as ShareMessage) : null;
   if (v.t === "live") return int(v.n) && v.n >= 1 && Array.isArray(v.events) ? (v as ShareMessage) : null;
   if (v.t === "end") return strOrNull(v.reason) ? (v as ShareMessage) : null;
   return null;

@@ -113,7 +113,17 @@ export function CrewBoard({ client, crew, onLeft }: { client: CrewWebClient; cre
         </section>
       </div>
 
-      {crew.watch && <WatchPanel watch={crew.watch} memberName={client.memberName(crew.watch.member)} onClose={() => client.stopWatch()} />}
+      {crew.watch && (
+        <WatchPanel
+          watch={crew.watch}
+          memberName={client.memberName(crew.watch.member)}
+          onClose={() => client.stopWatch()}
+          onRetry={() => {
+            const w = crew.watch!;
+            void act(() => client.watch(w.member, w.agentId));
+          }}
+        />
+      )}
     </div>
   );
 }

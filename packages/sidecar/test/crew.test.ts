@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import type { AddressInfo } from "node:net";
 import path from "node:path";
@@ -442,7 +443,9 @@ describe("two FORGE installations in one crew", () => {
 
       // What Anna's agent does shows in the browser.
       a.sessions.set("sa", session("sa", "pa", dirA, "Header"));
-      a.sessionEvents.set("sa", [{ type: "user.message", text: "Bau den Header" }]);
+      // Hardly compressible, so the copy travels in several chunks of up to 180,000 characters.
+      const big = randomBytes(300_000).toString("base64");
+      a.sessionEvents.set("sa", [{ type: "user.message", text: "Bau den Header" }, { type: "assistant.text", messageId: "m0", index: 0, text: big }]);
       a.svc.onServerEvent({ event: "session.event", payload: { seq: 1, sessionId: "sa", ts: "", body: { type: "user.message", text: "Bau den Header" } } });
       const anna = await waitFor("Anna's agent in the browser", () => ben.view().members.find((m) => m.agents.some((x) => x.task === "Bau den Header")));
 
@@ -451,7 +454,11 @@ describe("two FORGE installations in one crew", () => {
       const ask = await waitFor("share request at Anna", () => crewOf(a.svc)?.shareRequests[0]);
       a.svc.shareRespond(created.id, ask.id, true);
       await waitFor("live in the browser", () => ben.view().watch?.state === "live");
-      expect(ben.view().watch!.events).toEqual([{ type: "user.message", text: "Bau den Header" }]);
+      expect(ben.view().watch!.total).toBeGreaterThan(1);
+      expect(ben.view().watch!.events).toEqual([
+        { type: "user.message", text: "Bau den Header" },
+        { type: "assistant.text", messageId: "m0", index: 0, text: big },
+      ]);
       a.svc.onServerEvent({ event: "session.event", payload: { seq: 2, sessionId: "sa", ts: "", body: { type: "assistant.text", messageId: "m1", index: 0, text: "Header steht." } } });
       await waitFor("live event in the browser", () => ben.view().watch?.events.some((x) => (x as { text?: string }).text === "Header steht."));
       ben.stopWatch();

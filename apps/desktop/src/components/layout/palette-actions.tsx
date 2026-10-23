@@ -135,7 +135,7 @@ const SETTING_TOGGLES: Record<Exclude<BooleanSetting, keyof typeof UNLISTED_SETT
   desktopNotifications: { label: t.layout.actions.toggles.desktopNotifications, section: "general", keywords: "windows desktop benachrichtigung meldung notification" },
   alwaysOnTop: { label: t.layout.actions.toggles.alwaysOnTop, section: "general", keywords: "vordergrund hauptfenster fenster immer oben anheften anpinnen always on top main window pin" },
   screenshotKey: { label: t.layout.actions.toggles.screenshotKey, section: "general", keywords: "screenshot bildschirmfoto snipping druck print taste key screen capture" },
-  sounds: { label: t.layout.actions.toggles.sounds, section: "general", keywords: "töne ton sound sounds signal klang audio" },
+  sounds: { label: t.layout.actions.toggles.sounds, section: "general", keywords: "töne ton sound sounds signal klang audio klingel crew anfrage beitritt doorbell request" },
   autoContinueAfterLimit: { label: t.layout.actions.toggles.autoContinueAfterLimit, section: "claude", keywords: "auto weitermachen nutzungslimit limit reset continue usage" },
   agentTeams: { label: t.layout.actions.toggles.agentTeams, section: "claude", keywords: "agent teams agenten-teams teammitglieder lead claude code experimentell einschalten ausschalten agent teams teammates experimental switch on off" },
   askPushOnClose: { label: t.layout.actions.toggles.askPushOnClose, section: "general", keywords: "schließen beenden pushen push github ungepusht commit andere gerät weiterarbeiten close quit unpushed other device" },

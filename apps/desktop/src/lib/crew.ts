@@ -6,6 +6,7 @@ import { toast } from "@/stores/toast";
 import { call, keys } from "./queries";
 import { errorMessage } from "./rpc";
 import { desktopNotify } from "./native";
+import { playSound } from "./sounds";
 import { t } from "@/i18n";
 
 /** Initials for a member's avatar: first letters of the first two words. */
@@ -93,6 +94,10 @@ export function crewNotice(qc: QueryClient, n: ServerEventPayload<"crew.notice">
           : view;
   const tone = n.kind === "rejected" || n.kind === "removed" ? "warning" : n.kind === "joined" || n.kind === "pulled" || n.kind === "shared" ? "success" : "info";
   toast.notify({ tone, title: n.title, body: n.text, action, duration: n.kind === "request" || n.kind === "task" || n.kind === "share" ? 15_000 : 6_000 });
+  if (qc.getQueryData<{ sounds?: boolean }>(keys.settings)?.sounds !== false) {
+    if (n.kind === "request" || n.kind === "share" || n.kind === "task") playSound("knock");
+    else if (n.kind === "message") playSound("message");
+  }
   // What we asked for is here: it opens right away.
   if (n.kind === "shared" && n.ref) openSharedSession(qc, n.ref);
   crewChanged(qc, crew);
