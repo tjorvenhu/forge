@@ -27,8 +27,8 @@ export const automation = {
   blockerNoBranch: "Im Worktree des Agenten ist kein Branch ausgecheckt.",
   blockerNoTargetBranch: "Im Projekt ist kein Branch ausgecheckt.",
   blockerBusy: "Der Agent arbeitet noch.",
-  blockerOtherBranch: (origin: string, target: string) =>
-    `Der Agent ist von ${origin} abgezweigt, im Projekt ist jetzt ${target} ausgecheckt. Wechsle dort zurück auf ${origin}.`,
+  blockerOriginGone: (origin: string) =>
+    `Der Agent ist von ${origin} abgezweigt, diesen Branch gibt es nicht mehr. Lege ${origin} wieder an, dann lässt sich der Agent zusammenführen.`,
   blockerNoWork: "Der Agent hat nichts geändert.",
   discardedBranchKept: (error: string) => `Agent verworfen, aber der Branch blieb: ${error}`,
   discardedForeign: (foreign: string) => `Agent verworfen. ${foreign}`,

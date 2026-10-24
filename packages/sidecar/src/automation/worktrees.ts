@@ -168,9 +168,9 @@ export class WorktreeService {
   }
 
   /** Working tree and branch a worktree's branch started from; null parts are unknown. */
-  async origin(worktree: Project, branch: string): Promise<{ dir: string | null; branch: string | null }> {
+  async origin(worktree: Project, branch: string, cwd = worktree.path): Promise<{ dir: string | null; branch: string | null }> {
     const read = async (key: string) => {
-      const r = await this.git.exec(worktree.path, ["config", "--get", `branch.${branch}.${key}`]).catch(() => null);
+      const r = await this.git.exec(cwd, ["config", "--get", `branch.${branch}.${key}`]).catch(() => null);
       return r?.code === 0 && r.stdout.trim() ? r.stdout.trim() : null;
     };
     return { dir: await read("forgeOriginDir"), branch: await read("forgeOriginBranch") };
@@ -197,6 +197,29 @@ export class WorktreeService {
     const made = await read("forgeWorktree");
     if (made !== null) return made && pathKey(made) === pathKey(worktreeRoot(worktree.path)) ? "worktree" : null;
     return (await read("forgeOriginDir")) ? "forge" : null;
+  }
+
+  /** Working trees of the repository of `cwd` (git's list, folders already gone included) with their branch. */
+  async checkouts(cwd: string): Promise<Array<{ path: string; branch: string | null }>> {
+    const r = await this.git.exec(cwd, ["worktree", "list", "--porcelain"]).catch(() => null);
+    if (!r || r.code !== 0) return [];
+    const list: Array<{ path: string; branch: string | null }> = [];
+    for (const line of r.stdout.split("\n").map((l) => l.replace(/\r$/, ""))) {
+      if (line.startsWith("worktree ")) list.push({ path: path.resolve(line.slice("worktree ".length)), branch: null });
+      else if (line.startsWith("branch refs/heads/") && list.length) list[list.length - 1]!.branch = line.slice("branch refs/heads/".length);
+    }
+    return list;
+  }
+
+  /**
+   * Branch git still has registered for a worktree folder. Unlike branchOf this works once the
+   * folder lost its `.git`, as long as `worktree prune` has not run.
+   */
+  async registeredBranch(worktree: Project): Promise<string | null> {
+    const cwd = await this.controlDir(worktree);
+    if (!cwd) return null;
+    const key = pathKey(worktreeRoot(worktree.path));
+    return (await this.checkouts(cwd)).find((c) => pathKey(c.path) === key)?.branch ?? null;
   }
 
   /** Main working tree of `dir` if `dir` is the root of a linked worktree, else null. */
@@ -285,10 +308,11 @@ export class WorktreeService {
           if (existsSync(dir)) await rm(dir, { recursive: true, force: true, maxRetries: 2, retryDelay: 100 }).catch(() => undefined);
           return;
         }
-        last = (r.stderr || r.stdout).trim();
-        // Paths beyond 260 characters (node_modules of the worktree) stop git on Windows, Node
-        // deletes them; `worktree prune` afterwards drops git's entry for the folder.
-        if (LONG_PATH.test(last)) {
+        last = (r.stderr || r.stdout).trim() || tr().core.automation.removeFailed;
+        // Paths beyond 260 characters (node_modules of the worktree) stop git on Windows, and a big
+        // node_modules takes git longer than its timeout (killed half way, the folder lost its .git
+        // and stayed as leftovers). Node deletes both; `worktree prune` afterwards drops git's entry.
+        if (r.timedOut || LONG_PATH.test(last)) {
           try {
             await rm(dir, { recursive: true, force: true, maxRetries: 2, retryDelay: 100 });
             return;

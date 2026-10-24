@@ -1,8 +1,8 @@
 ---
-title: "Auto-Commit: Claude erfährt FORGE-Commits per Hinweis"
-summary: "Wie Claude-Sessions mitbekommen, dass FORGE nach einem Durchlauf selbst committet oder gepusht hat (auto-commit/auto-push), damit sie das nicht für fremde Commits halten."
+title: "Auto-Commit: Claude erfährt FORGE-Commits per Hinweis; mehrere Sessions im selben Checkout"
+summary: "Wie Claude-Sessions mitbekommen, dass FORGE nach einem Durchlauf selbst committet oder gepusht hat (auto-commit/auto-push), und warum parallele Sessions im selben Checkout sich gegenseitig Änderungen in Commits ziehen."
 tags: ["git","auto-commit","sessions","stolperfalle"]
-updated: "2026-10-13T11:09:10.417Z"
+updated: "2026-10-24T12:12:15.859Z"
 ---
 
 ## Problem
@@ -31,3 +31,16 @@ davon nichts: Bat der Nutzer ums Committen oder Pushen, fand Claude alles schon 
   maßgeblich, denn er beschreibt, was wirklich passiert ist.
 - Die Hinweise liegen nur im Speicher. Nach einem Neustart der App sind nicht abgeholte Hinweise weg.
 - Test: `session-service.test.ts`, „holds a new message until tests and auto-commit of the last turn are done“.
+
+## Stolperfalle: mehrere Sessions im selben Checkout (2026-10-24)
+
+- Laufen zwei Sessions gleichzeitig im Hauptordner (nicht in Worktrees), committet der Auto-Commit am Ende eines
+  Durchlaufs ganze Dateien. Dabei landen auch die Änderungen der anderen Session in diesem Commit, sogar
+  Hilfsdateien unter `.claude/`. So geschehen beim Entfernen der Agent-Teams parallel zu einer MCP-Session.
+- Erkennen: `git status` zeigt Dateien, die man nicht angefasst hat; `ListAgents` zeigt die andere Session.
+- Ausweg, solange nichts gepusht ist: `git reset --soft HEAD~1 && git reset`, dann den eigenen Teil per
+  `git diff -U0 HEAD` in Hunks zerlegen, fremde Hunks aussortieren und mit `git apply --cached --unidiff-zero`
+  nur die eigenen stagen. Zuerst gegen HEAD anwenden, denn bei `-U0` zählen die alten Zeilennummern.
+  Den Rest danach als eigenen Commit.
+- Besser: größere Umbauten in einem Agenten-Worktree machen oder die andere Session vorher per SendMessage warnen.
+  Hilfsskripte nicht unter `.claude/` im Repo ablegen, das ist nicht ignoriert.

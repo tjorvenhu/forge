@@ -17,7 +17,7 @@ export const WAITING_RETRY_MS = 30_000;
 export interface AgentAutoMergeDeps {
   db: Db;
   projects: ProjectManager;
-  finisher: Pick<AgentFinisher, "review" | "finish">;
+  finisher: Pick<AgentFinisher, "review" | "finish" | "isRemains" | "clearRemains">;
   record(sessionId: string, body: SessionEventBody): void;
   emit(e: ServerEvent): void;
   /** session that started the agent with start_agent */
@@ -49,6 +49,16 @@ export class AgentAutoMerge {
   constructor(private readonly d: AgentAutoMergeDeps) {}
 
   async turnDone(sessionId: string, testsOk: boolean): Promise<void> {
+    // Beside the rest: deleting a big leftover folder must not hold up this agent's own merge.
+    const remains = this.clearRemains().catch(() => null);
+    try {
+      await this.afterTurn(sessionId, testsOk);
+    } finally {
+      await remains;
+    }
+  }
+
+  private async afterTurn(sessionId: string, testsOk: boolean) {
     const rec = this.d.db.getSession(sessionId);
     const project = rec ? this.d.projects.all().find((p) => p.id === rec.projectId) : null;
     // Any turn that ends (its auto-commit done) may have made room for a waiting agent.
@@ -97,6 +107,27 @@ export class AgentAutoMerge {
     this.syncTimer();
   }
 
+  /**
+   * Agents whose merge went through but whose folder would not go (Windows locks, git killed half
+   * way through a big node_modules): only folder, entry and branch are left, in every project. Tried
+   * at startup and after every turn; a folder still locked stays for the next time.
+   */
+  async clearRemains(): Promise<void> {
+    for (const p of this.d.projects.all()) {
+      if (!p.parentId || this.running.has(p.id) || !this.d.finisher.isRemains(p)) continue;
+      this.running.add(p.id);
+      try {
+        await this.d.finisher.clearRemains(p.id);
+        this.waiting.delete(p.id);
+      } catch {
+        // Still held open by some program; the next round tries again.
+      } finally {
+        this.running.delete(p.id);
+      }
+    }
+    this.syncTimer();
+  }
+
   private syncTimer() {
     if (this.waiting.size && !this.retryTimer) {
       this.retryTimer = setInterval(() => void this.retryWaiting().catch(() => null), WAITING_RETRY_MS);
@@ -116,10 +147,10 @@ export class AgentAutoMerge {
     // Read before the merge: afterwards the agent's session and worktree are gone.
     const parentId = this.d.parentOf(sessionId);
     const sessionIds = this.d.db.listSessions(worktree.id).map((s) => s.id);
-    if (!existsSync(path.join(worktreeRoot(worktree.path), ".git"))) {
-      // Remains of an agent whose merge went through but whose folder would not go (git already
-      // forgot it): there is nothing left to merge, only the folder and the entry to clear away.
-      await this.d.finisher.finish(worktree.id, "discard").catch(() => null);
+    if (this.d.finisher.isRemains(worktree)) {
+      // Remains of an agent whose merge went through but whose folder would not go: there is
+      // nothing left to merge, only folder, entry and the merged branch to clear away.
+      await this.d.finisher.clearRemains(worktree.id).catch(() => null);
       return;
     }
     const review = await this.d.finisher.review(worktree.id);

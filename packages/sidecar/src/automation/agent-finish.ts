@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs";
+import path from "node:path";
 import { ForgeError, type AgentFinishResult, type AgentReview, type Project } from "@forge/protocol";
-import type { GitEngine } from "../git/git.js";
+import { isArtifactPath, isSensitiveFile, type GitEngine } from "../git/git.js";
 import type { AgentLogEntry, Db, SessionRecord } from "../persistence/db.js";
 import { lastAnswer } from "../phone/session-info.js";
 import { removeWorktree, type RemovalDeps } from "../projects/removal.js";
@@ -26,6 +27,8 @@ interface Located {
   targetBranch: string | null;
   /** branch the agent started from, if FORGE recorded it */
   originBranch: string | null;
+  /** false: the target branch is checked out nowhere, a merge only moves the branch */
+  checkedOut: boolean;
   session: SessionRecord | null;
 }
 
@@ -45,10 +48,25 @@ export class AgentFinisher {
     const origin = branch ? await this.d.worktrees.origin(worktree, branch) : { dir: null, branch: null };
     // The starting worktree may be gone by now; then the work goes to the main project.
     const recorded = origin.dir && existsSync(origin.dir) && pathKey(origin.dir) !== pathKey(worktree.path) ? origin.dir : null;
-    const dir = recorded ?? (root?.exists ? root.path : null);
-    const targetBranch = dir ? await this.d.git.currentBranch(dir).catch(() => null) : null;
+    let dir = recorded ?? (root?.exists ? root.path : null);
+    let targetBranch = dir ? await this.d.git.currentBranch(dir).catch(() => null) : null;
+    let checkedOut = true;
+    if (dir && origin.branch && targetBranch !== origin.branch) {
+      // The project moved on to another branch meanwhile (a session switched, a feature branch was
+      // started). The work still belongs to the branch the agent came from: merged in the working
+      // tree that has it checked out, or, checked out nowhere, by moving the branch alone.
+      const own = pathKey(worktreeRoot(worktree.path));
+      const at = (await this.d.worktrees.checkouts(dir)).find((c) => c.branch === origin.branch && pathKey(c.path) !== own);
+      if (at && existsSync(at.path)) {
+        dir = at.path;
+        targetBranch = origin.branch;
+      } else if ((await this.d.git.exec(dir, ["rev-parse", "--verify", "-q", `refs/heads/${origin.branch}`])).code === 0) {
+        targetBranch = origin.branch;
+        checkedOut = false;
+      }
+    }
     const session = this.d.db.listSessions(worktree.id)[0] ?? null;
-    return { worktree, root, branch, dir, targetBranch, originBranch: origin.branch, session };
+    return { worktree, root, branch, dir, targetBranch, originBranch: origin.branch, checkedOut, session };
   }
 
   private async count(cwd: string, range: string): Promise<number> {
@@ -111,7 +129,7 @@ export class AgentFinisher {
     if (!l.targetBranch) return tr().core.automation.blockerNoTargetBranch;
     if (busy) return tr().core.automation.blockerBusy;
     if (l.originBranch && l.targetBranch !== l.originBranch) {
-      return tr().core.automation.blockerOtherBranch(l.originBranch, l.targetBranch);
+      return tr().core.automation.blockerOriginGone(l.originBranch);
     }
     if (!work) return tr().core.automation.blockerNoWork;
     return null;
@@ -205,7 +223,8 @@ export class AgentFinisher {
       // From the top of the checkout: in a monorepo project the agent may have changed files beside it too.
       const top = worktreeRoot(wt);
       const files = (await git.status(top)).files.map((f) => f.path);
-      await git.commit(top, tr().core.automation.remainingCommit(branch), files, false);
+      if (await this.midMerge(top)) await this.concludeMerge(top, files);
+      else await git.commit(top, tr().core.automation.remainingCommit(branch), files, false);
     }
 
     // What the target branch moves to: the agent's branch, or a merge commit of both.
@@ -237,7 +256,7 @@ export class AgentFinisher {
 
     const commits = await this.count(dir, `refs/heads/${targetBranch}..refs/heads/${branch}`);
     const incoming = await this.incoming(l, dir, branch, targetBranch);
-    const waiting = await this.fastForward(dir, branch, targetBranch, to);
+    const waiting = l.checkedOut ? await this.fastForward(dir, branch, targetBranch, to) : await this.moveBranch(dir, branch, targetBranch, to);
     if (waiting) {
       this.changed(l);
       return { action: "merge", outcome: "waiting", branch, targetBranch, commits: 0, files: waiting.files, sessionId: null, branchError: null, message: waiting.message };
@@ -322,6 +341,83 @@ export class AgentFinisher {
     }
     if (moved.code !== 0) throw new ForgeError("GIT_FAILED", (moved.stderr || moved.stdout).trim() || tr().core.automation.notTaken(branch, targetBranch));
     return null;
+  }
+
+  /**
+   * The target branch is checked out nowhere: it moves to the agent's work without a working tree to
+   * update. Only forward, and only from the tip it had a moment ago.
+   */
+  private async moveBranch(dir: string, branch: string, targetBranch: string, to: string): Promise<null> {
+    const git = this.d.git;
+    const ref = `refs/heads/${targetBranch}`;
+    const rev = async (name: string) => {
+      const r = await git.exec(dir, ["rev-parse", "--verify", "-q", `${name}^{commit}`]);
+      return r.code === 0 ? r.stdout.trim() : "";
+    };
+    const fail = (detail = "") => new ForgeError("GIT_FAILED", detail || tr().core.automation.notTaken(branch, targetBranch));
+    const old = await rev(ref);
+    const next = await rev(to);
+    if (!old || !next || (await git.exec(dir, ["merge-base", "--is-ancestor", old, next])).code !== 0) throw fail();
+    // Checked out since: moving the branch under that working tree would make it look as if its
+    // files undid the agent's work.
+    if ((await this.d.worktrees.checkouts(dir)).some((c) => c.branch === targetBranch && existsSync(c.path))) throw fail();
+    const r = await git.exec(dir, ["update-ref", "-m", `FORGE: ${branch}`, ref, next, old]);
+    if (r.code !== 0) throw fail((r.stderr || r.stdout).trim());
+    return null;
+  }
+
+  private async midMerge(dir: string): Promise<boolean> {
+    return (await this.d.git.exec(dir, ["rev-parse", "--verify", "-q", "MERGE_HEAD"])).code === 0;
+  }
+
+  /**
+   * The agent stopped in the middle of `git merge <target>` (conflicts solved, merge not committed).
+   * git takes no commit of single files then ("cannot do a partial commit during a merge"), only the
+   * whole merge.
+   */
+  private async concludeMerge(dir: string, files: string[]) {
+    const git = this.d.git;
+    if ((await git.status(dir)).summary.conflicted) throw new ForgeError("GIT_CONFLICT", tr().system.git.conflictsBeforeCommit);
+    const flagged = files
+      .filter((f) => isSensitiveFile(f) || isArtifactPath(f))
+      .map((f) => ({ path: f, reason: isSensitiveFile(f) ? tr().system.git.sensitiveFile : "Build-Artefakt" }));
+    if (flagged.length) throw new ForgeError("POLICY_DENIED", tr().system.git.sensitiveSelected, { flagged });
+    const add = await git.exec(dir, ["add", "-A", "--", ...files]);
+    if (add.code !== 0) throw new ForgeError("GIT_FAILED", (add.stderr || add.stdout).trim());
+    const done = await git.exec(dir, ["commit", "-q", "--no-edit"]);
+    if (done.code !== 0) throw new ForgeError("GIT_FAILED", (done.stderr || done.stdout).trim());
+  }
+
+  /** A worktree entry with nothing left to merge: its folder lost its `.git` (a removal broke off half way) or is gone. */
+  isRemains(p: Project): boolean {
+    return !!p.parentId && !existsSync(path.join(worktreeRoot(p.path), ".git"));
+  }
+
+  /**
+   * Clears such remains: folder and FORGE entry go, and the branch too once its work is in the branch it
+   * came from. Before, an agent whose folder would not go after its merge stayed in the list for good.
+   */
+  async clearRemains(projectId: string): Promise<void> {
+    const worktree = this.d.projects.get(projectId);
+    if (!this.isRemains(worktree) || this.d.db.listSessions(worktree.id).some((s) => BUSY.has(s.status))) return;
+    const root = this.d.projects.all().find((p) => p.id === worktree.parentId) ?? null;
+    // Read before the removal: `worktree prune` drops git's record of the folder and its branch.
+    const branch = await this.d.worktrees.registeredBranch(worktree);
+    try {
+      await removeWorktree(projectId, true, this.d);
+      if (branch && root?.exists) await this.deleteIfMerged(worktree, root.path, branch).catch(() => null);
+    } finally {
+      this.d.notifyProject(worktree.id);
+      if (root) this.d.notifyProject(root.id);
+    }
+  }
+
+  private async deleteIfMerged(worktree: Project, cwd: string, branch: string) {
+    if (!(await this.d.worktrees.branchOwner(worktree, branch, cwd))) return;
+    const into = (await this.d.worktrees.origin(worktree, branch, cwd)).branch ?? (await this.d.git.currentBranch(cwd).catch(() => null));
+    if (!into || into === branch) return;
+    if ((await this.d.git.exec(cwd, ["merge-base", "--is-ancestor", `refs/heads/${branch}`, `refs/heads/${into}`])).code !== 0) return;
+    await this.d.git.deleteBranch(cwd, branch, true);
   }
 
   /**

@@ -27,8 +27,8 @@ export const automation: typeof De = {
   blockerNoBranch: "No branch is checked out in the agent's worktree.",
   blockerNoTargetBranch: "No branch is checked out in the project.",
   blockerBusy: "The agent is still working.",
-  blockerOtherBranch: (origin, target) =>
-    `The agent branched off ${origin}, but the project now has ${target} checked out. Switch back to ${origin} there.`,
+  blockerOriginGone: (origin) =>
+    `The agent branched off ${origin}, and that branch no longer exists. Create ${origin} again, then the agent can be merged.`,
   blockerNoWork: "The agent did not change anything.",
   discardedBranchKept: (error) => `Agent discarded, but the branch was kept: ${error}`,
   discardedForeign: (foreign) => `Agent discarded. ${foreign}`,
