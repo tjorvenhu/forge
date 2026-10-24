@@ -64,6 +64,8 @@ import { tr } from "../i18n/index.js";
 /** Entry point for everything session related; wires the session modules and keeps the public API in one place. */
 /** how long a scan of terminal transcripts is reused */
 const EXTERNAL_CACHE_MS = 20_000;
+/** after the start, so deleting leftover agent folders does not compete with opening the app */
+const REMAINS_DELAY_MS = 15_000;
 
 /** German wording, as the tests have it; what is sent comes from tr().core.sessions.handoffCompact. */
 export const HANDOFF_COMPACT = de.core.sessions.handoffCompact;
@@ -335,6 +337,9 @@ ${crew.context}` } : own;
       },
       hasBackground: (id) => (core.live.get(id)?.background.size ?? 0) > 0,
     });
+    // Remains of merges from before the start; later ones are cleared after every turn.
+    const autoMerge = this.agentAutoMerge;
+    setTimeout(() => void autoMerge.clearRemains().catch(() => null), REMAINS_DELAY_MS).unref?.();
   }
 
   // ---------- queries
