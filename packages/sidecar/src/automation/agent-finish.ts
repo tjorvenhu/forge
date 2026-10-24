@@ -38,6 +38,9 @@ interface Located {
  * branch are gone afterwards, so finished agents do not pile up.
  */
 export class AgentFinisher {
+  /** worktree projects being merged or discarded right now: their folder may lack its .git half way */
+  private readonly finishing = new Set<string>();
+
   constructor(private readonly d: AgentFinishDeps) {}
 
   private async locate(projectId: string): Promise<Located> {
@@ -139,7 +142,13 @@ export class AgentFinisher {
     // Read before: a merge or discard takes the worktree project and its sessions with it.
     const before = this.snapshot(projectId);
     const taken: AgentLogEntry["commits"] = [];
-    const r = action === "merge" ? await this.merge(projectId, taken) : await this.discard(projectId);
+    this.finishing.add(projectId);
+    let r: AgentFinishResult;
+    try {
+      r = action === "merge" ? await this.merge(projectId, taken) : await this.discard(projectId);
+    } finally {
+      this.finishing.delete(projectId);
+    }
     if (before) {
       try {
         this.d.db.logAgent({ ...before, branch: r.branch ?? before.branch, outcome: r.outcome, message: r.message, commits: r.outcome === "merged" ? taken : [] });
@@ -390,7 +399,7 @@ export class AgentFinisher {
 
   /** A worktree entry with nothing left to merge: its folder lost its `.git` (a removal broke off half way) or is gone. */
   isRemains(p: Project): boolean {
-    return !!p.parentId && !existsSync(path.join(worktreeRoot(p.path), ".git"));
+    return !!p.parentId && !this.finishing.has(p.id) && !existsSync(path.join(worktreeRoot(p.path), ".git"));
   }
 
   /**

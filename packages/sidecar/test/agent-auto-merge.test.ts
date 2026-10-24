@@ -158,6 +158,17 @@ describe("AgentAutoMerge", () => {
     expect(projects.all().some((p) => p.id === wt.id)).toBe(false);
   }, 30_000);
 
+  it("clears remains of other agents when any session's turn ends", async () => {
+    const wt = await agent("agent/liegt");
+    await git(repo, "merge", "--ff-only", "agent/liegt");
+    rmSync(path.join(wt.path, ".git"));
+    parent = projects.update(parent.id, { tags: [] });
+    await auto.turnDone("main", true);
+    expect(projects.all().some((p) => p.id === wt.id)).toBe(false);
+    expect(existsSync(wt.path)).toBe(false);
+    expect(await git(repo, "branch", "--list", "agent/liegt")).toBe("");
+  }, 30_000);
+
   it("merges the agent of a subfolder project instead of taking it for remains", async () => {
     const sub = path.join(repo, "packages", "web");
     mkdirSync(sub, { recursive: true });

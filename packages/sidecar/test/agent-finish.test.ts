@@ -129,14 +129,78 @@ describe("AgentFinisher", () => {
     expect(projects.all().map((p) => p.id)).toEqual([parent.id]);
   }, 20_000);
 
-  it("refuses to merge into another branch than the one the agent started from", async () => {
-    const wt = await worktrees.create(parent, "agent/falsch", { fromDir: repo });
+  it("merges into the branch the agent started from while the project has another one checked out", async () => {
+    const wt = await worktrees.create(parent, "agent/main-weg", { fromDir: repo });
     await commitFile(wt.path, "a.txt", "a\n", "A");
     await git(repo, "checkout", "-b", "feature/x");
+    await commitFile(repo, "x.txt", "x\n", "X");
     const review = await finisher.review(wt.id);
-    expect(review.mergeBlocker).toMatch(/von main abgezweigt, im Projekt ist jetzt feature\/x ausgecheckt/);
+    expect(review).toMatchObject({ targetBranch: "main", mergeBlocker: null, ahead: 1, behind: 0 });
+    const r = await finisher.finish(wt.id, "merge");
+    expect(r).toMatchObject({ outcome: "merged", targetBranch: "main", commits: 1 });
+    expect((await git(repo, "log", "-1", "--format=%s", "main")).trim()).toBe("A");
+    // The project's own checkout stays as it was.
+    expect((await git(repo, "branch", "--show-current")).trim()).toBe("feature/x");
+    expect((await git(repo, "status", "--porcelain")).trim()).toBe("");
+    expect(existsSync(path.join(repo, "a.txt"))).toBe(false);
+    expect(existsSync(wt.path)).toBe(false);
+    expect(await git(repo, "branch", "--list", "agent/main-weg")).toBe("");
+  }, 30_000);
+
+  it("merges into the worktree that has the agent's branch of origin checked out now", async () => {
+    const wt = await worktrees.create(parent, "agent/dort", { fromDir: repo });
+    await commitFile(wt.path, "a.txt", "a\n", "A");
+    await git(repo, "checkout", "-b", "feature/x");
+    const elsewhere = path.join(t.dir, "main-wt");
+    await git(repo, "worktree", "add", elsewhere, "main");
+    expect(await finisher.finish(wt.id, "merge")).toMatchObject({ outcome: "merged", targetBranch: "main" });
+    expect(readFileSync(path.join(elsewhere, "a.txt"), "utf8").trim()).toBe("a");
+    expect((await git(elsewhere, "status", "--porcelain")).trim()).toBe("");
+  }, 30_000);
+
+  it("blocks the merge when the branch the agent started from is gone", async () => {
+    const wt = await worktrees.create(parent, "agent/waise", { fromDir: repo });
+    await commitFile(wt.path, "a.txt", "a\n", "A");
+    await git(repo, "checkout", "-b", "feature/x");
+    await git(repo, "branch", "-D", "main");
+    expect((await finisher.review(wt.id)).mergeBlocker).toMatch(/von main abgezweigt, diesen Branch gibt es nicht mehr/);
     await expect(finisher.finish(wt.id, "merge")).rejects.toMatchObject({ code: "CONFLICT" });
     expect(existsSync(wt.path)).toBe(true);
+  }, 20_000);
+
+  it("completes a merge the agent left uncommitted after solving its conflicts", async () => {
+    const wt = await worktrees.create(parent, "agent/halb", { fromDir: repo });
+    await commitFile(wt.path, "README.md", "# Agent\n", "README vom Agenten");
+    await commitFile(repo, "README.md", "# Main\n", "README auf main");
+    await git(wt.path, "merge", "main").catch(() => "");
+    writeFileSync(path.join(wt.path, "README.md"), "# Beide\n");
+    await git(wt.path, "add", "README.md");
+    const r = await finisher.finish(wt.id, "merge");
+    expect(r).toMatchObject({ outcome: "merged", targetBranch: "main" });
+    expect(readFileSync(path.join(repo, "README.md"), "utf8").replace(/\r\n/g, "\n")).toBe("# Beide\n");
+    expect(existsSync(wt.path)).toBe(false);
+  }, 30_000);
+
+  it("clears the remains of a merged agent: folder, entry and its merged branch", async () => {
+    const wt = await worktrees.create(parent, "agent/rest-gemergt", { fromDir: repo });
+    await commitFile(wt.path, "a.txt", "a\n", "A");
+    await git(repo, "merge", "--ff-only", "agent/rest-gemergt");
+    // As after a git killed half way: the folder lost its .git, git still lists the worktree.
+    rmSync(path.join(wt.path, ".git"));
+    expect(finisher.isRemains(projects.get(wt.id))).toBe(true);
+    await finisher.clearRemains(wt.id);
+    expect(existsSync(wt.path)).toBe(false);
+    expect(projects.all().map((p) => p.id)).toEqual([parent.id]);
+    expect(await git(repo, "branch", "--list", "agent/rest-gemergt")).toBe("");
+  }, 20_000);
+
+  it("keeps the branch of remains whose work is not merged", async () => {
+    const wt = await worktrees.create(parent, "agent/rest-offen", { fromDir: repo });
+    await commitFile(wt.path, "a.txt", "a\n", "A");
+    rmSync(path.join(wt.path, ".git"));
+    await finisher.clearRemains(wt.id);
+    expect(existsSync(wt.path)).toBe(false);
+    expect((await git(repo, "branch", "--list", "agent/rest-offen")).trim()).toBe("agent/rest-offen");
   }, 20_000);
 
   it("merges into the worktree it started from and blocks agents without changes", async () => {

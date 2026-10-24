@@ -1,8 +1,8 @@
 ---
-title: "Parallele Agenten: Worktree vorbereiten, abschließen (Zusammenführen/Verwerfen)"
-summary: "Wie FORGE Agenten-Worktrees wie den Hauptordner einrichtet (WorktreeSetup: Abhängigkeiten, .env, Build-Cache, eigene Test-Datenbank, eigener Dev-Server-Port), wie fertige Agenten zusammengeführt oder verworfen werden und die Junction-Falle beim Entfernen."
+title: "Parallele Agenten: Worktree vorbereiten, abschließen (Zusammenführen/Verwerfen), Merge-Reste aufräumen"
+summary: "Wie FORGE Agenten-Worktrees wie den Hauptordner einrichtet (WorktreeSetup), wie fertige Agenten zusammengeführt oder verworfen werden (auch wenn im Projekt ein anderer Branch ausgecheckt ist), wie Reste halb gelöschter Worktrees aufgeräumt werden, und die Junction-Falle beim Entfernen."
 tags: ["agenten","worktree","git","auto-merge","windows","stolperfalle"]
-updated: "2026-10-17T11:56:31.932Z"
+updated: "2026-10-24T12:20:43.051Z"
 ---
 
 Kern: `packages/sidecar/src/automation/agent-finish.ts` (`AgentFinisher`), RPC `agents.review` / `agents.finish`, MCP-Werkzeug `finish_agent` (autoAllow false), Telefon-Werkzeug `finish_agent` (discard dort nur nach Tastatur-Code).
@@ -21,22 +21,30 @@ Schritte (Event `worktree.setup`, RPC `worktrees.setup`/`worktrees.prepare`, Tel
 5. **Dev-Server**: Port ab 4100 pro Worktree (`devPort`), per `PORT` und, wo der Befehl es versteht (vite, next dev, astro, …; auch über `pnpm dev`, bei npm mit `--`), per `--port` (`devserver/port-args.ts`). Startet automatisch nur, wenn der Dev-Server des Hauptprojekts läuft; sonst auf Wunsch.
 Agent-Kontext: `setupContext` sagt, was noch läuft; `dev_environment` mit `wait=true` wartet bis 4 Minuten.
 
-Gemessen am FORGE-Repo (2026-10-17): vorher fehlte alles (pnpm install 15 s von Hand, Rust-Build frisch 110 s, runtime fehlte, ohne die baut Tauri gar nicht). Nachher: Vorbereitung 20 s gesamt (pnpm 13 s, Kopien 6 s, 3,4 GB Rust-Cache + 462 MB runtime), danach `pnpm typecheck` sofort grün, `cargo build` 43 s (nur das App-Crate).
 Warum kein gemeinsamer target-Ordner (CARGO_TARGET_DIR): Cargo sperrt ihn pro Build, und `target/debug/forge-desktop.exe` wäre für beide Builds dieselbe Datei.
 
 ## Stolperfalle: Junctions in Worktrees (2026-10-17)
-`git worktree remove --force` (Git für Windows) **folgt Junctions und leert ihr Ziel**. Ein Versuch, `src-tauri/runtime` per Junction aus dem Hauptordner einzubinden, hat beim Entfernen den runtime-Ordner des Hauptprojekts gelöscht (wiederhergestellt aus `target/debug/runtime`). Deshalb nie Links in Worktrees anlegen, nur Kopien (robocopy mit `/XJ`). pnpm-Junctions in node_modules zeigen nur in den Worktree selbst; mit pnpm `enableGlobalVirtualStore` wäre das anders.
-Weitere Windows-Fallen beim Entfernen: Pfade über 260 Zeichen (`GitEngine.exec` setzt `core.longpaths=true`, `deleteFolder` löscht bei „Filename too long“ mit Node `rm`, danach `worktree prune`); nach Exit 0 bleiben manchmal leere node_modules-Gerippe stehen, `deleteFolder` löscht sie nach. `AgentAutoMerge.run`: Ordner ohne `.git` sind Reste und werden still verworfen.
+`git worktree remove --force` (Git für Windows) **folgt Junctions und leert ihr Ziel**. Ein Versuch, `src-tauri/runtime` per Junction aus dem Hauptordner einzubinden, hat beim Entfernen den runtime-Ordner des Hauptprojekts gelöscht. Deshalb nie Links in Worktrees anlegen, nur Kopien (robocopy mit `/XJ`). pnpm-Junctions in node_modules zeigen nur in den Worktree selbst; mit pnpm `enableGlobalVirtualStore` wäre das anders.
+Weitere Windows-Fallen beim Entfernen: Pfade über 260 Zeichen (`GitEngine.exec` setzt `core.longpaths=true`, `deleteFolder` löscht bei „Filename too long“ mit Node `rm`, danach `worktree prune`); nach Exit 0 bleiben manchmal leere node_modules-Gerippe stehen, `deleteFolder` löscht sie nach.
 `git check-ignore` verträgt `GIT_LITERAL_PATHSPECS=1` (setzt GitEngine immer) nicht: „pathspec magic not supported“. Für diesen Aufruf `GIT_LITERAL_PATHSPECS=0` übergeben.
 
+## Stolperfalle: git-Timeout beim Löschen großer Worktrees (2026-10-24)
+`git worktree remove` hat 60 s Timeout. Bei großem node_modules (cento, 6 Agenten gleichzeitig) wurde git abgebrochen: git löscht alphabetisch, `.git` war schon weg, README/apps/node_modules blieben, Fehlertext leer („Worktree konnte nicht entfernt werden“). Folge: Merge war durch, aber FORGE-Eintrag, Ordner und Branch blieben, und nichts räumte sie je auf (der alte Aufräumweg lief nur beim nächsten Durchlauf genau dieses Agenten, den es nie gab). Jetzt: `deleteFolder` fällt bei `r.timedOut` auf Node `rm` zurück.
+
+## Merge-Reste aufräumen (isRemains / clearRemains)
+Rest = Worktree-Eintrag, dessen Checkout-Wurzel kein `.git` mehr hat (und der gerade nicht in `finish()` steckt, Set `finishing`). `AgentFinisher.clearRemains`: liest vorher den Branch aus `git worktree list --porcelain` (`WorktreeService.registeredBranch`, geht nur vor `worktree prune`), entfernt Ordner und Eintrag, löscht den Branch nur, wenn FORGE ihn angelegt hat und er im Ursprungs-Branch aufgegangen ist (`merge-base --is-ancestor`). Unabhängig vom auto-merge-Tag. `AgentAutoMerge.clearRemains` läuft für alle Projekte nach jedem Durchlauf (parallel zum eigenen Merge, damit das Löschen ihn nicht aufhält) und 15 s nach dem Start (`REMAINS_DELAY_MS` in session-service.ts). Ein noch gesperrter Ordner bleibt bis zur nächsten Runde.
+
 ## Ablauf Zusammenführen
-1. Nicht committete Änderungen im Worktree werden committet ("Restliche Änderungen von <branch>").
-2. Hat der Ziel-Branch neue Commits: `git rebase refs/heads/<ziel>`. Scheitert er: `rebase --abort`, dann `git merge-tree --write-tree`; sauber → `git commit-tree <tree> -p <ziel> -p <branch>`, Ziel-Branch geht auf diesen Merge-Commit (ein Rebase scheitert oft an Zwischenständen). Nur bei echten Konflikten bekommt der Agent per `sessions.send(..., "auto")` den Auftrag `git merge <ziel>`; Ergebnis `outcome: "conflict"`, Worktree bleibt.
+1. Nicht committete Änderungen im Worktree werden committet ("Restliche Änderungen von <branch>"). Steckt der Agent mitten in `git merge` (MERGE_HEAD, Konflikte gelöst, nicht committet), geht kein Commit einzelner Dateien („cannot do a partial commit during a merge“): dann `concludeMerge` (`add -A` + `commit --no-edit`), gleiche Sperre für sensible Dateien wie `GitEngine.commit`.
+2. Hat der Ziel-Branch neue Commits: `git rebase refs/heads/<ziel>`. Scheitert er: `rebase --abort`, dann `git merge-tree --write-tree`; sauber → `git commit-tree <tree> -p <ziel> -p <branch>`, Ziel-Branch geht auf diesen Merge-Commit. Nur bei echten Konflikten bekommt der Agent per `sessions.send(..., "auto")` den Auftrag `git merge <ziel>`; Ergebnis `outcome: "conflict"`, Worktree bleibt.
 3. Im Zielordner `git merge --ff-only <rev>`. Scheitert das an nicht committeten Änderungen: arbeitet dort eine Session oder gibt es eine gleichnamige neue Datei → warten; sonst Probelauf `git stash create` + `merge-tree`, sauber → `stash push`, `merge --ff-only`, `stash pop`, sonst warten (`outcome: "waiting"`).
 4. Danach Worktree entfernen (Session beendet, Dev-Server und Test-Datenbank weg, Ordner und FORGE-Eintrag weg) und den Branch löschen, wenn er FORGE gehört.
 
+## Ziel, wenn im Projekt ein anderer Branch ausgecheckt ist (seit 2026-10-24)
+Früher Sperre „Der Agent ist von main abgezweigt, im Projekt ist jetzt X ausgecheckt“ → Agent `skipped`, nie wieder versucht, Agenten stapelten sich (passiert, wenn eine Session im Hauptordner einen Feature-Branch anlegt, während Agenten laufen). Jetzt in `locate()`: Ziel bleibt `forgeOriginBranch`. Ist er in einem anderen Arbeitsbaum ausgecheckt (`checkouts()`), wird dort per ff gemergt; ist er nirgends ausgecheckt, verschiebt `moveBranch` nur die Ref (`update-ref <ref> <neu> <alt>`, nur vorwärts, prüft vorher noch einmal, dass ihn niemand ausgecheckt hat); der Checkout des Projekts bleibt unberührt. Sperre nur noch, wenn der Ursprungs-Branch gelöscht ist (`blockerOriginGone`).
+
 ## Welche Branches FORGE löscht
-`create()` merkt sich für neue Branches `branch.<b>.forgeOriginDir`/`forgeOriginBranch` und `branch.<b>.forgeWorktree`. `branchOwner()`: passendes `forgeWorktree` → `-D`; nur `forgeOriginDir` (ältere Agenten) → `-d`; sonst bleibt der Branch mit Hinweis. Ohne `.git` im Worktree-Ordner löscht `branchOf()` keinen Branch. Ziel der Arbeit: forgeOriginDir/-Branch, sonst Hauptprojekt; anderer Branch im Zielordner ausgecheckt → mergeBlocker.
+`create()` merkt sich für neue Branches `branch.<b>.forgeOriginDir`/`forgeOriginBranch` und `branch.<b>.forgeWorktree`. `branchOwner()`: passendes `forgeWorktree` → `-D`; nur `forgeOriginDir` (ältere Agenten) → `-d`; sonst bleibt der Branch mit Hinweis. Ohne `.git` im Worktree-Ordner löscht `branchOf()` keinen Branch (clearRemains nimmt dafür `registeredBranch`). Ziel der Arbeit: forgeOriginDir/-Branch, sonst Hauptprojekt.
 
 ## Unterordner-Projekte (Monorepo)
 Checkout neben dem Repository-Toplevel, Projekt = `path.join(checkout, prefix)`. `worktreeRoot()` findet aus `.forge-worktrees/<repo>/<slug>` den ganzen Checkout (Dirty-Check, Löschen, Rest-Commit, Vorbereitung).
@@ -45,7 +53,8 @@ Checkout neben dem Repository-Toplevel, Projekt = `path.join(checkout, prefix)`.
 `<projekt>/.claude/worktrees/agent-<hex>` gehören Claude Code, nicht FORGE; `locked` = Subagent arbeitet. FORGE räumt gemergte selbst auf (`pruneSubagentWorktrees`). `parseStatusV2` lässt solche eingebetteten Repositorys (untracked mit `/`) weg.
 
 ## Automatisch zusammenführen (Tag auto-merge)
-`agent-auto-merge.ts`. Auslöser: `TurnAutomation` → `host.turnDone(sessionId, testsOk)`. Standard an für Hauptprojekte mit Git (seit 2026-10-17). Entscheidend ist das Tag am Hauptprojekt. Kein Merge bei roten Tests oder mergeBlocker (`skipped`, Toast mit „Ansehen“). Laufende Hintergrundaufgaben → Warteliste; `waiting` → erneuter Versuch nach jedem Durchlauf und alle 30 s. Konflikte höchstens 3 mal zurück an den Agenten. `agent.autoMerge` trägt `sessionIds`, der Desktop schließt damit die Chat-Fenster.
+`agent-auto-merge.ts`. Auslöser: `TurnAutomation` → `host.turnDone(sessionId, testsOk)`. Standard an für Hauptprojekte mit Git (seit 2026-10-17). Entscheidend ist das Tag am Hauptprojekt. Kein Merge bei roten Tests oder mergeBlocker (`skipped`, Toast mit „Ansehen“; `skipped` wird nicht wiederholt, erst der nächste Durchlauf des Agenten versucht es erneut). Laufende Hintergrundaufgaben → Warteliste; `waiting` → erneuter Versuch nach jedem Durchlauf und alle 30 s. Konflikte höchstens 3 mal zurück an den Agenten. `agent.autoMerge` trägt `sessionIds`, der Desktop schließt damit die Chat-Fenster.
+Diagnose liegengebliebener Agenten: Tabelle `agent_log` in `%APPDATA%/forge/forge.db` (letzte Zeile je `worktree_id`: outcome + message), lesbar mit `node:sqlite` (`DatabaseSync`, readOnly).
 
 ## Desktop
-Agenten-Reiter (`AgentsTab.tsx`, `AgentEnvironment.tsx`): Karte zeigt Vorbereitung (Punkt + Text, Details im Tooltip, Knopf zum Wiederholen bei Fehlern) und den eigenen Dev-Server (`:port`, Klick startet und öffnet, `lib/dev-server-actions.ts`); Rechtsklick: Öffnen, Dev-Server öffnen/stoppen, Vorbereitung wiederholen, Abschließen, Entfernen. Befehlspalette: „Dev-Server des Agenten öffnen: <branch>“, „Worktree des Agenten neu vorbereiten“. Modal ohne auto-merge: `lib/agent-review.ts` + `stores/agent-review.ts`. Seitenleiste: Worktree-Sessions unter dem Hauptprojekt (`groupOf`).
+Agenten-Reiter (`AgentsTab.tsx`, `AgentEnvironment.tsx`): Karte zeigt Vorbereitung und den eigenen Dev-Server; Rechtsklick: Öffnen, Dev-Server öffnen/stoppen, Vorbereitung wiederholen, Abschließen, Entfernen. Befehlspalette: „Dev-Server des Agenten öffnen: <branch>“, „Worktree des Agenten neu vorbereiten“. Modal ohne auto-merge: `lib/agent-review.ts` + `stores/agent-review.ts`. Seitenleiste: Worktree-Sessions unter dem Hauptprojekt (`groupOf`).

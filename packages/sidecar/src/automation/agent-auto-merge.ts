@@ -1,11 +1,8 @@
-import { existsSync } from "node:fs";
-import path from "node:path";
 import type { Project, ServerEvent, SessionEventBody } from "@forge/protocol";
 import { tr } from "../i18n/index.js";
 import type { Db } from "../persistence/db.js";
 import type { ProjectManager } from "../projects/project-manager.js";
 import type { AgentFinisher } from "./agent-finish.js";
-import { worktreeRoot } from "./worktrees.js";
 
 /** Tag of the main project: finished agents go back without asking. */
 export const AUTO_MERGE_TAG = "auto-merge";
