@@ -269,7 +269,7 @@ export const phoneTools: typeof De = {
   },
   extensions: {
     description:
-      "Extensions of Claude Code, global (scope user) or for a project. kind mcp: list MCP servers, add one with add (target is a command or URL), remove one with remove. kind skill or agent: list skills and subagents, read one out with read, create one with add and description, delete one with remove. kind command: list own slash commands. kind hook: read hooks out (change them only in FORGE). kind plugin: list installed plugins or search the catalog with query, install with add, uninstall with remove, switch with enable and disable.",
+      "Extensions of Claude Code, global (scope user) or for a project. kind mcp: list MCP servers, tell the settings of one with read (without secret values), add one with add (target is a command or URL, token for a bearer token), remove one with remove, approve a server from the project's .mcp.json with enable. kind skill or agent: list skills and subagents, read one out with read, create one with add and description, delete one with remove. kind command: list own slash commands. kind hook: read hooks out (change them only in FORGE). kind plugin: list installed plugins or search the catalog with query, install with add, uninstall with remove, switch with enable and disable.",
     params: {
       project: "Project name, if it is about a project",
       name: "Name of the server, skill, subagent or plugin",
@@ -278,6 +278,7 @@ export const phoneTools: typeof De = {
       transport: "mcp with add: if not given http for URLs, otherwise stdio",
       target: "mcp with add: command or URL of the server",
       args: "mcp with add: arguments of the command, separated by spaces",
+      token: "mcp with add for HTTP and SSE: bearer token, sent as the Authorization header. With scope project it lands in .mcp.json in the repo, then better give ${VARIABLE}",
       query: "plugin with list: search words for the catalog",
     },
   },

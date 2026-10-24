@@ -2002,8 +2002,19 @@ describe("PhoneService end to end with a test PBX", () => {
       ],
     });
     rpcResults = {
-      "mcp.list": () => [{ name: "context7", target: "npx", status: "connected", statusText: "" }],
+      "mcp.list": () => [{ name: "context7", target: "npx", status: "connected", statusText: "", scope: "user" }],
       "mcp.add": () => ({ ok: true, output: "" }),
+      "mcp.get": () => ({
+        name: "shared",
+        scope: "project",
+        transport: "http",
+        target: "https://x.example/mcp",
+        args: [],
+        env: {},
+        headers: { Authorization: "Bearer geheim" },
+        oauth: null,
+      }),
+      "mcp.approve": () => ({ ok: true }),
       "config.docs": () => [{ kind: "skill", scope: "user", name: "code-review", description: "Prüft Diffs", path: "" }],
       "config.docCreate": () => ({ path: "", mtimeMs: 1 }),
       "config.docRead": () => ({ path: "", content: "---\nname: code-review\n---\nPrüfe jeden Diff.", mtimeMs: 1 }),
@@ -2050,9 +2061,17 @@ describe("PhoneService end to end with a test PBX", () => {
       "claude.install": () => ({ task: "install", phase: "running", url: null, log: [], message: null }),
     };
     const { conv, end } = await openCall("c-ext");
-    expect(await conv.tools.extensions("mcp", "list")).toBe("MCP-Server: <<<SESSION-DATEN>>>context7 verbunden<<<ENDE SESSION-DATEN>>>");
+    expect(await conv.tools.extensions("mcp", "list")).toBe("MCP-Server: <<<SESSION-DATEN>>>context7 verbunden (global)<<<ENDE SESSION-DATEN>>>");
     expect(await conv.tools.extensions("mcp", "add", { name: "linear", target: "https://mcp.linear.app/sse" })).toBe("MCP-Server linear global hinzugefügt.");
-    expect(rpcCalls.at(-1)).toEqual(["mcp.add", { name: "linear", scope: "user", transport: "http", target: "https://mcp.linear.app/sse", args: [], env: {} }]);
+    expect(rpcCalls.at(-1)).toEqual(["mcp.add", { name: "linear", scope: "user", transport: "http", target: "https://mcp.linear.app/sse", args: [], env: {}, headers: {} }]);
+    await conv.tools.extensions("mcp", "add", { name: "api", target: "https://api.example/mcp", token: "Bearer abc" });
+    expect(rpcCalls.at(-1)?.[1]).toMatchObject({ headers: { Authorization: "Bearer abc" } });
+    expect(await conv.tools.extensions("mcp", "add", { name: "cli", target: "npx", token: "abc" })).toMatch(/nur bei HTTP/);
+    const read = await conv.tools.extensions("mcp", "read", { project: "shop", name: "shared" });
+    expect(read).toContain("Header: Authorization");
+    expect(read).not.toContain("geheim");
+    expect(await conv.tools.extensions("mcp", "enable", { project: "shop", name: "shared" })).toBe("MCP-Server shared ist in shop freigegeben.");
+    expect(rpcCalls.at(-1)).toEqual(["mcp.approve", { projectId, name: "shared" }]);
     expect(await conv.tools.extensions("mcp", "add", { name: "db", scope: "project" })).toBe("Fehler: Für welches Projekt?");
     expect(await conv.tools.extensions("skill", "add", { project: "shop", name: "Release Notes", description: "Schreibt Release-Notes" })).toBe("Skill release-notes im Projekt shop angelegt.");
     expect(rpcCalls.at(-1)).toEqual(["config.docCreate", { kind: "skill", scope: "project", name: "release-notes", description: "Schreibt Release-Notes", projectId }]);

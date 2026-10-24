@@ -245,6 +245,8 @@ export interface ExtensionOptions extends TargetOptions {
   target?: string;
   /** mcp: arguments of the command, separated by spaces */
   args?: string;
+  /** mcp add: bearer token for HTTP and SSE */
+  token?: string;
   /** plugin list: search the catalog */
   query?: string;
 }
@@ -933,6 +935,7 @@ const TOOL_DEFS: readonly ToolDef[] = [
       transport: { type: "string", optional: true, enum: ["stdio", "http", "sse"] },
       target: { type: "string", optional: true },
       args: { type: "string", optional: true },
+      token: { type: "string", optional: true },
       query: { type: "string", optional: true },
     },
     run: (t, a) =>
@@ -945,6 +948,7 @@ const TOOL_DEFS: readonly ToolDef[] = [
         transport: a.transport === "stdio" || a.transport === "http" || a.transport === "sse" ? a.transport : undefined,
         target: opt(a.target),
         args: opt(a.args),
+        token: opt(a.token),
         query: opt(a.query),
       }),
   },

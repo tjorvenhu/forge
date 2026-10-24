@@ -300,6 +300,13 @@ async function readSettings(p: string): Promise<{ data: Record<string, unknown>;
   }
 }
 
+/** Changes some keys of a settings file and leaves every other setting as it is. */
+export async function updateSettings(scope: SettingsScope, projectDir: string | null, change: (data: Record<string, unknown>) => Record<string, unknown>) {
+  const p = settingsPath(scope, projectDir);
+  const { data, mtimeMs } = await readSettings(p);
+  await writeText(p, JSON.stringify(change({ ...data }), null, 2) + "\n", mtimeMs);
+}
+
 export async function readHooks(scope: SettingsScope, projectDir: string | null) {
   const p = settingsPath(scope, projectDir);
   const { data, mtimeMs } = await readSettings(p);

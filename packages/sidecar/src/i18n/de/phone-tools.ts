@@ -247,7 +247,7 @@ export const phoneTools = {
     },
   },
   extensions: {
-    description: "Erweiterungen von Claude Code, global (scope user) oder für ein Projekt. kind mcp: MCP-Server auflisten, mit add (target ist Befehl oder URL) hinzufügen, mit remove entfernen. kind skill oder agent: Skills und Subagenten auflisten, mit read vorlesen, mit add und description anlegen, mit remove löschen. kind command: eigene Slash-Befehle auflisten. kind hook: Hooks vorlesen (ändern nur in FORGE). kind plugin: installierte Plugins auflisten oder mit query im Katalog suchen, mit add installieren, remove deinstallieren, enable und disable schalten.",
+    description: "Erweiterungen von Claude Code, global (scope user) oder für ein Projekt. kind mcp: MCP-Server auflisten, mit read Einstellungen ansagen (ohne geheime Werte), mit add (target ist Befehl oder URL, token für Bearer-Token) hinzufügen, mit remove entfernen, mit enable einen Server aus .mcp.json im Projekt freigeben. kind skill oder agent: Skills und Subagenten auflisten, mit read vorlesen, mit add und description anlegen, mit remove löschen. kind command: eigene Slash-Befehle auflisten. kind hook: Hooks vorlesen (ändern nur in FORGE). kind plugin: installierte Plugins auflisten oder mit query im Katalog suchen, mit add installieren, remove deinstallieren, enable und disable schalten.",
     params: {
       project: "Projektname, wenn es um ein Projekt geht",
       name: "Name des Servers, Skills, Subagenten oder Plugins",
@@ -256,6 +256,7 @@ export const phoneTools = {
       transport: "mcp bei add: ohne Angabe http für URLs, sonst stdio",
       target: "mcp bei add: Befehl oder URL des Servers",
       args: "mcp bei add: Argumente des Befehls, durch Leerzeichen getrennt",
+      token: "mcp bei add für HTTP und SSE: Bearer-Token, geht als Header Authorization mit. Bei scope project landet es in .mcp.json im Repo, dann besser ${VARIABLE} angeben",
       query: "plugin bei list: Suchwörter für den Katalog",
     },
   },

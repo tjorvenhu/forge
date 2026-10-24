@@ -891,13 +891,39 @@ export type ConfigDoc = z.infer<typeof ConfigDoc>;
 export const TextDoc = z.object({ path: z.string(), content: z.string(), mtimeMs: z.number().nullable() });
 export type TextDoc = z.infer<typeof TextDoc>;
 
+export const McpScope = z.enum(["user", "project", "local"]);
+export type McpScope = z.infer<typeof McpScope>;
+export const McpTransport = z.enum(["stdio", "http", "sse"]);
+export type McpTransport = z.infer<typeof McpTransport>;
+
 export const McpServer = z.object({
   name: z.string(),
   target: z.string(),
-  status: z.enum(["connected", "failed", "needs_auth", "unknown"]),
+  /** pending: a server from .mcp.json that nobody has approved for this project yet */
+  status: z.enum(["connected", "failed", "needs_auth", "pending", "unknown"]),
   statusText: z.string(),
+  /** where the server is configured; missing for servers from plugins or claude.ai */
+  scope: McpScope.optional(),
+  transport: McpTransport.optional(),
+  /** names only: values stay in the config file */
+  headerNames: z.array(z.string()).optional(),
+  envNames: z.array(z.string()).optional(),
+  oauthClientId: z.boolean().optional(),
 });
 export type McpServer = z.infer<typeof McpServer>;
+
+/** A configured server with its values, for editing. */
+export const McpServerConfig = z.object({
+  name: z.string(),
+  scope: McpScope,
+  transport: McpTransport,
+  target: z.string(),
+  args: z.array(z.string()),
+  env: z.record(z.string(), z.string()),
+  headers: z.record(z.string(), z.string()),
+  oauth: z.object({ clientId: z.string(), callbackPort: z.number().int().nullable() }).nullable(),
+});
+export type McpServerConfig = z.infer<typeof McpServerConfig>;
 
 /** New commits from origin taken over before a push or on pull. */
 export const GitIntegrated = z.object({

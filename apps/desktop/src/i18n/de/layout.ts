@@ -490,6 +490,7 @@ export const layout = {
     updateNotStarted: "Update nicht gestartet",
     goTo: (view: string) => `Gehe zu ${view}`,
     extensions: (label: string) => `Erweiterungen: ${label}`,
+    addMcp: "MCP-Server hinzufügen",
     skills: (label: string) => `Skills: ${label}`,
     settings: (label: string) => `Einstellungen: ${label}`,
     idleCloseAfter: (time: string) => `Untätige Sessions schließen nach ${time}`,

@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import type { QueryClient } from "@tanstack/react-query";
-import { Archive, ArrowDown, ArrowLeftRight, ArrowUp, ArrowUpCircle, BookOpen, Bot, CalendarDays, Camera, CloudDownload, CloudUpload, Columns2, Combine, Cpu, Database, Download, Eye, FilePlus2, FileStack, FileText, FileUp, FlaskConical, FolderDown, FolderMinus, FolderOpen, FolderPlus, Folders, Gauge, GitBranch, GitBranchPlus, GitCommitHorizontal, GitCompareArrows, GitFork, GitMerge, GitPullRequest, Globe, HandHeart, Languages, Lightbulb, Link, Link2Off, ListChecks, ListPlus, LogIn, LogOut, MessageSquare, MessageSquarePlus, MessageSquareText, Mic, MonitorSmartphone, NotebookText, PackageCheck, PanelBottom, PanelRight, Pencil, Phone, PhoneOff, PhoneOutgoing, Pin, PinOff, Play, Power, QrCode, RefreshCcw, RefreshCw, RotateCcw, Search, Settings2, Shield, ShieldBan, Shrink, Sparkles, Square, SquareArrowOutDownLeft, SquareArrowOutUpRight, SquareTerminal, Timer, ToggleLeft, ToggleRight, Trash2, UserPlus, Users, Wand2, type LucideIcon } from "lucide-react";
+import { Archive, ArrowDown, ArrowLeftRight, ArrowUp, ArrowUpCircle, BookOpen, Bot, CalendarDays, Camera, CloudDownload, CloudUpload, Columns2, Combine, Cpu, Database, Download, Eye, FilePlus2, FileStack, FileText, FileUp, FlaskConical, FolderDown, FolderMinus, FolderOpen, FolderPlus, Folders, Gauge, GitBranch, GitBranchPlus, GitCommitHorizontal, GitCompareArrows, GitFork, GitMerge, GitPullRequest, Globe, HandHeart, Languages, Lightbulb, Link, Link2Off, ListChecks, ListPlus, LogIn, LogOut, MessageSquare, MessageSquarePlus, MessageSquareText, Mic, MonitorSmartphone, NotebookText, PackageCheck, PanelBottom, PanelRight, Pencil, Phone, PhoneOff, PhoneOutgoing, Pin, PinOff, Play, Power, QrCode, RefreshCcw, RefreshCw, RotateCcw, Search, Server, Settings2, Shield, ShieldBan, Shrink, Sparkles, Square, SquareArrowOutDownLeft, SquareArrowOutUpRight, SquareTerminal, Timer, ToggleLeft, ToggleRight, Trash2, UserPlus, Users, Wand2, type LucideIcon } from "lucide-react";
 import type {
   Crew,
   AppInstallState,
@@ -89,7 +89,9 @@ export type PaletteDialog =
   | { kind: "new-branch"; projectId: string }
   | { kind: "create-pr"; project: ProjectWithStatus }
   /** the newest before/after comparison of the session, else of the project */
-  | { kind: "ui-compare"; sessionId: string | null; projectId: string };
+  | { kind: "ui-compare"; sessionId: string | null; projectId: string }
+  /** add an MCP server; the open project is preselected for the project and local scopes */
+  | { kind: "mcp-server"; projectId?: string };
 
 export interface ActionContext {
   qc: QueryClient;
@@ -720,6 +722,9 @@ export function buildActions(ctx: ActionContext): PaletteEntry[] {
     const def = EXTENSION_TAB_DEFS.find((d) => d.value === id)!;
     add("Erweiterungen", `ext-${id}`, t.layout.actions.extensions(def.label), icon(def.Icon), () => ui.openExtensions(id), { keywords: "erweiterungen plugins extensions" });
   }
+  add("Erweiterungen", "mcp-add", t.layout.actions.addMcp, icon(Server), () => ctx.openDialog({ kind: "mcp-server", projectId: project?.id }), {
+    keywords: "mcp server hinzufügen anlegen token bearer header oauth add new",
+  });
   for (const id of SKILLS_TABS) {
     const def = SKILLS_TAB_DEFS.find((d) => d.value === id)!;
     add("Erweiterungen", `skills-${id}`, t.layout.actions.skills(def.label), icon(def.Icon), () => ui.openExtensions("skills", id), { keywords: "skills erweiterungen plugins extensions" });

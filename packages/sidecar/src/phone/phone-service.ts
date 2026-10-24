@@ -3007,20 +3007,46 @@ export class PhoneService {
             if (action === "list") {
               const list = await call("mcp.list", { projectId });
               const state = xm.mcpState;
-              return list.length ? xm.mcpList(asData(list.map((m) => `${m.name} ${state[m.status]}`).join(", "))) : xm.mcpNone;
+              return list.length
+                ? xm.mcpList(asData(list.map((m) => `${m.name} ${state[m.status]}${m.scope ? ` (${xm.mcpScope[m.scope]})` : ""}`).join(", ")))
+                : xm.mcpNone;
             }
-            if (action !== "add" && action !== "remove") return only(xm.mcpOnly);
-            const scope = o?.scope ?? (p ? "local" : "user");
-            if (scope !== "user" && !p) return tr().phone.common.whichFor;
-            const where = scope === "user" ? xm.global : scope === "project" ? xm.inProject(p!.name) : xm.localIn(p!.name);
+            if (action !== "add" && action !== "remove" && action !== "read" && action !== "enable") return only(xm.mcpOnly);
+            const whereOf = (scope: "user" | "project" | "local") =>
+              !p || scope === "user" ? xm.mcpScope[scope] : scope === "project" ? xm.inProject(p.name) : xm.localIn(p.name);
+            if (action === "read") {
+              const c = await call("mcp.get", { projectId, name: name() });
+              const auth = [
+                Object.keys(c.headers).length ? xm.mcpHeaders(Object.keys(c.headers).join(", ")) : "",
+                Object.keys(c.env).length ? xm.mcpEnv(Object.keys(c.env).join(", ")) : "",
+                c.oauth ? xm.mcpOauth : "",
+              ].join("");
+              const target = [c.target, ...c.args].join(" ");
+              return xm.mcpRead(c.name, c.transport, asData(target), whereOf(c.scope), auth);
+            }
+            if (action === "enable") {
+              if (!p) return tr().phone.common.whichFor;
+              const c = await call("mcp.get", { projectId, name: name() });
+              if (c.scope !== "project") return xm.mcpApproveProject;
+              await call("mcp.approve", { projectId: p.id, name: c.name });
+              return xm.mcpApproved(c.name, p.name);
+            }
             if (action === "add") {
+              const scope = o?.scope ?? (p ? "local" : "user");
+              if (scope !== "user" && !p) return tr().phone.common.whichFor;
               const serverTarget = o?.target?.trim();
               if (!serverTarget) return xm.whichTarget;
               const transport = o?.transport ?? (/^https?:\/\//i.test(serverTarget) ? "http" : "stdio");
+              const token = o?.token?.trim();
+              if (token && transport === "stdio") return xm.mcpTokenStdio;
               const args = o?.args?.trim() ? o.args.trim().split(/\s+/) : [];
-              const r = await call("mcp.add", { projectId, name: name(), scope, transport, target: serverTarget, args, env: {} });
-              return r.ok ? xm.mcpAdded(name(), where) : tr().phone.error(excerptData(r.output, 400));
+              const headers: Record<string, string> = token ? { Authorization: `Bearer ${token.replace(/^bearer\s+/i, "")}` } : {};
+              const r = await call("mcp.add", { projectId, name: name(), scope, transport, target: serverTarget, args, env: {}, headers });
+              return r.ok ? xm.mcpAdded(name(), whereOf(scope)) : tr().phone.error(excerptData(r.output, 400));
             }
+            const scope = o?.scope ?? (await call("mcp.get", { projectId, name: name() })).scope;
+            if (scope !== "user" && !p) return tr().phone.common.whichFor;
+            const where = whereOf(scope);
             const r = await call("mcp.remove", { projectId, name: name(), scope });
             return r.ok ? xm.mcpRemoved(name(), where) : tr().phone.error(excerptData(r.output, 400));
           }

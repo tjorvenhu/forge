@@ -59,7 +59,10 @@ import {
   UnpushedProject,
   PushAllResult,
   GitStatus,
+  McpScope,
   McpServer,
+  McpServerConfig,
+  McpTransport,
   MarketplacePlugin,
   MemoryFile,
   MemoryScope,
@@ -110,6 +113,7 @@ import {
 } from "./crew.js";
 
 const id = z.string().min(1).max(100);
+const mcpName = z.string().regex(/^[A-Za-z0-9_-]{1,64}$/);
 const knowledgeFields = {
   title: z.string().trim().min(1).max(120),
   summary: z.string().trim().max(300),
@@ -206,22 +210,34 @@ export const methods = {
     result: z.object({ path: z.string(), mtimeMs: z.number() }),
   },
   "mcp.list": { params: z.object({ projectId: id.optional() }), result: z.array(McpServer) },
+  "mcp.get": { params: z.object({ projectId: id.optional(), name: mcpName }), result: McpServerConfig },
   "mcp.add": {
     params: z.object({
       projectId: id.optional(),
-      name: z.string().regex(/^[A-Za-z0-9_-]{1,64}$/),
-      scope: z.enum(["user", "project", "local"]),
-      transport: z.enum(["stdio", "http", "sse"]),
+      name: mcpName,
+      scope: McpScope,
+      transport: McpTransport,
       target: z.string().min(1).max(2000),
       args: z.array(z.string().max(2000)).max(50).default([]),
       env: z.record(z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/), z.string().max(4000)).default({}),
+      /** HTTP and SSE only, e.g. Authorization: Bearer … */
+      headers: z.record(z.string().regex(/^[A-Za-z0-9!#$%&'*+.^_`|~-]{1,128}$/), z.string().max(8000).regex(/^[^\r\n]*$/)).default({}),
+      /** HTTP and SSE only: OAuth client for servers that do not register clients themselves */
+      oauth: z
+        .object({ clientId: z.string().min(1).max(500), clientSecret: z.string().max(4000).optional(), callbackPort: z.number().int().min(1).max(65535).optional() })
+        .optional(),
+      /** edit: the entry this one replaces, also under another name or scope */
+      replaces: z.object({ name: mcpName, scope: McpScope }).optional(),
     }),
     result: z.object({ ok: z.boolean(), output: z.string() }),
   },
+  /** scope missing: the one the server is configured in */
   "mcp.remove": {
-    params: z.object({ projectId: id.optional(), name: z.string().regex(/^[A-Za-z0-9_-]{1,64}$/), scope: z.enum(["user", "project", "local"]) }),
+    params: z.object({ projectId: id.optional(), name: mcpName, scope: McpScope.optional() }),
     result: z.object({ ok: z.boolean(), output: z.string() }),
   },
+  /** approves a server from the project's .mcp.json for this computer (enabledMcpjsonServers) */
+  "mcp.approve": { params: z.object({ projectId: id, name: mcpName }), result: z.object({ ok: z.boolean() }) },
 
   /** all plugins of the added marketplaces plus the installed ones (user scope) */
   "plugins.catalog": { params: z.object({ refresh: z.boolean().optional() }), result: z.array(MarketplacePlugin) },

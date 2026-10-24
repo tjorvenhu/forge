@@ -12,6 +12,7 @@ import { NewAgentDialog } from "@/components/workspace/AgentsTab";
 import { DeleteSessionDialog } from "@/components/workspace/DeleteSessionDialog";
 import { Markdown } from "@/components/workspace/Markdown";
 import { UiCompareDialog } from "@/components/workspace/UiCompareCard";
+import { McpServerDialog } from "@/components/extensions/McpServerDialog";
 import type { PaletteDialog } from "./palette-actions";
 import { t } from "@/i18n";
 
@@ -44,6 +45,8 @@ export function PaletteDialogs({ dialog, onClose }: { dialog: PaletteDialog | nu
         />
       );
     }
+    case "mcp-server":
+      return <McpServerDialog open onOpenChange={close} projectId={dialog.projectId} onSaved={() => void qc.invalidateQueries({ queryKey: ["mcp"] })} />;
     case "ui-compare":
       return <LatestUiCompare sessionId={dialog.sessionId} projectId={dialog.projectId} onClose={onClose} />;
   }

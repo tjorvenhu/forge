@@ -39,6 +39,8 @@ export const PHONE_TOOL_FOR: Partial<Record<MethodName, string>> = {
   "mcp.list": "extensions",
   "mcp.add": "extensions",
   "mcp.remove": "extensions",
+  "mcp.get": "extensions",
+  "mcp.approve": "extensions",
   "plugins.catalog": "extensions",
   "plugins.install": "extensions",
   "plugins.uninstall": "extensions",

@@ -2,7 +2,7 @@ import { mkdirSync, readdirSync, readFileSync, writeFileSync, existsSync } from 
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import * as cfg from "../src/config/claude-config.js";
-import { mcpAddArgs, parseMcpList } from "../src/config/mcp.js";
+import { configuredServers, mcpAddArgs, McpService, parseMcpList, scopeLists, toServerConfig } from "../src/config/mcp.js";
 import { git, initRepo, tempDir } from "./helpers.js";
 
 let t: ReturnType<typeof tempDir>;
@@ -142,11 +142,13 @@ describe("mcp", () => {
       "context7: npx -y @upstash/context7-mcp - ✓ Connected",
       "github: https://api.githubcopilot.com/mcp/ (HTTP) - ✗ Failed to connect",
       "linear: https://mcp.linear.app/sse (SSE) - ⚠ Needs authentication",
+      "shared: https://x.example/mcp (HTTP) - ⏸ Pending approval (run `claude` to approve)",
     ].join("\n");
     expect(parseMcpList(out).map((s) => [s.name, s.status])).toEqual([
       ["context7", "connected"],
       ["github", "failed"],
       ["linear", "needs_auth"],
+      ["shared", "pending"],
     ]);
   });
 
@@ -194,5 +196,56 @@ describe("mcp", () => {
       target: "https://x.example/sse",
       env: [],
     });
+  });
+
+  it("passes headers and the OAuth client, the secret only via the environment", () => {
+    const args = mcpAddArgs({
+      name: "api",
+      scope: "user",
+      transport: "http",
+      target: "https://x.example/mcp",
+      args: [],
+      env: {},
+      headers: { Authorization: "Bearer abc", "X-Team": "a: b" },
+      oauth: { clientId: "cid", clientSecret: "secret", callbackPort: 8123 },
+    });
+    expect(args).toEqual([
+      ...["mcp", "add", "api", "--scope", "user", "--transport", "http"],
+      ...["-H", "Authorization: Bearer abc", "-H", "X-Team: a: b"],
+      ...["--client-id", "cid", "--client-secret", "--callback-port", "8123"],
+      ...["--", "https://x.example/mcp"],
+    ]);
+    expect(args).not.toContain("secret");
+    // a local command has no headers; stray ones never reach the CLI
+    expect(mcpAddArgs({ name: "x", scope: "user", transport: "stdio", target: "npx", args: [], env: {}, headers: { A: "b" } })).not.toContain("-H");
+  });
+
+  it("finds the scope of each server the way Claude Code resolves it", () => {
+    const cwd = path.join(t.dir, "Shop");
+    const claudeJson = {
+      mcpServers: { a: { type: "http", url: "https://a" }, both: { command: "user-cmd" } },
+      // Claude Code writes the folder with forward slashes, also on Windows
+      projects: { [cwd.replace(/\\/g, "/")]: { mcpServers: { both: { type: "stdio", command: "local-cmd", args: ["-y"], env: { K: "v" } } } } },
+    };
+    const mcpJson = { mcpServers: { shared: { type: "sse", url: "https://s", headers: { Authorization: "Bearer t" }, oauth: { clientId: "c", callbackPort: 9 } } } };
+    const found = configuredServers(scopeLists(claudeJson, mcpJson, cwd));
+    expect([...found].map(([n, c]) => [n, c.scope])).toEqual([
+      ["a", "user"],
+      ["both", "local"],
+      ["shared", "project"],
+    ]);
+    expect(toServerConfig("both", found.get("both")!)).toEqual({ name: "both", scope: "local", transport: "stdio", target: "local-cmd", args: ["-y"], env: { K: "v" }, headers: {}, oauth: null });
+    expect(toServerConfig("shared", found.get("shared")!)).toMatchObject({ transport: "sse", target: "https://s", headers: { Authorization: "Bearer t" }, oauth: { clientId: "c", callbackPort: 9 } });
+    expect(toServerConfig("ws", { scope: "user", entry: { type: "ws", url: "wss://x" } })).toBeNull();
+  });
+
+  it("approves a .mcp.json server in settings.local.json and keeps the other settings", async () => {
+    const file = path.join(proj, ".claude", "settings.local.json");
+    mkdirSync(path.dirname(file), { recursive: true });
+    writeFileSync(file, JSON.stringify({ permissions: { allow: ["Bash(ls)"] }, enabledMcpjsonServers: ["old"], disabledMcpjsonServers: ["shared"] }));
+    const mcp = new McpService(() => null, () => ({}));
+    await mcp.approve(proj, "shared");
+    await mcp.approve(proj, "shared");
+    expect(JSON.parse(readFileSync(file, "utf8"))).toEqual({ permissions: { allow: ["Bash(ls)"] }, enabledMcpjsonServers: ["old", "shared"], disabledMcpjsonServers: [] });
   });
 });
